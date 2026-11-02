@@ -6,7 +6,7 @@ integrations:
     area: frontend-analysis-and-lowering
     status: partial
     integrated: "2026-08-14"
-    revised: "2026-11-01"
+    revised: "2026-11-02"
     document_revision: "2.2"
     summary: >-
       Tracks revision-2.2 compile-time type generics and demand-driven
@@ -33,6 +33,8 @@ integrations:
       - rules/tooling/diagnostics.md
       - rules/tooling/formatter.md
     code:
+      - internal/sema/match_arm_bindings.go
+      - internal/sema/analyzer_try_handlers.go
       - internal/ast/ast.go
       - internal/parser/parser.go
       - internal/parser/generic_constraints.go
@@ -58,6 +60,11 @@ integrations:
       - cmd/lsp/signature_help.go
       - cmd/lsp/error_pattern_completion.go
     tests:
+      - internal/sema/generic_error_ownership_test.go
+      - cmd/compiler/generic_error_ownership_test.go
+      - cmd/lsp/generic_error_ownership_test.go
+      - internal/ir/semantic/generic_error_ownership_test.go
+      - testdata/sema/generic_error_ownership
       - internal/sema/source_type_facts_test.go
       - cmd/lsp/generic_error_interface_test.go
       - testdata/lsp/generic_error_parameters
@@ -100,6 +107,9 @@ integrations:
       - testdata/generics/type_pack_declarations/roles.sec
       - testdata/generics/type_pack_declarations/type_owner_invalid.sec
     implemented:
+      - "Constrained generic parameter as a borrowed interface view (2026-11-02; MD-057; MD-120; interfaces.md §§ 7.1, 9): `ref mut W` with `W: I` passes to `ref mut I`, directly, through a child interface, through generic inference of `ref mut I[E]`, and at pack forwarding. An unconstrained parameter, an unrelated constraint and a shared reference to a mutable view stay rejected (TestConstrainedGenericPassesAsBorrowedView). Such a call stops at the same named Semantic IR boundary as any view."
+      - "Pack forwarding into borrowed interface views (2026-11-02; MD-057; MD-120 § 6; functions.md § 38A): typePackForwardCandidate accepts a conforming ordinary argument and a conforming pack position as a view, as a call without a spread does, so `FormatComposite(format, ref mut sink, values...)` passes Sema. An exact overload still ranks first; a non-conforming type and a shared reference to a mutable view stay rejected (TestPackForwardingAcceptsBorrowedInterfaceViews). Such a call then stops at the named Semantic IR boundary 'type Sink', the open MD-057 dispatch item in governance/declarations.yaml."
+      - "MD-120 frontend ownership/pattern conformance (2026-11-02; correction §11(4)): source-backed Sema, CLI and LSP tests cover move-only concrete E, explicit generic argument/return transfers, Err construction, Result forwarding, whole-error match/try bindings, non-consuming guards, exact-to-open try propagation, Result.Err projection and generic error-union outer patterns. Negative cases reject implicit copies, missing moves, use after move, unproved generic or known lifecycle-bearing Err(_) discard and consuming guards. Resolved transfer/match/try plans retain move or conditional ownership actions and exact channel identity. Guard rejection now has registered S1194 ownership.guard-consumes-binding and repair guidance. This closes frontend conformance independently of executable specialization: direct package-17 Semantic IR still rejects ownership-sensitive E; public package-16 emission stops at custom free lifecycle destruction without an output artifact. Existing backend ownership/destruction and open-error gates remain with compiler.monomorphization and lowering.sec-mlir-package17; MD-108 interface representation remains open. No backend gate is lifted."
       - "MD-120 LSP (2026-11-01; correction §§10(7),11(6)): interface and requirement declarations, borrowed instantiated type references and selected interface calls expose exact Result error channels (unknown E, concrete IOError or explicit error root). Hover distinguishes error-category constraints from root arguments and never substitutes an unrelated value named error. Signature help retains receiver mode, borrowed parameters, active argument and selected channel, including inherited requirements and zero-argument calls during incomplete editing. Member completion uses instantiated requirements and preserves shared/exclusive receiver authority. Generic Err(. recovery offers a fresh whole-channel binding instead of guessing concrete variants or unproved discardability; accepting edits is re-analyzed. Canonical source type-use facts are detached, read-only and reanalysis-safe; final existing interface instances supply completed requirement metadata. Source diagnostics still reject bare interfaces and non-error arguments; navigation retains the requirement declaration. No new source inference, erasure, variance, runtime dispatch or backend representation is introduced."
       - "MD-120 Sema (2026-11-01; generics.md §§ 11–15A, 18, 22–23): [E: error] is a compiler-known category constraint, alone or with & interfaces; arguments are the error root or declared error types; [T: int] and [E error] stay invalid; template E has Result/Option/ref positions, Err/Ok, try propagation and widening to error, whole-channel Err(e); variant patterns, members, narrowing, implied copy and unproved Err(_) are rejected; E is inferred from arguments, expected results, explicit arguments and a unique interface conformance, with no fallback to error (rules/corrections/applied/MD-120-generic-error-parameters-approved-20261031-20261101.md; TestGenericErrorParameters, TestGenericErrorChannelSpecializations, TestGenericErrorUnionInstance, TestErrorCategoryConstraintSyntax, TestGenericErrorParameterHover)"
       - "MD-117 declaration/tooling milestone completed 2026-10-30: the parser and AST retain a trailing [...Types] type-pack parameter with its real spread/name tokens, distinct from an ordinary T; one-pack/final-position/callable-owner diagnostics retain later declarations. Existing SPREAD tokens are reused, ordinary array and spread grammar are unchanged, and empty call argument lists stay syntactically valid. Compiler declaration facts use GenericTypePackType and retain the pack name plus pointwise owned/shared/mutable signature modes, without representing a runtime container or granting runtime SizeOf/ToString members. Formatter/CST round trips preserve the declaration kind and ...Types/...ref Types/...ref mut Types spellings; LSP hovers show exact free-function/method declarations and type-sequence parameter facts. S1177 compiler.type-pack-expansion-unavailable reports unsupported parameter modes, demanded pack-body expansion and call preparation and prevents emission instead of silently using ordinary homogeneous generic semantics. Ordinary homogeneous ref variadic restrictions remain intact. The generic-parameter parser is extracted into a focused sibling file. The subsequent unused shared-pack frontend milestone under frontend.functions-v2 supports ordered direct-call inference and pointwise borrow checks; its detached facts are available to compiler clients, but LSP call-site presentation remains open. Pack body expansion/transfer/iteration, complete specialization and lowering remain with their existing MD-117 owners; MD-117 is not complete."
@@ -146,7 +156,6 @@ integrations:
       - "MD-122 universal ToString() in Sema (2026-11-01, owner decision A): value.ToString() type-checks on unconstrained and constrained generic parameters, E: error, opaque pack elements in every loop mode and through values[k], and interface values, returning Result[string, StringError]; a constraint's requirement takes precedence. In a template the call is an unknown callee, so @noPanic and @noAlloc are rejected there. No other member or formatting interface is granted; interpolation holes keep their own contract rule."
     remaining:
       - "MD-122 lowering (generics.md § 15; compiler_known_members.md Generic lookup): in a specialization select an exact user ToString or the concrete fallback; the call stops at a named boundary until P23 string lowering. Interface values need dispatch of ToString, which needs a view-table entry for every interface. A per-specialization @noPanic and @noAlloc proof through the selected ToString replaces today's conservative unknown callee."
-      - "MD-120 remaining conformance (§11(4)): move-only E ownership cases require the ownership-sensitive generic specialization gate lifted (lowering.sec-mlir-package17); interface error-channel LSP hover, member/pattern completion and signature-help coverage are implemented above"
       - "MD-117 call-site tooling (correction § 10(3)): Complete call-site tooling beyond the supported shared-pack subset, including unresolved/incomplete calls and future pack modes. Hover and signature help already project selected ordered types and concrete pointwise receiving signatures for successfully resolved shared-pack calls, the formatter round-trips ...Types, ...ref Types, ...ref mut Types and <-values... idempotently, and the syntax reference documents the forms; diagnostics name the template location plus the concrete instantiation and argument position (§ 10(1)-(2))."
       - "MD-117 conformance and acceptance (correction § 14): one regression matrix covering § 14(1) positive syntax/inference, § 14(2) negative checks, § 14(3) iteration, § 14(4) ownership/spread, § 14(5) lifetimes and § 14(6) lowering/tooling; MD-117 may be marked implemented and the correction archived only when every owner item passes (§ 14(7)). The matrix also carries the MD-119 conformance cases (applied correction § 8; references.md § 3.4(10)): carried holders keep ref T/ref mut T, explicit *value/projection/reborrow, no implicit deref, no ref ref T, no copied or moved-out ref mut element, origin-preserving returned reborrows, each case distinguishing Sema from Semantic IR/Sec MLIR/executable support. MD-118 (fmt API) stays open separately and is not counted here."
       - extend generic-parameter hover to future method-level generic parameters, and show concrete specialization arguments at instantiated uses
@@ -171,6 +180,16 @@ integrations:
       - negative constraints, union-of-types constraints, inferred structural conformance, and automatic interface implementation
       - const or value generics without a separate normative rulebook and syntax
     verification:
+      - command: GOCACHE=/tmp/sec-go-cache go test ./internal/sema ./internal/diagnostics ./internal/ir/semantic -count=1
+        result: passed on 2026-11-02; complete suites, including the explicit package-17 ownership specialization boundary. Final source assertions additionally passed TestGenericErrorOwnership after adding concrete generic error-union and match-action coverage.
+      - command: GOCACHE=/tmp/sec-go-cache go test ./internal/sema ./cmd/compiler ./cmd/lsp -run TestGenericErrorOwnership -count=1
+        result: passed on 2026-11-02; valid source accepted, eleven invalid ownership cases rejected with stable IDs, two S1194 guard errors include help; public package-16 emit-ir rejects custom free lifecycle destruction and creates no artifact.
+      - command: GOCACHE=/tmp/sec-go-cache go test ./cmd/lsp -run 'TestGenericErrorOwnership|TestGenericErrorInterface|TestErrorPatternGuard|TestCompilerInterfaceRequirementUsesSharedIdentity' -count=1
+        result: passed on 2026-11-02; ownership publication and neighboring interface/guard/shared-identity regressions.
+      - command: GOCACHE=/tmp/sec-go-cache go vet ./internal/sema ./internal/diagnostics ./internal/ir/semantic ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-11-02.
+      - command: GOCACHE=/tmp/sec-go-cache go test ./cmd/lsp -run 'TestCompilerInterfaceRequirementUsesSharedIdentity|TestGenericErrorInterface' -count=1
+        result: passed on 2026-11-02; interface completion preserves the established return-type Detail (including Iterator.Next Option[int]), with the complete requirement signature in Documentation. MD-120 diagnostic identity closure is owned by errors.diagnostics in errors_diagnostics.yaml.
       - command: GOCACHE=/tmp/sec-go-cache go test ./cmd/lsp -count=1 -timeout=240s
         result: broad LSP suite not green on 2026-11-01; it reached the 240-second limit and exposed allocation-hover, discard-advisory and older fmt.Println return-contract failures. The seven non-MD-120 failures reproduced with the new source-fact recording and interface hover/completion/signature hooks disabled through a temporary Go build overlay. An early MD-120 snapshot failure was fixed; final focused MD-120 and neighboring regression tests pass. No full-suite success is claimed.
       - command: GOCACHE=/tmp/sec-go-cache go test ./cmd/lsp -run 'TestGenericErrorInterface|TestGenericErrorWholeChannel|TestGenericErrorParameterHover|TestErrorPattern|TestHoverPresentsOrderedMultipleGenericConstraints|TestGenericTypeDefinitionNavigation' -count=1

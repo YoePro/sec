@@ -1,0 +1,9 @@
+module main
+@section("chosen")
+static let Global: int := 1
+@memory_space("device")
+static let mut Shared: int := 0
+fn Local() void {
+    @section("local")
+    static let Persistent: int := 2
+}

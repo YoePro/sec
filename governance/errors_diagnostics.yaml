@@ -74,7 +74,7 @@ integrations:
     status: partial
     integrated: true
     audited: true
-    revised: 2026-10-07
+    revised: "2026-11-02"
     document_revision: "2.0"
     repository_baseline: main-reviewed-2026-09-30
     replaces:
@@ -189,6 +189,10 @@ integrations:
           Diagnostic output is deterministic and conformance tests assert stable
           structured identity rather than exact English prose.
     code:
+      - internal/sema/error_channel_diagnostics.go
+      - internal/sema/type_references.go
+      - internal/sema/error_patterns.go
+      - internal/sema/analyzer_try_handlers.go
       - internal/diagnostics/diagnostics.go
       - internal/parser/errors.go
       - internal/parser/recovery.go
@@ -576,6 +580,7 @@ integrations:
         description: >-
           Proven statement-after-terminator diagnostics use mandatory S3001 with
           explanatory help in CLI and LSP.
+      - "MD-120 diagnostics completed (2026-11-02; correction §10(7), diagnostics.md §§2(6–10),14–15): mandatory S1191 errors.invalid-result-error-channel identifies Result error-channel ineligibility (including unconstrained E), S1192 errors.variant-requires-concrete-channel identifies unknown-channel variant selection across contextual/qualified match and try forms with or without payload patterns, and S1193 interfaces.generic-argument-count identifies omitted or wrong interface type-argument counts. Each is a distinct source rule with no suitable existing registered ID; existing constraint-failure, handler-shape and non-discardability diagnostics keep their identities. Generic and explicit-open error channels receive different repairs; no E variant, default error argument, generic variance or implicit discard is inferred. The qualified try form now reports the unavailable variant knowledge instead of undefined variable E. Thirteen invalid source cases retain registered identity, error severity, nonempty ranges and help through Sema, CLI JSON and LSP; legal generic/concrete/root views and whole-channel handlers remain accepted."
     partial:
       - id: diagnostics.registry-definition-v2
         description: >-
@@ -664,6 +669,12 @@ integrations:
       - Attempts to disable or demote mandatory diagnostics are rejected.
       - No Sec 0.1 source syntax suppresses advisory or mandatory diagnostics.
     verification:
+      - command: GOCACHE=/tmp/sec-go-cache go test ./internal/sema ./internal/diagnostics -count=1
+        result: passed on 2026-11-02; complete Sema and registry suites, MD-120 diagnostic identities and legal counterparts
+      - command: GOCACHE=/tmp/sec-go-cache go test ./cmd/compiler ./cmd/lsp -run 'TestGenericErrorDiagnostic|TestCompilerInterfaceRequirementUsesSharedIdentity|TestGenericErrorInterface' -count=1
+        result: passed on 2026-11-02; all thirteen invalid source cases retain registered IDs/ranges/help in real CLI JSON and LSP, valid cases pass, and the Iterator completion regression is fixed by keeping return type in Detail and requirement signature in Documentation
+      - command: GOCACHE=/tmp/sec-go-cache go vet ./internal/sema ./internal/diagnostics ./cmd/lsp ./cmd/compiler
+        result: passed on 2026-11-02
       - command: go test ./internal/sema ./internal/diagnostics ./cmd/lsp -count=1
         result: passed on 2026-10-06 after scalar-literal diagnostic migration, with S1120 metadata, explicit surrogate/domain explanation, integer-codepoint help, literal spans and identical validation under trusted core provenance
       - command: go test ./cmd/compiler -run 'Test.*Diagnostic.*' -count=1
@@ -700,8 +711,7 @@ integrations:
         result: passed on 2026-09-30 with registered mandatory S1052 identity, explanatory payload-Place message, actionable ownership/borrow help, and catalog exposure
       - command: go test ./internal/diagnostics ./internal/sema -run 'Test(RegistryIsValid|KnownDiagnosticSeverities|RecursiveStructLayoutDiagnosticIsRegistered|StructLayoutCyclesAreRejectedWithPath|StructLayoutIndirectionBreaksRecursion)' -count=1
         result: passed on 2026-09-30 with registered mandatory S1055 identity, concrete cycle-path messages, actionable indirection help, and valid recursion boundaries
-    remaining:
-      - "MD-120 (§ 10(7)): decide when implementing the tooling whether the existing unidentified messages for an unconstrained E in Result, a variant pattern on unknown E and a bare generic view need stable IDs; today they reuse existing diagnostics and no new ID has been allocated"
+    remaining: []
 
   - id: diagnostics.move-into-borrowed-parameter
     status: implemented

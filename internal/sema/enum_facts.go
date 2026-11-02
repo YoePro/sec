@@ -6,7 +6,8 @@ import (
 )
 
 // ResolvedEnumCaseOf returns the exact declared case selected by a successfully
-// analyzed member expression. Alias cases retain distinct ordinals.
+// analyzed member expression from its retained selected owner. Runtime fields
+// and getters never become cases by spelling. Alias cases retain distinct ordinals.
 // Rules: rules/declarations/enums.md — §§ 4, 7;
 // rules/compiler/semantic_ir.md — resolved enum case identities.
 func (a *Analyzer) ResolvedEnumCaseOf(expr *ast.MemberExpression) (ResolvedEnumCase, bool) {
@@ -22,7 +23,11 @@ func (a *Analyzer) ResolvedEnumCaseOf(expr *ast.MemberExpression) (ResolvedEnumC
 	if !ok || typ.Kind != EnumType {
 		return ResolvedEnumCase{}, false
 	}
-	return enumCaseNamed(typ, expr.Property.Value)
+	owner, selected := a.resolvedEnumCaseOwners[expr]
+	if !selected || !sameConcreteType(owner, typ) {
+		return ResolvedEnumCase{}, false
+	}
+	return enumCaseNamed(owner, expr.Property.Value)
 }
 
 // enumCaseNamed resolves the declared case of an enum type by member name.
@@ -80,7 +85,7 @@ func (a *Analyzer) ResolvedEnumConversionOf(call *ast.CallExpression) (ResolvedE
 			// Keep the same known-member evidence that admitted the source
 			// conversion. The complete enum domain may be wider than this
 			// constant, so recomputing only a domain proof loses exactness.
-			constant, _ := enumConstantValue(operand, call.Arguments[0])
+			constant, _ := a.enumConstantValue(operand, call.Arguments[0])
 			conversion.Proof = a.integerConversionProof(result, operand, constant)
 		}
 		return conversion, true

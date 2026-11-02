@@ -52,6 +52,20 @@ func TestOpenEnumConversionUsesEntireBitDomain(t *testing.T) {
 	})
 }
 
+// Runtime fields and properties do not inherit the exact value of a same-named
+// enum case. A fitting complete domain can still justify a direct result.
+// Rules: rules/declarations/enums.md — §12.1;
+// rules/types/types.md — "Exact integer conversion proof".
+func TestEnumRuntimeMemberConversionProof(t *testing.T) {
+	testEnumConversionDomains(t, map[string]enumDomainExpectation{
+		"RuntimeZero":  {"Wide", "uint8", true, "", "", ""},
+		"RuntimeHigh":  {"Wide", "uint8", true, "", "", ""},
+		"RuntimeAlias": {"Wide", "uint8", true, "", "", ""},
+		"RuntimeWide":  {"Wide", "uint16", false, IntegerConversionClosedEnumDomain, "0", "256"},
+		"KnownAlias":   {"Wide", "uint8", false, IntegerConversionConstant, "0", "0"},
+	})
+}
+
 type enumDomainExpectation struct {
 	source, target   string
 	fallible         bool
@@ -94,6 +108,18 @@ func testEnumConversionDomains(t *testing.T, expectations map[string]enumDomainE
 					call, ok := node.(*ast.CallExpression)
 					if !ok {
 						return nil
+					}
+					if len(call.Arguments) != 1 {
+						return nil
+					}
+					if member, ok := call.Arguments[0].(*ast.MemberExpression); ok {
+						_, isCase := a.ResolvedEnumCaseOf(member)
+						if strings.HasPrefix(fn.Name.Value, "Runtime") && isCase {
+							t.Errorf("%s: runtime member classified as enum case", fn.Name.Value)
+						}
+						if strings.HasPrefix(fn.Name.Value, "Known") && !isCase {
+							t.Errorf("%s: declared enum case identity lost", fn.Name.Value)
+						}
 					}
 					fact, ok := a.ResolvedEnumConversionOf(call)
 					if !ok {
@@ -152,5 +178,62 @@ func TestEnumFixedWidthConversionRejections(t *testing.T) {
 				t.Errorf("%d-bit error %d = %v; want %q", width, index, errors[index], want)
 			}
 		}
+	}
+}
+
+// Runtime members require checked handling even when their names match either
+// a fitting or an overflowing enum case; neither is a compile-time value.
+// Rules: rules/declarations/enums.md — §12.1;
+// rules/types/types.md — "Exact integer conversion proof".
+func TestEnumRuntimeMemberRequiresCheckedHandling(t *testing.T) {
+	data, err := os.ReadFile("../../testdata/sema/enum_runtime_member_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	errors := analyzeSourceRaw(t, string(data))
+	if len(errors) != 2 {
+		t.Fatalf("errors = %v", errors)
+	}
+	for _, err := range errors {
+		if !strings.Contains(err.Message, "must return uint8, got Result[uint8,") {
+			t.Errorf("runtime narrowing bypassed checked handling: %v", err)
+		}
+	}
+}
+
+// Result selection and the retained proof agree for 32/64-bit and unresolved
+// plans. A closed uint32 domain fits a signed int only on the 64-bit plan.
+// Rules: rules/types/types.md — "Exact integer conversion proof" (MD-104).
+func TestEnumIntegerResultUsesSelectedPlan(t *testing.T) {
+	data, err := os.ReadFile("../../testdata/sema/enum_integer_plan.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, width := range []uint16{0, 32, 64} {
+		t.Run(fmt.Sprint(width), func(t *testing.T) {
+			p := parser.New(lexer.New(string(data)))
+			program := p.ParseProgram()
+			if len(p.Errors()) != 0 {
+				t.Fatal(p.Errors())
+			}
+			a := NewAnalyzerWithScalarPlan(layout.ResolvedScalarPlan{PointerWidthBits: width})
+			errors := a.Analyze(program)
+			if width == 64 {
+				if len(errors) != 0 {
+					t.Fatal(errors)
+				}
+			} else if len(errors) != 1 || !strings.Contains(errors[0].Message, "must return int, got Result[int,") {
+				t.Fatalf("unsafe direct conversion: %v", errors)
+			}
+			fn := program.Statements[2].(*ast.FunctionDeclaration)
+			call := fn.Body.Statements[0].(*ast.ReturnStatement).Value.(*ast.CallExpression)
+			fact, ok := a.ResolvedEnumConversionOf(call)
+			if !ok || fact.Fallible != (width != 64) || fact.Proof.Proven() != (width == 64) {
+				t.Fatalf("result and proof disagree: %+v", fact)
+			}
+			if width == 64 && (fact.Proof.Basis != IntegerConversionClosedEnumDomain || fact.Proof.PlanPointerWidthBits != width) {
+				t.Fatalf("lost plan evidence: %+v", fact.Proof)
+			}
+		})
 	}
 }

@@ -92,3 +92,19 @@ func.func @forward(%a: !sec.ref<!sec.int> {sec.reference = {borrow_id = 3 : i32,
   %r = "sec.call.direct"(%a, %a, %first) <{callee = @pick}> {sec.argument_actions = ["shared-reference", "shared-reference", "copy-trivial"], sec.reference = {borrow_id = 4 : i32, lifetime_id = 4 : i32, validity_policy = "proven", validity_proof = "caller-owned-borrow", address_stability = "Stable", provenance = "parameter"}} : (!sec.ref<!sec.int>, !sec.ref<!sec.int>, i1) -> !sec.ref<!sec.int>
   return %r : !sec.ref<!sec.int>
 }
+
+// A loop reaching the borrow again forms a new reference, so its end_borrow is not
+// a use of the one that ended on the previous iteration (MD-085 context; package 15 section 7).
+// CHECK-LABEL: func.func @end_borrow_in_a_loop
+func.func @end_borrow_in_a_loop(%c: i1, %v: !sec.int) {
+  %p = "sec.place.value"(%v) <{place_root_id = 1 : i32, storage_identity = 1 : i32, address_space = "ordinary"}> : (!sec.int) -> !sec.place<!sec.int, "ro">
+  cf.br ^head
+^head:
+  cf.cond_br %c, ^body, ^exit
+^body:
+  %r = "sec.ref.borrow_shared"(%p) <{borrow_id = 1 : i32, lifetime_id = 1 : i32, validity_policy = "proven", validity_proof = "lexical-borrow", address_stability = "Stable", provenance = "local"}> : (!sec.place<!sec.int, "ro">) -> !sec.ref<!sec.int>
+  "sec.ref.end_borrow"(%r) <{borrow_id = 1 : i32, lifetime_id = 1 : i32}> : (!sec.ref<!sec.int>) -> ()
+  cf.br ^head
+^exit:
+  return
+}

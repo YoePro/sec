@@ -1,11 +1,10 @@
 # SEC MLIR Package 16 implementation report
 
-Audit date: 2026-10-21. Reporting contract: P16 §145, all 43 topics in order.
+Audit date: 2026-10-21; closure 2026-11-02. Reporting contract: P16 §145, all 43 topics in order.
 
-This report completes P16-57 only. **P16 remains partial.** It describes the
-current working tree, including uncommitted predecessor and P16 changes.
-Fresh checks below are working-tree evidence; final isolated acceptance is
-P16-55/P16-58. Source, Semantic IR, emitted schema 12 and physical execution
+**P16 is implemented (closure 2026-11-02).** Sections 1–41 are the audit of
+2026-10-21 and describe the tree at that date; section 42 and the closure section
+state the current result, recorded in `package16-todo.md` P16-55. Source, Semantic IR, emitted schema 12 and physical execution
 are distinguished throughout. The acceptance map remains in
 `package16-todo.md`; the sole owner is `lowering.sec-mlir-package16` in
 `governance/lowering.yaml`.
@@ -446,12 +445,14 @@ tuples return no emitted bytes.
 
 The implementation follows later unsigned-length and address-stability/pin
 decisions; old signed-len and legacy-backend wording is historical. Default
-schema 11 and all named capability gates remain. Metadata spelling and MLIR
-return-depth decisions are not invented. P16 is partial: P16-07, P16-26/27,
-P16-36, P16-48 and final acceptance/governance gates remain. This report adds
-no source or compiler behavior and makes no repository-wide green claim.
-Governance validation still reports the two pre-existing absent fragments
-`concurrency_events.yaml` and `concurrency_spawn.yaml`.
+library default schema 11 remains for the native track, whereas `emit-ir` and
+`emit-sec-mlir` use package 16 and schema 12 with the slice guard verifier. Metadata
+spelling and MLIR return-depth decisions are not invented. Moved to P17: reading a
+contained slice or reference out of an aggregate, rebinding a holder in mutable
+storage, the fail-closed edge-schedule boundary, and an empty child used after its
+parent's end. Physical slices stay P24; Arena-backed source slices wait for Arena
+lowering. The final full-Go run has two failures, both from the owner's draft
+`sec/core` and `sec/stdlib` and ignored by owner decision.
 
 ## 43. Recommendations for Package 17
 

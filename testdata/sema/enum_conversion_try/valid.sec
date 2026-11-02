@@ -1,0 +1,29 @@
+module main
+enum Wide uint16 { Small = 1, Large = 300 }
+fn NeedByte(value: uint8) uint8 { return value }
+fn Argument(value: Wide) Result[uint8, ConversionError] {
+    return Ok(NeedByte(try uint8(value)))
+}
+fn Local(value: Wide) Result[uint8, ConversionError] {
+    let raw: uint8 := try uint8(value)
+    return Ok(raw)
+}
+fn Forward(value: Wide) Result[uint8, ConversionError] { return try uint8(value) }
+fn Carrier(value: Wide) Result[uint8, ConversionError] { return uint8(value) }
+fn Stored(value: Wide) uint8 {
+    let pending := uint8(value)
+    return try pending { Err(_) => 0 }
+}
+fn Matched(value: Wide) uint8 {
+    return match uint8(value) { Ok(raw) => raw Err(_) => 0 }
+}
+fn Ignored(value: Wide) void { discard uint8(value) }
+fn Consume(pending: Result[uint8, ConversionError]) uint8 {
+    return try pending { Err(_) => 0 }
+}
+fn Passing(value: Wide) uint8 { return Consume(uint8(value)) }
+fn Selected(value: Wide) Option[uint8] { return uint8(value).Ok() }
+enum Open bit[16] { Zero = 0 }
+fn OpenValue(value: Open) Result[uint8, ConversionError] {
+    return Ok(try uint8(value))
+}

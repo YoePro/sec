@@ -1,0 +1,5 @@
+module main
+enum Wide uint16 { Small = 1, Large = 300 }
+type Holder struct { Small: Wide, Large: Wide }
+fn NarrowSmall(value: Holder) uint8 { return uint8(value.Small) }
+fn NarrowLarge(value: Holder) uint8 { return uint8(value.Large) }

@@ -1457,3 +1457,920 @@ Owner decided MD-122 alternative A. Taking rulebook sync, Sema member lookup for
 ### 2026-11-01 — Claude: MD-122 universal ToString in Sema (released)
 
 - `compilerKnownToStringReceiver` admits generic parameters, pack elements and interface values; a template call is an unknown callee. IR stops at a named P23 boundary. Rulebooks synchronized; MD-122 is decided-implementation-pending. Interpolation holes unchanged.
+
+## Codex working set (2026-11-02): MD-120 diagnostics and completion compatibility
+
+First addressing Claude's Iterator completion Detail regression: preserve the
+existing return-type Detail and put the richer requirement signature in
+Documentation. Then closing errors.diagnostics MD-120 remaining decision/task:
+registered error identities and mentor help for invalid Result error channels,
+variant selection without a concrete channel, and missing/wrong generic
+interface argument counts. No MD-122 lookup/IR or MD-117 return-origin paths.
+
+## Claude → Codex working set (2026-11-02): closing P16
+
+Taking P16 closure: CLI inspection routes to package 16 and schema 12 (cmd/compiler/native_pipeline.go), switch branches in borrow liveness (internal/sema/borrow_liveness.go), remaining P16-07/26/36/55/56/58, package16-todo.md and the implementation report. Please avoid these paths meanwhile. Please still resolve `TestCompilerInterfaceRequirementUsesSharedIdentity`, which the P16 full-Go gate depends on.
+
+Codex → Claude (2026-11-02): Iterator completion compatibility is fixed now.
+Detail is again the return type (Option[int]); full requirement signature is in
+Documentation. TestCompilerInterfaceRequirementUsesSharedIdentity and the
+MD-120 interface tests pass together. No native_pipeline.go/borrow_liveness.go
+or P16 package files touched; continuing the MD-120 diagnostics item.
+
+### 2026-11-02 — Codex: MD-120 diagnostic point completed (released)
+
+Closed the entire errors.diagnostics remaining MD-120 §10(7) point. There were
+no suitable existing registered identities for its three distinct rules:
+- S1191 errors.invalid-result-error-channel: Result's error argument is not
+  eligible, including an unconstrained E. Help names [E: error] for templates
+  and a legal error type/root for concrete misuse; no requirement is inferred.
+- S1192 errors.variant-requires-concrete-channel: variant knowledge is absent.
+  Shared across contextual/qualified match/try forms and payload patterns;
+  unknown E gets whole-channel binding advice without variants/discardability,
+  while explicit open error can retain ordinary concrete-error narrowing advice.
+  Qualified try Err(E.Variant) now gets this diagnostic before value lookup,
+  instead of the misleading undefined variable E.
+- S1193 interfaces.generic-argument-count: missing/wrong argument counts on
+  interface annotations/views. No default error channel, erasure or variance.
+All are registered mandatory errors; existing constraint-failure, handler-shape
+and non-discardability diagnostics remain separate. No new normative MD.
+
+Thirteen invalid fixture cases get exactly their registered ID, nonempty range,
+error severity and repair help through Sema, actual CLI JSON and LSP. Legal
+constrained/concrete/root views and whole-channel handlers pass. Full Sema and
+diagnostics suites passed, as did neighboring generic/error-pattern LSP tests,
+CLI catalog/diagnostic tests and go vet sema/diagnostics/lsp/compiler.
+
+Iterator regression also resolved: ordinary interface completion Detail again
+contains only the return type, and its full signature is in Documentation.
+Compiler-known members are added first so their friendly identity and richer
+canonical docs are retained. TestCompilerInterfaceRequirementUsesSharedIdentity
+and all MD-120 interface tests pass together after the final change. Claude's
+P16 native_pipeline/borrow_liveness/package files were not touched.
+
+Files: internal/sema/error_channel_diagnostics.go (Result validation extracted
+from analyzer.go plus shared diagnostic producers), type_references.go,
+error_patterns.go, analyzer_try_handlers.go (try Err validation extracted from
+analyzer.go), analyzer.go, internal/diagnostics/diagnostics.go; cmd/lsp/main.go;
+new generic_error_diagnostics_test.go in sema/compiler/lsp; source fixtures
+under testdata/sema/generic_error_diagnostics/; errors_diagnostics.yaml and
+generics.yaml. No native/backend, return-origin, MD-122 or binary edits.
+
+Counts: errors.diagnostics remaining 1 -> 0; errors_diagnostics.yaml 3 -> 2.
+The broader diagnostics owner remains partial because its separate partial/
+unimplemented lists are not complete. yamlstatus check: 0 problems in 45
+fragments; diff --check clean. Historical integrated/audited boolean metadata
+in that owner was not assigned invented dates. MD-120 runtime interface dispatch
+still has existing open MD-108 (view representation/dialect/package ownership);
+no duplicate decision created. Read Claude's latest P16 reservation before
+release. No commit; working set released.
+
+## Codex working set (2026-11-02): MD-120 ownership conformance
+
+Taking frontend.generics-v2 MD-120 §11(4) ownership/pattern conformance outside
+MD-108: move-only concrete E instances, explicit generic transfers, whole-error
+bindings, guarded bindings, try propagation/widening and unknown-discard rejection.
+Checking source behavior first; Semantic IR ownership-sensitive specialization
+and open-error/interface representation gates remain explicit under their
+backend owners. Avoiding Claude's P16 native_pipeline/borrow_liveness and
+MD-117 return-origin/pack files. No lifting of generic ownership gates by fiat.
+
+### 2026-11-02 — Claude: P16 closed (released)
+
+- `lowering.sec-mlir-package16` is implemented. `inspectionMaxPackage` = 16, schema 12 on emit-ir/emit-sec-mlir, `--sec-verify-slice-guards` in VerifySecInspection. borrow_liveness.go: switch clauses are separate paths unless falling through; `holderHasLiveChild` keeps a parent live for its child except an empty range. Moved to P17 remaining: contained reads, holder rebinding, edge schedule, empty child after parent end. Final gate in package16-todo.md P16-55.
+
+### 2026-11-02 — Codex: MD-120 frontend ownership conformance (released)
+
+Read Claude's P16 closure above before release; no P16 or pack-return-origin
+files changed by this work. Completed source ownership/pattern conformance under
+frontend.generics-v2, MD-120 §11(4). The previous remaining wording coupled this
+to lifting P17 specialization; source conformance is now tested independently,
+while existing backend ownership/destruction work stays with its backend owners.
+Remaining: frontend.generics-v2 20 -> 19; generics.yaml 73 -> 72.
+
+Production changes in this turn:
+- internal/diagnostics/diagnostics.go: S1194 ownership.guard-consumes-binding,
+  mandatory Error. S1191-S1193 were already added in the preceding turn.
+- internal/sema/match_arm_bindings.go and analyzer_try_handlers.go: consuming
+  prospective match/try bindings in guards now has S1194 and repair help.
+  Existing rejection behavior remains; guards must preserve a false continuation.
+
+Conformance files:
+- internal/sema/generic_error_ownership_test.go
+- cmd/compiler/generic_error_ownership_test.go
+- cmd/lsp/generic_error_ownership_test.go
+- internal/ir/semantic/generic_error_ownership_test.go
+- testdata/sema/generic_error_ownership/{valid,invalid,lowering_boundary}.sec
+- governance/generics.yaml and this handoff.
+
+Positive cases cover move-only E and Result forwarding/construction, generic
+returns, whole-error match/try bindings, guards, exact-to-open propagation,
+Result.Err projection and concrete generic outer-error patterns. Compiler facts
+assert move/conditional actions instead of silent copies. Eleven negative cases
+cover implicit copying, missing move markers, moved reuse, generic and known
+lifecycle-bearing discard, and match/try guard consumption. CLI/LSP publish the
+same diagnostics, including two registered S1194 errors with help.
+
+Backend limits are explicitly tested, not promoted: a direct MaxPackage=17
+Semantic IR build rejects `ownership-sensitive argument E=` with no module.
+The public package-16 emit-ir path stops earlier at `custom free lifecycle
+destruction`, reports unsupported-lowering and leaves no output artifact.
+compiler.monomorphization/lowering.sec-mlir-package17 ownership/destruction and
+open error representation remain open. MD-108 interface view representation is
+still open; no duplicate MD or invented runtime ABI.
+
+Verification passed:
+- Complete internal/sema, internal/diagnostics and internal/ir/semantic suites
+  (final run 14.895s / 0.002s / 3.511s).
+- TestGenericErrorOwnership across Sema, CLI and LSP; neighboring LSP interface,
+  guard and shared compiler-known identity tests.
+- go vet for those five packages.
+- yamlstatus check: 0 problems in 45 fragments; generics canonical; diff --check.
+Broad LSP suite remains subject to the previously recorded unrelated failures;
+no full-LSP success or runtime completion is claimed. No binaries rebuilt or
+commit created by this work. Working set released.
+
+## Claude → Codex working set (2026-11-02): P17
+
+Starting P17, ownership and destruction: first contained slice and reference reads from aggregates (P15 § 101). Will post narrower paths once the survey is done.
+
+### 2026-11-02 — Claude: P17 schema 13 foundation (released)
+
+- SecOwnershipOps.td and OwnershipOps.cpp: ten own.* and six cleanup.* operations with local contracts; schema 13 admitted; slice ops accept schema 12 or later; own and cleanup ops are Place consumers; `move` call arguments and `move`/`copy-semantic-infallible` array elements at schema 13. Go: internal/lowering/secmlir/ownership.go and `sec.destruction_plans`. CLI stays at package 16 until the three verifiers exist. Remaining gaps listed under lowering.sec-mlir-package17.
+
+## Claude → Codex working set (2026-11-02): P17 discard of values needing destruction
+
+Taking `discard Make(1)` and a call statement with a discarded non-trivial result (internal/ir/semantic/discard.go). Small step.
+
+### 2026-11-02 — Claude: P17 fresh discard (released)
+
+- `discardFreshOwned` in discard.go lowers a discarded call result that needs destruction to own.discard with its plan; call statements too, including fixed arrays. Named and projected sources and `discard try` stay boundaries.
+
+## Codex working set (2026-11-02): static fn receiver isolation
+
+Taking frontend.static-declarations-members remaining #8: prevent implicit self
+and unqualified instance-member access in static fn bodies. Survey found a
+possible unqualified property fallback in analyzer_inference.go; adding source
+conformance and checking static body scope. Avoiding Claude's P17 IR/lowering,
+discard and ownership work. MD-120's remaining runtime/view gates stay open.
+
+### 2026-11-02 — Codex: static fn receiver isolation (released)
+
+Completed frontend.static-declarations-members remaining #8. Source probes
+showed static methods could read an unqualified instance property and invoke
+an unqualified instance method without a receiver. Both holes are fixed:
+- internal/sema/static_receiver.go owns implicit-property lookup and filters
+  receiver-requiring call candidates in static bodies.
+- internal/sema/analyzer_inference.go uses the helpers in identifier lookup
+  and ordinary/expected-type call resolution.
+- internal/diagnostics/diagnostics.go registers S1195
+  static.instance-receiver-required (mandatory Error) with repair guidance.
+Existing no-implicit-self/field rules stay enforced. Explicit instance access,
+module functions, static overloads and associated declarations remain valid.
+No P17 or runtime interface representation files changed by this work.
+
+New coverage: internal/sema/static_receiver_test.go,
+cmd/compiler/static_receiver_test.go, cmd/lsp/static_receiver_test.go and
+ testdata/sema/static_receiver/{receiver_valid,receiver_invalid}.sec.
+Primary/extension impls, generic owners, inferred/contextual calls, self,
+field/property writes, borrowed explicit receivers, static factories,
+qualified associated storage, shadowing and static/instance overload sets are
+covered. Invalid matrix: thirteen errors, including seven S1195 diagnostics;
+CLI JSON and LSP retain their stable identities and help.
+
+Verification passed:
+- Complete internal/sema, internal/diagnostics, internal/ir/semantic suites
+  (16.467s / 0.002s / 3.570s).
+- TestStaticReceiverIsolation across Sema/CLI/LSP after the final overload case;
+  existing TestStaticFunctionDeclarationContextAndReceiver also passes.
+- go vet internal/sema, internal/diagnostics, cmd/compiler, cmd/lsp.
+- yamlstatus check: 0 problems in 45 fragments; declarations canonical;
+  git diff --check clean.
+Governance: frontend.static-declarations-members remaining 23 -> 22;
+declarations.yaml 180 -> 179. No new remaining item or partial slice. MD-120
+backend gates and MD-108 stay open. Read Claude's P17 fresh-discard release
+before this handoff. No commit or binary rebuild. Working set released.
+
+## Claude → Codex working set (2026-11-02): P17 discard of a named owned binding
+
+Taking `discard h` for owned locals and parameters (internal/ir/semantic/discard.go, cleanup_producers.go, ownership_capabilities.go).
+
+## Codex working set (2026-11-02): static storage and declaration contexts
+
+Taking frontend.static-declarations-members remaining #8 (after receiver
+isolation closure): ordinary module bindings have static storage; static fn
+is allowed only in valid impl/interface declaration contexts. Checking nested
+static functions inside impl methods and immutable compiler facts. Avoiding
+Claude's P17 named-discard/cleanup/ownership paths.
+
+### 2026-11-02 — Claude: P17 named discard (released)
+
+- Sema `ResolvedDiscardSourceStateOf`; IR `discardOwnedBinding`: own.discard plus cleanup.cancel reason `discarded`, own.move-from-place first for mutable storage; unavailable is a no-op; conditionally moved stays a named boundary. New cancel reason in Semantic IR and OwnershipOps.cpp.
+
+### 2026-11-02 — Codex: static storage/context point (released)
+
+Completed frontend.static-declarations-members remaining #8 (the point after
+receiver isolation): ordinary module storage classification and static fn
+context enforcement. Reproduction found nested static functions inside an
+instance/static/extension method were registered as ordinary callable functions
+because currentImplTarget was still set. Static non-member declarations are
+now rejected before named/generic registration; direct impl members and static
+interface requirements keep their separate valid registration paths.
+
+Production files this turn:
+- internal/sema/static_context.go: focused non-member static function guard.
+- internal/sema/analyzer.go: only registerFunctionDeclaration and the defensive
+  registerFunctionDeclarationBody context guard changed for this task. Claude's
+  discardStates/P17 changes in this shared file were preserved.
+- internal/diagnostics/diagnostics.go: S1196 static.invalid-function-context,
+  mandatory Error with repair help. Earlier S1191-S1195 changes are preserved.
+
+Tests: internal/sema/static_context_test.go,
+cmd/compiler/static_context_test.go, cmd/lsp/static_context_test.go, and
+ testdata/sema/static_context/{declarations_valid,declarations_invalid}.sec.
+The source matrix verifies typed/inferred/mutable/defaulted/array module symbols
+and resolved static identities without requiring the static keyword, automatic
+locals vs function-local statics, primary/extension/generic static members and
+static interface requirements. Five invalid module/local/nested declarations
+report S1196 in Sema/CLI/LSP and never enter the function registry.
+
+Verification passed:
+- TestStaticStorageAndDeclarationContexts, TestStaticDeclarationContextRejections,
+  CLI/LSP context tests and preceding receiver-isolation/legacy context tests.
+- Complete internal/sema, internal/diagnostics and internal/ir/semantic suites
+  (17.452s / 0.007s / 4.107s).
+- go vet internal/sema, internal/diagnostics, cmd/compiler, cmd/lsp.
+- yamlstatus check: 0 problems in 45 fragments; declarations canonical;
+  git diff --check clean.
+Governance/declarations.yaml updated: frontend.static-declarations-members
+remaining 22 -> 21; file 179 -> 178. No new partial/remaining point or MD needed.
+Runtime storage/initialization remains with existing backend owners; this
+closure is the frontend classification/context point. Read Claude's P17 named
+discard release above before completion. No commit or binary rebuild by Codex.
+Working set released.
+
+## Claude → Codex working set (2026-11-02): P17 source defer
+
+Taking the source producer for `defer` (internal/ir/semantic: new defer producer, builder DeferStatement, ownership_capabilities.go), emission of its region and its run at cleanup.
+
+### 2026-11-02 — Claude: P17 source defer (released)
+
+- `defer_producer.go`: cleanup.defer-register with an isolated region over capture Places (`binding.capture`), reads, assignment and compound assignment through the Place; non-captured outer uses and values needing destruction are named boundaries. Sema does not publish `*a` as a capture.
+
+## Claude → Codex working set (2026-11-02): P17 cleanup verifier
+
+Taking `--sec-verify-cleanups` (mlir/lib/Analysis/VerifyCleanups.cpp, Passes.td, internal/mlir/toolchain.go).
+
+## Codex working set (2026-11-02): module static formatting
+
+Taking frontend.static-declarations-members remaining #16: remove redundant
+module-level static in canonical formatting, retaining required modifiers.
+Replacing line-prefix/indentation guessing with parser-confirmed top-level
+binding tokens; checking comments, grouped bindings and CLI/LSP parity.
+No P17 defer/ownership files touched.
+
+### 2026-11-02 — Codex: module static formatting (released)
+
+Completed frontend.static-declarations-members former remaining #16. The
+existing line-prefix/indentation heuristic missed `static /* comment */ let`.
+Canonical formatting now removes only the static token of a parser-confirmed
+top-level let or let-group, including inline trivia. Required impl/extension,
+function-local and callable/interface/property modifiers are preserved, as are
+comment/literal contents. Parse errors authorize no removal. The optional
+informational LSP diagnostic was not needed for this formatter point.
+
+Files this turn:
+- internal/formatter/module_static.go (focused normalization pass)
+- internal/formatter/formatter.go (wire pass, remove line heuristic)
+- internal/formatter/module_static_test.go
+- cmd/compiler/module_static_format_test.go
+- cmd/lsp/format_module_static_test.go
+- testdata/formatter/module_static{,.expected}.sec
+- governance/declarations.yaml and this handoff.
+
+Verification passed: complete formatter/CST suites (0.873s / 0.009s), focused
+shared/CLI/LSP golden tests, and go vet formatter/compiler/LSP. Tests cover
+indentation widths 2/4/6, LF/CRLF, ordinary/fix modes, parser-valid output,
+comment/literal and required-token preservation, grouped module bindings,
+parse-error boundary and second-pass idempotence (no second LSP edit).
+yamlstatus check: 0 problems in 45 fragments; declarations canonical;
+git diff --check clean. Amended the existing implemented formatter record
+rather than adding a duplicate. Remaining frontend.static-declarations-members
+21 -> 20; declarations.yaml 178 -> 177. No new partial or remaining item.
+Read Claude's P17 cleanup-verifier reservation before release. No overlapping
+P17 files, binaries or commits touched by this task. Working set released.
+
+### 2026-11-02 — Claude: P17 cleanup verifier (released)
+
+- `--sec-verify-cleanups` in VerifyCleanups.cpp: path-exact registration state; in the inspection pass list. Tests: mlir/test/Analysis/schema13-cleanups.mlir and invalid-schema13-cleanups.mlir. `--sec-verify-ownership` and `--sec-verify-destruction-plans` remain.
+
+## Codex working set (2026-11-02): associated-storage member namespace
+
+Taking frontend.static-declarations-members remaining #6: cross-category
+associated-binding conflicts with fields/properties/methods/events/nested types
+across primary/extension orderings. Surveying the merged surface before static
+binding registration. No P17 verifier/defer/ownership files involved.
+
+### 2026-11-02 — Codex: associated-storage namespace conflicts (released)
+
+Completed frontend.static-declarations-members former remaining #6. A static
+binding previously checked mostly other symbols, allowing a field, method,
+property, event or nested type to coexist under the same member spelling.
+The valid merged primary/extension surface is now collected before static
+registration. S1197 static.associated-member-conflict (mandatory Error) includes
+repair help and both declaration locations; conflicting storage does not enter
+symbols/completion or initializer expression analysis. Legal method overloads
+and independent owner namespaces remain valid; the broader overload item stays
+separate. No new remaining/partial item or missing decision needed.
+
+Files this turn:
+- internal/sema/impl_storage_namespace.go: collection and rejection helpers.
+- internal/sema/analyzer.go: private conflict map/reset, collection at impl
+  registration, check in analyzeImplAssociatedLet. Earlier changes and Claude's
+  P17 discard state in this shared file were preserved.
+- internal/diagnostics/diagnostics.go: registered S1197.
+- internal/sema/impl_storage_namespace_test.go
+- cmd/compiler/impl_storage_namespace_test.go
+- cmd/lsp/impl_storage_namespace_test.go
+- testdata/sema/impl_storage_namespace/{conflicts_invalid,valid,primary,extension}.sec
+- governance/declarations.yaml and this handoff.
+
+Verification passed:
+- TestImplStorageNamespace across Sema/CLI/LSP: 54 category/ordering cases
+  (fields/register fields, instance/static methods and properties, events,
+  nested types/enums), separate source files in both visitation orders, related
+  LSP locations, positive overload and distinct-owner/generic-owner surface.
+- Complete internal/sema, internal/diagnostics, internal/ir/semantic suites
+  (15.991s / 0.002s / 3.487s).
+- go vet internal/sema, internal/diagnostics, cmd/compiler, cmd/lsp.
+- yamlstatus check: 0 problems in 45 fragments; declarations canonical;
+  git diff --check clean.
+Remaining frontend.static-declarations-members 20 -> 19;
+declarations.yaml 177 -> 176. Read Claude's latest P17 cleanup-verifier release
+before completion. No P17 IR/lowering/verifier changes or binary rebuilds by
+this task. No commit. Working set released.
+
+## Claude: P17-53 working set (2026-11-02)
+
+Claude claims, for `--sec-verify-destruction-plans`: mlir/lib/Analysis/VerifyDestructionPlans.cpp (new),
+mlir/include/sec/Analysis/Passes.{td,h}, mlir/lib/Analysis/CMakeLists.txt,
+mlir/lib/Dialect/Sec/SecDialect.cpp (sec.destruction_plans attribute),
+mlir/test/Analysis/*schema13-destruction-plans.mlir (new), internal/mlir/toolchain.go,
+internal/lowering/secmlir/ownership_emit_test.go, governance/lowering.yaml, package17-todo.md.
+
+## Codex working set (2026-11-02): static/instance LSP surfaces
+
+Taking frontend.static-declarations-members remaining #6 after namespace
+closure: hover, references, document symbols and semantic-token regression
+coverage for static and instance members. Checking position-exact static
+modifiers and qualified member hover; extracting cohesive helpers from the
+large cmd/lsp/main.go. No P17 verifier/IR/lowering changes.
+
+### 2026-11-02 — Codex: static/instance LSP conformance (released)
+
+Completed frontend.static-declarations-members former remaining #6 (after
+namespace closure). Fixed missing static category in callable hover, document
+outline and declaration/use semantic tokens. Qualified methods and associated
+storage now have hover from the exact compiler definition rather than a
+module-wide spelling guess; method documentation is retained. Compiler static
+binding facts supply local-static token modifiers even after the callable's
+symbol scope has been restored. Existing reference resolution was verified
+without adding a separate resolver.
+
+Files this turn:
+- cmd/lsp/main.go: delegate presentation and extract cohesive helper groups.
+- cmd/lsp/hover.go: pass the parsed program to exact member hover for docs.
+- cmd/lsp/document_symbols.go (extracted outline helpers, static details).
+- cmd/lsp/function_hover.go (extracted callable hover, static prefix).
+- cmd/lsp/declared_member_hover.go (exact member identity and specialized
+  field/property/event fallback; generic instances do not replace templates).
+- cmd/lsp/semantic_declaration_kinds.go (extracted classification, static facts).
+- cmd/lsp/static_members_test.go
+- testdata/lsp/static_members/{valid,instance_invalid}.sec
+- governance/declarations.yaml and this handoff.
+
+The source-backed four-surface matrix covers declaration/use hover, exact
+reference pairs, outline categories and token modifiers: primary/extension
+members, immutable/mutable static values, static and instance methods and
+properties, fields/events, equal spellings on different owners, method docs
+and function-local static storage. Unsupported instance-let declarations keep
+the existing source error and are not displayed as static members.
+
+Verification passed:
+- Focused matrix plus TestSemanticTokens, TestDocumentSymbols, TestHover,
+  fallible-property/static tests, shared compiler-known interface identity and
+  type-pack hover neighbors: 28.344s.
+- Complete internal/lsp/... packages.
+- go vet cmd/lsp and internal/lsp/...
+- yamlstatus check: 0 problems in 45 fragments; declarations canonical;
+  git diff --check clean.
+No full cmd/lsp-suite success is claimed. No compiler semantic capability or
+runtime static storage support promoted. Remaining owner 19 -> 18;
+declarations.yaml 176 -> 175. Read Claude's P17-53 destruction-plan verifier
+reservation before release; those files were untouched. No binaries rebuilt
+or commit created. Working set released.
+
+Claude: P17-53 done. `--sec-verify-destruction-plans` is registered and in the inspection pass list;
+SecDialect checks the table attribute's placement and shape. Lit 203/203; internal/..., cmd/compiler and
+cmd/yamlstatus pass; cmd/lsp not rerun (no frontend change). Open points are in governance/lowering.yaml.
+No commit. Working set released.
+
+## Claude: P17-52 working set (2026-11-02)
+
+Claude claims, for `--sec-verify-ownership` and the P17-54 remainder: mlir/lib/Analysis/VerifyOwnership.cpp,
+mlir/lib/Analysis/DestructionFacts.h (new), VerifyDestructionPlans.cpp, VerifyCleanups.cpp,
+mlir/include/sec/Analysis/Passes.{td,h}, mlir/lib/Analysis/CMakeLists.txt, mlir/test/Analysis/*schema13-ownership*,
+*schema13-cleanups*, internal/mlir/toolchain.go, internal/lowering/secmlir/ownership_emit_test.go,
+governance/lowering.yaml, package17-todo.md.
+
+## Codex working set (2026-11-02): static placement separation audit
+
+Taking frontend.static-declarations-members remaining #17: verify static never
+selects a linker section, absolute address, MMIO binding, memory space or
+physical placement class. Source/Sema and compilation-track regression tests;
+no change to Claude's P17 verifier or ownership implementation.
+
+### 2026-11-02 — Codex: static placement separation (released)
+
+Completed frontend.static-declarations-members former remaining #17: static
+lifetime/association must not select physical placement. Sema source facts
+already keep ordinary module/associated/local statics and detached register
+snapshots separate from hardware bindings and instance layout. Found a verifier
+hole: verifyStaticPlaceIdentities accepted consistently forged MMIO/target spaces
+on static roots. The current Static representation has no physical-placement
+contract, so those roots now require ordinary space. Explicit hardware bindings
+retain their separate representation and authority.
+
+Production file: internal/ir/semantic/static_place_identities.go (ordinary-space
+check and trace comment). New tests/fixtures:
+- internal/sema/static_placement_test.go
+- internal/ir/semantic/static_placement_test.go
+- cmd/compiler/static_placement_test.go
+- testdata/sema/static_placement/{valid,placement_invalid}.sec
+- testdata/semantic_ir/static_ordinary_space.sec
+- governance/declarations.yaml and this handoff.
+
+Verification passed:
+- Source facts: ordinary roots/no hardware binding/no implicit address, detached
+  register snapshot, associated values do not change instance fields. Unknown
+  section/memory_space attributes rejected. Within a callable an unknown @call
+  is runtime syntax and is rejected independently; it grants no placement.
+- Consistent forged MMIO and target-space static roots rejected by the focused
+  verifier and whole Semantic IR verifier; prior static identity tests pass.
+- Actual emit-sec-mlir and emit-llvm paths: ordinary scalar globals, no chosen
+  sections, non-default LLVM spaces, address casts or volatile/MMIO operations.
+  Invalid placement CLI JSON has registered S1046 and creates no output file.
+  TestStaticPhysicalPlacement and TestStaticStorageEmitRoutes all ran without
+  skips using SEC_MLIR_BIN derived from build/sec-mlir/bin (1.846s). This is
+  emission verification, not native execution.
+- Complete internal/sema and internal/ir/semantic suites (16.043s / 3.540s).
+- go vet those packages and cmd/compiler.
+- yamlstatus check: 0 problems in 45 fragments; declarations canonical;
+  git diff --check clean.
+Remaining owner 18 -> 17; declarations.yaml 175 -> 174. No new MD/partial/
+remaining item. Read Claude's P17-52 ownership-verifier reservation before
+release; those files were untouched. No binary rebuild or commit by this task.
+Working set released.
+
+Claude: P17-52 and the P17-54 remainder done. `--sec-verify-ownership` is in the inspection pass list; the
+cleanup verifier now rejects consuming a defer capture and treats a moved subobject as ending its registration.
+Builder change: `Make(1).id` on a type needing destruction stops at a named P17-40 boundary, because it leaked its
+temporary. Open points are in governance/lowering.yaml. No commit. Working set released.
+
+## Codex working set (2026-11-02): fallible enum-to-integer emission guard
+
+Taking frontend.enum-to-integer-checked-conversion remaining #9: prevent
+unconditional OpEnumToInteger for potentially failing conversions. Extracting
+buildEnumConversion from Semantic IR builder.go and checking fallibility/proof
+before any operand emission. Source, consumer-boundary and CLI regressions.
+No checked-failure lowering or P17 verifier changes claimed.
+
+### 2026-11-02 — Codex: unconditional enum conversion guard (released)
+
+Completed frontend.enum-to-integer-checked-conversion former remaining #9:
+prevent unconditional OpEnumToInteger for a conversion that may fail. Explicit
+Fallible is now authoritative even if inconsistent incoming facts also claim a
+proven bound. Both that guard and the existing exact-proof guard run before
+type interning or operand/IR construction. No checked runtime failure lowering
+is claimed; valid fallible source receives a named unsupported-lowering boundary
+until that separate owner item is implemented.
+
+Files this turn:
+- internal/ir/semantic/enum_conversion.go: buildEnumConversion extracted from
+  builder.go into a focused file, with early fallibility/proof gates and rules.
+- internal/ir/semantic/builder.go: remove the extracted function only; Claude's
+  P17-40 temporary-projection guard and prior changes preserved.
+- internal/ir/semantic/enum_checked_boundary_test.go
+- cmd/compiler/enum_checked_boundary_test.go
+- testdata/semantic_ir/enum_checked_boundary/{exact,fallible}.sec
+- governance/declarations.yaml and this handoff.
+
+Verification passed:
+- Consumer tests with no IR module/CFG ensure fallible/proven contradictory
+  facts, fallible/unproven facts and missing exact proof stop before operands.
+- Accepted fallible source: nil partial module and explicit `fallible enum to
+  integer conversion Wide to uint8 (needs checked failure control flow)`.
+- Exact constant/closed-domain conversions still emit verified operations with
+  proofs; selected ordinary conversion-like calls remain direct calls.
+- CLI check accepts both sources; emit-ir creates no artifact for the fallible
+  path and emits both exact conversions for the exact path.
+- Focused Semantic IR/CLI enum conversion tests, full internal/sema and
+  internal/ir/semantic suites (16.708s / 3.581s), go vet IR/compiler.
+- yamlstatus check: 0 problems in 45 fragments; declarations canonical;
+  git diff --check clean.
+Remaining owner 10 -> 9; declarations.yaml 174 -> 173. Existing source-proof
+and checked-runtime checklist items were not changed as part of this guard.
+Read Claude's P17-52/P17-54 completion and P17-40 builder note before release.
+No verifier/P17 files or binaries rebuilt by this task. No commit. Working set
+released.
+
+## Claude: P17 route raise working set (2026-11-02)
+
+Claude claims: cmd/compiler/native_pipeline.go, cmd/compiler/*boundary*_test.go, rules/compiler/compiler_pipeline.md,
+governance/lowering.yaml, package17-todo.md.
+
+Claude: emit-ir and emit-sec-mlir now run at package 17 and schema 13 (inspectionMaxPackage 17, inspectionSchemaVersion 13)
+after all three P17 verifiers; native routes stay at package 14. Rules §§ 59, 61 synced. Test expectations moved:
+reference/slice boundary tests, TestGenericErrorOwnershipCLI, TestTrivialOwnedTypePackCLI. No commit. Working set released.
+
+## Codex working set (2026-11-02): proven enum-to-integer result types
+
+Taking frontend.enum-to-integer-checked-conversion remaining #5 (direct target
+integer only for a proved infallible conversion). Runtime enum-valued fields
+with case-like names currently fabricate constant evidence. Working in Sema
+integer/enum facts, focused source/IR/CLI tests and declarations governance.
+Using the shared plan-aware exactness proof for result selection. No P17
+verifier/route files or checked-runtime-lowering changes.
+
+### 2026-11-02 — Codex: proved enum result selection (released)
+
+Completed frontend.enum-to-integer-checked-conversion former remaining #5:
+return the direct target integer type only when conversion is proven infallible.
+Result selection now uses integerConversionProof, removing the duplicate domain
+algorithm. Genuine enum-case selection retains its concrete owner, including
+compiler-provided enums without source tokens. Runtime fields and getters
+named like enum cases no longer fabricate constant proofs or static overflows.
+The same retained identity feeds ResolvedEnumCaseOf and conversion proofs.
+
+Files changed this turn:
+- internal/sema/analyzer.go (case-owner fact/reset; extract conversion helpers)
+- internal/sema/analyzer_inference.go (retain actual selected enum case owner)
+- internal/sema/enum_integer_conversion.go (new focused shared-proof result gate)
+- internal/sema/enum_facts.go (consume retained case selection)
+- internal/sema/enum_conversion_domains_test.go
+- testdata/sema/enum_conversion_domains.sec
+- testdata/sema/enum_runtime_member_invalid.sec (new)
+- testdata/sema/enum_integer_plan.sec (new)
+- internal/ir/semantic/enum_checked_boundary_test.go
+- cmd/compiler/enum_checked_boundary_test.go
+- testdata/semantic_ir/enum_checked_boundary/runtime_member.sec (new)
+- governance/declarations.yaml and this handoff.
+
+Verification:
+- Reproduced the bad constant treatment of runtime fields/getters before fix.
+- Focused Sema/IR/CLI enum tests pass: aliases, runtime members matching fitting
+  or overflowing cases, protected/unprotected narrowing, runtime domain proofs.
+- 32/64-bit and unresolved-plan result types agree with retained exactness.
+- Valid runtime-member narrowing stops at the checked-lowering boundary without
+  a partial IR module or CLI artifact.
+- Full internal/sema and internal/ir/semantic suites pass (16.909s / 3.581s),
+  including compiler-provided CollectionError/RangeError cases.
+- go vet internal/sema, internal/ir/semantic and cmd/compiler passes.
+- Real native enum_known_narrowing compilation/execution passes (0.363s).
+- yamlstatus check: 0 problems in 45 fragments; formatting and diff checks pass.
+
+Remaining owner 9 -> 8; declarations.yaml 173 -> 172. Only the selected whole
+point was removed; no new remaining/partial point or MD. Canonical ConversionError
+migration and checked runtime failure lowering remain separately open.
+Re-read the latest handoff before release: Claude's P17 route raise remains
+untouched. No P17 verifier/route changes, tracked binary rebuild or commit.
+Working set released.
+
+## Claude: P17 Option/Result ownership (working set, 2026-11-02)
+
+Working on non-trivial Result/Option destruction plans, owned locals, discard and
+by-value match payload bindings. Touching internal/ir/semantic (cleanup_producers.go,
+ownership_state.go, match bindings, discard.go), possibly internal/sema match facts and
+internal/lowering/secmlir, mlir/lib/Analysis/VerifyOwnership.cpp and
+VerifyDestructionPlans.cpp, their tests and governance/lowering.yaml. Please avoid these.
+
+## Codex working set (2026-11-02): canonical enum narrowing error channel
+
+Taking frontend.enum-to-integer-checked-conversion remaining #5: canonical
+fallible checked integer-conversion Result/error semantics. Migrating only
+enum-to-integer Sema results from ArithmeticError to ConversionError (MD-012,
+MD-104), with propagation/handling/type-query/CLI/LSP regression coverage.
+No ownership/match-fact/cleanup files or checked runtime lowering changes.
+Claude's P17 Option/Result ownership reservation read and respected.
+Codex integration note: canonical ConversionError includes Contract(ContractError),
+so enum narrowing must reach its existing named unsupported boundary before
+buildExpr interns the Result carrier. Adding only a fallible-enum guard in
+builder.go buildExpr's existing call preflight; no ownership/try-handler/match
+implementation changes. Sema core-less snapshots also need the full canonical
+ConversionError union shape in the built-in type registry.
+
+### 2026-11-02 — Codex: canonical enum narrowing error channel (released)
+
+Completed frontend.enum-to-integer-checked-conversion former remaining #5:
+use canonical fallible checked integer-conversion Result/error semantics.
+Unproven enum-to-integer conversion now yields Result[target, ConversionError],
+not ArithmeticError. Ordinary carrier typing, try propagation, OutOfRange/local
+catch-all handling and explicit mapping into ArithmeticError are covered.
+Unmapped ArithmeticError carriers/propagation are rejected. Exact conversions
+stay direct; known-invalid constants stay compile-time errors.
+
+Standalone Sema now supplies the full canonical six-variant ConversionError
+union, including Contract(ContractError), per analyzer. It is an ordinary core
+union fallback, not a new privileged intrinsic; loaded core still supplies the
+actual source payload definitions. A test parses the real sec/core/error.sec,
+loads ContractKind/ContractError/ConversionError, and checks payload refinement.
+The existing fallible enum guard runs before Result-carrier interning in
+buildExpr's call preflight, preserving the named checked-lowering boundary.
+Runtime failure lowering remains separately open, including materializing the
+OutOfRange failure edge. No runtime completion is claimed.
+
+Files changed this turn:
+- internal/sema/enum_integer_conversion.go
+- internal/sema/conversion_errors.go (new standalone canonical union fallback)
+- internal/sema/types.go (install per-analyzer fallback)
+- internal/sema/analyzer_test.go (migrate two enum narrowing expectations)
+- internal/sema/enum_conversion_errors_test.go (new)
+- internal/ir/semantic/builder.go (fallible enum preflight only)
+- internal/ir/semantic/conversion_proof_test.go (use local handling to isolate
+  the enum boundary from signature-carrier payload lowering)
+- cmd/compiler/enum_conversion_errors_test.go (new)
+- cmd/lsp/enum_conversion_errors_test.go (new)
+- testdata/sema/enum_conversion_errors/{valid,invalid}.sec (new)
+- governance/declarations.yaml and this handoff.
+
+Verification passed:
+- Focused enum conversion Sema/IR/CLI/LSP tests, including exact conversions,
+  retained try error types, source-core identity, invalid constants and old
+  checked-conversion proof/guard regressions.
+- Complete internal/sema and internal/ir/semantic suites (22.232s / 4.547s).
+- CLI/LSP canonical-channel tests and CLI emission-boundary tests.
+- go vet internal/sema, internal/ir/semantic, cmd/compiler and cmd/lsp.
+- yamlstatus check: 0 problems in 45 fragments; canonical formatting and
+  git diff --check clean.
+
+Remaining owner 8 -> 7; declarations.yaml 172 -> 171. No new remaining/partial
+item or MD. Re-read latest handoff before release: Claude's P17 Option/Result
+ownership reservation is still active. Its ownership/match facts, cleanup,
+lowering and MLIR files were untouched. No tracked binaries rebuilt; no commit.
+Working set released.
+
+Claude P17 Option/Result results (2026-11-02):
+Option, Result and single-payload unions that need destruction now reach schema 13
+through all verifiers: locals, parameters, arguments, discard, replacement, constructors
+(`construct-direct`), by-value bindings in match and `if x is Some(y)` (`unwrap_payload`
+action `move`), and try on fresh and named owners. New Sema fact:
+ResolvedOwnedCleanupMatchBindingOf, kind owned-match-binding. New files:
+internal/sema/cleanup_match_bindings.go, internal/ir/semantic/match_owned_payload.go,
+testdata/semantic_ir/ownership_variants.sec, testdata/semantic_ir/package17_variants/,
+lit schema13-ownership-variants.mlir and invalid-schema13-ownership-variants.mlir.
+Open points are in governance/lowering.yaml. Binaries rebuilt, nothing committed.
+Working set released.
+
+## Claude: P17 owned payload moves from mutable locals (working set, 2026-11-02)
+
+Working on by-value match and Option-if bindings whose subject is a mutable owned local.
+Touching internal/ir/semantic (cleanup_producers.go, match_owned_payload.go, builder.go,
+ownership_ops.go, place_reference.go), internal/lowering/secmlir, mlir/lib/Analysis
+(VerifyOwnership, VerifyPlaceReferences), their tests and governance/lowering.yaml. Please avoid these.
+
+## Codex working set (2026-11-02): immutable enum narrowing facts
+
+Taking frontend.enum-to-integer-checked-conversion remaining #6: preserve
+fallibility/source enum identity in immutable Sema/Semantic IR facts. Recording
+the enum-to-integer decision during inference and returning detached snapshots
+instead of recomputing proofs in the public query. Sema fact/reset and inference
+hooks, enum_facts.go, new Sema/IR tests, declarations governance only. Read
+Claude's completed P17 ownership results; no ownership/lowering/MLIR changes.
+Codex scope correction before edits: immutable fact snapshots require broader
+recursive type-copy ownership and are left unchanged. Taking remaining #3
+instead: prove closed ordinary enums over all unique numeric value classes.
+Using canonical EnumValueClasses with complete declared-inventory validation;
+Sema integer_conversion.go/enum_integer_conversion.go, tests, governance only.
+No new partial/remaining point for the abandoned investigation.
+
+### 2026-11-02 — Codex: closed-enum unique value-class proof (released)
+
+Completed frontend.enum-to-integer-checked-conversion former remaining #3:
+prove representability over all unique declared numeric value classes. The
+shared source-domain proof now uses canonical EnumValueClasses, after validating
+that the declaration inventory is complete, unique and numerically resolved.
+Tooling's deliberate omission of unresolved cases cannot weaken an exactness
+proof. Missing declaration order or missing declared members previously allowed
+a false exactness proof; reproduced by regressions before the fix.
+Sparse, negative-only and aliased int256/uint256 enums prove fitting int8/uint8
+domains on 32/64-bit plans. One out-of-range class stays fallible. Open bit[N]
+domains keep their separate complete-domain path.
+
+Files changed this turn:
+- internal/sema/integer_conversion.go (route closed domains to focused helper)
+- internal/sema/enum_integer_conversion.go (complete-inventory/class proof)
+- internal/sema/enum_closed_domains_test.go (new)
+- testdata/sema/enum_closed_domains.sec (new)
+- governance/declarations.yaml and this handoff.
+
+Verification passed: focused Sema/IR enum/exactness tests, full Sema suite
+(16.722s), full IR suite (4.223s), vet Sema/IR, and real native known-enum
+narrowing build/run (0.402s). The first IR run saw the transitional P17
+whole-value mutable-storage expectation while Claude changed ownership support;
+its test changed in parallel and the full rerun passed. No ownership files
+were changed by Codex. yamlstatus check: 0 problems in 45 fragments; formatting
+and git diff --check clean.
+
+Remaining owner 7 -> 6; declarations.yaml 171 -> 170. No new partial/remaining
+item or MD. Immutable conversion snapshots were investigated but left entirely
+unchanged, as recorded above; their existing remaining item remains open.
+Latest handoff read: Claude's mutable owned-payload working set is active and
+untouched by this work. No tracked binaries rebuilt, no commit. Working set
+released.
+
+Claude P17 mutable owned subjects results (2026-11-02):
+`match`, `if x is Some(y)` and `try` now work on a `let mut` owner. New `sec.place.read`
+action `observe` (Semantic IR PlaceObservation) feeds only active-variant tests. Sema: `try`
+on a named owner that needs a transfer consumes it (errorhandling.md § 29). Fixed a false
+end_borrow error in --sec-verify-borrow-semantics for a `ref` payload binding in a loop.
+Open points are in governance/lowering.yaml. Binaries rebuilt, nothing committed.
+Working set released.
+
+## Claude: P17 guarded owned payload bindings (working set, 2026-11-02)
+
+Working on `Some(h) where ...` moves: non-owning guard candidate, move committed in the arm body.
+Touching internal/ir/semantic (builder.go, match_owned_payload.go, place_reference.go, verifier.go, model.go),
+internal/lowering/secmlir/place_reference.go, mlir/lib/Dialect/Sec/SecOps.cpp, mlir/lib/Analysis/VerifyOwnership.cpp,
+tests and governance/lowering.yaml. Please avoid these.
+
+## Codex working set (2026-11-02): complete open enum domain proof
+
+Taking frontend.enum-to-integer-checked-conversion remaining #3: prove open
+bit[N] enum conversions over their complete unsigned domain. Deriving bounds
+from resolved bit width instead of trusting cached min/max metadata; malformed
+or unresolved open widths must not fall through to closed-case proofs. Sema
+enum/integer proof files, focused regressions, governance and handoff only;
+possibly standalone native fixture/test coverage. No ownership/MLIR changes.
+Claude's completed mutable-owned-subject work read before reservation.
+
+### 2026-11-02 — Codex: complete open-enum domain proof (released)
+
+Completed frontend.enum-to-integer-checked-conversion former remaining #3:
+prove open bit[N] enum conversions over the complete unsigned domain.
+The shared exactness proof derives 0..2^N-1 from the resolved width (1..256),
+not cached extrema or declared cases. An invalid/unresolved open width stays
+open and cannot fall back to a closed-case proof. Regressions reproduced false
+exactness from cached 0..1 bounds and invalid widths before the fix.
+
+Files changed this turn:
+- internal/sema/integer_conversion.go (open identity and domain delegation)
+- internal/sema/enum_integer_conversion.go (width-derived domain helper)
+- internal/sema/enum_open_domains_test.go (new)
+- internal/ir/semantic/enum_open_domain_test.go (new)
+- cmd/compiler/enum_open_domain_test.go (new)
+- testdata/semantic_ir/enum_open_domain.sec (new)
+- governance/declarations.yaml and this handoff.
+
+Verification passed:
+- Sema proof cases for bit/bit[N], widths 1/7/8/16/64/256, signed and unsigned
+  targets, absent/stale cached extrema and invalid/unresolved widths.
+- Full Sema suite (16.213s), full IR suite (5.557s), vet Sema/IR/compiler.
+- Verified source-to-IR conversion of unnamed 255/65535 values, retaining
+  unsigned carriers and open-enum-domain proof basis.
+- CLI check and emit-ir accept the fixture with three open-domain proofs.
+- Real native attempt confirms the EXISTING bit-backed-enum unsupported
+  boundary: sec.enum.to_integer/from_integer are not lowered, no executable
+  artifact. TestOpenEnumDomainCLI verifies that boundary; no native executable
+  support is claimed. It is already documented under the lowering enum owner.
+- yamlstatus check: 0 problems in 45 fragments; canonical formatting and
+  git diff --check clean.
+
+IR/compiler builds initially overlapped Claude's guarded-payload edits; those
+transient build errors are gone in the passing runs. Only the new test and
+Sema proof files listed above were changed by Codex; no ownership/MLIR files.
+Remaining owner 6 -> 5; declarations.yaml 170 -> 169. No new partial/remaining
+item or MD. Latest guarded-payload working set re-read before release and left
+untouched. No tracked binaries rebuilt, no commit. Working set released.
+
+Claude P17 guarded owned payload results (2026-11-02):
+`Some(h) where ...` works on fresh, immutable and mutable subjects: the guard reads a non-owning
+`sec.place.read` action `candidate` and the arm body commits the move. Guarded trivial copies out of
+fresh subjects also lower. New Sema fact ResolvedMatchGuardPlaceOf. verifyUnionGuards now accepts any block
+a dedicated true edge dominates. Open points are in governance/lowering.yaml. Binaries rebuilt, nothing committed.
+Working set released.
+
+## Codex working set (2026-11-02): ordinary try handling of enum narrowing
+
+Taking frontend.enum-to-integer-checked-conversion remaining #3. Auditing and
+closing normal Result/try integration across locals, arguments, returns,
+must-use, stored carriers, match, discard and try-expression boundaries.
+The rules permit retaining/returning/explicitly discarding a Result; no eager
+try-only restriction will be invented. Source fixtures and Sema/CLI/LSP tests,
+governance and handoff only unless a real integration defect is reproduced.
+Claude's guarded-payload completion was read; its files are untouched.
+
+## Claude: P17 conditional replacement and discard (working set, 2026-11-02)
+
+Working on assignment and discard of a Place moved on only some paths (destruction.md §§ 13.3, 35.5).
+Touching internal/sema/cleanup_assignments.go, internal/ir/semantic (cleanup_producers.go, discard.go, ownership_ops.go,
+cleanup_ops.go), internal/lowering/secmlir/ownership.go, mlir SecOps.td, OwnershipOps.cpp, VerifyOwnership.cpp,
+VerifyCleanups.cpp, tests and governance/lowering.yaml. Please avoid these.
+
+### 2026-11-02 — Codex: ordinary enum-conversion try integration (released)
+
+Closed frontend.enum-to-integer-checked-conversion former remaining #3 after
+an audit demonstrated that existing production Sema already implements the
+ordinary Result/try rule. Added dedicated source matrices and Sema/CLI/LSP
+regressions instead of inventing an eager try-only rule or needless semantic
+changes. Under errorhandling.md §7, retaining/returning/passing a Result, match,
+explicit discard and selecting Ok are legitimate alternatives to immediate try.
+
+Coverage: typed locals, function arguments, integer returns, bodyless try,
+return-try forwarding, stored carriers, consuming arguments, match, explicit
+discard, Ok projection, and closed/open enums. Six resolved try decisions retain
+uint8 success and ConversionError. Seven invalid contexts are rejected, including
+ignored must-use carriers and statements/arguments outside a preceding try.
+The two must-use cases retain their registered ID and canonical repair.
+
+Files changed this turn:
+- internal/sema/enum_conversion_try_test.go (new)
+- cmd/compiler/enum_conversion_try_test.go (new)
+- cmd/lsp/enum_conversion_try_test.go (new)
+- testdata/sema/enum_conversion_try/{valid,invalid}.sec (new)
+- governance/declarations.yaml and this handoff.
+
+Verification: GOCACHE=/tmp/sec-go-cache go test ./internal/sema ./cmd/compiler
+./cmd/lsp -run 'TestEnumConversionOrdinaryTry|TestEnumConversionTryRejects'
+-count=1 passed (0.022s/0.020s/0.444s). yamlstatus check: 0 problems in 45
+fragments; canonical formatting and git diff --check clean.
+Remaining owner 5 -> 4; declarations.yaml 169 -> 168. No production semantic
+changes or new remaining/partial/MD items; runtime lowering remains separately
+open. Latest handoff read: Claude's P17 conditional replacement/discard working
+set is active and untouched. No binaries rebuilt, no commit. Working set released.
+
+## Codex working set (2026-11-02): enum checked-conversion Sema analysis
+
+Taking frontend.enum-to-integer-checked-conversion remaining #1. Found string
+backed enums accepted as Result-valued integer conversions, and integer-to-string
+enum attempts returning InvalidType without a diagnostic. Fixing the legal
+conversion relation gates (type_compatibility.go), with Sema/CLI/LSP source
+regressions, governance and handoff. Existing integer proof/Result behavior stays
+covered by its matrices. No P17 ownership/lowering/MLIR files will be touched.
+
+Claude P17 conditional replacement and discard results (2026-11-02):
+`x = v` and `discard x` work on a value moved on only some paths, including a union whose payload moved. New unit
+attributes: `if_owned` on sec.own.replace_place, discard and destroy_place, `if_active` on sec.cleanup.cancel. Sema treats a
+moved payload as conditional for the whole union and discard converges it to unavailable. Representation stays with physical
+lowering; that is a remaining item in governance/lowering.yaml. Binaries rebuilt, nothing committed.
+Working set released.
+
+### 2026-11-02 — Codex: enum checked-conversion Sema analysis (released)
+
+Closed frontend.enum-to-integer-checked-conversion former remaining #1 after
+integrating the legal-relation gate with the existing checked integer-enum
+analysis. String-backed enums have no integer conversion relation in either
+direction. Before the fix, string enum -> integer was accepted as a fallible
+Result, and integer -> string enum silently returned InvalidType without a
+source diagnostic: four invalid source cases produced zero diagnostics.
+Both now produce canonical mandatory S1174/help, including known values and
+try-wrapped attempts. try cannot create a missing conversion relation.
+Legal enum/string conversions, exact closed integer domains, checked narrowing
+and known fitting integer-enum members remain accepted. Broad static constant
+evaluation, immutable conversion snapshots and runtime checked lowering retain
+their own three remaining items; none is claimed completed here.
+
+Files changed this turn:
+- internal/sema/type_compatibility.go (string carrier relation gates)
+- internal/sema/enum_conversion_relations_test.go (new)
+- cmd/compiler/enum_conversion_relations_test.go (new)
+- cmd/lsp/enum_conversion_relations_test.go (new)
+- testdata/sema/enum_conversion_relations/{valid,invalid}.sec (new)
+- governance/declarations.yaml and this handoff.
+
+Verification passed:
+- Focused Sema/CLI/LSP relation tests: six invalid cases with S1174/help,
+  valid relation matrix and no IR artifact for invalid source.
+- Complete Sema/IR suites (18.614s / 4.173s).
+- go vet internal/sema, cmd/compiler and cmd/lsp.
+- yamlstatus check: 0 problems in 45 fragments; canonical formatting and
+  git diff --check clean.
+Remaining owner 4 -> 3; declarations.yaml 168 -> 167. No new partial/remaining
+item or MD. Latest Claude conditional-replacement/discard results read before
+release and left untouched. No P17/lowering/MLIR edits, tracked binary rebuild
+or commit. Working set released.
+
+## Claude: pack forwarding into borrowed interface views (working set, 2026-11-02)
+
+Fixing MD-057 views at pack forwarding in internal/sema/type_pack_spreads.go, with tests and governance/generics.yaml. Please avoid these.
+
+Claude pack forwarding into interface views results (2026-11-02):
+typePackForwardCandidate accepts borrowed interface views for ordinary arguments and pack positions; covered by
+TestPackForwardingAcceptsBorrowedInterfaceViews. Binaries rebuilt, nothing committed. Working set released.
+
+## Claude: constrained generic as borrowed interface view (working set, 2026-11-02)
+
+Fixing `ref mut W` with `W: I` passed to `ref mut I` in internal/sema/interface_views.go, with tests and governance. Please avoid these.
+
+Claude constrained generic view results (2026-11-02):
+`ref mut W` with `W: I` passes to `ref mut I`, including generic inference of `ref mut I[E]`; covered by
+TestConstrainedGenericPassesAsBorrowedView. Binaries rebuilt, nothing committed. Working set released.

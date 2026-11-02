@@ -1,0 +1,3 @@
+module main
+enum Wide uint32 { Zero = 0, High = 4294967295 }
+fn PlatformSigned(value: Wide) int { return int(value) }

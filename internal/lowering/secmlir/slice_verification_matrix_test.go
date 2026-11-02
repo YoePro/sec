@@ -153,7 +153,7 @@ func TestPackage16MLIRRoundTripMatrix(t *testing.T) {
 func TestPackage16MLIRVersionRejectionMatrix(t *testing.T) {
 	tool := testsupport.RequireSecMLIROptPath(t)
 	input := sliceVerificationFixture(t, "Dialect/Sec/schema12-slice-types.mlir")
-	for _, version := range []int64{0, 11, 13, -1} {
+	for _, version := range []int64{0, 11, 14, -1} {
 		modified := strings.Replace(input, "\n  sec.dialect_version = 12 : i32,", fmt.Sprintf("\n  sec.dialect_version = %d : i32,", version), 1)
 		if modified == input {
 			t.Fatal("version mutation did not change the module")

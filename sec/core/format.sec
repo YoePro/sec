@@ -573,7 +573,7 @@ fn FormatComposite[E: error, ...Types](format: string, sink: ref mut FormatSink[
                     if position == index {
                         let text := try value.ToString() {
                             Err(error) => {
-                                return Err(FormatRenderError.Text(error))
+                                return Err(FormatRenderError[E].Text(error))
                             }
                         }
 

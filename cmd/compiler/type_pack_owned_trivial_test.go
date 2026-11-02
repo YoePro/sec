@@ -32,7 +32,13 @@ func TestTrivialOwnedTypePackCLI(t *testing.T) {
 			}
 		}
 	}
-	stdout, output, code := runCLIForDiagnostics(t, "emit-ir", typePackCLIFixture(t, "owned_trivial_move_boundary.sec"), "--target", "linux-amd64", "-o", "-")
+	// An explicit move of a scalar has its package-17 inspection form and no native one.
+	file := typePackCLIFixture(t, "owned_trivial_move_boundary.sec")
+	stdout, output, code := runCLIForDiagnostics(t, "emit-ir", file, "--target", "linux-amd64", "-o", "-")
+	if code != 0 || !strings.Contains(stdout, "own.move") {
+		t.Fatal(code, stdout, output)
+	}
+	stdout, output, code = runCLIForDiagnostics(t, "emit-mlir", file, "--target", "linux-amd64", "-o", filepath.Join(t.TempDir(), "out"))
 	if code != 4 || stdout != "" || !strings.Contains(output, "[unsupported-lowering]") {
 		t.Fatal(code, stdout, output)
 	}

@@ -1,0 +1,11 @@
+module main
+
+enum Wide uint16 { Small = 1, Large = 300 }
+fn WrongCarrier(value: Wide) Result[uint8, ArithmeticError] {
+    return uint8(value)
+}
+fn WrongPropagation(value: Wide) Result[uint8, ArithmeticError] {
+    return Ok(try uint8(value))
+}
+fn Unhandled(value: Wide) uint8 { return uint8(value) }
+fn BadConstant() uint8 { return uint8(Wide.Large) }

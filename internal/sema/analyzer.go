@@ -35,6 +35,10 @@ type Analyzer struct {
 	cleanupFlow                 cleanupFlowState
 	resolvedDeferPlans          map[*ast.DeferStatement]ResolvedDeferPlan
 	ownedCleanupInitializations map[*ast.LetStatement]ResolvedOwnedCleanupRegistration
+	ownedCleanupMatchBindings   map[*ast.MatchArm]ResolvedOwnedCleanupRegistration
+	matchArmScopes              map[*ast.MatchArm]*ast.BlockStatement
+	optionBindingArms           map[*ast.IfStatement]*ast.MatchArm
+	matchGuardPlaces            map[*ast.MatchArm]Place
 	ownedCleanupParameters      map[BindingID]ownedCleanupParameter
 	ownedCleanupCancellations   map[sourceTokenKey][]ResolvedOwnedCleanupCancellation
 	ownedCleanupDeclarations    map[BindingID]*ast.LetStatement
@@ -180,8 +184,10 @@ type Analyzer struct {
 	comparisonConstantOperands map[ast.Expression]*big.Int
 	// inSelectOperation is set while a select branch operation is analyzed:
 	// the branch only registers readiness, so the select records blocking.
-	inSelectOperation          bool
-	resolvedSwitchFlows        map[*ast.SwitchStatement]ResolvedSwitchFlow
+	inSelectOperation   bool
+	resolvedSwitchFlows map[*ast.SwitchStatement]ResolvedSwitchFlow
+	// resolvedEnumCaseOwners retains actual case selection, including compiler-provided enums.
+	resolvedEnumCaseOwners     map[*ast.MemberExpression]Type
 	resolvedIntegerConversions map[*ast.CallExpression]ResolvedIntegerConversion
 	resolvedForRangeSteps      map[*ast.ForStatement]*big.Int
 	resolvedAssertions         map[*ast.AssertStatement]ResolvedAssertion
@@ -380,7 +386,10 @@ type Analyzer struct {
 	// diagnostic is recorded.
 	diagnosticRules           diagnostics.RulePolicy
 	explicitDiscardAdvisories map[*ast.DiscardStatement]Error
+	discardStates             map[*ast.DiscardStatement]DiscardSourceState
 	implicitDiscards          map[*ast.ExpressionStatement]Error
+	// Conflicting associated storage declarations across the merged impl surface.
+	implStorageConflicts map[*ast.LetStatement]implStorageConflict
 	// placeIdentities allocates the canonical P15 storage, invalidation,
 	// epoch, address-space, borrow and lifetime identities (place_identities.go).
 	placeIdentities placeIdentityAllocator
@@ -599,6 +608,10 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.cleanupFlow = cleanupFlowState{}
 	a.resolvedDeferPlans = nil
 	a.ownedCleanupInitializations = nil
+	a.ownedCleanupMatchBindings = nil
+	a.matchArmScopes = nil
+	a.optionBindingArms = nil
+	a.matchGuardPlaces = nil
 	a.ownedCleanupParameters = nil
 	a.ownedCleanupCancellations = nil
 	a.ownedCleanupDeclarations = nil
@@ -620,7 +633,9 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.errorKeys = map[string]bool{}
 	a.warnings = nil
 	a.explicitDiscardAdvisories = map[*ast.DiscardStatement]Error{}
+	a.discardStates = map[*ast.DiscardStatement]DiscardSourceState{}
 	a.implicitDiscards = map[*ast.ExpressionStatement]Error{}
+	a.implStorageConflicts = nil
 	a.symbols = map[string]Symbol{}
 	a.completionSymbols = map[string]Symbol{}
 	a.predeclaredStatic = map[sourceTokenKey]bool{}
@@ -679,6 +694,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.synthesizedStructTypes = map[*ast.StructLiteral]Type{}
 	a.comparisonConstantOperands = map[ast.Expression]*big.Int{}
 	a.resolvedSwitchFlows = map[*ast.SwitchStatement]ResolvedSwitchFlow{}
+	a.resolvedEnumCaseOwners = map[*ast.MemberExpression]Type{}
 	a.resolvedIntegerConversions = map[*ast.CallExpression]ResolvedIntegerConversion{}
 	a.resolvedTransferPlans = map[ast.Expression]ResolvedTransferPlan{}
 	a.transferDestinations = nil
@@ -2788,7 +2804,14 @@ func (a *Analyzer) analyzeOptionBindingBranchWithCallGraphReachability(stmt *ast
 	previous := a.callGraphPathReachable
 	a.callGraphPathReachable = previous && reachable
 	defer func() { a.callGraphPathReachable = previous }()
-	arm := &ast.MatchArm{Token: stmt.OptionBinding.Binding.Token, BlockBody: stmt.Consequence}
+	if a.optionBindingArms == nil {
+		a.optionBindingArms = map[*ast.IfStatement]*ast.MatchArm{}
+	}
+	arm := a.optionBindingArms[stmt]
+	if arm == nil {
+		arm = &ast.MatchArm{Token: stmt.OptionBinding.Binding.Token, BlockBody: stmt.Consequence}
+		a.optionBindingArms[stmt] = arm
+	}
 	_, branch := a.analyzeMatchArmBody(arm, info)
 	return branch
 }
@@ -3440,7 +3463,14 @@ func (a *Analyzer) registerFunctionDeclarations(program *ast.Program) {
 	})
 }
 
+// registerFunctionDeclaration registers an ordinary module/local declaration;
+// type-associated static members use the separate named registration path.
+// Rules: rules/declarations/static.md — §9;
+// rules/declarations/functions.md — §§22–24.
 func (a *Analyzer) registerFunctionDeclaration(fn *ast.FunctionDeclaration) {
+	if a.rejectNonMemberStaticFunction(fn) {
+		return
+	}
 	a.registerFunctionDeclarationNamed(fn, fn.Name.Value)
 }
 
@@ -3482,10 +3512,9 @@ func isCompilerKnownFunctionName(name string) bool {
 }
 
 func (a *Analyzer) registerFunctionDeclarationBody(fn *ast.FunctionDeclaration, name string) {
-	// rules/declarations/static.md, declaration context; correction15.md permits
-	// static functions only as type-associated members inside impl blocks.
-	if fn.Static && a.currentImplTarget == "" {
-		a.addErrorAtToken(fn.Token, "static fn is only valid inside impl; use fn for a module function")
+	// Recovered or programmatic ASTs must not bypass the declaration context.
+	// Rules: rules/declarations/static.md — §9.
+	if a.currentImplTarget == "" && a.rejectNonMemberStaticFunction(fn) {
 		return
 	}
 	a.recordDefinition(fn.Name.Token)
@@ -7252,6 +7281,7 @@ func semaStructTags(tags []ast.StructTag) []StructTag {
 }
 
 func (a *Analyzer) registerImplDeclarations(program *ast.Program) {
+	a.implStorageConflicts = a.collectImplStorageConflicts(program)
 	a.withProgramModules(program, func(stmt ast.Statement) {
 		impl, ok := stmt.(*ast.ImplStatement)
 		if !ok {
@@ -7601,6 +7631,9 @@ func (a *Analyzer) registerInitDeclaration(targetName string, target Type, initi
 //   - rules/declarations/impl.md — "Static members"
 func (a *Analyzer) analyzeImplAssociatedLet(targetName string, stmt *ast.LetStatement) {
 	if stmt == nil || stmt.Name == nil || !stmt.Static {
+		return
+	}
+	if a.rejectImplStorageConflict(targetName, stmt) {
 		return
 	}
 	qualifiedName := targetName + "." + stmt.Name.Value
@@ -8857,24 +8890,6 @@ func (a *Analyzer) resolveType(ref *ast.TypeReference) (Type, bool) {
 		a.recordSourceTypeReference(ref, typ)
 	}
 	return typ, ok
-}
-
-// validateResultErrorChannel enforces rules/errors/errorhandling.md section 4.
-// Result is not a general two-value union: its second argument is a declared
-// failure channel and therefore must inhabit the compiler-known error domain.
-func (a *Analyzer) validateResultErrorChannel(ref *ast.TypeReference, typ Type) bool {
-	if typ.Kind != ResultType || len(typ.TypeArgs) != 2 || len(ref.TypeArgs) != 2 {
-		return true
-	}
-	errorType := typ.TypeArgs[1]
-	if errorType.Kind == ErrorRootType || errorType.ErrorAssignable {
-		return true
-	}
-	token := ref.TypeArgs[1].Token
-	a.addErrorAtToken(token,
-		"Result error type %s is not an error type; use error or declare %s with the error marker",
-		typeDisplayName(errorType), typeDisplayName(errorType))
-	return false
 }
 
 func (a *Analyzer) validateCompilerKnownGenericType(token lexer.Token, typ *Type) bool {
@@ -10941,54 +10956,6 @@ func (a *Analyzer) validateConstantIntegerConversion(target Type, source Type, e
 	return !a.checkIntegerValueRange(target, value, expressionToken(expression))
 }
 
-// enumToIntegerConversionResultType implements the checked narrowing rule in
-// rules/declarations/enums.md. correction7.md reserves direct enum-to-integer
-// conversion for statically known values or complete enum domains that fit.
-func (a *Analyzer) enumToIntegerConversionResultType(target Type, source Type, expr ast.Expression) Type {
-	if value, ok := enumConstantValue(source, expr); ok {
-		if a.checkIntegerValueRange(target, value, expressionToken(expr)) {
-			return Type{Kind: InvalidType}
-		}
-		return target
-	}
-	if enumDomainFitsIntegerType(source, target) {
-		return target
-	}
-	errorType := a.types["ArithmeticError"]
-	return Type{Name: "Result", Kind: ResultType, TypeArgs: []Type{target, errorType}}
-}
-
-func enumConstantValue(enumType Type, expr ast.Expression) (*big.Int, bool) {
-	member, ok := expr.(*ast.MemberExpression)
-	if !ok || member.Property == nil {
-		return nil, false
-	}
-	constant, ok := enumType.EnumConsts[member.Property.Value]
-	if !ok || constant.Value == nil {
-		return nil, false
-	}
-	return new(big.Int).Set(constant.Value), true
-}
-
-func enumDomainFitsIntegerType(enumType Type, target Type) bool {
-	if target.MinInteger == nil || target.MaxInteger == nil {
-		return false
-	}
-	if enumType.BitWidth > 0 {
-		return enumType.MinInteger != nil && enumType.MaxInteger != nil &&
-			enumType.MinInteger.Cmp(target.MinInteger) >= 0 && enumType.MaxInteger.Cmp(target.MaxInteger) <= 0
-	}
-	if len(enumType.EnumConsts) == 0 {
-		return false
-	}
-	for _, constant := range enumType.EnumConsts {
-		if constant.Value == nil || constant.Value.Cmp(target.MinInteger) < 0 || constant.Value.Cmp(target.MaxInteger) > 0 {
-			return false
-		}
-	}
-	return true
-}
-
 // enumConversionResultType validates explicit construction from the enum's
 // integer or string underlying family and selects direct versus Result-valued
 // runtime conversion.
@@ -11343,78 +11310,6 @@ func tryHandlerCallPatternName(pattern ast.Expression) (string, lexer.Token, boo
 		}
 	}
 	return "", lexer.Token{}, false
-}
-
-// analyzeTryErrHandlerPattern implements Result error patterns. Err(_) is an
-// exhaustive catch-all but may discard its error payload only when the payload
-// type has no unresolved lifecycle obligation.
-//
-// Rules:
-//   - rules/errors/errorhandling.md — §17 "Err(_) and explicit error acknowledgement"
-//   - rules/control-flow/discard.md — "Recursive discardability"
-//   - rules/control-flow/flowcontrol_match.md — Result error patterns
-//   - rules/corrections/applied/correction20-20260823.md — Err(_) discard
-func (a *Analyzer) analyzeTryErrHandlerPattern(errPattern *ast.ErrExpression, errorType Type) (kind string, bindingName string, variantName string, bindingType Type, ok bool) {
-	switch pattern := errPattern.Value.(type) {
-	case *ast.Identifier:
-		if pattern.Value == "_" {
-			if a.tryFailureSet != nil {
-				for _, member := range a.tryFailureSet.members {
-					if !isDiscardableType(member) {
-						a.addErrorAtTokenWithMetadata(pattern.Token, diagnostics.NonDiscardableValue,
-							"Bind the error and resolve its task or thread obligation instead of using Err(_).",
-							"Err(_) cannot ignore %s because it may contain an unresolved lifecycle handle", typeDisplayName(member))
-					}
-				}
-				return "Err", "_", "", errorType, true
-			}
-			if !a.isDiscardable(errorType) {
-				a.addErrorAtTokenWithMetadata(pattern.Token, diagnostics.NonDiscardableValue,
-					"Bind the error and resolve its task or thread obligation instead of using Err(_).",
-					"Err(_) cannot ignore %s because it may contain an unresolved lifecycle handle", a.nonDiscardableSubject(errorType))
-			}
-			return "Err", "_", "", errorType, true
-		}
-		if enumHasValue(errorType, pattern.Value) {
-			return "Err", "", pattern.Value, errorType, true
-		}
-		// A rejected heterogeneous binding still acts as the catch-all it was
-		// written as, so the residual and body analysis report no cascades.
-		a.rejectHeterogeneousErrorBinding(pattern.Token, pattern.Value)
-		return "Err", pattern.Value, "", errorType, true
-	case *ast.MemberExpression:
-		patternType, ok := a.inferMemberExpression(pattern)
-		if !ok || patternType.Kind == InvalidType {
-			return "", "", "", Type{}, false
-		}
-		// rules/errors/errorhandling.md — §27.2: an open `error` channel keeps
-		// concrete identity, so a concrete error variant narrows it. The key
-		// is qualified because the open domain spans several error types.
-		if errorType.Kind == ErrorRootType && patternType.ErrorAssignable {
-			if a.tryFailureSet != nil && a.tryFailureSet.commonChannel == nil {
-				if _, member := a.tryFailureSet.member(patternType); !member {
-					a.addErrorAtToken(expressionToken(pattern),
-						"this try cannot produce %s; its failures are %s", typeDisplayName(patternType), tryFailureSetDisplay(a.tryFailureSet.members))
-					return "", "", "", Type{}, false
-				}
-			}
-			a.reportOmittedTryHandlerPayload(pattern, patternType)
-			return "Err", "", typeDisplayName(patternType) + "." + pattern.Property.Value, errorType, true
-		}
-		if !sameConcreteType(patternType, errorType) {
-			a.addErrorAtTokenWithMetadata(expressionToken(pattern), diagnostics.InvalidTryHandlerPattern,
-				fmt.Sprintf("This try can only fail with %s; name one of its variants, or use Err(_) or Err(name).", typeDisplayName(errorType)),
-				"try handler pattern must match %s, got %s", typeDisplayName(errorType), typeDisplayName(patternType))
-			return "", "", "", Type{}, false
-		}
-		a.reportOmittedTryHandlerPayload(pattern, patternType)
-		return "Err", "", pattern.Property.Value, errorType, true
-	default:
-		a.addErrorAtTokenWithMetadata(expressionToken(errPattern.Value), diagnostics.InvalidTryHandlerPattern,
-			"Inside Err(...) write _, a binding name, or a qualified error variant such as ErrorType.Variant.",
-			"try handler pattern must be enum variant or identifier")
-		return "", "", "", Type{}, false
-	}
 }
 
 func enumHasValue(typ Type, name string) bool {

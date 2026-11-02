@@ -1,0 +1,9 @@
+module main
+enum Words string { One = "1" }
+enum Small uint16 { Zero = 0, High = 255 }
+enum Wide uint16 { Zero = 0, High = 300 }
+fn ToString(value: Words) string { return string(value) }
+fn FromString(value: string) Result[Words, EnumValueError] { return Words(value) }
+fn Exact(value: Small) uint8 { return uint8(value) }
+fn Checked(value: Wide) Result[uint8, ConversionError] { return uint8(value) }
+fn Known() uint8 { return uint8(Wide.Zero) }

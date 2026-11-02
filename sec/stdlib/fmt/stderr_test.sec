@@ -1,0 +1,133 @@
+#target(os: "linux", arch: "amd64")
+module fmt
+
+/*
+ * Sec Standard Library - fmt - Standard error tests
+ *
+ * File:       stdlib/fmt/stderr_test.sec
+ * Module:     fmt
+ * Revision:   1
+ * Updated:    2026-11-02
+ *
+ * Purpose:
+ * Verify stderr formatting operations, UTF-8 byte counts,
+ * newline behavior, composite formatting, and errors.
+ *
+ * Platform:
+ * Linux, AMD64.
+ *
+ * Rulebook:
+ * stdlib/fmt/sec-fmt-v1.md, sections 7, 8, 10, 11 and 14.
+ */
+
+// ------------------------------------------------------------
+// EPrint
+// ------------------------------------------------------------
+
+test "EPrint with no arguments writes zero bytes" {
+    let count := try EPrint()
+
+    testing.RequireEqual(uint(0), count)
+}
+
+test "EPrint concatenates arguments" {
+    let count := try EPrint("Hello", "World")
+
+    testing.RequireEqual(uint(10), count)
+}
+
+test "EPrint counts UTF-8 bytes" {
+    let count := try EPrint("Å", "€", "🦊")
+
+    // UTF-8: 2 + 3 + 4 bytes.
+    testing.RequireEqual(uint(9), count)
+}
+
+// ------------------------------------------------------------
+// EPrintln
+// ------------------------------------------------------------
+
+test "EPrintln with no arguments writes LF" {
+    let count := try EPrintln()
+
+    testing.RequireEqual(uint(1), count)
+}
+
+test "EPrintln counts separators and LF" {
+    let count := try EPrintln("A", "B", "C")
+
+    // Three characters, two spaces, one LF.
+    testing.RequireEqual(uint(6), count)
+}
+
+test "EPrintln counts multibyte text and separators" {
+    let count := try EPrintln("Å", "€", "🦊")
+
+    // 9 UTF-8 bytes + 2 spaces + 1 LF.
+    testing.RequireEqual(uint(12), count)
+}
+
+// ------------------------------------------------------------
+// EPrintf
+// ------------------------------------------------------------
+
+test "EPrintf supports positional arguments" {
+    let count := try EPrintf("{1}/{0}", "A", "B")
+
+    testing.RequireEqual(uint(3), count)
+}
+
+test "EPrintf supports escaped braces" {
+    let count := try EPrintf("{{{0}}}", "X")
+
+    // Output: {X}
+    testing.RequireEqual(uint(3), count)
+}
+
+test "EPrintf rejects invalid format" {
+    match EPrintf("{") {
+        Ok(_) => {
+            testing.Fail("Expected invalid format error")
+        }
+
+        Err(failure) => {
+            match failure {
+                Text(cause) => {
+                    match cause {
+                        Format(reason) => {
+                            testing.RequireEqual(
+                                FormatError.InvalidFormat,
+                                reason,
+                            )
+                        }
+
+                        _ => {
+                            testing.Fail("Expected StringError.Format")
+                        }
+                    }
+                }
+
+                _ => {
+                    testing.Fail("Expected WriteFormatError.Text")
+                }
+            }
+        }
+    }
+}
+
+// ------------------------------------------------------------
+// EPrintfln
+// ------------------------------------------------------------
+
+test "EPrintfln includes LF in byte count" {
+    let count := try EPrintfln("Hej {}", "🦊")
+
+    // Hej (3) + space (1) + fox (4) + LF (1).
+    testing.RequireEqual(uint(9), count)
+}
+
+test "EPrintfln with empty format writes LF" {
+    let count := try EPrintfln("")
+
+    testing.RequireEqual(uint(1), count)
+}

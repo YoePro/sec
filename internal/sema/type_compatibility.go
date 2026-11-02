@@ -286,8 +286,12 @@ func canExplicitConvert(target Type, value Type) bool {
 		return target.MonotonicPoint && value.MonotonicPoint
 	}
 
+	// String-backed enums have no integer conversion relation. A missing
+	// relation is a source error, not a fallible runtime conversion.
+	// Rules: rules/declarations/enums.md — §12; rules/types/types.md —
+	// Explicit conversions (MD-012 §4.1).
 	if target.Kind == EnumType && isIntegerType(value) {
-		return true
+		return target.Underlying != "string"
 	}
 	if target.Kind == EnumType && target.Underlying == "string" && value.Kind == StringType && !value.Named {
 		return true
@@ -310,7 +314,7 @@ func canExplicitConvert(target Type, value Type) bool {
 	}
 
 	if isIntegerType(target) && value.Kind == EnumType {
-		return true
+		return value.Underlying != "string"
 	}
 	if target.Kind == StringType && !target.Named && value.Kind == EnumType && value.Underlying == "string" {
 		return true

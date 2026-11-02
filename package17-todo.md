@@ -563,6 +563,8 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
 - [ ] P17-31 — Extend struct/array/union/Result/Option constructor actions to
   resolved move and infallible semantic copy. Spread remains copying; this package
   does not silently make a move-only spread source legal.
+  Partial 2026-11-02: single union, Option and Result payloads take a fresh or
+  moved value (`construct-direct`). Semantic copy and named-field payloads remain.
 - [ ] P17-32 — Make argument, return and branch ownership actions explicit.
   Mutually exclusive successors may transfer the same current owner; merges
   select one continuation. Verify compatible partial/active-variant state and
@@ -643,6 +645,12 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
 - [ ] P17-37 — Lower move-only active union/Result/Option payload bindings only
   on the predecessor's proven variant path, updating container partial state.
   Keep borrowed bindings on P15 and respect MD-031 handler emission limits.
+  Partial 2026-11-02: unguarded whole-payload bindings in `match` and
+  `if x is Some(y)` on a fresh subject or a tracked local, on union, Option and
+  Result. A mutable local moves through the Place form of package17 § 63; an
+  immutable one at value level, since its SSA owner has no writable Place.
+  Guarded arms commit the move in the arm body after a non-owning guard candidate.
+  Remaining: subobject subjects, named-field and concrete error-variant payloads.
 - [x] P17-38 — Lower non-trivial whole fixed-array ownership and destruction.
   Extend resolved ordinary element actions; preserve spread copy rules and the
   unsupported partial element-move boundary, including runtime indexes.
@@ -670,9 +678,25 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
 - [ ] P17-40 — Lower explicit/implicit discard and temporary lifetime end through
   the same destruction plans as normal cleanup; honor must-use legality and
   non-consuming expression classification instead of dropping an SSA result.
+
+  Partial 2026-11-02: `discard Make(1)` and a call statement whose result needs
+  destruction lower to `own.discard` with the type's plan and origin. `discard name`
+  of a whole owned binding destroys once and cancels its registration, and an
+  unavailable binding is a no-op. Remaining: a binding moved on only some paths, a
+  discarded projection, `discard try ...`, and a borrowed temporary that needs
+  full-expression cleanup.
 - [ ] P17-41 — Lower executed defer sites into regions with binding/Place captures.
   Preserve function scope and iteration-instance identity; never copy captures or
   collapse dynamic registrations into one active boolean per source site.
+
+  Partial 2026-11-02: `defer_producer.go` lowers a defer to `cleanup.defer-register`
+  with an isolated region over capture Places: a read-only value root for an immutable
+  binding and the address-taken storage for a mutable one, so the body sees the value
+  when it runs, reads and writes included. Each execution registers one instance, also
+  in loops, through schema 13 and the slice and P15 verifiers. Remaining: capturing a
+  value that needs destruction or a reference holder, an owned local in the body, a
+  nested defer, and forms Sema does not publish as captures, such as `*a`, each a named
+  boundary.
 - [ ] P17-42 — Insert planned scope cleanup before exited-scope edges, and function
   cleanup after return/Err transfer but before return. Keep panic/raw process-exit/
   proven-unreachable endpoints outside normal cleanup; no hidden unwinding.
@@ -706,35 +730,98 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
 
 ## F. Implement schema 13 emission and three independent verifiers
 
-- [ ] P17-45 — Add schema-13 acceptance/version metadata after schema 11/12 works.
+- [x] P17-45 — Add schema-13 acceptance/version metadata after schema 11/12 works.
   Keep schema 1–12 regression inputs valid and Semantic IR version 1 unchanged.
+
+  Done 2026-11-02: `SecDialect.cpp` admits schema 13 with the schema-11 module metadata
+  requirements, and P16 operations accept schema 12 or later. Lit stays green with the
+  older schemas as regression inputs.
 - [ ] P17-46 — Define ownership actions, destruction-plan references, cleanup
   IDs/ordinals, discard origins and exit-kind metadata. Map Semantic IR
   `construct` to dialect `construct-direct` explicitly; no physical offsets or
   runtime/source ownership-token type belongs in these attributes.
-- [ ] P17-47 — Add all ten `sec.own.*` operations from dialect-v13 §§4–13 with
+- [x] P17-47 — Add all ten `sec.own.*` operations from dialect-v13 §§4–13 with
   parse/print/type/plan/Place verification and appropriate semantic effects.
-- [ ] P17-48 — Add `sec.cleanup.track_owned`, `cancel`, `defer_register`,
+- [x] P17-48 — Add `sec.cleanup.track_owned`, `cancel`, `defer_register`,
   `defer_yield`, `run_scope` and `run_function`. Validate region captures,
   terminators, permitted exit kinds and scope/function eligibility.
+
+  Done 2026-11-02 for P17-47/48: `SecOwnershipOps.td`, `OwnershipOps.cpp`. The local
+  contracts reject a copied `ref mut`, a destroyed or tracked reference, a read-only
+  move, equal replacement identities, a defer body returning or reaching outer values,
+  and panic as a cleanup exit (`schema13-ownership-ops.mlir` and its invalid companion).
+  Path-sensitive state is P17-52 to P17-54.
 - [ ] P17-49 — Extend constructor/call/branch/return ownership attributes and
   predecessor action enums. Foreign consumption requires existing declared FFI
   ownership metadata; do not invent release or ownership contracts.
-- [ ] P17-50 — Emit the exact resolved ownership/cleanup plans, regions and source
+
+  Partial 2026-11-02: schema 13 admits `move` call arguments and `move` and
+  `copy-semantic-infallible` array elements. Struct and union constructor actions,
+  branch and return metadata remain, with their source producers.
+- [x] P17-50 — Emit the exact resolved ownership/cleanup plans, regions and source
   provenance. Earlier scalar/trivial lowering must preserve address-taken and
   non-trivial storage and must not erase identities/actions before verification.
-- [ ] P17-51 — Register the three analysis passes in TableGen, pass registration,
+
+  Partial 2026-11-02: `internal/lowering/secmlir/ownership.go` emits every own.* and
+  cleanup.* operation, defer regions and the `sec.destruction_plans` module table;
+  `TestSchema13EmitSourceOwnership` runs real source through schema 13 and the slice
+  and P15 verifiers on 32/64-bit plans.
+
+  Done 2026-11-02: `emit-ir` and `emit-sec-mlir` now run at package 17 and schema 13, after
+  all three P17 verifiers (`TestOwnershipProgramsReachOnlyTheInspectionBoundaries`, 32/64-bit,
+  deterministic). `emit-mlir`, `emit-llvm` and `build` stay on the package-14 native track and
+  name the missing physical ownership cleanup. Source forms that stop at a named boundary
+  are listed under `lowering.sec-mlir-package17` in `governance/lowering.yaml`.
+- [x] P17-51 — Register the three analysis passes in TableGen, pass registration,
   CMake and the configured compiler verification path. Preserve previous guard/
   borrow/slice checks; verify ownership before destructive cleanup normalization.
-- [ ] P17-52 — Implement `--sec-verify-ownership`: availability, legal copy/move,
+- [x] P17-52 — Implement `--sec-verify-ownership`: availability, legal copy/move,
   no mutable-reference copy, partial state, mutually exclusive transfers, compatible
   merges and one terminal responsibility for represented non-trivial ownership.
-- [ ] P17-53 — Implement `--sec-verify-destruction-plans`: concrete completeness,
+
+  Done 2026-11-02: `VerifyOwnership.cpp` follows every owned value and subobject over the
+  CFG (`schema13-ownership.mlir` and its invalid companion; real source runs through it in
+  `TestSchema13EmitSourceOwnership`). It rejects use after a move on any path, copying a
+  value that needs destruction, a move out of a borrowed referent, array element or custom
+  free field, an initialization over a possibly live value or a replacement of a possibly
+  gone one, a destroy whose skips do not match the moved subobjects, a registered value
+  transferred without `sec.own.move`, and a value that needs destruction with no terminal
+  action on some path. Non-triviality comes from the plan table (P17-53), so a value whose
+  type the table does not list is not held to a terminal action.
+  It found a real leak: `Make(1).id` never destroyed its temporary. That form now stops at
+  the named boundary "owned struct temporary field read cleanup (P17-40)", because the
+  temporary lives to the end of its full expression and that cleanup does not exist yet.
+- [x] P17-53 — Implement `--sec-verify-destruction-plans`: concrete completeness,
   field/array/active-payload order, resolved custom-free restrictions and applicable
   semantic allocator/release pairing. Reuse P15/P16 validity and borrow facts.
-- [ ] P17-54 — Implement `--sec-verify-cleanups`: successful registration,
+
+  Done 2026-11-02: `VerifyDestructionPlans.cpp` checks the `sec.destruction_plans` table
+  and every operation naming a plan (`schema13-destruction-plans.mlir` and its invalid
+  companion cover the § 123 list; real source runs through it in
+  `TestSchema13EmitSourceOwnership`). It requires one plan per identity and per type,
+  struct fields once in reverse declaration order with every non-trivial field covered,
+  the exact array element plan and count, one payload plan per non-trivial Union, Option
+  or Result variant, a free function over a mutable reference to its type, and a body that
+  neither ends part of its receiver nor frees it again. Uses must name a plan of exactly
+  the destroyed type; a skipped path must exist and go through a plan that may skip.
+  Limits: MLIR types carry no custom-free marker, so non-triviality comes from the table
+  and a type no operation destroys need not be listed; the Semantic IR verifier covers the
+  type-level facts first. Allocator pairing has nothing to check until P18 owning arrays;
+  a named-field variant has no payload plan shape yet, so a non-trivial one is rejected.
+- [x] P17-54 — Implement `--sec-verify-cleanups`: successful registration,
   cancellation, remaining-state cleanup, reverse registration order, defer
   multiplicity/capture lifetime, exit eligibility and protected return/Err values.
+
+  Done 2026-11-02: `VerifyCleanups.cpp` follows each registration over the CFG with
+  a path-exact state (`schema13-cleanups.mlir` and its invalid companion). It rejects a
+  missing function exit, a moved value left uncancelled including on one branch, a
+  double or unknown cancel, a cancelled defer, a destroyed returned value, registration
+  out of source order or still active, cleanup in a defer body and a run_function not
+  directly before its return, and it allows no cleanup on a panic path. Real source runs
+  through it in `TestSchema13EmitSourceOwnership`. It also rejects consuming what an
+  active defer captures, and a moved subobject ends the whole registration, which has no
+  remaining-field form yet. `run_function` is one operation, so reverse order is enforced
+  on registration order; the execution order is fixed by the later cleanup expansion stage.
 
 ## G. Prove integration and capability boundaries
 

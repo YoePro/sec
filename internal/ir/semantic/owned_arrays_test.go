@@ -131,7 +131,6 @@ func TestOwnedArrayConstructRejectsInvalidTransfers(t *testing.T) {
 func TestOwnedArrayDeferredProducerBoundaries(t *testing.T) {
 	for _, tc := range []struct{ fixture, feature string }{
 		{"owned_fixed_arrays_partial.sec", "P17-16"},
-		{"owned_fixed_array_temporary.sec", "P17-40"},
 		{"owned_fixed_array_observation.sec", "P17-40"},
 	} {
 		t.Run(tc.fixture, func(t *testing.T) {

@@ -1,0 +1,40 @@
+#target(os: "linux", arch: "amd64")
+module fmt
+
+/**
+ * Adapts Linux standard error to the core formatting engine.
+ *
+ * Description:
+ * Writes UTF-8 text directly to file descriptor 2.
+ * Does not own or close the underlying stream.
+ *
+ * Allocation:
+ * Does not allocate.
+ */
+type _StderrFormatSink struct {
+}
+
+impl _StderrFormatSink implements FormatSink[IOError] {
+    /**
+     * Writes an entire UTF-8 segment to stderr.
+     *
+     * Parameters:
+     * - text: UTF-8 segment to write.
+     *
+     * Returns:
+     * - Ok(): The complete segment was written.
+     *
+     * Errors:
+     * - IOError: Write failure or lack of progress.
+     *
+     * Ownership:
+     * Does not consume the source text.
+     *
+     * Allocation:
+     * Does not allocate.
+     */
+    fn WriteText(text: string) Result[void, IOError] {
+        try _WriteStderrString(text)
+        return Ok()
+    }
+}

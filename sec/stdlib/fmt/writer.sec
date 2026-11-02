@@ -1,1 +1,209 @@
 module fmt
+
+import "io"
+
+/**
+ * Writes a complete UTF-8 string through an io.Writer.
+ *
+ * Description:
+ * Materializes the string's UTF-8 bytes and delegates complete
+ * transmission to io.WriteAll.
+ *
+ * Parameters:
+ * - destination: Mutable Writer receiving the bytes.
+ * - text: UTF-8 text to write without modification.
+ *
+ * Returns:
+ * - Ok(): All bytes were written successfully.
+ *
+ * Errors:
+ * - WriteFormatError.Text: Byte materialization failed.
+ * - WriteFormatError.IO: The Writer failed or made no progress.
+ *
+ * Ownership:
+ * Does not consume the Writer or source string.
+ *
+ * Allocation:
+ * Allocates a temporary byte array for non-empty text.
+ */
+fn _WriteWriterText(destination: ref mut io.Writer, text: string) Result[void, WriteFormatError] {
+    if text.SizeOf == 0 {
+        return Ok()
+    }
+
+    let bytes := try text.ToByteArray() {
+        Err(error) => {
+            return Err(
+                WriteFormatError.Text(_CollectionToStringError(error)),
+            )
+        }
+    }
+
+    try io.WriteAll(ref mut destination, ref bytes[..]) {
+        Err(error) => {
+            return Err(WriteFormatError.IO(error))
+        }
+    }
+
+    return Ok()
+}
+
+/**
+ * Writes default representations of arguments to a Writer.
+ *
+ * Description:
+ * Converts each argument using ToString() and writes its UTF-8
+ * representation without separators or a trailing newline.
+ *
+ * An empty argument pack writes nothing.
+ *
+ * Parameters:
+ * - destination: Writer receiving the formatted bytes.
+ * - values: Heterogeneous borrowed arguments.
+ *
+ * Returns:
+ * - Ok(count): Total UTF-8 bytes successfully written.
+ *
+ * Errors:
+ * - WriteFormatError.Text: Text conversion or allocation failed.
+ * - WriteFormatError.IO: Writer failure or byte-count overflow.
+ *
+ * Ownership:
+ * Does not consume the destination or arguments.
+ *
+ * Allocation:
+ * May allocate during ToString() and byte materialization.
+ */
+fn FPrint[...Types](destination: ref mut io.Writer, values: ...ref Types) Result[uint, WriteFormatError] {
+    let mut total: uint := 0
+
+    for ref value in values {
+        let text := try value.ToString() {
+            Err(error) => {
+                return Err(WriteFormatError.Text(error))
+            }
+        }
+
+        let next := try total + text.SizeOf {
+            Err(_) => {
+                return Err(WriteFormatError.IO(IOError.InvalidInput))
+            }
+        }
+
+        try _WriteWriterText(ref destination, text)
+
+        total = next
+    }
+
+    return Ok(total)
+}
+
+/**
+ * Writes space-separated argument representations to a Writer.
+ *
+ * Description:
+ * Converts each argument using ToString(), inserts one ASCII
+ * space between adjacent arguments, and appends exactly one LF.
+ *
+ * An empty argument pack writes only LF.
+ *
+ * Parameters:
+ * - destination: Mutable Writer receiving the UTF-8 bytes.
+ * - values: Heterogeneous borrowed arguments.
+ *
+ * Returns:
+ * - Ok(count): Total UTF-8 bytes written, including separators
+ * and the final newline.
+ *
+ * Errors:
+ * - WriteFormatError.Text: Conversion or allocation failure.
+ * - WriteFormatError.IO: Writer failure or byte-count overflow.
+ *
+ * Ownership:
+ * Does not consume the Writer or arguments.
+ *
+ * Allocation:
+ * May allocate for argument conversion and byte materialization.
+ */
+fn FPrintln[...Types](destination: ref mut io.Writer, values: ...ref Types) Result[uint, WriteFormatError] {
+    let mut total: uint := 0
+    let mut first := true
+
+    for ref value in values {
+        if !first {
+            let next := try total + 1u {
+                Err(_) => {
+                    return Err(WriteFormatError.IO(IOError.InvalidInput))
+                }
+            }
+
+            try _WriteWriterText(destination, " ")
+            total = next
+        }
+
+        let text := try value.ToString() {
+            Err(error) => {
+                return Err(WriteFormatError.Text(error))
+            }
+        }
+
+        let next := try total + text.SizeOf {
+            Err(_) => {
+                return Err(WriteFormatError.IO(IOError.InvalidInput))
+            }
+        }
+
+        try _WriteWriterText(destination, text)
+        total = next
+        first = false
+    }
+
+    let complete := try total + 1u {
+        Err(_) => {
+            return Err(WriteFormatError.IO(IOError.InvalidInput))
+        }
+    }
+
+    try _WriteWriterText(destination, "\n")
+
+    return Ok(complete)
+}
+
+/**
+ * Writes composite-formatted UTF-8 text to a Writer.
+ *
+ * Description:
+ * Uses the canonical composite formatter through SPrintf,
+ * then writes the resulting text to the destination.
+ *
+ * Parameters:
+ * - destination: Mutable Writer receiving the output.
+ * - format: Composite format string.
+ * - values: Heterogeneous borrowed arguments.
+ *
+ * Returns:
+ * - Ok(count): Number of UTF-8 bytes written.
+ *
+ * Errors:
+ * - WriteFormatError.Text: Formatting or allocation failure.
+ * - WriteFormatError.IO: Destination failure.
+ *
+ * Ownership:
+ * Does not consume the destination or arguments.
+ *
+ * Allocation:
+ * Materializes the complete formatted string and its byte array.
+ */
+fn FPrintf[...Types](destination: ref mut io.Writer, format: string, values: ...ref Types) Result[uint, WriteFormatError] {
+    let text := try SPrintf(format, values...) {
+        Err(error) => {
+            return Err(WriteFormatError.Text(error))
+        }
+    }
+
+    let count := text.SizeOf
+
+    try _WriteWriterText(destination, text)
+
+    return Ok(count)
+}

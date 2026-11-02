@@ -262,13 +262,8 @@ func (a *Analyzer) inferExpressionUnrecorded(expr ast.Expression) (Type, express
 					return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 				}
 			}
-			if a.currentImplTarget != "" {
-				if target, ok := a.types[a.currentImplTarget]; ok {
-					if property, ok := a.resolveReadableProperty(target, expr.Value, expr.Token); ok {
-						a.recordResolvedPropertyRead(expr, target, property)
-						return property.Type, expressionValue{Display: expr.String()}
-					}
-				}
+			if typ, handled := a.inferImplicitImplProperty(expr); handled {
+				return typ, expressionValue{Display: expr.String()}
 			}
 			// A compiler-known lowercase type name such as list, map or set
 			// in value position (for example list[byte].WithCapacity(...)) is a
@@ -1575,6 +1570,11 @@ func (a *Analyzer) inferEnumValueExpression(expr *ast.MemberExpression) (Type, b
 		return Type{Kind: InvalidType}, true
 	}
 	a.bindDefinition(expr.Property.Token, value.Token)
+	// Retain the selected concrete owner even for compiler-provided enums,
+	// whose cases need not have source declaration tokens.
+	// Rules: rules/declarations/enums.md §§4,7,12.1;
+	// rules/compiler/semantic_ir.md — resolved enum case identities.
+	a.resolvedEnumCaseOwners[expr] = typ
 	return typ, true
 }
 
@@ -2086,6 +2086,12 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 			return typ, value
 		}
 		return a.inferCallAsConversion(expr)
+	}
+	if !isMethodCall {
+		functions = a.staticReceiverlessCandidates(expr, functions)
+		if len(functions) == 0 {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
 	}
 	functions = a.accessibleFunctions(functions)
 	if len(functions) == 0 {
@@ -2989,6 +2995,10 @@ func (a *Analyzer) inferCallExpressionWithExpected(expr *ast.CallExpression, exp
 	if !ok || len(functions) == 0 {
 		return Type{}, expressionValue{}, false
 	}
+	functions = a.staticReceiverlessCandidates(expr, functions)
+	if len(functions) == 0 {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+	}
 	functions = a.accessibleFunctions(functions)
 	if len(functions) == 0 {
 		return Type{}, expressionValue{}, false
@@ -3382,6 +3392,11 @@ func (a *Analyzer) inferTryExpression(expr *ast.TryExpression) (Type, expression
 	// them; any other set uses the failure-set path.
 	rootIsResult := valueType.Kind == ResultType && len(valueType.TypeArgs) == 2
 	isOption := valueType.Kind == UnionType && valueType.Name == "Option" && len(valueType.TypeArgs) == 1
+	// A try binding consumes a named owner on every path; each one hands the
+	// value over or ends it (errorhandling.md § 29).
+	if _, named := expr.Expression.(*ast.Identifier); named && (rootIsResult || isOption) {
+		a.markMoveSource(expr.Expression)
+	}
 	points := a.collectTryFailurePoints(expr.Expression)
 	if isOption && len(points) > 0 {
 		a.addErrorAtTokenWithPrevious(expr.Token, points[0].Token,
@@ -4178,7 +4193,7 @@ func (a *Analyzer) inferPrefixExpression(expr *ast.PrefixExpression) (Type, expr
 	a.adviseNegatedStateTest(expr)
 	if expr.Operator == "<-" {
 		if a.terminalReturnDepth == 0 && a.constructionOwnershipDepth == 0 {
-			a.addErrorAtToken(expr.Token, "explicit <- move requires a return, consuming argument, aggregate field, or union payload context")
+			a.addErrorAtTokenWithMetadata(expr.Token, "", "To move into a variable or field, write `destination <- source`, or `let destination :<- source` for a new binding. To end a value, write `discard source`.", "explicit <- move requires a return, consuming argument, aggregate field, or union payload context")
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
 		rightType, rightValue := a.inferExpression(expr.Right)

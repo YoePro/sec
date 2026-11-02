@@ -1,6 +1,6 @@
 schema_version: 1
-updated: "2026-11-01"
-last_id: MD-123
+updated: "2026-11-02"
+last_id: MD-124
 purpose: >-
   Tracks normative decisions that are missing or insufficiently precise and
   therefore constrain implementation. Remove an entry only after the owning
@@ -1083,5 +1083,22 @@ decisions:
       moves template errors to call sites; (C) add syntax naming a position's
       type in a signature, which reverses the exclusion of return-type packs.
       Recommended: A. Governance owner: lifetime MD-117 pack provenance.
+    classification: localized
+    status: open
+
+  - id: MD-124
+    area: try-on-sequence-element-assignment
+    rulebooks:
+      - rules/errors/errorhandling.md
+      - rules/errors/runtime_checks.md
+      - rules/collections/collections.md
+    description: >-
+      Raised 2026-11-02 while closing P16. `try view[index]` reads an element with
+      IndexError, and collections.md § 14.5 uses `try users[id] = user` for maps, but
+      `try data[index] = value` on an array or slice is rejected with S1096 because
+      no rule names it a fallible assignment. Decide: (A) it is a fallible assignment
+      with IndexError that leaves the element unchanged on failure, matching the read;
+      (B) it stays invalid, and code checks the index or uses a borrowed element under
+      try. Recommended: A. P16 acceptance does not depend on this.
     classification: localized
     status: open

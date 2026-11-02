@@ -1,0 +1,493 @@
+module main
+
+type Handle struct {
+    id: int,
+}
+
+impl Handle {
+    free {
+    }
+
+    fn Positive() bool {
+        return self.id > 0
+    }
+}
+
+type Failure union error {
+    Lost(Handle),
+    Other,
+}
+
+type Figure union {
+    Round(Handle),
+    Size(int),
+    Empty,
+}
+
+fn Make(id: int) Handle {
+    return Handle { id: id }
+}
+
+fn Sink(->handle: Handle) void {
+}
+
+fn FreshResult(id: int) Result[Handle, IndexError] {
+    return Ok(Make(id))
+}
+
+fn FreshOption(id: int) Option[Handle] {
+    return Some(Make(id))
+}
+
+fn FreshFailure(id: int) Result[int, Failure] {
+    return Err(Failure.Lost(Make(id)))
+}
+
+fn FreshShape(id: int) Figure {
+    return Figure.Round(Make(id))
+}
+
+fn MovedInto() Option[Handle] {
+    let handle := Make(1)
+    return Some(<-handle)
+}
+
+fn MovedOk() Result[Handle, IndexError] {
+    let handle := Make(1)
+    return Ok(<-handle)
+}
+
+fn NoHandle() Option[Handle] {
+    return None
+}
+
+fn Keep() void {
+    let result := FreshResult(1)
+    let option := FreshOption(2)
+}
+
+fn Dropped() void {
+    discard FreshResult(1)
+    discard FreshOption(2)
+    let result := FreshResult(3)
+    discard result
+}
+
+fn Forward() Result[Handle, IndexError] {
+    let result := FreshResult(1)
+    return <-result
+}
+
+fn TakeResult(->result: Result[Handle, IndexError]) void {
+}
+
+fn TakeOption(->option: Option[Handle]) int {
+    match option {
+        Some(handle) => {
+            return handle.id
+        }
+        None => {
+            return 0
+        }
+    }
+}
+
+fn Pass() void {
+    let result := FreshResult(1)
+    TakeResult(<-result)
+    TakeResult(FreshResult(2))
+}
+
+fn Replace() void {
+    let mut option: Option[Handle] := None
+    option = FreshOption(1)
+}
+
+fn MatchFresh() int {
+    match FreshResult(1) {
+        Ok(handle) => {
+            return handle.id
+        }
+        Err(_) => {
+            return 0
+        }
+    }
+}
+
+fn MatchFreshOption() int {
+    match FreshOption(1) {
+        Some(handle) => {
+            return handle.id
+        }
+        None => {
+            return 0
+        }
+    }
+}
+
+fn MatchLocal() void {
+    let result := FreshResult(1)
+    match result {
+        Ok(handle) => {
+            let inner := Make(2)
+            Sink(<-handle)
+        }
+        Err(_) => {
+        }
+    }
+    let last := Make(3)
+}
+
+fn MatchValue() int {
+    let result := FreshResult(1)
+    return match result {
+        Ok(handle) => handle.id
+        Err(_) => 0
+    }
+}
+
+fn MatchLoop() void {
+    let mut index := 0
+    while index < 3 {
+        let option := FreshOption(index)
+        match option {
+            Some(handle) => {
+                if index == 1 {
+                    break
+                }
+                Sink(<-handle)
+            }
+            None => {
+                continue
+            }
+        }
+        index = index + 1
+    }
+}
+
+fn MatchFailure() int {
+    let result := FreshFailure(1)
+    match result {
+        Ok(number) => {
+            return number
+        }
+        Err(failure) => {
+            discard failure
+            return 0
+        }
+    }
+}
+
+fn MatchShape() int {
+    let figure := FreshShape(1)
+    match figure {
+        Figure.Round(handle) => {
+            return handle.id
+        }
+        Figure.Size(number) => {
+            return number
+        }
+        Figure.Empty => {
+            return 0
+        }
+    }
+}
+
+fn Borrowed() int {
+    let option := FreshOption(1)
+    match option {
+        Some(ref handle) => {
+            return handle.id
+        }
+        None => {
+            return 0
+        }
+    }
+}
+
+fn Present() int {
+    let option := FreshOption(1)
+    if option is Some(handle) {
+        return handle.id
+    }
+    return 0
+}
+
+fn PresentFresh() void {
+    if FreshOption(1) is Some(handle) {
+        Sink(<-handle)
+    } else {
+        let spare := Make(2)
+    }
+    let last := Make(3)
+}
+
+fn TryFresh() Result[int, IndexError] {
+    let handle := try FreshResult(1)
+    return Ok(handle.id)
+}
+
+fn TryLocal() Result[int, IndexError] {
+    let result := FreshResult(1)
+    let handle := try result
+    return Ok(handle.id)
+}
+
+fn TryHandled() int {
+    let handle := try FreshResult(1) {
+        Err(_) => {
+            return 0
+        }
+    }
+    return handle.id
+}
+
+fn TryOption() Option[Handle] {
+    let handle := try FreshOption(1)
+    return Some(<-handle)
+}
+
+fn TryOptionLocal() Option[Handle] {
+    let option := FreshOption(1)
+    let handle := try option
+    return Some(<-handle)
+}
+
+fn TryFailure() Result[int, Failure] {
+    let number := try FreshFailure(1)
+    return Ok(number)
+}
+
+fn MutableMatch() void {
+    let mut result := FreshResult(1)
+    match result {
+        Ok(handle) => {
+            Sink(<-handle)
+        }
+        Err(_) => {
+        }
+    }
+    let last := Make(3)
+}
+
+fn MutableValue() int {
+    let mut option := FreshOption(1)
+    option = FreshOption(2)
+    return match option {
+        Some(handle) => handle.id
+        None => 0
+    }
+}
+
+fn MutableCopy() int {
+    let mut result := FreshFailure(1)
+    match result {
+        Ok(number) => {
+            return number
+        }
+        Err(failure) => {
+            discard failure
+            return 0
+        }
+    }
+}
+
+fn MutableBorrow() void {
+    let mut option := FreshOption(1)
+    match option {
+        Some(ref mut handle) => {
+            handle.id = 2
+        }
+        None => {
+        }
+    }
+}
+
+fn MutablePresent() int {
+    let mut option := FreshOption(1)
+    if option is Some(handle) {
+        return handle.id
+    }
+    return 0
+}
+
+fn MutableTry() Result[int, IndexError] {
+    let mut result := FreshResult(1)
+    let handle := try result
+    result = FreshResult(2)
+    return Ok(handle.id)
+}
+
+fn BorrowInLoop() void {
+    let mut index := 0
+    let option := FreshOption(1)
+    while index < 3 {
+        index = index + 1
+        match option {
+            Some(ref handle) => {
+            }
+            None => {
+            }
+        }
+    }
+}
+
+fn LooksGood(handle: ref Handle) bool {
+    return handle.id > 0
+}
+
+fn GuardLocal() int {
+    let option := FreshOption(1)
+    match option {
+        Some(handle) where handle.id > 0 => {
+            return handle.id
+        }
+        Some(handle) => {
+            return 0
+        }
+        None => {
+            return 0
+        }
+    }
+}
+
+fn GuardFresh() int {
+    match FreshResult(1) {
+        Ok(handle) where handle.id > 1 && handle.id < 9 => {
+            return handle.id
+        }
+        Ok(handle) => {
+            return 0
+        }
+        Err(_) => {
+            return 0
+        }
+    }
+}
+
+fn GuardMutable() void {
+    let mut option := FreshOption(1)
+    match option {
+        Some(handle) where LooksGood(ref handle) => {
+            Sink(<-handle)
+        }
+        Some(handle) => {
+            Sink(<-handle)
+        }
+        None => {
+        }
+    }
+}
+
+fn GuardMethod() int {
+    let option := FreshOption(1)
+    return match option {
+        Some(handle) where handle.Positive() => handle.id
+        Some(handle) => 0
+        None => 0
+    }
+}
+
+fn GuardFallsToCatchAll() void {
+    let option := FreshOption(1)
+    match option {
+        Some(handle) where handle.id > 0 => {
+            Sink(<-handle)
+        }
+        _ => {
+        }
+    }
+    let last := Make(2)
+}
+
+fn GuardCopyFresh() int {
+    match FreshFailure(1) {
+        Ok(number) where number > 0 => {
+            return number
+        }
+        Ok(number) => {
+            return 0
+        }
+        Err(failure) => {
+            discard failure
+            return 0
+        }
+    }
+}
+
+type Packet union {
+    Full { head: int },
+    Spare(Handle),
+}
+
+fn FreshPacket() Packet {
+    return Packet.Spare(Make(1))
+}
+
+fn GuardFieldsAndPayload() int {
+    let packet := FreshPacket()
+    match packet {
+        Packet.Spare(handle) where handle.id > 0 => {
+            return handle.id
+        }
+        Packet.Full { head } where head > 0 => {
+            return head
+        }
+        Packet.Full { head } => {
+            return 0
+        }
+        Packet.Spare(handle) => {
+            return 0
+        }
+    }
+}
+
+fn ConditionalReplace(flag: bool) int {
+    let mut handle := Make(1)
+    if flag {
+        Sink(<-handle)
+    }
+    handle = Make(2)
+    return handle.id
+}
+
+fn ConditionalPayloadReplace() void {
+    let mut option := FreshOption(1)
+    match option {
+        Some(handle) => {
+            Sink(<-handle)
+        }
+        None => {
+        }
+    }
+    option = FreshOption(2)
+}
+
+fn ConditionalDiscard(flag: bool) void {
+    let handle := Make(1)
+    if flag {
+        Sink(<-handle)
+    }
+    discard handle
+}
+
+fn ConditionalDiscardMutable(flag: bool) void {
+    let mut handle := Make(1)
+    if flag {
+        Sink(<-handle)
+    }
+    discard handle
+    handle = Make(2)
+}
+
+fn ConditionalPayloadDiscard() void {
+    let option := FreshOption(1)
+    match option {
+        Some(handle) => {
+            Sink(<-handle)
+        }
+        None => {
+        }
+    }
+    discard option
+}

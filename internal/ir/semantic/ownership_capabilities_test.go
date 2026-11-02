@@ -46,9 +46,17 @@ func TestPackage17CapabilityRejectsMissingOwnershipIR(t *testing.T) {
 		// P17-35/P17-42, and whole fixed arrays since P17-38; these
 		// fixtures now reach their later cleanup and P18 boundaries.
 		{"sema/cleanup_initializations.sec", "main", "dynamic array type"},
-		{"semantic_ir/package17_boundary_defer.sec", "cleanup", "deferred cleanup"},
 		{"semantic_ir/package17_boundary_transfer.sec", "main", "dynamic array type"},
-		{"semantic_ir/package17_boundary_discard.sec", "main", "cleanup cancellation"},
+		{"semantic_ir/package17_boundary_discard.sec", "main", "dynamic array type"},
+		// A field read leaves a fresh owner alive to the end of its full expression.
+		{"semantic_ir/package17_boundary_temporary_field.sec", "main", "owned struct temporary field read cleanup"},
+		// Option and Result lower since P17-37; these forms keep named boundaries.
+		{"semantic_ir/package17_variants/mutable_named_field.sec", "main", "named-field or error-variant pattern on a mutable owned subject"},
+		{"semantic_ir/package17_variants/reassign_in_branch.sec", "main", "outside its declaring scope"},
+		{"semantic_ir/package17_variants/catch_all.sec", "main", "fresh match subject whose active payload outlives the arm"},
+		{"semantic_ir/package17_variants/discarded_payload.sec", "main", "fresh match subject whose active payload outlives the arm"},
+		{"semantic_ir/package17_variants/named_field_plan.sec", "main", "named-field variant destruction plan"},
+		{"semantic_ir/package17_variants/custom_free_union.sec", "main", "custom-free union destruction plan"},
 	} {
 		t.Run(test.feature, func(t *testing.T) {
 			program, a := sliceBoundaryInput(t, "semantic_ir/package17_boundary_plain.sec", test.fixture)

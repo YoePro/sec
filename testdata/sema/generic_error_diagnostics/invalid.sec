@@ -1,0 +1,74 @@
+module main
+
+interface Sink[E: error] {
+    fn Read() Result[int, E]
+}
+
+fn Unconstrained[E]() Result[void, E] { return Ok() }
+fn Concrete() Result[void, string] { return Ok() }
+fn Bare(value: ref Sink) void {}
+fn Extra(value: ref Sink[error, error]) void {}
+
+fn MatchContext[E: error](value: Result[int, E]) void {
+    match value {
+        Ok(n) => { discard n }
+        Err(.Closed) => {}
+        Err(cause) => {}
+    }
+}
+
+fn MatchQualified[E: error](value: Result[int, E]) void {
+    match value {
+        Ok(n) => { discard n }
+        Err(E.Closed) => {}
+        Err(cause) => {}
+    }
+}
+
+fn TryContext[E: error](value: Result[int, E]) int {
+    return try value {
+        Err(.Closed) => 0
+        Err(cause) => 0
+    }
+}
+
+fn TryQualified[E: error](value: Result[int, E]) int {
+    return try value {
+        Err(E.Closed) => 0
+        Err(cause) => 0
+    }
+}
+
+fn OpenContext(value: Result[int, error]) int {
+    return try value {
+        Err(.Closed) => 0
+        Err(cause) => 0
+    }
+}
+
+fn MatchContextPayload[E: error](value: Result[int, E]) void {
+    match value {
+        Ok(n) => { discard n }
+        Err(.Closed(problem)) => {}
+        Err(cause) => {}
+    }
+}
+fn MatchQualifiedPayload[E: error](value: Result[int, E]) void {
+    match value {
+        Ok(n) => { discard n }
+        Err(E.Closed(problem)) => {}
+        Err(cause) => {}
+    }
+}
+fn TryContextPayload[E: error](value: Result[int, E]) int {
+    return try value {
+        Err(.Closed(problem)) => 0
+        Err(cause) => 0
+    }
+}
+fn TryQualifiedPayload[E: error](value: Result[int, E]) int {
+    return try value {
+        Err(E.Closed(problem)) => 0
+        Err(cause) => 0
+    }
+}

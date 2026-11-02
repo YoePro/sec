@@ -1,0 +1,5 @@
+module main
+enum Wide uint16 { Small = 1, Large = 300 }
+fn Narrow(value: Wide) uint8 {
+    return try uint8(value) { Err(_) => 0 }
+}

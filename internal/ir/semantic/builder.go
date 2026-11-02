@@ -157,6 +157,8 @@ type builder struct {
 	customFrees map[string]FunctionID
 }
 type functionBuilder struct {
+	// inDeferBody marks building a defer region, which holds no registrations.
+	inDeferBody bool
 	// resolved is the Sema function being built; cleanupOrdinal counts its
 	// owned-value cleanup registrations (P17).
 	resolved       *sema.Function
@@ -228,6 +230,8 @@ type binding struct {
 	storage StorageID
 	typ     TypeID
 	mutable bool
+	// capture is the Place parameter a defer body reads this binding through.
+	capture ValueID
 }
 
 // buildFunction preserves resolved signature identities and emits canonical body
@@ -756,6 +760,10 @@ func (fb *functionBuilder) buildStatements(statements []ast.Statement) error {
 			if err := fb.buildAssignment(stmt); err != nil {
 				return err
 			}
+		case *ast.DeferStatement:
+			if err := fb.buildDefer(stmt); err != nil {
+				return err
+			}
 		case *ast.ReturnStatement:
 			if err := fb.buildReturn(stmt); err != nil {
 				return err
@@ -1023,6 +1031,15 @@ func (fb *functionBuilder) buildAssignment(stmt *ast.AssignmentStatement) error 
 		return fmt.Errorf("missing resolved assignment binding")
 	}
 	bind, ok := fb.bindings[fact.ID]
+	if ok && bind.capture != 0 && stmt.Operator == "=" {
+		// A defer body writes the captured binding through its Place.
+		value, err := fb.buildExpr(stmt.Value, bind.typ)
+		if err != nil {
+			return err
+		}
+		fb.emit(Operation{Kind: OpPlaceWrite, Operands: []ValueID{bind.capture, value.id}, Location: location(stmt.Token)})
+		return nil
+	}
 	if !ok || bind.storage == 0 {
 		return fmt.Errorf("assignment target has no semantic storage")
 	}
@@ -1522,12 +1539,16 @@ func (fb *functionBuilder) buildOptionBindingIf(stmt *ast.IfStatement) error {
 	if !ok {
 		return fb.unsupported("unresolved Option presence binding", stmt.Token)
 	}
-	if plan.BindingAction != sema.MatchBindingCopyTrivial {
+	owned := plan.BindingAction == sema.MatchBindingMove && fb.owner.maxPackage >= ownershipLoweringPackage
+	if plan.BindingAction != sema.MatchBindingCopyTrivial && !owned {
 		return fb.unsupported("ownership-sensitive Option presence binding "+string(plan.BindingAction), stmt.OptionBinding.Token)
 	}
-	subject, err := fb.buildExpr(stmt.OptionBinding.Subject, 0)
-	if err != nil {
-		return err
+	subject, subjectPlace, observed := fb.observeOwnedSubject(stmt.OptionBinding.Subject)
+	if !observed {
+		var err error
+		if subject, err = fb.buildExpr(stmt.OptionBinding.Subject, 0); err != nil {
+			return err
+		}
 	}
 	boolType, err := fb.owner.internType(sema.Type{Name: "bool", Kind: sema.BoolType})
 	if err != nil {
@@ -1539,7 +1560,9 @@ func (fb *functionBuilder) buildOptionBindingIf(stmt *ast.IfStatement) error {
 	}, boolType)
 	thenBlock := fb.newBlock()
 	var elseBlock, merge *Block
-	if stmt.Alternative != nil {
+	// A fresh subject holds nothing on the None edge but still ends there.
+	freshNone := owned && isFreshOwner(stmt.OptionBinding.Subject) && !sema.TriviallyDestructible(plan.SubjectType)
+	if stmt.Alternative != nil || freshNone {
 		elseBlock = fb.newBlock()
 	} else {
 		merge = fb.newBlock()
@@ -1552,20 +1575,44 @@ func (fb *functionBuilder) buildOptionBindingIf(stmt *ast.IfStatement) error {
 	if err != nil {
 		return err
 	}
-	payload := fb.result(Operation{
-		Kind: OpUnionUnwrapPayload, Operands: []ValueID{subject.id},
-		UnionVariant: UnionVariantIndex(plan.VariantIndex), PayloadActions: []UnionPayloadAction{UnionPayloadCopyTrivial},
-		Location: location(stmt.OptionBinding.Binding.Token),
-	}, payloadType)
+	action := UnionPayloadCopyTrivial
+	if owned {
+		action = UnionPayloadMove
+		if err := fb.prepareOwnedPayload(stmt.OptionBinding.Subject, stmt.OptionBinding.Binding.Token); err != nil {
+			return err
+		}
+	}
+	var payload builtValue
+	if observed {
+		fb.variantGuard = condition.id
+		if payload, err = fb.moveStoredPayload(stmt.OptionBinding.Subject, subjectPlace.place, UnionVariantIndex(plan.VariantIndex), payloadType, stmt.OptionBinding.Binding.Token); err != nil {
+			return err
+		}
+	} else {
+		payload = fb.result(Operation{
+			Kind: OpUnionUnwrapPayload, Operands: []ValueID{subject.id},
+			UnionVariant: UnionVariantIndex(plan.VariantIndex), PayloadActions: []UnionPayloadAction{action},
+			Location: location(stmt.OptionBinding.Binding.Token),
+		}, payloadType)
+	}
 	bindingFact, ok := fb.owner.analyzer.ResolvedBindingOf(stmt.OptionBinding.Binding)
 	if !ok {
 		return fmt.Errorf("Option presence binding %s has no resolved identity", plan.BindingName)
 	}
 	previous, existed := fb.bindings[bindingFact.ID]
 	fb.bindings[bindingFact.ID] = binding{value: payload.id, typ: payload.typ}
+	ownedScopes := len(fb.cleanupScopes)
+	if registration, tracked := fb.owner.analyzer.ResolvedOwnedCleanupOptionBindingOf(stmt); tracked && owned {
+		if err := fb.trackOwned(stmt.OptionBinding.Binding.Token, registration, payload, plan.PayloadType); err != nil {
+			return err
+		}
+		fb.cleanupScopes = append(fb.cleanupScopes, registration.Scope)
+	}
 	if err := fb.buildScope(stmt.Consequence); err != nil {
 		return err
 	}
+	fb.runScopeCleanup(sema.CleanupExitFallthrough, stmt.OptionBinding.Binding.Token)
+	fb.cleanupScopes = fb.cleanupScopes[:ownedScopes]
 	thenEnd := fb.current
 	if existed {
 		fb.bindings[bindingFact.ID] = previous
@@ -1573,8 +1620,13 @@ func (fb *functionBuilder) buildOptionBindingIf(stmt *ast.IfStatement) error {
 		delete(fb.bindings, bindingFact.ID)
 	}
 
-	if stmt.Alternative != nil {
+	if stmt.Alternative != nil || freshNone {
 		fb.current = elseBlock
+		if freshNone {
+			if err := fb.destroyFreshSubject(subject, plan.SubjectType, stmt.OptionBinding.Binding.Token); err != nil {
+				return err
+			}
+		}
 		if err := fb.buildScope(stmt.Alternative); err != nil {
 			return err
 		}
@@ -1662,6 +1714,13 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 	// expression-type fact. Refuse the known pack boundary before requiring
 	// executable expression facts (rules/compiler/semantic_ir.md §27A).
 	if call, ok := expr.(*ast.CallExpression); ok {
+		// The canonical ConversionError carrier can contain payload types that
+		// this package cannot intern. Report the conversion's own boundary first.
+		// Rules: rules/types/types.md — Exact integer conversion proof;
+		// rules/compiler/semantic_ir.md — §124.
+		if conversion, found := fb.owner.analyzer.ResolvedEnumConversionOf(call); found && conversion.Kind == sema.ResolvedEnumToInteger && conversion.Fallible {
+			return fb.buildEnumConversion(call, conversion, 0)
+		}
 		// A forward's callee exists per specialization (§ 27A(7)).
 		if fb.owner.analyzer.IsTypePackForward(call) {
 			return fb.buildCall(call)
@@ -1789,6 +1848,9 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 		if _, fixed := sema.FixedArrayLength(fact.Type); fixed && sema.CopyClassificationOf(fact.Type) != sema.CopyTrivial && fb.owner.maxPackage < ownershipLoweringPackage {
 			return builtValue{}, fb.unsupported("non-trivial fixed-array value transfer", e.Token)
 		}
+		if bind.capture != 0 {
+			return fb.result(Operation{Kind: OpPlaceRead, Operands: []ValueID{bind.capture}, Location: loc}, bind.typ), nil
+		}
 		if owned, isOwned := fb.ownedStorages[fact.ID]; isOwned {
 			return fb.readOwnedStorage(e, fact.ID, owned)
 		}
@@ -1832,6 +1894,16 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 				}
 				if owned, isOwned := fb.ownedStorageOf(e.Object); isOwned {
 					return fb.readOwnedStorageField(e, owned, plan)
+				}
+				// A field read does not end a fresh owner: it stays alive to the end of
+				// the full expression (destruction.md § 8), which has no cleanup yet.
+				if objectType, typed := fb.owner.analyzer.ResolvedTypeOf(e.Object); typed && fb.owner.maxPackage >= ownershipLoweringPackage && !sema.TriviallyDestructible(objectType) {
+					switch e.Object.(type) {
+					case *ast.Identifier, *ast.MemberExpression, *ast.IndexExpression:
+						// A binding, or a projection whose own read names its boundary.
+					default:
+						return builtValue{}, fb.unsupported("owned struct temporary field read cleanup (P17-40)", e.Token)
+					}
 				}
 				source, err := fb.buildExpr(e.Object, 0)
 				if err != nil {
@@ -2174,35 +2246,6 @@ func semanticStructAction(action sema.ResolvedStructFieldAction) (StructFieldAct
 	}
 }
 
-func (fb *functionBuilder) buildEnumConversion(call *ast.CallExpression, conversion sema.ResolvedEnumConversion, resultType TypeID) (builtValue, error) {
-	if len(call.Arguments) != 1 {
-		return builtValue{}, fb.unsupported("enum conversion arity", call.Token)
-	}
-	operandType, err := fb.owner.internType(conversion.IntegerType)
-	if conversion.Kind == sema.ResolvedEnumToInteger {
-		operandType, err = fb.owner.internType(conversion.EnumType)
-	}
-	if err != nil {
-		return builtValue{}, err
-	}
-	operand, err := fb.buildExpr(call.Arguments[0], operandType)
-	if err != nil {
-		return builtValue{}, err
-	}
-	kind := OpEnumFromInteger
-	var proof *ConversionProof
-	if conversion.Kind == sema.ResolvedEnumToInteger {
-		kind = OpEnumToInteger
-		// MD-104: only a Sema-proved exact conversion is lowered; the
-		// builder never rediscovers the enum domain.
-		if !conversion.Proof.Proven() {
-			return builtValue{}, fb.unsupported("enum to integer conversion "+conversion.EnumType.Name+" to "+conversion.IntegerType.Name+" that is not proven exact (needs a checked conversion)", call.Token)
-		}
-		proof = conversionProofOf(conversion.Proof)
-	}
-	return fb.result(Operation{Kind: kind, Operands: []ValueID{operand.id}, ConversionProof: proof, Location: location(call.Token)}, resultType), nil
-}
-
 func (fb *functionBuilder) buildUnionConstruction(expr ast.Expression, plan sema.ResolvedUnionConstruction, resultType TypeID) (builtValue, error) {
 	definition, ok := fb.owner.unionDefinition(resultType)
 	if !ok || int(plan.VariantIndex) >= len(definition.Variants) {
@@ -2221,15 +2264,19 @@ func (fb *functionBuilder) buildUnionConstruction(expr ast.Expression, plan sema
 			return builtValue{}, fb.unsupported("single-payload union construction", expressionToken(expr))
 		}
 		semaVariant := plan.UnionType.UnionVariants[plan.VariantIndex]
+		action := UnionPayloadCopyTrivial
 		if semaVariant.Payload == nil || !fb.owner.concreteTriviallyCopyable(*semaVariant.Payload) {
-			return builtValue{}, fb.unsupported("non-trivial union payload transfer", expressionToken(call.Arguments[0]))
+			if semaVariant.Payload == nil || !fb.ownedArgumentLowerable(call.Arguments[0]) {
+				return builtValue{}, fb.unsupported("non-trivial union payload transfer", expressionToken(call.Arguments[0]))
+			}
+			action = UnionPayloadConstructDirect
 		}
 		payload, err := fb.buildExpr(call.Arguments[0], variant.Payload)
 		if err != nil {
 			return builtValue{}, err
 		}
 		op.Operands = []ValueID{payload.id}
-		op.PayloadActions = []UnionPayloadAction{UnionPayloadCopyTrivial}
+		op.PayloadActions = []UnionPayloadAction{action}
 	case sema.ResolvedUnionVariantFields:
 		literal, ok := expr.(*ast.StructLiteral)
 		if !ok || variant.Kind != UnionVariantFields {
@@ -2361,9 +2408,11 @@ func (fb *functionBuilder) buildResolvedMatch(expr *ast.MatchExpression, resultT
 	if err != nil {
 		return builtValue{}, err
 	}
+	observed := false
 	if !placed {
-		subject, err = fb.buildExpr(expr.Subject, 0)
-		if err != nil {
+		if observation, place, ok := fb.observeOwnedSubject(expr.Subject); ok {
+			subject, subjectPlace, observed = observation, place, true
+		} else if subject, err = fb.buildExpr(expr.Subject, 0); err != nil {
 			return builtValue{}, err
 		}
 	}
@@ -2413,6 +2462,9 @@ func (fb *functionBuilder) buildResolvedMatch(expr *ast.MatchExpression, resultT
 		if patternBlock == nil {
 			return builtValue{}, fmt.Errorf("match pattern chain terminated before arm %d", armPlan.SourceIndex)
 		}
+		if observed && (armPlan.PatternKind == sema.MatchPatternResultErrVariant || len(armPlan.FieldBindings) != 0) {
+			return builtValue{}, fb.unsupported("named-field or error-variant pattern on a mutable owned subject (P17-37)", arm.Token)
+		}
 		fb.errorArm = matchErrorArm{}
 		if armPlan.PatternKind == sema.MatchPatternResultErrVariant {
 			// The variant test block precedes the arm body in the layout.
@@ -2439,7 +2491,27 @@ func (fb *functionBuilder) buildResolvedMatch(expr *ast.MatchExpression, resultT
 		if armPlan.BindingAction == sema.MatchBindingBorrowShared || armPlan.BindingAction == sema.MatchBindingBorrowMutable {
 			payload, hasPayload, err = fb.lowerPayloadBorrow(expr.Subject, subject, subjectPlace, arm, armPlan, fb.variantGuard)
 		} else {
-			payload, hasPayload, err = fb.projectMatchPayload(subject, armPlan, matchID, arm.Token)
+			// A guarded arm commits a move only once its guard holds.
+			guardedMove := armPlan.Guarded && armPlan.BindingAction == sema.MatchBindingMove && fb.owner.maxPackage >= ownershipLoweringPackage
+			guardedCopy := armPlan.Guarded && armPlan.BindingAction == sema.MatchBindingCopyTrivial && !observed && fb.owner.maxPackage >= ownershipLoweringPackage &&
+				isFreshOwner(expr.Subject) && !sema.TriviallyDestructible(plan.SubjectType)
+			switch {
+			case guardedMove || guardedCopy:
+				if payload, err = fb.guardPayload(subject, subjectPlace, arm, armPlan, arm.Token); err == nil {
+					hasPayload = true
+				}
+			case armPlan.BindingAction == sema.MatchBindingMove && fb.owner.maxPackage >= ownershipLoweringPackage:
+				err = fb.prepareOwnedPayload(expr.Subject, arm.Token)
+				if err == nil && observed {
+					payload, hasPayload, err = fb.storedMatchPayload(expr.Subject, subjectPlace.place, subject, armPlan, arm.Token)
+				} else if err == nil {
+					payload, hasPayload, err = fb.projectMatchPayload(subject, armPlan, matchID, arm.Token)
+				}
+			case observed:
+				payload, hasPayload, err = fb.storedMatchPayload(expr.Subject, subjectPlace.place, subject, armPlan, arm.Token)
+			default:
+				payload, hasPayload, err = fb.projectMatchPayload(subject, armPlan, matchID, arm.Token)
+			}
 		}
 		if err != nil {
 			return builtValue{}, err
@@ -2447,6 +2519,22 @@ func (fb *functionBuilder) buildResolvedMatch(expr *ast.MatchExpression, resultT
 		restore, err := fb.bindMatchArm(arm, armPlan, payload, hasPayload)
 		if err != nil {
 			return builtValue{}, err
+		}
+		ownedScopes := len(fb.cleanupScopes)
+		commitOwned := func() error {
+			if registration, owned := fb.owner.analyzer.ResolvedOwnedCleanupMatchBindingOf(arm); owned && armPlan.BindingAction == sema.MatchBindingMove && fb.owner.maxPackage >= ownershipLoweringPackage {
+				if err := fb.trackOwned(arm.Token, registration, payload, armPlan.BindingType); err != nil {
+					return err
+				}
+				fb.cleanupScopes = append(fb.cleanupScopes, registration.Scope)
+			}
+			return nil
+		}
+		if !armPlan.Guarded {
+			if err := commitOwned(); err != nil {
+				restore()
+				return builtValue{}, err
+			}
 		}
 		var fieldBorrows []builtValue
 		if len(armPlan.FieldBindings) > 0 {
@@ -2477,11 +2565,32 @@ func (fb *functionBuilder) buildResolvedMatch(expr *ast.MatchExpression, resultT
 		}
 		fb.current = bodyBlock
 		newBodyBlocksFrom := len(fb.fn.Blocks)
-		if valueContext {
+		if armPlan.Guarded && armPlan.BindingAction == sema.MatchBindingMove && fb.owner.maxPackage >= ownershipLoweringPackage {
+			// The selected arm now takes the payload and rebinds it as its owner.
+			err = fb.prepareOwnedPayload(expr.Subject, arm.Token)
+			if err == nil && observed {
+				payload, hasPayload, err = fb.storedMatchPayload(expr.Subject, subjectPlace.place, subject, armPlan, arm.Token)
+			} else if err == nil {
+				payload, hasPayload, err = fb.projectMatchPayload(subject, armPlan, matchID, arm.Token)
+			}
+			if err == nil {
+				err = fb.rebindMatchArm(armPlan, payload)
+			}
+			if err == nil {
+				err = commitOwned()
+			}
+			if err != nil {
+				restore()
+				return builtValue{}, err
+			}
+		}
+		err = fb.endFreshMatchSubject(expr.Subject, subject, plan, armPlan, arm.Token)
+		if err == nil && valueContext {
 			err = fb.buildMatchExpressionArm(arm, armPlan, merge, resultType, matchID)
-		} else {
+		} else if err == nil {
 			err = fb.buildMatchStatementArm(arm, armPlan, merge, matchID)
 		}
+		fb.cleanupScopes = fb.cleanupScopes[:ownedScopes]
 		if err != nil {
 			restore()
 			return builtValue{}, err
@@ -2640,12 +2749,18 @@ func (fb *functionBuilder) emitMatchPattern(subject builtValue, plan sema.Resolv
 }
 
 func (fb *functionBuilder) projectMatchPayload(subject builtValue, arm sema.ResolvedMatchArm, matchID MatchID, token lexer.Token) (builtValue, bool, error) {
+	action := UnionPayloadCopyTrivial
 	switch arm.BindingAction {
 	case sema.MatchBindingNone, sema.MatchBindingDiscard:
 		return builtValue{}, false, nil
 	case sema.MatchBindingCopyTrivial:
 		// Package 12 deliberately supports only payload copies that need no
 		// ownership commit or cleanup when a later guard rejects the arm.
+	case sema.MatchBindingMove:
+		if fb.owner.maxPackage < ownershipLoweringPackage {
+			return builtValue{}, false, fb.unsupported("ownership-sensitive match payload binding "+string(arm.BindingAction), token)
+		}
+		action = UnionPayloadMove
 	default:
 		return builtValue{}, false, fb.unsupported("ownership-sensitive match payload binding "+string(arm.BindingAction), token)
 	}
@@ -2663,7 +2778,7 @@ func (fb *functionBuilder) projectMatchPayload(subject builtValue, arm sema.Reso
 			}
 			container, variantIndex = fb.errorArm.value, fb.errorArm.variant
 		}
-		value, err := fb.unionVariantPayload(container, variantIndex, arm.BindingType, meta, token)
+		value, err := fb.unionVariantPayload(container, variantIndex, arm.BindingType, action, meta, token)
 		if err != nil {
 			return builtValue{}, false, err
 		}
@@ -2754,6 +2869,16 @@ func (fb *functionBuilder) bindMatchArm(arm *ast.MatchArm, plan sema.ResolvedMat
 	}, nil
 }
 
+// rebindMatchArm points an arm's binding at the payload it took after its guard,
+// in place of the guard's candidate.
+func (fb *functionBuilder) rebindMatchArm(armPlan sema.ResolvedMatchArm, value builtValue) error {
+	if len(fb.armPayloadBindings) != 1 {
+		return fmt.Errorf("guarded match binding %s has no resolved identity", armPlan.BindingName)
+	}
+	fb.bindings[fb.armPayloadBindings[0]] = binding{value: value.id, typ: value.typ}
+	return nil
+}
+
 func (fb *functionBuilder) buildMatchExpressionArm(arm *ast.MatchArm, plan sema.ResolvedMatchArm, merge *Block, resultType TypeID, matchID MatchID) error {
 	if arm.ReturnBody != nil {
 		return fb.buildReturn(arm.ReturnBody)
@@ -2765,6 +2890,7 @@ func (fb *functionBuilder) buildMatchExpressionArm(arm *ast.MatchArm, plan sema.
 	if err != nil {
 		return err
 	}
+	fb.runScopeCleanup(sema.CleanupExitFallthrough, arm.Token)
 	fb.emit(Operation{Kind: OpBranch, Successors: []BranchTarget{{Block: merge.ID, Arguments: []ValueID{value.id}}}, MatchID: matchID, MatchArmIndex: plan.SourceIndex, MatchStage: "body-exit", MatchPatternKind: string(plan.PatternKind), Location: location(arm.Token)})
 	fb.current = nil
 	return nil
@@ -2802,6 +2928,7 @@ func (fb *functionBuilder) buildMatchStatementArm(arm *ast.MatchArm, plan sema.R
 	if continuation == nil {
 		return fmt.Errorf("continuing match arm %d has no continuation", plan.SourceIndex)
 	}
+	fb.runScopeCleanup(sema.CleanupExitFallthrough, arm.Token)
 	fb.emit(Operation{
 		Kind: OpBranch, Successors: []BranchTarget{{Block: continuation.ID}}, MatchID: matchID,
 		MatchArmIndex: plan.SourceIndex, MatchStage: "body-exit",
@@ -3009,7 +3136,7 @@ func (fb *functionBuilder) buildHandledResult(expr *ast.TryExpression) (builtVal
 	if !ok || !lowerableTryPlan(plan) {
 		return builtValue{}, fb.unsupported("unresolved or non-exhaustive Result handler plan", expr.Token)
 	}
-	resultValue, err := fb.buildExpr(expr.Expression, 0)
+	resultValue, err := fb.buildTryOperand(expr.Expression)
 	if err != nil {
 		return builtValue{}, err
 	}
@@ -3236,7 +3363,7 @@ func tryHandlerPatternIdentifier(handler *ast.TryHandler) *ast.Identifier {
 }
 
 func (fb *functionBuilder) buildResultPropagation(expr *ast.TryExpression, resolved sema.ResolvedTry) (builtValue, error) {
-	resultValue, err := fb.buildExpr(expr.Expression, 0)
+	resultValue, err := fb.buildTryOperand(expr.Expression)
 	if err != nil {
 		return builtValue{}, err
 	}
@@ -3682,7 +3809,7 @@ func (fb *functionBuilder) buildCall(call *ast.CallExpression) (builtValue, erro
 			return builtValue{}, err
 		}
 		action := ArgumentCopyTrivial
-		if !fb.storageAllowed(v.typ) {
+		if !fb.storageAllowed(v.typ) || !trivialDestruction(fb.owner.module, v.typ) {
 			if !fb.ownedArgumentLowerable(arg) {
 				return builtValue{}, fb.unsupported("non-trivial call argument", expressionToken(arg))
 			}
@@ -3835,9 +3962,9 @@ func ownershipForParameter(p sema.FunctionParameter, maxPackage uint8) (Ownershi
 		if sema.CopyClassificationOf(p.Type) == sema.CopyTrivial && sema.TriviallyDestructible(p.Type) {
 			return OwnershipImmediate, nil
 		}
-		// An owned by-value struct parameter is the callee's to destroy
+		// An owned by-value parameter is the callee's to destroy
 		// (functions.md § 6; P17 owned-parameter registration).
-		if maxPackage >= ownershipLoweringPackage && p.Type.Kind == sema.StructType {
+		if maxPackage >= ownershipLoweringPackage {
 			return OwnershipOwned, nil
 		}
 	}

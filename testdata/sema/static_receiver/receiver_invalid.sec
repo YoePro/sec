@@ -1,0 +1,27 @@
+module main
+
+type Counter struct { value: int }
+impl Counter {
+    property Value: int { get { return self.value } }
+    fn Read() int { return self.value }
+    static fn ExplicitSelf() int { return self.value }
+    static fn Field() int { return value }
+    static fn Property() int { return Value }
+    static fn Method() int { return Read() }
+    static fn InferredMethod() void { let result := Read() }
+    static fn WriteField() void { value = 1 }
+    static fn WriteProperty() void { Value = 1 }
+    static fn QualifiedMethod() int { return self.Read() }
+}
+impl extends Counter {
+    static fn ExtendedProperty() int { return Value }
+    static fn ExtendedMethod() int { return Read() }
+}
+
+type Box[T] struct { item: T }
+impl Box[T] {
+    property Current: int { get { return 1 } }
+    fn Read() int { return Current }
+    static fn Property() int { return Current }
+    static fn Method() int { return Read() }
+}

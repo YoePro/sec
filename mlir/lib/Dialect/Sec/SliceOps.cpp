@@ -17,7 +17,7 @@ LogicalResult requireSliceSchema(Operation *op) {
   auto module = op->getParentOfType<ModuleOp>();
   auto version = module
       ? module->getAttrOfType<IntegerAttr>("sec.dialect_version") : IntegerAttr{};
-  if (!version || version.getInt() != 12)
+  if (!version || version.getInt() < 12)
     return op->emitOpError("slice operations require schema 12");
   return success();
 }

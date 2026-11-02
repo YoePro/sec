@@ -155,6 +155,11 @@ func (e *emitter) emitModule() error {
 		return err
 	}
 	fmt.Fprintf(&e.out, "sec.dialect_version = %d : i32, ", e.schemaVersion)
+	if e.schemaVersion >= 13 {
+		if err := e.emitDestructionPlanTable(); err != nil {
+			return err
+		}
+	}
 	fmt.Fprintf(&e.out, "sec.semantic_ir_version = %d : i32, ", semantic.Version)
 	fmt.Fprintf(&e.out, "sec.module_id = %s, ", mlirString(e.module.Identity))
 	fmt.Fprintf(&e.out, "sec.target_os = %s, sec.target_arch = %s, ", mlirString(e.plan.TargetOS), mlirString(e.plan.TargetArch))
@@ -661,6 +666,12 @@ func (e *emitter) emitOperation(function *semantic.Function, operation semantic.
 		semantic.OpReferenceReborrowShared, semantic.OpReferenceReborrowMutable, semantic.OpReferenceIsValid,
 		semantic.OpReferenceGenerationFailure, semantic.OpReferenceEndBorrow, semantic.OpReferenceCompare:
 		return e.emitPlaceReference(function, operation, values, storages)
+	case semantic.OpOwnCopy, semantic.OpOwnSemanticCopy, semantic.OpOwnMove, semantic.OpOwnCopyFromPlace,
+		semantic.OpOwnMoveFromPlace, semantic.OpOwnInitializePlace, semantic.OpOwnReplacePlace, semantic.OpOwnDiscard,
+		semantic.OpOwnDestroyValue, semantic.OpOwnDestroyPlace,
+		semantic.OpCleanupTrackOwned, semantic.OpCleanupCancel, semantic.OpCleanupDeferRegister,
+		semantic.OpCleanupDeferYield, semantic.OpCleanupRunScope, semantic.OpCleanupRunFunction:
+		return e.emitOwnership(function, operation, values, storages)
 	default:
 		return &UnsupportedLoweringError{Feature: string(operation.Kind), Function: function.ID}
 	}
@@ -1509,16 +1520,23 @@ func collectValues(function *semantic.Function) map[semantic.ValueID]semantic.Va
 	for _, parameter := range function.Parameters {
 		values[parameter.Value.ID] = parameter.Value
 	}
-	for _, block := range function.Blocks {
-		for _, parameter := range block.Parameters {
-			values[parameter.ID] = parameter
-		}
-		for _, operation := range block.Operations {
-			for _, result := range operation.Results {
-				values[result.ID] = result
+	var walk func([]*semantic.Block)
+	walk = func(blocks []*semantic.Block) {
+		for _, block := range blocks {
+			for _, parameter := range block.Parameters {
+				values[parameter.ID] = parameter
+			}
+			for _, operation := range block.Operations {
+				for _, result := range operation.Results {
+					values[result.ID] = result
+				}
+				if operation.Region != nil {
+					walk(operation.Region.Blocks)
+				}
 			}
 		}
 	}
+	walk(function.Blocks)
 	return values
 }
 

@@ -1,1 +1,196 @@
 module fmt
+
+/**
+ * Writes composite-formatted UTF-8 text to stderr.
+ *
+ * Description:
+ * Validates the format before writing and preserves the
+ * canonical core formatter's argument ordering.
+ *
+ * Parameters:
+ * - format: Composite format string.
+ * - values: Heterogeneous borrowed arguments.
+ *
+ * Returns:
+ * - Ok(count): Number of UTF-8 bytes written.
+ *
+ * Errors:
+ * - WriteFormatError.Text: Format or conversion failure.
+ * - WriteFormatError.IO: Output failure or size overflow.
+ *
+ * Ownership:
+ * Does not consume the formatting arguments.
+ *
+ * Allocation:
+ * May allocate temporary argument representations.
+ */
+fn EPrintf[...Types](format: string, values: ...ref Types) Result[uint, WriteFormatError] {
+    let mut sink := new _StderrFormatSink()
+
+    let result := FormatComposite(
+        format,
+        ref mut sink,
+        values...,
+    )
+
+    match result {
+        Ok(count) => {
+            return Ok(count)
+        }
+
+        Err(error) => {
+            match error {
+                Text(cause) => {
+                    return Err(WriteFormatError.Text(cause))
+                }
+
+                Sink(cause) => {
+                    return Err(WriteFormatError.IO(cause))
+                }
+
+                SizeOverflow => {
+                    return Err(WriteFormatError.IO(IOError.InvalidInput))
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Writes composite-formatted text followed by LF to stderr.
+ *
+ * Parameters:
+ * - format: Composite format string.
+ * - values: Heterogeneous borrowed arguments.
+ *
+ * Returns:
+ * - Ok(count): Total UTF-8 byte count including LF.
+ *
+ * Errors:
+ * - WriteFormatError.Text: Formatting failure.
+ * - WriteFormatError.IO: Output failure or size overflow.
+ *
+ * Ownership:
+ * Does not consume the arguments.
+ *
+ * Allocation:
+ * Same as EPrintf.
+ */
+fn EPrintfln[...Types](format: string, values: ...ref Types) Result[uint, WriteFormatError] {
+    let count := try EPrintf(format, values...)
+
+    let total := try count + 1u {
+        Err(_) => {
+            return Err(WriteFormatError.IO(IOError.InvalidInput))
+        }
+    }
+
+    try _WriteStderrString("\n") {
+        Err(error) => {
+            return Err(WriteFormatError.IO(error))
+        }
+    }
+
+    return Ok(total)
+}
+
+/**
+ * Writes default argument representations to stderr.
+ *
+ * Parameters:
+ * - line: Insert spaces and append a final LF when true.
+ * - values: Heterogeneous borrowed arguments.
+ *
+ * Returns:
+ * - Ok(count): Total UTF-8 bytes written.
+ *
+ * Errors:
+ * - WriteFormatError.Text: Argument conversion failed.
+ * - WriteFormatError.IO: Write or byte-count failure.
+ *
+ * Ownership:
+ * Does not consume arguments.
+ *
+ * Allocation:
+ * May allocate temporary text representations.
+ */
+fn _WritePlainStderr[...Types](line: bool, values: ...ref Types) Result[uint, WriteFormatError] {
+    let mut total: uint := 0
+    let mut first := true
+
+    for ref value in values {
+        if line && !first {
+            let count := try _WriteStderrString(" ") {
+                Err(error) => return Err(WriteFormatError.IO(error))
+            }
+
+            total = try total + count {
+                Err(_) => return Err(WriteFormatError.IO(IOError.InvalidInput))
+            }
+        }
+
+        let text := try value.ToString() {
+            Err(error) => return Err(WriteFormatError.Text(error))
+        }
+
+        let count := try _WriteStderrString(text) {
+            Err(error) => return Err(WriteFormatError.IO(error))
+        }
+
+        total = try total + count {
+            Err(_) => return Err(WriteFormatError.IO(IOError.InvalidInput))
+        }
+
+        first = false
+    }
+
+    if line {
+        let count := try _WriteStderrString("\n") {
+            Err(error) => return Err(WriteFormatError.IO(error))
+        }
+
+        total = try total + count {
+            Err(_) => return Err(WriteFormatError.IO(IOError.InvalidInput))
+        }
+    }
+
+    return Ok(total)
+}
+
+/**
+ * Writes default argument representations to stderr.
+ *
+ * Returns:
+ * - Ok(count): Number of UTF-8 bytes written.
+ *
+ * Errors:
+ * - WriteFormatError: Conversion or output failure.
+ *
+ * Ownership:
+ * Borrows all arguments without consuming them.
+ *
+ * Allocation:
+ * May allocate for argument conversion.
+ */
+fn EPrint[...Types](values: ...ref Types) Result[uint, WriteFormatError] {
+    return _WritePlainStderr(false, values...)
+}
+
+/**
+ * Writes space-separated arguments followed by LF to stderr.
+ *
+ * Returns:
+ * - Ok(count): Number of UTF-8 bytes including LF.
+ *
+ * Errors:
+ * - WriteFormatError: Conversion or output failure.
+ *
+ * Ownership:
+ * Borrows all arguments without consuming them.
+ *
+ * Allocation:
+ * May allocate for argument conversion.
+ */
+fn EPrintln[...Types](values: ...ref Types) Result[uint, WriteFormatError] {
+    return _WritePlainStderr(true, values...)
+}

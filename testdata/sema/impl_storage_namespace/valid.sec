@@ -1,0 +1,19 @@
+module main
+
+type Counter struct { value: int, storage: EventStorage[int, 4] }
+impl Counter {
+    static let Shared: int := 1
+    fn Read() int { return self.value }
+    fn Read(offset: int) int { return self.value + offset }
+    property Current: int { get { return self.value } }
+    event Changed using storage
+    type Nested int
+    enum State { Ready }
+}
+impl extends Counter {
+    static let Additional: int := 2
+}
+type Other struct {}
+impl Other { static let Shared: int := 3 }
+type Box[T] struct { value: T }
+impl Box[T] { static let Shared: int := 4 }

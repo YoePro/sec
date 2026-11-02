@@ -31,6 +31,16 @@ func (a *Analyzer) borrowedInterfaceView(expected, actual Type) bool {
 	if concrete.Kind == ReferenceType || concrete.Kind == InvalidType {
 		return false
 	}
+	// A constrained parameter is a concrete type with that explicit conformance
+	// in every specialization (interfaces.md § 9; generics.md § 14).
+	if concrete.Kind == GenericType {
+		for _, constraint := range concrete.GenericConstraints {
+			if interfaceIncludesConstraint(constraint.Interface, *expected.Element, map[string]bool{}) {
+				return true
+			}
+		}
+		return false
+	}
 	return a.hasValidExplicitInterfaceConformance(concrete, *expected.Element)
 }
 
@@ -54,9 +64,16 @@ func (a *Analyzer) conformingViewArgument(parameter, argument Type, known map[st
 	if view.Kind != InterfaceType || len(view.TypeArgs) == 0 || concrete.Kind == InterfaceType || concrete.Kind == ReferenceType {
 		return argument
 	}
+	conformances := concrete.Implements
+	if concrete.Kind == GenericType {
+		conformances = nil
+		for _, constraint := range concrete.GenericConstraints {
+			conformances = append(conformances, constraint.Interface)
+		}
+	}
 	var selected *Type
-	for index := range concrete.Implements {
-		declared := concrete.Implements[index]
+	for index := range conformances {
+		declared := conformances[index]
 		if declared.Name != view.Name || declared.Module != view.Module {
 			continue
 		}
@@ -70,7 +87,7 @@ func (a *Analyzer) conformingViewArgument(parameter, argument Type, known map[st
 		if selected != nil {
 			return argument
 		}
-		selected = &concrete.Implements[index]
+		selected = &conformances[index]
 	}
 	if selected == nil {
 		return argument

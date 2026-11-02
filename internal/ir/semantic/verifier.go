@@ -519,7 +519,7 @@ func verifyFunction(module *Module, fn *Function, functions map[FunctionID]*Func
 	if err := verifyTryHandlers(fn); err != nil {
 		return err
 	}
-	if err := verifyUnionGuards(fn, blocks); err != nil {
+	if err := verifyUnionGuards(fn, blocks, dom); err != nil {
 		return err
 	}
 	if err := verifyMatchRecords(module.Types, fn, blocks, values); err != nil {
@@ -961,8 +961,8 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 			return fmt.Errorf("invalid union.construct")
 		}
 		for _, action := range op.PayloadActions {
-			if action != UnionPayloadCopyTrivial {
-				return fmt.Errorf("union.construct requires copy-trivial payload actions")
+			if action != UnionPayloadCopyTrivial && action != UnionPayloadConstructDirect {
+				return fmt.Errorf("union.construct requires copy-trivial or construct-direct payload actions")
 			}
 		}
 		_ = definition
@@ -993,7 +993,7 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 			return fmt.Errorf("union.is-variant uses invalid variant")
 		}
 	case OpUnionUnwrapPayload:
-		if len(op.Operands) != 1 || len(op.Results) != 1 || len(op.PayloadActions) != 1 || op.PayloadActions[0] != UnionPayloadCopyTrivial {
+		if len(op.Operands) != 1 || len(op.Results) != 1 || len(op.PayloadActions) != 1 || op.PayloadActions[0] != UnionPayloadCopyTrivial && op.PayloadActions[0] != UnionPayloadMove {
 			return fmt.Errorf("invalid union.unwrap-payload")
 		}
 		_, variant, ok := unionVariant(module, values[op.Operands[0]].Type, op.UnionVariant)
@@ -1641,7 +1641,7 @@ func blockStartsWithUnwrap(block *Block, kind OpKind, container ValueID) bool {
 		len(block.Operations[0].Operands) == 1 && block.Operations[0].Operands[0] == container
 }
 
-func verifyUnionGuards(fn *Function, blocks map[BlockID]*Block) error {
+func verifyUnionGuards(fn *Function, blocks map[BlockID]*Block, dom map[BlockID]map[BlockID]bool) error {
 	type guard struct {
 		container ValueID
 		variant   UnionVariantIndex
@@ -1680,10 +1680,16 @@ func verifyUnionGuards(fn *Function, blocks map[BlockID]*Block) error {
 			if incoming[block.ID] != 1 {
 				return fmt.Errorf("union projection in ^%d requires one dedicated guarded predecessor", block.ID)
 			}
-			for _, guard := range trueGuards[block.ID] {
-				if len(operation.Operands) == 1 && operation.Operands[0] == guard.container && operation.UnionVariant == guard.variant {
-					matched = true
-					break
+			// A match guard may stand between the test and the projection, so
+			// any block the dedicated true edge dominates is on the proven path.
+			for trueBlock, guards := range trueGuards {
+				if incoming[trueBlock] != 1 || !dom[block.ID][trueBlock] {
+					continue
+				}
+				for _, guard := range guards {
+					if len(operation.Operands) == 1 && operation.Operands[0] == guard.container && operation.UnionVariant == guard.variant {
+						matched = true
+					}
 				}
 			}
 			if !matched {
@@ -1739,6 +1745,18 @@ func verifyUnionPayloadPlaces(fn *Function, blocks map[BlockID]*Block, values ma
 	}
 	for _, block := range fn.Blocks {
 		for _, op := range block.Operations {
+			for _, operand := range op.Operands {
+				read, found := definitions[operand]
+				if !found || read.Kind != OpPlaceRead {
+					continue
+				}
+				if read.PlaceReadMode == PlaceReadObserve && op.Kind != OpUnionIsVariant && op.Kind != OpResultIsErr {
+					return fmt.Errorf("observing place.read %%%d may only feed an active-variant test, not %s", operand, op.Kind)
+				}
+				if read.PlaceReadMode == PlaceReadCandidate && op.Kind != OpStructExtractField && op.Kind != OpPlaceValueRoot && op.Kind != OpUnionIsVariant && op.Kind != OpResultIsErr {
+					return fmt.Errorf("guard candidate %%%d may only be inspected, not used by %s", operand, op.Kind)
+				}
+			}
 			if op.Kind != OpPlaceUnionPayload {
 				continue
 			}

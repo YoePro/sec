@@ -1,0 +1,19 @@
+module main
+let Global: int := 7
+static let Explicit: int := 8
+let mut Mutable: int := 0
+
+type Snapshot register[8] { Bits: bit[8] }
+let mut OrdinarySnapshot: Snapshot := Snapshot(0u)
+
+type Counter struct { field: int }
+impl Counter {
+    static let Limit: int := 9
+    static let mut Total: int := 0
+}
+fn Local() int {
+    static let Persistent: int := 10
+    static let mut Calls: int := 0
+    Calls += 1
+    return Persistent + Calls
+}

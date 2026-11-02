@@ -48,7 +48,7 @@ bool isReference(Type type) {
 // The operations that may consume a Place: projections, the bounds
 // predicate, reads, writes and borrows (sec_mlir_dialect_v11.md section 29).
 bool isPlaceConsumer(Operation *operation) {
-  return isa<sec::PlaceFieldOp, sec::PlaceArrayIndexInBoundsOp,
+  return isa<sec::OwnCopyFromPlaceOp, sec::OwnMoveFromPlaceOp, sec::OwnInitializePlaceOp, sec::OwnReplacePlaceOp, sec::OwnDestroyPlaceOp, sec::CleanupTrackOwnedOp, sec::CleanupDeferRegisterOp, sec::PlaceFieldOp, sec::PlaceArrayIndexInBoundsOp,
              sec::PlaceArrayElementOp, sec::PlaceUnionPayloadOp,
              sec::PlaceReadOp, sec::PlaceWriteOp, sec::RefBorrowSharedOp,
              sec::RefBorrowMutOp, sec::RefReborrowSharedOp,
@@ -144,9 +144,20 @@ Operation *reachableUse(Operation *from, Value value) {
     Block *block = worklist.pop_back_val();
     if (!visited.insert(block).second)
       continue;
-    for (Operation &operation : *block)
+    // A loop may reach the definition again: what follows is a new reference.
+    if (value.getParentBlock() == block && isa<BlockArgument>(value))
+      continue;
+    bool redefined = false;
+    for (Operation &operation : *block) {
+      if (&operation == value.getDefiningOp()) {
+        redefined = true;
+        break;
+      }
       if (usesReference(&operation))
         return &operation;
+    }
+    if (redefined)
+      continue;
     for (Block *successor : block->getSuccessors())
       worklist.push_back(successor);
   }

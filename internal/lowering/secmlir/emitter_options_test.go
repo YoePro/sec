@@ -103,12 +103,12 @@ func TestEmitSchema12RoundTripWithRealTool(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for version := 1; version <= 13; version++ {
+		for version := 1; version <= 14; version++ {
 			input := strings.Replace(string(output), "sec.dialect_version = 12 : i32", fmt.Sprintf("sec.dialect_version = %d : i32", version), 1)
 			command := exec.Command(tool, "-")
 			command.Stdin = strings.NewReader(input)
 			parsed, err := command.CombinedOutput()
-			if version == 13 {
+			if version == 14 {
 				if err == nil || !bytes.Contains(parsed, []byte("unsupported Sec dialect schema version")) {
 					t.Fatalf("unknown schema accepted: %v %s", err, parsed)
 				}

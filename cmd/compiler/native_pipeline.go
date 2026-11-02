@@ -32,10 +32,15 @@ const nativeTrackMaxPackage = 14
 
 // inspectionMaxPackage is the Semantic IR package level of the high-level
 // inspection routes emit-ir and emit-sec-mlir, which stop at verified
-// Semantic IR and verified schema-11 Sec MLIR (MD-086).
+// Semantic IR and verified schema-13 Sec MLIR (MD-086; P17).
 //
 // Rules: rules/compiler/compiler_pipeline.md — § 59(4)–(7) (MD-086).
-const inspectionMaxPackage = 15
+const inspectionMaxPackage = 17
+
+// inspectionSchemaVersion is the Sec MLIR schema those routes emit. The native
+// track stays at its default schema until slices and ownership cleanup have a
+// physical representation.
+const inspectionSchemaVersion = 13
 
 // emitSecDialect builds verified-ready Sec dialect MLIR text for one analyzed
 // source file and reports the Sec function identity of its command entry, or
@@ -57,7 +62,11 @@ func emitSecDialect(analyzed analyzedProgram, inputFile string, target CompilerT
 		reportToolError("target", "%v", err)
 		exitCLI(1)
 	}
-	mlirText, err := secmlirlowering.Emit(module, scalarPlan)
+	options := secmlirlowering.EmitOptions{}
+	if maxPackage >= inspectionMaxPackage {
+		options.DialectVersion = inspectionSchemaVersion
+	}
+	mlirText, err := secmlirlowering.EmitWithOptions(module, scalarPlan, options)
 	if err != nil {
 		reportPipelineError("Sec MLIR lowering", err)
 		exitCLI(4)
@@ -151,8 +160,8 @@ func stripMLIRHeaderComments(text string) string {
 }
 
 // physicalReferenceBoundary names the real limitation when a lowering route
-// rejects a program that the package-15 inspection routes accept: Places and
-// safe references have no physical representation or ABI yet (MD-086 § 2(4)).
+// rejects a program that the inspection routes accept: Places, safe references
+// and ownership cleanup have no physical representation or ABI yet (MD-086 § 2(4)).
 // It keeps the original location, and the error stays an unsupported-lowering
 // capability failure, never a source error.
 func physicalReferenceBoundary(analyzed analyzedProgram, inputFile string, maxPackage uint8, err error) error {
@@ -164,7 +173,7 @@ func physicalReferenceBoundary(analyzed analyzedProgram, inputFile string, maxPa
 		return err
 	}
 	return &semantic.UnsupportedFeatureError{
-		Feature:  "physical representation of Places and safe references (" + unsupported.Feature + "); inspect this program with emit-ir or emit-sec-mlir",
+		Feature:  "physical representation of Places, safe references and ownership cleanup (" + unsupported.Feature + "); inspect this program with emit-ir or emit-sec-mlir",
 		Package:  unsupported.Package,
 		Location: unsupported.Location,
 	}

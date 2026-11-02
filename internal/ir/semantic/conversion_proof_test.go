@@ -104,7 +104,8 @@ func TestExactConversionsCarryPlanProofs(t *testing.T) {
 
 // MD-104: on a 32-bit plan uint32 -> int is not exact (fail closed, never
 // truncate: without try Sema rejects it); an open bit[8] enum is not exact into int8, and a closed enum
-// with one case beyond the target is not exact.
+// with one case beyond the target is not exact. Local handlers keep the enum
+// boundary independent of unsupported payloads in the canonical error carrier.
 func TestUnprovenConversionsFailClosed(t *testing.T) {
 	for name, test := range map[string]struct {
 		source string
@@ -112,8 +113,8 @@ func TestUnprovenConversionsFailClosed(t *testing.T) {
 		want   string
 	}{
 		"uint32 to int on 32-bit plan": {"module main\nfn Native(value: uint32) int {\n    return int(value)\n}\n", 32, "converting uint32 to int may fail with ConversionError.OutOfRange and requires try"},
-		"open bit[8] enum to int8":     {"module main\nenum DeviceMode bit[8] {\n    Off = 0\n    Running = 1\n}\nfn Mode(value: DeviceMode) Result[int8, ArithmeticError] {\n    return int8(value)\n}\n", 64, "enum"},
-		"closed enum case beyond int8": {"module main\nenum State int32 {\n    Idle = 1\n    Failed = 200\n}\nfn Code(value: State) Result[int8, ArithmeticError] {\n    return int8(value)\n}\n", 64, "enum"},
+		"open bit[8] enum to int8":     {"module main\nenum DeviceMode bit[8] {\n    Off = 0\n    Running = 1\n}\nfn Mode(value: DeviceMode) int8 {\n    return try int8(value) { Err(_) => 0 }\n}\n", 64, "enum"},
+		"closed enum case beyond int8": {"module main\nenum State int32 {\n    Idle = 1\n    Failed = 200\n}\nfn Code(value: State) int8 {\n    return try int8(value) { Err(_) => 0 }\n}\n", 64, "enum"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, _, err := buildWithPlan(t, test.source, test.width)

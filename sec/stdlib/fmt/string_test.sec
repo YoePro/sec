@@ -1,0 +1,55 @@
+module fmt
+
+test "SPrint concatenates arguments without separators" {
+    let result := try SPrint("Hello", "World")
+
+    testing.RequireEqual("HelloWorld", result)
+}
+
+test "SPrint accepts no arguments" {
+    let result := try SPrint()
+
+    testing.RequireEqual("", result)
+}
+
+test "SPrintln separates arguments and appends LF" {
+    let result := try SPrintln("Hello", "World")
+
+    testing.RequireEqual("Hello World\n", result)
+}
+
+test "SPrintln with no arguments produces LF" {
+    let result := try SPrintln()
+
+    testing.RequireEqual("\n", result)
+}
+
+test "SPrintf formats automatic arguments" {
+    let result := try SPrintf("{} {}", "Hello", "World")
+
+    testing.RequireEqual("Hello World", result)
+}
+
+test "SPrintf supports repeated positional arguments" {
+    let result := try SPrintf("{0} {0}", "Echo")
+
+    testing.RequireEqual("Echo Echo", result)
+}
+
+test "SPrintf handles escaped braces" {
+    let result := try SPrintf("{{{0}}}", "value")
+
+    testing.RequireEqual("{value}", result)
+}
+
+test "SPrintfln appends one LF" {
+    let result := try SPrintfln("{} {}", "Hello", "World")
+
+    testing.RequireEqual("Hello World\n", result)
+}
+
+test "SPrintfln handles an empty format" {
+    let result := try SPrintfln("")
+
+    testing.RequireEqual("\n", result)
+}

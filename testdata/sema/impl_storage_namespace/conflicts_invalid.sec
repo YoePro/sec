@@ -1,0 +1,596 @@
+module main
+
+
+// Field ordering 0
+
+type Field0 struct { Shared: int }
+
+impl Field0 {
+static let Shared: int := 1
+
+}
+
+// Field ordering 1
+
+type Field1 struct { Shared: int }
+
+impl Field1 {
+
+static let Shared: int := 1
+}
+
+// Field ordering 2
+
+type Field2 struct { Shared: int }
+
+impl Field2 {
+static let Shared: int := 1
+}
+
+impl extends Field2 {
+
+}
+
+// Field ordering 3
+
+type Field3 struct { Shared: int }
+
+impl Field3 {
+
+}
+
+impl extends Field3 {
+static let Shared: int := 1
+}
+
+// Field ordering 4
+
+type Field4 struct { Shared: int }
+
+impl extends Field4 {
+
+}
+
+impl Field4 {
+static let Shared: int := 1
+}
+
+// Field ordering 5
+
+type Field5 struct { Shared: int }
+
+impl extends Field5 {
+static let Shared: int := 1
+}
+
+impl Field5 {
+
+}
+
+// RegisterField ordering 0
+
+type RegisterField0 register[8] { Shared: bit[8] }
+
+impl RegisterField0 {
+static let Shared: int := 1
+
+}
+
+// RegisterField ordering 1
+
+type RegisterField1 register[8] { Shared: bit[8] }
+
+impl RegisterField1 {
+
+static let Shared: int := 1
+}
+
+// RegisterField ordering 2
+
+type RegisterField2 register[8] { Shared: bit[8] }
+
+impl RegisterField2 {
+static let Shared: int := 1
+}
+
+impl extends RegisterField2 {
+
+}
+
+// RegisterField ordering 3
+
+type RegisterField3 register[8] { Shared: bit[8] }
+
+impl RegisterField3 {
+
+}
+
+impl extends RegisterField3 {
+static let Shared: int := 1
+}
+
+// RegisterField ordering 4
+
+type RegisterField4 register[8] { Shared: bit[8] }
+
+impl extends RegisterField4 {
+
+}
+
+impl RegisterField4 {
+static let Shared: int := 1
+}
+
+// RegisterField ordering 5
+
+type RegisterField5 register[8] { Shared: bit[8] }
+
+impl extends RegisterField5 {
+static let Shared: int := 1
+}
+
+impl RegisterField5 {
+
+}
+
+// Method ordering 0
+
+type Method0 struct {}
+
+impl Method0 {
+static let Shared: int := 1
+fn Shared() int { return 0 }
+}
+
+// Method ordering 1
+
+type Method1 struct {}
+
+impl Method1 {
+fn Shared() int { return 0 }
+static let Shared: int := 1
+}
+
+// Method ordering 2
+
+type Method2 struct {}
+
+impl Method2 {
+static let Shared: int := 1
+}
+
+impl extends Method2 {
+fn Shared() int { return 0 }
+}
+
+// Method ordering 3
+
+type Method3 struct {}
+
+impl Method3 {
+fn Shared() int { return 0 }
+}
+
+impl extends Method3 {
+static let Shared: int := 1
+}
+
+// Method ordering 4
+
+type Method4 struct {}
+
+impl extends Method4 {
+fn Shared() int { return 0 }
+}
+
+impl Method4 {
+static let Shared: int := 1
+}
+
+// Method ordering 5
+
+type Method5 struct {}
+
+impl extends Method5 {
+static let Shared: int := 1
+}
+
+impl Method5 {
+fn Shared() int { return 0 }
+}
+
+// StaticMethod ordering 0
+
+type StaticMethod0 struct {}
+
+impl StaticMethod0 {
+static let Shared: int := 1
+static fn Shared() int { return 0 }
+}
+
+// StaticMethod ordering 1
+
+type StaticMethod1 struct {}
+
+impl StaticMethod1 {
+static fn Shared() int { return 0 }
+static let Shared: int := 1
+}
+
+// StaticMethod ordering 2
+
+type StaticMethod2 struct {}
+
+impl StaticMethod2 {
+static let Shared: int := 1
+}
+
+impl extends StaticMethod2 {
+static fn Shared() int { return 0 }
+}
+
+// StaticMethod ordering 3
+
+type StaticMethod3 struct {}
+
+impl StaticMethod3 {
+static fn Shared() int { return 0 }
+}
+
+impl extends StaticMethod3 {
+static let Shared: int := 1
+}
+
+// StaticMethod ordering 4
+
+type StaticMethod4 struct {}
+
+impl extends StaticMethod4 {
+static fn Shared() int { return 0 }
+}
+
+impl StaticMethod4 {
+static let Shared: int := 1
+}
+
+// StaticMethod ordering 5
+
+type StaticMethod5 struct {}
+
+impl extends StaticMethod5 {
+static let Shared: int := 1
+}
+
+impl StaticMethod5 {
+static fn Shared() int { return 0 }
+}
+
+// Property ordering 0
+
+type Property0 struct {}
+
+impl Property0 {
+static let Shared: int := 1
+property Shared: int { get { return 0 } }
+}
+
+// Property ordering 1
+
+type Property1 struct {}
+
+impl Property1 {
+property Shared: int { get { return 0 } }
+static let Shared: int := 1
+}
+
+// Property ordering 2
+
+type Property2 struct {}
+
+impl Property2 {
+static let Shared: int := 1
+}
+
+impl extends Property2 {
+property Shared: int { get { return 0 } }
+}
+
+// Property ordering 3
+
+type Property3 struct {}
+
+impl Property3 {
+property Shared: int { get { return 0 } }
+}
+
+impl extends Property3 {
+static let Shared: int := 1
+}
+
+// Property ordering 4
+
+type Property4 struct {}
+
+impl extends Property4 {
+property Shared: int { get { return 0 } }
+}
+
+impl Property4 {
+static let Shared: int := 1
+}
+
+// Property ordering 5
+
+type Property5 struct {}
+
+impl extends Property5 {
+static let Shared: int := 1
+}
+
+impl Property5 {
+property Shared: int { get { return 0 } }
+}
+
+// StaticProperty ordering 0
+
+type StaticProperty0 struct {}
+
+impl StaticProperty0 {
+static let Shared: int := 1
+static property Shared: int { get { return 0 } }
+}
+
+// StaticProperty ordering 1
+
+type StaticProperty1 struct {}
+
+impl StaticProperty1 {
+static property Shared: int { get { return 0 } }
+static let Shared: int := 1
+}
+
+// StaticProperty ordering 2
+
+type StaticProperty2 struct {}
+
+impl StaticProperty2 {
+static let Shared: int := 1
+}
+
+impl extends StaticProperty2 {
+static property Shared: int { get { return 0 } }
+}
+
+// StaticProperty ordering 3
+
+type StaticProperty3 struct {}
+
+impl StaticProperty3 {
+static property Shared: int { get { return 0 } }
+}
+
+impl extends StaticProperty3 {
+static let Shared: int := 1
+}
+
+// StaticProperty ordering 4
+
+type StaticProperty4 struct {}
+
+impl extends StaticProperty4 {
+static property Shared: int { get { return 0 } }
+}
+
+impl StaticProperty4 {
+static let Shared: int := 1
+}
+
+// StaticProperty ordering 5
+
+type StaticProperty5 struct {}
+
+impl extends StaticProperty5 {
+static let Shared: int := 1
+}
+
+impl StaticProperty5 {
+static property Shared: int { get { return 0 } }
+}
+
+// Event ordering 0
+
+type Event0 struct { storage: EventStorage[int, 4] }
+
+impl Event0 {
+static let Shared: int := 1
+event Shared using storage
+}
+
+// Event ordering 1
+
+type Event1 struct { storage: EventStorage[int, 4] }
+
+impl Event1 {
+event Shared using storage
+static let Shared: int := 1
+}
+
+// Event ordering 2
+
+type Event2 struct { storage: EventStorage[int, 4] }
+
+impl Event2 {
+static let Shared: int := 1
+}
+
+impl extends Event2 {
+event Shared using storage
+}
+
+// Event ordering 3
+
+type Event3 struct { storage: EventStorage[int, 4] }
+
+impl Event3 {
+event Shared using storage
+}
+
+impl extends Event3 {
+static let Shared: int := 1
+}
+
+// Event ordering 4
+
+type Event4 struct { storage: EventStorage[int, 4] }
+
+impl extends Event4 {
+event Shared using storage
+}
+
+impl Event4 {
+static let Shared: int := 1
+}
+
+// Event ordering 5
+
+type Event5 struct { storage: EventStorage[int, 4] }
+
+impl extends Event5 {
+static let Shared: int := 1
+}
+
+impl Event5 {
+event Shared using storage
+}
+
+// Type ordering 0
+
+type Type0 struct {}
+
+impl Type0 {
+static let Shared: int := 1
+type Shared int
+}
+
+// Type ordering 1
+
+type Type1 struct {}
+
+impl Type1 {
+type Shared int
+static let Shared: int := 1
+}
+
+// Type ordering 2
+
+type Type2 struct {}
+
+impl Type2 {
+static let Shared: int := 1
+}
+
+impl extends Type2 {
+type Shared int
+}
+
+// Type ordering 3
+
+type Type3 struct {}
+
+impl Type3 {
+type Shared int
+}
+
+impl extends Type3 {
+static let Shared: int := 1
+}
+
+// Type ordering 4
+
+type Type4 struct {}
+
+impl extends Type4 {
+type Shared int
+}
+
+impl Type4 {
+static let Shared: int := 1
+}
+
+// Type ordering 5
+
+type Type5 struct {}
+
+impl extends Type5 {
+static let Shared: int := 1
+}
+
+impl Type5 {
+type Shared int
+}
+
+// Enum ordering 0
+
+type Enum0 struct {}
+
+impl Enum0 {
+static let Shared: int := 1
+enum Shared { One }
+}
+
+// Enum ordering 1
+
+type Enum1 struct {}
+
+impl Enum1 {
+enum Shared { One }
+static let Shared: int := 1
+}
+
+// Enum ordering 2
+
+type Enum2 struct {}
+
+impl Enum2 {
+static let Shared: int := 1
+}
+
+impl extends Enum2 {
+enum Shared { One }
+}
+
+// Enum ordering 3
+
+type Enum3 struct {}
+
+impl Enum3 {
+enum Shared { One }
+}
+
+impl extends Enum3 {
+static let Shared: int := 1
+}
+
+// Enum ordering 4
+
+type Enum4 struct {}
+
+impl extends Enum4 {
+enum Shared { One }
+}
+
+impl Enum4 {
+static let Shared: int := 1
+}
+
+// Enum ordering 5
+
+type Enum5 struct {}
+
+impl extends Enum5 {
+static let Shared: int := 1
+}
+
+impl Enum5 {
+enum Shared { One }
+}

@@ -709,7 +709,9 @@ func (a *Analyzer) typePackForwardCandidate(forward *typePackForward, target Fun
 		expanded[index].Parameter = parameter
 		argument := forward.arguments[expanded[index].Source]
 		if !argument.spread {
-			if !a.canPassCallArgumentUnrecorded(parameter.Type, types[index], argument.expression) {
+			// MD-057: a conforming argument passes as a borrowed interface view,
+			// exactly as in a call without a spread.
+			if !a.canPassCallArgumentUnrecorded(parameter.Type, types[index], argument.expression) && !a.borrowedInterfaceView(parameter.Type, types[index]) {
 				return resolved, 0, fmt.Sprintf("argument %d of type %s cannot be passed to parameter %s of type %s", index+1, typeDisplayName(types[index]), parameter.Name, typeDisplayName(parameter.Type))
 			}
 			continue
@@ -726,7 +728,7 @@ func (a *Analyzer) typePackForwardCandidate(forward *typePackForward, target Fun
 		if detail := typePackForwardModeProblem(parameter, mode, consuming, sourceName); detail != "" {
 			return resolved, 0, fmt.Sprintf("pack position %d of type %s: %s", position, typeDisplayName(element), detail)
 		}
-		if !a.canPassCallArgumentUnrecorded(dereferenceType(parameter.Type), dereferenceType(element), nil) {
+		if !a.canPassCallArgumentUnrecorded(dereferenceType(parameter.Type), dereferenceType(element), nil) && !a.borrowedInterfaceView(parameter.Type, element) {
 			return resolved, 0, fmt.Sprintf("pack position %d of type %s cannot be passed to parameter %s of type %s", position, typeDisplayName(element), parameter.Name, typeDisplayName(parameter.Type))
 		}
 		if _, borrowed := callParameterBorrowMode(parameter); mode == typePackSourceOwned && !borrowed && !consuming {

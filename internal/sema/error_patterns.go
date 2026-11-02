@@ -2,6 +2,7 @@ package sema
 
 import (
 	"sec/internal/ast"
+	"sec/internal/diagnostics"
 	"sec/internal/lexer"
 )
 
@@ -47,7 +48,7 @@ func (a *Analyzer) resolveErrorSelection(pattern *ast.MatchPattern, channel Type
 	if contextual := pattern.ContextualErrorVariant; contextual != nil {
 		selection.name, selection.token = contextual.Value, contextual.Token
 		if channel.Kind == ErrorRootType || heterogeneous {
-			a.addErrorAtTokenWithMetadata(contextual.Token, "",
+			a.addErrorAtTokenWithMetadata(contextual.Token, diagnostics.ErrorVariantRequiresConcreteChannel,
 				"Name the concrete error type, for example `Err(FileError."+contextual.Value+")`.",
 				"Err(.%s) needs one closed concrete error type, but this failure channel is %s", contextual.Value, tryFailureChannelDisplay(channel, heterogeneous))
 			return selection, false
@@ -56,6 +57,10 @@ func (a *Analyzer) resolveErrorSelection(pattern *ast.MatchPattern, channel Type
 	} else {
 		member := pattern.ErrorVariant
 		selection.name, selection.token = member.Property.Value, member.Property.Token
+		if channel.Kind == GenericType {
+			a.addNonConcreteErrorVariantDiagnostic(selection.token, channel, "Err(%s) requires a closed concrete error type; %s has no variants to select", member.String(), typeDisplayName(channel))
+			return selection, false
+		}
 		owner, ok := typePathFromExpression(member.Object)
 		if !ok {
 			a.addErrorAtToken(member.Token, "Err(%s) must name ErrorType.Variant", member.String())
@@ -98,7 +103,7 @@ func (a *Analyzer) resolveErrorSelection(pattern *ast.MatchPattern, channel Type
 		}
 		selection.enumCase, selection.isEnum = enumCase, true
 	default:
-		a.addErrorAtToken(selection.token, "Err(...%s) requires a closed concrete error type; %s has no variants to select", selection.name, typeDisplayName(selection.errorType))
+		a.addNonConcreteErrorVariantDiagnostic(selection.token, selection.errorType, "Err(...%s) requires a closed concrete error type; %s has no variants to select", selection.name, typeDisplayName(selection.errorType))
 		return selection, false
 	}
 	return selection, true

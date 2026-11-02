@@ -1,0 +1,6 @@
+module main
+enum Wide uint16 { Small = 1, Large = 300 }
+type Holder struct { Small: Wide }
+fn Narrow(value: Holder) uint8 {
+    return try uint8(value.Small) { Err(_) => 0 }
+}

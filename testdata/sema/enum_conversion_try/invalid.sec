@@ -1,0 +1,18 @@
+module main
+enum Wide uint16 { Small = 1, Large = 300 }
+fn NeedByte(value: uint8) uint8 { return value }
+fn NeedTwo(left: uint8, right: uint8) uint8 { return left }
+fn Argument(value: Wide) uint8 { return NeedByte(uint8(value)) }
+fn Local(value: Wide) void { let raw: uint8 := uint8(value) }
+fn Returned(value: Wide) uint8 { return uint8(value) }
+fn Ignored(value: Wide) void { uint8(value) }
+fn Sibling(value: Wide) Result[uint8, ConversionError] {
+    let first := try uint8(value)
+    uint8(value)
+    return Ok(first)
+}
+fn SiblingArgument(value: Wide) Result[uint8, ConversionError] {
+    return Ok(NeedTwo(try uint8(value), uint8(value)))
+}
+enum Open bit[16] { Zero = 0 }
+fn OpenValue(value: Open) uint8 { return uint8(value) }

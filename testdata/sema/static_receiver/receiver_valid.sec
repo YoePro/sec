@@ -1,0 +1,32 @@
+module main
+
+fn ModuleValue() int { return 7 }
+type Counter struct { value: int }
+impl Counter {
+    static let Limit: int := 10
+    property Value: int { get { return self.value } }
+    fn Read() int { return self.value }
+    fn Instance() int { return Value + Read() }
+    static fn Create(value: int) Counter { return Counter { value: value } }
+    static fn From(other: ref Counter) int { return other.Value + other.Read() }
+    static fn LimitValue() int { return Counter.Limit + ModuleValue() }
+    static fn Chain() int { return LimitValue() }
+    static fn Shadow(Value: int) int { return Value }
+    fn Pick() int { return self.value }
+    static fn Pick(value: int) int { return value }
+    static fn PickStatic() int { return Pick(2) }
+}
+impl extends Counter {
+    static fn Extended(other: ref Counter) int { return other.Read() }
+}
+
+type Box[T] struct { item: T }
+impl Box[T] {
+    property Current: int { get { return 1 } }
+    fn Read() int { return Current }
+    static fn From(other: ref Box[T]) int { return other.Current + other.Read() }
+}
+fn Use(counter: ref Counter, box: ref Box[int]) int {
+    let made := Counter.Create(3)
+    return Counter.From(counter) + Counter.From(made) + Counter.Extended(counter)
+}

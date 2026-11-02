@@ -1232,211 +1232,6 @@ var semanticTokenTypeIndex = func() map[string]int {
 	return indexes
 }()
 
-func documentSymbolsForSource(uri string, text string) []documentSymbol {
-	program := parseProgramForLSP(uri, text)
-	if program == nil {
-		return []documentSymbol{}
-	}
-	symbols := []documentSymbol{}
-	for _, stmt := range program.Statements {
-		if symbol, ok := documentSymbolForStatement(text, stmt); ok {
-			symbols = append(symbols, symbol)
-		}
-	}
-	return symbols
-}
-
-func documentSymbolForStatement(text string, stmt ast.Statement) (documentSymbol, bool) {
-	switch stmt := stmt.(type) {
-	case *ast.ModuleStatement:
-		if stmt == nil {
-			return documentSymbol{}, false
-		}
-		return namedDocumentSymbol(text, stmt.Path, "module", 2, stmt.Token, stmt.Token), true
-	case *ast.TypeDeclStatement:
-		if stmt == nil || stmt.Name == nil {
-			return documentSymbol{}, false
-		}
-		kind := 5
-		detail := "type"
-		if stmt.StructType != nil {
-			kind = 23
-			detail = "struct"
-		} else if stmt.Union {
-			kind = 23
-			detail = "union"
-		} else if len(stmt.Variants) > 0 {
-			kind = 10
-			detail = "enum"
-		}
-		symbol := namedDocumentSymbol(text, stmt.Name.Value, detail, kind, stmt.Token, stmt.Name.Token)
-		if stmt.StructType != nil {
-			for _, field := range stmt.StructType.Fields {
-				if field != nil && field.Name != nil {
-					symbol.Children = append(symbol.Children, namedDocumentSymbol(text, field.Name.Value, typeReferenceName(field.Type), 8, field.Token, field.Name.Token))
-				}
-			}
-		}
-		for _, variant := range stmt.Variants {
-			if variant != nil {
-				symbol.Children = append(symbol.Children, namedDocumentSymbol(text, variant.Value, "enum member", 22, variant.Token, variant.Token))
-			}
-		}
-		for _, variant := range stmt.UnionVariants {
-			if variant != nil && variant.Name != nil {
-				symbol.Children = append(symbol.Children, namedDocumentSymbol(text, variant.Name.Value, "union member", 22, variant.Token, variant.Name.Token))
-			}
-		}
-		return symbol, true
-	case *ast.UnitDeclStatement:
-		if stmt == nil || stmt.Name == nil {
-			return documentSymbol{}, false
-		}
-		return namedDocumentSymbol(text, stmt.Name.Value, "unit", 14, stmt.Token, stmt.Name.Token), true
-	case *ast.EnumDeclaration:
-		return enumDocumentSymbol(text, stmt)
-	case *ast.InterfaceDeclaration:
-		if stmt == nil || stmt.Name == nil {
-			return documentSymbol{}, false
-		}
-		symbol := namedDocumentSymbol(text, stmt.Name.Value, "interface", 11, stmt.Token, stmt.Name.Token)
-		for _, method := range stmt.Methods {
-			if method != nil && method.Name != nil {
-				symbol.Children = append(symbol.Children, functionDocumentSymbol(text, method, 6))
-			}
-		}
-		for _, property := range stmt.Properties {
-			if property != nil && property.Name != nil {
-				symbol.Children = append(symbol.Children, namedDocumentSymbol(text, property.Name.Value, typeReferenceName(property.Type), 7, property.Token, property.Name.Token))
-			}
-		}
-		for _, event := range stmt.Events {
-			if event != nil && event.Name != nil {
-				symbol.Children = append(symbol.Children, namedDocumentSymbol(text, event.Name.Value, typeReferenceName(event.Payload), 24, event.Token, event.Name.Token))
-			}
-		}
-		return symbol, true
-	case *ast.FunctionDeclaration:
-		if stmt == nil || stmt.Name == nil {
-			return documentSymbol{}, false
-		}
-		return functionDocumentSymbol(text, stmt, 12), true
-	case *ast.StructStatement:
-		if stmt == nil || stmt.Name == nil {
-			return documentSymbol{}, false
-		}
-		symbol := namedDocumentSymbol(text, stmt.Name.Value, "struct", 23, stmt.Token, stmt.Name.Token)
-		for _, field := range stmt.Fields {
-			if field.Name != nil {
-				symbol.Children = append(symbol.Children, namedDocumentSymbol(text, field.Name.Value, typeReferenceName(field.Type), 8, field.Token, field.Name.Token))
-			}
-		}
-		return symbol, true
-	case *ast.LetStatement:
-		if stmt == nil || stmt.Name == nil {
-			return documentSymbol{}, false
-		}
-		return namedDocumentSymbol(text, stmt.Name.Value, typeReferenceName(stmt.Type), 13, stmt.Token, stmt.Name.Token), true
-	case *ast.LetGroupStatement:
-		if stmt == nil || len(stmt.Lets) == 0 {
-			return documentSymbol{}, false
-		}
-		group := namedDocumentSymbol(text, "let", "variables", 13, stmt.Token, stmt.Token)
-		for _, let := range stmt.Lets {
-			if let != nil && let.Name != nil {
-				group.Children = append(group.Children, namedDocumentSymbol(text, let.Name.Value, typeReferenceName(let.Type), 13, let.Token, let.Name.Token))
-			}
-		}
-		return group, true
-	case *ast.ImplStatement:
-		if stmt == nil || stmt.Target == nil {
-			return documentSymbol{}, false
-		}
-		name := "impl " + stmt.Target.Name
-		if stmt.Extends {
-			name = "impl extends " + stmt.Target.Name
-		} else if len(stmt.Implements) > 0 {
-			interfaces := make([]string, 0, len(stmt.Implements))
-			for _, ref := range stmt.Implements {
-				interfaces = append(interfaces, typeReferenceName(ref))
-			}
-			name += " implements " + strings.Join(interfaces, ", ")
-		}
-		symbol := namedDocumentSymbol(text, name, "impl", 3, stmt.Token, stmt.Target.Token)
-		for _, member := range stmt.Members {
-			if child, ok := documentSymbolForImplMember(text, member); ok {
-				symbol.Children = append(symbol.Children, child)
-			}
-		}
-		return symbol, true
-	default:
-		return documentSymbol{}, false
-	}
-}
-
-func documentSymbolForImplMember(text string, member ast.ImplMember) (documentSymbol, bool) {
-	switch member := member.(type) {
-	case *ast.FunctionDeclaration:
-		if member == nil || member.Name == nil {
-			return documentSymbol{}, false
-		}
-		return functionDocumentSymbol(text, member, 6), true
-	case *ast.InitDeclaration:
-		if member == nil {
-			return documentSymbol{}, false
-		}
-		detail := "constructs"
-		if member.ErrorType != nil {
-			detail += "; error " + typeReferenceName(member.ErrorType)
-		}
-		return namedDocumentSymbol(text, "init", detail, 9, member.Token, member.Token), true
-	case *ast.FreeDeclaration:
-		if member == nil {
-			return documentSymbol{}, false
-		}
-		return namedDocumentSymbol(text, "free", "custom destruction", 9, member.Token, member.Token), true
-	case *ast.PropertyDeclaration:
-		if member == nil || member.Name == nil {
-			return documentSymbol{}, false
-		}
-		return namedDocumentSymbol(text, member.Name.Value, typeReferenceName(member.Type), 7, member.Token, member.Name.Token), true
-	case *ast.EventDeclaration:
-		if member == nil || member.Name == nil {
-			return documentSymbol{}, false
-		}
-		return namedDocumentSymbol(text, member.Name.Value, "event", 24, member.Token, member.Name.Token), true
-	case *ast.TypeDeclStatement:
-		return documentSymbolForStatement(text, member)
-	case *ast.UnitDeclStatement:
-		return documentSymbolForStatement(text, member)
-	case *ast.EnumDeclaration:
-		return documentSymbolForStatement(text, member)
-	case *ast.LetStatement:
-		return documentSymbolForStatement(text, member)
-	default:
-		return documentSymbol{}, false
-	}
-}
-
-func functionDocumentSymbol(text string, fn *ast.FunctionDeclaration, kind int) documentSymbol {
-	detail := "fn"
-	if fn.ReturnType != nil {
-		detail += " " + typeReferenceName(fn.ReturnType)
-	}
-	return namedDocumentSymbol(text, fn.Name.Value, detail, kind, fn.Token, fn.Name.Token)
-}
-
-func namedDocumentSymbol(text string, name string, detail string, kind int, token lexer.Token, selectionToken lexer.Token) documentSymbol {
-	selectionRange := tokenRange(text, selectionToken)
-	return documentSymbol{
-		Name:           name,
-		Detail:         detail,
-		Kind:           kind,
-		Range:          rangeContaining(tokenRange(text, token), selectionRange),
-		SelectionRange: selectionRange,
-	}
-}
-
 func semanticTokensForSource(uri string, text string, overlays ...sourceOverlay) semanticTokens {
 	tokenTypes := semanticTokenClassification(uri, text, overlays...)
 	return semanticTokens{Data: features.SemanticTokens(text, pathFromURI(uri), tokenTypes)}
@@ -1520,6 +1315,9 @@ func semanticTokenClassification(uri string, text string, overlays ...sourceOver
 			kind := "variable"
 			if !binding.Mutable {
 				kind += " readonly"
+			}
+			if _, static := analyzer.ResolvedStaticOf(&ast.Identifier{Token: token}); static {
+				kind += " static"
 			}
 			classification[positionKey] = kind
 			continue
@@ -1787,62 +1585,6 @@ func astTypeReferencesInProgram(program *ast.Program) []*ast.TypeReference {
 	}
 	visit(reflect.ValueOf(program))
 	return result
-}
-
-// semanticDeclarationKinds assigns position-exact token classes to declarations
-// so a declaration name cannot inherit the class of an unrelated same-named
-// symbol through the lexical fallback map.
-//
-// Rules:
-//   - rules/tooling/lsp.md — "Semantic tokens"
-//   - rules/declarations/static.md — "Static declarations in implementations"
-func semanticDeclarationKinds(analyzer *sema.Analyzer) map[string]string {
-	kinds := map[string]string{}
-	set := func(token lexer.Token, kind string) {
-		if token.Line <= 0 || token.Column <= 0 {
-			return
-		}
-		kinds[features.ClassificationKey(token.File, token.Line, token.Column)] = kind
-	}
-	for _, typ := range analyzer.Types() {
-		if typ.Kind == sema.EnumType {
-			set(typ.DeclarationToken, "enum")
-		}
-		for _, field := range typ.Fields {
-			set(field.Token, "property")
-		}
-		for _, field := range typ.RegisterFields {
-			set(field.Token, "property")
-		}
-		for _, property := range typ.Properties {
-			set(property.Token, "property")
-		}
-		for _, event := range typ.Events {
-			set(event.Token, "event")
-		}
-		for _, value := range typ.EnumConsts {
-			set(value.Token, "enumMember")
-		}
-	}
-	for _, overloads := range analyzer.Functions() {
-		for _, function := range overloads {
-			kind := "function"
-			if function.ImplTarget != "" {
-				kind = "method"
-			}
-			set(function.Token, kind)
-		}
-	}
-	for _, symbol := range analyzer.Symbols() {
-		kind := "variable"
-		if symbol.ImplicitMember {
-			kind = "property"
-		} else if !symbol.Mutable {
-			kind += " readonly"
-		}
-		set(symbol.Token, kind)
-	}
-	return kinds
 }
 
 func semanticTokenType(token lexer.Token, classification map[string]string) string {
@@ -2170,34 +1912,6 @@ func activeConstructionParameter(text string, openOffset int, cursorOffset int) 
 	return active
 }
 
-func memberHoverContentsForDefinition(analyzer *sema.Analyzer, definition lexer.Token) (string, bool) {
-	if fact, ok := analyzer.GenericParameterFactAt(definition); ok {
-		return genericParameterHover(fact), true
-	}
-	if metadata, ok := analyzer.ResolvedStructFieldAt(definition); ok {
-		return structFieldHover(metadata.Field), true
-	}
-	types := analyzer.Types()
-	for _, typ := range types {
-		for _, field := range typ.RegisterFields {
-			if sameSourceToken(field.Token, definition) {
-				return registerFieldHover(field), true
-			}
-		}
-		for _, property := range typ.Properties {
-			if sameSourceToken(property.Token, definition) {
-				return propertyHoverContents(property), true
-			}
-		}
-		for _, event := range typ.Events {
-			if sameSourceToken(event.Token, definition) {
-				return fmt.Sprintf("```sec\nevent %s: %s\n```", event.Name, lspTypeName(event.Type)), true
-			}
-		}
-	}
-	return "", false
-}
-
 // callGraphComponentHoverLine presents one compiler-owned SCC without
 // reconstructing graph relationships in the LSP.
 //
@@ -2359,29 +2073,7 @@ func structFieldHover(field sema.StructField) string {
 // Rules:
 //   - rules/foundations/lexical_structure.md — §5.4 "Documentation comments"
 //   - rules/tooling/lsp.md — "Hover"
-func functionHoverContents(functions []sema.Function, program *ast.Program, sourcePath string) string {
-	lines := make([]string, 0, len(functions)+2)
-	for _, function := range functions {
-		params := make([]string, 0, len(function.Parameters))
-		for _, parameter := range function.Parameters {
-			params = append(params, initializerParameterLabel(parameter))
-		}
-		lines = append(lines, fmt.Sprintf("fn %s%s(%s) %s", function.Name, genericHeaderDisplay(function.GenericParameters, function.GenericConstraints, function.GenericTypePack), strings.Join(params, ", "), lspTypeName(function.ReturnType)))
-	}
-	contents := "```sec\n" + strings.Join(lines, "\n") + "\n```"
-	// rules/platform/ffi.md §42: an extern @noPanic is a trusted foreign
-	// contract, not a compiler-verified guarantee; hover keeps that provenance.
-	if len(functions) == 1 && functions[0].TrustedNoPanic {
-		contents += "\n\nTrusted foreign contract: `@noPanic` (declared, not verified by the compiler)"
-	}
-	if len(functions) == 1 && functionSourceMatches(functions[0], sourcePath) {
-		if doc := functionDocumentation(program, functions[0].Token); doc != "" {
-			contents += "\n\n" + doc
-		}
-	}
-	return contents
-}
-
+//
 // genericHeaderDisplay renders a template's ordered generic parameters and
 // constraint conjunctions from resolved Sema facts, or nothing for a
 // non-generic declaration.
@@ -2970,14 +2662,14 @@ func memberCompletionItems(exprType sema.Type, analyzer *sema.Analyzer, prefix s
 		seen[item.Label] = true
 		items = append(items, item)
 	}
-	for _, method := range interfaceCompletionMethods(exprType, static) {
-		label, _ := interfaceMethodLabel(method)
-		addTyped(completionItem{Label: method.Name, Kind: 2, Detail: label}, method.ReturnType)
-	}
 	for _, member := range sema.CompilerKnownMembersForType(exprType, static) {
 		if item, ok := compilerKnownCompletionItem(member); ok {
 			addTyped(item, member.Result)
 		}
+	}
+	for _, method := range interfaceCompletionMethods(exprType, static) {
+		label, _ := interfaceMethodLabel(method)
+		addTyped(completionItem{Label: method.Name, Kind: 2, Detail: lspTypeName(method.ReturnType), Documentation: label}, method.ReturnType)
 	}
 
 	// rules/declarations/enums.md section 16 and unions.md section 4 place

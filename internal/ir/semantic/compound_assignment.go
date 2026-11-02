@@ -39,7 +39,7 @@ func (fb *functionBuilder) buildCompoundAssignment(stmt *ast.AssignmentStatement
 		return fmt.Errorf("missing resolved assignment binding")
 	}
 	bind, ok := fb.bindings[fact.ID]
-	if !ok || bind.storage == 0 {
+	if !ok || bind.storage == 0 && bind.capture == 0 {
 		return fmt.Errorf("assignment target has no semantic storage")
 	}
 	leftType, err := fb.owner.internType(resolved.LeftType)
@@ -50,12 +50,12 @@ func (fb *functionBuilder) buildCompoundAssignment(stmt *ast.AssignmentStatement
 		return fmt.Errorf("compound assignment type does not match its storage")
 	}
 	loc := location(stmt.Token)
-	current := fb.result(Operation{Kind: OpStorageLoad, Storage: bind.storage, Location: loc}, bind.typ)
+	current := fb.readBindingPlace(bind, loc)
 	updated, err := fb.buildCompoundValue(stmt, resolved, current)
 	if err != nil {
 		return err
 	}
-	fb.emit(Operation{Kind: OpStorageStore, Storage: bind.storage, Operands: []ValueID{updated.id}, Location: loc})
+	fb.writeBindingPlace(bind, updated.id, loc)
 	return nil
 }
 
@@ -95,4 +95,21 @@ func (fb *functionBuilder) buildCompoundValue(stmt *ast.AssignmentStatement, res
 		return fb.emitCheckedOperator(op, resultType, nil, nil, nil)
 	}
 	return fb.result(op, resultType), nil
+}
+
+// readBindingPlace loads local storage, or a defer body's capture Place.
+func (fb *functionBuilder) readBindingPlace(bind binding, loc Location) builtValue {
+	if bind.capture != 0 {
+		return fb.result(Operation{Kind: OpPlaceRead, Operands: []ValueID{bind.capture}, Location: loc}, bind.typ)
+	}
+	return fb.result(Operation{Kind: OpStorageLoad, Storage: bind.storage, Location: loc}, bind.typ)
+}
+
+// writeBindingPlace stores to local storage, or a defer body's capture Place.
+func (fb *functionBuilder) writeBindingPlace(bind binding, value ValueID, loc Location) {
+	if bind.capture != 0 {
+		fb.emit(Operation{Kind: OpPlaceWrite, Operands: []ValueID{bind.capture, value}, Location: loc})
+		return
+	}
+	fb.emit(Operation{Kind: OpStorageStore, Storage: bind.storage, Operands: []ValueID{value}, Location: loc})
 }

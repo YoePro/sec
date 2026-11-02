@@ -503,3 +503,151 @@ fn main() int {
 		}
 	}
 }
+
+// A call result nothing else owns is destroyed once through own.discard, whether the
+// discard is explicit or the implicit end of a call statement; a discard of another
+// source stays a named boundary. Rules: rules/control-flow/discard.md §§ 5, 9, 10.
+func TestDiscardOfFreshOwnedValues(t *testing.T) {
+	module, err := analyzedModule(t, ownedLocalSource+`
+fn Use() void {
+    discard Make(1)
+    Make(2)
+}
+
+fn main() int {
+    return 0
+}
+`, 17)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Verify(module); err != nil {
+		t.Fatal(err)
+	}
+	text := Format(module)
+	for _, want := range []string{"own.discard", "origin=explicit", "origin=implicit-call-result", `plan="destroy:main:struct:Handle"`} {
+		if !strings.Contains(text, want) {
+			t.Errorf("missing %q in:\n%s", want, text)
+		}
+	}
+	for _, source := range []string{
+		"fn Use() void {\n    let pair := Pair { left: Make(1), count: 2, right: Make(3) }\n    discard pair.left\n}\nfn main() int {\n    return 0\n}\n",
+	} {
+		if _, err := analyzedModule(t, ownedLocalSource+source, 17); err == nil {
+			t.Errorf("%s: a projected discard must stay a boundary", source)
+		}
+	}
+	if _, err := analyzedModule(t, ownedLocalSource+"fn Use() void {\n    Make(1)\n}\nfn main() int {\n    return 0\n}\n", 16); err == nil {
+		t.Error("package 16 must keep the discard boundary")
+	}
+}
+
+// `discard name` destroys the value once and ends its registration, an unavailable
+// binding is a no-op and a binding moved on only some paths ends only where owned.
+// Rules: rules/control-flow/discard.md §§5,7; rules/memory/destruction.md §§6.1,12.
+func TestDiscardOfOwnedBindings(t *testing.T) {
+	module, err := analyzedModule(t, ownedLocalSource+`
+fn Sink(-> h: Handle) void {
+}
+
+fn Use() void {
+    let first := Make(1)
+    discard first
+    discard first
+    let second := Make(2)
+    Sink(<-second)
+    discard second
+}
+
+fn main() int {
+    return 0
+}
+`, 17)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Verify(module); err != nil {
+		t.Fatal(err)
+	}
+	text := Format(module)
+	if strings.Count(text, "own.discard") != 1 || strings.Count(text, "reason=discarded") != 1 {
+		t.Errorf("a discard must destroy once and a no-op must emit nothing:\n%s", text)
+	}
+	module, err = analyzedModule(t, ownedLocalSource+`
+fn Sink(-> h: Handle) void {
+}
+
+fn Use(flag: bool) void {
+    let value := Make(1)
+    if flag {
+        Sink(<-value)
+    }
+    discard value
+}
+
+fn main() int {
+    return 0
+}
+`, 17)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Verify(module); err != nil {
+		t.Fatal(err)
+	}
+	if text := Format(module); !strings.Contains(text, "if-owned") || !strings.Contains(text, "if-active") {
+		t.Errorf("a conditional discard must end the value only where owned:\n%s", text)
+	}
+}
+
+// A defer registers an isolated body over capture Places, never copies, so it reads
+// the value current when it runs; each exit runs cleanup. What the body cannot yet
+// represent stays a named boundary. Rules: rules/control-flow/defer.md §§9–11;
+// rules/mlir/packages/sec-mlir-dialect_package17.md §§41–44,74,77.
+func TestDeferRegistersIsolatedBody(t *testing.T) {
+	module, err := analyzedModule(t, ownedLocalSource+`
+fn Observe(value: int) void {
+}
+
+fn Use(flag: bool) int {
+    let fixed := 1
+    let mut count := 2
+    defer {
+        Observe(fixed)
+        count = 5
+        count += 1
+    }
+    count = 3
+    if flag {
+        return count
+    }
+    return fixed
+}
+
+fn main() int {
+    return 0
+}
+`, 17)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Verify(module); err != nil {
+		t.Fatal(err)
+	}
+	text := Format(module)
+	for _, want := range []string{"place.value-root", "place.storage-root", "cleanup.defer-register", "cleanup.defer-yield", "address-taken", "place.write", "cleanup.run-function exit=return"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("missing %q in:\n%s", want, text)
+		}
+	}
+	for _, item := range []struct{ source, want string }{
+		{"fn Use() void {\n    let h := Make(1)\n    defer {\n        let x := h.id\n        discard x\n    }\n}\n", "needs destruction"},
+		{"fn Use() void {\n    defer {\n        let h := Make(1)\n        discard h\n    }\n}\n", "owned local inside a defer body"},
+		{"fn Use(a: ref int) void {\n    defer {\n        let x := *a\n        discard x\n    }\n}\n", "not a resolved capture"},
+	} {
+		_, err := analyzedModule(t, ownedLocalSource+item.source+"fn main() int {\n    return 0\n}\n", 17)
+		if err == nil || !strings.Contains(err.Error(), item.want) {
+			t.Errorf("%s: want %q, got %v", item.source, item.want, err)
+		}
+	}
+}

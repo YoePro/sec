@@ -1,0 +1,12 @@
+module main
+enum Words string { One = "1" }
+fn ToInteger(value: Words) Result[uint8, ConversionError] { return uint8(value) }
+fn FromInteger(value: uint8) Words { return Words(value) }
+fn KnownToInteger() Result[uint8, ConversionError] { return uint8(Words.One) }
+fn KnownFromInteger() Words { return Words(1) }
+fn ProtectedToInteger(value: Words) Result[uint8, ConversionError] {
+    return Ok(try uint8(value))
+}
+fn ProtectedFromInteger(value: uint8) Result[Words, ConversionError] {
+    return Ok(try Words(value))
+}

@@ -64,6 +64,38 @@ def SecVerifyReferenceGuards : Pass<"sec-verify-reference-guards", "mlir::func::
   let dependentDialects = ["mlir::cf::ControlFlowDialect"];
 }
 
+def SecVerifyCleanups : Pass<"sec-verify-cleanups", "mlir::func::FuncOp"> {
+  let summary = "Verify cleanup registration, cancellation and exits path-sensitively";
+  let description = [{
+    Follows each cleanup registration over the CFG: cancellation of an active
+    responsibility only, no cleanup of a moved value, returned values excluded,
+    run_function before every return with live registrations, and none on
+    non-returning paths or inside a defer body.
+  }];
+}
+
+def SecVerifyOwnership : Pass<"sec-verify-ownership", "mlir::ModuleOp"> {
+  let summary = "Verify owned values path-sensitively";
+  let description = [{
+    Follows every owned value and subobject over the CFG: copyability, availability
+    and use after move, partial subobject state, initialization and replacement,
+    mutually exclusive transfers and merges, and one terminal ownership action for
+    every value that needs destruction. Borrow validity stays with the P15 verifiers.
+  }];
+  let dependentDialects = ["mlir::cf::ControlFlowDialect", "mlir::func::FuncDialect"];
+}
+
+def SecVerifyDestructionPlans : Pass<"sec-verify-destruction-plans", "mlir::ModuleOp"> {
+  let summary = "Verify the type-level destruction plan table and its uses";
+  let description = [{
+    Checks that sec.destruction_plans is closed and complete: one plan per type,
+    struct fields once in reverse declaration order, the exact array element plan,
+    active-variant payload coverage and custom-free restrictions. Every operation
+    naming a plan must name one of exactly the destroyed type.
+  }];
+  let dependentDialects = ["mlir::func::FuncDialect"];
+}
+
 def SecVerifyBorrowSemantics : Pass<"sec-verify-borrow-semantics", "mlir::func::FuncOp"> {
   let summary = "Verify Sec borrow derivation, end-borrow ordering and reference moves";
   let dependentDialects = ["mlir::cf::ControlFlowDialect"];

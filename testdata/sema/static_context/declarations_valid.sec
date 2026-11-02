@@ -1,0 +1,31 @@
+module main
+
+let Inferred := 3
+let Typed: int := 4
+let mut Mutable: int := 5
+let mut Defaulted: int
+static let Explicit: int := 6
+static let mut ExplicitMutable: int := 7
+let Table: int[2] := [1, 2]
+
+interface Factory { static fn Make(value: int) Self }
+type Counter struct { value: int }
+impl Counter implements Factory {
+    static fn Make(value: int) Counter { return Counter { value: value } }
+}
+impl extends Counter {
+    static fn Limit() int { return Typed }
+}
+type Box[T] struct { value: T }
+impl Box[T] {
+    static fn Limit() int { return Inferred }
+}
+fn Scope() int {
+    let Automatic: int := 8
+    let mut AutomaticMutable: int := 9
+    static let Persistent: int := 10
+    static let mut PersistentMutable: int := 11
+    return Automatic + AutomaticMutable + Persistent + PersistentMutable
+}
+fn StaticReference() ref int { return ref Typed }
+fn Make() Counter { return Counter.Make(1) }

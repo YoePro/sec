@@ -64,7 +64,7 @@ import "io"
  * Platform:
  * Linux, AMD64 only.
  */
-fn _WriteStdoutString(value: string) Result[uint, IOError] {
+fn _WriteStandardStreamString(fd: int, value: string) Result[uint, IOError] {
     let mut written: uint := 0
     let mut idle:    uint := 0
 
@@ -78,7 +78,7 @@ fn _WriteStdoutString(value: string) Result[uint, IOError] {
         let mut count: int := 0
 
         unsafe {
-            count = io.Write(1, value.Ptr.Offset(offset), remaining)
+            count = io.Write(fd, value.Ptr.Offset(offset), remaining)
         }
 
         if count < 0 {
@@ -104,6 +104,14 @@ fn _WriteStdoutString(value: string) Result[uint, IOError] {
     }
 
     return Ok(written)
+}
+
+fn _WriteStdoutString(value: string) Result[uint, IOError] {
+    return _WriteStandardStreamString(1, value)
+}
+
+fn _WriteStderrString(value: string) Result[uint, IOError] {
+    return _WriteStandardStreamString(2, value)
 }
 
 /**

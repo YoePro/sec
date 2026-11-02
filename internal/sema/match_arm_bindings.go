@@ -1,6 +1,9 @@
 package sema
 
-import "sec/internal/ast"
+import (
+	"sec/internal/ast"
+	"sec/internal/diagnostics"
+)
 
 // analyzeMatchArmBody establishes payload bindings, borrow/move authority and
 // isolated branch state before checking a guard and arm body. Binding names
@@ -84,6 +87,7 @@ func (a *Analyzer) analyzeMatchArmBody(arm *ast.MatchArm, info matchPatternInfo)
 		}
 	}
 	a.defineMatchFieldBindings(info)
+	defer a.enterOwnedMatchBinding(arm, info)()
 	defer func() {
 		a.symbols = previousSymbols
 		a.constInts = previousConstInts
@@ -156,7 +160,7 @@ func (a *Analyzer) rejectGuardConsumedBindings(info matchPatternInfo) {
 	}
 	for _, name := range names {
 		if token, moved := a.moved[name]; moved {
-			a.addErrorAtToken(token, "match guard must not consume %s before the arm is selected; inspect or borrow it in the guard and move it in the arm body", name)
+			a.addErrorAtTokenWithMetadata(token, diagnostics.GuardConsumesBinding, "A false guard must preserve the value for later arms. Inspect or borrow the binding here and move it only inside the selected arm body.", "match guard must not consume %s before the arm is selected; inspect or borrow it in the guard and move it in the arm body", name)
 		}
 	}
 }

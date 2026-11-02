@@ -13105,8 +13105,8 @@ module main
 enum Wide int { Zero = 0, Big = 300, }
 enum Open bit[16] { Zero = 0, }
 fn Known() uint8 { return uint8(Wide.Zero) }
-fn Narrow(value: Wide) Result[uint8, ArithmeticError] { return Ok(try uint8(value)) }
-fn NarrowOpen(value: Open) Result[uint8, ArithmeticError] { return Ok(try uint8(value)) }
+fn Narrow(value: Wide) Result[uint8, ConversionError] { return Ok(try uint8(value)) }
+fn NarrowOpen(value: Open) Result[uint8, ConversionError] { return Ok(try uint8(value)) }
 `)
 	assertSemaErrors(t, errors, nil)
 

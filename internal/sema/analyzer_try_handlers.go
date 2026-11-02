@@ -46,7 +46,7 @@ func (a *Analyzer) analyzeTryHandlerGuard(handler *ast.TryHandler, bindingName s
 		return
 	}
 	if token, moved := a.moved[bindingName]; moved {
-		a.addErrorAtToken(token, "try handler guard must not consume %s before the handler is selected; inspect or borrow it in the guard and move it in the handler body", bindingName)
+		a.addErrorAtTokenWithMetadata(token, diagnostics.GuardConsumesBinding, "A false guard must preserve the error for later handlers or propagation. Inspect or borrow the binding here and move it only inside the selected handler body.", "try handler guard must not consume %s before the handler is selected; inspect or borrow it in the guard and move it in the handler body", bindingName)
 	}
 }
 
@@ -183,7 +183,7 @@ func (a *Analyzer) analyzeMatchErrorNarrowing(member *ast.MemberExpression, erro
 //   - rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md — §§ 9.2–9.6, 9.11–9.13
 func (a *Analyzer) analyzeMatchConcreteErrorVariant(member *ast.MemberExpression, errorType Type) (matchPatternInfo, bool) {
 	if errorType.Kind != EnumType && errorType.Kind != UnionType {
-		a.addErrorAtToken(member.Token, "Err(%s) requires a closed concrete error type; %s has no variants to select, so bind the payload with Err(name)", member.String(), typeDisplayName(errorType))
+		a.addNonConcreteErrorVariantDiagnostic(member.Token, errorType, "Err(%s) requires a closed concrete error type; %s has no variants to select, so bind the payload with Err(name)", member.String(), typeDisplayName(errorType))
 		return matchPatternInfo{}, false
 	}
 	if errorType.Kind == UnionType {
@@ -427,4 +427,80 @@ func (a *Analyzer) analyzeTryHandlerBody(handler *ast.TryHandler, successType Ty
 		a.addErrorAtToken(expressionToken(handler.Body), "try handler must produce %s, got %s", typeDisplayName(successType), typeDisplayName(bodyType))
 	}
 	return TryHandlerProducesValue
+}
+
+// analyzeTryErrHandlerPattern implements Result error patterns. Err(_) is an
+// exhaustive catch-all but may discard its error payload only when the payload
+// type has no unresolved lifecycle obligation.
+//
+// Rules:
+//   - rules/errors/errorhandling.md — §17 "Err(_) and explicit error acknowledgement"
+//   - rules/control-flow/discard.md — "Recursive discardability"
+//   - rules/control-flow/flowcontrol_match.md — Result error patterns
+//   - rules/corrections/applied/correction20-20260823.md — Err(_) discard
+func (a *Analyzer) analyzeTryErrHandlerPattern(errPattern *ast.ErrExpression, errorType Type) (kind string, bindingName string, variantName string, bindingType Type, ok bool) {
+	switch pattern := errPattern.Value.(type) {
+	case *ast.Identifier:
+		if pattern.Value == "_" {
+			if a.tryFailureSet != nil {
+				for _, member := range a.tryFailureSet.members {
+					if !isDiscardableType(member) {
+						a.addErrorAtTokenWithMetadata(pattern.Token, diagnostics.NonDiscardableValue,
+							"Bind the error and resolve its task or thread obligation instead of using Err(_).",
+							"Err(_) cannot ignore %s because it may contain an unresolved lifecycle handle", typeDisplayName(member))
+					}
+				}
+				return "Err", "_", "", errorType, true
+			}
+			if !a.isDiscardable(errorType) {
+				a.addErrorAtTokenWithMetadata(pattern.Token, diagnostics.NonDiscardableValue,
+					"Bind the error and resolve its task or thread obligation instead of using Err(_).",
+					"Err(_) cannot ignore %s because it may contain an unresolved lifecycle handle", a.nonDiscardableSubject(errorType))
+			}
+			return "Err", "_", "", errorType, true
+		}
+		if enumHasValue(errorType, pattern.Value) {
+			return "Err", "", pattern.Value, errorType, true
+		}
+		// A rejected heterogeneous binding still acts as the catch-all it was
+		// written as, so the residual and body analysis report no cascades.
+		a.rejectHeterogeneousErrorBinding(pattern.Token, pattern.Value)
+		return "Err", pattern.Value, "", errorType, true
+	case *ast.MemberExpression:
+		if errorType.Kind == GenericType {
+			a.addNonConcreteErrorVariantDiagnostic(pattern.Property.Token, errorType, "Err(%s) requires a closed concrete error type; %s has no variants to select, so bind the payload with Err(name)", pattern.String(), typeDisplayName(errorType))
+			return "", "", "", Type{}, false
+		}
+		patternType, ok := a.inferMemberExpression(pattern)
+		if !ok || patternType.Kind == InvalidType {
+			return "", "", "", Type{}, false
+		}
+		// rules/errors/errorhandling.md — §27.2: an open `error` channel keeps
+		// concrete identity, so a concrete error variant narrows it. The key
+		// is qualified because the open domain spans several error types.
+		if errorType.Kind == ErrorRootType && patternType.ErrorAssignable {
+			if a.tryFailureSet != nil && a.tryFailureSet.commonChannel == nil {
+				if _, member := a.tryFailureSet.member(patternType); !member {
+					a.addErrorAtToken(expressionToken(pattern),
+						"this try cannot produce %s; its failures are %s", typeDisplayName(patternType), tryFailureSetDisplay(a.tryFailureSet.members))
+					return "", "", "", Type{}, false
+				}
+			}
+			a.reportOmittedTryHandlerPayload(pattern, patternType)
+			return "Err", "", typeDisplayName(patternType) + "." + pattern.Property.Value, errorType, true
+		}
+		if !sameConcreteType(patternType, errorType) {
+			a.addErrorAtTokenWithMetadata(expressionToken(pattern), diagnostics.InvalidTryHandlerPattern,
+				fmt.Sprintf("This try can only fail with %s; name one of its variants, or use Err(_) or Err(name).", typeDisplayName(errorType)),
+				"try handler pattern must match %s, got %s", typeDisplayName(errorType), typeDisplayName(patternType))
+			return "", "", "", Type{}, false
+		}
+		a.reportOmittedTryHandlerPayload(pattern, patternType)
+		return "Err", "", pattern.Property.Value, errorType, true
+	default:
+		a.addErrorAtTokenWithMetadata(expressionToken(errPattern.Value), diagnostics.InvalidTryHandlerPattern,
+			"Inside Err(...) write _, a binding name, or a qualified error variant such as ErrorType.Variant.",
+			"try handler pattern must be enum variant or identifier")
+		return "", "", "", Type{}, false
+	}
 }

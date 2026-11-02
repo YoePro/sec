@@ -150,47 +150,14 @@ fn _CollectionToStringError(failure: CollectionError) StringError {
  */
 fn SPrintf[...Types](format: string, values: ...ref Types) Result[string, StringError] {
     let mut sink := try new _BuilderFormatSink() {
-        Err(cause) => {
-            return Err(_CollectionToStringError(cause))
+        Err(error) => {
+            return Err(_CollectionToStringError(error))
         }
     }
 
-    let result := FormatComposite(
-        format,
-        ref mut sink,
-        values...,
-    )
+    try _AppendCompositeFormat(ref mut sink, format, values...)
 
-    match result {
-        Ok(_) => {
-        }
-
-        Err(failure) => {
-            match failure {
-                Text(cause) => {
-                    return Err(cause)
-                }
-
-                Sink(cause) => {
-                    return Err(_CollectionToStringError(cause))
-                }
-
-                SizeOverflow => {
-                    return Err(
-                        StringError.Allocation(AllocationError.InvalidSize),
-                    )
-                }
-            }
-        }
-    }
-
-    let text := try sink.Finish() {
-        Err(cause) => {
-            return Err(_CollectionToStringError(cause))
-        }
-    }
-
-    return Ok(text)
+    return _FinishStringSink(ref mut sink)
 }
 
 /**
@@ -267,6 +234,115 @@ fn SPrintln[...Types](values: ...ref Types) Result[string, StringError] {
     }
 
     return _FinishStringSink(ref mut sink)
+}
+
+/**
+ * Formats arguments into a new UTF-8 string ending with a newline.
+ *
+ * Description:
+ * Uses the canonical composite formatter and appends exactly
+ * one LF character after successful formatting.
+ *
+ * The newline is appended even when the format is empty.
+ * No newline is appended when formatting fails.
+ *
+ * Parameters:
+ * - format: Composite format string.
+ * - values: Heterogeneous borrowed formatting arguments.
+ *
+ * Returns:
+ * - Ok(text): Complete formatted text including the newline.
+ *
+ * Errors:
+ * - StringError.Format: Invalid or unsupported format.
+ * - StringError.Allocation: Storage or output size failure.
+ * - StringError: Argument text conversion failure.
+ *
+ * Ownership:
+ * Does not consume or modify the formatting arguments.
+ * Owns and releases all temporary Builder storage.
+ *
+ * Allocation:
+ * May allocate during conversion, Builder growth and
+ * final string materialization.
+ *
+ * Rulebook:
+ * stdlib/fmt/std-fmt.md, sections 3, 8 and 11.
+ */
+fn SPrintfln[...Types](format: string, values: ...ref Types) Result[string, StringError] {
+    let mut sink := try new _BuilderFormatSink() {
+        Err(error) => {
+            return Err(_CollectionToStringError(error))
+        }
+    }
+
+    try _AppendCompositeFormat(ref mut sink, format, values...)
+
+    try sink.WriteText("\n") {
+        Err(error) => {
+            return Err(_CollectionToStringError(error))
+        }
+    }
+
+    return _FinishStringSink(ref mut sink)
+}
+
+/**
+ * Appends composite-formatted arguments to a string destination.
+ *
+ * Description:
+ * Uses the canonical core formatter without materializing
+ * the combined output string.
+ *
+ * Parameters:
+ * - sink: Mutable Builder-backed formatting destination.
+ * - format: Composite format string.
+ * - values: Heterogeneous borrowed formatting arguments.
+ *
+ * Returns:
+ * - Ok(): All formatted text was appended successfully.
+ *
+ * Errors:
+ * - StringError.Format: Invalid or unsupported format.
+ * - StringError.Allocation: Storage or output size failure.
+ * - StringError: Argument text conversion failure.
+ *
+ * Ownership:
+ * Does not consume the destination or arguments.
+ *
+ * Allocation:
+ * May allocate during conversion and Builder growth.
+ */
+fn _AppendCompositeFormat[...Types](sink: ref mut _BuilderFormatSink, format: string, values: ...ref Types) Result[void, StringError] {
+    let result := FormatComposite(
+        format,
+        ref mut sink,
+        values...,
+    )
+
+    match result {
+        Ok(_) => {
+            return Ok()
+        }
+
+        Err(failure) => {
+            match failure {
+                Text(cause) => {
+                    return Err(cause)
+                }
+
+                Sink(cause) => {
+                    return Err(_CollectionToStringError(cause))
+                }
+
+                SizeOverflow => {
+                    return Err(
+                        StringError.Allocation(AllocationError.InvalidSize),
+                    )
+                }
+            }
+        }
+    }
 }
 
 /**

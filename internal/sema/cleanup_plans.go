@@ -21,6 +21,7 @@ type CleanupRegistrationKind string
 
 const (
 	CleanupRegisterOwned            CleanupRegistrationKind = "owned-initialization"
+	CleanupRegisterMatchBinding     CleanupRegistrationKind = "owned-match-binding"
 	CleanupRegisterReinitialization CleanupRegistrationKind = "reinitialization"
 	CleanupRegisterReplacement      CleanupRegistrationKind = "replacement"
 	CleanupRegisterDefer            CleanupRegistrationKind = "defer"
@@ -98,6 +99,11 @@ func (a *Analyzer) resolvedCleanupPlanOfInvocation(invocation CallableID) (Resol
 	for stmt, registration := range a.ownedCleanupInitializations {
 		if registration.Invocation == invocation {
 			plan.Registrations = append(plan.Registrations, site(CleanupRegisterOwned, registration, stmt.Name.Token))
+		}
+	}
+	for arm, registration := range a.ownedCleanupMatchBindings {
+		if registration.Invocation == invocation {
+			plan.Registrations = append(plan.Registrations, site(CleanupRegisterMatchBinding, registration, arm.Token))
 		}
 	}
 	for stmt, assignment := range a.ownedCleanupAssignments {

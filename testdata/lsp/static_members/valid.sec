@@ -1,0 +1,38 @@
+module main
+
+type Counter struct { field: int, storage: EventStorage[int, 4] }
+impl Counter {
+    static let Limit: int := 10
+    static let mut Total: int := 0
+    static property Global: int { get { return 1 } }
+    /** Creates a counter. */
+    static fn Create(value: int) int { return value }
+    property Value: int { get { return self.field } }
+    fn Read() int { return self.field }
+    event Changed using storage
+}
+impl extends Counter {
+    static let Extra: int := 2
+    fn More() int { return 3 }
+}
+type Other struct { Limit: int }
+impl Other {
+    property Global: int { get { return 4 } }
+    fn Create() int { return 5 }
+}
+fn Use(counter: ref Counter, other: ref Other) int {
+    let made := Counter.Create(4)
+    discard made
+    static let Local: int := 6
+    return Counter.Limit + Counter.Total + Counter.Global + counter.Value +
+        counter.Read() + Counter.Extra + counter.More() + other.Create() +
+        other.Global + other.Limit + Local
+}
+
+fn Handle(value: int) void {}
+fn Watch(counter: ref Counter) void {
+    match counter.Changed.Subscribe(Handle) {
+        Subscribed(subscription) => { subscription.Close() }
+        Full => {}
+    }
+}

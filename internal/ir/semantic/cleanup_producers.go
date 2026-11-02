@@ -99,6 +99,20 @@ func (b *builder) importDestructionPlans(set sema.DestructionPlanSet, typ sema.T
 				return err
 			}
 			record.Element, record.ElementCount = string(plan.Element), plan.ElementCount
+		case sema.DestructionVariant:
+			if plan.CustomFree {
+				return &UnsupportedFeatureError{Feature: "P17 custom-free union destruction plan", Package: b.maxPackage}
+			}
+			for _, step := range plan.Variants {
+				payload, ok := variantPayloadOf(typ, step)
+				if !ok {
+					return &UnsupportedFeatureError{Feature: "P17 named-field variant destruction plan", Package: b.maxPackage}
+				}
+				if err := add(step.Payload[0].Plan, payload); err != nil {
+					return err
+				}
+				record.Variants = append(record.Variants, DestructionVariantRecord{Variant: UnionVariantIndex(step.Index), Plan: string(step.Payload[0].Plan)})
+			}
 		default:
 			return &UnsupportedFeatureError{Feature: "P17 " + string(plan.Kind) + " destruction plan (later P17 producer slice)", Package: b.maxPackage}
 		}
@@ -110,6 +124,24 @@ func (b *builder) importDestructionPlans(set sema.DestructionPlanSet, typ sema.T
 		return "", err
 	}
 	return string(set.Root), nil
+}
+
+// variantPayloadOf is the one whole payload type a variant plan step destroys.
+// A named-field variant steps per field and has no whole-payload plan shape.
+func variantPayloadOf(typ sema.Type, step sema.DestructionVariantStep) (sema.Type, bool) {
+	if len(step.Payload) != 1 || step.Payload[0].Field != "" {
+		return sema.Type{}, false
+	}
+	if typ.Kind == sema.ResultType {
+		if step.Index >= len(typ.TypeArgs) {
+			return sema.Type{}, false
+		}
+		return typ.TypeArgs[step.Index], true
+	}
+	if step.Index >= len(typ.UnionVariants) || typ.UnionVariants[step.Index].Payload == nil {
+		return sema.Type{}, false
+	}
+	return *typ.UnionVariants[step.Index].Payload, true
 }
 
 // bindCustomFrees gives every custom-free destruction plan the identity of
@@ -168,6 +200,9 @@ func (fb *functionBuilder) trackOwnedParameters(decl *ast.FunctionDeclaration) e
 
 // trackOwned emits cleanup.track-owned for one owned value's registration.
 func (fb *functionBuilder) trackOwned(token lexer.Token, registration sema.ResolvedOwnedCleanupRegistration, value builtValue, typ sema.Type) error {
+	if fb.inDeferBody {
+		return fb.unsupported("an owned local inside a defer body", token)
+	}
 	if _, ok := fb.cleanupPlan(); !ok {
 		return fb.unsupported("owned value without a resolved cleanup plan", token)
 	}
@@ -406,7 +441,7 @@ func (fb *functionBuilder) ownedArgumentLowerable(argument ast.Expression) bool 
 	switch argument := argument.(type) {
 	case *ast.Identifier:
 		plan, ok := fb.owner.analyzer.ResolvedTransferPlanOf(argument)
-		return ok && ownedLocalMoveLowerable(plan) && plan.Site == sema.TransferSiteArgument
+		return ok && ownedLocalMoveLowerable(plan) && (plan.Site == sema.TransferSiteArgument || plan.Site == sema.TransferSiteConstruction)
 	case *ast.PrefixExpression:
 		return argument.Operator == "<-" && fb.ownedArgumentLowerable(argument.Right)
 	case *ast.CallExpression, *ast.StructLiteral:
@@ -509,7 +544,8 @@ func (fb *functionBuilder) assignOwnedStorage(stmt *ast.AssignmentStatement, bin
 	place := fb.ownedStoragePlace(owned, stmt.Token)
 	registration := assignment.Registration
 	switch assignment.Previous {
-	case sema.CleanupPreviousAvailable:
+	case sema.CleanupPreviousAvailable, sema.CleanupPreviousConditional:
+		conditional := assignment.Previous == sema.CleanupPreviousConditional
 		old, tracked := fb.trackedActions[binding]
 		if !tracked {
 			return fb.unsupported("P17 replacement of an untracked owned value", stmt.Token)
@@ -518,8 +554,8 @@ func (fb *functionBuilder) assignOwnedStorage(stmt *ast.AssignmentStatement, bin
 		if err != nil {
 			return err
 		}
-		fb.emit(Operation{Kind: OpOwnReplacePlace, Operands: []ValueID{place.id, value.id}, Ownership: &OwnershipFacts{DestructionPlan: planID, OldCleanup: old, NewCleanup: uint32(registration.Action)}, Location: location(stmt.Token)})
-		fb.emit(Operation{Kind: OpCleanupCancel, Cleanup: &CleanupFacts{Action: old, Reason: "replaced"}, Location: location(stmt.Token)})
+		fb.emit(Operation{Kind: OpOwnReplacePlace, Operands: []ValueID{place.id, value.id}, Ownership: &OwnershipFacts{DestructionPlan: planID, OldCleanup: old, NewCleanup: uint32(registration.Action), IfOwned: conditional}, Location: location(stmt.Token)})
+		fb.emit(Operation{Kind: OpCleanupCancel, Cleanup: &CleanupFacts{Action: old, Reason: "replaced", IfActive: conditional}, Location: location(stmt.Token)})
 	case sema.CleanupPreviousUnavailable:
 		fb.emit(Operation{Kind: OpOwnInitializePlace, Operands: []ValueID{place.id, value.id}, Ownership: &OwnershipFacts{NewCleanup: uint32(registration.Action)}, Location: location(stmt.Token)})
 	default:

@@ -655,6 +655,7 @@ def Sec_FailReferenceGenerationOp : Sec_Op<"fail.reference_generation", [Termina
 }
 
 include "sec/Dialect/Sec/SecSliceOps.td"
+include "sec/Dialect/Sec/SecOwnershipOps.td"
 
 // MD-114 §6: pure detached values; no hardware or physical representation.
 def Sec_RegisterExtractOp : Sec_Op<"register.extract", [Pure]> {

@@ -129,33 +129,16 @@ func (a *Analyzer) conversionSourceDomain(source Type, constant *big.Int, width 
 		return scalarIntegerDomain(portableDomainType(source, width))
 	}
 	if enumIsOpenBitDomain(source) {
-		if source.MinInteger == nil || source.MaxInteger == nil {
-			return nil, nil, false
-		}
-		return new(big.Int).Set(source.MinInteger), new(big.Int).Set(source.MaxInteger), true
+		return openEnumIntegerDomain(source)
 	}
-	var minimum, maximum *big.Int
-	for _, value := range source.EnumConsts {
-		if value.Value == nil {
-			return nil, nil, false
-		}
-		if minimum == nil || value.Value.Cmp(minimum) < 0 {
-			minimum = value.Value
-		}
-		if maximum == nil || value.Value.Cmp(maximum) > 0 {
-			maximum = value.Value
-		}
-	}
-	if minimum == nil {
-		return nil, nil, false
-	}
-	return new(big.Int).Set(minimum), new(big.Int).Set(maximum), true
+	return closedEnumIntegerDomain(source)
 }
 
 // enumIsOpenBitDomain reports a bit[N]-backed hardware enum, whose domain is
-// open over its complete bit width (enums.md § 2).
+// open over its complete bit width (enums.md § 2). An unresolved width stays
+// open so it cannot fall through to a closed-case-only proof.
 func enumIsOpenBitDomain(typ Type) bool {
-	return typ.Kind == EnumType && typ.BitWidth > 0 && strings.HasPrefix(typ.Underlying, "bit")
+	return typ.Kind == EnumType && (typ.Underlying == "bit" || strings.HasPrefix(typ.Underlying, "bit["))
 }
 
 // isTargetSizedInteger reports int and uint, whose width the plan selects.

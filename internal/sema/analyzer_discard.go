@@ -1,10 +1,29 @@
 package sema
 
 import (
+	"strings"
+
 	"sec/internal/ast"
 	"sec/internal/diagnostics"
 	"sec/internal/lexer"
 )
+
+// DiscardSourceState is what a `discard name` finds on the executing path: discard
+// converges a Place to unavailable, so the second discard is a legal no-op.
+// Rules: rules/control-flow/discard.md — §§5,7; rules/memory/destruction.md — §12.
+type DiscardSourceState string
+
+const (
+	DiscardSourceAvailable   DiscardSourceState = "available"
+	DiscardSourceUnavailable DiscardSourceState = "unavailable"
+	DiscardSourceConditional DiscardSourceState = "conditional"
+)
+
+// ResolvedDiscardSourceStateOf returns the state of a discarded whole binding.
+func (a *Analyzer) ResolvedDiscardSourceStateOf(stmt *ast.DiscardStatement) (DiscardSourceState, bool) {
+	state, ok := a.discardStates[stmt]
+	return state, ok
+}
 
 // analyzeDiscardStatement validates and commits explicit terminal ownership.
 //
@@ -39,7 +58,9 @@ func (a *Analyzer) analyzeDiscardStatement(stmt *ast.DiscardStatement) {
 		if a.rejectOrdinaryMethodWholeSelfConsumption(place, expressionToken(stmt.Value)) {
 			return
 		}
-		if endedAt, movedKey, partial, unavailable := a.unavailablePlace(place); unavailable && !partial {
+		// A moved active payload was all a union held, so a union whose payload
+		// moved on some path is conditional as a whole (destruction.md § 12.3).
+		if endedAt, movedKey, partial, unavailable := a.unavailablePlace(place); unavailable && (!partial || strings.HasPrefix(movedKey, place.String()+".<")) {
 			if !a.validateExplicitDiscardType(place.Type, expressionToken(stmt.Value)) {
 				return
 			}
@@ -56,9 +77,14 @@ func (a *Analyzer) analyzeDiscardStatement(stmt *ast.DiscardStatement) {
 				}
 			}
 			a.recordRedundantDiscard(stmt, place, movedKey, endedAt)
+			state := DiscardSourceUnavailable
 			if isConditionalAvailabilityReason(a.moveReasons[movedKey]) {
 				a.recordOwnedCleanupCancellation(place, expressionToken(stmt.Value), "discarded")
+				state = DiscardSourceConditional
+				// Every outgoing path is now unavailable (destruction.md § 35.5(3)).
+				a.markPlaceUnavailable(place, expressionToken(stmt.Value), "discarded")
 			}
+			a.discardStates[stmt] = state
 			return
 		}
 	}
@@ -112,6 +138,7 @@ func (a *Analyzer) analyzeDiscardStatement(stmt *ast.DiscardStatement) {
 	if placeOK && a.checkBorrowedMovePlaceForAction(place, ident.Token, "discard") {
 		return
 	}
+	a.discardStates[stmt] = DiscardSourceAvailable
 	a.moved[ident.Value] = ident.Token
 	a.moveReasons[ident.Value] = "discarded"
 	if placeOK {

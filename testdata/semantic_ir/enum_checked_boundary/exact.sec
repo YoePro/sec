@@ -1,0 +1,4 @@
+module main
+enum Closed uint16 { Low = 0, High = 255, Alias = 255 }
+fn Narrow(value: Closed) uint8 { return uint8(value) }
+fn Constant() uint8 { return uint8(Closed.Low) }

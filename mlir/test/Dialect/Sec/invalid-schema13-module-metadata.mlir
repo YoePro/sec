@@ -3,4 +3,4 @@
 module attributes {sec.dialect_version = 13 : i32} {
 }
 
-// CHECK: unsupported Sec dialect schema version
+// CHECK: schema 13 requires sec.semantic_ir_version

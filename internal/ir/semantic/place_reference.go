@@ -196,6 +196,10 @@ func formatPlaceReferenceOperation(out *strings.Builder, op Operation) {
 		if op.ArrayGuard != 0 {
 			fmt.Fprintf(out, " guard=%%%d", op.ArrayGuard)
 		}
+	case OpPlaceRead:
+		if op.PlaceReadMode != "" {
+			out.WriteString(" " + op.PlaceReadMode)
+		}
 	case OpPlaceUnionPayload:
 		fmt.Fprintf(out, " variant=#%d", op.UnionVariant)
 		if op.VariantGuard != 0 {
@@ -405,7 +409,10 @@ func verifyPlaceReferenceOperation(module *Module, op Operation, values map[Valu
 		if len(op.Operands) != 1 || !placeOK || len(op.Results) != 1 || op.Results[0].Type != place.Element {
 			return fmt.Errorf("invalid place.read")
 		}
-		if !package14TrivialValue(module, place.Element) {
+		if op.PlaceReadMode != "" && op.PlaceReadMode != PlaceReadObserve && op.PlaceReadMode != PlaceReadCandidate {
+			return fmt.Errorf("place.read has unknown mode %q", op.PlaceReadMode)
+		}
+		if op.PlaceReadMode == "" && !package14TrivialValue(module, place.Element) {
 			return fmt.Errorf("place.read supports copy-trivial referents only; move-only and semantic-copy reads are unsupported")
 		}
 	case OpPlaceWrite:

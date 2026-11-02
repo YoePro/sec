@@ -1,6 +1,10 @@
 package sema
 
-import "sec/internal/ast"
+import (
+	"strings"
+
+	"sec/internal/ast"
+)
 
 // CleanupPreviousValue records the destination availability already resolved
 // by Sema after RHS preparation. Conditional/partial states retain their own
@@ -56,6 +60,10 @@ func (a *Analyzer) prepareOwnedCleanupAssignment(stmt *ast.AssignmentStatement, 
 	previous := CleanupPreviousAvailable
 	if _, key, partial, unavailable := a.unavailablePlace(place); unavailable {
 		switch {
+		case partial && strings.HasPrefix(key, place.String()+".<"):
+			// A moved active payload was all the union held, so only the path
+			// that moved it differs (destruction.md § 13.3).
+			previous = CleanupPreviousConditional
 		case partial:
 			previous = CleanupPreviousPartial
 		case isConditionalAvailabilityReason(a.moveReasons[key]):

@@ -6,6 +6,7 @@ add_mlir_dialect_library(SecMLIRDialect
   StaticPlaceIdentities.cpp
   ReferenceBoundaries.cpp
   SliceOps.cpp
+  OwnershipOps.cpp
   StructOps.cpp
   ConversionProof.cpp
   RegisterContracts.cpp

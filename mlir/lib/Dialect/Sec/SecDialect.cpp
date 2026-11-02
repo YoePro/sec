@@ -177,7 +177,7 @@ LogicalResult SecDialect::verifyOperationAttribute(Operation *operation,
     int64_t number = version.getInt();
     if (number != 1 && number != 2 && number != 3 && number != 4 &&
         number != 5 && number != 6 && number != 7 && number != 8 &&
-        number != 9 && number != 10 && number != 11 && number != 12)
+        number != 9 && number != 10 && number != 11 && number != 12 && number != 13)
       return operation->emitError("unsupported Sec dialect schema version");
     // Reject MD-077 identities recursively, including type attributes and
     // signatures, before schema 11. No default schema change is implied.
@@ -290,6 +290,18 @@ LogicalResult SecDialect::verifyOperationAttribute(Operation *operation,
     return success();
   }
 
+  // The plan table holds type-level facts; --sec-verify-destruction-plans checks
+  // its closure (dialect v13 sections 23, 34).
+  if (name == "sec.destruction_plans") {
+    auto module = dyn_cast<ModuleOp>(operation);
+    auto version = module ? module->getAttrOfType<IntegerAttr>("sec.dialect_version") : IntegerAttr();
+    auto table = dyn_cast<ArrayAttr>(value);
+    if (!module || !version || version.getInt() < 13)
+      return operation->emitError("sec.destruction_plans requires a schema-13 module");
+    if (!table || !llvm::all_of(table, [](Attribute item) { return isa<DictionaryAttr>(item); }))
+      return operation->emitError("sec.destruction_plans must be an array of dictionaries");
+    return success();
+  }
   if (name=="sec.register_fit_proof") {
     if (!isa<RegisterFromBitsOp>(operation)) return operation->emitError("sec.register_fit_proof belongs only on register.from_bits");
     return success();

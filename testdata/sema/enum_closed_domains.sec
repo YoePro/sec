@@ -1,0 +1,10 @@
+module main
+
+enum Sparse int256 { Low = -128, AliasLow = -128, High = 127, AliasHigh = 127 }
+enum Negative int256 { Low = -128, High = -1, Alias = -1 }
+enum Byte uint256 { High = 255, Alias = 255, Low = 0 }
+enum Beyond int256 { Low = -129, AliasLow = -129, High = 127 }
+fn SparseByte(value: Sparse) int8 { return int8(value) }
+fn NegativeByte(value: Negative) int8 { return int8(value) }
+fn ByteValue(value: Byte) uint8 { return uint8(value) }
+fn BeyondByte(value: Beyond) int8 { return try int8(value) { Err(_) => 0 } }

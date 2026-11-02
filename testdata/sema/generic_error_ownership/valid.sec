@@ -1,0 +1,75 @@
+module main
+
+type Handle struct { id: int }
+impl Handle { free {} }
+type OwnedError union error { Held(Handle) Empty }
+
+fn Identity[E: error](-> cause: E) E {
+    return <-cause
+}
+fn Wrap[E: error](-> cause: E) Result[int, E] {
+    return Err(<-cause)
+}
+fn Pass[E: error](-> result: Result[int, E]) Result[int, E] {
+    return <-result
+}
+fn Forward[E: error](-> result: Result[int, E]) Result[int, E] {
+    let value := try Pass(<-result)
+    return Ok(value)
+}
+fn Recover[E: error](-> result: Result[int, E], -> fallback: E) E {
+    match Pass(<-result) {
+        Ok(value) => return <-fallback
+        Err(cause) => return <-cause
+    }
+}
+fn Inspect[E: error](cause: ref E) bool { return true }
+fn Guarded[E: error](-> result: Result[int, E], -> fallback: E) E {
+    match Pass(<-result) {
+        Ok(value) => return <-fallback
+        Err(cause) where Inspect(cause) => return <-cause
+        Err(cause) => return <-cause
+    }
+}
+fn Widen[E: error](-> result: Result[int, E]) Result[int, error] {
+    let value := try Pass(<-result)
+    return Ok(value)
+}
+fn Project[E: error](-> result: Result[int, E]) Option[E] {
+    return result.Err()
+}
+fn Run() void {
+    let first := OwnedError.Held(Handle { id: 1 })
+    let same := Identity(<-first)
+    let wrapped := Wrap(<-same)
+    let forwarded := Forward(<-wrapped)
+    let recovered := Recover(<-forwarded, OwnedError.Empty)
+    let guarded := Guarded(Wrap(<-recovered), OwnedError.Empty)
+    let projected := Project(Wrap(<-guarded))
+    let widened := Widen(Wrap(OwnedError.Empty))
+    discard widened
+    discard projected
+    let outer := ForwardError[OwnedError].Sink(OwnedError.Empty)
+    let inspected := Outer(<-outer)
+    discard inspected
+}
+
+type ForwardError[E: error] union error { Sink(E) Stopped }
+fn Outer[E: error](value: ForwardError[E]) int {
+    match value {
+        ForwardError.Sink(cause) => return 0
+        ForwardError.Stopped => return 1
+    }
+}
+
+enum ClosedError error { Broken }
+fn DiscardProven(value: Result[int, ClosedError]) int {
+    return try value { Err(_) => 0 }
+}
+
+fn GuardedTry[E: error](-> result: Result[int, E]) int {
+    return try Pass(<-result) {
+        Err(cause) where Inspect(cause) => 0
+        Err(cause) => 0
+    }
+}

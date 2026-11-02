@@ -69,9 +69,12 @@ func (t Toolchain) VerifySecInspection(mlirPath string) error {
 
 // secReferenceVerificationPasses check Place and direct-reference facts.
 var secReferenceVerificationPasses = []string{
-	"--sec-verify-places",
+	"--sec-verify-slice-guards", "--sec-verify-places",
 	"--sec-verify-reference-guards",
 	"--sec-verify-borrow-semantics",
+	"--sec-verify-cleanups",
+	"--sec-verify-destruction-plans",
+	"--sec-verify-ownership",
 }
 
 // secVerificationPasses are the Sec dialect proof checks every emission and

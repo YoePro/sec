@@ -140,28 +140,23 @@ func verifyDestructionPlanGraph(module *Module) error {
 				return err
 			}
 		case "active-variant":
-			var variants []UnionVariantDefinition
-			for _, definition := range module.Unions {
-				if definition.TypeID == plan.Type {
-					variants = definition.Variants
-				}
-			}
-			if variants == nil {
-				return fmt.Errorf("active-variant destruction plan %q destroys a non-union", plan.ID)
+			payloads, known := variantPayloads(module, plan.Type)
+			if !known {
+				return fmt.Errorf("active-variant destruction plan %q destroys neither a union nor a Result", plan.ID)
 			}
 			listed := map[UnionVariantIndex]bool{}
 			for _, variant := range plan.Variants {
-				if int(variant.Variant) >= len(variants) || listed[variant.Variant] || variants[variant.Variant].Payload == 0 {
+				if int(variant.Variant) >= len(payloads) || listed[variant.Variant] || payloads[variant.Variant] == 0 {
 					return fmt.Errorf("active-variant destruction plan %q names an invalid or payload-free variant", plan.ID)
 				}
 				listed[variant.Variant] = true
-				if err := step(plan, variant.Plan, variants[variant.Variant].Payload); err != nil {
+				if err := step(plan, variant.Plan, payloads[variant.Variant]); err != nil {
 					return err
 				}
 			}
-			for _, variant := range variants {
-				if variant.Payload != 0 && !listed[variant.Index] && !trivialDestruction(module, variant.Payload) {
-					return fmt.Errorf("active-variant destruction plan %q omits non-trivial variant #%d", plan.ID, variant.Index)
+			for index, payload := range payloads {
+				if payload != 0 && !listed[UnionVariantIndex(index)] && !trivialDestruction(module, payload) {
+					return fmt.Errorf("active-variant destruction plan %q omits non-trivial variant #%d", plan.ID, index)
 				}
 			}
 		case "compiler-known-resource":
@@ -173,6 +168,24 @@ func verifyDestructionPlanGraph(module *Module) error {
 		}
 	}
 	return nil
+}
+
+// variantPayloads lists the whole payload type of each variant of a union or a
+// Result (Ok, then Err); a payload-free or named-field variant lists 0.
+func variantPayloads(module *Module, id TypeID) ([]TypeID, bool) {
+	if typ, ok := module.Types.Lookup(id); ok && typ.Kind == TypeResult {
+		return []TypeID{typ.Success, typ.Error}, true
+	}
+	for _, definition := range module.Unions {
+		if definition.TypeID == id {
+			payloads := make([]TypeID, len(definition.Variants))
+			for index, variant := range definition.Variants {
+				payloads[index] = variant.Payload
+			}
+			return payloads, true
+		}
+	}
+	return nil, false
 }
 
 // ownedPlace resolves a Place SSA value to its root identity and subobject

@@ -1,0 +1,23 @@
+module main
+
+enum IOError error { Closed }
+interface Sink[E: error] { fn Read() Result[int, E] }
+
+fn Generic[E: error](value: ref Sink[E]) Result[int, E] {
+    return value.Read()
+}
+fn Concrete(value: ref Sink[IOError]) Result[int, IOError] {
+    return value.Read()
+}
+fn Root(value: ref Sink[error]) Result[int, error] {
+    return value.Read()
+}
+fn MatchWhole[E: error](value: Result[int, E]) int {
+    match value {
+        Ok(n) => return n
+        Err(cause) => return 0
+    }
+}
+fn TryWhole[E: error](value: Result[int, E]) int {
+    return try value { Err(cause) => 0 }
+}

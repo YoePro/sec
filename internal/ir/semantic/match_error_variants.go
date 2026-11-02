@@ -135,7 +135,7 @@ func (fb *functionBuilder) matchArmVariantIndex(arm sema.ResolvedMatchArm) Union
 // synthetic struct assembled from guarded field projections (package 13
 // sections 66-68). meta carries the provenance of the projections, which must
 // sit on the variant test's dedicated true edge.
-func (fb *functionBuilder) unionVariantPayload(container builtValue, variantIndex UnionVariantIndex, bindingType sema.Type, meta Operation, token lexer.Token) (builtValue, error) {
+func (fb *functionBuilder) unionVariantPayload(container builtValue, variantIndex UnionVariantIndex, bindingType sema.Type, action UnionPayloadAction, meta Operation, token lexer.Token) (builtValue, error) {
 	definition, ok := fb.owner.unionDefinition(container.typ)
 	if !ok || int(variantIndex) >= len(definition.Variants) {
 		return builtValue{}, fb.unsupported("unresolved union match payload", token)
@@ -143,6 +143,9 @@ func (fb *functionBuilder) unionVariantPayload(container builtValue, variantInde
 	variant := definition.Variants[variantIndex]
 	meta.Operands = []ValueID{container.id}
 	if variant.Kind == UnionVariantFields && variant.SyntheticPayloadStruct != 0 {
+		if action != UnionPayloadCopyTrivial {
+			return builtValue{}, fb.unsupported("owned named-field union payload binding", token)
+		}
 		construct := meta
 		construct.Kind = OpStructConstruct
 		construct.Operands = nil
@@ -168,7 +171,7 @@ func (fb *functionBuilder) unionVariantPayload(container builtValue, variantInde
 	}
 	meta.Kind = OpUnionUnwrapPayload
 	meta.UnionVariant = variantIndex
-	meta.PayloadActions = []UnionPayloadAction{UnionPayloadCopyTrivial}
+	meta.PayloadActions = []UnionPayloadAction{action}
 	return fb.result(meta, payloadType), nil
 }
 
@@ -197,7 +200,7 @@ func (fb *functionBuilder) bindTryHandlerPayload(handler *ast.TryHandler, plan s
 		if !sema.TriviallyCopyable(plan.BindingType) {
 			return nil, fb.unsupported("ownership-sensitive error payload handler binding", handler.Token)
 		}
-		payload, err := fb.unionVariantPayload(selected.value, selected.variant, plan.BindingType, meta, handler.Token)
+		payload, err := fb.unionVariantPayload(selected.value, selected.variant, plan.BindingType, UnionPayloadCopyTrivial, meta, handler.Token)
 		if err != nil {
 			return nil, err
 		}

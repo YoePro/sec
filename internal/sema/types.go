@@ -1044,6 +1044,10 @@ func builtinTypes() map[string]Type {
 	for name, typ := range shared {
 		types[name] = typ
 	}
+	// ConversionError is an ordinary core union, not a privileged intrinsic.
+	// Keep the standalone fallback per analyzer so loaded source can refine it.
+	types["ConversionError"] = builtinConversionErrorType(types["ContractError"])
+
 	for _, iface := range CompilerKnownInterfaces() {
 		types[iface.Name] = iface
 	}

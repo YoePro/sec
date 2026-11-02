@@ -1,0 +1,94 @@
+module main
+
+fn ChildInOneBranch(data: ref mut int[], flag: bool) int {
+    let view := ref mut data[0..<1]
+    let child := ref mut view[0..<1]
+    if flag {
+        child[0] = 1
+    } else {
+        view[0] = 2
+    }
+    data[0] = 3
+    return 0
+}
+
+fn ChildMoved(data: ref mut int[], flag: bool) int {
+    let view := ref mut data[0..<1]
+    let moved :<- view
+    if flag {
+        moved[0] = 1
+    }
+    let next := 2
+    data[0] = next
+    return 0
+}
+
+fn SwitchClauses(data: ref mut int[], selector: int) int {
+    let view := ref mut data[0..<1]
+    switch selector {
+        case 0:
+            view[0] = 1
+        case 1:
+            data[0] = 2
+        default:
+    }
+    data[0] = 3
+    return 0
+}
+
+fn NestedJoin(data: ref mut int[], first: bool, second: bool) int {
+    let view := ref mut data[0..<1]
+    if first {
+        if second {
+            view[0] = 1
+        } else {
+            let value := 2
+            data[0] = value
+        }
+        let more := 2
+        data[0] = more
+    } else {
+        view[0] = 1
+    }
+    data[0] = 3
+    return 0
+}
+
+fn BreakInLoop(data: ref mut int[], flag: bool) int {
+    let view := ref mut data[0..<1]
+    let mut index := 0
+    while index < 2 {
+        if flag {
+            view[0] = index
+            break
+        }
+        index += 1
+    }
+    data[0] = 3
+    return index
+}
+
+fn ContinueInFor(data: ref int[]) int {
+    let mut total := 0
+    for index in 0..<3 {
+        let view := ref data[0..<1]
+        if index == 1 {
+            continue
+        }
+        if index == 2 {
+            break
+        }
+        total += view[0]
+    }
+    return total
+}
+
+fn ReturnInLoop(data: ref int[]) ref int[] {
+    for index in 0..<2 {
+        let view := ref data[0..<1]
+        if index == 0 {
+            return view
+        }
+    }
+    return data
+}

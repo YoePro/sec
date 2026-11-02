@@ -176,7 +176,7 @@ func (fb *functionBuilder) buildFailureSetTry(expr *ast.TryExpression, resolved 
 // buildRoutedCarrier builds a Result carrier root whose operands may contain
 // routed failure points, then routes its Err state as the last failure point.
 func (fb *functionBuilder) buildRoutedCarrier(expr *ast.TryExpression, point sema.TryFailurePoint) (builtValue, error) {
-	resultValue, err := fb.buildExpr(expr.Expression, 0)
+	resultValue, err := fb.buildTryOperand(expr.Expression)
 	if err != nil {
 		return builtValue{}, err
 	}

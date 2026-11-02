@@ -155,6 +155,11 @@ func (a *Analyzer) holderUsedLater(name string, declaredDepth int) bool {
 			// loop declared around the holder repeats all of itself.
 			switch enclosing := frame.block.Statements[frame.index].(type) {
 			case *ast.IfStatement, *ast.MatchStatement:
+			case *ast.SwitchStatement:
+				// Clauses are separate paths unless one falls through to the next.
+				if switchMayFallThrough(enclosing) && a.identifierUseOf(enclosing).names[name] {
+					return true
+				}
 			case *ast.WhileStatement, *ast.ForStatement:
 				// A binding of this for loop is fresh in every iteration
 				// (borrowing.md § 18(4)); its next-iteration uses belong
@@ -222,12 +227,30 @@ func (a *Analyzer) releaseDeadReferenceHolders(next lexer.Token) {
 		if !ok || symbol.Type.Kind != ReferenceType || !symbol.Local || symbol.ImplicitMember {
 			continue
 		}
-		if a.holderUsedLater(holder, symbol.ScopeDepth) || a.originSharedWithUntrackedHolder(holder, symbol) {
+		if a.holderUsedLater(holder, symbol.ScopeDepth) || a.originSharedWithUntrackedHolder(holder, symbol) || a.holderHasLiveChild(holder) {
 			continue
 		}
 		a.recordReferenceLifetimeEndBefore(holder, a.currentStatementToken, next)
 		a.dropBorrowsHeldBy(holder)
 	}
+}
+
+// holderHasLiveChild keeps a holder live while a reborrow through it is, on paths
+// where the holder itself is not named again: a child never outlives its parent's
+// authority (rules/memory/borrowing.md §11). An empty range grants access to no
+// storage, so it keeps nothing live.
+func (a *Analyzer) holderHasLiveChild(holder string) bool {
+	for _, records := range a.borrows {
+		for _, record := range records {
+			if record.Place.ReferenceHolder != holder || record.Holder == "" || record.Holder == holder || placeIsStaticallyEmpty(record.Place) {
+				continue
+			}
+			if child, known := a.symbols[record.Holder]; known && a.holderUsedLater(record.Holder, child.ScopeDepth) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // originSharedWithUntrackedHolder reports another live local that carries the
@@ -288,4 +311,16 @@ func (a *Analyzer) holderOriginRoots(holder string, symbol Symbol) map[string]bo
 		}
 	}
 	return roots
+}
+
+// switchMayFallThrough reports an explicit fallthrough in a clause of statement.
+func switchMayFallThrough(statement *ast.SwitchStatement) bool {
+	found := false
+	ast.Visit(statement, func(node any) bool {
+		if _, ok := node.(*ast.FallthroughStatement); ok {
+			found = true
+		}
+		return !found
+	})
+	return found
 }

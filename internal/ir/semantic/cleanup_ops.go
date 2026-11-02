@@ -30,7 +30,7 @@ var (
 	// cleanupCancelReasons: the owned value moved out, its ownership ended
 	// in a replacement, or it was transferred out by a return/argument
 	// (package17 §§ 38, 40, 55).
-	cleanupCancelReasons = []string{"moved", "replaced", "transferred"}
+	cleanupCancelReasons = []string{"moved", "replaced", "transferred", "discarded"}
 )
 
 // CleanupFacts are the compile-time identities of a cleanup.* operation.
@@ -44,6 +44,9 @@ type CleanupFacts struct {
 	Ordinal uint32
 	// Defer identifies a defer statement.
 	Defer uint32
+	// IfActive lets a cleanup.cancel end a registration that is live on only
+	// some paths, paired with an IfOwned ownership operation.
+	IfActive bool
 	// DestructionPlan is the plan a tracked owned value is destroyed with.
 	DestructionPlan string
 	// Reason explains a cancel.
@@ -94,7 +97,7 @@ func verifyCleanupOperation(module *Module, op Operation, values map[ValueID]Val
 		}
 	case OpCleanupCancel:
 		if len(op.Operands) != 0 || facts.Action == 0 || !oneOf(facts.Reason, cleanupCancelReasons) {
-			return fmt.Errorf("cleanup.cancel requires an action identity and a reason (moved, replaced, transferred)")
+			return fmt.Errorf("cleanup.cancel requires an action identity and a reason (moved, replaced, transferred, discarded)")
 		}
 	case OpCleanupDeferRegister:
 		if facts.Action == 0 || facts.Scope == 0 || facts.Ordinal == 0 || facts.Defer == 0 || facts.DestructionPlan != "" {
@@ -219,7 +222,9 @@ func verifyDeferRegion(module *Module, fn *Function, op Operation, functions map
 			return fmt.Errorf("defer region block ^%d has no terminator", block.ID)
 		}
 		last := block.Operations[len(block.Operations)-1]
-		if last.Kind != OpCleanupDeferYield && last.Kind != OpBranch && last.Kind != OpCondBranch {
+		// A runtime check in the body may end in its non-returning failure; only a
+		// return would leave the region for the surrounding function.
+		if !last.IsTerminator() || last.Kind == OpReturn {
 			return fmt.Errorf("defer region block ^%d must end with cleanup.defer-yield or a branch within the region, not %s", block.ID, last.Kind)
 		}
 	}
@@ -269,6 +274,9 @@ func formatCleanupOperation(out *strings.Builder, op Operation, indent string) {
 	}
 	if facts.Reason != "" {
 		fmt.Fprintf(out, " reason=%s", facts.Reason)
+	}
+	if facts.IfActive {
+		out.WriteString(" if-active")
 	}
 	if len(facts.Scopes) != 0 {
 		scopes := make([]string, len(facts.Scopes))

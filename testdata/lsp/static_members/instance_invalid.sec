@@ -1,0 +1,6 @@
+module main
+type Incomplete struct {}
+impl Incomplete {
+    let Instance: int := 1
+    static let Shared: int := 2
+}

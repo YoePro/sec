@@ -53,6 +53,9 @@ type OwnershipFacts struct {
 	// OldCleanup and NewCleanup are the cleanup action identities a
 	// replacement terminates and installs (dialect v13 § 10).
 	OldCleanup, NewCleanup uint32
+	// IfOwned makes a replacement, discard or destroy-place act only on runtime
+	// paths that still own the value (destruction.md §§ 13.3, 35.5).
+	IfOwned bool
 	// Skipped lists the subobjects of an own.destroy-place destination that
 	// were moved out and are not destroyed (package17 §§ 12, 14, 23, 59).
 	Skipped []OwnedPath
@@ -404,6 +407,9 @@ func formatOwnershipOperation(out *strings.Builder, op Operation) {
 	}
 	if facts.DestructionPlan != "" {
 		fmt.Fprintf(out, " plan=%q", facts.DestructionPlan)
+	}
+	if facts.IfOwned {
+		out.WriteString(" if-owned")
 	}
 	if facts.Cause != "" {
 		fmt.Fprintf(out, " cause=%s", facts.Cause)

@@ -133,3 +133,61 @@ fn Elevate() void {
 		t.Fatalf("want three A2005 information diagnostics, got %+v", analyzer.Warnings())
 	}
 }
+
+// A switch clause is a separate path unless it falls through, and a parent holder
+// outlives a reborrow still used on a path that does not name the parent.
+// Rules: rules/memory/borrowing.md §§8.1,11.
+func TestBorrowLivenessAcrossSwitchClausesAndChildren(t *testing.T) {
+	assertSemaErrors(t, analyzeSourceRaw(t, `module main
+fn Clauses(data: ref mut int[], selector: int) int {
+    let view := ref mut data[0..<1]
+    switch selector {
+    case 0:
+        view[0] = 1
+    case 1:
+        data[0] = 2
+    default:
+    }
+    data[0] = 3
+    return 0
+}
+`), nil)
+	errors := analyzeSourceRaw(t, `module main
+fn Falls(data: ref mut int[], selector: int) int {
+    let view := ref mut data[0..<1]
+    switch selector {
+    case 0:
+        data[0] = 1
+        fallthrough
+    case 1:
+        view[0] = 2
+    default:
+    }
+    return 0
+}
+`)
+	if len(errors) == 0 {
+		t.Fatal("a clause falling through to a use of the holder must keep its borrow live")
+	}
+}
+
+// A move marker outside its contexts names the canonical spellings, which stay valid.
+// Rules: rules/memory/copy_move.md §6; rules/control-flow/discard.md.
+func TestMoveMarkerOutsideContextNamesCanonicalForms(t *testing.T) {
+	const prefix = "module main\ntype Handle struct { id: int }\nimpl Handle { free {} }\nfn Make() Handle { return Handle { id: 1 } }\n"
+	for _, body := range []string{
+		"fn U() void {\n    let h := Make()\n    discard <-h\n}\n",
+		"fn U() void {\n    let mut h := Make()\n    let g := Make()\n    h = <-g\n}\n",
+	} {
+		errors := analyzeSourceRaw(t, prefix+body)
+		if len(errors) != 1 || !strings.Contains(errors[0].Help, "destination <- source") || !strings.Contains(errors[0].Help, "discard source") {
+			t.Errorf("%s: %+v", body, errors)
+		}
+	}
+	for _, body := range []string{
+		"fn U() void {\n    let h := Make()\n    discard h\n}\n",
+		"fn U() void {\n    let mut h := Make()\n    let g := Make()\n    h <- g\n}\n",
+	} {
+		assertSemaErrors(t, analyzeSourceRaw(t, prefix+body), nil)
+	}
+}

@@ -27,10 +27,35 @@ func validateOwnershipLoweringCapabilities(program *ast.Program, analyzer *sema.
 		if current != module {
 			continue
 		}
+		// A discarded whole binding cancels through discardOwnedBinding.
+		discarded := map[ast.Expression]bool{}
 		if err := walk.Inspect(statement, func(node any) error {
 			feature := ""
 			var at Location
 			switch node := node.(type) {
+			case *ast.DiscardStatement:
+				if node.Name != nil {
+					discarded[node.Name] = true
+				}
+				if identifier, ok := node.Value.(*ast.Identifier); ok {
+					discarded[identifier] = true
+				}
+			case *ast.TryExpression:
+				// A tried owner cancels through buildTryOperand.
+				if identifier, ok := node.Expression.(*ast.Identifier); ok {
+					discarded[identifier] = true
+				}
+			case *ast.IfStatement:
+				if node.OptionBinding != nil && node.OptionBinding.Binding != nil {
+					discarded[node.OptionBinding.Binding] = true
+				}
+			case *ast.MatchExpression:
+				// A moved payload binding cancels through prepareOwnedMatchPayload.
+				for _, arm := range node.Arms {
+					if identifier := matchArmBindingIdentifier(arm.Pattern.Expression()); identifier != nil {
+						discarded[identifier] = true
+					}
+				}
 			case *ast.LetStatement:
 				// Root-scope immutable owned locals lower through
 				// cleanup.track-owned (P17-35); the builder rejects the
@@ -42,16 +67,12 @@ func validateOwnershipLoweringCapabilities(program *ast.Program, analyzer *sema.
 				// own.replace-place / own.initialize-place (P17-28); the
 				// builder rejects conditional and partial previous values.
 			case *ast.ExpressionStatement:
-				if typ, ok := analyzer.ResolvedTypeOf(node.Expression); ok && typ.Kind == sema.ArrayType && !sema.TriviallyDestructible(typ) {
+				_, call := node.Expression.(*ast.CallExpression)
+				if typ, ok := analyzer.ResolvedTypeOf(node.Expression); ok && !call && typ.Kind == sema.ArrayType && !sema.TriviallyDestructible(typ) {
 					if _, fixed := sema.FixedArrayLength(typ); fixed {
 						feature = "P17 owned fixed-array temporary cleanup (P17-40)"
 						at = location(node.Token)
 					}
-				}
-			case *ast.DeferStatement:
-				if _, ok := analyzer.ResolvedDeferPlanOf(node); ok {
-					feature = "P17 deferred cleanup registration and execution (P17-33)"
-					at = location(node.Token)
 				}
 			}
 			if feature != "" {
@@ -67,7 +88,7 @@ func validateOwnershipLoweringCapabilities(program *ast.Program, analyzer *sema.
 					return &UnsupportedFeatureError{Feature: "P17 non-trivial ownership transfer (P17-26/P17-27)", Package: maxPackage, Location: location(expressionToken(expression))}
 				}
 				at := expressionToken(expression)
-				if !wholeLocalMove && len(analyzer.ResolvedOwnedCleanupCancellationsAt(at.File, at.Line, at.Column)) != 0 {
+				if !wholeLocalMove && !discarded[expression] && len(analyzer.ResolvedOwnedCleanupCancellationsAt(at.File, at.Line, at.Column)) != 0 {
 					return &UnsupportedFeatureError{Feature: "P17 ownership termination and cleanup cancellation (P17-29/P17-33)", Package: maxPackage, Location: location(at)}
 				}
 			}

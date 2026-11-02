@@ -72,3 +72,230 @@ func TestBorrowedInterfaceViewsRejectInvalidUses(t *testing.T) {
 		}
 	}
 }
+
+// Forwarding a type pack accepts the same borrowed interface views as a call without
+// a spread, for an ordinary argument and for a pack position, and keeps rejecting a
+// non-conforming type and a shared reference where the view is mutable.
+// Rules: rules/declarations/interfaces.md — §§ 7.1, 9; rules/declarations/functions.md — § 38A.
+func TestPackForwardingAcceptsBorrowedInterfaceViews(t *testing.T) {
+	const declarations = `module main
+
+interface Sink[E: error] {
+    fn Put() Result[void, E]
+}
+
+type Failure enum error { Broken }
+
+type Buffer struct {
+    count: int,
+}
+
+impl Buffer implements Sink[Failure] {
+    fn Put() Result[void, Failure] {
+        return Ok()
+    }
+}
+
+type Plain struct {
+    count: int,
+}
+
+fn Compose[E: error, ...Types](sink: ref mut Sink[E], values: ...ref Types) Result[void, E] {
+    return sink.Put()
+}
+
+fn Take(sink: ref Sink[Failure]) Result[void, Failure] {
+    return Ok()
+}
+
+fn TakeMut(sink: ref mut Sink[Failure]) Result[void, Failure] {
+    return Ok()
+}
+
+fn Exact(sink: ref Sink[Failure]) int {
+    return 0
+}
+
+fn Exact(sink: ref Buffer) int {
+    return 1
+}
+`
+	for name, test := range map[string]struct {
+		source string
+		want   string
+	}{
+		"local argument": {source: `
+fn F[...Types](values: ...ref Types) Result[void, Failure] {
+    let mut buffer := Buffer { count: 0 }
+    return Compose(ref mut buffer, values...)
+}
+
+fn T() Result[void, Failure] {
+    let number := 1
+    return F(ref number)
+}
+`},
+		"reborrowed argument": {source: `
+fn F[...Types](sink: ref mut Buffer, values: ...ref Types) Result[void, Failure] {
+    return Compose(ref mut sink, values...)
+}
+
+fn T() Result[void, Failure] {
+    let mut buffer := Buffer { count: 0 }
+    let number := 1
+    return F(ref mut buffer, ref number)
+}
+`},
+		"pack position": {source: `
+fn G[...Types](values: ...ref Types) Result[void, Failure] {
+    return Take(values...)
+}
+
+fn T() Result[void, Failure] {
+    let buffer := Buffer { count: 0 }
+    return G(ref buffer)
+}
+`},
+		"exact overload still ranks first": {source: `
+fn G[...Types](values: ...ref Types) int {
+    return Exact(values...)
+}
+
+fn T() int {
+    let buffer := Buffer { count: 0 }
+    return G(ref buffer)
+}
+`},
+		"non-conforming position": {source: `
+fn G[...Types](values: ...ref Types) Result[void, Failure] {
+    return Take(values...)
+}
+
+fn T() Result[void, Failure] {
+    let plain := Plain { count: 0 }
+    return G(ref plain)
+}
+`, want: "cannot be passed to parameter"},
+		"shared position to mutable view": {source: `
+fn G[...Types](values: ...ref Types) Result[void, Failure] {
+    return TakeMut(values...)
+}
+
+fn T() Result[void, Failure] {
+    let buffer := Buffer { count: 0 }
+    return G(ref buffer)
+}
+`, want: "a shared reference never grants mutation"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, errors := analyzeSourceWithAnalyzerRaw(t, declarations+test.source)
+			if test.want == "" {
+				if len(errors) != 0 {
+					t.Fatal(errors)
+				}
+				return
+			}
+			found := false
+			for _, problem := range errors {
+				found = found || strings.Contains(problem.Message, test.want)
+			}
+			if !found {
+				t.Fatalf("want %q, got %v", test.want, errors)
+			}
+		})
+	}
+}
+
+// A generic parameter constrained by an interface is a concrete type with that
+// explicit conformance in every specialization, so it passes as a borrowed view.
+// Rules: rules/declarations/interfaces.md — §§ 7.1, 9; rules/declarations/generics.md — § 14.
+func TestConstrainedGenericPassesAsBorrowedView(t *testing.T) {
+	const declarations = `module main
+
+interface Sink {
+    fn Put() int
+}
+
+interface Child implements Sink {
+    fn Extra() int
+}
+
+interface Other {
+    fn Skip() int
+}
+
+interface Typed[E: error] {
+    fn Fail() Result[void, E]
+}
+
+type Failure enum error { Broken }
+
+type Buffer struct {
+    count: int,
+}
+
+impl Buffer implements Sink, Typed[Failure] {
+    fn Put() int {
+        return 1
+    }
+
+    fn Fail() Result[void, Failure] {
+        return Ok()
+    }
+}
+
+fn View(sink: ref mut Sink) int {
+    return sink.Put()
+}
+
+fn Shared(sink: ref Sink) int {
+    return sink.Put()
+}
+
+fn TypedView[E: error](sink: ref mut Typed[E]) Result[void, E] {
+    return sink.Fail()
+}
+
+fn Compose[...Types](sink: ref mut Sink, values: ...ref Types) int {
+    return sink.Put()
+}
+`
+	for name, test := range map[string]struct {
+		source string
+		want   string
+	}{
+		"holder":    {source: "fn F[W: Sink](d: ref mut W) int { return View(d) }"},
+		"reborrow":  {source: "fn F[W: Sink](d: ref mut W) int { return View(ref mut d) }"},
+		"shared":    {source: "fn F[W: Sink](d: ref W) int { return Shared(d) }"},
+		"to shared": {source: "fn F[W: Sink](d: ref mut W) int { return Shared(d) }"},
+		"child":     {source: "fn F[W: Child](d: ref mut W) int { return View(d) }"},
+		"specialized": {source: `fn F[W: Sink](d: ref mut W) int { return View(d) }
+
+fn T() int {
+    let mut buffer := Buffer { count: 0 }
+    return F(ref mut buffer)
+}`},
+		"generic interface": {source: "fn F[E: error, W: Typed[E]](d: ref mut W) Result[void, E] { return TypedView(d) }"},
+		"pack forwarding":   {source: "fn F[W: Sink, ...Types](d: ref mut W, values: ...ref Types) int { return Compose(d, values...) }"},
+		"unconstrained":     {source: "fn F[W](d: ref mut W) int { return View(d) }", want: "must be ref mut Sink"},
+		"unrelated":         {source: "fn F[W: Other](d: ref mut W) int { return View(d) }", want: "must be ref mut Sink"},
+		"shared to mutable": {source: "fn F[W: Sink](d: ref W) int { return View(d) }", want: "must be ref mut Sink"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, errors := analyzeSourceWithAnalyzerRaw(t, declarations+"\n"+test.source+"\n")
+			if test.want == "" {
+				if len(errors) != 0 {
+					t.Fatal(errors)
+				}
+				return
+			}
+			found := false
+			for _, problem := range errors {
+				found = found || strings.Contains(problem.Message, test.want)
+			}
+			if !found {
+				t.Fatalf("want %q, got %v", test.want, errors)
+			}
+		})
+	}
+}

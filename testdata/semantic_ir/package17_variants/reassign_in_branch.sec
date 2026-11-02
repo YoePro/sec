@@ -1,0 +1,31 @@
+module main
+
+type Handle struct {
+    id: int,
+}
+
+impl Handle {
+    free {
+    }
+}
+
+fn Make(id: int) Handle {
+    return Handle { id: id }
+}
+
+fn FreshOption(id: int) Option[Handle] {
+    return Some(Make(id))
+}
+
+fn Sink(->handle: Handle) void {
+}
+
+fn T(flag: bool) void {
+    let mut handle := Make(1)
+    if flag {
+        Sink(<-handle)
+    }
+    if flag {
+        handle = Make(2)
+    }
+}

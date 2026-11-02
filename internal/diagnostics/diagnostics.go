@@ -363,7 +363,18 @@ const (
 	InterfaceReceiverCapability = "S1189"
 	// InterfaceConformancePlacement is the Sema guard for recovered/programmatic ASTs.
 	InterfaceConformancePlacement = "S1190"
-	HardwareRegionOverlap         = "A2010"
+	// MD-120 uses separate rules for Result eligibility, variant knowledge and
+	// complete interface specialization; none is a backend capability failure.
+	InvalidResultErrorChannel           = "S1191"
+	ErrorVariantRequiresConcreteChannel = "S1192"
+	GenericInterfaceArgumentCount       = "S1193"
+	GuardConsumesBinding                = "S1194"
+	// StaticInstanceReceiverRequired rejects an impl scope used as a value receiver.
+	StaticInstanceReceiverRequired = "S1195"
+	// StaticFunctionContext rejects static fn outside a direct member context.
+	StaticFunctionContext     = "S1196"
+	AssociatedStorageConflict = "S1197"
+	HardwareRegionOverlap     = "A2010"
 
 	// UnionVariantPayloadRequired rejects a payload-carrying union variant
 	// used as a value without its payload.
@@ -451,6 +462,13 @@ var registry = map[string]Definition{
 	AtomicInvalidMemoryOrder:              {ID: AtomicInvalidMemoryOrder, Name: "atomic.invalid-memory-order", Family: "atomic", DefaultSeverity: SeverityError, Mandatory: true},
 	InterfaceReceiverCapability:           {ID: InterfaceReceiverCapability, Name: "interfaces.receiver-capability", Family: "interfaces", DefaultSeverity: SeverityError, Mandatory: true},
 	InterfaceConformancePlacement:         {ID: InterfaceConformancePlacement, Name: "interfaces.conformance-placement", Family: "interfaces", DefaultSeverity: SeverityError, Mandatory: true},
+	GuardConsumesBinding:                  {ID: GuardConsumesBinding, Name: "ownership.guard-consumes-binding", Family: "ownership", DefaultSeverity: SeverityError, Mandatory: true},
+	StaticInstanceReceiverRequired:        {ID: StaticInstanceReceiverRequired, Name: "static.instance-receiver-required", Family: "static", DefaultSeverity: SeverityError, Mandatory: true},
+	StaticFunctionContext:                 {ID: StaticFunctionContext, Name: "static.invalid-function-context", Family: "static", DefaultSeverity: SeverityError, Mandatory: true},
+	AssociatedStorageConflict:             {ID: AssociatedStorageConflict, Name: "static.associated-member-conflict", Family: "static", DefaultSeverity: SeverityError, Mandatory: true},
+	InvalidResultErrorChannel:             {ID: InvalidResultErrorChannel, Name: "errors.invalid-result-error-channel", Family: "errors", DefaultSeverity: SeverityError, Mandatory: true},
+	ErrorVariantRequiresConcreteChannel:   {ID: ErrorVariantRequiresConcreteChannel, Name: "errors.variant-requires-concrete-channel", Family: "errors", DefaultSeverity: SeverityError, Mandatory: true},
+	GenericInterfaceArgumentCount:         {ID: GenericInterfaceArgumentCount, Name: "interfaces.generic-argument-count", Family: "interfaces", DefaultSeverity: SeverityError, Mandatory: true},
 	InterfaceByValueParameter:             {ID: InterfaceByValueParameter, Name: "interfaces.by-value-parameter", Family: "interfaces", DefaultSeverity: SeverityError, Mandatory: true},
 	ShapedMetadataLiteralInvalid:          {ID: ShapedMetadataLiteralInvalid, Name: "collections.shaped-metadata-literal", Family: "collections", DefaultSeverity: SeverityError, Mandatory: true},
 	ConversionUnavailable:                 {ID: ConversionUnavailable, Name: "types.conversion-unavailable", Family: "types", DefaultSeverity: SeverityError, Mandatory: true},

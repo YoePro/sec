@@ -1,0 +1,14 @@
+module main
+
+enum Open8 bit[8] { Zero = 0, One = 1 }
+enum Open16 bit[16] { Zero = 0, One = 1 }
+
+fn Byte(value: Open8) uint8 { return uint8(value) }
+fn SignedWide(value: Open8) int16 { return int16(value) }
+fn Word(value: Open16) uint16 { return uint16(value) }
+fn main() int {
+    if Byte(Open8(255)) != 255 { return 1 }
+    if SignedWide(Open8(255)) != 255 { return 2 }
+    if Word(Open16(65535)) != 65535 { return 3 }
+    return 0
+}

@@ -709,7 +709,19 @@ const (
 
 type UnionPayloadAction string
 
-const UnionPayloadCopyTrivial UnionPayloadAction = "copy-trivial"
+// The non-copying place.read modes.
+const (
+	PlaceReadObserve   = "observe"
+	PlaceReadCandidate = "candidate"
+)
+
+const (
+	UnionPayloadCopyTrivial UnionPayloadAction = "copy-trivial"
+	// A fresh or just-moved owned payload becomes the union's own (P17-31).
+	UnionPayloadConstructDirect UnionPayloadAction = "construct-direct"
+	// An owned payload leaves the union on its proven variant path (P17-37).
+	UnionPayloadMove UnionPayloadAction = "move"
+)
 
 type StructFieldOrigin string
 
@@ -882,7 +894,12 @@ type Operation struct {
 	ArrayGuard          ValueID
 	// VariantGuard names the union.is-variant predicate whose true edge
 	// proves the active variant of a place.union-payload (P15-45).
-	VariantGuard   ValueID
+	VariantGuard ValueID
+	// PlaceReadMode marks a place.read of owned data that copies nothing:
+	// PlaceReadObserve only answers an active-variant test, and
+	// PlaceReadCandidate is the payload a match guard may inspect before the
+	// arm commits its move (flowcontrol_match.md § 17). Empty is a trivial copy.
+	PlaceReadMode  string
 	ArrayOperation string
 	// AtomicOrder is the established MemoryOrder of an atomic.fence.
 	AtomicOrder          string

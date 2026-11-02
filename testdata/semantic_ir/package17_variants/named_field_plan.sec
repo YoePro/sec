@@ -1,0 +1,31 @@
+module main
+
+type Handle struct {
+    id: int,
+}
+
+impl Handle {
+    free {
+    }
+}
+
+fn Make(id: int) Handle {
+    return Handle { id: id }
+}
+
+fn FreshOption(id: int) Option[Handle] {
+    return Some(Make(id))
+}
+
+type Packet union {
+    Full { head: Handle },
+    Empty,
+}
+
+fn Fresh() Packet {
+    return Packet.Empty
+}
+
+fn T() void {
+    let packet := Fresh()
+}

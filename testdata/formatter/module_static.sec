@@ -1,0 +1,23 @@
+module main
+
+/*
+static let Documentary: int := 99
+*/
+static /* storage */ let Global: int := 1
+static let mut Total: int := 0
+static let First := 2, Second := 3
+let Text := "static let Literal: int := 4"
+
+type Counter struct {}
+impl Counter {
+static let Value: int := 5
+static fn Read() int { return Counter.Value }
+static property Current: int { get { return Counter.Value } }
+}
+impl extends Counter {
+static let Other: int := 6
+}
+interface Factory { static fn Make() Counter }
+fn Use() void {
+static let Calls: int := 7
+}

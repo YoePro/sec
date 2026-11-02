@@ -171,12 +171,12 @@ func (a *Analyzer) resolveTypeReference(ref *ast.TypeReference) (Type, bool) {
 		return Type{Kind: InvalidType}, false
 	}
 	if typ.Name != "Result" && len(typ.GenericParameters) > 0 && len(ref.TypeArgs) == 0 {
-		a.addErrorAtToken(ref.Token, "%s requires %d generic arguments, got 0", ref.Name, len(typ.GenericParameters))
+		a.addGenericTypeArgumentCountError(ref.Token, typ, ref.Name, 0)
 		return Type{Kind: InvalidType}, false
 	}
 	if len(typ.GenericParameters) > 0 && len(ref.TypeArgs) != len(typ.GenericParameters) &&
 		!acceptsExtendedCompilerKnownTypeArguments(typ, len(ref.TypeArgs)) {
-		a.addErrorAtToken(ref.Token, "%s requires %d generic arguments, got %d", ref.Name, len(typ.GenericParameters), len(ref.TypeArgs))
+		a.addGenericTypeArgumentCountError(ref.Token, typ, ref.Name, len(ref.TypeArgs))
 		return Type{Kind: InvalidType}, false
 	}
 	if len(typeArgs) != len(ref.TypeArgs) || len(constArgs) != len(ref.ConstArgs) {

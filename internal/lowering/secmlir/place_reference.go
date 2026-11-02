@@ -253,6 +253,10 @@ func (e *emitter) emitPlaceReference(function *semantic.Function, operation sema
 		if err := e.emitResult(operation); err != nil {
 			return err
 		}
+		if operation.PlaceReadMode != "" {
+			fmt.Fprintf(&e.out, "\"sec.place.read\"(%s) <{action = %s}> ", valueName(operation.Operands[0]), mlirString(operation.PlaceReadMode))
+			return e.finishTypedOperation(operation, values)
+		}
 		fmt.Fprintf(&e.out, "\"sec.place.read\"(%s) <{action = %s}> ", valueName(operation.Operands[0]), mlirString(string(semantic.ArgumentCopyTrivial)))
 		return e.finishTypedOperation(operation, values)
 	case semantic.OpPlaceWrite:

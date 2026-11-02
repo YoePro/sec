@@ -1,0 +1,11 @@
+module main
+let Global: int := 7
+static let Explicit: int := 8
+let mut Counter: int := 0
+fn Next() int {
+    static let mut Calls: int := 0
+    Calls += 1
+    Counter += 1
+    return Global + Explicit + Calls + Counter
+}
+fn main() int { return Next() }

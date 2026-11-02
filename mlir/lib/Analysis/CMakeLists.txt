@@ -1,6 +1,9 @@
 add_mlir_library(SecMLIRAnalysis
   VerifyFloatSemantics.cpp
   VerifyCheckedIntegerGuards.cpp
+  VerifyCleanups.cpp
+  VerifyDestructionPlans.cpp
+  VerifyOwnership.cpp
   VerifyPlaceReferences.cpp
   VerifyReturnOrigins.cpp
   VerifyReferenceTransfers.cpp

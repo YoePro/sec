@@ -1,0 +1,2 @@
+module main
+impl extends Across { fn Shared() int { return 2 } }

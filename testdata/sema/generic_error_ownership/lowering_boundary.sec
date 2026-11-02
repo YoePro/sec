@@ -1,0 +1,12 @@
+module main
+
+type Handle struct { id: int }
+impl Handle { free {} }
+type OwnedError union error { Held(Handle) Empty }
+
+fn Wrap[E: error](-> cause: E) Result[int, E] {
+    return Err(<-cause)
+}
+fn Through() void {
+    let result := Wrap(OwnedError.Empty)
+}

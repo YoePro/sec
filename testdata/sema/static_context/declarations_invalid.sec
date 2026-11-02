@@ -1,0 +1,19 @@
+module main
+static fn ModuleFunction() void {}
+fn Outer() void {
+    static fn LocalFunction() void {}
+}
+type Counter struct {}
+impl Counter {
+    fn Instance() void {
+        static fn NestedInstance() void {}
+    }
+    static fn Static() void {
+        static fn NestedStatic() void {}
+    }
+}
+impl extends Counter {
+    fn Extension() void {
+        static fn NestedExtension() void {}
+    }
+}

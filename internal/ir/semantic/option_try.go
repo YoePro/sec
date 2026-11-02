@@ -26,10 +26,14 @@ func (fb *functionBuilder) buildOptionTry(expr *ast.TryExpression, resolved sema
 			return builtValue{}, fb.unsupported("unresolved Option try handler plan", expr.Token)
 		}
 	}
+	action := UnionPayloadCopyTrivial
 	if sema.CopyClassificationOf(resolved.SuccessType) != sema.CopyTrivial {
-		return builtValue{}, fb.unsupported("ownership-sensitive Option try payload", expr.Token)
+		if fb.owner.maxPackage < ownershipLoweringPackage {
+			return builtValue{}, fb.unsupported("ownership-sensitive Option try payload", expr.Token)
+		}
+		action = UnionPayloadMove
 	}
-	option, err := fb.buildExpr(expr.Expression, 0)
+	option, err := fb.buildTryOperand(expr.Expression)
 	if err != nil {
 		return builtValue{}, err
 	}
@@ -47,7 +51,14 @@ func (fb *functionBuilder) buildOptionTry(expr *ast.TryExpression, resolved sema
 	successBlock, noneBlock := fb.newBlock(), fb.newBlock()
 	fb.emit(Operation{Kind: OpCondBranch, Operands: []ValueID{isSome.id}, Successors: []BranchTarget{{Block: successBlock.ID}, {Block: noneBlock.ID}}, Location: location(expr.Token)})
 	fb.current = successBlock
-	payload := fb.result(Operation{Kind: OpUnionUnwrapPayload, Operands: []ValueID{option.id}, UnionVariant: some, PayloadActions: []UnionPayloadAction{UnionPayloadCopyTrivial}, Location: location(expr.Token)}, payloadType)
+	payload := fb.result(Operation{Kind: OpUnionUnwrapPayload, Operands: []ValueID{option.id}, UnionVariant: some, PayloadActions: []UnionPayloadAction{action}, Location: location(expr.Token)}, payloadType)
+	if optionType, known := fb.owner.analyzer.ResolvedTypeOf(expr.Expression); known && action == UnionPayloadMove && !sema.TriviallyDestructible(optionType) {
+		fb.current = noneBlock
+		if err := fb.destroyFreshSubject(option, optionType, expr.Token); err != nil {
+			return builtValue{}, err
+		}
+		fb.current = successBlock
+	}
 
 	if resolved.Kind == sema.ResolvedTryHandledOption {
 		return fb.buildLocalTryHandlers(expr, plan, successBlock, payload, noneBlock, builtValue{typ: payloadType})

@@ -11,8 +11,9 @@ import (
 // buildDiscard lowers `discard expression` and `discard binding` to one
 // explicit discard.value: the expression is evaluated, and the consumed value
 // (or the binding's storage) is recorded with its trivial-destruction
-// classification. Only trivially destructible values are lowered yet; a value
-// that needs a destruction plan stays an explicit unsupported construct.
+// classification. A fresh value that needs destruction lowers to own.discard with
+// its plan, and a whole owned binding also ends its registration; a projected
+// source stays an explicit unsupported construct.
 //
 // Rules:
 //   - rules/control-flow/discard.md — §§ 3, 5, 9, 36
@@ -24,7 +25,7 @@ func (fb *functionBuilder) buildDiscard(stmt *ast.DiscardStatement) error {
 			return fb.unsupported("discard of an unresolved binding", stmt.Token)
 		}
 		if !sema.TriviallyDestructible(fact.Type) {
-			return fb.unsupported("discard of a binding that needs destruction", stmt.Token)
+			return fb.discardOwnedBinding(stmt, fact, loc)
 		}
 		bind, ok := fb.bindings[fact.ID]
 		if !ok {
@@ -57,7 +58,7 @@ func (fb *functionBuilder) discardExpression(expr ast.Expression, provenance Dis
 		return fb.unsupported("discard of an untyped expression", token)
 	}
 	if !sema.TriviallyDestructible(typ) {
-		return fb.unsupported(fmt.Sprintf("discard of %s, which needs destruction", typ.Name), token)
+		return fb.discardFreshOwned(expr, typ, provenance, token)
 	}
 	value, err := fb.buildExpr(expr, 0)
 	if err != nil {
@@ -67,6 +68,73 @@ func (fb *functionBuilder) discardExpression(expr ast.Expression, provenance Dis
 		return err
 	}
 	fb.emit(Operation{Kind: OpDiscardValue, Operands: []ValueID{value.id}, DiscardProvenance: provenance, DiscardTrivial: true, Location: location(token)})
+	return nil
+}
+
+// discardOwnedBinding ends a whole tracked owned binding: the value is destroyed once
+// through its plan and the registration cancelled. An already unavailable binding is
+// a legal no-op. A binding moved on only some paths needs path-exact state.
+// Rules: rules/control-flow/discard.md — §§5,7; rules/memory/destruction.md — §§6.1,12.
+func (fb *functionBuilder) discardOwnedBinding(stmt *ast.DiscardStatement, fact sema.ResolvedBinding, loc Location) error {
+	if fb.owner.maxPackage < ownershipLoweringPackage {
+		return fb.unsupported("discard of a binding that needs destruction", stmt.Token)
+	}
+	state, _ := fb.owner.analyzer.ResolvedDiscardSourceStateOf(stmt)
+	switch state {
+	case sema.DiscardSourceUnavailable:
+		return nil
+	case sema.DiscardSourceAvailable, sema.DiscardSourceConditional:
+	default:
+		return fb.unsupported("discard of an unresolved source state", stmt.Token)
+	}
+	conditional := state == sema.DiscardSourceConditional
+	action, tracked := fb.trackedActions[fact.ID]
+	if !tracked {
+		return fb.unsupported("discard of an owned value without a tracked registration", stmt.Token)
+	}
+	planID, err := fb.owner.importDestructionPlans(sema.ResolveDestructionPlans(fact.Type), fact.Type)
+	if err != nil {
+		return err
+	}
+	var value builtValue
+	if owned, stored := fb.ownedStorages[fact.ID]; stored && conditional {
+		// Nothing can move out of a Place that may hold nothing, so it ends in place.
+		place := fb.ownedStoragePlace(owned, stmt.Token)
+		fb.emit(Operation{Kind: OpOwnDestroyPlace, Operands: []ValueID{place.id}, Ownership: &OwnershipFacts{Cause: "cleanup", DestructionPlan: planID, IfOwned: true}, Location: loc})
+		fb.emit(Operation{Kind: OpCleanupCancel, Cleanup: &CleanupFacts{Action: action, Reason: "discarded", IfActive: true}, Location: loc})
+		return nil
+	} else if stored {
+		place := fb.ownedStoragePlace(owned, stmt.Token)
+		value = fb.result(Operation{Kind: OpOwnMoveFromPlace, Operands: []ValueID{place.id}, Ownership: &OwnershipFacts{}, Location: loc}, owned.typ)
+	} else if bound, known := fb.bindings[fact.ID]; known && bound.storage == 0 {
+		value = builtValue{id: bound.value, typ: bound.typ}
+	} else {
+		return fb.unsupported("discard of a binding without semantic storage", stmt.Token)
+	}
+	fb.emit(Operation{Kind: OpOwnDiscard, Operands: []ValueID{value.id}, Ownership: &OwnershipFacts{DiscardOrigin: "explicit", DestructionPlan: planID, IfOwned: conditional}, Location: loc})
+	fb.emit(Operation{Kind: OpCleanupCancel, Cleanup: &CleanupFacts{Action: action, Reason: "discarded", IfActive: conditional}, Location: loc})
+	return nil
+}
+
+// discardFreshOwned destroys a call result nothing else owns, once, through its
+// type-level plan (rules/control-flow/discard.md §§ 5, 9; dialect v13 § 11).
+func (fb *functionBuilder) discardFreshOwned(expr ast.Expression, typ sema.Type, provenance DiscardProvenance, token lexer.Token) error {
+	if _, call := expr.(*ast.CallExpression); !call || fb.owner.maxPackage < ownershipLoweringPackage {
+		return fb.unsupported(fmt.Sprintf("discard of %s, which needs destruction", typ.Name), token)
+	}
+	planID, err := fb.owner.importDestructionPlans(sema.ResolveDestructionPlans(typ), typ)
+	if err != nil {
+		return err
+	}
+	value, err := fb.buildExpr(expr, 0)
+	if err != nil {
+		return err
+	}
+	origin := "explicit"
+	if provenance == DiscardImplicitCallResult {
+		origin = "implicit-call-result"
+	}
+	fb.emit(Operation{Kind: OpOwnDiscard, Operands: []ValueID{value.id}, Ownership: &OwnershipFacts{DiscardOrigin: origin, DestructionPlan: planID}, Location: location(token)})
 	return nil
 }
 

@@ -173,6 +173,12 @@ LogicalResult verifyArgumentActions(Operation *operation, unsigned arity) {
       expected = "shared-reference";
     else if (isa<RefMutType, SliceMutType>(operand.getType()))
       expected = "mutable-reference";
+    // Schema 13 lets an ordinary value transfer ownership into the callee
+    // (rules/mlir/dialect-versions/sec_mlir_dialect_v13.md, section 25).
+    auto module = operation->getParentOfType<ModuleOp>();
+    auto version = module ? module->getAttrOfType<IntegerAttr>("sec.dialect_version") : IntegerAttr{};
+    if (string && string.getValue() == "move" && expected == "copy-trivial" && version && version.getInt() >= 13)
+      continue;
     if (!string || string.getValue() != expected)
       return operation->emitOpError()
              << "argument action must be " << expected
@@ -659,7 +665,10 @@ LogicalResult UnionConstructOp::verify() {
     return emitOpError("payload action count must equal payload count");
   for (Attribute action : getPayloadActions()) {
     auto string = dyn_cast<StringAttr>(action);
-    if (!string || failed(verifyCopyTrivialAction(*this, string.getValue())))
+    if (!string)
+      return emitOpError("payload action must be a string");
+    if (string.getValue() != "construct-direct" &&
+        failed(verifyCopyTrivialAction(*this, string.getValue())))
       return failure();
   }
   StringRef kind = variant->getKind().getValue();
@@ -702,6 +711,8 @@ LogicalResult UnionUnwrapPayloadOp::verify() {
   if (variant->getKind().getValue() != "single" ||
       variant->getPayload() != getResult().getType())
     return emitOpError("projection requires matching single-payload variant");
+  if (getPayloadAction() == "move")
+    return success();
   return verifyCopyTrivialAction(*this, getPayloadAction());
 }
 
@@ -778,7 +789,12 @@ LogicalResult ArrayConstructOp::verify() {
       return failure();
 
     if (kind.getValue() == "element") {
-      if (action.getValue() != "construct-direct")
+      // Schema 13 elements may move or semantically copy; spread stays a copy
+      // (rules/mlir/dialect-versions/sec_mlir_dialect_v13.md, section 29).
+      auto schema = (*this)->getParentOfType<ModuleOp>()->getAttrOfType<IntegerAttr>("sec.dialect_version");
+      bool owning = schema && schema.getInt() >= 13 &&
+                    (action.getValue() == "move" || action.getValue() == "copy-semantic-infallible");
+      if (action.getValue() != "construct-direct" && !owning)
         return emitOpError(
             "element segment action must be construct-direct");
       if (*length != 1)
@@ -1131,6 +1147,25 @@ LogicalResult PlaceDerefOp::verify() {
 }
 
 LogicalResult PlaceReadOp::verify() {
+  // An observation copies nothing: its result only answers an active-variant test.
+  if (getAction() == "observe" || getAction() == "candidate") {
+    // A candidate is the payload a match guard may inspect before the arm commits
+    // its move, so it also reads fields and roots borrows.
+    for (Operation *user : getResult().getUsers()) {
+      if (isa<UnionIsVariantOp, ResultIsErrOp>(user))
+        continue;
+      if (getAction() == "observe")
+        return emitOpError("an observing read may only feed an active-variant test");
+      if (!isa<StructExtractOp, PlaceValueOp>(user))
+        return emitOpError("a guard candidate may only be inspected");
+    }
+    auto place = requirePlace(*this, getPlace().getType(), "operand");
+    if (failed(place))
+      return failure();
+    if (getResult().getType() != place->getElementType())
+      return emitOpError("result type must match the Place element type");
+    return success();
+  }
   if (failed(verifyHardwareInstanceCopy(*this, getResult().getType())) ||
       failed(verifyExclusiveReferenceCopy(*this, getResult().getType())))
     return failure();

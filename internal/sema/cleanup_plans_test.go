@@ -124,3 +124,209 @@ func TestResolvedCleanupPlansDetached(t *testing.T) {
 		t.Fatal("cleanup plan queries differ")
 	}
 }
+
+// A moved payload binding is registered in a scope of its own that ends with the
+// arm; a borrowed or trivial binding registers nothing.
+// Rules: rules/control-flow/flowcontrol_match.md — §§ 12–13;
+// rules/mlir/packages/sec-mlir-dialect_package17.md — §§ 63, 111.
+func TestResolvedCleanupPlansOwnedMatchBindings(t *testing.T) {
+	a, errors := analyzeSourceWithAnalyzerRaw(t, `module main
+
+type Handle struct {
+    id: int,
+}
+
+impl Handle {
+    free {
+    }
+}
+
+fn Fresh() Option[Handle] {
+    return None
+}
+
+fn Moved() void {
+    match Fresh() {
+        Some(handle) => {
+        }
+        None => {
+        }
+    }
+}
+
+fn Returned() int {
+    match Fresh() {
+        Some(handle) => {
+            return handle.id
+        }
+        None => {
+            return 0
+        }
+    }
+}
+
+fn Borrowed() int {
+    let option := Fresh()
+    match option {
+        Some(ref handle) => {
+            return handle.id
+        }
+        None => {
+            return 0
+        }
+    }
+}
+
+fn Present() void {
+    if Fresh() is Some(handle) {
+    }
+}
+`)
+	if len(errors) != 0 {
+		t.Fatal(errors)
+	}
+	bindings := func(name string) (count int, exits []CleanupExitKind) {
+		plan := cleanupPlanFor(t, a, name)
+		scopes := map[CleanupScopeID]bool{}
+		for _, registration := range plan.Registrations {
+			if registration.Kind == CleanupRegisterMatchBinding {
+				count++
+				scopes[registration.Scope] = true
+				if registration.Scope == plan.Root || !registration.Conditional {
+					t.Errorf("%s: binding registered outside its arm: %+v", name, registration)
+				}
+			}
+		}
+		for _, exit := range plan.Exits {
+			for _, scope := range exit.Exited {
+				if scopes[scope] {
+					exits = append(exits, exit.Kind)
+					break
+				}
+			}
+		}
+		return count, exits
+	}
+	for name, want := range map[string]struct {
+		count int
+		exits []CleanupExitKind
+	}{
+		"Moved":    {1, []CleanupExitKind{CleanupExitFallthrough}},
+		"Returned": {1, []CleanupExitKind{CleanupExitReturn}},
+		"Borrowed": {0, nil},
+		"Present":  {1, []CleanupExitKind{CleanupExitFallthrough}},
+	} {
+		count, exits := bindings(name)
+		if count != want.count || !reflect.DeepEqual(exits, want.exits) {
+			t.Errorf("%s: %d bindings, exits %v; want %d, %v", name, count, exits, want.count, want.exits)
+		}
+	}
+}
+
+// A try binding consumes a named owner on every path, so a later use is a
+// compile error and a later assignment is a reinitialization.
+// Rules: rules/errors/errorhandling.md — § 29.
+func TestTryConsumesNamedOwner(t *testing.T) {
+	const declarations = `module main
+
+type Handle struct {
+    id: int,
+}
+
+impl Handle {
+    free {
+    }
+}
+
+fn Fresh() Result[Handle, IndexError] {
+    return Ok(Handle { id: 1 })
+}
+
+fn Plain() Result[int, IndexError] {
+    return Ok(1)
+}
+
+fn Look(result: ref Result[Handle, IndexError]) void {
+}
+`
+	_, errors := analyzeSourceWithAnalyzerRaw(t, declarations+`
+fn T() Result[int, IndexError] {
+    let result := Fresh()
+    let handle := try result
+    Look(ref result)
+    return Ok(handle.id)
+}
+`)
+	if len(errors) == 0 {
+		t.Fatal("use after try of a named owner was accepted")
+	}
+	_, errors = analyzeSourceWithAnalyzerRaw(t, declarations+`
+fn T() Result[int, IndexError] {
+    let mut result := Fresh()
+    let handle := try result
+    result = Fresh()
+    let plain := Plain()
+    let first := try plain
+    let second := try plain
+    return Ok(handle.id + first + second)
+}
+`)
+	if len(errors) != 0 {
+		t.Fatal(errors)
+	}
+}
+
+// A union whose payload moved on one arm is conditional as a whole: assignment
+// and discard are legal, and discard leaves it unavailable on every path.
+// Rules: rules/memory/destruction.md — §§ 12.3, 13.3, 35.5.
+func TestConditionalPayloadAssignmentAndDiscard(t *testing.T) {
+	const declarations = `module main
+
+type Handle struct {
+    id: int,
+}
+
+impl Handle {
+    free {
+    }
+}
+
+fn Fresh() Option[Handle] {
+    return None
+}
+
+fn Sink(->handle: Handle) void {
+}
+
+fn Look(option: ref Option[Handle]) void {
+}
+`
+	const moved = `
+    let mut option := Fresh()
+    match option {
+        Some(handle) => {
+            Sink(<-handle)
+        }
+        None => {
+        }
+    }
+`
+	for name, test := range map[string]struct {
+		body    string
+		invalid bool
+	}{
+		"assign":             {body: "    option = Fresh()\n"},
+		"discard":            {body: "    discard option\n"},
+		"discard twice":      {body: "    discard option\n    discard option\n"},
+		"discard and assign": {body: "    discard option\n    option = Fresh()\n    Look(ref option)\n"},
+		"use":                {body: "    Look(ref option)\n", invalid: true},
+		"use after discard":  {body: "    discard option\n    Look(ref option)\n", invalid: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, errors := analyzeSourceWithAnalyzerRaw(t, declarations+"\nfn T() void {"+moved+test.body+"}\n")
+			if test.invalid != (len(errors) != 0) {
+				t.Fatalf("invalid=%v errors=%v", test.invalid, errors)
+			}
+		})
+	}
+}

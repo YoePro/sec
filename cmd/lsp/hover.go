@@ -170,7 +170,7 @@ func hoverForSourceWithParameterInsight(uri string, text string, pos position, i
 			if contents, found := enumVariantHoverContents(analyzer, program, definitions[0]); found {
 				return hoverResult{Contents: markupContent{Kind: "markdown", Value: contents}, Range: nameRange}, true
 			}
-			if contents, found := memberHoverContentsForDefinition(analyzer, definitions[0]); found {
+			if contents, found := memberHoverContentsForDefinition(analyzer, definitions[0], program); found {
 				return hoverResult{Contents: markupContent{Kind: "markdown", Value: contents}, Range: nameRange}, true
 			}
 		}

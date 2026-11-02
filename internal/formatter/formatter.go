@@ -161,6 +161,7 @@ func format(text string, options Options) string {
 		normal = fixStateTestBadPractice(normal)
 		normal = fixLegacyAssignedNamedType(normal)
 	}
+	normal = formatModuleStatic(normal)
 	normal = formatHardwareDeclarations(normal)
 	normal = formatImportRegion(normal, options.compact())
 	normal = formatStructuralBlockLayout(normal)
@@ -204,11 +205,6 @@ func format(text string, options Options) string {
 				blank = true
 			}
 			continue
-		}
-		// rules/declarations/static.md, sections 3 and 25. Module storage is
-		// already static; canonical formatting removes the redundant modifier.
-		if indent == 0 && strings.HasPrefix(line, "static let ") {
-			line = strings.TrimPrefix(line, "static ")
 		}
 		if options.Fix {
 			line = normalizeReversedTypeDeclaration(line)

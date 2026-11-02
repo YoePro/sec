@@ -1,0 +1,3 @@
+module main
+type Across struct {}
+impl Across { static let Shared: int := 1 }

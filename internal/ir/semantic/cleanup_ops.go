@@ -25,7 +25,7 @@ const (
 var (
 	// cleanupScopeExits are the exit kinds of cleanup.run-scope and
 	// cleanupFunctionExits those of cleanup.run-function (dialect v13 § 22).
-	cleanupScopeExits    = []string{"fallthrough", "break", "continue", "match-branch-exit", "switch-branch-exit"}
+	cleanupScopeExits    = []string{"fallthrough", "return", "error-propagation", "break", "continue", "match-branch-exit", "switch-branch-exit"}
 	cleanupFunctionExits = []string{"fallthrough", "return", "error-propagation"}
 	// cleanupCancelReasons: the owned value moved out, its ownership ended
 	// in a replacement, or it was transferred out by a return/argument

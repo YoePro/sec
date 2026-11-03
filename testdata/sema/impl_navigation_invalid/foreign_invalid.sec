@@ -1,0 +1,4 @@
+module foreign
+
+impl extends Widget {
+}

@@ -11,6 +11,10 @@ impl Handle {
     fn Positive() bool {
         return self.id > 0
     }
+
+    fn Get() int {
+        return self.id
+    }
 }
 
 type Failure union error {
@@ -490,4 +494,570 @@ fn ConditionalPayloadDiscard() void {
         }
     }
     discard option
+}
+
+fn ReassignInBranch(flag: bool) int {
+    let mut handle := Make(1)
+    if flag {
+        handle = Make(2)
+    } else {
+        handle = Make(3)
+    }
+    return handle.id
+}
+
+fn ReassignThenMove(flag: bool) void {
+    let mut handle := Make(1)
+    if flag {
+        if flag {
+            handle = Make(2)
+        }
+    }
+    Sink(<-handle)
+}
+
+fn ReassignInLoop() void {
+    let mut handle := Make(0)
+    let mut index := 0
+    while index < 3 {
+        index = index + 1
+        if index == 2 {
+            break
+        }
+        handle = Make(index)
+    }
+    discard handle
+}
+
+fn MoveAndReinitializeInLoop() void {
+    let mut handle := Make(0)
+    let mut index := 0
+    while index < 3 {
+        index = index + 1
+        Sink(<-handle)
+        handle = Make(index)
+    }
+}
+
+fn ReassignAndReturn(flag: bool) Handle {
+    let mut handle := Make(1)
+    if flag {
+        handle = Make(2)
+        return <-handle
+    }
+    return <-handle
+}
+
+fn OptionInLoop() void {
+    let mut option := FreshOption(0)
+    let mut index := 0
+    while index < 3 {
+        index = index + 1
+        match option {
+            Some(handle) => {
+                Sink(<-handle)
+            }
+            None => {
+            }
+        }
+        option = FreshOption(index)
+    }
+}
+
+type Pair struct {
+    left: Handle,
+    count: int,
+    right: Handle,
+}
+
+type Nest struct {
+    inner: Pair,
+    tag: int,
+}
+
+fn MakePair() Pair {
+    return Pair { left: Make(1), count: 2, right: Make(3) }
+}
+
+fn FieldMove() int {
+    let pair := MakePair()
+    Sink(<-pair.left)
+    return pair.count
+}
+
+fn FieldMoves() Handle {
+    let pair := MakePair()
+    let left :<- pair.left
+    Sink(<-left)
+    return <-pair.right
+}
+
+fn ParameterFieldMove(->pair: Pair) Handle {
+    return <-pair.right
+}
+
+fn ConditionalFieldMove(flag: bool) void {
+    let mut pair := MakePair()
+    if flag {
+        Sink(<-pair.left)
+    }
+    pair.left = Make(4)
+}
+
+fn FieldReplaceAndReinitialize() void {
+    let mut pair := MakePair()
+    pair.right = Make(5)
+    pair.count = 6
+    Sink(<-pair.left)
+    pair.left = Make(7)
+}
+
+fn NestedFieldMove() void {
+    let mut nest := Nest { inner: MakePair(), tag: 1 }
+    Sink(<-nest.inner.right)
+    nest.inner.right = Make(8)
+}
+
+fn FieldMoveInLoop() void {
+    let mut pair := MakePair()
+    let mut index := 0
+    while index < 2 {
+        index = index + 1
+        Sink(<-pair.left)
+        pair.left = Make(index)
+    }
+}
+
+type Holder struct {
+    option: Option[Handle],
+    tag: int,
+    result: Result[Handle, IndexError],
+}
+
+fn MakeHolder() Holder {
+    return Holder { option: FreshOption(1), tag: 2, result: FreshResult(3) }
+}
+
+fn FieldSubject() int {
+    let holder := MakeHolder()
+    match holder.option {
+        Some(handle) => {
+            return handle.id
+        }
+        None => {
+            return holder.tag
+        }
+    }
+}
+
+fn FieldSubjects() void {
+    let holder := MakeHolder()
+    match holder.option {
+        Some(handle) where handle.id > 0 => {
+            Sink(<-handle)
+        }
+        Some(ref handle) => {
+        }
+        None => {
+        }
+    }
+    match holder.result {
+        Ok(handle) => {
+            Sink(<-handle)
+        }
+        Err(_) => {
+        }
+    }
+}
+
+fn FieldSubjectRepaired() void {
+    let mut holder := MakeHolder()
+    if holder.option is Some(handle) {
+        Sink(<-handle)
+    }
+    holder.option = FreshOption(4)
+}
+
+fn TriedField() Option[Handle] {
+    let holder := MakeHolder()
+    let handle := try holder.option
+    return Some(<-handle)
+}
+
+fn PresentWithoutElse() void {
+    let option := FreshOption(1)
+    if option is Some(handle) {
+        Sink(<-handle)
+    }
+}
+
+fn ReplaceAfterFieldMoves() int {
+    let mut pair := MakePair()
+    Sink(<-pair.left)
+    Sink(<-pair.right)
+    pair = MakePair()
+    return pair.count
+}
+
+fn ReplaceAfterNestedFieldMove(flag: bool) void {
+    let mut nest := Nest { inner: MakePair(), tag: 1 }
+    Sink(<-nest.inner.left)
+    if flag {
+        nest = Nest { inner: MakePair(), tag: 2 }
+    }
+}
+
+fn ReplaceAfterConditionalFieldMove(flag: bool) void {
+    let mut pair := MakePair()
+    if flag {
+        Sink(<-pair.left)
+    }
+    pair = MakePair()
+}
+
+fn ReplaceAfterPayloadMove() void {
+    let mut holder := MakeHolder()
+    let handle := try holder.option {
+        None => {
+            return
+        }
+    }
+    Sink(<-handle)
+    holder = MakeHolder()
+}
+
+fn Look(handle: ref Handle) int {
+    return handle.id
+}
+
+fn Log(number: int) void {
+}
+
+fn Temporaries() int {
+    let first := Make(1).id + Make(2).id
+    Log(Make(3).Get())
+    if Make(4).id > 0 {
+        Log(Look(Make(5)))
+    }
+    return first + Make(6).id
+}
+
+fn TemporaryInLoop() void {
+    let mut index := 0
+    while index < Make(3).id {
+        index = index + 1
+    }
+}
+
+fn LeftSubject() void {
+    match FreshOption(1) {
+        Some(_) => {
+            Log(1)
+        }
+        None => {
+        }
+    }
+}
+
+fn LeftSubjectCatchAll() int {
+    match FreshOption(1) {
+        Some(handle) => {
+            return handle.id
+        }
+        _ => {
+            return 0
+        }
+    }
+}
+
+fn LeftSubjectReturns() int {
+    let outer := Make(9)
+    match FreshOption(1) {
+        Some(_) => {
+            let inner := Make(2)
+            return inner.id
+        }
+        None => {
+            return outer.id
+        }
+    }
+}
+
+fn LeftSubjectBreaks() void {
+    let mut index := 0
+    while index < 3 {
+        index = index + 1
+        let body := Make(index)
+        match FreshOption(index) {
+            Some(_) => {
+                let inner := Make(5)
+                if index == 2 {
+                    break
+                }
+                Log(inner.id)
+            }
+            None => {
+                continue
+            }
+        }
+    }
+}
+
+fn LeftSubjectPropagates() Result[int, IndexError] {
+    match FreshOption(1) {
+        Some(_) => {
+            let handle := try FreshResult(1)
+            return Ok(handle.id)
+        }
+        None => {
+            return Ok(0)
+        }
+    }
+}
+
+fn MakeHandles() Handle[2] {
+    return [Make(1), Make(2)]
+}
+
+fn TemporaryLength() uint {
+    return MakeHandles().Len
+}
+
+fn DeferReadsOwner(flag: bool) int {
+    let handle := Make(1)
+    let mut other := Make(2)
+    let pair := Pair { left: Make(3), count: 4, right: Make(5) }
+    defer {
+        Log(handle.id + other.id + pair.left.id)
+        Log(Look(handle))
+        Log(handle.Get())
+    }
+    other.id = 6
+    if flag {
+        return 1
+    }
+    return 2
+}
+
+fn DeferInLoop() void {
+    let handle := Make(1)
+    let mut index := 0
+    while index < 2 {
+        index = index + 1
+        defer {
+            Log(handle.id + index)
+        }
+    }
+}
+
+fn PlainResult(id: int) Result[int, IndexError] {
+    return Ok(id)
+}
+
+fn ProjectTrivial() Option[int] {
+    let result := PlainResult(1)
+    return result.Ok()
+}
+
+fn ProjectOwned() int {
+    let option := FreshResult(1).Ok()
+    match option {
+        Some(handle) => {
+            return handle.id
+        }
+        None => {
+            return 0
+        }
+    }
+}
+
+fn ProjectDropsOwnedError() Option[int] {
+    let mut result := FreshFailure(1)
+    return result.Ok()
+}
+
+fn ProjectError() Option[Failure] {
+    return FreshFailure(1).Err()
+}
+
+fn ProjectField() Option[Handle] {
+    let holder := MakeHolder()
+    return holder.result.Ok()
+}
+
+type Message union {
+    Full { head: Handle, size: int },
+    Blank,
+}
+
+type Lost union error {
+    Gone(Handle),
+    Detail { item: Handle, code: int },
+    Other,
+}
+
+fn FreshMessage() Message {
+    let head := Make(1)
+    return Message.Full { head: <-head, size: 2 }
+}
+
+fn FailLost(id: int) Result[int, Lost] {
+    return Err(Lost.Gone(Make(id)))
+}
+
+fn MessageLocal() int {
+    let message := FreshMessage()
+    match message {
+        Message.Full(full) => {
+            return full.size
+        }
+        Message.Blank => {
+            return 0
+        }
+    }
+}
+
+fn MessageFieldMove() void {
+    let mut message := FreshMessage()
+    match message {
+        Message.Full(full) => {
+            Sink(<-full.head)
+        }
+        Message.Blank => {
+        }
+    }
+    message = FreshMessage()
+}
+
+fn MessageFresh() int {
+    match FreshMessage() {
+        Message.Full(full) => {
+            return full.size
+        }
+        Message.Blank => {
+            return 0
+        }
+    }
+}
+
+fn MessageBorrowedField() int {
+    let message := FreshMessage()
+    match message {
+        Message.Full { head: ref head, size } => {
+            return head.id + size
+        }
+        Message.Blank => {
+            return 0
+        }
+    }
+}
+
+fn LostPayload() int {
+    match FailLost(1) {
+        Err(Lost.Other) => {
+            return 1
+        }
+        Err(Lost.Gone(handle)) => {
+            Sink(<-handle)
+            return 2
+        }
+        Err(_) => {
+            return 3
+        }
+        Ok(number) => {
+            return number
+        }
+    }
+}
+
+fn LostStatement() void {
+    match FailLost(1) {
+        Ok(_) => {
+        }
+        Err(Lost.Gone(handle)) => {
+            Sink(<-handle)
+        }
+        Err(_) => {
+        }
+    }
+}
+
+fn HandlerTakesPayload() int {
+    let number := try FailLost(1) {
+        Err(Lost.Gone(handle)) => {
+            Sink(<-handle)
+            return 1
+        }
+        Err(Lost.Other) => 5
+        Err(error) => {
+            discard error
+            return 0
+        }
+    }
+    return number
+}
+
+fn HandlerLeavesError() int {
+    let number := try FailLost(1) {
+        Err(_) => 7
+    }
+    return number
+}
+
+fn HandlerInLoop() void {
+    let mut index := 0
+    while index < 2 {
+        index = index + 1
+        let number := try FailLost(index) {
+            Err(_) => {
+                continue
+            }
+        }
+        discard number
+    }
+}
+
+fn HolderMove() int {
+    let handle := Make(1)
+    let first := ref handle
+    let second :<- first
+    return Look(second)
+}
+
+fn HolderDiscard() int {
+    let handle := Make(1)
+    let view := ref handle
+    let number := Look(view)
+    discard view
+    return number
+}
+
+fn SliceLength(values: ref int[]) uint {
+    return values.Len
+}
+
+fn SliceBeside() uint {
+    let numbers: int[3] := [1, 2, 3]
+    let handle := Make(1)
+    return SliceLength(ref numbers[..])
+}
+
+fn WideBeside() int128 {
+    let wide: int128 := 170141183460469231731687303715884105727
+    let handle := Make(1)
+    return wide
+}
+
+fn OptionArray() void {
+    let options: Option[Handle][2] := [FreshOption(1), FreshOption(2)]
+    discard options
+}
+
+fn WideKinds() uint256 {
+    let handle := Make(1)
+    let unsigned: uint256 := 115792089237316195423570985008687907853269984665640564039457584007913129639935
+    let small: uint128 := 3
+    let signed: int256 := -4
+    let fraction: decimal128 := 1.5
+    return unsigned
 }

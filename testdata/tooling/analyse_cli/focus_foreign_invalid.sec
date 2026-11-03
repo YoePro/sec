@@ -1,0 +1,5 @@
+module main
+extern "Sec" fn Foreign() void
+fn Focus() void { }
+@noPanic
+fn Unrelated() void { Foreign() }

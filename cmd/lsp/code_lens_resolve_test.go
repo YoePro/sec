@@ -106,7 +106,7 @@ func TestCodeLensResolveDefersAnalysisAndPreservesReport(t *testing.T) {
 // Rules: rules/tooling/lsp.md — "Document snapshots", "Interface conformance code lens".
 func TestCodeLensResolveRejectsMalformedAndStaleData(t *testing.T) {
 	s, uri, text := codeLensResolveFixture(t)
-	original := unresolvedInterfaceCodeLenses(uri, text)[0]
+	original := unresolvedConformanceCodeLenses(uri, text)[0]
 	for _, name := range []string{"missing data", "version", "name", "range", "closed", "changed"} {
 		t.Run(name, func(t *testing.T) {
 			s.documentSnapshots.Open(uri, 1, text)

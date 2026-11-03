@@ -170,7 +170,7 @@ fn Printf[...Types](format: string, values: ...ref Types) Result[uint, WriteForm
                 }
 
                 SizeOverflow => {
-                    return Err(WriteFormatError.IO(IOError.InvalidInput))
+                    return Err(WriteFormatError.SizeOverflow)
                 }
             }
         }

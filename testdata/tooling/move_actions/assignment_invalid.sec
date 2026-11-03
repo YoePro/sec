@@ -1,0 +1,10 @@
+module main
+@noCopy
+type Resource struct { Raw: int }
+impl Resource { free { } }
+fn Replace() void {
+    let source := Resource { Raw: 1 }
+    let mut destination := Resource { Raw: 2 }
+    destination = source
+    discard destination
+}

@@ -101,7 +101,7 @@ func (fb *functionBuilder) discardOwnedBinding(stmt *ast.DiscardStatement, fact 
 		// Nothing can move out of a Place that may hold nothing, so it ends in place.
 		place := fb.ownedStoragePlace(owned, stmt.Token)
 		fb.emit(Operation{Kind: OpOwnDestroyPlace, Operands: []ValueID{place.id}, Ownership: &OwnershipFacts{Cause: "cleanup", DestructionPlan: planID, IfOwned: true}, Location: loc})
-		fb.emit(Operation{Kind: OpCleanupCancel, Cleanup: &CleanupFacts{Action: action, Reason: "discarded", IfActive: true}, Location: loc})
+		fb.emitAll(fb.ownedCancels(fact.ID, action, "discarded", true, loc))
 		return nil
 	} else if stored {
 		place := fb.ownedStoragePlace(owned, stmt.Token)
@@ -112,7 +112,7 @@ func (fb *functionBuilder) discardOwnedBinding(stmt *ast.DiscardStatement, fact 
 		return fb.unsupported("discard of a binding without semantic storage", stmt.Token)
 	}
 	fb.emit(Operation{Kind: OpOwnDiscard, Operands: []ValueID{value.id}, Ownership: &OwnershipFacts{DiscardOrigin: "explicit", DestructionPlan: planID, IfOwned: conditional}, Location: loc})
-	fb.emit(Operation{Kind: OpCleanupCancel, Cleanup: &CleanupFacts{Action: action, Reason: "discarded", IfActive: conditional}, Location: loc})
+	fb.emitAll(fb.ownedCancels(fact.ID, action, "discarded", conditional, loc))
 	return nil
 }
 

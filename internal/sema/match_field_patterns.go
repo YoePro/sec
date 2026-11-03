@@ -81,7 +81,7 @@ func (a *Analyzer) analyzeUnionFieldPatternAt(subject ast.Expression, subjectPla
 		return matchPatternInfo{}, false
 	}
 	info := matchPatternInfo{Kind: "variant", Variant: variant.Name, VariantIndex: unionVariantIndex(subjectType, variant.Name)}
-	payloadType := Type{Name: typeDisplayName(subjectType) + "." + variant.Name, Kind: StructType, Fields: variant.PayloadFields}
+	payloadType := FieldPayloadType(subjectType, variant)
 	seenFields, seenNames := map[string]bool{}, map[string]bool{}
 	valid := true
 	for _, field := range pattern.Fields {
@@ -222,4 +222,10 @@ func (info matchPatternInfo) matchBindingNames() []string {
 		names = append(names, field.Name)
 	}
 	return names
+}
+
+// FieldPayloadType is the whole-payload struct of a named-field union variant,
+// the one type a payload binding, its Place and its destruction plan share.
+func FieldPayloadType(union Type, variant UnionVariant) Type {
+	return Type{Name: typeDisplayName(union) + "." + variant.Name, Kind: StructType, Fields: variant.PayloadFields}
 }

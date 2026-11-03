@@ -17,15 +17,10 @@ fn FreshOption(id: int) Option[Handle] {
     return Some(Make(id))
 }
 
-type Packet union {
-    Full { head: Handle },
-    Empty,
-}
-
-fn Fresh() Packet {
-    return Packet.Empty
+fn Bump(handle: ref mut Handle) void {
+    handle.id = 1
 }
 
 fn T() void {
-    let packet := Fresh()
+    Bump(Make(1))
 }

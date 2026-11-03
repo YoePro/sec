@@ -1042,6 +1042,9 @@ func (es *ExpressionStatement) TokenLiteral() string {
 }
 
 type FunctionDeclaration struct {
+	// EndToken is the parser-owned final signature/body token, including the closing brace.
+	// Rules: rules/tooling/cli.md — §5.3; rules/analysis/call_graph.md — Callable node.
+	EndToken           lexer.Token
 	Token              lexer.Token
 	Attributes         []*Attribute
 	Name               *Identifier
@@ -2594,6 +2597,8 @@ type PropertySetter struct {
 }
 
 type BlockStatement struct {
+	// EndToken retains the actual closing brace or recovery endpoint.
+	EndToken   lexer.Token
 	Token      lexer.Token
 	Tokens     []lexer.Token
 	Statements []Statement

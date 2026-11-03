@@ -3,6 +3,7 @@
 // rules/mlir/packages/sec-mlir-dialect_package16.md — §114.
 #include "sec/Dialect/Sec/SecOps.h"
 #include "OperationContracts.h"
+#include "mlir/IR/BuiltinOps.h"
 
 using namespace mlir;
 using namespace sec;
@@ -21,12 +22,19 @@ LogicalResult StructConstructOp::verify() {
       getFieldOrigins().size() != getFields().size() ||
       getFieldActions().size() != getFields().size())
     return emitOpError("field operands, origins, and actions must match the stored-field count");
+  // Moving and semantically copying fields arrive with schema 13 (dialect v13
+  // section 28); earlier schemas keep the P13 actions.
+  auto module = getOperation()->getParentOfType<mlir::ModuleOp>();
+  auto version = module ? module->getAttrOfType<IntegerAttr>("sec.dialect_version") : IntegerAttr{};
+  bool owning = version && version.getInt() >= 13;
   if (failed(verifyStringArrayValues(
           *this, getFieldOrigins(), {"explicit", "spread", "default"},
           "field origins")) ||
-      failed(verifyStringArrayValues(
-          *this, getFieldActions(), {"construct-direct", "copy-trivial"},
-          "field actions")))
+      failed(owning ? verifyStringArrayValues(*this, getFieldActions(),
+                                              {"construct-direct", "copy-trivial", "move", "copy-semantic-infallible"},
+                                              "field actions")
+                    : verifyStringArrayValues(*this, getFieldActions(), {"construct-direct", "copy-trivial"},
+                                              "field actions")))
     return failure();
   for (auto [index, attribute] : llvm::enumerate(type->getFields())) {
     auto field = cast<StructFieldAttr>(attribute);

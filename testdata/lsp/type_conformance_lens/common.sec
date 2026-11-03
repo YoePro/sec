@@ -1,0 +1,16 @@
+module storage
+
+interface Native {
+    fn Size() int
+}
+
+interface Writable {
+    fn Write() bool
+}
+
+type Handle struct {
+}
+
+type Other struct {
+}
+

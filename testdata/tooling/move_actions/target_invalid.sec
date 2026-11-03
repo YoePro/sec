@@ -1,0 +1,9 @@
+module main
+@noCopy
+type Resource struct { Raw: int }
+fn Transfer(number: uint32) int {
+    let source := Resource { Raw: 1 }
+    let destination := source
+    discard destination
+    return int(number)
+}

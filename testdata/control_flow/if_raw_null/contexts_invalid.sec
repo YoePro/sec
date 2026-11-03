@@ -1,0 +1,70 @@
+module main
+
+fn Outside(value: RawPtr[int]) void {
+    if value is null {
+    }
+}
+
+fn OutsideElseIf(value: RawPtr[int], enabled: bool) void {
+    if enabled {
+    } else if value is not null {
+    }
+}
+
+fn BodyDoesNotAuthorizeCondition(value: RawPtr[int]) void {
+    if value is null {
+        unsafe {
+            discard value
+        }
+    }
+}
+
+fn AfterUnsafe(value: RawPtr[int]) void {
+    unsafe {
+        discard value
+    }
+    if value is not null {
+    }
+}
+
+fn IfDoesNotAuthorizeRead(value: RawPtr[int], enabled: bool) void {
+    if enabled {
+        discard value.Read()
+    }
+}
+
+fn SafeReference(value: ref int) void {
+    unsafe {
+        if value is null {
+        }
+    }
+}
+
+fn OrdinaryValue(value: int) void {
+    unsafe {
+        if value is not null {
+        }
+    }
+}
+
+fn Equality(value: RawPtr[int]) void {
+    unsafe {
+        if value == null {
+        }
+    }
+}
+
+fn Inequality(value: RawPtr[int]) void {
+    unsafe {
+        if null != value {
+        }
+    }
+}
+
+fn NullDoesNotAuthorizeRead(value: RawPtr[int]) void {
+    unsafe {
+        if value is null {
+            discard value.Read()
+        }
+    }
+}

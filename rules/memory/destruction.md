@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-28
-- **Last updated:** 2026-10-21
+- **Last updated:** 2026-11-03 (§ 8(8)–(9) match subject and condition full expressions, owner decision); 2026-10-21
 - **Document revision:** 2.2
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/memory/destruction.md`
@@ -278,6 +278,10 @@ destroy remaining first temporary
 **§ 8(6)** Lifetime shortening of temporaries must not change observable destruction order, reference validity, defer behavior, volatile effects, or expression evaluation order.
 
 **§ 8(7)** A call-lifetime borrow of a temporary argument or receiver (`borrowing.md` § 5.4, MD-076) neither destroys the temporary when the call returns nor extends it past the full expression; the borrow ending earlier does not move its cleanup. On a failure or other abnormal edge, exactly the still-owned successfully created temporaries whose lifetime ends on that edge are cleaned.
+
+**§ 8(8)** A fresh `match` subject that the selected arm does not take — a non-binding pattern such as `Some(_)`, a bare variant or `_` — remains valid through the whole `match` and is destroyed when control leaves the arm: after the arm body when it falls out of the `match`, and on a `return`, `break`, `continue` or error propagation from the arm after the arm's own owned values and before those of enclosing scopes (owner decision 2026-11-03).
+
+**§ 8(9)** The condition of `if` and `while`, including the subject of `if x is Some(y)`, is a full expression of its own: temporaries it creates are destroyed after the condition is evaluated and before the selected branch or loop body runs (owner decision 2026-11-03).
 
 ---
 

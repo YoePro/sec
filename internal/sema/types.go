@@ -647,20 +647,23 @@ type Function struct {
 	Parameters               []FunctionParameter
 	ReturnType               Type
 	Token                    lexer.Token
-	Extern                   bool
-	Unsafe                   bool
-	Static                   bool
-	ABI                      string
-	LinkName                 string
-	AllocationEffect         AllocationEffect
-	ImplTarget               string
-	ReceiverMutable          bool
-	ReceiverConsuming        bool
-	Initializer              bool
-	ConstructionType         *Type
-	ConstructionError        *Type
-	ReturnOrigin             localReferenceOrigin
-	HasReturnOrigin          bool
+	// DeclarationEnd retains parser provenance for exact focused-analysis ownership.
+	// Rules: rules/tooling/cli.md — §5.3; rules/analysis/call_graph.md — Callable node.
+	DeclarationEnd    lexer.Token
+	Extern            bool
+	Unsafe            bool
+	Static            bool
+	ABI               string
+	LinkName          string
+	AllocationEffect  AllocationEffect
+	ImplTarget        string
+	ReceiverMutable   bool
+	ReceiverConsuming bool
+	Initializer       bool
+	ConstructionType  *Type
+	ConstructionError *Type
+	ReturnOrigin      localReferenceOrigin
+	HasReturnOrigin   bool
 	// ArenaParameterResets lists, in ascending order, the indexes of
 	// ref/ref mut Arena parameters whose Arena the function may Reset,
 	// directly or by forwarding the parameter (arena_parameter_effects.go).
@@ -976,6 +979,10 @@ type Symbol struct {
 	// DecimalConstant is the exact value of an immutable decimal binding
 	// whose initializer is a compile-time known decimal (MD-066 § 6(1)).
 	DecimalConstant *big.Rat
+	// enumConstant is a numeric value established for an immutable enum binding.
+	// It is private so published Symbol values cannot mutate analysis evidence.
+	// Rules: rules/declarations/enums.md — §12.1; types.md — Exact integer conversion proof.
+	enumConstant *big.Int
 	// QuantityConstant is the exact value of an immutable unit-bearing
 	// binding in its own unit coordinates (rules/types/temporal.md,
 	// "Conversion of time quantities to duration").

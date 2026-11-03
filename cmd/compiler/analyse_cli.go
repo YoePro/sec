@@ -249,24 +249,6 @@ func resolveAnalyseScope(graph *sema.CallGraph, selector string, selected map[st
 	return scope, nil
 }
 
-// owner attributes a source token to the named function whose declaration
-// most closely precedes it in the same file. Closures and defers are part of
-// their enclosing function for attribution.
-func (s *analyseScope) owner(token lexer.Token) (sema.CallableID, bool) {
-	var found sema.CallableID
-	ok := false
-	for _, node := range s.byFile[token.File] {
-		if node.Kind != sema.CallableBodyNamedFunction {
-			continue
-		}
-		if node.Declaration.Line > token.Line || node.Declaration.Line == token.Line && node.Declaration.Column > token.Column {
-			break
-		}
-		found, ok = node.ID, true
-	}
-	return found, ok
-}
-
 // includes reports whether a token lies in a callable reachable from the
 // focus root.
 func (s *analyseScope) includes(token lexer.Token) bool {

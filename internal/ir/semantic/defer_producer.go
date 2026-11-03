@@ -42,8 +42,22 @@ func (fb *functionBuilder) buildDefer(stmt *ast.DeferStatement) error {
 			return fb.unsupported("defer capturing a reference holder", capture.Use)
 		}
 		bound, known := fb.bindings[capture.Binding]
-		if _, owned := fb.ownedStorages[capture.Binding]; owned || !known || !fb.storageAllowed(bound.typ) {
+		// An owned value is captured as a Place like any other: the defer reads
+		// it when it runs, before the owner's own cleanup, which registered
+		// earlier (destruction.md § 8; defer.md §§ 9–11).
+		_, tracked := fb.trackedActions[capture.Binding]
+		if !known || !tracked && !fb.storageAllowed(bound.typ) {
 			return fb.unsupported("defer capturing a value that needs destruction", capture.Use)
+		}
+		// An owner of an inner scope must outlive its scope until the defer
+		// runs at function exit (defer.md § 8), once per registration in a loop.
+		if root, ok := fb.cleanupPlan(); tracked && ok && fb.trackedScopes[capture.Binding] != root.Root {
+			return fb.unsupported("P17 defer reading an owned value of an inner scope", capture.Use)
+		}
+		// A Place captures the slot, so every registration would read the last
+		// iteration's instance instead of its own (defer.md § 13).
+		if bound.storage != 0 && fb.loopStorages[bound.storage] {
+			return fb.unsupported("P17 defer reading mutable storage declared in its loop", capture.Use)
 		}
 		root := capture.Place
 		root.Projections = nil
@@ -54,6 +68,12 @@ func (fb *functionBuilder) buildDefer(stmt *ast.DeferStatement) error {
 			place = fb.placeResult(Operation{Kind: OpPlaceStorageRoot, Storage: bound.storage, Place: placeMetadataOf(root), Location: loc}, placeType)
 		} else {
 			place = fb.placeResult(Operation{Kind: OpPlaceValueRoot, Operands: []ValueID{bound.value}, Place: placeMetadataOf(root), Location: loc}, placeType)
+		}
+		if tracked {
+			if fb.deferCaptured == nil {
+				fb.deferCaptured = map[sema.BindingID]bool{}
+			}
+			fb.deferCaptured[capture.Binding] = true
 		}
 		operands = append(operands, place.id)
 		parameter := fb.newValue(placeType, OwnershipCompilerTemporary, loc)
@@ -144,4 +164,36 @@ func (fb *functionBuilder) markStorageAddressTaken(id StorageID) {
 			fb.fn.Storages[index].AddressTaken = true
 		}
 	}
+}
+
+// readCapturedField reads a copy-trivial stored field, possibly nested, of a
+// value a defer body captured, through its Place, never copying the whole value.
+func (fb *functionBuilder) readCapturedField(member *ast.MemberExpression, plan sema.ResolvedStructMemberPlan) (builtValue, bool, error) {
+	root, chain := memberRoot(member)
+	if root == nil {
+		return builtValue{}, false, nil
+	}
+	fact, ok := fb.owner.analyzer.ResolvedBindingOf(root)
+	if !ok {
+		return builtValue{}, false, nil
+	}
+	bound, ok := fb.bindings[fact.ID]
+	if !ok || bound.capture == 0 {
+		return builtValue{}, false, nil
+	}
+	place := builtValue{id: bound.capture}
+	var fieldType TypeID
+	for _, step := range chain {
+		field, resolved := fb.owner.analyzer.ResolvedStructMemberOf(step)
+		if !resolved || field.Kind != sema.MemberStoredField {
+			return builtValue{}, true, fb.unsupported("defer body reading an unresolved captured field", step.Token)
+		}
+		var err error
+		if fieldType, err = fb.owner.internType(field.MemberType); err != nil {
+			return builtValue{}, true, err
+		}
+		placeType := fb.owner.module.Types.Intern(Type{Kind: TypePlace, Element: fieldType, Mutable: bound.mutable})
+		place = fb.placeResult(Operation{Kind: OpPlaceField, Operands: []ValueID{place.id}, StructField: StructFieldID(field.FieldID), Location: location(step.Token)}, placeType)
+	}
+	return fb.result(Operation{Kind: OpPlaceRead, Operands: []ValueID{place.id}, Location: location(member.Token)}, fieldType), true, nil
 }

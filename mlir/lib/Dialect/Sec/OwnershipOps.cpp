@@ -115,6 +115,10 @@ LogicalResult OwnReplacePlaceOp::verify() {
     return failure();
   if (getDestructionPlan().empty())
     return emitOpError("requires the old value's destruction plan");
+  // A replaced stored field stays under its owner's registration (package17 section 64).
+  bool field = getPlace().getDefiningOp<PlaceFieldOp>() != nullptr;
+  if (field && getOldCleanupActionId() == 0 && getNewCleanupActionId() == 0)
+    return success();
   if (getOldCleanupActionId() == 0 || getNewCleanupActionId() == 0 ||
       getOldCleanupActionId() == getNewCleanupActionId())
     return emitOpError("requires distinct old and new cleanup action identities");

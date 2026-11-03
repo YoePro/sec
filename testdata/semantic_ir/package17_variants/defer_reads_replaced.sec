@@ -17,15 +17,13 @@ fn FreshOption(id: int) Option[Handle] {
     return Some(Make(id))
 }
 
-fn Sink(->handle: Handle) void {
+fn Log(number: int) void {
 }
 
-fn T(flag: bool) void {
+fn T() void {
     let mut handle := Make(1)
-    if flag {
-        Sink(<-handle)
+    defer {
+        Log(handle.id)
     }
-    if flag {
-        handle = Make(2)
-    }
+    handle = Make(2)
 }

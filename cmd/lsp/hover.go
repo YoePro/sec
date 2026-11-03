@@ -81,6 +81,9 @@ func hoverForSourceWithParameterInsight(uri string, text string, pos position, i
 		if read, ok := analyzer.UnitMetadataReadAt(token.File, token.Line, token.Column); ok {
 			return unitMetadataHover(tokenRange(text, token), read), true
 		}
+		if hover, ok := enumConversionHover(text, program, analyzer, token); ok {
+			return hover, true
+		}
 		if hover, ok := quantityDurationHover(text, program, analyzer, token); ok {
 			return hover, true
 		}

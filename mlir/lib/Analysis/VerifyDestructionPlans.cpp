@@ -99,6 +99,23 @@ private:
     return success();
   }
 
+  // A named-field variant's step names a plan of its synthetic payload struct.
+  LogicalResult checkFieldPayloadStep(const Plan &plan, StringAttr id, ArrayAttr fields) {
+    auto target = id ? byID.find(id.getValue()) : byID.end();
+    if (target == byID.end())
+      return error(plan) << "steps to an unknown plan";
+    auto structure = dyn_cast<sec::StructType>(plans[target->second].type);
+    bool matches = structure && structure.getFields().size() == fields.size();
+    for (size_t index = 0; matches && index < fields.size(); ++index) {
+      auto unionField = cast<sec::UnionFieldAttr>(fields[index]);
+      auto structField = cast<sec::StructFieldAttr>(structure.getFields()[index]);
+      matches = unionField.getName() == structField.getName() && unionField.getType() == structField.getType();
+    }
+    if (!matches)
+      return error(plan) << "steps to '" << id.getValue() << "', which is not the named-field variant's payload struct";
+    return success();
+  }
+
   LogicalResult checkPlan(const Plan &plan) {
     DictionaryAttr entry = plan.entry;
     if ((plan.kind != "struct" && entry.contains("fields")) ||
@@ -213,10 +230,11 @@ private:
 
   // Only the active payload runs, so every variant that may hold a non-trivial
   // payload is covered once. A Result's variants are Ok and Err, in that order.
-  // A named-field variant has no single payload plan yet; its producer is a later
-  // P17 slice, so it is neither accepted nor silently skipped (§§ 25, 26).
+  // A named-field variant is destroyed as its synthetic payload struct: a struct
+  // plan whose fields are the variant's, by name and type (§§ 25, 26).
   LogicalResult checkVariants(const Plan &plan) {
     SmallVector<Type> payloads;
+    SmallVector<ArrayAttr> fieldLists;
     SmallVector<bool> fieldsNeedDestruction;
     Type shape = sec::stripNominal(plan.type);
     if (auto result = dyn_cast<sec::ResultType>(shape)) {
@@ -226,6 +244,7 @@ private:
       for (Attribute attribute : sum.getVariants()) {
         auto variant = cast<sec::UnionVariantAttr>(attribute);
         payloads.push_back(variant.getPayload());
+        fieldLists.push_back(variant.getFields());
         bool fields = false;
         for (Attribute field : variant.getFields())
           fields = fields || needsDestruction(cast<sec::UnionFieldAttr>(field).getType());
@@ -239,9 +258,16 @@ private:
     for (Attribute attribute : steps ? steps.getValue() : ArrayRef<Attribute>()) {
       auto step = dyn_cast<DictionaryAttr>(attribute);
       auto index = step ? step.getAs<IntegerAttr>("variant") : IntegerAttr();
+      bool fields = index && index.getInt() >= 0 && index.getInt() < int64_t(fieldLists.size()) &&
+                    fieldLists[index.getInt()] && !fieldLists[index.getInt()].empty();
       if (!index || index.getInt() < 0 || index.getInt() >= int64_t(payloads.size()) ||
-          !payloads[index.getInt()] || !listed.insert(index.getInt()).second)
+          (!payloads[index.getInt()] && !fields) || !listed.insert(index.getInt()).second)
         return error(plan) << "names an invalid, repeated or payload-free variant";
+      if (fields) {
+        if (failed(checkFieldPayloadStep(plan, step.getAs<StringAttr>("plan"), fieldLists[index.getInt()])))
+          return failure();
+        continue;
+      }
       if (failed(checkStep(plan, step.getAs<StringAttr>("plan"), payloads[index.getInt()])))
         return failure();
     }

@@ -170,6 +170,7 @@ func (a *Analyzer) enterNoPanicAccessor(target Type, property, kind string, attr
 	function := Function{
 		Name: property + "." + strings.ReplaceAll(kind, " ", "-"), ImplTarget: target.Name,
 		Module: a.currentModule, Token: body.Token, ReturnType: returnType,
+		DeclarationEnd: body.EndToken,
 	}
 	id := a.callGraph.addCallable(function)
 	a.noPanicAccessors = append(a.noPanicAccessors, noPanicAccessor{attributes: attributes, callable: id, name: target.Name + "." + property, kind: kind})

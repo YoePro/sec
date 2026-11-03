@@ -106,6 +106,11 @@ func (a *Analyzer) resolvedCleanupPlanOfInvocation(invocation CallableID) (Resol
 			plan.Registrations = append(plan.Registrations, site(CleanupRegisterMatchBinding, registration, arm.Token))
 		}
 	}
+	for handler, registration := range a.ownedCleanupHandlerBindings {
+		if registration.Invocation == invocation {
+			plan.Registrations = append(plan.Registrations, site(CleanupRegisterMatchBinding, registration, handler.Token))
+		}
+	}
 	for stmt, assignment := range a.ownedCleanupAssignments {
 		if assignment.Executor != invocation {
 			continue

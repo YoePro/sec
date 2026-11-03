@@ -167,6 +167,29 @@ type functionBuilder struct {
 	cleanupExitsDone map[cleanupExitKey]bool
 	// trackedActions maps an owned local's binding to its cleanup action.
 	trackedActions map[sema.BindingID]uint32
+	// pathDependent marks a binding reassigned in a nested scope or loop, whose
+	// live cleanup incarnation then depends on the path (P17-19).
+	pathDependent map[sema.BindingID]bool
+	// partialRoots marks owners a stored field moves out of (P17-27).
+	partialRoots map[sema.BindingID]bool
+	// temporaries are owned temporaries of the current full expression and
+	// armTemporaries fresh match subjects the selected arm leaves (P17-40).
+	temporaries, armTemporaries []pendingTemporary
+	temporaryError              error
+	temporaryExit               bool
+	armTemporaryDepth           int
+	scopesCleaned               map[sema.CleanupScopeID]bool
+	// deferCaptured marks owned bindings a registered defer reads, and
+	// trackedScopes holds the cleanup scope each tracked binding registered in.
+	deferCaptured map[sema.BindingID]bool
+	trackedScopes map[sema.BindingID]sema.CleanupScopeID
+	// loopStorages holds storage declared inside a loop body: one slot that a
+	// later iteration reuses for its own binding instance.
+	loopStorages map[StorageID]bool
+	// matchSubjectPlace is the Place of the observed subject of the match being built,
+	// and materializedSubjects fresh subjects held in compiler storage (P17-37).
+	matchSubjectPlace    *matchSubjectPlace
+	materializedSubjects map[ast.Expression]ownedStorage
 	// pendingArgumentCancels are argument moves' cancels, emitted when their
 	// call commits.
 	pendingArgumentCancels []Operation
@@ -340,6 +363,8 @@ func (b *builder) buildConcreteFunction(decl *ast.FunctionDeclaration, resolved 
 	if decl.Body == nil {
 		return fmt.Errorf("non-extern function %s has no body", fn.ID)
 	}
+	fb.markPathDependentBindings(decl.Body)
+	fb.markPartialRoots(decl.Body)
 	if err := fb.trackOwnedParameters(decl); err != nil {
 		return err
 	}
@@ -490,6 +515,9 @@ func (b *builder) internArrayType(t sema.Type) (TypeID, error) {
 // sec_semantic_ir_struct_v1.md sections 2-6 while retaining the later
 // P14-P18-compatible concrete field types and P17 ownership metadata.
 func (b *builder) internStructType(t sema.Type) (TypeID, error) {
+	if path := unresolvedConcreteStorage(t, t.Name); path != "" {
+		return 0, &UnsupportedFeatureError{Feature: "unresolved storage in " + path, Package: b.maxPackage}
+	}
 	if len(t.GenericParameters) != 0 {
 		return 0, &UnsupportedFeatureError{Feature: "unresolved generic struct " + t.Name, Package: b.maxPackage}
 	}
@@ -591,6 +619,9 @@ func (b *builder) lookupEnumUnderlying(t sema.Type) (sema.Type, bool) {
 }
 
 func (b *builder) internUnionType(t sema.Type) (TypeID, error) {
+	if path := unresolvedConcreteStorage(t, t.Name); path != "" {
+		return 0, &UnsupportedFeatureError{Feature: "unresolved storage in " + path, Package: b.maxPackage}
+	}
 	if len(t.GenericParameters) != 0 {
 		return 0, &UnsupportedFeatureError{Feature: "unresolved generic union " + t.Name, Package: b.maxPackage}
 	}
@@ -748,6 +779,9 @@ func (fb *functionBuilder) buildStatements(statements []ast.Statement) error {
 			return &UnsupportedFeatureError{Feature: "unreachable statement after terminator", Package: fb.owner.maxPackage, Location: statementLocation(statement)}
 		}
 		fb.endBorrowsBefore(statement, list)
+		if err := fb.endFullExpression(); err != nil {
+			return err
+		}
 		switch stmt := statement.(type) {
 		case *ast.LetStatement:
 			if err := fb.buildLet(stmt); err != nil {
@@ -883,7 +917,7 @@ func (fb *functionBuilder) buildStatements(statements []ast.Statement) error {
 			return fb.unsupported(fmt.Sprintf("%T", statement), statementToken(statement))
 		}
 	}
-	return nil
+	return fb.endFullExpression()
 }
 
 func (fb *functionBuilder) buildLet(stmt *ast.LetStatement) error {
@@ -960,6 +994,9 @@ func (fb *functionBuilder) buildLet(stmt *ast.LetStatement) error {
 	fb.bindings[fact.ID] = binding{value: value.id, typ: value.typ}
 	if fb.owner.maxPackage >= ownershipLoweringPackage {
 		if registration, ok := fb.owner.analyzer.ResolvedOwnedCleanupInitializationOf(stmt); ok {
+			if fb.partialRoots[fact.ID] {
+				return fb.declareOwnedStorage(stmt, fact.ID, registration, value, fact.Type)
+			}
 			return fb.trackOwnedLocal(stmt, registration, value, fact.Type)
 		}
 	}
@@ -1354,6 +1391,9 @@ func (fb *functionBuilder) buildArrayIndexAssignment(stmt *ast.AssignmentStateme
 // rules/mlir/lowering-versions/sec_mlir_lowering_v9.md sections 10-11. The RHS
 // is evaluated first and the root storage is written exactly once.
 func (fb *functionBuilder) buildStructFieldAssignment(stmt *ast.AssignmentStatement, target *ast.MemberExpression) error {
+	if handled, err := fb.assignOwnedField(stmt, target); handled {
+		return err
+	}
 	var reversed []sema.ResolvedStructMemberPlan
 	var root *ast.Identifier
 	for expression := ast.Expression(target); ; {
@@ -1438,7 +1478,16 @@ func (fb *functionBuilder) buildReturn(stmt *ast.ReturnStatement) error {
 		}
 		op.Operands = []ValueID{value.id}
 	}
+	if err := fb.endFullExpression(); err != nil {
+		return err
+	}
+	if err := fb.leaveArmTemporaries(true, sema.CleanupExitReturn, nil, stmt.Token); err != nil {
+		return err
+	}
+	fb.scopesCleaned = nil
+	fb.temporaryExit = true
 	fb.emit(op)
+	fb.temporaryExit = false
 	fb.current = nil
 	return nil
 }
@@ -1489,6 +1538,9 @@ func (fb *functionBuilder) buildIf(stmt *ast.IfStatement) error {
 	} else {
 		merge = fb.newBlock()
 		elseBlock = merge
+	}
+	if err := fb.endFullExpression(); err != nil {
+		return err
 	}
 	fb.emit(Operation{Kind: OpCondBranch, Operands: []ValueID{condition.id}, Successors: []BranchTarget{{Block: thenBlock.ID}, {Block: elseBlock.ID}}, Location: location(stmt.Token)})
 	fb.current = thenBlock
@@ -1568,6 +1620,9 @@ func (fb *functionBuilder) buildOptionBindingIf(stmt *ast.IfStatement) error {
 		merge = fb.newBlock()
 		elseBlock = merge
 	}
+	if err := fb.endFullExpression(); err != nil {
+		return err
+	}
 	fb.emit(Operation{Kind: OpCondBranch, Operands: []ValueID{condition.id}, Successors: []BranchTarget{{Block: thenBlock.ID}, {Block: elseBlock.ID}}, Location: location(stmt.Token)})
 
 	fb.current = thenBlock
@@ -1620,8 +1675,10 @@ func (fb *functionBuilder) buildOptionBindingIf(stmt *ast.IfStatement) error {
 		delete(fb.bindings, bindingFact.ID)
 	}
 
+	// Without an else the false edge is the merge itself; leaving the then
+	// block current here would branch out of it twice.
+	fb.current = elseBlock
 	if stmt.Alternative != nil || freshNone {
-		fb.current = elseBlock
 		if freshNone {
 			if err := fb.destroyFreshSubject(subject, plan.SubjectType, stmt.OptionBinding.Binding.Token); err != nil {
 				return err
@@ -1887,10 +1944,16 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 				return builtValue{}, err
 			}
 		}
+		if moved, handled, err := fb.moveOwnedField(e); handled {
+			return moved, err
+		}
 		if fb.owner.maxPackage >= 13 {
 			if plan, resolved := fb.owner.analyzer.ResolvedStructMemberOf(e); resolved && plan.Kind == sema.MemberStoredField {
 				if plan.Action != sema.StructFieldCopyTrivial && !fb.owner.concreteTriviallyCopyable(plan.MemberType) {
 					return builtValue{}, fb.unsupported("non-trivial struct field read", e.Token)
+				}
+				if read, captured, err := fb.readCapturedField(e, plan); captured {
+					return read, err
 				}
 				if owned, isOwned := fb.ownedStorageOf(e.Object); isOwned {
 					return fb.readOwnedStorageField(e, owned, plan)
@@ -1901,6 +1964,14 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 					switch e.Object.(type) {
 					case *ast.Identifier, *ast.MemberExpression, *ast.IndexExpression:
 						// A binding, or a projection whose own read names its boundary.
+					case *ast.CallExpression:
+						// The fresh owner lives to the end of the full expression.
+						source, err := fb.buildExpr(e.Object, 0)
+						if err != nil {
+							return builtValue{}, err
+						}
+						fb.holdTemporary(source, objectType, e.Token)
+						return fb.result(Operation{Kind: OpStructExtractField, Operands: []ValueID{source.id}, StructField: StructFieldID(plan.FieldID), StructActions: []StructFieldAction{StructActionCopyTrivial}, Location: loc}, typeID), nil
 					default:
 						return builtValue{}, fb.unsupported("owned struct temporary field read cleanup (P17-40)", e.Token)
 					}
@@ -2030,7 +2101,16 @@ func (fb *functionBuilder) buildFixedArrayLength(expr *ast.MemberExpression, res
 	}
 	if fb.owner.maxPackage >= ownershipLoweringPackage && !sema.TriviallyDestructible(receiverType) {
 		if _, binding := expr.Object.(*ast.Identifier); !binding {
-			return builtValue{}, fb.unsupported("owned fixed-array temporary observation cleanup (P17-40)", expr.Token)
+			if !isFreshOwner(expr.Object) {
+				return builtValue{}, fb.unsupported("owned fixed-array temporary observation cleanup (P17-40)", expr.Token)
+			}
+			// The fresh array is still evaluated and lives to the end of the
+			// full expression; its length is the exact fixed count.
+			source, err := fb.buildExpr(expr.Object, 0)
+			if err != nil {
+				return builtValue{}, err
+			}
+			fb.holdTemporary(source, receiverType, expr.Token)
 		}
 		// Sema proved this stable binding available. Fixed length is a pure
 		// observation, so neither load nor copy a non-trivial owned array.
@@ -2283,6 +2363,7 @@ func (fb *functionBuilder) buildUnionConstruction(expr ast.Expression, plan sema
 			return builtValue{}, fb.unsupported("field-payload union construction", expressionToken(expr))
 		}
 		values := map[string]builtValue{}
+		fieldActions := map[string]UnionPayloadAction{}
 		fieldTypes := map[string]TypeID{}
 		for _, field := range variant.PayloadFields {
 			fieldTypes[field.Name] = field.Type
@@ -2298,9 +2379,14 @@ func (fb *functionBuilder) buildUnionConstruction(expr ast.Expression, plan sema
 				continue
 			}
 			name := sourceField.Name.Value
+			fieldAction := UnionPayloadCopyTrivial
 			if sema.CopyClassificationOf(semaFields[name]) != sema.CopyTrivial {
-				return builtValue{}, fb.unsupported("non-trivial union field transfer", sourceField.Token)
+				if !fb.ownedArgumentLowerable(sourceField.Value) {
+					return builtValue{}, fb.unsupported("non-trivial union field transfer", sourceField.Token)
+				}
+				fieldAction = UnionPayloadConstructDirect
 			}
+			fieldActions[name] = fieldAction
 			value, err := fb.buildExpr(sourceField.Value, fieldTypes[name])
 			if err != nil {
 				return builtValue{}, err
@@ -2314,7 +2400,7 @@ func (fb *functionBuilder) buildUnionConstruction(expr ast.Expression, plan sema
 			}
 			op.Operands = append(op.Operands, value.id)
 			op.UnionFields = append(op.UnionFields, field.Name)
-			op.PayloadActions = append(op.PayloadActions, UnionPayloadCopyTrivial)
+			op.PayloadActions = append(op.PayloadActions, fieldActions[field.Name])
 		}
 	default:
 		return builtValue{}, fb.unsupported("union variant kind", expressionToken(expr))
@@ -2412,10 +2498,20 @@ func (fb *functionBuilder) buildResolvedMatch(expr *ast.MatchExpression, resultT
 	if !placed {
 		if observation, place, ok := fb.observeOwnedSubject(expr.Subject); ok {
 			subject, subjectPlace, observed = observation, place, true
+		} else if observation, place, ok, materializeErr := fb.materializeMatchSubject(expr, plan); materializeErr != nil {
+			return builtValue{}, materializeErr
+		} else if ok {
+			subject, subjectPlace, observed = observation, place, true
 		} else if subject, err = fb.buildExpr(expr.Subject, 0); err != nil {
 			return builtValue{}, err
 		}
 	}
+	outerSubjectPlace := fb.matchSubjectPlace
+	fb.matchSubjectPlace = nil
+	if observed {
+		fb.matchSubjectPlace = subjectPlace
+	}
+	defer func() { fb.matchSubjectPlace = outerSubjectPlace }()
 	if subject.typ == 0 || valueContext && resultType == 0 {
 		return builtValue{}, fb.unsupported("untyped match", expr.Token)
 	}
@@ -2462,7 +2558,7 @@ func (fb *functionBuilder) buildResolvedMatch(expr *ast.MatchExpression, resultT
 		if patternBlock == nil {
 			return builtValue{}, fmt.Errorf("match pattern chain terminated before arm %d", armPlan.SourceIndex)
 		}
-		if observed && (armPlan.PatternKind == sema.MatchPatternResultErrVariant || len(armPlan.FieldBindings) != 0) {
+		if observed && len(armPlan.FieldBindings) != 0 {
 			return builtValue{}, fb.unsupported("named-field or error-variant pattern on a mutable owned subject (P17-37)", arm.Token)
 		}
 		fb.errorArm = matchErrorArm{}
@@ -2523,7 +2619,12 @@ func (fb *functionBuilder) buildResolvedMatch(expr *ast.MatchExpression, resultT
 		ownedScopes := len(fb.cleanupScopes)
 		commitOwned := func() error {
 			if registration, owned := fb.owner.analyzer.ResolvedOwnedCleanupMatchBindingOf(arm); owned && armPlan.BindingAction == sema.MatchBindingMove && fb.owner.maxPackage >= ownershipLoweringPackage {
-				if err := fb.trackOwned(arm.Token, registration, payload, armPlan.BindingType); err != nil {
+				if fb.partialRoots[registration.Binding] {
+					// A field moves out of the binding, so it keeps its state in storage.
+					if err := fb.declareOwnedStorageAt(armPlan.BindingName, arm.Token, registration.Binding, registration, payload, armPlan.BindingType); err != nil {
+						return err
+					}
+				} else if err := fb.trackOwned(arm.Token, registration, payload, armPlan.BindingType); err != nil {
 					return err
 				}
 				fb.cleanupScopes = append(fb.cleanupScopes, registration.Scope)
@@ -2565,6 +2666,8 @@ func (fb *functionBuilder) buildResolvedMatch(expr *ast.MatchExpression, resultT
 		}
 		fb.current = bodyBlock
 		newBodyBlocksFrom := len(fb.fn.Blocks)
+		outerArmDepth := fb.armTemporaryDepth
+		fb.armTemporaryDepth = len(fb.armTemporaries)
 		if armPlan.Guarded && armPlan.BindingAction == sema.MatchBindingMove && fb.owner.maxPackage >= ownershipLoweringPackage {
 			// The selected arm now takes the payload and rebinds it as its owner.
 			err = fb.prepareOwnedPayload(expr.Subject, arm.Token)
@@ -2591,6 +2694,8 @@ func (fb *functionBuilder) buildResolvedMatch(expr *ast.MatchExpression, resultT
 			err = fb.buildMatchStatementArm(arm, armPlan, merge, matchID)
 		}
 		fb.cleanupScopes = fb.cleanupScopes[:ownedScopes]
+		fb.armTemporaries = fb.armTemporaries[:fb.armTemporaryDepth]
+		fb.armTemporaryDepth = outerArmDepth
 		if err != nil {
 			restore()
 			return builtValue{}, err
@@ -2891,6 +2996,9 @@ func (fb *functionBuilder) buildMatchExpressionArm(arm *ast.MatchArm, plan sema.
 		return err
 	}
 	fb.runScopeCleanup(sema.CleanupExitFallthrough, arm.Token)
+	if err := fb.endArmTemporaries(fb.armTemporaryDepth); err != nil {
+		return err
+	}
 	fb.emit(Operation{Kind: OpBranch, Successors: []BranchTarget{{Block: merge.ID, Arguments: []ValueID{value.id}}}, MatchID: matchID, MatchArmIndex: plan.SourceIndex, MatchStage: "body-exit", MatchPatternKind: string(plan.PatternKind), Location: location(arm.Token)})
 	fb.current = nil
 	return nil
@@ -2918,6 +3026,10 @@ func (fb *functionBuilder) buildMatchStatementArm(arm *ast.MatchArm, plan sema.R
 		if _, err := fb.buildExpr(arm.Body, armTypeID); err != nil {
 			return err
 		}
+		// A statement arm's expression is a full expression of its own.
+		if err := fb.endFullExpression(); err != nil {
+			return err
+		}
 		if armType.Kind != sema.VoidType && (sema.CopyClassificationOf(armType) != sema.CopyTrivial || !sema.TriviallyDestructible(armType)) {
 			return fb.unsupported("ignored non-trivial match statement arm value", arm.Token)
 		}
@@ -2929,6 +3041,9 @@ func (fb *functionBuilder) buildMatchStatementArm(arm *ast.MatchArm, plan sema.R
 		return fmt.Errorf("continuing match arm %d has no continuation", plan.SourceIndex)
 	}
 	fb.runScopeCleanup(sema.CleanupExitFallthrough, arm.Token)
+	if err := fb.endArmTemporaries(fb.armTemporaryDepth); err != nil {
+		return err
+	}
 	fb.emit(Operation{
 		Kind: OpBranch, Successors: []BranchTarget{{Block: continuation.ID}}, MatchID: matchID,
 		MatchArmIndex: plan.SourceIndex, MatchStage: "body-exit",
@@ -3196,11 +3311,36 @@ func (fb *functionBuilder) buildTryHandler(expr *ast.TryExpression, plan sema.Re
 	}
 	handler := expr.Handlers[plan.SourceIndex]
 	kind := semanticTryHandlerKind(plan.PatternKind)
+	// An owned error is the handler's to end: a binding takes it or its payload,
+	// otherwise it lives through the handler like a match subject an arm leaves
+	// (destruction.md § 8(8); errorhandling.md § 20).
+	errorSema, ownedError := fb.ownedTryError(expr, input)
+	if ownedError && plan.Guarded {
+		return fb.unsupported("guarded try handler on an error that needs destruction", handler.Token)
+	}
 	restoreFields, err := fb.bindTryHandlerPayload(handler, plan, &input, selected)
 	if err != nil {
 		return err
 	}
 	defer restoreFields()
+	armDepth := len(fb.armTemporaries)
+	defer func() { fb.armTemporaries = fb.armTemporaries[:armDepth] }()
+	ownedScopes := len(fb.cleanupScopes)
+	defer func() { fb.cleanupScopes = fb.cleanupScopes[:ownedScopes] }()
+	if ownedError {
+		if registration, owned := fb.owner.analyzer.ResolvedOwnedCleanupHandlerBindingOf(handler); owned {
+			if err := fb.trackOwned(handler.Token, registration, input, registration.Place.Type); err != nil {
+				return err
+			}
+			fb.cleanupScopes = append(fb.cleanupScopes, registration.Scope)
+		} else if !plan.ErrorPayload || plan.BindingName == "" || plan.BindingName == "_" || sema.TriviallyCopyable(plan.BindingType) {
+			fb.holdArmTemporary(builtValue{id: input.id, typ: input.typ}, errorSema, handler.Token)
+		}
+	}
+	leaveHandler := func() error {
+		fb.runScopeCleanup(sema.CleanupExitFallthrough, handler.Token)
+		return fb.endArmTemporaries(armDepth)
+	}
 	previous, hadBinding := binding{}, false
 	var bindingID sema.BindingID
 	if identifier := tryHandlerPatternIdentifier(handler); identifier != nil && identifier.Value != "_" {
@@ -3267,6 +3407,9 @@ func (fb *functionBuilder) buildTryHandler(expr *ast.TryExpression, plan sema.Re
 			// The recovery value is built first; leaving the block then runs
 			// its owned-value cleanup (P17-42).
 			fb.runScopeCleanup(sema.CleanupExitFallthrough, handler.BlockBody.Token)
+			if err := leaveHandler(); err != nil {
+				return err
+			}
 			fb.branchToTryMerge(merge, value, metadata)
 			return nil
 		}
@@ -3274,6 +3417,9 @@ func (fb *functionBuilder) buildTryHandler(expr *ast.TryExpression, plan sema.Re
 			return err
 		}
 		if fb.current != nil {
+			if err := leaveHandler(); err != nil {
+				return err
+			}
 			fb.branchToTryMerge(merge, builtValue{typ: input.typ}, metadata)
 		}
 		return nil
@@ -3285,8 +3431,24 @@ func (fb *functionBuilder) buildTryHandler(expr *ast.TryExpression, plan sema.Re
 	if err != nil {
 		return err
 	}
+	if err := leaveHandler(); err != nil {
+		return err
+	}
 	fb.branchToTryMerge(merge, value, metadata)
 	return nil
+}
+
+// ownedTryError reports the error a handler receives when it needs destruction,
+// with its Sema type.
+func (fb *functionBuilder) ownedTryError(expr *ast.TryExpression, input builtValue) (sema.Type, bool) {
+	if fb.owner.maxPackage < ownershipLoweringPackage || input.id == 0 || trivialDestruction(fb.owner.module, input.typ) {
+		return sema.Type{}, false
+	}
+	operand, typed := fb.owner.analyzer.ResolvedTypeOf(expr.Expression)
+	if !typed || operand.Kind != sema.ResultType || len(operand.TypeArgs) != 2 {
+		return sema.Type{}, false
+	}
+	return operand.TypeArgs[1], true
 }
 
 func (fb *functionBuilder) buildTryHandlerReturn(statement *ast.ReturnStatement, metadata Operation) error {
@@ -3701,6 +3863,9 @@ func (fb *functionBuilder) buildCall(call *ast.CallExpression) (builtValue, erro
 		// — §§5.2,9.3,10.3; rules/mlir/packages/sec-mlir-dialect_package23.md — §§35–37.
 		if member, ok := call.Callee.(*ast.MemberExpression); ok && member.Property != nil {
 			site := member.Property.Token
+			if known, ok := fb.owner.analyzer.CompilerKnownMemberAt(site.File, site.Line, site.Column); ok && (known.ID == "CKM-RESULT-OK" || known.ID == "CKM-RESULT-ERR") {
+				return fb.buildResultProjection(call, member, known.ID == "CKM-RESULT-OK")
+			}
 			if known, ok := fb.owner.analyzer.CompilerKnownMemberAt(site.File, site.Line, site.Column); ok && (known.ID == "CKM-STRING-FROMBYTEARRAY" || known.ID == "CKM-STRING-FROMRUNEARRAY") {
 				return builtValue{}, fb.unsupported("string."+known.Name+" materialization requires P23 allocation/string lowering", site)
 			} else if ok && strings.HasPrefix(known.ID, "CKM-TOSTRING") {
@@ -3869,6 +4034,13 @@ func (fb *functionBuilder) result(op Operation, typ TypeID) builtValue {
 	return builtValue{id: v.ID, typ: typ}
 }
 func (fb *functionBuilder) emit(op Operation) {
+	fb.leaveOnReturn(op)
+	if op.Kind == OpStorageDeclare && len(fb.loops) > 0 {
+		if fb.loopStorages == nil {
+			fb.loopStorages = map[StorageID]bool{}
+		}
+		fb.loopStorages[op.Storage] = true
+	}
 	fb.current.Operations = append(fb.current.Operations, op)
 }
 func (fb *functionBuilder) newValue(typ TypeID, own OwnershipClass, loc Location) Value {

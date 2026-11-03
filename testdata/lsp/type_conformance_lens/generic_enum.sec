@@ -1,0 +1,35 @@
+module conformance_generic
+
+interface Sink[T] {
+    fn Put(value: T) void
+}
+
+interface Named {
+    fn Name() int
+}
+
+type IntSink struct {
+}
+
+impl IntSink implements Sink[int] {
+    fn Put(value: int) void {
+    }
+}
+
+enum Marker {
+    First,
+}
+
+impl Marker implements Named {
+    fn Name() int {
+        return 1
+    }
+}
+
+type Count int
+
+impl Count implements Named {
+    fn Name() int {
+        return 2
+    }
+}

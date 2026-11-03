@@ -679,10 +679,9 @@ integrations:
     status: partial
     integrated: "2026-10-04"
     summary: >-
-      Shows, on every interface declaration, whether its implementations conform
-      on each target selected by the module's platform files, so an interface
-      with per-platform implementations can be checked from the interface file
-      itself.
+      Shows cross-target conformance on interface and implementing-type
+      declarations, using compiler-owned facts for the targets selected by the
+      module's platform files.
     rules:
       - rules/tooling/lsp.md
       - rules/declarations/interfaces.md
@@ -695,6 +694,10 @@ integrations:
       - cmd/lsp/source_fingerprint.go
       - cmd/lsp/request_queue.go
       - cmd/lsp/interface_conformance_cache.go
+      - cmd/lsp/conformance_subjects.go
+      - internal/sema/interface_tooling.go
+      - internal/sema/interface_validation.go
+      - cmd/lsp/main.go
     tests:
       - cmd/lsp/interface_conformance_lens_test.go
       - internal/sema/interface_conformance_test.go
@@ -702,6 +705,10 @@ integrations:
       - cmd/lsp/protocol_request_test.go
       - testdata/lsp/code_lens_resolve
       - cmd/lsp/interface_conformance_cache_test.go
+      - cmd/lsp/type_conformance_lens_test.go
+      - internal/sema/conformance_module_identity_test.go
+      - testdata/lsp/type_conformance_lens
+      - testdata/sema/conformance_module_identity.sec
     implemented:
       - initialize advertises codeLensProvider; textDocument/codeLens is a deferrable read-only request
       - per interface, the implementing types and the S1106/S1107 conformance failures of each target are summarized as a conforming lens or a failing lens naming targets, members, and targets without an implementation
@@ -713,10 +720,18 @@ integrations:
       - textDocument/codeLens lists source interface ranges and round-trip data without target loading or Sema analysis; codeLensProvider.resolveProvider advertises codeLens/resolve, which computes the existing conformance report lazily on the bounded read-only worker pool
       - resolve validates exact interface name/range and active source content, ignores client-supplied commands, rejects changed/closed snapshots before and after analysis, reuses current module-source cache keys, and supports queued cancellation, queued edit/close supersession and formatting priority without introducing a second conformance engine
       - one conformance analysis per distinct selected target within a module snapshot; concurrent lens resolves with the same source key share one in-flight computation and immutable report, while failed computations publish no partial result and are not retained as successful cache entries
+      - Implementing-type lenses use exact compiler-owned module/type identities across selected targets, show concrete interface names and interface-qualified failures, and report missing declarations per interface instead of allowing another valid conformance to mask absence. Lazy enumeration includes source type candidates; resolving types without explicit Sema conformance yields no command. Interface and type views share the existing target analysis, immutable cache and bounded worker pool.
     remaining:
-      - lenses on implementing types showing their conformance on other targets
       - the same cross-target conformance report in sec analyse
     verification:
+      - command: go test -race ./cmd/lsp -run 'TypeConformanceLens|CodeLensResolve|InterfaceConformance|InterfaceLensConsumes|TestRequestQueue|TestServerAnswersConcurrentRequestsExactlyOnce' -count=1 -timeout=180s
+        result: passed on 2026-11-03 (35.397s); cross-target type lenses, missing conformance, exact module identities, concrete generic-interface arguments, enums, named scalars, lazy enumeration, forged resolve data, cache invalidation and existing interface/request scheduling regressions
+      - command: go test ./internal/sema ./internal/ir/semantic -count=1 -timeout=180s
+        result: passed on 2026-11-03 (16.965s / 4.549s); full Sema and Semantic IR suites, including detached module identity in conformance snapshots
+      - command: go vet ./internal/sema ./cmd/lsp
+        result: passed on 2026-11-03
+      - command: go test ./internal/lsp/... -count=1 -timeout=120s
+        result: passed on 2026-11-03; shared protocol, defaults and server suites
       - command: go test ./internal/lsp/... -count=1
         result: passed on 2026-10-14; complete shared protocol/server suites
       - command: go vet ./cmd/lsp ./internal/lsp/...
@@ -729,7 +744,7 @@ integrations:
         result: passed on 2026-10-10 with compiler-owned conformance snapshots instead of LSP inference from Implements or diagnostic text; same-name-prefix and unresolved-requirement regressions covered
       - command: go test ./cmd/lsp -run InterfaceConformanceLens -count=1
         result: passed on 2026-10-04 for a module with linux and windows implementations, conforming on both and failing on windows only with the failing location
-    revised: "2026-10-14"
+    revised: "2026-11-03"
 
   - id: tooling.lsp-multi-target-diagnostics
     area: tooling-lsp

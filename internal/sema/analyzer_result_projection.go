@@ -111,7 +111,9 @@ func (a *Analyzer) inferConsumingResultProjection(
 		}
 	}
 
-	return member.Result, value, true
+	// The result is the concrete Option[T] a written `Option[T]` resolves to,
+	// not the generic template (errorhandling.md § 6.1).
+	return a.instantiateGenericType(member.Result), value, true
 }
 
 // inferBorrowedResultProjection implements Result.OkRef/ErrRef as read-only

@@ -42,9 +42,8 @@ uint8_t stateOf(const State &state, int32_t action) {
   return found == state.end() ? uint8_t(Unregistered) : found->second;
 }
 
-// rootOf identifies an owner across the fresh Place root each use builds. A subobject
-// counts as its whole owner: a registration destroys the whole value and has no
-// remaining-field form yet, so a moved field must end it (section 115).
+// rootOf identifies an owner across the fresh Place root each use builds; a
+// subobject counts as its whole owner.
 Value rootOf(Value value) {
   while (true) {
     if (auto place = value.getDefiningOp<sec::PlaceStorageOp>())
@@ -58,6 +57,20 @@ Value rootOf(Value value) {
   }
 }
 
+// endsWhole reports a Place that is its whole owner or an active payload, which is
+// all a union holds. A moved stored field leaves the owner registered, and its
+// cleanup destroys only the remaining fields (package17 sections 12, 58-59).
+bool endsWhole(Value place) {
+  while (true) {
+    if (place.getDefiningOp<sec::PlaceFieldOp>())
+      return false;
+    if (auto payload = place.getDefiningOp<sec::PlaceUnionPayloadOp>())
+      place = payload.getBase();
+    else
+      return true;
+  }
+}
+
 // consumedValue is the owner an ownership operation ends, if any.
 Value consumedValue(Operation *op) {
   if (auto move = dyn_cast<sec::OwnMoveOp>(op))
@@ -67,7 +80,7 @@ Value consumedValue(Operation *op) {
   if (auto destroy = dyn_cast<sec::OwnDestroyValueOp>(op))
     return rootOf(destroy.getValue());
   if (auto move = dyn_cast<sec::OwnMoveFromPlaceOp>(op))
-    return rootOf(move.getPlace());
+    return endsWhole(move.getPlace()) ? rootOf(move.getPlace()) : Value();
   if (auto destroy = dyn_cast<sec::OwnDestroyPlaceOp>(op))
     return destroy.getSkipped() ? Value() : rootOf(destroy.getPlace());
   return Value();
@@ -243,14 +256,30 @@ private:
       if (!cancel.getIfActive() && (stateOf(state, cancel.getCleanupActionId()) & Unregistered))
         return op.emitOpError("cancels an action that is not active on every path");
     }
-    if (auto track = dyn_cast<sec::CleanupTrackOwnedOp>(op))
+    if (auto track = dyn_cast<sec::CleanupTrackOwnedOp>(op)) {
       if (stateOf(state, track.getCleanupActionId()) & (Live | Consumed))
         return op.emitOpError("registers an action that is still active on a path");
-    if (auto scope = dyn_cast<sec::CleanupRunScopeOp>(op))
+      // Its cleanup would run before an earlier defer that reads the same owner
+      // (destruction.md sections 6.3(3), 35.6(2)).
+      Value owner = rootOf(track.getTracked());
       for (auto &[action, registration] : registrations)
-        if (!registration.isDefer && llvm::is_contained(scope.getScopeIds(), registration.scope) &&
-            (stateOf(state, action) & Consumed))
+        if (registration.isDefer && (stateOf(state, action) & Live) && llvm::is_contained(registration.captures, owner))
+          return op.emitOpError("registers an owner an active defer reads, whose cleanup would run before the defer");
+    }
+    if (auto scope = dyn_cast<sec::CleanupRunScopeOp>(op))
+      for (auto &[action, registration] : registrations) {
+        if (registration.isDefer || !llvm::is_contained(scope.getScopeIds(), registration.scope))
+          continue;
+        if (stateOf(state, action) & Consumed)
           return op.emitOpError("would destroy a moved value");
+        // A defer still pending at function exit reads this owner
+        // (defer.md section 8).
+        if (stateOf(state, action) & Live)
+          for (auto &[deferAction, deferred] : registrations)
+            if (deferred.isDefer && (stateOf(state, deferAction) & Live) &&
+                llvm::is_contained(deferred.captures, registration.root))
+              return op.emitOpError("would destroy an owner an active defer reads before the defer runs");
+      }
     if (isa<sec::CleanupRunFunctionOp>(op)) {
       if (!isa<func::ReturnOp>(op.getNextNode()))
         return op.emitOpError("must immediately precede the function's return");

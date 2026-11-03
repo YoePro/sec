@@ -1,0 +1,7 @@
+module impl_navigation
+
+impl extends Widget {
+    fn Second() int {
+        return 2
+    }
+}

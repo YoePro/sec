@@ -378,6 +378,28 @@ LogicalResult SecDialect::verifyOperationAttribute(Operation *operation,
       name == "sec.mutable" || name == "sec.synthesized" ||
       name == "sec.try_handler_exhaustive")
     return requireBool();
+  // Ownership actions of a call result, a return and branch operands
+  // (dialect v13 sections 25-27).
+  auto ownershipAction = [](Attribute item) {
+    auto text = dyn_cast<StringAttr>(item);
+    return text && (text.getValue() == "move" || text.getValue() == "copy" || text.getValue() == "non-owning");
+  };
+  if (name == "sec.result_action" || name == "sec.return_action") {
+    if (!ownershipAction(value))
+      return operation->emitError() << name << " must be \"move\", \"copy\" or \"non-owning\"";
+    return success();
+  }
+  if (name == "sec.successor_actions") {
+    auto lists = dyn_cast<ArrayAttr>(value);
+    if (!lists || lists.size() != operation->getNumSuccessors())
+      return operation->emitError() << name << " must list one action array per successor";
+    for (Attribute list : lists) {
+      auto actions = dyn_cast<ArrayAttr>(list);
+      if (!actions || !llvm::all_of(actions, ownershipAction))
+        return operation->emitError() << name << " entries must be \"move\", \"copy\" or \"non-owning\"";
+    }
+    return success();
+  }
   if (name == "sec.parameter_names" || name == "sec.source_files" ||
       name == "sec.argument_actions") {
     auto values = dyn_cast<ArrayAttr>(value);

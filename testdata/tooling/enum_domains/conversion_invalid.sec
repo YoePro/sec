@@ -1,0 +1,8 @@
+module enum_tooling
+
+enum Closed uint16 { Zero = 0, High = 255 }
+enum Open bit[8] { Zero = 0, One = 1 }
+enum Text string { First = "one" }
+fn InvalidClosed() Closed { return Closed(2) }
+fn InvalidOpen() Open { return Open(256) }
+fn InvalidText() Text { return Text("unknown") }

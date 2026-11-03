@@ -16,12 +16,15 @@ const dialectSchemaVersion = 11
 
 type emitter struct {
 	schemaVersion uint32
-	module        *semantic.Module
-	types         map[semantic.TypeID]string
-	visiting      map[semantic.TypeID]bool
-	functions     map[semantic.FunctionID]string
-	plan          layout.ResolvedScalarPlan
-	out           strings.Builder
+	// extraAttributes are dialect ownership attributes the next attribute
+	// dictionary carries (dialect v13 §§ 26–27).
+	extraAttributes []string
+	module          *semantic.Module
+	types           map[semantic.TypeID]string
+	visiting        map[semantic.TypeID]bool
+	functions       map[semantic.FunctionID]string
+	plan            layout.ResolvedScalarPlan
+	out             strings.Builder
 }
 
 // Emit verifies Semantic IR version 1 and emits deterministic Sec MLIR schema
@@ -428,6 +431,9 @@ func (e *emitter) emitOperation(function *semantic.Function, operation semantic.
 			e.out.WriteString(mlirString(string(action)))
 		}
 		e.out.WriteByte(']')
+		if action := e.sensitiveAction(operation.Results); action != "" {
+			fmt.Fprintf(&e.out, ", sec.result_action = %s", mlirString(action))
+		}
 		if operation.Reference != nil {
 			if err := validateReferenceFacts(operation.Reference, function.ID); err != nil {
 				return err
@@ -478,6 +484,21 @@ func (e *emitter) emitOperation(function *semantic.Function, operation semantic.
 		e.emitOperationAttributes(operation, true)
 		e.out.WriteString(": () -> ()")
 	case semantic.OpReturn:
+		e.extraAttributes = nil
+		if len(operation.Operands) == 1 {
+			if action := e.sensitiveOperandAction(operation.Operands[0], values); action != "" {
+				e.extraAttributes = []string{"sec.return_action = " + mlirString(action)}
+			}
+		}
+		if len(e.extraAttributes) != 0 && operation.MatchID == 0 && operation.TryHandlerKind == "" {
+			fmt.Fprintf(&e.out, "\"func.return\"(%s) {%s} : (", valueName(operation.Operands[0]), strings.Join(e.extraAttributes, ", "))
+			e.extraAttributes = nil
+			if err := e.emitOperandTypes(operation.Operands, values); err != nil {
+				return err
+			}
+			e.out.WriteString(") -> ()")
+			break
+		}
 		if operation.MatchID != 0 {
 			e.out.WriteString("\"func.return\"(")
 			if len(operation.Operands) == 1 {
@@ -523,6 +544,7 @@ func (e *emitter) emitOperation(function *semantic.Function, operation semantic.
 			return err
 		}
 		e.out.WriteByte(' ')
+		e.extraAttributes = e.successorActions(operation.Successors, values)
 		e.emitOperationAttributes(operation, false)
 	case semantic.OpCondBranch:
 		if len(operation.Operands) != 1 || len(operation.Successors) != 2 {
@@ -537,6 +559,7 @@ func (e *emitter) emitOperation(function *semantic.Function, operation semantic.
 			return err
 		}
 		e.out.WriteByte(' ')
+		e.extraAttributes = e.successorActions(operation.Successors, values)
 		e.emitOperationAttributes(operation, false)
 	case semantic.OpIntUnaryPlus:
 		return e.emitSemanticIntegerOperation(operation, "sec.int.unary_plus", "", "", values)
@@ -972,6 +995,7 @@ func (e *emitter) emitCoreErrorIsVariant(operation semantic.Operation, values ma
 
 func (e *emitter) emitTryHandlerAttributes(operation semantic.Operation) {
 	if operation.TryHandlerKind == "" {
+		e.extraAttributes = nil
 		return
 	}
 	fmt.Fprintf(&e.out, "{sec.try_handler_kind = %s, sec.try_handler_index = %d : i32", mlirString(string(operation.TryHandlerKind)), operation.TryHandlerIndex)
@@ -981,7 +1005,57 @@ func (e *emitter) emitTryHandlerAttributes(operation semantic.Operation) {
 	if operation.Variant != "" {
 		fmt.Fprintf(&e.out, ", sec.try_handler_variant = %s", mlirString(operation.Variant))
 	}
+	for _, attribute := range e.extraAttributes {
+		e.out.WriteString(", " + attribute)
+	}
+	e.extraAttributes = nil
 	e.out.WriteString("} ")
+}
+
+// sensitiveAction is the ownership action of an operation's single result when
+// that result is ownership-sensitive on schema 13, and "" otherwise.
+func (e *emitter) sensitiveAction(results []semantic.Value) string {
+	if e.schemaVersion < 13 || len(results) != 1 {
+		return ""
+	}
+	if action := semantic.OwnershipActionOf(e.module, results[0].Type); action != "copy" {
+		return action
+	}
+	return ""
+}
+
+func (e *emitter) sensitiveOperandAction(id semantic.ValueID, values map[semantic.ValueID]semantic.Value) string {
+	value, known := values[id]
+	if e.schemaVersion < 13 || !known {
+		return ""
+	}
+	if action := semantic.OwnershipActionOf(e.module, value.Type); action != "copy" {
+		return action
+	}
+	return ""
+}
+
+// successorActions lists, per successor, the ownership action of each forwarded
+// operand when any of them is ownership-sensitive (dialect v13 § 26).
+func (e *emitter) successorActions(successors []semantic.BranchTarget, values map[semantic.ValueID]semantic.Value) []string {
+	if e.schemaVersion < 13 {
+		return nil
+	}
+	sensitive := false
+	lists := make([]string, len(successors))
+	for index, successor := range successors {
+		actions := make([]string, len(successor.Arguments))
+		for position, argument := range successor.Arguments {
+			action := semantic.OwnershipActionOf(e.module, values[argument].Type)
+			sensitive = sensitive || action != "copy"
+			actions[position] = mlirString(action)
+		}
+		lists[index] = "[" + strings.Join(actions, ", ") + "]"
+	}
+	if !sensitive {
+		return nil
+	}
+	return []string{"sec.successor_actions = [" + strings.Join(lists, ", ") + "]"}
 }
 
 func (e *emitter) emitUnarySemanticOperation(operation semantic.Operation, name string, values map[semantic.ValueID]semantic.Value) error {

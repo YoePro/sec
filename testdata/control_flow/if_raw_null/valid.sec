@@ -1,0 +1,49 @@
+module main
+
+fn Pointer(value: RawPtr[int]) RawPtr[int] {
+    return value
+}
+
+fn Accept(left: bool, right: bool) bool {
+    return left || right
+}
+
+fn Missing(value: RawPtr[int]) bool {
+    unsafe {
+        return Pointer(value) is null
+    }
+}
+
+fn Present(value: RawPtr[int]) bool {
+    unsafe {
+        let present: bool := Pointer(value) is not null
+        return present
+    }
+}
+
+fn Branch(value: RawPtr[int], enabled: bool) int {
+    unsafe {
+        if value is null {
+            return 1
+        } else if value is not null && enabled {
+            return 2
+        } else {
+            return 3
+        }
+    }
+}
+
+fn Argument(value: RawPtr[int]) bool {
+    unsafe {
+        return Accept(Pointer(value) is null, value is not null)
+    }
+}
+
+fn ReadPresent(value: RawPtr[int]) int {
+    unsafe {
+        if value is not null {
+            return value.Read()
+        }
+        return 0
+    }
+}

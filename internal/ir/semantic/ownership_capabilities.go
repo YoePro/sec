@@ -40,10 +40,67 @@ func validateOwnershipLoweringCapabilities(program *ast.Program, analyzer *sema.
 				if identifier, ok := node.Value.(*ast.Identifier); ok {
 					discarded[identifier] = true
 				}
+			case *ast.CallExpression:
+				// A pack forwarded as an argument moves element by element in
+				// buildPackForward, which names its own boundary for elements
+				// that need ownership.
+				for _, argument := range node.Arguments {
+					// `<-values...` parses as a move of the spread or a spread
+					// of the move; both forward the pack.
+					var source ast.Expression = argument
+					if move, ok := source.(*ast.PrefixExpression); ok && move.Operator == "<-" {
+						if spread, isSpread := move.Right.(*ast.SpreadExpression); isSpread {
+							discarded[move], discarded[spread] = true, true
+							source = spread.Value
+						}
+					}
+					if spread, ok := source.(*ast.SpreadExpression); ok {
+						discarded[spread] = true
+						source = spread.Value
+						if move, ok := source.(*ast.PrefixExpression); ok && move.Operator == "<-" {
+							discarded[move] = true
+							source = move.Right
+						}
+					}
+					if _, forwarded := argument.(*ast.SpreadExpression); forwarded || source != argument {
+						discarded[source] = true
+					}
+				}
+				// Result.Ok()/Err() consume their receiver through buildTryOperand.
+				if member, ok := node.Callee.(*ast.MemberExpression); ok && member.Property != nil {
+					site := member.Property.Token
+					if known, ok := analyzer.CompilerKnownMemberAt(site.File, site.Line, site.Column); ok && (known.ID == "CKM-RESULT-OK" || known.ID == "CKM-RESULT-ERR") {
+						discarded[member.Property] = true
+						if root, chain := memberRoot(member.Object); root != nil {
+							discarded[root] = true
+							for _, step := range chain {
+								discarded[step] = true
+								if step.Property != nil {
+									discarded[step.Property] = true
+								}
+							}
+						}
+					}
+				}
 			case *ast.TryExpression:
-				// A tried owner cancels through buildTryOperand.
-				if identifier, ok := node.Expression.(*ast.Identifier); ok {
-					discarded[identifier] = true
+				// A tried owner cancels through buildTryOperand; a tried field
+				// leaves its owner registered.
+				if root, chain := memberRoot(node.Expression); root != nil {
+					discarded[root] = true
+					for _, step := range chain {
+						discarded[step] = true
+						if step.Property != nil {
+							discarded[step.Property] = true
+						}
+					}
+				}
+			case *ast.MemberExpression:
+				// A moved stored field keeps its owner registered (moveOwnedField).
+				if plan, planned := analyzer.ResolvedTransferPlanOf(node); planned && fieldMoveLowerable(plan) {
+					discarded[node] = true
+					if node.Property != nil {
+						discarded[node.Property] = true
+					}
 				}
 			case *ast.IfStatement:
 				if node.OptionBinding != nil && node.OptionBinding.Binding != nil {
@@ -82,7 +139,7 @@ func validateOwnershipLoweringCapabilities(program *ast.Program, analyzer *sema.
 				plan, planned := analyzer.ResolvedTransferPlanOf(expression)
 				// A whole owned local moved out by a return or into a new
 				// local lowers to own.move + cleanup.cancel (P17-35).
-				wholeLocalMove := planned && ownedLocalMoveLowerable(plan)
+				wholeLocalMove := planned && (ownedLocalMoveLowerable(plan) || fieldMoveLowerable(plan))
 				if planned && !wholeLocalMove &&
 					(plan.Action == sema.TransferCopySemantic || !sema.TriviallyDestructible(plan.Source.Type)) {
 					return &UnsupportedFeatureError{Feature: "P17 non-trivial ownership transfer (P17-26/P17-27)", Package: maxPackage, Location: location(expressionToken(expression))}

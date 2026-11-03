@@ -1,0 +1,13 @@
+module impl_navigation
+
+impl extends Widget {
+    fn First() int {
+        return 1
+    }
+}
+
+impl extends Box[T] {
+    fn HasValue() bool {
+        return true
+    }
+}

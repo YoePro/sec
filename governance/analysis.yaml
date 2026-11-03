@@ -7,7 +7,7 @@ integrations:
     status: partial
     integrated: "2026-08-11"
     audited: "2026-08-11"
-    updated: "2026-10-21"
+    updated: "2026-11-03"
     document_revision: "2.1"
     repository_baseline: main-reviewed-2026-10-04
     corrections_applied:
@@ -15,6 +15,8 @@ integrations:
       - rules/corrections/applied/pitfall-last-use-argument-move-20261021.md
     summary: Adds structured high-confidence pitfall analysis that correlates canonical bounds, range, control-flow, Place/provenance, collection, API usage, effect, and FFI contract facts to detect common human mistakes without redefining the normative semantics owned by those analyses. Direct-Len and reachable inclusive-endpoint proofs now belong to mandatory bounds validation and enrich one coalesced diagnostic, with optional insight reusing the facts. State-sensitive Result uses correlate canonical Option/variant checks with the exact required binding and enrich the discardability owner when a different checked subject explains the mistake. Final-use large aggregate argument copies now receive manual explicit-move advice through canonical binding, call/construction and transfer facts.
     rules:
+      - rules/corrections/applied/md017-sec-analyse-cli-and-help-correction-20261017.md
+      - rules/tooling/cli.md
       - rules/compiler/incremental_compilation.md
       - rules/compiler/compiler_known_members.md
       - rules/analysis/pitfall_analysis.md
@@ -34,6 +36,8 @@ integrations:
       - rules/declarations/unions.md
       - rules/memory/copy_move.md
     code:
+      - cmd/compiler/analyse_diagnostics.go
+      - cmd/compiler/analyse_cli.go
       - internal/sema/pitfall_cache.go
       - internal/sema/state_requirement_facts.go
       - internal/sema/pitfall_state_correlation.go
@@ -78,6 +82,8 @@ integrations:
       - internal/sema/pitfall_last_use_move.go
       - internal/sema/call_ownership.go
     tests:
+      - testdata/tooling/analyse_cli/mixed_families.sec
+      - cmd/compiler/analyse_individual_families_test.go
       - internal/sema/pitfall_cache_test.go
       - testdata/sema/pitfall_cache_valid.sec
       - internal/sema/pitfall_priority_test.go
@@ -251,6 +257,7 @@ integrations:
       - "len(x) - 1 final-element form (MD-074/MD-088, 2026-10-17): lengthReceiver recognizes the compiler-known len(x) as the same uint length observation as x.Len, so the final-element, omitted-last-element and inclusive-length families apply to both spellings; the compiler-known len call never invalidates non-empty or guard proofs (callMayChangeLength). Tests: TestPitfallAnalysisRequiresNonEmptyProofForFinalElement (len missing proof, len exiting empty guard)"
       - pitfall.ownership.last-use-argument-copy recommends <-name for final-use whole local/parameter aggregate arguments whose selected ordinary value parameter performs a trivial copy and whose estimated value size reaches the existing 64-byte large-value policy; exact parameter types, canonical binding identity and transfer plans, complete body uses and conservative borrow/dependency checks are required, including new initializers and try handlers; later uses, reference/member dependencies, delayed execution, nested candidates, cheap views, mandatory transfers and invalid copies withhold duplicate advice
       - ordinary value argument ownership checks publish selected trivial/semantic copies through ResolvedTransferPlanOf; copy_move.md revision 2.2 clarifies caller-selected explicit moves to ordinary owning value parameters without signature changes, while -> parameters require transfer; noncopyable argument help now explains the existing explicit-move alternative; findings remain SuggestedEdit with no automatic fix and share registry, whole-body budget, dependency-qualified cache, CLI and LSP publication
+      - "Individual CLI selection verified 2026-11-03: `sec analyse pitfalls` is the MD-017 canonical spelling registered by tooling.cli; the real CLI process isolates its optional human/verbose/JSON output on a mixed-family source, preserves exact owner diagnostics and positions, follows transitive function focus, stays silent on clean source and rejects mandatory language errors. Canonical names and conflicting --all/selector rejection are covered. BUG-000020 repairs shared JSON emission of already-selected Sema advisories without new semantic inference or diagnostic serialization. This closes only the existing explicit-selector item, not the remaining analysis semantics or source-edit requirements."
     remaining:
       - "MD-074/MD-088 pitfall extension (rules/analysis/pitfall_analysis.md \"Final-element access requires non-empty proof\", 2026-10-17): predecessor access values[i - 1] with i possibly 0 and reverse loops, and explaining whether the hazard is checked unsigned underflow or a bounds violation, are not implemented yet"
       - extend canonical fact consumption beyond resolved bindings and compiler-known Len to normalized range, bounds, control-flow, Place/provenance, collection-shape, effect, layout, and FFI contract facts
@@ -258,10 +265,13 @@ integrations:
       - implement the count-versus-inclusive-endpoint advisory once a semantic contract or trusted metadata can establish that a value is an element count; extend omitted-last-element intent evidence to chunking, sentinels, and range contracts
       - extend structural-mutation-during-indexed-iteration reasoning to while loops with manual indexes, reverse traversal, bounds held in local bindings, mutations through aliases or callees, and user-declared structural operations
       - support explicit Sec FFI contracts, trusted imported metadata, generated binding metadata, and compiler-known platform/library metadata through one canonical FFI fact representation
-      - support explicit pitfall-only `sec analyse` selection once its CLI spelling is decided (missing-decisions.yaml MD-017)
       - add required bounds/range, collection, control-flow, confidence/suppression, corrective-action, incremental/LSP, FFI, and performance tests
       - "define and implement a dedicated pitfall for callback contracts with an infallible owning string return, such as fn A(v: fn(T) string), that may conceal an allocation-failure propagation requirement; recommend fn(T) Result[string, E] when recoverable allocation failure must reach the caller, with E covering the relevant allocation error; define evidence, confidence and suppression using canonical callable target/effect/error-flow facts, distinguishing unknown allocation behavior from proven allocation and suppressing callbacks proven allocation-free or already handling failure under their contract; a string return alone must not imply allocation or a mandatory Result conversion; cover positive, negative, opaque-callback, CLI and LSP cases and avoid automatic signature rewrites without a complete proven caller/callee edit set"
     verification:
+      - command: go test -race ./cmd/compiler -run '^(TestAnalyseIndividualFamilies|TestAnalyseIndividualFamilyNames|TestAnalyseFamilySelection|TestAnalyseJSONReport|TestAnalysePresentationModes)$' -count=1 -timeout=120s
+        result: passed on 2026-11-03 (56.837s); positive mixed-family CLI isolation, A2001 JSON occurrences with canonical IDs/severities and focused locations, transitive pitfall focus, clean silence, mandatory rejection and presentation/JSON regressions
+      - command: go vet ./cmd/compiler
+        result: passed on 2026-11-03
       - command: go test -race ./internal/sema ./cmd/compiler ./cmd/lsp -run 'TestPitfallLastUse|TestAnalyseLastUse' -count=1
         result: passed on 2026-10-21 for the new final-use move rule, cached publication and CLI/LSP integration
       - command: go run ./cmd/yamlstatus check
@@ -521,7 +531,7 @@ integrations:
     area: frontend-analysis
     status: partial
     integrated: "2026-08-08"
-    revised: "2026-10-07"
+    revised: "2026-11-03"
     document_revision: "2.0"
     repository_baseline: main-reviewed-2026-10-04
     corrections_applied:
@@ -540,6 +550,8 @@ integrations:
       follows resolved callee contracts and return operations rather than
       transfer tokens.
     rules:
+      - rules/corrections/applied/md017-sec-analyse-cli-and-help-correction-20261017.md
+      - rules/tooling/cli.md
       - rules/analysis/parameter_usage_analysis.md
       - rules/memory/ownership.md
       - rules/memory/copy_move.md
@@ -572,6 +584,8 @@ integrations:
       - LSP presentation remains owned by governance/tooling_lsp.yaml
       - incremental summary invalidation remains owned by the incremental-compilation governance integration
     code:
+      - cmd/compiler/analyse_diagnostics.go
+      - cmd/compiler/analyse_cli.go
       - internal/sema/parameter_usage_budget.go
       - internal/sema/parameter_usage_persistence.go
       - internal/sema/parameter_usage_callable.go
@@ -595,6 +609,8 @@ integrations:
       - internal/sema/semantic_snapshot.go
       - cmd/compiler/analyse.go
     tests:
+      - testdata/tooling/analyse_cli/mixed_families.sec
+      - cmd/compiler/analyse_individual_families_test.go
       - internal/sema/parameter_usage_ownership_transfer_test.go
       - internal/sema/parameter_usage_budget_test.go
       - cmd/compiler/analyse_parameter_budget_test.go
@@ -674,6 +690,7 @@ integrations:
       - direct by-value parameter uses contribute WholeValue shape demand, while projected field/index access and direct reference flow retain their narrower independent shape and identity facts
       - compiler-known dynamic-array, list, map, and set operations that add, remove, or clear elements consume canonical member-operation contracts and produce exact StructuralMutation demand on the resolved receiver Place, distinct from ordinary element or field writes
       - "`sec analyse` and `sec analyse --all` run parameter usage analysis by default at Deep depth and report the declared capability and the access, mutation, ownership, lifetime, identity, shape, and precision demand of every receiver and parameter in the selected sources"
+      - "Individual CLI selection verified 2026-11-03: `sec analyse parameter-usage` is the MD-017 canonical spelling registered by tooling.cli; the real CLI process isolates its optional human/verbose/JSON output on a mixed-family source, preserves exact owner diagnostics and positions, follows transitive function focus, stays silent on clean source and rejects mandatory language errors. Canonical names and conflicting --all/selector rejection are covered. BUG-000020 repairs shared JSON emission of already-selected Sema advisories without new semantic inference or diagnostic serialization. This closes only the existing explicit-selector item, not the remaining analysis semantics or source-edit requirements."
     remaining:
       - parameter-usage recommendations do not yet propose ownership-changing source edits; when added they must follow the revision-2 code-action rules (`->` for consuming contracts, `<-` only for existing reusable Places, no synthetic marker before fresh temporaries, preserved required markers, complete proven edit sets)
       - complete explicit copy, retention, additional compiler-known whole-value operations, and implicit unqualified receiver-member demand
@@ -681,7 +698,6 @@ integrations:
       - derive capability-preserving narrowing candidates for fixed arrays, owning sequences, mutable references, and unnecessary mutability or ownership beyond the guarded A2001 shared-reference slice
       - replace approximate size estimation with ResolvedLayout and separate target-specific recommendation cache invalidation
       - complete explicit hardware, FFI, storage and representation contract producers and capability checks for future view/extent candidates; the current same-type reference preserves nominal/fixed-extent identity and blocks consumption, custom cleanup, and represented demand constraints, while source syntax for explicit layout remains blocked by missing-decisions.yaml MD-019
-      - support explicit parameter-usage-only `sec analyse` selection once its CLI spelling is decided (missing-decisions.yaml MD-017)
     required_tests:
       - consuming parameter declared with `->`
       - existing reusable Place transferred with `<-`
@@ -696,6 +712,10 @@ integrations:
       - ownership-aware code action preserves required `<-` for reusable Places
       - analysis category strings are not emitted as compiler diagnostic IDs
     verification:
+      - command: go test -race ./cmd/compiler -run '^(TestAnalyseIndividualFamilies|TestAnalyseIndividualFamilyNames|TestAnalyseFamilySelection|TestAnalyseJSONReport|TestAnalysePresentationModes)$' -count=1 -timeout=120s
+        result: passed on 2026-11-03 (56.837s); positive mixed-family CLI isolation, A2001 JSON occurrences with canonical IDs/severities and focused locations, transitive pitfall focus, clean silence, mandatory rejection and presentation/JSON regressions
+      - command: go vet ./cmd/compiler
+        result: passed on 2026-11-03
       - command: go test ./internal/sema/... ./cmd/compiler ./cmd/lsp -count=1
         result: passed on 2026-10-08 after consolidating parameter_usage_{capture,collections,shape}.go into parameter_usage_operations.go parameter_usage_flow.go into parameter_usage.go, and analyzer_function_value_binding.go into analyzer_callable_join.go without behavior or API changes
       - command: go test ./internal/sema -run 'TestParameterUsageOwnershipTransfer' -count=1

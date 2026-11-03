@@ -1,0 +1,19 @@
+module main
+
+fn Recommend(values: int[100]) int {
+    return values[0]
+}
+
+fn RecommendOther(values: int[100]) int {
+    return values[1]
+}
+
+fn Walk(values: ref int[]) void {
+    for index in uint(1)..<values.Len {
+        let value := values[index]
+    }
+}
+
+fn Root(values: ref int[]) void {
+    Walk(values)
+}

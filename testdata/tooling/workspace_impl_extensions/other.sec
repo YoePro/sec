@@ -1,0 +1,9 @@
+module unrelated
+
+type Widget int
+
+impl Widget {
+}
+
+impl extends Widget {
+}

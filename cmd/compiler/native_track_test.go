@@ -55,6 +55,7 @@ func TestNativeTrackBuildsAndRuns(t *testing.T) {
 		{"assert_trap", 0, true},
 		{"integer_enums", 0, false},
 		{"enum_known_narrowing", 0, false},
+		{"enum_known_bindings", 0, false},
 		{"float_core", 0, false},
 		{"floats", 0, false},
 		{"float_literals", 0, false},

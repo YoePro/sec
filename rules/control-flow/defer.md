@@ -302,6 +302,8 @@ If the defer statement executes five times, five deferred entries are registered
 
 They run in reverse registration order when the enclosing invocation exits.
 
+When the loop body declares a new binding on each iteration, each registration reads the binding instance of its own iteration; registrations are never merged by source name. That instance remains valid until its registration runs (§ 8). Physical storage for the instances is a lowering concern (P17-03, 2026-11-03; `rules/mlir/normative-sync/sec_ownership_destruction_sync_v1.md` § 8).
+
 A loop does not create a defer-execution boundary.
 
 Analysis may diagnose or warn about patterns that accumulate an unexpectedly large number of deferred cleanups, according to the configured analysis policy.

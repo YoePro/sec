@@ -49,7 +49,7 @@ fn EPrintf[...Types](format: string, values: ...ref Types) Result[uint, WriteFor
                 }
 
                 SizeOverflow => {
-                    return Err(WriteFormatError.IO(IOError.InvalidInput))
+                    return Err(WriteFormatError.SizeOverflow)
                 }
             }
         }

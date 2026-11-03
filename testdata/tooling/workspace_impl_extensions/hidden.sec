@@ -1,0 +1,29 @@
+module impl_navigation
+
+type _Internal int
+type __Private int
+
+impl _Internal {
+}
+
+impl extends _Internal {
+}
+
+impl __Private {
+}
+
+impl extends __Private {
+}
+
+type Public struct {
+}
+
+impl Public {
+    type __Nested int
+}
+
+impl Public.__Nested {
+}
+
+impl extends Public.__Nested {
+}

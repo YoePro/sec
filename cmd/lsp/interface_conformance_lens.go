@@ -49,16 +49,17 @@ type interfaceConformanceFailure struct {
 }
 
 // interfaceConformanceSummary is the cross-target conformance of one
-// interface declared in the active document.
+// interface or implementing type declared in the active document.
 type interfaceConformanceSummary struct {
-	name    string
-	rng     lspRange
-	targets []interfaceTargetResult
+	name        string
+	typeSubject bool
+	rng         lspRange
+	targets     []interfaceTargetResult
 }
 
 // interfaceConformanceCodeLenses answers textDocument/codeLens with one lens
-// per interface declared in the document, summarizing whether its
-// implementations conform on every target the module's platform files select.
+// per interface and implementing type in the document, summarizing conformance
+// on every target the module's platform files select.
 //
 // Rules:
 //   - rules/declarations/interfaces.md — 6 "Conformance requirements", 12 "Diagnostics"
@@ -66,7 +67,7 @@ type interfaceConformanceSummary struct {
 //   - rules/tooling/lsp.md — "Code lens"
 func interfaceConformanceCodeLenses(uri string, text string, overlay sourceOverlay) []codeLens {
 	lenses := []codeLens{}
-	for _, summary := range crossTargetInterfaceConformance(uri, text, overlay) {
+	for _, summary := range crossTargetConformance(uri, text, overlay) {
 		lenses = append(lenses, codeLens{Range: summary.rng, Command: interfaceConformanceCommand(uri, summary)})
 	}
 	return lenses
@@ -118,7 +119,7 @@ func interfaceConformanceCommand(uri string, summary interfaceConformanceSummary
 	position := summary.rng.Start
 	if len(failingTargets) == 0 && len(missingTargets) == 0 {
 		return &lspCommand{
-			Title:     fmt.Sprintf("✓ %s conforms on %d target%s", strings.Join(names, ", "), total, plural(total)),
+			Title:     fmt.Sprintf("✓ %s conforms on %d target%s", conformanceDisplayName(summary, names), total, plural(total)),
 			Command:   showLocationsCommand,
 			Arguments: []any{uri, position, allImplementations},
 		}
@@ -135,7 +136,7 @@ func interfaceConformanceCommand(uri string, summary interfaceConformanceSummary
 		locations = allImplementations
 	}
 	return &lspCommand{
-		Title:     fmt.Sprintf("✗ conforms on %d of %d targets — %s", conforming, total, strings.Join(parts, " — ")),
+		Title:     fmt.Sprintf("%s✗ conforms on %d of %d targets — %s", conformanceTypePrefix(summary), conforming, total, strings.Join(parts, " — ")),
 		Command:   showLocationsCommand,
 		Arguments: []any{uri, position, locations},
 	}
@@ -148,15 +149,16 @@ func plural(count int) string {
 	return "s"
 }
 
-// crossTargetInterfaceConformance analyzes the active document's module once
+// crossTargetConformance analyzes the active document's module once
 // per target selected by the module's `#target` files, with that target's
 // scalar plan, and records for every interface declared in the document which
-// types implement it on that target using structured Sema conformance facts.
+// types implement it, and which interfaces each source type implements, from
+// structured Sema conformance facts.
 // Interface identity and member failures never come from diagnostic text.
 // Results are cached until a module source changes.
 // Rules: rules/compiler/semantic_ir.md — §109(1–4);
 // rules/declarations/interfaces.md — §§4–6,12; rules/tooling/lsp.md — "Code lens".
-func crossTargetInterfaceConformance(uri string, text string, overlay sourceOverlay) (summaries []interfaceConformanceSummary) {
+func crossTargetConformance(uri string, text string, overlay sourceOverlay) (summaries []interfaceConformanceSummary) {
 	summaries = []interfaceConformanceSummary{}
 	defer func() {
 		if recover() != nil {
@@ -168,21 +170,16 @@ func crossTargetInterfaceConformance(uri string, text string, overlay sourceOver
 	if active == nil || path == "" {
 		return summaries
 	}
-	interfaces := []*ast.InterfaceDeclaration{}
-	for _, statement := range active.Statements {
-		if declaration, ok := statement.(*ast.InterfaceDeclaration); ok && declaration != nil && declaration.Name != nil {
-			interfaces = append(interfaces, declaration)
-		}
-	}
-	if len(interfaces) == 0 {
+	subjects := conformanceSubjects(active)
+	if len(subjects) == 0 {
 		return summaries
 	}
 	module := lspserver.ProgramModule(active)
 	targets, key := moduleTargets(path, module, text, overlay, active)
 	return cachedInterfaceConformance(key, func() []interfaceConformanceSummary {
 
-		for _, declaration := range interfaces {
-			summaries = append(summaries, interfaceConformanceSummary{name: declaration.Name.Value, rng: tokenRange(text, declaration.Name.Token)})
+		for _, subject := range subjects {
+			summaries = append(summaries, interfaceConformanceSummary{name: subject.name, typeSubject: subject.isType, rng: tokenRange(text, subject.token)})
 		}
 		for _, target := range targets {
 			program := parseProgramForLSP(uri, text)
@@ -203,30 +200,29 @@ func crossTargetInterfaceConformance(uri string, text string, overlay sourceOver
 			for index := range summaries {
 				result := interfaceTargetResult{target: target.String(), implementers: map[string]location{}}
 				for _, fact := range facts {
-					if !sameSourceToken(fact.InterfaceDeclaration, interfaces[index].Name.Token) {
+					if !subjects[index].matches(fact, module) {
 						continue
 					}
-					definition := fact.TypeDeclaration
-					if definition.File != "" {
-						result.implementers[fact.TypeName] = location{URI: uriFromPath(definition.File), Range: lspRange{Start: position{Line: definition.Line - 1, Character: definition.Column - 1}, End: position{Line: definition.Line - 1, Character: definition.Column - 1 + len(fact.TypeName)}}}
-					} else {
-						result.implementers[fact.TypeName] = location{URI: uri, Range: summaries[index].rng}
+					definition, name := fact.TypeDeclaration, fact.TypeName
+					if subjects[index].isType {
+						definition, name = fact.InterfaceDeclaration, fact.Interface
 					}
+					result.implementers[name] = conformanceDeclarationLocation(uri, text, overlay, definition, summaries[index].rng)
 					for _, failure := range fact.Failures {
 						err := failure.Diagnostic
 						result.failures = append(result.failures, interfaceConformanceFailure{
-							member: failure.Member, message: err.Message,
+							member: subjects[index].failureMember(fact.Interface, failure.Member), message: err.Message,
 							location: location{URI: uriFromPath(err.File), Range: lspRange{Start: position{Line: err.Line - 1, Character: err.Column - 1}, End: position{Line: err.Line - 1, Character: err.Column - 1}}},
 						})
 					}
 					if fact.State == diagnostics.ProofUnproven {
-						result.failures = append(result.failures, interfaceConformanceFailure{member: "conformance unresolved", location: result.implementers[fact.TypeName]})
+						result.failures = append(result.failures, interfaceConformanceFailure{member: "conformance unresolved", location: result.implementers[name]})
 					}
 				}
 				summaries[index].targets = append(summaries[index].targets, result)
 			}
 		}
-		return summaries
+		return visibleConformanceSummaries(summaries)
 	})
 }
 

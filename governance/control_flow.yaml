@@ -448,7 +448,7 @@ integrations:
     status: partial
     integrated: "2026-08-16"
     reviewed: "2026-09-26"
-    revised: "2026-10-29"
+    revised: "2026-11-03"
     document_revision: "2.0"
     repository_baseline: 0f92cf4
     replaces: rules/control-flow/flowcontrol_if.txt
@@ -459,10 +459,14 @@ integrations:
       evaluation, lexical branch scopes, definite-assignment merging,
       terminating branches, comparison-chain rejection, and proven unreachable
       statements. Sema now publishes immutable true/false path execution and
-      continuation facts for return checking and later analyses. State-test/FFI
-      boundaries and the complete revision-2.0 regression matrix still require
-      synchronization.
+      continuation facts for return checking and later analyses. Raw null tests
+      obey the explicit unsafe boundary through Sema, CLI and LSP. General
+      state-test lowering and the complete revision-2.0 regression matrix remain
+      open.
     rules:
+      - rules/memory/raw_pointers.md
+      - rules/memory/unsafe.md
+      - rules/corrections/applied/md020-md021-md023-md024-ffi-c-bindings-null-correction-20261008.md
       - rules/control-flow/flowcontrol_if.md
       - rules/foundations/grammar.md
       - rules/tooling/formatter.md
@@ -470,6 +474,8 @@ integrations:
       - rules/errors/errorhandling.md
       - rules/platform/ffi.md
     code:
+      - internal/sema/null_sentinel.go
+      - internal/sema/raw_pointer_null_proof.go
       - internal/ast/ast.go
       - internal/parser/parser.go
       - internal/sema/analyzer.go
@@ -479,6 +485,11 @@ integrations:
       - internal/formatter/formatter.go
       - internal/parser/expression.go
     tests:
+      - internal/sema/if_raw_null_test.go
+      - cmd/compiler/if_raw_null_test.go
+      - cmd/lsp/if_raw_null_test.go
+      - testdata/control_flow/if_raw_null/valid.sec
+      - testdata/control_flow/if_raw_null/contexts_invalid.sec
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
       - internal/sema/analyzer_if_flow_test.go
@@ -522,9 +533,9 @@ integrations:
       - "MD-006 (rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md § 7, 2026-10-03): non-binding is state tests are ordinary bool expressions at the non-chainable equality level in every expression context (let, return, &&/||, arguments); `is not` negates variant, empty, Some, None, and available tests; ungrouped chaining with == or != is rejected; `(test) == true` (A2002) and `!(test)` (A2003) are bad-practice warnings with explicit Language Corrections; `is Some(binding)` binds only as the complete if condition, while `is not Some(value)` and `!(option is Some(value))` receive focused parser diagnostics; negated tests keep data-flow refinement"
       - "executable lazy-if regression matrix (2026-10-10): 20 exact side-effect traces cover dynamic AND/OR, nested grouping, first/second/third/else branch selection and logical conditions throughout else-if chains; LLVM and existing MLIR verify and compile for amd64 and armv7 at O0/O2, and every host executable checks condition frequency, left-to-right ordering, skipped RHS/later-condition calls and exactly one selected body"
       - explicit if-try conformance covers Result[bool,E] propagation, true/false success, negation and parenthesized local bool recovery; int, string and struct success types and non-bool local recovery remain rejected by Sema/CLI/LSP. Grouped-expression parsing now restores the outer header brace boundary while allowing inner try handlers, instead of rejecting valid parenthesized handlers. Semantic IR tests verify typed CFG and exactly-once calls; current unsupported sec.result backend boundary is tested with existing output preservation, without claiming binary execution.
+      - "Raw-null if integration closed by audit and source-backed regression coverage (2026-11-03; flowcontrol_if.md §23, raw_pointers.md §7(3–9a), MD-024 §5): existing Sema admits is null and is not null only in explicit unsafe contexts, on RawPtr subjects, yielding bool. Seven positive tests include if/else-if, logical conditions, returns, locals, calls and arguments, with four retained negated tests and resolved raw subject types. Ten invalid cases cover four missing unsafe contexts, an ordinary if body that still requires unsafe for RawPtr.Read, safe-reference/integer subjects, both forbidden null equality forms and proven-null dereference despite unsafe. An unsafe block inside the if body cannot authorize its condition, and a preceding unsafe block cannot leak permission. CLI check/sema accept the valid matrix; check/sema/emit-ir/emit-mlir/emit-llvm reject all invalid cases before artifact output. CLI retains the four owning null IDs and help across nine occurrences; LSP retains those IDs and source ranges alongside the existing raw-read unsafe rejection. This work adds integration evidence and closes stale frontend governance; no new production behavior or native null-test lowering is claimed."
     remaining:
       - "MD-006 lowering: Semantic IR does not lower state tests outside the existing if/while condition forms; it rejects them explicitly"
-      - permit raw is null only under the canonical unsafe foreign raw-pointer rules without making if an unsafe context
       - audit compiler examples and regression sources for stale Length, IsEmpty(), and Option payload-after-state-test assumptions
       - complete the revision-2.0 parser, Sema, flow-analysis, formatter, diagnostics, LSP, Semantic IR, and backend regression matrix
     required_tests:
@@ -545,6 +556,12 @@ integrations:
       - definite assignment fails when a continuing path does not assign
       - proven unreachable statements follow the canonical unreachable-code diagnostic policy
     verification:
+      - command: GOCACHE=/tmp/sec-go-cache go test ./internal/sema ./cmd/compiler ./cmd/lsp -run TestIfRawNullUnsafeBoundary -count=1 -timeout=120s
+        result: passed on 2026-11-03; Sema, CLI and LSP accept explicit-unsafe tests and reject the same ten invalid source cases, with registered null diagnostic identities, help and source spans and no invalid emission output.
+      - command: GOCACHE=/tmp/sec-go-cache go test -race ./internal/sema ./cmd/compiler ./cmd/lsp -run 'IfRawNullUnsafeBoundary|NullSentinel|ProvenNullRawPointer|UnsafeFunctionBodyDiagnostics|RawPointerNull' -count=1 -timeout=120s
+        result: passed on 2026-11-03; Sema 1.370s, CLI 19.922s and LSP 8.055s, including existing null-sentinel, known-null dereference and explicit callable-body unsafe boundaries.
+      - command: GOCACHE=/tmp/sec-go-cache go vet ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-11-03 for the null-test integration audit.
       - command: SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./cmd/compiler -run "TestIfTryConditionDiagnosticsCLI|TestIfTryConditionsUnsupportedResultBoundary" -count=1 -timeout=120s
         result: passed on 2026-10-29 (0.624s); native build explicitly rejects unsupported sec.result operations and preserves an existing output file. The earlier executable probe reached that same known boundary; runtime branch execution is not claimed.
       - command: go test -race ./cmd/compiler ./cmd/lsp -run 'IfTryCondition|TryHover' -count=1 -timeout=120s; go vet ./internal/parser ./internal/sema ./internal/ir/semantic ./cmd/compiler ./cmd/lsp

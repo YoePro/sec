@@ -7,7 +7,7 @@ integrations:
     status: partial
     integrated: "2026-10-17"
     document_revision: "1.1"
-    revised: "2026-10-26"
+    revised: "2026-11-03"
     rules:
       - rules/tooling/cli.md
       - rules/compiler/compiler_analysis.md
@@ -16,6 +16,15 @@ integrations:
       code:
         - cmd/compiler/cli_help.go
         - cmd/compiler/analyse_cli.go
+        - cmd/compiler/analyse_diagnostics.go
+        - cmd/compiler/analyse_scope_source.go
+        - internal/ast/ast.go
+        - internal/parser/parser.go
+        - internal/sema/types.go
+        - internal/sema/analyzer.go
+        - internal/sema/analyzer_no_panic.go
+        - internal/sema/call_graph.go
+        - internal/sema/call_graph_source_ranges.go
         - cmd/compiler/analyse.go
         - cmd/compiler/analyse_closures.go
         - internal/sema/closure_snapshots.go
@@ -24,6 +33,12 @@ integrations:
         - cmd/compiler/main.go
       tests:
         - cmd/compiler/analyse_cli_test.go
+        - cmd/compiler/analyse_individual_families_test.go
+        - testdata/tooling/analyse_cli/mixed_families.sec
+        - cmd/compiler/analyse_scope_source_test.go
+        - testdata/tooling/analyse_cli/focus_ranges.sec
+        - testdata/tooling/analyse_cli/focus_graph.sec
+        - testdata/tooling/analyse_cli/focus_foreign_invalid.sec
         - cmd/compiler/analyse_closures_test.go
         - internal/sema/analyzer_closure_snapshot_test.go
         - testdata/tooling/analyse_cli/closures.sec
@@ -32,17 +47,36 @@ integrations:
         - testdata/tooling/analyse_cli/advisory.sec
         - testdata/tooling/analyse_cli/rejected.sec
     implemented:
+      - "BUG-000020 fixed 2026-11-03: successful JSON analysis now emits already family/focus-filtered Sema advisories through the same canonical reporter as human output. A2001 recommendations retain diagnostic IDs, severity, repair information and source positions instead of appearing only in summary counts. Mixed-family acceptance verifies pitfalls-only and parameter-usage-only output, focused occurrences, silent clean input and mandatory rejection; the schema/version and Sema inference stay unchanged."
       - "2026-10-26: completed the individually selectable closure-analysis registration: `closures` is the single canonical name in cli.md revision 1.1 and the shared parser/help/human/JSON registry. `sec analyse closures` uses existing Sema creation/capture/callable-target facts via a detached, deterministically ordered snapshot query, and --verbose exposes creation sites, environment presence, capture mode/transfer/source and closed/open/unknown indirect-target precision. Default output remains silent for clean input; --all includes the family; function focus, --json, rejection of the singular alias and mandatory language errors use the existing command contracts. This closes the CLI registration item without claiming completion of the broader closure-analysis semantic backlog."
       - "MD-017 (2026-10-17): one command registry renders the usage synopsis, `sec help`, `sec --help`, `sec help <command>` and `sec <command> --help`; unknown commands, help topics, options and analysis names get nearest-name suggestions and a pointer to `sec help` (TestCLIHelpForms)"
       - "`sec analyse [--all | <analysis>] [-f|--function <callable>] [-d|--depth interactive|standard|deep] [--info|--verbose|--json] [--target] [inputs]`: the current directory when no input is named; the analysis-name registry (isr, deadlocks, data-races, pitfalls, parameter-usage, stack, closures) is shared by parser, help, human and JSON output; unknown names never fall back to --all (TestAnalyseFamilySelection, TestAnalyseCLI)"
       - "presentation: the default prints only diagnostics, findings and limitations and is silent on a clean run; --info adds a short summary; --verbose prints the full fact report plus the summary once; --json writes one versioned sec.analysis-report (v1) on stdout, also for rejected programs, reusing emitted diagnostic occurrences (TestAnalysePresentationModes, TestAnalyseJSONReport)"
       - "function focus: -f/--function resolves a canonical callable ID, Type.Method or unique short name (ambiguous overloads are rejected with candidates) and reports findings of the root and every reachable callee with the call path; the whole program is still analysed, so no dependency is omitted (TestAnalyseFunctionFocus)"
       - "depth: -d/--depth selects the Sema analysis budget (default deep); a reduced depth is reported as a limitation (TestAnalyseDepthSelection)"
+      - "Exact function-focus ownership (2026-11-03): parser-owned function/signature and block endpoints flow through Sema Function and CallableNode facts, including source-backed init/free wrappers and annotated accessors. Source findings select the innermost containing named callable, never the preceding declaration; module-level tokens, other files and unknown extents cannot leak into it. Shared generic source ranges prefer a reachable canonical instance deterministically, while displayed callable facts are filtered by exact reachable IDs rather than source coincidence. Open and mixed target sets retain their declared contracts and visible incomplete-result limitations in default/JSON output. Regression sources verify nested and same-line declarations, deferred/closure bodies, lifecycle/accessor wrappers, direct/transitive/self/mutual recursion, concrete generic instances, closed/open/mixed indirect targets, short/long selector equivalence and mandatory foreign-contract failures outside the focus. Existing overload ambiguity and JSON/help behavior remain covered."
     remaining:
       - "known hole (verified 2026-10-17): isr, deadlocks and data-races cannot be selected individually; ISR and same-resource reacquisition checks run only as mandatory compilation diagnostics and the data race analysis is not implemented, so selecting them fails with an explanation"
-      - focus attributes findings to the nearest preceding named-function declaration in the same file; the call graph carries no body ranges, so attribution inside nested declarations is approximate, and recursion, generic specialization and open indirect target cases of correction § 11(4)-(5) are not covered by tests yet
       - cold/incremental/parallel agreement and optimized-build checks of correction § 11(9)-(11) are not implemented
     verification:
+      - command: go test -race ./cmd/compiler -run '^(TestAnalyseIndividualFamilies|TestAnalyseIndividualFamilyNames|TestAnalyseFamilySelection|TestAnalyseJSONReport|TestAnalysePresentationModes)$' -count=1 -timeout=120s
+        result: passed on 2026-11-03 (56.837s); BUG-000020 reproduced before the fix as three advisories counted but no A2001 occurrences, then repaired to preserve the two selected diagnostic occurrences and one focused occurrence; no cross-family leakage or mandatory error suppression
+      - command: go vet ./cmd/compiler
+        result: passed on 2026-11-03
+      - command: go test -race ./cmd/compiler -run 'TestAnalyseFocus' -count=1 -timeout=120s
+        result: passed on 2026-11-03 (62.992s); exact source ownership including lifecycle/accessor wrappers, reachable specialization identities, recursive/indirect target forms, open-result limitations and mandatory foreign-contract rejection
+      - command: go test -race ./cmd/compiler -run '^(TestAnalyseFunctionFocus|TestAnalyseJSONReport|TestAnalysePresentationModes|TestCLIHelpForms)$' -count=1 -timeout=180s
+        result: passed on 2026-11-03 (43.734s); existing overload ambiguity, canonical focus selectors, presentation, JSON and CLI/help parity
+      - command: go test ./internal/parser ./internal/sema ./internal/ir/semantic -count=1 -timeout=240s
+        result: passed on 2026-11-03 (134.245s / 22.637s / 6.479s) before the final synthesized-body endpoint completion; full Sema and Semantic IR rechecked afterward (18.170s / 5.118s), with parser function/block/recovery coverage rerun separately
+      - command: go test ./internal/sema ./internal/ir/semantic -count=1 -timeout=180s
+        result: passed on 2026-11-03 (18.170s / 5.118s) with final function and synthesized-body endpoint propagation
+      - command: go test ./internal/parser -run 'Function|Extern|Block|Recovery' -count=1 -timeout=180s
+        result: passed on 2026-11-03 (112.316s) with final function/signature/block endpoint retention
+      - command: go vet ./internal/parser ./internal/sema ./cmd/compiler
+        result: passed on 2026-11-03 with the final endpoint and focus implementation
+      - command: go test -race ./cmd/compiler -run 'TestAnalyse|TestCLIHelpForms' -count=1 -timeout=180s
+        result: reached the 180-second suite limit during TestAnalyseCapacityExpressions without an assertion failure; the bounded final focus/presentation/JSON/help race suites above passed instead; no full CLI-race-suite completion is claimed
       - command: go test ./cmd/compiler ./internal/sema -run "TestAnalyse|TestCLIHelpForms|TestClosureSnapshotsDetachPlaceTypes" -count=1
         result: passed on 2026-10-26 with GOCACHE set; complete closures selector through parser/help/human/JSON, default silence, focused facts, deterministic repeated output, family isolation, alias rejection, mandatory error preservation and detached capture snapshots; tooling.yaml remaining 43 to 42 and tooling.cli 4 to 3
 
@@ -146,9 +180,11 @@ integrations:
   - id: tooling.copy-move
     area: formatter-lsp-diagnostics-analysis
     status: partial
-    revised: "2026-10-28"
+    revised: "2026-11-03"
     evidence:
       code:
+        - cmd/lsp/ownership_actions.go
+        - cmd/lsp/main.go
         - internal/cst/ownership_roles.go
         - internal/formatter/token_spacing.go
         - internal/sema/ownership_use_diagnostics.go
@@ -161,6 +197,9 @@ integrations:
         - internal/sema/analyzer_let_bindings.go
         - internal/sema/analyzer_inference.go
       tests:
+        - cmd/lsp/ownership_actions_test.go
+        - cmd/lsp/main_test.go
+        - testdata/tooling/move_actions
         - internal/formatter/ownership_markers_test.go
         - cmd/compiler/fmt_ownership_test.go
         - cmd/lsp/format_ownership_test.go
@@ -195,10 +234,10 @@ integrations:
       - Ordinary by-value calls with non-copyable or unproven-copy reusable arguments explain the copy contract and recommend API redesign to ref/ref mut, a suitable slice/view, or an explicitly consuming parameter with a marked caller. They retain S1007 and compiler-owned source/API links, and LSP does not turn this advice into an automatic ownership edit.
       - S1007 explains missing explicit transfer to consuming parameters and owning struct/union/Option/Result payloads, suggests the source-specific <- marker, and links API ownership contracts and source ownership origins. Local Ok/Err payloads use the shared construction validation; invalid inferred and named-union construction does not commit a source move or cascade use-after-move diagnostics.
       - Use-after-ownership diagnostics explain the affected value, earlier ownership-ending action and why the later use cannot access an owned value. Canonical definite, partial and conditional state drives repair guidance and source links; Result.Ok()/Err() retain projection-specific inspection advice and the registered S1088 identity. CLI and LSP share these facts without automatic ownership repairs.
+      - "Explicit move quick fixes proved safe (2026-11-03; copy_move.md §29(4)): ownershipCodeActions matches the current Sema-owned S1007 identity and exact range before considering a :=/:<- or =/<- operator edit. The edited active snapshot replaces its overlay entry and is parsed, assembled and analyzed with the same selected target and unsaved sibling sources. Every retained assembled-source error blocks the action; a lower error count is not treated as ownership proof. Later uses, live borrows, deferred use, malformed source, stale/forged diagnostics and sibling errors withhold edits. Valid whole-value moves and custom-free replacement are admitted only after successful Sema validation. Unsupported projected-source operator locations remain withheld. Duplicate diagnostics share one validation per operator; source snapshots remain immutable. The cohesive logic is extracted from main.go, existing syntax-only tests remain on the syntax helper, and real source plus protocol tests verify semantic admission, Unicode/CRLF ranges and 32/64-bit target isolation. No API redesign, automatic argument/signature rewrite, new ownership semantics or backend/runtime completion is claimed."
     remaining:
       - integrate reverse escape/parameter-usage advice for large valid copies without turning performance advice into ownership errors
       - surface copy classification, operation at cursor, move origin, destination, availability, consuming parameter, partial aggregate state, and consequence preview
-      - make automatic <- fixes conditional on proof that later source uses and borrow/destruction rules remain valid
     required_tests:
       - "formatter round-trips Consume(<-resource), Field: <-resource, Some(<-resource), capture(<-value), and return <-value"
       - LSP marks a -> parameter and the corresponding <- call argument as one ownership transfer
@@ -207,6 +246,14 @@ integrations:
       - large-copy advisory references known size/use facts and never changes program validity
       - use-after-Result.Ok()/Err() diagnostic identifies the consuming projection call
     verification:
+      - command: go test -race ./cmd/lsp -run 'Ownership(CodeActions|MoveSyntaxEdit|Mentor|UseOrigin)|MoveBorrowed|DefaultCodeActionsProtocol|TestRequestQueue' -count=1 -timeout=180s
+        result: passed on 2026-11-03 (79.241s); verified move admission and rejection, snapshot/target/protocol/Unicode/CRLF cases, ownership diagnostics and request scheduling regressions
+      - command: go test ./cmd/lsp -run 'TestOwnershipCodeActionsValidateCurrentDiagnostic|TestOwnershipCodeActionsRequireProof' -count=1 -timeout=120s
+        result: passed on 2026-11-03 (6.948s) after final duplicate-candidate validation coalescing; full earlier ownership/source suite also passed (12.146s), selected-target proof 1.560s and Unicode/CRLF 2.106s
+      - command: go test ./internal/lsp/... -count=1 -timeout=120s
+        result: passed on 2026-11-03; shared default, protocol and server suites
+      - command: go vet ./cmd/lsp
+        result: passed on 2026-11-03
       - command: go test ./internal/formatter ./internal/cst -count=1
         result: passed on 2026-10-28; full shared formatter/CST suites, including consuming-syntax conformance and AST ownership preservation
       - command: go test ./cmd/compiler ./cmd/lsp -run 'Fmt|Format|Ownership|HeaderSpacing|Alignment' -count=1

@@ -1,0 +1,33 @@
+module main
+fn Leaf(values: ref int[]) void {
+    for index in uint(1)..<values.Len { let value := values[index] }
+}
+fn Dormant(values: ref int[]) void {
+    for index in uint(1)..<values.Len { let value := values[index] }
+}
+fn SelfCycle(values: ref int[], stop: bool) void {
+    Leaf(values)
+    if stop { SelfCycle(values, false) }
+}
+fn MutualA(values: ref int[], stop: bool) void {
+    Leaf(values)
+    if stop { MutualB(values, false) }
+}
+fn MutualB(values: ref int[], stop: bool) void {
+    if stop { MutualA(values, false) }
+}
+fn Generic[T](value: T, values: ref int[]) void { Leaf(values) }
+fn GenericRoot(values: ref int[]) void { Generic(1, values) }
+fn Closed(values: ref int[]) void {
+    let selected: fn(ref int[]) void := Leaf
+    selected(values)
+}
+fn Open(selected: fn(ref int[]) void, values: ref int[]) void {
+    selected(values)
+}
+fn OtherGenericRoot(values: ref int[]) void { Generic(true, values) }
+fn Mixed(selected: fn(ref int[]) void, values: ref int[], flag: bool) void {
+    let mut target: fn(ref int[]) void := Leaf
+    if flag { target = selected }
+    target(values)
+}

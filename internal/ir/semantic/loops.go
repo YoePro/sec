@@ -66,6 +66,9 @@ func (fb *functionBuilder) buildWhile(stmt *ast.WhileStatement) error {
 			if conditionType.Kind != TypeBool {
 				return fb.unsupported("non-boolean while condition", stmt.Token)
 			}
+			if err := fb.endFullExpression(); err != nil {
+				return err
+			}
 		}
 		body := fb.newBlock()
 		record.BodyBlock = body.ID
@@ -125,8 +128,14 @@ func (fb *functionBuilder) buildLoopControl(edge LoopEdge, token lexer.Token) er
 		exit = sema.CleanupExitBreak
 	}
 	// Leaving the loop body's scopes runs their owned-value cleanup first
-	// (P17-42).
+	// (P17-42), around the match subjects the jump leaves.
+	if leaving, ok := fb.scopeCleanupExit(exit, token); ok || len(fb.armTemporaries) != 0 {
+		if err := fb.leaveArmTemporaries(false, exit, leaving.Exited, token); err != nil {
+			return err
+		}
+	}
 	fb.runScopeCleanup(exit, token)
+	fb.scopesCleaned = nil
 	fb.emit(Operation{Kind: OpBranch, Successors: []BranchTarget{{Block: target.ID}}, LoopID: loop.id, LoopEdge: edge, Location: location(token)})
 	fb.current = nil
 	return nil

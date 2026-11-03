@@ -1,0 +1,7 @@
+module impl_navigation
+
+impl extends Widget {
+    fn TestValue() int {
+        return 3
+    }
+}

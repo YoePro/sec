@@ -183,7 +183,9 @@ func runAnalyseCommand(args []string, out io.Writer) {
 	}
 	report = buildAnalyseReport(analyzer, selected, command.target, command.family, scope)
 	report.completed = true
-	if command.presentation != analysePresentJSON {
+	if command.presentation == analysePresentJSON {
+		report.emitSelectedDiagnostics()
+	} else {
 		report.writeHuman(out, command)
 	}
 	if report.counts[analyseClassError] > 0 {
@@ -263,10 +265,15 @@ func buildAnalyseReport(analyzer *sema.Analyzer, selected map[string]bool, targe
 	report.names = names
 	nodes := []sema.CallableNode{}
 	for _, node := range graph.Nodes() {
-		if inSelection(node.Declaration) {
+		reachable := true
+		if scope != nil {
+			_, reachable = scope.reachable[node.ID]
+		}
+		if selected[node.Declaration.File] && (scope == nil || reachable) {
 			nodes = append(nodes, node)
 		}
 	}
+	report.addFocusOpenTargetLimitations(graph)
 	if family == "" {
 		report.addCallGraph(graph, nodes, names, inSelection)
 		report.addIterators(analyzer, inSelection)
@@ -585,16 +592,7 @@ func (r analyseReport) write(out io.Writer) {
 //   - rules/tooling/cli.md — § 5.4 (human-readable output)
 //   - rules/corrections/applied/md017-sec-analyse-cli-and-help-correction-20261017.md — § 5
 func (r analyseReport) writeHuman(out io.Writer, command analyseCommand) {
-	for _, warning := range r.warnings {
-		label := "Warning"
-		if warning.Severity == diagnostics.SeverityInformation {
-			label = "Info"
-		}
-		if warning.Severity == "" {
-			warning.Severity = diagnostics.SeverityWarning
-		}
-		cliDiagnostics.semaDiagnostic(warning, fmt.Sprintf("%s: %s\n", label, warning))
-	}
+	r.emitSelectedDiagnostics()
 	if command.presentation == analysePresentVerbose {
 		r.write(out)
 		r.writeSummary(out, false)

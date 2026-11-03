@@ -48,14 +48,15 @@ func TestPackage17CapabilityRejectsMissingOwnershipIR(t *testing.T) {
 		{"sema/cleanup_initializations.sec", "main", "dynamic array type"},
 		{"semantic_ir/package17_boundary_transfer.sec", "main", "dynamic array type"},
 		{"semantic_ir/package17_boundary_discard.sec", "main", "dynamic array type"},
-		// A field read leaves a fresh owner alive to the end of its full expression.
-		{"semantic_ir/package17_boundary_temporary_field.sec", "main", "owned struct temporary field read cleanup"},
 		// Option and Result lower since P17-37; these forms keep named boundaries.
 		{"semantic_ir/package17_variants/mutable_named_field.sec", "main", "named-field or error-variant pattern on a mutable owned subject"},
-		{"semantic_ir/package17_variants/reassign_in_branch.sec", "main", "outside its declaring scope"},
-		{"semantic_ir/package17_variants/catch_all.sec", "main", "fresh match subject whose active payload outlives the arm"},
-		{"semantic_ir/package17_variants/discarded_payload.sec", "main", "fresh match subject whose active payload outlives the arm"},
-		{"semantic_ir/package17_variants/named_field_plan.sec", "main", "named-field variant destruction plan"},
+		{"semantic_ir/package17_variants/temporary_on_some_paths.sec", "main", "owned temporary created on only some paths"},
+		{"semantic_ir/package17_variants/temporary_mutable_borrow.sec", "main", "borrowed temporary that needs full-expression cleanup"},
+		{"semantic_ir/package17_variants/defer_reads_replaced.sec", "main", "replacement of an owned value a registered defer reads"},
+		{"semantic_ir/package17_variants/defer_reads_inner_owner.sec", "main", "defer reading an owned value of an inner scope"},
+		{"semantic_ir/package17_variants/defer_reads_loop_storage.sec", "main", "defer reading mutable storage declared in its loop"},
+		{"semantic_ir/package17_variants/guarded_named_field.sec", "main", "guarded owned named-field payload binding"},
+		{"semantic_ir/package17_variants/error_handler_payload.sec", "main", "guarded try handler on an error that needs destruction"},
 		{"semantic_ir/package17_variants/custom_free_union.sec", "main", "custom-free union destruction plan"},
 	} {
 		t.Run(test.feature, func(t *testing.T) {

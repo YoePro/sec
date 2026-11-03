@@ -16,6 +16,8 @@ type matchErrorArm struct {
 	value   builtValue
 	variant UnionVariantIndex
 	union   bool
+	// place is the Err payload Place of a subject observed through its Place.
+	place builtValue
 	// testBlock is the Err edge's block, created before the arm body so
 	// arm provenance stays in source order.
 	testBlock *Block
@@ -39,7 +41,7 @@ func (fb *functionBuilder) emitErrorVariantPattern(subject builtValue, plan sema
 	if !ok || result.Kind != TypeResult || len(plan.SubjectType.TypeArgs) != 2 {
 		return fb.unsupported("concrete error variant match without a Result subject", token)
 	}
-	if !sema.TriviallyCopyable(plan.SubjectType.TypeArgs[1]) {
+	if !sema.TriviallyCopyable(plan.SubjectType.TypeArgs[1]) && fb.matchSubjectPlace == nil {
 		return fb.unsupported("concrete error variant match on a non-trivially-copyable error type", token)
 	}
 	name := arm.UnionVariantName
@@ -62,15 +64,34 @@ func (fb *functionBuilder) emitErrorVariantPattern(subject builtValue, plan sema
 	fb.emit(branch)
 
 	fb.current = errBlock
-	unwrap := meta
-	unwrap.Kind = OpResultUnwrapErr
-	unwrap.Operands = []ValueID{subject.id}
-	errorValue := fb.result(unwrap, result.Error)
+	var errorValue builtValue
+	var errorPlace builtValue
+	if subjectPlace := fb.matchSubjectPlace; subjectPlace != nil {
+		// An observed subject keeps its error: the test reads it through the
+		// Err payload Place, and only a selected arm takes its payload.
+		facts := &PlaceMetadata{}
+		if source := definitionPlace(fb, subjectPlace.place.id); source != nil {
+			copied := *source
+			facts = &copied
+		}
+		facts.VariantProven = true
+		errorPlace = fb.placeResult(Operation{
+			Kind: OpPlaceUnionPayload, Operands: []ValueID{subjectPlace.place.id}, UnionVariant: 1,
+			VariantGuard: isErrValue.id, Place: facts, Location: meta.Location,
+		}, fb.owner.module.Types.Intern(Type{Kind: TypePlace, Element: result.Error, Mutable: subjectPlace.mutable}))
+		errorValue = fb.result(Operation{Kind: OpPlaceRead, Operands: []ValueID{errorPlace.id}, PlaceReadMode: PlaceReadObserve, Location: meta.Location}, result.Error)
+	} else {
+		unwrap := meta
+		unwrap.Kind = OpResultUnwrapErr
+		unwrap.Operands = []ValueID{subject.id}
+		errorValue = fb.result(unwrap, result.Error)
+	}
 
 	condition, selected, err := fb.errorVariantTest(errorValue, name, meta, boolType, token)
 	if err != nil {
 		return err
 	}
+	selected.place = errorPlace
 	selected.testBlock = fb.errorArm.testBlock
 	fb.errorArm = selected
 	if selected.union {
@@ -197,10 +218,15 @@ func (fb *functionBuilder) bindTryHandlerPayload(handler *ast.TryHandler, plan s
 	}
 	meta := Operation{TryHandlerKind: TryHandlerErrVariant, TryHandlerIndex: plan.SourceIndex, Variant: plan.Variant, Location: location(handler.Token)}
 	if payloadBinding {
+		action := UnionPayloadCopyTrivial
 		if !sema.TriviallyCopyable(plan.BindingType) {
-			return nil, fb.unsupported("ownership-sensitive error payload handler binding", handler.Token)
+			// The selected handler takes the payload out of the error it owns.
+			if fb.owner.maxPackage < ownershipLoweringPackage || plan.Guarded {
+				return nil, fb.unsupported("ownership-sensitive error payload handler binding", handler.Token)
+			}
+			action = UnionPayloadMove
 		}
-		payload, err := fb.unionVariantPayload(selected.value, selected.variant, plan.BindingType, UnionPayloadCopyTrivial, meta, handler.Token)
+		payload, err := fb.unionVariantPayload(selected.value, selected.variant, plan.BindingType, action, meta, handler.Token)
 		if err != nil {
 			return nil, err
 		}
@@ -262,4 +288,18 @@ func (fb *functionBuilder) bindTryHandlerPayload(handler *ast.TryHandler, plan s
 		fb.bindings[fact.ID] = binding{value: value.id, typ: value.typ}
 	}
 	return restore, nil
+}
+
+// definitionPlace is the Place metadata of the operation that defined a Place value.
+func definitionPlace(fb *functionBuilder, id ValueID) *PlaceMetadata {
+	for _, block := range fb.fn.Blocks {
+		for _, op := range block.Operations {
+			for _, result := range op.Results {
+				if result.ID == id {
+					return op.Place
+				}
+			}
+		}
+	}
+	return nil
 }

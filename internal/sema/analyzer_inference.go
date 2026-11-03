@@ -166,6 +166,7 @@ func (a *Analyzer) inferExpression(expr ast.Expression) (Type, expressionValue) 
 	typ, value := a.inferExpressionUnrecorded(expr)
 	if expr != nil {
 		a.expressionTypes[expr] = typ
+		a.recordEnumConstant(expr, typ)
 		a.recordResolvedOperator(expr, typ)
 		a.recordResolvedOperatorEffect(expr)
 		a.recordReferenceExpressionUse(expr, typ)
@@ -1633,7 +1634,7 @@ func (a *Analyzer) inferConversionExpression(expr *ast.ConversionExpression) (Ty
 		return a.registerToIntegerConversion(targetType, valueType, expr.Value), expressionValue{Display: expr.String()}
 	}
 	if isIntegerType(targetType) && valueType.Kind == EnumType {
-		return a.enumToIntegerConversionResultType(targetType, valueType, expr.Value), expressionValue{Display: expr.String()}
+		return a.enumToIntegerConversionResultType(expr, targetType, valueType, expr.Value), expressionValue{Display: expr.String()}
 	}
 	if targetType.Kind == StringType && valueType.Kind == EnumType && valueType.Underlying == "string" {
 		return targetType, expressionValue{Display: expr.String()}
@@ -3328,6 +3329,7 @@ func (a *Analyzer) inferCallAsConversion(expr *ast.CallExpression) (Type, expres
 		if !valid {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
+		a.recordEnumConversionCall(expr)
 		return conversionType, expressionValue{Display: expr.String()}
 	}
 	if targetType.Kind == RegisterType && isIntegerType(valueType) {
@@ -3337,9 +3339,14 @@ func (a *Analyzer) inferCallAsConversion(expr *ast.CallExpression) (Type, expres
 		return a.registerToIntegerConversion(targetType, valueType, expr.Arguments[0]), expressionValue{Display: expr.String()}
 	}
 	if isIntegerType(targetType) && valueType.Kind == EnumType {
-		return a.enumToIntegerConversionResultType(targetType, valueType, expr.Arguments[0]), expressionValue{Display: expr.String()}
+		result := a.enumToIntegerConversionResultType(expr, targetType, valueType, expr.Arguments[0])
+		if result.Kind != InvalidType {
+			a.recordEnumConversionCall(expr)
+		}
+		return result, expressionValue{Display: expr.String()}
 	}
 	if targetType.Kind == StringType && valueType.Kind == EnumType && valueType.Underlying == "string" {
+		a.recordEnumConversionCall(expr)
 		return targetType, expressionValue{Display: expr.String()}
 	}
 	if result, numeric := a.numericStringConversionType(expr, targetType, valueType); numeric {
@@ -3394,8 +3401,11 @@ func (a *Analyzer) inferTryExpression(expr *ast.TryExpression) (Type, expression
 	isOption := valueType.Kind == UnionType && valueType.Name == "Option" && len(valueType.TypeArgs) == 1
 	// A try binding consumes a named owner on every path; each one hands the
 	// value over or ends it (errorhandling.md § 29).
-	if _, named := expr.Expression.(*ast.Identifier); named && (rootIsResult || isOption) {
-		a.markMoveSource(expr.Expression)
+	switch expr.Expression.(type) {
+	case *ast.Identifier, *ast.MemberExpression:
+		if rootIsResult || isOption {
+			a.markMoveSource(expr.Expression)
+		}
 	}
 	points := a.collectTryFailurePoints(expr.Expression)
 	if isOption && len(points) > 0 {

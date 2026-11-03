@@ -131,7 +131,7 @@ func TestCleanupOperationsRejectInvalidUse(t *testing.T) {
 			fn.Blocks = append(fn.Blocks, &Block{ID: 1, Operations: []Operation{{Kind: OpReturn}}})
 		}},
 		{"run-scope without scopes", "requires exited scopes", func(m *Module) { op(m, 12).Cleanup.Scopes = nil }},
-		{"run-scope exit kind", "requires exited scopes and a scope exit kind", func(m *Module) { op(m, 12).Cleanup.Exit = "return" }},
+		{"run-scope exit kind", "requires exited scopes and a scope exit kind", func(m *Module) { op(m, 12).Cleanup.Exit = "panic" }},
 		{"run-function with scopes", "function exit kind and no scopes", func(m *Module) { op(m, 13).Cleanup.Scopes = []uint32{1} }},
 		{"missing facts", "has no cleanup facts", func(m *Module) { op(m, 13).Cleanup = nil }},
 	} {

@@ -1,0 +1,14 @@
+module conformance_identity
+
+interface Readable {
+    fn Read() int
+}
+
+type Value struct {
+}
+
+impl Value implements Readable {
+    fn Read() int {
+        return 1
+    }
+}

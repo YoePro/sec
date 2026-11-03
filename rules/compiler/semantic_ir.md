@@ -988,6 +988,8 @@ source location
 
 § 35(5) Physical relocation is not implied.
 
+§ 35(6) Every ownership-sensitive value use carries one canonical transfer action: `construct`, `copy-trivial`, `copy-semantic-infallible`, `move`, `borrow-shared`, `borrow-mutable` or `non-consuming`. A fallible clone-like operation is an ordinary call, never a copy action (P17-03, 2026-11-03; `rules/mlir/semantic-ir/sec_semantic_ir_ownership_destruction_v1.md` § 2).
+
 ---
 
 ## § 36 Delayed ownership commit
@@ -1159,13 +1161,14 @@ compiler-known lifecycle termination
 
 ```text
 registration order
-captured values
-capture modes
+captured binding/Place identities
 owning execution scope
 cleanup registration identity
 effects
 borrows/lifetimes
 ```
+
+§ 44(2a) A defer captures the identity of each binding/Place its body reads and reads it when the defer executes (`defer.md` § 9); capture never copies the current value, and the captured Place stays valid until execution. A registration inside a loop captures the binding instance of its own iteration (`defer.md` § 13) (P17-03, 2026-11-03).
 
 § 44(3) Deferred cleanup and automatic destruction participate in the common registration-time LIFO order defined by `defer`/destruction rules.
 

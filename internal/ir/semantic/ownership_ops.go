@@ -183,6 +183,19 @@ func destructionPlan(module *Module, id string, typ TypeID) (DestructionPlanReco
 	return DestructionPlanRecord{}, fmt.Errorf("unknown destruction plan %q", id)
 }
 
+// OwnershipActionOf is how a value of this type crosses a call result, a return
+// or a branch edge: an owner that needs destruction moves, a reference or slice
+// holder is non-owning, anything else copies (dialect v13 §§ 25–27).
+func OwnershipActionOf(module *Module, id TypeID) string {
+	switch {
+	case isBorrowValueType(module, id):
+		return "non-owning"
+	case !trivialDestruction(module, id):
+		return "move"
+	}
+	return "copy"
+}
+
 func isBorrowValueType(module *Module, id TypeID) bool {
 	return typeHasKind(module.Types, id, TypeReference, TypeSharedSlice, TypeMutableSlice)
 }
@@ -306,7 +319,10 @@ func verifyOwnershipOperation(module *Module, op Operation, values map[ValueID]V
 			if err != nil {
 				return fmt.Errorf("own.replace-place old value: %w", err)
 			}
-			if plan.Kind != "trivial" && (facts.OldCleanup == 0 || facts.NewCleanup == 0 || facts.OldCleanup == facts.NewCleanup) {
+			// A replaced stored field stays under its owner's registration (package17
+			// § 64); verifyOwnedPlaceState checks that such a Place is a field.
+			field := facts.OldCleanup == 0 && facts.NewCleanup == 0
+			if plan.Kind != "trivial" && !field && (facts.OldCleanup == 0 || facts.NewCleanup == 0 || facts.OldCleanup == facts.NewCleanup) {
 				return fmt.Errorf("own.replace-place requires distinct old and new cleanup actions")
 			}
 		}

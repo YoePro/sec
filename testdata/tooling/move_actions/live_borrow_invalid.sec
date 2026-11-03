@@ -1,0 +1,11 @@
+module main
+@noCopy
+type Resource struct { Raw: int }
+fn Use(value: ref Resource) void { }
+fn Transfer() void {
+    let source := Resource { Raw: 1 }
+    let borrowed := ref source
+    let destination := source
+    Use(borrowed)
+    discard destination
+}

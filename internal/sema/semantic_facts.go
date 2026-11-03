@@ -769,6 +769,10 @@ const (
 	ResolvedEnumToInteger ResolvedEnumConversionKind = "enum-to-integer"
 )
 
+// ResolvedEnumConversion retains the analyzed direction, fallibility and proof.
+// Type fields are detached conversion-relevant identity/domain projections;
+// declaration bodies remain owned by their separate Sema plans.
+// Rules: rules/compiler/semantic_ir.md — §124; rules/types/types.md — Exact integer conversion proof.
 type ResolvedEnumConversion struct {
 	Kind        ResolvedEnumConversionKind
 	EnumType    Type

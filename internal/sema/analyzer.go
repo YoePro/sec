@@ -39,6 +39,10 @@ type Analyzer struct {
 	matchArmScopes              map[*ast.MatchArm]*ast.BlockStatement
 	optionBindingArms           map[*ast.IfStatement]*ast.MatchArm
 	matchGuardPlaces            map[*ast.MatchArm]Place
+	ownedFieldAssignments       map[*ast.AssignmentStatement]CleanupPreviousValue
+	matchSubjectPlaces          map[*ast.MatchExpression]Place
+	handlerScopes               map[*ast.TryHandler]*ast.BlockStatement
+	ownedCleanupHandlerBindings map[*ast.TryHandler]ResolvedOwnedCleanupRegistration
 	ownedCleanupParameters      map[BindingID]ownedCleanupParameter
 	ownedCleanupCancellations   map[sourceTokenKey][]ResolvedOwnedCleanupCancellation
 	ownedCleanupDeclarations    map[BindingID]*ast.LetStatement
@@ -187,7 +191,12 @@ type Analyzer struct {
 	inSelectOperation   bool
 	resolvedSwitchFlows map[*ast.SwitchStatement]ResolvedSwitchFlow
 	// resolvedEnumCaseOwners retains actual case selection, including compiler-provided enums.
-	resolvedEnumCaseOwners     map[*ast.MemberExpression]Type
+	resolvedEnumCaseOwners  map[*ast.MemberExpression]Type
+	resolvedEnumConstants   map[ast.Expression]*big.Int
+	resolvedEnumConversions map[ast.Expression]ResolvedEnumConversion
+	// Accepted explicit conversion call identities; ordinary/intrinsic calls are excluded.
+	// Rules: rules/declarations/enums.md — §12; rules/tooling/lsp.md — Hover.
+	enumConversionCalls        map[*ast.CallExpression]bool
 	resolvedIntegerConversions map[*ast.CallExpression]ResolvedIntegerConversion
 	resolvedForRangeSteps      map[*ast.ForStatement]*big.Int
 	resolvedAssertions         map[*ast.AssertStatement]ResolvedAssertion
@@ -609,9 +618,12 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.resolvedDeferPlans = nil
 	a.ownedCleanupInitializations = nil
 	a.ownedCleanupMatchBindings = nil
+	a.ownedCleanupHandlerBindings = nil
+	a.handlerScopes = nil
 	a.matchArmScopes = nil
 	a.optionBindingArms = nil
 	a.matchGuardPlaces = nil
+	a.ownedFieldAssignments = nil
 	a.ownedCleanupParameters = nil
 	a.ownedCleanupCancellations = nil
 	a.ownedCleanupDeclarations = nil
@@ -695,6 +707,9 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.comparisonConstantOperands = map[ast.Expression]*big.Int{}
 	a.resolvedSwitchFlows = map[*ast.SwitchStatement]ResolvedSwitchFlow{}
 	a.resolvedEnumCaseOwners = map[*ast.MemberExpression]Type{}
+	a.resolvedEnumConstants = map[ast.Expression]*big.Int{}
+	a.resolvedEnumConversions = map[ast.Expression]ResolvedEnumConversion{}
+	a.enumConversionCalls = nil
 	a.resolvedIntegerConversions = map[*ast.CallExpression]ResolvedIntegerConversion{}
 	a.resolvedTransferPlans = map[ast.Expression]ResolvedTransferPlan{}
 	a.transferDestinations = nil
@@ -709,6 +724,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.resolvedTryPlans = map[*ast.TryExpression]ResolvedTryPlan{}
 	a.resolvedTryAssignments = map[*ast.TryAssignmentStatement]ResolvedTryAssignment{}
 	a.resolvedMatchPlans = map[*ast.MatchExpression]ResolvedMatchPlan{}
+	a.matchSubjectPlaces = nil
 	a.resolvedCallReferences = map[*ast.CallExpression]ReferenceFacts{}
 	a.resolvedCompareExchanges = map[*ast.CallExpression]ResolvedCompareExchange{}
 	a.staticBindings = map[sourceTokenKey]ResolvedStatic{}
@@ -841,6 +857,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.registerCustomFreeDeclarations(program)
 	a.collectCompileTimeIntegerBindings(program)
 	a.registerImplTypeDeclarations(program)
+	a.recordImplNavigation(program)
 	a.analyzeInterfaceDeclarations(program)
 	a.analyzeEarlyEnumDeclarations(program)
 	// Unit facts must be complete before named types and fields copy them.
@@ -3525,6 +3542,7 @@ func (a *Analyzer) registerFunctionDeclarationBody(fn *ast.FunctionDeclaration, 
 		GenericTypePack:    genericTypePackName(fn.GenericParameters),
 		GenericConstraints: a.resolvedGenericParameterConstraints(fn.GenericParameters),
 		Token:              fn.Name.Token,
+		DeclarationEnd:     functionDeclarationEnd(fn),
 		Extern:             fn.Extern,
 		Unsafe:             fn.Unsafe,
 		Static:             fn.Static,
@@ -8774,6 +8792,9 @@ func (a *Analyzer) analyzeMemberAssignmentStatement(stmt *ast.AssignmentStatemen
 		a.updateContainedOriginsForAssignment(member, stmt.Value)
 	}
 	if placeOK {
+		if stmt.Operator == "=" {
+			a.recordOwnedFieldAssignment(stmt, place)
+		}
 		a.markPlaceAvailable(place)
 	}
 }
@@ -11633,6 +11654,7 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 				plan.Exhaustive = true
 				if recordPlan && plan.SubjectKind != "" && len(a.errors) == analysisErrorCount {
 					a.resolvedMatchPlans[expr] = plan
+					a.recordMatchSubjectPlace(expr, plan)
 				}
 				return resultType
 			}
@@ -11649,6 +11671,7 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 		plan.Exhaustive = exhaustive
 		if recordPlan && plan.SubjectKind != "" && exhaustive && len(a.errors) == analysisErrorCount {
 			a.resolvedMatchPlans[expr] = plan
+			a.recordMatchSubjectPlace(expr, plan)
 		}
 		return resultType
 	}
@@ -11657,6 +11680,7 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 	plan.Exhaustive = exhaustive
 	if recordPlan && plan.SubjectKind != "" && exhaustive && len(a.errors) == analysisErrorCount {
 		a.resolvedMatchPlans[expr] = plan
+		a.recordMatchSubjectPlace(expr, plan)
 	}
 	// An error inside an arm body withholds the published plan, but coverage
 	// and arm flow still decide termination; keeping them avoids a follow-on

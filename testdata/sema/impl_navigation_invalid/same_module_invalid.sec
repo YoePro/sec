@@ -1,0 +1,12 @@
+module impl_navigation
+
+type Orphan int
+
+impl extends Orphan {
+}
+
+impl Widget {
+}
+
+impl extends Box[int] {
+}

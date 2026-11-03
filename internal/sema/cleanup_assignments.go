@@ -1,6 +1,7 @@
 package sema
 
 import (
+	"sort"
 	"strings"
 
 	"sec/internal/ast"
@@ -31,6 +32,12 @@ type ResolvedOwnedCleanupAssignment struct {
 	Previous     CleanupPreviousValue
 	Registration ResolvedOwnedCleanupRegistration
 	Executor     CallableID
+	// Moved lists, for a Partial previous value, the stored-field paths that
+	// moved out, by field name in canonical order; a moved active payload counts
+	// as its whole union field. MovedConditional reports one that moved on only
+	// some paths.
+	Moved            [][]string
+	MovedConditional bool
 }
 
 // prepareOwnedCleanupAssignment snapshots accepted destination facts after RHS
@@ -74,7 +81,40 @@ func (a *Analyzer) prepareOwnedCleanupAssignment(stmt *ast.AssignmentStatement, 
 	}
 	initial.Action = a.cleanupIdentities.owned(binding, stmt.Token)
 	initial.Place = cloneSlicePlanPlace(place)
-	return &ResolvedOwnedCleanupAssignment{Previous: previous, Registration: initial, Executor: a.currentCallable}
+	plan := &ResolvedOwnedCleanupAssignment{Previous: previous, Registration: initial, Executor: a.currentCallable}
+	if previous == CleanupPreviousPartial {
+		plan.Moved, plan.MovedConditional = a.movedFieldPaths(place)
+	}
+	return plan
+}
+
+// movedFieldPaths lists the stored-field paths moved out below place. A path
+// through an active payload ends at its union field, which then holds nothing.
+func (a *Analyzer) movedFieldPaths(place Place) ([][]string, bool) {
+	prefix := place.String() + "."
+	seen := map[string]bool{}
+	var paths [][]string
+	conditional := false
+	for key := range a.moved {
+		if !strings.HasPrefix(key, prefix) {
+			continue
+		}
+		conditional = conditional || isConditionalAvailabilityReason(a.moveReasons[key])
+		var path []string
+		for _, name := range strings.Split(key[len(prefix):], ".") {
+			if strings.HasPrefix(name, "<") || strings.Contains(name, "[") {
+				break
+			}
+			path = append(path, name)
+		}
+		if len(path) == 0 || seen[strings.Join(path, ".")] {
+			continue
+		}
+		seen[strings.Join(path, ".")] = true
+		paths = append(paths, path)
+	}
+	sort.Slice(paths, func(i, j int) bool { return strings.Join(paths[i], ".") < strings.Join(paths[j], ".") })
+	return paths, conditional
 }
 
 // recordOwnedCleanupAssignment publishes only after assignment commit has
@@ -104,4 +144,54 @@ func (a *Analyzer) ResolvedOwnedCleanupAssignmentOf(stmt *ast.AssignmentStatemen
 	}
 	plan.Registration = cloneOwnedCleanupRegistration(plan.Registration)
 	return plan, true
+}
+
+// recordOwnedFieldAssignment retains what a stored field of an owned local holds
+// before `p.f = v` commits: a value to replace, nothing (reinitialization), or a
+// value on some paths only. The owner's registration covers the field throughout
+// (package17 §§ 13, 64; destruction.md § 13).
+func (a *Analyzer) recordOwnedFieldAssignment(stmt *ast.AssignmentStatement, place Place) {
+	if len(place.Projections) == 0 {
+		return
+	}
+	for _, projection := range place.Projections {
+		if projection.Kind != PlaceField {
+			return
+		}
+	}
+	root, ok := a.rootPlace(place.Root)
+	if !ok || TriviallyDestructible(root.Type) {
+		return
+	}
+	if _, declared := a.ownedCleanupDeclarations[a.bindingIDs[sourceTokenLocation(root.RootToken)]]; !declared {
+		return
+	}
+	previous := CleanupPreviousAvailable
+	if _, key, partial, unavailable := a.unavailablePlace(place); unavailable {
+		switch {
+		case partial && strings.HasPrefix(key, place.String()+".<"):
+			// A moved active payload was all the union field held.
+			previous = CleanupPreviousConditional
+		case partial:
+			previous = CleanupPreviousPartial
+		case isConditionalAvailabilityReason(a.moveReasons[key]):
+			previous = CleanupPreviousConditional
+		default:
+			previous = CleanupPreviousUnavailable
+		}
+	}
+	if a.ownedFieldAssignments == nil {
+		a.ownedFieldAssignments = map[*ast.AssignmentStatement]CleanupPreviousValue{}
+	}
+	a.ownedFieldAssignments[stmt] = previous
+}
+
+// ResolvedOwnedFieldAssignmentOf reads what an assigned stored field of an owned
+// local held, without repeating ownership inference.
+func (a *Analyzer) ResolvedOwnedFieldAssignmentOf(stmt *ast.AssignmentStatement) (CleanupPreviousValue, bool) {
+	if a == nil {
+		return "", false
+	}
+	previous, ok := a.ownedFieldAssignments[stmt]
+	return previous, ok
 }

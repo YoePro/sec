@@ -248,6 +248,10 @@ fn Plain() Result[int, IndexError] {
 
 fn Look(result: ref Result[Handle, IndexError]) void {
 }
+
+type Holder struct {
+    result: Result[Handle, IndexError],
+}
 `
 	_, errors := analyzeSourceWithAnalyzerRaw(t, declarations+`
 fn T() Result[int, IndexError] {
@@ -259,6 +263,17 @@ fn T() Result[int, IndexError] {
 `)
 	if len(errors) == 0 {
 		t.Fatal("use after try of a named owner was accepted")
+	}
+	_, errors = analyzeSourceWithAnalyzerRaw(t, declarations+`
+fn T() Result[int, IndexError] {
+    let holder := Holder { result: Fresh() }
+    let handle := try holder.result
+    Look(ref holder.result)
+    return Ok(handle.id)
+}
+`)
+	if len(errors) == 0 {
+		t.Fatal("use after try of a stored field was accepted")
 	}
 	_, errors = analyzeSourceWithAnalyzerRaw(t, declarations+`
 fn T() Result[int, IndexError] {

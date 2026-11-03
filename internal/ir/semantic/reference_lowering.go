@@ -407,6 +407,13 @@ func (fb *functionBuilder) lowerRootPlace(reference *ast.RefExpression, plan sem
 	}
 	loc := location(identifier.Token)
 	placeFacts := placeMetadataOf(plan.Place)
+	if held.capture != 0 {
+		// A defer body borrows the value it captured through that Place.
+		if reference.Mutable && !held.mutable {
+			return builtValue{}, fb.unsupported("mutable borrow of an immutable capture", reference.Token)
+		}
+		return builtValue{id: held.capture, typ: fb.owner.module.Types.Intern(Type{Kind: TypePlace, Element: held.typ, Mutable: held.mutable})}, nil
+	}
 	if held.storage != 0 {
 		index := -1
 		for position, storage := range fb.fn.Storages {
@@ -558,7 +565,8 @@ func (fb *functionBuilder) placeResult(op Operation, typ TypeID) builtValue {
 //   - rules/corrections/applied/md076-call-lifetime-temporary-borrows-correction-20261021.md — § 9
 func (fb *functionBuilder) lowerTemporaryBorrow(expr ast.Expression, plan sema.ResolvedReferencePlan) (builtValue, error) {
 	token := expressionToken(expr)
-	if !sema.TriviallyDestructible(plan.Place.Type) {
+	owned := !sema.TriviallyDestructible(plan.Place.Type)
+	if owned && (plan.Facts.MutableAuthority || fb.owner.maxPackage < ownershipLoweringPackage) {
 		return builtValue{}, fb.unsupported("borrowed temporary that needs full-expression cleanup", token)
 	}
 	element, err := fb.owner.internType(plan.Place.Type)
@@ -572,8 +580,13 @@ func (fb *functionBuilder) lowerTemporaryBorrow(expr ast.Expression, plan sema.R
 	if err != nil {
 		return builtValue{}, err
 	}
-	if value.typ != element || !fb.storageAllowed(value.typ) {
+	if value.typ != element || !owned && !fb.storageAllowed(value.typ) {
 		return builtValue{}, fb.unsupported("borrowed temporary of a non-trivial type", token)
+	}
+	if owned {
+		// The borrow ends with the call; the temporary lives to the end of its
+		// full expression (destruction.md § 8(7); borrowing.md § 5.4(5)).
+		fb.holdTemporary(value, plan.Place.Type, token)
 	}
 	loc := location(token)
 	mutable := plan.Facts.MutableAuthority

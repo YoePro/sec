@@ -439,3 +439,49 @@ reports:
       @link_name argument and appendix entries, and stale target summaries for
       callable guarantees. This is a documentation consistency issue; it does
       not introduce new language semantics.
+
+  - id: BUG-000020
+    title: sec analyse JSON omits selected owner diagnostics
+    status: fixed
+    severity: medium
+    kind: tooling-output
+    reported: "2026-11-03"
+    report: fixed/BUG-000020-analyse-json-omits-owner-diagnostics.md
+    area: compiler-cli-analysis-reporting
+    rulebooks:
+      - rules/tooling/cli.md
+      - rules/tooling/diagnostics.md
+      - rules/corrections/applied/md017-sec-analyse-cli-and-help-correction-20261017.md
+    governance:
+      - tooling.cli
+    evidence: >-
+      TestAnalyseIndividualFamilies reproduced an all-analysis report counting
+      three advisories but emitting no A2001 diagnostics despite two selected
+      parameter recommendations. Shared emitSelectedDiagnostics now feeds the
+      already filtered warnings to the canonical reporter in JSON and human
+      modes. The regression verifies two parameter-only occurrences, no leaked
+      pitfall finding, focused source locations, clean input and mandatory
+      rejection. No diagnostic schema or semantic analysis change.
+
+  - id: BUG-000021
+    title: Atomic Load hover misclassified as enum conversion
+    status: fixed
+    severity: medium
+    kind: tooling-classification
+    reported: "2026-11-03"
+    report: fixed/BUG-000021-atomic-load-misclassified-as-enum-conversion.md
+    area: sema-facts-lsp-hover
+    rulebooks:
+      - rules/declarations/enums.md
+      - rules/concurrency/atomics.md
+      - rules/tooling/lsp.md
+    governance:
+      - frontend.enums
+    evidence: >-
+      Reproduced Claude's TestAtomicOrderMatrixLSP failure: Load(MemoryOrder)
+      appeared as an enum-to-int conversion. Sema now marks accepted explicit
+      conversion calls at the producer and requires this identity for enum
+      presentation. TestEnumConversionToolingRejectsIntrinsicCalls excludes the
+      seven atomic Loads and all other calls in the order fixture; existing
+      positive conversion and atomic hover tests pass. No atomic or conversion
+      language semantics changed.

@@ -1,0 +1,31 @@
+module main
+enum Wide uint16 { Small = 1, Large = 300 }
+enum Signed int16 { Low = -129, High = 127 }
+enum Open bit[16] { Zero = 0 }
+let Global := Wide.Small
+fn Constructed() uint8 { return uint8(Wide(1)) }
+fn OpenConstructed() uint8 { return uint8(Open(255)) }
+fn SignedConstructed() int8 { return int8(Signed(127)) }
+fn Bound() uint8 { let value := Wide.Small
+    return uint8(value) }
+fn Alias() uint8 { let first := Wide.Small
+    let second := first
+    return uint8(second) }
+fn GlobalValue() uint8 { return uint8(Global) }
+fn LocalInteger() uint8 { let raw := 1
+    return uint8(Wide(raw)) }
+fn Runtime(value: Wide) uint8 { return try uint8(value) { Err(_) => 0 } }
+fn Mutable(value: Wide) uint8 {
+    let mut current := Wide.Small
+    current = value
+    return try uint8(current) { Err(_) => 0 }
+}
+fn Read(value: Wide) Wide { return value }
+fn OrdinaryCall(value: Wide) uint8 { return try uint8(Read(value)) { Err(_) => 0 } }
+fn LocalOtherInteger() uint16 {
+    let raw := 300
+    return uint16(Wide(raw))
+}
+fn OrdinaryKnownArgument() uint8 {
+    return try uint8(Read(Wide.Small)) { Err(_) => 0 }
+}

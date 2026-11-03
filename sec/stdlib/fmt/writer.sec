@@ -39,7 +39,7 @@ fn _WriteWriterText(destination: ref mut io.Writer, text: string) Result[void, W
         }
     }
 
-    try io.WriteAll(ref mut destination, ref bytes[..]) {
+    try io.WriteAll(destination, ref bytes[..]) {
         Err(error) => {
             return Err(WriteFormatError.IO(error))
         }
@@ -90,7 +90,7 @@ fn FPrint[...Types](destination: ref mut io.Writer, values: ...ref Types) Result
             }
         }
 
-        try _WriteWriterText(ref destination, text)
+        try _WriteWriterText(destination, text)
 
         total = next
     }
@@ -206,4 +206,39 @@ fn FPrintf[...Types](destination: ref mut io.Writer, format: string, values: ...
     try _WriteWriterText(destination, text)
 
     return Ok(count)
+}
+
+/**
+ * Writes composite-formatted text followed by LF to a Writer.
+ *
+ * Parameters:
+ * - destination: Mutable Writer receiving the output.
+ * - format: Composite format string.
+ * - values: Heterogeneous borrowed arguments.
+ *
+ * Returns:
+ * - Ok(count): Total UTF-8 bytes including LF.
+ *
+ * Errors:
+ * - WriteFormatError.Text: Formatting failure.
+ * - WriteFormatError.IO: Writer or byte-count failure.
+ *
+ * Ownership:
+ * Does not consume the destination or arguments.
+ *
+ * Allocation:
+ * Same as FPrintf, plus temporary newline materialization.
+ */
+fn FPrintfln[...Types](destination: ref mut io.Writer, format: string, values: ...ref Types) Result[uint, WriteFormatError] {
+    let count := try FPrintf(destination, format, values...)
+
+    let total := try count + 1u {
+        Err(_) => {
+            return Err(WriteFormatError.IO(IOError.InvalidInput))
+        }
+    }
+
+    try _WriteWriterText(destination, "\n")
+
+    return Ok(total)
 }

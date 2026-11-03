@@ -6,7 +6,7 @@ integrations:
     area: frontend-analysis-and-tooling
     status: partial
     integrated: "2026-08-13"
-    revised: "2026-10-30"
+    revised: "2026-11-03"
     document_revision: "2.1"
     summary: >-
       Tracks the canonical closed ordinary and open bit-backed enum model,
@@ -32,6 +32,7 @@ integrations:
       - rules/tooling/lsp.md
       - rules/compiler/compile_time_evaluation.md
     code:
+      - internal/sema/analyzer_inference.go
       - internal/ast/ast.go
       - internal/parser/parser.go
       - internal/sema/types.go
@@ -46,12 +47,17 @@ integrations:
       - internal/sema/enum_string_diagnostics.go
       - internal/lexer/string_presentation.go
       - cmd/lsp/enum_hover.go
+      - cmd/lsp/enum_domain_hover.go
+      - cmd/lsp/hover.go
+      - internal/sema/enum_tooling.go
       - cmd/lsp/string_enum_hover.go
       - internal/sema/type_declarations.go
       - internal/sema/enum_string_initializers.go
       - internal/cst/roles.go
       - cmd/lsp/enum_document_symbols.go
     tests:
+      - testdata/sema/atomic_orders_valid.sec
+      - cmd/lsp/atomic_orders_test.go
       - internal/parser/parser_test.go
       - internal/sema/defaults_test.go
       - internal/sema/analyzer_test.go
@@ -65,6 +71,9 @@ integrations:
       - internal/sema/enum_value_classes_test.go
       - internal/lexer/string_presentation_test.go
       - cmd/lsp/string_enum_hover_test.go
+      - cmd/lsp/enum_domain_hover_test.go
+      - internal/sema/enum_tooling_test.go
+      - testdata/tooling/enum_domains
       - cmd/compiler/string_enum_diagnostics_test.go
       - testdata/sema/enum_value_classes.sec
       - testdata/tooling/string_enum_hover.sec
@@ -100,6 +109,7 @@ integrations:
       - failed runtime string conversion produces EnumValueError.UndeclaredValue and never OutOfRange
       - match exhaustiveness, equality, switch comparison, member completion, hover, and lowering operate on declared string value classes while preserving nominal identity
     implemented:
+      - "BUG-000021 fixed 2026-11-03: enum-conversion presentation requires an explicit accepted conversion-call identity retained by the Sema conversion producer and reset per analysis. An enum argument plus integer result, or absence of an ordinary selected-call fact, cannot classify an intrinsic/user method as a cast. Atomic Load hover retains its operation-specific memory-order documentation. Existing twelve positive enum conversions and detached snapshots remain covered; no conversion or atomic acceptance semantics changed."
       - MD-120 generic error enums with phantom parameters (2026-11-01; enums.md § 16.1) are accepted (rules/corrections/applied/MD-120-generic-error-parameters-approved-20261031-20261101.md; TestGenericErrorParameters, TestGenericErrorChannelSpecializations, TestGenericErrorUnionInstance, TestErrorCategoryConstraintSyntax, TestGenericErrorParameterHover)
       - generic enum declaration parsing, template registration, concrete member resolution, generic impl scope, arity diagnostics, instance caching, and distinct concrete nominal frontend identity
       - ordinary enum declarations with default int or explicit integer underlying representation
@@ -135,6 +145,7 @@ integrations:
       - "string enum initializers and constant string-to-enum construction consume shared semantic CTE instead of literal-only recognition: composed decoded strings and immutable module constants establish member values, aliases/defaults and generic template constants. Known composed/bound string constants convert directly only when declared; undeclared constants remain errors and unknown runtime strings retain checked Result conversion. Required calls/getters unavailable to CTE report the shared S1101 diagnostic; omitted initializers, iota, wrong-kind and runtime initializers remain rejected. CLI and LSP preserve computed values and canonical diagnostics."
       - "Enum default formatter conformance completed 2026-10-30: parser-owned CST marks a valid member default token as requiring one preceding space, fixing irregular member/default spacing before enum value-column alignment. Integer/string/implicit-default source goldens preserve member order, marker identity, alias values and exact escape spellings, are idempotent at indentation widths 2/4/6, and agree exactly through CLI stdin and LSP formatting. A legacy colon initializer on a default member retains its registered parser diagnostic, default flag, initializer, later members and following declaration after ordinary formatting; the rejected initializer spelling is not silently rewritten."
       - "String enum frontend/tooling conformance completed 2026-10-30: one shared source fixture verifies precise type/member definitions, alias-specific references with and without declarations, enum/enumMember semantic tokens, complete hierarchical document-symbol ranges including default markers and UTF-16 string initializer endpoints, explicit and implicit semantic defaults, alias-normalized exhaustive switch flow and duplicate-alias errors, plus exact idempotent formatter output. Fixed two reproduced tooling gaps: Sema enum type facts now select the enum token class, and parser-retained real enum body/member endpoints supply outline ranges that contain every child instead of ending at the enum name. Enum symbol projection is extracted into a focused LSP file. CLI JSON preserves the duplicate-case identity and earlier-case source link. Runtime string enum representation and lowering remain separately tracked."
+      - "Enum domain and conversion tooling (2026-11-03): type/member hover exposes the compiler-owned underlying representation and closed/open domain, with unnamed hardware encodings explicitly valid. Conversion-callee hover presents accepted source/target/result types, checked EnumValueError versus ConversionError channels, and retained numeric exactness evidence in readable terms, including constant, closed-domain and full-bit-domain bounds and plan width when present. Selected user/indirect calls and rejected constant conversions cannot masquerade as accepted casts. Detached Sema presentation queries reuse resolved types and retained proofs without new inference, caches or language semantics. LSP regression fixtures verify the existing canonical closed/open match diagnostics, fallback guidance, alias-normalized exhaustive coverage and complete named bit-domain coverage. Runtime/lowering support remains separately tracked."
     remaining:
       - preserve concrete generic enum owner and member provenance through Semantic IR, Sec MLIR, deterministic symbol formation, ABI, FFI, and executable backend lowering
       - revalidate concrete-dependent enum representation and generic constraints before representation-dependent lowering
@@ -144,7 +155,6 @@ integrations:
       - lower string-enum constants, comparisons, switches, matches, conversions, and failure flow through supported backends
       - preserve unnamed bit-backed enum register encodings through register extraction and insertion lowering
       - prove enum-to-integer representability over the known value or complete enum domain and use the canonical checked Result path when narrowing may fail
-      - expose closed/open domain and checked-conversion facts in LSP hover and match diagnostics
       - synchronize Semantic IR and Sec MLIR conversion operations with checked EnumValueError control flow and runtime validation
       - add complete valid, invalid, recovery, LSP, Semantic IR, and end-to-end enum coverage
     required_tests:
@@ -167,6 +177,18 @@ integrations:
       - Semantic IR verification and deterministic Sec MLIR emission
       - end-to-end backend execution for constants, conversion success and failure, equality, switch, and match
     verification:
+      - command: go test -race ./internal/sema ./cmd/lsp -run 'EnumConversionTooling|EnumDomain|StringEnumHover|AtomicOrderMatrixLSP|AtomicSurface' -count=1 -timeout=120s
+        result: passed on 2026-11-03 (1.327s / 20.233s); BUG-000021 reproduced as Atomic.Load hover displaying an enum-to-int conversion, then fixed using retained conversion identity; seven atomic Loads and all fixture calls remain intrinsic calls, while twelve accepted enum conversions preserve their presentation
+      - command: go test ./internal/sema -count=1 -timeout=180s
+        result: passed on 2026-11-03 (16.905s) with exact conversion-call identity and reset
+      - command: go test -race ./internal/sema ./cmd/lsp -run 'EnumDomain|EnumConversionTooling|StringEnumHover' -count=1 -timeout=120s
+        result: passed on 2026-11-03 (1.145s / 1.677s); final enum hover wording, twelve accepted conversions including five checked and three retained exactness proofs, detached snapshots, user-call exclusion, invalid constants, alias/full-bit coverage and located match diagnostics
+      - command: go test -race ./cmd/lsp -run 'Enum|TestHover|NamedStringConversion|InterfaceConformance|TypeConformance' -count=1 -timeout=180s
+        result: passed on 2026-11-03 (86.967s); broad enum, hover, named-string conversion and cross-target conformance regressions; final presentation wording subsequently rechecked by the targeted race suite
+      - command: go test ./internal/sema ./internal/ir/semantic -count=1 -timeout=180s
+        result: passed on 2026-11-03 (18.034s / 5.018s); no conversion acceptance, match coverage, ownership or lowering behavior changed
+      - command: go vet ./internal/sema ./cmd/lsp
+        result: passed on 2026-11-03
       - command: go test ./internal/parser -count=1 -timeout=180s; go test ./internal/sema ./internal/cst ./internal/formatter ./internal/ir/semantic/... -count=1 -timeout=120s; go test -race ./cmd/lsp ./cmd/compiler -run 'TestStringEnum|TestDocumentSymbols|TestSemanticTokens|TestEnumDefaultFormatting' -count=1 -timeout=150s; go vet ./internal/parser ./internal/ast ./internal/sema ./internal/formatter ./cmd/lsp ./cmd/compiler
         result: "Passed 2026-10-30: full parser 129.260s, Sema 17.851s, CST 0.008s, formatter 0.900s, Semantic IR 3.738s and nominal 0.132s; targeted LSP/CLI race 24.385s/13.241s; vet passed. Before the repair the enum type had generic type highlighting and the enum document-symbol range excluded all child members. frontend.enums remaining 12 to 11; observed global Remaining 2375 to 2374. String enum IR/backend/runtime is not claimed by these frontend tests."
       - command: go test ./internal/cst ./internal/formatter -count=1 -timeout=120s; go test -race ./cmd/compiler ./cmd/lsp -run 'TestEnumDefaultFormatting|TestSharedConstantCondition' -count=1 -timeout=120s; go vet ./internal/sema ./internal/cst ./internal/formatter ./cmd/compiler ./cmd/lsp
@@ -996,18 +1018,35 @@ integrations:
       Existing backend limitations for complete method, property, event, and
       generic lowering remain unchanged.
     rules:
+      - rules/tooling/lsp.md
       - rules/declarations/impl.md
       - rules/declarations/struct.md
       - rules/declarations/generics.md
       - rules/foundations/grammar.md
       - rules/foundations/names_scopes_visibility.md
     code:
+      - cmd/lsp/workspace_impl_symbols.go
+      - cmd/lsp/workspace_symbol.go
+      - cmd/lsp/workspace_symbol_resolve.go
+      - internal/sema/impl_navigation.go
       - internal/lexer/lexer.go
       - internal/ast/ast.go
       - internal/parser/parser.go
       - internal/sema/analyzer.go
       - cmd/lsp/main.go
     tests:
+      - cmd/lsp/workspace_impl_symbols_test.go
+      - testdata/tooling/workspace_impl_extensions/hidden.sec
+      - testdata/tooling/workspace_impl_extensions/other.sec
+      - testdata/tooling/workspace_impl_extensions/multiple.sec
+      - internal/sema/impl_navigation_test.go
+      - cmd/lsp/impl_navigation_test.go
+      - testdata/tooling/impl_navigation/primary.sec
+      - testdata/tooling/impl_navigation/extension_a.sec
+      - testdata/tooling/impl_navigation/extension_b.sec
+      - testdata/tooling/impl_navigation/extension_test.sec
+      - testdata/sema/impl_navigation_invalid/same_module_invalid.sec
+      - testdata/sema/impl_navigation_invalid/foreign_invalid.sec
       - internal/lexer/lexer_test.go
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
@@ -1028,7 +1067,26 @@ integrations:
       - generic target validation reused for primary and extension blocks
       - nested type, property, event, method, and overload conflicts checked against the combined target surface
       - LSP document-symbol distinction between primary impl and impl extends blocks
+      - "Bidirectional impl-block definition navigation (2026-11-03; impl.md §§4–5,22): Go to Definition on an extension impl keyword resolves to the validated primary impl keyword; on the primary keyword it returns all valid same-module extensions in deterministic file/line/column order. Ordinary and generic targets work across files and discovery order. Target identifiers keep their type declarations as definitions. Sema publishes the links through the existing DefinitionsAt surface; LSP reuses its normal source locations and unsaved overlays, without another resolver or workspace index. Orphan, duplicate, foreign-module and malformed generic headers do not receive links. Navigation creates no production dependency on test-only extensions, returned token slices are detached and fresh analysis clears old links. Backend member lowering remains separate; workspace extension inventory is covered by the dedicated implemented item."
+      - "Workspace extension inventory (2026-11-03; impl.md §§4–5, lsp.md Workspace symbols): the existing per-file workspace index retains separate impl extends target header entries from the shared document-symbol projection, searchable through workspace/symbol, including unopened files, generic targets and multiple same-file fragments. Same names in different modules retain distinct containers and locations; lazy resolution uses the existing per-entry snapshot identity. Header visibility derives from the strongest qualified target-name prefix, and lookup and resolve apply the same scope checks, so the impl extends display prefix cannot expose private targets. Regression coverage includes unsaved retargeting, content-stale resolve rejection, open-only sources after disk deletion and removed-file inventory invalidation. This is the existing bounded source-declaration inventory, not a second Sema validator; primary/extension validity remains compiler-owned. Standard workspace source selection, result limits and future shared-workspace migration keep their existing tooling owners."
+    revised: "2026-11-03"
     verification:
+      - command: GOCACHE=/tmp/sec-go-cache go test -race ./cmd/lsp -run 'WorkspaceSymbol|WorkspaceImplExtension|DocumentSymbol' -count=1 -timeout=180s
+        result: passed on 2026-11-03 (1.064s); workspace query/resolve and document-symbol regressions, extension identities, qualified visibility, unsaved overlays, stale snapshots and deleted/open-only sources, with race detection.
+      - command: GOCACHE=/tmp/sec-go-cache go test ./cmd/lsp -run 'TestImplExtensionDefinitionNavigation|TestDocumentSymbols|TestWorkspace' -count=1 -timeout=120s
+        result: passed on 2026-11-03 (4.489s); existing impl definition navigation, document symbols and workspace behavior preserved.
+      - command: GOCACHE=/tmp/sec-go-cache go vet ./cmd/lsp
+        result: passed on 2026-11-03 after workspace extension inventory integration.
+      - command: GOCACHE=/tmp/sec-go-cache go test ./cmd/lsp -run 'Definition|Impl|Rename|References|Hover' -count=1 -timeout=180s
+        result: passed on 2026-11-03 (163.885s); broader LSP navigation, definition, hover, rename and reference regressions.
+      - command: GOCACHE=/tmp/sec-go-cache go test ./internal/sema ./internal/ir/semantic -count=1 -timeout=180s
+        result: passed on 2026-11-03; complete suites (24.651s and 6.299s), including validated impl navigation, reverse file order, generic targets, invalid fragments, test-only dependency direction, snapshot isolation and analysis reset.
+      - command: GOCACHE=/tmp/sec-go-cache go test ./cmd/lsp -run TestImplExtensionDefinitionNavigation -count=1 -timeout=120s
+        result: passed on 2026-11-03 (4.034s); real definitions endpoint resolves multiple sibling files and unsaved overlay positions in both directions, preserves header type definitions and withholds invalid-header guesses.
+      - command: GOCACHE=/tmp/sec-go-cache go test ./cmd/compiler -run 'Impl|Production.*Test|Test.*Production' -count=1 -timeout=120s
+        result: passed on 2026-11-03 (9.426s).
+      - command: GOCACHE=/tmp/sec-go-cache go vet ./internal/sema ./cmd/lsp
+        result: passed on 2026-11-03.
       - command: go test ./...
         result: passed
       - command: emit-mlir --verify over testdata/ir
@@ -1037,8 +1095,6 @@ integrations:
         result: passed
     remaining:
       - complete method, property, event, static-member, and generic backend lowering inherited from the primary impl pipeline
-      - LSP navigation between an extension and its primary impl declaration
-      - workspace index support for listing all extensions of a target
       - explicit visibility policy if future nested module scopes become finer than the current module identity
 
   - id: frontend.impl-lifecycle-construction
@@ -1249,7 +1305,7 @@ integrations:
     document_created: "2026-08-13"
     document_last_updated_metadata: "2026-08-13"
     document_later_sync: "2026-08-16"
-    summary: Sema admits a direct enum-to-integer result only with the shared exactness proof for the selected CompilationPlan. Known values require a retained declared case identity; runtime fields/getters use the complete closed/open enum domain. Unproven narrowing returns Result[target, ConversionError] and uses ordinary Result/try handling; checked runtime lowering remains open.
+    summary: Sema admits a direct enum-to-integer result only with the shared exactness proof for the selected CompilationPlan. Known cases, validated constant constructors and immutable bindings retain exact numeric evidence; runtime fields/getters use the complete closed/open enum domain. Unproven narrowing returns Result[target, ConversionError] and uses ordinary Result/try handling; checked runtime lowering remains open.
     rules:
       - rules/declarations/enums.md
       - rules/types/types.md
@@ -1258,6 +1314,9 @@ integrations:
       - rules/mlir/packages/sec-mlir-dialect_package11.md
       - rules/mlir/semantic-ir/sec_semantic_ir_enum_union_v1.md
     code:
+      - internal/sema/enum_conversion_snapshots.go
+      - internal/sema/enum_constant_values.go
+      - internal/sema/constants.go
       - internal/sema/type_compatibility.go
       - internal/sema/integer_conversion.go
       - internal/sema/conversion_errors.go
@@ -1273,6 +1332,18 @@ integrations:
       - internal/lowering/secmlir/emitter.go
       - internal/sema/enum_facts.go
     tests:
+      - internal/sema/enum_conversion_snapshots_test.go
+      - internal/ir/semantic/enum_conversion_snapshots_test.go
+      - testdata/sema/enum_conversion_snapshots.sec
+      - testdata/semantic_ir/enum_conversion_snapshots.sec
+      - internal/sema/enum_known_values_test.go
+      - internal/ir/semantic/enum_known_values_test.go
+      - cmd/compiler/enum_known_values_test.go
+      - cmd/lsp/enum_known_values_test.go
+      - testdata/sema/enum_known_values/valid.sec
+      - testdata/sema/enum_known_values/invalid.sec
+      - testdata/semantic_ir/enum_known_values.sec
+      - testdata/build/native/enum_known_bindings.sec
       - internal/sema/enum_conversion_relations_test.go
       - cmd/compiler/enum_conversion_relations_test.go
       - cmd/lsp/enum_conversion_relations_test.go
@@ -1314,6 +1385,8 @@ integrations:
       - testdata/sema/enum_conversion_domains_invalid.sec
       - testdata/build/native/enum_known_narrowing.sec
     implemented:
+      - "Immutable enum-to-integer analysis decisions (2026-11-03; types.md Exact integer conversion proof, semantic_ir.md §124): inference records fallibility, source/target identity and the selected-plan proof once; public queries clone retained decisions instead of re-inferring them from query-time types or plan state. Conversion-relevant type projections detach enum inventories and integer/string values, scalar/proof bounds, nominal generic/constant arguments, fixed named-argument identity and unit/structural identity; declaration bodies stay in their separate owning plans. Mutating a query result no longer changes analyzer enum tables or target limits. Query-time plan changes do not rewrite an existing decision, while a fresh analysis resets facts and recomputes fallibility. Missing producer facts cannot be manufactured by the query. IR mutation/query-mutation tests retain byte-identical fresh IR, fixed generic identities and the fallible no-emission boundary; existing plan verifiers and exact-target capability gates remain in force."
+      - "Known enum values use canonical exact-value checking (2026-11-03; enums.md §§12.1–12.3, types.md Exact integer conversion proof): Sema retains exact numeric evidence for validated constant integer-to-enum constructions and immutable local/module enum bindings and aliases, in addition to declared cases. Numeric values are copied into per-expression facts during inference and remain available to post-Sema conversion-proof queries after lexical scopes are restored. Enum binding values stay separate from integer constants, preserving nominal typing. Mutable/transient bindings and ordinary function calls supply no fabricated constant evidence. 32/64-bit tests verify eight exact and four runtime conversions; four known-invalid values receive static overflow errors instead of generic Result mismatches. Verified IR retains constructor/alias constant proofs; a real native alias fixture builds and runs. CLI/LSP share exact-value acceptance and overflow rejection. Ordinary CTE function/getter execution is not added by this work; unsupported/unestablished values remain runtime conversions."
       - "Sema checked-conversion analysis integrated with legal carrier relations (2026-11-02; enums.md §12, types.md Explicit conversions, MD-012 §4.1): integer-backed enums use the existing known-value/complete-domain exactness analysis and canonical Result[target, ConversionError] fallback, while string-backed enums have no integer conversion relation in either direction. Fixed acceptance of string enum to integer as a runtime Result and silent InvalidType without a diagnostic for integer to string enum. Runtime inputs, known enum/integer values and try-wrapped attempts now receive mandatory S1174 with repair text in Sema, CLI and LSP, and invalid source produces no IR artifact. Legal enum/string conversions, exact integer domains, fallible integer narrowing and known fitting members remain accepted. Broader static-value evaluation, immutable conversion facts and checked failure lowering retain their own remaining items."
       - "Ordinary Result/try integration closed by audit and public regression coverage (2026-11-02; enums.md §12.1, errorhandling.md §§7,9,12–14,26): existing Sema handling rejects unwrapped narrowing in typed locals, arguments and integer returns for closed/open enums, and rejects silently ignored Result calls with the registered must-use ID and canonical repair. A try does not protect a subsequent statement or sibling argument. Bodyless try in locals/arguments and return-try preserve uint8 success and ConversionError facts. Ordinary Result retention, direct return, consuming argument contexts, match, explicit discard and Ok projection remain valid under §7; an unconditional eager-try requirement at every conversion site would be incorrect. The same valid/invalid source matrices pass compiler CLI and LSP checks. No production semantic change was needed; this closes the previously stale handling checklist item with explicit evidence."
       - "Complete open-enum unsigned-domain proof (2026-11-02; enums.md §§2,10,12.1, MD-104): exactness derives 0..2^N-1 from the resolved 1..256 bit width instead of trusting cached min/max metadata or named members. Open identity is recognized even with a missing/invalid width, so it cannot fall through to a closed-case proof; such widths remain unproven. Regressions reproduce false exactness from stale 0..1 extrema and unresolved widths before the fix. Signed/unsigned boundaries at widths 1,7,8,16,64,256 and missing cached extrema are covered. Source values 255 and 65535, despite only named 0/1 cases, retain full unsigned carrier identity and open-enum proofs in verified IR and CLI emit-ir. Native bit-backed enum lowering remains at its existing explicit unsupported boundary (lowering.integer-enum-representation); no native executable support is claimed."
@@ -1335,8 +1408,6 @@ integrations:
     partial:
       - Semantic IR and lowering do not yet consume the represented fallible enum-to-integer conversion path
     remaining:
-      - for statically known enum values apply the canonical checked integer-conversion rule to the resolved numeric value
-      - preserve infallibility/fallibility and source enum identity in immutable Sema/Semantic IR facts
       - lower the fallible case through canonical checked-integer conversion and explicit failure control flow
     bug_reference:
       - correction7.md
@@ -1356,8 +1427,24 @@ integrations:
       - fallible enum-to-integer conversion requires ordinary try handling
       - fallible conversion is not emitted as unconditional OpEnumToInteger
       - existing Package 11 infallible enum conversion fixtures continue to pass
-    revised: "2026-11-02"
+    revised: "2026-11-03"
     verification:
+      - command: GOCACHE=/tmp/sec-go-cache go test ./internal/sema ./internal/ir/semantic -run 'TestEnumConversionFactsAreDetached|TestEnumConversionDecisionIsRecorded|TestEnumConversionSnapshot' -count=1
+        result: passed on 2026-11-03; reproduced writable enum/target-bound leakage before the fix, then verified defensive snapshots, nested numeric/string enum arguments, fixed nominal generic identity, per-analysis plan reset, no query-time proof reconstruction and independent Sema/IR ownership.
+      - command: GOCACHE=/tmp/sec-go-cache go test ./internal/sema ./internal/ir/semantic -count=1 -timeout=180s
+        result: passed on 2026-11-03 after retained-decision integration; complete suites (15.597s, 3.889s). Expanded snapshot cases added afterward also pass in focused runs.
+      - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" GOCACHE=/tmp/sec-go-cache go test ./cmd/compiler ./cmd/lsp -run 'TestNativeTrackBuildsAndRuns/enum_known_bindings$|TestKnownEnumValues|TestEnumCheckedConversion|TestEnumCheckedAnalysis' -count=1 -timeout=120s
+        result: passed on 2026-11-03; real native enum-alias execution, source checking, LSP projection and exact/fallible inspection boundaries unchanged.
+      - command: GOCACHE=/tmp/sec-go-cache go vet ./internal/sema ./internal/ir/semantic ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-11-03 after enum decision retention and snapshot integration.
+      - command: GOCACHE=/tmp/sec-go-cache go test ./internal/sema ./internal/ir/semantic ./cmd/compiler ./cmd/lsp -run TestKnownEnumValue -count=1
+        result: passed on 2026-11-03; known constructors, module/local bindings and aliases, scope-retained proofs, mutable/ordinary-call negatives, known-value overflows and public CLI/LSP agreement. A read-only Go overlay using the pre-change Sema reproduced the lost-constant classifications and generic Result mismatches.
+      - command: GOCACHE=/tmp/sec-go-cache go test ./internal/sema ./internal/ir/semantic -count=1 -timeout=180s
+        result: passed on 2026-11-03 after known-value tracking implementation; complete suites (18.091s, 3.772s). Added IR and public integration regressions also pass in focused runs.
+      - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" GOCACHE=/tmp/sec-go-cache go test ./cmd/compiler -run 'TestNativeTrackBuildsAndRuns/enum_known_bindings$' -v -count=1 -timeout=120s
+        result: passed on 2026-11-03; real native build/run (0.304s) for immutable aliases and signed known-member narrowing. Existing constructor/open-enum native boundaries are not claimed removed.
+      - command: GOCACHE=/tmp/sec-go-cache go vet ./internal/sema ./internal/ir/semantic ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-11-03 after enum value tracking and regression integration.
       - command: GOCACHE=/tmp/sec-go-cache go test ./internal/sema ./cmd/compiler ./cmd/lsp -run TestEnumCheckedAnalysis -count=1
         result: passed on 2026-11-02; six no-relation diagnostics with S1174/help, including known/runtime/try operands, valid carrier families and no emit-ir artifact. Original four invalid cases reproduced zero diagnostics before the fix.
       - command: GOCACHE=/tmp/sec-go-cache go test ./internal/sema ./internal/ir/semantic -count=1 -timeout=180s

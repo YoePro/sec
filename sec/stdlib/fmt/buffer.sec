@@ -1,1 +1,285 @@
 module fmt
+
+import "str"
+
+/**
+ * Adapts an existing Builder to the core formatting engine.
+ *
+ * Description:
+ * Borrows a caller-owned Builder and appends formatted text
+ * directly to its storage.
+ *
+ * Ownership:
+ * Does not own the Builder.
+ * The adapter cannot outlive the borrowed Builder.
+ *
+ * Allocation:
+ * May allocate when the Builder grows.
+ */
+@noCopy
+type _BorrowedBuilderFormatSink struct {
+    _destination: ref mut str.Builder,
+}
+
+impl _BorrowedBuilderFormatSink implements FormatSink[CollectionError] {
+    /**
+     * Creates a borrowed formatting destination.
+     *
+     * Parameters:
+     * - destination: Existing mutable Builder.
+     *
+     * Ownership:
+     * Retains an exclusive borrow for the adapter lifetime.
+     *
+     * Allocation:
+     * Does not allocate.
+     */
+    init(destination: ref mut str.Builder) {
+        self._destination <- destination
+    }
+
+    /**
+     * Appends a complete UTF-8 segment to the Builder.
+     *
+     * Parameters:
+     * - text: Valid UTF-8 text to append.
+     *
+     * Returns:
+     * - Ok(): The segment was appended.
+     *
+     * Errors:
+     * - CollectionError: Storage growth failed.
+     *
+     * Ownership:
+     * Does not consume the source text.
+     *
+     * Allocation:
+     * May grow Builder storage.
+     */
+    fn WriteText(text: string) Result[void, CollectionError] {
+        return self._destination.Append(text)
+    }
+}
+
+/**
+ * Appends composite-formatted text to an existing Builder.
+ *
+ * Description:
+ * Uses the canonical core formatter to append directly to
+ * an existing Builder without materializing a combined string.
+ *
+ * Validates the entire format before appending any text.
+ * Conversion or allocation failures may leave earlier
+ * successfully appended segments in the Builder.
+ *
+ * Parameters:
+ * - destination: Existing mutable UTF-8 Builder.
+ * - format: Composite format string.
+ * - values: Heterogeneous borrowed formatting arguments.
+ *
+ * Returns:
+ * - Ok(count): Number of UTF-8 bytes added by this call.
+ *
+ * Errors:
+ * - StringError.Format: Invalid or unsupported format.
+ * - StringError.Allocation: Storage or output size failure.
+ * - StringError: Argument conversion failure.
+ *
+ * Ownership:
+ * Does not consume the Builder or formatting arguments.
+ *
+ * Allocation:
+ * May allocate during argument conversion and Builder growth.
+ * Does not materialize the complete formatted result.
+ */
+fn Appendf[...Types](destination: ref mut str.Builder, format: string, values: ...ref Types) Result[uint, StringError] {
+    let mut sink := new _BorrowedBuilderFormatSink(destination)
+
+    let result := FormatComposite(format, sink, values...)
+
+    match result {
+        Ok(count) => {
+            return Ok(count)
+        }
+
+        Err(failure) => {
+            match failure {
+                Text(cause) => {
+                    return Err(cause)
+                }
+
+                Sink(cause) => {
+                    return Err(_CollectionToStringError(cause))
+                }
+
+                SizeOverflow => {
+                    return Err(
+                        StringError.Allocation(AllocationError.InvalidSize),
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Writes formatted UTF-8 text into caller-owned byte storage.
+ *
+ * Description:
+ * Maintains the current byte position within a fixed-capacity
+ * destination. Complete text segments are written atomically.
+ *
+ * Ownership:
+ * Holds an exclusive borrow of the caller's byte storage.
+ * Does not own or reallocate the storage.
+ *
+ * Allocation:
+ * Does not allocate.
+ */
+@noCopy
+type _FixedBufferFormatSink struct {
+    _destination: ref mut byte[],
+    _written:     uint,
+}
+
+impl _FixedBufferFormatSink implements FormatSink[CollectionError] {
+    /**
+     * Creates a formatting destination over existing byte storage.
+     *
+     * Parameters:
+     * - destination: Writable byte slice.
+     *
+     * Ownership:
+     * Transfers the mutable reference holder into the sink.
+     *
+     * Allocation:
+     * Does not allocate.
+     */
+    init(destination: ref mut byte[]) {
+        self._destination <- destination
+        self._written = 0u
+    }
+
+    /**
+     * Writes a complete UTF-8 segment into the destination.
+     *
+     * Parameters:
+     * - text: Valid UTF-8 text to append.
+     *
+     * Returns:
+     * - Ok(): Every byte was written.
+     *
+     * Errors:
+     * - CollectionError.CapacityExceeded: Insufficient remaining space.
+     *
+     * Ownership:
+     * Does not consume or modify the source string.
+     *
+     * Allocation:
+     * Does not allocate.
+     */
+    fn WriteText(text: string) Result[void, CollectionError] {
+        let remaining := self._destination.Len - self._written
+
+        if text.SizeOf > remaining {
+            return Err(CollectionError.CapacityExceeded)
+        }
+
+        let mut index:  uint := 0
+        let mut offset: uint := self._written
+
+        while index < text.SizeOf {
+            self._destination[offset] = text.ByteAt(index)
+
+            index += 1
+            offset += 1
+        }
+
+        self._written = offset
+
+        return Ok()
+    }
+}
+
+/**
+ * Formats heterogeneous values into a caller-owned byte buffer.
+ *
+ * Description:
+ * Uses the canonical core formatter and writes UTF-8 bytes
+ * directly into existing storage.
+ *
+ * Validates the complete format before writing.
+ * On a later failure, previously completed segments may remain
+ * in the destination.
+ *
+ * Parameters:
+ * - destination: Writable byte slice receiving the output.
+ * - format: Composite format string.
+ * - values: Heterogeneous borrowed formatting arguments.
+ *
+ * Returns:
+ * - Ok(count): Number of UTF-8 bytes written.
+ *
+ * Errors:
+ * - FormatRenderError.Text: Format or conversion failure.
+ * - FormatRenderError.Sink: Insufficient buffer capacity.
+ * - FormatRenderError.SizeOverflow: Byte count overflow.
+ *
+ * Ownership:
+ * Does not consume the destination storage or arguments.
+ *
+ * Allocation:
+ * Does not allocate output storage.
+ * Argument ToString() implementations may allocate.
+ */
+fn FormatTo[...Types](destination: ref mut byte[], format: string, values: ...ref Types) Result[uint, FormatRenderError[CollectionError]] {
+    let mut sink := new _FixedBufferFormatSink(destination)
+
+    return FormatComposite(format, sink, values...)
+}
+
+/**
+ * Formats values into a bounded portion of a byte buffer.
+ *
+ * Description:
+ * Uses FormatTo with a writable slice limited to maxBytes.
+ * Never writes beyond the specified limit.
+ *
+ * The output is not truncated. If a complete formatted
+ * segment cannot fit, the operation returns an error.
+ *
+ * Parameters:
+ * - destination: Caller-owned writable byte storage.
+ * - maxBytes: Maximum number of output bytes permitted.
+ * - format: Composite format string.
+ * - values: Heterogeneous borrowed formatting arguments.
+ *
+ * Returns:
+ * - Ok(count): Number of UTF-8 bytes written.
+ *
+ * Errors:
+ * - FormatRenderError.Text: Formatting or conversion failure.
+ * - FormatRenderError.Sink: Insufficient buffer capacity.
+ * - FormatRenderError.SizeOverflow: Byte count overflow.
+ *
+ * Ownership:
+ * Does not consume the destination or arguments.
+ * Borrows only the specified portion of the buffer.
+ *
+ * Allocation:
+ * Does not allocate output storage.
+ * Argument conversion may allocate.
+ */
+fn FormatToN[...Types](destination: ref mut byte[], maxBytes: uint, format: string, values: ...ref Types) Result[uint, FormatRenderError[CollectionError]] {
+    if maxBytes > destination.Len {
+        return Err(
+            FormatRenderError[CollectionError].Sink(
+                CollectionError.CapacityExceeded,
+            ),
+        )
+    }
+
+    let bounded := ref mut destination[..<maxBytes]
+
+    return FormatTo(bounded, format, values...)
+}

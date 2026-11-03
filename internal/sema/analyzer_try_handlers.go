@@ -354,6 +354,7 @@ func (a *Analyzer) analyzeTryHandlerBody(handler *ast.TryHandler, successType Ty
 		}
 		a.symbols[bindingName] = Symbol{Name: bindingName, Type: errorType, Mutable: false, Token: bindingToken, Storage: StorageOriginAutomatic}
 		delete(a.constInts, bindingName)
+		defer a.enterOwnedHandlerBinding(handler, bindingName, errorType, bindingToken)()
 	}
 	// MD-029 shallow field bindings are local to this handler like the
 	// whole-error binding (rules/errors/errorhandling.md § 15.3).

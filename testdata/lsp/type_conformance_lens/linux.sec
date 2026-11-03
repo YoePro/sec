@@ -1,0 +1,12 @@
+#target(os: "linux", arch: "amd64")
+module storage
+
+impl Handle implements Native, Writable {
+    fn Size() int {
+        return 1
+    }
+
+    fn Write() bool {
+        return true
+    }
+}

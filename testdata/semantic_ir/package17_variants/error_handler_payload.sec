@@ -17,13 +17,23 @@ fn FreshOption(id: int) Option[Handle] {
     return Some(Make(id))
 }
 
+type Lost union error {
+    Gone(Handle),
+    Other,
+}
+
+fn Fail(id: int) Result[int, Lost] {
+    return Err(Lost.Gone(Make(id)))
+}
+
 fn T() int {
-    match FreshOption(1) {
-        Some(handle) => {
+    let number := try Fail(1) {
+        Err(Lost.Gone(handle)) where handle.id > 0 => {
             return handle.id
         }
-        _ => {
+        Err(_) => {
             return 0
         }
     }
+    return number
 }

@@ -1,0 +1,66 @@
+module enum_tooling
+
+enum Closed uint16 {
+    Zero = 0
+    High = 255
+    Alias = 255
+}
+
+enum Open bit[8] {
+    Zero = 0
+    One = 1
+}
+
+enum Complete bit[1] {
+    Off = 0
+    On = 1
+}
+
+enum Text string {
+    First = "one"
+    Alias = "one"
+    Second = "two"
+}
+
+fn ClosedInput(value: int) Closed {
+    return try Closed(value) { Err(_) => Closed.Zero }
+}
+fn OpenInput(value: int) Open {
+    return try Open(value) { Err(_) => Open.Zero }
+}
+fn TextInput(value: string) Text {
+    return try Text(value) { Err(_) => Text.First }
+}
+fn ClosedExact(value: Closed) uint8 { return uint8(value) }
+fn ClosedChecked(value: Closed) int8 { return try int8(value) { Err(_) => 0 } }
+fn OpenExact(value: Open) uint8 { return uint8(value) }
+fn OpenChecked(value: Open) int8 { return try int8(value) { Err(_) => 0 } }
+fn OpenFits(value: uint8) Open { return Open(value) }
+fn Unnamed() Open { return Open(255) }
+fn Known() int8 { return int8(Closed.Zero) }
+fn KnownText() Text { return Text("one") }
+fn ToText(value: Text) string { return string(value) }
+fn Selected(value: int) Closed { return Closed.Zero }
+fn OrdinaryCall() Closed { return Selected(0) }
+
+fn ClosedMatch(value: Closed) int {
+    return match value {
+        Closed.Zero => 0
+        Closed.Alias => 1
+    }
+}
+fn OpenMatch(value: Open) int {
+    return match value {
+        Open.Zero => 0
+        Open.One => 1
+        _ => 2
+    }
+}
+fn CompleteMatch(value: Complete) int {
+    return match value { Complete.Off => 0
+        Complete.On => 1 }
+}
+fn TextMatch(value: Text) int {
+    return match value { Text.Alias => 1
+        Text.Second => 2 }
+}

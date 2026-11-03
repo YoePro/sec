@@ -16,4 +16,25 @@ type WriteFormatError union error {
 
     // Failure reported by the selected output stream or Writer.
     IO(IOError),
+
+    // The complete UTF-8 byte count cannot fit in uint.
+    SizeOverflow,
+}
+
+/**
+ * Reports a failure while calculating formatted output size.
+ *
+ * Description:
+ * Distinguishes text formatting failures from byte-count overflow.
+ * No destination errors are possible because no output is written.
+ *
+ * Allocation:
+ * Does not inherently allocate.
+ */
+type FormattedSizeError union error {
+    // Format validation or argument text conversion failed.
+    Text(StringError),
+
+    // The formatted UTF-8 byte count cannot fit in uint.
+    SizeOverflow,
 }

@@ -3657,6 +3657,9 @@ func (p *Parser) invalidEnumValue(start lexer.Token, diagnosticStart int, recove
 
 func (p *Parser) parseFunctionDeclaration() *ast.FunctionDeclaration {
 	fn := &ast.FunctionDeclaration{Token: p.curToken}
+	// Retain the actual endpoint, including nested bodies and same-line declarations.
+	// Rules: rules/tooling/cli.md — §5.3; rules/analysis/call_graph.md — Callable node.
+	defer func() { fn.EndToken = p.curToken }()
 
 	if !p.expectPeek(lexer.IDENT) {
 		return nil
@@ -3744,6 +3747,9 @@ func (p *Parser) parseExternFunctionDeclaration() *ast.FunctionDeclaration {
 
 func (p *Parser) parseFunctionSignature(allowVariadic bool) *ast.FunctionDeclaration {
 	fn := &ast.FunctionDeclaration{Token: p.curToken}
+	// Retain the actual endpoint, including nested bodies and same-line declarations.
+	// Rules: rules/tooling/cli.md — §5.3; rules/analysis/call_graph.md — Callable node.
+	defer func() { fn.EndToken = p.curToken }()
 
 	if !p.expectPeek(lexer.IDENT) {
 		return nil
@@ -4104,6 +4110,9 @@ func (p *Parser) parseFunctionBlockStatement() *ast.BlockStatement {
 //   - rules/compiler/parser_recovery.md — "Recovery goals", "Error blocks code generation"
 func (p *Parser) parseStatementBlock(name string) *ast.BlockStatement {
 	block := &ast.BlockStatement{Token: p.curToken}
+	// Source provenance for synthesized callable wrappers uses the same parser endpoint.
+	// Rules: rules/analysis/call_graph.md — Callable node; rules/tooling/cli.md — §5.3.
+	defer func() { block.EndToken = p.curToken }()
 	previousContext := p.recoveryContext
 	p.recoveryContext = RecoveryContextBlock
 	previousAllowsFinal := p.blockAllowsFinalValue

@@ -193,7 +193,10 @@ type CallableNode struct {
 	Module      string
 	ImplTarget  string
 	Declaration lexer.Token
-	Extern      bool
+	// DeclarationEnd is the parser-owned endpoint; zero means no source range is known.
+	// Rules: rules/tooling/cli.md — §5.3; rules/analysis/call_graph.md — Callable node.
+	DeclarationEnd lexer.Token
+	Extern         bool
 }
 
 type CallSite struct {
@@ -312,13 +315,14 @@ func (g *CallGraph) addCallable(function Function) CallableID {
 	id := callableID(function)
 	if _, exists := g.nodes[id]; !exists {
 		g.nodes[id] = CallableNode{
-			ID:          id,
-			Kind:        CallableBodyNamedFunction,
-			Name:        function.Name,
-			Module:      function.Module,
-			ImplTarget:  function.ImplTarget,
-			Declaration: function.Token,
-			Extern:      function.Extern,
+			ID:             id,
+			Kind:           CallableBodyNamedFunction,
+			Name:           function.Name,
+			Module:         function.Module,
+			ImplTarget:     function.ImplTarget,
+			Declaration:    function.Token,
+			DeclarationEnd: function.DeclarationEnd,
+			Extern:         function.Extern,
 		}
 		g.nodeOrder = append(g.nodeOrder, id)
 	}

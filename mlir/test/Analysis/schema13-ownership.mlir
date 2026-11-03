@@ -14,7 +14,7 @@ module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 :
   func.func private @sink(!h) attributes {sec.function_id = "sink", sec.source_name = "sink", sec.extern = false, sec.unsafe = false}
   // CHECK-LABEL: func.func @exclusive
   func.func @exclusive(%c: i1) {
-    %v = "sec.call.direct"() <{callee = @make}> {sec.argument_actions = []} : () -> !h
+    %v = "sec.call.direct"() <{callee = @make}> {sec.argument_actions = [], sec.result_action = "move"} : () -> !h
     cf.cond_br %c, ^bb1, ^bb2
     ^bb1:
     "sec.call.direct"(%v) <{callee = @sink}> {sec.argument_actions = ["move"]} : (!h) -> ()
@@ -25,8 +25,8 @@ module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 :
   }
   // CHECK-LABEL: func.func @merged
   func.func @merged(%c: i1) {
-    %v = "sec.call.direct"() <{callee = @make}> {sec.argument_actions = []} : () -> !h
-    cf.cond_br %c, ^bb1(%v : !h), ^bb2(%v : !h)
+    %v = "sec.call.direct"() <{callee = @make}> {sec.argument_actions = [], sec.result_action = "move"} : () -> !h
+    cf.cond_br %c, ^bb1(%v : !h), ^bb2(%v : !h) {sec.successor_actions = [["move"], ["move"]]}
     ^bb1(%x: !h):
     "sec.call.direct"(%x) <{callee = @sink}> {sec.argument_actions = ["move"]} : (!h) -> ()
     return
@@ -36,13 +36,13 @@ module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 :
   }
   // CHECK-LABEL: func.func @joined
   func.func @joined(%c: i1) {
-    %v = "sec.call.direct"() <{callee = @make}> {sec.argument_actions = []} : () -> !h
+    %v = "sec.call.direct"() <{callee = @make}> {sec.argument_actions = [], sec.result_action = "move"} : () -> !h
     cf.cond_br %c, ^bb1, ^bb2
     ^bb1:
     %w = "sec.own.move"(%v) : (!h) -> !h
-    cf.br ^bb3(%w : !h)
+    cf.br ^bb3(%w : !h) {sec.successor_actions = [["move"]]}
     ^bb2:
-    cf.br ^bb3(%v : !h)
+    cf.br ^bb3(%v : !h) {sec.successor_actions = [["move"]]}
     ^bb3(%m: !h):
     "sec.call.direct"(%m) <{callee = @sink}> {sec.argument_actions = ["move"]} : (!h) -> ()
     return
@@ -50,13 +50,13 @@ module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 :
   // CHECK-LABEL: func.func @reinit
   func.func @reinit() {
     %s = "sec.storage.declare"() {sec.mutable = true, sec.source_name = "s", sec.storage_class = "local-automatic", sec.storage_id = 1 : i32, sec.address_taken = true} : () -> !sec.storage<!h>
-    %v = "sec.call.direct"() <{callee = @make}> {sec.argument_actions = []} : () -> !h
+    %v = "sec.call.direct"() <{callee = @make}> {sec.argument_actions = [], sec.result_action = "move"} : () -> !h
     %p0 = "sec.place.storage"(%s) <{place_root_id = 1 : i32, storage_identity = 1 : i32, address_space = "ordinary"}> : (!sec.storage<!h>) -> !sec.place<!h, "rw">
     "sec.own.initialize_place"(%p0, %v) : (!sec.place<!h, "rw">, !h) -> ()
     %p1 = "sec.place.storage"(%s) <{place_root_id = 1 : i32, storage_identity = 1 : i32, address_space = "ordinary"}> : (!sec.storage<!h>) -> !sec.place<!h, "rw">
     %o = "sec.own.move_from_place"(%p1) : (!sec.place<!h, "rw">) -> !h
     "sec.own.discard"(%o) <{destruction_plan = "h", discard_origin = "explicit"}> : (!h) -> ()
-    %n = "sec.call.direct"() <{callee = @make}> {sec.argument_actions = []} : () -> !h
+    %n = "sec.call.direct"() <{callee = @make}> {sec.argument_actions = [], sec.result_action = "move"} : () -> !h
     %p2 = "sec.place.storage"(%s) <{place_root_id = 1 : i32, storage_identity = 1 : i32, address_space = "ordinary"}> : (!sec.storage<!h>) -> !sec.place<!h, "rw">
     "sec.own.initialize_place"(%p2, %n) : (!sec.place<!h, "rw">, !h) -> ()
     %p3 = "sec.place.storage"(%s) <{place_root_id = 1 : i32, storage_identity = 1 : i32, address_space = "ordinary"}> : (!sec.storage<!h>) -> !sec.place<!h, "rw">
@@ -103,7 +103,7 @@ module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 :
   func.func @looped(%c: i1) {
     cf.br ^bb1
     ^bb1:
-    %v = "sec.call.direct"() <{callee = @make}> {sec.argument_actions = []} : () -> !h
+    %v = "sec.call.direct"() <{callee = @make}> {sec.argument_actions = [], sec.result_action = "move"} : () -> !h
     "sec.call.direct"(%v) <{callee = @sink}> {sec.argument_actions = ["move"]} : (!h) -> ()
     cf.cond_br %c, ^bb1, ^bb2
     ^bb2:
@@ -113,7 +113,7 @@ module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 :
   func.func @scoped(%c: i1) {
     cf.br ^bb1
     ^bb1:
-    %v = "sec.call.direct"() <{callee = @make}> {sec.argument_actions = []} : () -> !h
+    %v = "sec.call.direct"() <{callee = @make}> {sec.argument_actions = [], sec.result_action = "move"} : () -> !h
     "sec.cleanup.track_owned"(%v) <{cleanup_action_id = 1 : i32, cleanup_scope_id = 1 : i32, cleanup_registration_ordinal = 1 : i32, destruction_plan = "h"}> : (!h) -> ()
     "sec.cleanup.run_scope"() <{scope_ids = array<i32: 1>, exit_kind = "continue"}> : () -> ()
     cf.cond_br %c, ^bb1, ^bb2

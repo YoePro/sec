@@ -10,7 +10,10 @@ import (
 // Rules: rules/declarations/interfaces.md — §§4–6,12;
 // rules/compiler/semantic_ir.md — §109(1–4).
 type InterfaceConformanceFact struct {
-	TypeName, InterfaceName, Interface            string
+	TypeName, InterfaceName, Interface string
+	// TypeModule identifies the defining module independently of a target's
+	// selected source declaration, for cross-target conformance projections.
+	TypeModule                                    string
 	TypeDeclaration, InterfaceDeclaration, Clause lexer.Token
 	State                                         diagnostics.ProofState
 	Failures                                      []InterfaceConformanceFailure

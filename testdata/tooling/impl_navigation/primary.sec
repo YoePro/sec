@@ -1,0 +1,21 @@
+module impl_navigation
+
+type Widget struct {
+    value: int,
+}
+
+type Box[T] struct {
+    value: T,
+}
+
+impl Widget {
+    fn Read() int {
+        return self.value
+    }
+}
+
+impl Box[T] {
+    fn IsPresent() bool {
+        return true
+    }
+}

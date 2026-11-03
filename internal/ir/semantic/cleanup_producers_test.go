@@ -96,10 +96,7 @@ fn Maybe(flag: bool) Result[int, Failure] {
     return Err(Failure.Missing)
 }
 `
-	for name, test := range map[string]struct{ body, want string }{
-		"branch reassignment": {"fn F(flag: bool) int {\n    let mut h := Make(1)\n    if flag {\n        h = Make(2)\n    }\n    return h.id\n}\n", "outside its declaring scope"},
-		"field move":          {"fn F() Handle {\n    let p := Pair { left: Make(1), count: 2, right: Make(3) }\n    return p.left\n}\n", "P17"},
-	} {
+	for name, test := range map[string]struct{ body, want string }{} {
 		t.Run(name, func(t *testing.T) {
 			module, err := analyzedModule(t, prefix+test.body+"\nfn main() int {\n    return 0\n}\n", 17)
 			var unsupported *UnsupportedFeatureError
@@ -107,6 +104,29 @@ fn Maybe(flag: bool) Result[int, Failure] {
 				t.Fatalf("want boundary %q, got module=%v err=%v", test.want, module != nil, err)
 			}
 		})
+	}
+}
+
+// A reassignment in a branch, once a named boundary, lowers since P17-19 and verifies.
+func TestOwnedLocalBranchReassignmentLowers(t *testing.T) {
+	module, err := analyzedModule(t, ownedLocalSource+`
+fn F(flag: bool) int {
+    let mut h := Make(1)
+    if flag {
+        h = Make(2)
+    }
+    return h.id
+}
+
+fn main() int {
+    return 0
+}
+`, 17)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Verify(module); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -641,7 +661,7 @@ fn main() int {
 		}
 	}
 	for _, item := range []struct{ source, want string }{
-		{"fn Use() void {\n    let h := Make(1)\n    defer {\n        let x := h.id\n        discard x\n    }\n}\n", "needs destruction"},
+		{"fn Use() void {\n    let mut h := Make(1)\n    defer {\n        let x := h.id\n        discard x\n    }\n    h = Make(2)\n}\n", "a registered defer reads"},
 		{"fn Use() void {\n    defer {\n        let h := Make(1)\n        discard h\n    }\n}\n", "owned local inside a defer body"},
 		{"fn Use(a: ref int) void {\n    defer {\n        let x := *a\n        discard x\n    }\n}\n", "not a resolved capture"},
 	} {
@@ -649,5 +669,33 @@ fn main() int {
 		if err == nil || !strings.Contains(err.Error(), item.want) {
 			t.Errorf("%s: want %q, got %v", item.source, item.want, err)
 		}
+	}
+}
+
+// A defer body reads an owned value through its capture Place; the owner
+// registered first, so the defer runs before the owner is destroyed.
+// Rules: rules/memory/destruction.md — §§ 6.3(3), 35.6.
+func TestDeferReadsOwnedCapture(t *testing.T) {
+	module, err := analyzedModule(t, ownedLocalSource+`
+fn Use() void {
+    let h := Make(1)
+    defer {
+        let x := h.id
+        discard x
+    }
+}
+
+fn main() int {
+    return 0
+}
+`, 17)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Verify(module); err != nil {
+		t.Fatal(err)
+	}
+	if text := Format(module); !strings.Contains(text, "place.field") || !strings.Contains(text, "cleanup.defer-register") {
+		t.Errorf("an owned capture must be read through its Place:\n%s", text)
 	}
 }

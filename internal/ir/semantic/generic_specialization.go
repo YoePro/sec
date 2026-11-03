@@ -85,36 +85,11 @@ func (b *builder) substituteTemplateType(typ sema.Type, substitution map[string]
 	return sema.SubstituteGenericType(typ, substitution)
 }
 
-// concreteSemaType reports a type with no unresolved generic parameter left,
+// concreteSemaType requires resolved parameters and storage metadata, including
+// nested fields and variant payloads; InvalidType is never concrete. This is
 // the generic-closure condition of monomorphization.md § 13.3.
 func concreteSemaType(typ sema.Type) bool {
-	if typ.Kind == sema.GenericType {
-		return false
-	}
-	nested := append([]sema.Type(nil), typ.TypeArgs...)
-	nested = append(nested, typ.FunctionParameterTypes...)
-	for _, pointer := range []*sema.Type{typ.Element, typ.NamedBase, typ.FunctionReturnType} {
-		if pointer != nil {
-			nested = append(nested, *pointer)
-		}
-	}
-	for _, field := range typ.Fields {
-		nested = append(nested, field.Type)
-	}
-	for _, variant := range typ.UnionVariants {
-		if variant.Payload != nil {
-			nested = append(nested, *variant.Payload)
-		}
-		for _, field := range variant.PayloadFields {
-			nested = append(nested, field.Type)
-		}
-	}
-	for _, inner := range nested {
-		if !concreteSemaType(inner) {
-			return false
-		}
-	}
-	return true
+	return unresolvedConcreteStorage(typ, "type") == ""
 }
 
 // demandSpecialization resolves one selected call of a generic template to its

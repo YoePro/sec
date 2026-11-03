@@ -1,0 +1,16 @@
+module main
+
+fn Log(value: int) void {
+}
+
+fn T() void {
+    let mut index := 0
+    while index < 2 {
+        index = index + 1
+        let mut copy := index
+        defer {
+            Log(copy)
+        }
+        copy = copy + 10
+    }
+}

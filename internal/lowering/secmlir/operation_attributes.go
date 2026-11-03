@@ -46,7 +46,9 @@ func operationAttributes(operation semantic.Operation, synthesized bool) []strin
 // Rules: rules/compiler/semantic_ir.md — §§107,124;
 // rules/mlir/dialect-versions/sec_mlir_dialect_v6.md — §12.
 func (e *emitter) emitOperationAttributes(operation semantic.Operation, synthesized bool) {
-	if attributes := operationAttributes(operation, synthesized); len(attributes) != 0 {
+	attributes := append(operationAttributes(operation, synthesized), e.extraAttributes...)
+	e.extraAttributes = nil
+	if len(attributes) != 0 {
 		fmt.Fprintf(&e.out, "{%s} ", strings.Join(attributes, ", "))
 	}
 }

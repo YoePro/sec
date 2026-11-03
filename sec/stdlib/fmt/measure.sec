@@ -1,1 +1,85 @@
 module fmt
+
+/**
+ * Discards formatted text while allowing the core formatter
+ * to calculate the complete UTF-8 byte count.
+ *
+ * Description:
+ * Never stores or writes output and cannot fail.
+ *
+ * Allocation:
+ * Does not allocate.
+ */
+type _MeasureFormatSink struct {
+}
+
+impl _MeasureFormatSink implements FormatSink[CollectionError] {
+    /**
+     * Accepts a text segment without materializing output.
+     *
+     * Parameters:
+     * - text: UTF-8 segment already counted by the formatter.
+     *
+     * Returns:
+     * Always Ok().
+     *
+     * Allocation:
+     * Does not allocate.
+     */
+    fn WriteText(text: string) Result[void, CollectionError] {
+        return Ok()
+    }
+}
+
+/**
+ * Calculates the UTF-8 byte count of composite-formatted text.
+ *
+ * Description:
+ * Uses the canonical core formatting engine without constructing
+ * or writing the complete result.
+ *
+ * Parameters:
+ * - format: Composite format string.
+ * - values: Heterogeneous borrowed formatting arguments.
+ *
+ * Returns:
+ * - Ok(count): Exact formatted UTF-8 byte count.
+ *
+ * Errors:
+ * - FormattedSizeError.Text: Invalid format or conversion failure.
+ * - FormattedSizeError.SizeOverflow: Unrepresentable byte count.
+ *
+ * Ownership:
+ * Does not consume or modify the formatting arguments.
+ *
+ * Allocation:
+ * Does not allocate output storage.
+ * Argument ToString() implementations may allocate.
+ */
+fn FormattedSize[...Types](format: string, values: ...ref Types) Result[uint, FormattedSizeError] {
+    let mut sink := new _MeasureFormatSink()
+
+    let result := FormatComposite(format, sink, values...)
+
+    match result {
+        Ok(count) => {
+            return Ok(count)
+        }
+
+        Err(failure) => {
+            match failure {
+                Text(cause) => {
+                    return Err(FormattedSizeError.Text(cause))
+                }
+
+                SizeOverflow => {
+                    return Err(FormattedSizeError.SizeOverflow)
+                }
+
+                Sink(_) => {
+                    panic "FormattedSize: measuring sink cannot fail"
+                }
+            }
+        }
+    }
+}

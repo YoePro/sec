@@ -1,0 +1,19 @@
+module main
+
+type Box[T] struct {
+    Value: T,
+}
+
+type Choice[T] union {
+    Item(T)
+    Named { Value: Box[T] }
+    Empty
+}
+
+fn Read(value: Box[int]) int {
+    return value.Value
+}
+
+fn Keep(value: Choice[int]) Choice[int] {
+    return value
+}

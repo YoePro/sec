@@ -50,7 +50,8 @@ func TestSchema13EmitsOwnedVariants(t *testing.T) {
 			}
 			for _, want := range []string{
 				`kind = "active-variant"`, `variants = [{variant = 0 : i32`, `payloadActions = ["construct-direct"]`, `payloadAction = "move"`,
-				`"sec.result.unwrap_ok"(`, `cause = "temporary-end"`, `"sec.place.read"(%v`, `action = "observe"`, `action = "candidate"`, `if_owned`, `if_active`, `"sec.place.union_payload"(`, `"sec.own.move_from_place"(`, `"sec.own.initialize_place"(`,
+				`"sec.result.unwrap_ok"(`, `cause = "temporary-end"`, `"sec.place.read"(%v`, `action = "observe"`, `action = "candidate"`, `if_owned`, `if_active`, `"sec.place.field"(`,
+				`sec.result_action = "move"`, `sec.return_action = "move"`, `sec.successor_actions = [`, `"sec.place.union_payload"(`, `"sec.own.move_from_place"(`, `"sec.own.initialize_place"(`,
 			} {
 				if !bytes.Contains(output, []byte(want)) {
 					t.Errorf("missing %s in:\n%s", want, output)

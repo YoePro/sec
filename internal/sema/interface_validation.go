@@ -40,7 +40,7 @@ func (a *Analyzer) validateInterfaceConformance() {
 // Rules: rules/declarations/interfaces.md — §§4–6,12;
 // rules/compiler/semantic_ir.md — §109(1–4).
 func (a *Analyzer) validateTypeImplementsInterface(typ Type, iface Type) {
-	fact := InterfaceConformanceFact{TypeName: typ.Name, InterfaceName: iface.Name,
+	fact := InterfaceConformanceFact{TypeName: typ.Name, TypeModule: typ.Module, InterfaceName: iface.Name,
 		Interface: typeDisplayName(iface), TypeDeclaration: a.typeDefinitionTokens[typ.Name],
 		InterfaceDeclaration: a.typeDefinitionTokens[iface.Name],
 		Clause:               a.interfaceClauseAnchor(typ, iface, a.typeDefinitionTokens[typ.Name])}

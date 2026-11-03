@@ -33,7 +33,7 @@ fn ReadAtLeast(reader: ref mut Reader, buffer: ref mut byte[], minimum: uint) Re
         // Form the checked view before try: only the IO failure propagates.
         // runtime_checks.md "Slice checks"; errorhandling.md §§ 11–14.
         let remaining := ref mut buffer[total..]
-        let count := try reader.Read(remaining)
+        let count     := try reader.Read(remaining)
         if count == 0u {
             return Err(IOError.UnexpectedEnd)
         }
@@ -49,7 +49,7 @@ fn ReadExactly(reader: ref mut Reader, buffer: ref mut byte[]) Result[void, IOEr
         // Form the checked view before try: only the IO failure propagates.
         // runtime_checks.md "Slice checks"; errorhandling.md §§ 11–14.
         let remaining := ref mut buffer[total..]
-        let count := try reader.Read(remaining)
+        let count     := try reader.Read(remaining)
         if count == 0u {
             return Err(IOError.UnexpectedEnd)
         }
@@ -61,8 +61,8 @@ fn ReadExactly(reader: ref mut Reader, buffer: ref mut byte[]) Result[void, IOEr
 /** Reads to EOF into a new array of at most limit bytes (std-io.md § 8.5). */
 fn ReadAll(reader: ref mut Reader, limit: uint64) Result[byte[], IOError] {
     let mut result: byte[]
-    let mut chunk: byte[4096]
-    let mut total: uint64 := 0
+    let mut chunk:  byte[4096]
+    let mut total:  uint64 := 0
 
     while true {
         let count := try reader.Read(ref mut chunk[..])
@@ -92,11 +92,16 @@ fn ReadAll(reader: ref mut Reader, limit: uint64) Result[byte[], IOError] {
 /** Writes every byte of data or reports why it could not (std-io.md § 8.6). */
 fn WriteAll(writer: ref mut Writer, data: ref byte[]) Result[void, IOError] {
     let mut written := 0u
-    let mut idle := 0u
+    let mut idle    := 0u
     while written < data.Len {
         // The slice retains its ordinary bounds-check behavior outside try.
         let remaining := ref data[written..]
-        let count := try writer.Write(remaining)
+        let count     := try writer.Write(remaining)
+
+        if count > remaining.Len {
+            return Err(IOError.NativeFailure)
+        }
+
         if count == 0u {
             idle += 1
             if idle >= _maxZeroProgressWrites {
@@ -112,7 +117,7 @@ fn WriteAll(writer: ref mut Writer, data: ref byte[]) Result[void, IOError] {
 
 /** Streams source to destination until EOF with bounded storage (std-io.md § 8.7). */
 fn Copy(destination: ref mut Writer, source: ref mut Reader) Result[uint64, IOError] {
-    let mut chunk: byte[4096]
+    let mut chunk:  byte[4096]
     let mut copied: uint64 := 0
 
     while true {
@@ -128,7 +133,7 @@ fn Copy(destination: ref mut Writer, source: ref mut Reader) Result[uint64, IOEr
 
 /** Streams exactly count bytes or reports UnexpectedEnd (std-io.md § 8.8). */
 fn CopyN(destination: ref mut Writer, source: ref mut Reader, count: uint64) Result[uint64, IOError] {
-    let mut chunk: byte[4096]
+    let mut chunk:  byte[4096]
     let mut copied: uint64 := 0
 
     while copied < count {
@@ -137,7 +142,7 @@ fn CopyN(destination: ref mut Writer, source: ref mut Reader, count: uint64) Res
             want = uint(count - copied)
         }
         let requested := ref mut chunk[..<want]
-        let received := try source.Read(requested)
+        let received  := try source.Read(requested)
         discard requested
         if received == 0u {
             return Err(IOError.UnexpectedEnd)

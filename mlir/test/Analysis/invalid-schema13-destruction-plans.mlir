@@ -391,7 +391,7 @@ module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 :
 !r = !sec.result<!h, !sec.int>
 !a = !sec.array<!h, "1000000">
 !z = !sec.array<!h, "0">
-// expected-error@+1 {{names an invalid, repeated or payload-free variant}}
+// expected-error@+1 {{which is not the named-field variant's payload struct}}
 module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 : i32, sec.module_id = "plans", sec.source_files = [], sec.target_os = "linux", sec.target_arch = "armv7", sec.target_triple = "armv7-unknown-linux-gnueabihf", sec.target_abi = "gnu", sec.target_profile = "hosted", sec.target_endianness = "little", dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32>>, sec.destruction_plans = [{id = "h", type = !h, kind = "struct", custom_free = true, free_type = "H", free_function = @free}, {id = "f", type = !f, kind = "active-variant", variants = [{variant = 0 : i32, plan = "h"}]}]} {
   func.func @free(%self: !sec.ref_mut<!h> {sec.reference = {borrow_id = 1 : i32, lifetime_id = 1 : i32, validity_policy = "proven", validity_proof = "caller-owned-borrow", address_stability = "Stable", provenance = "receiver"}}) {
     return

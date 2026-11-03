@@ -2,10 +2,11 @@
 // Rules: rules/mlir/packages/sec-mlir-dialect_package17.md — sections 14, 25-26, 63.
 
 !h = !sec.struct<identity = "main::H", typeArguments = [], fields = [#sec.struct_field<ordinal = 0, name = "id", type = !sec.int, tags = []>]>
+!p = !sec.struct<identity = "main::P", typeArguments = [], fields = [#sec.struct_field<ordinal = 0, name = "l", type = !h, tags = []>, #sec.struct_field<ordinal = 1, name = "r", type = !h, tags = []>]>
 !f = !sec.result<!sec.int, !h>
 !o = !sec.union<identity = "core::Option<main::H>", typeArguments = [!h], variants = [#sec.union_variant<index = 0, name = "Some", kind = "single", payload = !h, fields = []>, #sec.union_variant<index = 1, name = "None", kind = "empty", fields = []>]>
 
-module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 : i32, sec.module_id = "own", sec.source_files = [], sec.target_os = "linux", sec.target_arch = "armv7", sec.target_triple = "armv7-unknown-linux-gnueabihf", sec.target_abi = "gnu", sec.target_profile = "hosted", sec.target_endianness = "little", dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32>>, sec.destruction_plans = [{id = "h", type = !h, kind = "struct", custom_free = true, free_type = "H", free_function = @free}, {id = "f", type = !f, kind = "active-variant", variants = [{variant = 1 : i32, plan = "h"}]}, {id = "o", type = !o, kind = "active-variant", variants = [{variant = 0 : i32, plan = "h"}]}]} {
+module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 : i32, sec.module_id = "own", sec.source_files = [], sec.target_os = "linux", sec.target_arch = "armv7", sec.target_triple = "armv7-unknown-linux-gnueabihf", sec.target_abi = "gnu", sec.target_profile = "hosted", sec.target_endianness = "little", dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32>>, sec.destruction_plans = [{id = "h", type = !h, kind = "struct", custom_free = true, free_type = "H", free_function = @free}, {id = "f", type = !f, kind = "active-variant", variants = [{variant = 1 : i32, plan = "h"}]}, {id = "o", type = !o, kind = "active-variant", variants = [{variant = 0 : i32, plan = "h"}]}, {id = "p", type = !p, kind = "struct", fields = [{field = 1 : i32, plan = "h"}, {field = 0 : i32, plan = "h"}]}]} {
   func.func @free(%self: !sec.ref_mut<!h> {sec.reference = {borrow_id = 1 : i32, lifetime_id = 1 : i32, validity_policy = "proven", validity_proof = "caller-owned-borrow", address_stability = "Stable", provenance = "receiver"}}) {
     return
   }
@@ -13,9 +14,41 @@ module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 :
   func.func private @sink(!h) attributes {sec.function_id = "sink", sec.source_name = "sink", sec.extern = false, sec.unsafe = false}
   func.func private @makeOption() -> !o attributes {sec.function_id = "makeOption", sec.source_name = "makeOption", sec.extern = false, sec.unsafe = false}
   func.func private @takeOption(!o) attributes {sec.function_id = "takeOption", sec.source_name = "takeOption", sec.extern = false, sec.unsafe = false}
+  func.func private @makePair() -> !p attributes {sec.function_id = "makePair", sec.source_name = "makePair", sec.extern = false, sec.unsafe = false}
+  func.func private @makeFailure() -> !f attributes {sec.function_id = "makeFailure", sec.source_name = "makeFailure", sec.extern = false, sec.unsafe = false}
+  func.func @whole_replace_needs_identities() {
+    %v = "sec.call.direct"() <{callee = @makePair}> {sec.argument_actions = [], sec.result_action = "move"} : () -> !p
+    %s = "sec.storage.declare"() {sec.mutable = true, sec.source_name = "p", sec.storage_class = "local-automatic", sec.storage_id = 1 : i32, sec.address_taken = true} : () -> !sec.storage<!p>
+    %p = "sec.place.storage"(%s) <{place_root_id = 1 : i32, storage_identity = 1 : i32, address_space = "ordinary"}> : (!sec.storage<!p>) -> !sec.place<!p, "rw">
+    "sec.own.initialize_place"(%p, %v) : (!sec.place<!p, "rw">, !p) -> ()
+    "sec.cleanup.track_owned"(%p) <{cleanup_action_id = 1 : i32, cleanup_scope_id = 1 : i32, cleanup_registration_ordinal = 1 : i32, destruction_plan = "p"}> : (!sec.place<!p, "rw">) -> ()
+    %f = "sec.place.field"(%p) <{field = 0 : i32}> : (!sec.place<!p, "rw">) -> !sec.place<!h, "rw">
+    %n = "sec.call.direct"() <{callee = @makePair}> {sec.argument_actions = [], sec.result_action = "move"} : () -> !p
+    // expected-error@+1 {{requires distinct old and new cleanup action identities}}
+    "sec.own.replace_place"(%p, %n) <{destruction_plan = "p", old_cleanup_action_id = 0 : i32, new_cleanup_action_id = 0 : i32}> : (!sec.place<!p, "rw">, !p) -> ()
+    return
+  }
+}
+
+// -----
+
+!h = !sec.struct<identity = "main::H", typeArguments = [], fields = [#sec.struct_field<ordinal = 0, name = "id", type = !sec.int, tags = []>]>
+!p = !sec.struct<identity = "main::P", typeArguments = [], fields = [#sec.struct_field<ordinal = 0, name = "l", type = !h, tags = []>, #sec.struct_field<ordinal = 1, name = "r", type = !h, tags = []>]>
+!f = !sec.result<!sec.int, !h>
+!o = !sec.union<identity = "core::Option<main::H>", typeArguments = [!h], variants = [#sec.union_variant<index = 0, name = "Some", kind = "single", payload = !h, fields = []>, #sec.union_variant<index = 1, name = "None", kind = "empty", fields = []>]>
+
+module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 : i32, sec.module_id = "own", sec.source_files = [], sec.target_os = "linux", sec.target_arch = "armv7", sec.target_triple = "armv7-unknown-linux-gnueabihf", sec.target_abi = "gnu", sec.target_profile = "hosted", sec.target_endianness = "little", dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32>>, sec.destruction_plans = [{id = "h", type = !h, kind = "struct", custom_free = true, free_type = "H", free_function = @free}, {id = "f", type = !f, kind = "active-variant", variants = [{variant = 1 : i32, plan = "h"}]}, {id = "o", type = !o, kind = "active-variant", variants = [{variant = 0 : i32, plan = "h"}]}, {id = "p", type = !p, kind = "struct", fields = [{field = 1 : i32, plan = "h"}, {field = 0 : i32, plan = "h"}]}]} {
+  func.func @free(%self: !sec.ref_mut<!h> {sec.reference = {borrow_id = 1 : i32, lifetime_id = 1 : i32, validity_policy = "proven", validity_proof = "caller-owned-borrow", address_stability = "Stable", provenance = "receiver"}}) {
+    return
+  }
+  func.func private @make() -> !h attributes {sec.function_id = "make", sec.source_name = "make", sec.extern = false, sec.unsafe = false}
+  func.func private @sink(!h) attributes {sec.function_id = "sink", sec.source_name = "sink", sec.extern = false, sec.unsafe = false}
+  func.func private @makeOption() -> !o attributes {sec.function_id = "makeOption", sec.source_name = "makeOption", sec.extern = false, sec.unsafe = false}
+  func.func private @takeOption(!o) attributes {sec.function_id = "takeOption", sec.source_name = "takeOption", sec.extern = false, sec.unsafe = false}
+  func.func private @makePair() -> !p attributes {sec.function_id = "makePair", sec.source_name = "makePair", sec.extern = false, sec.unsafe = false}
   func.func private @makeFailure() -> !f attributes {sec.function_id = "makeFailure", sec.source_name = "makeFailure", sec.extern = false, sec.unsafe = false}
   func.func @replace_needs_if_owned(%c: i1) {
-    %o = "sec.call.direct"() <{callee = @makeOption}> {sec.argument_actions = []} : () -> !o
+    %o = "sec.call.direct"() <{callee = @makeOption}> {sec.argument_actions = [], sec.result_action = "move"} : () -> !o
     %s = "sec.storage.declare"() {sec.mutable = true, sec.source_name = "o", sec.storage_class = "local-automatic", sec.storage_id = 1 : i32, sec.address_taken = true} : () -> !sec.storage<!o>
     %p = "sec.place.storage"(%s) <{place_root_id = 1 : i32, storage_identity = 1 : i32, address_space = "ordinary"}> : (!sec.storage<!o>) -> !sec.place<!o, "rw">
     "sec.own.initialize_place"(%p, %o) : (!sec.place<!o, "rw">, !o) -> ()
@@ -27,7 +60,7 @@ module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 :
     "sec.call.direct"(%m) <{callee = @takeOption}> {sec.argument_actions = ["move"]} : (!o) -> ()
     cf.br ^join
     ^join:
-    %n = "sec.call.direct"() <{callee = @makeOption}> {sec.argument_actions = []} : () -> !o
+    %n = "sec.call.direct"() <{callee = @makeOption}> {sec.argument_actions = [], sec.result_action = "move"} : () -> !o
     // expected-error@+1 {{uses a value that is moved, destroyed or uninitialized on some path}}
     "sec.own.replace_place"(%p, %n) <{destruction_plan = "o", old_cleanup_action_id = 1 : i32, new_cleanup_action_id = 2 : i32}> : (!sec.place<!o, "rw">, !o) -> ()
     return
@@ -37,10 +70,11 @@ module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 :
 // -----
 
 !h = !sec.struct<identity = "main::H", typeArguments = [], fields = [#sec.struct_field<ordinal = 0, name = "id", type = !sec.int, tags = []>]>
+!p = !sec.struct<identity = "main::P", typeArguments = [], fields = [#sec.struct_field<ordinal = 0, name = "l", type = !h, tags = []>, #sec.struct_field<ordinal = 1, name = "r", type = !h, tags = []>]>
 !f = !sec.result<!sec.int, !h>
 !o = !sec.union<identity = "core::Option<main::H>", typeArguments = [!h], variants = [#sec.union_variant<index = 0, name = "Some", kind = "single", payload = !h, fields = []>, #sec.union_variant<index = 1, name = "None", kind = "empty", fields = []>]>
 
-module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 : i32, sec.module_id = "own", sec.source_files = [], sec.target_os = "linux", sec.target_arch = "armv7", sec.target_triple = "armv7-unknown-linux-gnueabihf", sec.target_abi = "gnu", sec.target_profile = "hosted", sec.target_endianness = "little", dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32>>, sec.destruction_plans = [{id = "h", type = !h, kind = "struct", custom_free = true, free_type = "H", free_function = @free}, {id = "f", type = !f, kind = "active-variant", variants = [{variant = 1 : i32, plan = "h"}]}, {id = "o", type = !o, kind = "active-variant", variants = [{variant = 0 : i32, plan = "h"}]}]} {
+module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 : i32, sec.module_id = "own", sec.source_files = [], sec.target_os = "linux", sec.target_arch = "armv7", sec.target_triple = "armv7-unknown-linux-gnueabihf", sec.target_abi = "gnu", sec.target_profile = "hosted", sec.target_endianness = "little", dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32>>, sec.destruction_plans = [{id = "h", type = !h, kind = "struct", custom_free = true, free_type = "H", free_function = @free}, {id = "f", type = !f, kind = "active-variant", variants = [{variant = 1 : i32, plan = "h"}]}, {id = "o", type = !o, kind = "active-variant", variants = [{variant = 0 : i32, plan = "h"}]}, {id = "p", type = !p, kind = "struct", fields = [{field = 1 : i32, plan = "h"}, {field = 0 : i32, plan = "h"}]}]} {
   func.func @free(%self: !sec.ref_mut<!h> {sec.reference = {borrow_id = 1 : i32, lifetime_id = 1 : i32, validity_policy = "proven", validity_proof = "caller-owned-borrow", address_stability = "Stable", provenance = "receiver"}}) {
     return
   }
@@ -48,6 +82,7 @@ module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 :
   func.func private @sink(!h) attributes {sec.function_id = "sink", sec.source_name = "sink", sec.extern = false, sec.unsafe = false}
   func.func private @makeOption() -> !o attributes {sec.function_id = "makeOption", sec.source_name = "makeOption", sec.extern = false, sec.unsafe = false}
   func.func private @takeOption(!o) attributes {sec.function_id = "takeOption", sec.source_name = "takeOption", sec.extern = false, sec.unsafe = false}
+  func.func private @makePair() -> !p attributes {sec.function_id = "makePair", sec.source_name = "makePair", sec.extern = false, sec.unsafe = false}
   func.func private @makeFailure() -> !f attributes {sec.function_id = "makeFailure", sec.source_name = "makeFailure", sec.extern = false, sec.unsafe = false}
   func.func @use_after_conditional_discard(%c: i1, %v: !h) {
     cf.cond_br %c, ^moved, ^join
@@ -65,10 +100,11 @@ module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 :
 // -----
 
 !h = !sec.struct<identity = "main::H", typeArguments = [], fields = [#sec.struct_field<ordinal = 0, name = "id", type = !sec.int, tags = []>]>
+!p = !sec.struct<identity = "main::P", typeArguments = [], fields = [#sec.struct_field<ordinal = 0, name = "l", type = !h, tags = []>, #sec.struct_field<ordinal = 1, name = "r", type = !h, tags = []>]>
 !f = !sec.result<!sec.int, !h>
 !o = !sec.union<identity = "core::Option<main::H>", typeArguments = [!h], variants = [#sec.union_variant<index = 0, name = "Some", kind = "single", payload = !h, fields = []>, #sec.union_variant<index = 1, name = "None", kind = "empty", fields = []>]>
 
-module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 : i32, sec.module_id = "own", sec.source_files = [], sec.target_os = "linux", sec.target_arch = "armv7", sec.target_triple = "armv7-unknown-linux-gnueabihf", sec.target_abi = "gnu", sec.target_profile = "hosted", sec.target_endianness = "little", dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32>>, sec.destruction_plans = [{id = "h", type = !h, kind = "struct", custom_free = true, free_type = "H", free_function = @free}, {id = "f", type = !f, kind = "active-variant", variants = [{variant = 1 : i32, plan = "h"}]}, {id = "o", type = !o, kind = "active-variant", variants = [{variant = 0 : i32, plan = "h"}]}]} {
+module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 : i32, sec.module_id = "own", sec.source_files = [], sec.target_os = "linux", sec.target_arch = "armv7", sec.target_triple = "armv7-unknown-linux-gnueabihf", sec.target_abi = "gnu", sec.target_profile = "hosted", sec.target_endianness = "little", dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32>>, sec.destruction_plans = [{id = "h", type = !h, kind = "struct", custom_free = true, free_type = "H", free_function = @free}, {id = "f", type = !f, kind = "active-variant", variants = [{variant = 1 : i32, plan = "h"}]}, {id = "o", type = !o, kind = "active-variant", variants = [{variant = 0 : i32, plan = "h"}]}, {id = "p", type = !p, kind = "struct", fields = [{field = 1 : i32, plan = "h"}, {field = 0 : i32, plan = "h"}]}]} {
   func.func @free(%self: !sec.ref_mut<!h> {sec.reference = {borrow_id = 1 : i32, lifetime_id = 1 : i32, validity_policy = "proven", validity_proof = "caller-owned-borrow", address_stability = "Stable", provenance = "receiver"}}) {
     return
   }
@@ -76,6 +112,7 @@ module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 :
   func.func private @sink(!h) attributes {sec.function_id = "sink", sec.source_name = "sink", sec.extern = false, sec.unsafe = false}
   func.func private @makeOption() -> !o attributes {sec.function_id = "makeOption", sec.source_name = "makeOption", sec.extern = false, sec.unsafe = false}
   func.func private @takeOption(!o) attributes {sec.function_id = "takeOption", sec.source_name = "takeOption", sec.extern = false, sec.unsafe = false}
+  func.func private @makePair() -> !p attributes {sec.function_id = "makePair", sec.source_name = "makePair", sec.extern = false, sec.unsafe = false}
   func.func private @makeFailure() -> !f attributes {sec.function_id = "makeFailure", sec.source_name = "makeFailure", sec.extern = false, sec.unsafe = false}
   func.func @candidate_cannot_be_taken(%o: !o) {
     %p = "sec.place.value"(%o) <{place_root_id = 1 : i32, storage_identity = 1 : i32, address_space = "ordinary"}> : (!o) -> !sec.place<!o, "ro">
@@ -95,10 +132,11 @@ module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 :
 // -----
 
 !h = !sec.struct<identity = "main::H", typeArguments = [], fields = [#sec.struct_field<ordinal = 0, name = "id", type = !sec.int, tags = []>]>
+!p = !sec.struct<identity = "main::P", typeArguments = [], fields = [#sec.struct_field<ordinal = 0, name = "l", type = !h, tags = []>, #sec.struct_field<ordinal = 1, name = "r", type = !h, tags = []>]>
 !f = !sec.result<!sec.int, !h>
 !o = !sec.union<identity = "core::Option<main::H>", typeArguments = [!h], variants = [#sec.union_variant<index = 0, name = "Some", kind = "single", payload = !h, fields = []>, #sec.union_variant<index = 1, name = "None", kind = "empty", fields = []>]>
 
-module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 : i32, sec.module_id = "own", sec.source_files = [], sec.target_os = "linux", sec.target_arch = "armv7", sec.target_triple = "armv7-unknown-linux-gnueabihf", sec.target_abi = "gnu", sec.target_profile = "hosted", sec.target_endianness = "little", dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32>>, sec.destruction_plans = [{id = "h", type = !h, kind = "struct", custom_free = true, free_type = "H", free_function = @free}, {id = "f", type = !f, kind = "active-variant", variants = [{variant = 1 : i32, plan = "h"}]}, {id = "o", type = !o, kind = "active-variant", variants = [{variant = 0 : i32, plan = "h"}]}]} {
+module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 : i32, sec.module_id = "own", sec.source_files = [], sec.target_os = "linux", sec.target_arch = "armv7", sec.target_triple = "armv7-unknown-linux-gnueabihf", sec.target_abi = "gnu", sec.target_profile = "hosted", sec.target_endianness = "little", dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32>>, sec.destruction_plans = [{id = "h", type = !h, kind = "struct", custom_free = true, free_type = "H", free_function = @free}, {id = "f", type = !f, kind = "active-variant", variants = [{variant = 1 : i32, plan = "h"}]}, {id = "o", type = !o, kind = "active-variant", variants = [{variant = 0 : i32, plan = "h"}]}, {id = "p", type = !p, kind = "struct", fields = [{field = 1 : i32, plan = "h"}, {field = 0 : i32, plan = "h"}]}]} {
   func.func @free(%self: !sec.ref_mut<!h> {sec.reference = {borrow_id = 1 : i32, lifetime_id = 1 : i32, validity_policy = "proven", validity_proof = "caller-owned-borrow", address_stability = "Stable", provenance = "receiver"}}) {
     return
   }
@@ -106,9 +144,10 @@ module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 :
   func.func private @sink(!h) attributes {sec.function_id = "sink", sec.source_name = "sink", sec.extern = false, sec.unsafe = false}
   func.func private @makeOption() -> !o attributes {sec.function_id = "makeOption", sec.source_name = "makeOption", sec.extern = false, sec.unsafe = false}
   func.func private @takeOption(!o) attributes {sec.function_id = "takeOption", sec.source_name = "takeOption", sec.extern = false, sec.unsafe = false}
+  func.func private @makePair() -> !p attributes {sec.function_id = "makePair", sec.source_name = "makePair", sec.extern = false, sec.unsafe = false}
   func.func private @makeFailure() -> !f attributes {sec.function_id = "makeFailure", sec.source_name = "makeFailure", sec.extern = false, sec.unsafe = false}
   func.func @candidate_dies_with_its_payload() {
-    %o = "sec.call.direct"() <{callee = @makeOption}> {sec.argument_actions = []} : () -> !o
+    %o = "sec.call.direct"() <{callee = @makeOption}> {sec.argument_actions = [], sec.result_action = "move"} : () -> !o
     %s = "sec.storage.declare"() {sec.mutable = true, sec.source_name = "o", sec.storage_class = "local-automatic", sec.storage_id = 1 : i32, sec.address_taken = true} : () -> !sec.storage<!o>
     %p = "sec.place.storage"(%s) <{place_root_id = 1 : i32, storage_identity = 1 : i32, address_space = "ordinary"}> : (!sec.storage<!o>) -> !sec.place<!o, "rw">
     "sec.own.initialize_place"(%p, %o) : (!sec.place<!o, "rw">, !o) -> ()
@@ -133,10 +172,11 @@ module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 :
 // -----
 
 !h = !sec.struct<identity = "main::H", typeArguments = [], fields = [#sec.struct_field<ordinal = 0, name = "id", type = !sec.int, tags = []>]>
+!p = !sec.struct<identity = "main::P", typeArguments = [], fields = [#sec.struct_field<ordinal = 0, name = "l", type = !h, tags = []>, #sec.struct_field<ordinal = 1, name = "r", type = !h, tags = []>]>
 !f = !sec.result<!sec.int, !h>
 !o = !sec.union<identity = "core::Option<main::H>", typeArguments = [!h], variants = [#sec.union_variant<index = 0, name = "Some", kind = "single", payload = !h, fields = []>, #sec.union_variant<index = 1, name = "None", kind = "empty", fields = []>]>
 
-module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 : i32, sec.module_id = "own", sec.source_files = [], sec.target_os = "linux", sec.target_arch = "armv7", sec.target_triple = "armv7-unknown-linux-gnueabihf", sec.target_abi = "gnu", sec.target_profile = "hosted", sec.target_endianness = "little", dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32>>, sec.destruction_plans = [{id = "h", type = !h, kind = "struct", custom_free = true, free_type = "H", free_function = @free}, {id = "f", type = !f, kind = "active-variant", variants = [{variant = 1 : i32, plan = "h"}]}, {id = "o", type = !o, kind = "active-variant", variants = [{variant = 0 : i32, plan = "h"}]}]} {
+module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 : i32, sec.module_id = "own", sec.source_files = [], sec.target_os = "linux", sec.target_arch = "armv7", sec.target_triple = "armv7-unknown-linux-gnueabihf", sec.target_abi = "gnu", sec.target_profile = "hosted", sec.target_endianness = "little", dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32>>, sec.destruction_plans = [{id = "h", type = !h, kind = "struct", custom_free = true, free_type = "H", free_function = @free}, {id = "f", type = !f, kind = "active-variant", variants = [{variant = 1 : i32, plan = "h"}]}, {id = "o", type = !o, kind = "active-variant", variants = [{variant = 0 : i32, plan = "h"}]}, {id = "p", type = !p, kind = "struct", fields = [{field = 1 : i32, plan = "h"}, {field = 0 : i32, plan = "h"}]}]} {
   func.func @free(%self: !sec.ref_mut<!h> {sec.reference = {borrow_id = 1 : i32, lifetime_id = 1 : i32, validity_policy = "proven", validity_proof = "caller-owned-borrow", address_stability = "Stable", provenance = "receiver"}}) {
     return
   }
@@ -144,9 +184,10 @@ module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 :
   func.func private @sink(!h) attributes {sec.function_id = "sink", sec.source_name = "sink", sec.extern = false, sec.unsafe = false}
   func.func private @makeOption() -> !o attributes {sec.function_id = "makeOption", sec.source_name = "makeOption", sec.extern = false, sec.unsafe = false}
   func.func private @takeOption(!o) attributes {sec.function_id = "takeOption", sec.source_name = "takeOption", sec.extern = false, sec.unsafe = false}
+  func.func private @makePair() -> !p attributes {sec.function_id = "makePair", sec.source_name = "makePair", sec.extern = false, sec.unsafe = false}
   func.func private @makeFailure() -> !f attributes {sec.function_id = "makeFailure", sec.source_name = "makeFailure", sec.extern = false, sec.unsafe = false}
   func.func @observe_after_move() {
-    %o = "sec.call.direct"() <{callee = @makeOption}> {sec.argument_actions = []} : () -> !o
+    %o = "sec.call.direct"() <{callee = @makeOption}> {sec.argument_actions = [], sec.result_action = "move"} : () -> !o
     %s = "sec.storage.declare"() {sec.mutable = true, sec.source_name = "o", sec.storage_class = "local-automatic", sec.storage_id = 1 : i32, sec.address_taken = true} : () -> !sec.storage<!o>
     %p = "sec.place.storage"(%s) <{place_root_id = 1 : i32, storage_identity = 1 : i32, address_space = "ordinary"}> : (!sec.storage<!o>) -> !sec.place<!o, "rw">
     "sec.own.initialize_place"(%p, %o) : (!sec.place<!o, "rw">, !o) -> ()
@@ -162,10 +203,11 @@ module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 :
 // -----
 
 !h = !sec.struct<identity = "main::H", typeArguments = [], fields = [#sec.struct_field<ordinal = 0, name = "id", type = !sec.int, tags = []>]>
+!p = !sec.struct<identity = "main::P", typeArguments = [], fields = [#sec.struct_field<ordinal = 0, name = "l", type = !h, tags = []>, #sec.struct_field<ordinal = 1, name = "r", type = !h, tags = []>]>
 !f = !sec.result<!sec.int, !h>
 !o = !sec.union<identity = "core::Option<main::H>", typeArguments = [!h], variants = [#sec.union_variant<index = 0, name = "Some", kind = "single", payload = !h, fields = []>, #sec.union_variant<index = 1, name = "None", kind = "empty", fields = []>]>
 
-module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 : i32, sec.module_id = "own", sec.source_files = [], sec.target_os = "linux", sec.target_arch = "armv7", sec.target_triple = "armv7-unknown-linux-gnueabihf", sec.target_abi = "gnu", sec.target_profile = "hosted", sec.target_endianness = "little", dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32>>, sec.destruction_plans = [{id = "h", type = !h, kind = "struct", custom_free = true, free_type = "H", free_function = @free}, {id = "f", type = !f, kind = "active-variant", variants = [{variant = 1 : i32, plan = "h"}]}, {id = "o", type = !o, kind = "active-variant", variants = [{variant = 0 : i32, plan = "h"}]}]} {
+module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 : i32, sec.module_id = "own", sec.source_files = [], sec.target_os = "linux", sec.target_arch = "armv7", sec.target_triple = "armv7-unknown-linux-gnueabihf", sec.target_abi = "gnu", sec.target_profile = "hosted", sec.target_endianness = "little", dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32>>, sec.destruction_plans = [{id = "h", type = !h, kind = "struct", custom_free = true, free_type = "H", free_function = @free}, {id = "f", type = !f, kind = "active-variant", variants = [{variant = 1 : i32, plan = "h"}]}, {id = "o", type = !o, kind = "active-variant", variants = [{variant = 0 : i32, plan = "h"}]}, {id = "p", type = !p, kind = "struct", fields = [{field = 1 : i32, plan = "h"}, {field = 0 : i32, plan = "h"}]}]} {
   func.func @free(%self: !sec.ref_mut<!h> {sec.reference = {borrow_id = 1 : i32, lifetime_id = 1 : i32, validity_policy = "proven", validity_proof = "caller-owned-borrow", address_stability = "Stable", provenance = "receiver"}}) {
     return
   }
@@ -173,6 +215,7 @@ module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 :
   func.func private @sink(!h) attributes {sec.function_id = "sink", sec.source_name = "sink", sec.extern = false, sec.unsafe = false}
   func.func private @makeOption() -> !o attributes {sec.function_id = "makeOption", sec.source_name = "makeOption", sec.extern = false, sec.unsafe = false}
   func.func private @takeOption(!o) attributes {sec.function_id = "takeOption", sec.source_name = "takeOption", sec.extern = false, sec.unsafe = false}
+  func.func private @makePair() -> !p attributes {sec.function_id = "makePair", sec.source_name = "makePair", sec.extern = false, sec.unsafe = false}
   func.func private @makeFailure() -> !f attributes {sec.function_id = "makeFailure", sec.source_name = "makeFailure", sec.extern = false, sec.unsafe = false}
   func.func @observation_is_not_a_value(%p: !sec.ref_mut<!o>) {
     %q = "sec.place.deref"(%p) : (!sec.ref_mut<!o>) -> !sec.place<!o, "rw">
@@ -186,10 +229,11 @@ module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 :
 // -----
 
 !h = !sec.struct<identity = "main::H", typeArguments = [], fields = [#sec.struct_field<ordinal = 0, name = "id", type = !sec.int, tags = []>]>
+!p = !sec.struct<identity = "main::P", typeArguments = [], fields = [#sec.struct_field<ordinal = 0, name = "l", type = !h, tags = []>, #sec.struct_field<ordinal = 1, name = "r", type = !h, tags = []>]>
 !f = !sec.result<!sec.int, !h>
 !o = !sec.union<identity = "core::Option<main::H>", typeArguments = [!h], variants = [#sec.union_variant<index = 0, name = "Some", kind = "single", payload = !h, fields = []>, #sec.union_variant<index = 1, name = "None", kind = "empty", fields = []>]>
 
-module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 : i32, sec.module_id = "own", sec.source_files = [], sec.target_os = "linux", sec.target_arch = "armv7", sec.target_triple = "armv7-unknown-linux-gnueabihf", sec.target_abi = "gnu", sec.target_profile = "hosted", sec.target_endianness = "little", dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32>>, sec.destruction_plans = [{id = "h", type = !h, kind = "struct", custom_free = true, free_type = "H", free_function = @free}, {id = "f", type = !f, kind = "active-variant", variants = [{variant = 1 : i32, plan = "h"}]}, {id = "o", type = !o, kind = "active-variant", variants = [{variant = 0 : i32, plan = "h"}]}]} {
+module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 : i32, sec.module_id = "own", sec.source_files = [], sec.target_os = "linux", sec.target_arch = "armv7", sec.target_triple = "armv7-unknown-linux-gnueabihf", sec.target_abi = "gnu", sec.target_profile = "hosted", sec.target_endianness = "little", dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32>>, sec.destruction_plans = [{id = "h", type = !h, kind = "struct", custom_free = true, free_type = "H", free_function = @free}, {id = "f", type = !f, kind = "active-variant", variants = [{variant = 1 : i32, plan = "h"}]}, {id = "o", type = !o, kind = "active-variant", variants = [{variant = 0 : i32, plan = "h"}]}, {id = "p", type = !p, kind = "struct", fields = [{field = 1 : i32, plan = "h"}, {field = 0 : i32, plan = "h"}]}]} {
   func.func @free(%self: !sec.ref_mut<!h> {sec.reference = {borrow_id = 1 : i32, lifetime_id = 1 : i32, validity_policy = "proven", validity_proof = "caller-owned-borrow", address_stability = "Stable", provenance = "receiver"}}) {
     return
   }
@@ -197,9 +241,10 @@ module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 :
   func.func private @sink(!h) attributes {sec.function_id = "sink", sec.source_name = "sink", sec.extern = false, sec.unsafe = false}
   func.func private @makeOption() -> !o attributes {sec.function_id = "makeOption", sec.source_name = "makeOption", sec.extern = false, sec.unsafe = false}
   func.func private @takeOption(!o) attributes {sec.function_id = "takeOption", sec.source_name = "takeOption", sec.extern = false, sec.unsafe = false}
+  func.func private @makePair() -> !p attributes {sec.function_id = "makePair", sec.source_name = "makePair", sec.extern = false, sec.unsafe = false}
   func.func private @makeFailure() -> !f attributes {sec.function_id = "makeFailure", sec.source_name = "makeFailure", sec.extern = false, sec.unsafe = false}
   func.func @registered() {
-    %o = "sec.call.direct"() <{callee = @makeOption}> {sec.argument_actions = []} : () -> !o
+    %o = "sec.call.direct"() <{callee = @makeOption}> {sec.argument_actions = [], sec.result_action = "move"} : () -> !o
     "sec.cleanup.track_owned"(%o) <{cleanup_action_id = 1 : i32, cleanup_scope_id = 1 : i32, cleanup_registration_ordinal = 1 : i32, destruction_plan = "o"}> : (!o) -> ()
     %c = "sec.union.is_variant"(%o) <{variant = 0 : i32}> : (!o) -> i1
     cf.cond_br %c, ^some, ^none
@@ -217,10 +262,11 @@ module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 :
 // -----
 
 !h = !sec.struct<identity = "main::H", typeArguments = [], fields = [#sec.struct_field<ordinal = 0, name = "id", type = !sec.int, tags = []>]>
+!p = !sec.struct<identity = "main::P", typeArguments = [], fields = [#sec.struct_field<ordinal = 0, name = "l", type = !h, tags = []>, #sec.struct_field<ordinal = 1, name = "r", type = !h, tags = []>]>
 !f = !sec.result<!sec.int, !h>
 !o = !sec.union<identity = "core::Option<main::H>", typeArguments = [!h], variants = [#sec.union_variant<index = 0, name = "Some", kind = "single", payload = !h, fields = []>, #sec.union_variant<index = 1, name = "None", kind = "empty", fields = []>]>
 
-module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 : i32, sec.module_id = "own", sec.source_files = [], sec.target_os = "linux", sec.target_arch = "armv7", sec.target_triple = "armv7-unknown-linux-gnueabihf", sec.target_abi = "gnu", sec.target_profile = "hosted", sec.target_endianness = "little", dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32>>, sec.destruction_plans = [{id = "h", type = !h, kind = "struct", custom_free = true, free_type = "H", free_function = @free}, {id = "f", type = !f, kind = "active-variant", variants = [{variant = 1 : i32, plan = "h"}]}, {id = "o", type = !o, kind = "active-variant", variants = [{variant = 0 : i32, plan = "h"}]}]} {
+module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 : i32, sec.module_id = "own", sec.source_files = [], sec.target_os = "linux", sec.target_arch = "armv7", sec.target_triple = "armv7-unknown-linux-gnueabihf", sec.target_abi = "gnu", sec.target_profile = "hosted", sec.target_endianness = "little", dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32>>, sec.destruction_plans = [{id = "h", type = !h, kind = "struct", custom_free = true, free_type = "H", free_function = @free}, {id = "f", type = !f, kind = "active-variant", variants = [{variant = 1 : i32, plan = "h"}]}, {id = "o", type = !o, kind = "active-variant", variants = [{variant = 0 : i32, plan = "h"}]}, {id = "p", type = !p, kind = "struct", fields = [{field = 1 : i32, plan = "h"}, {field = 0 : i32, plan = "h"}]}]} {
   func.func @free(%self: !sec.ref_mut<!h> {sec.reference = {borrow_id = 1 : i32, lifetime_id = 1 : i32, validity_policy = "proven", validity_proof = "caller-owned-borrow", address_stability = "Stable", provenance = "receiver"}}) {
     return
   }
@@ -228,9 +274,10 @@ module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 :
   func.func private @sink(!h) attributes {sec.function_id = "sink", sec.source_name = "sink", sec.extern = false, sec.unsafe = false}
   func.func private @makeOption() -> !o attributes {sec.function_id = "makeOption", sec.source_name = "makeOption", sec.extern = false, sec.unsafe = false}
   func.func private @takeOption(!o) attributes {sec.function_id = "takeOption", sec.source_name = "takeOption", sec.extern = false, sec.unsafe = false}
+  func.func private @makePair() -> !p attributes {sec.function_id = "makePair", sec.source_name = "makePair", sec.extern = false, sec.unsafe = false}
   func.func private @makeFailure() -> !f attributes {sec.function_id = "makeFailure", sec.source_name = "makeFailure", sec.extern = false, sec.unsafe = false}
   func.func @twice() {
-    %o = "sec.call.direct"() <{callee = @makeOption}> {sec.argument_actions = []} : () -> !o
+    %o = "sec.call.direct"() <{callee = @makeOption}> {sec.argument_actions = [], sec.result_action = "move"} : () -> !o
     %c = "sec.union.is_variant"(%o) <{variant = 0 : i32}> : (!o) -> i1
     cf.cond_br %c, ^some, ^none
     ^some:
@@ -249,10 +296,11 @@ module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 :
 // -----
 
 !h = !sec.struct<identity = "main::H", typeArguments = [], fields = [#sec.struct_field<ordinal = 0, name = "id", type = !sec.int, tags = []>]>
+!p = !sec.struct<identity = "main::P", typeArguments = [], fields = [#sec.struct_field<ordinal = 0, name = "l", type = !h, tags = []>, #sec.struct_field<ordinal = 1, name = "r", type = !h, tags = []>]>
 !f = !sec.result<!sec.int, !h>
 !o = !sec.union<identity = "core::Option<main::H>", typeArguments = [!h], variants = [#sec.union_variant<index = 0, name = "Some", kind = "single", payload = !h, fields = []>, #sec.union_variant<index = 1, name = "None", kind = "empty", fields = []>]>
 
-module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 : i32, sec.module_id = "own", sec.source_files = [], sec.target_os = "linux", sec.target_arch = "armv7", sec.target_triple = "armv7-unknown-linux-gnueabihf", sec.target_abi = "gnu", sec.target_profile = "hosted", sec.target_endianness = "little", dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32>>, sec.destruction_plans = [{id = "h", type = !h, kind = "struct", custom_free = true, free_type = "H", free_function = @free}, {id = "f", type = !f, kind = "active-variant", variants = [{variant = 1 : i32, plan = "h"}]}, {id = "o", type = !o, kind = "active-variant", variants = [{variant = 0 : i32, plan = "h"}]}]} {
+module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 : i32, sec.module_id = "own", sec.source_files = [], sec.target_os = "linux", sec.target_arch = "armv7", sec.target_triple = "armv7-unknown-linux-gnueabihf", sec.target_abi = "gnu", sec.target_profile = "hosted", sec.target_endianness = "little", dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32>>, sec.destruction_plans = [{id = "h", type = !h, kind = "struct", custom_free = true, free_type = "H", free_function = @free}, {id = "f", type = !f, kind = "active-variant", variants = [{variant = 1 : i32, plan = "h"}]}, {id = "o", type = !o, kind = "active-variant", variants = [{variant = 0 : i32, plan = "h"}]}, {id = "p", type = !p, kind = "struct", fields = [{field = 1 : i32, plan = "h"}, {field = 0 : i32, plan = "h"}]}]} {
   func.func @free(%self: !sec.ref_mut<!h> {sec.reference = {borrow_id = 1 : i32, lifetime_id = 1 : i32, validity_policy = "proven", validity_proof = "caller-owned-borrow", address_stability = "Stable", provenance = "receiver"}}) {
     return
   }
@@ -260,9 +308,10 @@ module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 :
   func.func private @sink(!h) attributes {sec.function_id = "sink", sec.source_name = "sink", sec.extern = false, sec.unsafe = false}
   func.func private @makeOption() -> !o attributes {sec.function_id = "makeOption", sec.source_name = "makeOption", sec.extern = false, sec.unsafe = false}
   func.func private @takeOption(!o) attributes {sec.function_id = "takeOption", sec.source_name = "takeOption", sec.extern = false, sec.unsafe = false}
+  func.func private @makePair() -> !p attributes {sec.function_id = "makePair", sec.source_name = "makePair", sec.extern = false, sec.unsafe = false}
   func.func private @makeFailure() -> !f attributes {sec.function_id = "makeFailure", sec.source_name = "makeFailure", sec.extern = false, sec.unsafe = false}
   func.func @none_arm_leaks() {
-    %o = "sec.call.direct"() <{callee = @makeOption}> {sec.argument_actions = []} : () -> !o
+    %o = "sec.call.direct"() <{callee = @makeOption}> {sec.argument_actions = [], sec.result_action = "move"} : () -> !o
     %c = "sec.union.is_variant"(%o) <{variant = 0 : i32}> : (!o) -> i1
     cf.cond_br %c, ^some, ^none
     ^some:
@@ -278,10 +327,11 @@ module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 :
 // -----
 
 !h = !sec.struct<identity = "main::H", typeArguments = [], fields = [#sec.struct_field<ordinal = 0, name = "id", type = !sec.int, tags = []>]>
+!p = !sec.struct<identity = "main::P", typeArguments = [], fields = [#sec.struct_field<ordinal = 0, name = "l", type = !h, tags = []>, #sec.struct_field<ordinal = 1, name = "r", type = !h, tags = []>]>
 !f = !sec.result<!sec.int, !h>
 !o = !sec.union<identity = "core::Option<main::H>", typeArguments = [!h], variants = [#sec.union_variant<index = 0, name = "Some", kind = "single", payload = !h, fields = []>, #sec.union_variant<index = 1, name = "None", kind = "empty", fields = []>]>
 
-module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 : i32, sec.module_id = "own", sec.source_files = [], sec.target_os = "linux", sec.target_arch = "armv7", sec.target_triple = "armv7-unknown-linux-gnueabihf", sec.target_abi = "gnu", sec.target_profile = "hosted", sec.target_endianness = "little", dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32>>, sec.destruction_plans = [{id = "h", type = !h, kind = "struct", custom_free = true, free_type = "H", free_function = @free}, {id = "f", type = !f, kind = "active-variant", variants = [{variant = 1 : i32, plan = "h"}]}, {id = "o", type = !o, kind = "active-variant", variants = [{variant = 0 : i32, plan = "h"}]}]} {
+module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 : i32, sec.module_id = "own", sec.source_files = [], sec.target_os = "linux", sec.target_arch = "armv7", sec.target_triple = "armv7-unknown-linux-gnueabihf", sec.target_abi = "gnu", sec.target_profile = "hosted", sec.target_endianness = "little", dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32>>, sec.destruction_plans = [{id = "h", type = !h, kind = "struct", custom_free = true, free_type = "H", free_function = @free}, {id = "f", type = !f, kind = "active-variant", variants = [{variant = 1 : i32, plan = "h"}]}, {id = "o", type = !o, kind = "active-variant", variants = [{variant = 0 : i32, plan = "h"}]}, {id = "p", type = !p, kind = "struct", fields = [{field = 1 : i32, plan = "h"}, {field = 0 : i32, plan = "h"}]}]} {
   func.func @free(%self: !sec.ref_mut<!h> {sec.reference = {borrow_id = 1 : i32, lifetime_id = 1 : i32, validity_policy = "proven", validity_proof = "caller-owned-borrow", address_stability = "Stable", provenance = "receiver"}}) {
     return
   }
@@ -289,6 +339,7 @@ module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 :
   func.func private @sink(!h) attributes {sec.function_id = "sink", sec.source_name = "sink", sec.extern = false, sec.unsafe = false}
   func.func private @makeOption() -> !o attributes {sec.function_id = "makeOption", sec.source_name = "makeOption", sec.extern = false, sec.unsafe = false}
   func.func private @takeOption(!o) attributes {sec.function_id = "takeOption", sec.source_name = "takeOption", sec.extern = false, sec.unsafe = false}
+  func.func private @makePair() -> !p attributes {sec.function_id = "makePair", sec.source_name = "makePair", sec.extern = false, sec.unsafe = false}
   func.func private @makeFailure() -> !f attributes {sec.function_id = "makeFailure", sec.source_name = "makeFailure", sec.extern = false, sec.unsafe = false}
   func.func @unknown_projection_action(%o: !o) {
     %c = "sec.union.is_variant"(%o) <{variant = 0 : i32}> : (!o) -> i1
@@ -305,10 +356,11 @@ module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 :
 // -----
 
 !h = !sec.struct<identity = "main::H", typeArguments = [], fields = [#sec.struct_field<ordinal = 0, name = "id", type = !sec.int, tags = []>]>
+!p = !sec.struct<identity = "main::P", typeArguments = [], fields = [#sec.struct_field<ordinal = 0, name = "l", type = !h, tags = []>, #sec.struct_field<ordinal = 1, name = "r", type = !h, tags = []>]>
 !f = !sec.result<!sec.int, !h>
 !o = !sec.union<identity = "core::Option<main::H>", typeArguments = [!h], variants = [#sec.union_variant<index = 0, name = "Some", kind = "single", payload = !h, fields = []>, #sec.union_variant<index = 1, name = "None", kind = "empty", fields = []>]>
 
-module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 : i32, sec.module_id = "own", sec.source_files = [], sec.target_os = "linux", sec.target_arch = "armv7", sec.target_triple = "armv7-unknown-linux-gnueabihf", sec.target_abi = "gnu", sec.target_profile = "hosted", sec.target_endianness = "little", dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32>>, sec.destruction_plans = [{id = "h", type = !h, kind = "struct", custom_free = true, free_type = "H", free_function = @free}, {id = "f", type = !f, kind = "active-variant", variants = [{variant = 1 : i32, plan = "h"}]}, {id = "o", type = !o, kind = "active-variant", variants = [{variant = 0 : i32, plan = "h"}]}]} {
+module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 : i32, sec.module_id = "own", sec.source_files = [], sec.target_os = "linux", sec.target_arch = "armv7", sec.target_triple = "armv7-unknown-linux-gnueabihf", sec.target_abi = "gnu", sec.target_profile = "hosted", sec.target_endianness = "little", dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32>>, sec.destruction_plans = [{id = "h", type = !h, kind = "struct", custom_free = true, free_type = "H", free_function = @free}, {id = "f", type = !f, kind = "active-variant", variants = [{variant = 1 : i32, plan = "h"}]}, {id = "o", type = !o, kind = "active-variant", variants = [{variant = 0 : i32, plan = "h"}]}, {id = "p", type = !p, kind = "struct", fields = [{field = 1 : i32, plan = "h"}, {field = 0 : i32, plan = "h"}]}]} {
   func.func @free(%self: !sec.ref_mut<!h> {sec.reference = {borrow_id = 1 : i32, lifetime_id = 1 : i32, validity_policy = "proven", validity_proof = "caller-owned-borrow", address_stability = "Stable", provenance = "receiver"}}) {
     return
   }
@@ -316,11 +368,12 @@ module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 :
   func.func private @sink(!h) attributes {sec.function_id = "sink", sec.source_name = "sink", sec.extern = false, sec.unsafe = false}
   func.func private @makeOption() -> !o attributes {sec.function_id = "makeOption", sec.source_name = "makeOption", sec.extern = false, sec.unsafe = false}
   func.func private @takeOption(!o) attributes {sec.function_id = "takeOption", sec.source_name = "takeOption", sec.extern = false, sec.unsafe = false}
+  func.func private @makePair() -> !p attributes {sec.function_id = "makePair", sec.source_name = "makePair", sec.extern = false, sec.unsafe = false}
   func.func private @makeFailure() -> !f attributes {sec.function_id = "makeFailure", sec.source_name = "makeFailure", sec.extern = false, sec.unsafe = false}
   func.func @unknown_construct_action() -> !o {
-    %h = "sec.call.direct"() <{callee = @make}> {sec.argument_actions = []} : () -> !h
+    %h = "sec.call.direct"() <{callee = @make}> {sec.argument_actions = [], sec.result_action = "move"} : () -> !h
     // expected-error@+1 {{Package 11 union payload action must be copy-trivial}}
     %o = "sec.union.construct"(%h) <{fieldNames = [], payloadActions = ["move"], variant = 0 : i32}> : (!h) -> !o
-    return %o : !o
+    "func.return"(%o) {sec.return_action = "move"} : (!o) -> ()
   }
 }

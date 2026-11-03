@@ -57,10 +57,11 @@ type symbolInformation struct {
 
 // workspaceSymbolEntry is one declaration of a cached per-file summary.
 type workspaceSymbolEntry struct {
-	name      string
-	kind      int
-	container string
-	rng       lspRange
+	name         string
+	accessPrefix string // impl headers use the strongest target-name visibility
+	kind         int
+	container    string
+	rng          lspRange
 }
 
 type workspaceSymbolFile struct {
@@ -138,7 +139,7 @@ func workspaceSymbolsForQuery(index *workspaceSymbolIndex, roots []string, query
 		_, open := overlay.Sources[path]
 		core := isCoreSourcePath(path)
 		for _, entry := range summary.entries {
-			switch visibilityPrefix(entry.name) {
+			switch entry.visibilityScope() {
 			case "":
 			case "_":
 				if !openModules[summary.module] {
@@ -308,8 +309,11 @@ func (index *workspaceSymbolIndex) summary(path string, overlay sourceOverlay) (
 // workspaceSymbolSummary flattens the document-symbol outline of one source
 // into named declarations with their container: the module for top-level
 // declarations, and the owning type for members, fields, and variants. Impl
-// blocks contribute their members under the implemented type; module
-// headers, let groups, init, and free are not symbols of their own.
+// blocks contribute their members under the implemented type; extensions also
+// retain a searchable header entry. Module headers, let groups, init and free
+// are not symbols of their own.
+// Rules: rules/tooling/lsp.md — "Workspace symbols";
+// rules/declarations/impl.md — §§4–5.
 func workspaceSymbolSummary(uri string, text string) workspaceSymbolFile {
 	summary := workspaceSymbolFile{fingerprint: sourceContentFingerprint(text)}
 	program := parseProgramForLSP(uri, text)
@@ -343,10 +347,11 @@ func workspaceSymbolSummary(uri string, text string) workspaceSymbolFile {
 			if stmt == nil || stmt.Target == nil {
 				continue
 			}
-			for _, member := range stmt.Members {
-				if child, ok := documentSymbolForImplMember(text, member); ok {
-					addMembers([]documentSymbol{child}, stmt.Target.Name)
+			if symbol, ok := documentSymbolForStatement(text, stmt); ok {
+				if stmt.Extends {
+					summary.entries = append(summary.entries, workspaceImplExtensionEntry(symbol, stmt.Target.Name, summary.module))
 				}
+				addMembers(symbol.Children, stmt.Target.Name)
 			}
 			continue
 		case *ast.LetGroupStatement:

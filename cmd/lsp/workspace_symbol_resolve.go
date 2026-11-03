@@ -102,7 +102,7 @@ func (index *workspaceSymbolIndex) resolveWorkspaceSymbol(symbol workspaceSymbol
 		(symbol.Location.Range != nil && *symbol.Location.Range != entry.rng) {
 		return symbol, -32602, "workspace symbol does not match its declaration"
 	}
-	switch visibilityPrefix(entry.name) {
+	switch entry.visibilityScope() {
 	case "":
 	case "_":
 		visible := false

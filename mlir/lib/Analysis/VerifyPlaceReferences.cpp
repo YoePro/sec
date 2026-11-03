@@ -77,6 +77,13 @@ Chain placeChain(Value place) {
       place = field.getBase();
       continue;
     }
+    // An active payload is a step of its own, kept apart from field indexes,
+    // so an error union inside a Result is tested through its Err payload.
+    if (auto payload = dyn_cast_or_null<sec::PlaceUnionPayloadOp>(definition)) {
+      reversed.push_back(-1 - payload.getVariantAttr().getInt());
+      place = payload.getBase();
+      continue;
+    }
     Chain chain;
     if (auto root = dyn_cast_or_null<sec::PlaceValueOp>(definition))
       chain.root = root.getValue();

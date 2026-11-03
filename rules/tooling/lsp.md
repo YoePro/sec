@@ -501,8 +501,24 @@ commands are recomputed from compiler facts. Queued cancellation and edits can
 skip obsolete resolve work, and formatting may overtake it. Cancellation inside
 an already-running compiler analysis remains separate scheduling work.
 
-Pending: lenses on implementations and the same cross-target summary in
-`sec analyse`.
+As of 2026-11-03, implementing-type declarations (including enums and named
+scalar types) also show their explicit conformance across the selected targets.
+A successful lens names the type and concrete interfaces, for example
+`✓ Handle (Native, Writable) conforms on 2 targets`. A failing lens identifies
+the type, target and interface-qualified member, for example
+`Handle: ✗ conforms on 1 of 2 targets — windows-amd64: Native.Size`.
+An interface declared on one target but absent on another is reported as
+`Native (no declared conformance)`; another valid interface cannot mask it.
+
+Enumeration adds type-name candidates without loading targets or invoking Sema.
+Resolving a candidate with no explicit compiler-owned conformance on any selected
+target returns no command. Type views match exact module/type identities, reuse
+the same cached target report and worker pool, and validate the source snapshot
+and declaration kind. Their command lists failing members, or the implemented
+interface declarations when every target conforms. Unresolved compiler facts
+are never presented as successful conformance.
+
+Pending: the same cross-target summary in `sec analyse`.
 
 ### Workspace symbols
 
@@ -519,6 +535,12 @@ Implemented (`workspace/symbol`, VS Code "Go to Symbol in Workspace"):
   members, fields, properties, events, and enum and union members; impl
   members appear under the implemented type; module headers, `init`, and
   `free` are not workspace symbols;
+- separate `impl extends Type` header symbols, including generic targets and
+  multiple fragments in one file; searching `impl extends Widget` lists the
+  indexed fragments for that target with their module containers and source
+  locations. Headers follow the target's visibility, including qualified
+  private names, and support the same unsaved snapshots and lazy resolution
+  as other workspace symbols;
 - complete `SymbolInformation` locations for clients without lazy-range support,
   and `WorkspaceSymbol` URI-only locations with declaration snapshot data for
   clients advertising `workspace.symbol.resolveSupport` for `location.range`;

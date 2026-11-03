@@ -1,6 +1,6 @@
 schema_version: 1
-updated: "2026-11-02"
-last_id: MD-124
+updated: "2026-11-03"
+last_id: MD-125
 purpose: >-
   Tracks normative decisions that are missing or insufficiently precise and
   therefore constrain implementation. Remove an entry only after the owning
@@ -1100,5 +1100,31 @@ decisions:
       with IndexError that leaves the element unchanged on failure, matching the read;
       (B) it stays invalid, and code checks the index or uses a borrowed element under
       try. Recommended: A. P16 acceptance does not depend on this.
+    classification: localized
+    status: open
+  - id: MD-125
+    area: replacement-cleanup-registration-point
+    rulebooks:
+      - rules/memory/destruction.md
+      - rules/control-flow/defer.md
+      - rules/compiler/semantic_ir.md
+    description: >-
+      Raised 2026-11-03 by the P17-03 synchronization audit
+      (rules/corrections/p17-ownership-destruction-rules-synchronization.md,
+      proposals A and D). The P17 sync § 3 and the Semantic IR amendment § 11 say a
+      replacement `x = value` of an available owner registers the new value's
+      destruction at the replacement point, but destruction.md § 13.2 and
+      semantic_ir.md § 40 only say the old value is destroyed first, so the
+      position of the new value in the unified LIFO order (destruction.md § 6.2) is
+      unstated. The choice matters when cleanup registered between the original
+      initialization and the replacement observes the value, e.g.
+      `let mut h := Make(1); defer { Log(h.id) }; h = Make(2)`: (A) register at the
+      replacement point as the sync says. The new h is destroyed before the defer
+      runs, so by defer.md § 10 the program is invalid and Sema reports the pending
+      deferred use. (B) the new value inherits the old registration's position, so
+      the defer reads the new h and it is destroyed afterwards; this contradicts
+      sync § 3. Recommended: A, with a Sema diagnostic. The compiler currently
+      registers at the replacement point and stops the defer case as the lowering
+      boundary "P17 replacement of an owned value a registered defer reads".
     classification: localized
     status: open

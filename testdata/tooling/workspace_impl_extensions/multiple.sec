@@ -1,0 +1,13 @@
+module impl_navigation
+
+impl extends Widget {
+    fn Third() int {
+        return 3
+    }
+}
+
+impl extends Widget {
+    fn Fourth() int {
+        return 4
+    }
+}

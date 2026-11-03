@@ -283,19 +283,24 @@ private:
       set(state, destroy.getValue(), "", Gone);
     else if (auto move = dyn_cast<sec::OwnMoveFromPlaceOp>(op)) {
       Subobject target = resolve(move.getPlace());
-      // An active payload is all its container holds, so the container ends with it.
-      size_t dot = target.path.rfind('.');
-      StringRef last = StringRef(target.path).substr(dot == std::string::npos ? 0 : dot + 1);
-      if (last.starts_with("payload#"))
-        set(state, target.root, dot == std::string::npos ? std::string() : target.path.substr(0, dot), Gone);
-      else
-        set(state, target.root, target.path, Gone);
+      // An active payload is all its container holds, so the container ends with
+      // it, and so on outward through nested active payloads.
+      std::string path = target.path;
+      while (true) {
+        size_t dot = path.rfind('.');
+        StringRef last = StringRef(path).substr(dot == std::string::npos ? 0 : dot + 1);
+        if (path.empty() || !last.starts_with("payload#"))
+          break;
+        path = dot == std::string::npos ? std::string() : path.substr(0, dot);
+      }
+      set(state, target.root, path, Gone);
     } else if (auto destroy = dyn_cast<sec::OwnDestroyPlaceOp>(op)) {
       Subobject target = resolve(destroy.getPlace());
       set(state, target.root, target.path, Gone);
     } else if (auto initialize = dyn_cast<sec::OwnInitializePlaceOp>(op)) {
       Subobject target = resolve(initialize.getPlace());
-      set(state, target.root, target.path, freshFlags(initialize.getValue().getType()));
+      // A reinitialized subobject joins its owner, whose terminal action covers it.
+      set(state, target.root, target.path, target.path.empty() ? freshFlags(initialize.getValue().getType()) : uint8_t(Available));
     } else if (auto replace = dyn_cast<sec::OwnReplacePlaceOp>(op)) {
       // The old value ends and the new one takes its place, whole again; the old
       // registration's cancel and the new registration follow.
@@ -374,6 +379,37 @@ private:
     bool changed = joined != slot->second;
     slot->second = std::move(joined);
     return changed;
+  }
+
+  // A value that needs destruction crosses a call result, a return or a branch
+  // edge only as a move, and that move is written down (dialect v13 §§ 25-27).
+  LogicalResult checkAction(Operation &op, Attribute action, Type type, StringRef what) {
+    auto text = dyn_cast_or_null<StringAttr>(action);
+    if (facts.needsDestruction(type) && (!text || text.getValue() != "move"))
+      return op.emitOpError() << what << " needs destruction, so its ownership action must be \"move\"";
+    if (text && text.getValue() == "non-owning" && !isa<sec::RefType, sec::RefMutType, sec::SliceType, sec::SliceMutType>(type))
+      return op.emitOpError() << what << " is not a reference or slice holder, so it cannot be \"non-owning\"";
+    return success();
+  }
+
+  LogicalResult checkActionMetadata(Operation &op) {
+    if (isa<sec::CallDirectOp, sec::CallForeignOp>(op) && op.getNumResults() == 1)
+      return checkAction(op, op.getAttr("sec.result_action"), op.getResult(0).getType(), "the call result");
+    if (isa<func::ReturnOp>(op) && op.getNumOperands() == 1)
+      return checkAction(op, op.getAttr("sec.return_action"), op.getOperand(0).getType(), "the returned value");
+    auto branch = dyn_cast<BranchOpInterface>(op);
+    if (!branch)
+      return success();
+    auto lists = op.getAttrOfType<ArrayAttr>("sec.successor_actions");
+    for (unsigned index = 0; index < op.getNumSuccessors(); ++index) {
+      ArrayAttr actions = lists && index < lists.size() ? dyn_cast<ArrayAttr>(lists[index]) : ArrayAttr();
+      for (auto [position, operand] : llvm::enumerate(branch.getSuccessorOperands(index).getForwardedOperands())) {
+        Attribute action = actions && position < actions.size() ? actions[position] : Attribute();
+        if (failed(checkAction(op, action, operand.getType(), "a forwarded branch operand")))
+          return failure();
+      }
+    }
+    return success();
   }
 
   LogicalResult requireAvailable(Operation &op, const State &state, Value root, const std::string &path) {
@@ -516,6 +552,8 @@ private:
       if (!action.empty() && !action.starts_with("copy") && failed(checkTransfer(op, state, operand)))
         return failure();
     }
+    if (failed(checkActionMetadata(op)))
+      return failure();
     if (auto branch = dyn_cast<BranchOpInterface>(op))
       for (unsigned index = 0; index < op.getNumSuccessors(); ++index) {
         llvm::SmallDenseSet<Value> seen;

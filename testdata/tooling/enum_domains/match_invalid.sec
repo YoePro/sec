@@ -1,0 +1,16 @@
+module enum_tooling
+
+enum Closed uint16 { Zero = 0, High = 255, Alias = 255 }
+enum Open bit[8] { Zero = 0, One = 1 }
+enum Text string { First = "one", Alias = "one", Second = "two" }
+
+fn ClosedMissing(value: Closed) int {
+    return match value { Closed.Zero => 0 }
+}
+fn OpenMissing(value: Open) int {
+    return match value { Open.Zero => 0
+        Open.One => 1 }
+}
+fn TextMissing(value: Text) int {
+    return match value { Text.Alias => 0 }
+}

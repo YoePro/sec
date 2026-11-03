@@ -17,13 +17,6 @@ fn FreshOption(id: int) Option[Handle] {
     return Some(Make(id))
 }
 
-fn T() int {
-    match FreshOption(1) {
-        Some(_) => {
-            return 1
-        }
-        None => {
-            return 0
-        }
-    }
+fn T(flag: bool) bool {
+    return flag && Make(1).id > 0
 }

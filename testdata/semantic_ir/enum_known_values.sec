@@ -1,0 +1,17 @@
+module main
+enum Wide uint16 { Small = 1, Large = 300 }
+enum Signed int16 { Low = -129, High = 127 }
+fn Constructed() uint8 { return uint8(Wide(1)) }
+fn LocalInteger() uint8 {
+    let raw := 1
+    return uint8(Wide(raw))
+}
+fn OtherInteger() uint16 {
+    let raw := 300
+    return uint16(Wide(raw))
+}
+fn Bound() int8 {
+    let value := Signed.High
+    let alias := value
+    return int8(alias)
+}

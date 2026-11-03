@@ -57,12 +57,19 @@ func enumCaseNamed(typ Type, member string) (ResolvedEnumCase, bool) {
 }
 
 // ResolvedEnumConversionOf classifies only explicit conversions accepted by
-// Sema. It does not infer a conversion from callee spelling alone.
+// Sema. Enum-to-integer decisions are retained during inference, never
+// recomputed from mutable query-time state or callee spelling.
 // Rules: rules/declarations/enums.md — § 12; rules/declarations/functions.md
 // — §§ 19–20, 24 (selected calls retain their callable identity);
 // rules/types/types.md — "Exact integer conversion proof" (known constants).
 func (a *Analyzer) ResolvedEnumConversionOf(call *ast.CallExpression) (ResolvedEnumConversion, bool) {
-	if a == nil || call == nil || len(call.Arguments) != 1 {
+	if a == nil || call == nil {
+		return ResolvedEnumConversion{}, false
+	}
+	if fact, recorded := a.resolvedEnumConversions[call]; recorded {
+		return cloneEnumConversion(fact), true
+	}
+	if len(call.Arguments) != 1 {
 		return ResolvedEnumConversion{}, false
 	}
 	if _, selected := a.ResolvedCallTarget(call); selected {
@@ -77,21 +84,8 @@ func (a *Analyzer) ResolvedEnumConversionOf(call *ast.CallExpression) (ResolvedE
 		return ResolvedEnumConversion{}, false
 	}
 	if result.Kind == EnumType && isIntegerType(operand) {
-		return ResolvedEnumConversion{Kind: ResolvedIntegerToEnum, EnumType: result, IntegerType: operand}, true
+		return cloneEnumConversion(ResolvedEnumConversion{Kind: ResolvedIntegerToEnum, EnumType: result, IntegerType: operand}), true
 	}
-	if operand.Kind == EnumType && isIntegerType(result) {
-		conversion := ResolvedEnumConversion{Kind: ResolvedEnumToInteger, EnumType: operand, IntegerType: result}
-		if isBuiltinConversionInteger(result) {
-			// Keep the same known-member evidence that admitted the source
-			// conversion. The complete enum domain may be wider than this
-			// constant, so recomputing only a domain proof loses exactness.
-			constant, _ := a.enumConstantValue(operand, call.Arguments[0])
-			conversion.Proof = a.integerConversionProof(result, operand, constant)
-		}
-		return conversion, true
-	}
-	if operand.Kind == EnumType && result.Kind == ResultType && len(result.TypeArgs) == 2 && isIntegerType(result.TypeArgs[0]) {
-		return ResolvedEnumConversion{Kind: ResolvedEnumToInteger, EnumType: operand, IntegerType: result.TypeArgs[0], Fallible: true}, true
-	}
+
 	return ResolvedEnumConversion{}, false
 }

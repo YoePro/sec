@@ -10,25 +10,39 @@ import (
 // Runtime member reads cannot borrow the value of a same-spelled enum case.
 // Rules: rules/declarations/enums.md — §12.1;
 // rules/types/types.md — "Exact integer conversion proof" (MD-104).
-func (a *Analyzer) enumToIntegerConversionResultType(target Type, source Type, expr ast.Expression) Type {
-	value, known := a.enumConstantValue(source, expr)
-	if known && a.checkIntegerValueRange(target, value, expressionToken(expr)) {
+func (a *Analyzer) enumToIntegerConversionResultType(conversion ast.Expression, target Type, source Type, operand ast.Expression) Type {
+	delete(a.resolvedEnumConversions, conversion)
+	value, known := a.enumConstantValue(source, operand)
+	if known && a.checkIntegerValueRange(target, value, expressionToken(operand)) {
 		return Type{Kind: InvalidType}
 	}
-	if a.integerConversionProof(target, source, value).Proven() {
+	proof := a.integerConversionProof(target, source, value)
+	fact := ResolvedEnumConversion{Kind: ResolvedEnumToInteger, EnumType: source, IntegerType: target, Fallible: !proof.Proven()}
+	// Existing IR exact-conversion support is restricted to built-in integer
+	// targets; named/contract/unit targets retain their separate lowering gate.
+	if isBuiltinConversionInteger(target) {
+		fact.Proof = proof
+	}
+	if a.resolvedEnumConversions == nil {
+		a.resolvedEnumConversions = map[ast.Expression]ResolvedEnumConversion{}
+	}
+	a.resolvedEnumConversions[conversion] = cloneEnumConversion(fact)
+	if proof.Proven() {
 		return target
 	}
-	// MD-012/MD-104: intrinsic integer non-representability belongs to
-	// ConversionError, independently of the arithmetic failure channel.
 	errorType := a.types["ConversionError"]
 	return Type{Name: "Result", Kind: ResultType, TypeArgs: []Type{target, errorType}}
 }
 
-// enumConstantValue reads the resolved numeric case identity, not the selector
-// spelling. Unknown runtime values remain subject to the full enum domain.
+// enumConstantValue reads retained numeric evidence or an exact declared case
+// identity, never selector spelling or a restored lexical constant environment.
+// Unknown runtime values remain subject to the full enum domain.
 // Rules: rules/declarations/enums.md — §§4,7,12.1;
 // rules/types/types.md — "Exact integer conversion proof".
 func (a *Analyzer) enumConstantValue(enumType Type, expr ast.Expression) (*big.Int, bool) {
+	if value, known := a.resolvedEnumConstants[expr]; known {
+		return new(big.Int).Set(value), true
+	}
 	member, ok := expr.(*ast.MemberExpression)
 	if !ok {
 		return nil, false

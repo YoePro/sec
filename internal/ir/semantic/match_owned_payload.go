@@ -15,6 +15,9 @@ func (fb *functionBuilder) prepareOwnedPayload(subjectExpr ast.Expression, token
 	if isFreshOwner(subjectExpr) {
 		return nil
 	}
+	if _, _, stored := fb.storedSubject(subjectExpr); stored {
+		return nil
+	}
 	identifier, ok := subjectExpr.(*ast.Identifier)
 	if !ok {
 		return fb.unsupported("owned match payload moved out of a subobject (P17-37)", token)
@@ -23,14 +26,11 @@ func (fb *functionBuilder) prepareOwnedPayload(subjectExpr ast.Expression, token
 	if !ok {
 		return fb.unsupported("owned match payload of an unresolved subject", token)
 	}
-	if _, stored := fb.ownedStorageOf(identifier); stored {
-		return nil
-	}
 	action, tracked := fb.trackedActions[fact.ID]
 	if !tracked {
 		return fb.unsupported("owned match payload of an untracked subject (P17-37)", token)
 	}
-	fb.emit(Operation{Kind: OpCleanupCancel, Cleanup: &CleanupFacts{Action: action, Reason: "moved"}, Location: location(token)})
+	fb.emitAll(fb.ownedCancels(fact.ID, action, "moved", false, location(token)))
 	return nil
 }
 
@@ -81,14 +81,56 @@ func (fb *functionBuilder) guardPayload(subject builtValue, subjectPlace *matchS
 // observing read for its active-variant tests. Nothing is copied: a payload then
 // leaves through the Place (package17 § 63).
 func (fb *functionBuilder) observeOwnedSubject(expr ast.Expression) (builtValue, *matchSubjectPlace, bool) {
-	owned, stored := fb.ownedStorageOf(expr)
-	if !stored {
+	if _, _, stored := fb.storedSubject(expr); !stored {
 		return builtValue{}, nil, false
 	}
-	token := expressionToken(expr)
-	place := fb.ownedStoragePlace(owned, token)
-	observation := fb.result(Operation{Kind: OpPlaceRead, Operands: []ValueID{place.id}, PlaceReadMode: PlaceReadObserve, Location: location(token)}, owned.typ)
+	place, element, err := fb.storedSubjectPlace(expr)
+	if err != nil {
+		return builtValue{}, nil, false
+	}
+	observation := fb.result(Operation{Kind: OpPlaceRead, Operands: []ValueID{place.id}, PlaceReadMode: PlaceReadObserve, Location: location(expressionToken(expr))}, element)
 	return observation, &matchSubjectPlace{place: place, mutable: true}, true
+}
+
+// storedSubjectPlace forms the writable Place of a stored subject and its element type.
+func (fb *functionBuilder) storedSubjectPlace(expr ast.Expression) (builtValue, TypeID, error) {
+	owned, chain, _ := fb.storedSubject(expr)
+	place := fb.ownedStoragePlace(owned, expressionToken(expr))
+	element := owned.typ
+	for _, step := range chain {
+		field, _ := fb.owner.analyzer.ResolvedStructMemberOf(step)
+		fieldType, err := fb.owner.internType(field.MemberType)
+		if err != nil {
+			return builtValue{}, 0, err
+		}
+		placeType := fb.owner.module.Types.Intern(Type{Kind: TypePlace, Element: fieldType, Mutable: true})
+		place = fb.placeResult(Operation{Kind: OpPlaceField, Operands: []ValueID{place.id}, StructField: StructFieldID(field.FieldID), Place: placeMetadataOf(owned.place), Location: location(step.Token)}, placeType)
+		element = fieldType
+	}
+	return place, element, nil
+}
+
+// storedSubject resolves a match subject held in owner storage: the owner itself,
+// or a chain of its stored fields, which the owner keeps owning around a moved
+// payload (package17 §§ 12, 14, 63).
+func (fb *functionBuilder) storedSubject(expr ast.Expression) (ownedStorage, []*ast.MemberExpression, bool) {
+	if owned, materialized := fb.materializedSubjects[expr]; materialized {
+		return owned, nil, true
+	}
+	root, chain := memberRoot(expr)
+	if root == nil {
+		return ownedStorage{}, nil, false
+	}
+	owned, stored := fb.ownedStorageOf(root)
+	if !stored {
+		return ownedStorage{}, nil, false
+	}
+	for _, step := range chain {
+		if field, resolved := fb.owner.analyzer.ResolvedStructMemberOf(step); !resolved || field.Kind != sema.MemberStoredField {
+			return ownedStorage{}, nil, false
+		}
+	}
+	return owned, chain, true
 }
 
 // storedMatchPayload binds an arm's payload through the subject's Place: a moved
@@ -99,6 +141,9 @@ func (fb *functionBuilder) storedMatchPayload(subjectExpr ast.Expression, place,
 	}
 	if arm.BindingAction != sema.MatchBindingMove && arm.BindingAction != sema.MatchBindingCopyTrivial {
 		return builtValue{}, false, fb.unsupported("ownership-sensitive match payload binding "+string(arm.BindingAction), token)
+	}
+	if arm.PatternKind == sema.MatchPatternResultErrVariant {
+		return fb.storedErrorPayload(subjectExpr, arm, token)
 	}
 	variant, ok := payloadVariantIndex(arm)
 	if !ok {
@@ -112,7 +157,7 @@ func (fb *functionBuilder) storedMatchPayload(subjectExpr ast.Expression, place,
 		value, err := fb.moveStoredPayload(subjectExpr, place, variant, payloadType, token)
 		return value, err == nil, err
 	}
-	owned, _ := fb.ownedStorageOf(subjectExpr)
+	owned, _, _ := fb.storedSubject(subjectExpr)
 	payload := fb.storedPayloadPlace(owned, place, variant, payloadType, token)
 	return fb.result(Operation{Kind: OpPlaceRead, Operands: []ValueID{payload.id}, Location: location(token)}, payloadType), true, nil
 }
@@ -122,7 +167,14 @@ func (fb *functionBuilder) storedMatchPayload(subjectExpr ast.Expression, place,
 func (fb *functionBuilder) moveStoredPayload(subjectExpr ast.Expression, place builtValue, variant UnionVariantIndex, payloadType TypeID, token lexer.Token) (builtValue, error) {
 	identifier, ok := subjectExpr.(*ast.Identifier)
 	if !ok {
-		return builtValue{}, fb.unsupported("owned match payload moved out of a subobject (P17-37)", token)
+		// A payload moved out of a stored field leaves the owner registered:
+		// its cleanup destroys the remaining fields (package17 §§ 12, 59).
+		owned, _, stored := fb.storedSubject(subjectExpr)
+		if !stored {
+			return builtValue{}, fb.unsupported("owned match payload moved out of a subobject (P17-37)", token)
+		}
+		payload := fb.storedPayloadPlace(owned, place, variant, payloadType, token)
+		return fb.result(Operation{Kind: OpOwnMoveFromPlace, Operands: []ValueID{payload.id}, Ownership: &OwnershipFacts{}, Location: location(token)}, payloadType), nil
 	}
 	fact, ok := fb.owner.analyzer.ResolvedBindingOf(identifier)
 	if !ok {
@@ -136,7 +188,7 @@ func (fb *functionBuilder) moveStoredPayload(subjectExpr ast.Expression, place b
 	payload := fb.storedPayloadPlace(owned, place, variant, payloadType, token)
 	loc := location(token)
 	moved := fb.result(Operation{Kind: OpOwnMoveFromPlace, Operands: []ValueID{payload.id}, Ownership: &OwnershipFacts{}, Location: loc}, payloadType)
-	fb.emit(Operation{Kind: OpCleanupCancel, Cleanup: &CleanupFacts{Action: action, Reason: "moved"}, Location: loc})
+	fb.emitAll(fb.ownedCancels(fact.ID, action, "moved", false, loc))
 	return moved, nil
 }
 
@@ -155,6 +207,16 @@ func (fb *functionBuilder) storedPayloadPlace(owned ownedStorage, place builtVal
 // both edges, so a tracked local moves out and its registration ends first.
 // Rules: rules/memory/destruction.md — §§ 9.1, 16.
 func (fb *functionBuilder) buildTryOperand(expr ast.Expression) (builtValue, error) {
+	if _, chain, stored := fb.storedSubject(expr); stored && len(chain) != 0 && fb.owner.maxPackage >= ownershipLoweringPackage {
+		// A tried stored field leaves; its owner keeps the remaining fields.
+		if typ, ok := fb.owner.analyzer.ResolvedTypeOf(expr); ok && !sema.TriviallyDestructible(typ) {
+			place, element, err := fb.storedSubjectPlace(expr)
+			if err != nil {
+				return builtValue{}, err
+			}
+			return fb.result(Operation{Kind: OpOwnMoveFromPlace, Operands: []ValueID{place.id}, Ownership: &OwnershipFacts{}, Location: location(expressionToken(expr))}, element), nil
+		}
+	}
 	if owned, stored := fb.ownedStorageOf(expr); stored {
 		fact, ok := fb.owner.analyzer.ResolvedBindingOf(expr.(*ast.Identifier))
 		action, tracked := fb.trackedActions[fact.ID]
@@ -164,7 +226,7 @@ func (fb *functionBuilder) buildTryOperand(expr ast.Expression) (builtValue, err
 		token := expressionToken(expr)
 		place := fb.ownedStoragePlace(owned, token)
 		moved := fb.result(Operation{Kind: OpOwnMoveFromPlace, Operands: []ValueID{place.id}, Ownership: &OwnershipFacts{}, Location: location(token)}, owned.typ)
-		fb.emit(Operation{Kind: OpCleanupCancel, Cleanup: &CleanupFacts{Action: action, Reason: "moved"}, Location: location(token)})
+		fb.emitAll(fb.ownedCancels(fact.ID, action, "moved", false, location(token)))
 		return moved, nil
 	}
 	value, err := fb.buildExpr(expr, 0)
@@ -185,7 +247,7 @@ func (fb *functionBuilder) buildTryOperand(expr ast.Expression) (builtValue, err
 	}
 	loc := location(identifier.Token)
 	moved := fb.result(Operation{Kind: OpOwnMove, Operands: []ValueID{value.id}, Ownership: &OwnershipFacts{}, Location: loc}, value.typ)
-	fb.emit(Operation{Kind: OpCleanupCancel, Cleanup: &CleanupFacts{Action: action, Reason: "moved"}, Location: loc})
+	fb.emitAll(fb.ownedCancels(fact.ID, action, "moved", false, loc))
 	return moved, nil
 }
 
@@ -200,11 +262,24 @@ func isFreshOwner(expr ast.Expression) bool {
 // needs destruction, whose full-expression lifetime has no form yet (P17-40).
 // Rules: rules/memory/destruction.md — § 8.
 func (fb *functionBuilder) endFreshMatchSubject(subjectExpr ast.Expression, subject builtValue, plan sema.ResolvedMatchPlan, arm sema.ResolvedMatchArm, token lexer.Token) error {
+	if owned, materialized := fb.materializedSubjects[subjectExpr]; materialized {
+		// A subject held in storage ends in place, unless the arm took its payload.
+		if arm.BindingAction != sema.MatchBindingMove {
+			fb.armTemporaries = append(fb.armTemporaries, pendingTemporary{typ: plan.SubjectType, token: token, loops: len(fb.loops), scopes: len(fb.cleanupScopes), stored: &owned})
+		}
+		return nil
+	}
 	if fb.owner.maxPackage < ownershipLoweringPackage || !isFreshOwner(subjectExpr) || sema.TriviallyDestructible(plan.SubjectType) || arm.BindingAction == sema.MatchBindingMove {
 		return nil
 	}
-	if !activePayloadTrivial(plan.SubjectType, arm) || arm.BindingAction == sema.MatchBindingBorrowShared || arm.BindingAction == sema.MatchBindingBorrowMutable {
-		return fb.unsupported("fresh match subject whose active payload outlives the arm (P17-40)", token)
+	if arm.BindingAction == sema.MatchBindingBorrowShared || arm.BindingAction == sema.MatchBindingBorrowMutable {
+		return fb.unsupported("borrowed payload of a fresh match subject (P17-40)", token)
+	}
+	if !activePayloadTrivial(plan.SubjectType, arm) {
+		// What the arm leaves lives through the whole match (owner decision
+		// 2026-11-03); the arm destroys it on every way out.
+		fb.holdArmTemporary(subject, plan.SubjectType, token)
+		return nil
 	}
 	// An unguarded copy already ended the subject; a guarded one read it through
 	// a Place, since a false guard leaves it to the next arm's test.
@@ -251,4 +326,61 @@ func activePayloadTrivial(subject sema.Type, arm sema.ResolvedMatchArm) bool {
 		return true
 	}
 	return false
+}
+
+// materializeMatchSubject holds a fresh owned subject in compiler storage when
+// an arm tests or takes a payload that only a Place reaches: a concrete error
+// variant's payload, or a whole named-field payload. The subject is then
+// observed like a stored one, and an arm that does not take its payload
+// destroys it in place (destruction.md § 8(8)).
+func (fb *functionBuilder) materializeMatchSubject(expr *ast.MatchExpression, plan sema.ResolvedMatchPlan) (builtValue, *matchSubjectPlace, bool, error) {
+	if fb.owner.maxPackage < ownershipLoweringPackage || !isFreshOwner(expr.Subject) || sema.TriviallyDestructible(plan.SubjectType) {
+		return builtValue{}, nil, false, nil
+	}
+	needed := movesFieldPayload(fb.owner.analyzer, expr)
+	for _, arm := range plan.Arms {
+		needed = needed || arm.PatternKind == sema.MatchPatternResultErrVariant
+	}
+	place, known := fb.owner.analyzer.ResolvedMatchSubjectPlaceOf(expr)
+	if !needed || !known {
+		return builtValue{}, nil, false, nil
+	}
+	value, err := fb.buildExpr(expr.Subject, 0)
+	if err != nil {
+		return builtValue{}, nil, false, err
+	}
+	token := expressionToken(expr.Subject)
+	id := fb.nextStorage
+	fb.nextStorage++
+	fb.fn.Storages = append(fb.fn.Storages, Storage{ID: id, Type: value.typ, Mutable: true, Class: StorageLocalAutomatic, AddressTaken: true, Location: location(token)})
+	fb.emit(Operation{Kind: OpStorageDeclare, Storage: id, Location: location(token)})
+	owned := ownedStorage{storage: id, place: place, typ: value.typ, scope: fb.currentCleanupScope()}
+	root := fb.ownedStoragePlace(owned, token)
+	fb.emit(Operation{Kind: OpOwnInitializePlace, Operands: []ValueID{root.id, value.id}, Ownership: &OwnershipFacts{}, Location: location(token)})
+	if fb.materializedSubjects == nil {
+		fb.materializedSubjects = map[ast.Expression]ownedStorage{}
+	}
+	fb.materializedSubjects[expr.Subject] = owned
+	observation := fb.result(Operation{Kind: OpPlaceRead, Operands: []ValueID{root.id}, PlaceReadMode: PlaceReadObserve, Location: location(token)}, value.typ)
+	return observation, &matchSubjectPlace{place: root, mutable: true}, true, nil
+}
+
+// storedErrorPayload binds the payload of a concrete error variant through the
+// Err payload Place its test observed: a moved payload leaves it, a trivial one
+// is read from it.
+func (fb *functionBuilder) storedErrorPayload(subjectExpr ast.Expression, arm sema.ResolvedMatchArm, token lexer.Token) (builtValue, bool, error) {
+	if !fb.errorArm.union || fb.errorArm.place.id == 0 {
+		return builtValue{}, false, fb.unsupported("concrete error variant payload without a union error Place", token)
+	}
+	errorPlace, _ := fb.owner.module.Types.Lookup(fb.errorArm.place.typ)
+	payloadType, ok := variantPayloadType(fb.owner.module, errorPlace.Element, fb.errorArm.variant)
+	if !ok {
+		return builtValue{}, false, fb.unsupported("concrete error variant payload without a Place type", token)
+	}
+	owned, _, _ := fb.storedSubject(subjectExpr)
+	payload := fb.storedPayloadPlace(owned, fb.errorArm.place, fb.errorArm.variant, payloadType, token)
+	if arm.BindingAction == sema.MatchBindingMove {
+		return fb.result(Operation{Kind: OpOwnMoveFromPlace, Operands: []ValueID{payload.id}, Ownership: &OwnershipFacts{}, Location: location(token)}, payloadType), true, nil
+	}
+	return fb.result(Operation{Kind: OpPlaceRead, Operands: []ValueID{payload.id}, Location: location(token)}, payloadType), true, nil
 }

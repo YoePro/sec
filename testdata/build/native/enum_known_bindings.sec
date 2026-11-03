@@ -1,0 +1,17 @@
+module main
+enum Wide uint16 { Small = 1, Large = 300 }
+enum Signed int16 { Low = -129, High = 127 }
+fn One() uint8 {
+    let value := Wide.Small
+    let alias := value
+    return uint8(alias)
+}
+fn Maximum() int8 {
+    let value := Signed.High
+    return int8(value)
+}
+fn main() int {
+    if One() != 1 { return 1 }
+    if Maximum() != 127 { return 2 }
+    return 0
+}

@@ -1,0 +1,10 @@
+module main
+@noCopy
+type Resource struct { Raw: int }
+type Container struct { Value: Resource }
+impl Container { free { } }
+fn Transfer() void {
+    let source := Container { Value: Resource { Raw: 1 } }
+    let destination := source.Value
+    discard destination
+}

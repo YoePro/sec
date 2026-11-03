@@ -181,6 +181,9 @@ func variantPayloads(module *Module, id TypeID) ([]TypeID, bool) {
 			payloads := make([]TypeID, len(definition.Variants))
 			for index, variant := range definition.Variants {
 				payloads[index] = variant.Payload
+				if variant.Kind == UnionVariantFields {
+					payloads[index] = variant.SyntheticPayloadStruct
+				}
 			}
 			return payloads, true
 		}
@@ -268,6 +271,9 @@ func verifySubobjectState(module *Module, fn *Function) error {
 			}
 			switch op.Kind {
 			case OpOwnMoveFromPlace, OpOwnCopyFromPlace, OpOwnReplacePlace:
+				if op.Kind == OpOwnReplacePlace && len(path) == 0 && op.Ownership.OldCleanup == 0 && op.Ownership.NewCleanup == 0 && !trivialDestruction(module, definitionsType(op.Operands[1], definitions, fn)) {
+					return fmt.Errorf("own.replace-place of a whole owner needs its old and new cleanup actions; only a stored field keeps its owner's")
+				}
 				if previous, conflict := overlapping(); conflict {
 					return fmt.Errorf("%s of %s %s overlaps moved-out subobject %q", op.Kind, root, path, previous.String())
 				}

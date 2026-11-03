@@ -181,14 +181,52 @@ module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 :
 
 // -----
 
-!two = !sec.struct<identity = "main::Two", typeArguments = [], fields = [#sec.struct_field<ordinal = 0, name = "a", type = !sec.int, tags = []>]>
 module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 : i32, sec.module_id = "own", sec.source_files = [], sec.target_os = "linux", sec.target_arch = "armv7", sec.target_triple = "armv7-unknown-linux-gnueabihf", sec.target_abi = "gnu", sec.target_profile = "hosted", sec.target_endianness = "little", dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32>>} {
-  func.func @partial(%s: !sec.storage<!two>) {
-    %p = "sec.place.storage"(%s) <{place_root_id = 1 : i32, storage_identity = 1 : i32, address_space = "ordinary"}> : (!sec.storage<!two>) -> !sec.place<!two, "rw">
-    "sec.cleanup.track_owned"(%p) <{cleanup_action_id = 1 : i32, cleanup_scope_id = 1 : i32, cleanup_registration_ordinal = 1 : i32, destruction_plan = "p"}> : (!sec.place<!two, "rw">) -> ()
-    %f = "sec.place.field"(%p) <{field = 0 : i32}> : (!sec.place<!two, "rw">) -> !sec.place<!sec.int, "rw">
-    %m = "sec.own.move_from_place"(%f) : (!sec.place<!sec.int, "rw">) -> !sec.int
-    // expected-error@+1 {{would destroy a moved value}}
+  func.func @defer_reads_newer_owner(%v: !sec.int, %s: !sec.storage<!sec.int>) {
+    %p = "sec.place.storage"(%s) <{place_root_id = 1 : i32, storage_identity = 1 : i32, address_space = "ordinary"}> : (!sec.storage<!sec.int>) -> !sec.place<!sec.int, "rw">
+    "sec.cleanup.defer_register"(%p) <{cleanup_action_id = 1 : i32, cleanup_scope_id = 1 : i32, cleanup_registration_ordinal = 1 : i32, defer_id = 1 : i32}> ({
+    ^bb0(%c: !sec.place<!sec.int, "rw">):
+      "sec.cleanup.defer_yield"() : () -> ()
+    }) : (!sec.place<!sec.int, "rw">) -> ()
+    %q = "sec.place.storage"(%s) <{place_root_id = 1 : i32, storage_identity = 1 : i32, address_space = "ordinary"}> : (!sec.storage<!sec.int>) -> !sec.place<!sec.int, "rw">
+    // expected-error@+1 {{registers an owner an active defer reads, whose cleanup would run before the defer}}
+    "sec.cleanup.track_owned"(%q) <{cleanup_action_id = 2 : i32, cleanup_scope_id = 1 : i32, cleanup_registration_ordinal = 2 : i32, destruction_plan = "p"}> : (!sec.place<!sec.int, "rw">) -> ()
+    "sec.cleanup.run_function"() <{exit_kind = "return"}> : () -> ()
+    return
+  }
+}
+
+// -----
+
+module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 : i32, sec.module_id = "own", sec.source_files = [], sec.target_os = "linux", sec.target_arch = "armv7", sec.target_triple = "armv7-unknown-linux-gnueabihf", sec.target_abi = "gnu", sec.target_profile = "hosted", sec.target_endianness = "little", dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32>>} {
+  func.func @defer_order(%s: !sec.storage<!sec.int>) {
+    %p = "sec.place.storage"(%s) <{place_root_id = 1 : i32, storage_identity = 1 : i32, address_space = "ordinary"}> : (!sec.storage<!sec.int>) -> !sec.place<!sec.int, "rw">
+    "sec.cleanup.defer_register"(%p) <{cleanup_action_id = 1 : i32, cleanup_scope_id = 1 : i32, cleanup_registration_ordinal = 2 : i32, defer_id = 1 : i32}> ({
+    ^bb0(%c: !sec.place<!sec.int, "rw">):
+      "sec.cleanup.defer_yield"() : () -> ()
+    }) : (!sec.place<!sec.int, "rw">) -> ()
+    // expected-error@+1 {{registers out of source registration order}}
+    "sec.cleanup.defer_register"(%p) <{cleanup_action_id = 2 : i32, cleanup_scope_id = 1 : i32, cleanup_registration_ordinal = 1 : i32, defer_id = 2 : i32}> ({
+    ^bb0(%c: !sec.place<!sec.int, "rw">):
+      "sec.cleanup.defer_yield"() : () -> ()
+    }) : (!sec.place<!sec.int, "rw">) -> ()
+    "sec.cleanup.run_function"() <{exit_kind = "return"}> : () -> ()
+    return
+  }
+}
+
+// -----
+
+module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 : i32, sec.module_id = "own", sec.source_files = [], sec.target_os = "linux", sec.target_arch = "armv7", sec.target_triple = "armv7-unknown-linux-gnueabihf", sec.target_abi = "gnu", sec.target_profile = "hosted", sec.target_endianness = "little", dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32>>} {
+  func.func @defer_reads_inner_owner(%s: !sec.storage<!sec.int>) {
+    %p = "sec.place.storage"(%s) <{place_root_id = 1 : i32, storage_identity = 1 : i32, address_space = "ordinary"}> : (!sec.storage<!sec.int>) -> !sec.place<!sec.int, "rw">
+    "sec.cleanup.track_owned"(%p) <{cleanup_action_id = 1 : i32, cleanup_scope_id = 2 : i32, cleanup_registration_ordinal = 1 : i32, destruction_plan = "p"}> : (!sec.place<!sec.int, "rw">) -> ()
+    "sec.cleanup.defer_register"(%p) <{cleanup_action_id = 2 : i32, cleanup_scope_id = 2 : i32, cleanup_registration_ordinal = 2 : i32, defer_id = 1 : i32}> ({
+    ^bb0(%c: !sec.place<!sec.int, "rw">):
+      "sec.cleanup.defer_yield"() : () -> ()
+    }) : (!sec.place<!sec.int, "rw">) -> ()
+    // expected-error@+1 {{would destroy an owner an active defer reads before the defer runs}}
+    "sec.cleanup.run_scope"() <{scope_ids = array<i32: 2>, exit_kind = "fallthrough"}> : () -> ()
     "sec.cleanup.run_function"() <{exit_kind = "return"}> : () -> ()
     return
   }

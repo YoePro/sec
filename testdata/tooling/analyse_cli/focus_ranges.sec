@@ -1,0 +1,27 @@
+module main
+
+fn Outer(values: ref int[]) void {
+    fn Nested() void { }
+    for index in uint(1)..<values.Len {
+        let value := values[index]
+    }
+}
+
+let Between := 7
+fn First() void { } fn Second() void { }
+fn WithDeferred() void {
+    defer { let deferred := 1 }
+    let closure := fn() int { return 1 }
+    discard closure()
+}
+extern "Sec" fn Foreign(value: int) int
+
+type Widget struct { }
+impl Widget {
+    init() { let initialized := 1 }
+    free { let freed := 1 }
+    property Number: int {
+        @noPanic
+        get { return 2 }
+    }
+}

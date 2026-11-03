@@ -513,7 +513,7 @@ func (s *server) handle(message rpcMessage) error {
 		if !ok {
 			return s.respond(message.ID, []codeLens{})
 		}
-		return s.respond(message.ID, unresolvedInterfaceCodeLenses(params.TextDocument.URI, snapshot.Text))
+		return s.respond(message.ID, unresolvedConformanceCodeLenses(params.TextDocument.URI, snapshot.Text))
 	case "codeLens/resolve":
 		return s.handleCodeLensResolve(message)
 	case "inlayHint/resolve":
@@ -628,7 +628,7 @@ func (s *server) handle(message rpcMessage) error {
 		if !ok {
 			return s.respond(message.ID, []codeAction{})
 		}
-		actions := ownershipCodeActions(params.TextDocument.URI, snapshot.Text, params.Context.Diagnostics)
+		actions := ownershipCodeActions(params.TextDocument.URI, snapshot.Text, params.Context.Diagnostics, s.sourceOverlay())
 		actions = append(actions, defaultCodeActions(params.TextDocument.URI, snapshot.Text, params.Range, s.sourceOverlay())...)
 		actions = append(actions, unitConversionCodeActions(params.TextDocument.URI, snapshot.Text, params.Context.Diagnostics, s.sourceOverlay())...)
 		actions = append(actions, attributeCodeActions(params.TextDocument.URI, snapshot.Text, params.Context.Diagnostics)...)
@@ -3215,62 +3215,6 @@ func sortCompletionItems(items []completionItem) {
 		}
 		return items[i].Label < items[j].Label
 	})
-}
-
-func ownershipCodeActions(uri string, text string, reported []diagnostic) []codeAction {
-	actions := make([]codeAction, 0, len(reported))
-	for _, reportedDiagnostic := range reported {
-		if reportedDiagnostic.Code != diagnostics.ImplicitMoveDisallowed {
-			continue
-		}
-		edit, title, ok := ownershipMoveSyntaxEdit(text, reportedDiagnostic)
-		if !ok {
-			continue
-		}
-		actions = append(actions, codeAction{
-			Title:       title,
-			Kind:        "quickfix",
-			Diagnostics: []diagnostic{reportedDiagnostic},
-			Edit: workspaceEdit{Changes: map[string][]textEdit{
-				uri: {edit},
-			}},
-		})
-	}
-	return actions
-}
-
-// ownershipMoveSyntaxEdit turns only the operator belonging to a verified
-// implicit-move diagnostic into its explicit-move equivalent. The diagnostic
-// is attached to the named source, so the immediately preceding token must be
-// the ordinary declaration or assignment operator.
-func ownershipMoveSyntaxEdit(text string, reported diagnostic) (textEdit, string, bool) {
-	targetOffset := lineCharToOffset(text, reported.Range.Start.Line, reported.Range.Start.Character)
-	l := lexer.New(text)
-	previous := lexer.Token{}
-	for {
-		token := l.NextToken()
-		if token.Type == lexer.EOF {
-			return textEdit{}, "", false
-		}
-		if textPositionOffset(text, token.Line, token.Column) == targetOffset {
-			var replacement, title string
-			switch previous.Type {
-			case lexer.DECLARE:
-				replacement = ":<-"
-				title = "Change := to :<- to move the value (source becomes unavailable)"
-			case lexer.ASSIGN:
-				replacement = "<-"
-				title = "Change = to <- to move the value (source becomes unavailable)"
-			default:
-				return textEdit{}, "", false
-			}
-			return textEdit{
-				Range:   tokenRange(text, previous),
-				NewText: replacement,
-			}, title, true
-		}
-		previous = token
-	}
 }
 
 func formatSource(text string) string {

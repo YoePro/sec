@@ -1,0 +1,11 @@
+module main
+enum Wide uint16 { Small = 1, Large = 300 }
+enum Fits int16 { Low = -128, High = 127, Alias = 127 }
+enum Generic[T] uint16 { Small = 1, Large = 300 }
+type Box[T] struct { Value: T }
+type FixedBox Box[int]
+fn Constant() uint8 { return uint8(Wide.Small) }
+fn Domain(value: Fits) int8 { return int8(value) }
+fn Concrete() uint8 { return uint8(Generic[int].Small) }
+fn Nested() uint8 { return uint8(Generic[Wide].Small) }
+fn Fixed() uint8 { return uint8(Generic[FixedBox].Small) }

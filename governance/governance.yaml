@@ -86,14 +86,14 @@ integrations:
       - "library scope (2026-10-10): index.yaml fragments with implementation_scope: library (stdlib.yaml) are not compiler implementation; yamlstatus statistics exclude their integrations and checklist items, report them on a separate Not counted line, and keep their points selectable"
       - "HTML reporting (-html): a complete escaped document using the sec-lang.com manual layout, shared stylesheet/logo, navigation/sidebar/breadcrumb/footer, compiler-only overview and progress, separate integration/checklist/metadata tables and explicit library exclusion. Embedded html/template keeps markup separate from Go; no plain-text prefix or printf interpretation of generated percentages. Source-backed CLI tests cover report output, escaping, empty states, stable metadata ordering and unchanged library scope; text-statistics regression uses nonempty input and current labels."
       - "-uses PATH (2026-11-01): read-only reverse references in code/tests/rules with exact YAML scalar file/line, integration ID, status and field; includes completed and library integrations without requiring remaining points or source-file existence. Exact normalized repository-relative/native absolute paths, stable human/JSON output, -dir/-file/-id filters, empty reports and malformed/incompatible/ambiguous-request rejection are covered. Structured rule requirements and prose are not path references; source files and YAML stay unchanged (IDEAS.md §3)."
+      - "-paths (2026-11-04): read-only existence checks for code/tests/rules, including evidence and nested plan lists, completed and library integrations, with exact YAML file/line, owner, status, field and original path. Normalized repository-relative and native absolute paths, symlink handling, deterministic human/JSON output, -dir/-file/-id scope and optional -go filter for internal/cmd Go paths are supported. Structured rule requirements and paragraph references are not filenames. Findings return a full report and nonzero status; other filesystem errors fail without false missing findings. No source or YAML edits; IDEAS.md section 2 complete."
+      - "-grep TEXT (2026-11-04): read-only literal case-insensitive search of all top-level remaining checklist items, including library owners, decoded Unicode/multiline strings and structured item ID/description/expectation values. Reports retain original point, exact YAML file/line, owner/status and 1-based checklist index/count in deterministic human/JSON output. -dir/positional-directory/-file/-id filters, successful empty reports, unknown/ambiguous IDs and incompatible/empty-request rejection are covered. Metadata, mapping keys, implemented/partial and nested plan notes are excluded. Selection shares its existing item-location lookup with search. No source/YAML changes during queries; IDEAS.md section 9 complete."
     remaining:
-      - "-paths: report code, tests and rules paths that do not exist (IDEAS.md section 2)"
       - canonical key order per integration, which needs an agreed order first (IDEAS.md section 4.1)
       - "-md: missing-decision cross-references and stale references to closed decisions (IDEAS.md section 5)"
       - "-corrections: applied-correction bookkeeping (IDEAS.md section 6)"
       - "-diff BASELINE: remaining-count changes against a snapshot or HEAD (IDEAS.md section 7)"
       - "-diagnostics: diagnostic registry versus governance and next free ID (IDEAS.md section 8)"
-      - "-grep TEXT limited to remaining items (IDEAS.md section 9)"
     area: governance
     integrated: "2026-10-09"
     code:
@@ -108,6 +108,8 @@ integrations:
       - cmd/yamlstatus/html_endpoint.go
       - cmd/yamlstatus/html_endpoint.html
       - cmd/yamlstatus/uses.go
+      - cmd/yamlstatus/paths.go
+      - cmd/yamlstatus/grep.go
     tests:
       - cmd/yamlstatus/main_test.go
       - cmd/yamlstatus/selection_test.go
@@ -116,7 +118,13 @@ integrations:
       - cmd/yamlstatus/library_scope_test.go
       - cmd/yamlstatus/html_endpoint_test.go
       - cmd/yamlstatus/uses_test.go
+      - cmd/yamlstatus/paths_test.go
+      - cmd/yamlstatus/grep_test.go
     verification:
+      - command: "go test -p 4 ./cmd/yamlstatus -count=1; go test -p 4 -race ./cmd/yamlstatus -count=1; go vet -p 4 ./cmd/yamlstatus; go run ./cmd/yamlstatus -grep C:: -file ffi.yaml -json; go run ./cmd/yamlstatus check"
+        result: "2026-11-04: full normal (0.026s) and race (1.161s) suites and vet passed with disk GOCACHE/GOTMPDIR. Live literal C:: search in ffi.yaml returned five remaining points. Tests verify structured/folded/Unicode/literal matching, field and completed/partial/nested prose exclusion, exact locations/index/count, library inclusion, deterministic human/JSON output, empty results, filters, malformed requests, ambiguous IDs and unchanged YAML. Remaining 6 to 5 for this ID, governance.yaml 20 to 19; no replacement remaining."
+      - command: go test -p 4 ./cmd/yamlstatus -count=1; go test -p 4 -race ./cmd/yamlstatus -count=1; go vet -p 4 ./cmd/yamlstatus; go run ./cmd/yamlstatus -paths -json; go run ./cmd/yamlstatus check
+        result: "2026-11-04: complete normal (0.023s) and race (1.117s) suites and vet passed using disk GOCACHE/GOTMPDIR. Regression coverage includes nested evidence/plans, exact locations, library/completed owners, malformed lists/requests, filters, paragraph/prose exclusion, deterministic output, unchanged YAML, absolute paths, symlinks and filesystem inspection errors. Live check correctly reports 15 stale references and exits nonzero; these unrelated references are documented in handoff. Remaining 7 to 6 for this ID and 21 to 20 in governance.yaml; no replacement remaining added."
       - command: go test ./cmd/yamlstatus -count=1; go vet ./cmd/yamlstatus; go run ./cmd/yamlstatus -uses cmd/yamlstatus/uses.go -json; go run ./cmd/yamlstatus check
         result: passed 2026-11-01 for whole -uses PATH point. Tests cover normalized/missing exact paths, code/tests/rules locations, completed/library owners, structured rule requirements, prose/prefix exclusion, filters, human/JSON/empty output, malformed and incompatible requests, ambiguous IDs and byte-identical YAML after queries. Live repository lookup passed. Remaining under this ID 8 to 7; governance.yaml 22 to 21; no replacement remaining added.
       - command: go test ./cmd/yamlstatus -count=1; go vet ./cmd/yamlstatus; go run ./cmd/yamlstatus check
@@ -127,6 +135,7 @@ integrations:
         result: 0 problems in 47 fragments on 2026-10-09 after fixing the 24 problems found by the first run
       - command: go test ./cmd/yamlstatus -count=1
         result: passed on 2026-10-09 with well-formed and broken ledgers covering every check category, refused problem-introducing edits, and unblocked edits of fragments with pre-existing problems
+    revised: "2026-11-04"
 
   - id: governance.allocation-storage-origin-taxonomy
     area: rulebook-consistency

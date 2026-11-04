@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-07-31
-- **Last updated:** 2026-10-28 (MD-029/MD-042 error-pattern and inactive-arm preservation §§ 20(11)–20(12); MD-062 metadata spacing and preservation policy §§ 22(11)–22(13)); 2026-10-27 (MD-099 comment-column cap §§ 9(10a), 12(6a); MD-100 enum-only exemption § 15(4a); MD-037 `sec fmt` path selection §§ 28(9)–28(14)); 2026-10-18 (trailing single-line block comments, MD-097; direct unsafe call, MD-079)
+- **Last updated:** 2026-11-04 (owner clarifications: preserve authored declaration blank lines in compact style, § 7(4), and mandatory function/comment separation, § 7(7a)); 2026-10-28 (MD-029/MD-042 error-pattern and inactive-arm preservation §§ 20(11)–20(12); MD-062 metadata spacing and preservation policy §§ 22(11)–22(13)); 2026-10-27 (MD-099 comment-column cap §§ 9(10a), 12(6a); MD-100 enum-only exemption § 15(4a); MD-037 `sec fmt` path selection §§ 28(9)–28(14)); 2026-10-18 (trailing single-line block comments, MD-097; direct unsafe call, MD-079)
 - **Document revision:** 2.3
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/tooling/formatter.md`
@@ -313,13 +313,15 @@ let count := 3
 
 § 7(3) In `structured` style, major declaration groups receive structural separation where defined by this rulebook.
 
-§ 7(4) In `compact` style, optional structural blank lines are removed while required separation and comment attachment remain intact.
+§ 7(4) In `compact` style, the formatter does not add optional structural blank lines. An existing single empty line between functions, methods, or declaration groups is preserved, including boundaries involving structs, enums, unions, registers and impl blocks. Repeated empty lines collapse to one under § 7(1). Compact style must never remove that existing separation. Required separation and comment attachment remain intact.
 
 § 7(5) Aggregate or group type declarations are separated from surrounding unrelated declarations in `structured` style.
 
 § 7(6) Adjacent simple named-type declarations may remain a compact declaration block when they form one homogeneous group.
 
 § 7(7) A doc-commented function, method, property, test declaration, or similar major declaration receives structural separation in `structured` style unless it is the first declaration in the enclosing region or the documentation is file-level documentation.
+
+§ 7(7a) A completed function or method body is always separated from a following standalone comment by exactly one empty line, including a documentation comment. This is required separation in both `structured` and `compact` styles, whether the comment documents a following declaration or ends the enclosing region or file. The same rule applies to lambda function bodies. A trailing comment on the closing brace's own line remains attached there; a following standalone comment still receives the required empty line. This rule does not insert an empty line between documentation and its documented declaration.
 
 § 7(8) Documentation comments remain attached to the declaration they document.
 
@@ -331,7 +333,7 @@ let count := 3
 
 § 7(12) Consecutive `defer` blocks remain together unless an intervening comment or syntax requires separation.
 
-§ 7(13) In `structured` style, a very long outlier may start a new alignment group when aligning it with the previous group would create excessive whitespace. `compact` style removes that optional blank line.
+§ 7(13) In `structured` style, a very long outlier may start a new alignment group when aligning it with the previous group would create excessive whitespace. `compact` style does not introduce that optional blank line and preserves an existing one under § 7(4).
 
 ---
 
@@ -809,7 +811,7 @@ property Name: string {
 }
 ```
 
-§ 16(8) In `structured` style, accessors in one property may be separated by one structural blank line. `compact` removes that optional blank line.
+§ 16(8) In `structured` style, accessors in one property may be separated by one structural blank line. `compact` does not add that optional blank line and preserves an existing one under § 7(4).
 
 § 16(9) A fallible setter keeps `try set` together:
 
@@ -1423,7 +1425,7 @@ test "The parser correctly preserves all comments surrounding a malformed generi
 
 § 24(7) In `structured` style, adjacent top-level tests receive the same structural separation as adjacent functions or other major executable declarations.
 
-§ 24(8) In `compact` style, optional blank separation between adjacent tests is removed.
+§ 24(8) In `compact` style, optional blank separation between adjacent tests is not added. Existing single empty lines are preserved under § 7(4).
 
 § 24(9) Nested `test` declarations are not created by formatting. Subtests expressed through `testing.Run(...)` follow ordinary call and lambda formatting.
 

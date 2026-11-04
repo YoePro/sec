@@ -54,15 +54,7 @@ func selectPoint(entries []Entry, id string, index int, exclude string, random b
 			if exclude != "" && strings.Contains(strings.ToLower(string(encoded)), strings.ToLower(exclude)) {
 				continue
 			}
-			line := entry.Node.Line
-			for j := 0; j+1 < len(entry.Node.Content); j += 2 {
-				if entry.Node.Content[j].Value == "remaining" {
-					list := entry.Node.Content[j+1]
-					if list.Kind == yaml.SequenceNode && i < len(list.Content) {
-						line = list.Content[i].Line
-					}
-				}
-			}
+			line := remainingPointNode(entry, i).Line
 			candidates = append(candidates, SelectedPoint{
 				File: entry.File, Line: line, ID: entry.Item.ID, Status: entry.Item.Status,
 				PointIndex: i + 1, Remaining: len(entry.Item.Remaining), Point: point, Integration: integration,
@@ -79,6 +71,18 @@ func selectPoint(entries []Entry, id string, index int, exclude string, random b
 		return candidates[rand.IntN(len(candidates))], nil
 	}
 	return candidates[0], nil
+}
+
+// remainingPointNode shares the exact checklist-item location between selection
+// and search. Fallback retains the owner location for recovered ledger shapes.
+// Contract: codex.md — "Finding governance work with yamlstatus";
+// cmd/yamlstatus/IDEAS.md — §9.
+func remainingPointNode(entry Entry, index int) *yaml.Node {
+	list := mappingValue(entry.Node, "remaining")
+	if list != nil && list.Kind == yaml.SequenceNode && index >= 0 && index < len(list.Content) {
+		return list.Content[index]
+	}
+	return entry.Node
 }
 
 func printPoint(out io.Writer, point SelectedPoint, jsonOutput bool) error {

@@ -40,6 +40,15 @@ func validateOwnershipLoweringCapabilities(program *ast.Program, analyzer *sema.
 				if identifier, ok := node.Value.(*ast.Identifier); ok {
 					discarded[identifier] = true
 				}
+				// A discarded stored field ends through its Place (discardOwnedField).
+				if root, chain := memberRoot(node.Value); root != nil && len(chain) != 0 {
+					for _, step := range chain {
+						discarded[step] = true
+						if step.Property != nil {
+							discarded[step.Property] = true
+						}
+					}
+				}
 			case *ast.CallExpression:
 				// A pack forwarded as an argument moves element by element in
 				// buildPackForward, which names its own boundary for elements

@@ -12,8 +12,8 @@ import (
 // explicit discard.value: the expression is evaluated, and the consumed value
 // (or the binding's storage) is recorded with its trivial-destruction
 // classification. A fresh value that needs destruction lowers to own.discard with
-// its plan, and a whole owned binding also ends its registration; a projected
-// source stays an explicit unsupported construct.
+// its plan, a whole owned binding also ends its registration, and a stored
+// field ends through its field Place.
 //
 // Rules:
 //   - rules/control-flow/discard.md — §§ 3, 5, 9, 36
@@ -48,7 +48,52 @@ func (fb *functionBuilder) buildDiscard(stmt *ast.DiscardStatement) error {
 	if stmt.Value == nil {
 		return fb.unsupported("empty discard", stmt.Token)
 	}
+	if member, ok := stmt.Value.(*ast.MemberExpression); ok {
+		if handled, err := fb.discardOwnedField(stmt, member, loc); handled {
+			return err
+		}
+	}
 	return fb.discardExpression(stmt.Value, DiscardExplicit, stmt.Token)
+}
+
+// discardOwnedField ends a stored field that needs destruction through its field
+// Place: an available field moves out and is destroyed once by its own plan, a
+// field owned on some paths is destroyed in place where owned, and an already
+// unavailable one is a no-op. The owner stays registered and its cleanup skips
+// the ended field, as after a field move (discard.md §§ 26, 35; destruction.md § 12).
+func (fb *functionBuilder) discardOwnedField(stmt *ast.DiscardStatement, member *ast.MemberExpression, loc Location) (bool, error) {
+	typ, typed := fb.owner.analyzer.ResolvedTypeOf(member)
+	state, resolved := fb.owner.analyzer.ResolvedDiscardSourceStateOf(stmt)
+	if !typed || !resolved || sema.TriviallyDestructible(typ) || fb.owner.maxPackage < ownershipLoweringPackage {
+		return false, nil
+	}
+	root, chain := memberRoot(member)
+	if root == nil {
+		return true, fb.unsupported("P17 discard of a field of a computed owner", member.Token)
+	}
+	owned, stored := fb.ownedStorageOf(root)
+	if !stored {
+		return true, fb.unsupported("P17 discard of a field of an owner without storage", member.Token)
+	}
+	if state == sema.DiscardSourceUnavailable {
+		return true, nil
+	}
+	planID, err := fb.owner.importDestructionPlans(sema.ResolveDestructionPlans(typ), typ)
+	if err != nil {
+		return true, err
+	}
+	place, err := fb.storedFieldPlace(owned, root, chain)
+	if err != nil {
+		return true, err
+	}
+	if state == sema.DiscardSourceConditional {
+		fb.emit(Operation{Kind: OpOwnDestroyPlace, Operands: []ValueID{place.id}, Ownership: &OwnershipFacts{Cause: "cleanup", DestructionPlan: planID, IfOwned: true}, Location: loc})
+		return true, nil
+	}
+	element, _ := fb.owner.module.Types.Lookup(place.typ)
+	value := fb.result(Operation{Kind: OpOwnMoveFromPlace, Operands: []ValueID{place.id}, Ownership: &OwnershipFacts{}, Location: loc}, element.Element)
+	fb.emit(Operation{Kind: OpOwnDiscard, Operands: []ValueID{value.id}, Ownership: &OwnershipFacts{DiscardOrigin: "explicit", DestructionPlan: planID}, Location: loc})
+	return true, nil
 }
 
 // discardExpression evaluates expr and consumes its value.
@@ -116,10 +161,16 @@ func (fb *functionBuilder) discardOwnedBinding(stmt *ast.DiscardStatement, fact 
 	return nil
 }
 
-// discardFreshOwned destroys a call result nothing else owns, once, through its
-// type-level plan (rules/control-flow/discard.md §§ 5, 9; dialect v13 § 11).
+// discardFreshOwned destroys a call or try result or a struct or array literal nothing
+// else owns, once, through its type-level plan; the literal's operands are
+// prepared, and moved sources cancelled, before it is destroyed
+// (rules/control-flow/discard.md §§ 5, 9, aggregate temporary discard; dialect v13 § 11).
 func (fb *functionBuilder) discardFreshOwned(expr ast.Expression, typ sema.Type, provenance DiscardProvenance, token lexer.Token) error {
-	if _, call := expr.(*ast.CallExpression); !call || fb.owner.maxPackage < ownershipLoweringPackage {
+	_, call := expr.(*ast.CallExpression)
+	_, tried := expr.(*ast.TryExpression)
+	_, literal := expr.(*ast.StructLiteral)
+	_, array := expr.(*ast.ArrayLiteral)
+	if !call && !tried && !literal && !array || fb.owner.maxPackage < ownershipLoweringPackage {
 		return fb.unsupported(fmt.Sprintf("discard of %s, which needs destruction", typ.Name), token)
 	}
 	planID, err := fb.owner.importDestructionPlans(sema.ResolveDestructionPlans(typ), typ)

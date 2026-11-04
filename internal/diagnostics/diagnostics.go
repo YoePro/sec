@@ -374,6 +374,12 @@ const (
 	// StaticFunctionContext rejects static fn outside a direct member context.
 	StaticFunctionContext     = "S1196"
 	AssociatedStorageConflict = "S1197"
+	// NonConvergingSpecialization reports a generic template whose
+	// specialization demand provably grows without bound (monomorphization.md § 18.5).
+	NonConvergingSpecialization = "S1198"
+	// ForBindingModeUnavailable rejects a ref or ref mut loop binding the
+	// iterated source does not provide (flowcontrol_for.md § 40).
+	ForBindingModeUnavailable = "S1199"
 	HardwareRegionOverlap     = "A2010"
 
 	// UnionVariantPayloadRequired rejects a payload-carrying union variant
@@ -466,6 +472,8 @@ var registry = map[string]Definition{
 	StaticInstanceReceiverRequired:        {ID: StaticInstanceReceiverRequired, Name: "static.instance-receiver-required", Family: "static", DefaultSeverity: SeverityError, Mandatory: true},
 	StaticFunctionContext:                 {ID: StaticFunctionContext, Name: "static.invalid-function-context", Family: "static", DefaultSeverity: SeverityError, Mandatory: true},
 	AssociatedStorageConflict:             {ID: AssociatedStorageConflict, Name: "static.associated-member-conflict", Family: "static", DefaultSeverity: SeverityError, Mandatory: true},
+	NonConvergingSpecialization:           {ID: NonConvergingSpecialization, Name: "generics.non-converging-specialization", Family: "generics", DefaultSeverity: SeverityError, Mandatory: true},
+	ForBindingModeUnavailable:             {ID: ForBindingModeUnavailable, Name: "for.binding-mode-unavailable", Family: "for", DefaultSeverity: SeverityError, Mandatory: true},
 	InvalidResultErrorChannel:             {ID: InvalidResultErrorChannel, Name: "errors.invalid-result-error-channel", Family: "errors", DefaultSeverity: SeverityError, Mandatory: true},
 	ErrorVariantRequiresConcreteChannel:   {ID: ErrorVariantRequiresConcreteChannel, Name: "errors.variant-requires-concrete-channel", Family: "errors", DefaultSeverity: SeverityError, Mandatory: true},
 	GenericInterfaceArgumentCount:         {ID: GenericInterfaceArgumentCount, Name: "interfaces.generic-argument-count", Family: "interfaces", DefaultSeverity: SeverityError, Mandatory: true},

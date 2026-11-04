@@ -1,0 +1,51 @@
+module vertical
+
+type Small int
+type Other int
+type Packet struct {
+Value:int
+}
+/** First operation. */
+@noPanic
+fn Work() void {
+let first := 1
+
+let second := 2
+defer {
+Use(first)
+}
+
+defer {
+Use(second)
+}
+// keep this group boundary
+
+defer {
+Use(first)
+}
+}
+
+fn Plain() void {
+let text := `first
+
+  last`
+}
+impl Packet {
+/** First member. */
+fn First() int {
+return 1
+}
+/** Second member. */
+fn Second() int {
+return 2
+}
+}
+interface Reader {
+fn First() int
+/** Next member. */
+fn Second() int
+}
+/** Deliberately detached documentation. */
+
+fn Detached() void {
+}

@@ -29,8 +29,17 @@ using namespace mlir;
 
 namespace {
 
+// namedCarrier is the type a named type's base chain ends in; a named integer
+// lowers as its carrier, which erases the nominal identity (semantic_ir.md
+// § 7(5)).
+Type namedCarrier(Type type) {
+  while (auto named = dyn_cast<sec::NamedType>(type))
+    type = named.getBase();
+  return type;
+}
+
 bool isPlainSemanticInteger(Type type) {
-  auto integer = dyn_cast<IntegerType>(type);
+  auto integer = dyn_cast<IntegerType>(namedCarrier(type));
   return integer && (integer.isSigned() || integer.isUnsigned());
 }
 
@@ -59,13 +68,13 @@ bool feedsRegisterConversion(Operation *operation) {
 bool isCheckedIntegerOperation(Operation *operation) {
   return isa<sec::IntUnaryPlusOp, sec::IntNegCheckedOp,
              sec::IntBinaryCheckedOp, sec::IntBitNotOp, sec::IntBitwiseOp,
-             sec::IntShiftCheckedOp, sec::IntCmpOp>(operation) ||
+             sec::IntShiftCheckedOp, sec::IntCmpOp, sec::NamedConvertOp>(operation) ||
          (isa<sec::IntBitExtractOp>(operation) &&
           !feedsRegisterConversion(operation));
 }
 
 IntegerType signlessType(MLIRContext *context, Type type) {
-  auto integer = cast<IntegerType>(type);
+  auto integer = cast<IntegerType>(namedCarrier(type));
   return IntegerType::get(context, integer.getWidth());
 }
 
@@ -501,7 +510,8 @@ public:
   matchAndRewrite(Operation *operation, ArrayRef<Value> operands,
                   ConversionPatternRewriter &rewriter) const override {
     Location location = operation->getLoc();
-    auto originalValueType = dyn_cast<IntegerType>(operation->getOperand(0).getType());
+    // A named integer applies its carrier's semantics (semantic_ir.md § 7(4)).
+    auto originalValueType = dyn_cast<IntegerType>(namedCarrier(operation->getOperand(0).getType()));
     if (!originalValueType ||
         (!originalValueType.isSigned() && !originalValueType.isUnsigned()))
       return operation->emitOpError(
@@ -510,7 +520,8 @@ public:
     unsigned width = type.getWidth();
     bool signedValue = originalValueType.isSigned();
 
-    if (isa<sec::IntUnaryPlusOp>(operation)) {
+    // The carrier is unchanged; erasing the identity leaves the operand.
+    if (isa<sec::IntUnaryPlusOp, sec::NamedConvertOp>(operation)) {
       rewriter.replaceOp(operation, operands[0]);
       return success();
     }
@@ -856,6 +867,14 @@ public:
         return type;
       return IntegerType::get(context, type.getWidth());
     });
+    // Nominal identity is erased here, in physical lowering (semantic_ir.md
+    // § 7(5)): a named integer becomes its carrier's signless integer.
+    typeConverter.addConversion([&](sec::NamedType type) -> std::optional<Type> {
+      auto integer = dyn_cast<IntegerType>(namedCarrier(type));
+      if (!integer || (!integer.isSigned() && !integer.isUnsigned()))
+        return std::nullopt;
+      return IntegerType::get(context, integer.getWidth());
+    });
     // MD-087 § 5(3): the only bridge is a temporary same-width
     // builtin.unrealized_conversion_cast between a semantic siN/uiN and the
     // signless iN; it carries no conversion semantics and is reconciled or
@@ -865,8 +884,8 @@ public:
                      Location location) -> Value {
       if (inputs.size() != 1)
         return Value();
-      auto from = dyn_cast<IntegerType>(inputs.front().getType());
-      auto to = dyn_cast<IntegerType>(resultType);
+      auto from = dyn_cast<IntegerType>(namedCarrier(inputs.front().getType()));
+      auto to = dyn_cast<IntegerType>(namedCarrier(resultType));
       if (!from || !to || from.getWidth() != to.getWidth())
         return Value();
       return builder
@@ -888,7 +907,7 @@ public:
     target.addIllegalOp<sec::IntUnaryPlusOp, sec::IntNegCheckedOp,
                         sec::IntBinaryCheckedOp, sec::IntBitNotOp,
                         sec::IntBitwiseOp, sec::IntShiftCheckedOp,
-                        sec::IntCmpOp>();
+                        sec::IntCmpOp, sec::NamedConvertOp>();
     target.addDynamicallyLegalOp<sec::IntBitExtractOp>(
         [](Operation *op) { return feedsRegisterConversion(op); });
     target.addDynamicallyLegalOp<func::FuncOp>([&](func::FuncOp op) {
@@ -934,6 +953,7 @@ public:
              sec::IntBitwiseOp::getOperationName(),
              sec::IntShiftCheckedOp::getOperationName(),
              sec::IntCmpOp::getOperationName(),
+             sec::NamedConvertOp::getOperationName(),
              sec::IntBitExtractOp::getOperationName()})
       patterns.add<IntegerSemanticOpLowering>(typeConverter, context,
                                               operationName);
@@ -949,11 +969,12 @@ public:
     // high-level storage boundary; anything else is a lowering defect
     // (MD-087 §§ 4(6), 5(4)).
     WalkResult bridges = module.walk([&](UnrealizedConversionCastOp cast) {
+      // A named integer storage boundary bridges like its carrier.
       auto from = cast->getNumOperands() == 1
-                      ? dyn_cast<IntegerType>(cast->getOperand(0).getType())
+                      ? dyn_cast<IntegerType>(namedCarrier(cast->getOperand(0).getType()))
                       : IntegerType{};
       auto to = cast->getNumResults() == 1
-                    ? dyn_cast<IntegerType>(cast->getResult(0).getType())
+                    ? dyn_cast<IntegerType>(namedCarrier(cast->getResult(0).getType()))
                     : IntegerType{};
       if (from && to && from.getWidth() == to.getWidth() &&
           from.isSignless() != to.isSignless())

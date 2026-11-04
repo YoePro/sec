@@ -131,5 +131,5 @@ func (a *Analyzer) appendTryChainCarrierPoint(points []TryFailurePoint, receiver
 	if !unwrapped {
 		return points
 	}
-	return append(points, TryFailurePoint{Kind: TryFailureCarrier, ErrorType: result.TypeArgs[1], Expression: receiver, Token: expressionToken(receiver)})
+	return append(points, TryFailurePoint{Kind: TryFailureCarrier, ErrorType: result.TypeArgs[1], Expression: receiver, Token: expressionToken(receiver), CarrierType: result})
 }

@@ -1,0 +1,5 @@
+#target(os: "windows", arch: "386")
+module storage
+
+type Handle struct {}
+impl Handle implements Native { fn Size(extra: int) int { return 1 } }

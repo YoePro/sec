@@ -1,0 +1,65 @@
+module main
+
+// Named integers keep their identity through Semantic IR and Sec MLIR and are
+// erased only in physical lowering: explicit conversions to and from the
+// carrier and between named types over one carrier, same-type operators,
+// literal shaping, and switch subjects (semantic_ir.md §§ 7(4)-(5), 59(2)).
+
+type Meters int
+type Kilometers Meters
+type Count uint8
+
+fn Make(raw: int) Meters {
+    return Meters(raw)
+}
+
+fn Raw(value: Meters) int {
+    return int(value)
+}
+
+fn Wider(value: Meters) Kilometers {
+    return Kilometers(value)
+}
+
+fn Sum(left: Meters, right: Meters) Meters {
+    return left + right
+}
+
+fn Classify(value: Meters) int {
+    switch value {
+    case Meters(1):
+        return 1
+    case Meters(2), Meters(3):
+        return 2
+    case < Meters(0):
+        return 4
+    default:
+        return 3
+    }
+}
+
+fn Bump(count: Count) Count {
+    return count + 1
+}
+
+fn main() int {
+    let a := Make(7)
+    if Raw(a) != 7 || Raw(Make(-2)) != -2 {
+        return 1
+    }
+    let k := Wider(a)
+    if Meters(k) != a || k != Kilometers(7) {
+        return 2
+    }
+    if Classify(Meters(1)) != 1 || Classify(Make(3)) != 2 || Classify(Make(9)) != 3 || Classify(Make(-5)) != 4 {
+        return 3
+    }
+    let b: Meters := 3
+    if Sum(a, b) != 10 || -b != Make(-3) || !(b < a) || (a & b) != 3 {
+        return 4
+    }
+    if uint8(Bump(Count(4))) != 5 {
+        return 5
+    }
+    return 0
+}

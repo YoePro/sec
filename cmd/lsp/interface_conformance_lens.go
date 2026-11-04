@@ -12,7 +12,6 @@ import (
 	"sec/internal/diagnostics"
 	lspserver "sec/internal/lsp/server"
 	platformtarget "sec/internal/platform/target"
-	"sec/internal/sema"
 )
 
 type codeLensParams struct {
@@ -176,27 +175,24 @@ func crossTargetConformance(uri string, text string, overlay sourceOverlay) (sum
 	}
 	module := lspserver.ProgramModule(active)
 	targets, key := moduleTargets(path, module, text, overlay, active)
+	snapshots := make([]targetAnalysisSnapshot, 0, len(targets))
+	for _, target := range targets {
+		snapshot, err := analysisForTarget(uri, text, overlay, target)
+		if err != nil {
+			return summaries
+		}
+		snapshots = append(snapshots, snapshot)
+		// The presentation cache must follow imports, configuration and the
+		// analysis epoch too, not just same-directory platform source text.
+		key += "\x00" + snapshot.key
+	}
 	return cachedInterfaceConformance(key, func() []interfaceConformanceSummary {
 
 		for _, subject := range subjects {
 			summaries = append(summaries, interfaceConformanceSummary{name: subject.name, typeSubject: subject.isType, rng: tokenRange(text, subject.token)})
 		}
-		for _, target := range targets {
-			program := parseProgramForLSP(uri, text)
-			if program == nil {
-				continue
-			}
-			lspserver.AssembleModuleForTarget(program, path, overlay.Sources, target)
-			resolveCoreSources(program, path, overlay)
-			resolveSourceImportsForTarget(program, map[string]bool{}, path, target, overlay)
-			analyzer := newLSPAnalyzerWithOverlay(uri, program, overlay)
-			if definition, ok := platformtarget.Find(target); ok {
-				if plan, err := definition.ScalarPlan(); err == nil {
-					analyzer = sema.NewAnalyzerWithScalarPlanAndDepth(plan, sema.AnalysisInteractive)
-				}
-			}
-			analyzer.Analyze(program)
-			facts := analyzer.InterfaceConformances()
+		for targetIndex, target := range targets {
+			facts := snapshots[targetIndex].Conformances
 			for index := range summaries {
 				result := interfaceTargetResult{target: target.String(), implementers: map[string]location{}}
 				for _, fact := range facts {

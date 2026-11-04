@@ -1,0 +1,6 @@
+module width
+
+fn CombineThreeValues(firstArgument: int,
+secondArgument: int, thirdArgument: int) int {
+return firstArgument + secondArgument + thirdArgument
+}

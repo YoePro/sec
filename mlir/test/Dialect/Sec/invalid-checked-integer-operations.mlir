@@ -30,16 +30,6 @@ module {
 
 // -----
 
-// CHECK: op operand must be a builtin Sec integer semantic type
-module {
-  func.func @named_integer(%value: !sec.named<"main::Count", si32>) {
-    %result = "sec.int.unary_plus"(%value) : (!sec.named<"main::Count", si32>) -> !sec.named<"main::Count", si32>
-    return
-  }
-}
-
-// -----
-
 // CHECK: op schema 4 requires a valid arithmetic category
 module {
   func.func @unknown_failure_category() {

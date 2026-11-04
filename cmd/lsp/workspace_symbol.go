@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"hash/fnv"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -91,7 +90,7 @@ const maxWorkspaceSymbols = 2000
 const coreReadOnlyContainerSuffix = " · core (read-only)"
 
 // workspaceSymbolsForQuery answers workspace/symbol: the declarations of
-// every Sec source file under the workspace roots and every open document,
+// every Sec source file selected by the workspace's project scopes and every open document,
 // projected from the same declaration facts as textDocument/documentSymbol,
 // filtered by a case-insensitive subsequence match and ordered
 // deterministically by match quality, then name, container, file, and line.
@@ -223,49 +222,6 @@ func workspaceSymbolMatchScore(name string, query string) (int, bool) {
 		}
 	}
 	return 3, len(remaining) == 0
-}
-
-// workspaceSourcePaths lists the normalized .sec paths under the roots plus
-// every open document, sorted. Hidden directories, testdata fixtures, and
-// node_modules are not workspace source.
-func workspaceSourcePaths(roots []string, overlay sourceOverlay) []string {
-	seen := map[string]bool{}
-	paths := []string{}
-	add := func(path string) {
-		path = normalizedSourcePath(path)
-		if path == "" || filepath.Ext(path) != ".sec" || seen[path] {
-			return
-		}
-		seen[path] = true
-		paths = append(paths, path)
-	}
-	for _, root := range roots {
-		if root == "" {
-			continue
-		}
-		_ = filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
-			if err != nil {
-				if entry != nil && entry.IsDir() {
-					return fs.SkipDir
-				}
-				return nil
-			}
-			if entry.IsDir() {
-				name := entry.Name()
-				if path != root && (strings.HasPrefix(name, ".") || name == "testdata" || name == "node_modules") {
-					return fs.SkipDir
-				}
-				return nil
-			}
-			add(path)
-			return nil
-		})
-	}
-	for path := range overlay.Sources {
-		add(path)
-	}
-	sort.Strings(paths)
-	return paths
 }
 
 // summary returns the cached declaration summary of path, rebuilding it when

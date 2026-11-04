@@ -9,11 +9,11 @@ import (
 
 func TestParseEmitIRCommandArgs(t *testing.T) {
 	target := CompilerTarget{OS: "linux", Arch: "amd64"}
-	input, output, gotTarget, ok := parseEmitIRCommandArgs([]string{"sample.sec", "-o", "sample.sir", "--target", "linux-amd64"}, target)
-	if !ok || input != "sample.sec" || output != "sample.sir" || gotTarget != target {
+	input, output, gotTarget, jsonOutput, ok := parseEmitIRCommandArgs([]string{"sample.sec", "-o", "sample.sir", "--target", "linux-amd64"}, target)
+	if !ok || jsonOutput || input != "sample.sec" || output != "sample.sir" || gotTarget != target {
 		t.Fatalf("got %q %q %#v %t", input, output, gotTarget, ok)
 	}
-	_, output, _, ok = parseEmitIRCommandArgs([]string{"sample.sec"}, target)
+	_, output, _, _, ok = parseEmitIRCommandArgs([]string{"sample.sec"}, target)
 	if !ok || output != "-" {
 		t.Fatalf("default output = %q, ok=%t", output, ok)
 	}

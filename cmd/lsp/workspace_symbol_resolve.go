@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"path/filepath"
-	"strings"
 
 	lspserver "sec/internal/lsp/server"
 )
@@ -125,39 +124,6 @@ func (index *workspaceSymbolIndex) resolveWorkspaceSymbol(symbol workspaceSymbol
 	}
 	symbol.Location.Range = &entry.rng
 	return symbol, 0, ""
-}
-
-// workspaceSymbolSourceInScope applies the same roots, exclusions and open-file
-// inclusion as workspaceSourcePaths without traversing the workspace on resolve.
-// Rules: rules/tooling/lsp.md — "Workspace symbols", "Project loading".
-func workspaceSymbolSourceInScope(path string, roots []string, overlay sourceOverlay) bool {
-	if filepath.Ext(path) != ".sec" {
-		return false
-	}
-	if _, open := overlay.Sources[path]; open {
-		return true
-	}
-	for _, root := range roots {
-		if root == "" {
-			continue
-		}
-		relative, err := filepath.Rel(root, path)
-		if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) || filepath.IsAbs(relative) {
-			continue
-		}
-		parts := strings.Split(relative, string(filepath.Separator))
-		excluded := false
-		for _, part := range parts[:len(parts)-1] {
-			if strings.HasPrefix(part, ".") || part == "testdata" || part == "node_modules" {
-				excluded = true
-				break
-			}
-		}
-		if !excluded {
-			return true
-		}
-	}
-	return false
 }
 
 // handleWorkspaceSymbolResolve returns the exact cached declaration range or a

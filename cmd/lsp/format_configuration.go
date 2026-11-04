@@ -14,10 +14,14 @@ import (
 // Rules:
 //   - rules/tooling/formatter.md — § 4(15), § 4(18)–(23)
 //   - rules/tooling/lsp.md — "Shared formatter"
-func formatSourceForDocument(uri string, text string) (string, error) {
+func formatSourceForDocument(uri string, text string, presentationWidths ...uint64) (string, error) {
 	settings, err := formatconfig.ForSource(pathFromURI(uri), formatconfig.Overrides{})
 	if err != nil {
 		return "", err
 	}
-	return formatter.Format(formatter.Source{Text: text}, settings.Options).Text, nil
+	var width uint64
+	if len(presentationWidths) > 0 {
+		width = presentationWidths[0]
+	}
+	return formatter.Format(formatter.Source{Text: text}, settings.EffectiveOptions(width)).Text, nil
 }

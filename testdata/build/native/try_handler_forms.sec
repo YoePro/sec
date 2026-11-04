@@ -1,0 +1,118 @@
+module main
+
+// MD-031 executed: guarded try handlers with guard-false continuation, partial
+// handler lists whose unmatched failures propagate, and try over Option with
+// exhaustive, guarded and residual None handling, and block recovery values.
+
+enum IOError error {
+    InvalidValue,
+    NotFound,
+    Denied,
+}
+
+fn Read(kind: int) Result[int, IOError] {
+    if kind == 1 {
+        return Err(IOError.InvalidValue)
+    }
+    if kind == 2 {
+        return Err(IOError.NotFound)
+    }
+    if kind == 3 {
+        return Err(IOError.Denied)
+    }
+    return Ok(7)
+}
+
+fn Guarded(kind: int, strict: bool) int {
+    return try Read(kind) {
+        Err(.NotFound) where strict => 40
+        Err(_) where kind == 3 => 30
+        Err(_) => 1
+    }
+}
+
+fn Partial(kind: int) Result[int, IOError] {
+    let value := try Read(kind) {
+        Err(.NotFound) => 20
+    }
+    return Ok(value + 1)
+}
+
+fn PartialStatus(kind: int) int {
+    return match Partial(kind) {
+        Ok(value) => value
+        Err(.InvalidValue) => 100
+        Err(.NotFound) => 200
+        Err(.Denied) => 300
+    }
+}
+
+fn Find(flag: bool) Option[int] {
+    if flag {
+        return Some(4)
+    }
+    return None
+}
+
+fn Value(flag: bool) int {
+    let value := try Find(flag) {
+        None => 9
+    }
+    return value
+}
+
+fn Fallback(flag: bool, fallback: bool) Option[int] {
+    let value := try Find(flag) {
+        None where fallback => 7
+    }
+    return Some(value + 1)
+}
+
+fn FallbackStatus(flag: bool, fallback: bool) int {
+    return match Fallback(flag, fallback) {
+        Some(value) => value
+        None => 0
+    }
+}
+
+fn Recovered(kind: int) int {
+    return try Read(kind) {
+        Err(.Denied) => {
+            let base := 3
+            base * 10
+        }
+        Err(_) => {
+            let base := 5
+            base + kind
+        }
+    }
+}
+
+fn RecoveredValue(flag: bool) int {
+    let value := try Find(flag) {
+        None => {
+            let base := 2
+            base + 1
+        }
+    }
+    return value
+}
+
+fn main() int {
+    if Guarded(0, true) != 7 || Guarded(2, true) != 40 || Guarded(2, false) != 1 || Guarded(3, false) != 30 || Guarded(1, true) != 1 {
+        return 1
+    }
+    if PartialStatus(0) != 8 || PartialStatus(2) != 21 || PartialStatus(1) != 100 || PartialStatus(3) != 300 {
+        return 2
+    }
+    if Value(true) != 4 || Value(false) != 9 {
+        return 3
+    }
+    if FallbackStatus(true, false) != 5 || FallbackStatus(false, true) != 8 || FallbackStatus(false, false) != 0 {
+        return 4
+    }
+    if Recovered(0) != 7 || Recovered(3) != 30 || Recovered(1) != 6 || RecoveredValue(true) != 4 || RecoveredValue(false) != 3 {
+        return 5
+    }
+    return 0
+}

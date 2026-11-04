@@ -1605,6 +1605,8 @@ address-space conversion
 
 § 59(5) *Register bit-pattern conversions (MD-110, 2026-10-25).* Explicit `T(integer)` and `IntegerType(register)` for a detached register are the register value operations of § 21(6). Their validation mode is the bit-pattern fit rule, a source-domain or constant proof, or a guarded runtime check with a failure edge. Register-to-integer is total for `W >= N`. Neither is a representation reinterpretation of native memory or bytes.
 
+§ 59(6) *Named integer conversions (2026-11-04).* An explicit conversion between a named integer and its carrier, or between two named types over one carrier, is `named.convert`. It keeps the value and changes only the nominal identity, and it has no check. An integer constant shapes into the target's carrier first. A unit-bearing or contract-bearing endpoint, or a carrier change, uses its own conversion. Integer operations on a named integer keep the named type on their operands and result and apply the carrier's semantics (§ 7(4)); the identity is erased only in physical lowering (§ 7(5); Sec MLIR dialect v11.41.7).
+
 ---
 
 ## § 60 Function representation

@@ -46,6 +46,27 @@ existed.
 Optional `-paths -go` restricts the check to `.go` files under `internal/` and
 `cmd/`.
 
+**Implemented (2026-11-04).** Includes completed and library integrations,
+top-level lists, `evidence`, and nested plan path lists. Each missing listing
+retains its YAML file/line, owning integration/status, full field location and
+original path. Structured rule requirements, paragraph references (`§ ...`)
+and prose are not paths. Paths resolve from the ledger directory's parent;
+native absolute paths and normalized separators work too. Existing symlinks
+are followed; dangling links are missing. Other filesystem errors stop the
+check rather than being reported as missing files.
+
+`-dir`, `-file` and `-id` restrict the check; `-json` emits a stable report
+with `checked_references` and `missing` (an empty array on success). Findings
+produce a complete report and a nonzero exit status. `-go` requires `-paths`;
+selection/statistics-only options and `-uses` cannot be combined with it.
+No source or ledger file is modified.
+
+```bash
+go run ./cmd/yamlstatus -paths
+go run ./cmd/yamlstatus -paths -go -json
+go run ./cmd/yamlstatus -paths -file tooling.yaml -id tooling.borrowing
+```
+
 ## 3. `-uses PATH`: who references a file?
 
 Print every integration that lists a given path, for example
@@ -186,6 +207,28 @@ means grepping the whole repository to be sure a number is unused.
 A plain text search restricted to `remaining` items (with integration ID,
 file and line), for example `-grep "C::"` or `-grep MD-021`. This complements
 `-exclude`, which only filters selection.
+
+**Implemented (2026-11-04).** `-grep TEXT` lists all matching top-level
+`remaining` checklist items, the same items counted and selected by yamlstatus.
+Matching is literal and case insensitive, including Unicode. Decoded strings
+and structured item values (IDs, descriptions and expectations) are searched;
+YAML mapping keys, comments, metadata, `implemented`/`partial` lists and nested
+implementation-plan notes are excluded. Folded multiline text is searched as
+its decoded value. Each item is reported once, in file/line/checklist order,
+with owning ID/status, original item, 1-based index and owner's remaining count.
+Library integrations are included.
+
+`-dir`, positional directory, `-file` and `-id` restrict the search. `-json`
+emits only a `query`/`matches` report; no matches is a successful empty array.
+Empty/whitespace-only queries, unknown/ambiguous IDs, and combinations with
+selection, statistics or path-query modes are rejected. Searches never write
+source or governance files.
+
+```bash
+go run ./cmd/yamlstatus -grep 'C::'
+go run ./cmd/yamlstatus -grep MD-021 -json
+go run ./cmd/yamlstatus -grep ownership -file memory.yaml
+```
 
 ## Small conveniences
 

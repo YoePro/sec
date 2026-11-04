@@ -334,6 +334,8 @@ integrations:
       - LSP hover can show non-trivial destruction and cleanup owner without implying null/Option semantics
       - formatter round-trips free, defer, discard, and ownership move syntax without semantic change
     verification:
+      - command: GOCACHE=/tmp/sec-go-cache go test ./internal/formatter ./cmd/compiler ./cmd/lsp -run '^Test(DestructionSyntax|VerticalSpacing|FmtVerticalSpacing|LSPVerticalSpacing|FormatModuleStatic|FmtModuleStatic|LSPModuleStatic)' -count=1 -timeout=120s
+        result: passed on 2026-11-04 (0.252s, 0.027s, 0.022s); Claude-reported CLI golden mismatch reproduced and fixed by separating compact/structured destruction goldens. All three surfaces retain ownership/cleanup tokens with the selected vertical style; no destruction semantics changed.
       - command: go test ./internal/sema ./cmd/compiler ./cmd/lsp -race -run 'TestRedundantDiscard|TestOwnershipNavigation|Test.*Discard|Test.*Destruction' -count=1
         result: "passed on 2026-10-16: all-depth/reanalysis policy matrix, information default, project CLI and unsaved LSP policy reload, earlier ownership navigation, mandatory safety independent of optional policy, invalid-snapshot suppression and existing destruction/discard regressions"
       - command: go vet ./internal/sema ./internal/diagnostics ./cmd/compiler ./cmd/lsp
@@ -366,6 +368,7 @@ integrations:
       - testdata/tooling/redundant_discard_valid.sec
       - testdata/tooling/redundant_discard_invalid.sec
       - cmd/lsp/main_test.go
+      - testdata/formatter/destruction_syntax.compact.expected.sec
 
   - id: tooling.lifetime-analysis
     area: diagnostics-lsp-analysis-tooling
@@ -401,12 +404,12 @@ integrations:
       - "Iterator resolution is exposed through detached, deterministically source-ordered Sema snapshot facts: source type, explicit Iterator[T] conformance, yielded type, concrete Next target/result, callable identity and declaration location. LSP hover on the for keyword, binding and iterator source and sec analyse share the same description; generic templates explicitly defer the concrete target to specialization, and invalid conformance, duck typing and immutable-source loops publish no valid resolution."
       - LSP iterator hover and call hierarchy consume Sema-owned iterator plans and call-graph edges; cross-target interface code lenses consume detached, deterministic InterfaceConformances facts with exact declaration identity, substituted interface identity, compiler validity state and structured member failures. LSP no longer scans Implements or parses conformance diagnostic messages; prefix-name collisions, generic/inherited conformance, unknown requirements, invalid Iterator conformance and snapshot replacement are covered.
       - Collection metadata is exposed through detached, deterministic Sema CollectionFactsOf facts and shared Display text. LSP type hover presents list/set/map element or key/value types, dynamic versus bounded logical capacity, runtime Len, iteration order and canonical registry operations/results including structural mutation and dynamic-only Reserve/WithCapacity. References use compiler receiver normalization; no runtime count, bucket layout, allocation context or borrow state is invented. Type-hover rendering was extracted from cmd/lsp/main.go into a focused sibling file.
+      - "Versioned Semantic IR JSON transport (2026-11-04; semantic_ir.md §§97,106–107): Serialize verifies and emits a deterministic sec.semantic-ir envelope; Deserialize rejects incompatible transport/operation versions, unknown or duplicate fields, malformed input and duplicate type records, reconstructs the canonical type interning index without changing IDs, and verifies before returning a detached module. Full exported module/operation facts, exact constants, source locations, target widths, aggregate definitions, reference/ownership/cleanup metadata are retained. sec emit-ir --json publishes the same verified module as text output and feeds existing Sec MLIR lowering; errors publish no partial artifact. The format is documented in internal/ir/semantic/serialization.md. BUG-000022 fixes null-block rejection in the shared static Place identity walk. Cache source/plan freshness policy and long-term external compatibility are not introduced."
     remaining:
       - expose ownership/availability/Place provenance
       - expose Arena domain/epoch/allocation context (maybe. Make this the last point to implement)
       - expose effect and panic/check cause chains
       - expose task/thread transfer provenance
-      - add stable machine-readable serialization/version validation where required
     required_tests:
       - compiler and LSP show same Iterator conformance/Next target
       - IR printer deterministic
@@ -414,8 +417,14 @@ integrations:
       - stale cached Semantic IR rejected
       - source locations survive lowering
       - collection hover consumes deterministic detached Sema metadata for dynamic and bounded list/set/map and reference receivers, including logical capacity units, runtime length, iteration order and exact registry reservation/result/mutation facts
-    revised: "2026-10-13"
+    revised: "2026-11-04"
     verification:
+      - command: GOCACHE=/tmp/sec-go-cache go test -race ./internal/ir/semantic ./cmd/compiler -run 'TestSemanticIRSerialization|TestSemanticIRJSON|TestEmitIRJSON|TestParseEmitIR|TestFrontendRetainsAnalyzerForSemanticIR|TestCLIHelpForms' -count=1 -timeout=180s
+        result: passed on 2026-11-04; serialization and CLI round trips, null-block regression, text/JSON parity, stdout/file equality, diagnostic stream separation, failure publication, target-width retention, existing Sec MLIR lowering and CLI help (3.271s and 28.327s).
+      - command: GOCACHE=/tmp/sec-go-cache go vet ./internal/ir/semantic ./cmd/compiler
+        result: passed on 2026-11-04.
+      - command: GOCACHE=/tmp/sec-go-cache go test ./internal/ir/semantic -count=1 -timeout=180s
+        result: passed on 2026-11-04; complete Semantic IR suite (5.721s), including serialization round trips, 32/64-bit plans, exact constants, aggregate/reference/ownership/cleanup metadata, malformed transport and verifier rejection.
       - command: go test ./internal/sema ./cmd/lsp -count=1
         result: passed on 2026-10-13; complete Sema and LSP suites pass, including the extraction of typed and shaped hover into cmd/lsp/type_hover.go
       - command: go vet ./internal/sema ./cmd/lsp
@@ -462,6 +471,20 @@ integrations:
         - internal/sema/collection_tooling_test.go
         - cmd/lsp/collection_hover_test.go
         - testdata/tooling/collection_metadata.sec
+    code:
+      - internal/ir/semantic/serialization.go
+      - internal/ir/semantic/static_place_identities.go
+      - cmd/compiler/emit_ir.go
+      - cmd/compiler/main.go
+      - cmd/compiler/cli_help.go
+    tests:
+      - internal/ir/semantic/serialization_test.go
+      - cmd/compiler/emit_ir_json_test.go
+      - cmd/compiler/emit_ir_test.go
+    rules:
+      - rules/compiler/semantic_ir.md
+      - rules/compiler/compiler_pipeline.md
+      - rules/tooling/cli.md
 
   - id: tooling.compiler-analysis
     area: analysis-diagnostics-lsp-reports
@@ -569,13 +592,29 @@ integrations:
       - developer lex/token/parse/ast/sema/diagnostics/emit/build commands exist in partial form
       - LSP shares several target-aware bootstrap/frontend services
       - diagnostics registry exposes machine-readable data in the current implementation
+      - "Compiler rulebook inventory separation (2026-11-04; compiler.md §§1(12–13),64(2),82–83,93(5),94(15)): removed the temporary implementation/capability catalogue and made current command/option inventories belong to executable CLI registry/help and implementation availability/evidence to the owning governance fragments. Stabilized user-facing forms remain owned by tooling/cli.md. Active references to the retired root ledger now name governance/index.yaml and its canonical fragments; the sole remaining root-ledger mention explicitly prohibits recreation. All 437 numbered paragraph IDs and their order are retained. The rulebook status index is synchronized; no executable capability or language contract is added."
     remaining:
-      - remove mutable command/flag capability lists from normative compiler governance
       - provide one shared compiler workspace/CompilationPlan model to CLI and LSP
       - add resolved-plan/target-info inspection from immutable canonical facts
       - distinguish configuration/source/target/compiler-capability/toolchain/link/ICE diagnostics
       - support @target/@when/config completion/hover/diagnostics from canonical compiler services
       - invalidate plan-dependent LSP facts on project/registry/config changes
+    rules:
+      - rules/compiler/compiler.md
+      - rules/tooling/cli.md
+    code:
+      - cmd/compiler/cli_help.go
+    tests:
+      - cmd/compiler/analyse_cli_test.go
+    governance_reconciliation:
+      - CLI implementation and invocation/help facts remain with tooling.cli and tooling.compiler-core in governance/tooling.yaml; target/CompilationPlan support stays with compiler.platform-model in governance/platform.yaml.
+      - Source/bootstrap selection remains with frontend.compiler-source-selection and frontend.compiler-pipeline; backend implementation and retirement remain with compiler.backend-architecture in governance/compiler.yaml. No temporary hypothetical inventory is promoted to a verified implementation claim.
+    revised: "2026-11-04"
+    verification:
+      - command: Python audit of compiler.md numbered paragraphs and active ledger references against HEAD
+        result: passed on 2026-11-04; all 437 paragraph IDs retained in exact order, temporary implementation catalogue removed, and the only remaining implementation-status.yaml mention is explicitly historical/retired.
+      - command: GOCACHE=/tmp/sec-go-cache go test ./cmd/compiler -run '^TestCLIHelpForms$' -count=1 -timeout=120s
+        result: passed on 2026-11-04 (0.010s); existing shared CLI help forms remain unchanged.
 
   - id: tooling.compiler-pipeline
     area: cli-lsp-inspection-test-pipeline
@@ -604,7 +643,7 @@ integrations:
         - testdata/tooling/check_parse_invalid.sec
         - cmd/compiler/capability_diagnostics_test.go
         - cmd/compiler/pipeline_diagnostics_test.go
-        - testdata/tooling/capability_guarded_try.sec
+        - testdata/tooling/capability_aggregate_static.sec
         - internal/sema/test_selection_test.go
         - cmd/lsp/test_discovery_test.go
         - testdata/tooling/identity_selection_valid_test.sec

@@ -546,14 +546,22 @@ func callReservationArgumentIndex(record borrowRecord) int {
 //   - rules/memory/ownership.md — §9 "Methods and self"
 //   - rules/memory/copy_move.md — §18 "Methods and self"
 //   - rules/memory/destruction.md — §6.1(3) (consumed receiver cleanup)
-func (a *Analyzer) consumeMethodReceiver(expression ast.Expression) {
+func (a *Analyzer) consumeMethodReceiver(call *ast.CallExpression, expression ast.Expression) {
 	identifier, ok := expression.(*ast.Identifier)
 	if !ok {
+		before := len(a.errors)
+		place, reusable := a.resolvePlace(expression)
 		a.markMoveSource(expression)
+		if reusable && len(a.errors) == before {
+			a.recordReceiverMove(call, place)
+		}
 		return
 	}
 	if a.checkBorrowedMove(identifier.Value, identifier.Token) {
 		return
+	}
+	if place, ok := a.rootPlace(identifier.Value); ok {
+		a.recordReceiverMove(call, place)
 	}
 	a.moved[identifier.Value] = identifier.Token
 	a.moveReasons[identifier.Value] = "consumed by method call"

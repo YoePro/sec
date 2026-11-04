@@ -181,6 +181,64 @@ fn InspectBorrowed(result: ref Result[int, Failure]) void {
 	}
 }
 
+// The Some payload of a borrowed projection is the substituted shared
+// reference (BUG-000024): `if result.OkRef is Some(v)` and a match arm bind
+// `ref int`, so the binding dereferences and initializes a `ref int`, while it
+// still cannot escape the local receiver.
+//
+// Rules: rules/errors/errorhandling.md — §6.2 "Non-consuming borrowed projections".
+func TestResultBorrowedProjectionPayloadBindingsAreSubstituted(t *testing.T) {
+	errors := analyzeSourceRaw(t, `module main
+
+type Failure enum error { Failed }
+
+fn Get(value: int) Result[int, Failure] {
+	if value < 0 {
+		return Err(Failure.Failed)
+	}
+	return Ok(value)
+}
+
+fn Peek(value: int) int {
+	let result := Get(value)
+	if result.OkRef is Some(v) {
+		let copy: ref int := v
+		return *copy
+	}
+	if result.ErrRef is Some(failure) {
+		let kind: ref Failure := failure
+		discard kind
+		return -1
+	}
+	return -2
+}
+
+fn Matched(value: int) int {
+	let result := Get(value)
+	return match result.OkRef {
+		Some(v) => *v
+		None => 0
+	}
+}
+
+fn Escape() ref int {
+	let result := Get(1)
+	if result.OkRef is Some(v) {
+		return v
+	}
+	return Get(2).OkRef
+}
+`)
+	got := []string{}
+	for _, err := range errors {
+		got = append(got, err.Message)
+	}
+	if len(errors) != 2 || !strings.Contains(errors[0].Message, "cannot return reference to local variable result") ||
+		!strings.Contains(errors[1].Message, "OkRef requires an addressable Result receiver") {
+		t.Fatalf("borrowed projection payload errors = %v, want the local escape and the temporary receiver", got)
+	}
+}
+
 func TestResultBorrowedProjectionCannotEscapeLocalReceiver(t *testing.T) {
 	errors := analyzeSourceRaw(t, `module main
 

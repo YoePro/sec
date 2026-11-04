@@ -34,9 +34,8 @@ type Overrides struct {
 	LanguageCorrections *bool
 }
 
-// Settings is the effective, validated configuration. Width settings are
-// validated and carried for completeness; the current formatter does not yet
-// consume a preferred line width.
+// Settings is the validated project configuration. EffectiveOptions resolves
+// its preferred width for the current presentation context.
 type Settings struct {
 	Options               formatter.Options
 	FormatVersion         uint64

@@ -112,8 +112,9 @@ destroyed after that defer runs. Before this audit, Semantic IR destroyed the
 value at the end of its scope (`cleanup.run_scope`), while the defer read it at
 function exit, and no verifier rejected this. The following now fail closed:
 
-- Semantic IR names the boundary "P17 defer reading an owned value of an inner
-  scope" (`defer_producer.go`; boundary row `defer_reads_inner_owner.sec`).
+- Semantic IR names the boundary "P17 defer in a loop reading an owned value of
+  the loop body" (`defer_producer.go`; boundary row `defer_reads_loop_owner.sec`).
+  On 2026-11-03 this was the boundary for every inner scope.
 - `--sec-verify-cleanups` rejects a `run_scope` that would destroy an owner that
   an active defer reads (lit `@defer_reads_inner_owner`).
 
@@ -124,5 +125,7 @@ storage declared in its loop"; boundary row `defer_reads_loop_storage.sec`).
 An immutable binding or a range `for` binding is captured as a value root, so
 each registration already reads its own instance.
 
-Lowering the extended lifetime itself remains open. In a loop it needs one
-instance per registration.
+Since 2026-11-04 the extended lifetime lowers outside loops: such an owner
+registers in the function scope and is destroyed after the defer at function
+exit. In a loop it needs one instance per registration and stays a named
+boundary.

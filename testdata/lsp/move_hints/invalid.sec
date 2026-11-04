@@ -1,0 +1,19 @@
+module main
+
+@noCopy
+type Resource struct { Value: int }
+type Container struct { Item: Resource }
+fn InvalidConstruction(value: Resource) void {
+    let container := Container { Item: value }
+}
+
+fn Borrowed(value: ref Result[int, ArithmeticError]) Option[int] {
+    return value.Ok()
+}
+fn Arguments(value: Result[int, ArithmeticError]) Option[int] {
+    return value.Ok(1)
+}
+fn Twice(value: Result[int, ArithmeticError]) Option[int] {
+    let first := value.Ok()
+    return value.Err()
+}

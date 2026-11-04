@@ -3,11 +3,9 @@ module core
 enum OverflowError error {
     Overflow,
 }
-
 enum DivisionByZeroError error {
     DivisionByZero,
 }
-
 // Failures of checked built-in arithmetic operations.
 enum ArithmeticError error {
     // Arithmetic overflow not described by a more specific applicable variant.
@@ -25,53 +23,44 @@ enum ArithmeticError error {
     // Exact decimal digits exceed the selected coefficient's capacity.
     PrecisionExhausted,
 }
-
 enum DateError error {
     InvalidDate,
     OutOfRange,
 }
-
 enum TimeError error {
     InvalidTime,
     OutOfRange,
 }
-
 enum RangeError error {
     InvalidRange,
     StartAfterEnd,
     OutOfBounds,
 }
-
 enum IndexError error {
     OutOfBounds,
 }
-
 enum PrecisionError error {
     PrecisionLoss,
     ScaleOverflow,
     PrecisionExhausted,
 }
-
 enum FormatError error {
     InvalidFormat,
     UnsupportedFormat,
     InvalidSpecifier,
     InvalidPrecision,
 }
-
 enum EncodingError error {
     InvalidEncoding,
     InvalidUtf8,
     InvalidCodePoint,
 }
-
 enum MathError error {
     DomainError,
     Overflow,
     Underflow,
     NotFinite,
 }
-
 // Identifies the kind of named-type contract that rejected a value.
 // Rulebook: types/contracts.md "Public conversion and contract errors" (MD-012).
 enum ContractKind {
@@ -120,7 +109,6 @@ enum ContractKind {
     // The string's encoded byte count differs from the required exact count.
     ExactByteLen,
 }
-
 // Describes a failure of a declared named-type contract.
 //
 // Contract identity is an ordinal in the declaring type, not a runtime
@@ -135,7 +123,6 @@ type ContractError union error {
         DeclarationIndex: uint,
     },
 }
-
 // Describes a failure of an otherwise valid checked type conversion.
 // Rulebook: types/types.md "Explicit conversions" and types/contracts.md
 // "Public conversion and contract errors" (MD-012).
@@ -159,7 +146,6 @@ type ConversionError union error {
     // A declared named-type contract rejected an otherwise representable value.
     Contract(ContractError),
 }
-
 // The one failure family of text: every ToString and every runtime string
 // concatenation or interpolation fails with StringError.
 type StringError union error {
@@ -169,7 +155,6 @@ type StringError union error {
     InvalidCodePoint,
     OutOfBounds,
 }
-
 // Common error family of the root io capability interfaces and helpers.
 // Rulebook: stdlib/io/std-io.md § 6.2; owned by core so every I/O-capable
 // package can map its failures to it without importing io.
@@ -202,7 +187,6 @@ enum IOError error {
     // is not represented by another IOError variant.
     NativeFailure,
 }
-
 // Detailed error family of the pre-std-io file and directory API in
 // stdlib/io/file.linux.amd64.sec, kept beside IOError until the two are
 // merged. Meanings are inferred from the Linux errno mapping in that file;
@@ -296,7 +280,6 @@ enum IOErrorLegacy error {
     // Any errno without a dedicated variant. ≈ IOError.NativeFailure.
     Unknown,
 }
-
 /**
  * Reports a failed shaped storage request or storage-producing operation.
  *
@@ -325,7 +308,6 @@ enum StorageError error {
     // Required size or address arithmetic overflowed its supported domain.
     SizeOverflow
 }
-
 /**
  * Reports a failed runtime shape, axis, or affine validation, or a storage
  * failure during shaped initialization.
@@ -364,7 +346,6 @@ type ShapeError union error {
     // Storage or placement failed during shaped initialization.
     InitError(StorageError),
 }
-
 /**
  * Reports an error while rendering formatted text.
  *
@@ -393,4 +374,21 @@ type FormatRenderError[E: error] union error {
 
     // The complete UTF-8 byte count cannot fit in uint.
     SizeOverflow
+}
+// Errors produced when parsing numeric text.
+enum NumberParseError error {
+    // The input does not contain a valid number or has invalid syntax.
+    InvalidNumber,
+
+    // Decimal digits from incompatible numeral systems were mixed.
+    MixedNumeralSystems,
+
+    // The value exceeds the target type's maximum.
+    Overflow,
+
+    // The value is too small to represent at the target precision.
+    Underflow,
+
+    // The exact value cannot be represented at the required precision.
+    PrecisionExhausted,
 }

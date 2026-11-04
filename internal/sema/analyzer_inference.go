@@ -2386,7 +2386,7 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 		}
 		if isMethodCall && best[0].Function.ReceiverConsuming {
 			if member, ok := expr.Callee.(*ast.MemberExpression); ok {
-				a.consumeMethodReceiver(member.Object)
+				a.consumeMethodReceiver(expr, member.Object)
 			}
 		}
 		a.markClosedResourceCall(best[0].Function, methodReceiver, isMethodCall, expr.Token)
@@ -3365,6 +3365,7 @@ func (a *Analyzer) inferCallAsConversion(expr *ast.CallExpression) (Type, expres
 	// The plan-aware exactness proof (MD-104) is recorded first: a
 	// conversion it proves exact needs no try.
 	a.recordIntegerConversion(expr, targetType, valueType)
+	a.recordNamedConversion(expr, targetType, valueType)
 	a.recordCheckedConversion(expr, targetType, valueType)
 
 	return targetType, expressionValue{Display: expr.String()}
@@ -3418,7 +3419,7 @@ func (a *Analyzer) inferTryExpression(expr *ast.TryExpression) (Type, expression
 		successType := valueType
 		if rootIsResult {
 			successType = valueType.TypeArgs[0]
-			points = append(points, TryFailurePoint{Kind: TryFailureCarrier, ErrorType: valueType.TypeArgs[1], Expression: expr.Expression, Token: expressionToken(expr.Expression)})
+			points = append(points, TryFailurePoint{Kind: TryFailureCarrier, ErrorType: valueType.TypeArgs[1], Expression: expr.Expression, Token: expressionToken(expr.Expression), CarrierType: valueType})
 		}
 		return a.inferFailureSetTryExpression(expr, successType, points)
 	}

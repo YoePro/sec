@@ -29,6 +29,12 @@ func operationAttributes(operation semantic.Operation, synthesized bool) []strin
 		if operation.TryHandlerExhaustive {
 			attribute("sec.try_handler_exhaustive", "true")
 		}
+		if operation.TryHandlerGuarded {
+			attribute("sec.try_handler_guarded", "true")
+		}
+		if operation.TryResidualPropagates {
+			attribute("sec.try_handler_residual", "true")
+		}
 		if operation.Variant != "" {
 			attribute("sec.try_handler_variant", mlirString(operation.Variant))
 		}

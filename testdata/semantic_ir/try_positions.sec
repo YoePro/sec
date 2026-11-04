@@ -1,0 +1,48 @@
+module main
+
+// try in aggregate and nested positions (errorhandling.md § 11): field
+// initializers, array elements, headers and nested try.
+
+fn Get(value: int) Result[int, IndexError] {
+    return Ok(value)
+}
+
+fn Use(value: int) int {
+    return value
+}
+
+type Pair struct {
+    left: int,
+    right: int,
+}
+
+fn Run() Result[int, IndexError] {
+    let a := Use(try Get(1))
+    let mut extra := 0
+    if (try Get(2)) > 1 {
+        extra = 1
+    }
+    let p := Pair { left: try Get(3), right: 4 }
+    let xs := [try Get(5), 6]
+    let n := -(try Get(7))
+    let both := (try Get(8)) > 0 && (try Get(9)) > 0
+    discard both
+    return Ok(a + p.left + xs[0] + n + extra)
+}
+
+fn Loop() Result[int, IndexError] {
+    let mut total := 0
+    while (try Get(total)) < 3 {
+        total = total + 1
+    }
+    switch try Get(total) {
+    case 3:
+        return Ok(total)
+    default:
+        return Ok(0)
+    }
+}
+
+fn Nested() Result[int, IndexError] {
+    return Ok(try Get(try Get(1)))
+}

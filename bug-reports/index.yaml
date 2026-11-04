@@ -485,3 +485,68 @@ reports:
       seven atomic Loads and all other calls in the order fixture; existing
       positive conversion and atomic hover tests pass. No atomic or conversion
       language semantics changed.
+
+  - id: BUG-000022
+    title: Semantic IR null blocks panic before structural verification
+    status: fixed
+    severity: medium
+    kind: verifier-crash
+    reported: "2026-11-04"
+    report: fixed/BUG-000022-semantic-ir-null-block-verification.md
+    area: semantic-ir-verification
+    rulebooks:
+      - rules/compiler/semantic_ir.md
+    governance:
+      - tooling.semantic-ir-v2
+    evidence: >-
+      A malformed serialized module with a null function block reached the
+      module-wide static Place identity walk before verifyFunction's nil-block
+      check and panicked. The common walker now rejects null function and
+      nested-region blocks with an error. Serialization corruption tests cover
+      no-module publication, while the nested cleanup-region regression also
+      calls Verify and Serialize directly. No ownership or cleanup semantics
+      changed.
+
+  - id: BUG-000023
+    title: Polymorphic generic recursion makes sec check hang
+    status: fixed
+    severity: high
+    kind: compiler-hang
+    reported: "2026-11-04"
+    report: fixed/BUG-000023-polymorphic-recursion-hangs-sema.md
+    area: sema-generics-monomorphization
+    rulebooks:
+      - rules/declarations/generics.md
+      - rules/compiler/monomorphization.md
+    governance:
+      - compiler.monomorphization
+    evidence: >-
+      Fixed 2026-11-04: a forwarded self-call that replaces a template parameter by
+      a type properly containing it is reported as S1198
+      generics.non-converging-specialization and not recorded, so no pass follows
+      the chain. TestGenericSelfRecursionWithGrowingArgumentIsRejected rejects Grow
+      and accepts unchanged, permuted and finite mutually recursive calls; the
+      reproduction exits at once with the diagnostic.
+
+  - id: BUG-000024
+    title: Result.OkRef/ErrRef bindings get the unsubstituted payload type T
+    status: fixed
+    severity: medium
+    kind: type-substitution
+    reported: "2026-11-04"
+    report: fixed/BUG-000024-borrowed-result-projection-payload-unsubstituted.md
+    area: sema-result-projections
+    rulebooks:
+      - rules/errors/errorhandling.md
+      - rules/memory/borrowing.md
+      - rules/compiler/compiler_known_members.md
+    governance:
+      - frontend.copy-move
+      - frontend.errorhandling-v2
+    evidence: >-
+      Fixed 2026-11-04: inferBorrowedResultProjection instantiates the Option it
+      returns, so Some(v) over result.OkRef/ErrRef binds ref int / ref E instead of
+      the template T. TestResultBorrowedProjectionPayloadBindingsAreSubstituted covers
+      if-bindings, match, dereference, ref initialization, the local escape (S1128)
+      and the temporary-receiver rejection; Sema, Semantic IR, Sec MLIR emission and
+      the LSP ownership diagnostic tests pass.

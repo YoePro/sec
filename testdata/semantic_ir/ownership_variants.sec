@@ -1061,3 +1061,148 @@ fn WideKinds() uint256 {
     let fraction: decimal128 := 1.5
     return unsigned
 }
+
+type Slot union {
+    Holding(Handle),
+    Empty,
+}
+
+impl Slot {
+    free {
+    }
+}
+
+fn SlotHolding(id: int) Slot {
+    return Slot.Holding(Make(id))
+}
+
+fn TakeSlot(slot: Slot) void {
+}
+
+fn CustomFreeUnion() int {
+    let slot := SlotHolding(1)
+    let mut count := 0
+    match slot {
+        Holding(_) => {
+            count = 1
+        }
+        Empty => {
+        }
+    }
+    TakeSlot(<-slot)
+    let kept := SlotHolding(2)
+    return count
+}
+
+fn ReturnOk(id: int) Result[Handle, IndexError] {
+    let handle := Make(id)
+    return Ok(handle)
+}
+
+fn ReturnPair(id: int) Pair {
+    let handle := Make(id)
+    return Pair { left: handle, count: 1, right: Make(2) }
+}
+
+fn ReturnSome(id: int) Option[Handle] {
+    let handle := Make(id)
+    return Some(handle)
+}
+
+fn PropagateHandle(id: int) Option[Handle] {
+    let handle := try ReturnSome(id)
+    return Some(handle)
+}
+
+fn HandledHandle(id: int, present: bool) int {
+    let handle := try PresentHandle(id, present) {
+        None => Make(9)
+    }
+    return handle.id
+}
+
+fn PresentHandle(id: int, present: bool) Option[Handle] {
+    if present {
+        return Some(Make(id))
+    }
+    return None
+}
+
+fn DiscardStoredField() int {
+    let pair := Pair { left: Make(1), count: 2, right: Make(3) }
+    discard pair.left
+    return pair.count
+}
+
+fn DiscardFieldOnSomePaths(flag: bool) void {
+    let pair := Pair { left: Make(1), count: 2, right: Make(3) }
+    if flag {
+        Sink(<-pair.left)
+    }
+    discard pair.left
+}
+
+fn DiscardMovedField() void {
+    let pair := Pair { left: Make(1), count: 2, right: Make(3) }
+    Sink(<-pair.left)
+    discard pair.left
+}
+
+fn DiscardTried(id: int) Result[int, IndexError] {
+    discard try ReturnOk(id)
+    return Ok(0)
+}
+
+fn DeferReadsInnerOwner(ready: bool, stop: bool) int {
+    if ready {
+        let handle := Make(1)
+        defer {
+            Log(handle.id)
+        }
+        if stop {
+            return 1
+        }
+    }
+    return 0
+}
+
+fn DeferReadsInnerMutableOwner(ready: bool) void {
+    if ready {
+        let mut handle := Make(1)
+        defer {
+            Log(handle.id)
+        }
+        handle.id = 4
+    }
+}
+
+fn DeferReadsArmBinding(id: int) void {
+    match ReturnSome(id) {
+        Some(handle) => {
+            defer {
+                Log(handle.id)
+            }
+        }
+        None => {
+        }
+    }
+}
+
+fn DiscardAggregateTemporary() void {
+    discard Pair { left: Make(1), count: 2, right: Make(3) }
+}
+
+fn DiscardAggregateWithMovedSource() void {
+    let handle := Make(4)
+    discard Pair { left: <-handle, count: 5, right: Make(6) }
+}
+
+fn DiscardOptionConstruction() void {
+    let handle := Make(7)
+    discard Some(<-handle)
+}
+
+fn DiscardArrayTemporary() void {
+    let handle := Make(8)
+    discard [<-handle, Make(9)]
+}

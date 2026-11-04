@@ -39,7 +39,14 @@ func TestBindingAlignment(t *testing.T) {
 	}
 	for _, width := range []int{2, 4, 6} {
 		for _, style := range []VerticalStyle{VerticalStructured, VerticalCompact} {
-			lines := strings.Split(string(expected), "\n")
+			wantSource := expected
+			if style == VerticalCompact {
+				wantSource, err = os.ReadFile("../../testdata/formatter/binding_alignment.compact.expected.sec")
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			lines := strings.Split(string(wantSource), "\n")
 			for i, line := range lines {
 				indent := leadingSpaces(line)
 				// Structural indentation changes; alignment padding is in spaces.

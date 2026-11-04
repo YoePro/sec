@@ -372,10 +372,10 @@ integrations:
       - ResolvedMatchPlan records EmptyStateReachable and an empty-state arm so termination and return analysis include the empty arm; Semantic IR and both legacy backends reject the empty state explicitly instead of treating it as a catch-all
       - direct, mutual, Option/Result-mediated, and generic-instantiation recursive union storage is rejected through the shared by-value layout dependency graph with mandatory S1071 union.recursive-by-value-layout (or S1055 when the cycle passes through a struct) and the full variant path
       - "Optional implicit-empty catch-all guidance (2026-10-29; unions.md §10.4): A2009 / union.implicit-empty-catch-all is a nonmandatory Warning at an accepted unguarded underscore when Sema already proves the subject may be empty and no explicit empty arm exists. Uses existing match reachability and accepted arm source indices; it never changes coverage, initialization, ownership or lowering. Explicit empty arms (including guarded ones), initialized/defaulted/parameter subjects and initialized refinements receive no warning. The ordinary project diagnostic policy supports off/info/warning/error; CLI human output, JSON identity/range/help and unsaved-source LSP projection are tested, including repeated analysis and mandatory coverage with advice disabled."
+      - "state tests in value positions (verified 2026-11-04; MD-006): `value is Variant` and `value is not Variant` on unions, Option and Result lower in Semantic IR as a variant test with constant edges to a merge (Result edges unwrap the projected payload for the Result guard verifier) and run natively in bindings, `&&` operands and if conditions (testdata/build/native/state_tests.sec in TestNativeTrackBuildsAndRuns). The empty-state test and owned subjects stay named boundaries ('empty-state test (needs a runtime initialization flag)', 'state test of a subject that needs ownership')."
     remaining:
       - formalize mutable NonDefaultable union declarations as source-observable empty initialization state rather than only legacy unassigned state
       - record active-variant refinement (beyond initialization and the known-variant state-test slice) for later member and payload analyses, match arms excluded by a known active variant (§ 21(6)), while-condition variant tests, and owned by-value union parameters that no mutable-receiver method can change
-      - lower StateTestExpression through Semantic IR and the compilation track; Semantic IR currently rejects it as not implemented
       - support shallow named-field payload destructuring, partial binding, rename, and field-level ref or ref mut modes
       - extend Place tracking from whole payloads to named destructured fields without hidden moves or cloning
       - classify the finite indirection carrier used by unions.md §18 (`Box[List[T]]`), which no rulebook defines yet (missing-decisions.yaml MD-018)
@@ -1150,10 +1150,10 @@ integrations:
       - signature help uses the Sema-selected init overload and tracks the active argument without duplicating lifecycle overload resolution in the LSP
       - contextual completion offers init directly in impl bodies and new only in callable expression scopes while hiding internal initializer identities
       - workspace references follow compiler definition bindings between init declarations and selected new expressions across all assembled module sources
+      - "custom free integration (verified 2026-11-04; MD-025 applied 2026-10-15; destruction.md \u00a7 15): impl and `impl extends` blocks accept `free`, Sema analyzes it as the lifecycle member (MoveOnly classification, no partial moves or field discards of custom-free values, including union payloads), and Semantic IR builds it and binds it to the struct or union destruction plan (custom_free, free_function). Tests: custom_free_test.go, custom_free_md025_test.go, TestCustomFreeUnionForbidsPayloadMoves, CustomFreeUnion in ownership_variants.sec."
     remaining:
       - full field-sensitive definite initialization and partial-self escape analysis in init
       - construction resource-balance and failure-cleanup analysis
-      - custom free AST, parser, Sema, and destruction integration
       - nested impl declarations and qualified nested-target ownership
       - complete generic initializer specialization
       - initializer signature help and overload previews while a new expression is still syntactically incomplete and Sema cannot yet select a construction

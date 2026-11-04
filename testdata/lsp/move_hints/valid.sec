@@ -1,0 +1,28 @@
+module main
+
+@noCopy
+type Resource struct { Value: int }
+type Container struct { Item: Resource }
+type Envelope struct { Nested: Container }
+type Choice union { Item(Resource) }
+type Holder struct { Item: Result[int, ArithmeticError] }
+impl Resource { fn Ok() int { return Value } }
+
+fn Direct(value: Resource) Resource { return value }
+fn Nested(value: Resource) Envelope { return Envelope { Nested: Container { Item: value } } }
+fn Optional(value: Resource) Option[Resource] { return Some(value) }
+fn Fallible(value: Resource) Result[Resource, ArithmeticError] { return Ok(value) }
+fn Tagged(value: Resource) Choice { return Choice.Item(value) }
+fn Array(value: Resource) Resource[1] { return [value] }
+fn Partial(value: Container) Resource { return value.Item }
+fn Success(value: Result[int, ArithmeticError]) Option[int] { return value.Ok() }
+fn Failure(value: Result[int, ArithmeticError]) Option[ArithmeticError] { return value.Err() }
+fn Projected(value: Holder) Option[int] { return value.Item.Ok() }
+fn Copied(value: int) int { return value }
+fn Fresh() Resource { return Resource { Value: 1 } }
+fn FreshReceiver() Option[int] { return MakeResult().Ok() }
+fn MakeResult() Result[int, ArithmeticError] { return Ok(1) }
+fn Ordinary(value: Resource) int { return value.Ok() }
+fn Explicit(value: Resource) Resource { return <-value }
+fn ExplicitNested(value: Resource) Container { return Container { Item: <-value } }
+fn Inspect(value: Result[int, ArithmeticError]) bool { return value is Ok }

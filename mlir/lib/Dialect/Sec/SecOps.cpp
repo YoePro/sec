@@ -69,7 +69,7 @@ bool fitsUnsigned(const ParsedInteger &value, unsigned width) {
 
 LogicalResult verifyUnaryInteger(Operation *operation, Value operand,
                                  Value result) {
-  if (!isBuiltinIntegerSemanticType(operand.getType()))
+  if (!isBuiltinIntegerSemanticType(namedIntegerCarrier(operand.getType())))
     return operation->emitOpError("operand must be a builtin Sec integer semantic type");
   if (operand.getType() != result.getType())
     return operation->emitOpError("operand and result types must match exactly");
@@ -78,7 +78,7 @@ LogicalResult verifyUnaryInteger(Operation *operation, Value operand,
 
 LogicalResult verifyBinaryInteger(Operation *operation, Value left, Value right,
                                   Value result) {
-  if (!isBuiltinIntegerSemanticType(left.getType()))
+  if (!isBuiltinIntegerSemanticType(namedIntegerCarrier(left.getType())))
     return operation->emitOpError("operands must have a builtin Sec integer semantic type");
   if (left.getType() != right.getType() || left.getType() != result.getType())
     return operation->emitOpError("operand and result types must match exactly");
@@ -407,7 +407,7 @@ LogicalResult IntUnaryPlusOp::verify() {
 }
 
 LogicalResult IntNegCheckedOp::verify() {
-  if (!isSignedIntegerSemanticType(getValue().getType()))
+  if (!isSignedIntegerSemanticType(namedIntegerCarrier(getValue().getType())))
     return emitOpError("operand must be a signed builtin Sec integer semantic type");
   if (failed(verifyCheckedResultTuple(*this, getValue())))
     return failure();
@@ -428,6 +428,17 @@ LogicalResult NumericConvertExactOp::verify() {
     return emitOpError(
         "schema 11 admits only builtin Sec integer operand and result types");
   return verifyConversionProof(*this);
+}
+
+LogicalResult NamedConvertOp::verify() {
+  Type source = getValue().getType();
+  Type result = getResult().getType();
+  if (source == result || (!isa<NamedType>(source) && !isa<NamedType>(result)))
+    return emitOpError("must change the nominal identity of its operand");
+  if (!isBuiltinIntegerSemanticType(namedIntegerCarrier(source)) ||
+      namedIntegerCarrier(source) != namedIntegerCarrier(result))
+    return emitOpError("operand and result must share one builtin Sec integer carrier");
+  return success();
 }
 
 LogicalResult NumericConvertCheckedOp::verify() {
@@ -453,7 +464,7 @@ LogicalResult IntBitwiseOp::verify() {
 LogicalResult IntShiftCheckedOp::verify() {
   if (!isOneOf(getKind(), {"left_unsigned", "left_signed", "right_unsigned", "right_signed"}))
     return emitOpError("invalid checked shift kind");
-  if (!isBuiltinIntegerSemanticType(getValue().getType()) ||
+  if (!isBuiltinIntegerSemanticType(namedIntegerCarrier(getValue().getType())) ||
       !isBuiltinIntegerSemanticType(getCount().getType()))
     return emitOpError("value and count must be builtin Sec integer semantic types");
   if (failed(verifyCheckedResultTuple(*this, getValue())))
@@ -461,7 +472,7 @@ LogicalResult IntShiftCheckedOp::verify() {
   if (getValue().getType() != (*this)->getResult(0).getType())
     return emitOpError("value and result types must match exactly");
   bool signedKind = getKind().contains("_signed");
-  if (signedKind != isSignedIntegerSemanticType(getValue().getType()))
+  if (signedKind != isSignedIntegerSemanticType(namedIntegerCarrier(getValue().getType())))
     return emitOpError("shift kind signedness must match value type");
   return success();
 }
@@ -471,7 +482,7 @@ LogicalResult IntCmpOp::verify() {
     return emitOpError("invalid integer comparison predicate");
   // char and rune compare unsigned by code value; scalar layout resolves
   // them to ui8/ui32 before integer lowering (MD-105).
-  if (!(isBuiltinIntegerSemanticType(getLeft().getType()) ||
+  if (!(isBuiltinIntegerSemanticType(namedIntegerCarrier(getLeft().getType())) ||
         isa<CharType, RuneType>(getLeft().getType())) ||
       getLeft().getType() != getRight().getType())
     return emitOpError("comparison operands must have the same builtin Sec integer, char or rune semantic type");

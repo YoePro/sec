@@ -100,8 +100,8 @@ func verifyDestructionPlanGraph(module *Module) error {
 	}
 	for _, plan := range module.DestructionPlans {
 		typ, _ := module.Types.Lookup(plan.Type)
-		if plan.CustomFree && plan.Kind != "struct" {
-			return fmt.Errorf("destruction plan %q: custom free belongs to a struct plan", plan.ID)
+		if plan.CustomFree && plan.Kind != "struct" && (plan.Kind != "active-variant" || typ.Kind != TypeUnion) {
+			return fmt.Errorf("destruction plan %q: custom free belongs to a struct or union plan", plan.ID)
 		}
 		if plan.Kind != "struct" && len(plan.Fields) != 0 || plan.Kind != "fixed-array" && (plan.Element != "" || plan.ElementCount != "") ||
 			plan.Kind != "active-variant" && len(plan.Variants) != 0 || plan.Kind != "compiler-known-resource" && plan.Resource != "" {

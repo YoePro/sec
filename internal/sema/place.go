@@ -494,6 +494,12 @@ func indexOutsideSlice(index, slice PlaceProjection) bool {
 }
 
 func unionPayloadPlace(subject Place, variant string, payloadType Type, token lexer.Token) Place {
+	// A union with custom free needs its payload when free runs, like a
+	// struct's fields (destruction.md § 10.3).
+	if subject.Type.CustomFree && subject.CustomFreeOwner == "" {
+		subject.CustomFreeOwner = subject.Type.Name
+		subject.CustomFreeOwnerPlace = subject.String()
+	}
 	subject = appendPlaceProjection(subject, PlaceProjection{
 		Kind:  PlaceUnionPayload,
 		Name:  variant,

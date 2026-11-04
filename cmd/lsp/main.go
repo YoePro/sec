@@ -231,10 +231,6 @@ type textDocumentIdentifier struct {
 	URI string `json:"uri"`
 }
 
-type formattingParams struct {
-	TextDocument textDocumentIdentifier `json:"textDocument"`
-}
-
 type codeActionParams struct {
 	TextDocument textDocumentIdentifier `json:"textDocument"`
 	Range        lspRange               `json:"range"`
@@ -612,9 +608,9 @@ func (s *server) handle(message rpcMessage) error {
 	case "textDocument/formatting":
 		var params formattingParams
 		if err := json.Unmarshal(message.Params, &params); err != nil {
-			return err
+			return s.respondError(message.ID, -32602, "invalid formatting request")
 		}
-		edits, err := s.formatDocument(params.TextDocument.URI)
+		edits, err := s.formatDocument(params.TextDocument.URI, params.Options.PresentationWidth)
 		if err != nil {
 			return s.respondError(message.ID, -32603, err.Error())
 		}

@@ -64,6 +64,11 @@ func TestNativeTrackBuildsAndRuns(t *testing.T) {
 		{"bit_extract", 0, false},
 		{"tagged_values", 0, false},
 		{"error_variant_patterns", 0, false},
+		{"try_handler_forms", 0, false},
+		{"named_scalars", 0, false},
+		{"try_positions", 0, false},
+		{"match_loop_control", 0, false},
+		{"state_tests", 0, false},
 	} {
 		t.Run(test.fixture, func(t *testing.T) {
 			program := filepath.Join(t.TempDir(), test.fixture)

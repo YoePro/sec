@@ -60,11 +60,11 @@ func TestCapabilityDiagnosticBoundaries(t *testing.T) {
 	}
 }
 
-// TestCapabilitySecMLIRCLI exercises a valid source at the real schema limit,
+// TestCapabilitySecMLIRCLI exercises a valid source at a real lowering limit,
 // stopping before external tools or publishing output. Ordinary check succeeds.
 // Rules: rules/compiler/compiler_pipeline.md — §32(2–4), §56(1–3), §59.
 func TestCapabilitySecMLIRCLI(t *testing.T) {
-	file := "../../testdata/tooling/capability_guarded_try.sec"
+	file := "../../testdata/tooling/capability_aggregate_static.sec"
 	_, stderr, code := runCLIForDiagnostics(t, "check", file)
 	if code != 0 {
 		t.Fatal(code, stderr)
@@ -76,7 +76,7 @@ func TestCapabilitySecMLIRCLI(t *testing.T) {
 		t.Fatal(code, stderr)
 	}
 	item := doc.Occurrences[0]
-	if item.Arguments["diagnostic_class"] != "compiler-capability" || item.Arguments["feature"] != "guarded try handlers" || item.Arguments["callable"] == "" || item.Arguments["proof_state"] != "" || !strings.HasPrefix(item.Arguments["boundary"], "Sec MLIR schema ") {
+	if item.Arguments["diagnostic_class"] != "compiler-capability" || !strings.HasPrefix(item.Arguments["feature"], "static Origin") || item.Arguments["proof_state"] != "" || !strings.HasPrefix(item.Arguments["boundary"], "semantic IR package ") {
 		t.Fatal(item)
 	}
 	if _, err := os.Stat(output); !os.IsNotExist(err) {

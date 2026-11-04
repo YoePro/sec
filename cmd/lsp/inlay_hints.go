@@ -156,6 +156,11 @@ func inlayHintsForSource(uri string, text string, requested lspRange, settings i
 			add(hint)
 		}
 	}
+	if settings.Ownership {
+		for _, hint := range implicitMoveHints(program, analyzer, text, inThisFile) {
+			add(hint)
+		}
+	}
 
 	walkLSPNodes(program, func(node any) {
 		switch node := node.(type) {

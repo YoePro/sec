@@ -3,14 +3,12 @@ package formatter
 import (
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"sec/internal/cst"
 	"sec/internal/lexer"
 	"sec/internal/parser"
 )
-
-// preferredLineWidth is the fixed Sec 0.1 preferred width (§ 32(2)).
-const preferredLineWidth = 120
 
 // formatCallableParameterListLayout normalizes parser-owned function, method,
 // initializer, and lambda parameter lists that are written across lines:
@@ -22,14 +20,15 @@ const preferredLineWidth = 120
 //     whole line then fits the preferred width (§ 16(1), § 3(7)), and the
 //     canonical multiline form otherwise.
 //
-// Single-line lists, lists with comments, and lists with a parameter that
-// itself spans lines are left unchanged; indentation is applied by the
-// line-based indentation pass.
+// Single-line lists that fit, lists with comments, and lists with a parameter that
+// itself spans lines are left unchanged. Run after structural indentation and
+// executable-block expansion so width decisions use canonical header columns.
 //
 // Rules:
+//   - rules/tooling/formatter.md — §4(9–13) effective preferred width
 //   - rules/tooling/formatter.md — § 3(6)–(7), § 11(2)–(5), § 16(1)–(2), § 32(3), § 32(6)
-func formatCallableParameterListLayout(text string) string {
-	if !strings.Contains(text, "(") || !strings.Contains(text, "\n") {
+func formatCallableParameterListLayout(text string, preferredLineWidth uint64, indentationWidth int) string {
+	if !strings.Contains(text, "(") {
 		return text
 	}
 	document := cst.Build(text, "")
@@ -48,7 +47,7 @@ func formatCallableParameterListLayout(text string) string {
 		if group.Close < 0 || !document.Elements[group.Open].HasRole(cst.CallableParameterListOpen) {
 			continue
 		}
-		if replacement, ok := parameterListLayoutReplacement(text, document, group.Open, group.Close); ok {
+		if replacement, ok := parameterListLayoutReplacement(text, document, group.Open, group.Close, preferredLineWidth, indentationWidth); ok {
 			replacements = append(replacements, replacement)
 		}
 	}
@@ -59,10 +58,14 @@ func formatCallableParameterListLayout(text string) string {
 	return text
 }
 
-func parameterListLayoutReplacement(text string, document cst.Document, open, close int) (formatterReplacement, bool) {
+// parameterListLayoutReplacement uses canonical header columns and real CST
+// delimiters to choose a compact or multiline parameter list. Comments and
+// multiline parameter values retain their layout; deliberate lists stay open.
+// Rules: rules/tooling/formatter.md — §3(7),§4(9–13),§9(8),§16(1–2),§25.
+func parameterListLayoutReplacement(text string, document cst.Document, open, close int, preferredLineWidth uint64, indentationWidth int) (formatterReplacement, bool) {
 	interiorStart, interiorEnd := document.Elements[open].Span.End, document.Elements[close].Span.Start
 	interior := text[interiorStart:interiorEnd]
-	if !strings.Contains(interior, "\n") || strings.TrimSpace(interior) == "" {
+	if strings.TrimSpace(interior) == "" {
 		return formatterReplacement{}, false
 	}
 	// Split at top-level commas; comments keep their author's layout.
@@ -127,19 +130,23 @@ func parameterListLayoutReplacement(text string, document cst.Document, open, cl
 		}
 		singleLine := strings.TrimLeft(text[lineStart:interiorStart], " \t")
 		indent := len(text[lineStart:interiorStart]) - len(singleLine)
-		width := indent + len(singleLine) + len(strings.Join(parameters, ", ")) + len(strings.TrimRight(text[interiorEnd:lineEnd], " \t"))
-		if width <= preferredLineWidth {
+		width := indent + utf8.RuneCountInString(singleLine) + utf8.RuneCountInString(strings.Join(parameters, ", ")) + utf8.RuneCountInString(strings.TrimRight(text[interiorEnd:lineEnd], " \t"))
+		if uint64(width) <= preferredLineWidth {
 			return formatterReplacement{start: interiorStart, end: interiorEnd, text: strings.Join(parameters, ", ")}, true
 		}
 	}
 	var multiline strings.Builder
+	lineStart := strings.LastIndexByte(text[:interiorStart], '\n') + 1
+	header := text[lineStart:interiorStart]
+	baseIndent := header[:len(header)-len(strings.TrimLeft(header, " \t"))]
 	multiline.WriteString("\n")
 	for index, parameter := range parameters {
 		if blankBefore[index] {
 			multiline.WriteString("\n")
 		}
-		multiline.WriteString(parameter)
+		multiline.WriteString(baseIndent + strings.Repeat(" ", indentationWidth) + parameter)
 		multiline.WriteString(",\n")
 	}
+	multiline.WriteString(baseIndent)
 	return formatterReplacement{start: interiorStart, end: interiorEnd, text: multiline.String()}, true
 }

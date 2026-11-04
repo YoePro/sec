@@ -330,7 +330,7 @@ integrations:
 
   - id: semantic-ir.copy-move
     area: semantic-ir-ownership
-    status: planned
+    status: partial
     integrated: "2026-08-28"
     document_revision: "2.0"
     repository_baseline: 069c111
@@ -340,13 +340,9 @@ integrations:
       - rules/compiler/semantic_ir.md
     implemented:
       - Current Semantic IR carries selected call argument actions and ownership-adjacent facts, but the root implementation-status still records explicit copy/move/replace/destruction operations as deferred.
+      - "P17 Semantic IR copy/move (verified 2026-11-04; copy_move.md; semantic_ir.md §§ 34–36, 35(6)): own.copy, own.semantic-copy, own.move, own.copy-from-place, own.move-from-place, own.initialize-place, own.replace-place, own.discard and own.destroy-*; return, argument, struct-field and union-payload transfer actions (sec.return_action, argument actions, field_actions, payloadActions including construct-direct and move); sec.successor_actions on branches for value-producing control flow; Place identity and partial-availability state carried on Places; explicit named boundaries where a form is not represented. Tests: ownership_variants.sec, package17_predecessor_test.go, ownership_capabilities_test.go."
     remaining:
-      - represent Copy, Move, Replace, Reinitialize, Discard, Destroy, TransferToReturn, TransferToArgument, and TransferToAggregate explicitly when needed for downstream ownership correctness
-      - preserve source Place/projection identity, copy classification, destination ownership, partial availability, transfer commit, and destruction responsibility
-      - preserve explicit <- call/payload actions instead of reconstructing them from types in lowering
-      - represent recursive aggregate, Option, Result, union, and value-producing control-flow return forwarding without requiring source markers at every nested edge
       - represent volatile access boundaries separately from ordinary value copy/move operations
-      - fail explicitly when an ownership-sensitive construct cannot be represented without losing semantics
     required_tests:
       - Semantic IR distinguishes copy from move even when both could lower to identical machine operations
       - Semantic IR preserves reusable-source explicit consuming call action
@@ -387,7 +383,7 @@ integrations:
 
   - id: semantic-ir.borrowing
     area: semantic-ir-borrowing-reference-authority
-    status: planned
+    status: partial
     integrated: "2026-08-28"
     document_revision: "2.0"
     repository_baseline: 069c111
@@ -398,16 +394,9 @@ integrations:
       - rules/compiler/semantic_ir.md
     implemented:
       - Current Semantic IR carries selected reference/call/match facts, but root governance does not yet establish one complete explicit borrowing/reference-authority model for downstream ownership verification.
+      - "P15/P16 Semantic IR borrowing (verified 2026-11-04; borrowing.md; semantic_ir.md §§ 45–46): ref.borrow-shared, ref.borrow-mut, ref.reborrow-shared, ref.reborrow-mut, ref.copy-shared, ref.move and ref.end-borrow at Sema's path-exact last required use (MD-065), with BorrowID/LifetimeID, Place/provenance, holder and mutable authority; shared/mutable-reference argument actions distinct from copy/move; ref mut call reborrow without consuming the caller's holder; match-arm payload borrows with guard-false ends; generation/epoch/address-space/bounds facts kept apart from borrow compatibility; explicit unsupported boundaries. Tests: borrow_ends_test.go (TestBorrowEndsFollowLastRequiredUse), receiver_reborrow_test.go, payload_reference_test.go, reference_parameters_test.go, returned_reference_test.go, slice_*_test.go."
     remaining:
-      - "MD-065 (decided 2026-10-21, borrowing.md § 8.1(9)-(14)): Sema must publish path-exact last-required-use end points with BorrowID/LifetimeID and Semantic IR must emit ref.end-borrow there; today payload borrows end at every arm exit (P15-63) and ordinary borrows emit no end markers (P15-49). Known hole (verified 2026-10-21)."
-      - represent BorrowShared, BorrowMutable, ReborrowShared, ReborrowMutable or equivalent resolved operations/facts
-      - preserve source Place/provenance set, holder identity, mutable authority, range/extent, borrow begin/end live range, and parent-child reborrow relationship
-      - distinguish borrowed call arguments/method receivers from copy/move ownership transfers
-      - preserve ref mut call reborrow without consuming caller holder
-      - preserve match-arm candidate borrow and guard-false end semantics
-      - preserve closure/defer/returned-reference retention dependencies and storage invalidation dependencies
-      - carry reference-model generation/epoch/address-space/bounds facts separately from borrow compatibility
-      - fail explicitly when borrowing semantics cannot be represented without downstream rediscovery or weakening
+      - "preserve closure/callback capture retention dependencies; defer captures, returned-reference origins and storage invalidation dependencies are implemented"
     required_tests:
       - Semantic IR distinguishes shared borrow, mutable borrow, copy, and move
       - Semantic IR preserves ref mut reborrow parent holder
@@ -448,7 +437,7 @@ integrations:
 
   - id: semantic-ir.destruction
     area: semantic-ir-destruction
-    status: planned
+    status: partial
     integrated: "2026-08-28"
     document_revision: "2.0"
     repository_baseline: 069c111
@@ -459,17 +448,12 @@ integrations:
       - rules/compiler/semantic_ir.md
     implemented:
       - Current Semantic IR/lowering pipeline carries selected ownership-adjacent call/control-flow facts, but root governance still defers explicit general destruction operations and cleanup-state representation.
+      - "P17 Semantic IR destruction (verified 2026-11-04; destruction.md §§ 6, 10–13, 16, 30; package17): own.destroy-value and own.destroy-place (skipped sub-Places, if_owned for conditional availability), active-variant destruction plans in the sec.destruction_plans table (also for custom-free unions), own.replace-place versus own.initialize-place with the old destination's plan, cleanup.track-owned/cancel/defer-register/run-scope/run-function in one source-ordered registration order, return and error propagation established before cleanup.run-function, and named unsupported boundaries for every unrepresented form. Tests: ownership_variants.sec (TestPackage17OwnershipVariants*, TestSchema13EmitsOwnedVariants), cleanup_producers_test.go, lit schema13-* and invalid-schema13-*."
     remaining:
-      - represent DestroyValue/DestroyPlace/DestroySubPlace/DestroyActiveVariant/ConditionalDestroy or equivalent explicit terminal cleanup semantics
-      - represent InvokeFree, allocator-aware DeallocateOwnedStorage, cleanup registration/order, and cleanup regions
-      - preserve cancellation of cleanup after move, discard, return, consuming argument, aggregate transfer, and FFI transfer
-      - represent Replace versus Reinitialize and the old-destination destruction plan
-      - preserve partial and conditional availability masks/reasons/provenance needed for exact cleanup
+      - "represent allocator-aware DeallocateOwnedStorage for owning dynamic storage (P18); InvokeFree, cleanup registration/order and defer regions are implemented"
+      - "preserve cancellation of cleanup after FFI transfer (needs declared FFI ownership contracts, P17-49); move, discard, return, consuming-argument and aggregate transfer cancel since P17"
       - represent construction-failure cleanup without manufacturing a completed outer value/free call
-      - preserve defer/automatic destruction in one ordered cleanup plan
-      - preserve return try and error propagation payload transfer before local cleanup
-      - preserve allocator/release authority, custom free identity, active union variant, concrete interface destruction, and target policy requirements
-      - fail explicitly when source destruction semantics cannot be represented without losing exact-once guarantees
+      - "preserve allocator/release authority, concrete interface destruction and target-policy requirements; custom free identity and active-variant plans are implemented"
     required_tests:
       - Semantic IR has one terminal ownership action for every represented non-trivial owned value on each reachable path
       - moved/discarded sub-Place has no remaining former-owner destroy action
@@ -551,7 +535,7 @@ integrations:
 
   - id: semantic-ir.lifetime-analysis
     area: semantic-ir-lifetime-facts
-    status: planned
+    status: partial
     integrated: "2026-08-29"
     document_revision: "2.0"
     repository_baseline: fafd8cb
@@ -561,14 +545,13 @@ integrations:
       - rules/memory/ownership.md
       - rules/memory/borrowing.md
       - rules/memory/destruction.md
+    implemented:
+      - "Semantic IR lifetime facts (verified 2026-11-04): Place roots carry storage origin/domain identity and references their provenance sets (P15); borrow live ranges end with ref.end-borrow at Sema's last required use (MD-065); --sec-verify-borrow-semantics and --sec-verify-places reject contradictory lifetime state before lowering. Tests: borrow_ends_test.go, returned_reference_test.go, lit invalid-schema12-*/invalid-schema13-*."
     remaining:
-      - represent canonical storage origin/domain and reference provenance dependencies needed after Sema
-      - represent borrow/reborrow live-range or equivalent verified dependency facts
-      - represent ownership invalidation, replacement/reinitialization, destruction and deallocation lifetime effects
+      - "represent deallocation lifetime effects of owning dynamic storage (P18); ownership invalidation, replacement/reinitialization and destruction effects are implemented (P17)"
       - represent returned-reference source relations and callable retention summaries
       - represent arena generation/epoch and runtime mapping/register-view lifetime dependencies
-      - represent defer-delayed dependencies and closure/callback capture lifetime obligations
-      - verify contradictory or impossible lifetime state before lower-level lowering
+      - "represent closure/callback capture lifetime obligations; defer-delayed dependencies are implemented (defer capture Places, --sec-verify-cleanups)"
       - erase high-level facts only after equivalent lowering constraints/plans exist
     required_tests:
       - reference origin retained in Semantic IR
@@ -740,12 +723,9 @@ integrations:
       - compiler and LSP agree
 
   - id: semantic-ir.memory-model
-    status: planned
-    remaining:
-      - normalize explicit memory operations
-      - represent canonical value/storage state separately
-      - retain ownership/borrow/reference/storage/layout/transfer facts required by lowering
-      - add verifier rules for invalid memory states
+    status: implemented
+    implemented:
+      - "Semantic IR memory model (verified 2026-11-04; semantic_ir.md §§ 30–33, 45–46): explicit storage.* and place.* operations (declare, init, load, store, place roots and projections, read with copy/observe/candidate modes, write), value state separate from storage and Place state, ownership/borrow/reference/storage facts retained on operations, and verifier rules for invalid memory states (Go verifier, --sec-verify-places, --sec-verify-ownership, --sec-verify-cleanups)."
 
   - id: semantic-ir.storage
     status: planned
@@ -838,7 +818,7 @@ integrations:
 
   - id: semantic-ir.references
     area: semantic-ir-reference-facts
-    status: planned
+    status: partial
     integrated: "2026-08-29"
     document_revision: "2.0"
     repository_baseline: fafd8cb
@@ -847,14 +827,11 @@ integrations:
       - rules/memory/reference_model.md
       - rules/memory/lifetime_analysis.md
       - rules/memory/borrowing.md
+    implemented:
+      - "P15/P16 Semantic IR references (verified 2026-11-04; reference_model.md; semantic_ir.md §§ 45, 48, 126): reference kind and mutability, canonical Place provenance, storage identity, address space, validity policy and epoch dependency, slice bounds/view facts, borrow/reborrow/end facts, and verifier rejection of contradictory reference facts (Go verifier, --sec-verify-places, --sec-verify-reference-guards, --sec-verify-borrow-semantics). Tests: reference_*_test.go, slice_*_test.go, payload_reference_test.go."
     remaining:
-      - represent reference kind/mutability and canonical provenance required after Sema
-      - represent storage domain/address space and generation/epoch dependencies where required
-      - represent bounds/view information needed for safe lowering
-      - represent returned-reference and callable retention relations
+      - "represent callable retention relations of references captured by closures and callbacks; returned-reference origin sets are implemented (TestPackage15LowersReturnedReferences)"
       - represent runtime mapping/register-view dependencies
-      - represent relevant borrow/reborrow and escape facts until equivalent lower-level constraints exist
-      - verify impossible or contradictory safe-reference facts before lowering
     required_tests:
       - reference provenance retained in Semantic IR
       - returned-reference relationship retained

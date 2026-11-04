@@ -1,0 +1,66 @@
+module spacing
+
+type Number int
+
+impl Number {
+    fn Abs() Result[int, OverflowError] {
+        if self < 0 {
+            return Ok(-self)
+        }
+        return Ok(self)
+    }
+
+    fn Min(other: int) int {
+        if self < other {
+            return self
+        }
+        return other
+    }
+
+    fn Max(other: int) int {
+        if self > other {
+            return self
+        }
+        return other
+    }
+
+    static fn Parse(inStr: string) Result[int, NumberParseError] {
+        if inStr == "" {
+            return Ok(0)
+        }
+
+        return _parseInt(inStr)
+    }
+}
+
+fn BeforeStruct() void {
+}
+
+type Record struct {
+    Value: int,
+}
+
+fn BeforeEnum() void {
+}
+
+enum Mode int {
+    One = 1,
+}
+
+fn BeforeUnion() void {
+}
+
+type Choice union {
+    Empty,
+    Value(int),
+}
+
+fn BeforeRegister() void {
+}
+
+type Flags register[8] {
+    Bits: bit[8]
+}
+
+fn Last() void {
+}

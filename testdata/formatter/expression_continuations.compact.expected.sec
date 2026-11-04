@@ -1,0 +1,68 @@
+fn _IsWhitespaceRune(character: rune) bool {
+    return character in 9r..13r ||
+        character == 32r ||
+        character == 133r ||
+        character == 160r ||
+        character == 5760r ||
+        character in 8192r..8202r ||
+        character in 8232r..8233r ||
+        character == 8239r ||
+        character == 8287r ||
+        character == 12288r
+}
+
+fn Nested(character: rune) bool {
+    if character == 9r {
+        return First(
+            character,
+        ) ||
+            Second(
+                character,
+            ) ||
+            (
+                character == 32r ||
+                character == 133r
+            )
+    }
+    return false
+}
+
+fn Leading(value: bool) bool {
+    // Keep this return comment attached.
+    return value
+        || false
+        || true
+}
+
+fn Stop() void {
+    return
+}
+
+fn Conditions(character: rune) bool {
+    if character == 9r ||
+        character == 13r {
+        return true
+    } else if character == 10r
+        || character == 133r
+        || character == 8232r
+        || character == 8233r {
+        return true
+    }
+    return false
+}
+
+fn NestedCondition(character: rune) bool {
+    if First(
+        character,
+    ) ||
+        Second(
+            character,
+        ) {
+        return true
+    }
+    if (character == 9r ||
+        character == 13r) {
+        return true
+    }
+    return false
+}

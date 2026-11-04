@@ -290,17 +290,29 @@ func (a *Analyzer) checkForBindingModeCategory(binding ast.ForBinding, elementTy
 	mutable := binding.Mode == ast.ForBindingRefMut
 	switch {
 	case category == forCategoryRange:
-		a.addErrorAtToken(binding.ModeToken, "%s loop bindings are not provided for synthesized range values; use a plain binding", binding.Mode)
+		a.addErrorAtTokenWithMetadata(binding.ModeToken, diagnostics.ForBindingModeUnavailable,
+			"A range synthesizes each value; there is no stored element to borrow. Write `for value in start..<end`.",
+			"%s loop bindings are not provided for synthesized range values; use a plain binding", binding.Mode)
 	case indexPosition:
-		a.addErrorAtToken(binding.ModeToken, "the sequential index binding is an int, not an element reference; remove %s", binding.Mode)
+		a.addErrorAtTokenWithMetadata(binding.ModeToken, diagnostics.ForBindingModeUnavailable,
+			"Put ref or ref mut on the element binding: `for index, ref element in values`.",
+			"the sequential index binding is an int, not an element reference; remove %s", binding.Mode)
 	case category == forCategoryString:
-		a.addErrorAtToken(binding.ModeToken, "string iteration yields decoded rune values; %s rune bindings are not provided", binding.Mode)
+		a.addErrorAtTokenWithMetadata(binding.ModeToken, diagnostics.ForBindingModeUnavailable,
+			"Each rune is decoded from UTF-8, so no stored rune exists to borrow; a plain binding copies it cheaply: `for character in text`. To iterate part of the string, take the rune range first: `let part := try text.Slice(start, end)` and `for character in part`. Use GetByte/ByteAt when encoded bytes are needed.",
+			"string iteration yields decoded rune values; %s rune bindings are not provided", binding.Mode)
 	case category == forCategoryIterator:
-		a.addErrorAtToken(binding.ModeToken, "Iterator[%s] loops yield owned values; %s bindings are not defined", typeDisplayName(elementType), binding.Mode)
+		a.addErrorAtTokenWithMetadata(binding.ModeToken, diagnostics.ForBindingModeUnavailable,
+			"Each Next call transfers ownership of its value to the loop binding; use a plain binding.",
+			"Iterator[%s] loops yield owned values; %s bindings are not defined", typeDisplayName(elementType), binding.Mode)
 	case mutable && category == forCategorySet:
-		a.addErrorAtToken(binding.ModeToken, "set elements cannot be mutably borrowed during iteration; use explicit set operations to replace or remove values")
+		a.addErrorAtTokenWithMetadata(binding.ModeToken, diagnostics.ForBindingModeUnavailable,
+			"Mutating a set element could change its identity inside the set. Iterate with ref and apply set operations afterwards.",
+			"set elements cannot be mutably borrowed during iteration; use explicit set operations to replace or remove values")
 	case mutable && category == forCategoryMap && position == 0:
-		a.addErrorAtToken(binding.ModeToken, "map keys cannot be mutably borrowed during iteration; use ref for the key")
+		a.addErrorAtTokenWithMetadata(binding.ModeToken, diagnostics.ForBindingModeUnavailable,
+			"Mutating a key could change where its entry belongs. Borrow the key with ref; the value may still be ref mut.",
+			"map keys cannot be mutably borrowed during iteration; use ref for the key")
 	default:
 		return true
 	}

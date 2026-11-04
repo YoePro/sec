@@ -52,7 +52,7 @@ type Email        string   regex "^[a-z]+@[a-z]+$" minLen 3
 //   - rules/tooling/formatter.md — §15 type declarations and aggregate syntax
 func TestFormatNamedTypeGroupBoundariesAndHeaders(t *testing.T) {
 	input := "module main\n\ntype   A int   range 0..1\ntype LongerName string\n\ntype B   int\n// divider\ntype CC int even\ntype   Box[T]   struct {\n    value: T,\n}\ntype Failure   union   error {\n    Broken,\n}\ntype Tags string[]   unique\n"
-	want := "module main\n\ntype A          int range 0..1\ntype LongerName string\n\ntype B int\n// divider\ntype CC int even\ntype Box[T] struct {\n    value: T,\n}\ntype Failure union error {\n    Broken,\n}\ntype Tags string[] unique\n"
+	want := "module main\n\ntype A          int range 0..1\ntype LongerName string\n\ntype B int\n// divider\ntype CC int even\n\ntype Box[T] struct {\n    value: T,\n}\n\ntype Failure union error {\n    Broken,\n}\n\ntype Tags string[] unique\n"
 	got := Format(Source{Text: input}, Options{}).Text
 	if got != want {
 		t.Fatalf("named-type headers formatted as:\n%s\nwant:\n%s", got, want)

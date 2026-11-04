@@ -1,1 +1,36 @@
 module fmt
+
+/**
+ * Describes the result of a successful formatted scan.
+ *
+ * Description:
+ * Reports the number of destination values assigned and
+ * the number of UTF-8 bytes consumed from the input.
+ *
+ * A lenient scan may succeed without consuming all input
+ * or assigning every requested destination.
+ *
+ * Ownership:
+ * Contains only scalar values and owns no external resources.
+ *
+ * Allocation:
+ * Does not allocate.
+ */
+type ScanResult struct {
+    // Number of destination values successfully assigned.
+    Assigned: uint,
+
+    // Number of UTF-8 bytes consumed from the input.
+    ConsumedBytes: uint,
+}
+
+/**
+ * Selects the matching policy for formatted scanning.
+ */
+enum _ScanMode {
+    // Requires all destinations and the complete input to match.
+    Strict
+
+    // Accepts a successfully parsed prefix.
+    Lenient
+}

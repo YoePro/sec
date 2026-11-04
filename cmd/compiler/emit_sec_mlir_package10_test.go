@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -97,14 +96,14 @@ fn Forward(value: int) Result[int, ArithmeticError] {
 	}
 }
 
-// The Sec MLIR handler metadata has only the ok, err-variant, err-catch-all,
-// and merge kinds and requires catch-all finality and complete coverage, so
-// guarded handlers and partial plans are rejected explicitly, while block
-// recovery values emit as ordinary branches.
+// Guarded handlers and partial plans emit with their MD-031 provenance and
+// pass the try-handler verifier, and block recovery values emit as ordinary
+// branches.
 //
 // Rules:
 //   - rules/mlir/dialect-versions/sec_mlir_dialect_v6.md — §12, §20
-func TestSecMLIRRejectsGuardedAndPartialTryHandlers(t *testing.T) {
+//   - rules/mlir/sec_mlir_dialect.md — v11.41.6 "Guarded, partial and Option try handlers"
+func TestSecMLIREmitsGuardedAndPartialTryHandlers(t *testing.T) {
 	sources := map[string]string{
 		"guarded": `module main
 fn Add(left: int, right: int) int {
@@ -149,17 +148,28 @@ fn Add(left: int, right: int) int {
 		if err != nil {
 			t.Fatalf("%s build: %v", name, err)
 		}
-		_, err = secmlirlowering.Emit(module, plan)
-		var unsupported *secmlirlowering.UnsupportedLoweringError
-		rejected := errors.As(err, &unsupported)
-		if name == "block value" {
-			if err != nil {
-				t.Fatalf("block value emit: %v", err)
-			}
+		output, err := secmlirlowering.Emit(module, plan)
+		if err != nil {
+			t.Fatalf("%s emit: %v", name, err)
+		}
+		want := map[string]string{"guarded": "sec.try_handler_guarded = true", "partial": `sec.try_handler_kind = "residual"`}[name]
+		if !strings.Contains(string(output), want) {
+			t.Fatalf("%s: missing %q in:\n%s", name, want, output)
+		}
+		tool, configured, err := testsupport.SecMLIROptPathFromEnvironment()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !configured {
 			continue
 		}
-		if !rejected {
-			t.Fatalf("%s emit error = %v, want an explicit unsupported lowering", name, err)
+		path := filepath.Join(t.TempDir(), name+".mlir")
+		if err := os.WriteFile(path, output, 0600); err != nil {
+			t.Fatal(err)
+		}
+		command := exec.Command(tool, path, "--sec-verify-checked-integer-guards", "--sec-verify-result-guards", "--sec-verify-try-handlers", "-o", os.DevNull)
+		if combined, err := command.CombinedOutput(); err != nil {
+			t.Fatalf("%s sec-mlir-opt: %v\n%s", name, err, combined)
 		}
 	}
 }

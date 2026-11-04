@@ -459,17 +459,22 @@ integrations:
       - rules/tooling/lsp.md
       - rules/foundations/names_scopes_visibility.md
       - rules/projects/modules.md
+      - rules/projects/projects.md
     code:
       - cmd/lsp/workspace_symbol.go
       - cmd/lsp/main.go
       - cmd/lsp/request_queue.go
       - cmd/lsp/workspace_symbol_resolve.go
       - cmd/lsp/source_fingerprint.go
+      - internal/project/source_scope.go
+      - cmd/lsp/workspace_sources.go
     tests:
       - cmd/lsp/workspace_symbol_test.go
       - cmd/lsp/workspace_symbol_resolve_test.go
       - testdata/lsp/workspace_symbols
       - cmd/lsp/protocol_request_test.go
+      - internal/project/source_scope_test.go
+      - cmd/lsp/workspace_sources_test.go
     implemented:
       - initialize advertises workspaceSymbolProvider and workspace-folder change notifications; roots come from workspaceFolders, rootUri, or rootPath and follow workspace/didChangeWorkspaceFolders
       - workspace/symbol answers SymbolInformation at the exact declaration name for types, structs, unions, enums, interfaces, functions, units, module-scope variables, methods, properties, events, struct fields, and enum and union members of every workspace source and open document, including unopened files; impl members are contained by the implemented type, top-level declarations by their module
@@ -477,17 +482,25 @@ integrations:
       - case-insensitive subsequence matching ranked exact, prefix, substring, then scattered, with deterministic name, container, file, and line ordering and a 2000-result bound
       - module-internal (_) names are offered only while an open document belongs to their module and private (__) names only while their own file is open
       - read-only trusted core declarations rank after workspace declarations and are marked "core (read-only)" in the container
-      - per-file summaries are cached by on-disk size and modification time or the open snapshot hash; the repository answers cold in about 190 ms and warm in about 3 ms
+      - per-file declaration summaries are cached by on-disk size and modification time or the open snapshot hash; source membership and current project boundaries are rechecked independently of this declaration cache
       - hidden directories, testdata fixtures, and node_modules are not workspace source
       - workspace/symbol is a deferrable read-only request that formatting may overtake
       - workspace-symbol resolve
       - workspaceSymbolProvider.resolveProvider advertises workspaceSymbol/resolve; clients advertising workspace.symbol.resolveSupport for location.range receive URI-only WorkspaceSymbol items with versioned source fingerprints and declaration entry identities; other clients retain complete SymbolInformation replies
       - workspaceSymbol/resolve preserves exact overload and member locations, UTF-16 ranges, core containers and round-trip data; validates actual source content and current workspace/editor-context visibility; stale content returns ContentModified, malformed or inaccessible items return InvalidParams; resolves one selected cached file without semantic re-analysis or workspace traversal and participates in the read-only request queue
+      - "Project-governed workspace sources (2026-11-04): shared project.DiscoverSourceScope resolves editor subfolders to the manifest ProjectRoot, with standalone and umbrella-folder support. Canonical SourceLocation facts exclude root output/metadata storage and direct cmd/internal marker files; nested ordinary bin directories remain valid. Invalid or forbidden nested manifests cannot authorize fallback roots. Query and lazy resolve share source membership, rediscover manifest changes per request and preserve explicit open-document inclusion. Regression coverage includes protocol query, unopened sibling modules, overlapping roots, multiple projects, reserved locations, manifest invalidation/repair/removal and cached resolve rejection."
     remaining:
       - generated and dependency read-only provenance once the shared compiler workspace exposes it
-      - project-manifest source roots instead of folder traversal
       - move the summaries into the shared compiler workspace index (rules/tooling/lsp.md "Shared compiler workspace")
     verification:
+      - command: GOCACHE=/tmp/sec-go-cache go test -race ./cmd/lsp -run 'WorkspaceImpl|TestDocumentSymbols' -count=1 -timeout=120s
+        result: passed on 2026-11-04; workspace impl and document-symbol projection regressions (1.036s).
+      - command: GOCACHE=/tmp/sec-go-cache go vet ./internal/project ./cmd/lsp
+        result: passed on 2026-11-04.
+      - command: GOCACHE=/tmp/sec-go-cache go test ./internal/project ./internal/lsp/... -count=1 -timeout=120s
+        result: passed on 2026-11-04; full shared project and LSP protocol/server suites.
+      - command: GOCACHE=/tmp/sec-go-cache go test -race ./internal/project ./cmd/lsp -run 'TestDiscoverSourceScope|TestWorkspaceSymbol|TestWorkspaceRoots|TestRequestQueue' -count=1 -timeout=180s
+        result: passed on 2026-11-04; project source discovery, query and protocol, lazy resolve, manifest edits, reserved paths, standalone and umbrella roots; 1.017s and 1.138s.
       - command: go test -race ./cmd/lsp -run 'CodeLensResolve|InterfaceConformance|InterfaceLensConsumes|WorkspaceSymbol|TestRequestQueue|TestServerAnswersConcurrentRequestsExactlyOnce|TestFormatting' -count=1
         result: passed on 2026-10-14 after extracting unchanged SHA-256 content fingerprints and framed request test helpers for shared deferred LSP features
       - command: go test ./cmd/lsp ./internal/lsp/... -count=1
@@ -500,7 +513,7 @@ integrations:
         result: passed on 2026-10-14; capability negotiation, older-client compatibility, lazy resolve and repeated resolve, exact overload/member ranges, UTF-16, core containers, content changes, source deletion, malformed payloads, workspace removal, visibility and open-only sources
       - command: go test ./cmd/lsp -run 'TestWorkspaceSymbols|TestWorkspaceRoots|TestDocumentSymbols' -count=1
         result: passed on 2026-10-03 for open and unopened files with testdata excluded and cache refresh on change, case-insensitive ranked ordering, module-internal and private visibility from open documents, core marking, and workspace-folder changes
-    revised: "2026-10-14"
+    revised: "2026-11-04"
 
   - id: tooling.lsp-missing-comma-quick-fix
     area: tooling-lsp
@@ -602,6 +615,8 @@ integrations:
       - rules/tooling/lsp.md
       - rules/types/default_values.md
       - rules/declarations/struct.md
+      - rules/memory/copy_move.md
+      - rules/errors/errorhandling.md
     code:
       - cmd/lsp/inlay_hints.go
       - cmd/lsp/main.go
@@ -612,6 +627,10 @@ integrations:
       - cmd/lsp/inlay_struct_defaults.go
       - internal/sema/defaults_presentation.go
       - cmd/lsp/inlay_resolve.go
+      - cmd/lsp/inlay_moves.go
+      - internal/sema/receiver_moves.go
+      - internal/sema/analyzer_result_projection.go
+      - internal/sema/analyzer_lifetime.go
     tests:
       - cmd/lsp/inlay_hints_test.go
       - cmd/lsp/inlay_binding_types_test.go
@@ -622,6 +641,11 @@ integrations:
       - testdata/lsp/struct_default_hints/literals_invalid.sec
       - cmd/lsp/inlay_resolve_test.go
       - testdata/lsp/inlay_resolve/main.sec
+      - cmd/lsp/inlay_moves_test.go
+      - internal/sema/receiver_moves_test.go
+      - testdata/lsp/move_hints/valid.sec
+      - testdata/lsp/move_hints/invalid.sec
+      - testdata/lsp/move_hints/sibling.sec
     implemented:
       - initialize advertises inlayHintProvider; textDocument/inlayHint is a deferrable read-only request
       - "inferred-type hints `: T` after a let without a declared type, from the resolved binding, omitted when a struct literal, new, or same-named conversion call already spells the type"
@@ -637,11 +661,13 @@ integrations:
       - default previews cover explicit type, range, membership, enum, recursive struct and array defaults; nested literals remain distinct, lexical closing-brace scanning ignores comments and strings, synthetic/invalid constructions have no hint, and labels are bounded to eight fields and 160 Unicode scalars while retaining active-file/range filtering
       - inlayHint/resolve advertises resolveProvider and enriches stable label parts with Markdown tooltips and exact resolved type or selected parameter declaration locations, including imported types; built-in, unresolved and compound types without one physical declaration remain unlinked
       - client resolveSupport independently negotiates tooltip, label.tooltip and label.location; unsupported lazy properties are supplied eagerly, while resolve regenerates current compiler facts, rejects malformed, forged, disabled or stale items, replaces client decorations, preserves display fields and uses the read-only queue with queued-edit/close supersession
+      - "Implicit move hints (2026-11-04): move before canonical reusable sources transferred by terminal returns and owning construction (nested struct, Option/Result, union and array paths, including partial Places), from ResolvedTransferPlanOf. Accepted receiver consumption, including Result.Ok()/Err(), publishes detached per-call ResolvedReceiverMoveOf facts at Sema commit; LSP does not guess from names or types. Explicit markers, copy-only returns, fresh values, ordinary methods and rejected receiver operations receive no redundant or false move hints. Ownership category, active-file/range, UTF-16/CRLF, source snapshot, protocol listing and resolve behavior use existing shared paths. Receiver queries detach Places and reset on reanalysis; no new ownership semantics, lowering operations or editor-specific ownership engine."
     remaining:
       - "`copy` hints currently never fire because no type classifies as CopySemantic yet; they follow the classification once semantic copies exist"
-      - "`move` hints for implicit consuming construction and receiver ownership effects of method calls"
       - generic instantiation, resolved overload, unit conversion, contract check, error type, allocation, and target hints
     verification:
+      - command: go test -p 4 ./internal/sema ./internal/ir/semantic -count=1 -timeout=180s; go test -p 4 -race ./cmd/lsp ./internal/sema -run 'Inlay|ReceiverMove|ResultProjection|ConsumingResult|TerminalReturn|TransferPlan|TransferDestination' -count=1 -timeout=180s; go vet -p 4 ./internal/sema ./cmd/lsp
+        result: "Passed 2026-11-04 with disk GOCACHE/GOTMPDIR. Full Sema 20.736s and Semantic IR 7.358s; inlay/ownership race suites LSP 152.712s and Sema 1.604s; vet clean. New source/protocol tests cover terminal construction and partial Places, consuming Result projections, explicit/fresh/copy/ordinary/rejected suppression, detached/reset facts, ownership setting, exact range, active siblings, Unicode UTF-16, CRLF, resolve tooltip/identity and stale snapshots. yamlstatus check: 0 problems in 45 fragments; canonical fragment; git diff --check clean. Whole point closed: inlay-hints remaining 3 to 2, tooling_lsp.yaml 22 to 21; no replacement remaining or MD."
       - command: go test -race ./cmd/lsp -run 'InlayHint|CodeLensResolve|RequestQueue|Superseded|ServerAnswersConcurrentRequestsExactlyOnce' -count=1 -timeout=180s
         result: passed on 2026-10-29 (76.340s); final regressions including builtin no-guessed-target assertion, existing hint categories, stale-item handling, lazy/eager property negotiation, queue and concurrent request coverage
       - command: go test ./internal/lsp/... -count=1; go vet ./cmd/lsp
@@ -672,7 +698,7 @@ integrations:
         result: passed on 2026-10-04 for inferred let types, omitted hints for struct literals, declared types, single-argument calls, and same-named arguments, range restriction, and per-category settings
       - command: go test ./cmd/lsp -run 'InlayHints' -count=1
         result: passed on 2026-10-04 for moves-if-selected on a move-only union payload binding without a hint on a trivially copied binding, implicit ref and ref mut call-site borrows, no hint for explicit ref or existing references, and the ownership setting
-    revised: "2026-10-29"
+    revised: "2026-11-04"
 
   - id: tooling.lsp-interface-conformance-lens
     area: tooling-lsp
@@ -713,7 +739,6 @@ integrations:
       - initialize advertises codeLensProvider; textDocument/codeLens is a deferrable read-only request
       - per interface, the implementing types and the S1106/S1107 conformance failures of each target are summarized as a conforming lens or a failing lens naming targets, members, and targets without an implementation
       - the lens command sec.showLocations (VS Code peek references) lists failing implementation members or the implementing types
-      - "results are cached by a hash over the module's sources and the active text (stdlib/os interface: about 1.9 s cold over 18 targets, about 10 ms cached)"
       - an unresolved parameter type in an interface requirement is kept as an invalid type and neither the requirement nor an implementation with unresolved types reports a conformance cascade
       - Conformance lenses consume compiler-owned InterfaceConformances snapshots keyed by exact interface declaration identity, including member names and validity states; no local Implements scan or diagnostic-text inference remains, and unresolved conformance is not presented as valid.
       - codeLens/resolve so the cross-target analysis runs lazily and off the request path
@@ -721,6 +746,7 @@ integrations:
       - resolve validates exact interface name/range and active source content, ignores client-supplied commands, rejects changed/closed snapshots before and after analysis, reuses current module-source cache keys, and supports queued cancellation, queued edit/close supersession and formatting priority without introducing a second conformance engine
       - one conformance analysis per distinct selected target within a module snapshot; concurrent lens resolves with the same source key share one in-flight computation and immutable report, while failed computations publish no partial result and are not retained as successful cache entries
       - Implementing-type lenses use exact compiler-owned module/type identities across selected targets, show concrete interface names and interface-qualified failures, and report missing declarations per interface instead of allowing another valid conformance to mask absence. Lazy enumeration includes source type candidates; resolving types without explicit Sema conformance yields no command. Interface and type views share the existing target analysis, immutable cache and bounded worker pool.
+      - Conformance presentation caching follows shared per-target source/import/configuration/epoch fingerprints (2026-11-04). Completed Sema snapshots are shared with multi-target diagnostics, bounded and detached; failed work cannot be reported as successful conformance. Source preparation still runs per request, so the earlier 1.9s cold / 10ms cached measurement is historical and is not asserted for this implementation.
     remaining:
       - the same cross-target conformance report in sec analyse
     verification:
@@ -761,23 +787,30 @@ integrations:
       - cmd/lsp/cross_target_diagnostics.go
       - cmd/lsp/diagnostics_batch.go
       - cmd/lsp/main.go
+      - cmd/lsp/target_analysis.go
+      - cmd/lsp/interface_conformance_lens.go
     tests:
       - cmd/lsp/target_selection_test.go
       - testdata/lsp/target_selection/
       - cmd/lsp/cross_target_diagnostics_test.go
+      - cmd/lsp/target_analysis_test.go
+      - testdata/lsp/shared_target_analysis
     implemented:
       - "project variants and active selection (2026-10-08): diagnostics retain logical-target/output-variant identity for distinct scalar plans and duplicate platforms; target switches and watched project changes invalidate and recompute background comparisons; the canonical target selection implementation is owned by frontend.target-sized-integer-semantics in governance/types.yaml"
       - on didOpen and didSave a document without its own
       - results are stored per document text hash, invalidated by a newer request or a close, and dropped while the document has unsaved changes
       - publication merges them with the active diagnostics; every-target diagnostics are unchanged, some-target diagnostics state "applies to N of M targets", and diagnostics absent on the active target are added prefixed with their targets
       - stdlib/os file.sec analyzes on 18 targets in about 1.9 s off the request path
+      - "Shared per-target Sema snapshots (2026-11-04): background diagnostics and interface/type conformance lenses use analysisForTarget for one computation per matching prepared active-document/source/import closure and effective target. Snapshots retain detached errors, warnings and compiler conformance facts; no mutable Analyzer is shared. Immutable serialized snapshots are bounded to 32 entries and 8 MiB; concurrent matching requests coalesce, failures release waiters and are never cached as successful empty results. Fingerprints include prepared AST/token locations, import errors, scalar plan, manifest snapshot, explicit selection and server epoch. The lens presentation key follows the same fingerprint, including imported source and configuration changes. Existing source preparation and open/save scheduling remain; incremental parsing and while-typing comparison stay separately owned."
     remaining:
-      - share the per-target analyses with the interface conformance lens
       - recompute while typing once incremental per-target analysis exists
       - dedicated target status panel and target comparison views beyond the implemented VS Code selector/status-bar indicator
     verification:
+      - command: go test -p 4 -race ./cmd/lsp -run 'SharedTargetAnalysis|TargetSnapshotCache|CrossTarget|InterfaceConformance|InterfaceLens|TypeConformanceLens|CodeLensResolve|TargetSelection|TargetPlan' -count=1 -timeout=180s; go test -p 4 -race ./cmd/lsp -run 'SharedTargetAnalysis|TargetSnapshot' -count=1 -timeout=120s; go vet -p 4 ./cmd/lsp
+        result: "Passed 2026-11-04 using disk GOCACHE/GOTMPDIR: broad target/conformance/lazy-resolve race suite 66.008s; final new snapshot/selection/budget/failure race suite 25.478s; normal new suite 4.606s; vet clean. Real consumers run Sema exactly once per target in either request order and concurrently. Coverage includes width-dependent diagnostics, detached nested facts, import and platform source edits on disk/in overlays, manifest and explicit selection/epoch changes, presentation invalidation, coalescing, entry/byte/oversize limits, panic/error waiter release and retry. Remaining 3 to 2 for this ID, tooling_lsp.yaml 21 to 20; no replacement remaining or MD."
       - command: go test ./cmd/lsp -run CrossTargetDiagnostics -count=1
         result: passed on 2026-10-04 for a shared file calling a method that only the linux platform file provides, reported as windows-only with applicability, and no cross-target pass for a
+    revised: "2026-11-04"
 
   - id: tooling.lsp-binding-name-collisions
     status: implemented

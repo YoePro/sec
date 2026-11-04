@@ -3120,3 +3120,688 @@ defer reads was destroyed by cleanup.run_scope before the defer ran at function 
   rules/corrections/p17-ownership-destruction-rules-synchronization.md; MD-125 opened (last_id MD-125).
 - Also touched: missing-decisions.yaml, language-rulebook-status.md, package17-todo.md, governance/lowering.yaml.
   Binaries rebuilt. P17-05 not started.
+
+## Codex: project-aware workspace symbols released (2026-11-04)
+
+Closed tooling.lsp-workspace-symbol remaining #2 in full. Editor folders
+inside a Project now select its manifest ProjectRoot, including unopened
+sibling Modules. Shared project source facts exclude root bin/.sec storage and
+direct cmd/internal marker files while retaining ordinary nested bin paths.
+Standalone folders and independent projects under umbrella folders work;
+invalid manifests and forbidden nested projects cannot authorize fallback roots.
+Query and lazy resolve share membership checks and rediscover manifest edits,
+repair/removal each request. Explicit open-document inclusion remains supported.
+No shared workspace declaration index or generated/dependency provenance is claimed.
+
+Changed files:
+- internal/project/source_scope.go (shared immutable discovery/layout facts)
+- internal/project/source_scope_test.go (discovery, source locations, nested
+  manifests, manifest addition/invalidation/removal)
+- cmd/lsp/workspace_sources.go (focused query/resolve source selection)
+- cmd/lsp/workspace_sources_test.go (project siblings, protocol query, overlapping
+  roots, independent projects, reserved paths, cache invalidation and open sources)
+- cmd/lsp/workspace_symbol.go (removed old folder-only walker)
+- cmd/lsp/workspace_symbol_resolve.go (removed duplicated membership rules)
+- rules/tooling/lsp.md (implemented behavior and remaining boundaries)
+- governance/tooling_lsp.yaml (point moved and references/evidence updated)
+- mlir/compiler-packages-handoff.md (this handoff)
+
+Verified with GOCACHE=/tmp/sec-go-cache:
+- go test -race ./internal/project ./cmd/lsp -run
+  'TestDiscoverSourceScope|TestWorkspaceSymbol|TestWorkspaceRoots|TestRequestQueue'
+  -count=1 -timeout=180s (1.017s and 1.138s).
+- go test ./internal/project ./internal/lsp/... -count=1 -timeout=120s.
+- go test -race ./cmd/lsp -run 'WorkspaceImpl|TestDocumentSymbols'
+  -count=1 -timeout=120s (1.036s).
+- go vet ./internal/project ./cmd/lsp.
+- yamlstatus check: 0 problems in 45 fragments; edited fragment canonical;
+  git diff --check clean.
+
+Remaining: tooling.lsp-workspace-symbol 3 -> 2; tooling_lsp.yaml 23 -> 22.
+No new remaining/partial/MD entry. Latest Claude P17-03 handoff reread; no
+P17/IR/MLIR cleanup implementation, core sources or binaries changed. No commit.
+Working set released.
+
+## Codex: versioned Semantic IR JSON released (2026-11-04)
+
+Closed tooling.semantic-ir-v2 remaining #5 in full. Serialize verifies and emits
+one deterministic sec.semantic-ir JSON envelope (transport v1; operation v1).
+Deserialize rejects incompatible schemas, unknown/duplicate fields including
+Unicode case aliases, extra/malformed JSON, invalid UTF-8, duplicate type records
+and verifier failures. It reconstructs the canonical interning index without
+renumbering TypeIDs and returns no module on failure. Round trips preserve exact
+wide constants, target widths, source positions, aggregate definitions, reference
+metadata, ownership/destruction plans and nested cleanup regions.
+
+sec emit-ir --json publishes stdout or a requested output file; default text
+output is preserved and diagnostic JSON stays on stderr. Decoded IR enters the
+existing Sec MLIR emitter for both 32- and 64-bit plans. No new compilation track,
+source syntax, cache policy, MLIR schema or long-term external compatibility is
+introduced. Existing semantic_ir.md §§97,106–107 already define the boundary;
+transport details are documented beside the implementation rather than changing
+the normative rulebook.
+
+A corruption test reproduced BUG-000022: null blocks reached the module-wide
+static Place identity traversal before verifyFunction's structural check,
+causing a panic. The shared traversal now returns an error for null blocks,
+including nested defer regions. This does not change P17 cleanup semantics or
+Claude's active ownership work.
+
+Changed files for this task:
+- internal/ir/semantic/serialization.go
+- internal/ir/semantic/serialization_test.go
+- internal/ir/semantic/serialization.md
+- internal/ir/semantic/static_place_identities.go
+- cmd/compiler/emit_ir.go (emit-ir extracted from main.go)
+- cmd/compiler/emit_ir_json_test.go
+- cmd/compiler/emit_ir_test.go
+- cmd/compiler/main.go
+- cmd/compiler/cli_help.go
+- governance/tooling.yaml
+- bug-reports/index.yaml
+- bug-reports/fixed/BUG-000022-semantic-ir-null-block-verification.md
+- mlir/compiler-packages-handoff.md
+
+Verified with GOCACHE=/tmp/sec-go-cache:
+- go test -race ./internal/ir/semantic ./cmd/compiler -run
+  'TestSemanticIRSerialization|TestSemanticIRJSON|TestEmitIRJSON|TestParseEmitIR|TestFrontendRetainsAnalyzerForSemanticIR|TestCLIHelpForms'
+  -count=1 -timeout=180s (3.271s and 28.327s).
+- Full Semantic IR: go test ./internal/ir/semantic -count=1 -timeout=180s (5.721s).
+- go vet ./internal/ir/semantic ./cmd/compiler.
+- yamlstatus check: 0 problems in 45 fragments; tooling.yaml canonical;
+  git diff --check clean. Bug ledger: 22 unique IDs, all report paths exist.
+
+Remaining tooling.semantic-ir-v2 5 -> 4; tooling.yaml 39 -> 38. No new remaining,
+partial or MD item. Latest Claude P17-03 handoff reread before release; its
+cleanup/defer changes are preserved. Prior project-source task edits remain
+unchanged in the working tree. No binary rebuild or commit. Working set released.
+
+## Claude: P17 open boundaries batch (working set, 2026-11-04)
+
+Codex results of 2026-11-04 (workspace symbols, Semantic IR JSON) reread; nothing overlaps. Working through,
+in order: custom-free union destruction plans; discard of projections and `discard try`; defer lifetime
+extension for inner-scope owners. Touching internal/sema (destruction plans, discard), internal/ir/semantic
+(cleanup/discard/defer producers; not serialization.go), internal/lowering/secmlir, mlir/lib/Analysis/Verify*.cpp,
+mlir/lib/Dialect/Sec, mlir/test, testdata/semantic_ir, governance/lowering.yaml, package17-todo.md and the
+P17 report. Please keep out of those P17 paths until released; will rebuild binaries at the end.
+
+## Codex: formatter vertical separation released (2026-11-04)
+
+Closed tooling.formatter-brace-blank-lines remaining #1 in full. Project-owned
+structured/compact configuration now controls optional structural blank lines.
+CST VerticalBoundaries derives sibling relationships and documentation/leading
+comment anchors from the parser; the shared formatter changes whitespace only.
+Structured style separates aggregate declarations and documented major
+members/declarations, including impl and interface members. Compact style removes
+optional major-declaration gaps. Simple named-type/alignment groups retain their
+intentional boundaries, detached documentation stays detached, raw literal
+contents remain exact, and consecutive defer blocks stay together unless a
+comment intervenes. Optional control-flow/outlier blank lines are not invented.
+No language semantics or rulebook changes; formatter.md §7 already defines this.
+
+Changed files for this task:
+- internal/cst/vertical_spacing.go
+- internal/formatter/vertical_spacing.go
+- internal/formatter/formatter.go
+- internal/formatter/vertical_spacing_test.go
+- internal/formatter/binding_alignment_test.go
+- internal/formatter/expression_continuations_test.go
+- internal/formatter/named_type_contract_test.go
+- cmd/compiler/fmt_vertical_spacing_test.go
+- cmd/lsp/format_vertical_spacing_test.go
+- testdata/formatter/vertical_spacing.sec
+- testdata/formatter/vertical_spacing.expected.sec
+- testdata/formatter/vertical_spacing.compact.expected.sec
+- testdata/formatter/binding_alignment.compact.expected.sec
+- testdata/formatter/expression_continuations.compact.expected.sec
+- testdata/formatter/declaration_forms.expected.sec
+- testdata/formatter/module_static.expected.sec
+- governance/formatting.yaml
+- mlir/compiler-packages-handoff.md
+
+Verification with GOCACHE=/tmp/sec-go-cache:
+- Full CST and formatter: go test ./internal/cst ./internal/formatter -count=1
+  -timeout=120s (0.008s and 1.061s).
+- go test -race ./internal/cst ./internal/formatter ./cmd/compiler ./cmd/lsp -run
+  '^Test(VerticalSpacing|Fmt|Format|LSPVerticalSpacing|LSPFormatting|LSPExpressionContinuation|LSPModuleStatic)'
+  -count=1 -timeout=180s: formatter 5.789s, compiler 25.876s, LSP 1.317s;
+  no matching CST tests in this targeted race invocation. Complete CST normal
+  suite above is green. All widths, styles, CRLF, correction modes, source tokens,
+  documentation targets, raw bytes, project configuration and fixed points covered.
+- go vet ./internal/cst ./internal/formatter ./cmd/compiler ./cmd/lsp.
+- yamlstatus check: 0 problems in 45 fragments; formatting.yaml canonical;
+  git diff --check clean.
+
+Broader regex limitation: -run 'Fmt|Format|BindingAlignment|ExpressionContinuation|VerticalSpacing'
+also selected TestAnalyzeLoadsFmtPackageAndTransitiveImports in cmd/lsp. It
+fails because its source ignores fmt.Println's now-fallible Result[uint,
+fmt.WriteFormatError], triggering mandatory result handling. This test exercises
+analysis/imports rather than formatting; it was not changed. The focused
+formatting regression suite is green. This is recorded in governance evidence.
+
+Remaining tooling.formatter-brace-blank-lines 1 -> 0; formatting.yaml 18 -> 17.
+No new remaining/partial/MD entry. Claude's latest P17 open-boundaries working-set
+reservation reread before release; no overlapping P17 changes. Prior task and
+Claude worktree changes preserved. No binary rebuild or commit by Codex.
+Working set released.
+
+## Codex: compiler command/governance separation released (2026-11-04)
+
+Closed tooling.compiler-core remaining #1 in full. This was a documentation and
+governance task, with no runtime feature or new compiler capability claimed.
+compiler.md no longer carries a hypothetical temporary implementation catalogue.
+Its §§1(13),64(2),82–83,93(5),94(15) distinguish normative command contracts
+(tooling/cli.md), the current executable command/option inventory (CLI registry
+and generated help), and implementation state/evidence (canonical governance
+fragments). All active references to the removed root ledger now point to the
+fragment registry; one historical mention explicitly prohibits recreating it.
+All 437 numbered paragraph IDs remain in exact source order. Existing target,
+pipeline, backend and language contracts were preserved. No correction or MD is
+needed for this editorial synchronization of existing ownership rules.
+
+Changed files for this task:
+- rules/compiler/compiler.md
+- language-rulebook-status.md (compiler.md row)
+- governance/tooling.yaml (tooling.compiler-core only)
+- mlir/compiler-packages-handoff.md
+
+Evidence:
+- GOCACHE=/tmp/sec-go-cache go test ./cmd/compiler -run '^TestCLIHelpForms$'
+  -count=1 -timeout=120s: passed (0.010s).
+- Python audit against HEAD: 437 identical numbered paragraph IDs/order, no
+  temporary capability catalogue, only the explicit historical root-ledger mention.
+- yamlstatus check: 0 problems in 45 fragments; tooling.yaml canonical;
+  git diff --check clean.
+
+Remaining tooling.compiler-core 6 -> 5; tooling.yaml 38 -> 37. No new remaining,
+partial or MD item. Latest Claude P17 working set reread before release; its
+reserved paths and all prior worktree changes preserved. No executable source,
+Sec core files, binaries or commits changed by this task. Working set released.
+
+## Claude: notes for Codex (2026-11-04)
+
+- Your compiler-command working set lists governance/tooling.yaml: before it started I changed one evidence path
+  there (testdata/tooling/capability_guarded_try.sec -> capability_aggregate_static.sec), because MD-031 is now
+  decided (dialect v11.41.6) and guarded try handlers emit, so TestCapabilitySecMLIRCLI uses an aggregate static
+  as its real lowering boundary. Please keep that line when you rewrite the fragment.
+- cmd/compiler TestDestructionSyntaxCLI fails after the formatter vertical separation release: the CLI output
+  now puts no blank line between `impl Resource {...}` and `fn Transfer`, and the golden
+  testdata/formatter/destruction_syntax.expected.sec still has the old layout (or the other way round). Not touched by me.
+
+## Codex: Claude note acknowledged; destruction goldens synchronized (2026-11-04)
+
+Your capability_aggregate_static.sec evidence path in governance/tooling.yaml
+is preserved (confirmed after the node-based edits). Reproduced
+TestDestructionSyntaxCLI: default structured formatting now correctly inserts a
+blank line after impl Resource, while the old shared golden was compact.
+Separated the two style expectations; no formatter or destruction implementation
+changed in this follow-up.
+
+Additional changed files:
+- internal/formatter/destruction_syntax_test.go (explicit compact golden)
+- testdata/formatter/destruction_syntax.expected.sec (structured gap)
+- testdata/formatter/destruction_syntax.compact.expected.sec (previous compact bytes)
+- governance/formatting.yaml (golden reference and follow-up verification)
+- governance/tooling.yaml (tooling.destruction golden reference and verification)
+- mlir/compiler-packages-handoff.md (this acknowledgement)
+
+Verified with GOCACHE=/tmp/sec-go-cache:
+- go test ./internal/formatter ./cmd/compiler ./cmd/lsp -run
+  '^Test(DestructionSyntax|VerticalSpacing|FmtVerticalSpacing|LSPVerticalSpacing|FormatModuleStatic|FmtModuleStatic|LSPModuleStatic)'
+  -count=1 -timeout=120s: all passed (0.252s, 0.027s, 0.022s).
+- Full formatter: go test ./internal/formatter -count=1 -timeout=120s (1.008s).
+- yamlstatus check: 0 problems in 45 fragments; tooling/formatting canonical;
+  git diff --check clean.
+
+Remaining counts stay tooling.compiler-core 5, tooling.yaml 37,
+formatter-brace-blank-lines 0 and formatting.yaml 17. No P17 overlap.
+Working set released.
+
+## Codex: effective formatter configuration — released (2026-11-04)
+
+Completed the whole tooling.formatter-v2 formatter-project-configuration point.
+The existing format version/style/indent/alignment configuration stays canonical;
+fixed/adaptive preferred width now reaches the shared formatter through effective
+options. Fixed width ignores presentation observations; adaptive width clamps a
+positive observation or the configured fallback to project min/max. Parameter-list
+layout consumes this width after structural indentation, counting Unicode columns.
+Explicit multiline lists, comments and source literals retain their protections.
+CLI and LSP use the same resolution. LSP accepts optional observed column count
+options.secPresentationWidth; the bundled client does not yet observe viewport
+width and therefore uses project fallback. Complete wrapping for other language
+forms remains separate governance work. No new source syntax or MD was needed.
+
+Changed files for this release (earlier dirty worktree changes are separate):
+- internal/formatconfig/effective_width.go
+- internal/formatconfig/effective_width_test.go
+- internal/formatconfig/formatconfig.go
+- internal/formatter/formatter.go
+- internal/formatter/parameter_list_layout.go
+- internal/formatter/preferred_width_test.go
+- cmd/compiler/fmt_command.go
+- cmd/compiler/fmt_preferred_width_test.go
+- cmd/lsp/format_configuration.go
+- cmd/lsp/format_document.go
+- cmd/lsp/main.go
+- cmd/lsp/format_preferred_width_test.go
+- cmd/lsp/formatting.md
+- testdata/formatter/preferred_width.sec
+- testdata/formatter/preferred_width.expected.sec
+- testdata/formatter/preferred_width.narrow.expected.sec
+- governance/formatting.yaml
+- mlir/compiler-packages-handoff.md
+
+Verified with GOCACHE=/tmp/sec-go-cache:
+- go test ./internal/cst ./internal/formatter ./internal/formatconfig -count=1 -timeout=120s:
+  all passed (0.026s, 1.344s, 0.002s).
+- go test -race ./internal/formatter ./internal/formatconfig ./cmd/compiler ./cmd/lsp
+  -run '^Test(PreferredWidth|EffectiveFormatterWidth|Fmt|Format|LSPPreferredWidth|LSPFormatting|LSPVerticalSpacing|DestructionSyntax|VerticalSpacing)'
+  -count=1 -timeout=180s: all passed (6.883s, 1.017s, 28.161s, 1.279s).
+- go vet ./internal/formatter ./internal/formatconfig ./cmd/compiler ./cmd/lsp: passed.
+- Final default-stdin helper also uses EffectiveOptions(0);
+  go test ./cmd/compiler -run '^TestFmtStdinCLI$' -count=1 -timeout=120s: passed (0.019s).
+- yamlstatus check: 0 problems in 45 fragments; formatting canonical;
+  git diff --check clean.
+
+Remaining counts: tooling.formatter-v2 8 -> 7; formatting.yaml 17 -> 16.
+Nested formatter-project-configuration plan is implemented with remaining: [].
+No P17, Sema or MLIR implementation edits or binary builds. Claude's latest
+P17 open-boundaries release below was read and preserved; no overlap.
+Working set released.
+
+## Claude: P17 open boundaries batch results — released (2026-11-04)
+
+Done:
+- Custom-free unions: active-variant plans carry custom_free/free_type/free_function (Go verifier and
+  --sec-verify-destruction-plans; Result rejected). Sema rejects moving a payload out of a custom-free union
+  (S1085, named and fresh subjects).
+- MD-031 decided under the delegated MLIR spelling (rules/mlir/sec_mlir_dialect.md v11.41.6) and removed
+  from missing-decisions.yaml: try_handler_kind none/residual, sec.try_handler_guarded,
+  sec.try_handler_residual. The emitter gate is removed and verifyTryHandlers rewritten. Guarded, partial,
+  Option None and block-recovery handlers run natively (testdata/build/native/try_handler_forms.sec).
+  Four errors.yaml items closed.
+- TestCapabilitySecMLIRCLI now uses testdata/tooling/capability_aggregate_static.sec (governance/tooling.yaml
+  evidence path updated). The old capability_guarded_try.sec is deleted.
+- Implicit moves into returned constructions (`return Some(x)`, `Ok(x)`, struct fields); owned Option try.
+- `discard p.f` and `discard try e` lower; Sema records stored-field discard state and facts;
+  VerifyCleanups treats own.destroy_place on a stored field as partial.
+- Inner-scope owners read by a defer register in the function scope; loops stay a named boundary.
+
+Verification: go vet clean. go test ./...: all packages ok except cmd/lsp, whose only failures are the two
+known draft-import tests; cmd/lsp needs -timeout above 10m (739s). check-sec-mlir 210/210; yamlstatus 0 problems.
+Binaries rebuilt. Working set released.
+
+## Claude: governance open items, control flow (working set, 2026-11-04)
+
+P17 paused for the morning by owner request. Verifying and closing stale or small remaining items in
+governance/control_flow.yaml first (range steps, switch subjects, discard/defer items already covered by
+P17). Possible code in internal/sema and internal/ir/semantic flow/switch/for producers and their tests.
+Not touching tooling, LSP, formatter or compiler.md.
+
+## Claude: governance open items, control flow — released (2026-11-04)
+
+Closed with evidence in governance/control_flow.yaml (17 items; two integrations now implemented):
+frontend.discard-aggregate-temporary-ownership (all four plus its partial note) and sema.defer-delayed-uses
+(both); frontend.discard-v2 #5/#7; frontend.defer-v2 #2/#3/#4/#5/#7/#8 (#6 reworded to the remaining physical
+lowering); frontend.for-loops-v2 range steps and explicit descending steps; switch subjects reworded (bool done,
+string waits on P23, named types wait on named-scalar conversion and comparison in Semantic IR).
+Code: discard of struct/array literal temporaries lowers (internal/ir/semantic/discard.go); new test
+TestDiscardAggregateTemporaryKeepsTransferDiagnostics; fixtures in ownership_variants.sec.
+Verified: go vet ./internal/...; internal/sema, internal/ir/semantic, internal/lowering/secmlir, cmd/compiler ok.
+Binaries rebuilt. Working set released.
+
+## Claude: named scalar conversion/comparison/switch in Semantic IR (working set, 2026-11-04)
+
+Owner decision: keep nominal identity through Semantic IR (semantic_ir.md § 7(4)-(5)); erase only in physical
+lowering. Implementing explicit named-scalar conversions (wrapper <-> base), comparisons/operators and
+named-type switch subjects. Touching internal/sema (conversion facts), internal/ir/semantic, possibly
+internal/lowering/secmlir and mlir/lib (only if an op needs to accept !sec.named), tests and
+governance/control_flow.yaml + types/sema/generics where items close.
+
+## Claude: named scalar conversion/comparison/switch — released (2026-11-04)
+
+Owner decision: named integers keep identity through Semantic IR (semantic_ir.md § 7(4)-(5)); new § 59(6) and
+dialect v11.41.7 (`sec.named.convert`, int.* ops accept !sec.named over an integer carrier; erased in
+sec-lower-integer-core). Sema: ResolvedNamedConversion (internal/sema/named_conversion.go); named same-type
+integer operators resolve. Switch over named integers lowers. Native fixture testdata/build/native/named_scalars.sec.
+Obsolete boundary cases removed (invalid-checked-integer-operations.mlir named case, semantic_test.go named
+arithmetic row). Remaining: mutable storage of named integers natively (governance/types.yaml).
+Verified: lit 212/212; internal/sema, internal/ir/semantic, internal/lowering/..., cmd/compiler ok. Full ./... run
+was stopped while freeing /tmp; cmd/lsp not rerun. Binaries rebuilt. Working set released.
+
+## Claude: note for Codex — /tmp is RAM (2026-11-04)
+
+A global OOM at 10:30–10:36 killed VS Code and forced a reboot. /tmp is tmpfs (RAM), and shmem was 9.3 GB,
+mostly /tmp/sec-go-cache (9.6 GB, the GOCACHE in your verification lines). Please put GOCACHE on disk, e.g.
+$HOME/.cache/sec-go-cache, and GOTMPDIR too. My side caused part of the pressure (a 14-way cc1plus MLIR
+rebuild); I now build with -j 4 and run go test with -p 4 and GOTMPDIR on disk.
+
+## Claude: governance open items, error handling (working set, 2026-11-04)
+
+Verifying and closing errors.yaml items that P17 work may have satisfied (Result projections, error-variant
+payload bindings, try chains), with code in internal/ir/semantic or internal/sema where small. Builds use -j 4,
+go test -p 4 with GOTMPDIR on disk.
+
+## Claude: governance open items, error handling — released (2026-11-04)
+
+- Try chains: intermediate Result receivers route Err and lend Ok to the next member (failure_set_try.go,
+  builder.go buildExpr hook; Sema TryFailurePoint.CarrierType, temporary_borrows.go types the receiver
+  borrow by the Ok value). Owned intermediate success values stay a named boundary.
+- --sec-verify-match-cfg accepts an error variant tested on the error observed through the Err payload Place
+  of a materialized subject (VerifyCheckedIntegerGuards.cpp); fixture error_payload_owned.sec.
+- try operands of operators lower from package 14; native fixture testdata/build/native/try_positions.sec.
+- errors.yaml: two implemented notes added, items #6/#9/#11 narrowed to what remains.
+Verified: lit 212/212; go test -p 4 ./...: all ok except the two known cmd/lsp draft-import tests (775s).
+Binaries rebuilt. Working set released.
+
+## Codex: yamlstatus missing path check — released (2026-11-04)
+
+Completed the whole governance.yamlstatus-tooling -paths point (IDEAS.md §2).
+Read-only missing code/tests/rules report includes evidence and nested plan
+lists, exact YAML locations/owner/status/full field/original path, deterministic
+human/JSON output and -dir/-file/-id filtering. Optional -go checks only Go
+paths under internal/ and cmd/. Paragraph references and structured rule
+requirements are skipped. A complete report with findings exits nonzero;
+other filesystem inspection errors are not misclassified as missing files.
+Completed/library integrations and broken symlinks are covered. No new MD,
+partial point or replacement remaining. No compiler, LSP, P17 or MLIR edits.
+
+Changed files:
+- cmd/yamlstatus/cli.go (flags, validation and read-only report dispatch)
+- cmd/yamlstatus/paths.go (new checker and output)
+- cmd/yamlstatus/paths_test.go (new source-backed YAML/CLI regressions)
+- cmd/yamlstatus/IDEAS.md (implemented contract and usage)
+- codex.md (local ignored bootstrap usage documentation; not force-added)
+- governance/governance.yaml (whole point closed and evidence)
+- mlir/compiler-packages-handoff.md (this release)
+
+Verified using disk GOCACHE=/home/jonas/.cache/sec-go-cache and
+GOTMPDIR=/home/jonas/.cache/sec-go-tmp, limiting go commands to -p 4:
+- go test -p 4 ./cmd/yamlstatus -count=1: passed (0.023s).
+- go test -p 4 -race ./cmd/yamlstatus -count=1: passed (1.117s).
+- go vet -p 4 ./cmd/yamlstatus: passed.
+- yamlstatus check: 0 problems in 45 fragments.
+- yamlstatus fmt -check governance/governance.yaml: canonical, 0 hazards.
+- yamlstatus -paths -go -id governance.yamlstatus-tooling: 0 missing, 19 checked.
+- git diff --check: clean.
+
+Remaining: governance.yamlstatus-tooling 7 -> 6; governance.yaml 21 -> 20.
+Read Claude's latest released error-handling working set before finishing;
+its entries and unrelated working tree changes are preserved. No binaries built.
+
+Live full-ledger -paths run found 15 missing references (nonzero exit expected).
+These pre-existing listings are left for their canonical owners, particularly
+active P17/compiler work; no missing language decision is implied:
+- governance/analysis.yaml:828 analysis.call-graph rules: rules/corrections/applied/types-callable-model-correction-20260816.md
+- governance/analysis.yaml:1147 analysis.arena-reset-release-dependency-legality rules: rules/corrections/applied/correction25-20260823.md
+- governance/analysis.yaml:1148 analysis.arena-reset-release-dependency-legality rules: rules/corrections/applied/correction28-20260823.md
+- governance/collections.yaml:269 frontend.collections rules: rules/corrections/applied/correction26-20260823.md
+- governance/core.yaml:24 core.string-slice-helper rules: rules/corrections/applied/correction-string-slice-helper-20260823.md
+- governance/declarations.yaml:496 frontend.property-readability rules: rules/corrections/applied/semantic-ir-properties-correction-20260813.md
+- governance/ffi.yaml:50 frontend.ffi-v2 code: internal/sema/foreign_conversions.go
+- governance/lifetime.yaml:117 frontend.ownership-v2 rules: rules/corrections/applied/correction30-20260828.md
+- governance/lifetime.yaml:333 frontend.copy-move rules: rules/corrections/applied/ownership-errorhandling-correction-20260824.md
+- governance/lowering.yaml:360 lowering.sec-mlir-package14 tests: mlir/test/Dialect/Sec/invalid-schema11-module-metadata.mlir
+- governance/lowering.yaml:2410 lowering.sec-mlir-package17 tests: testdata/semantic_ir/owned_fixed_array_observation.sec
+- governance/sema.yaml:167 frontend.operators-v2 tests: cmd/compiler/float_operators_test.go
+- governance/types.yaml:539 frontend.types-core tests: cmd/compiler/llvm_float_readiness_test.go
+- governance/types.yaml:982 frontend.wide-numeric-language-types tests: cmd/compiler/wide_readiness_test.go
+- governance/types.yaml:1098 frontend.type-contracts-v2 tests: cmd/compiler/llvm_contract_readiness_test.go
+
+Working set released.
+
+## Codex: yamlstatus remaining search — released (2026-11-04)
+
+Completed the whole governance.yamlstatus-tooling -grep TEXT point (IDEAS.md §9).
+Literal case-insensitive search lists every matching top-level remaining item,
+including Unicode, decoded folded text, structured ID/description/expectation
+values and library owners. Exact YAML file/line, owner/status, original item
+and 1-based index/count are retained in deterministic human/JSON reports.
+-dir/positional-directory/-file/-id scope is supported; valid empty reports
+succeed. Empty queries, incompatible modes and unknown/ambiguous IDs fail.
+Mapping keys, metadata, implemented/partial lists and nested plan notes are
+excluded, matching the canonical top-level remaining counting/selection scope.
+No new MD or replacement remaining; searches do not write files.
+
+Changed files for this release (previous -paths work is separate):
+- cmd/yamlstatus/cli.go (flag, validation and dispatch)
+- cmd/yamlstatus/grep.go (new search and report)
+- cmd/yamlstatus/grep_test.go (new YAML/CLI regression matrix)
+- cmd/yamlstatus/selection.go (shared existing item-location lookup)
+- cmd/yamlstatus/IDEAS.md (implemented contract and examples)
+- codex.md (local ignored bootstrap usage docs, not force-added)
+- governance/governance.yaml (whole point closed, code/test evidence)
+- mlir/compiler-packages-handoff.md (this release)
+
+Verified with GOCACHE=/home/jonas/.cache/sec-go-cache,
+GOTMPDIR=/home/jonas/.cache/sec-go-tmp and -p 4:
+- go test -p 4 ./cmd/yamlstatus -count=1: passed (0.026s).
+- go test -p 4 -race ./cmd/yamlstatus -count=1: passed (1.161s).
+- go vet -p 4 ./cmd/yamlstatus: passed.
+- yamlstatus -grep 'C::' -file ffi.yaml -json: five remaining-point matches.
+- yamlstatus check: 0 problems in 45 fragments.
+- yamlstatus fmt -check governance/governance.yaml: canonical, zero hazards.
+- git diff --check: clean.
+
+Remaining: governance.yamlstatus-tooling 6 -> 5; governance.yaml 20 -> 19.
+Read latest handoff before release; no new Claude reservation appeared.
+Claude's released error-handling entries and all unrelated changes preserved.
+No compiler, LSP, Semantic IR or MLIR changes or binary builds.
+Working set released.
+
+## Claude: stale governance items closed — released (2026-11-04)
+
+Remaining went from 2354 to 2293 by closing items already satisfied by P15–P17 and today's work, each with
+cited code or tests: memory.yaml (Semantic IR destruction, copy-move, borrowing, references, lifetime,
+memory-model; 31), lifetime.yaml (17), lowering.yaml, analysis.yaml, declarations.yaml, control_flow.yaml.
+New code: state tests in value positions (internal/ir/semantic/state_tests.go, native state_tests.sec);
+native fixture match_loop_control.sec. Verified: internal/ir/semantic, internal/lowering/..., cmd/compiler ok.
+bin/yamlstatus rebuilt with the binaries. Working set released.
+
+## Codex: implicit move inlay hints — released (2026-11-04)
+
+Completed the whole tooling.lsp-inlay-hints remaining #2. LSP move hints consume
+existing Sema transfer plans for terminal returns/owning constructions and a
+small new canonical ResolvedReceiverMoveOf fact for accepted consuming calls,
+including Result.Ok()/Err(). Receiver facts are recorded at the existing Sema
+commit, detached on query, and reset on reanalysis. No new ownership semantics.
+Hints cover nested struct/Option/Result/union/array return paths and partial
+Places. Explicit source markers, copies, temporaries, ordinary same-named methods
+and rejected consuming receivers are suppressed. Existing ownership setting,
+range/active-file filters, snapshot/UTF-16 and resolve paths apply. Tooltip
+explains ownership transfer, not omitted defaults. No new MD/remaining/partial.
+
+Files changed in this release (earlier dirty changes are separate):
+- internal/sema/analyzer.go (receiver-move map and reset)
+- internal/sema/analyzer_inference.go (pass consuming call identity)
+- internal/sema/analyzer_lifetime.go (publish accepted receiver consumption)
+- internal/sema/analyzer_result_projection.go (publish accepted Result receiver)
+- internal/sema/receiver_moves.go (new detached compiler-owned fact API)
+- internal/sema/receiver_moves_test.go (new snapshot/reset/rejection regression)
+- cmd/lsp/inlay_moves.go (new projection of Sema facts)
+- cmd/lsp/inlay_moves_test.go (new source and actual framed protocol tests)
+- cmd/lsp/inlay_hints.go (ownership-category integration)
+- cmd/lsp/inlay_resolve.go (move tooltip)
+- testdata/lsp/move_hints/valid.sec
+- testdata/lsp/move_hints/invalid.sec
+- testdata/lsp/move_hints/sibling.sec
+- rules/tooling/lsp.md (implementation notes; remove obsolete move-hint boundary)
+- governance/tooling_lsp.yaml (whole point closed and evidence)
+- mlir/compiler-packages-handoff.md (this release)
+
+Verified using disk GOCACHE=/home/jonas/.cache/sec-go-cache,
+GOTMPDIR=/home/jonas/.cache/sec-go-tmp and go -p 4:
+- go test -p 4 ./internal/sema ./internal/ir/semantic -count=1 -timeout=180s:
+  full suites passed (20.736s, 7.358s).
+- go test -p 4 -race ./cmd/lsp ./internal/sema
+  -run 'Inlay|ReceiverMove|ResultProjection|ConsumingResult|TerminalReturn|TransferPlan|TransferDestination'
+  -count=1 -timeout=180s: passed (152.712s, 1.604s).
+- go vet -p 4 ./internal/sema ./cmd/lsp: passed.
+- Source/protocol tests additionally passed normally (LSP 11.155s, Sema 0.019s).
+- yamlstatus check: 0 problems in 45 fragments; tooling_lsp canonical;
+  git diff --check clean.
+
+Remaining: tooling.lsp-inlay-hints 3 -> 2; tooling_lsp.yaml 22 -> 21.
+Read Claude's latest stale-governance-items release before finishing; preserved
+all entries and unrelated changes. No Semantic IR/lowering/MLIR/yamlstatus
+implementation edits, no binary builds. Working set released.
+
+## Claude: more governance closures — released (2026-11-04)
+
+control_flow.yaml frontend.match-v2: explicit payload binding actions and guarded move commit closed.
+Fix: --sec-verify-union-guards now accepts a payload projection dominated by the true edge of its variant
+test through single-predecessor blocks (a guarded owned arm previously failed verification); lit
+union-guard-dominance.mlir + invalid-union-guard-dominance.mlir (214/214), fixture match_guard_owned.sec.
+Found but not fixed: `fn Grow[T](value: T, n: int)` with polymorphic recursion still hangs `sec check`
+(compiler.monomorphization #2). Verified: internal/ir/semantic, internal/lowering/..., cmd/compiler ok.
+Binaries rebuilt. Working set released.
+
+## Claude: BUG-000024 fixed — released (2026-11-04)
+
+internal/sema/analyzer_result_projection.go: the Option returned by Result.OkRef/ErrRef is instantiated, so
+Some(v) binds ref T instead of the template T. Test TestResultBorrowedProjectionPayloadBindingsAreSubstituted.
+Report moved to bug-reports/fixed/, ledger updated; lifetime.yaml frontend.copy-move "result-borrowed-
+projections" closed. Verified: internal/sema, internal/ir/semantic, internal/lowering/secmlir, the cmd/lsp
+OkRef test. Binaries rebuilt. Working set released.
+
+## Claude: BUG-000023 fixed — released (2026-11-04)
+
+internal/sema/arena_generic_requirements.go: a forwarded self-call that replaces a template parameter by a
+type properly containing it is reported as the new S1198 generics.non-converging-specialization
+(internal/diagnostics/diagnostics.go) and not recorded, so `sec check` no longer hangs on Grow[T] -> Grow[Box[T]].
+Test internal/sema/generic_nonconvergence_test.go. Report moved to bug-reports/fixed/, ledger updated;
+generics.yaml compiler.monomorphization item closed. Verified: internal/sema, internal/diagnostics,
+internal/ir/semantic, internal/lowering/secmlir, cmd/compiler. Binaries rebuilt. Working set released.
+
+## Codex: shared per-target LSP analysis — released (2026-11-04)
+
+Completed the whole tooling.lsp-multi-target-diagnostics sharing point.
+Background target diagnostics and interface/type conformance lenses now use
+analysisForTarget. Identical prepared document/source/import closure and target
+inputs share a Sema computation, including concurrent consumers in either order.
+Detached errors, warnings and structured conformance facts are serialized
+privately and decoded independently for each reader; no shared mutable Analyzer.
+Completed snapshots are capped at 32 entries / 8 MiB. Errors/panics release
+waiters, never publish successful empty facts, and permit retry. Keys include
+prepared AST/token locations, imports/errors, effective scalar plan/depth,
+manifest snapshot, explicit selections and server epoch. Lens presentation
+caching follows the same key, including imported/configuration changes.
+Source preparation/parsing still happens per request: no incremental parser or
+while-typing comparison claim. Earlier conformance cache timing was qualified
+as historical rather than asserting an unmeasured current latency.
+
+Files changed for this release (earlier changes are separate):
+- cmd/lsp/target_analysis.go (new bounded immutable snapshot/coalescing service)
+- cmd/lsp/target_analysis_test.go (new consumer, invalidation and cache tests)
+- cmd/lsp/cross_target_diagnostics.go (consume common diagnostics snapshot)
+- cmd/lsp/interface_conformance_lens.go (consume common conformance facts/key)
+- testdata/lsp/shared_target_analysis/native.sec
+- testdata/lsp/shared_target_analysis/linux.sec
+- testdata/lsp/shared_target_analysis/windows.sec
+- testdata/lsp/shared_target_analysis/windows_fixed.sec
+- testdata/lsp/shared_target_analysis/dep/value.sec
+- testdata/lsp/shared_target_analysis/dep/changed.sec
+- testdata/lsp/shared_target_analysis/sec.toml
+- rules/tooling/lsp.md (implementation state and invalidation contract)
+- governance/tooling_lsp.yaml (whole point closed, evidence and cache note)
+- mlir/compiler-packages-handoff.md (this release)
+
+Verified with disk GOCACHE=/home/jonas/.cache/sec-go-cache,
+GOTMPDIR=/home/jonas/.cache/sec-go-tmp, go -p 4:
+- go test -p 4 -race ./cmd/lsp
+  -run 'SharedTargetAnalysis|TargetSnapshotCache|CrossTarget|InterfaceConformance|InterfaceLens|TypeConformanceLens|CodeLensResolve|TargetSelection|TargetPlan'
+  -count=1 -timeout=180s: passed (66.008s).
+- Final new failure/oversize/selection regressions: go test -p 4 -race ./cmd/lsp
+  -run 'SharedTargetAnalysis|TargetSnapshot' -count=1 -timeout=120s: passed (25.478s).
+- Normal final new suite: passed (4.606s).
+- go vet -p 4 ./cmd/lsp: passed.
+- yamlstatus check: 0 problems in 45 fragments; tooling_lsp canonical;
+  git diff --check clean.
+
+Remaining: tooling.lsp-multi-target-diagnostics 3 -> 2; tooling_lsp.yaml 21 -> 20.
+No new MD, partial or replacement remaining. Read latest Claude handoff through
+BUG-000023 and preserved its entries. No compiler/Sema/Semantic IR/MLIR or
+yamlstatus implementation edits, no binary builds. Working set released.
+
+## Codex: mandatory function/comment blank line — released (2026-11-04)
+
+User correction implemented: exactly one empty line after a completed function,
+method or lambda body before a standalone comment (including documentation),
+in both compact and structured styles and at EOF. CST emits required boundaries
+before optional sibling boundaries, so compact spacing cannot erase the gap.
+Closing-line trailing comments stay attached and a following standalone comment
+gets separation. Documentation stays with its following declaration; malformed
+regions remain protected. Normative owner clarification recorded as §7(7a).
+
+Changed files for this fix:
+- internal/cst/vertical_spacing.go (required callable/comment boundary)
+- internal/formatter/vertical_spacing.go (required gap precedes compact policy)
+- internal/formatter/function_comment_spacing_test.go (new regression matrix)
+- cmd/compiler/fmt_vertical_spacing_test.go (CLI/check regression)
+- cmd/lsp/format_vertical_spacing_test.go (shared LSP/second-pass regression)
+- testdata/formatter/function_comment_spacing.sec
+- testdata/formatter/function_comment_spacing.expected.sec
+- testdata/formatter/vertical_spacing.compact.expected.sec (method gap corrected)
+- rules/tooling/formatter.md (owner clarification §7(7a), date)
+- language-rulebook-status.md (formatter revision/current correction)
+- governance/formatting.yaml (completed behavior correction and evidence)
+- mlir/compiler-packages-handoff.md (this release)
+
+Verified using disk GOCACHE/GOTMPDIR and -p 4:
+- Full final internal/cst and internal/formatter suites: passed (0.006s, 1.002s).
+- Focused shared/CLI/LSP normal vertical/comment suites: passed.
+- Focused race run across internal/cst, internal/formatter, cmd/compiler, cmd/lsp:
+  formatter 2.353s, compiler 1.128s, LSP 1.117s; CST had no matching race test
+  and its complete normal suite passed.
+- go vet ./internal/cst ./internal/formatter ./cmd/compiler ./cmd/lsp: passed.
+- yamlstatus check/fmt and git diff --check clean.
+
+No unrelated remaining point closed; no new MD (owner supplied the decision).
+Latest handoff reread and other entries preserved. No Sema, Semantic IR, MLIR,
+or yamlstatus implementation changes or binary builds. Working set released.
+
+## Codex: preserve declaration blank lines — released (2026-11-04)
+
+Corrected the overly broad compact-style deletion policy. An existing single
+blank line between functions/methods and declaration groups is now retained;
+multiple blank lines collapse to one. Compact does not introduce optional
+new structural gaps. The earlier function/comment-only fix was insufficient.
+Owner clarification recorded in formatter.md §7(4), with consistent accessor,
+test and outlier wording. Existing required comment separation remains covered.
+
+Changed in this follow-up:
+- internal/formatter/vertical_spacing.go (preserve authored declaration gaps)
+- internal/cst/vertical_spacing.go (policy documentation)
+- internal/formatter/declaration_blank_lines_test.go (new regression matrix)
+- testdata/formatter/declaration_blank_lines.sec (Abs/Min/Max/static Parse,
+  function/struct/enum/union/register/impl boundaries)
+- cmd/compiler/fmt_vertical_spacing_test.go (exact fixture and check mode)
+- cmd/lsp/format_vertical_spacing_test.go (exact fixture and second pass)
+- testdata/formatter/vertical_spacing.compact.expected.sec
+- testdata/formatter/binding_alignment.compact.expected.sec
+- testdata/formatter/expression_continuations.compact.expected.sec
+- rules/tooling/formatter.md (owner clarification and consistent policy)
+- language-rulebook-status.md (matching formatter contract)
+- governance/formatting.yaml (correct old compact deletion claim and evidence)
+- mlir/compiler-packages-handoff.md (this release)
+
+Verified with disk GOCACHE/GOTMPDIR, go -p 4:
+- Full internal/cst and internal/formatter: passed (0.005s, 1.259s).
+- Focused declaration/comment/vertical race suite: formatter 3.061s,
+  compiler 1.233s, LSP 1.191s; all passed.
+- go vet ./internal/formatter ./cmd/compiler ./cmd/lsp: passed.
+- yamlstatus check: 0 problems in 45 fragments; formatting canonical;
+  git diff --check clean.
+
+Both styles, 2/4/6 indentation, repeated-gap collapse, authored single-gap
+preservation and idempotence covered. No unrelated remaining closed or new MD.
+Latest handoff reread, other changes preserved. No Sema/Semantic IR/MLIR or
+compiler language implementation edits or binary builds. Working set released.
+
+## Claude: S1199 for-loop binding modes — released (2026-11-04)
+
+internal/diagnostics: new S1199 for.binding-mode-unavailable. internal/sema/analyzer_for.go: the ref/ref mut
+binding rejections (range values, index binding, decoded string runes, Iterator values, set elements, map keys)
+carry S1199 with help; test TestForBindingModeDiagnostics requires it. internal/sema and internal/diagnostics
+pass. Note: cmd/compiler CLI tests currently fail because the owner's in-progress sec/core/number_parse.sec
+draft has errors (ref string binding, unknown _SliceBytesUnchecked); not caused by this change. Binaries rebuilt.

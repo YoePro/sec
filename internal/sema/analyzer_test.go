@@ -12300,6 +12300,46 @@ fn Test() void {
 	}
 }
 
+// A move into a discarded temporary keeps the borrow, deferred-use and
+// availability checks of an ordinary transfer.
+// Rules: rules/control-flow/discard.md — aggregate temporary discard;
+// rules/control-flow/defer.md — § 10; rules/memory/copy_move.md — § 6.
+func TestDiscardAggregateTemporaryKeepsTransferDiagnostics(t *testing.T) {
+	errors := analyzeSourceRaw(t, `
+module main
+@noCopy
+type Session struct { id: int, }
+type Holder struct { session: Session, }
+fn Log(id: int) void {}
+fn Deferred() void {
+	let session := Session { id: 1 }
+	defer {
+		Log(session.id)
+	}
+	discard Holder { session: <-session }
+}
+fn Borrowed() void {
+	let session := Session { id: 1 }
+	let view := ref session
+	discard Holder { session: <-session }
+	Log(view.id)
+}
+fn Twice() void {
+	let session := Session { id: 1 }
+	discard Holder { session: <-session }
+	discard [<-session]
+}
+`)
+	for _, want := range []string{"while it is required by defer", "while it is borrowed", "use of moved value session"} {
+		if !errorsContainMessage(errors, want) {
+			t.Errorf("missing %q in %v", want, errors)
+		}
+	}
+	if len(errors) != 3 {
+		t.Fatalf("errors = %v, want three transfer diagnostics", errors)
+	}
+}
+
 // rules/foundations/operators.md, logical operators; correction22.md keeps
 // proven short-circuit RHS ownership effects out of the continuing path.
 func TestLogicalShortCircuitDoesNotCommitImpossibleMove(t *testing.T) {

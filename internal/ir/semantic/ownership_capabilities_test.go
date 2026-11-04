@@ -53,11 +53,10 @@ func TestPackage17CapabilityRejectsMissingOwnershipIR(t *testing.T) {
 		{"semantic_ir/package17_variants/temporary_on_some_paths.sec", "main", "owned temporary created on only some paths"},
 		{"semantic_ir/package17_variants/temporary_mutable_borrow.sec", "main", "borrowed temporary that needs full-expression cleanup"},
 		{"semantic_ir/package17_variants/defer_reads_replaced.sec", "main", "replacement of an owned value a registered defer reads"},
-		{"semantic_ir/package17_variants/defer_reads_inner_owner.sec", "main", "defer reading an owned value of an inner scope"},
+		{"semantic_ir/package17_variants/defer_reads_loop_owner.sec", "main", "defer in a loop reading an owned value of the loop body"},
 		{"semantic_ir/package17_variants/defer_reads_loop_storage.sec", "main", "defer reading mutable storage declared in its loop"},
 		{"semantic_ir/package17_variants/guarded_named_field.sec", "main", "guarded owned named-field payload binding"},
 		{"semantic_ir/package17_variants/error_handler_payload.sec", "main", "guarded try handler on an error that needs destruction"},
-		{"semantic_ir/package17_variants/custom_free_union.sec", "main", "custom-free union destruction plan"},
 	} {
 		t.Run(test.feature, func(t *testing.T) {
 			program, a := sliceBoundaryInput(t, "semantic_ir/package17_boundary_plain.sec", test.fixture)

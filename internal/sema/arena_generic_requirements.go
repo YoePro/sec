@@ -67,6 +67,9 @@ func (a *Analyzer) recordGenericInstantiation(function Function, call lexer.Toke
 			return
 		}
 		instantiation.caller = sourceTokenLocation(a.currentFunctionMetadata.Token)
+		if a.reportNonConvergingSelfSpecialization(instantiation) {
+			return
+		}
 	}
 	key := sourceTokenLocation(call)
 	a.genericInstantiations[key] = instantiation
@@ -158,6 +161,52 @@ func arenaAllocationElementFailure(method string, element Type) (string, string,
 
 // typeMentionsGenericParameter reports whether a type still contains an
 // unresolved template parameter anywhere in its structure.
+// reportNonConvergingSelfSpecialization rejects a template that calls itself
+// with a parameter replaced by a type properly containing that parameter, such
+// as Grow[T] calling Grow[Box[T]]: every specialization then demands a new,
+// strictly larger canonical key, so the sequence provably never converges
+// (monomorphization.md § 18.5). The call is not recorded, so no later pass
+// follows the chain.
+func (a *Analyzer) reportNonConvergingSelfSpecialization(instantiation genericInstantiation) bool {
+	if instantiation.caller != instantiation.template {
+		return false
+	}
+	names := make([]string, 0, len(instantiation.substitution))
+	for name := range instantiation.substitution {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		typ := instantiation.substitution[name]
+		if typ.Kind == GenericType || !typeMentionsGenericName(typ, name) {
+			continue
+		}
+		a.addErrorAtTokenWithMetadata(instantiation.call, diagnostics.NonConvergingSpecialization,
+			"Each specialization of this template demands one with a larger argument, so monomorphization never reaches a finite set. Pass the growing value through a non-generic type, or restructure the recursion so the generic arguments stay the same.",
+			"recursive call to %s specializes %s as %s, which contains %s; the specializations never converge",
+			instantiation.function.Name, name, typeDisplayName(typ), name)
+		return true
+	}
+	return false
+}
+
+// typeMentionsGenericName reports whether typ contains the generic parameter
+// name anywhere in its structure.
+func typeMentionsGenericName(typ Type, name string) bool {
+	if typ.Kind == GenericType {
+		return typ.Name == name
+	}
+	if typ.Element != nil && typeMentionsGenericName(*typ.Element, name) {
+		return true
+	}
+	for _, argument := range typ.TypeArgs {
+		if typeMentionsGenericName(argument, name) {
+			return true
+		}
+	}
+	return false
+}
+
 func typeMentionsGenericParameter(typ Type) bool {
 	if typ.Kind == GenericType {
 		return true

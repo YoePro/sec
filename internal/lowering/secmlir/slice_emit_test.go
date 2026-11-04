@@ -126,16 +126,17 @@ func TestPackage16EmitSourceSlices(t *testing.T) {
 	}
 }
 
-// Unsupported handler schemas, target mismatches and invalid provenance must
-// return no bytes, even after earlier supported functions could be emitted.
+// Guarded slice handlers emit with their MD-031 provenance; target mismatches
+// and invalid provenance must return no bytes, even after earlier supported
+// functions could be emitted.
 // Rules: rules/compiler/compiler_pipeline.md — §§32–34;
-// rules/mlir/sec_mlir_lowering.md — v12.29–31; missing-decisions.yaml — MD-031.
+// rules/mlir/sec_mlir_lowering.md — v12.29–31; rules/mlir/sec_mlir_dialect.md — v11.41.6.
 func TestPackage16EmitRetainsFailureBoundaries(t *testing.T) {
 	for _, width := range []uint16{32, 64} {
 		m := sliceEmitModule(t, "slice_source_fallible.sec", width)
 		out, err := EmitWithOptions(m, testPlan(width), EmitOptions{DialectVersion: 12})
-		if out != nil || err == nil || !strings.Contains(err.Error(), "guarded try handlers") {
-			t.Fatal("lost MD-031 boundary", err)
+		if err != nil || !strings.Contains(string(out), "sec.try_handler_guarded = true") {
+			t.Fatal("guarded slice handler not emitted with its provenance", err)
 		}
 		m = sliceEmitModule(t, "slice_source_reborrow.sec", width)
 		other := uint16(32)

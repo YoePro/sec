@@ -95,7 +95,7 @@ func runFmtCommand(args []string) error {
 		if err != nil {
 			return err
 		}
-		return formatStdinWithOptions(os.Stdin, os.Stdout, settings.Options)
+		return formatStdinWithOptions(os.Stdin, os.Stdout, settings.EffectiveOptions(0))
 	}
 	if len(paths) == 0 {
 		return fmt.Errorf("expected at least one source file or directory")
@@ -112,7 +112,7 @@ func runFmtCommand(args []string) error {
 		if err != nil {
 			return err
 		}
-		options[index] = settings.Options
+		options[index] = settings.EffectiveOptions(0)
 	}
 	// A malformed file is left unchanged and reported, and its valid
 	// siblings are still formatted.
@@ -149,7 +149,7 @@ func runFmtCommand(args []string) error {
 // Rules: rules/tooling/formatter.md — Command model, `sec fmt --stdin`;
 // Shared implementation; rules/foundations/lexical_structure.md — §2 "Line endings".
 func formatStdin(input io.Reader, output io.Writer) error {
-	return formatStdinWithOptions(input, output, formatconfig.Defaults().Options)
+	return formatStdinWithOptions(input, output, formatconfig.Defaults().EffectiveOptions(0))
 }
 
 // formatStdinWithOptions formats a stream with the selected formatter

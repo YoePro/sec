@@ -1,0 +1,22 @@
+module comments
+
+fn First() void {
+}
+
+/** Next function. */
+fn Second() void {
+}
+/* Standalone block. */
+fn Third() void {
+} // attached trailing comment
+/** After trailing comment. */
+fn Fourth() void {
+}
+// Ordinary standalone comment.
+fn Fifth() void {
+    let callback := fn() void {
+    }
+    // Following a lambda.
+    callback()
+}
+/** End of file. */

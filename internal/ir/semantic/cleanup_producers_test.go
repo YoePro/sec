@@ -525,8 +525,8 @@ fn main() int {
 }
 
 // A call result nothing else owns is destroyed once through own.discard, whether the
-// discard is explicit or the implicit end of a call statement; a discard of another
-// source stays a named boundary. Rules: rules/control-flow/discard.md §§ 5, 9, 10.
+// discard is explicit or the implicit end of a call statement, and a discarded stored
+// field ends through its field Place. Rules: rules/control-flow/discard.md §§ 5, 9, 10, 26.
 func TestDiscardOfFreshOwnedValues(t *testing.T) {
 	module, err := analyzedModule(t, ownedLocalSource+`
 fn Use() void {
@@ -550,12 +550,16 @@ fn main() int {
 			t.Errorf("missing %q in:\n%s", want, text)
 		}
 	}
-	for _, source := range []string{
-		"fn Use() void {\n    let pair := Pair { left: Make(1), count: 2, right: Make(3) }\n    discard pair.left\n}\nfn main() int {\n    return 0\n}\n",
-	} {
-		if _, err := analyzedModule(t, ownedLocalSource+source, 17); err == nil {
-			t.Errorf("%s: a projected discard must stay a boundary", source)
-		}
+	// A stored field ends through its field Place; the owner stays registered.
+	projected, err := analyzedModule(t, ownedLocalSource+"fn Use() void {\n    let pair := Pair { left: Make(1), count: 2, right: Make(3) }\n    discard pair.left\n}\nfn main() int {\n    return 0\n}\n", 17)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Verify(projected); err != nil {
+		t.Fatal(err)
+	}
+	if text := Format(projected); !strings.Contains(text, "own.move-from-place") || !strings.Contains(text, "origin=explicit") {
+		t.Errorf("projected discard does not end the field through its Place:\n%s", text)
 	}
 	if _, err := analyzedModule(t, ownedLocalSource+"fn Use() void {\n    Make(1)\n}\nfn main() int {\n    return 0\n}\n", 16); err == nil {
 		t.Error("package 16 must keep the discard boundary")

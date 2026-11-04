@@ -29,8 +29,8 @@ type switchCaseBody struct {
 // § 39).
 //
 // Enum subjects test each case with same-enum equality and bool subjects with
-// branch-based bool equality; string and named-type subjects remain
-// unsupported constructs.
+// branch-based bool equality; a named integer subject compares like its
+// carrier and keeps its identity. String subjects remain unsupported.
 //
 // Rules:
 //   - rules/control-flow/flowcontrol_switch.md — §§ 4–17, 31–32, 39
@@ -49,7 +49,11 @@ func (fb *functionBuilder) buildSwitch(stmt *ast.SwitchStatement) error {
 	if flow.HasSubject {
 		subjectType := flow.SubjectType
 		isInteger := (subjectType.Kind == sema.IntType || subjectType.Kind == sema.UintType) && !subjectType.Named
-		if !isInteger && subjectType.Kind != sema.EnumType && subjectType.Kind != sema.BoolType {
+		// A named integer without units or contracts compares through its
+		// carrier while keeping its identity (semantic_ir.md § 7(4)).
+		namedInteger := subjectType.Named && (subjectType.Kind == sema.IntType || subjectType.Kind == sema.UintType) &&
+			subjectType.Unit == "" && subjectType.Dimension.IsZero() && len(subjectType.Contracts) == 0
+		if !isInteger && !namedInteger && subjectType.Kind != sema.EnumType && subjectType.Kind != sema.BoolType {
 			return fb.unsupported("switch over "+typeName(subjectType), stmt.Token)
 		}
 		typeID, err := fb.owner.internType(subjectType)

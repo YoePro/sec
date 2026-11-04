@@ -39,33 +39,6 @@ func Emit(module *semantic.Module, plan layout.ResolvedScalarPlan) ([]byte, erro
 	return EmitWithOptions(module, plan, EmitOptions{})
 }
 
-// validateTryHandlerSchema rejects Semantic IR handler plans the Sec MLIR
-// handler metadata cannot express: the dialect's canonical kinds are ok,
-// err-variant, err-catch-all, and merge, and its verifier requires catch-all
-// finality and complete coverage, so guarded handlers and partial plans with
-// residual propagation need a dialect revision before they can be emitted.
-//
-// Rules:
-//   - rules/mlir/dialect-versions/sec_mlir_dialect_v6.md — §12 "Handler provenance metadata", §20 "Try handler verifier"
-//   - rules/mlir/sec_mlir_dialect.md — §26 "P10 enum handlers"
-func validateTryHandlerSchema(module *semantic.Module) error {
-	for _, function := range module.Functions {
-		for _, block := range function.Blocks {
-			for _, op := range block.Operations {
-				switch {
-				case op.TryHandlerGuarded:
-					return &UnsupportedLoweringError{Feature: "guarded try handlers", Function: function.ID}
-				case op.TryHandlerKind == semantic.TryHandlerNone:
-					return &UnsupportedLoweringError{Feature: "Option try None handlers", Function: function.ID}
-				case op.TryResidualPropagates || op.TryHandlerKind == semantic.TryHandlerResidual:
-					return &UnsupportedLoweringError{Feature: "partial try handlers with residual propagation", Function: function.ID}
-				}
-			}
-		}
-	}
-	return nil
-}
-
 // validatePackage14ArrayBoundaries rejects representation requests that schema
 // 10 deliberately leaves to later aggregate ABI and physical-layout packages.
 // Verified Semantic IR may retain foreign functions and optional aggregate
@@ -569,6 +542,8 @@ func (e *emitter) emitOperation(function *semantic.Function, operation semantic.
 		return e.emitSemanticIntegerOperation(operation, "sec.int.bit_not", "", "", values)
 	case semantic.OpNumericConvertExact:
 		return e.emitSemanticIntegerOperation(operation, "sec.numeric.convert_exact", "", "", values)
+	case semantic.OpNamedConvert:
+		return e.emitSemanticIntegerOperation(operation, "sec.named.convert", "", "", values)
 	case semantic.OpIntBinaryChecked:
 		return e.emitSemanticIntegerOperation(operation, "sec.int.binary_checked", "kind", string(operation.IntegerBinary), values)
 	case semantic.OpIntBitwise:
@@ -1001,6 +976,12 @@ func (e *emitter) emitTryHandlerAttributes(operation semantic.Operation) {
 	fmt.Fprintf(&e.out, "{sec.try_handler_kind = %s, sec.try_handler_index = %d : i32", mlirString(string(operation.TryHandlerKind)), operation.TryHandlerIndex)
 	if operation.TryHandlerExhaustive {
 		e.out.WriteString(", sec.try_handler_exhaustive = true")
+	}
+	if operation.TryHandlerGuarded {
+		e.out.WriteString(", sec.try_handler_guarded = true")
+	}
+	if operation.TryResidualPropagates {
+		e.out.WriteString(", sec.try_handler_residual = true")
 	}
 	if operation.Variant != "" {
 		fmt.Fprintf(&e.out, ", sec.try_handler_variant = %s", mlirString(operation.Variant))

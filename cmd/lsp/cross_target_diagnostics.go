@@ -10,7 +10,6 @@ import (
 
 	lspserver "sec/internal/lsp/server"
 	platformtarget "sec/internal/platform/target"
-	"sec/internal/sema"
 )
 
 // crossTargetResult holds, for one document text, the diagnostics of every
@@ -149,31 +148,24 @@ func computeCrossTargetDiagnostics(uri string, text string, overlay sourceOverla
 	return result, true
 }
 
-// semanticDiagnosticsForTarget runs Sema for one target and keeps the
-// diagnostics that belong to the document.
+// semanticDiagnosticsForTarget projects the shared per-target Sema snapshot
+// into diagnostics belonging to the active document.
+// Rules: rules/tooling/lsp.md — "Multi-target diagnostics", "Document snapshots".
 func semanticDiagnosticsForTarget(uri string, text string, overlay sourceOverlay, target platformtarget.Target) []diagnostic {
 	path := pathFromURI(uri)
-	parsed := parseProgramForLSP(uri, text)
-	if parsed == nil {
-		return nil
+	snapshot, err := analysisForTarget(uri, text, overlay, target)
+	if err != nil {
+		// The enclosing cross-target computation rejects failed work and
+		// never publishes an empty successful target from missing facts.
+		panic(err)
 	}
-	lspserver.AssembleModuleForTarget(parsed, path, overlay.Sources, target)
-	resolveCoreSources(parsed, path, overlay)
-	errors := resolveSourceImportsForTarget(parsed, map[string]bool{}, path, target, overlay)
-	analyzer := newLSPAnalyzerWithOverlay(uri, parsed, overlay)
-	if definition, found := platformtarget.Find(target); found {
-		if plan, err := definition.ScalarPlan(); err == nil {
-			analyzer = sema.NewAnalyzerWithScalarPlanAndDepth(plan, sema.AnalysisInteractive)
-		}
-	}
-	errors = append(errors, analyzer.Analyze(parsed)...)
 	out := []diagnostic{}
-	for _, err := range errors {
+	for _, err := range snapshot.Errors {
 		if diagnosticBelongsToSource(err, path) {
 			out = append(out, semaDiagnosticWithSources(err, 1, uri, text, overlay))
 		}
 	}
-	for _, warning := range analyzer.Warnings() {
+	for _, warning := range snapshot.Warnings {
 		if diagnosticBelongsToSource(warning, path) {
 			out = append(out, semaDiagnosticWithSources(warning, 2, uri, text, overlay))
 		}

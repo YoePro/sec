@@ -177,6 +177,15 @@ inline bool isSignedIntegerSemanticType(Type type) {
   return integer && integer.isSigned() && isBuiltinIntegerSemanticType(type);
 }
 
+// The carrier a named type's base chain ends in. Integer operations accept a
+// named integer: the values keep their identity and the operation applies the
+// carrier's semantics (semantic_ir.md section 7(4); dialect v11.41.7).
+inline Type namedIntegerCarrier(Type type) {
+  while (auto named = dyn_cast<NamedType>(type))
+    type = named.getBase();
+  return type;
+}
+
 // Check a closed vocabulary of resolved semantic metadata.
 // Rules: rules/mlir/dialect-versions/sec_mlir_dialect_v10.md — bounds proofs.
 inline bool isOneOf(StringRef value, std::initializer_list<StringRef> allowed) {

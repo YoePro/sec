@@ -186,6 +186,9 @@ type functionBuilder struct {
 	// loopStorages holds storage declared inside a loop body: one slot that a
 	// later iteration reuses for its own binding instance.
 	loopStorages map[StorageID]bool
+	// deferReadOwners holds the bindings an executed defer reads; an owner of an
+	// inner scope among them registers in the function scope (defer.md § 8).
+	deferReadOwners map[sema.BindingID]bool
 	// matchSubjectPlace is the Place of the observed subject of the match being built,
 	// and materializedSubjects fresh subjects held in compiler storage (P17-37).
 	matchSubjectPlace    *matchSubjectPlace
@@ -365,6 +368,7 @@ func (b *builder) buildConcreteFunction(decl *ast.FunctionDeclaration, resolved 
 	}
 	fb.markPathDependentBindings(decl.Body)
 	fb.markPartialRoots(decl.Body)
+	fb.markDeferReadOwners(decl.Body)
 	if err := fb.trackOwnedParameters(decl); err != nil {
 		return err
 	}
@@ -1716,6 +1720,11 @@ type builtValue struct {
 //   - rules/compiler/semantic_ir.md — "Unsupported lowerings"
 //   - rules/mlir/packages/sec-mlir-dialect_package14.md — sections 44, 89, 103
 func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (builtValue, error) {
+	// An intermediate Result receiver of a protected chain yields its Ok value;
+	// a receiver borrow of it builds that value as its producer first.
+	if fb.failures != nil && fb.failures.chain[expr] && (expected == 0 || !fb.typeHasKind(expected, TypeReference)) {
+		return fb.buildChainCarrier(expr)
+	}
 	if okExpr, ok := expr.(*ast.OkExpression); ok {
 		return fb.buildResultConstructor(okExpr.Value, expected, true, location(okExpr.Token))
 	}
@@ -2012,6 +2021,9 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 		if conversion, resolved := fb.owner.analyzer.ResolvedIntegerConversionOf(e); resolved {
 			return fb.buildIntegerConversion(e, conversion)
 		}
+		if conversion, resolved := fb.owner.analyzer.ResolvedNamedConversionOf(e); resolved {
+			return fb.buildNamedConversion(e, conversion)
+		}
 		if member, ok := e.Callee.(*ast.MemberExpression); ok && member.Property != nil && fb.owner.maxPackage >= 7 {
 			site := member.Property.Token
 			if known, resolved := fb.owner.analyzer.CompilerKnownMemberAt(site.File, site.Line, site.Column); resolved && known.Kind == sema.CompilerKnownMethod {
@@ -2077,6 +2089,8 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 			return builtValue{}, fb.unsupported("match expression", e.Token)
 		}
 		return fb.buildMatchExpression(e, typeID)
+	case *ast.StateTestExpression:
+		return fb.buildStateTest(e)
 	default:
 		return builtValue{}, fb.unsupported(fmt.Sprintf("expression %T", expr), expressionToken(expr))
 	}
@@ -2246,6 +2260,7 @@ func (fb *functionBuilder) buildStructLiteral(expr *ast.StructLiteral, plan sema
 		return builtValue{}, fb.unsupported("struct construction without complete definition/plan", expr.Token)
 	}
 	explicit := map[int]builtValue{}
+	explicitExpressions := map[int]ast.Expression{}
 	spread := map[int][]builtValue{}
 	for _, entry := range plan.Entries {
 		switch entry.Kind {
@@ -2256,6 +2271,7 @@ func (fb *functionBuilder) buildStructLiteral(expr *ast.StructLiteral, plan sema
 				return builtValue{}, err
 			}
 			explicit[entry.SourceIndex] = value
+			explicitExpressions[entry.SourceIndex] = entry.Expression
 		case sema.StructEntrySpread:
 			source, err := fb.buildExpr(entry.Expression, resultType)
 			if err != nil {
@@ -2301,6 +2317,12 @@ func (fb *functionBuilder) buildStructLiteral(expr *ast.StructLiteral, plan sema
 		// trivially copyable concrete argument (monomorphization.md § 11.2).
 		if ok && action == StructActionMove && len(fb.owner.substitution) != 0 && fb.owner.concreteTriviallyCopyable(field.FieldType) {
 			action = StructActionCopyTrivial
+		}
+		// An implicit move of an owned local (`Pair { left: handle }`) was
+		// built as own.move with its cancellation, so the field takes the
+		// fresh value directly, exactly as for `<-handle`.
+		if ok && action == StructActionMove && field.SourceKind == sema.StructFieldSourceExplicit && fb.ownedArgumentLowerable(explicitExpressions[field.SourceEntryIndex]) {
+			action = StructActionConstructDirect
 		}
 		if !ok || action != StructActionConstructDirect && action != StructActionCopyTrivial {
 			return builtValue{}, fb.unsupported("non-trivial struct field action "+string(field.Action), expr.Token)
@@ -3627,10 +3649,13 @@ func (fb *functionBuilder) buildResolvedOperatorWithFailure(expr ast.Expression,
 	default:
 		return builtValue{}, fb.unsupported("operator expression", expressionToken(expr))
 	}
-	if _, ok := leftExpr.(*ast.TryExpression); ok {
+	// From package 14 a try operand is built in evaluation order like any
+	// other: its failure edge leaves before the operator, and a later operand
+	// is built on its success continuation (errorhandling.md § 11).
+	if _, ok := leftExpr.(*ast.TryExpression); ok && fb.owner.maxPackage < 14 {
 		return builtValue{}, fb.unsupported("try arithmetic", expressionToken(leftExpr))
 	}
-	if _, ok := rightExpr.(*ast.TryExpression); ok {
+	if _, ok := rightExpr.(*ast.TryExpression); ok && fb.owner.maxPackage < 14 {
 		return builtValue{}, fb.unsupported("try arithmetic", expressionToken(rightExpr))
 	}
 	left, err := fb.buildExpr(leftExpr, leftType)

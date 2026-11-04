@@ -102,6 +102,7 @@ type Analyzer struct {
 	resolvedTestMetadata         map[*ast.TestDeclaration]ResolvedTestMetadata
 	resolvedTests                []ResolvedTestMetadata
 	resolvedCalls                map[*ast.CallExpression]ResolvedCall
+	receiverMoves                map[*ast.CallExpression]Place
 	typePackByValueLoops         map[sourceTokenKey]lexer.Token
 	typePackLoopBorrows          map[*ast.ForStatement]ResolvedReferencePlan
 	typePackIndexes              map[*ast.IndexExpression]int
@@ -198,6 +199,7 @@ type Analyzer struct {
 	// Rules: rules/declarations/enums.md — §12; rules/tooling/lsp.md — Hover.
 	enumConversionCalls        map[*ast.CallExpression]bool
 	resolvedIntegerConversions map[*ast.CallExpression]ResolvedIntegerConversion
+	resolvedNamedConversions   map[*ast.CallExpression]ResolvedNamedConversion
 	resolvedForRangeSteps      map[*ast.ForStatement]*big.Int
 	resolvedAssertions         map[*ast.AssertStatement]ResolvedAssertion
 	resolvedExplicitPanics     map[*ast.PanicStatement]ResolvedExplicitPanic
@@ -660,6 +662,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.resolvedTestMetadata = map[*ast.TestDeclaration]ResolvedTestMetadata{}
 	a.resolvedTests = nil
 	a.resolvedCalls = map[*ast.CallExpression]ResolvedCall{}
+	a.receiverMoves = nil
 	a.typePackByValueLoops = nil
 	a.typePackLoopBorrows = nil
 	a.typePackIndexes = nil
@@ -711,6 +714,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.resolvedEnumConversions = map[ast.Expression]ResolvedEnumConversion{}
 	a.enumConversionCalls = nil
 	a.resolvedIntegerConversions = map[*ast.CallExpression]ResolvedIntegerConversion{}
+	a.resolvedNamedConversions = map[*ast.CallExpression]ResolvedNamedConversion{}
 	a.resolvedTransferPlans = map[ast.Expression]ResolvedTransferPlan{}
 	a.transferDestinations = nil
 	a.resolvedForRangeSteps = map[*ast.ForStatement]*big.Int{}
@@ -11538,6 +11542,12 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 			}
 			if subjectType.Kind == UnionType && !info.PayloadBorrow {
 				info.PayloadMoves = requiresOwnershipTransfer(info.BindingType)
+			}
+			// A fresh subject has no Place, but its custom free still needs the
+			// payload (destruction.md § 10.3).
+			if info.PayloadMoves && info.PayloadPlace.Root == "" && subjectType.CustomFree &&
+				a.rejectCustomFreePartialMove(Place{Root: info.PayloadVariant + " payload", CustomFreeOwner: subjectType.Name, CustomFreeOwnerPlace: "the match subject"}, info.PayloadToken) {
+				info.PayloadMoves = false
 			}
 		}
 		if catchAll {

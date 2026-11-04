@@ -112,8 +112,8 @@ Source searches establish the P17 API/operation absences above. Full Go/vet,
    validity identities. Older relocation-class wording must not restore the
    withdrawn model. Explicit reference-holder reborrow is MD-061; P17 does not
    decide whether `ref r` refers to a holder or reborrows its referent.
-5. **Try/Option metadata:** MD-031 constrains guarded/residual/Option handler
-   emission. Preserve the existing supported Result path for initial cleanup
+5. **Try/Option metadata:** MD-031 constrained guarded/residual/Option handler
+   emission until 2026-11-04 (decided as dialect v11.41.6). Preserve the existing supported Result path for initial cleanup
    tests. Complete the required P11/P12/Option integration only after the
    affected representation is resolved; do not hide unsupported handlers under
    generic cleanup success.
@@ -935,8 +935,8 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
   acceptance criterion, with implementation/test references and any unresolved
   authority conflict. A completed subtask is not completion of its entire family.
 
-  Done 2026-11-03: "P17-60 acceptance evidence" below, 45 rows: 30 met, 1
-  superseded (MD-025), 13 partial, 1 not met.
+  Done 2026-11-03: "P17-60 acceptance evidence" below, 45 rows; as of
+  2026-11-04: 31 met, 1 superseded (MD-025), 12 partial, 1 not met.
 - [x] P17-61 — On the recorded execution snapshot, run full Go/vet, predecessor
   source pipelines, all three ownership/cleanup verifiers, `check-sec-mlir`,
   diff/private-path checks and canonical governance validation. Configured missing
@@ -1023,9 +1023,9 @@ Partial or Not met (P17-62).
 | 19 | field reinitialization implemented | Met | assignOwnedField; FieldReplaceAndReinitialize. |
 | 20 | active variant payload move implemented | Partial | match, if-binding, try, Ok()/Err(), error variants, handlers, guarded single payloads; guarded whole named-field payloads and guarded handlers on owned errors remain (P17-37). |
 | 21 | arbitrary fixed-array element partial move remains rejected | Met | "fixed-array partial move is deferred" (ownership_state.go); invalid lit `moves out of an array element`. |
-| 22 | explicit/implicit discard IR implemented | Partial | own.discard explicit/implicit/conditional; `discard try ...` and discarding a projection that needs destruction remain (P17-40). |
+| 22 | explicit/implicit discard IR implemented | Met | own.discard explicit/implicit/conditional; stored fields through their Place and `discard try ...` since 2026-11-04 (P17-40). |
 | 23 | non-trivial destruction IR implemented | Met | own.destroy-value, own.destroy-place with skipped paths and if_owned. |
-| 24 | struct/array/union/Result/Option destruction plans implemented | Met | P17-14/53; named-field variants via payload struct plans; custom-free unions excepted (row 8). |
+| 24 | struct/array/union/Result/Option destruction plans implemented | Met | P17-14/53; named-field variants via payload struct plans; custom-free unions carry custom_free on their active-variant plan since 2026-11-04 (CustomFreeUnion). |
 | 25 | cleanup tracking/cancellation implemented | Met | cleanup.track-owned/cancel incl. if_active (P17-33). |
 | 26 | unified cleanup registration order implemented | Met | Ordinals checked by --sec-verify-cleanups (`@order`, `@defer_order`). |
 | 27 | defer registration region implemented | Met | cleanup.defer-register with isolated region (P17-41 note). |

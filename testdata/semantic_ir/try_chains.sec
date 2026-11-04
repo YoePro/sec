@@ -1,0 +1,56 @@
+module main
+
+// errorhandling.md § 11: try over a call chain routes each intermediate Result
+// receiver's Err and calls the next member on its Ok value.
+
+type Step struct {
+    value: int,
+}
+
+impl Step {
+    fn Next() Result[Step, IndexError] {
+        if self.value > 5 {
+            return Err(IndexError.OutOfBounds)
+        }
+        return Ok(Step { value: self.value + 1 })
+    }
+
+    fn Value() Result[int, IndexError] {
+        return Ok(self.value)
+    }
+}
+
+fn Start(value: int) Result[Step, IndexError] {
+    if value < 0 {
+        return Err(IndexError.OutOfBounds)
+    }
+    return Ok(Step { value: value })
+}
+
+fn Chain(value: int) Result[int, IndexError] {
+    let result := try Start(value).Next().Value()
+    return Ok(result)
+}
+
+fn Recovered(value: int) int {
+    return try Start(value).Next().Value() {
+        Err(_) => -1
+    }
+}
+
+fn Status(value: int) int {
+    return match Chain(value) {
+        Ok(result) => result
+        Err(_) => 100
+    }
+}
+
+fn main() int {
+    if Status(1) != 2 || Status(-3) != 100 || Status(9) != 100 {
+        return 1
+    }
+    if Recovered(4) != 5 || Recovered(-1) != -1 || Recovered(7) != -1 {
+        return 2
+    }
+    return 0
+}

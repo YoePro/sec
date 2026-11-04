@@ -73,7 +73,7 @@ module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 :
 !r = !sec.result<!h, !sec.int>
 !a = !sec.array<!h, "1000000">
 !z = !sec.array<!h, "0">
-// expected-error@+1 {{has custom free, which belongs to a struct plan}}
+// expected-error@+1 {{has custom free, which belongs to a struct or union plan}}
 module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 : i32, sec.module_id = "plans", sec.source_files = [], sec.target_os = "linux", sec.target_arch = "armv7", sec.target_triple = "armv7-unknown-linux-gnueabihf", sec.target_abi = "gnu", sec.target_profile = "hosted", sec.target_endianness = "little", dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32>>, sec.destruction_plans = [{id = "x", type = !sec.int, kind = "trivial", custom_free = true}]} {
 }
 
@@ -548,4 +548,28 @@ module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 :
     "sec.own.destroy_place"(%field) <{destruction_plan = "h", cause = "function-exit"}> : (!sec.place<!h, "rw">) -> ()
     return
   }
+}
+
+// -----
+
+!r = !sec.result<!sec.int, !sec.int>
+// expected-error@+1 {{has custom free on a Result}}
+module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 : i32, sec.module_id = "plans", sec.source_files = [], sec.target_os = "linux", sec.target_arch = "armv7", sec.target_triple = "armv7-unknown-linux-gnueabihf", sec.target_abi = "gnu", sec.target_profile = "hosted", sec.target_endianness = "little", dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32>>, sec.destruction_plans = [{id = "r", type = !r, kind = "active-variant", custom_free = true, free_type = "R", free_function = @free}]} {
+  func.func @free(%self: !sec.ref_mut<!r> {sec.reference = {borrow_id = 1 : i32, lifetime_id = 1 : i32, validity_policy = "proven", validity_proof = "caller-owned-borrow", address_stability = "Stable", provenance = "receiver"}}) {
+    return
+  }
+}
+
+// -----
+
+!u = !sec.union<identity = "main::U", typeArguments = [], variants = [#sec.union_variant<index = 0, name = "Full", kind = "single", payload = !sec.int, fields = []>, #sec.union_variant<index = 1, name = "Empty", kind = "empty", fields = []>]>
+// expected-error@+1 {{has custom free without its source type and function}}
+module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 : i32, sec.module_id = "plans", sec.source_files = [], sec.target_os = "linux", sec.target_arch = "armv7", sec.target_triple = "armv7-unknown-linux-gnueabihf", sec.target_abi = "gnu", sec.target_profile = "hosted", sec.target_endianness = "little", dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32>>, sec.destruction_plans = [{id = "u", type = !u, kind = "active-variant", custom_free = true}]} {
+}
+
+// -----
+
+!u = !sec.union<identity = "main::U", typeArguments = [], variants = [#sec.union_variant<index = 0, name = "Full", kind = "single", payload = !sec.int, fields = []>, #sec.union_variant<index = 1, name = "Empty", kind = "empty", fields = []>]>
+// expected-error@+1 {{has no custom free and no variant steps, so it is trivial}}
+module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 : i32, sec.module_id = "plans", sec.source_files = [], sec.target_os = "linux", sec.target_arch = "armv7", sec.target_triple = "armv7-unknown-linux-gnueabihf", sec.target_abi = "gnu", sec.target_profile = "hosted", sec.target_endianness = "little", dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32>>, sec.destruction_plans = [{id = "u", type = !u, kind = "active-variant"}]} {
 }

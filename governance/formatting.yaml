@@ -198,20 +198,57 @@ integrations:
     code:
       - internal/formatter/formatter.go
       - internal/formatter/multiline_tokens.go
+      - internal/cst/vertical_spacing.go
+      - internal/formatter/vertical_spacing.go
     tests:
       - internal/formatter/token_spacing_test.go
+      - internal/formatter/vertical_spacing_test.go
+      - internal/formatter/binding_alignment_test.go
+      - internal/formatter/expression_continuations_test.go
+      - internal/formatter/named_type_contract_test.go
+      - cmd/compiler/fmt_vertical_spacing_test.go
+      - cmd/lsp/format_vertical_spacing_test.go
+      - testdata/formatter/vertical_spacing.sec
+      - testdata/formatter/vertical_spacing.expected.sec
+      - testdata/formatter/vertical_spacing.compact.expected.sec
+      - testdata/formatter/binding_alignment.compact.expected.sec
+      - testdata/formatter/expression_continuations.compact.expected.sec
+      - testdata/formatter/declaration_forms.expected.sec
+      - testdata/formatter/module_static.expected.sec
+      - testdata/formatter/destruction_syntax.compact.expected.sec
+      - internal/formatter/function_comment_spacing_test.go
+      - testdata/formatter/function_comment_spacing.sec
+      - testdata/formatter/function_comment_spacing.expected.sec
+      - internal/formatter/declaration_blank_lines_test.go
+      - testdata/formatter/declaration_blank_lines.sec
     implemented:
       - "§7(2): an empty line immediately after a line ending in an opening brace, or immediately before a line starting with a closing brace, is removed"
       - "§7(1): existing collapse of repeated empty lines is retained, so ordinary separation between statements keeps one empty line"
       - "§6(8) and §29: continuation lines of a multiline string or raw-string token are emitted byte-for-byte, keep their blank lines, and do not contribute braces to indentation; the token's start line is re-indented only and its braces are counted with the literal masked"
       - fixes the previous behavior in which a closing brace inside a multiline raw string was re-indented, changing the string value
-    remaining:
-      - structured/compact optional separation from §7(3)–(13) depends on formatter-project-configuration
+      - "Owner correction 2026-11-04, formatter.md §7(7a): exactly one empty line is required after a completed function/method/lambda body before a standalone comment in both structured and compact styles, including detached or EOF comments. CST marks this as required before optional sibling boundaries; compact mode cannot remove it. Trailing closing-line comments stay attached, following documentation stays attached to its declaration, malformed syntax stays protected, and repeated blank lines collapse to one. Dedicated shared/CLI/LSP source regressions cover input gaps, CRLF, lambda and method bodies, both styles and fixed-point output; compact method golden corrected."
+      - "Structured/compact vertical separation (2026-11-04; formatter.md §7(3–13)): CST VerticalBoundaries projects parser-owned sibling lists and attached documentation/leading comments. Structured style separates aggregate declarations and documented major declarations (including impl/interface members); compact style does not add optional major-declaration separation and preserves existing single declaration blank lines (§7(4), owner clarification 2026-11-04). Simple named types, deliberate ordinary alignment-group gaps, detached documentation, comments and raw literal bytes stay intact. Consecutive defer blocks stay together unless comments intervene. Project-owned vertical_style is consumed identically by shared formatter, CLI and LSP. Optional control-flow/outlier blank lines are not inserted automatically. Dedicated style goldens cover all indentation widths, CRLF, correction modes, token preservation, documentation targets and second-pass identity; existing declaration and static goldens now include canonical structural separation."
+    remaining: []
     verification:
+      - command: go test -p 4 ./internal/cst ./internal/formatter -count=1 -timeout=120s; go test -p 4 -race ./internal/formatter ./cmd/compiler ./cmd/lsp -run '^(TestDeclarationBlankLines|TestFmtDeclarationBlankLines|TestLSPDeclarationBlankLines|TestFunctionCommentSpacing|TestVerticalSpacing|TestFmtVerticalSpacing|TestLSPVerticalSpacing)$' -count=1 -timeout=120s; go vet -p 4 ./internal/formatter ./cmd/compiler ./cmd/lsp
+        result: "Passed 2026-11-04: full CST/formatter suites 0.005s/1.259s; focused race formatter/CLI/LSP 3.061s/1.233s/1.191s; vet clean. Source fixture reproduces Abs/Min/Max/static Parse methods and function boundaries with struct/enum/union/register/impl. Both styles retain existing single gaps, multiple gaps collapse, and output is idempotent across configured indentation widths; CLI check and LSP match the exact authored canonical fixture. Three compact goldens corrected. Previous comment-only fix was insufficient; §7(4) now explicitly preserves declaration gaps. No unrelated remaining point closed."
+      - command: go test -p 4 -race ./internal/cst ./internal/formatter ./cmd/compiler ./cmd/lsp -run '^(TestFunctionCommentSpacing|TestVerticalSpacing|TestFmtFunctionCommentSpacing|TestLSPFunctionCommentSpacing|TestFmtVerticalSpacing|TestLSPVerticalSpacing)$' -count=1 -timeout=120s; go test -p 4 ./internal/cst ./internal/formatter -count=1 -timeout=120s; go vet -p 4 ./internal/cst ./internal/formatter ./cmd/compiler ./cmd/lsp
+        result: Passed 2026-11-04 using disk GOCACHE/GOTMPDIR. Focused formatter/CLI/LSP race suites passed (2.353s, 1.128s, 1.117s); CST had no matching race test and was checked through its full normal suite. Complete CST/formatter suites and vet passed with final implementation. Shared golden, both styles, input gaps/CRLF, documentation attachment, EOF/trailing comments, lambda and method bodies, CLI check mode, LSP and second-pass identity covered. Owner clarification in §7(7a) requires separation independently of compact/structured style; no unrelated remaining point closed or new MD added.
+      - command: GOCACHE=/tmp/sec-go-cache go test ./internal/formatter ./cmd/compiler ./cmd/lsp -run '^Test(DestructionSyntax|VerticalSpacing|FmtVerticalSpacing|LSPVerticalSpacing|FormatModuleStatic|FmtModuleStatic|LSPModuleStatic)' -count=1 -timeout=120s
+        result: passed on 2026-11-04 (0.252s, 0.027s, 0.022s); Claude-reported CLI golden mismatch reproduced and fixed by separating compact/structured destruction goldens. All three surfaces retain ownership/cleanup tokens with the selected vertical style; no destruction semantics changed.
+      - command: GOCACHE=/tmp/sec-go-cache go test ./cmd/compiler ./cmd/lsp -run 'Fmt|Format|BindingAlignment|ExpressionContinuation|VerticalSpacing' -count=1 -timeout=180s
+        result: "broader name match on 2026-11-04: compiler passed; LSP also selected TestAnalyzeLoadsFmtPackageAndTransitiveImports, whose source ignores the fallible Result from fmt.Println and fails mandatory result handling. This analysis test does not exercise formatting; the focused formatting suites pass."
+      - command: GOCACHE=/tmp/sec-go-cache go vet ./internal/cst ./internal/formatter ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-11-04.
+      - command: GOCACHE=/tmp/sec-go-cache go test ./internal/cst ./internal/formatter -count=1 -timeout=120s
+        result: passed on 2026-11-04; complete CST and formatter suites.
+      - command: GOCACHE=/tmp/sec-go-cache go test -race ./internal/cst ./internal/formatter ./cmd/compiler ./cmd/lsp -run '^Test(VerticalSpacing|Fmt|Format|LSPVerticalSpacing|LSPFormatting|LSPExpressionContinuation|LSPModuleStatic)' -count=1 -timeout=180s
+        result: passed on 2026-11-04; shared formatter, CLI and LSP formatting regressions (5.789s, 25.876s, 1.317s); CST had no matching tests in this targeted race run and is covered by its complete normal suite.
       - command: go test ./internal/formatter -run 'TestFormat(RemovesBlankLinesInsideBraces|PreservesMultilineRawStrings)' -count=1
         result: passed on 2026-10-01
       - command: go test ./...
         result: passed on 2026-10-01
+    revised: "2026-11-04"
 
   - id: tooling.formatter-property-accessor-layout
     area: tooling
@@ -432,7 +469,7 @@ integrations:
     area: tooling
     status: partial
     integrated: "2026-09-23"
-    revised: "2026-10-28"
+    revised: "2026-11-04"
     document_revision: "2.1"
     repository_baseline: main-reviewed-2026-09-23
     summary: Tracks conformance of the shared Sec formatter to formatter revision 2.1. The repository has a usable but primarily bespoke, line-oriented CLI/LSP formatter plus a lexical CST foundation that is not yet its primary engine. The formatter must migrate to a CST-driven architecture while preserving existing behavior, then complete the configured, grammar-aware formatting and correction contract.
@@ -474,6 +511,11 @@ integrations:
       - internal/formatter/expression_continuations.go
       - internal/formatter/edits.go
       - cmd/lsp/format_document.go
+      - internal/formatconfig/effective_width.go
+      - internal/formatconfig/formatconfig.go
+      - internal/formatter/parameter_list_layout.go
+      - cmd/compiler/fmt_command.go
+      - cmd/lsp/format_configuration.go
     tests:
       - internal/formatter/comment_column_cap_test.go
       - testdata/formatter/enum_comment_boundaries.sec
@@ -503,6 +545,13 @@ integrations:
       - testdata/formatter/return_continuation_literals.expected.sec
       - internal/formatter/edits_test.go
       - cmd/lsp/format_document_test.go
+      - internal/formatconfig/effective_width_test.go
+      - internal/formatter/preferred_width_test.go
+      - cmd/compiler/fmt_preferred_width_test.go
+      - cmd/lsp/format_preferred_width_test.go
+      - testdata/formatter/preferred_width.sec
+      - testdata/formatter/preferred_width.expected.sec
+      - testdata/formatter/preferred_width.narrow.expected.sec
     implemented:
       - MD-037 directory/check/fix command completion is owned and verified by tooling.formatter-check-explicit-files (2026-10-28); the whole corresponding remaining item was removed there. The existing shared formatter/configuration and CLI/LSP canonical layout owners retain broader style, range/on-type and effective-width obligations.
       - "MD-099/MD-100 completed (2026-10-27): ordinary trailing line/block-comment columns honor effective max_alignment_padding group-wide, including uncommented rows when finding the widest preceding cell. At-cap alignment is retained; over-cap comments use one structural space without discarding a legal primary column or restoring one previously dropped. Long comment text does not widen the starting column. Only compatible explicit-value enum runs ignore the cap; implicit enum members, blank lines and standalone comments delimit those runs. The final nominal comment pass now splits explicit/implicit enum runs so an implicit member cannot disable the mandatory exception for adjacent explicit groups, while implicit runs keep ordinary capped alignment. Shared formatter/configuration/CLI/LSP tests pass; format_version remains 1 and no new setting is introduced. MD-037 directory/check/fix closure was completed on 2026-10-28 under tooling.formatter-check-explicit-files."
@@ -705,6 +754,7 @@ integrations:
       - "formatter-header-token-spacing is complete for parser-confirmed declaration headers and statement keywords: existing named-type/contract, function/extern, reference/function-type, type-first, enum/unit/interface/impl/import and statement spacing is complemented by module headers, unsafe/static function prefixes, mutable/consuming/static interface receiver prefixes, static let modifiers and parser-retained register allocation/byte-order modifier ranges. CST roles compact only accepted modifier hyphens, leave ordinary subtraction distinct, preserve rejected syntax and share canonical/idempotent golden output through formatter, CLI and LSP."
       - Inline-start return expressions and if/else-if conditions use one configured continuation indentation level (2, 4 or 6 spaces; default 4), preserving leading/trailing operator placement, nested delimiter layout, literal contents, body indentation and following statements through shared parser-owned CST expression/continuation relations; duplicate visits through comment owners cannot add multiple indentation levels, and CLI/LSP project settings yield identical idempotent output
       - "2026-10-26: formatter-imports-and-file-layout is complete (the milestone below was already implemented); removed the stale remaining entry after auditing § 13–§ 14 against import_region.go and the import-region/group-heading tests. Gathering, path sorting within explicit groups, attached comments, duplicate preservation, conservative handling of ambiguous comments, configured indentation and ordinary declaration order are covered. MD-033 forbids import-origin classification; that obsolete wording is not an outstanding requirement. Top-level vertical spacing continues to use the existing rules; broader canonical spacing remains owned by formatter-canonical-layout."
+      - "Formatter project configuration complete (2026-11-04; formatter.md §4): format_version 1, structured/compact style, 2/4/6 indentation and alignment limits retain shared validation and precedence; fixed/adaptive preferred width now affects layout through immutable Settings.EffectiveOptions. Fixed mode ignores presentation context; adaptive mode clamps observed columns or fallback to the project range. CLI and LSP use the same options, and clients without reliable viewport data use the fallback. Parameter lists consume the preference after canonical indentation, preserve intentional multiline/comments, and count Unicode columns. Optional LSP options.secPresentationWidth is documented in cmd/lsp/formatting.md; malformed context returns InvalidParams. Complete configuration support is distinct from the separately open full language-layout and range/on-type work."
     remaining:
       - >-
         formatter-cst-engine-migration: Replace the current bespoke,
@@ -720,10 +770,6 @@ integrations:
         formatter-canonical-layout: Replace remaining trimmed-line heuristics
         with structural formatting and implement the complete § 3 and § 6–§ 12
         canonical layout contract.
-      - >-
-        formatter-project-configuration: Implement project-owned format_version
-        = 1 configuration, structured/compact vertical style, indentation
-        widths, fixed/adaptive width, and alignment limits from § 4.
       - >-
         formatter-language-surface: Complete canonical formatting and focused
         conformance coverage for every current Sec construct in § 15–§ 24.
@@ -827,7 +873,7 @@ integrations:
           - Width breaks syntax rather than literal data.
           - Alignment padding respects the configured maximum.
       - id: formatter-project-configuration
-        status: planned
+        status: implemented
         rules:
           - § 4(1)
           - § 4(2)
@@ -856,8 +902,8 @@ integrations:
           - Fixed and adaptive width modes produce deterministic output for a known effective width.
         implemented:
           - "MD-036/MD-054 project configuration (2026-10-12, formatter.md § 4(18)-(23), projects.md § 6(8)-(10)): internal/project.ParseManifestFormat reads the [format] table of .sec/sec.toml (the § 4(5) keys only; unknown keys, wrong value kinds, duplicate keys and a second table are manifest errors); internal/formatconfig resolves explicit invocation options over [format] over the § 4(5) defaults (language_corrections = false), validates format_version = 1, indentation_width, vertical_style, width_mode and the width settings, and finds the owning project by the same nearest-.sec/sec.toml rule as the compiler and LSP; sec fmt adds --indentation-width, keeps --fix as the explicit language_corrections override, validates every file's configuration before writing any file, and never rewrites the manifest; LSP formatting uses the same resolver and returns no edit for an invalid configuration (TestResolveAppliesOverridesManifestAndDefaults, TestResolveRejectsInvalidConfiguration, TestForSourceUsesTheOwningProject, TestFmtCommandUsesProjectFormatConfiguration, TestLSPFormattingUsesProjectFormatConfiguration)"
-        remaining:
-          - fixed and adaptive width modes are validated and resolved but not yet consumed by layout; the formatter has no preferred-line-width breaking, so line_width and the adaptive widths do not change output yet
+          - "Effective width consumed (2026-11-04): Settings.EffectiveOptions resolves fixed width or clamped adaptive observation/fallback without mutating the project snapshot; CLI file/stdin and LSP formatting use those options. Callable parameter layout consumes the resulting preference after canonical structural indentation, including single-line and mixed headers, exact Unicode-column thresholds and deliberately multiline preservation. Optional LSP secPresentationWidth supplies an observed viewport; clients without a reliable observation use the project fallback. Existing project validation, style, indentation, alignment limits, correction defaults and preflight rules remain covered by the full configuration and formatter suites. Other language-layout and range/on-type work remains separately owned."
+        remaining: []
       - id: formatter-imports-and-file-layout
         status: implemented
         rules:
@@ -1037,6 +1083,8 @@ integrations:
       - semantic normalization of numeric or string literals
       - automatic ownership, mutability, error-policy, or control-flow changes
     verification:
+      - command: GOCACHE=/tmp/sec-go-cache go test -race ./internal/formatter ./internal/formatconfig ./cmd/compiler ./cmd/lsp -run '^Test(PreferredWidth|EffectiveFormatterWidth|Fmt|Format|LSPPreferredWidth|LSPFormatting|LSPVerticalSpacing|DestructionSyntax|VerticalSpacing)' -count=1 -timeout=180s
+        result: passed on 2026-11-04; formatter 6.883s, formatconfig 1.017s, compiler 28.161s, LSP 1.279s. Configured fixed/adaptive layout, defaults, clamps/fallback, width thresholds, Unicode/nested columns, repeat formatting, project preflight, actual protocol edits, invalid presentation data and existing style/ownership formatting regressions covered.
       - command: go test ./internal/formatter ./internal/formatconfig -count=1
         result: passed on 2026-10-27 after MD-099/MD-100; exact-cap and over-cap comment columns, ordinary/enum cases, implicit-member boundaries, preserved text and idempotence covered
       - command: go test ./cmd/compiler ./cmd/lsp -run 'Format|Fmt|Alignment|HeaderSpacing' -count=1

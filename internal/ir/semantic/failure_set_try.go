@@ -15,6 +15,9 @@ type failureRouter struct {
 	points  map[ast.Expression]sema.TryFailurePoint
 	routed  map[ast.Expression]bool
 	targets []*failureTarget
+	// chain holds the intermediate Result receivers of a protected call chain;
+	// buildExpr routes each one's Err and continues with its Ok value.
+	chain map[ast.Expression]bool
 }
 
 // failureTarget is the failure edge of one member error type of the set.
@@ -111,9 +114,19 @@ func (fb *functionBuilder) buildFailureSetTry(expr *ast.TryExpression, resolved 
 			router.points[point.Expression] = point
 		case sema.TryFailureCarrier:
 			if point.Expression != expr.Expression {
-				// An intermediate Result receiver of a protected chain needs
-				// its success value routed into the next member call.
-				return builtValue{}, fb.unsupported("failure-set try over an intermediate Result receiver of a call chain", point.Token)
+				// An intermediate Result receiver of a protected chain routes its
+				// Err and passes its Ok value on as the next receiver
+				// (errorhandling.md § 11). An owned success value would also need
+				// its temporary cleanup.
+				if successType, ok := fb.owner.analyzer.ResolvedTypeOf(point.Expression); !ok || !sema.TriviallyDestructible(successType) {
+					return builtValue{}, fb.unsupported("failure-set try over an intermediate Result receiver that needs destruction", point.Token)
+				}
+				router.points[point.Expression] = point
+				if router.chain == nil {
+					router.chain = map[ast.Expression]bool{}
+				}
+				router.chain[point.Expression] = true
+				continue
 			}
 			carrier = &resolved.Failures[index]
 		default:
@@ -176,28 +189,60 @@ func (fb *functionBuilder) buildFailureSetTry(expr *ast.TryExpression, resolved 
 // buildRoutedCarrier builds a Result carrier root whose operands may contain
 // routed failure points, then routes its Err state as the last failure point.
 func (fb *functionBuilder) buildRoutedCarrier(expr *ast.TryExpression, point sema.TryFailurePoint) (builtValue, error) {
-	resultValue, err := fb.buildTryOperand(expr.Expression)
+	return fb.routeCarrier(expr.Expression, point, expr.Token)
+}
+
+// buildChainCarrier builds an intermediate Result receiver of a protected call
+// chain once, routes its Err and yields its Ok value as the next receiver.
+func (fb *functionBuilder) buildChainCarrier(operand ast.Expression) (builtValue, error) {
+	delete(fb.failures.chain, operand)
+	point := fb.failures.points[operand]
+	call, ok := operand.(*ast.CallExpression)
+	if !ok {
+		return builtValue{}, fb.unsupported("intermediate Result receiver that is not a call", expressionToken(operand))
+	}
+	// The call itself, not the receiver borrow wrapped around its Ok value.
+	resultValue, err := fb.buildCall(call)
 	if err != nil {
 		return builtValue{}, err
 	}
+	if carrier, err := fb.owner.internType(point.CarrierType); err != nil || carrier != resultValue.typ {
+		return builtValue{}, fb.unsupported("intermediate Result receiver of a different type", expressionToken(operand))
+	}
+	return fb.routeCarrierValue(resultValue, point, expressionToken(operand))
+}
+
+// routeCarrier builds a Result carrier whose operands may contain routed
+// failure points and routes its Err state as one more failure point.
+func (fb *functionBuilder) routeCarrier(operand ast.Expression, point sema.TryFailurePoint, token lexer.Token) (builtValue, error) {
+	resultValue, err := fb.buildTryOperand(operand)
+	if err != nil {
+		return builtValue{}, err
+	}
+	return fb.routeCarrierValue(resultValue, point, token)
+}
+
+// routeCarrierValue tests a built Result carrier, routes its Err as a failure
+// point and continues with its Ok value.
+func (fb *functionBuilder) routeCarrierValue(resultValue builtValue, point sema.TryFailurePoint, token lexer.Token) (builtValue, error) {
 	resultType, ok := fb.owner.module.Types.Lookup(resultValue.typ)
 	if !ok || resultType.Kind != TypeResult {
-		return builtValue{}, fb.unsupported("failure-set carrier without Semantic IR Result type", expr.Token)
+		return builtValue{}, fb.unsupported("failure-set carrier without Semantic IR Result type", token)
 	}
 	boolType, err := fb.owner.internType(sema.Type{Name: "bool", Kind: sema.BoolType})
 	if err != nil {
 		return builtValue{}, err
 	}
-	isErr := fb.result(Operation{Kind: OpResultIsErr, Operands: []ValueID{resultValue.id}, Location: location(expr.Token)}, boolType)
+	isErr := fb.result(Operation{Kind: OpResultIsErr, Operands: []ValueID{resultValue.id}, Location: location(token)}, boolType)
 	errorBlock, successBlock := fb.newBlock(), fb.newBlock()
-	fb.emit(Operation{Kind: OpCondBranch, Operands: []ValueID{isErr.id}, Successors: []BranchTarget{{Block: errorBlock.ID}, {Block: successBlock.ID}}, Location: location(expr.Token)})
+	fb.emit(Operation{Kind: OpCondBranch, Operands: []ValueID{isErr.id}, Successors: []BranchTarget{{Block: errorBlock.ID}, {Block: successBlock.ID}}, Location: location(token)})
 	fb.current = errorBlock
-	errorValue := fb.result(Operation{Kind: OpResultUnwrapErr, Operands: []ValueID{resultValue.id}, Location: location(expr.Token)}, resultType.Error)
+	errorValue := fb.result(Operation{Kind: OpResultUnwrapErr, Operands: []ValueID{resultValue.id}, Location: location(token)}, resultType.Error)
 	fb.failures.points[point.Expression] = point
-	fb.routeFailure(point.Expression, errorValue, location(expr.Token))
+	fb.routeFailure(point.Expression, errorValue, location(token))
 	fb.current = successBlock
 	if fb.owner.isVoidType(resultType.Success) {
 		return builtValue{typ: resultType.Success}, nil
 	}
-	return fb.result(Operation{Kind: OpResultUnwrapOk, Operands: []ValueID{resultValue.id}, Location: location(expr.Token)}, resultType.Success), nil
+	return fb.result(Operation{Kind: OpResultUnwrapOk, Operands: []ValueID{resultValue.id}, Location: location(token)}, resultType.Success), nil
 }

@@ -1765,7 +1765,7 @@ func (a *Analyzer) recordResolvedOperator(expr ast.Expression, result Type) {
 			resolved = a.resolvedDecimalNegate(expression, operand, result)
 			break
 		}
-		if !ok || !isBuiltinIntegerOperatorType(operand) {
+		if !ok || !isBuiltinIntegerOperatorType(operand) && !isNamedIntegerOperatorType(operand) {
 			return
 		}
 		resolved = ResolvedOperator{LeftType: operand, ResultType: result, FailureBehavior: OperatorDoesNotFail}
@@ -1904,7 +1904,9 @@ func (a *Analyzer) proveShiftCount(resolved ResolvedOperator, left, right ast.Ex
 //   - rules/foundations/operators.md — "Compound arithmetic failure"
 //   - rules/errors/runtime_checks.md — checked integer arithmetic
 func resolvedIntegerInfixOperator(operator string, left Type, right Type, result Type) (ResolvedOperator, bool) {
-	if !isBuiltinIntegerOperatorType(left) || !isBuiltinIntegerOperatorType(right) {
+	builtin := isBuiltinIntegerOperatorType(left) && isBuiltinIntegerOperatorType(right)
+	named := isNamedIntegerOperatorType(left) && sameConcreteType(left, right)
+	if !builtin && !named {
 		return ResolvedOperator{}, false
 	}
 	resolved := ResolvedOperator{LeftType: left, RightType: &right, ResultType: result, FailureBehavior: OperatorDoesNotFail}
@@ -2082,6 +2084,16 @@ func isBuiltinFloatOperatorType(typ Type) bool {
 
 func isBuiltinIntegerOperatorType(typ Type) bool {
 	return isIntegerType(typ) && !typ.Named && !typ.Declared && typ.Unit == "" && typ.Dimension.IsZero() && len(typ.Contracts) == 0
+}
+
+// isNamedIntegerOperatorType admits a named integer type without units or
+// contracts: its operators keep the named identity on both operands and apply
+// the base integer semantics. A contract-bearing result needs validation and a
+// unit-bearing one its own algebra, so both stay outside this plan.
+// Rules: rules/foundations/operators.md — "Named types", "Contracts";
+// rules/compiler/semantic_ir.md — § 7(4).
+func isNamedIntegerOperatorType(typ Type) bool {
+	return isIntegerType(typ) && typ.Named && typ.Unit == "" && typ.Dimension.IsZero() && len(typ.Contracts) == 0
 }
 
 func (a *Analyzer) recordBinding(token lexer.Token, kind BindingKind, name string, typ Type, mutable bool) {

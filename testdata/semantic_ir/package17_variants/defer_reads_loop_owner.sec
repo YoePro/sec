@@ -13,15 +13,16 @@ fn Make(id: int) Handle {
     return Handle { id: id }
 }
 
-fn Log(number: int) void {
+fn Log(value: int) void {
 }
 
-fn T(ready: bool) void {
-    if ready {
-        let handle := Make(1)
+fn T() void {
+    let mut index := 0
+    while index < 2 {
+        index = index + 1
+        let handle := Make(index)
         defer {
             Log(handle.id)
         }
     }
-    Log(0)
 }

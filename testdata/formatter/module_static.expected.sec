@@ -9,6 +9,7 @@ let First := 2, Second := 3
 let Text := "static let Literal: int := 4"
 
 type Counter struct {}
+
 impl Counter {
     static let Value: int := 5
     static fn Read() int {
@@ -20,12 +21,15 @@ impl Counter {
         }
     }
 }
+
 impl extends Counter {
     static let Other: int := 6
 }
+
 interface Factory {
     static fn Make() Counter
 }
+
 fn Use() void {
     static let Calls: int := 7
 }

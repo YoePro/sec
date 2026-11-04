@@ -159,7 +159,7 @@ bool isLoweredSecOperation(Operation *operation) {
              sec::IntBinaryCheckedOp, sec::IntBitNotOp, sec::IntBitwiseOp,
              sec::IntShiftCheckedOp, sec::IntCmpOp, sec::IntBitExtractOp,
              sec::NumericConvertExactOp,
-             sec::NumericConvertCheckedOp,
+             sec::NumericConvertCheckedOp, sec::NamedConvertOp,
              sec::ArithmeticFailureReasonConstantOp, sec::FailArithmeticOp,
              sec::FailPanicOp, sec::StaticGlobalOp, sec::StaticLoadOp,
              sec::StaticStoreOp,

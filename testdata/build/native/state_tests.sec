@@ -1,0 +1,56 @@
+module main
+
+// State tests in value positions (MD-006): `is Variant` and `is not Variant`
+// on unions and Results, stored in bindings, combined with && and used as
+// if conditions.
+
+type Figure union {
+    Circle(int),
+    Square(int),
+    Empty,
+}
+
+fn Make(kind: int) Figure {
+    if kind == 1 {
+        return Figure.Circle(3)
+    }
+    if kind == 2 {
+        return Figure.Square(4)
+    }
+    return Figure.Empty
+}
+
+fn Get(value: int) Result[int, IndexError] {
+    if value < 0 {
+        return Err(IndexError.OutOfBounds)
+    }
+    return Ok(value)
+}
+
+fn Score(kind: int) int {
+    let shape := Make(kind)
+    let round := shape is Circle
+    let mut total := 0
+    if round {
+        total = total + 1
+    }
+    if shape is Square {
+        total = total + 10
+    }
+    let result := Get(kind)
+    if result is Err {
+        total = total + 100
+    }
+    let check := result is Ok && shape is not Empty
+    if check {
+        total = total + 1000
+    }
+    return total
+}
+
+fn main() int {
+    if Score(1) != 1001 || Score(2) != 1010 || Score(-1) != 100 || Score(5) != 0 {
+        return 1
+    }
+    return 0
+}

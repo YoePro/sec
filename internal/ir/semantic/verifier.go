@@ -853,12 +853,18 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 		if err := validConversionProof(module, op.ConversionProof); err != nil {
 			return fmt.Errorf("invalid numeric.convert-exact: %w", err)
 		}
+	case OpNamedConvert:
+		if len(op.Operands) != 1 || len(op.Results) != 1 || !isIntegerCarrierType(module.Types, values[op.Operands[0]].Type) ||
+			integerCarrierOf(module.Types, values[op.Operands[0]].Type) != integerCarrierOf(module.Types, op.Results[0].Type) ||
+			values[op.Operands[0]].Type == op.Results[0].Type {
+			return fmt.Errorf("invalid named.convert")
+		}
 	case OpIntUnaryPlus, OpIntBitNot:
-		if len(op.Operands) != 1 || len(op.Results) != 1 || !isBuiltinIntegerType(module.Types, values[op.Operands[0]].Type) || op.Results[0].Type != values[op.Operands[0]].Type {
+		if len(op.Operands) != 1 || len(op.Results) != 1 || !isIntegerCarrierType(module.Types, values[op.Operands[0]].Type) || op.Results[0].Type != values[op.Operands[0]].Type {
 			return fmt.Errorf("invalid %s", op.Kind)
 		}
 	case OpIntNegChecked:
-		if !validCheckedResults(module.Types, op, values, 1) || !isSignedBuiltinIntegerType(module.Types, values[op.Operands[0]].Type) {
+		if !validCheckedResults(module.Types, op, values, 1) || !isSignedBuiltinIntegerType(module.Types, integerCarrierOf(module.Types, values[op.Operands[0]].Type)) {
 			return fmt.Errorf("invalid int.neg-checked")
 		}
 	case OpIntBinaryChecked:
@@ -866,7 +872,7 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 			return fmt.Errorf("invalid int.binary-checked")
 		}
 	case OpIntBitwise:
-		if !validIntegerBitwiseKind(op.IntegerBitwise) || len(op.Operands) != 2 || len(op.Results) != 1 || !isBuiltinIntegerType(module.Types, values[op.Operands[0]].Type) || values[op.Operands[0]].Type != values[op.Operands[1]].Type || op.Results[0].Type != values[op.Operands[0]].Type {
+		if !validIntegerBitwiseKind(op.IntegerBitwise) || len(op.Operands) != 2 || len(op.Results) != 1 || !isIntegerCarrierType(module.Types, values[op.Operands[0]].Type) || values[op.Operands[0]].Type != values[op.Operands[1]].Type || op.Results[0].Type != values[op.Operands[0]].Type {
 			return fmt.Errorf("invalid int.bitwise")
 		}
 	case OpIntBitExtract:
@@ -874,11 +880,11 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 			return err
 		}
 	case OpIntShiftChecked:
-		if !validIntegerShiftKind(op.IntegerShift) || !validCheckedResults(module.Types, op, values, 2) || !isBuiltinIntegerType(module.Types, values[op.Operands[1]].Type) || shiftKindSigned(op.IntegerShift) != isSignedBuiltinIntegerType(module.Types, values[op.Operands[0]].Type) {
+		if !validIntegerShiftKind(op.IntegerShift) || !validCheckedResults(module.Types, op, values, 2) || !isBuiltinIntegerType(module.Types, values[op.Operands[1]].Type) || shiftKindSigned(op.IntegerShift) != isSignedBuiltinIntegerType(module.Types, integerCarrierOf(module.Types, values[op.Operands[0]].Type)) {
 			return fmt.Errorf("invalid int.shift-checked")
 		}
 	case OpIntCompare:
-		if !validIntegerComparePredicate(op.IntegerCompare) || len(op.Operands) != 2 || len(op.Results) != 1 || !isComparableScalarType(module.Types, values[op.Operands[0]].Type) || values[op.Operands[0]].Type != values[op.Operands[1]].Type || !typeHasKind(module.Types, op.Results[0].Type, TypeBool) {
+		if !validIntegerComparePredicate(op.IntegerCompare) || len(op.Operands) != 2 || len(op.Results) != 1 || !isComparableScalarType(module.Types, integerCarrierOf(module.Types, values[op.Operands[0]].Type)) || values[op.Operands[0]].Type != values[op.Operands[1]].Type || !typeHasKind(module.Types, op.Results[0].Type, TypeBool) {
 			return fmt.Errorf("invalid int.compare")
 		}
 	case OpArithmeticFailure:
@@ -1432,7 +1438,7 @@ func validArithmeticErrorVariant(variant string) bool {
 
 func validCheckedResults(types *TypeTable, op Operation, values map[ValueID]Value, operands int) bool {
 	return len(op.Operands) == operands && len(op.Results) == 3 &&
-		isBuiltinIntegerType(types, values[op.Operands[0]].Type) &&
+		isIntegerCarrierType(types, values[op.Operands[0]].Type) &&
 		op.Results[0].Type == values[op.Operands[0]].Type &&
 		typeHasKind(types, op.Results[1].Type, TypeBool) && isFailureReasonType(types, op.Results[2].Type)
 }
@@ -1453,6 +1459,26 @@ func validArithmeticFailureReason(reason ArithmeticFailureReason) bool {
 	default:
 		return false
 	}
+}
+
+// integerCarrierOf is the built-in type a named type's base chain ends in; a
+// named integer keeps its identity on the values while the integer operations
+// apply the carrier's semantics (semantic_ir.md § 7(4); operators.md "Named
+// types"). Any other type is returned unchanged.
+func integerCarrierOf(types *TypeTable, id TypeID) TypeID {
+	for depth := 0; depth < 64; depth++ {
+		typ, ok := types.Lookup(id)
+		if !ok || typ.Kind != TypeNamed {
+			return id
+		}
+		id = typ.Base
+	}
+	return id
+}
+
+// isIntegerCarrierType admits a built-in integer or a named type over one.
+func isIntegerCarrierType(types *TypeTable, id TypeID) bool {
+	return isBuiltinIntegerType(types, integerCarrierOf(types, id))
 }
 
 func isBuiltinIntegerType(types *TypeTable, id TypeID) bool {

@@ -322,7 +322,7 @@ func formatOperation(out *strings.Builder, op Operation) {
 	case OpNumericConvertExact:
 		fmt.Fprintf(out, " %%%d", op.Operands[0])
 		formatConversionProof(out, op.ConversionProof)
-	case OpIntUnaryPlus, OpIntNegChecked, OpIntBitNot, OpBoolNot:
+	case OpIntUnaryPlus, OpIntNegChecked, OpIntBitNot, OpBoolNot, OpNamedConvert:
 		fmt.Fprintf(out, " %%%d", op.Operands[0])
 	case OpIntBinaryChecked:
 		fmt.Fprintf(out, " %s %%%d, %%%d", op.IntegerBinary, op.Operands[0], op.Operands[1])

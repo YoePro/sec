@@ -1,0 +1,66 @@
+module main
+
+// errorhandling.md § 11: try lowers in every scalar expression position: call
+// arguments, if/while/switch headers, unary and logical operands, operator
+// operands and nested try. Each failure edge leaves before the enclosing
+// operation; later operands run on the success continuation.
+
+fn Get(value: int) Result[int, IndexError] {
+    if value < 0 {
+        return Err(IndexError.OutOfBounds)
+    }
+    return Ok(value)
+}
+
+fn Use(value: int) int {
+    return value
+}
+
+fn Positions(seed: int) Result[int, IndexError] {
+    let s1 := seed + 1
+    let s2 := seed + 2
+    let s3 := seed + 3
+    let s4 := seed + 4
+    let s5 := seed + 5
+    let a := Use(try Get(seed))
+    let mut extra := 0
+    if (try Get(s1)) > 1 {
+        extra = 1
+    }
+    let n := -(try Get(s2))
+    let both := (try Get(s3)) > 0 && (try Get(s4)) > 0
+    let mut total := 0
+    while (try Get(total)) < 3 {
+        total = total + 1
+    }
+    let mut picked := 0
+    switch try Get(total) {
+    case 3:
+        picked = 30
+    default:
+        picked = 1
+    }
+    let sum := (try Get(seed)) + (try Get(s5))
+    if !both {
+        return Ok(-1)
+    }
+    return Ok(a + extra + n + picked + sum + (try Get(try Get(seed))))
+}
+
+fn Status(seed: int) int {
+    return match Positions(seed) {
+        Ok(value) => value
+        Err(_) => -100
+    }
+}
+
+fn main() int {
+    // seed 1: a=1, extra=1, n=-3, picked=30, sum=1+6, nested=1 -> 37
+    if Status(1) != 37 {
+        return 1
+    }
+    if Status(-1) != -100 {
+        return 2
+    }
+    return 0
+}

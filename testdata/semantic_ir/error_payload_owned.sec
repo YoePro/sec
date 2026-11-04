@@ -1,0 +1,46 @@
+module main
+
+// A match and a try handler that move an owned payload out of an error
+// variant of a fresh Result subject (errorhandling.md § 20; destruction.md § 8(8)).
+
+type Handle struct {
+    id: int,
+}
+
+impl Handle {
+    free {
+    }
+}
+
+type Failure union error {
+    Lost(Handle),
+    Plain,
+}
+
+fn Open(kind: int) Result[int, Failure] {
+    if kind == 1 {
+        return Err(Failure.Lost(Handle { id: 3 }))
+    }
+    return Ok(kind)
+}
+
+fn Classify(kind: int) int {
+    match Open(kind) {
+        Ok(value) => {
+            return value
+        }
+        Err(Failure.Lost(handle)) => {
+            return handle.id
+        }
+        Err(_) => {
+            return -1
+        }
+    }
+}
+
+fn Handled(kind: int) int {
+    return try Open(kind) {
+        Err(Failure.Lost(handle)) => handle.id
+        Err(_) => 0
+    }
+}

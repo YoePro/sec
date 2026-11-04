@@ -4,6 +4,7 @@ impl Resource {
         Release(self.Raw)
     }
 }
+
 fn Transfer(->value: Resource) Resource {
     defer {
         Trace("defer/discard/free/<- stay literal")

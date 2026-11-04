@@ -216,15 +216,22 @@ LogicalResult sec::verifyResultGuards(func::FuncOp function) {
   return result.wasInterrupted() ? failure() : success();
 }
 
+// Handler edges are grouped by their merge block. A guarded handler (MD-031)
+// may fall through to later handlers, so it neither covers its variant nor
+// ends the list; an unguarded catch-all or None handler ends it. A partial
+// plan is not exhaustive: its edges carry sec.try_handler_residual and the
+// function holds the residual func.return that propagates the rest.
 LogicalResult sec::verifyTryHandlers(func::FuncOp function) {
   struct Group {
     std::set<std::string> variants;
     bool catchAll = false;
     int64_t catchAllIndex = -1;
-    int64_t highestVariantIndex = -1;
+    int64_t highestIndex = -1;
     bool exhaustive = false;
+    bool residual = false;
   };
   std::map<Block *, Group> groups;
+  bool residualReturn = false;
   WalkResult result = function.walk([&](Operation *operation) {
     auto kind = operation->getAttrOfType<StringAttr>("sec.try_handler_kind");
     if (!kind)
@@ -234,13 +241,22 @@ LogicalResult sec::verifyTryHandlers(func::FuncOp function) {
       return operation->emitOpError(
                  "handler provenance requires sec.try_handler_index >= -1"),
              WalkResult::interrupt();
-    if (kind.getValue() != "ok" && kind.getValue() != "err-variant" &&
-        kind.getValue() != "err-catch-all" && kind.getValue() != "merge")
+    StringRef name = kind.getValue();
+    if (name != "ok" && name != "err-variant" && name != "err-catch-all" &&
+        name != "none" && name != "residual" && name != "merge")
       return operation->emitOpError("invalid sec.try_handler_kind"),
              WalkResult::interrupt();
+    if (name == "residual") {
+      if (!isa<func::ReturnOp>(operation) || index.getInt() != -1)
+        return operation->emitOpError(
+                   "residual try propagation must be a func.return with index -1"),
+               WalkResult::interrupt();
+      residualReturn = true;
+      return WalkResult::advance();
+    }
 
     if (auto test = dyn_cast<sec::CoreErrorIsVariantOp>(operation)) {
-      if (kind.getValue() != "err-variant")
+      if (name != "err-variant")
         return test.emitOpError("variant test must be an err-variant handler"),
                WalkResult::interrupt();
       auto variant = operation->getAttrOfType<StringAttr>(
@@ -252,14 +268,23 @@ LogicalResult sec::verifyTryHandlers(func::FuncOp function) {
     }
 
     auto branch = dyn_cast<cf::BranchOp>(operation);
-    if (!branch || (kind.getValue() != "err-variant" &&
-                    kind.getValue() != "err-catch-all"))
+    if (!branch || (name != "err-variant" && name != "err-catch-all" && name != "none"))
       return WalkResult::advance();
     Group &group = groups[branch.getDest()];
     if (auto exhaustive = operation->getAttrOfType<BoolAttr>(
             "sec.try_handler_exhaustive"))
       group.exhaustive = group.exhaustive || exhaustive.getValue();
-    if (kind.getValue() == "err-catch-all") {
+    if (auto residual = operation->getAttrOfType<BoolAttr>(
+            "sec.try_handler_residual"))
+      group.residual = group.residual || residual.getValue();
+    auto guarded = operation->getAttrOfType<BoolAttr>("sec.try_handler_guarded");
+    if (group.catchAll && index.getInt() > group.catchAllIndex)
+      return branch.emitOpError("try handler follows an unguarded catch-all"),
+             WalkResult::interrupt();
+    group.highestIndex = std::max(group.highestIndex, index.getInt());
+    if (guarded && guarded.getValue())
+      return WalkResult::advance();
+    if (name == "err-catch-all" || name == "none") {
       if (group.catchAll)
         return branch.emitOpError("duplicate Err catch-all for try merge"),
                WalkResult::interrupt();
@@ -271,23 +296,24 @@ LogicalResult sec::verifyTryHandlers(func::FuncOp function) {
       if (!variant || !group.variants.insert(variant.getValue().str()).second)
         return branch.emitOpError("duplicate or missing Err variant provenance"),
                WalkResult::interrupt();
-      group.highestVariantIndex =
-          std::max(group.highestVariantIndex, index.getInt());
     }
     return WalkResult::advance();
   });
   if (result.wasInterrupted())
     return failure();
   for (const auto &[merge, group] : groups) {
-    if (group.catchAll && group.catchAllIndex <= group.highestVariantIndex)
+    if (group.catchAll && group.catchAllIndex < group.highestIndex)
       return merge->getParentOp()->emitError(
           "Err catch-all must follow all specific handlers for a try merge");
+    if (group.residual && !residualReturn)
+      return merge->getParentOp()->emitError(
+          "partial try handlers need a residual func.return");
     int64_t schema = 0;
     if (auto module = function->getParentOfType<ModuleOp>())
       if (auto version =
               module->getAttrOfType<IntegerAttr>("sec.dialect_version"))
         schema = version.getInt();
-    if (schema >= 7 && !group.exhaustive)
+    if (schema >= 7 && !group.exhaustive && !group.residual)
       return merge->getParentOp()->emitError(
           "try handlers require exhaustive Sema provenance");
     if (schema < 7 && !group.catchAll &&
@@ -318,18 +344,28 @@ LogicalResult sec::verifyUnionGuards(func::FuncOp function) {
     Value value = payload ? payload.getValue() : field.getValue();
     int64_t variant = payload ? payload.getVariantAttr().getInt()
                               : field.getVariantAttr().getInt();
+    // The projection is dominated by the true edge of a matching test: walk
+    // single-predecessor blocks up to it, e.g. through a match guard that
+    // reads the candidate payload before the arm commits its move.
     Block *matchingBlock = operation->getBlock();
-    Block *predecessor = matchingBlock->getSinglePredecessor();
-    auto branch = predecessor
-                      ? dyn_cast<cf::CondBranchOp>(predecessor->getTerminator())
-                      : cf::CondBranchOp();
-    auto test = branch && branch.getTrueDest() == matchingBlock
-                    ? branch.getCondition().getDefiningOp<sec::UnionIsVariantOp>()
-                    : sec::UnionIsVariantOp();
-    if (test && test.getValue() == value &&
-        test.getVariantAttr().getInt() == variant &&
-        test->getNextNode() == branch.getOperation())
-      return WalkResult::advance();
+    for (unsigned depth = 0; depth < 32; ++depth) {
+      Block *predecessor = matchingBlock->getSinglePredecessor();
+      auto branch = predecessor
+                        ? dyn_cast<cf::CondBranchOp>(predecessor->getTerminator())
+                        : cf::CondBranchOp();
+      if (!branch)
+        break;
+      auto test = branch.getCondition().getDefiningOp<sec::UnionIsVariantOp>();
+      bool matching = test && test.getValue() == value &&
+                      test.getVariantAttr().getInt() == variant &&
+                      test->getNextNode() == branch.getOperation();
+      if (matching && branch.getTrueDest() == matchingBlock &&
+          branch.getFalseDest() != matchingBlock)
+        return WalkResult::advance();
+      if (matching)
+        break;
+      matchingBlock = predecessor;
+    }
     return operation->emitOpError(
                "must be in the true successor of a matching union.is_variant guard on the same SSA value"),
            WalkResult::interrupt();
@@ -379,9 +415,18 @@ LogicalResult sec::verifyMatchCFG(func::FuncOp function) {
       // A result-err-variant arm (v11.41.4) tests the variant of the error
       // unwrapped from the one Result subject after its sec.result.is_err.
       auto unwrapsSubjectError = [&](Value tested) {
-        auto unwrap = tested.getDefiningOp<sec::ResultUnwrapErrOp>();
-        return unwrap && group.subject &&
-               unwrap->getOperand(0) == group.subject;
+        if (!group.subject)
+          return false;
+        if (auto unwrap = tested.getDefiningOp<sec::ResultUnwrapErrOp>())
+          return unwrap->getOperand(0) == group.subject;
+        // A subject held in a Place (destruction.md section 8(8)) is observed
+        // through that Place, and its error through the Err payload Place.
+        auto read = tested.getDefiningOp<sec::PlaceReadOp>();
+        auto payload = read ? read.getPlace().getDefiningOp<sec::PlaceUnionPayloadOp>()
+                            : sec::PlaceUnionPayloadOp();
+        auto subject = group.subject.getDefiningOp<sec::PlaceReadOp>();
+        return payload && subject && payload.getVariant() == 1 &&
+               payload.getBase() == subject.getPlace();
       };
       bool errorVariant = kind.getValue() == "result-err-variant";
       if (errorVariant && isa<sec::EnumCmpOp, sec::UnionIsVariantOp>(operation)) {

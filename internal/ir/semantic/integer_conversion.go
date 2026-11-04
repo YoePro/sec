@@ -50,6 +50,28 @@ func (fb *functionBuilder) buildIntegerConversion(call *ast.CallExpression, conv
 	return fb.result(Operation{Kind: OpNumericConvertExact, Operands: []ValueID{value.id}, ConversionProof: conversionProofOf(conversion.Proof), Location: location(call.Token)}, targetType), nil
 }
 
+// buildNamedConversion lowers `Meters(1)` or `int(distance)`: the operand keeps
+// its value and named.convert gives it the target's nominal identity. The
+// carrier is unchanged, so no check exists (semantic_ir.md §§ 7(4), 59(2)–(3)).
+func (fb *functionBuilder) buildNamedConversion(call *ast.CallExpression, conversion sema.ResolvedNamedConversion) (builtValue, error) {
+	sourceType, err := fb.owner.internType(conversion.SourceType)
+	if err != nil {
+		return builtValue{}, err
+	}
+	targetType, err := fb.owner.internType(conversion.TargetType)
+	if err != nil {
+		return builtValue{}, err
+	}
+	value, err := fb.buildExpr(call.Arguments[0], sourceType)
+	if err != nil {
+		return builtValue{}, err
+	}
+	if value.typ == targetType {
+		return value, nil
+	}
+	return fb.result(Operation{Kind: OpNamedConvert, Operands: []ValueID{value.id}, Location: location(call.Token)}, targetType), nil
+}
+
 // conversionProofOf carries Sema's proof into Semantic IR unchanged.
 func conversionProofOf(proof sema.IntegerConversionProof) *ConversionProof {
 	return &ConversionProof{Basis: string(proof.Basis), PlanPointerWidthBits: proof.PlanPointerWidthBits}

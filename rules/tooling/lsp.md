@@ -483,8 +483,8 @@ none), each with that target's scalar plan, and the lens summarizes the result:
 freebsd-armv7: Open, Close; …` naming each failing target with its S1106/S1107
 members, and targets without an implementation. Its command
 (`sec.showLocations`) lists the failing implementation members, or the
-implementing types when every target conforms. Results are cached until a
-module source changes.
+implementing types when every target conforms. Results are cached until the
+source/import closure, project configuration or analysis epoch changes.
 
 As of 2026-10-14, listing code lenses only parses the active snapshot and returns
 interface-name ranges with versioned declaration/snapshot data and no command.
@@ -530,6 +530,18 @@ Implemented (`workspace/symbol`, VS Code "Go to Symbol in Workspace"):
 - the declarations of every `.sec` source under the workspace folders and of
   every open document, including files that are not open; hidden directories,
   `testdata` fixtures, and `node_modules` are not workspace source;
+- workspace folders inside a Project resolve to the enclosing manifest's
+  `ProjectRoot` through the shared project model, so unopened sibling Modules
+  remain searchable. Project source locations follow `projects.md` §§13–15:
+  root `bin/` and `.sec/` storage and direct files in `cmd/` or an `internal`
+  marker are excluded; ordinary nested `bin/` directories remain source.
+  Standalone folders and independent Projects below an umbrella folder are
+  supported. Invalid manifests and forbidden nested Projects never authorize
+  a standalone fallback. Explicitly open documents remain included for editing;
+- source selection and lazy resolve rediscover current project boundaries per
+  request; manifest addition, repair, invalidation and removal affect cached
+  declarations without requiring a server restart. Resolve uses the same
+  source-membership facts without recursively traversing directories;
 - the same declaration projection as document symbols: types, structs, unions,
   enums, interfaces, functions, units, module-scope variables, and their
   members, fields, properties, events, and enum and union members; impl
@@ -569,9 +581,8 @@ Implemented (`workspace/symbol`, VS Code "Go to Symbol in Workspace"):
   semantic analysis or workspace traversal. Resolve is a read-only request that
   formatting may overtake.
 
-Pending: generated and dependency read-only
-provenance once the shared compiler workspace exposes it, and project-manifest
-source roots instead of folder traversal.
+Pending: generated and dependency read-only provenance once the shared compiler
+workspace exposes it, and moving declaration summaries into that shared index.
 
 ### Semantic tokens
 
@@ -2092,6 +2103,14 @@ the source does not spell, from Sema facts:
 - `moves if selected` after a by-value match payload binding whose resolved
   action moves a move-only payload, placed on the binding and never on the
   subject;
+- `move` before a reusable source implicitly transferred through a terminal
+  return or its owning construction path (`copy_move.md` §§ 9.1–9.2, 10),
+  and before a receiver consumed by an accepted method call, including owned
+  `Result.Ok()` / `Err()` (`errorhandling.md` §§ 6.1, 29). These hints project
+  Sema's validated transfer plans and per-call receiver-move facts, including
+  partial Places; the LSP never infers consumption from a method's name.
+  Explicit source `<-` markers, ordinary copying returns, fresh receivers,
+  non-consuming methods and rejected receiver operations get no `move` hint;
 - `copy` before a plain place passed by value or used as a `let` initializer
   when its type copies semantically, and after a semantically copying match
   binding.
@@ -2116,8 +2135,7 @@ or unmatched hints are rejected; changed or closed source snapshots require a
 fresh hint request. Resolve uses the read-only worker queue and is superseded by
 queued document changes or close notifications.
 
-Pending: `move` hints for implicit consuming construction (explicit `<-` is
-required today), generic instantiation, resolved
+Pending: generic instantiation, resolved
 overload, unit conversion, contract, error type, allocation and target hints.
 
 Possible categories:
@@ -2556,6 +2574,19 @@ Users must be able to change the active target without restarting the server.
 ---
 
 ## Multi-target diagnostics
+
+Implemented sharing (2026-11-04): background target comparison and interface/type
+conformance lenses use one common per-target Sema snapshot service. Identical
+active-document, prepared source/import closure, effective target/configuration
+and analysis-epoch inputs share an in-flight computation and completed result.
+The lens presentation cache follows the same source/plan fingerprint.
+
+Snapshots contain detached compiler diagnostics, warnings and structured
+conformance facts. Readers receive independent copies; mutable analyzers are
+never shared between consumers. Completed snapshots are bounded to 32 entries
+and 8 MiB, and failed computations publish no successful empty snapshot. Source
+preparation/parsing still runs per request; parsing caches, incremental analysis
+and cross-target recomputation while typing remain separate work.
 
 A diagnostic records applicability:
 

@@ -105,6 +105,7 @@ func (a *Analyzer) inferConsumingResultProjection(
 		if a.checkBorrowedMovePlaceForAction(place, memberExpr.Property.Token, "consume") {
 			return Type{Kind: InvalidType}, value, true
 		}
+		a.recordReceiverMove(expr, place)
 		a.markPlaceUnavailable(place, memberExpr.Property.Token, "consumed by Result."+member.Name+"()")
 		if len(place.Projections) == 0 {
 			a.endBorrowsHeldBy(place.Root)
@@ -151,7 +152,8 @@ func (a *Analyzer) inferBorrowedResultProjection(
 	}
 	borrowed := compilerKnownSharedReference(payload)
 	borrowed = a.referenceTypeWithOriginFromExpression(borrowed, expr.Object)
-	result := compilerKnownOption(borrowed)
+	// The Option's Some payload is the borrowed payload, not its template T.
+	result := a.instantiateGenericType(compilerKnownOption(borrowed))
 
 	origin := localOriginWithPlaces(localReferenceOrigin{
 		Name:        borrowed.ReferenceOriginName,

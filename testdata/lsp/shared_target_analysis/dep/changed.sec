@@ -1,0 +1,2 @@
+module dep
+fn Value(extra: int) int { return extra }

@@ -123,8 +123,9 @@ private:
         (plan.kind != "active-variant" && entry.contains("variants")) ||
         (plan.kind != "compiler-known-resource" && entry.contains("resource")))
       return error(plan) << "carries steps of another kind";
-    if (plan.kind != "struct" && (entry.contains("custom_free") || entry.contains("free_type") || entry.contains("free_function")))
-      return error(plan) << "has custom free, which belongs to a struct plan";
+    if (plan.kind != "struct" && plan.kind != "active-variant" &&
+        (entry.contains("custom_free") || entry.contains("free_type") || entry.contains("free_function")))
+      return error(plan) << "has custom free, which belongs to a struct or union plan";
     if (plan.kind == "trivial") {
       if (needsDestruction(plan.type))
         return error(plan) << "is trivial for a type that needs destruction";
@@ -274,7 +275,19 @@ private:
     for (auto [position, payload] : llvm::enumerate(payloads))
       if (!listed.contains(position) && (fieldsNeedDestruction[position] || (payload && needsDestruction(payload))))
         return error(plan) << "omits non-trivial variant #" << position;
-    return success();
+    // A union's custom free runs before its active payload (destruction.md
+    // section 15.5); a Result has none.
+    auto custom = plan.entry.getAs<BoolAttr>("custom_free");
+    if (!custom || !custom.getValue()) {
+      if (plan.entry.contains("free_type") || plan.entry.contains("free_function"))
+        return error(plan) << "names a free function without custom free";
+      if (listed.empty())
+        return error(plan) << "has no custom free and no variant steps, so it is trivial";
+      return success();
+    }
+    if (isa<sec::ResultType>(shape))
+      return error(plan) << "has custom free on a Result";
+    return checkFree(plan);
   }
 
   // A use names a plan of exactly the destroyed value's type.

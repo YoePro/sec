@@ -221,15 +221,15 @@ integrations:
       - A3001 ownership.implicit-discarded-result reports legal ignored ordinary non-void function, method, generic and compiler-known call results and standalone constructions; default Information and off/info/warning/error project policy preserve one identity, resolved result type, actionable help and selected callable/initializer related location where available
       - implicit-result advice is deduplicated per source statement across summary and loop/defer visits and promoted only after mandatory analysis; explicit discard, consumed results, void and invalid calls receive no advisory, while existing must-use and fallible-construction errors cannot be suppressed by advisory policy
       - A3002 ownership.useless-explicit-discard and A3003 ownership.redundant-void-discard are independently configurable default-Information advisories with off/info/warning/error policy, stable keyword ranges and actionable help; shared semantic CTE proves constant temporaries without Places, trivial destruction excludes custom free, and void guidance preserves expression evaluation. Source-keyed explicit-discard facts avoid repeated loop/summary advice and are published after mandatory analysis; ordinary local/field discard, unknown calls, invalid operands and mandatory ownership rules remain unchanged. CLI/JSON/LSP preserve identities and independent policies.
+      - "Semantic IR discard lowering (P17, 2026-11-03/04; discard.md §§ 3, 5, 9, 26; destruction.md § 12): explicit and implicit discard of a value that needs destruction lowers to own.discard with its resolved destruction plan; a whole owned binding cancels its cleanup registration, a conditionally available one ends in place with if_owned, and reinitialization after a discard registers a new incarnation. Stored fields end through their field Place. Tests: TestDiscardOfOwnedBindings, TestDiscardOfFreshOwnedValues, ownership_variants.sec."
+      - "no inference of discard from unused SSA (2026-11-03): --sec-verify-ownership rejects an owned value that needs destruction and has no terminal ownership action ('leaves an owned value with no terminal ownership action'), so backends never treat an unused SSA result as a discard."
     remaining:
       - register stable IDs, symbolic names, structured notes and help, and related locations for broader unhandled must-use, borrow conflicts; complete structured transport for existing non-discardable errors
       - complete path-sensitive active-payload reasoning for wrapper and union discardability without weakening conservative defaults
       - extend explicit discard beyond independently tracked direct struct fields to other supported Places and complete field-sensitive partial state
       - separate canonical Availability from moved/discarded/detached reason provenance across joins
       - complete conditional discard convergence with an explicit availability lattice and path-specific destruction responsibility
-      - lower explicit and implicit discard through the resolved deterministic destruction plan, cancel consumed cleanup responsibility, prevent double destruction, and register cleanup after legal reinitialization
       - introduce canonical Semantic IR DiscardValue ownership operations with explicit, implicit-call-result, and compiler-temporary provenance
-      - ensure backend stages never infer semantic discard from unused SSA values
       - add non-discardable unresolved Process handling when Process becomes a complete compiler-known lifecycle type
       - complete recursive Result of lifecycle-handle spawn modelling for every supported spawn kind
       - account for fallible task spawn before a Task[T] exists and the TaskOutcome[T] observation layer after successful creation when validating detach and discard
@@ -287,13 +287,13 @@ integrations:
         result: passed
       - command: go test ./internal/formatter -run Discard -count=1
         result: passed with no matching focused tests; formatter coverage remains in the required matrix
-    revised: "2026-10-29"
+    revised: "2026-11-04"
 
   - id: frontend.defer-v2
     area: frontend-control-flow-ownership-and-lowering
     status: partial
     integrated: "2026-08-16"
-    revised: "2026-09-26"
+    revised: "2026-11-04"
     document_revision: "2.0"
     repository_baseline: 56be75d
     replaces: rules/control-flow/defer.txt
@@ -350,16 +350,15 @@ integrations:
       - bodyless try propagation rejected and unhandled fallible cleanup results diagnosed
       - return expressions established before statically supported MLIR defer cleanup paths
       - canonical documentation now defines one common LIFO order for deferred cleanup and automatic destruction
+      - "one source-ordered cleanup stack (P17, 2026-11-02/03): automatic destruction (cleanup.track-owned) and defer registrations (cleanup.defer-register) share cleanup_registration_ordinal, and --sec-verify-cleanups rejects registrations out of source order (lit @order, @defer_order)."
+      - "defer-referenced lifetimes (2026-11-03/04; defer.md § 8): only owners an executed defer reads outlive their inner scope, registering in the function scope; every other local is still destroyed at its scope end. A loop-body owner read by a defer stays a named lowering boundary (governance/lowering.yaml). Tests: DeferReadsInnerOwner, DeferReadsInnerMutableOwner, DeferReadsArmBinding."
+      - "unified cleanup on every edge (P17): cleanup.run-function runs at returns, error propagation and fallthrough, cleanup.run-scope at break, continue and scope ends, defers registered on conditional paths are path-sensitive in --sec-verify-cleanups. Each executed defer in a loop registers one instance (DeferInLoop)."
+      - "Semantic IR representation (P17): cleanup.defer-register carries registration ordinal, cleanup scope, defer id, capture Places and source location; the body is an isolated region (lowering v13 §§ 13–14)."
+      - "return value isolation (defer.md § 14): the return operand is established before cleanup.run-function, so a defer that assigns the returned local cannot change the result; return, break and continue inside a defer are rejected by Sema."
     remaining:
       - isolate cleanup-time state mutations such as deferred Arena.Reset or Arena.Release from ordinary post-registration flow state
       - explicitly permit defer in ordinary and static functions and methods, lambdas, property accessors, and init; rejection inside free is implemented by frontend.destruction (S1086)
-      - model defer registration and automatic destruction in one source-ordered cleanup stack across ownership and destruction analysis
-      - extend only defer-referenced lifetimes while preserving earliest legal destruction for unrelated locals
-      - preserve unified cleanup ordering on every normal return, propagated error, conditional branch, loop, and fallthrough edge
-      - represent registration points, invocation ownership, dependencies, cleanup ordering, and source provenance explicitly in Semantic IR
-      - replace LLVM's immediate defer-body placeholder with real invocation-exit cleanup lowering
-      - lower per-execution defer registration inside loops and every supported nested control-flow form through MLIR
-      - ensure a deferred operation cannot alter an already-established return or propagated-error result
+      - "lower cleanup.defer-register, cleanup.run-scope and cleanup.run-function physically through the Sec MLIR to LLVM track, including one runtime instance per loop registration and owners of a loop body that a defer reads (the native track stops at 'physical representation of ... ownership cleanup' today)"
       - complete local fallible-cleanup handling without imposing any defer-specific discard rule beyond canonical must-use policy
       - define and lower defer behavior only on panic or abnormal paths where the canonical panic/unwind policy requires cleanup
       - complete the revision-2.0 parser, Sema, ownership, borrow, destruction, formatter, diagnostics, LSP, Semantic IR, and backend regression matrix
@@ -398,9 +397,9 @@ integrations:
 
   - id: sema.defer-delayed-uses
     area: frontend
-    status: partial
+    status: implemented
     integrated: "2026-08-03"
-    revised: "2026-09-23"
+    revised: "2026-11-04"
     summary: >-
       Tracks outer Places used by defer as delayed dependencies and rejects
       overlapping later move or discard without runtime borrow tracking.
@@ -434,9 +433,8 @@ integrations:
       - dependency ordering is deterministic when one defer references multiple Places
       - Sec 0.1 defer reads values when cleanup executes and intentionally defines no special owned-copy or move capture syntax
       - defer-specific analysis was extracted from the oversized analyzer.go into analyzer_defer.go
-    remaining:
-      - validate delayed dependencies against the unified source-ordered cleanup stack once explicit Semantic IR cleanup regions exist
-      - consume delayed Place dependencies in Semantic IR without reconstructing them from defer-body syntax
+      - "Semantic IR consumes Sema's resolved defer captures (ResolvedDeferPlanOf Captures with Places) and builds capture Places without re-reading the defer body (2026-11-02, internal/ir/semantic/defer_producer.go)."
+      - "--sec-verify-cleanups validates delayed dependencies against the unified cleanup stack: consuming a value an active defer captures, registering a newer owner a defer reads, and a run_scope that would destroy an owner an active defer reads are rejected (lit invalid-schema13-cleanups.mlir, 2026-11-03)."
     verification:
       - command: go test ./internal/sema -run Defer -count=1
         result: passed; legacy root dependencies, conditional registration, shadowing, control-flow restrictions, and field-sensitive overlap are covered
@@ -534,8 +532,8 @@ integrations:
       - "executable lazy-if regression matrix (2026-10-10): 20 exact side-effect traces cover dynamic AND/OR, nested grouping, first/second/third/else branch selection and logical conditions throughout else-if chains; LLVM and existing MLIR verify and compile for amd64 and armv7 at O0/O2, and every host executable checks condition frequency, left-to-right ordering, skipped RHS/later-condition calls and exactly one selected body"
       - explicit if-try conformance covers Result[bool,E] propagation, true/false success, negation and parenthesized local bool recovery; int, string and struct success types and non-bool local recovery remain rejected by Sema/CLI/LSP. Grouped-expression parsing now restores the outer header brace boundary while allowing inner try handlers, instead of rejecting valid parenthesized handlers. Semantic IR tests verify typed CFG and exactly-once calls; current unsupported sec.result backend boundary is tested with existing output preservation, without claiming binary execution.
       - "Raw-null if integration closed by audit and source-backed regression coverage (2026-11-03; flowcontrol_if.md §23, raw_pointers.md §7(3–9a), MD-024 §5): existing Sema admits is null and is not null only in explicit unsafe contexts, on RawPtr subjects, yielding bool. Seven positive tests include if/else-if, logical conditions, returns, locals, calls and arguments, with four retained negated tests and resolved raw subject types. Ten invalid cases cover four missing unsafe contexts, an ordinary if body that still requires unsafe for RawPtr.Read, safe-reference/integer subjects, both forbidden null equality forms and proven-null dereference despite unsafe. An unsafe block inside the if body cannot authorize its condition, and a preceding unsafe block cannot leak permission. CLI check/sema accept the valid matrix; check/sema/emit-ir/emit-mlir/emit-llvm reject all invalid cases before artifact output. CLI retains the four owning null IDs and help across nine occurrences; LSP retains those IDs and source ranges alongside the existing raw-read unsafe rejection. This work adds integration evidence and closes stale frontend governance; no new production behavior or native null-test lowering is claimed."
+      - "state tests in value positions (verified 2026-11-04; MD-006): `value is Variant` and `value is not Variant` on unions, Option and Result lower in Semantic IR as a variant test with constant edges to a merge (Result edges unwrap the projected payload for the Result guard verifier) and run natively in bindings, `&&` operands and if conditions (testdata/build/native/state_tests.sec in TestNativeTrackBuildsAndRuns). The empty-state test and owned subjects stay named boundaries ('empty-state test (needs a runtime initialization flag)', 'state test of a subject that needs ownership')."
     remaining:
-      - "MD-006 lowering: Semantic IR does not lower state tests outside the existing if/while condition forms; it rejects them explicitly"
       - audit compiler examples and regression sources for stale Length, IsEmpty(), and Option payload-after-state-test assumptions
       - complete the revision-2.0 parser, Sema, flow-analysis, formatter, diagnostics, LSP, Semantic IR, and backend regression matrix
     required_tests:
@@ -823,12 +821,13 @@ integrations:
       - fallthrough placement authority is tied to membership in the current AST case body instead of an inherited boolean context, so nested if, loop, lambda and unsafe blocks cannot transfer to an enclosing case while a nested switch retains its own valid successor
       - "Focused nested-switch lowering coverage completed 2026-10-29: source-backed Semantic IR assertions check all 12 break/continue operations against their enclosing loop ID and actual condition/exit successor, with no extra loop records introduced by switches. A shared native fixture exercises while and range-for loops, nested subject/subjectless switches, default cases, fallthrough followed by continue, and restoring the outer loop target after an inner loop ends. Five independently checked runtime results pass through the single Sema/Semantic IR/Sec-MLIR/LLVM/clang track. The native regression runner now bounds execution time so a future wrong CFG target cannot hang the test or masquerade as an expected trap. Existing lowering behavior already handles these cases; this closes the required focused verification point without claiming new cleanup or string/named-switch capabilities."
       - "Computed string switch coverage (2026-10-29): the shared semantic compile-time evaluator establishes case equality for composed strings, decoded escapes and immutable module bindings, rejecting equal values across clauses or within comma alternatives with the registered duplicate-case diagnostic, actionable help and the earlier equivalent case location. Only resolved equality-compatible cases participate; unavailable calls/getters and unknown runtime values do not establish a duplicate proof. Distinct Unicode scalar sequences are not normalized. Source-backed Sema, CLI JSON and LSP tests verify proofs and diagnostic provenance. String switch Semantic IR/backend lowering remains separate remaining work."
+      - "named integer switch subjects (2026-11-04; semantic_ir.md \u00a7 7(4)): a named integer subject without units or contracts compares through its carrier's int.compare and keeps its identity, for value, comma, relational and range alternatives; testdata/build/native/named_scalars.sec runs natively."
     remaining:
       - split comma-separated alternatives into explicit per-alternative frontend CFG edges instead of retaining conservative aggregate state
       - route every statically covered case and item through the canonical unreachable-code policy with useful earlier-case provenance
       - make ownership, destruction, cleanup, Semantic IR, lowering, and interprocedural analyses consume the resolved switch flow and future canonical switch plan
       - "enum switch subjects (2026-10-18): Semantic IR tests each enum case alternative with same-enum equality (enum.compare eq); a Sema-proven exhaustive enum switch without default ends in a synthesized unreachable; built and executed with integer enums (TestNativeTrackBuildsAndRuns/enums)"
-      - lower bool, string and named-type switch subjects through Semantic IR and the compilation track
+      - "lower string switch subjects through Semantic IR and the compilation track (blocked on P23 string values); bool and named-integer subjects lower and run natively (bool_switch.sec, named_scalars.sec)"
       - implement full unit-aware and named-semantic-type-aware overlap reasoning
       - extend relational coverage reasoning for dynamic expressions where reachability is statically provable
       - complete code generation for every Sema-supported switch subject and case family
@@ -1013,14 +1012,13 @@ integrations:
       - Sema rejects direct bool match subjects once at the subject with focused guidance to use if and else; LSP reports the same shared diagnostic
       - the compiler-known empty pattern is analyzed for possibly-empty local union subjects with exhaustiveness, per-arm definite-assignment refinement, duplicate and impossible-arm diagnostics, and an EmptyStateReachable resolved plan with an empty-state arm; moved-from subjects remain ownership errors rather than empty
       - "shallow named-field destructuring (2026-10-26, flowcontrol_match.md §§ 10, 15; borrowing.md § 19.4): Sema resolves `Variant { field }`, renamed, `ref`/`ref mut` and qualified forms with partial binding (internal/sema/match_field_patterns.go, ResolvedMatchArm.FieldBindings); unknown, repeated and `_` fields and repeated names are rejected; a by-value field binding only copies and a move-only field is rejected with a borrow or whole-payload hint, so no hidden partial move occurs; Semantic IR copies only bound fields and borrows field Places"
+      - "explicit payload binding actions and guarded commit (verified 2026-11-04): every plain payload binding resolves to copy-trivial, copy-semantic, copy-conditional or move, and borrows only with an explicit ref pattern (resolvedMatchBindingAction); a guarded arm reads the candidate payload in its guard and commits a move only on guard success, so the guard-false continuation keeps ownership for later arms. --sec-verify-union-guards accepts the commit through single-predecessor blocks dominated by the variant test (lit union-guard-dominance.mlir, invalid-union-guard-dominance.mlir). Test: testdata/semantic_ir/match_guard_owned.sec in TestSchema13EmitsTryChainsAndOwnedErrorPayloads."
     remaining:
       - "Non-binding patterns skip the discardability check outside Err: `Some(_)` and bare `Some` on Option[Task[int]] pass Sema, while `Err(_)` is rejected, though flowcontrol_match.md § 8 says `Variant(_)` and bare variants never waive non-discardability. Probe 2026-11-02; `Task` then stops at the Semantic IR boundary, so no program compiles past it yet."
       - lower the compiler-known empty union pattern and reachable empty state through Semantic IR and MLIR with a runtime initialization flag, and expose empty-state facts through LSP
       - complete ownership, destruction, Semantic IR, lowering, and LSP facts for discarded Err payloads beyond the represented frontend subset
       - derive statement-match termination from ResolvedMatchPlan so exhaustive Option, union, enum-alias, open-bit-enum, and nested matches agree with return and reachability analysis
-      - make every whole-payload plain binding action explicitly resolve to copy, legal move, or temporary forwarding without silent borrow or clone
       - reject move-only payload transfer from ref and ref mut subjects unless an explicit permitted pattern borrow is used
-      - delay guarded move-only binding commitment until guard success and retain ownership on the guard-false continuation
       - retain precise Moved, PartiallyAvailable, and ConditionallyAvailable states and provenance across every continuing arm
       - apply ordinary discardability and must-use rules to statement-match arm results rather than erasing produced values
       - implement contextual final-expression values for block arms in expression-match result position on every continuing path
@@ -1208,12 +1206,12 @@ integrations:
       - "generic iterator parameters (2026-10-10): a for loop over a generic parameter constrained by Iterator[T], by value (fn F[I: Iterator[T]](values: I)) or as ref mut I, takes its element type and Next requirement from the constraint without an interface value or dispatch; each specialization resolves the concrete Next statically, a ref mut I parameter infers I from an owned mutable argument through the implicit call-site borrow (borrowing.md §15.2), and lowering readiness reports such template loops as Unproven (per-specialization lowering) instead of Invalid"
       - "loop-binding borrows (2026-10-29, flowcontrol_for.md §§6-7; borrowing.md §§8.1(11), 14.5(2), 18(4)): every ref and ref mut loop binding holds a shared or exclusive borrow of the iterable Place, so reads, assignments and borrow creation that conflict with the live binding inside the body are rejected through the canonical S1160-S1162 diagnostics naming the binding as holder. The borrow is iteration-local: holder liveness ends it after the binding's last required use (a binding is fresh per iteration, and a later loop reusing the name is not a use), and the loop clears it at the iteration boundary and on every break and continue edge. The rulebook's iteration-local end points replace the earlier whole-body wording of this item; structural mutation keeps its dedicated S1075 check, and iteration dependency facts publish the binding borrow once in the iteration-binding phase (TestForBindingBorrowsIterable, TestIteratorStorageAndBorrowDependencies)"
       - "binding-position modes (verified 2026-10-29, flowcontrol_for.md §§9, 14, 20, 21): the sequential two-binding index is an ordinary int (or discard) and rejects reference modes; map iteration accepts plain, ref and ref mut values with mutable authority, shared or plain keys, and rejects ref mut keys and ref mut through a shared map; set iteration accepts plain-copy and shared-reference elements and rejects ref mut; discard bindings introduce no copy or move requirement, so move-only elements may be discarded (TestForBindingPositionModes, TestForBindingModeDiagnostics)"
+      - "explicit range steps lower end to end (verified 2026-11-04): ascending and descending inclusive/exclusive ranges with `step` run natively (testdata/build/native/range_steps.sec in TestNativeTrackBuildsAndRuns); the old 'for range with an explicit step' rejection is gone."
+      - "descending iteration is explicit (flowcontrol_for.md §§ 23, 27): `start > end` without a step is zero iterations and is never inferred as descending, and an unsigned range rejects a negative step ('unsigned range uint cannot use negative step -3; use a signed range type or while')."
     remaining:
       - "MD-117 implicit call-site borrow of an owned pack position: Touch(values[k]) with a ref parameter is still checked as a by-value read, so a move-only element is rejected at the call although only a borrow is needed; explicit ref values[k] works (§38A(5)(5))"
       - carry Arena generation through the shared loop-header and backedge fixed-point analysis, including continue edges and replay
       - normalize loop-header whitespace in the formatter (the formatter currently preserves intra-line spacing in every for header) and expose binding modes through compiler-owned LSP facts beyond the resolved reference type
-      - "lower explicit for range steps (Known hole, verified 2026-10-17): Semantic IR rejects `step` as 'for range with an explicit step'"
-      - require explicit compatible negative steps for descending iteration without synthesizing signed conversion for unsigned ranges
       - complete float and decimal range lowering with resolved-type arithmetic and stable source-visible endpoint behavior
       - lower dynamic arrays, lists, slices, strings, maps, sets, and vectors through Semantic IR and the compilation track
       - extend structural-stability checking to user-defined operations and calls that receive mutable authority over the iterated collection (requires interprocedural structural-mutation summaries) and to collections reached through Iterator[T] sources
@@ -1300,7 +1298,7 @@ integrations:
         result: passed across all packages on 2026-10-02 after the structural-stability check
       - command: go test ./internal/sema -run 'TestForBinding|TestStructural|TestNonStructural|TestIteratorStorage' -count=1
         result: passed on 2026-10-29 with loop-binding borrows of the iterable and binding-position modes; frontend.for-loops-v2 remaining 19 to 14
-    revised: "2026-10-29"
+    revised: "2026-11-04"
 
   - id: frontend.loop-break-targeted-exit-analysis
     area: frontend-control-flow
@@ -1363,9 +1361,9 @@ integrations:
 
   - id: frontend.discard-aggregate-temporary-ownership
     area: frontend-ownership-and-discard
-    status: partial
+    status: implemented
     audited: "2026-08-19"
-    revised: "2026-09-24"
+    revised: "2026-11-04"
     repository_baseline: c515862
     document_revision: "2.0"
     document_created: "2026-07-31"
@@ -1399,13 +1397,8 @@ integrations:
       - bare discard _ is rejected
       - discarded struct and array literals commit represented move-only source transfers before terminal discard
       - discard does not recursively reinterpret ordinary call arguments as aggregate ownership transfers
-    partial:
-      - ownership preparation of the operand result and terminal destruction of that result are not represented as separate resolved semantic actions
-    remaining:
-      - integrate union constructor payload preparation through the separately tracked union constructor correction
-      - preserve borrow, deferred-use, and source availability diagnostics for ownership transfers into discarded temporaries
-      - represent operand preparation followed by explicit DiscardValue in Semantic IR
-      - lower the resolved destruction plan without double destruction
+      - "discarded aggregate temporaries in Semantic IR (2026-11-04; discard.md aggregate temporary discard; destruction.md § 12): struct literals, fixed-array literals and union constructions (Some(<-x), Slot.Holding(...)) prepare their operands first, committing moved sources with own.move and cleanup.cancel, then end the temporary once with own.discard and its resolved destruction plan; --sec-verify-ownership and --sec-verify-cleanups reject double destruction. Tests: DiscardAggregateTemporary, DiscardAggregateWithMovedSource, DiscardOptionConstruction and DiscardArrayTemporary in testdata/semantic_ir/ownership_variants.sec (TestPackage17OwnershipVariants* in both semantic and secmlir)."
+      - "borrow, deferred-use and availability diagnostics for transfers into discarded temporaries (S1163 defer and borrow conflicts, S1088 use after move) are kept, verified by TestDiscardAggregateTemporaryKeepsTransferDiagnostics (2026-11-04)."
     bug_reference:
       - correction19.md
     governance_reconciliation:

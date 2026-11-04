@@ -58,8 +58,9 @@ Value rootOf(Value value) {
 }
 
 // endsWhole reports a Place that is its whole owner or an active payload, which is
-// all a union holds. A moved stored field leaves the owner registered, and its
-// cleanup destroys only the remaining fields (package17 sections 12, 58-59).
+// all a union holds. A moved or destroyed stored field leaves the owner
+// registered, and its cleanup destroys only the remaining fields (package17
+// sections 12, 58-59).
 bool endsWhole(Value place) {
   while (true) {
     if (place.getDefiningOp<sec::PlaceFieldOp>())
@@ -82,7 +83,7 @@ Value consumedValue(Operation *op) {
   if (auto move = dyn_cast<sec::OwnMoveFromPlaceOp>(op))
     return endsWhole(move.getPlace()) ? rootOf(move.getPlace()) : Value();
   if (auto destroy = dyn_cast<sec::OwnDestroyPlaceOp>(op))
-    return destroy.getSkipped() ? Value() : rootOf(destroy.getPlace());
+    return destroy.getSkipped() || !endsWhole(destroy.getPlace()) ? Value() : rootOf(destroy.getPlace());
   return Value();
 }
 

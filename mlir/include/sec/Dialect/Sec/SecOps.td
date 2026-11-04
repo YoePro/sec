@@ -227,6 +227,16 @@ def Sec_NumericConvertExactOp : Sec_Op<"numeric.convert_exact", [Pure]> {
   let hasVerifier = 1;
 }
 
+// Explicit conversion that changes only nominal identity between a named
+// integer and its carrier or another named type over the same carrier
+// (dialect v11.41.7; semantic_ir.md sections 7(4), 59(2)).
+def Sec_NamedConvertOp : Sec_Op<"named.convert", [Pure]> {
+  let summary = "Change the nominal identity of an integer value without changing it";
+  let arguments = (ins AnyType:$value);
+  let results = (outs AnyType:$result);
+  let hasVerifier = 1;
+}
+
 // P20 NumericConvertCheckedOp (sec-mlir-dialect_package20.md §§ 48–54, 71–72),
 // admitted early for built-in integer targets: a target-typed candidate and a
 // failed flag; the candidate is consumed only on the success edge and the

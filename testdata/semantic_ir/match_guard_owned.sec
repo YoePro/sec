@@ -1,0 +1,36 @@
+module main
+
+// A guarded arm reads the candidate payload in its guard and commits the move
+// only on guard success; the guard-false path keeps ownership for later arms.
+
+type Handle struct {
+    id: int,
+}
+
+impl Handle {
+    free {
+    }
+}
+
+fn Make(id: int) Option[Handle] {
+    return Some(Handle { id: id })
+}
+
+fn Take(handle: Handle) int {
+    return handle.id
+}
+
+fn Guarded(id: int) int {
+    let value := Make(id)
+    match value {
+        Some(handle) where handle.id > 5 => {
+            return Take(<-handle)
+        }
+        Some(handle) => {
+            return Take(<-handle) + 100
+        }
+        None => {
+            return 0
+        }
+    }
+}

@@ -1489,9 +1489,10 @@ integrations:
     governance_reconciliation:
       - Concurrency facts survive into Semantic IR while the concrete operation vocabulary remains owned by semantic_ir.md.
       - Preserve atomic identity/order/outcome/fence, mutex/guard/context, cancellation-effect/commit, and process-transfer/lifecycle facts without duplicating source Sema.
+    implemented:
+      - "canonical Place, storage and reference identities reach Semantic IR (P15/P16, verified 2026-11-04): Place roots carry Sema's root and storage identities and projection paths, references carry BorrowID/LifetimeID, provenance sets, validity policy and epoch dependency, and the Go verifier and --sec-verify-places/--sec-verify-borrow-semantics check them. Tests: place_borrow_integration_test.go, reference_*_test.go, slice_*_test.go."
     remaining:
       - make all builders consume immutable resolved Sema/analysis plans rather than rerun AST resolution
-      - bridge canonical Place/storage/reference identities into Semantic IR
       - bridge complete effect summaries and verified guarantees
       - bridge transferability/task/thread lifecycle facts
       - represent task await semantically as TaskOutcome[T] and never as a flow-sensitive direct T result

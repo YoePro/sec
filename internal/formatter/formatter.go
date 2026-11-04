@@ -25,6 +25,9 @@ type Options struct {
 	// MaxAlignmentPadding is `max_alignment_padding` in spaces. Zero selects
 	// the default of four indentation widths (§ 4(14)).
 	MaxAlignmentPadding int
+	// LineWidth is the resolved preferred width; zero selects 120. Project
+	// configuration resolves adaptive widths before calling the formatter.
+	LineWidth uint64
 }
 
 // VerticalStyle selects whether optional structural blank lines are emitted.
@@ -92,6 +95,15 @@ func (options Options) maximumAlignmentPadding() int {
 // compact reports the compact vertical style.
 func (options Options) compact() bool {
 	return options.VerticalStyle == VerticalCompact
+}
+
+// lineWidth returns the effective preferred width without limiting source data.
+// Rules: rules/tooling/formatter.md — §4(9–13),§10.
+func (options Options) lineWidth() uint64 {
+	if options.LineWidth == 0 {
+		return 120
+	}
+	return options.LineWidth
 }
 
 type Source struct{ Text string }
@@ -165,8 +177,8 @@ func format(text string, options Options) string {
 	normal = formatHardwareDeclarations(normal)
 	normal = formatImportRegion(normal, options.compact())
 	normal = formatStructuralBlockLayout(normal)
-	normal = formatCallableParameterListLayout(normal)
 	normal = formatPropertyAccessorLayout(normal)
+	normal = formatVerticalSpacing(normal, options.compact())
 	normal = formatCSTTokenSpacing(normal)
 	normal = formatCSTBlockComments(normal)
 	blockCommentLines := standaloneBlockCommentLines(normal)
@@ -271,6 +283,7 @@ func format(text string, options Options) string {
 	out = alignDeclarationTrailingComments(out, options.indentationWidth(), options.maximumAlignmentPadding())
 	result := strings.Join(out, "\n")
 	result = formatExecutableBlocks(result, options.indentationWidth())
+	result = formatCallableParameterListLayout(result, options.lineWidth(), options.indentationWidth())
 	result = formatCSTRoles(result, options.maximumAlignmentPadding())
 	result = formatMultilineInfixLayout(result, options.indentationWidth())
 	result = formatExpressionContinuations(result, options.indentationWidth())

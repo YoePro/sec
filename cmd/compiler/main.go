@@ -12,7 +12,6 @@ import (
 
 	"sec/internal/ast"
 	"sec/internal/diagnostics"
-	semantic "sec/internal/ir/semantic"
 	"sec/internal/lexer"
 	"sec/internal/parser"
 	"sec/internal/sema"
@@ -421,68 +420,6 @@ func runEmitLLVMCommand(args []string) {
 			exitCLI(1)
 		}
 	}
-}
-
-// runEmitIRCommand publishes verified Semantic IR while preserving structured
-// source-proof and compiler-capability failures at the requested boundary.
-// Rules: rules/compiler/compiler_pipeline.md — §§2(8–9), 32–34;
-// rules/compiler/compiler_analysis.md — §58(3).
-func runEmitIRCommand(args []string) {
-	inputFile, outputFile, target, ok := parseEmitIRCommandArgs(args, hostCompilerTarget())
-	if !ok {
-		printUsage()
-		exitCLI(1)
-	}
-	input, err := os.ReadFile(inputFile)
-	if err != nil {
-		reportToolError("read", "%v", err)
-		exitCLI(1)
-	}
-	analyzed := parseAndAnalyzeSourceForTargetWithAnalyzerMode(string(input), inputFile, target, false)
-	module, err := semantic.Build(analyzed.Program, analyzed.Analyzer, semantic.BuildOptions{SourceFiles: []string{inputFile}, MaxPackage: inspectionMaxPackage})
-	if err != nil {
-		reportPipelineError("semantic IR", err)
-		exitCLI(4)
-	}
-	if err := semantic.Verify(module); err != nil {
-		reportPipelineError("semantic IR verification", err)
-		exitCLI(4)
-	}
-	if err := writeCompilerOutput(outputFile, []byte(semantic.Format(module))); err != nil {
-		reportToolError("write", "%v", err)
-		exitCLI(1)
-	}
-}
-
-func parseEmitIRCommandArgs(args []string, defaultTarget CompilerTarget) (inputFile, outputFile string, target CompilerTarget, ok bool) {
-	outputFile = "-"
-	target = defaultTarget
-	for i := 0; i < len(args); i++ {
-		switch args[i] {
-		case "-o":
-			if i+1 >= len(args) {
-				return "", "", CompilerTarget{}, false
-			}
-			i++
-			outputFile = args[i]
-		case "--target":
-			if i+1 >= len(args) {
-				return "", "", CompilerTarget{}, false
-			}
-			i++
-			parsed, valid := parseCompilerTarget(args[i])
-			if !valid {
-				return "", "", CompilerTarget{}, false
-			}
-			target = parsed
-		default:
-			if strings.HasPrefix(args[i], "-") || inputFile != "" {
-				return "", "", CompilerTarget{}, false
-			}
-			inputFile = args[i]
-		}
-	}
-	return inputFile, outputFile, target, inputFile != ""
 }
 
 func writeCompilerOutput(outputFile string, data []byte) error {

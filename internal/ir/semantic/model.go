@@ -576,8 +576,12 @@ const (
 	// OpNumericConvertExact is P20's NumericConvertExactOp, admitted early for
 	// built-in integer conversions Sema proved exact (MD-104).
 	OpNumericConvertExact OpKind = "numeric.convert-exact"
-	OpIntBinaryChecked    OpKind = "int.binary-checked"
-	OpIntBitwise          OpKind = "int.bitwise"
+	// OpNamedConvert changes only the nominal identity of an integer value
+	// between a named type and its carrier or another named type over the same
+	// carrier (semantic_ir.md §§ 7(4), 59(2)); it needs no runtime check.
+	OpNamedConvert     OpKind = "named.convert"
+	OpIntBinaryChecked OpKind = "int.binary-checked"
+	OpIntBitwise       OpKind = "int.bitwise"
 	// OpIntBitExtract is `bit[N](value)`: the unsigned value of the N
 	// (Operation.Integer) low bits of an integer, byte or char operand.
 	OpIntBitExtract                   OpKind = "int.bit-extract"

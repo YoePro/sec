@@ -130,6 +130,8 @@ func enrichInlayHint(hint *inlayHint, uri, text string, overlay sourceOverlay) {
 			detail = "Implicit mutable borrow for this call."
 		case "copy":
 			detail = "Semantic copy selected by the compiler."
+		case "move":
+			detail = "Ownership transfers from this source into the returned value or consuming receiver call. The source becomes unavailable after the transfer."
 		case "moves if selected":
 			detail = "The payload moves only if this match arm is selected; the subject is not moved by pattern testing."
 		default:

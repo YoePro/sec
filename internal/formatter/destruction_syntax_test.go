@@ -18,7 +18,7 @@ func TestDestructionSyntaxPreservation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want, err := os.ReadFile("../../testdata/formatter/destruction_syntax.expected.sec")
+	want, err := os.ReadFile("../../testdata/formatter/destruction_syntax.compact.expected.sec")
 	if err != nil {
 		t.Fatal(err)
 	}

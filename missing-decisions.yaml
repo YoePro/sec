@@ -1,6 +1,6 @@
 schema_version: 1
-updated: "2026-11-03"
-last_id: MD-125
+updated: "2026-11-04"
+last_id: MD-126
 purpose: >-
   Tracks normative decisions that are missing or insufficiently precise and
   therefore constrain implementation. Remove an entry only after the owning
@@ -188,25 +188,6 @@ decisions:
       contract-violation handling.
     classification: constraining
     status: open
-  - id: MD-031
-    area: sec-mlir-try-handler-metadata
-    rulebooks:
-      - rules/errors/errorhandling.md
-      - rules/mlir/dialect-versions/sec_mlir_dialect_v16.md
-    description: >-
-      Semantic IR now lowers guarded try handlers (guard-false continuation)
-      and partial handler plans with residual propagation, but the Sec MLIR
-      dialect schema only defines the handler kinds ok, err-variant,
-      err-catch-all, and merge. Decide how the dialect represents guarded
-      handlers and residual propagation (new handler kinds, attributes, or
-      explicit CFG), so the emitter can stop rejecting these plans.
-      Since 2026-10-12 Semantic IR also lowers try over Option[T] with None
-      handlers (handler kind none, distinct from Err handlers per
-      errorhandling.md §35); the same decision must cover how the dialect
-      represents an Option None handler.
-    classification: localized
-    status: open
-
   - id: MD-034
     area: allocation-profile-of-freestanding-targets
     rulebooks:
@@ -1126,5 +1107,31 @@ decisions:
       sync § 3. Recommended: A, with a Sema diagnostic. The compiler currently
       registers at the replacement point and stops the defer case as the lowering
       boundary "P17 replacement of an owned value a registered defer reads".
+    classification: localized
+    status: open
+  - id: MD-126
+    area: string-byte-range-iteration
+    rulebooks:
+      - rules/library/core-library.md
+      - rules/control-flow/flowcontrol_for.md
+      - rules/collections/collections.md
+      - rules/corrections/applied/md050-md071-md072-string-utf8-positions-materialization-correction-20261017.md
+    description: >-
+      Raised 2026-11-04 from sec/core/number_parse.sec. Code that validates a
+      byte range of a string wants `for character in source[startByte..endByte]`
+      with an O(1) slice. In 0.1.1 that is not valid: a string is not a slice
+      source (collections.md § 7.2), public string positions are rune indexes
+      (MD-071; Slice(start, end) takes runes), and ref rune bindings do not exist
+      (flowcontrol_for.md § 19, S1199). Workable now: `try source.Slice(start,
+      end)` with rune indexes, or a whole-string loop with a byte cursor.
+      Proposal (rules/corrections/MD-126-string-byte-range-iteration-proposal-20261104.md):
+      D1 form for 0.1.2: A) a checked `string.SliceBytes(startByte, endByte)
+      Result[string, RangeError]` that validates scalar boundaries in O(1) and
+      shares storage (recommended), B) index-range syntax on string (not
+      recommended), C) an opaque string position type (suggested for 0.2),
+      D) a range-limited rune iterator. D2: the non-boundary error, either reuse
+      RangeError.InvalidRange (recommended) or add a variant. D3: accept a named
+      byte-unit exception to MD-071 § 3(6). D4: optionally add rune.SizeOf (UTF-8
+      length). D5: interaction with MD-090. Recommended: A, gated to Sec 0.1.2.
     classification: localized
     status: open

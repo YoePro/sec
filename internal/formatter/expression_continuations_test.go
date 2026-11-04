@@ -38,7 +38,14 @@ func TestExpressionContinuationIndentation(t *testing.T) {
 	}
 	for _, width := range []int{2, 4, 6} {
 		for _, style := range []VerticalStyle{VerticalStructured, VerticalCompact} {
-			wantLines := strings.Split(string(expected), "\n")
+			wantSource := expected
+			if style == VerticalCompact {
+				wantSource, err = os.ReadFile("../../testdata/formatter/expression_continuations.compact.expected.sec")
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			wantLines := strings.Split(string(wantSource), "\n")
 			for i, line := range wantLines {
 				indent := leadingSpaces(line)
 				wantLines[i] = strings.Repeat(" ", indent/4*width) + line[indent:]

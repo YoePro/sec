@@ -150,7 +150,7 @@ func TestOwnershipDerivedDestructionAndPartialStateRejects(t *testing.T) {
 		{"trivial non-trivial", "is trivial for a type that needs destruction", func(m *Module) {
 			plan(m, "destroy:main::Text").Kind, plan(m, "destroy:main::Text").CustomFree = "trivial", false
 		}},
-		{"custom free on resource", "custom free belongs to a struct plan", func(m *Module) { plan(m, "destroy:string").CustomFree = true }},
+		{"custom free on resource", "custom free belongs to a struct or union plan", func(m *Module) { plan(m, "destroy:string").CustomFree = true }},
 		{"resource without contract", "names no release contract", func(m *Module) { plan(m, "destroy:string").Resource = "" }},
 		{"foreign steps", "carries steps of another kind", func(m *Module) { plan(m, "destroy:string").Element = "destroy:int" }},
 	} {

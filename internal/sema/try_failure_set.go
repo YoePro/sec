@@ -44,6 +44,9 @@ type TryFailurePoint struct {
 	ErrorType  Type
 	Expression ast.Expression
 	Token      lexer.Token
+	// CarrierType is the Result type of a carrier point; an intermediate
+	// receiver of a call chain is typed by its unwrapped success elsewhere.
+	CarrierType Type
 }
 
 // tryFailureSetContext is active while analyzing the handlers of a try whose

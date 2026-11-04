@@ -144,6 +144,68 @@ fn MoveAll(pair: ResourcePair) void {
 	}
 }
 
+// A union with custom free keeps its payload for free as a struct keeps its
+// fields: no match arm moves the payload out of a named or fresh subject, while
+// a non-binding pattern and a move of the whole union stay valid.
+//
+// Rules:
+//   - rules/memory/destruction.md — §10.3 "Custom `free`", §16.3
+func TestCustomFreeUnionForbidsPayloadMoves(t *testing.T) {
+	errors := analyzeSourceRaw(t, customFreeTypes+`
+type Slot union {
+    Holding(Handle),
+    Empty,
+}
+
+impl Slot {
+    free {
+    }
+}
+
+fn Named(slot: Slot) void {
+    match slot {
+        Holding(handle) => {
+            discard handle
+        }
+        Empty => {
+        }
+    }
+}
+
+fn Fresh() void {
+    match Slot.Holding(Handle { raw: 1 }) {
+        Holding(handle) => {
+            discard handle
+        }
+        Empty => {
+        }
+    }
+}
+
+fn Observe(slot: Slot) void {
+    match slot {
+        Holding(_) => {
+        }
+        Empty => {
+        }
+    }
+}
+
+fn Whole(slot: Slot) void {
+    let other :<- slot
+    discard other
+}
+`)
+	got := []string{}
+	for _, err := range errors {
+		got = append(got, errorAt(err))
+	}
+	assertStrings(t, got, []string{
+		"cannot move slot.<Holding> out of slot because type Slot defines custom free; partial moves are not permitted from custom-free types at 50:17",
+		"cannot move Holding payload out of the match subject because type Slot defines custom free; partial moves are not permitted from custom-free types at 60:17",
+	})
+}
+
 // free may not register defer, return a value, or consume complete self, and
 // self fields stay non-movable inside it.
 //

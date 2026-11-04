@@ -4,6 +4,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"sec/internal/diagnostics"
 )
 
 // ref and ref mut loop bindings type as references with the iterable's
@@ -58,6 +60,15 @@ func TestForBindingModeDiagnostics(t *testing.T) {
 	for i, want := range wants {
 		if errors[i].Line != want.line || !strings.Contains(errors[i].Message, want.message) {
 			t.Fatalf("error %d = %+v, want %q at line %d", i, errors[i], want.message, want.line)
+		}
+	}
+	// A binding mode the source does not provide carries S1199 and help
+	// (flowcontrol_for.md § 40).
+	for _, line := range []int{21, 23, 25, 29, 31} {
+		for _, err := range errors {
+			if err.Line == line && (err.ID != diagnostics.ForBindingModeUnavailable || err.Help == "") {
+				t.Fatalf("line %d: %+v, want S1199 with help", line, err)
+			}
 		}
 	}
 }

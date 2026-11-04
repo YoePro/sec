@@ -109,8 +109,11 @@ func (b *builder) importDestructionPlans(set sema.DestructionPlanSet, typ sema.T
 			}
 			record.Element, record.ElementCount = string(plan.Element), plan.ElementCount
 		case sema.DestructionVariant:
+			// A union's custom free runs before its active payload is
+			// destroyed, as a struct's runs before its fields (destruction.md § 15.5).
+			record.CustomFree = plan.CustomFree
 			if plan.CustomFree {
-				return &UnsupportedFeatureError{Feature: "P17 custom-free union destruction plan", Package: b.maxPackage}
+				record.FreeType = typ.Name
 			}
 			for _, step := range plan.Variants {
 				if len(step.Payload) != 0 && step.Payload[0].Field != "" {
@@ -243,6 +246,12 @@ func (fb *functionBuilder) trackOwned(token lexer.Token, registration sema.Resol
 			unsupported.Location = location(token)
 		}
 		return err
+	}
+	// An owner a defer reads outlives its inner scope until the defer runs at
+	// function exit, so it registers in the function scope (defer.md § 8). In
+	// a loop it would need one instance per iteration; buildDefer stops there.
+	if root, ok := fb.cleanupPlan(); ok && fb.deferReadOwners[registration.Binding] && len(fb.loops) == 0 {
+		registration.Scope = root.Root
 	}
 	fb.cleanupOrdinal++
 	if fb.trackedActions == nil {
@@ -482,7 +491,9 @@ func (fb *functionBuilder) ownedArgumentLowerable(argument ast.Expression) bool 
 	switch argument := argument.(type) {
 	case *ast.Identifier:
 		plan, ok := fb.owner.analyzer.ResolvedTransferPlanOf(argument)
-		return ok && ownedLocalMoveLowerable(plan) && (plan.Site == sema.TransferSiteArgument || plan.Site == sema.TransferSiteConstruction)
+		// `return Some(x)` moves x into the returned payload (site return).
+		return ok && ownedLocalMoveLowerable(plan) &&
+			(plan.Site == sema.TransferSiteArgument || plan.Site == sema.TransferSiteConstruction || plan.Site == sema.TransferSiteReturn)
 	case *ast.PrefixExpression:
 		return argument.Operator == "<-" && fb.ownedArgumentLowerable(argument.Right)
 	case *ast.CallExpression, *ast.StructLiteral:
@@ -734,6 +745,11 @@ func (fb *functionBuilder) markPartialRoots(body *ast.BlockStatement) {
 			if typ, ok := fb.owner.analyzer.ResolvedTypeOf(node.Expression); ok && !sema.TriviallyDestructible(typ) {
 				mark(node.Expression)
 			}
+		case *ast.DiscardStatement:
+			// Discarding a stored field ends it through its field Place.
+			if typ, ok := fb.owner.analyzer.ResolvedTypeOf(node.Value); ok && !sema.TriviallyDestructible(typ) {
+				mark(node.Value)
+			}
 		case *ast.CallExpression:
 			// Result.Ok()/Err() consume a stored field receiver the same way.
 			if member, ok := node.Callee.(*ast.MemberExpression); ok && member.Property != nil {
@@ -786,21 +802,31 @@ func (fb *functionBuilder) moveOwnedField(member *ast.MemberExpression) (builtVa
 	if !stored {
 		return builtValue{}, true, fb.unsupported("P17 field move out of an owner without storage", member.Token)
 	}
+	place, err := fb.storedFieldPlace(owned, root, chain)
+	if err != nil {
+		return builtValue{}, true, err
+	}
+	element, _ := fb.owner.module.Types.Lookup(place.typ)
+	return fb.result(Operation{Kind: OpOwnMoveFromPlace, Operands: []ValueID{place.id}, Ownership: &OwnershipFacts{}, Location: location(member.Token)}, element.Element), true, nil
+}
+
+// storedFieldPlace projects the field Place a chain of stored fields names in
+// an owner held in storage.
+func (fb *functionBuilder) storedFieldPlace(owned ownedStorage, root *ast.Identifier, chain []*ast.MemberExpression) (builtValue, error) {
 	place := fb.ownedStoragePlace(owned, root.Token)
 	for _, step := range chain {
 		field, resolved := fb.owner.analyzer.ResolvedStructMemberOf(step)
 		if !resolved || field.Kind != sema.MemberStoredField {
-			return builtValue{}, true, fb.unsupported("P17 field move through an unresolved field", step.Token)
+			return builtValue{}, fb.unsupported("P17 field move through an unresolved field", step.Token)
 		}
 		fieldType, err := fb.owner.internType(field.MemberType)
 		if err != nil {
-			return builtValue{}, true, err
+			return builtValue{}, err
 		}
 		placeType := fb.owner.module.Types.Intern(Type{Kind: TypePlace, Element: fieldType, Mutable: true})
 		place = fb.placeResult(Operation{Kind: OpPlaceField, Operands: []ValueID{place.id}, StructField: StructFieldID(field.FieldID), Place: placeMetadataOf(owned.place), Location: location(step.Token)}, placeType)
 	}
-	element, _ := fb.owner.module.Types.Lookup(place.typ)
-	return fb.result(Operation{Kind: OpOwnMoveFromPlace, Operands: []ValueID{place.id}, Ownership: &OwnershipFacts{}, Location: location(member.Token)}, element.Element), true, nil
+	return place, nil
 }
 
 // assignOwnedField lowers `p.f = v` on an owner held in storage through the field

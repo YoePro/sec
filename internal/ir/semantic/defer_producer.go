@@ -2,6 +2,7 @@ package semantic
 
 import (
 	"sec/internal/ast"
+	"sec/internal/ast/walk"
 	"sec/internal/sema"
 )
 
@@ -49,10 +50,11 @@ func (fb *functionBuilder) buildDefer(stmt *ast.DeferStatement) error {
 		if !known || !tracked && !fb.storageAllowed(bound.typ) {
 			return fb.unsupported("defer capturing a value that needs destruction", capture.Use)
 		}
-		// An owner of an inner scope must outlive its scope until the defer
-		// runs at function exit (defer.md § 8), once per registration in a loop.
+		// An owner of an inner scope registered in the function scope so that it
+		// outlives its scope until the defer runs (markDeferReadOwners). In a
+		// loop each registration would need its own instance (defer.md §§ 8, 13).
 		if root, ok := fb.cleanupPlan(); tracked && ok && fb.trackedScopes[capture.Binding] != root.Root {
-			return fb.unsupported("P17 defer reading an owned value of an inner scope", capture.Use)
+			return fb.unsupported("P17 defer in a loop reading an owned value of the loop body", capture.Use)
 		}
 		// A Place captures the slot, so every registration would read the last
 		// iteration's instance instead of its own (defer.md § 13).
@@ -196,4 +198,29 @@ func (fb *functionBuilder) readCapturedField(member *ast.MemberExpression, plan 
 		place = fb.placeResult(Operation{Kind: OpPlaceField, Operands: []ValueID{place.id}, StructField: StructFieldID(field.FieldID), Location: location(step.Token)}, placeType)
 	}
 	return fb.result(Operation{Kind: OpPlaceRead, Operands: []ValueID{place.id}, Location: location(member.Token)}, fieldType), true, nil
+}
+
+// markDeferReadOwners records the bindings the function's defers read, before
+// the body is built, so their owners can register in the function scope.
+func (fb *functionBuilder) markDeferReadOwners(body *ast.BlockStatement) {
+	_ = walk.Inspect(body, func(node any) error {
+		stmt, ok := node.(*ast.DeferStatement)
+		if !ok {
+			return nil
+		}
+		plan, ok := fb.owner.analyzer.ResolvedDeferPlanOf(stmt)
+		if !ok {
+			return nil
+		}
+		for _, capture := range plan.Captures {
+			if capture.Binding == 0 {
+				continue
+			}
+			if fb.deferReadOwners == nil {
+				fb.deferReadOwners = map[sema.BindingID]bool{}
+			}
+			fb.deferReadOwners[capture.Binding] = true
+		}
+		return nil
+	})
 }

@@ -376,7 +376,8 @@ LogicalResult SecDialect::verifyOperationAttribute(Operation *operation,
     return requireString();
   if (name == "sec.extern" || name == "sec.unsafe" ||
       name == "sec.mutable" || name == "sec.synthesized" ||
-      name == "sec.try_handler_exhaustive")
+      name == "sec.try_handler_exhaustive" ||
+      name == "sec.try_handler_guarded" || name == "sec.try_handler_residual")
     return requireBool();
   // Ownership actions of a call result, a return and branch operands
   // (dialect v13 sections 25-27).

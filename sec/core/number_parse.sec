@@ -1,0 +1,44 @@
+module core
+
+// A positional decimal digit and its numeral-system identity.
+type _DecimalDigit struct {
+    Value: uint8,
+    Zero:  rune,
+}
+
+// A half-open UTF-8 byte range in the original input.
+type _NumberSpan struct {
+    Start: uint,
+    End:   uint,
+}
+
+// Result of scanning a positional number.
+type _NumberScan struct {
+    Radix:            uint8,
+    Negative:         bool,
+    Integer:          _NumberSpan,
+    Fraction:         Option[_NumberSpan],
+    Exponent:         Option[_NumberSpan],
+    ExponentNegative: bool,
+    DecimalZero:      Option[rune],
+}
+
+// Validates a trailing alphabetic suffix.
+// Digits and other characters are not permitted.
+fn _ValidateNumberSuffix(source: string, startByte: uint, endByte: uint) Result[void, NumberParseError] {
+    if source.Len == 0 {
+        return Err(NumberParseError.InvalidNumber)
+    }
+
+    let part := try source.Slice(startByte, endByte) {
+        Err(_) => return Err(NumberParseError.InvalidNumber)
+    }
+
+    for character in part {
+        if character.IsUnicodeDigit || !character.IsLetter {
+            return Err(NumberParseError.InvalidNumber)
+        }
+    }
+
+    return Ok()
+}

@@ -24,13 +24,16 @@ func runCLI(args []string, out, errOut io.Writer) error {
 	random := flags.Bool("random", false, "Choose a random matching remaining point")
 	point := flags.Int("point", 0, "Choose a remaining point by its 1-based index (requires -id)")
 	exclude := flags.String("exclude", "", "Exclude points containing this text (case insensitive)")
-	jsonOutput := flags.Bool("json", false, "Print selected point or path references as JSON")
+	jsonOutput := flags.Bool("json", false, "Print selection, search or path reports as JSON")
+	grep := flags.String("grep", "", "Find all remaining points containing literal text (case insensitive; supports -file, -id and -json)")
 	uses := flags.String("uses", "", "List code/tests/rules references to a repository path (supports -file, -id and -json)")
+	paths := flags.Bool("paths", false, "Report missing code/tests/rules paths (supports -file, -id and -json)")
+	goPaths := flags.Bool("go", false, "With -paths, check only .go paths under internal/ and cmd/")
 	verbose := flags.Bool("verbose", false, "Show all data otherwise just the most relevant.")
 	html := flags.Bool("html", false, "Return the output as HTML.")
 	itemOnly := flags.Bool("itemonly", false, "Only show the status for items")
 	flags.Usage = func() {
-		fmt.Fprintln(errOut, "Usage: yamlstatus [options] [directory]\nWithout selection options, prints implementation statistics.\nWith -file or -id, selects the first matching remaining point; -random randomizes selection.\nWith -uses PATH, lists integrations referencing a file in code/tests/rules.")
+		fmt.Fprintln(errOut, "Usage: yamlstatus [options] [directory]\nWithout selection options, prints implementation statistics.\nWith -file or -id, selects the first matching remaining point; -random randomizes selection.\nWith -uses PATH, lists integrations referencing a file in code/tests/rules.\nWith -paths, checks listed paths for existence; -go restricts to internal/ and cmd/ Go files.")
 		flags.PrintDefaults()
 		fmt.Fprintln(errOut, "\n"+editUsage)
 	}
@@ -46,12 +49,32 @@ func runCLI(args []string, out, errOut io.Writer) error {
 	if flags.NArg() == 1 {
 		*dir = flags.Arg(0)
 	}
-	usesMode := false
+	usesMode, grepMode := false, false
 	flags.Visit(func(option *flag.Flag) {
 		if option.Name == "uses" {
 			usesMode = true
 		}
+		if option.Name == "grep" {
+			grepMode = true
+		}
 	})
+	if grepMode {
+		if strings.TrimSpace(*grep) == "" {
+			return fmt.Errorf("-grep requires non-empty text")
+		}
+		if usesMode || *paths || *goPaths || *random || *point != 0 || *exclude != "" || *html || *itemOnly || *verbose {
+			return fmt.Errorf("-grep cannot be combined with -uses, -paths, -go, -random, -point, -exclude, -html, -itemonly or -verbose")
+		}
+	}
+	if *goPaths && !*paths {
+		return fmt.Errorf("-go requires -paths")
+	}
+	if *paths && usesMode {
+		return fmt.Errorf("-paths and -uses cannot be combined")
+	}
+	if *paths && (*random || *point != 0 || *exclude != "" || *html || *itemOnly || *verbose) {
+		return fmt.Errorf("-paths cannot be combined with -random, -point, -exclude, -html, -itemonly or -verbose")
+	}
 	if usesMode {
 		if strings.TrimSpace(*uses) == "" {
 			return fmt.Errorf("-uses requires a non-empty path")
@@ -67,7 +90,7 @@ func runCLI(args []string, out, errOut io.Writer) error {
 		return fmt.Errorf("-point and -random cannot be combined")
 	}
 	selection := *random || *file != "" || *id != "" || *point > 0
-	if !selection && !usesMode && (*jsonOutput || *exclude != "") {
+	if !selection && !usesMode && !*paths && !grepMode && (*jsonOutput || *exclude != "") {
 		return fmt.Errorf("-json and -exclude require -random, -file or -id")
 	}
 	input := *dir
@@ -88,6 +111,30 @@ func runCLI(args []string, out, errOut io.Writer) error {
 	stats, err := collectStats(input)
 	if err != nil {
 		return err
+	}
+	if grepMode {
+		report, err := searchRemaining(stats.Entries, *grep, *id)
+		if err != nil {
+			return err
+		}
+		return printRemainingSearch(out, report, *jsonOutput)
+	}
+	if *paths {
+		root, err := referenceRoot(*dir)
+		if err != nil {
+			return err
+		}
+		report, err := checkReferencedPaths(stats.Entries, root, *id, *goPaths)
+		if err != nil {
+			return err
+		}
+		if err := printMissingPaths(out, report, *jsonOutput); err != nil {
+			return err
+		}
+		if len(report.Missing) != 0 {
+			return fmt.Errorf("%d missing path references", len(report.Missing))
+		}
+		return nil
 	}
 	if usesMode {
 		root, err := referenceRoot(*dir)

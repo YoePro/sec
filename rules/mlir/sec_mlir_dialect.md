@@ -2113,6 +2113,8 @@ other operation may be used in schema 11 without being recorded here.
 | `sec.place.static`; `sec.static_id` and `sec.address_taken = true` on `sec.static.global` | MD-116 (v11.41.3 below); P15-42/42a/47 | 2026-10-27 (specification; implementation tracked in governance) |
 | `sec.match_pattern_kind = "result-err-variant"`; `sec.unreachable` reason `exhaustive-try-fallthrough` | MD-008/MD-029 (v11.41.4 below) | 2026-10-30 |
 | `sec.hw.binding` (module-level `register.hw.bind` record) | MD-077 § 19(5), MD-111 (v11.41.5 below); P15-42 | 2026-10-31 |
+| `sec.try_handler_kind` values `none` and `residual`; `sec.try_handler_guarded`, `sec.try_handler_residual` | MD-031 (v11.41.6 below) | 2026-11-04 |
+| `sec.named.convert`; named integer operands of `sec.int.*` | semantic_ir.md §§ 7(4)–(5), 59(6) (v11.41.7 below) | 2026-11-04 |
 
 Schemas 7–10 remain readable without these operations. Lowering of each one is
 listed in `sec-check-lowering-support`; a module using any of them outside
@@ -2356,6 +2358,30 @@ Installed 2026-10-31 together with the Semantic IR `hardware` table (`semantic_i
 - **`sec.hw.bind @binding`** is reserved as the in-function operation that yields `!sec.hw_instance<T>` from a `sec.hw.binding`, carrying the v11.41.1 identities. It is admitted together with the first `sec.hw.observe`/`sec.hw.request_write` lowering. Until then, a function that uses a bound instance fails in Semantic IR with an explicit `register.hw.*` boundary.
 - The verifier checks schema 11 or later, the module parentage, the instance type and its register definition, non-empty identities, the endpoint kind, decimal extents, a positive size and alignment, the widths and identity uniqueness. Schema 12 inherits the record unchanged.
 - `--sec-check-lowering-support` and `--sec-lower-to-llvm` reject the record (`does not lower 'sec.hw.binding' yet`, together with its `!sec.hw_instance` type): selecting a physical representation still needs a verified target plan.
+
+
+### v11.41.6 Guarded, partial and Option try handlers (MD-031)
+
+Installed 2026-11-04. It decides MD-031, the Sec MLIR spelling that the owner delegated, and lets the emitter publish the guarded, partial and Option `None` handler plans that Semantic IR already lowered (`errorhandling.md` §§ 16, 19, 35). It adds no operation: the handler CFG is explicit, and only the handler provenance grows.
+
+- `sec.try_handler_kind` admits two more values. `none` marks the edge of an Option `None` handler into the try merge, distinct from Err handlers (§ 35). `residual` marks the `func.return` that propagates the failures a partial list leaves unmatched; its `sec.try_handler_index` is `-1`.
+- `sec.try_handler_guarded = true` marks a handler edge that is taken only after its `where` guard holds. On a false guard, control continues with the next handler test.
+- `sec.try_handler_residual = true` marks the handler edges of a partial list whose unmatched failures leave through a `residual` return.
+- `--sec-verify-try-handlers` groups handler edges by their merge block:
+  - A guarded handler neither covers its variant nor ends the list.
+  - An unguarded `err-catch-all` or `none` ends the list. A later handler, guarded or not, is rejected.
+  - At schema 7 and later, a group needs exhaustive Sema provenance. The exception is a group whose edges carry `sec.try_handler_residual`, which instead needs a `residual` return in the function.
+  - `residual` is admitted only on `func.return` with index `-1`.
+- Both flags are optional booleans, valid at every schema; emitters produce them only from Semantic IR handler facts. Native lowering consumes the existing CFG unchanged (`testdata/build/native/try_handler_forms.sec`).
+
+### v11.41.7 Named integers (semantic_ir.md §§ 7(4)–(5), 59(6))
+
+Installed 2026-11-04. The owner decided that a named integer keeps its identity through Semantic IR and Sec MLIR, and is erased only in physical lowering.
+
+- `sec.int.unary_plus`, `neg_checked`, `binary_checked`, `bit_not`, `bitwise`, `shift_checked` and `cmp` accept operands of `!sec.named<identity, base>` whose base chain ends in a builtin Sec integer. Operands and results keep the same named type exactly. Signedness and width come from the carrier, and a named and an unnamed operand never mix.
+- **`sec.named.convert`** (`Pure`, one operand, one result) changes only the nominal identity: between a named integer and its carrier, or between two named types over the same carrier. The verifier rejects an unchanged type, a pair without a named type, and different carriers. No check exists because the value is unchanged. A conversion that changes the carrier, involves units or validates contracts keeps its own operation.
+- `sec-lower-integer-core` erases the identity. A named integer becomes its carrier's signless integer, `sec.named.convert` becomes its operand, and bridges at storage boundaries follow the carrier's rule.
+- Native lowering of mutable storage whose element type is a named integer is not implemented yet. `sec-finalize-for-llvm` rejects it explicitly.
 
 ---
 

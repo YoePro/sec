@@ -450,11 +450,9 @@ fn Calculate() Result[int, Failure] { return Ok(1) }
 			source:  "module main\nfn Add(a: decimal, b: decimal) decimal { return a + b }\n",
 			feature: "operator decimal-add-checked",
 		},
-		{
-			name:    "named integer arithmetic",
-			source:  "module main\ntype Count int\nfn Add(a: Count, b: Count) Count { return a + b }\n",
-			feature: "unresolved or unsupported operator",
-		},
+		// Named integer arithmetic left this boundary on 2026-11-04: it keeps
+		// the named identity and applies the carrier's checked operations
+		// (named_scalars.sec, TestNamedIntegerConversionAndOperatorPlans).
 		{
 			name:    "unit-bearing arithmetic",
 			source:  "module main\nunit ticks uint physical\nfn Add(a: uint32<ticks>, b: uint32<ticks>) uint32<ticks> { return a + b }\n",

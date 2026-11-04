@@ -1,0 +1,21 @@
+// RUN: not sec-mlir-opt --sec-verify-union-guards %s -o /dev/null 2>&1 | FileCheck %s
+// A projection reached from the false edge of its variant test is unguarded,
+// even through an intermediate block.
+
+!o = !sec.union<identity = "main::Option<int>", typeArguments = [!sec.int], variants = [#sec.union_variant<index = 0, name = "Some", kind = "single", payload = !sec.int, fields = []>, #sec.union_variant<index = 1, name = "None", kind = "empty", fields = []>]>
+module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 64>>, sec.dialect_version = 7 : i32, sec.semantic_ir_version = 1 : i32, sec.module_id = "union-guard-dominance", sec.source_files = [], sec.target_os = "linux", sec.target_arch = "amd64", sec.target_triple = "x86_64-pc-linux-gnu", sec.target_abi = "gnu", sec.target_profile = "hosted", sec.target_endianness = "little"} {
+  func.func @false_edge(%value: !o, %guard: i1) -> !sec.int {
+    %some = "sec.union.is_variant"(%value) <{variant = 0 : i32}> : (!o) -> i1
+    cf.cond_br %some, ^other, ^tested
+  ^tested:
+    cf.cond_br %guard, ^commit, ^other
+  ^commit:
+    %payload = "sec.union.unwrap_payload"(%value) <{payloadAction = "copy-trivial", variant = 0 : i32}> : (!o) -> !sec.int
+    return %payload : !sec.int
+  ^other:
+    %zero = "sec.const.int"() <{value = "0"}> : () -> !sec.int
+    return %zero : !sec.int
+  }
+}
+
+// CHECK: error: 'sec.union.unwrap_payload' op must be in the true successor of a matching union.is_variant guard on the same SSA value

@@ -1,0 +1,12 @@
+module main
+
+type Point struct {
+    x: int,
+    y: int,
+}
+
+static let Origin: Point := Point { x: 1, y: 2 }
+
+fn Read() int {
+    return Origin.x
+}

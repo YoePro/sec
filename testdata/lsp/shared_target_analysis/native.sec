@@ -1,0 +1,8 @@
+module storage
+
+import "dep"
+
+interface Native { fn Size() int }
+fn Use(handle: Handle) int { return handle.Size() }
+fn Dependency() int { return dep.Value() }
+fn Wide() uint { return 4294967296u }

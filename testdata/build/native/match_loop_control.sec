@@ -1,0 +1,38 @@
+module main
+
+// Loop control from match arms: continue and break leave the arm, run its
+// cleanup and reach the loop targets (lowering.sec-mlir-match-cfg).
+
+fn Find(limit: int) Option[int] {
+    if limit > 3 {
+        return None
+    }
+    return Some(limit)
+}
+
+fn Count() int {
+    let mut total := 0
+    let mut index := 0
+    while index < 10 {
+        index = index + 1
+        match Find(index) {
+            Some(value) => {
+                if value == 2 {
+                    continue
+                }
+                total = total + value
+            }
+            None => {
+                break
+            }
+        }
+    }
+    return total
+}
+
+fn main() int {
+    if Count() != 4 {
+        return 1
+    }
+    return 0
+}

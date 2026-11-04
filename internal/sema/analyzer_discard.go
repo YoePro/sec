@@ -19,7 +19,8 @@ const (
 	DiscardSourceConditional DiscardSourceState = "conditional"
 )
 
-// ResolvedDiscardSourceStateOf returns the state of a discarded whole binding.
+// ResolvedDiscardSourceStateOf returns the state of a discarded whole binding
+// or stored field.
 func (a *Analyzer) ResolvedDiscardSourceStateOf(stmt *ast.DiscardStatement) (DiscardSourceState, bool) {
 	state, ok := a.discardStates[stmt]
 	return state, ok
@@ -71,11 +72,7 @@ func (a *Analyzer) analyzeDiscardStatement(stmt *ast.DiscardStatement) {
 			// expression inference so CLI and LSP consumers observe the same valid
 			// operand even though availability checking is intentionally skipped.
 			a.expressionTypes[stmt.Value] = place.Type
-			if ident, isIdentifier := stmt.Value.(*ast.Identifier); isIdentifier {
-				if symbol, exists := a.symbols[ident.Value]; exists {
-					a.bindDefinition(ident.Token, symbol.Token)
-				}
-			}
+			a.recordDiscardedPlaceFacts(stmt.Value)
 			a.recordRedundantDiscard(stmt, place, movedKey, endedAt)
 			state := DiscardSourceUnavailable
 			if isConditionalAvailabilityReason(a.moveReasons[movedKey]) {
@@ -116,6 +113,7 @@ func (a *Analyzer) analyzeDiscardStatement(stmt *ast.DiscardStatement) {
 				return
 			}
 			a.markPlaceUnavailable(place, expressionToken(stmt.Value), "discarded")
+			a.discardStates[stmt] = DiscardSourceAvailable
 			return
 		}
 	}
@@ -148,6 +146,35 @@ func (a *Analyzer) analyzeDiscardStatement(stmt *ast.DiscardStatement) {
 	a.endBorrowsHeldBy(ident.Value)
 	if symbol.Type.Kind == ReferenceType {
 		delete(a.localRefContainers, ident.Value)
+	}
+}
+
+// recordDiscardedPlaceFacts publishes the binding and stored-field facts of an
+// unavailable discarded Place, whose inference is skipped, so lowering can name
+// the field Place it ends.
+func (a *Analyzer) recordDiscardedPlaceFacts(expr ast.Expression) {
+	switch expr := expr.(type) {
+	case *ast.Identifier:
+		if symbol, exists := a.symbols[expr.Value]; exists {
+			a.bindDefinition(expr.Token, symbol.Token)
+		}
+	case *ast.MemberExpression:
+		a.recordDiscardedPlaceFacts(expr.Object)
+		object, ok := a.resolvePlace(expr.Object)
+		if !ok || expr.Property == nil {
+			return
+		}
+		for fieldID, field := range object.Type.Fields {
+			if field.Name == expr.Property.Value {
+				a.resolvedStructMemberPlans[expr] = ResolvedStructMemberPlan{
+					Kind: MemberStoredField, OwnerType: object.Type, MemberType: field.Type,
+					FieldID: uint32(fieldID), FieldName: field.Name, Tags: cloneStructTags(field.Tags),
+					Action: resolvedStructCopyAction(field.Type),
+				}
+				a.expressionTypes[expr] = field.Type
+				return
+			}
+		}
 	}
 }
 

@@ -255,8 +255,9 @@ lit `@order`, `@defer_order`, `@defer_capture`, `@defer_reads_newer_owner`.
 ## 38. Unsupported partial-array/custom-free tests
 
 Array-element move-out is rejected in both verifiers; partial moves out of
-custom-free values are rejected by Sema and MLIR; custom-free unions stop at a
-named boundary.
+custom-free values are rejected by Sema and MLIR, including a payload moved out
+of a custom-free union by a match arm (2026-11-04). A custom-free union's plan
+carries its free before the active payload.
 
 ## 39. CMake commands
 

@@ -73,9 +73,6 @@ func EmitWithOptions(module *semantic.Module, plan layout.ResolvedScalarPlan, op
 	if err := e.validateSliceBoundaries(); err != nil {
 		return nil, err
 	}
-	if err := validateTryHandlerSchema(module); err != nil {
-		return nil, err
-	}
 	e.functions, err = resolvedFunctionSymbols(module)
 	if err != nil {
 		return nil, err

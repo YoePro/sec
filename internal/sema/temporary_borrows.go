@@ -162,6 +162,11 @@ func (a *Analyzer) recordTemporaryBorrowPlan(expr ast.Expression, mutable bool) 
 	if !ok {
 		return
 	}
+	// The intermediate Result receiver of a try chain lends its Ok value
+	// (errorhandling.md § 11).
+	if result, unwrapped := a.tryUnwrappedReceivers[expr]; unwrapped && typ.Kind == ResultType && sameConcreteType(typ, result) {
+		typ = result.TypeArgs[0]
+	}
 	place := a.temporaryPlace(expr, typ, mutable)
 	token := place.RootToken
 	a.recordReferencePlan(expr, place, mutable, true, token)

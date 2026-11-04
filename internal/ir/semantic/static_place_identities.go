@@ -9,6 +9,7 @@ import "fmt"
 // current Static representation selects ordinary memory only; physical hardware
 // bindings have a separate representation (static.md §22).
 // Rules: rules/compiler/semantic_ir.md — §10(12), §28(6);
+// §§96–97 require malformed blocks to be rejected before dependent traversals;
 // rules/mlir/sec_mlir_dialect.md — v11.41.3 (MD-116 §§2,4(6),7).
 func verifyStaticPlaceIdentities(module *Module) error {
 	type facts struct {
@@ -22,6 +23,9 @@ func verifyStaticPlaceIdentities(module *Module) error {
 	var walk func([]*Block) error
 	walk = func(blocks []*Block) error {
 		for _, block := range blocks {
+			if block == nil {
+				return fmt.Errorf("nil block in static Place identity verification")
+			}
 			for _, op := range block.Operations {
 				if op.Kind == OpPlaceStaticRoot && op.Place != nil {
 					p := op.Place

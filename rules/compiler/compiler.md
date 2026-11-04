@@ -2,7 +2,7 @@
 
 - Status: Normative
 - Created: 2026-09-03
-- Last updated: 2026-10-28 (§ 55(4) invalid source never crashes the compiler, from the retired rules_implementations.txt); 2026-09-03
+- Last updated: 2026-11-04 (§§ 1, 64, 82–83, 93–94: implementation inventory and canonical governance ownership); 2026-10-28 (§ 55(4) invalid source never crashes the compiler, from the retired rules_implementations.txt); 2026-09-03
 - Document revision: 2.0
 - Sec language version: 0.1
 - Canonical path: `rules/compiler/compiler.md`
@@ -54,7 +54,7 @@ implementation-capability reporting.
 
 § 1(12) Mutable implementation status does not belong in this rulebook.
 
-§ 1(13) Repository implementation state is tracked by `implementation-status.yaml`.
+§ 1(13) Repository implementation state is tracked by the canonical fragments registered in `governance/index.yaml`. Each integration has one owner; `governance/README.md` defines the ledger contract.
 
 ---
 
@@ -1390,6 +1390,8 @@ test plan.
 
 § 64(2) Exact subcommand names/options are mutable tooling surface unless separately stabilized.
 
+The normative user-facing CLI contract is owned by `rules/tooling/cli.md` and the relevant command's tooling rulebook. The running compiler's command registry and generated help describe its executable command/option inventory. Current availability, restrictions and implementation evidence belong to the owning governance integration. Neither an inspection-view example nor a help entry proves complete language or lowering support.
+
 § 64(3) Inspection output identifies the relevant target/Variant/plan/schema where required.
 
 § 64(4) An inspection command must not use a separate semantic implementation.
@@ -1717,28 +1719,17 @@ miscompiled supported construct.
 
 § 82(1) This rulebook defines the canonical compiler model, not mutable repository progress.
 
-§ 82(2) Current implementation may temporarily contain:
+§ 82(2) Lists of currently implemented commands, accepted flags, target support, compatibility paths and backend coverage are implementation inventories. They must not be copied into this normative compiler rulebook as snapshots of available capabilities.
 
-```text
-legacy target strings;
-bootstrap source imports;
-legacy #target parsing;
-legacy direct LLVM;
-partial Sec MLIR coverage;
-partial CLI commands;
-partial target registry;
-hardcoded compatibility paths.
-```
+§ 82(3) Current implementation state and its verification evidence are tracked by the owning `governance/` fragments. Executable command/option inventories are exposed through the compiler's shared CLI registry and help; supported source and target requests remain subject to the canonical analysis, capability and lowering gates.
 
-§ 82(3) Those are tracked only in governance.
-
-§ 82(4) Their existence does not create alternative normative semantics.
+§ 82(4) An implementation's current limitations or compatibility mechanisms do not create alternative normative semantics.
 
 ---
 
 ## § 83 Governance synchronization
 
-§ 83(1) `implementation-status.yaml` is the canonical current implementation ledger.
+§ 83(1) The fragments registered in `governance/index.yaml` are the canonical current implementation ledger. The retired root `implementation-status.yaml` is not an active ledger and must not be recreated.
 
 § 83(2) Implementation-status entries use `compiler.md` as the canonical compiler rulebook path.
 
@@ -1909,7 +1900,7 @@ deterministic diagnostics after parallel rebuild.
 
 § 93(4) Backend integration is complete when the canonical Semantic IR -> Sec MLIR lowering path covers maintained Sec 0.1 semantics and legacy paths either consume canonical facts or reject unsupported constructs explicitly.
 
-§ 93(5) Governance is complete when mutable target capability, CLI implementation, bootstrap import, and backend progress live only in `implementation-status.yaml`.
+§ 93(5) Governance is complete when mutable target capability, CLI implementation, bootstrap import, and backend progress are recorded under their single owning integrations in the fragments registered by `governance/index.yaml`, rather than as capability snapshots in normative rulebooks.
 
 § 93(6) Cross compilation is complete when no unrequested host property can affect target semantic facts.
 
@@ -1947,7 +1938,7 @@ deterministic diagnostics after parallel rebuild.
 
 § 94(14) Source invalidity, target/profile invalidity, missing compiler support, missing toolchain support, and internal compiler errors are distinct.
 
-§ 94(15) Mutable implementation/governance data belongs in `implementation-status.yaml`, not in this normative rulebook.
+§ 94(15) Mutable implementation/governance data belongs in the canonical `governance/` fragments registered by `governance/index.yaml`, not in this normative rulebook.
 
 ## Debug-information architecture integration
 

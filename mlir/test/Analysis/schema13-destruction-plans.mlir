@@ -8,6 +8,7 @@
 !r = !sec.result<!h, !sec.int>
 !a = !sec.array<!h, "1000000">
 !z = !sec.array<!h, "0">
+!u = !sec.union<identity = "main::U", typeArguments = [], variants = [#sec.union_variant<index = 0, name = "Holding", kind = "single", payload = !h, fields = []>, #sec.union_variant<index = 1, name = "Empty", kind = "empty", fields = []>]>
 
 // CHECK-LABEL: module
 module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 : i32, sec.module_id = "plans", sec.source_files = [], sec.target_os = "linux", sec.target_arch = "armv7", sec.target_triple = "armv7-unknown-linux-gnueabihf", sec.target_abi = "gnu", sec.target_profile = "hosted", sec.target_endianness = "little", dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32>>, sec.destruction_plans = [
@@ -20,8 +21,12 @@ module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 :
   {id = "z", type = !z, kind = "fixed-array", element = "h", element_count = "0"},
   {id = "nested", type = !sec.array<!p, "2">, kind = "fixed-array", element = "p", element_count = "2"},
   {id = "o", type = !o, kind = "active-variant", variants = [{variant = 1 : i32, plan = "h"}]},
-  {id = "r", type = !r, kind = "active-variant", variants = [{variant = 0 : i32, plan = "h"}]}
+  {id = "r", type = !r, kind = "active-variant", variants = [{variant = 0 : i32, plan = "h"}]},
+  {id = "u", type = !u, kind = "active-variant", custom_free = true, free_type = "U", free_function = @free_u, variants = [{variant = 0 : i32, plan = "h"}]}
 ]} {
+  func.func @free_u(%self: !sec.ref_mut<!u> {sec.reference = {borrow_id = 1 : i32, lifetime_id = 1 : i32, validity_policy = "proven", validity_proof = "caller-owned-borrow", address_stability = "Stable", provenance = "receiver"}}) {
+    return
+  }
   func.func @free(%self: !sec.ref_mut<!h> {sec.reference = {borrow_id = 1 : i32, lifetime_id = 1 : i32, validity_policy = "proven", validity_proof = "caller-owned-borrow", address_stability = "Stable", provenance = "receiver"}}) {
     return
   }

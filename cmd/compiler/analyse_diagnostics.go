@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"os"
+
 	"sec/internal/diagnostics"
 	"sec/internal/sema"
 )
@@ -40,6 +42,10 @@ func analyseDiagnosticClass(value sema.Error) analyseReportClass {
 func (r analyseReport) emitSelectedDiagnostics() {
 	for _, warning := range r.warnings {
 		label := "Warning"
+		if warning.Severity == diagnostics.SeverityError {
+			printSemaError(os.Stderr, warning)
+			continue
+		}
 		if warning.Severity == diagnostics.SeverityInformation {
 			label = "Info"
 		}

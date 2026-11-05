@@ -1,0 +1,81 @@
+module main
+
+type Handle struct { id: int }
+impl Handle { free {} }
+type Failure enum error { Broken }
+
+fn Observe(value: ref Handle) int { return value.id }
+fn Consume(value: Handle) void {}
+
+fn Repeated() int {
+    let mut target := Handle { id: 1 }
+    defer { Observe(target) }
+    let other := Handle { id: 10 }
+    target = Handle { id: 2 }
+    defer { Observe(target) }
+    if true {
+        target = Handle { id: 3 }
+    }
+    return target.id + other.id
+}
+
+fn ReinitThenReplace() int {
+    let mut target := Handle { id: 1 }
+    Consume(<-target)
+    target = Handle { id: 2 }
+    defer { Observe(target) }
+    target = Handle { id: 3 }
+    return target.id
+}
+
+fn ConditionalThenReplace(flag: bool) int {
+    let mut target := Handle { id: 1 }
+    if flag { Consume(<-target) }
+    target = Handle { id: 2 }
+    defer { Observe(target) }
+    target = Handle { id: 3 }
+    return target.id
+}
+
+fn Make(fail: bool) Result[Handle, Failure] {
+    if fail { return Err(Failure.Broken) }
+    return Ok(Handle { id: 2 })
+}
+
+fn Fallible(fail: bool) Result[int, Failure] {
+    let mut target := Handle { id: 1 }
+    defer { Observe(target) }
+    target = try Make(fail)
+    return Ok(target.id)
+}
+
+fn LoopReinit() void {
+    let mut target := Handle { id: 1 }
+    for i in 0..<2 {
+        discard target
+        target = Handle { id: i }
+    }
+}
+
+fn BranchReinit(flag: bool) void {
+    let mut target := Handle { id: 1 }
+    if flag {
+        discard target
+        target = Handle { id: 2 }
+    }
+    target = Handle { id: 3 }
+}
+
+fn OwnedParameter(target: Handle) int {
+    defer { Observe(target) }
+    target = Handle { id: 2 }
+    return target.id
+}
+
+fn ReinitParameter(target: Handle) int {
+    discard target
+    target = Handle { id: 2 }
+    defer { Observe(target) }
+    target = Handle { id: 3 }
+    return target.id
+}

@@ -253,9 +253,9 @@ compiler-known operation
 For checked string substring extraction, the preferred boundary is:
 
 ```text
-public string.Slice
-    validates start and end
-    returns Result[string, RangeError]
+string ranges text[a..<b] / try text[a..<b] (MD-126, § 5.8)
+    validate start and end
+    return a borrowed StringView, or RangeError under try
 
 private __StringSliceUnchecked
     constructs the result string descriptor
@@ -563,7 +563,7 @@ impl string {
     fn IndexOf(value: string) Option[uint]
     fn IndexOf(value: string, start: uint) Option[uint]
     fn LastIndexOf(value: string) Option[uint]
-    fn Slice(start: uint, end: uint) Result[string, RangeError]
+    // Slice(start, end) removed by MD-126; use text[start..<end] (§ 5.8).
 
     fn GetRune(index: uint) Result[rune, IndexError]
     fn RuneAt(index: uint) rune
@@ -676,14 +676,15 @@ indexes**, not UTF-8 byte offsets:
 
 ```text
 IndexOf(value)            IndexOf(value, start)     LastIndexOf(value)
-Slice(start, end)         GetRune(index)            RuneAt(index)
+GetRune(index)            RuneAt(index)
 ```
 
 1. Every index in `0..self.Len` denotes a boundary between complete scalars.
-2. `Slice(start, end)` selects the half-open rune range `[start, end)` and never
-   cuts a scalar. A reversed range returns `RangeError.StartAfterEnd` and an
-   end beyond `self.Len` returns `RangeError.OutOfBounds`; no scalar-boundary
-   error exists for this API.
+2. Removed by MD-126 (2026-11-05): public `Slice(start, end)` no longer
+   exists. Its replacement is the string range `text[start..<end]` or
+   `try text[start..<end]` (§ 5.8, `collections.md` § 7.10), which uses the
+   same rune units and `RangeError` identities but returns a borrowed
+   `StringView`.
 3. `IndexOf(value, start)` searches from rune index `start` and returns the rune
    index of the first exact match. A `start` beyond `self.Len` returns `None`.
    An empty `value` returns `Some(start)` when `start <= self.Len`.
@@ -725,6 +726,53 @@ returns rune indexes and `GetByte` takes a byte index.
 ---
 
 # 6. Boolean
+
+## 5.8 `StringView` (MD-126)
+
+Decided 2026-11-05 (`rules/corrections/applied/MD-126-borrowed-string-ranges-rune-iteration-applied-20261105.md`). `StringView` is the compiler-known result of a
+string range (`types.md`, `string`; `collections.md` § 7.10). It is not an
+ordinary user `struct` and cannot be redeclared. Its complete required public
+surface is:
+
+```sec
+impl StringView {
+    property Len: uint { get }       // Unicode scalar count within the view
+    property SizeOf: uint { get }    // UTF-8 byte count within the view
+
+    fn IsEmpty() bool
+
+    fn GetRune(index: uint) Result[rune, IndexError]
+    fn RuneAt(index: uint) rune
+
+    fn GetByte(index: uint) Result[byte, IndexError]
+    fn ByteAt(index: uint) byte
+    fn CharAt(index: uint) char
+
+    fn StartsWith(prefix: StringView) bool
+
+    fn ToString() Result[string, StringError]
+}
+```
+
+The declarations state contract shapes, not that the type can be written in
+source. Every member is non-consuming and read-only. `Len`, `SizeOf` and every
+index are view-relative. `IsEmpty` is true exactly when `Len == 0`.
+`GetRune`/`RuneAt` use rune indexes below `Len`; `GetByte`/`ByteAt`/`CharAt`
+use UTF-8 byte indexes below `SizeOf` and expose encoded bytes read-only
+without turning the view into `byte[]`. The `Get*` forms return
+`IndexError.OutOfBounds`; the `*At` forms use the ordinary bounds panic.
+`StartsWith` is an ordinal Unicode-scalar prefix comparison without
+normalization, case folding or allocation.
+
+Except for `ToString()`, no member allocates or materializes independent text.
+`ToString()` is the explicit materialization: it returns the view's **text
+content** (not a type summary) as an independently valid `string`, allocating
+and copying unless the implementation proves the shared storage outlives the
+result; allocation failure is `StringError.Allocation`.
+
+No other `string` member is inherited by name. Bracket ranges apply to views
+directly; there is no `.Slice()` member. Iteration yields `rune` by value
+(`flowcontrol_for.md` § 19).
 
 ## 6.1 Intrinsic member
 

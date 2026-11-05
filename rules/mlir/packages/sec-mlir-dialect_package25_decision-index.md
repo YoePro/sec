@@ -17,7 +17,7 @@ The public `https://raw.githubusercontent.com/YoePro/sec/main/missing-decisions.
 
 ## § 2. MD-019: explicit layout syntax
 
-Existing blocking decision about syntax of explicit packing/alignment/offset/endianness/representation. P25 supports only resolved layouts/foreign C defaults until syntax is accepted. No P25-D1 duplicate.
+Existing blocking decision about syntax of explicit packing/alignment/offset/endianness/representation. P25 supports only resolved layouts/foreign C defaults until syntax is accepted. No P25-D1 duplicate. **Decided 2026-11-05:** MD-019 fixes the struct spelling as the contextual modifiers `pack(N)`, `minAlign(N)` and `byteOffset(N)` (`rules/declarations/struct.md` § 15A, `rules/memory/layout.md` §§ 27–30); there is no endian modifier and no `repr(C)`. The gate is now implementation, not a missing decision.
 
 ## § 3. MD-021: target C binding environment producer
 

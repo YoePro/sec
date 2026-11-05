@@ -24,7 +24,7 @@ func (a *Analyzer) analyzeForStatement(stmt *ast.ForStatement) {
 	previousConstInts := a.constInts
 	previousAssigned := a.assigned
 	previousMoved := a.moved
-	previousMoveReasons := a.moveReasons
+	previousMoveReasons := a.availabilityStates
 	previousClosedResources := a.closedResources
 	previousBorrows := a.borrows
 	previousLocalRefContainers := a.localRefContainers
@@ -36,7 +36,7 @@ func (a *Analyzer) analyzeForStatement(stmt *ast.ForStatement) {
 	a.constInts = copyConstInts(previousConstInts)
 	a.assigned = copyAssigned(previousAssigned)
 	a.moved = copyMoved(previousMoved)
-	a.moveReasons = copyMoveReasons(previousMoveReasons)
+	a.availabilityStates = copyAvailabilityStates(previousMoveReasons)
 	a.closedResources = copyMoved(previousClosedResources)
 	a.borrows = copyBorrows(previousBorrows)
 	a.localRefContainers = copyLocalRefContainers(previousLocalRefContainers)
@@ -48,6 +48,8 @@ func (a *Analyzer) analyzeForStatement(stmt *ast.ForStatement) {
 	if len(stmt.Bindings) > 0 || stmt.Iterable != nil {
 		a.analyzeForIterable(stmt)
 	}
+	finishViewBorrow := a.borrowStringViewIterable(stmt)
+	defer finishViewBorrow()
 	dependencyBoundary := a.beginIterationDependencies(stmt, len(a.errors) == iterableErrors)
 	if dependencyBoundary {
 		defer a.finishIterationDependencies(stmt)
@@ -68,7 +70,7 @@ func (a *Analyzer) analyzeForStatement(stmt *ast.ForStatement) {
 	a.activeCollectionIterations = a.activeCollectionIterations[:activeIterations]
 
 	loopMoved := a.moved
-	loopMoveReasons := a.moveReasons
+	loopMoveReasons := a.availabilityStates
 	loopClosedResources := a.closedResources
 	loopBorrows := a.borrows
 	loopLocalRefContainers := a.localRefContainers
@@ -87,7 +89,7 @@ func (a *Analyzer) analyzeForStatement(stmt *ast.ForStatement) {
 	}
 	a.loopBreakFrames[frame] = frameState
 	bodyFallsThrough := a.blockCanFallThrough(stmt.Body)
-	headerMoved, headerReasons := loopBackedgeMoveState(iterationEntry.moved, iterationEntry.moveReasons, loopMoved, loopMoveReasons, frameState, bodyFallsThrough)
+	headerMoved, headerReasons := loopBackedgeMoveState(iterationEntry.moved, iterationEntry.availabilityStates, loopMoved, loopMoveReasons, frameState, bodyFallsThrough)
 	headerClosedResources := loopBackedgeClosedResourceState(iterationEntry.closedResources, loopClosedResources, frameState, bodyFallsThrough)
 	headerBorrows := loopBackedgeBorrowState(iterationEntry.borrows, loopBorrows, frameState, bodyFallsThrough)
 	headerLocalRefContainers := loopBackedgeReferenceState(iterationEntry.localRefContainers, loopLocalRefContainers, frameState, bodyFallsThrough)
@@ -102,7 +104,7 @@ func (a *Analyzer) analyzeForStatement(stmt *ast.ForStatement) {
 	a.mergeLoopExitReferenceOrigins(loopSymbols, breakFrame)
 	a.constInts = previousConstInts
 	a.assigned = previousAssigned
-	a.moved, a.moveReasons = mergeLoopMoveState(previousMoved, previousMoveReasons, loopMoved, loopMoveReasons, breakFrame)
+	a.moved, a.availabilityStates = mergeLoopMoveState(previousMoved, previousMoveReasons, loopMoved, loopMoveReasons, breakFrame)
 	a.closedResources = mergeLoopClosedResourceState(previousClosedResources, loopClosedResources, breakFrame, bodyFallsThrough, false)
 	a.borrows = mergeLoopBorrowState(previousBorrows, loopBorrows, breakFrame)
 	a.localRefContainers = mergeLoopReferenceState(previousLocalRefContainers, loopLocalRefContainers, breakFrame)
@@ -205,7 +207,7 @@ func (a *Analyzer) forIterationSource(stmt *ast.ForStatement) (forIterationCateg
 	mutableReference := isReference && iterableType.ReferenceMutable
 	base := dereferenceType(iterableType)
 	switch {
-	case base.Kind == StringType:
+	case base.Kind == StringType || base.Kind == StringViewType:
 		return forCategoryString, isReference, mutableReference
 	case isForCollectionFamily(base) && base.Name == "set":
 		return forCategorySet, isReference, mutableReference
@@ -470,7 +472,7 @@ func (a *Analyzer) inferForIterableBindingTypes(stmt *ast.ForStatement) ([]Type,
 			iterableType = *iterableType.Element
 		}
 		indexType := Type{Name: "int", Kind: IntType}
-		if iterableType.Kind == StringType {
+		if base := dereferenceType(iterableType); base.Kind == StringType || base.Kind == StringViewType {
 			// rules/library/core-library.md: string iteration yields the canonical
 			// compiler-known rune type. Reusing the registered type is essential:
 			// same-module impl properties such as Utf8Length and IsWhitespace are
@@ -653,6 +655,10 @@ func (a *Analyzer) activeCollectionIterationFor(stmt *ast.ForStatement) (activeC
 	}
 	switch category, _, _ := a.forIterationSource(stmt); category {
 	case forCategorySequential, forCategorySet, forCategoryMap:
+	case forCategoryString:
+		if dereferenceType(a.expressionTypes[stmt.Iterable]).Kind != StringViewType {
+			return activeCollectionIteration{}, false
+		}
 	default:
 		return activeCollectionIteration{}, false
 	}

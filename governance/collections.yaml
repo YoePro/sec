@@ -256,7 +256,7 @@ integrations:
     status: partial
     integrated: "2026-08-07"
     audited: "2026-08-18"
-    revised: "2026-10-16"
+    revised: "2026-11-05"
     summary: >-
       Tracks fixed arrays, owning dynamic arrays, slices, list, map, and set
       against the unified collections rulebook. Parser/type recognition and
@@ -266,7 +266,6 @@ integrations:
       - rules/collections/collections.md
       - rules/types/types.md
       - rules/corrections/applied/md027-md033-md036-md054-contextual-literals-formatter-configuration-correction-20261012.md
-      - rules/corrections/applied/correction26-20260823.md
     code:
       - internal/ast
       - internal/parser
@@ -279,6 +278,11 @@ integrations:
       - internal/sema/analyzer_inference.go
       - internal/diagnostics/diagnostics.go
       - internal/sema/type_equality.go
+      - internal/sema/string_ranges.go
+      - internal/sema/string_view_members.go
+      - internal/sema/slice_creation_plans.go
+      - internal/sema/compiler_known_calls.go
+      - internal/ir/semantic/for_loops.go
     tests:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
@@ -301,6 +305,15 @@ integrations:
       - testdata/sema/array_identity_valid.sec
       - testdata/sema/array_identity_invalid.sec
       - testdata/sema/array_nominal_equality_invalid.sec
+      - internal/sema/string_ranges_test.go
+      - cmd/compiler/string_ranges_test.go
+      - cmd/lsp/string_ranges_test.go
+      - internal/diagnostics/string_range_test.go
+      - internal/formatter/string_ranges_test.go
+      - testdata/sema/string_ranges/valid.sec
+      - testdata/sema/string_ranges/range_invalid.sec
+      - testdata/sema/string_ranges/lifetime_invalid.sec
+      - testdata/sema/string_ranges/member_invalid.sec
     implemented:
       - parser and AST support for canonical fixed-array, dynamic-array, slice, list, map, and set type forms
       - Sema recognition and arity validation for compiler-known collection families
@@ -316,6 +329,7 @@ integrations:
       - "MD-058 capacity surface (2026-10-12, collections.md §§ 3.1, 13.12, 14.3, 14.8, 15.2, 15.5, 16; rules/corrections/applied/md058-collection-capacity-reservation-correction-20261012.md): the compiler-known registry gives every list, map and set a read-only Capacity (CKM-LIST/MAP/SET-CAPACITY), and dynamic forms (no ConstArgs bound) Reserve(additional: uint) Result[void, CollectionError] (structural mutation) and the associated factory WithCapacity(capacity: uint) Result[Collection, CollectionError]; list[T].WithCapacity (parsed as an indexed owner) and map[K, V]/set[T].WithCapacity (type arguments on the call) resolve their receiver type; bounded forms, T[], slices and fixed arrays reject Reserve and WithCapacity, T[] keeps no Capacity, and no Capacity() method exists; synthetic LSP declarations document every new member (TestCollectionCapacityReservationSurface, TestCollectionCapacityReservationRejections)"
       - Nonempty literals targeting owning T[] are rejected with mandatory S1155 (collections.dynamic-array-literal-invalid), a source location and guidance to use an empty mutable owner plus Append or fixed T[N]. Range segments retain S1119. Contextual [] remains valid under the later MD-027 correction, including declarations, assignments, returns, fields and calls. Rejected literals publish no literal plan; CLI stops before lowering and preserves existing output; LSP carries the same diagnostic. Older fixtures use fixed backing, typed owner inputs or empty defaults according to their original test purpose.
       - Owning-array frontend identity is verified across copyability, destruction, equality, initialization and transfer (2026-10-16, correction26). T[] remains MoveOnly and non-trivially destructible independently of element copyability, including named owners and containing fixed arrays/structs; fixed arrays retain element-derived traits. Fixed/owning families cannot initialize each other or gain owner content equality, explicit moves preserve the owner type and consume the source, and explicit shared/mutable slices remain valid. Fixed-array equality now requires the complete canonical type identity instead of checking only shape and recursively comparing elements, rejecting distinct nominal wrappers and nested nominal mismatches with S1019. Equality resolution is extracted into type_equality.go. All-depth/reanalysis, CLI output-preservation and unsaved LSP checks pass; executable dynamic owner layout and operations remain in the separate P18/lowering work.
+      - "MD-126 live-storage source frontend implemented (2026-11-05; collections.md 7.10): string/ref string/StringView bracket ranges infer a shared non-owning StringView without ref and retain detached source/endpoint evaluation order, normalized rune intervals, RangeError precedence, source provenance, borrow/lifetime facts and runtime BoundsFailure effects. Nested and caller-returned views retain source backing. Immutable UTF-8 scalar counts prove A-pi-emoji-b has four rune positions rather than eight bytes; inclusive end at Len rejects and exclusive empty at Len accepts. try propagation/local handlers return success StringView with RangeError and remove only the spatial panic effect; noPanic/noAlloc source coverage passes. Compiler/LSP share mandatory S1200 invalid-range-source and S1201 invalid-slice-range with help; valid loop syntax, hover and formatter idempotence are covered. IR producers and executable byte-boundary translation remain P23 and fail closed without output."
     remaining:
       - "MD-058 runtime behaviour: lower Reserve and WithCapacity with the guaranteed Capacity >= Len + n, the no-op path, transactional failure including map/set rehash, allocation-context use and CollectionError classification; verify borrow conflicts, relocation invalidation and fault-injected rollback (collections.md §§ 13.12, 14.8, 15.5); Semantic IR and both legacy backends have no list/map/set operations today"
       - complete parser, AST, and Sema coverage for the canonical fixed-array and slice syntax contract
@@ -324,7 +338,16 @@ integrations:
       - compiler-defined layout, overflow, alignment, and length validation
       - explicit array, slice, and list operations in Semantic IR and lowering through MLIR and LLVM
       - focused valid, invalid, recovery, analysis, and backend test coverage
+      - "MD-126 remaining range-source/validation work: support the enclosing for temporary-retention model for non-addressable fresh string sources (currently rejected with S1200 rather than extending their lifetime); finish target-width endpoint representability checks and the complete Unicode/overflow/failure-precedence conformance matrix. Live storage/ref string and nested/caller-returned StringView source plans, ordinary rune ranges, try RangeError and compiler/LSP diagnostics are implemented above; executable guard/byte translation remains owned by frontend.semantic-ir-v2/P23."
     verification:
+      - command: go vet -p 4 ./internal/sema ./internal/ir/semantic ./internal/diagnostics ./internal/formatter ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-11-05
+      - command: go test -p 4 ./cmd/lsp -run 'StringRange|ForBinding|Iterator|CompilerKnown|Slice|Borrow|Escape' -count=1 -timeout=180s
+        result: passed on 2026-11-05 (17.917s)
+      - command: go test -race -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run TestStringRange -count=1 -timeout=180s
+        result: "passed on 2026-11-05: Sema 1.082s, compiler CLI 2.131s, LSP diagnostics/hover 3.404s; source acceptance, registered help and explicit P23/no-output gate"
+      - command: go test -p 4 ./internal/sema ./internal/ir/semantic ./internal/diagnostics ./internal/formatter -count=1 -timeout=180s
+        result: "passed on 2026-11-05: full Sema 20.277s, Semantic IR 9.664s, diagnostic registry 0.002s and formatter 1.715s"
       - command: go test ./internal/sema ./internal/ir/... ./cmd/compiler -count=1
         result: passed on 2026-10-16 after canonical fixed-array nominal equality and frontend owning-array identity verification
       - command: go vet ./internal/sema ./cmd/compiler ./cmd/lsp
@@ -343,6 +366,8 @@ integrations:
         result: passed on 2026-10-14; full package tests, with external MLIR execution depending on configured tool availability
       - command: go test ./internal/sema -run 'ListIndex' -count=1
         result: passed
+    governance_reconciliation:
+      - The historical correction26-20260823.md source is absent from this checkout. Retain correction26 provenance in the implemented history; current fixed/owning-array and slice authority is rules/collections/collections.md. Removed only the dead rules path; no additional implementation closure.
 
   - id: frontend.collection-member-migration
     area: frontend-and-tooling

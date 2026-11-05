@@ -1,0 +1,5 @@
+module main
+fn Invalid(view: StringView) void {
+    let empty := view.IsEmpty(1)
+    let value := view.GetRune("not an index")
+}

@@ -2,7 +2,7 @@
 
 ## Status
 
-Normative tooling rulebook, revision 1.1 (2026-10-26).
+Normative tooling rulebook, revision 1.2 (2026-11-05).
 
 Created by the MD-017 correction
 (`rules/corrections/applied/md017-sec-analyse-cli-and-help-correction-20261017.md`),
@@ -96,6 +96,14 @@ combined with an analysis name.
 separator, extension or glob, and is not an existing path, is an analysis
 name. A directory whose name equals an analysis name is written as a path
 (`./stack`).
+
+Whole-program analysis also reports interface conformance across module platform
+sources and configured Project Target Variants, using the same Sema facts as the
+LSP conformance lenses (`rules/tooling/lsp.md`, "Interface conformance code lens").
+`--target` limits the matrix; `--verbose` shows successful facts and `--json`
+includes structured `conformances`. Function-focused and individually selected
+analyses keep their existing scope. This is a supplementary compiler-fact report,
+not an additional analysis-name selector.
 
 ## § 5.2 Analysis names
 

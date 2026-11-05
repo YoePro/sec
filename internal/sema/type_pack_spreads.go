@@ -121,7 +121,7 @@ func (a *Analyzer) markConsumedPackSpreads(call *ast.CallExpression) {
 	for _, argument := range call.Arguments {
 		if _, spread, consuming := consumingPackSpread(argument); consuming && a.markExplicitMoveSource(spread.Value) {
 			if identifier, named := spread.Value.(*ast.Identifier); named {
-				a.moveReasons[identifier.Value] = "consumed by call"
+				a.availabilityStates[identifier.Value] = unavailableState("consumed by call")
 				a.endBorrowsHeldBy(identifier.Value)
 			}
 		}
@@ -442,7 +442,7 @@ func (a *Analyzer) inferTypePackForward(call *ast.CallExpression, functions []Fu
 	a.setTypePackForwardOrigin(call, forward, candidates, prefix, trailing, packIdentifier, receiver.Expr)
 	a.markMovedCallArguments(target, prefix, nil, false)
 	if forward.consuming && a.markExplicitMoveSource(packIdentifier) {
-		a.moveReasons[packIdentifier.Value] = "consumed by call"
+		a.availabilityStates[packIdentifier.Value] = unavailableState("consumed by call")
 		a.endBorrowsHeldBy(packIdentifier.Value)
 	}
 	if a.typePackForwards == nil {

@@ -1,6 +1,6 @@
 # MD-126: Iterating a byte range of a string — proposal
 
-- **Status:** Proposal for owner decision. Nothing is integrated.
+- **Status:** Superseded 2026-11-05 by the owner decision `rules/corrections/applied/MD-126-borrowed-string-ranges-rune-iteration-applied-20261105.md` (rune-index string ranges yielding a borrowed `StringView`; the `SliceBytes` option A was not chosen). Kept as a historical proposal.
 - **Created:** 2026-11-04
 - **Sec version:** current baseline 0.1.1; the proposed form targets 0.1.2
 - **Related:** MD-071 (rune positions; applied in

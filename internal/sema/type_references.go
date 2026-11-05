@@ -2,6 +2,7 @@ package sema
 
 import (
 	"sec/internal/ast"
+	"sec/internal/diagnostics"
 	"sec/internal/lexer"
 )
 
@@ -52,6 +53,10 @@ func (a *Analyzer) resolveTypeReference(ref *ast.TypeReference) (Type, bool) {
 		}
 		inner, ok := a.resolveType(&innerRef)
 		if !ok {
+			return Type{Kind: InvalidType}, false
+		}
+		if inner.Kind == StringViewType && ref.MutableRef {
+			a.addErrorAtTokenWithMetadata(ref.Token, diagnostics.BorrowMutableAuthority, "StringView is a read-only borrowed text view; use StringView without ref mut.", "StringView has no ref mut form")
 			return Type{Kind: InvalidType}, false
 		}
 		if inner.Kind == VoidType {

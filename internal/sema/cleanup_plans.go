@@ -8,8 +8,8 @@ import (
 
 // ResolvedCleanupPlan (P17-24; package17 §§ 34–47, 79–80) is the detached,
 // read-only cleanup plan of one invocation: its lexical scope tree, every
-// registration site in source order (owned initialization, reinitialization
-// and replacement, executed defer) and every exit edge with the scopes it
+// registration site in source order (owned initialization, reinitialization,
+// executed defer) and every exit edge with the scopes it
 // leaves. Semantic IR builders consume it instead of reconstructing cleanup
 // from variable names or SSA use counts. Registration multiplicity and
 // conditionality are explicit (P17-21): a site inside a loop registers once
@@ -23,7 +23,6 @@ const (
 	CleanupRegisterOwned            CleanupRegistrationKind = "owned-initialization"
 	CleanupRegisterMatchBinding     CleanupRegistrationKind = "owned-match-binding"
 	CleanupRegisterReinitialization CleanupRegistrationKind = "reinitialization"
-	CleanupRegisterReplacement      CleanupRegistrationKind = "replacement"
 	CleanupRegisterDefer            CleanupRegistrationKind = "defer"
 )
 
@@ -39,20 +38,26 @@ type ResolvedCleanupScope struct {
 // the destination binding/Place and destruction plan; a defer site its
 // capture plan. PerExecution marks a site inside a loop (one registration per
 // execution, never collapsed); Conditional a site that not every path from
-// the function entry executes. Replacement terminates the previous
-// incarnation's action (Previous) before this one registers.
+// the function entry executes. IfUnavailable restricts a joined assignment's
+// registration to paths without a prior live obligation; available paths retain
+// their existing position. Available/partial replacement adds no site here.
+// Rules: rules/memory/destruction.md — §§6.1(4–5),13.2(5–8),13.3(5).
 type ResolvedCleanupRegistrationSite struct {
-	Kind         CleanupRegistrationKind
-	Action       CleanupActionID
-	Scope        CleanupScopeID
-	Source       lexer.Token
-	Binding      BindingID
-	Place        Place
-	Destruction  DestructionPlanSet
-	Defer        *ResolvedDeferPlan
-	Previous     CleanupPreviousValue
-	PerExecution bool
-	Conditional  bool
+	Kind          CleanupRegistrationKind
+	Action        CleanupActionID
+	Scope         CleanupScopeID
+	Source        lexer.Token
+	Binding       BindingID
+	Place         Place
+	Destruction   DestructionPlanSet
+	Defer         *ResolvedDeferPlan
+	Previous      CleanupPreviousValue
+	PerExecution  bool
+	Conditional   bool
+	IfUnavailable bool
+	// ExecutionScope differs from Scope for reinitialization of an outer owner.
+	// It determines source conditionality/multiplicity, not cleanup eligibility.
+	ExecutionScope CleanupScopeID
 }
 
 // ResolvedCleanupPlan is one invocation's cleanup plan.
@@ -73,6 +78,11 @@ func (a *Analyzer) ResolvedCleanupPlanOf(function Function) (ResolvedCleanupPlan
 	return a.resolvedCleanupPlanOfInvocation(callableID(function))
 }
 
+// resolvedCleanupPlanOfInvocation assembles detached, source-ordered registration
+// sites and exit edges; replacements inherit obligations rather than adding sites,
+// and conditional reinitialization registers only on unavailable paths.
+// Rules: rules/memory/destruction.md — §§6.1(4–5),13.2(5–8),13.3(5);
+// rules/compiler/semantic_ir.md — §40(7–10).
 func (a *Analyzer) resolvedCleanupPlanOfInvocation(invocation CallableID) (ResolvedCleanupPlan, bool) {
 	flow := a.cleanupFlow
 	root, ok := flow.roots[invocation]
@@ -112,15 +122,14 @@ func (a *Analyzer) resolvedCleanupPlanOfInvocation(invocation CallableID) (Resol
 		}
 	}
 	for stmt, assignment := range a.ownedCleanupAssignments {
-		if assignment.Executor != invocation {
+		if assignment.Executor != invocation || assignment.Cleanup.Register == 0 {
 			continue
 		}
-		kind := CleanupRegisterReplacement
-		if assignment.Previous != CleanupPreviousAvailable {
-			kind = CleanupRegisterReinitialization
-		}
-		registration := site(kind, assignment.Registration, stmt.Token)
+		registration := site(CleanupRegisterReinitialization, assignment.Registration, stmt.Token)
+		registration.Action = assignment.Cleanup.Register
 		registration.Previous = assignment.Previous
+		registration.IfUnavailable = assignment.Cleanup.Inherit != 0
+		registration.ExecutionScope = assignment.ExecutionScope
 		plan.Registrations = append(plan.Registrations, registration)
 	}
 	for stmt, deferPlan := range a.resolvedDeferPlans {
@@ -133,8 +142,11 @@ func (a *Analyzer) resolvedCleanupPlanOfInvocation(invocation CallableID) (Resol
 	}
 	for index := range plan.Registrations {
 		scope := plan.Registrations[index].Scope
+		if execution := plan.Registrations[index].ExecutionScope; execution != 0 {
+			scope = execution
+		}
 		plan.Registrations[index].PerExecution = flow.scopes[scope].InLoop
-		plan.Registrations[index].Conditional = scope != root
+		plan.Registrations[index].Conditional = scope != root || plan.Registrations[index].IfUnavailable
 	}
 	sort.Slice(plan.Registrations, func(i, j int) bool {
 		return tokenBefore(plan.Registrations[i].Source, plan.Registrations[j].Source)

@@ -44,7 +44,7 @@ func (a *Analyzer) tryAssignmentFailureEntry(target ast.Expression, before, succ
 	failure := success
 	failure.assigned = copyAssigned(success.assigned)
 	failure.moved = copyMoved(success.moved)
-	failure.moveReasons = copyMoveReasons(success.moveReasons)
+	failure.availabilityStates = copyAvailabilityStates(success.availabilityStates)
 	failure.borrows = copyBorrows(success.borrows)
 	failure.localRefContainers = copyLocalRefContainers(success.localRefContainers)
 	failure.referenceOrigins = copyReferenceOriginTypes(success.referenceOrigins)
@@ -66,14 +66,14 @@ func (a *Analyzer) tryAssignmentFailureEntry(target ast.Expression, before, succ
 	for moved := range failure.moved {
 		if covered(moved) {
 			delete(failure.moved, moved)
-			delete(failure.moveReasons, moved)
+			delete(failure.availabilityStates, moved)
 		}
 	}
 	for moved, token := range before.moved {
 		if covered(moved) {
 			failure.moved[moved] = token
-			if reason, ok := before.moveReasons[moved]; ok {
-				failure.moveReasons[moved] = reason
+			if reason, ok := before.availabilityStates[moved]; ok {
+				failure.availabilityStates[moved] = reason
 			}
 		}
 	}
@@ -100,7 +100,7 @@ func (a *Analyzer) tryAssignmentFailureEntry(target ast.Expression, before, succ
 // handlers leave the statement and do not reach the join.
 func (a *Analyzer) joinTryAssignmentEdges(before branchAnalysis, branches ...branchAnalysis) {
 	a.assigned = mergeContinuingAssigned(before.assigned, branches...)
-	a.moved, a.moveReasons = mergeContinuingMoveState(before.moved, before.moveReasons, branches...)
+	a.moved, a.availabilityStates = mergeContinuingMoveState(before.moved, before.availabilityStates, branches...)
 	a.closedResources = mergeContinuingClosedResources(before.closedResources, branches...)
 	a.borrows = mergeContinuingBorrows(before.borrows, branches...)
 	a.localRefContainers = mergeContinuingLocalRefContainers(before.localRefContainers, branches...)

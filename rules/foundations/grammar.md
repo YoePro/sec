@@ -660,7 +660,7 @@ and valid for every contract.
 ```text
 StructTypeDeclaration
     ::= "type" Identifier [ GenericParameterList ]
-        "struct"
+        "struct" { StructLayoutModifier }
         [ ImplementsClause ]
         StructBody
 
@@ -668,11 +668,55 @@ StructBody
     ::= "{" [ StructField { "," StructField } [ "," ] ] "}"
 
 StructField
-    ::= Identifier ":" TypeReference [ StructTag ]
+    ::= Identifier ":" TypeReference
+        { StructFieldLayoutModifier } [ StructTag ]
 
 StructTag
     ::= RawStringLiteral
+
+StructLayoutModifier
+    ::= "pack" "(" Expression ")"
+      | "minAlign" "(" Expression ")"
+
+StructFieldLayoutModifier
+    ::= "minAlign" "(" Expression ")"
+      | "byteOffset" "(" Expression ")"
 ```
+
+Layout modifiers (MD-019, `rules/corrections/applied/MD-019-explicit-layout-modifiers-applied-20261105.md`):
+
+- `pack`, `minAlign` and `byteOffset` are compiler-known **contextual
+  declaration modifiers** in these positions only. They are not global
+  keywords, functions, executable expressions or `@` attributes; the closed
+  `@` attribute set is unchanged and `@pack(1)`, `@minAlign(8)` and
+  `@byteOffset(8)` are invalid.
+- Each modifier `Expression` is a `SemanticCompileTimeRequiredContext` with an
+  integer result (`compile_time_evaluation.md` §§ 4–8); a generic-dependent
+  value is evaluated for the concrete specialization and `CompilationPlan`.
+- A modifier kind occurs at most once on one declaration; the order of
+  different kinds does not matter. Repetition, conflicts, unknown names in a
+  modifier position, malformed arguments and invalid attachment are
+  diagnosed.
+- Field modifiers precede an optional field tag. `implements` placement, raw
+  tags, comma rules and register declaration modifiers are unchanged.
+- The formatter writes no space between a modifier name and `(`, one space
+  between successive modifiers and before `{`.
+
+```sec
+extern "C" type Header struct pack(1) minAlign(8) {
+    kind: c::uchar,
+    value: c::uint,
+}
+
+type Message struct pack(1) {
+    kind: byte,
+    value: uint32 minAlign(8) `json:"value"`,
+    checksum: uint16 byteOffset(16),
+}
+```
+
+Their semantics are owned by `rules/declarations/struct.md` § 15A and
+`rules/memory/layout.md` §§ 27–29.
 
 Canonical examples:
 
@@ -1525,7 +1569,7 @@ Foreign data declarations and types additionally use:
 
 ```text
 ForeignTypeDeclaration
-    ::= "extern" ForeignABI "type" Identifier "struct" [ ForeignStructBody ]
+    ::= "extern" ForeignABI "type" Identifier "struct" { StructLayoutModifier } [ ForeignStructBody ]
       | "extern" ForeignABI "type" Identifier "union" ForeignUnionBody
       | "extern" ForeignABI "type" Identifier "enum" ForeignEnumBody
 
@@ -1552,7 +1596,10 @@ semantic resolution; the production grants no permission to use an arbitrarily
 spelled C type without a real binding (MD-020, `rules/corrections/applied/md020-md021-md023-md024-ffi-c-bindings-null-correction-20261008.md` § 2.8).
 
 `bit[N]` after a field's C base type is a C bitfield declarator only inside an
-`extern "C"` data declaration. `c::callback(expression)` is the explicit
+`extern "C"` data declaration. A complete foreign struct's fields take the same
+`StructFieldLayoutModifier` forms as ordinary struct fields (MD-019); a bodyless
+incomplete foreign struct has no stored layout, so a layout modifier on it is
+invalid. `c::callback(expression)` is the explicit
 environment-free callback adapter expression.
 
 ---
@@ -2939,6 +2986,18 @@ values[2..]
 ```
 
 Range inclusivity follows the range operator.
+
+The grammar is unchanged for strings; meaning is type-directed. Over a
+`string` or `StringView` operand the expression creates a borrowed
+`StringView` without `ref` (MD-126, `rules/corrections/applied/MD-126-borrowed-string-ranges-rune-iteration-applied-20261105.md`; `collections.md` § 7.10). Other
+operands keep `ref values[...]` / `ref mut values[...]`. No `RuneSlice` token
+or keyword exists.
+
+```sec
+text[1..<3]
+try text[start..<end]
+for ch in text[1..<3] { Process(ch) }
+```
 
 ---
 

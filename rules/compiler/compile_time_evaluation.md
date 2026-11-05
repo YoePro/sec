@@ -121,6 +121,8 @@ as compiler-semantic context classes.
 
 § 4(5) Plan-time evaluation and semantic CTE may share implementation infrastructure, but their available semantic universes are different.
 
+§ 4(6) The arguments of the struct layout modifiers `pack(N)`, `minAlign(N)` and `byteOffset(N)` are `SemanticCompileTimeRequiredContext` positions with an integer result (MD-019; `struct.md` § 15A). A generic-dependent argument is evaluated for the concrete specialization and `CompilationPlan`, never from the compiler host.
+
 ---
 
 ## § 5 Plan-time evaluation

@@ -1066,7 +1066,7 @@ integrations:
     remaining:
       - prove that no validity-preserving dependency crosses Arena.Reset or Arena.Release
       - allocation-context propagation and complete allocation-effect inference through function bodies
-      - statically impossible alignment (blocked on explicit alignment syntax, missing-decisions.yaml MD-019), count-overflow, and allocation diagnostics (arena.md § 17(5), § 89) once the shared canonical layout-resolution service (frontend.layout) supplies byte size and alignment; runtime checked count/offset arithmetic and dynamic alignment failure belong to lowering
+      - "statically impossible alignment (explicit alignment syntax decided by MD-019 on 2026-11-05: `minAlign(N)`, layout.md \u00a7 28(5); waits on its Sema validation), count-overflow, and allocation diagnostics (arena.md \u00a7 17(5), \u00a7 89) once the shared canonical layout-resolution service (frontend.layout) supplies byte size and alignment; runtime checked count/offset arithmetic and dynamic alignment failure belong to lowering"
       - allocation failure handling beyond ordinary Result syntax
       - complete ownership, move-state, and storage-origin propagation through references, slices, and Semantic IR
       - explicit arena allocation operations in Semantic IR and lowering through MLIR and LLVM

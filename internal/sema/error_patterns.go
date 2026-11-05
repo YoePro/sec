@@ -223,7 +223,7 @@ func (a *Analyzer) analyzeMatchErrPattern(subject ast.Expression, pattern *ast.M
 	if !ok {
 		return matchPatternInfo{}, false
 	}
-	resultPlace, hasPlace := a.resolvePlace(subject)
+	resultPlace, hasPlace := a.matchSubjectPlace(subject)
 	return a.analyzeErrorPayloadPattern(subject, errorPayloadPlace(resultPlace, selection, pattern.Token), hasPlace, pattern, selection)
 }
 

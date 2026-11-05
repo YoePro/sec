@@ -817,9 +817,11 @@ The wrapper must establish the actual extent before creating any safe view over 
 
 `extern "C"` selects ordinary layout under the active C ABI.
 
-Packed, over-aligned, explicitly offset, or otherwise overridden layouts use Sec's canonical explicit-layout mechanism.
+Packed, over-aligned, explicitly offset, or otherwise overridden layouts use Sec's canonical explicit-layout mechanism: the struct modifiers `pack(N)`, `minAlign(N)` and `byteOffset(N)` (MD-019; `rules/declarations/struct.md` § 15A).
 
-FFI does not introduce a second packing/alignment syntax.
+FFI does not introduce a second packing/alignment syntax, and there is no `repr(C)`/`@repr(C)`.
+
+Modifiers on a complete `extern "C"` struct are checked against the foreign contract of the selected target. If the actual C ABI places a field at an offset that violates an explicit Sec `minAlign` or `byteOffset`, or the combination is otherwise unrealizable, the layout is incompatible and rejected; the compiler never assumes compiler-specific packing extensions, reorders fields or claims ABI equivalence from syntax alone. A bodyless incomplete foreign struct (§ 17) has no stored layout and cannot carry layout modifiers. `byteOffset` is never a C bitfield placement mechanism (§ 20).
 
 A packed or otherwise misaligned field may be read or written through compiler-supported unaligned operations when permitted by the target.
 

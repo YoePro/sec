@@ -73,7 +73,7 @@ func TestOwnershipUseOriginMentor(t *testing.T) {
 func TestOwnershipUseReturnAndMixedOrigins(t *testing.T) {
 	for _, reason := range []string{"returned", "moved|discarded"} {
 		a := NewAnalyzer()
-		a.moveReasons = map[string]string{"value": reason}
+		a.availabilityStates = placeAvailabilityStates{"value": unavailableState(reason)}
 		place := Place{Root: "value", RootToken: lexer.Token{File: "owner.sec", Line: 2, Column: 3}}
 		a.addUnavailableOwnershipDiagnostic(place, "value", lexer.Token{File: "use.sec", Line: 8, Column: 9}, lexer.Token{File: "transfer.sec", Line: 4, Column: 5}, diagnostics.UseAfterMove, "use the value before that operation", "unavailable value")
 		got := a.errors[0]
@@ -89,7 +89,7 @@ func TestOwnershipUseReturnAndMixedOrigins(t *testing.T) {
 		}
 	}
 	a := NewAnalyzer()
-	a.moveReasons = map[string]string{"value": "moved"}
+	a.availabilityStates = placeAvailabilityStates{"value": unavailableState("moved")}
 	a.addUnavailableOwnershipDiagnostic(Place{Root: "value"}, "value", lexer.Token{Line: 8, Column: 9}, lexer.Token{Line: 4, Column: 5}, diagnostics.UseAfterMove, "use it before the move", "unavailable value")
 	if len(a.errors[0].RelatedLocations()) != 1 {
 		t.Fatal(a.errors[0])

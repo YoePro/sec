@@ -21,7 +21,7 @@ const availabilityReasonSeparator = "|"
 func joinAvailabilityReasons(reasons []string) string {
 	unique := map[string]bool{}
 	for _, reason := range reasons {
-		for _, part := range strings.Split(underlyingAvailabilityReason(reason), availabilityReasonSeparator) {
+		for _, part := range strings.Split(reason, availabilityReasonSeparator) {
 			if part != "" {
 				unique[part] = true
 			}
@@ -38,7 +38,7 @@ func joinAvailabilityReasons(reasons []string) string {
 // availabilityReasonPhrase renders one or more retained reasons for a mentor
 // diagnostic, for example "moved" or "discarded or moved".
 func availabilityReasonPhrase(reason string) string {
-	parts := strings.Split(underlyingAvailabilityReason(reason), availabilityReasonSeparator)
+	parts := strings.Split(reason, availabilityReasonSeparator)
 	phrases := make([]string, 0, len(parts))
 	for _, part := range parts {
 		switch part {
@@ -59,7 +59,7 @@ func availabilityReasonPhrase(reason string) string {
 }
 
 func isMultipleAvailabilityReason(reason string) bool {
-	return strings.Contains(underlyingAvailabilityReason(reason), availabilityReasonSeparator)
+	return strings.Contains(reason, availabilityReasonSeparator)
 }
 
 // reportConditionallyUnavailablePlace explains a Place that is unavailable
@@ -70,9 +70,9 @@ func isMultipleAvailabilityReason(reason string) bool {
 //   - rules/memory/destruction.md — §11.1 "Conditional state"
 func (a *Analyzer) reportConditionallyUnavailablePlace(place Place, movedKey string, token, movedAt lexer.Token, borrow bool) {
 	subject := place.String()
-	detail := "it was " + availabilityReasonPhrase(a.moveReasons[movedKey]) + " on one possible execution path"
+	detail := "it was " + availabilityReasonPhrase(a.availabilityStates[movedKey].Reasons) + " on one possible execution path"
 	if movedKey != subject {
-		detail = "sub-place " + movedKey + " was " + availabilityReasonPhrase(a.moveReasons[movedKey]) + " on one possible execution path"
+		detail = "sub-place " + movedKey + " was " + availabilityReasonPhrase(a.availabilityStates[movedKey].Reasons) + " on one possible execution path"
 	}
 	help := "test `" + movedKey + " is available` before using it, or restructure the control flow so availability is known statically"
 	if borrow {
@@ -92,7 +92,7 @@ func (a *Analyzer) reportConditionallyUnavailablePlace(place Place, movedKey str
 //   - rules/memory/ownership.md — §6 "Unavailability reason", §33.2 "Use after move"
 //   - rules/control-flow/discard.md — §§5, 26, 37
 func (a *Analyzer) reportDefinitelyUnavailablePlace(place Place, movedKey string, token, movedAt lexer.Token) {
-	reason := underlyingAvailabilityReason(a.moveReasons[movedKey])
+	reason := a.availabilityStates[movedKey].Reasons
 	help := "use " + place.String() + " before that operation, borrow it instead when appropriate, or reinitialize a mutable binding before using it again"
 	if isMultipleAvailabilityReason(reason) {
 		a.addUnavailableOwnershipDiagnostic(place, movedKey, token, movedAt, diagnostics.UseAfterMove, help,

@@ -354,7 +354,7 @@ func (a *Analyzer) referenceOriginForExpression(expr ast.Expression) (string, le
 // typeCarriesReferenceOrigin identifies represented reference and view holders.
 // Rules: rules/memory/lifetime_analysis.md — §8.1; rules/collections/collections.md — Slices.
 func typeCarriesReferenceOrigin(typ Type) bool {
-	return typ.Kind == ReferenceType || typ.Kind == SliceType
+	return typ.Kind == ReferenceType || typ.Kind == SliceType || typ.Kind == StringViewType
 }
 
 // seedParameterReferenceOrigin binds caller-owned provenance and a canonical

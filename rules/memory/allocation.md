@@ -230,6 +230,8 @@ let storage := try arena.Alloc[byte](4096)
 
 § 9(7) Required alignment is derived from `T` and target/layout rules.
 
+§ 9(7a) A type or field `minAlign(N)` (MD-019; `layout.md` § 28(5)) raises that required alignment. An allocation or storage provider that cannot satisfy the resolved alignment of an over-aligned `T` must reject it; the modifier is not itself proof of a capable provider (also for Arena storage).
+
 § 9(8) Returned storage lifetime is bounded by the Arena allocation domain.
 
 § 9(9) The returned reference/slice/view does not individually own or deallocate the Arena's raw storage.

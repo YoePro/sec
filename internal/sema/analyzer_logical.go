@@ -86,7 +86,7 @@ func (a *Analyzer) inferLogicalExpression(expr *ast.InfixExpression, leftType Ty
 	} else if !rhsRequired {
 		rhs := a.currentBranchAnalysisState()
 		a.assigned = mergeContinuingAssigned(before.assigned, before, rhs)
-		a.moved, a.moveReasons = mergeContinuingMoveState(before.moved, before.moveReasons, before, rhs)
+		a.moved, a.availabilityStates = mergeContinuingMoveState(before.moved, before.availabilityStates, before, rhs)
 		a.closedResources = mergeContinuingClosedResources(before.closedResources, before, rhs)
 		a.borrows = mergeContinuingBorrows(before.borrows, before, rhs)
 		a.localRefContainers = mergeContinuingLocalRefContainers(before.localRefContainers, before, rhs)

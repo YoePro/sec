@@ -43,6 +43,8 @@ Equality and `Compare` are ordinal content operations, not descriptor/pointer co
 
 `StringSubrangeUnchecked` is core-only private byte-range projection. Proof includes extent and lifetime. Does not fabricate array slice type or expose safe ref mut.
 
+**Borrowed string range (MD-126, `rules/corrections/applied/MD-126-borrowed-string-ranges-rune-iteration-applied-20261105.md`).** The public string range `text[a..<b]` is a separate semantic operation, distinct from `StringSubrangeUnchecked` (which yields an owned `string` descriptor): it yields a non-owning `StringView` with source origin, normalized rune range, checked rune-to-byte boundary translation, range guard dominating publication, and no allocation. Iterating a view reuses the string scalar decoder and yields `rune` values. Not yet implemented.
+
 ## § 9. Resolved member plan
 
 Builder uses stable `CompilerKnownMemberID` and immutable resolved type/member/source data, never string name ad hoc and never re-runs Sema.

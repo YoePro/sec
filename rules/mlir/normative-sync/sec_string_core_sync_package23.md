@@ -39,6 +39,8 @@ Concatenation/interpolation runtime expression is one allocating/fallible operat
 
 Private `__StringSliceUnchecked` uses byte offsets and strict caller proof; this does not settle units/boundary policy for public `IndexOf`, `LastIndexOf`, `Slice`, `GetRune` and related overloads.
 
+MD-126 (2026-11-05, `rules/corrections/applied/MD-126-borrowed-string-ranges-rune-iteration-applied-20261105.md`) removes public `Slice` and replaces it with borrowed rune-index string ranges producing `StringView`; MD-050/071/072 remain the authority for UTF-8 validity, rune units and materialization. No schema-19 implementation is claimed by this note.
+
 ## § 8. MD-073 (P23-D3) char conversion
 
 `char` is 0..255, `rune` is Unicode scalar; `ToCharArray` on scalars >255 needs explicit normative behavior, not silent lossy byte reinterpretation.

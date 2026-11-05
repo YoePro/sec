@@ -468,7 +468,7 @@ integrations:
     status: partial
     integrated: "2026-08-09"
     audited: "2026-08-12"
-    revised: "2026-10-29"
+    revised: "2026-11-05"
     summary: >-
       Tracks implemented core type syntax and semantics migrated from the
       retired types.txt rulebook under the canonical rules/types/types.md
@@ -520,6 +520,8 @@ integrations:
       - internal/sema/copy_classification.go
       - cmd/lsp/some_constructor_hover.go
       - cmd/lsp/hover.go
+      - internal/sema/string_ranges.go
+      - internal/sema/string_view_members.go
     tests:
       - cmd/compiler/main_test.go
       - testdata/sema/named_string_error_channel_invalid.sec
@@ -536,7 +538,6 @@ integrations:
       - internal/sema/typecompatibility/matrix_test.go
       - testdata/sema/type_compatibility
       - testdata/codegen/characters
-      - cmd/compiler/llvm_float_readiness_test.go
       - testdata/codegen/llvm_platform_float
       - internal/sema/type_diagnostics_matrix_test.go
       - cmd/compiler/type_diagnostics_matrix_test.go
@@ -560,6 +561,9 @@ integrations:
       - testdata/tooling/some_hover/constructors.sec
       - testdata/tooling/some_hover/inference_invalid.sec
       - testdata/tooling/some_hover/user.sec
+      - internal/sema/string_ranges_test.go
+      - cmd/lsp/string_ranges_test.go
+      - cmd/compiler/native_track_test.go
     implemented:
       - "MD-120 (2026-11-01; types.md \"Core generic result and option types\"): Result[T, E] admits a generic parameter constrained by error; an unconstrained parameter and non-error types stay rejected (rules/corrections/applied/MD-120-generic-error-parameters-approved-20261031-20261101.md; TestGenericErrorParameters, TestGenericErrorChannelSpecializations, TestGenericErrorUnionInstance, TestErrorCategoryConstraintSyntax, TestGenericErrorParameterHover)"
       - "MD-073 (applied 2026-10-31, rules/corrections/applied/MD-073-string-to-char-array-byte-preserving-correction-20261031.md): string.ToCharArray() has the exact source contract Result[char[], CollectionError] in the registry, hover and rulebooks; one char per UTF-8 byte, no rune range check; implicit byte[]/char[] interchange and a StringError channel are rejected (TestStringToCharArrayIsByteMaterialization). Execution stays with P23-33 under the P18/P19 array materialization"
@@ -613,7 +617,8 @@ integrations:
       - "MD-056 try enforcement (2026-10-26, types.md \"Explicit conversions\"): every Sec-only integer-family conversion that may fail now requires try, as c:: conversions already did; a conversion the plan-aware MD-104 proof shows exact needs none (the proof is recorded first). Migrated beforehand with no new errors anywhere under sec/: syscall register words in sec/platform/linux and stdlib io use uint(bit[64](value)); uint slice bounds drop the int(...) wrapper; UTF-8/ASCII/hex byte encodings use byte(bit[8](...)); validated hex digits, path lengths, offsets, kernel counts and Unicode scalars use try with the function's own error or U+FFFD recovery (linux file/process, io transfer/file/write, str builder/collect/escape, fmt string_builder, net ip/url). Fixed in passing: imported modules' try-handler patterns and bodies were not import-qualified, so a handler naming its module's type was undefined (cmd/compiler and cmd/lsp). Tests: TestSecScalarConversionsThatMayFailRequireTry, TestCLIImportedTryHandlersResolveModuleNames; TestIntegerConversionPlansAndCharacterComparisons, TestUnprovenConversionsFailClosed and TestConversionProofIsRecomputedPerPlan updated to the enforced rule"
       - "Nested generic copyability (fixed 2026-10-28; copy_move.md §§4.1-4.3): concrete-instantiation recursion keys include ordered type and const arguments instead of just declaration names. Option[Option[int]], deeper Options and nested generic structs/unions derive ordinary copyability; nested owning int[] remains move-only with S1007 on implicit copy and accepts explicit transfer. Shared trait traversal now retains nested non-trivial destruction and non-comparability; actual recursion and unresolved generic payloads still classify conditionally. Copy derivation extracted into internal/sema/copy_classification.go. Source-backed tests: TestNestedGenericCopyability, TestGenericCopyabilityRecursionRemainsConditional. The whole nested Option remaining item is closed; MD-102 ownership/facts and physical Option lowering retain their own gates."
       - "MD-102 Some constructor hover (2026-10-29): cmd/lsp/some_constructor_hover.go displays the Sema-selected Option[T].Some constructor and selected Option[T] only at its callee token, using ResolvedUnionConstructionOf and excluding ordinary ResolvedCallTarget calls. Tests cover inferred int/string, contextual int64 at declarations/calls/returns, nested Some/None, qualified construction, exact token ranges, invalid inference and a user Some function returning Option[int]; no parallel inference or overload model."
-      - "named integers keep their identity through Semantic IR (owner decision 2026-11-04; semantic_ir.md \u00a7\u00a7 7(4)\u2013(5), 59(6); dialect v11.41.7): Sema records ResolvedNamedConversion for explicit conversions over one integer carrier (wrapper <-> base, wrapper <-> wrapper, constants shaped into the carrier) and resolves same-type operators with the named operand type; Semantic IR lowers them to named.convert and the int.* operations on named values; sec-lower-integer-core erases the identity. Contract- and unit-bearing named types keep their own paths. Tests: TestNamedIntegerConversionAndOperatorPlans, TestNativeTrackBuildsAndRuns/named_scalars, lit schema13-named-integers.mlir and invalid-schema13-named-integers.mlir."
+      - "named integers keep their identity through Semantic IR (owner decision 2026-11-04; semantic_ir.md §§ 7(4)–(5), 59(6); dialect v11.41.7): Sema records ResolvedNamedConversion for explicit conversions over one integer carrier (wrapper <-> base, wrapper <-> wrapper, constants shaped into the carrier) and resolves same-type operators with the named operand type; Semantic IR lowers them to named.convert and the int.* operations on named values; sec-lower-integer-core erases the identity. Contract- and unit-bearing named types keep their own paths. Tests: TestNamedIntegerConversionAndOperatorPlans, TestNativeTrackBuildsAndRuns/named_scalars, lit schema13-named-integers.mlir and invalid-schema13-named-integers.mlir."
+      - "MD-126 frontend StringView identity (2026-11-05; types.md StringView; core-library.md 5.8): a distinct compiler-known string-view kind is trivially destructible/copyable as a borrow holder, carries reference provenance, has the exact read-only registry surface and is shown as StringView by LSP hover. No implicit conversion to string or mutable view form is admitted. View readers have separate operation IDs and ToString remains content materialization, not the universal type-summary fallback. Semantic IR type tables, physical representation and release gating remain separate remaining work."
     remaining:
       - "native lowering of mutable storage whose element type is a named integer (`let mut value: Meters`): sec-finalize-for-llvm rejects the remaining !sec.named storage explicitly; the storage normalization in sec-lower-integer-core must erase the named element type as it does for values (dialect v11.41.7)."
       - "known hole (verified 2026-10-17): no lowering route lowers the global len(...) call or materializes numeric text for string(numericValue); the uint length and the ToString equality are therefore unverified at run time (MD-051 closed 2026-10-17 on the owner's decision that byte counts as uint8; MD-093 decided 2026-10-26: Sema rejects Name(number), while the accepted explicit materialization/nominal-conversion sequence still stops at unsupported intermediate-Result routing and P23 text materialization)"
@@ -628,11 +633,21 @@ integrations:
       - complete decimal comparison lowering
       - complete runtime contract failure paths for decimal overflow, division by zero, and precision exhaustion
       - "resolved 2026-10-18 (MD-105, formerly this hole): char/rune comparison of the same character type reuses int.compare / sec.int.cmp over !sec.char / !sec.rune and lowers unsigned via char -> ui8 / rune -> ui32 (semantic_ir.md § 125, operators.md \"Rune ordering\", package7.md amendment); native fixture characters.sec covers all six predicates, a top-bit char and a rune above U+FFFF"
+      - MD-126 finish the Semantic IR StringView type-table representation and 0.1.2 release/version admission policy. Distinct read-only/non-owning Sema identity, reference-carrying traits, no implicit string conversion/ref mut form, minimum registry signatures and LSP hover are implemented (2026-11-05); internType currently rejects StringView explicitly at the P23 boundary rather than erasing it into string or rune[].
     governance_reconciliation:
       - "representation audit completion does not implement every backend representation: collection/array work remains with frontend.collections; register, union and interface work remains with frontend.registers, frontend.unions and frontend.interfaces; task/thread work remains with concurrency.tasks-v2 and concurrency.thread-v2; quantity facts and operations remain with frontend.units-v2; any remains explicitly listed here. Maintained Semantic IR and physical Result/Option/aggregate lowering remain with the integrations in governance/lowering.yaml. Legacy unsupported boundaries are implementation capabilities, not new source-language restrictions."
       - "audit completion is distinct from runtime conversion implementation: the existing scalar ConversionError frontend remains open; audited missing nominal-core representations retain their specialized implementation owners, as do collection/place/defaultability owners. The historical matrix excluded the then-undecided numeric-to-string permission; MD-051 subsequently defined primitive fallible text materialization, and MD-093 now rejects direct nominal-string targets. Their backend gates remain separate from relation validation."
       - explicit callable parameter ownership modes and variadic callable type syntax remain with frontend.functions-v2 and frontend.lambda-functions-v2 in governance/declarations.yaml; inferred variadic shape is covered here without claiming those syntax/ownership integrations complete.
+      - The retired llvm_float_readiness_test.go no longer exists. Current float_core, floats, float_literals and float operator/core matrices live in cmd/compiler/native_track_test.go on the single native track. Repaired the test-file reference without claiming a new float runtime verification.
     verification:
+      - command: go vet -p 4 ./internal/sema ./internal/ir/semantic ./internal/diagnostics ./internal/formatter ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-11-05
+      - command: go test -p 4 ./cmd/lsp -run 'StringRange|ForBinding|Iterator|CompilerKnown|Slice|Borrow|Escape' -count=1 -timeout=180s
+        result: passed on 2026-11-05 (17.917s)
+      - command: go test -race -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run TestStringRange -count=1 -timeout=180s
+        result: "passed on 2026-11-05: Sema 1.082s, compiler CLI 2.131s, LSP diagnostics/hover 3.404s; source acceptance, registered help and explicit P23/no-output gate"
+      - command: go test -p 4 ./internal/sema ./internal/ir/semantic ./internal/diagnostics ./internal/formatter -count=1 -timeout=180s
+        result: "passed on 2026-11-05: full Sema 20.277s, Semantic IR 9.664s, diagnostic registry 0.002s and formatter 1.715s"
       - command: go test ./internal/sema/typecompatibility -run TestNumericStringConstructorRelations -count=1
         result: "Passed 2026-10-30: primitive int/float/decimal string-constructor relations remain accepted; direct Text(number) is rejected exactly once with located S1174, following the applied MD-051/MD-093 decisions. Replaces the obsolete legacy-permission oracle; runtime StringError materialization remains separately gated."
       - command: go test ./cmd/lsp -run 'SomeConstructorHover|TryHover|CompilerKnownFriendly|TypeHover' -count=1 -timeout=120s

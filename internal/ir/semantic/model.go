@@ -851,6 +851,9 @@ type Operation struct {
 	// Ownership carries the resolved facts of an own.* operation (P17
 	// §§ 48–58; ownership_ops.go).
 	Ownership *OwnershipFacts
+	// Volatile retains physical access identity separately from value transfers.
+	// Rules: rules/memory/copy_move.md §19; rules/platform/volatile.md §§9–11.
+	Volatile *VolatileAccessFacts
 	// Cleanup carries the identities of a cleanup.* operation, and Region the
 	// body of cleanup.defer-register (P17-33; cleanup_ops.go).
 	Cleanup *CleanupFacts

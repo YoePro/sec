@@ -15,7 +15,7 @@ import (
 // rules/memory/ownership.md — §§6,33.2–33.3;
 // rules/corrections/applied/diagnostics-ownership-v2-correction-20260826.md — "Required explanation shape".
 func (a *Analyzer) addUnavailableOwnershipDiagnostic(place Place, movedKey string, token, movedAt lexer.Token, id, help, format string, args ...any) {
-	reason := underlyingAvailabilityReason(a.moveReasons[movedKey])
+	reason := a.availabilityStates[movedKey].Reasons
 	label := "ownership " + availabilityReasonPhrase(reason) + " here"
 	explanation := fmt.Sprintf("%s no longer owns a usable value after it was %s at the related ownership action.", place.String(), availabilityReasonPhrase(reason))
 	if id == diagnostics.ConditionallyUnavailableUse {

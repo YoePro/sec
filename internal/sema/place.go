@@ -618,6 +618,9 @@ func (a *Analyzer) resolvePlacePath(expr ast.Expression) (Place, bool) {
 		base.PartialMoveSafe = false
 		return base, true
 	case *ast.SliceExpression:
+		if plan, ok := a.stringRanges[expr]; ok {
+			return cloneSlicePlanPlace(plan.ViewPlace), true
+		}
 		base, ok := a.sliceSourcePlace(expr.Left, a.expressionTypes[expr.Left])
 		if !ok {
 			return Place{}, false
@@ -874,7 +877,7 @@ func (a *Analyzer) checkPlaceAvailableForRead(place Place, token lexer.Token) bo
 			"place %s may be unavailable on a later loop iteration", place.String())
 		return true
 	}
-	if isConditionalAvailabilityReason(a.moveReasons[movedKey]) {
+	if isConditionallyUnavailable(a.availabilityStates[movedKey]) {
 		a.reportConditionallyUnavailablePlace(place, movedKey, token, movedAt, false)
 		return true
 	}
@@ -882,7 +885,7 @@ func (a *Analyzer) checkPlaceAvailableForRead(place Place, token lexer.Token) bo
 		a.reportPartiallyUnavailablePlace(place, movedKey, token, movedAt, false)
 		return true
 	}
-	reason := underlyingAvailabilityReason(a.moveReasons[movedKey])
+	reason := a.availabilityStates[movedKey].Reasons
 	if a.reportConsumedResultProjectionUse(place, movedKey, token, movedAt, reason) {
 		return true
 	}
@@ -898,7 +901,7 @@ func (a *Analyzer) markPlaceUnavailable(place Place, token lexer.Token, reason s
 	a.recordOwnedCleanupCancellation(place, token, reason)
 	key := place.String()
 	a.moved[key] = token
-	a.moveReasons[key] = reason
+	a.availabilityStates[key] = unavailableState(reason)
 }
 
 func (a *Analyzer) markPlaceAvailable(place Place) {
@@ -906,20 +909,20 @@ func (a *Analyzer) markPlaceAvailable(place Place) {
 	for movedKey := range a.moved {
 		if movedKey == key || strings.HasPrefix(movedKey, key+".") || strings.HasPrefix(movedKey, key+"[") {
 			delete(a.moved, movedKey)
-			delete(a.moveReasons, movedKey)
+			delete(a.availabilityStates, movedKey)
 		}
 	}
 }
 
 func (a *Analyzer) clearRootPlaceState(root string) {
-	clearRootPlaceStateMaps(a.moved, a.moveReasons, root)
+	clearRootPlaceStateMaps(a.moved, a.availabilityStates, root)
 }
 
-func clearRootPlaceStateMaps(moved map[string]lexer.Token, moveReasons map[string]string, root string) {
+func clearRootPlaceStateMaps(moved map[string]lexer.Token, availabilityStates placeAvailabilityStates, root string) {
 	for movedKey := range moved {
 		if movedKey == root || strings.HasPrefix(movedKey, root+".") || strings.HasPrefix(movedKey, root+"[") {
 			delete(moved, movedKey)
-			delete(moveReasons, movedKey)
+			delete(availabilityStates, movedKey)
 		}
 	}
 }

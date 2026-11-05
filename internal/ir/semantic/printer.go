@@ -417,6 +417,16 @@ func formatOperation(out *strings.Builder, op Operation) {
 		}
 	case OpBoundsFailure:
 		fmt.Fprintf(out, " operation=%q", op.ArrayOperation)
+	case OpVolatileRead, OpVolatileWrite:
+		for _, operand := range op.Operands {
+			fmt.Fprintf(out, " %%%d", operand)
+		}
+		if op.Volatile != nil {
+			fmt.Fprintf(out, " member=%s physical-plan=%s authorization=%s@%s", op.Volatile.MemberID, op.Volatile.PhysicalPlan, op.Volatile.Authorization, formatLocation(op.Volatile.AuthorizationLocation))
+			if op.UnsafeAuthorization != nil {
+				fmt.Fprintf(out, " unsafe-direct@%s", formatLocation(*op.UnsafeAuthorization))
+			}
+		}
 	case OpAtomicFence:
 		fmt.Fprintf(out, " order=%s", op.AtomicOrder)
 	default:

@@ -18,7 +18,7 @@ func (a *Analyzer) analyzeWhileStatement(stmt *ast.WhileStatement) {
 	// backedge state, not loop-entry state; keep the pre-condition moves for
 	// the backedge fixed point (rules/memory/ownership.md, loop fixed point).
 	preConditionMoved := copyMoved(a.moved)
-	preConditionReasons := copyMoveReasons(a.moveReasons)
+	preConditionReasons := copyAvailabilityStates(a.availabilityStates)
 	if stmt.Condition != nil {
 		conditionType, _ := a.inferExpression(stmt.Condition)
 		if conditionType.Kind != InvalidType && conditionType.Kind != BoolType {
@@ -36,7 +36,7 @@ func (a *Analyzer) analyzeWhileStatement(stmt *ast.WhileStatement) {
 	previousConstInts := a.constInts
 	previousAssigned := a.assigned
 	previousMoved := a.moved
-	previousMoveReasons := a.moveReasons
+	previousMoveReasons := a.availabilityStates
 	previousClosedResources := a.closedResources
 	previousBorrows := a.borrows
 	previousLocalRefContainers := a.localRefContainers
@@ -48,7 +48,7 @@ func (a *Analyzer) analyzeWhileStatement(stmt *ast.WhileStatement) {
 	a.constInts = copyConstInts(previousConstInts)
 	a.assigned = copyAssigned(previousAssigned)
 	a.moved = copyMoved(previousMoved)
-	a.moveReasons = copyMoveReasons(previousMoveReasons)
+	a.availabilityStates = copyAvailabilityStates(previousMoveReasons)
 	a.closedResources = copyMoved(previousClosedResources)
 	a.borrows = copyBorrows(previousBorrows)
 	a.localRefContainers = copyLocalRefContainers(previousLocalRefContainers)
@@ -86,7 +86,7 @@ func (a *Analyzer) analyzeWhileStatement(stmt *ast.WhileStatement) {
 		a.constInts = previousConstInts
 		a.assigned = previousAssigned
 		a.moved = previousMoved
-		a.moveReasons = previousMoveReasons
+		a.availabilityStates = previousMoveReasons
 		a.closedResources = previousClosedResources
 		a.borrows = previousBorrows
 		a.localRefContainers = previousLocalRefContainers
@@ -97,7 +97,7 @@ func (a *Analyzer) analyzeWhileStatement(stmt *ast.WhileStatement) {
 
 	loopConstInts := a.constInts
 	loopMoved := a.moved
-	loopMoveReasons := a.moveReasons
+	loopMoveReasons := a.availabilityStates
 	loopClosedResources := a.closedResources
 	loopBorrows := a.borrows
 	loopLocalRefContainers := a.localRefContainers
@@ -139,7 +139,7 @@ func (a *Analyzer) analyzeWhileStatement(stmt *ast.WhileStatement) {
 			a.assigned[binding] = true
 		}
 	}
-	a.moved, a.moveReasons = mergeLoopMoveState(previousMoved, previousMoveReasons, loopMoved, loopMoveReasons, breakFrame)
+	a.moved, a.availabilityStates = mergeLoopMoveState(previousMoved, previousMoveReasons, loopMoved, loopMoveReasons, breakFrame)
 	a.closedResources = mergeLoopClosedResourceState(previousClosedResources, loopClosedResources, breakFrame, bodyFallsThrough, conditionAlwaysTrue)
 	a.borrows = mergeLoopBorrowState(previousBorrows, loopBorrows, breakFrame)
 	a.localRefContainers = mergeLoopReferenceState(previousLocalRefContainers, loopLocalRefContainers, breakFrame)

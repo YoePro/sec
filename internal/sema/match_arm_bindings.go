@@ -15,7 +15,7 @@ func (a *Analyzer) analyzeMatchArmBody(arm *ast.MatchArm, info matchPatternInfo)
 	previousConstInts := a.constInts
 	previousAssigned := a.assigned
 	previousMoved := a.moved
-	previousMoveReasons := a.moveReasons
+	previousMoveReasons := a.availabilityStates
 	previousClosedResources := a.closedResources
 	previousBorrows := a.borrows
 	previousLocalRefContainers := a.localRefContainers
@@ -24,7 +24,7 @@ func (a *Analyzer) analyzeMatchArmBody(arm *ast.MatchArm, info matchPatternInfo)
 	a.constInts = copyConstInts(previousConstInts)
 	a.assigned = copyAssigned(previousAssigned)
 	a.moved = copyMoved(previousMoved)
-	a.moveReasons = copyMoveReasons(previousMoveReasons)
+	a.availabilityStates = copyAvailabilityStates(previousMoveReasons)
 	a.closedResources = copyMoved(previousClosedResources)
 	a.borrows = copyBorrows(previousBorrows)
 	a.localRefContainers = copyLocalRefContainers(previousLocalRefContainers)
@@ -93,7 +93,7 @@ func (a *Analyzer) analyzeMatchArmBody(arm *ast.MatchArm, info matchPatternInfo)
 		a.constInts = previousConstInts
 		a.assigned = previousAssigned
 		a.moved = previousMoved
-		a.moveReasons = previousMoveReasons
+		a.availabilityStates = previousMoveReasons
 		a.closedResources = previousClosedResources
 		a.borrows = previousBorrows
 		a.localRefContainers = previousLocalRefContainers
@@ -110,14 +110,14 @@ func (a *Analyzer) analyzeMatchArmBody(arm *ast.MatchArm, info matchPatternInfo)
 
 	if arm.ReturnBody != nil {
 		a.analyzeReturnStatement(a.currentFunctionName, a.currentFunctionReturn, arm.ReturnBody)
-		return Type{Kind: InvalidType}, a.finalizeMatchBranch(info, branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), moveReasons: copyMoveReasons(a.moveReasons), closedResources: copyMoved(a.closedResources), borrows: copyBorrows(a.borrows), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), referenceOrigins: captureReferenceOrigins(a.symbols), continues: false})
+		return Type{Kind: InvalidType}, a.finalizeMatchBranch(info, branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), availabilityStates: copyAvailabilityStates(a.availabilityStates), closedResources: copyMoved(a.closedResources), borrows: copyBorrows(a.borrows), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), referenceOrigins: captureReferenceOrigins(a.symbols), continues: false})
 	}
 	if arm.BlockBody != nil {
 		a.analyzeBlockStatements(arm.BlockBody)
 		return Type{Kind: InvalidType}, a.finalizeMatchBranch(info, branchAnalysis{
 			assigned:           copyAssigned(a.assigned),
 			moved:              copyMoved(a.moved),
-			moveReasons:        copyMoveReasons(a.moveReasons),
+			availabilityStates: copyAvailabilityStates(a.availabilityStates),
 			closedResources:    copyMoved(a.closedResources),
 			borrows:            copyBorrows(a.borrows),
 			localRefContainers: copyLocalRefContainers(a.localRefContainers),
@@ -127,7 +127,7 @@ func (a *Analyzer) analyzeMatchArmBody(arm *ast.MatchArm, info matchPatternInfo)
 		})
 	}
 	if arm.Body == nil {
-		return Type{Kind: InvalidType}, a.finalizeMatchBranch(info, branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), moveReasons: copyMoveReasons(a.moveReasons), closedResources: copyMoved(a.closedResources), borrows: copyBorrows(a.borrows), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), referenceOrigins: captureReferenceOrigins(a.symbols), continues: true})
+		return Type{Kind: InvalidType}, a.finalizeMatchBranch(info, branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), availabilityStates: copyAvailabilityStates(a.availabilityStates), closedResources: copyMoved(a.closedResources), borrows: copyBorrows(a.borrows), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), referenceOrigins: captureReferenceOrigins(a.symbols), continues: true})
 	}
 	a.constructionOwnershipDepth++
 	bodyType, _ := a.inferExpression(arm.Body)
@@ -141,7 +141,7 @@ func (a *Analyzer) analyzeMatchArmBody(arm *ast.MatchArm, info matchPatternInfo)
 	if ownershipValid {
 		a.markMoveSource(arm.Body)
 	}
-	return bodyType, a.finalizeMatchBranch(info, branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), moveReasons: copyMoveReasons(a.moveReasons), closedResources: copyMoved(a.closedResources), borrows: copyBorrows(a.borrows), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), referenceOrigins: captureReferenceOrigins(a.symbols), continues: true})
+	return bodyType, a.finalizeMatchBranch(info, branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), availabilityStates: copyAvailabilityStates(a.availabilityStates), closedResources: copyMoved(a.closedResources), borrows: copyBorrows(a.borrows), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), referenceOrigins: captureReferenceOrigins(a.symbols), continues: true})
 }
 
 // rejectGuardConsumedBindings rejects a guard that consumes a payload or

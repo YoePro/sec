@@ -2,6 +2,7 @@ package sema
 
 import (
 	"sec/internal/ast"
+	"sec/internal/diagnostics"
 )
 
 // inferRefExpression preserves the shared or mutable access mode on indexed
@@ -18,6 +19,10 @@ func (a *Analyzer) inferRefExpression(expr *ast.RefExpression) (Type, expression
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 	valueType, _ := a.inferExpression(expr.Value)
+	if valueType.Kind == StringViewType && expr.Mutable {
+		a.addErrorAtTokenWithMetadata(expr.Token, diagnostics.BorrowMutableAuthority, "StringView is read-only; iterate or pass it by value.", "StringView has no ref mut form")
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
 	if valueType.Kind == InvalidType {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}

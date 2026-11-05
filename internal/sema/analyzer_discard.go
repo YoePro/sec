@@ -75,7 +75,7 @@ func (a *Analyzer) analyzeDiscardStatement(stmt *ast.DiscardStatement) {
 			a.recordDiscardedPlaceFacts(stmt.Value)
 			a.recordRedundantDiscard(stmt, place, movedKey, endedAt)
 			state := DiscardSourceUnavailable
-			if isConditionalAvailabilityReason(a.moveReasons[movedKey]) {
+			if isConditionallyUnavailable(a.availabilityStates[movedKey]) {
 				a.recordOwnedCleanupCancellation(place, expressionToken(stmt.Value), "discarded")
 				state = DiscardSourceConditional
 				// Every outgoing path is now unavailable (destruction.md § 35.5(3)).
@@ -138,7 +138,7 @@ func (a *Analyzer) analyzeDiscardStatement(stmt *ast.DiscardStatement) {
 	}
 	a.discardStates[stmt] = DiscardSourceAvailable
 	a.moved[ident.Value] = ident.Token
-	a.moveReasons[ident.Value] = "discarded"
+	a.availabilityStates[ident.Value] = unavailableState("discarded")
 	if placeOK {
 		a.recordOwnedCleanupCancellation(place, ident.Token, "discarded")
 	}

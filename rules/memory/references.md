@@ -117,6 +117,10 @@ fn Increment(value: ref mut int) void {
 
 § 3.3(4) Hidden empty-slice representation does not make ordinary safe references nullable.
 
+§ 3.3(5) A `StringView` (MD-126, `rules/corrections/applied/MD-126-borrowed-string-ranges-rune-iteration-applied-20261105.md`) is a non-owning bounded text view: a read-only view over a scalar-bounded range of valid UTF-8 string backing. It is not a `ref rune[]`, does not expose any `ref rune` or raw rune pointer, and has no `ref mut` form. Its valid range is part of its contract under § 3.3(1)–(2).
+
+§ 3.3(6) A returned `StringView` is valid only with returned-origin facts that tie it to source storage outliving the call, such as a `ref string` parameter or a caller-supplied view; a view of a dead local string or temporary must be rejected.
+
 ### § 3.4 Explicit whole-value dereference
 
 § 3.4(1) For an expression `r` of type `ref T` or `ref mut T`, the prefix expression `*r` names the **referent Place** of `r`. The bare holder `r` keeps reference type in every context; Sec has no implicit whole-value dereference (MD-063, applied 2026-10-21).

@@ -14,31 +14,156 @@ type _NumberSpan struct {
 
 // Result of scanning a positional number.
 type _NumberScan struct {
-    Radix:            uint8,
-    Negative:         bool,
-    Integer:          _NumberSpan,
-    Fraction:         Option[_NumberSpan],
-    Exponent:         Option[_NumberSpan],
-    ExponentNegative: bool,
-    DecimalZero:      Option[rune],
+    Radix:            uint8,               //
+    Negative:         bool,                //
+    Integer:          _NumberSpan,         //
+    Fraction:         Option[_NumberSpan], //
+    Exponent:         Option[_NumberSpan], //
+    ExponentNegative: bool,                //
+    DecimalZero:      Option[rune],        //
 }
 
-// Validates a trailing alphabetic suffix.
-// Digits and other characters are not permitted.
-fn _ValidateNumberSuffix(source: string, startByte: uint, endByte: uint) Result[void, NumberParseError] {
-    if source.Len == 0 {
+/**
+ * Validates the alphabetic suffix of a numeric string.
+ *
+ * Description:
+ * Ensures that the specified rune range contains only letters.
+ * Digits, whitespace, punctuation, and other non-letter characters
+ * are rejected. The validation includes the start position but
+ * excludes the end position.
+ *
+ * Parameters:
+ * - source: The UTF-8 string containing the numeric suffix.
+ * - start: Inclusive zero-based rune position of the suffix.
+ * - end: Exclusive zero-based rune position of the suffix.
+ *
+ * Returns:
+ * Success when every rune in the specified range is a letter.
+ *
+ * Errors:
+ * - NumberParseError.InvalidNumber: The suffix contains a digit
+ * or another character that is not a letter.
+ *
+ * Ownership:
+ * Does not consume or modify the source string.
+ *
+ * Allocation:
+ * Does not allocate.
+ */
+fn _ValidateNumberSuffix(source: string, start: uint, end: uint) Result[void, NumberParseError] {
+    if start >= end || end > source.Len {
         return Err(NumberParseError.InvalidNumber)
     }
-
-    let part := try source.Slice(startByte, endByte) {
-        Err(_) => return Err(NumberParseError.InvalidNumber)
-    }
-
-    for character in part {
-        if character.IsUnicodeDigit || !character.IsLetter {
+    for ch in source[start..<end] {
+        if ch.IsUnicodeDigit || !ch.IsLetter {
             return Err(NumberParseError.InvalidNumber)
         }
     }
 
     return Ok()
+}
+
+/**
+ * Returns the numeric value of an ASCII digit in the specified radix.
+ *
+ * Description:
+ * Recognizes ASCII digits 0-9 for bases 2, 10, and 16.
+ * For hexadecimal numbers, also recognizes A-F and a-f.
+ *
+ * The caller determines the radix from the numeric prefix.
+ * Exponent notation and Unicode decimal digits are handled
+ * separately by the numeric scanner.
+ *
+ * Parameters:
+ * - character: The Unicode scalar to examine.
+ * - radix: The numeric base, either 2, 10, or 16.
+ *
+ * Returns:
+ * Some(value) when the character is a valid digit in the
+ * specified radix; otherwise None().
+ *
+ * Ownership:
+ * Does not borrow or consume any external storage.
+ *
+ * Allocation:
+ * Does not allocate.
+ */
+fn _AsciiDigitValue(character: rune, radix: uint8) Option[int] {
+    let mut value: int := -1
+
+    if character in 48r..57r {
+        value = int(character) - 48
+    } else if radix == 16 && character in 65r..70r {
+        value = int(character) - 65 + 10
+    } else if radix == 16 && character in 97r..102r {
+        value = int(character) - 97 + 10
+    }
+
+    if value < 0 || value >= int(radix) {
+        return None()
+    }
+
+    return Some(value)
+}
+
+/**
+ * Returns the decimal digit value and its numeral system identity.
+ *
+ * Description:
+ * Recognizes Unicode General_Category Nd decimal digits using
+ * the generated Unicode 18.0 digit table.
+ *
+ * Uses a fast path for ASCII digits and binary search for other
+ * decimal digit sets. Each set contains ten consecutive code points.
+ *
+ * Parameters:
+ * - character: The Unicode scalar to examine.
+ *
+ * Returns:
+ * Some(_DecimalDigit) containing a value from 0 to 9 and the
+ * zero code point identifying its numeral system.
+ * Returns None() when the character is not a decimal digit.
+ *
+ * Ownership:
+ * Reads the immutable generated digit table.
+ * Does not consume or modify any external storage.
+ *
+ * Allocation:
+ * Does not allocate.
+ */
+fn _DecimalDigitValue(character: rune) Option[_DecimalDigit] {
+    // Fast path for ASCII.
+    if character <= 127r {
+        if character in 48r..57r {
+            return Some(_DecimalDigit {
+                Value: bit[8](int(character) - 48),
+                Zero: 48r,
+            })
+        }
+
+        return None()
+    }
+
+    // Binary search, excluding the ASCII digit set.
+    let mut low:  uint := 1
+    let mut high: uint := _decimalZeros.Len
+
+    while low < high {
+        let middle := low + (high - low) / 2
+        let zero   := _decimalZeros[middle]
+        let delta  := int(character) - int(zero)
+
+        if delta < 0 {
+            high = middle
+        } else if delta >= 10 {
+            low = middle + 1
+        } else {
+            return Some(_DecimalDigit {
+                Value: bit[8](delta),
+                Zero: zero,
+            })
+        }
+    }
+
+    return None()
 }

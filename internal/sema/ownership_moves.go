@@ -20,7 +20,7 @@ func (a *Analyzer) markMoveSource(expr ast.Expression) bool {
 			a.recordOwnedCleanupCancellation(place, expr.Token, "moved")
 		}
 		a.moved[expr.Value] = expr.Token
-		a.moveReasons[expr.Value] = "moved"
+		a.availabilityStates[expr.Value] = unavailableState("moved")
 		return true
 	case *ast.MemberExpression:
 		place, ok := a.resolvePlace(expr)
@@ -123,7 +123,7 @@ func (a *Analyzer) markResourceTransfer(expr ast.Expression) bool {
 			return false
 		}
 		a.moved[expr.Value] = expr.Token
-		a.moveReasons[expr.Value] = "returned"
+		a.availabilityStates[expr.Value] = unavailableState("returned")
 		if place, ok := a.rootPlace(expr.Value); ok {
 			a.recordOwnedCleanupCancellation(place, expr.Token, "returned")
 		}

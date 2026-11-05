@@ -563,7 +563,7 @@ func (a *Analyzer) inferSpawnExpression(expr *ast.SpawnExpression) (Type, expres
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 	execution, graphSpawn := spawnExecutionRelation(expr.Kind)
-	previousMoved, previousReasons := copyMoved(a.moved), copyMoveReasons(a.moveReasons)
+	previousMoved, previousReasons := copyMoved(a.moved), copyAvailabilityStates(a.availabilityStates)
 	previousBorrows := copyBorrows(a.borrows)
 	spawnedType, _ := a.inferSpawnValue(expr.Value, execution, graphSpawn)
 	if spawnedType.Kind == InvalidType {
@@ -579,7 +579,7 @@ func (a *Analyzer) inferSpawnExpression(expr *ast.SpawnExpression) (Type, expres
 		returnType = *spawnedType.FunctionReturnType
 	}
 	if a.checkMutexGuardSpawn(expr, returnType) {
-		a.moved, a.moveReasons, a.borrows = previousMoved, previousReasons, previousBorrows
+		a.moved, a.availabilityStates, a.borrows = previousMoved, previousReasons, previousBorrows
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 	switch expr.Kind {
@@ -1017,7 +1017,7 @@ func (a *Analyzer) inferLambdaExpression(expr *ast.LambdaExpression) (Type, expr
 	previousConstInts := a.constInts
 	previousAssigned := a.assigned
 	previousMoved := a.moved
-	previousMoveReasons := a.moveReasons
+	previousMoveReasons := a.availabilityStates
 	previousFunctionName := a.currentFunctionName
 	previousCallable := a.currentCallable
 	previousFunctionReturn := a.currentFunctionReturn
@@ -1035,10 +1035,10 @@ func (a *Analyzer) inferLambdaExpression(expr *ast.LambdaExpression) (Type, expr
 	a.constInts = map[string]*big.Int{}
 	a.assigned = map[string]bool{}
 	a.moved = copyMoved(previousMoved)
-	a.moveReasons = copyMoveReasons(previousMoveReasons)
+	a.availabilityStates = copyAvailabilityStates(previousMoveReasons)
 	for _, capture := range expr.Captures {
 		if capture.Name != nil {
-			clearRootPlaceStateMaps(a.moved, a.moveReasons, capture.Name.Value)
+			clearRootPlaceStateMaps(a.moved, a.availabilityStates, capture.Name.Value)
 		}
 	}
 	for name, symbol := range previousSymbols {
@@ -1068,7 +1068,7 @@ func (a *Analyzer) inferLambdaExpression(expr *ast.LambdaExpression) (Type, expr
 		a.constInts = previousConstInts
 		a.assigned = previousAssigned
 		a.moved = previousMoved
-		a.moveReasons = previousMoveReasons
+		a.availabilityStates = previousMoveReasons
 		a.currentFunctionName = previousFunctionName
 		a.currentCallable = previousCallable
 		a.currentFunctionReturn = previousFunctionReturn

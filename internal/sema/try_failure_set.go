@@ -98,6 +98,9 @@ func (a *Analyzer) collectTryFailurePoints(expr ast.Expression) []TryFailurePoin
 			visit(node.Left)
 			visit(node.Start)
 			visit(node.End)
+			if _, ok := a.stringRanges[node]; ok {
+				points = append(points, TryFailurePoint{Kind: TryFailureSliceRange, ErrorType: a.types["RangeError"], Expression: node, Token: node.Token})
+			}
 		case *ast.MemberExpression:
 			visit(node.Object)
 			points = a.appendTryChainCarrierPoint(points, node.Object)

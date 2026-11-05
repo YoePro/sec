@@ -90,6 +90,11 @@ func analyseHelpText() string {
 when no source is named) and reports what needs attention. A clean result
 prints nothing and exits 0.
 
+Whole-program reports also include interface conformance across the module's
+platform files and configured project variants. --target limits that report to
+one platform; --verbose shows successful facts and --json includes conformances.
+Function-focused and individually selected analyses retain their own scope.
+
 Analyses (select one by name; the default and --all run every analysis):
 `)
 	for _, family := range analysisFamilies() {
@@ -306,17 +311,18 @@ func analyseFamilyOfWarning(warning sema.Error) string {
 //   - rules/tooling/cli.md — § 6 (machine-readable analysis report)
 //   - rules/corrections/applied/md017-sec-analyse-cli-and-help-correction-20261017.md — § 6
 type analysisReportDocument struct {
-	Format      string                   `json:"format"`
-	Version     int                      `json:"version"`
-	Status      string                   `json:"status"`
-	Target      string                   `json:"target"`
-	Depth       string                   `json:"depth"`
-	Analyses    []analysisReportAnalysis `json:"analyses"`
-	Focus       *analysisReportFocus     `json:"focus"`
-	Diagnostics []emittedOccurrence      `json:"diagnostics"`
-	Findings    []analysisReportFinding  `json:"findings"`
-	Limitations []string                 `json:"limitations"`
-	Summary     analysisReportSummary    `json:"summary"`
+	Format       string                   `json:"format"`
+	Version      int                      `json:"version"`
+	Status       string                   `json:"status"`
+	Target       string                   `json:"target"`
+	Depth        string                   `json:"depth"`
+	Analyses     []analysisReportAnalysis `json:"analyses"`
+	Focus        *analysisReportFocus     `json:"focus"`
+	Diagnostics  []emittedOccurrence      `json:"diagnostics"`
+	Findings     []analysisReportFinding  `json:"findings"`
+	Conformances []analysisConformance    `json:"conformances,omitempty"`
+	Limitations  []string                 `json:"limitations"`
+	Summary      analysisReportSummary    `json:"summary"`
 }
 
 type analysisReportAnalysis struct {

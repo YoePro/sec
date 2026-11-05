@@ -44,7 +44,7 @@ type ResolvedMatchFieldBinding struct {
 // Rules: rules/control-flow/flowcontrol_match.md — §§ 10, 12–15;
 // rules/foundations/grammar.md — StructLikeUnionPattern.
 func (a *Analyzer) analyzeMatchFieldPattern(subject ast.Expression, pattern *ast.MatchPattern, subjectType Type) (matchPatternInfo, bool) {
-	subjectPlace, hasPlace := a.resolvePlace(subject)
+	subjectPlace, hasPlace := a.matchSubjectPlace(subject)
 	return a.analyzeUnionFieldPatternAt(subject, subjectPlace, hasPlace, pattern, subjectType)
 }
 

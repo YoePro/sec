@@ -44,7 +44,7 @@ func (a *Analyzer) analyzeDeferStatement(stmt *ast.DeferStatement) {
 	previousConstInts := a.constInts
 	previousAssigned := a.assigned
 	previousMoved := a.moved
-	previousMoveReasons := a.moveReasons
+	previousMoveReasons := a.availabilityStates
 	previousClosedResources := a.closedResources
 	previousBorrows := a.borrows
 	previousLocalRefContainers := a.localRefContainers
@@ -56,7 +56,7 @@ func (a *Analyzer) analyzeDeferStatement(stmt *ast.DeferStatement) {
 	a.constInts = copyConstInts(previousConstInts)
 	a.assigned = copyAssigned(previousAssigned)
 	a.moved = copyMoved(previousMoved)
-	a.moveReasons = copyMoveReasons(previousMoveReasons)
+	a.availabilityStates = copyAvailabilityStates(previousMoveReasons)
 	a.closedResources = copyMoved(previousClosedResources)
 	a.borrows = copyBorrows(previousBorrows)
 	a.localRefContainers = copyLocalRefContainers(previousLocalRefContainers)
@@ -79,7 +79,7 @@ func (a *Analyzer) analyzeDeferStatement(stmt *ast.DeferStatement) {
 		a.constInts = previousConstInts
 		a.assigned = previousAssigned
 		a.moved = previousMoved
-		a.moveReasons = previousMoveReasons
+		a.availabilityStates = previousMoveReasons
 		a.closedResources = previousClosedResources
 		a.borrows = previousBorrows
 		a.localRefContainers = previousLocalRefContainers

@@ -82,7 +82,7 @@ integrations:
       - classify every remaining Sec 0.1 allocation-capable operation in the same effect model (collection growth and WithCapacity, closure environments where canonically allocation-capable, spawn control storage, shaped types, allocating core and stdlib contracts)
       - "@noAlloc coverage of destructors reached from the function and compiler-generated operations; defer bodies and (since 2026-10-10) concrete generic specializations are covered. A local whose type has an allocating free is still accepted in a @noAlloc function (no destruction edges; needs destruction-point facts). Template-level constraint calls stay unknown; constraint-carried effect contracts await MD-053"
       - complete context propagation through functions, methods, lambdas, properties, init, interfaces, generics and indirect calls
-      - overflow and alignment checks for safe manual allocation (blocked on the layout service and MD-019)
+      - overflow and alignment checks for safe manual allocation, including over-aligned `minAlign(N)` types (blocked on the layout service; MD-019 syntax decided 2026-11-05, allocation.md § 9(7a))
       - integrate ownership-v2, borrowing-v2, lifetime-analysis-v2, references-v2 and destruction-v2 facts canonically
       - complete failure behavior and only treat allocation as infallible when storage/capacity is proven
       - FFI allocation contracts beyond the trusted @noAlloc fact (ownership, deallocation responsibility, retention; allocation.md § 19)
@@ -487,7 +487,7 @@ integrations:
         result: passed on 2026-10-07 with registry parity and unique ownership; tooling.allocation remaining reduced from 6 to 5, allocation total from 43 to 42
     cross_references:
       - frontend.allocation and analysis.allocation own completion of operation/cleanup coverage and effect propagation; these conservative presentation facts do not complete those remaining points
-      - "mentor diagnostics cannot yet be completed: MD-019 lacks normative explicit-layout/alignment syntax; analysis.allocation still owns static capacity/overflow/layout proof, and governance/analysis.yaml sema.isr-analysis owns ISR roots and context legality; the latter are implementation dependencies rather than missing language decisions"
+      - "mentor diagnostics cannot yet be completed: the MD-019 explicit-layout syntax is decided (2026-11-05) but its Sema validation and ResolvedLayout facts are not implemented; analysis.allocation still owns static capacity/overflow/layout proof, and governance/analysis.yaml sema.isr-analysis owns ISR roots and context legality; the latter are implementation dependencies rather than missing language decisions"
     remaining:
       - provide mentor diagnostics for noalloc, ISR, capacity, overflow, alignment, unsupported context and hidden-allocation violations
     required_tests:

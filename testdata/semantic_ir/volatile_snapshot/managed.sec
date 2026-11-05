@@ -1,0 +1,5 @@
+module main
+
+fn Managed(pointer: RawPtr[string]) string {
+    unsafe { return pointer.VolatileRead() }
+}

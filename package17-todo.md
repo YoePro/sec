@@ -237,17 +237,26 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
 - [ ] P17-02 — Run and record P13/P14/P15/P16 regressions against that baseline;
   distinguish completed predecessor scope, missing bridges and skipped tools.
   Keep P15/P16 implementation/evidence owned by their respective plans.
-- [ ] P17-03 — Compare the ownership/destruction sync and IR amendment with
+- [x] P17-03 — Compare the ownership/destruction sync and IR amendment with
   current ownership, copy/move, destruction, defer, discard and Semantic IR
   rules. Merge only missing/conflicting paragraphs through the normal correction
   workflow; preserve newer rules and update `language-rulebook-status.md`.
 
-  Audited 2026-11-03 in `rules/corrections/p17-ownership-destruction-rules-synchronization.md`:
+  Audited 2026-11-03 in `rules/corrections/applied/p17-ownership-destruction-rules-synchronization-20261105.md`:
   every sync and amendment section mapped to its owner; B/C/E merged (defer.md § 13,
   semantic_ir.md §§ 35(6), 44(2), 44(2a)); A/D (replacement registration point and
   a defer reading the replaced owner) are MD-125. The audit found defer.md § 8 was
   violated (inner-scope owner destroyed before the defer reading it); that and
-  loop storage read by a defer now fail closed. Open until MD-125 is decided.
+  loop storage read by a defer now fail closed.
+
+  Done 2026-11-05: the owner decided MD-125 as option B (a replacement keeps the
+  Place's existing cleanup registration and position; reinitialization registers
+  anew). Applied in destruction.md §§ 6.1(4)–(5), 13.2(5)–(8), 13.3(5),
+  semantic_ir.md § 40(7)–(10) and a defer.md § 9 clarification; the P17 sync § 1/§ 3
+  and the Semantic IR amendment § 11 are marked superseded in part, and proposals
+  A/D of the audit are superseded. **Source rules synchronized; implementation still
+  partial:** inherited registration in Sema facts, producers and --sec-verify-cleanups
+  is tracked in governance (`frontend.destruction`, `lowering.sec-mlir-package17`).
 - [x] P17-04 — Reconcile MD-025 and the stale custom-free acceptance gate;
   document the exact resolved scope and remaining restrictions. Update the
   existing decision entry rather than creating a competing decision or policy.
@@ -936,7 +945,7 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
   authority conflict. A completed subtask is not completion of its entire family.
 
   Done 2026-11-03: "P17-60 acceptance evidence" below, 45 rows; as of
-  2026-11-04: 31 met, 1 superseded (MD-025), 12 partial, 1 not met.
+  2026-11-05: 32 met, 1 superseded (MD-025), 11 partial, 1 not met.
 - [x] P17-61 — On the recorded execution snapshot, run full Go/vet, predecessor
   source pipelines, all three ownership/cleanup verifiers, `check-sec-mlir`,
   diff/private-path checks and canonical governance validation. Configured missing
@@ -1004,7 +1013,7 @@ Partial or Not met (P17-62).
 |---|---|---|---|
 | 1 | baseline documents repo 152c772 + local P13–P16 or newer equivalent | Met | P17-01: HEAD `cfff1b4b` plus the dirty tree recorded 2026-11-03 (section below); LLVM 24.0.0git, lit 24.0.0dev, Go 1.26. |
 | 2 | previous package regressions remain green | Partial | TestPackage17KeepsPackage16Programs (package-16 fixtures still build at 17); full `go test ./...` result in P17-61. The two `cmd/lsp` fmt-package tests fail on the owner's draft `sec/stdlib`, outside P17. |
-| 3 | ownership/destruction/defer/discard synchronization applied | Partial | P17-03 audit recorded (`rules/corrections/p17-ownership-destruction-rules-synchronization.md`); B/C/E merged, A/D open as MD-125. Owner decisions 2026-11-03 added to destruction.md § 8(8)–(9). |
+| 3 | ownership/destruction/defer/discard synchronization applied | Met | P17-03 done 2026-11-05: audit recorded, B/C/E merged, MD-125 (option B) applied to destruction.md, semantic_ir.md and defer.md with the P17 sync texts reconciled. Owner decisions 2026-11-03 in destruction.md § 8(8)–(9). Inherited-registration implementation is tracked separately. |
 | 4 | Semantic IR ownership amendment applied | Met | P17-04; `ownership_ops.go`, `cleanup_ops.go`, `ownership_state.go`. |
 | 5 | schema-v13 dialect rulebook installed | Partial | `sec_mlir_dialect_v13.md` present and implemented; P17-05 synchronization against v11/v12 not recorded. |
 | 6 | lowering-v13 rulebook installed | Partial | `sec_mlir_lowering_v13.md` present; P17-05 open as above. |

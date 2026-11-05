@@ -403,6 +403,13 @@ ordinary direct slice takes the § 76(2)
 `uint` element count. Slice `==`/`!=` are invalid in Sec 0.1; ordinary scalar
 reference equality is not extended to slices.
 
+§ 14(13) MD-126 (`rules/corrections/applied/MD-126-borrowed-string-ranges-rune-iteration-applied-20261105.md`) adds the string-bounded-view category `StringView`.
+It is a read-only bounded view over UTF-8 string backing with rune-index
+bounds, distinct from an ordinary `ref T` and from `ref T[]`. It does not relax
+the initialized-`T` requirement of ordinary references, `ref string` keeps its
+meaning as a reference to a complete `string` Place, and no raw rune pointer is
+exposed.
+
 
 ---
 

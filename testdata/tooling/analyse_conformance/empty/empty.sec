@@ -1,0 +1,5 @@
+module empty
+
+interface Native {
+    fn Size() int
+}

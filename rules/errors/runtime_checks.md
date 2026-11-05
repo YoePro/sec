@@ -759,6 +759,15 @@ Neither fallible range creation nor `try staleSlice[index]` catches that
 failure as `RangeError` or `IndexError`. `unsafe` does not remove these safe
 slice bounds or validity obligations.
 
+String ranges (MD-126, `rules/corrections/applied/MD-126-borrowed-string-ranges-rune-iteration-applied-20261105.md`) follow the same contract: `text[a..<b]` over a
+`string` or `StringView` evaluates source, start and end once in source order,
+normalizes rune endpoints to `[start, endExclusive)`, and maps dynamic failure
+in the same order to `RangeError.InvalidRange`, `RangeError.StartAfterEnd` and
+`RangeError.OutOfBounds`. The ordinary form uses `panic.bounds` with
+`slice-range` provenance; `try text[a..<b]` yields `RangeError`. No new error
+type or mid-scalar variant exists, since rune endpoints are scalar
+boundaries. The string form needs no written `ref`.
+
 ---
 
 # Collections

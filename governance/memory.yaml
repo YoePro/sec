@@ -330,7 +330,7 @@ integrations:
 
   - id: semantic-ir.copy-move
     area: semantic-ir-ownership
-    status: partial
+    status: implemented
     integrated: "2026-08-28"
     document_revision: "2.0"
     repository_baseline: 069c111
@@ -338,11 +338,11 @@ integrations:
       - rules/memory/copy_move.md
       - rules/memory/ownership.md
       - rules/compiler/semantic_ir.md
+      - rules/platform/volatile.md
     implemented:
-      - Current Semantic IR carries selected call argument actions and ownership-adjacent facts, but the root implementation-status still records explicit copy/move/replace/destruction operations as deferred.
       - "P17 Semantic IR copy/move (verified 2026-11-04; copy_move.md; semantic_ir.md §§ 34–36, 35(6)): own.copy, own.semantic-copy, own.move, own.copy-from-place, own.move-from-place, own.initialize-place, own.replace-place, own.discard and own.destroy-*; return, argument, struct-field and union-payload transfer actions (sec.return_action, argument actions, field_actions, payloadActions including construct-direct and move); sec.successor_actions on branches for value-producing control flow; Place identity and partial-availability state carried on Places; explicit named boundaries where a form is not represented. Tests: ownership_variants.sec, package17_predecessor_test.go, ownership_capabilities_test.go."
-    remaining:
-      - represent volatile access boundaries separately from ordinary value copy/move operations
+      - "Volatile ownership boundary completed (2026-11-05; copy_move.md 19,30.6; volatile.md 3,9-12; semantic_ir.md 47): exact compiler-known RawPtr VolatileRead/VolatileWrite produce distinct effectful volatile.read/volatile.write operations on raw addresses, never ownership move-out of physical storage. Reads yield ordinary non-managed snapshots; local copies cause no new hardware read, repeated or discarded reads remain explicit, receiver/value operands evaluate once in order, and unsafe block/direct-prefix/function provenance is retained. The verifier rejects contradictory ownership, borrow, synchronization, identity, pointee and physical-plan claims. Existing register.hw operations retain their separate hardware authority boundary. Managed decoding is explicitly unsupported, not manufactured from bits. Unverified physical plans stop Sec MLIR emission with a named error and no artifact; target capability validation and executable physical lowering remain owned by the raw-pointer/platform integrations."
+    remaining: []
     required_tests:
       - Semantic IR distinguishes copy from move even when both could lower to identical machine operations
       - Semantic IR preserves reusable-source explicit consuming call action
@@ -350,6 +350,29 @@ integrations:
       - Semantic IR preserves return transfer with optional source marker normalized to one semantic transfer
       - Semantic IR preserves replacement versus reinitialization and cleanup responsibility
       - Semantic IR never models a volatile hardware read itself as ownership move-out
+    revised: "2026-11-05"
+    code:
+      - internal/ir/semantic/volatile_access.go
+      - internal/ir/semantic/builder.go
+      - internal/ir/semantic/model.go
+      - internal/ir/semantic/verifier.go
+      - internal/ir/semantic/printer.go
+      - internal/lowering/secmlir/volatile_boundary.go
+      - internal/lowering/secmlir/emitter_options.go
+      - internal/lowering/secmlir/emitter.go
+    tests:
+      - internal/ir/semantic/volatile_access_test.go
+      - internal/lowering/secmlir/volatile_boundary_test.go
+      - cmd/compiler/volatile_boundary_test.go
+      - testdata/semantic_ir/volatile_snapshot/main.sec
+      - testdata/semantic_ir/volatile_snapshot/managed.sec
+    verification:
+      - command: go test -p 4 ./cmd/compiler -run TestVolatilePhysicalPlanBoundaryCLI\|Test.*Hardware\|TestRawPointer\|TestNativeTrackNamesUnloweredConstructs -count=1 -timeout=120s
+        result: Passed 2026-11-05 (0.777s). go vet on Semantic IR, Sec MLIR lowering and compiler also passed.
+      - command: go test -race -p 4 ./internal/ir/semantic ./internal/lowering/secmlir ./cmd/compiler -run TestVolatile -count=1 -timeout=180s
+        result: "Passed 2026-11-05: distinct/repeated/discarded reads, snapshot copy and explicit move, borrowed receiver, direct unsafe provenance, nominal and nested raw values, operand evaluation order, lookalike isolation, contradictory IR rejection, managed decoding rejection, deterministic serialization and 32/64-bit emission gates. CLI check and emit-ir succeed; emit-sec-mlir reports its physical-plan boundary without creating an artifact."
+      - command: go test -p 4 ./internal/ir/semantic ./internal/lowering/secmlir -count=1 -timeout=180s
+        result: "Passed 2026-11-05 with Sec MLIR/LLVM tools configured: complete Semantic IR suite 6.316s and lowering suite 16.066s; existing hardware, raw-pointer and ownership paths remain green."
 
   - id: lowering.copy-move
     area: sec-mlir-llvm-abi-copy-move
@@ -396,7 +419,7 @@ integrations:
       - Current Semantic IR carries selected reference/call/match facts, but root governance does not yet establish one complete explicit borrowing/reference-authority model for downstream ownership verification.
       - "P15/P16 Semantic IR borrowing (verified 2026-11-04; borrowing.md; semantic_ir.md §§ 45–46): ref.borrow-shared, ref.borrow-mut, ref.reborrow-shared, ref.reborrow-mut, ref.copy-shared, ref.move and ref.end-borrow at Sema's path-exact last required use (MD-065), with BorrowID/LifetimeID, Place/provenance, holder and mutable authority; shared/mutable-reference argument actions distinct from copy/move; ref mut call reborrow without consuming the caller's holder; match-arm payload borrows with guard-false ends; generation/epoch/address-space/bounds facts kept apart from borrow compatibility; explicit unsupported boundaries. Tests: borrow_ends_test.go (TestBorrowEndsFollowLastRequiredUse), receiver_reborrow_test.go, payload_reference_test.go, reference_parameters_test.go, returned_reference_test.go, slice_*_test.go."
     remaining:
-      - "preserve closure/callback capture retention dependencies; defer captures, returned-reference origins and storage invalidation dependencies are implemented"
+      - preserve closure/callback capture retention dependencies; defer captures, returned-reference origins and storage invalidation dependencies are implemented
     required_tests:
       - Semantic IR distinguishes shared borrow, mutable borrow, copy, and move
       - Semantic IR preserves ref mut reborrow parent holder
@@ -450,10 +473,10 @@ integrations:
       - Current Semantic IR/lowering pipeline carries selected ownership-adjacent call/control-flow facts, but root governance still defers explicit general destruction operations and cleanup-state representation.
       - "P17 Semantic IR destruction (verified 2026-11-04; destruction.md §§ 6, 10–13, 16, 30; package17): own.destroy-value and own.destroy-place (skipped sub-Places, if_owned for conditional availability), active-variant destruction plans in the sec.destruction_plans table (also for custom-free unions), own.replace-place versus own.initialize-place with the old destination's plan, cleanup.track-owned/cancel/defer-register/run-scope/run-function in one source-ordered registration order, return and error propagation established before cleanup.run-function, and named unsupported boundaries for every unrepresented form. Tests: ownership_variants.sec (TestPackage17OwnershipVariants*, TestSchema13EmitsOwnedVariants), cleanup_producers_test.go, lit schema13-* and invalid-schema13-*."
     remaining:
-      - "represent allocator-aware DeallocateOwnedStorage for owning dynamic storage (P18); InvokeFree, cleanup registration/order and defer regions are implemented"
-      - "preserve cancellation of cleanup after FFI transfer (needs declared FFI ownership contracts, P17-49); move, discard, return, consuming-argument and aggregate transfer cancel since P17"
+      - represent allocator-aware DeallocateOwnedStorage for owning dynamic storage (P18); InvokeFree, cleanup registration/order and defer regions are implemented
+      - preserve cancellation of cleanup after FFI transfer (needs declared FFI ownership contracts, P17-49); move, discard, return, consuming-argument and aggregate transfer cancel since P17
       - represent construction-failure cleanup without manufacturing a completed outer value/free call
-      - "preserve allocator/release authority, concrete interface destruction and target-policy requirements; custom free identity and active-variant plans are implemented"
+      - preserve allocator/release authority, concrete interface destruction and target-policy requirements; custom free identity and active-variant plans are implemented
     required_tests:
       - Semantic IR has one terminal ownership action for every represented non-trivial owned value on each reachable path
       - moved/discarded sub-Place has no remaining former-owner destroy action
@@ -548,10 +571,10 @@ integrations:
     implemented:
       - "Semantic IR lifetime facts (verified 2026-11-04): Place roots carry storage origin/domain identity and references their provenance sets (P15); borrow live ranges end with ref.end-borrow at Sema's last required use (MD-065); --sec-verify-borrow-semantics and --sec-verify-places reject contradictory lifetime state before lowering. Tests: borrow_ends_test.go, returned_reference_test.go, lit invalid-schema12-*/invalid-schema13-*."
     remaining:
-      - "represent deallocation lifetime effects of owning dynamic storage (P18); ownership invalidation, replacement/reinitialization and destruction effects are implemented (P17)"
+      - represent deallocation lifetime effects of owning dynamic storage (P18); ownership invalidation, replacement/reinitialization and destruction effects are implemented (P17)
       - represent returned-reference source relations and callable retention summaries
       - represent arena generation/epoch and runtime mapping/register-view lifetime dependencies
-      - "represent closure/callback capture lifetime obligations; defer-delayed dependencies are implemented (defer capture Places, --sec-verify-cleanups)"
+      - represent closure/callback capture lifetime obligations; defer-delayed dependencies are implemented (defer capture Places, --sec-verify-cleanups)
       - erase high-level facts only after equivalent lowering constraints/plans exist
     required_tests:
       - reference origin retained in Semantic IR
@@ -830,7 +853,7 @@ integrations:
     implemented:
       - "P15/P16 Semantic IR references (verified 2026-11-04; reference_model.md; semantic_ir.md §§ 45, 48, 126): reference kind and mutability, canonical Place provenance, storage identity, address space, validity policy and epoch dependency, slice bounds/view facts, borrow/reborrow/end facts, and verifier rejection of contradictory reference facts (Go verifier, --sec-verify-places, --sec-verify-reference-guards, --sec-verify-borrow-semantics). Tests: reference_*_test.go, slice_*_test.go, payload_reference_test.go."
     remaining:
-      - "represent callable retention relations of references captured by closures and callbacks; returned-reference origin sets are implemented (TestPackage15LowersReturnedReferences)"
+      - represent callable retention relations of references captured by closures and callbacks; returned-reference origin sets are implemented (TestPackage15LowersReturnedReferences)
       - represent runtime mapping/register-view dependencies
     required_tests:
       - reference provenance retained in Semantic IR
@@ -1137,7 +1160,7 @@ integrations:
       - rules/platform/volatile.md
     remaining:
       - represent pointee type and target address space
-      - represent raw Read, Write, VolatileRead, VolatileWrite, Offset, AddBytes and Difference operation identity
+      - represent raw Read, Write, Offset, AddBytes and Difference operation identity; volatile read/write ownership boundaries are implemented under semantic-ir.copy-move
       - preserve unsafe and trust provenance plus known null, range, alignment and origin facts where needed
       - preserve target and platform access contracts and effects
       - represent raw-to-safe conversion as explicit establishment of safe-reference facts (MD-070 AsRef/AsRefMut stop at an explicit Semantic IR capability boundary; the operation's spelling awaits MD-084)
@@ -1151,7 +1174,8 @@ integrations:
     implemented:
       - represent RawPtr distinctly from safe references
       - RawPtr has a distinct Semantic IR type and raw-pointer value classification through parameters, copies, calls, returns, storage and aggregate extraction, including void pointees, nested pointers and nominal identities; no safe-reference facts are created, invalid raw ownership/reference classifications are rejected, and unsupported Sec MLIR lowering fails explicitly.
-    revised: "2026-10-15"
+      - Volatile raw operation identity, snapshot/ownership separation, unsafe authorization provenance and contradiction checks are represented by semantic-ir.copy-move (2026-11-05). Physical plans remain unverified and fail closed before Sec MLIR output; ordinary raw operations and the remaining raw provenance/access contract work stay open here.
+    revised: "2026-11-05"
     code:
       - internal/ir/semantic/raw_pointer.go
       - internal/ir/semantic/builder.go
@@ -1313,7 +1337,7 @@ integrations:
       - complete int/uint target-width consistency
       - complete enum/union/descriptor/reference resolved representations
       - complete representation-validity analysis
-      - complete explicit layout contract parsing via owning syntax rulebooks (no rulebook defines the syntax yet; missing-decisions.yaml MD-019)
+      - "resolve the MD-019 explicit layout contracts (syntax decided 2026-11-05: `pack(N)`, `minAlign(N)`, `byteOffset(N)`; struct.md \u00a7 15A, layout.md \u00a7\u00a7 27\u201330): ResolvedLayout computes field alignments, exact offsets, aggregate alignment, size, padding and stride from the written requirements under the \u00a7 28(6) precedence on Linux and Windows hosted plans, with the MD-019 \u00a7 11 conformance matrix"
     revised: "2026-10-30"
     implemented:
       - "P24-12 arithmetic foundation (2026-10-30): internal/layout.SizeArithmetic snapshots explicitly resolved maximum byte extent and supported alignments and implements CheckedAdd, CheckedMul, AlignUp, StrideOf and ArraySize with exact nonnegative big.Int values. No host integer, pointer-width or C ABI fallback supplies a bound, alignment or descriptor. StrideOf consumes the selected placement minimum, preserving target-specific zero-sized policies; ArraySize preserves arbitrary-precision logical counts and rejects an invalid element stride even for count zero. Failures return no result and retain exact requested extent, target bound, operation and caller-supplied field/count/instantiation path. Supported nonbinary alignment, 32/64-bit extent limits, successful and overflowing calculations beyond 256 bits, malformed/missing facts, detached inputs/results, target isolation and concurrent readers are tested. P24-12 is complete in package24-todo.md (unchecked 57 to 56). ResolvedLayout IDs/complete plan keys, actual type SizeOf/AlignOf/StrideOf queries, compiler diagnostic publication, schema 20 and physical reference/LLVM lowering remain separate unimplemented consumers; frontend.layout retains all six broader remaining points."

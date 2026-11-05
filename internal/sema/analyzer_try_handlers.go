@@ -340,11 +340,11 @@ func (a *Analyzer) analyzeTryHandlerBody(handler *ast.TryHandler, successType Ty
 	// one handler arm. Preserve any shadowed outer Place state and remove every
 	// move/discard marker created for the handler binding when the arm ends.
 	previousBindingMoved := rootPlaceMovedState(a.moved, bindingName)
-	previousBindingMoveReasons := rootPlaceReasonState(a.moveReasons, bindingName)
+	previousBindingMoveReasons := rootPlaceReasonState(a.availabilityStates, bindingName)
 	a.symbols = copySymbols(previousSymbols)
 	a.constInts = copyConstInts(previousConstInts)
 	if bindingName != "" {
-		clearRootPlaceStateMaps(a.moved, a.moveReasons, bindingName)
+		clearRootPlaceStateMaps(a.moved, a.availabilityStates, bindingName)
 		bindingIdentifier := tryHandlerBindingIdentifier(handler)
 		bindingToken := handler.Token
 		if bindingIdentifier != nil {
@@ -366,12 +366,12 @@ func (a *Analyzer) analyzeTryHandlerBody(handler *ast.TryHandler, successType Ty
 			*a.tryHandlerOrigins = captureReferenceOrigins(a.symbols)
 		}
 		if bindingName != "" {
-			clearRootPlaceStateMaps(a.moved, a.moveReasons, bindingName)
+			clearRootPlaceStateMaps(a.moved, a.availabilityStates, bindingName)
 			for place, token := range previousBindingMoved {
 				a.moved[place] = token
 			}
 			for place, reason := range previousBindingMoveReasons {
-				a.moveReasons[place] = reason
+				a.availabilityStates[place] = reason
 			}
 		}
 		a.symbols = previousSymbols

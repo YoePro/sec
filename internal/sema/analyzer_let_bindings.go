@@ -13,6 +13,7 @@ import (
 // rules/memory/destruction.md — §6.1(1) (success-only destruction responsibility).
 func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
 	errorsBefore := len(a.errors)
+	defer a.recordStringBindingLength(stmt, errorsBefore)
 	if stmt != nil && stmt.Static && a.inFunctionBody {
 		if reference, ok := stmt.Value.(*ast.RefExpression); ok && reference != nil {
 			a.dropStaticHolderBorrow(reference)

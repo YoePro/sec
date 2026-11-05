@@ -1,0 +1,8 @@
+module storage
+
+interface Native {
+    fn Size() int
+}
+interface Writable {
+    fn Write() void
+}

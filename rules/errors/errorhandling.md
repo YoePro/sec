@@ -568,6 +568,12 @@ could theoretically be wrapped in `Result` or `Option`.
 
 ---
 
+String ranges are language-defined fallible runtime checks (item 3): the
+operand `text[a..<b]` of `try` has success type `StringView` and failure type
+`RangeError` (MD-126, `rules/corrections/applied/MD-126-borrowed-string-ranges-rune-iteration-applied-20261105.md`), both for naked propagation and with a local
+handler, including as a `for` source. `try` catches only that spatial range
+failure; it is not a blanket panic catcher (§ 31).
+
 ## 10. Success and alternate states
 
 ### 10.1 `Result[T, E]`

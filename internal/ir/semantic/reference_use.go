@@ -156,6 +156,28 @@ func (fb *functionBuilder) derefHolderPlace(expr ast.Expression, validity sema.R
 	return place, refType.Mutable, metadata, err
 }
 
+// derefWholeHolder dereferences a reference holder used as a whole referent,
+// such as the subject of `match value` with `value: ref Option[T]`, once
+// (validating a dynamic-epoch reference) and returns its referent Place and
+// authority.
+func (fb *functionBuilder) derefWholeHolder(holder *ast.Identifier) (builtValue, bool, *ReferenceMetadata, error) {
+	reference, metadata, err := fb.referenceHolder(holder)
+	if err != nil {
+		return builtValue{}, false, nil, err
+	}
+	refType, ok := fb.owner.module.Types.Lookup(reference.typ)
+	if !ok || refType.Kind != TypeReference {
+		return builtValue{}, false, nil, fmt.Errorf("reference holder %s is not a reference value", holder.Value)
+	}
+	loc := location(holder.Token)
+	guard, err := fb.validateReference(reference, metadata, loc)
+	if err != nil {
+		return builtValue{}, false, nil, err
+	}
+	placeType := fb.owner.module.Types.Intern(Type{Kind: TypePlace, Element: refType.Element, Mutable: refType.Mutable})
+	return fb.placeResult(Operation{Kind: OpReferenceDerefPlace, Operands: []ValueID{reference.id}, Reference: metadata, ReferenceGuard: guard, Location: loc}, placeType), refType.Mutable, metadata, nil
+}
+
 // lowerSubplaceReborrow lowers `ref r.f[i]` / `ref mut r.f[i]` through a
 // reference holder: the holder is dereferenced once, the stored fields and
 // elements are projected, and ref.reborrow-shared / ref.reborrow-mut derives

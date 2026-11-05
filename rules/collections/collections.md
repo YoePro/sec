@@ -1239,6 +1239,57 @@ repeatedly copied under the ordinary copy rules.
 
 Member availability depends on `T`, not on runtime slice length.
 
+## 7.10 String ranges (MD-126)
+
+Decided 2026-11-05 (`rules/corrections/applied/MD-126-borrowed-string-ranges-rune-iteration-applied-20261105.md`).
+
+A `string` or `StringView` source accepts the range forms of § 7.4 directly:
+
+```sec
+let text := "Aπ😀b"
+
+let first := text[1..2]       // "π😀", inclusive end
+let second := text[1..<3]    // "π😀", exclusive end
+let empty := text[2..<2]     // valid empty view
+let tail := text[2..]        // "😀b"
+let all := text[..]          // whole text
+let nested := second[0..<1]  // "π", relative to second
+```
+
+The result is a borrowed `StringView` (`types.md`, `string`), not
+`ref T[]`. Unlike array slicing (§ 7.2), no `ref` is written: this is the one
+source-kind-specific bracket-view exception, and no other collection or user
+type gains implicit slice creation. `ref text[a..<b]` and
+`ref mut text[a..<b]` are not string-range forms.
+
+Endpoints are zero-based **rune** indexes relative to the source; `Len` is the
+upper bound and `SizeOf` must never be used as a rune bound. The source is
+evaluated once, then explicit start and end once each in source order, and the
+range is normalized to `[start, endExclusive)` exactly as in § 7.4, without
+overflow on inclusive normalization. `text[text.Len..<text.Len]` is empty;
+`text[text.Len..text.Len]` is out of bounds.
+
+Failure follows § 7.5 with the same identities and precedence:
+`RangeError.InvalidRange`, `RangeError.StartAfterEnd`,
+`RangeError.OutOfBounds`. Because endpoints are rune boundaries, no
+mid-scalar error variant exists. A provably invalid constant range is a
+compile-time error (MD-094); a dynamic failure in the ordinary form is
+`panic.bounds` with `slice-range` provenance, and `try text[a..<b]` yields
+`RangeError` on its failure edge with `StringView` as success type.
+
+A view of a view uses relative rune indexes and keeps the ultimate source
+origin; it may narrow but never widen the source range or lifetime. Allowed
+sources are a live `string` Place, a valid shared reference to `string`, or a
+live `StringView`. Ordinary borrow creation and lifetime rules apply; a
+non-addressable temporary does not gain explicit-borrow lifetime extension,
+and a view may not escape the proven lifetime of its origin
+(`borrowing.md` § 5.5).
+
+Creating a string range performs no allocation and copies no text; creation
+may cost O(prefix rune count). A standalone `text[index]` is outside this
+rule. Public `string.Slice(start, end)` is removed; deprecated or unrelated
+`Slice()` concepts on other types are unaffected.
+
 ---
 
 # 8. Indexing

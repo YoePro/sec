@@ -21,17 +21,38 @@ const (
 	CleanupPreviousPartial     CleanupPreviousValue = "partial"
 )
 
+// ResolvedCleanupRegistrationEffect separates a new value incarnation from
+// registration in the common cleanup order. Inherit identifies the destination
+// whose CURRENT live obligation retains its position, not its declaration's
+// action (which may already have been canceled and reinitialized). Register is
+// a prospective new action, used only on paths without that live obligation.
+// Both nonzero means inherit on available paths and register on unavailable
+// paths; these alternatives are exclusive, never two registrations on one path.
+// Rules: rules/memory/destruction.md — §§6.1(4–5),13.2(5–8),13.3(5);
+// rules/compiler/semantic_ir.md — §40(7–9) (MD-125).
+type ResolvedCleanupRegistrationEffect struct {
+	Inherit  BindingID
+	Register CleanupActionID
+}
+
 // ResolvedOwnedCleanupAssignment preserves success-only replacement/reinit.
-// Available requires old-value destruction/cancellation; Unavailable requires
-// no old destruction. Conditional/Partial require their path/subobject plans.
-// The fresh registration belongs to the original binding's lexical lifetime,
-// even when the assignment executes in an inner block or a deferred body.
-// Rules: rules/memory/destruction.md — §6.1(2–3), §13;
+// Available requires immediate old-value destruction, without cancellation of
+// the destination's final obligation. Unavailable requires no old destruction.
+// Conditional/Partial retain their path/subobject plans. Registration describes
+// the destination's lifetime/destruction and the new incarnation's source site;
+// its Action is a potential registration, NOT an instruction to register it.
+// Cleanup determines whether to inherit, register, or choose per path. Inherited
+// obligations retain their current position even across inner-block assignments.
+// Rules: rules/memory/destruction.md — §6.1(2–5), §13;
 // rules/mlir/packages/sec-mlir-dialect_package17.md — §§31–33,38,55,79–80.
 type ResolvedOwnedCleanupAssignment struct {
 	Previous     CleanupPreviousValue
 	Registration ResolvedOwnedCleanupRegistration
+	Cleanup      ResolvedCleanupRegistrationEffect
 	Executor     CallableID
+	// ExecutionScope locates the assignment, independently of the destination's
+	// lifetime scope. Reinit in an inner loop registers once per execution.
+	ExecutionScope CleanupScopeID
 	// Moved lists, for a Partial previous value, the stored-field paths that
 	// moved out, by field name in canonical order; a moved active payload counts
 	// as its whole union field. MovedConditional reports one that moved on only
@@ -42,9 +63,11 @@ type ResolvedOwnedCleanupAssignment struct {
 
 // prepareOwnedCleanupAssignment snapshots accepted destination facts after RHS
 // checking and before assignment clears moved/partial state. This producer
-// currently covers whole local bindings with a declaration registration;
-// parameters, projected stores and temporary ownership remain separate owners.
+// covers whole bindings with an existing owned registration, including owned
+// parameters and pattern bindings. Projected stores and temporary ownership
+// remain separate owners.
 // Rules: rules/memory/copy_move.md — §12.1(2–3), §12.2, §12.3;
+// rules/memory/destruction.md — §§6.1(4–5),13.2(5–8),13.3(5);
 // rules/mlir/packages/sec-mlir-dialect_package17.md — §§31–33,38.
 func (a *Analyzer) prepareOwnedCleanupAssignment(stmt *ast.AssignmentStatement, errorsBefore int) *ResolvedOwnedCleanupAssignment {
 	if len(a.errors) != errorsBefore || stmt.Operator != "=" {
@@ -59,8 +82,7 @@ func (a *Analyzer) prepareOwnedCleanupAssignment(stmt *ast.AssignmentStatement, 
 		return nil
 	}
 	binding := a.bindingIDs[sourceTokenLocation(place.RootToken)]
-	declaration := a.ownedCleanupDeclarations[binding]
-	initial, ok := a.ownedCleanupInitializations[declaration]
+	initial, ok := a.ownedCleanupRegistrationForBinding(binding)
 	if !ok {
 		return nil
 	}
@@ -73,7 +95,7 @@ func (a *Analyzer) prepareOwnedCleanupAssignment(stmt *ast.AssignmentStatement, 
 			previous = CleanupPreviousConditional
 		case partial:
 			previous = CleanupPreviousPartial
-		case isConditionalAvailabilityReason(a.moveReasons[key]):
+		case isConditionallyUnavailable(a.availabilityStates[key]):
 			previous = CleanupPreviousConditional
 		default:
 			previous = CleanupPreviousUnavailable
@@ -81,7 +103,16 @@ func (a *Analyzer) prepareOwnedCleanupAssignment(stmt *ast.AssignmentStatement, 
 	}
 	initial.Action = a.cleanupIdentities.owned(binding, stmt.Token)
 	initial.Place = cloneSlicePlanPlace(place)
-	plan := &ResolvedOwnedCleanupAssignment{Previous: previous, Registration: initial, Executor: a.currentCallable}
+	initial.Activation = CleanupAfterInitialization
+	plan := &ResolvedOwnedCleanupAssignment{Previous: previous, Registration: initial, Executor: a.currentCallable, ExecutionScope: a.currentCleanupScope}
+	// Partial moves retain the enclosing owner's obligation; completing its
+	// replacement must not relocate the cleanup of that root either.
+	if previous != CleanupPreviousUnavailable {
+		plan.Cleanup.Inherit = binding
+	}
+	if previous == CleanupPreviousUnavailable || previous == CleanupPreviousConditional {
+		plan.Cleanup.Register = initial.Action
+	}
 	if previous == CleanupPreviousPartial {
 		plan.Moved, plan.MovedConditional = a.movedFieldPaths(place)
 	}
@@ -99,7 +130,7 @@ func (a *Analyzer) movedFieldPaths(place Place) ([][]string, bool) {
 		if !strings.HasPrefix(key, prefix) {
 			continue
 		}
-		conditional = conditional || isConditionalAvailabilityReason(a.moveReasons[key])
+		conditional = conditional || isConditionallyUnavailable(a.availabilityStates[key])
 		var path []string
 		for _, name := range strings.Split(key[len(prefix):], ".") {
 			if strings.HasPrefix(name, "<") || strings.Contains(name, "[") {
@@ -143,7 +174,22 @@ func (a *Analyzer) ResolvedOwnedCleanupAssignmentOf(stmt *ast.AssignmentStatemen
 		return ResolvedOwnedCleanupAssignment{}, false
 	}
 	plan.Registration = cloneOwnedCleanupRegistration(plan.Registration)
+	plan.Moved = cloneCleanupMovedPaths(plan.Moved)
 	return plan, true
+}
+
+// cloneCleanupMovedPaths detaches the subobject masks in an assignment fact.
+// Rules: rules/compiler/semantic_ir.md — §40(9);
+// rules/memory/destruction.md — §13.3.
+func cloneCleanupMovedPaths(paths [][]string) [][]string {
+	if paths == nil {
+		return nil
+	}
+	copy := make([][]string, len(paths))
+	for i, path := range paths {
+		copy[i] = append([]string(nil), path...)
+	}
+	return copy
 }
 
 // recordOwnedFieldAssignment retains what a stored field of an owned local holds
@@ -163,7 +209,7 @@ func (a *Analyzer) recordOwnedFieldAssignment(stmt *ast.AssignmentStatement, pla
 	if !ok || TriviallyDestructible(root.Type) {
 		return
 	}
-	if _, declared := a.ownedCleanupDeclarations[a.bindingIDs[sourceTokenLocation(root.RootToken)]]; !declared {
+	if _, owned := a.ownedCleanupRegistrationForBinding(a.bindingIDs[sourceTokenLocation(root.RootToken)]); !owned {
 		return
 	}
 	previous := CleanupPreviousAvailable
@@ -174,7 +220,7 @@ func (a *Analyzer) recordOwnedFieldAssignment(stmt *ast.AssignmentStatement, pla
 			previous = CleanupPreviousConditional
 		case partial:
 			previous = CleanupPreviousPartial
-		case isConditionalAvailabilityReason(a.moveReasons[key]):
+		case isConditionallyUnavailable(a.availabilityStates[key]):
 			previous = CleanupPreviousConditional
 		default:
 			previous = CleanupPreviousUnavailable

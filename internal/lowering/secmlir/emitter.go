@@ -282,6 +282,10 @@ func (e *emitter) emitFunction(function *semantic.Function) error {
 func (e *emitter) emitOperation(function *semantic.Function, operation semantic.Operation, values map[semantic.ValueID]semantic.Value, storages map[semantic.StorageID]semantic.Storage) error {
 	e.out.WriteString("    ")
 	switch operation.Kind {
+	case semantic.OpVolatileRead, semantic.OpVolatileWrite:
+		// copy_move.md §19 / volatile.md §§9–11: do not erase the physical
+		// effect as a value copy or an ordinary load/store without its plan.
+		return &UnsupportedLoweringError{Feature: string(operation.Kind) + " needs a verified physical volatile access plan", Function: function.ID}
 	case semantic.OpRegisterValueFitsBits, semantic.OpRegisterValueFromBits, semantic.OpRegisterValueToBits:
 		return e.emitRegisterConversion(operation, values)
 	case semantic.OpRegisterValueExtract, semantic.OpRegisterValueUpdate:

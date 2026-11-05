@@ -135,6 +135,11 @@ func (fb *functionBuilder) localSubjectPlace(subjectExpr ast.Expression, referen
 type matchSubjectPlace struct {
 	place   builtValue
 	mutable bool
+	// observed marks a borrowed subject read only for its variant tests; a
+	// copied payload is then read from the subject's payload Place, which
+	// carries the subject Place's facts.
+	observed bool
+	facts    PlaceMetadata
 }
 
 // buildBorrowedMatchSubject forms the subject's Place once and reads the
@@ -145,16 +150,20 @@ type matchSubjectPlace struct {
 // applies.
 func (fb *functionBuilder) buildBorrowedMatchSubject(expr *ast.MatchExpression, plan sema.ResolvedMatchPlan) (builtValue, *matchSubjectPlace, bool, error) {
 	var borrowArm *ast.MatchArm
+	copiesPayload := false
 	for _, armPlan := range plan.Arms {
-		if armPlan.BindingAction == sema.MatchBindingBorrowShared || armPlan.BindingAction == sema.MatchBindingBorrowMutable {
-			if armPlan.SourceIndex >= 0 && armPlan.SourceIndex < len(expr.Arms) {
+		switch armPlan.BindingAction {
+		case sema.MatchBindingBorrowShared, sema.MatchBindingBorrowMutable:
+			if borrowArm == nil && armPlan.SourceIndex >= 0 && armPlan.SourceIndex < len(expr.Arms) {
 				borrowArm = expr.Arms[armPlan.SourceIndex]
-				break
 			}
+		case sema.MatchBindingNone, sema.MatchBindingDiscard:
+		default:
+			copiesPayload = true
 		}
-	}
-	if borrowArm == nil {
-		return builtValue{}, nil, false, nil
+		if len(armPlan.FieldBindings) != 0 {
+			copiesPayload = true
+		}
 	}
 	if _, _, rooted, _ := fb.receiverFieldPath(expr.Subject); rooted {
 		return builtValue{}, nil, false, nil
@@ -171,23 +180,40 @@ func (fb *functionBuilder) buildBorrowedMatchSubject(expr *ast.MatchExpression, 
 	}
 	holderType, typed := fb.owner.analyzer.ResolvedTypeOf(holder)
 	throughReference := typed && holderType.Kind == sema.ReferenceType
-	if !throughElement && !throughReference {
+	// A `ref`/`ref mut` subject itself is matched through its referent
+	// (flowcontrol_match.md § 14), with or without a borrowing arm.
+	wholeReferent := throughReference && len(steps) == 0
+	if borrowArm == nil && !wholeReferent || !throughElement && !throughReference {
 		return builtValue{}, nil, false, nil
 	}
-	subjectType, typed := fb.owner.analyzer.ResolvedTypeOf(expr.Subject)
-	if !typed || sema.CopyClassificationOf(subjectType) != sema.CopyTrivial {
-		return builtValue{}, nil, true, fb.unsupported("borrowed payload of a non-copy-trivial subject reached through elements or references", expr.Token)
+	subjectTypeID, err := fb.owner.internType(plan.SubjectType)
+	if err != nil {
+		return builtValue{}, nil, true, err
+	}
+	// A subject Semantic IR cannot copy is only observed: the read answers the
+	// variant tests, and payloads are borrowed from its Place.
+	observed := !package14TrivialValue(fb.owner.module, subjectTypeID)
+	if observed && copiesPayload && !copiesTrivialPayloadsOnly(plan) {
+		return builtValue{}, nil, true, fb.unsupported("copied payload of a non-copy-trivial subject reached through elements or references", expr.Token)
 	}
 	var place builtValue
 	var mutable bool
-	var err error
-	if throughReference {
+	var facts PlaceMetadata
+	switch {
+	case wholeReferent:
+		var metadata *ReferenceMetadata
+		place, mutable, metadata, err = fb.derefWholeHolder(holder)
+		if metadata != nil {
+			facts = PlaceMetadata{RootKind: PlaceRootDeref, AddressSpace: metadata.AddressSpace}
+		}
+	case throughReference:
 		use, ok := fb.owner.analyzer.ResolvedReferenceUseOf(expr.Subject)
-		if !ok || len(steps) == 0 {
-			return builtValue{}, nil, true, fb.unsupported("borrowed payload of a whole referent through a reference holder", expr.Token)
+		if !ok {
+			return builtValue{}, nil, true, fb.unsupported("borrowed payload through a reference holder without a resolved reference use", expr.Token)
 		}
 		place, mutable, err = fb.derefUsePlace(expr.Subject, use)
-	} else {
+		facts = *placeMetadataOf(use.Place)
+	default:
 		reference := matchArmPayloadReference(borrowArm.Pattern.Expression())
 		if reference == nil {
 			return builtValue{}, nil, true, fb.unsupported("borrowed match payload without a ref pattern", expr.Token)
@@ -197,6 +223,7 @@ func (fb *functionBuilder) buildBorrowedMatchSubject(expr *ast.MatchExpression, 
 			return builtValue{}, nil, true, fb.unsupported("borrowed match payload without a resolved reference plan", reference.Token)
 		}
 		place, mutable, err = fb.localSubjectPlace(expr.Subject, reference, refPlan, false)
+		facts = *placeMetadataOf(refPlan.Place)
 	}
 	if err != nil {
 		return builtValue{}, nil, true, err
@@ -205,8 +232,53 @@ func (fb *functionBuilder) buildBorrowedMatchSubject(expr *ast.MatchExpression, 
 	if !ok || placeType.Kind != TypePlace {
 		return builtValue{}, nil, true, fmt.Errorf("match subject Place is not a Place")
 	}
-	subject := fb.result(Operation{Kind: OpPlaceRead, Operands: []ValueID{place.id}, Location: locationFromExpression(expr.Subject)}, placeType.Element)
-	return subject, &matchSubjectPlace{place: place, mutable: mutable}, true, nil
+	read := Operation{Kind: OpPlaceRead, Operands: []ValueID{place.id}, Location: locationFromExpression(expr.Subject)}
+	if observed {
+		read.PlaceReadMode = PlaceReadObserve
+	}
+	subject := fb.result(read, placeType.Element)
+	return subject, &matchSubjectPlace{place: place, mutable: mutable, observed: observed, facts: facts}, true, nil
+}
+
+// copiesTrivialPayloadsOnly reports a match whose copying arms bind whole
+// copy-trivial payloads of union or Option variants or of Ok/Err.
+func copiesTrivialPayloadsOnly(plan sema.ResolvedMatchPlan) bool {
+	for _, arm := range plan.Arms {
+		switch arm.BindingAction {
+		case sema.MatchBindingNone, sema.MatchBindingDiscard, sema.MatchBindingBorrowShared, sema.MatchBindingBorrowMutable:
+		case sema.MatchBindingCopyTrivial:
+			if _, ok := payloadVariantIndex(arm); !ok || len(arm.FieldBindings) != 0 {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// borrowedSubjectPayloadCopy reads a copy-trivial payload of an observed
+// borrowed subject from the payload Place under the arm's variant test.
+func (fb *functionBuilder) borrowedSubjectPayloadCopy(subject builtValue, subjectPlace *matchSubjectPlace, arm sema.ResolvedMatchArm, token lexer.Token) (builtValue, bool, error) {
+	if arm.BindingAction != sema.MatchBindingCopyTrivial {
+		return builtValue{}, false, nil
+	}
+	variant, ok := payloadVariantIndex(arm)
+	if !ok {
+		return builtValue{}, false, fb.unsupported("copied payload binding for "+string(arm.PatternKind), token)
+	}
+	payloadType, ok := variantPayloadType(fb.owner.module, subject.typ, variant)
+	if !ok {
+		return builtValue{}, false, fb.unsupported("copied payload without a Place type", token)
+	}
+	placeType := fb.owner.module.Types.Intern(Type{Kind: TypePlace, Element: payloadType, Mutable: subjectPlace.mutable})
+	facts := subjectPlace.facts
+	facts.VariantProven = true
+	payload := fb.placeResult(Operation{
+		Kind: OpPlaceUnionPayload, Operands: []ValueID{subjectPlace.place.id}, UnionVariant: variant,
+		VariantGuard: fb.variantGuard, Place: &facts, Location: location(token),
+	}, placeType)
+	return fb.result(Operation{Kind: OpPlaceRead, Operands: []ValueID{payload.id}, Location: location(token)}, payloadType), true, nil
 }
 
 // emitPayloadBorrow forms place.union-payload over the subject's union Place

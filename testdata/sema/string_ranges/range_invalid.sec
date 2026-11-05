@@ -1,0 +1,11 @@
+module main
+fn Invalid() void {
+    let text := "Aπ😀b"
+    let negative := text[-1..<2]
+    let reversed := text[3..<1]
+    let inclusiveLen := text[0..4]
+    let outside := text[0..<5]
+    let fraction := text[1.5..<2]
+    let n := 5
+    let invalidSource := n[0..<1]
+}

@@ -191,6 +191,16 @@ The names are illustrative application APIs. The rule is identical for free-func
 
 ---
 
+### § 5.5 String bracket views (MD-126)
+
+**§ 5.5(1)** A string range `text[a..<b]` (or another range form) over a `string` or `StringView` source creates a shared borrow of the source backing and yields a `StringView` without a written `ref` (`rules/corrections/applied/MD-126-borrowed-string-ranges-rune-iteration-applied-20261105.md`). This exception is specific to string-family sources; all other slice creation keeps the explicit `ref`/`ref mut` spelling.
+
+**§ 5.5(2)** The source must be a live `string` Place, a valid shared reference to `string`, or a live `StringView`, and must satisfy ordinary borrow creation rules. A non-addressable temporary does not gain explicit-borrow lifetime extension; the one-time iterable evaluation of `for` does not make a returned view live longer.
+
+**§ 5.5(3)** A view of a view reborrows the same origin and narrows its range; it never widens the range or lifetime. Copying a view copies the borrow holder only.
+
+**§ 5.5(4)** A view must not escape the proven lifetime of its origin. Returning, storing or capturing a view requires valid origin facts; existing overlap and concurrency rules apply because the view is a shared borrow. No mutable string view or writable string element borrow exists.
+
 ## § 6 Availability and borrowing are separate
 
 **§ 6(1)** Availability answers whether the current owner still owns a value in a Place.

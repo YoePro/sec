@@ -761,6 +761,10 @@ Representation demand is distinct from ordinary value, ownership, and shape
 requirements.
 
 The analysis consumes `ResolvedLayout` and relevant FFI/hardware contracts.
+Source-declared struct layout modifiers (MD-019: `pack`, `minAlign`,
+`byteOffset`) may block narrowing advice; they are never evidence that a
+prospective view or reference satisfies a foreign alignment or representation
+contract unless that is proven.
 
 It must not infer representation requirements merely from type size.
 

@@ -73,6 +73,7 @@ func copyClassificationOf(typ Type, visiting map[string]bool) CopyClassification
 		EnumType,
 		StringType,
 		SliceType,
+		StringViewType,
 		UnitDimensionType:
 		return CopyTrivial
 	case ReferenceType:

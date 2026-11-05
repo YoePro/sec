@@ -1150,7 +1150,7 @@ integrations:
       - signature help uses the Sema-selected init overload and tracks the active argument without duplicating lifecycle overload resolution in the LSP
       - contextual completion offers init directly in impl bodies and new only in callable expression scopes while hiding internal initializer identities
       - workspace references follow compiler definition bindings between init declarations and selected new expressions across all assembled module sources
-      - "custom free integration (verified 2026-11-04; MD-025 applied 2026-10-15; destruction.md \u00a7 15): impl and `impl extends` blocks accept `free`, Sema analyzes it as the lifecycle member (MoveOnly classification, no partial moves or field discards of custom-free values, including union payloads), and Semantic IR builds it and binds it to the struct or union destruction plan (custom_free, free_function). Tests: custom_free_test.go, custom_free_md025_test.go, TestCustomFreeUnionForbidsPayloadMoves, CustomFreeUnion in ownership_variants.sec."
+      - "custom free integration (verified 2026-11-04; MD-025 applied 2026-10-15; destruction.md § 15): impl and `impl extends` blocks accept `free`, Sema analyzes it as the lifecycle member (MoveOnly classification, no partial moves or field discards of custom-free values, including union payloads), and Semantic IR builds it and binds it to the struct or union destruction plan (custom_free, free_function). Tests: custom_free_test.go, custom_free_md025_test.go, TestCustomFreeUnionForbidsPayloadMoves, CustomFreeUnion in ownership_variants.sec."
     remaining:
       - full field-sensitive definite initialization and partial-self escape analysis in init
       - construction resource-balance and failure-cleanup analysis
@@ -1298,14 +1298,14 @@ integrations:
 
   - id: frontend.enum-to-integer-checked-conversion
     area: frontend-analysis-semantic-ir-and-lowering
-    status: partial
+    status: implemented
     audited: "2026-08-19"
     repository_baseline: c515862
     document_revision: "1.0"
     document_created: "2026-08-13"
     document_last_updated_metadata: "2026-08-13"
     document_later_sync: "2026-08-16"
-    summary: Sema admits a direct enum-to-integer result only with the shared exactness proof for the selected CompilationPlan. Known cases, validated constant constructors and immutable bindings retain exact numeric evidence; runtime fields/getters use the complete closed/open enum domain. Unproven narrowing returns Result[target, ConversionError] and uses ordinary Result/try handling; checked runtime lowering remains open.
+    summary: Sema selects exact direct conversions or Result-valued narrowing. From Package 20, Semantic IR lowers fallible enum-to-integer conversions through exact extraction of the declared carrier and canonical numeric.convert-checked failure control flow, including try propagation, local handlers and materialized Results. Native integer enums pass LLVM lowering and execution; separate struct and bit-backed enum backend representation boundaries remain explicit.
     rules:
       - rules/declarations/enums.md
       - rules/types/types.md
@@ -1331,6 +1331,8 @@ integrations:
       - internal/ir/semantic/verifier.go
       - internal/lowering/secmlir/emitter.go
       - internal/sema/enum_facts.go
+      - internal/ir/semantic/enum_checked_conversion.go
+      - internal/ir/semantic/integer_conversion.go
     tests:
       - internal/sema/enum_conversion_snapshots_test.go
       - internal/ir/semantic/enum_conversion_snapshots_test.go
@@ -1384,6 +1386,11 @@ integrations:
       - testdata/sema/enum_conversion_domains.sec
       - testdata/sema/enum_conversion_domains_invalid.sec
       - testdata/build/native/enum_known_narrowing.sec
+      - internal/ir/semantic/enum_checked_conversion_test.go
+      - internal/lowering/secmlir/enum_checked_conversion_test.go
+      - testdata/semantic_ir/enum_checked_conversion/main.sec
+      - testdata/semantic_ir/enum_checked_conversion/native.sec
+      - testdata/semantic_ir/enum_checked_conversion/native.c
     implemented:
       - "Immutable enum-to-integer analysis decisions (2026-11-03; types.md Exact integer conversion proof, semantic_ir.md §124): inference records fallibility, source/target identity and the selected-plan proof once; public queries clone retained decisions instead of re-inferring them from query-time types or plan state. Conversion-relevant type projections detach enum inventories and integer/string values, scalar/proof bounds, nominal generic/constant arguments, fixed named-argument identity and unit/structural identity; declaration bodies stay in their separate owning plans. Mutating a query result no longer changes analyzer enum tables or target limits. Query-time plan changes do not rewrite an existing decision, while a fresh analysis resets facts and recomputes fallibility. Missing producer facts cannot be manufactured by the query. IR mutation/query-mutation tests retain byte-identical fresh IR, fixed generic identities and the fallible no-emission boundary; existing plan verifiers and exact-target capability gates remain in force."
       - "Known enum values use canonical exact-value checking (2026-11-03; enums.md §§12.1–12.3, types.md Exact integer conversion proof): Sema retains exact numeric evidence for validated constant integer-to-enum constructions and immutable local/module enum bindings and aliases, in addition to declared cases. Numeric values are copied into per-expression facts during inference and remain available to post-Sema conversion-proof queries after lexical scopes are restored. Enum binding values stay separate from integer constants, preserving nominal typing. Mutable/transient bindings and ordinary function calls supply no fabricated constant evidence. 32/64-bit tests verify eight exact and four runtime conversions; four known-invalid values receive static overflow errors instead of generic Result mismatches. Verified IR retains constructor/alias constant proofs; a real native alias fixture builds and runs. CLI/LSP share exact-value acceptance and overflow rejection. Ordinary CTE function/getter execution is not added by this work; unsupported/unestablished values remain runtime conversions."
@@ -1405,10 +1412,9 @@ integrations:
       - unproven narrowing is Result-valued with canonical ConversionError and records a fallible enum conversion fact
       - "Fixed-width enum narrowing matrix (2026-10-29): independently parsed 32/64-bit plans verify signed/unsigned boundaries, closed value classes and aliases, wider carriers with fitting domains, out-of-range constants, Result-valued narrowing and rejection of unprotected runtime narrowing. Public ResolvedEnumConversionOf facts retain exact source/target identity, result shape, proof basis and exact bounds; fixed-width proofs remain target-independent. The tests exposed and fixed lost constant evidence: known enum members now retain the constant proof rather than recomputing only the wider enum domain. Full Sema/IR suites and a real native KnownZero/KnownHigh fixture pass."
       - "Complete open bit-enum domain regressions (2026-10-29): bit[8]/bit[16] enums declare only 0 and 1, yet runtime conversion facts use 0..255 and 0..65535. uint8/uint16/int16/int32 fitting cases carry open-enum-domain proofs; signed and unsigned narrowing remain fallible. Explicit known-member narrowing retains a constant proof without treating other open values as bounded by declared members. The same fixtures and assertions run under 32/64-bit plans."
-    partial:
-      - Semantic IR and lowering do not yet consume the represented fallible enum-to-integer conversion path
-    remaining:
-      - lower the fallible case through canonical checked-integer conversion and explicit failure control flow
+      - "Checked enum-to-integer lowering completed (2026-11-05; enums.md 12.1, semantic_ir.md 124): expose the unchanged declared integer carrier with a source-domain exactness proof, evaluate the operand once, reuse canonical numeric.convert-checked and OutOfRange routing, and construct Ok/Err merge carriers for conversions outside try. Historical pre-P20 package boundaries are preserved. Verified Semantic IR includes signed, open bit, field and call operands; native integer enum propagation, local handling and stored Results pass LLVM on 32/64-bit plans and actual 64-bit execution. Struct extraction and bit-backed representation still stop at their independently owned LLVM boundaries."
+    partial: []
+    remaining: []
     bug_reference:
       - correction7.md
     governance_reconciliation:
@@ -1427,8 +1433,10 @@ integrations:
       - fallible enum-to-integer conversion requires ordinary try handling
       - fallible conversion is not emitted as unconditional OpEnumToInteger
       - existing Package 11 infallible enum conversion fixtures continue to pass
-    revised: "2026-11-03"
+    revised: "2026-11-05"
     verification:
+      - command: SEC_MLIR_BIN=$PWD/build/sec-mlir/bin SEC_LEGACY_MLIR_BIN=/home/jonas/mlir/llvm-project/build/bin go test -p 4 ./internal/ir/semantic ./internal/lowering/secmlir -count=1 -timeout=180s
+        result: "Passed 2026-11-05: complete suites 6.300s and 16.303s; canonical LLVM lowering on 32/64-bit plans and actual native success/failure execution. Focused compiler enum regressions and go vet on both implementation packages also passed."
       - command: GOCACHE=/tmp/sec-go-cache go test ./internal/sema ./internal/ir/semantic -run 'TestEnumConversionFactsAreDetached|TestEnumConversionDecisionIsRecorded|TestEnumConversionSnapshot' -count=1
         result: passed on 2026-11-03; reproduced writable enum/target-bound leakage before the fix, then verified defensive snapshots, nested numeric/string enum arguments, fixed nominal generic identity, per-analysis plan reset, no query-time proof reconstruction and independent Sema/IR ownership.
       - command: GOCACHE=/tmp/sec-go-cache go test ./internal/sema ./internal/ir/semantic -count=1 -timeout=180s
@@ -1920,6 +1928,7 @@ integrations:
       - acyclic module-level non-generic struct declarations are resolved in semantic dependency order rather than source order, including multi-hop forward field graphs whose complete nested shapes are consumed by member analysis
       - dependency ordering and S1055 recursive-layout paths traverse non-generic named by-value wrappers around structs, preserving wrapper nominal identity while exposing the complete underlying field shape and rejecting wrapper-mediated infinite-size cycles
     remaining:
+      - "MD-019 struct layout modifiers (decided 2026-11-05; grammar.md \"Struct type declaration\", struct.md \u00a7 15A): parse `pack(N)`/`minAlign(N)` after `struct` and `minAlign(N)`/`byteOffset(N)` on stored fields before tags into the AST with spans; Sema validates compile-time integer arguments (positive power of two for alignments, nonnegative offsets), duplicates, conflicts, bodyless foreign structs, `@pack`-style misuse and misaligned references with registered diagnostics; formatter spacing and LSP hover; parser recovery tests"
       - extend dependency-ordered struct resolution and recursive-layout validation through associated declarations, mixed struct/union containment, and finite nominal reference cycles before every field-dependent analysis
       - lower generic structs across all supported operations
       - extend the implemented schema-9 copy-trivial struct path with later-package move, semantic-copy, borrow, cleanup, and ownership-sensitive spread cases

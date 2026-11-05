@@ -42,6 +42,9 @@ func (fb *functionBuilder) buildFor(stmt *ast.ForStatement) error {
 	}
 	rangeExpr, ok := stmt.Iterable.(*ast.RangeExpression)
 	if !ok {
+		if typ, resolved := fb.owner.analyzer.TypeOf(stmt.Iterable); resolved && typ.Kind == sema.StringViewType {
+			return fb.unsupported("StringView borrowed UTF-8 iteration (P23)", stmt.Token)
+		}
 		return fb.unsupported("for iteration over a collection, string or iterator", stmt.Token)
 	}
 	step := big.NewInt(1)

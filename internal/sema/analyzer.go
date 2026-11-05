@@ -316,7 +316,7 @@ type Analyzer struct {
 	constInts                  map[string]*big.Int
 	assigned                   map[string]bool
 	moved                      map[string]lexer.Token
-	moveReasons                map[string]string
+	availabilityStates         placeAvailabilityStates
 	closedResources            map[string]lexer.Token
 	borrows                    map[string][]borrowRecord
 	localRefContainers         map[string]localReferenceOrigin
@@ -347,6 +347,7 @@ type Analyzer struct {
 	resolvedSequenceProjections map[ast.Expression]PlaceProjection
 	resolvedReferencePlans      map[ast.Expression]ResolvedReferencePlan
 	resolvedSliceCreationPlans  map[*ast.RefExpression]ResolvedSliceCreationPlan
+	stringRanges                map[*ast.SliceExpression]ResolvedStringRangePlan
 	resolvedSliceLengthPlans    map[ast.Expression]ResolvedSliceLengthPlan
 	resolvedReferenceUses       map[ast.Expression]ResolvedReferenceUse
 	// referenceParameterFacts holds the reference facts of each ref/ref mut
@@ -492,7 +493,7 @@ type localReferenceOrigin struct {
 type loopEdgeState struct {
 	assigned           map[string]bool
 	moved              map[string]lexer.Token
-	moveReasons        map[string]string
+	availabilityStates placeAvailabilityStates
 	closedResources    map[string]lexer.Token
 	borrows            map[string][]borrowRecord
 	localRefContainers map[string]localReferenceOrigin
@@ -533,7 +534,7 @@ func (a *Analyzer) captureLoopEdgeState() loopEdgeState {
 	return loopEdgeState{
 		assigned:           copyAssigned(a.assigned),
 		moved:              copyMoved(a.moved),
-		moveReasons:        copyMoveReasons(a.moveReasons),
+		availabilityStates: copyAvailabilityStates(a.availabilityStates),
 		closedResources:    copyMoved(a.closedResources),
 		borrows:            copyBorrows(a.borrows),
 		localRefContainers: copyLocalRefContainers(a.localRefContainers),
@@ -545,7 +546,7 @@ func (a *Analyzer) captureLoopEdgeState() loopEdgeState {
 // clearBinding removes a scoped binding from every domain of the edge.
 func (e loopEdgeState) clearBinding(name string, clearMoves bool) {
 	if clearMoves {
-		clearRootPlaceStateMaps(e.moved, e.moveReasons, name)
+		clearRootPlaceStateMaps(e.moved, e.availabilityStates, name)
 	}
 	delete(e.closedResources, name)
 	delete(e.referenceOrigins, name)
@@ -746,6 +747,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.resolvedSequenceProjections = map[ast.Expression]PlaceProjection{}
 	a.resolvedReferencePlans = map[ast.Expression]ResolvedReferencePlan{}
 	a.resolvedSliceCreationPlans = map[*ast.RefExpression]ResolvedSliceCreationPlan{}
+	a.stringRanges = map[*ast.SliceExpression]ResolvedStringRangePlan{}
 	a.resolvedSliceLengthPlans = map[ast.Expression]ResolvedSliceLengthPlan{}
 	a.resolvedReferenceUses = map[ast.Expression]ResolvedReferenceUse{}
 	a.referenceParameterFacts = map[sourceTokenKey]ReferenceFacts{}
@@ -811,7 +813,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.constInts = map[string]*big.Int{}
 	a.assigned = map[string]bool{}
 	a.moved = map[string]lexer.Token{}
-	a.moveReasons = map[string]string{}
+	a.availabilityStates = placeAvailabilityStates{}
 	a.closedResources = map[string]lexer.Token{}
 	a.borrows = map[string][]borrowRecord{}
 	a.localRefContainers = map[string]localReferenceOrigin{}
@@ -2666,7 +2668,7 @@ func (a *Analyzer) analyzeDetachStatement(stmt *ast.DetachStatement) {
 	}
 	if a.markMoveSource(stmt.Value) {
 		if ident, ok := stmt.Value.(*ast.Identifier); ok {
-			a.moveReasons[ident.Value] = "detached"
+			a.availabilityStates[ident.Value] = unavailableState("detached")
 		}
 	}
 }
@@ -2694,73 +2696,6 @@ func (a *Analyzer) bindAvailabilityPlaceRoot(expr ast.Expression) {
 		a.bindAvailabilityPlaceRoot(expr.Left)
 	case *ast.SliceExpression:
 		a.bindAvailabilityPlaceRoot(expr.Left)
-	}
-}
-
-func (a *Analyzer) currentPlaceAvailability(place Place) (known bool, available bool) {
-	if assigned, tracked := a.assigned[place.Root]; tracked && !assigned {
-		return true, false
-	}
-	_, movedKey, _, unavailable := a.unavailablePlace(place)
-	if !unavailable {
-		return true, true
-	}
-	if isConditionalAvailabilityReason(a.moveReasons[movedKey]) {
-		return false, false
-	}
-	return true, false
-}
-
-// analyzeAvailabilityBranchWithCallGraphReachability applies only the branch
-// refinement proven by the ownership query and restores the incoming analysis
-// state after capturing the branch result.
-//
-// Rules:
-//   - rules/memory/ownership.md — §§20–21 control-flow merge and refinement
-//   - rules/corrections/applied/correction30-20260828.md — §3
-func (a *Analyzer) analyzeAvailabilityBranchWithCallGraphReachability(block *ast.BlockStatement, fact ResolvedAvailabilityTest, refineAvailable bool, reachable bool) branchAnalysis {
-	previousMoved, previousReasons := a.moved, a.moveReasons
-	previousAssigned := a.assigned
-	a.moved, a.moveReasons = copyMoved(previousMoved), copyMoveReasons(previousReasons)
-	a.assigned = copyAssigned(previousAssigned)
-	a.applyAvailabilityRefinement(fact.Place, refineAvailable)
-	branch := a.analyzeBranchBlockWithCallGraphReachability(block, reachable)
-	a.moved, a.moveReasons, a.assigned = previousMoved, previousReasons, previousAssigned
-	return branch
-}
-
-func (a *Analyzer) refinedAvailabilityFallthrough(branch branchAnalysis, fact ResolvedAvailabilityTest, refineAvailable bool) branchAnalysis {
-	previousMoved, previousReasons := a.moved, a.moveReasons
-	previousAssigned := a.assigned
-	a.moved, a.moveReasons = copyMoved(branch.moved), copyMoveReasons(branch.moveReasons)
-	a.assigned = copyAssigned(branch.assigned)
-	a.applyAvailabilityRefinement(fact.Place, refineAvailable)
-	branch.moved, branch.moveReasons, branch.assigned = copyMoved(a.moved), copyMoveReasons(a.moveReasons), copyAssigned(a.assigned)
-	a.moved, a.moveReasons, a.assigned = previousMoved, previousReasons, previousAssigned
-	return branch
-}
-
-func (a *Analyzer) applyAvailabilityRefinement(place Place, available bool) {
-	if available {
-		key := place.String()
-		for movedKey, reason := range a.moveReasons {
-			if !isConditionalAvailabilityReason(reason) {
-				continue
-			}
-			if movedKey == key || strings.HasPrefix(key, movedKey+".") || strings.HasPrefix(key, movedKey+"[") || strings.HasPrefix(movedKey, key+".") || strings.HasPrefix(movedKey, key+"[") {
-				delete(a.moved, movedKey)
-				delete(a.moveReasons, movedKey)
-			}
-		}
-		if place.String() == place.Root {
-			a.assigned[place.Root] = true
-		}
-		return
-	}
-	for movedKey, reason := range a.moveReasons {
-		if isConditionalAvailabilityReason(reason) && (movedKey == place.String() || strings.HasPrefix(movedKey, place.String()+".") || strings.HasPrefix(movedKey, place.String()+"[")) {
-			a.moveReasons[movedKey] = underlyingAvailabilityReason(reason)
-		}
 	}
 }
 
@@ -2849,7 +2784,7 @@ func (a *Analyzer) analyzeBranchBlockWithCallGraphReachability(block *ast.BlockS
 type branchAnalysis struct {
 	assigned           map[string]bool
 	moved              map[string]lexer.Token
-	moveReasons        map[string]string
+	availabilityStates placeAvailabilityStates
 	closedResources    map[string]lexer.Token
 	borrows            map[string][]borrowRecord
 	localRefContainers map[string]localReferenceOrigin
@@ -2886,14 +2821,14 @@ func (a *Analyzer) captureLoopIterationAnalysisState() loopIterationAnalysisStat
 
 func (a *Analyzer) analyzeBranchBlock(block *ast.BlockStatement) branchAnalysis {
 	if block == nil {
-		return branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), moveReasons: copyMoveReasons(a.moveReasons), closedResources: copyMoved(a.closedResources), borrows: copyBorrows(a.borrows), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), referenceOrigins: captureReferenceOrigins(a.symbols), continues: true}
+		return branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), availabilityStates: copyAvailabilityStates(a.availabilityStates), closedResources: copyMoved(a.closedResources), borrows: copyBorrows(a.borrows), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), referenceOrigins: captureReferenceOrigins(a.symbols), continues: true}
 	}
 
 	previousSymbols := a.symbols
 	previousConstInts := a.constInts
 	previousAssigned := a.assigned
 	previousMoved := a.moved
-	previousMoveReasons := a.moveReasons
+	previousMoveReasons := a.availabilityStates
 	previousClosedResources := a.closedResources
 	previousBorrows := a.borrows
 	previousLocalRefContainers := a.localRefContainers
@@ -2902,7 +2837,7 @@ func (a *Analyzer) analyzeBranchBlock(block *ast.BlockStatement) branchAnalysis 
 	a.constInts = copyConstInts(previousConstInts)
 	a.assigned = copyAssigned(previousAssigned)
 	a.moved = copyMoved(previousMoved)
-	a.moveReasons = copyMoveReasons(previousMoveReasons)
+	a.availabilityStates = copyAvailabilityStates(previousMoveReasons)
 	a.closedResources = copyMoved(previousClosedResources)
 	a.borrows = copyBorrows(previousBorrows)
 	a.localRefContainers = copyLocalRefContainers(previousLocalRefContainers)
@@ -2912,7 +2847,7 @@ func (a *Analyzer) analyzeBranchBlock(block *ast.BlockStatement) branchAnalysis 
 		a.constInts = previousConstInts
 		a.assigned = previousAssigned
 		a.moved = previousMoved
-		a.moveReasons = previousMoveReasons
+		a.availabilityStates = previousMoveReasons
 		a.closedResources = previousClosedResources
 		a.borrows = previousBorrows
 		a.localRefContainers = previousLocalRefContainers
@@ -2923,7 +2858,7 @@ func (a *Analyzer) analyzeBranchBlock(block *ast.BlockStatement) branchAnalysis 
 	return branchAnalysis{
 		assigned:           copyAssigned(a.assigned),
 		moved:              copyMoved(a.moved),
-		moveReasons:        copyMoveReasons(a.moveReasons),
+		availabilityStates: copyAvailabilityStates(a.availabilityStates),
 		closedResources:    copyMoved(a.closedResources),
 		borrows:            copyBorrows(a.borrows),
 		localRefContainers: copyLocalRefContainers(a.localRefContainers),
@@ -2953,65 +2888,6 @@ func mergeContinuingAssigned(before map[string]bool, branches ...branchAnalysis)
 		return copyAssigned(before)
 	}
 	return merged
-}
-
-func mergeContinuingMoveState(beforeMoved map[string]lexer.Token, beforeReasons map[string]string, branches ...branchAnalysis) (map[string]lexer.Token, map[string]string) {
-	mergedMoved := map[string]lexer.Token{}
-	mergedReasons := map[string]string{}
-	presentOnPaths := map[string]int{}
-	pathReasons := map[string][]string{}
-	conditionalOnPath := map[string]bool{}
-	foundContinuing := false
-	continuingPaths := 0
-	for _, branch := range branches {
-		if !branch.continues {
-			continue
-		}
-		foundContinuing = true
-		continuingPaths++
-		for place, token := range branch.moved {
-			presentOnPaths[place]++
-			if reason := branch.moveReasons[place]; reason != "" {
-				pathReasons[place] = append(pathReasons[place], reason)
-				conditionalOnPath[place] = conditionalOnPath[place] || isConditionalAvailabilityReason(reason)
-			}
-			if _, exists := mergedMoved[place]; exists {
-				continue
-			}
-			mergedMoved[place] = token
-		}
-	}
-	if !foundContinuing {
-		return copyMoved(beforeMoved), copyMoveReasons(beforeReasons)
-	}
-	// rules/memory/ownership.md §6: a join retains every possible
-	// UnavailableReason as provenance; §5: a Place unavailable on only some
-	// continuing paths is ConditionallyAvailable.
-	for place := range mergedMoved {
-		if len(pathReasons[place]) == 0 {
-			continue
-		}
-		reason := joinAvailabilityReasons(pathReasons[place])
-		if presentOnPaths[place] < continuingPaths || conditionalOnPath[place] {
-			reason = conditionalAvailabilityReason(reason)
-		}
-		mergedReasons[place] = reason
-	}
-	return mergedMoved, mergedReasons
-}
-
-const conditionalAvailabilityReasonPrefix = "conditional:"
-
-func conditionalAvailabilityReason(reason string) string {
-	return conditionalAvailabilityReasonPrefix + reason
-}
-
-func isConditionalAvailabilityReason(reason string) bool {
-	return strings.HasPrefix(reason, conditionalAvailabilityReasonPrefix)
-}
-
-func underlyingAvailabilityReason(reason string) string {
-	return strings.TrimPrefix(reason, conditionalAvailabilityReasonPrefix)
 }
 
 func mergeContinuingClosedResources(before map[string]lexer.Token, branches ...branchAnalysis) map[string]lexer.Token {
@@ -3098,7 +2974,7 @@ func mergeContinuingLocalRefContainers(before map[string]localReferenceOrigin, b
 func (a *Analyzer) analyzeSelectStatement(stmt *ast.SelectStatement) {
 	beforeAssigned := copyAssigned(a.assigned)
 	beforeMoved := copyMoved(a.moved)
-	beforeMoveReasons := copyMoveReasons(a.moveReasons)
+	beforeMoveReasons := copyAvailabilityStates(a.availabilityStates)
 	beforeClosedResources := copyMoved(a.closedResources)
 	beforeBorrows := copyBorrows(a.borrows)
 	beforeLocalRefContainers := copyLocalRefContainers(a.localRefContainers)
@@ -3153,10 +3029,10 @@ func (a *Analyzer) analyzeSelectStatement(stmt *ast.SelectStatement) {
 		branches = append(branches, a.analyzeSelectBranchBody(branch))
 	}
 	if !selectHasDefault(stmt) {
-		branches = append(branches, branchAnalysis{assigned: beforeAssigned, moved: beforeMoved, moveReasons: beforeMoveReasons, closedResources: beforeClosedResources, borrows: beforeBorrows, localRefContainers: beforeLocalRefContainers, arenaGenerations: beforeArenaGenerations, continues: true})
+		branches = append(branches, branchAnalysis{assigned: beforeAssigned, moved: beforeMoved, availabilityStates: beforeMoveReasons, closedResources: beforeClosedResources, borrows: beforeBorrows, localRefContainers: beforeLocalRefContainers, arenaGenerations: beforeArenaGenerations, continues: true})
 	}
 	a.assigned = mergeContinuingAssigned(beforeAssigned, branches...)
-	a.moved, a.moveReasons = mergeContinuingMoveState(beforeMoved, beforeMoveReasons, branches...)
+	a.moved, a.availabilityStates = mergeContinuingMoveState(beforeMoved, beforeMoveReasons, branches...)
 	a.closedResources = mergeContinuingClosedResources(beforeClosedResources, branches...)
 	a.borrows = mergeContinuingBorrows(beforeBorrows, branches...)
 	a.localRefContainers = mergeContinuingLocalRefContainers(beforeLocalRefContainers, branches...)
@@ -3333,7 +3209,7 @@ func (a *Analyzer) analyzeSelectBranchBody(branch *ast.SelectBranch) branchAnaly
 	previousConstInts := a.constInts
 	previousAssigned := a.assigned
 	previousMoved := a.moved
-	previousMoveReasons := a.moveReasons
+	previousMoveReasons := a.availabilityStates
 	previousClosedResources := a.closedResources
 	previousBorrows := a.borrows
 	previousLocalRefContainers := a.localRefContainers
@@ -3342,7 +3218,7 @@ func (a *Analyzer) analyzeSelectBranchBody(branch *ast.SelectBranch) branchAnaly
 	a.constInts = copyConstInts(previousConstInts)
 	a.assigned = copyAssigned(previousAssigned)
 	a.moved = copyMoved(previousMoved)
-	a.moveReasons = copyMoveReasons(previousMoveReasons)
+	a.availabilityStates = copyAvailabilityStates(previousMoveReasons)
 	a.closedResources = copyMoved(previousClosedResources)
 	a.borrows = copyBorrows(previousBorrows)
 	a.localRefContainers = copyLocalRefContainers(previousLocalRefContainers)
@@ -3352,7 +3228,7 @@ func (a *Analyzer) analyzeSelectBranchBody(branch *ast.SelectBranch) branchAnaly
 		a.constInts = previousConstInts
 		a.assigned = previousAssigned
 		a.moved = previousMoved
-		a.moveReasons = previousMoveReasons
+		a.availabilityStates = previousMoveReasons
 		a.closedResources = previousClosedResources
 		a.borrows = previousBorrows
 		a.localRefContainers = previousLocalRefContainers
@@ -3377,7 +3253,7 @@ func (a *Analyzer) analyzeSelectBranchBody(branch *ast.SelectBranch) branchAnaly
 	return branchAnalysis{
 		assigned:           copyAssigned(a.assigned),
 		moved:              copyMoved(a.moved),
-		moveReasons:        copyMoveReasons(a.moveReasons),
+		availabilityStates: copyAvailabilityStates(a.availabilityStates),
 		closedResources:    copyMoved(a.closedResources),
 		borrows:            copyBorrows(a.borrows),
 		localRefContainers: copyLocalRefContainers(a.localRefContainers),
@@ -5323,7 +5199,12 @@ func (a *Analyzer) localReferenceOriginInExpression(expr ast.Expression) (string
 			return originName, originToken, true
 		}
 	case *ast.SliceExpression:
-		valueType, _ := a.inferSliceExpression(expr)
+		// Read the checked facts: origin queries must not repeat source/endpoint
+		// effects (collections.md 7.10; MD-126 2(4)).
+		valueType, known := a.expressionTypes[expr]
+		if !known {
+			valueType, _ = a.inferSliceExpression(expr)
+		}
 		if typeCarriesReferenceOrigin(valueType) && valueType.ReferenceOriginLocal {
 			return valueType.ReferenceOriginName, valueType.ReferenceOriginToken, true
 		}
@@ -5612,12 +5493,14 @@ func copySymbols(in map[string]Symbol) map[string]Symbol {
 }
 
 // cloneSymbol detaches analysis-owned callable target storage whenever symbol
-// state crosses a scope or public snapshot boundary.
+// state crosses a scope or public snapshot boundary, including exact immutable
+// string rune-count evidence (rules/collections/collections.md §7.10).
 //
 // Rules:
 //   - rules/compiler/compiler_analysis.md — immutable analysis results
 //   - rules/analysis/closure_analysis.md — "Callable target sets"
 func cloneSymbol(symbol Symbol) Symbol {
+	symbol.stringRuneLength = clonePlaceConstantIndex(symbol.stringRuneLength)
 	if symbol.HasCallableIdentity {
 		symbol.CallableIdentity = cloneResolvedCallableIdentity(symbol.CallableIdentity)
 	}
@@ -5644,14 +5527,6 @@ func copyMoved(in map[string]lexer.Token) map[string]lexer.Token {
 	out := make(map[string]lexer.Token, len(in))
 	for name, token := range in {
 		out[name] = token
-	}
-	return out
-}
-
-func copyMoveReasons(in map[string]string) map[string]string {
-	out := make(map[string]string, len(in))
-	for place, reason := range in {
-		out[place] = reason
 	}
 	return out
 }
@@ -5803,42 +5678,42 @@ func (a *Analyzer) recordLoopContinue() {
 	a.loopBreakFrames[top].continues = append(a.loopBreakFrames[top].continues, a.captureLoopEdgeState())
 }
 
-func mergeMoveStateInto(mergedMoved map[string]lexer.Token, mergedReasons map[string]string, moved map[string]lexer.Token, reasons map[string]string) {
+func mergeMoveStateInto(mergedMoved map[string]lexer.Token, mergedReasons placeAvailabilityStates, moved map[string]lexer.Token, reasons placeAvailabilityStates) {
 	for place, token := range moved {
 		if _, exists := mergedMoved[place]; exists {
 			continue
 		}
 		mergedMoved[place] = token
-		if reason := reasons[place]; reason != "" {
+		if reason, exists := reasons[place]; exists {
 			mergedReasons[place] = reason
 		}
 	}
 }
 
-func mergeLoopMoveState(beforeMoved map[string]lexer.Token, beforeReasons map[string]string, loopMoved map[string]lexer.Token, loopReasons map[string]string, breaks loopBreakFrame) (map[string]lexer.Token, map[string]string) {
+func mergeLoopMoveState(beforeMoved map[string]lexer.Token, beforeReasons placeAvailabilityStates, loopMoved map[string]lexer.Token, loopReasons placeAvailabilityStates, breaks loopBreakFrame) (map[string]lexer.Token, placeAvailabilityStates) {
 	// Ordinary loops may execute zero times. The post-loop fixed point is thus
 	// the conservative union of entry, back-edge, and every explicit break exit.
 	mergedMoved := map[string]lexer.Token{}
-	mergedReasons := map[string]string{}
+	mergedReasons := placeAvailabilityStates{}
 	mergeMoveStateInto(mergedMoved, mergedReasons, beforeMoved, beforeReasons)
 	mergeMoveStateInto(mergedMoved, mergedReasons, loopMoved, loopReasons)
 	for _, edge := range breaks.continues {
-		mergeMoveStateInto(mergedMoved, mergedReasons, edge.moved, edge.moveReasons)
+		mergeMoveStateInto(mergedMoved, mergedReasons, edge.moved, edge.availabilityStates)
 	}
 	for _, edge := range breaks.breaks {
-		mergeMoveStateInto(mergedMoved, mergedReasons, edge.moved, edge.moveReasons)
+		mergeMoveStateInto(mergedMoved, mergedReasons, edge.moved, edge.availabilityStates)
 	}
 	return mergedMoved, mergedReasons
 }
 
-func loopBackedgeMoveState(entryMoved map[string]lexer.Token, entryReasons map[string]string, loopMoved map[string]lexer.Token, loopReasons map[string]string, frame loopBreakFrame, bodyFallsThrough bool) (map[string]lexer.Token, map[string]string) {
+func loopBackedgeMoveState(entryMoved map[string]lexer.Token, entryReasons placeAvailabilityStates, loopMoved map[string]lexer.Token, loopReasons placeAvailabilityStates, frame loopBreakFrame, bodyFallsThrough bool) (map[string]lexer.Token, placeAvailabilityStates) {
 	headerMoved := copyMoved(entryMoved)
-	headerReasons := copyMoveReasons(entryReasons)
+	headerReasons := copyAvailabilityStates(entryReasons)
 	if bodyFallsThrough {
 		mergeMoveStateInto(headerMoved, headerReasons, loopMoved, loopReasons)
 	}
 	for _, edge := range frame.continues {
-		mergeMoveStateInto(headerMoved, headerReasons, edge.moved, edge.moveReasons)
+		mergeMoveStateInto(headerMoved, headerReasons, edge.moved, edge.availabilityStates)
 	}
 	return headerMoved, headerReasons
 }
@@ -6075,7 +5950,7 @@ func (a *Analyzer) checkLoopBackedgeFixedPoint(
 	body *ast.BlockStatement,
 	entry loopIterationAnalysisState,
 	headerMoved map[string]lexer.Token,
-	headerReasons map[string]string,
+	headerReasons placeAvailabilityStates,
 	headerClosedResources map[string]lexer.Token,
 	headerBorrows map[string][]borrowRecord,
 	headerLocalRefContainers map[string]localReferenceOrigin,
@@ -6101,7 +5976,7 @@ func (a *Analyzer) checkLoopBackedgeFixedPoint(
 	previousConstInts := a.constInts
 	previousAssigned := a.assigned
 	previousMoved := a.moved
-	previousMoveReasons := a.moveReasons
+	previousMoveReasons := a.availabilityStates
 	previousClosedResources := a.closedResources
 	previousBorrows := a.borrows
 	previousLocalRefContainers := a.localRefContainers
@@ -6124,7 +5999,7 @@ func (a *Analyzer) checkLoopBackedgeFixedPoint(
 	a.constInts = copyConstInts(entry.constInts)
 	a.assigned = copyAssigned(entry.assigned)
 	a.moved = copyMoved(headerMoved)
-	a.moveReasons = copyMoveReasons(headerReasons)
+	a.availabilityStates = copyAvailabilityStates(headerReasons)
 	a.closedResources = copyMoved(headerClosedResources)
 	a.borrows = copyBorrows(headerBorrows)
 	a.localRefContainers = copyLocalRefContainers(headerLocalRefContainers)
@@ -6150,7 +6025,7 @@ func (a *Analyzer) checkLoopBackedgeFixedPoint(
 	a.constInts = previousConstInts
 	a.assigned = previousAssigned
 	a.moved = previousMoved
-	a.moveReasons = previousMoveReasons
+	a.availabilityStates = previousMoveReasons
 	a.closedResources = previousClosedResources
 	a.borrows = previousBorrows
 	a.localRefContainers = previousLocalRefContainers
@@ -8031,7 +7906,7 @@ func (a *Analyzer) analyzePropertyAccessorBody(target Type, name string, body *a
 	previousConstInts := a.constInts
 	previousAssigned := a.assigned
 	previousMoved := a.moved
-	previousMoveReasons := a.moveReasons
+	previousMoveReasons := a.availabilityStates
 	previousBorrows := a.borrows
 	previousLocalRefContainers := a.localRefContainers
 	previousArenaGenerations := a.arenaGenerations
@@ -8043,7 +7918,7 @@ func (a *Analyzer) analyzePropertyAccessorBody(target Type, name string, body *a
 	a.constInts = copyConstInts(previousConstInts)
 	a.assigned = copyAssigned(previousAssigned)
 	a.moved = map[string]lexer.Token{}
-	a.moveReasons = map[string]string{}
+	a.availabilityStates = placeAvailabilityStates{}
 	a.borrows = a.staticHolderBorrows()
 	a.localRefContainers = map[string]localReferenceOrigin{}
 	a.arenaGenerations = map[string]int{}
@@ -8056,7 +7931,7 @@ func (a *Analyzer) analyzePropertyAccessorBody(target Type, name string, body *a
 		a.constInts = previousConstInts
 		a.assigned = previousAssigned
 		a.moved = previousMoved
-		a.moveReasons = previousMoveReasons
+		a.availabilityStates = previousMoveReasons
 		a.borrows = previousBorrows
 		a.localRefContainers = previousLocalRefContainers
 		a.arenaGenerations = previousArenaGenerations
@@ -8249,7 +8124,7 @@ func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement, all
 	// its borrowed authority; it does not mutate the referent. Release the old
 	// holder edge before creating the replacement borrow, but restore it if the
 	// assignment fails before commit.
-	rebindingReference := stmt.Operator == "=" && symbol.Type.Kind == ReferenceType
+	rebindingReference := stmt.Operator == "=" && (symbol.Type.Kind == ReferenceType || symbol.Type.Kind == StringViewType)
 	previousBorrows := map[string][]borrowRecord(nil)
 	referenceRebindCommitted := false
 	if rebindingReference {
@@ -8448,6 +8323,9 @@ func compilerKnownNonCopyable(typ Type) bool {
 }
 
 func (a *Analyzer) bindBorrowHoldersFromExpression(expr ast.Expression, holder string) {
+	if a.bindStringViewBorrow(holder, expr) {
+		return
+	}
 	if holder == "" || expr == nil {
 		return
 	}
@@ -11358,8 +11236,8 @@ func rootPlaceMovedState(state map[string]lexer.Token, root string) map[string]l
 	return result
 }
 
-func rootPlaceReasonState(state map[string]string, root string) map[string]string {
-	result := map[string]string{}
+func rootPlaceReasonState(state placeAvailabilityStates, root string) placeAvailabilityStates {
+	result := placeAvailabilityStates{}
 	if root == "" {
 		return result
 	}
@@ -11379,6 +11257,9 @@ func (a *Analyzer) analyzeMatchStatement(stmt *ast.MatchStatement) {
 }
 
 type matchPatternInfo struct {
+	// BorrowedSubject marks a match over a `ref`/`ref mut` subject, which owns
+	// no payload to move (flowcontrol_match.md § 14).
+	BorrowedSubject      bool
 	BindingName          string
 	BindingType          Type
 	Kind                 string
@@ -11429,6 +11310,14 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 	if subjectType.Kind == InvalidType {
 		return Type{Kind: InvalidType}
 	}
+	// flowcontrol_match.md § 14: a `ref`/`ref mut` subject matches its
+	// referent; payload bindings borrow or copy and never move.
+	borrowedSubject := false
+	if subjectType.Kind == ReferenceType && subjectType.Element != nil &&
+		(subjectType.Element.Kind == UnionType || subjectType.Element.Kind == ResultType) {
+		subjectType = *subjectType.Element
+		borrowedSubject = true
+	}
 	if len(expr.Arms) == 0 {
 		a.addErrorAtToken(expr.Token, "match requires at least one branch")
 		return Type{Kind: InvalidType}
@@ -11451,7 +11340,7 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 	hasResultType := false
 	beforeAssigned := copyAssigned(a.assigned)
 	beforeMoved := copyMoved(a.moved)
-	beforeMoveReasons := copyMoveReasons(a.moveReasons)
+	beforeMoveReasons := copyAvailabilityStates(a.availabilityStates)
 	beforeClosedResources := copyMoved(a.closedResources)
 	beforeBorrows := copyBorrows(a.borrows)
 	beforeLocalRefContainers := copyLocalRefContainers(a.localRefContainers)
@@ -11525,7 +11414,7 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 			continue
 		}
 		if info.BindingName != "" && info.PayloadVariant != "" && !info.PayloadPlaceResolved {
-			if subjectPlace, placeOK := a.resolvePlace(expr.Subject); placeOK {
+			if subjectPlace, placeOK := a.matchSubjectPlace(expr.Subject); placeOK {
 				payloadType := info.BindingType
 				if info.PayloadBorrow && payloadType.Element != nil {
 					payloadType = *payloadType.Element
@@ -11607,6 +11496,7 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 		if binding, state, known := matchArmResultState(expr.Subject, arm); known {
 			a.recordResultStateFact(binding, state, arm.Pattern.Token)
 		}
+		info.BorrowedSubject = borrowedSubject
 		armType, branch := a.analyzeMatchArmBody(arm, info)
 		a.activeConditionFacts = a.activeConditionFacts[:armRefinementCount]
 		branches = append(branches, branch)
@@ -11639,10 +11529,10 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 	plan.ProvenActive = provenActive
 	recordPlan := true
 	if !exhaustive {
-		branches = append(branches, branchAnalysis{assigned: beforeAssigned, moved: beforeMoved, moveReasons: beforeMoveReasons, closedResources: beforeClosedResources, borrows: beforeBorrows, localRefContainers: beforeLocalRefContainers, arenaGenerations: beforeArenaGenerations, continues: true})
+		branches = append(branches, branchAnalysis{assigned: beforeAssigned, moved: beforeMoved, availabilityStates: beforeMoveReasons, closedResources: beforeClosedResources, borrows: beforeBorrows, localRefContainers: beforeLocalRefContainers, arenaGenerations: beforeArenaGenerations, continues: true})
 	}
 	a.assigned = mergeContinuingAssigned(beforeAssigned, branches...)
-	a.moved, a.moveReasons = mergeContinuingMoveState(beforeMoved, beforeMoveReasons, branches...)
+	a.moved, a.availabilityStates = mergeContinuingMoveState(beforeMoved, beforeMoveReasons, branches...)
 	a.closedResources = mergeContinuingClosedResources(beforeClosedResources, branches...)
 	a.borrows = mergeContinuingBorrows(beforeBorrows, branches...)
 	a.localRefContainers = mergeContinuingLocalRefContainers(beforeLocalRefContainers, branches...)
@@ -12068,7 +11958,7 @@ func (a *Analyzer) finalizeMatchBranch(info matchPatternInfo, branch branchAnaly
 		for place := range branch.moved {
 			if place == name || strings.HasPrefix(place, name+".") || strings.HasPrefix(place, name+"[") {
 				delete(branch.moved, place)
-				delete(branch.moveReasons, place)
+				delete(branch.availabilityStates, place)
 			}
 		}
 		removeBorrowHolder(branch.borrows, name)
@@ -12314,7 +12204,7 @@ func (a *Analyzer) currentBranchAnalysisState() branchAnalysis {
 	return branchAnalysis{
 		assigned:           copyAssigned(a.assigned),
 		moved:              copyMoved(a.moved),
-		moveReasons:        copyMoveReasons(a.moveReasons),
+		availabilityStates: copyAvailabilityStates(a.availabilityStates),
 		closedResources:    copyMoved(a.closedResources),
 		borrows:            copyBorrows(a.borrows),
 		localRefContainers: copyLocalRefContainers(a.localRefContainers),
@@ -12327,7 +12217,7 @@ func (a *Analyzer) currentBranchAnalysisState() branchAnalysis {
 func (a *Analyzer) applyBranchAnalysisState(state branchAnalysis) {
 	a.assigned = copyAssigned(state.assigned)
 	a.moved = copyMoved(state.moved)
-	a.moveReasons = copyMoveReasons(state.moveReasons)
+	a.availabilityStates = copyAvailabilityStates(state.availabilityStates)
 	a.closedResources = copyMoved(state.closedResources)
 	a.borrows = copyBorrows(state.borrows)
 	a.localRefContainers = copyLocalRefContainers(state.localRefContainers)

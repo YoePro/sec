@@ -35,8 +35,11 @@ type ResolvedDeferIdentity struct {
 }
 
 // cleanupIdentityAllocator interns sites in deterministic analysis order.
-// An owned action is keyed by canonical BindingID and initialization site:
-// reinitialization must never reuse the previous incarnation's action. Actual
+// An owned action is keyed by canonical BindingID and incarnation source site:
+// reinitialization must never reuse the previous incarnation's action. A new
+// replacement incarnation does not imply a new registration: its resolved
+// Cleanup effect inherits the destination's current obligation (MD-125;
+// rules/compiler/semantic_ir.md §40(7–9)). Actual
 // registration/cancellation and dynamic multiplicity belong to P17-19..24.
 // Rules: rules/mlir/packages/sec-mlir-dialect_package17.md — §§36,38,43.
 type cleanupIdentityAllocator struct {
@@ -68,10 +71,11 @@ func (a *cleanupIdentityAllocator) scope(parent CleanupScopeID, site lexer.Token
 	return cleanupSiteIdentity(&a.scopes, cleanupScopeKey{parent, sourceTokenLocation(site)})
 }
 
-// owned identifies one binding incarnation's prospective destruction action.
-// It does not register an obligation or claim initialization has succeeded.
+// owned identifies one binding incarnation's source action. It does not register
+// an obligation or claim initialization has succeeded. Available replacement
+// keeps its existing registration despite having a distinct incarnation action.
 // Rules: rules/mlir/packages/sec-mlir-dialect_package17.md — §§36,38;
-// rules/memory/destruction.md — §6.1 "Automatic destruction registration".
+// rules/memory/destruction.md — §6.1(4–5) "Automatic destruction registration".
 func (a *cleanupIdentityAllocator) owned(binding BindingID, initialization lexer.Token) CleanupActionID {
 	if binding == 0 || !validDefinitionToken(initialization) {
 		return 0

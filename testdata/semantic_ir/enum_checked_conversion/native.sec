@@ -1,0 +1,35 @@
+module main
+
+type ConversionError union error { OutOfRange, InvalidScalar, PrecisionLoss }
+enum Wide uint16 { Small = 1, Limit = 255, TooLarge = 300 }
+enum Signed int16 { Negative = -1, Zero = 0, Large = 300 }
+enum Open bit[16] { Low = 1 }
+type Holder struct { Value: Wide }
+
+fn Narrow(value: Wide) uint8 {
+    return try uint8(value) { Err(_) => 17 }
+}
+fn Propagate(value: Wide) Result[uint8, ConversionError] {
+    return Ok(try uint8(value))
+}
+fn Materialize(value: Wide) Result[uint8, ConversionError] {
+    return uint8(value)
+}
+fn Stored(value: Wide) uint8 {
+    let carrier := uint8(value)
+    return try carrier { Err(_) => 19 }
+}
+fn FromSigned(value: Signed) uint8 {
+    return try uint8(value) { Err(_) => 29 }
+}
+
+fn Run() int {
+    if Narrow(Wide.Small) != 1 || Narrow(Wide.Limit) != 255 || Narrow(Wide.TooLarge) != 17 { return 1 }
+    if Stored(Wide.Small) != 1 || Stored(Wide.TooLarge) != 19 { return 2 }
+    if (try Propagate(Wide.Limit) { Err(_) => 0 }) != 255 { return 3 }
+    if (try Propagate(Wide.TooLarge) { Err(_) => 37 }) != 37 { return 4 }
+    if (try Materialize(Wide.Small) { Err(_) => 0 }) != 1 { return 5 }
+    if (try Materialize(Wide.TooLarge) { Err(_) => 41 }) != 41 { return 6 }
+    if FromSigned(Signed.Negative) != 29 || FromSigned(Signed.Zero) != 0 || FromSigned(Signed.Large) != 29 { return 7 }
+    return 0
+}

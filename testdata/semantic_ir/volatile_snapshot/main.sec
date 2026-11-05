@@ -1,0 +1,47 @@
+module main
+
+fn Snapshot(pointer: RawPtr[uint32]) uint32 {
+    unsafe {
+        let first := pointer.VolatileRead()
+        let second := first
+        pointer.VolatileWrite(second)
+        let third := pointer.VolatileRead()
+        return third
+    }
+}
+fn Borrowed(pointer: ref RawPtr[uint32]) uint32 {
+    unsafe { return pointer.VolatileRead() }
+}
+fn Discarded(pointer: RawPtr[uint32]) void {
+    unsafe { discard pointer.VolatileRead() }
+}
+fn Unused(pointer: RawPtr[uint32]) void {
+    unsafe { pointer.VolatileRead() }
+}
+fn Direct(pointer: RawPtr[uint32]) uint32 {
+    return unsafe pointer.VolatileRead()
+}
+fn Address(pointer: RawPtr[uint32]) RawPtr[uint32] { return pointer }
+fn Value() uint32 { return 9 }
+fn Ordered(pointer: RawPtr[uint32]) void {
+    unsafe { Address(pointer).VolatileWrite(Value()) }
+}
+type Device struct {}
+impl Device {
+    fn VolatileRead() uint32 { return 7 }
+}
+fn User(value: ref Device) uint32 { return value.VolatileRead() }
+type Reading uint32
+fn Nominal(pointer: RawPtr[Reading]) Reading {
+    unsafe { return pointer.VolatileRead() }
+}
+fn Nested(pointer: RawPtr[RawPtr[uint32]]) RawPtr[uint32] {
+    unsafe { return pointer.VolatileRead() }
+}
+fn MovedSnapshot(pointer: RawPtr[uint32]) uint32 {
+    unsafe {
+        let first := pointer.VolatileRead()
+        let second :<- first
+        return second
+    }
+}

@@ -878,6 +878,35 @@ semantic or analysis requirements make compiler ownership necessary.
 
 ---
 
+# `StringView` and string ranges (MD-126)
+
+Decided 2026-11-05 (`rules/corrections/applied/MD-126-borrowed-string-ranges-rune-iteration-applied-20261105.md`).
+
+`StringView` is a compiler-known type identity with a fixed public member set,
+listed in full in `core-library.md` § 5.8: `Len`, `SizeOf`, `IsEmpty`,
+`GetRune`, `RuneAt`, `GetByte`, `ByteAt`, `CharAt`, `StartsWith(StringView)`
+and `ToString()`. Sema and the LSP must take these entries from the core
+registry and must not fabricate others; no `string` member is inherited by
+name.
+
+The string range `text[a..<b]` (and every other § 7.4 range form) over a
+`string` or `StringView` source is a compiler-known operation identity, not a
+member call. Its resolved facts are: source kind, normalized rune range,
+result type `StringView`, source-backed borrow origin, no allocation, no
+mutation, and the ordinary `panic.bounds`/`slice-range` or `try`
+`RangeError` failure edge.
+
+Public `string.Slice(start, end)` is removed from the string member registry.
+For a former `text.Slice(a, b)` call, diagnostics suggest `text[a..<b]` or
+`try text[a..<b]` and explain that the result is borrowed; they do not
+rewrite or materialize automatically.
+
+The private `__StringSliceUnchecked` helper above stays a core-internal
+**owned `string` descriptor operation**. It is not the public borrow
+constructor and keeps its own migration status.
+
+---
+
 # Private core UTC wall-clock intrinsic
 
 The compiler-known identifier `_now` is a privileged core-only value intrinsic
@@ -3436,8 +3465,8 @@ round trip;
 strict UTF-8 decoding failures with exact first-invalid byte offsets
     (0xFF, leading continuation bytes, overlong, truncated 2/3/4-byte,
     surrogates, above U+10FFFF, near buffer ends) leaving the input unchanged;
-rune-position search, slicing and rune access versus byte access
-    (IndexOf, IndexOf(start), LastIndexOf, Slice, GetRune, RuneAt, GetByte)
+rune-position search, string ranges (MD-126) and rune access versus byte access
+    (IndexOf, IndexOf(start), LastIndexOf, text[a..<b], GetRune, RuneAt, GetByte)
     against one shared rune-index oracle;
 Split, SplitToArray and SplitOnce with multibyte separators;
 materialization storage failure as CollectionError / StringError.Allocation;

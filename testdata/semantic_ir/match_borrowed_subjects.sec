@@ -1,0 +1,87 @@
+module main
+
+// A match over a ref/ref mut subject matches its referent (flowcontrol_match.md
+// § 14): the referent is dereferenced once, a subject that is not trivially
+// copyable is only observed for the variant tests, and payloads are borrowed
+// from the referent's Place or copied when copyable.
+
+type Handle struct {
+    id: int,
+}
+
+impl Handle {
+    free {
+    }
+}
+
+type Holder struct {
+    slot: Option[Handle],
+    count: Option[int],
+}
+
+fn CopiedWhole(value: ref Option[int]) int {
+    match value {
+        Some(number) => {
+            return number
+        }
+        None => {
+            return 0
+        }
+    }
+}
+
+fn BorrowedWhole(value: ref Option[Handle]) int {
+    match value {
+        Some(ref handle) => {
+            return handle.id
+        }
+        None => {
+            return 0
+        }
+    }
+}
+
+fn MutableWhole(value: ref mut Option[Handle]) int {
+    match value {
+        Some(ref mut handle) => {
+            handle.id = 3
+            return handle.id
+        }
+        None => {
+            return 0
+        }
+    }
+}
+
+fn BorrowedField(holder: ref Holder) int {
+    match holder.slot {
+        Some(ref handle) => {
+            return handle.id
+        }
+        None => {
+            return 0
+        }
+    }
+}
+
+fn CopiedField(holder: ref Holder) int {
+    match holder.count {
+        Some(number) => {
+            return number
+        }
+        None => {
+            return 0
+        }
+    }
+}
+
+fn ResultWhole(value: ref Result[int, IndexError]) int {
+    match value {
+        Ok(number) => {
+            return number
+        }
+        Err(_) => {
+            return -1
+        }
+    }
+}

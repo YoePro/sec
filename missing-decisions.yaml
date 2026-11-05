@@ -1,5 +1,5 @@
 schema_version: 1
-updated: "2026-11-04"
+updated: "2026-11-05"
 last_id: MD-126
 purpose: >-
   Tracks normative decisions that are missing or insufficiently precise and
@@ -92,37 +92,6 @@ decisions:
       name), what it is called, which module owns it, and whether the
       unions.md example should use it or an existing boundary.
     classification: constraining
-    status: open
-  - id: MD-019
-    area: explicit-layout-syntax
-    rulebooks:
-      - rules/memory/layout.md
-      - rules/memory/arena.md
-      - rules/memory/allocation.md
-      - rules/platform/ffi.md
-      - rules/analysis/parameter_usage_analysis.md
-    description: >-
-      layout.md § 4.3 defines explicit layout contracts, § 8(5) rejects
-      alignment requests stricter than the target supports, and arena.md
-      § 17(5) makes statically impossible alignment a compile-time error. But
-      layout.md § 1(12) explicitly does not introduce syntax for packing,
-      alignment, offsets, endianness, or explicit representation, and no other
-      rulebook defines it. As a result, no source program can request a
-      non-native alignment, and the § 8(5), § 4.3(3), and arena § 17(5)
-      diagnostics cannot be implemented. Decisions needed: the syntax (an
-      attribute, a type contract, or something else) for explicit alignment,
-      packing, field offsets, endianness, and representation, and which
-      rulebook owns it. Parameter-usage analysis likewise cannot produce
-      source-declared alignment, packing, endian or representation blockers
-      until these contracts have a normative source form and canonical
-      resolved facts; it must preserve currently represented constraints and
-      withhold incompatible advice rather than invent annotations.
-      The alignment/layout portion of tooling.allocation mentor diagnostics
-      in governance/allocation.yaml is blocked by the same missing syntax
-      and resolved facts; it cannot be completed by inventing attributes.
-      Static capacity and ISR diagnostics have separate implementation
-      dependencies in analysis.allocation and sema.isr-analysis.
-    classification: blocking
     status: open
   - id: MD-021
     area: c-binding-environment
@@ -1081,57 +1050,5 @@ decisions:
       with IndexError that leaves the element unchanged on failure, matching the read;
       (B) it stays invalid, and code checks the index or uses a borrowed element under
       try. Recommended: A. P16 acceptance does not depend on this.
-    classification: localized
-    status: open
-  - id: MD-125
-    area: replacement-cleanup-registration-point
-    rulebooks:
-      - rules/memory/destruction.md
-      - rules/control-flow/defer.md
-      - rules/compiler/semantic_ir.md
-    description: >-
-      Raised 2026-11-03 by the P17-03 synchronization audit
-      (rules/corrections/p17-ownership-destruction-rules-synchronization.md,
-      proposals A and D). The P17 sync § 3 and the Semantic IR amendment § 11 say a
-      replacement `x = value` of an available owner registers the new value's
-      destruction at the replacement point, but destruction.md § 13.2 and
-      semantic_ir.md § 40 only say the old value is destroyed first, so the
-      position of the new value in the unified LIFO order (destruction.md § 6.2) is
-      unstated. The choice matters when cleanup registered between the original
-      initialization and the replacement observes the value, e.g.
-      `let mut h := Make(1); defer { Log(h.id) }; h = Make(2)`: (A) register at the
-      replacement point as the sync says. The new h is destroyed before the defer
-      runs, so by defer.md § 10 the program is invalid and Sema reports the pending
-      deferred use. (B) the new value inherits the old registration's position, so
-      the defer reads the new h and it is destroyed afterwards; this contradicts
-      sync § 3. Recommended: A, with a Sema diagnostic. The compiler currently
-      registers at the replacement point and stops the defer case as the lowering
-      boundary "P17 replacement of an owned value a registered defer reads".
-    classification: localized
-    status: open
-  - id: MD-126
-    area: string-byte-range-iteration
-    rulebooks:
-      - rules/library/core-library.md
-      - rules/control-flow/flowcontrol_for.md
-      - rules/collections/collections.md
-      - rules/corrections/applied/md050-md071-md072-string-utf8-positions-materialization-correction-20261017.md
-    description: >-
-      Raised 2026-11-04 from sec/core/number_parse.sec. Code that validates a
-      byte range of a string wants `for character in source[startByte..endByte]`
-      with an O(1) slice. In 0.1.1 that is not valid: a string is not a slice
-      source (collections.md § 7.2), public string positions are rune indexes
-      (MD-071; Slice(start, end) takes runes), and ref rune bindings do not exist
-      (flowcontrol_for.md § 19, S1199). Workable now: `try source.Slice(start,
-      end)` with rune indexes, or a whole-string loop with a byte cursor.
-      Proposal (rules/corrections/MD-126-string-byte-range-iteration-proposal-20261104.md):
-      D1 form for 0.1.2: A) a checked `string.SliceBytes(startByte, endByte)
-      Result[string, RangeError]` that validates scalar boundaries in O(1) and
-      shares storage (recommended), B) index-range syntax on string (not
-      recommended), C) an opaque string position type (suggested for 0.2),
-      D) a range-limited rune iterator. D2: the non-boundary error, either reuse
-      RangeError.InvalidRange (recommended) or add a variant. D3: accept a named
-      byte-unit exception to MD-071 § 3(6). D4: optionally add rune.SizeOf (UTF-8
-      length). D5: interaction with MD-090. Recommended: A, gated to Sec 0.1.2.
     classification: localized
     status: open

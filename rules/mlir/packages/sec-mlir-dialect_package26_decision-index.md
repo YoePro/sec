@@ -20,7 +20,7 @@ Existing decision on source-level `RawPtr` ↔ `ref` conversion spelling and pro
 
 ## § 3. MD-019 already open
 
-Existing explicit layout spelling decision. P26 consumes already resolved P24 layout and cannot introduce new source packing or alignment attributes.
+Existing explicit layout spelling decision. P26 consumes already resolved P24 layout and cannot introduce new source packing or alignment attributes. **Decided 2026-11-05:** MD-019 fixes the struct spelling as the contextual modifiers `pack(N)`, `minAlign(N)` and `byteOffset(N)` (`rules/declarations/struct.md` § 15A, `rules/memory/layout.md` §§ 27–30); there is no endian modifier and no `repr(C)`. The gate is now implementation, not a missing decision.
 
 ## § 4. MD-073 and MD-109 already open
 

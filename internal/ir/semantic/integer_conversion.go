@@ -110,6 +110,17 @@ const OpNumericConvertChecked OpKind = "numeric.convert-checked"
 // its failed flag and routes the ConversionError.OutOfRange variant to the active
 // failure-set try; the success edge continues with the candidate.
 func (fb *functionBuilder) buildCheckedIntegerConversion(call *ast.CallExpression, conversion sema.ResolvedIntegerConversion, point sema.TryFailurePoint) (builtValue, error) {
+	return fb.buildCheckedIntegerConversionOperand(call, conversion, point, func(source TypeID) (builtValue, error) {
+		return fb.buildExpr(call.Arguments[0], source)
+	})
+}
+
+// buildCheckedIntegerConversionOperand shares the checked candidate and failure
+// routing with enum conversions, whose operand first exposes its exact carrier.
+// The operand is evaluated once, after validating the failure representation.
+// Rules: rules/types/types.md — Explicit conversions; rules/declarations/enums.md §12.1;
+// rules/mlir/packages/sec-mlir-dialect_package20.md — §§48–54,71.
+func (fb *functionBuilder) buildCheckedIntegerConversionOperand(call *ast.CallExpression, conversion sema.ResolvedIntegerConversion, point sema.TryFailurePoint, operand func(TypeID) (builtValue, error)) (builtValue, error) {
 	failure, checked := fb.owner.analyzer.CheckedConversionOf(call)
 	if !checked {
 		failure = sema.ConversionFailureOutOfRange
@@ -151,7 +162,7 @@ func (fb *functionBuilder) buildCheckedIntegerConversion(call *ast.CallExpressio
 	if err != nil {
 		return builtValue{}, err
 	}
-	value, err := fb.buildExpr(call.Arguments[0], sourceType)
+	value, err := operand(sourceType)
 	if err != nil {
 		return builtValue{}, err
 	}

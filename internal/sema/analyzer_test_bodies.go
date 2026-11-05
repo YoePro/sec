@@ -35,7 +35,7 @@ func (a *Analyzer) analyzeTestBody(declaration *ast.TestDeclaration) {
 	previousConstInts := a.constInts
 	previousAssigned := a.assigned
 	previousMoved := a.moved
-	previousMoveReasons := a.moveReasons
+	previousMoveReasons := a.availabilityStates
 	previousClosedResources := a.closedResources
 	previousBorrows := a.borrows
 	previousLocalRefContainers := a.localRefContainers
@@ -55,7 +55,7 @@ func (a *Analyzer) analyzeTestBody(declaration *ast.TestDeclaration) {
 	a.constInts = copyConstInts(previousConstInts)
 	a.assigned = copyAssigned(previousAssigned)
 	a.moved = map[string]lexer.Token{}
-	a.moveReasons = map[string]string{}
+	a.availabilityStates = placeAvailabilityStates{}
 	a.closedResources = map[string]lexer.Token{}
 	a.borrows = map[string][]borrowRecord{}
 	a.localRefContainers = map[string]localReferenceOrigin{}
@@ -75,7 +75,7 @@ func (a *Analyzer) analyzeTestBody(declaration *ast.TestDeclaration) {
 		a.constInts = previousConstInts
 		a.assigned = previousAssigned
 		a.moved = previousMoved
-		a.moveReasons = previousMoveReasons
+		a.availabilityStates = previousMoveReasons
 		a.closedResources = previousClosedResources
 		a.borrows = previousBorrows
 		a.localRefContainers = previousLocalRefContainers

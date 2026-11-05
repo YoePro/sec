@@ -15,7 +15,7 @@ import (
 // Rules: rules/control-flow/discard.md — §§5,26,37–38;
 // rules/memory/destruction.md — §§12.2(3),33.2(4).
 func (a *Analyzer) recordRedundantDiscard(stmt *ast.DiscardStatement, place Place, movedKey string, endedAt lexer.Token) {
-	if a.summaryPass || a.inDeferBlock || a.iterationDependencyProbe || !a.callGraphPathReachable || a.loopBackedgePlaces[movedKey] || isConditionalAvailabilityReason(a.moveReasons[movedKey]) {
+	if a.summaryPass || a.inDeferBlock || a.iterationDependencyProbe || !a.callGraphPathReachable || a.loopBackedgePlaces[movedKey] || isConditionallyUnavailable(a.availabilityStates[movedKey]) {
 		return
 	}
 	// Advise only direct bindings and stored fields. Computed projections or

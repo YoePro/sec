@@ -32,13 +32,14 @@ const (
 //   - rules/tooling/cli.md — § 5 (`sec analyse`)
 //   - rules/corrections/applied/md017-sec-analyse-cli-and-help-correction-20261017.md — §§ 2–7
 type analyseCommand struct {
-	inputs       []string
-	target       CompilerTarget
-	all          bool
-	family       string
-	function     string
-	depth        sema.AnalysisDepth
-	presentation analysePresentation
+	inputs         []string
+	target         CompilerTarget
+	targetExplicit bool
+	all            bool
+	family         string
+	function       string
+	depth          sema.AnalysisDepth
+	presentation   analysePresentation
 }
 
 // parseAnalyseCommandArgs accepts
@@ -75,6 +76,7 @@ func parseAnalyseCommandArgs(args []string, host CompilerTarget) (analyseCommand
 				return analyseCommand{}, fmt.Errorf("invalid target %q", text)
 			}
 			command.target = target
+			command.targetExplicit = true
 		case arg == "-f" || arg == "--function" || strings.HasPrefix(arg, "--function="):
 			name := "--function"
 			if arg == "-f" {
@@ -172,7 +174,13 @@ func runAnalyseCommand(args []string, out io.Writer) {
 	deferSemaWarnings = true
 	program, summary := parseSourceInputs(command.inputs, command.target, true)
 	selected := analyseSelectedFiles(program)
-	analyzer := analyzeProgramWithSourcesAtDepth(program, command.target, collectSourceRootsFromInputs(command.inputs), summary, false, command.depth)
+	var analyzer *sema.Analyzer
+	var conformances []analyseConformanceTarget
+	if command.family == "" && command.function == "" {
+		analyzer, conformances = analyseConformanceTargets(command, program, summary)
+	} else {
+		analyzer = analyzeProgramWithSourcesAtDepth(program, command.target, collectSourceRootsFromInputs(command.inputs), summary, false, command.depth)
+	}
 	var scope *analyseScope
 	if command.function != "" {
 		scope, err = resolveAnalyseScope(analyzer.CallGraph(), command.function, selected)
@@ -181,7 +189,14 @@ func runAnalyseCommand(args []string, out io.Writer) {
 			exitCLI(1)
 		}
 	}
+	if len(conformances) > 0 {
+		selected = conformances[0].selected
+	}
 	report = buildAnalyseReport(analyzer, selected, command.target, command.family, scope)
+	if len(conformances) > 0 {
+		report.target = conformances[0].target
+	}
+	report.addConformances(conformances)
 	report.completed = true
 	if command.presentation == analysePresentJSON {
 		report.emitSelectedDiagnostics()
@@ -217,10 +232,11 @@ type analyseReport struct {
 	// warnings are the selected registered and unregistered diagnostics;
 	// findings the reportable analysis results; limitations what kept the
 	// result from being complete.
-	warnings    []sema.Error
-	findings    []analyseFinding
-	limitations []string
-	completed   bool
+	warnings     []sema.Error
+	findings     []analyseFinding
+	limitations  []string
+	completed    bool
+	conformances []analysisConformance
 }
 
 type analyseSection struct {
@@ -679,8 +695,12 @@ func (r analyseReport) document(command analyseCommand, occurrences []emittedOcc
 		document.Limitations = []string{"analysis did not complete; see diagnostics"}
 		return document
 	}
+	document.Target = r.target.String()
 	document.Status = "complete"
-	if len(r.limitations) > 0 {
+	if r.counts[analyseClassError] > 0 {
+		document.Status = "rejected"
+	}
+	if len(r.limitations) > 0 && r.counts[analyseClassError] == 0 {
 		document.Status = "incomplete"
 	}
 	for _, family := range analysisFamilies() {
@@ -722,6 +742,7 @@ func (r analyseReport) document(command analyseCommand, occurrences []emittedOcc
 		}
 	}
 	document.Diagnostics = selectedDiagnostics
+	document.Conformances = append([]analysisConformance{}, r.conformances...)
 	for _, finding := range r.findings {
 		entry := analysisReportFinding{
 			Analysis: finding.Family, Class: string(finding.Class), Rule: finding.Rule, Message: finding.Message,

@@ -1,0 +1,39 @@
+module main
+fn Escape() StringView {
+    let text := "Aπ😀b"
+    return text[..]
+}
+fn OwnedParameter(text: string) StringView { return text[..] }
+fn Make() string { return "hello" }
+fn Temporary() void { let view := Make()[..] }
+fn Conversion(text: ref string) string { return text[..] }
+fn ReferenceIteration(text: ref string) void {
+    let view := text[..]
+    for ref ch in view {}
+}
+fn MutateSource() void {
+    let mut text := "Aπ😀b"
+    let view := text[..]
+    text = "new text"
+    let length := view.Len
+}
+fn MutableView(view: ref mut StringView) void {}
+
+fn ReplaceDuringIteration() void {
+    let mut text := "Aπ😀b"
+    for ch in text[1..<3] { text = "other" }
+}
+
+fn CopiedView() void {
+    let mut text := "text"
+    let first := text[..]
+    let second := first
+    discard first
+    text = "replacement"
+    let length := second.Len
+}
+fn Mutate(value: ref mut string) void { *value = "replacement" }
+fn BorrowDuringIteration() void {
+    let mut text := "text"
+    for ch in text[0..<2] { Mutate(ref mut text) }
+}

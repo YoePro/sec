@@ -490,6 +490,10 @@ lifetime/storage dependency
 
 § 17(8) Runtime string materialization uses the canonical active allocation context of `rules/memory/allocation.md`; Sec 0.1 defines no string-specific allocator or allocation domain. The frontend resolves that context before Semantic IR, and Semantic IR preserves the resolved allocation domain or context together with the ordinary failure channel (`AllocationError`), ownership facts, and lifetime facts required by lowering. Lowering consumes these facts and must not choose an allocator independently, and it must not repair an insufficient allocation lifetime by silently reallocating the result into another domain. Until Semantic IR represents string materialization, a runtime materialization is an explicit unsupported-lowering case (MD-004; `rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md` §§ 5.10–5.17).
 
+§ 17(9) A string range (MD-126, `rules/corrections/applied/MD-126-borrowed-string-ranges-rune-iteration-applied-20261105.md`) is represented as a resolved `StringView` plan carrying the source origin, the normalized rune range, the range-validity and failure plan (`panic.bounds`/`slice-range` or `try` `RangeError`), the hidden byte cursor or boundaries where needed, and non-owning, non-allocating effects. Its endpoints are UTF-8 scalar boundaries. Returned-slice origin metadata may be reused where valid, but a view is never represented as `ref rune[]` or as contiguous stored `rune` elements.
+
+§ 17(10) Iteration over a `StringView` uses the same string-family scalar decoding and loop lowering path as `string` iteration and yields `rune` values. `StringView.ToString()` is an explicit materialization under § 17(8); range creation and traversal are not.
+
 ---
 
 ## § 18 Collections
@@ -1076,6 +1080,14 @@ source location
 § 40(5) Conditional availability may require conditional cleanup.
 
 § 40(6) Semantic IR must preserve the distinction until cleanup/ownership semantics are fully materialized.
+
+§ 40(7) Successful replacement of an Available owned Place destroys the old owned incarnation according to the resolved destruction plan and associates the prepared new value with the **same active cleanup registration identity/ordering position** as the destination. It does **not** create a later-ordered final cleanup registration (MD-125, 2026-11-05; `rules/corrections/applied/MD-125-replacement-cleanup-registration-point-applied-20261105.md`).
+
+§ 40(8) Successful reinitialization of an Unavailable mutable Place establishes a new cleanup registration identity and position. An ownership action that terminates or transfers the existing responsibility cancels that obligation under the ordinary move/discard/return rules.
+
+§ 40(9) A conditional replacement/reinitialization retains path-sensitive information about whether a prior active obligation is inherited or a new obligation is registered. Semantic IR cleanup plans, verifier checks and lowering must preserve the canonical execution order without double-destruction, stale cleanup entries or use-after-destruction at a later `defer`.
+
+§ 40(10) Source-level `defer` capture retains the binding/Place identity and performs its ordinary read when the deferred body runs (§ 44; `defer.md` § 9). The current value after a valid replacement must still be available to a deferred read that is ordered before that Place's inherited final cleanup. The optimizer may not move that cleanup ahead of the deferred read.
 
 ---
 
@@ -2690,6 +2702,8 @@ panic/check operations
 § 104(3) Semantic IR types remain semantic even after attaching resolved layout identity.
 
 § 104(4) LLVM/MLIR data layout is not a competing Sec layout authority.
+
+§ 104(5) Written struct layout modifiers (`pack`, `minAlign`, `byteOffset`; MD-019) reach Semantic IR as typed, source-located requirements of the struct or field. `ResolvedLayout` computes the final field alignments, exact offsets, aggregate alignment, size, padding and stride from them under `layout.md` §§ 27–29; natural alignment, type and field minima, packing, offsets and ABI requirements stay distinct resolved facts, and no lowering pass recomputes their precedence.
 
 ---
 

@@ -638,6 +638,10 @@ func addValue(types *TypeTable, values map[ValueID]Value, v Value) error {
 // slice value provenance before downstream representation consumes it.
 // Rules: rules/compiler/semantic_ir.md — §§20,126.2–4,126.6–20.
 func verifyOperation(module *Module, fn *Function, op Operation, values map[ValueID]Value, storages map[StorageID]Storage, functions map[FunctionID]*Function, blocks map[BlockID]*Block) error {
+
+	if op.Volatile != nil && op.Kind != OpVolatileRead && op.Kind != OpVolatileWrite {
+		return fmt.Errorf("volatile access facts on non-volatile operation")
+	}
 	if err := verifySliceValueFacts(module.Types, op); err != nil {
 		return err
 	}
@@ -1109,6 +1113,10 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 	case OpBoundsFailure:
 		if len(op.Operands) != 0 || len(op.Results) != 0 || len(op.Successors) != 0 || (op.ArrayOperation != "fixed-array-index" && op.ArrayOperation != "slice-index" && op.ArrayOperation != "slice-range") {
 			return fmt.Errorf("invalid fail.bounds")
+		}
+	case OpVolatileRead, OpVolatileWrite:
+		if err := verifyVolatileAccess(module, op, values); err != nil {
+			return err
 		}
 	case OpAtomicFence:
 		if err := verifyAtomicFence(op); err != nil {

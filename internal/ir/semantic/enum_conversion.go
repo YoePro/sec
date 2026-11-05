@@ -8,7 +8,8 @@ import (
 // buildEnumConversion consumes Sema's exact-conversion proof and fallibility.
 // Potentially failing enum-to-integer conversions cannot become unconditional
 // enum.to-integer, even if inconsistent facts also supply a proven bound. The
-// unsupported path stops before operand evaluation or any IR allocation.
+// checked path extracts the unchanged carrier before numeric failure routing.
+// Historical package scopes stop before operand evaluation or IR allocation.
 // Rules: rules/declarations/enums.md — §12.1;
 // rules/types/types.md — "Exact integer conversion proof";
 // rules/compiler/semantic_ir.md — §124.
@@ -18,7 +19,10 @@ func (fb *functionBuilder) buildEnumConversion(call *ast.CallExpression, convers
 	}
 	if conversion.Kind == sema.ResolvedEnumToInteger {
 		if conversion.Fallible {
-			return builtValue{}, fb.unsupported("fallible enum to integer conversion "+conversion.EnumType.Name+" to "+conversion.IntegerType.Name+" (needs checked failure control flow)", call.Token)
+			if fb.owner.maxPackage < 20 {
+				return builtValue{}, fb.unsupported("fallible enum to integer conversion "+conversion.EnumType.Name+" to "+conversion.IntegerType.Name+" (needs checked failure control flow)", call.Token)
+			}
+			return fb.buildCheckedEnumConversion(call, conversion)
 		}
 		if !conversion.Proof.Proven() {
 			return builtValue{}, fb.unsupported("enum to integer conversion "+conversion.EnumType.Name+" to "+conversion.IntegerType.Name+" that is not proven exact (needs a checked conversion)", call.Token)

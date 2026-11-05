@@ -52,8 +52,14 @@ Semantic cleanup registration events include:
 successful initialization of an owned non-trivial value
 executed defer statement
 reinitialization after a move
-successful replacement creating a new owned value
 ```
+
+**Superseded in part by MD-125 (2026-11-05):** the earlier fourth event,
+"successful replacement creating a new owned value", is withdrawn. Replacement
+of an Available Place destroys the old value immediately but registers no new
+final obligation; the new value inherits the Place's existing registration and
+its position (`destruction.md` §§ 6.1(4)–(5), 13.2(5)–(8)). Reinitialization of
+an Unavailable Place remains a new registration.
 
 Cleanup executes in reverse registration order, subject to scope/function-exit
 eligibility.
@@ -88,10 +94,12 @@ destroys/terminates the old owned incarnation
 creates a new owned incarnation at the replacement point
 ```
 
-The new incarnation's cleanup registration occurs at the replacement point.
-
-This gives deterministic interaction with values initialized or defers
-registered between the original initialization and later replacement.
+**Superseded in part by MD-125 (2026-11-05):** the new incarnation does **not**
+register at the replacement point. It becomes the value covered by the
+destination's pre-existing active cleanup obligation, which keeps its original
+position in the unified order (`destruction.md` § 13.2(5)). A defer registered
+between the original initialization and the replacement therefore runs before
+the new value is destroyed and reads the new value (§ 13.2(6); `defer.md` § 9).
 
 ---
 

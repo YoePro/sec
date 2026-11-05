@@ -16,34 +16,28 @@ impl rune {
         }
     }
 
-    /** Reports whether this rune is a decimal digit in any Unicode numbering system. */
+    /**
+     * Reports whether this rune is a Unicode decimal digit.
+     *
+     * Description:
+     * Recognizes all Unicode General_Category Nd digits using the
+     * generated Unicode 18.0 decimal digit table.
+     *
+     * Numeric symbols, Roman numerals, and fractions are not
+     * classified as decimal digits.
+     *
+     * Returns:
+     * True when the rune is a Unicode decimal digit; otherwise false.
+     *
+     * Allocation:
+     * Does not allocate.
+     */
     property IsUnicodeDigit: bool {
         get {
-            // Fast path: Standard ASCII digits
-            if self <= 127r {
-                return self in 48r..57r
+            return match _DecimalDigitValue(self) {
+                Some(_) => true
+                None => false
             }
-
-            // Compile-time constant array containing international decimal digit ranges (0-9)
-            let r := [
-                1632r..1641r,   // Arabic-Indic Digits (٠..٩)
-                1776r..1785r,   // Extended Arabic-Indic Digits (۰..۹)
-                2406r..2415r,   // Devanagari Digits (०..९)
-                2416r..2425r,   // Bengali Digits
-                2544r..2553r,   // Gurmukhi Digits
-                2662r..2671r,   // Gujarati Digits
-                2790r..2799r,   // Oriya Digits
-                2918r..2927r,   // Tamil Digits
-                3046r..3055r,   // Telugu Digits
-                3174r..3183r,   // Kannada Digits
-                3302r..3311r,   // Malayalam Digits
-                3430r..3439r,   // Thai Digits
-                3558r..3567r,   // Lao Digits
-                3664r..3673r,   // Tibetan Digits
-                65296r..65305r,  // Fullwidth Digits (０..９)
-            ]
-
-            return self in r
         }
     }
 

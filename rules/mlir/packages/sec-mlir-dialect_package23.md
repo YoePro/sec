@@ -82,6 +82,8 @@ Preserve the already specified **source-file-private** `__StringSliceUnchecked(v
 
 ## § 16. Public checked substring boundary
 
+> **Superseded by MD-126 (2026-11-05, `rules/corrections/applied/MD-126-borrowed-string-ranges-rune-iteration-applied-20261105.md`).** The paragraph below is historical. `string` and `StringView` now accept bracket ranges that create a zero-copy borrowed `StringView`; public `Slice -> Result[string, RangeError]` is removed. Rune bounds are translated to UTF-8 byte boundaries with a checked, non-allocating guard that dominates view publication; ordinary failure is `panic.bounds`/`slice-range`, `try` failure is `RangeError`. Owned text arises only through explicit `StringView.ToString()`. View iteration reuses the string rune iterator. Owned string, borrowed view and yielded `rune` stay distinct types in the verifier. P23 remains unfinished.
+
 `string` does **not** use array slice syntax. Checked public `Slice` or equivalent core member returns the exact `Result[string,RangeError]` resolved by the real core declaration. Preserve evaluation order; invalid bound ordering maps `RangeError.StartAfterEnd`; extent overflow maps `RangeError.OutOfBounds`. Additional UTF-8 boundary behavior must not be invented: blocked behind MD-071 (P23-D1)/MD-050 if required. Returning a string borrowing existing backing requires that the backing remains alive; otherwise Sema/proven plan must select a permissible materialization with allocation/error or reject.
 
 ## § 17. Split and traversal

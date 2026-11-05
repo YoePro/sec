@@ -4,6 +4,7 @@ import (
 	"math/big"
 
 	"sec/internal/ast"
+	"sec/internal/diagnostics"
 )
 
 // P16 creation plans are semantic facts, independent of a physical descriptor.
@@ -16,6 +17,8 @@ const (
 	SliceSourceFixedArray   ResolvedSliceSourceKind = "fixed-array"
 	SliceSourceSlice        ResolvedSliceSourceKind = "slice"
 	SliceSourceDynamicArray ResolvedSliceSourceKind = "dynamic-array"
+	SliceSourceString       ResolvedSliceSourceKind = "string"
+	SliceSourceStringView   ResolvedSliceSourceKind = "string-view"
 	SliceShared             ResolvedSliceMode       = "shared"
 	SliceMutable            ResolvedSliceMode       = "mutable"
 	SliceRangeProvenSafe    SliceRangeCheckKind     = "proven-safe"
@@ -77,7 +80,7 @@ func (a *Analyzer) resolvedSliceEndpoint(expr ast.Expression) ResolvedSliceEndpo
 // Rules: rules/mlir/packages/sec-mlir-dialect_package16.md — §§ 32, 36, 59–62.
 func (a *Analyzer) sliceSourcePlace(expr ast.Expression, typ Type) (Place, bool) {
 	place, ok := a.resolvePlace(expr)
-	if !ok && typ.Kind == ReferenceType && typ.Element != nil {
+	if !ok && (typ.Kind == ReferenceType && typ.Element != nil || typ.Kind == StringViewType) {
 		// A returned reference is a value with existing P15 origin facts, not
 		// a fresh temporary storage root. Reuse those facts without re-calling
 		// or re-inferring its source expression.
@@ -202,8 +205,11 @@ func (a *Analyzer) inferSliceExpression(expr *ast.SliceExpression) (Type, expres
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 	leftType = dereferenceType(leftType)
+	if leftType.Kind == StringType || leftType.Kind == StringViewType {
+		return a.inferStringRange(expr, leftType)
+	}
 	if leftType.Kind != ArrayType && leftType.Kind != SliceType {
-		a.addErrorAtToken(expr.Token, "type %s cannot be sliced", typeDisplayName(leftType))
+		a.addErrorAtTokenWithMetadata(expr.Token, diagnostics.InvalidRangeSource, "Bracket ranges require a string, StringView, array or slice. Arrays and slices require an explicit ref borrow.", "type %s cannot be sliced", typeDisplayName(leftType))
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 	if leftType.Element == nil {

@@ -161,6 +161,10 @@ fn Process() void {
 
 **§ 6.1(3)** Move, discard, detach, return transfer, and other terminal ownership actions cancel the former owner's destruction responsibility for the transferred or ended value.
 
+**§ 6.1(4)** A successful replacement of an **Available** owned Place changes which owned value its already-active cleanup obligation will destroy, but preserves the obligation's original source-semantic registration position in the common cleanup order. Replacement is not a second registration. The old value's destruction at replacement commit is a distinct immediate action (MD-125, 2026-11-05; `rules/corrections/applied/MD-125-replacement-cleanup-registration-point-applied-20261105.md`).
+
+**§ 6.1(5)** Successful reinitialization of an **Unavailable** mutable Place establishes a new cleanup obligation at the reinitialization point. It never restores a canceled registration's former ordering position. On a `ConditionallyAvailable` path, the distinction is resolved according to whether a live prior obligation exists on that path (MD-125).
+
 ### § 6.2 Unified cleanup stack
 
 **§ 6.2(1)** Deferred cleanup and ordinary automatic destruction participate in one common LIFO cleanup order according to source-semantic registration time.
@@ -453,6 +457,14 @@ package.Payload = CreateBuffer()
 
 **§ 13.2(4)** The compiler must not destroy the old destination and only afterward discover that the replacement operation was semantically invalid.
 
+**§ 13.2(5)** On successful replacement of an Available owned Place, the new owned value **inherits the destination's existing active cleanup obligation and its position** in the unified cleanup order. The previous value is destroyed exactly once before the replacement becomes committed. No additional final cleanup obligation is registered for the same Place by the replacement (MD-125, 2026-11-05; `rules/corrections/applied/MD-125-replacement-cleanup-registration-point-applied-20261105.md`).
+
+**§ 13.2(6)** A deferred block that refers to the destination Place, and was validly registered before replacement, observes the destination's current value at deferred execution. Replacement of that value does not itself invalidate the deferred read or cause the new value to be destroyed before a defer that was registered after the destination's original cleanup obligation.
+
+**§ 13.2(7)** Failure during preparation must leave the old available value and its active cleanup obligation, including its ordering position, unchanged. Successful commitment transfers the prepared value into the existing obligation only after all prerequisite checks and required old-value cleanup have completed under the language's existing failure and destruction rules.
+
+**§ 13.2(8)** Repeated replacement preserves the same active cleanup position until the obligation ends through a terminal ownership action or the Place's eligible lifetime end. A later legal reinitialization after unavailability is governed by § 13.1(3) and § 6.1(5), not by this replacement rule.
+
 ### § 13.3 Conditionally available replacement
 
 **§ 13.3(1)** A mutable `ConditionallyAvailable` Place may be repaired by assignment.
@@ -467,6 +479,8 @@ package.Payload = CreateBuffer()
 discard package.Payload
 package.Payload = CreateBuffer()
 ```
+
+**§ 13.3(5)** For a `ConditionallyAvailable` destination, a successful assignment preserves the pre-existing active cleanup position **on paths where an owned value remains available**, and establishes a new cleanup position **on paths where the Place is unavailable**. The compiler must preserve this distinction in its ownership and cleanup facts; no path may destroy a value twice or read an unavailable value (MD-125).
 
 ### § 13.4 Immutable Places
 

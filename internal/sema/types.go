@@ -38,9 +38,11 @@ const (
 	UnitDimensionType TypeKind = "unit-dimension"
 	UnionType         TypeKind = "union"
 	StringType        TypeKind = "string"
-	CharType          TypeKind = "char"
-	RuneType          TypeKind = "rune"
-	RawPtrType        TypeKind = "rawptr"
+	// StringViewType is the shared UTF-8 bounded borrow (rules/types/types.md StringView; MD-126).
+	StringViewType TypeKind = "string-view"
+	CharType       TypeKind = "char"
+	RuneType       TypeKind = "rune"
+	RawPtrType     TypeKind = "rawptr"
 	// HardwareInstanceType is the compiler-known HardwareInstance[T]: the
 	// software implementation instance of a hardware-bound register type T
 	// (MD-077; rules/platform/hardware-register-access.md § 2).
@@ -965,6 +967,8 @@ func decimalCoefficientBits(target Type) uint {
 }
 
 type Symbol struct {
+	// Immutable UTF-8 scalar count; collections.md 7.10 (MD-126). Never mutated in place.
+	stringRuneLength *big.Int
 	// DecimalExact is the exact folded value and scale of an immutable
 	// decimal binding initialized by a constant decimal expression (MD-066).
 	DecimalExact *DecimalValue
@@ -1336,26 +1340,27 @@ func newBuiltinTypes() map[string]Type {
 		"datetime": {Name: "datetime", Kind: StructType},
 		"duration": {Name: "duration", Kind: StructType},
 		// rules/concurrency/mutex.md §13: opaque, copyable monotonic identity.
-		"Instant": {Name: "Instant", Kind: StructType, MonotonicPoint: true},
-		"float":   {Name: "float", Kind: FloatType, FloatBits: 64},
-		"float32": {Name: "float32", Kind: FloatType, FloatBits: 32},
-		"float64": {Name: "float64", Kind: FloatType, FloatBits: 64},
-		"int":     signedType("int", -1<<63, 1<<63-1),
-		"int8":    signedType("int8", -1<<7, 1<<7-1),
-		"int16":   signedType("int16", -1<<15, 1<<15-1),
-		"int32":   signedType("int32", -1<<31, 1<<31-1),
-		"int64":   signedType("int64", -1<<63, 1<<63-1),
-		"int128":  signedBigType("int128", "-170141183460469231731687303715884105728", "170141183460469231731687303715884105727"),
-		"int256":  signedBigType("int256", "-57896044618658097711785492504343953926634992332820282019728792003956564819968", "57896044618658097711785492504343953926634992332820282019728792003956564819967"),
-		"string":  {Name: "string", Kind: StringType},
-		"uint":    unsignedType("uint", ^uint64(0)),
-		"uint8":   unsignedType("uint8", 1<<8-1),
-		"uint16":  unsignedType("uint16", 1<<16-1),
-		"uint32":  unsignedType("uint32", 1<<32-1),
-		"uint64":  unsignedType("uint64", ^uint64(0)),
-		"uint128": unsignedBigType("uint128", "340282366920938463463374607431768211455"),
-		"uint256": unsignedBigType("uint256", "115792089237316195423570985008687907853269984665640564039457584007913129639935"),
-		"void":    {Name: "void", Kind: VoidType},
+		"Instant":    {Name: "Instant", Kind: StructType, MonotonicPoint: true},
+		"float":      {Name: "float", Kind: FloatType, FloatBits: 64},
+		"float32":    {Name: "float32", Kind: FloatType, FloatBits: 32},
+		"float64":    {Name: "float64", Kind: FloatType, FloatBits: 64},
+		"int":        signedType("int", -1<<63, 1<<63-1),
+		"int8":       signedType("int8", -1<<7, 1<<7-1),
+		"int16":      signedType("int16", -1<<15, 1<<15-1),
+		"int32":      signedType("int32", -1<<31, 1<<31-1),
+		"int64":      signedType("int64", -1<<63, 1<<63-1),
+		"int128":     signedBigType("int128", "-170141183460469231731687303715884105728", "170141183460469231731687303715884105727"),
+		"int256":     signedBigType("int256", "-57896044618658097711785492504343953926634992332820282019728792003956564819968", "57896044618658097711785492504343953926634992332820282019728792003956564819967"),
+		"string":     {Name: "string", Kind: StringType},
+		"StringView": {Name: "StringView", Kind: StringViewType, Intrinsic: true},
+		"uint":       unsignedType("uint", ^uint64(0)),
+		"uint8":      unsignedType("uint8", 1<<8-1),
+		"uint16":     unsignedType("uint16", 1<<16-1),
+		"uint32":     unsignedType("uint32", 1<<32-1),
+		"uint64":     unsignedType("uint64", ^uint64(0)),
+		"uint128":    unsignedBigType("uint128", "340282366920938463463374607431768211455"),
+		"uint256":    unsignedBigType("uint256", "115792089237316195423570985008687907853269984665640564039457584007913129639935"),
+		"void":       {Name: "void", Kind: VoidType},
 	}
 
 	// rules/errors/errorhandling.md defines these compiler-known failure
@@ -1614,8 +1619,8 @@ func triviallyDestructible(typ Type, visiting map[string]bool) bool {
 			return true
 		}
 		return triviallyDestructible(*typ.Element, visiting)
-	case SliceType:
-		// Slices are non-owning views in the current language model.
+	case SliceType, StringViewType:
+		// Slices and StringView are non-owning views in the current language model.
 		return true
 	case EnumType:
 		return true

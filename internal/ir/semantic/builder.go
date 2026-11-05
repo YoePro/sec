@@ -157,6 +157,9 @@ type builder struct {
 	customFrees map[string]FunctionID
 }
 type functionBuilder struct {
+	// unsafeScopes retains lexical authorization provenance for physical effects.
+	// Rules: rules/memory/unsafe.md §4; rules/compiler/semantic_ir.md §47(3).
+	unsafeScopes []Location
 	// inDeferBody marks building a defer region, which holds no registrations.
 	inDeferBody bool
 	// resolved is the Sema function being built; cleanupOrdinal counts its
@@ -404,6 +407,10 @@ func (b *builder) buildConcreteFunction(decl *ast.FunctionDeclaration, resolved 
 // Rules: rules/types/types.md — Type identity; rules/compiler/semantic_ir.md — §20;
 // rules/mlir/packages/sec-mlir-dialect_package11.md — §26 Result relationship.
 func (b *builder) internType(t sema.Type) (TypeID, error) {
+	// MD-126 / semantic_ir.md 17(9-10): views are not owned strings or rune arrays.
+	if t.Kind == sema.StringViewType {
+		return 0, &UnsupportedFeatureError{Feature: "StringView borrowed UTF-8 text (P23)", Package: b.maxPackage}
+	}
 	// A specialization interns its typed template under the concrete
 	// substitution (monomorphization.md §§ 8.3, 13.3).
 	if len(b.substitution) != 0 {
@@ -878,6 +885,13 @@ func (fb *functionBuilder) buildStatements(statements []ast.Statement) error {
 			if !ok {
 				return fb.unsupported("expression statement", stmt.Token)
 			}
+
+			if _, handled, err := fb.buildVolatileCall(call); handled {
+				if err != nil {
+					return err
+				}
+				continue
+			}
 			// atomics.md § 26: atomic.Fence lowers from Sema's established
 			// order to one atomic.fence operation; it has no call target.
 			if order, fence := fb.owner.analyzer.AtomicFenceOrderOf(call); fence {
@@ -914,7 +928,11 @@ func (fb *functionBuilder) buildStatements(statements []ast.Statement) error {
 			if stmt.Body == nil {
 				return fb.unsupported("empty unsafe block", stmt.Token)
 			}
-			if err := fb.buildScope(stmt.Body); err != nil {
+			previous := fb.unsafeScopes
+			fb.unsafeScopes = append(fb.unsafeScopes, location(stmt.Token))
+			err := fb.buildScope(stmt.Body)
+			fb.unsafeScopes = previous
+			if err != nil {
 				return err
 			}
 		default:
@@ -1720,6 +1738,12 @@ type builtValue struct {
 //   - rules/compiler/semantic_ir.md — "Unsupported lowerings"
 //   - rules/mlir/packages/sec-mlir-dialect_package14.md — sections 44, 89, 103
 func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (builtValue, error) {
+	// MD-126: source acceptance is separate from the P23 view producer.
+	if rangeExpr, ok := expr.(*ast.SliceExpression); ok {
+		if _, resolved := fb.owner.analyzer.ResolvedStringRangeOf(rangeExpr); resolved {
+			return builtValue{}, fb.unsupported("StringView borrowed UTF-8 range (P23)", rangeExpr.Token)
+		}
+	}
 	// An intermediate Result receiver of a protected chain yields its Ok value;
 	// a receiver borrow of it builds that value as its producer first.
 	if fb.failures != nil && fb.failures.chain[expr] && (expected == 0 || !fb.typeHasKind(expected, TypeReference)) {
@@ -2023,6 +2047,10 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 		}
 		if conversion, resolved := fb.owner.analyzer.ResolvedNamedConversionOf(e); resolved {
 			return fb.buildNamedConversion(e, conversion)
+		}
+
+		if value, handled, err := fb.buildVolatileCall(e); handled {
+			return value, err
 		}
 		if member, ok := e.Callee.(*ast.MemberExpression); ok && member.Property != nil && fb.owner.maxPackage >= 7 {
 			site := member.Property.Token
@@ -2627,6 +2655,8 @@ func (fb *functionBuilder) buildResolvedMatch(expr *ast.MatchExpression, resultT
 				}
 			case observed:
 				payload, hasPayload, err = fb.storedMatchPayload(expr.Subject, subjectPlace.place, subject, armPlan, arm.Token)
+			case placed && subjectPlace.observed:
+				payload, hasPayload, err = fb.borrowedSubjectPayloadCopy(subject, subjectPlace, armPlan, arm.Token)
 			default:
 				payload, hasPayload, err = fb.projectMatchPayload(subject, armPlan, matchID, arm.Token)
 			}

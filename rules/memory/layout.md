@@ -36,7 +36,7 @@
 
 § 1(11) Semantic IR may remain target-independent until a concrete `CompilationPlan` is resolved; layout-sensitive lowering must consume Sec-resolved layout rather than inventing it.
 
-§ 1(12) This rulebook does not by itself introduce final syntax for packing, alignment, offsets, endianness, explicit representation, or general reinterpretation.
+§ 1(12) This rulebook does not by itself introduce final syntax for packing, alignment, offsets, endianness, explicit representation, or general reinterpretation. The source spelling of struct packing, minimum alignment and field offsets is `pack(N)`, `minAlign(N)` and `byteOffset(N)` (MD-019, 2026-11-05; `grammar.md` "Struct type declaration"; `struct.md` § 15A); endianness and general reinterpretation keep no source modifier.
 
 ---
 
@@ -123,7 +123,7 @@ selected descriptor representation
 
 § 4.3(3) An impossible explicit layout contract is a compile-time error.
 
-§ 4.3(4) This rulebook defines the semantics such contracts must preserve without locking all source syntax.
+§ 4.3(4) This rulebook defines the semantics such contracts must preserve without locking all source syntax. For structs the source contracts are the MD-019 modifiers (§§ 27–29).
 
 ---
 
@@ -467,13 +467,15 @@ decimal128:
 
 § 27(1) Packing is an explicit layout contract that reduces or removes ordinary padding/alignment placement.
 
-§ 27(2) Sec 0.1 layout semantics define packing behavior but this rulebook does not lock a final source spelling unless another canonical declaration/attribute rule does so.
+§ 27(2) Sec 0.1 layout semantics define packing behavior but this rulebook does not lock a final source spelling unless another canonical declaration/attribute rule does so. For structs, `struct.md` § 15A defines the type-level `pack(N)` modifier (MD-019).
 
 § 27(3) Packing must not permit formation of an invalid aligned safe reference to a misaligned field.
 
 § 27(4) Access to packed/misaligned fields may require compiler-generated unaligned operations or explicit unsafe/platform operations where supported.
 
 § 27(5) Packing does not change semantic field identity/order.
+
+§ 27(6) `pack(N)` caps the ordinary/natural field alignment used for placement at `N` bytes (`N` a compile-time positive power of two supported by the target). It does not erase an explicit field `minAlign`, a nested field type's own type-level `minAlign`, or the nested type's internal layout; these remain separate resolved facts and override the cap (MD-019 § 6).
 
 ---
 
@@ -487,6 +489,10 @@ decimal128:
 
 § 28(4) Over-aligned allocation must use an allocation/storage provider capable of satisfying the resolved alignment.
 
+§ 28(5) The struct source contract is `minAlign(N)` on a type or stored field (MD-019): a minimum in bytes, never an exact or lowered alignment; `N` is a compile-time positive power of two supported by the target. A type-level minimum applies to every object of the type, including nested placement; a field minimum applies to that field and may raise the aggregate's alignment and size. A syntactically valid `minAlign` is not proof that every allocator, Arena or foreign provider can satisfy it.
+
+§ 28(6) Alignment precedence: a field's natural alignment may be capped by an enclosing `pack`; explicit field and nested-type minima stay in force; type-level `minAlign` bounds the enclosing struct from below; target/ABI constraints are additional requirements, never an override of explicit minima. Lowering consumes these resolved facts and never reconstructs their precedence.
+
 ---
 
 ## § 29 Explicit field offsets
@@ -498,6 +504,8 @@ decimal128:
 § 29(3) Overlapping stored fields require a union/overlay representation explicitly defined by a canonical rule; ordinary structs must not accidentally overlap fields.
 
 § 29(4) Explicit offsets must be validated before FFI/hardware use.
+
+§ 29(5) The struct source contract is `byteOffset(N)` on a stored field (MD-019): the field starts exactly `N` bytes from the start of the object; `N` is a compile-time nonnegative integer and need not be a power of two. It must satisfy the field's effective alignment from § 28(6); otherwise, or if the target cannot realize the placement, it is a compile-time error naming the requested and required placement.
 
 ---
 
@@ -512,6 +520,8 @@ decimal128:
 § 30(4) Explicit endian representation contracts may constrain byte layout for FFI/protocol/hardware representations.
 
 § 30(5) Serialization/network order remains owned by serialization/protocol APIs unless an explicit layout contract is used.
+
+§ 30(6) MD-019 introduces no struct or field endian modifier; struct byte order follows the resolved target and ABI, and `register[N]` keeps its own bit- and byte-order declarations.
 
 ---
 

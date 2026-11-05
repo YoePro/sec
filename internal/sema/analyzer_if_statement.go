@@ -41,7 +41,7 @@ func (a *Analyzer) analyzeIfStatement(stmt *ast.IfStatement) {
 
 	before := copyAssigned(a.assigned)
 	beforeMoved := copyMoved(a.moved)
-	beforeMoveReasons := copyMoveReasons(a.moveReasons)
+	beforeMoveReasons := copyAvailabilityStates(a.availabilityStates)
 	beforeClosedResources := copyMoved(a.closedResources)
 	beforeBorrows := copyBorrows(a.borrows)
 	beforeLocalRefContainers := copyLocalRefContainers(a.localRefContainers)
@@ -143,7 +143,7 @@ func (a *Analyzer) analyzeIfStatement(stmt *ast.IfStatement) {
 		}
 		a.recordResolvedIfFlow(stmt, thenReachable, elseReachable, thenBranch, elseBranch)
 		a.assigned = mergeContinuingAssigned(before, thenBranch, elseBranch)
-		a.moved, a.moveReasons = mergeContinuingMoveState(beforeMoved, beforeMoveReasons, thenBranch, elseBranch)
+		a.moved, a.availabilityStates = mergeContinuingMoveState(beforeMoved, beforeMoveReasons, thenBranch, elseBranch)
 		a.closedResources = mergeContinuingClosedResources(beforeClosedResources, thenBranch, elseBranch)
 		a.borrows = mergeContinuingBorrows(beforeBorrows, thenBranch, elseBranch)
 		a.localRefContainers = mergeContinuingLocalRefContainers(beforeLocalRefContainers, thenBranch, elseBranch)
@@ -155,7 +155,7 @@ func (a *Analyzer) analyzeIfStatement(stmt *ast.IfStatement) {
 	fallthroughBranch := branchAnalysis{
 		assigned:           before,
 		moved:              beforeMoved,
-		moveReasons:        beforeMoveReasons,
+		availabilityStates: beforeMoveReasons,
 		closedResources:    beforeClosedResources,
 		borrows:            beforeBorrows,
 		localRefContainers: beforeLocalRefContainers,
@@ -182,7 +182,7 @@ func (a *Analyzer) analyzeIfStatement(stmt *ast.IfStatement) {
 	}
 	a.recordResolvedIfFlow(stmt, thenReachable, elseReachable, thenBranch, fallthroughBranch)
 	a.assigned = mergeContinuingAssigned(before, thenBranch, fallthroughBranch)
-	a.moved, a.moveReasons = mergeContinuingMoveState(beforeMoved, beforeMoveReasons, thenBranch, fallthroughBranch)
+	a.moved, a.availabilityStates = mergeContinuingMoveState(beforeMoved, beforeMoveReasons, thenBranch, fallthroughBranch)
 	a.closedResources = mergeContinuingClosedResources(beforeClosedResources, thenBranch, fallthroughBranch)
 	a.borrows = mergeContinuingBorrows(beforeBorrows, thenBranch, fallthroughBranch)
 	a.localRefContainers = mergeContinuingLocalRefContainers(beforeLocalRefContainers, thenBranch, fallthroughBranch)

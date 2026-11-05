@@ -677,6 +677,16 @@ Use an explicit byte representation when encoded bytes are required.
 
 Because the yielded rune is a decoded value rather than a mutable stored rune element, `ref` and `ref mut` rune bindings are not provided by ordinary string iteration.
 
+`StringView` (MD-126, `rules/corrections/applied/MD-126-borrowed-string-ranges-rune-iteration-applied-20261105.md`) is a compiler-known string-family iterable. Iterating a view uses the same Unicode-scalar decoder, order and lazy state progression as `string` iteration, bounded by the view:
+
+```sec
+for ch in text[1..<3] {
+    Process(ch)              // ch is rune, not ref rune
+}
+```
+
+The binding is a `rune` by value, decoded from 1–4 UTF-8 bytes; no string data is copied and no per-rune object is allocated. A two-binding index over a view is the view-relative rune position. The iterable expression is evaluated once under the ordinary rules; this does not let a view outlive its origin. `ref` and `ref mut` bindings over a `StringView` are invalid for the same reason as over `string`. This is the compiler-known string traversal, not `StringSplitIterator`, which is unaffected. Generic pack iteration under MD-117/MD-119 is unchanged and does not imply that string runes are stored `ref T` elements.
+
 ---
 
 ## 20. Sets
@@ -1355,6 +1365,8 @@ iterator discovery by member names
 implicit Iterable factory discovery
 owned or by-value runtime-dispatched Iterator interface values
 ```
+
+`ref binding to decoded string runes` covers `string` and `StringView` sources alike (MD-126).
 
 Borrowed `ref mut Iterator[T]` views (§ 37.1) are not covered by this
 exclusion (MD-057); no other owned or unspecified interface value is

@@ -98,11 +98,15 @@ func (a *Analyzer) continuingSliceTrySource(expr *ast.TryExpression) (ast.Expres
 	if !ok || (resolved.Kind != ResolvedTryFailureSetPropagation && resolved.Kind != ResolvedTryHandledFailureSet) {
 		return nil, false
 	}
-	ref, ok := expr.Expression.(*ast.RefExpression)
-	if !ok {
+	source := expr.Expression
+	if sliced, ok := source.(*ast.SliceExpression); ok && a.expressionTypes[sliced].Kind == StringViewType {
+		// MD-126 shares the terminating-handler origin rule with array slices.
+	} else if ref, ok := source.(*ast.RefExpression); ok {
+		source = ref.Value
+	} else {
 		return nil, false
 	}
-	if _, sliced := ref.Value.(*ast.SliceExpression); !sliced {
+	if _, ok := source.(*ast.SliceExpression); !ok {
 		return nil, false
 	}
 	if resolved.Kind == ResolvedTryHandledFailureSet {
@@ -116,5 +120,5 @@ func (a *Analyzer) continuingSliceTrySource(expr *ast.TryExpression) (ast.Expres
 			}
 		}
 	}
-	return ref, true
+	return expr.Expression, true
 }

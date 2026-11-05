@@ -518,7 +518,22 @@ and declaration kind. Their command lists failing members, or the implemented
 interface declarations when every target conforms. Unresolved compiler facts
 are never presented as successful conformance.
 
-Pending: the same cross-target summary in `sec analyse`.
+As of 2026-11-05, whole-program `sec analyse` and `sec analyse --all` also
+project these compiler-owned conformance facts across distinct physical targets
+from same-module source directives and the owning Project Target's Variants.
+An explicit `--target` or explicitly selected target-directed source limits
+the report to that platform. Function-focused and individually selected analyses
+keep their existing scope. The CLI reuses ordinary source/import/project
+validation and each target's scalar plan; it does not discover methods or infer
+conformance from names or diagnostic text.
+
+`--verbose` lists the type/module, concrete interface, target, proof state and
+failing members; `--json` adds a `conformances` array with declaration spans and
+member diagnostic IDs, messages and spans. Missing explicit declarations and
+unproven facts are reported as unproven findings, never success. Conformance
+errors retain their registered diagnostics and reject the command with exit 3;
+unrelated semantic errors still reject analysis at the ordinary validation gate.
+Clean conformance remains silent in the default human presentation.
 
 ### Workspace symbols
 

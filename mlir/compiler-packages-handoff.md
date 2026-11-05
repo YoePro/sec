@@ -3805,3 +3805,452 @@ binding rejections (range values, index binding, decoded string runes, Iterator 
 carry S1199 with help; test TestForBindingModeDiagnostics requires it. internal/sema and internal/diagnostics
 pass. Note: cmd/compiler CLI tests currently fail because the owner's in-progress sec/core/number_parse.sec
 draft has errors (ref string binding, unknown _SliceBytesUnchecked); not caused by this change. Binaries rebuilt.
+
+## Codex: checked enum-to-integer lowering — released (2026-11-05)
+
+Closed frontend.enum-to-integer-checked-conversion: remaining 1 -> 0;
+governance/declarations.yaml total remaining 160 -> 159. From P20, extract
+the enum's unchanged declared integer carrier with an exact source-domain
+proof, then reuse numeric.convert-checked and canonical OutOfRange failure
+routing. try handlers/propagation and first-class/stored Result carriers work;
+the operand is evaluated once. Historical pre-P20 gates remain unchanged.
+
+Files changed:
+- internal/ir/semantic/enum_conversion.go
+- internal/ir/semantic/integer_conversion.go
+- internal/ir/semantic/enum_checked_conversion.go (new)
+- internal/ir/semantic/enum_checked_conversion_test.go (new)
+- internal/lowering/secmlir/enum_checked_conversion_test.go (new)
+- testdata/semantic_ir/enum_checked_conversion/main.sec (new)
+- testdata/semantic_ir/enum_checked_conversion/native.sec (new)
+- testdata/semantic_ir/enum_checked_conversion/native.c (new)
+- governance/declarations.yaml
+- mlir/compiler-packages-handoff.md
+
+Verified using disk GOCACHE/GOTMPDIR and go -p 4:
+- Complete internal/ir/semantic suite: passed (6.300s).
+- Complete internal/lowering/secmlir suite with real tools: passed (16.303s).
+- New pipeline: canonical LLVM lowering with verify-each on 32/64-bit plans;
+  actual 64-bit executable exercises signed negative/overflow boundaries,
+  local handlers, bodyless propagation, stored and returned Result carriers.
+- Focused compiler enum conversion/boundary regressions: passed (0.026s).
+- go vet on both implementation packages: passed.
+- yamlstatus check: 0 problems in 45 fragments; diff whitespace clean.
+
+Existing independent backend boundaries are preserved: struct.extract and
+bit-backed enum operations still fail at the named LLVM gate. The complete
+Semantic IR fixture covers those operands; the native fixture stays within
+supported ordinary integer enum representations. No MLIR implementation, core
+drafts, new MDs or binaries changed. Governance formatter normalized one old
+Unicode escape in an unrelated custom-free evidence string (same value).
+Read Claude's borrowed-match-subject release before finishing; preserved it.
+Working set released.
+
+## Claude: borrowed match subjects — released (2026-11-05)
+
+internal/sema: a match over a ref/ref mut union, Option or Result subject now matches its referent
+(analyzer.go analyzeMatch, analyzer_match_ownership.go matchSubjectPlace, match_field_patterns.go,
+error_patterns.go); moving a move-only payload out is rejected with a borrowed-subject S1052 message.
+Test internal/sema/match_borrowed_subject_test.go. control_flow.yaml frontend.match-v2 item closed.
+Verified: internal/sema, internal/ir/semantic, internal/lowering/secmlir, cmd/compiler. Binaries rebuilt.
+
+## Codex: analyse cross-target conformance — released (2026-11-05)
+
+Closed tooling.lsp-interface-conformance-lens: remaining 1 -> 0;
+governance/tooling_lsp.yaml remaining 20 -> 19. Whole-program sec analyse
+(default/--all) now projects the existing explicit Sema conformance facts over
+distinct physical targets selected by module directives and the owning logical
+Project Target's Variants. Explicit --target or a directed-file input limits
+the view; individually selected families and function focus keep their scope.
+No new selector, conformance engine or LSP analysis implementation.
+
+Verbose output and additive JSON conformances rows carry type/module, concrete
+interface, target, proof state, declaration spans and failing member IDs/messages/
+spans. Missing declarations and Unproven facts are not success; equal type
+spellings in other modules cannot cover absence. Clean human output stays
+silent. S1106/S1107 can be retained for the matrix and still emit canonical
+error diagnostics/rejection exit 3; unrelated semantic errors retain the normal
+validation gate. Project/source errors remain blocking.
+
+Files changed this turn:
+- cmd/compiler/analyse_conformance.go (new cohesive target/report projection)
+- cmd/compiler/analyse_conformance_test.go (new)
+- cmd/compiler/analyse.go
+- cmd/compiler/analyse_cli.go
+- cmd/compiler/analyse_diagnostics.go
+- cmd/compiler/analysis_pipeline.go
+- testdata/tooling/analyse_conformance/storage/native.sec (new)
+- testdata/tooling/analyse_conformance/storage/native.linux.sec (new)
+- testdata/tooling/analyse_conformance/storage/native.windows.sec (new)
+- testdata/tooling/analyse_conformance/empty/empty.sec (new)
+- testdata/tooling/analyse_conformance/sec.toml (new copy-in manifest fixture)
+- governance/tooling_lsp.yaml
+- rules/tooling/lsp.md
+- rules/tooling/cli.md (revision 1.2, existing forms clarified)
+- language-rulebook-status.md
+- mlir/compiler-packages-handoff.md
+
+Verification (disk GOCACHE/GOTMPDIR, go -p 4):
+- Complete cmd/compiler suite with configured Sec MLIR/LLVM tools: passed
+  (190.696s). Initial unconfigured run failed on build tests requiring
+  sec-mlir-opt; configured rerun passed.
+- All TestAnalyse and discovered-project-version diagnostics: passed (34.352s).
+- New conformance suite with -race: passed (36.210s); latest focused non-race
+  rerun with clean/default and directed-file controls passed (5.412s).
+- Existing interface/type LSP lens tests: passed (3.292s).
+- go vet ./cmd/compiler: passed.
+- yamlstatus check: 0 problems in 45 fragments; owning fragment canonical;
+  git diff --check clean.
+
+No new MD, core draft, Sema/MLIR implementation or binary changes this turn.
+Read Claude's borrowed-match-subject Semantic IR release before finishing and
+preserved it, including its binaries and unrelated work. Working set released.
+
+## Claude: borrowed match subjects in Semantic IR — released (2026-11-05)
+
+internal/ir/semantic/payload_reference.go buildBorrowedMatchSubject: a ref/ref mut subject (whole referent or
+field path) is dereferenced once; a subject IR cannot copy is read with place.read observe; ref payloads borrow
+from the payload Place and copy-trivial payloads are read from it (borrowedSubjectPayloadCopy, builder.go arm
+switch). reference_use.go derefWholeHolder. Fixture testdata/semantic_ir/match_borrowed_subjects.sec in
+TestSchema13EmitsTryChainsAndOwnedErrorPayloads. Verified: internal/sema, internal/ir/semantic,
+internal/lowering/..., cmd/compiler. Binaries rebuilt.
+
+## Codex: volatile ownership boundary — released (2026-11-05)
+
+Closed semantic-ir.copy-move: remaining 1 -> 0;
+governance/memory.yaml total remaining 328 -> 327. P17+ Semantic IR now uses
+volatile.read / volatile.write for exact compiler-known RawPtr volatile methods.
+The raw address and pointee stay distinct from a physical storage owner/Place;
+reads yield ordinary detached snapshots. Local snapshot copy/move does not
+repeat physical access; repeated, discarded and unused reads stay explicit.
+Receiver and write-value operands evaluate once in source order. References to
+raw address values use existing reference validation/read machinery, not a safe
+borrow of the external storage. Unsafe block/function/direct-call provenance
+is retained. Similar ordinary method names remain selected ordinary calls.
+
+Verifier rejects ownership/borrow/synchronization metadata, missing or incorrect
+member/unsafe/physical-plan facts, managed decoding and pointee mismatches.
+JSON serialization round trips preserve all facts deterministically.
+PhysicalPlan is unverified; Sec MLIR emission rejects before type lowering or
+publishing partial output. Existing hardware register operations stay separate.
+No physical execution claim: target capability validation and physical lowering
+remain open under the raw-pointer/platform owners. Native emit-mlir's historical
+P14 physical-representation gate is unchanged; emit-ir exposes the new P17 IR,
+and emit-sec-mlir names the missing verified physical volatile access plan.
+
+Files changed this turn:
+- internal/ir/semantic/volatile_access.go (new)
+- internal/ir/semantic/volatile_access_test.go (new)
+- internal/ir/semantic/builder.go (preserved Claude's existing changes)
+- internal/ir/semantic/model.go
+- internal/ir/semantic/printer.go
+- internal/ir/semantic/verifier.go
+- internal/lowering/secmlir/volatile_boundary.go (new)
+- internal/lowering/secmlir/volatile_boundary_test.go (new)
+- internal/lowering/secmlir/emitter.go
+- internal/lowering/secmlir/emitter_options.go
+- cmd/compiler/volatile_boundary_test.go (new)
+- testdata/semantic_ir/volatile_snapshot/main.sec (new)
+- testdata/semantic_ir/volatile_snapshot/managed.sec (new)
+- governance/memory.yaml
+- language-rulebook-status.md
+- mlir/compiler-packages-handoff.md
+
+Verified with disk GOCACHE/GOTMPDIR and go -p 4:
+- Full internal/ir/semantic and internal/lowering/secmlir suites with configured
+  tools: passed (6.316s, 16.066s).
+- Volatile source, verifier, serialization, 32/64-bit emission and real CLI
+  regressions pass with -race across all three touched packages.
+- Existing hardware/raw-pointer/native-boundary CLI regressions: passed (0.777s).
+- go vet on all three touched packages: passed.
+- yamlstatus validation/canonical formatting and diff whitespace checked.
+
+The raw-pointer remaining operation list was narrowed in place to the still
+missing ordinary operations; that owner's remaining count did not change.
+Removed the obsolete copy-move historical root-ledger deferral sentence.
+Canonical YAML normalization removes redundant quotes on seven old strings,
+without changing their values. No new MD, rule semantics, core drafts, Sema/MLIR
+implementation or binaries. Latest Claude borrowed-match-subject handoff read
+and preserved. Working set released.
+
+## Codex: explicit Place availability state — released (2026-11-05)
+
+Completed frontend.ownership-v2 availability-reason-separation: remaining
+20 -> 19 under that ID; governance/lifetime.yaml remaining 69 -> 68.
+Unavailable Place snapshots now hold a typed Availability dimension and an
+independent Reasons string/set. No production conditional-prefix encoding or
+prose parsing determines certainty. Assigned-root and partial projection state
+retain their existing model; broader dynamic/recursive availability remains open.
+
+All branch/loop/function/match/try/defer snapshots, refinement, cleanup, discard,
+read/borrow and diagnostic consumers use the value records. Continuing-path
+joins retain mixed reasons deterministically and preserve nested uncertainty;
+missing reason provenance no longer erases conditional certainty. Prefix-like
+reason text cannot manufacture uncertainty. Negative refinement changes only
+certainty while retaining causes/child masks; positive refinement repairs only
+related conditional masks. Copies of flow snapshots remain detached.
+
+Extracted joins, snapshot copying, queries and refinement into cohesive
+place_availability_state.go, reducing analyzer.go while preserving
+its previous working-tree changes and Claude's borrowed-match edits.
+No new Sec syntax, public diagnostics contract, Sema analysis engine or IR forms.
+
+Files changed this turn:
+- internal/sema/type_pack_spreads.go
+- internal/sema/analyzer_while_flow.go
+- internal/sema/cleanup_assignments.go
+- internal/sema/discard_advisory.go
+- internal/sema/analyzer_if_statement.go
+- internal/sema/analyzer_function_body.go
+- internal/sema/ownership_use_diagnostics_test.go
+- internal/sema/analyzer_lifetime.go
+- internal/sema/place_availability_state_test.go
+- internal/sema/analyzer_logical.go
+- internal/sema/analyzer_test_bodies.go
+- internal/sema/analyzer_defer.go
+- internal/sema/ownership_moves.go
+- internal/sema/ownership_use_diagnostics.go
+- internal/sema/analyzer_try_handlers.go
+- internal/sema/try_assignment_join.go
+- internal/sema/place.go
+- internal/sema/place_availability_state.go
+- internal/sema/analyzer_discard.go
+- internal/sema/availability_diagnostics.go
+- internal/sema/analyzer.go
+- internal/sema/analyzer_for.go
+- internal/sema/analyzer_arena.go
+- internal/sema/match_arm_bindings.go
+- internal/sema/analyzer_switch.go
+- internal/sema/analyzer_inference.go
+- governance/lifetime.yaml
+- language-rulebook-status.md
+- mlir/compiler-packages-handoff.md
+
+Verified with disk GOCACHE/GOTMPDIR and go -p 4:
+- Full internal/sema and internal/ir/semantic: passed (19.080s, 8.470s).
+- Focused compiler/LSP availability, ownership-use, cleanup, conditional/partial,
+  move and discard regressions: passed (8.989s, 20.586s).
+- Focused Sema availability/cleanup/ownership/borrow tests with -race: passed
+  (1.650s), including new reason-independent certainty, mixed/dead/nested joins,
+  missing reasons, partial-mask refinement and detached snapshots.
+- go vet internal/sema, internal/ir/semantic, cmd/compiler and cmd/lsp: passed.
+- yamlstatus check: 0 problems in 45 fragments; owning fragment canonical;
+  git diff --check clean; old production prefix helpers/references absent.
+
+No new MD, core draft, MLIR implementation or binary changes. Existing source
+regression fixtures supplied language-level coverage; new tests exercise internal
+certainty/provenance separation directly. Canonical YAML formatting normalized
+two pre-existing quoted/Unicode-escaped evidence strings without changing values.
+Final path checking found the pre-existing missing correction30 source. Removed
+its dead rules-path reference, retained correction30 in corrections_applied and
+recorded current canonical ownership.md authority in governance_reconciliation;
+no new semantic decision or additional remaining closure. Owner path check now
+passes. Latest handoff read; no newer Claude reservation at release. Working set
+released.
+
+## Claude: MD-019 / MD-125 / MD-126 owner decisions sync (working set, 2026-11-05)
+
+Integrating the owner's new decision files rules/corrections/MD-019-explicit-layout-modifiers-approved-20261105.md,
+rules/corrections/MD125.md and rules/corrections/MD126.md into the canonical rulebooks, missing-decisions.yaml,
+language-rulebook-status.md and governance. Touching rules/**, missing-decisions.yaml, governance/*.yaml and the
+correction files (status and moves to applied/). No compiler code in this step. Please keep out of those rulebook
+sections until released.
+
+## Claude: MD-019 / MD-125 / MD-126 owner decisions sync (released, 2026-11-05)
+
+Released. The three decisions are integrated into the rulebooks, ledger, status file and governance; no compiler code changed.
+- MD-125 → `rules/corrections/applied/MD-125-replacement-cleanup-registration-point-applied-20261105.md` (destruction.md, semantic_ir.md § 40(7)–(10), defer.md § 9).
+- MD-019 → `rules/corrections/applied/MD-019-explicit-layout-modifiers-applied-20261105.md` (grammar, struct.md § 15A, layout.md, ffi.md § 23).
+- MD-126 → `rules/corrections/applied/MD-126-borrowed-string-ranges-rune-iteration-applied-20261105.md`: `text[a..<b]` over `string`/`StringView` gives a borrowed `StringView` without `ref` (rune indexes, `panic.bounds`/`slice-range`, `try` → `RangeError`); public `string.Slice` removed in the rulebooks (core-library § 5.7 item 2, new § 5.8 `StringView` surface); collections § 7.10, flowcontrol_for § 19, borrowing § 5.5, references § 3.3(5)–(6), reference_model § 14(13), semantic_ir § 17(9)–(10), runtime_checks, errorhandling § 9, compiler_known_members, P23 docs.
+- New MD-126 implementation items (remaining): frontend.types-core, frontend.collections, frontend.for-loops-v2, frontend.borrowing, frontend.errorhandling-v2, compiler.compiler-known-surfaces, core.string-slice-helper (×2, incl. the 32-site .Slice( migration), frontend.semantic-ir-v2 (P23 view op). Note: sec/core and sec/stdlib still call `.Slice(`; those are the owner's drafts and are not changed here.
+
+## Codex: MD-125 Sema registration effects (working set, 2026-11-05)
+
+Taking the complete new frontend.destruction remaining item for MD-125.
+Working in internal/sema/cleanup_{assignments,registrations,identities,plans}.go,
+focused Sema tests/source fixtures, an LSP regression and governance/lifetime.yaml.
+The detached facts will distinguish incarnation sites from inherited destination
+obligations and conditional new registrations. No MLIR or backend work reserved;
+the separate lowering.sec-mlir-package17 MD-125 item remains open.
+
+## Codex: MD-125 Sema registration effects (released, 2026-11-05)
+
+Closed the complete frontend.destruction MD-125 Sema facts remaining item.
+Owner remaining 11 -> 10; governance/lifetime.yaml remaining 70 -> 69.
+No new MD or source-rule change. Latest Claude released sync read before release.
+
+Consumer contract for the separate lowering.sec-mlir-package17 item:
+- ResolvedOwnedCleanupAssignment.Registration still describes the destination
+  lifetime/destruction template and distinct new-incarnation source action. Its
+  Action is prospective, not permission to append a final cleanup registration.
+- Assignment.Cleanup.Inherit is a canonical BindingID selecting that destination's
+  CURRENT live obligation on available paths. Do not substitute the declaration
+  action: a prior move/discard plus reinit may already have replaced that action.
+- Assignment.Cleanup.Register is the new CleanupActionID on unavailable paths.
+  Available/partial replacement: Inherit only. Unavailable reinit: Register only.
+  Conditional: both, as mutually exclusive path alternatives.
+- ResolvedCleanupPlan.Registrations omits available and partial replacements.
+  Conditional reinit sites carry IfUnavailable=true and Conditional=true.
+  ExecutionScope distinguishes where reinit executes (including loop multiplicity)
+  from Scope, the destination lifetime/cleanup eligibility.
+- Owned parameters and registered pattern-binding templates are supported alongside
+  local declarations. Assignment activation is after preparation, including a
+  parameter whose initial activation was at entry. Field assignment recognizes
+  those root registrations too. Returned moved-path masks are now fully detached.
+- Sema and LSP accept current-value deferred reads after replacement; invalid
+  borrowed replacement and pending-defer move/discard still diagnose.
+
+The IR/MLIR producers have NOT been changed to consume these new effects. Their
+existing replacement/defer boundary remains, and defer_reads_replaced.sec has NOT
+been moved out of the lowering-boundary rows. This is frontend facts completion,
+not executable MD-125/P17 closure. Next: consume Inherit/Register per path without
+reordering the active registration, adjust ownership/cleanup verifiers and add
+verified source -> Sec MLIR/native ordering coverage under the existing owner.
+
+Changed files in this task (shared/pre-existing changes preserved):
+- internal/sema/cleanup_assignments.go
+- internal/sema/cleanup_registrations.go
+- internal/sema/cleanup_identities.go
+- internal/sema/cleanup_plans.go
+- internal/sema/cleanup_inherited_registration_test.go
+- cmd/lsp/cleanup_inherited_registration_test.go
+- testdata/sema/cleanup_inherited_registration.sec
+- testdata/sema/cleanup_inherited_registration_invalid.sec
+- governance/lifetime.yaml
+- mlir/compiler-packages-handoff.md
+
+Final verification with disk GOCACHE/GOTMPDIR and go -p 4:
+- Full internal/sema and internal/ir/semantic: passed (20.333s, 7.558s).
+- Focused Sema/LSP InheritedCleanup, OwnedCleanup, ResolvedCleanup: passed.
+- Focused Sema/LSP cleanup/defer tests with -race: passed (1.747s, 15.018s).
+- Focused compiler Cleanup, Defer, NativeTrackNamesUnloweredConstructs: passed
+  (0.629s), preserving the existing unsupported-lowering boundary.
+- go vet internal/sema, internal/ir/semantic and cmd/lsp: passed.
+- yamlstatus check: 0 problems in 45 fragments; lifetime.yaml canonical;
+  frontend.destruction path check: 0 missing / 43 checked.
+
+Working set released. No core/stdlib drafts, MLIR implementation, binaries or
+Claude-owned rulebook changes in this task.
+
+## Codex: MD-126 string ranges in compiler/LSP (working set, 2026-11-05)
+
+Implementing the requested source frontend path for for ch in text[a..b],
+StringView range facts, borrow origins, bounds/try diagnostics and rune-value
+iteration in internal/sema plus compiler/LSP tests and owning governance.
+No core/stdlib drafts or MLIR C++ changes reserved. P23 execution stays separate.
+
+## Codex: MD-126 string ranges in compiler/LSP (released, 2026-11-05)
+
+The requested `for ch in text[a..b]` / `text[a..<b]` source frontend now
+passes compiler check and LSP analysis. The old anonymous "type string cannot
+be sliced" rejection is removed for string/ref string/StringView sources.
+Latest handoff reread before release; no newer conflicting Claude reservation.
+
+Frontend facts / consumer contract:
+- StringViewType is a distinct intrinsic read-only non-owning type, carrying
+  borrow origins, trivially destructible/copyable as a borrow holder. It cannot
+  initialize string implicitly or expose ref mut. The ordinary intrinsic-name
+  protection prevents a user struct replacing it. Its minimum registry signatures
+  include Len (runes), SizeOf (bytes), IsEmpty and the specified readers/materializer;
+  ToString uses its own content operation identity, never the type-summary fallback.
+- ResolvedStringRangeOf(slice) returns detached ResolvedStringRangePlan: shared
+  SourcePlace, ViewPlace, endpoint types/constants, source-before-start-before-end
+  order, normalized rune intervals, static/dynamic range and borrow/lifetime facts.
+  The existing ResolvedSliceCreationPlan shape is reused inside Range, with new
+  SliceSourceString / SliceSourceStringView categories. It is NOT a rune[] slice.
+- Immutable symbol-local string lengths count UTF-8 scalars and are cloned across
+  symbol snapshots. A-pi-emoji-b proves four rune positions, not eight bytes.
+  General unknown lengths retain a runtime guard; constant-invalid bounds reject
+  with the shared InvalidRange -> StartAfterEnd -> OutOfBounds precedence.
+- Ordinary dynamic ranges publish only BoundsFailure. try resolves success
+  StringView and failure RangeError for propagation / terminating local handlers;
+  @noPanic/@noAlloc coverage passes. Origin queries read checked expression facts
+  instead of inferring range operands again.
+- Nested and caller-returned views retain ultimate backing. Every copied view
+  acquires an independent shared holder edge; discarding one cannot release a
+  surviving copy. Mutable view rebinding is transactional. A borrowed iterable
+  stays live through the loop and is released on loop exit; body mutation and
+  ref-mut calls against its backing reject. Local/owned-parameter escapes reject.
+- StringView/ref StringView select the existing string-family loop category with
+  rune-by-value yields and the ordinary relative integer index. for ref remains
+  invalid (S1199); no Iterator[ref rune] or new decoder protocol is introduced.
+- S1200 bounds.invalid-range-source and S1201 bounds.invalid-slice-range are
+  mandatory and include help in compiler/LSP. S1202 calls.invalid-string-view-call
+  handles malformed view reader calls; mutable view authority uses existing S1165.
+
+Remaining boundaries are explicit:
+- Fresh non-addressable string sources remain rejected (S1200), including the
+  unimplemented enclosing-for temporary-retention case. This deliberately avoids
+  extending a temporary's lifetime. Full source/target-width/Unicode conformance,
+  general alias/contained-origin/Arena validity coverage and release admission
+  policy remain tracked under their existing owners.
+- Semantic IR type tables, byte-boundary translation and runnable view/rune
+  traversal remain P23 work. internType/buildExpr/buildFor fail by the explicit
+  StringView/P23 name and CLI emission leaves no partial output. There is no
+  executed native 32/64-bit text-range claim.
+- No core/stdlib drafts, public .Slice migrations or MLIR C++ changes here.
+
+Governance: closed the whole MD-126 frontend.for-loops-v2 item (14 -> 13;
+control_flow.yaml 72 -> 71). Updated the achieved frontend scope and precise
+residual work of frontend.collections (8 remaining), frontend.types-core (14)
+and frontend.borrowing (15); no new MD or parallel integration IDs.
+Canonical formatting normalized pre-existing quote/Unicode spelling without
+changing decoded values. Two pre-existing dead references were reconciled:
+missing correction26 source retains historical provenance with collections.md
+authority; retired llvm_float_readiness_test.go now points at the current
+native_track_test.go float matrices, without claiming a new float runtime test.
+
+Verification:
+- Full Sema / Semantic IR passed again after the final origin-query change
+  (15.757s / 6.742s). Full diagnostics and formatter suites also passed.
+- Focused LSP StringRange/ForBinding/Iterator/CompilerKnown/Slice/Borrow/Escape
+  regressions passed (17.917s).
+- Final TestStringRange* tests with -race passed in Sema/compiler/LSP
+  (1.087s / 2.133s / 3.426s); plain CLI/LSP and formatter regressions pass.
+- go vet passed for Sema, Semantic IR, diagnostics, formatter, compiler and LSP.
+- Both executables rebuilt with go build -trimpath; copied the rebuilt native
+  LSP to vscode/bin/lsp-sec. Real rebuilt bin/sec check exits 0 for valid fixture
+  and 3 for invalid ranges, with S1200/S1201. All three artifacts passed the
+  private workspace-prefix scan. The running editor server still needs restart.
+- yamlstatus check: 0 problems in 45 fragments; four touched fragments canonical;
+  owning path references repaired/checked; git diff --check clean.
+
+Complete files touched in this task (existing shared changes preserved):
+- internal/sema/types.go
+- internal/sema/copy_classification.go
+- internal/sema/reference_origin_join.go
+- internal/sema/analyzer_for.go
+- internal/sema/analyzer.go
+- internal/sema/analyzer_let_bindings.go
+- internal/sema/slice_creation_plans.go
+- internal/sema/place.go
+- internal/sema/try_failure_set.go
+- internal/sema/reference_place_origins.go
+- internal/sema/type_references.go
+- internal/sema/reference_inference.go
+- internal/sema/compiler_known_members.go
+- internal/sema/compiler_known_calls.go
+- internal/sema/string_ranges.go
+- internal/sema/string_view_members.go
+- internal/ir/semantic/builder.go
+- internal/ir/semantic/for_loops.go
+- internal/diagnostics/diagnostics.go
+- internal/sema/string_ranges_test.go
+- internal/diagnostics/string_range_test.go
+- internal/formatter/string_ranges_test.go
+- cmd/compiler/string_ranges_test.go
+- cmd/lsp/string_ranges_test.go
+- testdata/sema/string_ranges/valid.sec
+- testdata/sema/string_ranges/range_invalid.sec
+- testdata/sema/string_ranges/lifetime_invalid.sec
+- testdata/sema/string_ranges/member_invalid.sec
+- governance/collections.yaml
+- governance/control_flow.yaml
+- governance/types.yaml
+- governance/lifetime.yaml
+- mlir/compiler-packages-handoff.md
+- bin/sec
+- bin/lsp-sec
+- vscode/bin/lsp-sec
+
+Working set released.

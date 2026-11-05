@@ -1,0 +1,40 @@
+module main
+fn RuneValue(value: rune) void {}
+fn IndexValue(value: int) void {}
+@noAlloc
+fn Iterate(text: ref string, a: uint, b: uint) void {
+    for ch in text[a..b] { RuneValue(ch) }
+    for ch in text[..] { RuneValue(ch) }
+    for i, ch in text[a..<b] { IndexValue(i)
+        RuneValue(ch) }
+    let view := text[a..<b]
+    let nested := view[..]
+    let returned := Select(text, a, b)[..]
+    for ch in returned { RuneValue(ch) }
+    for ch in nested { RuneValue(ch) }
+    let count := view.Len
+    let bytes := view.SizeOf
+    let empty := view.IsEmpty()
+}
+fn Select(text: ref string, a: uint, b: uint) StringView {
+    return text[a..<b]
+}
+@noPanic
+@noAlloc
+fn Fallible(text: ref string, a: uint, b: uint) Result[StringView, RangeError] {
+    let view := try text[a..<b]
+    return Ok(view)
+}
+fn LocalHandler(text: ref string, a: uint, b: uint) void {
+    let view := try text[a..<b] { Err(_) => return }
+    for ch in view { RuneValue(ch) }
+}
+fn Unicode() void {
+    let text := "Aπ😀b"
+    let inclusive := text[1..2]
+    let exclusive := text[1..<3]
+    let empty := text[4..<4]
+    let tail := text[2..]
+    let all := text[..]
+    for ch in inclusive { RuneValue(ch) }
+}

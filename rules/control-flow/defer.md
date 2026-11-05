@@ -232,6 +232,8 @@ fn Example() void {
 
 The deferred block observes `2`.
 
+The deferred block references the captured binding/Place identity, not a snapshot of the value stored there when `defer` was registered. If an available owned value in that Place is validly replaced before deferred execution, the block reads the **replacement value**, and the Place's inherited final cleanup still runs in its established position after any earlier-ordered deferred read. Existing borrowing and pending-use restrictions continue to apply; `defer` does not authorize an invalid move, an unavailable read, or an escaped borrow (MD-125; `destruction.md` §§ 6.1(4), 13.2(5)–(6)).
+
 Sec 0.1 does not define a special capture-by-value syntax for defer.
 
 ## 10. Ownership and pending deferred uses

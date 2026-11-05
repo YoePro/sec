@@ -162,7 +162,10 @@ Replacement consumes a prepared new value into initialized storage.
 The old destination ownership terminates exactly once through its destruction
 plan.
 
-The new owned incarnation is registered at the replacement point.
+The new owned incarnation becomes the value covered by the destination's
+**pre-existing active** cleanup registration and keeps its position; no new final
+registration is made (superseded in part by MD-125, 2026-11-05; `semantic_ir.md`
+§ 40(7)–(10)). Reinitialization of an Unavailable Place registers anew.
 
 ---
 

@@ -28,6 +28,7 @@ func TestSchema13EmitsTryChainsAndOwnedErrorPayloads(t *testing.T) {
 		{"error_payload_owned.sec", "sec.own.move_from_place"},
 		{"try_positions.sec", "sec.array.construct"},
 		{"match_guard_owned.sec", "sec.union.unwrap_payload"},
+		{"match_borrowed_subjects.sec", `action = "observe"`},
 	} {
 		source, err := os.ReadFile("../../../testdata/semantic_ir/" + fixture.file)
 		if err != nil {

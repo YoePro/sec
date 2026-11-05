@@ -35,6 +35,8 @@ It defines:
 
 Sec 0.1 uses a closed set of compiler-known attributes.
 
+The struct layout modifiers `pack(N)`, `minAlign(N)` and `byteOffset(N)` are compiler-known contextual declaration modifiers in struct and stored-field grammar (MD-019), not entries of this attribute set; `@pack`, `@minAlign` and `@byteOffset` do not exist, and attribute attachment is not extended to struct fields.
+
 Unknown attributes are compile errors.
 
 User-defined passive metadata attributes are not part of Sec 0.1.

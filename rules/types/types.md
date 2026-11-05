@@ -528,11 +528,38 @@ are rune indexes; byte-access members use UTF-8 byte indexes and say so
 
 Conversions between strings and arrays, slices, bytes, or runes use explicitly defined core/library operations.
 
-Array slice syntax does not apply directly to `string`. Checked substring
-extraction is provided by the public core string API. Core may implement it
-with a source-file-private unchecked helper as defined by
-`compiler_known_members.md`; that helper is not part of the public string API
-and does not become compiler-known solely because its body is low-level.
+String bracket ranges (MD-126, decided 2026-11-05, `rules/corrections/applied/MD-126-borrowed-string-ranges-rune-iteration-applied-20261105.md`). The range
+forms `text[a..<b]`, `text[a..b]`, `text[a..]`, `text[..b]`, `text[..<b]` and
+`text[..]` apply to a `string` or `StringView` source and create a borrowed
+`StringView` **without** a preceding `ref`. Endpoints are zero-based rune
+indexes relative to the source. Normalization, evaluation order and failure
+precedence follow `collections.md` § 7.10. This is a source-kind-specific
+exception: array and sequence slicing still requires `ref values[...]`, and no
+other type gains implicit slice creation. A standalone `text[index]` is not
+given meaning by this rule. Public `string.Slice(start, end)` is removed by
+MD-126; `try text[a..<b]` is its non-panicking replacement.
+
+Core may implement owned substring helpers with a source-file-private
+unchecked helper as defined by `compiler_known_members.md`; that helper is not
+part of the public string API, is not the bracket-range constructor, and does
+not become compiler-known solely because its body is low-level.
+
+`StringView` (MD-126) is a predeclared, compiler-known, read-only, non-owning
+bounded view over valid UTF-8 text. It is distinct from `string`, from
+`ref string` (a reference to a complete `string` Place) and from
+`ref byte[]`/`ref rune[]`; user code cannot redeclare it. A view carries the
+provenance and lifetime obligation of its originating string backing and may
+not outlive it. Copying a view copies the borrow holder only, never text, and
+never extends the backing lifetime; destroying a view is trivial and does not
+destroy the source. Because its endpoints are scalar boundaries, a view is
+always valid UTF-8; UTF-8 is neither normalized nor transcoded. `Len` counts
+runes and `SizeOf` counts UTF-8 bytes within the view, and every member index
+is view-relative. No implicit conversion from `StringView` to `string` exists,
+and a `StringView` argument is not accepted by a `string` parameter without a
+declared overload; explicit materialization is `ToString()`. No `ref mut`
+form of a view exists. Its representation is implementation-defined and no
+FFI/ABI-visible layout is selected. The source-visible member surface is
+exactly `core-library.md` § 5.8.
 
 String representation is not defined by this rulebook as an ABI-stable struct.
 

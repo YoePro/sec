@@ -38,6 +38,16 @@ func analyzeProgramWithSourcesRetained(program *ast.Program, target CompilerTarg
 // rules/compiler/compiler_pipeline.md — §26 semantic validation boundary;
 // rules/compiler/compiler_analysis.md — §62 analysis-depth modes.
 func analyzeProgramWithSourcesAtDepth(program *ast.Program, target CompilerTarget, sourceFiles []string, summary diagnosticSummary, printSuccessSummary bool, depth sema.AnalysisDepth) *sema.Analyzer {
+	analyzer, _ := analyzeProgramWithSourcesForReport(program, target, sourceFiles, summary, printSuccessSummary, depth, false)
+	return analyzer
+}
+
+// analyzeProgramWithSourcesForReport retains rejected Sema facts only for an
+// analysis report. Source/project/target validation still blocks analysis;
+// callers must report every retained error and reject the command accordingly.
+// Rules: rules/compiler/compiler_pipeline.md §26; rules/tooling/lsp.md — Interface conformance code lens;
+// rules/tooling/cli.md §§5–6.
+func analyzeProgramWithSourcesForReport(program *ast.Program, target CompilerTarget, sourceFiles []string, summary diagnosticSummary, printSuccessSummary bool, depth sema.AnalysisDepth, retainErrors bool) (*sema.Analyzer, []sema.Error) {
 	versions := validateDiscoveredProjectManifests(sourceFiles)
 	if versions.Errors > 0 {
 		summary.Errors += versions.Errors
@@ -79,6 +89,17 @@ func analyzeProgramWithSourcesAtDepth(program *ast.Program, target CompilerTarge
 	analyzer.SetHardwareModuleContext(cliHardwareModuleContext(program, target, sourceFiles))
 	analyzer.SetDiagnosticRules(projectDiagnosticRules(sourceFiles))
 	errors := analyzer.Analyze(program)
+	if retainErrors {
+		onlyConformance := true
+		for _, err := range errors {
+			if err.ID != diagnostics.InterfaceMemberMissing && err.ID != diagnostics.InterfaceMemberIncompatible {
+				onlyConformance = false
+			}
+		}
+		if onlyConformance {
+			return analyzer, errors
+		}
+	}
 	// `sec analyse` prints its warnings itself after resolving its analysis
 	// selection and function focus; on rejection every warning is shown here.
 	if !deferSemaWarnings || len(errors) > 0 {
@@ -102,7 +123,7 @@ func analyzeProgramWithSourcesAtDepth(program *ast.Program, target CompilerTarge
 	if printSuccessSummary {
 		printDiagnosticSummary(summary)
 	}
-	return analyzer
+	return analyzer, nil
 }
 
 // projectDiagnosticRules reads the `[diagnostics.rules]` policy of the

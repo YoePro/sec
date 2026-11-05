@@ -17,7 +17,7 @@ P24 found **no genuinely new normative source-language decision** beyond existin
 
 ## § 2. Existing MD-019
 
-Explicit source syntax for packing/align/field offsets. The layout service can accept already-resolved constraints now; new source spelling remains blocked pending MD-019.
+Explicit source syntax for packing/align/field offsets. The layout service can accept already-resolved constraints now; new source spelling remains blocked pending MD-019. **Decided 2026-11-05:** MD-019 fixes the struct spelling as the contextual modifiers `pack(N)`, `minAlign(N)` and `byteOffset(N)` (`rules/declarations/struct.md` § 15A, `rules/memory/layout.md` §§ 27–30); there is no endian modifier and no `repr(C)`. The gate is now implementation, not a missing decision.
 
 ## § 3. Existing MD-071 (P23-D1)
 

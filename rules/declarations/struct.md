@@ -546,6 +546,52 @@ independently addressable.
 
 ---
 
+## 15A. Layout modifiers (MD-019)
+
+Added 2026-11-05 (`rules/corrections/applied/MD-019-explicit-layout-modifiers-applied-20261105.md`). The grammar is in
+`rules/foundations/grammar.md` "Struct type declaration"; physical semantics are
+owned by `rules/memory/layout.md` §§ 27–29 and `rules/platform/ffi.md` § 23.
+
+**§ 15A(1).** A named complete struct declaration (ordinary or `extern "C"`)
+may carry `pack(N)` and `minAlign(N)` after `struct`; a stored field may carry
+`minAlign(N)` and `byteOffset(N)` after its type and before any field tag.
+
+**§ 15A(2). `minAlign(N)`** is a minimum alignment in bytes; the physical
+alignment may be larger. `N` is a compile-time positive power of two supported
+by the target. On a type it constrains every object of the type, including its
+occurrences as a nested field; on a field it constrains that field's placement
+and may raise the containing aggregate's alignment and size.
+
+**§ 15A(3). `pack(N)`** is type-level only. It caps the ordinary field alignment
+used for placement at `N` bytes (`N` as in § 15A(2)). It does not reorder fields,
+change field types or identity, change the active C ABI, or rewrite a nested
+type's internal layout.
+
+**§ 15A(4). Combination and precedence.** `pack` and type-level `minAlign`
+constrain different things: `pack(1) minAlign(8)` packs the fields and requires
+the object to be at least 8-byte aligned. A field's explicit `minAlign`, and a
+nested field type's own type-level `minAlign`, override the cap of an enclosing
+`pack`; padding is added and the enclosing alignment raised as needed. The
+resulting size, stride and tail padding satisfy the final alignment; an
+impossible combination is a compile-time error.
+
+**§ 15A(5). `byteOffset(N)`** places a stored field exactly `N` bytes from the
+start of the object (`N` a compile-time nonnegative integer, not necessarily a
+power of two). It may add padding but cannot reorder fields, overlap stored
+fields, violate the field's effective alignment, truncate a field or exceed
+target constraints; overlap needs a union/overlay contract.
+
+**§ 15A(6).** Modifiers do not make an ordinary struct FFI-compatible (§ 15);
+`extern "C"` remains the only C ABI selection, and no `repr(C)` exists. There is
+no general endian modifier. Field tags, defaults, copy/move, ownership,
+destruction, construction and `implements` behavior are unchanged.
+
+**§ 15A(7).** A packed or misaligned field never yields an invalid `ref T` or
+`ref mut T`; by-value access may use target-supported unaligned operations
+(`layout.md` § 27(3)–(4)).
+
+---
+
 ## 16. Nested structs and associated types
 
 A struct field may itself have a struct type.

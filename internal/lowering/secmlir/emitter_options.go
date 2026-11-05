@@ -46,6 +46,9 @@ func EmitWithOptions(module *semantic.Module, plan layout.ResolvedScalarPlan, op
 	if err := semantic.Verify(module); err != nil {
 		return nil, fmt.Errorf("verify Semantic IR: %w", err)
 	}
+	if err := rejectUnverifiedVolatilePlans(module); err != nil {
+		return nil, err
+	}
 	if err := rejectUnverifiedHardwarePlans(module); err != nil {
 		return nil, err
 	}

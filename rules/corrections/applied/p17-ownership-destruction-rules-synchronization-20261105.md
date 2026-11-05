@@ -1,7 +1,8 @@
 # Correction: P17 ownership and destruction source-rule synchronization
 
-- **Status:** Partly applied 2026-11-03: proposals B, C and E are merged;
-  proposals A and D and the open point are MD-125 (open)
+- **Status:** Applied 2026-11-05: proposals B, C and E were merged on
+  2026-11-03; proposals A and D are **superseded by MD-125** (owner decision
+  2026-11-05, option B), whose own insertions are applied
 - **Created:** 2026-11-03
 - **Document revision:** 1
 - **Sec version:** 0.1
@@ -62,9 +63,13 @@ canonical text is kept.
 
 Each proposal restates authority that P17 already supplies. On 2026-11-03 the
 owner merged B (defer.md § 13), C (semantic_ir.md §§ 44(2), 44(2a)) and E
-(semantic_ir.md § 35(6)). A and D are left to MD-125 for manual review.
+(semantic_ir.md § 35(6)). A and D were left to MD-125, which the owner decided
+on 2026-11-05 in the opposite direction (option B); they are **superseded** and
+were never applied. The applied MD-125 text is destruction.md §§ 6.1(4)–(5),
+13.2(5)–(8), 13.3(5), semantic_ir.md § 40(7)–(10) and the defer.md § 9
+clarification (`rules/corrections/applied/MD-125-replacement-cleanup-registration-point-applied-20261105.md`).
 
-**A. destruction.md § 13.2(5).** The new value of a replacement registers its
+**A. (superseded by MD-125) destruction.md § 13.2(5).** The new value of a replacement registers its
 destruction responsibility at the replacement point. Cleanup registered between
 the original initialization and the replacement therefore runs after the new
 value is destroyed.
@@ -78,7 +83,7 @@ instance stays valid until its registration runs (§ 8).
 "captured binding/Place identities, read when the defer executes (defer § 9);
 capture never copies the current value".
 
-**D. semantic_ir.md § 40(7).** A replacement registers the new owned incarnation
+**D. (superseded by MD-125) semantic_ir.md § 40(7).** A replacement registers the new owned incarnation
 at the replacement point, as in destruction § 13.2(5).
 
 **E. semantic_ir.md § 35(6).** The canonical transfer actions are `construct`,
@@ -86,7 +91,15 @@ at the replacement point, as in destruction § 13.2(5).
 `borrow-mutable` and `non-consuming`. Fallible clone-like operations are
 ordinary calls, not copy actions.
 
-## Open point for the owner (MD-125)
+## Open point for the owner (MD-125) — decided 2026-11-05
+
+**Decision:** option B. A replacement keeps the Place's existing cleanup
+position, so in the example below the defer runs first and reads the new value,
+and the new value is destroyed afterwards. The program is **valid**. The record
+below is kept as the historical finding. The compiler still stops this case at
+the named lowering boundary until the P17 cleanup producers implement inherited
+registration (governance `lowering.sec-mlir-package17`, `frontend.destruction`).
+
 
 Proposal A combined with defer.md § 10 has a consequence:
 

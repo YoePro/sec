@@ -481,7 +481,7 @@ func (a *Analyzer) inferArenaCall(expr *ast.CallExpression) (Type, expressionVal
 		}
 		a.arenaGenerations[domain]++
 		a.moved[receiver.Value] = expr.Token
-		a.moveReasons[receiver.Value] = "released"
+		a.availabilityStates[receiver.Value] = unavailableState("released")
 		if place, ok := a.rootPlace(receiver.Value); ok {
 			a.recordOwnedCleanupCancellation(place, expr.Token, "released")
 		}

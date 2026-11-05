@@ -307,7 +307,7 @@ func (a *Analyzer) checkPlaceAvailableForBorrow(place Place, token lexer.Token) 
 	if !unavailable {
 		return false
 	}
-	if isConditionalAvailabilityReason(a.moveReasons[movedKey]) {
+	if isConditionallyUnavailable(a.availabilityStates[movedKey]) {
 		a.reportConditionallyUnavailablePlace(place, movedKey, token, movedAt, true)
 		return true
 	}
@@ -321,7 +321,7 @@ func (a *Analyzer) checkPlaceAvailableForBorrow(place Place, token lexer.Token) 
 			"cannot borrow place %s because it may be unavailable on a later loop iteration", place.String())
 		return true
 	}
-	reason := underlyingAvailabilityReason(a.moveReasons[movedKey])
+	reason := a.availabilityStates[movedKey].Reasons
 	help := "borrow " + place.String() + " before that operation, or reinitialize a mutable binding before borrowing it again"
 	if isMultipleAvailabilityReason(reason) {
 		a.addUnavailableOwnershipDiagnostic(place, movedKey, token, movedAt, diagnostics.UseAfterMove, help,
@@ -564,7 +564,7 @@ func (a *Analyzer) consumeMethodReceiver(call *ast.CallExpression, expression as
 		a.recordReceiverMove(call, place)
 	}
 	a.moved[identifier.Value] = identifier.Token
-	a.moveReasons[identifier.Value] = "consumed by method call"
+	a.availabilityStates[identifier.Value] = unavailableState("consumed by method call")
 	if place, ok := a.rootPlace(identifier.Value); ok {
 		a.recordOwnedCleanupCancellation(place, identifier.Token, "consumed by method call")
 	}
@@ -601,7 +601,7 @@ func (a *Analyzer) markMovedCallArguments(function Function, sourceArgs []ast.Ex
 		if param.Consuming || explicit {
 			if a.markExplicitMoveSource(source) {
 				if ident, ok := source.(*ast.Identifier); ok {
-					a.moveReasons[ident.Value] = "consumed by call"
+					a.availabilityStates[ident.Value] = unavailableState("consumed by call")
 					a.endBorrowsHeldBy(ident.Value)
 				}
 			}

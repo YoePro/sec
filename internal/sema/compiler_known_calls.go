@@ -100,6 +100,9 @@ func (a *Analyzer) inferValidatedCompilerKnownMemberCall(expr *ast.CallExpressio
 	if member.StructuralMutation && a.structurallyMutatesIteratedCollection(memberExpr.Object, member.Name, memberExpr.Property.Token) {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 	}
+	if lookupType.Kind == StringViewType {
+		return a.inferStringViewCall(expr, member)
+	}
 	if lookupType.Kind == RawPtrType || lookupType.Name == "Arena" {
 		return Type{}, expressionValue{}, false
 	}

@@ -380,7 +380,11 @@ const (
 	// ForBindingModeUnavailable rejects a ref or ref mut loop binding the
 	// iterated source does not provide (flowcontrol_for.md § 40).
 	ForBindingModeUnavailable = "S1199"
-	HardwareRegionOverlap     = "A2010"
+	// MD-126 / collections.md 7.4-7.5,7.10: registered source and range failures.
+	InvalidRangeSource    = "S1200"
+	InvalidSliceRange     = "S1201"
+	InvalidStringViewCall = "S1202"
+	HardwareRegionOverlap = "A2010"
 
 	// UnionVariantPayloadRequired rejects a payload-carrying union variant
 	// used as a value without its payload.
@@ -473,6 +477,9 @@ var registry = map[string]Definition{
 	StaticFunctionContext:                 {ID: StaticFunctionContext, Name: "static.invalid-function-context", Family: "static", DefaultSeverity: SeverityError, Mandatory: true},
 	AssociatedStorageConflict:             {ID: AssociatedStorageConflict, Name: "static.associated-member-conflict", Family: "static", DefaultSeverity: SeverityError, Mandatory: true},
 	NonConvergingSpecialization:           {ID: NonConvergingSpecialization, Name: "generics.non-converging-specialization", Family: "generics", DefaultSeverity: SeverityError, Mandatory: true},
+	InvalidRangeSource:                    {ID: InvalidRangeSource, Name: "bounds.invalid-range-source", Family: "bounds", DefaultSeverity: SeverityError, Mandatory: true},
+	InvalidSliceRange:                     {ID: InvalidSliceRange, Name: "bounds.invalid-slice-range", Family: "bounds", DefaultSeverity: SeverityError, Mandatory: true},
+	InvalidStringViewCall:                 {ID: InvalidStringViewCall, Name: "calls.invalid-string-view-call", Family: "calls", DefaultSeverity: SeverityError, Mandatory: true},
 	ForBindingModeUnavailable:             {ID: ForBindingModeUnavailable, Name: "for.binding-mode-unavailable", Family: "for", DefaultSeverity: SeverityError, Mandatory: true},
 	InvalidResultErrorChannel:             {ID: InvalidResultErrorChannel, Name: "errors.invalid-result-error-channel", Family: "errors", DefaultSeverity: SeverityError, Mandatory: true},
 	ErrorVariantRequiresConcreteChannel:   {ID: ErrorVariantRequiresConcreteChannel, Name: "errors.variant-requires-concrete-channel", Family: "errors", DefaultSeverity: SeverityError, Mandatory: true},

@@ -22,7 +22,7 @@ import (
 func (a *Analyzer) analyzeSwitchStatement(stmt *ast.SwitchStatement) {
 	before := copyAssigned(a.assigned)
 	beforeMoved := copyMoved(a.moved)
-	beforeMoveReasons := copyMoveReasons(a.moveReasons)
+	beforeMoveReasons := copyAvailabilityStates(a.availabilityStates)
 	beforeClosedResources := copyMoved(a.closedResources)
 	beforeBorrows := copyBorrows(a.borrows)
 	beforeLocalRefContainers := copyLocalRefContainers(a.localRefContainers)
@@ -91,10 +91,10 @@ func (a *Analyzer) analyzeSwitchStatement(stmt *ast.SwitchStatement) {
 	exhaustive := stmt.Default != nil || tracker.isExhaustive()
 	a.recordResolvedSwitchFlow(stmt, subjectType, hasSubject, exhaustive, clauseFlows)
 	if !exhaustive {
-		branches = append(branches, branchAnalysis{assigned: before, moved: beforeMoved, moveReasons: beforeMoveReasons, closedResources: beforeClosedResources, borrows: beforeBorrows, localRefContainers: beforeLocalRefContainers, arenaGenerations: beforeArenaGenerations, continues: true})
+		branches = append(branches, branchAnalysis{assigned: before, moved: beforeMoved, availabilityStates: beforeMoveReasons, closedResources: beforeClosedResources, borrows: beforeBorrows, localRefContainers: beforeLocalRefContainers, arenaGenerations: beforeArenaGenerations, continues: true})
 	}
 	a.assigned = mergeContinuingAssigned(before, branches...)
-	a.moved, a.moveReasons = mergeContinuingMoveState(beforeMoved, beforeMoveReasons, branches...)
+	a.moved, a.availabilityStates = mergeContinuingMoveState(beforeMoved, beforeMoveReasons, branches...)
 	a.closedResources = mergeContinuingClosedResources(beforeClosedResources, branches...)
 	a.borrows = mergeContinuingBorrows(beforeBorrows, branches...)
 	a.localRefContainers = mergeContinuingLocalRefContainers(beforeLocalRefContainers, branches...)
@@ -112,7 +112,7 @@ func (a *Analyzer) applySwitchEntryMerge(direct, fallthroughEntry branchAnalysis
 	direct.continues = true
 	fallthroughEntry.continues = true
 	a.assigned = mergeContinuingAssigned(direct.assigned, direct, fallthroughEntry)
-	a.moved, a.moveReasons = mergeContinuingMoveState(direct.moved, direct.moveReasons, direct, fallthroughEntry)
+	a.moved, a.availabilityStates = mergeContinuingMoveState(direct.moved, direct.availabilityStates, direct, fallthroughEntry)
 	a.closedResources = mergeContinuingClosedResources(direct.closedResources, direct, fallthroughEntry)
 	a.borrows = mergeContinuingBorrows(direct.borrows, direct, fallthroughEntry)
 	a.localRefContainers = mergeContinuingLocalRefContainers(direct.localRefContainers, direct, fallthroughEntry)
@@ -216,14 +216,14 @@ func (a *Analyzer) analyzeSwitchFallthrough(clause *ast.SwitchCase, isFinal bool
 //   - rules/control-flow/flowcontrol_switch.md — §15 "No implicit fallthrough", §18 "Case scopes", §19 "Fallthrough and scope"
 func (a *Analyzer) analyzeSwitchCaseBody(block *ast.BlockStatement) branchAnalysis {
 	if block == nil {
-		return branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), moveReasons: copyMoveReasons(a.moveReasons), closedResources: copyMoved(a.closedResources), borrows: copyBorrows(a.borrows), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), referenceOrigins: captureReferenceOrigins(a.symbols), continues: true}
+		return branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), availabilityStates: copyAvailabilityStates(a.availabilityStates), closedResources: copyMoved(a.closedResources), borrows: copyBorrows(a.borrows), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), referenceOrigins: captureReferenceOrigins(a.symbols), continues: true}
 	}
 
 	previousSymbols := a.symbols
 	previousConstInts := a.constInts
 	previousAssigned := a.assigned
 	previousMoved := a.moved
-	previousMoveReasons := a.moveReasons
+	previousMoveReasons := a.availabilityStates
 	previousClosedResources := a.closedResources
 	previousBorrows := a.borrows
 	previousLocalRefContainers := a.localRefContainers
@@ -233,7 +233,7 @@ func (a *Analyzer) analyzeSwitchCaseBody(block *ast.BlockStatement) branchAnalys
 	a.constInts = copyConstInts(previousConstInts)
 	a.assigned = copyAssigned(previousAssigned)
 	a.moved = copyMoved(previousMoved)
-	a.moveReasons = copyMoveReasons(previousMoveReasons)
+	a.availabilityStates = copyAvailabilityStates(previousMoveReasons)
 	a.closedResources = copyMoved(previousClosedResources)
 	a.borrows = copyBorrows(previousBorrows)
 	a.localRefContainers = copyLocalRefContainers(previousLocalRefContainers)
@@ -244,7 +244,7 @@ func (a *Analyzer) analyzeSwitchCaseBody(block *ast.BlockStatement) branchAnalys
 		a.constInts = previousConstInts
 		a.assigned = previousAssigned
 		a.moved = previousMoved
-		a.moveReasons = previousMoveReasons
+		a.availabilityStates = previousMoveReasons
 		a.closedResources = previousClosedResources
 		a.borrows = previousBorrows
 		a.localRefContainers = previousLocalRefContainers
@@ -257,7 +257,7 @@ func (a *Analyzer) analyzeSwitchCaseBody(block *ast.BlockStatement) branchAnalys
 	return branchAnalysis{
 		assigned:           copyAssigned(a.assigned),
 		moved:              copyMoved(a.moved),
-		moveReasons:        copyMoveReasons(a.moveReasons),
+		availabilityStates: copyAvailabilityStates(a.availabilityStates),
 		closedResources:    copyMoved(a.closedResources),
 		borrows:            copyBorrows(a.borrows),
 		localRefContainers: copyLocalRefContainers(a.localRefContainers),

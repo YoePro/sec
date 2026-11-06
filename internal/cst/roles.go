@@ -68,6 +68,10 @@ const (
 	// PrefixOperator marks the operator token of a parsed unary prefix
 	// expression, including the <- consuming call-site marker.
 	PrefixOperator Role = "prefix-operator"
+	// MemberAccessSeparator is the real dot of a parsed receiver/member pair.
+	// Rules: rules/tooling/formatter.md — §§6,17(6–7);
+	// rules/memory/raw_pointers.md — §§17(7),18A,36(5).
+	MemberAccessSeparator Role = "member-access-separator"
 	// ForeignQualifierSeparator marks each ':' of a parser-confirmed `::` in
 	// a c:: foreign-qualified name. The qualification is one contiguous
 	// name: no space separates the family, separators, and segments.
@@ -504,6 +508,10 @@ func (d *Document) ApplyProgramRoles(program *ast.Program) {
 	//   - rules/tooling/formatter.md — §21(5) consuming call-site marker attachment
 	markSpacingRoles := func(node any) {
 		switch node := node.(type) {
+		case *ast.MemberExpression:
+			if node.Object != nil && node.Property != nil && node.Token.Type == lexer.DOT {
+				mark(node.Token, MemberAccessSeparator)
+			}
 		case *ast.InfixExpression:
 			if node.Left != nil && node.Right != nil {
 				mark(node.Token, BinaryOperator)

@@ -23,6 +23,8 @@ var ucdFileHashes = map[string]string{
 	"SpecialCasing.txt":         "8538dea57c184f1ef3783885ea79677b10f6efa06423717157e63712f14d1ad2",
 	"DerivedCoreProperties.txt": "09c928886a178fcafd93c29e4bd59073a058e5a100b716d425cb563ab50f68c9",
 	"CaseFolding.txt":           "a004797658a457bec4dc11683e39f69249ea3b595b752dbea6721c4c9f587b0d",
+	"PropList.txt":              "f438f532e8737bb8a2702126cdf9c4af5e357c58c7acf9d9eb2fc7c1a1d955d6",
+	"emoji/emoji-data.txt":      "80d00f8e616a0ef27fd6b8de3b758c06383b5d917e2977709578e68baf733bf1",
 }
 
 // codePointRange is an inclusive range of code points.
@@ -61,6 +63,9 @@ type ucdDatabase struct {
 
 	cased         []codePointRange
 	caseIgnorable []codePointRange
+	// binaryProperties retains all binary properties from the three property
+	// sources; enumerated values such as InCB are intentionally separate.
+	binaryProperties map[string][]codePointRange
 
 	// simpleFolding is the C+S case folding, fullFolding the C+F case
 	// folding, and turkicFolding the T entries (CaseFolding.txt status).
@@ -69,7 +74,7 @@ type ucdDatabase struct {
 	turkicFolding map[rune]rune
 }
 
-// loadUCD reads the four UCD files from dir, verifies that each one is the
+// loadUCD reads the six UCD files from dir, verifies that each one is the
 // pinned file for version, and parses them.
 func loadUCD(dir string, version string) (*ucdDatabase, error) {
 	db := &ucdDatabase{version: version}
@@ -81,6 +86,8 @@ func loadUCD(dir string, version string) (*ucdDatabase, error) {
 		{"SpecialCasing.txt", func(r io.Reader) error { return db.parseSpecialCasing(r, version) }},
 		{"DerivedCoreProperties.txt", func(r io.Reader) error { return db.parseDerivedCoreProperties(r, version) }},
 		{"CaseFolding.txt", func(r io.Reader) error { return db.parseCaseFolding(r, version) }},
+		{"PropList.txt", func(r io.Reader) error { return db.parseBinaryProperties(r, "PropList", version) }},
+		{"emoji/emoji-data.txt", func(r io.Reader) error { return db.parseBinaryProperties(r, "emoji-data", version) }},
 	}
 	for _, step := range steps {
 		path := filepath.Join(dir, step.name)
@@ -273,35 +280,15 @@ func (db *ucdDatabase) parseSpecialCasing(r io.Reader, version string) error {
 	return checkVersionHeader(header, "SpecialCasing", version)
 }
 
-// parseDerivedCoreProperties collects the Cased and Case_Ignorable ranges.
+// parseDerivedCoreProperties retains all binary properties and the existing
+// casing-context views. Rules: rules/library/core-library.md — §11.3.
 func (db *ucdDatabase) parseDerivedCoreProperties(r io.Reader, version string) error {
-	db.cased, db.caseIgnorable = nil, nil
-	header, err := ucdLines(r, func(_ int, fields []string) error {
-		if len(fields) < 2 {
-			return fmt.Errorf("want at least 2 fields, got %d", len(fields))
-		}
-		var target *[]codePointRange
-		switch fields[1] {
-		case "Cased":
-			target = &db.cased
-		case "Case_Ignorable":
-			target = &db.caseIgnorable
-		default:
-			return nil
-		}
-		value, err := parseCodePointRange(fields[0])
-		if err != nil {
-			return err
-		}
-		*target = append(*target, value)
-		return nil
-	})
-	if err != nil {
+	if err := db.parseBinaryProperties(r, "DerivedCoreProperties", version); err != nil {
 		return err
 	}
-	db.cased = normalizeRanges(db.cased)
-	db.caseIgnorable = normalizeRanges(db.caseIgnorable)
-	return checkVersionHeader(header, "DerivedCoreProperties", version)
+	db.cased = db.binaryProperties["Cased"]
+	db.caseIgnorable = db.binaryProperties["Case_Ignorable"]
+	return nil
 }
 
 // parseCaseFolding reads "code; status; mapping;" entries. C entries belong to

@@ -29,7 +29,7 @@ func TestImplStorageNamespace(t *testing.T) {
 			t.Fatalf("incomplete conflict: %+v", e)
 		}
 	}
-	for name := range a.symbols {
+	for name := range a.symbols.all() {
 		if len(name) > 7 && name[len(name)-7:] == ".Shared" {
 			t.Fatalf("invalid storage published: %s", name)
 		}
@@ -71,7 +71,7 @@ func TestImplStorageNamespaceFiles(t *testing.T) {
 		t.Fatal(errors)
 	}
 	for _, name := range []string{"Counter.Shared", "Counter.Additional", "Other.Shared", "Box.Shared"} {
-		if _, ok := a.symbols[name]; !ok {
+		if _, ok := a.symbols.lookup(name); !ok {
 			t.Errorf("lost valid associated binding %s", name)
 		}
 	}

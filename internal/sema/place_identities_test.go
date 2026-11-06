@@ -63,7 +63,7 @@ func TestRootPlacesCarryStorageIdentity(t *testing.T) {
 	arenaRef := func(domain string, line int) Symbol {
 		return Symbol{Token: token(line), Local: true, Type: Type{Kind: ReferenceType, ReferenceOriginStorage: StorageOriginArena, ReferenceOriginName: domain}}
 	}
-	analyzer.symbols = map[string]Symbol{
+	analyzer.symbols = symbolTableOf(map[string]Symbol{
 		"left":     {Token: token(1), Local: true, Storage: StorageOriginAutomatic},
 		"right":    {Token: token(2), Local: true, Storage: StorageOriginAutomatic},
 		"first":    arenaRef("$arena-domain-a", 3),
@@ -71,7 +71,7 @@ func TestRootPlacesCarryStorageIdentity(t *testing.T) {
 		"other":    arenaRef("$arena-domain-b", 5),
 		"borrowed": {Token: token(6), Local: true, Parameter: true, Type: Type{Kind: ReferenceType}},
 		"control":  {Token: token(7), Storage: StorageOriginStatic, RegisterAccess: RegisterReadOnly},
-	}
+	})
 	place := func(name string) Place {
 		root, ok := analyzer.rootPlace(name)
 		if !ok {
@@ -151,10 +151,10 @@ func TestDynamicIndexIdentityAndCanonicalProjections(t *testing.T) {
 	analyzer.resolvedArrayIndexPlans = map[*ast.IndexExpression]ResolvedArrayIndexPlan{}
 	intType := Type{Name: "int", Kind: IntType}
 	element := intType
-	analyzer.symbols = map[string]Symbol{
+	analyzer.symbols = symbolTableOf(map[string]Symbol{
 		"values": {Token: lexer.Token{File: "m.sec", Line: 1, Column: 5}, Local: true, Storage: StorageOriginAutomatic, Type: Type{Kind: ArrayType, Element: &element, ArrayLength: 4}},
 		"i":      {Token: lexer.Token{File: "m.sec", Line: 2, Column: 5}, Local: true, Type: intType},
-	}
+	})
 	index := func(name string, column int) *ast.IndexExpression {
 		identifier := &ast.Identifier{Token: lexer.Token{File: "m.sec", Line: 3, Column: column, Lexeme: name}, Value: name}
 		analyzer.expressionTypes[identifier] = intType

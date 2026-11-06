@@ -158,11 +158,17 @@ func (fb *functionBuilder) destroyTemporaries(pending []pendingTemporary) error 
 // propagation), every temporary still owned on that edge: those of the current
 // full expression and the arm temporaries (destruction.md § 8(7)).
 func (fb *functionBuilder) leaveOnReturn(op Operation) {
-	if op.Kind != OpReturn || fb.temporaryExit || len(fb.temporaries) == 0 && len(fb.armTemporaries) == 0 {
+	if op.Kind != OpReturn || fb.temporaryExit || len(fb.temporaries) == 0 && len(fb.armTemporaries) == 0 && len(fb.prepared) == 0 {
 		return
 	}
 	fb.temporaryExit = true
 	defer func() { fb.temporaryExit = false }()
+	// Prepared construction operands are the youngest owners on this edge: a
+	// failed construction destroys what it already evaluated, in reverse
+	// order, and never builds the outer value (destruction.md § 7; P17-16).
+	if err := fb.destroyTemporaries(fb.prepared); err != nil && fb.temporaryError == nil {
+		fb.temporaryError = err
+	}
 	if err := fb.destroyTemporaries(fb.temporaries); err != nil && fb.temporaryError == nil {
 		fb.temporaryError = err
 	}
@@ -170,4 +176,34 @@ func (fb *functionBuilder) leaveOnReturn(op Operation) {
 		fb.temporaryError = err
 	}
 	fb.scopesCleaned = nil
+}
+
+// prepareOperand records an evaluated construction operand that needs
+// destruction until its construction takes it (destruction.md § 7; P17-16).
+func (fb *functionBuilder) prepareOperand(value builtValue, typ sema.Type, token lexer.Token) {
+	if sema.TriviallyDestructible(typ) || fb.owner.maxPackage < ownershipLoweringPackage {
+		return
+	}
+	fb.prepared = append(fb.prepared, pendingTemporary{value: value, typ: typ, token: token, loops: len(fb.loops), block: fb.current.ID})
+}
+
+// takePrepared hands the operands prepared since depth to their construction.
+func (fb *functionBuilder) takePrepared(depth int) {
+	if depth < len(fb.prepared) {
+		fb.prepared = fb.prepared[:depth]
+	}
+}
+
+// endRegionTemporaries destroys, in reverse creation order, the temporaries a
+// conditionally evaluated region created (a match arm, a short-circuit
+// operand): such a region is their scope, so they end when it does, before
+// control merges (owner decision 2026-11-06, "when they go out of scope";
+// destruction.md § 8; P17-40).
+func (fb *functionBuilder) endRegionTemporaries(depth int) error {
+	if depth >= len(fb.temporaries) || fb.current == nil {
+		return nil
+	}
+	region := append([]pendingTemporary(nil), fb.temporaries[depth:]...)
+	fb.temporaries = fb.temporaries[:depth]
+	return fb.destroyTemporaries(region)
 }

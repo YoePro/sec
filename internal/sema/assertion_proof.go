@@ -78,7 +78,7 @@ func (a *Analyzer) integerInterval(expr ast.Expression) (*big.Int, *big.Int, boo
 		return a.bitExtractionInterval(extraction)
 	}
 	if id, ok := expr.(*ast.Identifier); ok {
-		if symbol, found := a.symbols[id.Value]; found && !symbol.Mutable && !symbol.Volatile && symbol.IntegerMinimum != nil && symbol.IntegerMaximum != nil {
+		if symbol, found := a.symbols.lookup(id.Value); found && !symbol.Mutable && !symbol.Volatile && symbol.IntegerMinimum != nil && symbol.IntegerMaximum != nil {
 			minimum, maximum := new(big.Int).Set(symbol.IntegerMinimum), new(big.Int).Set(symbol.IntegerMaximum)
 			a.refineIntervalByDominatingFacts(expr, minimum, maximum)
 			return minimum, maximum, true
@@ -502,7 +502,7 @@ func assertConditionHelp(condition ast.Expression, typ Type) string {
 // Rules: rules/types/types.md — "Explicit conversions" (proven conversions need no runtime check);
 // rules/foundations/names_scopes_visibility.md — Lexical scopes.
 func (a *Analyzer) recordIntegerBindingInterval(name string, expr ast.Expression) {
-	symbol, ok := a.symbols[name]
+	symbol, ok := a.symbols.lookup(name)
 	if !ok || symbol.Mutable || symbol.Volatile || !isIntegerType(symbol.Type) {
 		return
 	}
@@ -526,7 +526,7 @@ func (a *Analyzer) recordIntegerBindingInterval(name string, expr ast.Expression
 		}
 	}
 	symbol.IntegerMinimum, symbol.IntegerMaximum = minimum, maximum
-	a.symbols[name] = symbol
+	a.symbols.set(name, symbol)
 }
 
 // bitwiseInterval bounds &, |, ^ and the result of a conversion call over

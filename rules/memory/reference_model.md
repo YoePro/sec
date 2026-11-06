@@ -1099,7 +1099,7 @@ mapping/domain validity.
 
 § 51(4) Known contradictory facts cause compile-time rejection even inside unsafe.
 
-§ 51(5) The source spelling is the unsafe compiler-known `RawPtr[T].AsRef()` / `AsRefMut()`. The result receives this model's ordinary facts; no lifetime parameter is introduced (`raw_pointers.md` § 18A; MD-070).
+§ 51(5) The source spelling is the unsafe compiler-known `RawPtr[T].AsRef` / `AsRefMut`. The result receives this model's ordinary facts; no lifetime parameter is introduced (`raw_pointers.md` § 18A; MD-070).
 
 ---
 

@@ -1,0 +1,91 @@
+module main
+
+// P17-15: per-path availability of fields and active payloads. A field moved on
+// some paths, then reinitialized, makes the whole owner usable again; whole
+// and partial state carry around loops; an active payload moved on one path is
+// replaced as a whole.
+// Rules: rules/memory/copy_move.md §§ 12-15; rules/memory/destruction.md §§ 12-13.3.
+
+type Handle struct {
+    id: int,
+}
+
+impl Handle {
+    free {
+    }
+}
+
+type Pair struct {
+    left:  Handle,
+    right: Handle,
+}
+
+fn Make(id: int) Handle {
+    return Handle { id: id }
+}
+
+fn Sink(->handle: Handle) void {
+}
+
+fn SinkPair(->pair: Pair) void {
+}
+
+fn ConditionalFieldThenReinit(flag: bool) void {
+    let mut pair := Pair { left: Make(1), right: Make(2) }
+    if flag {
+        Sink(<-pair.left)
+    }
+    pair.left = Make(3)
+    SinkPair(<-pair)
+}
+
+fn FieldMoveReinitBoth() void {
+    let mut pair := Pair { left: Make(1), right: Make(2) }
+    Sink(<-pair.left)
+    Sink(<-pair.right)
+    pair.left = Make(3)
+    pair.right = Make(4)
+    SinkPair(<-pair)
+}
+
+fn LoopFieldMove(flag: bool) void {
+    let mut pair := Pair { left: Make(1), right: Make(2) }
+    let mut i    := 0
+    while i < 2 {
+        i = i + 1
+        Sink(<-pair.left)
+        pair.left = Make(i)
+    }
+}
+
+fn FreshOption(id: int) Option[Handle] {
+    return Some(Make(id))
+}
+
+fn PayloadOnSomePaths(flag: bool) void {
+    let mut option := FreshOption(1)
+    if flag {
+        match option {
+            Some(handle) => {
+                Sink(<-handle)
+            }
+            None => {
+            }
+        }
+    }
+    option = FreshOption(2)
+}
+
+type Nest struct {
+    inner: Pair,
+    tag:   int,
+}
+
+fn NestedFieldOnSomePaths(flag: bool) int {
+    let mut nest := Nest { inner: Pair { left: Make(1), right: Make(2) }, tag: 1 }
+    if flag {
+        Sink(<-nest.inner.left)
+    }
+    nest.inner.left = Make(3)
+    return nest.inner.left.id
+}

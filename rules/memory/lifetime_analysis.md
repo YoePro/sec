@@ -694,7 +694,7 @@ does not end it when the generation remains stable.
 
 **§ 23.1(3)** Converting RawPtr to a safe reference requires proof of the complete safe-reference lifetime and authority obligations defined by raw-pointer/reference rules.
 
-**§ 23.1(4)** `RawPtr[T].AsRef()` / `AsRefMut()` (MD-070) introduce no lifetime parameter or annotation. The resulting reference uses the ordinary lifetime model and is never given a static or unconstrained lifetime merely because it came from an address (`raw_pointers.md` § 18A(5)).
+**§ 23.1(4)** `RawPtr[T].AsRef` / `AsRefMut` (MD-070) introduce no lifetime parameter or annotation. The resulting reference uses the ordinary lifetime model and is never given a static or unconstrained lifetime merely because it came from an address (`raw_pointers.md` § 18A(5)).
 
 ### § 23.2 FFI contracts
 

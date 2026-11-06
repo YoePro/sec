@@ -33,7 +33,7 @@ func TestMutexCanonicalNaming(t *testing.T) {
 			}
 			continue
 		}
-		if got := typeDisplayName(a.completionSymbols["guard"].Type); got != "MutexGuard[int]" {
+		if got := typeDisplayName(a.completionSymbols.get("guard").Type); got != "MutexGuard[int]" {
 			t.Fatal(got)
 		}
 	}

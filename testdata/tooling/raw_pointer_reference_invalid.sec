@@ -1,0 +1,29 @@
+module main
+
+fn Outside(pointer: RawPtr[int]) ref int {
+    return pointer.AsRef
+}
+
+fn Opaque(pointer: RawPtr[void]) void {
+    unsafe {
+        let r := pointer.AsRef
+    }
+}
+
+fn NotRawPtr(r: ref int) void {
+    unsafe {
+        let again := r.AsRef
+    }
+}
+
+fn Null() int {
+    unsafe {
+        let pointer: RawPtr[int] := null
+        let r := pointer.AsRef
+        return *r
+    }
+}
+
+fn Implicit(pointer: RawPtr[int]) void {
+    let r: ref int := pointer
+}

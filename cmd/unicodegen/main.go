@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 )
 
 // unicodeVersion is the Unicode Character Database version the generator is
@@ -13,55 +15,86 @@ import (
 // version (ucdFileHashes); Go's own unicode package version is not used.
 const unicodeVersion = "18.0.0"
 
+// main generates every artifact from validated inputs, or checks all outputs
+// without writing. Rules: rules/library/core-library.md — §11.3.
 func main() {
 	input := flag.String("input", "third_party/unicode/18.0.0/ucd", "Unicode Character Database directory")
-	output := flag.String("output", "sec/stdlib/unicode/unicode.sec", "generated Sec source path")
+	output := flag.String("output", "sec/stdlib/unicode/unicode.sec", "generated unicode module path")
+	coreOutput := flag.String("core-output", "sec/core", "generated core table directory")
+	check := flag.Bool("check", false, "check every generated artifact without writing")
 	flag.Parse()
-	db, err := loadUCD(*input, unicodeVersion)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "unicodegen:", err)
-		os.Exit(1)
-	}
-	if err := os.MkdirAll(filepath.Dir(*output), 0755); err != nil {
-		fmt.Fprintln(os.Stderr, "unicodegen:", err)
-		os.Exit(1)
-	}
-	if err := os.WriteFile(*output, renderLetterTables(db), 0644); err != nil {
-		fmt.Fprintln(os.Stderr, "unicodegen:", err)
-		os.Exit(1)
-	}
-	coreLetters := renderCoreLetterTables(db)
-
-	if err := os.WriteFile("sec/core/unicode_letters_generated.sec", coreLetters, 0644); err != nil {
-		fmt.Fprintln(os.Stderr, "unicodegen:", err)
-		os.Exit(1)
-	}
-
-	coreDigits, err := renderCoreDecimalDigits(db)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "unicodegen:", err)
-		os.Exit(1)
-	}
-
-	if err := os.WriteFile("sec/core/unicode_digits_generated.sec", coreDigits, 0644); err != nil {
+	if err := generateUnicode(*input, *output, *coreOutput, *check); err != nil {
 		fmt.Fprintln(os.Stderr, "unicodegen:", err)
 		os.Exit(1)
 	}
 }
 
-// isLetterCategory reports the General_Category values of Unicode letters
-// (L = Lu | Ll | Lt | Lm | Lo).
-func isLetterCategory(category string) bool {
-	switch category {
-	case "Lu", "Ll", "Lt", "Lm", "Lo":
-		return true
+// unicodeArtifacts computes all outputs before writing any, so invalid data
+// cannot publish a partially regenerated family. Rules: rules/library/core-library.md — §11.3.
+func unicodeArtifacts(db *ucdDatabase, output, coreOutput string) (map[string][]byte, error) {
+	digits, err := renderCoreDecimalDigits(db)
+	if err != nil {
+		return nil, err
 	}
-	return false
+	properties := unicodeProperties(db)
+	casing, err := renderCoreCaseMappings(db)
+	if err != nil {
+		return nil, err
+	}
+	fullCasing, err := renderCoreFullCaseMappings(db)
+	if err != nil {
+		return nil, err
+	}
+	return map[string][]byte{
+		filepath.Join(coreOutput, "unicode_case_generated.sec"):      casing,
+		filepath.Join(coreOutput, "unicode_full_case_generated.sec"): fullCasing,
+		output: renderUnicodeModule(db, properties),
+		filepath.Join(coreOutput, "unicode_letters_generated.sec"):    renderCoreLetterTables(db),
+		filepath.Join(coreOutput, "unicode_digits_generated.sec"):     digits,
+		filepath.Join(coreOutput, "unicode_properties_generated.sec"): renderCoreProperties(db, properties),
+	}, nil
 }
 
-// func unicodeLetterRanges(db *ucdDatabase) []codePointRange {
-// 	return rangesWhere(func(value rune) bool { return isLetterCategory(db.category(value)) })
-// }
+// generateUnicode keeps generation offline and deterministic, and check mode
+// reports every stale/missing output. Rules: rules/library/core-library.md — §11.3.
+func generateUnicode(input, output, coreOutput string, check bool) error {
+	db, err := loadUCD(input, unicodeVersion)
+	if err != nil {
+		return err
+	}
+	artifacts, err := unicodeArtifacts(db, output, coreOutput)
+	if err != nil {
+		return err
+	}
+	paths := make([]string, 0, len(artifacts))
+	for path := range artifacts {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+	var stale []string
+	for _, path := range paths {
+		if check {
+			actual, err := os.ReadFile(path)
+			if err != nil && !os.IsNotExist(err) {
+				return err
+			}
+			if err != nil || !bytes.Equal(actual, artifacts[path]) {
+				stale = append(stale, path)
+			}
+			continue
+		}
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(path, artifacts[path], 0644); err != nil {
+			return err
+		}
+	}
+	if len(stale) > 0 {
+		return fmt.Errorf("stale generated files: %s; run go run ./cmd/unicodegen", strings.Join(stale, ", "))
+	}
+	return nil
+}
 
 /**
  * unicodeLetterRanges returns every Unicode letter code point range.
@@ -83,73 +116,27 @@ func unicodeLetterRanges(db *ucdDatabase) []codePointRange {
 	return unicodeCategoryRanges(db, "Lu", "Ll", "Lt", "Lm", "Lo")
 }
 
-/**
- * renderCoreLetterTables generates Unicode letter classification for Sec core.
- *
- * Description:
- * Emits the Unicode 18.0 letter ranges and an internal lookup function.
- * The generated data is shared by the rune API and the standard library.
- *
- * Parameters:
- * - db: The validated Unicode Character Database.
- *
- * Returns:
- * Generated Sec source code for the core module.
- *
- * Allocation:
- * Allocates the generated source buffer during code generation.
- */
+// renderCoreLetterTables retains the existing core helper and ASCII fast path
+// while sharing the complete General_Category L data with the property catalog.
+// Rules: rules/library/core-library.md — §11.3(1,3).
 func renderCoreLetterTables(db *ucdDatabase) []byte {
-	ranges := unicodeLetterRanges(db)
-	var out bytes.Buffer
-	fmt.Fprintln(&out, "// Code generated by go run ./cmd/unicodegen. DO NOT EDIT.")
-	fmt.Fprintf(&out, "// Source: Unicode Character Database %s, General_Category L (Lu, Ll, Lt, Lm, Lo).\n\n", db.version)
-	fmt.Fprintln(&out, "module core")
-	fmt.Fprintln(&out)
-	fmt.Fprintln(&out, "type _UnicodeLetterRange struct {")
-	fmt.Fprintln(&out, "    start: rune,")
-	fmt.Fprintln(&out, "    end:   rune,")
-	fmt.Fprintln(&out, "}")
-	fmt.Fprintln(&out)
-	fmt.Fprintf(&out, "let _unicodeLetterRanges: _UnicodeLetterRange[%d] := [\n", len(ranges))
-	for _, value := range ranges {
-		fmt.Fprintf(&out, "    _UnicodeLetterRange{ start: 0x%06Xr, end: 0x%06Xr },\n", value.start, value.end)
-	}
-	fmt.Fprintln(&out, "]")
-	fmt.Fprintln(&out)
-	fmt.Fprintln(&out, "/** Reports whether ch is a Unicode letter. */")
-	fmt.Fprintln(&out, "fn _UnicodeIsLetter(ch: rune) bool {")
-	fmt.Fprintln(&out, "    if ch < 0r || ch > 0x10FFFFr {")
-	fmt.Fprintln(&out, "        return false")
-	fmt.Fprintln(&out, "    }")
-	fmt.Fprintln(&out)
-	fmt.Fprintln(&out, "    if ch <= 0x007Fr {")
-	fmt.Fprintln(&out, "        return ch in 0x0041r..0x005Ar || ch in 0x0061r..0x007Ar")
-	fmt.Fprintln(&out, "    }")
-	fmt.Fprintln(&out)
-	fmt.Fprintln(&out, "    let mut low := 0")
-	fmt.Fprintf(&out, "    let mut high := %d\n", len(ranges)-1)
-	fmt.Fprintln(&out, "    while low <= high {")
-	fmt.Fprintln(&out, "        let middle := low + (high - low) / 2")
-	fmt.Fprintln(&out, "        let current := _unicodeLetterRanges[middle]")
-	fmt.Fprintln(&out)
-	fmt.Fprintln(&out, "        if ch < current.start {")
-	fmt.Fprintln(&out, "            high = middle - 1")
-	fmt.Fprintln(&out, "            continue")
-	fmt.Fprintln(&out, "        }")
-	fmt.Fprintln(&out, "        if ch > current.end {")
-	fmt.Fprintln(&out, "            low = middle + 1")
-	fmt.Fprintln(&out, "            continue")
-	fmt.Fprintln(&out, "        }")
-	fmt.Fprintln(&out)
-	fmt.Fprintln(&out, "        return true")
-	fmt.Fprintln(&out, "    }")
-	fmt.Fprintln(&out)
-	fmt.Fprintln(&out, "    return false")
-	fmt.Fprintln(&out, "}")
-	return out.Bytes()
+	return fmt.Appendf(nil, `// Code generated by go run ./cmd/unicodegen. DO NOT EDIT.
+// Unicode Character Database %s, General_Category L.
+
+module core
+
+/** Reports Unicode letter membership. Rules: rules/library/core-library.md §11.3. */
+fn _UnicodeIsLetter(ch: rune) bool {
+    if ch <= 0x007Fr {
+        return ch in 0x0041r..0x005Ar || ch in 0x0061r..0x007Ar
+    }
+    return _UnicodeIsCategoryL(ch)
+}
+`, db.version)
 }
 
+// tableContains queries sorted generated ranges during generator verification.
+// Rules: rules/library/core-library.md — §11.3.
 func tableContains(ranges []codePointRange, value rune) bool {
 	if value < 0 || value > maxCodePoint {
 		return false
@@ -248,6 +235,7 @@ func renderCoreDecimalDigits(db *ucdDatabase) ([]byte, error) {
 	var out bytes.Buffer
 
 	fmt.Fprintln(&out, "// Code generated by unicodegen. DO NOT EDIT.")
+	fmt.Fprintf(&out, "// Unicode Character Database %s, General_Category Nd.\n", db.version)
 	fmt.Fprintln(&out, "module core")
 	fmt.Fprintln(&out)
 	fmt.Fprintf(&out, "let _decimalZeros: rune[%d] := [\n", len(zeros))
@@ -294,44 +282,4 @@ func unicodeCategoryRanges(db *ucdDatabase, categories ...string) []codePointRan
 
 		return false
 	})
-}
-
-/**
- * renderLetterTables generates the public Unicode letter API.
- *
- * Description:
- * Delegates Unicode letter classification to Sec core so that
- * the Unicode letter table is stored only once.
- *
- * Parameters:
- * - db: The validated Unicode Character Database.
- *
- * Returns:
- * Generated Sec source code for the unicode module.
- *
- * Allocation:
- * Allocates the generated source buffer during code generation.
- */
-func renderLetterTables(db *ucdDatabase) []byte {
-	return fmt.Appendf(nil, `// Code generated by unicodegen. DO NOT EDIT.
-// Unicode Character Database %s.
-
-module unicode
-
-/**
- * Reports whether a Unicode scalar is a letter.
- *
- * Parameters:
- * - ch: The Unicode scalar to classify.
- *
- * Returns:
- * True for Unicode letter categories Lu, Ll, Lt, Lm and Lo.
- *
- * Allocation:
- * Does not allocate.
- */
-fn IsLetter(ch: rune) bool {
-    return ch.IsLetter
-}
-`, db.version)
 }

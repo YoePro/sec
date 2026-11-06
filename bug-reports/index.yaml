@@ -550,3 +550,91 @@ reports:
       if-bindings, match, dereference, ref initialization, the local escape (S1128)
       and the temporary-receiver rejection; Sema, Semantic IR, Sec MLIR emission and
       the LSP ownership diagnostic tests pass.
+
+  - id: BUG-000025
+    source_id: LSP-AUD-20261106-01
+    title: Target-platform analysis ignores the effective requested analysis depth
+    status: open
+    severity: medium
+    kind: lsp-analysis-depth-configuration-bug
+    reported: "2026-11-06"
+    report: open/sec_lsp_four_bug_reports_2026-11-06.md
+    area: tooling-lsp
+    rulebooks:
+      - rules/tooling/lsp.md
+      - rules/compiler/compiler_analysis.md
+      - rules/projects/projects.md
+    governance:
+      - tooling.lsp-multi-target-diagnostics
+      - tooling.lsp-pitfall-presentation
+    evidence: >-
+      Static audit against main at e37b17ee identifies analysisForTarget
+      replacing its project-configured analyzer with a target scalar-plan
+      analyzer at AnalysisInteractive depth. The current working tree still
+      has that hard-coded depth; no runtime reproduction or regression test
+      was run for this report.
+
+  - id: BUG-000026
+    source_id: LSP-AUD-20261106-02
+    title: Shared analysis cache does not distinguish different overlays
+    status: open
+    severity: high
+    kind: lsp-cache-correctness-bug
+    reported: "2026-11-06"
+    report: open/sec_lsp_four_bug_reports_2026-11-06.md
+    area: tooling-lsp
+    rulebooks:
+      - rules/tooling/lsp.md
+      - rules/compiler/incremental_compilation.md
+    governance:
+      - tooling.lsp-responsiveness
+    evidence: >-
+      Static audit against main at e37b17ee found cache reuse based only on
+      overlay presence, allowing distinct non-empty source or target overlays
+      to share semantic facts. The current uncommitted working tree replaces
+      that flag with an overlay fingerprint, but no focused regression result
+      has been recorded; the report remains open pending triage and validation.
+
+  - id: BUG-000027
+    source_id: LSP-AUD-20261106-03
+    title: Unresolved imports suppress independent semantic diagnostics
+    status: open
+    severity: medium
+    kind: lsp-diagnostic-suppression-bug
+    reported: "2026-11-06"
+    report: open/sec_lsp_four_bug_reports_2026-11-06.md
+    area: tooling-lsp
+    rulebooks:
+      - rules/tooling/lsp.md
+      - rules/compiler/parser_recovery.md
+      - rules/tooling/diagnostics.md
+    governance:
+      - tooling.lsp-import-resolution
+      - tooling.lsp-module-diagnostic-scheduling
+    evidence: >-
+      Static audit against main at e37b17ee found both the single-document
+      and module-batch LSP paths withholding Sema diagnostics whenever import
+      assembly reports an error. The current working tree still gates batch
+      semantic diagnostics on an empty import-error list. No independent-error
+      reproduction was run for this report.
+
+  - id: BUG-000028
+    source_id: LSP-AUD-20261106-04
+    title: Unsaved sec.toml diagnostic policy is ignored by Sema
+    status: open
+    severity: medium
+    kind: lsp-unsaved-configuration-bug
+    reported: "2026-11-06"
+    report: open/sec_lsp_four_bug_reports_2026-11-06.md
+    area: tooling-lsp
+    rulebooks:
+      - rules/tooling/lsp.md
+      - rules/tooling/diagnostics.md
+    governance:
+      - tooling.lsp-pitfall-presentation
+      - tooling.lsp-module-diagnostic-scheduling
+    evidence: >-
+      Static audit against main at e37b17ee found newLSPAnalyzerForInputsAtDepth
+      loading diagnostics.rules through lspDiagnosticRules from disk rather
+      than the request's source overlay. The current working tree retains that
+      disk-only read. No unsaved-manifest reproduction was run for this report.

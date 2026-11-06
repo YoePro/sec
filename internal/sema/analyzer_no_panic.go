@@ -70,7 +70,11 @@ func (a *Analyzer) reportNoPanicViolation(attributes []*ast.Attribute, id Callab
 	chain := make([]string, 0, len(summary.PanicPath))
 	for _, step := range summary.PanicPath {
 		if node, exists := a.callGraph.Node(step); exists {
-			chain = append(chain, node.Name)
+			name := node.Name
+			if node.ImplTarget != "" && name == freeFunctionName(node.ImplTarget) {
+				name = node.ImplTarget + ".free"
+			}
+			chain = append(chain, name)
 		}
 	}
 	introducingID := summary.PanicPath[len(summary.PanicPath)-1]
@@ -88,12 +92,20 @@ func (a *Analyzer) reportNoPanicViolation(attributes []*ast.Attribute, id Callab
 		message += fmt.Sprintf("; effect introduced at %s", formatLocation(source.File, source.Line, source.Column))
 	}
 	help := noPanicEffectHelp(kind)
+	cleanup := a.panicCleanupContext(kindLabel, summary.PanicPath)
+	if cleanup != "" {
+		message += "; panic path runs through " + cleanup
+		help = cleanupPanicHelp(kind)
+	}
 	if len(chain) > 1 {
 		help = "The panic comes from " + chain[len(chain)-1] + ", which " + name + " calls. " + help
 	}
 	if root, context := interruptPanicRoot(attributes); root != nil {
 		message = context + " " + message
 		help = interruptPanicHelp(kind, root.Name.Value)
+		if cleanup != "" {
+			help = "The panic path runs through " + cleanup + ". " + help + " Cleanup failures must be handled locally; cleanup cannot return a failure from the exiting invocation."
+		}
 		if len(chain) > 1 {
 			help = "The reachable panic path is " + strings.Join(chain, " -> ") + ". " + help
 		}

@@ -11,7 +11,7 @@ import (
 // One receiver-resolved registry supplies identity, safety, signatures and
 // effects to both the compiler and tooling, retaining nominal pointee names.
 // Rules: rules/memory/raw_pointers.md — §§3(4),11–14,35(1–3),(6);
-// rules/compiler/compiler_known_members.md — "RawPtr[T] compiler-known methods".
+// rules/compiler/compiler_known_members.md — "RawPtr[T] compiler-known members".
 func TestRawPointerRegistrySurface(t *testing.T) {
 	for _, element := range []Type{builtinType("byte"), builtinType("int"), builtinType("void"), {Name: "Reading", Kind: IntType, Named: true}} {
 		pointer := builtinType("RawPtr")
@@ -25,7 +25,12 @@ func TestRawPointerRegistrySurface(t *testing.T) {
 				t.Fatalf("duplicate operation %s", member.Name)
 			}
 			seen[member.Name] = true
-			if !member.Unsafe || !strings.HasPrefix(member.Signature, "unsafe fn ") || member.Kind != CompilerKnownMethod || member.Rule == "" || member.Receiver == "" || member.Documentation == "" || member.TargetRestriction == "" {
+			isProperty := member.Name == "AsRef" || member.Name == "AsRefMut"
+			expectedKind, prefix := CompilerKnownMethod, "unsafe fn "
+			if isProperty {
+				expectedKind, prefix = CompilerKnownProperty, "unsafe property "
+			}
+			if !member.Unsafe || !strings.HasPrefix(member.Signature, prefix) || member.Kind != expectedKind || member.Rule == "" || member.Receiver == "" || member.Documentation == "" || member.TargetRestriction == "" {
 				t.Fatalf("incomplete shared metadata: %+v", member)
 			}
 			if strings.Contains(member.Signature, " T") || strings.Contains(member.Signature, "[T]") {

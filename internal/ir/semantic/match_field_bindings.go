@@ -61,6 +61,23 @@ func (fb *functionBuilder) bindMatchFields(subjectExpr ast.Expression, subject b
 		var value builtValue
 		switch field.Action {
 		case sema.MatchBindingCopyTrivial:
+			if subjectPlace != nil && subjectPlace.mutable && fb.variantGuard != 0 {
+				// A stored subject is read in place: its payload Place on the
+				// proven variant path, then the field (P17-37).
+				payload, found := variantPayloadType(fb.owner.module, subject.typ, variantIndex)
+				if !found {
+					restore()
+					return nil, nil, fb.unsupported("named-field binding without a payload Place type", field.Identifier.Token)
+				}
+				owned, _, _ := fb.storedSubject(subjectExpr)
+				payloadPlace := fb.storedPayloadPlace(owned, subjectPlace.place, variantIndex, payload, field.Identifier.Token)
+				fieldPlace := fb.placeResult(Operation{
+					Kind: OpPlaceField, Operands: []ValueID{payloadPlace.id}, StructField: StructFieldID(fieldIndex),
+					Location: location(field.Identifier.Token),
+				}, fb.owner.module.Types.Intern(Type{Kind: TypePlace, Element: fieldType, Mutable: true}))
+				value = fb.result(Operation{Kind: OpPlaceRead, Operands: []ValueID{fieldPlace.id}, Location: location(field.Identifier.Token)}, fieldType)
+				break
+			}
 			value = fb.result(Operation{
 				Kind: OpUnionUnwrapField, Operands: []ValueID{subject.id}, UnionVariant: variantIndex,
 				UnionField: field.Field, PayloadActions: []UnionPayloadAction{UnionPayloadCopyTrivial},
@@ -144,4 +161,18 @@ func (fb *functionBuilder) borrowMatchField(subjectExpr ast.Expression, subject 
 		Place: placeMetadataOf(plan.Place), Location: location(token),
 	}, fb.owner.module.Types.Intern(Type{Kind: TypePlace, Element: fieldType, Mutable: mutable}))
 	return fb.emitBorrow(reference, plan, fieldPlace)
+}
+
+// copyTrivialFieldBindings reports an arm whose named-field bindings, if any,
+// all copy trivially copyable fields.
+func copyTrivialFieldBindings(armPlan sema.ResolvedMatchArm) bool {
+	if armPlan.PatternKind == sema.MatchPatternResultErrVariant {
+		return len(armPlan.FieldBindings) == 0
+	}
+	for _, field := range armPlan.FieldBindings {
+		if field.Action != sema.MatchBindingCopyTrivial {
+			return false
+		}
+	}
+	return true
 }

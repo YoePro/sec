@@ -11,7 +11,7 @@ using namespace sec::detail;
 namespace {
 // Slice holders are direct safe references, independently of their elements.
 // Rules: rules/mlir/packages/sec-mlir-dialect_package16.md — §§31,84–86.
-bool isSlice(Type type) { return isa<SliceType, SliceMutType>(type); }
+bool isSlice(Type type) { return isa<SliceType, SliceMutType, StringViewType>(type); }
 
 // Canonical P15 metadata is reused, with parameter dictionaries and operation
 // properties exposed under the same keys. Absence keeps the established
@@ -156,10 +156,11 @@ Operation *useAfterBoundary(Operation *boundary, Value ended) {
             SliceElementPlaceOp, RefBorrowSharedOp, RefBorrowMutOp,
             RefReborrowSharedOp, RefReborrowMutOp, SliceBorrowSharedOp,
             SliceBorrowMutOp, SliceReborrowSharedOp, SliceReborrowMutOp,
-            SliceCopySharedOp, SliceMoveMutOp, RefCopySharedOp, RefMoveOp>(op)) {
+            SliceCopySharedOp, SliceMoveMutOp, RefCopySharedOp, RefMoveOp,
+            StringViewBorrowOp>(op)) {
       bool derived = isa<RefBorrowSharedOp, RefBorrowMutOp, RefReborrowSharedOp,
                          RefReborrowMutOp, SliceBorrowSharedOp, SliceBorrowMutOp,
-                         SliceReborrowSharedOp, SliceReborrowMutOp>(op);
+                         SliceReborrowSharedOp, SliceReborrowMutOp, StringViewBorrowOp>(op);
       bool transfer = isa<SliceCopySharedOp, SliceMoveMutOp, RefCopySharedOp, RefMoveOp>(op);
       graph[op->getOperand(0)].push_back({op->getResult(0), derived, transfer});
     }
@@ -218,7 +219,7 @@ LogicalResult sec::detail::verifySliceReferences(func::FuncOp fn) {
     bool derived = false;
     if (isa<SliceCopySharedOp, SliceMoveMutOp, SliceElementPlaceOp>(op)) source=op->getOperand(0);
     if (isa<SliceReborrowSharedOp, SliceReborrowMutOp>(op)) { source=op->getOperand(0); derived=true; }
-    if (isa<SliceBorrowSharedOp, SliceBorrowMutOp>(op)) {
+    if (isa<SliceBorrowSharedOp, SliceBorrowMutOp, StringViewBorrowOp>(op)) {
       source=grantingReference(op->getOperand(0)); derived=bool(source);
       if (!source) {
         auto props=cast<DictionaryAttr>(op->getPropertiesAsAttribute());

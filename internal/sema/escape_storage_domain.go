@@ -37,7 +37,7 @@ func (a *Analyzer) checkStorageDomainStore(target ast.Expression, targetType Typ
 	if !ok {
 		return false
 	}
-	symbol, ok := a.symbols[root]
+	symbol, ok := a.symbols.lookup(root)
 	if !ok || (symbol.Storage != StorageOriginStatic && symbol.Storage != StorageOriginThreadLocal) {
 		return false
 	}
@@ -155,7 +155,7 @@ func (a *Analyzer) storageDomainOriginDependencies(origin localReferenceOrigin, 
 		if dependency.token.Line == 0 {
 			dependency.token = fallback
 		}
-		if symbol, ok := a.symbols[place.Root]; ok {
+		if symbol, ok := a.symbols.lookup(place.Root); ok {
 			dependency.storage = symbol.Storage
 		} else {
 			dependency.unknown = true

@@ -2447,7 +2447,7 @@ it.
 
 ---
 
-# `RawPtr[T]` compiler-known methods
+# `RawPtr[T]` compiler-known members
 
 The registry includes required raw-pointer operations such as:
 
@@ -2459,11 +2459,13 @@ unsafe pointer.VolatileWrite(value)
 unsafe pointer.Offset(elements)
 unsafe pointer.AddBytes(bytes)
 unsafe pointer.Difference(other)
-unsafe pointer.AsRef()
-unsafe pointer.AsRefMut()
+unsafe {
+    let observer := pointer.AsRef
+    let editor := otherPointer.AsRefMut
+}
 ```
 
-`AsRef() ref T` and `AsRefMut() ref mut T` (`CKM-RAWPTR-AS-REF`, `CKM-RAWPTR-AS-REF-MUT`) are the only raw-to-safe reference spellings (MD-070; `raw_pointers.md` § 18A). They exist only on a typed `RawPtr[T]`, never on `RawPtr[void]`, `T`, `ref T` or `ref mut T`, and they carry the caller obligations of `raw_pointers.md` § 18(2)–(3). The reverse direction is the existing unsafe property `.Ptr`. Applied through a safe reference (`r.Ptr`, or `(*r).Ptr` per MD-063) it addresses the referent's storage (`raw_pointers.md` § 17(7)–(9)).
+`AsRef: ref T` and `AsRefMut: ref mut T` (`CKM-RAWPTR-AS-REF`, `CKM-RAWPTR-AS-REF-MUT`) are the only raw-to-safe reference spellings (MD-070; `raw_pointers.md` § 18A). They exist only on a typed `RawPtr[T]`, never on `RawPtr[void]`, `T`, `ref T` or `ref mut T`, and they carry the caller obligations of `raw_pointers.md` § 18(2)–(3). The reverse direction is the existing unsafe property `.Ptr`. Applied through a safe reference (`r.Ptr`, or `(*r).Ptr` per MD-063) it addresses the referent's storage (`raw_pointers.md` § 17(7)–(9)).
 
 Ordinary raw access and pointer arithmetic are owned by `unsafe.md` and
 `reference_model.md`. `VolatileRead` and `VolatileWrite` are distinct observable
@@ -3971,3 +3973,5 @@ formatter, documentation generation, separate compilation, and diagnostics.
 
 No compiler-known operation bypasses ownership, lifetime, allocation, unsafe,
 effect, or target-profile rules.
+
+As-property naming (owner clarification, 2026-11-06): As* conversions are properties, never methods; functional getters use Get*(). RawPtr.AsRef and RawPtr.AsRefMut are unsafe read-only properties. Their stable identities and safety contracts do not change. See `rules/corrections/applied/md070-as-property-naming-correction-20261106.md`.

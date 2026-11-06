@@ -24,7 +24,7 @@ func TestStaticDoesNotSelectPhysicalPlacement(t *testing.T) {
 		t.Fatal(errors)
 	}
 	for _, name := range []string{"Global", "Explicit", "Mutable", "OrdinarySnapshot", "Counter.Limit", "Counter.Total"} {
-		symbol, ok := a.symbols[name]
+		symbol, ok := a.symbols.lookup(name)
 		if !ok || symbol.Storage != StorageOriginStatic || symbol.RegisterAccess != "" {
 			t.Fatalf("static symbol: %s %+v", name, symbol)
 		}

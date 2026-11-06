@@ -53,14 +53,14 @@ func TestPlaceRootIdentityFollowsDeclarations(t *testing.T) {
 func TestPlaceRootKindClassifiesBindingRole(t *testing.T) {
 	analyzer := NewAnalyzer()
 	token := func(line int) lexer.Token { return lexer.Token{Line: line, Column: 1} }
-	analyzer.symbols = map[string]Symbol{
+	analyzer.symbols = symbolTableOf(map[string]Symbol{
 		"count":   {Name: "count", Token: token(1), Local: true, Parameter: true, Storage: StorageOriginAutomatic},
 		"total":   {Name: "total", Token: token(2), Local: true, Storage: StorageOriginAutomatic},
 		"self":    {Name: "self", Token: token(3), Local: true, Parameter: true},
 		"Size":    {Name: "Size", Token: token(4), ImplicitMember: true},
 		"Limit":   {Name: "Limit", Token: token(5), Storage: StorageOriginStatic},
 		"counter": {Name: "counter", Token: token(6), Local: true, Storage: StorageOriginThreadLocal},
-	}
+	})
 	for name, want := range map[string]PlaceRootKind{
 		"count": PlaceRootParameter, "total": PlaceRootLocal, "self": PlaceRootReceiver,
 		"Size": PlaceRootReceiver, "Limit": PlaceRootStatic, "counter": PlaceRootStatic,

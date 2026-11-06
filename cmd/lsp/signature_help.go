@@ -33,7 +33,7 @@ func signatureHelpForSource(uri string, text string, pos position, overlays ...s
 			}
 			if member, ok := expression.Callee.(*ast.MemberExpression); ok && member != nil && member.Property != nil {
 				known, found := analyzer.CompilerKnownMemberAt(member.Property.Token.File, member.Property.Token.Line, member.Property.Token.Column)
-				if found && strings.HasPrefix(known.ID, "CKM-RAWPTR-") {
+				if found && known.Kind == sema.CompilerKnownMethod && strings.HasPrefix(known.ID, "CKM-RAWPTR-") {
 					parameters := make([]parameterInformation, 0, len(known.Parameters))
 					for _, parameter := range known.Parameters {
 						parameters = append(parameters, parameterInformation{Label: initializerParameterLabel(parameter)})

@@ -144,7 +144,7 @@ func (a *Analyzer) tryAssignmentErrorType(stmt *ast.AssignmentStatement) (Type, 
 			}
 			return *property.Error, true
 		}
-		symbol, ok := a.symbols[target.Value]
+		symbol, ok := a.symbols.lookup(target.Value)
 		if ok && hasContracts(symbol.Type) {
 			return a.types["ContractError"], true
 		}

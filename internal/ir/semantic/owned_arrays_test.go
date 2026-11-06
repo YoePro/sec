@@ -1,7 +1,6 @@
 package semantic
 
 import (
-	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -126,19 +125,31 @@ func TestOwnedArrayConstructRejectsInvalidTransfers(t *testing.T) {
 	}
 }
 
-// Unrepresented partial-construction cleanup returns no partial module.
-// Rules: rules/memory/destruction.md — § 14.2; P17 — §§ 14, 65.
-func TestOwnedArrayDeferredProducerBoundaries(t *testing.T) {
-	for _, tc := range []struct{ fixture, feature string }{
-		{"owned_fixed_arrays_partial.sec", "P17-16"},
-	} {
-		t.Run(tc.fixture, func(t *testing.T) {
-			program, analyzer := sliceBoundaryInput(t, "semantic_ir/"+tc.fixture)
-			module, err := Build(program, analyzer, BuildOptions{RequestedModule: "main", MaxPackage: 17})
-			var unsupported *UnsupportedFeatureError
-			if module != nil || !errors.As(err, &unsupported) || !strings.Contains(unsupported.Feature, tc.feature) || unsupported.Location.Line <= 0 {
-				t.Fatalf("array boundary: module=%v err=%v", module != nil, err)
-			}
-		})
+// A failing element leaves through cleanup of the elements already evaluated:
+// the failure edge destroys them in reverse order before the function exit and
+// never builds the array (destruction.md §§ 7, 14.2; P17-16).
+func TestOwnedArrayPartialConstructionCleanup(t *testing.T) {
+	program, analyzer := sliceBoundaryInput(t, "semantic_ir/owned_fixed_arrays_partial.sec")
+	module, err := Build(program, analyzer, BuildOptions{RequestedModule: "main", MaxPackage: 17})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Verify(module); err != nil {
+		t.Fatal(err)
+	}
+	for _, block := range functionNamed(t, module, "Partial").Blocks {
+		last := block.Operations[len(block.Operations)-1]
+		if last.Kind != OpReturn || len(block.Operations) < 2 {
+			continue
+		}
+		destroyed := false
+		constructed := false
+		for _, op := range block.Operations {
+			destroyed = destroyed || op.Kind == OpOwnDestroyValue && op.Ownership.Cause == "temporary-end"
+			constructed = constructed || op.Kind == OpArrayConstruct
+		}
+		if !constructed && !destroyed {
+			t.Fatalf("failure exit of Partial leaves the prepared element:\n%s", Format(module))
+		}
 	}
 }

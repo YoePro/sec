@@ -192,7 +192,7 @@ func (a *Analyzer) appendEscapeExpressionSteps(path *EscapeCausePath, expr ast.E
 		walk(expr.Left)
 		add("view", "view retains its backing-storage dependency", expr.Token)
 	case *ast.Identifier:
-		symbol, known := a.symbols[expr.Value]
+		symbol, known := a.symbols.lookup(expr.Value)
 		if known && !variadicPackValue(symbol.Type) && !sameSourceToken(symbol.Token, origin) {
 			add("carrier", fmt.Sprintf("current carrier binding %q is declared here", expr.Value), symbol.Token)
 		}

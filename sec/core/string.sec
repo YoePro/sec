@@ -300,7 +300,8 @@ impl string {
      * - The Unicode Standard, UTF-8 encoding form.
      */
     static fn FromByteArray(data: ref byte[]) Result[string, StringError] {
-        // TODO: Validate string.FromByteArray()
+        // _stringFromUtf8 validates strict UTF-8 itself and reports the first
+        // malformed sequence's offset (compiler_known_members.md, MD-091).
         return _stringFromUtf8(data)
     }
 
@@ -886,23 +887,8 @@ impl string {
         }
     }
 
-    fn ToLower() string {
-        // TODO: Implement a correct version of the ToLower-function
-        let mut s: string
-        for r in self {
-            s += r.ToLower()
-        }
-        return s
-    }
-
-    fn ToUpper() string {
-        // TODO: Implement a correct version of the ToUpper-function
-        let mut s: string
-        for r in self {
-            s += r.ToUpper()
-        }
-        return s
-    }
+    // Case conversion of whole strings lives in stdlib/str (str.ToLower,
+    // str.ToUpper, str.ToTitle), not in core (owner decision 2026-11-06).
 
     /** Returns a copy of self */
     fn ToString() Result[string, StringError] {

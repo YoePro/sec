@@ -66,7 +66,7 @@ func TestHardwareMetadataAnalysis(t *testing.T) {
 			if _, exists := analyzer.types["HardwareRegionKind"]; exists {
 				t.Fatal("metadata enum became a runtime type")
 			}
-			if _, exists := analyzer.symbols["OutputState"]; exists {
+			if _, exists := analyzer.symbols.lookup("OutputState"); exists {
 				t.Fatal("metadata resource became a runtime value")
 			}
 			before, _ := analyzer.HardwareFacts()

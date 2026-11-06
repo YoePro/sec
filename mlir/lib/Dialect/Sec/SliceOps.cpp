@@ -81,6 +81,16 @@ Type sliceElement(Type type) {
   return {};
 }
 
+// boundedSource accepts every bounded view whose holder operations are
+// shared with slices: slices and the MD-126 StringView.
+bool boundedSource(Type type) { return sliceElement(type) || isa<StringViewType>(type); }
+
+// stringPlace recognizes a Place whose referent is a string.
+bool stringPlace(Type type) {
+  auto place = dyn_cast<PlaceType>(type);
+  return place && isa<StringType>(place.getElementType());
+}
+
 // verifyRange preserves the original present endpoint carriers/signedness and
 // exact uint outputs. This validates the operation, not Sema's range proof.
 // Rules: rules/mlir/packages/sec-mlir-dialect_package16.md — sections 35,78-80,92-93.
@@ -133,6 +143,16 @@ LogicalResult verifyBorrow(Op op, bool mutableResult, bool reborrow) {
     return failure();
   Type element;
   bool writable;
+  if (reborrow && isa<StringViewType>(op.getSource().getType())) {
+    // MD-126: a view of a view narrows the same UTF-8 origin.
+    if (!op.getSourceBorrow() || *op.getSourceBorrow() == 0 || *op.getSourceBorrow() == op.getBorrowId())
+      return op.emitOpError("reborrow requires a distinct non-zero source_borrow");
+    if (mutableResult || !isa<StringViewType>(op.getSlice().getType()))
+      return op.emitOpError("a StringView reborrow must produce a shared StringView");
+    if (!isCountType(op, op.getStart().getType()) || op.getStart().getType() != op.getLength().getType())
+      return op.emitOpError("normalized start and length must have the same uint count type");
+    return success();
+  }
   if (reborrow) {
     element = sliceElement(op.getSource().getType());
     writable = isa<SliceMutType>(op.getSource().getType());
@@ -172,7 +192,7 @@ template <typename Op> LogicalResult verifyTransfer(Op op, bool mut) {
       failed(verifySliceProvenance(op)))
     return failure();
   Type source = op.getSource().getType();
-  if (!sliceElement(source) || isa<SliceMutType>(source) != mut || op.getSlice().getType() != source)
+  if (!boundedSource(source) || isa<SliceMutType>(source) != mut || op.getSlice().getType() != source)
     return op.emitOpError("holder transfer requires matching slice type and authority");
   // MD-084 section 3(3): omission means the unchanged borrow_id for a
   // copy/move, while an explicit source identity must still agree.
@@ -253,8 +273,51 @@ LogicalResult SliceMoveMutOp::verify() {
 LogicalResult SliceLenOp::verify() {
   if (failed(requireSliceSchema(*this)) || failed(verifySliceProvenance(*this)))
     return failure();
-  if (!sliceElement(getSource().getType()) || !isCountType(*this, getLength().getType()))
+  if (!boundedSource(getSource().getType()) || !isCountType(*this, getLength().getType()))
     return emitOpError("slice length requires a bounded slice and uint count result");
+  return success();
+}
+// MD-126: a StringView over a string Place, shared only.
+// Rules: rules/collections/collections.md 7.10; rules/memory/borrowing.md 5.5.
+LogicalResult StringViewBorrowOp::verify() {
+  if (failed(requireSliceSchema(*this)) || failed(verifyReferenceMetadata(*this)) ||
+      failed(verifySliceProvenance(*this)))
+    return failure();
+  if (!stringPlace(getSource().getType()))
+    return emitOpError("string view source must be a string Place");
+  if (getSourceBorrow() && (*getSourceBorrow() == 0 || *getSourceBorrow() == getBorrowId()))
+    return emitOpError("a granting source_borrow must be distinct and non-zero");
+  if (!isa<StringViewType>(getSlice().getType()))
+    return emitOpError("string view borrow must produce !sec.string_view");
+  if (!isCountType(*this, getStart().getType()) || getStart().getType() != getLength().getType())
+    return emitOpError("normalized start and length must have the same uint count type");
+  return success();
+}
+// MD-126: the byte count of a view is a uint observation.
+LogicalResult StringViewByteLenOp::verify() {
+  if (failed(requireSliceSchema(*this)))
+    return failure();
+  if (!isa<StringViewType>(getView().getType()) || !isCountType(*this, getLength().getType()))
+    return emitOpError("byte_len requires a StringView and uint count result");
+  return success();
+}
+// MD-126: rune-by-value traversal over a view with a count-typed cursor.
+// Rules: rules/control-flow/flowcontrol_for.md 19.
+LogicalResult StringViewDecodeNextOp::verify() {
+  if (failed(requireSliceSchema(*this)))
+    return failure();
+  if (!isa<StringViewType>(getView().getType()) || !isa<RuneType>(getValue().getType()) ||
+      !isCountType(*this, getCursor().getType()) || getNext().getType() != getCursor().getType())
+    return emitOpError("decode_next requires a StringView, a uint cursor and a rune result");
+  return success();
+}
+// MD-126: the rune count observes a string Place without reading its value.
+// Rules: rules/compiler/semantic_ir.md 17(9).
+LogicalResult StringRuneLenOp::verify() {
+  if (failed(requireSliceSchema(*this)))
+    return failure();
+  if (!stringPlace(getSource().getType()) || !isCountType(*this, getLength().getType()))
+    return emitOpError("rune length requires a string Place and uint count result");
   return success();
 }
 // The bounds predicate does not read elements or compute physical addresses.

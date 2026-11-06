@@ -25,7 +25,7 @@ func (a *Analyzer) provesResultProjectionSafe(object ast.Expression, projection 
 	if !ok {
 		return false
 	}
-	symbol, exists := a.symbols[identifier.Value]
+	symbol, exists := a.symbols.lookup(identifier.Value)
 	if !exists || symbol.Mutable {
 		return false
 	}
@@ -102,7 +102,7 @@ func (a *Analyzer) recordResultConstruction(stmt *ast.LetStatement) {
 	if stmt == nil || stmt.Name == nil {
 		return
 	}
-	symbol, exists := a.symbols[stmt.Name.Value]
+	symbol, exists := a.symbols.lookup(stmt.Name.Value)
 	if !exists {
 		return
 	}
@@ -120,7 +120,7 @@ func (a *Analyzer) recordResultConstruction(stmt *ast.LetStatement) {
 			symbol.ConstructedVariant = a.unionConstructorVariant(stmt.Value, symbol.Type)
 		}
 	}
-	a.symbols[stmt.Name.Value] = symbol
+	a.symbols.set(stmt.Name.Value, symbol)
 }
 
 // recordResultStateFact activates a proven Result state for an immutable
@@ -129,7 +129,7 @@ func (a *Analyzer) recordResultConstruction(stmt *ast.LetStatement) {
 // Rules:
 //   - rules/errors/errorhandling.md — §6.1 "Consuming projections" (state proven unreachable by control flow)
 func (a *Analyzer) recordResultStateFact(binding string, state string, source lexer.Token) {
-	if symbol, exists := a.symbols[binding]; !exists || symbol.Mutable {
+	if symbol, exists := a.symbols.lookup(binding); !exists || symbol.Mutable {
 		return
 	}
 	a.activeConditionFacts = append(a.activeConditionFacts, activeConditionFact{epoch: a.arrayIndexMutationEpoch, resultBinding: binding, resultState: state, resultSource: source})

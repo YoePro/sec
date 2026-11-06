@@ -88,8 +88,14 @@ func (fb *functionBuilder) buildLogical(expr *ast.InfixExpression, flow sema.Res
 	}
 	fb.emit(Operation{Kind: OpCondBranch, Operands: []ValueID{left.id}, Successors: successors, Operator: flow.Operator, Location: loc})
 	fb.current = rhs
+	depth := len(fb.temporaries)
 	right, err := fb.buildExpr(expr.Right, boolType)
 	if err != nil {
+		return builtValue{}, err
+	}
+	// The conditionally evaluated operand is its temporaries' scope: they end
+	// when it does, before the merge (owner decision 2026-11-06; P17-40).
+	if err := fb.endRegionTemporaries(depth); err != nil {
 		return builtValue{}, err
 	}
 	fb.emit(Operation{Kind: OpBranch, Successors: []BranchTarget{{Block: merge.ID, Arguments: []ValueID{right.id}}}, Operator: flow.Operator, Location: loc})

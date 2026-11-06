@@ -68,7 +68,7 @@ func (a *Analyzer) inferStateTestExpression(expr *ast.StateTestExpression) (Type
 	if isIdentifier {
 		fact.Binding = identifier.Value
 		if assigned, tracked := a.assigned[identifier.Value]; tracked && !assigned {
-			if symbol, ok := a.symbols[identifier.Value]; ok {
+			if symbol, ok := a.symbols.lookup(identifier.Value); ok {
 				a.bindDefinition(identifier.Token, symbol.Token)
 				subjectType = symbol.Type
 				fact.MaybeEmpty = true
@@ -159,7 +159,7 @@ func (a *Analyzer) unionConstructorVariant(value ast.Expression, typ Type) strin
 //   - rules/declarations/unions.md — §8.1 "Active variant test", §8.4 "Impossible state tests"
 //   - rules/tooling/diagnostics.md — § 21(1), (5), (6) "Proven unreachable and dead code"
 func (a *Analyzer) knownVariantTest(binding string, variant string) (value bool, known bool) {
-	symbol, exists := a.symbols[binding]
+	symbol, exists := a.symbols.lookup(binding)
 	if !exists || symbol.Mutable {
 		return false, false
 	}
@@ -341,7 +341,7 @@ func (a *Analyzer) analyzeStateTestBranch(block *ast.BlockStatement, fact Resolv
 func (a *Analyzer) inferMatchSubject(subject ast.Expression) (Type, string) {
 	if identifier, ok := subject.(*ast.Identifier); ok {
 		if assigned, tracked := a.assigned[identifier.Value]; tracked && !assigned {
-			if symbol, ok := a.symbols[identifier.Value]; ok && symbol.Type.Kind == UnionType && symbol.Type.Name != "Option" {
+			if symbol, ok := a.symbols.lookup(identifier.Value); ok && symbol.Type.Kind == UnionType && symbol.Type.Name != "Option" {
 				a.bindDefinition(identifier.Token, symbol.Token)
 				a.expressionTypes[subject] = symbol.Type
 				return symbol.Type, identifier.Value

@@ -27,7 +27,7 @@ type mutexAcquisition struct {
 func (a *Analyzer) mutexAcquisitionFromExpression(expr ast.Expression) *mutexAcquisition {
 	switch expr := expr.(type) {
 	case *ast.Identifier:
-		return a.symbols[expr.Value].mutexAcquisition
+		return a.symbols.get(expr.Value).mutexAcquisition
 	case *ast.RefExpression:
 		return a.mutexAcquisitionFromExpression(expr.Value)
 	case *ast.StructLiteral:
@@ -93,12 +93,12 @@ func (a *Analyzer) mutexAcquisitionFromExpression(expr ast.Expression) *mutexAcq
 // scope exit, branch isolation and moved-state checks their usual authority.
 // Rules: rules/concurrency/mutex.md — §§28(3),37,42–43.
 func (a *Analyzer) bindMutexAcquisition(name string, value ast.Expression) {
-	symbol, ok := a.symbols[name]
+	symbol, ok := a.symbols.lookup(name)
 	if !ok || a.summaryPass {
 		return
 	}
 	symbol.mutexAcquisition = a.mutexAcquisitionFromExpression(value)
-	a.symbols[name] = symbol
+	a.symbols.set(name, symbol)
 }
 
 // bindMutexPayloadAcquisition makes a successful acquisition's guard payload
@@ -106,10 +106,10 @@ func (a *Analyzer) bindMutexAcquisition(name string, value ast.Expression) {
 // Rules: rules/concurrency/mutex.md — §§22–24,42–43;
 // rules/control-flow/flowcontrol_match.md — §§12–14.
 func (a *Analyzer) bindMutexPayloadAcquisition(name, subject string) {
-	symbol := a.symbols[name]
+	symbol := a.symbols.get(name)
 	if isMutexGuardType(dereferenceType(symbol.Type)) {
-		symbol.mutexAcquisition = a.symbols[subject].mutexAcquisition
-		a.symbols[name] = symbol
+		symbol.mutexAcquisition = a.symbols.get(subject).mutexAcquisition
+		a.symbols.set(name, symbol)
 	}
 }
 
@@ -132,7 +132,7 @@ func (a *Analyzer) checkMutexReacquisition(call *ast.CallExpression, member *ast
 	}
 	current := a.resourceIdentityDomain.Identify(resource)
 	var previous *mutexAcquisition
-	for name, symbol := range a.symbols {
+	for name, symbol := range a.symbols.all() {
 		held := symbol.mutexAcquisition
 		if !isMutexGuardType(dereferenceType(symbol.Type)) || held == nil || held.invalidated || held.call == call || held.owner != a.currentCallable || !a.assigned[name] {
 			continue
@@ -192,7 +192,7 @@ func (a *Analyzer) invalidateMutexAcquisitionsForWrite(expr ast.Expression) {
 	if place.Type.Kind == ReferenceType {
 		place = a.canonicalDereferencePlace(expr, place, place.Type)
 	}
-	for _, symbol := range a.symbols {
+	for _, symbol := range a.symbols.all() {
 		if held := symbol.mutexAcquisition; held != nil {
 			holder, ok := a.rootPlace(symbol.Name)
 			if placesMayOverlap(place, held.resource.place) || (ok && placesMayOverlap(place, holder)) {

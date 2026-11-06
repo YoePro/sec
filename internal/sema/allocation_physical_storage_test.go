@@ -40,7 +40,7 @@ func TestAllocationPhysicalStorageSeparation(t *testing.T) {
 				if errors := analyzeWithHardwareTestTarget(a, program); len(errors) != 0 {
 					t.Fatal(errors)
 				}
-				symbol := a.symbols["device"]
+				symbol := a.symbols.get("device")
 				if !symbol.Addressed || !symbol.Volatile || symbol.Storage != StorageOriginUnknown || symbol.AddressStability != AddressStabilityFixed || symbol.Type.ArenaDomainID != "" {
 					t.Fatal("physical storage became owned allocation", symbol)
 				}

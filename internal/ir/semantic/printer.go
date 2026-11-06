@@ -206,7 +206,7 @@ func formatOperation(out *strings.Builder, op Operation) {
 	}
 	out.WriteString(string(op.Kind))
 	switch op.Kind {
-	case OpSliceBorrowShared, OpSliceBorrowMutable, OpSliceReborrowShared, OpSliceReborrowMutable:
+	case OpSliceBorrowShared, OpSliceBorrowMutable, OpSliceReborrowShared, OpSliceReborrowMutable, OpStringViewBorrow:
 		fmt.Fprintf(out, " %%%d, %%%d, %%%d", op.Operands[0], op.Operands[1], op.Operands[2])
 		if op.ReferenceGuard != 0 {
 			fmt.Fprintf(out, " valid=%%%d", op.ReferenceGuard)
@@ -224,7 +224,12 @@ func formatOperation(out *strings.Builder, op Operation) {
 	case OpSliceCopyShared, OpSliceMoveMutable:
 		fmt.Fprintf(out, " %%%d", op.Operands[0])
 		formatReferenceMetadata(out, op.Reference)
-	case OpSliceLength:
+	case OpStringViewDecodeNext:
+		fmt.Fprintf(out, " %%%d, %%%d", op.Operands[0], op.Operands[1])
+		if op.ReferenceGuard != 0 {
+			fmt.Fprintf(out, " valid=%%%d", op.ReferenceGuard)
+		}
+	case OpSliceLength, OpStringRuneLength, OpStringViewByteLength:
 		fmt.Fprintf(out, " %%%d", op.Operands[0])
 		if op.ReferenceGuard != 0 {
 			fmt.Fprintf(out, " valid=%%%d", op.ReferenceGuard)

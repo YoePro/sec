@@ -318,6 +318,10 @@ func (a *Analyzer) inferFailureSetTryExpression(expr *ast.TryExpression, success
 	a.tryFailureSet = context
 	plan, valid := a.analyzeTryHandlers(expr, Type{Name: "Result", Kind: ResultType, TypeArgs: []Type{successType, errorType}})
 	a.tryFailureSet = previous
+	if valid {
+		successType = a.joinStringViewTryOrigins(expr, successType, plan)
+		plan.SuccessType = successType
+	}
 	a.resolvedTries[expr] = ResolvedTry{
 		Kind: ResolvedTryHandledFailureSet, SuccessType: successType, ErrorType: errorType,
 		Failures: append([]TryFailurePoint(nil), points...),
@@ -473,6 +477,10 @@ func (a *Analyzer) failureSetResidualPropagates(expr *ast.TryExpression, matched
 // Rules:
 //   - rules/errors/errorhandling.md — §22 "Handler failures are outside the protected set", §30 "Diagnostics must act as a mentor"
 func (a *Analyzer) addBodylessTryError(token lexer.Token, format string, args ...any) {
+	if a.inDeferBlock {
+		a.addErrorAtTokenWithMetadata(token, diagnostics.TryPropagationIncompatible, deferredPropagationHelp(), format, args...)
+		return
+	}
 	if a.tryHandlerDepth == 0 {
 		a.addErrorAtTokenWithMetadata(token, diagnostics.TryPropagationIncompatible,
 			"A bodyless try returns the failure from this function, so the function must return a compatible Result (or Option for None). Otherwise handle the failure locally with try handlers.",

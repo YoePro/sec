@@ -21,18 +21,18 @@ import (
 //   - rules/mlir/packages/sec-mlir-dialect_package17.md — §79 (detached capture plans)
 func (a *Analyzer) analyzeDeferStatement(stmt *ast.DeferStatement) {
 	if !a.inFunctionBody {
-		a.addErrorAtToken(stmt.Token, "defer is only valid inside functions")
+		a.addErrorAtTokenWithMetadata(stmt.Token, diagnostics.InvalidDeferredCleanup, "Register defer inside an executable invocation such as a function, method, lambda, accessor or init; a module declaration has no invocation exit on which cleanup can run.", "defer is only valid inside functions")
 		return
 	}
 	if a.rejectDeferInsideFree(stmt.Token) {
 		return
 	}
 	if a.inDeferBlock {
-		a.addErrorAtToken(stmt.Token, "defer is not allowed inside defer")
+		a.reportInvalidDeferredCleanup(stmt.Token, "defer")
 		return
 	}
 	if stmt.Body == nil {
-		a.addErrorAtToken(stmt.Token, "defer requires a block")
+		a.addErrorAtTokenWithMetadata(stmt.Token, diagnostics.InvalidDeferredCleanup, "Write defer { cleanup statements }; shorthand defer calls are not part of Sec 0.1.", "defer requires a block")
 		return
 	}
 	if a.loopDepth > 0 {
@@ -52,7 +52,7 @@ func (a *Analyzer) analyzeDeferStatement(stmt *ast.DeferStatement) {
 	previousInDeferBlock := a.inDeferBlock
 	previousDeferOuterSymbols := a.deferOuterSymbols
 	previousDeferCaptures := a.deferCaptures
-	a.symbols = copySymbols(previousSymbols)
+	a.symbols = previousSymbols.child()
 	a.constInts = copyConstInts(previousConstInts)
 	a.assigned = copyAssigned(previousAssigned)
 	a.moved = copyMoved(previousMoved)
@@ -138,7 +138,7 @@ func (a *Analyzer) recordDeferPlace(place Place, token lexer.Token) {
 	for _, alternative := range place.AlternativeOrigins {
 		a.recordDeferReferenceHolder(alternative.ReferenceHolder, token)
 	}
-	outer, ok := a.deferOuterSymbols[place.Root]
+	outer, ok := a.deferOuterSymbols.lookup(place.Root)
 	if !ok || outer.Token != place.RootToken {
 		return
 	}
@@ -163,7 +163,7 @@ func (a *Analyzer) recordDeferReferenceHolder(name string, token lexer.Token) {
 	if name == "" {
 		return
 	}
-	outer, ok := a.deferOuterSymbols[name]
+	outer, ok := a.deferOuterSymbols.lookup(name)
 	if !ok {
 		return
 	}

@@ -22,7 +22,7 @@ func (a *Analyzer) recordEnumConstant(expr ast.Expression, typ Type) {
 			value = resolved.Value
 		}
 	case *ast.Identifier:
-		if symbol, ok := a.symbols[expr.Value]; ok && !symbol.Mutable && !symbol.TransientConstant && sameConcreteType(symbol.Type, typ) {
+		if symbol, ok := a.symbols.lookup(expr.Value); ok && !symbol.Mutable && !symbol.TransientConstant && sameConcreteType(symbol.Type, typ) {
 			value = symbol.enumConstant
 		}
 	case *ast.CallExpression:

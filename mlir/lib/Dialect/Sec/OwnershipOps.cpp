@@ -32,7 +32,7 @@ LogicalResult placeOf(Operation *op, Value place, Type element, bool writable) {
 }
 
 bool isBorrowType(Type type) {
-  return isa<RefType, RefMutType, SliceType, SliceMutType>(type);
+  return isa<RefType, RefMutType, SliceType, SliceMutType, StringViewType>(type);
 }
 
 bool oneOf(StringRef value, std::initializer_list<StringRef> allowed) {
@@ -119,9 +119,11 @@ LogicalResult OwnReplacePlaceOp::verify() {
   bool field = getPlace().getDefiningOp<PlaceFieldOp>() != nullptr;
   if (field && getOldCleanupActionId() == 0 && getNewCleanupActionId() == 0)
     return success();
+  // MD-125: an available replacement keeps the live registration (equal
+  // identities); a conditional one also names the alternative new registration.
   if (getOldCleanupActionId() == 0 || getNewCleanupActionId() == 0 ||
-      getOldCleanupActionId() == getNewCleanupActionId())
-    return emitOpError("requires distinct old and new cleanup action identities");
+      (getIfOwned() && getOldCleanupActionId() == getNewCleanupActionId()))
+    return emitOpError("requires its inherited cleanup action and, when conditional, a distinct new one");
   return success();
 }
 
@@ -169,6 +171,10 @@ LogicalResult CleanupTrackOwnedOp::verify() {
     return emitOpError("requires action, scope and ordinal identities");
   if (getDestructionPlan().empty())
     return emitOpError("requires a destruction plan");
+  if (auto unless = getUnlessActive())
+    for (int32_t action : *unless)
+      if (action == 0)
+        return emitOpError("unless_active must name non-zero registrations");
   return success();
 }
 

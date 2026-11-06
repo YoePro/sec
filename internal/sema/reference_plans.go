@@ -204,7 +204,7 @@ func (a *Analyzer) referenceFactsForPlace(place Place, mutable bool, site lexer.
 		}
 	}
 	sort.Slice(facts.StorageIdentities, func(i, j int) bool { return facts.StorageIdentities[i] < facts.StorageIdentities[j] })
-	if symbol, ok := a.symbols[place.Root]; ok && symbol.AddressStability != "" {
+	if symbol, ok := a.symbols.lookup(place.Root); ok && symbol.AddressStability != "" {
 		facts.AddressStability = symbol.AddressStability
 	}
 	if facts.Provenance == ReferenceProvenanceUnknown {
@@ -215,7 +215,7 @@ func (a *Analyzer) referenceFactsForPlace(place Place, mutable bool, site lexer.
 	// ReferenceFacts ABI. Preserve uncertainty rather than validating only
 	// its legacy representative (package 15 §§25–31).
 	for _, root := range []string{place.ReferenceHolder, place.Root} {
-		if symbol, ok := a.symbols[root]; ok && len(symbol.Type.ReferenceOriginAlternatives) > 1 {
+		if symbol, ok := a.symbols.lookup(root); ok && len(symbol.Type.ReferenceOriginAlternatives) > 1 {
 			facts.Provenance = ReferenceProvenanceUnknown
 			facts.AddressStability = AddressStabilityUnknown
 			return facts
@@ -248,7 +248,7 @@ func (a *Analyzer) referenceFactsForPlace(place Place, mutable bool, site lexer.
 // arenaOriginOfPlace reports the Arena domain and expected generation of a
 // Place whose root is Arena-backed storage reached through a reference holder.
 func (a *Analyzer) arenaOriginOfPlace(place Place) (string, int, bool) {
-	symbol, ok := a.symbols[place.Root]
+	symbol, ok := a.symbols.lookup(place.Root)
 	if !ok || !typeCarriesReferenceOrigin(symbol.Type) || symbol.Type.ReferenceOriginStorage != StorageOriginArena || symbol.Type.ReferenceOriginName == "" {
 		return "", 0, false
 	}
@@ -266,7 +266,7 @@ func (a *Analyzer) placeReachedThroughReference(place Place) bool {
 			return true
 		}
 	}
-	symbol, ok := a.symbols[place.Root]
+	symbol, ok := a.symbols.lookup(place.Root)
 	return ok && typeCarriesReferenceOrigin(symbol.Type)
 }
 
@@ -357,7 +357,7 @@ func (a *Analyzer) recordReferenceReadUse(expr ast.Expression, typ Type) {
 	}
 	if identifier, ok := expr.(*ast.Identifier); ok {
 		// Naming a reference holder reads the holder, not the referent.
-		if symbol, found := a.symbols[identifier.Value]; found && typeCarriesReferenceOrigin(symbol.Type) && typeCarriesReferenceOrigin(typ) {
+		if symbol, found := a.symbols.lookup(identifier.Value); found && typeCarriesReferenceOrigin(symbol.Type) && typeCarriesReferenceOrigin(typ) {
 			return
 		}
 	}
@@ -386,7 +386,7 @@ func (a *Analyzer) recordReferenceLifetimeEndBefore(holder string, source lexer.
 	if a.summaryPass || holder == "" {
 		return
 	}
-	symbol, ok := a.symbols[holder]
+	symbol, ok := a.symbols.lookup(holder)
 	if !ok || !typeCarriesReferenceOrigin(symbol.Type) {
 		return
 	}
@@ -568,7 +568,8 @@ func (a *Analyzer) recordReferenceParameterFacts(param FunctionParameter) {
 	// An expanded `...ref Types` position is an ordinary reference parameter of
 	// its specialization (semantic_ir.md § 27A); a homogeneous variadic is not.
 	typePack := param.Type.Element != nil && param.Type.Element.Kind == GenericTypePackType
-	if a.summaryPass || param.Variadic && !typePack || (!param.Ref && !param.MutableRef && param.Type.Kind != ReferenceType) {
+	// A StringView parameter is a caller-owned shared borrow (MD-126).
+	if a.summaryPass || param.Variadic && !typePack || (!param.Ref && !param.MutableRef && param.Type.Kind != ReferenceType && param.Type.Kind != StringViewType) {
 		return
 	}
 	place, ok := a.resolvePlace(&ast.Identifier{Token: param.Token, Value: param.Name})

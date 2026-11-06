@@ -1,0 +1,66 @@
+module main
+
+// flowcontrol_match.md § 21: a continuing arm block of a match expression must
+// end with a value expression assignable to the match result.
+
+type Handle struct {
+    id: int,
+}
+
+impl Handle {
+    free {
+    }
+}
+
+fn Make(id: int) Handle {
+    return Handle { id: id }
+}
+
+fn Log(n: int) void {
+}
+
+fn Text() string {
+    return "text"
+}
+
+fn VoidFinal(option: Option[int]) int {
+    let value := match option {
+        Some(n) => {
+            Log(n)
+        }
+        None => 0
+    }
+    return value
+}
+
+fn NoFinalValue(option: Option[int]) int {
+    let value := match option {
+        Some(n) => {
+            let copy := n
+        }
+        None => 0
+    }
+    return value
+}
+
+fn Mismatch(option: Option[int]) int {
+    let value := match option {
+        Some(n) => {
+            Log(n)
+            Text()
+        }
+        None => 0
+    }
+    return value
+}
+
+fn CopiedOwnedLocal(option: Option[int]) int {
+    let handle := match option {
+        Some(n) => {
+            let local := Make(n)
+            local
+        }
+        None => Make(0)
+    }
+    return handle.id
+}

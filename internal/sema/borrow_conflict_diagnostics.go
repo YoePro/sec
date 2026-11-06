@@ -46,7 +46,7 @@ func (a *Analyzer) addBorrowAuthorityConflict(place Place, token lexer.Token, re
 		PreviousFile: record.Token.File, PreviousLine: record.Token.Line, PreviousColumn: record.Token.Column,
 		RelatedLabel: label,
 	}
-	if holder, ok := a.symbols[record.Holder]; ok {
+	if holder, ok := a.symbols.lookup(record.Holder); ok {
 		holderEndLine, holderEndColumn := holder.Token.EndPosition()
 		diagnostic.Related = append(diagnostic.Related, RelatedLocation{
 			File: holder.Token.File, Line: holder.Token.Line, Column: holder.Token.Column,

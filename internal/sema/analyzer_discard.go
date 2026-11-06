@@ -128,7 +128,7 @@ func (a *Analyzer) analyzeDiscardStatement(stmt *ast.DiscardStatement) {
 		a.markMoveSource(stmt.Value)
 		return
 	}
-	symbol, exists := a.symbols[ident.Value]
+	symbol, exists := a.symbols.lookup(ident.Value)
 	if !exists {
 		return
 	}
@@ -155,7 +155,7 @@ func (a *Analyzer) analyzeDiscardStatement(stmt *ast.DiscardStatement) {
 func (a *Analyzer) recordDiscardedPlaceFacts(expr ast.Expression) {
 	switch expr := expr.(type) {
 	case *ast.Identifier:
-		if symbol, exists := a.symbols[expr.Value]; exists {
+		if symbol, exists := a.symbols.lookup(expr.Value); exists {
 			a.bindDefinition(expr.Token, symbol.Token)
 		}
 	case *ast.MemberExpression:

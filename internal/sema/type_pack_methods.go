@@ -26,7 +26,7 @@ func (a *Analyzer) implicitTypePackReceiver(function Function, call *ast.CallExp
 	if _, named := call.Callee.(*ast.Identifier); !named || !functionUsesReceiver(a.currentFunctionMetadata) || function.ImplTarget != a.currentFunctionMetadata.ImplTarget {
 		return methodReceiverInfo{}, false
 	}
-	self, known := a.symbols["self"]
+	self, known := a.symbols.lookup("self")
 	if !known {
 		return methodReceiverInfo{}, false
 	}

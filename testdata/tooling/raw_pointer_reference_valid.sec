@@ -1,0 +1,27 @@
+module main
+
+fn View(pointer: RawPtr[int]) ref int {
+    unsafe {
+        return pointer.AsRef
+    }
+}
+
+fn Bump(pointer: RawPtr[int]) void {
+    unsafe {
+        let editor := pointer.AsRefMut
+        *editor += 1
+    }
+}
+
+fn Main(r: ref int) int {
+    let mut value := 41
+    unsafe {
+        let pointer: RawPtr[int] := value.Ptr
+        let fromReference: RawPtr[int] := r.Ptr
+        let fromReferent: RawPtr[int] := (*r).Ptr
+        discard fromReference
+        discard fromReferent
+        Bump(pointer)
+    }
+    return value
+}

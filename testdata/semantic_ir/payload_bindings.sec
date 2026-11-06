@@ -1,0 +1,65 @@
+module main
+
+// P17-37: named-field patterns on a stored (mutable) owned subject read their
+// copy-trivial fields through the payload Place on the proven variant path;
+// a guarded whole named-field payload binding gives the guard a candidate and
+// commits the move only in the selected arm.
+// Rules: rules/control-flow/flowcontrol_match.md §§ 10, 17; package17 § 63.
+
+type Handle struct {
+    id: int,
+}
+
+impl Handle {
+    free {
+    }
+}
+
+fn Make(id: int) Handle {
+    return Handle { id: id }
+}
+
+type Packet union {
+    Full { count: int, label: int },
+    Spare(Handle),
+}
+
+type Parcel union {
+    Boxed { head: Handle, size: int },
+    Empty,
+}
+
+fn FreshPacket() Packet {
+    return Packet.Spare(Make(1))
+}
+
+fn FreshParcel() Parcel {
+    return Parcel.Boxed { head: Make(2), size: 3 }
+}
+
+fn StoredNamedFields() int {
+    let mut packet := FreshPacket()
+    match packet {
+        Packet.Full { count } => {
+            return count
+        }
+        Packet.Spare(handle) => {
+            return handle.id
+        }
+    }
+}
+
+fn GuardedNamedPayload() int {
+    let parcel := FreshParcel()
+    match parcel {
+        Parcel.Boxed(boxed) where boxed.size > 0 => {
+            return boxed.size
+        }
+        Parcel.Boxed(boxed) => {
+            return 0
+        }
+        Parcel.Empty => {
+            return 0
+        }
+    }
+}

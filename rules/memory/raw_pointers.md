@@ -2,8 +2,8 @@
 
 - Status: Normative
 - Created: 2026-09-01
-- Last updated: 2026-10-21
-- Document revision: 2.1
+- Last updated: 2026-11-06
+- Document revision: 2.2
 - Sec language version: 0.1
 - Canonical path: `rules/memory/raw_pointers.md`
 - Implementation governance: `governance/memory.yaml`
@@ -267,7 +267,7 @@ another compatible RawPtr conversion
 
 § 8(2) A raw pointer must never be created implicitly from a safe reference, integer, owning container, string, slice, or unrelated pointer representation.
 
-§ 8(3) The source spellings are locked by MD-070 (2026-10-21): the unsafe compiler-known property `.Ptr` forms a raw pointer from an addressable Place or through a safe reference (§ 17(7)–(9)), and the unsafe compiler-known methods `RawPtr[T].AsRef()` and `RawPtr[T].AsRefMut()` form safe references (§ 18A).
+§ 8(3) The source spellings are locked by MD-070 (2026-10-21): the unsafe compiler-known property `.Ptr` forms a raw pointer from an addressable Place or through a safe reference (§ 17(7)–(9)), and the unsafe compiler-known properties `RawPtr[T].AsRef` and `RawPtr[T].AsRefMut` form safe references (§ 18A).
 
 § 8(4) No other conversion spelling is normative; illustrative syntax elsewhere must not be treated as language grammar.
 
@@ -540,29 +540,31 @@ valid destruction/replacement semantics for mutation performed through the refer
 
 § 18(5) A compiler-proven null, dead, unaligned, invalidly represented, or conflicting conversion must be rejected even inside unsafe.
 
-§ 18(6) The Sec 0.1 source spelling of these conversions is `RawPtr[T].AsRef()` and `RawPtr[T].AsRefMut()` (§ 18A; MD-070).
+§ 18(6) The Sec 0.1 source spelling of these conversions is `RawPtr[T].AsRef` and `RawPtr[T].AsRefMut` (§ 18A; MD-070).
 
 ### § 18A Forming safe references (MD-070)
 
-§ 18A(1) `RawPtr[T]` has exactly two compiler-known unsafe methods that form safe references. They are compiler-provided operations, not user-implementable methods, and a source declaration may not shadow or redefine them:
+§ 18A(1) `RawPtr[T]` has exactly two compiler-known unsafe properties that form safe references. They are compiler-provided operations, not user-implementable members, and a source declaration may not shadow or redefine them:
 
 ```sec
 impl RawPtr[T] {
-    unsafe fn AsRef() ref T
-    unsafe fn AsRefMut() ref mut T
+    unsafe property AsRef: ref T
+    unsafe property AsRefMut: ref mut T
 }
 ```
 
 ```sec
-let observer := unsafe pointer.AsRef()
-let editor := unsafe otherPointer.AsRefMut()
+unsafe {
+    let observer := pointer.AsRef
+    let editor := otherPointer.AsRefMut
+}
 ```
 
-§ 18A(2) Both methods exist only on `RawPtr[T]`. They do not create general conversion traits and give no method to `ref T`, `ref mut T` or `T`. There is no implicit raw-to-safe conversion, no automatic `Option` conversion and no failure fallback; `let r: ref T := pointer` is rejected with a suggestion to call `AsRef()` / `AsRefMut()`.
+§ 18A(2) Both properties exist only on `RawPtr[T]`. They do not create general conversion traits and give no property to `ref T`, `ref mut T` or `T`. There is no implicit raw-to-safe conversion, no automatic `Option` conversion and no failure fallback; `let r: ref T := pointer` is rejected with a suggestion to read `.AsRef` / `.AsRefMut` in an unsafe block.
 
-§ 18A(3) `RawPtr[void]` has neither method. A concrete typed interpretation is required first (§ 10).
+§ 18A(3) `RawPtr[void]` has neither property. A concrete typed interpretation is required first (§ 10).
 
-§ 18A(4) `AsRef()` requires the obligations of § 18(2); `AsRefMut()` additionally requires those of § 18(3). Obligations the compiler cannot prove are the caller's unsafe responsibility. Obligations it can disprove are compile-time errors even inside `unsafe` (§ 18(5)): today this covers a proven-null pointer.
+§ 18A(4) `AsRef` requires the obligations of § 18(2); `AsRefMut` additionally requires those of § 18(3). Obligations the compiler cannot prove are the caller's unsafe responsibility. Obligations it can disprove are compile-time errors even inside `unsafe` (§ 18(5)): today this covers a proven-null pointer.
 
 § 18A(5) No lifetime parameters, annotations or lifetime syntax participate. The result is an ordinary Sec reference with the existing provenance, BorrowID, LifetimeID, validity policy, invalidation domain/epoch and storage-live-range model. Where the storage origin is known it constrains the reference. Otherwise the caller's contract bounds it, and a bare address never yields a static or unconstrained lifetime. Copying, reborrowing, escape analysis and borrow ends (MD-065) follow the ordinary rules. The reference neither owns, pins nor extends the storage, nor does it prevent an Arena reset.
 
@@ -876,7 +878,7 @@ target/platform access contract
 
 § 32(6) Semantic IR verification must reject contradictory raw-pointer facts.
 
-§ 32(7) `AsRef()` / `AsRefMut()` lower to a distinct unsafe raw-to-safe operation. It keeps the raw operand and the target reference kind, establishes the canonical reference facts of § 32(5), and is neither an ownership transfer nor an allocation. MLIR attribute spelling belongs to the dialect schema and MD-084. Known hole (verified 2026-10-21): the operation does not exist in Semantic IR yet; lowering stops at an explicit capability boundary naming MD-070/MD-084.
+§ 32(7) `AsRef` / `AsRefMut` lower to a distinct unsafe raw-to-safe operation. It keeps the raw operand and the target reference kind, establishes the canonical reference facts of § 32(5), and is neither an ownership transfer nor an allocation. MLIR attribute spelling belongs to the dialect schema and MD-084. Known hole (verified 2026-10-21): the operation does not exist in Semantic IR yet; lowering stops at an explicit capability boundary naming MD-070/MD-084.
 
 ---
 
@@ -1162,3 +1164,5 @@ evaluator-local identity rather than compiler-host addresses. That identity
 cannot escape static materialization and remains distinct from compile-time
 target address metadata used by canonical fixed-address bindings. CTE never
 dereferences target hardware memory.
+
+Naming correction (2026-11-06): `As*` are properties; functional getters use `Get*()`. See `rules/corrections/applied/md070-as-property-naming-correction-20261106.md`. `.AsRef` and `.AsRefMut` require an enclosing unsafe block, just like `.Ptr`; the call form of unsafe does not authorize a property read.

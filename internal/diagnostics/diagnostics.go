@@ -241,8 +241,8 @@ const (
 	// safe callable that erases the caller obligations.
 	// Rules: rules/memory/unsafe.md — §39(1), §39(2), §39(4), §50(2).
 	UnsafeFunctionValueMismatch = "S1141"
-	// RawPointerNullDereference rejects a raw-pointer read or write whose
-	// receiver the compiler proves null; unsafe does not make it valid.
+	// RawPointerNullDereference rejects raw-pointer access or reference formation
+	// whose receiver the compiler proves null; unsafe does not make it valid.
 	// Rules: rules/memory/raw_pointers.md — § 7(6)-(8), § 34;
 	// rules/memory/unsafe.md — § 8(6), § 21(2), § 50(2).
 	RawPointerNullDereference = "S1142"
@@ -384,7 +384,15 @@ const (
 	InvalidRangeSource    = "S1200"
 	InvalidSliceRange     = "S1201"
 	InvalidStringViewCall = "S1202"
-	HardwareRegionOverlap = "A2010"
+	// InvalidDeferredCleanup identifies invalid cleanup context/control flow.
+	// Rules: rules/control-flow/defer.md — §§3,14–18,31.
+	InvalidDeferredCleanup = "S1203"
+	// Raw-pointer mentor categories distinguish authorization from invalidity.
+	// Rules: rules/memory/raw_pointers.md — §34(1–4).
+	RawPointerUnsafeRequired   = "S1204"
+	RawPointerInvalidOperation = "S1205"
+	RawPointerDanglingOrigin   = "S1206"
+	HardwareRegionOverlap      = "A2010"
 
 	// UnionVariantPayloadRequired rejects a payload-carrying union variant
 	// used as a value without its payload.
@@ -480,6 +488,7 @@ var registry = map[string]Definition{
 	InvalidRangeSource:                    {ID: InvalidRangeSource, Name: "bounds.invalid-range-source", Family: "bounds", DefaultSeverity: SeverityError, Mandatory: true},
 	InvalidSliceRange:                     {ID: InvalidSliceRange, Name: "bounds.invalid-slice-range", Family: "bounds", DefaultSeverity: SeverityError, Mandatory: true},
 	InvalidStringViewCall:                 {ID: InvalidStringViewCall, Name: "calls.invalid-string-view-call", Family: "calls", DefaultSeverity: SeverityError, Mandatory: true},
+	InvalidDeferredCleanup:                {ID: InvalidDeferredCleanup, Name: "cleanup.invalid-deferred-control-flow", Family: "cleanup", DefaultSeverity: SeverityError, Mandatory: true},
 	ForBindingModeUnavailable:             {ID: ForBindingModeUnavailable, Name: "for.binding-mode-unavailable", Family: "for", DefaultSeverity: SeverityError, Mandatory: true},
 	InvalidResultErrorChannel:             {ID: InvalidResultErrorChannel, Name: "errors.invalid-result-error-channel", Family: "errors", DefaultSeverity: SeverityError, Mandatory: true},
 	ErrorVariantRequiresConcreteChannel:   {ID: ErrorVariantRequiresConcreteChannel, Name: "errors.variant-requires-concrete-channel", Family: "errors", DefaultSeverity: SeverityError, Mandatory: true},
@@ -508,6 +517,9 @@ var registry = map[string]Definition{
 	TypeNameUsedAsValue:                   {ID: TypeNameUsedAsValue, Name: "types.type-name-used-as-value", Family: "types", DefaultSeverity: SeverityError, Mandatory: true},
 	UnsafeFunctionValueMismatch:           {ID: UnsafeFunctionValueMismatch, Name: "unsafe.function-value-mismatch", Family: "unsafe", DefaultSeverity: SeverityError, Mandatory: true},
 	RawPointerNullDereference:             {ID: RawPointerNullDereference, Name: "unsafe.raw-pointer-null", Family: "unsafe", DefaultSeverity: SeverityError, Mandatory: true},
+	RawPointerUnsafeRequired:              {ID: RawPointerUnsafeRequired, Name: "unsafe.raw-pointer-context", Family: "unsafe", DefaultSeverity: SeverityError, Mandatory: true},
+	RawPointerInvalidOperation:            {ID: RawPointerInvalidOperation, Name: "unsafe.raw-pointer-operation", Family: "unsafe", DefaultSeverity: SeverityError, Mandatory: true},
+	RawPointerDanglingOrigin:              {ID: RawPointerDanglingOrigin, Name: "unsafe.raw-pointer-dangling", Family: "unsafe", DefaultSeverity: SeverityError, Mandatory: true},
 	StaticStoreOfShortLivedReference:      {ID: StaticStoreOfShortLivedReference, Name: "escape.static-store-of-short-lived-reference", Family: "escape", DefaultSeverity: SeverityError, Mandatory: true},
 	ThreadLocalStoreOfShortLivedReference: {ID: ThreadLocalStoreOfShortLivedReference, Name: "escape.thread-local-store-of-short-lived-reference", Family: "escape", DefaultSeverity: SeverityError, Mandatory: true},
 	ProductionDependsOnTest:               {ID: ProductionDependsOnTest, Name: "testing.production-dependency-on-test", Family: "testing", DefaultSeverity: SeverityError, Mandatory: true},

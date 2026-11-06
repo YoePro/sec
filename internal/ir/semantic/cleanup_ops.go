@@ -47,6 +47,11 @@ type CleanupFacts struct {
 	// IfActive lets a cleanup.cancel end a registration that is live on only
 	// some paths, paired with an IfOwned ownership operation.
 	IfActive bool
+	// UnlessActive makes a track-owned register only on paths where none of
+	// these actions is live: an assignment whose destination is owned on some
+	// paths inherits that live registration there and registers anew on the
+	// others (MD-125; destruction.md § 13.3(5)).
+	UnlessActive []uint32
 	// DestructionPlan is the plan a tracked owned value is destroyed with.
 	DestructionPlan string
 	// Reason explains a cancel.
@@ -277,6 +282,13 @@ func formatCleanupOperation(out *strings.Builder, op Operation, indent string) {
 	}
 	if facts.IfActive {
 		out.WriteString(" if-active")
+	}
+	if len(facts.UnlessActive) != 0 {
+		actions := make([]string, len(facts.UnlessActive))
+		for index, action := range facts.UnlessActive {
+			actions[index] = fmt.Sprintf("#%d", action)
+		}
+		fmt.Fprintf(out, " unless-active=[%s]", strings.Join(actions, ", "))
 	}
 	if len(facts.Scopes) != 0 {
 		scopes := make([]string, len(facts.Scopes))

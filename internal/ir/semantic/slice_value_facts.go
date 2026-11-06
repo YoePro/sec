@@ -13,6 +13,9 @@ func verifySliceValueFacts(types *TypeTable, op Operation) error {
 		return nil
 	}
 	construction, reborrow, mutable := sliceConstructionKind(op.Kind)
+	if op.Kind == OpStringViewBorrow {
+		construction = true
+	}
 	if !construction || len(op.Results) != 1 || len(op.Operands) != 3 {
 		return fmt.Errorf("slice value facts require a construction operation")
 	}

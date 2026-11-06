@@ -137,7 +137,7 @@ func isPlaceReferenceOperation(kind OpKind) bool {
 // rules/mlir/packages/sec-mlir-dialect_package16.md — §42.
 func placeConsumer(kind OpKind) bool {
 	switch kind {
-	case OpSliceBorrowShared, OpSliceBorrowMutable, OpSliceElementPlace, OpPlaceField, OpPlaceArrayIndexInBounds, OpPlaceArrayElement, OpPlaceUnionPayload, OpPlaceRead,
+	case OpSliceBorrowShared, OpSliceBorrowMutable, OpSliceElementPlace, OpStringRuneLength, OpStringViewBorrow, OpPlaceField, OpPlaceArrayIndexInBounds, OpPlaceArrayElement, OpPlaceUnionPayload, OpPlaceRead,
 		OpPlaceWrite, OpReferenceBorrowShared, OpReferenceBorrowMutable,
 		// A reborrow may derive from a dereferenced sub-Place (§ 78);
 		// verifySubplaceReborrowSource checks where that Place comes from.
@@ -587,13 +587,18 @@ func verifyPlaceReferenceFunction(module *Module, fn *Function, blocks map[Block
 			if err := verifySliceElementReferenceFacts(op, definitions); err != nil {
 				return err
 			}
+			if op.Kind == OpStringViewBorrow {
+				if err := verifyStringViewSource(sliceBlocks[b.ID].Operations[index], sliceDefinitions); err != nil {
+					return err
+				}
+			}
 			if construction, _, _ := sliceConstructionKind(op.Kind); construction {
 				if err := verifySliceBorrowSource(types, sliceBlocks[b.ID].Operations[index], values, sliceDefinitions, sources); err != nil {
 					return err
 				}
 			}
 			sliceSource, _ := types.Lookup(firstOperandType(op, values))
-			if op.Kind == OpSliceElementPlace || op.Kind == OpSliceCopyShared || op.Kind == OpSliceMoveMutable || op.Kind == OpReferenceEndBorrow && (sliceSource.Kind == TypeSharedSlice || sliceSource.Kind == TypeMutableSlice) {
+			if op.Kind == OpSliceElementPlace || op.Kind == OpSliceCopyShared || op.Kind == OpSliceMoveMutable || op.Kind == OpReferenceEndBorrow && boundedView(sliceSource.Kind) {
 				if err := verifySliceHolderFacts(op, sources[op.Operands[0]]); err != nil {
 					return err
 				}
@@ -629,10 +634,11 @@ func verifyPlaceReferenceFunction(module *Module, fn *Function, blocks map[Block
 	for _, b := range fn.Blocks {
 		for index, op := range b.Operations {
 			_, reborrow, _ := sliceConstructionKind(op.Kind)
-			if op.Kind != OpReferenceDerefPlace && op.Kind != OpReferenceCompare && op.Kind != OpSliceLength && op.Kind != OpSliceIndexInBounds && op.Kind != OpSliceElementPlace && !reborrow {
+			observes := op.Kind == OpSliceLength || op.Kind == OpStringViewByteLength || op.Kind == OpStringViewDecodeNext
+			if op.Kind != OpReferenceDerefPlace && op.Kind != OpReferenceCompare && !observes && op.Kind != OpSliceIndexInBounds && op.Kind != OpSliceElementPlace && !reborrow {
 				continue
 			}
-			sliceObservation := op.Kind == OpSliceLength || op.Kind == OpSliceIndexInBounds || op.Kind == OpSliceElementPlace || reborrow
+			sliceObservation := observes || op.Kind == OpSliceIndexInBounds || op.Kind == OpSliceElementPlace || reborrow
 			if sliceObservation {
 				op = sliceBlocks[b.ID].Operations[index]
 			}

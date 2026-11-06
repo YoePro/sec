@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-13
-- **Last updated:** 2026-10-22
+- **Last updated:** 2026-11-06
 - **Document revision:** 2.0
 - **Language version:** Sec 0.1
 - **Replaces:** `rules/declarations/properties.txt`
@@ -358,6 +358,8 @@ A property has:
 - source location.
 
 Property names participate in the target type's member namespace.
+
+API naming rule: `As*` members are properties and are read without parentheses. If an API requires a function, its getter uses `Get*()`. In particular, compiler-known `.AsRef` and `.AsRefMut` follow this rule; an older correction cannot turn them into methods. See `rules/corrections/applied/md070-as-property-naming-correction-20261106.md` §1.
 
 Properties may not silently shadow or collide with:
 

@@ -67,11 +67,11 @@ func (fb *functionBuilder) returnOrigins(resolved sema.Function, decl *ast.Funct
 				return nil, fmt.Errorf("returned-reference origin names parameter %d of %d", origin.Parameter, len(fb.fn.Parameters))
 			}
 			referent, ok := fb.owner.module.Types.Lookup(fb.fn.Parameters[origin.Parameter].Value.Type)
-			if !ok || referent.Kind != TypeReference && referent.Kind != TypeSharedSlice && referent.Kind != TypeMutableSlice {
+			if !ok || referent.Kind != TypeReference && !boundedView(referent.Kind) {
 				return nil, fb.unsupported("returned reference derived from a non-reference parameter", decl.Token)
 			}
 			current = referent.Element
-			if referent.Kind == TypeSharedSlice || referent.Kind == TypeMutableSlice {
+			if boundedView(referent.Kind) {
 				// A slice parameter is itself the indexed sequence.
 				current = fb.fn.Parameters[origin.Parameter].Value.Type
 			}
@@ -80,7 +80,8 @@ func (fb *functionBuilder) returnOrigins(resolved sema.Function, decl *ast.Funct
 			switch projection.Canonical() {
 			case sema.CanonicalProjectionSlice:
 				sequence, found := fb.owner.module.Types.Lookup(current)
-				if !found || sequence.Kind != TypeArray && sequence.Kind != TypeSharedSlice && sequence.Kind != TypeMutableSlice {
+				text := found && (sequence.Kind == TypeString || sequence.Kind == TypeStringView)
+				if !found || sequence.Kind != TypeArray && sequence.Kind != TypeSharedSlice && sequence.Kind != TypeMutableSlice && !text {
 					return nil, fb.unsupported("returned slice range of a non-sequence", decl.Token)
 				}
 				step := ReturnOriginStep{Kind: ReturnOriginSlice, UnknownRange: true}
@@ -88,8 +89,18 @@ func (fb *functionBuilder) returnOrigins(resolved sema.Function, decl *ast.Funct
 					step.UnknownRange = false
 					step.Start, step.EndExclusive = cloneBigInt(projection.SliceStart), cloneBigInt(projection.SliceEnd)
 				}
-				origin.Path = appendReturnOriginPath(origin.Path, []ReturnOriginStep{step})
-				current = fb.owner.module.Types.Intern(Type{Kind: TypeSharedSlice, Element: sequence.Element})
+				// A full-open string range (`text[..]`) views the whole
+				// source: like a full-open reborrow it keeps the existing
+				// path and only changes the carried type (MD-126).
+				fullOpen := text && projection.SliceEndOpen && projection.SliceEnd == nil && (projection.SliceStart == nil || projection.SliceStart.Sign() == 0)
+				if !fullOpen {
+					origin.Path = appendReturnOriginPath(origin.Path, []ReturnOriginStep{step})
+				}
+				if text {
+					current = fb.owner.module.Types.stringViewType()
+				} else {
+					current = fb.owner.module.Types.Intern(Type{Kind: TypeSharedSlice, Element: sequence.Element})
+				}
 			case sema.CanonicalProjectionField:
 				definition, found := fb.owner.structDefinition(current)
 				if !found {
@@ -171,7 +182,7 @@ func formatReturnOrigins(origins []ReturnOrigin) string {
 // unknown derivation is rejected (semantic_ir.md § 96(5)).
 func verifyReturnOrigins(module *Module, fn *Function) error {
 	returned, ok := module.Types.Lookup(fn.ReturnType)
-	if !ok || returned.Kind != TypeReference && returned.Kind != TypeSharedSlice && returned.Kind != TypeMutableSlice {
+	if !ok || returned.Kind != TypeReference && !boundedView(returned.Kind) {
 		if len(fn.ReturnOrigins) != 0 {
 			return fmt.Errorf("returned-reference origins on a function that returns no reference")
 		}
@@ -264,7 +275,7 @@ func traceReturnedReference(value ValueID, definitions map[ValueID]Operation, pa
 		case OpSliceElementPlace:
 			reversed = append(reversed, ReturnOriginStep{Kind: ReturnOriginElement})
 			value = op.Operands[0]
-		case OpSliceBorrowShared, OpSliceBorrowMutable, OpSliceReborrowShared, OpSliceReborrowMutable:
+		case OpSliceBorrowShared, OpSliceBorrowMutable, OpSliceReborrowShared, OpSliceReborrowMutable, OpStringViewBorrow:
 			step, unchanged, ok := returnedSliceRange(op, definitions, functions)
 			if !ok {
 				return nil, false

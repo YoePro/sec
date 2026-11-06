@@ -24,7 +24,7 @@ func (fb *functionBuilder) lowerSliceHolderTransfer(holder *ast.Identifier) (bui
 		return builtValue{}, false, nil
 	}
 	typ, _ := fb.owner.module.Types.Lookup(held.typ)
-	if typ.Kind != TypeSharedSlice && typ.Kind != TypeMutableSlice {
+	if !boundedView(typ.Kind) {
 		return builtValue{}, false, nil
 	}
 	plan, planned := fb.owner.analyzer.ResolvedTransferPlanOf(holder)

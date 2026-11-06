@@ -17,7 +17,7 @@ func (e *emitter) containsSlice(id semantic.TypeID, active map[semantic.TypeID]b
 	active[id] = true
 	defer delete(active, id)
 	typ, _ := e.module.Types.Lookup(id)
-	if typ.Kind == semantic.TypeSharedSlice || typ.Kind == semantic.TypeMutableSlice {
+	if typ.Kind == semantic.TypeSharedSlice || typ.Kind == semantic.TypeMutableSlice || typ.Kind == semantic.TypeStringView {
 		return true
 	}
 	children := []semantic.TypeID{typ.Base, typ.Element, typ.Success, typ.Error}

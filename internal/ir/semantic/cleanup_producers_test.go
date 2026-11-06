@@ -455,10 +455,10 @@ fn main() int {
 	for _, want := range []string{
 		"address-taken",
 		"own.initialize-place %2, %1 cleanup=#0->#1",
-		`own.replace-place %8, %7 plan="destroy:main:struct:Handle" cleanup=#1->#2`,
-		"cleanup.cancel action=#1 reason=replaced",
+		// MD-125: the replacement keeps registration #1 and its position.
+		`own.replace-place %8, %7 plan="destroy:main:struct:Handle" cleanup=#1->#1`,
 		"own.move-from-place %9",
-		"cleanup.cancel action=#2 reason=moved",
+		"cleanup.cancel action=#1 reason=moved",
 		"cleanup=#0->#4",
 		"cleanup.cancel action=#4 reason=transferred",
 		"place.field %3 field=#0",
@@ -469,6 +469,9 @@ fn main() int {
 	}
 	if strings.Contains(text, "storage.load") {
 		t.Fatalf("owned storage is never loaded as a whole value:\n%s", text)
+	}
+	if strings.Contains(text, "reason=replaced") {
+		t.Fatalf("a replacement inherits its registration instead of canceling it (MD-125):\n%s", text)
 	}
 }
 
@@ -665,7 +668,6 @@ fn main() int {
 		}
 	}
 	for _, item := range []struct{ source, want string }{
-		{"fn Use() void {\n    let mut h := Make(1)\n    defer {\n        let x := h.id\n        discard x\n    }\n    h = Make(2)\n}\n", "a registered defer reads"},
 		{"fn Use() void {\n    defer {\n        let h := Make(1)\n        discard h\n    }\n}\n", "owned local inside a defer body"},
 		{"fn Use(a: ref int) void {\n    defer {\n        let x := *a\n        discard x\n    }\n}\n", "not a resolved capture"},
 	} {

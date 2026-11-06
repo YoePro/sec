@@ -17,7 +17,7 @@ const OpSliceLength OpKind = "slice.length"
 // Rules: rules/mlir/packages/sec-mlir-dialect_package16.md — §§31–32,44,84.
 func directSafeReferenceType(types *TypeTable, id TypeID) bool {
 	typ, ok := types.Lookup(id)
-	return ok && (typ.Kind == TypeReference || typ.Kind == TypeSharedSlice || typ.Kind == TypeMutableSlice)
+	return ok && (typ.Kind == TypeReference || boundedView(typ.Kind))
 }
 
 // verifySliceLengthOperation requires one bounded slice and its exact uint
@@ -28,9 +28,12 @@ func verifySliceLengthOperation(types *TypeTable, op Operation, values map[Value
 	if len(op.Operands) != 1 || len(op.Results) != 1 || len(op.Successors) != 0 {
 		return fmt.Errorf("slice.length requires one slice operand and one uint result")
 	}
+	if source, ok := types.Lookup(values[op.Operands[0]].Type); op.Kind == OpStringViewByteLength && (!ok || source.Kind != TypeStringView) {
+		return fmt.Errorf("string-view.byte-len requires a StringView")
+	}
 	source, ok := types.Lookup(values[op.Operands[0]].Type)
 	result, resultOK := types.Lookup(op.Results[0].Type)
-	if !ok || source.Kind != TypeSharedSlice && source.Kind != TypeMutableSlice ||
+	if !ok || !boundedView(source.Kind) ||
 		!resultOK || result.Kind != TypeUint || result.Name != "uint" || !result.TargetSize {
 		return fmt.Errorf("slice.length requires a shared/mutable slice and target-sized uint result")
 	}

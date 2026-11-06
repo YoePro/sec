@@ -1,0 +1,72 @@
+module main
+
+// P17-15 rejections: array element move-out, partial moves from a custom-free
+// type, and whole use while a field or the value is unavailable on some path.
+// Rules: rules/memory/copy_move.md §§ 12-15; rules/memory/destruction.md § 12.
+
+type Handle struct {
+    id: int,
+}
+
+impl Handle {
+    free {
+    }
+}
+
+type Guarded struct {
+    inner: Handle,
+}
+
+impl Guarded {
+    free {
+    }
+}
+
+type Pair struct {
+    left:  Handle,
+    right: Handle,
+}
+
+fn Make(id: int) Handle {
+    return Handle { id: id }
+}
+
+fn Sink(->handle: Handle) void {
+}
+
+fn SinkPair(->pair: Pair) void {
+}
+
+fn ArrayElement() void {
+    let mut handles := [Make(1), Make(2)]
+    Sink(<-handles[0])
+}
+
+fn CustomFree() void {
+    let guarded := Guarded { inner: Make(1) }
+    Sink(<-guarded.inner)
+}
+
+fn WholeAfterPartial(flag: bool) void {
+    let mut pair := Pair { left: Make(1), right: Make(2) }
+    if flag {
+        Sink(<-pair.left)
+    }
+    SinkPair(<-pair)
+}
+
+fn UseAfterDiscardOnSomePaths(flag: bool) int {
+    let handle := Make(1)
+    if flag {
+        discard handle
+    }
+    return handle.id
+}
+
+fn ReinitOneFieldOnly() void {
+    let mut pair := Pair { left: Make(1), right: Make(2) }
+    Sink(<-pair.left)
+    Sink(<-pair.right)
+    pair.left = Make(3)
+    SinkPair(<-pair)
+}

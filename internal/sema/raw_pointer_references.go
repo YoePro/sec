@@ -2,11 +2,12 @@ package sema
 
 import (
 	"sec/internal/ast"
+	"sec/internal/diagnostics"
 )
 
-// MD-070 RawPtr-to-safe-reference conversions. `RawPtr[T].AsRef()` and
-// `RawPtr[T].AsRefMut()` are the only spellings that form a safe reference
-// from a raw pointer; both are unsafe compiler-known methods of RawPtr[T]
+// MD-070 RawPtr-to-safe-reference conversions. `RawPtr[T].AsRef` and
+// `RawPtr[T].AsRefMut` are the only spellings that form a safe reference
+// from a raw pointer; both are unsafe compiler-known properties of RawPtr[T]
 // alone, add no lifetime syntax, and never convert implicitly. The result is
 // an ordinary Sec reference: copying, reborrowing, escape analysis and borrow
 // ends follow the usual rules. Obligations Sema cannot prove remain the
@@ -15,28 +16,27 @@ import (
 //
 // Rules:
 //   - rules/memory/raw_pointers.md — § 18A "Forming safe references" (MD-070)
-//   - rules/compiler/compiler_known_members.md — "RawPtr[T] compiler-known methods"
+//   - rules/compiler/compiler_known_members.md — "RawPtr[T] compiler-known members"
 
-// inferRawPointerReferenceConversion types `pointer.AsRef()` and
-// `pointer.AsRefMut()`.
-func (a *Analyzer) inferRawPointerReferenceConversion(expr *ast.CallExpression, member *ast.MemberExpression, pointer Type) (Type, expressionValue, bool) {
-	invalid := expressionValue{Display: expr.String()}
+// inferRawPointerReferenceConversion types `pointer.AsRef` and
+// `pointer.AsRefMut`.
+// Rules: rules/memory/raw_pointers.md — §§18(2–5),18A,34.
+func (a *Analyzer) inferRawPointerReferenceConversion(member *ast.MemberExpression, pointer Type) (Type, expressionValue, bool) {
+	invalid := expressionValue{Display: member.String()}
 	operation := "RawPtr." + member.Property.Value
 	mutable := member.Property.Value == "AsRefMut"
-	if !a.callUnsafeAuthorized(expr) {
+	if !a.inUnsafe {
 		reference := "ref T"
 		if mutable {
 			reference = "ref mut T"
 		}
-		a.addErrorAtToken(member.Property.Token, "%s requires unsafe because it asserts that the raw pointer is a valid %s for the reference's whole live range", operation, reference)
-		return Type{Kind: InvalidType}, invalid, true
-	}
-	if !a.checkCompilerKnownCallArity(expr, operation, 0, 0) {
+		a.reportRawPointerUnsafe(member.Property.Token, pointer, member.Property.Value,
+			"%s requires unsafe because it asserts that the raw pointer is a valid %s for the reference's whole live range", operation, reference)
 		return Type{Kind: InvalidType}, invalid, true
 	}
 	element := compilerKnownRawPointerElement(pointer)
 	if element.Kind == InvalidType || element.Kind == VoidType {
-		a.addErrorAtToken(member.Property.Token, "RawPtr[void].%s cannot form a safe reference; interpret the pointer as a concrete RawPtr[T] first", member.Property.Value)
+		a.reportInvalidRawPointerOperation(member.Property.Token, rawPointerTypedHelp, "RawPtr[void].%s cannot form a safe reference; interpret the pointer as a concrete RawPtr[T] first", member.Property.Value)
 		return Type{Kind: InvalidType}, invalid, true
 	}
 	if a.rejectProvenNullDereference(member, member.Property.Value) {
@@ -52,7 +52,7 @@ func (a *Analyzer) inferRawPointerReferenceConversion(expr *ast.CallExpression, 
 // binding takes its address from (`place.Ptr`, `r.Ptr` or `(*r).Ptr`; the
 // latter two address the referent).
 func (a *Analyzer) recordRawPointerOriginBinding(name string, value ast.Expression) {
-	symbol, ok := a.symbols[name]
+	symbol, ok := a.symbols.lookup(name)
 	member, isMember := value.(*ast.MemberExpression)
 	if !ok || symbol.Mutable || symbol.Volatile || symbol.Type.Kind != RawPtrType || !isMember || member.Property == nil || member.Property.Value != "Ptr" {
 		return
@@ -66,7 +66,7 @@ func (a *Analyzer) recordRawPointerOriginBinding(name string, value ast.Expressi
 	}
 	origin := clonePlace(place)
 	symbol.RawPointerOrigin = &origin
-	a.symbols[name] = symbol
+	a.symbols.set(name, symbol)
 }
 
 // rejectKnownRawOriginConflict applies MD-070 § 5(3) where Sema knows the
@@ -74,18 +74,22 @@ func (a *Analyzer) recordRawPointerOriginBinding(name string, value ast.Expressi
 // origin, or `ref T` while a mutable one does, is a proven authority
 // conflict, and an origin whose owner no longer holds a value is a proven
 // dangling address. Both are errors even inside unsafe.
+// Rules: rules/memory/raw_pointers.md — §§17(3–5),18(5),34;
+// rules/corrections/applied/md070-rawptr-safe-reference-conversions-correction-20261021.md — §5(3).
 func (a *Analyzer) rejectKnownRawOriginConflict(member *ast.MemberExpression, mutable bool) bool {
 	ident, ok := member.Object.(*ast.Identifier)
 	if !ok {
 		return false
 	}
-	symbol, ok := a.symbols[ident.Value]
+	symbol, ok := a.symbols.lookup(ident.Value)
 	if !ok || symbol.Mutable || symbol.RawPointerOrigin == nil {
 		return false
 	}
 	origin := *symbol.RawPointerOrigin
-	if _, _, _, unavailable := a.unavailablePlace(origin); unavailable {
-		a.addErrorAtToken(member.Property.Token, "RawPtr.%s through %s would form a reference to %s, which no longer holds a value; unsafe does not make a known dangling address valid", member.Property.Value, ident.Value, origin.String())
+	if invalidatedAt, _, _, unavailable := a.unavailablePlace(origin); unavailable {
+		a.reportRawPointerProvenInvalid(member.Property.Token, invalidatedAt, diagnostics.RawPointerDanglingOrigin, "originating value became unavailable here",
+			"Keep the originating storage live and owned for the complete reference lifetime, or obtain a new pointer from valid storage. Adding unsafe cannot restore a moved or destroyed value, and a raw pointer does not retain its owner.",
+			"RawPtr.%s through %s would form a reference to %s, which no longer holds a value; unsafe does not make a known dangling address valid", member.Property.Value, ident.Value, origin.String())
 		return true
 	}
 	action := "form a shared reference through RawPtr.AsRef to"

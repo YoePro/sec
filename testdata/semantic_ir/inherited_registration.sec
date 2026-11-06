@@ -1,0 +1,121 @@
+module main
+
+// MD-125: a replacement keeps the destination's live cleanup registration and
+// its position; reinitialization registers anew; a destination owned on only
+// some paths inherits there and registers on the others.
+// Rules: rules/memory/destruction.md §§ 6.1(4)-(5), 13.2(5)-(8), 13.3(5);
+// rules/compiler/semantic_ir.md § 40(7)-(10).
+
+type Handle struct {
+    id: int,
+}
+
+impl Handle {
+    free {
+    }
+}
+
+type Pair struct {
+    left:  Handle,
+    count: int,
+    right: Handle,
+}
+
+fn Make(id: int) Handle {
+    return Handle { id: id }
+}
+
+fn MakePair() Pair {
+    return Pair { left: Make(1), count: 2, right: Make(3) }
+}
+
+fn Sink(->handle: Handle) void {
+}
+
+fn Log(number: int) void {
+}
+
+fn Available() void {
+    let mut handle := Make(1)
+    handle = Make(2)
+}
+
+fn NestedThenMove(flag: bool) void {
+    let mut handle := Make(1)
+    if flag {
+        if flag {
+            handle = Make(2)
+        }
+    }
+    Sink(<-handle)
+}
+
+fn Reinitialize() void {
+    let mut handle := Make(1)
+    Sink(<-handle)
+    handle = Make(2)
+}
+
+fn Conditional(flag: bool) void {
+    let mut handle := Make(1)
+    if flag {
+        Sink(<-handle)
+    }
+    handle = Make(2)
+}
+
+fn ConditionalInLoop(flag: bool) void {
+    let mut handle := Make(0)
+    let mut index  := 0
+    while index < 3 {
+        index = index + 1
+        if flag {
+            Sink(<-handle)
+        }
+        handle = Make(index)
+    }
+}
+
+fn AfterFieldMoves() int {
+    let mut pair := MakePair()
+    Sink(<-pair.left)
+    pair = MakePair()
+    return pair.count
+}
+
+fn DeferReadsReplaced() void {
+    let mut handle := Make(1)
+    defer {
+        Log(handle.id)
+    }
+    handle = Make(2)
+}
+
+fn TryMake(id: int) Result[Handle, IndexError] {
+    return Ok(Make(id))
+}
+
+// P17-39: a fallible right-hand side is prepared first; its failure leaves the
+// old owner and its registration in place, its success replaces once.
+fn FallibleReplace() Result[int, IndexError] {
+    let mut handle := Make(1)
+    handle = try TryMake(2)
+    return Ok(handle.id)
+}
+
+fn RecoverReplace() int {
+    let mut handle := Make(1)
+    handle = try TryMake(2) {
+        Err(_) => Make(3)
+    }
+    return handle.id
+}
+
+// A handler arm's return runs function cleanup like a return statement.
+fn HandlerReturn() int {
+    let mut handle := Make(1)
+    handle = try TryMake(2) {
+        Err(_) => return 0
+    }
+    return handle.id
+}

@@ -1,0 +1,45 @@
+module main
+
+// P17-32: mutually exclusive successors transfer the same owner; merges carry
+// owned values with explicit successor actions; consuming `->` parameters take
+// moved owners.
+// Rules: rules/memory/copy_move.md §§ 9, 12; dialect v13 §§ 25-27.
+
+type Handle struct {
+    id: int,
+}
+
+impl Handle {
+    free {
+    }
+}
+
+fn Make(id: int) Handle {
+    return Handle { id: id }
+}
+
+fn Sink(->handle: Handle) void {
+}
+
+fn Keep(->handle: Handle) Handle {
+    return handle
+}
+
+fn ExclusiveTransfers(flag: bool) void {
+    let handle := Make(1)
+    if flag {
+        Sink(<-handle)
+    } else {
+        let kept := Keep(<-handle)
+        Sink(<-kept)
+    }
+}
+
+fn MergedOwner(option: Option[int]) int {
+    let handle := match option {
+        Some(n) => Make(n)
+        None => Make(0)
+    }
+    let other := Keep(<-handle)
+    return other.id
+}

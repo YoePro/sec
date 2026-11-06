@@ -243,7 +243,7 @@ func (a *Analyzer) inferExpressionUnrecorded(expr ast.Expression) (Type, express
 		if a.isNullSentinel(expr) {
 			return a.inferNullSentinel(expr)
 		}
-		symbol, ok := a.symbols[expr.Value]
+		symbol, ok := a.symbols.lookup(expr.Value)
 		if !ok {
 			if functions := a.accessibleFunctions(a.functions[expr.Value]); len(functions) > 0 {
 				if len(functions) == 1 {
@@ -627,7 +627,7 @@ func (a *Analyzer) inferExpressionInCancellableContext(expr ast.Expression) (Typ
 
 func (a *Analyzer) inferAwaitExpression(expr *ast.AwaitExpression) (Type, expressionValue) {
 	if a.inDeferBlock {
-		a.addErrorAtToken(expr.Token, "await is not allowed inside defer")
+		a.reportInvalidDeferredCleanup(expr.Token, "await")
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 	if expr.Value == nil {
@@ -963,145 +963,6 @@ func (a *Analyzer) inferStructLiteralAsUnionVariant(expr *ast.StructLiteral) (Ty
 	return unionType, expressionValue{Display: expr.String()}, true
 }
 
-// inferLambdaExpression validates a lambda, constructs its capture environment
-// in the enclosing callable, and analyzes its body under a distinct callable
-// identity and lexical capture scope.
-//
-// Rules:
-//   - rules/declarations/lambda-functions.md — §§13–21 explicit captures and lambda bodies
-//   - rules/analysis/closure_analysis.md — "Callable creation"
-//   - rules/analysis/call_graph.md — "Callable node" and "Call-site record"
-func (a *Analyzer) inferLambdaExpression(expr *ast.LambdaExpression) (Type, expressionValue) {
-	returnType, ok := a.resolveType(expr.ReturnType)
-	if !ok {
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
-	}
-
-	params := make([]Type, 0, len(expr.Parameters))
-	seenParams := map[string]lexer.Token{}
-	for _, param := range expr.Parameters {
-		if _, exists := seenParams[param.Name.Value]; exists {
-			a.addErrorAtToken(param.Name.Token, "duplicate parameter %q", param.Name.Value)
-			continue
-		}
-		a.checkConfusableInDomains(param.Name.Value, param.Name.Token, seenParams)
-		seenParams[param.Name.Value] = param.Name.Token
-
-		paramType, paramOK := a.resolveType(param.Type)
-		if !paramOK {
-			continue
-		}
-		params = append(params, paramType)
-	}
-
-	lambdaType := Type{
-		Name:                   functionTypeName(params, returnType, CallableShared),
-		Kind:                   FunctionType,
-		FunctionParameterTypes: params,
-		FunctionReturnType:     &returnType,
-		FunctionCapability:     CallableShared,
-	}
-	if len(params) != len(expr.Parameters) {
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
-	}
-
-	a.validateLambdaCaptureOwnership(expr)
-	a.recordLambdaCaptureFacts(expr)
-	a.recordLambdaCallableIdentity(expr)
-	lambdaCallable := CallableID("")
-	if identity, exists := a.resolvedCallableIdentities[expr]; exists {
-		lambdaCallable = a.callGraph.addClosureCallable(identity, a.currentModule)
-	}
-
-	previousSymbols := a.symbols
-	previousConstInts := a.constInts
-	previousAssigned := a.assigned
-	previousMoved := a.moved
-	previousMoveReasons := a.availabilityStates
-	previousFunctionName := a.currentFunctionName
-	previousCallable := a.currentCallable
-	previousFunctionReturn := a.currentFunctionReturn
-	previousInFunctionBody := a.inFunctionBody
-	previousInLambda := a.inLambda
-	previousLambdaOuterSymbols := a.lambdaOuterSymbols
-	previousLoopDepth := a.loopDepth
-	previousTest := a.currentTest
-
-	// rules/declarations/lambda-functions.md, capture eligibility; correction11.md
-	// separates enclosing locals from ordinary module/type lookup. Non-local
-	// declarations remain directly visible and cannot be captured.
-	captureCandidates := map[string]Symbol{}
-	a.symbols = map[string]Symbol{}
-	a.constInts = map[string]*big.Int{}
-	a.assigned = map[string]bool{}
-	a.moved = copyMoved(previousMoved)
-	a.availabilityStates = copyAvailabilityStates(previousMoveReasons)
-	for _, capture := range expr.Captures {
-		if capture.Name != nil {
-			clearRootPlaceStateMaps(a.moved, a.availabilityStates, capture.Name.Value)
-		}
-	}
-	for name, symbol := range previousSymbols {
-		if symbol.Local {
-			captureCandidates[name] = symbol
-			continue
-		}
-		a.symbols[name] = symbol
-		a.assigned[name] = previousAssigned[name]
-		if value, ok := previousConstInts[name]; ok {
-			a.constInts[name] = new(big.Int).Set(value)
-		}
-	}
-	a.currentFunctionName = "lambda"
-	a.currentFunctionReturn = returnType
-	a.inFunctionBody = true
-	previousTryHandlerDepth := a.tryHandlerDepth
-	a.tryHandlerDepth = 0
-	a.inLambda = true
-	a.lambdaOuterSymbols = captureCandidates
-	a.loopDepth = 0
-	// A lambda declared inside a test is its own callable boundary. Its return
-	// statements follow the declared lambda return type, not test-return rules.
-	a.currentTest = nil
-	defer func() {
-		a.symbols = previousSymbols
-		a.constInts = previousConstInts
-		a.assigned = previousAssigned
-		a.moved = previousMoved
-		a.availabilityStates = previousMoveReasons
-		a.currentFunctionName = previousFunctionName
-		a.currentCallable = previousCallable
-		a.currentFunctionReturn = previousFunctionReturn
-		a.inFunctionBody = previousInFunctionBody
-		a.tryHandlerDepth = previousTryHandlerDepth
-		a.inLambda = previousInLambda
-		a.lambdaOuterSymbols = previousLambdaOuterSymbols
-		a.loopDepth = previousLoopDepth
-		a.currentTest = previousTest
-	}()
-
-	a.defineLambdaCaptures(expr, captureCandidates, previousAssigned)
-	// Environment construction executes in the enclosing callable. Only the
-	// lambda body itself changes the active call-graph caller.
-	a.currentCallable = lambdaCallable
-
-	for i, param := range expr.Parameters {
-		mutableBinding := !param.Ref && !param.MutableRef && params[i].Kind != ReferenceType
-		if !a.defineSymbol(param.Name.Value, params[i], mutableBinding, param.Name.Token) {
-			continue
-		}
-		a.assigned[param.Name.Value] = true
-	}
-
-	a.analyzeBlockStatements(expr.Body)
-
-	if !a.blockDefinitelyReturns(expr.Body) && returnType.Kind != VoidType {
-		a.addErrorAtToken(expr.Token, "lambda must return %s", typeDisplayName(returnType))
-	}
-
-	return lambdaType, expressionValue{Display: expr.String()}
-}
-
 func (a *Analyzer) inferMemberExpression(expr *ast.MemberExpression) (Type, bool) {
 	if reference, unit := expr.Object.(*ast.UnitReferenceExpression); unit {
 		return a.inferUnitMemberExpression(expr, reference)
@@ -1129,6 +990,17 @@ func (a *Analyzer) inferMemberExpression(expr *ast.MemberExpression) (Type, bool
 	objectType = dereferenceType(objectType)
 	if definition, exists := memberDefinitionToken(objectType, expr.Property.Value); exists {
 		a.bindDefinition(expr.Property.Token, definition)
+	}
+
+	// As* conversions are properties; unsafe authorizes the property read.
+	// Rules: rules/memory/raw_pointers.md §18A;
+	// rules/corrections/applied/md070-as-property-naming-correction-20261106.md §2.
+	if objectType.Kind == RawPtrType && (expr.Property.Value == "AsRef" || expr.Property.Value == "AsRefMut") {
+		if member, found := compilerKnownMember(objectType, expr.Property.Value, false); found {
+			a.compilerKnownMemberFacts[sourceTokenLocation(expr.Property.Token)] = member
+		}
+		typ, _, _ := a.inferRawPointerReferenceConversion(expr, objectType)
+		return typ, typ.Kind != InvalidType
 	}
 
 	if expr.Property.Value == "Ptr" || expr.Property.Value == "ptr" {
@@ -1242,14 +1114,17 @@ func (a *Analyzer) inferMemberExpression(expr *ast.MemberExpression) (Type, bool
 	return Type{Kind: InvalidType}, false
 }
 
+// inferPointerMember forms a raw address only for an authorized addressable Place.
+// Rules: rules/memory/raw_pointers.md — §§17(7–9),34(1–4).
 func (a *Analyzer) inferPointerMember(expr *ast.MemberExpression, objectType Type) (Type, bool) {
 	memberName := expr.Property.Value
 	if !a.inUnsafe {
-		a.addErrorAtToken(expr.Property.Token, "member %s requires unsafe", memberName)
+		a.addErrorAtTokenWithMetadata(expr.Property.Token, diagnostics.RawPointerUnsafeRequired,
+			"Form this addressable Place pointer inside an unsafe { } block; call-form unsafe cannot authorize a property read. Verify its lifetime and access contract first; the pointer does not retain the owner or grant borrow authority.", "member %s requires unsafe", memberName)
 		return Type{Kind: InvalidType}, false
 	}
 	if !isAddressablePointerSource(expr.Object) {
-		a.addErrorAtToken(expr.Property.Token, "member %s requires an addressable value", memberName)
+		a.reportInvalidRawPointerOperation(expr.Property.Token, "Take the address of an addressable Place; a temporary or computed property does not identify stable stored memory.", "member %s requires an addressable value", memberName)
 		return Type{Kind: InvalidType}, false
 	}
 	return compilerKnownRawPointerResult(objectType), true
@@ -1286,7 +1161,7 @@ func (a *Analyzer) inferStaticMemberExpression(expr *ast.MemberExpression) (Type
 		return Type{}, false
 	}
 	memberName := typeName + "." + expr.Property.Value
-	symbol, exists := a.symbols[memberName]
+	symbol, exists := a.symbols.lookup(memberName)
 	if !exists {
 		// rules/declarations/static.md, sections 8 and 11. Static
 		// properties use type-qualified lookup and getter semantics.
@@ -1603,7 +1478,8 @@ func (a *Analyzer) inferConversionExpression(expr *ast.ConversionExpression) (Ty
 	}
 
 	if (targetType.Kind == RawPtrType || valueType.Kind == RawPtrType) && !a.inUnsafe {
-		a.addErrorAtToken(expr.Token, "conversion involving RawPtr requires unsafe")
+		a.addErrorAtTokenWithMetadata(expr.Token, diagnostics.RawPointerUnsafeRequired,
+			"Perform an allowed raw-address conversion inside an unsafe { } block after checking the target pointer width, address space and representation. Unsafe does not create a missing conversion or legalize truncation; use AsRef/AsRefMut for a safe reference.", "conversion involving RawPtr requires unsafe")
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 
@@ -2073,7 +1949,7 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 		if name == "" {
 			return a.inferFunctionValueCall(expr, Type{Kind: InvalidType})
 		}
-		if symbol, exists := a.symbols[name]; exists && symbol.Type.Kind == FunctionType {
+		if symbol, exists := a.symbols.lookup(name); exists && symbol.Type.Kind == FunctionType {
 			// rules/declarations/lambda-functions.md: retain the callable value's
 			// resolved capability on the callee expression so LSP and later
 			// compiler stages do not reconstruct it from source spelling.
@@ -2497,179 +2373,6 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 	return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 }
 
-// inferRawPointerCall validates compiler-known raw-address operations. Unsafe
-// authorizes the operation class but does not manufacture a pointee type for
-// RawPtr[void] or waive the operation's concrete element requirements.
-//
-// Rules:
-//   - rules/memory/raw_pointers.md — §3(3)–(4) "RawPtr[void]"
-//   - rules/memory/raw_pointers.md — §11 "Raw-pointer read"
-//   - rules/memory/raw_pointers.md — §12 "Raw-pointer write"
-//   - rules/memory/raw_pointers.md — §13 "Volatile raw-pointer access"
-//   - rules/memory/raw_pointers.md — §14 "Pointer arithmetic"
-func (a *Analyzer) inferRawPointerCall(expr *ast.CallExpression) (Type, expressionValue, bool) {
-	member, ok := expr.Callee.(*ast.MemberExpression)
-	if !ok {
-		return Type{}, expressionValue{}, false
-	}
-	if !a.rawPointerCallMayHaveValueReceiver(member.Object) {
-		return Type{}, expressionValue{}, false
-	}
-	receiverType, _ := a.inferExpression(member.Object)
-	if receiverType.Kind == InvalidType {
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-	}
-	receiverType = dereferenceType(receiverType)
-	if receiverType.Kind != RawPtrType {
-		return Type{}, expressionValue{}, false
-	}
-	knownMember, known := compilerKnownMember(receiverType, member.Property.Value, false)
-
-	switch member.Property.Value {
-	case "Read":
-		if !a.callUnsafeAuthorized(expr) {
-			a.addErrorAtToken(member.Property.Token, "RawPtr.Read requires unsafe because it reads through a raw pointer")
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		if a.rejectProvenNullDereference(member, "Read") {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		if !a.checkCompilerKnownCallArity(expr, "RawPtr.Read", 0, 0) {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		element := compilerKnownRawPointerElement(receiverType)
-		if element.Kind == InvalidType || element.Kind == VoidType {
-			a.addErrorAtToken(member.Property.Token, "RawPtr[void].Read cannot materialize a value; select a concrete pointee type")
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		return element, expressionValue{Display: expr.String()}, true
-	case "Write":
-		if !a.callUnsafeAuthorized(expr) {
-			a.addErrorAtToken(member.Property.Token, "RawPtr.Write requires unsafe because it writes through a raw pointer")
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		if a.rejectProvenNullDereference(member, "Write") {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		if !a.checkCompilerKnownCallArity(expr, "RawPtr.Write", 1, 1) {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		element := compilerKnownRawPointerElement(receiverType)
-		if element.Kind == InvalidType || element.Kind == VoidType {
-			a.addErrorAtToken(member.Property.Token, "RawPtr[void].Write cannot consume a value; select a concrete pointee type")
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		valueType, _ := a.inferExpressionWithExpected(expr.Arguments[0], element)
-		if !a.canInitialize(element, valueType, expr.Arguments[0]) {
-			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "RawPtr.Write value must be %s, got %s", typeDisplayName(element), typeDisplayName(valueType))
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		return a.types["void"], expressionValue{Display: expr.String()}, true
-	case "VolatileRead":
-		if !a.callUnsafeAuthorized(expr) {
-			a.addErrorAtToken(member.Property.Token, "RawPtr.VolatileRead requires unsafe because it performs observable physical-storage access")
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		if a.rejectProvenNullDereference(member, "VolatileRead") {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		if !a.checkCompilerKnownCallArity(expr, "RawPtr.VolatileRead", 0, 0) {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		element := compilerKnownRawPointerElement(receiverType)
-		if element.Kind == InvalidType || element.Kind == VoidType {
-			a.addErrorAtToken(member.Property.Token, "RawPtr[void].VolatileRead cannot materialize a value; select a concrete physical pointee type")
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		if known {
-			a.recordCompilerKnownEffects(knownMember, member.Property.Token)
-		}
-		return element, expressionValue{Display: expr.String()}, true
-	case "VolatileWrite":
-		if !a.callUnsafeAuthorized(expr) {
-			a.addErrorAtToken(member.Property.Token, "RawPtr.VolatileWrite requires unsafe because it performs observable physical-storage access")
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		if a.rejectProvenNullDereference(member, "VolatileWrite") {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		if !a.checkCompilerKnownCallArity(expr, "RawPtr.VolatileWrite", 1, 1) {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		element := compilerKnownRawPointerElement(receiverType)
-		if element.Kind == InvalidType || element.Kind == VoidType {
-			a.addErrorAtToken(member.Property.Token, "RawPtr[void].VolatileWrite cannot consume a value; select a concrete physical pointee type")
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		valueType, _ := a.inferExpressionWithExpected(expr.Arguments[0], element)
-		if !a.canInitialize(element, valueType, expr.Arguments[0]) {
-			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "RawPtr.VolatileWrite value must be %s, got %s", typeDisplayName(element), typeDisplayName(valueType))
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		if known {
-			a.recordCompilerKnownEffects(knownMember, member.Property.Token)
-		}
-		return a.types["void"], expressionValue{Display: expr.String()}, true
-	case "Offset":
-		if !a.rawPointerOperationRequiresUnsafe(member.Property.Token, "RawPtr.Offset") {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		if len(expr.Arguments) != 1 {
-			a.addErrorAtToken(expr.Token, "RawPtr.Offset expects 1 argument, got %d", len(expr.Arguments))
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		if len(receiverType.TypeArgs) == 1 && receiverType.TypeArgs[0].Kind == VoidType {
-			a.addErrorAtToken(member.Property.Token, "RawPtr.Offset requires a typed element pointer, got RawPtr[void]")
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		if !a.rawPointerArgumentIsInt(expr.Arguments[0], "RawPtr.Offset") {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		return receiverType, expressionValue{Display: expr.String()}, true
-	case "AddBytes":
-		if !a.rawPointerOperationRequiresUnsafe(member.Property.Token, "RawPtr.AddBytes") {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		if len(expr.Arguments) != 1 {
-			a.addErrorAtToken(expr.Token, "RawPtr.AddBytes expects 1 argument, got %d", len(expr.Arguments))
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		if !isRawBytePointer(receiverType) {
-			a.addErrorAtToken(member.Property.Token, "RawPtr.AddBytes requires RawPtr[byte], got %s", typeDisplayName(receiverType))
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		if !a.rawPointerArgumentIsInt(expr.Arguments[0], "RawPtr.AddBytes") {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		return receiverType, expressionValue{Display: expr.String()}, true
-	case "Difference":
-		if !a.rawPointerOperationRequiresUnsafe(member.Property.Token, "RawPtr.Difference") {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		if len(expr.Arguments) != 1 {
-			a.addErrorAtToken(expr.Token, "RawPtr.Difference expects 1 argument, got %d", len(expr.Arguments))
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		if len(receiverType.TypeArgs) != 1 || receiverType.TypeArgs[0].Kind == VoidType {
-			a.addErrorAtToken(member.Property.Token, "RawPtr.Difference requires a typed element pointer, got %s", typeDisplayName(receiverType))
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		otherType, _ := a.inferExpression(expr.Arguments[0])
-		if otherType.Kind == InvalidType {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		if !sameConcreteType(receiverType, otherType) {
-			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "RawPtr.Difference argument must be %s, got %s", typeDisplayName(receiverType), typeDisplayName(otherType))
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		return a.types["int"], expressionValue{Display: expr.String()}, true
-	case "AsRef", "AsRefMut":
-		return a.inferRawPointerReferenceConversion(expr, member, receiverType)
-	default:
-		return Type{}, expressionValue{}, false
-	}
-}
-
 func (a *Analyzer) inferCompilerKnownConstructor(expr *ast.CallExpression) (Type, expressionValue, bool) {
 	name := callExpressionName(expr)
 	if name == "Channel" {
@@ -2767,7 +2470,7 @@ func (a *Analyzer) inferSubscriptionCall(expr *ast.CallExpression) (Type, expres
 		return Type{}, expressionValue{}, false
 	}
 	if ident, ok := member.Object.(*ast.Identifier); ok {
-		symbol, exists := a.symbols[ident.Value]
+		symbol, exists := a.symbols.lookup(ident.Value)
 		if !exists || !isSubscriptionType(symbol.Type) {
 			return Type{}, expressionValue{}, false
 		}
@@ -3307,7 +3010,8 @@ func (a *Analyzer) inferCallAsConversion(expr *ast.CallExpression) (Type, expres
 	}
 
 	if (targetType.Kind == RawPtrType || valueType.Kind == RawPtrType) && !a.inUnsafe {
-		a.addErrorAtToken(expr.Token, "conversion involving RawPtr requires unsafe")
+		a.addErrorAtTokenWithMetadata(expr.Token, diagnostics.RawPointerUnsafeRequired,
+			"Perform an allowed raw-address conversion inside an unsafe { } block after checking the target pointer width, address space and representation. Unsafe does not create a missing conversion or legalize truncation; use AsRef/AsRefMut for a safe reference.", "conversion involving RawPtr requires unsafe")
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 

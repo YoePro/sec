@@ -84,7 +84,8 @@ func (a *Analyzer) ReturnReferenceSummaryOf(function Function) (ReturnReferenceS
 // reference returned by a call, instantiated from the callee's
 // returned-origin summary over the actual arguments (package15.md § 62).
 func (a *Analyzer) recordCallReferenceFacts(call *ast.CallExpression, function Function, origin localReferenceOrigin) {
-	if a.summaryPass || function.ReturnType.Kind != ReferenceType || origin.Unknown {
+	// A returned StringView is a shared borrow of its origin (MD-126).
+	if a.summaryPass || function.ReturnType.Kind != ReferenceType && function.ReturnType.Kind != StringViewType || origin.Unknown {
 		return
 	}
 	place, ok := placeFromReferenceOrigin(origin, "")

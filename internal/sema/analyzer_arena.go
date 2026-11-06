@@ -38,17 +38,17 @@ func (a *Analyzer) recordArenaEffect(kind ArenaEffectKind, arena string, domain 
 // Rules: rules/memory/arena.md — §§4.2(1–5), 44(3–4), 68(3)–(4).
 func (a *Analyzer) referencedArenaDomain(receiver *ast.Identifier, symbol Symbol) (string, string, bool) {
 	if name, _, _, _, _ := a.referenceOriginForExpression(receiver); name != "" && name != receiver.Value {
-		if target, ok := a.symbols[name]; ok && target.Type.Kind != ReferenceType && target.Type.Name == "Arena" {
+		if target, ok := a.symbols.lookup(name); ok && target.Type.Kind != ReferenceType && target.Type.Name == "Arena" {
 			if target.Type.ArenaDomainID == "" {
 				target.Type.ArenaDomainID = a.newArenaDomainID(target.Token, "owner")
-				a.symbols[name] = target
+				a.symbols.set(name, target)
 			}
 			return target.Type.ArenaDomainID, name, target.Local
 		}
 	}
 	if symbol.Type.ArenaDomainID == "" {
 		symbol.Type.ArenaDomainID = a.newArenaDomainID(symbol.Token, "referenced")
-		a.symbols[receiver.Value] = symbol
+		a.symbols.set(receiver.Value, symbol)
 	}
 	return symbol.Type.ArenaDomainID, receiver.Value, false
 }
@@ -61,7 +61,7 @@ func (a *Analyzer) bindArenaDomainFromExpression(holder string, expr ast.Express
 	if holder == "" {
 		return
 	}
-	symbol, ok := a.symbols[holder]
+	symbol, ok := a.symbols.lookup(holder)
 	if !ok || symbol.Type.Name != "Arena" {
 		return
 	}
@@ -73,7 +73,7 @@ func (a *Analyzer) bindArenaDomainFromExpression(holder string, expr ast.Express
 	// domain was already known from the expression type (rules/memory/arena.md
 	// § 4.2(3), § 10(6)).
 	if source, ok := expr.(*ast.Identifier); ok && source.Value != holder {
-		if sourceSymbol, exists := a.symbols[source.Value]; exists && sourceSymbol.Type.Name == "Arena" {
+		if sourceSymbol, exists := a.symbols.lookup(source.Value); exists && sourceSymbol.Type.Name == "Arena" {
 			if domain == "" {
 				domain = sourceSymbol.Type.ArenaDomainID
 			}
@@ -96,7 +96,7 @@ func (a *Analyzer) bindArenaDomainFromExpression(holder string, expr ast.Express
 		domain = a.newArenaDomainID(expressionToken(expr), "binding")
 	}
 	symbol.Type.ArenaDomainID = domain
-	a.symbols[holder] = symbol
+	a.symbols.set(holder, symbol)
 }
 
 // newArenaDomainID records the abstract lexical creation/owner site with its
@@ -157,7 +157,7 @@ func (a *Analyzer) checkArenaBackingBorrowRead(name string, token lexer.Token) b
 		if record.Kind != mutableBorrow {
 			continue
 		}
-		holder, ok := a.symbols[record.Holder]
+		holder, ok := a.symbols.lookup(record.Holder)
 		if !ok || holder.Type.Name != "Arena" {
 			continue
 		}
@@ -338,7 +338,7 @@ func (a *Analyzer) inferArenaCall(expr *ast.CallExpression) (Type, expressionVal
 	if !ok {
 		return Type{}, expressionValue{}, false
 	}
-	symbol, ok := a.symbols[receiver.Value]
+	symbol, ok := a.symbols.lookup(receiver.Value)
 	if !ok {
 		return Type{}, expressionValue{}, false
 	}
@@ -368,7 +368,7 @@ func (a *Analyzer) inferArenaCall(expr *ast.CallExpression) (Type, expressionVal
 	} else if domain == "" {
 		domain = a.newArenaDomainID(symbol.Token, "owner")
 		symbol.Type.ArenaDomainID = domain
-		a.symbols[receiver.Value] = symbol
+		a.symbols.set(receiver.Value, symbol)
 	}
 	switch member.Property.Value {
 	case "New":
@@ -526,7 +526,7 @@ const borrowedArenaHelp = "An Arena from Arena.FromBuffer controls its buffer fo
 // Rules:
 //   - rules/memory/arena.md — § 10(6)–(9) "Borrowed fixed Arena", § 4.2(3), § 45(2)
 func (a *Analyzer) rejectBorrowedArenaMove(name string, token lexer.Token) bool {
-	symbol, ok := a.symbols[name]
+	symbol, ok := a.symbols.lookup(name)
 	if !ok || symbol.Type.Name != "Arena" {
 		return false
 	}
@@ -551,7 +551,7 @@ func (a *Analyzer) rejectBorrowedArenaReturn(value ast.Expression) bool {
 	}
 	switch value := value.(type) {
 	case *ast.Identifier:
-		symbol, ok := a.symbols[value.Value]
+		symbol, ok := a.symbols.lookup(value.Value)
 		if !ok || symbol.Type.Name != "Arena" {
 			return false
 		}

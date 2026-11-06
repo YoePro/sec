@@ -133,7 +133,10 @@ func TestOwnershipOperationsRejectInvalidUse(t *testing.T) {
 		{"initialize with old destruction", "own.initialize-place must not destroy an old value", func(m *Module) { op(m, 0, 5).Ownership.DestructionPlan = "destroy:main::Box" }},
 		{"initialize with old cleanup", "own.initialize-place must not destroy an old value", func(m *Module) { op(m, 0, 5).Ownership.OldCleanup = 1 }},
 		{"replace without plan", "own.replace-place old value: missing destruction plan", func(m *Module) { op(m, 0, 6).Ownership.DestructionPlan = "" }},
-		{"replace with same cleanup", "distinct old and new cleanup actions", func(m *Module) { op(m, 0, 6).Ownership.NewCleanup = 1 }},
+		{"conditional replace with same cleanup", "when conditional, a distinct new one", func(m *Module) {
+			op(m, 0, 6).Ownership.NewCleanup = op(m, 0, 6).Ownership.OldCleanup
+			op(m, 0, 6).Ownership.IfOwned = true
+		}},
 		{"destroy with wrong plan", "destroys !2, not !4", func(m *Module) { op(m, 0, 7).Ownership.DestructionPlan = "destroy:main::Text" }},
 		{"destroy without cause", "unknown cause", func(m *Module) { op(m, 0, 7).Ownership.Cause = "" }},
 		{"unknown plan", "unknown destruction plan", func(m *Module) { op(m, 1, 2).Ownership.DestructionPlan = "destroy:missing" }},

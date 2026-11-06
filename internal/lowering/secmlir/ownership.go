@@ -106,6 +106,13 @@ func ownershipProperties(op semantic.Operation) []string {
 				number("defer_id", facts.Defer)
 			} else {
 				text("destruction_plan", facts.DestructionPlan)
+				if len(facts.UnlessActive) != 0 {
+					actions := make([]string, len(facts.UnlessActive))
+					for index, action := range facts.UnlessActive {
+						actions[index] = fmt.Sprint(action)
+					}
+					properties = append(properties, "unless_active = array<i32: "+strings.Join(actions, ", ")+">")
+				}
 			}
 		case semantic.OpCleanupCancel:
 			number("cleanup_action_id", facts.Action)

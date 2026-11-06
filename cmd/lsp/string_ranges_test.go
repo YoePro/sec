@@ -68,3 +68,36 @@ func TestStringRangeHover(t *testing.T) {
 		}
 	}
 }
+
+// Editor checking shares StringView recovery/propagation and retains precise
+// diagnostic identities for escapes, mutation and unprotected panics.
+// Rules: rules/errors/errorhandling.md — §§9,21–22,31;
+// rules/tooling/lsp.md — "Shared diagnostic model" (MD-126).
+func TestStringRangeTryLSP(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		want map[string]int
+	}{
+		{"try_valid", map[string]int{}},
+		{"try_origin_invalid", map[string]int{diagnostics.EscapeLocalStorage: 4, diagnostics.BorrowMutationConflict: 1}},
+		{"try_invalid", map[string]int{diagnostics.NoPanicViolation: 2, diagnostics.TryPropagationIncompatible: 1, diagnostics.InvalidSliceRange: 1}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			source, err := os.ReadFile("../../testdata/sema/string_ranges/" + tc.name + ".sec")
+			if err != nil {
+				t.Fatal(err)
+			}
+			uri := uriFromPath(filepath.Join(t.TempDir(), "main.sec"))
+			for _, d := range analyze(uri, string(source)) {
+				if d.Severity == 1 {
+					tc.want[d.Code]--
+				}
+			}
+			for id, count := range tc.want {
+				if count != 0 {
+					t.Fatalf("unexpected diagnostic count for %s: %v", id, tc.want)
+				}
+			}
+		})
+	}
+}

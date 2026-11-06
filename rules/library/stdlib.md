@@ -1244,12 +1244,17 @@ child standard-I/O binding explicitly establishes only the selected child
 capability according to `rules/concurrency/ipc.md`; it does not weaken the
 general close-on-exec policy or bulk-inherit unrelated files.
 
-The `unicode` package currently provides `unicode.IsLetter(ch: rune) bool`.
-It is generated from Go's Unicode 15.0.0 `unicode.Letter` range table, uses
-static range data and binary search, performs no allocation, and has no runtime
-Unicode-data dependency. Ranges with a Go stride other than one are expanded by
-the generator because current Sec `rune` operations intentionally do not expose
-integer arithmetic.
+### Unicode classification
+
+The `unicode` package exposes the generated scalar predicates specified in
+`rules/library/core-library.md` §11.3: every General_Category and aggregate,
+all binary DerivedCoreProperties/PropList properties, and all six emoji data
+properties, with named aliases for common categories. `unicode.IsLetter(ch)`
+and the other `unicode.Is<Property>(ch)` functions delegate to the same rune
+properties and immutable core data; there is no duplicate stdlib table or
+runtime data dependency. Inputs are pinned to Unicode 18.0.0 and generated
+without relying on the host Go Unicode version. Classification allocates nothing.
+Emoji sequence recognition and full/contextual casing are separate APIs.
 
 ## Not implemented
 

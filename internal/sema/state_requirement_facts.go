@@ -92,7 +92,7 @@ func (a *Analyzer) recordResultStateRequirement(operation ast.Expression, receiv
 func (a *Analyzer) activeResultStateChecks() []ResolvedStateCheck {
 	var checks []ResolvedStateCheck
 	add := func(name, variant string, source lexer.Token) {
-		symbol, exists := a.symbols[name]
+		symbol, exists := a.symbols.lookup(name)
 		if !exists || symbol.Mutable || symbol.Type.Kind != ResultType || !validDefinitionToken(source) {
 			return
 		}

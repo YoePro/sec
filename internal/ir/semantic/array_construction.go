@@ -3,7 +3,6 @@ package semantic
 import (
 	"fmt"
 	"math/big"
-	"reflect"
 
 	"sec/internal/ast"
 	"sec/internal/sema"
@@ -23,9 +22,10 @@ func (fb *functionBuilder) buildArrayLiteral(expr *ast.ArrayLiteral, resultType 
 	if nontrivial && fb.owner.maxPackage < ownershipLoweringPackage {
 		return builtValue{}, fb.unsupported("non-trivial array literal element", expr.Token)
 	}
-	if nontrivial && arrayContainsTry(reflect.ValueOf(expr)) {
-		return builtValue{}, fb.unsupported("partial non-trivial array construction cleanup (P17-16)", expr.Token)
-	}
+	// A failing element leaves through the exit cleanup of the elements
+	// already evaluated (prepareOperand; destruction.md § 7, P17-16).
+	depth := len(fb.prepared)
+	defer fb.takePrepared(depth)
 	resolvedResult, resultOK := fb.owner.module.Types.Lookup(resultType)
 	if !resultOK || resolvedResult.Kind != TypeArray || resolvedResult.Length != plan.Length.String() {
 		return builtValue{}, fmt.Errorf("array literal result type disagrees with resolved plan")
@@ -95,6 +95,9 @@ func (fb *functionBuilder) buildArrayLiteral(expr *ast.ArrayLiteral, resultType 
 		if buildErr != nil {
 			return builtValue{}, buildErr
 		}
+		if kind == ArraySegmentElement {
+			fb.prepareOperand(value, plan.ElementType, expressionToken(source))
+		}
 		op.Operands = append(op.Operands, value.id)
 		op.ArraySegmentKinds = append(op.ArraySegmentKinds, kind)
 		op.ArraySegmentLengths = append(op.ArraySegmentLengths, entry.Length.String())
@@ -107,44 +110,6 @@ func (fb *functionBuilder) buildArrayLiteral(expr *ast.ArrayLiteral, resultType 
 		return builtValue{id: value.ID, typ: resultType}, nil
 	}
 	return fb.result(op, resultType), nil
-}
-
-// arrayContainsTry keeps failed/partial construction outside the ordinary
-// whole-array producer until P17-16 supplies cleanup of prepared elements.
-// Nested callable bodies are separate evaluations and do not enter this gate.
-// Rules: rules/mlir/packages/sec-mlir-dialect_package17.md — §§ 14, 65–67.
-func arrayContainsTry(value reflect.Value) bool {
-	if !value.IsValid() {
-		return false
-	}
-	if (value.Kind() == reflect.Pointer || value.Kind() == reflect.Interface) && value.IsNil() {
-		return false
-	}
-	if value.CanInterface() {
-		switch value.Interface().(type) {
-		case *ast.TryExpression:
-			return true
-		case *ast.LambdaExpression:
-			return false
-		}
-	}
-	switch value.Kind() {
-	case reflect.Pointer, reflect.Interface:
-		return !value.IsNil() && arrayContainsTry(value.Elem())
-	case reflect.Struct:
-		for i := 0; i < value.NumField(); i++ {
-			if value.Type().Field(i).IsExported() && arrayContainsTry(value.Field(i)) {
-				return true
-			}
-		}
-	case reflect.Slice:
-		for i := 0; i < value.Len(); i++ {
-			if arrayContainsTry(value.Index(i)) {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 // semanticArraySpreadAction admits only the transfer represented by Package 14

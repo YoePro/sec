@@ -127,6 +127,18 @@ func (fb *functionBuilder) buildLoopControl(edge LoopEdge, token lexer.Token) er
 		target = fb.loopExit(loop)
 		exit = sema.CleanupExitBreak
 	}
+	// A jump out of a construction (a handler arm's break/continue) leaves the
+	// operands it prepared inside this loop; the success path keeps them
+	// (destruction.md § 7; P17-16).
+	var inside []pendingTemporary
+	for _, operand := range fb.prepared {
+		if operand.loops >= len(fb.loops) {
+			inside = append(inside, operand)
+		}
+	}
+	if err := fb.destroyTemporaries(inside); err != nil {
+		return err
+	}
 	// Leaving the loop body's scopes runs their owned-value cleanup first
 	// (P17-42), around the match subjects the jump leaves.
 	if leaving, ok := fb.scopeCleanupExit(exit, token); ok || len(fb.armTemporaries) != 0 {
@@ -161,7 +173,7 @@ func (fb *functionBuilder) loopExit(loop *activeLoop) *Block {
 func verifyLoopRecords(fn *Function, blocks map[BlockID]*Block) error {
 	records := map[LoopID]LoopRecord{}
 	for index, loop := range fn.Loops {
-		if loop.ID != LoopID(index+1) || loop.Kind != LoopWhile && loop.Kind != LoopForInfinite && loop.Kind != LoopForRange && loop.Kind != LoopForPack {
+		if loop.ID != LoopID(index+1) || loop.Kind != LoopWhile && loop.Kind != LoopForInfinite && loop.Kind != LoopForRange && loop.Kind != LoopForPack && loop.Kind != LoopForStringView {
 			return fmt.Errorf("invalid loop record @%d", loop.ID)
 		}
 		if blocks[loop.ConditionBlock] == nil {

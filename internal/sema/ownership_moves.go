@@ -9,7 +9,7 @@ import "sec/internal/ast"
 func (a *Analyzer) markMoveSource(expr ast.Expression) bool {
 	switch expr := expr.(type) {
 	case *ast.Identifier:
-		symbol, ok := a.symbols[expr.Value]
+		symbol, ok := a.symbols.lookup(expr.Value)
 		if !ok || !requiresOwnershipTransfer(symbol.Type) {
 			return false
 		}
@@ -115,7 +115,7 @@ func (a *Analyzer) unionConstructorPayload(expr *ast.CallExpression) (Type, bool
 func (a *Analyzer) markResourceTransfer(expr ast.Expression) bool {
 	switch expr := expr.(type) {
 	case *ast.Identifier:
-		symbol, ok := a.symbols[expr.Value]
+		symbol, ok := a.symbols.lookup(expr.Value)
 		if !ok || !isCloseTrackedResourceType(symbol.Type) {
 			return false
 		}

@@ -24,6 +24,9 @@ func verifySliceTransferOperation(types *TypeTable, op Operation, values map[Val
 	if op.Kind == OpSliceMoveMutable {
 		kind, ownership = TypeMutableSlice, OwnershipMutableReference
 	}
+	if op.Kind == OpSliceCopyShared && ok && source.Kind == TypeStringView {
+		kind = TypeStringView
+	}
 	if !ok || source.Kind != kind || op.Results[0].Type != values[op.Operands[0]].Type || op.Results[0].Ownership != ownership {
 		return fmt.Errorf("%s requires matching slice authority/type and holder ownership", op.Kind)
 	}

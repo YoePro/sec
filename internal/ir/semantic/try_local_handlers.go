@@ -113,7 +113,8 @@ func (fb *functionBuilder) buildLocalTryHandlers(expr *ast.TryExpression, plan s
 			return builtValue{}, err
 		}
 	}
-	if sourceSliceType(plan.SuccessType) {
+	// A StringView success keeps its original holder facts like a slice (MD-126).
+	if sourceSliceType(plan.SuccessType) || plan.SuccessType.Kind == sema.StringViewType && fb.owner.maxPackage >= sliceLoweringPackage {
 		merged, err = fb.completeSliceTryMerge(expr, merge, successValue)
 		if err != nil {
 			return builtValue{}, err

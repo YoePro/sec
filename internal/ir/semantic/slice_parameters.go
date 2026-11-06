@@ -100,7 +100,7 @@ func (fb *functionBuilder) lowerSliceArgument(arg ast.Expression, param TypeID) 
 	}
 	sourceType, _ := fb.owner.module.Types.Lookup(source.typ)
 	loc := location(holder.Token)
-	if paramType.Kind == TypeSharedSlice {
+	if sharedBoundedView(paramType.Kind) {
 		if sourceType.Kind == TypeMutableSlice && sourceType.Element == paramType.Element {
 			use, ok := fb.owner.analyzer.ResolvedReferenceUseOf(holder)
 			if !ok || use.Kind != sema.ReferenceUsePass || !use.Facts.Checkable() || use.Facts.MutableAuthority {

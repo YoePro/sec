@@ -1,5 +1,7 @@
 # MD-070 — RawPtr and safe-reference conversion spelling
 
+> Naming superseded 2026-11-06: AsRef/AsRefMut are properties without parentheses, read inside unsafe blocks. See [As-property naming correction](md070-as-property-naming-correction-20261106.md). The original method examples below are historical.
+
 - **Status:** Applied 2026-10-21 — integrated into the owning rulebooks and implemented in the compiler-known registry, Sema and LSP; see the application note.
 - **Created:** 2026-10-21
 - **Last updated:** 2026-10-21

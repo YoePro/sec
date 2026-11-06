@@ -44,7 +44,9 @@ func (fb *functionBuilder) guardPayload(subject builtValue, subjectPlace *matchS
 	if !ok {
 		return builtValue{}, fb.unsupported("guarded owned payload binding for "+string(arm.PatternKind), token)
 	}
-	if _, single, found := unionVariant(fb.owner.module, subject.typ, variant); found && single.Kind != UnionVariantSingle {
+	// A named-field variant's whole payload has its own payload Place type,
+	// so the guard sees it the same way (P17-37).
+	if _, single, found := unionVariant(fb.owner.module, subject.typ, variant); found && single.Kind != UnionVariantSingle && single.Kind != UnionVariantFields {
 		return builtValue{}, fb.unsupported("guarded owned named-field payload binding", token)
 	}
 	payloadType, ok := variantPayloadType(fb.owner.module, subject.typ, variant)

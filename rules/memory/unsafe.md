@@ -517,7 +517,7 @@ address-space/platform compatibility
 
 § 22(4) Compiler-proven contradictions are rejected even in unsafe.
 
-§ 22(5) The source spelling is `unsafe pointer.AsRef()` / `unsafe pointer.AsRefMut()` on a typed `RawPtr[T]` (`raw_pointers.md` § 18A; MD-070). They are single calls, so the call form of `unsafe` suffices; `.Ptr` is a property and needs an `unsafe { }` block.
+§ 22(5) The source spellings are `pointer.AsRef` / `pointer.AsRefMut` on a typed `RawPtr[T]` (`raw_pointers.md` §18A; MD-070 naming correction, 2026-11-06). As* members are properties; these reads and `.Ptr` require an `unsafe { }` block. Call-form unsafe cannot authorize a property read.
 
 ---
 

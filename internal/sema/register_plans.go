@@ -117,7 +117,7 @@ func (a *Analyzer) registerRootKind(object ast.Expression) RegisterRootKind {
 		return RegisterRootHardware
 	}
 	if identifier, ok := object.(*ast.Identifier); ok {
-		if symbol, exists := a.symbols[identifier.Value]; exists && isHardwareInstance(symbol.Type) {
+		if symbol, exists := a.symbols.lookup(identifier.Value); exists && isHardwareInstance(symbol.Type) {
 			return RegisterRootHardware
 		}
 		if identifier.Value == "self" {

@@ -142,7 +142,7 @@ func (a *Analyzer) ResolvedStringRangeOf(expr *ast.SliceExpression) (ResolvedStr
 // Rules: rules/collections/collections.md — §7.10; rules/types/types.md — string.
 func (a *Analyzer) knownStringRuneLength(expr ast.Expression) *big.Int {
 	if id, ok := expr.(*ast.Identifier); ok {
-		if symbol, found := a.symbols[id.Value]; found {
+		if symbol, found := a.symbols.lookup(id.Value); found {
 			if symbol.Mutable {
 				return nil
 			}
@@ -162,12 +162,12 @@ func (a *Analyzer) recordStringBindingLength(stmt *ast.LetStatement, errorsBefor
 	if stmt == nil || stmt.Name == nil || stmt.Mutable || stmt.Value == nil || len(a.errors) != errorsBefore {
 		return
 	}
-	symbol, exists := a.symbols[stmt.Name.Value]
+	symbol, exists := a.symbols.lookup(stmt.Name.Value)
 	if !exists || symbol.Type.Kind != StringType {
 		return
 	}
 	symbol.stringRuneLength = a.knownStringRuneLength(stmt.Value)
-	a.symbols[stmt.Name.Value] = symbol
+	a.symbols.set(stmt.Name.Value, symbol)
 }
 
 // bindStringViewBorrow gives every copied/returned view its own shared holder

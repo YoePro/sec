@@ -1,0 +1,106 @@
+module main
+
+// P17-16: a construction whose later operand fails destroys the owned operands
+// it already evaluated, in reverse order, before leaving; it never builds the
+// outer value. Fields below a non-trivial field are read in place.
+// Rules: rules/memory/destruction.md §§ 7, 8, 14.2; package17 §§ 12, 14, 65.
+
+type Handle struct {
+    id: int,
+}
+
+impl Handle {
+    free {
+    }
+}
+
+type Pair struct {
+    left:  Handle,
+    right: Handle,
+}
+
+type Triple struct {
+    first:  Handle,
+    second: Handle,
+    third:  Handle,
+}
+
+type Parcel union {
+    Boxed { inner: Handle, outer: Handle },
+    Empty,
+}
+
+fn Make(id: int) Handle {
+    return Handle { id: id }
+}
+
+fn TryMake(id: int) Result[Handle, IndexError] {
+    return Ok(Make(id))
+}
+
+fn Take(->a: Handle, ->b: Handle) void {
+}
+
+fn StructField() Result[int, IndexError] {
+    let pair := Pair { left: Make(1), right: try TryMake(2) }
+    return Ok(pair.left.id)
+}
+
+fn ReverseOrder() Result[int, IndexError] {
+    let triple := Triple { first: Make(1), second: Make(2), third: try TryMake(3) }
+    return Ok(triple.third.id)
+}
+
+fn ArrayElement() Result[int, IndexError] {
+    let handles := [Make(1), try TryMake(2)]
+    return Ok(2)
+}
+
+fn Argument() Result[int, IndexError] {
+    Take(Make(1), try TryMake(2))
+    return Ok(1)
+}
+
+fn UnionFields() Result[int, IndexError] {
+    let parcel := Parcel.Boxed { inner: Make(1), outer: try TryMake(2) }
+    return Ok(1)
+}
+
+fn HandlerReturn() int {
+    let pair := Pair { left: Make(1), right: try TryMake(2) { Err(_) => return 0 } }
+    return pair.right.id
+}
+
+fn NestedRead(pair: Pair) int {
+    let mut copy := Pair { left: Make(pair.left.id), right: Make(pair.right.id) }
+    copy.right = Make(3)
+    return copy.left.id + copy.right.id
+}
+
+fn HandlerBreak() int {
+    let mut total := 0
+    while total < 3 {
+        let pair := Pair { left: Make(1), right: try TryMake(2) {
+            Err(_) => {
+                break
+            }
+        } }
+        total = total + pair.right.id
+    }
+    return total
+}
+
+// P17-23: a moved argument is consumed only when its call commits, so a failing
+// later argument leaves the owner unmoved and registered.
+fn MovedArgument() Result[int, IndexError] {
+    let handle := Make(1)
+    Take(<-handle, try TryMake(2))
+    return Ok(1)
+}
+
+fn MovedStorageArgument() Result[int, IndexError] {
+    let mut handle := Make(1)
+    handle = Make(2)
+    Take(<-handle, try TryMake(3))
+    return Ok(1)
+}

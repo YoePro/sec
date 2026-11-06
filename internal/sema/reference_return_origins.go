@@ -56,7 +56,7 @@ func (a *Analyzer) symbolicFunctionOriginRoot(root string) (string, bool) {
 	if root == "self" && function.ImplTarget != "" {
 		return "$receiver", true
 	}
-	if symbol, exists := a.symbols[root]; exists && !symbol.Local {
+	if symbol, exists := a.symbols.lookup(root); exists && !symbol.Local {
 		return "$static:" + root, true
 	}
 	return "", false

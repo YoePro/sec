@@ -51,9 +51,11 @@ module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 :
 // -----
 
 module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 : i32, sec.module_id = "slice-ops-32", sec.source_files = [], sec.target_os = "linux", sec.target_arch = "armv7", sec.target_triple = "armv7-unknown-linux-gnueabihf", sec.target_abi = "gnu", sec.target_profile = "hosted", sec.target_endianness = "little", dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32>>} {
+  // MD-125: equal identities inherit the live registration; a conditional
+  // replacement must also name a distinct new one.
   func.func @same_ids(%p: !sec.place<!sec.int, "rw">, %v: !sec.int) {
-    // expected-error@+1 {{distinct old and new}}
-    "sec.own.replace_place"(%p, %v) <{destruction_plan = "p", old_cleanup_action_id = 1 : i32, new_cleanup_action_id = 1 : i32}> : (!sec.place<!sec.int, "rw">, !sec.int) -> ()
+    // expected-error@+1 {{when conditional, a distinct new one}}
+    "sec.own.replace_place"(%p, %v) <{destruction_plan = "p", old_cleanup_action_id = 1 : i32, new_cleanup_action_id = 1 : i32, if_owned}> : (!sec.place<!sec.int, "rw">, !sec.int) -> ()
     return
   }
 }
@@ -149,6 +151,17 @@ module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 :
   func.func @panic_exit() {
     // expected-error@+1 {{invalid exit kind}}
     "sec.cleanup.run_scope"() <{scope_ids = array<i32: 1>, exit_kind = "panic"}> : () -> ()
+    return
+  }
+}
+
+// -----
+
+// MD-125: unless_active names live registrations by non-zero identity.
+module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 : i32, sec.module_id = "unless-active", sec.source_files = [], sec.target_os = "linux", sec.target_arch = "amd64", sec.target_triple = "x86_64-pc-linux-gnu", sec.target_abi = "gnu", sec.target_profile = "hosted", sec.target_endianness = "little", dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 64>>} {
+  func.func @unless_zero(%p: !sec.place<!sec.int, "rw">) {
+    // expected-error@+1 {{unless_active must name non-zero registrations}}
+    "sec.cleanup.track_owned"(%p) <{cleanup_action_id = 2 : i32, cleanup_scope_id = 1 : i32, cleanup_registration_ordinal = 1 : i32, destruction_plan = "p", unless_active = array<i32: 0>}> : (!sec.place<!sec.int, "rw">) -> ()
     return
   }
 }

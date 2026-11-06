@@ -680,8 +680,20 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 		if err := verifySliceTransferOperation(module.Types, op, values); err != nil {
 			return err
 		}
-	case OpSliceLength:
+	case OpSliceLength, OpStringViewByteLength:
 		if err := verifySliceLengthOperation(module.Types, op, values); err != nil {
+			return err
+		}
+	case OpStringRuneLength:
+		if err := verifyStringRuneLength(module.Types, op, values); err != nil {
+			return err
+		}
+	case OpStringViewBorrow:
+		if err := verifyStringViewBorrow(module.Types, op, values); err != nil {
+			return err
+		}
+	case OpStringViewDecodeNext:
+		if err := verifyStringViewDecodeNext(module.Types, op, values); err != nil {
 			return err
 		}
 	case OpSliceRangeNormalize, OpSliceRangeCheck:
@@ -750,7 +762,7 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 		// generic value discard cannot omit its borrow/lifetime facts.
 		// Rules: rules/mlir/packages/sec-mlir-dialect_package16.md — §63.
 		if len(op.Operands) == 1 {
-			if typ, ok := module.Types.Lookup(values[op.Operands[0]].Type); ok && (typ.Kind == TypeSharedSlice || typ.Kind == TypeMutableSlice) {
+			if typ, ok := module.Types.Lookup(values[op.Operands[0]].Type); ok && boundedView(typ.Kind) {
 				return fmt.Errorf("slice discard requires ref.end-borrow with canonical holder facts")
 			}
 		}
@@ -787,7 +799,7 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 		if len(op.Results) == 1 {
 			// A returned direct reference carries the caller-side facts
 			// instantiated from the callee's origin summary (package15.md § 62).
-			if _, isReference := referenceType(module.Types, op.Results[0].Type); isReference || typeHasKind(module.Types, op.Results[0].Type, TypeSharedSlice, TypeMutableSlice) {
+			if _, isReference := referenceType(module.Types, op.Results[0].Type); isReference || typeHasKind(module.Types, op.Results[0].Type, TypeSharedSlice, TypeMutableSlice, TypeStringView) {
 				if err := verifyReferenceMetadata(op); err != nil {
 					return err
 				}
@@ -811,7 +823,7 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 				if reference.Mutable {
 					want = ArgumentMutableReference
 				}
-			} else if parameter, ok := module.Types.Lookup(callee.Parameters[i].Value.Type); ok && parameter.Kind == TypeSharedSlice {
+			} else if parameter, ok := module.Types.Lookup(callee.Parameters[i].Value.Type); ok && sharedBoundedView(parameter.Kind) {
 				want = ArgumentSharedReference
 			} else if ok && parameter.Kind == TypeMutableSlice {
 				want = ArgumentMutableReference
@@ -2280,7 +2292,7 @@ func verifyStorageDominance(fn *Function, blocks map[BlockID]*Block, dom map[Blo
 					return fmt.Errorf("storage declaration does not dominate use")
 				}
 				if !iok || !dominatesPosition(i, use, dom) {
-					return fmt.Errorf("storage initialization does not dominate use")
+					return fmt.Errorf("storage initialization does not dominate use of $%d at ^%d:%d (%s)", op.Storage, b.ID, index, op.Kind)
 				}
 			}
 		}

@@ -48,7 +48,7 @@ func (a *Analyzer) isAtomicFenceCall(expr *ast.CallExpression) bool {
 	if callExpressionName(expr) != atomicFenceName {
 		return false
 	}
-	_, shadowed := a.symbols["atomic"]
+	_, shadowed := a.symbols.lookup("atomic")
 	return !shadowed
 }
 

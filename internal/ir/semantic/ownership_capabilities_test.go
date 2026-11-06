@@ -49,13 +49,8 @@ func TestPackage17CapabilityRejectsMissingOwnershipIR(t *testing.T) {
 		{"semantic_ir/package17_boundary_transfer.sec", "main", "dynamic array type"},
 		{"semantic_ir/package17_boundary_discard.sec", "main", "dynamic array type"},
 		// Option and Result lower since P17-37; these forms keep named boundaries.
-		{"semantic_ir/package17_variants/mutable_named_field.sec", "main", "named-field or error-variant pattern on a mutable owned subject"},
-		{"semantic_ir/package17_variants/temporary_on_some_paths.sec", "main", "owned temporary created on only some paths"},
-		{"semantic_ir/package17_variants/temporary_mutable_borrow.sec", "main", "borrowed temporary that needs full-expression cleanup"},
-		{"semantic_ir/package17_variants/defer_reads_replaced.sec", "main", "replacement of an owned value a registered defer reads"},
 		{"semantic_ir/package17_variants/defer_reads_loop_owner.sec", "main", "defer in a loop reading an owned value of the loop body"},
 		{"semantic_ir/package17_variants/defer_reads_loop_storage.sec", "main", "defer reading mutable storage declared in its loop"},
-		{"semantic_ir/package17_variants/guarded_named_field.sec", "main", "guarded owned named-field payload binding"},
 		{"semantic_ir/package17_variants/error_handler_payload.sec", "main", "guarded try handler on an error that needs destruction"},
 	} {
 		t.Run(test.feature, func(t *testing.T) {

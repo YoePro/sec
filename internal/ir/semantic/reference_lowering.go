@@ -47,13 +47,13 @@ func (fb *functionBuilder) p15Reference(expr ast.Expression) (builtValue, error)
 	if prefix, ok := dereferenceOfValue(expr, analyzer); ok {
 		return fb.lowerValueDereference(prefix)
 	}
-	if call, ok := expr.(*ast.CallExpression); ok {
-		if member, ok := call.Callee.(*ast.MemberExpression); ok && member.Property != nil && (member.Property.Value == "AsRef" || member.Property.Value == "AsRefMut") {
-			if receiver, typed := analyzer.TypeOf(member.Object); typed && receiver.Kind == sema.RawPtrType {
-				// MD-070 § 6: a distinct raw-to-safe operation whose
-				// serialized form is still MD-084's to spell.
-				return builtValue{}, fb.unsupported("raw-to-safe reference conversion RawPtr."+member.Property.Value+" (MD-070 § 6; operation spelling awaits MD-084)", member.Property.Token)
-			}
+	if member, ok := expr.(*ast.MemberExpression); ok && member.Property != nil {
+		property := member.Property.Token
+		if fact, known := analyzer.CompilerKnownMemberAt(property.File, property.Line, property.Column); known &&
+			(fact.ID == "CKM-RAWPTR-AS-REF" || fact.ID == "CKM-RAWPTR-AS-REF-MUT") {
+			// MD-070 §6 and its As-property naming correction: the source is
+			// a property; the distinct raw-to-safe operation still awaits MD-084.
+			return builtValue{}, fb.unsupported("raw-to-safe reference conversion RawPtr."+member.Property.Value+" (MD-070 § 6; operation spelling awaits MD-084)", property)
 		}
 	}
 	if plan, ok := analyzer.ResolvedReferencePlanOf(expr); ok {
@@ -501,7 +501,8 @@ func referenceCreationKind(plan sema.ResolvedReferencePlan) string {
 // Sema grants (rules/declarations/functions.md §38A(3),(9);
 // rules/compiler/semantic_ir.md §27A(1–2)).
 func (fb *functionBuilder) p15ReferenceParameter(parameter sema.FunctionParameter, packPosition int) (*ReferenceMetadata, error) {
-	if !parameter.Ref && !parameter.MutableRef && parameter.Type.Kind != sema.ReferenceType {
+	if !parameter.Ref && !parameter.MutableRef && parameter.Type.Kind != sema.ReferenceType &&
+		!(parameter.Type.Kind == sema.StringViewType && fb.owner.maxPackage >= sliceLoweringPackage) {
 		return nil, nil
 	}
 	facts, ok := fb.owner.analyzer.ReferenceParameterFactsOf(parameter)
@@ -566,7 +567,7 @@ func (fb *functionBuilder) placeResult(op Operation, typ TypeID) builtValue {
 func (fb *functionBuilder) lowerTemporaryBorrow(expr ast.Expression, plan sema.ResolvedReferencePlan) (builtValue, error) {
 	token := expressionToken(expr)
 	owned := !sema.TriviallyDestructible(plan.Place.Type)
-	if owned && (plan.Facts.MutableAuthority || fb.owner.maxPackage < ownershipLoweringPackage) {
+	if owned && fb.owner.maxPackage < ownershipLoweringPackage {
 		return builtValue{}, fb.unsupported("borrowed temporary that needs full-expression cleanup", token)
 	}
 	element, err := fb.owner.internType(plan.Place.Type)
@@ -583,14 +584,29 @@ func (fb *functionBuilder) lowerTemporaryBorrow(expr ast.Expression, plan sema.R
 	if value.typ != element || !owned && !fb.storageAllowed(value.typ) {
 		return builtValue{}, fb.unsupported("borrowed temporary of a non-trivial type", token)
 	}
+	loc := location(token)
+	mutable := plan.Facts.MutableAuthority
+	placeFacts := placeMetadataOf(plan.Place)
+	if owned && mutable {
+		// A mutably borrowed owned temporary lives in compiler storage: the
+		// call may change it in place, and its full expression ends it there
+		// (destruction.md § 8(7); borrowing.md § 5.4(5); P17-40).
+		id := fb.nextStorage
+		fb.nextStorage++
+		fb.fn.Storages = append(fb.fn.Storages, Storage{ID: id, Type: element, Mutable: true, Class: StorageLocalAutomatic, AddressTaken: true, Location: loc})
+		fb.emit(Operation{Kind: OpStorageDeclare, Storage: id, Location: loc})
+		stored := ownedStorage{storage: id, place: plan.Place, typ: element, scope: fb.currentCleanupScope()}
+		root := fb.ownedStoragePlace(stored, token)
+		fb.emit(Operation{Kind: OpOwnInitializePlace, Operands: []ValueID{root.id, value.id}, Ownership: &OwnershipFacts{}, Location: loc})
+		fb.temporaries = append(fb.temporaries, pendingTemporary{typ: plan.Place.Type, token: token, loops: len(fb.loops), block: fb.current.ID, stored: &stored})
+		borrow := &ast.RefExpression{Token: token, Mutable: true, Value: expr}
+		return fb.emitBorrow(borrow, plan, fb.ownedStoragePlace(stored, token))
+	}
 	if owned {
 		// The borrow ends with the call; the temporary lives to the end of its
 		// full expression (destruction.md § 8(7); borrowing.md § 5.4(5)).
 		fb.holdTemporary(value, plan.Place.Type, token)
 	}
-	loc := location(token)
-	mutable := plan.Facts.MutableAuthority
-	placeFacts := placeMetadataOf(plan.Place)
 	var place builtValue
 	if mutable {
 		id := fb.nextStorage

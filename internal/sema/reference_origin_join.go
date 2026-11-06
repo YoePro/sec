@@ -40,7 +40,7 @@ func (a *Analyzer) referenceOriginAlternativesForExpression(expr ast.Expression)
 	if !ok {
 		return nil
 	}
-	symbol, ok := a.symbols[root]
+	symbol, ok := a.symbols.lookup(root)
 	if !ok || !typeCarriesReferenceOrigin(symbol.Type) {
 		return nil
 	}
@@ -124,9 +124,9 @@ func joinedReferenceOrigin(types ...Type) Type {
 // an outer reference holder (for example a holder rebound to Arena storage)
 // would be lost at the join.
 // Rules: rules/memory/lifetime_analysis.md — §11.1–11.2.
-func captureReferenceOrigins(symbols map[string]Symbol) map[string]Type {
+func captureReferenceOrigins(symbols *symbolTable) map[string]Type {
 	origins := map[string]Type{}
-	for name, symbol := range symbols {
+	for name, symbol := range symbols.all() {
 		if typeCarriesReferenceOrigin(symbol.Type) {
 			origins[name] = symbol.Type
 		}
@@ -146,7 +146,7 @@ func captureReferenceOrigins(symbols map[string]Symbol) map[string]Type {
 //   - rules/control-flow/flowcontrol_if.md — § 27 "Sema and flow-analysis requirements"
 //   - rules/memory/lifetime_analysis.md — control-flow joins
 func (a *Analyzer) mergeContinuingReferenceOrigins(branches ...branchAnalysis) {
-	for name, symbol := range a.symbols {
+	for name, symbol := range a.symbols.all() {
 		if !typeCarriesReferenceOrigin(symbol.Type) {
 			continue
 		}
@@ -171,7 +171,7 @@ func (a *Analyzer) mergeContinuingReferenceOrigins(branches ...branchAnalysis) {
 			continue
 		}
 		symbol.Type = referenceTypeWithOrigin(symbol.Type, chosen)
-		a.symbols[name] = symbol
+		a.symbols.set(name, symbol)
 	}
 }
 
@@ -221,7 +221,7 @@ func sameReferenceOriginType(left, right Type) bool {
 // loop exit: the zero-iteration entry (the restored pre-loop symbols), the end
 // of the body (bodySymbols), and every break edge of the loop.
 // Rules: rules/memory/lifetime_analysis.md — §11.3(1–4).
-func (a *Analyzer) mergeLoopExitReferenceOrigins(bodySymbols map[string]Symbol, frame loopBreakFrame) {
+func (a *Analyzer) mergeLoopExitReferenceOrigins(bodySymbols *symbolTable, frame loopBreakFrame) {
 	branches := []branchAnalysis{{continues: true}, {continues: true, referenceOrigins: captureReferenceOrigins(bodySymbols)}}
 	for _, edge := range frame.breaks {
 		branches = append(branches, branchAnalysis{continues: true, referenceOrigins: edge.referenceOrigins})
@@ -235,7 +235,7 @@ func (a *Analyzer) mergeLoopExitReferenceOrigins(bodySymbols map[string]Symbol, 
 // returned; an empty result means the header origins are already a fixed
 // point.
 // Rules: rules/memory/lifetime_analysis.md — §11.3(1–4).
-func loopHeaderReferenceOrigins(entry map[string]Symbol, body map[string]Symbol, bodyFallsThrough bool, frame loopBreakFrame) map[string]Type {
+func loopHeaderReferenceOrigins(entry *symbolTable, body *symbolTable, bodyFallsThrough bool, frame loopBreakFrame) map[string]Type {
 	snapshots := []map[string]Type{}
 	if bodyFallsThrough {
 		snapshots = append(snapshots, captureReferenceOrigins(body))
@@ -244,7 +244,7 @@ func loopHeaderReferenceOrigins(entry map[string]Symbol, body map[string]Symbol,
 		snapshots = append(snapshots, edge.referenceOrigins)
 	}
 	changed := map[string]Type{}
-	for name, symbol := range entry {
+	for name, symbol := range entry.all() {
 		if !typeCarriesReferenceOrigin(symbol.Type) {
 			continue
 		}
@@ -306,7 +306,7 @@ func (a *Analyzer) referenceOriginMatchScopedForExpression(expr ast.Expression) 
 	if !ok {
 		return false
 	}
-	symbol, ok := a.symbols[root]
+	symbol, ok := a.symbols.lookup(root)
 	return ok && typeCarriesReferenceOrigin(symbol.Type) && symbol.Type.ReferenceOriginMatchScoped
 }
 
@@ -331,7 +331,7 @@ func (a *Analyzer) referenceOriginForExpression(expr ast.Expression) (string, le
 	if !ok {
 		return "", lexer.Token{}, false, StorageOriginUnknown, 0
 	}
-	symbol, ok := a.symbols[root]
+	symbol, ok := a.symbols.lookup(root)
 	if !ok {
 		return root, expressionToken(expr), true, StorageOriginUnknown, 0
 	}
@@ -366,9 +366,9 @@ func (a *Analyzer) seedParameterReferenceOrigin(function Function, param Functio
 		return
 	}
 	if isArenaReferenceType(param.Type) {
-		symbol := a.symbols[param.Name]
+		symbol := a.symbols.get(param.Name)
 		symbol.Type.ArenaDomainID = a.newArenaDomainID(param.Token, "parameter")
-		a.symbols[param.Name] = symbol
+		a.symbols.set(param.Name, symbol)
 	}
 	placeType := param.Type
 	if param.Type.Kind == ReferenceType && param.Type.Element != nil {

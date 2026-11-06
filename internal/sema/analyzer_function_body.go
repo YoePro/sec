@@ -47,7 +47,7 @@ func (a *Analyzer) analyzeFunctionBodyInScope(fn *ast.FunctionDeclaration, name 
 	previousInFunctionBody := a.inFunctionBody
 	previousUnsafe := a.inUnsafe
 	previousScopeDepth := a.scopeDepth
-	a.symbols = copySymbols(previousSymbols)
+	a.symbols = previousSymbols.child()
 	a.constInts = copyConstInts(previousConstInts)
 	a.assigned = copyAssigned(previousAssigned)
 	a.moved = map[string]lexer.Token{}
@@ -112,12 +112,12 @@ func (a *Analyzer) analyzeFunctionBodyInScope(fn *ast.FunctionDeclaration, name 
 			mutableBinding = false
 		}
 		symbol := Symbol{Name: param.Name, Type: bindingType, Mutable: mutableBinding, Token: param.Token, Storage: StorageOriginAutomatic, Local: true, Parameter: true, ScopeDepth: 0}
-		a.symbols[param.Name] = symbol
+		a.symbols.set(param.Name, symbol)
 		a.seedParameterReferenceOrigin(function, param)
-		symbol = a.symbols[param.Name]
+		symbol = a.symbols.get(param.Name)
 		completionSymbol := symbol
 		completionSymbol.Local = true
-		a.completionSymbols[param.Name] = completionSymbol
+		a.completionSymbols.set(param.Name, completionSymbol)
 		delete(a.constInts, param.Name)
 		a.assigned[param.Name] = true
 		a.recordDefinition(param.Token)

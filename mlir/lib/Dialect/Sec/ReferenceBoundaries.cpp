@@ -44,7 +44,7 @@ LogicalResult FailBoundsOp::verify() {
 static LogicalResult verifyReferenceValueOperand(Operation *operation,
                                                  Value reference) {
   Type type = reference.getType();
-  if (isa<SliceType, SliceMutType>(type)) {
+  if (isa<SliceType, SliceMutType, StringViewType>(type)) {
     if (!supportsSliceValues(operation))
       return operation->emitOpError("slice reference operations require schema 12");
     return success();

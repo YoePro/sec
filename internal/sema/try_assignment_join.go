@@ -77,7 +77,7 @@ func (a *Analyzer) tryAssignmentFailureEntry(target ast.Expression, before, succ
 			}
 		}
 	}
-	if symbol, ok := a.symbols[place.Root]; ok && key == place.Root && typeCarriesReferenceOrigin(symbol.Type) {
+	if symbol, ok := a.symbols.lookup(place.Root); ok && key == place.Root && typeCarriesReferenceOrigin(symbol.Type) {
 		// A reference holder keeps its previous referent: the borrows it held
 		// and its origin are those from before the statement.
 		failure.borrows = copyBorrows(before.borrows)

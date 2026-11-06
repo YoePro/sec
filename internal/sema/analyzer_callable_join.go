@@ -22,7 +22,7 @@ type nestedCallableWrite struct {
 // Rules:
 //   - rules/analysis/closure_analysis.md — "Callable value flow", "Soundness of target sets", "Closed set"
 func (a *Analyzer) logNestedCallableWrite(name string) {
-	symbol, ok := a.symbols[name]
+	symbol, ok := a.symbols.lookup(name)
 	if !ok || symbol.Type.Kind != FunctionType || a.scopeDepth <= symbol.ScopeDepth {
 		return
 	}

@@ -42,7 +42,7 @@ func (a *Analyzer) inferValidatedCompilerKnownMemberCall(expr *ast.CallExpressio
 			return Type{}, expressionValue{}, false
 		}
 		if root := compilerKnownReceiverRoot(memberExpr.Object); root != nil {
-			if _, isValue := a.symbols[root.Value]; !isValue && !a.staticCompilerKnownPropertyReceiver(memberExpr.Object) {
+			if _, isValue := a.symbols.lookup(root.Value); !isValue && !a.staticCompilerKnownPropertyReceiver(memberExpr.Object) {
 				return Type{}, expressionValue{}, false
 			}
 		}

@@ -1,0 +1,7 @@
+module main
+
+fn View(pointer: RawPtr[int]) void {
+    unsafe {
+        let observer := pointer.AsRef
+    }
+}

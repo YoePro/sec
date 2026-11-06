@@ -453,17 +453,21 @@ func (fb *functionBuilder) moveOwnedLocal(identifier *ast.Identifier, binding se
 		return builtValue{}, true, fb.unsupported("P17 move without a resolved cleanup cancellation", token)
 	}
 	loc := location(token)
-	moved := fb.result(Operation{Kind: OpOwnMove, Operands: []ValueID{value.id}, Ownership: &OwnershipFacts{}, Location: loc}, value.typ)
+	move := Operation{Kind: OpOwnMove, Operands: []ValueID{value.id}, Ownership: &OwnershipFacts{}, Location: loc}
 	reason := "moved"
 	if plan.Site == sema.TransferSiteReturn || plan.Site == sema.TransferSiteArgument {
 		reason = "transferred"
 	}
 	cancels := fb.ownedCancels(binding, action, reason, false, loc)
 	if plan.Site == sema.TransferSiteArgument {
-		// The call emits them after preparing every argument.
+		// The argument's consumption commits with the call, after every
+		// argument is prepared: a failing later argument leaves the owner
+		// unmoved and registered (destruction.md § 9.2(3); P17-23).
+		moved := fb.deferredResult(move, value.typ)
 		fb.pendingArgumentCancels = append(fb.pendingArgumentCancels, cancels...)
 		return moved, true, nil
 	}
+	moved := fb.result(move, value.typ)
 	fb.emitAll(cancels)
 	return moved, true, nil
 }
@@ -498,9 +502,27 @@ func (fb *functionBuilder) ownedArgumentLowerable(argument ast.Expression) bool 
 		return argument.Operator == "<-" && fb.ownedArgumentLowerable(argument.Right)
 	case *ast.CallExpression, *ast.StructLiteral:
 		return true
+	case *ast.TryExpression:
+		// The success value of a try over a fresh call is itself fresh.
+		_, call := argument.Expression.(*ast.CallExpression)
+		return call
 	case *ast.MemberExpression:
 		plan, ok := fb.owner.analyzer.ResolvedTransferPlanOf(argument)
 		return ok && fieldMoveLowerable(plan)
+	}
+	return false
+}
+
+// freshArgument reports an argument expression that creates a new owned value,
+// which a failing later argument must destroy (P17-16), unlike a moved owner
+// whose cancellation waits for the call (destruction.md § 9.2(3)).
+func freshArgument(argument ast.Expression) bool {
+	switch argument := argument.(type) {
+	case *ast.CallExpression, *ast.StructLiteral:
+		return true
+	case *ast.TryExpression:
+		_, call := argument.Expression.(*ast.CallExpression)
+		return call
 	}
 	return false
 }
@@ -560,17 +582,20 @@ func (fb *functionBuilder) readOwnedStorage(identifier *ast.Identifier, binding 
 		return builtValue{}, fb.unsupported("P17 move of an owned value without a tracked registration", identifier.Token)
 	}
 	place := fb.ownedStoragePlace(owned, identifier.Token)
-	moved := fb.result(Operation{Kind: OpOwnMoveFromPlace, Operands: []ValueID{place.id}, Ownership: &OwnershipFacts{}, Location: location(identifier.Token)}, owned.typ)
+	move := Operation{Kind: OpOwnMoveFromPlace, Operands: []ValueID{place.id}, Ownership: &OwnershipFacts{}, Location: location(identifier.Token)}
 	reason := "moved"
 	if plan.Site == sema.TransferSiteReturn || plan.Site == sema.TransferSiteArgument {
 		reason = "transferred"
 	}
 	cancels := fb.ownedCancels(binding, action, reason, false, location(identifier.Token))
 	if plan.Site == sema.TransferSiteArgument {
+		// Moved out only when the call commits (destruction.md § 9.2(3)).
+		moved := fb.deferredResult(move, owned.typ)
 		fb.pendingArgumentCancels = append(fb.pendingArgumentCancels, cancels...)
-	} else {
-		fb.emitAll(cancels)
+		return moved, nil
 	}
+	moved := fb.result(move, owned.typ)
+	fb.emitAll(cancels)
 	return moved, nil
 }
 
@@ -597,9 +622,11 @@ func (fb *functionBuilder) assignOwnedStorage(stmt *ast.AssignmentStatement, bin
 	if fb.currentCleanupScope() != owned.scope && !fb.pathDependent[binding] {
 		return fb.unsupported("P17 owned reassignment outside its declaring scope that the path scan missed", stmt.Token)
 	}
-	if fb.deferCaptured[binding] && assignment.Previous != sema.CleanupPreviousUnavailable {
-		// The new value would register after the defer and so be destroyed
-		// before the defer reads it (destruction.md §§ 6.3(3), 35.6(2)).
+	if fb.deferCaptured[binding] && assignment.Previous == sema.CleanupPreviousConditional {
+		// On a path without a live registration the new value would register
+		// after the defer and so be destroyed before the defer reads it
+		// (destruction.md §§ 6.3(3), 35.6(2)). A replacement keeps the live
+		// registration's position before the defer (MD-125).
 		return fb.unsupported("P17 replacement of an owned value a registered defer reads", stmt.Token)
 	}
 	value, err := fb.buildExpr(stmt.Value, owned.typ)
@@ -608,9 +635,14 @@ func (fb *functionBuilder) assignOwnedStorage(stmt *ast.AssignmentStatement, bin
 	}
 	place := fb.ownedStoragePlace(owned, stmt.Token)
 	registration := assignment.Registration
+	// MD-125: a replacement keeps the destination's live registration and its
+	// position; only a path without one registers the new incarnation
+	// (destruction.md §§ 6.1(4)–(5), 13.2(5)–(8), 13.3(5); semantic_ir.md § 40(7)–(10)).
+	if assignment.Previous != sema.CleanupPreviousUnavailable && assignment.Cleanup.Inherit != binding {
+		return fb.unsupported("P17 owned replacement without an inherited registration", stmt.Token)
+	}
 	switch assignment.Previous {
-	case sema.CleanupPreviousAvailable, sema.CleanupPreviousConditional:
-		conditional := assignment.Previous == sema.CleanupPreviousConditional
+	case sema.CleanupPreviousAvailable:
 		old, tracked := fb.trackedActions[binding]
 		if !tracked {
 			return fb.unsupported("P17 replacement of an untracked owned value", stmt.Token)
@@ -619,9 +651,36 @@ func (fb *functionBuilder) assignOwnedStorage(stmt *ast.AssignmentStatement, bin
 		if err != nil {
 			return err
 		}
-		fb.emit(Operation{Kind: OpOwnReplacePlace, Operands: []ValueID{place.id, value.id}, Ownership: &OwnershipFacts{DestructionPlan: planID, OldCleanup: old, NewCleanup: uint32(registration.Action), IfOwned: conditional}, Location: location(stmt.Token)})
-		fb.emitAll(fb.ownedCancels(binding, old, "replaced", conditional, location(stmt.Token)))
+		fb.emit(Operation{Kind: OpOwnReplacePlace, Operands: []ValueID{place.id, value.id}, Ownership: &OwnershipFacts{DestructionPlan: planID, OldCleanup: old, NewCleanup: old}, Location: location(stmt.Token)})
+		return nil
+	case sema.CleanupPreviousConditional:
+		old, tracked := fb.trackedActions[binding]
+		if !tracked || assignment.Cleanup.Register == 0 {
+			return fb.unsupported("P17 conditional replacement without its inherited and new registrations", stmt.Token)
+		}
+		planID, err := fb.owner.importDestructionPlans(registration.Destruction, typ)
+		if err != nil {
+			return err
+		}
+		fb.emit(Operation{Kind: OpOwnReplacePlace, Operands: []ValueID{place.id, value.id}, Ownership: &OwnershipFacts{DestructionPlan: planID, OldCleanup: old, NewCleanup: uint32(assignment.Cleanup.Register), IfOwned: true}, Location: location(stmt.Token)})
+		// Every incarnation that may be live on some path keeps its position;
+		// the new one registers only where none is (§ 13.3(5)).
+		unless := fb.liveIncarnations(binding, old, uint32(assignment.Cleanup.Register))
+		registration.Action = assignment.Cleanup.Register
+		if err := fb.trackOwned(stmt.Token, registration, place, typ); err != nil {
+			return err
+		}
+		fb.currentBlockLast().Cleanup.UnlessActive = unless
+		if fb.pathDependent == nil {
+			fb.pathDependent = map[sema.BindingID]bool{}
+		}
+		fb.pathDependent[binding] = true
+		return nil
 	case sema.CleanupPreviousUnavailable:
+		if assignment.Cleanup.Register == 0 {
+			return fb.unsupported("P17 owned reinitialization without a new registration", stmt.Token)
+		}
+		registration.Action = assignment.Cleanup.Register
 		fb.emit(Operation{Kind: OpOwnInitializePlace, Operands: []ValueID{place.id, value.id}, Ownership: &OwnershipFacts{NewCleanup: uint32(registration.Action)}, Location: location(stmt.Token)})
 	case sema.CleanupPreviousPartial:
 		// The RHS is complete; the old value's remaining fields are destroyed,
@@ -646,10 +705,12 @@ func (fb *functionBuilder) assignOwnedStorage(stmt *ast.AssignmentStatement, bin
 		if err != nil {
 			return err
 		}
+		// The remaining fields end; the owner's registration stays in place
+		// and covers the new whole value (MD-125, destruction.md § 13.2(8)).
 		loc := location(stmt.Token)
 		fb.emit(Operation{Kind: OpOwnDestroyPlace, Operands: []ValueID{place.id}, Ownership: &OwnershipFacts{Cause: "cleanup", DestructionPlan: planID, Skipped: skipped, IfOwned: assignment.MovedConditional}, Location: loc})
-		fb.emitAll(fb.ownedCancels(binding, old, "replaced", false, loc))
-		fb.emit(Operation{Kind: OpOwnInitializePlace, Operands: []ValueID{place.id, value.id}, Ownership: &OwnershipFacts{NewCleanup: uint32(registration.Action)}, Location: loc})
+		fb.emit(Operation{Kind: OpOwnInitializePlace, Operands: []ValueID{place.id, value.id}, Ownership: &OwnershipFacts{NewCleanup: old}, Location: loc})
+		return nil
 	default:
 		return fb.unsupported("P17 "+string(assignment.Previous)+" owned assignment (path/subobject plans)", stmt.Token)
 	}
@@ -744,6 +805,20 @@ func (fb *functionBuilder) markPartialRoots(body *ast.BlockStatement) {
 		case *ast.TryExpression:
 			if typ, ok := fb.owner.analyzer.ResolvedTypeOf(node.Expression); ok && !sema.TriviallyDestructible(typ) {
 				mark(node.Expression)
+			}
+		case *ast.AssignmentStatement:
+			// An owned parameter that is replaced, whole or through a stored
+			// field, lives in storage from entry like a mutable owned local
+			// (destruction.md § 13; P17-19).
+			root, _ := memberRoot(node.Target)
+			if root == nil {
+				break
+			}
+			if fact, ok := fb.owner.analyzer.ResolvedBindingOf(root); ok && !sema.TriviallyDestructible(fact.Type) {
+				if fb.partialRoots == nil {
+					fb.partialRoots = map[sema.BindingID]bool{}
+				}
+				fb.partialRoots[fact.ID] = true
 			}
 		case *ast.DiscardStatement:
 			// Discarding a stored field ends it through its field Place.
@@ -981,6 +1056,29 @@ func (fb *functionBuilder) ownedCancels(binding sema.BindingID, action uint32, r
 	return cancels
 }
 
+// liveIncarnations lists the registrations of binding that may be live here:
+// the current one and, once the live incarnation depends on the path, every
+// owned registration Sema published for it, including fresh itself when an
+// earlier loop iteration registered it and it is still live.
+func (fb *functionBuilder) liveIncarnations(binding sema.BindingID, current, fresh uint32) []uint32 {
+	actions := []uint32{current}
+	if !fb.pathDependent[binding] {
+		return actions
+	}
+	plan, _ := fb.cleanupPlan()
+	for _, registration := range plan.Registrations {
+		if registration.Binding == binding && registration.Kind != sema.CleanupRegisterDefer && registration.Kind != sema.CleanupRegisterMatchBinding && uint32(registration.Action) != current {
+			actions = append(actions, uint32(registration.Action))
+		}
+	}
+	return actions
+}
+
+// currentBlockLast is the operation just emitted in the current block.
+func (fb *functionBuilder) currentBlockLast() *Operation {
+	return &fb.current.Operations[len(fb.current.Operations)-1]
+}
+
 func (fb *functionBuilder) emitAll(operations []Operation) {
 	for _, op := range operations {
 		fb.emit(op)
@@ -1049,4 +1147,73 @@ func (fb *functionBuilder) enterBuildScope(block *ast.BlockStatement) func() {
 	}
 	fb.cleanupScopes = append(fb.cleanupScopes, scope)
 	return func() { fb.cleanupScopes = fb.cleanupScopes[:len(fb.cleanupScopes)-1] }
+}
+
+// readNestedOwnedField reads a copy-trivial field below a non-trivial field of
+// a binding (`pair.left.id`) through its Place chain, so the intermediate owned
+// subobject is observed in place and never copied out (package17 § 12;
+// destruction.md § 8).
+func (fb *functionBuilder) readNestedOwnedField(expr *ast.MemberExpression, typeID TypeID) (builtValue, bool, error) {
+	if fb.owner.maxPackage < ownershipLoweringPackage {
+		return builtValue{}, false, nil
+	}
+	root, chain := memberRoot(expr)
+	if root == nil || len(chain) < 2 {
+		return builtValue{}, false, nil
+	}
+	objectType, typed := fb.owner.analyzer.ResolvedTypeOf(expr.Object)
+	if !typed || sema.TriviallyDestructible(objectType) {
+		return builtValue{}, false, nil
+	}
+	fact, ok := fb.owner.analyzer.ResolvedBindingOf(root)
+	if !ok {
+		return builtValue{}, false, nil
+	}
+	bound, ok := fb.bindings[fact.ID]
+	if !ok || bound.capture != 0 {
+		return builtValue{}, false, nil
+	}
+	loc := location(expr.Token)
+	var place builtValue
+	var metadata sema.Place
+	if owned, isOwned := fb.ownedStorageOf(root); isOwned {
+		place, metadata = fb.ownedStoragePlace(owned, root.Token), owned.place
+	} else if bound.storage == 0 {
+		rootPlace, resolved := fb.owner.analyzer.ResolvedPlaceOf(root)
+		if !resolved {
+			return builtValue{}, false, nil
+		}
+		rootPlace.Projections = nil
+		placeType := fb.owner.module.Types.Intern(Type{Kind: TypePlace, Element: bound.typ})
+		place = fb.placeResult(Operation{Kind: OpPlaceValueRoot, Operands: []ValueID{bound.value}, Place: placeMetadataOf(rootPlace), Location: loc}, placeType)
+		metadata = rootPlace
+	} else {
+		return builtValue{}, false, nil
+	}
+	mutable := false
+	if typ, found := fb.owner.module.Types.Lookup(place.typ); found {
+		mutable = typ.Mutable
+	}
+	for _, member := range chain {
+		plan, resolved := fb.owner.analyzer.ResolvedStructMemberOf(member)
+		if !resolved || plan.Kind != sema.MemberStoredField {
+			return builtValue{}, true, fb.unsupported("nested owned field read through a non-stored member", member.Token)
+		}
+		fieldType, err := fb.owner.internType(plan.MemberType)
+		if err != nil {
+			return builtValue{}, true, err
+		}
+		fieldPlaceType := fb.owner.module.Types.Intern(Type{Kind: TypePlace, Element: fieldType, Mutable: mutable})
+		place = fb.placeResult(Operation{Kind: OpPlaceField, Operands: []ValueID{place.id}, StructField: StructFieldID(plan.FieldID), Place: placeMetadataOf(metadata), Location: location(member.Token)}, fieldPlaceType)
+	}
+	return fb.result(Operation{Kind: OpPlaceRead, Operands: []ValueID{place.id}, Location: loc}, typeID), true, nil
+}
+
+// deferredResult allocates op's result now and emits op when the enclosing
+// call commits, together with the argument cancellations.
+func (fb *functionBuilder) deferredResult(op Operation, typ TypeID) builtValue {
+	v := fb.newValue(typ, OwnershipImmediate, op.Location)
+	op.Results = []Value{v}
+	fb.pendingArgumentCancels = append(fb.pendingArgumentCancels, op)
+	return builtValue{id: v.ID, typ: typ}
 }

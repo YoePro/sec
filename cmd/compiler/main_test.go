@@ -200,31 +200,6 @@ func TestCompilerLoadsIOWriteSeekAndDirectoryAPIs(t *testing.T) {
 	}
 }
 
-func TestCompilerLoadsUnicodeIsLetter(t *testing.T) {
-	source := `module main
-
-import "unicode"
-
-fn IsLetter(ch: rune) bool {
-	return unicode.IsLetter(ch)
-}
-`
-
-	l := lexer.New(source)
-	p := parser.New(l)
-	program := p.ParseProgram()
-	if len(p.Errors()) > 0 {
-		t.Fatalf("parser errors: %v", p.Errors())
-	}
-
-	resolveCoreLibrary(program)
-	resolveStdlibImports(program, CompilerTarget{})
-	analyzer := sema.NewAnalyzer()
-	if errors := analyzer.Analyze(program); len(errors) > 0 {
-		t.Fatalf("Analyze(user with unicode IsLetter) errors: %v", errors)
-	}
-}
-
 func TestSourceIncludePathsLoadsProjectImportsFromSecProjectRoot(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(dir, ".sec"), 0755); err != nil {

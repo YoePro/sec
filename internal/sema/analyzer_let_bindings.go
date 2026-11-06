@@ -101,16 +101,16 @@ func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
 		defined = a.defineOrReuseStaticSymbol(stmt.Name.Value, declaredType, stmt.Mutable, stmt.Name.Token)
 		if defined {
 			if stmt.Static {
-				symbol := a.symbols[stmt.Name.Value]
+				symbol := a.symbols.get(stmt.Name.Value)
 				symbol.Storage = StorageOriginStatic
 				symbol.Local = false
-				a.symbols[stmt.Name.Value] = symbol
+				a.symbols.set(stmt.Name.Value, symbol)
 			}
 			a.assigned[stmt.Name.Value] = stmt.Value != nil
 			if stmt.Address != nil {
 				a.analyzeAddressedLetStatement(stmt, declaredType)
 			}
-			a.recordStaticBinding(stmt, a.symbols[stmt.Name.Value])
+			a.recordStaticBinding(stmt, a.symbols.get(stmt.Name.Value))
 		}
 	}
 

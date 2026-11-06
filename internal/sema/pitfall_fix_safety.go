@@ -134,7 +134,7 @@ func (b *pitfallBuilder) pitfallPureOperand(expression ast.Expression) bool {
 		if len(definitions) != 1 {
 			return false
 		}
-		if symbol, ok := b.analyzer.symbols[expression.Value]; ok && sameSourceToken(symbol.Token, definitions[0]) {
+		if symbol, ok := b.analyzer.symbols.lookup(expression.Value); ok && sameSourceToken(symbol.Token, definitions[0]) {
 			return !symbol.Volatile && !symbol.Addressed
 		}
 		_, resolved := b.analyzer.ResolvedBindingOf(expression)

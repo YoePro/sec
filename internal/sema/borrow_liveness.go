@@ -223,7 +223,7 @@ func (a *Analyzer) releaseDeadReferenceHolders(next lexer.Token) {
 		}
 	}
 	for holder := range holders {
-		symbol, ok := a.symbols[holder]
+		symbol, ok := a.symbols.lookup(holder)
 		if !ok || symbol.Type.Kind != ReferenceType || !symbol.Local || symbol.ImplicitMember {
 			continue
 		}
@@ -245,7 +245,7 @@ func (a *Analyzer) holderHasLiveChild(holder string) bool {
 			if record.Place.ReferenceHolder != holder || record.Holder == "" || record.Holder == holder || placeIsStaticallyEmpty(record.Place) {
 				continue
 			}
-			if child, known := a.symbols[record.Holder]; known && a.holderUsedLater(record.Holder, child.ScopeDepth) {
+			if child, known := a.symbols.lookup(record.Holder); known && a.holderUsedLater(record.Holder, child.ScopeDepth) {
 				return true
 			}
 		}
@@ -270,7 +270,7 @@ func (a *Analyzer) originSharedWithUntrackedHolder(holder string, symbol Symbol)
 			recorded[record.Holder] = true
 		}
 	}
-	for name, other := range a.symbols {
+	for name, other := range a.symbols.all() {
 		// The origin root itself (a reference parameter the holder borrows
 		// through) is the source of the borrow, not a derived copy of it.
 		if name == holder || origins[name] || !other.Local || !typeCarriesReferenceOrigin(other.Type) || recorded[name] {

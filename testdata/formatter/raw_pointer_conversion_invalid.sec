@@ -1,0 +1,5 @@
+module formatting
+
+fn Broken(pointer: RawPtr[int]) void {
+    let view := pointer .
+}

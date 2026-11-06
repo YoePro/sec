@@ -234,9 +234,28 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
   baseline without discarding unrelated work or relying on P15's older snapshot.
 
   Done 2026-11-03: recorded under "P17-01 execution baseline" below.
-- [ ] P17-02 — Run and record P13/P14/P15/P16 regressions against that baseline;
+- [x] P17-02 — Run and record P13/P14/P15/P16 regressions against that baseline;
   distinguish completed predecessor scope, missing bridges and skipped tools.
   Keep P15/P16 implementation/evidence owned by their respective plans.
+
+  Done 2026-11-06 (Claude), on HEAD `e37b17ee` plus 140 uncommitted paths (this
+  package and concurrent Codex work), Go 1.26.8, the same LLVM/MLIR as P17-01:
+  - **Per-package focused runs** (`internal/ir/semantic` + `internal/lowering/secmlir`):
+    - P13 (`Package13|Struct`): 18 pass;
+    - P14 (`Package14|Array|FixedArray`): 43 pass;
+    - P15 (`Package15|Reference|Place`): 67 pass;
+    - P16 (`Slice|Package16`): 111 pass;
+    - none failed or skipped.
+  - **Full suites.** `go test ./internal/...` passes. Lit passes 218/218,
+    including the schema 11/12 regression inputs.
+  - **Missing bridges.** These remain with their owners and are not regressions:
+    - P15/P16 contained-origin reads and holder rebinding (named boundaries in
+      `lowering.sec-mlir-package17` remaining);
+    - native lowering of P15/P16/P17 forms (package-14 native track).
+  - **Not caused by predecessor work.** The `cmd/compiler` failures seen on this
+    snapshot come from the `sec/core` drafts (`number_parse.sec`) and from
+    concurrent diagnostic-explanation work (`TestPitfall*`, `TestPanicMentor*`),
+    not from P13–P16. No tool was skipped: `SEC_MLIR_BIN` was set for every run.
 - [x] P17-03 — Compare the ownership/destruction sync and IR amendment with
   current ownership, copy/move, destruction, defer, discard and Semantic IR
   rules. Merge only missing/conflicting paragraphs through the normal correction
@@ -265,9 +284,38 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
   remaining field destruction, no field move-out of `self`); P17 § 22's rejection gate is marked
   superseded in the package book. Remaining MD-025 work belongs to its own owners.
 
-- [ ] P17-05 — Synchronize schema/lowering v13 after the v11/v12 predecessor
+- [x] P17-05 — Synchronize schema/lowering v13 after the v11/v12 predecessor
   contracts, resolving historical path/attribute spelling and MD-031/MD-061
   intersections. A supplied document's existence is not synchronization evidence.
+
+  Done 2026-11-06 (Claude): the synchronization record. Each point is backed by
+  emitted-and-verified code, not by the document alone.
+  - **Spelling.** `rules/mlir/dialect-versions/sec_mlir_dialect_v13.md` §§ 10, 15
+    and the new § 36A, `sec_mlir_lowering_v13.md` §§ 5–6 and the delegated-spelling
+    table of `sec_mlir_dialect.md` now record what the emitter and verifiers
+    implement:
+    - MD-125 equal-identity replacement and `unless_active`;
+    - deferred argument consumption and failed-construction cleanup;
+    - the MD-126 string-view operations.
+
+    Evidence: `TestSchema13InheritsReplacementRegistration`,
+    `TestSchema13CleansFailedConstruction`, `TestSchema13EmitsStringViews`, lit
+    `schema13-inherited-registration.mlir`, `schema13-string-views.mlir` and the
+    invalid companions.
+  - **MD-031.** The try-handler kinds `none`/`residual` and the
+    `sec.try_handler_guarded`/`residual` flags are unchanged in schema 13.
+    Handler bodies run the same scope/function cleanup as other blocks
+    (`TestValueProducingHandlerBlockRunsScopeCleanup`, `HandlerReturn`). The
+    only intersection still open is a guarded handler on an error that needs
+    destruction, a named P17-37 boundary.
+  - **MD-061.** Slice and string-view reborrows stay P16 operations. Their holders
+    end with `sec.ref.end_borrow`, and a discarded holder is `sec.own.discard`
+    without a plan (v13 § 31), so ownership never frees a referent.
+  - **Paths and attributes.** Ownership paths are the compact field/payload
+    strings of `skipped` (v13 § 13). Call/return/branch actions use
+    `sec.argument_actions`, `sec.result_action`, `sec.return_action` and
+    `sec.successor_actions` (v13 §§ 24–27), as emitted by
+    `internal/lowering/secmlir/ownership.go`.
 - [x] P17-06 — Audit existing ownership/type/Place/call/discard/defer state and
   publish one migration map. Decide focused file ownership and stable identities;
   do not add a parallel move table, borrow checker or cleanup engine.
@@ -310,9 +358,23 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
   classifications to copy-trivial / copy-semantic / move / rejected; MoveOnly and @noCopy need an
   explicit move, conditional is never a trivial copy (`TestTransferActionsFollowCopyClassification`).
 
-- [ ] P17-09 — Permit implicit semantic copy only with a resolved infallible
+- [x] P17-09 — Permit implicit semantic copy only with a resolved infallible
   copy plan. Fallible duplication remains an ordinary explicit Result-returning
   call; pure move adds no copy/allocator failure channel (P17 §§5–7).
+
+  Done 2026-11-06 (Claude). The requirement holds by construction:
+  - **No implicit semantic copy.** No Sec 0.1 type is semantically copyable.
+    copy_move.md § 3.3(2) recognizes no user `Copy`/`Clone` method as an implicit
+    copy, and `copyClassificationOf` gives no base type `CopySemantic`; it only
+    propagates from parts that are.
+  - **Gates.** Semantic IR accepts `own.semantic-copy` /
+    `own.copy-from-place mode=semantic-infallible` only with a named infallible
+    plan (P17-26). A Sema `copy-semantic-infallible` transfer plan reaching
+    lowering is rejected by the P17 capability preflight
+    (`ownership_capabilities.go`).
+  - **Explicit duplication and moves.** Fallible duplication stays an ordinary
+    Result-returning call. A move never adds a copy or allocator failure channel:
+    `own.move`/`own.move-from-place` have no failure edge.
 - [x] P17-10 — Resolve destruction plans for every supported non-trivial
   concrete type. Cover stored struct fields, compact fixed arrays, active union/
   Result/Option payloads, compiler-known resources and the resolved custom-free
@@ -372,11 +434,27 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
   are cloned on every query (`TestDestructionPlanQueriesAreDetached`,
   `TestTransferPlansRecordSiteActionAndSource`).
 
-- [ ] P17-15 — Preserve uninitialized/initialized/moved/destroyed/partial state
+- [x] P17-15 — Preserve uninitialized/initialized/moved/destroyed/partial state
   per path and per supported field/active payload. Reinitialization restores only
   the assigned state; whole-value use requires valid state. Reject deferred array
   element move-out and unresolved custom-free partial actions explicitly.
-- [ ] P17-16 — Resolve destruction order and partial construction facts:
+
+  Done 2026-11-06 (Claude), with evidence gathered for every listed form:
+  - **Accepted per-path state.** A field moved on some paths and then reinitialized
+    makes the owner whole again. Every field moved and reinitialized works the same
+    way. Field moves inside loops, an active payload moved on one path and then
+    replaced, and a nested field moved on some paths and read in place after
+    reinitialization all lower. They pass `--sec-verify-ownership`/`--sec-verify-cleanups`
+    in `TestSchema13PerPathPartialState` (32/64) over
+    `testdata/semantic_ir/partial_state.sec`.
+  - **Rejections.** `TestPartialStateRejections` over
+    `testdata/sema/partial_state_invalid.sec` rejects:
+    - array element move-out (explicit indexed extraction);
+    - a partial move from a custom-free type (S1085);
+    - whole use while a field is moved on some path (S1089);
+    - use after a discard on some path (S1089);
+    - whole use after reinitializing only one of two moved fields (S1090).
+- [x] P17-16 — Resolve destruction order and partial construction facts:
   complete structs destroy remaining stored fields in reverse declaration order;
   fixed arrays use reverse index order; active variants destroy only initialized,
   unmoved payloads. Failed construction cleans successful obligations without
@@ -384,6 +462,27 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
 
   Partial 2026-10-20: reverse field and reverse index order and active-payload-only
   destruction are in the plans; failed/partial construction cleanup is not.
+
+  Done 2026-11-06 (Claude), failed/partial construction:
+  - **Prepared operands.** Struct fields, named union fields, array elements and
+    fresh owned call arguments (calls, struct literals, `try` over a call) are
+    recorded as prepared until their construction or call takes them
+    (`prepareOperand`/`takePrepared`).
+  - **Failure exits.** A `try` propagation, a handler arm's `return` and a handler
+    arm's `break`/`continue` destroy the prepared operands they leave with
+    `own.destroy-value cause=temporary-end`, in reverse evaluation order and
+    before function or scope cleanup. The outer value is never built and no
+    completed-value custom `free` runs. A moved owner passed as an argument keeps
+    its cancellation at call commit (destruction.md § 9.2(3)).
+  - **Arrays.** The former `partial non-trivial array construction cleanup
+    (P17-16)` boundary is gone.
+  - **Reads in place.** A copy-trivial field below a non-trivial field
+    (`pair.left.id`) is read through a `place.field` chain of the binding, never
+    by copying the owned subobject (the former `non-trivial struct field read`
+    boundary for bindings).
+  - **Evidence.** `testdata/semantic_ir/failed_construction.sec` through every
+    cleanup/ownership verifier in `TestSchema13CleansFailedConstruction` (32/64),
+    and `TestOwnedArrayPartialConstructionCleanup`.
 
 - [x] P17-17 — Add Sema tests for classifications, detached queries, consuming
   calls/returns, whole and partial move/reinit, copyable/move-only references and
@@ -423,12 +522,36 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
   and runtime instance multiplicity remain P17-19/P17-21..24; capture plans are
   completed under P17-20 below. No cleanup IR or execution
   support is claimed here.
-- [ ] P17-19 — Record destruction registration only after successful non-trivial
+- [x] P17-19 — Record destruction registration only after successful non-trivial
   initialization. Transfer/discard/early destruction cancels the old obligation;
   reinitialization and replacement create a new registration at their own point.
   Partial 2026-11-03: reassignment in a branch, nested block or loop lowers; a
   binding whose live incarnation depends on the path cancels every incarnation
   where active (`if_active`) at each later end.
+
+  Update 2026-11-06 (Claude, MD-125): the IR producers consume Sema's
+  `Assignment.Cleanup`. An available replacement keeps the live registration
+  (`own.replace-place` with equal identities, no cancel or new track); a
+  replacement after field moves reinitializes under the kept registration;
+  reinitialization after a move registers `Cleanup.Register`; a conditional
+  replacement registers only where nothing is live (`unless_active`, also over an
+  earlier loop instance). Schema 13 and `--sec-verify-cleanups` /
+  `--sec-verify-ownership` follow (`TestSchema13InheritsReplacementRegistration`,
+  lit `schema13-inherited-registration.mlir`).
+
+  Done 2026-11-06 (Claude):
+  - **Projected and parameter producers.** Stored and nested fields are replaced
+    under their owner's registration. An owned parameter replaced whole or
+    through a field is held in storage from entry (`markPartialRoots` now marks
+    assignment roots) and inherits its registration. A declaration without an
+    initializer of a defaultable type starts with its default and is replaced in
+    place. `TestSchema13RegistrationProducers` (32/64) covers these over
+    `testdata/semantic_ir/registration_producers.sec`.
+  - **Not in this item.** The only "initially empty" binding Sec has is
+    `let mut x: U` of a union without a default. It holds U's implicit empty
+    state, which Semantic IR does not represent yet; `match` over a possibly
+    empty union is a boundary too. This is tracked as its own governance
+    remaining item ("empty union state").
 
   Partial 2026-10-21: `internal/sema/cleanup_registrations.go` publishes detached
   `ResolvedOwnedCleanupInitializationOf` facts after accepted local declaration
@@ -500,7 +623,7 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
   - **Function-scoped registrations.** Only exits with `FunctionExit` run them, so a defer never runs at its block's end.
   - **Defer bodies.** Exits inside defer bodies are not invocation exits.
   - **Dedup.** Recording is idempotent across loop re-analysis and the summary pass.
-- [ ] P17-23 — Resolve protected return/error transfers before function cleanup.
+- [x] P17-23 — Resolve protected return/error transfers before function cleanup.
   Preserve failure-before-replacement, construction temporaries and argument
   consumption; distinguish normal error propagation from non-unwinding panic.
 
@@ -514,6 +637,16 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
     operator and is mapped to the try's exit — bounds and failure sets) emits
     `cleanup.run-function exit=error-propagation` after the Err is built and
     before its return (`TestErrorPropagationRunsFunctionCleanup`).
+  Done 2026-11-06 (Claude): the two remaining forms.
+  - **Construction temporaries.** Operands already prepared for a construction
+    or call are destroyed on the failing exit before function cleanup (P17-16).
+  - **Argument consumption.** A moved owned argument (`<-h`, immutable or in
+    storage) is moved out only when its call commits, together with its
+    cancellation (destruction.md § 9.2(3)). A failing later argument therefore
+    leaves the owner unmoved and registered, and function cleanup destroys it once.
+  - **Evidence.** `MovedArgument`, `MovedStorageArgument`, `HandlerReturn` and the
+    construction cases in `testdata/semantic_ir/failed_construction.sec`
+    (`TestSchema13CleansFailedConstruction`, 32/64).
 - [x] P17-24 — Publish detached `ResolvedCleanupPlan` queries containing scopes,
   registrations, defer bodies/captures, normal exits and protected values. Builders
   must not reconstruct cleanup by walking variable names or counting SSA uses.
@@ -522,9 +655,23 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
   - **Query.** `ResolvedCleanupPlanOf(function)` returns the invocation's scope tree, all registration sites in source order and all exit edges, with protected values. Registrations are owned initialization, reinitialization/replacement with the previous state, and defer with its detached capture plan.
   - **Purity.** It is read-only and detached (`TestResolvedCleanupPlansDetached`), and it consumes the existing registration/assignment/defer facts without new inference.
   - **IR alignment.** IR helpers now classify `string` as copy-trivial and trivially destructible, as Sema does (fixtures use a custom-free struct as the non-trivial type).
-- [ ] P17-25 — Test interleaved local/defer registration, replacement/reinit order,
+- [x] P17-25 — Test interleaved local/defer registration, replacement/reinit order,
   branches, loops, scope exits, captures observing later assignments, return/Err
   protection, discard convergence and existing defer-body restrictions.
+
+  Done 2026-11-06 (Claude): `TestSchema13CleanupInterleaving` (32/64, every
+  cleanup/ownership verifier) over `testdata/semantic_ir/cleanup_interleaving.sec`
+  covers the following:
+  - local/defer/local/defer/local registration order;
+  - a replacement keeping its position before a defer while a reinitialization
+    after a move registers after it (MD-125);
+  - branch scope cleanup, and loop `continue`/`break` cleanup of a loop-body owner;
+  - a defer reading a later assignment;
+  - return and Err protection;
+  - discard on both branches and on one branch.
+
+  `testdata/sema/cleanup_interleaving_invalid.sec` keeps the defer-body
+  restrictions (`return`/`break` S1203, bodyless `try` S1093).
 
 ## D. Add explicit ownership and cleanup Semantic IR
 
@@ -538,7 +685,7 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
   - **Move.** `own.move` consumes its operand.
   - **Verification.** A block-local flow check rejects any later use or second consumption of a consumed value (`TestOwnershipOperationsVerifyAndPrint`, `TestOwnershipOperationsRejectInvalidUse`).
   - **Boundaries.** Producer migration is P17-35, the path-sensitive ownership verifier is P17-52, and schema 13 is P17-45+.
-- [ ] P17-27 — Add CopyFromPlace/MoveFromPlace through canonical P15 Places.
+- [x] P17-27 — Add CopyFromPlace/MoveFromPlace through canonical P15 Places.
   Preserve holder/referent distinctions, partial-path state and borrow obligations.
 
   Partial 2026-10-25 (Claude):
@@ -551,6 +698,15 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
   the owner stays registered and scope cleanup destroys its remaining fields.
   Field replacement and reinitialization lower (P17-28), and so does replacing a
   whole owner after its fields moved.
+  Done 2026-11-06 (Claude):
+  - **Path-sensitive part.** Moves on other CFG paths and borrow obligations of a
+    moved subobject are enforced by `--sec-verify-ownership` (P17-52, done), and
+    real source reaches it with per-path field moves (`TestSchema13PerPathPartialState`).
+  - **Moves from places.** `own.move-from-place` is produced for whole and
+    field moves out of storage and parameters.
+  - **Copies from places.** A trivial copy reads its Place with `place.read`;
+    `own.copy-from-place` with mode `semantic-infallible` waits for the
+    semantic-copy producer of P17-09.
 - [x] P17-28 — Add InitializePlace and ReplacePlace. Initialization/reinit has
   no old destruction; replacement consumes a fully prepared new value and owns
   old destruction plus old/new cleanup incarnation facts.
@@ -558,7 +714,7 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
   Done 2026-10-25 (Claude), Semantic IR model scope:
   - **Initialize.** `own.initialize-place` consumes a value into a writable Place of its type. The verifier rejects old destruction-plan/cleanup metadata and accepts a new cleanup identity (`TestOwnershipInitializationNewCleanup`; initialization mutations in `TestOwnershipOperationsRejectInvalidUse`, Codex 2026-10-25).
   - **Replace.** `own.replace-place` consumes the prepared replacement and carries the old value's destruction plan. A non-trivial plan also requires distinct old/new cleanup action identities (printed `cleanup=#old->#new`).
-- [ ] P17-29 — Add DiscardValue/DestroyValue/DestroyPlace with plan identity and
+- [x] P17-29 — Add DiscardValue/DestroyValue/DestroyPlace with plan identity and
   explicit/implicit/compiler provenance. Represent conditional/no-op discard
   without double destruction. Borrow-holder termination never frees referents.
 
@@ -568,6 +724,12 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
   - **Plan table.** Module-level `DestructionPlans` records are unique and printed.
   - **Double destruction.** It is rejected within a block.
   - **Remaining.** Conditional discard and double destruction across paths need the path-sensitive verifier (P17-52).
+  Done 2026-11-06 (Claude): conditional discard lowers as `own.discard if_owned` /
+  `own.destroy-place if_owned`, and double destruction across paths is rejected by
+  `--sec-verify-ownership`/`--sec-verify-cleanups` (P17-52/54, done). Source
+  coverage: `DiscardConverges`/`DiscardOnOnePath` in `TestSchema13CleanupInterleaving`,
+  conditional payload discard in `TestSchema13EmitsOwnedVariants`, and temporary
+  ends in `TestSchema13CleansFailedConstruction`.
 - [x] P17-30 — Represent derived destruction and exact remaining subobject state
   compactly. Large arrays must not expand one IR record per element. Keep custom
   free, remaining-field cleanup and semantic release authority distinct.
@@ -585,12 +747,21 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
   - **Remaining subobject state.** It is kept compactly as root Place identity plus field/payload path. `own.destroy-place` lists its `Skipped` subobjects (printed `skip=[field#0]`). The verifier requires every subobject moved earlier in the block to be skipped, rejects skipping through custom-free or non-struct/variant plans, rejects partial moves out of custom-free structs (§ 12) and array elements (§ 15), and lets reinitialization (`own.initialize-place` on the field) restore completeness (§ 13).
   - **Tests.** `TestOwnershipDerivedDestructionAndPartialState` and `TestOwnershipDerivedDestructionAndPartialStateRejects` (14 negatives).
   - **Remaining.** Cross-path state is P17-52, and source producers are P17-35.
-- [ ] P17-31 — Extend struct/array/union/Result/Option constructor actions to
+- [x] P17-31 — Extend struct/array/union/Result/Option constructor actions to
   resolved move and infallible semantic copy. Spread remains copying; this package
   does not silently make a move-only spread source legal.
   Partial 2026-11-02: single union, Option and Result payloads take a fresh or
   moved value (`construct-direct`). Semantic copy and named-field payloads remain.
-- [ ] P17-32 — Make argument, return and branch ownership actions explicit.
+  Done 2026-11-06 (Claude):
+  - **Moved and fresh operands.** Struct fields, named-field union payloads,
+    Option/Result payloads and array elements take moved owners and fresh values
+    (`TestSchema13ConstructorActions`, 32/64, `testdata/semantic_ir/constructor_actions.sec`).
+  - **Failed construction.** Partly evaluated operands are cleaned on a failing
+    exit (P17-16).
+  - **Semantic copy.** Actions are admitted but have no Sec 0.1 producer (P17-09).
+  - **Spread.** Spread stays trivial-copy only; a move-only spread source is
+    still rejected.
+- [x] P17-32 — Make argument, return and branch ownership actions explicit.
   Mutually exclusive successors may transfer the same current owner; merges
   select one continuation. Verify compatible partial/active-variant state and
   destruction plans without rejecting legal source convergence by approximation.
@@ -603,6 +774,18 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
   § 9.2(3)) or a forwarded fresh temporary; the verifier requires `move` for
   parameters whose type needs destruction (`TestOwnedParametersAndArgumentMoves`).
   Remaining: branch ownership merges and consuming `->` parameter contracts.
+  Done 2026-11-06 (Claude):
+  - **Branches.** Mutually exclusive successors transfer the same owner
+    (`ExclusiveTransfers`, `DiscardConverges`). A merge receives owned values
+    with `sec.successor_actions = [["move"]]` (`MergedOwner`, the arm blocks of
+    `match_arm_blocks.sec`).
+  - **Consuming parameters.** `->` parameters take moved owners, with the
+    `move` argument action and the cancellation at call commit.
+  - **Verification.** `--sec-verify-ownership` checks these without
+    approximation (`TestSchema13BranchOwnership`, 32/64,
+    `testdata/semantic_ir/branch_ownership.sec`).
+  - **Elsewhere.** A move into a constructed match subject (`match Some(<-h)`)
+    is a separate named boundary in governance.
 
 - [x] P17-33 — Add cleanup track/cancel/defer-register/run-scope/run-function
   operations and explicit defer regions with capture-Place parameters. Preserve
@@ -621,9 +804,20 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
   - **Runtime.** No stack, runtime or physical representation is chosen.
   - **Tests.** `TestCleanupOperationsVerifyAndPrint` follows the § 41 order, plus `TestCleanupOperationsRejectInvalidUse` (17 negatives).
   - **Remaining.** Reverse-order and cross-path cleanup execution checks are P17-54, and producers are P17-35. Producers also need Sema `ResolvedCleanupPlan` (P17-19, P17-21–24).
-- [ ] P17-34 — Extend the model, deterministic printer, effect/provenance facts
+- [x] P17-34 — Extend the model, deterministic printer, effect/provenance facts
   and verifier. Print transfer, Place, destruction/cleanup/scope/defer identities;
   verify terminal actions and cleanup order without physical representation.
+
+  Done 2026-11-06 (Claude), as the union of finished items:
+  - **Model and printer.** The ownership/cleanup model and deterministic printer
+    come from P17-26..33. They print transfer actions, Places, destruction plans,
+    cleanup action/scope/ordinal/defer identities, `if-owned`/`if-active` and
+    `unless-active`.
+  - **Verification.** Terminal actions and cleanup order are verified without a
+    physical representation by the Semantic IR verifier and by
+    `--sec-verify-ownership`, `--sec-verify-destruction-plans` and
+    `--sec-verify-cleanups` (P17-52..54).
+  - **Evidence.** Every schema-13 source test added on 2026-11-06 runs all three.
 
 ## E. Connect source lowering solely through resolved plans
 
@@ -654,7 +848,7 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
     is tracked as the new owner and the returned value leaves before function
     cleanup (`TestOwnedLocalMovesCancelTheirRegistration`). Argument moves need
     owned parameters (P17-32); field and partial moves stay P17-27/P17-36.
-- [ ] P17-36 — Lower direct stored-field partial move, field reinit and non-trivial
+- [x] P17-36 — Lower direct stored-field partial move, field reinit and non-trivial
   field replacement through Places. Preserve the owner of untouched fields; do
   not replace one owned field by copying and rebuilding its whole struct.
   Partial 2026-10-26 (Claude): mutable owned locals live in address-taken
@@ -667,6 +861,17 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
   rejected until path-exact incarnation matching (P17-19); field partial moves
   and field replacement remain.
 
+  Done 2026-11-06 (Claude):
+  - **Field moves and reinitialization.** Stored-field partial moves and field
+    reinitialization lower, including on some paths, in loops and for nested
+    fields (`TestSchema13PerPathPartialState`).
+  - **Field replacement.** Non-trivial field replacement lowers in place for
+    locals, nested fields and owned parameters, under the owner's registration
+    (`TestSchema13RegistrationProducers`, `ReplaceAfterFieldMoves` in
+    `TestSchema13EmitsOwnedVariants`).
+  - **Reads in place.** A field below a non-trivial field is read through
+    `place.field` (P17-16).
+
 - [ ] P17-37 — Lower move-only active union/Result/Option payload bindings only
   on the predecessor's proven variant path, updating container partial state.
   Keep borrowed bindings on P15 and respect MD-031 handler emission limits.
@@ -677,6 +882,19 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
   Guarded arms commit the move in the arm body after a non-owning guard candidate.
   Stored-field subjects (`match b.o`) lower since 2026-11-03.
   Remaining: named-field and concrete error-variant payloads.
+  Update 2026-11-06 (Claude):
+  - **Stored subjects.** Copy-trivial named-field bindings on a stored (mutable)
+    owned subject are read through the payload Place on the proven variant path.
+  - **Guarded payloads.** A guarded whole named-field payload binding gives the
+    guard a candidate read and commits the move in the selected arm.
+  - **Evidence.** `TestSchema13PayloadBindings` (32/64,
+    `testdata/semantic_ir/payload_bindings.sec`); both fixtures left the boundary
+    rows.
+  - **Remaining.** A guarded try handler on an error that needs destruction. The
+    guard needs a candidate Place for the error payload, and Sema publishes no
+    guard Place for try handlers (it does for match arms). Moving or borrowing a
+    named field out of a stored subject also remains. Semantic-copy bindings have
+    no Sec 0.1 producer (P17-09).
 - [x] P17-38 — Lower non-trivial whole fixed-array ownership and destruction.
   Extend resolved ordinary element actions; preserve spread copy rules and the
   unsupported partial element-move boundary, including runtime indexes.
@@ -698,9 +916,23 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
   Failed/partial construction (P17-16), unbound temporary cleanup (P17-40)
   and schema-13 emission (P17-45 onward) retain explicit unsupported boundaries;
   predecessor schemas never silently emit the new ownership construction.
-- [ ] P17-39 — Prepare fallible RHS ownership before replacement. Failure leaves
+- [x] P17-39 — Prepare fallible RHS ownership before replacement. Failure leaves
   the destination and old cleanup intact; success terminates the old incarnation
   once, installs the new value and registers its obligation at that point.
+
+  Done 2026-11-06 (Claude), with MD-125 superseding "registers its obligation at
+  that point" for a replacement (destruction.md §§ 6.1(4)–(5), 13.2(5)–(8)):
+  - **Failure.** `h = try TryMake()` builds the right-hand side first; the failure
+    edge leaves through `cleanup.run-function exit=error-propagation` (or the
+    handler arm's `return`) with the old owner and its registration untouched.
+  - **Success.** One `own.replace-place` with equal old/new identities destroys
+    the old value and keeps the live registration and its position; a recovery
+    value from a local handler replaces the same way.
+  - **Handler-arm returns.** `Err(_) => return 0` now records its function cleanup
+    exit in Sema (`analyzer_try_handlers.go`), so it lowers with owned locals.
+  - **Evidence.** `FallibleReplace`, `RecoverReplace` and `HandlerReturn` in
+    `testdata/semantic_ir/inherited_registration.sec`, verified through every
+    cleanup/ownership pass by `TestSchema13InheritsReplacementRegistration` (32/64).
 - [ ] P17-40 — Lower explicit/implicit discard and temporary lifetime end through
   the same destruction plans as normal cleanup; honor must-use legality and
   non-consuming expression classification instead of dropping an SSA result.
@@ -716,6 +948,19 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
   leaves (destruction.md § 8(8)–(9)). Remaining: temporaries created on only some
   paths of their full expression, mutable borrows of owned temporaries, a
   discarded projection and `discard try ...`.
+  Update 2026-11-06 (Claude):
+  - **Temporaries on some paths.** A short-circuit operand and a match
+    expression arm are the scope of their temporaries, which end there before
+    the merge (owner decision 2026-11-06; destruction.md § 8(10)).
+  - **Mutably borrowed temporaries.** An owned temporary that is mutably borrowed
+    lives in compiler storage for the call and ends in place at its full
+    expression.
+  - **Other forms that now lower.** A fresh array literal observed by `.Len`,
+    `discard try ...` and a discarded stored field.
+  - **Evidence.** `TestSchema13TemporaryEnds` (32/64) over
+    `testdata/semantic_ir/temporary_ends.sec`; two fixtures left the boundary rows.
+  - **Remaining.** A borrowed payload of a fresh match subject, and a move into a
+    constructed match subject (`match Some(<-h)`).
 - [ ] P17-41 — Lower executed defer sites into regions with binding/Place captures.
   Preserve function scope and iteration-instance identity; never copy captures or
   collapse dynamic registrations into one active boolean per source site.
@@ -731,7 +976,7 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
   Update 2026-11-03: a defer body reads owned values through their capture Places
   (fields, shared borrows, borrowed receivers). Replacing a captured owner after
   the defer stays a named boundary; --sec-verify-cleanups rejects the ordering.
-- [ ] P17-42 — Insert planned scope cleanup before exited-scope edges, and function
+- [x] P17-42 — Insert planned scope cleanup before exited-scope edges, and function
   cleanup after return/Err transfer but before return. Keep panic/raw process-exit/
   proven-unreachable endpoints outside normal cleanup; no hidden unwinding.
 
@@ -755,12 +1000,49 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
   - **Remaining.** Match-expression arm blocks (not yet lowered at all) and
     path-dependent incarnations; error-propagation exits, whole-local moves,
     owned parameters and mutable storage are done (P17-23, P17-32, P17-35/36).
-- [ ] P17-43 — Remove predecessor trivial-only gates only for operations whose
+  Done 2026-11-06 (Claude):
+  - **Match-expression arm blocks.** These now lower. Sema implements
+    flowcontrol_match.md § 21 (the final expression of a continuing arm block
+    is the arm result, with ownership validated like an expression arm). The
+    builder builds the value, runs the arm scope cleanup and branches to the
+    merge (`TestSchema13MatchArmBlocks`, `TestMatchArmBlockValues`).
+  - **Path-dependent incarnations.** These are covered by MD-125 inheritance and
+    `unless_active` (P17-19).
+- [x] P17-43 — Remove predecessor trivial-only gates only for operations whose
   complete transfer, destruction and cleanup path now exists. Keep default
   package selection conservative until the emitter/verifier bridge is operational.
-- [ ] P17-44 — Add source-to-IR tests for every new use/exit form, including
+
+  Done 2026-11-06 (Claude):
+  - **Inspection paths.** At `MaxPackage` 17 the trivial-only gates are lifted
+    exactly for the operations with a complete transfer, destruction and cleanup
+    path. The P17 capability preflight (`ownership_capabilities.go`) and the named
+    boundaries keep every other form closed. `emit-ir`/`emit-sec-mlir` run at
+    `inspectionMaxPackage = 17` behind all three verifiers
+    (`cmd/compiler/native_pipeline.go`).
+  - **Predecessor packages.** Packages 14–16 keep their trivial-only gates
+    unchanged (`TestPackage17CapabilityModuleAndPredecessorBoundaries`).
+  - **Native track.** `emit-mlir`/`emit-llvm`/`build` stay conservative at
+    `nativeTrackMaxPackage = 14` until physical ownership cleanup exists.
+- [x] P17-44 — Add source-to-IR tests for every new use/exit form, including
   old-owner cancellation, partial masks, transactional failures and repeated defer.
   Assert semantic operations/order, not merely parser/Sema success.
+
+  Done 2026-11-06 (Claude). Each form has a source-to-IR test that asserts
+  operations and order, and that then runs the schema-13 verifiers:
+  - **Old-owner cancellation and inheritance:** `TestSchema13InheritsReplacementRegistration`
+    (equal identities, no `reason=replaced`, single `track-owned`) and
+    `TestMutableOwnedStorage`.
+  - **Partial masks:** `TestSchema13PerPathPartialState`,
+    `ReplaceAfterFieldMoves`/`ReplaceAfterConditionalFieldMove` in
+    `TestSchema13EmitsOwnedVariants` (`skip=[...]`, `if_owned`).
+  - **Transactional failures:** `TestSchema13CleansFailedConstruction`
+    (temporary-end count and reverse order, a move deferred until call commit)
+    and the `FallibleReplace` order in `TestSchema13InheritsReplacementRegistration`.
+  - **Repeated defer:** `DeferInLoop` in `TestSchema13EmitsOwnedVariants`, and
+    the loop registrations and per-execution order in `TestSchema13CleanupInterleaving`.
+  - **Exits:** branch/continue/break/return/error-propagation cleanup in
+    `TestSchema13CleanupInterleaving`; handler and match-arm block exits in
+    `TestSchema13MatchArmBlocks` and `HandlerReturn`/`HandlerBreak`.
 
 ## F. Implement schema 13 emission and three independent verifiers
 

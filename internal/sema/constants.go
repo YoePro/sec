@@ -158,10 +158,10 @@ func (a *Analyzer) assignmentIntegerValue(name string, stmt *ast.AssignmentState
 }
 
 func (a *Analyzer) setConstInt(name string, expr ast.Expression) {
-	if symbol, exists := a.symbols[name]; exists {
+	if symbol, exists := a.symbols.lookup(name); exists {
 		symbol.TransientConstant = a.constantConditionReferencesMutableBinding(expr)
 		a.setEnumBindingConstant(&symbol, expr)
-		a.symbols[name] = symbol
+		a.symbols.set(name, symbol)
 	}
 	value, ok := a.integerConstantValue(expr)
 	if !ok {

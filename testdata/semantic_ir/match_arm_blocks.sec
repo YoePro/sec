@@ -1,0 +1,60 @@
+module main
+
+// Value-producing arm blocks of a match expression (flowcontrol_match.md § 21):
+// the final expression on the continuing path is the arm result, built before
+// the arm's owned locals are cleaned up (P17-42); a returning arm leaves through
+// function cleanup.
+// Rules: rules/control-flow/flowcontrol_match.md § 21; rules/memory/destruction.md § 6.2.
+
+type Handle struct {
+    id: int,
+}
+
+impl Handle {
+    free {
+    }
+}
+
+fn Make(id: int) Handle {
+    return Handle { id: id }
+}
+
+fn Log(n: int) void {
+}
+
+fn ArmLocal(option: Option[int]) int {
+    let value := match option {
+        Some(n) => {
+            let local := Make(n)
+            local.id
+        }
+        None => 0
+    }
+    return value
+}
+
+fn ArmReturn(option: Option[int]) int {
+    let outer := Make(5)
+    let value := match option {
+        Some(n) => {
+            let local := Make(n)
+            if n > 3 {
+                return local.id
+            }
+            local.id + 1
+        }
+        None => outer.id
+    }
+    return value
+}
+
+fn FreshOwnedResult(option: Option[int]) int {
+    let handle := match option {
+        Some(n) => {
+            Log(n)
+            Make(n)
+        }
+        None => Make(0)
+    }
+    return handle.id
+}

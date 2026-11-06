@@ -1,0 +1,65 @@
+module main
+
+// P17-40: full-expression temporaries and discards. A mutably borrowed owned
+// temporary lives in compiler storage for the call and ends in place at its
+// full expression; `discard try` and a discarded stored field end through
+// their destruction plans.
+// Rules: rules/memory/destruction.md § 8; rules/memory/borrowing.md § 5.4.
+
+type Handle struct {
+    id: int,
+}
+
+impl Handle {
+    free {
+    }
+}
+
+type Pair struct {
+    left:  Handle,
+    right: Handle,
+}
+
+fn Make(id: int) Handle {
+    return Handle { id: id }
+}
+
+fn TryMake(id: int) Result[Handle, IndexError] {
+    return Ok(Make(id))
+}
+
+fn Bump(handle: ref mut Handle) void {
+}
+
+fn DiscardTry() Result[int, IndexError] {
+    discard try TryMake(1)
+    return Ok(1)
+}
+
+fn DiscardProjection() void {
+    let mut pair := Pair { left: Make(1), right: Make(2) }
+    discard pair.left
+}
+
+fn MutableBorrowOfTemporary() void {
+    Bump(Make(1))
+}
+
+// A conditionally evaluated region is its temporaries' scope: they end with
+// the short-circuit operand or the match arm, before control merges (owner
+// decision 2026-11-06).
+fn SomePaths(flag: bool) bool {
+    return flag && Make(1).id > 0
+}
+
+fn ArmTemporary(option: Option[int]) int {
+    let value := match option {
+        Some(n) => Make(n).id
+        None => 0
+    }
+    return value
+}
+
+fn ArrayLen() uint {
+    return [Make(1), Make(2)].Len
+}

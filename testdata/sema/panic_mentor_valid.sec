@@ -1,0 +1,46 @@
+module main
+@noPanic
+extern "C" fn TrustedForeign() void
+@noPanic
+fn SafeForeign() void { unsafe { TrustedForeign() } }
+enum CleanupFailure error { First, Second }
+fn Fallible() Result[void, CleanupFailure] { return Err(CleanupFailure.First) }
+fn Maybe() Option[int] { return None }
+@noPanic
+fn RecoveredCleanup() void {
+    defer {
+        try Fallible() { Err(_) => {} }
+        try Maybe() { None => {} }
+    }
+}
+@noPanic
+fn ArithmeticCleanup(a: int, b: int) void {
+    defer { discard try a + b { Err(_) => 0 } }
+}
+@noPanic
+fn NestedInvocation() void {
+    defer {
+        let local := fn() int { defer { assert true }
+            return 1 }
+        discard local()
+    }
+}
+type Resource struct {}
+impl Resource {
+    @noPanic
+    free {
+        let local := fn() int { defer { assert true }
+            return 1 }
+        discard local()
+    }
+}
+@noPanic
+fn NestedFallibleInvocation() void {
+    defer {
+        let local := fn() Result[void, CleanupFailure] {
+            try Fallible()
+            return Ok()
+        }
+        try local() { Err(_) => {} }
+    }
+}

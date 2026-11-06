@@ -362,9 +362,11 @@ func (s *server) run() error {
 		if !ok {
 			return queue.err()
 		}
-		if !isDeferrableAnalysisRequest(message.Method) {
-			// Any other message may change documents, configuration or
-			// target selection, so cached analyses stop being reusable.
+		if analysisInputsChangeOutsideIdentity(message.Method) {
+			// Document text, open imports and selected targets are part of
+			// each cached analysis's identity; only state outside it
+			// (configuration, workspace, files on disk, commands) drops the
+			// cache (rules/tooling/lsp.md — "Snapshots").
 			advanceAnalysisEpoch()
 		}
 		var err error
@@ -570,6 +572,7 @@ func (s *server) handle(message rpcMessage) error {
 		}
 		s.stopDiagnosticTimer(params.TextDocument.URI)
 		s.documentSnapshots.Close(params.TextDocument.URI)
+		forgetCachedAnalysis(params.TextDocument.URI)
 		if s.crossTarget != nil {
 			s.crossTarget.mu.Lock()
 			delete(s.crossTarget.results, params.TextDocument.URI)

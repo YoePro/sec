@@ -38,7 +38,7 @@ func atomicOrderNames(operation string, failure bool) []string {
 // rules/compiler/compile_time_evaluation.md — SemanticCompileTimeRequiredContext.
 func (a *Analyzer) atomicMemoryOrderValue(expr ast.Expression) (string, compileTimeOutcome) {
 	if id, ok := expr.(*ast.Identifier); ok {
-		if symbol, found := a.symbols[id.Value]; found {
+		if symbol, found := a.symbols.lookup(id.Value); found {
 			if symbol.Mutable || symbol.Volatile || symbol.Parameter {
 				return "", compileTimeNotConstant
 			}
@@ -65,13 +65,13 @@ func (a *Analyzer) atomicMemoryOrderValue(expr ast.Expression) (string, compileT
 // Rules: rules/concurrency/atomics.md — §§5,24;
 // rules/foundations/names_scopes_visibility.md — Lexical scopes.
 func (a *Analyzer) recordAtomicOrderBinding(name string, expr ast.Expression) {
-	symbol, ok := a.symbols[name]
+	symbol, ok := a.symbols.lookup(name)
 	if !ok || symbol.Mutable || symbol.Volatile || !sameConcreteType(symbol.Type, a.types["MemoryOrder"]) {
 		return
 	}
 	order, outcome := a.atomicMemoryOrderValue(expr)
 	symbol.atomicMemoryOrder = &atomicOrderConstant{name: order, outcome: outcome}
-	a.symbols[name] = symbol
+	a.symbols.set(name, symbol)
 }
 
 // checkAtomicOrderArgument type-checks each explicit order and rejects a known

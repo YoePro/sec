@@ -916,12 +916,12 @@ let f: float64 := 3.14
 	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
 	assertSemaErrors(t, errors, nil)
 
-	x := analyzer.symbols["x"]
+	x := analyzer.symbols.get("x")
 	if x.Type.Name != "decimal" {
 		t.Fatalf("wrong inferred type. got=%q want=%q", x.Type.Name, "decimal")
 	}
 
-	f := analyzer.symbols["f"]
+	f := analyzer.symbols.get("f")
 	if f.Type.Name != "float64" {
 		t.Fatalf("wrong explicit type. got=%q want=%q", f.Type.Name, "float64")
 	}
@@ -945,7 +945,7 @@ let exactDecimal := 1e3m
 		"exactDecimal": "decimal",
 	}
 	for name, want := range expected {
-		if got := analyzer.symbols[name].Type.Name; got != want {
+		if got := analyzer.symbols.get(name).Type.Name; got != want {
 			t.Fatalf("%s inferred as %q, want %q", name, got, want)
 		}
 	}
@@ -981,7 +981,7 @@ let h := 0x8m
 		"h":  "decimal",
 	}
 	for name, want := range expected {
-		if got := analyzer.symbols[name].Type.Name; got != want {
+		if got := analyzer.symbols.get(name).Type.Name; got != want {
 			t.Fatalf("%s inferred as %q, want %q", name, got, want)
 		}
 	}
@@ -1113,22 +1113,22 @@ fn Test() void {
 	assertSemaErrors(t, errors, nil)
 
 	for _, name := range []string{"a", "b", "c", "ma", "ms", "mok"} {
-		if !analyzer.symbols[name].Mutable {
+		if !analyzer.symbols.get(name).Mutable {
 			t.Fatalf("%s should be mutable", name)
 		}
 	}
 
 	for _, name := range []string{"f", "pi", "x", "s", "ok"} {
-		if analyzer.symbols[name].Mutable {
+		if analyzer.symbols.get(name).Mutable {
 			t.Fatalf("%s should be immutable", name)
 		}
 	}
 
-	if analyzer.symbols["f"].Type.Name != "float" {
-		t.Fatalf("wrong f type. got=%q want=float", analyzer.symbols["f"].Type.Name)
+	if analyzer.symbols.get("f").Type.Name != "float" {
+		t.Fatalf("wrong f type. got=%q want=float", analyzer.symbols.get("f").Type.Name)
 	}
-	if analyzer.symbols["pi"].Type.Name != "float" {
-		t.Fatalf("wrong pi type. got=%q want=float", analyzer.symbols["pi"].Type.Name)
+	if analyzer.symbols.get("pi").Type.Name != "float" {
+		t.Fatalf("wrong pi type. got=%q want=float", analyzer.symbols.get("pi").Type.Name)
 	}
 }
 
@@ -1151,7 +1151,7 @@ fn Test() TokenType {
 	assertSemaErrors(t, errors, nil)
 
 	for _, name := range []string{"ILLEGAL", "EOF", "IDENT"} {
-		symbol := analyzer.symbols[name]
+		symbol := analyzer.symbols.get(name)
 		if symbol.Mutable {
 			t.Fatalf("%s should be immutable", name)
 		}
@@ -1649,17 +1649,17 @@ let power: <hp> := 10g
 	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
 	assertSemaErrors(t, errors, nil)
 
-	secondType := analyzer.symbols["seconds"].Type
+	secondType := analyzer.symbols.get("seconds").Type
 	if secondType.Name != "decimal" || secondType.Unit != "s" {
 		t.Fatalf("wrong seconds type: %+v", secondType)
 	}
 
-	fastType := analyzer.symbols["fast"].Type
+	fastType := analyzer.symbols.get("fast").Type
 	if fastType.Name != "decimal" || fastType.Unit != "s" {
 		t.Fatalf("wrong fast type: %+v", fastType)
 	}
 
-	powerType := analyzer.symbols["power"].Type
+	powerType := analyzer.symbols.get("power").Type
 	if powerType.Name != "float" || powerType.Unit != "hp" {
 		t.Fatalf("wrong power type: %+v", powerType)
 	}
@@ -1783,16 +1783,16 @@ let identity: <widget/widget> := 1
 	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
 	assertSemaErrors(t, errors, nil)
 	widgetAxis, tickAxis := unitAxisKey(analyzer.units["widget"].Module, "widget"), unitAxisKey(analyzer.units["tick"].Module, "tick")
-	if speed := analyzer.symbols["speed"].Type; speed.Kind != DecimalType || speed.Dimension.Base[widgetAxis] != 1 || speed.Dimension.Base[tickAxis] != -1 {
+	if speed := analyzer.symbols.get("speed").Type; speed.Kind != DecimalType || speed.Dimension.Base[widgetAxis] != 1 || speed.Dimension.Base[tickAxis] != -1 {
 		t.Fatalf("speed type=%+v", speed)
 	}
-	if acceleration := analyzer.symbols["acceleration"].Type; acceleration.Dimension.Base[tickAxis] != -2 {
+	if acceleration := analyzer.symbols.get("acceleration").Type; acceleration.Dimension.Base[tickAxis] != -2 {
 		t.Fatalf("acceleration type=%+v", acceleration)
 	}
-	if grouped := analyzer.symbols["grouped"].Type; grouped.Kind != FloatType || grouped.Dimension.Base[widgetAxis] != 2 || grouped.Dimension.Base[tickAxis] != -2 {
+	if grouped := analyzer.symbols.get("grouped").Type; grouped.Kind != FloatType || grouped.Dimension.Base[widgetAxis] != 2 || grouped.Dimension.Base[tickAxis] != -2 {
 		t.Fatalf("grouped type=%+v", grouped)
 	}
-	if identity := analyzer.symbols["identity"].Type; identity.Kind != DecimalType || !identity.Dimension.IsZero() {
+	if identity := analyzer.symbols.get("identity").Type; identity.Kind != DecimalType || !identity.Dimension.IsZero() {
 		t.Fatalf("identity type=%+v", identity)
 	}
 }
@@ -2116,7 +2116,7 @@ hardware endpoint MotorProtocolEndpoint {
 	if len(register.RegisterFields) != 3 || register.RegisterFields[0].Name != "Speed" || register.RegisterFields[0].Width != 4 {
 		t.Fatalf("wrong register fields: %+v", register.RegisterFields)
 	}
-	symbol := analyzer.symbols["motorProtocol"]
+	symbol := analyzer.symbols.get("motorProtocol")
 	if !symbol.Addressed || !symbol.Volatile || symbol.Address != "test:hardware::MotorProtocolEndpoint" {
 		t.Fatalf("wrong addressed symbol: %+v", symbol)
 	}
@@ -2965,7 +2965,7 @@ let v := d / t
 	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
 	assertSemaErrors(t, errors, nil)
 
-	v := analyzer.symbols["v"]
+	v := analyzer.symbols.get("v")
 	if v.Type.Name == "Speed" || v.Type.UnitSemantics.Identity != StructuralUnitIdentity || v.Type.Unit != "m/s" {
 		t.Fatalf("division invented a named result: %+v", v.Type)
 	}
@@ -2987,7 +2987,7 @@ let d := v * t
 	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
 	assertSemaErrors(t, errors, nil)
 
-	d := analyzer.symbols["d"]
+	d := analyzer.symbols.get("d")
 	if d.Type.Name == "Meter" || d.Type.UnitSemantics.Identity != StructuralUnitIdentity {
 		t.Fatalf("multiplication invented a named result: %+v", d.Type)
 	}
@@ -3005,7 +3005,7 @@ let doubled := m * 2
 	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
 	assertSemaErrors(t, errors, nil)
 
-	doubled := analyzer.symbols["doubled"]
+	doubled := analyzer.symbols.get("doubled")
 	if doubled.Type.Name != "Money" {
 		t.Fatalf("wrong inferred type. got=%q want=%q", doubled.Type.Name, "Money")
 	}
@@ -3180,8 +3180,8 @@ let invalid := a * b
 
 	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
 	assertSemaErrors(t, errors, nil)
-	if analyzer.symbols["invalid"].Type.UnitSemantics.Identity != StructuralUnitIdentity || len(analyzer.Warnings()) == 0 {
-		t.Fatalf("currency product did not remain structural with a warning: type=%+v warnings=%v", analyzer.symbols["invalid"].Type, analyzer.Warnings())
+	if analyzer.symbols.get("invalid").Type.UnitSemantics.Identity != StructuralUnitIdentity || len(analyzer.Warnings()) == 0 {
+		t.Fatalf("currency product did not remain structural with a warning: type=%+v warnings=%v", analyzer.symbols.get("invalid").Type, analyzer.Warnings())
 	}
 }
 
@@ -3198,7 +3198,7 @@ let ratio := a / b
 	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
 	assertSemaErrors(t, errors, nil)
 
-	ratio := analyzer.symbols["ratio"]
+	ratio := analyzer.symbols.get("ratio")
 	if ratio.Type.Name != "decimal" {
 		t.Fatalf("wrong inferred type. got=%q want=%q", ratio.Type.Name, "decimal")
 	}
@@ -4803,11 +4803,11 @@ let explicitInt: int := int(Color.green)
 		t.Fatalf("wrong Status enum: %+v", status)
 	}
 
-	if analyzer.symbols["c"].Type.Name != "Color" {
-		t.Fatalf("wrong c type: %+v", analyzer.symbols["c"])
+	if analyzer.symbols.get("c").Type.Name != "Color" {
+		t.Fatalf("wrong c type: %+v", analyzer.symbols.get("c"))
 	}
-	if analyzer.symbols["explicitInt"].Type.Name != "int" {
-		t.Fatalf("wrong explicitInt type: %+v", analyzer.symbols["explicitInt"])
+	if analyzer.symbols.get("explicitInt").Type.Name != "int" {
+		t.Fatalf("wrong explicitInt type: %+v", analyzer.symbols.get("explicitInt"))
 	}
 }
 
@@ -5095,7 +5095,7 @@ fn SwitchClassify(value: Program) int {
 	if program.Kind != EnumType || program.Underlying != "string" || program.EnumDefault != "VIQ" {
 		t.Fatalf("wrong string enum type: %+v", program)
 	}
-	if current, ok := analyzer.symbols["Current"]; !ok || current.Type.Name != "Program" || !analyzer.assigned["Current"] {
+	if current, ok := analyzer.symbols.lookup("Current"); !ok || current.Type.Name != "Program" || !analyzer.assigned["Current"] {
 		t.Fatalf("string enum default initialization was not synthesized: symbol=%+v assigned=%v", current, analyzer.assigned["Current"])
 	}
 	oneCare := program.EnumConsts["OneCare"]
@@ -5231,13 +5231,13 @@ func TestImplStaticAndInstanceLetAreDistinct(t *testing.T) {
 			t.Fatalf("wrong diagnostic: %s", message)
 		}
 	}
-	if _, ok := analyzer.symbols["Program.Instance"]; ok {
+	if _, ok := analyzer.symbols.lookup("Program.Instance"); ok {
 		t.Fatal("instance let became a static symbol")
 	}
-	if _, ok := analyzer.symbols["Program.MutableInstance"]; ok {
+	if _, ok := analyzer.symbols.lookup("Program.MutableInstance"); ok {
 		t.Fatal("mutable instance let became a static symbol")
 	}
-	shared, ok := analyzer.symbols["Program.Shared"]
+	shared, ok := analyzer.symbols.lookup("Program.Shared")
 	if !ok || shared.Mutable || shared.Storage != StorageOriginStatic {
 		t.Fatalf("missing static member: %+v", shared)
 	}
@@ -5383,7 +5383,7 @@ unit s physical
 	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
 	assertSemaErrors(t, errors, nil)
 
-	current := analyzer.symbols["current"]
+	current := analyzer.symbols.get("current")
 	if current.Type.Name != "Speed" {
 		t.Fatalf("wrong member type. got=%q want=Speed", current.Type.Name)
 	}
@@ -5451,7 +5451,7 @@ unit s physical
 
 	assertSemaErrors(t, errors, expected)
 
-	current := analyzer.symbols["current"]
+	current := analyzer.symbols.get("current")
 	if current.Type.Name != "Speed" {
 		t.Fatalf("wrong property type. got=%q want=Speed", current.Type.Name)
 	}
@@ -5768,7 +5768,7 @@ unit s physical
 	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
 	assertSemaErrors(t, errors, nil)
 
-	current := analyzer.symbols["current"]
+	current := analyzer.symbols.get("current")
 	if current.Type.Name != "Speed" {
 		t.Fatalf("wrong property type. got=%q want=Speed", current.Type.Name)
 	}
@@ -6238,11 +6238,11 @@ let s := Pick("hello")
 	if len(analyzer.functions["Pick"]) != 2 {
 		t.Fatalf("wrong overload count. got=%d want=2", len(analyzer.functions["Pick"]))
 	}
-	if analyzer.symbols["i"].Type.Name != "int" {
-		t.Fatalf("wrong i type: %+v", analyzer.symbols["i"])
+	if analyzer.symbols.get("i").Type.Name != "int" {
+		t.Fatalf("wrong i type: %+v", analyzer.symbols.get("i"))
 	}
-	if analyzer.symbols["s"].Type.Name != "string" {
-		t.Fatalf("wrong s type: %+v", analyzer.symbols["s"])
+	if analyzer.symbols.get("s").Type.Name != "string" {
+		t.Fatalf("wrong s type: %+v", analyzer.symbols.get("s"))
 	}
 }
 
@@ -6401,8 +6401,8 @@ let x := Print(10)
 		"static initializer for x must be compile-time evaluable; runtime execution or invocation-local state is not allowed at 10:5",
 	})
 
-	if analyzer.symbols["x"].Type.Name != "int" {
-		t.Fatalf("wrong x type. got=%q want=int", analyzer.symbols["x"].Type.Name)
+	if analyzer.symbols.get("x").Type.Name != "int" {
+		t.Fatalf("wrong x type. got=%q want=int", analyzer.symbols.get("x").Type.Name)
 	}
 }
 
@@ -6429,11 +6429,11 @@ let selectedInt := Set(50)
 		"static initializer for selectedInt must be compile-time evaluable; runtime execution or invocation-local state is not allowed at 14:5",
 	})
 
-	if analyzer.symbols["selectedNamed"].Type.Name != "Percent" {
-		t.Fatalf("wrong selectedNamed type. got=%q want=Percent", analyzer.symbols["selectedNamed"].Type.Name)
+	if analyzer.symbols.get("selectedNamed").Type.Name != "Percent" {
+		t.Fatalf("wrong selectedNamed type. got=%q want=Percent", analyzer.symbols.get("selectedNamed").Type.Name)
 	}
-	if analyzer.symbols["selectedInt"].Type.Name != "int" {
-		t.Fatalf("wrong selectedInt type. got=%q want=int", analyzer.symbols["selectedInt"].Type.Name)
+	if analyzer.symbols.get("selectedInt").Type.Name != "int" {
+		t.Fatalf("wrong selectedInt type. got=%q want=int", analyzer.symbols.get("selectedInt").Type.Name)
 	}
 }
 
@@ -6453,11 +6453,11 @@ let y: int := Add(3, 4)
 		"static initializer for y must be compile-time evaluable; runtime execution or invocation-local state is not allowed at 7:5",
 	})
 
-	if analyzer.symbols["x"].Type.Name != "int" {
-		t.Fatalf("wrong x type: %+v", analyzer.symbols["x"])
+	if analyzer.symbols.get("x").Type.Name != "int" {
+		t.Fatalf("wrong x type: %+v", analyzer.symbols.get("x"))
 	}
-	if analyzer.symbols["y"].Type.Name != "int" {
-		t.Fatalf("wrong y type: %+v", analyzer.symbols["y"])
+	if analyzer.symbols.get("y").Type.Name != "int" {
+		t.Fatalf("wrong y type: %+v", analyzer.symbols.get("y"))
 	}
 }
 
@@ -10334,7 +10334,7 @@ fn Use(button: Button) void {
 	if button.Events[1].Name != "CustomPressed" || button.Events[1].Capacity != 8 || !button.Events[1].StorageBacked {
 		t.Fatalf("wrong storage-backed event: %+v", button.Events[1])
 	}
-	subscription := analyzer.completionSymbols["subscription"].Type
+	subscription := analyzer.completionSymbols.get("subscription").Type
 	if typeDisplayName(subscription) != "EventSubscribeResult" {
 		t.Fatalf("wrong Subscribe result type: %+v display=%s", subscription, typeDisplayName(subscription))
 	}
@@ -10420,19 +10420,19 @@ fn Use() void {
 	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, input)
 	assertSemaErrors(t, errors, nil)
 
-	tx := analyzer.completionSymbols["tx"].Type
+	tx := analyzer.completionSymbols.get("tx").Type
 	if !isSenderType(tx) || typeDisplayName(tx.TypeArgs[0]) != "Message" {
 		t.Fatalf("wrong tx type: %+v", tx)
 	}
-	rx := analyzer.completionSymbols["rx"].Type
+	rx := analyzer.completionSymbols.get("rx").Type
 	if !isReceiverType(rx) || typeDisplayName(rx.TypeArgs[0]) != "Message" {
 		t.Fatalf("wrong rx type: %+v", rx)
 	}
-	received := analyzer.completionSymbols["received"].Type
+	received := analyzer.completionSymbols.get("received").Type
 	if typeDisplayName(received) != "Option[Message]" {
 		t.Fatalf("wrong Receive result type: %+v display=%s", received, typeDisplayName(received))
 	}
-	attempt := analyzer.completionSymbols["attempt"].Type
+	attempt := analyzer.completionSymbols.get("attempt").Type
 	if typeDisplayName(attempt) != "ChannelTryReceiveResult[Message]" {
 		t.Fatalf("wrong TryReceive result type: %+v display=%s", attempt, typeDisplayName(attempt))
 	}
@@ -10460,15 +10460,15 @@ fn Use() void {
 	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, input)
 	assertSemaErrors(t, errors, nil)
 
-	sent := analyzer.completionSymbols["sent"].Type
+	sent := analyzer.completionSymbols.get("sent").Type
 	if typeDisplayName(sent) != "ChannelSendResult[Message]" {
 		t.Fatalf("wrong Send result type: %+v display=%s", sent, typeDisplayName(sent))
 	}
-	ticket := analyzer.completionSymbols["ticket"].Type
+	ticket := analyzer.completionSymbols.get("ticket").Type
 	if typeDisplayName(ticket) != "MessageTicket[Message]" {
 		t.Fatalf("wrong SendRevocable result type: %+v display=%s", ticket, typeDisplayName(ticket))
 	}
-	revoke := analyzer.completionSymbols["revoke"].Type
+	revoke := analyzer.completionSymbols.get("revoke").Type
 	if typeDisplayName(revoke) != "ChannelRevokeResult[Message]" {
 		t.Fatalf("wrong Revoke result type: %+v display=%s", revoke, typeDisplayName(revoke))
 	}

@@ -44,7 +44,7 @@ func (a *Analyzer) reportConfusableIdentifier(name string, token lexer.Token, pr
 //   - rules/foundations/names_scopes_visibility.md — no shadowing of visible declarations
 func (a *Analyzer) checkLocalConfusableIdentifier(name string, token lexer.Token) bool {
 	skeleton := a.confusableSkeleton(name)
-	for other, symbol := range a.symbols {
+	for other, symbol := range a.symbols.all() {
 		if other == name || symbol.ImplicitMember || !validDefinitionToken(symbol.Token) {
 			continue
 		}

@@ -92,7 +92,7 @@ func (fb *functionBuilder) endBorrowsBefore(statement ast.Statement, list int) {
 			continue
 		}
 		typ, _ := fb.owner.module.Types.Lookup(held.typ)
-		slice := typ.Kind == TypeSharedSlice || typ.Kind == TypeMutableSlice
+		slice := boundedView(typ.Kind)
 		if fb.holderHomes[end.Binding] != list && !slice {
 			continue
 		}

@@ -1,21 +1,50 @@
 module core
 
 impl int {
+    /**
+     * Returns the decimal text of this value.
+     *
+     * Description:
+     * Writes ASCII decimal digits with a leading `-` for negative values and
+     * no sign, grouping or padding otherwise. The most negative value is
+     * rendered exactly: digits are taken from the negative value itself, so
+     * no negation can overflow.
+     *
+     * Returns:
+     * The canonical decimal text, for example "0", "42" or "-17".
+     *
+     * Errors:
+     * - StringError.Allocation(cause): String storage could not be materialized.
+     *
+     * Allocation:
+     * May allocate result storage through the permitted allocation context.
+     */
     fn ToString() Result[string, StringError] {
-        // TODO: Implement int.ToString()
-        return Ok("")
-    }
-
-    // Also needed: ToString(format)
-
-    fn Abs() Result[int, OverflowError] {
-        if self < 0 {
-            return Ok(-self)
+        if self >= 0 {
+            return _decimalTextOfNonNegative(self)
         }
-        return Ok(self)
+        let digits := try _decimalTextOfNegative(self)
+        return Ok(try "-" + digits)
     }
 
-    //
+    /**
+     * Returns the absolute value.
+     *
+     * Errors:
+     * - OverflowError.Overflow: The value is int.Min, whose magnitude has no
+     *   int representation.
+     */
+    fn Abs() Result[int, OverflowError] {
+        if self >= 0 {
+            return Ok(self)
+        }
+        let magnitude := try 0 - self {
+            Err(_) => return Err(OverflowError.Overflow)
+        }
+        return Ok(magnitude)
+    }
+
+    /** Returns the smaller of this value and other. */
     fn Min(other: int) int {
         if self < other {
             return self
@@ -23,16 +52,37 @@ impl int {
         return other
     }
 
-    //
+    /** Returns the larger of this value and other. */
     fn Max(other: int) int {
         if self > other {
             return self
         }
-
         return other
     }
 
-    //
+    /**
+     * Returns this value limited to minimum..maximum (both inclusive).
+     *
+     * Errors:
+     * - RangeError.StartAfterEnd: minimum is greater than maximum.
+     */
+    fn Clamp(minimum: int, maximum: int) Result[int, RangeError] {
+        if minimum > maximum {
+            return Err(RangeError.StartAfterEnd)
+        }
+        if self < minimum {
+            return Ok(minimum)
+        }
+        if self > maximum {
+            return Ok(maximum)
+        }
+        return Ok(self)
+    }
+
+    /**
+     * Parses the text form of an integer literal (see `_parseInt`). The empty
+     * string parses as 0.
+     */
     static fn Parse(inStr: string) Result[int, NumberParseError] {
         if inStr == "" {
             return Ok(0)
@@ -41,80 +91,252 @@ impl int {
         return _parseInt(inStr)
     }
 
-    //
-    property IsEven: bool {
-        get {
-            return self % 2 == 0
-        }
+    /** Reports whether this value is divisible by two. */
+    fn IsEven() bool {
+        return self % 2 == 0
     }
 
-    //
-    property IsOdd: bool {
-        get {
-            return self % 2 != 0
-        }
+    /** Reports whether this value is not divisible by two. */
+    fn IsOdd() bool {
+        return self % 2 != 0
     }
 
-    //
+    /** Reports whether this value is greater than zero. */
     property IsPositive: bool {
         get {
             return self > 0
         }
     }
 
-    //
+    /** Reports whether this value is less than zero. */
     property IsNegative: bool {
         get {
             return self < 0
         }
     }
 
-    /** test */
-    property BitLength: uint {
-        get {
-            if self == 0 {
-                return 0
-            }
-
-            let mut length := uint(0)
-            let mut value  := self
-
-            while value != 0 {
-                length += 1
-                value >>= 1
-            }
-
-            return length
-        }
-    }
-
-    //
-    property LeadingZeroCount: uint {
-        get {
-            return uint(64 - self.BitLength)
-        }
-    }
-
-    //
-    property TrailingZeroCount: uint {
-        get {
-            if self == 0 {
-                return 64
-            }
-
-            let mut count := uint(0)
-            let mut value := self
-
-            while (value & 1) == 0 {
+    /** Counts the one bits of the two's-complement representation. */
+    fn CountOnes() uint {
+        let mut count: uint := 0
+        let mut index: uint := 0
+        while index < int.Bits {
+            if _signedBitAt(self, index) {
                 count += 1
-                value >>= 1
             }
-
-            return count
+            index += 1
         }
+        return count
+    }
+
+    /** Counts the zero bits of the two's-complement representation. */
+    fn CountZeros() uint {
+        return int.Bits - self.CountOnes()
+    }
+
+    /** Counts the zero bits above the highest one bit; int.Bits for zero. */
+    fn LeadingZeros() uint {
+        let mut index := int.Bits
+        while index > 0 {
+            index -= 1
+            if _signedBitAt(self, index) {
+                return int.Bits - 1 - index
+            }
+        }
+        return int.Bits
+    }
+
+    /** Counts the zero bits below the lowest one bit; int.Bits for zero. */
+    fn TrailingZeros() uint {
+        let mut index: uint := 0
+        while index < int.Bits {
+            if _signedBitAt(self, index) {
+                return index
+            }
+            index += 1
+        }
+        return int.Bits
+    }
+
+    /** Rotates the two's-complement bits left by amount modulo int.Bits. */
+    fn RotateLeft(amount: uint) int {
+        let shift := amount % int.Bits
+        let mut result: int := 0
+        let mut index: uint := 0
+        while index < int.Bits {
+            if _signedBitAt(self, index) {
+                result = result | _signedBitValue((index + shift) % int.Bits)
+            }
+            index += 1
+        }
+        return result
+    }
+
+    /** Rotates the two's-complement bits right by amount modulo int.Bits. */
+    fn RotateRight(amount: uint) int {
+        let shift := amount % int.Bits
+        return self.RotateLeft((int.Bits - shift) % int.Bits)
+    }
+
+    /** Reverses the byte order of the two's-complement representation. */
+    fn SwapBytes() int {
+        let bytes := int.Bits / 8
+        let mut result: int := 0
+        let mut index: uint := 0
+        while index < int.Bits {
+            if _signedBitAt(self, index) {
+                let target := (bytes - 1 - index / 8) * 8 + index % 8
+                result = result | _signedBitValue(target)
+            }
+            index += 1
+        }
+        return result
     }
 }
 
+/**
+ * Parses an integer in the text form of a Sec integer literal.
+ *
+ * Description:
+ * Accepts an optional `+` or `-`, then either decimal digits or an ASCII
+ * `0x`/`0X` (hexadecimal) or `0b`/`0B` (binary) prefix followed by ASCII
+ * digits of that base. Decimal digits may come from any Unicode Nd numeral
+ * system, but all digits of one number must share it. No whitespace,
+ * separators or suffixes are accepted.
+ *
+ * The value is accumulated as a non-positive number, so the most negative
+ * value parses exactly and no intermediate step overflows.
+ *
+ * Errors:
+ * - NumberParseError.InvalidNumber: Empty digits, a stray sign or prefix, or
+ *   a character that is not a digit of the selected base.
+ * - NumberParseError.MixedNumeralSystems: Decimal digits of different
+ *   numeral systems were mixed.
+ * - NumberParseError.Overflow: The value does not fit in int.
+ *
+ * Allocation:
+ * Does not allocate.
+ */
 fn _parseInt(inStr: string) Result[int, NumberParseError] {
+    let count := inStr.Len
+    let mut index: uint := 0
+    let mut negative := false
+    if count > 0 && (inStr.RuneAt(0) == 45r || inStr.RuneAt(0) == 43r) {
+        negative = inStr.RuneAt(0) == 45r
+        index = 1
+    }
+    let radix := _integerRadixAt(inStr, index)
+    if radix != 10 {
+        index += 2
+    }
+    if index >= count {
+        return Err(NumberParseError.InvalidNumber)
+    }
+    // Accumulate -|value|: int's negative range is the larger one.
+    let mut value: int := 0
+    let mut zero: Option[rune] := None()
+    while index < count {
+        let digit := try _integerDigitAt(inStr, index, radix, ref mut zero)
+        let shifted := try value * int(radix) {
+            Err(_) => return Err(NumberParseError.Overflow)
+        }
+        value = try shifted - digit {
+            Err(_) => return Err(NumberParseError.Overflow)
+        }
+        index += 1
+    }
+    if negative {
+        return Ok(value)
+    }
+    let positive := try 0 - value {
+        Err(_) => return Err(NumberParseError.Overflow)
+    }
+    return Ok(positive)
+}
+
+// The radix an integer's text selects at index: 16 or 2 after an ASCII
+// `0x`/`0b` prefix, otherwise 10.
+fn _integerRadixAt(text: string, index: uint) uint8 {
+    if index + 1 >= text.Len || text.RuneAt(index) != 48r {
+        return 10
+    }
+    let marker := text.RuneAt(index + 1)
+    if marker == 120r || marker == 88r {
+        return 16
+    }
+    if marker == 98r || marker == 66r {
+        return 2
+    }
+    return 10
+}
+
+// The value of the digit at index in radix. Decimal digits may be any Unicode
+// Nd digit, but every digit of one number must share the numeral system
+// recorded in zero.
+fn _integerDigitAt(text: string, index: uint, radix: uint8, zero: ref mut Option[rune]) Result[int, NumberParseError] {
+    let character := text.RuneAt(index)
+    if radix != 10 {
+        let value := _AsciiDigitValue(character, radix)
+        if value is Some(digit) {
+            return Ok(digit)
+        }
+        return Err(NumberParseError.InvalidNumber)
+    }
+    let decimalDigit := _DecimalDigitValue(character)
+    if decimalDigit is Some(found) {
+        if *zero is Some(system) {
+            if system != found.Zero {
+                return Err(NumberParseError.MixedNumeralSystems)
+            }
+        } else {
+            *zero = Some(found.Zero)
+        }
+        return Ok(int(found.Value))
+    }
     return Err(NumberParseError.InvalidNumber)
 }
+
+// The ASCII decimal digit of a value in 0..9; callers pass only such values.
+fn _asciiDecimalDigit(value: int) char {
+    return try char(48 + value) {
+        Err(_) => 48t
+    }
+}
+
+// Decimal digits of a non-negative value, most significant first.
+fn _decimalTextOfNonNegative(value: int) Result[string, StringError] {
+    let digit := _asciiDecimalDigit(value % 10)
+    if value < 10 {
+        return digit.ToString()
+    }
+    let rest := value / 10
+    let prefix := try _decimalTextOfNonNegative(rest)
+    return Ok(try prefix + digit)
+}
+
+// Decimal digits of the magnitude of a negative value, without its sign. The
+// remainder of a negative value is non-positive, so its digit is its negation.
+fn _decimalTextOfNegative(value: int) Result[string, StringError] {
+    let digit := _asciiDecimalDigit(0 - value % 10)
+    if value > -10 {
+        return digit.ToString()
+    }
+    let rest := value / 10
+    let prefix := try _decimalTextOfNegative(rest)
+    return Ok(try prefix + digit)
+}
+
+// Reports bit index (0 = least significant) of the two's-complement value;
+// index < int.Bits. The arithmetic right shift keeps lower bits exact.
+fn _signedBitAt(value: int, index: uint) bool {
+    return ((value >> index) & 1) != 0
+}
+
+// The int whose only one bit is index: int.Min for the sign bit, otherwise
+// the representable power of two.
+fn _signedBitValue(index: uint) int {
+    if index + 1 == int.Bits {
+        return int.Min
+    }
+    return 1 << index
+}
+

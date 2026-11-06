@@ -173,7 +173,7 @@ func (a *Analyzer) validateStaticInitializerExpression(name string, expression a
 			}
 			// A function-local static initializer cannot capture an invocation's
 			// parameters or automatic locals (static.md, sections 4 and 15).
-			if symbol, ok := a.symbols[candidate.Value]; ok && symbol.Local {
+			if symbol, ok := a.symbols.lookup(candidate.Value); ok && symbol.Local {
 				invalid = true
 			}
 		case *ast.MemberExpression:
@@ -226,7 +226,7 @@ func (a *Analyzer) validateStaticReferenceInitializer(name string, reference *as
 			settled[place] = true
 			continue
 		case *ast.Identifier:
-			symbol, exists := a.symbols[node.Value]
+			symbol, exists := a.symbols.lookup(node.Value)
 			if staticRoots[node.Value] && (!exists || !symbol.Local) || exists && symbol.Storage == StorageOriginStatic {
 				return true
 			}
@@ -341,7 +341,7 @@ func (a *Analyzer) staticHolderBorrows() map[string][]borrowRecord {
 	held := map[string][]borrowRecord{}
 	for root, records := range a.borrows {
 		for _, record := range records {
-			holder, exists := a.symbols[record.Holder]
+			holder, exists := a.symbols.lookup(record.Holder)
 			if exists && !holder.Local && holder.Storage == StorageOriginStatic {
 				held[root] = append(held[root], record)
 			}

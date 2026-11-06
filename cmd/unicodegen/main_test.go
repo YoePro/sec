@@ -1,7 +1,6 @@
 package main
 
 import (
-	"os"
 	"path/filepath"
 	"testing"
 )
@@ -47,13 +46,10 @@ func TestLetterRangesCoverRepresentativeRunes(t *testing.T) {
 	}
 }
 
+// All generated artifacts must be current, including the core tables.
+// Rules: rules/library/core-library.md — §11.3.
 func TestGeneratedUnicodeSourceIsCurrent(t *testing.T) {
-	path := filepath.Join("..", "..", "sec", "stdlib", "unicode", "unicode.sec")
-	got, err := os.ReadFile(path)
-	if err != nil {
+	if err := generateUnicode(repositoryUCD, "../../sec/stdlib/unicode/unicode.sec", "../../sec/core", true); err != nil {
 		t.Fatal(err)
-	}
-	if want := renderLetterTables(loadRepositoryUCD(t)); string(got) != string(want) {
-		t.Fatalf("%s is stale; run go run ./cmd/unicodegen", path)
 	}
 }

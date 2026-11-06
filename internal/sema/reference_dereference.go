@@ -211,7 +211,7 @@ func referenceValueHelp(expected Type, actual Type, expr ast.Expression) string 
 		if expected.ReferenceMutable {
 			method = "AsRefMut"
 		}
-		return "A raw pointer never converts to a safe reference implicitly; write `unsafe " + expr.String() + "." + method + "()` and uphold its safety contract."
+		return "A raw pointer never converts to a safe reference implicitly; read `" + expr.String() + "." + method + "` inside an `unsafe { }` block and uphold its safety contract."
 	}
 	if expr == nil || expected.Kind == ReferenceType || actual.Kind != ReferenceType || actual.Element == nil || !sameConcreteType(expected, *actual.Element) {
 		return ""

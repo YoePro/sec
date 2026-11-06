@@ -24,7 +24,7 @@ module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 :
     "sec.cleanup.track_owned"(%p) <{cleanup_action_id = 1 : i32, cleanup_scope_id = 1 : i32, cleanup_registration_ordinal = 1 : i32, destruction_plan = "p"}> : (!sec.place<!p, "rw">) -> ()
     %f = "sec.place.field"(%p) <{field = 0 : i32}> : (!sec.place<!p, "rw">) -> !sec.place<!h, "rw">
     %n = "sec.call.direct"() <{callee = @makePair}> {sec.argument_actions = [], sec.result_action = "move"} : () -> !p
-    // expected-error@+1 {{requires distinct old and new cleanup action identities}}
+    // expected-error@+1 {{requires its inherited cleanup action}}
     "sec.own.replace_place"(%p, %n) <{destruction_plan = "p", old_cleanup_action_id = 0 : i32, new_cleanup_action_id = 0 : i32}> : (!sec.place<!p, "rw">, !p) -> ()
     return
   }

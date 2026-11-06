@@ -12,14 +12,15 @@ func (a *Analyzer) markLocalRefContainerFromValue(holder string, value ast.Expre
 	if holder == "" {
 		return
 	}
-	symbol, ok := a.symbols[holder]
+	symbol, ok := a.symbols.lookup(holder)
 	if !ok || !symbol.Local {
 		return
 	}
 	origin, hasOrigin := a.localReferenceOriginForExpression(value)
 	// Parameter-derived references still need canonical referent provenance,
 	// even though they are not local-lifetime or match-scoped dependencies.
-	if !hasOrigin && symbol.Type.Kind == ReferenceType {
+	// A StringView holder is a parameter-derived borrow in the same way (MD-126).
+	if !hasOrigin && (symbol.Type.Kind == ReferenceType || symbol.Type.Kind == StringViewType) {
 		origin, hasOrigin = a.directReferenceOrigin(value)
 	}
 	contained := a.containedReferenceOrigins(value)

@@ -37,7 +37,7 @@ namespace {
 // Rules: rules/mlir/dialect-versions/sec_mlir_dialect_v12.md sections 5,21-22;
 // rules/mlir/packages/sec-mlir-dialect_package16.md sections 44,91.
 bool isReferenceValueType(Type type) {
-  return isa<RefType, RefMutType, SliceType, SliceMutType>(type);
+  return isa<RefType, RefMutType, SliceType, SliceMutType, StringViewType>(type);
 }
 
 // Reference facts of a value no schema-11 operation defines: a reference
@@ -210,7 +210,7 @@ LogicalResult SecDialect::verifyOperationAttribute(Operation *operation,
       bool hasSlice = false;
       module.walk([&](Operation *nested) {
         hasSlice |= bool(findOperationType(nested, [](Type type) {
-          return isa<SliceType, SliceMutType>(type);
+          return isa<SliceType, SliceMutType, StringViewType>(type);
         }));
       });
       if (hasSlice)

@@ -272,7 +272,7 @@ func (a *Analyzer) inferTensorLayoutVariant(expr *ast.MemberExpression) (Type, b
 	if !ok || name.Value != "TensorLayout" {
 		return Type{}, false
 	}
-	if _, shadowed := a.symbols[name.Value]; shadowed {
+	if _, shadowed := a.symbols.lookup(name.Value); shadowed {
 		return Type{}, false
 	}
 	invalid := Type{Kind: InvalidType}

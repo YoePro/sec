@@ -1,0 +1,56 @@
+module main
+
+// MD-126 string ranges: borrowed StringView construction from a local and a
+// referenced string, nested views, holder copies and arguments, returned views,
+// checked and proven ranges, try propagation and rune-by-value iteration.
+// Rules: rules/collections/collections.md §7.10; rules/control-flow/flowcontrol_for.md §19;
+// rules/compiler/semantic_ir.md §17(9)-(10).
+
+fn Count(view: StringView) uint {
+    return view.Len
+}
+
+fn Local() uint {
+    let text := "Aπ😀b"
+    let view := text[1..<3]
+    let copy := view
+    return Count(copy) + view.SizeOf
+}
+
+fn Param(text: ref string, start: uint, end: uint) StringView {
+    return text[start..<end]
+}
+
+fn Nested(text: ref string) StringView {
+    let outer := text[..]
+    return outer[0..<1]
+}
+
+fn Empty(text: ref string) bool {
+    let view := text[..]
+    return view.IsEmpty()
+}
+
+fn Tried(text: ref string, start: uint, end: uint) Result[StringView, RangeError] {
+    let view := try text[start..<end]
+    return Ok(view)
+}
+
+fn Contains(input: ref string, start: uint, end: uint, wanted: rune) bool {
+    for ch in input[start..<end] {
+        if ch == wanted {
+            return true
+        }
+    }
+    return false
+}
+
+fn LastIndex(view: StringView, wanted: rune) int {
+    let mut last := -1
+    for index, ch in view {
+        if ch == wanted {
+            last = index
+        }
+    }
+    return last
+}

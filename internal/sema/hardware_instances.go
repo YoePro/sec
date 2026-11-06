@@ -131,7 +131,7 @@ func (a *Analyzer) rejectPhysicalRegisterBorrow(expr ast.Expression, token lexer
 	}
 	if len(fields) == 0 {
 		// An implicit `Field` of a register impl is `self.Field`.
-		if symbol, exists := a.symbols[root.Value]; exists && symbol.ImplicitMember {
+		if symbol, exists := a.symbols.lookup(root.Value); exists && symbol.ImplicitMember {
 			if target, isRegister := a.types[a.currentImplTarget]; isRegister && target.Kind == RegisterType {
 				if _, isField := lookupRegisterFieldInfo(target, root.Value); isField {
 					a.markSoftwareOnlyMember(token, "borrows a register field of its receiver")
@@ -151,7 +151,7 @@ func (a *Analyzer) rejectPhysicalRegisterBorrow(expr ast.Expression, token lexer
 		}
 		return false
 	default:
-		symbol, exists := a.symbols[root.Value]
+		symbol, exists := a.symbols.lookup(root.Value)
 		if !exists || !isHardwareInstance(symbol.Type) {
 			return false
 		}

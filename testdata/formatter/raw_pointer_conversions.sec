@@ -1,0 +1,22 @@
+module formatting
+
+fn Convert(source:ref   mut   int,address:uint) void {
+unsafe {
+let pointer:RawPtr[ int ]:=source . Ptr
+let observer:ref   int:=pointer . AsRef
+let editor:ref   mut   int:=pointer . AsRefMut
+let recreated:=RawPtr[ int ]( address )
+let opaque:=RawPtr[ void ]( pointer )
+let bits:=uint( pointer )
+let fromPlace:=( * source ) . Ptr
+let grouped:=( pointer ) . AsRef
+let chain:=pointer
+    . AsRef
+let annotated:=pointer /* address contract */ . /* establish reference */ AsRef
+let text:="source . Ptr and pointer . AsRef"
+let real:=1.25m
+for index in 0..3 {
+Use(index)
+}
+}
+}

@@ -122,7 +122,7 @@ func (a *Analyzer) exactQuantityValue(expr ast.Expression) (*big.Rat, bool) {
 		}
 		return value, true
 	case *ast.Identifier:
-		symbol, ok := a.symbols[node.Value]
+		symbol, ok := a.symbols.lookup(node.Value)
 		if !ok || symbol.Mutable || symbol.Volatile || symbol.QuantityConstant == nil {
 			return nil, false
 		}
@@ -134,7 +134,7 @@ func (a *Analyzer) exactQuantityValue(expr ast.Expression) (*big.Rat, bool) {
 // recordQuantityBindingConstant snapshots the exact value of an immutable
 // unit-bearing binding so a later duration conversion of it can be proved.
 func (a *Analyzer) recordQuantityBindingConstant(name string, expr ast.Expression) {
-	symbol, ok := a.symbols[name]
+	symbol, ok := a.symbols.lookup(name)
 	if !ok || symbol.Mutable || symbol.Volatile || !hasUnitSemantics(symbol.Type) {
 		return
 	}
@@ -146,7 +146,7 @@ func (a *Analyzer) recordQuantityBindingConstant(name string, expr ast.Expressio
 		value = new(big.Rat).Add(new(big.Rat).Mul(value, plan.Factor), plan.Offset)
 	}
 	symbol.QuantityConstant = value
-	a.symbols[name] = symbol
+	a.symbols.set(name, symbol)
 }
 
 // roundRat applies one RoundingMode to an exact rational value.

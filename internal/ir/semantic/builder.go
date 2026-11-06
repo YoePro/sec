@@ -178,10 +178,13 @@ type functionBuilder struct {
 	// temporaries are owned temporaries of the current full expression and
 	// armTemporaries fresh match subjects the selected arm leaves (P17-40).
 	temporaries, armTemporaries []pendingTemporary
-	temporaryError              error
-	temporaryExit               bool
-	armTemporaryDepth           int
-	scopesCleaned               map[sema.CleanupScopeID]bool
+	// prepared are owned construction operands already evaluated but not yet
+	// taken by their construction; an exit before it destroys them (P17-16).
+	prepared          []pendingTemporary
+	temporaryError    error
+	temporaryExit     bool
+	armTemporaryDepth int
+	scopesCleaned     map[sema.CleanupScopeID]bool
 	// deferCaptured marks owned bindings a registered defer reads, and
 	// trackedScopes holds the cleanup scope each tracked binding registered in.
 	deferCaptured map[sema.BindingID]bool
@@ -196,8 +199,8 @@ type functionBuilder struct {
 	// and materializedSubjects fresh subjects held in compiler storage (P17-37).
 	matchSubjectPlace    *matchSubjectPlace
 	materializedSubjects map[ast.Expression]ownedStorage
-	// pendingArgumentCancels are argument moves' cancels, emitted when their
-	// call commits.
+	// pendingArgumentCancels are argument moves and their cancels, emitted
+	// when their call commits.
 	pendingArgumentCancels []Operation
 	// ownedStorages are the owned mutable locals held in storage (P17).
 	ownedStorages map[sema.BindingID]ownedStorage
@@ -353,7 +356,7 @@ func (b *builder) buildConcreteFunction(decl *ast.FunctionDeclaration, resolved 
 			}
 		}
 	}
-	if b.maxPackage >= referenceLoweringPackage && resolved.ReturnType.Kind == sema.ReferenceType && !resolved.Extern {
+	if b.maxPackage >= referenceLoweringPackage && (resolved.ReturnType.Kind == sema.ReferenceType || resolved.ReturnType.Kind == sema.StringViewType && b.maxPackage >= sliceLoweringPackage) && !resolved.Extern {
 		origins, err := fb.returnOrigins(resolved, decl)
 		if err != nil {
 			return err
@@ -409,7 +412,10 @@ func (b *builder) buildConcreteFunction(decl *ast.FunctionDeclaration, resolved 
 func (b *builder) internType(t sema.Type) (TypeID, error) {
 	// MD-126 / semantic_ir.md 17(9-10): views are not owned strings or rune arrays.
 	if t.Kind == sema.StringViewType {
-		return 0, &UnsupportedFeatureError{Feature: "StringView borrowed UTF-8 text (P23)", Package: b.maxPackage}
+		if b.maxPackage < sliceLoweringPackage {
+			return 0, &UnsupportedFeatureError{Feature: "StringView borrowed UTF-8 text (native lowering is P23)", Package: b.maxPackage}
+		}
+		return b.module.Types.stringViewType(), nil
 	}
 	// A specialization interns its typed template under the concrete
 	// substitution (monomorphization.md §§ 8.3, 13.3).
@@ -952,7 +958,9 @@ func (fb *functionBuilder) buildLet(stmt *ast.LetStatement) error {
 		}
 	}
 	if stmt.Value == nil {
-		return fb.unsupported("mutable local declaration without initializer", stmt.Token)
+		// `let mut x: U` of a union without a default holds U's empty state,
+		// which Semantic IR does not represent yet (P17-19).
+		return fb.unsupported("mutable local declaration without initializer (empty union state)", stmt.Token)
 	}
 	// Package 14 sections 44 and 103 defer element move-out until the ownership
 	// packages can represent partial array availability and cleanup explicitly.
@@ -1500,6 +1508,12 @@ func (fb *functionBuilder) buildReturn(stmt *ast.ReturnStatement) error {
 		}
 		op.Operands = []ValueID{value.id}
 	}
+	// A return inside a construction (a handler arm's `return`) leaves the
+	// operands it already prepared; the continuing success path keeps them
+	// (destruction.md § 7; P17-16).
+	if err := fb.destroyTemporaries(fb.prepared); err != nil {
+		return err
+	}
 	if err := fb.endFullExpression(); err != nil {
 		return err
 	}
@@ -1740,8 +1754,11 @@ type builtValue struct {
 func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (builtValue, error) {
 	// MD-126: source acceptance is separate from the P23 view producer.
 	if rangeExpr, ok := expr.(*ast.SliceExpression); ok {
-		if _, resolved := fb.owner.analyzer.ResolvedStringRangeOf(rangeExpr); resolved {
-			return builtValue{}, fb.unsupported("StringView borrowed UTF-8 range (P23)", rangeExpr.Token)
+		if plan, resolved := fb.owner.analyzer.ResolvedStringRangeOf(rangeExpr); resolved {
+			if fb.owner.maxPackage < sliceLoweringPackage {
+				return builtValue{}, fb.unsupported("StringView borrowed UTF-8 range (native lowering is P23)", rangeExpr.Token)
+			}
+			return fb.lowerStringRange(rangeExpr, plan)
 		}
 	}
 	// An intermediate Result receiver of a protected chain yields its Ok value;
@@ -1960,6 +1977,9 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 			if resolved && member.ID == "CKM-LEN-ARRAY" {
 				return fb.buildFixedArrayLength(e, typeID)
 			}
+			if resolved && (member.ID == "CKM-STRINGVIEW-LEN" || member.ID == "CKM-STRINGVIEW-SIZEOF") && fb.owner.maxPackage >= sliceLoweringPackage {
+				return fb.buildStringViewLength(e, member.ID == "CKM-STRINGVIEW-SIZEOF")
+			}
 		}
 		if fb.owner.maxPackage >= 7 && e.Property != nil {
 			site := e.Property.Token
@@ -1990,6 +2010,9 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 				}
 				if owned, isOwned := fb.ownedStorageOf(e.Object); isOwned {
 					return fb.readOwnedStorageField(e, owned, plan)
+				}
+				if read, handled, err := fb.readNestedOwnedField(e, typeID); handled {
+					return read, err
 				}
 				// A field read does not end a fresh owner: it stays alive to the end of
 				// the full expression (destruction.md § 8), which has no cleanup yet.
@@ -2057,6 +2080,9 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 			if known, resolved := fb.owner.analyzer.CompilerKnownMemberAt(site.File, site.Line, site.Column); resolved && known.Kind == sema.CompilerKnownMethod {
 				if value, handled, err := fb.buildFloatCoreCall(e, member, known); handled {
 					return value, err
+				}
+				if strings.HasPrefix(known.ID, "CKM-STRINGVIEW-") && fb.owner.maxPackage >= sliceLoweringPackage {
+					return fb.buildStringViewMethod(e, member, known)
 				}
 			}
 		}
@@ -2143,7 +2169,8 @@ func (fb *functionBuilder) buildFixedArrayLength(expr *ast.MemberExpression, res
 	}
 	if fb.owner.maxPackage >= ownershipLoweringPackage && !sema.TriviallyDestructible(receiverType) {
 		if _, binding := expr.Object.(*ast.Identifier); !binding {
-			if !isFreshOwner(expr.Object) {
+			_, literal := expr.Object.(*ast.ArrayLiteral)
+			if !isFreshOwner(expr.Object) && !literal {
 				return builtValue{}, fb.unsupported("owned fixed-array temporary observation cleanup (P17-40)", expr.Token)
 			}
 			// The fresh array is still evaluated and lives to the end of the
@@ -2290,6 +2317,8 @@ func (fb *functionBuilder) buildStructLiteral(expr *ast.StructLiteral, plan sema
 	explicit := map[int]builtValue{}
 	explicitExpressions := map[int]ast.Expression{}
 	spread := map[int][]builtValue{}
+	depth := len(fb.prepared)
+	defer fb.takePrepared(depth)
 	for _, entry := range plan.Entries {
 		switch entry.Kind {
 		case sema.StructEntryExplicit:
@@ -2298,6 +2327,7 @@ func (fb *functionBuilder) buildStructLiteral(expr *ast.StructLiteral, plan sema
 			if err != nil {
 				return builtValue{}, err
 			}
+			fb.prepareOperand(value, plan.FinalFields[entry.FieldID].FieldType, expressionToken(entry.Expression))
 			explicit[entry.SourceIndex] = value
 			explicitExpressions[entry.SourceIndex] = entry.Expression
 		case sema.StructEntrySpread:
@@ -2377,6 +2407,8 @@ func semanticStructAction(action sema.ResolvedStructFieldAction) (StructFieldAct
 }
 
 func (fb *functionBuilder) buildUnionConstruction(expr ast.Expression, plan sema.ResolvedUnionConstruction, resultType TypeID) (builtValue, error) {
+	depth := len(fb.prepared)
+	defer fb.takePrepared(depth)
 	definition, ok := fb.owner.unionDefinition(resultType)
 	if !ok || int(plan.VariantIndex) >= len(definition.Variants) {
 		return builtValue{}, fb.unsupported("union construction without definition", expressionToken(expr))
@@ -2441,6 +2473,7 @@ func (fb *functionBuilder) buildUnionConstruction(expr ast.Expression, plan sema
 			if err != nil {
 				return builtValue{}, err
 			}
+			fb.prepareOperand(value, semaFields[name], sourceField.Token)
 			values[name] = value
 		}
 		for _, field := range variant.PayloadFields {
@@ -2608,7 +2641,10 @@ func (fb *functionBuilder) buildResolvedMatch(expr *ast.MatchExpression, resultT
 		if patternBlock == nil {
 			return builtValue{}, fmt.Errorf("match pattern chain terminated before arm %d", armPlan.SourceIndex)
 		}
-		if observed && len(armPlan.FieldBindings) != 0 {
+		// Copy-trivial named fields of a stored subject are read from its
+		// observed value on the proven variant path; moving or borrowing one
+		// out of storage keeps its boundary (P17-37).
+		if observed && !copyTrivialFieldBindings(armPlan) {
 			return builtValue{}, fb.unsupported("named-field or error-variant pattern on a mutable owned subject (P17-37)", arm.Token)
 		}
 		fb.errorArm = matchErrorArm{}
@@ -3040,14 +3076,74 @@ func (fb *functionBuilder) buildMatchExpressionArm(arm *ast.MatchArm, plan sema.
 	if arm.ReturnBody != nil {
 		return fb.buildReturn(arm.ReturnBody)
 	}
-	if arm.BlockBody != nil || arm.Body == nil || plan.Flow != sema.MatchArmProducesValue {
+	if arm.BlockBody != nil {
+		return fb.buildMatchExpressionBlockArm(arm, plan, merge, resultType, matchID)
+	}
+	if arm.Body == nil || plan.Flow != sema.MatchArmProducesValue {
 		return fb.unsupported("non-expression match arm", arm.Token)
 	}
+	depth := len(fb.temporaries)
 	value, err := fb.buildExpr(arm.Body, resultType)
 	if err != nil {
 		return err
 	}
+	// The arm is its temporaries' scope (owner decision 2026-11-06; P17-40).
+	if err := fb.endRegionTemporaries(depth); err != nil {
+		return err
+	}
 	fb.runScopeCleanup(sema.CleanupExitFallthrough, arm.Token)
+	if err := fb.endArmTemporaries(fb.armTemporaryDepth); err != nil {
+		return err
+	}
+	fb.emit(Operation{Kind: OpBranch, Successors: []BranchTarget{{Block: merge.ID, Arguments: []ValueID{value.id}}}, MatchID: matchID, MatchArmIndex: plan.SourceIndex, MatchStage: "body-exit", MatchPatternKind: string(plan.PatternKind), Location: location(arm.Token)})
+	fb.current = nil
+	return nil
+}
+
+// buildMatchExpressionBlockArm lowers a block arm of a match expression. A
+// value-producing block yields its final expression; the value is built first
+// and leaving the block then runs its owned-value cleanup, as a value-producing
+// handler block does (flowcontrol_match.md; destruction.md § 6.2; P17-42). A
+// block that leaves by return, loop control or termination never reaches the
+// merge.
+func (fb *functionBuilder) buildMatchExpressionBlockArm(arm *ast.MatchArm, plan sema.ResolvedMatchArm, merge *Block, resultType TypeID, matchID MatchID) error {
+	statements := arm.BlockBody.Statements
+	popScope := fb.enterBuildScope(arm.BlockBody)
+	defer popScope()
+	fb.pendingHomes = append(fb.pendingHomes, fb.armPayloadBindings...)
+	// Sema leaves a block arm that falls through without a flow; in a match
+	// expression its final expression is the arm's value.
+	if plan.Flow != sema.MatchArmProducesValue && plan.Flow != "" {
+		if err := fb.buildStatements(statements); err != nil {
+			return err
+		}
+		if fb.current != nil {
+			return fb.unsupported("match expression block arm without a value", arm.Token)
+		}
+		return nil
+	}
+	if len(statements) == 0 {
+		return fb.unsupported("match expression block arm without a final expression", arm.Token)
+	}
+	final, ok := statements[len(statements)-1].(*ast.ExpressionStatement)
+	if !ok || final.Expression == nil {
+		return fb.unsupported("match expression block arm without a final expression", arm.Token)
+	}
+	if err := fb.buildStatements(statements[:len(statements)-1]); err != nil {
+		return err
+	}
+	if fb.current == nil {
+		return nil
+	}
+	depth := len(fb.temporaries)
+	value, err := fb.buildExpr(final.Expression, resultType)
+	if err != nil {
+		return err
+	}
+	if err := fb.endRegionTemporaries(depth); err != nil {
+		return err
+	}
+	fb.runScopeCleanup(sema.CleanupExitFallthrough, arm.BlockBody.Token)
 	if err := fb.endArmTemporaries(fb.armTemporaryDepth); err != nil {
 		return err
 	}
@@ -3981,6 +4077,9 @@ func (fb *functionBuilder) buildCall(call *ast.CallExpression) (builtValue, erro
 	// Argument moves cancel their source cleanup only when the call commits,
 	// after every argument was prepared (destruction.md § 9.2(3)).
 	pendingCancels := len(fb.pendingArgumentCancels)
+	// Fresh owned arguments stay prepared until the call takes them (P17-16).
+	preparedDepth := len(fb.prepared)
+	defer fb.takePrepared(preparedDepth)
 	for index, arg := range call.Arguments {
 		if _, spread := explicitMoveFree(arg).(*ast.SpreadExpression); spread {
 			return builtValue{}, fb.unsupported("spread call argument", expressionToken(arg))
@@ -3988,8 +4087,15 @@ func (fb *functionBuilder) buildCall(call *ast.CallExpression) (builtValue, erro
 		expected := TypeID(0)
 		if index < len(parameters) {
 			parameter := parameters[index]
-			if fb.owner.maxPackage >= sliceLoweringPackage && sourceSliceType(parameter.Type) {
-				sliceType, mutable, err := fb.owner.internSourceSliceType(parameter.Type)
+			if fb.owner.maxPackage >= sliceLoweringPackage && (sourceSliceType(parameter.Type) || parameter.Type.Kind == sema.StringViewType) {
+				var sliceType TypeID
+				mutable := false
+				var err error
+				if parameter.Type.Kind == sema.StringViewType {
+					sliceType = fb.owner.module.Types.stringViewType()
+				} else {
+					sliceType, mutable, err = fb.owner.internSourceSliceType(parameter.Type)
+				}
 				if err != nil {
 					return builtValue{}, err
 				}
@@ -4034,6 +4140,9 @@ func (fb *functionBuilder) buildCall(call *ast.CallExpression) (builtValue, erro
 				return builtValue{}, fb.unsupported("non-trivial call argument", expressionToken(arg))
 			}
 			action = ArgumentMove
+			if freshArgument(arg) && index < len(parameters) {
+				fb.prepareOperand(v, parameters[index].Type, expressionToken(arg))
+			}
 		}
 		args = append(args, v.id)
 		actions = append(actions, action)
@@ -4059,7 +4168,7 @@ func (fb *functionBuilder) buildCall(call *ast.CallExpression) (builtValue, erro
 		fb.emit(op)
 		return builtValue{typ: ret}, nil
 	}
-	if resolved.Function.ReturnType.Kind == sema.ReferenceType {
+	if resolved.Function.ReturnType.Kind == sema.ReferenceType || resolved.Function.ReturnType.Kind == sema.StringViewType && fb.owner.maxPackage >= sliceLoweringPackage {
 		// The returned reference carries the caller-side facts Sema
 		// instantiated from the callee's returned-origin summary
 		// (package15.md §§ 61-62).
@@ -4168,6 +4277,11 @@ func ownershipForParameter(p sema.FunctionParameter, maxPackage uint8) (Ownershi
 		return OwnershipSharedReference, nil
 	}
 	switch p.Type.Kind {
+	case sema.StringViewType:
+		// MD-126: a view is a shared non-owning borrow holder.
+		if maxPackage >= sliceLoweringPackage {
+			return OwnershipSharedReference, nil
+		}
 	case sema.RawPtrType:
 		return OwnershipRawPointer, nil
 	case sema.BoolType, sema.IntType, sema.UintType, sema.FloatType, sema.DecimalType, sema.CharType, sema.RuneType, sema.EnumType:

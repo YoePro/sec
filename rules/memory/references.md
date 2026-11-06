@@ -572,7 +572,7 @@ let next :<- current
 
 § 21(6) Raw-pointer storage, copy, move, comparison, or passing is not itself proof that dereference is valid.
 
-§ 21(7) The source spellings are `.Ptr` for reference/Place to raw (addressing the referent through a reference) and the unsafe `RawPtr[T].AsRef()` / `AsRefMut()` for raw to safe (`raw_pointers.md` §§ 17(7)–(9), 18A; MD-070). The resulting reference is an ordinary safe reference under this rulebook.
+§ 21(7) The source spellings are `.Ptr` for reference/Place to raw (addressing the referent through a reference) and the unsafe `RawPtr[T].AsRef` / `AsRefMut` for raw to safe (`raw_pointers.md` §§ 17(7)–(9), 18A; MD-070). The resulting reference is an ordinary safe reference under this rulebook.
 
 ---
 

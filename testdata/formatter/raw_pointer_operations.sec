@@ -1,0 +1,25 @@
+module formatting
+
+unsafe   fn Access(pointer:RawPtr[ int ], bytes:RawPtr[ byte ], other:RawPtr[ int ]) int {
+let read:=pointer.Read( )
+pointer.Write( read )
+let volatileRead:=pointer.VolatileRead( )
+pointer.VolatileWrite( volatileRead )
+let next:=pointer.Offset( - 1 )
+let offset:=bytes.AddBytes( 4 )
+let distance:=next.Difference( other )
+let calls:=pointer.Offset(
+1
+).Read( )
+// RawPtr operations stay methods, never *pointer or pointer + offset.
+return distance+calls
+}
+
+fn Boundaries(pointer:RawPtr[ int ],value:int) int {
+let read:=unsafe   pointer.Read( )
+unsafe   pointer.Write( value )
+unsafe {
+pointer.VolatileWrite( value )
+}
+return read
+}

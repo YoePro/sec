@@ -47,7 +47,7 @@ func (a *Analyzer) foreignExtentMemberOrigin(expression ast.Expression, names ..
 	}
 	// A reference parameter identifies the binding, not a distinct referent.
 	// Two independently declared reference parameters can alias at a call.
-	if root, exists := a.symbols[place.Root]; exists {
+	if root, exists := a.symbols.lookup(place.Root); exists {
 		if !sameSourceToken(root.Token, place.RootToken) || root.Type.Kind == ReferenceType || root.Type.Kind == SliceType || root.Type.Kind == StringType {
 			return nil
 		}

@@ -100,7 +100,7 @@ func (a *Analyzer) openFunctionValueTargets(expression ast.Expression, contract 
 		add(identity)
 	}
 	if identifier, ok := expression.(*ast.Identifier); ok {
-		if symbol, exists := a.symbols[identifier.Value]; exists {
+		if symbol, exists := a.symbols.lookup(identifier.Value); exists {
 			if symbol.HasCallableIdentity {
 				add(symbol.CallableIdentity)
 			}

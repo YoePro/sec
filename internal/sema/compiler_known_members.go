@@ -252,7 +252,9 @@ func CompilerKnownMembersForType(typ Type, static bool) []CompilerKnownMember {
 //   - rules/compiler/compiler_known_members.md — "Stable member identity"
 //   - rules/analysis/parameter_usage_analysis.md — "Structural collection operations"
 func compilerKnownValueMembers(typ Type) []CompilerKnownMember {
-	if dereferenceType(typ).Kind == StringViewType { return stringViewMembers() }
+	if dereferenceType(typ).Kind == StringViewType {
+		return stringViewMembers()
+	}
 	members := []CompilerKnownMember{}
 	uintType := builtinType("uint")
 	boolType := builtinType("bool")

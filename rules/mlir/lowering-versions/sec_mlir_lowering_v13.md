@@ -79,7 +79,10 @@ sec.own.replace_place
 
 Old destruction is semantically part of the explicit ownership operation.
 
-New cleanup responsibility starts at replacement.
+Superseded in part by MD-125 (2026-11-06): a replacement keeps the destination's
+live cleanup registration and its position (equal old/new identities). Only a
+path without a live registration registers anew (`track_owned ... unless_active`,
+dialect v13 §§ 10, 15). A reinitialization after a move registers at its point.
 
 ---
 
@@ -88,6 +91,12 @@ New cleanup responsibility starts at replacement.
 Keep old destination untouched on the RHS failure branch.
 
 Emit replacement only on success.
+
+An owned argument moved into a call is moved out only when the call commits, so
+a failing later argument leaves the owner registered. Construction operands
+already evaluated are destroyed (`own.destroy_value` with cause `temporary-end`)
+on the failing exit, in reverse order, before function or scope cleanup (P17-16,
+P17-23; 2026-11-06).
 
 ---
 

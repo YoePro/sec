@@ -127,7 +127,7 @@ func (a *Analyzer) decimalExactConstant(expr ast.Expression) (DecimalValue, bool
 	case *ast.IntegerLiteral, *ast.FloatLiteral:
 		return decimalLiteralValue(node)
 	case *ast.Identifier:
-		symbol, ok := a.symbols[node.Value]
+		symbol, ok := a.symbols.lookup(node.Value)
 		if !ok || symbol.Mutable || symbol.Volatile || symbol.DecimalExact == nil {
 			return DecimalValue{}, false
 		}

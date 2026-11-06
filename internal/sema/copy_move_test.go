@@ -2936,9 +2936,9 @@ func TestReferenceOriginJoinRetainsProjectedAlternativePlaces(t *testing.T) {
 	}
 
 	analyzer := NewAnalyzer()
-	analyzer.symbols = map[string]Symbol{
+	analyzer.symbols = symbolTableOf(map[string]Symbol{
 		"view": {Name: "view", Type: Type{Name: "ref Pair", Kind: ReferenceType, Element: &pairType}, Local: true},
-	}
+	})
 	analyzer.localRefContainers = joined
 	analyzer.borrows = map[string][]borrowRecord{}
 	expr := &ast.MemberExpression{

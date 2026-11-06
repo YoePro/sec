@@ -25,7 +25,7 @@ func (a *Analyzer) returnedReferenceDependencies(origin localReferenceOrigin) []
 	var out []ReferenceOriginAlternative
 	seen := map[ReferenceOriginAlternative]bool{}
 	for _, place := range localOriginPlaces(origin) {
-		if symbol, ok := a.symbols[place.Root]; ok && len(symbol.Type.ReferenceOriginAlternatives) > 0 {
+		if symbol, ok := a.symbols.lookup(place.Root); ok && len(symbol.Type.ReferenceOriginAlternatives) > 0 {
 			for _, dependency := range symbol.Type.ReferenceOriginAlternatives {
 				if !seen[dependency] {
 					seen[dependency] = true

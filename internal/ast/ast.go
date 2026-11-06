@@ -2648,15 +2648,18 @@ func (al *ArrayLiteral) TokenLiteral() string {
 }
 
 func (al *ArrayLiteral) String() string {
-	out := "["
+	// A builder keeps this linear: generated tables have tens of thousands
+	// of elements, and repeated concatenation made it quadratic.
+	var out strings.Builder
+	out.WriteByte('[')
 	for i, element := range al.Elements {
 		if i > 0 {
-			out += ", "
+			out.WriteString(", ")
 		}
-		out += element.String()
+		out.WriteString(element.String())
 	}
-	out += "]"
-	return out
+	out.WriteByte(']')
+	return out.String()
 }
 
 type SpreadExpression struct {

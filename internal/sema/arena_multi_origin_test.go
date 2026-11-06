@@ -94,7 +94,7 @@ func TestReferenceOriginAlternatives(t *testing.T) {
 		t.Fatal("origin-set storage escaped")
 	}
 	a := NewAnalyzer()
-	a.symbols = map[string]Symbol{"holder": {Type: joined}}
+	a.symbols = symbolTableOf(map[string]Symbol{"holder": {Type: joined}})
 	facts := a.referenceFactsForPlace(Place{Root: "holder"}, false, lexer.Token{Line: 1, Column: 1})
 	if facts.Validity == ReferenceValidityProven || facts.Validity == ReferenceValidityDynamicEpoch {
 		t.Fatal("single-domain ABI invented for joined origins", facts)

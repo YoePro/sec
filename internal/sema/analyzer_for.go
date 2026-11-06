@@ -32,7 +32,7 @@ func (a *Analyzer) analyzeForStatement(stmt *ast.ForStatement) {
 	previousLoopDepth := a.loopDepth
 	frame := a.pushLoopBreakFrame()
 
-	a.symbols = copySymbols(previousSymbols)
+	a.symbols = previousSymbols.child()
 	a.constInts = copyConstInts(previousConstInts)
 	a.assigned = copyAssigned(previousAssigned)
 	a.moved = copyMoved(previousMoved)
@@ -722,7 +722,7 @@ func (a *Analyzer) assignmentReplacesIteratedCollection(stmt *ast.AssignmentStat
 		return false
 	}
 	if identifier, ok := stmt.Target.(*ast.Identifier); ok {
-		if symbol, exists := a.symbols[identifier.Value]; exists && symbol.Type.Kind == ReferenceType {
+		if symbol, exists := a.symbols.lookup(identifier.Value); exists && symbol.Type.Kind == ReferenceType {
 			return false
 		}
 	}

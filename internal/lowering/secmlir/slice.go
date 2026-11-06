@@ -20,7 +20,8 @@ func (e *emitter) emitSlice(function *semantic.Function, op semantic.Operation, 
 		switch op.Kind {
 		case semantic.OpSliceBorrowShared, semantic.OpSliceBorrowMutable,
 			semantic.OpSliceReborrowShared, semantic.OpSliceReborrowMutable,
-			semantic.OpSliceCopyShared, semantic.OpSliceMoveMutable, semantic.OpSliceElementPlace:
+			semantic.OpSliceCopyShared, semantic.OpSliceMoveMutable, semantic.OpSliceElementPlace,
+			semantic.OpStringViewBorrow:
 		default:
 			return &UnsupportedLoweringError{Feature: "reference properties on " + string(op.Kind), Function: function.ID}
 		}
@@ -38,6 +39,20 @@ func (e *emitter) emitSlice(function *semantic.Function, op semantic.Operation, 
 		semantic.OpSliceCopyShared: "copy_shared", semantic.OpSliceMoveMutable: "move_mut",
 		semantic.OpSliceLength: "len", semantic.OpSliceIndexInBounds: "index_in_bounds",
 		semantic.OpSliceElementPlace: "element_place",
+	}
+	// MD-126: construction from a string Place and its rune count are string
+	// operations; length, copy and reborrow of a view reuse the shared
+	// bounded-view slice operations over !sec.string_view.
+	mnemonic := "sec.slice." + names[op.Kind]
+	switch {
+	case op.Kind == semantic.OpStringRuneLength:
+		mnemonic = "sec.string.rune_len"
+	case op.Kind == semantic.OpStringViewBorrow:
+		mnemonic = "sec.string.view_borrow"
+	case op.Kind == semantic.OpStringViewDecodeNext:
+		mnemonic = "sec.string_view.decode_next"
+	case op.Kind == semantic.OpStringViewByteLength:
+		mnemonic = "sec.string_view.byte_len"
 	}
 	var properties []string
 	if r := op.SliceRange; r != nil {
@@ -62,7 +77,7 @@ func (e *emitter) emitSlice(function *semantic.Function, op semantic.Operation, 
 	for i, operand := range op.Operands {
 		operands[i] = valueName(operand)
 	}
-	fmt.Fprintf(&e.out, "\"sec.slice.%s\"(%s) ", names[op.Kind], strings.Join(operands, ", "))
+	fmt.Fprintf(&e.out, "\"%s\"(%s) ", mnemonic, strings.Join(operands, ", "))
 	if len(properties) != 0 {
 		fmt.Fprintf(&e.out, "<{%s}> ", strings.Join(properties, ", "))
 	}
@@ -82,4 +97,10 @@ func (e *emitter) emitSlice(function *semantic.Function, op semantic.Operation, 
 		fmt.Fprintf(&e.out, "{%s} ", strings.Join(extras, ", "))
 	}
 	return e.finishTypedOperation(op, values)
+}
+
+// isStringView reports whether id is the MD-126 StringView type.
+func (e *emitter) isStringView(id semantic.TypeID) bool {
+	typ, ok := e.module.Types.Lookup(id)
+	return ok && typ.Kind == semantic.TypeStringView
 }

@@ -222,7 +222,7 @@ fn Use() bool {
 }
 `)
 	assertSemaErrors(t, errors, nil)
-	symbol := analyzer.symbols["first"]
+	symbol := analyzer.symbols.get("first")
 	if symbol.Type.Kind != HardwareInstanceType || typeDisplayName(symbol.Type) != "HardwareInstance[InterruptStatus]" {
 		t.Fatalf("binding type = %s, want HardwareInstance[InterruptStatus]", typeDisplayName(symbol.Type))
 	}

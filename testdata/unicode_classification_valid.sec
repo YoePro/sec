@@ -1,0 +1,44 @@
+module main
+
+import "unicode"
+
+/** Unicode scalar classifications share the generated core tables. */
+fn main() int {
+    if !unicode.IsLetter(0x1C89r) || !unicode.IsUpperLetter(0x0100r) {
+        return 1
+    }
+    if unicode.IsLowerLetter(0x0100r) || !unicode.IsLowerLetter(0x0101r) {
+        return 2
+    }
+    if !unicode.IsEmoji(0x1F600r) || !unicode.IsEmoji(0x0030r) {
+        return 3
+    }
+    if unicode.IsEmojiPresentation(0x0030r) || !unicode.IsEmojiPresentation(0x1F600r) {
+        return 4
+    }
+    if unicode.IsEmoji(0x1F02Cr) || !unicode.IsEmojiModifier(0x1F3FBr) {
+        return 5
+    }
+    if !unicode.IsWhitespace(0x000Br) || !unicode.IsWhitespace(0x1680r) {
+        return 6
+    }
+    if !unicode.IsCombiningMark(0x093Er) || unicode.IsPunctuation(0x0024r) {
+        return 7
+    }
+    if !unicode.IsSymbol(0x0024r) || !unicode.IsCategoryCo(0xE000r) {
+        return 8
+    }
+    if !unicode.IsNoncharacter(0x10FFFFr) || !0x10FFFFr.IsValid {
+        return 9
+    }
+    if !0x1F600r.IsExtendedPictographic || 0x1F600r.IsCategoryCs {
+        return 10
+    }
+    if !unicode.IsIDContinue(0x0030r) || unicode.IsIDStart(0x0030r) {
+        return 11
+    }
+    if !unicode.IsUnicodeHexDigit(0xFF21r) || unicode.IsAsciiHexDigit(0xFF21r) {
+        return 12
+    }
+    return 0
+}

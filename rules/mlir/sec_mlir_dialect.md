@@ -2115,6 +2115,8 @@ other operation may be used in schema 11 without being recorded here.
 | `sec.hw.binding` (module-level `register.hw.bind` record) | MD-077 § 19(5), MD-111 (v11.41.5 below); P15-42 | 2026-10-31 |
 | `sec.try_handler_kind` values `none` and `residual`; `sec.try_handler_guarded`, `sec.try_handler_residual` | MD-031 (v11.41.6 below) | 2026-11-04 |
 | `sec.named.convert`; named integer operands of `sec.int.*` | semantic_ir.md §§ 7(4)–(5), 59(6) (v11.41.7 below) | 2026-11-04 |
+| `!sec.string_view`, `sec.string.rune_len`, `sec.string.view_borrow`, `sec.string_view.byte_len`, `sec.string_view.decode_next` | MD-126 (dialect v13 § 36A) | 2026-11-06 |
+| equal-identity `sec.own.replace_place`; `unless_active` on `sec.cleanup.track_owned` | MD-125 (dialect v13 §§ 10, 15) | 2026-11-06 |
 
 Schemas 7–10 remain readable without these operations. Lowering of each one is
 listed in `sec-check-lowering-support`; a module using any of them outside

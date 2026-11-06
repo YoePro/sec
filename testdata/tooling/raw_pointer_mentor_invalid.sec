@@ -1,0 +1,73 @@
+module rawpointermentor
+
+fn Missing(pointer: RawPtr[int], bytes: RawPtr[byte]) void {
+    let read := pointer.Read()
+    pointer.Write(1)
+    let observed := pointer.VolatileRead()
+    pointer.VolatileWrite(1)
+    let offset := pointer.Offset(1)
+    let address := bytes.AddBytes(1)
+    let distance := pointer.Difference(pointer)
+    let view := pointer.AsRef
+    let editor := pointer.AsRefMut
+    let number := 1
+    let raw := number.Ptr
+    let converted := RawPtr[int](0u)
+}
+
+fn Opaque(opaque: RawPtr[void]) void {
+    unsafe {
+        let read := opaque.Read()
+        opaque.Write(1)
+        let observed := opaque.VolatileRead()
+        opaque.VolatileWrite(1)
+        let offset := opaque.Offset(1)
+        let distance := opaque.Difference(opaque)
+        let view := opaque.AsRef
+        let editor := opaque.AsRefMut
+    }
+}
+
+fn InvalidArguments(pointer: RawPtr[int], bytes: RawPtr[byte]) void {
+    unsafe {
+        let address := pointer.AddBytes(1)
+        let offset := pointer.Offset(1u)
+        let byteOffset := bytes.AddBytes(1u)
+        let distance := pointer.Difference(bytes)
+        pointer.Write(true)
+        pointer.VolatileWrite(true)
+        let missing := pointer.Offset()
+        let extra := bytes.AddBytes(1, 2)
+        let missingOther := pointer.Difference()
+        let unexpected := pointer.Read(1)
+        pointer.Write()
+        let view := pointer.AsRef(1)
+        let editor := pointer.AsRefMut[int]()
+    }
+}
+
+fn NullOperations() void {
+    unsafe {
+        let empty: RawPtr[int] := null
+        let read := empty.Read()
+        empty.Write(1)
+        let observed := empty.VolatileRead()
+        empty.VolatileWrite(1)
+        let view := empty.AsRef
+        let editor := empty.AsRefMut
+    }
+}
+
+@noCopy
+type Session struct {
+    Id: int,
+}
+
+fn Dangling() void {
+    let session := Session { Id: 1 }
+    unsafe {
+        let pointer: RawPtr[Session] := session.Ptr
+        let moved :<- session
+        let view := pointer.AsRef
+    }
+}

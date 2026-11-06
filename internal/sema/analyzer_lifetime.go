@@ -174,7 +174,7 @@ func (a *Analyzer) validateNamedOwnershipSource(mode ast.OwnershipMode, value as
 //   - rules/memory/ownership.md — §30 "Hardware, fixed-address storage, and FFI"
 //   - rules/platform/volatile.md — physical storage access and diagnostics
 func (a *Analyzer) rejectPhysicalStorageMove(place Place, token lexer.Token) bool {
-	symbol, ok := a.symbols[place.Root]
+	symbol, ok := a.symbols.lookup(place.Root)
 	if !ok || !symbol.Volatile && !symbol.Addressed {
 		return false
 	}
@@ -236,7 +236,7 @@ func (a *Analyzer) checkBorrowCreationPlace(place Place, mutable bool, token lex
 		return true
 	}
 	if mutable && !place.Mutable {
-		if holder, held := a.symbols[place.Root]; held && len(place.Projections) == 0 && holder.Type.Kind == ReferenceType && !holder.Type.ReferenceMutable {
+		if holder, held := a.symbols.lookup(place.Root); held && len(place.Projections) == 0 && holder.Type.Kind == ReferenceType && !holder.Type.ReferenceMutable {
 			// MD-061: `ref mut r` over a shared reference holder would
 			// elevate authority, which a reborrow never does.
 			a.addErrorAtTokenWithMetadata(token, diagnostics.BorrowMutableAuthority, "A reborrow keeps or narrows the holder's authority: reborrow a shared reference with `ref "+place.Root+"`, or obtain a mutable reference from the owner.", "cannot reborrow shared reference %s as ref mut: a shared reference never grants mutation authority", place.Root)
@@ -633,7 +633,7 @@ func (a *Analyzer) validateLambdaCaptureOwnership(expr *ast.LambdaExpression) {
 		}
 		seen[capture.Name.Value] = true
 
-		symbol, exists := a.symbols[capture.Name.Value]
+		symbol, exists := a.symbols.lookup(capture.Name.Value)
 		if !exists || !symbol.Local || !a.assigned[capture.Name.Value] {
 			// Capture resolution owns the primary undefined, non-local, and
 			// unassigned diagnostics.

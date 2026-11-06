@@ -117,7 +117,7 @@ func (a *Analyzer) inferRegisterOperationCall(expr *ast.CallExpression) (Type, e
 		if !ok || target.Kind != RegisterType {
 			return Type{}, expressionValue{}, false
 		}
-		if symbol, local := a.symbols[callee.Value]; local && !symbol.ImplicitMember {
+		if symbol, local := a.symbols.lookup(callee.Value); local && !symbol.ImplicitMember {
 			return Type{}, expressionValue{}, false
 		}
 		name, register = callee.Value, target

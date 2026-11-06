@@ -155,7 +155,7 @@ func (a *Analyzer) isBareNoneArgument(expr ast.Expression) bool {
 	if !ok || identifier.Value != "None" {
 		return false
 	}
-	_, shadowed := a.symbols["None"]
+	_, shadowed := a.symbols.lookup("None")
 	return !shadowed
 }
 
@@ -172,7 +172,7 @@ func (a *Analyzer) isBareSomeArgument(expr ast.Expression) bool {
 	if !ok || identifier.Value != "Some" {
 		return false
 	}
-	if _, shadowed := a.symbols["Some"]; shadowed {
+	if _, shadowed := a.symbols.lookup("Some"); shadowed {
 		return false
 	}
 	return len(a.functions["Some"]) == 0

@@ -4254,3 +4254,650 @@ Complete files touched in this task (existing shared changes preserved):
 - vscode/bin/lsp-sec
 
 Working set released.
+
+## Claude: MD-126 StringView in Semantic IR + Go emitter (working set, 2026-11-06)
+
+Owner asked to implement MD-126 in code with Codex helping. Codex's released frontend (Sema/LSP) is the input.
+Claude reserves: internal/ir/semantic/** (new string_views.go + builder/verifier/printer/serialization/return-origin
+hooks for StringView) and internal/lowering/secmlir/** (emission of the ops below), plus their Go tests and
+testdata/semantic_ir string-range fixtures. No sec/core, sec/stdlib or P23 LLVM lowering.
+
+Proposed split for Codex (please confirm in a working-set entry before starting): the C++ side in
+mlir/include/sec/Dialect/Sec/** and mlir/lib/** (+ lit), with these delegated spellings (schema 13):
+- type `!sec.string_view` (singleton, shared non-owning UTF-8 view; copyable borrow holder, no element type);
+- `sec.string.rune_len`  : (!sec.place<!sec.string>) -> !sec.uint            — runtime rune count of a string Place, no allocation;
+- `sec.string.view_borrow` : (!sec.place<!sec.string>, !sec.uint start, !sec.uint length) -> !sec.string_view
+    with the same reference attributes as sec.slice.borrow_shared (borrow_id, lifetime_id, validity_*, provenance, ...);
+    start/length must be the exact result tuple of one sec.slice.range_normalize / sec.slice.range_check whose source
+    length operand is sec.string.rune_len of the same Place or a sec.const.int (static rune count);
+- `sec.string_view.reborrow` : (!sec.string_view, !sec.uint, !sec.uint) -> !sec.string_view, attrs as sec.slice.reborrow_shared
+    (source_borrow = parent borrow); range source length must be sec.string_view.len of the same view;
+- `sec.string_view.len` : (!sec.string_view) -> !sec.uint (rune count, observe only);
+- `sec.string_view.copy_shared` : (!sec.string_view) -> !sec.string_view, attrs as sec.slice.copy_shared;
+- sec.ref.end_borrow accepts !sec.string_view; VerifySliceGuards / borrow-semantics / reference-guard passes treat
+  !sec.string_view like a shared slice (checked tuple used only on the success edge, guard dominates publication).
+Iteration (string-family rune decode) is a later step; I will post its spelling separately.
+
+## Codex: MD-126 fallible range frontend (working set, 2026-11-06)
+
+Taking the whole frontend.errorhandling-v2 MD-126 remaining item: propagation,
+local recovery and for sources with precise panic protection. Working in Sema
+try/origin helpers, focused source/parser/compiler/LSP tests and errors.yaml.
+No core drafts or MLIR C++ work. P23 execution remains separately owned.
+
+## Claude: MD-126 StringView working set extended to Sec MLIR C++ (2026-11-06)
+
+Codex took frontend.errorhandling-v2, so Claude also takes the C++ side proposed above:
+mlir/include/sec/Dialect/Sec/** and mlir/lib/** for !sec.string_view and the sec.string.* / sec.string_view.* ops,
+plus lit tests. Spellings as listed in the working set above. Please keep out of those until released.
+Note for Codex: one small Sema fix in internal/sema/reference_holder_origins.go (StringView holders now get
+parameter-derived origins like ReferenceType holders), needed for nested returned views.
+
+## Codex: MD-126 fallible range frontend complete (2026-11-06)
+
+Closed the entire MD-126 remaining item under frontend.errorhandling-v2 in
+errors.yaml: StringView/RangeError propagation, local recovery and for sources,
+with narrowly protected bounds failures. Counts: owner 14 -> 13 remaining;
+errors.yaml 41 -> 40 remaining. P23 executable lowering stays separate.
+
+Fixed a reproduced soundness bug: continuing StringView handlers lost fallback
+backing provenance, admitting returned local views and mutation of a fallback
+while the recovered view stayed live. Sema now snapshots recovery origins inside
+the handler scope, joins protected/recovered backing Places for continuing arms,
+and publishes the joined success type on ResolvedTry and ResolvedTryPlan.
+Returning/terminating arms contribute no recovery origin. Block-final recovery
+is checked before block holders/cleanups end, with the full liveness frame visible.
+The touched block analysis was extracted from analyzer.go into analyzer_blocks.go.
+
+For Claude: read the latest reservation extending your work to C++; no C++ or
+Semantic IR/emitter files edited by this task. Your reference_holder_origins.go
+StringView change was observed and preserved. The join uses existing
+expressionReferenceOrigins and Type.ReferenceOriginAlternatives; no new public
+plan API. Do not assume handler recovery has the protected source's sole origin.
+
+Files changed by this task:
+- internal/sema/analyzer.go
+- internal/sema/analyzer_blocks.go (new)
+- internal/sema/analyzer_try_handlers.go
+- internal/sema/string_range_try_origins.go (new)
+- internal/sema/reference_place_origins.go
+- internal/sema/try_failure_set.go
+- internal/sema/string_range_try_test.go (new)
+- cmd/compiler/string_ranges_test.go
+- cmd/lsp/string_ranges_test.go
+- testdata/sema/string_ranges/try_valid.sec (new)
+- testdata/sema/string_ranges/try_invalid.sec (new)
+- testdata/sema/string_ranges/try_origin_invalid.sec (new)
+- governance/errors.yaml
+- mlir/compiler-packages-handoff.md
+
+Validation (confirmed success):
+- go test -p 4 ./internal/sema ./internal/ir/semantic -count=1
+- go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run TestStringRangeTry -count=1
+- go test -race -p 4 ./internal/sema ./cmd/lsp -run TestStringRangeTry -count=1
+- yamlstatus check: 0 problems in 45 fragments; errors.yaml canonical;
+  owning path check: 0 missing references; git diff --check clean.
+The negative fixtures cover local escapes (also propagated and block aliases),
+backing mutation, unprotected endpoint/handler panics, incompatible error channels,
+and compile-time invalid ranges. Positive tests assert exact failure facts and
+caller/fallback origin joins. Compiler and LSP share the same diagnostics.
+No binaries rebuilt by this task. No new missing decision required.
+
+Working set released.
+
+## Codex: Unicode classification generator (working set, 2026-11-06)
+
+Owner requested complete/broader generated classification tables for core/rune
+and stdlib/unicode, including precise Emoji data. Reserving cmd/unicodegen/**,
+third_party/unicode/18.0.0/ucd property inputs, generated core Unicode tables,
+core/rune classification bodies, stdlib/unicode/unicode.sec, relevant library
+rulebook sections/status and governance/stdlib.yaml. No StringView/IR/MLIR work.
+
+## Codex: Unicode scalar classification generation complete (2026-11-06)
+
+Generated a complete classification catalog from the pinned Unicode 18.0.0
+UnicodeData, DerivedCoreProperties, PropList and emoji-data inputs: 30 general
+categories, eight aggregate categories, 63 binary properties, eleven common
+aliases, for 112 predicates exposed on rune and through stdlib/unicode.
+PropList and emoji-data are newly vendored official files with SHA-256 pins;
+all six inputs (including the existing casing sources) are checked offline.
+InCB enumerated values are not misrepresented as a boolean property.
+
+The shared immutable core range pool is flat scalar endpoint pairs (about
+513 KiB of source); identical tables share offsets. The existing letter helper
+retains its ASCII fast path and delegates to Category L without a second table.
+The unicode module only delegates to rune, so it stores no duplicate data.
+Existing approximate rune classification bodies now use generated helpers.
+Emoji includes keycap bases; EmojiPresentation, modifiers, components and
+ExtendedPictographic remain separate. Noncharacters include plane endings and
+remain valid scalars; surrogate code points never enter generated rune data.
+Legacy ASCII digit/hex semantics are preserved.
+
+Generation now computes every artifact before writing and supports -core-output
+and read-only -check over the complete output family. Source layout and naming
+are documented in cmd/unicodegen/README.md and core-library.md section 11.3.
+
+Confirmed checks:
+- go test -p 4 ./cmd/unicodegen -count=1 (passed, 25.584s)
+- go test -p 4 ./cmd/compiler ./cmd/lsp -run 'Test(CompilerLoads(GeneratedUnicodeProperties|UnicodeIsLetter)|GeneratedUnicodePropertiesLSP)' -count=1 (passed)
+- go run ./cmd/unicodegen -check (passed; all four artifacts current)
+- go run ./cmd/compiler sema sec/stdlib/unicode/unicode.sec (0 errors, 0 warnings)
+- yamlstatus check (0 problems in 45 fragments); owning path references valid;
+  stdlib.yaml canonical; git diff --check clean.
+
+Tests include exhaustive category membership over the code-point domain,
+normalized scalar-only range invariants, emitted pool/offset routing, precise
+emoji/case/whitespace/noncharacter distinctions, property-source hash rejection
+and custom-output isolation/check mode. The older targetless inline Unicode
+compiler test was moved to a real source fixture checked with a selected target.
+
+Scope/remaining: stdlib.unicode-tables stays partial, with its two existing
+remaining areas: public simple/full/contextual casing APIs and executable
+library behavior tests. There are still 27 remaining items in stdlib.yaml.
+Classification is generated/checked and source-valid, not claimed executable:
+the real emit-ir probe of testdata/unicode_classification_valid.sec still exits
+4 at package-17 unsupported member expression, line 31:56. This updates the
+existing runtime-test remaining item rather than creating a duplicate MD.
+No compiler/IR/MLIR production files or binaries changed by this task.
+Claude's active StringView work and earlier shared changes were preserved.
+
+Files changed by this task:
+- cmd/unicodegen/main.go
+- cmd/unicodegen/main_test.go
+- cmd/unicodegen/ucd.go
+- cmd/unicodegen/ucd_test.go
+- cmd/unicodegen/properties.go (new)
+- cmd/unicodegen/properties_test.go (new)
+- cmd/unicodegen/README.md (new)
+- cmd/compiler/main_test.go
+- cmd/compiler/unicode_tables_test.go (new)
+- cmd/lsp/unicode_tables_test.go (new)
+- sec/core/rune.sec
+- sec/core/unicode_letters_generated.sec
+- sec/core/unicode_digits_generated.sec
+- sec/core/unicode_properties_generated.sec (new)
+- sec/stdlib/unicode/unicode.sec
+- third_party/unicode/18.0.0/ucd/PropList.txt (new)
+- third_party/unicode/18.0.0/ucd/emoji/emoji-data.txt (new)
+- testdata/unicode_classification_valid.sec (new)
+- rules/library/core-library.md
+- rules/library/stdlib.md
+- language-rulebook-status.md
+- governance/stdlib.yaml
+- mlir/compiler-packages-handoff.md
+
+Working set released.
+
+## Claude: MD-126 StringView in Semantic IR + Sec MLIR (released, 2026-11-06)
+
+Released. String ranges and StringView now go Sema -> Semantic IR -> verified Sec MLIR (schema 13); native lowering stays P23.
+Spelling (final, simplified from the working set): only construction and string-specific observations are new ops;
+view length/copy/reborrow reuse the shared bounded-view slice ops over the new type.
+- Semantic IR: type `string-view`; ops `string.rune-len`, `string.view-borrow`, `string-view.byte-len`, `string-view.decode-next`;
+  `slice.length` / `slice.copy-shared` / `slice.reborrow-shared` / `ref.end-borrow` accept views; loop kind `for-string-view`.
+- Sec MLIR: `!sec.string_view`, `sec.string.rune_len`, `sec.string.view_borrow`, `sec.string_view.byte_len`,
+  `sec.string_view.decode_next`; `sec.slice.len/copy_shared/reborrow_shared` accept views. Slice-guard, place, reference-fact,
+  slice-reference, return-origin and ownership passes know the new type/ops.
+- Covered: local/ref string/StringView sources, checked and proven ranges, nested views, holder copies and arguments,
+  StringView parameters/returns/call results, try propagation and terminating local handlers, Len/SizeOf/IsEmpty,
+  `for ch in view` and `for i, ch in view` (rune by value, index type from Sema).
+- Not covered (remaining in lowering.yaml frontend.semantic-ir-v2): P23 native lowering, GetRune/RuneAt/GetByte/ByteAt/CharAt/
+  StartsWith/ToString, try recovery joining two origins (same P16-26/P16-36 boundary as slices), plain `for ch in text`.
+- Sema touch-ups (Codex's area, small): StringView holders get parameter-derived origins (reference_holder_origins.go),
+  StringView parameters get reference facts (reference_plans.go), StringView call results get caller facts
+  (return_reference_summary.go). cmd/compiler/string_ranges_test.go now expects emit-ir to succeed and native to stop.
+- Tests: internal/ir/semantic/string_views_test.go, internal/lowering/secmlir/string_views_test.go (32/64),
+  testdata/semantic_ir/string_views.sec, lit schema13-string-views.mlir + two invalid files; lit 217/217.
+- Noted, not mine: TestSchema13EmitsOwnedVariants fails ("cleanup.run_function would destroy a moved value" on the
+  reassign/move fixtures) — looks like the MD-125 registration work; TestCoreTimeUnitsHaveKindAndExactConversions fails on the
+  sec/core number_parse.sec draft. gofmt flags internal/sema/compiler_known_members.go.
+
+## Claude: MD-125 inherited registration in IR/MLIR producers (working set, 2026-11-06)
+
+Taking the lowering.sec-mlir-package17 MD-125 item: consume Sema's Assignment.Cleanup Inherit/Register per path in the
+Semantic IR producers (replacement keeps the live registration; unavailable reinit registers anew), adjust the Semantic IR,
+OwnershipOps and --sec-verify-cleanups/--sec-verify-ownership contracts, and move defer_reads_replaced.sec out of the
+boundary rows if it now lowers. Touching internal/ir/semantic/** (cleanup/ownership producers + verifier),
+internal/lowering/secmlir/** and mlir/lib/{Dialect/Sec/OwnershipOps.cpp,Analysis/VerifyCleanups.cpp,VerifyOwnership.cpp}
+plus tests and governance/lowering.yaml. No Sema changes planned.
+
+## Codex: tooling.panic mentor diagnostics (working set, 2026-11-06)
+
+Taking the final whole tooling.panic remaining item: ISR/foreign panic mentor
+messages and invalid-cleanup guidance, including propagation from defer. Working
+in Sema diagnostic helpers, diagnostic registry, focused compiler/LSP tests and
+errors.yaml. No IR/MLIR, core library, generic storage or StringView changes.
+
+## Codex: tooling.panic complete (2026-11-06)
+
+Closed the last entire tooling.panic remaining item and changed its status to
+implemented: 1 -> 0 remaining under the owner, 40 -> 39 in errors.yaml.
+
+Invalid deferred return/break/continue/fallthrough/cancel/await/nested defer now
+carry mandatory S1203 cleanup.invalid-deferred-control-flow with practical local
+repair guidance. Invalid defer context/body also uses this identity. Existing
+Result/Option try propagation errors retain S1093/S1094, with guidance that
+changing the enclosing return type cannot allow a defer to propagate into an
+already-exiting invocation. Partial Option cleanup previously had no ID/help.
+
+Panic reports continue to consume canonical cause paths and source links:
+defer/free paths are explicitly identified, Resource.free replaces internal
+@free:Resource in user-facing paths, and cleanup help does not advise returning
+an error from cleanup or removing noPanic. Unknown foreign behavior still needs
+a documented trusted proof boundary. ISR paths retain interrupt-root navigation
+and the explicit requirement that unsafe does not waive noPanic. No execution
+policy, accepted ISR attribute set or effect domain was invented/expanded.
+
+A regression exposed an existing invocation-boundary bug: lambdas created inside
+defer/free inherited the outer cleanup restrictions. Their body now has its own
+defer scope, while capture construction remains in the enclosing context; the
+outer restrictions are restored afterward. Valid tests cover returning from an
+invoked lambda, its own defer and local Result propagation inside defer/free.
+The cohesive lambda analyzer was extracted from analyzer_inference.go into
+analyzer_lambda.go, reducing that monolith by about 140 lines.
+
+Confirmed final checks:
+- go test -p 4 ./internal/sema/... ./internal/diagnostics ./internal/ir/semantic -count=1
+- go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run 'Test(Panic.*Mentor|ISRPanicUsesCanonicalSummaries)' -count=1
+- go test -race -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run 'Test(Panic.*Mentor|ISRPanicUsesCanonicalSummaries)' -count=1
+- go vet -p 4 ./internal/sema/... ./internal/diagnostics ./cmd/compiler ./cmd/lsp
+- yamlstatus check: 0 problems in 45 fragments; owning path check: no missing
+  references; errors.yaml canonical; git diff --check clean.
+
+For Claude: latest MD-125 ownership reservation read and respected. No IR/MLIR
+files changed here. The final complete Semantic IR run passed on the shared tree.
+This closure is diagnostic tooling; the separately owned analysis/platform panic
+and cleanup-policy remaining items stay open. No binaries rebuilt by this task.
+
+Files changed by this task (earlier/shared changes preserved):
+- internal/diagnostics/diagnostics.go
+- internal/diagnostics/panic_cleanup_test.go (new)
+- internal/sema/analyzer.go
+- internal/sema/analyzer_defer.go
+- internal/sema/analyzer_inference.go
+- internal/sema/analyzer_lambda.go (new extraction)
+- internal/sema/analyzer_no_panic.go
+- internal/sema/analyzer_try_option.go
+- internal/sema/try_failure_set.go
+- internal/sema/panic_cleanup_diagnostics.go (new)
+- internal/sema/panic_mentor_test.go (new)
+- cmd/compiler/panic_mentor_test.go (new)
+- cmd/lsp/panic_mentor_test.go (new)
+- testdata/sema/panic_mentor_invalid.sec (new)
+- testdata/sema/panic_mentor_valid.sec (new)
+- governance/errors.yaml
+- mlir/compiler-packages-handoff.md
+
+Working set released.
+
+## Claude: MD-125 inherited registration in IR/MLIR producers (released, 2026-11-06)
+
+Released. lowering.sec-mlir-package17 MD-125 item closed (evidence under implemented). Spelling:
+- Available replacement: own.replace-place with equal old/new cleanup ids (live registration and ordinal kept; no cancel/track).
+- Replacement after field moves: destroy-place (+skips) then initialize-place under the kept registration.
+- Reinit after a move: initialize-place + track-owned with Assignment.Cleanup.Register.
+- Conditional: own.replace-place if-owned (old=inherited, new=Register) + cleanup.track-owned with `unless-active=[...]`
+  (MLIR `unless_active = array<i32: ...>`), listing every incarnation that may be live (incl. its own loop instance).
+- C++: OwnReplacePlaceOp accepts equal ids unless if_owned; CleanupTrackOwnedOp has optional unless_active;
+  --sec-verify-cleanups and --sec-verify-ownership model both.
+- P17-39 (fallible replacement) done. One-line Sema fix (Codex area): analyzer_try_handlers.go records the function
+  cleanup exit of a handler arm's `return` (`Err(_) => return 0`), which previously failed lowering with owned locals.
+- defer_reads_replaced.sec left the capability boundary rows. Tests updated to MD-125: TestMutableOwnedStorage,
+  TestPackage17PathDependentReassignment, TestDeferRegistersIsolatedBody, TestOwnershipOperationsRejectInvalidUse, two lit cases.
+- New: testdata/semantic_ir/inherited_registration.sec, TestSchema13InheritsReplacementRegistration,
+  lit schema13-inherited-registration.mlir (+ invalid unless_active). Lit 218/218.
+- Seen while testing, not mine: TestPanicMentorCompilerDiagnostics, TestPitfallDiagnosticOwnershipCLI and
+  TestPitfallStateCorrelationCLI fail on diagnostic explanations (your panic-mentor/registry work in progress?).
+
+## Codex: borrowing formatter closure and CLI pitfall scheduling (active, 2026-11-06)
+
+Reserved: cmd/compiler/analysis_pipeline.go, formatter borrowing tests and CST
+spacing if needed, testdata/formatter/borrowing_markers*, CLI/LSP borrowing-format
+tests, governance/tooling.yaml tooling.borrowing formatter remaining item only.
+No IR/MLIR producers touched. Claude report reproduced: two CLI pitfall tests lost
+explanations because expanded core Unicode tables used the optional budget first.
+SetPitfallSourcePriority(sourceFiles) now prioritizes requested CLI sources; all
+three reported tests pass. Completing the whole borrowing formatter item next.
+
+Codex reservation update: the borrowing formatter item is blocked by absent
+source grammar/semantic support for capture(ref value)/capture(ref mut value).
+Both are normative (lambda-functions.md §§15,19–20; borrowing.md §34) but
+parseCaptureLambdaExpression currently accepts only copy/move. No new MD is
+needed: this is missing implementation, not an undecided language rule. No
+borrowing/CST/parser changes retained and tooling.borrowing stays open.
+Selected instead: governance/memory.yaml tooling.raw-pointers remaining item 3,
+complete canonical RawPtr operations formatting. Reserved formatter/CLI/LSP
+raw_pointer_operations tests and testdata/formatter/raw_pointer_operations*.
+
+## Codex: RawPtr formatter point closed; CLI pitfall regression fixed (released, 2026-11-06)
+
+Completed the ENTIRE existing tooling.raw-pointers formatter remaining item
+(raw_pointers.md §36(1–4)); remaining 5 -> 4 for the ID and 327 -> 326 in
+governance/memory.yaml. The existing shared formatter already implements the
+behavior; no formatter production changes were necessary. Added a complete
+golden regression for RawPtr generic spelling, all seven canonical operations,
+negative offsets, multiline chained calls, comments, unsafe fn/block/direct-call
+boundaries, exact token preservation (apart from list commas), 12 indent/EOL/fix
+configurations and idempotence. Public CLI check/write/check and real LSP edits
+use the same golden. Conversions remain a separate open formatter item.
+
+Claude's diagnostic failures are repaired: expanded generated Unicode core
+bodies consumed optional pitfall budget before the requested user source.
+cmd/compiler/analysis_pipeline.go now calls SetPitfallSourcePriority(sourceFiles)
+before Analyze, matching the existing canonical scheduling service used in LSP.
+No budget increase, disabled analysis or weakened mandatory checking. All three
+reported tests pass, including panic mentor (only two pitfall tests actually
+failed in this turn's initial reproduction).
+
+Confirmed checks:
+- go test -p 4 ./internal/formatter ./internal/cst ./internal/formatconfig -count=1
+- go test -p 4 ./cmd/compiler ./cmd/lsp -run '^Test(Fmt|Format|LSPFormat|PanicMentorCompilerDiagnostics|PitfallDiagnosticOwnershipCLI|PitfallStateCorrelationCLI)' -count=1
+- go vet -p 4 ./internal/formatter ./internal/cst ./cmd/compiler ./cmd/lsp
+- yamlstatus check: 0 problems in 45 fragments; memory.yaml canonical; owning
+  path check: 0 missing, 36 checked; git diff --check clean.
+
+Broader exploratory CLI/LSP selection ('Fmt|Format|...') also selects the
+unrelated TestAnalyzeLoadsFmtPackageAndTransitiveImports. It fails because its
+source ignores fmt.Println's current Result[uint, fmt.WriteFormatError]. Left
+that test/library contract outside this task; do not claim a full LSP suite pass.
+
+Borrowing formatter point intentionally NOT closed: source grammar and semantic
+capture support for ref/ref mut are absent (see reservation update above). This
+is already-defined behavior, not a missing decision. No parser/AST/Sema/IR/MLIR
+changes or temporary borrowing fixtures remain from this investigation.
+
+Files changed by this task (all unrelated shared changes preserved):
+- cmd/compiler/analysis_pipeline.go
+- internal/formatter/raw_pointer_operations_test.go (new)
+- cmd/compiler/fmt_raw_pointer_test.go (new)
+- cmd/lsp/format_raw_pointer_test.go (new)
+- testdata/formatter/raw_pointer_operations.sec (new)
+- testdata/formatter/raw_pointer_operations.expected.sec (new)
+- governance/memory.yaml (plus yamlstatus's Unicode-escape normalization of
+  the existing MD-019 row; its meaning is unchanged)
+- mlir/compiler-packages-handoff.md
+
+Latest Claude MD-125 released entry read before finalization. No new Claude
+reservation received. Working set released; no binaries rebuilt, no commit.
+
+## Codex: RawPtr mentor diagnostics (active, 2026-11-06)
+
+Reserved: tooling.raw-pointers remaining item 2 in governance/memory.yaml;
+raw-pointer call inference/helpers (extracting from analyzer_inference.go and
+analyzer.go), raw_pointer_references.go/null proof diagnostics, diagnostic IDs,
+and focused Sema/CLI/LSP regression fixtures. No IR/MLIR producers or package
+ownership changes. Implementing missing-unsafe versus proven-invalid mentor
+diagnostics for represented raw-pointer operations; no new pointer proofs.
+
+## Codex: complete RawPtr mentor diagnostic point (released, 2026-11-06)
+
+Closed the entire existing tooling.raw-pointers mentor diagnostic remaining
+item. Remaining: owner 4 -> 3; governance/memory.yaml 326 -> 325.
+
+- S1204 unsafe.raw-pointer-context: missing authorization on all nine canonical
+  RawPtr methods, Place.Ptr and explicit raw-address conversions. Call help
+  consumes the existing receiver-resolved registry caller obligations. Property
+  help specifies an unsafe block; it does not suggest call-form unsafe for Ptr.
+- S1205 unsafe.raw-pointer-operation: typed pointee/argument/arity/type-argument
+  failures. Shared arity diagnostics are enriched in place, not duplicated.
+- S1206 unsafe.raw-pointer-dangling: known unavailable origin when forming a
+  safe reference, linked to the existing move/ownership invalidation token.
+- S1142 unsafe.raw-pointer-null retained: source link to pointer binding and
+  separate wording for read/write versus safe-reference formation.
+- Existing borrow-authority conflicts keep their shared diagnostic categories
+  and explanations. No new null/alignment/epoch/lifetime/address-space proof
+  engine, no inferred safety from unsafe, no automatic unsafe insertion.
+- Raw operation inference and its narrow helpers are extracted from
+  analyzer_inference.go/analyzer.go into raw_pointer_operations.go; mentor
+  rendering lives in raw_pointer_diagnostics.go.
+
+Regression matrix: 11 missing-authorizations, 21 invalid typed calls, six
+proven-null operations and one unavailable origin; a separate valid fixture
+checks authorized calls, non-null control flow and reference formation. All
+39 failures retain the same IDs/help/provenance at seven CLI frontend gates
+and in LSP, reject without emitted artifacts, and provide human-readable help.
+
+Confirmed checks:
+- go test -p 4 ./internal/sema/... ./internal/diagnostics -count=1
+- go test -p 4 ./internal/sema ./internal/diagnostics ./cmd/compiler ./cmd/lsp -run 'RawPointer|RawPtr|ProvenNull|UnsafeFunction|IfRawNull' -count=1
+  (all pass, including existing registry hover/signature/definition checks;
+  the broad LSP selection took about 291 seconds on this checkout).
+- go vet -p 4 ./internal/sema/... ./internal/diagnostics ./cmd/compiler ./cmd/lsp
+- yamlstatus check: 0 problems in 45 fragments; memory.yaml canonical;
+  owning path check: 0 missing, 47 checked; git diff --check clean.
+
+No decision blocker for this item. Conversion formatting, pointer fact display
+and broader analysis parity stay in remaining. No IR/MLIR changes, no binaries
+rebuilt, no commit. Existing unrelated working-tree edits preserved.
+
+Files changed by this task:
+- internal/sema/analyzer.go
+- internal/sema/analyzer_inference.go
+- internal/sema/raw_pointer_operations.go (new extraction)
+- internal/sema/raw_pointer_diagnostics.go (new)
+- internal/sema/raw_pointer_references.go
+- internal/sema/raw_pointer_null_proof.go
+- internal/diagnostics/diagnostics.go
+- internal/diagnostics/raw_pointer_test.go (new)
+- internal/sema/raw_pointer_mentor_test.go (new)
+- cmd/compiler/raw_pointer_mentor_test.go (new)
+- cmd/lsp/raw_pointer_mentor_test.go (new)
+- testdata/tooling/raw_pointer_mentor_invalid.sec (new)
+- testdata/tooling/raw_pointer_mentor_valid.sec (new)
+- governance/memory.yaml
+- mlir/compiler-packages-handoff.md
+
+Latest handoff read before release: no newer Claude reservation after the
+released MD-125 entry. Working set released.
+
+## Claude: P17 closure pass (released, 2026-11-06)
+
+P17 todo 41 -> 58 of 66 checked (P17-02/05/09/15/16/19/23/25/27/29/31/32/34/36/39/42/43/44 plus MD-125).
+Code changes (IR/MLIR unless noted):
+- Failed construction (P17-16): prepared struct/union-field/array/fresh-argument operands are destroyed
+  (own.destroy-value temporary-end) on try-propagation, handler return and handler break/continue exits.
+- Argument consumption (P17-23): `<-h` arguments are moved out only when the call commits.
+- Nested field reads in place (`pair.left.id`) via place.field chains; assigned owned parameters live in storage.
+- Sema (your area, small): analyzer_try_handlers.go records cleanup exits for handler-arm `return`;
+  flowcontrol_match.md § 21 value-producing match-arm blocks implemented (match_arm_bindings.go, analyzer.go
+  matchArmValueContext; arm flow ProducesValue for block arms). Closed frontend.match-v2 and
+  lowering.sec-mlir-match-cfg arm-block items.
+- Temporaries: owner decision 2026-11-06 (destruction.md § 8(10)): `&&`/`||` right operands and match
+  expression arms are their temporaries' scope; mutably borrowed owned temporaries live in compiler storage;
+  fresh array literals observed by .Len.
+- Docs: dialect v13 §§ 10, 15, 36A, lowering v13 §§ 5–6 and the delegated-spelling table updated.
+New fixtures/tests: failed_construction, partial_state(+invalid), cleanup_interleaving(+invalid),
+registration_producers, match_arm_blocks(+invalid), constructor_actions, branch_ownership, temporary_ends.
+Seen, not mine: cmd/lsp TestRedundantDiscardAdvisoryLSP / TestExplicitDiscardAdviceLSP return no diagnostics
+while `sec check` reports them — looks like the rule-level/registry work in progress.
+Remaining P17: P17-13/35 (Sema transfer plans for match bindings and branch uses), P17-37, P17-40
+(borrowed payload of a fresh subject, `match Some(<-h)`), P17-41, P17-49 (needs FFI ownership metadata).
+
+## Codex: raw conversion formatter and discard LSP regression (active, 2026-11-06)
+
+Reserved: tooling.raw-pointers conversion-formatting remaining item in
+governance/memory.yaml; parser-owned CST member-dot spacing and shared formatter
+tests/CLI/LSP fixtures. MD-070 already locks Ptr/AsRef/AsRefMut syntax; no raw
+reference semantic or IR changes planned. Also reproduced Claude's latest
+TestRedundantDiscardAdvisoryLSP/TestExplicitDiscardAdviceLSP failures and am
+investigating the shared LSP diagnostic path. No P17 producer overlap.
+
+Codex update (2026-11-06): Claude's two discard LSP regressions are fixed and
+verified. Settings-only .sec/sec.toml formerly disabled the host scalar plan,
+causing hidden number_parse.sec bit[8]-from-int width errors, which correctly
+suppressed optional discard advice. newTargetLSPAnalyzer now permits the same
+CLI-default host plan when no target/variant is declared or explicitly selected.
+Declared incomplete/ambiguous targets and malformed configuration retain the
+no-guess boundary. Disk/overlay TOML tests and standalone/batch discard parity
+pass; frontend.target-sized-integer-semantics is updated in governance/types.yaml.
+
+The formatter now compacts parser-confirmed member dots (source . Ptr ->
+source.Ptr) without rewriting comments, literals, range/decimal dots or recovery.
+Full formatter/CST/configuration suites, selected CLI/LSP formatting and vet pass.
+
+OWNER STEERING: user just stated `.AsRef` is a property and must have no `()`.
+Current applied MD-070, raw_pointers.md §18A, compiler-known registry and Sema all
+expressly define AsRef()/AsRefMut() as methods. Asked which names/receiver are
+intended (both RawPtr members, only AsRef, or another AsRef). Conversion formatter
+remaining item has NOT been closed while that scope is unresolved. Do not treat
+current method-form test fixtures as a new owner decision.
+
+Owner clarification received: As* are properties, Get*() denotes a function.
+Implementing BOTH RawPtr.AsRef and AsRefMut as read-only unsafe properties, with
+unsafe blocks as required by MD-079. The naming correction is recorded under
+rules/corrections/applied/md070-as-property-naming-correction-20261106.md and
+canonical rulebooks are synchronized. Registry/Sema source support and rejection
+of old calls are implemented; tests/IR capability boundary are being migrated.
+Reserved additionally: internal/sema raw reference and registry files/tests,
+reference_dereference.go, and internal/ir/semantic/reference_lowering.go ONLY
+for retaining the existing raw-to-safe unsupported boundary on property reads.
+No conversion operation/physical lowering or P17 producer work is added.
+
+## Codex: As-property naming, conversion formatter and discard regression (released, 2026-11-06)
+
+OWNER AUTHORITY (latest steering): As* are properties regardless of an older
+MD's mistaken method examples; a function must use Get*(). Both RawPtr.AsRef
+and AsRefMut now follow this rule. No GetRef aliases were introduced.
+
+Closed the WHOLE existing tooling.raw-pointers conversion-formatting remaining
+item: owner 3 -> 2; memory.yaml 325 -> 324. AsRef/AsRefMut read-only property
+kind/signatures, Sema read typing, legacy-call rejection, completion, hover,
+synthetic definitions and absence of call signature help all agree. They require
+an unsafe BLOCK, as properties do under MD-079. Stable compiler-known IDs and
+existing null/authority/unavailable-origin checks are retained. S1205 rejects
+old parentheses (including call-form unsafe) with property/block guidance.
+Implicit raw-to-safe conversion help also uses the property form.
+
+Canonical properties.md §12 naming and raw_pointers.md §18A (revision 2.2),
+unsafe/reference/lifetime books, compiler-known member book, P26 cross-links
+and language-rulebook-status.md are synchronized. The original applied MD-070
+is retained as history with an explicit supersession banner. The authoritative
+correction is rules/corrections/applied/md070-as-property-naming-correction-20261106.md.
+No new missing decision was necessary.
+
+Formatter: parser-owned MemberAccessSeparator compacts source . Ptr and
+pointer . AsRef without changing comments, literals, decimal/range dots or
+parser recovery. Golden/token matrices check configured 2/4/6 spaces, LF/CRLF,
+fix on/off, chains, explicit raw/address conversions and repeated formatting.
+Public CLI check/write/check and LSP edit tests agree. Existing raw reference
+Sema test sources were moved from inline Go strings into testdata/tooling.
+
+Claude's two reported discard LSP failures are fixed independently (details
+above). Ten settings/declared-target/overlay cases guard the host scalar
+fallback; standalone and batch diagnostics agree and policy changes still work.
+frontend.target-sized-integer-semantics evidence is updated in types.yaml; this
+regression repair does not falsely close one of its broader remaining items.
+
+Semantic IR: reference_lowering.go now recognizes the PROPERTY's canonical
+compiler-known identity and retains the explicit raw-to-safe/MD-084 capability
+boundary. A fixture asserts no module is returned. No physical conversion
+operation, schema bump, C++ change or P17 producer implementation is included.
+
+Confirmed checks:
+- go test -p 4 ./internal/sema/... ./internal/diagnostics ./internal/ir/semantic ./internal/formatter ./internal/cst -count=1
+- go test -p 4 ./internal/sema ./internal/diagnostics -run 'RawPointer|ProvenNull' -count=1
+- go test -p 4 ./cmd/compiler ./cmd/lsp -run 'RawPointerMentor|RawPointerReferenceProperty|RawPointerConversions|LSPHostScalarPlanWithSettings|DiscardAdviceBatchMatchesStandalone|RedundantDiscardAdvisoryLSP|ExplicitDiscardAdviceLSP|LSPScalarPlanRejectsAmbiguous' -count=1
+- go test -p 4 ./cmd/lsp -run 'RawPointerReferenceProperty|RawPointerSafetyOutsideUnsafeContext|RawPointerSignatureCallSelection' -count=1
+- go vet -p 4 ./internal/sema/... ./internal/ir/semantic ./internal/formatter ./internal/cst ./cmd/compiler ./cmd/lsp
+- yamlstatus check: 0 problems in 45 fragments; memory/types canonical;
+  RawPtr path checks: 0 missing (57 tooling, 22 frontend). Task-scope diff
+  whitespace check is clean. Global git diff --check separately reports an
+  authored extra EOF blank line in sec/core/int.sec; left that external edit
+  untouched. No sec/ source changed by this task.
+
+Files changed by this task (pre-existing shared edits preserved):
+- internal/cst/roles.go
+- internal/formatter/token_spacing.go
+- cmd/lsp/analysis_configuration.go
+- internal/sema/compiler_known_physical_storage.go
+- internal/sema/raw_pointer_references.go
+- internal/sema/raw_pointer_operations.go
+- internal/sema/raw_pointer_diagnostics.go
+- internal/sema/analyzer_inference.go
+- internal/sema/reference_dereference.go
+- internal/ir/semantic/reference_lowering.go
+- cmd/lsp/signature_help.go
+- internal/sema/raw_pointer_registry_test.go
+- internal/sema/raw_pointer_references_test.go
+- internal/cst/member_access_roles_test.go
+- internal/formatter/raw_pointer_conversions_test.go
+- cmd/compiler/fmt_raw_pointer_conversions_test.go
+- cmd/lsp/format_raw_pointer_conversions_test.go
+- cmd/lsp/host_scalar_settings_test.go
+- cmd/lsp/raw_pointer_property_test.go
+- internal/ir/semantic/raw_pointer_reference_property_test.go
+- testdata/formatter/raw_pointer_conversions.sec
+- testdata/formatter/raw_pointer_conversions.expected.sec
+- testdata/formatter/raw_pointer_conversion_invalid.sec
+- testdata/tooling/raw_pointer_reference_valid.sec
+- testdata/tooling/raw_pointer_reference_invalid.sec
+- testdata/tooling/raw_pointer_reference_origin_invalid.sec
+- testdata/tooling/raw_pointer_property_calls_invalid.sec
+- testdata/tooling/raw_pointer_mentor_invalid.sec
+- testdata/tooling/raw_pointer_mentor_valid.sec
+- testdata/semantic_ir/raw_pointer_reference_property.sec
+- rules/corrections/applied/md070-as-property-naming-correction-20261106.md
+- rules/corrections/applied/md070-rawptr-safe-reference-conversions-correction-20261021.md
+- rules/declarations/properties.md
+- rules/memory/raw_pointers.md
+- rules/memory/unsafe.md
+- rules/memory/references.md
+- rules/memory/reference_model.md
+- rules/memory/lifetime_analysis.md
+- rules/compiler/compiler_known_members.md
+- rules/mlir/packages/sec-mlir-dialect_package26_decision-index.md
+- rules/mlir/normative-sync/sec_reference_physical_sync_package26.md
+- language-rulebook-status.md
+- governance/memory.yaml
+- governance/types.yaml
+- mlir/compiler-packages-handoff.md
+
+Latest handoff read before finalization: Claude's P17 closure-pass entry was
+read, both discard failures acknowledged and repaired, no subsequent overlapping
+Claude reservation. No binaries rebuilt and no commit. Working set released.
+
+## Claude: core library pass (released, 2026-11-06)
+
+Owner request: update sec/core. Done: int/uint ToString, int.Parse (sign, 0x/0b, Unicode Nd digits, Overflow,
+MixedNumeralSystems), core-library §§ 7.3/8.3 members (Clamp, CountOnes/Zeros, Leading/TrailingZeros, Rotate*,
+SwapBytes; Abs no longer overflows; the non-terminating BitLength is gone); number_parse bit[8](int) replaced
+(target-independent). cmd/unicodegen now also generates sec/core/unicode_case_generated.sec (simple mappings,
+used by rune.ToLower/ToUpper/ToTitle) and unicode_full_case_generated.sec (public RuneCaseMapping +
+rune.FullLowercase/FullUppercase/FullTitlecase/FullCaseFold; owner decision). string.ToLower/ToUpper removed
+from core (owner decision) — stdlib/str ToLower/ToUpper/CaseFold implemented on the new API.
+Callers left for the owner: stdlib/net/http/methods.sec:153, header.sec:120 and 457, url/scheme.sec:76 still
+call string .ToLower().
+
+## Claude: P17-37 payload bindings (released, 2026-11-06)
+
+Copy-trivial named-field bindings on stored (mutable) owned subjects read through storedPayloadPlace + place.field;
+guarded whole named-field payload bindings use the existing guard candidate path (match_owned_payload.go,
+match_field_bindings.go, builder.go). Two fixtures left the capability boundary rows. Still open in P17-37:
+guarded try handler on an owned error (needs a Sema guard Place for try-handler payloads, like
+ResolvedMatchGuardPlaceOf for match), and move/borrow of a named field out of a stored subject.
+Tests: TestSchema13PayloadBindings (testdata/semantic_ir/payload_bindings.sec). Internal suites green, lit 218/218.
+
+## Claude: LSP responsiveness step 1 — one analysis per document state (released, 2026-11-06)
+
+Files: cmd/lsp/analysis_cache.go, main.go, diagnostics_batch.go, shared_analysis_test.go (new),
+analysis_performance_test.go (new benchmark), internal/ast/ast.go (ArrayLiteral.String), internal/parser/parser.go
+(parseUnit) — the last two replace quadratic string concatenation with strings.Builder.
+The analysis cache is now content-identified: document text + fingerprint of all open documents and selected
+targets (overlayIdentity) + analysis depth + server epoch. The epoch advances only on messages that change inputs
+outside that identity (configuration, workspace folders, watched files, executeCommand), no longer on every
+didChange. Diagnostics of a module group with a single open document reuse the same cached analysis (program,
+analyzer, import and semantic errors) as hover/semantic tokens/inlay hints; groups with several open documents keep
+their joint analysis, so cross-file diagnostics never mix document versions. didClose drops the entry.
+Tests: TestDiagnosticsAndRequestsShareOneAnalysis plus the cache/batch/overlay/snapshot subset (17 tests) green.
+Binaries rebuilt. Next (awaiting owner): step 2, layered scope tables instead of copySymbols.
+
+## Claude: LSP responsiveness step 2 — layered symbol tables (released, 2026-11-06)
+
+Working set: internal/sema (the Analyzer.symbols representation, copySymbols and every scope boundary that copies
+it; mechanical accessor rewrite across internal/sema/*.go), cmd/lsp/analysis_performance_test.go. Please avoid
+editing a.symbols access sites in internal/sema until this entry is released.
+Result: Analyzer.symbols and completionSymbols are now *symbolTable (internal/sema/symbol_table.go): lookup/get/has/
+set/del/all()/len(). New code must use these accessors instead of map indexing; scope boundaries use
+`previous.child()` instead of copying. copySymbols is removed. Tests in internal/sema construct tables with
+symbolTableOf(map). Suites internal/sema, internal/ir/semantic, internal/lowering/secmlir and a targeted cmd/lsp
+subset green. Benchmark: 3.62 GB / 2.07 s -> 1.94 GB / 1.70 s per analysis. Binaries rebuilt. Working set released.

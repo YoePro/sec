@@ -224,6 +224,9 @@ func TestLoadUCDRejectsUnpinnedFiles(t *testing.T) {
 		if name == "CaseFolding.txt" {
 			data = append(data, []byte("0041; C; 0062; # tampered\n")...)
 		}
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, name)), 0755); err != nil {
+			t.Fatal(err)
+		}
 		if err := os.WriteFile(filepath.Join(dir, name), data, 0644); err != nil {
 			t.Fatal(err)
 		}

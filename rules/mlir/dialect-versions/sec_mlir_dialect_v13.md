@@ -202,6 +202,18 @@ new cleanup action ID
 
 RHS preparation precedes the op.
 
+MD-125 (2026-11-06, delegated spelling; destruction.md §§ 6.1(4)–(5), 13.2(5)–(8)):
+
+- Equal old and new identities mean the replacement keeps the destination's
+  live registration and its position. No `sec.cleanup.cancel` and no new
+  `sec.cleanup.track_owned` follow it.
+- With `if_owned` (a destination owned on only some paths), the identities must
+  differ. The old one names the inherited registration, and the new one the
+  registration that `sec.cleanup.track_owned ... unless_active` adds on the
+  other paths (§ 15).
+- Zero identities remain reserved for a replaced stored field, which stays
+  under its owner's registration.
+
 ---
 
 # 11. `sec.own.discard`
@@ -273,6 +285,17 @@ scope ID
 registration ordinal
 destruction plan
 ```
+
+Optional `unless_active = array<i32: ...>` (MD-125, 2026-11-06):
+
+- The registration takes effect only on paths where none of the listed actions
+  is live; on the others, the listed registration stays responsible in its
+  position.
+- The list may name the operation's own action. A loop iteration then keeps the
+  instance an earlier iteration registered.
+- Identities are non-zero. `--sec-verify-cleanups` models the alternative per
+  path, and a whole `sec.own.initialize_place` after `sec.own.destroy_place`
+  under a kept registration makes that registration responsible again.
 
 ---
 
@@ -541,6 +564,33 @@ runtime cleanup registry
 physical destructor function ABI
 cleanup stack memory layout
 ```
+
+---
+
+# 36A. Borrowed UTF-8 string views (MD-126)
+
+Installed 2026-11-06 (delegated spelling; `collections.md` § 7.10,
+`flowcontrol_for.md` § 19, `semantic_ir.md` § 17(9)–(10)). Admitted at schema 12
+or later; compiler-generated modules use schema 13.
+
+```text
+!sec.string_view                    shared non-owning view, no element type
+sec.string.rune_len(place)          !sec.place<!sec.string> -> !sec.uint
+sec.string.view_borrow(place, s, n) reference properties as sec.slice.borrow_shared
+sec.string_view.byte_len(view)      -> !sec.uint
+sec.string_view.decode_next(view, cursor) -> (i1, !sec.rune, !sec.uint)
+```
+
+- **Holder operations.** Length (rune count), holder copy, nested views and
+  holder ends reuse `sec.slice.len`, `sec.slice.copy_shared`,
+  `sec.slice.reborrow_shared` and `sec.ref.end_borrow` over `!sec.string_view`.
+- **Construction.** `view_borrow` takes the normalized tuple of one
+  `sec.slice.range_normalize`/`range_check` whose source length is a constant
+  rune count or `rune_len` of the same Place. `--sec-verify-slice-guards`
+  requires that, and requires the guard to dominate publication.
+- **Decoding.** `decode_next` yields a rune by value at a hidden view-relative
+  cursor. It is an observation behind the view's validity guard.
+- **Native lowering.** Lowering below the Sec dialect is P23.
 
 ---
 

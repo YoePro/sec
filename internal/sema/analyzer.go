@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"math/big"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -46,7 +45,11 @@ type Analyzer struct {
 	ownedCleanupParameters      map[BindingID]ownedCleanupParameter
 	ownedCleanupCancellations   map[sourceTokenKey][]ResolvedOwnedCleanupCancellation
 	ownedCleanupDeclarations    map[BindingID]*ast.LetStatement
-	ownedCleanupAssignments     map[*ast.AssignmentStatement]ResolvedOwnedCleanupAssignment
+	// matchArmValueContext is true while the arms of a match expression are
+	// analyzed: a continuing block arm then yields its final expression
+	// (flowcontrol_match.md § 21).
+	matchArmValueContext    bool
+	ownedCleanupAssignments map[*ast.AssignmentStatement]ResolvedOwnedCleanupAssignment
 	// analyzedContractNodes tracks exact declarations consumed during this analysis.
 	// Rules: rules/compiler/compiler_pipeline.md — lowering prerequisites.
 	analyzedContractNodes  map[ast.Contract]bool
@@ -90,8 +93,8 @@ type Analyzer struct {
 	genericTypes                 map[string]Type
 	genericTypeInstances         map[genericInstanceKey]Type
 	genericFuncInstances         map[genericInstanceKey]Function
-	symbols                      map[string]Symbol
-	completionSymbols            map[string]Symbol
+	symbols                      *symbolTable
+	completionSymbols            *symbolTable
 	predeclaredStatic            map[sourceTokenKey]bool
 	expressionTypes              map[ast.Expression]Type
 	expectedExpressionTypes      map[ast.Expression]Type
@@ -417,7 +420,7 @@ type Analyzer struct {
 	inUnsafe                    bool
 	switchCaseBody              *ast.BlockStatement
 	inDeferBlock                bool
-	deferOuterSymbols           map[string]Symbol
+	deferOuterSymbols           *symbolTable
 	deferCaptures               map[string]borrowRecord
 	suppressPlaceRootRead       int
 	placeBaseExpr               ast.Expression
@@ -651,8 +654,8 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.discardStates = map[*ast.DiscardStatement]DiscardSourceState{}
 	a.implicitDiscards = map[*ast.ExpressionStatement]Error{}
 	a.implStorageConflicts = nil
-	a.symbols = map[string]Symbol{}
-	a.completionSymbols = map[string]Symbol{}
+	a.symbols = newSymbolTable()
+	a.completionSymbols = newSymbolTable()
 	a.predeclaredStatic = map[sourceTokenKey]bool{}
 	a.expressionTypes = map[ast.Expression]Type{}
 	a.expectedExpressionTypes = map[ast.Expression]Type{}
@@ -1169,11 +1172,11 @@ func (a *Analyzer) Functions() map[string][]Function {
 }
 
 func (a *Analyzer) Symbols() map[string]Symbol {
-	out := make(map[string]Symbol, len(a.symbols)+len(a.completionSymbols))
-	for name, symbol := range a.completionSymbols {
+	out := make(map[string]Symbol, a.symbols.len()+a.completionSymbols.len())
+	for name, symbol := range a.completionSymbols.all() {
 		out[name] = cloneSymbol(symbol)
 	}
-	for name, symbol := range a.symbols {
+	for name, symbol := range a.symbols.all() {
 		out[name] = cloneSymbol(symbol)
 	}
 	return out
@@ -2278,7 +2281,7 @@ func (a *Analyzer) analyzeStatement(stmt ast.Statement) {
 		a.analyzeExpressionStatement(stmt)
 	case *ast.ReturnStatement:
 		if a.inDeferBlock {
-			a.addErrorAtToken(stmt.Token, "return is not allowed inside defer")
+			a.reportInvalidDeferredCleanup(stmt.Token, "return")
 			return
 		}
 		if a.currentTest != nil {
@@ -2303,7 +2306,7 @@ func (a *Analyzer) analyzeStatement(stmt ast.Statement) {
 		a.analyzeMatchStatement(stmt)
 	case *ast.FallthroughStatement:
 		if a.inDeferBlock {
-			a.addErrorAtToken(stmt.Token, "fallthrough is not allowed inside defer")
+			a.reportInvalidDeferredCleanup(stmt.Token, "fallthrough")
 			return
 		}
 		if !a.isDirectSwitchFallthrough(stmt) {
@@ -2311,7 +2314,7 @@ func (a *Analyzer) analyzeStatement(stmt ast.Statement) {
 		}
 	case *ast.BreakStatement:
 		if a.inDeferBlock {
-			a.addErrorAtToken(stmt.Token, "break is not allowed inside defer")
+			a.reportInvalidDeferredCleanup(stmt.Token, "break")
 			return
 		}
 		if a.loopDepth == 0 {
@@ -2322,7 +2325,7 @@ func (a *Analyzer) analyzeStatement(stmt ast.Statement) {
 		}
 	case *ast.ContinueStatement:
 		if a.inDeferBlock {
-			a.addErrorAtToken(stmt.Token, "continue is not allowed inside defer")
+			a.reportInvalidDeferredCleanup(stmt.Token, "continue")
 			return
 		}
 		if a.loopDepth == 0 {
@@ -2379,63 +2382,6 @@ func (a *Analyzer) analyzeTestReturnStatement(statement *ast.ReturnStatement) {
 		"test %q cannot return a value; use bare return to end the test invocation",
 		testName,
 	)
-}
-
-// analyzeBlockStatements analyzes a lexical block and reports the first
-// statement that cannot execute after a preceding terminating statement.
-//
-// Rules: rules/tooling/diagnostics.md — §21(3)–(5) (S3001);
-// rules/control-flow/flowcontrol_if.md — §20 "Constant conditions and unreachable code";
-// rules/mlir/packages/sec-mlir-dialect_package17.md — §§36,39 (lexical cleanup identity).
-func (a *Analyzer) analyzeBlockStatements(block *ast.BlockStatement) {
-	if block == nil {
-		return
-	}
-	defer a.enterCleanupScope(block)()
-
-	symbolsBefore := map[string]bool{}
-	for name := range a.symbols {
-		symbolsBefore[name] = true
-	}
-	a.scopeDepth++
-	refinementCount := len(a.activeConditionFacts)
-	defer func() {
-		a.activeConditionFacts = a.activeConditionFacts[:refinementCount]
-		newNames := make([]string, 0)
-		for name := range a.symbols {
-			if !symbolsBefore[name] {
-				newNames = append(newNames, name)
-			}
-		}
-		sort.Strings(newNames)
-		for _, name := range newNames {
-			a.checkUnresolvedTaskAtScopeExit(name)
-			a.checkUnclosedResourceAtScopeExit(name)
-			a.clearScopedBindingFromLoopEdges(name)
-			a.endBorrowsHeldBy(name)
-			delete(a.localRefContainers, name)
-		}
-		a.scopeDepth--
-	}()
-
-	unreachable := false
-	a.statementFrames = append(a.statementFrames, statementFrame{block: block, depth: a.scopeDepth})
-	frame := len(a.statementFrames) - 1
-	defer func() { a.statementFrames = a.statementFrames[:frame] }()
-	for index, stmt := range block.Statements {
-		if unreachable {
-			a.addErrorAtTokenWithMetadata(statementToken(stmt), diagnostics.UnreachableStatement,
-				"A preceding statement ends this block on every path. Remove this statement or change the control flow.",
-				"unreachable statement")
-			break
-		}
-		a.statementFrames[frame].index = index
-		a.releaseDeadReferenceHolders(statementToken(stmt))
-		a.analyzeStatement(stmt)
-		if a.statementTerminatesBlock(stmt) {
-			unreachable = true
-		}
-	}
 }
 
 // isCallLikeExpression identifies standalone calls and constructions whose
@@ -2562,7 +2508,7 @@ func expressionStatementDisplayName(expr ast.Expression) string {
 }
 
 func (a *Analyzer) checkUnresolvedTaskAtScopeExit(name string) {
-	symbol, ok := a.symbols[name]
+	symbol, ok := a.symbols.lookup(name)
 	if !ok || (!isTaskType(symbol.Type) && !isThreadType(symbol.Type)) {
 		return
 	}
@@ -2577,7 +2523,7 @@ func (a *Analyzer) checkUnresolvedTaskAtScopeExit(name string) {
 }
 
 func (a *Analyzer) checkUnclosedResourceAtScopeExit(name string) {
-	symbol, ok := a.symbols[name]
+	symbol, ok := a.symbols.lookup(name)
 	if !ok || !isCloseTrackedResourceType(symbol.Type) {
 		return
 	}
@@ -2675,7 +2621,7 @@ func (a *Analyzer) analyzeDetachStatement(stmt *ast.DetachStatement) {
 
 func (a *Analyzer) analyzeCancelStatement(stmt *ast.CancelStatement) {
 	if a.inDeferBlock {
-		a.addErrorAtToken(stmt.Token, "cancel is not allowed inside defer")
+		a.reportInvalidDeferredCleanup(stmt.Token, "cancel")
 		return
 	}
 	if a.cancellableDepth > 0 {
@@ -2687,7 +2633,7 @@ func (a *Analyzer) analyzeCancelStatement(stmt *ast.CancelStatement) {
 func (a *Analyzer) bindAvailabilityPlaceRoot(expr ast.Expression) {
 	switch expr := expr.(type) {
 	case *ast.Identifier:
-		if symbol, ok := a.symbols[expr.Value]; ok {
+		if symbol, ok := a.symbols.lookup(expr.Value); ok {
 			a.bindDefinition(expr.Token, symbol.Token)
 		}
 	case *ast.MemberExpression:
@@ -2801,18 +2747,22 @@ type branchAnalysis struct {
 // lexical scope state needed to replay the body.
 type loopIterationAnalysisState struct {
 	loopEdgeState
-	symbols           map[string]Symbol
-	completionSymbols map[string]Symbol
+	symbols           *symbolTable
+	completionSymbols *symbolTable
 	definitionTokens  map[sourceTokenKey][]lexer.Token
 	constInts         map[string]*big.Int
 	scopeDepth        int
 }
 
 func (a *Analyzer) captureLoopIterationAnalysisState() loopIterationAnalysisState {
+	// The snapshot and the continuing analysis each get a layer over the
+	// current one, which is no longer written (symbolTable invariant).
+	snapshot, completionSnapshot := a.symbols.child(), a.completionSymbols.child()
+	a.symbols, a.completionSymbols = a.symbols.child(), a.completionSymbols.child()
 	return loopIterationAnalysisState{
 		loopEdgeState:     a.captureLoopEdgeState(),
-		symbols:           copySymbols(a.symbols),
-		completionSymbols: copySymbols(a.completionSymbols),
+		symbols:           snapshot,
+		completionSymbols: completionSnapshot,
 		definitionTokens:  copyDefinitionTokens(a.definitionTokens),
 		constInts:         copyConstInts(a.constInts),
 		scopeDepth:        a.scopeDepth,
@@ -2833,7 +2783,7 @@ func (a *Analyzer) analyzeBranchBlock(block *ast.BlockStatement) branchAnalysis 
 	previousBorrows := a.borrows
 	previousLocalRefContainers := a.localRefContainers
 	previousArenaGenerations := a.arenaGenerations
-	a.symbols = copySymbols(previousSymbols)
+	a.symbols = previousSymbols.child()
 	a.constInts = copyConstInts(previousConstInts)
 	a.assigned = copyAssigned(previousAssigned)
 	a.moved = copyMoved(previousMoved)
@@ -3053,7 +3003,7 @@ func (a *Analyzer) checkMutexGuardsAcrossSelect(token lexer.Token) {
 //   - rules/concurrency/await.md — §42 "Mutex guards across await"
 //   - rules/concurrency/select.md — "Mutex guards across select"
 func (a *Analyzer) checkLiveMutexGuardsAcrossBoundary(token lexer.Token, boundary string) {
-	for name, symbol := range a.symbols {
+	for name, symbol := range a.symbols.all() {
 		if !isMutexGuardType(symbol.Type) {
 			continue
 		}
@@ -3197,7 +3147,7 @@ func (a *Analyzer) selectMovedMessageResource(branch *ast.SelectBranch) (selectR
 	if !ok {
 		return selectResource{}, false
 	}
-	symbol, ok := a.symbols[root]
+	symbol, ok := a.symbols.lookup(root)
 	if !ok || !requiresOwnershipTransfer(symbol.Type) {
 		return selectResource{}, false
 	}
@@ -3214,7 +3164,7 @@ func (a *Analyzer) analyzeSelectBranchBody(branch *ast.SelectBranch) branchAnaly
 	previousBorrows := a.borrows
 	previousLocalRefContainers := a.localRefContainers
 	previousArenaGenerations := a.arenaGenerations
-	a.symbols = copySymbols(previousSymbols)
+	a.symbols = previousSymbols.child()
 	a.constInts = copyConstInts(previousConstInts)
 	a.assigned = copyAssigned(previousAssigned)
 	a.moved = copyMoved(previousMoved)
@@ -3277,7 +3227,7 @@ func (a *Analyzer) analyzeUnsafeStatement(stmt *ast.UnsafeStatement) {
 	previousAssigned := a.assigned
 	previousUnsafe := a.inUnsafe
 
-	a.symbols = copySymbols(previousSymbols)
+	a.symbols = previousSymbols.child()
 	a.constInts = copyConstInts(previousConstInts)
 	a.assigned = copyAssigned(previousAssigned)
 	a.inUnsafe = true
@@ -3823,14 +3773,14 @@ func (a *Analyzer) defineImplicitImplInstanceSymbols(block *ast.BlockStatement, 
 }
 
 func (a *Analyzer) defineInstanceSymbols(target Type, mutableSelf bool, selfToken lexer.Token) {
-	a.symbols["self"] = Symbol{Name: "self", Type: target, Mutable: mutableSelf, Token: selfToken, Storage: StorageOriginAutomatic, Local: false, ScopeDepth: 0}
+	a.symbols.set("self", Symbol{Name: "self", Type: target, Mutable: mutableSelf, Token: selfToken, Storage: StorageOriginAutomatic, Local: false, ScopeDepth: 0})
 	a.assigned["self"] = true
 	delete(a.constInts, "self")
 	for _, field := range target.Fields {
-		if _, exists := a.symbols[field.Name]; exists {
+		if _, exists := a.symbols.lookup(field.Name); exists {
 			continue
 		}
-		a.symbols[field.Name] = Symbol{Name: field.Name, Type: field.Type, Mutable: mutableSelf, ImplicitMember: true, Token: field.Token, Storage: StorageOriginAutomatic, Local: false, ScopeDepth: 0}
+		a.symbols.set(field.Name, Symbol{Name: field.Name, Type: field.Type, Mutable: mutableSelf, ImplicitMember: true, Token: field.Token, Storage: StorageOriginAutomatic, Local: false, ScopeDepth: 0})
 		a.assigned[field.Name] = true
 		delete(a.constInts, field.Name)
 	}
@@ -3838,10 +3788,10 @@ func (a *Analyzer) defineInstanceSymbols(target Type, mutableSelf bool, selfToke
 		if field.Name == "_" {
 			continue
 		}
-		if _, exists := a.symbols[field.Name]; exists {
+		if _, exists := a.symbols.lookup(field.Name); exists {
 			continue
 		}
-		a.symbols[field.Name] = Symbol{Name: field.Name, Type: field.Type, Mutable: mutableSelf, ImplicitMember: true, Token: field.Token, Storage: StorageOriginAutomatic, Local: false, ScopeDepth: 0, RegisterAccess: field.Access}
+		a.symbols.set(field.Name, Symbol{Name: field.Name, Type: field.Type, Mutable: mutableSelf, ImplicitMember: true, Token: field.Token, Storage: StorageOriginAutomatic, Local: false, ScopeDepth: 0, RegisterAccess: field.Access})
 		a.assigned[field.Name] = true
 		delete(a.constInts, field.Name)
 	}
@@ -3849,18 +3799,18 @@ func (a *Analyzer) defineInstanceSymbols(target Type, mutableSelf bool, selfToke
 		if property.Static {
 			continue
 		}
-		if _, exists := a.symbols[property.Name]; exists {
+		if _, exists := a.symbols.lookup(property.Name); exists {
 			continue
 		}
-		a.symbols[property.Name] = Symbol{Name: property.Name, Type: property.Type, Mutable: mutableSelf && property.HasSetter, ImplicitMember: true, Token: property.Token, Storage: StorageOriginAutomatic, Local: false, ScopeDepth: 0}
+		a.symbols.set(property.Name, Symbol{Name: property.Name, Type: property.Type, Mutable: mutableSelf && property.HasSetter, ImplicitMember: true, Token: property.Token, Storage: StorageOriginAutomatic, Local: false, ScopeDepth: 0})
 		a.assigned[property.Name] = true
 		delete(a.constInts, property.Name)
 	}
 	for _, event := range target.Events {
-		if _, exists := a.symbols[event.Name]; exists {
+		if _, exists := a.symbols.lookup(event.Name); exists {
 			continue
 		}
-		a.symbols[event.Name] = Symbol{Name: event.Name, Type: event.Type, Mutable: false, ImplicitMember: true, Token: event.Token, Storage: StorageOriginAutomatic, Local: false, ScopeDepth: 0}
+		a.symbols.set(event.Name, Symbol{Name: event.Name, Type: event.Type, Mutable: false, ImplicitMember: true, Token: event.Token, Storage: StorageOriginAutomatic, Local: false, ScopeDepth: 0})
 		a.assigned[event.Name] = true
 		delete(a.constInts, event.Name)
 	}
@@ -4893,7 +4843,7 @@ func (a *Analyzer) matchScopedReferenceOriginInExpression(expr ast.Expression) (
 		if origin, ok := a.localRefContainers[expr.Value]; ok && origin.MatchScoped {
 			return origin.Name, origin.Token, true
 		}
-		if symbol, ok := a.symbols[expr.Value]; ok && typeCarriesReferenceOrigin(symbol.Type) && symbol.Type.ReferenceOriginMatchScoped {
+		if symbol, ok := a.symbols.lookup(expr.Value); ok && typeCarriesReferenceOrigin(symbol.Type) && symbol.Type.ReferenceOriginMatchScoped {
 			return symbol.Type.ReferenceOriginName, symbol.Type.ReferenceOriginToken, true
 		}
 	case *ast.CallExpression:
@@ -4988,7 +4938,7 @@ func (a *Analyzer) matchScopedReferenceOriginInExpression(expr ast.Expression) (
 			if origin, ok := a.localRefContainers[capture.Name.Value]; ok && origin.MatchScoped {
 				return origin.Name, origin.Token, true
 			}
-			if symbol, ok := a.symbols[capture.Name.Value]; ok && typeCarriesReferenceOrigin(symbol.Type) && symbol.Type.ReferenceOriginMatchScoped {
+			if symbol, ok := a.symbols.lookup(capture.Name.Value); ok && typeCarriesReferenceOrigin(symbol.Type) && symbol.Type.ReferenceOriginMatchScoped {
 				return symbol.Type.ReferenceOriginName, symbol.Type.ReferenceOriginToken, true
 			}
 		}
@@ -5011,6 +4961,9 @@ func (a *Analyzer) localReferenceOriginForTransfer(value ast.Expression) (localR
 }
 
 func (a *Analyzer) referencePlaceOriginIsAmbiguous(expr ast.Expression) bool {
+	if origin, ok := a.expressionReferenceOrigins[expr]; ok && origin.Unknown {
+		return true
+	}
 	if origin, ok := a.containedOriginForAccess(expr); ok {
 		return origin.Unknown
 	}
@@ -5100,7 +5053,7 @@ func (a *Analyzer) updateContainedOriginsForAssignment(target ast.Expression, va
 	if !ok || path == "" {
 		return
 	}
-	symbol, ok := a.symbols[root]
+	symbol, ok := a.symbols.lookup(root)
 	if !ok || !symbol.Local || typeCarriesReferenceOrigin(symbol.Type) {
 		return
 	}
@@ -5193,6 +5146,10 @@ func uniquePlaces(places []Place) []Place {
 
 func (a *Analyzer) localReferenceOriginInExpression(expr ast.Expression) (string, lexer.Token, bool) {
 	switch expr := expr.(type) {
+	case *ast.TryExpression:
+		if origin, ok := a.expressionReferenceOrigins[expr]; ok && origin.Local {
+			return origin.Name, origin.Token, true
+		}
 	case *ast.RefExpression:
 		originName, originToken, originLocal, _, _ := a.referenceOriginForExpression(expr.Value)
 		if originLocal {
@@ -5214,7 +5171,7 @@ func (a *Analyzer) localReferenceOriginInExpression(expr ast.Expression) (string
 				return origin.Name, origin.Token, true
 			}
 		}
-		symbol, ok := a.symbols[expr.Value]
+		symbol, ok := a.symbols.lookup(expr.Value)
 		if ok && typeCarriesReferenceOrigin(symbol.Type) && symbol.Type.ReferenceOriginLocal {
 			return symbol.Type.ReferenceOriginName, symbol.Type.ReferenceOriginToken, true
 		}
@@ -5293,7 +5250,7 @@ func (a *Analyzer) localReferenceOriginInExpression(expr ast.Expression) (string
 			if capture.Name == nil {
 				continue
 			}
-			symbol, ok := a.symbols[capture.Name.Value]
+			symbol, ok := a.symbols.lookup(capture.Name.Value)
 			if ok && typeCarriesReferenceOrigin(symbol.Type) && symbol.Type.ReferenceOriginLocal {
 				return symbol.Type.ReferenceOriginName, symbol.Type.ReferenceOriginToken, true
 			}
@@ -5482,14 +5439,6 @@ func (a *Analyzer) analyzeReturnTryResultForwarding(functionName string, returnT
 	a.recordFunctionReturnOrigin(expected, expr)
 	a.markResourceTransfer(expr.Expression)
 	a.markMoveSource(expr.Expression)
-}
-
-func copySymbols(in map[string]Symbol) map[string]Symbol {
-	out := make(map[string]Symbol, len(in))
-	for name, symbol := range in {
-		out[name] = cloneSymbol(symbol)
-	}
-	return out
 }
 
 // cloneSymbol detaches analysis-owned callable target storage whenever symbol
@@ -5987,14 +5936,14 @@ func (a *Analyzer) checkLoopBackedgeFixedPoint(
 	previousCallGraphPathReachable := a.callGraphPathReachable
 	previousWarningCount := len(a.warnings)
 
-	a.symbols = copySymbols(entry.symbols)
+	a.symbols = entry.symbols.child()
 	for name, origin := range headerReferenceOrigins {
-		if symbol, ok := a.symbols[name]; ok {
+		if symbol, ok := a.symbols.lookup(name); ok {
 			symbol.Type = referenceTypeWithOrigin(symbol.Type, origin)
-			a.symbols[name] = symbol
+			a.symbols.set(name, symbol)
 		}
 	}
-	a.completionSymbols = copySymbols(entry.completionSymbols)
+	a.completionSymbols = entry.completionSymbols.child()
 	a.definitionTokens = copyDefinitionTokens(entry.definitionTokens)
 	a.constInts = copyConstInts(entry.constInts)
 	a.assigned = copyAssigned(entry.assigned)
@@ -7558,13 +7507,13 @@ func (a *Analyzer) analyzeImplAssociatedLet(targetName string, stmt *ast.LetStat
 			return
 		}
 	}
-	if previous, exists := a.symbols[qualifiedName]; exists {
+	if previous, exists := a.symbols.lookup(qualifiedName); exists {
 		a.addErrorAtToken(stmt.Name.Token, "associated member %s already declared at %d:%d, previous declaration at %d:%d", qualifiedName, stmt.Name.Token.Line, stmt.Name.Token.Column, previous.Token.Line, previous.Token.Column)
 		return
 	}
 	symbol := Symbol{Name: qualifiedName, Type: declaredType, Mutable: stmt.Mutable, Token: stmt.Name.Token, Storage: StorageOriginStatic, Local: false}
-	a.symbols[qualifiedName] = symbol
-	a.completionSymbols[qualifiedName] = symbol
+	a.symbols.set(qualifiedName, symbol)
+	a.completionSymbols.set(qualifiedName, symbol)
 	a.assigned[qualifiedName] = stmt.Value != nil
 	a.recordDefinition(stmt.Name.Token)
 }
@@ -7914,7 +7863,7 @@ func (a *Analyzer) analyzePropertyAccessorBody(target Type, name string, body *a
 	previousFunctionReturn := a.currentFunctionReturn
 	previousInFunctionBody := a.inFunctionBody
 	previousScopeDepth := a.scopeDepth
-	a.symbols = copySymbols(previousSymbols)
+	a.symbols = previousSymbols.child()
 	a.constInts = copyConstInts(previousConstInts)
 	a.assigned = copyAssigned(previousAssigned)
 	a.moved = map[string]lexer.Token{}
@@ -7950,7 +7899,7 @@ func (a *Analyzer) analyzePropertyAccessorBody(target Type, name string, body *a
 		// rules/foundations/names_scopes_visibility.md §8: the setter value
 		// parameter must not silently replace a visible declaration.
 		a.validateParameterTypeShadowing(setterParameter)
-		a.symbols[setterParameter.Value] = Symbol{Name: setterParameter.Value, Type: setterType, Mutable: false, Token: setterParameter.Token, Storage: StorageOriginAutomatic, Local: true, ScopeDepth: 0}
+		a.symbols.set(setterParameter.Value, Symbol{Name: setterParameter.Value, Type: setterType, Mutable: false, Token: setterParameter.Token, Storage: StorageOriginAutomatic, Local: true, ScopeDepth: 0})
 		a.assigned[setterParameter.Value] = true
 		delete(a.constInts, setterParameter.Value)
 	}
@@ -8002,11 +7951,11 @@ func statementReturnsErr(stmt ast.Statement) bool {
 func (a *Analyzer) defineOrReuseStaticSymbol(name string, typ Type, mutable bool, token lexer.Token) bool {
 	key := sourceTokenLocation(token)
 	if a.predeclaredStatic[key] {
-		symbol := a.symbols[name]
+		symbol := a.symbols.get(name)
 		symbol.Type = typ
 		symbol.Mutable = mutable
-		a.symbols[name] = symbol
-		a.completionSymbols[name] = symbol
+		a.symbols.set(name, symbol)
+		a.completionSymbols.set(name, symbol)
 		return true
 	}
 	return a.defineSymbol(name, typ, mutable, token)
@@ -8027,7 +7976,7 @@ func (a *Analyzer) analyzeAddressedLetStatement(stmt *ast.LetStatement, declared
 
 	endpoint, bound := a.resolveAddressEndpoint(stmt)
 
-	symbol := a.symbols[stmt.Name.Value]
+	symbol := a.symbols.get(stmt.Name.Value)
 	// MD-077 § 4(7): the binding denotes the software instance of T.
 	a.requireHardwareImpl(declaredType, stmt.Type.Token)
 	symbol.Type = hardwareInstanceType(declaredType)
@@ -8041,7 +7990,7 @@ func (a *Analyzer) analyzeAddressedLetStatement(stmt *ast.LetStatement, declared
 	// hardware region remains Unknown until a target contract proves more.
 	symbol.Storage = StorageOriginUnknown
 	symbol.AddressStability = AddressStabilityFixed
-	a.symbols[stmt.Name.Value] = symbol
+	a.symbols.set(stmt.Name.Value, symbol)
 	a.assigned[stmt.Name.Value] = true
 }
 
@@ -8082,7 +8031,7 @@ func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement, all
 		return
 	}
 
-	symbol, ok := a.symbols[target.Value]
+	symbol, ok := a.symbols.lookup(target.Value)
 	if !ok {
 		a.addErrorAtToken(target.Token, "undefined variable %s", target.Value)
 		return
@@ -8215,7 +8164,7 @@ func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement, all
 		referenceRebindCommitted = true
 		if typeCarriesReferenceOrigin(symbol.Type) && typeCarriesReferenceOrigin(exprType) {
 			symbol.Type = referenceTypeWithOrigin(symbol.Type, exprType)
-			a.symbols[symbol.Name] = symbol
+			a.symbols.set(symbol.Name, symbol)
 		}
 		delete(a.localRefContainers, symbol.Name)
 		a.markLocalRefContainerFromValue(symbol.Name, stmt.Value)
@@ -8407,7 +8356,7 @@ func (a *Analyzer) transferBorrowHolderFromExpression(expr ast.Expression, holde
 	if !ok || holder == "" || ident.Value == holder {
 		return
 	}
-	symbol, ok := a.symbols[ident.Value]
+	symbol, ok := a.symbols.lookup(ident.Value)
 	if !ok || !MoveOnly(symbol.Type) || symbol.Type.Kind != ReferenceType && symbol.Type.Name != "Arena" {
 		return
 	}
@@ -8457,18 +8406,18 @@ func (a *Analyzer) updateReferenceSymbolOrigin(name string, typ Type) {
 	if !typeCarriesReferenceOrigin(typ) {
 		return
 	}
-	symbol, ok := a.symbols[name]
+	symbol, ok := a.symbols.lookup(name)
 	if !ok {
 		return
 	}
 	symbol.Type = typ
-	a.symbols[name] = symbol
+	a.symbols.set(name, symbol)
 }
 
 // variadicPackSymbol identifies a callee-local pack binding for the pack
 // escape restrictions in rules/declarations/functions.md sections 32 and 34.
 func (a *Analyzer) variadicPackSymbol(name string) bool {
-	symbol, ok := a.symbols[name]
+	symbol, ok := a.symbols.lookup(name)
 	return ok && variadicPackValue(symbol.Type)
 }
 
@@ -9657,7 +9606,7 @@ func (a *Analyzer) lookupStaticSymbolOnMember(expr *ast.MemberExpression) (Symbo
 	if _, ok := a.types[typeName]; !ok {
 		return Symbol{}, false
 	}
-	symbol, ok := a.symbols[typeName+"."+expr.Property.Value]
+	symbol, ok := a.symbols.lookup(typeName + "." + expr.Property.Value)
 	return symbol, ok && symbol.Storage == StorageOriginStatic
 }
 
@@ -9677,7 +9626,7 @@ func (a *Analyzer) symbolForMemberObject(expr ast.Expression) (Symbol, bool) {
 	if !ok {
 		return Symbol{}, false
 	}
-	symbol, ok := a.symbols[ident.Value]
+	symbol, ok := a.symbols.lookup(ident.Value)
 	return symbol, ok
 }
 
@@ -10119,46 +10068,6 @@ func compilerKnownReceiverRoot(expr ast.Expression) *ast.Identifier {
 	}
 }
 
-func (a *Analyzer) rawPointerCallMayHaveValueReceiver(expr ast.Expression) bool {
-	switch expr := expr.(type) {
-	case *ast.Identifier:
-		_, exists := a.symbols[expr.Value]
-		return exists
-	case *ast.MemberExpression:
-		return a.rawPointerCallMayHaveValueReceiver(expr.Object)
-	case *ast.IndexExpression:
-		return true
-	case *ast.CallExpression, *ast.ConversionExpression, *ast.RefExpression, *ast.AwaitExpression, *ast.TryExpression:
-		return true
-	default:
-		return false
-	}
-}
-
-func (a *Analyzer) rawPointerOperationRequiresUnsafe(token lexer.Token, operation string) bool {
-	if a.inUnsafe {
-		return true
-	}
-	a.addErrorAtToken(token, "%s requires unsafe because it performs raw-pointer arithmetic", operation)
-	return false
-}
-
-func (a *Analyzer) rawPointerArgumentIsInt(expr ast.Expression, operation string) bool {
-	argType, _ := a.inferExpression(expr)
-	if argType.Kind == InvalidType {
-		return false
-	}
-	if argType.Kind != IntType || argType.Name != "int" {
-		a.addErrorAtToken(expressionToken(expr), "%s argument must be int, got %s", operation, typeDisplayName(argType))
-		return false
-	}
-	return true
-}
-
-func isRawBytePointer(typ Type) bool {
-	return typ.Kind == RawPtrType && len(typ.TypeArgs) == 1 && typ.TypeArgs[0].Name == "byte"
-}
-
 type eventReceiverInfo struct {
 	Type  Type
 	Name  string
@@ -10223,7 +10132,7 @@ func (a *Analyzer) compilerKnownReceiverType(expr ast.Expression) (Type, bool) {
 	if !ok {
 		return Type{}, false
 	}
-	symbol, ok := a.symbols[ident.Value]
+	symbol, ok := a.symbols.lookup(ident.Value)
 	if !ok {
 		return Type{}, false
 	}
@@ -10427,7 +10336,7 @@ func (a *Analyzer) methodCallReceiver(expr *ast.CallExpression) (methodReceiverI
 
 func (a *Analyzer) expressionNamesType(expr ast.Expression) bool {
 	if ident, ok := expr.(*ast.Identifier); ok {
-		if _, exists := a.symbols[ident.Value]; exists {
+		if _, exists := a.symbols.lookup(ident.Value); exists {
 			return false
 		}
 	}
@@ -11109,7 +11018,7 @@ func (a *Analyzer) checkTryResidualPropagation(expr *ast.TryExpression, errorTyp
 	}
 	switch {
 	case a.inDeferBlock:
-		a.addErrorAtTokenWithMetadata(expr.Token, diagnostics.TryResidualUnpropagatable, "Handlers in a try are partial: failures they do not match leave the function through return Err. Add a catch-all Err(_) handler, or return a Result whose error channel accepts the remaining failures.", "try handlers leave %s unhandled, and they cannot propagate from inside defer; add Err(_) => ... to handle the remaining errors", unhandled)
+		a.addErrorAtTokenWithMetadata(expr.Token, diagnostics.TryResidualUnpropagatable, deferredPropagationHelp(), "try handlers leave %s unhandled, and they cannot propagate from inside defer; add Err(_) => ... to handle the remaining errors", unhandled)
 		return false
 	case !a.inFunctionBody:
 		a.addErrorAtTokenWithMetadata(expr.Token, diagnostics.TryResidualUnpropagatable, "Handlers in a try are partial: failures they do not match leave the function through return Err. Add a catch-all Err(_) handler, or return a Result whose error channel accepts the remaining failures.", "try handlers leave %s unhandled, and they cannot propagate outside a function; add Err(_) => ... to handle the remaining errors", unhandled)
@@ -11358,15 +11267,25 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 		if !valueContext || armType.Kind == InvalidType {
 			return
 		}
+		body := arm.Body
+		if body == nil {
+			// A value-producing arm block yields its final expression (§ 21).
+			if final, ok := tryHandlerBlockValue(arm.BlockBody); ok {
+				body = final
+			}
+		}
 		if !hasResultType {
 			resultType = armType
 			hasResultType = true
 			return
 		}
-		if !a.canInitializeUnrecorded(resultType, armType, arm.Body) && !a.canInitializeUnrecorded(armType, resultType, arm.Body) {
-			a.addErrorAtToken(expressionToken(arm.Body), "match arms must produce compatible types, got %s and %s", typeDisplayName(resultType), typeDisplayName(armType))
+		if !a.canInitializeUnrecorded(resultType, armType, body) && !a.canInitializeUnrecorded(armType, resultType, body) {
+			a.addErrorAtToken(expressionToken(body), "match arms must produce compatible types, got %s and %s", typeDisplayName(resultType), typeDisplayName(armType))
 		}
 	}
+	previousArmValueContext := a.matchArmValueContext
+	a.matchArmValueContext = valueContext
+	defer func() { a.matchArmValueContext = previousArmValueContext }()
 
 	for sourceIndex, arm := range expr.Arms {
 		if arm == nil || arm.Pattern == nil {
@@ -12061,6 +11980,10 @@ func (a *Analyzer) resolvedMatchArmFromAnalysis(subjectType Type, sourceIndex in
 			resolved.Flow = MatchArmTerminates
 		}
 	case arm.Body != nil && valueContext:
+		resolved.Flow = MatchArmProducesValue
+	case arm.BlockBody != nil && valueContext:
+		// A continuing arm block of a match expression yields its final
+		// expression (flowcontrol_match.md § 21).
 		resolved.Flow = MatchArmProducesValue
 	}
 	return resolved
@@ -12912,7 +12835,7 @@ func (a *Analyzer) defineSymbol(name string, typ Type, mutable bool, token lexer
 		a.addErrorAtToken(token, "name %s is compiler-known and cannot be declared", name)
 		return false
 	}
-	if previous, exists := a.symbols[name]; exists {
+	if previous, exists := a.symbols.lookup(name); exists {
 		if !previous.ImplicitMember {
 			a.appendError(Error{
 				ID:             diagnostics.DuplicateLocalVariable,
@@ -12941,8 +12864,8 @@ func (a *Analyzer) defineSymbol(name string, typ Type, mutable bool, token lexer
 		storage = StorageOriginStatic
 	}
 	symbol := Symbol{Name: name, Type: typ, Mutable: mutable, Token: token, Storage: storage, Local: a.inFunctionBody, ScopeDepth: a.scopeDepth}
-	a.symbols[name] = symbol
-	a.completionSymbols[name] = symbol
+	a.symbols.set(name, symbol)
+	a.completionSymbols.set(name, symbol)
 	a.recordDefinition(token)
 	if a.inFunctionBody {
 		a.recordBinding(token, BindingLocal, name, typ, mutable)

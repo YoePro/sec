@@ -1,0 +1,32 @@
+module main
+fn UseRune(value: rune) void {}
+@noPanic
+@noAlloc
+fn TryFor(text: ref string, a: uint, b: uint) Result[void, RangeError] {
+    for ch in try text[a..<b] { UseRune(ch) }
+    return Ok()
+}
+@noPanic
+fn Recover(text: ref string, fallback: ref string, a: uint, b: uint) StringView {
+    return try text[a..<b] { Err(_) => fallback[..] }
+}
+fn RecoverBlock(text: ref string, fallback: ref string, a: uint, b: uint) StringView {
+    return try text[a..<b] {
+        Err(_) => {
+            let recovered := fallback[..]
+            recovered
+        }
+    }
+}
+fn RecoverFor(text: ref string, fallback: ref string, a: uint, b: uint) void {
+    let view := try text[a..<b] { Err(_) => fallback[..] }
+    for ch in view { UseRune(ch) }
+}
+@noPanic
+fn ReturnView(text: ref string, a: uint, b: uint) Result[StringView, RangeError] {
+    return Ok(try text[a..<b])
+}
+fn Terminating(text: ref string, a: uint, b: uint) Result[StringView, RangeError] {
+    let view := try text[a..<b] { Err(e) => return Err(e) }
+    return Ok(view)
+}

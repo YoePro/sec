@@ -73,7 +73,17 @@ func tryHandlerBlockValue(block *ast.BlockStatement) (ast.Expression, bool) {
 func (a *Analyzer) analyzeTryHandlerBlockValue(handler *ast.TryHandler, value ast.Expression, successType Type) ResolvedTryHandlerFlow {
 	block := handler.BlockBody
 	prefix := &ast.BlockStatement{Token: block.Token, Tokens: block.Tokens, Statements: block.Statements[:len(block.Statements)-1]}
-	a.analyzeBlockStatements(prefix)
+	flow := TryHandlerInvalidFlow
+	a.analyzeBlockStatementsWithRecovery(block, func() {
+		flow = a.analyzeTryHandlerRecoveryValue(prefix, value, successType)
+	})
+	return flow
+}
+
+// analyzeTryHandlerRecoveryValue checks the final value while prefix-local
+// borrowed holders still retain their canonical backing origins.
+// Rules: rules/errors/errorhandling.md — §21.1; rules/memory/borrowing.md — §5.5.
+func (a *Analyzer) analyzeTryHandlerRecoveryValue(prefix *ast.BlockStatement, value ast.Expression, successType Type) ResolvedTryHandlerFlow {
 	if len(prefix.Statements) > 0 && !a.blockCanFallThrough(prefix) {
 		a.addErrorAtToken(expressionToken(value), "unreachable recovery value; the handler block already leaves control flow")
 		if a.blockDefinitelyReturns(prefix) {
@@ -89,6 +99,7 @@ func (a *Analyzer) analyzeTryHandlerBlockValue(handler *ast.TryHandler, value as
 		a.addErrorAtToken(expressionToken(value), "try handler must produce %s, got %s", typeDisplayName(successType), typeDisplayName(valueType))
 		return TryHandlerInvalidFlow
 	}
+	a.rememberStringViewRecovery(value, valueType)
 	return TryHandlerProducesValue
 }
 
@@ -106,7 +117,7 @@ func (a *Analyzer) rejectCarrierFamilyMismatch(pattern ast.Expression, subjectTy
 		a.addErrorAtToken(token, "Ok and Err patterns match Result values; %s uses Some(value) and None", typeDisplayName(subjectType))
 		return true
 	case family == "Option" && subjectType.Kind == ResultType:
-		if _, shadowed := a.symbols["None"]; shadowed {
+		if _, shadowed := a.symbols.lookup("None"); shadowed {
 			return false
 		}
 		a.addErrorAtToken(token, "Some and None patterns match Option values; %s uses Ok(value) and Err(error)", typeDisplayName(subjectType))
@@ -341,7 +352,7 @@ func (a *Analyzer) analyzeTryHandlerBody(handler *ast.TryHandler, successType Ty
 	// move/discard marker created for the handler binding when the arm ends.
 	previousBindingMoved := rootPlaceMovedState(a.moved, bindingName)
 	previousBindingMoveReasons := rootPlaceReasonState(a.availabilityStates, bindingName)
-	a.symbols = copySymbols(previousSymbols)
+	a.symbols = previousSymbols.child()
 	a.constInts = copyConstInts(previousConstInts)
 	if bindingName != "" {
 		clearRootPlaceStateMaps(a.moved, a.availabilityStates, bindingName)
@@ -352,7 +363,7 @@ func (a *Analyzer) analyzeTryHandlerBody(handler *ast.TryHandler, successType Ty
 			a.recordDefinition(bindingToken)
 			a.recordBinding(bindingToken, BindingLocal, bindingName, errorType, false)
 		}
-		a.symbols[bindingName] = Symbol{Name: bindingName, Type: errorType, Mutable: false, Token: bindingToken, Storage: StorageOriginAutomatic}
+		a.symbols.set(bindingName, Symbol{Name: bindingName, Type: errorType, Mutable: false, Token: bindingToken, Storage: StorageOriginAutomatic})
 		delete(a.constInts, bindingName)
 		defer a.enterOwnedHandlerBinding(handler, bindingName, errorType, bindingToken)()
 	}
@@ -384,6 +395,11 @@ func (a *Analyzer) analyzeTryHandlerBody(handler *ast.TryHandler, successType Ty
 
 	if handler.ReturnBody != nil {
 		a.analyzeReturnStatement(a.currentFunctionName, a.currentFunctionReturn, handler.ReturnBody)
+		// A handler arm's `return` leaves the invocation like a return
+		// statement and runs function cleanup (destruction.md § 6.2).
+		if a.inFunctionBody && a.currentTest == nil {
+			a.recordCleanupReturn(handler.ReturnBody)
+		}
 		return TryHandlerReturns
 	}
 
@@ -426,6 +442,9 @@ func (a *Analyzer) analyzeTryHandlerBody(handler *ast.TryHandler, successType Ty
 	}
 	if valueRequired && !a.canInitialize(successType, bodyType, handler.Body) {
 		a.addErrorAtToken(expressionToken(handler.Body), "try handler must produce %s, got %s", typeDisplayName(successType), typeDisplayName(bodyType))
+	}
+	if valueRequired {
+		a.rememberStringViewRecovery(handler.Body, bodyType)
 	}
 	return TryHandlerProducesValue
 }

@@ -171,6 +171,10 @@ func verifyReturnOriginRangeType(module *Module, fn *Function, origin ReturnOrig
 			if previousRange {
 				return fmt.Errorf("returned range path is not normalized")
 			}
+			if current.Kind == TypeString || current.Kind == TypeStringView {
+				current = Type{Kind: TypeStringView}
+				break
+			}
 			if current.Kind != TypeArray && current.Kind != TypeSharedSlice && current.Kind != TypeMutableSlice {
 				return fmt.Errorf("returned range requires a sequence origin")
 			}
@@ -207,7 +211,11 @@ func verifyReturnOriginRangeType(module *Module, fn *Function, origin ReturnOrig
 		}
 		previousRange = step.Kind == ReturnOriginSlice
 	}
-	if current.Kind == TypeSharedSlice || current.Kind == TypeMutableSlice {
+	if current.Kind == TypeStringView {
+		if returned.Kind != TypeStringView {
+			return fmt.Errorf("returned string range requires a StringView result")
+		}
+	} else if current.Kind == TypeSharedSlice || current.Kind == TypeMutableSlice {
 		if (returned.Kind != TypeSharedSlice && returned.Kind != TypeMutableSlice) || returned.Element != current.Element {
 			return fmt.Errorf("returned range requires compatible slice result")
 		}
@@ -226,7 +234,7 @@ func returnedSliceExtent(value ValueID, definitions map[ValueID]Operation, funct
 	}
 	op := definitions[value]
 	switch op.Kind {
-	case OpSliceBorrowShared, OpSliceBorrowMutable, OpSliceReborrowShared, OpSliceReborrowMutable:
+	case OpSliceBorrowShared, OpSliceBorrowMutable, OpSliceReborrowShared, OpSliceReborrowMutable, OpStringViewBorrow:
 		if len(op.Operands) >= 3 {
 			return returnedOriginConstant(op.Operands[2], definitions, functions, depth+1)
 		}

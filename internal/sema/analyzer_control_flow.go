@@ -35,7 +35,7 @@ func (a *Analyzer) constantConditionIntegerValue(expression ast.Expression) (*bi
 func (a *Analyzer) constantConditionReferencesMutableBinding(expression ast.Expression) bool {
 	switch expression := expression.(type) {
 	case *ast.Identifier:
-		symbol, exists := a.symbols[expression.Value]
+		symbol, exists := a.symbols.lookup(expression.Value)
 		// A mutable working binding that the function never assigns,
 		// mutably borrows, or captures keeps its value for its whole
 		// lifetime, like an immutable binding (stableBindingsOf).

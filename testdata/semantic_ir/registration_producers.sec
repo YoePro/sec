@@ -1,0 +1,77 @@
+module main
+
+// P17-19: registration producers for default-initialized declarations, stored-field and
+// nested-field replacement, and owned parameters replaced whole or through a
+// field (they live in storage from entry). Replacements inherit the live
+// registration (MD-125).
+// Rules: rules/memory/destruction.md §§ 6.1, 13; rules/compiler/semantic_ir.md § 40.
+
+type Handle struct {
+    id: int,
+}
+
+impl Handle {
+    free {
+    }
+}
+
+type Pair struct {
+    left:  Handle,
+    right: Handle,
+}
+
+fn Make(id: int) Handle {
+    return Handle { id: id }
+}
+
+fn Sink(->handle: Handle) void {
+}
+
+fn EmptyThenAssign() int {
+    let mut handle: Handle
+    handle = Make(1)
+    return handle.id
+}
+
+fn EmptyBranches(flag: bool) int {
+    let mut handle: Handle
+    if flag {
+        handle = Make(1)
+    } else {
+        handle = Make(2)
+    }
+    return handle.id
+}
+
+fn FieldReplace() int {
+    let mut pair := Pair { left: Make(1), right: Make(2) }
+    pair.left = Make(3)
+    return pair.left.id
+}
+
+fn ParameterReplace(handle: Handle) int {
+    let mut local :<- handle
+    local = Make(2)
+    return local.id
+}
+
+fn DirectParameter(handle: Handle) int {
+    handle = Make(2)
+    return handle.id
+}
+
+type Nest struct {
+    inner: Pair,
+    tag:   int,
+}
+
+fn NestedFieldReplace() int {
+    let mut nest := Nest { inner: Pair { left: Make(1), right: Make(2) }, tag: 1 }
+    nest.inner.right = Make(5)
+    return nest.inner.right.id
+}
+
+fn ParameterFieldReplace(pair: Pair) int {
+    pair.left = Make(9)
+    return pair.left.id
+}

@@ -18,7 +18,7 @@ func (a *Analyzer) activeProofFact(fact ResolvedConditionFact) activeConditionFa
 		proofTracked: true, proofBarrier: a.conditionProofBarrier, bindingVersions: map[string]uint64{}}
 	walkASTValue(reflect.ValueOf(fact.Condition), func(node any) {
 		if id, ok := node.(*ast.Identifier); ok {
-			if _, exists := a.symbols[id.Value]; exists {
+			if _, exists := a.symbols.lookup(id.Value); exists {
 				active.bindingVersions[id.Value] = a.conditionBindingVersions[id.Value]
 			}
 		}
@@ -40,7 +40,7 @@ func (a *Analyzer) assertionFactValid(active activeConditionFact) bool {
 		if a.conditionBindingVersions[name] != version {
 			return false
 		}
-		if symbol, ok := a.symbols[name]; !ok || symbol.Volatile {
+		if symbol, ok := a.symbols.lookup(name); !ok || symbol.Volatile {
 			return false
 		}
 	}
@@ -56,7 +56,7 @@ func (a *Analyzer) invalidateAssignmentProofFacts(stmt *ast.AssignmentStatement)
 	id, direct := stmt.Target.(*ast.Identifier)
 	symbol, known := Symbol{}, false
 	if direct {
-		symbol, known = a.symbols[id.Value]
+		symbol, known = a.symbols.lookup(id.Value)
 	}
 	uncertain := !direct || !known || symbol.Type.Kind == ReferenceType
 	if direct {

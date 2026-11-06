@@ -164,8 +164,10 @@ func TestPackage17PathDependentReassignment(t *testing.T) {
 	if plain, ifActive := cancels("MoveAndReinitializeInLoop"); plain != 0 || ifActive != 2 {
 		t.Errorf("loop move: %d plain and %d if-active cancels, want 0 and 2", plain, ifActive)
 	}
-	if plain, ifActive := cancels("ReassignThenMove"); plain != 0 || ifActive < 2 {
-		t.Errorf("move after a nested reassignment: %d plain and %d if-active cancels", plain, ifActive)
+	// MD-125: the nested replacement inherits the declaration's registration,
+	// so the move ends that one registration only.
+	if plain, ifActive := cancels("ReassignThenMove"); plain+ifActive != 1 {
+		t.Errorf("move after a nested reassignment: %d plain and %d if-active cancels, want one", plain, ifActive)
 	}
 	if plain, ifActive := cancels("Forward"); plain == 0 || ifActive != 0 {
 		t.Errorf("unassigned binding: %d plain and %d if-active cancels, want only plain", plain, ifActive)

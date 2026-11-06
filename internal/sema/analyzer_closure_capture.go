@@ -114,7 +114,7 @@ func (a *Analyzer) recordLambdaCaptureFacts(lambda *ast.LambdaExpression) {
 		}
 		seen[capture.Name.Value] = true
 		name := capture.Name.Value
-		symbol, ok := a.symbols[name]
+		symbol, ok := a.symbols.lookup(name)
 		if !ok || !symbol.Local || !a.assigned[name] {
 			continue
 		}
@@ -196,7 +196,7 @@ func (a *Analyzer) captureDependencies(name string, symbol Symbol) CaptureDepend
 //   - rules/analysis/closure_analysis.md — "Captured function values"
 //   - rules/analysis/closure_analysis.md — "Soundness of target sets"
 func (a *Analyzer) recordBoundCallableIdentity(name string, expression ast.Expression) {
-	symbol, ok := a.symbols[name]
+	symbol, ok := a.symbols.lookup(name)
 	if !ok {
 		return
 	}
@@ -208,11 +208,11 @@ func (a *Analyzer) recordBoundCallableIdentity(name string, expression ast.Expre
 			symbol.HasCallableIdentity = true
 		}
 	}
-	a.symbols[name] = symbol
-	if completion, exists := a.completionSymbols[name]; exists && completion.Token == symbol.Token {
+	a.symbols.set(name, symbol)
+	if completion, exists := a.completionSymbols.lookup(name); exists && completion.Token == symbol.Token {
 		completion.CallableIdentity = cloneResolvedCallableIdentity(symbol.CallableIdentity)
 		completion.HasCallableIdentity = symbol.HasCallableIdentity
-		a.completionSymbols[name] = completion
+		a.completionSymbols.set(name, completion)
 	}
 }
 
@@ -230,7 +230,7 @@ func (a *Analyzer) callableIdentityForExpression(expression ast.Expression) (Res
 	if !ok {
 		return ResolvedCallableIdentity{}, false
 	}
-	symbol, ok := a.symbols[identifier.Value]
+	symbol, ok := a.symbols.lookup(identifier.Value)
 	if !ok {
 		return ResolvedCallableIdentity{}, false
 	}
@@ -293,7 +293,7 @@ func (a *Analyzer) defineLambdaCaptures(expr *ast.LambdaExpression, outerSymbols
 		seen[name] = capture.Name.Token
 		symbol, ok := outerSymbols[name]
 		if !ok {
-			if symbol, exists := a.symbols[name]; exists && !symbol.Local {
+			if symbol, exists := a.symbols.lookup(name); exists && !symbol.Local {
 				a.addErrorAtToken(capture.Name.Token, "cannot capture non-local declaration %s; reference it directly", name)
 			} else {
 				a.addErrorAtToken(capture.Name.Token, "undefined capture %s", name)
@@ -305,7 +305,7 @@ func (a *Analyzer) defineLambdaCaptures(expr *ast.LambdaExpression, outerSymbols
 			continue
 		}
 		symbol.Mutable = false
-		a.symbols[name] = symbol
+		a.symbols.set(name, symbol)
 		a.assigned[name] = true
 		delete(a.constInts, name)
 		a.recordCaptureEscapeFact(name, capture.Name.Token, symbol)

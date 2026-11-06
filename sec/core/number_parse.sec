@@ -136,7 +136,9 @@ fn _DecimalDigitValue(character: rune) Option[_DecimalDigit] {
     if character <= 127r {
         if character in 48r..57r {
             return Some(_DecimalDigit {
-                Value: bit[8](int(character) - 48),
+                Value: try uint8(int(character) - 48) {
+                    Err(_) => 0
+                },
                 Zero: 48r,
             })
         }
@@ -159,7 +161,9 @@ fn _DecimalDigitValue(character: rune) Option[_DecimalDigit] {
             low = middle + 1
         } else {
             return Some(_DecimalDigit {
-                Value: bit[8](delta),
+                Value: try uint8(delta) {
+                    Err(_) => 0
+                },
                 Zero: zero,
             })
         }

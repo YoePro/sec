@@ -51,7 +51,7 @@ func (a *Analyzer) analyzeTestBody(declaration *ast.TestDeclaration) {
 	previousTest := a.currentTest
 	previousScopeDepth := a.scopeDepth
 
-	a.symbols = copySymbols(previousSymbols)
+	a.symbols = previousSymbols.child()
 	a.constInts = copyConstInts(previousConstInts)
 	a.assigned = copyAssigned(previousAssigned)
 	a.moved = map[string]lexer.Token{}

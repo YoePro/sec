@@ -197,7 +197,7 @@ func OwnershipActionOf(module *Module, id TypeID) string {
 }
 
 func isBorrowValueType(module *Module, id TypeID) bool {
-	return typeHasKind(module.Types, id, TypeReference, TypeSharedSlice, TypeMutableSlice)
+	return typeHasKind(module.Types, id, TypeReference, TypeSharedSlice, TypeMutableSlice, TypeStringView)
 }
 
 func oneOf(value string, allowed []string) bool {
@@ -321,9 +321,12 @@ func verifyOwnershipOperation(module *Module, op Operation, values map[ValueID]V
 			}
 			// A replaced stored field stays under its owner's registration (package17
 			// § 64); verifyOwnedPlaceState checks that such a Place is a field.
+			// An available replacement keeps the live registration (equal
+			// old/new action, MD-125); a conditional one names the inherited
+			// action and the alternative new registration (destruction.md § 13.3(5)).
 			field := facts.OldCleanup == 0 && facts.NewCleanup == 0
-			if plan.Kind != "trivial" && !field && (facts.OldCleanup == 0 || facts.NewCleanup == 0 || facts.OldCleanup == facts.NewCleanup) {
-				return fmt.Errorf("own.replace-place requires distinct old and new cleanup actions")
+			if plan.Kind != "trivial" && !field && (facts.OldCleanup == 0 || facts.NewCleanup == 0 || facts.OldCleanup == facts.NewCleanup && facts.IfOwned) {
+				return fmt.Errorf("own.replace-place requires its inherited cleanup action and, when conditional, a distinct new one")
 			}
 		}
 	case OpOwnDiscard:

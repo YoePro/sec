@@ -96,7 +96,7 @@ func (a *Analyzer) mutexGuardInClosure(environment AbstractClosureEnvironmentID,
 				if source.Line == 0 {
 					source = capture.Source
 				}
-				if symbol, ok := a.symbols[capture.SourcePlace.Root]; ok && symbol.Token == capture.SourcePlace.RootToken && symbol.mutexAcquisition != nil {
+				if symbol, ok := a.symbols.lookup(capture.SourcePlace.Root); ok && symbol.Token == capture.SourcePlace.RootToken && symbol.mutexAcquisition != nil {
 					source = symbol.mutexAcquisition.call.Token
 				}
 				return guard, source, true
@@ -135,7 +135,7 @@ func (a *Analyzer) checkMutexGuardEscape(value ast.Expression, typ Type, sink le
 	}
 	if place, ok := a.resolvePlace(placeValue); ok {
 		origin = a.mutexGuardEscapeSource(place, source)
-		if symbol, ok := a.symbols[place.Root]; ok && !closureDependency {
+		if symbol, ok := a.symbols.lookup(place.Root); ok && !closureDependency {
 			source = symbol.Token
 			if symbol.mutexAcquisition != nil {
 				source = symbol.mutexAcquisition.call.Token

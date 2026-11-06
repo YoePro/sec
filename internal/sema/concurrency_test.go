@@ -20,7 +20,7 @@ fn Run() void {
 
 	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
 	assertSemaErrors(t, errors, nil)
-	outcome := analyzer.completionSymbols["outcome"].Type
+	outcome := analyzer.completionSymbols.get("outcome").Type
 	if got := typeDisplayName(outcome); got != "TaskOutcome[int]" {
 		t.Fatalf("wrong await outcome type. got=%q", got)
 	}
@@ -74,13 +74,13 @@ fn Run() void {
 		"owned thread threadHandle is unresolved at scope exit at 10:9",
 	})
 
-	if got := typeDisplayName(analyzer.completionSymbols["taskHandle"].Type); got != "Task[int]" {
+	if got := typeDisplayName(analyzer.completionSymbols.get("taskHandle").Type); got != "Task[int]" {
 		t.Fatalf("wrong task handle type. got=%q", got)
 	}
-	if got := typeDisplayName(analyzer.completionSymbols["threadHandle"].Type); got != "Thread[int]" {
+	if got := typeDisplayName(analyzer.completionSymbols.get("threadHandle").Type); got != "Thread[int]" {
 		t.Fatalf("wrong thread handle type. got=%q", got)
 	}
-	if got := typeDisplayName(analyzer.completionSymbols["outcome"].Type); got != "TaskOutcome[int]" {
+	if got := typeDisplayName(analyzer.completionSymbols.get("outcome").Type); got != "TaskOutcome[int]" {
 		t.Fatalf("wrong await outcome type. got=%q", got)
 	}
 }
@@ -102,7 +102,7 @@ fn Run() void {
 
 	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
 	assertSemaErrors(t, errors, nil)
-	outcome := analyzer.completionSymbols["outcome"].Type
+	outcome := analyzer.completionSymbols.get("outcome").Type
 	if len(outcome.UnionVariants) != 4 {
 		t.Fatalf("TaskOutcome[void] variants = %+v, want four variants", outcome.UnionVariants)
 	}

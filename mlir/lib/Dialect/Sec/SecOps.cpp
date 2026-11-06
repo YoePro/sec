@@ -169,7 +169,7 @@ LogicalResult verifyArgumentActions(Operation *operation, unsigned arity) {
       return failure();
     auto string = dyn_cast<StringAttr>(action);
     StringRef expected = "copy-trivial";
-    if (isa<RefType, SliceType>(operand.getType()))
+    if (isa<RefType, SliceType, StringViewType>(operand.getType()))
       expected = "shared-reference";
     else if (isa<RefMutType, SliceMutType>(operand.getType()))
       expected = "mutable-reference";

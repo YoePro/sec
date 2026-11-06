@@ -229,7 +229,7 @@ func (a *Analyzer) analyzeSwitchCaseBody(block *ast.BlockStatement) branchAnalys
 	previousLocalRefContainers := a.localRefContainers
 	previousArenaGenerations := a.arenaGenerations
 	previousSwitchCaseBody := a.switchCaseBody
-	a.symbols = copySymbols(previousSymbols)
+	a.symbols = previousSymbols.child()
 	a.constInts = copyConstInts(previousConstInts)
 	a.assigned = copyAssigned(previousAssigned)
 	a.moved = copyMoved(previousMoved)
@@ -367,7 +367,7 @@ func (a *Analyzer) switchVariantCallee(call *ast.CallExpression, subjectType Typ
 	switch callee := callee.(type) {
 	case *ast.Identifier:
 		name := callee.Value
-		if _, shadowed := a.symbols[name]; shadowed {
+		if _, shadowed := a.symbols.lookup(name); shadowed {
 			return "", false
 		}
 		if len(a.accessibleFunctions(a.functions[name])) > 0 {
@@ -384,7 +384,7 @@ func (a *Analyzer) switchVariantCallee(call *ast.CallExpression, subjectType Typ
 		if !ok || callee.Property == nil {
 			return "", false
 		}
-		if _, shadowed := a.symbols[owner.Value]; shadowed {
+		if _, shadowed := a.symbols.lookup(owner.Value); shadowed {
 			return "", false
 		}
 		if typ, ok := a.types[owner.Value]; ok && unionHasVariant(typ, callee.Property.Value) {
@@ -418,7 +418,7 @@ func (a *Analyzer) isUnboundSwitchPatternName(expr ast.Expression) bool {
 	if name == "_" {
 		return true
 	}
-	if _, ok := a.symbols[name]; ok {
+	if _, ok := a.symbols.lookup(name); ok {
 		return false
 	}
 	if len(a.accessibleFunctions(a.functions[name])) > 0 {

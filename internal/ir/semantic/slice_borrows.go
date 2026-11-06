@@ -50,6 +50,13 @@ func verifySliceBorrowOperation(types *TypeTable, op Operation, values map[Value
 		}
 	}
 	source, _ := types.Lookup(values[op.Operands[0]].Type)
+	if source.Kind == TypeStringView {
+		result, ok := types.Lookup(op.Results[0].Type)
+		if op.Kind != OpSliceReborrowShared || !ok || result.Kind != TypeStringView || op.Results[0].Ownership != OwnershipSharedReference {
+			return fmt.Errorf("%s over a StringView must produce a shared StringView", op.Kind)
+		}
+		return verifyReferenceMetadata(op)
+	}
 	element, writable := source.Element, source.Kind == TypeMutableSlice
 	if reborrow {
 		if source.Kind != TypeSharedSlice && source.Kind != TypeMutableSlice {

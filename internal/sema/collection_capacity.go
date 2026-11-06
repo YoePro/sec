@@ -46,7 +46,7 @@ func (a *Analyzer) collectionTypeReceiver(call *ast.CallExpression, member *ast.
 	if name != "list" && name != "map" && name != "set" {
 		return Type{}, false
 	}
-	if _, isValue := a.symbols[name]; isValue {
+	if _, isValue := a.symbols.lookup(name); isValue {
 		return Type{}, false
 	}
 	typ, ok := a.resolveType(&ast.TypeReference{Token: member.Token, Name: name, TypeArgs: arguments})

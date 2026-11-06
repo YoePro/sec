@@ -33,7 +33,7 @@ func (a *Analyzer) provenMatchVariant(subject ast.Expression, subjectType Type, 
 // variantProofProvenance records how knownVariantTest proved variant active
 // for binding: its construction, or the dominating `is` test it found.
 func (a *Analyzer) variantProofProvenance(binding string, variant string) *ResolvedVariantProof {
-	symbol := a.symbols[binding]
+	symbol := a.symbols.get(binding)
 	proof := &ResolvedVariantProof{Binding: binding, Variant: variant, Basis: VariantProofConstruction, Source: symbol.Token}
 	if symbol.ConstructedVariant != "" {
 		return proof

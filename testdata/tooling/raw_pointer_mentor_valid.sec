@@ -1,0 +1,27 @@
+module rawpointermentor
+
+fn Access(pointer: RawPtr[int], bytes: RawPtr[byte], other: RawPtr[int]) void {
+    let read := unsafe pointer.Read()
+    unsafe pointer.Write(read)
+    let observed := unsafe pointer.VolatileRead()
+    unsafe pointer.VolatileWrite(observed)
+    let offset := unsafe pointer.Offset(1)
+    let address := unsafe bytes.AddBytes(1)
+    let distance := unsafe pointer.Difference(other)
+    unsafe {
+        if pointer is not null {
+            let view := pointer.AsRef
+        }
+    }
+}
+
+fn References() void {
+    let mut number := 1
+    unsafe {
+        let pointer: RawPtr[int] := number.Ptr
+        let view := pointer.AsRef
+        let copied := *view
+        let editor := pointer.AsRefMut
+        *editor = copied + 1
+    }
+}

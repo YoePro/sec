@@ -713,7 +713,7 @@ func (a *Analyzer) canonicalSlicePlace(expr ast.Expression, fallback Place) Plac
 // Rules:
 //   - rules/mlir/packages/sec-mlir-dialect_package15.md — §10 "Stable place root identity" (revised 2026-10-03), §11 "Canonical Place"
 func (a *Analyzer) rootPlace(name string) (Place, bool) {
-	symbol, ok := a.symbols[name]
+	symbol, ok := a.symbols.lookup(name)
 	if !ok {
 		return Place{}, false
 	}
@@ -856,7 +856,7 @@ func (a *Analyzer) referentOfMovedHolder(place Place) bool {
 	if place.ReferenceHolder == "" || place.ReferenceHolder == place.Root {
 		return false
 	}
-	root, ok := a.symbols[place.Root]
+	root, ok := a.symbols.lookup(place.Root)
 	return ok && root.Type.Kind == ReferenceType
 }
 

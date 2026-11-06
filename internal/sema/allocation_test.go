@@ -84,12 +84,12 @@ hardware endpoint PeripheralEndpoint {
 	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, input)
 	assertSemaErrors(t, errors, nil)
 
-	ordinary := analyzer.symbols["ordinary"]
+	ordinary := analyzer.symbols.get("ordinary")
 	if ordinary.Storage != StorageOriginStatic {
 		t.Fatalf("ordinary module storage origin = %q, want %q", ordinary.Storage, StorageOriginStatic)
 	}
 
-	peripheral := analyzer.symbols["peripheral"]
+	peripheral := analyzer.symbols.get("peripheral")
 	if peripheral.Storage != StorageOriginUnknown {
 		t.Fatalf("addressed register storage origin = %q, want %q", peripheral.Storage, StorageOriginUnknown)
 	}

@@ -18,7 +18,7 @@ func resolveForwardedSliceFacts(types *TypeTable, fn *Function, blocks map[Block
 	}
 	for id, candidates := range roots {
 		typ, _ := types.Lookup(typesByValue[id])
-		if unknown[id] || (typ.Kind != TypeSharedSlice && typ.Kind != TypeMutableSlice) {
+		if unknown[id] || !boundedView(typ.Kind) {
 			continue
 		}
 		var agreed *ReferenceMetadata

@@ -195,7 +195,7 @@ func (fb *functionBuilder) discardFreshOwned(expr ast.Expression, typ sema.Type,
 // rules/mlir/packages/sec-mlir-dialect_package16.md — §§42,63.
 func (fb *functionBuilder) discardSliceHolder(value builtValue, token lexer.Token) (bool, error) {
 	typ, _ := fb.owner.module.Types.Lookup(value.typ)
-	if typ.Kind != TypeSharedSlice && typ.Kind != TypeMutableSlice {
+	if !boundedView(typ.Kind) {
 		return false, nil
 	}
 	facts := fb.references[value.id]

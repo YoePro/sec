@@ -255,7 +255,7 @@ func (a *Analyzer) expressionNamesMutableBinding(expr ast.Expression) bool {
 	mutable := false
 	ast.Visit(expr, func(node any) bool {
 		if identifier, ok := node.(*ast.Identifier); ok && identifier != nil {
-			if symbol, found := a.symbols[identifier.Value]; found && symbol.Mutable {
+			if symbol, found := a.symbols.lookup(identifier.Value); found && symbol.Mutable {
 				mutable = true
 			}
 		}

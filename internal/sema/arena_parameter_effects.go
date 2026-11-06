@@ -58,7 +58,7 @@ func (a *Analyzer) recordArenaParameterReset(name string) {
 	if a.currentArenaParameterResets == nil || a.inLambda {
 		return
 	}
-	symbol, ok := a.symbols[name]
+	symbol, ok := a.symbols.lookup(name)
 	if !ok || symbol.Type.ArenaDomainID == "" {
 		return
 	}
@@ -93,7 +93,7 @@ func (a *Analyzer) applyCalleeArenaParameterResets(callee Function, args []ast.E
 		if !ok {
 			continue
 		}
-		symbol, ok := a.symbols[receiver.Value]
+		symbol, ok := a.symbols.lookup(receiver.Value)
 		if !ok {
 			continue
 		}
@@ -109,7 +109,7 @@ func (a *Analyzer) applyCalleeArenaParameterResets(callee Function, args []ast.E
 			if domain == "" {
 				domain = a.newArenaDomainID(symbol.Token, "owner")
 				symbol.Type.ArenaDomainID = domain
-				a.symbols[receiver.Value] = symbol
+				a.symbols.set(receiver.Value, symbol)
 			}
 		default:
 			continue

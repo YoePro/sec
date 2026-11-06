@@ -523,7 +523,7 @@ func (w *shadowWalk) instanceOf(receiver ast.Expression) (string, bool) {
 		if node.Value == "self" {
 			return "self", true
 		}
-		if symbol, ok := w.a.symbols[node.Value]; ok && isHardwareInstance(symbol.Type) {
+		if symbol, ok := w.a.symbols.lookup(node.Value); ok && isHardwareInstance(symbol.Type) {
 			return node.Value, true
 		}
 	}

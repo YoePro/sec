@@ -101,6 +101,8 @@ inline ReferenceFacts referenceFacts(Value reference) {
     return factsOf(op);
   if (auto op = dyn_cast_or_null<sec::SliceBorrowSharedOp>(definition))
     return factsOf(op);
+  if (auto op = dyn_cast_or_null<sec::StringViewBorrowOp>(definition))
+    return factsOf(op);
   if (auto op = dyn_cast_or_null<sec::SliceBorrowMutOp>(definition))
     return factsOf(op);
   if (auto op = dyn_cast_or_null<sec::SliceReborrowSharedOp>(definition))

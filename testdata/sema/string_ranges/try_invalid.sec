@@ -1,0 +1,21 @@
+module main
+fn PanicEndpoint() uint {
+    panic "endpoint failed"
+}
+@noPanic
+fn Endpoint(text: ref string) Result[StringView, RangeError] {
+    return Ok(try text[PanicEndpoint()..<4])
+}
+@noPanic
+fn Handler(text: ref string, a: uint, b: uint) StringView {
+    return try text[a..<b] { Err(_) => {
+        panic "handler failed"
+    } }
+}
+fn WrongChannel(text: ref string, a: uint, b: uint) Result[StringView, StringError] {
+    return Ok(try text[a..<b])
+}
+fn InvalidConstant() Result[StringView, RangeError] {
+    let text := "π"
+    return Ok(try text[0..<2])
+}

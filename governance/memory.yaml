@@ -1062,7 +1062,7 @@ integrations:
   - id: frontend.raw-pointers
     area: raw-pointer-types-and-operations
     status: partial
-    document_revision: "2.0"
+    document_revision: "2.2"
     reviewed: "2026-09-22"
     repository_baseline: 814a584
     summary: >-
@@ -1079,11 +1079,17 @@ integrations:
       - rules/memory/borrowing.md
       - rules/memory/lifetime_analysis.md
       - rules/memory/ownership.md
+      - rules/corrections/applied/md070-as-property-naming-correction-20261106.md
+      - rules/declarations/properties.md
     code:
       - internal/sema/compiler_known_members.go
       - internal/sema/analyzer.go
       - internal/sema/types.go
       - cmd/lsp/main.go
+      - internal/sema/raw_pointer_references.go
+      - internal/sema/raw_pointer_operations.go
+      - internal/sema/raw_pointer_diagnostics.go
+      - internal/sema/reference_dereference.go
     implemented:
       - RawPtr[T] is registered as a compiler-known generic type
       - RawPtr[T] is usable in locals, parameters, returns and extern declarations
@@ -1094,7 +1100,7 @@ integrations:
       - LSP completion and hover consume compiler-known raw-pointer member definitions for represented operations
       - basic explicit conversions between uint, RawPtr and compatible RawPtr forms are recognized under unsafe gating in the represented frontend
       - RawPtr[void] is rejected for typed Read, Write, VolatileRead, VolatileWrite, element Offset, AddBytes, and element Difference even inside unsafe
-      - "2026-10-21 (MD-070, rules/corrections/applied/md070-rawptr-safe-reference-conversions-correction-20261021.md): compiler-known unsafe `RawPtr[T].AsRef() ref T` and `AsRefMut() ref mut T` (CKM-RAWPTR-AS-REF[-MUT]) are registered with caller obligations, LSP documentation and Sema typing. They are rejected outside unsafe, on RawPtr[void], on a proven-null pointer and on non-RawPtr receivers, and an implicit RawPtr-to-ref initialization suggests them. `.Ptr` through a safe reference (`r.Ptr`, `(*r).Ptr`) addresses the referent (internal/sema/raw_pointer_references.go, raw_pointer_references_test.go)."
+      - "MD-070 naming reconciliation (owner clarification 2026-11-06): As* members are properties; a functional getter uses Get*(). RawPtr[T].AsRef: ref T and AsRefMut: ref mut T are read-only unsafe compiler-known properties, retaining their stable identities and existing non-nullness, lifetime and authority contracts. Property reads require an unsafe block; the former call forms, including unsafe pointer.AsRef(), produce S1205 with property guidance. Ptr continues to address the referent through a safe reference. Registry signatures, Sema, completion, hover, synthetic definitions, reference-conversion help, canonical rulebooks and formatter fixtures are synchronized. The Semantic IR property read retains the explicit MD-070/MD-084 unsupported boundary; no physical raw-to-safe realization is claimed."
     remaining:
       - implement canonical null source syntax and rules end to end
       - implement ordinary Read and Write frontend semantics completely where compiler-known member classification is incomplete
@@ -1117,8 +1123,18 @@ integrations:
     corrections_applied:
       - rules/corrections/applied/raw-pointers-null-domain-correction-20260816.md
     verification:
+      - command: go test -p 4 ./internal/sema/... ./internal/diagnostics ./internal/ir/semantic ./internal/formatter ./internal/cst -count=1
+        result: passed on 2026-11-06; complete suites after AsRef/AsRefMut property migration, including known null/unavailable origins, legacy property-call rejection, canonical property registry, conversion formatting and the explicit raw-to-safe Semantic IR capability boundary
       - command: go test ./internal/sema -run 'TestRawPtr(Void|PointerArithmetic|Conversion)|TestCompilerKnownRawPointer' -count=1
         result: passed on 2026-09-22
+    revised: "2026-11-06"
+    tests:
+      - testdata/tooling/raw_pointer_reference_valid.sec
+      - testdata/tooling/raw_pointer_reference_invalid.sec
+      - testdata/tooling/raw_pointer_reference_origin_invalid.sec
+      - testdata/tooling/raw_pointer_property_calls_invalid.sec
+      - internal/ir/semantic/raw_pointer_reference_property_test.go
+      - testdata/semantic_ir/raw_pointer_reference_property.sec
 
   - id: analysis.raw-pointers
     area: raw-pointer-provenance-effects-and-safety-facts
@@ -1251,7 +1267,7 @@ integrations:
   - id: tooling.raw-pointers
     area: raw-pointer-lsp-diagnostics-formatter
     status: partial
-    document_revision: "2.0"
+    document_revision: "2.2"
     reviewed: "2026-09-01"
     repository_baseline: 814a584
     rules:
@@ -1260,16 +1276,18 @@ integrations:
       - rules/tooling/formatter.md
       - rules/tooling/diagnostics.md
       - rules/compiler/compiler_known_members.md
+      - rules/corrections/applied/md070-as-property-naming-correction-20261106.md
+      - rules/declarations/properties.md
     implemented:
       - LSP completion exposes represented compiler-known raw-pointer arithmetic members
       - LSP completion and hover expose VolatileRead and VolatileWrite unsafe and effect identity
       - "Canonical RawPtr registry (2026-10-15): Read, Write, VolatileRead, VolatileWrite, Offset, AddBytes and Difference now own their stable IDs, result types, unsafe signatures, effects, receiver restrictions, rule references and documentation together in compiler_known_physical_storage.go. The separate synthetic-signature rows are removed. Sema lookup, completion, hover, synthetic definitions and derived API documentation consume the same receiver-instantiated entries. AddBytes is offered only for RawPtr[byte]; RawPtr[void] offers no typed access or arithmetic operations. Explicit invalid calls retain operation-specific diagnostics. Nominal pointee names and distinct ordinary/volatile effects are preserved."
       - "Raw-pointer caller contracts in hover and signature help (2026-10-15): all seven canonical operations expose explicit unsafe requirements and registry-owned caller obligations for access validity, alignment, initialized representation, ownership/alias authority, replacement/destruction, volatile physical contracts and target-correct address arithmetic. Requirements are labelled as caller obligations, never as proven pointer facts. Structured receiver-resolved parameters preserve nominal and borrowed pointer types. Signature help handles incomplete calls at EOF, nested calls, grouping, comments, UTF-16 positions and statement/foreign-closer recovery boundaries while preserving initializer help. Parser-owned argument openers also distinguish intrinsic, unit-conversion and bit-extraction subcalls without an LSP grammar or name-based safety inference. Hover rendering and signature help are extracted into focused sibling files; synthetic definitions/API documentation retain the same obligations."
+      - "Canonical RawPtr formatting audit completed (2026-11-06): the shared formatter preserves RawPtr[T], all seven Read/Write/VolatileRead/VolatileWrite/Offset/AddBytes/Difference method spellings, negative arithmetic operands, method chains, comments and unsafe function/block/direct-call boundaries without introducing C-style syntax. Existing CST formatting already supplies the complete behavior; golden and token-preservation regressions cover indentation 2/4/6, LF/CRLF, fix on/off, idempotence, CLI check/write/check and actual LSP document edits. Conversion formatting remains separately owned and open."
+      - "Raw-pointer mentor diagnostics completed (2026-11-06): mandatory S1204 identifies missing unsafe authorization for the nine canonical RawPtr operations, Place.Ptr and explicit raw-address conversions; call diagnostics reuse canonical registry caller obligations without treating them as proofs. S1205 identifies invalid concrete pointees, write/offset/difference argument types, arity and conversion-call type arguments. Existing S1142 null checks retain their identity and distinguish access from reference formation, and S1206 identifies already-known unavailable origins during AsRef/AsRefMut. Null errors link to the pointer binding and dangling-origin errors to the ownership-invalidating operation; existing borrow-conflict diagnostics keep their canonical authority evidence. Repairs distinguish accepting unproven obligations from fixing contradicted validity and never automatically insert unsafe. The shared semantic producer supplies identical CLI human/JSON and LSP help and source links. Raw operation inference and helpers are extracted from the analyzer monoliths into a focused sibling file. No new alignment, address-space, epoch or lifetime proof producer is claimed by this diagnostic closure."
+      - "Raw/reference conversion formatting completed (2026-11-06, owner naming clarification): AsRef and AsRefMut are properties without parentheses, used inside unsafe blocks; .Ptr, explicit integer/raw and raw/raw conversion syntax, reference type annotations, grouped dereferences and multiline property chains retain their tokens and unsafe boundaries. Parser-confirmed member dots receive a compact CST spacing role, correcting source . Ptr and pointer . AsRef without changing decimal/range dots, literal contents, comments or recovered missing members. Golden/token-preservation matrices cover indentation 2/4/6, LF/CRLF, fix on/off and idempotence; CLI check/write/check and actual LSP document edits share the golden. Completion, hover and synthetic definitions expose unsafe properties; call signature help is absent for property reads. Legacy property calls are diagnosed, not silently rewritten or authorized."
     remaining:
       - show known address-space, nullability, range, alignment and lifetime facts where useful
-      - produce mentor diagnostics distinguishing missing unsafe from compiler-proven invalid operations
-      - format canonical raw-pointer operations without inventing C-style syntax
-      - add conversion formatting only after canonical conversion spelling is locked
       - ensure compiler, LSP and sec analyse parity
     required_tests:
       - completion includes canonical RawPtr members
@@ -1277,7 +1295,7 @@ integrations:
       - known-null diagnostic explains that unsafe does not legalize null dereference
       - formatter preserves RawPtr[T] and member spellings
       - compiler and LSP agree on raw-pointer validity diagnostics
-    revised: "2026-10-15"
+    revised: "2026-11-06"
     code:
       - internal/sema/compiler_known_physical_storage.go
       - internal/sema/compiler_known_synthetic.go
@@ -1288,6 +1306,14 @@ integrations:
       - cmd/lsp/signature_call.go
       - internal/ast/ast.go
       - internal/parser/expression.go
+      - internal/formatter/formatter.go
+      - internal/formatter/token_spacing.go
+      - internal/cst/roles.go
+      - internal/sema/raw_pointer_operations.go
+      - internal/sema/raw_pointer_diagnostics.go
+      - internal/sema/raw_pointer_references.go
+      - internal/sema/raw_pointer_null_proof.go
+      - internal/diagnostics/diagnostics.go
     tests:
       - internal/sema/raw_pointer_registry_test.go
       - cmd/lsp/raw_pointer_registry_test.go
@@ -1303,9 +1329,49 @@ integrations:
       - testdata/tooling/raw_pointer_signature_closer_invalid.sec
       - testdata/tooling/raw_pointer_signature_unknown_invalid.sec
       - testdata/tooling/raw_pointer_signature_conversion_invalid.sec
+      - internal/formatter/raw_pointer_operations_test.go
+      - cmd/compiler/fmt_raw_pointer_test.go
+      - cmd/lsp/format_raw_pointer_test.go
+      - testdata/formatter/raw_pointer_operations.sec
+      - testdata/formatter/raw_pointer_operations.expected.sec
+      - internal/sema/raw_pointer_mentor_test.go
+      - internal/diagnostics/raw_pointer_test.go
+      - cmd/compiler/raw_pointer_mentor_test.go
+      - cmd/lsp/raw_pointer_mentor_test.go
+      - testdata/tooling/raw_pointer_mentor_invalid.sec
+      - testdata/tooling/raw_pointer_mentor_valid.sec
+      - internal/cst/member_access_roles_test.go
+      - internal/formatter/raw_pointer_conversions_test.go
+      - cmd/compiler/fmt_raw_pointer_conversions_test.go
+      - cmd/lsp/format_raw_pointer_conversions_test.go
+      - cmd/lsp/raw_pointer_property_test.go
+      - testdata/formatter/raw_pointer_conversions.sec
+      - testdata/formatter/raw_pointer_conversions.expected.sec
+      - testdata/formatter/raw_pointer_conversion_invalid.sec
     verification_notes:
-      - Direct, ref and ref mut RawPtr receivers retain one applicable registry surface. Twenty-five valid call sites verify shared hover/signature safety text and structured argument types; nested and incomplete-call fixtures check source boundaries and reject unknown/user-lookalike/void-pointer signature inference. Further pointer fact display, mentor diagnostics, formatting, conversions and broader tool parity remain open.
+      - The ordinary RawPtr formatter item is closed by complete source-backed regression coverage on 2026-11-06; broader diagnostic/analysis parity remain separate remaining items.
+      - Direct, ref and ref mut RawPtr receivers retain one applicable registry surface. Twenty-five valid call sites verify shared hover/signature safety text and structured argument types; nested and incomplete-call fixtures check source boundaries and reject unknown/user-lookalike/void-pointer signature inference. Further pointer fact display and broader tool parity remain open.
     verification:
+      - command: go vet -p 4 ./internal/sema/... ./internal/ir/semantic ./internal/formatter ./internal/cst ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-11-06 after the final property signature-help guard
+      - command: go test -p 4 ./cmd/lsp -run 'RawPointerReferenceProperty|RawPointerSafetyOutsideUnsafeContext|RawPointerSignatureCallSelection' -count=1
+        result: passed on 2026-11-06; AsRef/AsRefMut are properties in hover/completion/synthetic definitions and produce no call signature help, including legacy parentheses; ordinary unsafe raw-method signature help remains available
+      - command: go test -p 4 ./cmd/compiler ./cmd/lsp -run 'RawPointerMentor|RawPointerReferenceProperty|RawPointerConversions|LSPHostScalarPlanWithSettings|DiscardAdviceBatchMatchesStandalone|RedundantDiscardAdvisoryLSP|ExplicitDiscardAdviceLSP|LSPScalarPlanRejectsAmbiguous' -count=1
+        result: passed on 2026-11-06; property completion/hover/synthetic definitions, seven CLI diagnostic gates and valid property reads, shared formatter golden and restored standalone/batch discard diagnostics; explicit ambiguous project plans stay unresolved
+      - command: go test -p 4 ./internal/sema/... ./internal/diagnostics ./internal/ir/semantic ./internal/formatter ./internal/cst -count=1
+        result: passed on 2026-11-06; complete suites after AsRef/AsRefMut property migration, including known null/unavailable origins, legacy property-call rejection, canonical property registry, conversion formatting and the explicit raw-to-safe Semantic IR capability boundary
+      - command: go test -p 4 ./internal/sema ./internal/diagnostics ./cmd/compiler ./cmd/lsp -run 'RawPointer|RawPtr|ProvenNull|UnsafeFunction|IfRawNull' -count=1
+        result: passed on 2026-11-06; complete selected raw-pointer, unsafe-body and null-boundary regressions, including all 39 mentor diagnostics through sema/check/analyse/emit-ir/emit-sec-mlir/emit-mlir/emit-llvm, human output, no rejected-source artifacts, LSP causal links and accepted operations; existing registry hover/signature/definition regressions pass
+      - command: go vet -p 4 ./internal/sema/... ./internal/diagnostics ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-11-06; raw-pointer inference extraction, diagnostics and CLI/LSP tests
+      - command: go test -p 4 ./internal/sema/... ./internal/diagnostics -count=1
+        result: passed on 2026-11-06; complete semantic-analysis subtree and diagnostic registry suites, including 39 raw-pointer mentor failures, accepted operations, null-proof suppression and existing authority conflicts
+      - command: go vet -p 4 ./internal/formatter ./internal/cst ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-11-06
+      - command: go test -p 4 ./cmd/compiler ./cmd/lsp -run '^Test(Fmt|Format|LSPFormat|PanicMentorCompilerDiagnostics|PitfallDiagnosticOwnershipCLI|PitfallStateCorrelationCLI)' -count=1
+        result: passed on 2026-11-06; public CLI check/write/check and actual LSP RawPtr document edits match the golden; complete selected formatting regressions and the three Claude-reported diagnostic regressions pass
+      - command: go test -p 4 ./internal/formatter ./internal/cst ./internal/formatconfig -count=1
+        result: passed on 2026-11-06; complete shared formatter/CST/configuration suites, including all seven canonical RawPtr operations, token preservation and 12 indentation/newline/fix combinations
       - command: go test ./cmd/compiler ./cmd/lsp -count=1
         result: passed on 2026-10-15; full compiler and LSP suites, including existing initializer help, registry navigation, caller-contract hover and raw-pointer signature help
       - command: go vet ./internal/ast ./internal/parser ./internal/sema ./cmd/compiler ./cmd/lsp
@@ -1337,7 +1403,7 @@ integrations:
       - complete int/uint target-width consistency
       - complete enum/union/descriptor/reference resolved representations
       - complete representation-validity analysis
-      - "resolve the MD-019 explicit layout contracts (syntax decided 2026-11-05: `pack(N)`, `minAlign(N)`, `byteOffset(N)`; struct.md \u00a7 15A, layout.md \u00a7\u00a7 27\u201330): ResolvedLayout computes field alignments, exact offsets, aggregate alignment, size, padding and stride from the written requirements under the \u00a7 28(6) precedence on Linux and Windows hosted plans, with the MD-019 \u00a7 11 conformance matrix"
+      - "resolve the MD-019 explicit layout contracts (syntax decided 2026-11-05: `pack(N)`, `minAlign(N)`, `byteOffset(N)`; struct.md § 15A, layout.md §§ 27–30): ResolvedLayout computes field alignments, exact offsets, aggregate alignment, size, padding and stride from the written requirements under the § 28(6) precedence on Linux and Windows hosted plans, with the MD-019 § 11 conformance matrix"
     revised: "2026-10-30"
     implemented:
       - "P24-12 arithmetic foundation (2026-10-30): internal/layout.SizeArithmetic snapshots explicitly resolved maximum byte extent and supported alignments and implements CheckedAdd, CheckedMul, AlignUp, StrideOf and ArraySize with exact nonnegative big.Int values. No host integer, pointer-width or C ABI fallback supplies a bound, alignment or descriptor. StrideOf consumes the selected placement minimum, preserving target-specific zero-sized policies; ArraySize preserves arbitrary-precision logical counts and rejects an invalid element stride even for count zero. Failures return no result and retain exact requested extent, target bound, operation and caller-supplied field/count/instantiation path. Supported nonbinary alignment, 32/64-bit extent limits, successful and overflowing calculations beyond 256 bits, malformed/missing facts, detached inputs/results, target isolation and concurrent readers are tested. P24-12 is complete in package24-todo.md (unchecked 57 to 56). ResolvedLayout IDs/complete plan keys, actual type SizeOf/AlignOf/StrideOf queries, compiler diagnostic publication, schema 20 and physical reference/LLVM lowering remain separate unimplemented consumers; frontend.layout retains all six broader remaining points."

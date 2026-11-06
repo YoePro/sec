@@ -1,0 +1,47 @@
+module main
+
+@noCopy
+type Session struct {
+    Id: int,
+}
+
+fn Conflicts() int {
+    let mut x := 1
+    let r := ref mut x
+    unsafe {
+        let p: RawPtr[int] := x.Ptr
+        let alias := p.AsRefMut
+        *r = 2
+        return *alias
+    }
+}
+
+fn SharedWhileMutable() int {
+    let mut x := 1
+    let r := ref mut x
+    unsafe {
+        let p: RawPtr[int] := x.Ptr
+        let view := p.AsRef
+        *r = 3
+        return *view
+    }
+}
+
+fn Dangling() int {
+    let s := Session{Id: 1}
+    unsafe {
+        let p: RawPtr[Session] := s.Ptr
+        let moved :<- s
+        let view := p.AsRef
+        return view.Id + moved.Id
+    }
+}
+
+fn Fine() int {
+    let mut x := 1
+    unsafe {
+        let p: RawPtr[int] := x.Ptr
+        let view := p.AsRef
+        return *view
+    }
+}

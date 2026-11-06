@@ -5,7 +5,7 @@ package sema
 // Receiver-inapplicable operations are not offered as usable members: void
 // pointers have no typed access/arithmetic and AddBytes requires a byte pointer.
 // Sema's operation-specific validators still diagnose explicit invalid calls.
-// Rules: rules/compiler/compiler_known_members.md — "RawPtr[T] compiler-known methods";
+// Rules: rules/compiler/compiler_known_members.md — "RawPtr[T] compiler-known members";
 // rules/memory/raw_pointers.md — §§3(4),11–14,35(1–3),(6);
 // rules/platform/volatile.md — §§9–11; rules/memory/allocation.md — §20(5).
 func compilerKnownRawPointerMembers(typ Type) []CompilerKnownMember {
@@ -28,10 +28,10 @@ func compilerKnownRawPointerMembers(typ Type) []CompilerKnownMember {
 			Signature: "unsafe fn Offset(count: int) RawPtr[T]", Documentation: "Pointer moved by count elements. The caller must ensure valid address arithmetic; this operation does not establish a safe reference.", Receiver: "typed RawPtr[T]", Rule: ruleRawPointers + " — §14"},
 		{ID: "CKM-RAWPTR-DIFFERENCE", Name: "Difference", Result: builtinType("int"),
 			Signature: "unsafe fn Difference(other: RawPtr[T]) int", Documentation: "Distance in elements between compatible pointers into the same allocation/address domain.", Receiver: "typed RawPtr[T]", Rule: ruleRawPointers + " — §14"},
-		{ID: "CKM-RAWPTR-AS-REF", Name: "AsRef", Result: Type{Name: referenceTypeName(element, false), Kind: ReferenceType, Element: &element},
-			Signature: "unsafe fn AsRef() ref T", Documentation: "Constructs a shared safe reference from this raw pointer. The reference does not own or extend the pointed-to storage and follows ordinary Sec reference rules.", Receiver: "typed RawPtr[T]", Rule: ruleRawPointers + " — §18A (MD-070)"},
-		{ID: "CKM-RAWPTR-AS-REF-MUT", Name: "AsRefMut", Result: Type{Name: referenceTypeName(element, true), Kind: ReferenceType, Element: &element, ReferenceMutable: true},
-			Signature: "unsafe fn AsRefMut() ref mut T", Documentation: "Constructs an exclusive mutable safe reference from this raw pointer. The reference does not own or extend the storage and follows ordinary Sec reference rules.", Receiver: "typed RawPtr[T]", Rule: ruleRawPointers + " — §18A (MD-070)"},
+		{ID: "CKM-RAWPTR-AS-REF", Name: "AsRef", Kind: CompilerKnownProperty, Result: Type{Name: referenceTypeName(element, false), Kind: ReferenceType, Element: &element},
+			Signature: "unsafe property AsRef: ref T", Documentation: "Constructs a shared safe reference from this raw pointer. The reference does not own or extend the pointed-to storage and follows ordinary Sec reference rules.", Receiver: "typed RawPtr[T]", Rule: ruleRawPointers + " — §18A (MD-070)"},
+		{ID: "CKM-RAWPTR-AS-REF-MUT", Name: "AsRefMut", Kind: CompilerKnownProperty, Result: Type{Name: referenceTypeName(element, true), Kind: ReferenceType, Element: &element, ReferenceMutable: true},
+			Signature: "unsafe property AsRefMut: ref mut T", Documentation: "Constructs an exclusive mutable safe reference from this raw pointer. The reference does not own or extend the storage and follows ordinary Sec reference rules.", Receiver: "typed RawPtr[T]", Rule: ruleRawPointers + " — §18A (MD-070)"},
 	}
 	if isRawBytePointer(typ) {
 		members = append(members, CompilerKnownMember{
@@ -40,7 +40,9 @@ func compilerKnownRawPointerMembers(typ Type) []CompilerKnownMember {
 		})
 	}
 	for index := range members {
-		members[index].Kind = CompilerKnownMethod
+		if members[index].Kind == "" {
+			members[index].Kind = CompilerKnownMethod
+		}
 		members[index].Unsafe = true
 		members[index] = rawPointerCallerContract(members[index], typ, element)
 		if members[index].TargetRestriction == "" {

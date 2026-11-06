@@ -1,0 +1,33 @@
+module main
+fn EscapeRecovery(text: ref string, a: uint, b: uint) StringView {
+    let fallback := "fallback"
+    return try text[a..<b] { Err(_) => fallback[..] }
+}
+fn EscapeBlock(text: ref string, a: uint, b: uint) StringView {
+    return try text[a..<b] {
+        Err(_) => {
+            let fallback := "fallback"
+            fallback[..]
+        }
+    }
+}
+fn MutateRecovery(a: uint, b: uint) void {
+    let text := "text"
+    let mut fallback := "fallback"
+    let view := try text[a..<b] { Err(_) => fallback[..] }
+    fallback = "replacement"
+    let length := view.Len
+}
+fn EscapePropagation(a: uint, b: uint) Result[StringView, RangeError] {
+    let text := "local"
+    return Ok(try text[a..<b])
+}
+fn EscapeBlockAlias(text: ref string, a: uint, b: uint) StringView {
+    return try text[a..<b] {
+        Err(_) => {
+            let fallback := "local"
+            let recovered := fallback[..]
+            recovered
+        }
+    }
+}

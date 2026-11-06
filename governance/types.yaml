@@ -619,6 +619,7 @@ integrations:
       - "MD-102 Some constructor hover (2026-10-29): cmd/lsp/some_constructor_hover.go displays the Sema-selected Option[T].Some constructor and selected Option[T] only at its callee token, using ResolvedUnionConstructionOf and excluding ordinary ResolvedCallTarget calls. Tests cover inferred int/string, contextual int64 at declarations/calls/returns, nested Some/None, qualified construction, exact token ranges, invalid inference and a user Some function returning Option[int]; no parallel inference or overload model."
       - "named integers keep their identity through Semantic IR (owner decision 2026-11-04; semantic_ir.md §§ 7(4)–(5), 59(6); dialect v11.41.7): Sema records ResolvedNamedConversion for explicit conversions over one integer carrier (wrapper <-> base, wrapper <-> wrapper, constants shaped into the carrier) and resolves same-type operators with the named operand type; Semantic IR lowers them to named.convert and the int.* operations on named values; sec-lower-integer-core erases the identity. Contract- and unit-bearing named types keep their own paths. Tests: TestNamedIntegerConversionAndOperatorPlans, TestNativeTrackBuildsAndRuns/named_scalars, lit schema13-named-integers.mlir and invalid-schema13-named-integers.mlir."
       - "MD-126 frontend StringView identity (2026-11-05; types.md StringView; core-library.md 5.8): a distinct compiler-known string-view kind is trivially destructible/copyable as a borrow holder, carries reference provenance, has the exact read-only registry surface and is shown as StringView by LSP hover. No implicit conversion to string or mutable view form is admitted. View readers have separate operation IDs and ToString remains content materialization, not the universal type-summary fallback. Semantic IR type tables, physical representation and release gating remain separate remaining work."
+      - "MD-126 Semantic IR StringView type (2026-11-06; types.md StringView; semantic_ir.md § 17(9)): internType maps StringView to the distinct string-view type kind (no element type, never string or rune[]) from package 16; views are shared-reference holders with reference metadata, parameters/returns/call results carry Sema facts, and Sec MLIR spells the type !sec.string_view. Evidence: internal/ir/semantic/string_views.go, string_views_test.go, internal/lowering/secmlir/string_views_test.go (32/64-bit), mlir/test/Analysis/schema13-string-views.mlir."
     remaining:
       - "native lowering of mutable storage whose element type is a named integer (`let mut value: Meters`): sec-finalize-for-llvm rejects the remaining !sec.named storage explicitly; the storage normalization in sec-lower-integer-core must erase the named element type as it does for values (dialect v11.41.7)."
       - "known hole (verified 2026-10-17): no lowering route lowers the global len(...) call or materializes numeric text for string(numericValue); the uint length and the ToString equality are therefore unverified at run time (MD-051 closed 2026-10-17 on the owner's decision that byte counts as uint8; MD-093 decided 2026-10-26: Sema rejects Name(number), while the accepted explicit materialization/nominal-conversion sequence still stops at unsupported intermediate-Result routing and P23 text materialization)"
@@ -633,7 +634,7 @@ integrations:
       - complete decimal comparison lowering
       - complete runtime contract failure paths for decimal overflow, division by zero, and precision exhaustion
       - "resolved 2026-10-18 (MD-105, formerly this hole): char/rune comparison of the same character type reuses int.compare / sec.int.cmp over !sec.char / !sec.rune and lowers unsigned via char -> ui8 / rune -> ui32 (semantic_ir.md § 125, operators.md \"Rune ordering\", package7.md amendment); native fixture characters.sec covers all six predicates, a top-bit char and a rune above U+FFFF"
-      - MD-126 finish the Semantic IR StringView type-table representation and 0.1.2 release/version admission policy. Distinct read-only/non-owning Sema identity, reference-carrying traits, no implicit string conversion/ref mut form, minimum registry signatures and LSP hover are implemented (2026-11-05); internType currently rejects StringView explicitly at the P23 boundary rather than erasing it into string or rune[].
+      - "MD-126 0.1.2 release/version admission policy for StringView and string ranges (MD-126 header: planned implementation gate 0.1.2 unless the owner changes the release target); the Sema identity and the Semantic IR/Sec MLIR type are implemented"
     governance_reconciliation:
       - "representation audit completion does not implement every backend representation: collection/array work remains with frontend.collections; register, union and interface work remains with frontend.registers, frontend.unions and frontend.interfaces; task/thread work remains with concurrency.tasks-v2 and concurrency.thread-v2; quantity facts and operations remain with frontend.units-v2; any remains explicitly listed here. Maintained Semantic IR and physical Result/Option/aggregate lowering remain with the integrations in governance/lowering.yaml. Legacy unsupported boundaries are implementation capabilities, not new source-language restrictions."
       - "audit completion is distinct from runtime conversion implementation: the existing scalar ConversionError frontend remains open; audited missing nominal-core representations retain their specialized implementation owners, as do collection/place/defaultability owners. The historical matrix excluded the then-undecided numeric-to-string permission; MD-051 subsequently defined primitive fallible text materialization, and MD-093 now rejects direct nominal-string targets. Their backend gates remain separate from relation validation."
@@ -1394,7 +1395,7 @@ integrations:
     area: frontend-target-semantics-and-legacy-lowering
     status: implemented
     audited: "2026-09-22"
-    revised: "2026-10-08"
+    revised: "2026-11-06"
     repository_baseline: c515862
     document_revision: inferred 2.x
     document_revision_note: rules/types/types.md has no explicit document-revision metadata. It is the canonical replacement for types.txt and its current structure and Sec 0.1 decisions belong to the revision-2-era rulebook set. Later specialized target/layout and MLIR package rulebooks take precedence where more specific.
@@ -1453,6 +1454,9 @@ integrations:
       - testdata/ir/target_scalar_representability.sec.in
       - cmd/compiler/main_test.go
       - cmd/lsp/target_plan_test.go
+      - cmd/lsp/host_scalar_settings_test.go
+      - cmd/lsp/discard_advisory_test.go
+      - cmd/lsp/explicit_discard_advice_test.go
     implemented:
       - "active LSP target selection (2026-10-08): sec/targets lists declared logical products and variants with registry-resolved OS/architecture and scalar width; sec/selectTarget validates and switches per-project selection without a restart, and an empty choice restores automatic resolution; invalid choices preserve the previous target and source #target directives retain precedence"
       - "immutable target inputs: every diagnostic, hover, completion, navigation, inlay and action analysis consumes the selected plan alongside open source snapshots; rename and default-action replacement snapshots retain the selection, source assembly and Sema use the same registry facts, and old target jobs are discarded through existing diagnostic generations"
@@ -1483,6 +1487,7 @@ integrations:
       - compiler and LSP consume one shared target registry rather than deriving scalar widths from architecture spellings
       - LSP project analysis resolves the logical target owning the source and uses its single unambiguous variant plan; 32-bit project diagnostics now reject int overflow and expose 32-bit int, uint, and plain float types
       - explicit compile-time integer conversions reject constants outside the selected target-sized int or uint range while accepting the same constants on a wider target
+      - "Settings-only LSP manifests preserve the CLI-default host scalar plan (2026-11-06): a .sec/sec.toml containing diagnostics, format or analysis settings no longer suppresses registered discard advice because of hidden core int-width errors. TOML decoding and nearest disk/overlay manifest facts distinguish settings from declared target/variant requirements; malformed configuration, declared incomplete or ambiguous targets and unresolved explicit selections never gain a guessed host plan. Tests cover quoted/inline TOML, misleading multiline text, unsaved settings and declarations, project-selected 32-bit plans, ambiguous variants, policy changes and identical standalone/batch discard diagnostics."
     partial:
       - general public Result/error typing and executable runtime validation of potentially failing scalar conversions with the decided core ConversionError (MD-012 decided 2026-10-08); the destination-bound audit implements safe proofs and explicit rejection, not a lossy conversion policy
     remaining: []
@@ -1505,6 +1510,8 @@ integrations:
       - direct LLVM int and uint target-width parity or explicit unsupported error
       - Sema and Sec MLIR scalar-layout representability agreement
     verification:
+      - command: go test -p 4 ./cmd/lsp -run 'LSPHostScalarPlanWithSettings|DiscardAdviceBatchMatchesStandalone|RedundantDiscardAdvisoryLSP|ExplicitDiscardAdviceLSP|LSPScalarPlanRejectsAmbiguous|LSPAnalyzerUsesProjectScalarPlan' -count=1
+        result: passed on 2026-11-06; host scalar resolution for settings-only manifests restores the two Claude-reported discard diagnostics regressions without selecting a host plan for declared incomplete/ambiguous targets
       - command: go test ./... -count=1
         result: passed on 2026-10-08 with active project variant selection propagated through all LSP feature analyses and background diagnostics
       - command: go test -race ./cmd/lsp -run 'TestTargetSelection|TestCrossTarget|TestDiagnosticBatch|TestModuleDiagnostics|TestAllocationImportInvalidation' -count=1

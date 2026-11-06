@@ -1,0 +1,54 @@
+module main
+
+// P17-31: constructor actions over struct, named-field union, Option, Result and
+// array operands take fresh values and moved owners (construct-direct / move).
+// Rules: rules/memory/copy_move.md §§ 4-6, 9; package17 §§ 14, 65.
+
+type Handle struct {
+    id: int,
+}
+
+impl Handle {
+    free {
+    }
+}
+
+type Parcel union {
+    Boxed { inner: Handle, outer: Handle },
+    Empty,
+}
+
+fn Make(id: int) Handle {
+    return Handle { id: id }
+}
+
+fn Named() Parcel {
+    let inner     := Make(1)
+    let mut outer := Make(2)
+    return Parcel.Boxed { inner: <-inner, outer: <-outer }
+}
+
+fn Options() Option[Handle] {
+    let handle := Make(3)
+    return Some(<-handle)
+}
+
+fn Results() Result[Handle, IndexError] {
+    let handle := Make(4)
+    return Ok(<-handle)
+}
+
+fn Arrays() Handle[2] {
+    let first := Make(5)
+    return [<-first, Make(6)]
+}
+
+type Pair struct {
+    left:  Handle,
+    right: Handle,
+}
+
+fn Struct() Pair {
+    let left := Make(7)
+    return Pair { left: <-left, right: Make(8) }
+}

@@ -69,7 +69,7 @@ func (a *Analyzer) checkBorrowThroughTransferredParameter(place Place, token lex
 	if place.ReferenceHolder == "" || place.ReferenceHolder == place.Root {
 		return false, false
 	}
-	root, ok := a.symbols[place.Root]
+	root, ok := a.symbols.lookup(place.Root)
 	if !ok || root.Type.Kind != ReferenceType {
 		return false, false
 	}

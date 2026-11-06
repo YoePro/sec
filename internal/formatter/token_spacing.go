@@ -78,6 +78,8 @@ func canonicalTokenGap(left, right cst.Element) (string, bool) {
 	switch {
 	case left.HasRole(cst.ForeignQualifierSeparator) || right.HasRole(cst.ForeignQualifierSeparator):
 		return "", true
+	case left.HasRole(cst.MemberAccessSeparator) || right.HasRole(cst.MemberAccessSeparator):
+		return "", true
 	case left.HasRole(cst.UnitMetadataCompactToken) || right.HasRole(cst.UnitMetadataCompactToken):
 		return "", true
 	case right.HasRole(cst.LambdaCaptureListOpen):

@@ -296,11 +296,16 @@ private:
       set(state, target.root, path, Gone);
     } else if (auto destroy = dyn_cast<sec::OwnDestroyPlaceOp>(op)) {
       Subobject target = resolve(destroy.getPlace());
-      set(state, target.root, target.path, Gone);
+      // The owner's registration stays with the Place (MD-125): a following
+      // reinitialization is covered by it again.
+      uint8_t kept = flagsAt(state, target.root, target.path) & Registered;
+      set(state, target.root, target.path, Gone | kept);
     } else if (auto initialize = dyn_cast<sec::OwnInitializePlaceOp>(op)) {
       Subobject target = resolve(initialize.getPlace());
-      // A reinitialized subobject joins its owner, whose terminal action covers it.
-      set(state, target.root, target.path, target.path.empty() ? freshFlags(initialize.getValue().getType()) : uint8_t(Available));
+      // A reinitialized subobject joins its owner, whose terminal action covers it;
+      // a whole owner whose registration was kept is covered by it again (MD-125).
+      uint8_t kept = flagsAt(state, target.root, target.path) & Registered;
+      set(state, target.root, target.path, target.path.empty() ? uint8_t(kept ? (freshFlags(initialize.getValue().getType()) & ~uint8_t(Pending)) | kept : freshFlags(initialize.getValue().getType())) : uint8_t(Available));
     } else if (auto replace = dyn_cast<sec::OwnReplacePlaceOp>(op)) {
       // The old value ends and the new one takes its place, whole again; the old
       // registration's cancel and the new registration follow.
@@ -387,7 +392,7 @@ private:
     auto text = dyn_cast_or_null<StringAttr>(action);
     if (facts.needsDestruction(type) && (!text || text.getValue() != "move"))
       return op.emitOpError() << what << " needs destruction, so its ownership action must be \"move\"";
-    if (text && text.getValue() == "non-owning" && !isa<sec::RefType, sec::RefMutType, sec::SliceType, sec::SliceMutType>(type))
+    if (text && text.getValue() == "non-owning" && !isa<sec::RefType, sec::RefMutType, sec::SliceType, sec::SliceMutType, sec::StringViewType>(type))
       return op.emitOpError() << what << " is not a reference or slice holder, so it cannot be \"non-owning\"";
     return success();
   }

@@ -1,0 +1,120 @@
+module main
+
+// P17-25: interleaved owned-local and defer registrations run in reverse
+// registration order; a replacement keeps its position while a reinitialization
+// after a move registers anew; cleanup runs on branch, loop and jump exits;
+// a defer observes later assignments; returned and propagated values are
+// protected from function cleanup; discard converges across branches.
+// Rules: rules/memory/destruction.md §§ 6, 9, 13, 35; rules/control-flow/defer.md §§ 8-13.
+
+type Handle struct {
+    id: int,
+}
+
+impl Handle {
+    free {
+    }
+}
+
+fn Make(id: int) Handle {
+    return Handle { id: id }
+}
+
+fn TryMake(id: int) Result[Handle, IndexError] {
+    return Ok(Make(id))
+}
+
+fn Sink(->handle: Handle) void {
+}
+
+fn Log(number: int) void {
+}
+
+fn Interleaved() void {
+    let first := Make(1)
+    defer {
+        Log(first.id)
+    }
+    let second := Make(2)
+    defer {
+        Log(second.id)
+    }
+    let third := Make(3)
+    Log(third.id)
+}
+
+fn ReplaceAndReinitAroundDefer() void {
+    let mut kept  := Make(1)
+    let mut moved := Make(2)
+    defer {
+        Log(kept.id)
+    }
+    kept = Make(3)
+    Sink(<-moved)
+    moved = Make(4)
+}
+
+fn Branches(flag: bool) int {
+    let outer := Make(1)
+    if flag {
+        let inner := Make(2)
+        return inner.id
+    } else {
+        let other := Make(3)
+        Log(other.id)
+    }
+    return outer.id
+}
+
+fn LoopExits(limit: int) int {
+    let mut index := 0
+    while index < limit {
+        index = index + 1
+        let each := Make(index)
+        if each.id == 2 {
+            continue
+        }
+        if each.id == 4 {
+            break
+        }
+        Log(each.id)
+    }
+    return index
+}
+
+fn CaptureSeesLaterAssignment() void {
+    let mut count := 1
+    defer {
+        Log(count)
+    }
+    count = 2
+}
+
+fn ReturnProtected() Handle {
+    let local  := Make(1)
+    let result := Make(2)
+    Log(local.id)
+    return result
+}
+
+fn ErrProtected() Result[int, IndexError] {
+    let local := Make(1)
+    let fresh := try TryMake(2)
+    return Ok(local.id + fresh.id)
+}
+
+fn DiscardConverges(flag: bool) void {
+    let handle := Make(1)
+    if flag {
+        discard handle
+    } else {
+        Sink(<-handle)
+    }
+}
+
+fn DiscardOnOnePath(flag: bool) void {
+    let handle := Make(1)
+    if flag {
+        discard handle
+    }
+}

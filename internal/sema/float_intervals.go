@@ -18,7 +18,7 @@ func (a *Analyzer) floatingConstantValue(expr ast.Expression, typ Type) (*big.Ra
 	}
 	switch node := expr.(type) {
 	case *ast.Identifier:
-		symbol, ok := a.symbols[node.Value]
+		symbol, ok := a.symbols.lookup(node.Value)
 		if !ok || symbol.Mutable || symbol.Volatile || symbol.FloatingConstant == nil {
 			return nil, false
 		}
@@ -65,7 +65,7 @@ func (a *Analyzer) floatingConstantValue(expr ast.Expression, typ Type) (*big.Ra
 // Rules: rules/types/units.md — Exact fixed conversions;
 // rules/foundations/names_scopes_visibility.md — Lexical scopes.
 func (a *Analyzer) recordFloatingBindingConstant(name string, expr ast.Expression) {
-	symbol, ok := a.symbols[name]
+	symbol, ok := a.symbols.lookup(name)
 	if !ok || symbol.Mutable || symbol.Volatile || symbol.Type.Kind != FloatType {
 		return
 	}
@@ -81,7 +81,7 @@ func (a *Analyzer) recordFloatingBindingConstant(name string, expr ast.Expressio
 		value.Add(new(big.Rat).Mul(value, plan.Factor), plan.Offset)
 	}
 	symbol.FloatingConstant = value
-	a.symbols[name] = symbol
+	a.symbols.set(name, symbol)
 }
 
 // floatingInterval bounds finite source coordinates using immutable constants,
@@ -126,7 +126,7 @@ func (a *Analyzer) floatingInterval(expr ast.Expression, typ Type) (*big.Rat, *b
 	// Only ordinary scalar binding reads are stable across dominating facts.
 	// A repeated getter or volatile read is a new value even without a local write.
 	if id, ok := expr.(*ast.Identifier); ok {
-		if symbol, ok := a.symbols[id.Value]; !ok || symbol.Volatile {
+		if symbol, ok := a.symbols.lookup(id.Value); !ok || symbol.Volatile {
 			pure = false
 		}
 	} else {

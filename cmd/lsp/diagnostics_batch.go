@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"sec/internal/sema"
 	"sort"
 
 	"sec/internal/ast"
@@ -82,7 +83,21 @@ func analyzeDiagnosticBatchWithDependencies(snapshots []lspserver.Snapshot, over
 		docs := groups[key]
 		sort.Slice(docs, func(i, j int) bool { return docs[i].snapshot.URI < docs[j].snapshot.URI })
 		first := docs[0]
-		importErrors := prepareProgramForLSP(first.program, pathFromURI(first.snapshot.URI), overlay)
+		// A group of one open document shares the request cache's analysis
+		// of exactly this document state; a multi-document group keeps one
+		// joint analysis so cross-file diagnostics see one consistent set of
+		// versions (rules/tooling/lsp.md — "Snapshots").
+		var importErrors, semanticErrors []sema.Error
+		var analyzer *sema.Analyzer
+		release := func() {}
+		if len(docs) == 1 {
+			var shared analysisResult
+			shared, release = cachedLSPAnalysisResult(first.snapshot.URI, first.snapshot.Text, first.program, overlay)
+			first.program, analyzer = shared.program, shared.analyzer
+			importErrors, semanticErrors = shared.importErrors, shared.semanticErrors
+		} else {
+			importErrors = prepareProgramForLSP(first.program, pathFromURI(first.snapshot.URI), overlay)
+		}
 		if dependencies != nil {
 			for _, doc := range docs {
 				if len(importErrors) == 0 {
@@ -95,14 +110,16 @@ func analyzeDiagnosticBatchWithDependencies(snapshots []lspserver.Snapshot, over
 				}
 			}
 		}
-		analyzer := newLSPAnalyzerWithOverlay(first.snapshot.URI, first.program, overlay)
-		paths := make([]string, 0, len(docs))
-		for _, doc := range docs {
-			paths = append(paths, pathFromURI(doc.snapshot.URI))
+		if analyzer == nil {
+			analyzer = newLSPAnalyzerWithOverlay(first.snapshot.URI, first.program, overlay)
+			paths := make([]string, 0, len(docs))
+			for _, doc := range docs {
+				paths = append(paths, pathFromURI(doc.snapshot.URI))
+			}
+			analyzer.SetPitfallSourcePriority(paths)
+			semanticErrors = analyzer.Analyze(first.program)
 		}
-		analyzer.SetPitfallSourcePriority(paths)
-		semanticErrors := analyzer.Analyze(first.program)
-		errors := importErrors
+		errors := append([]sema.Error(nil), importErrors...)
 		if len(importErrors) == 0 {
 			errors = append(errors, semanticErrors...)
 			errors = append(errors, lspProgramEntryErrors(analyzer, first.program, pathFromURI(first.snapshot.URI), first.snapshot.Text, overlay)...)
@@ -121,6 +138,7 @@ func analyzeDiagnosticBatchWithDependencies(snapshots []lspserver.Snapshot, over
 				}
 			}
 		}
+		release()
 	}
 	return results
 }

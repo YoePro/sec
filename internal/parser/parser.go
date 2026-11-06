@@ -6018,14 +6018,16 @@ func (p *Parser) parseUnit() (string, *ast.UnitExpression) {
 
 	p.nextToken()
 
-	unit := ""
+	// A builder keeps this linear when a speculative scan runs far ahead.
+	var spelling strings.Builder
 	tokens := []lexer.Token{}
 
 	for p.curToken.Type != lexer.GT && p.curToken.Type != lexer.EOF {
-		unit += p.curToken.Lexeme
+		spelling.WriteString(p.curToken.Lexeme)
 		tokens = append(tokens, p.curToken)
 		p.nextToken()
 	}
+	unit := spelling.String()
 
 	if p.curToken.Type != lexer.GT {
 		p.addError("unterminated unit type")

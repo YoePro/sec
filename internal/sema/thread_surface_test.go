@@ -37,7 +37,7 @@ fn Run() void {
 }
 `)
 	assertSemaErrors(t, errors, nil)
-	if got := typeDisplayName(analyzer.completionSymbols["observer"].Type); got != "ThreadObserver[void]" {
+	if got := typeDisplayName(analyzer.completionSymbols.get("observer").Type); got != "ThreadObserver[void]" {
 		t.Fatalf("observer type = %q, want ThreadObserver[void]", got)
 	}
 

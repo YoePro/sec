@@ -1,0 +1,32 @@
+module main
+
+// P17-25: existing defer-body restrictions stay rejected: no return, no break
+// and no bodyless try propagation from inside a defer.
+// Rules: rules/control-flow/defer.md §§ 10-12.
+
+fn TryInt() Result[int, IndexError] {
+    return Ok(1)
+}
+
+fn ReturnInDefer() int {
+    defer {
+        return 1
+    }
+    return 0
+}
+
+fn TryInDefer() Result[int, IndexError] {
+    defer {
+        let value := try TryInt()
+        discard value
+    }
+    return Ok(0)
+}
+
+fn BreakInDefer() void {
+    while true {
+        defer {
+            break
+        }
+    }
+}

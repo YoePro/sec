@@ -145,6 +145,19 @@ LogicalResult verifyConstruction(Operation *op, DominanceInfo &dominance) {
       return op->emitOpError("reborrow range must use the same source slice length");
     return verifyObservation(op->getOperand(0), op, dominance);
   }
+  if (isa<StringViewBorrowOp>(op)) {
+    // MD-126: the rune extent is the static count or sec.string.rune_len of
+    // the same string Place, observed before the range is normalized.
+    if (auto len = extent ? extent.getDefiningOp<StringRuneLenOp>() : StringRuneLenOp{}) {
+      if (sourceValue(len.getSource()) != source)
+        return op->emitOpError("string range must use the same Place's rune length");
+      return success();
+    }
+    auto constant = extent ? extent.getDefiningOp<ConstIntOp>() : ConstIntOp{};
+    if (!constant)
+      return op->emitOpError("string range requires a static or observed rune extent");
+    return success();
+  }
   auto place = source ? dyn_cast<PlaceType>(source.getType()) : PlaceType{};
   auto array = place ? dyn_cast<ArrayType>(place.getElementType()) : ArrayType{};
   auto constant = extent ? extent.getDefiningOp<ConstIntOp>() : ConstIntOp{};
@@ -170,10 +183,14 @@ LogicalResult sec::verifySliceGuards(func::FuncOp function) {
       Value extent = sourceValue(op->getOperand(0));
       if (auto len = extent ? extent.getDefiningOp<SliceLenOp>() : SliceLenOp{})
         checked = verifyObservation(len.getSource(), op, dominance);
-    } else if (isa<SliceBorrowSharedOp, SliceBorrowMutOp, SliceReborrowSharedOp, SliceReborrowMutOp>(op)) {
+    } else if (isa<SliceBorrowSharedOp, SliceBorrowMutOp, SliceReborrowSharedOp, SliceReborrowMutOp, StringViewBorrowOp>(op)) {
       checked = verifyConstruction(op, dominance);
     } else if (auto len = dyn_cast<SliceLenOp>(op)) {
       checked = verifyObservation(len.getSource(), op, dominance);
+    } else if (auto next = dyn_cast<StringViewDecodeNextOp>(op)) {
+      checked = verifyObservation(next.getView(), op, dominance);
+    } else if (auto bytes = dyn_cast<StringViewByteLenOp>(op)) {
+      checked = verifyObservation(bytes.getView(), op, dominance);
     } else if (auto index = dyn_cast<SliceIndexInBoundsOp>(op)) {
       checked = verifyObservation(index.getSource(), op, dominance);
       auto branch = dyn_cast_or_null<cf::CondBranchOp>(index->getNextNode());

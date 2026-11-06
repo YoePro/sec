@@ -50,7 +50,7 @@ func (a *Analyzer) pureIntegerOperand(operand ast.Expression) bool {
 	if !ok || identifier == nil {
 		return false
 	}
-	symbol, exists := a.symbols[identifier.Value]
+	symbol, exists := a.symbols.lookup(identifier.Value)
 	if !exists || symbol.TransientConstant || symbol.Mutable && !a.currentStableBindings[identifier.Value] {
 		return false
 	}

@@ -21,12 +21,12 @@ import (
 // rules/tooling/diagnostics.md — §§9, 28;
 // rules/corrections/applied/correction28-20260823.md — "Bug 1" and "Bug 2".
 func (a *Analyzer) checkArenaInvalidationDependencies(operation, domain, owner string, token lexer.Token) bool {
-	names := make([]string, 0, len(a.symbols))
-	for name := range a.symbols {
+	names := make([]string, 0, a.symbols.len())
+	for name := range a.symbols.all() {
 		names = append(names, name)
 	}
 	sort.Slice(names, func(i, j int) bool {
-		left, right := a.symbols[names[i]].Token, a.symbols[names[j]].Token
+		left, right := a.symbols.get(names[i]).Token, a.symbols.get(names[j]).Token
 		if left.File != right.File {
 			return left.File < right.File
 		}
@@ -40,7 +40,7 @@ func (a *Analyzer) checkArenaInvalidationDependencies(operation, domain, owner s
 	})
 	current := a.arenaGenerations[domain]
 	for _, name := range names {
-		symbol := a.symbols[name]
+		symbol := a.symbols.get(name)
 		if name == owner {
 			continue
 		}

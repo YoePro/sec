@@ -147,7 +147,7 @@ func (a *Analyzer) beginIterationDependencies(stmt *ast.ForStatement, valid bool
 		if binding.Discard || binding.Mode == ast.ForBindingValue {
 			continue
 		}
-		symbol, ok := a.symbols[binding.Name]
+		symbol, ok := a.symbols.lookup(binding.Name)
 		if !ok || symbol.Type.Kind != ReferenceType {
 			continue
 		}

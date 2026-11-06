@@ -20,7 +20,7 @@ func (a *Analyzer) analyzeMatchArmBody(arm *ast.MatchArm, info matchPatternInfo)
 	previousBorrows := a.borrows
 	previousLocalRefContainers := a.localRefContainers
 	previousArenaGenerations := a.arenaGenerations
-	a.symbols = copySymbols(previousSymbols)
+	a.symbols = previousSymbols.child()
 	a.constInts = copyConstInts(previousConstInts)
 	a.assigned = copyAssigned(previousAssigned)
 	a.moved = copyMoved(previousMoved)
@@ -113,8 +113,13 @@ func (a *Analyzer) analyzeMatchArmBody(arm *ast.MatchArm, info matchPatternInfo)
 		return Type{Kind: InvalidType}, a.finalizeMatchBranch(info, branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), availabilityStates: copyAvailabilityStates(a.availabilityStates), closedResources: copyMoved(a.closedResources), borrows: copyBorrows(a.borrows), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), referenceOrigins: captureReferenceOrigins(a.symbols), continues: false})
 	}
 	if arm.BlockBody != nil {
-		a.analyzeBlockStatements(arm.BlockBody)
-		return Type{Kind: InvalidType}, a.finalizeMatchBranch(info, branchAnalysis{
+		armType := Type{Kind: InvalidType}
+		if a.matchArmValueContext && a.blockCanFallThrough(arm.BlockBody) {
+			armType = a.analyzeMatchArmBlockValue(arm)
+		} else {
+			a.analyzeBlockStatements(arm.BlockBody)
+		}
+		return armType, a.finalizeMatchBranch(info, branchAnalysis{
 			assigned:           copyAssigned(a.assigned),
 			moved:              copyMoved(a.moved),
 			availabilityStates: copyAvailabilityStates(a.availabilityStates),
@@ -163,4 +168,47 @@ func (a *Analyzer) rejectGuardConsumedBindings(info matchPatternInfo) {
 			a.addErrorAtTokenWithMetadata(token, diagnostics.GuardConsumesBinding, "A false guard must preserve the value for later arms. Inspect or borrow the binding here and move it only inside the selected arm body.", "match guard must not consume %s before the arm is selected; inspect or borrow it in the guard and move it in the arm body", name)
 		}
 	}
+}
+
+// analyzeMatchArmBlockValue analyzes a continuing arm block of a match
+// expression: its statements run in the arm scope and its final expression,
+// analyzed while the block's locals are still live, is the arm result. A block
+// whose continuing path ends without a value expression, or with a void one,
+// is rejected (flowcontrol_match.md § 21 "Continuing paths").
+func (a *Analyzer) analyzeMatchArmBlockValue(arm *ast.MatchArm) Type {
+	block := arm.BlockBody
+	value, ok := tryHandlerBlockValue(block)
+	if !ok {
+		a.analyzeBlockStatements(block)
+		a.addErrorAtToken(block.Token, "the continuing match arm block does not produce the match result; end it with a value expression")
+		return Type{Kind: InvalidType}
+	}
+	prefix := &ast.BlockStatement{Token: block.Token, Tokens: block.Tokens, Statements: block.Statements[:len(block.Statements)-1]}
+	armType := Type{Kind: InvalidType}
+	a.analyzeBlockStatementsWithRecovery(block, func() {
+		if len(prefix.Statements) > 0 && !a.blockCanFallThrough(prefix) {
+			a.addErrorAtToken(expressionToken(value), "unreachable match arm value; the arm block already leaves control flow")
+			return
+		}
+		// The arm result takes ownership like an expression arm does, before
+		// the arm scope ends (§ 21 "Ownership of the final expression").
+		a.constructionOwnershipDepth++
+		typ, _ := a.inferExpression(value)
+		a.constructionOwnershipDepth--
+		if typ.Kind == VoidType {
+			a.addErrorAtToken(expressionToken(value), "the continuing match arm block does not produce the match result; its final expression is void")
+			return
+		}
+		ownershipValid := true
+		if a.terminalReturnDepth > 0 {
+			ownershipValid = !a.validateTerminalReturnConstruction(value)
+		} else {
+			ownershipValid = a.validateOwningConstructionSource(value)
+		}
+		if ownershipValid {
+			a.markMoveSource(value)
+		}
+		armType = typ
+	})
+	return armType
 }

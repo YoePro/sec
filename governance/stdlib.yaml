@@ -147,13 +147,10 @@ integrations:
     area: standard-library
     status: partial
     integrated: "2026-10-10"
-    summary: >-
-      Generates the sec/stdlib/unicode tables with cmd/unicodegen from a
-      version-locked Unicode Character Database instead of Go's built-in unicode
-      package, so the library follows Unicode 18.0.0 rather than the Unicode
-      version of the Go toolchain.
+    summary: Generates the complete Unicode 18.0.0 scalar classification catalog for core/rune and stdlib/unicode from six pinned offline UCD inputs, independently of the Go toolchain. Public casing APIs and executable library tests remain separately listed.
     rules:
-      - sec/stdlib/unicode/unicode.sec
+      - rules/library/core-library.md
+      - rules/library/stdlib.md
     code:
       - cmd/unicodegen/main.go
       - cmd/unicodegen/ucd.go
@@ -162,26 +159,51 @@ integrations:
       - third_party/unicode/18.0.0/ucd/DerivedCoreProperties.txt
       - third_party/unicode/18.0.0/ucd/CaseFolding.txt
       - sec/stdlib/unicode/unicode.sec
+      - cmd/unicodegen/properties.go
+      - cmd/unicodegen/README.md
+      - third_party/unicode/18.0.0/ucd/PropList.txt
+      - third_party/unicode/18.0.0/ucd/emoji/emoji-data.txt
+      - sec/core/rune.sec
+      - sec/core/unicode_letters_generated.sec
+      - sec/core/unicode_digits_generated.sec
+      - sec/core/unicode_properties_generated.sec
     implemented:
-      - "version lock: unicodeVersion 18.0.0, a -input UCD directory (default third_party/unicode/18.0.0/ucd), SHA-256 pinning of all four official files, and # Name-18.0.0.txt header checks for the versioned files"
       - "UnicodeData.txt: General_Category with First/Last range expansion and Cn for unassigned code points; simple upper/lower/title mappings with the UAX #44 defaults (identity, title falls back to upper)"
       - "SpecialCasing.txt: full lower/title/upper sequences with language and context conditions; commented-out entries ignored"
-      - "DerivedCoreProperties.txt: Cased and Case_Ignorable as sorted merged ranges"
       - "CaseFolding.txt: simple (C+S), full (C+F) and Turkic (T) case folding"
       - "IsLetter tables generated from UCD 18.0.0 General_Category L (Lu, Ll, Lt, Lm, Lo): 694 maximal ranges; every Go unicode 15.0.0 letter is kept and 22068 letters are added"
+      - "Version lock (2026-11-06): SHA-256 pins for UnicodeData, SpecialCasing, DerivedCoreProperties, CaseFolding, PropList and emoji/emoji-data; versioned headers are checked, including the emoji file's distinct version marker. Wrong-version, missing and modified inputs are rejected before rendering/writing outputs."
+      - "Complete scalar classification catalog (2026-11-06; rules/library/core-library.md §11.3): all 30 General_Category values, eight aggregate classes, 63 binary properties from DerivedCoreProperties/PropList/emoji-data and 11 common aliases give 112 rune predicates and unicode functions. InCB enumerated values are not silently treated as booleans. Surrogates are removed from rune tables; Cs is empty. Identical property tables share immutable core storage; stdlib wrappers hold no duplicate tables."
+      - "Core rune integration (2026-11-06): approximate letter/case, emoji, whitespace, punctuation, symbol and mark blocks delegate to generated data. Emoji and EmojiPresentation remain distinct; Emoji includes keycap bases. Noncharacter covers plane endings, while IsValid retains all legal scalars including noncharacters. Legacy digit/hex helpers stay ASCII-only. Source-backed compiler and LSP checks cover the generated extension properties and unicode wrappers."
+      - "Reproducible complete output family (2026-11-06): one generation produces core letters, decimal zeros, shared classification ranges/rune extensions and the unicode module. -check reports every stale or missing artifact without writing; -core-output redirects every core artifact. Tests exhaustively compare category membership over all code points, validate scalar/normalized table invariants, cover exact emoji/whitespace/case/noncharacter facts, reject tampered property sources and verify current output bytes."
     remaining:
       - decide and generate the Sec casing API and tables (simple and full upper/lower/title mapping, SpecialCasing conditions, Cased/Case_Ignorable contexts, case folding) from the parsed data
-      - add executable standard-library behavior tests for the generated unicode module
+      - Add executable standard-library behavior tests for the generated unicode module once the compilation track lowers the required rune property access and table operations. The real 2026-11-06 emit-ir probe of testdata/unicode_classification_valid.sec stops at the explicit package-17 member expression boundary (line 31); generator data tests, full category-domain checks and successful compiler/LSP source checks are not native execution evidence.
     tests:
       - cmd/unicodegen/main_test.go
       - cmd/unicodegen/ucd_test.go
+      - cmd/unicodegen/properties_test.go
+      - cmd/compiler/unicode_tables_test.go
+      - cmd/lsp/unicode_tables_test.go
+      - testdata/unicode_classification_valid.sec
     verification:
+      - command: go run ./cmd/compiler emit-ir testdata/unicode_classification_valid.sec -o <output>
+        result: "Capability boundary confirmed 2026-11-06: exits 4 with unsupported-lowering, package 17 member expression at testdata/unicode_classification_valid.sec:31:56. No native execution success claimed."
+      - command: go run ./cmd/compiler sema sec/stdlib/unicode/unicode.sec
+        result: "Passed 2026-11-06: 0 errors and 0 warnings with the complete classification catalog."
+      - command: go run ./cmd/unicodegen -check
+        result: "Passed 2026-11-06: all four generated artifacts are current; no files written."
+      - command: go test -p 4 ./cmd/compiler ./cmd/lsp -run 'Test(CompilerLoads(GeneratedUnicodeProperties|UnicodeIsLetter)|GeneratedUnicodePropertiesLSP)' -count=1
+        result: "Passed 2026-11-06: real selected-target core/import checking, generated rune extensions and unicode wrappers. The older targetless inline Unicode test moved to a source fixture through the actual target-aware CLI."
+      - command: go test -p 4 ./cmd/unicodegen -count=1
+        result: "Passed 2026-11-06: full generator suite, all scalar-category memberships, output pool/offset routing, representative binary/emoji facts, source hash rejection, deterministic complete artifact currency and isolated read-only check mode."
       - command: go test ./cmd/unicodegen -count=1
         result: "Passed 2026-10-30: generator output matches the existing Unicode 18.0.0 file byte for byte after restoring field alignment and the current ASCII range-membership spelling. No table data or Unicode version changed."
       - command: go test ./cmd/unicodegen -count=1
         result: passed on 2026-10-10 with fixture parsing of all four files, malformed-input and wrong-version rejection, tampered-file hash rejection, Unicode 18.0.0 data facts, Go unicode 15.0.0 letter preservation and the generated unicode.sec being current
       - command: go run ./cmd/compiler sema sec/stdlib/unicode/unicode.sec
         result: passed with 0 errors and 0 warnings on 2026-10-10
+    revised: "2026-11-06"
 
   - id: stdlib.temporal-arithmetic-error
     area: standard-library

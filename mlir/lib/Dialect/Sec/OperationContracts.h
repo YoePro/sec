@@ -33,7 +33,7 @@ inline LogicalResult verifyAddressStability(Operation *operation, StringRef valu
 inline bool containsOwnedValueMatching(
     Type type, llvm::function_ref<bool(Type)> matches) {
   if (matches(type)) return true;
-  if (isa<RefType, RefMutType, SliceType, SliceMutType>(type)) return false;
+  if (isa<RefType, RefMutType, SliceType, SliceMutType, StringViewType>(type)) return false;
   if (auto named = dyn_cast<NamedType>(type))
     return containsOwnedValueMatching(named.getBase(), matches);
   if (auto distinct = dyn_cast<DistinctType>(type))

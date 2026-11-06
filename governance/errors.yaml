@@ -6,7 +6,7 @@ integrations:
     area: frontend-error-control-flow-ownership-and-lowering
     status: partial
     integrated: "2026-08-28"
-    revised: "2026-10-29"
+    revised: "2026-11-06"
     document_revision: "2.1"
     repository_baseline: b3315f6
     semantic_source_parent: 45e5cd4
@@ -62,6 +62,9 @@ integrations:
       - cmd/lsp/error_pattern_hover.go
       - cmd/lsp/hover.go
       - cmd/lsp/main.go
+      - internal/sema/string_range_try_origins.go
+      - internal/sema/reference_place_origins.go
+      - internal/sema/analyzer_blocks.go
     tests:
       - internal/ir/semantic/option_try_test.go
       - internal/ir/semantic/failure_set_try_test.go
@@ -129,6 +132,12 @@ integrations:
       - cmd/lsp/error_pattern_tooling_test.go
       - testdata/lsp/error_patterns/patterns.sec
       - testdata/lsp/error_patterns/completion.sec
+      - internal/sema/string_range_try_test.go
+      - cmd/compiler/string_ranges_test.go
+      - cmd/lsp/string_ranges_test.go
+      - testdata/sema/string_ranges/try_valid.sec
+      - testdata/sema/string_ranges/try_invalid.sec
+      - testdata/sema/string_ranges/try_origin_invalid.sec
     implemented:
       - "MD-120 generic error channels and types (2026-11-01; errorhandling.md §§ 3.5, 4, 12.1, 17): Result[T, E] with E: error, try within E and widening into error, cross-channel rejection, unproved Err(_) rejection; generic error unions and enums with known outer variants, non-error payload parameters and phantom enum parameters (rules/corrections/applied/MD-120-generic-error-parameters-approved-20261031-20261101.md; TestGenericErrorParameters, TestGenericErrorChannelSpecializations, TestGenericErrorUnionInstance, TestErrorCategoryConstraintSyntax, TestGenericErrorParameterHover)"
       - "MD-029 conformance tests (2026-10-30; correction § 17 M029-11..13, § 17(3)): nested payload patterns are a focused parse error and ref mut through an immutable Result is S1165 (M029-11); a guard may inspect but not consume a payload or field binding, a false guard leaves the payload to later arms and the selected arm moves it once (M029-12); shared/exclusive payload and field references follow the borrow rules, a live ref mut blocks other use of the subject and move-only payloads are never partially moved (M029-13); a differential test checks Sema coverage against an independent enumeration for every arm subset of a closed union error in qualified, contextual, payload and explicit spellings, and that no concrete arm set covers an open `error` channel even with a same-spelling unrelated enum (TestErrorPatternNestingAndBindingModes, TestErrorPatternGuardOwnership, TestErrorPatternReferenceBindings, TestErrorPatternCoverageDifferential)."
@@ -215,9 +224,10 @@ integrations:
       - "MD-008/MD-029 error-variant patterns in Semantic IR and Sec MLIR (2026-10-30; semantic_ir.md § 71(6); sec_mlir_dialect.md v11.41.4; internal/ir/semantic/match_error_variants.go): Err(E.Variant...) match arms on a closed concrete enum or union error channel lower as result.is-err, then result.unwrap-err and an enum comparison or union.is-variant on the unwrapped error (both false edges continue with the next arm), with copy-trivial single-payload, whole struct-like payload and shallow field bindings projected on the variant test's true edge, guards after the bindings, and the selected union variant in the match record (pattern kind result-err-variant). Try handlers on union errors test union.is-variant and bind payloads/fields the same way; a last unconditional handler that projects keeps its test and ends the impossible edge in exhaustive-try-fallthrough. The C++ match-CFG verifier accepts result-err-variant tests only on the error unwrapped from the one Result subject. Tests: internal/ir/semantic/error_variant_patterns_test.go (lowering, verifier rejection of a mismatched projection, fail-closed borrowed payload/open narrowing), cmd/compiler/error_variant_patterns_test.go (verified emit-sec-mlir on testdata/semantic_ir/error_variant_patterns.sec), mlir/test/Analysis/schema11-error-variant-match.mlir; lit 192/192."
       - "MD-031 try handler forms through the compilation track (2026-11-04; rules/mlir/sec_mlir_dialect.md v11.41.6): guarded handlers (`where`, guard-false continuation), partial handler lists with residual propagation, try over Option[T] with exhaustive, guarded and residual None handlers, and block-final recovery values emit with their handler provenance (`sec.try_handler_kind` none/residual, `sec.try_handler_guarded`, `sec.try_handler_residual`), pass --sec-verify-try-handlers and run natively on linux-amd64 (testdata/build/native/try_handler_forms.sec). Owned Some payloads move out of the Option under schema 13 (P17). Tests: TestSecMLIREmitsGuardedAndPartialTryHandlers, TestOptionTryNoneHandlersEmitProvenance, TestNativeTrackBuildsAndRuns/try_handler_forms, lit schema13-try-handler-forms.mlir and invalid-schema13-try-handler-forms.mlir."
       - "MD-029 LSP (2026-10-29): Err(. completion in try handlers and Result match arms presents variants only from the Sema-resolved concrete failure channel, including nested handlers and incomplete lines. Open/heterogeneous channels instead offer explicit concrete error-type qualification edits with LSP textEdit/filterText, never inferred variants from other visible types. Error-union hover follows Sema-bound variant declaration tokens and shows the single payload or shallow fields. Contextual/qualified variant and payload binding hover, definition and references use existing compiler identities. The focused regression found and repaired a missing single-payload try binding declaration token; tryHandlerBindingIdentifier now lives in analyzer_try_handlers.go and preserves the real MD-029 binding node. Parser activation/version and Semantic IR lowering remain separate existing points."
-      - "try over call chains in Semantic IR (2026-11-04; errorhandling.md \u00a7 11): each intermediate Result receiver of a protected chain (`try Start(1).Next().Value()`) is built once, its Err is routed to the try's failure edge (propagation or local handlers), and its Ok value is lent to the next member as a call-lifetime temporary. Sema publishes the carrier's Result type on the failure point (TryFailurePoint.CarrierType) and types the receiver borrow by the Ok value. Test: TestSchema13EmitsTryChainsAndOwnedErrorPayloads (testdata/semantic_ir/try_chains.sec) through the result-guard, try-handler, match-CFG and ownership verifiers on 32/64-bit plans."
+      - "try over call chains in Semantic IR (2026-11-04; errorhandling.md § 11): each intermediate Result receiver of a protected chain (`try Start(1).Next().Value()`) is built once, its Err is routed to the try's failure edge (propagation or local handlers), and its Ok value is lent to the next member as a call-lifetime temporary. Sema publishes the carrier's Result type on the failure point (TryFailurePoint.CarrierType) and types the receiver borrow by the Ok value. Test: TestSchema13EmitsTryChainsAndOwnedErrorPayloads (testdata/semantic_ir/try_chains.sec) through the result-guard, try-handler, match-CFG and ownership verifiers on 32/64-bit plans."
       - "owned error variant payloads of a fresh Result subject (2026-11-04): a match arm or handler moving `Err(Failure.Lost(handle))` out of a Result held in its compiler Place tests the variant on the error observed through the Err payload Place; --sec-verify-match-cfg accepts that form next to sec.result.unwrap_err (testdata/semantic_ir/error_payload_owned.sec)."
-      - "try in expression positions (2026-11-04; errorhandling.md \u00a7 11): from Semantic IR package 14, a try operand of an operator is built in evaluation order like any other operand (the old 'try arithmetic' gate stays for packages below 14). Call arguments, if/while/switch headers, unary and logical operands, operator operands and nested try lower and run natively (testdata/build/native/try_positions.sec, both the success and the propagated-failure paths). Struct field initializers and array elements lower and verify through schema 13 (testdata/semantic_ir/try_positions.sec in TestSchema13EmitsTryChainsAndOwnedErrorPayloads)."
+      - "try in expression positions (2026-11-04; errorhandling.md § 11): from Semantic IR package 14, a try operand of an operator is built in evaluation order like any other operand (the old 'try arithmetic' gate stays for packages below 14). Call arguments, if/while/switch headers, unary and logical operands, operator operands and nested try lower and run natively (testdata/build/native/try_positions.sec, both the success and the propagated-failure paths). Struct field initializers and array elements lower and verify through schema 13 (testdata/semantic_ir/try_positions.sec in TestSchema13EmitsTryChainsAndOwnedErrorPayloads)."
+      - "MD-126 fallible string ranges frontend (2026-11-06; errorhandling.md §§9,21–22,31): try text[a..<b] resolves StringView/RangeError for propagation, expression/block recovery and for sources. Continuing handlers join all backing origins before handler scope cleanup, rejecting local escapes and mutation of recovery backing; terminating handlers contribute no recovered value. Only the protected range check loses its bounds panic: endpoint and handler panics, static invalid ranges and incompatible propagation channels retain stable diagnostics. Sema, compiler check and LSP regressions: TestStringRangeTry*. P23 executable StringView lowering remains separately tracked."
     remaining:
       - "error-widening-representation-and-lowering: Preserve concrete error type identity, active variant, payload, ownership state, and destruction obligations through Semantic IR and the compilation track after frontend widening to error. Physical representation remains implementation-defined."
       - "open-error-match-narrowing-lowering: Preserve concrete error identity so open error narrowing in try and match can be lowered (concrete-channel Err(ConcreteError.Variant) arms lower since 2026-10-30). (Frontend narrowing with open-domain exhaustiveness is implemented.) Previously: Permit error-specific variant narrowing when matching Result[T, error] while keeping error an open domain. Concrete-only Err arms are not exhaustive; Err(errorValue) or Err(_) may cover the remaining open domain. Do not generalize this into arbitrary runtime type-pattern matching."
@@ -228,11 +238,10 @@ integrations:
       - "try-chain-intermediate-lowering: an intermediate Result receiver whose success value needs destruction (its temporary cleanup after the next member call) stays a named boundary ('failure-set try over an intermediate Result receiver that needs destruction'); native execution of chains waits on instance-method calls in the native track (P14 Place/reference representation). Option-typed intermediate receivers are not unwrapped inside a try chain."
       - "try-failure-set-lowering: route the remaining failure-point kinds (dynamic-array, slice and list indexing, constrained-type contract conversion, string materialization allocation, checked conversion) once their operations exist in Semantic IR, and lower heterogeneous failure sets once error widening is represented (error-widening-representation-and-lowering); both are rejected explicitly today. Executable sec-mlir-opt verification of emitted failure-set modules is still pending."
       - "md029-contextual-err-variant-activation: Err(.Variant...) is implemented and accepted unconditionally because the compiler has no language-version selection; when release tracking and a selectable language version exist, gate the form to Sec 0.1.2 (owner choice 2026-10-28) and record it in the compiler capability list."
-      - "md029-error-pattern-ir-lowering: remaining in Semantic IR are borrowed error payloads and fields (`Err(E.V(ref x))`, two payload projections with their guards; rejected as 'borrowed concrete error variant payload'), ownership-sensitive field bindings (move, copy-semantic, copy-conditional), and guarded try handlers on an error that needs destruction. Whole owned payload bindings in match arms and handlers lower since P17, and the Place-observed form of a fresh subject verifies since 2026-11-04. Open-error identity stays in open-error-match-narrowing-lowering. Until then these plans are rejected explicitly (correction \u00a7\u00a7 15(1), 15(5), 18(6))."
+      - "md029-error-pattern-ir-lowering: remaining in Semantic IR are borrowed error payloads and fields (`Err(E.V(ref x))`, two payload projections with their guards; rejected as 'borrowed concrete error variant payload'), ownership-sensitive field bindings (move, copy-semantic, copy-conditional), and guarded try handlers on an error that needs destruction. Whole owned payload bindings in match arms and handlers lower since P17, and the Place-observed form of a fresh subject verifies since 2026-11-04. Open-error identity stays in open-error-match-narrowing-lowering. Until then these plans are rejected explicitly (correction §§ 15(1), 15(5), 18(6))."
       - "md029-error-pattern-mlir-and-execution: Sec MLIR (v11.41.4) and native execution of the lowered subset on linux-amd64 are done for scalar payloads (testdata/build/native/error_variant_patterns.sec, 2026-10-30). Remaining: error patterns with non-scalar payloads (strings, structs) through the LLVM track, whole struct-like payload bindings Err(E.V(info)) (sec.struct.* is not lowered natively), execution on every supported CompilationPlan, reporting planned/unsupported lowerings separately and never as source errors (correction §§ 17(1)-(2), 18(6)); depends on open-error-match-narrowing-lowering (concrete error identity) and P17 owned payload transfer/cleanup."
       - "try-expression-positions-lowering: `x += try e` (and the same through a reference) still stops at 'try arithmetic', since the order of the target read relative to the failure edge must be fixed first; native execution of try in struct field initializers and array elements waits on native sec.struct.*/sec.array.* lowering. Handlers in control headers are not defined by the rulebooks and are not parsed there."
       - "errorhandling-semantic-ir-v2: Extend resolved try/result facts for partial handlers, implicit unmatched propagation, Option alternate paths, error widening/narrowing identity, consuming and borrowed projections, recovery-value merges, guarded ownership commit, and nested failure boundaries. Backends must not reconstruct these semantics from syntax or unused SSA. Direct Result return-try forwarding already has a dedicated resolved fact and canonical Semantic IR lowering."
-      - "MD-126 (decided 2026-11-05, rules/corrections/applied/MD-126-borrowed-string-ranges-rune-iteration-applied-20261105.md): try text[a..<b] resolves success StringView and failure RangeError for naked propagation, local handlers and for sources, without catching unrelated panics"
     required_tests:
       - error is compiler-known and import-free
       - enum ErrorType error declaration
@@ -285,6 +294,14 @@ integrations:
       - an incompatible Result carrier is rejected with expected and actual Result types
       - an incompatible Option carrier is rejected with expected and actual Option types
     verification:
+      - command: go test -p 4 ./internal/sema ./internal/ir/semantic -count=1
+        result: passed on 2026-11-06 after extracting block-scope analysis into analyzer_blocks.go
+      - command: go test -p 4 ./internal/ir/semantic -run 'Test.*Try|Test.*Recovery' -count=1
+        result: "passed on 2026-11-06: existing try/recovery Semantic IR regressions"
+      - command: go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run TestStringRangeTry -count=1
+        result: "passed on 2026-11-06: propagation, for sources, recovery origins and exact diagnostic identities"
+      - command: go test -p 4 ./internal/sema -count=1
+        result: passed on 2026-11-06
       - command: go test ./cmd/lsp -count=1 -timeout=240s
         result: "not completed on 2026-10-29: suite-wide 240s limit reached while TestCallHierarchySurvivesIncompleteSource was starting; no full-suite success claimed. The final focused MD-029 and neighboring LSP regression selection passes separately in 25.267s."
       - command: go test ./cmd/lsp -run 'Test(ErrorPattern|SomeConstructorHover|TryHover|TypeDefinition|SubjectCompletion|StateTestCompletion|CompilerKnownFriendly)' -count=1 -timeout=180s
@@ -727,7 +744,7 @@ integrations:
 
   - id: tooling.panic
     area: panic-diagnostics-lsp-formatter
-    status: partial
+    status: implemented
     document_revision: "2.0"
     reviewed: "2026-09-17"
     repository_baseline: 814a584
@@ -737,6 +754,10 @@ integrations:
       - rules/tooling/lsp.md
       - rules/compiler/incremental_compilation.md
       - rules/projects/modules.md
+      - rules/control-flow/defer.md
+      - rules/errors/errorhandling.md
+      - rules/memory/destruction.md
+      - rules/platform/interrupts.md
     implemented:
       - assert hover shows the resolved proof state (proven with no runtime check, or not proven with the registered AssertionFailed reason), the static message, and the refinement the assertion provides to following code
       - call hierarchy prepare, incoming, and outgoing items mark callables whose compiler-owned effect summary may panic, making transitive panic-capable paths visible
@@ -747,24 +768,50 @@ integrations:
       - "function and method hover presents the compiler-owned panic summary: May panic no/yes, each direct panic source with its registered reason names, and the synchronous panic path to a transitive source"
       - "assertion mentor diagnostics (2026-10-03): function-like assert(...) P2030 parser.function-like-assert, a non-literal message P2031 parser.assert-message-not-literal, a missing comma P2032 parser.assert-message-separator, and a missing condition P2033 parser.assert-missing-condition carry help naming the canonical form; a non-bool condition is S1102 panic.assert-condition-not-bool with type-specific help (`!= 0`, `.Len != 0`, `is not None`, Result state test), since Sec has no truthiness"
       - "Incremental panic facts use the shared compiler source-closure invalidation and generation checks: edits to imported bodies, generic bodies, defer cleanup, FFI contracts and assertion proofs refresh dependent diagnostics; new module siblings invalidate the declaration set, including unsaved files, while removed imports cease to invalidate the former consumer. Watched source/manifest changes refresh active and retained cross-target facts; hover and call hierarchy recompute canonical Sema summaries from the current snapshot."
-    remaining:
-      - mentor diagnostics explain ISR panic paths, unknown foreign effects, and invalid cleanup (noPanic violations explain cause and fix; assertion type and syntax errors carry stable IDs and mentor help since 2026-10-03)
+      - "Panic mentor diagnostics complete (2026-11-06; panic.md §28, defer.md §§14–18,31): canonical ISR and foreign panic paths retain root/cause navigation and practical proof alternatives in CLI JSON and LSP. Cleanup paths name defer/free, use source-level Resource.free names, and recommend exhaustive local recovery rather than removing noPanic or propagating into an invocation already exiting. Invalid deferred return/break/continue/fallthrough/cancel/await/nested defer carry mandatory S1203 with repair help; bodyless and residual Result/Option try preserve S1093/S1094 with cleanup-specific advice. Independently invoked lambdas created in defer/free get their own cleanup scope; return, local try propagation and their own defer remain valid, and outer cleanup restrictions are restored afterward. This closes tooling over diagnosed canonical facts; execution-policy selection and additional panic-effect coverage remain with their existing analysis/platform owners."
+    remaining: []
     required_tests:
       - formatter round-trip for both assertion forms
       - LSP and compiler agree on MayPanic
       - noPanic diagnostic identifies transitive root cause
       - ISR diagnostic identifies interrupt root and panic cause
       - missing assert comma receives focused diagnostic
-    revised: "2026-10-12"
+    revised: "2026-11-06"
     code:
       - cmd/lsp/analysis_dependencies.go
       - cmd/lsp/import_sources.go
       - cmd/lsp/diagnostics_batch.go
       - cmd/lsp/cross_target_invalidation.go
+      - internal/sema/panic_cleanup_diagnostics.go
+      - internal/sema/analyzer_no_panic.go
+      - internal/sema/analyzer_defer.go
+      - internal/sema/analyzer_lambda.go
+      - internal/sema/analyzer_inference.go
+      - internal/sema/analyzer.go
+      - internal/sema/analyzer_try_option.go
+      - internal/sema/try_failure_set.go
+      - internal/sema/panic_interrupt_context.go
+      - internal/diagnostics/diagnostics.go
     tests:
       - cmd/lsp/panic_invalidation_test.go
       - testdata/lsp/panic_refresh
+      - internal/sema/panic_mentor_test.go
+      - internal/sema/isr_panic_test.go
+      - internal/diagnostics/panic_cleanup_test.go
+      - cmd/compiler/panic_mentor_test.go
+      - cmd/lsp/panic_mentor_test.go
+      - testdata/sema/panic_mentor_valid.sec
+      - testdata/sema/panic_mentor_invalid.sec
+      - testdata/sema/isr_panic_paths_invalid.sec
     verification:
+      - command: go vet -p 4 ./internal/sema/... ./internal/diagnostics ./cmd/compiler ./cmd/lsp
+        result: Passed 2026-11-06.
+      - command: go test -race -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run 'Test(Panic.*Mentor|ISRPanicUsesCanonicalSummaries)' -count=1
+        result: "Passed 2026-11-06: focused semantic, compiler and editor mentor regressions under the race detector."
+      - command: go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run 'Test(Panic.*Mentor|ISRPanicUsesCanonicalSummaries)' -count=1
+        result: "Passed 2026-11-06: registered cleanup errors, Result/Option recovery help, explicit/deferred/free/foreign/indirect panic paths, valid nested invocations and ISR root/cause metadata in CLI JSON and LSP."
+      - command: go test -p 4 ./internal/sema/... ./internal/diagnostics ./internal/ir/semantic -count=1
+        result: "Passed 2026-11-06: complete Sema subtree, diagnostic registry and Semantic IR suites on the final shared tree."
       - command: go test ./cmd/lsp ./internal/lsp/server -count=1
         result: passed on 2026-10-12; full LSP and module-loader suites, including cold-versus-incremental panic diagnostics, current hover/call hierarchy, existing import navigation and target selection regressions
       - command: go vet ./...

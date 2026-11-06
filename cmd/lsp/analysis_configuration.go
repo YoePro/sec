@@ -3,6 +3,9 @@ package main
 import (
 	"os"
 	"path/filepath"
+
+	"github.com/BurntSushi/toml"
+
 	"sec/internal/ast"
 	"sec/internal/diagnostics"
 	platformtarget "sec/internal/platform/target"
@@ -92,11 +95,11 @@ func newTargetLSPAnalyzer(uri string, program *ast.Program, overlay sourceOverla
 		analyzer.SetPitfallSourcePriority([]string{sourcePath})
 		return analyzer
 	}
-	// Outside a project the compiler CLI analyzes for the host target; the
-	// LSP uses the same plan so c:: fundamental types resolve through the
-	// host C ABI model instead of reporting S1077 only in the editor.
+	// Without a declared project target, including settings-only manifests,
+	// CLI and LSP use the same host plan so scalar widths and C ABI facts
+	// remain resolved. Failed declared-target selection never takes this path.
 	// Rules: rules/tooling/lsp.md — Target-aware analysis; rules/platform/ffi.md — §5.
-	if definition, found := platformtarget.Find(platformtarget.Host()); found && !lspHasProjectManifest(sourcePath) {
+	if definition, found := platformtarget.Find(platformtarget.Host()); found && lspAllowsHostScalarPlan(sourcePath, overlay) {
 		if plan, err := definition.ScalarPlan(); err == nil {
 			analyzer := sema.NewAnalyzerWithScalarPlanAndDepth(plan, depth)
 			analyzer.SetAllocationProfile(lspAllocationCapabilities(sourcePath).Profile)
@@ -110,13 +113,29 @@ func newTargetLSPAnalyzer(uri string, program *ast.Program, overlay sourceOverla
 	return analyzer
 }
 
-// lspHasProjectManifest reports whether the source belongs to a project
-// whose manifest owns target selection; such a project never falls back to
-// the host target.
-func lspHasProjectManifest(sourcePath string) bool {
+// lspAllowsHostScalarPlan permits the CLI-default host plan for a stand-alone
+// source with optional editor settings, while an explicit target selection or
+// declared target/variant (including invalid or ambiguous ones) prevents guessing.
+// Rules: rules/tooling/lsp.md — Diagnostics (target-aware source selection),
+// Configuration, Snapshots; rules/platform/platform_model.md — §26.
+func lspAllowsHostScalarPlan(sourcePath string, overlay sourceOverlay) bool {
 	if sourcePath == "" {
+		return true
+	}
+	root := normalizedSourcePath(findProjectRoot(sourcePath))
+	if _, selected := overlay.Targets[root]; selected {
 		return false
 	}
-	_, err := os.Stat(filepath.Join(findProjectRoot(sourcePath), ".sec", "sec.toml"))
-	return err == nil
+	_, text, found := lspProjectManifest(sourcePath, overlay)
+	if !found {
+		_, err := os.Stat(filepath.Join(root, ".sec", "sec.toml"))
+		return os.IsNotExist(err)
+	}
+	var settings map[string]any
+	if _, err := toml.Decode(text, &settings); err != nil {
+		return false
+	}
+	_, hasTargets := settings["target"]
+	_, hasVariants := settings["variant"]
+	return !hasTargets && !hasVariants
 }

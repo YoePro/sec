@@ -88,6 +88,10 @@ func analyzeProgramWithSourcesForReport(program *ast.Program, target CompilerTar
 	analyzer := sema.NewAnalyzerWithScalarPlanAndDepth(scalarPlan, depth)
 	analyzer.SetHardwareModuleContext(cliHardwareModuleContext(program, target, sourceFiles))
 	analyzer.SetDiagnosticRules(projectDiagnosticRules(sourceFiles))
+	// Requested sources receive optional analysis before imported core bodies.
+	// Rules: rules/analysis/pitfall_analysis.md — "Interactive analysis";
+	// rules/compiler/compiler_analysis.md — §15.
+	analyzer.SetPitfallSourcePriority(sourceFiles)
 	errors := analyzer.Analyze(program)
 	if retainErrors {
 		onlyConformance := true

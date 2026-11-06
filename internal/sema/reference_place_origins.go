@@ -12,6 +12,9 @@ import "sec/internal/ast"
 func (a *Analyzer) referencePlaceOrigin(expr ast.Expression) (Place, bool) {
 	switch expr := expr.(type) {
 	case *ast.TryExpression:
+		if origin, ok := a.expressionReferenceOrigins[expr]; ok && !origin.Unknown {
+			return placeFromReferenceOrigin(origin, "")
+		}
 		if source, ok := a.continuingSliceTrySource(expr); ok {
 			return a.referencePlaceOrigin(source)
 		}

@@ -154,7 +154,7 @@ func (a *Analyzer) checkAssignmentEscapesLocalReference(target ast.Expression, v
 	if !ok {
 		return false
 	}
-	targetSymbol, ok := a.symbols[targetRoot]
+	targetSymbol, ok := a.symbols.lookup(targetRoot)
 	if !ok {
 		return false
 	}
@@ -182,7 +182,7 @@ func (a *Analyzer) checkAssignmentEscapesMatchPayload(target ast.Expression, val
 	}
 	targetRoot, rootOK := borrowRootName(target)
 	if rootOK {
-		if symbol, symbolOK := a.symbols[targetRoot]; symbolOK && symbol.Local && symbol.ScopeDepth >= a.scopeDepth {
+		if symbol, symbolOK := a.symbols.lookup(targetRoot); symbolOK && symbol.Local && symbol.ScopeDepth >= a.scopeDepth {
 			return false
 		}
 	}
@@ -202,7 +202,7 @@ func (a *Analyzer) checkReturningLambdaCapturingLocalReference(functionName stri
 		if capture.Name == nil {
 			continue
 		}
-		symbol, ok := a.symbols[capture.Name.Value]
+		symbol, ok := a.symbols.lookup(capture.Name.Value)
 		if !ok || symbol.Type.Kind != ReferenceType || !symbol.Type.ReferenceOriginLocal {
 			continue
 		}
@@ -229,7 +229,7 @@ func (a *Analyzer) referenceOriginDisplayName(name string) string {
 		return name
 	}
 	owners, references := []string{}, []string{}
-	for binding, symbol := range a.symbols {
+	for binding, symbol := range a.symbols.all() {
 		if symbol.Type.ArenaDomainID != name {
 			continue
 		}

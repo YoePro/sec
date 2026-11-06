@@ -43,7 +43,7 @@ func (a *Analyzer) containedOriginForAccess(expr ast.Expression) (localReference
 // Rules: rules/memory/lifetime_analysis.md — §28; rules/memory/borrowing.md — §§12–14;
 // rules/mlir/packages/sec-mlir-dialect_package16.md — §§66–67.
 func (a *Analyzer) parameterContainedReferenceOrigin(expr ast.Expression, root string) (localReferenceOrigin, bool) {
-	symbol, ok := a.symbols[root]
+	symbol, ok := a.symbols.lookup(root)
 	if !ok || !symbol.Parameter {
 		return localReferenceOrigin{}, false
 	}

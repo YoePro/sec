@@ -659,7 +659,8 @@ func (e *emitter) emitOperation(function *semantic.Function, operation semantic.
 		semantic.OpSliceBorrowShared, semantic.OpSliceBorrowMutable,
 		semantic.OpSliceReborrowShared, semantic.OpSliceReborrowMutable,
 		semantic.OpSliceCopyShared, semantic.OpSliceMoveMutable,
-		semantic.OpSliceLength, semantic.OpSliceIndexInBounds, semantic.OpSliceElementPlace:
+		semantic.OpSliceLength, semantic.OpSliceIndexInBounds, semantic.OpSliceElementPlace,
+		semantic.OpStringRuneLength, semantic.OpStringViewBorrow, semantic.OpStringViewDecodeNext, semantic.OpStringViewByteLength:
 		return e.emitSlice(function, operation, values)
 	case semantic.OpPlaceValueRoot, semantic.OpPlaceStorageRoot, semantic.OpPlaceStaticRoot, semantic.OpPlaceField,
 		semantic.OpPlaceArrayIndexInBounds, semantic.OpPlaceArrayElement, semantic.OpPlaceUnionPayload,
@@ -1249,6 +1250,11 @@ func (e *emitter) typeText(id semantic.TypeID) (string, error) {
 		text = "!sec.rune"
 	case semantic.TypeString:
 		text = "!sec.string"
+	case semantic.TypeStringView:
+		if e.schemaVersion < 12 {
+			return "", &UnsupportedLoweringError{Feature: "StringView types require schema 12"}
+		}
+		text = "!sec.string_view"
 	case semantic.TypeDecimal:
 		text = "!sec.decimal"
 	case semantic.TypeDecimal128:

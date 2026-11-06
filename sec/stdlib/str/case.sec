@@ -29,7 +29,6 @@ module str
  * stdlib/str/stdlib_str.md
  */
 
-// TODO: Implement stdlib/str/case.sec
 
 /**
  * Converts a UTF-8 string to lowercase using full Unicode casing.
@@ -62,23 +61,115 @@ module str
  * locale-independent contextual casing rules.
  */
 fn ToLower(value: string) Result[string, CollectionError] {
+    let runes := try value.ToRuneArray()
     let mut builder := try new Builder(value.SizeOf)
+    let mut index: uint := 0
 
-    for character in value {
-        try builder.Append(character.ToLower())
+    while index < runes.Len {
+        let character := runes[index]
+        // Greek capital sigma at the end of a word becomes final sigma
+        // (Unicode Final_Sigma context; SpecialCasing.txt).
+        if character == 0x03A3r && _IsFinalSigma(ref runes, index) {
+            try builder.Append(0x03C2r)
+        } else {
+            try _AppendCaseMapping(ref mut builder, character.FullLowercase())
+        }
+        index += 1
     }
 
     return builder.Finish()
 }
 
+/**
+ * Converts a UTF-8 string to uppercase using full Unicode casing.
+ *
+ * Description:
+ * Applies locale-independent full uppercase mappings, which may expand one
+ * rune into several (U+00DF becomes "SS"). Uses the canonical core mapping
+ * data (rune.FullUppercase); no normalization is performed.
+ *
+ * Returns:
+ * A newly materialized uppercase UTF-8 string.
+ *
+ * Errors:
+ * - CollectionError: Allocation failure while constructing the result.
+ *
+ * Allocation:
+ * Materializes a new string using growable storage.
+ */
 fn ToUpper(value: string) Result[string, CollectionError] {
-    return Err(CollectionError.AllocationFailed)
+    let mut builder := try new Builder(value.SizeOf)
+
+    for character in value {
+        try _AppendCaseMapping(ref mut builder, character.FullUppercase())
+    }
+
+    return builder.Finish()
 }
 
 fn ToTitle(value: string) Result[string, CollectionError] {
     return Err(CollectionError.AllocationFailed)
 }
 
+/**
+ * Applies full, locale-independent Unicode case folding.
+ *
+ * Description:
+ * Folds every rune with CaseFolding.txt statuses C and F through the core
+ * mapping data (rune.FullCaseFold), for caseless comparison pipelines. It is
+ * not ToLower and does not normalize; Turkic (T) foldings are not applied.
+ *
+ * Errors:
+ * - CollectionError: Allocation failure while constructing the result.
+ *
+ * Allocation:
+ * Materializes a new string using growable storage.
+ */
 fn CaseFold(value: string) Result[string, CollectionError] {
-    return Err(CollectionError.AllocationFailed)
+    let mut builder := try new Builder(value.SizeOf)
+
+    for character in value {
+        try _AppendCaseMapping(ref mut builder, character.FullCaseFold())
+    }
+
+    return builder.Finish()
+}
+
+// Appends the one to three runes of a full case mapping.
+fn _AppendCaseMapping(builder: ref mut Builder, mapping: RuneCaseMapping) Result[void, CollectionError] {
+    try builder.Append(mapping.First)
+    if mapping.Count > 1 {
+        try builder.Append(mapping.Second)
+    }
+    if mapping.Count > 2 {
+        try builder.Append(mapping.Third)
+    }
+    return Ok()
+}
+
+// Reports the Unicode Final_Sigma context at index: a cased rune precedes it
+// and no cased rune follows it, skipping case-ignorable runes on both sides.
+fn _IsFinalSigma(runes: ref rune[], index: uint) bool {
+    let mut preceding := index
+    let mut casedBefore := false
+    while preceding > 0 {
+        preceding -= 1
+        let previous := runes[preceding]
+        if !previous.IsCaseIgnorable {
+            casedBefore = previous.IsCased
+            break
+        }
+    }
+    if !casedBefore {
+        return false
+    }
+    let mut following := index + 1
+    while following < runes.Len {
+        let next := runes[following]
+        if !next.IsCaseIgnorable {
+            return !next.IsCased
+        }
+        following += 1
+    }
+    return true
 }

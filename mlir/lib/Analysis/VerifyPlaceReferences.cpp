@@ -42,7 +42,7 @@ bool isPlace(Type type) { return isa<sec::PlaceType>(type); }
 // Recognize scalar and bounded direct safe-reference values.
 // Rules: rules/mlir/sec_mlir_dialect.md — v12.5,v12.25.
 bool isReference(Type type) {
-  return isa<sec::RefType, sec::RefMutType, sec::SliceType, sec::SliceMutType>(type);
+  return isa<sec::RefType, sec::RefMutType, sec::SliceType, sec::SliceMutType, sec::StringViewType>(type);
 }
 
 // The operations that may consume a Place: projections, the bounds
@@ -53,7 +53,7 @@ bool isPlaceConsumer(Operation *operation) {
              sec::PlaceReadOp, sec::PlaceWriteOp, sec::RefBorrowSharedOp,
              sec::RefBorrowMutOp, sec::RefReborrowSharedOp,
              sec::RefReborrowMutOp, sec::SliceBorrowSharedOp,
-             sec::SliceBorrowMutOp>(operation);
+             sec::SliceBorrowMutOp, sec::StringViewBorrowOp, sec::StringRuneLenOp>(operation);
 }
 
 // A canonical Place chain: the root (an SSA value, a storage value or a
@@ -386,7 +386,7 @@ LogicalResult sec::verifyBorrowSemantics(func::FuncOp function) {
                WalkResult::interrupt();
       // Slice holder/derived/CFG lifetimes are checked by verifySliceReferences.
       // Rules: rules/mlir/packages/sec-mlir-dialect_package16.md — §§63,86.
-      if (!isa<sec::SliceType, sec::SliceMutType>(end.getReference().getType()))
+      if (!isa<sec::SliceType, sec::SliceMutType, sec::StringViewType>(end.getReference().getType()))
         if (Operation *later = reachableUse(operation, end.getReference()))
           return later->emitOpError("reference used after its sec.ref.end_borrow"),
                  WalkResult::interrupt();

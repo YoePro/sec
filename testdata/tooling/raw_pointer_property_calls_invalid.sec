@@ -1,0 +1,9 @@
+module main
+
+fn Legacy(pointer: RawPtr[int]) void {
+    unsafe {
+        let shared := pointer.AsRef()
+        let exclusive := pointer.AsRefMut()
+    }
+    let direct := unsafe pointer.AsRef()
+}

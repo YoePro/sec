@@ -1,11 +1,32 @@
 module core
 
 impl uint {
+    /**
+     * Returns the decimal text of this value.
+     *
+     * Description:
+     * Writes ASCII decimal digits without sign, grouping or padding.
+     *
+     * Returns:
+     * The canonical decimal text, for example "0" or "42".
+     *
+     * Errors:
+     * - StringError.Allocation(cause): String storage could not be materialized.
+     *
+     * Allocation:
+     * May allocate result storage through the permitted allocation context.
+     */
     fn ToString() Result[string, StringError] {
-        // TODO: Implement uint.ToString()
-        return Ok("")
+        let digit := _asciiDecimalDigitOf(self % 10)
+        if self < 10 {
+            return digit.ToString()
+        }
+        let rest := self / 10
+        let prefix := try rest.ToString()
+        return Ok(try prefix + digit)
     }
 
+    /** Returns the smaller of this value and other. */
     fn Min(other: uint) uint {
         if self < other {
             return self
@@ -13,6 +34,7 @@ impl uint {
         return other
     }
 
+    /** Returns the larger of this value and other. */
     fn Max(other: uint) uint {
         if self > other {
             return self
@@ -20,11 +42,111 @@ impl uint {
         return other
     }
 
+    /**
+     * Returns this value limited to minimum..maximum (both inclusive).
+     *
+     * Errors:
+     * - RangeError.StartAfterEnd: minimum is greater than maximum.
+     */
+    fn Clamp(minimum: uint, maximum: uint) Result[uint, RangeError] {
+        if minimum > maximum {
+            return Err(RangeError.StartAfterEnd)
+        }
+        if self < minimum {
+            return Ok(minimum)
+        }
+        if self > maximum {
+            return Ok(maximum)
+        }
+        return Ok(self)
+    }
+
+    /** Reports whether this value is divisible by two. */
     fn IsEven() bool {
         return self % 2 == 0
     }
 
+    /** Reports whether this value is not divisible by two. */
     fn IsOdd() bool {
         return self % 2 != 0
+    }
+
+    /** Counts the one bits. */
+    fn CountOnes() uint {
+        let mut count: uint := 0
+        let mut value := self
+        while value != 0 {
+            count += value & 1
+            value >>= 1
+        }
+        return count
+    }
+
+    /** Counts the zero bits. */
+    fn CountZeros() uint {
+        return uint.Bits - self.CountOnes()
+    }
+
+    /** Counts the zero bits above the highest one bit; uint.Bits for zero. */
+    fn LeadingZeros() uint {
+        let mut count := uint.Bits
+        let mut value := self
+        while value != 0 {
+            count -= 1
+            value >>= 1
+        }
+        return count
+    }
+
+    /** Counts the zero bits below the lowest one bit; uint.Bits for zero. */
+    fn TrailingZeros() uint {
+        if self == 0 {
+            return uint.Bits
+        }
+        let mut count: uint := 0
+        let mut value := self
+        while (value & 1) == 0 {
+            count += 1
+            value >>= 1
+        }
+        return count
+    }
+
+    /** Rotates the bits left by amount modulo uint.Bits. */
+    fn RotateLeft(amount: uint) uint {
+        let shift := amount % uint.Bits
+        if shift == 0 {
+            return self
+        }
+        return (self << shift) | (self >> (uint.Bits - shift))
+    }
+
+    /** Rotates the bits right by amount modulo uint.Bits. */
+    fn RotateRight(amount: uint) uint {
+        let shift := amount % uint.Bits
+        if shift == 0 {
+            return self
+        }
+        return (self >> shift) | (self << (uint.Bits - shift))
+    }
+
+    /** Reverses the byte order. */
+    fn SwapBytes() uint {
+        let mut result: uint := 0
+        let mut value := self
+        let mut index: uint := 0
+        while index < uint.Bits / 8 {
+            result = (result << 8) | (value & 255)
+            value >>= 8
+            index += 1
+        }
+        return result
+    }
+}
+
+// The ASCII decimal digit of a value in 0..9; callers pass only such values.
+fn _asciiDecimalDigitOf(value: uint) char {
+    return try char(48 + value) {
+        Err(_) => 48t
     }
 }

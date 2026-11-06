@@ -127,12 +127,12 @@ func (a *Analyzer) unitConversionAlternatives(expected, actual Type, expr ast.Ex
 	}
 	if to.Named != "" && sameNumericCarrier(expected, actual) && isLinearRatioSemantics(to) && isLinearRatioSemantics(from) {
 		names := []string{}
-		for name := range a.symbols {
+		for name := range a.symbols.all() {
 			names = append(names, name)
 		}
 		sort.Strings(names)
 		for _, name := range names {
-			symbol := a.symbols[name]
+			symbol := a.symbols.get(name)
 			factor := symbol.Type
 			if symbol.ImplicitMember || !isNumericType(factor) || !hasUnitSemantics(factor) || !sameNumericCarrier(factor, actual) || !isLinearRatioSemantics(effectiveUnitSemantics(factor)) || !factor.Dimension.Equal(expected.Dimension.Div(actual.Dimension)) {
 				continue

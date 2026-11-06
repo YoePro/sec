@@ -1,0 +1,41 @@
+module main
+extern "C" fn UnknownForeign() void
+fn Leaf() void { panic "cleanup failed" }
+@noPanic
+fn ForeignRoot() void { unsafe { UnknownForeign() } }
+@noPanic
+fn DeferredRoot() void { defer { Leaf() } }
+type Resource struct {}
+impl Resource {
+    @noPanic
+    free { Leaf() }
+}
+fn InvalidReturn() void { defer { return } }
+fn InvalidBreak() void { defer { break } }
+fn InvalidContinue() void { defer { continue } }
+fn InvalidFallthrough() void { defer { fallthrough } }
+fn InvalidCancel() void { defer { cancel } }
+fn NestedDefer() void { defer { defer {} } }
+enum CleanupFailure error { First, Second }
+fn Fallible() Result[void, CleanupFailure] { return Err(CleanupFailure.First) }
+fn PropagatingCleanup() void { defer { try Fallible() } }
+fn PartialCleanup() void { defer { try Fallible() { Err(CleanupFailure.First) => {} } } }
+fn Maybe() Option[int] { return None }
+fn PartialOptionCleanup() void { defer { try Maybe() { None where false => {} } } }
+@noPanic
+fn DeferredForeign() void { defer { unsafe { UnknownForeign() } } }
+@noPanic
+fn DeferredArithmetic(a: int, b: int) void { defer { discard a + b } }
+@noPanic
+fn DeferredIndirect(action: fn() void) void { defer { action() } }
+@noPanic
+fn DeferredBounds(values: ref int[2], index: uint) void { defer { let value := values[index] } }
+fn PropagatingOptionCleanup() void { defer { let value := try Maybe() } }
+fn StillDeferred() void {
+    defer {
+        let local := fn() int { return 1 }
+        discard local()
+        return
+    }
+}
+fn InvalidAwait() void { defer { discard await 1 } }

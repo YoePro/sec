@@ -13,7 +13,7 @@ import "fmt"
 func sliceHolderAliasIDs(ended ValueID, fn *Function, blocks map[BlockID]*Block, values map[ValueID]Value, types *TypeTable) map[ValueID]bool {
 	aliases := map[ValueID]bool{ended: true}
 	typ, ok := types.Lookup(values[ended].Type)
-	if !ok || typ.Kind != TypeSharedSlice && typ.Kind != TypeMutableSlice && typ.Kind != TypeReference {
+	if !ok || !boundedView(typ.Kind) && typ.Kind != TypeReference {
 		return aliases
 	}
 	type edge struct {
@@ -36,7 +36,7 @@ func sliceHolderAliasIDs(ended ValueID, fn *Function, blocks map[BlockID]*Block,
 					graph[op.Operands[0]] = append(graph[op.Operands[0]], edge{value: op.Results[0].ID})
 				}
 			}
-			if construction, _, _ := sliceConstructionKind(op.Kind); construction {
+			if construction, _, _ := sliceConstructionKind(op.Kind); construction || op.Kind == OpStringViewBorrow {
 				graph[op.Operands[0]] = append(graph[op.Operands[0]], edge{value: op.Results[0].ID, derived: true})
 			}
 			if op.Kind == OpSliceCopyShared || op.Kind == OpSliceMoveMutable || op.Kind == OpReferenceCopyShared || op.Kind == OpReferenceMove {

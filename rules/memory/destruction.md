@@ -287,6 +287,8 @@ destroy remaining first temporary
 
 **§ 8(9)** The condition of `if` and `while`, including the subject of `if x is Some(y)`, is a full expression of its own: temporaries it creates are destroyed after the condition is evaluated and before the selected branch or loop body runs (owner decision 2026-11-03).
 
+**§ 8(10)** A temporary ends when it goes out of scope. A conditionally evaluated part of a full expression is the scope of the temporaries it creates: the right operand of `&&` or `||` and the body of a `match` expression arm. Those temporaries are destroyed in reverse creation order when that part completes, before control merges into the rest of the full expression (owner decision 2026-11-06).
+
 ---
 
 ## § 9 Move, return, and ownership transfer

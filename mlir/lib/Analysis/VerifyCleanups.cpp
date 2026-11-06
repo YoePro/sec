@@ -149,6 +149,29 @@ private:
   // the fixed point holds, so a loop's first pass never reports a false state.
   void apply(Operation &op, State &state) {
     if (auto track = dyn_cast<sec::CleanupTrackOwnedOp>(op)) {
+      // MD-125: a conditional registration is live only on paths where none
+      // of the inherited registrations is.
+      if (auto unless = track.getUnlessActive()) {
+        int32_t self = track.getCleanupActionId();
+        bool otherLive = false, someNot = false, selfLive = false;
+        for (int32_t inherited : *unless) {
+          uint8_t s = stateOf(state, inherited);
+          if (inherited == self)
+            selfLive = s & Live;
+          else
+            otherLive |= bool(s & Live);
+          someNot |= bool(s & ~uint8_t(Live));
+        }
+        uint8_t next = 0;
+        if (selfLive)
+          next |= Live; // an earlier iteration's instance keeps its position
+        if (otherLive)
+          next |= Unregistered; // the inherited registration stays responsible
+        if (someNot || (!selfLive && !otherLive))
+          next |= Live;
+        state[self] = next;
+        return;
+      }
       state[track.getCleanupActionId()] = Live;
       return;
     }
@@ -169,6 +192,21 @@ private:
     if (isa<sec::CleanupRunFunctionOp>(op)) {
       for (auto &entry : state)
         entry.second = Unregistered;
+      return;
+    }
+    // MD-125: reinitializing a whole owner whose registration was kept (a
+    // replacement after its remaining fields were destroyed) makes that same
+    // registration responsible for the new value again.
+    if (auto initialize = dyn_cast<sec::OwnInitializePlaceOp>(op)) {
+      if (endsWhole(initialize.getPlace())) {
+        Value owner = rootOf(initialize.getPlace());
+        for (auto &[action, registration] : registrations)
+          if (!registration.isDefer && registration.root == owner) {
+            uint8_t current = stateOf(state, action);
+            if (current & Consumed)
+              state[action] = (current & ~uint8_t(Consumed)) | Live;
+          }
+      }
       return;
     }
     if (Value owner = consumedValue(&op)) {
@@ -258,7 +296,11 @@ private:
         return op.emitOpError("cancels an action that is not active on every path");
     }
     if (auto track = dyn_cast<sec::CleanupTrackOwnedOp>(op)) {
-      if (stateOf(state, track.getCleanupActionId()) & (Live | Consumed))
+      // A conditional registration that names itself keeps an earlier
+      // iteration's live instance instead of registering again (MD-125).
+      auto unless = track.getUnlessActive();
+      bool selfInherited = unless && llvm::is_contained(*unless, track.getCleanupActionId());
+      if (!selfInherited && (stateOf(state, track.getCleanupActionId()) & (Live | Consumed)))
         return op.emitOpError("registers an action that is still active on a path");
       // Its cleanup would run before an earlier defer that reads the same owner
       // (destruction.md sections 6.3(3), 35.6(2)).

@@ -135,7 +135,7 @@ func (a *Analyzer) checkOptionResidualPropagation(expr *ast.TryExpression, optio
 	returnType := a.currentFunctionReturn
 	switch {
 	case a.inDeferBlock:
-		a.addErrorAtToken(expr.Token, "try handlers leave None unhandled, and it cannot propagate from inside defer; add an unguarded None => ... handler")
+		a.addErrorAtTokenWithMetadata(expr.Token, diagnostics.TryResidualUnpropagatable, deferredPropagationHelp(), "try handlers leave None unhandled, and it cannot propagate from inside defer; add an unguarded None => ... handler")
 		return false
 	case !a.inFunctionBody:
 		a.addErrorAtToken(expr.Token, "try handlers leave None unhandled, and it cannot propagate outside a function; add an unguarded None => ... handler")

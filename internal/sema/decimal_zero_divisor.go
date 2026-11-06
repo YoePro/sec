@@ -24,7 +24,7 @@ func (a *Analyzer) decimalConstantValue(expr ast.Expression) (*big.Rat, bool) {
 		}
 		return decimalValueRat(literal), true
 	case *ast.Identifier:
-		symbol, ok := a.symbols[node.Value]
+		symbol, ok := a.symbols.lookup(node.Value)
 		if !ok || symbol.Mutable || symbol.Volatile || symbol.DecimalConstant == nil {
 			return nil, false
 		}
@@ -60,7 +60,7 @@ func (a *Analyzer) decimalConstantValue(expr ast.Expression) (*big.Rat, bool) {
 // decimal binding so a later provably zero divisor is recognized.
 // Rules: rules/foundations/operators.md — "Decimal division and remainder by zero".
 func (a *Analyzer) recordDecimalBindingConstant(name string, expr ast.Expression) {
-	symbol, ok := a.symbols[name]
+	symbol, ok := a.symbols.lookup(name)
 	if !ok || symbol.Mutable || symbol.Volatile || dereferenceType(symbol.Type).Kind != DecimalType || hasUnitSemantics(symbol.Type) {
 		return
 	}
@@ -72,7 +72,7 @@ func (a *Analyzer) recordDecimalBindingConstant(name string, expr ast.Expression
 	} else if symbol.DecimalExact != nil {
 		symbol.DecimalConstant = decimalValueRat(*symbol.DecimalExact)
 	}
-	a.symbols[name] = symbol
+	a.symbols.set(name, symbol)
 }
 
 // validateDecimalZeroDivisor rejects decimal division or remainder whose

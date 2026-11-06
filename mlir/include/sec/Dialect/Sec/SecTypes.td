@@ -39,6 +39,14 @@ def Sec_StringType : Sec_SingletonType<"String", "string"> {
   let summary = "Sec high-level string type";
 }
 
+// MD-126: shared, non-owning bounded view over valid UTF-8 string backing in
+// rune coordinates. It has no element type and is never a rune slice; its
+// holders reuse the shared bounded-view slice operations (len/copy/reborrow).
+// Rules: rules/types/types.md StringView; rules/compiler/semantic_ir.md 17(9)-(10).
+def Sec_StringViewType : Sec_SingletonType<"StringView", "string_view"> {
+  let summary = "Sec borrowed UTF-8 string view (MD-126)";
+}
+
 def Sec_ArithmeticFailureReasonType
     : Sec_SingletonType<"ArithmeticFailureReason", "arithmetic_failure_reason"> {
   let summary = "Typed reason produced by checked Sec integer arithmetic";

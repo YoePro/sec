@@ -135,7 +135,7 @@ func (a *Analyzer) declaredPackSpreadSource(spread *ast.SpreadExpression) (*ast.
 	if !ok {
 		return nil, Type{}, false
 	}
-	symbol, found := a.symbols[identifier.Value]
+	symbol, found := a.symbols.lookup(identifier.Value)
 	if !found || symbol.Type.Kind != VariadicPackType || symbol.Type.Element == nil {
 		return nil, Type{}, false
 	}

@@ -68,10 +68,13 @@ type ResolvedOwnedCleanupRegistration struct {
 // Rules: rules/memory/destruction.md — §§3,6.1(1),23,26;
 // rules/mlir/packages/sec-mlir-dialect_package17.md — §§27,34,38.
 func (a *Analyzer) recordOwnedCleanupInitialization(stmt *ast.LetStatement, errorsBefore int) {
-	if len(a.errors) != errorsBefore || stmt.Value == nil || stmt.Static || stmt.Address != nil || a.currentCleanupScope == 0 {
+	if len(a.errors) != errorsBefore || stmt.Static || stmt.Address != nil || a.currentCleanupScope == 0 {
 		return
 	}
-	symbol, exists := a.symbols[stmt.Name.Value]
+	if stmt.Value == nil {
+		return
+	}
+	symbol, exists := a.symbols.lookup(stmt.Name.Value)
 	if !exists || !symbol.Local || symbol.Type.Kind == InvalidType || TriviallyDestructible(symbol.Type) {
 		return
 	}

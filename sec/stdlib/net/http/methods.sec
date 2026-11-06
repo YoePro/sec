@@ -48,52 +48,55 @@ module http
  * Applications and protocols may define additional valid method tokens
  * without requiring changes to this file.
  */
+
+import "str"
+
 type Method string
 
 impl Method {
     // Core HTTP semantics - RFC 9110
-    static let GET: Method := "GET"
-    static let HEAD: Method := "HEAD"
-    static let POST: Method := "POST"
-    static let PUT: Method := "PUT"
-    static let DELETE: Method := "DELETE"
+    static let GET:     Method := "GET"
+    static let HEAD:    Method := "HEAD"
+    static let POST:    Method := "POST"
+    static let PUT:     Method := "PUT"
+    static let DELETE:  Method := "DELETE"
     static let CONNECT: Method := "CONNECT"
     static let OPTIONS: Method := "OPTIONS"
-    static let TRACE: Method := "TRACE"
+    static let TRACE:   Method := "TRACE"
 
     // RFC 5789
     static let PATCH: Method := "PATCH"
 
     // WebDAV and extensions
-    static let ACL: Method := "ACL"
-    static let BASELINE_CONTROL: Method := "BASELINE-CONTROL"
-    static let BIND: Method := "BIND"
-    static let CHECKIN: Method := "CHECKIN"
-    static let CHECKOUT: Method := "CHECKOUT"
-    static let COPY: Method := "COPY"
-    static let LABEL: Method := "LABEL"
-    static let LINK: Method := "LINK"
-    static let LOCK: Method := "LOCK"
-    static let MERGE: Method := "MERGE"
-    static let MKACTIVITY: Method := "MKACTIVITY"
-    static let MKCALENDAR: Method := "MKCALENDAR"
-    static let MKCOL: Method := "MKCOL"
-    static let MKREDIRECTREF: Method := "MKREDIRECTREF"
-    static let MKWORKSPACE: Method := "MKWORKSPACE"
-    static let MOVE: Method := "MOVE"
-    static let ORDERPATCH: Method := "ORDERPATCH"
-    static let PROPFIND: Method := "PROPFIND"
-    static let PROPPATCH: Method := "PROPPATCH"
-    static let REBIND: Method := "REBIND"
-    static let REPORT: Method := "REPORT"
-    static let SEARCH: Method := "SEARCH"
-    static let UNBIND: Method := "UNBIND"
-    static let UNCHECKOUT: Method := "UNCHECKOUT"
-    static let UNLINK: Method := "UNLINK"
-    static let UNLOCK: Method := "UNLOCK"
-    static let UPDATE: Method := "UPDATE"
+    static let ACL:               Method := "ACL"
+    static let BASELINE_CONTROL:  Method := "BASELINE-CONTROL"
+    static let BIND:              Method := "BIND"
+    static let CHECKIN:           Method := "CHECKIN"
+    static let CHECKOUT:          Method := "CHECKOUT"
+    static let COPY:              Method := "COPY"
+    static let LABEL:             Method := "LABEL"
+    static let LINK:              Method := "LINK"
+    static let LOCK:              Method := "LOCK"
+    static let MERGE:             Method := "MERGE"
+    static let MKACTIVITY:        Method := "MKACTIVITY"
+    static let MKCALENDAR:        Method := "MKCALENDAR"
+    static let MKCOL:             Method := "MKCOL"
+    static let MKREDIRECTREF:     Method := "MKREDIRECTREF"
+    static let MKWORKSPACE:       Method := "MKWORKSPACE"
+    static let MOVE:              Method := "MOVE"
+    static let ORDERPATCH:        Method := "ORDERPATCH"
+    static let PROPFIND:          Method := "PROPFIND"
+    static let PROPPATCH:         Method := "PROPPATCH"
+    static let REBIND:            Method := "REBIND"
+    static let REPORT:            Method := "REPORT"
+    static let SEARCH:            Method := "SEARCH"
+    static let UNBIND:            Method := "UNBIND"
+    static let UNCHECKOUT:        Method := "UNCHECKOUT"
+    static let UNLINK:            Method := "UNLINK"
+    static let UNLOCK:            Method := "UNLOCK"
+    static let UPDATE:            Method := "UPDATE"
     static let UPDATEREDIRECTREF: Method := "UPDATEREDIRECTREF"
-    static let VERSION_CONTROL: Method := "VERSION-CONTROL"
+    static let VERSION_CONTROL:   Method := "VERSION-CONTROL"
 
     // HTTP/2 connection preface
     static let PRI: Method := "PRI"
@@ -144,13 +147,26 @@ impl Method {
     }
 
     // TODO: Validate: http.Method.ToString()
-    fn ToString() string {
-        return string(self)
+    fn ToString() Result[string, StringError] {
+        return Ok(string(self))
     }
 
     // TODO: Validate: http.Method.FromString()
     static fn FromString(In: string) Method {
-        let normalized := In.ToLower()
+        let normalized := try str.ToLower(In) {
+            // TODO: net.http.method.sec Method.FromString() MUST reconsider FromString. Should return Result instead of just a Method - OR Method needs an error method.
+            Err(CollectionError.AllocationFailed) => {
+                return Method("Error")
+            }
+
+            Err(CollectionError.CapacityExceeded) => {
+                return Method("CapacityExceeded")
+            }
+
+            Err(CollectionError.SizeOverflow) => {
+                return Method("Error2")
+            }
+        }
 
         switch normalized {
             case "get":

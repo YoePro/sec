@@ -42,6 +42,36 @@ class Sec_SliceTransferOp<string mnemonic> : Sec_Op<mnemonic> {
 def Sec_SliceCopySharedOp : Sec_SliceTransferOp<"slice.copy_shared">;
 def Sec_SliceMoveMutOp : Sec_SliceTransferOp<"slice.move_mut">;
 
+// MD-126: a string range over a string Place. The normalized rune tuple
+// comes from slice.range_normalize/range_check whose source length is the
+// static rune count or sec.string.rune_len of the same Place.
+// Rules: rules/collections/collections.md 7.10; rules/compiler/semantic_ir.md 17(9).
+def Sec_StringViewBorrowOp : Sec_SliceBorrowOp<"string.view_borrow">;
+def Sec_StringRuneLenOp : Sec_Op<"string.rune_len"> {
+  let summary = "Observe the Unicode-scalar count of a string Place without reading it";
+  let arguments = (ins AnyType:$source);
+  let results = (outs AnyType:$length);
+  let hasVerifier = 1;
+}
+
+// MD-126: decode the Unicode scalar at a hidden view-relative UTF-8 cursor.
+// The rune is a value; no text is copied. The cursor is not a source index.
+// Rules: rules/control-flow/flowcontrol_for.md 19; rules/compiler/semantic_ir.md 17(10).
+def Sec_StringViewDecodeNextOp : Sec_Op<"string_view.decode_next"> {
+  let summary = "Decode the next rune of a StringView by value";
+  let arguments = (ins AnyType:$view, AnyType:$cursor);
+  let results = (outs I1:$has, AnyType:$value, AnyType:$next);
+  let hasVerifier = 1;
+}
+
+// MD-126: UTF-8 byte count within a view (StringView.SizeOf), observe only.
+def Sec_StringViewByteLenOp : Sec_Op<"string_view.byte_len"> {
+  let summary = "Observe the UTF-8 byte count of a StringView";
+  let arguments = (ins AnyType:$view);
+  let results = (outs AnyType:$length);
+  let hasVerifier = 1;
+}
+
 def Sec_SliceLenOp : Sec_Op<"slice.len"> {
   let summary = "Observe an unsigned element count without reading elements";
   let arguments = (ins AnyType:$source);

@@ -17,7 +17,7 @@ using namespace mlir;
 using namespace sec::detail;
 namespace {
 bool isReference(Type type) {
-  return isa<sec::RefType,sec::RefMutType,sec::SliceType,sec::SliceMutType>(type);
+  return isa<sec::RefType,sec::RefMutType,sec::SliceType,sec::SliceMutType,sec::StringViewType>(type);
 }
 // MD-085: structural, path-aware return-origin verification. Origins use the
 // canonical MD-084 grammar; a receiver is parameter 0 of an instance method
@@ -81,6 +81,11 @@ Type originRootReferent(Type type, bool *sequence) {
     *sequence = true;
     return slice.getElementType();
   }
+  // MD-126: a StringView is a range of its UTF-8 string origin.
+  if (isa<sec::StringViewType>(type)) {
+    *sequence = true;
+    return sec::StringType::get(type.getContext());
+  }
   return Type();
 }
 
@@ -96,6 +101,7 @@ bool admissiblePath(Type current, bool sequence,
     if (auto slice = dyn_cast<sec::SliceType>(current)) {current=slice.getElementType();sequence=true;}
     if (auto slice = dyn_cast<sec::SliceMutType>(current)) {current=slice.getElementType();sequence=true;}
     if (projection.kind == sec::ReturnOriginProjection::Kind::Range || projection.kind == sec::ReturnOriginProjection::Kind::UnknownRange) {
+      if (isa<sec::StringType>(current)) { sequence = true; continue; }
       auto array = dyn_cast<sec::ArrayType>(current);
       if (!sequence && !array) return false;
       if (array && projection.kind == sec::ReturnOriginProjection::Kind::Range && sec::detail::naturalLess(array.getLength().getValue(), projection.end)) return false;
@@ -195,7 +201,7 @@ std::optional<std::string> originSliceExtent(Value value, unsigned depth) {
   value=sourceValue(value); if (!value) return std::nullopt;
   auto definition=value.getDefiningOp();
   if (isa_and_nonnull<sec::SliceCopySharedOp,sec::SliceMoveMutOp>(definition)) return originSliceExtent(definition->getOperand(0),depth+1);
-  if (isa_and_nonnull<sec::SliceBorrowSharedOp,sec::SliceBorrowMutOp,sec::SliceReborrowSharedOp,sec::SliceReborrowMutOp>(definition)) return originConstant(definition->getOperand(2),depth+1);
+  if (isa_and_nonnull<sec::SliceBorrowSharedOp,sec::SliceBorrowMutOp,sec::SliceReborrowSharedOp,sec::SliceReborrowMutOp,sec::StringViewBorrowOp>(definition)) return originConstant(definition->getOperand(2),depth+1);
   if (auto call=dyn_cast_or_null<sec::CallDirectOp>(definition)) {
     auto callee=SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(call,call->getAttrOfType<FlatSymbolRefAttr>("callee"));
     auto origins=callee ? callee->getAttrOfType<ArrayAttr>("sec.return_origins") : ArrayAttr();
@@ -333,7 +339,8 @@ public:
     // MD-115: a complete view preserves its current path, not its root;
     // narrowing contributes a proven exact or conservative range projection.
     if (isa<sec::SliceBorrowSharedOp, sec::SliceBorrowMutOp,
-            sec::SliceReborrowSharedOp, sec::SliceReborrowMutOp>(definition)) {
+            sec::SliceReborrowSharedOp, sec::SliceReborrowMutOp,
+            sec::StringViewBorrowOp>(definition)) {
       auto range = originRange(definition);
       if (!range) return ret.emitOpError("returned slice lacks a canonical normalized range tuple");
       return trace(definition->getOperand(0), *range + tail, origins);
@@ -460,7 +467,7 @@ LogicalResult sec::detail::verifyReturnOrigins(func::FuncOp function) {
           return function.emitOpError("returned range requires a compatible result element type");
       }
       auto last = origin->projections.back().kind;
-      if ((last == sec::ReturnOriginProjection::Kind::Range || last == sec::ReturnOriginProjection::Kind::UnknownRange) && !llvm::all_of(results, [](Type t) { return isa<sec::SliceType,sec::SliceMutType>(t); }))
+      if ((last == sec::ReturnOriginProjection::Kind::Range || last == sec::ReturnOriginProjection::Kind::UnknownRange) && !llvm::all_of(results, [](Type t) { return isa<sec::SliceType,sec::SliceMutType,sec::StringViewType>(t); }))
         return function.emitOpError("terminal range origin requires a compatible slice result");
     }
     // static@N names the address-taken static whose explicit sec.static_id
@@ -507,7 +514,7 @@ LogicalResult sec::detail::verifyReturnOrigins(func::FuncOp function) {
         continue;
       std::set<std::string> observed;
       ReturnOriginTracer tracer(function, ret,
-          isa<sec::SliceType, sec::SliceMutType>(operand.getType()));
+          isa<sec::SliceType, sec::SliceMutType, sec::StringViewType>(operand.getType()));
       if (failed(tracer.trace(operand, "", observed)))
         return WalkResult::interrupt();
       if (observed.empty()) {

@@ -9,16 +9,16 @@ import (
 // initializer is the null sentinel. The binding cannot be reassigned, so the
 // fact holds for its whole scope.
 func (a *Analyzer) recordRawPointerNullBinding(name string, value ast.Expression) {
-	symbol, ok := a.symbols[name]
+	symbol, ok := a.symbols.lookup(name)
 	if !ok || symbol.Mutable || symbol.Volatile || symbol.Type.Kind != RawPtrType || !a.isNullSentinel(value) {
 		return
 	}
 	symbol.RawPointerNull = true
-	a.symbols[name] = symbol
+	a.symbols.set(name, symbol)
 }
 
-// rejectProvenNullDereference reports a raw-pointer read or write whose
-// receiver is proven null: an immutable binding initialized with null, or a
+// rejectProvenNullDereference reports raw access or safe-reference formation
+// whose receiver is proven null: an immutable binding initialized with null, or a
 // stable binding (never assigned, mutably borrowed, or captured in the
 // function; stableBindingsOf) that a dominating `is null` test or the failed
 // edge of `is not null` fixes as null on the current path. Parameters are
@@ -34,7 +34,7 @@ func (a *Analyzer) rejectProvenNullDereference(member *ast.MemberExpression, ope
 	if !ok {
 		return false
 	}
-	symbol, ok := a.symbols[ident.Value]
+	symbol, ok := a.symbols.lookup(ident.Value)
 	if !ok || symbol.Volatile {
 		return false
 	}
@@ -49,8 +49,11 @@ func (a *Analyzer) rejectProvenNullDereference(member *ast.MemberExpression, ope
 	if operation == "Write" || operation == "VolatileWrite" {
 		access = "write"
 	}
-	a.addErrorAtTokenWithMetadata(member.Property.Token, diagnostics.RawPointerNullDereference,
-		"unsafe can accept obligations that the compiler cannot prove, but it does not make a proven null dereference valid. Test the raw pointer for null before accessing it.",
+	if operation == "AsRef" || operation == "AsRefMut" {
+		access = "reference formation"
+	}
+	a.reportRawPointerProvenInvalid(member.Property.Token, symbol.Token, diagnostics.RawPointerNullDereference, "raw-pointer binding",
+		"unsafe can accept obligations that the compiler cannot prove, but it does not make a proven null dereference or reference formation valid. Use valid live storage, or take only a non-null control-flow path before accessing it; a check cannot make an always-null pointer usable.",
 		"this raw-pointer %s through %s is known to use a null address (RawPtr.%s)", access, ident.Value, operation)
 	return true
 }

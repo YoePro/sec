@@ -66,8 +66,11 @@ class Sec_CleanupOp<string mnemonic, list<Trait> traits = []> : Sec_Op<mnemonic,
 }
 def Sec_CleanupTrackOwnedOp : Sec_CleanupOp<"cleanup.track_owned"> {
   let summary = "Register an automatic destruction responsibility for a value or Place";
+  // unless_active (MD-125): register only on paths where none of these
+  // actions is live; elsewhere that inherited registration keeps its position.
   let arguments = (ins AnyType:$tracked, I32Attr:$cleanup_action_id, I32Attr:$cleanup_scope_id,
-    I32Attr:$cleanup_registration_ordinal, StrAttr:$destruction_plan);
+    I32Attr:$cleanup_registration_ordinal, StrAttr:$destruction_plan,
+    OptionalAttr<DenseI32ArrayAttr>:$unless_active);
 }
 def Sec_CleanupCancelOp : Sec_CleanupOp<"cleanup.cancel"> {
   let summary = "Cancel one active automatic cleanup responsibility";

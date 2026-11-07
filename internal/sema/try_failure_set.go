@@ -413,6 +413,7 @@ func (a *Analyzer) commitTryFailurePoints(points []TryFailurePoint) {
 				plan.ErrorType = point.ErrorType
 				a.resolvedSliceIndexPlans[index] = cloneSliceIndexPlan(plan)
 			}
+			a.commitFallibleDynamicArrayIndex(index, point.ErrorType)
 			if plan, ok := a.resolvedListIndexPlans[index]; ok {
 				plan.FailureMode = ArrayIndexFailureFallible
 				plan.ErrorType = point.ErrorType

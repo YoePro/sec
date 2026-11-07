@@ -126,7 +126,6 @@ fn Bad(s: Figure) int32 {
 		"field Width is bound more than once in this pattern",
 		"field pattern Width: _ is not a binding",
 		"field Item of Figure.Owned is move-only; a named-field binding only copies",
-		"cannot borrow union payload field from temporary match subject",
 		"union variant Figure.Dot has no named fields to destructure",
 		"name x is bound more than once in this pattern",
 		"undefined variable Width",

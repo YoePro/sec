@@ -3293,6 +3293,14 @@ func formatLambdaCaptures(captures []ast.LambdaCapture) string {
 		if i > 0 {
 			out += ", "
 		}
+		switch capture.Mode {
+		case ast.LambdaCaptureMove:
+			out += "<-"
+		case ast.LambdaCaptureSharedBorrow:
+			out += "ref "
+		case ast.LambdaCaptureMutableBorrow:
+			out += "ref mut "
+		}
 		if capture.Name != nil {
 			out += capture.Name.Value
 		}

@@ -50,6 +50,14 @@ func (d *Document) applyOwnershipSpacingRoles(node any, indexes map[concreteToke
 			if capture.Mode == ast.LambdaCaptureMove && capture.Name != nil && capture.Token.Type == lexer.MOVE_ASSIGN {
 				mark(capture.Token, PrefixOperator)
 			}
+			// `ref name` and `ref mut name` keep exactly one space between
+			// their words (lambda-functions.md §15; formatter.md §16(11)).
+			if capture.IsBorrow() && capture.Name != nil && capture.Token.Type == lexer.REF {
+				mark(capture.Token, SpacedKeyword)
+				if capture.MutToken.Type == lexer.MUT {
+					mark(capture.MutToken, SpacedKeyword)
+				}
+			}
 		}
 	}
 }

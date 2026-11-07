@@ -124,7 +124,10 @@ func (fb *functionBuilder) borrowMatchField(subjectExpr ast.Expression, subject 
 	if fb.variantGuard == 0 {
 		return builtValue{}, fb.unsupported("borrowed named field without an active-variant test", token)
 	}
-	if _, _, rooted, _ := fb.receiverFieldPath(subjectExpr); rooted || subjectPlace != nil || plan.Reborrow || plan.Implicit {
+	// A subject held in storage (a mutable owned local, or a fresh subject in
+	// compiler storage) is borrowed through the Place it was observed from.
+	stored := subjectPlace != nil && fb.storedSubjectExpr(subjectExpr)
+	if _, _, rooted, _ := fb.receiverFieldPath(subjectExpr); rooted || subjectPlace != nil && !stored || plan.Reborrow || plan.Implicit {
 		return builtValue{}, fb.unsupported("borrowed named field of a subject reached through the receiver, elements or a reference", token)
 	}
 	projections := plan.Place.Projections
@@ -134,9 +137,15 @@ func (fb *functionBuilder) borrowMatchField(subjectExpr ast.Expression, subject 
 	unionPlan := plan
 	unionPlan.Place.Projections = append([]sema.PlaceProjection(nil), projections[:len(projections)-1]...)
 	reference := &ast.RefExpression{Token: token, Value: field.Identifier, Mutable: field.Action == sema.MatchBindingBorrowMutable}
-	unionPlace, mutable, err := fb.localSubjectPlace(subjectExpr, reference, unionPlan, true)
-	if err != nil {
-		return builtValue{}, err
+	var unionPlace builtValue
+	var mutable bool
+	if stored {
+		unionPlace, mutable = subjectPlace.place, subjectPlace.mutable
+	} else {
+		var err error
+		if unionPlace, mutable, err = fb.localSubjectPlace(subjectExpr, reference, unionPlan, true); err != nil {
+			return builtValue{}, err
+		}
 	}
 	placeType, ok := fb.owner.module.Types.Lookup(unionPlace.typ)
 	if !ok || placeType.Kind != TypePlace || placeType.Element != subject.typ {
@@ -163,14 +172,23 @@ func (fb *functionBuilder) borrowMatchField(subjectExpr ast.Expression, subject 
 	return fb.emitBorrow(reference, plan, fieldPlace)
 }
 
-// copyTrivialFieldBindings reports an arm whose named-field bindings, if any,
-// all copy trivially copyable fields.
-func copyTrivialFieldBindings(armPlan sema.ResolvedMatchArm) bool {
+// storedSubjectExpr reports a subject held in owner or compiler storage.
+func (fb *functionBuilder) storedSubjectExpr(expr ast.Expression) bool {
+	_, _, stored := fb.storedSubject(expr)
+	return stored
+}
+
+// storageFieldBindings reports an arm whose named-field bindings a subject in
+// storage can serve in place: copies of trivially copyable fields and borrows.
+// A concrete error variant keeps the copy-only rule of its union error Place.
+func storageFieldBindings(armPlan sema.ResolvedMatchArm) bool {
 	if armPlan.PatternKind == sema.MatchPatternResultErrVariant {
 		return len(armPlan.FieldBindings) == 0
 	}
 	for _, field := range armPlan.FieldBindings {
-		if field.Action != sema.MatchBindingCopyTrivial {
+		switch field.Action {
+		case sema.MatchBindingCopyTrivial, sema.MatchBindingBorrowShared, sema.MatchBindingBorrowMutable:
+		default:
 			return false
 		}
 	}

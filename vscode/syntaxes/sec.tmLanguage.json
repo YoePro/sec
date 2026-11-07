@@ -23,10 +23,7 @@
         {
           "name": "comment.block.documentation.sec",
           "begin": "/\\*\\*",
-          "end": "\\*/",
-          "patterns": [
-            { "include": "#block-comment" }
-          ]
+          "end": "\\*/"
         },
         {
           "name": "comment.line.double-slash.sec",
@@ -40,10 +37,7 @@
     "block-comment": {
       "name": "comment.block.sec",
       "begin": "/\\*",
-      "end": "\\*/",
-      "patterns": [
-        { "include": "#block-comment" }
-      ]
+      "end": "\\*/"
     },
 
     "strings": {

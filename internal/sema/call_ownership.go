@@ -147,15 +147,25 @@ func (a *Analyzer) validateCallTransferSources(function Function, args []ast.Exp
 // terminal return construction. A reusable move-only Place must carry <-;
 // temporaries and copyable Places remain marker-free.
 // Rules: rules/memory/copy_move.md — §§9.2,10.1–10.4,28.1–28.2.
-func (a *Analyzer) validateOwningConstructionSource(expr ast.Expression) bool {
+func (a *Analyzer) validateOwningConstructionSource(expr ast.Expression, site TransferSiteKind) bool {
 	if a.terminalReturnDepth > 0 {
 		return true
 	}
-	if _, explicit := explicitMoveArgument(expr); explicit {
-		return true // inferPrefixExpression already validated the source Place.
+	if source, explicit := explicitMoveArgument(expr); explicit {
+		// inferPrefixExpression already validated the source Place as a
+		// construction operand; an arm result hands it to the branch.
+		if site != TransferSiteConstruction {
+			a.relabelTransferSite(source.Right, site)
+		}
+		return true
 	}
 	place, reusable := a.resolvePlace(expr)
-	if !reusable || !requiresOwnershipTransfer(place.Type) {
+	if !reusable {
+		return true
+	}
+	if !requiresOwnershipTransfer(place.Type) {
+		// An accepted copy into the constructed value or arm result (P17-13).
+		a.recordAcceptedCopy(expr, place, site)
 		return true
 	}
 	a.reportMissingPayloadMove(expr, place)

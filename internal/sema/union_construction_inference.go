@@ -104,7 +104,7 @@ func (a *Analyzer) inferCallAsUnionVariantConstructor(expr *ast.CallExpression, 
 	if valueType.Kind != InvalidType && a.checkCompileTimeContractExpression(payloadType, expr.Arguments[0]) {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 	}
-	if valueType.Kind != InvalidType && !a.validateOwningConstructionSource(expr.Arguments[0]) {
+	if valueType.Kind != InvalidType && !a.validateOwningConstructionSource(expr.Arguments[0], TransferSiteConstruction) {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 	}
 

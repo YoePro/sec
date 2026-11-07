@@ -275,7 +275,9 @@ func (fb *functionBuilder) endFreshMatchSubject(subjectExpr ast.Expression, subj
 		return nil
 	}
 	if arm.BindingAction == sema.MatchBindingBorrowShared || arm.BindingAction == sema.MatchBindingBorrowMutable {
-		return fb.unsupported("borrowed payload of a fresh match subject (P17-40)", token)
+		// Sema publishes a borrowed payload only through the subject's
+		// temporary Place, which materializeMatchSubject holds.
+		return fb.unsupported("borrowed payload of a fresh match subject outside compiler storage", token)
 	}
 	if !activePayloadTrivial(plan.SubjectType, arm) {
 		// What the arm leaves lives through the whole match (owner decision
@@ -331,15 +333,17 @@ func activePayloadTrivial(subject sema.Type, arm sema.ResolvedMatchArm) bool {
 }
 
 // materializeMatchSubject holds a fresh owned subject in compiler storage when
-// an arm tests or takes a payload that only a Place reaches: a concrete error
-// variant's payload, or a whole named-field payload. The subject is then
+// an arm tests, takes or borrows a payload that only a Place reaches: a
+// concrete error variant's payload, a whole named-field payload, or a `ref` /
+// `ref mut` payload binding (owner decision 2026-11-07). The subject is then
 // observed like a stored one, and an arm that does not take its payload
-// destroys it in place (destruction.md § 8(8)).
+// destroys it in place (destruction.md § 8(8)) after the arm's borrows end.
 func (fb *functionBuilder) materializeMatchSubject(expr *ast.MatchExpression, plan sema.ResolvedMatchPlan) (builtValue, *matchSubjectPlace, bool, error) {
-	if fb.owner.maxPackage < ownershipLoweringPackage || !isFreshOwner(expr.Subject) || sema.TriviallyDestructible(plan.SubjectType) {
+	borrows := matchBorrowsPayload(plan)
+	if fb.owner.maxPackage < ownershipLoweringPackage || !isFreshOwner(expr.Subject) || sema.TriviallyDestructible(plan.SubjectType) && !borrows {
 		return builtValue{}, nil, false, nil
 	}
-	needed := movesFieldPayload(fb.owner.analyzer, expr)
+	needed := borrows || movesFieldPayload(fb.owner.analyzer, expr)
 	for _, arm := range plan.Arms {
 		needed = needed || arm.PatternKind == sema.MatchPatternResultErrVariant
 	}
@@ -385,4 +389,48 @@ func (fb *functionBuilder) storedErrorPayload(subjectExpr ast.Expression, arm se
 		return fb.result(Operation{Kind: OpOwnMoveFromPlace, Operands: []ValueID{payload.id}, Ownership: &OwnershipFacts{}, Location: location(token)}, payloadType), true, nil
 	}
 	return fb.result(Operation{Kind: OpPlaceRead, Operands: []ValueID{payload.id}, Location: location(token)}, payloadType), true, nil
+}
+
+// matchBorrowsPayload reports an arm that borrows its payload or a payload field.
+func matchBorrowsPayload(plan sema.ResolvedMatchPlan) bool {
+	for _, arm := range plan.Arms {
+		if arm.BindingAction == sema.MatchBindingBorrowShared || arm.BindingAction == sema.MatchBindingBorrowMutable {
+			return true
+		}
+		for _, field := range arm.FieldBindings {
+			if field.Action == sema.MatchBindingBorrowShared || field.Action == sema.MatchBindingBorrowMutable {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// tryGuardCandidate is a guarded try handler's view of the payload it would
+// move: a candidate read through the payload Place of the error value under
+// the handler's variant test. The error itself is not touched, so a false
+// guard leaves it whole for the next handler. The Place carries the identity
+// of the binding the guard names (Sema's ResolvedTryGuardPlaceOf).
+func (fb *functionBuilder) tryGuardCandidate(handler *ast.TryHandler, plan sema.ResolvedTryHandler, selected matchErrorArm) (builtValue, error) {
+	if !selected.union || selected.test == 0 {
+		return builtValue{}, fb.unsupported("guarded owned error payload without a union variant test", handler.Token)
+	}
+	place, ok := fb.owner.analyzer.ResolvedTryGuardPlaceOf(handler)
+	if !ok {
+		return builtValue{}, fb.unsupported("guarded owned error payload without a resolved binding Place", handler.Token)
+	}
+	payloadType, err := fb.owner.internType(plan.BindingType)
+	if err != nil {
+		return builtValue{}, err
+	}
+	loc := location(handler.Token)
+	rootType := fb.owner.module.Types.Intern(Type{Kind: TypePlace, Element: selected.value.typ})
+	base := fb.placeResult(Operation{Kind: OpPlaceValueRoot, Operands: []ValueID{selected.value.id}, Place: placeMetadataOf(place), Location: loc}, rootType)
+	facts := placeMetadataOf(place)
+	facts.VariantProven = true
+	payloadPlace := fb.placeResult(Operation{
+		Kind: OpPlaceUnionPayload, Operands: []ValueID{base.id}, UnionVariant: selected.variant,
+		VariantGuard: selected.test, Place: facts, Location: loc,
+	}, fb.owner.module.Types.Intern(Type{Kind: TypePlace, Element: payloadType}))
+	return fb.result(Operation{Kind: OpPlaceRead, Operands: []ValueID{payloadPlace.id}, PlaceReadMode: PlaceReadCandidate, Location: loc}, payloadType), nil
 }

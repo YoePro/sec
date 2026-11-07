@@ -245,11 +245,11 @@ impl rune {
      * - Unicode Character Database: Numeric_Value
      */
     fn ToNumericValue() Option[decimal] {
+        let decimalDigit := _DecimalDigitValue(self)
+        if decimalDigit is Some(digit) {
+            return Some(decimal(digit.Value))
+        }
         switch {
-            case self.IsDigit:
-                return Some(decimal(int(self) - 48))
-            case self.IsUnicodeDigit: // Unicode digits (0-9 in other scripts)
-                return Some(decimal(int(self) % 10))
             case self in [73r, 86r, 88r, 76r, 67r, 68r, 77r, 105r, 118r, 120r, 108r, 99r, 100r, 109r]:
                 return Some(self._toRomanValue()) // Sec extension: Latin letters used as Roman numerals.
             case self in 8544r..8575r: // Unicode Roman Numerals block (Ⅰ to ⅿ)

@@ -3,6 +3,16 @@ module lambdas
 // Every marked construct in this file is expected to produce a parser or
 // semantic diagnostic. Malformed syntax is kept at the end for recovery.
 
+// A move-only resource for consuming-capture examples.
+type CaptureToken struct {
+    id: int,
+}
+
+impl CaptureToken {
+    free {
+    }
+}
+
 type LambdaError enum error {
     InvalidValue
     MissingValue
@@ -223,6 +233,8 @@ fn CaptureLocalConflict(factor: int) int {
     return operation(10)
 }
 
+// Mutating an owned capture makes the closure `mut fn`; calling it needs a
+// mutable binding (lambda-functions.md §§8, 18).
 fn MutateCapturedValue() void {
     let mut factor: int := 2
 
@@ -231,6 +243,59 @@ fn MutateCapturedValue() void {
     }
 
     operation()
+}
+
+// A `ref` capture is a reference holder read through `*value`, and grants no
+// write authority (lambda-functions.md §19).
+fn SharedCaptureUsedAsValue(value: int) int {
+    let operation := capture(ref value) fn() int {
+        return value
+    }
+
+    return operation()
+}
+
+fn WriteThroughSharedCapture() void {
+    let mut value := 1
+    let operation := capture(ref value) fn() void {
+        *value = 2
+    }
+
+    operation()
+}
+
+// `ref mut` needs a mutable owner and excludes any other borrow while the
+// closure lives (lambda-functions.md §20).
+fn MutableCaptureOfImmutable() void {
+    let value := 1
+    let mut operation := capture(ref mut value) fn() void {
+        *value += 1
+    }
+
+    operation()
+}
+
+fn ConflictingBorrowCaptures() void {
+    let mut value := 1
+    let mut first := capture(ref mut value) fn() void {
+        *value += 1
+    }
+    let second := capture(ref value) fn() int {
+        return *value
+    }
+
+    first()
+}
+
+// A consuming closure is called at most once (lambda-functions.md §28).
+fn ReuseConsumedClosure() int {
+    let token := CaptureToken { id: 1 }
+    let take := capture(<-token) fn() CaptureToken {
+        return token
+    }
+    let first := take()
+    let second := take()
+    return 0
 }
 
 fn ImplicitLoopVariableCapture() int {
@@ -338,14 +403,6 @@ fn GenericLambda() void {
     let operation := fn[T](value: T) T {
         return value
     }
-}
-
-fn ReferenceCapture(value: int) int {
-    let operation := capture(ref value) fn() int {
-        return value
-    }
-
-    return operation()
 }
 
 fn MutableReferenceCapture(value: int) void {

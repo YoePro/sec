@@ -8,8 +8,8 @@ import (
 )
 
 // CaptureMode is the source-declared mechanism used to populate a closure
-// environment. Reference modes are retained here for the complete canonical
-// model even while their source grammar remains a separate integration step.
+// environment: copy, `<-` move, `ref` shared borrow and `ref mut` mutable
+// borrow.
 //
 // Rules:
 //   - rules/analysis/closure_analysis.md — "CaptureMode"
@@ -34,6 +34,9 @@ const (
 	CaptureTransferCopy    CaptureTransfer = "copy"
 	CaptureTransferMove    CaptureTransfer = "move"
 	CaptureTransferUnknown CaptureTransfer = "unknown"
+	// CaptureTransferBorrow: a `ref`/`ref mut` capture moves and copies
+	// nothing; the environment holds a borrow of SourcePlace.
+	CaptureTransferBorrow CaptureTransfer = "borrow"
 )
 
 // CaptureDependencies preserves semantic requirements carried by the captured
@@ -121,6 +124,18 @@ func (a *Analyzer) recordLambdaCaptureFacts(lambda *ast.LambdaExpression) {
 
 		mode, transfer := CaptureCopy, CaptureTransferCopy
 		switch capture.Mode {
+		case ast.LambdaCaptureSharedBorrow, ast.LambdaCaptureMutableBorrow:
+			mode, transfer = CaptureSharedBorrow, CaptureTransferBorrow
+			if capture.Mode == ast.LambdaCaptureMutableBorrow {
+				mode = CaptureMutableBorrow
+			}
+			validated := false
+			for _, borrow := range a.lambdaBorrowCaptures[lambda] {
+				validated = validated || borrow.Name == name
+			}
+			if !validated {
+				continue
+			}
 		case ast.LambdaCaptureMove:
 			mode, transfer = CaptureMove, CaptureTransferMove
 			movedAt, moved := a.moved[name]
@@ -304,11 +319,35 @@ func (a *Analyzer) defineLambdaCaptures(expr *ast.LambdaExpression, outerSymbols
 			a.addErrorAtToken(capture.Name.Token, "cannot capture unassigned variable %s", name)
 			continue
 		}
-		symbol.Mutable = false
+		outer := symbol
+		if capture.IsBorrow() {
+			// §§19–20: a borrow capture is a reference holder used through
+			// `*name`; the holder itself is not rebindable.
+			place := Place{}
+			for _, borrow := range a.lambdaBorrowCaptures[expr] {
+				if borrow.Name == name {
+					place = borrow.Place
+				}
+			}
+			symbol.Type = a.lambdaBorrowCaptureType(capture, symbol, place)
+			symbol.Mutable = false
+			if capture.Mode == ast.LambdaCaptureMutableBorrow && a.lambdaEnvironment != nil {
+				a.lambdaEnvironment.mutableBorrow = true
+			}
+		} else {
+			// §18: an owned capture is a mutable field of the environment.
+			symbol.Mutable = true
+			if a.lambdaEnvironment != nil {
+				a.lambdaEnvironment.owned[name] = true
+				if MoveOnly(symbol.Type) || requiresOwnershipTransfer(symbol.Type) {
+					a.lambdaEnvironment.moveOnlyOwned = true
+				}
+			}
+		}
 		a.symbols.set(name, symbol)
 		a.assigned[name] = true
 		delete(a.constInts, name)
-		a.recordCaptureEscapeFact(name, capture.Name.Token, symbol)
+		a.recordCaptureEscapeFact(name, capture.Name.Token, outer)
 	}
 }
 

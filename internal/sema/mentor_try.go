@@ -77,6 +77,12 @@ func (a *Analyzer) addTypeMismatchError(token lexer.Token, expected Type, actual
 			"decimal literal %s has no exact %s representation", expr.String(), typeDisplayName(expected))
 		return
 	}
+	// lambda-functions.md §10: name the capability when it is the only
+	// difference between two function types.
+	if help, capability := callableCapabilityMismatch(expected, actual); capability {
+		a.addErrorAtTokenWithMetadata(token, "", help+"; keep the target at least as strong as the callable, or remove the environment mutation or consumption", format, args...)
+		return
+	}
 	if help := missingTryHelp(expected, actual, expr); help != "" {
 		a.addErrorAtTokenWithMetadata(token, "", help, format, args...)
 		return

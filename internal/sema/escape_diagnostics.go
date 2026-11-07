@@ -203,6 +203,15 @@ func (a *Analyzer) checkReturningLambdaCapturingLocalReference(functionName stri
 			continue
 		}
 		symbol, ok := a.symbols.lookup(capture.Name.Value)
+		if ok && capture.IsBorrow() && symbol.Local {
+			// §24: the returned closure would outlive the borrowed local.
+			if functionName == "lambda" {
+				a.reportEscapeExpressionDiagnostic(capture.Name, symbol.Token, diagnostics.EscapeClosureCapture, "lambda cannot return lambda borrowing local variable %s", capture.Name.Value)
+				return true
+			}
+			a.reportEscapeExpressionDiagnostic(capture.Name, symbol.Token, diagnostics.EscapeClosureCapture, "function %s cannot return lambda borrowing local variable %s", functionName, capture.Name.Value)
+			return true
+		}
 		if !ok || symbol.Type.Kind != ReferenceType || !symbol.Type.ReferenceOriginLocal {
 			continue
 		}

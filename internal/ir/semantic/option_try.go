@@ -26,8 +26,9 @@ func (fb *functionBuilder) buildOptionTry(expr *ast.TryExpression, resolved sema
 			return builtValue{}, fb.unsupported("unresolved Option try handler plan", expr.Token)
 		}
 	}
+	// The success payload leaves the Option as Sema resolved it (P17-35).
 	action := UnionPayloadCopyTrivial
-	if sema.CopyClassificationOf(resolved.SuccessType) != sema.CopyTrivial {
+	if resolved.SuccessTransfer != sema.TransferCopyTrivial {
 		if fb.owner.maxPackage < ownershipLoweringPackage {
 			return builtValue{}, fb.unsupported("ownership-sensitive Option try payload", expr.Token)
 		}

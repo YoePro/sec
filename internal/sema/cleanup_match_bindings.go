@@ -76,6 +76,14 @@ func (a *Analyzer) enterOwnedBindingScope(block *ast.BlockStatement, bindingToke
 // or of an error variant's payload when it owns a value needing destruction,
 // like a match payload binding (errorhandling.md § 20).
 func (a *Analyzer) enterOwnedHandlerBinding(handler *ast.TryHandler, name string, typ Type, bindingToken lexer.Token) func() {
+	// A guard sees the binding before the handler takes it; the binding's
+	// Place is the identity of that candidate view (errorhandling.md § 19).
+	if place, ok := a.rootPlace(name); ok && handler.Guard != nil && name != "" && name != "_" {
+		if a.tryGuardPlaces == nil {
+			a.tryGuardPlaces = map[*ast.TryHandler]Place{}
+		}
+		a.tryGuardPlaces[handler] = cloneSlicePlanPlace(place)
+	}
 	if name == "" || name == "_" || TriviallyDestructible(typ) || CopyClassificationOf(typ) == CopyTrivial {
 		return func() {}
 	}
@@ -177,8 +185,11 @@ func (a *Analyzer) ResolvedOwnedCleanupMatchBindingOf(arm *ast.MatchArm) (Resolv
 // recordMatchSubjectPlace gives a fresh owned match subject the identity of a
 // compiler-materialized temporary Place, which lowering may hold it in while
 // its arms test and take its payload through Places (destruction.md § 8(8)).
+//
+// A subject an arm borrows a payload from needs that Place even when it is
+// trivially destructible (owner decision 2026-11-07).
 func (a *Analyzer) recordMatchSubjectPlace(expr *ast.MatchExpression, plan ResolvedMatchPlan) {
-	if _, call := expr.Subject.(*ast.CallExpression); !call || TriviallyDestructible(plan.SubjectType) {
+	if !constructedMatchSubject(expr.Subject) || TriviallyDestructible(plan.SubjectType) && !matchPlanBorrowsPayload(plan) {
 		return
 	}
 	if a.matchSubjectPlaces == nil {
@@ -196,6 +207,35 @@ func (a *Analyzer) ResolvedMatchSubjectPlaceOf(expr *ast.MatchExpression) (Place
 		return Place{}, false
 	}
 	place, ok := a.matchSubjectPlaces[expr]
+	if !ok {
+		return Place{}, false
+	}
+	return cloneSlicePlanPlace(place), true
+}
+
+// matchPlanBorrowsPayload reports an arm that binds its payload, or one of its
+// payload fields, with `ref` or `ref mut`.
+func matchPlanBorrowsPayload(plan ResolvedMatchPlan) bool {
+	for _, arm := range plan.Arms {
+		if arm.BindingAction == MatchBindingBorrowShared || arm.BindingAction == MatchBindingBorrowMutable {
+			return true
+		}
+		for _, field := range arm.FieldBindings {
+			if field.Action == MatchBindingBorrowShared || field.Action == MatchBindingBorrowMutable {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// ResolvedTryGuardPlaceOf reads the Place of the binding a guarded try
+// handler's guard names, like ResolvedMatchGuardPlaceOf for a match arm.
+func (a *Analyzer) ResolvedTryGuardPlaceOf(handler *ast.TryHandler) (Place, bool) {
+	if a == nil {
+		return Place{}, false
+	}
+	place, ok := a.tryGuardPlaces[handler]
 	if !ok {
 		return Place{}, false
 	}

@@ -416,7 +416,7 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
   producer coverage remains P17-13, aggregate availability/masks P17-15 and
   Semantic IR ownership operations P17-26 onward.
 
-- [ ] P17-13 — Publish transfer plans for initialization, assignment, argument,
+- [x] P17-13 — Publish transfer plans for initialization, assignment, argument,
   return, constructor field/element/payload, match binding and branch use sites.
   Distinguish non-consuming observation and borrowing from ownership transfer.
 
@@ -425,6 +425,24 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
   and lambda move captures publish plans. Their destination/state model is complete
   under P17-12. Remaining return/construction/capture producers, match bindings,
   branch uses and complete observation/borrow distinctions remain open.
+
+  Done 2026-11-07 (Claude):
+  - **Copies.** Accepted copies of a reusable value now publish plans at every
+    remaining site: return slots, constructed struct fields, union/Option/Result
+    payloads, closure environments (`capture(x)`) and match arm results.
+  - **Branch uses.** A match arm result in a value context is site `branch`,
+    including an explicit `<-h` arm value that was validated as a construction
+    operand.
+  - **Pattern bindings.** By-value payload, named-field, `if ... is Some(x)` and
+    try-handler bindings publish site `match-binding` plans, keyed by the bound
+    identifier. The source is the payload or field Place (or a fresh value, marked
+    `SourceFresh`, for a try handler's error); the destination is the binding's
+    Place. A moved payload is a partial move of its subject.
+  - **Observation and borrowing.** `ResolvedOwnershipUseOf` classifies a use as
+    transfer, borrow-shared, borrow-mutable, reference or observation from
+    published facts only; borrows and observations carry no transfer plan.
+  - **Evidence.** `TestTransferPlansCoverEveryUseSite` (`internal/sema`); a
+    mutation that drops copy publication fails it.
 
 - [x] P17-14 — Provide detached read-only transfer/destruction queries. Prove
   repeated queries neither infer types nor mutate borrow/move state; clone nested
@@ -821,7 +839,7 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
 
 ## E. Connect source lowering solely through resolved plans
 
-- [ ] P17-35 — Migrate local, call, constructor, return and branch producers to
+- [x] P17-35 — Migrate local, call, constructor, return and branch producers to
   consume immutable plans. Missing required facts produce structured unsupported
   lowering; do not fall back to fresh ownership inference in the builder.
 
@@ -848,6 +866,19 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
     is tracked as the new owner and the returned value leaves before function
     cleanup (`TestOwnedLocalMovesCancelTheirRegistration`). Argument moves need
     owned parameters (P17-32); field and partial moves stay P17-27/P17-36.
+
+  Done 2026-11-07 (Claude):
+  - **Remaining producers.** Union construction payloads read
+    `ResolvedUnionConstruction.PayloadActions`, try-handler payload bindings
+    read `ResolvedTryHandlerBindingTransferOf`, and Option `try` reads
+    `ResolvedTry.SuccessTransfer`. Locals, calls, struct literals, returns,
+    branches and match bindings already consumed Sema plans (P17-27..44).
+  - **No fallback.** A resolved action without a lowering (semantic copy) or a
+    missing transfer fact is a structured `UnsupportedFeatureError`. The
+    builder's remaining type queries decide destruction, value representation,
+    generic specialization or predecessor-package gates, never copy versus move.
+  - **Evidence.** `TestBuilderConsumesResolvedTransferPlans`
+    (`internal/ir/semantic`); the IR, lowering and schema-13 suites are unchanged.
 - [x] P17-36 — Lower direct stored-field partial move, field reinit and non-trivial
   field replacement through Places. Preserve the owner of untouched fields; do
   not replace one owned field by copying and rebuilding its whole struct.
@@ -872,7 +903,7 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
   - **Reads in place.** A field below a non-trivial field is read through
     `place.field` (P17-16).
 
-- [ ] P17-37 — Lower move-only active union/Result/Option payload bindings only
+- [x] P17-37 — Lower move-only active union/Result/Option payload bindings only
   on the predecessor's proven variant path, updating container partial state.
   Keep borrowed bindings on P15 and respect MD-031 handler emission limits.
   Partial 2026-11-02: unguarded whole-payload bindings in `match` and
@@ -895,6 +926,40 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
     guard Place for try handlers (it does for match arms). Moving or borrowing a
     named field out of a stored subject also remains. Semantic-copy bindings have
     no Sec 0.1 producer (P17-09).
+  Update 2026-11-07 (Claude):
+  - **Named fields of stored subjects.** `ref` / `ref mut` named fields of a
+    stored (mutable) owned subject, or of a fresh subject in compiler storage,
+    are borrowed through the subject's payload Place. A named-field move is not
+    a lowering gap: flowcontrol_match.md § 15 makes a by-value binding of a
+    move-only field a compile-time error.
+  - **Guarded try handlers on owned errors.** The handler takes the error, by
+    registration or as an arm temporary, only in its guard's true block. A
+    false guard passes the error, untouched, to the next handler.
+  - **Evidence.** `TestSchema13PayloadBindings` (StoredShared, StoredMutable,
+    ImmutableLocal), `TestSchema13FreshSubjectBorrows` (FieldOfFresh),
+    `TestSchema13GuardedTryHandlersOnOwnedErrors`
+    (`testdata/semantic_ir/guarded_try_handlers.sec`).
+  - **Remaining.** A guarded try handler that moves an owned error payload
+    (`Err(E.V(h)) where h.id > 0`). The guard needs a candidate read of the
+    payload before the move commits, and a try error has no Place: Sema would
+    have to publish a guard Place for try-handler payloads, as it does for match
+    arms (`ResolvedMatchGuardPlaceOf`), and lowering would hold the error in
+    compiler storage. This is the error_handler_payload.sec boundary row.
+
+  Done 2026-11-07 (Claude):
+  - **Guarded owned payload moves.** Sema publishes the binding Place of a
+    guarded try handler (`ResolvedTryGuardPlaceOf`). The guard reads a candidate
+    through `place.value-root` of the error value and its payload Place under
+    the handler's variant test, and the payload moves only in the guard's true
+    block. A false guard leaves the error whole for the next handler.
+  - **Sema fix.** A try handler's binding was declared without `Local`, so its
+    Place had a static root. This also made `ref e` of an owned handler binding
+    fail in Semantic IR with an internal error. It is now a local, like a match
+    payload binding.
+  - **Evidence.** `MovedPayload` and `BorrowedBinding` in
+    `testdata/semantic_ir/guarded_try_handlers.sec`, and the former boundary
+    fixture `package17_variants/error_handler_payload.sec`, all verified by
+    `TestSchema13GuardedTryHandlersOnOwnedErrors`. The boundary row is gone.
 - [x] P17-38 — Lower non-trivial whole fixed-array ownership and destruction.
   Extend resolved ordinary element actions; preserve spread copy rules and the
   unsupported partial element-move boundary, including runtime indexes.
@@ -933,7 +998,7 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
   - **Evidence.** `FallibleReplace`, `RecoverReplace` and `HandlerReturn` in
     `testdata/semantic_ir/inherited_registration.sec`, verified through every
     cleanup/ownership pass by `TestSchema13InheritsReplacementRegistration` (32/64).
-- [ ] P17-40 — Lower explicit/implicit discard and temporary lifetime end through
+- [x] P17-40 — Lower explicit/implicit discard and temporary lifetime end through
   the same destruction plans as normal cleanup; honor must-use legality and
   non-consuming expression classification instead of dropping an SSA result.
 
@@ -961,6 +1026,22 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
     `testdata/semantic_ir/temporary_ends.sec`; two fixtures left the boundary rows.
   - **Remaining.** A borrowed payload of a fresh match subject, and a move into a
     constructed match subject (`match Some(<-h)`).
+
+  Done 2026-11-07 (Claude):
+  - **Borrowed payload of a fresh subject.** Allowed by owner decision 2026-11-07
+    (flowcontrol_match.md § 13). Sema gives the payload Place under the subject's
+    temporary Place and a match-scoped temporary origin; lowering holds the
+    subject in compiler storage, borrows through it and ends the borrow before
+    the arm destroys the subject, on fallthrough, return, value arms and a
+    failing guard (`borrowEndPosition`).
+  - **Constructed subject.** `match Some(<-h)` now takes `h` when the subject is
+    evaluated. Before this, Sema never committed that move, so a later use of
+    `h` was accepted (a soundness bug, now S1088). Lowering emits `own.move` and
+    `cleanup.cancel` before `union.construct`.
+  - **Evidence.** `TestSchema13FreshSubjectBorrows` (32/64) over
+    `testdata/semantic_ir/fresh_subject_borrows.sec`;
+    `TestUnionPayloadPatternBorrowsFromTemporarySubject` (replaces the former
+    rejection test) and `TestConstructedMatchSubjectMovesItsOperands`.
 - [ ] P17-41 — Lower executed defer sites into regions with binding/Place captures.
   Preserve function scope and iteration-instance identity; never copy captures or
   collapse dynamic registrations into one active boolean per source site.

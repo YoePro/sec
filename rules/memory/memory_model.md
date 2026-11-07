@@ -1,13 +1,13 @@
 # Memory Model
 
-- Status: Normative
-- Created: 2026-09-02
-- Last updated: 2026-09-02
-- Document revision: 2.0
-- Sec language version: 0.1
-- Canonical path: `rules/memory/memory_model.md`
-- Replaces: previous revision of `rules/memory/memory_model.md`
-- Repository baseline reviewed: `814a584` (latest publicly verifiable `main`; current `main` contents reviewed 2026-09-02)
+- **Status**: Normative
+- **Created**: 2026-09-02
+- **Last updated**: 2026-09-02
+- **Document revision**: 2.0
+- **Sec language version**: 0.1
+- **Canonical path**: `rules/memory/memory_model.md`
+- **Replaces: previous revision of** `rules/memory/memory_model.md`
+- **Repository baseline reviewed**: `814a584` (latest publicly verifiable `main`; current `main` contents reviewed 2026-09-02)
 
 ---
 

@@ -1,11 +1,23 @@
 # Blocking
 
-## Purpose
+- **Status:** Normative
+- **Created:** 2026-07-29
+- **Last updated:** 2026-11-07 (stable chapter and paragraph numbering)
+- **Document revision:** 1
+- **Sec language version:** 0.1
+- **Canonical path:** `rules/concurrency/blocking.md`
+- **Repository baseline reviewed:** `28780c01d63c3fc9eec2321ef67e3dd69962f043`
+- **Implementation governance:** `governance/concurrency_blocking.yaml` (`frontend.blocking-effects`)
+- **Related rulebooks:** `rules/concurrency/await.md`, `rules/concurrency/cancellation.md`, `rules/concurrency/scheduling.md`, `rules/concurrency/mutex.md`, `rules/concurrency/tasks.md`, `rules/concurrency/threads.md`, `rules/platform/ffi.md`, `rules/platform/interrupts.md`, `rules/errors/runtime_checks.md`
 
-Blocking defines operations that wait for progress by another execution entity,
+---
+
+## § 1 Purpose
+
+**§ 1(1)** Blocking defines operations that wait for progress by another execution entity,
 device, timer or platform facility.
 
-Sec distinguishes:
+**§ 1(2)** Sec distinguishes:
 
 ```text
 task suspension
@@ -14,34 +26,34 @@ busy waiting
 interrupt context
 ```
 
-The same source operation may suspend a task or block a physical thread depending
+**§ 1(3)** The same source operation may suspend a task or block a physical thread depending
 on the caller context and selected backend.
 
-Ownership, commit and memory-order semantics must not change.
+**§ 1(4)** Ownership, commit and memory-order semantics must not change.
 
 ---
 
-## Core distinction
+## § 2 Core distinction
 
-In task context, a wait should suspend the logical task when the backend can
+**§ 2(1)** In task context, a wait should suspend the logical task when the backend can
 register readiness.
 
-In physical thread context, a wait parks or blocks the current physical thread.
+**§ 2(2)** In physical thread context, a wait parks or blocks the current physical thread.
 
-Parking or blocking a physical thread does not by itself invalidate a
+**§ 2(3)** Parking or blocking a physical thread does not by itself invalidate a
 thread-local borrow when execution resumes on the same physical-thread
 attachment generation. Logical task suspension remains different because the
 task may resume on another physical thread.
 
-Busy waiting repeatedly polls without parking or suspension.
+**§ 2(4)** Busy waiting repeatedly polls without parking or suspension.
 
-Busy waiting is not the default lowering for a Sec blocking operation.
+**§ 2(5)** Busy waiting is not the default lowering for a Sec blocking operation.
 
 ---
 
-## Potentially blocking operations
+## § 3 Potentially blocking operations
 
-The following may wait:
+**§ 3(1)** The following may wait:
 
 ```text
 await Task[T]
@@ -68,27 +80,27 @@ I/O readiness or completion
 platform wait operations
 ```
 
-`Try...` operations are nonblocking when their rule explicitly guarantees it.
+**§ 3(2)** `Try...` operations are nonblocking when their rule explicitly guarantees it.
 
-A `default` branch makes `select` nonblocking.
+**§ 3(3)** A `default` branch makes `select` nonblocking.
 
 ---
 
-## Await
+## § 4 Await
 
-`await task` is task-specific.
+**§ 4(1)** `await task` is task-specific.
 
-It consumes the owning `Task[T]`.
+**§ 4(2)** It consumes the owning `Task[T]`.
 
-In a task backend it normally suspends the current task.
+**§ 4(3)** In a task backend it normally suspends the current task.
 
-A profile may block a physical worker only when:
+**§ 4(4)** A profile may block a physical worker only when:
 
 - the profile explicitly permits it;
 - no suspension backend exists;
 - deadlock and executor-starvation rules are still enforced.
 
-If caller cancellation commits before await commit, the await dependency does
+**§ 4(5)** If caller cancellation commits before await commit, the await dependency does
 not instantly disappear. The operation retains the consumed task lifecycle,
 requests cooperative cancellation, and may continue waiting for the child to
 become terminal before caller cancellation completes. A backend must not model
@@ -97,34 +109,34 @@ profile-controlled.
 
 ---
 
-## Join
+## § 5 Join
 
-`join handle` waits for completion while preserving terminal handle information.
+**§ 5(1)** `join handle` waits for completion while preserving terminal handle information.
 
-Caller context determines the physical wait mechanism.
+**§ 5(2)** Caller context determines the physical wait mechanism.
 
-Task joining a thread:
+**§ 5(3)** Task joining a thread:
 
 ```text
 suspend current task where supported
 ```
 
-Physical thread joining a thread:
+**§ 5(4)** Physical thread joining a thread:
 
 ```text
 park or block current physical thread
 ```
 
-A successful join establishes the completion synchronization edge defined by the
+**§ 5(5)** A successful join establishes the completion synchronization edge defined by the
 concurrency memory model.
 
-For `Process[T]` and `Command`, successful join additionally proves child
+**§ 5(6)** For `Process[T]` and `Command`, successful join additionally proves child
 quiescence, stabilizes terminal metadata and allowed completion payloads, and
 collects/reaps native terminal state where required. It does not publish
 arbitrary child addresses or ordinary child storage; explicit shared-memory IPC
 retains its own visibility contract.
 
-`ProcessObserver.Wait()` is repeatable, non-owning terminal observation. It
+**§ 5(7)** `ProcessObserver.Wait()` is repeatable, non-owning terminal observation. It
 does not perform owner join, reaping, detachment, termination, or terminal
 payload transfer. From a Task these waits should suspend when the backend can
 register completion without blocking the worker; from a physical Thread they
@@ -132,31 +144,31 @@ may park/block. Blocking an executor worker requires explicit profile support.
 
 ---
 
-## Channel operations
+## § 6 Channel operations
 
-Blocking channel send and receive preserve the same commit semantics in task and
+**§ 6(1)** Blocking channel send and receive preserve the same commit semantics in task and
 thread contexts.
 
-Task context may suspend.
+**§ 6(2)** Task context may suspend.
 
-Thread context may block.
+**§ 6(3)** Thread context may block.
 
-Cancellation or timeout must not partially commit the message.
+**§ 6(4)** Cancellation or timeout must not partially commit the message.
 
-Only the selected successful operation transfers ownership.
+**§ 6(5)** Only the selected successful operation transfers ownership.
 
 ---
 
-## Select
+## § 7 Select
 
-A waiting `select` registers all candidate operations and commits exactly one
+**§ 7(1)** A waiting `select` registers all candidate operations and commits exactly one
 ready branch.
 
-In task context, it suspends the task.
+**§ 7(2)** In task context, it suspends the task.
 
-In thread context, it parks or blocks the thread.
+**§ 7(3)** In thread context, it parks or blocks the thread.
 
-A non-selected branch must not:
+**§ 7(4)** A non-selected branch must not:
 
 - consume a value;
 - move a message;
@@ -166,29 +178,29 @@ A non-selected branch must not:
 
 ---
 
-## Mutex acquisition
+## § 8 Mutex acquisition
 
-`Mutex[T].Lock()` may wait.
+**§ 8(1)** `Mutex[T].Lock()` may wait.
 
-In task context the backend should use task-aware suspension where available.
+**§ 8(2)** In task context the backend should use task-aware suspension where available.
 
-In thread context it blocks or parks.
+**§ 8(3)** In thread context it blocks or parks.
 
-The mutex's ownership and memory-order semantics are identical.
+**§ 8(4)** The mutex's ownership and memory-order semantics are identical.
 
-A runtime must not substitute a task-local lock when the mutex may cross a thread
+**§ 8(5)** A runtime must not substitute a task-local lock when the mutex may cross a thread
 boundary.
 
-Logical task suspension, physical executor-worker blocking, and direct
+**§ 8(6)** Logical task suspension, physical executor-worker blocking, and direct
 physical-thread parking are distinct scheduling facts. Task-context operations
 use logical suspension where the selected target supports it; this must not
 fabricate `TaskContext` for ordinary `main` or physical-thread-only code.
 
 ---
 
-## Mutex guards across waits
+## § 9 Mutex guards across waits
 
-`MutexGuard[T]`, `IPCMutexGuard`, and `SharedValueGuard[T]` are execution-bound
+**§ 9(1)** `MutexGuard[T]`, `IPCMutexGuard`, and `SharedValueGuard[T]` are execution-bound
 and may not remain live across:
 
 - `await`;
@@ -199,11 +211,11 @@ and may not remain live across:
 - `Task.Yield()`;
 - transfer to another task or thread.
 
-The compiler should apply the same conservative rule to physical thread waits
+**§ 9(2)** The compiler should apply the same conservative rule to physical thread waits
 unless a later lock policy explicitly permits a safe blocking wait while holding
 that guard.
 
-This prevents:
+**§ 9(3)** This prevents:
 
 - executor deadlock;
 - lock-order inversion;
@@ -212,33 +224,33 @@ This prevents:
 
 ---
 
-## Cancellation-aware waits
+## § 10 Cancellation-aware waits
 
-A cancellation-aware wait may resume because cancellation was requested.
+**§ 10(1)** A cancellation-aware wait may resume because cancellation was requested.
 
-For IPC, cancellation may stop a wait only before semantic commit. Before
+**§ 10(2)** For IPC, cancellation may stop a wait only before semantic commit. Before
 commit, queue, ownership, lock, and permit state is unchanged. After commit, the
 operation completes to its canonical result and cancellation cannot revoke the
 effect. IPC error enums therefore do not gain `Cancelled` variants.
 
-The operation must then follow its own commit rule.
+**§ 10(3)** The operation must then follow its own commit rule.
 
-For example, a channel send that has not committed retains ownership of the
+**§ 10(4)** For example, a channel send that has not committed retains ownership of the
 message.
 
-Cancellation is not permitted to create a partial operation.
+**§ 10(5)** Cancellation is not permitted to create a partial operation.
 
-The resumed execution entity performs ordinary cleanup before becoming
+**§ 10(6)** The resumed execution entity performs ordinary cleanup before becoming
 `Cancelled`.
 
 ---
 
-## Timeouts
+## § 11 Timeouts
 
-Timeouts are expressed through `select` and `after` unless a specific API rule
+**§ 11(1)** Timeouts are expressed through `select` and `after` unless a specific API rule
 defines another timeout form.
 
-Example:
+**§ 11(2)** Example:
 
 ```sec
 select {
@@ -252,19 +264,19 @@ select {
 }
 ```
 
-A timeout branch must not commit another branch.
+**§ 11(3)** A timeout branch must not commit another branch.
 
-A timeout is not cancellation unless user code explicitly requests or performs
+**§ 11(4)** A timeout is not cancellation unless user code explicitly requests or performs
 cancellation.
 
 ---
 
-## Nonblocking operations
+## § 12 Nonblocking operations
 
-An operation documented as nonblocking must complete immediately with an
+**§ 12(1)** An operation documented as nonblocking must complete immediately with an
 explicit state.
 
-Examples include conceptual:
+**§ 12(2)** Examples include conceptual:
 
 ```text
 TryLock
@@ -273,18 +285,18 @@ TryReceive
 status observation
 ```
 
-Nonblocking does not mean successful.
+**§ 12(3)** Nonblocking does not mean successful.
 
-It means the operation returns without waiting.
+**§ 12(4)** It means the operation returns without waiting.
 
 ---
 
-## Busy waiting
+## § 13 Busy waiting
 
-The compiler and backend must not lower ordinary waits to unbounded busy loops
+**§ 13(1)** The compiler and backend must not lower ordinary waits to unbounded busy loops
 unless the target profile explicitly selects a busy-wait implementation.
 
-A busy-wait profile must document:
+**§ 13(2)** A busy-wait profile must document:
 
 - CPU consumption;
 - memory ordering;
@@ -293,14 +305,14 @@ A busy-wait profile must document:
 - power implications;
 - maximum intended duration.
 
-Compiler-generated busy loops must contain the required atomic or volatile
+**§ 13(3)** Compiler-generated busy loops must contain the required atomic or volatile
 semantics.
 
 ---
 
-## Blocking effects
+## § 14 Blocking effects
 
-Functions may be classified by effects such as:
+**§ 14(1)** Functions may be classified by effects such as:
 
 ```text
 mayBlock
@@ -309,21 +321,21 @@ maySuspend
 noSuspend
 ```
 
-The existing attributes include:
+**§ 14(2)** The existing attributes include:
 
 ```sec
 @noBlock
 ```
 
-A function marked `@noBlock` must not directly or transitively call an operation
+**§ 14(3)** A function marked `@noBlock` must not directly or transitively call an operation
 that may physically block on the selected target.
 
-Task suspension and physical blocking are separate effects.
+**§ 14(4)** Task suspension and physical blocking are separate effects.
 
-A function may be nonblocking for a physical thread while still permitting task
+**§ 14(5)** A function may be nonblocking for a physical thread while still permitting task
 suspension only when its contract says so explicitly.
 
-Process operations are classified by their selected implementation effects.
+**§ 14(6)** Process operations are classified by their selected implementation effects.
 This includes `spawn process`, `Command.Start()`, `Command.Validate()`,
 `Command.SetWorkingDirectory()`, process/command `Terminate()`, owning
 process or command join, and `ProcessObserver.Wait()`. Validation and
@@ -332,9 +344,9 @@ checks and are not assumed to be pure in-memory operations.
 
 ---
 
-## Call graph analysis
+## § 15 Call graph analysis
 
-The compiler should use the complete call graph to determine:
+**§ 15(1)** The compiler should use the complete call graph to determine:
 
 - whether a function may block;
 - whether a function may suspend;
@@ -344,32 +356,32 @@ The compiler should use the complete call graph to determine:
 - whether a mutex guard crosses a wait;
 - whether a cooperative executor can lose all workers to blocking calls.
 
-Indirect calls must carry conservative effect information.
+**§ 15(2)** Indirect calls must carry conservative effect information.
 
 ---
 
-## FFI
+## § 16 FFI
 
-An extern function is potentially blocking unless its declaration or imported
+**§ 16(1)** An extern function is potentially blocking unless its declaration or imported
 contract states otherwise.
 
-Example conceptual metadata:
+**§ 16(2)** Example conceptual metadata:
 
 ```sec
 @noBlock
 unsafe extern "C" fn NativeTryRead(...) int
 ```
 
-Incorrect external effect declarations are unsafe contract violations.
+**§ 16(3)** Incorrect external effect declarations are unsafe contract violations.
 
-The compiler may trust them for optimization and diagnostics but cannot verify
+**§ 16(4)** The compiler may trust them for optimization and diagnostics but cannot verify
 foreign implementation behavior.
 
 ---
 
-## ISR context
+## § 17 ISR context
 
-An interrupt routine must not:
+**§ 17(1)** An interrupt routine must not:
 
 - await;
 - join;
@@ -380,33 +392,33 @@ An interrupt routine must not:
 - sleep;
 - yield.
 
-Process creation, command start/validation/working-directory checks, hard
+**§ 17(2)** Process creation, command start/validation/working-directory checks, hard
 termination, process/command join, and `ProcessObserver.Wait()` are likewise
 not ISR-safe in Sec 0.1. A narrower immutable metadata read still requires the
 ordinary interrupt-safety proof.
 
-ISR-safe operations must be bounded and explicitly declared.
+**§ 17(3)** ISR-safe operations must be bounded and explicitly declared.
 
 ---
 
-## Main and initialization
+## § 18 Main and initialization
 
-Blocking during initialization is profile-dependent.
+**§ 18(1)** Blocking during initialization is profile-dependent.
 
-An embedded profile may forbid indefinite waits during `@init`.
+**§ 18(2)** An embedded profile may forbid indefinite waits during `@init`.
 
-A hosted profile may allow them.
+**§ 18(3)** A hosted profile may allow them.
 
-Whole-program analysis should report initialization cycles where one initializer
+**§ 18(4)** Whole-program analysis should report initialization cycles where one initializer
 waits for work that cannot start until initialization finishes.
 
 ---
 
-## Deadlock interaction
+## § 19 Deadlock interaction
 
-Blocking operations contribute edges to deadlock analysis.
+**§ 19(1)** Blocking operations contribute edges to deadlock analysis.
 
-The compiler should track:
+**§ 19(2)** The compiler should track:
 
 - held mutex identities;
 - joined execution entities;
@@ -421,18 +433,18 @@ The compiler should track:
 - executor worker consumption;
 - cancellation dependencies.
 
-Statically proven deadlocks are compiler errors.
+**§ 19(3)** Statically proven deadlocks are compiler errors.
 
-Potential cycles may be warnings or configurable diagnostics.
+**§ 19(4)** Potential cycles may be warnings or configurable diagnostics.
 
 ---
 
-## Memory ordering
+## § 20 Memory ordering
 
-A wait operation establishes memory ordering only when its own rule defines a
+**§ 20(1)** A wait operation establishes memory ordering only when its own rule defines a
 synchronization edge.
 
-Examples:
+**§ 20(2)** Examples:
 
 - successful join;
 - successful await;
@@ -440,29 +452,29 @@ Examples:
 - channel receive after matching send;
 - committed atomic wait/wake where specified.
 
-Sleeping, yielding or timing out does not by itself publish ordinary memory.
+**§ 20(3)** Sleeping, yielding or timing out does not by itself publish ordinary memory.
 
 ---
 
-## Runtime errors
+## § 21 Runtime errors
 
-This rulebook introduces no independent runtime `BlockingError`.
+**§ 21(1)** This rulebook introduces no independent runtime `BlockingError`.
 
-Operation-specific failures belong to their owning APIs and all language-level
+**§ 21(2)** Operation-specific failures belong to their owning APIs and all language-level
 runtime error types must be declared in:
 
 ```text
 core/errors.sec
 ```
 
-Compiler errors such as blocking in ISR or violating `@noBlock` remain
+**§ 21(3)** Compiler errors such as blocking in ISR or violating `@noBlock` remain
 diagnostics, not core runtime errors.
 
 ---
 
-## Semantic IR
+## § 22 Semantic IR
 
-Semantic IR must distinguish:
+**§ 22(1)** Semantic IR must distinguish:
 
 ```text
 TaskSuspend
@@ -483,14 +495,14 @@ TimeoutRegister
 CancellationWake
 ```
 
-The IR must record whether a wait may physically block under the selected
+**§ 22(2)** The IR must record whether a wait may physically block under the selected
 profile.
 
 ---
 
-## Diagnostics
+## § 23 Diagnostics
 
-Examples:
+**§ 23(1)** Examples:
 
 ```text
 blocking operation is not permitted in @noBlock function Poll
@@ -512,13 +524,13 @@ all executor workers may block waiting for tasks scheduled on the same executor
 busy-wait lowering is not permitted by target profile
 ```
 
-Diagnostics must have stable IDs.
+**§ 23(2)** Diagnostics must have stable IDs.
 
 ---
 
-## Required synchronization
+## § 24 Required synchronization
 
-Cross-check and update:
+**§ 24(1)** Cross-check and update:
 
 ```text
 await.md

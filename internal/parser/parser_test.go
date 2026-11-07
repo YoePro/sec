@@ -1347,6 +1347,38 @@ func TestMoveDeclarationsRequireCanonicalOperator(t *testing.T) {
 	}
 }
 
+// The legacy word form is also rejected in a call argument or union payload
+// with one focused diagnostic, and the rest of the argument list still
+// parses; `move` as an ordinary argument name stays valid.
+//
+// Rules:
+//   - rules/memory/copy_move.md — § 10.4(2) "Union construction"
+func TestRejectLegacyWordFormMoveArgument(t *testing.T) {
+	legacy := New(lexer.New(`fn F(r: int) void {
+	let o := Some(move r)
+	Use(move r, 2)
+}`))
+	program := legacy.ParseProgram()
+	if len(legacy.Errors()) != 2 {
+		t.Fatalf("legacy argument diagnostics = %v", legacy.Errors())
+	}
+	for _, message := range legacy.Errors() {
+		if !strings.Contains(message, "legacy word-form move syntax is not supported; write '<-' before the source, as in '<-r'") {
+			t.Fatalf("legacy argument diagnostic = %q", message)
+		}
+	}
+	call := program.Statements[0].(*ast.FunctionDeclaration).Body.Statements[1].(*ast.ExpressionStatement).Expression.(*ast.CallExpression)
+	if len(call.Arguments) != 2 || call.Arguments[0].String() != "r" {
+		t.Fatalf("recovered arguments = %v", call.Arguments)
+	}
+
+	ordinary := New(lexer.New(`fn F(move: int) int {
+	return Id(move) + Id(move + 1) + Id(move, move)
+}`))
+	ordinary.ParseProgram()
+	checkParserErrors(t, ordinary)
+}
+
 // Legacy word-form union moves must be rejected rather than being recovered as
 // two adjacent expression statements. The word `move` itself remains an
 // ordinary identifier when it is the complete initializer expression.
@@ -5715,6 +5747,53 @@ fn Test() void {
 	}
 }
 
+// TestParseBorrowLambdaCaptures retains `ref` and `ref mut` capture modes
+// with their keyword tokens, and rejects a borrow keyword without a name.
+//
+// Rules:
+//   - rules/declarations/lambda-functions.md — §§15, 19–20, 40–41
+//   - rules/foundations/grammar.md — "CaptureEntry"
+func TestParseBorrowLambdaCaptures(t *testing.T) {
+	p := New(lexer.New(`
+fn Test() void {
+	let mut total := 1
+	let base := 2
+	let closure := capture(ref base, ref mut total, <-base,) fn() void {
+		*total += *base
+	}
+}
+`))
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	fn := program.Statements[0].(*ast.FunctionDeclaration)
+	lambda, ok := fn.Body.Statements[2].(*ast.LetStatement).Value.(*ast.LambdaExpression)
+	if !ok || len(lambda.Captures) != 3 {
+		t.Fatalf("capture lambda = %#v", fn.Body.Statements[2])
+	}
+	shared, mutable := lambda.Captures[0], lambda.Captures[1]
+	if shared.Mode != ast.LambdaCaptureSharedBorrow || shared.Token.Type != lexer.REF || shared.MutToken.Type != "" || !shared.IsBorrow() {
+		t.Fatalf("shared capture = %#v", shared)
+	}
+	if mutable.Mode != ast.LambdaCaptureMutableBorrow || mutable.MutToken.Type != lexer.MUT || mutable.Name.Value != "total" {
+		t.Fatalf("mutable capture = %#v", mutable)
+	}
+	if lambda.Captures[2].Mode != ast.LambdaCaptureMove || lambda.Captures[2].IsBorrow() {
+		t.Fatalf("move capture = %#v", lambda.Captures[2])
+	}
+	if got := lambda.String(); !strings.Contains(got, "capture(ref base, ref mut total, <-base)") {
+		t.Fatalf("lambda string = %q", got)
+	}
+
+	for _, source := range []string{"capture(ref) fn() void {}", "capture(ref mut) fn() void {}", "capture(mut value) fn() void {}"} {
+		invalid := New(lexer.New("fn Test(value: int) void {\n\tlet closure := " + source + "\n}"))
+		invalid.ParseProgram()
+		if len(invalid.Errors()) == 0 {
+			t.Fatalf("%s: expected a parse error", source)
+		}
+	}
+}
+
 func TestParseDeferStatement(t *testing.T) {
 	input := `
 fn Test() void {
@@ -6805,7 +6884,7 @@ impl Reader {
 // parsed normally.
 //
 // Rules:
-//   - rules/compiler/parser_recovery.md — "Parameter-list recovery", "Missing type", "Invalid nodes"
+//   - rules/compiler/parser_recovery.md — "Parameter-list recovery", "Missing type", "Invalid AST nodes"
 func TestRecoveryRetainsBareParametersAndMissingInitializers(t *testing.T) {
 	input := `module main
 
@@ -6907,7 +6986,7 @@ fn After() int {
 //
 // Rules:
 //   - rules/foundations/lexical_structure.md — § 7 "Reserved words"
-//   - rules/compiler/parser_recovery.md — "Statement recovery"
+//   - rules/compiler/parser_recovery.md — "General statement synchronization"
 func TestReservedBindingNameRecoversAtFinalBrace(t *testing.T) {
 	for _, keyword := range []string{"new", "require"} {
 		input := "module main\n\nfn First() void {\n    let " + keyword + " := 1\n    let kept := 2\n}\n\nfn Last() void {\n    let " + keyword + " := 1\n}"
@@ -6937,7 +7016,7 @@ func TestReservedBindingNameRecoversAtFinalBrace(t *testing.T) {
 // declarations are retained.
 //
 // Rules:
-//   - rules/compiler/parser_recovery.md — "Argument-list recovery", "Missing type", "Invalid nodes", "Recovery goals"
+//   - rules/compiler/parser_recovery.md — "Argument-list recovery", "Missing type", "Invalid AST nodes", "Recovery goals"
 func TestRecoveryRetainsOpenCallsAndBrokenFunctionTypes(t *testing.T) {
 	input := `module main
 

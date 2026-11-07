@@ -280,6 +280,7 @@ func (a *Analyzer) recordResolvedPlace(expr ast.Expression, place Place) {
 		a.resolvedPlaces = map[ast.Expression]Place{}
 	}
 	a.resolvedPlaces[expr] = clonePlace(place)
+	a.recordDynamicArrayOwner(expr, place)
 }
 
 // recordReferencePlan publishes the plan of one reference creation or

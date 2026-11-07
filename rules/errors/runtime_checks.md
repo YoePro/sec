@@ -2,28 +2,28 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-04
-- **Last updated:** 2026-11-01 (string materialization failure modes, MD-039); 2026-10-28 (decimal division and arithmetic failures, MD-066/MD-067)
+- **Last updated:** 2026-11-07 (stable chapter, subsection, and paragraph numbering); 2026-11-01 (string materialization failure modes, MD-039); 2026-10-28 (decimal division and arithmetic failures, MD-066/MD-067)
 - **Document revision:** 1.1
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/errors/runtime_checks.md`
 - **Replaces:** Earlier unversioned revision at the same canonical path
-- **Repository baseline reviewed:** `main-reviewed-2026-09-29`
+- **Repository baseline reviewed:** `28780c01d63c3fc9eec2321ef67e3dd69962f043`
 - **Implementation governance:** `governance/errors.yaml`
 - **Related rulebooks:** `rules/errors/panic.md`, `rules/errors/errorhandling.md`, `rules/foundations/operators.md`, `rules/types/contracts.md`, `rules/types/default_values.md`, `rules/memory/ownership.md`, `rules/memory/copy_move.md`, `rules/memory/destruction.md`, `rules/memory/allocation.md`, `rules/memory/unsafe.md`, `rules/platform/ffi.md`, `rules/foundations/attributes.md`, `rules/compiler/semantic_ir.md`
 
 ---
 
-## Status
+## § 1 Status
 
-This document is the canonical runtime-check rulebook for Sec.
+**§ 1(1)** This document is the canonical runtime-check rulebook for Sec.
 
-The word `runtime` in this filename means:
+**§ 1(2)** The word `runtime` in this filename means:
 
 ```text
 the check is evaluated while the generated program executes
 ```
 
-It does not mean:
+**§ 1(3)** It does not mean:
 
 ```text
 a mandatory Sec runtime library
@@ -33,9 +33,9 @@ a scheduler dependency
 a required process-wide support layer
 ```
 
-Sec must remain capable of producing programs without a language runtime.
+**§ 1(4)** Sec must remain capable of producing programs without a language runtime.
 
-Runtime checks must lower through one or more of:
+**§ 1(5)** Runtime checks must lower through one or more of:
 
 ```text
 compile-time proof and check elimination
@@ -48,15 +48,15 @@ profile-provided handlers
 small compiler-emitted helpers when explicitly permitted
 ```
 
-No check may require linking a general Sec runtime.
+**§ 1(6)** No check may require linking a general Sec runtime.
 
 ---
 
-# Purpose
+## § 2 Purpose
 
-Sec uses checked language semantics.
+**§ 2(1)** Sec uses checked language semantics.
 
-Operations such as:
+**§ 2(2)** Operations such as:
 
 ```text
 integer arithmetic
@@ -74,9 +74,9 @@ assertion
 unreachable
 ```
 
-may require dynamic validation when static proof is insufficient.
+**§ 2(3)** may require dynamic validation when static proof is insufficient.
 
-The language must provide:
+**§ 2(4)** The language must provide:
 
 1. a checked ordinary form;
 2. a panic-free fallible form;
@@ -87,9 +87,9 @@ The language must provide:
 
 ---
 
-# Core rule
+## § 3 Core rule
 
-When a language-defined operation failure is reached during semantic CTE, its
+**§ 3(1)** When a language-defined operation failure is reached during semantic CTE, its
 owning numeric/index/contract/check rule supplies the exact semantic reason and
 the evaluator classifies the request as `SemanticOperationFailed`. Static
 proof and optional check elimination do not themselves create a required CTE
@@ -97,7 +97,7 @@ context.
 
 > Every language-defined runtime failure must have a path that does not panic.
 
-The non-panicking path may be:
+**§ 3(2)** The non-panicking path may be:
 
 ```text
 statically proven safe
@@ -107,14 +107,14 @@ expressed through an explicit alternative semantic such as wrapping or
 saturation
 ```
 
-The compiler must not force panic as the only available behavior for a
+**§ 3(3)** The compiler must not force panic as the only available behavior for a
 foreseeable runtime condition.
 
 ---
 
-# Runtime-check categories
+## § 4 Runtime-check categories
 
-## Arithmetic
+### § 4.1 Arithmetic
 
 ```text
 signed overflow
@@ -129,13 +129,13 @@ non-finite value where prohibited
 decimal precision or scale failure where defined
 ```
 
-Decimal arithmetic failures use `ArithmeticError` with the most specific
+**§ 4.1(1)** Decimal arithmetic failures use `ArithmeticError` with the most specific
 applicable variant (`ScaleOverflow`, `PrecisionExhausted`, otherwise
 `Overflow`; `rules/foundations/operators.md` "Decimal arithmetic failures").
 An inexact decimal quotient rounded by "Decimal division" is a successful
 value, not a runtime-check failure (MD-066/MD-067, 2026-10-28).
 
-## Bounds and shape
+### § 4.2 Bounds and shape
 
 ```text
 array index outside bounds
@@ -147,7 +147,7 @@ tensor dimension mismatch
 spread length mismatch where dynamically checked
 ```
 
-## Contracts
+### § 4.3 Contracts
 
 ```text
 range violation
@@ -161,7 +161,7 @@ require predicate failure
 other named-type contract failure
 ```
 
-## References and representation
+### § 4.4 References and representation
 
 ```text
 invalid generation
@@ -173,10 +173,10 @@ invalid scalar conversion
 invalid ABI decode
 ```
 
-Ordinary ownership violations that are statically provable remain compile-time
+**§ 4.4(1)** Ordinary ownership violations that are statically provable remain compile-time
 errors.
 
-## Assertions and control flow
+### § 4.5 Assertions and control flow
 
 ```text
 assertion failure
@@ -184,15 +184,15 @@ checked unreachable reached
 explicit panic
 ```
 
-These are specified primarily by `panic.md`.
+**§ 4.5(1)** These are specified primarily by `panic.md`.
 
 ---
 
-# Three compiler outcomes
+## § 5 Three compiler outcomes
 
-## Proven safe
+### § 5.1 Proven safe
 
-The compiler proves the failure condition impossible.
+**§ 5.1(1)** The compiler proves the failure condition impossible.
 
 ```sec
 type Small int range 0..100
@@ -202,35 +202,35 @@ fn Increment(value: Small) int {
 }
 ```
 
-When the result is representable, no runtime check or panic effect remains.
+**§ 5.1(2)** When the result is representable, no runtime check or panic effect remains.
 
-## Fallible
+### § 5.2 Fallible
 
-The programmer uses `try`.
+**§ 5.2(1)** The programmer uses `try`.
 
 ```sec
 let total := try left + right
 ```
 
-The check becomes explicit control flow producing a typed error.
+**§ 5.2(2)** The check becomes explicit control flow producing a typed error.
 
-## Panic-capable
+### § 5.3 Panic-capable
 
-The ordinary operation is used and failure cannot be disproven.
+**§ 5.3(1)** The ordinary operation is used and failure cannot be disproven.
 
 ```sec
 let total := left + right
 ```
 
-The operation has a panic effect.
+**§ 5.3(2)** The operation has a panic effect.
 
-If failure occurs, `panic.md` defines the selected endpoint and containment.
+**§ 5.3(3)** If failure occurs, `panic.md` defines the selected endpoint and containment.
 
 ---
 
-# No mandatory runtime architecture
+## § 6 No mandatory runtime architecture
 
-Checked addition may lower conceptually to:
+**§ 6(1)** Checked addition may lower conceptually to:
 
 ```text
 sum, overflow = target_checked_add(left, right)
@@ -241,7 +241,7 @@ else:
     continue with sum
 ```
 
-A target may implement this through:
+**§ 6(2)** A target may implement this through:
 
 ```text
 overflow flag plus branch
@@ -251,7 +251,7 @@ direct call to a non-returning application handler
 small local compiler-emitted helper
 ```
 
-Fallible lowering may be:
+**§ 6(3)** Fallible lowering may be:
 
 ```text
 sum, overflow = target_checked_add(left, right)
@@ -262,14 +262,14 @@ else:
     continue with sum
 ```
 
-No exception table, unwinder, dispatcher, allocator, or general runtime is
+**§ 6(4)** No exception table, unwinder, dispatcher, allocator, or general runtime is
 required.
 
 ---
 
-# Check elimination
+## § 7 Check elimination
 
-The compiler removes checks proven unnecessary through:
+**§ 7(1)** The compiler removes checks proven unnecessary through:
 
 ```text
 constant evaluation
@@ -285,7 +285,7 @@ call-site specialization
 whole-program analysis
 ```
 
-Example:
+**§ 7(2)** Example:
 
 ```sec
 if index >= 0 && index < values.Length {
@@ -293,9 +293,9 @@ if index >= 0 && index < values.Length {
 }
 ```
 
-The bounds check may be removed in the true branch.
+**§ 7(3)** The bounds check may be removed in the true branch.
 
-Example:
+**§ 7(4)** Example:
 
 ```sec
 type Divisor int range 1..int.Max
@@ -305,42 +305,42 @@ fn Divide(value: int, divisor: Divisor) int {
 }
 ```
 
-The zero-divisor check is removed.
+**§ 7(5)** The zero-divisor check is removed.
 
 ---
 
-# `try` syntax
+## § 8 `try` syntax
 
-`try` does not require parentheses.
+**§ 8(1)** `try` does not require parentheses.
 
-Canonical:
+**§ 8(2)** Canonical:
 
 ```sec
 let total := try left + right * quantity
 ```
 
-It applies to the complete following expression until the natural grammatical
+**§ 8(3)** It applies to the complete following expression until the natural grammatical
 boundary.
 
-Conceptual grouping:
+**§ 8(4)** Conceptual grouping:
 
 ```sec
 let total := try (left + (right * quantity))
 ```
 
-Parentheses narrow scope:
+**§ 8(5)** Parentheses narrow scope:
 
 ```sec
 let total := left + (try right * quantity)
 ```
 
-Only the multiplication is fallible.
+**§ 8(6)** Only the multiplication is fallible.
 
 ---
 
-# `try` boundaries
+## § 9 `try` boundaries
 
-Typical boundaries include:
+**§ 9(1)** Typical boundaries include:
 
 ```text
 statement completion
@@ -352,15 +352,15 @@ match or select arrow
 local try-handler block
 ```
 
-Example:
+**§ 9(2)** Example:
 
 ```sec
 Process(try left + right, customer)
 ```
 
-`try` covers only the first argument.
+**§ 9(3)** `try` covers only the first argument.
 
-Example:
+**§ 9(4)** Example:
 
 ```sec
 let value := try left + right {
@@ -368,9 +368,9 @@ let value := try left + right {
 }
 ```
 
-The handler belongs to the full expression.
+**§ 9(5)** The handler belongs to the full expression.
 
-The protected expression extends through its natural grammatical boundary and
+**§ 9(6)** The protected expression extends through its natural grammatical boundary and
 includes call receivers, call arguments, operators, indexing, and every
 successive member or call of a method chain (`errorhandling.md` § 13.1; MD-028,
 2026-10-12):
@@ -379,41 +379,41 @@ successive member or call of a method chain (`errorhandling.md` § 13.1; MD-028,
 let item := try Build(left + right, values[index])
 ```
 
-protects the addition, the index, and `Build`.
+**§ 9(7)** protects the addition, the index, and `Build`.
 
 ---
 
-# What `try` converts
+## § 10 What `try` converts
 
-Within its expression subtree, `try` converts language-defined checks into
+**§ 10(1)** Within its expression subtree, `try` converts language-defined checks into
 fallible control flow.
 
 ```sec
 let result := try a + b * c
 ```
 
-Potential fallible points:
+**§ 10(2)** Potential fallible points:
 
 ```text
 b * c
 a + product
 ```
 
-Evaluation remains left to right.
+**§ 10(3)** Evaluation remains left to right.
 
-The first runtime failure stops the expression and produces its error.
+**§ 10(4)** The first runtime failure stops the expression and produces its error.
 
 ---
 
-# What `try` does not do
+## § 11 What `try` does not do
 
-`try` does not catch arbitrary panic from called functions.
+**§ 11(1)** `try` does not catch arbitrary panic from called functions.
 
 ```sec
 let result := try Calculate() + value
 ```
 
-Cases:
+**§ 11(2)** Cases:
 
 ```text
 Calculate returns Result
@@ -426,17 +426,17 @@ Calculate may panic
     the enclosing expression still has that panic effect
 ```
 
-`try` is not exception handling.
+**§ 11(3)** `try` is not exception handling.
 
-It does not unwind or resume a panicked call.
+**§ 11(4)** It does not unwind or resume a panicked call.
 
 ---
 
-# Error typing
+## § 12 Error typing
 
-Every fallible operation has one explicit error type.
+**§ 12(1)** Every fallible operation has one explicit error type.
 
-Examples:
+**§ 12(2)** Examples:
 
 ```text
 checked arithmetic
@@ -452,9 +452,9 @@ capacity growth
     CapacityError or AllocationError
 ```
 
-Exact canonical error unions belong to core and specialized rulebooks.
+**§ 12(3)** Exact canonical error unions belong to core and specialized rulebooks.
 
-Reference-generation validation is not an ordinary fallible operation. It has
+**§ 12(4)** Reference-generation validation is not an ordinary fallible operation. It has
 three distinct outcomes:
 
 ```text
@@ -468,7 +468,7 @@ fallible stable/weak handle resolution:
     explicit Option/Result according to the handle API
 ```
 
-`try` does not recover a stale ordinary direct reference, and programmers do not
+**§ 12(5)** `try` does not recover a stale ordinary direct reference, and programmers do not
 write `try` around ordinary safe dereferences. Generation/epoch validity is a
 partial safety mechanism: it never replaces ownership, borrow compatibility,
 bounds, initialization, type validity, relocation correctness, address-space
@@ -478,9 +478,9 @@ checker. An epoch dependency implies no mandatory runtime metadata
 
 ---
 
-# Propagation rule
+## § 13 Propagation rule
 
-Naked `try` may propagate an error only when the error is assignable to the
+**§ 13(1)** Naked `try` may propagate an error only when the error is assignable to the
 enclosing function's declared error type.
 
 ```sec
@@ -492,9 +492,9 @@ fn Add(left: int, right: int) Result[int, ArithmeticError] {
 
 ---
 
-# Incompatible error types
+## § 14 Incompatible error types
 
-When the error does not fit the function's declared error type, local mapping is
+**§ 14(1)** When the error does not fit the function's declared error type, local mapping is
 required.
 
 ```sec
@@ -514,30 +514,30 @@ fn Calculate(
 }
 ```
 
-The compiler must not choose the wrapper variant.
+**§ 14(2)** The compiler must not choose the wrapper variant.
 
 ---
 
-# No inferred error unions
+## § 15 No inferred error unions
 
-Sec does not infer hidden unions such as:
+**§ 15(1)** Sec does not infer hidden unions such as:
 
 ```text
 ParseError | IndexError | ArithmeticError
 ```
 
-from implementation details.
+**§ 15(2)** from implementation details.
 
-Public error contracts remain explicit.
+**§ 15(3)** Public error contracts remain explicit.
 
 ---
 
-# No automatic union widening
+## § 16 No automatic union widening
 
-The compiler does not add variants to named unions when a new fallible
+**§ 16(1)** The compiler does not add variants to named unions when a new fallible
 operation appears.
 
-That would alter:
+**§ 16(2)** That would alter:
 
 ```text
 type identity
@@ -549,13 +549,13 @@ documentation
 callers
 ```
 
-The programmer changes the type explicitly.
+**§ 16(3)** The programmer changes the type explicitly.
 
 ---
 
-# No arbitrary implicit wrapping
+## § 17 No arbitrary implicit wrapping
 
-Given:
+**§ 17(1)** Given:
 
 ```sec
 type ImportError union {
@@ -564,15 +564,15 @@ type ImportError union {
 }
 ```
 
-a `ParseError` cannot be wrapped automatically.
+**§ 17(2)** a `ParseError` cannot be wrapped automatically.
 
-The correct variant is domain meaning, not type inference.
+**§ 17(3)** The correct variant is domain meaning, not type inference.
 
 ---
 
-# Generic error propagation
+## § 18 Generic error propagation
 
-Generic functions may preserve an explicit generic error type.
+**§ 18(1)** Generic functions may preserve an explicit generic error type.
 
 ```sec
 fn Transform[T, U, E](
@@ -583,7 +583,7 @@ fn Transform[T, U, E](
 }
 ```
 
-A function changing error domains requires an explicit mapper.
+**§ 18(2)** A function changing error domains requires an explicit mapper.
 
 ```sec
 fn Transform[T, U, SourceError, TargetError](
@@ -597,60 +597,60 @@ fn Transform[T, U, SourceError, TargetError](
 
 ---
 
-# Arithmetic checks
+## § 19 Arithmetic checks
 
-Ordinary arithmetic is checked according to `operators.md`.
+**§ 19(1)** Ordinary arithmetic is checked according to `operators.md`.
 
 ```sec
 let sum := left + right
 let product := left * right
 ```
 
-Fallible:
+**§ 19(2)** Fallible:
 
 ```sec
 let sum := try left + right
 let product := try left * right
 ```
 
-Failure produces `ArithmeticError`.
+**§ 19(3)** Failure produces `ArithmeticError`.
 
 ---
 
-# Alternative arithmetic semantics
+## § 20 Alternative arithmetic semantics
 
-Wrapping and saturation are different mathematical operations.
+**§ 20(1)** Wrapping and saturation are different mathematical operations.
 
-They use explicit generic compiler-known or core functions.
+**§ 20(2)** They use explicit generic compiler-known or core functions.
 
-Illustrative:
+**§ 20(3)** Illustrative:
 
 ```sec
 let wrapped := arithmetic.WrappingAdd(left, right)
 let saturated := arithmetic.SaturatingMultiply(left, right)
 ```
 
-`try` never selects these automatically.
+**§ 20(4)** `try` never selects these automatically.
 
 ---
 
-# Widening
+## § 21 Widening
 
-Widening is an explicit type decision.
+**§ 21(1)** Widening is an explicit type decision.
 
 ```sec
 let total := int128(quantity) * int128(price)
 ```
 
-Tooling may suggest widening.
+**§ 21(2)** Tooling may suggest widening.
 
-It must not silently change the type or ABI.
+**§ 21(3)** It must not silently change the type or ABI.
 
 ---
 
-# Division and remainder
+## § 22 Division and remainder
 
-Potential failures:
+**§ 22(1)** Potential failures:
 
 ```text
 division by zero
@@ -659,19 +659,19 @@ minimum signed value divided by -1
 related fixed-width representation overflow
 ```
 
-Ordinary:
+**§ 22(2)** Ordinary:
 
 ```sec
 let result := numerator / denominator
 ```
 
-Fallible:
+**§ 22(3)** Fallible:
 
 ```sec
 let result := try numerator / denominator
 ```
 
-A decimal divisor that the compiler proves to be zero is a compile-time error,
+**§ 22(4)** A decimal divisor that the compiler proves to be zero is a compile-time error,
 with or without `try`; compilation stops. An unproven decimal divisor is
 checked at run time: the ordinary operation panics with reason
 `DivisionByZero`, and `try` yields `ArithmeticError.DivisionByZero`. This
@@ -681,9 +681,9 @@ remainder by zero"; MD-066, 2026-10-28).
 
 ---
 
-# Shift checks
+## § 23 Shift checks
 
-Potential failures:
+**§ 23(1)** Potential failures:
 
 ```text
 negative count
@@ -692,50 +692,50 @@ signed left-shift overflow
 other invalid conditions defined by operators.md
 ```
 
-Fallible:
+**§ 23(2)** Fallible:
 
 ```sec
 let shifted := try value << count
 ```
 
-Masked or wrapping shift behavior requires a separate explicit operation.
+**§ 23(3)** Masked or wrapping shift behavior requires a separate explicit operation.
 
 ---
 
-# Index checks
+## § 24 Index checks
 
-Ordinary:
+**§ 24(1)** Ordinary:
 
 ```sec
 let value := values[index]
 ```
 
-Fallible:
+**§ 24(2)** Fallible:
 
 ```sec
 let value := try values[index]
 ```
 
-Failure produces the canonical concrete error `IndexError.OutOfBounds`.
+**§ 24(3)** Failure produces the canonical concrete error `IndexError.OutOfBounds`.
 
 ---
 
-# Slice checks
+## § 25 Slice checks
 
-Slices require explicit reference construction. Fallible forms include:
+**§ 25(1)** Slices require explicit reference construction. Fallible forms include:
 
 ```sec
 let part := try ref values[start..<end]
 let writable := try ref mut values[start..<end]
 ```
 
-`try (ref values[start..<end])` is equivalent. A bare range expression does
+**§ 25(2)** `try (ref values[start..<end])` is equivalent. A bare range expression does
 not create a slice. Source, start and end expressions are evaluated once in
 source order. For an existing dynamically validated slice, reference
 generation/provenance validation follows operand evaluation and precedes
 spatial range/index validation.
 
-Canonical range normalization is `[start, endExclusive)`: omitted start is
+**§ 25(3)** Canonical range normalization is `[start, endExclusive)`: omitted start is
 zero, omitted end is source length, and inclusive end is incremented only
 after validation, with exact arithmetic. Compile-time-invalid ranges are
 compile-time errors. Runtime spatial failure follows the ordered core mapping
@@ -745,21 +745,21 @@ in `rules/collections/collections.md` § 7.5:
 2. Explicit start after explicit represented end → `RangeError.StartAfterEnd`.
 3. Endpoints beyond the allowed source bounds → `RangeError.OutOfBounds`.
 
-Otherwise unrepresentable normalization is `RangeError.InvalidRange`; valid
+**§ 25(4)** Otherwise unrepresentable normalization is `RangeError.InvalidRange`; valid
 wide values must not be rejected because the compiler host has a narrower
 integer type. Optimization preserves the selected error identity.
 
-Ordinary range failure uses `panic.bounds` with `slice-range` provenance;
+**§ 25(5)** Ordinary range failure uses `panic.bounds` with `slice-range` provenance;
 `try` converts the spatial failure to `RangeError`. Slice indexing uses
 `IndexError.OutOfBounds` on its fallible path, or `panic.bounds` with
 `slice-index` provenance otherwise. There is no separate `BoundsError`.
 
-A stale ordinary direct slice takes `panic.invalid-reference-generation`.
+**§ 25(6)** A stale ordinary direct slice takes `panic.invalid-reference-generation`.
 Neither fallible range creation nor `try staleSlice[index]` catches that
 failure as `RangeError` or `IndexError`. `unsafe` does not remove these safe
 slice bounds or validity obligations.
 
-String ranges (MD-126, `rules/corrections/applied/MD-126-borrowed-string-ranges-rune-iteration-applied-20261105.md`) follow the same contract: `text[a..<b]` over a
+**§ 25(7)** String ranges (MD-126, `rules/corrections/applied/MD-126-borrowed-string-ranges-rune-iteration-applied-20261105.md`) follow the same contract: `text[a..<b]` over a
 `string` or `StringView` evaluates source, start and end once in source order,
 normalizes rune endpoints to `[start, endExclusive)`, and maps dynamic failure
 in the same order to `RangeError.InvalidRange`, `RangeError.StartAfterEnd` and
@@ -770,29 +770,29 @@ boundaries. The string form needs no written `ref`.
 
 ---
 
-# Collections
+## § 26 Collections
 
-Operations that may exceed capacity, allocate, or fail expose a fallible path.
+**§ 26(1)** Operations that may exceed capacity, allocate, or fail expose a fallible path.
 
-Illustrative:
+**§ 26(2)** Illustrative:
 
 ```sec
 try values.Add(item)
 ```
 
-No hidden global heap or mandatory collection runtime is assumed.
+**§ 26(3)** No hidden global heap or mandatory collection runtime is assumed.
 
 ---
 
-# Allocation
+## § 27 Allocation
 
-Allocation failure is an expected technical error for panic-free code.
+**§ 27(1)** Allocation failure is an expected technical error for panic-free code.
 
 ```sec
 let report := try allocator.New[Report]()
 ```
 
-Allocators may be:
+**§ 27(2)** Allocators may be:
 
 ```text
 arena
@@ -802,17 +802,17 @@ system allocator wrapper
 custom embedded allocator
 ```
 
-No mandatory heap runtime is introduced.
+**§ 27(3)** No mandatory heap runtime is introduced.
 
-Runtime string `+` and `+=` are the exception: without `try` a materialization
+**§ 27(4)** Runtime string `+` and `+=` are the exception: without `try` a materialization
 failure panics with `StringMaterializationFailure`, and with `try` it is
 `StringError.Allocation` (MD-039, `rules/foundations/operators.md`).
 
 ---
 
-# Conversions
+## § 28 Conversions
 
-Potentially failing conversions use `try`.
+**§ 28(1)** Potentially failing conversions use `try`.
 
 ```sec
 let value := try int32(largeValue)
@@ -820,21 +820,21 @@ let runeValue := try rune(codePoint)
 let percent := try Percent(raw)
 ```
 
-Proven-safe conversions need no dynamic check.
+**§ 28(2)** Proven-safe conversions need no dynamic check.
 
-A runtime-dependent checked conversion that can fail uses the core error type
+**§ 28(3)** A runtime-dependent checked conversion that can fail uses the core error type
 `ConversionError`; an intrinsic destination-domain failure takes precedence over
 declared contracts, and the first violated contract in source order is reported
 as `ConversionError.Contract(ContractError.Violation { ... })`
 (`rules/types/contracts.md`, "Public conversion and contract errors").
 
-Lossy semantics require distinct explicit operations.
+**§ 28(4)** Lossy semantics require distinct explicit operations.
 
 ---
 
-# Type contracts
+## § 29 Type contracts
 
-Named-type construction may be fallible.
+**§ 29(1)** Named-type construction may be fallible.
 
 ```sec
 type Percent int range 0..100
@@ -842,18 +842,18 @@ type Percent int range 0..100
 let percent := try Percent(raw)
 ```
 
-Compile-time constants are validated during compilation.
+**§ 29(2)** Compile-time constants are validated during compilation.
 
-Runtime values use ordinary branches and Result construction.
+**§ 29(3)** Runtime values use ordinary branches and Result construction.
 
 ---
 
-# Contextual `require` contract proposal
+## § 30 Contextual `require` contract proposal
 
-`require` is not globally reserved and is not part of the canonical Sec 0.1
+**§ 30(1)** `require` is not globally reserved and is not part of the canonical Sec 0.1
 contract grammar in `rules/types/contracts.md`.
 
-If a future rulebook introduces a named-type predicate form, it may use
+**§ 30(2)** If a future rulebook introduces a named-type predicate form, it may use
 `require` contextually while preserving ordinary identifier uses. Illustrative
 direction:
 
@@ -862,10 +862,10 @@ type InvoiceNumber string
     require IsValidInvoiceNumber
 ```
 
-The exact grammar requires an explicit update to `rules/types/contracts.md` before this form
+**§ 30(3)** The exact grammar requires an explicit update to `rules/types/contracts.md` before this form
 becomes normative.
 
-A require predicate must be:
+**§ 30(4)** A require predicate must be:
 
 ```text
 pure
@@ -876,15 +876,15 @@ free of observable side effects
 normally allocation-free
 ```
 
-Failure produces `ContractError`.
+**§ 30(5)** Failure produces `ContractError`.
 
-It does not require panic or a runtime library.
+**§ 30(6)** It does not require panic or a runtime library.
 
 ---
 
-# `@noPanic`
+## § 31 `@noPanic`
 
-Conceptual:
+**§ 31(1)** Conceptual:
 
 ```sec
 @noPanic
@@ -892,15 +892,15 @@ fn Calculate(...) Result[Money, CalculateError] {
 }
 ```
 
-`@noPanic` is a compiler-verified transitive effect.
+**§ 31(2)** `@noPanic` is a compiler-verified transitive effect.
 
-The compiler checks the reachable call graph.
+**§ 31(3)** The compiler checks the reachable call graph.
 
 ---
 
-# Ordinary operations in no-panic code
+## § 32 Ordinary operations in no-panic code
 
-An ordinary panic-capable operation is permitted only when the compiler proves
+**§ 32(1)** An ordinary panic-capable operation is permitted only when the compiler proves
 failure impossible.
 
 ```sec
@@ -912,13 +912,13 @@ fn Read(values: int[4], index: Index4) int {
 }
 ```
 
-Otherwise use `try` or an explicit total semantic.
+**§ 32(2)** Otherwise use `try` or an explicit total semantic.
 
 ---
 
-# No-panic diagnostics
+## § 33 No-panic diagnostics
 
-Diagnostics show the complete cause chain.
+**§ 33(1)** Diagnostics show the complete cause chain.
 
 ```text
 CalculateInvoiceTotal is not panic-free
@@ -927,7 +927,7 @@ CalculateInvoiceTotal is not panic-free
   -> signed multiplication may overflow
 ```
 
-Possible help:
+**§ 33(2)** Possible help:
 
 ```text
 use `try`
@@ -939,19 +939,19 @@ choose saturation
 choose wrapping
 ```
 
-The compiler does not choose business semantics.
+**§ 33(3)** The compiler does not choose business semantics.
 
 ---
 
-# Defer and destructors
+## § 34 Defer and destructors
 
-Every defer body is implicitly transitively noPanic.
+**§ 34(1)** Every defer body is implicitly transitively noPanic.
 
-Every destructor is transitively noPanic.
+**§ 34(2)** Every destructor is transitively noPanic.
 
-This is a compile-time requirement.
+**§ 34(3)** This is a compile-time requirement.
 
-Invalid when overflow cannot be disproven:
+**§ 34(4)** Invalid when overflow cannot be disproven:
 
 ```sec
 defer {
@@ -959,7 +959,7 @@ defer {
 }
 ```
 
-Fallible cleanup handles errors locally.
+**§ 34(5)** Fallible cleanup handles errors locally.
 
 ```sec
 defer {
@@ -974,13 +974,13 @@ defer {
 }
 ```
 
-Every operation in that path must also be noPanic.
+**§ 34(6)** Every operation in that path must also be noPanic.
 
 ---
 
-# Cleanup affecting return values
+## § 35 Cleanup affecting return values
 
-When cleanup failure must affect the public result, perform it explicitly before
+**§ 35(1)** When cleanup failure must affect the public result, perform it explicitly before
 return rather than hiding it in defer.
 
 ```sec
@@ -994,9 +994,9 @@ match closeResult {
 
 ---
 
-# Internal effect detail
+## § 36 Internal effect detail
 
-The compiler may track detailed causes:
+**§ 36(1)** The compiler may track detailed causes:
 
 ```text
 MayOverflowPanic
@@ -1008,7 +1008,7 @@ MayExplicitPanic
 MayForeignAbort
 ```
 
-User-facing summaries may collapse them to:
+**§ 36(2)** User-facing summaries may collapse them to:
 
 ```text
 noPanic
@@ -1017,11 +1017,11 @@ may panic
 
 ---
 
-# FFI
+## § 37 FFI
 
-Foreign functions are not assumed panic-free or abort-free.
+**§ 37(1)** Foreign functions are not assumed panic-free or abort-free.
 
-FFI rules must classify effects such as:
+**§ 37(2)** FFI rules must classify effects such as:
 
 ```text
 may abort
@@ -1031,15 +1031,15 @@ may block
 returns error code
 ```
 
-Unknown foreign effects are incompatible with verified noPanic code.
+**§ 37(3)** Unknown foreign effects are incompatible with verified noPanic code.
 
-Foreign unwinding may not cross Sec frames by default.
+**§ 37(4)** Foreign unwinding may not cross Sec frames by default.
 
 ---
 
-# Unsafe code
+## § 38 Unsafe code
 
-Unsafe does not disable checks automatically.
+**§ 38(1)** Unsafe does not disable checks automatically.
 
 ```sec
 unsafe {
@@ -1047,25 +1047,25 @@ unsafe {
 }
 ```
 
-remains checked unless an explicit unchecked primitive is used.
+**§ 38(2)** remains checked unless an explicit unchecked primitive is used.
 
-Unchecked primitives, if introduced, remain separate from ordinary `try`.
+**§ 38(3)** Unchecked primitives, if introduced, remain separate from ordinary `try`.
 
 ---
 
-# Panic endpoint
+## § 39 Panic endpoint
 
-A panic-capable check may lower to a minimal endpoint.
+**§ 39(1)** A panic-capable check may lower to a minimal endpoint.
 
-Conceptual:
+**§ 39(2)** Conceptual:
 
 ```text
 sec_panic(PanicInfo) noreturn
 ```
 
-The symbol name is illustrative.
+**§ 39(3)** The symbol name is illustrative.
 
-The endpoint may be:
+**§ 39(4)** The endpoint may be:
 
 ```text
 inlined
@@ -1075,32 +1075,32 @@ provided by a target package
 replaced by a target trap
 ```
 
-It does not imply a general Sec runtime.
+**§ 39(5)** It does not imply a general Sec runtime.
 
 ---
 
-# Panic-free build policy
+## § 40 Panic-free build policy
 
-A target may require panic freedom for selected entrypoints or all reachable
+**§ 40(1)** A target may require panic freedom for selected entrypoints or all reachable
 code.
 
-Illustrative:
+**§ 40(2)** Illustrative:
 
 ```toml
 panic = "forbid"
 ```
 
-Exact manifest syntax belongs elsewhere.
+**§ 40(3)** Exact manifest syntax belongs elsewhere.
 
-The compiler verifies the call graph.
+**§ 40(4)** The compiler verifies the call graph.
 
 ---
 
-# Panic-free migration analysis
+## § 41 Panic-free migration analysis
 
-Ordinary formatting never changes panic behavior.
+**§ 41(1)** Ordinary formatting never changes panic behavior.
 
-An explicit semantic tool may produce:
+**§ 41(2)** An explicit semantic tool may produce:
 
 ```text
 panic-risk report
@@ -1109,15 +1109,15 @@ call-graph impact analysis
 reviewable patch
 ```
 
-Sema and call-graph analysis discover risks.
+**§ 41(3)** Sema and call-graph analysis discover risks.
 
-The formatter only prints an approved semantic patch canonically.
+**§ 41(4)** The formatter only prints an approved semantic patch canonically.
 
 ---
 
-# Migration report
+## § 42 Migration report
 
-Each risk records:
+**§ 42(1)** Each risk records:
 
 ```text
 stable risk ID
@@ -1131,7 +1131,7 @@ affected signatures
 automatic decision status
 ```
 
-Example:
+**§ 42(2)** Example:
 
 ```text
 PF000142
@@ -1159,9 +1159,9 @@ Automatic selection:
 
 ---
 
-# Migration policy
+## § 43 Migration policy
 
-The tool must not automatically choose:
+**§ 43(1)** The tool must not automatically choose:
 
 ```text
 propagation
@@ -1174,13 +1174,13 @@ changed contract
 changed transaction behavior
 ```
 
-These choices have different semantics.
+**§ 43(2)** These choices have different semantics.
 
 ---
 
-# Safe generated actions
+## § 44 Safe generated actions
 
-After explicit request, tooling may:
+**§ 44(1)** After explicit request, tooling may:
 
 ```text
 insert `try` when the error type is already compatible
@@ -1190,13 +1190,13 @@ add noPanic only after verification
 remove a proven redundant check
 ```
 
-Every behavioral change remains reviewable.
+**§ 44(2)** Every behavioral change remains reviewable.
 
 ---
 
-# Optimization
+## § 45 Optimization
 
-The compiler may:
+**§ 45(1)** The compiler may:
 
 ```text
 fold checks
@@ -1209,7 +1209,7 @@ remove proven checks
 combine range checks
 ```
 
-Optimization preserves:
+**§ 45(2)** Optimization preserves:
 
 ```text
 left-to-right evaluation
@@ -1222,9 +1222,9 @@ side effects
 
 ---
 
-# First-failure behavior
+## § 46 First-failure behavior
 
-For:
+**§ 46(1)** For:
 
 ```sec
 let result := try First() + Second()
@@ -1238,13 +1238,13 @@ let result := try First() + Second()
 6. Return arithmetic error if it fails.
 7. Otherwise produce the result.
 
-Sequential errors are not aggregated.
+**§ 46(2)** Sequential errors are not aggregated.
 
 ---
 
-# Diagnostics
+## § 47 Diagnostics
 
-Suggested diagnostic families:
+**§ 47(1)** Suggested diagnostic families:
 
 ```text
 runtime-check.unhandled-overflow-risk
@@ -1260,13 +1260,13 @@ runtime-check.foreign-effect-unknown
 runtime-check.migration-choice-required
 ```
 
-Final IDs belong to the diagnostics registry.
+**§ 47(2)** Final IDs belong to the diagnostics registry.
 
 ---
 
-# Tests
+## § 48 Tests
 
-Required files:
+**§ 48(1)** Required files:
 
 ```text
 runtime_checks_valid.sec
@@ -1287,9 +1287,9 @@ runtime_checks_defer_invalid.sec
 
 ---
 
-# Lowering and binary tests
+## § 49 Lowering and binary tests
 
-Verify:
+**§ 49(1)** Verify:
 
 ```text
 no mandatory runtime symbol in panic-free binaries
@@ -1303,7 +1303,7 @@ no hidden allocation
 left-to-right first failure
 ```
 
-Build minimal programs for:
+**§ 49(2)** Build minimal programs for:
 
 ```text
 linux amd64
@@ -1313,32 +1313,32 @@ freestanding
 bare metal
 ```
 
-A panic-free program must not require a Sec runtime library.
+**§ 49(3)** A panic-free program must not require a Sec runtime library.
 
-A panic-capable program requires only the selected endpoint or trap.
+**§ 49(4)** A panic-capable program requires only the selected endpoint or trap.
 
 ---
 
-# Required synchronization
+## § 50 Required synchronization
 
-## Errorhandling revision-2 integration
+### § 50.1 Errorhandling revision-2 integration
 
-A protected expression may contain several fallible sources with distinct
+**§ 50.1(1)** A protected expression may contain several fallible sources with distinct
 concrete error types. The compiler tracks these as an internal failure set;
 this analysis metadata is not an inferred source union or public error type.
 
-Every unhandled failure propagated by naked `try` must be assignable to the
+**§ 50.1(2)** Every unhandled failure propagated by naked `try` must be assignable to the
 enclosing Result error channel. Concrete Sec errors may widen to compiler-known
 `error`; the compiler never invents a user-union wrapper.
 
-Local try-handler lists are partial. Unmatched compatible failures propagate.
+**§ 50.1(3)** Local try-handler lists are partial. Unmatched compatible failures propagate.
 `Err(_)` may handle a heterogeneous set without binding it, while `Err(name)`
 requires one already resolved binding type and cannot force inference of a
 hidden common type. Failures from a guard or handler body are outside the
 protected failure set and require their own handling. Option `None` remains
 ordinary absence under `errorhandling.md`.
 
-This document must remain synchronized with:
+**§ 50.1(4)** This document must remain synchronized with:
 
 ```text
 panic.md
@@ -1371,35 +1371,35 @@ language-rulebook-status.md
 
 ---
 
-# Design summary
+## § 51 Design summary
 
-Sec uses checked semantics without requiring a language runtime.
+**§ 51(1)** Sec uses checked semantics without requiring a language runtime.
 
-Checks are removed when proven unnecessary.
+**§ 51(2)** Checks are removed when proven unnecessary.
 
-Ordinary unproven checks may panic.
+**§ 51(3)** Ordinary unproven checks may panic.
 
-`try` converts language-defined checks in the following expression into explicit
+**§ 51(4)** `try` converts language-defined checks in the following expression into explicit
 fallible control flow.
 
-`try` does not require parentheses.
+**§ 51(5)** `try` does not require parentheses.
 
-`try` does not catch arbitrary panic from function calls.
+**§ 51(6)** `try` does not catch arbitrary panic from function calls.
 
-Each fallible operation has an explicit error type.
+**§ 51(7)** Each fallible operation has an explicit error type.
 
-Propagation requires error-type compatibility.
+**§ 51(8)** Propagation requires error-type compatibility.
 
-Sec does not infer error unions, widen named unions, or choose wrapper variants.
+**§ 51(9)** Sec does not infer error unions, widen named unions, or choose wrapper variants.
 
-Every runtime failure has a panic-free path.
+**§ 51(10)** Every runtime failure has a panic-free path.
 
-`@noPanic` is transitively verified.
+**§ 51(11)** `@noPanic` is transitively verified.
 
-Defer bodies and destructors are always noPanic.
+**§ 51(12)** Defer bodies and destructors are always noPanic.
 
-No check requires exceptions, stack unwinding, hidden allocation, or a mandatory
+**§ 51(13)** No check requires exceptions, stack unwinding, hidden allocation, or a mandatory
 runtime library.
 
-Semantic tooling may plan panic-free migrations, but business and arithmetic
+**§ 51(14)** Semantic tooling may plan panic-free migrations, but business and arithmetic
 policy choices remain explicit.

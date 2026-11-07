@@ -1,10 +1,22 @@
 # Grammar
 
-## Status
+- **Status:** Normative
+- **Created:** 2026-08-02
+- **Last updated:** 2026-11-07 (stable chapter, subsection, and paragraph numbering)
+- **Document revision:** 1
+- **Sec language version:** 0.1
+- **Canonical path:** `rules/foundations/grammar.md`
+- **Repository baseline reviewed:** `28780c01d63c3fc9eec2321ef67e3dd69962f043`
+- **Implementation governance:** `governance/parser.yaml` (`frontend.grammar-conformance`)
+- **Related rulebooks:** `rules/foundations/lexical_structure.md`, `rules/foundations/operators.md`, `rules/foundations/attributes.md`, `rules/tooling/formatter.md`, `rules/types/types.md`, `rules/memory/ownership.md`, `rules/memory/copy_move.md`, `rules/compiler/parser_recovery.md`, `rules/compiler/compile_time_evaluation.md`, `rules/compiler/semantic_ir.md`, `rules/projects/modules.md`
 
-This document is the canonical consolidated grammar for Sec 0.1.
+---
 
-It defines:
+## § 1 Status
+
+**§ 1(1)** This document is the canonical consolidated grammar for Sec 0.1.
+
+**§ 1(2)** It defines:
 
 - compilation-unit structure;
 - declarations;
@@ -16,7 +28,7 @@ It defines:
 - canonical syntax versus accepted recovery syntax;
 - the boundary between parsing and semantic analysis.
 
-This document does not redefine:
+**§ 1(3)** This document does not redefine:
 
 - lexical tokenization from `lexical_structure.md`;
 - operator precedence or operator semantics from `operators.md`;
@@ -25,15 +37,15 @@ This document does not redefine:
 - ownership semantics from `ownership.md` and `copy_move.md`;
 - detailed feature semantics from specialized rulebooks.
 
-Implementation status is not part of this rulebook. It is tracked by
+**§ 1(4)** Implementation status is not part of this rulebook. It is tracked by
 `frontend.grammar-conformance` in `governance/parser.yaml` and by the
 feature-specific governance entries.
 
 ---
 
-# Canonical syntax and legacy forms
+## § 2 Canonical syntax and legacy forms
 
-Sec 0.1 accepts only the canonical syntax defined by the active rulebooks.
+**§ 2(1)** Sec 0.1 accepts only the canonical syntax defined by the active rulebooks.
 Recognizable legacy Sec syntax is invalid and receives a focused migration
 diagnostic when the intended migration can be determined reliably. Default
 formatting never converts invalid legacy syntax into canonical syntax; an
@@ -42,14 +54,14 @@ may rewrite a recognized legacy form only when the rewrite is unambiguous and
 semantics-preserving, and otherwise reports a focused migration diagnostic
 instead of guessing (MD-003; `rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md` § 4).
 
-The recognized invalid forms are listed in "Legacy, future, and recovery
+**§ 2(2)** The recognized invalid forms are listed in "Legacy, future, and recovery
 syntax" below.
 
 ---
 
-# Forms outside Sec 0.1
+## § 3 Forms outside Sec 0.1
 
-The following are not part of Sec 0.1:
+**§ 3(1)** The following are not part of Sec 0.1:
 
 - the conditional expression `condition ? whenTrue : whenFalse`; `?` is
   reserved with no Sec 0.1 meaning;
@@ -80,18 +92,18 @@ The following are not part of Sec 0.1:
 - an implicit user-level module initializer; executable startup is defined by
   `rules/compiler/initialization.md`.
 
-Map and set literal syntax is not finalized by this grammar. Array literals and
+**§ 3(2)** Map and set literal syntax is not finalized by this grammar. Array literals and
 empty list literals are defined below.
 
-The module model, including resolution, import cycles, re-exports, selective
+**§ 3(3)** The module model, including resolution, import cycles, re-exports, selective
 and wildcard imports, export lists, conditional imports, and target-conditioned
 declarations, belongs to `rules/projects/modules.md`.
 
 ---
 
-# Normative grammar notation
+## § 4 Normative grammar notation
 
-The grammar uses an EBNF-like notation.
+**§ 4(1)** The grammar uses an EBNF-like notation.
 
 ```text
 "token"
@@ -119,17 +131,17 @@ TokenClass
     lexical category defined by lexical_structure.md
 ```
 
-Grammar notation is not Sec source syntax.
+**§ 4(2)** Grammar notation is not Sec source syntax.
 
 ---
 
-# Lexical boundary
+## § 5 Lexical boundary
 
-The lexer produces tokens.
+**§ 5(1)** The lexer produces tokens.
 
-The parser consumes tokens.
+**§ 5(2)** The parser consumes tokens.
 
-The grammar assumes:
+**§ 5(3)** The grammar assumes:
 
 - comments and whitespace are recognized lexically;
 - source positions include file, line, and column;
@@ -138,13 +150,13 @@ The grammar assumes:
 - identifiers are distinct from reserved keywords;
 - contextual spellings may remain identifier tokens.
 
-The grammar must not duplicate the complete lexical specification.
+**§ 5(4)** The grammar must not duplicate the complete lexical specification.
 
 ---
 
-# Source file
+## § 6 Source file
 
-Canonical high-level grammar:
+**§ 6(1)** Canonical high-level grammar:
 
 ```text
 CompilationUnit
@@ -154,16 +166,16 @@ CompilationUnit
         { TopLevelDeclaration }
 ```
 
-A source file must declare a module.
+**§ 6(2)** A source file must declare a module.
 
-`#target`, when present, must precede every declaration and import.
+**§ 6(3)** `#target`, when present, must precede every declaration and import.
 
-The parser may recover from misplaced declarations, but canonical source follows
+**§ 6(4)** The parser may recover from misplaced declarations, but canonical source follows
 the order above.
 
 ---
 
-# Target directive
+## § 7 Target directive
 
 ```text
 TargetDirective
@@ -174,46 +186,54 @@ TargetArgument
       | "arch" ":" StringLiteral
 ```
 
-Both `os` and `arch` are required.
+**§ 7(1)** Both `os` and `arch` are required.
 
-Their order is not semantically significant.
+**§ 7(2)** Their order is not semantically significant.
 
-Unknown or duplicate arguments are invalid.
+**§ 7(3)** Unknown or duplicate arguments are invalid.
 
-Example:
+**§ 7(4)** Example:
 
 ```sec
 #target(os: "linux", arch: "amd64")
 ```
 
-`target` is the only directive after `#` in Sec 0.1.
+**§ 7(5)** `target` is the only directive after `#` in Sec 0.1.
+
+**§ 7(6)** **Synchronization (2026-11-07; `rules/compiler/compiler.md` § 16,
+`rules/foundations/attributes.md`).** `#target(...)` above is the legacy
+compatibility form. The canonical Sec 0.1 target selection is the attribute
+`@target(os: ..., arch: ...)` defined in `attributes.md`; new rulebooks,
+examples, formatter output and generated source use `@target`. A compiler may
+temporarily accept `#target` during migration (`compiler.md` § 15(3)); that
+acceptance is implementation governance, not a second language model.
 
 ---
 
-# Module declaration
+## § 8 Module declaration
 
 ```text
 ModuleDeclaration
     ::= "module" Identifier
 ```
 
-Example:
+**§ 8(1)** Example:
 
 ```sec
 module parser
 ```
 
-Dotted source module declarations are invalid. Directory hierarchy,
+**§ 8(2)** Dotted source module declarations are invalid. Directory hierarchy,
 `internal`, and compiler-reserved roots belong to canonical import paths and
 never become part of the source `ModuleName`.
 
-The complete relationship between source path, `internal` directories, module
+**§ 8(3)** The complete relationship between source path, `internal` directories, module
 identity, and imports belongs to `rules/projects/modules.md` and
 `rules/projects/projects.md`.
 
 ---
 
-# Import declarations
+## § 9 Import declarations
 
 ```text
 ImportDeclaration
@@ -230,7 +250,7 @@ ImportGroupItem
     ::= [ Identifier ] StringLiteral
 ```
 
-Examples:
+**§ 9(1)** Examples:
 
 ```sec
 import "fmt"
@@ -245,18 +265,18 @@ import (
 )
 ```
 
-The string is a canonical logical import path. It uses `/`, is case-sensitive,
+**§ 9(2)** The string is a canonical logical import path. It uses `/`, is case-sensitive,
 is not an absolute host path, and contains neither `.` nor `..` traversal
 components.
 
-An optional identifier is a source-file-local import alias. Imports do not
+**§ 9(3)** An optional identifier is a source-file-local import alias. Imports do not
 inject unqualified names and are not implicitly re-exported.
 
-Selective and wildcard imports are not part of Sec 0.1.
+**§ 9(4)** Selective and wildcard imports are not part of Sec 0.1.
 
 ---
 
-# Top-level declarations
+## § 10 Top-level declarations
 
 ```text
 TopLevelDeclaration
@@ -278,24 +298,24 @@ TopLevelDeclaration
       | Comment
 ```
 
-Ordinary executable statements are invalid at module scope.
+**§ 10(1)** Ordinary executable statements are invalid at module scope.
 
-Top-level mutable storage remains subject to static and initialization rules.
+**§ 10(2)** Top-level mutable storage remains subject to static and initialization rules.
 
-Test source adds the contextual top-level declaration:
+**§ 10(3)** Test source adds the contextual top-level declaration:
 
 ```text
 TestDeclaration
     ::= "test" StringLiteral Block
 ```
 
-It is legal only in `*_test.sec` selected by a `TestCompilationPlan`. It has no
+**§ 10(4)** It is legal only in `*_test.sec` selected by a `TestCompilationPlan`. It has no
 parameters or source return type, may not be nested, and is governed by
 `rules/tooling/testing.md`. Lexer, parser, formatter, editor grammar, and Sema
 must share one contextual treatment of `test` rather than reserving or inferring
 it independently.
 
-**Amendment MD-111 (2026-10-30, `rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md` §§ 3(5), 8(1)).** Module scope
+**§ 10(5)** **Amendment MD-111 (2026-10-30, `rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md` §§ 4(5), 8(1)).** Module scope
 also admits the contextual hardware fact declarations:
 
 ```text
@@ -323,7 +343,7 @@ HardwareSymbolPath
     ::= Identifier | ImportedModuleQualifier "." Identifier
 ```
 
-This is restricted metadata syntax, not a struct initializer or expression:
+**§ 10(6)** This is restricted metadata syntax, not a struct initializer or expression:
 values are exact literals, qualified metadata enum cases, symbolic hardware
 selectors or homogeneous integer lists, never runtime expressions or ordinary
 bindings. The attribute form `@address(EndpointPath [, alias])` is specified in
@@ -331,22 +351,22 @@ bindings. The attribute form `@address(EndpointPath [, alias])` is specified in
 
 ---
 
-# Identifier namespaces
+## § 11 Identifier namespaces
 
-The grammar permits declarations in contexts controlled by name and scope rules.
+**§ 11(1)** The grammar permits declarations in contexts controlled by name and scope rules.
 
-The parser does not decide:
+**§ 11(2)** The parser does not decide:
 
 - whether a name is already declared;
 - whether a name is visible;
 - whether a name is reserved by a compiler-known namespace;
 - whether a nested name conflicts with a module declaration.
 
-Those checks belong to Sema.
+**§ 11(3)** Those checks belong to Sema.
 
 ---
 
-# Generic parameter lists
+## § 12 Generic parameter lists
 
 ```text
 GenericParameterList
@@ -359,7 +379,7 @@ GenericConstraintClause
     ::= ":" TypeReference { "&" TypeReference }
 ```
 
-MD-117 amendment (2026-10-30; `rules/declarations/generics.md` § 16A and
+**§ 12(1)** MD-117 amendment (2026-10-30; `rules/declarations/generics.md` § 17A and
 `rules/corrections/md117-heterogeneous-variadic-type-packs-correction.md` § 2):
 only a function or method generic declaration may use the `...` prefix, at most
 once and on its final generic parameter. It declares one compile-time ordered
@@ -369,7 +389,7 @@ Concrete inference and constraint validity belong to the owning generic and
 function rules. This amendment introduces no explicit pack literal, array form
 or general runtime spread rule.
 
-Examples:
+**§ 12(2)** Examples:
 
 ```sec
 type Pair[A, B] struct {
@@ -384,17 +404,17 @@ fn Save[T: Serializable](value: T) Result[void, IOError] {
 }
 ```
 
-`&` combines multiple interface constraints. It is a compile-time conjunction,
+**§ 12(3)** `&` combines multiple interface constraints. It is a compile-time conjunction,
 not a runtime intersection type.
 
-A general `where` clause for generic declarations is not part of the current
+**§ 12(4)** A general `where` clause for generic declarations is not part of the current
 grammar.
 
 ---
 
-# Type declarations
+## § 13 Type declarations
 
-Canonical forms:
+**§ 13(1)** Canonical forms:
 
 ```text
 TypeDeclaration
@@ -407,7 +427,7 @@ TypeDeclaration
 
 ---
 
-# Named type declaration
+## § 14 Named type declaration
 
 ```text
 NamedTypeDeclaration
@@ -418,29 +438,29 @@ NamedTypeDeclaration
         [ DefaultClause ]
 ```
 
-Example:
+**§ 14(1)** Example:
 
 ```sec
 type Percent int range 0..100
 ```
 
-Example:
+**§ 14(2)** Example:
 
 ```sec
 type Port int range 1..65535 default 8080
 ```
 
-Example:
+**§ 14(3)** Example:
 
 ```sec
 type Speed decimal<m/s>
 ```
 
-This creates a nominal type.
+**§ 14(4)** This creates a nominal type.
 
-It is not a transparent alias.
+**§ 14(5)** It is not a transparent alias.
 
-A named type declaration has exactly one underlying type. The named type is
+**§ 14(6)** A named type declaration has exactly one underlying type. The named type is
 distinct from its underlying type, and chained named types remain distinct
 identities:
 
@@ -449,16 +469,16 @@ type B int
 type A B
 ```
 
-declares three distinct types: `int`, `B`, and `A`.
+**§ 14(7)** declares three distinct types: `int`, `B`, and `A`.
 
-A declaration naming more than one underlying type is invalid:
+**§ 14(8)** A declaration naming more than one underlying type is invalid:
 
 ```sec
 type A int string
 type A B int
 ```
 
-A declaration names exactly one type. Several names in one declaration are
+**§ 14(9)** A declaration names exactly one type. Several names in one declaration are
 invalid; each type is declared separately:
 
 ```sec
@@ -467,16 +487,16 @@ type A int
 type B int
 ```
 
-`type A B` is valid only when `B` resolves to a type; otherwise `B` is an
+**§ 14(10)** `type A B` is valid only when `B` resolves to a type; otherwise `B` is an
 unknown type.
 
-(MD-002; `rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md` § 3.)
+**§ 14(11)** (MD-002; `rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md` § 4.)
 
 ---
 
-# Legacy assigned and compact variant forms
+## § 15 Legacy assigned and compact variant forms
 
-The following legacy forms are not Sec 0.1 grammar. The parser recognizes them
+**§ 15(1)** The following legacy forms are not Sec 0.1 grammar. The parser recognizes them
 only to issue a focused migration diagnostic:
 
 ```text
@@ -487,19 +507,19 @@ LegacyCompactVariantDeclaration
     ::= "type" Identifier "=" Identifier Identifier { Identifier }
 ```
 
-Examples:
+**§ 15(2)** Examples:
 
 ```sec
 type UserID = uint64
 type IOError = FileNotFound AccessDenied InvalidValue
 ```
 
-The canonical replacement for the first is `type UserID uint64`. Closed
+**§ 15(3)** The canonical replacement for the first is `type UserID uint64`. Closed
 alternatives use `enum` or `union`.
 
 ---
 
-# Implements clause
+## § 16 Implements clause
 
 ```text
 InterfaceImplementsClause
@@ -509,7 +529,7 @@ ImplImplementsClause
     ::= "implements" TypeReference { "," TypeReference }
 ```
 
-Examples:
+**§ 16(1)** Examples:
 
 ```sec
 impl Car implements Vehicle {
@@ -521,14 +541,14 @@ interface Vehicle implements Startable, Stoppable {
 }
 ```
 
-Separate `impl Interface for Type` syntax is invalid.
+**§ 16(2)** Separate `impl Interface for Type` syntax is invalid.
 
-`ImplImplementsClause` is valid only on the primary `impl Type`. An
+**§ 16(3)** `ImplImplementsClause` is valid only on the primary `impl Type`. An
 `impl extends Type` fragment cannot redeclare conformance.
 
 ---
 
-# Type contracts
+## § 17 Type contracts
 
 ```text
 TypeContract
@@ -571,11 +591,11 @@ MarkerContract
       | Contextual("even")
 ```
 
-Contracts are written sequentially.
+**§ 17(1)** Contracts are written sequentially.
 
-Sequential contracts are logical conjunction.
+**§ 17(2)** Sequential contracts are logical conjunction.
 
-Every contract argument is ordinary `Expression` syntax. Contract arguments
+**§ 17(3)** Every contract argument is ordinary `Expression` syntax. Contract arguments
 form no separate restricted constant sublanguage: the owning semantic rule
 (`rules/types/contracts.md`) classifies each position as a
 `SemanticCompileTimeRequiredContext` (`rules/compiler/compile_time_evaluation.md`)
@@ -587,7 +607,7 @@ operator, which is not an infix operator. An upper bound starts on the line of
 the range operator and is never `default` or a following contract word, which
 keeps an open-ended range unambiguous (MD-011; `rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md` § 3).
 
-`regex` is a reserved contract spelling (`rules/foundations/lexical_structure.md`
+**§ 17(4)** `regex` is a reserved contract spelling (`rules/foundations/lexical_structure.md`
 § 7.3) that is lexed identifier-like and resolved in contract position; it has
 no dedicated hard-keyword token. Its `Expression` must produce the
 compile-time string pattern required by `rules/types/contracts.md`. A contract,
@@ -602,60 +622,60 @@ type Email string
     regex "..."
 ```
 
-The regular-expression language belongs to a dedicated future regex rulebook
+**§ 17(5)** The regular-expression language belongs to a dedicated future regex rulebook
 (MD-010), and the regex pattern is an ordinary `Expression` evaluated in a
 `SemanticCompileTimeRequiredContext` (MD-011). The earlier
 `RegexContract ::= Contextual("regex") ConstantExpression` shape is superseded
 (MD-009; `rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md` § 10;
 `rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md` §§ 2, 3.39–3.44).
 
-Example:
+**§ 17(6)** Example:
 
 ```sec
 type PageSize int range 10..100 multipleOf 10
 ```
 
-Example:
+**§ 17(7)** Example:
 
 ```sec
 type Tags string[] notEmpty unique
 ```
 
-Contracts belong to named types.
+**§ 17(8)** Contracts belong to named types.
 
-They are not canonical on individual variables or struct fields.
+**§ 17(9)** They are not canonical on individual variables or struct fields.
 
 ---
 
-# Default clause
+## § 18 Default clause
 
 ```text
 DefaultClause
     ::= "default" Expression
 ```
 
-The default clause follows every contract. Its expression is ordinary
+**§ 18(1)** The default clause follows every contract. Its expression is ordinary
 `Expression` syntax evaluated in a `SemanticCompileTimeRequiredContext`
 (MD-011; `rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md` §§ 3.4, 3.35–3.38).
 
-Example:
+**§ 18(2)** Example:
 
 ```sec
 type Port int range 1..65535 default 8080
 ```
 
-Example:
+**§ 18(3)** Example:
 
 ```sec
 type User string in ["Admin", "User", "Other"] default "User"
 ```
 
-The expression must be compile-time evaluable, allocation-free, representable,
+**§ 18(4)** The expression must be compile-time evaluable, allocation-free, representable,
 and valid for every contract.
 
 ---
 
-# Struct type declaration
+## § 19 Struct type declaration
 
 ```text
 StructTypeDeclaration
@@ -683,7 +703,7 @@ StructFieldLayoutModifier
       | "byteOffset" "(" Expression ")"
 ```
 
-Layout modifiers (MD-019, `rules/corrections/applied/MD-019-explicit-layout-modifiers-applied-20261105.md`):
+**§ 19(1)** Layout modifiers (MD-019, `rules/corrections/applied/MD-019-explicit-layout-modifiers-applied-20261105.md`):
 
 - `pack`, `minAlign` and `byteOffset` are compiler-known **contextual
   declaration modifiers** in these positions only. They are not global
@@ -715,10 +735,10 @@ type Message struct pack(1) {
 }
 ```
 
-Their semantics are owned by `rules/declarations/struct.md` § 15A and
+**§ 19(2)** Their semantics are owned by `rules/declarations/struct.md` § 16A and
 `rules/memory/layout.md` §§ 27–29.
 
-Canonical examples:
+**§ 19(3)** Canonical examples:
 
 ```sec
 type Point struct {
@@ -734,22 +754,22 @@ type User struct {
 }
 ```
 
-Commas are required between declared struct fields.
+**§ 19(4)** Commas are required between declared struct fields.
 
-A trailing comma is allowed.
+**§ 19(5)** A trailing comma is allowed.
 
-Contracts are expressed through named field types.
+**§ 19(6)** Contracts are expressed through named field types.
 
 ---
 
-# Standalone struct declaration (Sec 0.2)
+## § 20 Standalone struct declaration (Sec 0.2)
 
-`struct Identifier StructBody` is planned Sec 0.2 syntax and is not part of the
+**§ 20(1)** `struct Identifier StructBody` is planned Sec 0.2 syntax and is not part of the
 Sec 0.1 grammar. Sec 0.1 source uses `type Name struct`.
 
 ---
 
-# Struct literal
+## § 21 Struct literal
 
 ```text
 StructLiteral
@@ -769,7 +789,7 @@ StructLiteralItem
       | Expression "..."
 ```
 
-Examples:
+**§ 21(1)** Examples:
 
 ```sec
 Point {
@@ -792,21 +812,21 @@ Settings {
 }
 ```
 
-A newline may separate struct literal items.
+**§ 21(2)** A newline may separate struct literal items.
 
-Declared struct fields require commas.
+**§ 21(3)** Declared struct fields require commas.
 
-An empty literal is valid when every omitted field is defaultable:
+**§ 21(4)** An empty literal is valid when every omitted field is defaultable:
 
 ```sec
 Token {}
 ```
 
-Sema inserts omitted field defaults.
+**§ 21(5)** Sema inserts omitted field defaults.
 
 ---
 
-# Enum declaration
+## § 22 Enum declaration
 
 ```text
 EnumDeclaration
@@ -837,10 +857,10 @@ EnumValue
     ::= Identifier [ "default" ] [ "=" ConstantExpression ]
 ```
 
-The marker order is normative: `MEMBER default [= expression]`.
+**§ 22(1)** The marker order is normative: `MEMBER default [= expression]`.
 `default MEMBER` is not enum-member syntax.
 
-Examples:
+**§ 22(2)** Examples:
 
 ```sec
 enum Color {
@@ -865,16 +885,16 @@ enum ClockSource: bit[2] {
 }
 ```
 
-Canonical enum value initialization uses `=`. The legacy `Value: expression`
+**§ 22(3)** Canonical enum value initialization uses `=`. The legacy `Value: expression`
 initializer is invalid Sec 0.1 syntax (see "Legacy, future, and recovery
 syntax").
 
-The first omitted initializer is implicit `iota`. Every later omitted
+**§ 22(4)** The first omitted initializer is implicit `iota`. Every later omitted
 initializer repeats the preceding initializer expression and evaluates it with
 the current member's `iota`; it is not automatic previous-value-plus-one
 continuation.
 
-An explicit ordinary underlying type may be an integer type or `string`. A
+**§ 22(5)** An explicit ordinary underlying type may be an integer type or `string`. A
 string-backed enum requires an explicit compile-time string initializer for
 every member; omitted initializers and `iota` are not part of string-backed
 enums:
@@ -886,7 +906,7 @@ enum Program string {
 }
 ```
 
-Generic parameters use the ordinary `GenericParameterList` grammar. They do not
+**§ 22(6)** Generic parameters use the ordinary `GenericParameterList` grammar. They do not
 give enum members payloads; payload-bearing alternatives are union declarations
 (`rules/declarations/enums.md` § 16.1):
 
@@ -897,14 +917,14 @@ enum State[T] {
 }
 ```
 
-An enum must declare at least one value.
+**§ 22(7)** An enum must declare at least one value.
 
-When present, `error` is the final semantic marker before the enum body. It is
+**§ 22(8)** When present, `error` is the final semantic marker before the enum body. It is
 not an underlying type and does not introduce general inheritance.
 
 ---
 
-# Union declaration
+## § 23 Union declaration
 
 ```text
 UnionTypeDeclaration
@@ -926,7 +946,7 @@ StructPayload
     ::= StructBody
 ```
 
-Examples:
+**§ 23(1)** Examples:
 
 ```sec
 type State union {
@@ -956,20 +976,20 @@ type Shape union {
 }
 ```
 
-A comma after a union variant is optional.
+**§ 23(2)** A comma after a union variant is optional.
 
-Struct-like payload fields follow struct declaration field grammar and require
+**§ 23(3)** Struct-like payload fields follow struct declaration field grammar and require
 commas.
 
-At most one variant may carry the post-variant `default` marker. Its payload
+**§ 23(4)** At most one variant may carry the post-variant `default` marker. Its payload
 must be default-constructible under `rules/declarations/unions.md` and
 `rules/types/default_values.md`.
 
-An empty union is invalid.
+**§ 23(5)** An empty union is invalid.
 
 ---
 
-# Register declaration
+## § 24 Register declaration
 
 ```text
 RegisterTypeDeclaration
@@ -1036,7 +1056,7 @@ BitFieldType
     ::= Contextual("bit") [ "[" IntegerConstant "]" ] [ UnitAnnotation ]
 ```
 
-Example:
+**§ 24(1)** Example:
 
 ```sec
 type MotorProtocol register[8] {
@@ -1046,7 +1066,7 @@ type MotorProtocol register[8] {
 }
 ```
 
-The allocation order, byte order, and shadow policy modifiers are independent:
+**§ 24(2)** The allocation order, byte order, and shadow policy modifiers are independent:
 each modifier class may occur at most once, their source order is irrelevant,
 and duplicate or conflicting modifiers are errors. `noshadow` is the default.
 At field level, an optional access modifier precedes the optional shadow
@@ -1054,7 +1074,7 @@ policy; each may occur at most once. The default field access is `read-write`.
 The semantic meaning of these modifiers belongs to
 `rules/declarations/registers.md`.
 
-The allocation and byte-order modifiers may both be present:
+**§ 24(3)** The allocation and byte-order modifiers may both be present:
 
 ```sec
 type PacketWord register[16] msb-first big-endian {
@@ -1063,13 +1083,13 @@ type PacketWord register[16] msb-first big-endian {
 }
 ```
 
-The total field width must match the register width.
+**§ 24(4)** The total field width must match the register width.
 
-`_` denotes reserved unnamed bits in register field position.
+**§ 24(5)** `_` denotes reserved unnamed bits in register field position.
 
 ---
 
-# Unit declaration
+## § 25 Unit declaration
 
 ```text
 UnitDeclaration
@@ -1083,13 +1103,13 @@ UnitCategory
       | Contextual("other")
 ```
 
-`UnitDefaultNumericType` must resolve to a plain compiler-known numeric scalar
+**§ 25(1)** `UnitDefaultNumericType` must resolve to a plain compiler-known numeric scalar
 carrier and must not itself be unit-bearing. It defaults to `decimal`.
 `UnitCategory` defaults to `other`. Unit identifiers remain subject to semantic
 reserved-name validation; in particular, `bit` and `byte` cannot be declared as
 units.
 
-Examples:
+**§ 25(2)** Examples:
 
 ```sec
 unit Hertz physical
@@ -1099,13 +1119,13 @@ unit Count
 unit Euro currency
 ```
 
-Complete unit semantics belong to `rules/types/units.md`.
+**§ 25(3)** Complete unit semantics belong to `rules/types/units.md`.
 
 ---
 
-# Unit metadata inside impl
+## § 26 Unit metadata inside impl
 
-The parser recognizes these contextual unit metadata names inside `impl`:
+**§ 26(1)** The parser recognizes these contextual unit metadata names inside `impl`:
 
 ```text
 LongName
@@ -1124,17 +1144,17 @@ LogFactor
 Reference
 ```
 
-Grammar shape:
+**§ 26(2)** Grammar shape:
 
 ```text
 UnitMetadataDeclaration
     ::= ContextualUnitMetadataName ":" TokensUntilLineEnd
 ```
 
-PascalCase is canonical. Case and underscore tolerant parsing may remain as a
+**§ 26(3)** PascalCase is canonical. Case and underscore tolerant parsing may remain as a
 Sec 0.1 migration aid.
 
-`Name` and `Category` are not contextual metadata names: they are implicit
+**§ 26(4)** `Name` and `Category` are not contextual metadata names: they are implicit
 read-only members of a named unit, and `Name:` or `Category:` inside
 `impl <U>` is rejected by semantic analysis. `IsBaseunit` and similar
 spellings are not aliases of `BaseUnit`. Enum-backed values are canonically
@@ -1145,7 +1165,7 @@ types" (5)). Metadata reads use the existing qualified unit member access
 
 ---
 
-# Interface declaration
+## § 27 Interface declaration
 
 ```text
 InterfaceDeclaration
@@ -1182,7 +1202,7 @@ InterfaceEvent
     ::= Contextual("event") Identifier "[" TypeReference "]"
 ```
 
-Example:
+**§ 27(1)** Example:
 
 ```sec
 interface Vehicle {
@@ -1195,7 +1215,7 @@ interface Vehicle {
 }
 ```
 
-Example:
+**§ 27(2)** Example:
 
 ```sec
 interface PressSource {
@@ -1203,16 +1223,16 @@ interface PressSource {
 }
 ```
 
-Interface methods have no body.
+**§ 27(3)** Interface methods have no body.
 
-Interface property accessors have no body.
+**§ 27(4)** Interface property accessors have no body.
 
-The setter identifier is mandatory in implementation, static, and interface
+**§ 27(5)** The setter identifier is mandatory in implementation, static, and interface
 property forms. Sec does not provide an implicit setter-value binding.
 
 ---
 
-# Impl declaration
+## § 28 Impl declaration
 
 ```text
 ImplDeclaration
@@ -1245,13 +1265,13 @@ InstanceLetDeclaration
     ::= "let" [ "mut" ] Identifier [ ":" TypeReference ] ":=" Expression
 ```
 
-`impl <Unit>` (`UnitImplTarget`, MD-040, 2026-10-13, `rules/corrections/applied/md040-md046-md047-md056-units-register-bits-rounding-correction-20261013.md` § 2) targets only the unit named by a single `UnitExpression` name, in the unit's own module, and holds `UnitMetadataDeclaration` and `FunctionDeclaration` members only. `impl Name` targets only an ordinary type; a unit is never named bare.
+**§ 28(1)** `impl <Unit>` (`UnitImplTarget`, MD-040, 2026-10-13, `rules/corrections/applied/md040-md046-md047-md056-units-register-bits-rounding-correction-20261013.md` § 3) targets only the unit named by a single `UnitExpression` name, in the unit's own module, and holds `UnitMetadataDeclaration` and `FunctionDeclaration` members only. `impl Name` targets only an ordinary type; a unit is never named bare.
 
-`InstanceLetDeclaration` requires an instance; `mut` controls mutability.
+**§ 28(2)** `InstanceLetDeclaration` requires an instance; `mut` controls mutability.
 `StaticLetDeclaration` requires explicit `static` and is type-owned. The two
 forms are not equivalent; the AST and formatting retain the `static` modifier.
 
-Lifecycle and construction syntax:
+**§ 28(3)** Lifecycle and construction syntax:
 
 ```text
 InitDeclaration
@@ -1264,7 +1284,7 @@ CallableBodyAttributes
     ::= AttributeSet
 ```
 
-`AttributeSet` is the consecutive attribute sequence of
+**§ 28(4)** `AttributeSet` is the consecutive attribute sequence of
 `rules/foundations/attributes.md`, "General syntax". `CallableBodyAttributes`
 attach to the immediately following callable body only — `init`, `free`, one
 property accessor, or the lambda of a `LambdaLetDeclaration` — never to the
@@ -1279,12 +1299,12 @@ NewExpression
     ::= "new" TypeReference "(" [ ArgumentList ] ")"
 ```
 
-The optional type after `init(...)` is a construction error type, not a return
+**§ 28(5)** The optional type after `init(...)` is a construction error type, not a return
 type. `new Type(args...)` selects lifecycle construction; `Type(value)` remains
 conversion syntax. Ordinary impl methods have compiler-provided implicit
 `self` and do not declare receiver parameters.
 
-Example:
+**§ 28(6)** Example:
 
 ```sec
 impl Vehicle {
@@ -1303,7 +1323,7 @@ impl Vehicle {
 }
 ```
 
-An additional same-module block is explicit:
+**§ 28(7)** An additional same-module block is explicit:
 
 ```sec
 impl extends Vehicle {
@@ -1312,17 +1332,17 @@ impl extends Vehicle {
 }
 ```
 
-Sema requires one primary `impl Vehicle` block and rejects extensions from a
+**§ 28(8)** Sema requires one primary `impl Vehicle` block and rejects extensions from a
 different module. File order does not affect extension validity.
 
-Invalid:
+**§ 28(9)** Invalid:
 
 ```sec
 impl Interface for Type {
 }
 ```
 
-Invalid directly inside `impl`:
+**§ 28(10)** Invalid directly inside `impl`:
 
 ```text
 stored fields
@@ -1331,13 +1351,13 @@ executable statements
 standalone struct declarations
 ```
 
-Methods have implicit `self`.
+**§ 28(11)** Methods have implicit `self`.
 
 ---
 
-# Nested type declarations
+## § 29 Nested type declarations
 
-Nested declarations use the same canonical type syntax:
+**§ 29(1)** Nested declarations use the same canonical type syntax:
 
 ```sec
 impl Vehicle {
@@ -1359,11 +1379,11 @@ impl Vehicle {
 }
 ```
 
-Outside the impl, nested names are qualified through the owner type.
+**§ 29(2)** Outside the impl, nested names are qualified through the owner type.
 
 ---
 
-# Property declaration
+## § 30 Property declaration
 
 ```text
 PropertyDeclaration
@@ -1390,7 +1410,7 @@ FallibleSetter
     ::= "try" Contextual("set") Identifier TypeReference Block
 ```
 
-Example:
+**§ 30(1)** Example:
 
 ```sec
 property TopSpeed: Speed {
@@ -1404,19 +1424,19 @@ property TopSpeed: Speed {
 }
 ```
 
-A property must declare at least one accessor.
+**§ 30(2)** A property must declare at least one accessor.
 
-Duplicate getters or setters are invalid.
+**§ 30(3)** Duplicate getters or setters are invalid.
 
-The setter parameter name is required.
+**§ 30(4)** The setter parameter name is required.
 
-`set` should ultimately be contextual.
+**§ 30(5)** `set` should ultimately be contextual.
 
 ---
 
-# Event declaration
+## § 31 Event declaration
 
-Inside `impl`:
+**§ 31(1)** Inside `impl`:
 
 ```text
 EventDeclaration
@@ -1424,17 +1444,17 @@ EventDeclaration
         Contextual("using") Identifier
 ```
 
-Example:
+**§ 31(2)** Example:
 
 ```sec
 event Pressed using buttonPressedStorage
 ```
 
-An event declaration has no body; a block after it is invalid.
+**§ 31(3)** An event declaration has no body; a block after it is invalid.
 
 ---
 
-# Function declaration
+## § 32 Function declaration
 
 ```text
 FunctionDeclaration
@@ -1452,12 +1472,12 @@ FunctionBody
     ::= Block
 ```
 
-The return type and body are mandatory for an ordinary function declaration.
+**§ 32(1)** The return type and body are mandatory for an ordinary function declaration.
 `FunctionSignature` is used only by constructs that explicitly permit a
 bodyless callable contract, such as an interface requirement or foreign
 `extern` declaration. It is not an ordinary prototype form.
 
-Examples:
+**§ 32(2)** Examples:
 
 ```sec
 fn Add(left: int, right: int) int {
@@ -1471,13 +1491,13 @@ fn Noop() void {
 }
 ```
 
-A return type is required.
+**§ 32(3)** A return type is required.
 
-Use `void` for no return value.
+**§ 32(4)** Use `void` for no return value.
 
 ---
 
-# Function parameters
+## § 33 Function parameters
 
 ```text
 ParameterList
@@ -1489,7 +1509,7 @@ Parameter
       | Identifier ":" "..." TypeReference
 ```
 
-Examples:
+**§ 33(1)** Examples:
 
 ```sec
 fn Inspect(value: Token) void {
@@ -1506,36 +1526,36 @@ fn Update(value: ref mut Token) void {
 }
 ```
 
-`-> name: Type` is a forced-consuming by-value parameter. `name: ...Type` is
+**§ 33(2)** `-> name: Type` is a forced-consuming by-value parameter. `name: ...Type` is
 the final native typed variadic parameter. `->` cannot combine with `ref`,
 `ref mut`, or `...`; a function has at most one variadic parameter and it must
 be last.
 
-`self` is implicit in methods.
+**§ 33(3)** `self` is implicit in methods.
 
-Do not write it in canonical parameter lists.
+**§ 33(4)** Do not write it in canonical parameter lists.
 
 ---
 
-# Function return values
+## § 34 Function return values
 
 ```text
 ReturnType
     ::= TypeReference
 ```
 
-Sec 0.1 returns zero or one value:
+**§ 34(1)** Sec 0.1 returns zero or one value:
 
 - `void` means no value;
 - every other return type means one value.
 
-A function cannot declare a tuple-like multiple return list.
+**§ 34(2)** A function cannot declare a tuple-like multiple return list.
 
-Use a named type when several related fields must be returned.
+**§ 34(3)** Use a named type when several related fields must be returned.
 
 ---
 
-# Extern function declaration
+## § 35 Extern function declaration
 
 ```text
 ExternFunctionDeclaration
@@ -1552,7 +1572,7 @@ LinkNameAnnotation
     ::= "@" "link_name" "(" StringLiteral ")"
 ```
 
-Example:
+**§ 35(1)** Example:
 
 ```sec
 extern "C" fn write(
@@ -1562,10 +1582,10 @@ extern "C" fn write(
 ) int64
 ```
 
-An extern body is invalid. A bare final `...` is valid only for `unsafe extern
+**§ 35(2)** An extern body is invalid. A bare final `...` is valid only for `unsafe extern
 "C"` and is distinct from a native typed variadic parameter.
 
-Foreign data declarations and types additionally use:
+**§ 35(3)** Foreign data declarations and types additionally use:
 
 ```text
 ForeignTypeDeclaration
@@ -1585,7 +1605,7 @@ ForeignCallbackExpression
     ::= "c" "::" "callback" "(" Expression ")"
 ```
 
-`c::` is the only C qualification prefix; the capitalized `C::` form is not Sec
+**§ 35(4)** `c::` is the only C qualification prefix; the capitalized `C::` form is not Sec
 0.1 syntax. `::` is a single token with no whitespace inside or around it.
 Sec 0.1 foreign data declarations currently require the ABI string `"C"`; the
 grammar preserves the source-level string-literal spelling and Sema enforces
@@ -1595,7 +1615,7 @@ Fundamental names and target-defined binding names are distinguished during
 semantic resolution; the production grants no permission to use an arbitrarily
 spelled C type without a real binding (MD-020, `rules/corrections/applied/md020-md021-md023-md024-ffi-c-bindings-null-correction-20261008.md` § 2.8).
 
-`bit[N]` after a field's C base type is a C bitfield declarator only inside an
+**§ 35(5)** `bit[N]` after a field's C base type is a C bitfield declarator only inside an
 `extern "C"` data declaration. A complete foreign struct's fields take the same
 `StructFieldLayoutModifier` forms as ordinary struct fields (MD-019); a bodyless
 incomplete foreign struct has no stored layout, so a layout modifier on it is
@@ -1604,7 +1624,7 @@ environment-free callback adapter expression.
 
 ---
 
-# Unsafe function declaration
+## § 36 Unsafe function declaration
 
 ```text
 UnsafeFunctionDeclaration
@@ -1612,7 +1632,7 @@ UnsafeFunctionDeclaration
       | "unsafe" ExternFunctionDeclaration
 ```
 
-Example:
+**§ 36(1)** Example:
 
 ```sec
 unsafe fn RawOperation(value: RawPtr[byte]) int {
@@ -1620,12 +1640,12 @@ unsafe fn RawOperation(value: RawPtr[byte]) int {
 }
 ```
 
-Unsafe syntax does not disable ordinary grammar, type, ownership, or scope
+**§ 36(2)** Unsafe syntax does not disable ordinary grammar, type, ownership, or scope
 rules.
 
 ---
 
-# Static declarations
+## § 37 Static declarations
 
 ```text
 StaticDeclaration
@@ -1639,7 +1659,7 @@ StaticFunctionDeclaration
     ::= "static" FunctionDeclaration
 ```
 
-Inside `impl`, `static` may modify `fn`, `let`, or `property`. Ordinary `fn`
+**§ 37(1)** Inside `impl`, `static` may modify `fn`, `let`, or `property`. Ordinary `fn`
 members are instance-bound with compiler-provided implicit `self`; only
 `static fn` is type-level and has no receiver. Static property setters use the
 `StaticPropertyDeclaration` production defined with properties above and the
@@ -1650,18 +1670,18 @@ same mandatory explicit identifier as instance setters:
 "try" "set" Identifier Block
 ```
 
-There is no implicit setter-value binding.
+**§ 37(2)** There is no implicit setter-value binding.
 
-Inside `impl`, `StaticLetDeclaration` and `InstanceLetDeclaration` are
+**§ 37(3)** Inside `impl`, `StaticLetDeclaration` and `InstanceLetDeclaration` are
 distinct. Canonical formatting must preserve the `static` modifier.
 
-Compile-time static dependency order belongs to `rules/declarations/static.md`.
+**§ 37(4)** Compile-time static dependency order belongs to `rules/declarations/static.md`.
 Executable startup and shutdown planning belong to
 `rules/compiler/initialization.md`.
 
 ---
 
-# Addressed declaration
+## § 38 Addressed declaration
 
 ```text
 AddressedLetDeclaration
@@ -1671,22 +1691,22 @@ EndpointPath
     ::= Identifier [ "." Identifier ]
 ```
 
-Example:
+**§ 38(1)** Example:
 
 ```sec
 @address(MotorProtocolEndpoint)
 let mut motorProtocol: MotorProtocol
 ```
 
-The annotation may not apply to a grouped `let` declaration.
+**§ 38(2)** The annotation may not apply to a grouped `let` declaration.
 
-The exact address must be validated semantically.
+**§ 38(3)** The exact address must be validated semantically.
 
-This is a special grammar form until general attributes exist.
+**§ 38(4)** This is a special grammar form until general attributes exist.
 
 ---
 
-# Let declarations
+## § 39 Let declarations
 
 ```text
 LetDeclaration
@@ -1699,7 +1719,7 @@ LambdaLetDeclaration
         ":=" LambdaExpression
 ```
 
-A `LambdaLetDeclaration` is valid at top level and in local scope; its
+**§ 39(1)** A `LambdaLetDeclaration` is valid at top level and in local scope; its
 initializer is syntactically a `LambdaExpression` (with an optional capture
 clause), and its attributes annotate the lambda body, not the binding (MD-030).
 
@@ -1715,9 +1735,9 @@ LetInitializer
       | "<-" Expression
 ```
 
-The permitted initializer spelling depends on whether the type is explicit.
+**§ 39(2)** The permitted initializer spelling depends on whether the type is explicit.
 
-Canonical combinations:
+**§ 39(3)** Canonical combinations:
 
 ```text
 inferred copy/direct construction
@@ -1733,7 +1753,7 @@ typed explicit move
     let name: Type <- expression
 ```
 
-Invalid combinations:
+**§ 39(4)** Invalid combinations:
 
 ```sec
 let name: Type :<- source
@@ -1741,17 +1761,17 @@ let name <- source
 let name = source
 ```
 
-A mutable typed declaration may omit the initializer when the type is
+**§ 39(5)** A mutable typed declaration may omit the initializer when the type is
 defaultable.
 
-An immutable declaration must provide an initializer.
+**§ 39(6)** An immutable declaration must provide an initializer.
 
-A grouped declaration declares independent bindings. It is not multiple-result
+**§ 39(7)** A grouped declaration declares independent bindings. It is not multiple-result
 destructuring: `let literal, tokenType := self.readNumber()` is invalid.
 
 ---
 
-# Type-first declarations
+## § 40 Type-first declarations
 
 ```text
 TypedDeclaration
@@ -1767,7 +1787,7 @@ TypedInitializer
       | "<-" Expression
 ```
 
-Examples:
+**§ 40(1)** Examples:
 
 ```sec
 int mut: a, b, c
@@ -1777,15 +1797,15 @@ int mut: a, b, c
 float: a := 5.4, pi := 3.14
 ```
 
-Immutable declarators require initializers.
+**§ 40(2)** Immutable declarators require initializers.
 
-Mutable declarators may omit them only when the declared type is defaultable.
+**§ 40(3)** Mutable declarators may omit them only when the declared type is defaultable.
 
-Contracts do not appear in the canonical variable grammar.
+**§ 40(4)** Contracts do not appear in the canonical variable grammar.
 
 ---
 
-# Parenthesized type-first group
+## § 41 Parenthesized type-first group
 
 ```text
 TypedDeclarationGroup
@@ -1800,7 +1820,7 @@ TypedGroupDeclarator
     ::= Identifier ":=" Expression
 ```
 
-Example:
+**§ 41(1)** Example:
 
 ```sec
 TokenType (
@@ -1810,13 +1830,13 @@ TokenType (
 )
 ```
 
-This form is immutable.
+**§ 41(2)** This form is immutable.
 
-Every entry requires an initializer.
+**§ 41(3)** Every entry requires an initializer.
 
 ---
 
-# Assignment statements
+## § 42 Assignment statements
 
 ```text
 AssignmentStatement
@@ -1837,28 +1857,28 @@ AssignmentOperator
       | ">>="
 ```
 
-Assignment is a statement.
+**§ 42(1)** Assignment is a statement.
 
-It does not produce a value.
+**§ 42(2)** It does not produce a value.
 
-Chained assignment is invalid.
+**§ 42(3)** Chained assignment is invalid.
 
-A `PlaceExpression` is a writable Place: an identifier, a member, index or
+**§ 42(4)** A `PlaceExpression` is a writable Place: an identifier, a member, index or
 slice projection, or the explicit dereference `*r` of a `ref mut T` (MD-063).
 `*r = value` replaces the referent; `r = value` targets the holder.
 
-The target is evaluated exactly once.
+**§ 42(5)** The target is evaluated exactly once.
 
 ---
 
-# Try assignment
+## § 43 Try assignment
 
 ```text
 TryAssignmentStatement
     ::= "try" PlaceExpression AssignmentOperator Expression [TryHandlerBlock]
 ```
 
-Example:
+**§ 43(1)** Example:
 
 ```sec
 try percent += Percent(value) {
@@ -1868,20 +1888,20 @@ try percent += Percent(value) {
 }
 ```
 
-Without a handler block, a failed setter result is propagated as an immediate
+**§ 43(2)** Without a handler block, a failed setter result is propagated as an immediate
 `return Err(error)` from the enclosing function. The enclosing return type must
 be `Result[_, E]` with the exact setter error type `E`; this form does not
 propagate `Option` and performs no implicit error conversion. With a handler
 block, the ordinary local-handler rules apply.
 
-`try` on a compound string assignment uses this production with error type
+**§ 43(3)** `try` on a compound string assignment uses this production with error type
 `StringError`, and the whole statement is the protected operation, including a
 `Result[string, StringError]` right operand (MD-039). This does not make `try` a
 panic catcher or change its precedence.
 
 ---
 
-# Statement grammar
+## § 44 Statement grammar
 
 ```text
 Statement
@@ -1927,39 +1947,39 @@ IncrementDecrementStatement
     ::= PlaceExpression ( "++" | "--" )
 ```
 
-Context restricts which statements are valid.
+**§ 44(1)** Context restricts which statements are valid.
 
-`panic` is a statement, not an ordinary callable, so `panic("message")` is
+**§ 44(2)** `panic` is a statement, not an ordinary callable, so `panic("message")` is
 invalid; the optional message is an ordinary string literal. Assertions and
 checked `unreachable` are defined by `rules/errors/panic.md` §§ 15–16.
 
-`value++` and `value--` are statement-only aliases for `value += 1` and
+**§ 44(3)** `value++` and `value--` are statement-only aliases for `value += 1` and
 `value -= 1` (`rules/foundations/operators.md`); they never produce a value.
 
 ---
 
-# Block
+## § 45 Block
 
 ```text
 Block
     ::= "{" { Statement } "}"
 ```
 
-Braces are required.
+**§ 45(1)** Braces are required.
 
-Sec does not use indentation as block syntax.
+**§ 45(2)** Sec does not use indentation as block syntax.
 
-Comments may occur between statements.
+**§ 45(3)** Comments may occur between statements.
 
 ---
 
-# Statement termination
+## § 46 Statement termination
 
-Canonical Sec source does not require semicolons after ordinary statements.
+**§ 46(1)** Canonical Sec source does not require semicolons after ordinary statements.
 
-A statement normally ends through grammar completion and token position.
+**§ 46(2)** A statement normally ends through grammar completion and token position.
 
-Line layout is relevant in selected forms, including:
+**§ 46(3)** Line layout is relevant in selected forms, including:
 
 - return without a value;
 - comma-free struct literal fields;
@@ -1968,34 +1988,34 @@ Line layout is relevant in selected forms, including:
 - unit declarations;
 - typed declaration-group recognition.
 
-General semicolon-separated statement syntax is not part of Sec 0.1.
+**§ 46(4)** General semicolon-separated statement syntax is not part of Sec 0.1.
 
-A semicolon in a `for` header is diagnosed as attempted C-style syntax.
+**§ 46(5)** A semicolon in a `for` header is diagnosed as attempted C-style syntax.
 
 ---
 
-# Expression statement
+## § 47 Expression statement
 
 ```text
 ExpressionStatement
     ::= Expression
 ```
 
-An expression statement is valid only when its result and effects may be
+**§ 47(1)** An expression statement is valid only when its result and effects may be
 discarded according to Sema.
 
-Must-use values require an appropriate consuming context or explicit discard.
+**§ 47(2)** Must-use values require an appropriate consuming context or explicit discard.
 
 ---
 
-# Return statement
+## § 48 Return statement
 
 ```text
 ReturnStatement
     ::= "return" [ [ "<-" ] Expression ]
 ```
 
-Examples:
+**§ 48(1)** Examples:
 
 ```sec
 return
@@ -2009,12 +2029,12 @@ return value
 return <- value
 ```
 
-Both forms are grammatical. Returning an owned value transfers it according to
+**§ 48(2)** Both forms are grammatical. Returning an owned value transfers it according to
 ownership semantics; the marker is optional at this terminal boundary.
 
 ---
 
-# If statement
+## § 49 If statement
 
 ```text
 IfStatement
@@ -2023,7 +2043,7 @@ IfStatement
         [ "else" Block ]
 ```
 
-Examples:
+**§ 49(1)** Examples:
 
 ```sec
 if ready {
@@ -2038,20 +2058,20 @@ if value in 0..<10 {
 }
 ```
 
-The condition must be `bool`.
+**§ 49(2)** The condition must be `bool`.
 
-Braces are required.
+**§ 49(3)** Braces are required.
 
 ---
 
-# Infinite for loop
+## § 50 Infinite for loop
 
 ```text
 InfiniteForStatement
     ::= "for" Block
 ```
 
-Example:
+**§ 50(1)** Example:
 
 ```sec
 for {
@@ -2061,7 +2081,7 @@ for {
 
 ---
 
-# Iterable for loop
+## § 51 Iterable for loop
 
 ```text
 IterableForStatement
@@ -2079,7 +2099,7 @@ ForBinding
       | "ref" "mut" Identifier
 ```
 
-Examples:
+**§ 51(1)** Examples:
 
 ```sec
 for item in values {
@@ -2096,46 +2116,46 @@ for i in 0..<10 step 2 {
 }
 ```
 
-The number and meaning of bindings depend on the iterable.
+**§ 51(2)** The number and meaning of bindings depend on the iterable.
 
-The grammar accepts plain, shared-reference, mutable-reference, and discard
+**§ 51(3)** The grammar accepts plain, shared-reference, mutable-reference, and discard
 bindings. Semantic analysis determines whether a binding mode is valid for the
 iterable category and position. Sequential indices, range values, and decoded
 string runes do not accept reference binding modes. Map keys and set elements
 do not accept `ref mut`.
 
-Sec 0.1 does not add `for -> item in source`, `for item in move source`, or
+**§ 51(4)** Sec 0.1 does not add `for -> item in source`, `for item in move source`, or
 another consuming-loop grammar form.
 
-`step` is valid for approved range iteration.
+**§ 51(5)** `step` is valid for approved range iteration.
 
-Condition-only `for` is invalid.
+**§ 51(6)** Condition-only `for` is invalid.
 
-C-style `for` is invalid.
+**§ 51(7)** C-style `for` is invalid.
 
 ---
 
-# While statement
+## § 52 While statement
 
 ```text
 WhileStatement
     ::= "while" Expression Block
 ```
 
-Example:
+**§ 52(1)** Example:
 
 ```sec
 while ready {
 }
 ```
 
-The condition must be `bool`.
+**§ 52(2)** The condition must be `bool`.
 
-Assignment in the condition is diagnosed.
+**§ 52(3)** Assignment in the condition is diagnosed.
 
 ---
 
-# Break and continue
+## § 53 Break and continue
 
 ```text
 BreakStatement
@@ -2145,13 +2165,13 @@ ContinueStatement
     ::= "continue"
 ```
 
-They are valid inside loops.
+**§ 53(1)** They are valid inside loops.
 
-Labeled break and continue are not part of Sec 0.1.
+**§ 53(2)** Labeled break and continue are not part of Sec 0.1.
 
 ---
 
-# Switch statement
+## § 54 Switch statement
 
 ```text
 SwitchStatement
@@ -2176,7 +2196,7 @@ RelationalSwitchCase
     ::= ( "<" | "<=" | ">" | ">=" ) Expression
 ```
 
-Examples:
+**§ 54(1)** Examples:
 
 ```sec
 switch value {
@@ -2189,7 +2209,7 @@ switch value {
 }
 ```
 
-Subjectless example:
+**§ 54(2)** Subjectless example:
 
 ```sec
 switch {
@@ -2200,28 +2220,28 @@ switch {
 }
 ```
 
-Use commas between several case values.
+**§ 54(3)** Use commas between several case values.
 
-`||` creates one boolean expression and is not the separator.
+**§ 54(4)** `||` creates one boolean expression and is not the separator.
 
-`default` must be unique and final.
+**§ 54(5)** `default` must be unique and final.
 
 ---
 
-# Fallthrough
+## § 55 Fallthrough
 
 ```text
 FallthroughStatement
     ::= "fallthrough"
 ```
 
-It is valid only directly inside a switch case body.
+**§ 55(1)** It is valid only directly inside a switch case body.
 
-It is not a general jump statement.
+**§ 55(2)** It is not a general jump statement.
 
 ---
 
-# Match expression
+## § 56 Match expression
 
 ```text
 MatchExpression
@@ -2242,7 +2262,7 @@ MatchArmBody
       | Block
 ```
 
-Examples:
+**§ 56(1)** Examples:
 
 ```sec
 let value := match result {
@@ -2251,26 +2271,26 @@ let value := match result {
 }
 ```
 
-In expression-match result position, a block arm contextually produces its
+**§ 56(2)** In expression-match result position, a block arm contextually produces its
 value from the final expression on every continuing path. Terminating paths do
 not require an arm value. This is not general block-expression syntax.
 
 ---
 
-# Match statement
+## § 57 Match statement
 
 ```text
 MatchStatement
     ::= MatchExpression
 ```
 
-A match may be used for effects when arm values are not required.
+**§ 57(1)** A match may be used for effects when arm values are not required.
 
 ---
 
-# Match patterns
+## § 58 Match patterns
 
-Canonical initial pattern grammar:
+**§ 58(1)** Canonical initial pattern grammar:
 
 ```text
 MatchPattern
@@ -2303,21 +2323,21 @@ FieldPattern
       | Identifier ":" "ref" "mut" Identifier
 ```
 
-The parser may read a pattern through the ordinary expression grammar.
+**§ 58(2)** The parser may read a pattern through the ordinary expression grammar.
 
-Sema restricts valid patterns.
+**§ 58(3)** Sema restricts valid patterns.
 
-General literal, range, and direct `true` / `false` patterns are not part of
+**§ 58(4)** General literal, range, and direct `true` / `false` patterns are not part of
 Sec 0.1 `match`; use `switch` or `if`. Enum-member patterns remain valid
 resolved finite-domain patterns. Struct-like destructuring is shallow, allows
 partial binding without `..`, and does not introduce recursive patterns.
 
-A bare `QualifiedIdentifier` naming a payload-bearing union variant is a valid
+**§ 58(5)** A bare `QualifiedIdentifier` naming a payload-bearing union variant is a valid
 variant-only pattern (MD-029): it selects the variant without extracting the
 payload. A `Result` subject's `Err(...)` arm uses `ErrPattern` from "Try
 expression".
 
-Examples:
+**§ 58(6)** Examples:
 
 ```sec
 Ok(value)
@@ -2332,14 +2352,14 @@ _
 
 ---
 
-# Defer statement
+## § 59 Defer statement
 
 ```text
 DeferStatement
     ::= "defer" Block
 ```
 
-Examples:
+**§ 59(1)** Examples:
 
 ```sec
 defer {
@@ -2347,36 +2367,36 @@ defer {
 }
 ```
 
-Control transfer from inside a defer block is restricted.
+**§ 59(2)** Control transfer from inside a defer block is restricted.
 
 ---
 
-# Discard statement
+## § 60 Discard statement
 
 ```text
 DiscardStatement
     ::= "discard" Expression
 ```
 
-Example:
+**§ 60(1)** Example:
 
 ```sec
 discard result
 ```
 
-Discard is explicit consumption and early deterministic destruction according
+**§ 60(2)** Discard is explicit consumption and early deterministic destruction according
 to `discard.md`.
 
 ---
 
-# Detach statement
+## § 61 Detach statement
 
 ```text
 DetachStatement
     ::= Contextual("detach") Expression [ "discard" ]
 ```
 
-Examples:
+**§ 61(1)** Examples:
 
 ```sec
 detach task
@@ -2386,26 +2406,26 @@ detach task
 detach task discard
 ```
 
-`detach` is a contextual spelling.
+**§ 61(2)** `detach` is a contextual spelling.
 
 ---
 
-# Cancel statement
+## § 62 Cancel statement
 
 ```text
 CancelStatement
     ::= "cancel"
 ```
 
-The current AST form has no explicit operand.
+**§ 62(1)** The current AST form has no explicit operand.
 
-Its meaning depends on the current cancellable context.
+**§ 62(2)** Its meaning depends on the current cancellable context.
 
-Complete cancellation semantics belong to `cancellation.md`.
+**§ 62(3)** Complete cancellation semantics belong to `cancellation.md`.
 
 ---
 
-# Select statement
+## § 63 Select statement
 
 ```text
 SelectStatement
@@ -2432,7 +2452,7 @@ SelectDefaultBranch
     ::= "default" "=>" Block
 ```
 
-Example:
+**§ 63(1)** Example:
 
 ```sec
 select {
@@ -2455,20 +2475,20 @@ select {
 }
 ```
 
-`default` must be unique and final.
+**§ 63(2)** `default` must be unique and final.
 
-A timeout after an unconditional default is unreachable.
+**§ 63(3)** A timeout after an unconditional default is unreachable.
 
 ---
 
-# Unsafe block
+## § 64 Unsafe block
 
 ```text
 UnsafeStatement
     ::= "unsafe" Block
 ```
 
-Example:
+**§ 64(1)** Example:
 
 ```sec
 unsafe {
@@ -2476,18 +2496,18 @@ unsafe {
 }
 ```
 
-The block does not change the grammar of contained statements.
+**§ 64(2)** The block does not change the grammar of contained statements.
 
-A statement that starts with `unsafe` followed by `{` is an `UnsafeStatement`;
+**§ 64(3)** A statement that starts with `unsafe` followed by `{` is an `UnsafeStatement`;
 `unsafe` followed by `fn` or `extern` is a declaration modifier; any other
 `unsafe` at statement start begins an expression statement with an
 `UnsafeCallExpression`.
 
 ---
 
-# Assembly statement
+## § 65 Assembly statement
 
-Simple forms:
+**§ 65(1)** Simple forms:
 
 ```text
 AsmStatement
@@ -2496,7 +2516,7 @@ AsmStatement
       | StructuredAsm
 ```
 
-Structured form:
+**§ 65(2)** Structured form:
 
 ```text
 StructuredAsm
@@ -2530,7 +2550,7 @@ AsmClobbers
         { Identifier [ "," ] }
 ```
 
-Example:
+**§ 65(3)** Example:
 
 ```sec
 asm {
@@ -2550,21 +2570,21 @@ asm {
 }
 ```
 
-The complete operand and constraint language belongs to
+**§ 65(4)** The complete operand and constraint language belongs to
 `rules/platform/inline_assembly.md`.
 
 ---
 
-# Expression grammar
+## § 66 Expression grammar
 
-The canonical expression grammar is precedence-driven.
+**§ 66(1)** The canonical expression grammar is precedence-driven.
 
-This document defines expression forms.
+**§ 66(2)** This document defines expression forms.
 
-`operators.md` defines precedence, associativity, evaluation order, and operator
+**§ 66(3)** `operators.md` defines precedence, associativity, evaluation order, and operator
 semantics.
 
-Conceptual grammar:
+**§ 66(4)** Conceptual grammar:
 
 ```text
 Expression
@@ -2572,11 +2592,11 @@ Expression
         { PostfixContinuation | InfixContinuation }
 ```
 
-The parser may implement this with Pratt parsing.
+**§ 66(5)** The parser may implement this with Pratt parsing.
 
 ---
 
-# Primary expressions
+## § 67 Primary expressions
 
 ```text
 PrimaryExpression
@@ -2600,7 +2620,7 @@ PrimaryExpression
 
 ---
 
-# Identifiers and self
+## § 68 Identifiers and self
 
 ```text
 IdentifierExpression
@@ -2608,15 +2628,15 @@ IdentifierExpression
       | "self"
 ```
 
-`self` is valid in an instance implementation context.
+**§ 68(1)** `self` is valid in an instance implementation context.
 
-The parser accepts it as an expression token.
+**§ 68(2)** The parser accepts it as an expression token.
 
-Sema determines whether the context provides an instance.
+**§ 68(3)** Sema determines whether the context provides an instance.
 
 ---
 
-# Literals
+## § 69 Literals
 
 ```text
 Literal
@@ -2629,17 +2649,17 @@ Literal
       | BooleanLiteral
 ```
 
-Numeric suffixes, bases, escapes, and literal token boundaries belong to
+**§ 69(1)** Numeric suffixes, bases, escapes, and literal token boundaries belong to
 `lexical_structure.md` and `types.md`.
 
-## Quantity literals
+### § 69.1 Quantity literals
 
 ```text
 QuantityLiteral
     ::= (IntegerLiteral | FloatingLiteral) UnitAnnotation
 ```
 
-The `<` of the `UnitAnnotation` (see "Unit annotation") follows the numeric
+**§ 69.1(1)** The `<` of the `UnitAnnotation` (see "Unit annotation") follows the numeric
 literal with no intervening whitespace, and the annotation closes with `>` on
 the same line. When either condition fails the parser does not form a
 quantity literal and `<` is the comparison operator, so `5 < s` and
@@ -2650,18 +2670,18 @@ literals") and `rules/types/temporal.md` § 5 (MD-015, 2026-10-13).
 
 ---
 
-# Grouped expression
+## § 70 Grouped expression
 
 ```text
 GroupedExpression
     ::= "(" Expression ")"
 ```
 
-Parentheses override operator precedence.
+**§ 70(1)** Parentheses override operator precedence.
 
 ---
 
-# Array literal
+## § 71 Array literal
 
 ```text
 ArrayLiteral
@@ -2676,7 +2696,7 @@ RangeSegment
     ::= Expression RangeOperator Expression
 ```
 
-Examples:
+**§ 71(1)** Examples:
 
 ```sec
 [1, 2, 3]
@@ -2690,44 +2710,44 @@ Examples:
 [224r..246r, 248r..255r, 0x41r]
 ```
 
-The empty literal `[]` requires contextual type information.
+**§ 71(2)** The empty literal `[]` requires contextual type information.
 
-Array and collection ownership rules apply to spread elements.
+**§ 71(3)** Array and collection ownership rules apply to spread elements.
 
-A `RangeSegment` contributes every value from its lower to its upper bound and
+**§ 71(4)** A `RangeSegment` contributes every value from its lower to its upper bound and
 requires both bounds; its semantics are defined by
 `rules/collections/collections.md` § 5.6a.
 
 ---
 
-# Empty list literal
+## § 72 Empty list literal
 
-Canonical:
+**§ 72(1)** Canonical:
 
 ```text
 EmptyListLiteral
     ::= ListTypeReference "{" "}"
 ```
 
-Examples:
+**§ 72(2)** Examples:
 
 ```sec
 list[string] {}
 list[Packet, 32] {}
 ```
 
-It is not a struct literal.
+**§ 72(3)** It is not a struct literal.
 
 ---
 
-# Lambda expression
+## § 73 Lambda expression
 
 ```text
 LambdaExpression
     ::= CaptureClause? "fn" ParameterList TypeReference Block
 ```
 
-Example:
+**§ 73(1)** Example:
 
 ```sec
 let double := fn(value: int) int {
@@ -2735,11 +2755,11 @@ let double := fn(value: int) int {
 }
 ```
 
-The return type is required.
+**§ 73(2)** The return type is required.
 
 ---
 
-# Capture clause
+## § 74 Capture clause
 
 ```text
 CaptureClause
@@ -2752,10 +2772,10 @@ CaptureEntry
       | "ref" "mut" Identifier
 ```
 
-`capture(<-value)` is the consuming capture form. The legacy
+**§ 74(1)** `capture(<-value)` is the consuming capture form. The legacy
 `capture(-> value)` spelling is not grammatical.
 
-Example:
+**§ 74(2)** Example:
 
 ```sec
 let closure := capture(value) fn(input: int) int {
@@ -2763,13 +2783,13 @@ let closure := capture(value) fn(input: int) int {
 }
 ```
 
-The lambda introducer itself is always plain `fn`. Generic parameter lists,
+**§ 74(3)** The lambda introducer itself is always plain `fn`. Generic parameter lists,
 `mut fn`, and `-> fn` are not lambda-expression introducers. `mut fn` and
 `-> fn` are callable-type capability syntax.
 
 ---
 
-# Call expression
+## § 75 Call expression
 
 ```text
 CallExpression
@@ -2781,7 +2801,7 @@ CallArgument
       | Expression "..."
 ```
 
-Examples:
+**§ 75(1)** Examples:
 
 ```sec
 Add(1, 2)
@@ -2795,7 +2815,7 @@ object.Method(value)
 Call(values...)
 ```
 
-Sema resolves whether the callee is:
+**§ 75(2)** Sema resolves whether the callee is:
 
 ```text
 function
@@ -2808,7 +2828,7 @@ compiler-known callable
 
 ---
 
-# Explicit generic call
+## § 76 Explicit generic call
 
 ```text
 ExplicitGenericCall
@@ -2816,18 +2836,18 @@ ExplicitGenericCall
         "(" [ CallArgument { "," CallArgument } [ "," ] ] ")"
 ```
 
-Examples:
+**§ 76(1)** Examples:
 
 ```sec
 Identity[int](10)
 pkg.Make[Box[string]]("hello")
 ```
 
-The bracket must be attached and followed by a call context.
+**§ 76(2)** The bracket must be attached and followed by a call context.
 
-Otherwise the syntax is indexing.
+**§ 76(3)** Otherwise the syntax is indexing.
 
-For generic function and method calls, the explicit type arguments may be a
+**§ 76(4)** For generic function and method calls, the explicit type arguments may be a
 positional prefix of the declaration's parameters. Remaining parameters are
 inferred from arguments, receiver, and permitted expected-result context.
 Generic argument holes such as `Foo[_, B](...)` or `Foo[, B](...)` are invalid.
@@ -2835,16 +2855,16 @@ Generic type references require their complete type argument list.
 
 ---
 
-# Type conversion expression
+## § 77 Type conversion expression
 
-Ordinary conversion surface:
+**§ 77(1)** Ordinary conversion surface:
 
 ```text
 ConversionExpression
     ::= TypeReference "(" Expression ")"
 ```
 
-Examples:
+**§ 77(2)** Examples:
 
 ```sec
 Percent(value)
@@ -2852,13 +2872,13 @@ decimal(integer)
 bool(number)
 ```
 
-The parser initially creates call-shaped syntax.
+**§ 77(3)** The parser initially creates call-shaped syntax.
 
-Sema resolves a type conversion.
+**§ 77(4)** Sema resolves a type conversion.
 
 ---
 
-# Bit extraction expression
+## § 78 Bit extraction expression
 
 ```text
 BitExtractionExpression
@@ -2866,13 +2886,13 @@ BitExtractionExpression
         [ UnitAnnotation ]
 ```
 
-The optional `UnitAnnotation` suffix (MD-046, 2026-10-13, `rules/corrections/applied/md040-md046-md047-md056-units-register-bits-rounding-correction-20261013.md` § 4) is admitted only directly after `bit[N](expression)`; it does not authorize a general `Call()<U>` form. Its `<` follows the closing parenthesis with no whitespace and the annotation closes on the same line; otherwise `<` is the comparison operator (`bit[8](x) < limit`). The formatter writes `bit[N](expression)<U>` with no space before the suffix.
+**§ 78(1)** The optional `UnitAnnotation` suffix (MD-046, 2026-10-13, `rules/corrections/applied/md040-md046-md047-md056-units-register-bits-rounding-correction-20261013.md` § 5) is admitted only directly after `bit[N](expression)`; it does not authorize a general `Call()<U>` form. Its `<` follows the closing parenthesis with no whitespace and the annotation closes on the same line; otherwise `<` is the comparison operator (`bit[8](x) < limit`). The formatter writes `bit[N](expression)<U>` with no space before the suffix.
 
-A contextual call-shaped expression use of the existing `bit[N]` spelling (MD-046/MD-056, 2026-10-12, `rules/corrections/applied/md046-md056-bit-extraction-correction-20261012.md`). It is not a declaration, a general type conversion, an ordinary call or a user-definable generic, and parsing it never makes `bit[N]` a variable type. When `bit[...]` is not followed by a parenthesized operand, the source is ordinary indexing of a value named `bit`. `IntegerConstant` is evaluated as a compile-time integer constant; its domain and the semantics are owned by `types.md` "Explicit low-bit extraction". The formatter writes `bit[N](expression)` without spaces inside the extraction syntax.
+**§ 78(2)** A contextual call-shaped expression use of the existing `bit[N]` spelling (MD-046/MD-056, 2026-10-12, `rules/corrections/applied/md046-md056-bit-extraction-correction-20261012.md`). It is not a declaration, a general type conversion, an ordinary call or a user-definable generic, and parsing it never makes `bit[N]` a variable type. When `bit[...]` is not followed by a parenthesized operand, the source is ordinary indexing of a value named `bit`. `IntegerConstant` is evaluated as a compile-time integer constant; its domain and the semantics are owned by `types.md` "Explicit low-bit extraction". The formatter writes `bit[N](expression)` without spaces inside the extraction syntax.
 
 ---
 
-# Unit conversion expression
+## § 79 Unit conversion expression
 
 ```text
 UnitConversionExpression
@@ -2883,9 +2903,9 @@ RoundedNumericConversion
     ::= NumericTypeReference "(" Expression "," RoundingModeExpression ")"
 ```
 
-`RoundingModeExpression` is an ordinary expression that must resolve to a case of the core `RoundingMode` enum; it is not a special token (MD-047, 2026-10-13, `rules/corrections/applied/md040-md046-md047-md056-units-register-bits-rounding-correction-20261013.md` § 5). `RoundedNumericConversion` is the ordinary call-shaped numeric conversion `T(value)` with the rounding argument; semantics are owned by `units.md` "Explicit rounding".
+**§ 79(1)** `RoundingModeExpression` is an ordinary expression that must resolve to a case of the core `RoundingMode` enum; it is not a special token (MD-047, 2026-10-13, `rules/corrections/applied/md040-md046-md047-md056-units-register-bits-rounding-correction-20261013.md` § 6). `RoundedNumericConversion` is the ordinary call-shaped numeric conversion `T(value)` with the rounding argument; semantics are owned by `units.md` "Explicit rounding".
 
-# Qualified unit references
+## § 80 Qualified unit references
 
 ```text
 QualifiedUnitCall
@@ -2895,38 +2915,38 @@ QualifiedUnitMemberAccess
     ::= UnitAnnotation "." Identifier
 ```
 
-A `UnitAnnotation` in expression position (MD-040, 2026-10-13, `rules/corrections/applied/md040-md046-md047-md056-units-register-bits-rounding-correction-20261013.md` § 2) is valid only as the callee of a unit conversion or unit function call (`<Volt>(value)`, `<rpm>.FromHz(x)`) or the object of a unit member access (`<Volt>.Symbol`). Because no other expression begins with `<`, the form is unambiguous. `QualifiedUnitMemberAccess` followed by an argument list is a unit function call.
+**§ 80(1)** A `UnitAnnotation` in expression position (MD-040, 2026-10-13, `rules/corrections/applied/md040-md046-md047-md056-units-register-bits-rounding-correction-20261013.md` § 3) is valid only as the callee of a unit conversion or unit function call (`<Volt>(value)`, `<rpm>.FromHz(x)`) or the object of a unit member access (`<Volt>.Symbol`). Because no other expression begins with `<`, the form is unambiguous. `QualifiedUnitMemberAccess` followed by an argument list is a unit function call.
 
-Example:
+**§ 80(2)** Example:
 
 ```sec
 decimal<C>(decimal(Amp) * decimal(Second))
 ```
 
-The parser must distinguish:
+**§ 80(3)** The parser must distinguish:
 
 ```sec
 left < right
 ```
 
-from:
+**§ 80(4)** from:
 
 ```sec
 decimal<m>(value)
 ```
 
-through type and token context.
+**§ 80(5)** through type and token context.
 
 ---
 
-# Member access
+## § 81 Member access
 
 ```text
 MemberExpression
     ::= Expression "." Identifier
 ```
 
-Examples:
+**§ 81(1)** Examples:
 
 ```sec
 vehicle.TopSpeed
@@ -2935,25 +2955,25 @@ module.Function
 self.data
 ```
 
-Member access may continue into calls, generic calls, indexing, or other member
+**§ 81(2)** Member access may continue into calls, generic calls, indexing, or other member
 access.
 
 ---
 
-# Index expression
+## § 82 Index expression
 
 ```text
 IndexExpression
     ::= Expression "[" Expression "]"
 ```
 
-Example:
+**§ 82(1)** Example:
 
 ```sec
 values[index]
 ```
 
-The indexed type determines whether the result is:
+**§ 82(2)** The indexed type determines whether the result is:
 
 ```text
 value
@@ -2965,7 +2985,7 @@ compiler-known indexed value
 
 ---
 
-# Slice expression
+## § 83 Slice expression
 
 ```text
 SliceExpression
@@ -2977,7 +2997,7 @@ SliceExpression
         "]"
 ```
 
-Examples:
+**§ 83(1)** Examples:
 
 ```sec
 values[2..<8]
@@ -2985,9 +3005,9 @@ values[..<8]
 values[2..]
 ```
 
-Range inclusivity follows the range operator.
+**§ 83(2)** Range inclusivity follows the range operator.
 
-The grammar is unchanged for strings; meaning is type-directed. Over a
+**§ 83(3)** The grammar is unchanged for strings; meaning is type-directed. Over a
 `string` or `StringView` operand the expression creates a borrowed
 `StringView` without `ref` (MD-126, `rules/corrections/applied/MD-126-borrowed-string-ranges-rune-iteration-applied-20261105.md`; `collections.md` § 7.10). Other
 operands keep `ref values[...]` / `ref mut values[...]`. No `RuneSlice` token
@@ -3001,14 +3021,14 @@ for ch in text[1..<3] { Process(ch) }
 
 ---
 
-# Struct or union typed construction
+## § 84 Struct or union typed construction
 
 ```text
 TypedConstruction
     ::= TypeReference StructLiteralBody
 ```
 
-Sema resolves:
+**§ 84(1)** Sema resolves:
 
 ```text
 struct literal
@@ -3017,11 +3037,11 @@ compiler-known typed collection literal
 other approved typed construction
 ```
 
-A non-constructible type is a semantic error.
+**§ 84(2)** A non-constructible type is a semantic error.
 
 ---
 
-# Prefix expressions
+## § 85 Prefix expressions
 
 ```text
 PrefixExpression
@@ -3035,16 +3055,16 @@ PrefixOperator
       | "*"
 ```
 
-Unary `+` is parsed and validated for numeric operands. Constant integer
+**§ 85(1)** Unary `+` is parsed and validated for numeric operands. Constant integer
 expressions fold it without changing the operand value.
 
-Prefix `*` is the explicit dereference of a safe reference (MD-063;
+**§ 85(2)** Prefix `*` is the explicit dereference of a safe reference (MD-063;
 `rules/foundations/operators.md` "Dereference"). Postfix forms bind tighter,
 so `*r.Field` is `*(r.Field)`. A dereference may begin a statement as the
 `PlaceExpression` of an assignment or compound assignment ("Assignment
 statements").
 
-Because newlines do not terminate statements, a `*` at the start of a later
+**§ 85(3)** Because newlines do not terminate statements, a `*` at the start of a later
 line continues the previous expression as multiplication unless it introduces
 a syntactically complete assignment target directly followed by an assignment
 operator (or `++` / `--`), in which case it starts a new dereference
@@ -3053,30 +3073,30 @@ syntactic (`operators.md` "Line-start dereference statements").
 
 ---
 
-# Reference expression
+## § 86 Reference expression
 
 ```text
 RefExpression
     ::= "ref" [ "mut" ] PlaceExpression
 ```
 
-When the `PlaceExpression` is a holder of a safe reference, `ref r` / `ref mut r` is an explicit reborrow of the referent with result `ref T` / `ref mut T`, never a reference to the holder; `ref mut` over a shared holder is an error (MD-061, 2026-10-15, `rules/memory/borrowing.md` § 11.4).
+**§ 86(1)** When the `PlaceExpression` is a holder of a safe reference, `ref r` / `ref mut r` is an explicit reborrow of the referent with result `ref T` / `ref mut T`, never a reference to the holder; `ref mut` over a shared holder is an error (MD-061, 2026-10-15, `rules/memory/borrowing.md` § 12.4).
 
 ---
 
-# Move expression
+## § 87 Move expression
 
 ```text
 MoveExpression
     ::= "<-" PlaceExpression
 ```
 
-A move expression is accepted in owning expression positions such as call
+**§ 87(1)** A move expression is accepted in owning expression positions such as call
 arguments and constructor, aggregate, `Option`, `Result`, and union payloads.
 Grammar acceptance does not decide whether the source is movable or the target
 consuming; Sema applies the ownership rules.
 
-Examples:
+**§ 87(2)** Examples:
 
 ```sec
 ref value
@@ -3084,15 +3104,15 @@ ref mut value
 ref mut self.data[0]
 ```
 
-A reference requires a valid addressable place.
+**§ 87(3)** A reference requires a valid addressable place.
 
-`ref Type[]` in type position is a slice type.
+**§ 87(4)** `ref Type[]` in type position is a slice type.
 
-`ref expression` in expression position creates a borrow.
+**§ 87(5)** `ref expression` in expression position creates a borrow.
 
 ---
 
-# Try expression
+## § 88 Try expression
 
 ```text
 TryExpression
@@ -3133,7 +3153,7 @@ ErrorVariantPayloadPattern
       | "{" [ FieldPattern { "," FieldPattern } [ "," ] ] "}"
 ```
 
-`ErrPattern` (MD-029) is shared by `try` handlers and by `Err(...)` arms of a
+**§ 88(1)** `ErrPattern` (MD-029) is shared by `try` handlers and by `Err(...)` arms of a
 `Result` `match`; both use the same selection and binding semantics
 (`rules/errors/errorhandling.md`). An unadorned `Identifier` binds the whole
 error and is never an inferred variant. A variant-only shorthand always has a
@@ -3151,7 +3171,7 @@ inside `Err(.NotFound { Path: path })` are a field pattern, distinct from the
 braces of a handler list, `match` body or arm body; parser recovery and the
 formatter preserve that distinction.
 
-Examples:
+**§ 88(2)** Examples:
 
 ```sec
 let value := try Calculate()
@@ -3164,7 +3184,7 @@ let value := try Calculate() {
 }
 ```
 
-The protected expression determines the legal handler family. Result/error
+**§ 88(3)** The protected expression determines the legal handler family. Result/error
 `try` accepts `Err(...)`; Option `try` accepts `None`. Explicit `Ok(...)` and
 `Some(...)` success handlers and the obsolete nested `match { ... }` wrapper
 are invalid. Handler lists are semantically partial; unmatched states propagate
@@ -3172,7 +3192,7 @@ when compatible.
 
 ---
 
-# Spawn expression
+## § 89 Spawn expression
 
 ```text
 SpawnExpression
@@ -3185,7 +3205,7 @@ SpawnKind
       | Contextual("process")
 ```
 
-Examples:
+**§ 89(1)** Examples:
 
 ```sec
 spawn Work()
@@ -3196,20 +3216,20 @@ spawn {
 }
 ```
 
-Default kind is `task`.
+**§ 89(2)** Default kind is `task`.
 
-`process` syntax is parsed but the feature is deferred.
+**§ 89(3)** `process` syntax is parsed but the feature is deferred.
 
 ---
 
-# Await expression
+## § 90 Await expression
 
 ```text
 AwaitExpression
     ::= "await" Expression
 ```
 
-Example:
+**§ 90(1)** Example:
 
 ```sec
 let result := await task
@@ -3217,14 +3237,14 @@ let result := await task
 
 ---
 
-# Unsafe call expression
+## § 91 Unsafe call expression
 
 ```text
 UnsafeCallExpression
     ::= "unsafe" CallExpression
 ```
 
-The direct single-call authorization (MD-079, 2026-10-18). The operand is
+**§ 91(1)** The direct single-call authorization (MD-079, 2026-10-18). The operand is
 parsed at prefix precedence and must be one complete call (function, method,
 associated or indirect callable); the prefix binds to that call, not to a
 following binary expression:
@@ -3236,7 +3256,7 @@ let buffer := unsafe Buffer.FromRawParts(pointer, length)
 let adjusted := unsafe pointer.Read() + SafeAdjustment() // only Read is authorized
 ```
 
-By the ordinary expression-statement rule the same form is a statement. It is
+**§ 91(2)** By the ordinary expression-statement rule the same form is a statement. It is
 distinct from the declaration modifier (`unsafe fn`, `unsafe extern`) and from
 the block `UnsafeStatement` (`unsafe` followed by `{`). A block-less `unsafe`
 followed by anything other than a call (for example `unsafe value + 1`) or by
@@ -3246,7 +3266,7 @@ operands need their own authorization (`rules/memory/unsafe.md` § 4(9)–(13)).
 
 ---
 
-# Runtime or compiler call expression
+## § 92 Runtime or compiler call expression
 
 ```text
 RuntimeCallExpression
@@ -3254,28 +3274,28 @@ RuntimeCallExpression
         "(" [ CallArgument { "," CallArgument } [ "," ] ] ")"
 ```
 
-Example shape:
+**§ 92(1)** Example shape:
 
 ```sec
 @compiler.operation(value)
 ```
 
-This form must not be confused with general attributes.
+**§ 92(2)** This form must not be confused with general attributes.
 
-The set of valid names is compiler-controlled.
+**§ 92(3)** The set of valid names is compiler-controlled.
 
 ---
 
-# Spread expression
+## § 93 Spread expression
 
 ```text
 SpreadExpression
     ::= Expression "..."
 ```
 
-Spread is valid only in approved contexts.
+**§ 93(1)** Spread is valid only in approved contexts.
 
-Sec 0.1 approved contexts are governed by `declarations/spread.md`, including:
+**§ 93(2)** Sec 0.1 approved contexts are governed by `declarations/spread.md`, including:
 
 ```text
 call arguments
@@ -3283,35 +3303,35 @@ array literals
 struct literals
 ```
 
-Fixed-arity calls and fixed-array literals require every spread contribution to
+**§ 93(3)** Fixed-arity calls and fixed-array literals require every spread contribution to
 have a compile-time-known expansion count. A runtime-length sequence may be
 spread only when the destination's canonical rule defines runtime arity.
 
-`expression...` is non-consuming syntax. It does not imply a move or partial
+**§ 93(4)** `expression...` is non-consuming syntax. It does not imply a move or partial
 move.
 
-For struct literals, explicit entries and spreads are resolved from left to
+**§ 93(5)** For struct literals, explicit entries and spreads are resolved from left to
 right before semantic defaults are supplied for still-omitted Defaultable
 fields. A still-omitted NonDefaultable field is invalid. Canonical construction
 rules are defined by `declarations/struct.md`.
 
-Spread is not a general standalone value operator.
+**§ 93(6)** Spread is not a general standalone value operator.
 
 ---
 
-# Range expression in contextual positions
+## § 94 Range expression in contextual positions
 
 ```text
 RangeExpression
     ::= [ Expression ] RangeOperator [ Expression ]
 ```
 
-Range expressions are accepted only where the surrounding grammar explicitly
+**§ 94(1)** Range expressions are accepted only where the surrounding grammar explicitly
 permits them: `for` iteration, membership, slicing, switch cases, array
 literal range segments, and the argument of `Append` on an owning dynamic
 array (`rules/collections/collections.md` §§ 5.6a and 6.7).
 
-Examples:
+**§ 94(2)** Examples:
 
 ```sec
 0..<10
@@ -3319,21 +3339,21 @@ Examples:
 0..
 ```
 
-A standalone variable initializer does not create a first-class `Range` value in
+**§ 94(3)** A standalone variable initializer does not create a first-class `Range` value in
 Sec 0.1.
 
 ---
 
-# Infix expressions
+## § 95 Infix expressions
 
 ```text
 InfixExpression
     ::= Expression InfixOperator Expression
 ```
 
-The complete operator inventory and precedence are defined by `operators.md`.
+**§ 95(1)** The complete operator inventory and precedence are defined by `operators.md`.
 
-The grammar includes:
+**§ 95(2)** The grammar includes:
 
 ```text
 arithmetic
@@ -3346,13 +3366,13 @@ logical
 contextual matrix multiplication
 ```
 
-The parser recognizes contextual `x` at multiplicative precedence. Sema
+**§ 95(3)** The parser recognizes contextual `x` at multiplicative precedence. Sema
 resolves fixed matrix/matrix and matrix/vector result shapes and rejects
 incompatible inner dimensions or element types.
 
 ---
 
-# Membership expression
+## § 96 Membership expression
 
 ```text
 MembershipExpression
@@ -3364,13 +3384,13 @@ MembershipSource
       | SliceExpression
 ```
 
-The parser accepts a range-or-expression right operand.
+**§ 96(1)** The parser accepts a range-or-expression right operand.
 
-`for value in source` is iteration grammar, not this boolean operator.
+**§ 96(2)** `for value in source` is iteration grammar, not this boolean operator.
 
 ---
 
-# Foreign null sentinel and null tests
+## § 97 Foreign null sentinel and null tests
 
 ```text
 ForeignNullSentinel
@@ -3381,7 +3401,7 @@ ForeignNullTest
       | Expression "is" "not" "null"
 ```
 
-`ForeignNullTest` is a boolean expression at the equality/state-test precedence
+**§ 97(1)** `ForeignNullTest` is a boolean expression at the equality/state-test precedence
 of `is` and `is not`. Its left operand is bound and evaluated once. `null` is a
 reserved spelling, and Sema permits the sentinel and both tests only inside
 `unsafe` with a raw-pointer operand or an explicit raw-pointer target type. The
@@ -3391,9 +3411,9 @@ production grants no general-purpose null operand or null expression type, and
 
 ---
 
-# Assignment is not expression syntax
+## § 98 Assignment is not expression syntax
 
-The following are statements:
+**§ 98(1)** The following are statements:
 
 ```sec
 destination = source
@@ -3401,9 +3421,9 @@ destination <- source
 destination += source
 ```
 
-They cannot occur where a value expression is required.
+**§ 98(2)** They cannot occur where a value expression is required.
 
-Invalid:
+**§ 98(3)** Invalid:
 
 ```sec
 let result := destination = source
@@ -3411,9 +3431,9 @@ let result := destination = source
 
 ---
 
-# Type-reference grammar
+## § 99 Type-reference grammar
 
-Canonical overview:
+**§ 99(1)** Canonical overview:
 
 ```text
 TypeReference
@@ -3441,14 +3461,14 @@ TypeSuffix
 
 ---
 
-# Reference type
+## § 100 Reference type
 
 ```text
 ReferenceType
     ::= "ref" [ "mut" ] TypeReference
 ```
 
-Examples:
+**§ 100(1)** Examples:
 
 ```sec
 ref int
@@ -3457,11 +3477,11 @@ ref byte[]
 ref mut rune[]
 ```
 
-A bare safe slice is represented through reference syntax.
+**§ 100(2)** A bare safe slice is represented through reference syntax.
 
 ---
 
-# Function type
+## § 101 Function type
 
 ```text
 FunctionType
@@ -3479,7 +3499,7 @@ CallableParameterType
       | "..." TypeReference
 ```
 
-Example:
+**§ 101(1)** Example:
 
 ```sec
 fn(int) bool
@@ -3487,13 +3507,13 @@ mut fn() int
 -> fn(-> Resource) Handle
 ```
 
-Parameter names do not appear in function type references.
+**§ 101(2)** Parameter names do not appear in function type references.
 
-`FunctionType` deliberately has no `unsafe` prefix: Sec 0.1 has no general unsafe function type, and no spelling, ordering rule, formatter form or implicit coercion exists for one, including through generic type parameters. `unsafe` marks function declarations and unsafe blocks only; a foreign C function pointer is the separate type `c::fn(...)` (`rules/memory/unsafe.md` § 39(6); MD-059, 2026-10-16).
+**§ 101(3)** `FunctionType` deliberately has no `unsafe` prefix: Sec 0.1 has no general unsafe function type, and no spelling, ordering rule, formatter form or implicit coercion exists for one, including through generic type parameters. `unsafe` marks function declarations and unsafe blocks only; a foreign C function pointer is the separate type `c::fn(...)` (`rules/memory/unsafe.md` § 40(6); MD-059, 2026-10-16).
 
 ---
 
-# Unit annotation
+## § 102 Unit annotation
 
 ```text
 UnitAnnotation
@@ -3514,7 +3534,7 @@ UnitAtom
       | "(" UnitExpression ")"
 ```
 
-Examples:
+**§ 102(1)** Examples:
 
 ```sec
 decimal<m>
@@ -3522,36 +3542,36 @@ decimal<m/s>
 Speed<km/h>
 ```
 
-The parser preserves source spelling. Semantic normalization determines
+**§ 102(2)** The parser preserves source spelling. Semantic normalization determines
 dimensional equivalence and does not make `<mps>` a syntactic alias for
 `<m/s>`.
 
 ---
 
-# Unit-only type reference
+## § 103 Unit-only type reference
 
 ```text
 UnitOnlyType
     ::= UnitAnnotation
 ```
 
-`<NamedUnit>` uses the named unit's declared default numeric carrier, or
+**§ 103(1)** `<NamedUnit>` uses the named unit's declared default numeric carrier, or
 `decimal` when none is declared. A compound structural unit-only type such as
 `<m/s>` always defaults to `decimal`; an explicit carrier may be written as
 `float64<m/s>` or `decimal<m/s>`.
 
 ---
 
-# Fixed array type
+## § 104 Fixed array type
 
-Canonical:
+**§ 104(1)** Canonical:
 
 ```text
 FixedArrayType
     ::= TypeReference "[" ConstantExpression "]"
 ```
 
-Examples:
+**§ 104(2)** Examples:
 
 ```sec
 byte[512]
@@ -3559,34 +3579,34 @@ Token[16]
 matrix[float32, 4, 4][2]
 ```
 
-The length must be a valid compile-time nonnegative integer.
+**§ 104(3)** The length must be a valid compile-time nonnegative integer.
 
 ---
 
-# Owning dynamic array type
+## § 105 Owning dynamic array type
 
-Canonical:
+**§ 105(1)** Canonical:
 
 ```text
 OwningDynamicArrayType
     ::= TypeReference "[" "]"
 ```
 
-Example:
+**§ 105(2)** Example:
 
 ```sec
 rune[]
 ```
 
-This is an owning dynamic sequence type in the current type model.
+**§ 105(3)** This is an owning dynamic sequence type in the current type model.
 
-A slice is:
+**§ 105(4)** A slice is:
 
 ```sec
 ref rune[]
 ```
 
-or:
+**§ 105(5)** or:
 
 ```sec
 ref mut rune[]
@@ -3594,22 +3614,22 @@ ref mut rune[]
 
 ---
 
-# Prefix sequence types are invalid
+## § 106 Prefix sequence types are invalid
 
-The prefix spellings `[N]Type` and `[]Type` were never normative Sec syntax.
+**§ 106(1)** The prefix spellings `[N]Type` and `[]Type` were never normative Sec syntax.
 They are not Sec 0.1 grammar and not legacy forms; the canonical spellings are
 `Type[N]` and `Type[]`.
 
 ---
 
-# Generic type arguments
+## § 107 Generic type arguments
 
 ```text
 TypeArgumentList
     ::= "[" TypeReference { "," TypeReference } [ "," ] "]"
 ```
 
-Examples:
+**§ 107(1)** Examples:
 
 ```sec
 Result[int, IOError]
@@ -3618,16 +3638,16 @@ RawPtr[byte]
 Pair[int, string]
 ```
 
-Not every square-bracket list contains only types.
+**§ 107(2)** Not every square-bracket list contains only types.
 
-Compiler-known collection and shaped constructors have mixed type and constant
+**§ 107(3)** Compiler-known collection and shaped constructors have mixed type and constant
 arguments.
 
 ---
 
-# Collection and shaped types
+## § 108 Collection and shaped types
 
-Canonical families:
+**§ 108(1)** Canonical families:
 
 ```text
 ListType
@@ -3669,14 +3689,14 @@ TensorLayoutType
     ::= "TensorLayout" "[" ConstantExpression "]"
 ```
 
-The parser recognizes these names specially to separate type arguments from
+**§ 108(2)** The parser recognizes these names specially to separate type arguments from
 constant arguments.
 
-Complete dimension and capacity validation belongs to Sema.
+**§ 108(3)** Complete dimension and capacity validation belongs to Sema.
 
 ---
 
-# Event types
+## § 109 Event types
 
 ```text
 EventType
@@ -3686,74 +3706,74 @@ EventStorageType
     ::= "EventStorage" "[" TypeReference [ "," ConstantExpression ] "]"
 ```
 
-Examples:
+**§ 109(1)** Examples:
 
 ```sec
 Event[ButtonPressData, 8]
 EventStorage[ButtonPressData, 8]
 ```
 
-Capacity is compile-time known and greater than zero
+**§ 109(2)** Capacity is compile-time known and greater than zero
 (`rules/concurrency/events.md`).
 
 ---
 
-# Parenthesized type
+## § 110 Parenthesized type
 
 ```text
 ParenthesizedType
     ::= "(" TypeReference ")"
 ```
 
-This is grouping.
+**§ 110(1)** This is grouping.
 
-It does not create a tuple type.
+**§ 110(2)** It does not create a tuple type.
 
 ---
 
-# Type versus expression ambiguity
+## § 111 Type versus expression ambiguity
 
-The parser must distinguish:
+**§ 111(1)** The parser must distinguish:
 
 ```sec
 Type(value)
 ```
 
-from a function call.
+**§ 111(2)** from a function call.
 
-Sema resolves the callee.
+**§ 111(3)** Sema resolves the callee.
 
-The parser must distinguish:
+**§ 111(4)** The parser must distinguish:
 
 ```sec
 Name[Type](value)
 ```
 
-from indexing.
+**§ 111(5)** from indexing.
 
-The parser must distinguish:
+**§ 111(6)** The parser must distinguish:
 
 ```sec
 Type { ... }
 ```
 
-from a following block.
+**§ 111(7)** from a following block.
 
-The parser must distinguish:
+**§ 111(8)** The parser must distinguish:
 
 ```sec
 decimal<m>(value)
 ```
 
-from comparison.
+**§ 111(9)** from comparison.
 
-The parser may use lookahead, but the semantic result must match this grammar.
+**§ 111(10)** The parser may use lookahead, but the semantic result must match this grammar.
 
 ---
 
-# Contextual spellings
+## § 112 Contextual spellings
 
-The following spellings are contextual or intended to become contextual:
+**§ 112(1)** The following spellings are contextual or intended to become contextual:
 
 ```text
 x
@@ -3773,19 +3793,19 @@ clobbers
 address
 ```
 
-A contextual spelling remains an ordinary identifier outside its context.
+**§ 112(2)** A contextual spelling remains an ordinary identifier outside its context.
 
-`task`, `thread`, and `process` (`lexical_structure.md` § 7.2) and the contract
+**§ 112(3)** `task`, `thread`, and `process` (`lexical_structure.md` § 8.2) and the contract
 words (§ 7.3) are also interpreted by context, but they are reserved and are
 never valid declaration names.
 
-The grammar context determines its role.
+**§ 112(4)** The grammar context determines its role.
 
 ---
 
-# Contextual `set`
+## § 113 Contextual `set`
 
-`set` is contextual (`lexical_structure.md` § 7.2):
+**§ 113(1)** `set` is contextual (`lexical_structure.md` § 8.2):
 
 - collection type constructor in type position;
 - property setter introducer in property position;
@@ -3793,42 +3813,42 @@ The grammar context determines its role.
 
 ---
 
-# Comments
+## § 114 Comments
 
-The lexer recognizes comments.
+**§ 114(1)** The lexer recognizes comments.
 
-Documentation comments and attachment rules must remain synchronized with
+**§ 114(2)** Documentation comments and attachment rules must remain synchronized with
 `lexical_structure.md`, formatter rules, and future documentation tooling.
 
-Comments do not terminate or combine tokens except through normal lexical
+**§ 114(3)** Comments do not terminate or combine tokens except through normal lexical
 separation.
 
 ---
 
-# Reserved syntax
+## § 115 Reserved syntax
 
-`?` is reserved and has no Sec 0.1 meaning.
+**§ 115(1)** `?` is reserved and has no Sec 0.1 meaning.
 
-`free` is valid only as the `FreeDeclaration` impl member: a lifecycle
+**§ 115(2)** `free` is valid only as the `FreeDeclaration` impl member: a lifecycle
 declaration inside a valid `impl`, not an expression, an ordinary `fn` or a
 statement at arbitrary locations. Its block may use bare `return` but not
 `return expression`; eligible targets and semantics are owned by `impl.md`
 § 19 and `destruction.md` § 15 (MD-025, 2026-10-15).
 
-`panic` and `assert` are statement keywords whose forms are defined above and by
+**§ 115(3)** `panic` and `assert` are statement keywords whose forms are defined above and by
 `rules/errors/panic.md`; neither is callable.
 
-`require` is a general keyword (`lexical_structure.md` § 7.1) and is not a
+**§ 115(4)** `require` is a general keyword (`lexical_structure.md` § 8.1) and is not a
 valid identifier.
 
-The parser issues focused diagnostics for these spellings rather than generic
+**§ 115(5)** The parser issues focused diagnostics for these spellings rather than generic
 token failures.
 
 ---
 
-# Invalid forms
+## § 116 Invalid forms
 
-The following are explicitly invalid in canonical Sec 0.1:
+**§ 116(1)** The following are explicitly invalid in canonical Sec 0.1:
 
 ```sec
 let immutable: Type
@@ -3881,9 +3901,9 @@ value = other = third
 
 ---
 
-# Legacy, future, and recovery syntax
+## § 117 Legacy, future, and recovery syntax
 
-The parser may recognize the following invalid Sec 0.1 forms only to issue a
+**§ 117(1)** The parser may recognize the following invalid Sec 0.1 forms only to issue a
 focused diagnostic or to recover; none of them is accepted Sec 0.1 source:
 
 ```text
@@ -3899,16 +3919,16 @@ prefix sequence syntax []Type     never normative; invalid
 body-bearing extern declaration   focused rejection and recovery
 ```
 
-Recognized forms must be marked in AST or diagnostics where needed. Default
+**§ 117(2)** Recognized forms must be marked in AST or diagnostics where needed. Default
 formatting does not convert any of them; an enabled Language Correction may
 rewrite a legacy form only under the policy in "Canonical syntax and legacy
 forms" above (MD-003).
 
 ---
 
-# Parser responsibilities
+## § 118 Parser responsibilities
 
-The parser must:
+**§ 118(1)** The parser must:
 
 - construct a stable AST;
 - preserve source ranges and tokens;
@@ -3928,9 +3948,9 @@ The parser must:
 
 ---
 
-# AST responsibilities
+## § 119 AST responsibilities
 
-The AST must represent:
+**§ 119(1)** The AST must represent:
 
 - source spelling;
 - declaration kind;
@@ -3947,15 +3967,15 @@ The AST must represent:
 - tokens needed for diagnostics;
 - contextual syntax before semantic resolution.
 
-The AST may contain parser-level ambiguous nodes where Sema decides the meaning.
+**§ 119(2)** The AST may contain parser-level ambiguous nodes where Sema decides the meaning.
 
-The current recovery AST retains invalid statements, failed top-level
+**§ 119(3)** The current recovery AST retains invalid statements, failed top-level
 declarations, disallowed impl members, malformed match/handler patterns,
 selected invalid expressions, and selected invalid type references with
 syntax-only recovery metadata. These nodes never confer valid semantics and
 batch lowering remains blocked by parser errors.
 
-Example:
+**§ 119(4)** Example:
 
 ```text
 CallExpression
@@ -3964,9 +3984,9 @@ CallExpression
 
 ---
 
-# Sema responsibilities
+## § 120 Sema responsibilities
 
-Sema must determine:
+**§ 120(1)** Sema must determine:
 
 - name resolution;
 - module and scope validity;
@@ -3994,15 +4014,15 @@ Sema must determine:
 - unsafe requirements;
 - target restrictions where semantically necessary.
 
-Sema must not depend on backend accidents such as undefined aggregate fields.
+**§ 120(2)** Sema must not depend on backend accidents such as undefined aggregate fields.
 
 ---
 
-# Formatter responsibilities
+## § 121 Formatter responsibilities
 
-The formatter must print canonical syntax.
+**§ 121(1)** The formatter must print canonical syntax.
 
-Default formatting does not convert legacy, future, or otherwise invalid syntax
+**§ 121(2)** Default formatting does not convert legacy, future, or otherwise invalid syntax
 into canonical syntax. Such rewrites belong to explicitly enabled Language
 Corrections (`rules/tooling/formatter.md` §§ 26–27), which apply only when the
 rewrite is unambiguous and semantics-preserving, for example:
@@ -4014,7 +4034,7 @@ type Name = ExistingType -> type Name ExistingType
 prefix array type -> postfix array type
 ```
 
-It must preserve:
+**§ 121(3)** It must preserve:
 
 ```text
 := versus :<-
@@ -4025,13 +4045,13 @@ omitted struct fields
 contextual identifier use
 ```
 
-The formatter must not infer language semantics.
+**§ 121(4)** The formatter must not infer language semantics.
 
 ---
 
-# Required parser tests
+## § 122 Required parser tests
 
-The canonical parser test suite must cover:
+**§ 122(1)** The canonical parser test suite must cover:
 
 ```text
 target directive
@@ -4071,9 +4091,9 @@ recovery boundaries
 
 ---
 
-# Required grammar fixtures
+## § 123 Required grammar fixtures
 
-Create:
+**§ 123(1)** Create:
 
 ```text
 grammar_valid.sec
@@ -4091,7 +4111,7 @@ grammar_contextual_invalid.sec
 grammar_recovery.sec
 ```
 
-Every invalid fixture must include:
+**§ 123(2)** Every invalid fixture must include:
 
 ```sec
 /* Expected error: ...
@@ -4101,9 +4121,9 @@ Every invalid fixture must include:
 
 ---
 
-# Required synchronization
+## § 124 Required synchronization
 
-This document must remain synchronized with:
+**§ 124(1)** This document must remain synchronized with:
 
 ```text
 lexical_structure.md
@@ -4152,60 +4172,60 @@ semantic_ir.md
 language-rulebook-status.md
 ```
 
-Planned files remain references to future canonical closure work.
+**§ 124(2)** Planned files remain references to future canonical closure work.
 
 ---
 
-# Design summary
+## § 125 Design summary
 
-Sec source files declare a module and contain declarations.
+**§ 125(1)** Sec source files declare a module and contain declarations.
 
-Declarations use explicit typed syntax.
+**§ 125(2)** Declarations use explicit typed syntax.
 
-Named types carry contracts and optional explicit defaults.
+**§ 125(3)** Named types carry contracts and optional explicit defaults.
 
-Structs declare data.
+**§ 125(4)** Structs declare data.
 
-Impl blocks declare behavior.
+**§ 125(5)** Impl blocks declare behavior.
 
-Interfaces declare requirements.
+**§ 125(6)** Interfaces declare requirements.
 
-Functions return one value.
+**§ 125(7)** Functions return one value.
 
-Variables are immutable by default.
+**§ 125(8)** Variables are immutable by default.
 
-Mutable typed declarations may use semantic defaults.
+**§ 125(9)** Mutable typed declarations may use semantic defaults.
 
-Copy and move syntax are distinct.
+**§ 125(10)** Copy and move syntax are distinct.
 
-Assignments are statements.
+**§ 125(11)** Assignments are statements.
 
-Blocks require braces.
+**§ 125(12)** Blocks require braces.
 
-Ranges are contextual in Sec 0.1.
+**§ 125(13)** Ranges are contextual in Sec 0.1.
 
-`match` is the value-producing branch construct.
+**§ 125(14)** `match` is the value-producing branch construct.
 
-`switch` and `select` are statements.
+**§ 125(15)** `switch` and `select` are statements.
 
-`for` iterates or loops infinitely.
+**§ 125(16)** `for` iterates or loops infinitely.
 
-`while` handles condition loops.
+**§ 125(17)** `while` handles condition loops.
 
-`try`, `defer`, `discard`, `spawn`, `await`, and unsafe syntax have explicit
+**§ 125(18)** `try`, `defer`, `discard`, `spawn`, `await`, and unsafe syntax have explicit
 grammar forms.
 
-Operators use the canonical precedence and semantics from `operators.md`.
+**§ 125(19)** Operators use the canonical precedence and semantics from `operators.md`.
 
-Canonical arrays and owning dynamic sequences use postfix type syntax.
+**§ 125(20)** Canonical arrays and owning dynamic sequences use postfix type syntax.
 
-Safe slices use `ref T[]` or `ref mut T[]`.
+**§ 125(21)** Safe slices use `ref T[]` or `ref mut T[]`.
 
-First-class ranges, multiple returns, and arbitrary user-defined operators are
+**§ 125(22)** First-class ranges, multiple returns, and arbitrary user-defined operators are
 not part of Sec 0.1.
 
-The parser constructs syntax.
+**§ 125(23)** The parser constructs syntax.
 
-Sema assigns meaning.
+**§ 125(24)** Sema assigns meaning.
 
-No implementation shortcut may redefine the canonical grammar.
+**§ 125(25)** No implementation shortcut may redefine the canonical grammar.

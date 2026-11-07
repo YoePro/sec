@@ -13,7 +13,7 @@
 | Repository | `YoePro/sec` |
 | Audited branch | `main` |
 | Audited commit | `0cdacb04fb3757a26569d51c21a5ae445f0facaf` |
-| Replaces proposal | `rules/corrections/MD-126-string-byte-range-iteration-proposal-20261104.md` (proposal only; do not rewrite an applied historical correction) |
+| Replaces proposal | `rules/corrections/applied/MD-126-string-byte-range-iteration-proposal-20261104-20261107.md` (proposal only; do not rewrite an applied historical correction) |
 | Primary rulebooks | `rules/types/types.md`, `rules/collections/collections.md`, `rules/control-flow/flowcontrol_for.md`, `rules/library/core-library.md`, `rules/compiler/compiler_known_members.md`, `rules/memory/{references,reference_model,borrowing}.md`, `rules/errors/runtime_checks.md` |
 | Related decisions | MD-050, MD-058, MD-063, MD-071, MD-072, MD-094, MD-115/116, MD-117/119, MD-126; P16 and P23 |
 
@@ -210,7 +210,7 @@ The table below is **integration work**, not a claim that these files already im
 | `rules/mlir/packages/sec-mlir-dialect_package23.md` | §§ 14–18, 29–36 | Replace outdated “string does not use array slice syntax” and `Slice -> Result[string,RangeError]`; specify zero-copy view, owned materialization only when requested, reused rune iterator, verifier/typed failure edges; keep P23 unfinished as appropriate. |
 | `rules/mlir/normative-sync/sec_string_core_sync_package23.md`; package decision index / schema-19 / lowering-19 docs | Public slicing/byte translation and P23 source contracts | Reconcile with the new MD-126 view, preserve `MD-050/071/072` authority. No invented schema-19 implementation claim: repository's currently accepted schema-12 path remains distinct from future P23 plans. |
 | `rules/corrections/applied/md050-md071-md072-string-utf8-positions-materialization-correction-20261017.md` | §§ 3–4, 7–10 | **Historical decision record: DO NOT rewrite.** Add a *new* MD-126 supersession reference in canonical owning books, respecting old MD-071 rune-unit authority. |
-| `rules/corrections/MD-126-string-byte-range-iteration-proposal-20261104.md`; `missing-decisions.yaml` MD-126 | Entire old proposal/status | Mark the byte-range proposal superseded by this correction; update the MD-126 decision and integration status. No premature `implemented` claim. |
+| `rules/corrections/applied/MD-126-string-byte-range-iteration-proposal-20261104-20261107.md`; `missing-decisions.yaml` MD-126 | Entire old proposal/status | Mark the byte-range proposal superseded by this correction; update the MD-126 decision and integration status. No premature `implemented` claim. |
 | `rules/analysis/escape_analysis.md` | `Parameter(0).Slice(2..8)` origin notation | **Do not replace** this abstract provenance-path notation: it is not a source-level call to `string.Slice()`. Add `StringView` provenance handling in analysis where necessary. |
 
 ---

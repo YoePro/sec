@@ -148,26 +148,31 @@ func (a *Analyzer) unionConstructorVariant(value ast.Expression, typ Type) strin
 	return member.Property.Value
 }
 
-// knownVariantTest decides `binding is Variant` for an immutable binding whose
-// active variant is proven: by construction from a variant constructor, or
-// by a dominating, unmutated `binding is V` (true when V is Variant, false
-// otherwise) or `binding is not Variant` fact of the path. A mutable binding
-// is never decided, because a method with a mutable receiver can change its
-// variant without an assignment.
+// knownVariantTest decides `binding is Variant` for a binding whose active
+// variant is proven: by construction from a variant constructor (immutable
+// bindings only), or by a dominating `binding is V` (true when V is Variant,
+// false otherwise) or `binding is not Variant` fact of the path. For a
+// mutable binding, such as an owned by-value parameter, only a
+// version-tracked fact counts, and it is invalidated by any assignment to the
+// binding, any call (a mutable-receiver method or a `ref mut` argument may
+// change the variant without an assignment), any write through a reference or
+// member path, and loop entry (condition_proof_versions.go). A live
+// `ref mut` borrow or capture makes reading the binding a borrow conflict.
 //
 // Rules:
 //   - rules/declarations/unions.md — §8.1 "Active variant test", §8.4 "Impossible state tests"
 //   - rules/tooling/diagnostics.md — § 21(1), (5), (6) "Proven unreachable and dead code"
 func (a *Analyzer) knownVariantTest(binding string, variant string) (value bool, known bool) {
 	symbol, exists := a.symbols.lookup(binding)
-	if !exists || symbol.Mutable {
+	if !exists || symbol.Volatile {
 		return false, false
 	}
-	if symbol.ConstructedVariant != "" {
+	if symbol.ConstructedVariant != "" && !symbol.Mutable {
 		return symbol.ConstructedVariant == variant, true
 	}
+	excluded := map[string]bool{}
 	for _, active := range a.activeConditionFacts {
-		if active.epoch != a.arrayIndexMutationEpoch || active.fact.Condition == nil || active.fact.Kind == ConditionFactLogicalRHSFalse {
+		if !a.variantFactUsable(active, symbol) {
 			continue
 		}
 		for _, test := range conjunctStateTests(active.fact.Condition) {
@@ -180,7 +185,26 @@ func (a *Analyzer) knownVariantTest(binding string, variant string) (value bool,
 				return test.Variant.Value == variant, true
 			case test.Variant.Value == variant:
 				return false, true
+			default:
+				excluded[test.Variant.Value] = true
 			}
+		}
+	}
+	// `is not` facts that exclude every other variant of a binding that
+	// cannot be empty prove the remaining one (unions.md § 8.1).
+	if len(excluded) > 0 && !a.bindingMayBeEmpty(binding, symbol) {
+		domain := provableMatchVariants(symbol.Type)
+		remaining := ""
+		for _, candidate := range domain {
+			if !excluded[candidate] {
+				if remaining != "" {
+					return false, false
+				}
+				remaining = candidate
+			}
+		}
+		if remaining != "" {
+			return remaining == variant, true
 		}
 	}
 	return false, false
@@ -197,13 +221,43 @@ func conjunctStateTests(condition ast.Expression) []*ast.StateTestExpression {
 		if condition != nil && condition.Operator == "&&" {
 			return append(conjunctStateTests(condition.Left), conjunctStateTests(condition.Right)...)
 		}
+	case *ast.MatchExpression:
+		if test, ok := optionAbsenceStateTest(condition); ok {
+			return []*ast.StateTestExpression{test}
+		}
 	}
 	return nil
+}
+
+// optionAbsenceStateTest views the parser's `x is None` / `x is not None`
+// form (a MatchExpression marked OptionAbsenceTest) as the variant state test
+// it means, so Option absence tests refine like union variant tests.
+//
+// Rules:
+//   - rules/foundations/operators.md — "State tests with is"
+//   - rules/control-flow/flowcontrol_match.md — § 5 "Reachable-state exhaustiveness (MD-042)"
+func optionAbsenceStateTest(condition *ast.MatchExpression) (*ast.StateTestExpression, bool) {
+	if condition == nil || !condition.OptionAbsenceTest {
+		return nil, false
+	}
+	if _, ok := condition.Subject.(*ast.Identifier); !ok {
+		return nil, false
+	}
+	none := &ast.Identifier{Token: condition.Token, Value: "None"}
+	if len(condition.Arms) > 0 && condition.Arms[0] != nil && condition.Arms[0].Pattern != nil {
+		none.Token = condition.Arms[0].Pattern.NameToken
+	}
+	return &ast.StateTestExpression{Token: condition.Token, Subject: condition.Subject, Variant: none, Negated: condition.OptionAbsenceNegated}, true
 }
 
 // negatedVariantStateTest returns the `is not` form of a variant test on a
 // binding (and the reverse), which holds exactly when the test is false.
 func negatedVariantStateTest(condition ast.Expression) (ast.Expression, bool) {
+	if absence, ok := condition.(*ast.MatchExpression); ok {
+		if test, viewed := optionAbsenceStateTest(absence); viewed {
+			condition = test
+		}
+	}
 	test, ok := condition.(*ast.StateTestExpression)
 	if !ok || test == nil || test.Empty || test.Variant == nil {
 		return nil, false
@@ -486,4 +540,39 @@ func canonicalNegatedStateTest(test ast.Expression) string {
 		return text[:index] + " is not " + text[index+len(" is "):]
 	}
 	return text
+}
+
+// constructedMatchSubject reports a match subject that builds a new value from
+// its operands (a constructor call or an aggregate literal) rather than naming
+// a Place. Ordinary calls commit their argument moves at the call itself.
+//
+// Rules:
+//   - rules/control-flow/flowcontrol_match.md — § 13 "Payload bindings" (fresh temporaries)
+//   - rules/memory/copy_move.md — §§ 9–10
+func constructedMatchSubject(subject ast.Expression) bool {
+	switch subject.(type) {
+	case *ast.CallExpression, *ast.StructLiteral, *ast.ArrayLiteral, *ast.OkExpression, *ast.ErrExpression:
+		return true
+	}
+	return false
+}
+
+// variantFactUsable reports whether a path fact still holds for a variant
+// proof about symbol: the conservative epoch for an immutable binding, and
+// the version-tracked proof validity for a mutable one.
+func (a *Analyzer) variantFactUsable(active activeConditionFact, symbol Symbol) bool {
+	if active.fact.Condition == nil || active.fact.Kind == ConditionFactLogicalRHSFalse {
+		return false
+	}
+	if symbol.Mutable {
+		return active.proofTracked && a.assertionFactValid(active)
+	}
+	return active.epoch == a.arrayIndexMutationEpoch
+}
+
+// bindingMayBeEmpty reports a union binding that may still hold its empty
+// initialization state, which an `is not` exclusion never rules out.
+func (a *Analyzer) bindingMayBeEmpty(binding string, symbol Symbol) bool {
+	assigned, tracked := a.assigned[binding]
+	return tracked && !assigned && symbol.Type.Kind == UnionType && symbol.Type.Name != "Option"
 }

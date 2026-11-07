@@ -274,7 +274,7 @@ LogicalResult sec::verifyPlaces(func::FuncOp function) {
     for (BlockArgument argument : block.getArguments())
       if (isPlace(argument.getType()) && !block.isEntryBlock())
         return function.emitOpError("a !sec.place cannot be a block argument");
-  return success();
+  return verifyBorrowDestruction(function);
 }
 
 // --sec-verify-reference-guards: every dereference or comparison of a

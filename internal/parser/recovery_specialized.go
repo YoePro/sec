@@ -145,7 +145,7 @@ func (p *Parser) skipRejectedMatchPayload() {
 // recoverAttributeArguments skips to the `)` that closes the current argument
 // list so the following declaration still parses. Foreign closing delimiters
 // remain unconsumed.
-// Rules: rules/compiler/parser_recovery.md — "Attribute recovery", "Record skipped ranges", "Enclosing-boundary safety".
+// Rules: rules/compiler/parser_recovery.md — "Compiler-directive recovery", "Token and trivia retention", "Enclosing-boundary safety".
 func (p *Parser) recoverAttributeArguments() {
 	scan := p.beginRecoveryScan(false)
 	defer scan.finish()

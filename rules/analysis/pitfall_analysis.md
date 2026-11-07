@@ -2,34 +2,34 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-08
-- **Last updated:** 2026-10-21
+- **Last updated:** 2026-11-07 (stable chapter, subsection, and paragraph numbering)
 - **Document revision:** 2.1
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/analysis/pitfall_analysis.md`
 - **Replaces:** Earlier unversioned revision at the same canonical path
-- **Repository baseline reviewed:** `main-reviewed-2026-10-04`
+- **Repository baseline reviewed:** `28780c01d63c3fc9eec2321ef67e3dd69962f043`
 - **Implementation governance:** `governance/analysis.yaml` (`sema.pitfall-analysis`)
 - **Related rulebooks:** `rules/analysis/effect_analysis.md`, `rules/analysis/escape_analysis.md`, `rules/analysis/parameter_usage_analysis.md`, `rules/analysis/call_graph.md`, `rules/analysis/data_races.md`, `rules/analysis/deadlock_analysis.md`, `rules/foundations/operators.md`, `rules/types/contracts.md`, `rules/collections/collections.md`, `rules/collections/shaped-types.md`, `rules/platform/ffi.md`, `rules/tooling/diagnostics.md`, `rules/tooling/lsp.md`, `rules/projects/projects.md`, `rules/compiler/compiler_analysis.md`, `rules/compiler/incremental_compilation.md`
 
 ---
 
-## Status and authority
+## § 1 Status and authority
 
-This is the normative compiler-analysis rulebook for Sec 0.1 pitfall analysis.
+**§ 1(1)** This is the normative compiler-analysis rulebook for Sec 0.1 pitfall analysis.
 
-This rulebook defines the semantic purpose, finding model, confidence model,
+**§ 1(2)** This rulebook defines the semantic purpose, finding model, confidence model,
 evidence and suppression rules, initial pitfall catalog, diagnostic integration,
 corrective-action requirements, analysis-budget behavior, tooling integration,
 incremental behavior, tests, and completion criteria for Sec pitfall analysis.
 
-Mutable implementation status does not belong in this rulebook. It is governed
+**§ 1(3)** Mutable implementation status does not belong in this rulebook. It is governed
 by `sema.pitfall-analysis` in `governance/analysis.yaml`.
 
 ---
 
-# Purpose
+## § 2 Purpose
 
-Pitfall analysis identifies semantically suspicious programming patterns that
+**§ 2(1)** Pitfall analysis identifies semantically suspicious programming patterns that
 commonly arise from human mistakes such as:
 
 - off-by-one errors;
@@ -42,22 +42,22 @@ commonly arise from human mistakes such as:
 - other high-confidence patterns where canonical semantic facts strongly suggest
   that the written code does not match the programmer's likely intent.
 
-Pitfall analysis is not a replacement for type checking, bounds analysis,
+**§ 2(2)** Pitfall analysis is not a replacement for type checking, bounds analysis,
 ownership analysis, lifetime analysis, escape analysis, deadlock analysis, FFI
 validation, or any other analysis that owns a normative Sec rule.
 
-Its role is to correlate facts from those analyses, recognize suspicious
+**§ 2(3)** Its role is to correlate facts from those analyses, recognize suspicious
 relationships, improve diagnostics, and provide safe or explicitly heuristic
 corrective guidance.
 
-The analysis should help the programmer most where ordinary type correctness is
+**§ 2(4)** The analysis should help the programmer most where ordinary type correctness is
 insufficient to reveal a likely mistake.
 
 ---
 
-# Normative role
+## § 3 Normative role
 
-This rulebook is normative for:
+**§ 3(1)** This rulebook is normative for:
 
 - the distinction between proven invalid code and suspicious but valid code;
 - the `PitfallFinding` analysis product;
@@ -76,7 +76,7 @@ This rulebook is normative for:
 - required test classes;
 - completion criteria for Sec 0.1 pitfall analysis.
 
-This rulebook does not redefine:
+**§ 3(2)** This rulebook does not redefine:
 
 - indexing legality;
 - range semantics;
@@ -93,18 +93,18 @@ This rulebook does not redefine:
 - project configuration syntax;
 - a new strict compilation mode.
 
-Those concerns remain owned by their respective normative rulebooks and tooling
+**§ 3(3)** Those concerns remain owned by their respective normative rulebooks and tooling
 specifications.
 
 ---
 
-# Core principle
+## § 4 Core principle
 
-Pitfall analysis recognizes suspicious semantic relationships.
+**§ 4(1)** Pitfall analysis recognizes suspicious semantic relationships.
 
-It does not become the owner of every rule that it observes.
+**§ 4(2)** It does not become the owner of every rule that it observes.
 
-Conceptually:
+**§ 4(3)** Conceptually:
 
 ```text
 PitfallAnalysis
@@ -114,7 +114,7 @@ OwningAnalysis
     defines whether the underlying behavior is valid Sec
 ```
 
-Examples:
+**§ 4(4)** Examples:
 
 ```text
 out-of-bounds access
@@ -130,20 +130,20 @@ invalid FFI lifetime
     owner = FFI + lifetime semantics
 ```
 
-Pitfall analysis may enrich such a diagnostic with intent-aware explanation and
+**§ 4(5)** Pitfall analysis may enrich such a diagnostic with intent-aware explanation and
 a corrective action, but it must not replace the owning semantic rule.
 
 ---
 
-# Proven invalidity is not a warning
+## § 5 Proven invalidity is not a warning
 
-When a pitfall implies a proven violation of a normative Sec rule, the resulting
+**§ 5(1)** When a pitfall implies a proven violation of a normative Sec rule, the resulting
 program remains invalid according to that owning rule.
 
-Pitfall analysis must not downgrade the result to a warning or advisory merely
+**§ 5(2)** Pitfall analysis must not downgrade the result to a warning or advisory merely
 because the mistake resembles a common human error.
 
-For example:
+**§ 5(3)** For example:
 
 ```sec
 for i in 0..values.len {
@@ -151,12 +151,12 @@ for i in 0..values.len {
 }
 ```
 
-The loop domain includes `values.len` while valid zero-based indices end before
+**§ 5(4)** The loop domain includes `values.len` while valid zero-based indices end before
 `values.len`.
 
-If the final indexed access is reachable, this is a proven bounds violation.
+**§ 5(5)** If the final indexed access is reachable, this is a proven bounds violation.
 
-The primary diagnostic is therefore the ordinary normative bounds error.
+**§ 5(6)** The primary diagnostic is therefore the ordinary normative bounds error.
 Pitfall analysis may improve it with information such as:
 
 ```text
@@ -167,9 +167,9 @@ consider `0..<values.len`
 
 ---
 
-# Classification
+## § 6 Classification
 
-Every reported pitfall finding has one of the following conceptual
+**§ 6(1)** Every reported pitfall finding has one of the following conceptual
 classifications:
 
 ```text
@@ -178,16 +178,16 @@ LikelyMistake
 SuspiciousIntent
 ```
 
-The exact compiler enum name is implementation-defined.
+**§ 6(2)** The exact compiler enum name is implementation-defined.
 
-## ProvenInvalid
+### § 6.1 ProvenInvalid
 
-`ProvenInvalid` means canonical semantic analysis proves that a reachable
+**§ 6.1(1)** `ProvenInvalid` means canonical semantic analysis proves that a reachable
 execution violates a normative Sec rule.
 
-The owning semantic rule determines the actual compiler error.
+**§ 6.1(2)** The owning semantic rule determines the actual compiler error.
 
-Examples include:
+**§ 6.1(3)** Examples include:
 
 ```text
 indexing a collection at exactly its length
@@ -196,12 +196,12 @@ accessing `i + 1` when the loop permits i == len - 1
 accessing `i - 1` when the loop permits i == 0
 ```
 
-## LikelyMistake
+### § 6.2 LikelyMistake
 
-`LikelyMistake` means the program may remain valid Sec, but semantic evidence
+**§ 6.2(1)** `LikelyMistake` means the program may remain valid Sec, but semantic evidence
 strongly indicates a common accidental pattern.
 
-Example:
+**§ 6.2(2)** Example:
 
 ```sec
 for i in 1..<values.len {
@@ -209,7 +209,7 @@ for i in 1..<values.len {
 }
 ```
 
-may be a likely mistake when:
+**§ 6.2(3)** may be a likely mistake when:
 
 ```text
 `values` supplies the loop bound
@@ -219,21 +219,21 @@ no predecessor/neighbor access explains the starting index
 no explicit contract establishes an intentional suffix traversal
 ```
 
-## SuspiciousIntent
+### § 6.3 SuspiciousIntent
 
-`SuspiciousIntent` means the pattern is noteworthy but the compiler lacks enough
+**§ 6.3(1)** `SuspiciousIntent` means the pattern is noteworthy but the compiler lacks enough
 evidence to claim high confidence that it is unintended.
 
-These findings are optional analysis insight and normally belong to Deep
+**§ 6.3(2)** These findings are optional analysis insight and normally belong to Deep
 analysis rather than ordinary edit-time diagnostics.
 
 ---
 
-# Confidence
+## § 7 Confidence
 
-Classification and confidence are independent concepts.
+**§ 7(1)** Classification and confidence are independent concepts.
 
-The analysis must support at least:
+**§ 7(2)** The analysis must support at least:
 
 ```text
 Proven
@@ -241,9 +241,9 @@ High
 Medium
 ```
 
-Low-confidence speculation should normally produce no diagnostic.
+**§ 7(3)** Low-confidence speculation should normally produce no diagnostic.
 
-Typical combinations are:
+**§ 7(4)** Typical combinations are:
 
 ```text
 ProvenInvalid    + Proven
@@ -251,31 +251,31 @@ LikelyMistake    + High
 SuspiciousIntent + Medium
 ```
 
-The compiler may internally represent greater detail, but it must preserve the
+**§ 7(5)** The compiler may internally represent greater detail, but it must preserve the
 semantic distinction between proof and intent inference.
 
 ---
 
-# No new strict mode
+## § 8 No new strict mode
 
-This rulebook does not define `strict`, `use strict`, or any other new strict
+**§ 8(1)** This rulebook does not define `strict`, `use strict`, or any other new strict
 compilation mode.
 
-Meaningless but otherwise valid code may be surfaced by optional analysis,
+**§ 8(2)** Meaningless but otherwise valid code may be surfaced by optional analysis,
 including Deep analysis, when doing so is useful and sufficiently precise.
 
-If a separate Sec rulebook later defines a general strict-policy mechanism,
+**§ 8(3)** If a separate Sec rulebook later defines a general strict-policy mechanism,
 pitfall analysis may consume that policy. It must not invent such a feature on
 its own.
 
 ---
 
-# PitfallFinding
+## § 9 PitfallFinding
 
-Pitfall rules produce structured findings rather than directly formatting final
+**§ 9(1)** Pitfall rules produce structured findings rather than directly formatting final
 user-facing diagnostics.
 
-Conceptually, a finding must be able to carry information equivalent to:
+**§ 9(2)** Conceptually, a finding must be able to carry information equivalent to:
 
 ```text
 PitfallFinding {
@@ -293,21 +293,21 @@ PitfallFinding {
 }
 ```
 
-The exact data structure is implementation-defined.
+**§ 9(3)** The exact data structure is implementation-defined.
 
-The structured finding is the canonical pitfall-analysis product.
+**§ 9(4)** The structured finding is the canonical pitfall-analysis product.
 
-Human-readable diagnostics, LSP diagnostics, code actions, and `sec analyse`
+**§ 9(5)** Human-readable diagnostics, LSP diagnostics, code actions, and `sec analyse`
 output are presentations of that structured result.
 
 ---
 
-# Evidence model
+## § 10 Evidence model
 
-Pitfall analysis must represent evidence structurally before formatting it as
+**§ 10(1)** Pitfall analysis must represent evidence structurally before formatting it as
 prose.
 
-Evidence categories must be able to express at least the conceptual strengths:
+**§ 10(2)** Evidence categories must be able to express at least the conceptual strengths:
 
 ```text
 Proof
@@ -317,16 +317,16 @@ ContradictingEvidence
 SuppressingEvidence
 ```
 
-A numeric scoring model is not required.
+**§ 10(3)** A numeric scoring model is not required.
 
-The compiler may use one internally, but semantic suppression and classification
+**§ 10(4)** The compiler may use one internally, but semantic suppression and classification
 must remain explainable through concrete facts.
 
 ---
 
-# Evidence for a finding
+## § 11 Evidence for a finding
 
-Consider:
+**§ 11(1)** Consider:
 
 ```sec
 for i in 1..<values.len {
@@ -334,7 +334,7 @@ for i in 1..<values.len {
 }
 ```
 
-Evidence supporting a skipped-first-element finding may include:
+**§ 11(2)** Evidence supporting a skipped-first-element finding may include:
 
 ```text
 iteration starts at 1
@@ -345,14 +345,14 @@ no predecessor access exists
 no explicit suffix-traversal contract exists
 ```
 
-The analysis should use the strongest available semantic facts rather than mere
+**§ 11(3)** The analysis should use the strongest available semantic facts rather than mere
 surface resemblance.
 
 ---
 
-# Evidence against a finding
+## § 12 Evidence against a finding
 
-Consider:
+**§ 12(1)** Consider:
 
 ```sec
 for i in 1..<values.len {
@@ -360,21 +360,21 @@ for i in 1..<values.len {
 }
 ```
 
-The predecessor access is strong evidence that starting at index 1 is
+**§ 12(2)** The predecessor access is strong evidence that starting at index 1 is
 intentional because it makes both indexed expressions valid.
 
-That evidence suppresses the skipped-first-element advisory.
+**§ 12(3)** That evidence suppresses the skipped-first-element advisory.
 
-This is a normative false-positive-avoidance requirement.
+**§ 12(4)** This is a normative false-positive-avoidance requirement.
 
 ---
 
-# Suppressing evidence
+## § 13 Suppressing evidence
 
-Heuristic findings must be suppressed when semantic evidence establishes a
+**§ 13(1)** Heuristic findings must be suppressed when semantic evidence establishes a
 common intentional pattern.
 
-Examples of suppressing evidence include:
+**§ 13(2)** Examples of suppressing evidence include:
 
 ```text
 predecessor traversal
@@ -387,43 +387,43 @@ explicit hardware/storage contract
 canonical intent pattern recognized by the compiler
 ```
 
-A suppressed finding may remain visible in optional Deep analysis debugging
+**§ 13(3)** A suppressed finding may remain visible in optional Deep analysis debugging
 output when the user asks for detailed analysis reasoning.
 
-It must not be shown as an ordinary warning/advisory after it has been
+**§ 13(4)** It must not be shown as an ordinary warning/advisory after it has been
 suppressed.
 
 ---
 
-# Proven errors cannot be heuristically suppressed
+## § 14 Proven errors cannot be heuristically suppressed
 
-Suppression applies to heuristic intent findings.
+**§ 14(1)** Suppression applies to heuristic intent findings.
 
-A proven normative error cannot disappear merely because the pattern appears
+**§ 14(2)** A proven normative error cannot disappear merely because the pattern appears
 intentional.
 
-For example, if an access is proven out of bounds, a recognized coding idiom
+**§ 14(3)** For example, if an access is proven out of bounds, a recognized coding idiom
 cannot make the access valid.
 
-The owning semantic analysis remains authoritative.
+**§ 14(4)** The owning semantic analysis remains authoritative.
 
 ---
 
-# Semantic recognition, not syntax matching
+## § 15 Semantic recognition, not syntax matching
 
-Pitfall analysis must prefer semantic relationships over syntax patterns when
+**§ 15(1)** Pitfall analysis must prefer semantic relationships over syntax patterns when
 canonical facts can distinguish intended code from suspicious code.
 
-A rule such as:
+**§ 15(2)** A rule such as:
 
 ```text
 if loop starts at 1:
     warn
 ```
 
-is not acceptable.
+**§ 15(3)** is not acceptable.
 
-The compiler must instead consider facts such as:
+**§ 15(4)** The compiler must instead consider facts such as:
 
 ```text
 iteration domain
@@ -437,16 +437,16 @@ postconditions
 proven reachability
 ```
 
-This requirement exists specifically to keep false positives low.
+**§ 15(5)** This requirement exists specifically to keep false positives low.
 
 ---
 
-# Normalized relations
+## § 16 Normalized relations
 
-Pitfall recognition should consume normalized semantic relations where
+**§ 16(1)** Pitfall recognition should consume normalized semantic relations where
 available.
 
-Useful conceptual facts include:
+**§ 16(2)** Useful conceptual facts include:
 
 ```text
 DerivedFrom(value, origin)
@@ -460,45 +460,45 @@ IndexOffset(base, offset)
 RangeDomain(value, lower, upper, inclusivity)
 ```
 
-The exact internal representation is implementation-defined.
+**§ 16(3)** The exact internal representation is implementation-defined.
 
-Existing Place/provenance, range, control-flow, type, and FFI analyses own the
+**§ 16(4)** Existing Place/provenance, range, control-flow, type, and FFI analyses own the
 underlying facts.
 
-Pitfall analysis must not build a second independent provenance system merely to
+**§ 16(5)** Pitfall analysis must not build a second independent provenance system merely to
 support its rules.
 
 ---
 
-# Source mapping
+## § 17 Source mapping
 
-Semantic normalization must not discard the source locations and source forms
+**§ 17(1)** Semantic normalization must not discard the source locations and source forms
 required for clear diagnostics and code actions.
 
-A finding should be able to explain the programmer's written expression even if
+**§ 17(2)** A finding should be able to explain the programmer's written expression even if
 its reasoning used normalized Semantic IR or equivalent canonical facts.
 
 ---
 
-# Reachability
+## § 18 Reachability
 
-Only reachable semantic behavior contributes to a pitfall finding.
+**§ 18(1)** Only reachable semantic behavior contributes to a pitfall finding.
 
-Proven unreachable code does not create a new pitfall finding.
+**§ 18(2)** Proven unreachable code does not create a new pitfall finding.
 
-Where Sec already treats proven dead or unreachable code as a compiler error,
+**§ 18(3)** Where Sec already treats proven dead or unreachable code as a compiler error,
 the owning reachability diagnostic remains primary.
 
-Pitfall analysis may improve the explanation of why a branch or condition is
+**§ 18(4)** Pitfall analysis may improve the explanation of why a branch or condition is
 impossible.
 
 ---
 
-# Guards participate in pitfall reasoning
+## § 19 Guards participate in pitfall reasoning
 
-Control-flow guards must refine the facts used by pitfall analysis.
+**§ 19(1)** Control-flow guards must refine the facts used by pitfall analysis.
 
-For example:
+**§ 19(2)** For example:
 
 ```sec
 if values.len == 0 {
@@ -508,12 +508,12 @@ if values.len == 0 {
 let last := values[values.len - 1]
 ```
 
-establishes the non-empty condition required by the final-element access.
+**§ 19(3)** establishes the non-empty condition required by the final-element access.
 
-No empty-collection pitfall should be reported on the reachable path after the
+**§ 19(4)** No empty-collection pitfall should be reported on the reachable path after the
 guard.
 
-Similarly:
+**§ 19(5)** Similarly:
 
 ```sec
 for i in 0..values.len {
@@ -525,40 +525,40 @@ for i in 0..values.len {
 }
 ```
 
-must not receive the simple inclusive-range out-of-bounds finding if control-flow
+**§ 19(6)** must not receive the simple inclusive-range out-of-bounds finding if control-flow
 analysis proves that the indexed access cannot execute for `i == values.len`.
 
-A separate simplification advisory may still be possible, but it is not the
+**§ 19(7)** A separate simplification advisory may still be possible, but it is not the
 same finding.
 
 ---
 
-# Interprocedural evidence
+## § 20 Interprocedural evidence
 
-Pitfall analysis may use interprocedural evidence when available within the
+**§ 20(1)** Pitfall analysis may use interprocedural evidence when available within the
 active analysis budget.
 
-For example:
+**§ 20(2)** For example:
 
 ```sec
 ValidateNonEmpty(values)
 let last := values[values.len - 1]
 ```
 
-may be proven safe when the imported or inferred summary for
+**§ 20(3)** may be proven safe when the imported or inferred summary for
 `ValidateNonEmpty` establishes an applicable non-empty postcondition.
 
-Pitfall analysis does not own that postcondition analysis. It consumes the
+**§ 20(4)** Pitfall analysis does not own that postcondition analysis. It consumes the
 canonical summary.
 
-Interactive analysis may omit an expensive interprocedural refinement and mark
+**§ 20(5)** Interactive analysis may omit an expensive interprocedural refinement and mark
 the relevant rule `NotEvaluated` or `Pending` rather than inventing a conclusion.
 
 ---
 
-# Analysis states
+## § 21 Analysis states
 
-Pitfall rule evaluation must distinguish at least the conceptual states:
+**§ 21(1)** Pitfall rule evaluation must distinguish at least the conceptual states:
 
 ```text
 Finding
@@ -568,25 +568,25 @@ NotEvaluated
 Pending
 ```
 
-`NoFinding` means the rule was evaluated with sufficient required facts and did
+**§ 21(2)** `NoFinding` means the rule was evaluated with sufficient required facts and did
 not produce a finding.
 
-`NotEvaluated` means the rule was not run or its required facts were not
+**§ 21(3)** `NotEvaluated` means the rule was not run or its required facts were not
 available under the active budget.
 
-`Pending` is a tooling state indicating that required analysis work is not yet
+**§ 21(4)** `Pending` is a tooling state indicating that required analysis work is not yet
 complete.
 
-`NotEvaluated` and `Pending` must never be cached or interpreted as proof that no
+**§ 21(5)** `NotEvaluated` and `Pending` must never be cached or interpreted as proof that no
 pitfall exists.
 
 ---
 
-# Canonical pitfall families
+## § 22 Canonical pitfall families
 
-The pitfall architecture must support multiple semantic families.
+**§ 22(1)** The pitfall architecture must support multiple semantic families.
 
-Conceptual families include:
+**§ 22(2)** Conceptual families include:
 
 ```text
 BoundsAndRanges
@@ -601,29 +601,29 @@ FFI
 Resources
 ```
 
-Sec 0.1 does not require every possible family to have a large catalog.
+**§ 22(3)** Sec 0.1 does not require every possible family to have a large catalog.
 
-The required initial implementation prioritizes high-confidence bounds, range,
+**§ 22(4)** The required initial implementation prioritizes high-confidence bounds, range,
 collection, control-flow, boolean-intent, and contract-backed FFI mistakes.
 
 ---
 
-# Required Sec 0.1 catalog
+## § 23 Required Sec 0.1 catalog
 
-The following catalog defines the minimum semantic pitfall coverage required for
+**§ 23(1)** The following catalog defines the minimum semantic pitfall coverage required for
 Sec 0.1.
 
-A particular finding may be implemented by the owning bounds/range analysis and
+**§ 23(2)** A particular finding may be implemented by the owning bounds/range analysis and
 enriched by pitfall analysis, or directly recognized by pitfall analysis from
 canonical facts. The architectural ownership rule remains unchanged.
 
 ---
 
-# API-usage pitfalls
+## § 24 API-usage pitfalls
 
-## Large by-value argument at its final use
+### § 24.1 Large by-value argument at its final use
 
-The stable rule identity is `pitfall.ownership.last-use-argument-copy`.
+**§ 24.1(1)** The stable rule identity is `pitfall.ownership.last-use-argument-copy`.
 A successfully resolved ordinary owning value argument may receive a
 high-confidence `LikelyMistake` advisory recommending `<-name` when:
 
@@ -634,14 +634,14 @@ high-confidence `LikelyMistake` advisory recommending `<-name` when:
   that argument, including later argument evaluation and failure handlers;
 - moving is compatible with the source's storage and borrowing obligations.
 
-The same rule applies to arguments of `new` through its selected initializer.
+**§ 24.1(2)** The same rule applies to arguments of `new` through its selected initializer.
 The default policy reuses the parameter-usage large-value estimate (currently
 64 bytes); this is advisory cost policy, not a source-language layout or
 liveness rule. The cost of copying the value matters: the size of text behind
 an inexpensive string view alone is not large-copy evidence. Unknown costs
 cannot establish a recommendation.
 
-The analysis must not infer move from the last occurrence of an identifier's
+**§ 24.1(3)** The analysis must not infer move from the last occurrence of an identifier's
 spelling. Binding identity, subsequent branches, loop backedges, receiver or
 alias dependencies, deferred uses, captures and fallible control flow matter.
 An implementation may conservatively restrict candidates to straight-line
@@ -651,7 +651,7 @@ Already moved arguments, borrowing parameters, mandatory consuming arguments,
 small values, projected sources and invalid implicit copies receive no duplicate
 advisory from this rule. Normative ownership errors retain their own diagnostic.
 
-Example:
+**§ 24.1(4)** Example:
 
 ```sec
 let files := ReadFileRecords()
@@ -660,7 +660,7 @@ UseRecords(files)
 // consider UseRecords(<-files).
 ```
 
-This is a `SuggestedEdit`, not a `ProvenFix`: ownership, identity, cleanup and
+**§ 24.1(5)** This is a `SuggestedEdit`, not a `ProvenFix`: ownership, identity, cleanup and
 failure behavior can change. Never insert a move automatically or silently
 change a parameter contract. `copy_move.md` §§ 6.3, 7 and 8.1–8.3 own legality.
 The rule participates in Interactive/Standard/Deep optional budgets, structured
@@ -669,20 +669,20 @@ prerequisites include selected call/construction and transfer facts, resolved
 binding uses, borrowing dependencies and copy-cost policy.
 
 
-## Explicit `self` passed to its own method
+### § 24.2 Explicit `self` passed to its own method
 
-An instance-method receiver already supplies `self` implicitly. A call of the
+**§ 24.2(1)** An instance-method receiver already supplies `self` implicitly. A call of the
 form:
 
 ```sec
 self.Relate(self)
 ```
 
-is therefore a high-confidence pitfall when semantic call resolution confirms
+**§ 24.2(2)** is therefore a high-confidence pitfall when semantic call resolution confirms
 that `Relate` is an instance method and one explicit argument is the direct
 `self` binding.
 
-The pitfall result is:
+**§ 24.2(3)** The pitfall result is:
 
 ```text
 Classification = LikelyMistake
@@ -690,7 +690,7 @@ Confidence     = High
 OwningRule     = MethodReceiverAndArgumentSemantics
 ```
 
-The compiler must explain that `self` is already the implicit receiver and
+**§ 24.2(4)** The compiler must explain that `self` is already the implicit receiver and
 must not infer this finding for ordinary functions, static methods, calls on a
 different receiver, unresolved calls, or expressions that merely contain
 `self` indirectly. No automatic edit is required: an explicit parameter may
@@ -699,11 +699,11 @@ must choose the intended API shape.
 
 ---
 
-# Bounds and range pitfalls
+## § 25 Bounds and range pitfalls
 
-## Inclusive upper bound against collection length
+### § 25.1 Inclusive upper bound against collection length
 
-Example:
+**§ 25.1(1)** Example:
 
 ```sec
 for i in 0..values.len {
@@ -711,19 +711,19 @@ for i in 0..values.len {
 }
 ```
 
-The loop establishes:
+**§ 25.1(2)** The loop establishes:
 
 ```text
 0 <= i <= values.len
 ```
 
-while indexing requires:
+**§ 25.1(3)** while indexing requires:
 
 ```text
 0 <= i < values.len
 ```
 
-If the indexed access is reachable at the inclusive endpoint, the result is:
+**§ 25.1(4)** If the indexed access is reachable at the inclusive endpoint, the result is:
 
 ```text
 Classification = ProvenInvalid
@@ -731,7 +731,7 @@ Confidence     = Proven
 OwningRule     = Bounds
 ```
 
-The diagnostic should normally recommend the canonical half-open traversal:
+**§ 25.1(5)** The diagnostic should normally recommend the canonical half-open traversal:
 
 ```sec
 for i in 0..<values.len {
@@ -741,24 +741,24 @@ for i in 0..<values.len {
 
 ---
 
-## Direct index at length
+### § 25.2 Direct index at length
 
-Example:
+**§ 25.2(1)** Example:
 
 ```sec
 let value := values[values.len]
 ```
 
-This is a proven bounds violation.
+**§ 25.2(2)** This is a proven bounds violation.
 
-The diagnostic should explain that `len` is the element count and therefore one
+**§ 25.2(3)** The diagnostic should explain that `len` is the element count and therefore one
 past the last zero-based index.
 
 ---
 
-## Upper neighbor access
+### § 25.3 Upper neighbor access
 
-Example:
+**§ 25.3(1)** Example:
 
 ```sec
 for i in 0..<values.len {
@@ -766,19 +766,19 @@ for i in 0..<values.len {
 }
 ```
 
-The analysis must compare the complete loop domain against every indexed
+**§ 25.3(2)** The analysis must compare the complete loop domain against every indexed
 expression.
 
-When the loop permits `i == values.len - 1`, the `i + 1` access is invalid.
+**§ 25.3(3)** When the loop permits `i == values.len - 1`, the `i + 1` access is invalid.
 
-The compiler must not limit this rule to literal syntax; semantically equivalent
+**§ 25.3(4)** The compiler must not limit this rule to literal syntax; semantically equivalent
 normalized offset expressions must be handled when available.
 
 ---
 
-## Lower neighbor access
+### § 25.4 Lower neighbor access
 
-Example:
+**§ 25.4(1)** Example:
 
 ```sec
 for i in 0..<values.len {
@@ -786,16 +786,16 @@ for i in 0..<values.len {
 }
 ```
 
-If the loop permits `i == 0`, the predecessor access is invalid.
+**§ 25.4(2)** If the loop permits `i == 0`, the predecessor access is invalid.
 
-Where the body itself demonstrates predecessor traversal intent, a safe
+**§ 25.4(3)** Where the body itself demonstrates predecessor traversal intent, a safe
 correction may be to begin at index 1, subject to the ordinary fix-safety rules.
 
 ---
 
-## Ineffective upper bounds guard
+### § 25.5 Ineffective upper bounds guard
 
-Example:
+**§ 25.5(1)** Example:
 
 ```sec
 if index <= values.len {
@@ -803,17 +803,17 @@ if index <= values.len {
 }
 ```
 
-If equality remains reachable, the guard does not establish a valid indexing
+**§ 25.5(2)** If equality remains reachable, the guard does not establish a valid indexing
 precondition.
 
-The compiler must diagnose the proven boundary error through the owning bounds
+**§ 25.5(3)** The compiler must diagnose the proven boundary error through the owning bounds
 rule.
 
 ---
 
-## Ineffective rejection guard
+### § 25.6 Ineffective rejection guard
 
-Example:
+**§ 25.6(1)** Example:
 
 ```sec
 if index > values.len {
@@ -823,25 +823,25 @@ if index > values.len {
 Process(values[index])
 ```
 
-The guard permits `index == values.len`.
+**§ 25.6(2)** The guard permits `index == values.len`.
 
-If that equality is reachable, the subsequent indexed access is invalid.
+**§ 25.6(3)** If that equality is reachable, the subsequent indexed access is invalid.
 
 ---
 
-## Final-element access requires non-empty proof
+### § 25.7 Final-element access requires non-empty proof
 
-Example:
+**§ 25.7(1)** Example:
 
 ```sec
 // Potential checked unsigned underflow if values is empty.
 let last := values[len(values) - 1]
 ```
 
-This expression requires a proof that the collection is non-empty, subject to
+**§ 25.7(2)** This expression requires a proof that the collection is non-empty, subject to
 Sec's canonical arithmetic and bounds semantics.
 
-A preceding guard or type/contract proof may satisfy that requirement. A safe,
+**§ 25.7(3)** A preceding guard or type/contract proof may satisfy that requirement. A safe,
 non-allocating form is:
 
 ```sec
@@ -851,16 +851,16 @@ if values.Len > 0 {
 }
 ```
 
-Without such a proof, the owning arithmetic/bounds rules determine validity,
+**§ 25.7(4)** Without such a proof, the owning arithmetic/bounds rules determine validity,
 and pitfall analysis may provide the intent-aware explanation.
 
-`len(values)` and `values.Len` are `uint` (MD-074/MD-088, 2026-10-17), so for an
+**§ 25.7(5)** `len(values)` and `values.Len` are `uint` (MD-074/MD-088, 2026-10-17), so for an
 empty `values` the subtraction is checked **unsigned underflow** that fails
 before any indexing; it is not "indexing at -1". A signed index expression that
 yields `-1` is a separate bounds violation. Findings explain which of the two
 hazards applies.
 
-The same family covers predecessor access (`values[i - 1]` when `i` may be
+**§ 25.7(6)** The same family covers predecessor access (`values[i - 1]` when `i` may be
 `0`) and reverse loops:
 
 1. The analysis considers dominating guards and control-flow proofs and never
@@ -877,9 +877,9 @@ The same family covers predecessor access (`values[i - 1]` when `i` may be
 
 ---
 
-# Skipped-first-element advisory
+## § 26 Skipped-first-element advisory
 
-Example:
+**§ 26(1)** Example:
 
 ```sec
 for i in 1..<values.len {
@@ -887,9 +887,9 @@ for i in 1..<values.len {
 }
 ```
 
-This is not inherently invalid.
+**§ 26(2)** This is not inherently invalid.
 
-A high-confidence `LikelyMistake` finding may be produced when evidence includes:
+**§ 26(3)** A high-confidence `LikelyMistake` finding may be produced when evidence includes:
 
 ```text
 the loop starts at index 1
@@ -900,7 +900,7 @@ no predecessor/neighbor relation explains the starting index
 no explicit contract establishes intentional suffix traversal
 ```
 
-The finding must be suppressed for common intentional patterns such as:
+**§ 26(4)** The finding must be suppressed for common intentional patterns such as:
 
 ```sec
 for i in 1..<values.len {
@@ -908,7 +908,7 @@ for i in 1..<values.len {
 }
 ```
 
-or:
+**§ 26(5)** or:
 
 ```sec
 Process(values[0])
@@ -918,53 +918,53 @@ for i in 1..<values.len {
 }
 ```
 
-This family is a false-positive-sensitive advisory, not a validity rule.
+**§ 26(6)** This family is a false-positive-sensitive advisory, not a validity rule.
 
 ---
 
-# Omitted-last-element advisory
+## § 27 Omitted-last-element advisory
 
-A loop that appears intended to traverse a complete collection but provably
+**§ 27(1)** A loop that appears intended to traverse a complete collection but provably
 stops before its final element may produce a high-confidence advisory when no
 semantic evidence explains the omission.
 
-The rule must not treat every shortened range as suspicious.
+**§ 27(2)** The rule must not treat every shortened range as suspicious.
 
-Intent evidence such as neighbor access, chunking, sentinel handling, explicit
+**§ 27(3)** Intent evidence such as neighbor access, chunking, sentinel handling, explicit
 range contracts, or a separately processed final element suppresses the
 finding.
 
 ---
 
-# Count versus inclusive endpoint
+## § 28 Count versus inclusive endpoint
 
-An expression such as:
+**§ 28(1)** An expression such as:
 
 ```sec
 let part := values[start..start + count]
 ```
 
-contains `count + 1` positions when the range is inclusive.
+**§ 28(2)** contains `count + 1` positions when the range is inclusive.
 
-Pitfall analysis may report a `LikelyMistake` only when surrounding semantic
+**§ 28(3)** Pitfall analysis may report a `LikelyMistake` only when surrounding semantic
 facts establish that `count` represents an element count rather than an
 inclusive endpoint.
 
-Where the intended semantics are proven to be start-plus-count, the canonical
+**§ 28(4)** Where the intended semantics are proven to be start-plus-count, the canonical
 half-open form is:
 
 ```sec
 let part := values[start..<start + count]
 ```
 
-No warning may be based solely on the variable name `count` if no semantic
+**§ 28(5)** No warning may be based solely on the variable name `count` if no semantic
 contract or trusted metadata establishes its meaning.
 
 ---
 
-# Avoiding fragile `0..len - 1` workarounds
+## § 29 Avoiding fragile `0..len - 1` workarounds
 
-Code such as:
+**§ 29(1)** Code such as:
 
 ```sec
 for i in 0..values.len - 1 {
@@ -972,10 +972,10 @@ for i in 0..values.len - 1 {
 }
 ```
 
-may be valid under a non-empty proof but unnecessarily encodes the half-open
+**§ 29(2)** may be valid under a non-empty proof but unnecessarily encodes the half-open
 traversal through arithmetic on `len`.
 
-When the compiler proves semantic equivalence and there is no relevant
+**§ 29(3)** When the compiler proves semantic equivalence and there is no relevant
 observable difference, optional analysis may recommend the canonical Sec form:
 
 ```sec
@@ -984,15 +984,15 @@ for i in 0..<values.len {
 }
 ```
 
-This is normally optional analysis information rather than a language error.
+**§ 29(4)** This is normally optional analysis information rather than a language error.
 
 ---
 
-# Collection relationship pitfalls
+## § 30 Collection relationship pitfalls
 
-## Bound source differs from indexed collection
+### § 30.1 Bound source differs from indexed collection
 
-Example:
+**§ 30.1(1)** Example:
 
 ```sec
 for i in 0..<left.len {
@@ -1000,13 +1000,13 @@ for i in 0..<left.len {
 }
 ```
 
-The analysis must correlate the source of the bound with the collection being
+**§ 30.1(2)** The analysis must correlate the source of the bound with the collection being
 indexed.
 
-If it is proven that `right` can be shorter than `left`, the owning bounds rule
+**§ 30.1(3)** If it is proven that `right` can be shorter than `left`, the owning bounds rule
 may produce a proven invalidity.
 
-If the relationship is unknown but:
+**§ 30.1(4)** If the relationship is unknown but:
 
 ```text
 `left` supplies the bound
@@ -1015,16 +1015,16 @@ If the relationship is unknown but:
 no sufficient relation between their lengths is proven
 ```
 
-then a high-confidence copy/paste `LikelyMistake` finding may be appropriate.
+**§ 30.1(5)** then a high-confidence copy/paste `LikelyMistake` finding may be appropriate.
 
-A proven equality or sufficient lower bound on `right.len` suppresses the
+**§ 30.1(6)** A proven equality or sufficient lower bound on `right.len` suppresses the
 pitfall finding.
 
 ---
 
-## Parallel collection traversal
+### § 30.2 Parallel collection traversal
 
-Example:
+**§ 30.2(1)** Example:
 
 ```sec
 for i in 0..<left.len {
@@ -1032,7 +1032,7 @@ for i in 0..<left.len {
 }
 ```
 
-No pitfall is reported when analysis proves that `right.len >= left.len`,
+**§ 30.2(2)** No pitfall is reported when analysis proves that `right.len >= left.len`,
 including through a dominating equality check such as:
 
 ```sec
@@ -1041,20 +1041,20 @@ if left.len != right.len {
 }
 ```
 
-Without a sufficient relationship, the normal bounds result and applicable
+**§ 30.2(3)** Without a sufficient relationship, the normal bounds result and applicable
 pitfall classification follow from the available proof strength.
 
 ---
 
-# Length, capacity, and extent
+## § 31 Length, capacity, and extent
 
-Length, capacity, and extent are semantically distinct concepts.
+**§ 31(1)** Length, capacity, and extent are semantically distinct concepts.
 
-Pitfall analysis must preserve that distinction.
+**§ 31(2)** Pitfall analysis must preserve that distinction.
 
-## Capacity used as live length
+### § 31.1 Capacity used as live length
 
-Example:
+**§ 31.1(1)** Example:
 
 ```sec
 for i in 0..<values.capacity {
@@ -1062,22 +1062,22 @@ for i in 0..<values.capacity {
 }
 ```
 
-For a collection type where capacity may exceed live length, this is suspicious.
+**§ 31.1(2)** For a collection type where capacity may exceed live length, this is suspicious.
 
-If analysis proves that non-live elements can be reached, the owning collection
+**§ 31.1(3)** If analysis proves that non-live elements can be reached, the owning collection
 or bounds semantics determine the resulting error.
 
-If the use remains valid only under an unproven equality assumption, a
+**§ 31.1(4)** If the use remains valid only under an unproven equality assumption, a
 high-confidence `LikelyMistake` may be produced.
 
-A proven `capacity == len` relationship on the relevant path suppresses the
+**§ 31.1(5)** A proven `capacity == len` relationship on the relevant path suppresses the
 heuristic finding.
 
 ---
 
-# Structural mutation during indexed iteration
+## § 32 Structural mutation during indexed iteration
 
-Example:
+**§ 32(1)** Example:
 
 ```sec
 for i in 0..<values.len {
@@ -1087,7 +1087,7 @@ for i in 0..<values.len {
 }
 ```
 
-Pitfall analysis must correlate:
+**§ 32(2)** Pitfall analysis must correlate:
 
 ```text
 iteration depends on collection shape
@@ -1095,12 +1095,12 @@ body structurally mutates the same collection
 subsequent iteration/index assumptions may become stale
 ```
 
-Structural mutation is not automatically an error.
+**§ 32(3)** Structural mutation is not automatically an error.
 
-The result depends on the collection operation, iteration semantics, control
+**§ 32(4)** The result depends on the collection operation, iteration semantics, control
 flow, and whether subsequent indexed accesses remain valid.
 
-The required rule must therefore distinguish:
+**§ 32(5)** The required rule must therefore distinguish:
 
 ```text
 proven invalid traversal
@@ -1108,7 +1108,7 @@ high-confidence suspicious traversal
 proven safe structural pattern
 ```
 
-rather than warning on every mutation inside a loop.
+**§ 32(6)** rather than warning on every mutation inside a loop.
 
 ```text
 proven invalid      Clear() followed on the same straight-line path by an
@@ -1122,22 +1122,22 @@ proven safe         the mutation is directly followed by return or by break
                     (a draining loop such as RemoveAt(0) per iteration)
 ```
 
-Structural operations are the compiler-known members marked as structural
+**§ 32(7)** Structural operations are the compiler-known members marked as structural
 mutations. The suggested edit is to traverse in reverse or to use a `while`
 loop that advances the index only when no element is removed.
 
 ---
 
-# Boolean representation pitfalls
+## § 33 Boolean representation pitfalls
 
-## Comparing a boolean with `0` or `1`
+### § 33.1 Comparing a boolean with `0` or `1`
 
-A one-bit register field is read as `bool`. The register write boundary may
+**§ 33.1(1)** A one-bit register field is read as `bool`. The register write boundary may
 permit the hardware spellings `0` and `1`, but that convenience does not make
 the value an integer when it is read. The ordinary equality rule therefore
 continues to reject a comparison between `bool` and an integer.
 
-When the integer operand is the exact compile-time value `0` or `1`, however,
+**§ 33.1(2)** When the integer operand is the exact compile-time value `0` or `1`, however,
 the likely boolean intent is unambiguous enough for a corrective suggestion.
 Pitfall analysis must use the following equivalences:
 
@@ -1148,7 +1148,7 @@ value == 0    -> !value
 value != 1    -> !value
 ```
 
-The same proven simplifications apply to explicit boolean literals:
+**§ 33.1(3)** The same proven simplifications apply to explicit boolean literals:
 
 ```text
 value == true     -> value
@@ -1157,26 +1157,26 @@ value == false    -> !value
 value != true     -> !value
 ```
 
-Operand order does not affect the result. An outer conversion such as
+**§ 33.1(4)** Operand order does not affect the result. An outer conversion such as
 `bool(value == 1)` is redundant because an equality expression already
 produces `bool`; the suggested replacement must therefore cover the whole
 expression rather than producing a second, overlapping finding.
 
-For an integer `0` or `1`, the owning equality diagnostic remains the primary
+**§ 33.1(5)** For an integer `0` or `1`, the owning equality diagnostic remains the primary
 type error and the pitfall result supplies a `SuggestedEdit`. For a valid
 comparison with `true` or `false`, semantic equivalence is proven and the
 replacement may be a `ProvenFix`.
 
-No boolean intent may be inferred from another integer, a non-constant numeric
+**§ 33.1(6)** No boolean intent may be inferred from another integer, a non-constant numeric
 value, or an expression whose boolean operand type has not been resolved.
 
 ---
 
-# Control-flow pitfalls
+## § 34 Control-flow pitfalls
 
-## Guard checks the wrong value
+### § 34.1 Guard checks the wrong value
 
-Example:
+**§ 34.1(1)** Example:
 
 ```sec
 if leftIndex < left.len {
@@ -1184,17 +1184,17 @@ if leftIndex < left.len {
 }
 ```
 
-If the checked relation does not establish the precondition required by the
+**§ 34.1(2)** If the checked relation does not establish the precondition required by the
 following operation, the compiler should correlate the guard and use.
 
-Where the mismatch strongly resembles a copy/paste error, a `LikelyMistake`
+**§ 34.1(3)** Where the mismatch strongly resembles a copy/paste error, a `LikelyMistake`
 finding may be emitted in addition to any owning bounds error.
 
 ---
 
-## Safety check without control transfer
+### § 34.2 Safety check without control transfer
 
-Example:
+**§ 34.2(1)** Example:
 
 ```sec
 if index >= values.len {
@@ -1204,25 +1204,25 @@ if index >= values.len {
 Process(values[index])
 ```
 
-If the error branch neither terminates nor establishes a new valid index, the
+**§ 34.2(2)** If the error branch neither terminates nor establishes a new valid index, the
 check does not protect the following access.
 
-The owning bounds analysis determines whether the subsequent access is proven
+**§ 34.2(3)** The owning bounds analysis determines whether the subsequent access is proven
 invalid.
 
-Pitfall analysis may explain that the apparent safety check does not prevent the
+**§ 34.2(4)** Pitfall analysis may explain that the apparent safety check does not prevent the
 unsafe path and may suggest the likely missing `return`, `continue`, or other
 appropriate control transfer only when the intended action can be inferred with
 sufficient confidence.
 
 ---
 
-# Meaningless comparisons from proven ranges
+## § 35 Meaningless comparisons from proven ranges
 
-When a type or path contract already proves a value's range, comparisons that
+**§ 35(1)** When a type or path contract already proves a value's range, comparisons that
 cannot affect control flow may be surfaced as optional analysis information.
 
-Examples include conceptually:
+**§ 35(2)** Examples include conceptually:
 
 ```sec
 if values.len < 0 {
@@ -1230,20 +1230,20 @@ if values.len < 0 {
 }
 ```
 
-or a comparison outside a constrained named type's permitted range.
+**§ 35(3)** or a comparison outside a constrained named type's permitted range.
 
-If the unreachable branch is already invalid under Sec's dead-code rules, that
+**§ 35(4)** If the unreachable branch is already invalid under Sec's dead-code rules, that
 owning error remains primary.
 
-If the code is merely meaningless but otherwise valid, this rulebook does not
+**§ 35(5)** If the code is merely meaningless but otherwise valid, this rulebook does not
 invent a strict mode to reject it. Such findings may instead be shown by Deep
 analysis or by an existing project diagnostic policy if one applies.
 
 ---
 
-# Tautological interval conditions
+## § 36 Tautological interval conditions
 
-Example:
+**§ 36(1)** Example:
 
 ```sec
 if value >= 0 || value <= 10 {
@@ -1251,12 +1251,12 @@ if value >= 0 || value <= 10 {
 }
 ```
 
-For an ordinary totally ordered numeric value, the condition covers every value
+**§ 36(2)** For an ordinary totally ordered numeric value, the condition covers every value
 and is therefore tautological.
 
-The compiler should explain the proven boolean result.
+**§ 36(3)** The compiler should explain the proven boolean result.
 
-When the surrounding form strongly indicates that the programmer intended an
+**§ 36(4)** When the surrounding form strongly indicates that the programmer intended an
 inclusive interval membership test, the diagnostic should prefer Sec's
 canonical range-membership syntax:
 
@@ -1266,30 +1266,30 @@ if value in 0..10 {
 }
 ```
 
-rather than merely suggesting replacement of `||` with `&&`.
+**§ 36(5)** rather than merely suggesting replacement of `||` with `&&`.
 
-The canonical suggestion is appropriate only when the intended interval and
+**§ 36(6)** The canonical suggestion is appropriate only when the intended interval and
 comparison semantics are compatible with `in`.
 
 ---
 
-# Canonical idiom guidance
+## § 37 Canonical idiom guidance
 
-When Sec has a canonical language construct that directly expresses the likely
+**§ 37(1)** When Sec has a canonical language construct that directly expresses the likely
 intended operation, pitfall diagnostics should prefer that construct.
 
-Examples include range membership with `in` and half-open traversal with `..<`.
+**§ 37(2)** Examples include range membership with `in` and half-open traversal with `..<`.
 
-This preference is a diagnostic/tooling rule, not a change to the semantics of
+**§ 37(3)** This preference is a diagnostic/tooling rule, not a change to the semantics of
 other equivalent expressions.
 
 ---
 
-# Option, Result, and state-correlation pitfalls
+## § 38 Option, Result, and state-correlation pitfalls
 
-Pitfall analysis may correlate a state check with the value subsequently used.
+**§ 38(1)** Pitfall analysis may correlate a state check with the value subsequently used.
 
-For example, conceptually:
+**§ 38(2)** For example, conceptually:
 
 ```sec
 if first.IsSome {
@@ -1297,30 +1297,30 @@ if first.IsSome {
 }
 ```
 
-checking `first` does not establish the state of `second`.
+**§ 38(3)** checking `first` does not establish the state of `second`.
 
-The owning Option/state rules determine whether the access is valid.
+**§ 38(4)** The owning Option/state rules determine whether the access is valid.
 
-Pitfall analysis may add a high-confidence copy/paste explanation when the
+**§ 38(5)** Pitfall analysis may add a high-confidence copy/paste explanation when the
 checked object and used object differ and no other proof establishes the used
 object's state.
 
-Equivalent reasoning applies to Result-like state when a branch proves a state
+**§ 38(6)** Equivalent reasoning applies to Result-like state when a branch proves a state
 for one value but the body uses a different value as though it had that state.
 
-No particular Option/Result member spelling is defined by this rulebook.
+**§ 38(7)** No particular Option/Result member spelling is defined by this rulebook.
 
 ---
 
-# Ownership, lifetime, concurrency, and resource families
+## § 39 Ownership, lifetime, concurrency, and resource families
 
-The pitfall architecture must allow findings in ownership, lifetime,
+**§ 39(1)** The pitfall architecture must allow findings in ownership, lifetime,
 concurrency, and resource-management domains.
 
-However, Sec 0.1 pitfall analysis must not duplicate the semantic work of the
+**§ 39(2)** However, Sec 0.1 pitfall analysis must not duplicate the semantic work of the
 analyses that already own those areas.
 
-Examples:
+**§ 39(3)** Examples:
 
 ```text
 retained local borrow
@@ -1333,22 +1333,22 @@ resource lifetime guaranteed by ordinary Sec destruction
     must not be diagnosed as a C-style leak
 ```
 
-Lower-confidence style heuristics in these domains are not required for the
+**§ 39(4)** Lower-confidence style heuristics in these domains are not required for the
 initial Sec 0.1 pitfall catalog.
 
 ---
 
-# FFI pitfall analysis
+## § 40 FFI pitfall analysis
 
-FFI-related pitfall detection must be contract-backed.
+**§ 40(1)** FFI-related pitfall detection must be contract-backed.
 
-Pitfall analysis must not infer pointer/length or pointer/size relationships
+**§ 40(2)** Pitfall analysis must not infer pointer/length or pointer/size relationships
 merely from parameter names, common C naming conventions, or guesses about a
 foreign function's purpose.
 
-The analysis consumes canonical FFI facts supplied by the FFI/tooling system.
+**§ 40(3)** The analysis consumes canonical FFI facts supplied by the FFI/tooling system.
 
-Those canonical contracts may originate from:
+**§ 40(4)** Those canonical contracts may originate from:
 
 ```text
 explicit Sec FFI declarations/contracts
@@ -1357,14 +1357,14 @@ generated foreign-library bindings
 compiler-known platform/library metadata
 ```
 
-How foreign metadata is imported or bindings are generated is outside the scope
+**§ 40(5)** How foreign metadata is imported or bindings are generated is outside the scope
 of this rulebook.
 
 ---
 
-# Canonical foreign extent relationships
+## § 41 Canonical foreign extent relationships
 
-Pitfall analysis must be able to consume a canonical relationship equivalent to:
+**§ 41(1)** Pitfall analysis must be able to consume a canonical relationship equivalent to:
 
 ```text
 BufferExtentRelation {
@@ -1375,9 +1375,9 @@ BufferExtentRelation {
 }
 ```
 
-The exact data structure and spelling are implementation-defined.
+**§ 41(2)** The exact data structure and spelling are implementation-defined.
 
-The relationship must be able to distinguish at least:
+**§ 41(3)** The relationship must be able to distinguish at least:
 
 ```text
 ExtentUnit:
@@ -1385,36 +1385,36 @@ ExtentUnit:
     Bytes
 ```
 
-and access direction when supplied by the FFI contract.
+**§ 41(4)** and access direction when supplied by the FFI contract.
 
-Additional FFI contract dimensions such as retention, nullability, alignment,
+**§ 41(5)** Additional FFI contract dimensions such as retention, nullability, alignment,
 ownership transfer, or memory space remain owned by the FFI rulebooks but may
 also be consumed where relevant.
 
 ---
 
-# FFI pointer/extent provenance mismatch
+## § 42 FFI pointer/extent provenance mismatch
 
-Consider a foreign contract stating that argument 1 describes the accessible
+**§ 42(1)** Consider a foreign contract stating that argument 1 describes the accessible
 extent of the storage addressed by argument 0.
 
-Example call:
+**§ 42(2)** Example call:
 
 ```sec
 ForeignWrite(first.Ptr, second.len)
 ```
 
-If canonical provenance establishes:
+**§ 42(3)** If canonical provenance establishes:
 
 ```text
 argument 0 pointer derives from first
 argument 1 extent derives from second
 ```
 
-and no contract proves that `second.len` is intentionally the extent of
+**§ 42(4)** and no contract proves that `second.len` is intentionally the extent of
 `first`, pitfall analysis may report a high-confidence pointer/extent mismatch.
 
-This is a relational finding based on:
+**§ 42(5)** This is a relational finding based on:
 
 ```text
 foreign contract
@@ -1422,100 +1422,100 @@ foreign contract
 Place/provenance
 ```
 
-not on argument names.
+**§ 42(6)** not on argument names.
 
 ---
 
-# FFI element count versus byte count
+## § 43 FFI element count versus byte count
 
-Consider:
+**§ 43(1)** Consider:
 
 ```sec
 ForeignWrite(values.Ptr, values.len)
 ```
 
-When the canonical foreign contract defines the extent argument in elements,
+**§ 43(2)** When the canonical foreign contract defines the extent argument in elements,
 `values.len` may be exactly the required quantity.
 
-When the canonical foreign contract defines the extent argument in bytes, the
+**§ 43(3)** When the canonical foreign contract defines the extent argument in bytes, the
 analysis must compare the passed quantity against the element width and the
 foreign extent semantics.
 
-For a multi-byte element type, passing element count where byte count is
+**§ 43(4)** For a multi-byte element type, passing element count where byte count is
 required may be a proven contract violation when the foreign contract and type
 layout make the mismatch unambiguous.
 
-For byte-sized elements, element count and byte count may coincide and must not
+**§ 43(5)** For byte-sized elements, element count and byte count may coincide and must not
 produce a false finding.
 
-Unknown or absent extent-unit metadata produces no contract-backed byte-count
+**§ 43(6)** Unknown or absent extent-unit metadata produces no contract-backed byte-count
 pitfall finding.
 
 ---
 
-# FFI pointer/size origin mismatch
+## § 44 FFI pointer/size origin mismatch
 
-The same provenance rule applies to size-bearing objects or structures.
+**§ 44(1)** The same provenance rule applies to size-bearing objects or structures.
 
-Conceptually:
+**§ 44(2)** Conceptually:
 
 ```sec
 ForeignSend(header.Ptr, payload.SizeOf)
 ```
 
-may be suspicious if the canonical foreign contract requires the size argument
+**§ 44(3)** may be suspicious if the canonical foreign contract requires the size argument
 to describe the object addressed by the pointer and provenance proves that the
 arguments describe unrelated objects.
 
-The rule must remain silent when the contract does not establish that relation.
+**§ 44(4)** The rule must remain silent when the contract does not establish that relation.
 
 ---
 
-# Foreign lifetime mistakes remain owned elsewhere
+## § 45 Foreign lifetime mistakes remain owned elsewhere
 
-If a foreign function may retain a pointer and a local or temporary object is
+**§ 45(1)** If a foreign function may retain a pointer and a local or temporary object is
 supplied, escape/lifetime/FFI analysis owns the validity result.
 
-Pitfall analysis may improve the diagnostic with wording such as:
+**§ 45(2)** Pitfall analysis may improve the diagnostic with wording such as:
 
 ```text
 the foreign operation may retain this pointer
 the supplied storage is local to the current call context
 ```
 
-but it must not implement a parallel foreign-retention analysis.
+**§ 45(3)** but it must not implement a parallel foreign-retention analysis.
 
 ---
 
-# Corrective actions
+## § 46 Corrective actions
 
-Pitfall corrective actions are divided conceptually into:
+**§ 46(1)** Pitfall corrective actions are divided conceptually into:
 
 ```text
 ProvenFix
 SuggestedEdit
 ```
 
-## ProvenFix
+### § 46.1 ProvenFix
 
-A `ProvenFix` is an edit whose relevant semantic correctness is established by
+**§ 46.1(1)** A `ProvenFix` is an edit whose relevant semantic correctness is established by
 the compiler for the finding being repaired.
 
-Examples may include:
+**§ 46.1(2)** Examples may include:
 
 ```sec
 if i <= values.len
 ```
 
-becoming:
+**§ 46.1(3)** becoming:
 
 ```sec
 if i < values.len
 ```
 
-when the condition is proven to be the bounds guard for the following access.
+**§ 46.1(4)** when the condition is proven to be the bounds guard for the following access.
 
-Another example is replacing a semantically equivalent pair of inclusive bound
+**§ 46.1(5)** Another example is replacing a semantically equivalent pair of inclusive bound
 comparisons with canonical range membership when evaluation semantics are
 preserved:
 
@@ -1525,7 +1525,7 @@ if value >= 0 && value <= 10 {
 }
 ```
 
-may be represented as:
+**§ 46.1(6)** may be represented as:
 
 ```sec
 if value in 0..10 {
@@ -1533,37 +1533,37 @@ if value in 0..10 {
 }
 ```
 
-when the compiler proves equivalence.
+**§ 46.1(7)** when the compiler proves equivalence.
 
-## SuggestedEdit
+### § 46.2 SuggestedEdit
 
-A `SuggestedEdit` expresses likely programmer intent but is not proven to be
+**§ 46.2(1)** A `SuggestedEdit` expresses likely programmer intent but is not proven to be
 semantically equivalent to the original program.
 
-For example:
+**§ 46.2(2)** For example:
 
 ```sec
 for i in 1..<values.len {
 ```
 
-may be suggested as:
+**§ 46.2(3)** may be suggested as:
 
 ```sec
 for i in 0..<values.len {
 ```
 
-when a skipped-first-element finding has high confidence.
+**§ 46.2(4)** when a skipped-first-element finding has high confidence.
 
-Such an edit must not be presented as a guaranteed safe automatic repair.
+**§ 46.2(5)** Such an edit must not be presented as a guaranteed safe automatic repair.
 
 ---
 
-# Fix safety
+## § 47 Fix safety
 
-An automatic proven fix must preserve all relevant observable semantics beyond
+**§ 47(1)** An automatic proven fix must preserve all relevant observable semantics beyond
 the specific mistake being repaired.
 
-The compiler must account for at least:
+**§ 47(2)** The compiler must account for at least:
 
 ```text
 evaluation order
@@ -1575,32 +1575,32 @@ borrow behavior
 control-flow behavior relevant to the edit
 ```
 
-For example:
+**§ 47(3)** For example:
 
 ```sec
 GetValue() >= 0 && GetValue() <= 10
 ```
 
-must not automatically become:
+**§ 47(4)** must not automatically become:
 
 ```sec
 GetValue() in 0..10
 ```
 
-if the original evaluates `GetValue()` twice and that difference is observable.
+**§ 47(5)** if the original evaluates `GetValue()` twice and that difference is observable.
 
-Effect analysis or equivalent canonical facts may prove that a transformation
+**§ 47(6)** Effect analysis or equivalent canonical facts may prove that a transformation
 is safe in cases where repeated evaluation is pure and observationally
 irrelevant according to Sec semantics.
 
 ---
 
-# Diagnostic ownership and coalescing
+## § 48 Diagnostic ownership and coalescing
 
-Pitfall analysis must not generate duplicate diagnostics for the same root
+**§ 48(1)** Pitfall analysis must not generate duplicate diagnostics for the same root
 cause.
 
-For example, the compiler should not emit all of:
+**§ 48(2)** For example, the compiler should not emit all of:
 
 ```text
 error: index may be out of bounds
@@ -1608,12 +1608,12 @@ error: inclusive range includes len
 warning: likely off-by-one
 ```
 
-for a single proven endpoint mistake.
+**§ 48(3)** for a single proven endpoint mistake.
 
-Instead, one primary diagnostic is produced by the owning normative rule and the
+**§ 48(4)** Instead, one primary diagnostic is produced by the owning normative rule and the
 pitfall finding supplies supporting explanation and applicable fixes.
 
-Conceptual diagnostic priority is:
+**§ 48(5)** Conceptual diagnostic priority is:
 
 ```text
 NormativeError
@@ -1625,22 +1625,22 @@ Advisory
 OptionalInsight
 ```
 
-`rules/tooling/diagnostics.md` defines diagnostic identity, severity,
+**§ 48(6)** `rules/tooling/diagnostics.md` defines diagnostic identity, severity,
 configurability, structured occurrences, fixes, and CLI/LSP transport.
 
-Pitfall rule identity is analysis identity. It must not be substituted for a
+**§ 48(7)** Pitfall rule identity is analysis identity. It must not be substituted for a
 registered compiler diagnostic ID.
 
-Pitfall rule identities do not encode the current severity.
+**§ 48(8)** Pitfall rule identities do not encode the current severity.
 
 ---
 
-# Stable pitfall rule identities
+## § 49 Stable pitfall rule identities
 
-Each pitfall pattern has a stable rule identity for configuration, testing,
+**§ 49(1)** Each pitfall pattern has a stable rule identity for configuration, testing,
 analysis dumps, profiling, and tooling.
 
-Conceptual examples include:
+**§ 49(2)** Conceptual examples include:
 
 ```text
 pitfall.bounds.inclusive-length-index
@@ -1652,25 +1652,25 @@ pitfall.ffi.pointer-extent-origin-mismatch
 pitfall.ffi.extent-unit-mismatch
 ```
 
-These are stable pitfall-analysis rule identities used for configuration,
+**§ 49(3)** These are stable pitfall-analysis rule identities used for configuration,
 testing, analysis dumps, profiling, dependency tracking, and tooling.
 
-They are not compiler diagnostic IDs.
+**§ 49(4)** They are not compiler diagnostic IDs.
 
-When a pitfall occurrence owns a user-facing advisory diagnostic, that
+**§ 49(5)** When a pitfall occurrence owns a user-facing advisory diagnostic, that
 diagnostic must use a separately registered stable diagnostic ID from
 `rules/tooling/diagnostics.md`.
 
-When the underlying condition is a proven violation owned by another semantic
+**§ 49(6)** When the underlying condition is a proven violation owned by another semantic
 analysis, that owning analysis supplies the primary diagnostic identity.
 
 ---
 
-# Rule registry
+## § 50 Rule registry
 
-The compiler must maintain a canonical registry of pitfall rules.
+**§ 50(1)** The compiler must maintain a canonical registry of pitfall rules.
 
-A rule definition must be able to describe at least:
+**§ 50(2)** A rule definition must be able to describe at least:
 
 ```text
 RuleIdentity
@@ -1680,19 +1680,19 @@ MinimumAnalysisBudget
 DefaultConfidence
 ```
 
-and the rule's relation/evidence/suppression/fix behavior.
+**§ 50(3)** and the rule's relation/evidence/suppression/fix behavior.
 
-A rule implementation may become more precise without changing its stable rule
+**§ 50(4)** A rule implementation may become more precise without changing its stable rule
 identity so long as it continues to describe the same conceptual programming
 mistake.
 
 ---
 
-# Rule dependencies
+## § 51 Rule dependencies
 
-Pitfall rules declare the canonical semantic facts they require.
+**§ 51(1)** Pitfall rules declare the canonical semantic facts they require.
 
-Examples:
+**§ 51(2)** Examples:
 
 ```text
 inclusive-length indexing:
@@ -1715,18 +1715,18 @@ byte-count mismatch:
     PlaceProvenance
 ```
 
-This dependency model allows the analysis scheduler and LSP to avoid expensive
+**§ 51(3)** This dependency model allows the analysis scheduler and LSP to avoid expensive
 work for rules that are disabled or outside the current analysis budget.
 
 ---
 
-# Interactive, Standard, and Deep analysis
+## § 52 Interactive, Standard, and Deep analysis
 
-Pitfall analysis follows the project-wide analysis budget model.
+**§ 52(1)** Pitfall analysis follows the project-wide analysis budget model.
 
-## Interactive
+### § 52.1 Interactive
 
-Interactive analysis prioritizes:
+**§ 52.1(1)** Interactive analysis prioritizes:
 
 ```text
 proven normative violations
@@ -1735,26 +1735,26 @@ cheap High-confidence LikelyMistake findings
 cheap proven fixes
 ```
 
-Interactive analysis must remain sound.
+**§ 52.1(2)** Interactive analysis must remain sound.
 
-It may omit expensive optional rules.
+**§ 52.1(3)** It may omit expensive optional rules.
 
-A missing expensive prerequisite produces `NotEvaluated` or `Pending`, not an
+**§ 52.1(4)** A missing expensive prerequisite produces `NotEvaluated` or `Pending`, not an
 unsound `NoFinding` conclusion.
 
-## Standard
+### § 52.2 Standard
 
-Standard analysis includes the required Sec 0.1 high-confidence pitfall catalog
+**§ 52.2(1)** Standard analysis includes the required Sec 0.1 high-confidence pitfall catalog
 where its prerequisite facts are part of normal compilation analysis.
 
-Project diagnostic policy controls the presentation of optional warnings and
+**§ 52.2(2)** Project diagnostic policy controls the presentation of optional warnings and
 information.
 
-Normative errors are unaffected by pitfall presentation settings.
+**§ 52.2(3)** Normative errors are unaffected by pitfall presentation settings.
 
-## Deep
+### § 52.3 Deep
 
-Deep analysis may additionally perform:
+**§ 52.3(1)** Deep analysis may additionally perform:
 
 ```text
 more expensive range reasoning
@@ -1766,27 +1766,27 @@ blocked/not-evaluated rule explanation
 cross-module correlation where summaries permit it
 ```
 
-Deep analysis refines information and presentation. It does not change source
+**§ 52.3(2)** Deep analysis refines information and presentation. It does not change source
 semantics.
 
 ---
 
-# sec analyse
+## § 53 sec analyse
 
-Pitfall analysis participates in the project-wide analysis CLI model.
+**§ 53(1)** Pitfall analysis participates in the project-wide analysis CLI model.
 
-Conceptually:
+**§ 53(2)** Conceptually:
 
 ```text
 sec analyse
 ```
 
-runs all available analyses by default, including pitfall analysis.
+**§ 53(3)** runs all available analyses by default, including pitfall analysis.
 
-The tooling must also permit pitfall analysis to be selected individually:
+**§ 53(4)** The tooling must also permit pitfall analysis to be selected individually:
 `sec analyse pitfalls` (`rules/tooling/cli.md` § 5.2, MD-017).
 
-Deep pitfall output may include:
+**§ 53(5)** Deep pitfall output may include:
 
 ```text
 reported findings
@@ -1801,18 +1801,18 @@ missing foreign contracts that block a contract-backed rule
 
 ---
 
-# LSP presentation
+## § 54 LSP presentation
 
-LSP presentation distinguishes:
+**§ 54(1)** LSP presentation distinguishes:
 
 ```text
 NeedToKnow
 OptionalInsight
 ```
 
-A proven normative error is `NeedToKnow`.
+**§ 54(2)** A proven normative error is `NeedToKnow`.
 
-Examples of `OptionalInsight` include:
+**§ 54(3)** Examples of `OptionalInsight` include:
 
 ```text
 likely skipped first element
@@ -1821,10 +1821,10 @@ suppressed pitfall reasoning
 medium-confidence Deep findings
 ```
 
-Standard hover should not become a dump of every pitfall fact known by the
+**§ 54(4)** Standard hover should not become a dump of every pitfall fact known by the
 compiler.
 
-Pitfall information is primarily exposed through:
+**§ 54(5)** Pitfall information is primarily exposed through:
 
 ```text
 diagnostics
@@ -1832,14 +1832,14 @@ code actions
 explicit analysis results
 ```
 
-Detailed hover information may be configurable when Deep LSP analysis is
+**§ 54(6)** Detailed hover information may be configurable when Deep LSP analysis is
 enabled.
 
 ---
 
-# Project configuration
+## § 55 Project configuration
 
-Project configuration may control optional pitfall behavior, including
+**§ 55(1)** Project configuration may control optional pitfall behavior, including
 conceptually:
 
 ```text
@@ -1850,26 +1850,26 @@ Deep analysis in LSP
 optional advisory presentation
 ```
 
-This rulebook does not define the concrete configuration syntax.
+**§ 55(2)** This rulebook does not define the concrete configuration syntax.
 
-Project-file syntax and configuration precedence are owned by
+**§ 55(3)** Project-file syntax and configuration precedence are owned by
 `rules/projects/projects.md`.
 
-Pitfall analysis consumes the resolved diagnostic policy. It does not define a
+**§ 55(4)** Pitfall analysis consumes the resolved diagnostic policy. It does not define a
 second project-configuration syntax.
 
-Optional pitfall settings cannot disable underlying normative language errors.
+**§ 55(5)** Optional pitfall settings cannot disable underlying normative language errors.
 
-If a general repository-wide diagnostic suppression mechanism exists, pitfall
+**§ 55(6)** If a general repository-wide diagnostic suppression mechanism exists, pitfall
 advisories use it rather than inventing pitfall-specific source syntax.
 
 ---
 
-# LSP configuration reload
+## § 56 LSP configuration reload
 
-Pitfall analysis participates in the project-wide LSP configuration lifecycle.
+**§ 56(1)** Pitfall analysis participates in the project-wide LSP configuration lifecycle.
 
-When analysis-related project configuration changes, the LSP must be able to:
+**§ 56(2)** When analysis-related project configuration changes, the LSP must be able to:
 
 ```text
 reload the project configuration
@@ -1881,19 +1881,19 @@ refresh code actions
 refresh dependent optional insight
 ```
 
-An LSP restart must not be required merely to apply changed pitfall-analysis
+**§ 56(3)** An LSP restart must not be required merely to apply changed pitfall-analysis
 configuration.
 
 ---
 
-# Incremental analysis
+## § 57 Incremental analysis
 
-Pitfall analysis must support dependency-driven incremental recomputation.
+**§ 57(1)** Pitfall analysis must support dependency-driven incremental recomputation.
 
-Changing one function must not require an unconditional project-wide rescan of
+**§ 57(2)** Changing one function must not require an unconditional project-wide rescan of
 all local pitfall rules.
 
-A cached finding depends conceptually on:
+**§ 57(3)** A cached finding depends conceptually on:
 
 ```text
 semantic body identity
@@ -1903,19 +1903,19 @@ versions/revisions of required semantic facts
 pitfall rule identity/version
 ```
 
-The exact cache key is implementation-defined.
+**§ 57(4)** The exact cache key is implementation-defined.
 
-If a change modifies an interprocedural summary consumed by a pitfall rule,
+**§ 57(5)** If a change modifies an interprocedural summary consumed by a pitfall rule,
 only dependent findings need to be invalidated.
 
 ---
 
-# Separate compilation
+## § 58 Separate compilation
 
-Pitfall analysis normally consumes canonical summaries owned by other analyses
+**§ 58(1)** Pitfall analysis normally consumes canonical summaries owned by other analyses
 rather than persisting a separate interprocedural pitfall-summary format.
 
-Useful imported facts may include:
+**§ 58(2)** Useful imported facts may include:
 
 ```text
 function postconditions
@@ -1926,15 +1926,15 @@ range/shape contracts
 canonical FFI buffer relationships
 ```
 
-Pitfall-specific persisted metadata should be introduced only when a future rule
+**§ 58(3)** Pitfall-specific persisted metadata should be introduced only when a future rule
 requires information that cannot reasonably be derived from canonical semantic
 summaries.
 
 ---
 
-# Determinism
+## § 59 Determinism
 
-For the same:
+**§ 59(1)** For the same:
 
 ```text
 source program
@@ -1943,17 +1943,17 @@ compiler version
 relevant analysis configuration
 ```
 
-Standard pitfall results must be deterministic.
+**§ 59(2)** Standard pitfall results must be deterministic.
 
-Worklist order, thread scheduling, cache hit order, or similar incidental
+**§ 59(3)** Worklist order, thread scheduling, cache hit order, or similar incidental
 implementation details must not change whether a finding is produced,
 suppressed, or classified.
 
 ---
 
-# Required Sec 0.1 implementation scope
+## § 60 Required Sec 0.1 implementation scope
 
-The required baseline must support at least the following semantic classes:
+**§ 60(1)** The required baseline must support at least the following semantic classes:
 
 ```text
 inclusive len upper-bound errors
@@ -1975,14 +1975,14 @@ FFI pointer/extent provenance mismatch when canonical contract exists
 FFI element-count/byte-count mismatch when canonical contract proves units
 ```
 
-The required catalog also includes false-positive suppression for common
+**§ 60(2)** The required catalog also includes false-positive suppression for common
 intentional traversal idioms.
 
 ---
 
-# Strong advisory scope
+## § 61 Strong advisory scope
 
-The following classes are expected high-value advisories where evidence reaches
+**§ 61(1)** The following classes are expected high-value advisories where evidence reaches
 High confidence:
 
 ```text
@@ -1994,16 +1994,16 @@ cross-value guard/use mismatch
 copy/paste collection-bound mismatch
 ```
 
-They remain advisory unless a separate normative rule proves invalidity.
+**§ 61(2)** They remain advisory unless a separate normative rule proves invalidity.
 
 ---
 
-# Deep/future scope
+## § 62 Deep/future scope
 
-Lower-confidence or more expensive patterns may be implemented in Deep analysis
+**§ 62(1)** Lower-confidence or more expensive patterns may be implemented in Deep analysis
 without being required for the initial Sec 0.1 completion criterion.
 
-Examples include:
+**§ 62(2)** Examples include:
 
 ```text
 copy/paste boolean operands
@@ -2014,14 +2014,14 @@ complex concurrency-intent patterns
 cross-function suspicious invariants
 ```
 
-Deep/future rules remain subject to the same evidence and false-positive
+**§ 62(3)** Deep/future rules remain subject to the same evidence and false-positive
 requirements.
 
 ---
 
-# Required test structure
+## § 63 Required test structure
 
-Each required pitfall rule should, where applicable, have four complementary
+**§ 63(1)** Each required pitfall rule should, where applicable, have four complementary
 test classes:
 
 ```text
@@ -2031,14 +2031,14 @@ intentional/suppressed case
 near-miss case
 ```
 
-This requirement exists to prevent the catalog from growing through detection
+**§ 63(2)** This requirement exists to prevent the catalog from growing through detection
 examples alone while false positives remain untested.
 
 ---
 
-# Required bounds and range tests
+## § 64 Required bounds and range tests
 
-The test suite must include at least:
+**§ 64(1)** The test suite must include at least:
 
 ```text
 0..len indexed access
@@ -2058,9 +2058,9 @@ first element handled before start-at-one loop suppresses advisory
 
 ---
 
-# Required collection-relation tests
+## § 65 Required collection-relation tests
 
-The test suite must include at least:
+**§ 65(1)** The test suite must include at least:
 
 ```text
 wrong collection supplies the loop bound
@@ -2073,9 +2073,9 @@ structural mutation pattern proven safe does not warn
 
 ---
 
-# Required control-flow tests
+## § 66 Required control-flow tests
 
-The test suite must include at least:
+**§ 66(1)** The test suite must include at least:
 
 ```text
 wrong variable guarded
@@ -2089,9 +2089,9 @@ side-effecting expression prevents unsafe automatic canonical rewrite
 
 ---
 
-# Required FFI tests
+## § 67 Required FFI tests
 
-When canonical FFI contracts are available, the test suite must include at
+**§ 67(1)** When canonical FFI contracts are available, the test suite must include at
 least:
 
 ```text
@@ -2105,13 +2105,13 @@ unknown foreign extent relationship produces no contract-backed false advisory
 explicit Sec contract and imported/generated canonical contract produce equivalent pitfall facts
 ```
 
-The FFI tooling/import implementation itself is outside this rulebook.
+**§ 67(2)** The FFI tooling/import implementation itself is outside this rulebook.
 
 ---
 
-# Required confidence and suppression tests
+## § 68 Required confidence and suppression tests
 
-The test suite must verify at least:
+**§ 68(1)** The test suite must verify at least:
 
 ```text
 High finding appears in a mode that enables it
@@ -2126,9 +2126,9 @@ Pending is distinguishable from NoFinding
 
 ---
 
-# Required corrective-action tests
+## § 69 Required corrective-action tests
 
-Every `ProvenFix` class must verify that the resulting program:
+**§ 69(1)** Every `ProvenFix` class must verify that the resulting program:
 
 ```text
 parses
@@ -2140,14 +2140,14 @@ preserves ownership/move behavior
 preserves relevant failure behavior
 ```
 
-Heuristic `SuggestedEdit` tests must verify that the tool labels the edit as a
+**§ 69(2)** Heuristic `SuggestedEdit` tests must verify that the tool labels the edit as a
 suggestion rather than a guaranteed semantic repair.
 
 ---
 
-# Required incremental and LSP tests
+## § 70 Required incremental and LSP tests
 
-The test suite must include at least:
+**§ 70(1)** The test suite must include at least:
 
 ```text
 edit loop bound -> affected finding invalidated/recomputed
@@ -2161,9 +2161,9 @@ disable optional pitfall family -> underlying normative error remains visible
 
 ---
 
-# Performance tests
+## § 71 Performance tests
 
-Pitfall analysis must be tested on representative large functions/projects with:
+**§ 71(1)** Pitfall analysis must be tested on representative large functions/projects with:
 
 ```text
 many loops
@@ -2173,7 +2173,7 @@ many collections
 many enabled pitfall rules
 ```
 
-The tests should verify:
+**§ 71(2)** The tests should verify:
 
 ```text
 bounded analysis work
@@ -2181,16 +2181,16 @@ incremental invalidation rather than unconditional whole-project rescanning
 deterministic results
 ```
 
-This rulebook does not define a normative wall-clock threshold.
+**§ 71(3)** This rulebook does not define a normative wall-clock threshold.
 
 ---
 
-# False-positive regression corpus
+## § 72 False-positive regression corpus
 
-The compiler should maintain regression cases for intentionally suspicious but
+**§ 72(1)** The compiler should maintain regression cases for intentionally suspicious but
 correct code.
 
-Representative cases include:
+**§ 72(2)** Representative cases include:
 
 ```text
 neighbor traversal
@@ -2205,31 +2205,31 @@ protocol-defined ranges
 explicit fixed-size contracts
 ```
 
-When a real false positive is found, a regression test should normally be added
+**§ 72(3)** When a real false positive is found, a regression test should normally be added
 before or together with the rule refinement.
 
-For an intent-oriented analysis, false-positive regressions are a core quality
+**§ 72(4)** For an intent-oriented analysis, false-positive regressions are a core quality
 requirement rather than optional polish.
 
 ---
 
-# Governance
+## § 73 Governance
 
-This rulebook contains normative pitfall-analysis behavior only.
+**§ 73(1)** This rulebook contains normative pitfall-analysis behavior only.
 
-Mutable implementation progress belongs to:
+**§ 73(2)** Mutable implementation progress belongs to:
 
 ```text
 governance/analysis.yaml
 ```
 
-under the canonical integration ID:
+**§ 73(3)** under the canonical integration ID:
 
 ```text
 sema.pitfall-analysis
 ```
 
-That governance integration owns implementation tracking for at least:
+**§ 73(4)** That governance integration owns implementation tracking for at least:
 
 ```text
 finding model
@@ -2243,10 +2243,10 @@ incremental LSP integration
 Deep analysis
 ```
 
-Implementation claims, current bug lists, implementation percentages, and
+**§ 73(5)** Implementation claims, current bug lists, implementation percentages, and
 temporary compiler limitations must not be copied into this rulebook.
 
-Cross-area implementation work remains owned by its existing governance
+**§ 73(6)** Cross-area implementation work remains owned by its existing governance
 integration. In particular:
 
 ```text
@@ -2263,14 +2263,14 @@ compiler analysis coordination
     owning compiler/analysis governance integration
 ```
 
-The pitfall governance entry may depend on those integrations but must not
+**§ 73(7)** The pitfall governance entry may depend on those integrations but must not
 duplicate their implementation state.
 
 ---
 
-# Completion criteria for Sec 0.1
+## § 74 Completion criteria for Sec 0.1
 
-Pitfall analysis is complete for Sec 0.1 when all of the following hold:
+**§ 74(1)** Pitfall analysis is complete for Sec 0.1 when all of the following hold:
 
 1. structured `PitfallFinding` results exist;
 2. classification and confidence remain distinct;
@@ -2300,45 +2300,45 @@ Pitfall analysis is complete for Sec 0.1 when all of the following hold:
 
 ---
 
-# Final normative summary
+## § 75 Final normative summary
 
-Pitfall analysis helps the programmer by recognizing high-confidence semantic
+**§ 75(1)** Pitfall analysis helps the programmer by recognizing high-confidence semantic
 relationships that commonly indicate human mistakes.
 
-It is not a second type checker, bounds checker, lifetime checker, deadlock
+**§ 75(2)** It is not a second type checker, bounds checker, lifetime checker, deadlock
 checker, or FFI implementation.
 
-The analyses that own Sec semantics remain authoritative.
+**§ 75(3)** The analyses that own Sec semantics remain authoritative.
 
-Pitfall analysis consumes their canonical facts, correlates those facts, and
+**§ 75(4)** Pitfall analysis consumes their canonical facts, correlates those facts, and
 produces structured findings with explicit classification, confidence,
 evidence, suppression, diagnostic ownership, and corrective actions.
 
-Proven invalidity remains a compiler error under the owning rule.
+**§ 75(5)** Proven invalidity remains a compiler error under the owning rule.
 
-Likely mistakes and suspicious intent remain configurable analysis results and
+**§ 75(6)** Likely mistakes and suspicious intent remain configurable analysis results and
 do not create new source-language invalidity.
 
-Recognition is semantic rather than merely syntactic, and suppression of common
+**§ 75(7)** Recognition is semantic rather than merely syntactic, and suppression of common
 intentional idioms is a normative requirement.
 
-The initial Sec 0.1 catalog prioritizes bounds, ranges, collection relations,
+**§ 75(8)** The initial Sec 0.1 catalog prioritizes bounds, ranges, collection relations,
 control-flow relationships, and FFI pointer/extent relationships where explicit
 canonical foreign contracts provide enough information.
 
-Pitfall analysis never guesses foreign pointer/length semantics from parameter
+**§ 75(9)** Pitfall analysis never guesses foreign pointer/length semantics from parameter
 names. FFI import and binding generation are separate tooling concerns.
 
-Corrective actions distinguish proven-safe repairs from heuristic suggestions
+**§ 75(10)** Corrective actions distinguish proven-safe repairs from heuristic suggestions
 and prefer canonical Sec idioms when semantic equivalence is established.
 
-Interactive analysis emphasizes proven and cheap high-confidence findings.
+**§ 75(11)** Interactive analysis emphasizes proven and cheap high-confidence findings.
 Standard analysis supports the required high-confidence catalog. Deep analysis
 may provide more expensive intent reasoning, suppressed findings, and optional
 insight.
 
-The LSP and `sec analyse` consume the same structured model with different
+**§ 75(12)** The LSP and `sec analyse` consume the same structured model with different
 budgets and presentation policies.
 
-Mutable implementation progress is governed by `sema.pitfall-analysis` in
+**§ 75(13)** Mutable implementation progress is governed by `sema.pitfall-analysis` in
 `governance/analysis.yaml`.

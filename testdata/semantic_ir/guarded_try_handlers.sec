@@ -1,0 +1,83 @@
+module main
+
+// P17-37: a guarded try handler on an error that needs destruction takes the
+// error only when its guard holds. A false guard hands the untouched error to
+// the next handler, which ends it. A guard over a payload the handler moves
+// reads a candidate through the error's payload Place; the move commits only
+// on a true guard (errorhandling.md § 19; flowcontrol_match.md § 17;
+// destruction.md § 8(8)).
+
+type Handle struct {
+    id: int,
+}
+
+impl Handle {
+    free {
+    }
+}
+
+type LoadError union error {
+    Busy(Handle)
+    Bad {
+        Code: int,
+    }
+    Stop
+}
+
+fn Load(flag: bool) Result[int, LoadError] {
+    if flag {
+        return Err(LoadError.Busy(Handle { id: 1 }))
+    }
+    return Ok(1)
+}
+
+fn WholeGuard(flag: bool, limit: int) int {
+    let value := try Load(flag) {
+        Err(e) where limit > 0 => 1
+        Err(_) => 0
+    }
+    return value
+}
+
+fn DiscardGuard(flag: bool, limit: int) int {
+    let value := try Load(flag) {
+        Err(_) where limit > 0 => 1
+        Err(_) => 0
+    }
+    return value
+}
+
+fn VariantGuard(flag: bool) int {
+    let value := try Load(flag) {
+        Err(.Bad { Code: code }) where code > 0 => code
+        Err(_) => 0
+    }
+    return value
+}
+
+fn Consume(handle: Handle) int {
+    return handle.id
+}
+
+fn MovedPayload(flag: bool) int {
+    let value := try Load(flag) {
+        Err(.Busy(handle)) where handle.id > 5 => Consume(<-handle)
+        Err(.Busy(other)) => other.id
+        Err(_) => 0
+    }
+    return value
+}
+
+fn IsBusy(error: ref LoadError) bool {
+    return true
+}
+
+fn BorrowedBinding(flag: bool) int {
+    let value := try Load(flag) {
+        Err(e) => {
+            let busy := IsBusy(ref e)
+            1
+        }
+    }
+    return value
+}

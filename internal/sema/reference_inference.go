@@ -46,6 +46,9 @@ func (a *Analyzer) inferRefExpression(expr *ast.RefExpression) (Type, expression
 
 		a.recordReferencePlan(expr, place, expr.Mutable, false, expr.Token)
 		a.recordSliceCreationPlan(expr)
+		if expr.Mutable {
+			a.noteLambdaEnvironmentWrite(place, expr.Token)
+		}
 	}
 	// MD-061: `ref r`/`ref mut r` over a reference holder is an explicit
 	// reborrow of the holder's referent: ref T (or ref mut T), never a

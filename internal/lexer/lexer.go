@@ -430,32 +430,17 @@ func (l *Lexer) skipWhitespaceAndComments() {
 }
 
 // Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
+// 2026-11-07: Block comments no longer nest (owner decision): the first `*/`
+// after the opening `/*` ends the comment; an inner `/*` is comment text.
 func (l *Lexer) skipBlockComment() {
-	depth := 0
-
-	for {
-		if l.atEnd() {
+	l.advance()
+	l.advance()
+	for !l.atEnd() {
+		if l.peek() == '*' && l.peekNext() == '/' {
+			l.advance()
+			l.advance()
 			return
 		}
-
-		if l.peek() == '/' && l.peekNext() == '*' {
-			depth++
-			l.advance()
-			l.advance()
-			continue
-		}
-
-		if l.peek() == '*' && l.peekNext() == '/' {
-			depth--
-			l.advance()
-			l.advance()
-
-			if depth == 0 {
-				return
-			}
-			continue
-		}
-
 		l.advance()
 	}
 }
@@ -477,20 +462,23 @@ func (l *Lexer) readLineComment() Token {
 	return l.token(COMMENT, string(l.input[start:l.pos]), line, column)
 }
 
-// readBlockComment retains one complete nested comment token and emits one
-// focused diagnostic if the outer depth does not close before end of file.
+// readBlockComment retains one complete block comment token and emits one
+// focused diagnostic if no `*/` closes it before end of file.
 // Transferred to sec - ALL changes *MUST* be visible and commented with date, time and what has changed.
 // 2026-09-12: Emit L1015 for unterminated nested block comments.
+// 2026-11-07: Block comments no longer nest (owner decision): the first `*/`
+// after the opening `/*` ends the comment; an inner `/*` is comment text.
 //
 // Rules:
 //   - rules/foundations/lexical_structure.md — §5.2 "Block comments"
-//   - rules/foundations/lexical_structure.md — §5.3 "Nested block comments"
+//   - rules/foundations/lexical_structure.md — §5.3 "Block comments do not nest"
 //   - rules/foundations/lexical_structure.md — §20 "Lexical errors"
 func (l *Lexer) readBlockComment() Token {
 	line := l.line
 	column := l.column
 	start := l.pos
-	depth := 0
+	l.advance()
+	l.advance()
 
 	for {
 		if l.atEnd() {
@@ -498,28 +486,16 @@ func (l *Lexer) readBlockComment() Token {
 			token := l.token(ILLEGAL, lexeme, line, column)
 			l.diagnostics = append(l.diagnostics, Diagnostic{
 				ID:      compilerdiagnostics.LexerUnterminatedBlockComment,
-				Message: "unterminated block comment; add */ to close the outer comment",
+				Message: "unterminated block comment; add */ to close it",
 				Primary: token,
 			})
 			return token
 		}
 
-		if l.peek() == '/' && l.peekNext() == '*' {
-			depth++
-			l.advance()
-			l.advance()
-			continue
-		}
-
 		if l.peek() == '*' && l.peekNext() == '/' {
 			l.advance()
 			l.advance()
-			depth--
-
-			if depth == 0 {
-				return l.token(COMMENT, string(l.input[start:l.pos]), line, column)
-			}
-			continue
+			return l.token(COMMENT, string(l.input[start:l.pos]), line, column)
 		}
 
 		l.advance()

@@ -355,9 +355,9 @@ integrations:
       - "unified cleanup on every edge (P17): cleanup.run-function runs at returns, error propagation and fallthrough, cleanup.run-scope at break, continue and scope ends, defers registered on conditional paths are path-sensitive in --sec-verify-cleanups. Each executed defer in a loop registers one instance (DeferInLoop)."
       - "Semantic IR representation (P17): cleanup.defer-register carries registration ordinal, cleanup scope, defer id, capture Places and source location; the body is an isolated region (lowering v13 §§ 13–14)."
       - "return value isolation (defer.md § 14): the return operand is established before cleanup.run-function, so a defer that assigns the returned local cannot change the result; return, break and continue inside a defer are rejected by Sema."
+      - "verified 2026-11-07 (TestDeferIsPermittedInEveryCallableBody): defer is valid in ordinary and static functions and methods, lambdas, property accessors and init; rejection inside free is frontend.destruction"
     remaining:
       - isolate cleanup-time state mutations such as deferred Arena.Reset or Arena.Release from ordinary post-registration flow state
-      - explicitly permit defer in ordinary and static functions and methods, lambdas, property accessors, and init; rejection inside free is implemented by frontend.destruction (S1086)
       - lower cleanup.defer-register, cleanup.run-scope and cleanup.run-function physically through the Sec MLIR to LLVM track, including one runtime instance per loop registration and owners of a loop body that a defer reads (the native track stops at 'physical representation of ... ownership cleanup' today)
       - complete local fallible-cleanup handling without imposing any defer-specific discard rule beyond canonical must-use policy
       - define and lower defer behavior only on panic or abnormal paths where the canonical panic/unwind policy requires cleanup

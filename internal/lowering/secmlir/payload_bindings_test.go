@@ -44,7 +44,7 @@ func TestSchema13PayloadBindings(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			for _, want := range []string{`"sec.place.union_payload"(`, `action = "candidate"`, `"sec.place.field"(`} {
+			for _, want := range []string{`"sec.place.union_payload"(`, `action = "candidate"`, `"sec.place.field"(`, `"sec.ref.borrow_mut"(`, `"sec.ref.borrow_shared"(`} {
 				if !bytes.Contains(output, []byte(want)) {
 					t.Errorf("missing %s", want)
 				}

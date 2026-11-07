@@ -480,6 +480,10 @@ Some(ref mut value)
 
 The borrow is branch-scoped and must satisfy the normal overlap and escape rules.
 
+A fresh temporary subject, such as `match MakeOption() { Some(ref value) => ... }`, may also be borrowed from with `ref` or `ref mut`, for its whole payload or a named payload field such as `Boxed { head: ref h }` (owner decision 2026-11-07). The temporary lives through the whole match, the arm borrows its payload in place, and the borrow ends with the arm, before the temporary is destroyed (see `rules/memory/destruction.md` § 8(8)). Like any payload borrow, it cannot escape the arm. A subject that is itself a reference returned by a call has no temporary to borrow from; its payload origin is that of the returned reference.
+
+A subject constructed in place, such as `match Some(<-handle) { ... }`, takes the operands it is built from when the subject is evaluated, exactly as the same construction does in a `let` initializer. After the match, `handle` is moved.
+
 ---
 
 ## 14. Borrowed subjects cannot transfer ownership

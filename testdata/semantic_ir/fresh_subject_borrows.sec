@@ -1,0 +1,156 @@
+module main
+
+// P17-40: fresh match subjects. A `ref` / `ref mut` payload binding borrows
+// through the subject's compiler-materialized temporary, and the borrow ends
+// with the arm before the subject is destroyed (owner decision 2026-11-07). A
+// constructed subject such as `Some(<-handle)` takes its operands when it is
+// evaluated, exactly like the same construction in a `let`.
+// Rules: rules/control-flow/flowcontrol_match.md § 13;
+// rules/memory/destruction.md § 8(8).
+
+type Handle struct {
+    id: int,
+}
+
+impl Handle {
+    free {
+    }
+}
+
+fn MakeSome(id: int) Option[Handle] {
+    return Some(Handle { id: id })
+}
+
+fn Shared() int {
+    match MakeSome(1) {
+        Some(ref handle) => {
+            return handle.id
+        }
+        None => {
+            return 0
+        }
+    }
+}
+
+fn Mutable() int {
+    match MakeSome(2) {
+        Some(ref mut handle) => {
+            handle.id = 3
+            return handle.id
+        }
+        None => {
+            return 0
+        }
+    }
+}
+
+fn FallsOut() int {
+    let mut total := 0
+    match MakeSome(3) {
+        Some(ref handle) => {
+            total = handle.id
+        }
+        None => {
+            total = 1
+        }
+    }
+    return total
+}
+
+fn Expression() int {
+    let value := match MakeSome(4) {
+        Some(ref handle) => handle.id
+        None => 0
+    }
+    return value
+}
+
+fn MakeNumber() Option[int] {
+    return Some(5)
+}
+
+fn TrivialSubject() int {
+    match MakeNumber() {
+        Some(ref n) => {
+            return *n
+        }
+        None => {
+            return 0
+        }
+    }
+}
+
+fn MakeResult() Result[Handle, IndexError] {
+    return Ok(Handle { id: 6 })
+}
+
+fn ResultSubject() int {
+    match MakeResult() {
+        Ok(ref handle) => {
+            return handle.id
+        }
+        Err(_) => {
+            return 0
+        }
+    }
+}
+
+fn Guarded() int {
+    match MakeSome(1) {
+        Some(ref handle) where handle.id > 0 => {
+            return handle.id
+        }
+        _ => {
+            return 0
+        }
+    }
+}
+
+
+fn Make(id: int) Handle {
+    return Handle { id: id }
+}
+
+fn ConstructedTaken() int {
+    let handle := Make(1)
+    match Some(<-handle) {
+        Some(inner) => {
+            return inner.id
+        }
+        None => {
+            return 0
+        }
+    }
+}
+
+fn ConstructedLeft() int {
+    let handle := Make(2)
+    match Some(<-handle) {
+        Some(_) => {
+            return 1
+        }
+        None => {
+            return 0
+        }
+    }
+}
+
+type Parcel union {
+    Boxed { head: Handle, size: int },
+    Empty,
+}
+
+fn FreshParcel() Parcel {
+    return Parcel.Boxed { head: Make(2), size: 3 }
+}
+
+fn FieldOfFresh() int {
+    match FreshParcel() {
+        Parcel.Boxed { head: ref h } => {
+            return h.id
+        }
+        Parcel.Empty => {
+            return 0
+        }
+    }
+}

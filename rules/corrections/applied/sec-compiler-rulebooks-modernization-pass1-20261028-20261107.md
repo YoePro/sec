@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | Audited correction and integration contract; not yet applied to canonical rulebooks |
+| **Status** | Applied 2026-11-07: `rules_implementations.txt` retired (2026-10-28); `parser_recovery.md` revision 2.0 (2026-10-28) and revision 2.1 (2026-11-07, §§ 22–66 syntax freshness audit, § 9(5) reference repair). The Priority 2 `compiler_known_members.md` review (§ 9(6)) is a separate modernization target tracked in governance. |
 | **Created** | 2026-10-28 |
 | **Last updated** | 2026-10-28 |
 | **Document revision** | 1.0 |

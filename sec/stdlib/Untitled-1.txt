@@ -1,0 +1,7 @@
+Fyra anrop i stdlib/net använder fortfarande string.ToLower(): 
+
+http/methods.sec:153, 
+http/header.sec:120 och :457, 
+samt url/scheme.sec:76. 
+
+Hur deras signaturer ska hantera fel är ditt API-beslut, så jag rörde dem inte.

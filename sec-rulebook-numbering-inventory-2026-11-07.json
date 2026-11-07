@@ -1,0 +1,1873 @@
+{
+  "repository": "YoePro/sec",
+  "head": "28780c01d63c3fc9eec2321ef67e3dd69962f043",
+  "audited_date": "2026-11-07",
+  "primary_books": [
+    {
+      "path": "rules/analysis/call_graph.md",
+      "family": "main",
+      "chapters": 0,
+      "numbered_subsections": 0,
+      "status": "missing_chapter_numbering",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/analysis/call_graph.md"
+    },
+    {
+      "path": "rules/analysis/closure_analysis.md",
+      "family": "main",
+      "chapters": 0,
+      "numbered_subsections": 0,
+      "status": "missing_chapter_numbering",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/analysis/closure_analysis.md"
+    },
+    {
+      "path": "rules/analysis/data_races.md",
+      "family": "main",
+      "chapters": 0,
+      "numbered_subsections": 0,
+      "status": "missing_chapter_numbering",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/analysis/data_races.md"
+    },
+    {
+      "path": "rules/analysis/deadlock_analysis.md",
+      "family": "main",
+      "chapters": 0,
+      "numbered_subsections": 0,
+      "status": "missing_chapter_numbering",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/analysis/deadlock_analysis.md"
+    },
+    {
+      "path": "rules/analysis/effect_analysis.md",
+      "family": "main",
+      "chapters": 0,
+      "numbered_subsections": 0,
+      "status": "missing_chapter_numbering",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/analysis/effect_analysis.md"
+    },
+    {
+      "path": "rules/analysis/escape_analysis.md",
+      "family": "main",
+      "chapters": 0,
+      "numbered_subsections": 0,
+      "status": "missing_chapter_numbering",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/analysis/escape_analysis.md"
+    },
+    {
+      "path": "rules/analysis/isr_analysis.md",
+      "family": "main",
+      "chapters": 39,
+      "numbered_subsections": 45,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/analysis/isr_analysis.md"
+    },
+    {
+      "path": "rules/analysis/parameter_usage_analysis.md",
+      "family": "main",
+      "chapters": 0,
+      "numbered_subsections": 0,
+      "status": "missing_chapter_numbering",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/analysis/parameter_usage_analysis.md"
+    },
+    {
+      "path": "rules/analysis/pitfall_analysis.md",
+      "family": "main",
+      "chapters": 0,
+      "numbered_subsections": 0,
+      "status": "missing_chapter_numbering",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/analysis/pitfall_analysis.md"
+    },
+    {
+      "path": "rules/analysis/stack_analysis.md",
+      "family": "main",
+      "chapters": 0,
+      "numbered_subsections": 0,
+      "status": "missing_chapter_numbering",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/analysis/stack_analysis.md"
+    },
+    {
+      "path": "rules/collections/collections.md",
+      "family": "main",
+      "chapters": 25,
+      "numbered_subsections": 65,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/collections/collections.md"
+    },
+    {
+      "path": "rules/collections/shaped-types.md",
+      "family": "main",
+      "chapters": 38,
+      "numbered_subsections": 48,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/collections/shaped-types.md"
+    },
+    {
+      "path": "rules/compiler/compile_time_evaluation.md",
+      "family": "main",
+      "chapters": 76,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/compiler/compile_time_evaluation.md"
+    },
+    {
+      "path": "rules/compiler/compiler.md",
+      "family": "main",
+      "chapters": 94,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/compiler/compiler.md"
+    },
+    {
+      "path": "rules/compiler/compiler_analysis.md",
+      "family": "main",
+      "chapters": 75,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/compiler/compiler_analysis.md"
+    },
+    {
+      "path": "rules/compiler/compiler_known_members.md",
+      "family": "main",
+      "chapters": 0,
+      "numbered_subsections": 0,
+      "status": "missing_chapter_numbering",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/compiler/compiler_known_members.md"
+    },
+    {
+      "path": "rules/compiler/compiler_pipeline.md",
+      "family": "main",
+      "chapters": 116,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/compiler/compiler_pipeline.md"
+    },
+    {
+      "path": "rules/compiler/compiler_testing.md",
+      "family": "main",
+      "chapters": 88,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/compiler/compiler_testing.md"
+    },
+    {
+      "path": "rules/compiler/debug_information.md",
+      "family": "main",
+      "chapters": 91,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/compiler/debug_information.md"
+    },
+    {
+      "path": "rules/compiler/generics_lowering.md",
+      "family": "main",
+      "chapters": 10,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/compiler/generics_lowering.md"
+    },
+    {
+      "path": "rules/compiler/incremental_compilation.md",
+      "family": "main",
+      "chapters": 100,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/compiler/incremental_compilation.md"
+    },
+    {
+      "path": "rules/compiler/initialization.md",
+      "family": "main",
+      "chapters": 47,
+      "numbered_subsections": 8,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/compiler/initialization.md"
+    },
+    {
+      "path": "rules/compiler/linking.md",
+      "family": "main",
+      "chapters": 70,
+      "numbered_subsections": 14,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/compiler/linking.md"
+    },
+    {
+      "path": "rules/compiler/monomorphization.md",
+      "family": "main",
+      "chapters": 24,
+      "numbered_subsections": 123,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/compiler/monomorphization.md"
+    },
+    {
+      "path": "rules/compiler/parser_recovery.md",
+      "family": "main",
+      "chapters": 84,
+      "numbered_subsections": 122,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/compiler/parser_recovery.md"
+    },
+    {
+      "path": "rules/compiler/semantic_ir.md",
+      "family": "main",
+      "chapters": 126,
+      "numbered_subsections": 26,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/compiler/semantic_ir.md"
+    },
+    {
+      "path": "rules/concurrency/atomics.md",
+      "family": "main",
+      "chapters": 51,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/concurrency/atomics.md"
+    },
+    {
+      "path": "rules/concurrency/await.md",
+      "family": "main",
+      "chapters": 71,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/concurrency/await.md"
+    },
+    {
+      "path": "rules/concurrency/blocking.md",
+      "family": "main",
+      "chapters": 0,
+      "numbered_subsections": 0,
+      "status": "missing_chapter_numbering",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/concurrency/blocking.md"
+    },
+    {
+      "path": "rules/concurrency/cancellation.md",
+      "family": "main",
+      "chapters": 62,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/concurrency/cancellation.md"
+    },
+    {
+      "path": "rules/concurrency/channels.md",
+      "family": "main",
+      "chapters": 68,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/concurrency/channels.md"
+    },
+    {
+      "path": "rules/concurrency/concurrency.md",
+      "family": "main",
+      "chapters": 49,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/concurrency/concurrency.md"
+    },
+    {
+      "path": "rules/concurrency/concurrency_memory_model.md",
+      "family": "main",
+      "chapters": 56,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/concurrency/concurrency_memory_model.md"
+    },
+    {
+      "path": "rules/concurrency/concurrency_runtime_model.md",
+      "family": "main",
+      "chapters": 0,
+      "numbered_subsections": 0,
+      "status": "missing_chapter_numbering",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/concurrency/concurrency_runtime_model.md"
+    },
+    {
+      "path": "rules/concurrency/events.md",
+      "family": "main",
+      "chapters": 0,
+      "numbered_subsections": 0,
+      "status": "missing_chapter_numbering",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/concurrency/events.md"
+    },
+    {
+      "path": "rules/concurrency/ipc.md",
+      "family": "main",
+      "chapters": 162,
+      "numbered_subsections": 3,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/concurrency/ipc.md"
+    },
+    {
+      "path": "rules/concurrency/mutex.md",
+      "family": "main",
+      "chapters": 66,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/concurrency/mutex.md"
+    },
+    {
+      "path": "rules/concurrency/processes.md",
+      "family": "main",
+      "chapters": 41,
+      "numbered_subsections": 208,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/concurrency/processes.md"
+    },
+    {
+      "path": "rules/concurrency/scheduling.md",
+      "family": "main",
+      "chapters": 62,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/concurrency/scheduling.md"
+    },
+    {
+      "path": "rules/concurrency/select.md",
+      "family": "main",
+      "chapters": 66,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/concurrency/select.md"
+    },
+    {
+      "path": "rules/concurrency/spawn.md",
+      "family": "main",
+      "chapters": 0,
+      "numbered_subsections": 0,
+      "status": "missing_chapter_numbering",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/concurrency/spawn.md"
+    },
+    {
+      "path": "rules/concurrency/tasks.md",
+      "family": "main",
+      "chapters": 33,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/concurrency/tasks.md"
+    },
+    {
+      "path": "rules/concurrency/thread_local.md",
+      "family": "main",
+      "chapters": 70,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/concurrency/thread_local.md"
+    },
+    {
+      "path": "rules/concurrency/threads.md",
+      "family": "main",
+      "chapters": 79,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/concurrency/threads.md"
+    },
+    {
+      "path": "rules/control-flow/defer.md",
+      "family": "main",
+      "chapters": 34,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/control-flow/defer.md"
+    },
+    {
+      "path": "rules/control-flow/discard.md",
+      "family": "main",
+      "chapters": 42,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/control-flow/discard.md"
+    },
+    {
+      "path": "rules/control-flow/flowcontrol_for.md",
+      "family": "main",
+      "chapters": 44,
+      "numbered_subsections": 1,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/control-flow/flowcontrol_for.md"
+    },
+    {
+      "path": "rules/control-flow/flowcontrol_if.md",
+      "family": "main",
+      "chapters": 30,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/control-flow/flowcontrol_if.md"
+    },
+    {
+      "path": "rules/control-flow/flowcontrol_match.md",
+      "family": "main",
+      "chapters": 40,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/control-flow/flowcontrol_match.md"
+    },
+    {
+      "path": "rules/control-flow/flowcontrol_switch.md",
+      "family": "main",
+      "chapters": 42,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/control-flow/flowcontrol_switch.md"
+    },
+    {
+      "path": "rules/control-flow/flowcontrol_while.md",
+      "family": "main",
+      "chapters": 32,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/control-flow/flowcontrol_while.md"
+    },
+    {
+      "path": "rules/declarations/enums.md",
+      "family": "main",
+      "chapters": 20,
+      "numbered_subsections": 15,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/declarations/enums.md"
+    },
+    {
+      "path": "rules/declarations/functions.md",
+      "family": "main",
+      "chapters": 46,
+      "numbered_subsections": 1,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/declarations/functions.md"
+    },
+    {
+      "path": "rules/declarations/generics.md",
+      "family": "main",
+      "chapters": 37,
+      "numbered_subsections": 7,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/declarations/generics.md"
+    },
+    {
+      "path": "rules/declarations/impl.md",
+      "family": "main",
+      "chapters": 30,
+      "numbered_subsections": 18,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/declarations/impl.md"
+    },
+    {
+      "path": "rules/declarations/interfaces.md",
+      "family": "main",
+      "chapters": 14,
+      "numbered_subsections": 8,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/declarations/interfaces.md"
+    },
+    {
+      "path": "rules/declarations/lambda-functions.md",
+      "family": "main",
+      "chapters": 47,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/declarations/lambda-functions.md"
+    },
+    {
+      "path": "rules/declarations/properties.md",
+      "family": "main",
+      "chapters": 18,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/declarations/properties.md"
+    },
+    {
+      "path": "rules/declarations/registers.md",
+      "family": "main",
+      "chapters": 17,
+      "numbered_subsections": 15,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/declarations/registers.md"
+    },
+    {
+      "path": "rules/declarations/spread.md",
+      "family": "main",
+      "chapters": 15,
+      "numbered_subsections": 12,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/declarations/spread.md"
+    },
+    {
+      "path": "rules/declarations/static.md",
+      "family": "main",
+      "chapters": 31,
+      "numbered_subsections": 1,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/declarations/static.md"
+    },
+    {
+      "path": "rules/declarations/struct.md",
+      "family": "main",
+      "chapters": 23,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/declarations/struct.md"
+    },
+    {
+      "path": "rules/declarations/unions.md",
+      "family": "main",
+      "chapters": 28,
+      "numbered_subsections": 38,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/declarations/unions.md"
+    },
+    {
+      "path": "rules/errors/errorhandling.md",
+      "family": "main",
+      "chapters": 41,
+      "numbered_subsections": 41,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/errors/errorhandling.md"
+    },
+    {
+      "path": "rules/errors/panic.md",
+      "family": "main",
+      "chapters": 31,
+      "numbered_subsections": 17,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/errors/panic.md"
+    },
+    {
+      "path": "rules/errors/runtime_checks.md",
+      "family": "main",
+      "chapters": 0,
+      "numbered_subsections": 0,
+      "status": "missing_chapter_numbering",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/errors/runtime_checks.md"
+    },
+    {
+      "path": "rules/foundations/attributes.md",
+      "family": "main",
+      "chapters": 0,
+      "numbered_subsections": 0,
+      "status": "missing_chapter_numbering",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/foundations/attributes.md"
+    },
+    {
+      "path": "rules/foundations/grammar.md",
+      "family": "main",
+      "chapters": 0,
+      "numbered_subsections": 0,
+      "status": "missing_chapter_numbering",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/foundations/grammar.md"
+    },
+    {
+      "path": "rules/foundations/language_philosophy.md",
+      "family": "main",
+      "chapters": 23,
+      "numbered_subsections": 5,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/foundations/language_philosophy.md"
+    },
+    {
+      "path": "rules/foundations/lexical_structure.md",
+      "family": "main",
+      "chapters": 27,
+      "numbered_subsections": 39,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/foundations/lexical_structure.md"
+    },
+    {
+      "path": "rules/foundations/names_scopes_visibility.md",
+      "family": "main",
+      "chapters": 24,
+      "numbered_subsections": 4,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/foundations/names_scopes_visibility.md"
+    },
+    {
+      "path": "rules/foundations/operators.md",
+      "family": "main",
+      "chapters": 0,
+      "numbered_subsections": 0,
+      "status": "missing_chapter_numbering",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/foundations/operators.md"
+    },
+    {
+      "path": "rules/library/core-library.md",
+      "family": "main",
+      "chapters": 27,
+      "numbered_subsections": 67,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/library/core-library.md"
+    },
+    {
+      "path": "rules/library/stdlib.md",
+      "family": "main",
+      "chapters": 27,
+      "numbered_subsections": 9,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/library/stdlib.md"
+    },
+    {
+      "path": "rules/memory/allocation.md",
+      "family": "main",
+      "chapters": 32,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/memory/allocation.md"
+    },
+    {
+      "path": "rules/memory/arena.md",
+      "family": "main",
+      "chapters": 130,
+      "numbered_subsections": 8,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/memory/arena.md"
+    },
+    {
+      "path": "rules/memory/borrowing.md",
+      "family": "main",
+      "chapters": 37,
+      "numbered_subsections": 55,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/memory/borrowing.md"
+    },
+    {
+      "path": "rules/memory/copy_move.md",
+      "family": "main",
+      "chapters": 33,
+      "numbered_subsections": 50,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/memory/copy_move.md"
+    },
+    {
+      "path": "rules/memory/destruction.md",
+      "family": "main",
+      "chapters": 40,
+      "numbered_subsections": 83,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/memory/destruction.md"
+    },
+    {
+      "path": "rules/memory/layout.md",
+      "family": "main",
+      "chapters": 46,
+      "numbered_subsections": 3,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/memory/layout.md"
+    },
+    {
+      "path": "rules/memory/lifetime_analysis.md",
+      "family": "main",
+      "chapters": 36,
+      "numbered_subsections": 109,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/memory/lifetime_analysis.md"
+    },
+    {
+      "path": "rules/memory/memory_model.md",
+      "family": "main",
+      "chapters": 54,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/memory/memory_model.md"
+    },
+    {
+      "path": "rules/memory/ownership.md",
+      "family": "main",
+      "chapters": 37,
+      "numbered_subsections": 54,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/memory/ownership.md"
+    },
+    {
+      "path": "rules/memory/raw_pointers.md",
+      "family": "main",
+      "chapters": 39,
+      "numbered_subsections": 9,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/memory/raw_pointers.md"
+    },
+    {
+      "path": "rules/memory/reference_model.md",
+      "family": "main",
+      "chapters": 90,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/memory/reference_model.md"
+    },
+    {
+      "path": "rules/memory/references.md",
+      "family": "main",
+      "chapters": 30,
+      "numbered_subsections": 4,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/memory/references.md"
+    },
+    {
+      "path": "rules/memory/storage.md",
+      "family": "main",
+      "chapters": 41,
+      "numbered_subsections": 21,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/memory/storage.md"
+    },
+    {
+      "path": "rules/memory/transferability.md",
+      "family": "main",
+      "chapters": 49,
+      "numbered_subsections": 9,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/memory/transferability.md"
+    },
+    {
+      "path": "rules/memory/unsafe.md",
+      "family": "main",
+      "chapters": 55,
+      "numbered_subsections": 4,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/memory/unsafe.md"
+    },
+    {
+      "path": "rules/platform/abi.md",
+      "family": "main",
+      "chapters": 45,
+      "numbered_subsections": 13,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/platform/abi.md"
+    },
+    {
+      "path": "rules/platform/ffi.md",
+      "family": "main",
+      "chapters": 55,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/platform/ffi.md"
+    },
+    {
+      "path": "rules/platform/fixed-address-bindings.md",
+      "family": "main",
+      "chapters": 14,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/platform/fixed-address-bindings.md"
+    },
+    {
+      "path": "rules/platform/hardware-register-access.md",
+      "family": "main",
+      "chapters": 41,
+      "numbered_subsections": 228,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/platform/hardware-register-access.md"
+    },
+    {
+      "path": "rules/platform/inline_assembly.md",
+      "family": "main",
+      "chapters": 155,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/platform/inline_assembly.md"
+    },
+    {
+      "path": "rules/platform/interrupts.md",
+      "family": "main",
+      "chapters": 48,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/platform/interrupts.md"
+    },
+    {
+      "path": "rules/platform/platform_model.md",
+      "family": "main",
+      "chapters": 30,
+      "numbered_subsections": 22,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/platform/platform_model.md"
+    },
+    {
+      "path": "rules/platform/target_profiles.md",
+      "family": "main",
+      "chapters": 39,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/platform/target_profiles.md"
+    },
+    {
+      "path": "rules/platform/volatile.md",
+      "family": "main",
+      "chapters": 51,
+      "numbered_subsections": 8,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/platform/volatile.md"
+    },
+    {
+      "path": "rules/projects/modules.md",
+      "family": "main",
+      "chapters": 26,
+      "numbered_subsections": 7,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/projects/modules.md"
+    },
+    {
+      "path": "rules/projects/projects.md",
+      "family": "main",
+      "chapters": 53,
+      "numbered_subsections": 15,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/projects/projects.md"
+    },
+    {
+      "path": "rules/tooling/cli.md",
+      "family": "main",
+      "chapters": 7,
+      "numbered_subsections": 6,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/tooling/cli.md"
+    },
+    {
+      "path": "rules/tooling/diagnostics.md",
+      "family": "main",
+      "chapters": 33,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/tooling/diagnostics.md"
+    },
+    {
+      "path": "rules/tooling/formatter.md",
+      "family": "main",
+      "chapters": 32,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/tooling/formatter.md"
+    },
+    {
+      "path": "rules/tooling/lsp.md",
+      "family": "main",
+      "chapters": 0,
+      "numbered_subsections": 0,
+      "status": "missing_chapter_numbering",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/tooling/lsp.md"
+    },
+    {
+      "path": "rules/tooling/testing.md",
+      "family": "main",
+      "chapters": 47,
+      "numbered_subsections": 234,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/tooling/testing.md"
+    },
+    {
+      "path": "rules/types/contracts.md",
+      "family": "main",
+      "chapters": 0,
+      "numbered_subsections": 0,
+      "status": "missing_chapter_numbering",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/types/contracts.md"
+    },
+    {
+      "path": "rules/types/default_values.md",
+      "family": "main",
+      "chapters": 0,
+      "numbered_subsections": 0,
+      "status": "missing_chapter_numbering",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/types/default_values.md"
+    },
+    {
+      "path": "rules/types/temporal.md",
+      "family": "main",
+      "chapters": 5,
+      "numbered_subsections": 9,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/types/temporal.md"
+    },
+    {
+      "path": "rules/types/types.md",
+      "family": "main",
+      "chapters": 0,
+      "numbered_subsections": 0,
+      "status": "missing_chapter_numbering",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/types/types.md"
+    },
+    {
+      "path": "rules/types/units.md",
+      "family": "main",
+      "chapters": 0,
+      "numbered_subsections": 0,
+      "status": "missing_chapter_numbering",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/types/units.md"
+    }
+  ],
+  "mlir_documents": [
+    {
+      "path": "rules/mlir/mlir.txt",
+      "family": "mlir",
+      "chapters": 0,
+      "numbered_subsections": 0,
+      "status": "missing_chapter_numbering",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/mlir.txt"
+    },
+    {
+      "path": "rules/mlir/mlir-optimize.txt",
+      "family": "mlir",
+      "chapters": 0,
+      "numbered_subsections": 0,
+      "status": "missing_chapter_numbering",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/mlir-optimize.txt"
+    },
+    {
+      "path": "rules/mlir/sec_mlir.md",
+      "family": "mlir",
+      "chapters": 0,
+      "numbered_subsections": 0,
+      "status": "missing_chapter_numbering",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/sec_mlir.md"
+    },
+    {
+      "path": "rules/mlir/sec_mlir_dialect.md",
+      "family": "mlir",
+      "chapters": 43,
+      "numbered_subsections": 1,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/sec_mlir_dialect.md"
+    },
+    {
+      "path": "rules/mlir/sec_mlir_lowering.md",
+      "family": "mlir",
+      "chapters": 32,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/sec_mlir_lowering.md"
+    },
+    {
+      "path": "rules/mlir/dialect-versions/sec_mlir_dialect_v2.md",
+      "family": "mlir",
+      "chapters": 40,
+      "numbered_subsections": 4,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/dialect-versions/sec_mlir_dialect_v2.md"
+    },
+    {
+      "path": "rules/mlir/dialect-versions/sec_mlir_dialect_v3.md",
+      "family": "mlir",
+      "chapters": 28,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/dialect-versions/sec_mlir_dialect_v3.md"
+    },
+    {
+      "path": "rules/mlir/dialect-versions/sec_mlir_dialect_v4.md",
+      "family": "mlir",
+      "chapters": 26,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/dialect-versions/sec_mlir_dialect_v4.md"
+    },
+    {
+      "path": "rules/mlir/dialect-versions/sec_mlir_dialect_v5.md",
+      "family": "mlir",
+      "chapters": 22,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/dialect-versions/sec_mlir_dialect_v5.md"
+    },
+    {
+      "path": "rules/mlir/dialect-versions/sec_mlir_dialect_v6.md",
+      "family": "mlir",
+      "chapters": 24,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/dialect-versions/sec_mlir_dialect_v6.md"
+    },
+    {
+      "path": "rules/mlir/dialect-versions/sec_mlir_dialect_v7.md",
+      "family": "mlir",
+      "chapters": 34,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/dialect-versions/sec_mlir_dialect_v7.md"
+    },
+    {
+      "path": "rules/mlir/dialect-versions/sec_mlir_dialect_v8.md",
+      "family": "mlir",
+      "chapters": 20,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/dialect-versions/sec_mlir_dialect_v8.md"
+    },
+    {
+      "path": "rules/mlir/dialect-versions/sec_mlir_dialect_v9.md",
+      "family": "mlir",
+      "chapters": 27,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/dialect-versions/sec_mlir_dialect_v9.md"
+    },
+    {
+      "path": "rules/mlir/dialect-versions/sec_mlir_dialect_v10.md",
+      "family": "mlir",
+      "chapters": 28,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/dialect-versions/sec_mlir_dialect_v10.md"
+    },
+    {
+      "path": "rules/mlir/dialect-versions/sec_mlir_dialect_v11.md",
+      "family": "mlir",
+      "chapters": 41,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/dialect-versions/sec_mlir_dialect_v11.md"
+    },
+    {
+      "path": "rules/mlir/dialect-versions/sec_mlir_dialect_v12.md",
+      "family": "mlir",
+      "chapters": 33,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/dialect-versions/sec_mlir_dialect_v12.md"
+    },
+    {
+      "path": "rules/mlir/dialect-versions/sec_mlir_dialect_v13.md",
+      "family": "mlir",
+      "chapters": 37,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/dialect-versions/sec_mlir_dialect_v13.md"
+    },
+    {
+      "path": "rules/mlir/dialect-versions/sec_mlir_dialect_v14.md",
+      "family": "mlir",
+      "chapters": 31,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/dialect-versions/sec_mlir_dialect_v14.md"
+    },
+    {
+      "path": "rules/mlir/dialect-versions/sec_mlir_dialect_v15.md",
+      "family": "mlir",
+      "chapters": 40,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/dialect-versions/sec_mlir_dialect_v15.md"
+    },
+    {
+      "path": "rules/mlir/dialect-versions/sec_mlir_dialect_v16.md",
+      "family": "mlir",
+      "chapters": 17,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/dialect-versions/sec_mlir_dialect_v16.md"
+    },
+    {
+      "path": "rules/mlir/dialect-versions/sec_mlir_dialect_v17.md",
+      "family": "mlir",
+      "chapters": 12,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/dialect-versions/sec_mlir_dialect_v17.md"
+    },
+    {
+      "path": "rules/mlir/dialect-versions/sec_mlir_dialect_v18.md",
+      "family": "mlir",
+      "chapters": 11,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/dialect-versions/sec_mlir_dialect_v18.md"
+    },
+    {
+      "path": "rules/mlir/dialect-versions/sec_mlir_dialect_v19.md",
+      "family": "mlir",
+      "chapters": 15,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/dialect-versions/sec_mlir_dialect_v19.md"
+    },
+    {
+      "path": "rules/mlir/dialect-versions/sec_mlir_dialect_v20.md",
+      "family": "mlir",
+      "chapters": 12,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/dialect-versions/sec_mlir_dialect_v20.md"
+    },
+    {
+      "path": "rules/mlir/dialect-versions/sec_mlir_dialect_v21.md",
+      "family": "mlir",
+      "chapters": 16,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/dialect-versions/sec_mlir_dialect_v21.md"
+    },
+    {
+      "path": "rules/mlir/dialect-versions/sec_mlir_dialect_v22.md",
+      "family": "mlir",
+      "chapters": 9,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/dialect-versions/sec_mlir_dialect_v22.md"
+    },
+    {
+      "path": "rules/mlir/dialect-versions/sec_mlir_dialect_package27.md",
+      "family": "mlir",
+      "chapters": 6,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/dialect-versions/sec_mlir_dialect_package27.md"
+    },
+    {
+      "path": "rules/mlir/lowering-versions/sec_mlir_lowering_v1.md",
+      "family": "mlir",
+      "chapters": 31,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/lowering-versions/sec_mlir_lowering_v1.md"
+    },
+    {
+      "path": "rules/mlir/lowering-versions/sec_mlir_lowering_v2.md",
+      "family": "mlir",
+      "chapters": 30,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/lowering-versions/sec_mlir_lowering_v2.md"
+    },
+    {
+      "path": "rules/mlir/lowering-versions/sec_mlir_lowering_v5.md",
+      "family": "mlir",
+      "chapters": 17,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/lowering-versions/sec_mlir_lowering_v5.md"
+    },
+    {
+      "path": "rules/mlir/lowering-versions/sec_mlir_lowering_v6.md",
+      "family": "mlir",
+      "chapters": 19,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/lowering-versions/sec_mlir_lowering_v6.md"
+    },
+    {
+      "path": "rules/mlir/lowering-versions/sec_mlir_lowering_v7.md",
+      "family": "mlir",
+      "chapters": 24,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/lowering-versions/sec_mlir_lowering_v7.md"
+    },
+    {
+      "path": "rules/mlir/lowering-versions/sec_mlir_lowering_v8.md",
+      "family": "mlir",
+      "chapters": 22,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/lowering-versions/sec_mlir_lowering_v8.md"
+    },
+    {
+      "path": "rules/mlir/lowering-versions/sec_mlir_lowering_v9.md",
+      "family": "mlir",
+      "chapters": 22,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/lowering-versions/sec_mlir_lowering_v9.md"
+    },
+    {
+      "path": "rules/mlir/lowering-versions/sec_mlir_lowering_v10.md",
+      "family": "mlir",
+      "chapters": 23,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/lowering-versions/sec_mlir_lowering_v10.md"
+    },
+    {
+      "path": "rules/mlir/lowering-versions/sec_mlir_lowering_v11.md",
+      "family": "mlir",
+      "chapters": 28,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/lowering-versions/sec_mlir_lowering_v11.md"
+    },
+    {
+      "path": "rules/mlir/lowering-versions/sec_mlir_lowering_v12.md",
+      "family": "mlir",
+      "chapters": 31,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/lowering-versions/sec_mlir_lowering_v12.md"
+    },
+    {
+      "path": "rules/mlir/lowering-versions/sec_mlir_lowering_v13.md",
+      "family": "mlir",
+      "chapters": 35,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/lowering-versions/sec_mlir_lowering_v13.md"
+    },
+    {
+      "path": "rules/mlir/lowering-versions/sec_mlir_lowering_v14.md",
+      "family": "mlir",
+      "chapters": 34,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/lowering-versions/sec_mlir_lowering_v14.md"
+    },
+    {
+      "path": "rules/mlir/lowering-versions/sec_mlir_lowering_v15.md",
+      "family": "mlir",
+      "chapters": 40,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/lowering-versions/sec_mlir_lowering_v15.md"
+    },
+    {
+      "path": "rules/mlir/lowering-versions/sec_mlir_lowering_v16.md",
+      "family": "mlir",
+      "chapters": 21,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/lowering-versions/sec_mlir_lowering_v16.md"
+    },
+    {
+      "path": "rules/mlir/lowering-versions/sec_mlir_lowering_v17.md",
+      "family": "mlir",
+      "chapters": 12,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/lowering-versions/sec_mlir_lowering_v17.md"
+    },
+    {
+      "path": "rules/mlir/lowering-versions/sec_mlir_lowering_v18.md",
+      "family": "mlir",
+      "chapters": 14,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/lowering-versions/sec_mlir_lowering_v18.md"
+    },
+    {
+      "path": "rules/mlir/lowering-versions/sec_mlir_lowering_v19.md",
+      "family": "mlir",
+      "chapters": 18,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/lowering-versions/sec_mlir_lowering_v19.md"
+    },
+    {
+      "path": "rules/mlir/lowering-versions/sec_mlir_lowering_v20.md",
+      "family": "mlir",
+      "chapters": 16,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/lowering-versions/sec_mlir_lowering_v20.md"
+    },
+    {
+      "path": "rules/mlir/lowering-versions/sec_mlir_lowering_v21.md",
+      "family": "mlir",
+      "chapters": 14,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/lowering-versions/sec_mlir_lowering_v21.md"
+    },
+    {
+      "path": "rules/mlir/lowering-versions/sec_mlir_lowering_v22.md",
+      "family": "mlir",
+      "chapters": 10,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/lowering-versions/sec_mlir_lowering_v22.md"
+    },
+    {
+      "path": "rules/mlir/lowering-versions/sec_mlir_lowering_v23.md",
+      "family": "mlir",
+      "chapters": 12,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/lowering-versions/sec_mlir_lowering_v23.md"
+    },
+    {
+      "path": "rules/mlir/packages/sec-mlir-dialect_package1.md",
+      "family": "mlir",
+      "chapters": 18,
+      "numbered_subsections": 9,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/packages/sec-mlir-dialect_package1.md"
+    },
+    {
+      "path": "rules/mlir/packages/sec-mlir-dialect_package2.md",
+      "family": "mlir",
+      "chapters": 29,
+      "numbered_subsections": 22,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/packages/sec-mlir-dialect_package2.md"
+    },
+    {
+      "path": "rules/mlir/packages/sec-mlir-dialect_package3.md",
+      "family": "mlir",
+      "chapters": 45,
+      "numbered_subsections": 10,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/packages/sec-mlir-dialect_package3.md"
+    },
+    {
+      "path": "rules/mlir/packages/sec-mlir-dialect_package4.md",
+      "family": "mlir",
+      "chapters": 38,
+      "numbered_subsections": 22,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/packages/sec-mlir-dialect_package4.md"
+    },
+    {
+      "path": "rules/mlir/packages/sec-mlir-dialect_package5.md",
+      "family": "mlir",
+      "chapters": 52,
+      "numbered_subsections": 2,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/packages/sec-mlir-dialect_package5.md"
+    },
+    {
+      "path": "rules/mlir/packages/sec-mlir-dialect_package6.md",
+      "family": "mlir",
+      "chapters": 67,
+      "numbered_subsections": 6,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/packages/sec-mlir-dialect_package6.md"
+    },
+    {
+      "path": "rules/mlir/packages/sec-mlir-dialect_package7.md",
+      "family": "mlir",
+      "chapters": 69,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/packages/sec-mlir-dialect_package7.md"
+    },
+    {
+      "path": "rules/mlir/packages/sec-mlir-dialect_package8.md",
+      "family": "mlir",
+      "chapters": 67,
+      "numbered_subsections": 2,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/packages/sec-mlir-dialect_package8.md"
+    },
+    {
+      "path": "rules/mlir/packages/sec-mlir-dialect_package9.md",
+      "family": "mlir",
+      "chapters": 67,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/packages/sec-mlir-dialect_package9.md"
+    },
+    {
+      "path": "rules/mlir/packages/sec-mlir-dialect_package10.md",
+      "family": "mlir",
+      "chapters": 58,
+      "numbered_subsections": 2,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/packages/sec-mlir-dialect_package10.md"
+    },
+    {
+      "path": "rules/mlir/packages/sec-mlir-dialect_package11.md",
+      "family": "mlir",
+      "chapters": 82,
+      "numbered_subsections": 2,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/packages/sec-mlir-dialect_package11.md"
+    },
+    {
+      "path": "rules/mlir/packages/sec-mlir-dialect_package12.md",
+      "family": "mlir",
+      "chapters": 97,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/packages/sec-mlir-dialect_package12.md"
+    },
+    {
+      "path": "rules/mlir/packages/sec-mlir-dialect_package13.md",
+      "family": "mlir",
+      "chapters": 92,
+      "numbered_subsections": 2,
+      "status": "both_levels_present",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/packages/sec-mlir-dialect_package13.md"
+    },
+    {
+      "path": "rules/mlir/packages/sec-mlir-dialect_package14.md",
+      "family": "mlir",
+      "chapters": 109,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/packages/sec-mlir-dialect_package14.md"
+    },
+    {
+      "path": "rules/mlir/packages/sec-mlir-dialect_package15.md",
+      "family": "mlir",
+      "chapters": 157,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/packages/sec-mlir-dialect_package15.md"
+    },
+    {
+      "path": "rules/mlir/packages/sec-mlir-dialect_package16.md",
+      "family": "mlir",
+      "chapters": 146,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/packages/sec-mlir-dialect_package16.md"
+    },
+    {
+      "path": "rules/mlir/packages/sec-mlir-dialect_package17.md",
+      "family": "mlir",
+      "chapters": 138,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/packages/sec-mlir-dialect_package17.md"
+    },
+    {
+      "path": "rules/mlir/packages/sec-mlir-dialect_package18.md",
+      "family": "mlir",
+      "chapters": 137,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/packages/sec-mlir-dialect_package18.md"
+    },
+    {
+      "path": "rules/mlir/packages/sec-mlir-dialect_package19.md",
+      "family": "mlir",
+      "chapters": 165,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/packages/sec-mlir-dialect_package19.md"
+    },
+    {
+      "path": "rules/mlir/packages/sec-mlir-dialect_package20.md",
+      "family": "mlir",
+      "chapters": 95,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/packages/sec-mlir-dialect_package20.md"
+    },
+    {
+      "path": "rules/mlir/packages/sec-mlir-dialect_package21.md",
+      "family": "mlir",
+      "chapters": 44,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/packages/sec-mlir-dialect_package21.md"
+    },
+    {
+      "path": "rules/mlir/packages/sec-mlir-dialect_package22.md",
+      "family": "mlir",
+      "chapters": 40,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/packages/sec-mlir-dialect_package22.md"
+    },
+    {
+      "path": "rules/mlir/packages/sec-mlir-dialect_package23.md",
+      "family": "mlir",
+      "chapters": 47,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/packages/sec-mlir-dialect_package23.md"
+    },
+    {
+      "path": "rules/mlir/packages/sec-mlir-dialect_package24.md",
+      "family": "mlir",
+      "chapters": 56,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/packages/sec-mlir-dialect_package24.md"
+    },
+    {
+      "path": "rules/mlir/packages/sec-mlir-dialect_package25.md",
+      "family": "mlir",
+      "chapters": 65,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/packages/sec-mlir-dialect_package25.md"
+    },
+    {
+      "path": "rules/mlir/packages/sec-mlir-dialect_package26.md",
+      "family": "mlir",
+      "chapters": 60,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/packages/sec-mlir-dialect_package26.md"
+    },
+    {
+      "path": "rules/mlir/packages/sec-mlir-dialect_package27.md",
+      "family": "mlir",
+      "chapters": 58,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/packages/sec-mlir-dialect_package27.md"
+    },
+    {
+      "path": "rules/mlir/packages/sec-mlir-dialect_package13-implementation-report.md",
+      "family": "mlir",
+      "chapters": 0,
+      "numbered_subsections": 0,
+      "status": "missing_chapter_numbering",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/packages/sec-mlir-dialect_package13-implementation-report.md"
+    },
+    {
+      "path": "rules/mlir/packages/sec-mlir-dialect_package14-implementation-report.md",
+      "family": "mlir",
+      "chapters": 0,
+      "numbered_subsections": 0,
+      "status": "missing_chapter_numbering",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/packages/sec-mlir-dialect_package14-implementation-report.md"
+    },
+    {
+      "path": "rules/mlir/packages/sec-mlir-dialect_package14-acceptance-matrix.md",
+      "family": "mlir",
+      "chapters": 0,
+      "numbered_subsections": 0,
+      "status": "missing_chapter_numbering",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/packages/sec-mlir-dialect_package14-acceptance-matrix.md"
+    },
+    {
+      "path": "rules/mlir/packages/sec-mlir-dialect_package15-acceptance.md",
+      "family": "mlir",
+      "chapters": 0,
+      "numbered_subsections": 0,
+      "status": "missing_chapter_numbering",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/packages/sec-mlir-dialect_package15-acceptance.md"
+    },
+    {
+      "path": "rules/mlir/packages/sec-mlir-dialect_package15-implementation-report.md",
+      "family": "mlir",
+      "chapters": 46,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/packages/sec-mlir-dialect_package15-implementation-report.md"
+    },
+    {
+      "path": "rules/mlir/packages/sec-mlir-dialect_package16-implementation-report.md",
+      "family": "mlir",
+      "chapters": 43,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/packages/sec-mlir-dialect_package16-implementation-report.md"
+    },
+    {
+      "path": "rules/mlir/packages/sec-mlir-dialect_package17-implementation-report.md",
+      "family": "mlir",
+      "chapters": 45,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/packages/sec-mlir-dialect_package17-implementation-report.md"
+    },
+    {
+      "path": "rules/mlir/packages/sec-mlir-dialect_package22_decision-index.md",
+      "family": "mlir",
+      "chapters": 5,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/packages/sec-mlir-dialect_package22_decision-index.md"
+    },
+    {
+      "path": "rules/mlir/packages/sec-mlir-dialect_package23_decision-index.md",
+      "family": "mlir",
+      "chapters": 4,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/packages/sec-mlir-dialect_package23_decision-index.md"
+    },
+    {
+      "path": "rules/mlir/packages/sec-mlir-dialect_package24_decision-index.md",
+      "family": "mlir",
+      "chapters": 7,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/packages/sec-mlir-dialect_package24_decision-index.md"
+    },
+    {
+      "path": "rules/mlir/packages/sec-mlir-dialect_package25_decision-index.md",
+      "family": "mlir",
+      "chapters": 7,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/packages/sec-mlir-dialect_package25_decision-index.md"
+    },
+    {
+      "path": "rules/mlir/packages/sec-mlir-dialect_package26_decision-index.md",
+      "family": "mlir",
+      "chapters": 7,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/packages/sec-mlir-dialect_package26_decision-index.md"
+    },
+    {
+      "path": "rules/mlir/packages/sec-mlir-dialect_package27_decision-index.md",
+      "family": "mlir",
+      "chapters": 4,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/packages/sec-mlir-dialect_package27_decision-index.md"
+    },
+    {
+      "path": "rules/mlir/normative-sync/sec_arena_allocation_sync_v1.md",
+      "family": "mlir",
+      "chapters": 30,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/normative-sync/sec_arena_allocation_sync_v1.md"
+    },
+    {
+      "path": "rules/mlir/normative-sync/sec_callable_abi_sync_package25.md",
+      "family": "mlir",
+      "chapters": 9,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/normative-sync/sec_callable_abi_sync_package25.md"
+    },
+    {
+      "path": "rules/mlir/normative-sync/sec_core_arithmetic_error_v1.md",
+      "family": "mlir",
+      "chapters": 0,
+      "numbered_subsections": 0,
+      "status": "missing_chapter_numbering",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/normative-sync/sec_core_arithmetic_error_v1.md"
+    },
+    {
+      "path": "rules/mlir/normative-sync/sec_decimal_numeric_sync_package21.md",
+      "family": "mlir",
+      "chapters": 10,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/normative-sync/sec_decimal_numeric_sync_package21.md"
+    },
+    {
+      "path": "rules/mlir/normative-sync/sec_dynamic_array_sync_v1.md",
+      "family": "mlir",
+      "chapters": 22,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/normative-sync/sec_dynamic_array_sync_v1.md"
+    },
+    {
+      "path": "rules/mlir/normative-sync/sec_fixed_array_sync_v1.md",
+      "family": "mlir",
+      "chapters": 10,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/normative-sync/sec_fixed_array_sync_v1.md"
+    },
+    {
+      "path": "rules/mlir/normative-sync/sec_float_numeric_sync_v1.md",
+      "family": "mlir",
+      "chapters": 19,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/normative-sync/sec_float_numeric_sync_v1.md"
+    },
+    {
+      "path": "rules/mlir/normative-sync/sec_layout_sync_package24.md",
+      "family": "mlir",
+      "chapters": 10,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/normative-sync/sec_layout_sync_package24.md"
+    },
+    {
+      "path": "rules/mlir/normative-sync/sec_llvm_track_sync_package27.md",
+      "family": "mlir",
+      "chapters": 8,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/normative-sync/sec_llvm_track_sync_package27.md"
+    },
+    {
+      "path": "rules/mlir/normative-sync/sec_match_enum_domain_v1.md",
+      "family": "mlir",
+      "chapters": 14,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/normative-sync/sec_match_enum_domain_v1.md"
+    },
+    {
+      "path": "rules/mlir/normative-sync/sec_named_contracts_sync_package22.md",
+      "family": "mlir",
+      "chapters": 10,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/normative-sync/sec_named_contracts_sync_package22.md"
+    },
+    {
+      "path": "rules/mlir/normative-sync/sec_ownership_destruction_sync_v1.md",
+      "family": "mlir",
+      "chapters": 18,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/normative-sync/sec_ownership_destruction_sync_v1.md"
+    },
+    {
+      "path": "rules/mlir/normative-sync/sec_p20_october_compatibility_package21.md",
+      "family": "mlir",
+      "chapters": 6,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/normative-sync/sec_p20_october_compatibility_package21.md"
+    },
+    {
+      "path": "rules/mlir/normative-sync/sec_p20_p21_conversion_compatibility_package22.md",
+      "family": "mlir",
+      "chapters": 5,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/normative-sync/sec_p20_p21_conversion_compatibility_package22.md"
+    },
+    {
+      "path": "rules/mlir/normative-sync/sec_reference_physical_sync_package26.md",
+      "family": "mlir",
+      "chapters": 9,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/normative-sync/sec_reference_physical_sync_package26.md"
+    },
+    {
+      "path": "rules/mlir/normative-sync/sec_reference_sync_v1.md",
+      "family": "mlir",
+      "chapters": 10,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/normative-sync/sec_reference_sync_v1.md"
+    },
+    {
+      "path": "rules/mlir/normative-sync/sec_slice_sync_v1.md",
+      "family": "mlir",
+      "chapters": 19,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/normative-sync/sec_slice_sync_v1.md"
+    },
+    {
+      "path": "rules/mlir/normative-sync/sec_string_core_sync_package23.md",
+      "family": "mlir",
+      "chapters": 12,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/normative-sync/sec_string_core_sync_package23.md"
+    },
+    {
+      "path": "rules/mlir/semantic-ir/sec_semantic_ir_arena_v19.md",
+      "family": "mlir",
+      "chapters": 27,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/semantic-ir/sec_semantic_ir_arena_v19.md"
+    },
+    {
+      "path": "rules/mlir/semantic-ir/sec_semantic_ir_callable_abi_package25.md",
+      "family": "mlir",
+      "chapters": 9,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/semantic-ir/sec_semantic_ir_callable_abi_package25.md"
+    },
+    {
+      "path": "rules/mlir/semantic-ir/sec_semantic_ir_decimal_package21.md",
+      "family": "mlir",
+      "chapters": 10,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/semantic-ir/sec_semantic_ir_decimal_package21.md"
+    },
+    {
+      "path": "rules/mlir/semantic-ir/sec_semantic_ir_dynamic_array_v1.md",
+      "family": "mlir",
+      "chapters": 22,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/semantic-ir/sec_semantic_ir_dynamic_array_v1.md"
+    },
+    {
+      "path": "rules/mlir/semantic-ir/sec_semantic_ir_enum_union_v1.md",
+      "family": "mlir",
+      "chapters": 21,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/semantic-ir/sec_semantic_ir_enum_union_v1.md"
+    },
+    {
+      "path": "rules/mlir/semantic-ir/sec_semantic_ir_fixed_array_v1.md",
+      "family": "mlir",
+      "chapters": 26,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/semantic-ir/sec_semantic_ir_fixed_array_v1.md"
+    },
+    {
+      "path": "rules/mlir/semantic-ir/sec_semantic_ir_float_v1.md",
+      "family": "mlir",
+      "chapters": 13,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/semantic-ir/sec_semantic_ir_float_v1.md"
+    },
+    {
+      "path": "rules/mlir/semantic-ir/sec_semantic_ir_layout_package24.md",
+      "family": "mlir",
+      "chapters": 10,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/semantic-ir/sec_semantic_ir_layout_package24.md"
+    },
+    {
+      "path": "rules/mlir/semantic-ir/sec_semantic_ir_llvm_handoff_package27.md",
+      "family": "mlir",
+      "chapters": 6,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/semantic-ir/sec_semantic_ir_llvm_handoff_package27.md"
+    },
+    {
+      "path": "rules/mlir/semantic-ir/sec_semantic_ir_match_v1.md",
+      "family": "mlir",
+      "chapters": 20,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/semantic-ir/sec_semantic_ir_match_v1.md"
+    },
+    {
+      "path": "rules/mlir/semantic-ir/sec_semantic_ir_named_contracts_package22.md",
+      "family": "mlir",
+      "chapters": 12,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/semantic-ir/sec_semantic_ir_named_contracts_package22.md"
+    },
+    {
+      "path": "rules/mlir/semantic-ir/sec_semantic_ir_ownership_destruction_v1.md",
+      "family": "mlir",
+      "chapters": 33,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/semantic-ir/sec_semantic_ir_ownership_destruction_v1.md"
+    },
+    {
+      "path": "rules/mlir/semantic-ir/sec_semantic_ir_place_reference_v1.md",
+      "family": "mlir",
+      "chapters": 32,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/semantic-ir/sec_semantic_ir_place_reference_v1.md"
+    },
+    {
+      "path": "rules/mlir/semantic-ir/sec_semantic_ir_reference_physical_package26.md",
+      "family": "mlir",
+      "chapters": 8,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/semantic-ir/sec_semantic_ir_reference_physical_package26.md"
+    },
+    {
+      "path": "rules/mlir/semantic-ir/sec_semantic_ir_slice_v1.md",
+      "family": "mlir",
+      "chapters": 26,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/semantic-ir/sec_semantic_ir_slice_v1.md"
+    },
+    {
+      "path": "rules/mlir/semantic-ir/sec_semantic_ir_string_package23.md",
+      "family": "mlir",
+      "chapters": 17,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/semantic-ir/sec_semantic_ir_string_package23.md"
+    },
+    {
+      "path": "rules/mlir/semantic-ir/sec_semantic_ir_struct_v1.md",
+      "family": "mlir",
+      "chapters": 22,
+      "numbered_subsections": 0,
+      "status": "no_numbered_subsections",
+      "github": "https://github.com/YoePro/sec/blob/28780c01d63c3fc9eec2321ef67e3dd69962f043/rules/mlir/semantic-ir/sec_semantic_ir_struct_v1.md"
+    }
+  ]
+}

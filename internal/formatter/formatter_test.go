@@ -1218,10 +1218,12 @@ func TestFormatStandaloneDocumentationBlockCommentRetainsForm(t *testing.T) {
 	}
 }
 
-func TestFormatBlockCommentsPreservesSingleLineInlineAndNestedForms(t *testing.T) {
-	input := "fn Example() void {\nlet value := 1 /* inline */\n/* outer /* nested */ remains */\n}\n"
+// Block comments do not nest (lexical_structure.md § 5.3, 2026-11-07): an
+// inner `/*` is comment text that the formatter preserves.
+func TestFormatBlockCommentsPreservesSingleLineInlineAndInnerOpenerForms(t *testing.T) {
+	input := "fn Example() void {\nlet value := 1 /* inline */\n/* outer /* inner opener is text */\n}\n"
 	got := Format(Source{Text: input}, Options{}).Text
-	for _, want := range []string{"let value := 1 /* inline */", "/* outer /* nested */ remains */"} {
+	for _, want := range []string{"let value := 1 /* inline */", "/* outer /* inner opener is text */"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("formatter changed preserved block comment %q:\n%s", want, got)
 		}

@@ -10,7 +10,7 @@ import (
 
 // Specialized skips must expose the real source they discard and keep later
 // declarations. EOF and lookahead boundaries never belong to a skipped range.
-// Rules: rules/compiler/parser_recovery.md — "Recovery event", "Enclosing-boundary safety", Appendix A.10.
+// Rules: rules/compiler/parser_recovery.md — "Recovery event", "Enclosing-boundary safety", "Progress".
 func TestSpecializedRecoveryRecordsSourceRanges(t *testing.T) {
 	const fixture = "../../testdata/parser/specialized_skip_ranges_invalid.sec"
 	source, err := os.ReadFile(fixture)

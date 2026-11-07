@@ -34,6 +34,7 @@ func (a *Analyzer) analyzeForStatement(stmt *ast.ForStatement) {
 
 	a.symbols = previousSymbols.child()
 	a.constInts = copyConstInts(previousConstInts)
+	a.forgetLoopAssignedConstants(stmt.Body)
 	a.assigned = copyAssigned(previousAssigned)
 	a.moved = copyMoved(previousMoved)
 	a.availabilityStates = copyAvailabilityStates(previousMoveReasons)
@@ -102,7 +103,7 @@ func (a *Analyzer) analyzeForStatement(stmt *ast.ForStatement) {
 	loopSymbols := a.symbols
 	a.symbols = previousSymbols
 	a.mergeLoopExitReferenceOrigins(loopSymbols, breakFrame)
-	a.constInts = previousConstInts
+	a.restoreConstInts(previousConstInts)
 	a.assigned = previousAssigned
 	a.moved, a.availabilityStates = mergeLoopMoveState(previousMoved, previousMoveReasons, loopMoved, loopMoveReasons, breakFrame)
 	a.closedResources = mergeLoopClosedResourceState(previousClosedResources, loopClosedResources, breakFrame, bodyFallsThrough, false)

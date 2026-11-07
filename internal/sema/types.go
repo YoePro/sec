@@ -178,6 +178,11 @@ type Type struct {
 	// rules/declarations/lambda-functions.md. The zero value is normalized to
 	// CallableShared for compatibility with pre-capability semantic facts.
 	FunctionCapability      CallableCapability
+	// FunctionEnvironmentMoveOnly marks a closure value whose known
+	// environment makes it move-only: a move-only owned capture or a
+	// `ref mut` capture (lambda-functions.md §27). It is a property of the
+	// value, not part of the function type's identity.
+	FunctionEnvironmentMoveOnly bool
 	GenericParameters       []string
 	GenericConstraints      []GenericConstraint
 	Fields                  []StructField

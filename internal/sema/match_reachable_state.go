@@ -19,15 +19,51 @@ import (
 //   - rules/corrections/applied/md029-md042-md102-pattern-reachability-some-correction-20261028.md — §§ 8(1), 8(6)–8(7)
 func (a *Analyzer) provenMatchVariant(subject ast.Expression, subjectType Type, maybeEmptySubject string) *ResolvedVariantProof {
 	identifier, ok := subject.(*ast.Identifier)
-	if !ok || identifier == nil || subjectType.Kind != UnionType || maybeEmptySubject != "" {
+	if !ok || identifier == nil || maybeEmptySubject != "" {
 		return nil
 	}
-	for _, variant := range subjectType.UnionVariants {
-		if active, known := a.knownVariantTest(identifier.Value, variant.Name); known && active {
-			return a.variantProofProvenance(identifier.Value, variant.Name)
+	for _, variant := range provableMatchVariants(subjectType) {
+		if active, known := a.knownVariantTest(identifier.Value, variant); known && active {
+			return a.variantProofProvenance(identifier.Value, variant)
 		}
 	}
 	return nil
+}
+
+// provableMatchVariants lists the top-level states a reachable-state proof
+// can select: the variants of a union, Some/None of an Option and Ok/Err of
+// a Result (flowcontrol_match.md § 5 names every legal Option and Result
+// case alongside union variants).
+func provableMatchVariants(subjectType Type) []string {
+	switch {
+	case isOptionType(subjectType):
+		return []string{"Some", "None"}
+	case subjectType.Kind == UnionType:
+		names := make([]string, 0, len(subjectType.UnionVariants))
+		for _, variant := range subjectType.UnionVariants {
+			names = append(names, variant.Name)
+		}
+		return names
+	case subjectType.Kind == ResultType:
+		return []string{"Ok", "Err"}
+	}
+	return nil
+}
+
+// matchArmTopState names the top-level Option/Result state an arm pattern
+// selects ("Some", "None", "Ok" or "Err"), or "" for any other arm.
+func matchArmTopState(subjectType Type, info matchPatternInfo) string {
+	if !isOptionType(subjectType) && subjectType.Kind != ResultType {
+		return ""
+	}
+	if isErrorVariantMatchKey(info.Variant) {
+		return "Err"
+	}
+	switch info.Kind {
+	case "Some", "None", "Ok", "Err":
+		return info.Kind
+	}
+	return ""
 }
 
 // variantProofProvenance records how knownVariantTest proved variant active
@@ -35,11 +71,11 @@ func (a *Analyzer) provenMatchVariant(subject ast.Expression, subjectType Type, 
 func (a *Analyzer) variantProofProvenance(binding string, variant string) *ResolvedVariantProof {
 	symbol := a.symbols.get(binding)
 	proof := &ResolvedVariantProof{Binding: binding, Variant: variant, Basis: VariantProofConstruction, Source: symbol.Token}
-	if symbol.ConstructedVariant != "" {
+	if symbol.ConstructedVariant != "" && !symbol.Mutable {
 		return proof
 	}
 	for _, active := range a.activeConditionFacts {
-		if active.epoch != a.arrayIndexMutationEpoch || active.fact.Condition == nil || active.fact.Kind == ConditionFactLogicalRHSFalse {
+		if !a.variantFactUsable(active, symbol) {
 			continue
 		}
 		for _, test := range conjunctStateTests(active.fact.Condition) {

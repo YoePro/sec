@@ -1,1 +1,208 @@
 module scan
+
+/**
+ * Identifies a position in UTF-8 input.
+ *
+ * Description:
+ * RuneIndex is the logical character position.
+ * ByteOffset is the corresponding UTF-8 byte position.
+ *
+ * Both positions refer to the same source boundary.
+ */
+type _ScanPosition struct {
+    RuneIndex:  uint,
+    ByteOffset: uint,
+}
+
+/**
+ * Represents a field extracted from formatted input.
+ *
+ * Description:
+ * Text borrows the original input storage.
+ * Next identifies the position immediately after the delimiter.
+ *
+ * Ownership:
+ * Does not own or copy the input text.
+ * The field view cannot outlive its source.
+ *
+ * Allocation:
+ * Does not allocate.
+ */
+type _ScanField struct {
+    Text: StringView,
+    Next: _ScanPosition,
+}
+
+/**
+ * Finds the next exact literal in input.
+ *
+ * Description:
+ * Searches from a rune boundary and returns both the rune
+ * index and UTF-8 byte offset of the first matching literal.
+ *
+ * An empty literal is not a valid delimiter.
+ * Matching is case-sensitive and performs no normalization.
+ *
+ * Parameters:
+ * - input: Borrowed source text.
+ * - startRune: First rune position eligible for matching.
+ * - literal: Non-empty borrowed delimiter text.
+ *
+ * Returns:
+ * - Some(position): First matching delimiter.
+ * - None: No match or invalid search position.
+ *
+ * Allocation:
+ * Does not allocate.
+ */
+fn _FindNextLiteral(input: StringView, startRune: uint, literal: StringView) Option[_ScanPosition] {
+    if startRune > input.Len || literal.IsEmpty() {
+        return None()
+    }
+
+    let mut runeIndex  := startRune
+    let mut byteOffset := input[..<startRune].SizeOf
+
+    for character in input[startRune..] {
+        if literal.SizeOf <= input.SizeOf - byteOffset {
+            let mut matched: uint := 0
+
+            while matched < literal.SizeOf {
+                if input.ByteAt(byteOffset + matched) != literal.ByteAt(matched) {
+                    break
+                }
+
+                matched += 1
+            }
+
+            if matched == literal.SizeOf {
+                return Some(_ScanPosition {
+                    RuneIndex: runeIndex,
+                    ByteOffset: byteOffset,
+                })
+            }
+        }
+
+        runeIndex += 1
+        byteOffset += character.Utf8Length
+    }
+
+    return None()
+}
+
+/**
+ * Extracts text preceding the next literal delimiter.
+ *
+ * Description:
+ * Finds the first exact delimiter occurrence after startRune.
+ * Returns the preceding text as a borrowed StringView.
+ *
+ * An empty field is valid at this level. The destination
+ * parser decides whether an empty value is acceptable.
+ *
+ * Parameters:
+ * - input: Source text.
+ * - startRune: First rune of the field.
+ * - literal: Non-empty delimiter to locate.
+ *
+ * Returns:
+ * - Ok(Some(field)): Field and position after its delimiter.
+ * - Ok(None): Delimiter not found.
+ *
+ * Errors:
+ * - RangeError: Invalid rune range.
+ *
+ * Ownership:
+ * Does not consume input or create independently owned text.
+ *
+ * Allocation:
+ * Does not allocate.
+ */
+fn _ReadFieldUntilLiteral(
+    input:     StringView,
+    startRune: uint,
+    literal:   StringView,
+) Result[Option[_ScanField], RangeError] {
+    if startRune > input.Len {
+        return Err(RangeError.OutOfBounds)
+    }
+
+    let found := _FindNextLiteral(input, startRune, literal)
+
+    match found {
+        None => return Ok(None)
+
+        Some(position) => {
+            let field := try input[startRune..<position.RuneIndex]
+
+            return Ok(Some(_ScanField {
+                Text: field,
+                Next: _ScanPosition {
+                    RuneIndex: position.RuneIndex + literal.Len,
+                    ByteOffset: position.ByteOffset + literal.SizeOf,
+                },
+            }))
+        }
+    }
+}
+
+/**
+ * Reads the next whitespace-delimited field.
+ *
+ * Description:
+ * Extracts a non-empty token from the current rune position.
+ * Stops before the first Unicode whitespace character.
+ *
+ * The delimiter is not consumed. The caller decides
+ * whether remaining input is acceptable.
+ *
+ * Parameters:
+ * - input: Borrowed UTF-8 source text.
+ * - startRune: Starting position in Unicode scalar units.
+ *
+ * Returns:
+ * - Ok(Some(field)): Extracted token and its ending position.
+ * - Ok(None): No token begins at the requested position.
+ *
+ * Errors:
+ * - RangeError.OutOfBounds: Invalid starting position.
+ *
+ * Ownership:
+ * Returns a borrowed StringView into input.
+ *
+ * Allocation:
+ * Does not allocate.
+ */
+fn _ReadNextToken(input: StringView, startRune: uint) Result[Option[_ScanField], RangeError] {
+    if startRune > input.Len {
+        return Err(RangeError.OutOfBounds)
+    }
+
+    let prefix := try input[..<startRune]
+
+    let mut endRune := startRune
+    let mut endByte := prefix.SizeOf
+
+    for character in input[startRune..] {
+        if character.IsWhitespace {
+            break
+        }
+
+        endRune += 1
+        endByte += character.Utf8Length
+    }
+
+    if endRune == startRune {
+        return Ok(None)
+    }
+
+    let field := try input[startRune..<endRune]
+
+    return Ok(Some(_ScanField {
+        Text: field,
+        Next: _ScanPosition {
+            RuneIndex: endRune,
+            ByteOffset: endByte,
+        },
+    }))
+}

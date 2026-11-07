@@ -497,7 +497,7 @@ func (fb *functionBuilder) ownedArgumentLowerable(argument ast.Expression) bool 
 		plan, ok := fb.owner.analyzer.ResolvedTransferPlanOf(argument)
 		// `return Some(x)` moves x into the returned payload (site return).
 		return ok && ownedLocalMoveLowerable(plan) &&
-			(plan.Site == sema.TransferSiteArgument || plan.Site == sema.TransferSiteConstruction || plan.Site == sema.TransferSiteReturn)
+			(plan.Site == sema.TransferSiteArgument || plan.Site == sema.TransferSiteConstruction || plan.Site == sema.TransferSiteReturn || plan.Site == sema.TransferSiteBranch)
 	case *ast.PrefixExpression:
 		return argument.Operator == "<-" && fb.ownedArgumentLowerable(argument.Right)
 	case *ast.CallExpression, *ast.StructLiteral:
@@ -729,7 +729,7 @@ func fieldMoveLowerable(plan sema.ResolvedTransferPlan) bool {
 			return false
 		}
 	}
-	return plan.Site == sema.TransferSiteReturn || plan.Site == sema.TransferSiteInitialization || plan.Site == sema.TransferSiteArgument || plan.Site == sema.TransferSiteConstruction
+	return plan.Site == sema.TransferSiteReturn || plan.Site == sema.TransferSiteInitialization || plan.Site == sema.TransferSiteArgument || plan.Site == sema.TransferSiteConstruction || plan.Site == sema.TransferSiteBranch
 }
 
 // memberRoot is the identifier a chain of field accesses starts from.

@@ -174,6 +174,16 @@ func (a *Analyzer) setConstInt(name string, expr ast.Expression) {
 
 func (a *Analyzer) updateAssignedConstInt(name string, stmt *ast.AssignmentStatement) {
 	value, ok := a.assignmentIntegerValue(name, stmt)
+	if ok && stmt.Operator != "=" {
+		// An overflowing compound assignment fails at run time (S1023); no
+		// value of the target's type follows it.
+		if symbol, exists := a.symbols.lookup(name); exists {
+			if representation, _, known := a.integerRepresentation(symbol.Type); known && representation.MinInteger != nil && representation.MaxInteger != nil &&
+				(value.Cmp(representation.MinInteger) < 0 || value.Cmp(representation.MaxInteger) > 0) {
+				ok = false
+			}
+		}
+	}
 	if !ok {
 		delete(a.constInts, name)
 		return

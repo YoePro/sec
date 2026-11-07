@@ -8,9 +8,10 @@ import (
 )
 
 // formatCSTBlockComments canonicalizes standalone multiline block comments
-// from lossless CST comment tokens. Inline and nested comments remain outside
-// this first slice because their indentation and internal delimiter ownership
-// require the broader grammar-aware comment model.
+// from lossless CST comment tokens. Inline comments and comments whose text
+// contains `/*` remain outside this first slice: block comments do not nest
+// (lexical_structure.md § 5.3), but such text is often quoted code whose
+// layout the broader grammar-aware comment model must own.
 //
 // Rules:
 //   - rules/tooling/formatter.md — §12(8) multiline aligned-star form
@@ -85,6 +86,7 @@ func standaloneCommentIndent(text string, span cst.Span) (string, bool) {
 	return prefix, true
 }
 
+// hasNestedBlockComment reports `/*` text inside a block comment.
 func hasNestedBlockComment(comment string) bool {
 	return strings.Contains(comment[2:len(comment)-2], "/*")
 }

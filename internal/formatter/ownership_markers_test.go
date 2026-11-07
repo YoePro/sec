@@ -119,3 +119,17 @@ func reindentOwnershipGolden(source string, width int) string {
 	}
 	return strings.Join(lines, "\n")
 }
+
+// Borrow capture keywords keep exactly one space before their name and stay
+// attached to the capture list; formatting is idempotent.
+// Rules: rules/tooling/formatter.md §16(11); rules/declarations/lambda-functions.md §15.
+func TestFormatBorrowCaptureSpacing(t *testing.T) {
+	source := "module main\n\nfn Keep() void {\n    let mut total := 1\n    let base := 2\n    let f := capture(ref   base,ref  mut   total) fn() void {\n        *total += *base\n    }\n}\n"
+	got := Format(Source{Text: source}, Options{}).Text
+	if !strings.Contains(got, "capture(ref base, ref mut total) fn() void {") {
+		t.Fatalf("borrow capture spacing:\n%s", got)
+	}
+	if again := Format(Source{Text: got}, Options{}).Text; again != got {
+		t.Fatalf("non-idempotent borrow capture formatting:\n%s", again)
+	}
+}

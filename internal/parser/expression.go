@@ -372,11 +372,13 @@ func numericSuffixMigrationMessage(token lexer.Token) (string, bool) {
 	), true
 }
 
-// parseCaptureLambdaExpression parses explicit copy and revision-2 move
-// captures while diagnosing the removed `-> name` consuming spelling.
+// parseCaptureLambdaExpression parses copy, `<-` move, `ref` shared-borrow
+// and `ref mut` mutable-borrow captures while diagnosing the removed
+// `-> name` consuming spelling.
 //
 // Rules:
-//   - rules/declarations/lambda-functions.md — §§15–17 "Capture forms"
+//   - rules/declarations/lambda-functions.md — §§15–20 "Capture forms"
+//   - rules/foundations/grammar.md — "CaptureEntry"
 //   - rules/corrections/applied/grammar-ownership-v2-correction-20260826.md — "Capture syntax"
 func (p *Parser) parseCaptureLambdaExpression() ast.Expression {
 	captures := []ast.LambdaCapture{}
@@ -399,6 +401,18 @@ func (p *Parser) parseCaptureLambdaExpression() ast.Expression {
 			if !p.expectPeek(lexer.IDENT) {
 				return nil
 			}
+		case lexer.REF:
+			p.nextToken()
+			capture.Token = p.curToken
+			capture.Mode = ast.LambdaCaptureSharedBorrow
+			if p.peekToken.Type == lexer.MUT {
+				p.nextToken()
+				capture.MutToken = p.curToken
+				capture.Mode = ast.LambdaCaptureMutableBorrow
+			}
+			if !p.expectPeek(lexer.IDENT) {
+				return nil
+			}
 		case lexer.CONSUME_ARROW:
 			p.nextToken()
 			capture.Token = p.curToken
@@ -413,7 +427,7 @@ func (p *Parser) parseCaptureLambdaExpression() ast.Expression {
 			}
 		default:
 			p.addError(
-				"capture entry must be an identifier or '<-' identifier at %d:%d",
+				"capture entry must be an identifier, '<-' identifier, 'ref' identifier or 'ref mut' identifier at %d:%d",
 				p.peekToken.Line,
 				p.peekToken.Column,
 			)
@@ -1362,6 +1376,9 @@ func (p *Parser) parseCallArguments() ([]ast.Expression, bool) {
 			if arg == nil {
 				return nil, false
 			}
+			if legacy, ok := p.rejectLegacyWordMoveArgument(arg); ok {
+				arg = legacy
+			}
 			if p.peekToken.Type == lexer.RANGE || p.peekToken.Type == lexer.RANGE_EXCLUSIVE {
 				arg = p.parseRangeSegment(arg)
 			}
@@ -1410,7 +1427,7 @@ func (p *Parser) parseCallArguments() ([]ast.Expression, bool) {
 // and the following declarations are kept.
 //
 // Rules:
-//   - rules/compiler/parser_recovery.md — "Argument-list recovery", "Unterminated constructs", "Recovery goals"
+//   - rules/compiler/parser_recovery.md — "Argument-list recovery", "Delimiter tracking", "Recovery goals"
 func (p *Parser) callArgumentsEndWithoutParen(open lexer.Token) bool {
 	next := p.peekToken
 	boundary := next.Type == lexer.RBRACE ||
@@ -2601,4 +2618,30 @@ func isShapedMetadataLiteralType(name string) bool {
 		return true
 	}
 	return false
+}
+
+// rejectLegacyWordMoveArgument diagnoses the removed `move source` form in a
+// call argument or union payload (`Some(move value)`) and keeps the source
+// expression as the argument, so the rest of the list parses normally. `move`
+// stays an ordinary identifier everywhere else.
+//
+// Rules:
+//   - rules/memory/copy_move.md — § 10.4(2) "Union construction"
+//   - rules/memory/ownership.md — §10 "Explicit move syntax"
+func (p *Parser) rejectLegacyWordMoveArgument(arg ast.Expression) (ast.Expression, bool) {
+	identifier, ok := arg.(*ast.Identifier)
+	if !ok || identifier.Value != contextualMove || p.peekToken.Line != identifier.Token.Line ||
+		!p.isExpressionStart(p.peekToken.Type) || p.peekToken.Type == lexer.LPAREN || p.peekToken.Type == lexer.LBRACKET {
+		return nil, false
+	}
+	p.addError(
+		"legacy word-form move syntax is not supported; write '<-' before the source, as in '<-%s', at %d:%d",
+		p.peekToken.Lexeme, identifier.Token.Line, identifier.Token.Column,
+	)
+	p.nextToken()
+	source := p.parseExpression(LOWEST)
+	if source == nil {
+		return nil, false
+	}
+	return source, true
 }

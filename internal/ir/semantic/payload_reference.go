@@ -346,7 +346,8 @@ func (fb *functionBuilder) endPayloadBorrow(reference builtValue, armBlocks []*B
 		terminator := &block.Operations[last]
 		switch {
 		case terminator.Kind == OpReturn, terminator.Kind == OpBranch && !inside[terminator.Successors[0].Block]:
-			block.Operations = append(block.Operations[:last], end(), block.Operations[last])
+			at := borrowEndPosition(block.Operations, last)
+			block.Operations = append(block.Operations[:at], append([]Operation{end()}, block.Operations[at:]...)...)
 		case terminator.Kind == OpCondBranch:
 			for index, successor := range terminator.Successors {
 				if inside[successor.Block] {
@@ -377,4 +378,31 @@ func matchArmPayloadReference(pattern ast.Expression) *ast.RefExpression {
 	}
 	reference, _ := argument.(*ast.RefExpression)
 	return reference
+}
+
+// borrowEndPosition is where a payload borrow ends in an arm exit block: before
+// its terminator, and before the exit's trailing cleanup when that cleanup ends
+// an arm temporary, which may be the borrowed subject itself (destruction.md
+// § 8(8); owner decision 2026-11-07). Ending the borrow earlier is sound: the
+// cleanup operations do not use it.
+func borrowEndPosition(operations []Operation, terminator int) int {
+	at, endsTemporary := terminator, false
+	for at > 0 {
+		op := operations[at-1]
+		switch {
+		case op.Kind == OpCleanupRunScope, op.Kind == OpCleanupRunFunction, op.Kind == OpPlaceStorageRoot:
+		case (op.Kind == OpOwnDestroyPlace || op.Kind == OpOwnDestroyValue) && op.Ownership != nil && op.Ownership.Cause == "temporary-end":
+			endsTemporary = true
+		default:
+			if endsTemporary {
+				return at
+			}
+			return terminator
+		}
+		at--
+	}
+	if endsTemporary {
+		return at
+	}
+	return terminator
 }

@@ -1,6 +1,14 @@
 # Deadlock Analysis
 
-## Status
+- **Status:** Normative
+- **Created:** 2026-07-29
+- **Last updated:** 2026-11-07 (stable chapter, subsection, and paragraph numbering)
+- **Document revision:** 1
+- **Sec language version:** 0.1
+- **Canonical path:** `rules/analysis/deadlock_analysis.md`
+- **Repository baseline reviewed:** `28780c01d63c3fc9eec2321ef67e3dd69962f043`
+
+---
 
 Normative compiler-analysis rulebook for Sec 0.1.
 
@@ -22,9 +30,9 @@ by the repository-level `implementation-status.yaml` ledger.
 
 ---
 
-# Purpose
+## § 1 Purpose
 
-Deadlock analysis answers questions such as:
+**§ 1(1)** Deadlock analysis answers questions such as:
 
 ```text
 Which synchronization resources are held at this program point?
@@ -38,17 +46,17 @@ Is the result ProvenDeadlock, PotentialDeadlock, or Unknown?
 Which source locations and interprocedural paths explain the cycle?
 ```
 
-Deadlock analysis is not a replacement for data-race, effect, ownership,
+**§ 1(2)** Deadlock analysis is not a replacement for data-race, effect, ownership,
 lifetime, Place/provenance, call-graph, closure, task/thread, FFI, ISR, or
 concurrency-memory-model analysis.
 
-It consumes canonical facts from those analyses and correlates them.
+**§ 1(3)** It consumes canonical facts from those analyses and correlates them.
 
 ---
 
-# Normative ownership
+## § 2 Normative ownership
 
-Canonical concurrency and synchronization rules own:
+**§ 2(1)** Canonical concurrency and synchronization rules own:
 
 ```text
 resource acquisition and release semantics
@@ -64,7 +72,7 @@ foreign synchronization contracts
 guaranteed timeout or cancellation semantics
 ```
 
-Deadlock analysis owns:
+**§ 2(2)** Deadlock analysis owns:
 
 ```text
 held-resource state
@@ -81,16 +89,16 @@ deadlock diagnostics
 incremental invalidation and LSP integration
 ```
 
-The analysis must not redefine synchronization or scheduler semantics merely to
+**§ 2(3)** The analysis must not redefine synchronization or scheduler semantics merely to
 make deadlock reasoning easier.
 
 ---
 
-# Scope
+## § 3 Scope
 
-Deadlock is a cyclic blocking/progress dependency.
+**§ 3(1)** Deadlock is a cyclic blocking/progress dependency.
 
-This rulebook does not redefine:
+**§ 3(2)** This rulebook does not redefine:
 
 ```text
 data race
@@ -100,7 +108,7 @@ performance contention
 long but finite blocking
 ```
 
-Conceptually:
+**§ 3(3)** Conceptually:
 
 ```text
 Data race:
@@ -116,15 +124,15 @@ Starvation:
     a participant may indefinitely fail to obtain progress
 ```
 
-Only deadlock is normative here.
+**§ 3(4)** Only deadlock is normative here.
 
 ---
 
-# General dependency model
+## § 4 General dependency model
 
-Deadlock analysis is not limited to mutexes.
+**§ 4(1)** Deadlock analysis is not limited to mutexes.
 
-An execution context may wait on canonical progress from:
+**§ 4(2)** An execution context may wait on canonical progress from:
 
 ```text
 Lock
@@ -137,11 +145,11 @@ ResourceAvailability
 Unknown
 ```
 
-The implementation may use different internal categories, but the semantic
+**§ 4(3)** The implementation may use different internal categories, but the semantic
 model must be able to represent mixed cycles involving both execution contexts
 and synchronization resources.
 
-Conceptually, the analysis reasons about:
+**§ 4(4)** Conceptually, the analysis reasons about:
 
 ```text
 ExecutionContext
@@ -151,7 +159,7 @@ WaitDependency
 ProgressDependency
 ```
 
-and relationships such as:
+**§ 4(5)** and relationships such as:
 
 ```text
 Holds(Context, Resource)
@@ -161,26 +169,26 @@ ProgressProvidedBy(ResourceOrProgress, Context)
 
 ---
 
-# Canonical synchronization-resource identity
+## § 5 Canonical synchronization-resource identity
 
-Synchronization resources are identified through canonical semantic identity,
+**§ 5(1)** Synchronization resources are identified through canonical semantic identity,
 including Place/provenance where applicable.
 
-For example:
+**§ 5(2)** For example:
 
 ```sec
 state.Lock
 ```
 
-may be represented symbolically as:
+**§ 5(3)** may be represented symbolically as:
 
 ```text
 Parameter(0).Lock
 ```
 
-inside an exported function summary.
+**§ 5(4)** inside an exported function summary.
 
-Two resource expressions must remain distinguishable as:
+**§ 5(5)** Two resource expressions must remain distinguishable as:
 
 ```text
 Same
@@ -189,60 +197,60 @@ MayAlias
 Unknown
 ```
 
-or equivalent semantic states supported by canonical Place/provenance analysis.
+**§ 5(6)** or equivalent semantic states supported by canonical Place/provenance analysis.
 
-Names such as `mutex`, `stateLock`, or `cacheGuard` are never proof of resource
+**§ 5(7)** Names such as `mutex`, `stateLock`, or `cacheGuard` are never proof of resource
 identity.
 
 ---
 
-# Lock-order relationships
+## § 6 Lock-order relationships
 
-A lock-order relationship:
+**§ 6(1)** A lock-order relationship:
 
 ```text
 L1 -> L2
 ```
 
-means that there exists a reachable execution in which `L2` may be acquired
+**§ 6(2)** means that there exists a reachable execution in which `L2` may be acquired
 while `L1` remains held.
 
-For example:
+**§ 6(3)** For example:
 
 ```sec
 first.Lock()
 second.Lock()
 ```
 
-may establish:
+**§ 6(4)** may establish:
 
 ```text
 first -> second
 ```
 
-provided `first` is still held when acquisition of `second` occurs.
+**§ 6(5)** provided `first` is still held when acquisition of `second` occurs.
 
-A single order edge is not a deadlock.
+**§ 6(6)** A single order edge is not a deadlock.
 
-A path such as:
+**§ 6(7)** A path such as:
 
 ```text
 L1 -> L2 -> L3
 ```
 
-is not a deadlock unless relevant dependencies form a realizable cycle.
+**§ 6(8)** is not a deadlock unless relevant dependencies form a realizable cycle.
 
 ---
 
-# LockOrderGraph and WaitForGraph
+## § 7 LockOrderGraph and WaitForGraph
 
-The analysis may maintain both a lock-order projection and a generalized
+**§ 7(1)** The analysis may maintain both a lock-order projection and a generalized
 wait-for representation.
 
-The `LockOrderGraph` is useful for efficient analysis of nested resource
+**§ 7(2)** The `LockOrderGraph` is useful for efficient analysis of nested resource
 acquisitions.
 
-The generalized `WaitForGraph` can represent relationships such as:
+**§ 7(3)** The generalized `WaitForGraph` can represent relationships such as:
 
 ```text
 Execution -> Resource
@@ -253,21 +261,21 @@ Execution -> ForeignCompletion
 Execution -> EventProgress
 ```
 
-The exact graph representation is implementation-defined.
+**§ 7(4)** The exact graph representation is implementation-defined.
 
-The generalized wait-for model is normative because deadlocks may involve
+**§ 7(5)** The generalized wait-for model is normative because deadlocks may involve
 mixed dependencies that a pure lock-order graph cannot express.
 
 ---
 
-# A cycle is initially a candidate
+## § 8 A cycle is initially a candidate
 
-A cycle in a lock-order or wait-for graph does not by itself prove deadlock.
+**§ 8(1)** A cycle in a lock-order or wait-for graph does not by itself prove deadlock.
 
-A complete deadlock proof additionally requires enough information to show that
+**§ 8(2)** A complete deadlock proof additionally requires enough information to show that
 its dependencies can coexist in a reachable execution.
 
-Conceptually:
+**§ 8(3)** Conceptually:
 
 ```text
 CandidateCycle
@@ -280,14 +288,14 @@ CandidateCycle
     = ProvenDeadlock
 ```
 
-This expression is explanatory. The implementation need not use this exact
+**§ 8(4)** This expression is explanatory. The implementation need not use this exact
 form.
 
 ---
 
-# Core result classes
+## § 9 Core result classes
 
-The analysis distinguishes:
+**§ 9(1)** The analysis distinguishes:
 
 ```text
 ProvenDeadlock
@@ -295,28 +303,28 @@ PotentialDeadlock
 Unknown
 ```
 
-## ProvenDeadlock
+### § 9.1 ProvenDeadlock
 
-`ProvenDeadlock` means the compiler has a sound reachable witness in which all
+**§ 9.1(1)** `ProvenDeadlock` means the compiler has a sound reachable witness in which all
 participants can simultaneously realize a cyclic wait dependency and no
 participant has a guaranteed mechanism that allows the required progress to
 break the cycle.
 
-## PotentialDeadlock
+### § 9.2 PotentialDeadlock
 
-`PotentialDeadlock` means the compiler has established a meaningful reachable
+**§ 9.2(1)** `PotentialDeadlock` means the compiler has established a meaningful reachable
 cyclic dependency, but one or more compatibility, identity, scheduling,
 capacity, or path facts are not strong enough to establish a complete
 simultaneous blocked-state witness.
 
-A potential deadlock is not equivalent to arbitrary uncertainty.
+**§ 9.2(2)** A potential deadlock is not equivalent to arbitrary uncertainty.
 
-## Unknown
+### § 9.3 Unknown
 
-`Unknown` means deadlock-relevant information is insufficient to establish even
+**§ 9.3(1)** `Unknown` means deadlock-relevant information is insufficient to establish even
 a sufficiently concrete cyclic dependency.
 
-Examples include:
+**§ 9.3(2)** Examples include:
 
 ```text
 foreign call may block but its wait target is unspecified
@@ -326,63 +334,63 @@ platform preemption relationship is unknown
 open callback behavior lacks a usable contract
 ```
 
-Unknown must not be silently converted into `PotentialDeadlock`.
+**§ 9.3(3)** Unknown must not be silently converted into `PotentialDeadlock`.
 
 ---
 
-# Failure to prove required deadlock freedom
+## § 10 Failure to prove required deadlock freedom
 
-An active language, target, runtime, ISR, project, or CompilationPlan policy may
+**§ 10(1)** An active language, target, runtime, ISR, project, or CompilationPlan policy may
 require a positive deadlock-freedom proof for a particular context.
 
-If the analysis result is `Unknown`, compilation may fail because the required
+**§ 10(2)** If the analysis result is `Unknown`, compilation may fail because the required
 proof could not be established.
 
-Such a failure is distinct from both:
+**§ 10(3)** Such a failure is distinct from both:
 
 ```text
 ProvenDeadlock
 PotentialDeadlock
 ```
 
-The diagnostic must state failure to prove the required property rather than
+**§ 10(4)** The diagnostic must state failure to prove the required property rather than
 claiming that a deadlock has been proven.
 
 ---
 
-# Self-deadlock
+## § 11 Self-deadlock
 
-Deadlock does not require two execution contexts.
+**§ 11(1)** Deadlock does not require two execution contexts.
 
-For a non-reentrant exclusive resource:
+**§ 11(2)** For a non-reentrant exclusive resource:
 
 ```sec
 lock.Lock()
 lock.Lock()
 ```
 
-may establish a self-deadlock when the first acquisition remains active and the
+**§ 11(3)** may establish a self-deadlock when the first acquisition remains active and the
 second acquisition blocks waiting for the same resource.
 
-Self-deadlock analysis must use canonical resource identity and reentrancy
+**§ 11(4)** Self-deadlock analysis must use canonical resource identity and reentrancy
 semantics.
 
-A self-order edge:
+**§ 11(5)** A self-order edge:
 
 ```text
 L -> L
 ```
 
-is not automatically invalid for a resource whose canonical semantics permit
+**§ 11(6)** is not automatically invalid for a resource whose canonical semantics permit
 reentrant acquisition by the same execution context.
 
 ---
 
-# Held-resource state
+## § 12 Held-resource state
 
-Deadlock analysis is flow-sensitive with respect to held resources.
+**§ 12(1)** Deadlock analysis is flow-sensitive with respect to held resources.
 
-At each relevant program point the compiler must retain enough information to
+**§ 12(2)** At each relevant program point the compiler must retain enough information to
 distinguish the semantic equivalents of:
 
 ```text
@@ -390,9 +398,9 @@ DefinitelyHeld
 PossiblyHeld
 ```
 
-A coarse set of all resources used by the function is insufficient.
+**§ 12(3)** A coarse set of all resources used by the function is insufficient.
 
-For example:
+**§ 12(4)** For example:
 
 ```sec
 first.Lock()
@@ -400,94 +408,94 @@ first.Unlock()
 second.Lock()
 ```
 
-must not establish:
+**§ 12(5)** must not establish:
 
 ```text
 first -> second
 ```
 
-when canonical semantics prove `first` has been released before acquisition of
+**§ 12(6)** when canonical semantics prove `first` has been released before acquisition of
 `second`.
 
 ---
 
-# Acquisition
+## § 13 Acquisition
 
-When a blocking resource is acquired while other resources remain held, the
+**§ 13(1)** When a blocking resource is acquired while other resources remain held, the
 analysis may establish order/dependency relationships from the held resources
 to the acquired resource.
 
-For example, if:
+**§ 13(2)** For example, if:
 
 ```text
 DefinitelyHeld = {A, B}
 ```
 
-and `C` is acquired, the analysis may establish:
+**§ 13(3)** and `C` is acquired, the analysis may establish:
 
 ```text
 A -> C
 B -> C
 ```
 
-A resource that is only possibly held contributes weaker evidence than a
+**§ 13(4)** A resource that is only possibly held contributes weaker evidence than a
 resource definitely held on the relevant path.
 
-Proof strength must be preserved.
+**§ 13(5)** Proof strength must be preserved.
 
 ---
 
-# Wait versus successful acquisition
+## § 14 Wait versus successful acquisition
 
-For blocking resource operations, the analysis distinguishes the wait event
+**§ 14(1)** For blocking resource operations, the analysis distinguishes the wait event
 from successful ownership.
 
-Conceptually:
+**§ 14(2)** Conceptually:
 
 ```text
 WaitFor(L)
 AcquireSucceeded(L)
 ```
 
-During the wait, the current execution depends on progress associated with
+**§ 14(3)** During the wait, the current execution depends on progress associated with
 `L`.
 
-After successful acquisition, `L` becomes held according to the resource's
+**§ 14(4)** After successful acquisition, `L` becomes held according to the resource's
 canonical ownership semantics.
 
 ---
 
-# Release
+## § 15 Release
 
-Release removes the relevant resource from held state when canonical identity
+**§ 15(1)** Release removes the relevant resource from held state when canonical identity
 and ownership semantics establish that the released resource is the held
 resource.
 
-If alias or ownership information is incomplete, uncertainty remains localized
+**§ 15(2)** If alias or ownership information is incomplete, uncertainty remains localized
 to the affected held-state relationship.
 
 ---
 
-# Nonblocking and fallible acquisition
+## § 16 Nonblocking and fallible acquisition
 
-A synchronization operation that can fail without blocking must not be modeled
+**§ 16(1)** A synchronization operation that can fail without blocking must not be modeled
 as an unconditional blocking wait.
 
-For a fallible or nonblocking acquisition, held state is updated only on paths
+**§ 16(2)** For a fallible or nonblocking acquisition, held state is updated only on paths
 where acquisition succeeds according to canonical semantics.
 
-A nonblocking failure path cannot by itself participate in a permanent wait
+**§ 16(3)** A nonblocking failure path cannot by itself participate in a permanent wait
 cycle.
 
 ---
 
-# Scoped guards and resource tokens
+## § 17 Scoped guards and resource tokens
 
-When synchronization ownership is represented by a guard or token value, the
+**§ 17(1)** When synchronization ownership is represented by a guard or token value, the
 analysis may consume canonical ownership, lifetime, move, destruction, and
 release facts.
 
-Conceptually:
+**§ 17(2)** Conceptually:
 
 ```text
 Guard live and owned by context
@@ -500,16 +508,16 @@ Guard moved to another owner
     -> ownership follows the canonical move semantics
 ```
 
-Guard-based analysis is a precision source, not a requirement that all Sec
+**§ 17(3)** Guard-based analysis is a precision source, not a requirement that all Sec
 synchronization APIs use guards.
 
 ---
 
-# `defer`, cleanup, and destruction
+## § 18 `defer`, cleanup, and destruction
 
-Deferred release participates in the actual held-resource interval.
+**§ 18(1)** Deferred release participates in the actual held-resource interval.
 
-For example:
+**§ 18(2)** For example:
 
 ```sec
 lock.Lock()
@@ -518,23 +526,23 @@ defer lock.Unlock()
 Call()
 ```
 
-means the resource remains held across `Call()` on every path where the deferred
+**§ 18(3)** means the resource remains held across `Call()` on every path where the deferred
 release has not yet executed.
 
-Canonical cleanup, destruction, error, early-return, and panic paths must be
+**§ 18(4)** Canonical cleanup, destruction, error, early-return, and panic paths must be
 respected.
 
-A dependency edge from proven unreachable code must not participate in the
+**§ 18(5)** A dependency edge from proven unreachable code must not participate in the
 analysis.
 
 ---
 
-# Conditional release
+## § 19 Conditional release
 
-If one control-flow path releases a resource and another does not, the resource
+**§ 19(1)** If one control-flow path releases a resource and another does not, the resource
 may become only `PossiblyHeld` after the join.
 
-For example:
+**§ 19(2)** For example:
 
 ```sec
 lock.Lock()
@@ -546,35 +554,35 @@ if condition {
 other.Lock()
 ```
 
-may establish a possible, but not definite, order relationship from `lock` to
+**§ 19(3)** may establish a possible, but not definite, order relationship from `lock` to
 `other`.
 
-This distinction contributes to deadlock proof strength.
+**§ 19(4)** This distinction contributes to deadlock proof strength.
 
 ---
 
-# Path compatibility
+## § 20 Path compatibility
 
-Cycle edges must correspond to paths that can participate in a common reachable
+**§ 20(1)** Cycle edges must correspond to paths that can participate in a common reachable
 execution.
 
-Two opposite lock orders occurring only on mutually exclusive paths in one
+**§ 20(2)** Two opposite lock orders occurring only on mutually exclusive paths in one
 execution instance do not automatically form a proven deadlock.
 
-However, the same source-level mutually exclusive branches may be selected by
+**§ 20(3)** However, the same source-level mutually exclusive branches may be selected by
 different concurrent runtime instances.
 
-Path compatibility is therefore evaluated together with execution-context
+**§ 20(4)** Path compatibility is therefore evaluated together with execution-context
 identity and instance multiplicity.
 
 ---
 
-# Execution contexts
+## § 21 Execution contexts
 
-Deadlock analysis reuses the canonical execution-context model used by other
+**§ 21(1)** Deadlock analysis reuses the canonical execution-context model used by other
 concurrency analyses.
 
-Conceptual context classes may include:
+**§ 21(2)** Conceptual context classes may include:
 
 ```text
 Thread
@@ -585,7 +593,7 @@ PlatformExecution
 Unknown
 ```
 
-The analysis consumes canonical relations such as:
+**§ 21(3)** The analysis consumes canonical relations such as:
 
 ```text
 MayOverlap
@@ -595,58 +603,58 @@ MayReenter
 CompletionDependsOn
 ```
 
-It must not construct an incompatible parallel model of thread or task
+**§ 21(4)** It must not construct an incompatible parallel model of thread or task
 semantics.
 
 ---
 
-# Multiple runtime instances
+## § 22 Multiple runtime instances
 
-A finite execution-context abstraction may represent multiple runtime
+**§ 22(1)** A finite execution-context abstraction may represent multiple runtime
 instances created from one semantic creation site.
 
-The analysis must preserve whether:
+**§ 22(2)** The analysis must preserve whether:
 
 ```text
 ContextClass(site X)
 MayHaveConcurrentInstances = true
 ```
 
-or its semantic equivalent.
+**§ 22(3)** or its semantic equivalent.
 
-Two runtime instances of the same function or task body may participate in one
+**§ 22(4)** Two runtime instances of the same function or task body may participate in one
 deadlock when canonical execution semantics permit them to overlap.
 
 ---
 
-# Synchronous calls
+## § 23 Synchronous calls
 
-An ordinary synchronous function call normally remains in the caller execution
+**§ 23(1)** An ordinary synchronous function call normally remains in the caller execution
 context.
 
-It does not create an independent wait dependency merely because the caller
+**§ 23(2)** It does not create an independent wait dependency merely because the caller
 cannot continue until the callee returns.
 
-Instead, callee acquisitions, releases, waits, and resource state are propagated
+**§ 23(3)** Instead, callee acquisitions, releases, waits, and resource state are propagated
 into the caller context through interprocedural summaries.
 
 ---
 
-# Task and thread completion
+## § 24 Task and thread completion
 
-Task and thread joins or equivalent completion waits are first-class deadlock
+**§ 24(1)** Task and thread joins or equivalent completion waits are first-class deadlock
 dependencies.
 
-For example:
+**§ 24(2)** For example:
 
 ```text
 Task A waits for Task B
 Task B waits for Task A
 ```
 
-may form a deadlock without a mutex.
+**§ 24(3)** may form a deadlock without a mutex.
 
-Mixed cycles are also relevant:
+**§ 24(4)** Mixed cycles are also relevant:
 
 ```text
 A holds L
@@ -654,37 +662,37 @@ A waits for B
 B waits for L
 ```
 
-The analysis consumes canonical join, completion, scheduling, and execution
+**§ 24(5)** The analysis consumes canonical join, completion, scheduling, and execution
 semantics.
 
 ---
 
-# Await and blocking operations
+## § 25 Await and blocking operations
 
-A blocking or suspending operation is not automatically a deadlock.
+**§ 25(1)** A blocking or suspending operation is not automatically a deadlock.
 
-An effect such as:
+**§ 25(2)** An effect such as:
 
 ```text
 MayBlock
 MaySuspend
 ```
 
-may help identify candidate wait sites, but deadlock analysis requires the
+**§ 25(3)** may help identify candidate wait sites, but deadlock analysis requires the
 actual dependency behind the wait where that dependency is known.
 
-Effect analysis is an input and filtering mechanism; it does not replace
+**§ 25(4)** Effect analysis is an input and filtering mechanism; it does not replace
 progress-dependency analysis.
 
 ---
 
-# Progress providers
+## § 26 Progress providers
 
-For condition, event, completion, and similar waits, the analysis should retain
+**§ 26(1)** For condition, event, completion, and similar waits, the analysis should retain
 which execution context or resource can provide the required progress when that
 information is canonical and available.
 
-For example:
+**§ 26(2)** For example:
 
 ```text
 Task A waits for Event E
@@ -693,20 +701,20 @@ Task B waits for Lock L
 Task A holds L
 ```
 
-may form a mixed cyclic dependency.
+**§ 26(3)** may form a mixed cyclic dependency.
 
-If the progress provider cannot be identified, the result remains localized as
+**§ 26(4)** If the progress provider cannot be identified, the result remains localized as
 an unknown progress dependency rather than being connected to arbitrary
 resources.
 
 ---
 
-# Condition waits
+## § 27 Condition waits
 
-Condition-like synchronization must be interpreted according to its canonical
+**§ 27(1)** Condition-like synchronization must be interpreted according to its canonical
 contract.
 
-If a condition wait atomically:
+**§ 27(2)** If a condition wait atomically:
 
 ```text
 releases a mutex
@@ -714,18 +722,18 @@ waits
 reacquires the mutex
 ```
 
-held-resource analysis must model that behavior rather than assuming the mutex
+**§ 27(3)** held-resource analysis must model that behavior rather than assuming the mutex
 remains held throughout the wait.
 
-This requirement is essential for avoiding false deadlock reports.
+**§ 27(4)** This requirement is essential for avoiding false deadlock reports.
 
 ---
 
-# Resource capacity
+## § 28 Resource capacity
 
-Not every synchronization resource is an exclusive mutex.
+**§ 28(1)** Not every synchronization resource is an exclusive mutex.
 
-Canonical resource semantics may define:
+**§ 28(2)** Canonical resource semantics may define:
 
 ```text
 capacity
@@ -737,35 +745,35 @@ reentrancy
 blocking behavior
 ```
 
-A counting semaphore with capacity greater than one must not be silently
+**§ 28(3)** A counting semaphore with capacity greater than one must not be silently
 modeled as a capacity-one mutex.
 
-Sec 0.1 does not require arbitrary resource-allocation or Petri-net analysis,
+**§ 28(4)** Sec 0.1 does not require arbitrary resource-allocation or Petri-net analysis,
 but loss of capacity precision must weaken the result to
 `PotentialDeadlock` or `Unknown` as appropriate rather than fabricate a proven
 cycle.
 
 ---
 
-# Reentrant resources
+## § 29 Reentrant resources
 
-Resource reentrancy is interpreted according to canonical synchronization
+**§ 29(1)** Resource reentrancy is interpreted according to canonical synchronization
 semantics.
 
-A resource that permits recursive acquisition by its current owning context does
+**§ 29(2)** A resource that permits recursive acquisition by its current owning context does
 not produce self-deadlock solely because the same resource is acquired again.
 
-Reentrancy for one owner does not imply that the resource is nonexclusive
+**§ 29(3)** Reentrancy for one owner does not imply that the resource is nonexclusive
 between different execution contexts.
 
 ---
 
-# Guaranteed progress and escape
+## § 30 Guaranteed progress and escape
 
-A deadlock proof is broken only by a canonical guarantee sufficient to ensure
+**§ 30(1)** A deadlock proof is broken only by a canonical guarantee sufficient to ensure
 that a participant can make the progress required to break the cycle.
 
-Examples may include, where canonical semantics guarantee them:
+**§ 30(2)** Examples may include, where canonical semantics guarantee them:
 
 ```text
 guaranteed bounded timeout
@@ -773,91 +781,91 @@ guaranteed cancellation
 guaranteed external completion
 ```
 
-A mechanism that merely may occur is not a positive deadlock-freedom proof.
+**§ 30(3)** A mechanism that merely may occur is not a positive deadlock-freedom proof.
 
-Conceptually:
+**§ 30(4)** Conceptually:
 
 ```text
 may escape
 ```
 
-is weaker than:
+**§ 30(5)** is weaker than:
 
 ```text
 must escape
 ```
 
-Only the latter can invalidate an otherwise complete permanent deadlock
+**§ 30(6)** Only the latter can invalidate an otherwise complete permanent deadlock
 witness.
 
 ---
 
-# Lock-order consistency and partial orders
+## § 31 Lock-order consistency and partial orders
 
-Deadlock analysis may prove that a set of nested acquisitions follows a
+**§ 31(1)** Deadlock analysis may prove that a set of nested acquisitions follows a
 consistent partial order.
 
-For example:
+**§ 31(2)** For example:
 
 ```text
 DatabaseLock < CacheLock < LogLock
 ```
 
-may support a positive no-lock-order-cycle proof for the analyzed scope.
+**§ 31(3)** may support a positive no-lock-order-cycle proof for the analyzed scope.
 
-Sec does not require a single global total order over every synchronization
+**§ 31(4)** Sec does not require a single global total order over every synchronization
 resource.
 
-Resources that are never nested together need not have a relative order.
+**§ 31(5)** Resources that are never nested together need not have a relative order.
 
 ---
 
-# Dynamic resource collections
+## § 32 Dynamic resource collections
 
-Resource identities may arise from indexed or ranged collections.
+**§ 32(1)** Resource identities may arise from indexed or ranged collections.
 
-For example:
+**§ 32(2)** For example:
 
 ```sec
 locks[i].Lock()
 locks[j].Lock()
 ```
 
-uses canonical index, range, Place, alias, and ordering facts.
+**§ 32(3)** uses canonical index, range, Place, alias, and ordering facts.
 
-If `i == j` is proven and the resource is non-reentrant, self-deadlock may be
+**§ 32(4)** If `i == j` is proven and the resource is non-reentrant, self-deadlock may be
 possible.
 
-If `i` and `j` are proven disjoint, the self-alias candidate is eliminated.
+**§ 32(5)** If `i` and `j` are proven disjoint, the self-alias candidate is eliminated.
 
-If their relation is unknown, proof strength is weakened rather than assuming
+**§ 32(6)** If their relation is unknown, proof strength is weakened rather than assuming
 identity or disjointness.
 
-A proven strict acquisition ordering over dynamic resource identities may be
+**§ 32(7)** A proven strict acquisition ordering over dynamic resource identities may be
 consumed as evidence against order cycles.
 
 ---
 
-# Ownership and resource transfer
+## § 33 Ownership and resource transfer
 
-Deadlock analysis consumes canonical ownership and move semantics for resource
+**§ 33(1)** Deadlock analysis consumes canonical ownership and move semantics for resource
 guards, synchronization tokens, and other values that represent held-resource
 authority.
 
-If ownership of a guard moves to another execution context or value, the old
+**§ 33(2)** If ownership of a guard moves to another execution context or value, the old
 owner must not continue to be treated as holding the resource unless canonical
 semantics say otherwise.
 
-The analysis does not redefine ownership transfer.
+**§ 33(3)** The analysis does not redefine ownership transfer.
 
 ---
 
-# ISR and preemption
+## § 34 ISR and preemption
 
-ISR execution can participate in deadlock analysis when canonical platform
+**§ 34(1)** ISR execution can participate in deadlock analysis when canonical platform
 semantics allow preemption or nesting.
 
-A high-value deadlock pattern is:
+**§ 34(2)** A high-value deadlock pattern is:
 
 ```text
 Thread holds L
@@ -865,20 +873,20 @@ ISR preempts Thread
 ISR waits for L
 ```
 
-If the thread cannot resume to release `L` until the ISR returns, and the ISR
+**§ 34(3)** If the thread cannot resume to release `L` until the ISR returns, and the ISR
 cannot return until acquiring `L`, the cycle may form a `ProvenDeadlock`.
 
-Canonical interrupt masking, priority, or exclusion facts may eliminate the
+**§ 34(4)** Canonical interrupt masking, priority, or exclusion facts may eliminate the
 cycle when they guarantee the ISR cannot execute during the relevant held
 interval.
 
-ISR-specific legality and policy remain owned by ISR analysis.
+**§ 34(5)** ISR-specific legality and policy remain owned by ISR analysis.
 
 ---
 
-# Foreign code and FFI
+## § 35 Foreign code and FFI
 
-Foreign code may participate in deadlock analysis through canonical FFI
+**§ 35(1)** Foreign code may participate in deadlock analysis through canonical FFI
 contracts describing relevant behavior such as:
 
 ```text
@@ -892,25 +900,25 @@ CompletionDependency
 ForeignSynchronization
 ```
 
-No dependency is inferred from foreign function or parameter names.
+**§ 35(2)** No dependency is inferred from foreign function or parameter names.
 
-A foreign call whose contract says only:
+**§ 35(3)** A foreign call whose contract says only:
 
 ```text
 MayBlock
 ```
 
-but does not identify its dependency remains a localized unknown wait.
+**§ 35(4)** but does not identify its dependency remains a localized unknown wait.
 
-It must not be connected speculatively to every resource in the program.
+**§ 35(5)** It must not be connected speculatively to every resource in the program.
 
 ---
 
-# Foreign callback reentry
+## § 36 Foreign callback reentry
 
-A foreign call can create self-deadlock through synchronous reentry.
+**§ 36(1)** A foreign call can create self-deadlock through synchronous reentry.
 
-Conceptually:
+**§ 36(2)** Conceptually:
 
 ```text
 Sec holds L
@@ -919,17 +927,17 @@ Sec holds L
             -> callback waits for L
 ```
 
-If the callback target, reentry relation, resource identity, and non-reentrant
+**§ 36(3)** If the callback target, reentry relation, resource identity, and non-reentrant
 blocking semantics are all established, this may produce a complete
 self-deadlock witness.
 
 ---
 
-# Foreign completion cycles
+## § 37 Foreign completion cycles
 
-Foreign completion dependencies may participate in mixed cycles.
+**§ 37(1)** Foreign completion dependencies may participate in mixed cycles.
 
-For example:
+**§ 37(2)** For example:
 
 ```text
 SecContext holds L
@@ -938,15 +946,15 @@ ForeignCompletion depends on SecCallback
 SecCallback waits for L
 ```
 
-may form a cycle when supported by canonical FFI contracts.
+**§ 37(3)** may form a cycle when supported by canonical FFI contracts.
 
 ---
 
-# Function summaries
+## § 38 Function summaries
 
-Deadlock analysis exposes composable function summaries.
+**§ 38(1)** Deadlock analysis exposes composable function summaries.
 
-Conceptually:
+**§ 38(2)** Conceptually:
 
 ```text
 DeadlockSummary {
@@ -960,16 +968,16 @@ DeadlockSummary {
 }
 ```
 
-The exact internal representation is implementation-defined.
+**§ 38(3)** The exact internal representation is implementation-defined.
 
-The summary must preserve enough symbolic information for callers to instantiate
+**§ 38(4)** The summary must preserve enough symbolic information for callers to instantiate
 resource and wait dependencies without requiring the callee body.
 
 ---
 
-# Symbolic resource roots
+## § 39 Symbolic resource roots
 
-Summaries may refer to symbolic roots such as:
+**§ 39(1)** Summaries may refer to symbolic roots such as:
 
 ```text
 Parameter(n)
@@ -981,13 +989,13 @@ AllocationSite(site)
 Unknown
 ```
 
-Projection and Place precision must be retained where available.
+**§ 39(2)** Projection and Place precision must be retained where available.
 
 ---
 
-# Symbolic acquisition order
+## § 40 Symbolic acquisition order
 
-For example:
+**§ 40(1)** For example:
 
 ```sec
 fn AcquireBoth(first: ref Mutex, second: ref Mutex) {
@@ -996,63 +1004,63 @@ fn AcquireBoth(first: ref Mutex, second: ref Mutex) {
 }
 ```
 
-may export the semantic relationship:
+**§ 40(2)** may export the semantic relationship:
 
 ```text
 Parameter(0) -> Parameter(1)
 ```
 
-or an equivalent structured summary.
+**§ 40(3)** or an equivalent structured summary.
 
-At a call site, alias analysis may instantiate both parameters to the same
+**§ 40(4)** At a call site, alias analysis may instantiate both parameters to the same
 resource and thereby expose a self-deadlock candidate.
 
 ---
 
-# Caller-held propagation
+## § 41 Caller-held propagation
 
-A callee may acquire a resource that was not known to be held inside the callee
+**§ 41(1)** A callee may acquire a resource that was not known to be held inside the callee
 summary itself.
 
-For example:
+**§ 41(2)** For example:
 
 ```sec
 external.Lock()
 CallLibrary()
 ```
 
-if `CallLibrary` may acquire `Static(CacheLock)`, the caller must be able to
+**§ 41(3)** if `CallLibrary` may acquire `Static(CacheLock)`, the caller must be able to
 establish:
 
 ```text
 external -> Static(CacheLock)
 ```
 
-when `external` remains held across the call.
+**§ 41(4)** when `external` remains held across the call.
 
-Therefore summaries must preserve acquisition behavior separately from only
+**§ 41(5)** Therefore summaries must preserve acquisition behavior separately from only
 fully internal lock-order edges.
 
 ---
 
-# Callee release of inherited resources
+## § 42 Callee release of inherited resources
 
-If canonical ownership or guard semantics allow a callee to release or transfer
+**§ 42(1)** If canonical ownership or guard semantics allow a callee to release or transfer
 a caller-held resource, inherited held state must be updated before later
 acquisitions are correlated.
 
-The analysis must not assume all caller-held resources remain held through every
+**§ 42(2)** The analysis must not assume all caller-held resources remain held through every
 call when canonical semantics prove otherwise.
 
 ---
 
-# Call-site summary instantiation
+## § 43 Call-site summary instantiation
 
-Symbolic resource, wait, completion, callback, and execution facts are
+**§ 43(1)** Symbolic resource, wait, completion, callback, and execution facts are
 instantiated at call sites using canonical Place/provenance and identity
 relations.
 
-Instantiation must preserve:
+**§ 43(2)** Instantiation must preserve:
 
 ```text
 Same
@@ -1061,29 +1069,29 @@ MayAlias
 Unknown
 ```
 
-or equivalent precision rather than eagerly collapsing resources to unknown.
+**§ 43(3)** or equivalent precision rather than eagerly collapsing resources to unknown.
 
 ---
 
-# Recursive call graphs
+## § 44 Recursive call graphs
 
-Interprocedural deadlock summaries are solved over canonical call-graph SCCs.
+**§ 44(1)** Interprocedural deadlock summaries are solved over canonical call-graph SCCs.
 
-Ordinary recursion is not itself concurrency or deadlock.
+**§ 44(2)** Ordinary recursion is not itself concurrency or deadlock.
 
-However recursion may expose deadlock-relevant resource behavior.
+**§ 44(3)** However recursion may expose deadlock-relevant resource behavior.
 
-For example, a recursive traversal that holds `node.Lock` while recursing to a
+**§ 44(4)** For example, a recursive traversal that holds `node.Lock` while recursing to a
 `Next` node may self-deadlock if canonical alias analysis proves the next node
 can be the same resource and the lock is non-reentrant.
 
-Summary fixed points must be deterministic and declaration-order independent.
+**§ 44(5)** Summary fixed points must be deterministic and declaration-order independent.
 
 ---
 
-# Call-graph SCCs versus deadlock SCCs
+## § 45 Call-graph SCCs versus deadlock SCCs
 
-Call-graph recursion SCCs and deadlock dependency SCCs are distinct.
+**§ 45(1)** Call-graph recursion SCCs and deadlock dependency SCCs are distinct.
 
 ```text
 CallGraph SCC:
@@ -1093,31 +1101,31 @@ WaitForGraph SCC:
     cyclic progress dependency
 ```
 
-The first is used to solve interprocedural summaries.
+**§ 45(2)** The first is used to solve interprocedural summaries.
 
-The second is used to detect deadlock candidates.
+**§ 45(3)** The second is used to detect deadlock candidates.
 
-They must not be conflated.
+**§ 45(4)** They must not be conflated.
 
 ---
 
-# Callable and closure integration
+## § 46 Callable and closure integration
 
-Closed callable target sets are consumed from canonical closure/callable-flow
+**§ 46(1)** Closed callable target sets are consumed from canonical closure/callable-flow
 analysis.
 
-If a callback may target multiple functions, deadlock-relevant summaries from
+**§ 46(2)** If a callback may target multiple functions, deadlock-relevant summaries from
 all permitted targets participate conservatively.
 
-A callback invoked while holding `L` can establish:
+**§ 46(3)** A callback invoked while holding `L` can establish:
 
 ```text
 L -> M
 ```
 
-when a possible callback target may acquire `M`.
+**§ 46(4)** when a possible callback target may acquire `M`.
 
-Open callable contracts may expose relevant behavior such as:
+**§ 46(5)** Open callable contracts may expose relevant behavior such as:
 
 ```text
 MayBlock
@@ -1126,16 +1134,16 @@ MayWaitForCompletion
 MayReenter
 ```
 
-Missing dimensions remain localized as Unknown.
+**§ 46(6)** Missing dimensions remain localized as Unknown.
 
 ---
 
-# Finite resource abstraction
+## § 47 Finite resource abstraction
 
-The analysis must not require one static graph node per runtime resource
+**§ 47(1)** The analysis must not require one static graph node per runtime resource
 instance.
 
-Finite symbolic identities may include:
+**§ 47(2)** Finite symbolic identities may include:
 
 ```text
 ResourcePlace
@@ -1145,35 +1153,35 @@ AllocationSite
 AnyIndex(resource collection)
 ```
 
-or equivalent abstractions.
+**§ 47(3)** or equivalent abstractions.
 
-Widening should preserve the most specific known root/projection rather than
+**§ 47(4)** Widening should preserve the most specific known root/projection rather than
 collapsing immediately to all resources.
 
 ---
 
-# Edge aggregation
+## § 48 Edge aggregation
 
-Equivalent abstract dependency edges may be aggregated.
+**§ 48(1)** Equivalent abstract dependency edges may be aggregated.
 
-For example, many source instances corresponding to:
+**§ 48(2)** For example, many source instances corresponding to:
 
 ```text
 L1 -> L2
 ```
 
-need not create an unbounded number of graph edges.
+**§ 48(3)** need not create an unbounded number of graph edges.
 
-Aggregated edges retain deterministic representative causes and may retain
+**§ 48(4)** Aggregated edges retain deterministic representative causes and may retain
 occurrence information for detailed analysis views.
 
 ---
 
-# Dependency-edge evidence
+## § 49 Dependency-edge evidence
 
-A dependency edge retains enough evidence to explain its origin.
+**§ 49(1)** A dependency edge retains enough evidence to explain its origin.
 
-Conceptually:
+**§ 49(2)** Conceptually:
 
 ```text
 DependencyEdge {
@@ -1187,18 +1195,18 @@ DependencyEdge {
 }
 ```
 
-The exact representation is implementation-defined.
+**§ 49(3)** The exact representation is implementation-defined.
 
-Evidence must be sufficient to construct stable cycle diagnostics and to avoid
+**§ 49(4)** Evidence must be sufficient to construct stable cycle diagnostics and to avoid
 strengthening a cycle beyond the strength of its constituent facts.
 
 ---
 
-# Proof strength
+## § 50 Proof strength
 
-Individual dependency edges may differ in proof strength.
+**§ 50(1)** Individual dependency edges may differ in proof strength.
 
-An implementation may use categories equivalent to:
+**§ 50(2)** An implementation may use categories equivalent to:
 
 ```text
 ProvenPossible
@@ -1206,19 +1214,19 @@ ConservativePossible
 Unknown
 ```
 
-The exact enum names are not normative.
+**§ 50(3)** The exact enum names are not normative.
 
-A cycle based on precise canonical relationships can support stronger
+**§ 50(4)** A cycle based on precise canonical relationships can support stronger
 classification than a cycle that depends on unresolved aliasing, path
 conditions, resource capacity, or foreign behavior.
 
 ---
 
-# Cycle realizability
+## § 51 Cycle realizability
 
-`ProvenDeadlock` requires more than graph cyclicity.
+**§ 51(1)** `ProvenDeadlock` requires more than graph cyclicity.
 
-The analysis must establish enough of the following to support a complete
+**§ 51(2)** The analysis must establish enough of the following to support a complete
 witness:
 
 ```text
@@ -1232,49 +1240,49 @@ resource capacity where relevant
 absence of a guaranteed cycle-breaking progress mechanism
 ```
 
-A missing fact weakens classification rather than being silently assumed.
+**§ 51(3)** A missing fact weakens classification rather than being silently assumed.
 
 ---
 
-# Concurrent realizability
+## § 52 Concurrent realizability
 
-For multi-context cycles, participating execution contexts must be able to
+**§ 52(1)** For multi-context cycles, participating execution contexts must be able to
 coexist according to canonical execution semantics.
 
-If two contexts are proven unable to overlap, a lock-order inversion between
+**§ 52(2)** If two contexts are proven unable to overlap, a lock-order inversion between
 them cannot form a simultaneous multi-context deadlock.
 
-This does not eliminate self-deadlock within one context.
+**§ 52(3)** This does not eliminate self-deadlock within one context.
 
 ---
 
-# Reentry realizability
+## § 53 Reentry realizability
 
-Reentrant callback or platform execution may create deadlock without ordinary
+**§ 53(1)** Reentrant callback or platform execution may create deadlock without ordinary
 thread overlap.
 
-The analysis must use canonical `MayReenter` or equivalent relationships rather
+**§ 53(2)** The analysis must use canonical `MayReenter` or equivalent relationships rather
 than requiring two independent threads for every cycle.
 
 ---
 
-# Resource identity and proof classification
+## § 54 Resource identity and proof classification
 
-Possible resource aliasing can support a meaningful `PotentialDeadlock` when a
+**§ 54(1)** Possible resource aliasing can support a meaningful `PotentialDeadlock` when a
 concrete dependency structure exists, but possible aliasing alone must not
 fabricate `ProvenDeadlock`.
 
-A proven deadlock witness requires resource identity facts strong enough to
+**§ 54(2)** A proven deadlock witness requires resource identity facts strong enough to
 support every cycle edge that depends on aliasing.
 
 ---
 
-# Blocking semantics and cycle proof
+## § 55 Blocking semantics and cycle proof
 
-Only dependencies whose canonical semantics can block contribute blocking wait
+**§ 55(1)** Only dependencies whose canonical semantics can block contribute blocking wait
 edges.
 
-For example:
+**§ 55(2)** For example:
 
 ```text
 BlockingAcquire
@@ -1282,32 +1290,32 @@ CompletionWait
 ConditionWait
 ```
 
-may participate when their contracts establish the relevant dependency.
+**§ 55(3)** may participate when their contracts establish the relevant dependency.
 
-A nonblocking acquisition that simply returns failure is not treated as a
+**§ 55(4)** A nonblocking acquisition that simply returns failure is not treated as a
 permanent wait edge.
 
 ---
 
-# Resource capacity and proof classification
+## § 56 Resource capacity and proof classification
 
-Resource capacity may determine whether all participants can be blocked
+**§ 56(1)** Resource capacity may determine whether all participants can be blocked
 simultaneously.
 
-When capacity information is insufficient, the result is weakened to
+**§ 56(2)** When capacity information is insufficient, the result is weakened to
 `PotentialDeadlock` or `Unknown` according to the amount of dependency structure
 that remains known.
 
-Insufficient capacity analysis must never be replaced by an assumption that the
+**§ 56(3)** Insufficient capacity analysis must never be replaced by an assumption that the
 resource behaves as an exclusive mutex.
 
 ---
 
-# Precision widening
+## § 57 Precision widening
 
-Deadlock analysis may use bounded abstractions to avoid state or path explosion.
+**§ 57(1)** Deadlock analysis may use bounded abstractions to avoid state or path explosion.
 
-Widening may reduce precision through states such as:
+**§ 57(2)** Widening may reduce precision through states such as:
 
 ```text
 precise resource identity
@@ -1315,7 +1323,7 @@ precise resource identity
     -> localized unknown resource dimension
 ```
 
-or:
+**§ 57(3)** or:
 
 ```text
 precise path relationship
@@ -1323,47 +1331,47 @@ precise path relationship
     -> unknown path compatibility
 ```
 
-Loss of precision may weaken:
+**§ 57(4)** Loss of precision may weaken:
 
 ```text
 ProvenDeadlock -> PotentialDeadlock -> Unknown
 ```
 
-but must never strengthen an unsupported result.
+**§ 57(5)** but must never strengthen an unsupported result.
 
 ---
 
-# Deep precision can strengthen or eliminate a potential finding
+## § 58 Deep precision can strengthen or eliminate a potential finding
 
-Increasing precision is not the same as widening.
+**§ 58(1)** Increasing precision is not the same as widening.
 
-Deep analysis may legitimately refine:
+**§ 58(2)** Deep analysis may legitimately refine:
 
 ```text
 PotentialDeadlock -> ProvenDeadlock
 ```
 
-when it establishes the missing witness.
+**§ 58(3)** when it establishes the missing witness.
 
-It may also refine:
+**§ 58(4)** It may also refine:
 
 ```text
 PotentialDeadlock -> no finding
 ```
 
-when it proves path incompatibility, resource disjointness, guaranteed progress,
+**§ 58(5)** when it proves path incompatibility, resource disjointness, guaranteed progress,
 or non-overlapping execution.
 
-The underlying deadlock semantics do not change.
+**§ 58(6)** The underlying deadlock semantics do not change.
 
 ---
 
-# Avoiding path explosion
+## § 59 Avoiding path explosion
 
-The normative analysis does not require exhaustive enumeration of every runtime
+**§ 59(1)** The normative analysis does not require exhaustive enumeration of every runtime
 path.
 
-Sound implementations may use:
+**§ 59(2)** Sound implementations may use:
 
 ```text
 path summaries
@@ -1375,16 +1383,16 @@ worklist fixed points
 widening
 ```
 
-provided unsupported precision is represented as `PotentialDeadlock` or
+**§ 59(3)** provided unsupported precision is represented as `PotentialDeadlock` or
 `Unknown` rather than as a fabricated proof.
 
 ---
 
-# Representative cycle witness
+## § 60 Representative cycle witness
 
-A deadlock finding retains a representative cycle.
+**§ 60(1)** A deadlock finding retains a representative cycle.
 
-The selected witness should favor, in order of semantic usefulness:
+**§ 60(2)** The selected witness should favor, in order of semantic usefulness:
 
 ```text
 stronger proof
@@ -1394,20 +1402,20 @@ clear source locations
 less uncertainty
 ```
 
-The implementation may refine this ordering, but selection must be
+**§ 60(3)** The implementation may refine this ordering, but selection must be
 deterministic.
 
-A graph-theoretically shortest cycle is not required if another stable cycle
+**§ 60(4)** A graph-theoretically shortest cycle is not required if another stable cycle
 provides materially clearer source evidence.
 
 ---
 
-# Interprocedural cause paths
+## § 61 Interprocedural cause paths
 
-When an edge is established through nested calls, the finding should retain the
+**§ 61(1)** When an edge is established through nested calls, the finding should retain the
 interprocedural cause path.
 
-For example:
+**§ 61(2)** For example:
 
 ```text
 Handler
@@ -1416,27 +1424,27 @@ Handler
       -> acquire CacheLock
 ```
 
-may explain the edge:
+**§ 61(3)** may explain the edge:
 
 ```text
 DatabaseLock -> CacheLock
 ```
 
-Normal diagnostics may present the compact edge while detailed tooling exposes
+**§ 61(4)** Normal diagnostics may present the compact edge while detailed tooling exposes
 the full cause path.
 
 ---
 
-# Diagnostics
+## § 62 Diagnostics
 
-Deadlock diagnostics preserve the distinction between proven, potential, and
+**§ 62(1)** Deadlock diagnostics preserve the distinction between proven, potential, and
 unknown results.
 
-## Proven deadlock
+### § 62.1 Proven deadlock
 
-A proven finding states that the deadlock can occur.
+**§ 62.1(1)** A proven finding states that the deadlock can occur.
 
-Conceptually:
+**§ 62.1(2)** Conceptually:
 
 ```text
 error: deadlock can occur
@@ -1450,14 +1458,14 @@ Thread B:
     waits for `database.Lock`
 ```
 
-Exact wording and severity are governed by the canonical diagnostic rules.
+**§ 62.1(3)** Exact wording and severity are governed by the canonical diagnostic rules.
 
-## Potential deadlock
+### § 62.2 Potential deadlock
 
-A potential finding states that a meaningful dependency cycle exists but that
+**§ 62.2(1)** A potential finding states that a meaningful dependency cycle exists but that
 the complete blocked-state witness is not proven.
 
-Conceptually:
+**§ 62.2(2)** Conceptually:
 
 ```text
 warning: potential deadlock
@@ -1471,12 +1479,12 @@ another concurrent path acquires:
 simultaneous blocked-state reachability could not be fully proven
 ```
 
-## Unknown
+### § 62.3 Unknown
 
-Unknown is not presented as a potential deadlock unless a meaningful dependency
+**§ 62.3(1)** Unknown is not presented as a potential deadlock unless a meaningful dependency
 cycle has been established.
 
-Detailed analysis may instead report:
+**§ 62.3(2)** Detailed analysis may instead report:
 
 ```text
 deadlock status unknown
@@ -1487,34 +1495,34 @@ reason:
 
 ---
 
-# Failure-to-prove diagnostics
+## § 63 Failure-to-prove diagnostics
 
-When an active policy requires positive deadlock-freedom proof and the analysis
+**§ 63(1)** When an active policy requires positive deadlock-freedom proof and the analysis
 cannot establish it, the diagnostic states that the proof is unavailable.
 
-It must not claim either a proven or potential deadlock unless the corresponding
+**§ 63(2)** It must not claim either a proven or potential deadlock unless the corresponding
 classification is independently established.
 
 ---
 
-# Diagnostic navigation
+## § 64 Diagnostic navigation
 
-Deadlock findings are relational and may span several locations.
+**§ 64(1)** Deadlock findings are relational and may span several locations.
 
-LSP diagnostics should expose a primary location and related locations for the
+**§ 64(2)** LSP diagnostics should expose a primary location and related locations for the
 resource acquisitions, waits, completion dependencies, callbacks, and other
 cycle edges.
 
-The user should be able to navigate through the representative cycle.
+**§ 64(3)** The user should be able to navigate through the representative cycle.
 
 ---
 
-# Diagnostic presentation
+## § 65 Diagnostic presentation
 
-Normal diagnostics present a minimal understandable witness rather than dumping
+**§ 65(1)** Normal diagnostics present a minimal understandable witness rather than dumping
 the complete `WaitForGraph`.
 
-Detailed tooling may expose:
+**§ 65(2)** Detailed tooling may expose:
 
 ```text
 full cause paths
@@ -1528,20 +1536,20 @@ additional equivalent occurrences
 
 ---
 
-# Automatic fixes
+## § 66 Automatic fixes
 
-Deadlock analysis must not offer a generic transformation such as:
+**§ 66(1)** Deadlock analysis must not offer a generic transformation such as:
 
 ```text
 reverse these locks
 ```
 
-unless a canonical semantic contract proves that the transformation preserves
+**§ 66(2)** unless a canonical semantic contract proves that the transformation preserves
 program behavior and satisfies the intended synchronization order.
 
-Lock ordering is often an architectural choice.
+**§ 66(3)** Lock ordering is often an architectural choice.
 
-Baseline tooling prioritizes:
+**§ 66(4)** Baseline tooling prioritizes:
 
 ```text
 explanation
@@ -1551,33 +1559,33 @@ resource order
 cause paths
 ```
 
-over automatic rewriting.
+**§ 66(5)** over automatic rewriting.
 
 ---
 
-# Positive deadlock-free proofs
+## § 67 Positive deadlock-free proofs
 
-The analysis may retain scoped positive facts such as:
+**§ 67(1)** The analysis may retain scoped positive facts such as:
 
 ```text
 NoLockOrderCycle
 NoDeadlockCycle
 ```
 
-when proven for a particular scope, resource set, context relation, and set of
+**§ 67(2)** when proven for a particular scope, resource set, context relation, and set of
 assumptions.
 
-A positive proof is scoped; it must not be generalized to an entire program
+**§ 67(3)** A positive proof is scoped; it must not be generalized to an entire program
 when only a subset of resources or execution contexts was analyzed.
 
-Such proofs are primarily reusable analysis facts and OptionalInsight tooling
+**§ 67(4)** Such proofs are primarily reusable analysis facts and OptionalInsight tooling
 information.
 
 ---
 
-# Analysis budgets
+## § 68 Analysis budgets
 
-Deadlock analysis uses the common Sec analysis-budget model:
+**§ 68(1)** Deadlock analysis uses the common Sec analysis-budget model:
 
 ```text
 Interactive
@@ -1585,16 +1593,16 @@ Standard
 Deep
 ```
 
-No additional global `Intermediate` analysis mode is introduced.
+**§ 68(2)** No additional global `Intermediate` analysis mode is introduced.
 
 ---
 
-# Interactive analysis
+## § 69 Interactive analysis
 
-Interactive analysis prioritizes fast sound results from local facts and cached
+**§ 69(1)** Interactive analysis prioritizes fast sound results from local facts and cached
 summaries.
 
-High-value Interactive checks include:
+**§ 69(2)** High-value Interactive checks include:
 
 ```text
 direct self-lock
@@ -1605,15 +1613,15 @@ known callback reentry
 known ISR/preemption self-deadlock
 ```
 
-Interactive analysis may remain incomplete while refinement is pending.
+**§ 69(3)** Interactive analysis may remain incomplete while refinement is pending.
 
 ---
 
-# Progressive LSP refinement
+## § 70 Progressive LSP refinement
 
-LSP execution is progressively refined within the existing analysis modes.
+**§ 70(1)** LSP execution is progressively refined within the existing analysis modes.
 
-Conceptually:
+**§ 70(2)** Conceptually:
 
 ```text
 Interactive fast result
@@ -1622,17 +1630,17 @@ Interactive fast result
     -> optional Deep refinement
 ```
 
-The intermediate refinement step is scheduling and precision work within the
+**§ 70(3)** The intermediate refinement step is scheduling and precision work within the
 existing model, not a fourth language-analysis mode.
 
 ---
 
-# Pending tooling state
+## § 71 Pending tooling state
 
-LSP analysis may use a first-class `Pending` state while invalidated summaries,
+**§ 71(1)** LSP analysis may use a first-class `Pending` state while invalidated summaries,
 resource identities, callback targets, or cycle proofs are being recomputed.
 
-`Pending` is distinct from:
+**§ 71(2)** `Pending` is distinct from:
 
 ```text
 ProvenDeadlock
@@ -1640,25 +1648,25 @@ PotentialDeadlock
 Unknown
 ```
 
-A stale proven or potential finding must not continue to be treated as a current
+**§ 71(3)** A stale proven or potential finding must not continue to be treated as a current
 result after one of its proof dependencies has been invalidated.
 
 ---
 
-# Standard analysis
+## § 72 Standard analysis
 
-Standard analysis is the stable analysis required for normal compilation.
+**§ 72(1)** Standard analysis is the stable analysis required for normal compilation.
 
-Any deadlock proof required by active language, target, runtime, ISR, project,
+**§ 72(2)** Any deadlock proof required by active language, target, runtime, ISR, project,
 or CompilationPlan semantics is mandatory in Standard analysis.
 
-Required proof cannot be deferred to Deep merely because it is expensive.
+**§ 72(3)** Required proof cannot be deferred to Deep merely because it is expensive.
 
 ---
 
-# Deep analysis
+## § 73 Deep analysis
 
-Deep analysis may increase precision through more expensive reasoning such as:
+**§ 73(1)** Deep analysis may increase precision through more expensive reasoning such as:
 
 ```text
 path-sensitive held-resource state
@@ -1670,18 +1678,18 @@ resource-capacity refinement
 richer cycle realizability proofs
 ```
 
-Deep does not change deadlock semantics.
+**§ 73(2)** Deep does not change deadlock semantics.
 
 ---
 
-# LSP presentation classes
+## § 74 LSP presentation classes
 
-Deadlock analysis uses the common LSP distinction between information the
+**§ 74(1)** Deadlock analysis uses the common LSP distinction between information the
 programmer needs to see and information that is optional insight.
 
-## NeedToKnow
+### § 74.1 NeedToKnow
 
-Normally includes:
+**§ 74.1(1)** Normally includes:
 
 ```text
 ProvenDeadlock
@@ -1689,11 +1697,11 @@ high-confidence PotentialDeadlock
 required deadlock-freedom proof failure
 ```
 
-Exact severity remains governed by canonical diagnostic policy.
+**§ 74.1(2)** Exact severity remains governed by canonical diagnostic policy.
 
-## OptionalInsight
+### § 74.2 OptionalInsight
 
-May include:
+**§ 74.2(1)** May include:
 
 ```text
 positive no-cycle explanations
@@ -1704,15 +1712,15 @@ full WaitForGraph details
 precision-loss explanations when no required proof fails
 ```
 
-Optional insight must remain configurable.
+**§ 74.2(2)** Optional insight must remain configurable.
 
 ---
 
-# LSP graph views
+## § 75 LSP graph views
 
-A lock-order view is a natural OptionalInsight representation.
+**§ 75(1)** A lock-order view is a natural OptionalInsight representation.
 
-For example:
+**§ 75(2)** For example:
 
 ```text
 DatabaseLock
@@ -1720,32 +1728,32 @@ DatabaseLock
     -> LogLock
 ```
 
-A detailed Deep view may expose mixed dependencies such as:
+**§ 75(3)** A detailed Deep view may expose mixed dependencies such as:
 
 ```text
 ThreadA -> TaskB -> LockC -> ThreadD -> EventE -> ThreadA
 ```
 
-These views are tooling presentations, not language syntax.
+**§ 75(4)** These views are tooling presentations, not language syntax.
 
 ---
 
-# LSP configuration reload
+## § 76 LSP configuration reload
 
-Changes to project analysis depth or optional insight settings must be observed
+**§ 76(1)** Changes to project analysis depth or optional insight settings must be observed
 without requiring an LSP restart.
 
-Affected summaries, cycle classifications, diagnostics, hovers, and analysis
+**§ 76(2)** Affected summaries, cycle classifications, diagnostics, hovers, and analysis
 views are refreshed according to the common LSP analysis model.
 
 ---
 
-# Incremental invalidation
+## § 77 Incremental invalidation
 
-Deadlock summaries and findings are invalidated when relevant dependencies
+**§ 77(1)** Deadlock summaries and findings are invalidated when relevant dependencies
 change.
 
-Examples include:
+**§ 77(2)** Examples include:
 
 ```text
 function body
@@ -1766,28 +1774,28 @@ CompilationPlan where relevant
 analysis schema/version
 ```
 
-Invalidation is dependency-driven rather than project-wide when unrelated facts
+**§ 77(3)** Invalidation is dependency-driven rather than project-wide when unrelated facts
 can remain valid.
 
 ---
 
-# Stable-summary propagation
+## § 78 Stable-summary propagation
 
-If a function is reanalyzed and its exported deadlock summary is semantically
+**§ 78(1)** If a function is reanalyzed and its exported deadlock summary is semantically
 equivalent to the previous summary, dependent callers need not be invalidated
 further solely because the body changed.
 
-Likewise, when one dependency edge disappears, findings whose representative or
+**§ 78(2)** Likewise, when one dependency edge disappears, findings whose representative or
 supporting cycles require that edge are invalidated even if other edges remain.
 
 ---
 
-# Separate compilation
+## § 79 Separate compilation
 
-Separate compilation may use versioned symbolic deadlock summaries instead of
+**§ 79(1)** Separate compilation may use versioned symbolic deadlock summaries instead of
 callee bodies.
 
-An exported summary may describe facts such as:
+**§ 79(2)** An exported summary may describe facts such as:
 
 ```text
 resources acquired
@@ -1801,16 +1809,16 @@ callback/reentry behavior
 localized unknown dimensions
 ```
 
-Callers instantiate symbolic origins using canonical Place/provenance and
+**§ 79(3)** Callers instantiate symbolic origins using canonical Place/provenance and
 resource identity.
 
-Missing imported information widens only the affected dimensions.
+**§ 79(4)** Missing imported information widens only the affected dimensions.
 
 ---
 
-# Summary versioning and invalidation
+## § 80 Summary versioning and invalidation
 
-Persisted summaries are invalidated when relevant semantics change, including:
+**§ 80(1)** Persisted summaries are invalidated when relevant semantics change, including:
 
 ```text
 body
@@ -1828,16 +1836,16 @@ CompilationPlan where applicable
 analysis schema/version
 ```
 
-The cache key or equivalent compatibility mechanism must be sufficient to avoid
+**§ 80(2)** The cache key or equivalent compatibility mechanism must be sufficient to avoid
 using stale summaries under incompatible semantics.
 
 ---
 
-# CompilationPlan dependence
+## § 81 CompilationPlan dependence
 
-Many source-level lock-order facts are target-independent.
+**§ 81(1)** Many source-level lock-order facts are target-independent.
 
-Deadlock results become CompilationPlan-dependent only where behavior actually
+**§ 81(2)** Deadlock results become CompilationPlan-dependent only where behavior actually
 differs, including cases such as:
 
 ```text
@@ -1849,16 +1857,16 @@ resource-capacity semantics
 callback or reentry behavior
 ```
 
-The analysis should not introduce unnecessary target splitting.
+**§ 81(3)** The analysis should not introduce unnecessary target splitting.
 
 ---
 
-# Determinism
+## § 82 Determinism
 
-For the same source, compiler version, relevant project configuration, and
+**§ 82(1)** For the same source, compiler version, relevant project configuration, and
 CompilationPlan, deadlock analysis must produce deterministic semantic results.
 
-This includes stable:
+**§ 82(2)** This includes stable:
 
 ```text
 classification
@@ -1868,29 +1876,29 @@ related diagnostic locations
 cause path selection
 ```
 
-Results must not depend on declaration order, worklist order, cache traversal,
+**§ 82(3)** Results must not depend on declaration order, worklist order, cache traversal,
 or parallel compiler scheduling.
 
 ---
 
-# `sec analyse`
+## § 83 `sec analyse`
 
-Deadlock analysis participates in the default all-analysis behavior of:
+**§ 83(1)** Deadlock analysis participates in the default all-analysis behavior of:
 
 ```text
 sec analyse
 ```
 
-Tooling may expose an explicit deadlock-only selection, conceptually:
+**§ 83(2)** Tooling may expose an explicit deadlock-only selection, conceptually:
 
 ```text
 sec analyse deadlocks
 ```
 
-`deadlocks` is the canonical analysis name (`rules/tooling/cli.md` § 5.2,
+**§ 83(3)** `deadlocks` is the canonical analysis name (`rules/tooling/cli.md` § 5.2,
 MD-017).
 
-Deep output may include:
+**§ 83(4)** Deep output may include:
 
 ```text
 proven deadlock cycles
@@ -1910,9 +1918,9 @@ positive no-cycle proofs
 
 ---
 
-# Required baseline capabilities for Sec 0.1
+## § 84 Required baseline capabilities for Sec 0.1
 
-The Sec 0.1 baseline requires at least:
+**§ 84(1)** The Sec 0.1 baseline requires at least:
 
 ```text
 symbolic synchronization-resource identities
@@ -1938,21 +1946,21 @@ incremental LSP integration
 deterministic representative witnesses
 ```
 
-Resource-specific condition, event, semaphore, and foreign precision may be
+**§ 84(2)** Resource-specific condition, event, semaphore, and foreign precision may be
 conservative where canonical contracts exist but full proof support is not yet
 available. Such limitations must be represented through the result classes
 rather than by incorrect mutex assumptions.
 
 ---
 
-# Required test philosophy
+## § 85 Required test philosophy
 
-Tests must cover both positive findings and false-positive resistance.
+**§ 85(1)** Tests must cover both positive findings and false-positive resistance.
 
-A deadlock analyzer that reports every unusual synchronization pattern is not
+**§ 85(2)** A deadlock analyzer that reports every unusual synchronization pattern is not
 conforming.
 
-The test suite must verify:
+**§ 85(3)** The test suite must verify:
 
 ```text
 classification strength
@@ -1967,9 +1975,9 @@ bounded graph behavior
 
 ---
 
-# Required ProvenDeadlock tests
+## § 86 Required ProvenDeadlock tests
 
-At minimum:
+**§ 86(1)** At minimum:
 
 ```text
 same non-reentrant lock acquired twice
@@ -1985,9 +1993,9 @@ mixed task/resource cycle with complete progress dependencies
 
 ---
 
-# Required PotentialDeadlock tests
+## § 87 Required PotentialDeadlock tests
 
-At minimum:
+**§ 87(1)** At minimum:
 
 ```text
 lock-order inversion with unresolved path compatibility
@@ -1998,13 +2006,13 @@ concurrent context relation supports the candidate but not the full witness
 meaningful foreign/resource cycle with one unresolved compatibility dimension
 ```
 
-These tests must not be upgraded to `ProvenDeadlock` without the missing proof.
+**§ 87(2)** These tests must not be upgraded to `ProvenDeadlock` without the missing proof.
 
 ---
 
-# Required Unknown tests
+## § 88 Required Unknown tests
 
-At minimum:
+**§ 88(1)** At minimum:
 
 ```text
 foreign blocking target unknown
@@ -2015,14 +2023,14 @@ unknown platform preemption semantics
 unknown custom synchronization contract
 ```
 
-Unknown behavior must not become `PotentialDeadlock` without a concrete
+**§ 88(2)** Unknown behavior must not become `PotentialDeadlock` without a concrete
 supported dependency cycle.
 
 ---
 
-# Required safe/non-deadlock tests
+## § 89 Required safe/non-deadlock tests
 
-At minimum:
+**§ 89(1)** At minimum:
 
 ```text
 consistent L1 -> L2 partial ordering
@@ -2036,13 +2044,13 @@ proven-disjoint resources with no cycle
 join performed after releasing the worker-required resource
 ```
 
-False positives in these cases are regressions.
+**§ 89(2)** False positives in these cases are regressions.
 
 ---
 
-# Interprocedural tests
+## § 90 Interprocedural tests
 
-At minimum:
+**§ 90(1)** At minimum:
 
 ```text
 caller holds L1 and callee acquires L2
@@ -2058,9 +2066,9 @@ caller-held resource combined with callee internal static acquisition
 
 ---
 
-# Defer and cleanup tests
+## § 91 Defer and cleanup tests
 
-At minimum:
+**§ 91(1)** At minimum:
 
 ```text
 deferred unlock keeps a resource held across a call
@@ -2072,9 +2080,9 @@ conditional release yields PossiblyHeld rather than DefinitelyHeld
 
 ---
 
-# Task and thread tests
+## § 92 Task and thread tests
 
-At minimum:
+**§ 92(1)** At minimum:
 
 ```text
 task waits for task
@@ -2088,9 +2096,9 @@ mere implementation scheduling coincidence does not remove a candidate
 
 ---
 
-# Callable and closure tests
+## § 93 Callable and closure tests
 
-At minimum:
+**§ 93(1)** At minimum:
 
 ```text
 closed callback target acquires a resource
@@ -2104,9 +2112,9 @@ callback invoked while caller-held resource remains active
 
 ---
 
-# FFI tests
+## § 94 FFI tests
 
-At minimum:
+**§ 94(1)** At minimum:
 
 ```text
 synchronous foreign call without reentry
@@ -2119,13 +2127,13 @@ precise foreign contract forms a complete cycle
 missing contract remains localized Unknown
 ```
 
-No test may rely on foreign function or parameter names to infer semantics.
+**§ 94(2)** No test may rely on foreign function or parameter names to infer semantics.
 
 ---
 
-# ISR tests
+## § 95 ISR tests
 
-At minimum:
+**§ 95(1)** At minimum:
 
 ```text
 ISR reacquires thread-held non-reentrant mutex
@@ -2136,14 +2144,14 @@ unknown nesting semantics
 ISR waiting on task/thread completion where the canonical model permits such a wait
 ```
 
-ISR policy violations remain owned by ISR analysis even when the same facts also
+**§ 95(2)** ISR policy violations remain owned by ISR analysis even when the same facts also
 form a deadlock dependency.
 
 ---
 
-# Resource-semantics tests
+## § 96 Resource-semantics tests
 
-At minimum:
+**§ 96(1)** At minimum:
 
 ```text
 non-reentrant mutex
@@ -2157,14 +2165,14 @@ nonblocking resource acquisition
 bounded wait with guaranteed escape
 ```
 
-The suite must verify that non-mutex resources retain their own canonical
+**§ 96(2)** The suite must verify that non-mutex resources retain their own canonical
 semantics.
 
 ---
 
-# Dynamic-resource tests
+## § 97 Dynamic-resource tests
 
-At minimum:
+**§ 97(1)** At minimum:
 
 ```text
 locks[i] then locks[j] with proven strict ordering
@@ -2178,9 +2186,9 @@ bounded AnyIndex resource abstraction
 
 ---
 
-# LSP incremental tests
+## § 98 LSP incremental tests
 
-At minimum:
+**§ 98(1)** At minimum:
 
 ```text
 introduce reverse lock order and observe finding appear
@@ -2197,21 +2205,21 @@ Deep refinement removes PotentialDeadlock when incompatibility is proven
 
 ---
 
-# Diagnostic stability tests
+## § 99 Diagnostic stability tests
 
-LSP refinement should preserve a stable finding identity when the same semantic
+**§ 99(1)** LSP refinement should preserve a stable finding identity when the same semantic
 cycle remains present across Interactive, Standard, and Deep refinement.
 
-Tests must verify that additional proof detail does not unnecessarily create a
+**§ 99(2)** Tests must verify that additional proof detail does not unnecessarily create a
 new unrelated diagnostic identity.
 
-Stable diagnostic IDs are governed by the canonical diagnostic rules.
+**§ 99(3)** Stable diagnostic IDs are governed by the canonical diagnostic rules.
 
 ---
 
-# Performance and scalability tests
+## § 100 Performance and scalability tests
 
-Large synthetic tests must cover:
+**§ 100(1)** Large synthetic tests must cover:
 
 ```text
 many resources
@@ -2225,7 +2233,7 @@ many equivalent dynamic resource edges
 large wait-for graphs with few actual cycles
 ```
 
-The tests verify:
+**§ 100(2)** The tests verify:
 
 ```text
 bounded symbolic graph construction
@@ -2235,16 +2243,16 @@ incremental invalidation
 deterministic representative cycle selection
 ```
 
-No normative wall-clock threshold is defined by this rulebook.
+**§ 100(3)** No normative wall-clock threshold is defined by this rulebook.
 
 ---
 
-# False-positive regression corpus
+## § 101 False-positive regression corpus
 
-The compiler should maintain a permanent regression corpus for safe patterns
+**§ 101(1)** The compiler should maintain a permanent regression corpus for safe patterns
 that coarse deadlock analyses commonly misclassify.
 
-At minimum it should include:
+**§ 101(2)** At minimum it should include:
 
 ```text
 common global partial lock order
@@ -2261,14 +2269,14 @@ reentrant resource use where permitted
 join after required resource release
 ```
 
-Every legitimate false positive discovered during implementation or external
+**§ 101(3)** Every legitimate false positive discovered during implementation or external
 review should become a regression test.
 
 ---
 
-# Interaction with other analyses
+## § 102 Interaction with other analyses
 
-Deadlock analysis consumes canonical facts from analyses and rulebooks including:
+**§ 102(1)** Deadlock analysis consumes canonical facts from analyses and rulebooks including:
 
 ```text
 CallGraph
@@ -2285,15 +2293,15 @@ ISR/platform execution semantics
 CompilationPlan
 ```
 
-It owns only cyclic blocking/progress dependency analysis.
+**§ 102(2)** It owns only cyclic blocking/progress dependency analysis.
 
-It must not absorb or duplicate the normative semantics of those sources.
+**§ 102(3)** It must not absorb or duplicate the normative semantics of those sources.
 
 ---
 
-# Completion criteria for Sec 0.1
+## § 103 Completion criteria for Sec 0.1
 
-Deadlock analysis is complete for Sec 0.1 when the compiler can soundly:
+**§ 103(1)** Deadlock analysis is complete for Sec 0.1 when the compiler can soundly:
 
 ```text
 track canonical synchronization-resource identities
@@ -2319,28 +2327,28 @@ pass the required safety, false-positive, incremental, scalability, and determin
 
 ---
 
-# Implementation governance
+## § 104 Implementation governance
 
-Normative deadlock semantics belong in:
+**§ 104(1)** Normative deadlock semantics belong in:
 
 ```text
 rules/analysis/deadlock_analysis.md
 ```
 
-Mutable implementation state, code locations, remaining implementation work,
+**§ 104(2)** Mutable implementation state, code locations, remaining implementation work,
 and verification commands belong in:
 
 ```text
 implementation-status.yaml
 ```
 
-The canonical ledger integration identifier is:
+**§ 104(3)** The canonical ledger integration identifier is:
 
 ```text
 sema.deadlock-analysis
 ```
 
-A suitable implementation capability breakdown includes:
+**§ 104(4)** A suitable implementation capability breakdown includes:
 
 ```text
 resource_identity
@@ -2359,92 +2367,92 @@ incremental_lsp
 deep_reporting
 ```
 
-Capability status must describe observable repository implementation rather than
+**§ 104(5)** Capability status must describe observable repository implementation rather than
 aspirational behavior.
 
 ---
 
-# Normative summary
+## § 105 Normative summary
 
-Deadlock analysis determines whether reachable execution contexts and
+**§ 105(1)** Deadlock analysis determines whether reachable execution contexts and
 synchronization resources can form cyclic blocking or progress dependencies that
 prevent required progress.
 
-The analysis is distinct from data-race analysis even though both consume
+**§ 105(2)** The analysis is distinct from data-race analysis even though both consume
 canonical synchronization, execution-context, ownership, and Place facts.
 
-Deadlock analysis is not limited to mutexes. Locks, task/thread completion,
+**§ 105(3)** Deadlock analysis is not limited to mutexes. Locks, task/thread completion,
 conditions, events, foreign completion, platform synchronization, and other
 canonical blocking resources may participate in mixed dependency cycles.
 
-Synchronization-resource identity is derived from canonical semantic identity
+**§ 105(4)** Synchronization-resource identity is derived from canonical semantic identity
 and Place/provenance rather than naming conventions.
 
-Held-resource state is flow-sensitive and distinguishes definite from possible
+**§ 105(5)** Held-resource state is flow-sensitive and distinguishes definite from possible
 ownership. Acquisition, release, guard lifetime, move, destruction, defer,
 cleanup, and error paths determine the actual held interval.
 
-A lock-order edge records that one resource may be acquired while another
+**§ 105(6)** A lock-order edge records that one resource may be acquired while another
 remains held. A lock-order cycle is a deadlock candidate, not automatically a
 proven deadlock.
 
-The generalized WaitForGraph represents dependencies between execution
+**§ 105(7)** The generalized WaitForGraph represents dependencies between execution
 contexts, resources, completion events, and progress providers. The
 LockOrderGraph is a useful projection but does not replace the generalized
 model.
 
-Task/thread joins, callback reentry, foreign completion, and ISR preemption may
+**§ 105(8)** Task/thread joins, callback reentry, foreign completion, and ISR preemption may
 participate in deadlock cycles according to their canonical semantics.
 
-Resource reentrancy, capacity, nonblocking acquisition, condition release and
+**§ 105(9)** Resource reentrancy, capacity, nonblocking acquisition, condition release and
 reacquire behavior, timeout, cancellation, and other progress semantics are
 consumed from canonical contracts rather than guessed.
 
-Interprocedural deadlock summaries preserve symbolic resource identities,
+**§ 105(10)** Interprocedural deadlock summaries preserve symbolic resource identities,
 acquisitions, releases, waits, held-on-return state, execution effects, and
 localized uncertainty. Callers instantiate those summaries using canonical
 Place/provenance and resource identity.
 
-Call-graph SCCs are used for interprocedural summary fixed points. Deadlock
+**§ 105(11)** Call-graph SCCs are used for interprocedural summary fixed points. Deadlock
 cycles are analyzed separately in lock-order or wait-for dependency graphs.
 
-`ProvenDeadlock` requires a sound reachable witness in which all cycle
+**§ 105(12)** `ProvenDeadlock` requires a sound reachable witness in which all cycle
 dependencies can be simultaneously realized and no guaranteed progress
 mechanism breaks the cycle.
 
-`PotentialDeadlock` requires a meaningful supported dependency cycle but allows
+**§ 105(13)** `PotentialDeadlock` requires a meaningful supported dependency cycle but allows
 bounded uncertainty in path, identity, scheduling, capacity, or related
 compatibility facts.
 
-`Unknown` is used when dependency information is insufficient to establish such
+**§ 105(14)** `Unknown` is used when dependency information is insufficient to establish such
 a meaningful cycle.
 
-Failure to prove a required deadlock-freedom property remains distinct from all
+**§ 105(15)** Failure to prove a required deadlock-freedom property remains distinct from all
 three classifications.
 
-Precision widening may weaken results but never fabricate stronger proof.
+**§ 105(16)** Precision widening may weaken results but never fabricate stronger proof.
 Additional Deep precision may strengthen a potential finding to a proven
 finding or eliminate it when incompatibility is established.
 
-Deadlock diagnostics provide deterministic representative cycles, participating
+**§ 105(17)** Deadlock diagnostics provide deterministic representative cycles, participating
 resources and contexts, source locations, and interprocedural cause paths.
 Normal diagnostics present a minimal understandable witness rather than the
 entire dependency graph.
 
-LSP execution uses progressive refinement within Interactive, Standard, and
+**§ 105(18)** LSP execution uses progressive refinement within Interactive, Standard, and
 Deep and introduces no separate Intermediate mode. Pending state is distinct
 from current findings, and stale proofs are invalidated when their dependencies
 change.
 
-Proven deadlocks and high-confidence potential deadlocks are NeedToKnow
+**§ 105(19)** Proven deadlocks and high-confidence potential deadlocks are NeedToKnow
 information. Positive no-cycle explanations and detailed graph views are
 configurable OptionalInsight.
 
-Separate compilation uses versioned symbolic deadlock summaries. Missing
+**§ 105(20)** Separate compilation uses versioned symbolic deadlock summaries. Missing
 information widens only affected dimensions.
 
-Results, representative cycles, and diagnostics are deterministic and
+**§ 105(21)** Results, representative cycles, and diagnostics are deterministic and
 independent of compiler scheduling.
 
-Normative behavior belongs in this rulebook. Mutable implementation progress
+**§ 105(22)** Normative behavior belongs in this rulebook. Mutable implementation progress
 belongs in `implementation-status.yaml`.

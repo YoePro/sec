@@ -38,6 +38,11 @@ type Analyzer struct {
 	matchArmScopes              map[*ast.MatchArm]*ast.BlockStatement
 	optionBindingArms           map[*ast.IfStatement]*ast.MatchArm
 	matchGuardPlaces            map[*ast.MatchArm]Place
+	tryGuardPlaces              map[*ast.TryHandler]Place
+	tryHandlerBindingNodes      map[*ast.TryHandler]*ast.Identifier
+	loopAssignments             map[*ast.BlockStatement][]string
+	dynamicArrayOwners          map[ast.Expression]DynamicArrayOwner
+	allocationOperationPlans    map[*ast.CallExpression]ResolvedAllocationOperationPlan
 	ownedFieldAssignments       map[*ast.AssignmentStatement]CleanupPreviousValue
 	matchSubjectPlaces          map[*ast.MatchExpression]Place
 	handlerScopes               map[*ast.TryHandler]*ast.BlockStatement
@@ -220,6 +225,14 @@ type Analyzer struct {
 	resolvedAvailabilityTests  map[*ast.AvailabilityExpression]ResolvedAvailabilityTest
 	resolvedStateTests         map[*ast.StateTestExpression]ResolvedStateTest
 	resolvedLambdaCaptures     map[*ast.LambdaExpression][]CaptureRecord
+	// lambdaBorrowCaptures holds the validated `ref`/`ref mut` captures of
+	// each lambda, which the closure's binding then holds (lambda_capabilities.go).
+	lambdaBorrowCaptures map[*ast.LambdaExpression][]lambdaBorrowCapture
+	// resolvedDynamicArrayIndexPlans holds P18-09 owning-array index plans.
+	resolvedDynamicArrayIndexPlans map[*ast.IndexExpression]ResolvedDynamicArrayIndexPlan
+	// lambdaEnvironment is the environment use of the lambda body being
+	// analyzed, nil outside lambdas.
+	lambdaEnvironment *lambdaEnvironmentState
 	resolvedCallableIdentities map[ast.Expression]ResolvedCallableIdentity
 	resolvedClosureCreations   map[*ast.LambdaExpression]ClosureCreationSummary
 	// SEC-MLIR Package 14 sections 14-17: compact Sema-owned array literal
@@ -629,6 +642,11 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.matchArmScopes = nil
 	a.optionBindingArms = nil
 	a.matchGuardPlaces = nil
+	a.tryGuardPlaces = nil
+	a.tryHandlerBindingNodes = nil
+	a.loopAssignments = nil
+	a.dynamicArrayOwners = nil
+	a.allocationOperationPlans = nil
 	a.ownedFieldAssignments = nil
 	a.ownedCleanupParameters = nil
 	a.ownedCleanupCancellations = nil
@@ -742,6 +760,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.resolvedAvailabilityTests = map[*ast.AvailabilityExpression]ResolvedAvailabilityTest{}
 	a.resolvedStateTests = map[*ast.StateTestExpression]ResolvedStateTest{}
 	a.resolvedLambdaCaptures = map[*ast.LambdaExpression][]CaptureRecord{}
+	a.lambdaBorrowCaptures = map[*ast.LambdaExpression][]lambdaBorrowCapture{}
 	a.resolvedCallableIdentities = map[ast.Expression]ResolvedCallableIdentity{}
 	a.resolvedClosureCreations = map[*ast.LambdaExpression]ClosureCreationSummary{}
 	a.resolvedArrayLiteralPlans = map[*ast.ArrayLiteral]ResolvedArrayLiteralPlan{}
@@ -759,6 +778,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.referenceLifetimeEnds = nil
 	a.resolvedListIndexPlans = map[*ast.IndexExpression]ResolvedListIndexPlan{}
 	a.resolvedSliceIndexPlans = map[*ast.IndexExpression]ResolvedSliceIndexPlan{}
+	a.resolvedDynamicArrayIndexPlans = map[*ast.IndexExpression]ResolvedDynamicArrayIndexPlan{}
 	a.activeConditionFacts = nil
 	a.conditionBindingVersions = map[string]uint64{}
 	a.conditionProofBarrier = 0
@@ -2680,6 +2700,7 @@ func (a *Analyzer) resolveOptionIfBinding(stmt *ast.IfStatement) (matchPatternIn
 		VariantIndex:   unionVariantIndex(subjectType, "Some"),
 		PayloadVariant: "Some",
 		PayloadToken:   binding.Binding.Token,
+		PayloadNode:    binding.Binding,
 	}
 	if subjectPlace, placeOK := a.resolvePlace(binding.Subject); placeOK {
 		info.PayloadPlace = unionPayloadPlace(subjectPlace, "Some", info.BindingType, info.PayloadToken)
@@ -2794,7 +2815,7 @@ func (a *Analyzer) analyzeBranchBlock(block *ast.BlockStatement) branchAnalysis 
 	a.arenaGenerations = copyArenaGenerations(previousArenaGenerations)
 	defer func() {
 		a.symbols = previousSymbols
-		a.constInts = previousConstInts
+		a.restoreConstInts(previousConstInts)
 		a.assigned = previousAssigned
 		a.moved = previousMoved
 		a.availabilityStates = previousMoveReasons
@@ -3175,7 +3196,7 @@ func (a *Analyzer) analyzeSelectBranchBody(branch *ast.SelectBranch) branchAnaly
 	a.arenaGenerations = copyArenaGenerations(previousArenaGenerations)
 	defer func() {
 		a.symbols = previousSymbols
-		a.constInts = previousConstInts
+		a.restoreConstInts(previousConstInts)
 		a.assigned = previousAssigned
 		a.moved = previousMoved
 		a.availabilityStates = previousMoveReasons
@@ -3239,7 +3260,7 @@ func (a *Analyzer) analyzeUnsafeStatement(stmt *ast.UnsafeStatement) {
 
 	updatedAssigned := a.assigned
 	a.symbols = previousSymbols
-	a.constInts = previousConstInts
+	a.restoreConstInts(previousConstInts)
 	a.assigned = previousAssigned
 	a.inUnsafe = previousUnsafe
 
@@ -8220,6 +8241,9 @@ func (a *Analyzer) applyAssignmentOwnership(stmt *ast.AssignmentStatement) {
 		return
 	}
 	a.invalidateMutexAcquisitionsForWrite(stmt.Target)
+	if place, ok := a.resolvePlace(stmt.Target); ok {
+		a.noteLambdaEnvironmentWrite(place, expressionToken(stmt.Target))
+	}
 	if target, ok := stmt.Target.(*ast.Identifier); ok {
 		a.bindMutexAcquisition(target.Value, stmt.Value)
 		a.bindArenaDomainFromExpression(target.Value, stmt.Value)
@@ -8281,6 +8305,8 @@ func (a *Analyzer) bindBorrowHoldersFromExpression(expr ast.Expression, holder s
 	switch expr := expr.(type) {
 	case *ast.RefExpression:
 		a.registerBorrow(holder, expr)
+	case *ast.LambdaExpression:
+		a.registerLambdaBorrowCaptures(holder, expr)
 	case *ast.Identifier:
 		a.transferBorrowHolderFromExpression(expr, holder)
 	case *ast.StructLiteral:
@@ -11187,9 +11213,10 @@ type matchPatternInfo struct {
 	// PayloadBorrowToken identifies the ref keyword independently of the
 	// declared payload name (borrowing.md §33(3), diagnostics.md §9).
 	PayloadBorrowToken lexer.Token
-	// PayloadNode is the bound identifier of a borrowed payload, the stable
-	// pattern node (MatchPattern.Expression builds fresh wrappers) that keys
-	// its resolved reference plan (P15-45).
+	// PayloadNode is the bound identifier of the payload, the stable pattern
+	// node (MatchPattern.Expression builds fresh wrappers) that keys a
+	// borrow's resolved reference plan (P15-45) or a by-value binding's
+	// transfer plan (P17-13).
 	PayloadNode ast.Expression
 	// InitializesSubject names a possibly-empty union subject binding that
 	// this arm proves initialized (every variant arm of such a match).
@@ -11209,7 +11236,7 @@ type matchPatternInfo struct {
 //
 // Rules:
 //   - rules/control-flow/flowcontrol_match.md — patterns, exhaustiveness and value arms
-//   - rules/compiler/parser_recovery.md — "Recovery principles" and "No semantic repair"
+//   - rules/compiler/parser_recovery.md — "Core recovery principle" and "No semantic repair"
 func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Type {
 	if expr == nil || expr.Subject == nil {
 		return Type{Kind: InvalidType}
@@ -11218,6 +11245,13 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 	subjectType, maybeEmptySubject := a.inferMatchSubject(expr.Subject)
 	if subjectType.Kind == InvalidType {
 		return Type{Kind: InvalidType}
+	}
+	// A constructed subject such as `Some(<-h)` owns what it was built from,
+	// exactly like the same construction in a `let` initializer: the operands
+	// it takes are moved when the subject is evaluated. A Place subject keeps
+	// its owner; arm payload bindings decide what leaves it.
+	if constructedMatchSubject(expr.Subject) {
+		a.markMoveSource(expr.Subject)
 	}
 	// flowcontrol_match.md § 14: a `ref`/`ref mut` subject matches its
 	// referent; payload bindings borrow or copy and never move.
@@ -11241,6 +11275,10 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 
 	seenKinds := map[string]bool{}
 	seenVariants := map[string]bool{}
+	// plainKinds holds unguarded whole-state arms (Some(x), None, Ok(x),
+	// Err(e)) without a narrowing error variant: only they cover a proven
+	// Option/Result state.
+	plainKinds := map[string]bool{}
 	seenEnumValues := map[string]string{}
 	guardedPayloadEnumValues := map[string]map[string]string{}
 	catchAll := false
@@ -11344,6 +11382,21 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 					info.BindingType.ReferenceOriginMatchScoped = true
 					info.BindingType.ReferenceOriginToken = info.PayloadToken
 				}
+			} else if info.PayloadBorrow && !borrowedSubject && constructedMatchSubject(expr.Subject) {
+				// A fresh subject lives through the whole match (owner decisions
+				// 2026-11-03 and 2026-11-07): the arm borrows its payload through
+				// the subject's compiler-materialized temporary Place, and the
+				// borrow ends with the arm, before the subject is destroyed.
+				payloadType := info.BindingType
+				if payloadType.Element != nil {
+					payloadType = *payloadType.Element
+				}
+				subjectPlace := a.temporaryPlace(expr.Subject, subjectType, true)
+				info.PayloadPlace = unionPayloadPlace(subjectPlace, info.PayloadVariant, payloadType, info.PayloadToken)
+				info.BindingType.ReferenceOriginName = "temporary " + expr.Subject.String()
+				info.BindingType.ReferenceOriginLocal = true
+				info.BindingType.ReferenceOriginMatchScoped = true
+				info.BindingType.ReferenceOriginToken = info.PayloadToken
 			} else if info.PayloadBorrow {
 				a.addErrorAtToken(info.PayloadToken, "cannot borrow union payload from temporary match subject")
 				info.BindingType = Type{Kind: InvalidType}
@@ -11380,6 +11433,7 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 					continue
 				}
 				seenKinds[info.Kind] = true
+				plainKinds[info.Kind] = true
 			} else if info.Kind != "" {
 				seenKinds[info.Kind] = true
 			}
@@ -11411,6 +11465,12 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 		if provenInactive {
 			a.reportInactiveMatchArm(arm, expr.Subject, subjectType, info.Variant, provenVariant)
 		}
+		// An Option/Result arm outside the proven state is legal and warned
+		// about; Semantic IR keeps it as an ordinary tested arm, since its
+		// reachable-state proof covers union variants only.
+		if top := matchArmTopState(subjectType, info); provenVariant != "" && top != "" && top != provenVariant {
+			a.reportInactiveMatchArm(arm, expr.Subject, subjectType, top, provenVariant)
+		}
 		armRefinementCount := len(a.activeConditionFacts)
 		if binding, state, known := matchArmResultState(expr.Subject, arm); known {
 			a.recordResultStateFact(binding, state, arm.Pattern.Token)
@@ -11420,8 +11480,11 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 		a.activeConditionFacts = a.activeConditionFacts[:armRefinementCount]
 		branches = append(branches, branch)
 		resolvedArm := a.resolvedMatchArmFromAnalysis(subjectType, sourceIndex, arm, info, armType, valueContext)
-		resolvedArm.ProvenInactive = provenInactive
-		if !guarded && (matchCoverageComplete(subjectType, catchAll, seenKinds, seenVariants, seenEnumValues) || provenVariant != "" && seenVariants[provenVariant]) {
+		// Semantic IR carries reachable-state proofs for declared unions only
+		// (semantic_ir.md § 71(6)); an Option/Result arm stays an ordinary
+		// tested arm and only the diagnostic reports it.
+		resolvedArm.ProvenInactive = provenInactive && !isOptionType(subjectType)
+		if !guarded && (matchCoverageComplete(subjectType, catchAll, seenKinds, seenVariants, seenEnumValues) || provenVariant != "" && (seenVariants[provenVariant] || plainKinds[provenVariant])) {
 			resolvedArm.ResidualAlwaysMatches = true
 		}
 		plan.Arms = append(plan.Arms, resolvedArm)
@@ -11433,7 +11496,7 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 		a.addErrorAtToken(expr.Token, "catch-all pattern may not hide Err")
 	}
 	exhaustive := true
-	if !patternError && !(provenVariant != "" && seenVariants[provenVariant]) {
+	if !patternError && !(provenVariant != "" && (seenVariants[provenVariant] || plainKinds[provenVariant])) {
 		exhaustive = a.checkMatchExhaustive(expr, subjectType, catchAll, seenKinds, seenVariants, seenEnumValues)
 	}
 	if !patternError && maybeEmptySubject != "" && !seenEmpty && !catchAll {
@@ -11444,8 +11507,10 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 	if !patternError && catchAll {
 		a.reportImplicitEmptyCatchAll(expr, maybeEmptySubject, plan.Arms)
 	}
-	plan.ProvenActiveVariant = provenVariant
-	plan.ProvenActive = provenActive
+	if !isOptionType(subjectType) && subjectType.Kind == UnionType {
+		plan.ProvenActiveVariant = provenVariant
+		plan.ProvenActive = provenActive
+	}
 	recordPlan := true
 	if !exhaustive {
 		branches = append(branches, branchAnalysis{assigned: beforeAssigned, moved: beforeMoved, availabilityStates: beforeMoveReasons, closedResources: beforeClosedResources, borrows: beforeBorrows, localRefContainers: beforeLocalRefContainers, arenaGenerations: beforeArenaGenerations, continues: true})
@@ -11787,8 +11852,8 @@ func (a *Analyzer) analyzeUnionPayloadPattern(variantName string, arguments []as
 	info.PayloadToken = binding.Token
 	info.PayloadBorrow = borrowed
 	info.PayloadBorrowMutable = mutable
+	info.PayloadNode = binding
 	if borrowed {
-		info.PayloadNode = binding
 		info.PayloadBorrowToken = expressionToken(bindingExpression)
 	}
 	var payloadType Type
@@ -11847,8 +11912,8 @@ func (a *Analyzer) analyzeResultPayloadPattern(kind string, expr ast.Expression,
 	info.PayloadToken = binding.Token
 	info.PayloadBorrow = borrowed
 	info.PayloadBorrowMutable = mutable
+	info.PayloadNode = binding
 	if borrowed {
-		info.PayloadNode = binding
 		info.PayloadBorrowToken = expressionToken(expr)
 		info.BindingType = Type{
 			Name: referenceTypeName(payloadType, mutable), Kind: ReferenceType,

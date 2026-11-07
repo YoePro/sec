@@ -4,6 +4,16 @@ module lambdas
 // The file covers function types, non-capturing lambdas, function values,
 // higher-order functions and explicit non-escaping value captures.
 
+// A move-only resource for consuming-capture examples.
+type CaptureToken struct {
+    id: int,
+}
+
+impl CaptureToken {
+    free {
+    }
+}
+
 type LambdaError enum error {
     InvalidValue
     MissingValue
@@ -422,6 +432,72 @@ fn TestTryInsideOk(value: int) Result[int, LambdaError] {
 
     let result: int := try operation(value)
     return Ok(result)
+}
+
+// =============================================================================
+// Mutable, consuming and borrowed captures
+// =============================================================================
+
+// Mutating an owned capture changes only the closure's own copy and infers
+// `mut fn` (lambda-functions.md §§9, 18).
+fn TestMutableOwnedCapture() int {
+    let count := 0
+    let mut next := capture(count) fn() int {
+        count += 1
+        return count
+    }
+
+    let first := next()
+    let second := next()
+    return first + second + count
+}
+
+// Moving an owned capture out infers a one-shot `-> fn` (§28).
+fn TestConsumingCapture() int {
+    let token := CaptureToken { id: 7 }
+    let take := capture(<-token) fn() CaptureToken {
+        return token
+    }
+
+    let taken := take()
+    return taken.id
+}
+
+// `ref mut` borrows the owner for the closure's lifetime; the closure is
+// `mut fn` and writes through `*total` (§20).
+fn TestMutableBorrowCapture(step: int) void {
+    let mut total := 0
+    let mut add := capture(ref mut total, step) fn() void {
+        *total += step
+    }
+
+    add()
+    add()
+}
+
+// `ref` borrows shared state read through `*base` (§19).
+fn TestSharedBorrowCapture() int {
+    let base := 5
+    let read := capture(ref base) fn() int {
+        return *base + 1
+    }
+
+    return read() + base
+}
+
+// A reusable `fn` may stand where `mut fn` is accepted (§10).
+fn RunMutable(operation: mut fn() int) int {
+    let mut callable :<- operation
+    return callable()
+}
+
+fn TestCapabilityStrengthening() int {
+    let factor := 3
+    let constant := capture(factor) fn() int {
+        return factor
+    }
+
+    return RunMutable(constant)
 }
 
 // =============================================================================

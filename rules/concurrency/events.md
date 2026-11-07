@@ -1,23 +1,34 @@
 # Events
 
-## Purpose
+- **Status:** Normative — synchronization required
+- **Created:** 2026-07-29
+- **Last updated:** 2026-11-07 (stable chapter and paragraph numbering)
+- **Document revision:** 1
+- **Sec language version:** 0.1
+- **Canonical path:** `rules/concurrency/events.md`
+- **Repository baseline reviewed:** `28780c01d63c3fc9eec2321ef67e3dd69962f043`
+- **Related rulebooks:** `rules/concurrency/channels.md`, `rules/concurrency/select.md`, `rules/concurrency/tasks.md`, `rules/concurrency/threads.md`, `rules/concurrency/cancellation.md`, `rules/concurrency/concurrency_memory_model.md`, `rules/platform/interrupts.md`, `rules/memory/ownership.md`, `rules/memory/borrowing.md`, `rules/memory/layout.md`, `rules/compiler/semantic_ir.md`
 
-Events provide typed publish/subscribe communication owned by a value or type.
+---
 
-Typical uses include GUI notifications, component state changes, device
+## § 1 Purpose
+
+**§ 1(1)** Events provide typed publish/subscribe communication owned by a value or type.
+
+**§ 1(2)** Typical uses include GUI notifications, component state changes, device
 notifications, domain events, plugin hooks and diagnostic hooks.
 
-Events are not channels, completions, hardware interrupts, timers, semaphores,
+**§ 1(3)** Events are not channels, completions, hardware interrupts, timers, semaphores,
 cancellation objects or waitable synchronization signals.
 
-## Core rule
+## § 2 Core rule
 
-An instance event contains state and therefore belongs to the data definition of
+**§ 2(1)** An instance event contains state and therefore belongs to the data definition of
 its owning type.
 
-An `impl` block must not silently add per-instance event storage.
+**§ 2(2)** An `impl` block must not silently add per-instance event storage.
 
-Short form:
+**§ 2(3)** Short form:
 
 ```sec
 type Button struct {
@@ -25,11 +36,11 @@ type Button struct {
 }
 ```
 
-The event is part of `Button` layout and lifetime.
+**§ 2(4)** The event is part of `Button` layout and lifetime.
 
-## Default policy
+## § 3 Default policy
 
-`Event[T]` uses these version 0.1 defaults:
+**§ 3(1)** `Event[T]` uses these version 0.1 defaults:
 
 ```text
 subscriber capacity: 4
@@ -43,13 +54,13 @@ thread safety: not implied
 ISR publication: not implied
 ```
 
-The default capacity is four concurrent subscriptions.
+**§ 3(2)** The default capacity is four concurrent subscriptions.
 
-Programs requiring another capacity must declare it explicitly.
+**§ 3(3)** Programs requiring another capacity must declare it explicitly.
 
-## Data and behavior
+## § 4 Data and behavior
 
-The type declaration defines storage:
+**§ 4(1)** The type declaration defines storage:
 
 ```sec
 type Button struct {
@@ -57,7 +68,7 @@ type Button struct {
 }
 ```
 
-The owning implementation defines publication behavior:
+**§ 4(2)** The owning implementation defines publication behavior:
 
 ```sec
 impl Button {
@@ -67,54 +78,54 @@ impl Button {
 }
 ```
 
-The event does not need to be repeated in `impl` when the default policy is
+**§ 4(3)** The event does not need to be repeated in `impl` when the default policy is
 sufficient.
 
-## Publication rights
+## § 5 Publication rights
 
-Inside the owning `impl`, the event exposes publication capability.
+**§ 5(1)** Inside the owning `impl`, the event exposes publication capability.
 
-Outside the owning `impl`, publication is forbidden by default:
+**§ 5(2)** Outside the owning `impl`, publication is forbidden by default:
 
 ```sec
 button.ButtonPressed.Publish(data)
 ```
 
-Expected diagnostic:
+**§ 5(3)** Expected diagnostic:
 
 ```text
 event ButtonPressed may only be published by Button
 ```
 
-External code may observe and subscribe according to visibility.
+**§ 5(4)** External code may observe and subscribe according to visibility.
 
-## Subscription
+## § 6 Subscription
 
 ```sec
 let subscription := button.ButtonPressed.Subscribe(OnButtonPressed)
 ```
 
-A successful subscription returns a move-only `Subscription`.
+**§ 6(1)** A successful subscription returns a move-only `Subscription`.
 
 ```sec
 subscription.Close()
 ```
 
-closes the subscription and unregisters the handler.
+**§ 6(2)** closes the subscription and unregisters the handler.
 
-Destroying the subscription has the same effect.
+**§ 6(3)** Destroying the subscription has the same effect.
 
-The event must not retain captures that do not outlive the subscription.
+**§ 6(4)** The event must not retain captures that do not outlive the subscription.
 
-## Capacity
+## § 7 Capacity
 
-The default event accepts at most four simultaneous subscriptions.
+**§ 7(1)** The default event accepts at most four simultaneous subscriptions.
 
-When full, `Subscribe` returns an explicit failure outcome.
+**§ 7(2)** When full, `Subscribe` returns an explicit failure outcome.
 
-It must not allocate, grow, overwrite or silently remove another subscriber.
+**§ 7(3)** It must not allocate, grow, overwrite or silently remove another subscriber.
 
-Conceptually:
+**§ 7(4)** Conceptually:
 
 ```sec
 match button.ButtonPressed.Subscribe(handler) {
@@ -123,11 +134,11 @@ match button.ButtonPressed.Subscribe(handler) {
 }
 ```
 
-The final outcome names belong to the core API.
+**§ 7(5)** The final outcome names belong to the core API.
 
-## Explicit capacity
+## § 8 Explicit capacity
 
-A different fixed capacity may be selected:
+**§ 8(1)** A different fixed capacity may be selected:
 
 ```sec
 type Button struct {
@@ -135,74 +146,74 @@ type Button struct {
 }
 ```
 
-Capacity is compile-time known and must be greater than zero.
+**§ 8(2)** Capacity is compile-time known and must be greater than zero.
 
-It contributes fixed storage to the owning type.
+**§ 8(3)** It contributes fixed storage to the owning type.
 
-## Dispatch
+## § 9 Dispatch
 
-Default dispatch is synchronous.
+**§ 9(1)** Default dispatch is synchronous.
 
 ```sec
 ButtonPressed.Publish(data)
 ```
 
-invokes all current handlers before returning.
+**§ 9(2)** invokes all current handlers before returning.
 
-Publication does not spawn tasks, create threads, enqueue work or allocate.
+**§ 9(3)** Publication does not spawn tasks, create threads, enqueue work or allocate.
 
-Handlers run in subscription order.
+**§ 9(4)** Handlers run in subscription order.
 
-## Handler type
+## § 10 Handler type
 
-Version 0.1 handlers conceptually have the form:
+**§ 10(1)** Version 0.1 handlers conceptually have the form:
 
 ```sec
 fn Handler(data: T) void
 ```
 
-Handlers return `void`.
+**§ 10(2)** Handlers return `void`.
 
-Business errors must be handled by the handler or represented through explicit
+**§ 10(3)** Business errors must be handled by the handler or represented through explicit
 program state.
 
-## Payload ownership
+## § 11 Payload ownership
 
-Default publication borrows the payload during synchronous dispatch.
+**§ 11(1)** Default publication borrows the payload during synchronous dispatch.
 
-Handlers do not take ownership unless a future policy explicitly defines that.
+**§ 11(2)** Handlers do not take ownership unless a future policy explicitly defines that.
 
-Move-only payloads must not be implicitly cloned for multiple subscribers.
+**§ 11(3)** Move-only payloads must not be implicitly cloned for multiple subscribers.
 
-## Panic
+## § 12 Panic
 
-An unhandled handler panic follows the general panic rules.
+**§ 12(1)** An unhandled handler panic follows the general panic rules.
 
-The event model does not define a separate exception system.
+**§ 12(2)** The event model does not define a separate exception system.
 
-Version 0.1 does not promise that later handlers run after an unhandled panic.
+**§ 12(3)** Version 0.1 does not promise that later handlers run after an unhandled panic.
 
-## Reentrancy
+## § 13 Reentrancy
 
-A handler may call methods on the publisher and may cause nested publication.
+**§ 13(1)** A handler may call methods on the publisher and may cause nested publication.
 
-Nested publication is permitted unless the owning type or selected event policy
+**§ 13(2)** Nested publication is permitted unless the owning type or selected event policy
 forbids it.
 
-The implementation must preserve memory safety and subscription-list integrity.
+**§ 13(3)** The implementation must preserve memory safety and subscription-list integrity.
 
-## Mutation during dispatch
+## § 14 Mutation during dispatch
 
-A handler may close its own subscription or another subscription it owns.
+**§ 14(1)** A handler may close its own subscription or another subscription it owns.
 
-A subscription removed before its dispatch turn is not invoked.
+**§ 14(2)** A subscription removed before its dispatch turn is not invoked.
 
-A subscription added during publication does not participate until the next
+**§ 14(3)** A subscription added during publication does not participate until the next
 publication.
 
-## Full storage form
+## § 15 Full storage form
 
-Programs requiring explicit storage control may declare:
+**§ 15(1)** Programs requiring explicit storage control may declare:
 
 ```sec
 type Button struct {
@@ -210,7 +221,7 @@ type Button struct {
 }
 ```
 
-and expose it through `impl`:
+**§ 15(2)** and expose it through `impl`:
 
 ```sec
 impl Button {
@@ -218,7 +229,7 @@ impl Button {
 }
 ```
 
-This separates:
+**§ 15(3)** This separates:
 
 ```text
 EventStorage
@@ -228,9 +239,9 @@ event member
     public name, access policy and publication rights
 ```
 
-## Short-form lowering
+## § 16 Short-form lowering
 
-The short form:
+**§ 16(1)** The short form:
 
 ```sec
 type Button struct {
@@ -238,10 +249,10 @@ type Button struct {
 }
 ```
 
-is semantically equivalent to compiler-generated storage plus an event view using
+**§ 16(2)** is semantically equivalent to compiler-generated storage plus an event view using
 the default policy.
 
-Conceptually:
+**§ 16(3)** Conceptually:
 
 ```sec
 type Button struct {
@@ -253,16 +264,16 @@ impl Button {
 }
 ```
 
-The generated storage is still part of layout and must appear in ABI and layout
+**§ 16(4)** The generated storage is still part of layout and must appear in ABI and layout
 reports.
 
-It must not use hidden dynamic allocation.
+**§ 16(5)** It must not use hidden dynamic allocation.
 
-## Impl customization
+## § 17 Impl customization
 
-An `impl` event declaration is needed only when default policy is insufficient.
+**§ 17(1)** An `impl` event declaration is needed only when default policy is insufficient.
 
-Conceptual form:
+**§ 17(2)** Conceptual form:
 
 ```sec
 type Button struct {
@@ -279,23 +290,23 @@ impl Button {
 }
 ```
 
-The exact policy-block syntax remains open.
+**§ 17(3)** The exact policy-block syntax remains open.
 
-The semantic division is fixed:
+**§ 17(4)** The semantic division is fixed:
 
 - storage belongs to the type;
 - policy and exposure belong to `impl`.
 
-## Visibility and external publication
+## § 18 Visibility and external publication
 
-Normal field visibility controls whether external code can observe and subscribe.
+**§ 18(1)** Normal field visibility controls whether external code can observe and subscribe.
 
-Visibility does not grant publication rights.
+**§ 18(2)** Visibility does not grant publication rights.
 
-External publication requires an explicit capability or modifier that is still
+**§ 18(3)** External publication requires an explicit capability or modifier that is still
 to be designed.
 
-The language must distinguish:
+**§ 18(4)** The language must distinguish:
 
 ```text
 visible
@@ -303,9 +314,9 @@ subscribable
 publishable
 ```
 
-## Interfaces
+## § 19 Interfaces
 
-An interface may require an observable event member:
+**§ 19(1)** An interface may require an observable event member:
 
 ```sec
 interface PressSource {
@@ -313,68 +324,68 @@ interface PressSource {
 }
 ```
 
-This grants observation/subscription semantics, not publication rights.
+**§ 19(2)** This grants observation/subscription semantics, not publication rights.
 
-## Copy and move
+## § 20 Copy and move
 
-Event storage is not implicitly copyable.
+**§ 20(1)** Event storage is not implicitly copyable.
 
-Copying an event-owning type must not duplicate active subscriptions.
+**§ 20(2)** Copying an event-owning type must not duplicate active subscriptions.
 
-Moving an event-owning value is valid only when the selected storage backend and
+**§ 20(3)** Moving an event-owning value is valid only when the selected storage backend and
 all active subscriptions remain valid.
 
-The compiler may require stable address or reject moves after subscription.
+**§ 20(4)** The compiler may require stable address or reject moves after subscription.
 
-## Address stability
+## § 21 Address stability
 
-Inline event storage may require address stability.
+**§ 21(1)** Inline event storage may require address stability.
 
-The compiler may pin the owner, reject later moves, use address-independent slot
+**§ 21(2)** The compiler may pin the owner, reject later moves, use address-independent slot
 representation or require explicit stable storage.
 
-The selected strategy must be visible to ownership and escape analysis.
+**§ 21(3)** The selected strategy must be visible to ownership and escape analysis.
 
-## Allocation
+## § 22 Allocation
 
-The default event performs no hidden allocation.
+**§ 22(1)** The default event performs no hidden allocation.
 
-An allocation-capable backend must be selected explicitly and follows allocation,
+**§ 22(2)** An allocation-capable backend must be selected explicitly and follows allocation,
 arena, failure and target-profile rules.
 
-Reaching default capacity must not trigger allocation.
+**§ 22(3)** Reaching default capacity must not trigger allocation.
 
-## Thread safety
+## § 23 Thread safety
 
-The default event is not implicitly thread-safe.
+**§ 23(1)** The default event is not implicitly thread-safe.
 
-Concurrent publish, subscribe or unsubscribe requires an explicitly thread-safe
+**§ 23(2)** Concurrent publish, subscribe or unsubscribe requires an explicitly thread-safe
 policy or external synchronization.
 
-A type must not pay thread-synchronization cost when the event is used only
+**§ 23(3)** A type must not pay thread-synchronization cost when the event is used only
 locally.
 
-## Tasks and threads
+## § 24 Tasks and threads
 
-Events may be used from tasks and threads when policy permits.
+**§ 24(1)** Events may be used from tasks and threads when policy permits.
 
-Synchronous handlers run in the publishing execution context.
+**§ 24(2)** Synchronous handlers run in the publishing execution context.
 
-They do not automatically run on the execution entity that subscribed.
+**§ 24(3)** They do not automatically run on the execution entity that subscribed.
 
-Cross-context delivery requires an explicit channel, dispatcher or adapter.
+**§ 24(4)** Cross-context delivery requires an explicit channel, dispatcher or adapter.
 
-## Interrupts
+## § 25 Interrupts
 
-Ordinary event publication is not ISR-safe.
+**§ 25(1)** Ordinary event publication is not ISR-safe.
 
-An ISR must not invoke arbitrary subscribers, allocate, block or acquire ordinary
+**§ 25(2)** An ISR must not invoke arbitrary subscribers, allocate, block or acquire ordinary
 mutexes.
 
-ISR code should instead use an ISR-safe channel, bounded notification, atomic
+**§ 25(3)** ISR code should instead use an ISR-safe channel, bounded notification, atomic
 state or deferred work that later publishes the event.
 
-## Events versus channels
+## § 26 Events versus channels
 
 ```text
 Event[T]
@@ -386,26 +397,26 @@ Channel[T]
     Delivery may be buffered and asynchronous.
 ```
 
-## Events versus completion
+## § 27 Events versus completion
 
-Completion is one-shot terminal readiness.
+**§ 27(1)** Completion is one-shot terminal readiness.
 
-An event may publish repeatedly.
+**§ 27(2)** An event may publish repeatedly.
 
-Task, thread, process, DMA and I/O completion are therefore not ordinary events,
+**§ 27(3)** Task, thread, process, DMA and I/O completion are therefore not ordinary events,
 although adapters may expose them as events.
 
-## Events versus interrupts
+## § 28 Events versus interrupts
 
-A hardware interrupt is an asynchronous control transfer to an ISR.
+**§ 28(1)** A hardware interrupt is an asynchronous control transfer to an ISR.
 
-An event is a software publish/subscribe object.
+**§ 28(2)** An event is a software publish/subscribe object.
 
-An ISR may trigger deferred work that later publishes an event.
+**§ 28(3)** An ISR may trigger deferred work that later publishes an event.
 
-## Compiler-known types
+## § 29 Compiler-known types
 
-The compiler recognizes:
+**§ 29(1)** The compiler recognizes:
 
 ```sec
 Event[T]
@@ -415,20 +426,20 @@ Subscription
 EventSubscribeResult
 ```
 
-It must understand owner-only publication and external subscription capabilities.
+**§ 29(2)** It must understand owner-only publication and external subscription capabilities.
 
-Current semantic analysis uses `EventSubscribeResult` for `Subscribe`.
+**§ 29(3)** Current semantic analysis uses `EventSubscribeResult` for `Subscribe`.
 
-Its implemented variants are:
+**§ 29(4)** Its implemented variants are:
 
 ```text
 Subscribed(Subscription)
 Full
 ```
 
-## Semantic analysis
+## § 30 Semantic analysis
 
-The compiler must track:
+**§ 30(1)** The compiler must track:
 
 - payload type;
 - capacity;
@@ -449,9 +460,9 @@ The compiler must track:
 - move/copy restrictions;
 - target support.
 
-## Semantic IR
+## § 31 Semantic IR
 
-At minimum:
+**§ 31(1)** At minimum:
 
 ```text
 EventStorageCreate
@@ -467,12 +478,12 @@ SubscriptionMove
 SubscriptionClose
 ```
 
-IR must record payload type, capacity, storage policy, owner type, access,
+**§ 31(2)** IR must record payload type, capacity, storage policy, owner type, access,
 callable, captures, ordering, synchronization and source location.
 
-## Diagnostics
+## § 32 Diagnostics
 
-Examples:
+**§ 32(1)** Examples:
 
 ```text
 event capacity must be greater than zero
@@ -506,12 +517,12 @@ event publication is not permitted in an interrupt routine
 copying Button would duplicate event storage and subscriptions
 ```
 
-Diagnostic IDs must remain stable and distinguish parse, semantic, ownership,
+**§ 32(2)** Diagnostic IDs must remain stable and distinguish parse, semantic, ownership,
 concurrency and target-profile rules.
 
-## Current implementation status
+## § 33 Current implementation status
 
-Implemented:
+**§ 33(1)** Implemented:
 
 - parser support for short-form event fields:
 
@@ -559,7 +570,7 @@ EventSubscribeResult
 - `Subscribe(handler)` handler type checking for `fn(T) void`;
 - `Subscription.Close()` as a compiler-known call.
 
-Not implemented yet:
+**§ 33(2)** Not implemented yet:
 
 - runtime subscriber storage;
 - runtime dispatch;
@@ -571,9 +582,9 @@ Not implemented yet:
 - policy blocks after `impl event ... using ...`;
 - Semantic IR lowering for event operations.
 
-## Restrictions
+## § 34 Restrictions
 
-An event must not:
+**§ 34(1)** An event must not:
 
 - be declared only in `impl` when it requires per-instance storage;
 - add hidden instance storage from `impl`;
@@ -588,9 +599,9 @@ An event must not:
 - pretend to be a channel, completion or interrupt;
 - hide synchronization cost.
 
-## Future extensions
+## § 35 Future extensions
 
-Possible later additions:
+**§ 35(1)** Possible later additions:
 
 ```text
 dynamic subscriber storage
@@ -605,7 +616,7 @@ public publication capabilities
 static event short forms
 ```
 
-## Related rules
+## § 36 Related rules
 
 ```text
 struct.md

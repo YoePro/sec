@@ -899,6 +899,9 @@ func (a *Analyzer) checkPlaceAvailableForRead(place Place, token lexer.Token) bo
 // rules/memory/destruction.md — §6.1(3).
 func (a *Analyzer) markPlaceUnavailable(place Place, token lexer.Token, reason string) {
 	a.recordOwnedCleanupCancellation(place, token, reason)
+	if reason == "moved" {
+		a.noteLambdaEnvironmentConsume(place, token)
+	}
 	key := place.String()
 	a.moved[key] = token
 	a.availabilityStates[key] = unavailableState(reason)

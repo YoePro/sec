@@ -373,14 +373,13 @@ integrations:
       - direct, mutual, Option/Result-mediated, and generic-instantiation recursive union storage is rejected through the shared by-value layout dependency graph with mandatory S1071 union.recursive-by-value-layout (or S1055 when the cycle passes through a struct) and the full variant path
       - "Optional implicit-empty catch-all guidance (2026-10-29; unions.md §10.4): A2009 / union.implicit-empty-catch-all is a nonmandatory Warning at an accepted unguarded underscore when Sema already proves the subject may be empty and no explicit empty arm exists. Uses existing match reachability and accepted arm source indices; it never changes coverage, initialization, ownership or lowering. Explicit empty arms (including guarded ones), initialized/defaulted/parameter subjects and initialized refinements receive no warning. The ordinary project diagnostic policy supports off/info/warning/error; CLI human output, JSON identity/range/help and unsaved-source LSP projection are tested, including repeated analysis and mandatory coverage with advice disabled."
       - "state tests in value positions (verified 2026-11-04; MD-006): `value is Variant` and `value is not Variant` on unions, Option and Result lower in Semantic IR as a variant test with constant edges to a merge (Result edges unwrap the projected payload for the Result guard verifier) and run natively in bindings, `&&` operands and if conditions (testdata/build/native/state_tests.sec in TestNativeTrackBuildsAndRuns). The empty-state test and owned subjects stay named boundaries ('empty-state test (needs a runtime initialization flag)', 'state test of a subject that needs ownership')."
+      - "verified 2026-11-07 (TestUnionConstructionAndDestructuringForms): shallow named-field payload destructuring with shorthand, rename, omitted fields and field-level `ref`/`ref mut`, with field Places and no hidden moves; explicit generic constructor qualification (`Option[int].Some(10)`, `Box[int].Full(3)`); explicit `<-` required when a reusable move-only source enters a payload outside a terminal return (copy_move.md § 10.4)"
+      - "legacy word-form `move source` in a call argument or union payload reports one focused parser diagnostic and keeps parsing the source (2026-11-07, TestRejectLegacyWordFormMoveArgument); the let-initializer form was already rejected"
+      - "MD-042 reachable-state proofs extended 2026-11-07 (TestReachableStateProofsForMutableBindingsAndOption): mutable bindings and owned by-value parameters use version-tracked path facts invalidated by assignment, any call and loop entry; Option subjects and the parser's `is None` form participate; `is not` facts excluding every other variant prove the remaining one (early exit); Semantic IR proofs stay union-only, so Option/Result plans carry no proof"
     remaining:
       - formalize mutable NonDefaultable union declarations as source-observable empty initialization state rather than only legacy unassigned state
-      - record active-variant refinement (beyond initialization and the known-variant state-test slice) for later member and payload analyses, match arms excluded by a known active variant (§ 21(6)), while-condition variant tests, and owned by-value union parameters that no mutable-receiver method can change
-      - support shallow named-field payload destructuring, partial binding, rename, and field-level ref or ref mut modes
-      - extend Place tracking from whole payloads to named destructured fields without hidden moves or cloning
+      - "record active-variant refinement for later member and payload analyses, while-condition variant tests, loop exits through break (control_flow frontend.while-statements-v2), and joins where one branch reassigns a known variant (`if x is None { x = Some(1) }` then `match x`)"
       - classify the finite indirection carrier used by unions.md §18 (`Box[List[T]]`), which no rulebook defines yet (missing-decisions.yaml MD-018)
-      - support explicit generic constructor qualification such as Option[int].Some(10)
-      - require explicit `<-` when a reusable source is consumed into a union payload and reject legacy word-form move syntax
       - provide complete backend layout metadata, equality lowering, construction, match, destruction, and runtime-dependent empty-state lowering
       - expose empty-state, active-variant, ownership, and exhaustiveness facts through diagnostics and LSP
       - add complete parser recovery, formatter, valid/invalid, dataflow, LSP, Semantic IR, MLIR, and end-to-end coverage
@@ -828,9 +827,14 @@ integrations:
       parameters are now mutable like ordinary function parameters. Shared,
       mutable, and consuming callable capabilities are preserved across syntax,
       AST, semantic type identity, formatting, and compiler-owned LSP facts.
-      Capability inference and compatibility, capture modes beyond plain value
-      capture, escaping environments, and complete closure lowering remain
-      substantial work.
+      Since 2026-11-07 all four capture modes are parsed, formatted and
+      analyzed: owned captures are mutable environment fields, `ref`/`ref mut`
+      captures are reference holders borrowed at construction, the callable
+      capability is inferred from environment mutation and consumption, a
+      callable may strengthen but never weaken its authority, `mut fn` calls
+      need mutable access and `-> fn` calls consume the callable. Escaping
+      environments, non-lexical closure borrow liveness, closure copyability
+      for unknown environments (MD-127) and closure lowering remain.
     rules:
       - rules/declarations/lambda-functions.md
       - rules/declarations/functions.md
@@ -876,16 +880,21 @@ integrations:
       - owned by-value lambda parameters are mutable local bindings while reference parameters remain non-rebindable
       - selected rejection of local-reference escape through captured lambdas
       - non-capturing lambda lowering through the compilation track
+      - "`capture(ref value)` and `capture(ref mut value)` parse into shared-borrow and mutable-borrow capture modes with their keyword tokens, print in parse debug output and format with single spaces (2026-11-07)"
+      - plain `capture(value)` is copy-only and rejects non-copyable reusable sources; `capture(<-value)` transfers even a copyable value
+      - owned capture bindings are mutable environment fields inside the lambda body (lambda-functions.md § 18)
+      - "callable capability inference: writing an owned capture (assignment, `ref mut`, mutating receiver, `ref mut` argument, `mut fn` call) or holding a `ref mut` capture gives `mut fn`; moving state out of an owned capture gives `-> fn` (§§ 9, 20, 28)"
+      - "capability compatibility: `fn` may initialize `mut fn` or `-> fn` targets and `mut fn` may initialize `-> fn`, never the reverse (§ 10)"
+      - "invocation authority: a `mut fn` call needs mutable access to the callable, a `-> fn` call needs an owned available callable and consumes it, and reuse reports use of a moved value (§§ 8, 28)"
+      - "`ref`/`ref mut` captures are `ref T`/`ref mut T` holders read and written through `*name` (owner decision 2026-11-07), validated as ordinary borrows at construction (borrowable Place, mutable authority, conflicts) and held by the closure binding for its lexical lifetime"
+      - returning a closure that borrows a local or by-value parameter is rejected (S1131); borrow-capture of a reference holder is rejected in favor of `capture(name)`
+      - a function-value type mismatch that differs only in callable capability names the authority in its help
+      - "`-> fn` callables and closures with a move-only owned or `ref mut` capture are move-only (Type.FunctionEnvironmentMoveOnly, § 27); capture records carry CaptureSharedBorrow/CaptureMutableBorrow with CaptureTransferBorrow, and parameter usage counts a `ref mut` capture as a write"
     remaining:
-      - infer callable capability from environment mutation and consumption and enforce capability compatibility
       - preserve parameter ownership modes and native variadic shape in first-class callable type identity and calls
-      - parse, represent, format, and expose `capture(<-value)`, `capture(ref value)`, and `capture(ref mut value)` while rejecting stale `capture(-> value)`
-      - enforce plain `capture(value)` as copy-only and reject non-copyable reusable sources instead of silently moving them
-      - make owned capture bindings mutable and connect their mutation to `mut fn` inference
-      - force transfer for consuming captures even when their values are copyable
-      - establish shared and mutable capture borrows with canonical Place, provenance, lifetime, and conflict checking
-      - classify closure copyability and movability from capture modes, captured types, and callable capability
-      - consume `-> fn` closures only after successful calls and reject reuse
+      - "non-lexical liveness for closure borrow holders: a closure holding `ref`/`ref mut` captures keeps its borrows to the end of its lexical scope (borrow_liveness.go keeps aggregates lexical), which needs borrow tracking through closures copied, stored in aggregates, passed to calls and returned from them"
+      - "track borrow captures of a lambda that is not bound to a local (passed directly as an argument or stored in a field) beyond the construction-time conflict check"
+      - "closure copyability when the environment is not known from the value (function-typed parameters, declared-type bindings, fields): MD-127"
       - allow owned closure environments to escape and allow borrowed environments only within valid borrow lifetimes
       - select compiler-managed environment storage without implicit source-level allocation semantics
       - implement native typed variadic lambdas after the functions-v2 variadic pack model exists

@@ -1,6 +1,6 @@
 schema_version: 1
-updated: "2026-11-05"
-last_id: MD-126
+updated: "2026-11-07"
+last_id: MD-127
 purpose: >-
   Tracks normative decisions that are missing or insufficiently precise and
   therefore constrain implementation. Remove an entry only after the owning
@@ -1051,4 +1051,36 @@ decisions:
       (B) it stays invalid, and code checks the index or uses a borrowed element under
       try. Recommended: A. P16 acceptance does not depend on this.
     classification: localized
+    status: open
+
+  - id: MD-127
+    area: copyability-of-function-values-with-unknown-environment
+    rulebooks:
+      - rules/declarations/lambda-functions.md
+      - rules/memory/copy_move.md
+      - rules/types/types.md
+    description: >-
+      Raised 2026-11-07 by lambda captures v2. lambda-functions.md § 27 makes a
+      closure move-only when its environment holds a move-only owned capture or
+      a `ref mut` capture, but a function type such as `fn() int` carries no
+      environment, and § 11 leaves the environment out of type identity. A
+      parameter `op: fn() int`, a binding declared `let g: fn() int := f`, or a
+      field of function type can therefore hold a move-only closure while its
+      type looks copyable, so `let copy := op` would duplicate a move-only
+      environment. Sema now classifies `-> fn` as move-only and a closure value
+      whose environment it knows (a lambda expression and bindings initialized
+      directly from it); every other function-typed value is classified as
+      copyable. Decide: (A) every capturing closure converts only to a
+      move-only function type, and non-consuming function types are copyable
+      only when written for non-capturing values, which needs a spelling for
+      the copyable form; (B) all `fn`/`mut fn` values are move-only unless the
+      compiler proves a non-capturing or copyable environment, so copying a
+      function-typed parameter needs an explicit duplication operation;
+      (C) a closure whose environment is move-only cannot convert to a plain
+      function type and must keep its inferred value type (no erasure), so
+      parameters accept it only by `->` transfer or by reference. Recommended:
+      C, because it keeps copyable function parameters for named functions and
+      plain closures and needs no new syntax. Governance owner: declarations
+      frontend.lambda-functions-v2.
+    classification: constraining
     status: open

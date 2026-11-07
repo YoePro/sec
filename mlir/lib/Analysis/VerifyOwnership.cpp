@@ -1,8 +1,10 @@
 // Path-sensitive ownership verification (dialect v13 section 33).
 // Rules: rules/mlir/packages/sec-mlir-dialect_package17.md — sections 9-18, 111-114, 117.
-// Borrow validity stays with the P15 verifiers (section 117); this pass follows who
-// owns a value, including which subobjects remain.
+// Borrow validity stays with P15 (section 117); the shared ordering check
+// consumes its explicit loan/end facts before destruction. This pass follows
+// who owns a value, including which subobjects remain.
 #include "DestructionFacts.h"
+#include "ReferenceFlow.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Interfaces/ControlFlowInterfaces.h"
@@ -605,7 +607,8 @@ public:
       return;
     sec::DestructionFacts facts(module);
     for (auto function : module.getOps<func::FuncOp>())
-      if (failed(Verifier(function.getBody(), facts).run()))
+      if (failed(sec::detail::verifyBorrowDestruction(function)) ||
+          failed(Verifier(function.getBody(), facts).run()))
         return signalPassFailure();
   }
 };

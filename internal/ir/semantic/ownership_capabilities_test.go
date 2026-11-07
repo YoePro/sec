@@ -51,7 +51,6 @@ func TestPackage17CapabilityRejectsMissingOwnershipIR(t *testing.T) {
 		// Option and Result lower since P17-37; these forms keep named boundaries.
 		{"semantic_ir/package17_variants/defer_reads_loop_owner.sec", "main", "defer in a loop reading an owned value of the loop body"},
 		{"semantic_ir/package17_variants/defer_reads_loop_storage.sec", "main", "defer reading mutable storage declared in its loop"},
-		{"semantic_ir/package17_variants/error_handler_payload.sec", "main", "guarded try handler on an error that needs destruction"},
 	} {
 		t.Run(test.feature, func(t *testing.T) {
 			program, a := sliceBoundaryInput(t, "semantic_ir/package17_boundary_plain.sec", test.fixture)

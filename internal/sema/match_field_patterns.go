@@ -45,7 +45,22 @@ type ResolvedMatchFieldBinding struct {
 // rules/foundations/grammar.md — StructLikeUnionPattern.
 func (a *Analyzer) analyzeMatchFieldPattern(subject ast.Expression, pattern *ast.MatchPattern, subjectType Type) (matchPatternInfo, bool) {
 	subjectPlace, hasPlace := a.matchSubjectPlace(subject)
+	if !hasPlace && freshMatchSubject(a, subject) {
+		// A fresh subject lives through the whole match, so its payload fields
+		// are borrowed through its temporary Place (owner decision 2026-11-07).
+		subjectPlace, hasPlace = a.temporaryPlace(subject, subjectType, true), true
+	}
 	return a.analyzeUnionFieldPatternAt(subject, subjectPlace, hasPlace, pattern, subjectType)
+}
+
+// freshMatchSubject reports a constructed subject that holds its own value,
+// not a reference returned by a call.
+func freshMatchSubject(a *Analyzer, subject ast.Expression) bool {
+	if !constructedMatchSubject(subject) {
+		return false
+	}
+	typ, known := a.expressionTypes[subject]
+	return known && typ.Kind != ReferenceType
 }
 
 // analyzeUnionFieldPatternAt resolves a shallow field pattern against the
@@ -138,7 +153,13 @@ func (a *Analyzer) analyzeUnionFieldPatternAt(subject ast.Expression, subjectPla
 			entry.Place.Type = declared.Type
 			fieldType := declared.Type
 			reference := Type{Name: referenceTypeName(fieldType, entry.Mutable), Kind: ReferenceType, Element: &fieldType, ReferenceMutable: entry.Mutable}
-			entry.Type = a.referenceTypeWithOriginFromExpression(reference, subject)
+			if strings.HasPrefix(subjectPlace.Root, temporaryOriginRootPrefix) {
+				entry.Type = reference
+				entry.Type.ReferenceOriginName = "temporary " + subject.String()
+				entry.Type.ReferenceOriginLocal = true
+			} else {
+				entry.Type = a.referenceTypeWithOriginFromExpression(reference, subject)
+			}
 			entry.Type.ReferenceOriginMatchScoped = true
 			entry.Type.ReferenceOriginToken = binding.Name.Token
 		default:
@@ -148,6 +169,13 @@ func (a *Analyzer) analyzeUnionFieldPatternAt(subject ast.Expression, subjectPla
 					"field %s of %s.%s is move-only; a named-field binding only copies", declared.Name, typeDisplayName(subjectType), variant.Name)
 				valid = false
 				continue
+			}
+			// A by-value field binding copies from the payload field Place,
+			// which its transfer plan names (P17-13).
+			if hasPlace {
+				entry.Place = appendPlaceProjection(unionPayloadPlace(subjectPlace, variant.Name, payloadType, variantToken),
+					PlaceProjection{Kind: PlaceField, Name: declared.Name, Token: field.Field.Token})
+				entry.Place.Type = declared.Type
 			}
 		}
 		info.FieldBindings = append(info.FieldBindings, entry)
@@ -167,7 +195,11 @@ func (a *Analyzer) defineMatchFieldBindings(info matchPatternInfo) {
 		a.assigned[field.Name] = true
 		a.clearRootPlaceState(field.Name)
 		delete(a.constInts, field.Name)
-		if !field.Borrow || field.Place.Root == "" || field.Type.Kind == InvalidType {
+		if !field.Borrow {
+			a.recordBindingTransfer(field.Node, field.Name, field.Place, field.Type)
+			continue
+		}
+		if field.Place.Root == "" || field.Type.Kind == InvalidType {
 			continue
 		}
 		if a.checkBorrowCreationPlace(field.Place, field.Mutable, field.BorrowToken) {

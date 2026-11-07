@@ -37,6 +37,7 @@ func (a *Analyzer) recordCollectionGrowth(call *ast.CallExpression) {
 	if !known || contract.AllocationBehavior != AllocationMayAllocate {
 		return
 	}
+	a.recordDynamicArrayAllocation(call, member, contract)
 	if (contract.Name == "Reserve" || contract.Name == "WithCapacity") && len(call.Arguments) == 1 {
 		if count, constant := a.integerConstantValue(call.Arguments[0]); constant && count.Sign() == 0 {
 			return

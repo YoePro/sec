@@ -1,6 +1,7 @@
 package sema
 
 import (
+	"fmt"
 	"math/big"
 
 	"sec/internal/ast"
@@ -594,8 +595,37 @@ func (a *Analyzer) checkIntegerAssignmentRange(symbol Symbol, stmt *ast.Assignme
 	if !ok {
 		return false
 	}
+	if stmt.Operator != "=" && a.warnCompoundAssignmentOverflow(symbol, stmt, result) {
+		// Checked overflow of the underlying operator (operators.md
+		// "Compound arithmetic failure"); contracts are then moot.
+		return false
+	}
 
 	return a.checkIntegerValueRange(symbol.Type, result, expressionToken(stmt.Value))
+}
+
+// warnCompoundAssignmentOverflow reports a compound assignment whose known
+// operands overflow the target's integer representation. Like the operator it
+// abbreviates, it is the non-blocking S1023 warning and keeps checked runtime
+// semantics (operators.md "Compile-time overflow"); it never ends analysis of
+// the assignment. It reports whether it warned.
+func (a *Analyzer) warnCompoundAssignmentOverflow(symbol Symbol, stmt *ast.AssignmentStatement, result *big.Int) bool {
+	representation, _, ok := a.integerRepresentation(symbol.Type)
+	if !ok || representation.MinInteger == nil || representation.MaxInteger == nil {
+		return false
+	}
+	if result.Cmp(representation.MinInteger) >= 0 && result.Cmp(representation.MaxInteger) <= 0 {
+		return false
+	}
+	a.addWarningAtTokenWithMetadata(
+		stmt.Token,
+		diagnostics.OperatorIntegerOverflow,
+		fmt.Sprintf("Ensure a dominating condition proves the operation remains within %s..%s, or use a wider integer type. The operation retains checked runtime semantics.", representation.MinInteger, representation.MaxInteger),
+		"integer operation %s may overflow %s",
+		stmt.Target.String()+" "+stmt.Operator+" "+stmt.Value.String(),
+		typeDisplayName(symbol.Type),
+	)
+	return true
 }
 
 func (a *Analyzer) isContractCheckableExpression(expr ast.Expression) bool {

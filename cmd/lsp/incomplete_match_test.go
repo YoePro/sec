@@ -7,7 +7,7 @@ import "testing"
 // than escaping into Sema and terminating the language server.
 //
 // Rules:
-//   - rules/compiler/parser_recovery.md — "Recovery principles" and "Invalid node"
+//   - rules/compiler/parser_recovery.md — "Core recovery principle" and "Invalid node"
 //   - rules/tooling/lsp.md — incomplete-document tooling behavior
 func TestCompletionSurvivesIncompleteMatchInsideTry(t *testing.T) {
 	source := "module main\n\nfn Pending() void {\n    let value := try match\n}"

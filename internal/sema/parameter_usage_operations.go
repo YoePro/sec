@@ -28,9 +28,16 @@ func (b *parameterUsageBuilder) recordCaptureCreationDemand(lambda *ast.LambdaEx
 			parameter.Demand.Access = ParameterAccessRead
 		}
 		kind := ParameterUseRead
-		if capture.Transfer == CaptureTransferMove {
+		switch {
+		case capture.Transfer == CaptureTransferMove:
 			kind = ParameterUseMove
 			parameter.Demand.Ownership = strongerOwnership(parameter.Demand.Ownership, ParameterConsumptionRequired)
+		case capture.Mode == CaptureMutableBorrow:
+			// A `ref mut` capture holds write authority over the parameter.
+			kind = ParameterUseWrite
+			parameter.Demand.Access = ParameterAccessWrite
+		case capture.Mode == CaptureSharedBorrow:
+			kind = ParameterUseReference
 		}
 		parameter.Demand.Precision = strongerPrecision(parameter.Demand.Precision, ParameterDemandPartial)
 		parameter.Demand.Shapes = appendUniqueShape(parameter.Demand.Shapes, ParameterShapeWholeValue)

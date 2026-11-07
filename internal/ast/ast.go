@@ -1145,8 +1145,13 @@ func (le *LambdaExpression) String() string {
 				out += ", "
 			}
 			if capture.Name != nil {
-				if capture.Mode == LambdaCaptureMove {
+				switch capture.Mode {
+				case LambdaCaptureMove:
 					out += "<-"
+				case LambdaCaptureSharedBorrow:
+					out += "ref "
+				case LambdaCaptureMutableBorrow:
+					out += "ref mut "
 				}
 				out += capture.Name.Value
 			}
@@ -1180,14 +1185,27 @@ func (le *LambdaExpression) String() string {
 type LambdaCaptureMode string
 
 const (
-	LambdaCaptureCopy LambdaCaptureMode = "copy"
-	LambdaCaptureMove LambdaCaptureMode = "move"
+	LambdaCaptureCopy          LambdaCaptureMode = "copy"
+	LambdaCaptureMove          LambdaCaptureMode = "move"
+	LambdaCaptureSharedBorrow  LambdaCaptureMode = "shared-borrow"
+	LambdaCaptureMutableBorrow LambdaCaptureMode = "mutable-borrow"
 )
 
+// LambdaCapture is one capture entry. Token is the entry's first token: the
+// name, `<-`, or `ref`; MutToken retains `mut` of `ref mut`.
+//
+// Rules:
+//   - rules/declarations/lambda-functions.md — §15 "Capture forms", §41 "AST requirements"
 type LambdaCapture struct {
-	Token lexer.Token
-	Name  *Identifier
-	Mode  LambdaCaptureMode
+	Token    lexer.Token
+	MutToken lexer.Token
+	Name     *Identifier
+	Mode     LambdaCaptureMode
+}
+
+// IsBorrow reports a `ref` or `ref mut` capture.
+func (c LambdaCapture) IsBorrow() bool {
+	return c.Mode == LambdaCaptureSharedBorrow || c.Mode == LambdaCaptureMutableBorrow
 }
 
 type ReturnStatement struct {

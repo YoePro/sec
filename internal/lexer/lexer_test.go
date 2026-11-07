@@ -1050,15 +1050,17 @@ func TestStrings(t *testing.T) {
 	assertTokens(t, input, tests)
 }
 
+// TestCommentsAreTokenized: block comments do not nest; the first `*/` ends
+// the comment and an inner `/*` is comment text (owner decision 2026-11-07).
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — §5.3 "Block comments do not nest"
 func TestCommentsAreTokenized(t *testing.T) {
 	input := `
 let a := 1 // line comment
 /*
 	outer
-	/*
-		inner
-	*/
-	still outer
+	/* /* still the same comment
 */
 let b := 2
 `
@@ -1072,7 +1074,7 @@ let b := 2
 		{DECLARE, ":="},
 		{INT, "1"},
 		{COMMENT, "// line comment"},
-		{COMMENT, "/*\n\touter\n\t/*\n\t\tinner\n\t*/\n\tstill outer\n*/"},
+		{COMMENT, "/*\n\touter\n\t/* /* still the same comment\n*/"},
 		{LET, "let"},
 		{IDENT, "b"},
 		{DECLARE, ":="},
@@ -1083,14 +1085,26 @@ let b := 2
 	assertTokens(t, input, tests)
 }
 
-// TestUnterminatedBlockCommentIsSingleDiagnosedToken verifies that nested
-// unmatched depth remains one outer lexical error through end of file.
+// TestUnterminatedBlockCommentIsSingleDiagnosedToken verifies that a block
+// comment without `*/` is one lexical error through end of file, also when it
+// contains further `/*` text, and that one `*/` closes a comment holding
+// several `/*`.
 //
 // Rules:
-//   - rules/foundations/lexical_structure.md — §5.3 "Nested block comments"
+//   - rules/foundations/lexical_structure.md — §5.3 "Block comments do not nest"
 //   - rules/foundations/lexical_structure.md — §20 "Lexical errors"
 func TestUnterminatedBlockCommentIsSingleDiagnosedToken(t *testing.T) {
-	for _, input := range []string{"/* open", "/* outer /* nested */"} {
+	closed := NewWithFile("/* a /* b /* c */ tail", "comment.sec")
+	if token := closed.NextToken(); token.Type != COMMENT || token.Lexeme != "/* a /* b /* c */" {
+		t.Fatalf("one */ must close the comment: %+v", token)
+	}
+	if next := closed.NextToken(); next.Type != IDENT || next.Lexeme != "tail" {
+		t.Fatalf("token after the comment = %+v", next)
+	}
+	if stray := NewWithFile("/*/ x */", "comment.sec").NextToken(); stray.Lexeme != "/*/ x */" {
+		t.Fatalf("the opening asterisk cannot also close: %+v", stray)
+	}
+	for _, input := range []string{"/* open", "/* outer /* still open"} {
 		t.Run(input, func(t *testing.T) {
 			l := NewWithFile(input, "comment.sec")
 			token := l.NextToken()

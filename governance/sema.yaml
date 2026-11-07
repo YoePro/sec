@@ -191,6 +191,7 @@ integrations:
       - direct string-concatenation operand matrix for built-in string, char, and rune with S1022 rejection of hidden non-text conversion
       - direct string += frontend operand validation
       - resolved checked-integer operator facts, blocking constant division/remainder-by-zero diagnostics, and non-blocking S1023 potential-overflow warnings with checked runtime semantics retained
+      - "compound constant overflow (2026-11-07; operators.md \"Compile-time overflow\", \"Compound arithmetic failure\"): a compound assignment whose known operands overflow the target representation is the non-blocking S1023 warning, like its underlying operator, instead of an ID-less blocking \"value N overflows T\" error; contract violations of compound results stay errors. Known integer values hold only on every path: leaving a branch, select, unsafe, for, switch, try-handler or match-arm scope invalidates an outer constant the scope changed (restoreConstInts), and a loop body does not see the pre-loop value of a binding it assigns (forgetLoopAssignedConstants). Fixes the false rejection of `while remaining > 0 { remaining -= 1 }` in sec/core int parsing. Test: TestCompoundAssignmentConstantOverflow."
       - P7 checked-integer Semantic IR and Sec MLIR foundation
       - "compound assignment (2026-10-05): an integer `+=`, `-=`, `*=`, `/=`, `%=`, `&=`, `|=`, `^=`, `<<=`, or `>>=` (and `++`/`--`) publishes its underlying operator through ResolvedCompoundAssignmentOf, classified by the same resolvedIntegerInfixOperator as the binary expression, and records the same arithmetic panic effect, so @noPanic now rejects `i += 1` as it rejects `i = i + 1` (previously unsound) (TestCompoundAssignmentPublishesItsCheckedOperator)"
       - "boolean operators in Semantic IR (2026-10-05): `&&` and `||` lower from ResolvedLogicalFlow to left-first short-circuit CFG whose short-circuit edge passes the left value to a bool merge parameter and whose right operand is built only on the other edge (proven constant forms build no unused operand); `!` on bool publishes ResolvedBoolNot and lowers to bool.not (TestLogicalOperatorsBuildShortCircuitFlow)"
@@ -218,6 +219,7 @@ integrations:
       - Semantic IR and Sec MLIR floating comparison/remainder lowering awaits P20 (the removed legacy MLIR path had a NaN predicate and truncation-remainder lowering; MD-101)
       - decimal remainder support is incomplete
     remaining:
+      - "Constant tracking precision (2026-11-07): a loop body forgets the pre-loop value of every binding it assigns, so an overflow certain on the first iteration (`let mut n: uint := 3; while c { n -= 4 }`) is no longer warned; a first-iteration-only constant domain would restore it. Joins invalidate rather than merge, so two branches assigning the same constant lose it."
       - complete contextual matrix x Semantic IR, lowering, diagnostics, formatter, and LSP behavior
       - "P20 floating operators: complete NaN comparison and truncation-remainder facts in Semantic IR, schema-16 Sec MLIR verification and Arith lowering after the corrected P18/P19 predecessor chain; the current emitter and dialect support schema 10"
       - complete decimal arithmetic/remainder/comparison lowering under the owning decimal rules (planned as SEC-MLIR-P21, `lowering.sec-mlir-package21`; operator scale, core ArithmeticError mapping and decimal128 members are normatively decided by MD-066/067/068 on 2026-10-28; actual implementation and predecessor gates remain, following correction §13(3) numbered steps)
@@ -261,6 +263,8 @@ integrations:
       - reserved ? receives focused Sec 0.1 diagnostic
       - backend parity or explicit unsupported-lowering diagnostics
     verification:
+      - command: GOTMPDIR=$HOME/.cache/sec-gotmp go test -p 4 ./internal/sema ./internal/ir/... ./internal/lowering/... -count=1; cmd/compiler -run 'Overflow|Diagnostic|Enum|Constant|Compound|Integer|Unreachable|Pitfall|Loop|While'; cmd/lsp -run 'Overflow|Constant|Compound|Integer|Unreachable|Pitfall|Enum'
+        result: passed on 2026-11-07 with compound constant overflow as S1023 and path-exact constant invalidation
       - command: GOCACHE=/tmp/sec-go-cache SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir -count=1
         result: passed on 2026-11-01; sequence membership verifies on 32/64-bit targets through schema-12 emission and native dialect guard verification, with bounded large-array CFG, exact-once calls, reference-origin regressions and missing-guard rejection. Native lowering explicitly rejects sec.array.extract and leaves no artifact; executable membership is not claimed.
       - command: GOCACHE=/tmp/sec-go-cache go test ./cmd/compiler -run TestSequenceMembershipCLI -count=1

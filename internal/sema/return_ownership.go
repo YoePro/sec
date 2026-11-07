@@ -228,7 +228,12 @@ func (a *Analyzer) validateTerminalReturnConstruction(expr ast.Expression) bool 
 		return true
 	}
 	place, reusable := a.resolvePlace(expr)
-	if !reusable || !requiresOwnershipTransfer(place.Type) {
+	if !reusable {
+		return false
+	}
+	if !requiresOwnershipTransfer(place.Type) {
+		// An accepted copy into the return slot (P17-13).
+		a.recordAcceptedCopy(expr, place, TransferSiteReturn)
 		return false
 	}
 	return !a.validateNamedOwnershipSource(ast.OwnershipMove, expr, expressionToken(expr), false, false, TransferSiteReturn)

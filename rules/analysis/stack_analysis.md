@@ -1,20 +1,32 @@
 # Stack Analysis
 
-## Status
+- **Status:** Normative
+- **Created:** 2026-08-08
+- **Last updated:** 2026-11-07 (stable chapter, subsection, and paragraph numbering)
+- **Document revision:** 1
+- **Sec language version:** 0.1
+- **Canonical path:** `rules/analysis/stack_analysis.md`
+- **Repository baseline reviewed:** `28780c01d63c3fc9eec2321ef67e3dd69962f043`
+- **Implementation governance:** `governance/analysis.yaml` (`sema.stack-analysis`)
+- **Related rulebooks:** `rules/analysis/call_graph.md`, `rules/analysis/closure_analysis.md`, `rules/memory/storage.md`, `rules/memory/lifetime_analysis.md`, `rules/memory/layout.md`, `rules/platform/ffi.md`, `rules/platform/interrupts.md`, `rules/compiler/incremental_compilation.md`, `rules/tooling/diagnostics.md`, `rules/tooling/lsp.md`
 
-Normative compiler-analysis rulebook for Sec 0.1.
+---
 
-This rulebook defines the semantic and machine stack-analysis model, stack-bound
+## § 1 Status
+
+**§ 1(1)** Normative compiler-analysis rulebook for Sec 0.1.
+
+**§ 1(2)** This rulebook defines the semantic and machine stack-analysis model, stack-bound
 classification, per-function and per-root composition, recursion and SCC
 handling, callable and foreign-call integration, frame construction, live-range
 and stack-slot reuse requirements, stack-budget validation, tooling integration,
 summary and incremental-analysis requirements, diagnostics, tests, and completion
 criteria for Sec stack analysis.
 
-Mutable implementation status does not belong in this rulebook. It is governed
+**§ 1(3)** Mutable implementation status does not belong in this rulebook. It is governed
 by the canonical `governance/analysis.yaml` ledger fragment.
 
-The canonical ledger integration identifier is:
+**§ 1(4)** The canonical ledger integration identifier is:
 
 ```text
 sema.stack-analysis
@@ -22,12 +34,12 @@ sema.stack-analysis
 
 ---
 
-# Purpose
+## § 2 Purpose
 
-Stack analysis determines how much stack resource an execution may require and
+**§ 2(1)** Stack analysis determines how much stack resource an execution may require and
 why that requirement arises.
 
-The analysis answers questions such as:
+**§ 2(2)** The analysis answers questions such as:
 
 ```text
 How much automatic storage is simultaneously live in this function?
@@ -39,17 +51,17 @@ How much stack is required from each execution root?
 Does the verified requirement satisfy the active stack budget?
 ```
 
-Stack analysis is a resource analysis. It does not redefine storage placement,
+**§ 2(3)** Stack analysis is a resource analysis. It does not redefine storage placement,
 object lifetime, borrowing, escape, ownership, layout, call reachability, task
 semantics, ISR semantics, or backend ABI rules.
 
-Those semantics are consumed as canonical input facts.
+**§ 2(4)** Those semantics are consumed as canonical input facts.
 
 ---
 
-# Normative role
+## § 3 Normative role
 
-This rulebook is normative for:
+**§ 3(1)** This rulebook is normative for:
 
 - the distinction between semantic and machine stack requirements;
 - stack-bound classification;
@@ -71,7 +83,7 @@ This rulebook is normative for:
 - required test classes;
 - completion criteria for Sec 0.1 stack analysis.
 
-This rulebook does not redefine:
+**§ 3(2)** This rulebook does not redefine:
 
 - `StorageOrigin`, `BackingRelation`, or `ReclamationAuthority`;
 - object or storage lifetime;
@@ -89,17 +101,17 @@ This rulebook does not redefine:
 - backend optimization legality;
 - project configuration syntax.
 
-Those concerns remain owned by their respective normative rulebooks and target
+**§ 3(3)** Those concerns remain owned by their respective normative rulebooks and target
 or tooling specifications.
 
 ---
 
-# Core principle
+## § 4 Core principle
 
-Stack analysis determines stack resource requirements without changing storage
+**§ 4(1)** Stack analysis determines stack resource requirements without changing storage
 semantics.
 
-In particular:
+**§ 4(2)** In particular:
 
 ```text
 Stack pressure
@@ -109,24 +121,24 @@ implicit arena promotion
 implicit allocator-backed promotion
 ```
 
-If an automatic object is too large for an active stack budget, the compiler
+**§ 4(3)** If an automatic object is too large for an active stack budget, the compiler
 must not silently repair the program by changing its storage origin.
 
-Any alternative storage strategy remains an explicit programmer or platform
+**§ 4(4)** Any alternative storage strategy remains an explicit programmer or platform
 choice governed by the storage and allocation rules.
 
 ---
 
-# Stack analysis levels
+## § 5 Stack analysis levels
 
-Sec distinguishes two stack-analysis levels.
+**§ 5(1)** Sec distinguishes two stack-analysis levels.
 
-## Semantic stack requirement
+### § 5.1 Semantic stack requirement
 
-The semantic stack requirement describes materialized stack storage required by
+**§ 5.1(1)** The semantic stack requirement describes materialized stack storage required by
 Sec semantics and canonical semantic lowering.
 
-It may include:
+**§ 5.1(2)** It may include:
 
 ```text
 automatic local storage
@@ -136,15 +148,15 @@ cleanup or destruction state required by canonical lowering
 alignment and padding introduced at the semantic frame level
 ```
 
-It does not attempt to predict backend register spills or other final
+**§ 5.1(3)** It does not attempt to predict backend register spills or other final
 code-generation accidents.
 
-## Machine stack requirement
+### § 5.2 Machine stack requirement
 
-The machine stack requirement describes the final target-specific stack cost of
+**§ 5.2(1)** The machine stack requirement describes the final target-specific stack cost of
 the compiled code.
 
-It may additionally include:
+**§ 5.2(2)** It may additionally include:
 
 ```text
 ABI argument or return areas
@@ -156,7 +168,7 @@ prologue or epilogue state
 backend/runtime bookkeeping
 ```
 
-The relationship is conceptually:
+**§ 5.2(3)** The relationship is conceptually:
 
 ```text
 Semantic stack requirement
@@ -164,25 +176,25 @@ Semantic stack requirement
     -> Machine stack requirement
 ```
 
-The two results are distinct compiler facts and must not overwrite one another.
+**§ 5.2(4)** The two results are distinct compiler facts and must not overwrite one another.
 
-For example:
+**§ 5.2(5)** For example:
 
 ```text
 Semantic upper bound: 8192 B
 Machine exact maximum: 7344 B
 ```
 
-is a valid pair of results.
+**§ 5.2(6)** is a valid pair of results.
 
 ---
 
-# Stack-bound classification
+## § 6 Stack-bound classification
 
-A stack requirement must carry the quality of the result rather than only a
+**§ 6(1)** A stack requirement must carry the quality of the result rather than only a
 byte count.
 
-Conceptually:
+**§ 6(2)** Conceptually:
 
 ```text
 StackBound:
@@ -192,41 +204,41 @@ StackBound:
     Unbounded
 ```
 
-## Exact
+### § 6.1 Exact
 
-`Exact(bytes)` means the analysis level knows the exact required amount for the
+**§ 6.1(1)** `Exact(bytes)` means the analysis level knows the exact required amount for the
 reported scope and CompilationPlan.
 
-## UpperBound
+### § 6.2 UpperBound
 
-`UpperBound(bytes)` means the compiler has proven that the requirement cannot
+**§ 6.2(1)** `UpperBound(bytes)` means the compiler has proven that the requirement cannot
 exceed the reported value, although the real requirement may be smaller.
 
-A verified upper bound is sufficient for a stack safety or resource proof.
+**§ 6.2(2)** A verified upper bound is sufficient for a stack safety or resource proof.
 
-## Unknown
+### § 6.3 Unknown
 
-`Unknown` means that a finite requirement may exist, but the compiler cannot
+**§ 6.3(1)** `Unknown` means that a finite requirement may exist, but the compiler cannot
 prove a finite upper bound from the currently available semantic facts,
 contracts, summaries, or analysis precision.
 
-`Unknown` is not zero and is not evidence that the program will overflow the
+**§ 6.3(2)** `Unknown` is not zero and is not evidence that the program will overflow the
 stack.
 
-## Unbounded
+### § 6.4 Unbounded
 
-`Unbounded` means the compiler has proven that the reachable execution structure
+**§ 6.4(1)** `Unbounded` means the compiler has proven that the reachable execution structure
 admits arbitrarily large stack depth or stack demand under the relevant model.
 
-`Unbounded` is stronger information than `Unknown` and must remain distinct.
+**§ 6.4(2)** `Unbounded` is stronger information than `Unknown` and must remain distinct.
 
 ---
 
-# Partial information
+## § 7 Partial information
 
-Loss of an overall upper bound must not erase independently known information.
+**§ 7(1)** Loss of an overall upper bound must not erase independently known information.
 
-For example:
+**§ 7(2)** For example:
 
 ```text
 known stack contribution before unknown call: 1536 B
@@ -234,20 +246,20 @@ overall stack maximum: Unknown
 cause: callable target contract has no verified stack bound
 ```
 
-Deep analysis may additionally expose known minimum contributions.
+**§ 7(3)** Deep analysis may additionally expose known minimum contributions.
 
-A known minimum contribution must never be used as an upper bound for a safety
+**§ 7(4)** A known minimum contribution must never be used as an upper bound for a safety
 or budget proof.
 
 ---
 
-# CompilationPlan dependence
+## § 8 CompilationPlan dependence
 
-Stack results that depend on size, alignment, ABI, runtime behavior, target
+**§ 8(1)** Stack results that depend on size, alignment, ABI, runtime behavior, target
 calling convention, or backend frame construction are resolved per active
 `CompilationPlan`.
 
-The same Sec function may therefore have different stack requirements on
+**§ 8(2)** The same Sec function may therefore have different stack requirements on
 platforms such as:
 
 ```text
@@ -256,23 +268,23 @@ bare-metal Cortex-M
 riscv32
 ```
 
-without changing its source-language meaning.
+**§ 8(3)** without changing its source-language meaning.
 
-Machine stack summaries are necessarily CompilationPlan-specific.
+**§ 8(4)** Machine stack summaries are necessarily CompilationPlan-specific.
 
-Semantic summaries may remain target-independent or symbolic only where their
+**§ 8(5)** Semantic summaries may remain target-independent or symbolic only where their
 inputs are target-independent.
 
 ---
 
-# ResolvedLayout is authoritative
+## § 9 ResolvedLayout is authoritative
 
-Stack analysis must consume canonical resolved layout facts.
+**§ 9(1)** Stack analysis must consume canonical resolved layout facts.
 
-It must not implement a parallel struct, array, union, pointer, descriptor, or
+**§ 9(2)** It must not implement a parallel struct, array, union, pointer, descriptor, or
 alignment model.
 
-Relevant inputs include:
+**§ 9(3)** Relevant inputs include:
 
 ```text
 Size
@@ -282,14 +294,14 @@ resolved descriptor representation
 resolved aggregate representation
 ```
 
-When layout is not yet resolved, target-dependent byte results may remain
+**§ 9(4)** When layout is not yet resolved, target-dependent byte results may remain
 symbolic or unknown according to the analysis stage.
 
 ---
 
-# Per-function stack summaries
+## § 10 Per-function stack summaries
 
-A function stack summary must distinguish at least:
+**§ 10(1)** A function stack summary must distinguish at least:
 
 ```text
 OwnFrame
@@ -298,30 +310,30 @@ BoundKind
 MaximumCause
 ```
 
-The exact internal representation is implementation-defined.
+**§ 10(2)** The exact internal representation is implementation-defined.
 
-## Own frame
+### § 10.1 Own frame
 
-`OwnFrame` is the maximum stack storage attributable to the function's own
+**§ 10.1(1)** `OwnFrame` is the maximum stack storage attributable to the function's own
 materialized frame at the relevant analysis level.
 
-## Transitive maximum
+### § 10.2 Transitive maximum
 
-`TransitiveMaximum` includes the function's own frame together with the maximum
+**§ 10.2(1)** `TransitiveMaximum` includes the function's own frame together with the maximum
 simultaneously live callee contribution on any reachable execution path.
 
-## Maximum cause
+### § 10.3 Maximum cause
 
-The summary should preserve enough information to explain the call path, SCC,
+**§ 10.3(1)** The summary should preserve enough information to explain the call path, SCC,
 unknown boundary, or frame contributor responsible for the result.
 
 ---
 
-# Call-path composition
+## § 11 Call-path composition
 
-Sequential calls do not automatically sum their complete transitive maxima.
+**§ 11(1)** Sequential calls do not automatically sum their complete transitive maxima.
 
-For example:
+**§ 11(2)** For example:
 
 ```text
 A own frame = 100 B
@@ -329,7 +341,7 @@ B maximum   = 500 B
 C maximum   = 800 B
 ```
 
-for:
+**§ 11(3)** for:
 
 ```sec
 fn A() void {
@@ -338,37 +350,37 @@ fn A() void {
 }
 ```
 
-produces conceptually:
+**§ 11(4)** produces conceptually:
 
 ```text
 100 + max(500, 800) = 900 B
 ```
 
-when the two calls cannot be simultaneously active.
+**§ 11(5)** when the two calls cannot be simultaneously active.
 
-Nested calls do sum simultaneously live frames.
+**§ 11(6)** Nested calls do sum simultaneously live frames.
 
-For:
+**§ 11(7)** For:
 
 ```text
 A -> B -> C
 ```
 
-the active call chain may require:
+**§ 11(8)** the active call chain may require:
 
 ```text
 Own(A) + Own(B) + Own(C)
 ```
 
-plus applicable machine-level overhead at the machine analysis level.
+**§ 11(9)** plus applicable machine-level overhead at the machine analysis level.
 
 ---
 
-# Control-flow composition
+## § 12 Control-flow composition
 
-Stack analysis operates on reachable execution paths.
+**§ 12(1)** Stack analysis operates on reachable execution paths.
 
-For mutually exclusive branches such as:
+**§ 12(2)** For mutually exclusive branches such as:
 
 ```sec
 if condition {
@@ -378,9 +390,9 @@ if condition {
 }
 ```
 
-the call contribution is the maximum of the two reachable paths, not their sum.
+**§ 12(3)** the call contribution is the maximum of the two reachable paths, not their sum.
 
-The same principle applies to:
+**§ 12(4)** The same principle applies to:
 
 ```text
 if
@@ -392,15 +404,15 @@ cleanup paths
 panic paths where applicable
 ```
 
-Proven unreachable paths do not contribute to a stack bound.
+**§ 12(5)** Proven unreachable paths do not contribute to a stack bound.
 
 ---
 
-# Loops and stack depth
+## § 13 Loops and stack depth
 
-Ordinary loop iteration does not multiply frame depth.
+**§ 13(1)** Ordinary loop iteration does not multiply frame depth.
 
-For example:
+**§ 13(2)** For example:
 
 ```sec
 for item in values {
@@ -408,27 +420,27 @@ for item in values {
 }
 ```
 
-does not imply:
+**§ 13(3)** does not imply:
 
 ```text
 iteration count * Stack(Process)
 ```
 
-because each iteration normally reuses the same active call structure.
+**§ 13(4)** because each iteration normally reuses the same active call structure.
 
-Loop analysis may still affect frame live ranges and cleanup overlap.
+**§ 13(5)** Loop analysis may still affect frame live ranges and cleanup overlap.
 
-Recursion is different because each recursive call may create another
+**§ 13(6)** Recursion is different because each recursive call may create another
 simultaneously live frame.
 
 ---
 
-# Execution roots
+## § 14 Execution roots
 
-Whole-program stack analysis is measured from execution roots rather than only
+**§ 14(1)** Whole-program stack analysis is measured from execution roots rather than only
 from the program's ordinary main entry.
 
-Conceptual execution roots include:
+**§ 14(2)** Conceptual execution roots include:
 
 ```text
 ProgramEntry
@@ -439,47 +451,47 @@ PlatformEntry
 UnknownEntry
 ```
 
-The exact root model is determined by canonical call graph, runtime, platform,
+**§ 14(3)** The exact root model is determined by canonical call graph, runtime, platform,
 and CompilationPlan semantics.
 
-Reachability and maximum stack requirement are root-specific.
+**§ 14(4)** Reachability and maximum stack requirement are root-specific.
 
-A function reachable from the ordinary program entry but not from an ISR root
+**§ 14(5)** A function reachable from the ordinary program entry but not from an ISR root
 does not contribute to that ISR root's stack requirement.
 
 ---
 
-# Physical stack domains
+## § 15 Physical stack domains
 
-Logical execution roots and physical stacks are separate concepts.
+**§ 15(1)** Logical execution roots and physical stacks are separate concepts.
 
-Two threads with separate stacks are analyzed as separate stack domains.
+**§ 15(2)** Two threads with separate stacks are analyzed as separate stack domains.
 
-Their per-stack maxima do not become one artificial combined depth.
+**§ 15(3)** Their per-stack maxima do not become one artificial combined depth.
 
-Whole-program resource reporting may separately report aggregate reserved stack
+**§ 15(4)** Whole-program resource reporting may separately report aggregate reserved stack
 memory across several threads or tasks.
 
-If several logical roots may execute on the same physical stack, the active
+**§ 15(5)** If several logical roots may execute on the same physical stack, the active
 runtime and CompilationPlan must define possible nesting or reentry, and stack
 analysis must account for those relations.
 
-Task stack behavior follows the actual Sec runtime/platform model. Stack
+**§ 15(6)** Task stack behavior follows the actual Sec runtime/platform model. Stack
 analysis must not assume that every task has a dedicated native stack.
 
-Possible implementations may include dedicated stacks, shared execution stacks,
+**§ 15(7)** Possible implementations may include dedicated stacks, shared execution stacks,
 stackless state machines, or platform-defined execution contexts.
 
-This rulebook does not choose among them.
+**§ 15(8)** This rulebook does not choose among them.
 
 ---
 
-# Interrupt nesting
+## § 16 Interrupt nesting
 
-Stack analysis must be capable of composing nested execution contributions when
+**§ 16(1)** Stack analysis must be capable of composing nested execution contributions when
 the platform model permits them.
 
-Conceptually:
+**§ 16(2)** Conceptually:
 
 ```text
 thread frame chain
@@ -487,21 +499,21 @@ thread frame chain
 + nested interrupt frame
 ```
 
-may share one physical stack domain.
+**§ 16(3)** may share one physical stack domain.
 
-`rules/platform/interrupts.md` determines the canonical nesting relationships;
+**§ 16(4)** `rules/platform/interrupts.md` determines the canonical nesting relationships;
 `rules/analysis/isr_analysis.md` validates each root against its profile. Stack
 analysis consumes those facts and computes their resource contribution.
 
 ---
 
-# Call graph ownership
+## § 17 Call graph ownership
 
-Stack analysis consumes the canonical call graph defined by `call_graph.md`.
+**§ 17(1)** Stack analysis consumes the canonical call graph defined by `call_graph.md`.
 
-It must not create a parallel call-reachability model.
+**§ 17(2)** It must not create a parallel call-reachability model.
 
-Relevant call-graph facts include:
+**§ 17(3)** Relevant call-graph facts include:
 
 ```text
 known targets
@@ -514,35 +526,35 @@ reentry relationships where represented
 
 ---
 
-# Acyclic call graphs
+## § 18 Acyclic call graphs
 
-For an acyclic reachable call graph, stack maxima can be composed bottom-up.
+**§ 18(1)** For an acyclic reachable call graph, stack maxima can be composed bottom-up.
 
-Conceptually:
+**§ 18(2)** Conceptually:
 
 ```text
 Maximum(F) = OwnFrame(F) + maximum reachable callee contribution at each call path
 ```
 
-A leaf function has no callee contribution, but it may still have a non-zero
+**§ 18(3)** A leaf function has no callee contribution, but it may still have a non-zero
 own frame.
 
-A machine-level leaf function may have an exact zero frame when no stack storage,
+**§ 18(4)** A machine-level leaf function may have an exact zero frame when no stack storage,
 ABI area, saved state, spill, or alignment requirement exists.
 
-Zero own-frame size does not imply zero transitive stack usage.
+**§ 18(5)** Zero own-frame size does not imply zero transitive stack usage.
 
 ---
 
-# Recursion and SCCs
+## § 19 Recursion and SCCs
 
-Recursion is identified from call-graph strongly connected components.
+**§ 19(1)** Recursion is identified from call-graph strongly connected components.
 
-A multi-node SCC may represent mutual recursion.
+**§ 19(2)** A multi-node SCC may represent mutual recursion.
 
-A singleton SCC is recursive only when it contains a self-edge.
+**§ 19(3)** A singleton SCC is recursive only when it contains a self-edge.
 
-Recursion can arise through:
+**§ 19(4)** Recursion can arise through:
 
 ```text
 direct calls
@@ -553,16 +565,16 @@ foreign reentry
 runtime hooks
 ```
 
-Therefore stack analysis must operate on the resolved semantic call graph rather
+**§ 19(5)** Therefore stack analysis must operate on the resolved semantic call graph rather
 than source syntax alone.
 
 ---
 
-# Recursion-depth classification
+## § 20 Recursion-depth classification
 
-Recursion depth is a separate fact from byte stack requirement.
+**§ 20(1)** Recursion depth is a separate fact from byte stack requirement.
 
-Conceptually:
+**§ 20(2)** Conceptually:
 
 ```text
 RecursionDepthBound:
@@ -572,16 +584,16 @@ RecursionDepthBound:
     UnboundedDepth
 ```
 
-A recursive call does not automatically imply `UnboundedDepth`.
+**§ 20(3)** A recursive call does not automatically imply `UnboundedDepth`.
 
 ---
 
-# Finite recursion and finite global bounds
+## § 21 Finite recursion and finite global bounds
 
-A recursive function may terminate for every concrete invocation without having
+**§ 21(1)** A recursive function may terminate for every concrete invocation without having
 a finite compile-time maximum over all permitted root inputs.
 
-For example:
+**§ 21(2)** For example:
 
 ```sec
 fn Countdown(value: uint) void {
@@ -593,12 +605,12 @@ fn Countdown(value: uint) void {
 }
 ```
 
-has finite depth for each concrete `value`.
+**§ 21(3)** has finite depth for each concrete `value`.
 
-However, a global finite upper bound requires a finite proven upper bound on the
+**§ 21(4)** However, a global finite upper bound requires a finite proven upper bound on the
 initial recursive measure.
 
-Therefore:
+**§ 21(5)** Therefore:
 
 ```text
 decreasing measure
@@ -606,13 +618,13 @@ decreasing measure
     -> possible finite recursion-depth proof
 ```
 
-A decreasing argument alone does not prove a finite whole-program maximum.
+**§ 21(6)** A decreasing argument alone does not prove a finite whole-program maximum.
 
 ---
 
-# Sources of finite recursion bounds
+## § 22 Sources of finite recursion bounds
 
-Stack analysis may consume canonical facts such as:
+**§ 22(1)** Stack analysis may consume canonical facts such as:
 
 ```text
 constant call arguments
@@ -624,43 +636,43 @@ root contracts
 other canonical range or control-flow facts
 ```
 
-to establish a finite recursion-depth bound.
+**§ 22(2)** to establish a finite recursion-depth bound.
 
-Stack analysis should reuse these facts rather than build an unrelated range or
+**§ 22(3)** Stack analysis should reuse these facts rather than build an unrelated range or
 termination analysis.
 
-The required Sec 0.1 baseline need not implement a general-purpose termination
+**§ 22(4)** The required Sec 0.1 baseline need not implement a general-purpose termination
 prover.
 
-Simple bounded recursive measures are sufficient for the baseline.
+**§ 22(5)** Simple bounded recursive measures are sufficient for the baseline.
 
-Deep analysis may later add more advanced techniques such as size-change
+**§ 22(6)** Deep analysis may later add more advanced techniques such as size-change
 reasoning, multi-variable ranking functions, or path-sensitive recursive measure
 tracking.
 
 ---
 
-# Unknown recursion depth
+## § 23 Unknown recursion depth
 
-A recursive structure whose concrete depth may be finite but whose maximum
+**§ 23(1)** A recursive structure whose concrete depth may be finite but whose maximum
 cannot be proven is `UnknownDepth`.
 
-For example, recursively walking a linked structure with no statically bounded
+**§ 23(2)** For example, recursively walking a linked structure with no statically bounded
 maximum chain length is normally unknown rather than proven unbounded.
 
-The distinction is normative.
+**§ 23(3)** The distinction is normative.
 
 ---
 
-# Proven unbounded recursion
+## § 24 Proven unbounded recursion
 
-`UnboundedDepth` requires a proof that arbitrarily large recursive depth is
+**§ 24(1)** `UnboundedDepth` requires a proof that arbitrarily large recursive depth is
 reachable under the relevant execution model.
 
-Simple examples include reachable unconditional recursive cycles with no finite
+**§ 24(2)** Simple examples include reachable unconditional recursive cycles with no finite
 limiting state transition.
 
-For example:
+**§ 24(3)** For example:
 
 ```sec
 fn Again() void {
@@ -668,25 +680,25 @@ fn Again() void {
 }
 ```
 
-may yield a proven unbounded stack requirement when the call is reachable and
+**§ 24(4)** may yield a proven unbounded stack requirement when the call is reachable and
 no guaranteed constant-stack recursion rule applies.
 
-Mutual recursion may be proven unbounded by the same principle.
+**§ 24(5)** Mutual recursion may be proven unbounded by the same principle.
 
 ---
 
-# Recursive SCC stack contribution
+## § 25 Recursive SCC stack contribution
 
-A recursive SCC must account for every simultaneously live frame along a
+**§ 25(1)** A recursive SCC must account for every simultaneously live frame along a
 recursive cycle.
 
-For example:
+**§ 25(2)** For example:
 
 ```text
 A -> B -> C -> A
 ```
 
-with own frames:
+**§ 25(3)** with own frames:
 
 ```text
 A = 100 B
@@ -694,59 +706,59 @@ B = 200 B
 C = 300 B
 ```
 
-has a cycle contribution involving all three frames, not merely the largest
+**§ 25(4)** has a cycle contribution involving all three frames, not merely the largest
 single frame.
 
-Different cycles within one SCC may have different stack contributions.
+**§ 25(5)** Different cycles within one SCC may have different stack contributions.
 
-A sound bound must account for the maximum relevant recursive cycle or use an
+**§ 25(6)** A sound bound must account for the maximum relevant recursive cycle or use an
 alternative sound abstraction that proves an equal or larger upper bound.
 
 ---
 
-# Recursive progress must cover relevant transitions
+## § 26 Recursive progress must cover relevant transitions
 
-A recursion-depth proof must apply to all recursive transitions relevant to the
+**§ 26(1)** A recursion-depth proof must apply to all recursive transitions relevant to the
 claimed bound.
 
-If one cycle is known to decrease a bounded measure but another possible cycle
+**§ 26(2)** If one cycle is known to decrease a bounded measure but another possible cycle
 in the same SCC has no corresponding progress proof, the bounded measure from
 the first cycle must not be unsoundly applied to the second.
 
-The result is `UnknownDepth` or `UnboundedDepth` according to what can actually
+**§ 26(3)** The result is `UnknownDepth` or `UnboundedDepth` according to what can actually
 be proven.
 
 ---
 
-# Tail recursion
+## § 27 Tail recursion
 
-Source-level tail position does not by itself prove constant stack usage.
+**§ 27(1)** Source-level tail position does not by itself prove constant stack usage.
 
-Optional tail-call elimination is a backend optimization and must not be used as
+**§ 27(2)** Optional tail-call elimination is a backend optimization and must not be used as
 a source-level resource proof.
 
-If Sec or a specific CompilationPlan later guarantees constant-stack tail calls
+**§ 27(3)** If Sec or a specific CompilationPlan later guarantees constant-stack tail calls
 for a class of calls, stack analysis may consume that guarantee.
 
-Final machine stack summaries may naturally reflect tail calls that were
+**§ 27(4)** Final machine stack summaries may naturally reflect tail calls that were
 actually and validly applied by the backend.
 
 ---
 
-# Inlining
+## § 28 Inlining
 
-Inlining may alter final machine frame requirements by changing call overhead,
+**§ 28(1)** Inlining may alter final machine frame requirements by changing call overhead,
 materialization, slot reuse, register pressure, and spills.
 
-Semantic stack proofs must not depend on optional inlining.
+**§ 28(2)** Semantic stack proofs must not depend on optional inlining.
 
-Final machine stack analysis reflects the actual compiled frame structure.
+**§ 28(3)** Final machine stack analysis reflects the actual compiled frame structure.
 
 ---
 
-# Closed indirect-call target sets
+## § 29 Closed indirect-call target sets
 
-For a reachable indirect call whose canonical callable analysis provides a
+**§ 29(1)** For a reachable indirect call whose canonical callable analysis provides a
 closed target set:
 
 ```text
@@ -754,54 +766,54 @@ KnownTargets = {A, B, C}
 IsClosed = true
 ```
 
-the stack contribution of the call is the maximum requirement among all
+**§ 29(2)** the stack contribution of the call is the maximum requirement among all
 possible targets, accounting for the caller's own frame and path context.
 
-Closed target sets therefore permit finite stack composition when all targets
+**§ 29(3)** Closed target sets therefore permit finite stack composition when all targets
 have finite compatible summaries.
 
 ---
 
-# Open callable contracts
+## § 30 Open callable contracts
 
-Known targets do not close an otherwise open target set.
+**§ 30(1)** Known targets do not close an otherwise open target set.
 
-For example:
+**§ 30(2)** For example:
 
 ```text
 KnownTargets = {A, B}
 OpenContract = X
 ```
 
-requires the open contract to contribute a sound bound for every additional
+**§ 30(3)** requires the open contract to contribute a sound bound for every additional
 target permitted by that contract.
 
-An open callable target set can provide a finite stack bound only when its
+**§ 30(4)** An open callable target set can provide a finite stack bound only when its
 callable contract supplies a verified stack bound sufficient for all permitted
 targets.
 
-The exact source or metadata syntax of such a contract is outside this
+**§ 30(5)** The exact source or metadata syntax of such a contract is outside this
 rulebook.
 
 ---
 
-# Open calls without stack contracts
+## § 31 Open calls without stack contracts
 
-A reachable open indirect call whose contract provides no usable stack bound
+**§ 31(1)** A reachable open indirect call whose contract provides no usable stack bound
 contributes `Unknown` to the transitive maximum.
 
-Known target contributions should still be preserved for explanation where
+**§ 31(2)** Known target contributions should still be preserved for explanation where
 useful.
 
-The compiler must not assume that an unknown callback consumes zero stack.
+**§ 31(3)** The compiler must not assume that an unknown callback consumes zero stack.
 
 ---
 
-# Reentry through callable and foreign boundaries
+## § 32 Reentry through callable and foreign boundaries
 
-Possible reentry participates in recursion analysis.
+**§ 32(1)** Possible reentry participates in recursion analysis.
 
-For example:
+**§ 32(2)** For example:
 
 ```text
 A
@@ -810,41 +822,41 @@ A
  -> A
 ```
 
-is stack-recursive/reentrant when the foreign or callable contracts permit this
+**§ 32(3)** is stack-recursive/reentrant when the foreign or callable contracts permit this
 path.
 
-A verified `NoReentry`-equivalent contract may exclude such a recursive edge.
+**§ 32(4)** A verified `NoReentry`-equivalent contract may exclude such a recursive edge.
 
-Unknown reentry behavior may force the affected stack result to `Unknown`.
+**§ 32(5)** Unknown reentry behavior may force the affected stack result to `Unknown`.
 
-This rulebook defines consumption of such facts, not their source syntax.
+**§ 32(6)** This rulebook defines consumption of such facts, not their source syntax.
 
 ---
 
-# Foreign, runtime, and platform calls
+## § 33 Foreign, runtime, and platform calls
 
-Foreign or runtime code executing on the same physical stack may contribute to
+**§ 33(1)** Foreign or runtime code executing on the same physical stack may contribute to
 the current stack requirement.
 
-A verified foreign/runtime/platform stack contract may provide a finite
+**§ 33(2)** A verified foreign/runtime/platform stack contract may provide a finite
 CompilationPlan-specific contribution.
 
-If no such contract or body-level summary is available, the reachable foreign
+**§ 33(3)** If no such contract or body-level summary is available, the reachable foreign
 contribution is `Unknown` rather than zero.
 
-Compiler-known platform functions may provide canonical stack summaries when
+**§ 33(4)** Compiler-known platform functions may provide canonical stack summaries when
 that knowledge is explicit and trustworthy.
 
-FFI tooling and metadata import are outside this rulebook.
+**§ 33(5)** FFI tooling and metadata import are outside this rulebook.
 
 ---
 
-# Separate compilation
+## § 34 Separate compilation
 
-Separate compilation must be able to preserve compatible stack summaries so
+**§ 34(1)** Separate compilation must be able to preserve compatible stack summaries so
 callers can compose stack requirements without the callee body.
 
-Conceptually, imported information may include:
+**§ 34(2)** Conceptually, imported information may include:
 
 ```text
 semantic own-frame information
@@ -855,43 +867,43 @@ bound kind
 unknown/unbounded cause metadata
 ```
 
-Machine summaries must not be reused for an incompatible CompilationPlan, ABI,
+**§ 34(3)** Machine summaries must not be reused for an incompatible CompilationPlan, ABI,
 summary schema, or compiler semantic model.
 
-Missing compatible summary information produces localized `Unknown` where the
+**§ 34(4)** Missing compatible summary information produces localized `Unknown` where the
 information is required.
 
 ---
 
-# Generic and symbolic summaries
+## § 35 Generic and symbolic summaries
 
-Stack analysis need not duplicate a complete analysis for every generic
+**§ 35(1)** Stack analysis need not duplicate a complete analysis for every generic
 instantiation when a sound symbolic semantic summary can be preserved.
 
-Conceptual examples include:
+**§ 35(2)** Conceptual examples include:
 
 ```text
 OwnFrame(T) <= T.SizeOf + K
 Maximum(F<N>) <= N * K + C
 ```
 
-Such representations are internal analysis facts, not source syntax.
+**§ 35(3)** Such representations are internal analysis facts, not source syntax.
 
-When types, constants, specialization choices, and CompilationPlan are resolved,
+**§ 35(4)** When types, constants, specialization choices, and CompilationPlan are resolved,
 the symbolic facts may be instantiated.
 
-Machine summaries may still differ per specialization when lowering produces
+**§ 35(5)** Machine summaries may still differ per specialization when lowering produces
 different final machine behavior.
 
 ---
 
-# Frame construction
+## § 36 Frame construction
 
-A function's semantic own frame is based on maximum simultaneously live
+**§ 36(1)** A function's semantic own frame is based on maximum simultaneously live
 materialized automatic storage rather than the sum of all declarations that
 appear anywhere in the function.
 
-Conceptually:
+**§ 36(2)** Conceptually:
 
 ```text
 SemanticOwnFrame =
@@ -900,32 +912,32 @@ SemanticOwnFrame =
     + semantic alignment/padding
 ```
 
-at the semantic analysis level.
+**§ 36(3)** at the semantic analysis level.
 
 ---
 
-# Lexical scope and live range
+## § 37 Lexical scope and live range
 
-Source lexical scope is not itself the authoritative stack-storage live range.
+**§ 37(1)** Source lexical scope is not itself the authoritative stack-storage live range.
 
-A storage object may cease to require materialized stack storage before the end
+**§ 37(2)** A storage object may cease to require materialized stack storage before the end
 of a broad lexical block when all canonical lifetime, destruction, cleanup,
 address, and escape dependencies are finished.
 
-Conversely, `defer`, destruction, borrowing, retained addresses, or cleanup paths
+**§ 37(3)** Conversely, `defer`, destruction, borrowing, retained addresses, or cleanup paths
 may keep storage live beyond its last ordinary source read.
 
-Stack analysis consumes canonical lifetime and storage facts to establish these
+**§ 37(4)** Stack analysis consumes canonical lifetime and storage facts to establish these
 ranges.
 
 ---
 
-# Stack-slot reuse
+## § 38 Stack-slot reuse
 
-Two materialized stack objects may share physical stack space only when the
+**§ 38(1)** Two materialized stack objects may share physical stack space only when the
 compiler proves that their required live storage cannot overlap.
 
-Conceptually:
+**§ 38(2)** Conceptually:
 
 ```text
 CanReuse(A, B)
@@ -935,18 +947,18 @@ NoSimultaneousLiveStorage(A, B)
 size/alignment constraints are satisfied
 ```
 
-When overlap is unknown and an upper-bound proof is required, the conservative
+**§ 38(3)** When overlap is unknown and an upper-bound proof is required, the conservative
 result is no reuse.
 
 ---
 
-# Mutually exclusive branches
+## § 39 Mutually exclusive branches
 
-Storage required exclusively by mutually exclusive control-flow branches may
+**§ 39(1)** Storage required exclusively by mutually exclusive control-flow branches may
 share stack space when the compiler proves the branch live ranges cannot
 overlap.
 
-For example:
+**§ 39(2)** For example:
 
 ```sec
 if condition {
@@ -958,19 +970,19 @@ if condition {
 }
 ```
 
-may require approximately the larger branch-local storage rather than the sum of
+**§ 39(3)** may require approximately the larger branch-local storage rather than the sum of
 both branch-local objects, subject to all surrounding live storage, alignment,
 and cleanup constraints.
 
 ---
 
-# Sequential local reuse
+## § 40 Sequential local reuse
 
-Sequential locals within one branch may reuse storage when the earlier object's
+**§ 40(1)** Sequential locals within one branch may reuse storage when the earlier object's
 materialized lifetime has definitely ended before the later object's storage is
 needed.
 
-Reuse must respect:
+**§ 40(2)** Reuse must respect:
 
 ```text
 borrows
@@ -985,62 +997,62 @@ pinning
 stable-address requirements
 ```
 
-No stack-specific shortcut may invalidate these semantics.
+**§ 40(3)** No stack-specific shortcut may invalidate these semantics.
 
 ---
 
-# Alignment and padding
+## § 41 Alignment and padding
 
-Required alignment and padding are real stack costs.
+**§ 41(1)** Required alignment and padding are real stack costs.
 
-Stack analysis consumes resolved object alignment and applies frame-level
+**§ 41(2)** Stack analysis consumes resolved object alignment and applies frame-level
 alignment requirements at the level where they are introduced.
 
-Semantic layout padding belongs to semantic frame accounting when required by
+**§ 41(3)** Semantic layout padding belongs to semantic frame accounting when required by
 canonical semantic frame layout.
 
-ABI/backend padding belongs to machine frame accounting.
+**§ 41(4)** ABI/backend padding belongs to machine frame accounting.
 
 ---
 
-# Parameters
+## § 42 Parameters
 
-Source parameters do not automatically consume local semantic stack storage.
+**§ 42(1)** Source parameters do not automatically consume local semantic stack storage.
 
-Their physical placement may be in registers, incoming stack areas, or indirect
+**§ 42(2)** Their physical placement may be in registers, incoming stack areas, or indirect
 ABI locations.
 
-If Sec semantics require a parameter value to have addressable storage, semantic
+**§ 42(3)** If Sec semantics require a parameter value to have addressable storage, semantic
 analysis may record that requirement.
 
-The backend may then materialize an actual machine stack slot when required by
+**§ 42(4)** The backend may then materialize an actual machine stack slot when required by
 the target ABI and lowering.
 
-Source-level by-value semantics remain by-value even when the ABI passes the
+**§ 42(5)** Source-level by-value semantics remain by-value even when the ABI passes the
 physical representation indirectly.
 
-ABI indirection does not turn a source value parameter into a borrow.
+**§ 42(6)** ABI indirection does not turn a source value parameter into a borrow.
 
 ---
 
-# Address-taken values
+## § 43 Address-taken values
 
-Taking the address of a local or parameter does not by itself require heap or
+**§ 43(1)** Taking the address of a local or parameter does not by itself require heap or
 arena storage.
 
-A stack object remains valid when lifetime and escape analysis prove that every
+**§ 43(2)** A stack object remains valid when lifetime and escape analysis prove that every
 reference or pointer dependency is valid for the stack object's storage
 lifetime.
 
-Addressability may constrain register-only lowering and stack-slot reuse.
+**§ 43(3)** Addressability may constrain register-only lowering and stack-slot reuse.
 
 ---
 
-# Return storage
+## § 44 Return storage
 
-Return-value semantics and physical return storage are distinct.
+**§ 44(1)** Return-value semantics and physical return storage are distinct.
 
-Depending on semantic lowering and ABI, a result may use:
+**§ 44(2)** Depending on semantic lowering and ABI, a result may use:
 
 ```text
 register return
@@ -1050,40 +1062,40 @@ callee temporary
 direct construction into final destination
 ```
 
-Stack accounting must count the storage where it is actually materialized and
+**§ 44(3)** Stack accounting must count the storage where it is actually materialized and
 must not double-count one caller-owned result slot as both caller and callee
 storage when no second buffer exists.
 
 ---
 
-# Temporaries
+## § 45 Temporaries
 
-Only temporaries that require materialized stack storage contribute to stack
+**§ 45(1)** Only temporaries that require materialized stack storage contribute to stack
 usage.
 
-Pure SSA values or values kept entirely in registers do not consume semantic
+**§ 45(2)** Pure SSA values or values kept entirely in registers do not consume semantic
 stack bytes merely because a conceptual temporary exists.
 
-Materialized aggregate temporaries may contribute substantially even when there
+**§ 45(3)** Materialized aggregate temporaries may contribute substantially even when there
 is no named local variable.
 
-Semantically guaranteed direct construction or copy elision may remove a
+**§ 45(4)** Semantically guaranteed direct construction or copy elision may remove a
 semantic temporary.
 
-Optional backend optimization may improve only the machine-level result unless
+**§ 45(5)** Optional backend optimization may improve only the machine-level result unless
 its behavior is part of canonical semantic lowering.
 
 ---
 
-# Destruction and cleanup
+## § 46 Destruction and cleanup
 
-The last ordinary read of a value does not necessarily end its stack-storage
+**§ 46(1)** The last ordinary read of a value does not necessarily end its stack-storage
 requirement.
 
-When destruction requires the materialized object representation, storage must
+**§ 46(2)** When destruction requires the materialized object representation, storage must
 remain available until the relevant destruction action is complete.
 
-Stack analysis therefore distinguishes:
+**§ 46(3)** Stack analysis therefore distinguishes:
 
 ```text
 last ordinary use
@@ -1092,15 +1104,15 @@ destruction
 storage reuse/reclamation point
 ```
 
-according to the canonical lifetime, destruction, and storage rules.
+**§ 46(4)** according to the canonical lifetime, destruction, and storage rules.
 
 ---
 
-# Defer
+## § 47 Defer
 
-A deferred action may extend the stack-storage dependency of values it uses.
+**§ 47(1)** A deferred action may extend the stack-storage dependency of values it uses.
 
-For example:
+**§ 47(2)** For example:
 
 ```sec
 fn Work() void {
@@ -1114,68 +1126,68 @@ fn Work() void {
 }
 ```
 
-may require `resource` to remain materially available through cleanup.
+**§ 47(3)** may require `resource` to remain materially available through cleanup.
 
-Stack analysis consumes canonical defer-use and capture/dependency facts rather
+**§ 47(4)** Stack analysis consumes canonical defer-use and capture/dependency facts rather
 than implementing an independent defer-capture model.
 
 ---
 
-# Error and panic paths
+## § 48 Error and panic paths
 
-Reachable error, cleanup, destruction, and panic paths contribute to maximum
+**§ 48(1)** Reachable error, cleanup, destruction, and panic paths contribute to maximum
 stack demand when their semantics require additional active frames or
 simultaneously live storage.
 
-A cleanup path may therefore determine the maximum even when the ordinary
+**§ 48(2)** A cleanup path may therefore determine the maximum even when the ordinary
 success path is cheaper.
 
-Panic strategy may be CompilationPlan-dependent where runtime behavior differs.
+**§ 48(3)** Panic strategy may be CompilationPlan-dependent where runtime behavior differs.
 
-Stack analysis must not assume that panic cleanup is free.
+**§ 48(4)** Stack analysis must not assume that panic cleanup is free.
 
 ---
 
-# Fixed arrays
+## § 49 Fixed arrays
 
-A fixed array embedded in automatic storage contributes through its resolved
+**§ 49(1)** A fixed array embedded in automatic storage contributes through its resolved
 inline size and alignment.
 
-For example:
+**§ 49(2)** For example:
 
 ```sec
 let buffer: byte[4096]
 ```
 
-is not a dynamic descriptor and must not be silently modeled as separate
+**§ 49(3)** is not a dynamic descriptor and must not be silently modeled as separate
 allocator-backed storage.
 
 ---
 
-# Embedded aggregates
+## § 50 Embedded aggregates
 
-Embedded fields contribute through the resolved size of the containing object.
+**§ 50(1)** Embedded fields contribute through the resolved size of the containing object.
 
-For example, if an automatic struct contains a fixed array, stack analysis
+**§ 50(2)** For example, if an automatic struct contains a fixed array, stack analysis
 counts the containing struct's resolved size rather than double-counting the
 field as a separate independent stack object.
 
-Tagged unions contribute according to their resolved union representation, not
+**§ 50(3)** Tagged unions contribute according to their resolved union representation, not
 the sum of all variants.
 
 ---
 
-# Dynamic owning collections and views
+## § 51 Dynamic owning collections and views
 
-For a dynamic owning collection whose backing storage is separate from its
+**§ 51(1)** For a dynamic owning collection whose backing storage is separate from its
 stack-resident value representation, stack analysis counts the materialized
 owning descriptor or handle but not the separately allocated backing storage.
 
-Likewise, a borrowed view contributes its stack-resident reference/descriptor
+**§ 51(2)** Likewise, a borrowed view contributes its stack-resident reference/descriptor
 representation while its backing storage is accounted for at the storage origin
 where that backing actually resides.
 
-Therefore:
+**§ 51(3)** Therefore:
 
 ```text
 runtime collection length
@@ -1183,81 +1195,81 @@ runtime collection length
 runtime stack frame size
 ```
 
-when the backing storage is separate.
+**§ 51(4)** when the backing storage is separate.
 
 ---
 
-# Arena and allocator-backed storage
+## § 52 Arena and allocator-backed storage
 
-Arena-backed and allocator-backed payload bytes are not stack bytes merely
+**§ 52(1)** Arena-backed and allocator-backed payload bytes are not stack bytes merely
 because a handle, descriptor, or reference to them is stored in an automatic
 local.
 
-Stack analysis counts only the stack-resident representation.
+**§ 52(2)** Stack analysis counts only the stack-resident representation.
 
-Arena and allocator resource accounting remains owned by the corresponding
+**§ 52(3)** Arena and allocator resource accounting remains owned by the corresponding
 storage/allocation analysis and runtime model.
 
 ---
 
-# Runtime-sized automatic storage
+## § 53 Runtime-sized automatic storage
 
-Sec 0.1 stack analysis must not invent runtime-sized automatic stack allocation
+**§ 53(1)** Sec 0.1 stack analysis must not invent runtime-sized automatic stack allocation
 where no such source/storage feature exists.
 
-If a future Sec feature explicitly permits runtime-sized automatic storage, its
+**§ 53(2)** If a future Sec feature explicitly permits runtime-sized automatic storage, its
 storage semantics must represent that choice explicitly.
 
-A finite stack proof for such storage requires a finite proven upper bound on
+**§ 53(3)** A finite stack proof for such storage requires a finite proven upper bound on
 its runtime size expression.
 
 ---
 
-# Partial moves
+## § 54 Partial moves
 
-A partial move does not automatically make the containing stack storage reusable.
+**§ 54(1)** A partial move does not automatically make the containing stack storage reusable.
 
-Remaining live fields, destruction responsibility, cleanup state, and ownership
+**§ 54(2)** Remaining live fields, destruction responsibility, cleanup state, and ownership
 metadata may still require the containing representation or parts of it to
 remain live.
 
-Stack analysis consumes the canonical ownership and destruction state rather
+**§ 54(3)** Stack analysis consumes the canonical ownership and destruction state rather
 than inventing a stack-specific partial-move model.
 
 ---
 
-# Pinning and stable addresses
+## § 55 Pinning and stable addresses
 
-Pinning temporarily constrains storage movement and reuse.
+**§ 55(1)** Pinning temporarily constrains storage movement and reuse.
 
-Pinning does not change storage origin or automatically extend storage to the
+**§ 55(2)** Pinning does not change storage origin or automatically extend storage to the
 end of the function.
 
-When the pin and all other dependencies end, reuse may again become possible.
+**§ 55(3)** When the pin and all other dependencies end, reuse may again become possible.
 
-Likewise, a stable-address requirement constrains slot reuse while the address
+**§ 55(4)** Likewise, a stable-address requirement constrains slot reuse while the address
 may still be semantically observed.
 
-Address stability, reference lifetime, and generation/invalidation facts are
+**§ 55(5)** Address stability, reference lifetime, and generation/invalidation facts are
 canonical inputs to stack reuse decisions where applicable.
 
 ---
 
-# Generational-pointer representation
+## § 56 Generational-pointer representation
 
-Any stack bytes required by the eventual canonical generational-pointer
+**§ 56(1)** Any stack bytes required by the eventual canonical generational-pointer
 representation are determined by resolved layout and lowering.
 
-Stack analysis counts that representation where it is materialized but does not
+**§ 56(2)** Stack analysis counts that representation where it is materialized but does not
 define the representation itself.
 
 ---
 
-# Compiler bookkeeping
+## § 57 Compiler bookkeeping
 
-Compiler bookkeeping may contribute to a frame.
+**§ 57(1)** Compiler bookkeeping may contribute to a frame.
 
-Conceptual examples include:
+**§ 57(2)** Conceptual examples include:
 
 ```text
 cleanup flags
@@ -1266,46 +1278,46 @@ panic/unwind state
 generation or validation tokens
 ```
 
-Bookkeeping mandated by canonical semantic lowering belongs to semantic frame
+**§ 57(3)** Bookkeeping mandated by canonical semantic lowering belongs to semantic frame
 analysis.
 
-Bookkeeping introduced only by a particular backend, ABI, or runtime belongs to
+**§ 57(4)** Bookkeeping introduced only by a particular backend, ABI, or runtime belongs to
 machine frame analysis.
 
 ---
 
-# Semantic and machine frame authority
+## § 58 Semantic and machine frame authority
 
-Semantic stack analysis provides the authoritative semantic frame proof.
+**§ 58(1)** Semantic stack analysis provides the authoritative semantic frame proof.
 
-After backend lowering and frame layout are known, machine stack analysis
+**§ 58(2)** After backend lowering and frame layout are known, machine stack analysis
 provides the authoritative machine-level requirement.
 
-For example:
+**§ 58(3)** For example:
 
 ```text
 SemanticUpperBound = 4608 B
 MachineExactFrame  = 4384 B
 ```
 
-is not a contradiction.
+**§ 58(4)** is not a contradiction.
 
-The values answer different questions.
+**§ 58(5)** The values answer different questions.
 
 ---
 
-# Stack budgets
+## § 59 Stack budgets
 
-Required stack and available stack are separate concepts.
+**§ 59(1)** Required stack and available stack are separate concepts.
 
-Stack analysis first determines a requirement.
+**§ 59(2)** Stack analysis first determines a requirement.
 
-An independent target, project, thread, task, ISR, platform, or build contract
+**§ 59(3)** An independent target, project, thread, task, ISR, platform, or build contract
 may provide an available stack budget.
 
-Validation then compares the appropriate verified requirement with that budget.
+**§ 59(4)** Validation then compares the appropriate verified requirement with that budget.
 
-Conceptually:
+**§ 59(5)** Conceptually:
 
 ```text
 StackBudget {
@@ -1315,57 +1327,57 @@ StackBudget {
 }
 ```
 
-where the measurement level distinguishes at least semantic and machine stack
+**§ 59(6)** where the measurement level distinguishes at least semantic and machine stack
 budgets.
 
-This representation is conceptual and does not define configuration syntax.
+**§ 59(7)** This representation is conceptual and does not define configuration syntax.
 
 ---
 
-# Budget validation
+## § 60 Budget validation
 
-A finite verified bound satisfies a finite stack budget only when the compiler
+**§ 60(1)** A finite verified bound satisfies a finite stack budget only when the compiler
 can prove:
 
 ```text
 RequiredStack <= AvailableStack
 ```
 
-at the budget's specified measurement level and physical stack domain.
+**§ 60(2)** at the budget's specified measurement level and physical stack domain.
 
-If the budget requires a finite proof and the stack result is `Unknown`, the
+**§ 60(3)** If the budget requires a finite proof and the stack result is `Unknown`, the
 build fails because the required proof could not be established.
 
-This is distinct from proving that runtime overflow necessarily occurs.
+**§ 60(4)** This is distinct from proving that runtime overflow necessarily occurs.
 
-If the result is `Unbounded` and the budget is finite, the budget cannot be
+**§ 60(5)** If the result is `Unbounded` and the budget is finite, the budget cannot be
 satisfied.
 
 ---
 
-# Machine-level revalidation
+## § 61 Machine-level revalidation
 
-A hard machine-stack budget must be revalidated after final backend frame
+**§ 61(1)** A hard machine-stack budget must be revalidated after final backend frame
 construction.
 
-A semantic estimate below the machine budget is not sufficient when later ABI,
+**§ 61(2)** A semantic estimate below the machine budget is not sufficient when later ABI,
 spill, or frame-layout effects increase the final machine requirement above the
 budget.
 
-Conversely, if the applicable contract explicitly concerns final machine stack,
+**§ 61(3)** Conversely, if the applicable contract explicitly concerns final machine stack,
 a conservative semantic upper bound above the budget does not by itself reject
 the build when the final verified machine requirement satisfies the budget.
 
-The budget must identify which measurement level is authoritative.
+**§ 61(4)** The budget must identify which measurement level is authoritative.
 
 ---
 
-# No-budget behavior
+## § 62 No-budget behavior
 
-When no active contract requires a finite stack proof, `Unknown` may remain a
+**§ 62(1)** When no active contract requires a finite stack proof, `Unknown` may remain a
 valid analysis result rather than automatically invalidating the program.
 
-It remains useful for:
+**§ 62(2)** It remains useful for:
 
 ```text
 sec analyse
@@ -1375,29 +1387,29 @@ ISR analysis
 platform tooling
 ```
 
-A target or project may impose stronger requirements.
+**§ 62(3)** A target or project may impose stronger requirements.
 
-Stack analysis reports facts; resource policy determines whether those facts
+**§ 62(4)** Stack analysis reports facts; resource policy determines whether those facts
 are acceptable.
 
 ---
 
-# Large-frame advisories
+## § 63 Large-frame advisories
 
-A large automatic frame may be worth reporting even when no hard budget is
+**§ 63(1)** A large automatic frame may be worth reporting even when no hard budget is
 violated.
 
-Such a diagnostic is advisory or optional insight, not a language validity rule.
+**§ 63(2)** Such a diagnostic is advisory or optional insight, not a language validity rule.
 
-No normative byte threshold is defined here.
+**§ 63(3)** No normative byte threshold is defined here.
 
-Recommendation policy may consider the active CompilationPlan and configured
+**§ 63(4)** Recommendation policy may consider the active CompilationPlan and configured
 resource guidance.
 
-The compiler should explain the major automatic-storage contributor rather than
+**§ 63(5)** The compiler should explain the major automatic-storage contributor rather than
 prescribe hidden heap or arena promotion.
 
-A suitable advisory concept is:
+**§ 63(6)** A suitable advisory concept is:
 
 ```text
 `buffer` contributes 1 MiB of automatic storage to this frame.
@@ -1405,16 +1417,16 @@ Consider whether this storage should use an explicitly selected non-stack
 storage strategy.
 ```
 
-The storage strategy remains explicit.
+**§ 63(7)** The storage strategy remains explicit.
 
 ---
 
-# Stack cause paths
+## § 64 Stack cause paths
 
-Stack analysis should preserve a cause path sufficient to explain a maximum,
+**§ 64(1)** Stack analysis should preserve a cause path sufficient to explain a maximum,
 unknown result, unbounded result, or budget failure.
 
-For example:
+**§ 64(2)** For example:
 
 ```text
 main
@@ -1424,24 +1436,24 @@ main
   -> BuildTable
 ```
 
-with representative frame contributions.
+**§ 64(3)** with representative frame contributions.
 
-Recursive reports should identify the responsible SCC, relevant depth proof,
+**§ 64(4)** Recursive reports should identify the responsible SCC, relevant depth proof,
 and recursive contribution.
 
-Unknown reports should identify the boundary that prevented a finite proof.
+**§ 64(5)** Unknown reports should identify the boundary that prevented a finite proof.
 
-Representative paths must be selected deterministically when several equivalent
+**§ 64(6)** Representative paths must be selected deterministically when several equivalent
 maximum paths exist.
 
 ---
 
-# Reusable stack proofs
+## § 65 Reusable stack proofs
 
-A verified per-root stack proof should be reusable by downstream compiler
+**§ 65(1)** A verified per-root stack proof should be reusable by downstream compiler
 consumers.
 
-Conceptually:
+**§ 65(2)** Conceptually:
 
 ```text
 StackProof {
@@ -1455,18 +1467,18 @@ StackProof {
 }
 ```
 
-The exact internal structure is implementation-defined.
+**§ 65(3)** The exact internal structure is implementation-defined.
 
-Consumers must preserve the meaning of `Exact`, `UpperBound`, `Unknown`, and
+**§ 65(4)** Consumers must preserve the meaning of `Exact`, `UpperBound`, `Unknown`, and
 `Unbounded`.
 
-`Unknown` must never be treated as zero.
+**§ 65(5)** `Unknown` must never be treated as zero.
 
 ---
 
-# Consumers
+## § 66 Consumers
 
-Canonical stack facts may be consumed by:
+**§ 66(1)** Canonical stack facts may be consumed by:
 
 ```text
 build validation
@@ -1478,17 +1490,17 @@ embedded/platform tooling
 optimization and cost diagnostics
 ```
 
-The ISR analysis must reuse stack-analysis facts rather than implement a second
+**§ 66(2)** The ISR analysis must reuse stack-analysis facts rather than implement a second
 stack calculator.
 
 ---
 
-# Summary model
+## § 67 Summary model
 
-Stable function summaries should expose semantic stack information independently
+**§ 67(1)** Stable function summaries should expose semantic stack information independently
 from final machine stack information.
 
-Conceptually:
+**§ 67(2)** Conceptually:
 
 ```text
 FunctionStackSummary {
@@ -1501,7 +1513,7 @@ FunctionStackSummary {
 }
 ```
 
-and, when backend information is available:
+**§ 67(3)** and, when backend information is available:
 
 ```text
 MachineStackSummary {
@@ -1514,15 +1526,15 @@ MachineStackSummary {
 }
 ```
 
-These names are explanatory rather than mandatory implementation identifiers.
+**§ 67(4)** These names are explanatory rather than mandatory implementation identifiers.
 
 ---
 
-# Summary versioning
+## § 68 Summary versioning
 
-Persisted stack summaries must be versioned and validated before reuse.
+**§ 68(1)** Persisted stack summaries must be versioned and validated before reuse.
 
-Compatibility may depend on:
+**§ 68(2)** Compatibility may depend on:
 
 ```text
 function identity
@@ -1534,15 +1546,15 @@ ABI
 generic specialization where relevant
 ```
 
-An incompatible or stale summary must not be used as a verified stack proof.
+**§ 68(3)** An incompatible or stale summary must not be used as a verified stack proof.
 
 ---
 
-# Summary invalidation
+## § 69 Summary invalidation
 
-Stack summaries must be invalidated when relevant inputs change.
+**§ 69(1)** Stack summaries must be invalidated when relevant inputs change.
 
-Relevant dependencies include:
+**§ 69(2)** Relevant dependencies include:
 
 ```text
 function body
@@ -1559,33 +1571,33 @@ ABI/backend frame information
 analysis schema or semantic version
 ```
 
-Semantic and machine cache dependencies may differ and may therefore be
+**§ 69(3)** Semantic and machine cache dependencies may differ and may therefore be
 invalidated independently where safe.
 
 ---
 
-# Incremental propagation
+## § 70 Incremental propagation
 
-Incremental analysis should propagate changed stack summaries through dependent
+**§ 70(1)** Incremental analysis should propagate changed stack summaries through dependent
 callers and execution roots.
 
-If a changed function recomputes to an equivalent stack summary, further
+**§ 70(2)** If a changed function recomputes to an equivalent stack summary, further
 propagation may stop.
 
-An unrelated function edit should not force complete project-wide stack
+**§ 70(3)** An unrelated function edit should not force complete project-wide stack
 reanalysis when dependency information proves that cached results remain valid.
 
-Changes to callable target sets or reentry contracts may invalidate stack
+**§ 70(4)** Changes to callable target sets or reentry contracts may invalidate stack
 results even when the source text of the call site did not change.
 
 ---
 
-# Analysis state
+## § 71 Analysis state
 
-Interactive tooling must distinguish incomplete analysis from a proven stack
+**§ 71(1)** Interactive tooling must distinguish incomplete analysis from a proven stack
 result.
 
-Conceptually, tooling state may distinguish:
+**§ 71(2)** Conceptually, tooling state may distinguish:
 
 ```text
 Pending
@@ -1593,20 +1605,20 @@ Partial
 Complete
 ```
 
-or an equivalent model.
+**§ 71(3)** or an equivalent model.
 
-A pending recursive, indirect, or foreign contribution must not be rendered as
+**§ 71(4)** A pending recursive, indirect, or foreign contribution must not be rendered as
 zero or as a verified finite maximum.
 
 ---
 
-# Analysis budgets
+## § 72 Analysis budgets
 
-Stack analysis follows the common Sec analysis-budget model.
+**§ 72(1)** Stack analysis follows the common Sec analysis-budget model.
 
-## Interactive
+### § 72.1 Interactive
 
-Interactive analysis prioritizes low-latency, incremental results such as:
+**§ 72.1(1)** Interactive analysis prioritizes low-latency, incremental results such as:
 
 ```text
 local frame facts
@@ -1615,26 +1627,26 @@ cheap closed-target composition
 available recursion summaries
 ```
 
-Interactive analysis may report `Pending` while stronger proof is still being
+**§ 72.1(2)** Interactive analysis may report `Pending` while stronger proof is still being
 computed.
 
-It must remain sound.
+**§ 72.1(3)** It must remain sound.
 
-## Standard
+### § 72.2 Standard
 
-Standard analysis performs every stack proof required for source validity or the
+**§ 72.2(1)** Standard analysis performs every stack proof required for source validity or the
 active `CompilationPlan` and resource contracts.
 
-If a build requires a finite root stack bound, Standard analysis must perform
+**§ 72.2(2)** If a build requires a finite root stack bound, Standard analysis must perform
 the necessary SCC, indirect-target, imported-summary, and budget proof.
 
-Required proof must not be deferred to Deep.
+**§ 72.2(3)** Required proof must not be deferred to Deep.
 
-Standard results are deterministic.
+**§ 72.2(4)** Standard results are deterministic.
 
-## Deep
+### § 72.3 Deep
 
-Deep analysis may add greater precision and richer explanation, including:
+**§ 72.3(1)** Deep analysis may add greater precision and richer explanation, including:
 
 ```text
 all execution-root reports
@@ -1647,23 +1659,23 @@ cross-module resource maps
 suppressed or blocked precision explanations
 ```
 
-Deep analysis improves precision and information without changing source
+**§ 72.3(2)** Deep analysis improves precision and information without changing source
 semantics.
 
-If a specific build contract requires a refinement normally associated with
+**§ 72.3(3)** If a specific build contract requires a refinement normally associated with
 Deep, that refinement becomes required for that build rather than remaining
 optional.
 
 ---
 
-# LSP presentation
+## § 73 LSP presentation
 
-LSP stack presentation distinguishes information the programmer needs from
+**§ 73(1)** LSP stack presentation distinguishes information the programmer needs from
 optional resource insight.
 
-## NeedToKnow
+### § 73.1 NeedToKnow
 
-Examples include:
+**§ 73.1(1)** Examples include:
 
 ```text
 required finite stack proof failed
@@ -1671,9 +1683,9 @@ hard stack budget exceeded
 proven unbounded stack requirement violates active policy
 ```
 
-## OptionalInsight
+### § 73.2 OptionalInsight
 
-Examples include:
+**§ 73.2(1)** Examples include:
 
 ```text
 local frame size
@@ -1684,28 +1696,28 @@ recursion depth source
 stack-slot reuse explanation
 ```
 
-Optional stack insight is configurable.
+**§ 73.2(2)** Optional stack insight is configurable.
 
-A normal hover should remain compact.
+**§ 73.2(3)** A normal hover should remain compact.
 
-A possible presentation is:
+**§ 73.2(4)** A possible presentation is:
 
 ```text
 Stack: <= 624 B local, <= 4.8 KiB transitive
 ```
 
-when such insight is enabled and proven.
+**§ 73.2(5)** when such insight is enabled and proven.
 
-Detailed or Deep views may expose the full cause path and contributor breakdown.
+**§ 73.2(6)** Detailed or Deep views may expose the full cause path and contributor breakdown.
 
 ---
 
-# LSP configuration changes
+## § 74 LSP configuration changes
 
-Persistent LSP analysis must respond to relevant project configuration changes
+**§ 74(1)** Persistent LSP analysis must respond to relevant project configuration changes
 without requiring an LSP restart.
 
-When stack-analysis depth, optional insight, stack budgets, or related analysis
+**§ 74(2)** When stack-analysis depth, optional insight, stack budgets, or related analysis
 settings change, the LSP must:
 
 ```text
@@ -1715,18 +1727,18 @@ recompute required stack analysis
 refresh dependent diagnostics, hovers, code lenses, or analysis views
 ```
 
-Unchanged semantic summaries may be reused when only presentation policy changes.
+**§ 74(3)** Unchanged semantic summaries may be reused when only presentation policy changes.
 
 ---
 
-# sec analyse
+## § 75 sec analyse
 
-`sec analyse` includes stack analysis in the default all-analysis behavior.
+**§ 75(1)** `sec analyse` includes stack analysis in the default all-analysis behavior.
 
-The tooling must also permit stack analysis to be selected explicitly:
+**§ 75(2)** The tooling must also permit stack analysis to be selected explicitly:
 `sec analyse stack` (`rules/tooling/cli.md` § 5.2, MD-017).
 
-Deep stack analysis should be able to report:
+**§ 75(3)** Deep stack analysis should be able to report:
 
 ```text
 per-function semantic frames
@@ -1745,16 +1757,16 @@ semantic versus machine results
 
 ---
 
-# Diagnostics
+## § 76 Diagnostics
 
-Stack diagnostics must distinguish different proof outcomes.
+**§ 76(1)** Stack diagnostics must distinguish different proof outcomes.
 
-## Proven budget excess
+### § 76.1 Proven budget excess
 
-When a verified requirement exceeds the applicable budget, the diagnostic should
+**§ 76.1(1)** When a verified requirement exceeds the applicable budget, the diagnostic should
 state both values and the measurement level.
 
-Conceptually:
+**§ 76.1(2)** Conceptually:
 
 ```text
 error: machine stack budget exceeded for `Worker`
@@ -1763,13 +1775,13 @@ required: 9216 B
 available: 8192 B
 ```
 
-## Failure to prove a required bound
+### § 76.2 Failure to prove a required bound
 
-When the active contract requires a finite proof but the result is `Unknown`, the
+**§ 76.2(1)** When the active contract requires a finite proof but the result is `Unknown`, the
 diagnostic must state that proof failed rather than claim that overflow is
 certain.
 
-Conceptually:
+**§ 76.2(2)** Conceptually:
 
 ```text
 error: finite stack bound could not be proven for `Worker`
@@ -1781,12 +1793,12 @@ cause:
     callback target has no verified stack bound
 ```
 
-## Proven unbounded stack
+### § 76.3 Proven unbounded stack
 
-A proven unbounded recursive or reentrant structure should be reported as
+**§ 76.3(1)** A proven unbounded recursive or reentrant structure should be reported as
 unbounded rather than merely unknown.
 
-Conceptually:
+**§ 76.3(2)** Conceptually:
 
 ```text
 error: stack requirement is unbounded
@@ -1799,26 +1811,26 @@ no finite recursion-depth bound exists for this reachable cycle
 
 ---
 
-# Diagnostic ownership and severity
+## § 77 Diagnostic ownership and severity
 
-Stack analysis owns stack-resource facts and stack-budget proof diagnostics.
+**§ 77(1)** Stack analysis owns stack-resource facts and stack-budget proof diagnostics.
 
-A stack finding must not duplicate an existing lifetime, escape, ownership,
+**§ 77(2)** A stack finding must not duplicate an existing lifetime, escape, ownership,
 layout, or call-graph error when that upstream error already makes the program
 invalid.
 
-Optional large-frame or resource-design findings remain advisories unless an
+**§ 77(3)** Optional large-frame or resource-design findings remain advisories unless an
 active resource contract promotes them through the normal diagnostic policy.
 
-No separate stack-specific strict mode is introduced by this rulebook.
+**§ 77(4)** No separate stack-specific strict mode is introduced by this rulebook.
 
 ---
 
-# Determinism
+## § 78 Determinism
 
-Stack analysis must be deterministic with respect to semantic inputs.
+**§ 78(1)** Stack analysis must be deterministic with respect to semantic inputs.
 
-Results must not depend on:
+**§ 78(2)** Results must not depend on:
 
 ```text
 source declaration order
@@ -1828,33 +1840,33 @@ parallel scheduling
 cache population order
 ```
 
-When several cause paths produce the same bound, the summary bound remains the
+**§ 78(3)** When several cause paths produce the same bound, the summary bound remains the
 same and any representative diagnostic path is chosen deterministically.
 
 ---
 
-# Fixed-point and widening requirements
+## § 79 Fixed-point and widening requirements
 
-Recursive and symbolic stack analysis must terminate.
+**§ 79(1)** Recursive and symbolic stack analysis must terminate.
 
-When precision must be reduced, widening must remain sound.
+**§ 79(2)** When precision must be reduced, widening must remain sound.
 
-Conceptually, analysis may lose precision in the direction:
+**§ 79(3)** Conceptually, analysis may lose precision in the direction:
 
 ```text
 Exact -> UpperBound -> Unknown
 ```
 
-It must never replace unresolved or unknown stack demand with a guessed finite
+**§ 79(4)** It must never replace unresolved or unknown stack demand with a guessed finite
 bound.
 
-`Unbounded` is used only when unboundedness is proven.
+**§ 79(5)** `Unbounded` is used only when unboundedness is proven.
 
 ---
 
-# Required Sec 0.1 baseline
+## § 80 Required Sec 0.1 baseline
 
-The Sec 0.1 stack-analysis implementation must support at least:
+**§ 80(1)** The Sec 0.1 stack-analysis implementation must support at least:
 
 ```text
 automatic local frame accounting
@@ -1883,14 +1895,14 @@ incremental summaries
 Interactive, Standard, and Deep integration
 ```
 
-Advanced general termination proving, sophisticated symbolic optimization, and
+**§ 80(2)** Advanced general termination proving, sophisticated symbolic optimization, and
 prediction of backend register allocation are not required for Sec 0.1.
 
 ---
 
-# Required frame tests
+## § 81 Required frame tests
 
-Tests must cover at least:
+**§ 81(1)** Tests must cover at least:
 
 ```text
 zero-frame function
@@ -1913,9 +1925,9 @@ destruction and cleanup overlap
 
 ---
 
-# Required call-path tests
+## § 82 Required call-path tests
 
-Tests must cover at least:
+**§ 82(1)** Tests must cover at least:
 
 ```text
 leaf function
@@ -1930,9 +1942,9 @@ cleanup-path maximum
 
 ---
 
-# Required recursion tests
+## § 83 Required recursion tests
 
-Tests must cover at least:
+**§ 83(1)** Tests must cover at least:
 
 ```text
 direct unconditional recursion -> Unbounded
@@ -1945,13 +1957,13 @@ recursive SCC with insufficient progress proof -> Unknown
 unreachable recursive SCC does not affect the root
 ```
 
-The distinction between `Unknown` and `Unbounded` must be explicitly tested.
+**§ 83(2)** The distinction between `Unknown` and `Unbounded` must be explicitly tested.
 
 ---
 
-# Required indirect-call tests
+## § 84 Required indirect-call tests
 
-Tests must cover at least:
+**§ 84(1)** Tests must cover at least:
 
 ```text
 closed single target
@@ -1967,9 +1979,9 @@ unknown reentry produces conservative Unknown where required
 
 ---
 
-# Required foreign/runtime tests
+## § 85 Required foreign/runtime tests
 
-Tests must cover at least:
+**§ 85(1)** Tests must cover at least:
 
 ```text
 known foreign stack contract
@@ -1980,17 +1992,17 @@ callback into the caller SCC
 CompilationPlan-specific foreign stack summary
 ```
 
-Foreign metadata import itself is tested by the FFI/tooling subsystem rather
+**§ 85(2)** Foreign metadata import itself is tested by the FFI/tooling subsystem rather
 than this rulebook.
 
 ---
 
-# Required storage-accounting tests
+## § 86 Required storage-accounting tests
 
-Tests must verify the distinction between inline automatic storage and separate
+**§ 86(1)** Tests must verify the distinction between inline automatic storage and separate
 backing storage.
 
-At minimum:
+**§ 86(2)** At minimum:
 
 ```text
 fixed byte[4096] automatic local -> inline stack bytes
@@ -2002,11 +2014,11 @@ embedded fixed array -> counted through enclosing object
 
 ---
 
-# Required stack-slot reuse regression tests
+## § 87 Required stack-slot reuse regression tests
 
-Tests must ensure reuse is rejected while any relevant dependency remains live.
+**§ 87(1)** Tests must ensure reuse is rejected while any relevant dependency remains live.
 
-At minimum:
+**§ 87(2)** At minimum:
 
 ```text
 borrow remains live
@@ -2021,12 +2033,12 @@ unknown overlap under required upper-bound proof
 
 ---
 
-# Required CompilationPlan tests
+## § 88 Required CompilationPlan tests
 
-Tests must verify that different representative target layouts and ABIs may
+**§ 88(1)** Tests must verify that different representative target layouts and ABIs may
 produce different machine stack summaries without changing source semantics.
 
-Relevant differences include:
+**§ 88(2)** Relevant differences include:
 
 ```text
 pointer width
@@ -2036,14 +2048,14 @@ saved-register requirements
 outgoing-call area
 ```
 
-The exact CI targets are implementation policy rather than normative language
+**§ 88(3)** The exact CI targets are implementation policy rather than normative language
 syntax.
 
 ---
 
-# Required budget tests
+## § 89 Required budget tests
 
-Tests must cover at least:
+**§ 89(1)** Tests must cover at least:
 
 ```text
 Exact below budget -> accepted
@@ -2055,14 +2067,14 @@ Unbounded with finite budget -> rejected
 Unknown with no applicable finite-proof requirement -> retained analysis result
 ```
 
-Tests must also verify that semantic and machine budgets are compared against the
+**§ 89(2)** Tests must also verify that semantic and machine budgets are compared against the
 correct measurement level.
 
 ---
 
-# Required incremental and LSP tests
+## § 90 Required incremental and LSP tests
 
-Tests must cover at least:
+**§ 90(1)** Tests must cover at least:
 
 ```text
 change local size -> own-frame refresh
@@ -2079,9 +2091,9 @@ project configuration reload requires no LSP restart
 
 ---
 
-# Required separate-compilation tests
+## § 91 Required separate-compilation tests
 
-Tests must cover at least:
+**§ 91(1)** Tests must cover at least:
 
 ```text
 compatible imported semantic summary
@@ -2094,9 +2106,9 @@ body-derived and imported compatible summaries produce equivalent composition
 
 ---
 
-# Required performance and termination tests
+## § 92 Required performance and termination tests
 
-Stack analysis must be tested on representative large inputs including:
+**§ 92(1)** Stack analysis must be tested on representative large inputs including:
 
 ```text
 large acyclic call graphs
@@ -2107,15 +2119,15 @@ large functions with many live ranges
 incremental leaf edits
 ```
 
-The tests must establish bounded analysis termination and deterministic results.
+**§ 92(2)** The tests must establish bounded analysis termination and deterministic results.
 
-This rulebook does not define a normative millisecond threshold.
+**§ 92(3)** This rulebook does not define a normative millisecond threshold.
 
 ---
 
-# Completion criteria
+## § 93 Completion criteria
 
-Stack analysis is complete for Sec 0.1 when all of the following are true:
+**§ 93(1)** Stack analysis is complete for Sec 0.1 when all of the following are true:
 
 1. semantic own frames can be modeled from materialized automatic storage;
 2. stack-slot reuse is constrained by canonical lifetime, escape, destruction,
@@ -2145,56 +2157,56 @@ Stack analysis is complete for Sec 0.1 when all of the following are true:
 
 ---
 
-# Normative summary
+## § 94 Normative summary
 
-Stack analysis determines stack resource requirements without owning storage,
+**§ 94(1)** Stack analysis determines stack resource requirements without owning storage,
 lifetime, escape, layout, or call-reachability semantics.
 
-Stack pressure never authorizes implicit promotion to heap, arena, or other
+**§ 94(2)** Stack pressure never authorizes implicit promotion to heap, arena, or other
 non-stack storage.
 
-Semantic and machine stack requirements are distinct compiler facts.
+**§ 94(3)** Semantic and machine stack requirements are distinct compiler facts.
 
-Stack bounds distinguish exact, finite upper-bound, unknown, and proven
+**§ 94(4)** Stack bounds distinguish exact, finite upper-bound, unknown, and proven
 unbounded results.
 
-Per-function stack composition uses maximum simultaneously live storage and
+**§ 94(5)** Per-function stack composition uses maximum simultaneously live storage and
 maximum reachable call-path demand rather than naïvely summing all declarations
 or sequential calls.
 
-Recursive and mutually recursive calls are analyzed through canonical call-graph
+**§ 94(6)** Recursive and mutually recursive calls are analyzed through canonical call-graph
 SCCs. Finite recursion depth requires a sound bound on every relevant recursive
 transition and a finite bound on the initial recursive measure.
 
-Closed indirect-call target sets compose the maximum of all permitted targets.
+**§ 94(7)** Closed indirect-call target sets compose the maximum of all permitted targets.
 Open target sets require a verified callable stack contract for a finite proof.
 Unknown callable, foreign, runtime, or reentry behavior remains explicitly
 unknown rather than being treated as zero.
 
-Stack-frame construction consumes resolved layout and canonical live-range,
+**§ 94(8)** Stack-frame construction consumes resolved layout and canonical live-range,
 ownership, lifetime, destruction, defer, escape, pinning, address, and storage
 facts. Stack-slot reuse requires proof that materialized storage cannot overlap.
 
-Fixed arrays and embedded aggregates contribute inline storage. Dynamic owning
+**§ 94(9)** Fixed arrays and embedded aggregates contribute inline storage. Dynamic owning
 collections, views, arena-backed objects, and allocator-backed objects contribute
 only their stack-resident descriptors or handles when their backing storage is
 separate.
 
-Stack requirements are computed per execution root and physical stack domain
+**§ 94(10)** Stack requirements are computed per execution root and physical stack domain
 according to the active runtime and CompilationPlan.
 
-Required stack and available stack budget are separate concepts. A finite budget
+**§ 94(11)** Required stack and available stack budget are separate concepts. A finite budget
 is satisfied only by an appropriate verified finite bound at the budget's
 specified semantic or machine measurement level.
 
-A hard budget failure caused by `Unknown` is a failure to prove the required
+**§ 94(12)** A hard budget failure caused by `Unknown` is a failure to prove the required
 resource contract, not proof that overflow must occur. `Unbounded` remains a
 separate proven result.
 
-Stack summaries are reusable, versioned, incrementally invalidated compiler
+**§ 94(13)** Stack summaries are reusable, versioned, incrementally invalidated compiler
 facts consumed by build validation, ISR analysis, LSP, `sec analyse`, resource
 reporting, and platform tooling.
 
-Interactive analysis may expose pending or partial results but must remain sound.
+**§ 94(14)** Interactive analysis may expose pending or partial results but must remain sound.
 Standard performs every stack proof required by the active build. Deep may add
 more expensive precision and explanation without changing source semantics.

@@ -685,6 +685,8 @@ impl File {
 
 **§ 17.3(2)** A removed element whose ownership has transferred to a result is not destroyed by the collection.
 
+**§ 17.3(3)** For an owning dynamic array `T[]` the canonical order is reverse logical index order. It then ends its live backing invalidation domain and reclaims backing only through the resolved reclamation authority: Arena-backed bytes are reclaimed by Arena policy, not individually by the array, which still owns the element lifetimes (`rules/collections/collections.md` § 12.2; `rules/mlir/normative-sync/sec_dynamic_array_sync_v1.md` §§ 13–14).
+
 ### § 17.4 Shaped/tensor values
 
 **§ 17.4(1)** An owning tensor/matrix/vector representation destroys still-owned initialized element/resources as required and releases owned backing storage through its canonical allocation authority.

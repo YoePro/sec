@@ -2,8 +2,8 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-14
-- **Last updated:** 2026-08-26
-- **Document revision:** 2.0
+- **Last updated:** 2026-11-07
+- **Document revision:** 2.1
 - **Language version:** Sec 0.1
 - **Replaces:** `rules/declarations/functions_lambda.txt`
 - **Canonical path:** `rules/declarations/lambda-functions.md`
@@ -327,7 +327,7 @@ Example:
 ```sec
 let resource := OpenResource()
 
-let take := capture(resource) fn() Resource {
+let take := capture(<-resource) fn() Resource {
     return resource
 }
 ```
@@ -544,9 +544,14 @@ A shared borrowed capture uses:
 
 ```sec
 capture(ref value) fn() int {
-    return value
+    return *value
 }
 ```
+
+Inside the body, `value` is a reference holder of type `ref T`, read through
+`*value`, exactly like a `ref` payload binding of a match pattern
+(`rules/control-flow/flowcontrol_match.md`, payload bindings; owner decision
+2026-11-07). The holder itself cannot be rebound.
 
 The closure stores shared borrowed authority according to the normal borrowing rules.
 
@@ -562,9 +567,12 @@ An exclusive mutable borrowed capture uses:
 
 ```sec
 capture(ref mut value) fn() void {
-    value += 1
+    *value += 1
 }
 ```
+
+Inside the body, `value` is a reference holder of type `ref mut T`; writes go
+through `*value` (§19).
 
 The closure holds exclusive mutable authority for the lifetime of that capture.
 
@@ -663,7 +671,7 @@ Invalid:
 ```sec
 fn Invalid(value: int) fn() int {
     return capture(ref value) fn() int {
-        return value
+        return *value
     }
 }
 ```
@@ -737,7 +745,7 @@ Example:
 ```sec
 let resource := OpenResource()
 
-let take := capture(resource) fn() Resource {
+let take := capture(<-resource) fn() Resource {
     return resource
 }
 ```

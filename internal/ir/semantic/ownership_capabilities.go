@@ -148,7 +148,9 @@ func validateOwnershipLoweringCapabilities(program *ast.Program, analyzer *sema.
 				plan, planned := analyzer.ResolvedTransferPlanOf(expression)
 				// A whole owned local moved out by a return or into a new
 				// local lowers to own.move + cleanup.cancel (P17-35).
-				wholeLocalMove := planned && (ownedLocalMoveLowerable(plan) || fieldMoveLowerable(plan))
+				// A pattern binding's transfer is lowered, or rejected at its
+				// own site, by the match and try-handler payload producers.
+				wholeLocalMove := planned && (ownedLocalMoveLowerable(plan) || fieldMoveLowerable(plan) || plan.Site == sema.TransferSiteMatchBinding)
 				if planned && !wholeLocalMove &&
 					(plan.Action == sema.TransferCopySemantic || !sema.TriviallyDestructible(plan.Source.Type)) {
 					return &UnsupportedFeatureError{Feature: "P17 non-trivial ownership transfer (P17-26/P17-27)", Package: maxPackage, Location: location(expressionToken(expression))}
@@ -167,10 +169,11 @@ func validateOwnershipLoweringCapabilities(program *ast.Program, analyzer *sema.
 }
 
 // ownedLocalMoveLowerable reports a transfer the P17 producers lower: a move
-// of a whole local binding into a return, local, call or owning construction.
+// of a whole local binding into a return, local, call, owning construction
+// or match arm result.
 func ownedLocalMoveLowerable(plan sema.ResolvedTransferPlan) bool {
 	return plan.Action == sema.TransferMove && len(plan.Source.Projections) == 0 && !plan.Partial &&
-		(plan.Site == sema.TransferSiteReturn || plan.Site == sema.TransferSiteInitialization || plan.Site == sema.TransferSiteArgument || plan.Site == sema.TransferSiteConstruction)
+		(plan.Site == sema.TransferSiteReturn || plan.Site == sema.TransferSiteInitialization || plan.Site == sema.TransferSiteArgument || plan.Site == sema.TransferSiteConstruction || plan.Site == sema.TransferSiteBranch)
 }
 
 // ArrayConstructionNeedsOwnership exposes the canonical type-table boundary

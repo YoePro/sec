@@ -34,7 +34,7 @@ func (p *Parser) isInterfaceMemberStart(token lexer.Token) bool {
 // isImplMemberStart includes contextual init/event/unit metadata and attributes.
 // It does not classify arbitrary identifiers as reliable member boundaries.
 // Rules: rules/foundations/grammar.md — "Impl declaration", "Unit metadata inside impl";
-// rules/compiler/parser_recovery.md — "Impl-member recovery", Appendix A.8.
+// rules/compiler/parser_recovery.md — "Impl recovery", "Grammar-derived start sets".
 func (p *Parser) isImplMemberStart(token lexer.Token) bool {
 	switch token.Type {
 	case lexer.TYPE, lexer.UNIT, lexer.ENUM, lexer.FN, lexer.FREE, lexer.PROPERTY, lexer.STRUCT, lexer.LET, lexer.STATIC, lexer.AT:
@@ -129,7 +129,7 @@ func (p *Parser) isTypeNameToken(tokenType lexer.TokenType) bool {
 // diagnosed misplaced forms. Identifier-led candidates need contextual lookahead;
 // expression starts are classified separately.
 //
-// Rules: rules/compiler/parser_recovery.md — "Statement recovery", Appendix A.8.
+// Rules: rules/compiler/parser_recovery.md — "General statement synchronization", "Grammar-derived start sets".
 func (p *Parser) isStatementStart(t lexer.TokenType) bool {
 	switch t {
 	case lexer.MODULE,
@@ -183,7 +183,7 @@ func (p *Parser) isStatementStart(t lexer.TokenType) bool {
 // invalid-declaration retention. Identifier-led typed/test declarations require
 // contextual lookahead.
 //
-// Rules: rules/compiler/parser_recovery.md — "Declaration recovery", Appendix A.8.
+// Rules: rules/compiler/parser_recovery.md — "Declaration-header recovery", "Grammar-derived start sets".
 func isDeclarationStart(t lexer.TokenType) bool {
 	switch t {
 	case lexer.MODULE, lexer.IMPORT, lexer.TYPE, lexer.UNIT, lexer.ENUM,

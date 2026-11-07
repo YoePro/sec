@@ -13,7 +13,7 @@ import (
 // Every canonical prefix in the fixture must be accepted both by Pratt parsing
 // and its shared start predicate, including unit references and explicit moves.
 // Rules: rules/foundations/grammar.md — "Primary expressions", "Prefix expressions";
-// rules/compiler/parser_recovery.md — Appendix A.8.
+// rules/compiler/parser_recovery.md — "Grammar-derived start sets".
 func TestGrammarMetadataAgreesWithExpressionAndAssignmentParsing(t *testing.T) {
 	source, err := os.ReadFile("../../testdata/parser/grammar_metadata_valid.sec")
 	if err != nil {
@@ -72,7 +72,7 @@ func TestGrammarMetadataAgreesWithExpressionAndAssignmentParsing(t *testing.T) {
 
 // Invalid predecessors must not swallow identifier-led impl members or
 // attributes, nor assert/panic/reference statement starts on following lines.
-// Rules: rules/compiler/parser_recovery.md — "Impl-member recovery", "Statement recovery".
+// Rules: rules/compiler/parser_recovery.md — "Impl recovery", "General statement synchronization".
 func TestGrammarMetadataPreservesRecoverySiblings(t *testing.T) {
 	source, err := os.ReadFile("../../testdata/parser/grammar_metadata_recovery_invalid.sec")
 	if err != nil {

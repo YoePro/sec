@@ -67,7 +67,6 @@ func copyClassificationOf(typ Type, visiting map[string]bool) CopyClassification
 		CharType,
 		RuneType,
 		RawPtrType,
-		FunctionType,
 		InterfaceType,
 		RegisterType,
 		EnumType,
@@ -75,6 +74,13 @@ func copyClassificationOf(typ Type, visiting map[string]bool) CopyClassification
 		SliceType,
 		StringViewType,
 		UnitDimensionType:
+		return CopyTrivial
+	case FunctionType:
+		// lambda-functions.md §27: a consuming callable and a closure with
+		// a move-only environment are move-only.
+		if normalizedCallableCapability(typ.FunctionCapability) == CallableConsuming || typ.FunctionEnvironmentMoveOnly {
+			return CopyMoveOnly
+		}
 		return CopyTrivial
 	case ReferenceType:
 		if typ.ReferenceMutable {

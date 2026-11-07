@@ -86,11 +86,14 @@ func (a *Analyzer) analyzeMatchArmBody(arm *ast.MatchArm, info matchPatternInfo)
 			}
 		}
 	}
+	if identifier, ok := info.PayloadNode.(*ast.Identifier); ok && !info.PayloadBorrow {
+		a.recordBindingTransfer(identifier, info.BindingName, info.PayloadPlace, info.BindingType)
+	}
 	a.defineMatchFieldBindings(info)
 	defer a.enterOwnedMatchBinding(arm, info)()
 	defer func() {
 		a.symbols = previousSymbols
-		a.constInts = previousConstInts
+		a.restoreConstInts(previousConstInts)
 		a.assigned = previousAssigned
 		a.moved = previousMoved
 		a.availabilityStates = previousMoveReasons
@@ -141,7 +144,7 @@ func (a *Analyzer) analyzeMatchArmBody(arm *ast.MatchArm, info matchPatternInfo)
 	if a.terminalReturnDepth > 0 {
 		ownershipValid = !a.validateTerminalReturnConstruction(arm.Body)
 	} else {
-		ownershipValid = a.validateOwningConstructionSource(arm.Body)
+		ownershipValid = a.validateOwningConstructionSource(arm.Body, TransferSiteBranch)
 	}
 	if ownershipValid {
 		a.markMoveSource(arm.Body)
@@ -203,7 +206,7 @@ func (a *Analyzer) analyzeMatchArmBlockValue(arm *ast.MatchArm) Type {
 		if a.terminalReturnDepth > 0 {
 			ownershipValid = !a.validateTerminalReturnConstruction(value)
 		} else {
-			ownershipValid = a.validateOwningConstructionSource(value)
+			ownershipValid = a.validateOwningConstructionSource(value, TransferSiteBranch)
 		}
 		if ownershipValid {
 			a.markMoveSource(value)

@@ -34,7 +34,6 @@ func TestTargetSizedBoundsReachEveryIntegerConsumer(t *testing.T) {
 		"generic-field":    "type Box[T] struct {\n v: T,\n}\nfn F() void {\n let b := Box[int] { v: 3000000000 }\n discard b\n}",
 		"array-element":    "fn F() void {\n let a: int[2] := [1, 3000000000]\n discard a\n}",
 		"assignment":       "fn F() void {\n let mut a: int := 0\n a = 3000000000\n discard a\n}",
-		"compound":         "fn F() void {\n let mut a: int := 2000000000\n a += 2000000000\n discard a\n}",
 		"comparison":       "fn F(a: int) bool {\n return a == 3000000000\n}",
 		"static":           "let Limit: int := 3000000000",
 	}

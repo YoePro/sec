@@ -48,7 +48,9 @@ func canInitialize(target Type, value Type, expr ast.Expression) bool {
 	}
 
 	if target.Kind == FunctionType || value.Kind == FunctionType {
-		return sameConcreteType(target, value)
+		// lambda-functions.md §10: a callable may strengthen, never weaken,
+		// the authority its invocation requires.
+		return sameConcreteType(target, value) || callableCapabilityStrengthens(target, value)
 	}
 
 	if target.Kind == ReferenceType {

@@ -70,6 +70,9 @@ func (a *Analyzer) inferLambdaExpression(expr *ast.LambdaExpression) (Type, expr
 	previousLambdaOuterSymbols := a.lambdaOuterSymbols
 	previousLoopDepth := a.loopDepth
 	previousTest := a.currentTest
+	previousEnvironment := a.lambdaEnvironment
+	previousBorrows := a.borrows
+	environment := &lambdaEnvironmentState{owned: map[string]bool{}}
 
 	// rules/declarations/lambda-functions.md, capture eligibility; correction11.md
 	// separates enclosing locals from ordinary module/type lookup. Non-local
@@ -124,8 +127,20 @@ func (a *Analyzer) inferLambdaExpression(expr *ast.LambdaExpression) (Type, expr
 		a.lambdaOuterSymbols = previousLambdaOuterSymbols
 		a.loopDepth = previousLoopDepth
 		a.currentTest = previousTest
+		a.lambdaEnvironment = previousEnvironment
+		a.borrows = previousBorrows
 	}()
 
+	a.lambdaEnvironment = environment
+	// A capture name inside the body denotes the environment field or the
+	// borrow taken at construction, not the outer Place: outer borrows of
+	// that root were checked when the closure was built (§23).
+	a.borrows = copyBorrows(previousBorrows)
+	for _, capture := range expr.Captures {
+		if capture.Name != nil {
+			delete(a.borrows, capture.Name.Value)
+		}
+	}
 	a.defineLambdaCaptures(expr, captureCandidates, previousAssigned)
 	defer a.enterIndependentDeferScope()()
 	// Environment construction executes in the enclosing callable. Only the
@@ -146,5 +161,11 @@ func (a *Analyzer) inferLambdaExpression(expr *ast.LambdaExpression) (Type, expr
 		a.addErrorAtToken(expr.Token, "lambda must return %s", typeDisplayName(returnType))
 	}
 
+	// §§9, 20, 27–28: the callable capability and the closure's
+	// move-only environment follow from how the body used its environment.
+	capability := environment.inferredCapability()
+	lambdaType.FunctionCapability = capability
+	lambdaType.Name = functionTypeName(params, returnType, capability)
+	lambdaType.FunctionEnvironmentMoveOnly = environment.environmentMoveOnly()
 	return lambdaType, expressionValue{Display: expr.String()}
 }

@@ -4,6 +4,7 @@ add_mlir_library(SecMLIRAnalysis
   VerifyCleanups.cpp
   VerifyDestructionPlans.cpp
   VerifyOwnership.cpp
+  VerifyBorrowDestruction.cpp
   VerifyPlaceReferences.cpp
   VerifyReturnOrigins.cpp
   VerifyReferenceTransfers.cpp

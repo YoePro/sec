@@ -618,7 +618,7 @@ Implemented:
 
 Every multiline lexer token that receives semantic highlighting is encoded as
 separate single-line semantic tokens. In particular, every non-empty physical
-line of an ordinary, documentation, or nested block comment receives the same
+line of an ordinary or documentation block comment receives the same
 comment classification and modifiers as its enclosing lexer token. Segment
 starts and lengths use the protocol's UTF-16 code-unit coordinates, including
 when astral Unicode scalars occur before or inside the segment.

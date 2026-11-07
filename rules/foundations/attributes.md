@@ -2,22 +2,22 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-04
-- **Last updated:** 2026-09-29
+- **Last updated:** 2026-11-07 (stable chapter, subsection, and paragraph numbering); 2026-09-29
 - **Document revision:** 1.1
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/foundations/attributes.md`
 - **Replaces:** Earlier unversioned revision at the same canonical path
-- **Repository baseline reviewed:** `main-reviewed-2026-09-29`
+- **Repository baseline reviewed:** `28780c01d63c3fc9eec2321ef67e3dd69962f043`
 - **Implementation governance:** `governance/attributes.yaml`
 - **Related rulebooks:** `rules/foundations/grammar.md`, `rules/foundations/lexical_structure.md`, `rules/compiler/parser_recovery.md`, `rules/compiler/compile_time_evaluation.md`, `rules/declarations/static.md`, `rules/memory/copy_move.md`, `rules/errors/runtime_checks.md`, `rules/errors/panic.md`, `rules/platform/fixed-address-bindings.md`, `rules/platform/interrupts.md`, `rules/platform/target_profiles.md`, `rules/platform/platform_model.md`, `rules/platform/ffi.md`, `rules/compiler/semantic_ir.md`, `rules/tooling/lsp.md`
 
 ---
 
-## Purpose and authority
+## § 1 Purpose and authority
 
-This document is the canonical attribute rulebook for Sec 0.1.
+**§ 1(1)** This document is the canonical attribute rulebook for Sec 0.1.
 
-It defines:
+**§ 1(2)** It defines:
 
 - the purpose of attributes;
 - attribute syntax;
@@ -33,21 +33,21 @@ It defines:
 - duplicate and conflict rules;
 - formatter and LSP behavior;
 
-Sec 0.1 uses a closed set of compiler-known attributes.
+**§ 1(3)** Sec 0.1 uses a closed set of compiler-known attributes.
 
-The struct layout modifiers `pack(N)`, `minAlign(N)` and `byteOffset(N)` are compiler-known contextual declaration modifiers in struct and stored-field grammar (MD-019), not entries of this attribute set; `@pack`, `@minAlign` and `@byteOffset` do not exist, and attribute attachment is not extended to struct fields.
+**§ 1(4)** The struct layout modifiers `pack(N)`, `minAlign(N)` and `byteOffset(N)` are compiler-known contextual declaration modifiers in struct and stored-field grammar (MD-019), not entries of this attribute set; `@pack`, `@minAlign` and `@byteOffset` do not exist, and attribute attachment is not extended to struct fields.
 
-Unknown attributes are compile errors.
+**§ 1(5)** Unknown attributes are compile errors.
 
-User-defined passive metadata attributes are not part of Sec 0.1.
+**§ 1(6)** User-defined passive metadata attributes are not part of Sec 0.1.
 
 ---
 
-# Design principle
+## § 2 Design principle
 
-Attributes are a first-class but deliberately limited part of the language.
+**§ 2(1)** Attributes are a first-class but deliberately limited part of the language.
 
-They are used when a property:
+**§ 2(2)** They are used when a property:
 
 ```text
 belongs to a source declaration
@@ -57,16 +57,16 @@ does not justify a new declaration keyword
 must be understood and validated by the compiler
 ```
 
-Attributes are not arbitrary comments.
+**§ 2(3)** Attributes are not arbitrary comments.
 
-They are not a textual preprocessor.
+**§ 2(4)** They are not a textual preprocessor.
 
-They are not macros.
+**§ 2(5)** They are not macros.
 
-They are not runtime reflection metadata unless a future rule explicitly says
+**§ 2(6)** They are not runtime reflection metadata unless a future rule explicitly says
 otherwise.
 
-`static` is a storage-duration and type-association modifier, not a physical
+**§ 2(7)** `static` is a storage-duration and type-association modifier, not a physical
 placement mechanism. It does not by itself select a linker section, absolute
 address, MMIO binding, memory space, or target-specific storage class. Physical
 placement uses only mechanisms defined by this closed attribute set or by the
@@ -76,9 +76,9 @@ the compiler-known set with complete semantics.
 
 ---
 
-# Initial compiler-known attribute set
+## § 3 Initial compiler-known attribute set
 
-Sec 0.1 initially defines:
+**§ 3(1)** Sec 0.1 initially defines:
 
 ```text
 @target(...)
@@ -94,9 +94,9 @@ Sec 0.1 initially defines:
 @link_name("foreign-symbol")
 ```
 
-The set may grow in later language versions.
+**§ 3(2)** The set may grow in later language versions.
 
-Adding a new compiler-known attribute requires:
+**§ 3(3)** Adding a new compiler-known attribute requires:
 
 ```text
 a stable name
@@ -112,12 +112,12 @@ defined conformance tests
 
 ---
 
-# Closed attribute set
+## § 4 Closed attribute set
 
-Only attributes known to the selected compiler version and language profile are
+**§ 4(1)** Only attributes known to the selected compiler version and language profile are
 accepted.
 
-Invalid:
+**§ 4(2)** Invalid:
 
 ```sec
 @audit(category: "finance")
@@ -125,19 +125,19 @@ fn PostInvoice() void {
 }
 ```
 
-unless a future rule has registered `@audit` as a compiler-known attribute.
+**§ 4(3)** unless a future rule has registered `@audit` as a compiler-known attribute.
 
-Expected diagnostic:
+**§ 4(4)** Expected diagnostic:
 
 ```text
 unknown attribute @audit
 ```
 
-Sec 0.1 does not preserve unknown attributes as passive metadata.
+**§ 4(5)** Sec 0.1 does not preserve unknown attributes as passive metadata.
 
-This avoids introducing syntax without a defined consumer.
+**§ 4(6)** This avoids introducing syntax without a defined consumer.
 
-Possible future consumers such as:
+**§ 4(7)** Possible future consumers such as:
 
 ```text
 compiler plugins
@@ -149,41 +149,41 @@ reflection
 binary metadata
 ```
 
-must be designed before arbitrary user-defined attributes are introduced.
+**§ 4(8)** must be designed before arbitrary user-defined attributes are introduced.
 
 ---
 
-# Attribute categories
+## § 5 Attribute categories
 
-The initial attributes fall into four semantic categories.
+**§ 5(1)** The initial attributes fall into four semantic categories.
 
-## Selection attributes
+### § 5.1 Selection attributes
 
 ```text
 @target
 @when
 ```
 
-These decide whether a file or top-level statement participates in a concrete
+**§ 5.1(1)** These decide whether a file or top-level statement participates in a concrete
 compilation plan.
 
-## Target-binding attributes
+### § 5.2 Target-binding attributes
 
 ```text
 @address
 @interrupt
 ```
 
-These bind a declaration to target-specific storage or interrupt machinery.
+**§ 5.2(1)** These bind a declaration to target-specific storage or interrupt machinery.
 
-**Amendment MD-111 (2026-10-30, `rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md` § 10).** `@address` takes exactly
+**§ 5.2(2)** **Amendment MD-111 (2026-10-30, `rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md` § 11).** `@address` takes exactly
 one statically resolved endpoint path and an optional second contextual marker
 `alias`: `@address(Endpoint)` or `@address(Endpoint, alias)`. A numeric,
 computed or runtime argument, a third argument, an unknown second marker and a
 duplicated `alias` are invalid. `alias` is not a separate `@alias` attribute
 (`rules/platform/fixed-address-bindings.md` §§ 2, 10).
 
-## Verified guarantee attributes
+### § 5.3 Verified guarantee attributes
 
 ```text
 @isr
@@ -193,25 +193,25 @@ duplicated `alias` are invalid. `alias` is not a separate `@alias` attribute
 @noBlock
 ```
 
-The compiler must verify the declared guarantee.
+**§ 5.3(1)** The compiler must verify the declared guarantee.
 
-They are not unchecked programmer promises for ordinary Sec code.
+**§ 5.3(2)** They are not unchecked programmer promises for ordinary Sec code.
 
-## Nominal policy attributes
+### § 5.4 Nominal policy attributes
 
 ```text
 @noCopy
 ```
 
-These change a nominal type's semantic classification.
+**§ 5.4(1)** These change a nominal type's semantic classification.
 
-## Foreign-binding attributes
+### § 5.5 Foreign-binding attributes
 
 ```text
 @link_name("foreign-symbol")
 ```
 
-`@link_name` is valid only on an `extern` declaration. It requires exactly one
+**§ 5.5(1)** `@link_name` is valid only on an `extern` declaration. It requires exactly one
 non-empty string-literal argument and may appear at most once on a declaration.
 It changes only the foreign/link symbol: the Sec name, calling convention,
 safety, ownership, effects, dependency metadata, and ABI compatibility are
@@ -219,9 +219,9 @@ unchanged. Conflicting explicit symbols in one link domain are invalid.
 
 ---
 
-# General syntax
+## § 6 General syntax
 
-An attribute begins with `@` followed by its compiler-known name.
+**§ 6(1)** An attribute begins with `@` followed by its compiler-known name.
 
 ```ebnf
 Attribute
@@ -238,7 +238,7 @@ AttributeArgument
       | Identifier ":" Expression
 ```
 
-Examples:
+**§ 6(2)** Examples:
 
 ```sec
 @isr
@@ -262,9 +262,9 @@ Examples:
 
 ---
 
-# Positional and named arguments
+## § 7 Positional and named arguments
 
-An attribute defines whether its arguments are:
+**§ 7(1)** An attribute defines whether its arguments are:
 
 ```text
 positional
@@ -272,7 +272,7 @@ named
 either
 ```
 
-The initial forms are:
+**§ 7(2)** The initial forms are:
 
 ```text
 @address(value)
@@ -296,19 +296,19 @@ The initial forms are:
     no arguments
 ```
 
-Using the wrong argument form is a compile error.
+**§ 7(3)** Using the wrong argument form is a compile error.
 
 ---
 
-# Compile-time arguments
+## § 8 Compile-time arguments
 
-Every initial attribute argument is a `PlanTimeRequiredContext` as defined by
+**§ 8(1)** Every initial attribute argument is a `PlanTimeRequiredContext` as defined by
 `rules/compiler/compile_time_evaluation.md`.
 
-Attribute evaluation may use only values available while constructing or
+**§ 8(2)** Attribute evaluation may use only values available while constructing or
 validating the compilation plan.
 
-This preserves the restricted attribute-expression contract. Ordinary
+**§ 8(3)** This preserves the restricted attribute-expression contract. Ordinary
 user-function semantic CTE is not permitted in initial `@when` selection,
 because plan-time selection establishes the active semantic graph before
 ordinary typed Sema:
@@ -320,7 +320,7 @@ CompilationRequest
     -> ordinary typed Sema
 ```
 
-No initial attribute argument may require:
+**§ 8(4)** No initial attribute argument may require:
 
 ```text
 runtime execution
@@ -332,16 +332,16 @@ dynamic dispatch
 foreign calls
 ```
 
-Compiler-known target constants and configuration values are allowed where the
+**§ 8(5)** Compiler-known target constants and configuration values are allowed where the
 attribute defines them.
 
 ---
 
-# Attribute attachment
+## § 9 Attribute attachment
 
-An attribute normally applies to the next top-level statement.
+**§ 9(1)** An attribute normally applies to the next top-level statement.
 
-Example:
+**§ 9(2)** Example:
 
 ```sec
 @noPanic
@@ -350,7 +350,7 @@ fn Calculate() int {
 }
 ```
 
-Multiple attributes may attach to the same statement:
+**§ 9(3)** Multiple attributes may attach to the same statement:
 
 ```sec
 @noAlloc
@@ -361,20 +361,20 @@ fn PollDevice() Result[State, DeviceError] {
 }
 ```
 
-The attachment sequence ends at the attached statement.
+**§ 9(4)** The attachment sequence ends at the attached statement.
 
-An attribute does not modify the following attribute independently.
+**§ 9(5)** An attribute does not modify the following attribute independently.
 
-All consecutive attributes form one attribute set for the same statement.
+**§ 9(6)** All consecutive attributes form one attribute set for the same statement.
 
 ---
 
-# Comments and whitespace
+## § 10 Comments and whitespace
 
-Whitespace and comments between an attribute and its attached statement do not
+**§ 10(1)** Whitespace and comments between an attribute and its attached statement do not
 change attachment.
 
-Example:
+**§ 10(2)** Example:
 
 ```sec
 @noPanic
@@ -386,15 +386,15 @@ fn Add(left: int, right: int) Result[int, ArithmeticError] {
 }
 ```
 
-A new top-level statement ends the attribute set.
+**§ 10(3)** A new top-level statement ends the attribute set.
 
-An attribute left without an attached statement before EOF is a compile error.
+**§ 10(4)** An attribute left without an attached statement before EOF is a compile error.
 
 ---
 
-# Formatter layout
+## § 11 Formatter layout
 
-The canonical formatter writes one attribute per line.
+**§ 11(1)** The canonical formatter writes one attribute per line.
 
 ```sec
 @target(os: "linux")
@@ -405,13 +405,13 @@ fn SendTelemetry() Result[void, TelemetryError] {
 }
 ```
 
-The formatter preserves source order unless a future rule defines a canonical
+**§ 11(2)** The formatter preserves source order unless a future rule defines a canonical
 semantic ordering.
 
-The formatter must not remove redundant attributes automatically merely because
+**§ 11(3)** The formatter must not remove redundant attributes automatically merely because
 another attribute implies them.
 
-Example:
+**§ 11(4)** Example:
 
 ```sec
 @interrupt(vector: Interrupt.Timer0)
@@ -420,22 +420,22 @@ fn Timer0Handler() void {
 }
 ```
 
-`@interrupt` already implies `@noPanic` through `@isr`, but the explicit
+**§ 11(5)** `@interrupt` already implies `@noPanic` through `@isr`, but the explicit
 attribute may remain as documentation.
 
 ---
 
-# Allowed attachment level
+## § 12 Allowed attachment level
 
-The initial general attribute system applies at compilation-unit level.
+**§ 12(1)** The initial general attribute system applies at compilation-unit level.
 
-An attribute may attach to a top-level statement allowed by that attribute.
+**§ 12(2)** An attribute may attach to a top-level statement allowed by that attribute.
 
-Initial attributes do not attach to arbitrary local statements or expressions.
+**§ 12(3)** Initial attributes do not attach to arbitrary local statements or expressions.
 The one exception is `@noPanic` before a `let` that directly initializes a
 lambda ("Callable-body attachment (MD-030)").
 
-Invalid:
+**§ 12(4)** Invalid:
 
 ```sec
 fn Work() void {
@@ -444,7 +444,7 @@ fn Work() void {
 }
 ```
 
-Local conditional compilation would affect:
+**§ 12(5)** Local conditional compilation would affect:
 
 ```text
 control flow
@@ -456,13 +456,13 @@ formatting
 debug information
 ```
 
-It is deferred until explicitly designed.
+**§ 12(6)** It is deferred until explicitly designed.
 
 ---
 
-# Attribute validation order
+## § 13 Attribute validation order
 
-For a concrete compilation plan, the compiler processes attributes in this
+**§ 13(1)** For a concrete compilation plan, the compiler processes attributes in this
 order:
 
 ```text
@@ -477,37 +477,37 @@ order:
 9. lower active declarations
 ```
 
-Excluded source remains syntactically parsed.
+**§ 13(2)** Excluded source remains syntactically parsed.
 
-It does not enter active Sema or lowering for the current plan.
+**§ 13(3)** It does not enter active Sema or lowering for the current plan.
 
 ---
 
-# `@target`
+## § 14 `@target`
 
-## Purpose
+### § 14.1 Purpose
 
-`@target` selects source according to target identity.
+**§ 14.1(1)** `@target` selects source according to target identity.
 
-It can apply to:
+**§ 14.1(2)** It can apply to:
 
 ```text
 a complete source file
 or the next top-level statement
 ```
 
-The position determines which.
+**§ 14.1(3)** The position determines which.
 
 ---
 
-# File-level `@target`
+## § 15 File-level `@target`
 
-When `@target` is the first source-bearing line in a file, it applies to the
+**§ 15(1)** When `@target` is the first source-bearing line in a file, it applies to the
 complete file.
 
-Comments and a byte-order marker, where supported, may precede it.
+**§ 15(2)** Comments and a byte-order marker, where supported, may precede it.
 
-Example:
+**§ 15(3)** Example:
 
 ```sec
 @target(os: "linux", arch: "amd64")
@@ -515,9 +515,9 @@ Example:
 module platform.linux.amd64
 ```
 
-The file participates only in matching compilation plans.
+**§ 15(4)** The file participates only in matching compilation plans.
 
-A file-level `@target` must appear before:
+**§ 15(5)** A file-level `@target` must appear before:
 
 ```text
 module declaration
@@ -528,16 +528,16 @@ variable
 or any other non-comment source statement
 ```
 
-A later `@target` applies only to the next top-level statement.
+**§ 15(6)** A later `@target` applies only to the next top-level statement.
 
 ---
 
-# Statement-level `@target`
+## § 16 Statement-level `@target`
 
-When `@target` is not the first source-bearing line, it applies only to the next
+**§ 16(1)** When `@target` is not the first source-bearing line, it applies only to the next
 top-level statement.
 
-Examples:
+**§ 16(2)** Examples:
 
 ```sec
 @target(os: "linux")
@@ -557,7 +557,7 @@ fn RawWrite(...) Result[int, WriteError] {
 }
 ```
 
-Allowed statement targets include:
+**§ 16(3)** Allowed statement targets include:
 
 ```text
 import
@@ -576,15 +576,15 @@ static declaration
 other module-level declarations defined by grammar.md
 ```
 
-`@target` does not attach to a module declaration in Sec 0.1.
+**§ 16(4)** `@target` does not attach to a module declaration in Sec 0.1.
 
-The module identity must remain stable across variants of one logical module.
+**§ 16(5)** The module identity must remain stable across variants of one logical module.
 
 ---
 
-# Target selectors
+## § 17 Target selectors
 
-The initial selector names are:
+**§ 17(1)** The initial selector names are:
 
 ```text
 os
@@ -594,7 +594,7 @@ device
 board
 ```
 
-Examples:
+**§ 17(2)** Examples:
 
 ```sec
 @target(os: "linux")
@@ -625,21 +625,21 @@ Examples:
 )
 ```
 
-At least one selector is required.
+**§ 17(3)** At least one selector is required.
 
-Omitted selectors impose no restriction.
+**§ 17(4)** Omitted selectors impose no restriction.
 
-All supplied selectors must match.
+**§ 17(5)** All supplied selectors must match.
 
-The initial selector combination therefore uses logical AND.
+**§ 17(6)** The initial selector combination therefore uses logical AND.
 
 ---
 
-# Target selector extensibility
+## § 18 Target selector extensibility
 
-Additional selector names may be added in later language or compiler versions.
+**§ 18(1)** Additional selector names may be added in later language or compiler versions.
 
-Possible future selectors include:
+**§ 18(2)** Possible future selectors include:
 
 ```text
 abi
@@ -649,17 +649,17 @@ environment
 objectFormat
 ```
 
-They are not accepted merely because they appear in this list.
+**§ 18(3)** They are not accepted merely because they appear in this list.
 
-Unknown selector names are errors for the current compiler version.
+**§ 18(4)** Unknown selector names are errors for the current compiler version.
 
-The target-selector set is compiler-versioned and documented.
+**§ 18(5)** The target-selector set is compiler-versioned and documented.
 
 ---
 
-# Target terminology
+## § 19 Target terminology
 
-The canonical distinctions are:
+**§ 19(1)** The canonical distinctions are:
 
 ```text
 os
@@ -679,7 +679,7 @@ board
     components
 ```
 
-Examples:
+**§ 19(2)** Examples:
 
 ```text
 arch
@@ -695,7 +695,7 @@ board
     controller-rev-b
 ```
 
-Two devices using the same CPU core may have different:
+**§ 19(3)** Two devices using the same CPU core may have different:
 
 ```text
 peripheral maps
@@ -706,21 +706,21 @@ DMA channels
 pin multiplexing
 ```
 
-Device-specific addresses should therefore normally select by `device` or
+**§ 19(4)** Device-specific addresses should therefore normally select by `device` or
 `board`, not only by `cpu`.
 
 ---
 
-# Selector values
+## § 20 Selector values
 
-String literals are accepted for target selectors.
+**§ 20(1)** String literals are accepted for target selectors.
 
-A future target-identity constant type may also be accepted when explicitly
+**§ 20(2)** A future target-identity constant type may also be accepted when explicitly
 defined.
 
-Selector comparison is exact after canonical target-name normalization.
+**§ 20(3)** Selector comparison is exact after canonical target-name normalization.
 
-The compiler must diagnose:
+**§ 20(4)** The compiler must diagnose:
 
 ```text
 unknown target value
@@ -730,16 +730,16 @@ CPU incompatible with device
 contradictory selectors
 ```
 
-Target aliases, if supported, belong to target knowledge packs.
+**§ 20(5)** Target aliases, if supported, belong to target knowledge packs.
 
 ---
 
-# Multiple declaration variants
+## § 21 Multiple declaration variants
 
-Declarations with the same logical symbol name may coexist when their selection
+**§ 21(1)** Declarations with the same logical symbol name may coexist when their selection
 conditions are mutually exclusive.
 
-Example:
+**§ 21(2)** Example:
 
 ```sec
 @target(device: "controller-a")
@@ -751,18 +751,18 @@ let mut GPIO: GPIORegisters
 let mut GPIO: GPIORegisters
 ```
 
-For `controller-a`, only the first declaration is active.
+**§ 21(3)** For `controller-a`, only the first declaration is active.
 
-For `controller-b`, only the second declaration is active.
+**§ 21(4)** For `controller-b`, only the second declaration is active.
 
 ---
 
-# Overlapping variants
+## § 22 Overlapping variants
 
-If two declarations with the same logical identity are active in one
+**§ 22(1)** If two declarations with the same logical identity are active in one
 compilation plan, compilation fails.
 
-Example:
+**§ 22(2)** Example:
 
 ```sec
 @target(os: "linux")
@@ -774,9 +774,9 @@ fn Open() void {
 }
 ```
 
-Both are active for Linux amd64.
+**§ 22(3)** Both are active for Linux amd64.
 
-Expected diagnostic shape:
+**§ 22(4)** Expected diagnostic shape:
 
 ```text
 multiple active target variants define `Open`
@@ -790,16 +790,16 @@ compilation plan:
     arch = amd64
 ```
 
-The compiler must not select the "more specific" declaration implicitly.
+**§ 22(5)** The compiler must not select the "more specific" declaration implicitly.
 
 ---
 
-# Variant shape compatibility
+## § 23 Variant shape compatibility
 
-Mutually exclusive variants of one public symbol must have compatible public
+**§ 23(1)** Mutually exclusive variants of one public symbol must have compatible public
 shape.
 
-For functions:
+**§ 23(2)** For functions:
 
 ```text
 same name
@@ -811,7 +811,7 @@ compatible declared effects
 compatible ABI contract
 ```
 
-For variables:
+**§ 23(3)** For variables:
 
 ```text
 same name
@@ -821,27 +821,27 @@ same mutability
 compatible ownership policy
 ```
 
-For types:
+**§ 23(4)** For types:
 
 ```text
 same public identity rules as defined by the type and module rulebooks
 ```
 
-Target-specific bodies, addresses, vectors, calling-convention lowering, and
+**§ 23(5)** Target-specific bodies, addresses, vectors, calling-convention lowering, and
 private implementation details may differ.
 
-A target selector must not silently turn one public API into an unrelated API.
+**§ 23(6)** A target selector must not silently turn one public API into an unrelated API.
 
 ---
 
-# No active variant
+## § 24 No active variant
 
-When no declaration variant is active, the symbol is unavailable for that
+**§ 24(1)** When no declaration variant is active, the symbol is unavailable for that
 compilation plan.
 
-A use should produce a target-aware diagnostic.
+**§ 24(2)** A use should produce a target-aware diagnostic.
 
-Example:
+**§ 24(3)** Example:
 
 ```text
 `GPIO` is unavailable for device "controller-c"
@@ -853,15 +853,15 @@ available variants:
 
 ---
 
-# `#target` compatibility form
+## § 25 `#target` compatibility form
 
-Sec 0.1 permits the temporary file-level compatibility directive:
+**§ 25(1)** Sec 0.1 permits the temporary file-level compatibility directive:
 
 ```sec
 #target(os: "linux", arch: "amd64")
 ```
 
-Its behavior is:
+**§ 25(2)** Its behavior is:
 
 ```text
 must appear before code or declarations
@@ -870,15 +870,15 @@ requires both
 applies to the file
 ```
 
-The canonical unified source form defined by this rulebook is:
+**§ 25(3)** The canonical unified source form defined by this rulebook is:
 
 ```sec
 @target(...)
 ```
 
-Compilers may accept `#target(...)` as compatibility syntax during migration.
+**§ 25(4)** Compilers may accept `#target(...)` as compatibility syntax during migration.
 
-Compatibility behavior:
+**§ 25(5)** Compatibility behavior:
 
 ```text
 #target remains file-level only
@@ -888,19 +888,19 @@ new selector support belongs to @target
 ordinary formatting must not silently rewrite semantics
 ```
 
-The compatibility form should be removed only through the normal language
+**§ 25(6)** The compatibility form should be removed only through the normal language
 deprecation process.
 
 ---
 
-# `@when`
+## § 26 `@when`
 
-## Purpose
+### § 26.1 Purpose
 
-`@when` conditionally includes the next top-level statement according to typed
+**§ 26.1(1)** `@when` conditionally includes the next top-level statement according to typed
 compile-time program configuration.
 
-Example:
+**§ 26.1(2)** Example:
 
 ```sec
 @when(config.telemetry)
@@ -909,17 +909,17 @@ fn SendTelemetry() Result[void, TelemetryError] {
 }
 ```
 
-`@when` does not create runtime branching.
+**§ 26.1(3)** `@when` does not create runtime branching.
 
-The declaration either participates in the compilation plan or does not.
+**§ 26.1(4)** The declaration either participates in the compilation plan or does not.
 
 ---
 
-# Compile-time parameters
+## § 27 Compile-time parameters
 
-Compile-time parameters originate from the project build configuration.
+**§ 27(1)** Compile-time parameters originate from the project build configuration.
 
-They are:
+**§ 27(2)** They are:
 
 ```text
 typed
@@ -931,13 +931,13 @@ not text macros
 not runtime configuration
 ```
 
-Canonical source access for boolean configuration is:
+**§ 27(3)** Canonical source access for boolean configuration is:
 
 ```sec
 config.telemetry
 ```
 
-Example manifest concept:
+**§ 27(4)** Example manifest concept:
 
 ```toml
 [parameters]
@@ -945,7 +945,7 @@ telemetry = false
 audit = true
 ```
 
-Example source:
+**§ 27(5)** Example source:
 
 ```sec
 @when(config.audit)
@@ -956,11 +956,11 @@ fn RecordAuditEntry(...) Result[void, AuditError] {
 
 ---
 
-# `@when` condition language
+## § 28 `@when` condition language
 
-Sec 0.1 permits a restricted compile-time boolean expression.
+**§ 28(1)** Sec 0.1 permits a restricted compile-time boolean expression.
 
-Allowed forms:
+**§ 28(2)** Allowed forms:
 
 ```text
 boolean compile-time parameter
@@ -974,7 +974,7 @@ false
 parentheses
 ```
 
-Examples:
+**§ 28(3)** Examples:
 
 ```sec
 @when(config.audit)
@@ -988,9 +988,9 @@ Examples:
 @when(config.audit && config.databaseLogging)
 ```
 
-Target identity belongs in `@target`, not in `@when`, for Sec 0.1.
+**§ 28(4)** Target identity belongs in `@target`, not in `@when`, for Sec 0.1.
 
-Preferred:
+**§ 28(5)** Preferred:
 
 ```sec
 @target(os: "linux")
@@ -999,21 +999,21 @@ fn InstallAuditIntegration() void {
 }
 ```
 
-Not canonical in Sec 0.1:
+**§ 28(6)** Not canonical in Sec 0.1:
 
 ```sec
 @when(config.audit && target.os == "linux")
 ```
 
-This separation keeps target selection and program configuration distinct.
+**§ 28(7)** This separation keeps target selection and program configuration distinct.
 
 ---
 
-# Compiler options are not `@when` inputs
+## § 29 Compiler options are not `@when` inputs
 
-Compiler options do not control declaration existence.
+**§ 29(1)** Compiler options do not control declaration existence.
 
-Invalid conceptual inputs include:
+**§ 29(2)** Invalid conceptual inputs include:
 
 ```text
 optimization level
@@ -1025,16 +1025,16 @@ bounds-check lowering policy
 overflow-check lowering policy
 ```
 
-Changing debug or optimization configuration must not silently change the
+**§ 29(3)** Changing debug or optimization configuration must not silently change the
 program's public source graph.
 
-Build features use typed compile-time parameters instead.
+**§ 29(4)** Build features use typed compile-time parameters instead.
 
 ---
 
-# No textual preprocessor
+## § 30 No textual preprocessor
 
-Sec does not provide C-style:
+**§ 30(1)** Sec does not provide C-style:
 
 ```text
 #define
@@ -1046,15 +1046,15 @@ token concatenation
 conditional lexical regions
 ```
 
-All source remains parseable.
+**§ 30(2)** All source remains parseable.
 
-Conditional inclusion is declaration-aware and typed.
+**§ 30(3)** Conditional inclusion is declaration-aware and typed.
 
 ---
 
-# Excluded source
+## § 31 Excluded source
 
-A file or statement excluded by `@target` or `@when`:
+**§ 31(1)** A file or statement excluded by `@target` or `@when`:
 
 ```text
 is lexed and parsed
@@ -1067,26 +1067,26 @@ does not reach Semantic IR
 does not reach lowering
 ```
 
-Syntax errors remain syntax errors even in excluded source.
+**§ 31(2)** Syntax errors remain syntax errors even in excluded source.
 
-This prevents invalid source from being hidden indefinitely behind a selector.
+**§ 31(3)** This prevents invalid source from being hidden indefinitely behind a selector.
 
-Target-dependent semantic errors are evaluated only when the source is active.
+**§ 31(4)** Target-dependent semantic errors are evaluated only when the source is active.
 
 ---
 
-# `@address`
+## § 32 `@address`
 
-## Purpose
+### § 32.1 Purpose
 
-`@address` binds one module-scope register declaration to a named hardware
+**§ 32.1(1)** `@address` binds one module-scope register declaration to a named hardware
 endpoint (MD-111 § 10(1)); the endpoint's metadata supplies the address. A
 numeric, arithmetic, call or variable argument is rejected with S1188
 `hardware.address-binding`; an unknown, inaccessible or wrong-category name
 with S1183 `hardware.symbol-resolution`. `@address(Endpoint, alias)` adds the
 contextual alias acknowledgement.
 
-Canonical:
+**§ 32.1(2)** Canonical:
 
 ```sec
 @address(GPIOEndpoint)
@@ -1095,9 +1095,9 @@ let mut GPIO: GPIORegisters
 
 ---
 
-# Address semantics
+## § 33 Address semantics
 
-`@address(Endpoint)` means:
+**§ 33(1)** `@address(Endpoint)` means:
 
 ```text
 the storage exists at the supplied address
@@ -1109,23 +1109,23 @@ the declaration has address-stability restrictions
 ordinary relocation does not apply to the storage
 ```
 
-The spelling supplies an address expression; it does not independently prove a
+**§ 33(2)** The spelling supplies an address expression; it does not independently prove a
 valid binding. Every `@address` declaration must resolve against a canonical
 target-owned address-region or storage contract from the active
 `CompilationPlan`, `MemoryEnvironment`, `DeviceModel`, or equivalent source.
 The contract must cover the complete bound extent.
 
-`@address` implies volatile access.
+**§ 33(3)** `@address` implies volatile access.
 
-A separate `@volatile` is not required for addressed storage.
+**§ 33(4)** A separate `@volatile` is not required for addressed storage.
 
 ---
 
-# Address argument
+## § 34 Address argument
 
-The argument must be a compile-time address expression.
+**§ 34(1)** The argument must be a compile-time address expression.
 
-Allowed initial forms:
+**§ 34(2)** Allowed initial forms:
 
 ```text
 integer address literal
@@ -1134,7 +1134,7 @@ target knowledge-pack address constant
 other explicitly defined compile-time address constant
 ```
 
-Examples:
+**§ 34(3)** Examples:
 
 ```sec
 @address(GPIOEndpoint)
@@ -1146,7 +1146,7 @@ let mut GPIO: GPIORegisters
 let mut GPIOA: GPIORegisters
 ```
 
-The compiler validates:
+**§ 34(4)** The compiler validates:
 
 ```text
 representability in target pointer width
@@ -1159,17 +1159,17 @@ required privilege where applicable
 overlap with other absolute declarations where detectable
 ```
 
-A compile-time numeric value is necessary for raw numeric syntax but is not
+**§ 34(5)** A compile-time numeric value is necessary for raw numeric syntax but is not
 sufficient for validity. If no applicable canonical region covers the complete
 binding, the declaration is invalid. `unsafe` does not waive this validation.
 
 ---
 
-# Address declaration target
+## § 35 Address declaration target
 
-`@address` applies to exactly one module-scope `let` declaration.
+**§ 35(1)** `@address` applies to exactly one module-scope `let` declaration.
 
-It does not apply to:
+**§ 35(2)** It does not apply to:
 
 ```text
 grouped declarations
@@ -1181,28 +1181,28 @@ functions
 types
 ```
 
-Invalid:
+**§ 35(3)** Invalid:
 
 ```sec
 @address(FirstEndpoint)
 let mut first: Register, second: Register
 ```
 
-The declaration must name exactly one storage object.
+**§ 35(4)** The declaration must name exactly one storage object.
 
 ---
 
-# Address and initialization
+## § 36 Address and initialization
 
-Addressed storage is not initialized like ordinary allocated storage.
+**§ 36(1)** Addressed storage is not initialized like ordinary allocated storage.
 
-The declaration must not generate ordinary zero initialization or copy an
+**§ 36(2)** The declaration must not generate ordinary zero initialization or copy an
 initializer into the hardware address unless a specialized rule explicitly
 permits initialization.
 
-The type's default value does not imply a startup write.
+**§ 36(3)** The type's default value does not imply a startup write.
 
-Read and write behavior follows:
+**§ 36(4)** Read and write behavior follows:
 
 ```text
 declared type
@@ -1214,9 +1214,9 @@ target knowledge
 
 ---
 
-# Target-dependent addresses
+## § 37 Target-dependent addresses
 
-Use mutually exclusive declaration variants.
+**§ 37(1)** Use mutually exclusive declaration variants.
 
 ```sec
 @target(device: "controller-a")
@@ -1228,22 +1228,22 @@ let mut GPIO: GPIORegisters
 let mut GPIO: GPIORegisters
 ```
 
-All attributes in each block attach to that declaration.
+**§ 37(2)** All attributes in each block attach to that declaration.
 
-An attribute does not scope another attribute.
+**§ 37(3)** An attribute does not scope another attribute.
 
 ---
 
-# Knowledge-pack addresses
+## § 38 Knowledge-pack addresses
 
-A target knowledge pack may define typed names:
+**§ 38(1)** A target knowledge pack may define typed names:
 
 ```sec
 @address(Peripheral.GPIOA)
 let mut GPIOA: GPIORegisters
 ```
 
-The knowledge pack may provide:
+**§ 38(2)** The knowledge pack may provide:
 
 ```text
 numeric address
@@ -1256,7 +1256,7 @@ aliases
 reserved status
 ```
 
-Raw numeric addresses remain allowed for:
+**§ 38(3)** Raw numeric addresses remain allowed for:
 
 ```text
 custom targets
@@ -1266,19 +1266,19 @@ external memory-mapped devices
 early platform development
 ```
 
-These forms preserve low ceremony, but the selected target definition must
+**§ 38(4)** These forms preserve low ceremony, but the selected target definition must
 still provide the region facts needed to validate the complete binding. Raw
 numeric spelling is never an implicit trust boundary.
 
 ---
 
-# `@interrupt`
+## § 39 `@interrupt`
 
-## Purpose
+### § 39.1 Purpose
 
-`@interrupt` binds a function to an interrupt vector and implies `@isr`.
+**§ 39.1(1)** `@interrupt` binds a function to an interrupt vector and implies `@isr`.
 
-Canonical:
+**§ 39.1(2)** Canonical:
 
 ```sec
 @interrupt(vector: Interrupt.Timer0)
@@ -1286,26 +1286,26 @@ fn Timer0Handler() void {
 }
 ```
 
-The implication is normative:
+**§ 39.1(3)** The implication is normative:
 
 ```text
 @interrupt(...)
     implies @isr
 ```
 
-The reverse does not apply.
+**§ 39.1(4)** The reverse does not apply.
 
 ---
 
-# Interrupt vector argument
+## § 40 Interrupt vector argument
 
-`@interrupt` requires one named argument:
+**§ 40(1)** `@interrupt` requires one named argument:
 
 ```text
 vector
 ```
 
-Examples:
+**§ 40(2)** Examples:
 
 ```sec
 @interrupt(vector: Interrupt.Timer0)
@@ -1319,18 +1319,18 @@ fn CustomHandler() void {
 }
 ```
 
-The value must be a compile-time vector identity accepted by the selected
+**§ 40(3)** The value must be a compile-time vector identity accepted by the selected
 target.
 
 ---
 
-# Named interrupt vectors
+## § 41 Named interrupt vectors
 
-The resolved platform/Device interrupt catalog may expose typed vector
+**§ 41(1)** The resolved platform/Device interrupt catalog may expose typed vector
 constants through the active `CompilationPlan`, as defined by
 `rules/platform/interrupts.md`.
 
-Examples:
+**§ 41(2)** Examples:
 
 ```text
 Interrupt.Reset
@@ -1340,7 +1340,7 @@ Interrupt.Timer0
 Interrupt.UART1
 ```
 
-The resolved interrupt definition supplies target facts such as:
+**§ 41(3)** The resolved interrupt definition supplies target facts such as:
 
 ```text
 numeric vector
@@ -1353,15 +1353,15 @@ device availability
 aliases
 ```
 
-Named vectors are preferred when available.
+**§ 41(4)** Named vectors are preferred when available.
 
-Raw numeric vectors remain allowed for custom targets and new ports.
+**§ 41(5)** Raw numeric vectors remain allowed for custom targets and new ports.
 
 ---
 
-# Interrupt validation
+## § 42 Interrupt validation
 
-The compiler validates:
+**§ 42(1)** The compiler validates:
 
 ```text
 vector exists for selected target
@@ -1374,13 +1374,13 @@ vector-table generation is supported or externally supplied
 ISR restrictions are satisfied
 ```
 
-Duplicate active vector binding is a compile error.
+**§ 42(2)** Duplicate active vector binding is a compile error.
 
 ---
 
-# Target-dependent interrupt binding
+## § 43 Target-dependent interrupt binding
 
-Use mutually exclusive function variants when binding differs.
+**§ 43(1)** Use mutually exclusive function variants when binding differs.
 
 ```sec
 @target(device: "controller-a")
@@ -1396,15 +1396,15 @@ fn TimerHandler() void {
 }
 ```
 
-The public function shape must remain compatible.
+**§ 43(2)** The public function shape must remain compatible.
 
 ---
 
-# `@isr`
+## § 44 `@isr`
 
-## Purpose
+### § 44.1 Purpose
 
-`@isr` declares and verifies an interrupt service routine without automatically
+**§ 44.1(1)** `@isr` declares and verifies an interrupt service routine without automatically
 binding it to a vector.
 
 ```sec
@@ -1413,7 +1413,7 @@ fn SharedInterruptHandler() void {
 }
 ```
 
-Use cases include:
+**§ 44.1(2)** Use cases include:
 
 ```text
 external startup code performs vector binding
@@ -1426,9 +1426,9 @@ targets with nonstandard binding
 
 ---
 
-# Relationship between `@interrupt` and `@isr`
+## § 45 Relationship between `@interrupt` and `@isr`
 
-The relationship is:
+**§ 45(1)** The relationship is:
 
 ```text
 @interrupt is the stronger construct
@@ -1438,7 +1438,7 @@ The relationship is:
 @isr does not choose a vector
 ```
 
-In set terms:
+**§ 45(2)** In set terms:
 
 ```text
 the guarantees of @isr are a subset of the semantics of @interrupt
@@ -1446,9 +1446,9 @@ the guarantees of @isr are a subset of the semantics of @interrupt
 
 ---
 
-# ISR verification
+## § 46 ISR verification
 
-`@isr` implies at least:
+**§ 46(1)** `@isr` implies at least:
 
 ```text
 noPanic
@@ -1464,14 +1464,14 @@ no unsafe shared mutation without an approved synchronization model
 no call to code with unknown ISR effects
 ```
 
-The detailed ISR analysis belongs to the call-graph, stack-analysis, allocation,
+**§ 46(2)** The detailed ISR analysis belongs to the call-graph, stack-analysis, allocation,
 blocking, ownership, and concurrency rulebooks.
 
 ---
 
-# ISR ABI
+## § 47 ISR ABI
 
-The compiler or target knowledge pack determines:
+**§ 47(1)** The compiler or target knowledge pack determines:
 
 ```text
 entry convention
@@ -1483,18 +1483,18 @@ interrupt masking assumptions
 vector-table representation
 ```
 
-The source function remains a Sec function declaration with compiler-verified
+**§ 47(2)** The source function remains a Sec function declaration with compiler-verified
 ISR constraints.
 
-A target may reject `@isr` when it lacks a defined ISR ABI.
+**§ 47(3)** A target may reject `@isr` when it lacks a defined ISR ABI.
 
 ---
 
-# `@interruptSafe`
+## § 48 `@interruptSafe`
 
-## Purpose
+### § 48.1 Purpose
 
-`@interruptSafe` declares that a function may be called from ISR code.
+**§ 48.1(1)** `@interruptSafe` declares that a function may be called from ISR code.
 
 ```sec
 @interruptSafe
@@ -1503,15 +1503,15 @@ fn ReadStatus() Status {
 }
 ```
 
-It does not make the function an ISR.
+**§ 48.1(2)** It does not make the function an ISR.
 
-It does not bind a vector.
+**§ 48.1(3)** It does not bind a vector.
 
 ---
 
-# Interrupt-safe guarantee
+## § 49 Interrupt-safe guarantee
 
-The compiler verifies at least:
+**§ 49(1)** The compiler verifies at least:
 
 ```text
 noPanic
@@ -1524,7 +1524,7 @@ compatible callees
 stack behavior acceptable under ISR policy
 ```
 
-An `@isr` call graph may call:
+**§ 49(2)** An `@isr` call graph may call:
 
 ```text
 other @isr-specific compiler operations
@@ -1532,16 +1532,16 @@ other @isr-specific compiler operations
 compiler-proven equivalent functions
 ```
 
-It may not call an ordinary unverified function merely because the current body
+**§ 49(3)** It may not call an ordinary unverified function merely because the current body
 appears simple.
 
 ---
 
-# `@noCopy`
+## § 50 `@noCopy`
 
-## Purpose
+### § 50.1 Purpose
 
-`@noCopy` is a nominal type policy.
+**§ 50.1(1)** `@noCopy` is a nominal type policy.
 
 ```sec
 @noCopy
@@ -1550,13 +1550,13 @@ type SessionID struct {
 }
 ```
 
-It explicitly forbids compiler-derived implicit copy.
+**§ 50.1(2)** It explicitly forbids compiler-derived implicit copy.
 
 ---
 
-# `@noCopy` semantics
+## § 51 `@noCopy` semantics
 
-For an `@noCopy` type:
+**§ 51(1)** For an `@noCopy` type:
 
 ```text
 ordinary implicit copy is forbidden
@@ -1567,28 +1567,28 @@ copyability is distinct from relocatability
 copyability is distinct from pinning
 ```
 
-Example invalid copy:
+**§ 51(2)** Example invalid copy:
 
 ```sec
 let second := first
 ```
 
-Example possible move:
+**§ 51(3)** Example possible move:
 
 ```sec
 let second :<- first
 ```
 
-The move is valid only when ownership, lifetime, relocation, and pinning rules
+**§ 51(4)** The move is valid only when ownership, lifetime, relocation, and pinning rules
 also permit it.
 
 ---
 
-# `@noCopy` allowed targets
+## § 52 `@noCopy` allowed targets
 
-`@noCopy` applies to nominal type declarations.
+**§ 52(1)** `@noCopy` applies to nominal type declarations.
 
-Initial allowed forms include:
+**§ 52(2)** Initial allowed forms include:
 
 ```text
 named struct
@@ -1599,7 +1599,7 @@ named underlying type
 other nominal user-defined types
 ```
 
-It does not apply to:
+**§ 52(3)** It does not apply to:
 
 ```text
 individual variables
@@ -1610,18 +1610,18 @@ anonymous types
 type references
 ```
 
-A variable cannot override the copy policy of its type.
+**§ 52(4)** A variable cannot override the copy policy of its type.
 
 ---
 
-# `@noCopy` and fields
+## § 53 `@noCopy` and fields
 
-A containing type becomes non-copyable when it stores an `@noCopy` field unless
+**§ 53(1)** A containing type becomes non-copyable when it stores an `@noCopy` field unless
 a separate rule explicitly uses indirection with copyable semantics.
 
-The compiler should diagnose the cause chain.
+**§ 53(2)** The compiler should diagnose the cause chain.
 
-Example:
+**§ 53(3)** Example:
 
 ```text
 Container cannot be copied
@@ -1631,24 +1631,24 @@ Container cannot be copied
 
 ---
 
-# No positive copy attribute in the initial subset
+## § 54 No positive copy attribute in the initial subset
 
-Sec 0.1 does not initially define:
+**§ 54(1)** Sec 0.1 does not initially define:
 
 ```text
 @copy
 @copyable
 ```
 
-Derived copyability remains automatic when the compiler proves it.
+**§ 54(2)** Derived copyability remains automatic when the compiler proves it.
 
-A future positive attribute may mean:
+**§ 54(3)** A future positive attribute may mean:
 
 ```text
 compilation fails unless this type remains compiler-derivably copyable
 ```
 
-It must never mean:
+**§ 54(4)** It must never mean:
 
 ```text
 invoke arbitrary hidden user copy code
@@ -1656,11 +1656,11 @@ invoke arbitrary hidden user copy code
 
 ---
 
-# `@noAlloc`
+## § 55 `@noAlloc`
 
-## Purpose
+### § 55.1 Purpose
 
-`@noAlloc` is a compiler-verified transitive guarantee.
+**§ 55.1(1)** `@noAlloc` is a compiler-verified transitive guarantee.
 
 ```sec
 @noAlloc
@@ -1669,13 +1669,13 @@ fn Process(buffer: ref byte[]) Result[void, ProcessError] {
 }
 ```
 
-It means no reachable execution path performs allocation.
+**§ 55.1(2)** It means no reachable execution path performs allocation.
 
 ---
 
-# Allocation definition
+## § 56 Allocation definition
 
-Allocation includes acquiring new dynamic storage through:
+**§ 56(1)** Allocation includes acquiring new dynamic storage through:
 
 ```text
 heap allocator
@@ -1688,13 +1688,13 @@ foreign calls declared as allocating
 compiler helper that allocates
 ```
 
-The allocation rulebook owns the exact classification.
+**§ 56(2)** The allocation rulebook owns the exact classification.
 
 ---
 
-# What is not allocation
+## § 57 What is not allocation
 
-The following are not allocation merely by existing:
+**§ 57(1)** The following are not allocation merely by existing:
 
 ```text
 stack locals
@@ -1707,14 +1707,14 @@ register values
 compiler-elided temporary storage
 ```
 
-A specific operation may still allocate according to its implementation and
+**§ 57(2)** A specific operation may still allocate according to its implementation and
 declared effects.
 
 ---
 
-# `@noAlloc` verification
+## § 58 `@noAlloc` verification
 
-The compiler verifies:
+**§ 58(1)** The compiler verifies:
 
 ```text
 the function body
@@ -1727,31 +1727,31 @@ foreign declarations
 compiler-generated operations
 ```
 
-Unknown allocation behavior violates the guarantee.
+**§ 58(2)** Unknown allocation behavior violates the guarantee.
 
 ---
 
-# `@noAlloc` and fallible allocation
+## § 59 `@noAlloc` and fallible allocation
 
-Using `try` does not make allocation compatible with `@noAlloc`.
+**§ 59(1)** Using `try` does not make allocation compatible with `@noAlloc`.
 
-Example:
+**§ 59(2)** Example:
 
 ```sec
 let value := try allocator.New[Value]()
 ```
 
-This is panic-free but still allocates.
+**§ 59(3)** This is panic-free but still allocates.
 
-`@noAlloc` forbids the operation.
+**§ 59(4)** `@noAlloc` forbids the operation.
 
 ---
 
-# `@noPanic`
+## § 60 `@noPanic`
 
-## Purpose
+### § 60.1 Purpose
 
-`@noPanic` is a compiler-verified transitive guarantee.
+**§ 60.1(1)** `@noPanic` is a compiler-verified transitive guarantee.
 
 ```sec
 @noPanic
@@ -1764,7 +1764,7 @@ fn Add(
 }
 ```
 
-Its complete semantics are defined by:
+**§ 60.1(2)** Its complete semantics are defined by:
 
 ```text
 panic.md
@@ -1773,9 +1773,9 @@ runtime_checks.md
 
 ---
 
-# `@noPanic` guarantee
+## § 61 `@noPanic` guarantee
 
-The function has no reachable:
+**§ 61(1)** The function has no reachable:
 
 ```text
 language-defined panic
@@ -1788,26 +1788,26 @@ unknown foreign abort or unwind
 panic-capable cleanup
 ```
 
-The compiler verifies the complete reachable call graph.
+**§ 61(2)** The compiler verifies the complete reachable call graph.
 
 ---
 
-# `@noPanic` is not exception suppression
+## § 62 `@noPanic` is not exception suppression
 
-`@noPanic` does not catch panic.
+**§ 62(1)** `@noPanic` does not catch panic.
 
-It requires the panic effect to be absent.
+**§ 62(2)** It requires the panic effect to be absent.
 
-Expected failures use explicit result values and `try`.
+**§ 62(3)** Expected failures use explicit result values and `try`.
 
 ---
 
-# `@noPanic` and proof
+## § 63 `@noPanic` and proof
 
-Ordinary checked operations may remain in `@noPanic` code when their failure is
+**§ 63(1)** Ordinary checked operations may remain in `@noPanic` code when their failure is
 proven impossible.
 
-Otherwise the code must:
+**§ 63(2)** Otherwise the code must:
 
 ```text
 use try
@@ -1818,11 +1818,11 @@ change the types or contracts so safety is proven
 
 ---
 
-# `@noBlock`
+## § 64 `@noBlock`
 
-## Purpose
+### § 64.1 Purpose
 
-`@noBlock` is a compiler-verified transitive guarantee.
+**§ 64.1(1)** `@noBlock` is a compiler-verified transitive guarantee.
 
 ```sec
 @noBlock
@@ -1831,14 +1831,14 @@ fn PollStatus() Status {
 }
 ```
 
-It means no reachable execution path waits for an unbounded external event or
+**§ 64.1(2)** It means no reachable execution path waits for an unbounded external event or
 parks the current execution domain.
 
 ---
 
-# Blocking operations
+## § 65 Blocking operations
 
-Blocking includes operations such as:
+**§ 65(1)** Blocking includes operations such as:
 
 ```text
 blocking I/O
@@ -1852,13 +1852,13 @@ waiting for external input without a compile-time bounded policy
 foreign calls declared as blocking
 ```
 
-The concurrency and platform rulebooks own detailed classification.
+**§ 65(2)** The concurrency and platform rulebooks own detailed classification.
 
 ---
 
-# What `@noBlock` does not automatically forbid
+## § 66 What `@noBlock` does not automatically forbid
 
-`@noBlock` does not by itself forbid:
+**§ 66(1)** `@noBlock` does not by itself forbid:
 
 ```text
 ordinary finite computation
@@ -1869,15 +1869,15 @@ bounded lock-free retry where separately proven
 reading memory-mapped status
 ```
 
-Execution-time and worst-case latency guarantees are separate analyses.
+**§ 66(2)** Execution-time and worst-case latency guarantees are separate analyses.
 
-A function can be nonblocking yet take too long for an ISR.
+**§ 66(3)** A function can be nonblocking yet take too long for an ISR.
 
 ---
 
-# `@noBlock` verification
+## § 67 `@noBlock` verification
 
-The compiler verifies:
+**§ 67(1)** The compiler verifies:
 
 ```text
 the body
@@ -1890,13 +1890,13 @@ synchronization operations
 I/O operations
 ```
 
-Unknown blocking behavior violates the guarantee.
+**§ 67(2)** Unknown blocking behavior violates the guarantee.
 
 ---
 
-# Allowed targets for verified effects
+## § 68 Allowed targets for verified effects
 
-The initial allowed targets for:
+**§ 68(1)** The initial allowed targets for:
 
 ```text
 @noAlloc
@@ -1907,23 +1907,23 @@ The initial allowed targets for:
 @interrupt
 ```
 
-are functions and methods. `@noPanic` additionally attaches to the callable
+**§ 68(2)** are functions and methods. `@noPanic` additionally attaches to the callable
 bodies listed in "Callable-body attachment (MD-030)" below.
 
-`@interrupt` and `@isr` have additional target-specific signature rules.
+**§ 68(3)** `@interrupt` and `@isr` have additional target-specific signature rules.
 
-Attributes on lambda expressions and function types are otherwise deferred
+**§ 68(4)** Attributes on lambda expressions and function types are otherwise deferred
 until function-effect type syntax is finalized.
 
-Attributes on complete `impl` blocks are not part of the initial subset.
+**§ 68(5)** Attributes on complete `impl` blocks are not part of the initial subset.
 
-Each method must declare or derive its own guarantee.
+**§ 68(6)** Each method must declare or derive its own guarantee.
 
 ---
 
-# Callable-body attachment (MD-030)
+## § 69 Callable-body attachment (MD-030)
 
-Decided 2026-10-17
+**§ 69(1)** Decided 2026-10-17
 (`rules/corrections/applied/md030-no-panic-attribute-placement-correction-20261017.md`).
 
 1. A callable declaration with an independently analyzable body may carry
@@ -1982,15 +1982,15 @@ fn Use() bool {
 
 ---
 
-# Sec code versus foreign declarations
+## § 70 Sec code versus foreign declarations
 
-For an ordinary Sec function with a body, verified attributes are proven by the
+**§ 70(1)** For an ordinary Sec function with a body, verified attributes are proven by the
 compiler.
 
-For foreign declarations, the compiler normally cannot prove the foreign
+**§ 70(2)** For foreign declarations, the compiler normally cannot prove the foreign
 implementation.
 
-On an extern declaration, an applicable effect-guarantee attribute is a trusted
+**§ 70(3)** On an extern declaration, an applicable effect-guarantee attribute is a trusted
 foreign contract rather than a compiler proof of the foreign body. The compiler
 must preserve this trust provenance and treat unspecified foreign effects
 conservatively.
@@ -2002,9 +2002,9 @@ extern guarantees are usable only as explicitly trusted foreign facts
 
 ---
 
-# Attribute implications
+## § 71 Attribute implications
 
-The initial implication graph is:
+**§ 71(1)** The initial implication graph is:
 
 ```text
 @interrupt(...)
@@ -2034,20 +2034,20 @@ The initial implication graph is:
     => @noBlock
 ```
 
-An implied attribute does not require duplicated AST storage as though the user
+**§ 71(2)** An implied attribute does not require duplicated AST storage as though the user
 wrote it.
 
-The compiler records effective guarantees separately from explicitly written
+**§ 71(3)** The compiler records effective guarantees separately from explicitly written
 attributes.
 
 ---
 
-# Duplicate attributes
+## § 72 Duplicate attributes
 
-An attribute may appear at most once in one attachment set unless its definition
+**§ 72(1)** An attribute may appear at most once in one attachment set unless its definition
 explicitly permits repetition.
 
-Invalid:
+**§ 72(2)** Invalid:
 
 ```sec
 @noCopy
@@ -2057,7 +2057,7 @@ type Identity struct {
 }
 ```
 
-Invalid:
+**§ 72(3)** Invalid:
 
 ```sec
 @address(DeviceEndpoint)
@@ -2065,7 +2065,7 @@ Invalid:
 let mut Device: DeviceRegisters
 ```
 
-Invalid:
+**§ 72(4)** Invalid:
 
 ```sec
 @target(os: "linux")
@@ -2074,7 +2074,7 @@ fn Open() void {
 }
 ```
 
-Write one target attribute:
+**§ 72(5)** Write one target attribute:
 
 ```sec
 @target(os: "linux", arch: "amd64")
@@ -2084,11 +2084,11 @@ fn Open() void {
 
 ---
 
-# Duplicate arguments
+## § 73 Duplicate arguments
 
-An argument name may appear only once in one attribute.
+**§ 73(1)** An argument name may appear only once in one attribute.
 
-Invalid:
+**§ 73(2)** Invalid:
 
 ```sec
 @target(os: "linux", os: "windows")
@@ -2096,7 +2096,7 @@ fn Open() void {
 }
 ```
 
-Invalid:
+**§ 73(3)** Invalid:
 
 ```sec
 @interrupt(vector: 10, vector: 20)
@@ -2106,11 +2106,11 @@ fn Handler() void {
 
 ---
 
-# Conflicting attributes
+## § 74 Conflicting attributes
 
-The compiler rejects attributes whose semantics conflict.
+**§ 74(1)** The compiler rejects attributes whose semantics conflict.
 
-Examples include:
+**§ 74(2)** Examples include:
 
 ```text
 two absolute addresses
@@ -2120,15 +2120,15 @@ future positive copy requirement with @noCopy
 a verified effect contradicted by the declaration's required behavior
 ```
 
-The diagnostic should show both source locations and the conflict rule.
+**§ 74(3)** The diagnostic should show both source locations and the conflict rule.
 
 ---
 
-# Redundant attributes
+## § 75 Redundant attributes
 
-An explicitly written attribute may be redundant because another implies it.
+**§ 75(1)** An explicitly written attribute may be redundant because another implies it.
 
-Example:
+**§ 75(2)** Example:
 
 ```sec
 @interrupt(vector: Interrupt.Timer0)
@@ -2140,19 +2140,19 @@ fn Timer0Handler() void {
 }
 ```
 
-This is valid.
+**§ 75(3)** This is valid.
 
-The compiler may emit an informational diagnostic if configured.
+**§ 75(4)** The compiler may emit an informational diagnostic if configured.
 
-The formatter does not delete the redundant declarations automatically.
+**§ 75(5)** The formatter does not delete the redundant declarations automatically.
 
 ---
 
-# Attribute order
+## § 76 Attribute order
 
-Initial attribute semantics are order-independent within one attachment set.
+**§ 76(1)** Initial attribute semantics are order-independent within one attachment set.
 
-These are semantically equivalent:
+**§ 76(2)** These are semantically equivalent:
 
 ```sec
 @target(device: "controller-a")
@@ -2166,18 +2166,18 @@ let mut Device: DeviceRegisters
 let mut Device: DeviceRegisters
 ```
 
-The first style is recommended because selection precedes binding conceptually.
+**§ 76(3)** The first style is recommended because selection precedes binding conceptually.
 
-The formatter may later establish a canonical category order, but ordinary
+**§ 76(4)** The formatter may later establish a canonical category order, but ordinary
 formatting must not change attachment or semantics.
 
 ---
 
-# Parser representation
+## § 77 Parser representation
 
-Attributes should be represented explicitly.
+**§ 77(1)** Attributes should be represented explicitly.
 
-Conceptual AST:
+**§ 77(2)** Conceptual AST:
 
 ```go
 type Attribute struct {
@@ -2192,25 +2192,25 @@ type AttributeArgument struct {
 }
 ```
 
-A top-level statement should carry:
+**§ 77(3)** A top-level statement should carry:
 
 ```go
 Attributes []Attribute
 ```
 
-File-level attributes should be represented on the compilation unit or program.
+**§ 77(4)** File-level attributes should be represented on the compilation unit or program.
 
-Do not encode each new attribute solely through an unrelated special-case field.
+**§ 77(5)** Do not encode each new attribute solely through an unrelated special-case field.
 
-Specialized semantic fields may be derived after generic attribute parsing.
+**§ 77(6)** Specialized semantic fields may be derived after generic attribute parsing.
 
 ---
 
-# Semantic representation
+## § 78 Semantic representation
 
-Sema should resolve attributes into compiler-known semantic properties.
+**§ 78(1)** Sema should resolve attributes into compiler-known semantic properties.
 
-Conceptual:
+**§ 78(2)** Conceptual:
 
 ```text
 TargetSelection
@@ -2225,26 +2225,26 @@ NoPanicGuarantee
 NoBlockGuarantee
 ```
 
-The original syntax remains available for diagnostics, formatter, and LSP.
+**§ 78(3)** The original syntax remains available for diagnostics, formatter, and LSP.
 
 ---
 
-# Selection before active symbols
+## § 79 Selection before active symbols
 
-`@target` and `@when` selection occurs before active symbol-table construction.
+**§ 79(1)** `@target` and `@when` selection occurs before active symbol-table construction.
 
-This permits mutually exclusive definitions of one logical symbol.
+**§ 79(2)** This permits mutually exclusive definitions of one logical symbol.
 
-The compiler must still parse all variants before selection.
+**§ 79(3)** The compiler must still parse all variants before selection.
 
 ---
 
-# Inactive declarations and name conflicts
+## § 80 Inactive declarations and name conflicts
 
-Inactive declarations do not conflict with active declarations for the current
+**§ 80(1)** Inactive declarations do not conflict with active declarations for the current
 plan.
 
-However, the compiler should perform cross-variant validation to detect:
+**§ 80(2)** However, the compiler should perform cross-variant validation to detect:
 
 ```text
 overlapping selectors
@@ -2254,13 +2254,13 @@ unknown target values
 invalid configuration references
 ```
 
-This validation may operate across all declared compilation variants.
+**§ 80(3)** This validation may operate across all declared compilation variants.
 
 ---
 
-# LSP behavior
+## § 81 LSP behavior
 
-The LSP should expose:
+**§ 81(1)** The LSP should expose:
 
 ```text
 attribute hover documentation
@@ -2275,9 +2275,9 @@ address knowledge-pack information
 duplicate or conflict diagnostics
 ```
 
-Excluded source remains visible.
+**§ 81(2)** Excluded source remains visible.
 
-Example hover:
+**§ 81(3)** Example hover:
 
 ```text
 Excluded from current plan
@@ -2291,12 +2291,12 @@ Current:
 
 ---
 
-# LSP completion
+## § 82 LSP completion
 
-After `@`, completion offers only compiler-known attributes valid at the current
+**§ 82(1)** After `@`, completion offers only compiler-known attributes valid at the current
 attachment location.
 
-Examples:
+**§ 82(2)** Examples:
 
 ```text
 before a nominal type
@@ -2320,7 +2320,7 @@ before a module-scope let
     address
 ```
 
-Attribute argument completion may offer:
+**§ 82(3)** Attribute argument completion may offer:
 
 ```text
 target selector names
@@ -2336,9 +2336,9 @@ compile-time boolean parameters
 
 ---
 
-# Formatter behavior
+## § 83 Formatter behavior
 
-The formatter:
+**§ 83(1)** The formatter:
 
 ```text
 writes one attribute per line
@@ -2352,7 +2352,7 @@ does not merge declarations
 does not apply panic-free migration
 ```
 
-Example:
+**§ 83(2)** Example:
 
 ```sec
 @target(
@@ -2368,9 +2368,9 @@ fn Open() Result[Handle, OpenError] {
 
 ---
 
-# Diagnostics
+## § 84 Diagnostics
 
-Suggested diagnostic families:
+**§ 84(1)** Suggested diagnostic families:
 
 ```text
 attribute.unknown
@@ -2405,13 +2405,13 @@ attribute.no-block-violation
 attribute.foreign-effect-unproven
 ```
 
-Final stable IDs belong to the diagnostics registry.
+**§ 84(2)** Final stable IDs belong to the diagnostics registry.
 
 ---
 
-# Required tests
+## § 85 Required tests
 
-Create or update:
+**§ 85(1)** Create or update:
 
 ```text
 attributes_valid.sec
@@ -2444,9 +2444,9 @@ no_block_invalid.sec
 
 ---
 
-# Target test matrix
+## § 86 Target test matrix
 
-Test selectors individually:
+**§ 86(1)** Test selectors individually:
 
 ```text
 os
@@ -2456,9 +2456,9 @@ device
 board
 ```
 
-Test combinations.
+**§ 86(2)** Test combinations.
 
-Test:
+**§ 86(3)** Test:
 
 ```text
 omitted selectors
@@ -2478,9 +2478,9 @@ board-specific declarations
 
 ---
 
-# Conditional compilation tests
+## § 87 Conditional compilation tests
 
-Test:
+**§ 87(1)** Test:
 
 ```text
 boolean parameter true
@@ -2500,9 +2500,9 @@ excluded source absent from active Sema
 
 ---
 
-# Address tests
+## § 88 Address tests
 
-Test:
+**§ 88(1)** Test:
 
 ```text
 raw literal address
@@ -2522,9 +2522,9 @@ overlapping absolute storage
 
 ---
 
-# Interrupt tests
+## § 89 Interrupt tests
 
-Test:
+**§ 89(1)** Test:
 
 ```text
 named vector
@@ -2546,9 +2546,9 @@ signature mismatch
 
 ---
 
-# Effect tests
+## § 90 Effect tests
 
-For each verified effect, test:
+**§ 90(1)** For each verified effect, test:
 
 ```text
 direct violation
@@ -2564,9 +2564,9 @@ full call-chain diagnostic
 
 ---
 
-# Binary and lowering tests
+## § 91 Binary and lowering tests
 
-Verify:
+**§ 91(1)** Verify:
 
 ```text
 excluded declarations do not reach object files
@@ -2582,9 +2582,9 @@ panic-free binaries can omit panic support
 
 ---
 
-# Required synchronization
+## § 92 Required synchronization
 
-This document must remain synchronized with:
+**§ 92(1)** This document must remain synchronized with:
 
 ```text
 grammar.md
@@ -2617,7 +2617,7 @@ language-rulebook-status.md
 
 ---
 
-# Appendix B — Canonical initial attribute table
+## § 93 Appendix B — Canonical initial attribute table
 
 | Attribute | Category | Initial target | Arguments | Core meaning |
 |---|---|---|---|---|
@@ -2634,15 +2634,15 @@ language-rulebook-status.md
 
 ---
 
-# Final design summary
+## § 94 Final design summary
 
-Sec 0.1 uses a closed set of compiler-known attributes.
+**§ 94(1)** Sec 0.1 uses a closed set of compiler-known attributes.
 
-Unknown attributes are errors.
+**§ 94(2)** Unknown attributes are errors.
 
-Attributes are semantic compiler constructs, not comments or macros.
+**§ 94(3)** Attributes are semantic compiler constructs, not comments or macros.
 
-`@target` accepts:
+**§ 94(4)** `@target` accepts:
 
 ```text
 os
@@ -2652,43 +2652,43 @@ device
 board
 ```
 
-When `@target` is the first source-bearing line, it applies to the complete file.
+**§ 94(5)** When `@target` is the first source-bearing line, it applies to the complete file.
 
-Otherwise it applies to the next top-level statement.
+**§ 94(6)** Otherwise it applies to the next top-level statement.
 
-`@when` selects the next top-level statement using typed compile-time boolean
+**§ 94(7)** `@when` selects the next top-level statement using typed compile-time boolean
 configuration.
 
-Compiler options are not conditional-compilation flags.
+**§ 94(8)** Compiler options are not conditional-compilation flags.
 
-Sec has no textual preprocessor.
+**§ 94(9)** Sec has no textual preprocessor.
 
-`@address` binds one module-scope variable to volatile absolute storage.
+**§ 94(10)** `@address` binds one module-scope variable to volatile absolute storage.
 
-Target knowledge packs may provide named peripheral addresses.
+**§ 94(11)** Target knowledge packs may provide named peripheral addresses.
 
-`@interrupt` binds a vector and always implies `@isr`.
+**§ 94(12)** `@interrupt` binds a vector and always implies `@isr`.
 
-`@isr` may stand alone without vector binding.
+**§ 94(13)** `@isr` may stand alone without vector binding.
 
-Target knowledge packs may provide named interrupt vectors.
+**§ 94(14)** Target knowledge packs may provide named interrupt vectors.
 
-`@noCopy` forbids derived implicit copy on a nominal type.
+**§ 94(15)** `@noCopy` forbids derived implicit copy on a nominal type.
 
-`@noAlloc`, `@noPanic`, and `@noBlock` are transitive compiler-verified
+**§ 94(16)** `@noAlloc`, `@noPanic`, and `@noBlock` are transitive compiler-verified
 guarantees.
 
-`@interruptSafe` verifies functions callable from ISR code.
+**§ 94(17)** `@interruptSafe` verifies functions callable from ISR code.
 
-Attributes do not require a Sec runtime.
+**§ 94(18)** Attributes do not require a Sec runtime.
 
-Selection occurs before active symbol-table construction and lowering.
+**§ 94(19)** Selection occurs before active symbol-table construction and lowering.
 
-Mutually exclusive target variants may define one logical symbol.
+**§ 94(20)** Mutually exclusive target variants may define one logical symbol.
 
-Overlapping active variants are compile errors.
+**§ 94(21)** Overlapping active variants are compile errors.
 
-Public variant shapes must remain compatible.
+**§ 94(22)** Public variant shapes must remain compatible.
 
-The attribute set may grow after each new attribute receives complete syntax,
+**§ 94(23)** The attribute set may grow after each new attribute receives complete syntax,
 target, semantic, diagnostic, formatter, and conformance rules.

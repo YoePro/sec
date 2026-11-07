@@ -363,8 +363,17 @@ func (a *Analyzer) analyzeTryHandlerBody(handler *ast.TryHandler, successType Ty
 			a.recordDefinition(bindingToken)
 			a.recordBinding(bindingToken, BindingLocal, bindingName, errorType, false)
 		}
-		a.symbols.set(bindingName, Symbol{Name: bindingName, Type: errorType, Mutable: false, Token: bindingToken, Storage: StorageOriginAutomatic})
+		// The binding is a local of the handler, like a match payload binding.
+		a.symbols.set(bindingName, Symbol{Name: bindingName, Type: errorType, Mutable: false, Token: bindingToken, Storage: StorageOriginAutomatic, Local: a.inFunctionBody, ScopeDepth: a.scopeDepth})
 		delete(a.constInts, bindingName)
+		// The handler binds the failed operation's error, a fresh value.
+		a.recordBindingTransfer(bindingIdentifier, bindingName, Place{}, errorType)
+		if bindingIdentifier != nil {
+			if a.tryHandlerBindingNodes == nil {
+				a.tryHandlerBindingNodes = map[*ast.TryHandler]*ast.Identifier{}
+			}
+			a.tryHandlerBindingNodes[handler] = bindingIdentifier
+		}
 		defer a.enterOwnedHandlerBinding(handler, bindingName, errorType, bindingToken)()
 	}
 	// MD-029 shallow field bindings are local to this handler like the
@@ -386,7 +395,7 @@ func (a *Analyzer) analyzeTryHandlerBody(handler *ast.TryHandler, successType Ty
 			}
 		}
 		a.symbols = previousSymbols
-		a.constInts = previousConstInts
+		a.restoreConstInts(previousConstInts)
 	}()
 
 	if handler.Guard != nil {

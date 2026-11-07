@@ -1,1 +1,81 @@
 module scan
+
+/**
+ * Matches a literal format span against input bytes.
+ *
+ * Description:
+ * Compares the exact UTF-8 bytes of a validated literal span.
+ * Does not perform whitespace normalization, case folding
+ * or character conversion.
+ *
+ * Parameters:
+ * - input: Source text to scan.
+ * - inputOffset: Current UTF-8 byte position in input.
+ * - format: Original composite format string.
+ * - formatStart: Inclusive UTF-8 byte offset in format.
+ * - formatEnd: Exclusive UTF-8 byte offset in format.
+ *
+ * Returns:
+ * - Some(offset): Position immediately after the matched text.
+ * - None: Text mismatch or invalid bounds.
+ *
+ * Allocation:
+ * Does not allocate.
+ */
+fn MatchLiteralSpan(input: string, inputOffset: uint, format: string, formatStart: uint, formatEnd: uint) Option[uint] {
+    if formatStart > formatEnd || formatEnd > format.SizeOf {
+        return None()
+    }
+
+    if inputOffset > input.SizeOf {
+        return None()
+    }
+
+    let length := formatEnd - formatStart
+
+    if length > input.SizeOf - inputOffset {
+        return None()
+    }
+
+    let mut index: uint := 0
+
+    while index < length {
+        if input.ByteAt(inputOffset + index) != format.ByteAt(formatStart + index) {
+            return None()
+        }
+
+        index += 1
+    }
+
+    return Some(inputOffset + length)
+}
+
+/**
+ * Matches one literal byte at the current input position.
+ *
+ * Description:
+ * Used for individual format tokens, including escaped braces.
+ *
+ * Parameters:
+ * - input: Source text.
+ * - inputOffset: Current UTF-8 byte position.
+ * - expected: Byte required at the current position.
+ *
+ * Returns:
+ * - Some(offset): Position after the matching byte.
+ * - None: Missing or different byte.
+ *
+ * Allocation:
+ * Does not allocate.
+ */
+fn MatchLiteralByte(input: string, inputOffset: uint, expected: byte) Option[uint] {
+    if inputOffset >= input.SizeOf {
+        return None()
+    }
+
+    if input.ByteAt(inputOffset) != expected {
+        return None()
+    }
+
+    return Some(inputOffset + 1)
+}

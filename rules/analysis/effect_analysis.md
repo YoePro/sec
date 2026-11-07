@@ -1,6 +1,14 @@
 # Effect Analysis
 
-## Status
+- **Status:** Normative
+- **Created:** 2026-08-04
+- **Last updated:** 2026-11-07 (stable chapter, subsection, and paragraph numbering)
+- **Document revision:** 1
+- **Sec language version:** 0.1
+- **Canonical path:** `rules/analysis/effect_analysis.md`
+- **Repository baseline reviewed:** `28780c01d63c3fc9eec2321ef67e3dd69962f043`
+
+---
 
 This document is the canonical effect-analysis rulebook for Sec 0.1.
 
@@ -28,9 +36,9 @@ canonical rulebook already defines it.
 
 ---
 
-# Purpose
+## § 1 Purpose
 
-Effect analysis answers questions such as:
+**§ 1(1)** Effect analysis answers questions such as:
 
 ```text
 Can this function panic?
@@ -50,16 +58,16 @@ What is the maximum live arena allocation on this path?
 Why does a transitive guarantee fail?
 ```
 
-The analysis is compiler-visible and compile-time.
+**§ 1(2)** The analysis is compiler-visible and compile-time.
 
-It does not require dynamic effect tags, effect handlers, exception tables,
+**§ 1(3)** It does not require dynamic effect tags, effect handlers, exception tables,
 runtime dispatch, a scheduler, or a mandatory runtime library.
 
 ---
 
-# Definition of an effect
+## § 2 Definition of an effect
 
-An effect is compiler-tracked information about how evaluating an expression or
+**§ 2(1)** An effect is compiler-tracked information about how evaluating an expression or
 function may:
 
 ```text
@@ -72,15 +80,15 @@ interact with external state;
 transfer control in a way not represented only by the ordinary return value.
 ```
 
-Not every effect uses the same representation.
+**§ 2(2)** Not every effect uses the same representation.
 
-Sec effect analysis contains several cooperating analysis domains.
+**§ 2(3)** Sec effect analysis contains several cooperating analysis domains.
 
 ---
 
-# Non-goals
+## § 3 Non-goals
 
-Effect analysis does not replace:
+**§ 3(1)** Effect analysis does not replace:
 
 ```text
 the type system;
@@ -97,18 +105,18 @@ ABI validation;
 unsafe validation.
 ```
 
-It consumes facts from those analyses and contributes facts back to them.
+**§ 3(2)** It consumes facts from those analyses and contributes facts back to them.
 
-Sec does not expose a general algebraic-effect language in version 0.1.
+**§ 3(3)** Sec does not expose a general algebraic-effect language in version 0.1.
 
-Sec does not require programmers to write explicit region parameters, lifetime
+**§ 3(4)** Sec does not require programmers to write explicit region parameters, lifetime
 variables, linear region tokens, or substructural effect types.
 
 ---
 
-# Analysis domains
+## § 4 Analysis domains
 
-Sec 0.1 uses four cooperating effect-related domains:
+**§ 4(1)** Sec 0.1 uses four cooperating effect-related domains:
 
 ```text
 summary may-effects;
@@ -117,16 +125,16 @@ quantitative resource facts;
 trust provenance.
 ```
 
-These domains must not be collapsed into one undifferentiated flag set.
+**§ 4(2)** These domains must not be collapsed into one undifferentiated flag set.
 
 ---
 
-# Summary may-effects
+## § 5 Summary may-effects
 
-Summary may-effects describe operations that may occur on at least one reachable
+**§ 5(1)** Summary may-effects describe operations that may occur on at least one reachable
 execution path.
 
-The initial internal set is:
+**§ 5(2)** The initial internal set is:
 
 ```text
 MayPanic
@@ -140,9 +148,9 @@ MayMutateExternalState
 MayUseNondeterministicInput
 ```
 
-These effects are normally combined as an idempotent set.
+**§ 5(3)** These effects are normally combined as an idempotent set.
 
-Example:
+**§ 5(4)** Example:
 
 ```text
 {MayAllocate, MayIO}
@@ -152,17 +160,17 @@ Example:
 {MayAllocate, MayIO, MayBlock}
 ```
 
-The same effect appearing multiple times remains one summary capability, while
+**§ 5(5)** The same effect appearing multiple times remains one summary capability, while
 the compiler may retain multiple causes for diagnostics.
 
 ---
 
-# Ordered arena-lifetime effects
+## § 6 Ordered arena-lifetime effects
 
-Arena-lifetime effects describe ordered changes to programmer-visible arenas and
+**§ 6(1)** Arena-lifetime effects describe ordered changes to programmer-visible arenas and
 arena-backed storage.
 
-The initial conceptual events are:
+**§ 6(2)** The initial conceptual events are:
 
 ```text
 ArenaCreate(A, capacity)
@@ -171,9 +179,9 @@ ArenaReset(A)
 ArenaRelease(A)
 ```
 
-Order matters.
+**§ 6(3)** Order matters.
 
-This sequence may be valid:
+**§ 6(4)** This sequence may be valid:
 
 ```text
 ArenaCreate(A, 4096)
@@ -183,7 +191,7 @@ ArenaAllocate(A, 128)
 ArenaRelease(A)
 ```
 
-This sequence is invalid:
+**§ 6(5)** This sequence is invalid:
 
 ```text
 ArenaCreate(A, 4096)
@@ -191,16 +199,16 @@ ArenaRelease(A)
 ArenaAllocate(A, 64)
 ```
 
-An arena is the programmer-visible storage mechanism.
+**§ 6(6)** An arena is the programmer-visible storage mechanism.
 
-The compiler may use an internal storage-lifetime identity to analyze the arena,
+**§ 6(7)** The compiler may use an internal storage-lifetime identity to analyze the arena,
 but Sec 0.1 does not expose that identity as source-level region syntax.
 
 ---
 
-# Quantitative resource facts
+## § 7 Quantitative resource facts
 
-Quantitative analysis records facts such as:
+**§ 7(1)** Quantitative analysis records facts such as:
 
 ```text
 maximum live arena allocation;
@@ -211,19 +219,19 @@ maximum simultaneous task creation where provable;
 path-specific resource peaks.
 ```
 
-These are not boolean effects.
+**§ 7(2)** These are not boolean effects.
 
-They are associated with control-flow paths, calls, loops, recursion, arenas,
+**§ 7(3)** They are associated with control-flow paths, calls, loops, recursion, arenas,
 and concrete compilation plans.
 
 ---
 
-# Trust provenance
+## § 8 Trust provenance
 
-Trust provenance records why the compiler accepts an effect claim or semantic
+**§ 8(1)** Trust provenance records why the compiler accepts an effect claim or semantic
 fact.
 
-Initial provenance categories include:
+**§ 8(2)** Initial provenance categories include:
 
 ```text
 proven from Sec source;
@@ -234,26 +242,26 @@ trusted through an inline assembly declaration;
 unknown.
 ```
 
-Trust provenance is not a runtime effect.
+**§ 8(3)** Trust provenance is not a runtime effect.
 
-`unsafe` is not represented as `MayUnsafe`.
+**§ 8(4)** `unsafe` is not represented as `MayUnsafe`.
 
-Instead, the compiler records that a proof depends on an unsafe or trusted
+**§ 8(5)** Instead, the compiler records that a proof depends on an unsafe or trusted
 boundary.
 
 ---
 
-# Effects versus ordinary return values
+## § 9 Effects versus ordinary return values
 
-An explicit error value is not itself an effect.
+**§ 9(1)** An explicit error value is not itself an effect.
 
-Example:
+**§ 9(2)** Example:
 
 ```sec
 fn Open() Result[File, OpenError]
 ```
 
-The function may still have:
+**§ 9(3)** The function may still have:
 
 ```text
 MayAllocate
@@ -261,19 +269,19 @@ MayBlock
 MayIO
 ```
 
-Returning `Err` does not imply panic, but it also does not remove allocation,
+**§ 9(4)** Returning `Err` does not imply panic, but it also does not remove allocation,
 blocking, I/O, suspension, volatile access, or external mutation.
 
 ---
 
-# Inferred summaries
+## § 10 Inferred summaries
 
-Every function, method, closure, destructor, and deferred body receives an
+**§ 10(1)** Every function, method, closure, destructor, and deferred body receives an
 inferred effect summary.
 
-This applies even when no effect attribute is written.
+**§ 10(2)** This applies even when no effect attribute is written.
 
-Example:
+**§ 10(3)** Example:
 
 ```sec
 fn AddOne(value: int) Result[int, ArithmeticError] {
@@ -282,7 +290,7 @@ fn AddOne(value: int) Result[int, ArithmeticError] {
 }
 ```
 
-The compiler may infer:
+**§ 10(4)** The compiler may infer:
 
 ```text
 MayPanic: absent
@@ -291,9 +299,9 @@ MayBlock: absent
 MaySuspend: absent
 ```
 
-The inferred summary describes the current implementation.
+**§ 10(5)** The inferred summary describes the current implementation.
 
-It may be used for:
+**§ 10(6)** It may be used for:
 
 ```text
 local verification;
@@ -309,9 +317,9 @@ dead-support elimination.
 
 ---
 
-# Declared guarantees
+## § 11 Declared guarantees
 
-Attributes such as:
+**§ 11(1)** Attributes such as:
 
 ```text
 @noPanic
@@ -322,12 +330,12 @@ Attributes such as:
 @interrupt
 ```
 
-declare stable guarantees.
+**§ 11(2)** declare stable guarantees.
 
-A declared guarantee is verified against the inferred summary and all other
+**§ 11(3)** A declared guarantee is verified against the inferred summary and all other
 required analyses.
 
-Example:
+**§ 11(4)** Example:
 
 ```sec
 @noPanic
@@ -337,16 +345,16 @@ fn AddOne(value: int) Result[int, ArithmeticError] {
 }
 ```
 
-A future implementation change that introduces a reachable panic is a compiler
+**§ 11(5)** A future implementation change that introduces a reachable panic is a compiler
 error.
 
 ---
 
-# Public contract boundary
+## § 12 Public contract boundary
 
-Inferred absence of an effect is not automatically a stable public API promise.
+**§ 12(1)** Inferred absence of an effect is not automatically a stable public API promise.
 
-Public callers may rely on:
+**§ 12(2)** Public callers may rely on:
 
 ```text
 declared guarantees;
@@ -356,25 +364,25 @@ compiler-known intrinsic guarantees;
 target-knowledge guarantees where the target contract exposes them.
 ```
 
-Public callers must not rely on an undeclared implementation accident across a
+**§ 12(3)** Public callers must not rely on an undeclared implementation accident across a
 separate compilation boundary.
 
-Module metadata may store both:
+**§ 12(4)** Module metadata may store both:
 
 ```text
 inferred implementation summary;
 declared public guarantee.
 ```
 
-They remain semantically distinct.
+**§ 12(5)** They remain semantically distinct.
 
 ---
 
-# Positive internal representation
+## § 13 Positive internal representation
 
-The compiler stores possible effects positively.
+**§ 13(1)** The compiler stores possible effects positively.
 
-Example:
+**§ 13(2)** Example:
 
 ```text
 MayPanic
@@ -382,7 +390,7 @@ MayAllocate
 MayBlock
 ```
 
-A negative source guarantee means the corresponding positive effect must be
+**§ 13(3)** A negative source guarantee means the corresponding positive effect must be
 absent.
 
 ```text
@@ -398,11 +406,11 @@ absent.
 
 ---
 
-# Effect ordering
+## § 14 Effect ordering
 
-A function with fewer possible effects satisfies a stronger guarantee.
+**§ 14(1)** A function with fewer possible effects satisfies a stronger guarantee.
 
-Conceptually:
+**§ 14(2)** Conceptually:
 
 ```text
 {}
@@ -417,9 +425,9 @@ Conceptually:
 {MayPanic, MayAllocate, MayBlock}
 ```
 
-Effect compatibility uses subset inclusion.
+**§ 14(3)** Effect compatibility uses subset inclusion.
 
-A function with effect set `E1` may be used where `E2` is permitted when:
+**§ 14(4)** A function with effect set `E1` may be used where `E2` is permitted when:
 
 ```text
 E1 is a subset of E2
@@ -427,11 +435,11 @@ E1 is a subset of E2
 
 ---
 
-# Direct effects
+## § 15 Direct effects
 
-A direct effect is introduced by the function body itself.
+**§ 15(1)** A direct effect is introduced by the function body itself.
 
-Examples:
+**§ 15(2)** Examples:
 
 ```text
 checked arithmetic that may panic;
@@ -452,11 +460,11 @@ arena release.
 
 ---
 
-# Transitive effects
+## § 16 Transitive effects
 
-A transitive effect is introduced by reachable behavior.
+**§ 16(1)** A transitive effect is introduced by reachable behavior.
 
-The summary includes effects from:
+**§ 16(2)** The summary includes effects from:
 
 ```text
 direct function calls;
@@ -475,7 +483,7 @@ target-specific intrinsics;
 task and thread operations.
 ```
 
-Conceptually:
+**§ 16(3)** Conceptually:
 
 ```text
 EffectiveEffects(F)
@@ -491,12 +499,12 @@ Effects(Cleanup(F))
 
 ---
 
-# Call graph requirement
+## § 17 Call graph requirement
 
-Effect analysis operates over the active call graph for one concrete
+**§ 17(1)** Effect analysis operates over the active call graph for one concrete
 compilation plan.
 
-The call graph must include:
+**§ 17(2)** The call graph must include:
 
 ```text
 direct calls;
@@ -516,15 +524,15 @@ panic sinks where relevant;
 target handlers.
 ```
 
-Unknown call targets are handled conservatively.
+**§ 17(3)** Unknown call targets are handled conservatively.
 
 ---
 
-# Fixed-point analysis
+## § 18 Fixed-point analysis
 
-Recursive and mutually recursive functions require fixed-point analysis.
+**§ 18(1)** Recursive and mutually recursive functions require fixed-point analysis.
 
-Example:
+**§ 18(2)** Example:
 
 ```text
 A calls B
@@ -532,19 +540,19 @@ B calls C
 C calls A
 ```
 
-If `C` may allocate, the recursive strongly connected component is
+**§ 18(3)** If `C` may allocate, the recursive strongly connected component is
 transitively allocation-capable unless proof eliminates the path.
 
-The compiler computes a stable summary for the complete component.
+**§ 18(4)** The compiler computes a stable summary for the complete component.
 
 ---
 
-# Path sensitivity
+## § 19 Path sensitivity
 
-An effect is included only when it remains reachable after semantic proof and
+**§ 19(1)** An effect is included only when it remains reachable after semantic proof and
 control-flow refinement.
 
-Example:
+**§ 19(2)** Example:
 
 ```sec
 if false {
@@ -552,9 +560,9 @@ if false {
 }
 ```
 
-The dead branch contributes no reachable effect.
+**§ 19(3)** The dead branch contributes no reachable effect.
 
-Example:
+**§ 19(4)** Example:
 
 ```sec
 if divisor != 0 {
@@ -562,21 +570,21 @@ if divisor != 0 {
 }
 ```
 
-The division-by-zero panic effect may be absent when Sema proves the divisor is
+**§ 19(5)** The division-by-zero panic effect may be absent when Sema proves the divisor is
 nonzero on the path.
 
-A runtime condition that may be either true or false contributes effects from
+**§ 19(6)** A runtime condition that may be either true or false contributes effects from
 both reachable branches.
 
 ---
 
-# Branch joins
+## § 20 Branch joins
 
-Summary may-effects join by union.
+**§ 20(1)** Summary may-effects join by union.
 
-Ordered arena state joins by state compatibility.
+**§ 20(2)** Ordered arena state joins by state compatibility.
 
-Example:
+**§ 20(3)** Example:
 
 ```sec
 if condition {
@@ -586,16 +594,16 @@ if condition {
 Use(arena)
 ```
 
-At the join point the arena is:
+**§ 20(4)** At the join point the arena is:
 
 ```text
 Live on one path;
 Released on another path.
 ```
 
-The later use is invalid.
+**§ 20(5)** The later use is invalid.
 
-Example:
+**§ 20(6)** Example:
 
 ```sec
 if condition {
@@ -606,15 +614,15 @@ if condition {
 Use(arena)
 ```
 
-Only the path where the arena remains live reaches `Use`.
+**§ 20(7)** Only the path where the arena remains live reaches `Use`.
 
-The use may be valid.
+**§ 20(8)** The use may be valid.
 
 ---
 
-# Loops
+## § 21 Loops
 
-Loop analysis computes a fixed point over:
+**§ 21(1)** Loop analysis computes a fixed point over:
 
 ```text
 summary effects;
@@ -625,12 +633,12 @@ resource peaks;
 control-flow exits.
 ```
 
-Effects inside a reachable loop contribute to the containing function.
+**§ 21(2)** Effects inside a reachable loop contribute to the containing function.
 
-Arena allocation may be bounded per iteration when reset or release is proven
+**§ 21(3)** Arena allocation may be bounded per iteration when reset or release is proven
 before the next iteration.
 
-Example:
+**§ 21(4)** Example:
 
 ```sec
 for item in items {
@@ -641,16 +649,16 @@ for item in items {
 }
 ```
 
-The analysis may prove one-iteration peak use rather than multiplying capacity
+**§ 21(5)** The analysis may prove one-iteration peak use rather than multiplying capacity
 by iteration count.
 
 ---
 
-# Optional optimization must not establish guarantees
+## § 22 Optional optimization must not establish guarantees
 
-A declared effect guarantee must not depend only on an optional optimizer.
+**§ 22(1)** A declared effect guarantee must not depend only on an optional optimizer.
 
-A guarantee may be established through:
+**§ 22(2)** A guarantee may be established through:
 
 ```text
 semantic constant evaluation;
@@ -662,7 +670,7 @@ required lowering semantics;
 compiler-known intrinsic semantics.
 ```
 
-A guarantee must not be valid only because:
+**§ 22(3)** A guarantee must not be valid only because:
 
 ```text
 release optimization removed an allocation;
@@ -671,86 +679,86 @@ inlining happened to remove a helper;
 optional loop optimization changed the result.
 ```
 
-Debug and release builds must agree on semantic effect guarantees for the same
+**§ 22(4)** Debug and release builds must agree on semantic effect guarantees for the same
 compilation plan and source semantics.
 
 ---
 
-# Runtime checks
+## § 23 Runtime checks
 
-Language-defined runtime checks contribute effects according to their selected
+**§ 23(1)** Language-defined runtime checks contribute effects according to their selected
 control flow.
 
-An ordinary checked operation may contribute `MayPanic`.
+**§ 23(2)** An ordinary checked operation may contribute `MayPanic`.
 
-Example:
+**§ 23(3)** Example:
 
 ```sec
 let total := left + right
 ```
 
-When overflow is possible and not handled explicitly, the operation may panic.
+**§ 23(4)** When overflow is possible and not handled explicitly, the operation may panic.
 
-A proven-safe check contributes no panic effect.
+**§ 23(5)** A proven-safe check contributes no panic effect.
 
 ---
 
-# `try`
+## § 24 `try`
 
-`try` converts supported language-defined failure from panic-capable control
+**§ 24(1)** `try` converts supported language-defined failure from panic-capable control
 flow to explicit fallible control flow.
 
-Example:
+**§ 24(2)** Example:
 
 ```sec
 let total := try left + right
 ```
 
-The arithmetic overflow check no longer contributes `MayPanic`.
+**§ 24(3)** The arithmetic overflow check no longer contributes `MayPanic`.
 
-The explicit error flow remains part of the ordinary function result and
+**§ 24(4)** The explicit error flow remains part of the ordinary function result and
 control flow.
 
 ---
 
-# `try` does not remove unrelated effects
+## § 25 `try` does not remove unrelated effects
 
-Example:
+**§ 25(1)** Example:
 
 ```sec
 let value := try allocator.New[Value]()
 ```
 
-Allocation failure may be explicit and panic-free, but:
+**§ 25(2)** Allocation failure may be explicit and panic-free, but:
 
 ```text
 MayAllocate remains.
 ```
 
-Example:
+**§ 25(3)** Example:
 
 ```sec
 let data := try network.Read()
 ```
 
-The explicit error path does not remove:
+**§ 25(4)** The explicit error path does not remove:
 
 ```text
 MayIO
 MayBlock
 ```
 
-where the operation has those effects.
+**§ 25(5)** where the operation has those effects.
 
-`try` does not catch or erase panic from arbitrary called functions.
+**§ 25(6)** `try` does not catch or erase panic from arbitrary called functions.
 
 ---
 
-# `@noPanic`
+## § 26 `@noPanic`
 
-`@noPanic` requires absence of `MayPanic`.
+**§ 26(1)** `@noPanic` requires absence of `MayPanic`.
 
-The complete guarantee includes:
+**§ 26(2)** The complete guarantee includes:
 
 ```text
 no reachable explicit panic;
@@ -762,7 +770,7 @@ no panic-capable cleanup;
 no unknown foreign abort or unwind accepted as safe.
 ```
 
-The detailed panic semantics belong to:
+**§ 26(3)** The detailed panic semantics belong to:
 
 ```text
 panic.md
@@ -771,11 +779,11 @@ runtime_checks.md
 
 ---
 
-# `@noAlloc`
+## § 27 `@noAlloc`
 
-`@noAlloc` requires absence of `MayAllocate`.
+**§ 27(1)** `@noAlloc` requires absence of `MayAllocate`.
 
-Dynamic allocation includes:
+**§ 27(2)** Dynamic allocation includes:
 
 ```text
 heap allocation;
@@ -791,9 +799,9 @@ hidden storage acquisition.
 
 ---
 
-# Operations that are not dynamic allocation
+## § 28 Operations that are not dynamic allocation
 
-The following are not dynamic allocation merely by existing:
+**§ 28(1)** The following are not dynamic allocation merely by existing:
 
 ```text
 fixed stack locals;
@@ -807,42 +815,42 @@ reuse of existing collection capacity without growth;
 compiler-elided temporary representation.
 ```
 
-A specific operation may still allocate according to its semantic definition.
+**§ 28(2)** A specific operation may still allocate according to its semantic definition.
 
 ---
 
-# Arena allocation and `@noAlloc`
+## § 29 Arena allocation and `@noAlloc`
 
-Creating an arena view over existing storage may be no-allocation.
+**§ 29(1)** Creating an arena view over existing storage may be no-allocation.
 
-Example:
+**§ 29(2)** Example:
 
 ```sec
 let arena := Arena.FromBuffer(ref buffer)
 ```
 
-Allocating an object from the arena consumes arena capacity.
+**§ 29(3)** Allocating an object from the arena consumes arena capacity.
 
-Example:
+**§ 29(4)** Example:
 
 ```sec
 let value := arena.New[Value]()
 ```
 
-That operation contributes `MayAllocate`.
+**§ 29(5)** That operation contributes `MayAllocate`.
 
-Therefore, bounded arena allocation is still allocation.
+**§ 29(6)** Therefore, bounded arena allocation is still allocation.
 
-A separate profile may permit bounded arena allocation while forbidding heap
+**§ 29(7)** A separate profile may permit bounded arena allocation while forbidding heap
 allocation, but that profile is not the meaning of `@noAlloc`.
 
 ---
 
-# `@noBlock`
+## § 30 `@noBlock`
 
-`@noBlock` requires absence of synchronous blocking.
+**§ 30(1)** `@noBlock` requires absence of synchronous blocking.
 
-Blocking includes:
+**§ 30(2)** Blocking includes:
 
 ```text
 blocking I/O;
@@ -858,20 +866,20 @@ waiting for an unbounded external event.
 
 ---
 
-# Asynchronous suspension
+## § 31 Asynchronous suspension
 
-Asynchronous suspension is represented separately as:
+**§ 31(1)** Asynchronous suspension is represented separately as:
 
 ```text
 MaySuspend
 ```
 
-`@noBlock` does not by itself forbid `MaySuspend`.
+**§ 31(2)** `@noBlock` does not by itself forbid `MaySuspend`.
 
-An asynchronous task may suspend and allow other work to execute without
+**§ 31(3)** An asynchronous task may suspend and allow other work to execute without
 synchronously blocking an execution thread.
 
-Example:
+**§ 31(4)** Example:
 
 ```sec
 @noBlock
@@ -880,39 +888,39 @@ async fn ReadAsync() Result[Data, ReadError] {
 }
 ```
 
-The function may be:
+**§ 31(5)** The function may be:
 
 ```text
 MaySuspend
 MayIO
 ```
 
-while remaining free from `MayBlock`.
+**§ 31(6)** while remaining free from `MayBlock`.
 
-Exact `async` and `await` source semantics remain defined by their dedicated
+**§ 31(7)** Exact `async` and `await` source semantics remain defined by their dedicated
 rulebook.
 
 ---
 
-# ISR suspension rule
+## § 32 ISR suspension rule
 
-`@isr` and `@interruptSafe` forbid both:
+**§ 32(1)** `@isr` and `@interruptSafe` forbid both:
 
 ```text
 MayBlock
 MaySuspend
 ```
 
-Interrupt execution may not block, park, yield, or resume later as an ordinary
+**§ 32(2)** Interrupt execution may not block, park, yield, or resume later as an ordinary
 task continuation.
 
 ---
 
-# `MaySpawn`
+## § 33 `MaySpawn`
 
-Creating concurrent work contributes `MaySpawn`.
+**§ 33(1)** Creating concurrent work contributes `MaySpawn`.
 
-Examples:
+**§ 33(2)** Examples:
 
 ```text
 task creation;
@@ -921,7 +929,7 @@ detached work creation;
 scheduler submission where it creates a new execution instance.
 ```
 
-The same operation may also contribute:
+**§ 33(3)** The same operation may also contribute:
 
 ```text
 MayAllocate;
@@ -929,17 +937,17 @@ MaySuspend;
 MayMutateExternalState.
 ```
 
-`MaySpawn` remains separate because ISR, lifetime, supervision, embedded
+**§ 33(4)** `MaySpawn` remains separate because ISR, lifetime, supervision, embedded
 profiles, and structured-concurrency analysis need to identify it directly.
 
 ---
 
-# `MayIO`
+## § 34 `MayIO`
 
-`MayIO` describes interaction with external input or output through an I/O
+**§ 34(1)** `MayIO` describes interaction with external input or output through an I/O
 abstraction.
 
-Examples:
+**§ 34(2)** Examples:
 
 ```text
 file operations;
@@ -950,7 +958,7 @@ foreign I/O;
 platform services.
 ```
 
-I/O may be:
+**§ 34(3)** I/O may be:
 
 ```text
 blocking;
@@ -959,19 +967,19 @@ suspending;
 polling.
 ```
 
-`MayIO` is therefore not equivalent to `MayBlock`.
+**§ 34(4)** `MayIO` is therefore not equivalent to `MayBlock`.
 
 ---
 
-# `MayAccessVolatile`
+## § 35 `MayAccessVolatile`
 
-Volatile access contributes:
+**§ 35(1)** Volatile access contributes:
 
 ```text
 MayAccessVolatile
 ```
 
-Examples:
+**§ 35(2)** Examples:
 
 ```text
 read from addressed storage;
@@ -980,7 +988,7 @@ volatile register access;
 compiler-known hardware register operations.
 ```
 
-Volatile operations may not be:
+**§ 35(3)** Volatile operations may not be:
 
 ```text
 removed;
@@ -990,15 +998,15 @@ reordered contrary to the volatile rules;
 treated as ordinary constant memory.
 ```
 
-Volatile access is not automatically classified as ordinary file or socket I/O.
+**§ 35(4)** Volatile access is not automatically classified as ordinary file or socket I/O.
 
 ---
 
-# `MayMutateExternalState`
+## § 36 `MayMutateExternalState`
 
-This effect describes mutation observable outside local computation.
+**§ 36(1)** This effect describes mutation observable outside local computation.
 
-Examples:
+**§ 36(2)** Examples:
 
 ```text
 global mutable state;
@@ -1011,9 +1019,9 @@ state reachable through an externally supplied mutable reference where the
 function contract exposes the mutation.
 ```
 
-Local temporary mutation does not by itself contribute this effect.
+**§ 36(3)** Local temporary mutation does not by itself contribute this effect.
 
-Example:
+**§ 36(4)** Example:
 
 ```sec
 fn Normalize(value: int) int {
@@ -1025,12 +1033,12 @@ fn Normalize(value: int) int {
 
 ---
 
-# `MayUseNondeterministicInput`
+## § 37 `MayUseNondeterministicInput`
 
-This effect describes dependence on input that may vary independently of the
+**§ 37(1)** This effect describes dependence on input that may vary independently of the
 ordinary explicit parameters.
 
-Examples:
+**§ 37(2)** Examples:
 
 ```text
 clock;
@@ -1042,16 +1050,16 @@ uncontrolled external device state;
 foreign nondeterministic input.
 ```
 
-A volatile read may also be nondeterministic, but the effects remain separately
+**§ 37(3)** A volatile read may also be nondeterministic, but the effects remain separately
 recorded.
 
 ---
 
-# Composite interrupt contracts
+## § 38 Composite interrupt contracts
 
-`@isr` is a composite verified contract.
+**§ 38(1)** `@isr` is a composite verified contract.
 
-It requires at least:
+**§ 38(2)** It requires at least:
 
 ```text
 absence of MayPanic;
@@ -1069,33 +1077,33 @@ no forbidden synchronization;
 no unknown effect source.
 ```
 
-Stack and ABI facts come from other analyses.
+**§ 38(3)** Stack and ABI facts come from other analyses.
 
-Effect analysis coordinates them.
+**§ 38(4)** Effect analysis coordinates them.
 
 ---
 
-# `@interrupt`
+## § 39 `@interrupt`
 
-`@interrupt(...)` implies `@isr`.
+**§ 39(1)** `@interrupt(...)` implies `@isr`.
 
-Therefore:
+**§ 39(2)** Therefore:
 
 ```text
 @interrupt(...)
     implies all @isr effect restrictions.
 ```
 
-Vector binding and target lowering remain defined by `attributes.md` and target
+**§ 39(3)** Vector binding and target lowering remain defined by `attributes.md` and target
 knowledge.
 
 ---
 
-# `@interruptSafe`
+## § 40 `@interruptSafe`
 
-`@interruptSafe` verifies that a function or method may be called from ISR code.
+**§ 40(1)** `@interruptSafe` verifies that a function or method may be called from ISR code.
 
-It requires at least:
+**§ 40(2)** It requires at least:
 
 ```text
 absence of MayPanic;
@@ -1109,15 +1117,15 @@ acceptable stack behavior;
 no unknown effect source.
 ```
 
-It does not bind a vector and does not make the function an ISR entrypoint.
+**§ 40(3)** It does not bind a vector and does not make the function an ISR entrypoint.
 
 ---
 
-# Target-aware ISR effects
+## § 41 Target-aware ISR effects
 
-Not all I/O or external mutation is forbidden in an ISR.
+**§ 41(1)** Not all I/O or external mutation is forbidden in an ISR.
 
-Target knowledge may classify operations such as:
+**§ 41(2)** Target knowledge may classify operations such as:
 
 ```text
 acknowledging an interrupt;
@@ -1127,19 +1135,19 @@ clearing an interrupt flag;
 performing a bounded lock-free queue operation.
 ```
 
-The compiler must use target and operation-specific knowledge rather than a
+**§ 41(3)** The compiler must use target and operation-specific knowledge rather than a
 blanket rule that every volatile access is invalid.
 
-Unknown behavior remains conservative.
+**§ 41(4)** Unknown behavior remains conservative.
 
 ---
 
-# Arena model
+## § 42 Arena model
 
-Sec takes a limited arena-lifetime idea from region-effect research without
+**§ 42(1)** Sec takes a limited arena-lifetime idea from region-effect research without
 adopting a general region language.
 
-The programmer sees:
+**§ 42(2)** The programmer sees:
 
 ```text
 arena;
@@ -1149,22 +1157,22 @@ arena release;
 references to arena-backed storage.
 ```
 
-The compiler may assign internal lifetime identities.
+**§ 42(3)** The compiler may assign internal lifetime identities.
 
-Those identities are not normally visible in source.
+**§ 42(4)** Those identities are not normally visible in source.
 
 ---
 
-# Arena state
+## § 43 Arena state
 
-The initial arena state model is:
+**§ 43(1)** The initial arena state model is:
 
 ```text
 Live
 Released
 ```
 
-`ArenaReset` is an event that:
+**§ 43(2)** `ArenaReset` is an event that:
 
 ```text
 keeps the arena Live;
@@ -1173,7 +1181,7 @@ invalidates all previous allocations from that arena;
 invalidates references depending on those allocations.
 ```
 
-`ArenaRelease`:
+**§ 43(3)** `ArenaRelease`:
 
 ```text
 ends ownership of the arena storage;
@@ -1184,18 +1192,18 @@ forbids later allocation, reset, or ordinary use.
 
 ---
 
-# Arena-backed references
+## § 44 Arena-backed references
 
-The compiler records when a value or reference depends on arena-backed storage.
+**§ 44(1)** The compiler records when a value or reference depends on arena-backed storage.
 
-Conceptual facts:
+**§ 44(2)** Conceptual facts:
 
 ```text
 StorageDependsOn(value, A)
 ReferenceDependsOn(reference, A)
 ```
 
-Example invalid program:
+**§ 44(3)** Example invalid program:
 
 ```sec
 let arena := Arena.FromBuffer(ref buffer)
@@ -1207,16 +1215,16 @@ arena.Reset()
 Use(view)
 ```
 
-`view` depends on an allocation invalidated by `ArenaReset`.
+**§ 44(4)** `view` depends on an allocation invalidated by `ArenaReset`.
 
 ---
 
-# Non-lexical borrow live ranges
+## § 45 Non-lexical borrow live ranges
 
-A borrow may end at its last possible use rather than at the end of the lexical
+**§ 45(1)** A borrow may end at its last possible use rather than at the end of the lexical
 block.
 
-Example:
+**§ 45(2)** Example:
 
 ```sec
 let value := arena.New[Value]()
@@ -1228,18 +1236,18 @@ Consume(view)
 arena.Reset()
 ```
 
-The reset may be valid when the compiler proves that `view` is not used later.
+**§ 45(3)** The reset may be valid when the compiler proves that `view` is not used later.
 
-The source variable may remain in lexical scope while its borrow live range has
+**§ 45(4)** The source variable may remain in lexical scope while its borrow live range has
 ended.
 
 ---
 
-# Arena lifetime is not a source-code block
+## § 46 Arena lifetime is not a source-code block
 
-The term storage lifetime does not mean a lexical source block.
+**§ 46(1)** The term storage lifetime does not mean a lexical source block.
 
-An arena may:
+**§ 46(2)** An arena may:
 
 ```text
 be created after block entry;
@@ -1250,13 +1258,13 @@ be passed through calls;
 have references whose live ranges end before the arena.
 ```
 
-Sec source does not require explicit region parameters for this analysis.
+**§ 46(3)** Sec source does not require explicit region parameters for this analysis.
 
 ---
 
-# Arena analysis does not replace ownership
+## § 47 Arena analysis does not replace ownership
 
-Ownership analysis determines:
+**§ 47(1)** Ownership analysis determines:
 
 ```text
 who owns the arena;
@@ -1265,7 +1273,7 @@ whether an owner remains valid;
 whether release occurs exactly according to ownership rules.
 ```
 
-Borrow analysis determines:
+**§ 47(2)** Borrow analysis determines:
 
 ```text
 shared and mutable borrow conflicts;
@@ -1274,7 +1282,7 @@ field separation;
 alias validity.
 ```
 
-Escape analysis determines:
+**§ 47(3)** Escape analysis determines:
 
 ```text
 whether references outlive arena-backed storage;
@@ -1282,21 +1290,21 @@ whether closures retain arena references;
 whether returned references are valid.
 ```
 
-Effect analysis tracks ordered arena events and coordinates these facts.
+**§ 47(4)** Effect analysis tracks ordered arena events and coordinates these facts.
 
 ---
 
-# Arena capacity
+## § 48 Arena capacity
 
-Arena allocation may carry a compile-time or symbolic size.
+**§ 48(1)** Arena allocation may carry a compile-time or symbolic size.
 
-Conceptual:
+**§ 48(2)** Conceptual:
 
 ```text
 ArenaAllocate(A, size)
 ```
 
-The compiler may compute:
+**§ 48(3)** The compiler may compute:
 
 ```text
 remaining capacity;
@@ -1305,18 +1313,18 @@ per-path capacity use;
 unknown bound.
 ```
 
-Allocation fails or becomes fallible according to the arena API and allocation
+**§ 48(4)** Allocation fails or becomes fallible according to the arena API and allocation
 rulebook.
 
-`try` may make capacity failure explicit, but `MayAllocate` remains.
+**§ 48(5)** `try` may make capacity failure explicit, but `MayAllocate` remains.
 
 ---
 
-# Arena reset in loops
+## § 49 Arena reset in loops
 
-A reset before the next iteration may allow bounded peak analysis.
+**§ 49(1)** A reset before the next iteration may allow bounded peak analysis.
 
-Example:
+**§ 49(2)** Example:
 
 ```sec
 for item in items {
@@ -1326,14 +1334,14 @@ for item in items {
 }
 ```
 
-When no arena-backed value escapes and all borrows end before reset, the
+**§ 49(3)** When no arena-backed value escapes and all borrows end before reset, the
 compiler may report one-iteration peak capacity rather than accumulated use.
 
 ---
 
-# Arena release across branches
+## § 50 Arena release across branches
 
-Example:
+**§ 50(1)** Example:
 
 ```sec
 if condition {
@@ -1343,31 +1351,31 @@ if condition {
 Use(arena)
 ```
 
-The use is rejected because at least one reaching path has released the arena.
+**§ 50(2)** The use is rejected because at least one reaching path has released the arena.
 
-The compiler must report the release path.
+**§ 50(3)** The compiler must report the release path.
 
 ---
 
-# Arena splitting
+## § 51 Arena splitting
 
-Sub-arenas and explicit arena splitting are not part of this rulebook unless
+**§ 51(1)** Sub-arenas and explicit arena splitting are not part of this rulebook unless
 their source and ownership semantics are separately decided.
 
-The analysis architecture must permit a future event such as:
+**§ 51(2)** The analysis architecture must permit a future event such as:
 
 ```text
 ArenaSplit(parent, child, capacity)
 ```
 
-but Sec 0.1 does not gain source syntax merely because the internal model can
+**§ 51(3)** but Sec 0.1 does not gain source syntax merely because the internal model can
 represent it.
 
 ---
 
-# Function summaries for arenas
+## § 52 Function summaries for arenas
 
-A function summary may include facts such as:
+**§ 52(1)** A function summary may include facts such as:
 
 ```text
 requires arena A live;
@@ -1379,34 +1387,34 @@ does not retain a reference to A;
 does not change external arena liveness.
 ```
 
-These facts may be inferred and stored in module metadata.
+**§ 52(2)** These facts may be inferred and stored in module metadata.
 
-They are not necessarily written as explicit region syntax.
+**§ 52(3)** They are not necessarily written as explicit region syntax.
 
 ---
 
-# Local arena activity
+## § 53 Local arena activity
 
-A function may create, use, and release a private arena without exposing the
+**§ 53(1)** A function may create, use, and release a private arena without exposing the
 arena lifetime to callers.
 
-The caller summary may still include:
+**§ 53(2)** The caller summary may still include:
 
 ```text
 MayAllocate;
 maximum temporary allocation.
 ```
 
-It need not expose an external arena-state transition when no arena-backed value
+**§ 53(3)** It need not expose an external arena-state transition when no arena-backed value
 escapes.
 
 ---
 
-# Ownership transfer effects
+## § 54 Ownership transfer effects
 
-Move and invalidation remain governed by `copy_move.md` and `ownership.md`.
+**§ 54(1)** Move and invalidation remain governed by `copy_move.md` and `ownership.md`.
 
-Effect analysis may consume ordered facts such as:
+**§ 54(2)** Effect analysis may consume ordered facts such as:
 
 ```text
 owner moved;
@@ -1414,22 +1422,22 @@ source invalidated;
 destination initialized.
 ```
 
-These facts are not part of the public summary may-effect set.
+**§ 54(3)** These facts are not part of the public summary may-effect set.
 
-They are control-flow and value-validity facts used by cooperating analyses.
+**§ 54(4)** They are control-flow and value-validity facts used by cooperating analyses.
 
 ---
 
-# Destructors
+## § 55 Destructors
 
-The effective summary of a function includes destructors that may run on
+**§ 55(1)** The effective summary of a function includes destructors that may run on
 reachable exits.
 
-Destructors are already required to satisfy the panic rules defined elsewhere.
+**§ 55(2)** Destructors are already required to satisfy the panic rules defined elsewhere.
 
-A destructor may still contribute other effects unless prohibited.
+**§ 55(3)** A destructor may still contribute other effects unless prohibited.
 
-Possible destructor effects include:
+**§ 55(4)** Possible destructor effects include:
 
 ```text
 MayAllocate;
@@ -1439,15 +1447,15 @@ MayAccessVolatile;
 MayMutateExternalState.
 ```
 
-A containing guarantee must include or forbid them accordingly.
+**§ 55(5)** A containing guarantee must include or forbid them accordingly.
 
 ---
 
-# `defer`
+## § 56 `defer`
 
-A deferred body contributes effects to every exit path where it runs.
+**§ 56(1)** A deferred body contributes effects to every exit path where it runs.
 
-Example:
+**§ 56(2)** Example:
 
 ```sec
 @noBlock
@@ -1458,16 +1466,16 @@ fn Work() void {
 }
 ```
 
-The function violates `@noBlock`.
+**§ 56(3)** The function violates `@noBlock`.
 
-The violation occurs even when the explicit statements before scope exit do not
+**§ 56(4)** The violation occurs even when the explicit statements before scope exit do not
 block.
 
 ---
 
-# Cleanup paths
+## § 57 Cleanup paths
 
-Effect analysis includes cleanup on:
+**§ 57(1)** Effect analysis includes cleanup on:
 
 ```text
 normal return;
@@ -1478,13 +1486,13 @@ task cancellation where cleanup is defined;
 contained panic cleanup where the panic rulebook requires it.
 ```
 
-A cleanup path may have stricter panic rules than an ordinary path.
+**§ 57(2)** A cleanup path may have stricter panic rules than an ordinary path.
 
 ---
 
-# Closures
+## § 58 Closures
 
-A closure summary includes:
+**§ 58(1)** A closure summary includes:
 
 ```text
 body effects;
@@ -1494,34 +1502,34 @@ environment allocation;
 effects of values retained by the closure.
 ```
 
-A closure that requires heap storage contributes `MayAllocate`.
+**§ 58(2)** A closure that requires heap storage contributes `MayAllocate`.
 
-A closure whose environment is stack-proven may avoid that effect.
+**§ 58(3)** A closure whose environment is stack-proven may avoid that effect.
 
-The proof must not depend only on optional optimization.
+**§ 58(4)** The proof must not depend only on optional optimization.
 
 ---
 
-# Function values and indirect calls
+## § 59 Function values and indirect calls
 
-Effect guarantees are semantically part of function compatibility.
+**§ 59(1)** Effect guarantees are semantically part of function compatibility.
 
-Exact source syntax for effect-constrained function types may be defined later.
+**§ 59(2)** Exact source syntax for effect-constrained function types may be defined later.
 
-The semantic rule is fixed:
+**§ 59(3)** The semantic rule is fixed:
 
 ```text
 a function with fewer effects may be used where more effects are permitted;
 a function with more effects may not be used where fewer are required.
 ```
 
-An indirect call with unknown effect guarantees is conservative.
+**§ 59(4)** An indirect call with unknown effect guarantees is conservative.
 
 ---
 
-# Callback example
+## § 60 Callback example
 
-Conceptual:
+**§ 60(1)** Conceptual:
 
 ```sec
 @noPanic
@@ -1530,23 +1538,23 @@ fn Execute(callback: fn() void) void {
 }
 ```
 
-The function cannot be verified as `@noPanic` unless the callback contract or
+**§ 60(2)** The function cannot be verified as `@noPanic` unless the callback contract or
 resolved target proves absence of `MayPanic`.
 
-The compiler must not assume a callback is panic-free from its current observed
+**§ 60(3)** The compiler must not assume a callback is panic-free from its current observed
 uses when the public type permits future unknown values.
 
 ---
 
-# Interfaces
+## § 61 Interfaces
 
-An interface method may declare effect guarantees.
+**§ 61(1)** An interface method may declare effect guarantees.
 
-Every implementation must satisfy them.
+**§ 61(2)** Every implementation must satisfy them.
 
-An implementation may provide a stronger guarantee.
+**§ 61(3)** An implementation may provide a stronger guarantee.
 
-Example:
+**§ 61(4)** Example:
 
 ```text
 interface method permits allocation;
@@ -1554,35 +1562,35 @@ implementation is noAlloc;
 valid.
 ```
 
-Invalid:
+**§ 61(5)** Invalid:
 
 ```text
 interface method is noAlloc;
 implementation may allocate.
 ```
 
-Effect compatibility uses subset inclusion.
+**§ 61(6)** Effect compatibility uses subset inclusion.
 
 ---
 
-# Open and closed worlds
+## § 62 Open and closed worlds
 
-For a complete executable build, the compiler may know every concrete dispatch
+**§ 62(1)** For a complete executable build, the compiler may know every concrete dispatch
 target.
 
-For a public library or extensible interface boundary, future implementations
+**§ 62(2)** For a public library or extensible interface boundary, future implementations
 may be unknown.
 
-The compiler must use declared public effect contracts across open boundaries.
+**§ 62(3)** The compiler must use declared public effect contracts across open boundaries.
 
-It must not convert an accidental property of currently known implementations
+**§ 62(4)** It must not convert an accidental property of currently known implementations
 into an undeclared stable guarantee.
 
 ---
 
-# Generics
+## § 63 Generics
 
-Generic effect summaries may depend on:
+**§ 63(1)** Generic effect summaries may depend on:
 
 ```text
 operations available on T;
@@ -1593,43 +1601,43 @@ specialization;
 target-specific implementations.
 ```
 
-A summary may remain symbolic until specialization.
+**§ 63(2)** A summary may remain symbolic until specialization.
 
-Conceptual:
+**§ 63(3)** Conceptual:
 
 ```text
 Effects(Apply[T, F]) includes Effects(F)
 ```
 
-Exact effect-constraint syntax for generics is deferred.
+**§ 63(4)** Exact effect-constraint syntax for generics is deferred.
 
-Unknown generic effects are conservative.
+**§ 63(5)** Unknown generic effects are conservative.
 
 ---
 
-# Specialization
+## § 64 Specialization
 
-A concrete specialization may prove fewer effects than the generic maximum.
+**§ 64(1)** A concrete specialization may prove fewer effects than the generic maximum.
 
-Example:
+**§ 64(2)** Example:
 
 ```text
 generic checked arithmetic may panic;
 a constrained specialization proves overflow impossible.
 ```
 
-The compiler may use the stronger inferred specialization summary internally.
+**§ 64(3)** The compiler may use the stronger inferred specialization summary internally.
 
-Public guarantees remain governed by the generic declaration and applicable
+**§ 64(4)** Public guarantees remain governed by the generic declaration and applicable
 constraints.
 
 ---
 
-# Foreign functions
+## § 65 Foreign functions
 
-Unknown foreign code is conservative.
+**§ 65(1)** Unknown foreign code is conservative.
 
-Unless explicitly and safely described by the FFI model, it may contribute:
+**§ 65(2)** Unless explicitly and safely described by the FFI model, it may contribute:
 
 ```text
 MayPanic or foreign abort/unwind;
@@ -1643,40 +1651,40 @@ MayMutateExternalState;
 MayUseNondeterministicInput.
 ```
 
-A normal Sec effect attribute on an extern declaration is not silently treated
+**§ 65(3)** A normal Sec effect attribute on an extern declaration is not silently treated
 as proof.
 
-Foreign effect declarations require an explicit unsafe trust model.
+**§ 65(4)** Foreign effect declarations require an explicit unsafe trust model.
 
 ---
 
-# Trusted foreign summaries
+## § 66 Trusted foreign summaries
 
-A future FFI rule may permit an unsafe declaration of foreign effects.
+**§ 66(1)** A future FFI rule may permit an unsafe declaration of foreign effects.
 
-The compiler must retain provenance:
+**§ 66(2)** The compiler must retain provenance:
 
 ```text
 effect absence trusted from foreign declaration
 ```
 
-Diagnostics may say:
+**§ 66(3)** Diagnostics may say:
 
 ```text
 ISR safety depends on trusted foreign declaration `ReadStatusRegister`
 ```
 
-The compiler must not report the fact as proven from Sec source.
+**§ 66(4)** The compiler must not report the fact as proven from Sec source.
 
 ---
 
-# Inline assembly
+## § 67 Inline assembly
 
-Inline assembly requires explicit effect classification.
+**§ 67(1)** Inline assembly requires explicit effect classification.
 
-The compiler cannot infer arbitrary machine-code behavior from text alone.
+**§ 67(2)** The compiler cannot infer arbitrary machine-code behavior from text alone.
 
-An inline assembly declaration may need to describe:
+**§ 67(3)** An inline assembly declaration may need to describe:
 
 ```text
 memory reads;
@@ -1690,15 +1698,15 @@ possible blocking;
 possible trap or abort.
 ```
 
-Accepted claims carry inline-assembly trust provenance.
+**§ 67(4)** Accepted claims carry inline-assembly trust provenance.
 
 ---
 
-# Compiler intrinsics
+## § 68 Compiler intrinsics
 
-Compiler intrinsics have compiler-known summaries.
+**§ 68(1)** Compiler intrinsics have compiler-known summaries.
 
-Examples may include:
+**§ 68(2)** Examples may include:
 
 ```text
 volatile load;
@@ -1709,15 +1717,15 @@ allocation primitive;
 scheduler primitive.
 ```
 
-The intrinsic definition is the source of truth.
+**§ 68(3)** The intrinsic definition is the source of truth.
 
 ---
 
-# Control-flow facts
+## § 69 Control-flow facts
 
-Some compiler-tracked control-flow properties are not initial public effects.
+**§ 69(1)** Some compiler-tracked control-flow properties are not initial public effects.
 
-Internal facts may include:
+**§ 69(2)** Internal facts may include:
 
 ```text
 MayTerminateProcess
@@ -1725,9 +1733,9 @@ MayTrap
 MayNotReturn
 ```
 
-These are distinct from `MayPanic`.
+**§ 69(3)** These are distinct from `MayPanic`.
 
-A function may be `@noPanic` and still:
+**§ 69(4)** A function may be `@noPanic` and still:
 
 ```text
 exit the process;
@@ -1736,13 +1744,13 @@ run forever;
 never return by design.
 ```
 
-The relevant entrypoint, panic, and control-flow rulebooks govern legality.
+**§ 69(5)** The relevant entrypoint, panic, and control-flow rulebooks govern legality.
 
 ---
 
-# Target and configuration selection
+## § 70 Target and configuration selection
 
-Effect analysis runs after:
+**§ 70(1)** Effect analysis runs after:
 
 ```text
 file-level @target selection;
@@ -1752,18 +1760,18 @@ target knowledge selection;
 implementation-variant selection.
 ```
 
-Only active source contributes to the active call graph and effect summary.
+**§ 70(2)** Only active source contributes to the active call graph and effect summary.
 
-Excluded source remains parsed but does not contribute effects for the current
+**§ 70(3)** Excluded source remains parsed but does not contribute effects for the current
 compilation plan.
 
 ---
 
-# Per-compilation-plan analysis
+## § 71 Per-compilation-plan analysis
 
-Every concrete compilation plan receives its own effect analysis.
+**§ 71(1)** Every concrete compilation plan receives its own effect analysis.
 
-A logical function may have different implementations per:
+**§ 71(2)** A logical function may have different implementations per:
 
 ```text
 OS;
@@ -1774,16 +1782,16 @@ board;
 build configuration.
 ```
 
-A declared public guarantee must hold in every active variant where the
+**§ 71(3)** A declared public guarantee must hold in every active variant where the
 declaration promises that guarantee.
 
-Cross-variant validation must report inconsistent guarantees.
+**§ 71(4)** Cross-variant validation must report inconsistent guarantees.
 
 ---
 
-# Knowledge packs
+## § 72 Knowledge packs
 
-Target knowledge packs may provide effect and execution facts for:
+**§ 72(1)** Target knowledge packs may provide effect and execution facts for:
 
 ```text
 interrupt vectors;
@@ -1798,19 +1806,19 @@ target traps;
 startup and shutdown behavior.
 ```
 
-Knowledge-pack facts carry target-knowledge provenance.
+**§ 72(2)** Knowledge-pack facts carry target-knowledge provenance.
 
-Unknown target behavior remains conservative.
+**§ 72(3)** Unknown target behavior remains conservative.
 
 ---
 
-# Semantic IR requirements
+## § 73 Semantic IR requirements
 
-Semantic IR must represent effect-relevant operations explicitly.
+**§ 73(1)** Semantic IR must represent effect-relevant operations explicitly.
 
-It must not hide important behavior inside opaque generic nodes.
+**§ 73(2)** It must not hide important behavior inside opaque generic nodes.
 
-At minimum, the IR must make visible:
+**§ 73(3)** At minimum, the IR must make visible:
 
 ```text
 panic-capable checks;
@@ -1838,9 +1846,9 @@ interface dispatch.
 
 ---
 
-# Function summary representation
+## § 74 Function summary representation
 
-Conceptual compiler structure:
+**§ 74(1)** Conceptual compiler structure:
 
 ```go
 type EffectSummary struct {
@@ -1858,17 +1866,17 @@ type EffectSummary struct {
 }
 ```
 
-This is illustrative, not mandatory implementation syntax.
+**§ 74(2)** This is illustrative, not mandatory implementation syntax.
 
-Arena state and quantitative facts should use separate structures.
+**§ 74(3)** Arena state and quantitative facts should use separate structures.
 
 ---
 
-# Effect causes
+## § 75 Effect causes
 
-An effect summary must retain causes.
+**§ 75(1)** An effect summary must retain causes.
 
-Conceptual:
+**§ 75(2)** Conceptual:
 
 ```go
 type EffectCause struct {
@@ -1881,13 +1889,13 @@ type EffectCause struct {
 }
 ```
 
-A boolean summary alone is insufficient for diagnostics.
+**§ 75(3)** A boolean summary alone is insufficient for diagnostics.
 
 ---
 
-# Arena analysis representation
+## § 76 Arena analysis representation
 
-Conceptual:
+**§ 76(1)** Conceptual:
 
 ```go
 type ArenaState int
@@ -1906,20 +1914,20 @@ type ArenaFacts struct {
 }
 ```
 
-`Generation` may model invalidation across resets internally.
+**§ 76(2)** `Generation` may model invalidation across resets internally.
 
-This is an implementation option, not source semantics.
+**§ 76(3)** This is an implementation option, not source semantics.
 
 ---
 
-# Reset generation model
+## § 77 Reset generation model
 
-One practical implementation may increment an arena generation at reset.
+**§ 77(1)** One practical implementation may increment an arena generation at reset.
 
-Arena-backed values and references retain the generation in which they were
+**§ 77(2)** Arena-backed values and references retain the generation in which they were
 created as compiler metadata.
 
-After reset:
+**§ 77(3)** After reset:
 
 ```text
 arena generation changes;
@@ -1927,19 +1935,19 @@ old dependent values are invalid;
 new allocations use the new generation.
 ```
 
-The generated program does not require runtime generation checks when static
+**§ 77(4)** The generated program does not require runtime generation checks when static
 analysis proves validity.
 
-A target profile may separately choose generational runtime references, but that
+**§ 77(5)** A target profile may separately choose generational runtime references, but that
 is not required by this effect analysis.
 
 ---
 
-# No mandatory runtime
+## § 78 No mandatory runtime
 
-Effect analysis is compile-time.
+**§ 78(1)** Effect analysis is compile-time.
 
-It must not require:
+**§ 78(2)** It must not require:
 
 ```text
 runtime effect objects;
@@ -1953,16 +1961,16 @@ mandatory generational references;
 mandatory allocation tracker.
 ```
 
-Compiler metadata may be discarded after compilation unless needed for separate
+**§ 78(3)** Compiler metadata may be discarded after compilation unless needed for separate
 compilation, debugging, LSP, or diagnostics.
 
 ---
 
-# Dead support elimination
+## § 79 Dead support elimination
 
-When effect analysis proves support is unused, the binary may omit it.
+**§ 79(1)** When effect analysis proves support is unused, the binary may omit it.
 
-Examples:
+**§ 79(2)** Examples:
 
 ```text
 panic-free binary omits panic endpoint;
@@ -1972,14 +1980,14 @@ no volatile access means no volatile helper;
 no arena use means no arena helper.
 ```
 
-Direct target instructions or inline lowering may be used without introducing a
+**§ 79(3)** Direct target instructions or inline lowering may be used without introducing a
 general runtime.
 
 ---
 
-# Diagnostics
+## § 80 Diagnostics
 
-Diagnostics must identify:
+**§ 80(1)** Diagnostics must identify:
 
 ```text
 the failed declared guarantee;
@@ -1995,7 +2003,7 @@ possible explicit alternatives where language rules define them.
 
 ---
 
-# Panic diagnostic example
+## § 81 Panic diagnostic example
 
 ```text
 error: `ProcessInvoice` does not satisfy @noPanic
@@ -2011,7 +2019,7 @@ effect introduced at:
 
 ---
 
-# Allocation diagnostic example
+## § 82 Allocation diagnostic example
 
 ```text
 error: `HandlePacket` does not satisfy @noAlloc
@@ -2027,7 +2035,7 @@ effect introduced at:
 
 ---
 
-# Blocking diagnostic example
+## § 83 Blocking diagnostic example
 
 ```text
 error: `PollDevice` does not satisfy @noBlock
@@ -2043,7 +2051,7 @@ effect introduced at:
 
 ---
 
-# Suspension diagnostic example
+## § 84 Suspension diagnostic example
 
 ```text
 error: ISR function `TimerHandler` may suspend
@@ -2057,7 +2065,7 @@ TimerHandler
 
 ---
 
-# Arena invalidation diagnostic example
+## § 85 Arena invalidation diagnostic example
 
 ```text
 error: reference `view` depends on storage invalidated by arena reset
@@ -2074,7 +2082,7 @@ invalid use:
 
 ---
 
-# Trust diagnostic example
+## § 86 Trust diagnostic example
 
 ```text
 error: @interruptSafe cannot be proven
@@ -2091,9 +2099,9 @@ help:
 
 ---
 
-# Multiple causes
+## § 87 Multiple causes
 
-When several causes exist, diagnostics may summarize:
+**§ 87(1)** When several causes exist, diagnostics may summarize:
 
 ```text
 MayPanic
@@ -2106,13 +2114,13 @@ MayBlock
     1 cause
 ```
 
-The LSP should permit navigation to each cause.
+**§ 87(2)** The LSP should permit navigation to each cause.
 
 ---
 
-# LSP behavior
+## § 88 LSP behavior
 
-The LSP should display:
+**§ 88(1)** The LSP should display:
 
 ```text
 inferred effects;
@@ -2127,7 +2135,7 @@ arena lifetime and invalidation information;
 quantitative allocation facts where available.
 ```
 
-Example hover:
+**§ 88(2)** Example hover:
 
 ```text
 Effects:
@@ -2143,12 +2151,12 @@ Provenance:
 
 ---
 
-# Function compatibility diagnostics
+## § 89 Function compatibility diagnostics
 
-When a function value or implementation has too many effects, report the
+**§ 89(1)** When a function value or implementation has too many effects, report the
 specific difference.
 
-Example:
+**§ 89(2)** Example:
 
 ```text
 callback requires:
@@ -2164,9 +2172,9 @@ allocation introduced at:
 
 ---
 
-# Implementation architecture
+## § 90 Implementation architecture
 
-A recommended pipeline is:
+**§ 90(1)** A recommended pipeline is:
 
 ```text
 parse source;
@@ -2185,15 +2193,15 @@ emit diagnostics;
 lower verified Semantic IR.
 ```
 
-Some stages may iterate to a fixed point.
+**§ 90(2)** Some stages may iterate to a fixed point.
 
 ---
 
-# Effect registry
+## § 91 Effect registry
 
-The compiler should define a central registry for effect kinds.
+**§ 91(1)** The compiler should define a central registry for effect kinds.
 
-Each effect entry should identify:
+**§ 91(2)** Each effect entry should identify:
 
 ```text
 stable internal identity;
@@ -2206,16 +2214,16 @@ diagnostic category;
 module metadata encoding.
 ```
 
-Do not distribute effect meaning across unrelated ad hoc checks.
+**§ 91(3)** Do not distribute effect meaning across unrelated ad hoc checks.
 
 ---
 
-# Separate compilation
+## § 92 Separate compilation
 
-Compiled module metadata should contain enough information to verify callers
+**§ 92(1)** Compiled module metadata should contain enough information to verify callers
 without re-reading the source implementation.
 
-At minimum:
+**§ 92(2)** At minimum:
 
 ```text
 declared public guarantees;
@@ -2226,15 +2234,15 @@ trusted provenance at public boundaries;
 arena escape and lifetime requirements that cross the API.
 ```
 
-Private inferred details need not become public contract.
+**§ 92(3)** Private inferred details need not become public contract.
 
 ---
 
-# Versioning
+## § 93 Versioning
 
-Changing a declared public effect guarantee may be an API compatibility change.
+**§ 93(1)** Changing a declared public effect guarantee may be an API compatibility change.
 
-Examples:
+**§ 93(2)** Examples:
 
 ```text
 removing @noPanic weakens the API;
@@ -2243,32 +2251,32 @@ adding MayBlock to a previously @noBlock function violates the contract;
 strengthening an implementation while keeping the same declaration is safe.
 ```
 
-The project and ABI rulebooks determine exact compatibility policy.
+**§ 93(3)** The project and ABI rulebooks determine exact compatibility policy.
 
 ---
 
-# Effect inference and diagnostics mode
+## § 94 Effect inference and diagnostics mode
 
-The compiler may report inferred effects without requiring attributes.
+**§ 94(1)** The compiler may report inferred effects without requiring attributes.
 
-Examples:
+**§ 94(2)** Examples:
 
 ```text
 information: function is inferred noPanic, noAlloc, and noBlock
 ```
 
-Such reports must not silently modify source.
+**§ 94(3)** Such reports must not silently modify source.
 
-An explicit semantic tooling command may propose attributes when the guarantee
+**§ 94(4)** An explicit semantic tooling command may propose attributes when the guarantee
 is proven across the intended build variants.
 
-Normal formatting must not add effect attributes.
+**§ 94(5)** Normal formatting must not add effect attributes.
 
 ---
 
-# Current language-design status
+## § 95 Current language-design status
 
-The following semantics are decided:
+**§ 95(1)** The following semantics are decided:
 
 ```text
 all functions receive inferred effect summaries;
@@ -2291,9 +2299,9 @@ effect analysis requires no runtime.
 
 ---
 
-# Source syntax deliberately deferred
+## § 96 Source syntax deliberately deferred
 
-This rulebook does not decide:
+**§ 96(1)** This rulebook does not decide:
 
 ```text
 effect-constrained function-type syntax;
@@ -2306,13 +2314,13 @@ future arena split syntax;
 future visible region syntax.
 ```
 
-The semantics are prepared for those features without inventing source forms.
+**§ 96(2)** The semantics are prepared for those features without inventing source forms.
 
 ---
 
-# Initial implementation scope
+## § 97 Initial implementation scope
 
-The initial implementation should prioritize:
+**§ 97(1)** The initial implementation should prioritize:
 
 ```text
 MayPanic;
@@ -2332,13 +2340,13 @@ arena-backed reference invalidation;
 full cause-aware diagnostics.
 ```
 
-Additional summary effects may be implemented incrementally.
+**§ 97(2)** Additional summary effects may be implemented incrementally.
 
 ---
 
-# Required tests
+## § 98 Required tests
 
-Create or update:
+**§ 98(1)** Create or update:
 
 ```text
 effects_valid.sec
@@ -2369,9 +2377,9 @@ effect_ffi_invalid.sec
 
 ---
 
-# Summary-effect tests
+## § 99 Summary-effect tests
 
-Test:
+**§ 99(1)** Test:
 
 ```text
 direct effect;
@@ -2393,9 +2401,9 @@ target-specific implementation.
 
 ---
 
-# `try` tests
+## § 100 `try` tests
 
-Test that:
+**§ 100(1)** Test that:
 
 ```text
 try arithmetic removes MayPanic from arithmetic failure;
@@ -2408,9 +2416,9 @@ try does not catch panic from arbitrary called functions.
 
 ---
 
-# `@noAlloc` tests
+## § 101 `@noAlloc` tests
 
-Test:
+**§ 101(1)** Test:
 
 ```text
 heap allocation rejected;
@@ -2427,9 +2435,9 @@ transitive allocation rejected.
 
 ---
 
-# `@noBlock` tests
+## § 102 `@noBlock` tests
 
-Test:
+**§ 102(1)** Test:
 
 ```text
 blocking I/O rejected;
@@ -2444,9 +2452,9 @@ nonblocking polling accepted.
 
 ---
 
-# ISR tests
+## § 103 ISR tests
 
-Test:
+**§ 103(1)** Test:
 
 ```text
 MayPanic rejected;
@@ -2463,9 +2471,9 @@ trusted foreign dependency reported.
 
 ---
 
-# Arena tests
+## § 104 Arena tests
 
-Test:
+**§ 104(1)** Test:
 
 ```text
 allocate while live;
@@ -2484,9 +2492,9 @@ private arena does not expose external lifetime state.
 
 ---
 
-# Compatibility tests
+## § 105 Compatibility tests
 
-Test:
+**§ 105(1)** Test:
 
 ```text
 fewer-effect implementation satisfies broader contract;
@@ -2499,9 +2507,9 @@ public undeclared inferred absence not treated as stable contract.
 
 ---
 
-# Binary tests
+## § 106 Binary tests
 
-Verify:
+**§ 106(1)** Verify:
 
 ```text
 effect analysis introduces no runtime support;
@@ -2514,9 +2522,9 @@ target-specific inactive effects do not reach object code.
 
 ---
 
-# Diagnostics tests
+## § 107 Diagnostics tests
 
-Diagnostics must test:
+**§ 107(1)** Diagnostics must test:
 
 ```text
 stable ID;
@@ -2533,9 +2541,9 @@ help text where a defined alternative exists.
 
 ---
 
-# Required synchronization
+## § 108 Required synchronization
 
-This rulebook must remain synchronized with:
+**§ 108(1)** This rulebook must remain synchronized with:
 
 ```text
 attributes.md
@@ -2570,32 +2578,32 @@ language-rulebook-status.md
 
 ---
 
-# Appendix A — Codex implementation plan
+## Appendix A — Codex implementation plan
 
-## A.1 Add the rulebook
+### Appendix A.1 Add the rulebook
 
-Add:
+**Appendix A.1(1)** Add:
 
 ```text
 rules/analysis/effect_analysis.md
 ```
 
-Update:
+**Appendix A.1(2)** Update:
 
 ```text
 language-rulebook-status.md
 governance/ (owning integration entries)
 ```
 
-Mark the rulebook Written.
+**Appendix A.1(3)** Mark the rulebook Written.
 
-Do not mark all effect analysis implemented.
+**Appendix A.1(4)** Do not mark all effect analysis implemented.
 
 ---
 
-## A.2 Inventory existing effect logic
+### Appendix A.2 Inventory existing effect logic
 
-Locate current logic for:
+**Appendix A.2(1)** Locate current logic for:
 
 ```text
 panic-capable operations;
@@ -2614,13 +2622,13 @@ escape analysis;
 target knowledge.
 ```
 
-Do not create parallel analyses when existing compiler facts can be unified.
+**Appendix A.2(2)** Do not create parallel analyses when existing compiler facts can be unified.
 
 ---
 
-## A.3 Add central effect kinds
+### Appendix A.3 Add central effect kinds
 
-Create stable internal identities for:
+**Appendix A.3(1)** Create stable internal identities for:
 
 ```text
 MayPanic
@@ -2634,13 +2642,13 @@ MayMutateExternalState
 MayUseNondeterministicInput
 ```
 
-Keep ordered arena events separate.
+**Appendix A.3(2)** Keep ordered arena events separate.
 
 ---
 
-## A.4 Add cause tracking
+### Appendix A.4 Add cause tracking
 
-Every introduced effect must retain:
+**Appendix A.4(1)** Every introduced effect must retain:
 
 ```text
 effect kind;
@@ -2652,13 +2660,13 @@ provenance;
 active compilation plan.
 ```
 
-Do not keep only booleans.
+**Appendix A.4(2)** Do not keep only booleans.
 
 ---
 
-## A.5 Mark direct Semantic IR effects
+### Appendix A.5 Mark direct Semantic IR effects
 
-Annotate or classify Semantic IR nodes for:
+**Appendix A.5(1)** Annotate or classify Semantic IR nodes for:
 
 ```text
 checked operations;
@@ -2680,29 +2688,29 @@ implicit helpers.
 
 ---
 
-## A.6 Build direct summaries
+### Appendix A.6 Build direct summaries
 
-Compute direct summary effects per function, method, closure, destructor, and
+**Appendix A.6(1)** Compute direct summary effects per function, method, closure, destructor, and
 defer body.
 
-Include implicit operations.
+**Appendix A.6(2)** Include implicit operations.
 
 ---
 
-## A.7 Propagate through call graph
+### Appendix A.7 Propagate through call graph
 
-Compute transitive summaries.
+**Appendix A.7(1)** Compute transitive summaries.
 
-Use strongly connected components for recursion.
+**Appendix A.7(2)** Use strongly connected components for recursion.
 
-Retain shortest or clearest cause chains and all alternative roots needed for
+**Appendix A.7(3)** Retain shortest or clearest cause chains and all alternative roots needed for
 diagnostics.
 
 ---
 
-## A.8 Verify declared guarantees
+### Appendix A.8 Verify declared guarantees
 
-Integrate with attributes:
+**Appendix A.8(1)** Integrate with attributes:
 
 ```text
 @noPanic
@@ -2713,17 +2721,17 @@ Integrate with attributes:
 @interrupt
 ```
 
-Compute explicit and implied guarantees separately.
+**Appendix A.8(2)** Compute explicit and implied guarantees separately.
 
 ---
 
-## A.9 Implement suspension distinction
+### Appendix A.9 Implement suspension distinction
 
-Do not classify every `await` as synchronous blocking.
+**Appendix A.9(1)** Do not classify every `await` as synchronous blocking.
 
-Add `MaySuspend`.
+**Appendix A.9(2)** Add `MaySuspend`.
 
-Verify:
+**Appendix A.9(3)** Verify:
 
 ```text
 @noBlock permits MaySuspend;
@@ -2733,9 +2741,9 @@ Verify:
 
 ---
 
-## A.10 Implement arena dataflow
+### Appendix A.10 Implement arena dataflow
 
-Track:
+**Appendix A.10(1)** Track:
 
 ```text
 arena identity;
@@ -2749,22 +2757,22 @@ branch joins;
 loop fixed points.
 ```
 
-Reject use after reset or release.
+**Appendix A.10(2)** Reject use after reset or release.
 
 ---
 
-## A.11 Integrate non-lexical borrow liveness
+### Appendix A.11 Integrate non-lexical borrow liveness
 
-Use last-use and control-flow information so a borrow may end before lexical
+**Appendix A.11(1)** Use last-use and control-flow information so a borrow may end before lexical
 scope exit.
 
-Do not require explicit source regions.
+**Appendix A.11(2)** Do not require explicit source regions.
 
 ---
 
-## A.12 Quantitative allocation
+### Appendix A.12 Quantitative allocation
 
-Compute where possible:
+**Appendix A.12(1)** Compute where possible:
 
 ```text
 current arena use;
@@ -2773,23 +2781,23 @@ unknown bounds;
 loop peak rather than naive accumulated total.
 ```
 
-Keep quantitative failure separate from boolean `MayAllocate`.
+**Appendix A.12(2)** Keep quantitative failure separate from boolean `MayAllocate`.
 
 ---
 
-## A.13 Foreign and assembly provenance
+### Appendix A.13 Foreign and assembly provenance
 
-Treat unknown effects conservatively.
+**Appendix A.13(1)** Treat unknown effects conservatively.
 
-Prepare representation for future explicit unsafe effect declarations.
+**Appendix A.13(2)** Prepare representation for future explicit unsafe effect declarations.
 
-Do not invent their syntax.
+**Appendix A.13(3)** Do not invent their syntax.
 
 ---
 
-## A.14 Interfaces and function compatibility
+### Appendix A.14 Interfaces and function compatibility
 
-Use effect subset rules for:
+**Appendix A.14(1)** Use effect subset rules for:
 
 ```text
 interface implementation;
@@ -2799,21 +2807,21 @@ method replacement;
 generic constraints when available.
 ```
 
-Do not infer public callback guarantees from only current call sites.
+**Appendix A.14(2)** Do not infer public callback guarantees from only current call sites.
 
 ---
 
-## A.15 Module metadata
+### Appendix A.15 Module metadata
 
-Emit declared guarantees and required public effect information.
+**Appendix A.15(1)** Emit declared guarantees and required public effect information.
 
-Keep private inferred implementation facts distinct.
+**Appendix A.15(2)** Keep private inferred implementation facts distinct.
 
 ---
 
-## A.16 LSP
+### Appendix A.16 LSP
 
-Add:
+**Appendix A.16(1)** Add:
 
 ```text
 effect hover;
@@ -2828,9 +2836,9 @@ code actions for explicit handling where canonical.
 
 ---
 
-## A.17 Testing
+### Appendix A.17 Testing
 
-Run:
+**Appendix A.17(1)** Run:
 
 ```text
 go test ./...
@@ -2843,14 +2851,14 @@ target matrix tests
 binary dependency tests
 ```
 
-Do not claim complete implementation while any required effect category is only
+**Appendix A.17(2)** Do not claim complete implementation while any required effect category is only
 partially modeled.
 
 ---
 
-# Current implementation status
+## § 109 Current implementation status
 
-Implemented foundations now include:
+**§ 109(1)** Implemented foundations now include:
 
 ```text
 compiler-owned direct Arena effect sites for recognized create, allocate,
@@ -2863,51 +2871,51 @@ synchronous summary;
 LSP hover presentation of these Arena allocation facts.
 ```
 
-This remains partial. The repository does not yet claim the complete canonical
+**§ 109(2)** This remains partial. The repository does not yet claim the complete canonical
 effect set, guarantee verification, ambient allocation-context resolution,
 path-aware ordered Arena state merging, indirect/open-target propagation,
 per-`CompilationPlan` summaries, or general diagnostic cause paths.
 
 ---
 
-# Shaped operation effects
+## § 110 Shaped operation effects
 
-Logical shaped operations do not contribute `MayAllocate` merely because later
+**§ 110(1)** Logical shaped operations do not contribute `MayAllocate` merely because later
 materialization could require storage. This applies to elementwise shaped
 arithmetic, `x`, `Dot`, `Outer`, `Magnitude`, `Normalize`, `Cross`, `Contract`,
 `Reshape`, `ToShape`, `Permute`, `Transpose`, and `BroadcastTo`.
 
-Returning an explicit `ShapeError` after runtime validation is ordinary error
+**§ 110(2)** Returning an explicit `ShapeError` after runtime validation is ordinary error
 flow and is not itself an effect.
 
-`Create(request)`, `Materialize(request)`, `TransferTo(request)`, and
+**§ 110(3)** `Create(request)`, `Materialize(request)`, `TransferTo(request)`, and
 `Relayout(...)` contribute the actual effects of their selected provider or
 helper path. Those concrete effects may include `MayAllocate`, `MayBlock`,
 `MaySuspend`, `MayIO`, `MayAccessVolatile`, or `MayMutateExternalState`; being a
 tensor or transfer operation does not create a separate public effect.
 
-A synchronous `TransferTo` must not hide outstanding asynchronous work. An
+**§ 110(4)** A synchronous `TransferTo` must not hide outstanding asynchronous work. An
 explicit asynchronous transfer contributes the effects and lifetime/publication
 obligations of its actual contract.
 
 ---
 
-# Thread-local first-access effects
+## § 111 Thread-local first-access effects
 
-A potentially first `ThreadLocal[T].Borrow()`, `BorrowMut()`, or `Replace()`
+**§ 111(1)** A potentially first `ThreadLocal[T].Borrow()`, `BorrowMut()`, or `Replace()`
 access contributes the selected initializer's effects. The copyable-template
 form contributes only ordinary implicit-copy behavior; a factory-backed key
 contributes the factory's inferred allocation, blocking, cancellation, panic,
 I/O, and other effects.
 
-The attached-thread-context requirement propagates through the same call graph
+**§ 111(2)** The attached-thread-context requirement propagates through the same call graph
 as other inferred requirements. Analysis may remove factory effects only after
 proving that the key is already initialized for the current physical-thread
 attachment generation on every reaching path.
 
 ---
 
-# Appendix B — Canonical effect table
+## Appendix B — Canonical effect table
 
 | Internal effect | Meaning | Forbidden by |
 |---|---|---|
@@ -2923,7 +2931,7 @@ attachment generation on every reaching path.
 
 ---
 
-# Appendix C — Canonical arena event table
+## Appendix C — Canonical arena event table
 
 | Arena event | Meaning |
 |---|---|
@@ -2934,17 +2942,17 @@ attachment generation on every reaching path.
 
 ---
 
-# Final canonical summary
+## § 112 Final canonical summary
 
-Sec performs effect analysis at compile time.
+**§ 112(1)** Sec performs effect analysis at compile time.
 
-Every function receives an inferred effect summary.
+**§ 112(2)** Every function receives an inferred effect summary.
 
-Declared effect attributes are stable verified guarantees.
+**§ 112(3)** Declared effect attributes are stable verified guarantees.
 
-Public callers rely on declared guarantees, not accidental implementation facts.
+**§ 112(4)** Public callers rely on declared guarantees, not accidental implementation facts.
 
-The initial summary effects include:
+**§ 112(5)** The initial summary effects include:
 
 ```text
 MayPanic
@@ -2958,47 +2966,47 @@ MayMutateExternalState
 MayUseNondeterministicInput
 ```
 
-`@noPanic`, `@noAlloc`, and `@noBlock` require absence of their corresponding
+**§ 112(6)** `@noPanic`, `@noAlloc`, and `@noBlock` require absence of their corresponding
 effects.
 
-`MayBlock` and `MaySuspend` are distinct.
+**§ 112(7)** `MayBlock` and `MaySuspend` are distinct.
 
-`@noBlock` forbids synchronous blocking but permits asynchronous suspension.
+**§ 112(8)** `@noBlock` forbids synchronous blocking but permits asynchronous suspension.
 
-`@isr` and `@interruptSafe` forbid both blocking and suspension.
+**§ 112(9)** `@isr` and `@interruptSafe` forbid both blocking and suspension.
 
-`try` removes only the supported panic-capable failure path.
+**§ 112(10)** `try` removes only the supported panic-capable failure path.
 
-It does not remove allocation, blocking, suspension, I/O, or other effects.
+**§ 112(11)** It does not remove allocation, blocking, suspension, I/O, or other effects.
 
-Arena allocation contributes `MayAllocate`.
+**§ 112(12)** Arena allocation contributes `MayAllocate`.
 
-Arena reset invalidates previous arena-backed storage and references.
+**§ 112(13)** Arena reset invalidates previous arena-backed storage and references.
 
-Arena release ends the arena and forbids later use.
+**§ 112(14)** Arena release ends the arena and forbids later use.
 
-Borrow live ranges may end non-lexically at last use.
+**§ 112(15)** Borrow live ranges may end non-lexically at last use.
 
-Sec uses this limited ordered arena analysis without exposing a general region
+**§ 112(16)** Sec uses this limited ordered arena analysis without exposing a general region
 type system.
 
-Effect compatibility uses subset inclusion.
+**§ 112(17)** Effect compatibility uses subset inclusion.
 
-Unknown indirect, foreign, assembly, and target behavior is conservative.
+**§ 112(18)** Unknown indirect, foreign, assembly, and target behavior is conservative.
 
-Effect analysis includes defer, destructors, implicit operations, generics,
+**§ 112(19)** Effect analysis includes defer, destructors, implicit operations, generics,
 closures, callbacks, interfaces, and target-selected implementations.
 
-Concrete generic specialization may refine type-dependent effect facts but must
+**§ 112(20)** Concrete generic specialization may refine type-dependent effect facts but must
 not weaken, duplicate, eliminate, or reorder observable effects. The
 concretization boundary is owned by `rules/compiler/generics_lowering.md`; this
 rulebook remains authoritative for effect meaning and compatibility.
 
-Effect analysis is performed per concrete compilation plan.
+**§ 112(21)** Effect analysis is performed per concrete compilation plan.
 
-Effect analysis introduces no mandatory runtime.
+**§ 112(22)** Effect analysis introduces no mandatory runtime.
 
-The canonical effect facts defined here are also consumed by semantic CTE.
+**§ 112(23)** The canonical effect facts defined here are also consumed by semantic CTE.
 `rules/compiler/compile_time_evaluation.md` decides whether an effect on the
 concretely executed path is permitted; it does not create a competing effect
 taxonomy. A forbidden effect in an unexecuted branch does not by itself

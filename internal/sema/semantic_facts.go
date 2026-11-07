@@ -530,6 +530,10 @@ type ResolvedTry struct {
 	//   - rules/errors/errorhandling.md — §41 "Test propagation boundary"
 	//   - rules/tooling/testing.md — §10 "Error propagation at a test boundary"
 	TestBoundary bool
+	// SuccessTransfer is how the success value leaves its carrier: a copy of
+	// a trivially copyable payload or a move of an owned one (P17-35). It is
+	// empty when the success type's copyability is not resolved.
+	SuccessTransfer TransferAction
 }
 
 type ResolvedTryAssignmentKind string
@@ -799,6 +803,9 @@ type ResolvedUnionConstruction struct {
 	Kind             ResolvedUnionVariantKind
 	CanonicalFields  []string
 	SourceFieldOrder []string
+	// PayloadActions are the resolved transfers of the payload operands: one
+	// for a single payload, else one per SourceFieldOrder entry (P17-35).
+	PayloadActions []ResolvedStructFieldAction
 }
 
 // ResolvedArrayLiteralEntryKind identifies one source entry in the compact
@@ -1157,10 +1164,22 @@ func (a *Analyzer) ResolvedUnionConstructionOf(expr ast.Expression) (ResolvedUni
 		switch {
 		case variant.Payload != nil:
 			resolved.Kind = ResolvedUnionVariantSingle
+			if call, ok := expr.(*ast.CallExpression); ok && len(call.Arguments) == 1 {
+				resolved.PayloadActions = []ResolvedStructFieldAction{a.constructionOperandAction(call.Arguments[0], *variant.Payload)}
+			}
 		case len(variant.PayloadFields) != 0:
 			resolved.Kind = ResolvedUnionVariantFields
 			for _, field := range variant.PayloadFields {
 				resolved.CanonicalFields = append(resolved.CanonicalFields, field.Name)
+			}
+			if literal, ok := expr.(*ast.StructLiteral); ok {
+				for _, field := range literal.Fields {
+					if field == nil || field.Name == nil || field.Spread {
+						continue
+					}
+					fieldType, _ := unionPayloadFieldType(variant, field.Name.Value)
+					resolved.PayloadActions = append(resolved.PayloadActions, a.constructionOperandAction(field.Value, fieldType))
+				}
 			}
 		default:
 			resolved.Kind = ResolvedUnionVariantEmpty
@@ -1679,6 +1698,9 @@ func (a *Analyzer) ResolvedTryOf(expr *ast.TryExpression) (ResolvedTry, bool) {
 		return ResolvedTry{}, false
 	}
 	resolved, ok := a.resolvedTries[expr]
+	if ok {
+		resolved.SuccessTransfer, _ = transferActionOf(resolved.SuccessType)
+	}
 	return resolved, ok
 }
 

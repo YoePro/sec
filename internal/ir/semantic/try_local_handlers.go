@@ -82,6 +82,7 @@ func (fb *functionBuilder) buildLocalTryHandlers(expr *ast.TryExpression, plan s
 			if err != nil {
 				return builtValue{}, err
 			}
+			selected.test = condition.id
 		} else {
 			condition = fb.result(Operation{Kind: OpCoreErrorIsVariant, Operands: []ValueID{errorValue.id}, Variant: handler.Variant, TryHandlerKind: TryHandlerErrVariant, TryHandlerIndex: handler.SourceIndex, Location: location(token)}, boolType)
 		}

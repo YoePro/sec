@@ -97,6 +97,10 @@ LogicalResult verifyReturnOrigins(func::FuncOp function);
 // Rules: rules/mlir/packages/sec-mlir-dialect_package16.md — §§84–86,116.
 LogicalResult verifySliceReferences(func::FuncOp function);
 
+// P17 consumes explicit P15 borrow ends before destroying overlapping storage.
+// Rules: rules/memory/destruction.md §18(3); P17 §117.
+LogicalResult verifyBorrowDestruction(func::FuncOp function);
+
 // Copy/move retains an existing dynamic reference's validity dependency.
 // Rules: rules/mlir/packages/sec-mlir-dialect_package15.md section 7;
 // rules/mlir/dialect-versions/sec_mlir_dialect_v11.md sections 19-20,27.

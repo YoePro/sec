@@ -14,7 +14,7 @@ import (
 // still reported.
 //
 // Rules:
-//   - rules/compiler/parser_recovery.md — "Diagnostic deduplication", "Invalid nodes"
+//   - rules/compiler/parser_recovery.md — "Diagnostic deduplication", "Invalid AST nodes"
 //   - rules/tooling/diagnostics.md — one diagnostic per root cause
 func TestRecoveredInvalidNodesAreReportedOnce(t *testing.T) {
 	source := `module main

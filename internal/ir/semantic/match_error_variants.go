@@ -21,6 +21,9 @@ type matchErrorArm struct {
 	// testBlock is the Err edge's block, created before the arm body so
 	// arm provenance stays in source order.
 	testBlock *Block
+	// test is the variant test a try handler was selected by, the
+	// active-variant proof of a guard's candidate payload Place.
+	test ValueID
 }
 
 // emitErrorVariantPattern lowers the pattern test of an `Err(E.Variant...)`
@@ -219,7 +222,11 @@ func (fb *functionBuilder) bindTryHandlerPayload(handler *ast.TryHandler, plan s
 	meta := Operation{TryHandlerKind: TryHandlerErrVariant, TryHandlerIndex: plan.SourceIndex, Variant: plan.Variant, Location: location(handler.Token)}
 	if payloadBinding {
 		action := UnionPayloadCopyTrivial
-		if !sema.TriviallyCopyable(plan.BindingType) {
+		moves, err := fb.tryBindingMoves(handler, plan)
+		if err != nil {
+			return nil, err
+		}
+		if moves {
 			// The selected handler takes the payload out of the error it owns.
 			if fb.owner.maxPackage < ownershipLoweringPackage || plan.Guarded {
 				return nil, fb.unsupported("ownership-sensitive error payload handler binding", handler.Token)
@@ -302,4 +309,22 @@ func definitionPlace(fb *functionBuilder, id ValueID) *PlaceMetadata {
 		}
 	}
 	return nil
+}
+
+// tryBindingMoves reads whether a try handler's by-value binding takes its
+// value by move, from the transfer Sema published for it (P17-35). A handler
+// without a named binding moves nothing; a named one without a plan is an
+// unresolved fact, not a reason to classify the type again.
+func (fb *functionBuilder) tryBindingMoves(handler *ast.TryHandler, plan sema.ResolvedTryHandler) (bool, error) {
+	if plan.BindingName == "" || plan.BindingName == "_" {
+		return false, nil
+	}
+	transfer, ok := fb.owner.analyzer.ResolvedTryHandlerBindingTransferOf(handler)
+	if !ok {
+		if plan.BindingType.Kind == sema.ReferenceType {
+			return false, nil
+		}
+		return false, fb.unsupported("try handler binding without a resolved transfer", handler.Token)
+	}
+	return transfer.Action == sema.TransferMove, nil
 }

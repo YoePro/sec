@@ -2565,13 +2565,31 @@ fn Test() void {
 	assertSemaErrors(t, errors, nil)
 }
 
-func TestUnionPayloadPatternBorrowRejectsTemporarySubject(t *testing.T) {
+// A fresh subject lives through the whole match, so an arm may borrow its
+// payload; the borrow is match-scoped (owner decision 2026-11-07). A subject
+// that is itself a reference returned by a call still has no temporary to
+// borrow from.
+// Rules: rules/control-flow/flowcontrol_match.md — § 13.
+func TestUnionPayloadPatternBorrowsFromTemporarySubject(t *testing.T) {
 	input := `
 module main
 
 type Choice union {
 	Some(int),
 	None,
+}
+
+type Handle struct {
+	id: int,
+}
+
+impl Handle {
+	free {
+	}
+}
+
+fn MakeSome() Option[Handle] {
+	return Some(Handle { id: 1 })
 }
 
 fn Test() void {
@@ -2582,12 +2600,109 @@ fn Test() void {
 		None => {}
 	}
 }
+
+fn Owned() int {
+	match MakeSome() {
+		Some(ref mut handle) => {
+			handle.id = 2
+			return handle.id
+		}
+		None => {
+			return 0
+		}
+	}
+}
+
+type Parcel union {
+	Boxed { head: Handle, size: int },
+	Empty,
+}
+
+fn MakeParcel() Parcel {
+	return Parcel.Boxed { head: Handle { id: 1 }, size: 2 }
+}
+
+fn Field() int {
+	match MakeParcel() {
+		Parcel.Boxed { head: ref h, size } => {
+			return h.id + size
+		}
+		Parcel.Empty => {
+			return 0
+		}
+	}
+}
 `
 
+	assertSemaErrors(t, analyzeSourceRaw(t, input), nil)
+
+	escaping := `
+module main
+
+type Handle struct {
+	id: int,
+}
+
+impl Handle {
+	free {
+	}
+}
+
+fn MakeSome() Option[Handle] {
+	return Some(Handle { id: 1 })
+}
+
+fn Escape() ref Handle {
+	match MakeSome() {
+		Some(ref handle) => {
+			return handle
+		}
+		None => {
+			panic "none"
+		}
+	}
+}
+`
+	if errors := analyzeSourceRaw(t, escaping); len(errors) != 1 || !strings.Contains(errors[0].Message, "branch-scoped union payload reference") {
+		t.Fatalf("errors = %v, want the branch-scoped payload escape", errors)
+	}
+}
+
+// A constructed match subject takes the operands it is built from when it is
+// evaluated, like the same construction in a let initializer.
+// Rules: rules/control-flow/flowcontrol_match.md — § 13; rules/memory/copy_move.md — §§ 9–10.
+func TestConstructedMatchSubjectMovesItsOperands(t *testing.T) {
+	input := `
+module main
+
+type Handle struct {
+	id: int,
+}
+
+impl Handle {
+	free {
+	}
+}
+
+fn Make() Handle {
+	return Handle { id: 1 }
+}
+
+fn UseAfter() int {
+	let handle := Make()
+	match Some(<-handle) {
+		Some(inner) => {
+			discard inner
+		}
+		None => {}
+	}
+	return handle.id
+}
+`
 	errors := analyzeSourceRaw(t, input)
-	assertSemaErrors(t, errors, []string{
-		"cannot borrow union payload from temporary match subject at 11:12",
-	})
+	if len(errors) != 1 || !strings.Contains(errors[0].Message, "use of moved value handle") {
+		t.Fatalf("errors = %v, want one use of moved value handle", errors)
+	}
 }
 
 func TestUnionPayloadPatternReferenceCannotEscapeBranch(t *testing.T) {

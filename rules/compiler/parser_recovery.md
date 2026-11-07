@@ -2,8 +2,8 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-07
-- **Last updated:** 2026-10-28 (revision 2.0: first numbered revision; implementation status, fixtures and the implementation plan moved to governance; MD-003, MD-029, MD-042 and MD-102 synchronization; `rules/corrections/sec-compiler-rulebooks-modernization-pass1-20261028.md`)
-- **Document revision:** 2.0
+- **Last updated:** 2026-11-07 (revision 2.1: syntax freshness audit of §§ 22–66 against grammar.md and the construct owners — §§ 23, 27, 42–44, 47 and 58 corrected; no renumbering); 2026-10-28 (revision 2.0: first numbered revision; implementation status, fixtures and the implementation plan moved to governance; MD-003, MD-029, MD-042 and MD-102 synchronization; `rules/corrections/applied/sec-compiler-rulebooks-modernization-pass1-20261028-20261107.md`)
+- **Document revision:** 2.1
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/compiler/parser_recovery.md`
 - **Repository baseline reviewed:** `7be8777`
@@ -886,6 +886,8 @@ fallthrough
 defer
 discard
 cancel
+assert
+panic
 unsafe
 asm
 try
@@ -1014,7 +1016,9 @@ zero.
 
 ## § 27 Compiler-directive recovery
 
-§ 27(1) Inside `#target(...)`, synchronize at:
+§ 27(1) Inside the argument list of a `@target(...)` or `@when(...)` attribute,
+or of the legacy compatibility directive `#target(...)` (`compiler.md` § 15),
+synchronize at:
 
 ```text
 ,
@@ -1027,6 +1031,12 @@ EOF
 
 § 27(3) Do not interpret malformed directive tokens as ordinary code inside the
 directive.
+
+§ 27(4) The same rule applies to the argument list of every other attribute
+`@name(...)`: recovery skips to the `)` that closes the list, records the
+skipped range, leaves foreign closing delimiters unconsumed, and stops before a
+declaration start on a later line at the list's own depth, so the following
+declaration still parses.
 
 ---
 
@@ -1480,6 +1490,9 @@ EOF
 
 ```text
 fn
+mut fn
+-> fn
+static fn
 property
 contextual event
 }
@@ -1495,6 +1508,7 @@ EOF
 ```text
 get
 set
+try set
 }
 ```
 
@@ -1505,6 +1519,7 @@ set
 § 43(1) Inside an impl body, synchronize at:
 
 ```text
+@ attribute start
 type
 unit
 enum
@@ -1512,7 +1527,11 @@ fn
 free
 property
 contextual event
+contextual init
+let
 static
+impl
+contextual unit metadata key
 }
 EOF
 ```
@@ -1525,8 +1544,11 @@ EOF
 - retain skipped tokens;
 - support nested delimiters.
 
-§ 43(3) An invalid local `let` inside impl should remain an invalid member with a
-structured diagnostic.
+§ 43(3) `let [mut] Name ... := expression` inside impl is a valid instance
+member (`grammar.md` "Impl declaration", `InstanceLetDeclaration`), and
+`static let` a type-owned one. A malformed member `let` remains an invalid
+member with a structured diagnostic; it is not reinterpreted as a local
+statement.
 
 ---
 
@@ -1535,6 +1557,7 @@ structured diagnostic.
 § 44(1) Inside a property body, synchronize at:
 
 ```text
+@ attribute start
 get
 set
 try set
@@ -1621,15 +1644,22 @@ body
 § 47(1) Recover around:
 
 ```text
+@link_name attribute
+unsafe
 ABI string
 fn
+type (foreign type declaration)
 name
 parameter list
 return type
-optional canonical body form
 next declaration
 EOF
 ```
+
+§ 47(1A) An extern function has no body (`grammar.md` "Extern function
+declaration"). A block after the signature is diagnosed and consumed as part of
+the invalid declaration; it never becomes an ordinary function body and never
+consumes the following declaration.
 
 § 47(2) Do not invent an ABI string.
 
@@ -1975,14 +2005,11 @@ EOF
 
 ## § 58 Defer recovery
 
-§ 58(1) After `defer`, canonical forms are:
+§ 58(1) After `defer`, the only canonical form is a block (`grammar.md`
+"Defer statement"; `rules/control-flow/defer.md` § 2). Shorthand forms such
+as `defer Close()` or `defer return` are not part of Sec 0.1.
 
-```text
-block
-return
-```
-
-§ 58(2) When neither appears:
+§ 58(2) When no block follows:
 
 - create an invalid defer statement;
 - synchronize at next statement or closing brace;

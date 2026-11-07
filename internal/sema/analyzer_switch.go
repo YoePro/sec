@@ -241,7 +241,7 @@ func (a *Analyzer) analyzeSwitchCaseBody(block *ast.BlockStatement) branchAnalys
 	a.switchCaseBody = block
 	defer func() {
 		a.symbols = previousSymbols
-		a.constInts = previousConstInts
+		a.restoreConstInts(previousConstInts)
 		a.assigned = previousAssigned
 		a.moved = previousMoved
 		a.availabilityStates = previousMoveReasons

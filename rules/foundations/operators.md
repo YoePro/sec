@@ -1,10 +1,22 @@
 # Operators
 
-## Status
+- **Status:** Normative
+- **Created:** 2026-08-01
+- **Last updated:** 2026-11-07 (stable chapter, subsection, and paragraph numbering)
+- **Document revision:** 1
+- **Sec language version:** 0.1
+- **Canonical path:** `rules/foundations/operators.md`
+- **Repository baseline reviewed:** `28780c01d63c3fc9eec2321ef67e3dd69962f043`
+- **Implementation governance:** `governance/sema.yaml` (`frontend.operators-v2`)
+- **Related rulebooks:** `rules/foundations/grammar.md`, `rules/foundations/lexical_structure.md`, `rules/types/types.md`, `rules/types/contracts.md`, `rules/types/default_values.md`, `rules/collections/collections.md`, `rules/memory/ownership.md`, `rules/memory/borrowing.md`, `rules/errors/runtime_checks.md`, `rules/errors/panic.md`, `rules/compiler/semantic_ir.md`, `rules/tooling/formatter.md`, `rules/tooling/lsp.md`
 
-This document is the canonical operator rulebook for Sec.
+---
 
-It defines:
+## § 1 Status
+
+**§ 1(1)** This document is the canonical operator rulebook for Sec.
+
+**§ 1(2)** It defines:
 
 - operator inventory;
 - precedence;
@@ -22,10 +34,10 @@ It defines:
 - Semantic IR requirements;
 - lowering requirements.
 
-This document must remain synchronized with the actual lexer, parser, AST,
+**§ 1(3)** This document must remain synchronized with the actual lexer, parser, AST,
 Sema, formatter, Semantic IR, MLIR, and backend implementations.
 
-`default` is a named-type declaration clause, not an operator. Expressions in
+**§ 1(4)** `default` is a named-type declaration clause, not an operator. Expressions in
 an explicit default use the constant-expression subset of the operator rules in
 this document. An invalid constant operation invalidates the default, and the
 expression may not allocate or depend on runtime state. See
@@ -33,16 +45,16 @@ expression may not allocate or depend on runtime state. See
 
 ---
 
-# Current implementation status
+## § 2 Current implementation status
 
-The Sec compiler already implements a substantial operator foundation.
+**§ 2(1)** The Sec compiler already implements a substantial operator foundation.
 
-The current implementation must be preserved where it agrees with this
+**§ 2(2)** The current implementation must be preserved where it agrees with this
 rulebook and corrected where it does not.
 
-## Implemented
+### § 2.1 Implemented
 
-The lexer currently recognizes:
+**§ 2.1(1)** The lexer currently recognizes:
 
 ```text
 +
@@ -87,9 +99,9 @@ The lexer currently recognizes:
 =>
 ```
 
-The lexer uses longest-match behavior for multi-character tokens.
+**§ 2.1(2)** The lexer uses longest-match behavior for multi-character tokens.
 
-The parser currently implements a Pratt-style expression parser with precedence
+**§ 2.1(3)** The parser currently implements a Pratt-style expression parser with precedence
 levels for:
 
 ```text
@@ -117,7 +129,7 @@ calls and indexes
 member access
 ```
 
-The parser currently supports:
+**§ 2.1(4)** The parser currently supports:
 
 - unary `+`;
 - unary `-`;
@@ -140,14 +152,14 @@ The parser currently supports:
 - move declaration and move assignment syntax;
 - contextual range parsing in selected grammar positions.
 
-The AST currently preserves:
+**§ 2.1(5)** The AST currently preserves:
 
 - infix operator spelling;
 - prefix operator spelling;
 - assignment operator spelling;
 - ownership mode for declarations and assignments.
 
-Sema currently implements:
+**§ 2.1(6)** Sema currently implements:
 
 - boolean operands for `&&` and `||`;
 - arithmetic numeric checks;
@@ -184,14 +196,14 @@ Sema currently implements:
 - ownership checks;
 - copy and move checks.
 
-The direct LLVM backend already implements lazy short-circuit control flow for:
+**§ 2.1(7)** The direct LLVM backend already implements lazy short-circuit control flow for:
 
 ```text
 &&
 ||
 ```
 
-The MLIR backend already lowers several:
+**§ 2.1(8)** The MLIR backend already lowers several:
 
 ```text
 integer arithmetic operators
@@ -205,9 +217,9 @@ range membership
 compound assignments
 ```
 
-## Partially implemented
+### § 2.2 Partially implemented
 
-The following are only partially implemented:
+**§ 2.2(1)** The following are only partially implemented:
 
 - contextual `x` parsing and fixed matrix/matrix and matrix/vector shape
   validation are implemented, while Semantic IR, lowering and tooling context
@@ -236,7 +248,7 @@ The following are only partially implemented:
 - parser recovery for malformed operator expressions is incomplete;
 - operator diagnostics are not all registered with stable IDs.
 
-The implemented structured operator checks emit:
+**§ 2.2(2)** The implemented structured operator checks emit:
 
 ```text
 S1016  operator.non-orderable-operands
@@ -248,12 +260,12 @@ S1022  operator.invalid-concat-operand
 S1029  operator.invalid-interpolation-value
 ```
 
-`S1020 operator.string-runtime-concat` is retired and its numeric ID remains
+**§ 2.2(3)** `S1020 operator.string-runtime-concat` is retired and its numeric ID remains
 reserved. It must not be emitted or reused.
 
-## Not implemented
+### § 2.3 Not implemented
 
-The following are not yet implemented completely:
+**§ 2.3(1)** The following are not yet implemented completely:
 
 - one generated or shared canonical precedence definition;
 - lowering and tooling context for matrix operator `x`;
@@ -289,13 +301,13 @@ The following are not yet implemented completely:
 
 ---
 
-# Purpose
+## § 3 Purpose
 
-Operators provide concise syntax for common semantic operations.
+**§ 3(1)** Operators provide concise syntax for common semantic operations.
 
-An operator does not gain meaning solely from its token.
+**§ 3(2)** An operator does not gain meaning solely from its token.
 
-Its resolved meaning depends on:
+**§ 3(3)** Its resolved meaning depends on:
 
 ```text
 grammar context
@@ -309,15 +321,15 @@ target representation
 available compiler-known implementations
 ```
 
-No backend phase may reinterpret an operator differently from Sema.
+**§ 3(4)** No backend phase may reinterpret an operator differently from Sema.
 
 ---
 
-# Scope
+## § 4 Scope
 
-This rulebook defines ordinary source operators.
+**§ 4(1)** This rulebook defines ordinary source operators.
 
-Specialized rulebooks define additional details for:
+**§ 4(2)** Specialized rulebooks define additional details for:
 
 ```text
 copy_move.md
@@ -362,13 +374,13 @@ memory_model.md
 
 ---
 
-# Definitions
+## § 5 Definitions
 
-## Operator
+### § 5.1 Operator
 
-An operator is source syntax selecting a compiler-defined semantic operation.
+**§ 5.1(1)** An operator is source syntax selecting a compiler-defined semantic operation.
 
-Examples:
+**§ 5.1(2)** Examples:
 
 ```sec
 left + right
@@ -378,14 +390,14 @@ object.Member
 destination <- source
 ```
 
-## Operand
+### § 5.2 Operand
 
-An operand is an expression or place consumed, copied, borrowed, inspected, or
+**§ 5.2(1)** An operand is an expression or place consumed, copied, borrowed, inspected, or
 mutated by an operator.
 
-## Operator result
+### § 5.3 Operator result
 
-An operator result may be:
+**§ 5.3(1)** An operator result may be:
 
 ```text
 a value
@@ -397,11 +409,11 @@ a statement effect
 no value
 ```
 
-Assignment operators do not produce expression values in Sec 0.1.
+**§ 5.3(2)** Assignment operators do not produce expression values in Sec 0.1.
 
-## Operator family
+### § 5.4 Operator family
 
-Operators are grouped into:
+**§ 5.4(1)** Operators are grouped into:
 
 ```text
 postfix
@@ -420,22 +432,22 @@ grammar-specific
 
 ---
 
-# General rules
+## § 6 General rules
 
-## Compiler-defined meaning
+### § 6.1 Compiler-defined meaning
 
-Sec 0.1 does not support arbitrary user-defined operator declarations.
+**§ 6.1(1)** Sec 0.1 does not support arbitrary user-defined operator declarations.
 
-A user cannot declare:
+**§ 6.1(2)** A user cannot declare:
 
 ```sec
 operator +(left: MyType, right: MyType) MyType
 ```
 
-Compiler-known and core-known types may support operators through language
+**§ 6.1(3)** Compiler-known and core-known types may support operators through language
 rules.
 
-Examples include:
+**§ 6.1(4)** Examples include:
 
 ```text
 numeric types
@@ -453,13 +465,13 @@ references
 raw pointers where explicitly allowed
 ```
 
-This is not arbitrary operator overloading.
+**§ 6.1(5)** This is not arbitrary operator overloading.
 
-## Exact operator resolution
+### § 6.2 Exact operator resolution
 
-Operator resolution is completed during Sema.
+**§ 6.2(1)** Operator resolution is completed during Sema.
 
-The resolved operation records:
+**§ 6.2(2)** The resolved operation records:
 
 ```text
 operator kind
@@ -474,9 +486,9 @@ unit behavior
 target requirements
 ```
 
-## No hidden fallback
+### § 6.3 No hidden fallback
 
-When an operator is invalid for its operands, the compiler must not silently:
+**§ 6.3(1)** When an operator is invalid for its operands, the compiler must not silently:
 
 ```text
 call an unrelated method
@@ -489,11 +501,11 @@ select a lossy conversion
 choose target-specific behavior
 ```
 
-## No target-dependent source meaning
+### § 6.4 No target-dependent source meaning
 
-A target may reject unsupported operations.
+**§ 6.4(1)** A target may reject unsupported operations.
 
-A target must not change:
+**§ 6.4(2)** A target must not change:
 
 ```text
 precedence
@@ -508,9 +520,9 @@ copy or move meaning
 
 ---
 
-# Canonical precedence
+## § 7 Canonical precedence
 
-The following table is ordered from highest precedence to lowest precedence.
+**§ 7(1)** The following table is ordered from highest precedence to lowest precedence.
 
 | Level | Category | Operators and forms | Associativity |
 |---:|---|---|---|
@@ -528,19 +540,19 @@ The following table is ordered from highest precedence to lowest precedence.
 | 12 | Logical AND | `&&` | left with short-circuit |
 | 13 | Logical OR | `||` | left with short-circuit |
 
-Assignment is not part of expression precedence.
+**§ 7(2)** Assignment is not part of expression precedence.
 
-Assignment is statement syntax.
+**§ 7(3)** Assignment is statement syntax.
 
 ---
 
-# Precedence examples
+## § 8 Precedence examples
 
 ```sec
 a + b * c
 ```
 
-means:
+**§ 8(1)** means:
 
 ```sec
 a + (b * c)
@@ -550,7 +562,7 @@ a + (b * c)
 a << b + c
 ```
 
-means:
+**§ 8(2)** means:
 
 ```sec
 a << (b + c)
@@ -560,22 +572,22 @@ a << (b + c)
 a & b == c
 ```
 
-means:
+**§ 8(3)** means:
 
 ```sec
 a & (b == c)
 ```
 
-only if the resulting types are valid.
+**§ 8(4)** only if the resulting types are valid.
 
-In ordinary integer code, this will normally be a type error because equality
+**§ 8(5)** In ordinary integer code, this will normally be a type error because equality
 produces `bool`.
 
 ```sec
 a == b & c
 ```
 
-means:
+**§ 8(6)** means:
 
 ```sec
 a == (b & c)
@@ -585,7 +597,7 @@ a == (b & c)
 a || b && c
 ```
 
-means:
+**§ 8(7)** means:
 
 ```sec
 a || (b && c)
@@ -595,7 +607,7 @@ a || (b && c)
 left x right + offset
 ```
 
-means:
+**§ 8(8)** means:
 
 ```sec
 (left x right) + offset
@@ -603,35 +615,35 @@ means:
 
 ---
 
-# Parentheses
+## § 9 Parentheses
 
-Parentheses override precedence.
+**§ 9(1)** Parentheses override precedence.
 
 ```sec
 (a + b) * c
 ```
 
-Parentheses may also document intent.
+**§ 9(2)** Parentheses may also document intent.
 
-The formatter may remove only provably redundant parentheses according to
+**§ 9(3)** The formatter may remove only provably redundant parentheses according to
 `formatter.md`.
 
-Parentheses that preserve readability around mixed boolean or comparison
+**§ 9(4)** Parentheses that preserve readability around mixed boolean or comparison
 expressions may remain.
 
 ---
 
-# Associativity
+## § 10 Associativity
 
-## Left-associative binary operators
+### § 10.1 Left-associative binary operators
 
-Unless explicitly stated otherwise, ordinary binary operators associate left.
+**§ 10.1(1)** Unless explicitly stated otherwise, ordinary binary operators associate left.
 
 ```sec
 a - b - c
 ```
 
-means:
+**§ 10.1(2)** means:
 
 ```sec
 (a - b) - c
@@ -641,7 +653,7 @@ means:
 a / b / c
 ```
 
-means:
+**§ 10.1(3)** means:
 
 ```sec
 (a / b) / c
@@ -651,59 +663,59 @@ means:
 a << b << c
 ```
 
-means:
+**§ 10.1(4)** means:
 
 ```sec
 (a << b) << c
 ```
 
-## Prefix operators
+### § 10.2 Prefix operators
 
-Prefix operators associate right.
+**§ 10.2(1)** Prefix operators associate right.
 
 ```sec
 !!value
 ```
 
-means:
+**§ 10.2(2)** means:
 
 ```sec
 !(!value)
 ```
 
-## Non-chainable comparisons
+### § 10.3 Non-chainable comparisons
 
-Comparisons are not mathematically chained.
+**§ 10.3(1)** Comparisons are not mathematically chained.
 
-Invalid:
+**§ 10.3(2)** Invalid:
 
 ```sec
 a < b < c
 ```
 
-Invalid:
+**§ 10.3(3)** Invalid:
 
 ```sec
 a == b == c
 ```
 
-Write:
+**§ 10.3(4)** Write:
 
 ```sec
 a < b && b < c
 ```
 
-or:
+**§ 10.3(5)** or:
 
 ```sec
 a == b && b == c
 ```
 
-The compiler must provide a focused diagnostic.
+**§ 10.3(6)** The compiler must provide a focused diagnostic.
 
-## State tests with `is`
+### § 10.4 State tests with `is`
 
-A non-binding `is` state test is an ordinary expression of type `bool` and may
+**§ 10.4(1)** A non-binding `is` state test is an ordinary expression of type `bool` and may
 appear in every expression context where a `bool` expression is valid:
 
 ```sec
@@ -717,13 +729,13 @@ if ready && state is Idle {
 }
 ```
 
-`is` belongs to the equality/state-test precedence level (level 8), so
+**§ 10.4(2)** `is` belongs to the equality/state-test precedence level (level 8), so
 `ready && state is Idle` groups as `ready && (state is Idle)`. Equality and
 state-test operators at that level are non-chainable: `state is Idle == true`
 is rejected, while the parenthesized `(state is Idle) == true` is valid but
 redundant and receives a bad-practice diagnostic recommending `state is Idle`.
 
-`is not` is the canonical direct negation of a non-binding state test:
+**§ 10.4(3)** `is not` is the canonical direct negation of a non-binding state test:
 
 ```sec
 state is not Idle
@@ -732,19 +744,19 @@ option is not None
 place is not available
 ```
 
-The exact designators valid for a type are defined by the rulebook that owns
+**§ 10.4(4)** The exact designators valid for a type are defined by the rulebook that owns
 that type or state operation. `!(state is Idle)` is valid but receives a
 bad-practice diagnostic recommending `state is not Idle`. Ordinary prefix
 precedence still applies: `!state is Idle` means `(!state) is Idle`.
 Explicit Language Corrections may rewrite both bad-practice forms when the
 rewrite is unambiguous and semantics-preserving.
 
-The foreign null tests `pointer is null` and `pointer is not null` are state
+**§ 10.4(5)** The foreign null tests `pointer is null` and `pointer is not null` are state
 tests at this level owned by `rules/platform/ffi.md` § 11: they are valid only
 inside `unsafe` with a raw-pointer operand, `is not null` is their canonical
 negated spelling, and `== null`/`!= null` are invalid (MD-024).
 
-The positive Option binding `if option is Some(value)` remains a narrow Sec 0.1
+**§ 10.4(6)** The positive Option binding `if option is Some(value)` remains a narrow Sec 0.1
 condition facility (`rules/control-flow/flowcontrol_if.md` § 12). It is not a
 general stored or returned bool expression, it does not generalize to other
 union or Result variants, and it introduces no binding scope through `&&` or
@@ -754,13 +766,13 @@ the binding (MD-006; `rules/corrections/applied/missing-decisions-md001-md009-co
 
 ---
 
-# Evaluation order
+## § 11 Evaluation order
 
-## General rule
+### § 11.1 General rule
 
-Sec evaluates expression components strictly from left to right.
+**§ 11.1(1)** Sec evaluates expression components strictly from left to right.
 
-This applies to:
+**§ 11.1(2)** This applies to:
 
 ```text
 binary operands
@@ -776,10 +788,10 @@ comparison operands
 assignment source expressions
 ```
 
-The compiler may reorder physical instructions only when observable behavior is
+**§ 11.1(3)** The compiler may reorder physical instructions only when observable behavior is
 unchanged.
 
-Observable behavior includes:
+**§ 11.1(4)** Observable behavior includes:
 
 ```text
 ownership transfer
@@ -795,40 +807,40 @@ I/O
 resource operations
 ```
 
-## Binary operator
+### § 11.2 Binary operator
 
 ```sec
 First() + Second()
 ```
 
-evaluates:
+**§ 11.2(1)** evaluates:
 
 1. `First()`;
 2. `Second()`;
 3. addition.
 
-## Function arguments
+### § 11.3 Function arguments
 
 ```sec
 Call(First(), Second(), Third())
 ```
 
-evaluates arguments in source order.
+**§ 11.3(1)** evaluates arguments in source order.
 
-## Index
+### § 11.4 Index
 
 ```sec
 values[NextIndex()]
 ```
 
-evaluates:
+**§ 11.4(1)** evaluates:
 
 1. `values`;
 2. `NextIndex()`;
 3. bounds validation;
 4. access.
 
-## Struct literal
+### § 11.5 Struct literal
 
 ```sec
 let value := Record {
@@ -837,27 +849,27 @@ let value := Record {
 }
 ```
 
-evaluates fields in source order.
+**§ 11.5(1)** evaluates fields in source order.
 
-## Spread
+### § 11.6 Spread
 
-A spread source is evaluated exactly once.
+**§ 11.6(1)** A spread source is evaluated exactly once.
 
-Expanded elements are processed in natural source order.
+**§ 11.6(2)** Expanded elements are processed in natural source order.
 
 ---
 
-# Exact-once place evaluation
+## § 12 Exact-once place evaluation
 
-An assignment target or compound-assignment target is evaluated exactly once.
+**§ 12(1)** An assignment target or compound-assignment target is evaluated exactly once.
 
-Example:
+**§ 12(2)** Example:
 
 ```sec
 values[NextIndex()] += NextValue()
 ```
 
-Conceptual order:
+**§ 12(3)** Conceptual order:
 
 1. evaluate `values`;
 2. evaluate `NextIndex()` exactly once;
@@ -868,57 +880,57 @@ Conceptual order:
 7. validate overflow, contracts, and other fallible conditions;
 8. write the new value.
 
-The compiler must not lower this as:
+**§ 12(4)** The compiler must not lower this as:
 
 ```sec
 values[NextIndex()] = values[NextIndex()] + NextValue()
 ```
 
-because that would evaluate the target more than once.
+**§ 12(5)** because that would evaluate the target more than once.
 
 ---
 
-# Short-circuit evaluation
+## § 13 Short-circuit evaluation
 
-## Logical AND
+### § 13.1 Logical AND
 
 ```sec
 left && right
 ```
 
-evaluates `left` first.
+**§ 13.1(1)** evaluates `left` first.
 
-When `left` is `false`:
+**§ 13.1(2)** When `left` is `false`:
 
 - `right` is not evaluated;
 - the result is `false`.
 
-When `left` is `true`:
+**§ 13.1(3)** When `left` is `true`:
 
 - `right` is evaluated;
 - the result is the value of `right`.
 
-## Logical OR
+### § 13.2 Logical OR
 
 ```sec
 left || right
 ```
 
-evaluates `left` first.
+**§ 13.2(1)** evaluates `left` first.
 
-When `left` is `true`:
+**§ 13.2(2)** When `left` is `true`:
 
 - `right` is not evaluated;
 - the result is `true`.
 
-When `left` is `false`:
+**§ 13.2(3)** When `left` is `false`:
 
 - `right` is evaluated;
 - the result is the value of `right`.
 
-## Path-sensitive effects
+### § 13.3 Path-sensitive effects
 
-A skipped right operand does not:
+**§ 13.3(1)** A skipped right operand does not:
 
 ```text
 move a value
@@ -932,23 +944,23 @@ destroy a temporary
 produce a runtime error
 ```
 
-Ownership, borrowing, effects, and diagnostics must follow control flow.
+**§ 13.3(2)** Ownership, borrowing, effects, and diagnostics must follow control flow.
 
 ---
 
-# Primary and postfix forms
+## § 14 Primary and postfix forms
 
-## Member access
+### § 14.1 Member access
 
 ```sec
 value.Member
 ```
 
-Member access has the highest precedence.
+**§ 14.1(1)** Member access has the highest precedence.
 
-The left expression is resolved before the member.
+**§ 14.1(2)** The left expression is resolved before the member.
 
-Member access may resolve:
+**§ 14.1(3)** Member access may resolve:
 
 ```text
 field
@@ -961,15 +973,15 @@ module member
 compiler-known member
 ```
 
-A member access is a place only when the resolved member and receiver allow it.
+**§ 14.1(4)** A member access is a place only when the resolved member and receiver allow it.
 
-## Call
+### § 14.2 Call
 
 ```sec
 Function(argument1, argument2)
 ```
 
-Call syntax may represent:
+**§ 14.2(1)** Call syntax may represent:
 
 ```text
 function call
@@ -979,32 +991,32 @@ type conversion
 generic instantiation followed by call
 ```
 
-Sema determines the meaning.
+**§ 14.2(2)** Sema determines the meaning.
 
-The surface syntax alone does not determine whether a form is a function call or
+**§ 14.2(3)** The surface syntax alone does not determine whether a form is a function call or
 conversion.
 
-## Conversion
+### § 14.3 Conversion
 
 ```sec
 Percent(value)
 ```
 
-may resolve as a type conversion when `Percent` is a type.
+**§ 14.3(1)** may resolve as a type conversion when `Percent` is a type.
 
-Conversion rules come from `types.md`, named-type rules, units, and contracts.
+**§ 14.3(2)** Conversion rules come from `types.md`, named-type rules, units, and contracts.
 
-A conversion is not an ordinary user-overloadable call.
+**§ 14.3(3)** A conversion is not an ordinary user-overloadable call.
 
-## Index
+### § 14.4 Index
 
 ```sec
 values[index]
 ```
 
-Indexing is postfix syntax.
+**§ 14.4(1)** Indexing is postfix syntax.
 
-It may resolve for:
+**§ 14.4(2)** It may resolve for:
 
 ```text
 array
@@ -1018,19 +1030,19 @@ tensor
 compiler-known indexed type
 ```
 
-Exact indexing semantics belong to the type's rulebook.
+**§ 14.4(3)** Exact indexing semantics belong to the type's rulebook.
 
-## Slice
+### § 14.5 Slice
 
 ```sec
 values[start..<end]
 ```
 
-Slicing is contextual postfix syntax.
+**§ 14.5(1)** Slicing is contextual postfix syntax.
 
-Slice bounds evaluate left to right.
+**§ 14.5(2)** Slice bounds evaluate left to right.
 
-## Struct literal
+### § 14.6 Struct literal
 
 ```sec
 Point {
@@ -1039,20 +1051,20 @@ Point {
 }
 ```
 
-The parser distinguishes a struct literal from an ordinary block by grammar
+**§ 14.6(1)** The parser distinguishes a struct literal from an ordinary block by grammar
 context.
 
-## Spread
+### § 14.7 Spread
 
 ```sec
 values...
 ```
 
-Spread is postfix syntax.
+**§ 14.7(1)** Spread is postfix syntax.
 
-Spread is valid only in approved contexts.
+**§ 14.7(2)** Spread is valid only in approved contexts.
 
-Sec 0.1 contexts include:
+**§ 14.7(3)** Sec 0.1 contexts include:
 
 ```text
 function arguments
@@ -1060,34 +1072,34 @@ array literals
 struct literals
 ```
 
-Spread is not a general value-producing operator.
+**§ 14.7(4)** Spread is not a general value-producing operator.
 
 ---
 
-# Prefix operators
+## § 15 Prefix operators
 
-## Unary plus
+### § 15.1 Unary plus
 
 ```sec
 +value
 ```
 
-Unary plus is valid for numeric values.
+**§ 15.1(1)** Unary plus is valid for numeric values.
 
-It preserves the numeric value and resolved type.
+**§ 15.1(2)** It preserves the numeric value and resolved type.
 
-It does not convert unsigned to signed or vice versa.
+**§ 15.1(3)** It does not convert unsigned to signed or vice versa.
 
-It may be removed by the formatter only where doing so is canonical and does
+**§ 15.1(4)** It may be removed by the formatter only where doing so is canonical and does
 not affect literal interpretation.
 
-## Unary minus
+### § 15.2 Unary minus
 
 ```sec
 -value
 ```
 
-Unary minus is valid for:
+**§ 15.2(1)** Unary minus is valid for:
 
 ```text
 signed integers
@@ -1097,14 +1109,14 @@ compatible named numeric types
 compatible unit-bearing numeric values
 ```
 
-Unary minus is invalid for ordinary unsigned runtime values.
+**§ 15.2(2)** Unary minus is invalid for ordinary unsigned runtime values.
 
-A negative untyped literal may be shaped directly into a signed compatible
+**§ 15.2(3)** A negative untyped literal may be shaped directly into a signed compatible
 context.
 
-Signed integer negation is checked.
+**§ 15.2(4)** Signed integer negation is checked.
 
-Negating the minimum representable signed integer causes:
+**§ 15.2(5)** Negating the minimum representable signed integer causes:
 
 ```text
 compile-time error
@@ -1114,58 +1126,58 @@ deterministic arithmetic failure
     when detected at runtime
 ```
 
-Floating negation follows floating-point sign semantics.
+**§ 15.2(6)** Floating negation follows floating-point sign semantics.
 
-Decimal negation follows checked decimal representability.
+**§ 15.2(7)** Decimal negation follows checked decimal representability.
 
-## Logical negation
+### § 15.3 Logical negation
 
 ```sec
 !value
 ```
 
-Operand type must be `bool`.
+**§ 15.3(1)** Operand type must be `bool`.
 
-Result type is `bool`.
+**§ 15.3(2)** Result type is `bool`.
 
-No numeric truthiness exists.
+**§ 15.3(3)** No numeric truthiness exists.
 
-Invalid:
+**§ 15.3(4)** Invalid:
 
 ```sec
 !1
 ```
 
-## Bitwise complement
+### § 15.4 Bitwise complement
 
 ```sec
 ~value
 ```
 
-Operand must be an integer type.
+**§ 15.4(1)** Operand must be an integer type.
 
-Result type is the operand type.
+**§ 15.4(2)** Result type is the operand type.
 
-The operation flips every value bit in the fixed-width representation.
+**§ 15.4(3)** The operation flips every value bit in the fixed-width representation.
 
-For a signed integer, interpretation of the result uses the same signed type.
+**§ 15.4(4)** For a signed integer, interpretation of the result uses the same signed type.
 
-## Dereference
+### § 15.5 Dereference
 
 ```sec
 *reference
 ```
 
-The operand must be a safe `ref T` or `ref mut T`. The expression names the
+**§ 15.5(1)** The operand must be a safe `ref T` or `ref mut T`. The expression names the
 referent Place of type `T` (`rules/memory/references.md` § 3.4; MD-063).
 
-A value use reads the referent by value and requires `T` to be copyable. The
+**§ 15.5(2)** A value use reads the referent by value and requires `T` to be copyable. The
 operator never moves out of a referent, and `:<- *r` / `<- *r` are invalid.
 
-`*r` is a valid assignment and compound-assignment target when `r` is
+**§ 15.5(3)** `*r` is a valid assignment and compound-assignment target when `r` is
 `ref mut T`; a `ref T` grants no write authority.
 
-`*` in prefix position is dereference; in infix position it is
+**§ 15.5(4)** `*` in prefix position is dereference; in infix position it is
 multiplication. Postfix forms bind tighter than prefix forms, so:
 
 ```text
@@ -1174,17 +1186,17 @@ multiplication. Postfix forms bind tighter than prefix forms, so:
 (*r).Field  projects Field from the explicit referent
 ```
 
-`Option[ref T]`, `RawPtr[T]`, slices and plain values are not valid operands.
+**§ 15.5(5)** `Option[ref T]`, `RawPtr[T]`, slices and plain values are not valid operands.
 
-No operator dereferences a reference implicitly. `r + 1`, `r += 1` and
+**§ 15.5(6)** No operator dereferences a reference implicitly. `r + 1`, `r += 1` and
 `r = value` act on the holder `r` and are rejected when they need the
 referent; the diagnostic suggests `*r`.
 
-`r == s` compares reference identity; `*r == *s` compares referent values.
+**§ 15.5(7)** `r == s` compares reference identity; `*r == *s` compares referent values.
 
 ### Line-start dereference statements
 
-Statements are not separated by newlines, and the canonical layout of a
+**§ 15.5(8)** Statements are not separated by newlines, and the canonical layout of a
 multiline product puts `*` at the start of a continuation line (formatter
 § 9(13)). The parser decides between the two readings of a `*` that begins a
 later line syntactically, never from types:
@@ -1211,15 +1223,15 @@ let total :=
 ] = 5                 // target brackets span lines
 ```
 
-Rule 1 only reinterprets source in which the multiplication reading would be
+**§ 15.5(9)** Rule 1 only reinterprets source in which the multiplication reading would be
 an assignment chained onto the previous statement, which is always invalid,
 so it changes the meaning of no valid program.
 
 ---
 
-# Arithmetic operators
+## § 16 Arithmetic operators
 
-Arithmetic operators include:
+**§ 16(1)** Arithmetic operators include:
 
 ```text
 +
@@ -1229,7 +1241,7 @@ Arithmetic operators include:
 %
 ```
 
-They may be available for:
+**§ 16(2)** They may be available for:
 
 ```text
 integers
@@ -1240,27 +1252,27 @@ unit-bearing numeric types
 compiler-known shaped values where defined
 ```
 
-No implicit conversion between unrelated nominal types is introduced merely to
+**§ 16(3)** No implicit conversion between unrelated nominal types is introduced merely to
 make an operator valid.
 
 ---
 
-# Numeric compatibility
+## § 17 Numeric compatibility
 
-Operands must be type-compatible according to numeric conversion rules.
+**§ 17(1)** Operands must be type-compatible according to numeric conversion rules.
 
-The compiler may shape untyped literals into a compatible operand type.
+**§ 17(2)** The compiler may shape untyped literals into a compatible operand type.
 
-Examples:
+**§ 17(3)** Examples:
 
 ```sec
 let value: int32 := 10
 let result := value + 2
 ```
 
-The literal `2` may shape to `int32`.
+**§ 17(4)** The literal `2` may shape to `int32`.
 
-No implicit conversion occurs between unrelated named types.
+**§ 17(5)** No implicit conversion occurs between unrelated named types.
 
 ```sec
 type Meters int
@@ -1270,7 +1282,7 @@ let distance: Meters := Meters(10)
 let time: Seconds := Seconds(2)
 ```
 
-This is invalid unless a unit or explicit operator rule defines it:
+**§ 17(6)** This is invalid unless a unit or explicit operator rule defines it:
 
 ```sec
 distance + time
@@ -1278,11 +1290,11 @@ distance + time
 
 ---
 
-# Checked integer arithmetic
+## § 18 Checked integer arithmetic
 
-Integer arithmetic is checked by default.
+**§ 18(1)** Integer arithmetic is checked by default.
 
-This includes:
+**§ 18(2)** This includes:
 
 ```text
 addition
@@ -1295,23 +1307,23 @@ signed left shift
 compound forms of these operations
 ```
 
-## Compile-time overflow
+### § 18.1 Compile-time overflow
 
-When the local constant analysis indicates integer overflow, the compiler emits
+**§ 18.1(1)** When the local constant analysis indicates integer overflow, the compiler emits
 the `S1023` warning. The warning does not block compilation because a dominating
 flow proof may establish that the operation is safe even when that proof is not
 available at the expression itself.
 
-The accepted operation retains ordinary checked runtime semantics. Suppressing
+**§ 18.1(2)** The accepted operation retains ordinary checked runtime semantics. Suppressing
 or downgrading the warning must never turn overflow into wrapping or undefined
 behavior.
 
-## Runtime overflow
+### § 18.2 Runtime overflow
 
-When overflow depends on runtime values, the generated program performs a
+**§ 18.2(1)** When overflow depends on runtime values, the generated program performs a
 deterministic arithmetic failure.
 
-Overflow must not:
+**§ 18.2(2)** Overflow must not:
 
 ```text
 wrap silently
@@ -1321,9 +1333,9 @@ depend on build profile
 depend on target instruction behavior
 ```
 
-## Explicit alternatives
+### § 18.3 Explicit alternatives
 
-Core may provide explicit operations such as:
+**§ 18.3(1)** Core may provide explicit operations such as:
 
 ```text
 WrappingAdd
@@ -1336,53 +1348,53 @@ CheckedSubtract
 CheckedMultiply
 ```
 
-Exact API names belong to core numeric rules.
+**§ 18.3(2)** Exact API names belong to core numeric rules.
 
 ---
 
-# Integer addition
+## § 19 Integer addition
 
 ```sec
 left + right
 ```
 
-Produces the mathematical sum when representable.
+**§ 19(1)** Produces the mathematical sum when representable.
 
-Otherwise checked overflow behavior applies.
+**§ 19(2)** Otherwise checked overflow behavior applies.
 
-Unsigned overflow and underflow are checked.
+**§ 19(3)** Unsigned overflow and underflow are checked.
 
 ---
 
-# Integer subtraction
+## § 20 Integer subtraction
 
 ```sec
 left - right
 ```
 
-Produces the mathematical difference when representable.
+**§ 20(1)** Produces the mathematical difference when representable.
 
-Unsigned underflow is an arithmetic failure.
+**§ 20(2)** Unsigned underflow is an arithmetic failure.
 
 ---
 
-# Integer multiplication
+## § 21 Integer multiplication
 
 ```sec
 left * right
 ```
 
-Produces the mathematical product when representable.
+**§ 21(1)** Produces the mathematical product when representable.
 
-Otherwise checked overflow behavior applies.
+**§ 21(2)** Otherwise checked overflow behavior applies.
 
 ---
 
-# Integer division
+## § 22 Integer division
 
-Integer division truncates toward zero.
+**§ 22(1)** Integer division truncates toward zero.
 
-Examples:
+**§ 22(2)** Examples:
 
 ```text
 7 / 3 == 2
@@ -1391,7 +1403,7 @@ Examples:
 -7 / -3 == 2
 ```
 
-Division by zero causes:
+**§ 22(3)** Division by zero causes:
 
 ```text
 compile-time error
@@ -1401,34 +1413,34 @@ deterministic arithmetic failure
     otherwise
 ```
 
-For a two's-complement signed type:
+**§ 22(4)** For a two's-complement signed type:
 
 ```text
 minimumValue / -1
 ```
 
-is checked overflow.
+**§ 22(5)** is checked overflow.
 
 ---
 
-# Integer remainder
+## § 23 Integer remainder
 
-Integer `%` uses the quotient produced by truncation toward zero.
+**§ 23(1)** Integer `%` uses the quotient produced by truncation toward zero.
 
-Definition:
+**§ 23(2)** Definition:
 
 ```text
 quotient = trunc(left / right)
 remainder = left - quotient * right
 ```
 
-Invariant:
+**§ 23(3)** Invariant:
 
 ```text
 left == quotient * right + remainder
 ```
 
-Examples:
+**§ 23(4)** Examples:
 
 ```text
 7 % 3 == 1
@@ -1437,21 +1449,21 @@ Examples:
 -7 % -3 == -1
 ```
 
-The remainder has the sign of the left operand or is zero.
+**§ 23(5)** The remainder has the sign of the left operand or is zero.
 
-A zero divisor follows integer division-by-zero rules.
+**§ 23(6)** A zero divisor follows integer division-by-zero rules.
 
 ---
 
-# Floating arithmetic
+## § 24 Floating arithmetic
 
-Floating arithmetic follows the selected floating type's IEEE-compatible
+**§ 24(1)** Floating arithmetic follows the selected floating type's IEEE-compatible
 semantics unless a target or type rule explicitly rejects an unsupported
 operation.
 
-Floating arithmetic does not use integer checked-overflow semantics.
+**§ 24(2)** Floating arithmetic does not use integer checked-overflow semantics.
 
-Possible floating results include:
+**§ 24(3)** Possible floating results include:
 
 ```text
 finite value
@@ -1462,20 +1474,20 @@ positive zero
 negative zero
 ```
 
-The compiler must preserve the language's comparison and remainder rules.
+**§ 24(4)** The compiler must preserve the language's comparison and remainder rules.
 
-A build profile must not silently switch to unsafe fast-math semantics that
+**§ 24(5)** A build profile must not silently switch to unsafe fast-math semantics that
 change observable Sec results.
 
-Any future fast-math mode must be explicit and separately specified.
+**§ 24(6)** Any future fast-math mode must be explicit and separately specified.
 
 ---
 
-# Floating division
+## § 25 Floating division
 
-Floating division follows floating-point semantics.
+**§ 25(1)** Floating division follows floating-point semantics.
 
-Examples conceptually include:
+**§ 25(2)** Examples conceptually include:
 
 ```text
 finite / zero
@@ -1488,24 +1500,24 @@ infinity / infinity
     NaN
 ```
 
-Exact results follow the selected floating format.
+**§ 25(3)** Exact results follow the selected floating format.
 
 ---
 
-# Floating remainder
+## § 26 Floating remainder
 
-Floating `%` uses truncation-based remainder.
+**§ 26(1)** Floating `%` uses truncation-based remainder.
 
-Definition for finite operands:
+**§ 26(2)** Definition for finite operands:
 
 ```text
 quotient = trunc(left / right)
 remainder = left - quotient * right
 ```
 
-This is not IEEE nearest-integer `remainder`.
+**§ 26(3)** This is not IEEE nearest-integer `remainder`.
 
-Examples:
+**§ 26(4)** Examples:
 
 ```text
 7.5 % 2.0 == 1.5
@@ -1513,7 +1525,7 @@ Examples:
 7.5 % -2.0 == 1.5
 ```
 
-Special cases:
+**§ 26(5)** Special cases:
 
 ```text
 finite % finite nonzero
@@ -1532,36 +1544,36 @@ NaN involved
     NaN
 ```
 
-The result uses the common resolved floating type.
+**§ 26(6)** The result uses the common resolved floating type.
 
 ---
 
-# Decimal arithmetic
+## § 27 Decimal arithmetic
 
-Decimal arithmetic follows exact decimal semantics and the selected decimal
+**§ 27(1)** Decimal arithmetic follows exact decimal semantics and the selected decimal
 type's precision and scale rules (MD-066/MD-067, 2026-10-28,
 `rules/corrections/applied/md066-md067-md068-decimal-correction-20261028.md`).
 
-Operations are checked.
+**§ 27(2)** Operations are checked.
 
-`+`, `-`, `*`, `%` and unary minus produce the exact mathematical result or
+**§ 27(3)** `+`, `-`, `*`, `%` and unary minus produce the exact mathematical result or
 fail. Division is the only decimal operator that may approximate its result
 automatically, and only as defined in "Decimal division" below. No other
 operator, implicit conversion or unit conversion gains a rounding permission
 from that rule.
 
-Each result is computed exactly before its representation is selected. No
+**§ 27(4)** Each result is computed exactly before its representation is selected. No
 host binary float, fixed host 64-bit intermediate or overflow-driven
 arithmetic defines the result. A decimal result never widens from `decimal`
 to `decimal128` and never converts to binary float.
 
-## Decimal result scale
+### § 27.1 Decimal result scale
 
-The value of a decimal is `coefficient × 10^(-scale)`, with a signed
+**§ 27.1(1)** The value of a decimal is `coefficient × 10^(-scale)`, with a signed
 `i64` (`decimal`) or `i128` (`decimal128`) coefficient and a signed `int32`
 scale (`rules/memory/layout.md` § 19; `core-library.md` § 10.1).
 
-Each operation has a preferred scale `P`, computed without wrapping:
+**§ 27.1(2)** Each operation has a preferred scale `P`, computed without wrapping:
 
 | Operation | Preferred scale `P` |
 |---|---|
@@ -1570,7 +1582,7 @@ Each operation has a preferred scale `P`, computed without wrapping:
 | `a / b` | `max(a.Scale, b.Scale)` |
 | `a % b` | `max(a.Scale, b.Scale)` |
 
-For a nonzero exactly representable result `V`, the exact scales at which an
+**§ 27.1(3)** For a nonzero exactly representable result `V`, the exact scales at which an
 integer coefficient in the actual signed coefficient domain represents `V`
 form a contiguous interval `[S_min(V), S_max(V)]` within `int32`. The
 selected scale is the member closest to `P`:
@@ -1579,36 +1591,36 @@ selected scale is the member closest to `P`:
 resultScale = clamp(P, S_min(V), S_max(V))
 ```
 
-`clamp` here is mathematical, not `decimal.Clamp()`. When `P` lies inside the
+**§ 27.1(4)** `clamp` here is mathematical, not `decimal.Clamp()`. When `P` lies inside the
 interval it is kept; trailing coefficient zeros are not stripped
 gratuitously. An operation is not rejected merely because its preferred
 coefficient overflows when another exact scale exists. The coefficient domain
 is the real asymmetric signed one: `-2^63` and `-2^127` are valid
 coefficients.
 
-An exact zero result has coefficient zero and keeps `P`, clamped to
+**§ 27.1(5)** An exact zero result has coefficient zero and keeps `P`, clamped to
 `int32.Min` or `int32.Max` when `P` lies outside `int32`; zero never fails
 because an intermediate preferred scale, such as a product's scale sum, is out
 of range.
 
-When no exact representable coefficient/scale pair exists, `+`, `-`, `*`,
+**§ 27.1(6)** When no exact representable coefficient/scale pair exists, `+`, `-`, `*`,
 `%` and unary minus fail as described in "Decimal arithmetic failures".
 
-Equality and ordering compare mathematical values: `1.2m == 1.20m`. Scale is
+**§ 27.1(7)** Equality and ordering compare mathematical values: `1.2m == 1.20m`. Scale is
 not part of equality or ordering, and comparison never goes through binary
 floating point.
 
-Compound assignments use the same numerical policy as the corresponding
+**§ 27.1(8)** Compound assignments use the same numerical policy as the corresponding
 binary operator, with exactly-once operand evaluation and the owning
 assignment rules for transactional updates.
 
-## Decimal division
+### § 27.2 Decimal division
 
-The quotient is computed exactly. When it has an exact representation in the
+**§ 27.2(1)** The quotient is computed exactly. When it has an exact representation in the
 selected decimal type, the result-scale rule above applies; an exact finite
 quotient is never rounded or padded with extra digits.
 
-When no exact representation exists, whether the quotient is nonterminating
+**§ 27.2(2)** When no exact representation exists, whether the quotient is nonterminating
 or merely needs more digits than the coefficient holds, division rounds:
 
 - it selects the finest signed `int32` scale whose correctly rounded
@@ -1620,7 +1632,7 @@ or merely needs more digits than the coefficient holds, division rounds:
   coarser admissible scale is tried; there is no wrapping, saturation, host
   float intermediate or double rounding.
 
-The whole-number magnitude takes precedence over fractional precision: the
+**§ 27.2(3)** The whole-number magnitude takes precedence over fractional precision: the
 scale is never coarsened so far that significant whole-number digits are
 lost. An ordinary carry from rounding the fraction, such as a value just below
 `1` rounding to `1`, is allowed. When no admissible representation keeps the
@@ -1628,10 +1640,10 @@ whole-number digits, division fails with the most specific `ArithmeticError`.
 A quotient with zero whole-number part may round to zero when no nonzero
 candidate is representable.
 
-A nonzero quotient that rounds to zero keeps the selected rounding scale; the
+**§ 27.2(4)** A nonzero quotient that rounds to zero keeps the selected rounding scale; the
 exact-zero preferred-scale rule applies only to an exactly zero quotient.
 
-Representative `decimal` results:
+**§ 27.2(5)** Representative `decimal` results:
 
 | Operation | Value | Result scale | Reason |
 |---|---|---:|---|
@@ -1640,34 +1652,34 @@ Representative `decimal` results:
 | `1000000000m / 3m` | `333333333.3333333333` | 10 | Nine whole digits; the remaining coefficient capacity is fractional. |
 | `1m / 8m` | `0.125` | 3 | Exactly representable; no padding. |
 
-`decimal128` uses the same algorithm with its 128-bit coefficient; the
+**§ 27.2(6)** `decimal128` uses the same algorithm with its 128-bit coefficient; the
 default precision never depends on the target.
 
-A rounded quotient is an ordinary successful value. It is not `PrecisionLoss`
+**§ 27.2(7)** A rounded quotient is an ordinary successful value. It is not `PrecisionLoss`
 and needs no `try` because it is inexact; `try` concerns only real failure
 paths such as a runtime zero divisor or an unrepresentable whole-number part.
 
-## Decimal division and remainder by zero
+### § 27.3 Decimal division and remainder by zero
 
-When the compiler proves that the divisor of decimal `/` or `%` is zero, the
+**§ 27.3(1)** When the compiler proves that the divisor of decimal `/` or `%` is zero, the
 expression is a compile-time error, with or without `try`. Compilation stops
 before successful code generation and reports the source location with a
 repair hint. This rule concerns a provably zero decimal divisor only; it does
 not make every provably failing runtime check a compile-time error.
 
-Otherwise the divisor is checked at run time. A zero divisor in the ordinary
+**§ 27.3(2)** Otherwise the divisor is checked at run time. A zero divisor in the ordinary
 operation reaches the non-returning panic endpoint with reason
 `DivisionByZero`. Under `try a / b` or `try a % b` the failure is
 `ArithmeticError.DivisionByZero` through ordinary `Result` propagation, with
 no panic at that point.
 
-A proof that the divisor is nonzero may remove the check. The compiler never
+**§ 27.3(3)** A proof that the divisor is nonzero may remove the check. The compiler never
 assumes nonzero merely because ordinary division is written or because a
 constant could not be evaluated in an optional compile-time context.
 
-## Decimal arithmetic failures
+### § 27.4 Decimal arithmetic failures
 
-Decimal operators report `ArithmeticError`, choosing the most specific
+**§ 27.4(1)** Decimal operators report `ArithmeticError`, choosing the most specific
 applicable variant (`rules/errors/errorhandling.md` § 3.4):
 
 | Semantic failure | Error |
@@ -1678,7 +1690,7 @@ applicable variant (`rules/errors/errorhandling.md` § 3.4):
 | Any other unrepresentable outcome with no narrower applicable variant | `ArithmeticError.Overflow` |
 | An inexact quotient successfully rounded by "Decimal division" | No failure |
 
-For an exactly representable finite decimal value, classification uses the
+**§ 27.4(2)** For an exactly representable finite decimal value, classification uses the
 minimal exact coefficient after removing all factors of ten (for
 classification only): if it does not fit the signed coefficient,
 `PrecisionExhausted`; otherwise, if no `int32` scale represents the value,
@@ -1690,36 +1702,36 @@ detected before any quotient or remainder is attempted.
 
 ---
 
-# Decimal remainder
+## § 28 Decimal remainder
 
-Decimal `%` uses truncation-based remainder.
+**§ 28(1)** Decimal `%` uses truncation-based remainder.
 
-Definition:
+**§ 28(2)** Definition:
 
 ```text
 quotient = trunc(left / right)
 remainder = left - quotient * right
 ```
 
-`quotient` is the exact mathematical integer truncated toward zero. It is
+**§ 28(3)** `quotient` is the exact mathematical integer truncated toward zero. It is
 never obtained from the rounded public quotient of decimal division, and
 `remainder` is computed exactly. Its scale follows "Decimal result scale".
 
-A decimal remainder is exact when representable; an unrepresentable remainder
+**§ 28(4)** A decimal remainder is exact when representable; an unrepresentable remainder
 fails as in "Decimal arithmetic failures", and a zero divisor follows
 "Decimal division and remainder by zero".
 
-The result type follows the resolved decimal compatibility rules.
+**§ 28(5)** The result type follows the resolved decimal compatibility rules.
 
 ---
 
-# String concatenation
+## § 29 String concatenation
 
-Runtime string concatenation with `+` is supported in Sec 0.1.
+**§ 29(1)** Runtime string concatenation with `+` is supported in Sec 0.1.
 
-## Direct operand matrix
+### § 29.1 Direct operand matrix
 
-The only direct operand types are the built-in, non-nominal types `string`,
+**§ 29.1(1)** The only direct operand types are the built-in, non-nominal types `string`,
 `char`, and `rune`. Every valid pair produces `string`:
 
 ```text
@@ -1734,12 +1746,12 @@ char   + rune   -> string
 rune   + char   -> string
 ```
 
-A `char` or `rune` already represents one textual element and does not require
+**§ 29.1(2)** A `char` or `rune` already represents one textual element and does not require
 an explicit conversion.
 
-## No hidden general conversion
+### § 29.2 No hidden general conversion
 
-The operator does not convert arbitrary operands to string. Numbers, `bool`,
+**§ 29.2(1)** The operator does not convert arbitrary operands to string. Numbers, `bool`,
 enums, structs, unions, user-defined nominal types, arrays, slices,
 collections, interfaces, and all other non-text values require explicit
 conversion:
@@ -1749,9 +1761,9 @@ let valid := try "Count: " + count.ToString()
 let invalid := "Count: " + count
 ```
 
-## Fallible text operands
+### § 29.3 Fallible text operands
 
-Decision 2026-10-03: besides `string`, `char`, and `rune`, string `+` accepts an
+**§ 29.3(1)** Decision 2026-10-03: besides `string`, `char`, and `rune`, string `+` accepts an
 operand of exactly `Result[string, StringError]`, such as a `ToString()` call.
 The whole concatenation then is one runtime materialization whose single
 `StringError` failure channel covers both the operand failures and the
@@ -1764,7 +1776,7 @@ let text := try "A" + value.ToString() + "B"     // one try for the whole plan
 let both := try left.ToString() + ":" + right.ToString()
 ```
 
-An operand of this type is never unwrapped implicitly: without a protecting `try`
+**§ 29.3(2)** An operand of this type is never unwrapped implicitly: without a protecting `try`
 the expression is rejected (S1097), not turned into a panic. A separately
 protected operand handles only that operand, and the surrounding `+` stays in
 ordinary panic mode:
@@ -1773,14 +1785,14 @@ ordinary panic mode:
 let text := "Value: " + (try value.ToString())
 ```
 
-Each fallible operand evaluates exactly once, left to right, as one segment of
+**§ 29.3(3)** Each fallible operand evaluates exactly once, left to right, as one segment of
 the maximal concatenation plan, and the first failure ends the plan. The operand
 must be exactly `Result[string, StringError]`; any other `Result` or non-text
 value remains invalid with S1022. Runtime concatenation and interpolation fail
 with `StringError` (`rules/library/core-library.md` § 15.1); an allocation
 failure is `StringError.Allocation`.
 
-Compound `string +=` admits the same operand under an outer `try`, where one
+**§ 29.3(4)** Compound `string +=` admits the same operand under an outer `try`, where one
 `StringError` channel covers the operand and the append (MD-039):
 
 ```sec
@@ -1789,30 +1801,30 @@ text += try value.ToString()     // the operand's try; the append may panic
 text += value.ToString()         // invalid: the Result is not handled (S1022)
 ```
 
-The compiler must not silently insert `ToString()`.
+**§ 29.3(5)** The compiler must not silently insert `ToString()`.
 
-## Interpolation and formatting
+### § 29.4 Interpolation and formatting
 
-Interpolation is an explicit formatting context and is semantically distinct
+**§ 29.4(1)** Interpolation is an explicit formatting context and is semantically distinct
 from direct concatenation:
 
 ```sec
 let text := $"Count: {count}"
 ```
 
-An interpolation hole is valid when its value has a canonical formatting
+**§ 29.4(2)** An interpolation hole is valid when its value has a canonical formatting
 contract. Initially, a user-defined type normally supplies that contract through
 `ToString()`. This does not make direct `"value: " + value` valid; direct
 concatenation still requires the handled result of `value.ToString()`.
 
-Mixed interpolation and concatenation are valid. Interpolation formatting,
+**§ 29.4(3)** Mixed interpolation and concatenation are valid. Interpolation formatting,
 `value.ToString()`, and a future `value.ToString(format)` must share one coherent
 formatting model. This rule does not lock the exact format syntax, format type,
 or locale model.
 
-## Compile-time concatenation
+### § 29.5 Compile-time concatenation
 
-When the complete concatenation is compile-time evaluable, it folds to one
+**§ 29.5(1)** When the complete concatenation is compile-time evaluable, it folds to one
 string constant with:
 
 ```text
@@ -1823,17 +1835,17 @@ no allocation-failure panic
 no StringBuilder recommendation
 ```
 
-`try` on a fully folded concatenation is legal and has an unreachable failure
+**§ 29.5(2)** `try` on a fully folded concatenation is legal and has an unreachable failure
 path (MD-039). This does not make unrelated infallible expressions valid `try`
 operands.
 
-## Runtime allocation and failure policy
+### § 29.6 Runtime allocation and failure policy
 
-A runtime concatenation or interpolation expression is semantically one
+**§ 29.6(1)** A runtime concatenation or interpolation expression is semantically one
 materialization that produces one resulting `string`; the language requires no
 observable intermediate `string` value for an individual concatenation step.
 
-Decided 2026-10-31 (MD-039; `rules/corrections/MD-004-MD-039-string-concatenation-try-or-panic-correction-20261031.md`).
+**§ 29.6(2)** Decided 2026-10-31 (MD-039; `rules/corrections/MD-004-MD-039-string-concatenation-try-or-panic-correction-20261031.md`).
 Runtime `+` and `+=` have two failure modes selected by source syntax, never by
 function return type, build mode, optimization, target or expected type:
 
@@ -1842,23 +1854,23 @@ let ordinary := "Hello " + name        // Materialization failure panics.
 let recoverable := try "Hello " + name // Materialization failure is StringError.
 ```
 
-Under `try`, a storage failure is `StringError.Allocation(AllocationError)`,
+**§ 29.6(3)** Under `try`, a storage failure is `StringError.Allocation(AllocationError)`,
 handled or propagated by the ordinary rules. A failed materialization size check
 follows the existing text classification and never wraps or truncates.
 
-Without `try`, storage materialization failure invokes a compiler-visible,
+**§ 29.6(4)** Without `try`, storage materialization failure invokes a compiler-visible,
 non-returning panic with the registered reason `StringMaterializationFailure`. It
 returns no `Err`, does not propagate through the caller's `Result`, is not caught
 by a `try` elsewhere, and reaches the allocation-free minimum panic path.
 
-The result value, exact-once left-to-right evaluation, ownership, lifetime,
+**§ 29.6(5)** The result value, exact-once left-to-right evaluation, ownership, lifetime,
 allocation context and encoding do not depend on the selected mode.
 
-Runtime interpolation is unchanged by this decision: it is a fallible
+**§ 29.6(6)** Runtime interpolation is unchanged by this decision: it is a fallible
 materialization that requires `try`, and a concatenation containing an
 interpolation requires it for that materialization.
 
-Runtime concatenation uses the canonical active allocation context defined by
+**§ 29.6(7)** Runtime concatenation uses the canonical active allocation context defined by
 `rules/memory/allocation.md`. Sec 0.1 defines no string-specific allocator and
 no string-specific allocation domain. The frontend resolves the applicable
 context before Semantic IR, and lowering consumes it without choosing an
@@ -1878,27 +1890,27 @@ allocation is eliminated while preserving Sec semantics (MD-004; `rules/correcti
 | Runtime interpolation | Yes | Compile-time error | `StringError` |
 | Runtime materialization without allocation context | Compile-time error in both modes | | |
 
-Optimization and backends may remove temporaries or allocations only when the
+**§ 29.6(8)** Optimization and backends may remove temporaries or allocations only when the
 specified success, failure, ownership, and destruction behavior is preserved
 (`rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md` § 5).
 
-## `@noPanic` and `try` scope
+### § 29.7 `@noPanic` and `try` scope
 
-Under `@noPanic`, including restrictions inherited from interrupt contexts, an
+**§ 29.7(1)** Under `@noPanic`, including restrictions inherited from interrupt contexts, an
 unprotected runtime `+` or `+=` violates the guarantee unless a static proof shows
 it needs no failing allocation. A protecting `try` satisfies it when `StringError`
 is legally handled or propagated and no other panic effect is reachable. Under
 `@noAlloc` both modes are rejected when an allocation effect is reachable: `try`
 is not permission to allocate.
 
-`try` covers the concatenation's explicit fallible flow and nested operations
+**§ 29.7(2)** `try` covers the concatenation's explicit fallible flow and nested operations
 whose error flow is explicitly part of the expression. It does not catch an
 arbitrary panic from operand evaluation or a user-defined `ToString()` call.
 Those operations retain their declared effects and execute exactly once.
 
-## Maximal concatenation plan
+### § 29.8 Maximal concatenation plan
 
-A maximal concatenation and interpolation chain becomes one semantic
+**§ 29.8(1)** A maximal concatenation and interpolation chain becomes one semantic
 `StringConcatPlan`, not nested binary allocations. Conceptual segments include:
 
 ```text
@@ -1912,23 +1924,23 @@ FallibleTextSegment
 InterpolationSegment
 ```
 
-Compatible parenthesized text expressions may remain one plan. A separate
+**§ 29.8(2)** Compatible parenthesized text expressions may remain one plan. A separate
 binding creates an observable semantic result; fusion across that boundary is
 only an optimization after ownership, lifetime, and effect proof.
 
-Every segment evaluates left to right and exactly once. The plan may then
+**§ 29.8(3)** Every segment evaluates left to right and exactly once. The plan may then
 measure segment lengths, calculate the total with checked arithmetic, allocate
 or otherwise prepare final storage once, and write segments in source order.
 Static impossibility is a compile-time error; dynamic length failure follows the
 plan's selected failure mode and never wraps silently.
 
-The canonical result is allocated at most once. User-defined `ToString()` calls
+**§ 29.8(4)** The canonical result is allocated at most once. User-defined `ToString()` calls
 may allocate separate temporary strings; compiler-known formatting may be fused
 without a temporary.
 
-## Compound concatenation assignment
+### § 29.9 Compound concatenation assignment
 
-`string +=` uses the same direct operand matrix and source-selected failure mode
+**§ 29.9(1)** `string +=` uses the same direct operand matrix and source-selected failure mode
 as `+` (MD-039):
 
 ```sec
@@ -1936,17 +1948,17 @@ s += part        // Materialization failure panics.
 try s += part    // Materialization failure is StringError.
 ```
 
-It is transactional: evaluate the destination place once, read the old value,
+**§ 29.9(2)** It is transactional: evaluate the destination place once, read the old value,
 evaluate the appended operand once, prepare the new value, then commit, producing
 no value. On failure while evaluating or materializing the appended value the
 append commits nothing: under `try` the failure is recoverable, and in ordinary
 mode materialization failure panics before commit. Independent side effects the
 program caused while evaluating the operand are not undone.
 
-An outer `try` handles a `Result[string, StringError]` operand and the append as
+**§ 29.9(3)** An outer `try` handles a `Result[string, StringError]` operand and the append as
 one `StringError` channel; see "Fallible text operands".
 
-In-place append is permitted only after proof of unique ownership, sufficient
+**§ 29.9(4)** In-place append is permitted only after proof of unique ownership, sufficient
 capacity, no conflicting alias, stable storage, and compatible allocation
 context, and must preserve the selected failure mode and the transactional
 commit. A `string +=` without `try` is a distinct ordinary panicking form of a
@@ -1954,21 +1966,21 @@ compiler-known string operation, not an unhandled fallible assignment; no genera
 non-`try` fallible assignment is introduced (`rules/errors/errorhandling.md`
 § 23).
 
-## `string.Concat`
+### § 29.10 `string.Concat`
 
-`string.Concat` is an explicit core API that shares segment order, accepted
+**§ 29.10(1)** `string.Concat` is an explicit core API that shares segment order, accepted
 text operand categories, allocation context, try-or-panic selection, checked
 length calculation, and canonical concat Semantic IR with `+`. Its exact
 overload set belongs to the string/core rulebook; unrestricted variadics are not
 defined here.
 
-## `StringBuilder`
+### § 29.11 `StringBuilder`
 
-`StringBuilder` is preferred for repeated incremental construction such as
+**§ 29.11(1)** `StringBuilder` is preferred for repeated incremental construction such as
 loops, serialization, code generation, and unknown segment counts. It is not
 required for one finite maximal concatenation expression.
 
-Repeated reconstruction may produce configurable information based on control
+**§ 29.11(2)** Repeated reconstruction may produce configurable information based on control
 flow and mutation structure. The compiler must not inspect string content to
 infer intent. Do not report one maximal expression, compile-time concatenation,
 one isolated `+=`, a chain already planned as one allocation, proven in-place
@@ -1976,11 +1988,11 @@ reuse, or construction below the configured threshold.
 
 ---
 
-# Unit-bearing arithmetic
+## § 30 Unit-bearing arithmetic
 
-Unit-bearing numeric values use unit algebra.
+**§ 30(1)** Unit-bearing numeric values use unit algebra.
 
-Examples:
+**§ 30(2)** Examples:
 
 ```sec
 distance + otherDistance
@@ -1989,7 +2001,7 @@ speed * time
 distance / time
 ```
 
-General rules:
+**§ 30(3)** General rules:
 
 - ordinary numeric operator validity is checked first;
 - `+`, `-`, and comparison require compatible dimensions, known Kind,
@@ -2008,47 +2020,47 @@ General rules:
 - structural currency results remain valid but may produce warning diagnostics;
 - contracts and representability remain checked.
 
-The complete unit algebra belongs to `rules/types/units.md`.
+**§ 30(4)** The complete unit algebra belongs to `rules/types/units.md`.
 
 ---
 
-# Shaped arithmetic
+## § 31 Shaped arithmetic
 
-Shaped values may define compiler-known arithmetic.
+**§ 31(1)** Shaped values may define compiler-known arithmetic.
 
-Ordinary `*` remains scalar or elementwise multiplication according to shaped
+**§ 31(2)** Ordinary `*` remains scalar or elementwise multiplication according to shaped
 type rules.
 
-Contextual `x` is matrix multiplication.
+**§ 31(3)** Contextual `x` is matrix multiplication.
 
-No arbitrary user-defined shaped operator overloading exists in Sec 0.1.
+**§ 31(4)** No arbitrary user-defined shaped operator overloading exists in Sec 0.1.
 
 ---
 
-# Matrix multiplication operator `x`
+## § 32 Matrix multiplication operator `x`
 
-## Lexical status
+### § 32.1 Lexical status
 
-`x` is lexed as an identifier.
+**§ 32.1(1)** `x` is lexed as an identifier.
 
-It becomes matrix multiplication only in a parser-confirmed infix expression
+**§ 32.1(2)** It becomes matrix multiplication only in a parser-confirmed infix expression
 context with compatible shaped operands.
 
-This permits ordinary identifiers named `x`.
+**§ 32.1(3)** This permits ordinary identifiers named `x`.
 
 ```sec
 let x := 10
 ```
 
-and matrix multiplication:
+**§ 32.1(4)** and matrix multiplication:
 
 ```sec
 let result := left x right
 ```
 
-## Precedence
+### § 32.2 Precedence
 
-`x` has the same precedence as:
+**§ 32.2(1)** `x` has the same precedence as:
 
 ```text
 *
@@ -2056,61 +2068,61 @@ let result := left x right
 %
 ```
 
-It associates left.
+**§ 32.2(2)** It associates left.
 
 ```sec
 a x b x c
 ```
 
-means:
+**§ 32.2(3)** means:
 
 ```sec
 (a x b) x c
 ```
 
-when shapes are valid.
+**§ 32.2(4)** when shapes are valid.
 
-## Sec 0.1 operand forms
+### § 32.3 Sec 0.1 operand forms
 
-Initial supported forms are defined by shaped-type rules and include:
+**§ 32.3(1)** Initial supported forms are defined by shaped-type rules and include:
 
 ```text
 matrix x matrix
 matrix x vector
 ```
 
-Other forms require explicit rules.
+**§ 32.3(2)** Other forms require explicit rules.
 
-## Shape validation
+### § 32.4 Shape validation
 
-The inner dimensions must be compatible.
+**§ 32.4(1)** The inner dimensions must be compatible.
 
-Example:
+**§ 32.4(2)** Example:
 
 ```text
 Matrix[M, K] x Matrix[K, N]
     -> Matrix[M, N]
 ```
 
-Shape mismatch is a compile-time error when dimensions are known.
+**§ 32.4(3)** Shape mismatch is a compile-time error when dimensions are known.
 
-Runtime-shaped forms require deterministic validation.
+**§ 32.4(4)** Runtime-shaped forms require deterministic validation.
 
-## Formatter
+### § 32.5 Formatter
 
-Canonical spacing:
+**§ 32.5(1)** Canonical spacing:
 
 ```sec
 left x right
 ```
 
-The formatter must distinguish infix `x` from an identifier.
+**§ 32.5(2)** The formatter must distinguish infix `x` from an identifier.
 
 ---
 
-# Bitwise operators
+## § 33 Bitwise operators
 
-Bitwise operators are:
+**§ 33(1)** Bitwise operators are:
 
 ```text
 &
@@ -2119,25 +2131,25 @@ Bitwise operators are:
 ~
 ```
 
-Operands must be integer types.
+**§ 33(2)** Operands must be integer types.
 
-Binary operands must be compatible.
+**§ 33(3)** Binary operands must be compatible.
 
-Result type is the resolved integer operand type.
+**§ 33(4)** Result type is the resolved integer operand type.
 
-Bitwise operations use the fixed-width bit representation of the type.
+**§ 33(5)** Bitwise operations use the fixed-width bit representation of the type.
 
-Extracting the low `N` bits as a narrower unsigned value is the separate compiler-known expression `bit[N](value)` (`types.md` "Explicit low-bit extraction"), not an infix bitwise operator.
+**§ 33(6)** Extracting the low `N` bits as a narrower unsigned value is the separate compiler-known expression `bit[N](value)` (`types.md` "Explicit low-bit extraction"), not an infix bitwise operator.
 
-They do not perform boolean operations.
+**§ 33(7)** They do not perform boolean operations.
 
-Invalid:
+**§ 33(8)** Invalid:
 
 ```sec
 true & false
 ```
 
-Use:
+**§ 33(9)** Use:
 
 ```sec
 true && false
@@ -2145,60 +2157,60 @@ true && false
 
 ---
 
-# Bitwise AND
+## § 34 Bitwise AND
 
 ```sec
 left & right
 ```
 
-Each result bit is one only when both corresponding operand bits are one.
+**§ 34(1)** Each result bit is one only when both corresponding operand bits are one.
 
 ---
 
-# Bitwise OR
+## § 35 Bitwise OR
 
 ```sec
 left | right
 ```
 
-Each result bit is one when either corresponding operand bit is one.
+**§ 35(1)** Each result bit is one when either corresponding operand bit is one.
 
 ---
 
-# Bitwise XOR
+## § 36 Bitwise XOR
 
 ```sec
 left ^ right
 ```
 
-Each result bit is one when corresponding operand bits differ.
+**§ 36(1)** Each result bit is one when corresponding operand bits differ.
 
 ---
 
-# Shift operators
+## § 37 Shift operators
 
-Shift operators are:
+**§ 37(1)** Shift operators are:
 
 ```text
 <<
 >>
 ```
 
-Both operands must be integers.
+**§ 37(2)** Both operands must be integers.
 
-The result type is the left operand's type.
+**§ 37(3)** The result type is the left operand's type.
 
 ---
 
-# Shift count
+## § 38 Shift count
 
-A shift count is valid only when:
+**§ 38(1)** A shift count is valid only when:
 
 ```text
 0 <= count < bit width of left operand
 ```
 
-Invalid counts include:
+**§ 38(2)** Invalid counts include:
 
 ```text
 negative count
@@ -2206,20 +2218,20 @@ count equal to bit width
 count greater than bit width
 ```
 
-When invalidity is compile-time known, compilation fails.
+**§ 38(3)** When invalidity is compile-time known, compilation fails.
 
-Otherwise the program performs a deterministic arithmetic failure before the
+**§ 38(4)** Otherwise the program performs a deterministic arithmetic failure before the
 target shift instruction.
 
-Sec does not inherit target-specific count masking.
+**§ 38(5)** Sec does not inherit target-specific count masking.
 
-Example:
+**§ 38(6)** Example:
 
 ```text
 32-bit value << 35
 ```
 
-does not silently become:
+**§ 38(7)** does not silently become:
 
 ```text
 value << 3
@@ -2227,26 +2239,26 @@ value << 3
 
 ---
 
-# Left shift
+## § 39 Left shift
 
-## Unsigned left shift
+### § 39.1 Unsigned left shift
 
-Unsigned `<<` performs a fixed-width bit shift.
+**§ 39.1(1)** Unsigned `<<` performs a fixed-width bit shift.
 
-Bits shifted beyond the representation are discarded.
+**§ 39.1(2)** Bits shifted beyond the representation are discarded.
 
-Zeros enter from the right.
+**§ 39.1(3)** Zeros enter from the right.
 
-This is defined bit behavior, not checked arithmetic overflow.
+**§ 39.1(4)** This is defined bit behavior, not checked arithmetic overflow.
 
-## Signed left shift
+### § 39.2 Signed left shift
 
-Signed `<<` is checked.
+**§ 39.2(1)** Signed `<<` is checked.
 
-It is valid only when the mathematical shifted result is representable in the
+**§ 39.2(2)** It is valid only when the mathematical shifted result is representable in the
 signed left operand type.
 
-Otherwise:
+**§ 39.2(3)** Otherwise:
 
 ```text
 compile-time error
@@ -2256,72 +2268,72 @@ deterministic arithmetic failure
     at runtime
 ```
 
-The compiler may lower directly to a target shift instruction after proving or
+**§ 39.2(4)** The compiler may lower directly to a target shift instruction after proving or
 checking validity.
 
 ---
 
-# Right shift
+## § 40 Right shift
 
-## Unsigned right shift
+### § 40.1 Unsigned right shift
 
-Unsigned `>>` is logical right shift.
+**§ 40.1(1)** Unsigned `>>` is logical right shift.
 
-Zeros enter from the left.
+**§ 40.1(2)** Zeros enter from the left.
 
-## Signed right shift
+### § 40.2 Signed right shift
 
-Signed `>>` is arithmetic right shift.
+**§ 40.2(1)** Signed `>>` is arithmetic right shift.
 
-The sign bit is propagated.
+**§ 40.2(2)** The sign bit is propagated.
 
-This behavior is defined by Sec and does not depend on the source target
+**§ 40.2(3)** This behavior is defined by Sec and does not depend on the source target
 language or backend default.
 
 ---
 
-# Equality
+## § 41 Equality
 
-Equality operators are:
+**§ 41(1)** Equality operators are:
 
 ```text
 ==
 !=
 ```
 
-Result type is `bool`.
+**§ 41(2)** Result type is `bool`.
 
-Equality requires compatible equality-comparable operands.
+**§ 41(3)** Equality requires compatible equality-comparable operands.
 
-No chained equality exists.
+**§ 41(4)** No chained equality exists.
 
 ---
 
-# Boolean equality
+## § 42 Boolean equality
 
 ```sec
 left == right
 left != right
 ```
 
-is valid for `bool`.
+**§ 42(1)** is valid for `bool`.
 
 ---
 
-# Numeric equality
+## § 43 Numeric equality
 
-Compatible numeric values may be compared.
+**§ 43(1)** Compatible numeric values may be compared.
 
-Untyped literals may shape into the compatible numeric type.
+**§ 43(2)** Untyped literals may shape into the compatible numeric type.
 
-Unrelated nominal types do not become comparable merely because they share a
+**§ 43(3)** Unrelated nominal types do not become comparable merely because they share a
 representation.
 
 ---
 
-# Floating equality
+## § 44 Floating equality
 
-Floating equality follows these rules:
+**§ 44(1)** Floating equality follows these rules:
 
 ```text
 NaN == NaN
@@ -2337,64 +2349,64 @@ NaN != NaN
     false
 ```
 
-A comparison involving NaN follows IEEE-style unordered semantics.
+**§ 44(2)** A comparison involving NaN follows IEEE-style unordered semantics.
 
-A future total-order operation for sorting is explicit and not `==`.
+**§ 44(3)** A future total-order operation for sorting is explicit and not `==`.
 
 ---
 
-# Character and rune equality
+## § 45 Character and rune equality
 
-`char` compares with `char`.
+**§ 45(1)** `char` compares with `char`.
 
-`rune` compares with `rune`.
+**§ 45(2)** `rune` compares with `rune`.
 
-No implicit integer comparison exists.
+**§ 45(3)** No implicit integer comparison exists.
 
-Valid:
+**§ 45(4)** Valid:
 
 ```sec
 if ch == 0r {
 }
 ```
 
-Valid:
+**§ 45(5)** Valid:
 
 ```sec
 if character == 0t {
 }
 ```
 
-Invalid:
+**§ 45(6)** Invalid:
 
 ```sec
 if ch == 0 {
 }
 ```
 
-A character literal may be context-shaped according to literal rules.
+**§ 45(7)** A character literal may be context-shaped according to literal rules.
 
-Example:
+**§ 45(8)** Example:
 
 ```sec
 if ch == '$' {
 }
 ```
 
-when `ch` is a `rune`.
+**§ 45(9)** when `ch` is a `rune`.
 
-A `char` variable and `rune` variable do not implicitly compare with one
+**§ 45(10)** A `char` variable and `rune` variable do not implicitly compare with one
 another.
 
-Explicit conversion is required when valid.
+**§ 45(11)** Explicit conversion is required when valid.
 
 ---
 
-# String equality
+## § 46 String equality
 
-String equality compares exact immutable string content.
+**§ 46(1)** String equality compares exact immutable string content.
 
-It does not compare:
+**§ 46(2)** It does not compare:
 
 ```text
 storage address
@@ -2404,43 +2416,43 @@ padding
 reference identity
 ```
 
-No locale, normalization, or case folding is performed.
+**§ 46(3)** No locale, normalization, or case folding is performed.
 
 ---
 
-# Enum equality
+## § 47 Enum equality
 
-Values of the same enum type support:
+**§ 47(1)** Values of the same enum type support:
 
 ```text
 ==
 !=
 ```
 
-Aliases compare by resolved enum value.
+**§ 47(2)** Aliases compare by resolved enum value.
 
-Different enum types do not compare implicitly even when their underlying
+**§ 47(3)** Different enum types do not compare implicitly even when their underlying
 integer representation is the same.
 
-Enums do not derive ordered comparison in Sec 0.1.
+**§ 47(4)** Enums do not derive ordered comparison in Sec 0.1.
 
-The unit metadata enums (`UnitKind`, `UnitSystem`, `UnitOrigin`,
+**§ 47(5)** The unit metadata enums (`UnitKind`, `UnitSystem`, `UnitOrigin`,
 `UnitTransform`, `UnitCategory`, `UnitStatus`) and user enums read through
 `<U>.Kind`, `<U>.System` or `<U>.Origin` follow this rule unchanged: a member
 of one enum never compares with a same-spelled member of another (MD-062).
 
 ---
 
-# Unit dimension equality
+## § 48 Unit dimension equality
 
-`UnitDimension` (`rules/library/core-library.md` § 27.5) supports exactly:
+**§ 48(1)** `UnitDimension` (`rules/library/core-library.md` § 27.5) supports exactly:
 
 ```text
 ==
 !=
 ```
 
-on two `UnitDimension` operands, with `bool` results. These are
+**§ 48(2)** on two `UnitDimension` operands, with `bool` results. These are
 compiler-defined operators resolved for this compiler-known nominal type, not
 user operator overloads. `a == b` is true iff the two normalized dimensions
 have identical axis identities and exponents; `!=` is its negation. Ordered
@@ -2450,35 +2462,35 @@ types" (7) (MD-062, 2026-10-27).
 
 ---
 
-# Array equality
+## § 49 Array equality
 
-Fixed arrays support structural equality when their element type is
+**§ 49(1)** Fixed arrays support structural equality when their element type is
 equality-comparable.
 
-Comparison proceeds element by element in index order.
+**§ 49(2)** Comparison proceeds element by element in index order.
 
-It short-circuits at the first unequal element.
+**§ 49(3)** It short-circuits at the first unequal element.
 
-Array equality does not compare padding or storage address.
+**§ 49(4)** Array equality does not compare padding or storage address.
 
 ---
 
-# Slice equality
+## § 50 Slice equality
 
-Slices do not support `==` or `!=` as content comparison in Sec 0.1.
+**§ 50(1)** Slices do not support `==` or `!=` as content comparison in Sec 0.1.
 
-A slice is a view.
+**§ 50(2)** A slice is a view.
 
-Content comparison uses an explicit operation.
+**§ 50(3)** Content comparison uses an explicit operation.
 
-Reference or descriptor identity comparison is not exposed through ordinary
+**§ 50(4)** Reference or descriptor identity comparison is not exposed through ordinary
 slice equality.
 
 ---
 
-# Struct equality
+## § 51 Struct equality
 
-A struct derives structural equality when:
+**§ 51(1)** A struct derives structural equality when:
 
 - every stored field is equality-comparable;
 - the type has no explicit identity semantics;
@@ -2486,9 +2498,9 @@ A struct derives structural equality when:
 - the type is not explicitly non-comparable;
 - equality does not violate a custom invariant.
 
-A normal `impl` block does not disable derived equality.
+**§ 51(2)** A normal `impl` block does not disable derived equality.
 
-Example:
+**§ 51(3)** Example:
 
 ```sec
 type Point struct {
@@ -2503,13 +2515,13 @@ impl Point {
 }
 ```
 
-`Point` may still support:
+**§ 51(4)** `Point` may still support:
 
 ```sec
 first == second
 ```
 
-Derived comparison:
+**§ 51(5)** Derived comparison:
 
 - processes stored fields in declaration order;
 - uses each field's normal equality;
@@ -2518,7 +2530,7 @@ Derived comparison:
 - does not compare storage address;
 - does not compare methods, properties, or type metadata.
 
-Types that normally do not derive equality include:
+**§ 51(6)** Types that normally do not derive equality include:
 
 ```text
 File
@@ -2531,38 +2543,38 @@ types with external unique identity
 types explicitly marked non-comparable
 ```
 
-A custom `free` operation is a strong reason to require an explicit equality
+**§ 51(7)** A custom `free` operation is a strong reason to require an explicit equality
 decision.
 
-The exact declaration syntax for identity or non-comparable semantics belongs to
+**§ 51(8)** The exact declaration syntax for identity or non-comparable semantics belongs to
 type and attribute rules.
 
 ---
 
-# Union equality
+## § 52 Union equality
 
-A union supports equality only when its union rules guarantee a safe comparison.
+**§ 52(1)** A union supports equality only when its union rules guarantee a safe comparison.
 
-Typical derived behavior:
+**§ 52(2)** Typical derived behavior:
 
 1. compare active tags;
 2. if tags differ, result is unequal;
 3. compare the active payload using payload equality.
 
-All possible compared payloads must be equality-comparable.
+**§ 52(3)** All possible compared payloads must be equality-comparable.
 
-Inactive payload storage and padding are not compared.
+**§ 52(4)** Inactive payload storage and padding are not compared.
 
 ---
 
-# Reference equality
+## § 53 Reference equality
 
-Safe references do not expose general referent-address equality in Sec 0.1
+**§ 53(1)** Safe references do not expose general referent-address equality in Sec 0.1
 unless a specialized reference rule explicitly provides it.
 
-Content equality compares dereferenced values explicitly where valid.
+**§ 53(2)** Content equality compares dereferenced values explicitly where valid.
 
-This avoids confusing:
+**§ 53(3)** This avoids confusing:
 
 ```text
 same storage
@@ -2571,24 +2583,24 @@ same owner
 same resource
 ```
 
-`reference_model.md` is the specialized reference rule for Sec 0.1. It defines
+**§ 53(4)** `reference_model.md` is the specialized reference rule for Sec 0.1. It defines
 ordinary equality for compatible safe references as comparison of live storage
 identity and referenced location. This does not add equality for `ref T[]` or
 `ref mut T[]`, which are slice views under the array/slice rules.
 
-Other identity queries remain explicit APIs rather than additional ordinary
+**§ 53(5)** Other identity queries remain explicit APIs rather than additional ordinary
 operators.
 
 ---
 
-# Raw pointer equality
+## § 54 Raw pointer equality
 
-`RawPtr[T]` may support address-value equality in unsafe or low-level contexts
+**§ 54(1)** `RawPtr[T]` may support address-value equality in unsafe or low-level contexts
 according to `raw_pointers.md`.
 
-Such equality compares address representation only.
+**§ 54(2)** Such equality compares address representation only.
 
-It does not prove:
+**§ 54(3)** It does not prove:
 
 ```text
 same active object
@@ -2600,11 +2612,11 @@ safe dereference
 
 ---
 
-# Interface equality
+## § 55 Interface equality
 
-Direct equality of general interface values is not part of Sec 0.1.
+**§ 55(1)** Direct equality of general interface values is not part of Sec 0.1.
 
-The compiler must first have a complete model for:
+**§ 55(2)** The compiler must first have a complete model for:
 
 ```text
 borrowed erased values
@@ -2615,13 +2627,13 @@ move-only payloads
 opaque resources
 ```
 
-Concrete values may be compared before erasure.
+**§ 55(3)** Concrete values may be compared before erasure.
 
 ---
 
-# Ordered comparison
+## § 56 Ordered comparison
 
-Ordered comparison operators are:
+**§ 56(1)** Ordered comparison operators are:
 
 ```text
 <
@@ -2630,27 +2642,27 @@ Ordered comparison operators are:
 >=
 ```
 
-Result type is `bool`.
+**§ 56(2)** Result type is `bool`.
 
-They are valid only for approved ordered types.
+**§ 56(3)** They are valid only for approved ordered types.
 
-No chained ordered comparison exists.
-
----
-
-# Numeric ordering
-
-Compatible numeric values support ordered comparison.
-
-Integer and decimal ordering use mathematical value order.
-
-Floating ordering follows floating-point comparison rules.
+**§ 56(4)** No chained ordered comparison exists.
 
 ---
 
-# Floating ordering
+## § 57 Numeric ordering
 
-For any NaN operand:
+**§ 57(1)** Compatible numeric values support ordered comparison.
+
+**§ 57(2)** Integer and decimal ordering use mathematical value order.
+
+**§ 57(3)** Floating ordering follows floating-point comparison rules.
+
+---
+
+## § 58 Floating ordering
+
+**§ 58(1)** For any NaN operand:
 
 ```text
 left < right
@@ -2659,31 +2671,31 @@ left > right
 left >= right
 ```
 
-all evaluate to `false`.
+**§ 58(2)** all evaluate to `false`.
 
-Positive and negative zero compare equal and neither is ordered before the
+**§ 58(3)** Positive and negative zero compare equal and neither is ordered before the
 other through ordinary comparison.
 
-A deterministic total order for sorting NaN payloads, signed zero, and bit
+**§ 58(4)** A deterministic total order for sorting NaN payloads, signed zero, and bit
 patterns must use an explicit operation.
 
 ---
 
-# Character ordering
+## § 59 Character ordering
 
-`char` values order by unsigned 8-bit value (`0..255`).
+**§ 59(1)** `char` values order by unsigned 8-bit value (`0..255`).
 
-No locale or alphabetic collation is applied.
+**§ 59(2)** No locale or alphabetic collation is applied.
 
 ---
 
-# Rune ordering
+## § 60 Rune ordering
 
-`rune` values order by Unicode scalar value.
+**§ 60(1)** `rune` values order by Unicode scalar value.
 
-No locale, normalization, or case folding is applied.
+**§ 60(2)** No locale, normalization, or case folding is applied.
 
-`==`, `!=`, `<`, `<=`, `>` and `>=` apply to two operands of the **same**
+**§ 60(3)** `==`, `!=`, `<`, `<=`, `>` and `>=` apply to two operands of the **same**
 character type (`char` with `char`, `rune` with `rune`); there is no implicit
 conversion between `char` and `rune` or between characters and integers, so
 `c < r` is an error. Both comparisons are unsigned: `char` by its 8-bit value,
@@ -2694,18 +2706,18 @@ operation (`rules/compiler/semantic_ir.md` § 125; MD-105, 2026-10-18).
 
 ---
 
-# String ordering
+## § 61 String ordering
 
-Strings order lexicographically by Unicode scalar sequence.
+**§ 61(1)** Strings order lexicographically by Unicode scalar sequence.
 
-Comparison proceeds from the first scalar value.
+**§ 61(2)** Comparison proceeds from the first scalar value.
 
-At the first difference, scalar-value ordering determines the result.
+**§ 61(3)** At the first difference, scalar-value ordering determines the result.
 
-When one string is an exact prefix of the other, the shorter string orders
+**§ 61(4)** When one string is an exact prefix of the other, the shorter string orders
 first.
 
-No operation is performed for:
+**§ 61(5)** No operation is performed for:
 
 ```text
 locale collation
@@ -2715,13 +2727,13 @@ Unicode normalization
 natural-number ordering
 ```
 
-Those require explicit library operations.
+**§ 61(6)** Those require explicit library operations.
 
 ---
 
-# Types without ordering
+## § 62 Types without ordering
 
-Ordinary ordered comparison is not provided for:
+**§ 62(1)** Ordinary ordered comparison is not provided for:
 
 ```text
 bool
@@ -2739,42 +2751,42 @@ interface
 resource handle
 ```
 
-unless a specialized canonical rule explicitly adds it.
+**§ 62(2)** unless a specialized canonical rule explicitly adds it.
 
 ---
 
-# Membership operators `in` and `not in`
+## § 63 Membership operators `in` and `not in`
 
-`in` has two different grammar roles. The two-token spelling `not in` exists
+**§ 63(1)** `in` has two different grammar roles. The two-token spelling `not in` exists
 only in membership-expression position and is not iteration grammar.
 
-They must not be conflated.
+**§ 63(2)** They must not be conflated.
 
 ---
 
-# Membership expression
+## § 64 Membership expression
 
-Expression form:
+**§ 64(1)** Expression form:
 
 ```sec
 value in collection
 value not in collection
 ```
 
-returns `bool`.
+**§ 64(2)** returns `bool`.
 
-`value not in collection` is the logical complement of
+**§ 64(3)** `value not in collection` is the logical complement of
 `value in collection`. It preserves the same operand evaluation order,
 single-evaluation guarantees, short-circuit search, type compatibility,
 ownership behavior, allocation behavior, and diagnostics. The membership
 result is negated only after the search has completed or short-circuited.
 
-`not in` is one compound contextual operator at the same precedence as `in`.
+**§ 64(4)** `not in` is one compound contextual operator at the same precedence as `in`.
 The lexer may emit ordinary identifier `not` followed by keyword `in`; the
 parser must retain the canonical AST operator spelling `not in`. A standalone
 identifier named `not` remains legal outside this infix context.
 
-Sec 0.1 supports membership for:
+**§ 64(5)** Sec 0.1 supports membership for:
 
 ```text
 contextual range
@@ -2783,39 +2795,39 @@ owning dynamic array
 slice
 ```
 
-It does not use arbitrary method lookup.
+**§ 64(6)** It does not use arbitrary method lookup.
 
 ---
 
-# Range membership
+## § 65 Range membership
 
 ```sec
 value in lower..<upper
 ```
 
-or:
+**§ 65(1)** or:
 
 ```sec
 value in lower..upper
 ```
 
-uses the range's inclusive or exclusive bound semantics.
+**§ 65(2)** uses the range's inclusive or exclusive bound semantics.
 
-Bounds evaluate left to right.
+**§ 65(3)** Bounds evaluate left to right.
 
-The value evaluates before the right range expression.
+**§ 65(4)** The value evaluates before the right range expression.
 
-Range membership uses compatible ordered values.
+**§ 65(5)** Range membership uses compatible ordered values.
 
 ---
 
-# Fixed-array membership
+## § 66 Fixed-array membership
 
 ```sec
 value in values
 ```
 
-when `values` is a fixed array:
+**§ 66(1)** when `values` is a fixed array:
 
 - evaluates `value` first;
 - evaluates the array expression once;
@@ -2826,20 +2838,20 @@ when `values` is a fixed array:
 - returns `false` after all elements differ;
 - performs no allocation.
 
-The array element type must be equality-comparable.
+**§ 66(2)** The array element type must be equality-comparable.
 
-The left value must be compatible with the element type.
+**§ 66(3)** The left value must be compatible with the element type.
 
 ---
 
-# Dynamic-array membership
+## § 67 Dynamic-array membership
 
-Membership in an owning dynamic array (`T[]`) follows fixed-array membership
+**§ 67(1)** Membership in an owning dynamic array (`T[]`) follows fixed-array membership
 semantics. The search evaluates the left value first and the array expression
 once, visits initialized elements from index zero up to the current length,
 and stops at the first equal element. An empty array yields `false`.
 
-The search borrows the array for observation; it neither consumes the array nor
+**§ 67(2)** The search borrows the array for observation; it neither consumes the array nor
 its elements, allocates, nor structurally mutates storage. Element equality and
 value compatibility follow the same rules as fixed arrays and slices. Spare
 capacity is not searched. Creation of the array expression retains its own
@@ -2847,9 +2859,9 @@ allocation and effect requirements.
 
 ---
 
-# Slice membership
+## § 68 Slice membership
 
-Slice membership follows the same content semantics as array membership.
+**§ 68(1)** Slice membership follows the same content semantics as array membership.
 
 ```sec
 value in view
@@ -2862,13 +2874,13 @@ value in view
 - performs no allocation;
 - does not structurally mutate the slice or backing storage.
 
-The slice and references must remain valid during the operation.
+**§ 68(2)** The slice and references must remain valid during the operation.
 
 ---
 
-# Unsupported membership in Sec 0.1
+## § 69 Unsupported membership in Sec 0.1
 
-The `in` and `not in` operators are not defined for:
+**§ 69(1)** The `in` and `not in` operators are not defined for:
 
 ```text
 list
@@ -2880,9 +2892,9 @@ generator
 arbitrary user type
 ```
 
-Use explicit APIs.
+**§ 69(2)** Use explicit APIs.
 
-Examples:
+**§ 69(3)** Examples:
 
 ```sec
 values.Contains(item)
@@ -2890,24 +2902,24 @@ map.ContainsKey(key)
 text.Contains(substring)
 ```
 
-This may be extended in a future language version.
+**§ 69(4)** This may be extended in a future language version.
 
 ---
 
-# `for ... in ...`
+## § 70 `for ... in ...`
 
-Iteration syntax:
+**§ 70(1)** Iteration syntax:
 
 ```sec
 for value in values {
 }
 ```
 
-is not the membership operator.
+**§ 70(2)** is not the membership operator.
 
-It is part of the `for` grammar.
+**§ 70(3)** It is part of the `for` grammar.
 
-It:
+**§ 70(4)** It:
 
 - obtains an iteration source;
 - binds each produced element;
@@ -2915,16 +2927,16 @@ It:
 - does not return `bool`;
 - does not perform a membership search.
 
-The parser distinguishes the forms by grammar context.
+**§ 70(5)** The parser distinguishes the forms by grammar context.
 `for value not in values` is not valid iteration syntax.
 
 ---
 
-# Ranges
+## § 71 Ranges
 
-Ranges are contextual syntax in Sec 0.1.
+**§ 71(1)** Ranges are contextual syntax in Sec 0.1.
 
-Valid uses include:
+**§ 71(2)** Valid uses include:
 
 ```sec
 for i in 0..<10 {
@@ -2940,51 +2952,51 @@ let lower := [224r..246r, 248r..255r]
 try values.Append(0r..127r)
 ```
 
-Array literal range segments and the `Append` argument are defined by
+**§ 71(3)** Array literal range segments and the `Append` argument are defined by
 `rules/collections/collections.md` §§ 5.6a and 6.7.
 
-A range is not a general first-class runtime value in Sec 0.1.
+**§ 71(4)** A range is not a general first-class runtime value in Sec 0.1.
 
-Invalid:
+**§ 71(5)** Invalid:
 
 ```sec
 let range := 0..<10
 ```
 
-No general `Range[T]` variable type is implied.
+**§ 71(6)** No general `Range[T]` variable type is implied.
 
 ---
 
-# Inclusive range
+## § 72 Inclusive range
 
 ```sec
 start..end
 ```
 
-includes both endpoints where the context permits.
+**§ 72(1)** includes both endpoints where the context permits.
 
 ---
 
-# Exclusive upper range
+## § 73 Exclusive upper range
 
 ```sec
 start..<end
 ```
 
-includes `start` and excludes `end`.
+**§ 73(1)** includes `start` and excludes `end`.
 
-This is the canonical half-open form for indexing and iteration.
+**§ 73(2)** This is the canonical half-open form for indexing and iteration.
 
 ---
 
-# Range operands
+## § 74 Range operands
 
-Range operand types and step behavior belong to iteration, slicing, and range
+**§ 74(1)** Range operand types and step behavior belong to iteration, slicing, and range
 rules.
 
-The parser must not accept chained ranges as one expression.
+**§ 74(2)** The parser must not accept chained ranges as one expression.
 
-Invalid:
+**§ 74(3)** Invalid:
 
 ```sec
 a..<b..<c
@@ -2992,9 +3004,9 @@ a..<b..<c
 
 ---
 
-# Logical operators
+## § 75 Logical operators
 
-Logical operators are:
+**§ 75(1)** Logical operators are:
 
 ```text
 &&
@@ -3002,120 +3014,120 @@ Logical operators are:
 !
 ```
 
-All operands must be `bool`.
+**§ 75(2)** All operands must be `bool`.
 
-Sec does not use truthy or falsy conversions.
+**§ 75(3)** Sec does not use truthy or falsy conversions.
 
 ---
 
-# Assignment statements
+## § 76 Assignment statements
 
-Assignment is statement syntax.
+**§ 76(1)** Assignment is statement syntax.
 
-It does not produce a value.
+**§ 76(2)** It does not produce a value.
 
-Invalid:
+**§ 76(3)** Invalid:
 
 ```sec
 let result := destination = source
 ```
 
-Invalid:
+**§ 76(4)** Invalid:
 
 ```sec
 a = b = c
 ```
 
-Assignments do not associate.
+**§ 76(5)** Assignments do not associate.
 
 ---
 
-# Ordinary declaration initialization
+## § 77 Ordinary declaration initialization
 
 ```sec
 let destination := source
 ```
 
-`:=` is ordinary inferred initialization.
+**§ 77(1)** `:=` is ordinary inferred initialization.
 
-From an existing reusable place, it requires copyability.
+**§ 77(2)** From an existing reusable place, it requires copyability.
 
-It never silently moves a move-only value.
+**§ 77(3)** It never silently moves a move-only value.
 
-Fresh temporaries may initialize directly.
+**§ 77(4)** Fresh temporaries may initialize directly.
 
 ---
 
-# Move declaration initialization
+## § 78 Move declaration initialization
 
 ```sec
 let destination :<- source
 ```
 
-`:<-` explicitly moves from an existing source place and infers destination
+**§ 78(1)** `:<-` explicitly moves from an existing source place and infers destination
 type.
 
-The source becomes unavailable.
+**§ 78(2)** The source becomes unavailable.
 
 ---
 
-# Typed ordinary initialization
+## § 79 Typed ordinary initialization
 
 ```sec
 let destination: Type := source
 ```
 
-Ordinary copy or direct construction semantics apply.
+**§ 79(1)** Ordinary copy or direct construction semantics apply.
 
 ---
 
-# Typed move initialization
+## § 80 Typed move initialization
 
 ```sec
 let destination: Type <- source
 ```
 
-The explicit type uses `:`.
+**§ 80(1)** The explicit type uses `:`.
 
-The transfer operator is `<-`.
+**§ 80(2)** The transfer operator is `<-`.
 
 ---
 
-# Ordinary assignment
+## § 81 Ordinary assignment
 
 ```sec
 destination = source
 ```
 
-This is ordinary assignment, replacement, or reinitialization.
+**§ 81(1)** This is ordinary assignment, replacement, or reinitialization.
 
-From an existing reusable source place, copyability is required.
+**§ 81(2)** From an existing reusable source place, copyability is required.
 
-It never silently moves.
+**§ 81(3)** It never silently moves.
 
 ---
 
-# Move assignment
+## § 82 Move assignment
 
 ```sec
 destination <- source
 ```
 
-This explicitly transfers the source value or ownership responsibility.
+**§ 82(1)** This explicitly transfers the source value or ownership responsibility.
 
-The source becomes unavailable.
+**§ 82(2)** The source becomes unavailable.
 
 ---
 
-# Assignment evaluation order
+## § 83 Assignment evaluation order
 
-For:
+**§ 83(1)** For:
 
 ```sec
 destination = source
 ```
 
-conceptual order:
+**§ 83(2)** conceptual order:
 
 1. evaluate destination place exactly once;
 2. evaluate source expression;
@@ -3124,13 +3136,13 @@ conceptual order:
 5. destroy old destination when replacement requires it;
 6. install the new value.
 
-Move assignment additionally marks source unavailable only after valid commit.
+**§ 83(3)** Move assignment additionally marks source unavailable only after valid commit.
 
 ---
 
-# Compound assignment
+## § 84 Compound assignment
 
-Compound assignment operators are:
+**§ 84(1)** Compound assignment operators are:
 
 ```text
 +=
@@ -3145,13 +3157,13 @@ Compound assignment operators are:
 >>=
 ```
 
-Conceptually:
+**§ 84(2)** Conceptually:
 
 ```sec
 destination op= source
 ```
 
-means:
+**§ 84(3)** means:
 
 ```text
 read destination once
@@ -3161,15 +3173,15 @@ validate result
 write destination once
 ```
 
-It is not defined as textual rewriting.
+**§ 84(4)** It is not defined as textual rewriting.
 
 ---
 
-# Compound assignment target
+## § 85 Compound assignment target
 
-The target must be a writable mutable place.
+**§ 85(1)** The target must be a writable mutable place.
 
-Possible targets include:
+**§ 85(2)** Possible targets include:
 
 ```text
 mutable local
@@ -3180,16 +3192,16 @@ mutable dereferenced reference (`*r` for `r: ref mut T`)
 compiler-known writable location
 ```
 
-Exact validity depends on the target type and place rules.
+**§ 85(3)** Exact validity depends on the target type and place rules.
 
 ---
 
-# Compound assignment and contracts
+## § 86 Compound assignment and contracts
 
-When the destination type has a fallible contract, compound assignment requires
+**§ 86(1)** When the destination type has a fallible contract, compound assignment requires
 the canonical `try` form.
 
-Example:
+**§ 86(2)** Example:
 
 ```sec
 try percent += Percent(i) {
@@ -3199,15 +3211,15 @@ try percent += Percent(i) {
 }
 ```
 
-The old destination remains valid until the new result passes validation.
+**§ 86(3)** The old destination remains valid until the new result passes validation.
 
 ---
 
-# Compound arithmetic failure
+## § 87 Compound arithmetic failure
 
-Arithmetic failure from a compound operator follows the underlying operator.
+**§ 87(1)** Arithmetic failure from a compound operator follows the underlying operator.
 
-Examples:
+**§ 87(2)** Examples:
 
 ```text
 +=
@@ -3223,52 +3235,52 @@ Examples:
     shift-count and signed-overflow rules
 ```
 
-No destination mutation commits before successful validation.
+**§ 87(3)** No destination mutation commits before successful validation.
 
 ---
 
-# Increment and decrement aliases
+## § 88 Increment and decrement aliases
 
-Sec accepts statement-only:
+**§ 88(1)** Sec accepts statement-only:
 
 ```sec
 value++
 value--
 ```
 
-They have no expression result.
+**§ 88(2)** They have no expression result.
 
-The formatter normalizes:
+**§ 88(3)** The formatter normalizes:
 
 ```sec
 value++
 ```
 
-to:
+**§ 88(4)** to:
 
 ```sec
 value += 1
 ```
 
-and:
+**§ 88(5)** and:
 
 ```sec
 value--
 ```
 
-to:
+**§ 88(6)** to:
 
 ```sec
 value -= 1
 ```
 
-Invalid:
+**§ 88(7)** Invalid:
 
 ```sec
 let previous := value++
 ```
 
-The resulting compound assignment still follows:
+**§ 88(8)** The resulting compound assignment still follows:
 
 ```text
 mutability
@@ -3280,19 +3292,19 @@ ownership
 
 ---
 
-# Self-assignment
+## § 89 Self-assignment
 
-Ordinary copy self-assignment:
+**§ 89(1)** Ordinary copy self-assignment:
 
 ```sec
 value = value
 ```
 
-may be accepted for copyable values and optimized to no operation.
+**§ 89(2)** may be accepted for copyable values and optimized to no operation.
 
-The compiler may emit an advisory diagnostic.
+**§ 89(3)** The compiler may emit an advisory diagnostic.
 
-Move self-assignment is invalid:
+**§ 89(4)** Move self-assignment is invalid:
 
 ```sec
 value <- value
@@ -3300,19 +3312,19 @@ value <- value
 
 ---
 
-# Overlapping places
+## § 90 Overlapping places
 
-Assignment and move operations must validate place overlap.
+**§ 90(1)** Assignment and move operations must validate place overlap.
 
-Potentially invalid:
+**§ 90(2)** Potentially invalid:
 
 ```sec
 object.Field <- object
 ```
 
-when source and destination overlap incompatibly.
+**§ 90(3)** when source and destination overlap incompatibly.
 
-The canonical place model from `memory_model.md` determines:
+**§ 90(4)** The canonical place model from `memory_model.md` determines:
 
 ```text
 same
@@ -3325,13 +3337,13 @@ unknown
 
 ---
 
-# `ref`, `try`, `await`, and `spawn`
+## § 91 `ref`, `try`, `await`, and `spawn`
 
-These are parser-defined prefix expression forms or statement forms.
+**§ 91(1)** These are parser-defined prefix expression forms or statement forms.
 
-They are not ordinary symbolic operators available for user overloading.
+**§ 91(2)** They are not ordinary symbolic operators available for user overloading.
 
-Their detailed semantics belong to:
+**§ 91(3)** Their detailed semantics belong to:
 
 ```text
 references and borrowing rules
@@ -3340,33 +3352,33 @@ tasks and await rules
 spawn rules
 ```
 
-They occupy prefix parsing positions where applicable.
+**§ 91(4)** They occupy prefix parsing positions where applicable.
 
 ---
 
-# Question mark `?`
+## § 92 Question mark `?`
 
-`?` is lexed and reserved.
+**§ 92(1)** `?` is lexed and reserved.
 
-It has no language meaning in Sec 0.1.
+**§ 92(2)** It has no language meaning in Sec 0.1.
 
-The parser should emit a focused diagnostic:
+**§ 92(3)** The parser should emit a focused diagnostic:
 
 ```text
 `?` is reserved and has no meaning in Sec 0.1
 ```
 
-Its future use remains open.
+**§ 92(4)** Its future use remains open.
 
-Possible future designs may include conditionals or another language feature.
+**§ 92(5)** Possible future designs may include conditionals or another language feature.
 
-Sec 0.1 does not assign Rust-style error propagation or any other meaning.
+**§ 92(6)** Sec 0.1 does not assign Rust-style error propagation or any other meaning.
 
 ---
 
-# Unsupported operators
+## § 93 Unsupported operators
 
-Sec 0.1 does not define:
+**§ 93(1)** Sec 0.1 does not define:
 
 ```text
 ternary `?:`
@@ -3381,13 +3393,13 @@ comma expression
 assignment expression
 ```
 
-A future language version may define new syntax through a separate rule.
+**§ 93(2)** A future language version may define new syntax through a separate rule.
 
 ---
 
-# Operator failure classes
+## § 94 Operator failure classes
 
-An operator may be:
+**§ 94(1)** An operator may be:
 
 ```text
 infallible
@@ -3399,18 +3411,18 @@ target-restricted
 unsafe
 ```
 
-The resolved operator must record its class.
+**§ 94(2)** The resolved operator must record its class.
 
 ---
 
-# Deterministic arithmetic failure
+## § 95 Deterministic arithmetic failure
 
-Operations such as checked integer overflow and runtime integer division by zero
+**§ 95(1)** Operations such as checked integer overflow and runtime integer division by zero
 require a deterministic arithmetic-failure path.
 
-The exact representation may depend on the surrounding expression and profile.
+**§ 95(2)** The exact representation may depend on the surrounding expression and profile.
 
-It must not become:
+**§ 95(3)** It must not become:
 
 ```text
 undefined behavior
@@ -3419,7 +3431,7 @@ random target trap semantics
 optimizer-dependent behavior
 ```
 
-A future arithmetic-error rulebook may define:
+**§ 95(4)** A future arithmetic-error rulebook may define:
 
 ```text
 Result integration
@@ -3429,19 +3441,19 @@ target trap lowering
 no-runtime lowering
 ```
 
-Until then, the compiler must preserve a distinguishable failure edge.
+**§ 95(5)** Until then, the compiler must preserve a distinguishable failure edge.
 
 ---
 
-# Constant folding
+## § 96 Constant folding
 
-The compiler may evaluate operators at compile time when operands are constant.
+**§ 96(1)** The compiler may evaluate operators at compile time when operands are constant.
 
-Constant folding must use Sec semantics.
+**§ 96(2)** Constant folding must use Sec semantics.
 
-It must not use host-language behavior when that differs.
+**§ 96(3)** It must not use host-language behavior when that differs.
 
-Examples include:
+**§ 96(4)** Examples include:
 
 ```text
 checked overflow
@@ -3452,26 +3464,26 @@ string literal concatenation
 shift-count validation
 ```
 
-A constant expression that would deterministically fail is a compile-time error,
+**§ 96(5)** A constant expression that would deterministically fail is a compile-time error,
 except for checked integer overflow covered by `S1023`. That case is a warning
 and retains checked runtime failure semantics.
 
 ---
 
-# Untyped literals
+## § 97 Untyped literals
 
-Untyped literals may be shaped by operator context.
+**§ 97(1)** Untyped literals may be shaped by operator context.
 
-Examples:
+**§ 97(2)** Examples:
 
 ```sec
 let value: int32 := 10
 let result := value + 1
 ```
 
-The literal may become `int32`.
+**§ 97(3)** The literal may become `int32`.
 
-Literal shaping must not introduce:
+**§ 97(4)** Literal shaping must not introduce:
 
 ```text
 overflow
@@ -3483,11 +3495,11 @@ unit mismatch
 
 ---
 
-# Named types
+## § 98 Named types
 
-A named type retains nominal identity.
+**§ 98(1)** A named type retains nominal identity.
 
-An operator may be available when:
+**§ 98(2)** An operator may be available when:
 
 - the named type's canonical rule permits it;
 - operands are the same compatible named type;
@@ -3495,15 +3507,15 @@ An operator may be available when:
 - an explicit conversion has occurred;
 - a unit rule defines compatible algebra.
 
-Underlying representation alone does not grant every base-type operator.
+**§ 98(3)** Underlying representation alone does not grant every base-type operator.
 
 ---
 
-# Contracts
+## § 99 Contracts
 
-Operator results assigned to constrained types must satisfy contracts.
+**§ 99(1)** Operator results assigned to constrained types must satisfy contracts.
 
-A contract may be:
+**§ 99(2)** A contract may be:
 
 ```text
 compile-time proven
@@ -3511,26 +3523,26 @@ runtime checked
 fallible
 ```
 
-Operators do not bypass contracts.
+**§ 99(3)** Operators do not bypass contracts.
 
-A same-type move preserves an already valid value.
+**§ 99(4)** A same-type move preserves an already valid value.
 
-Arithmetic producing a new value requires normal validation.
+**§ 99(5)** Arithmetic producing a new value requires normal validation.
 
 ---
 
-# Enums
+## § 100 Enums
 
-Enums support:
+**§ 100(1)** Enums support:
 
 ```text
 ==
 !=
 ```
 
-according to enum rules.
+**§ 100(2)** according to enum rules.
 
-Enums do not automatically support:
+**§ 100(3)** Enums do not automatically support:
 
 ```text
 +
@@ -3546,18 +3558,18 @@ bitwise operators
 shifts
 ```
 
-even when the underlying representation is integer.
+**§ 100(4)** even when the underlying representation is integer.
 
-Any future flags-enum model requires a separate rule.
+**§ 100(5)** Any future flags-enum model requires a separate rule.
 
 ---
 
-# Registers
+## § 101 Registers
 
-Register expressions may support compiler-known bitwise and numeric operations on
+**§ 101(1)** Register expressions may support compiler-known bitwise and numeric operations on
 snapshots.
 
-Access to addressed register storage follows:
+**§ 101(2)** Access to addressed register storage follows:
 
 ```text
 volatile rules
@@ -3567,19 +3579,19 @@ fixed-address rules
 target rules
 ```
 
-An operator on a local snapshot is not itself a hardware write.
+**§ 101(3)** An operator on a local snapshot is not itself a hardware write.
 
-Compound assignment to a register-backed property may lower to a defined
+**§ 101(4)** Compound assignment to a register-backed property may lower to a defined
 read-modify-write operation only when register rules permit it.
 
 ---
 
-# Raw pointers
+## § 102 Raw pointers
 
-Raw pointer arithmetic, comparison, and difference are not granted by ordinary
+**§ 102(1)** Raw pointer arithmetic, comparison, and difference are not granted by ordinary
 numeric operator rules.
 
-Any supported raw-pointer operator must be:
+**§ 102(2)** Any supported raw-pointer operator must be:
 
 ```text
 explicitly defined
@@ -3589,50 +3601,50 @@ bounds-aware where known
 target-representable
 ```
 
-Address-value equality may be permitted by `raw_pointers.md`.
+**§ 102(3)** Address-value equality may be permitted by `raw_pointers.md`.
 
-Ordered raw-pointer comparison is not part of ordinary Sec 0.1 operators.
+**§ 102(4)** Ordered raw-pointer comparison is not part of ordinary Sec 0.1 operators.
 
 ---
 
-# Atomics
+## § 103 Atomics
 
-Ordinary operators on atomic storage are not automatically atomic
+**§ 103(1)** Ordinary operators on atomic storage are not automatically atomic
 read-modify-write operations.
 
-Atomic types expose compiler-known methods or explicit atomic operations with
+**§ 103(2)** Atomic types expose compiler-known methods or explicit atomic operations with
 memory ordering.
 
-The source:
+**§ 103(3)** The source:
 
 ```sec
 atomicValue += 1
 ```
 
-must not silently become an atomic fetch-add unless an atomic rule explicitly
+**§ 103(4)** must not silently become an atomic fetch-add unless an atomic rule explicitly
 defines that syntax.
 
 ---
 
-# Volatile values
+## § 104 Volatile values
 
-Ordinary arithmetic on a local value loaded from volatile storage is ordinary
+**§ 104(1)** Ordinary arithmetic on a local value loaded from volatile storage is ordinary
 arithmetic.
 
-Accessing volatile storage must remain an explicit volatile load or store in
+**§ 104(2)** Accessing volatile storage must remain an explicit volatile load or store in
 Semantic IR.
 
-The compiler must not duplicate or eliminate volatile accesses while applying
+**§ 104(3)** The compiler must not duplicate or eliminate volatile accesses while applying
 operator transformations.
 
-Compound assignment to volatile storage requires one defined read and one
+**§ 104(4)** Compound assignment to volatile storage requires one defined read and one
 defined write unless a register rule says otherwise.
 
 ---
 
-# Formatter rules
+## § 105 Formatter rules
 
-Canonical spacing:
+**§ 105(1)** Canonical spacing:
 
 ```sec
 left + right
@@ -3658,7 +3670,7 @@ let value := source
 let value :<- source
 ```
 
-Prefix operators have no following space:
+**§ 105(2)** Prefix operators have no following space:
 
 ```sec
 -value
@@ -3667,13 +3679,13 @@ Prefix operators have no following space:
 ~value
 ```
 
-Member access has no surrounding spaces:
+**§ 105(3)** Member access has no surrounding spaces:
 
 ```sec
 value.Member
 ```
 
-Calls and indexes have no preceding space:
+**§ 105(4)** Calls and indexes have no preceding space:
 
 ```sec
 Call(value)
@@ -3682,9 +3694,9 @@ values[index]
 
 ---
 
-# Formatter normalization
+## § 106 Formatter normalization
 
-Ordinary formatter may normalize parser-confirmed:
+**§ 106(1)** Ordinary formatter may normalize parser-confirmed:
 
 ```text
 func -> fn
@@ -3692,27 +3704,27 @@ x++ -> x += 1
 x-- -> x -= 1
 ```
 
-It must preserve:
+**§ 106(2)** It must preserve:
 
 ```text
 := versus :<-
 = versus <-
 ```
 
-It must not infer semantic move syntax.
+**§ 106(3)** It must not infer semantic move syntax.
 
-It must recognize contextual `x` before formatting it as an infix operator.
+**§ 106(4)** It must recognize contextual `x` before formatting it as an infix operator.
 
-An identifier named `x` remains an identifier.
+**§ 106(5)** An identifier named `x` remains an identifier.
 
 ---
 
-# Parser recovery
+## § 107 Parser recovery
 
-The parser should recover from operator errors without discarding the complete
+**§ 107(1)** The parser should recover from operator errors without discarding the complete
 surrounding expression.
 
-Examples:
+**§ 107(2)** Examples:
 
 ```text
 missing right operand
@@ -3724,7 +3736,7 @@ reserved question mark
 missing closing delimiter
 ```
 
-Recovery nodes should preserve:
+**§ 107(3)** Recovery nodes should preserve:
 
 ```text
 operator token
@@ -3734,15 +3746,15 @@ expected category
 source range
 ```
 
-This supports LSP diagnostics and fixes.
+**§ 107(4)** This supports LSP diagnostics and fixes.
 
 ---
 
-# Diagnostics
+## § 108 Diagnostics
 
-Operator diagnostics require stable IDs.
+**§ 108(1)** Operator diagnostics require stable IDs.
 
-Suggested rules:
+**§ 108(2)** Suggested rules:
 
 ```text
 parser.missing-operator-operand
@@ -3773,7 +3785,7 @@ sema.operator-move-self-assignment
 sema.operator-overlapping-move
 ```
 
-The current registry assigns these IDs to the implemented subset:
+**§ 108(3)** The current registry assigns these IDs to the implemented subset:
 
 ```text
 S1016  operator.non-orderable-operands
@@ -3785,24 +3797,24 @@ S1022  operator.invalid-concat-operand
 S1029  operator.invalid-interpolation-value
 ```
 
-Retired and permanently reserved:
+**§ 108(4)** Retired and permanently reserved:
 
 ```text
 S1020  operator.string-runtime-concat
 ```
 
-Stable IDs for the remaining concat categories must be assigned through the
+**§ 108(5)** Stable IDs for the remaining concat categories must be assigned through the
 diagnostic registry when their checks are implemented.
 
-Safety errors are mandatory.
+**§ 108(6)** Safety errors are mandatory.
 
-Performance findings may be advisory.
+**§ 108(7)** Performance findings may be advisory.
 
 ---
 
-# Diagnostic examples
+## § 109 Diagnostic examples
 
-## Invalid concatenation operand
+### § 109.1 Invalid concatenation operand
 
 ```text
 error[S1022]: `int` cannot be concatenated directly with `string`
@@ -3810,53 +3822,53 @@ string concatenation accepts string, char, and rune
 help: use `value.ToString()` inside the concatenation with `try` before the whole expression, or interpolation when a formatting contract exists
 ```
 
-## Invalid interpolation value
+### § 109.2 Invalid interpolation value
 
 ```text
 error[S1029]: `Packet` has no canonical interpolation formatting contract
 help: define an exact shared `fn ToString() Result[string, StringError]` method or interpolate a supported printable value
 ```
 
-## Invalid rune comparison
+### § 109.3 Invalid rune comparison
 
 ```text
 error[S....]: rune cannot be compared with int
 help: use `0r` for rune zero or convert explicitly
 ```
 
-## Invalid char comparison
+### § 109.4 Invalid char comparison
 
 ```text
 error[S....]: char cannot be compared with int
 help: use `0t` for char zero or convert explicitly
 ```
 
-## Chained comparison
+### § 109.5 Chained comparison
 
 ```text
 error[P....]: comparisons cannot be chained
 help: write `a < b && b < c`
 ```
 
-## Invalid shift count
+### § 109.6 Invalid shift count
 
 ```text
 error[S....]: shift count 32 is outside the valid range 0..<32
 ```
 
-## Invalid membership
+### § 109.7 Invalid membership
 
 ```text
 error[S....]: `in` supports ranges, fixed arrays, dynamic arrays, and slices in Sec 0.1
 ```
 
-## Missing concatenation allocation context
+### § 109.8 Missing concatenation allocation context
 
 ```text
 error[S....]: runtime string concatenation requires an allocation context
 ```
 
-## Concatenation in `@noPanic`
+### § 109.9 Concatenation in `@noPanic`
 
 ```text
 error[S....]: runtime concatenation without `try` may panic on allocation failure
@@ -3865,9 +3877,9 @@ help: write `try` and handle or propagate StringError
 
 ---
 
-# LSP integration
+## § 110 LSP integration
 
-The LSP should expose at an operator:
+**§ 110(1)** The LSP should expose at an operator:
 
 ```text
 resolved operation
@@ -3884,7 +3896,7 @@ copy or move behavior
 target support
 ```
 
-Example hover:
+**§ 110(2)** Example hover:
 
 ```text
 Operator: signed integer addition
@@ -3894,14 +3906,14 @@ Evaluation: left operand, then right operand
 Result: int32
 ```
 
-Example for `&&`:
+**§ 110(3)** Example for `&&`:
 
 ```text
 Operator: lazy logical AND
 Right operand executes only when left is true
 ```
 
-Example for `x`:
+**§ 110(4)** Example for `x`:
 
 ```text
 Operator: matrix multiplication
@@ -3910,7 +3922,7 @@ Right: Matrix[3, 2, float32]
 Result: Matrix[4, 2, float32]
 ```
 
-Example for runtime string `+`:
+**§ 110(5)** Example for runtime string `+`:
 
 ```text
 Operator: string concatenation
@@ -3923,9 +3935,9 @@ Concat plan: maximal chain
 
 ---
 
-# Code actions
+## § 111 Code actions
 
-Possible operator code actions include:
+**§ 111(1)** Possible operator code actions include:
 
 ```text
 split chained comparison
@@ -3941,15 +3953,15 @@ replace invalid copy assignment with explicit move
 parenthesize expression
 ```
 
-A fix must be machine-applicable only when intent is unique.
+**§ 111(2)** A fix must be machine-applicable only when intent is unique.
 
 ---
 
-# Semantic IR
+## § 112 Semantic IR
 
-Every resolved operator must lower to an explicit semantic operation.
+**§ 112(1)** Every resolved operator must lower to an explicit semantic operation.
 
-Conceptual operations include:
+**§ 112(2)** Conceptual operations include:
 
 ```text
 UnaryPlus
@@ -4011,15 +4023,15 @@ Spread
 StringConcatPlan
 ```
 
-Exact operation names may differ.
+**§ 112(3)** Exact operation names may differ.
 
-The semantic distinctions must remain explicit.
+**§ 112(4)** The semantic distinctions must remain explicit.
 
 ---
 
-# Semantic IR operator metadata
+## § 113 Semantic IR operator metadata
 
-Where relevant, record:
+**§ 113(1)** Where relevant, record:
 
 ```text
 operator token
@@ -4052,9 +4064,9 @@ temporary materialization requirements
 
 ---
 
-# Semantic IR verification
+## § 114 Semantic IR verification
 
-Before MLIR lowering:
+**§ 114(1)** Before MLIR lowering:
 
 - every operator has resolved operand types;
 - every operator has one resolved semantic meaning;
@@ -4079,13 +4091,13 @@ Before MLIR lowering:
 - contextual `x` has a shaped operation;
 - no arbitrary operator overload remains unresolved.
 
-Failure is an internal compiler error after successful Sema.
+**§ 114(2)** Failure is an internal compiler error after successful Sema.
 
 ---
 
-# MLIR lowering
+## § 115 MLIR lowering
 
-MLIR may use:
+**§ 115(1)** MLIR may use:
 
 ```text
 arith
@@ -4099,9 +4111,9 @@ LLVM dialect
 target-specific dialects
 ```
 
-The selected lowering must preserve Sec semantics.
+**§ 115(2)** The selected lowering must preserve Sec semantics.
 
-Examples:
+**§ 115(3)** Examples:
 
 ```text
 checked integer add
@@ -4125,12 +4137,12 @@ volatile compound assignment
 
 ---
 
-# LLVM and backend requirements
+## § 116 LLVM and backend requirements
 
-Backends must not rely on undefined target-language behavior for Sec checked
+**§ 116(1)** Backends must not rely on undefined target-language behavior for Sec checked
 operations.
 
-They must preserve:
+**§ 116(2)** They must preserve:
 
 ```text
 strict left-to-right observable evaluation
@@ -4146,24 +4158,24 @@ volatile and atomic effects
 
 ---
 
-# Float comparison lowering requirement
+## § 117 Float comparison lowering requirement
 
-Ordinary float `!=` must be true when either operand is NaN.
+**§ 117(1)** Ordinary float `!=` must be true when either operand is NaN.
 
-A backend predicate equivalent to ordered-not-equal is insufficient.
+**§ 117(2)** A backend predicate equivalent to ordered-not-equal is insufficient.
 
-The lowering must implement unordered-not-equal semantics for Sec `!=`.
+**§ 117(3)** The lowering must implement unordered-not-equal semantics for Sec `!=`.
 
-Ordered comparisons remain false with NaN.
+**§ 117(4)** Ordered comparisons remain false with NaN.
 
 ---
 
-# Optimization
+## § 118 Optimization
 
-The compiler may optimize operators when results and observable behavior remain
+**§ 118(1)** The compiler may optimize operators when results and observable behavior remain
 equivalent.
 
-Allowed examples:
+**§ 118(2)** Allowed examples:
 
 ```text
 constant folding
@@ -4183,7 +4195,7 @@ compiler-known formatting fusion
 proven unique-backing-storage reuse
 ```
 
-The compiler must not optimize away:
+**§ 118(3)** The compiler must not optimize away:
 
 ```text
 volatile access
@@ -4201,9 +4213,9 @@ transactional string `+=` commit
 
 ---
 
-# Constant-expression rules
+## § 119 Constant-expression rules
 
-Operators usable in constant expressions must:
+**§ 119(1)** Operators usable in constant expressions must:
 
 ```text
 be deterministic
@@ -4214,31 +4226,31 @@ not access volatile memory
 not depend on runtime target state
 ```
 
-Compile-time string literal concatenation is allowed.
+**§ 119(2)** Compile-time string literal concatenation is allowed.
 
-It folds to one string constant and requires no runtime allocation context,
+**§ 119(3)** It folds to one string constant and requires no runtime allocation context,
 `try`, or allocation-failure policy.
 
-Compile-time arithmetic uses Sec checked semantics.
+**§ 119(4)** Compile-time arithmetic uses Sec checked semantics.
 
 ---
 
-# Testing
+## § 120 Testing
 
-## String concatenation tests
+### § 120.1 String concatenation tests
 
-Test all nine ordered pairs of `string`, `char`, and `rune`; every result must
+**§ 120.1(1)** Test all nine ordered pairs of `string`, `char`, and `rune`; every result must
 be `string`. Reject direct integer, float, decimal, bool, enum, struct, union,
 array, slice, collection, interface, and user-defined nominal operands with
 `S1022`, both operand types, the accepted text categories, and explicit
 conversion/interpolation help.
 
-Test compile-time folding, interpolation formatting contracts, mixed chains,
+**§ 120.1(2)** Test compile-time folding, interpolation formatting contracts, mixed chains,
 left-to-right exact-once evaluation, active allocation contexts, panic and
 `try` policies, `@noPanic`, checked total length, one maximal concat plan, and
 at-most-once canonical result allocation.
 
-For `string +=`, test exact-once destination and source evaluation, both failure
+**§ 120.1(3)** For `string +=`, test exact-once destination and source evaluation, both failure
 modes, the protected and separately protected `Result[string, StringError]`
 operand, rejection of an unhandled one, transactional failure, unchanged
 destination after failed `try`, and semantic equivalence under proven in-place
@@ -4246,15 +4258,15 @@ optimization. Test that structural
 `StringBuilder` information appears only for repeated reconstruction and never
 for one isolated operation or one maximal chain.
 
-Verify that valid runtime concatenation never emits retired `S1020`, that the
+**§ 120.1(4)** Verify that valid runtime concatenation never emits retired `S1020`, that the
 ID is not reused, and that every replacement diagnostic has a stable registry
 entry before it is emitted.
 
-## Lexer tests
+### § 120.2 Lexer tests
 
-Test every operator token and longest-match conflict.
+**§ 120.2(1)** Test every operator token and longest-match conflict.
 
-Required examples include:
+**§ 120.2(2)** Required examples include:
 
 ```text
 :
@@ -4279,11 +4291,11 @@ Required examples include:
 |=
 ```
 
-## Parser precedence tests
+### § 120.3 Parser precedence tests
 
-Test every adjacent precedence pair.
+**§ 120.3(1)** Test every adjacent precedence pair.
 
-Examples:
+**§ 120.3(2)** Examples:
 
 ```sec
 a + b * c
@@ -4295,7 +4307,7 @@ a x b + c
 value.Member()[index].Field
 ```
 
-## Associativity tests
+### § 120.4 Associativity tests
 
 ```sec
 a - b - c
@@ -4304,11 +4316,11 @@ a << b << c
 a x b x c
 ```
 
-Verify comparisons do not chain.
+**§ 120.4(1)** Verify comparisons do not chain.
 
-## Evaluation-order tests
+### § 120.5 Evaluation-order tests
 
-Use observable test helpers to verify:
+**§ 120.5(1)** Use observable test helpers to verify:
 
 ```text
 binary operands
@@ -4320,9 +4332,9 @@ spread
 compound assignment target
 ```
 
-## Arithmetic tests
+### § 120.6 Arithmetic tests
 
-Test every integer width and signedness for:
+**§ 120.6(1)** Test every integer width and signedness for:
 
 ```text
 minimum
@@ -4337,9 +4349,9 @@ negative remainder
 compound assignment
 ```
 
-## Float tests
+### § 120.7 Float tests
 
-Test:
+**§ 120.7(1)** Test:
 
 ```text
 finite values
@@ -4352,9 +4364,9 @@ remainder special cases
 all comparison operators
 ```
 
-## Decimal tests
+### § 120.8 Decimal tests
 
-Test:
+**§ 120.8(1)** Test:
 
 ```text
 exact remainder
@@ -4375,12 +4387,12 @@ ScaleOverflow, PrecisionExhausted and Overflow classification
 comparison ignores scale (1.2m == 1.20m)
 ```
 
-The complete conformance matrix is DEC-01 to DEC-22 in
+**§ 120.8(2)** The complete conformance matrix is DEC-01 to DEC-22 in
 `rules/corrections/applied/md066-md067-md068-decimal-correction-20261028.md` § 14.
 
-## Shift tests
+### § 120.9 Shift tests
 
-Test every integer width:
+**§ 120.9(1)** Test every integer width:
 
 ```text
 count 0
@@ -4394,9 +4406,9 @@ signed left overflow
 unsigned truncating left shift
 ```
 
-## Equality tests
+### § 120.10 Equality tests
 
-Test:
+**§ 120.10(1)** Test:
 
 ```text
 bool
@@ -4414,9 +4426,9 @@ slice rejection
 interface rejection
 ```
 
-## Ordering tests
+### § 120.11 Ordering tests
 
-Test:
+**§ 120.11(1)** Test:
 
 ```text
 numeric
@@ -4430,9 +4442,9 @@ array rejection
 struct rejection
 ```
 
-## Membership tests
+### § 120.12 Membership tests
 
-Test:
+**§ 120.12(1)** Test:
 
 ```text
 inclusive range
@@ -4448,9 +4460,9 @@ unsupported map
 unsupported string
 ```
 
-## Assignment tests
+### § 120.13 Assignment tests
 
-Test:
+**§ 120.13(1)** Test:
 
 ```text
 copy initialization
@@ -4465,9 +4477,9 @@ overlap rejection
 self-move rejection
 ```
 
-## Formatter tests
+### § 120.14 Formatter tests
 
-Test canonical spacing and:
+**§ 120.14(1)** Test canonical spacing and:
 
 ```text
 x identifier versus matrix operator
@@ -4480,9 +4492,9 @@ multiline expressions
 
 ---
 
-# Required source test files
+## § 121 Required source test files
 
-Create or update:
+**§ 121(1)** Create or update:
 
 ```text
 operators_valid.sec
@@ -4501,7 +4513,7 @@ operators_shaped_valid.sec
 operators_shaped_invalid.sec
 ```
 
-Every invalid test includes:
+**§ 121(2)** Every invalid test includes:
 
 ```sec
 /* Expected error: ...
@@ -4511,9 +4523,9 @@ Every invalid test includes:
 
 ---
 
-# Required synchronization
+## § 122 Required synchronization
 
-This rulebook must remain synchronized with:
+**§ 122(1)** This rulebook must remain synchronized with:
 
 ```text
 lexical_structure.md
@@ -4545,61 +4557,61 @@ lsp.md
 language-rulebook-status.md
 ```
 
-Files that do not yet exist remain planned dependencies.
+**§ 122(2)** Files that do not yet exist remain planned dependencies.
 
 ---
 
-# Appendix A — Codex implementation plan
+## Appendix A — Codex implementation plan
 
-## A.1 Add the canonical rulebook
+### Appendix A.1 Add the canonical rulebook
 
-Add:
+**Appendix A.1(1)** Add:
 
 ```text
 rules/foundations/operators.md
 ```
 
-Update:
+**Appendix A.1(2)** Update:
 
 ```text
 language-rulebook-status.md
 governance/sema.yaml (frontend.operators-v2)
 ```
 
-Mark the document as written.
+**Appendix A.1(3)** Mark the document as written.
 
 ---
 
-## A.2 Create one precedence definition
+### Appendix A.2 Create one precedence definition
 
-Move precedence metadata into one compiler package shared by parser tests,
+**Appendix A.2(1)** Move precedence metadata into one compiler package shared by parser tests,
 formatter, LSP, and documentation generation where practical.
 
-Do not maintain unrelated precedence tables.
+**Appendix A.2(2)** Do not maintain unrelated precedence tables.
 
-The parser may retain efficient constants generated from the canonical table.
+**Appendix A.2(3)** The parser may retain efficient constants generated from the canonical table.
 
 ---
 
-## A.3 Add contextual `x`
+### Appendix A.3 Add contextual `x`
 
-Parser and fixed-shape Sema support are implemented.
+**Appendix A.3(1)** Parser and fixed-shape Sema support are implemented.
 
-Identifier token `x` becomes an infix operator only when:
+**Appendix A.3(2)** Identifier token `x` becomes an infix operator only when:
 
 - parser is in infix position;
 - the surrounding token structure is valid;
 - Sema resolves compatible shaped operands.
 
-Preserve ordinary identifiers named `x`.
+**Appendix A.3(3)** Preserve ordinary identifiers named `x`.
 
-Formatter and semantic-token context, Semantic IR and backend lowering remain.
+**Appendix A.3(4)** Formatter and semantic-token context, Semantic IR and backend lowering remain.
 
 ---
 
-## A.4 Enforce strict evaluation order
+### Appendix A.4 Enforce strict evaluation order
 
-Audit:
+**Appendix A.4(1)** Audit:
 
 ```text
 parser AST order
@@ -4610,31 +4622,31 @@ MLIR backend
 optimizations
 ```
 
-Represent observable left-to-right order explicitly where needed.
+**Appendix A.4(2)** Represent observable left-to-right order explicitly where needed.
 
-Add exact-once compound-target tests.
+**Appendix A.4(3)** Add exact-once compound-target tests.
 
 ---
 
-## A.5 Preserve short-circuit lowering
+### Appendix A.5 Preserve short-circuit lowering
 
-Retain current CFG-based implementation for:
+**Appendix A.5(1)** Retain current CFG-based implementation for:
 
 ```text
 &&
 ||
 ```
 
-Extend Sema ownership, borrow, effect, and lifetime merging across the right
+**Appendix A.5(2)** Extend Sema ownership, borrow, effect, and lifetime merging across the right
 operand.
 
-Add Semantic IR short-circuit nodes or explicit blocks.
+**Appendix A.5(3)** Add Semantic IR short-circuit nodes or explicit blocks.
 
 ---
 
-## A.6 Implement checked integer arithmetic
+### Appendix A.6 Implement checked integer arithmetic
 
-Add checks for:
+**Appendix A.6(1)** Add checks for:
 
 ```text
 +
@@ -4646,49 +4658,49 @@ division minimum / -1
 compound forms
 ```
 
-Compile-time constants use arbitrary-precision evaluation and target type range
+**Appendix A.6(2)** Compile-time constants use arbitrary-precision evaluation and target type range
 checks.
 
-Runtime lowering uses target operations plus explicit failure edges.
+**Appendix A.6(3)** Runtime lowering uses target operations plus explicit failure edges.
 
-Do not rely on LLVM undefined signed overflow.
+**Appendix A.6(4)** Do not rely on LLVM undefined signed overflow.
 
 ---
 
-## A.7 Division and remainder
+### Appendix A.7 Division and remainder
 
-Implement truncation-toward-zero integer division and remainder.
+**Appendix A.7(1)** Implement truncation-toward-zero integer division and remainder.
 
-Add deterministic zero-divisor checks.
+**Appendix A.7(2)** Add deterministic zero-divisor checks.
 
-Add:
+**Appendix A.7(3)** Add:
 
 ```text
 float truncation-based remainder
 decimal truncation-based remainder
 ```
 
-Preserve special float cases.
+**Appendix A.7(4)** Preserve special float cases.
 
 ---
 
-## A.8 Fix float `!=`
+### Appendix A.8 Fix float `!=`
 
-Current ordered-not-equal lowering is incompatible with:
+**Appendix A.8(1)** Current ordered-not-equal lowering is incompatible with:
 
 ```text
 NaN != NaN == true
 ```
 
-Use unordered-not-equal or equivalent explicit logic.
+**Appendix A.8(2)** Use unordered-not-equal or equivalent explicit logic.
 
-Verify every float predicate against this rulebook.
+**Appendix A.8(3)** Verify every float predicate against this rulebook.
 
 ---
 
-## A.9 Implement shift validation
+### Appendix A.9 Implement shift validation
 
-Before lowering:
+**Appendix A.9(1)** Before lowering:
 
 - prove or check `0 <= count < width`;
 - use `ashr` for signed right shift;
@@ -4696,13 +4708,13 @@ Before lowering:
 - use ordinary fixed-width shift for unsigned left;
 - check signed left-shift representability.
 
-Do not mask counts silently.
+**Appendix A.9(2)** Do not mask counts silently.
 
 ---
 
-## A.10 Ordered comparison validation
+### Appendix A.10 Ordered comparison validation
 
-Update Sema so `<`, `<=`, `>`, and `>=` accept only:
+**Appendix A.10(1)** Update Sema so `<`, `<=`, `>`, and `>=` accept only:
 
 ```text
 compatible numeric values
@@ -4711,16 +4723,16 @@ rune with rune
 string with string
 ```
 
-Reject enums, arrays, slices, structs, unions, references, and interfaces unless
+**Appendix A.10(2)** Reject enums, arrays, slices, structs, unions, references, and interfaces unless
 a future rule adds support.
 
 ---
 
-## A.11 String comparison
+### Appendix A.11 String comparison
 
-Implement exact string equality and Unicode-scalar lexicographic ordering.
+**Appendix A.11(1)** Implement exact string equality and Unicode-scalar lexicographic ordering.
 
-Do not add:
+**Appendix A.11(2)** Do not add:
 
 ```text
 locale collation
@@ -4728,15 +4740,15 @@ normalization
 case folding
 ```
 
-Avoid allocation.
+**Appendix A.11(3)** Avoid allocation.
 
 ---
 
-## A.12 Struct equality
+### Appendix A.12 Struct equality
 
-Implement derived structural equality.
+**Appendix A.12(1)** Implement derived structural equality.
 
-Requirements:
+**Appendix A.12(2)** Requirements:
 
 - all stored fields equality-comparable;
 - normal `impl` does not disable derivation;
@@ -4745,42 +4757,42 @@ Requirements:
 - short-circuit first mismatch;
 - reject explicit identity/resource/non-comparable types.
 
-Add temporary internal metadata until canonical attribute syntax is defined.
+**Appendix A.12(3)** Add temporary internal metadata until canonical attribute syntax is defined.
 
 ---
 
-## A.13 Interface equality restriction
+### Appendix A.13 Interface equality restriction
 
-Reject direct equality on general interface values in Sec 0.1.
+**Appendix A.13(1)** Reject direct equality on general interface values in Sec 0.1.
 
-Do not compare erased descriptor bits or addresses.
+**Appendix A.13(2)** Do not compare erased descriptor bits or addresses.
 
 ---
 
-## A.14 Array and slice membership
+### Appendix A.14 Array and slice membership
 
-Sema implements and validates:
+**Appendix A.14(1)** Sema implements and validates:
 
 ```text
 value in fixedArray
 value in slice
 ```
 
-Lower as left-to-right short-circuit search.
+**Appendix A.14(2)** Lower as left-to-right short-circuit search.
 
-Evaluate the left value and collection expression exactly once.
+**Appendix A.14(3)** Evaluate the left value and collection expression exactly once.
 
-Do not allocate.
+**Appendix A.14(4)** Do not allocate.
 
-Do not use arbitrary `.Contains` method dispatch.
+**Appendix A.14(5)** Do not use arbitrary `.Contains` method dispatch.
 
-Semantic IR and backend lowering remain pending.
+**Appendix A.14(6)** Semantic IR and backend lowering remain pending.
 
 ---
 
-## A.15 Preserve range-only range values
+### Appendix A.15 Preserve range-only range values
 
-Continue contextual parsing of:
+**Appendix A.15(1)** Continue contextual parsing of:
 
 ```text
 for ranges
@@ -4788,13 +4800,13 @@ membership ranges
 slice ranges
 ```
 
-Reject standalone range values in Sec 0.1.
+**Appendix A.15(2)** Reject standalone range values in Sec 0.1.
 
-Add a focused diagnostic.
+**Appendix A.15(3)** Add a focused diagnostic.
 
 ---
 
-## A.16 Complete runtime string concatenation
+### Appendix A.16 Complete runtime string concatenation
 
 1. Accept the canonical direct operand matrix.
 2. Reject non-text operands without hidden conversion.
@@ -4814,23 +4826,23 @@ Add a focused diagnostic.
 
 ---
 
-## A.17 Question mark diagnostic
+### Appendix A.17 Question mark diagnostic
 
-Keep `QUESTION` token.
+**Appendix A.17(1)** Keep `QUESTION` token.
 
-Reject it in parser expression contexts with:
+**Appendix A.17(2)** Reject it in parser expression contexts with:
 
 ```text
 `?` is reserved and has no meaning in Sec 0.1
 ```
 
-Do not assign error propagation, optional access, or ternary semantics.
+**Appendix A.17(3)** Do not assign error propagation, optional access, or ternary semantics.
 
 ---
 
-## A.18 Compound assignments
+### Appendix A.18 Compound assignments
 
-Audit every compound operator for:
+**Appendix A.18(1)** Audit every compound operator for:
 
 ```text
 target evaluated once
@@ -4844,23 +4856,23 @@ atomic restrictions
 failure commit order
 ```
 
-Represent compound assignment semantically rather than by AST duplication.
+**Appendix A.18(2)** Represent compound assignment semantically rather than by AST duplication.
 
 ---
 
-## A.19 Semantic IR
+### Appendix A.19 Semantic IR
 
-Add resolved operations and metadata from this rulebook.
+**Appendix A.19(1)** Add resolved operations and metadata from this rulebook.
 
-Ensure no generic operator token reaches MLIR without semantic classification.
+**Appendix A.19(2)** Ensure no generic operator token reaches MLIR without semantic classification.
 
 ---
 
-## A.20 Formatter
+### Appendix A.20 Formatter
 
-Update `internal/formatter` when created.
+**Appendix A.20(1)** Update `internal/formatter` when created.
 
-Support:
+**Appendix A.20(2)** Support:
 
 ```text
 canonical spacing
@@ -4871,13 +4883,13 @@ parentheses from precedence
 recoverable expressions
 ```
 
-Do not duplicate precedence logic.
+**Appendix A.20(3)** Do not duplicate precedence logic.
 
 ---
 
-## A.21 LSP
+### Appendix A.21 LSP
 
-Expose:
+**Appendix A.21(1)** Expose:
 
 ```text
 operator hover
@@ -4891,15 +4903,15 @@ matrix shape result
 quick fixes
 ```
 
-Use compiler-owned operator facts.
+**Appendix A.21(2)** Use compiler-owned operator facts.
 
 ---
 
-## A.22 Diagnostics
+### Appendix A.22 Diagnostics
 
-Register stable IDs.
+**Appendix A.22(1)** Register stable IDs.
 
-Attach:
+**Appendix A.22(2)** Attach:
 
 ```text
 operand ranges
@@ -4912,19 +4924,19 @@ related declarations
 
 ---
 
-## A.23 Backend audit
+### Appendix A.23 Backend audit
 
-Audit direct LLVM and MLIR implementations against the same test matrix.
+**Appendix A.23(1)** Audit direct LLVM and MLIR implementations against the same test matrix.
 
-Do not allow backend feature divergence to become source-language divergence.
+**Appendix A.23(2)** Do not allow backend feature divergence to become source-language divergence.
 
-A backend may report unsupported lowering.
+**Appendix A.23(3)** A backend may report unsupported lowering.
 
-It may not silently produce different semantics.
+**Appendix A.23(4)** It may not silently produce different semantics.
 
 ---
 
-## A.24 Recommended implementation order
+### Appendix A.24 Recommended implementation order
 
 ```text
 1. Add canonical operator metadata and tests.
@@ -4949,61 +4961,61 @@ It may not silently produce different semantics.
 
 ---
 
-# Design summary
+## § 123 Design summary
 
-Sec operators have one canonical precedence table.
+**§ 123(1)** Sec operators have one canonical precedence table.
 
-All ordinary expression operands evaluate strictly left to right.
+**§ 123(2)** All ordinary expression operands evaluate strictly left to right.
 
-`&&` and `||` use lazy short-circuit evaluation.
+**§ 123(3)** `&&` and `||` use lazy short-circuit evaluation.
 
-Integer arithmetic is checked.
+**§ 123(4)** Integer arithmetic is checked.
 
-Integer division truncates toward zero.
+**§ 123(5)** Integer division truncates toward zero.
 
-`%` uses truncation-based remainder for integers, floats, and decimals.
+**§ 123(6)** `%` uses truncation-based remainder for integers, floats, and decimals.
 
-Shifts use strict counts.
+**§ 123(7)** Shifts use strict counts.
 
-Signed right shift is arithmetic.
+**§ 123(8)** Signed right shift is arithmetic.
 
-Unsigned right shift is logical.
+**§ 123(9)** Unsigned right shift is logical.
 
-Unsigned left shift discards high bits.
+**§ 123(10)** Unsigned left shift discards high bits.
 
-Signed left shift is checked.
+**§ 123(11)** Signed left shift is checked.
 
-`char`, `rune`, and `string` support exact deterministic ordering.
+**§ 123(12)** `char`, `rune`, and `string` support exact deterministic ordering.
 
-Strings order lexicographically by Unicode scalar sequence.
+**§ 123(13)** Strings order lexicographically by Unicode scalar sequence.
 
-Structs derive structural equality when their stored fields are comparable and
+**§ 123(14)** Structs derive structural equality when their stored fields are comparable and
 the type has no identity or opaque-resource semantics.
 
-A normal `impl` does not disable equality.
+**§ 123(15)** A normal `impl` does not disable equality.
 
-Ranges remain contextual in Sec 0.1.
+**§ 123(16)** Ranges remain contextual in Sec 0.1.
 
-`in` supports ranges, fixed arrays, dynamic arrays, and slices.
+**§ 123(17)** `in` supports ranges, fixed arrays, dynamic arrays, and slices.
 
-`for value in source` is iteration grammar, not membership.
+**§ 123(18)** `for value in source` is iteration grammar, not membership.
 
-String `+` accepts exactly built-in `string`, `char`, and `rune` operands and
+**§ 123(19)** String `+` accepts exactly built-in `string`, `char`, and `rune` operands and
 always produces `string`; other values require explicit conversion, while
 interpolation is an explicit formatting context.
 
-Compile-time concatenation folds without allocation. Runtime concatenation uses
+**§ 123(20)** Compile-time concatenation folds without allocation. Runtime concatenation uses
 the active allocation context and selects deterministic allocation panic by
 default or `StringError` flow through `try`. Maximal concatenation,
 interpolation, `string.Concat`, and transactional `string +=` share one
 `StringConcatPlan` before MLIR.
 
-`?` remains reserved with no Sec 0.1 meaning.
+**§ 123(21)** `?` remains reserved with no Sec 0.1 meaning.
 
-Arbitrary user-defined operator declarations are not supported.
+**§ 123(22)** Arbitrary user-defined operator declarations are not supported.
 
-Sema resolves every operator completely.
+**§ 123(23)** Sema resolves every operator completely.
 
-Semantic IR preserves the resolved operation.
+**§ 123(24)** Semantic IR preserves the resolved operation.
 
-MLIR and backends implement Sec semantics without changing them.
+**§ 123(25)** MLIR and backends implement Sec semantics without changing them.

@@ -2096,8 +2096,9 @@ func TestSemanticTokensDoNotMarkOrdinaryCommentOrRawStringAsDeclarationMetadata(
 	assertSemanticTokenWithoutModifier(t, tokens, 2, 17, len("`raw`"), "string", "declaration")
 }
 
-// Semantic tokens may not span physical lines. Nested block comments remain
-// one lexer token, so the LSP must split that token without losing the outer
+// Semantic tokens may not span physical lines. A multiline block comment,
+// including one whose text contains `/*` (block comments do not nest), is one
+// lexer token, so the LSP must split that token without losing the
 // documentation classification or later tokens.
 //
 // Rules:
@@ -2105,11 +2106,11 @@ func TestSemanticTokensDoNotMarkOrdinaryCommentOrRawStringAsDeclarationMetadata(
 //   - rules/tooling/lsp.md — "Shared diagnostic model", protocol position encoding
 //   - rules/foundations/lexical_structure.md — §§2 and 5.3–5.4
 func TestSemanticTokensCoverEveryMultilineCommentLine(t *testing.T) {
-	source := "/** 😀 docs\n * nested /* inner */\n */\nfn Ready() void {}\n"
+	source := "/** 😀 docs\n * inner /* is text\n */\nfn Ready() void {}\n"
 	tokens := decodeSemanticTokens(semanticTokensForSource("", source))
 
 	assertSemanticTokenWithModifier(t, tokens, 0, 0, 11, "comment", "documentation")
-	assertSemanticTokenWithModifier(t, tokens, 1, 0, 21, "comment", "documentation")
+	assertSemanticTokenWithModifier(t, tokens, 1, 0, 19, "comment", "documentation")
 	assertSemanticTokenWithModifier(t, tokens, 2, 0, 3, "comment", "documentation")
 	assertSemanticToken(t, tokens, 3, 0, 2, "keyword")
 }
@@ -2550,18 +2551,19 @@ fn Ready() bool {
 	}
 }
 
-// A nested multiline comment is one trivia token. It must not prevent the
-// recoverable program behind it from contributing symbols to hover.
+// A multiline comment whose text contains `/*` is one trivia token closed by
+// its first `*/` (block comments do not nest). It must not prevent the
+// program behind it from contributing symbols to hover.
 //
 // Rules:
-//   - rules/foundations/lexical_structure.md — §5.3 "Nested block comments"
+//   - rules/foundations/lexical_structure.md — §5.3 "Block comments do not nest"
 //   - rules/tooling/lsp.md — "Hover"
-func TestHoverSurvivesNestedMultilineComment(t *testing.T) {
+func TestHoverSurvivesMultilineCommentWithInnerOpener(t *testing.T) {
 	source := `module main
 
 /* outer
- * /* nested */
- * still outer
+ * /* inner opener is text
+ * still the same comment
  */
 fn Ready() bool {
 	return true
@@ -2575,7 +2577,7 @@ fn Use() bool {
 	use := strings.LastIndex(source, "Ready") + 1
 	hover, ok := hoverForSource("", source, offsetPosition(source, use))
 	if !ok || !strings.Contains(hover.Contents.Value, "fn Ready() bool") {
-		t.Fatalf("hover after nested multiline comment = %+v, %v", hover, ok)
+		t.Fatalf("hover after multiline comment = %+v, %v", hover, ok)
 	}
 }
 

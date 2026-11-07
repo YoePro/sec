@@ -100,6 +100,10 @@ type placeIdentityAllocator struct {
 	sliceRanges    map[string]SliceRangeID
 	borrows        map[string]BorrowID
 	lifetimes      map[string]LifetimeID
+	// P18-07 allocation identities (storage_relations.go).
+	allocations        map[string]AllocationIdentityID
+	allocationContexts map[string]AllocationContextID
+	reclamations       map[string]ReclamationPlanID
 }
 
 func allocateIdentity[T ~uint32](table *map[string]T, key string, offset T) T {
@@ -164,6 +168,10 @@ func (a placeIdentityAllocator) clone() placeIdentityAllocator {
 		sliceRanges:    cloneIdentityTable(a.sliceRanges),
 		borrows:        cloneIdentityTable(a.borrows),
 		lifetimes:      cloneIdentityTable(a.lifetimes),
+
+		allocations:        cloneIdentityTable(a.allocations),
+		allocationContexts: cloneIdentityTable(a.allocationContexts),
+		reclamations:       cloneIdentityTable(a.reclamations),
 	}
 }
 

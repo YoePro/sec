@@ -32,7 +32,7 @@ Audited HEAD:
 
 | Area | Observed implementation | P18 consequence |
 |---|---|---|
-| Source/Sema type | `T[]` is a Sema `DynamicArrayType` with compiler-known members (`Append`, `Reserve`, `WithCapacity`, `.Len`), collection capacity/allocation facts and the MD-004 allocation-context machinery. | Evolve these into the immutable P18 plans; do not add a second collection model. |
+| Source/Sema type | `T[]` is a Sema `DynamicArrayType` with compiler-known members (`Append`, `Clear`, `RemoveAt`, `.Len`; `Reserve`/`WithCapacity` belong to list/map/set — corrected 2026-11-07), collection capacity/allocation facts and the MD-004 allocation-context machinery. | Evolve these into the immutable P18 plans; do not add a second collection model. |
 | Allocation facts | `allocation_facts.go`, `allocation_context_facts.go`, `collection_allocation.go`, `collection_capacity.go`, `allocation_target_policy.go` and the Codex `allocation_lowering_readiness.go` gate exist. | `ResolvedAllocationOperationPlan` must consume them; the readiness gate stays the rejection point until each operation lowers. |
 | Semantic IR | `T[]` is rejected as a type at every package (`type int[]`); P15 rejects dynamic-array element and slice borrows (P15-67 test). No dynamic-array, allocation or storage-transition operations exist. | Add the P18 type, operations and verifiers (§§ 52–80). |
 | P15 | Places, storage/domain/epoch identities, dynamic-epoch references and static storage exist; P15 is partial. | Element Places and epoch-dependent references build on P15 (§§ 74–77, 100). |
@@ -81,46 +81,126 @@ hidden allocation, mandatory runtime, physical descriptor or allocator choice
 
 ## A. Establish the execution baseline and synchronized authority
 
-- [ ] P18-01 — Record the exact execution snapshot and predecessor matrix
+- [x] P18-01 — Record the exact execution snapshot and predecessor matrix
   (P13–P17 actual state) before any P18 change (§§ 2, 136).
-- [ ] P18-02 — Audit `sec_dynamic_array_sync_v1.md` paragraph by paragraph
+- [x] P18-02 — Audit `sec_dynamic_array_sync_v1.md` paragraph by paragraph
   against `collections.md`, `allocation.md`, `storage.md`, `destruction.md`
   and `semantic_ir.md`; merge missing amendments without renumbering, and
   record conflicts as MD entries (§ 1).
-- [ ] P18-03 — Confirm the canonical source type `T[]`, its ownership
+
+  Done 2026-11-07 (Claude), sections A as a whole:
+  - **P18-01 snapshot.** HEAD `28780c01` plus the uncommitted P17 working
+    tree. P13 53/53, P14 77/77, P15 76/76, P16 58/58 done; P17 62/64 (P17-41
+    defer captures, P17-49 FFI metadata open). Go emits schemas 11–13, C++
+    accepts 1–13; schema 14 does not exist. Semantic IR stops `T[]` as the
+    structured unsupported "dynamic array type int[]".
+  - **P18-02 audit.** Sync §§ 1–12 and 15–20 agree with `collections.md`
+    §§ 6, 12, `copy_move.md` § 4.6, `default_values.md` and `storage.md`
+    §§ 20–23. Sync § 16 `AllocationError` is the allocation layer; the public
+    failure is `CollectionError` (collections.md §§ 6.4, 6.7; package § 15), so
+    no conflict. `destruction.md` § 17.3 gained (3) for reverse logical order and
+    the reclamation-authority split (sync §§ 13–14). Sync § 21 waits on MD-072;
+    § 22 Semantic IR docs is a governance remaining item. No new MD.
+  - **P18-03 Sema.** `T[]` is MoveOnly and non-trivially destructible for every
+    `T` (S1007 on implicit copy, `:<-` moves), `let mut v: T[]` is the empty
+    owner, `let v: T[]` is S1047. Members: Len, IsEmpty, Ptr, SizeOf, ToString,
+    Append, Clear, RemoveAt; `Reserve`/`WithCapacity`/`Capacity` exist only for
+    list/map/set.
+  - **P18-04.** MD-074 unchanged (`len` and `.Len` are the same `uint`); no
+    public capacity, growth not observable. Recorded in
+    `governance/lowering.yaml` `lowering.sec-mlir-package18`.
+- [x] P18-03 — Confirm the canonical source type `T[]`, its ownership
   classification (MoveOnly owner, no implicit copy), explicit duplication
   boundary and the wide builtin invariant against current Sema (§§ 3–6).
-- [ ] P18-04 — Record MD-074 handling for `len(T[])`, the absent public
+- [x] P18-04 — Record MD-074 handling for `len(T[])`, the absent public
   capacity and the non-observable growth policy in governance (§§ 12, 14, 51,
   111).
 
 ## B. Publish immutable dynamic-array and allocation plans in Sema
 
-- [ ] P18-05 — `ResolvedDynamicArrayPlan`: element type, ownership and copy
+- [x] P18-05 — `ResolvedDynamicArrayPlan`: element type, ownership and copy
   classes, empty-default and mutable-default facts, destruction requirement
   and backing-domain identity; read-only query API (§§ 7–11, 55).
-- [ ] P18-06 — `ResolvedAllocationOperationPlan` for every producing
-  operation (`WithCapacity`, `Append`, `Reserve`, literal/conversion
-  producers): allocation context from the MD-004 machinery, failure channel
+
+  Done 2026-11-07 (Claude): `ResolveDynamicArrayPlan` (pure, type level) and
+  `ResolvedDynamicArrayPlanOf(expr)` in `internal/sema/dynamic_array_plans.go`.
+  MoveOnly and destruction required for every `T`; element copy class and
+  element destruction plan; empty default that allocates nothing and constructs
+  no element; mutable default declaration / immutable needs an initializer.
+  An owner Place carries its descriptor storage and a separate backing
+  `InvalidationDomainID`, allocated when Sema publishes the Place (never by
+  the query); fields of one struct share storage but not backing; a
+  runtime-indexed owner has no static backing identity. Capacity, context,
+  backing relation and reclamation stay with the producing operation
+  (P18-06/07). Evidence: `TestDynamicArrayPlans`.
+- [x] P18-06 — `ResolvedAllocationOperationPlan` for every producing
+  operation (`Append`, non-empty literal and conversion producers; `T[]` has
+  no `WithCapacity`/`Reserve`, collections.md § 6.3, corrected 2026-11-07): allocation context from the MD-004 machinery, failure channel
   (`AllocationError`/`CollectionError` as the rules declare), no-allocation
   profile rejection and default context (§§ 16–19, 56–57).
-- [ ] P18-07 — Allocation and backing identities: value ownership versus
+
+  Done 2026-11-07 (Claude): `ResolvedAllocationOperationPlan` and
+  `ResolvedAllocationPlanOf(expr)` (§ 57 name) in
+  `internal/sema/dynamic_array_allocation_plans.go`. `Append` is the only
+  Sec 0.1 producer that gives `T[]` backing (nonempty literals are S1155,
+  no WithCapacity/Reserve, byte[]/rune[] conversions are MD-072's). Each
+  resolved `Append` records one plan: single or compact range append with
+  its exact count, `MayAllocate` false for an empty range, the site's active
+  allocation context and origin (the Arena in hosted), public
+  `CollectionError` over allocation-layer `AllocationError`, and the
+  receiver's backing domain. A missing context is rejected by the existing
+  reachable-graph policy (S1108 under noalloc, verified); freestanding has no
+  context until MD-034. Evidence: `TestDynamicArrayAllocationPlans`
+  (hosted and noalloc).
+- [x] P18-07 — Allocation and backing identities: value ownership versus
   backing reclamation, empty backing relation, backing allocation relation,
   collection object versus backing domain (§§ 20–24).
-- [ ] P18-08 — Backing transitions as resolved facts: establishment,
+
+  Done 2026-11-07 (Claude): `internal/sema/storage_relations.go`
+  (BackingRelation, ReclamationAuthority, AllocationIdentityID,
+  AllocationContextID, ReclamationPlanID). Each possibly allocating Append has
+  its own allocation identity, Owned backing, the context's authority (Arena in
+  hosted, Unknown without context) and a ReclamationPlanID only for
+  OwningValue; the empty owner is None/None. Evidence:
+  `TestDynamicArrayAllocationPlans`, `TestDynamicArrayPlans`.
+- [x] P18-08 — Backing transitions as resolved facts: establishment,
   in-place mutation, in-place growth, relocation preserving logical identity,
   logical replacement, destruction transition, reclamation pairing (§§ 25–31).
-- [ ] P18-09 — `ResolvedDynamicArrayIndexPlan`: evaluated root and index,
+
+  Done 2026-11-07 (Claude): `ResolvedBackingTransitionPlan` per Append
+  (establish when absent, none within capacity, advance-epoch on growth, none
+  on failure; § 29 choice: the owner's BackingDomain is the logical domain, so
+  no replace-domain) and `DestructionTransitions` on the array plan
+  (destroy-elements-reverse, end-domain, reclaim-per-allocation-plan). Element
+  access records BackingTransition none.
+- [x] P18-09 — `ResolvedDynamicArrayIndexPlan`: evaluated root and index,
   bounds proof or runtime check, failure endpoint, consumed by P15 element
   Places (§§ 40–42).
-- [ ] P18-10 — Element move-out restriction, element replacement and element
+
+  Done 2026-11-07 (Claude): `internal/sema/dynamic_array_index_plans.go`;
+  runtime check, panic operation dynamic-array-index or IndexError under try,
+  owner backing domain. `.Len`-refinement proofs remain a governance item.
+  Evidence: `TestDynamicArrayIndexPlans`.
+- [x] P18-10 — Element move-out restriction, element replacement and element
   borrowing plans; slice-borrow source facts recorded for P16 (§§ 43–48).
-- [ ] P18-11 — Direct references during structural mutation: epoch
+
+  Done 2026-11-07 (Claude): the index plan's use/action follow write, ref and
+  ref mut contexts with epoch dependency for borrows; runtime-indexed move-out
+  stays rejected and S1007 now points to borrowing. Slice borrows of T[] use
+  the existing P16 slice plans.
+- [x] P18-11 — Direct references during structural mutation: epoch
   dependency of element references and conflicts with growth/replacement;
   stable handles stay out of scope (§§ 38–39, 77).
-- [ ] P18-12 — Effects: allocation effects per operation, `@noPanic` for
+
+  Done 2026-11-07 (Claude, verified): Append across a live element or slice
+  borrow is S1162. Naming the backing domain in P15/P16 reference epoch
+  facts is left to P18-15/19 (governance).
+- [x] P18-12 — Effects: allocation effects per operation, `@noPanic` for
   runtime index failure and allocation failure paths, no hidden allocation
   (§§ 71, 113–115).
+
+  Done 2026-11-07 (Claude, verified): see
+  `TestDynamicArrayIndexRestrictionsAndEffects`.
 
 ## C. Add the Semantic IR representation
 

@@ -245,7 +245,7 @@ func (b *pitfallBuilder) bodyFingerprint(body *ast.BlockStatement, revision Pitf
 // pitfallCacheSyntaxComplete refuses recovered syntax even when parser-owned
 // errors are intentionally not repeated by Sema. Recovery is tooling input,
 // never a complete cacheable semantic body.
-// Rules: rules/compiler/parser_recovery.md — "Recovery nodes";
+// Rules: rules/compiler/parser_recovery.md — "Invalid AST nodes";
 // rules/compiler/incremental_compilation.md — §§2,7;
 // rules/analysis/pitfall_analysis.md — "Analysis states".
 func pitfallCacheSyntaxComplete(value reflect.Value) bool {

@@ -36,7 +36,7 @@ const (
 // are then unset rather than guessed.
 //
 // Rules:
-//   - rules/compiler/parser_recovery.md — "Virtual missing tokens", "Skipped tokens are only partly preserved", "Initial recovery event stream"
+//   - rules/compiler/parser_recovery.md — "Virtual missing tokens", "Token and trivia retention", "Recovery event"
 //   - rules/tooling/formatter.md — § 5 "Required syntax representation", § 25 "Malformed and incomplete source"
 type RecoveryNode struct {
 	Kind         RecoveryKind

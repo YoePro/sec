@@ -4,8 +4,8 @@ import "sec/internal/lexer"
 
 // recoveryScan accounts only for source tokens actually discarded by a
 // specialized recovery helper. Lookahead boundaries remain outside the range.
-// Rules: rules/compiler/parser_recovery.md — "Recovery event", "Record skipped ranges",
-// "Enclosing-boundary safety", Appendix A.10.
+// Rules: rules/compiler/parser_recovery.md — "Recovery event", "Token and trivia retention",
+// "Enclosing-boundary safety", "Progress".
 type recoveryScan struct {
 	parser     *Parser
 	start, end lexer.Token
@@ -14,7 +14,7 @@ type recoveryScan struct {
 
 // beginRecoveryScan includes the current token only when the caller has
 // already committed that token to the malformed region.
-// Rules: rules/compiler/parser_recovery.md — "Skipped tokens", "Recovery event".
+// Rules: rules/compiler/parser_recovery.md — "Token and trivia retention", "Recovery event".
 func (p *Parser) beginRecoveryScan(includeCurrent bool) *recoveryScan {
 	scan := &recoveryScan{parser: p, start: p.peekToken}
 	if includeCurrent && p.curToken.Type != lexer.EOF {
@@ -25,7 +25,7 @@ func (p *Parser) beginRecoveryScan(includeCurrent bool) *recoveryScan {
 
 // advance records a real consumed token; callers establish delimiter ownership
 // with delimiterStack before advancing.
-// Rules: rules/compiler/parser_recovery.md — "Progress", "Delimiter depth".
+// Rules: rules/compiler/parser_recovery.md — "Progress", "Delimiter tracking".
 func (scan *recoveryScan) advance() {
 	scan.parser.nextToken()
 	if scan.parser.curToken.Type != lexer.EOF {

@@ -1,0 +1,247 @@
+module secdoc
+
+/*
+ * Sec Documentation Generator - Source Scanner
+ *
+ * File:        tools/secdoc/scanner.sec
+ * Module:      secdoc
+ * Revision:    1
+ * Updated:     2026-11-07
+ * Status:      Initial development
+ *
+ * Purpose:
+ * Scans Sec source code and identifies lexical elements
+ * needed for documentation extraction.
+ *
+ * The scanner operates on Unicode scalar values (runes),
+ * not raw UTF-8 bytes.
+ *
+ * Responsibilities:
+ * - Track source positions.
+ * - Recognize documentation and ordinary comments.
+ * - Identify tokens without interpreting declarations.
+ *
+ * The scanner does not perform syntax or semantic analysis.
+ */
+
+/**
+ * Maintains the scanning position within Sec source text.
+ *
+ * Description:
+ * Provides the state required to read source text
+ * sequentially and identify lexical tokens.
+ *
+ * Source positions are expressed as rune indexes.
+ * Byte offsets may be tracked separately for source mapping.
+ *
+ * Allocation:
+ * Scanning does not inherently require allocation.
+ */
+/**
+ * Maintains a Unicode-scalar cursor over Sec source text.
+ *
+ * Description:
+ * Materializes the source into runes once, allowing
+ * efficient indexed access during lexical scanning.
+ *
+ * Allocation:
+ * Allocates an owning rune array during initialization.
+ */
+type DocScanner struct {
+    _source: string,
+    _runes:    rune[],
+    _position: uint,
+}
+
+type DocToken union {
+    BlockComment {
+        Start: uint,
+        End:   uint
+    }
+
+    DocumentationComment {
+        Start: uint,
+        End:   uint
+    }
+
+    /**
+     * Represents an ordinary line comment.
+     *
+     * Description:
+     * The range includes the opening // delimiter but
+     * excludes the terminating line break.
+     *
+     * Start and End are zero-based rune indexes.
+     */
+    LineComment {
+        Start: uint,
+        End:   uint,
+    }
+}
+
+type DocScanError union error {
+    UnterminatedBlockComment(uint)
+    /** The current position does not contain the expected comment delimiter. */
+    ExpectedCommentStart(uint)
+}
+
+impl DocScanner {
+    /**
+     * Initializes a scanner for the supplied source text.
+     *
+     * Parameters:
+     * - source: Valid UTF-8 Sec source text.
+     *
+     * Errors:
+     * - CollectionError: Rune array allocation failed.
+     *
+     * Allocation:
+     * Allocates storage for the source runes.
+     */
+    init(source: string) CollectionError {
+        self._runes = try source.ToRuneArray()
+        self._source = source
+        self._position = 0
+    }
+
+    /**
+     * Checks whether the next two runes match the expected values.
+     *
+     * Description:
+     * Reads from the current scanner position without advancing it.
+     * Returns false when fewer than two runes remain.
+     *
+     * Parameters:
+     * - first: Expected first Unicode scalar value.
+     * - second: Expected second Unicode scalar value.
+     *
+     * Returns:
+     * True when both runes match; otherwise false.
+     *
+     * Allocation:
+     * Does not allocate.
+     */
+    fn _StartsWith(first: rune, second: rune) bool {
+        if self._position >= self._runes.Len {
+            return false
+        }
+
+        if self._runes.Len - self._position < 2 {
+            return false
+        }
+
+        return self._runes[self._position] == first && self._runes[self._position + 1] == second
+    }
+
+    /**
+    * Reads a complete block comment from the current position.
+    *
+    * Description:
+    * Recognizes ordinary and documentation comments.
+    * Supports nested block comments using a nesting counter.
+    *
+    * The scanner must be positioned at an opening /* delimiter.
+    * Documentation comments begin with /**.
+    *
+    * Returns:
+    * - BlockComment: An ordinary block comment was read.
+    * - DocumentationComment: A documentation comment was read.
+    *
+    * Errors:
+    * - UnterminatedBlockComment: The comment was not closed.
+    *
+    * Ownership:
+    * Tokens contain rune ranges into the original source.
+    *
+    * Allocation:
+    * Does not allocate.
+    */ */*/
+    fn _ReadBlockComment() Result[DocToken, DocScanError] {
+        if !self._StartsWith(47r, 42r) {
+            return Err(DocScanError.ExpectedCommentStart(self._position))
+        }
+
+        let start := self._position
+
+        let isDocumentation :=
+              self._runes.Len - self._position >= 3
+           && self._runes[self._position + 2] == 42r
+
+        self._position += 2
+
+        let mut depth: uint := 1
+
+        while self._position < self._runes.Len {
+            if self._StartsWith(47r, 42r) {
+                depth += 1
+                self._position += 2
+                continue
+            }
+
+            if self._StartsWith(42r, 47r) {
+                depth -= 1
+                self._position += 2
+
+                if depth == 0 {
+                    if isDocumentation {
+                        return Ok(DocToken.DocumentationComment {
+                            Start: start,
+                            End: self._position,
+                        })
+                    }
+
+                    return Ok(DocToken.BlockComment {
+                        Start: start,
+                        End: self._position,
+                    })
+                }
+
+                continue
+            }
+
+            self._position += 1
+        }
+
+        return Err(DocScanError.UnterminatedBlockComment(start))
+    }
+
+    /**
+     * Reads a line comment from the current scanner position.
+     *
+     * Description:
+     * Consumes the opening // delimiter and all subsequent
+     * runes until a line break or the end of the source.
+     *
+     * The terminating line break is not consumed.
+     * Both // and /// are ordinary line comments.
+     *
+     * Returns:
+     * A LineComment token with a half-open rune range.
+     *
+     * Allocation:
+     * Does not allocate.
+     */
+    fn _ReadLineComment() Result[DocToken, DocScanError] {
+        if !self._StartsWith(47r, 47r) {
+            return Err(DocScanError.ExpectedCommentStart(self._position))
+        }
+
+        let start := self._position
+        self._position += 2
+
+        while self._position < self._runes.Len {
+            let current := self._runes[self._position]
+
+            if current == 10r || current == 13r {
+                break
+            }
+
+            self._position += 1
+        }
+
+        return Ok(DocToken.LineComment {
+            Start: start,
+            End: self._position,
+        })
+    }
+}

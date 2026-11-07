@@ -38,3 +38,50 @@ type FormattedSizeError union error {
     // The formatted UTF-8 byte count cannot fit in uint.
     SizeOverflow,
 }
+
+/**
+ * Reports a failure during formatted text scanning.
+ *
+ * Description:
+ * Distinguishes format errors, input matching failures,
+ * numeric conversion errors and text materialization failures.
+ *
+ * Input positions are zero-based UTF-8 byte offsets.
+ * Argument indexes are zero-based destination indexes.
+ *
+ * Ownership:
+ * Owns its error payload according to normal Sec union rules.
+ *
+ * Allocation:
+ * Does not inherently allocate.
+ */
+type ScanError union error {
+    // The format string is invalid or unsupported.
+    Format(FormatError),
+
+    // Input does not match the expected literal text.
+    LiteralMismatch {
+        ByteOffset: uint,
+    },
+
+    // A required destination value is missing.
+    MissingValue {
+        ArgumentIndex: uint,
+        ByteOffset:    uint,
+    },
+
+    // Input remains after a complete strict match.
+    TrailingInput {
+        ByteOffset: uint,
+    },
+
+    // Numeric conversion failed.
+    Number {
+        ArgumentIndex: uint,
+        ByteOffset:    uint,
+        Cause:         NumberParseError,
+    },
+
+    // Text extraction or materialization failed.
+    Text(StringError),
+}

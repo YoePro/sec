@@ -128,6 +128,18 @@ func (a *Analyzer) validateNamedOwnershipSource(mode ast.OwnershipMode, value as
 	if declaration {
 		help = "use `let destination :<- source` to transfer ownership"
 	}
+	if placeHasRuntimeIndex(place) {
+		// package18 § 43, package14: no runtime-indexed partial move exists,
+		// so `<-` is not a remedy here; borrowing the element is.
+		a.addErrorAtTokenWithMetadata(
+			expressionToken(value),
+			diagnostics.ImplicitMoveDisallowed,
+			"Moving one element out by a runtime index is not part of Sec 0.1. Borrow it with `ref "+value.String()+"` (or `ref mut`), or move the whole containing value.",
+			"cannot copy non-copyable element %s out of a runtime index",
+			place.String(),
+		)
+		return false
+	}
 	switch classification {
 	case CopyNonCopyable:
 		a.addErrorAtTokenWithMetadata(
@@ -589,6 +601,13 @@ func (a *Analyzer) markMovedCallArguments(function Function, sourceArgs []ast.Ex
 		preparedSpread := sourceIndex < len(preparedSpreadValues) && preparedSpreadValues[sourceIndex]
 		if param.MutableRef || (param.Type.Kind == ReferenceType && param.Type.ReferenceMutable) {
 			a.invalidateMutexAcquisitionsForWrite(arg)
+			target := arg
+			if ref, ok := target.(*ast.RefExpression); ok {
+				target = ref.Value
+			}
+			if place, placed := a.resolvePlace(target); placed {
+				a.noteLambdaEnvironmentWrite(place, expressionToken(arg))
+			}
 		}
 		if param.Ref || param.MutableRef || param.Type.Kind == ReferenceType {
 			continue
@@ -626,6 +645,7 @@ func (a *Analyzer) markMovedCallArguments(function Function, sourceArgs []ast.Ex
 //   - rules/memory/copy_move.md — §11 "Closure captures"
 //   - rules/memory/ownership.md — §16 "Closure captures"
 func (a *Analyzer) validateLambdaCaptureOwnership(expr *ast.LambdaExpression) {
+	delete(a.lambdaBorrowCaptures, expr)
 	seen := map[string]bool{}
 	for _, capture := range expr.Captures {
 		if capture.Name == nil || seen[capture.Name.Value] {
@@ -644,6 +664,15 @@ func (a *Analyzer) validateLambdaCaptureOwnership(expr *ast.LambdaExpression) {
 			continue
 		}
 
+		if capture.IsBorrow() {
+			if borrowed, valid := a.validateLambdaBorrowCapture(capture, symbol); valid {
+				a.lambdaBorrowCaptures[expr] = append(a.lambdaBorrowCaptures[expr], lambdaBorrowCapture{
+					Name: capture.Name.Value, Place: clonePlace(borrowed),
+					Mutable: capture.Mode == ast.LambdaCaptureMutableBorrow, Token: capture.Token,
+				})
+			}
+			continue
+		}
 		if capture.Mode == ast.LambdaCaptureMove {
 			if a.validateNamedOwnershipSource(ast.OwnershipMove, capture.Name, capture.Token, false, false, TransferSiteCapture) {
 				a.markExplicitMoveSource(capture.Name)
@@ -653,6 +682,8 @@ func (a *Analyzer) validateLambdaCaptureOwnership(expr *ast.LambdaExpression) {
 
 		classification := CopyClassificationOf(symbol.Type)
 		if classification == CopyTrivial || classification == CopySemantic {
+			// A plain capture copies into its environment slot (P17-13).
+			a.recordAcceptedCopy(capture.Name, place, TransferSiteCapture)
 			continue
 		}
 		help := fmt.Sprintf("use `capture(<-%s)` to transfer ownership or capture a reference", capture.Name.Value)
@@ -684,4 +715,15 @@ func (a *Analyzer) validateLambdaCaptureOwnership(expr *ast.LambdaExpression) {
 			)
 		}
 	}
+}
+
+// placeHasRuntimeIndex reports a Place projected through an index whose value
+// is not a compile-time constant.
+func placeHasRuntimeIndex(place Place) bool {
+	for _, projection := range place.Projections {
+		if projection.Kind == PlaceIndex && projection.ConstantIndex == nil {
+			return true
+		}
+	}
+	return false
 }

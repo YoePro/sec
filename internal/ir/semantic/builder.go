@@ -2426,12 +2426,12 @@ func (fb *functionBuilder) buildUnionConstruction(expr ast.Expression, plan sema
 			return builtValue{}, fb.unsupported("single-payload union construction", expressionToken(expr))
 		}
 		semaVariant := plan.UnionType.UnionVariants[plan.VariantIndex]
-		action := UnionPayloadCopyTrivial
-		if semaVariant.Payload == nil || !fb.owner.concreteTriviallyCopyable(*semaVariant.Payload) {
-			if semaVariant.Payload == nil || !fb.ownedArgumentLowerable(call.Arguments[0]) {
-				return builtValue{}, fb.unsupported("non-trivial union payload transfer", expressionToken(call.Arguments[0]))
-			}
-			action = UnionPayloadConstructDirect
+		if semaVariant.Payload == nil || len(plan.PayloadActions) != 1 {
+			return builtValue{}, fb.unsupported("unresolved union payload transfer", expressionToken(call.Arguments[0]))
+		}
+		action, err := fb.unionPayloadAction(plan.PayloadActions[0], call.Arguments[0], *semaVariant.Payload)
+		if err != nil {
+			return builtValue{}, err
 		}
 		payload, err := fb.buildExpr(call.Arguments[0], variant.Payload)
 		if err != nil {
@@ -2456,18 +2456,20 @@ func (fb *functionBuilder) buildUnionConstruction(expr ast.Expression, plan sema
 			semaFields[field.Name] = field.Type
 		}
 		// Evaluate in source order before canonical declaration-order assembly.
+		if len(plan.PayloadActions) != len(plan.SourceFieldOrder) {
+			return builtValue{}, fb.unsupported("unresolved union field transfer", expressionToken(expr))
+		}
+		ordinal := 0
 		for _, sourceField := range literal.Fields {
 			if sourceField == nil || sourceField.Name == nil || sourceField.Spread {
 				continue
 			}
 			name := sourceField.Name.Value
-			fieldAction := UnionPayloadCopyTrivial
-			if sema.CopyClassificationOf(semaFields[name]) != sema.CopyTrivial {
-				if !fb.ownedArgumentLowerable(sourceField.Value) {
-					return builtValue{}, fb.unsupported("non-trivial union field transfer", sourceField.Token)
-				}
-				fieldAction = UnionPayloadConstructDirect
+			fieldAction, err := fb.unionPayloadAction(plan.PayloadActions[ordinal], sourceField.Value, semaFields[name])
+			if err != nil {
+				return builtValue{}, err
 			}
+			ordinal++
 			fieldActions[name] = fieldAction
 			value, err := fb.buildExpr(sourceField.Value, fieldTypes[name])
 			if err != nil {
@@ -2489,6 +2491,26 @@ func (fb *functionBuilder) buildUnionConstruction(expr ast.Expression, plan sema
 		return builtValue{}, fb.unsupported("union variant kind", expressionToken(expr))
 	}
 	return fb.result(op, resultType), nil
+}
+
+// unionPayloadAction lowers the payload transfer Sema resolved for a union
+// construction operand (P17-35). A moved owner or fresh value is taken
+// directly once its producer lowers; a specialization may make a generic
+// operand trivially copyable, as for struct fields.
+func (fb *functionBuilder) unionPayloadAction(resolved sema.ResolvedStructFieldAction, operand ast.Expression, payload sema.Type) (UnionPayloadAction, error) {
+	switch resolved {
+	case sema.StructFieldCopyTrivial:
+		return UnionPayloadCopyTrivial, nil
+	case sema.StructFieldMove, sema.StructFieldConstructDirect:
+		if len(fb.owner.substitution) != 0 && fb.owner.concreteTriviallyCopyable(payload) {
+			return UnionPayloadCopyTrivial, nil
+		}
+		if !fb.ownedArgumentLowerable(operand) {
+			return "", fb.unsupported("non-trivial union payload transfer", expressionToken(operand))
+		}
+		return UnionPayloadConstructDirect, nil
+	}
+	return "", fb.unsupported("union payload transfer "+string(resolved), expressionToken(operand))
 }
 
 func (b *builder) unionDefinition(typeID TypeID) (UnionDefinition, bool) {
@@ -2641,10 +2663,10 @@ func (fb *functionBuilder) buildResolvedMatch(expr *ast.MatchExpression, resultT
 		if patternBlock == nil {
 			return builtValue{}, fmt.Errorf("match pattern chain terminated before arm %d", armPlan.SourceIndex)
 		}
-		// Copy-trivial named fields of a stored subject are read from its
-		// observed value on the proven variant path; moving or borrowing one
-		// out of storage keeps its boundary (P17-37).
-		if observed && !copyTrivialFieldBindings(armPlan) {
+		// Named fields of a stored subject are read or borrowed through its
+		// payload Place on the proven variant path; flowcontrol_match.md § 15
+		// leaves no named-field move to lower (P17-37).
+		if observed && !storageFieldBindings(armPlan) {
 			return builtValue{}, fb.unsupported("named-field or error-variant pattern on a mutable owned subject (P17-37)", arm.Token)
 		}
 		fb.errorArm = matchErrorArm{}
@@ -3463,26 +3485,53 @@ func (fb *functionBuilder) buildTryHandler(expr *ast.TryExpression, plan sema.Re
 	// otherwise it lives through the handler like a match subject an arm leaves
 	// (destruction.md § 8(8); errorhandling.md § 20).
 	errorSema, ownedError := fb.ownedTryError(expr, input)
-	if ownedError && plan.Guarded {
-		return fb.unsupported("guarded try handler on an error that needs destruction", handler.Token)
-	}
-	restoreFields, err := fb.bindTryHandlerPayload(handler, plan, &input, selected)
+	// A guarded handler that moves an owned payload gives its guard a
+	// candidate read of the payload and moves it only on a true guard, so a
+	// false guard leaves the error whole for the next handler (errorhandling.md
+	// § 19; flowcontrol_match.md § 17).
+	bindingMoves, err := fb.tryBindingMoves(handler, plan)
 	if err != nil {
 		return err
 	}
-	defer restoreFields()
+	guardedMove := ownedError && plan.Guarded && plan.ErrorPayload && bindingMoves
+	if guardedMove {
+		candidate, err := fb.tryGuardCandidate(handler, plan, selected)
+		if err != nil {
+			return err
+		}
+		input = candidate
+	} else {
+		restoreFields, err := fb.bindTryHandlerPayload(handler, plan, &input, selected)
+		if err != nil {
+			return err
+		}
+		defer restoreFields()
+	}
 	armDepth := len(fb.armTemporaries)
 	defer func() { fb.armTemporaries = fb.armTemporaries[:armDepth] }()
 	ownedScopes := len(fb.cleanupScopes)
 	defer func() { fb.cleanupScopes = fb.cleanupScopes[:ownedScopes] }()
-	if ownedError {
+	// The handler takes responsibility for an owned error once it is selected:
+	// at once without a guard, and only on a true guard otherwise, so a false
+	// guard hands the untouched error to the next handler (errorhandling.md
+	// § 19; destruction.md § 8(8)).
+	takeOwnedError := func() error {
+		if !ownedError {
+			return nil
+		}
 		if registration, owned := fb.owner.analyzer.ResolvedOwnedCleanupHandlerBindingOf(handler); owned {
 			if err := fb.trackOwned(handler.Token, registration, input, registration.Place.Type); err != nil {
 				return err
 			}
 			fb.cleanupScopes = append(fb.cleanupScopes, registration.Scope)
-		} else if !plan.ErrorPayload || plan.BindingName == "" || plan.BindingName == "_" || sema.TriviallyCopyable(plan.BindingType) {
+		} else if !plan.ErrorPayload || !bindingMoves {
 			fb.holdArmTemporary(builtValue{id: input.id, typ: input.typ}, errorSema, handler.Token)
+		}
+		return nil
+	}
+	if !plan.Guarded {
+		if err := takeOwnedError(); err != nil {
+			return err
 		}
 	}
 	leaveHandler := func() error {
@@ -3527,6 +3576,20 @@ func (fb *functionBuilder) buildTryHandler(expr *ast.TryExpression, plan sema.Re
 		body := fb.newBlock()
 		fb.emit(Operation{Kind: OpCondBranch, Operands: []ValueID{guard.id}, Successors: []BranchTarget{{Block: body.ID}, {Block: guardFalse.ID}}, Location: location(handler.Token)})
 		fb.current = body
+		if guardedMove {
+			meta := Operation{TryHandlerKind: TryHandlerErrVariant, TryHandlerIndex: plan.SourceIndex, Variant: plan.Variant, Location: location(handler.Token)}
+			payload, err := fb.unionVariantPayload(selected.value, selected.variant, plan.BindingType, UnionPayloadMove, meta, handler.Token)
+			if err != nil {
+				return err
+			}
+			input = payload
+			if bindingID != 0 {
+				fb.bindings[bindingID] = binding{value: input.id, typ: input.typ}
+			}
+		}
+		if err := takeOwnedError(); err != nil {
+			return err
+		}
 	}
 	if handler.ReturnBody != nil {
 		return fb.buildTryHandlerReturn(handler.ReturnBody, metadata)

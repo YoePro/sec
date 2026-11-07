@@ -3983,7 +3983,7 @@ func (p *Parser) parseParameters(allowVariadic bool) []*ast.Parameter {
 			// whole function.
 			//
 			// Rules:
-			//   - rules/compiler/parser_recovery.md — "Parameter-list recovery", "Missing type", "Invalid nodes"
+			//   - rules/compiler/parser_recovery.md — "Parameter-list recovery", "Missing type", "Invalid AST nodes"
 			//   - rules/declarations/functions.md — every parameter declares its type
 			p.addError("parameter %s needs a type; write `%s: Type` at %d:%d", parameter.Name.Value, parameter.Name.Value, p.peekToken.Line, p.peekToken.Column)
 			parameter.Type = p.invalidTypeReference(p.peekToken, "")
@@ -4027,7 +4027,7 @@ func (p *Parser) parseParameters(allowVariadic bool) []*ast.Parameter {
 			//
 			// Rules:
 			//   - rules/compiler/parser_recovery.md — "Parameter-list recovery", "Missing type"
-			//   - rules/compiler/parser_recovery.md — "Invalid nodes"
+			//   - rules/compiler/parser_recovery.md — "Invalid AST nodes"
 			switch p.peekToken.Type {
 			case lexer.COMMA, lexer.RPAREN:
 				parameter.Type = p.invalidTypeReference(p.peekToken, "")
@@ -6763,7 +6763,7 @@ func trimCharQuotes(s string) string {
 // otherwise the skip advances onto the end of the file.
 //
 // Rules:
-//   - rules/compiler/parser_recovery.md — "Statement recovery", "Recovery goals"
+//   - rules/compiler/parser_recovery.md — "General statement synchronization", "Recovery goals"
 func (p *Parser) skipStatement() RecoveryEvent {
 	start := p.curToken
 	end := start
@@ -6808,7 +6808,7 @@ func (p *Parser) skipStatement() RecoveryEvent {
 // failure that produced no diagnostic reports one here.
 //
 // Rules:
-//   - rules/compiler/parser_recovery.md — "Invalid nodes", "Diagnostic deduplication"
+//   - rules/compiler/parser_recovery.md — "Invalid AST nodes", "Diagnostic deduplication"
 func (p *Parser) invalidStatement(start lexer.Token, diagnosticStart int, recovery RecoveryEvent) *ast.InvalidStatement {
 	message := "invalid statement"
 	diagnosticID := compilerdiagnostics.ParserInvalidStatement
@@ -7512,7 +7512,7 @@ func (p *Parser) skipDeclarationRest() RecoveryEvent {
 // instead of being consumed as the initializer.
 //
 // Rules:
-//   - rules/compiler/parser_recovery.md — "Recovery goals", "Invalid nodes"
+//   - rules/compiler/parser_recovery.md — "Recovery goals", "Invalid AST nodes"
 //   - rules/foundations/grammar.md — "Let declarations"
 func (p *Parser) recoverMissingLetInitializer(stmt *ast.LetStatement) bool {
 	operator := p.curToken

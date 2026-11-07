@@ -46,6 +46,7 @@ func (a *Analyzer) analyzeWhileStatement(stmt *ast.WhileStatement) {
 
 	a.symbols = previousSymbols.child()
 	a.constInts = copyConstInts(previousConstInts)
+	a.forgetLoopAssignedConstants(stmt.Body)
 	a.assigned = copyAssigned(previousAssigned)
 	a.moved = copyMoved(previousMoved)
 	a.availabilityStates = copyAvailabilityStates(previousMoveReasons)

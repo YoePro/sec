@@ -1,6 +1,14 @@
 # Closure Analysis
 
-## Status
+- **Status:** Normative
+- **Created:** 2026-08-09
+- **Last updated:** 2026-11-07 (stable chapter, subsection, and paragraph numbering)
+- **Document revision:** 2
+- **Sec language version:** 0.1
+- **Canonical path:** `rules/analysis/closure_analysis.md`
+- **Repository baseline reviewed:** `28780c01d63c3fc9eec2321ef67e3dd69962f043`
+
+---
 
 Normative compiler-analysis rulebook for Sec 0.1.
 
@@ -14,9 +22,9 @@ by the repository-level `implementation-status.yaml` ledger.
 
 ---
 
-# Purpose
+## § 1 Purpose
 
-Closure analysis determines:
+**§ 1(1)** Closure analysis determines:
 
 - what a closure captures;
 - how captured values enter the closure environment;
@@ -28,9 +36,9 @@ Closure analysis determines:
   separate-compilation boundaries;
 - what callable and environment facts other analyses may safely consume.
 
-Closure analysis is broader than lambda syntax.
+**§ 1(2)** Closure analysis is broader than lambda syntax.
 
-It covers three closely related analysis responsibilities:
+**§ 1(3)** It covers three closely related analysis responsibilities:
 
 ```text
 CaptureAnalysis
@@ -38,17 +46,17 @@ ClosureLifetimeAnalysis
 CallableFlowAnalysis
 ```
 
-The three responsibilities share the same callable-value and Place/provenance
+**§ 1(4)** The three responsibilities share the same callable-value and Place/provenance
 infrastructure and therefore belong to one normative analysis model.
 
-Closure analysis does not choose physical closure representation, storage
+**§ 1(5)** Closure analysis does not choose physical closure representation, storage
 placement, heap allocation, ABI representation, or backend calling convention.
 
 ---
 
-# Normative role
+## § 2 Normative role
 
-This rulebook is normative for:
+**§ 2(1)** This rulebook is normative for:
 
 - the distinction between callable body, function value, closure instance, and
   closure environment;
@@ -70,7 +78,7 @@ This rulebook is normative for:
 - required test classes;
 - completion criteria for Sec 0.1 closure analysis.
 
-This rulebook does not redefine:
+**§ 2(2)** This rulebook does not redefine:
 
 - lambda syntax;
 - function-type syntax or type identity;
@@ -88,17 +96,17 @@ This rulebook does not redefine:
 - physical closure layout;
 - source-level ABI.
 
-Those semantics remain owned by their respective normative rulebooks.
+**§ 2(3)** Those semantics remain owned by their respective normative rulebooks.
 
 ---
 
-# Relationship to existing language rules
+## § 3 Relationship to existing language rules
 
-`rules/declarations/lambda-functions.md` defines the source-language
+**§ 3(1)** `rules/declarations/lambda-functions.md` defines the source-language
 function-value, callable-capability, and lambda semantics consumed by this
 analysis.
 
-In Sec 0.1:
+**§ 3(2)** In Sec 0.1:
 
 - lambdas are anonymous `fn` values;
 - named functions may be used as function values when overload resolution is
@@ -118,17 +126,17 @@ In Sec 0.1:
   types have the same source-level function type;
 - no hidden cloning, ownership transfer, or heap allocation is permitted.
 
-Closure analysis consumes those rules and must not invent additional source
+**§ 3(3)** Closure analysis consumes those rules and must not invent additional source
 syntax or capture semantics.
 
 ---
 
-# Relationship to other analyses
+## § 4 Relationship to other analyses
 
-Closure analysis is intentionally separated from escape, lifetime, ownership,
+**§ 4(1)** Closure analysis is intentionally separated from escape, lifetime, ownership,
 storage, call-graph, and effect analysis.
 
-Conceptually:
+**§ 4(2)** Conceptually:
 
 ```text
 Closure analysis:
@@ -155,14 +163,14 @@ Effect analysis:
     What effects may occur through the possible callable targets/contracts?
 ```
 
-The analyses cooperate through explicit facts and shared canonical identities.
+**§ 4(3)** The analyses cooperate through explicit facts and shared canonical identities.
 They must not reimplement one another's semantic models.
 
 ---
 
-# Core semantic entities
+## § 5 Core semantic entities
 
-Closure analysis distinguishes four concepts:
+**§ 5(1)** Closure analysis distinguishes four concepts:
 
 ```text
 CallableBody
@@ -171,13 +179,13 @@ ClosureInstance
 ClosureEnvironment
 ```
 
-They are not interchangeable.
+**§ 5(2)** They are not interchangeable.
 
-## Callable body
+### § 5.1 Callable body
 
-A `CallableBody` is the executable semantic body selected by a callable value.
+**§ 5.1(1)** A `CallableBody` is the executable semantic body selected by a callable value.
 
-Examples include:
+**§ 5.1(2)** Examples include:
 
 ```text
 NamedFunction
@@ -187,11 +195,11 @@ ForeignCallable
 CompilerKnownCallable
 ```
 
-A lambda expression has one stable callable-body identity for a concrete
+**§ 5.1(3)** A lambda expression has one stable callable-body identity for a concrete
 CompilationPlan and specialization, regardless of how many times the lambda
 expression executes at runtime.
 
-Example:
+**§ 5.1(4)** Example:
 
 ```sec
 fn Make(value: int) fn() int {
@@ -201,29 +209,29 @@ fn Make(value: int) fn() int {
 }
 ```
 
-The lambda body has one callable-body identity.
+**§ 5.1(5)** The lambda body has one callable-body identity.
 
-Two calls to `Make` may create different runtime closure instances.
+**§ 5.1(6)** Two calls to `Make` may create different runtime closure instances.
 
 ---
 
-## Function value
+### § 5.2 Function value
 
-A `FunctionValue` is a source-level value whose type is a Sec function type.
+**§ 5.2(1)** A `FunctionValue` is a source-level value whose type is a Sec function type.
 
-Example:
+**§ 5.2(2)** Example:
 
 ```sec
 fn(int) int
 ```
 
-A function value may refer to:
+**§ 5.2(3)** A function value may refer to:
 
 - a named function;
 - a non-capturing lambda;
 - a capturing closure.
 
-Function type identity does not include:
+**§ 5.2(4)** Function type identity does not include:
 
 ```text
 capture shape
@@ -233,7 +241,7 @@ runtime closure instance identity
 concrete target identity
 ```
 
-Therefore:
+**§ 5.2(5)** Therefore:
 
 ```text
 function type != capture shape
@@ -243,12 +251,12 @@ function type != concrete target identity
 
 ---
 
-## Closure instance
+### § 5.3 Closure instance
 
-A `ClosureInstance` is a runtime callable instance produced by evaluating a
+**§ 5.3(1)** A `ClosureInstance` is a runtime callable instance produced by evaluating a
 capturing lambda expression.
 
-Example:
+**§ 5.3(2)** Example:
 
 ```sec
 fn Make(value: int) fn() int {
@@ -261,7 +269,7 @@ let first := Make(10)
 let second := Make(20)
 ```
 
-Conceptually:
+**§ 5.3(3)** Conceptually:
 
 ```text
 CallableBody:
@@ -274,17 +282,17 @@ ClosureEnvironment:
     distinct
 ```
 
-Analysis abstraction must not imply that distinct runtime closure instances are
+**§ 5.3(4)** Analysis abstraction must not imply that distinct runtime closure instances are
 the same runtime object.
 
 ---
 
-## Closure environment
+### § 5.4 Closure environment
 
-A `ClosureEnvironment` is the semantic carrier of the values captured by one
+**§ 5.4(1)** A `ClosureEnvironment` is the semantic carrier of the values captured by one
 closure instance.
 
-Conceptually:
+**§ 5.4(2)** Conceptually:
 
 ```text
 ClosureEnvironment {
@@ -294,77 +302,77 @@ ClosureEnvironment {
 }
 ```
 
-The environment is not a source-visible struct.
+**§ 5.4(3)** The environment is not a source-visible struct.
 
-Closure analysis defines semantic environment dependencies.
+**§ 5.4(4)** Closure analysis defines semantic environment dependencies.
 
-Backend representation, field layout, hidden lowering parameters, and storage
+**§ 5.4(5)** Backend representation, field layout, hidden lowering parameters, and storage
 placement are separate lowering concerns.
 
 ---
 
-# Capturing and non-capturing callables
+## § 6 Capturing and non-capturing callables
 
-## Named functions
+### § 6.1 Named functions
 
-A named function used as a value has:
+**§ 6.1(1)** A named function used as a value has:
 
 ```text
 Target = exact resolved callable body
 Environment = None
 ```
 
-Overload resolution is completed before closure analysis consumes the callable
+**§ 6.1(2)** Overload resolution is completed before closure analysis consumes the callable
 identity.
 
 ---
 
-## Non-capturing lambdas
+### § 6.2 Non-capturing lambdas
 
-A non-capturing lambda has:
+**§ 6.2(1)** A non-capturing lambda has:
 
 ```text
 Target = exact lambda body
 Environment = None
 ```
 
-No closure-environment dependency is required merely because the source syntax
+**§ 6.2(2)** No closure-environment dependency is required merely because the source syntax
 uses an anonymous function.
 
-A compiler may still materialize a callable runtime representation when later
+**§ 6.2(3)** A compiler may still materialize a callable runtime representation when later
 lowering or ABI rules require one.
 
 ---
 
-## Capturing lambdas
+### § 6.3 Capturing lambdas
 
-A capturing lambda has:
+**§ 6.3(1)** A capturing lambda has:
 
 ```text
 Target = exact lambda body
 Environment = known closure environment
 ```
 
-Invocation of the callable semantically requires the corresponding environment
+**§ 6.3(2)** Invocation of the callable semantically requires the corresponding environment
 to remain valid.
 
-The source-level function type remains unchanged.
+**§ 6.3(3)** The source-level function type remains unchanged.
 
-The environment is not a source parameter and must not affect source parameter
+**§ 6.3(4)** The environment is not a source parameter and must not affect source parameter
 count, overload resolution, or function-type identity.
 
 ---
 
-# Capture model
+## § 7 Capture model
 
-## Captures are explicit
+### § 7.1 Captures are explicit
 
-Closure analysis must never infer an undeclared capture merely because the
+**§ 7.1(1)** Closure analysis must never infer an undeclared capture merely because the
 lambda body refers to an outer local.
 
-A valid capture is introduced by the source-language capture clause.
+**§ 7.1(2)** A valid capture is introduced by the source-language capture clause.
 
-Example:
+**§ 7.1(3)** Example:
 
 ```sec
 let factor := 2
@@ -374,19 +382,19 @@ let multiply := capture(factor) fn(value: int) int {
 }
 ```
 
-Use of an enclosing local without explicit capture is invalid according to the
+**§ 7.1(4)** Use of an enclosing local without explicit capture is invalid according to the
 lambda rulebook.
 
-Closure analysis validates and classifies captures. It does not invent them.
+**§ 7.1(5)** Closure analysis validates and classifies captures. It does not invent them.
 
 ---
 
-## Capture analysis uses canonical Places
+### § 7.2 Capture analysis uses canonical Places
 
-Capture analysis operates on canonical Place/provenance information where the
+**§ 7.2(1)** Capture analysis operates on canonical Place/provenance information where the
 capture source has an addressable Place identity.
 
-Relevant capture sources may include, where source syntax and ownership rules
+**§ 7.2(2)** Relevant capture sources may include, where source syntax and ownership rules
 permit them:
 
 ```text
@@ -402,14 +410,14 @@ reference-typed value
 handle-typed value
 ```
 
-Closure analysis must reuse canonical Place identity and projection precision.
+**§ 7.2(3)** Closure analysis must reuse canonical Place identity and projection precision.
 It must not construct a separate symbol-only alias model.
 
 ---
 
-# Capture record
+## § 8 Capture record
 
-Each capture must be representable conceptually as:
+**§ 8(1)** Each capture must be representable conceptually as:
 
 ```text
 CaptureRecord {
@@ -421,23 +429,23 @@ CaptureRecord {
 }
 ```
 
-Exact compiler data structures are implementation-defined.
+**§ 8(2)** Exact compiler data structures are implementation-defined.
 
-## SourcePlace
+### § 8.1 SourcePlace
 
-`SourcePlace` identifies the canonical source Place where such identity exists.
+**§ 8.1(1)** `SourcePlace` identifies the canonical source Place where such identity exists.
 
-For captured expressions without a stable addressable Place, the compiler must
+**§ 8.1(2)** For captured expressions without a stable addressable Place, the compiler must
 retain equivalent source/provenance identity sufficient for ownership,
 lifetime, diagnostics, and dependency analysis.
 
-## CapturedType
+### § 8.2 CapturedType
 
-`CapturedType` is the resolved semantic type of the captured value.
+**§ 8.2(1)** `CapturedType` is the resolved semantic type of the captured value.
 
-## CaptureMode
+### § 8.3 CaptureMode
 
-Sec 0.1 defines:
+**§ 8.3(1)** Sec 0.1 defines:
 
 ```text
 CopyCapture
@@ -446,17 +454,17 @@ SharedReference
 MutableReference
 ```
 
-These correspond to `capture(value)`, `capture(<-value)`,
+**§ 8.3(2)** These correspond to `capture(value)`, `capture(<-value)`,
 `capture(ref value)`, and `capture(ref mut value)`. Capture mode is explicit;
 closure analysis must not infer reference capture from the captured value's
 type or outer-binding mutability.
 
-## Transfer
+### § 8.4 Transfer
 
-The mechanism by which the value enters the environment is distinct from
+**§ 8.4(1)** The mechanism by which the value enters the environment is distinct from
 capture mode.
 
-Conceptually:
+**§ 8.4(2)** Conceptually:
 
 ```text
 Copy
@@ -464,16 +472,16 @@ Move
 Unknown
 ```
 
-`CopyCapture` requires `Copy`; it must not be reclassified as `Move` because the
+**§ 8.4(3)** `CopyCapture` requires `Copy`; it must not be reclassified as `Move` because the
 source type is non-copyable. `MoveCapture` requires `Move`, including for a
 copyable source.
 
-Closure analysis records the resulting fact but does not independently decide
+**§ 8.4(4)** Closure analysis records the resulting fact but does not independently decide
 whether the copy or move is legal.
 
-## Dependencies
+### § 8.5 Dependencies
 
-A captured value may carry dependencies such as:
+**§ 8.5(1)** A captured value may carry dependencies such as:
 
 ```text
 referent lifetime
@@ -485,17 +493,17 @@ nested closure environment
 callable contract
 ```
 
-Value capture does not erase those dependencies.
+**§ 8.5(2)** Value capture does not erase those dependencies.
 
 ---
 
-# Value capture semantics
+## § 9 Value capture semantics
 
-## Snapshot at closure creation
+### § 9.1 Snapshot at closure creation
 
-A copy capture observes and copies the value at closure creation.
+**§ 9.1(1)** A copy capture observes and copies the value at closure creation.
 
-Example:
+**§ 9.1(2)** Example:
 
 ```sec
 let mut factor := 2
@@ -507,9 +515,9 @@ let operation := capture(factor) fn(value: int) int {
 factor = 10
 ```
 
-The closure continues to observe the captured value `2`.
+**§ 9.1(3)** The closure continues to observe the captured value `2`.
 
-Conceptually:
+**§ 9.1(4)** Conceptually:
 
 ```text
 Copy capture
@@ -519,51 +527,51 @@ Copy capture
 
 ---
 
-## Captured binding is distinct
+### § 9.2 Captured binding is distinct
 
-After capture, the outer binding and the environment binding are distinct
+**§ 9.2(1)** After capture, the outer binding and the environment binding are distinct
 semantic bindings.
 
-Conceptually:
+**§ 9.2(2)** Conceptually:
 
 ```text
 outer factor
 environment.capture[0]
 ```
 
-If transfer was `Copy`, both values remain available according to normal
+**§ 9.2(3)** If transfer was `Copy`, both values remain available according to normal
 ownership rules.
 
-An explicit `MoveCapture` makes the outer source unavailable only when closure
+**§ 9.2(4)** An explicit `MoveCapture` makes the outer source unavailable only when closure
 environment construction successfully commits.
 
-The name used inside the lambda denotes the captured environment binding, not a
+**§ 9.2(5)** The name used inside the lambda denotes the captured environment binding, not a
 continued access to the outer binding.
 
 ---
 
-## Owned capture bindings are mutable
+### § 9.3 Owned capture bindings are mutable
 
-An owned value capture is a mutable closure-local binding regardless of whether
+**§ 9.3(1)** An owned value capture is a mutable closure-local binding regardless of whether
 the outer binding was mutable. Mutating it requires at least `mut fn` callable
 capability.
 
-`capture(<-value)` explicitly requests the creation-time transfer and is a
+**§ 9.3(2)** `capture(<-value)` explicitly requests the creation-time transfer and is a
 move even when the captured type is copyable. It does not introduce a distinct
 binding-mutability class.
 
-Closure analysis records environment mutation and consumption so callable
+**§ 9.3(3)** Closure analysis records environment mutation and consumption so callable
 capability inference can distinguish reusable shared, reusable mutable, and
 consuming callables.
 
 ---
 
-# Reference-typed values versus reference capture
+## § 10 Reference-typed values versus reference capture
 
-Capturing a value whose type is itself reference-like is still a Sec 0.1 value
+**§ 10(1)** Capturing a value whose type is itself reference-like is still a Sec 0.1 value
 capture.
 
-Example:
+**§ 10(2)** Example:
 
 ```sec
 let itemRef: ref Item := ref item
@@ -573,17 +581,17 @@ let operation := capture(itemRef) fn() int {
 }
 ```
 
-Conceptually:
+**§ 10(3)** Conceptually:
 
 ```text
 CaptureMode = Value
 ```
 
-The reference value is transferred into the environment.
+**§ 10(4)** The reference value is transferred into the environment.
 
-Its referent dependency remains attached to the captured value.
+**§ 10(5)** Its referent dependency remains attached to the captured value.
 
-Therefore the closure environment may depend on:
+**§ 10(6)** Therefore the closure environment may depend on:
 
 ```text
 referent object lifetime
@@ -592,9 +600,9 @@ storage domain/generation
 borrow validity
 ```
 
-as applicable.
+**§ 10(7)** as applicable.
 
-This is distinct from explicit reference-capture syntax such as:
+**§ 10(8)** This is distinct from explicit reference-capture syntax such as:
 
 ```sec
 capture(ref item) fn() int {
@@ -602,20 +610,20 @@ capture(ref item) fn() int {
 }
 ```
 
-which establishes a borrow directly from another Place. Shared and mutable
+**§ 10(9)** which establishes a borrow directly from another Place. Shared and mutable
 reference captures retain the normal borrow, lifetime, storage, and provenance
 dependencies of that Place. A mutable-reference capture is move-only and
 requires at least `mut fn` callable capability.
 
 ---
 
-# Views and slices
+## § 11 Views and slices
 
-A captured slice or view is a value capture of its descriptor/value semantics.
+**§ 11(1)** A captured slice or view is a value capture of its descriptor/value semantics.
 
-Its backing-storage dependency remains attached.
+**§ 11(2)** Its backing-storage dependency remains attached.
 
-Example:
+**§ 11(3)** Example:
 
 ```sec
 let view := data[10..20]
@@ -625,7 +633,7 @@ let operation := capture(view) fn() int {
 }
 ```
 
-Closure analysis must preserve the relationship:
+**§ 11(4)** Closure analysis must preserve the relationship:
 
 ```text
 ClosureEnvironment
@@ -633,15 +641,15 @@ ClosureEnvironment
     -> backing storage dependency
 ```
 
-Value capture does not make the backing storage independently owned.
+**§ 11(5)** Value capture does not make the backing storage independently owned.
 
 ---
 
-# Captured function values
+## § 12 Captured function values
 
-Function values may themselves be captured.
+**§ 12(1)** Function values may themselves be captured.
 
-Example:
+**§ 12(2)** Example:
 
 ```sec
 fn Wrap(operation: fn(int) int) fn(int) int {
@@ -651,10 +659,10 @@ fn Wrap(operation: fn(int) int) fn(int) int {
 }
 ```
 
-The outer closure environment owns the captured function value according to
+**§ 12(3)** The outer closure environment owns the captured function value according to
 normal copy/move semantics.
 
-The captured function value may itself carry:
+**§ 12(4)** The captured function value may itself carry:
 
 ```text
 callable target set
@@ -662,17 +670,17 @@ callable contract
 nested closure-environment dependency
 ```
 
-Closure analysis must preserve these transitively.
+**§ 12(5)** Closure analysis must preserve these transitively.
 
-Nested closure environments are therefore valid semantic dependency graphs.
+**§ 12(6)** Nested closure environments are therefore valid semantic dependency graphs.
 
 ---
 
-# Closure environment as dependency carrier
+## § 13 Closure environment as dependency carrier
 
-A closure environment is a structural dependency carrier.
+**§ 13(1)** A closure environment is a structural dependency carrier.
 
-Conceptually:
+**§ 13(2)** Conceptually:
 
 ```text
 Environment(S) {
@@ -681,18 +689,18 @@ Environment(S) {
 }
 ```
 
-If the callable value that depends on the environment escapes, the relevant
+**§ 13(3)** If the callable value that depends on the environment escapes, the relevant
 environment dependencies are visible to escape analysis.
 
-Capture creation alone does not imply escape.
+**§ 13(4)** Capture creation alone does not imply escape.
 
 ---
 
-# Capture and escape are distinct
+## § 14 Capture and escape are distinct
 
-A closure may be created and used entirely within its original context.
+**§ 14(1)** A closure may be created and used entirely within its original context.
 
-Example:
+**§ 14(2)** Example:
 
 ```sec
 let operation := capture(factor) fn(value: int) int {
@@ -702,26 +710,26 @@ let operation := capture(factor) fn(value: int) int {
 return operation(10)
 ```
 
-The environment exists, but the callable value need not escape the function.
+**§ 14(3)** The environment exists, but the callable value need not escape the function.
 
-Conceptually:
+**§ 14(4)** Conceptually:
 
 ```text
 capture != escape
 ```
 
-Closure analysis records environment dependencies.
+**§ 14(5)** Closure analysis records environment dependencies.
 
-Escape analysis determines where the callable/environment dependency travels.
+**§ 14(6)** Escape analysis determines where the callable/environment dependency travels.
 
-Lifetime analysis determines whether those dependencies remain valid for the
+**§ 14(7)** Lifetime analysis determines whether those dependencies remain valid for the
 required destination lifetime.
 
 ---
 
-# Closure escape and storage
+## § 15 Closure escape and storage
 
-Closure analysis may derive facts such as:
+**§ 15(1)** Closure analysis may derive facts such as:
 
 ```text
 EnvironmentRequiresEscape
@@ -729,41 +737,41 @@ RequiredEnvironmentLifetime
 EnvironmentDependencies
 ```
 
-It must not derive a physical allocation decision merely from escape.
+**§ 15(2)** It must not derive a physical allocation decision merely from escape.
 
-In particular:
+**§ 15(3)** In particular:
 
 ```text
 closure environment escapes
 ```
 
-does not imply:
+**§ 15(4)** does not imply:
 
 ```text
 allocate environment on heap
 ```
 
-No implicit heap promotion is permitted.
+**§ 15(5)** No implicit heap promotion is permitted.
 
-No hidden allocation may be introduced merely to repair an otherwise invalid
+**§ 15(6)** No hidden allocation may be introduced merely to repair an otherwise invalid
 closure lifetime.
 
-If no valid source-semantic ownership/storage strategy exists, the program is
+**§ 15(7)** If no valid source-semantic ownership/storage strategy exists, the program is
 invalid rather than silently promoted.
 
-Optimization may eliminate or transform an environment only when all source
+**§ 15(8)** Optimization may eliminate or transform an environment only when all source
 semantics and required dependencies remain preserved.
 
 ---
 
-# Callable-flow analysis
+## § 16 Callable-flow analysis
 
-Callable-flow analysis determines a sound may-target set for function-valued
+**§ 16(1)** Callable-flow analysis determines a sound may-target set for function-valued
 values at relevant program points.
 
-It is the callable-specific higher-order control-flow analysis used by Sec.
+**§ 16(2)** It is the callable-specific higher-order control-flow analysis used by Sec.
 
-The analysis tracks callable values through:
+**§ 16(3)** The analysis tracks callable values through:
 
 ```text
 assignment
@@ -780,16 +788,16 @@ calls
 closure captures
 ```
 
-It reuses canonical Place/provenance and aggregate-flow infrastructure.
+**§ 16(4)** It reuses canonical Place/provenance and aggregate-flow infrastructure.
 
 ---
 
-# Control-flow-analysis baseline
+## § 17 Control-flow-analysis baseline
 
-Sec callable-flow analysis belongs to the established control-flow-analysis
+**§ 17(1)** Sec callable-flow analysis belongs to the established control-flow-analysis
 family for higher-order programs.
 
-The required baseline is a sound monovariant analysis equivalent in purpose to
+**§ 17(2)** The required baseline is a sound monovariant analysis equivalent in purpose to
 0-CFA, adapted to Sec's:
 
 - static function types;
@@ -800,9 +808,9 @@ The required baseline is a sound monovariant analysis equivalent in purpose to
 - callable contracts;
 - concrete CompilationPlan.
 
-The rulebook does not require classical k-CFA for `k > 0`.
+**§ 17(3)** The rulebook does not require classical k-CFA for `k > 0`.
 
-Implementations may provide stronger sound refinements, including:
+**§ 17(4)** Implementations may provide stronger sound refinements, including:
 
 ```text
 context-sensitive CFA
@@ -813,21 +821,21 @@ pushdown refinement
 other sound target refinements
 ```
 
-Such refinements improve precision. They do not define different source
+**§ 17(5)** Such refinements improve precision. They do not define different source
 semantics.
 
-The required baseline is monovariant, not intentionally imprecise.
+**§ 17(6)** The required baseline is monovariant, not intentionally imprecise.
 
-Cheap Sec-specific symbolic relations may preserve more precision than a naive
+**§ 17(7)** Cheap Sec-specific symbolic relations may preserve more precision than a naive
 classical 0-CFA implementation without violating the baseline model.
 
 ---
 
-# Callable target sets
+## § 18 Callable target sets
 
-Closure analysis uses the canonical call-graph target-set model.
+**§ 18(1)** Closure analysis uses the canonical call-graph target-set model.
 
-Conceptually:
+**§ 18(2)** Conceptually:
 
 ```text
 TargetSet {
@@ -837,7 +845,7 @@ TargetSet {
 }
 ```
 
-The following semantic forms are useful descriptions of that model:
+**§ 18(3)** The following semantic forms are useful descriptions of that model:
 
 ```text
 Exact
@@ -846,11 +854,11 @@ OpenContract
 KnownSetPlusOpenContract
 ```
 
-They do not require a second competing representation.
+**§ 18(4)** They do not require a second competing representation.
 
-## Exact
+### § 18.1 Exact
 
-An exact target is a closed target set containing one callable body.
+**§ 18.1(1)** An exact target is a closed target set containing one callable body.
 
 ```text
 KnownTargets = { A }
@@ -858,9 +866,9 @@ IsClosed = true
 OpenContract = none
 ```
 
-## ClosedSet
+### § 18.2 ClosedSet
 
-A closed finite set contains all possible concrete targets.
+**§ 18.2(1)** A closed finite set contains all possible concrete targets.
 
 ```text
 KnownTargets = { A, B, C }
@@ -868,9 +876,9 @@ IsClosed = true
 OpenContract = none
 ```
 
-## OpenContract
+### § 18.3 OpenContract
 
-Concrete targets are not fully known, but all legal unknown targets must satisfy
+**§ 18.3(1)** Concrete targets are not fully known, but all legal unknown targets must satisfy
 an explicit callable contract.
 
 ```text
@@ -879,9 +887,9 @@ IsClosed = false
 OpenContract = C
 ```
 
-## KnownSetPlusOpenContract
+### § 18.4 KnownSetPlusOpenContract
 
-Some concrete targets are known and additional targets remain permitted by the
+**§ 18.4(1)** Some concrete targets are known and additional targets remain permitted by the
 open contract.
 
 ```text
@@ -890,42 +898,42 @@ IsClosed = false
 OpenContract = C
 ```
 
-A target set with `IsClosed == false` must have a valid open callable contract
+**§ 18.4(2)** A target set with `IsClosed == false` must have a valid open callable contract
 where semantic consumers require guarantees about the unknown targets.
 
 ---
 
-# Soundness of target sets
+## § 19 Soundness of target sets
 
-Callable target sets are may-target over-approximations.
+**§ 19(1)** Callable target sets are may-target over-approximations.
 
-Every callable body that may actually execute at runtime must be represented by
+**§ 19(2)** Every callable body that may actually execute at runtime must be represented by
 one of:
 
 - a known concrete target;
 - a sound open callable contract covering that target.
 
-It is permitted for a bounded analysis to temporarily include concrete targets
+**§ 19(3)** It is permitted for a bounded analysis to temporarily include concrete targets
 that cannot execute on a particular runtime path.
 
-It is not permitted to omit a possible runtime target in order to gain
+**§ 19(4)** It is not permitted to omit a possible runtime target in order to gain
 precision or optimization.
 
 ---
 
-# Function type versus callable contract
+## § 20 Function type versus callable contract
 
-Function type compatibility does not imply identical callable behavior.
+**§ 20(1)** Function type compatibility does not imply identical callable behavior.
 
-A function type such as:
+**§ 20(2)** A function type such as:
 
 ```sec
 fn(Request) Response
 ```
 
-specifies source-level parameter and return types.
+**§ 20(3)** specifies source-level parameter and return types.
 
-It does not by itself establish guarantees such as:
+**§ 20(4)** It does not by itself establish guarantees such as:
 
 ```text
 NoAllocate
@@ -938,27 +946,27 @@ reentry behavior
 foreign trust
 ```
 
-Callable contracts are separate compiler-visible semantic contracts.
+**§ 20(5)** Callable contracts are separate compiler-visible semantic contracts.
 
-Closure analysis propagates those contracts where concrete targets are open or
+**§ 20(6)** Closure analysis propagates those contracts where concrete targets are open or
 unknown.
 
-It does not redefine the effect, retention, stack, or reentry semantics stored
+**§ 20(7)** It does not redefine the effect, retention, stack, or reentry semantics stored
 inside the contract.
 
 ---
 
-# Callable creation
+## § 21 Callable creation
 
-## Named function value
+### § 21.1 Named function value
 
-After overload resolution:
+**§ 21.1(1)** After overload resolution:
 
 ```sec
 let operation: fn(int) int := Transform
 ```
 
-produces conceptually:
+**§ 21.1(2)** produces conceptually:
 
 ```text
 TargetSet = Exact(Transform)
@@ -967,7 +975,7 @@ Environment = NoEnvironment
 
 ---
 
-## Non-capturing lambda
+### § 21.2 Non-capturing lambda
 
 ```sec
 let operation := fn(value: int) int {
@@ -975,7 +983,7 @@ let operation := fn(value: int) int {
 }
 ```
 
-produces conceptually:
+**§ 21.2(1)** produces conceptually:
 
 ```text
 TargetSet = Exact(lambda-body-id)
@@ -984,7 +992,7 @@ Environment = NoEnvironment
 
 ---
 
-## Capturing lambda
+### § 21.3 Capturing lambda
 
 ```sec
 let operation := capture(factor) fn(value: int) int {
@@ -992,67 +1000,67 @@ let operation := capture(factor) fn(value: int) int {
 }
 ```
 
-produces conceptually:
+**§ 21.3(1)** produces conceptually:
 
 ```text
 TargetSet = Exact(lambda-body-id)
 Environment = Environment(creation-site)
 ```
 
-The environment carries the capture records defined by this rulebook.
+**§ 21.3(2)** The environment carries the capture records defined by this rulebook.
 
 ---
 
-# Abstract closure identity
+## § 22 Abstract closure identity
 
-The baseline analysis may abstract all runtime closure instances created at one
+**§ 22(1)** The baseline analysis may abstract all runtime closure instances created at one
 closure creation site into one finite abstract environment identity.
 
-Conceptually:
+**§ 22(2)** Conceptually:
 
 ```text
 all runtime environments created at site S
     -> AbstractEnvironment(S)
 ```
 
-This is an analysis abstraction only.
+**§ 22(3)** This is an analysis abstraction only.
 
-It must not be interpreted as runtime object identity.
+**§ 22(4)** It must not be interpreted as runtime object identity.
 
-If a closure is created repeatedly in a loop or recursion, different runtime
+**§ 22(5)** If a closure is created repeatedly in a loop or recursion, different runtime
 instances may contain different captured values even when the baseline analysis
 joins them into one abstract environment state.
 
 ---
 
-# Callable flow through assignment
+## § 23 Callable flow through assignment
 
-Assignment updates the current callable-flow state according to normal Sec
+**§ 23(1)** Assignment updates the current callable-flow state according to normal Sec
 value semantics.
 
-Example:
+**§ 23(2)** Example:
 
 ```sec
 let mut operation: fn(int) int := A
 operation = B
 ```
 
-After the second assignment:
+**§ 23(3)** After the second assignment:
 
 ```text
 Targets(operation) = Exact(B)
 ```
 
-The previous target `A` is not retained merely because it was historically held
+**§ 23(4)** The previous target `A` is not retained merely because it was historically held
 by the same variable.
 
-Historical escape or effect facts owned by other analyses remain separate.
+**§ 23(5)** Historical escape or effect facts owned by other analyses remain separate.
 
 ---
 
-# Callable flow through Copy and Move
+## § 24 Callable flow through Copy and Move
 
-Callable copy and move preserve the semantic relationship between:
+**§ 24(1)** Callable copy and move preserve the semantic relationship between:
 
 ```text
 TargetSet
@@ -1060,28 +1068,28 @@ CallableContract
 EnvironmentDependency
 ```
 
-according to normal Sec ownership rules.
+**§ 24(2)** according to normal Sec ownership rules.
 
-Closure analysis must not infer callable copyability from backend representation
+**§ 24(3)** Closure analysis must not infer callable copyability from backend representation
 such as a pair of pointers.
 
-When a callable move is legal, the callable target/environment relation follows
+**§ 24(4)** When a callable move is legal, the callable target/environment relation follows
 the destination and the source ownership state changes according to ownership
 analysis.
 
-When callable copy is legal, the resulting environment ownership/sharing
+**§ 24(5)** When callable copy is legal, the resulting environment ownership/sharing
 semantics are whatever the callable ownership rules establish.
 
-Closure analysis must not silently duplicate an owned closure environment.
+**§ 24(6)** Closure analysis must not silently duplicate an owned closure environment.
 
 ---
 
-# Control-flow join
+## § 25 Control-flow join
 
-Control-flow joins conservatively combine possible callable targets and
+**§ 25(1)** Control-flow joins conservatively combine possible callable targets and
 contracts.
 
-Example:
+**§ 25(2)** Example:
 
 ```sec
 let mut operation: fn(int) int := A
@@ -1091,16 +1099,16 @@ if condition {
 }
 ```
 
-After the branch:
+**§ 25(3)** After the branch:
 
 ```text
 Targets(operation) = ClosedSet { A, B }
 ```
 
-If one predecessor contains a closed concrete set and another contains an open
+**§ 25(4)** If one predecessor contains a closed concrete set and another contains an open
 contract, the join preserves known concrete targets and the open component.
 
-Conceptually:
+**§ 25(5)** Conceptually:
 
 ```text
 Exact(A)
@@ -1110,19 +1118,19 @@ OpenContract(C)
 => KnownSetPlusOpenContract { A, C }
 ```
 
-Known concrete information must not be discarded merely because an open
+**§ 25(6)** Known concrete information must not be discarded merely because an open
 component also exists.
 
 ---
 
-# Places and aggregates
+## § 26 Places and aggregates
 
-Callable target facts attach to function-valued values and Places.
+**§ 26(1)** Callable target facts attach to function-valued values and Places.
 
-When Place analysis proves disjoint structural locations, callable-flow analysis
+**§ 26(2)** When Place analysis proves disjoint structural locations, callable-flow analysis
 must reuse that precision.
 
-Example:
+**§ 26(3)** Example:
 
 ```sec
 type Handlers struct {
@@ -1131,74 +1139,74 @@ type Handlers struct {
 }
 ```
 
-If:
+**§ 26(4)** If:
 
 ```sec
 handlers.Open = OnOpen
 handlers.Close = OnClose
 ```
 
-then a call through `handlers.Open` need not include `OnClose` merely because
+**§ 26(5)** then a call through `handlers.Open` need not include `OnClose` merely because
 both values reside in the same aggregate.
 
 ---
 
-# Arrays and collections
+## § 27 Arrays and collections
 
-Function values stored in fixed arrays or collections carry target sets like
+**§ 27(1)** Function values stored in fixed arrays or collections carry target sets like
 other values.
 
-Constant-index precision should be preserved where canonical Place analysis
+**§ 27(2)** Constant-index precision should be preserved where canonical Place analysis
 already provides it.
 
-Example:
+**§ 27(3)** Example:
 
 ```sec
 handlers[0] = A
 handlers[1] = B
 ```
 
-A call through `handlers[0]` may remain exact.
+**§ 27(4)** A call through `handlers[0]` may remain exact.
 
-A call through a dynamic index may join possible element target sets.
+**§ 27(5)** A call through a dynamic index may join possible element target sets.
 
-Large or dynamically shaped containers may use bounded summarized element facts
+**§ 27(6)** Large or dynamically shaped containers may use bounded summarized element facts
 rather than one analysis node per possible runtime element.
 
-Compiler-known collection summaries may describe callable propagation without
+**§ 27(7)** Compiler-known collection summaries may describe callable propagation without
 requiring full shape analysis for every library collection.
 
 ---
 
-# Options and unions
+## § 28 Options and unions
 
-Optional callable absence is represented by `Option`, not by a null callable
+**§ 28(1)** Optional callable absence is represented by `Option`, not by a null callable
 target.
 
-For:
+**§ 28(2)** For:
 
 ```sec
 Option[fn(Event) void]
 ```
 
-callable target facts belong to the `Some` payload.
+**§ 28(3)** callable target facts belong to the `Some` payload.
 
-`None` is not a pseudo callable target.
+**§ 28(4)** `None` is not a pseudo callable target.
 
-The same active-payload principle applies to unions and other tagged aggregate
+**§ 28(5)** The same active-payload principle applies to unions and other tagged aggregate
 forms.
 
-When active variant information is lost, possible callable payloads are joined
+**§ 28(6)** When active variant information is lost, possible callable payloads are joined
 conservatively.
 
 ---
 
-# Callable parameters
+## § 29 Callable parameters
 
-Function-valued parameters are represented symbolically in interprocedural
+**§ 29(1)** Function-valued parameters are represented symbolically in interprocedural
 summaries.
 
-Example:
+**§ 29(2)** Example:
 
 ```sec
 fn Apply(operation: fn(int) int, value: int) int {
@@ -1206,24 +1214,24 @@ fn Apply(operation: fn(int) int, value: int) int {
 }
 ```
 
-The analysis may represent:
+**§ 29(3)** The analysis may represent:
 
 ```text
 CallableParameter(0): Invoked
 ```
 
-without knowing the concrete target of `operation` while analyzing `Apply`.
+**§ 29(4)** without knowing the concrete target of `operation` while analyzing `Apply`.
 
-If an explicit callable contract exists, that contract is associated with the
+**§ 29(5)** If an explicit callable contract exists, that contract is associated with the
 symbolic callable parameter.
 
 ---
 
-# Returned callable relationships
+## § 30 Returned callable relationships
 
-Callable return summaries preserve symbolic relationships.
+**§ 30(1)** Callable return summaries preserve symbolic relationships.
 
-Example:
+**§ 30(2)** Example:
 
 ```sec
 fn Identity(operation: fn(int) int) fn(int) int {
@@ -1231,25 +1239,25 @@ fn Identity(operation: fn(int) int) fn(int) int {
 }
 ```
 
-Summary:
+**§ 30(3)** Summary:
 
 ```text
 ReturnedCallable = CallableParameter(0)
 ```
 
-A caller passing exact target `A` may therefore instantiate:
+**§ 30(4)** A caller passing exact target `A` may therefore instantiate:
 
 ```text
 Targets(result) = Exact(A)
 ```
 
-without context-sensitive reanalysis of `Identity`.
+**§ 30(5)** without context-sensitive reanalysis of `Identity`.
 
 ---
 
-# Disjunctive callable returns
+## § 31 Disjunctive callable returns
 
-Example:
+**§ 31(1)** Example:
 
 ```sec
 fn Select(
@@ -1265,21 +1273,21 @@ fn Select(
 }
 ```
 
-The summary may preserve:
+**§ 31(2)** The summary may preserve:
 
 ```text
 ReturnedCallable = CallableParameter(0) OR CallableParameter(1)
 ```
 
-Call-site instantiation may then produce an exact finite target set.
+**§ 31(3)** Call-site instantiation may then produce an exact finite target set.
 
-This symbolic relation is permitted in the required monovariant baseline.
+**§ 31(4)** This symbolic relation is permitted in the required monovariant baseline.
 
 ---
 
-# Returning newly created closures
+## § 32 Returning newly created closures
 
-Example:
+**§ 32(1)** Example:
 
 ```sec
 fn Make(offset: int) fn(int) int {
@@ -1289,7 +1297,7 @@ fn Make(offset: int) fn(int) int {
 }
 ```
 
-The callable summary must be able to express conceptually:
+**§ 32(2)** The callable summary must be able to express conceptually:
 
 ```text
 ReturnedCallable.Target = Exact(lambda-body-id)
@@ -1297,18 +1305,18 @@ ReturnedCallable.Environment = Environment(lambda-creation-site)
 Environment.capture[0] derives from Parameter(0)
 ```
 
-Escape analysis separately records that the returned callable/environment leaves
+**§ 32(3)** Escape analysis separately records that the returned callable/environment leaves
 the function.
 
-No physical allocation choice follows from the callable summary itself.
+**§ 32(4)** No physical allocation choice follows from the callable summary itself.
 
 ---
 
-# Callable forwarding
+## § 33 Callable forwarding
 
-Interprocedural callable flow must preserve forwarding relationships.
+**§ 33(1)** Interprocedural callable flow must preserve forwarding relationships.
 
-Example:
+**§ 33(2)** Example:
 
 ```sec
 fn Outer(operation: fn(int) int, value: int) int {
@@ -1316,12 +1324,12 @@ fn Outer(operation: fn(int) int, value: int) int {
 }
 ```
 
-If `Inner` invokes its first callable parameter, that fact must propagate through
+**§ 33(3)** If `Inner` invokes its first callable parameter, that fact must propagate through
 `Outer` according to the callee summary.
 
-Returned forwarding behaves similarly.
+**§ 33(4)** Returned forwarding behaves similarly.
 
-Example:
+**§ 33(5)** Example:
 
 ```sec
 fn Outer(operation: fn(int) int) fn(int) int {
@@ -1329,21 +1337,21 @@ fn Outer(operation: fn(int) int) fn(int) int {
 }
 ```
 
-If:
+**§ 33(6)** If:
 
 ```text
 Inner.ReturnedCallable = CallableParameter(0)
 ```
 
-then `Outer` may derive the same symbolic relationship.
+**§ 33(7)** then `Outer` may derive the same symbolic relationship.
 
 ---
 
-# Capture forwarding
+## § 34 Capture forwarding
 
-A callable parameter may itself be captured by a newly created closure.
+**§ 34(1)** A callable parameter may itself be captured by a newly created closure.
 
-Example:
+**§ 34(2)** Example:
 
 ```sec
 fn Wrap(operation: fn(int) int) fn(int) int {
@@ -1353,7 +1361,7 @@ fn Wrap(operation: fn(int) int) fn(int) int {
 }
 ```
 
-Closure analysis must preserve two different relationships:
+**§ 34(3)** Closure analysis must preserve two different relationships:
 
 ```text
 returned callable body
@@ -1363,23 +1371,23 @@ returned environment
     depends on CallableParameter(0)
 ```
 
-Inside the lambda body:
+**§ 34(4)** Inside the lambda body:
 
 ```text
 invoked callable
     derives from environment capture[0]
 ```
 
-Callable target identity and closure-environment dependency must not be
+**§ 34(5)** Callable target identity and closure-environment dependency must not be
 collapsed into one fact.
 
 ---
 
-# Callable invocation event
+## § 35 Callable invocation event
 
-Calling a function value is an explicit semantic analysis event.
+**§ 35(1)** Calling a function value is an explicit semantic analysis event.
 
-Conceptually:
+**§ 35(2)** Conceptually:
 
 ```text
 CallableInvocation {
@@ -1390,9 +1398,9 @@ CallableInvocation {
 }
 ```
 
-Exact data structures are implementation-defined.
+**§ 35(3)** Exact data structures are implementation-defined.
 
-The event provides canonical input to:
+**§ 35(4)** The event provides canonical input to:
 
 - call graph;
 - effect analysis;
@@ -1401,15 +1409,15 @@ The event provides canonical input to:
 - diagnostics;
 - LSP tooling.
 
-The hidden environment argument used by lowering is not a source-level
+**§ 35(5)** The hidden environment argument used by lowering is not a source-level
 parameter and is not required to appear in this semantic record as a fake source
 argument.
 
 ---
 
-# Callable-flow summaries
+## § 36 Callable-flow summaries
 
-Each analyzable callable may expose a composable summary conceptually equivalent
+**§ 36(1)** Each analyzable callable may expose a composable summary conceptually equivalent
 to:
 
 ```text
@@ -1423,7 +1431,7 @@ CallableFlowSummary {
 }
 ```
 
-For created closure sites, the summary may reference:
+**§ 36(2)** For created closure sites, the summary may reference:
 
 ```text
 ClosureSummary {
@@ -1434,19 +1442,19 @@ ClosureSummary {
 }
 ```
 
-Exact compiler structure is not normative.
+**§ 36(3)** Exact compiler structure is not normative.
 
-Summaries must preserve externally relevant symbolic relationships without
+**§ 36(4)** Summaries must preserve externally relevant symbolic relationships without
 exporting irrelevant internal temporaries.
 
 ---
 
-# Escape and ownership are not duplicated in callable summaries
+## § 37 Escape and ownership are not duplicated in callable summaries
 
-Callable-flow summaries must not become duplicate escape or ownership
+**§ 37(1)** Callable-flow summaries must not become duplicate escape or ownership
 rulebooks.
 
-Example:
+**§ 37(2)** Example:
 
 ```text
 Closure analysis:
@@ -1458,39 +1466,39 @@ Escape analysis:
         -> escapes through return
 ```
 
-Those facts compose without closure analysis redefining `Returned`, `Retained`,
+**§ 37(3)** Those facts compose without closure analysis redefining `Returned`, `Retained`,
 or other escape classes.
 
-Similarly:
+**§ 37(4)** Similarly:
 
 ```text
 CaptureTransfer = Move
 ```
 
-is a closure-analysis fact, while ownership analysis determines whether the move
+**§ 37(5)** is a closure-analysis fact, while ownership analysis determines whether the move
 is legal and how source state changes.
 
 ---
 
-# Monotone fixed-point analysis
+## § 38 Monotone fixed-point analysis
 
-Callable-flow analysis is a monotone fixed-point analysis.
+**§ 38(1)** Callable-flow analysis is a monotone fixed-point analysis.
 
-Control-flow joins add possible targets/contracts or conservatively widen them.
+**§ 38(2)** Control-flow joins add possible targets/contracts or conservatively widen them.
 
-A possible callable target must never disappear merely because a later
+**§ 38(3)** A possible callable target must never disappear merely because a later
 analysis iteration sees a narrower path unless the analysis is performing a
 separate sound refinement under a stronger context abstraction.
 
-Standard fixed-point results must be independent of source declaration order.
+**§ 38(4)** Standard fixed-point results must be independent of source declaration order.
 
 ---
 
-# Loops
+## § 39 Loops
 
-Loops are analyzed to a sound fixed point.
+**§ 39(1)** Loops are analyzed to a sound fixed point.
 
-Example:
+**§ 39(2)** Example:
 
 ```sec
 let mut operation: fn(int) int := A
@@ -1502,29 +1510,29 @@ for item in items {
 }
 ```
 
-A sound post-loop result includes:
+**§ 39(3)** A sound post-loop result includes:
 
 ```text
 Targets(operation) = { A, B }
 ```
 
-unless control-flow facts prove one alternative unreachable.
+**§ 39(4)** unless control-flow facts prove one alternative unreachable.
 
-Analyzing the loop body exactly once is not sufficient.
+**§ 39(5)** Analyzing the loop body exactly once is not sufficient.
 
 ---
 
-# Recursive callable summaries
+## § 40 Recursive callable summaries
 
-Direct and mutually recursive callable-summary dependencies are solved to a
+**§ 40(1)** Direct and mutually recursive callable-summary dependencies are solved to a
 sound fixed point.
 
-The compiler should reuse canonical call-graph strongly connected components
+**§ 40(2)** The compiler should reuse canonical call-graph strongly connected components
 where available, or use an equivalent declaration-order-independent algorithm.
 
-This includes recursive higher-order forwarding relationships.
+**§ 40(3)** This includes recursive higher-order forwarding relationships.
 
-Example conceptual cycle:
+**§ 40(4)** Example conceptual cycle:
 
 ```text
 A returns callable from B
@@ -1532,22 +1540,22 @@ B forwards callable into C
 C returns callable relation back to A
 ```
 
-The analysis must terminate and produce a conservative result.
+**§ 40(5)** The analysis must terminate and produce a conservative result.
 
 ---
 
-# Closure creation in loops and recursion
+## § 41 Closure creation in loops and recursion
 
-A closure creation site executed repeatedly may produce arbitrarily many runtime
+**§ 41(1)** A closure creation site executed repeatedly may produce arbitrarily many runtime
 closure instances.
 
-The baseline analysis may represent them with one finite abstract environment
+**§ 41(2)** The baseline analysis may represent them with one finite abstract environment
 identity per creation site.
 
-Captured state associated with that abstract environment is joined
+**§ 41(3)** Captured state associated with that abstract environment is joined
 conservatively across possible runtime instances.
 
-The analysis must preserve:
+**§ 41(4)** The analysis must preserve:
 
 ```text
 one callable body
@@ -1555,14 +1563,14 @@ potentially many runtime closure instances
 potentially different captured values
 ```
 
-It must not infer shared runtime identity merely because one abstract analysis
+**§ 41(5)** It must not infer shared runtime identity merely because one abstract analysis
 node is used.
 
 ---
 
-# Bounded precision
+## § 42 Bounded precision
 
-Callable-flow analysis may bound:
+**§ 42(1)** Callable-flow analysis may bound:
 
 - number of known concrete targets;
 - number of disjunctive symbolic callable origins;
@@ -1570,19 +1578,19 @@ Callable-flow analysis may bound:
 - nested environment-dependency depth;
 - summary complexity.
 
-The exact budgets are implementation/configuration choices unless another
+**§ 42(2)** The exact budgets are implementation/configuration choices unless another
 normative rule requires a minimum.
 
-When a budget is exhausted, analysis must widen conservatively.
+**§ 42(3)** When a budget is exhausted, analysis must widen conservatively.
 
 ---
 
-# Preferred callable widening
+## § 43 Preferred callable widening
 
-Callable contracts are the preferred semantic widening boundary when concrete
+**§ 43(1)** Callable contracts are the preferred semantic widening boundary when concrete
 target identity is not required for the current proof.
 
-Conceptually:
+**§ 43(2)** Conceptually:
 
 ```text
 large ClosedSet
@@ -1590,18 +1598,18 @@ large ClosedSet
     -> OpenContract
 ```
 
-when a valid covering contract exists.
+**§ 43(3)** when a valid covering contract exists.
 
-The compiler must not replace an oversized target set with an unsound empty set
+**§ 43(4)** The compiler must not replace an oversized target set with an unsound empty set
 or with a contract that provides guarantees not shared by every covered target.
 
-Deep analysis may retain or recover more concrete targets when useful.
+**§ 43(5)** Deep analysis may retain or recover more concrete targets when useful.
 
 ---
 
-# Structured unknown states
+## § 44 Structured unknown states
 
-Closure analysis distinguishes at least:
+**§ 44(1)** Closure analysis distinguishes at least:
 
 ```text
 NoEnvironment
@@ -1616,11 +1624,11 @@ KnownCaptureDependencies
 UnknownCaptureDependencies
 ```
 
-`NoEnvironment` is a positive proof.
+**§ 44(2)** `NoEnvironment` is a positive proof.
 
-Absence of environment information is not `NoEnvironment`.
+**§ 44(3)** Absence of environment information is not `NoEnvironment`.
 
-Unknown target, unknown contract, or unknown environment must never be treated
+**§ 44(4)** Unknown target, unknown contract, or unknown environment must never be treated
 as proof of:
 
 ```text
@@ -1632,13 +1640,13 @@ NoAllocation
 NoBlock
 ```
 
-Unknown information should remain as local and structured as practical.
+**§ 44(5)** Unknown information should remain as local and structured as practical.
 
 ---
 
-# Analysis budgets
+## § 45 Analysis budgets
 
-Sec distinguishes three analysis budgets:
+**§ 45(1)** Sec distinguishes three analysis budgets:
 
 ```text
 Interactive
@@ -1646,18 +1654,18 @@ Standard
 Deep
 ```
 
-These budgets control precision, recomputation strategy, diagnostics depth, and
+**§ 45(2)** These budgets control precision, recomputation strategy, diagnostics depth, and
 optional analysis work.
 
-They do not define different source-language semantics.
+**§ 45(3)** They do not define different source-language semantics.
 
 ---
 
-# Interactive analysis
+## § 46 Interactive analysis
 
-Interactive analysis is intended primarily for LSP/editor use.
+**§ 46(1)** Interactive analysis is intended primarily for LSP/editor use.
 
-It prioritizes low latency through mechanisms such as:
+**§ 46(2)** It prioritizes low latency through mechanisms such as:
 
 ```text
 incremental recomputation
@@ -1667,37 +1675,37 @@ bounded origin/cause-path depth
 monovariant callable flow
 ```
 
-Interactive analysis must remain sound for any result presented as a proof.
+**§ 46(3)** Interactive analysis must remain sound for any result presented as a proof.
 
-While affected analysis is being recomputed, tooling may expose an internal or
+**§ 46(4)** While affected analysis is being recomputed, tooling may expose an internal or
 UI state equivalent to:
 
 ```text
 Pending
 ```
 
-rather than claiming an outdated or incomplete result is proven.
+**§ 46(5)** rather than claiming an outdated or incomplete result is proven.
 
-`Pending` is a tooling state and is not a valid compiler proof result.
+**§ 46(6)** `Pending` is a tooling state and is not a valid compiler proof result.
 
 ---
 
-# Standard analysis
+## § 47 Standard analysis
 
-Standard analysis is the analysis budget used by normal compilation for closure
+**§ 47(1)** Standard analysis is the analysis budget used by normal compilation for closure
 and callable-flow facts required by language correctness and the active
 CompilationPlan.
 
-It must perform all closure/callable proofs required for normal Sec validity.
+**§ 47(2)** It must perform all closure/callable proofs required for normal Sec validity.
 
-A user must not need to run `sec analyse` to make an otherwise ordinary valid
+**§ 47(3)** A user must not need to run `sec analyse` to make an otherwise ordinary valid
 program semantically safe.
 
-If a specific language feature or CompilationPlan requires a stronger proof,
+**§ 47(4)** If a specific language feature or CompilationPlan requires a stronger proof,
 the necessary analysis becomes required for that build rather than remaining an
 optional Deep-only feature.
 
-Standard analysis must be deterministic for the same:
+**§ 47(5)** Standard analysis must be deterministic for the same:
 
 ```text
 source
@@ -1706,16 +1714,16 @@ compiler version
 analysis configuration
 ```
 
-Result validity must not depend on compiler worklist order, worker scheduling,
+**§ 47(6)** Result validity must not depend on compiler worklist order, worker scheduling,
 or nondeterministic cache order.
 
 ---
 
-# Deep analysis
+## § 48 Deep analysis
 
-Deep analysis provides optional expensive refinement.
+**§ 48(1)** Deep analysis provides optional expensive refinement.
 
-It may use:
+**§ 48(2)** It may use:
 
 ```text
 context-sensitive callable flow
@@ -1728,38 +1736,38 @@ additional advisories
 resource and optimization analysis
 ```
 
-Deep analysis must preserve the same source-language semantics.
+**§ 48(3)** Deep analysis must preserve the same source-language semantics.
 
-It may refine:
+**§ 48(4)** It may refine:
 
 ```text
 Standard: OpenContract(C)
 Deep: ClosedSet { A, B }
 ```
 
-or:
+**§ 48(5)** or:
 
 ```text
 Standard call-site targets: { A, B, C }
 Deep call-site targets: { B }
 ```
 
-when the refinement is sound.
+**§ 48(6)** when the refinement is sound.
 
-Deep analysis must never make an unsafe program appear safe by applying a
+**§ 48(7)** Deep analysis must never make an unsafe program appear safe by applying a
 different language definition.
 
 ---
 
-# Required versus optional analysis
+## § 49 Required versus optional analysis
 
-Analysis required for language safety or correctness cannot be disabled when the
+**§ 49(1)** Analysis required for language safety or correctness cannot be disabled when the
 relevant language feature is used.
 
-An expensive precision refinement may be optional when the required baseline can
+**§ 49(2)** An expensive precision refinement may be optional when the required baseline can
 remain sound through conservative facts or callable contracts.
 
-Therefore:
+**§ 49(3)** Therefore:
 
 ```text
 required analysis
@@ -1769,17 +1777,17 @@ optional precision
     may be configured
 ```
 
-Disabling an optional refinement must never cause a possible unsafe behavior to
+**§ 49(4)** Disabling an optional refinement must never cause a possible unsafe behavior to
 be classified as impossible.
 
 ---
 
-# Cross-analysis fixed points
+## § 50 Cross-analysis fixed points
 
-Closure/callable flow may participate in a compiler-wide fixed-point scheduler
+**§ 50(1)** Closure/callable flow may participate in a compiler-wide fixed-point scheduler
 with analyses that consume and refine related facts.
 
-Typical dependency relationships include:
+**§ 50(2)** Typical dependency relationships include:
 
 ```text
 callable flow
@@ -1789,20 +1797,20 @@ callable flow
     -> refined contracts/target information
 ```
 
-A compiler may iterate these analyses where required.
+**§ 50(3)** A compiler may iterate these analyses where required.
 
-Each analysis must still expose a separately defined input/output contract.
+**§ 50(4)** Each analysis must still expose a separately defined input/output contract.
 
-The implementation must not replace the analysis architecture with one opaque
+**§ 50(5)** The implementation must not replace the analysis architecture with one opaque
 undocumented global fixed point.
 
 ---
 
-# Termination
+## § 51 Termination
 
-All analysis budgets must terminate for a finite program.
+**§ 51(1)** All analysis budgets must terminate for a finite program.
 
-Therefore:
+**§ 51(2)** Therefore:
 
 - callable target abstractions must be finite or widen;
 - abstract environment identities must be finite;
@@ -1810,47 +1818,47 @@ Therefore:
 - interprocedural summary lattices must converge;
 - Deep analysis may be expensive but must not be unbounded.
 
-Termination is a normative compiler requirement.
+**§ 51(3)** Termination is a normative compiler requirement.
 
 ---
 
-# Callable contracts and unknown concrete targets
+## § 52 Callable contracts and unknown concrete targets
 
-Unknown concrete target and unknown callable contract are distinct states.
+**§ 52(1)** Unknown concrete target and unknown callable contract are distinct states.
 
-A concrete target may be unknown while a valid open callable contract still
+**§ 52(2)** A concrete target may be unknown while a valid open callable contract still
 provides the guarantees required by safety analysis.
 
-Conceptually:
+**§ 52(3)** Conceptually:
 
 ```text
 UnknownConcreteTarget + KnownContract
 ```
 
-may be sufficient.
+**§ 52(4)** may be sufficient.
 
-By contrast:
+**§ 52(5)** By contrast:
 
 ```text
 UnknownConcreteTarget + UnknownContract
 ```
 
-cannot provide safety guarantees that depend on target behavior.
+**§ 52(6)** cannot provide safety guarantees that depend on target behavior.
 
-Where a consumer requires guarantees such as non-retention, non-blocking,
+**§ 52(7)** Where a consumer requires guarantees such as non-retention, non-blocking,
 non-allocation, non-panic behavior, or stack bounds, a missing contract must be
 handled conservatively and may make the program invalid for that context.
 
 ---
 
-# Separate compilation
+## § 53 Separate compilation
 
-Closure analysis must remain sound when a callee body is unavailable.
+**§ 53(1)** Closure analysis must remain sound when a callee body is unavailable.
 
-Persisted compiler summaries or explicit callable contracts provide the
+**§ 53(2)** Persisted compiler summaries or explicit callable contracts provide the
 necessary information.
 
-At minimum, separate-compilation metadata must be able to preserve externally
+**§ 53(3)** At minimum, separate-compilation metadata must be able to preserve externally
 relevant facts equivalent to:
 
 ```text
@@ -1865,16 +1873,16 @@ open callable contracts
 summary version
 ```
 
-Implementation-specific local temporaries need not be exported.
+**§ 53(4)** Implementation-specific local temporaries need not be exported.
 
 ---
 
-# Symbolic relations across module boundaries
+## § 54 Symbolic relations across module boundaries
 
-Persisted summaries must preserve useful symbolic relations rather than
+**§ 54(1)** Persisted summaries must preserve useful symbolic relations rather than
 collapsing them unnecessarily to `Unknown`.
 
-Examples include:
+**§ 54(2)** Examples include:
 
 ```text
 returns CallableParameter(0)
@@ -1883,22 +1891,22 @@ invokes CallableParameter(2)
 returned closure environment depends on CallableParameter(0)
 ```
 
-This allows callers to instantiate imported summaries with concrete caller
+**§ 54(3)** This allows callers to instantiate imported summaries with concrete caller
 facts.
 
 ---
 
-# Summary metadata is compiler metadata
+## § 55 Summary metadata is compiler metadata
 
-Ordinary Sec source does not need to spell compiler-derived relations such as:
+**§ 55(1)** Ordinary Sec source does not need to spell compiler-derived relations such as:
 
 ```text
 ReturnsCallableParameter(0)
 ```
 
-for analyzable Sec bodies.
+**§ 55(2)** for analyzable Sec bodies.
 
-Explicit contracts are primarily required where the implementation body cannot
+**§ 55(3)** Explicit contracts are primarily required where the implementation body cannot
 be analyzed, such as:
 
 - foreign code;
@@ -1909,26 +1917,26 @@ be analyzed, such as:
 
 ---
 
-# Summary versioning
+## § 56 Summary versioning
 
-Persisted closure/callable summaries require an internal schema/version identity.
+**§ 56(1)** Persisted closure/callable summaries require an internal schema/version identity.
 
-An incompatible summary must never be interpreted using new semantics.
+**§ 56(2)** An incompatible summary must never be interpreted using new semantics.
 
-If the body is available, the compiler may invalidate and recompute the
+**§ 56(3)** If the body is available, the compiler may invalidate and recompute the
 summary.
 
-If the body is unavailable, the compiler must use an explicit compatible
+**§ 56(4)** If the body is unavailable, the compiler must use an explicit compatible
 contract or fall back conservatively.
 
 ---
 
-# Summary invalidation
+## § 57 Summary invalidation
 
-Cached closure/callable summaries must be invalidated when relevant inputs
+**§ 57(1)** Cached closure/callable summaries must be invalidated when relevant inputs
 change.
 
-Relevant dependencies include at least:
+**§ 57(2)** Relevant dependencies include at least:
 
 ```text
 function body
@@ -1945,17 +1953,17 @@ CompilationPlan-selected body
 analysis algorithm/schema version
 ```
 
-Incremental compilation may invalidate a smaller subset only when dependency
+**§ 57(3)** Incremental compilation may invalidate a smaller subset only when dependency
 tracking proves it sound.
 
 ---
 
-# Generic functions
+## § 58 Generic functions
 
-Generic callable summaries may be shared when the symbolic callable relationship
+**§ 58(1)** Generic callable summaries may be shared when the symbolic callable relationship
 is independent of concrete type arguments.
 
-Example:
+**§ 58(2)** Example:
 
 ```sec
 fn Identity[T](operation: fn(T) T) fn(T) T {
@@ -1963,26 +1971,26 @@ fn Identity[T](operation: fn(T) T) fn(T) T {
 }
 ```
 
-may preserve:
+**§ 58(3)** may preserve:
 
 ```text
 ReturnedCallable = CallableParameter(0)
 ```
 
-across compatible specializations.
+**§ 58(4)** across compatible specializations.
 
-When capture behavior, ownership, concrete field structure, callable contract,
+**§ 58(5)** When capture behavior, ownership, concrete field structure, callable contract,
 or target-selected behavior differs by specialization, the summary must be
 specialized accordingly.
 
 ---
 
-# CompilationPlan identity
+## § 59 CompilationPlan identity
 
-Closure/callable analysis is target-independent when the analyzed semantic body
+**§ 59(1)** Closure/callable analysis is target-independent when the analyzed semantic body
 and relevant callable contracts are target-independent.
 
-A summary becomes CompilationPlan-dependent when the plan changes relevant
+**§ 59(2)** A summary becomes CompilationPlan-dependent when the plan changes relevant
 behavior, for example through:
 
 ```text
@@ -1993,25 +2001,25 @@ selected specialization
 target-known compiler operation
 ```
 
-CompilationPlan identity must be part of cache/summary identity whenever it can
+**§ 59(3)** CompilationPlan identity must be part of cache/summary identity whenever it can
 change the result.
 
-The compiler need not duplicate summaries across plans when equivalence is
+**§ 59(4)** The compiler need not duplicate summaries across plans when equivalence is
 proven.
 
 ---
 
-# Diagnostics
+## § 60 Diagnostics
 
-Closure analysis primarily produces facts.
+**§ 60(1)** Closure analysis primarily produces facts.
 
-Language diagnostics are derived by combining those facts with ownership,
+**§ 60(2)** Language diagnostics are derived by combining those facts with ownership,
 lifetime, escape, storage, callable-contract, effect, concurrency, and other
 normative rules.
 
-Diagnostics should be relational and explain the dependency chain.
+**§ 60(3)** Diagnostics should be relational and explain the dependency chain.
 
-A useful diagnostic identifies as applicable:
+**§ 60(4)** A useful diagnostic identifies as applicable:
 
 ```text
 closure creation site
@@ -2026,9 +2034,9 @@ failing lifetime/storage/ownership fact
 
 ---
 
-# Capture diagnostic examples
+## § 61 Capture diagnostic examples
 
-Example shape:
+**§ 61(1)** Example shape:
 
 ```text
 error: captured value cannot be copied
@@ -2038,7 +2046,7 @@ error: captured value cannot be copied
 the closure capture requires value transfer into its environment
 ```
 
-Example shape:
+**§ 61(2)** Example shape:
 
 ```text
 error: value cannot be moved into closure environment
@@ -2046,15 +2054,15 @@ error: value cannot be moved into closure environment
 `resource` is still required by a deferred use
 ```
 
-Closure analysis provides the capture relation.
+**§ 61(3)** Closure analysis provides the capture relation.
 
-Ownership/lifetime analysis provides the reason the transfer is invalid.
+**§ 61(4)** Ownership/lifetime analysis provides the reason the transfer is invalid.
 
 ---
 
-# Environment lifetime diagnostic example
+## § 62 Environment lifetime diagnostic example
 
-Example shape:
+**§ 62(1)** Example shape:
 
 ```text
 error: returned closure depends on a value that does not live long enough
@@ -2071,14 +2079,14 @@ closure created here
 closure escapes through the return value
 ```
 
-The diagnostic should expose the shortest useful cause path rather than merely
+**§ 62(2)** The diagnostic should expose the shortest useful cause path rather than merely
 stating `invalid closure`.
 
 ---
 
-# Callable-contract diagnostic example
+## § 63 Callable-contract diagnostic example
 
-Example shape:
+**§ 63(1)** Example shape:
 
 ```text
 error: callable contract is insufficient for this operation
@@ -2089,17 +2097,17 @@ the current callable contract does not guarantee:
     NoBlock
 ```
 
-A diagnostic should identify why target precision or contract information is
+**§ 63(2)** A diagnostic should identify why target precision or contract information is
 insufficient for the consuming analysis.
 
 ---
 
-# Diagnostic categories
+## § 64 Diagnostic categories
 
-Closure-related diagnostics require stable diagnostic IDs assigned by the
+**§ 64(1)** Closure-related diagnostics require stable diagnostic IDs assigned by the
 canonical diagnostics registry.
 
-Conceptual categories include:
+**§ 64(2)** Conceptual categories include:
 
 ```text
 closure.invalid-capture
@@ -2118,33 +2126,33 @@ closure.summary-invalid
 closure.summary-version-mismatch
 ```
 
-The textual category names above are conceptual and do not assign the final
+**§ 64(3)** The textual category names above are conceptual and do not assign the final
 numeric/stable diagnostic IDs.
 
-Diagnostic IDs identify the rule/compiler phase, not the current severity.
+**§ 64(4)** Diagnostic IDs identify the rule/compiler phase, not the current severity.
 
 ---
 
-# Precision exhaustion and diagnostics
+## § 65 Precision exhaustion and diagnostics
 
-Precision-budget exhaustion is not normally a user error by itself.
+**§ 65(1)** Precision-budget exhaustion is not normally a user error by itself.
 
-The compiler widens conservatively.
+**§ 65(2)** The compiler widens conservatively.
 
-If widening prevents a required safety proof, the resulting diagnostic should
+**§ 65(3)** If widening prevents a required safety proof, the resulting diagnostic should
 explain the unresolved guarantee or unknown behavior rather than emitting a
 misleading performance-only warning.
 
-Optional analysis tooling may expose precision-widening information for compiler
+**§ 65(4)** Optional analysis tooling may expose precision-widening information for compiler
 analysis and debugging.
 
 ---
 
-# Consumers
+## § 66 Consumers
 
-Closure-analysis facts are designed for reuse.
+**§ 66(1)** Closure-analysis facts are designed for reuse.
 
-Primary consumers include:
+**§ 66(2)** Primary consumers include:
 
 ```text
 call graph
@@ -2163,13 +2171,13 @@ Semantic IR / Sec MLIR lowering
 
 ---
 
-# Call-graph integration
+## § 67 Call-graph integration
 
-Closure analysis owns function-value target flow.
+**§ 67(1)** Closure analysis owns function-value target flow.
 
-Call graph owns execution relationships.
+**§ 67(2)** Call graph owns execution relationships.
 
-Conceptually:
+**§ 67(3)** Conceptually:
 
 ```text
 Closure analysis:
@@ -2180,17 +2188,17 @@ Call graph:
     X may execute B
 ```
 
-Call graph must not need to build a separate competing function-value dataflow
+**§ 67(4)** Call graph must not need to build a separate competing function-value dataflow
 engine.
 
-Closure analysis may consume call-graph SCCs and other graph structure for
+**§ 67(5)** Closure analysis may consume call-graph SCCs and other graph structure for
 interprocedural fixed points.
 
 ---
 
-# Escape/lifetime integration
+## § 68 Escape/lifetime integration
 
-Conceptually:
+**§ 68(1)** Conceptually:
 
 ```text
 Closure analysis:
@@ -2203,51 +2211,51 @@ Lifetime analysis:
     Local(x) does not survive the destination lifetime
 ```
 
-The combined result is an invalid returned closure.
+**§ 68(2)** The combined result is an invalid returned closure.
 
-Closure analysis must expose environment dependencies precisely enough for this
+**§ 68(3)** Closure analysis must expose environment dependencies precisely enough for this
 composition.
 
 ---
 
-# Effect-analysis integration
+## § 69 Effect-analysis integration
 
-For a function-value invocation, effect analysis consumes the target set or open
+**§ 69(1)** For a function-value invocation, effect analysis consumes the target set or open
 callable contract.
 
-For a closed set:
+**§ 69(2)** For a closed set:
 
 ```text
 Effects(call) = union Effects(target)
 ```
 
-subject to the effect-analysis rulebook.
+**§ 69(3)** subject to the effect-analysis rulebook.
 
-For an open target set, the callable contract supplies the conservative effect
+**§ 69(4)** For an open target set, the callable contract supplies the conservative effect
 summary.
 
-Closure analysis does not redefine effect propagation.
+**§ 69(5)** Closure analysis does not redefine effect propagation.
 
 ---
 
-# Stack-analysis integration
+## § 70 Stack-analysis integration
 
-Stack analysis consumes possible callable targets for indirect calls.
+**§ 70(1)** Stack analysis consumes possible callable targets for indirect calls.
 
-A closed finite target set allows stack analysis to consider every possible
+**§ 70(2)** A closed finite target set allows stack analysis to consider every possible
 callee.
 
-An open target set requires sufficient callable stack-bound contract information
+**§ 70(3)** An open target set requires sufficient callable stack-bound contract information
 where a proven bound is required.
 
-Deep callable-flow refinement may tighten stack estimates without changing
+**§ 70(4)** Deep callable-flow refinement may tighten stack estimates without changing
 source semantics.
 
 ---
 
-# ISR and concurrency integration
+## § 71 ISR and concurrency integration
 
-ISR and concurrency analyses may query callable-flow and environment facts such
+**§ 71(1)** ISR and concurrency analyses may query callable-flow and environment facts such
 as:
 
 ```text
@@ -2258,15 +2266,15 @@ does it depend on thread-local state?
 may it escape to another execution context?
 ```
 
-Closure analysis provides callable/environment facts.
+**§ 71(2)** Closure analysis provides callable/environment facts.
 
-The consuming rulebook determines legality.
+**§ 71(3)** The consuming rulebook determines legality.
 
 ---
 
-# Parameter-usage integration
+## § 72 Parameter-usage integration
 
-Parameter-usage analysis may consume callable facts such as:
+**§ 72(1)** Parameter-usage analysis may consume callable facts such as:
 
 ```text
 Invoked
@@ -2275,20 +2283,20 @@ NotRetained
 NotStored
 ```
 
-when those facts can be proven through closure and escape analysis.
+**§ 72(2)** when those facts can be proven through closure and escape analysis.
 
-Closure analysis itself does not issue API-shape advisories that belong to
+**§ 72(3)** Closure analysis itself does not issue API-shape advisories that belong to
 parameter-usage analysis.
 
 ---
 
-# Semantic IR requirements
+## § 73 Semantic IR requirements
 
-The compiler's canonical semantic representation must preserve enough
+**§ 73(1)** The compiler's canonical semantic representation must preserve enough
 information to represent closure/callable facts without reverse-engineering them
 from low-level pointer operations.
 
-At minimum, Semantic IR or equivalent compiler state must preserve the semantic
+**§ 73(2)** At minimum, Semantic IR or equivalent compiler state must preserve the semantic
 distinctions required for:
 
 ```text
@@ -2306,18 +2314,18 @@ open callable contract
 spawn/task/thread transfer where callable values participate
 ```
 
-Exact IR operation names are implementation-defined.
+**§ 73(3)** Exact IR operation names are implementation-defined.
 
-Sec MLIR lowering may consume these facts but must not become the normative
+**§ 73(4)** Sec MLIR lowering may consume these facts but must not become the normative
 source of closure semantics.
 
 ---
 
-# No runtime analysis requirement
+## § 74 No runtime analysis requirement
 
-Closure analysis is compile-time compiler metadata.
+**§ 74(1)** Closure analysis is compile-time compiler metadata.
 
-This rulebook does not require:
+**§ 74(2)** This rulebook does not require:
 
 ```text
 runtime CFA graph
@@ -2328,17 +2336,17 @@ runtime borrow tracker
 runtime reflection metadata
 ```
 
-Runtime closure/environment representation exists only as required by the
+**§ 74(3)** Runtime closure/environment representation exists only as required by the
 actual program semantics and lowering strategy.
 
 ---
 
-# LSP integration
+## § 75 LSP integration
 
-The LSP consumes the Interactive analysis budget by default unless project
+**§ 75(1)** The LSP consumes the Interactive analysis budget by default unless project
 configuration selects a different supported analysis depth.
 
-Useful closure/callable LSP information may include:
+**§ 75(2)** Useful closure/callable LSP information may include:
 
 ```text
 capture list
@@ -2351,21 +2359,21 @@ escape/retention cause path
 analysis precision state
 ```
 
-LSP output must distinguish information the programmer needs from information
+**§ 75(3)** LSP output must distinguish information the programmer needs from information
 the programmer may merely want.
 
 ---
 
-# Required LSP information versus optional insight
+## § 76 Required LSP information versus optional insight
 
-Two presentation classes are required conceptually:
+**§ 76(1)** Two presentation classes are required conceptually:
 
 ```text
 NeedToKnow
 OptionalInsight
 ```
 
-`NeedToKnow` includes information necessary to understand:
+**§ 76(2)** `NeedToKnow` includes information necessary to understand:
 
 - an error or warning;
 - a safety condition;
@@ -2373,10 +2381,10 @@ OptionalInsight
 - a retention/lifetime requirement;
 - another condition the programmer must act on.
 
-`OptionalInsight` includes useful exploratory information that is not required to
+**§ 76(3)** `OptionalInsight` includes useful exploratory information that is not required to
 understand program validity.
 
-Examples may include:
+**§ 76(4)** Examples may include:
 
 ```text
 call count
@@ -2387,24 +2395,24 @@ deep-analysis narrowing information
 additional optimization/advisory facts
 ```
 
-Optional insight must be configurable rather than forced into every hover.
+**§ 76(5)** Optional insight must be configurable rather than forced into every hover.
 
 ---
 
-# Configurable LSP analysis depth
+## § 77 Configurable LSP analysis depth
 
-LSP analysis depth is project-configurable.
+**§ 77(1)** LSP analysis depth is project-configurable.
 
-A small project on a machine with ample resources may select continuous Deep
+**§ 77(2)** A small project on a machine with ample resources may select continuous Deep
 analysis.
 
-A large project or resource-constrained machine may select a cheaper Interactive
+**§ 77(3)** A large project or resource-constrained machine may select a cheaper Interactive
 analysis profile.
 
-The selected profile changes precision and optional information, not language
+**§ 77(4)** The selected profile changes precision and optional information, not language
 semantics.
 
-A future LSP synchronization rule/appendix must require the LSP to:
+**§ 77(5)** A future LSP synchronization rule/appendix must require the LSP to:
 
 ```text
 read the project's configuration file when the workspace is opened;
@@ -2417,51 +2425,51 @@ refresh diagnostics, hover, call hierarchy, and other dependent LSP output;
 apply the new configuration without requiring an LSP/server restart.
 ```
 
-This rulebook defines the closure-analysis integration requirement. The LSP
+**§ 77(6)** This rulebook defines the closure-analysis integration requirement. The LSP
 rulebook owns the complete LSP configuration/watch behavior.
 
 ---
 
-# Hover behavior
+## § 78 Hover behavior
 
-Hover output must not become an unconditional dump of all available compiler
+**§ 78(1)** Hover output must not become an unconditional dump of all available compiler
 analysis facts.
 
-For example, a function call count may be useful but is normally optional
+**§ 78(2)** For example, a function call count may be useful but is normally optional
 insight rather than mandatory hover content.
 
-A project/editor configuration may request richer hover information when the
+**§ 78(3)** A project/editor configuration may request richer hover information when the
 analysis budget and available resources make that appropriate.
 
-Facts necessary to explain a current diagnostic or required safety contract
+**§ 78(4)** Facts necessary to explain a current diagnostic or required safety contract
 must remain available regardless of optional hover-detail settings.
 
 ---
 
-# `sec analyse`
+## § 79 `sec analyse`
 
-The compiler provides a dedicated analysis command conceptually named:
+**§ 79(1)** The compiler provides a dedicated analysis command conceptually named:
 
 ```text
 sec analyse
 ```
 
-Default behavior is to run all available analyses:
+**§ 79(2)** Default behavior is to run all available analyses:
 
 ```text
 sec analyse
     == sec analyse --all
 ```
 
-The user may explicitly select one supported analysis instead of running all of
+**§ 79(3)** The user may explicitly select one supported analysis instead of running all of
 them.
 
-The analysis-name vocabulary and full CLI syntax are owned by
+**§ 79(4)** The analysis-name vocabulary and full CLI syntax are owned by
 `rules/tooling/cli.md` (MD-017). Closure analysis has the single registered
 name `closures`: `sec analyse closures` selects it individually. It also runs
-as part of `sec analyse` and `sec analyse --all` (§ 5.2).
+as part of `sec analyse` and `sec analyse --all` (§ 4.2).
 
-Closure deep analysis may expose information such as:
+**§ 79(5)** Closure deep analysis may expose information such as:
 
 ```text
 callable target sets
@@ -2474,25 +2482,25 @@ precision widening
 context-sensitive target refinement
 ```
 
-`sec analyse` is not required for normal semantic correctness; it is the default
+**§ 79(6)** `sec analyse` is not required for normal semantic correctness; it is the default
 entry point for full/deep analysis and analysis reporting.
 
 ---
 
-# Implementation governance
+## § 80 Implementation governance
 
-This rulebook contains normative requirements only.
+**§ 80(1)** This rulebook contains normative requirements only.
 
-Mutable implementation progress belongs in:
+**§ 80(2)** Mutable implementation progress belongs in:
 
 ```text
 implementation-status.yaml
 ```
 
-A closure-analysis ledger entry should track granular capabilities rather than a
+**§ 80(3)** A closure-analysis ledger entry should track granular capabilities rather than a
 single misleading binary implemented/not-implemented flag.
 
-Useful capability classes include:
+**§ 80(4)** Useful capability classes include:
 
 ```text
 value capture
@@ -2511,14 +2519,14 @@ Semantic IR integration
 lowering support
 ```
 
-Current status, source-file paths, verification commands, and remaining work are
+**§ 80(5)** Current status, source-file paths, verification commands, and remaining work are
 governance data and are not normative language semantics.
 
 ---
 
-# Required capture tests
+## § 81 Required capture tests
 
-The Sec 0.1 test suite must cover at least:
+**§ 81(1)** The Sec 0.1 test suite must cover at least:
 
 ```text
 copyable value capture
@@ -2542,9 +2550,9 @@ multiple runtime closure instances from one creation site
 
 ---
 
-# Required callable-flow tests
+## § 82 Required callable-flow tests
 
-The test suite must cover at least:
+**§ 82(1)** The test suite must cover at least:
 
 ```text
 named function exact target
@@ -2570,9 +2578,9 @@ known targets plus open contract
 
 ---
 
-# Required interprocedural tests
+## § 83 Required interprocedural tests
 
-The test suite must cover at least:
+**§ 83(1)** The test suite must cover at least:
 
 ```text
 direct callable summary
@@ -2593,9 +2601,9 @@ missing-summary conservative fallback
 
 ---
 
-# Required escape/lifetime integration tests
+## § 84 Required escape/lifetime integration tests
 
-The test suite must cover at least:
+**§ 84(1)** The test suite must cover at least:
 
 ```text
 local non-escaping closure
@@ -2612,14 +2620,14 @@ closure capturing another closure whose environment expires
 closure capturing a generation-dependent handle/reference
 ```
 
-The final diagnostic may be owned by escape, lifetime, storage, ownership, or
+**§ 84(2)** The final diagnostic may be owned by escape, lifetime, storage, ownership, or
 concurrency validation, but the closure dependency facts must participate.
 
 ---
 
-# Required CFA precision tests
+## § 85 Required CFA precision tests
 
-The test suite must verify at least:
+**§ 85(1)** The test suite must verify at least:
 
 ```text
 disjoint callable fields remain distinct
@@ -2636,11 +2644,11 @@ result is independent of traversal/declaration order
 
 ---
 
-# Analysis-budget tests
+## § 86 Analysis-budget tests
 
-## Interactive
+### § 86.1 Interactive
 
-Tests must verify:
+**§ 86.1(1)** Tests must verify:
 
 ```text
 sound bounded result
@@ -2649,9 +2657,9 @@ Pending state allowed while recomputing
 no stale incomplete fact presented as Proven
 ```
 
-## Standard
+### § 86.2 Standard
 
-Tests must verify:
+**§ 86.2(1)** Tests must verify:
 
 ```text
 deterministic result
@@ -2659,9 +2667,9 @@ all required correctness proofs
 same result independent of compiler worker scheduling/worklist order
 ```
 
-## Deep
+### § 86.3 Deep
 
-Tests must verify:
+**§ 86.3(1)** Tests must verify:
 
 ```text
 same source semantics
@@ -2670,16 +2678,16 @@ no weaker safety guarantee
 context-sensitive refinement remains sound
 ```
 
-Deep analysis must not make an invalid program valid by changing the language
+**§ 86.3(2)** Deep analysis must not make an invalid program valid by changing the language
 rules.
 
 ---
 
-# LSP integration tests
+## § 87 LSP integration tests
 
-The complete LSP test matrix belongs to the LSP rulebook/appendix.
+**§ 87(1)** The complete LSP test matrix belongs to the LSP rulebook/appendix.
 
-Closure integration must nevertheless support tests equivalent to:
+**§ 87(2)** Closure integration must nevertheless support tests equivalent to:
 
 ```text
 open project
@@ -2696,9 +2704,9 @@ optional hover facts may be toggled independently of required diagnostic facts
 
 ---
 
-# Performance and termination tests
+## § 88 Performance and termination tests
 
-Compiler regression tests should include:
+**§ 88(1)** Compiler regression tests should include:
 
 ```text
 many closure creation sites
@@ -2711,9 +2719,9 @@ many captured callable values
 open-contract widening
 ```
 
-No normative wall-clock threshold is defined here.
+**§ 88(2)** No normative wall-clock threshold is defined here.
 
-The tests must protect:
+**§ 88(3)** The tests must protect:
 
 ```text
 termination
@@ -2724,9 +2732,9 @@ sound target coverage
 
 ---
 
-# Completion criteria for Sec 0.1
+## § 89 Completion criteria for Sec 0.1
 
-Closure analysis is complete for Sec 0.1 when all of the following hold:
+**§ 89(1)** Closure analysis is complete for Sec 0.1 when all of the following hold:
 
 1. all Sec 0.1 copy, move, shared-reference, and
    mutable-reference captures are represented correctly;
@@ -2761,9 +2769,9 @@ Closure analysis is complete for Sec 0.1 when all of the following hold:
 
 ---
 
-# Canonical design summary
+## § 90 Canonical design summary
 
-The normative closure-analysis model can be summarized as follows:
+**§ 90(1)** The normative closure-analysis model can be summarized as follows:
 
 ```text
 Closure analysis covers capture analysis, closure-environment dependencies, and

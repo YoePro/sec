@@ -213,7 +213,7 @@ A block comment begins with:
 /*
 ```
 
-and ends with the matching:
+and ends with the first following:
 
 ```text
 */
@@ -231,37 +231,36 @@ Block comments may span lines.
 
 ---
 
-## 5.3 Nested block comments
+## 5.3 Block comments do not nest
 
-Block comments may nest.
+Block comments do not nest (owner decision 2026-11-07).
+
+The first `*/` after the opening `/*` ends the comment, however many `/*`
+sequences appear inside it. A `/*` inside a block comment is ordinary comment
+text.
 
 Example:
 
 ```sec
 /*
- * Outer comment.
- *
- * /*
- *  * Inner comment.
- *  */
- *
- * Outer comment continues.
+ * Matches the opening /* delimiter and the documentation /** form.
  */
 ```
 
-Each opening `/*` increases nesting depth.
+is one comment that ends at its single `*/`.
 
-Each closing `*/` decreases nesting depth.
+The asterisk of the opening `/*` cannot also begin the closing delimiter:
+`/*/` does not end a comment.
 
-The block comment ends when depth returns to zero.
+To comment out code that itself contains a block comment, use line comments.
 
 An unterminated block comment is one lexical error beginning at the opening
 delimiter.
 
 The lexer retains the complete comment candidate through end of file and emits
 `L1015` (`lexer.unterminated-block-comment`) with the opening delimiter as the
-start of its primary source range. Nested unmatched openings do not create
-additional diagnostics for the same outer comment token.
+start of its primary source range. A `/*` inside the unterminated comment
+creates no additional diagnostic.
 
 ---
 
@@ -2058,7 +2057,7 @@ contextual set
 identifier x
 operator x
 line comments
-nested block comments
+block comments containing /* text (no nesting)
 documentation comments
 ordinary strings
 raw strings
@@ -2154,5 +2153,5 @@ setter in those grammar contexts and remains an ordinary identifier elsewhere.
 `x` remains an ordinary identifier spelling and becomes matrix multiplication
 only in infix expression context.
 
-Comments may nest, literals retain exact source information, semicolons do not
+Block comments do not nest, literals retain exact source information, semicolons do not
 terminate statements, and the lexer always prefers the longest valid token.

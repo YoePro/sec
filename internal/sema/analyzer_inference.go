@@ -129,6 +129,9 @@ func (a *Analyzer) inferFunctionValueCall(expr *ast.CallExpression, calleeType T
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
 	}
+	if !a.applyCallableInvocationAuthority(expr, calleeType) {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
 	a.recordFunctionValueCall(expr, calleeType)
 	a.recordFunctionValueCallEscapeFacts(expr, calleeType)
 
@@ -718,7 +721,7 @@ func (a *Analyzer) inferExpectedUnionVariantExpression(expr ast.Expression, expe
 		if valueType.Kind != InvalidType && a.checkCompileTimeContractExpression(payloadType, expr.Arguments[0]) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
-		if valueType.Kind != InvalidType && !a.validateOwningConstructionSource(expr.Arguments[0]) {
+		if valueType.Kind != InvalidType && !a.validateOwningConstructionSource(expr.Arguments[0], TransferSiteConstruction) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		return expected, expressionValue{Display: expr.String()}, true
@@ -847,7 +850,7 @@ func (a *Analyzer) inferStructLiteral(expr *ast.StructLiteral) (Type, expression
 		if a.checkCompileTimeContractExpression(fieldType, field.Value) {
 			planValid = false
 		}
-		if !a.validateOwningConstructionSource(field.Value) {
+		if !a.validateOwningConstructionSource(field.Value, TransferSiteConstruction) {
 			planValid = false
 			ownershipValid = false
 			continue
@@ -1342,7 +1345,7 @@ func (a *Analyzer) inferIndexExpression(expr *ast.IndexExpression) (Type, expres
 		} else if leftType.Kind == SliceType {
 			a.recordSliceIndexPlan(expr, a.expressionTypes[expr.Left], leftType, elementType, indexType)
 		} else if arrayShapeOf(leftType) == ArrayShapeDynamic {
-			a.recordSequenceIndexEffect(expr)
+			a.recordDynamicArrayIndexPlan(expr, leftType, elementType, indexType)
 		}
 		if elementType.Kind == ReferenceType {
 			elementType = a.referenceTypeWithOriginFromExpression(elementType, expr.Left)
@@ -2258,6 +2261,9 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 		if isMethodCall && best[0].Function.ReceiverMutable {
 			if member, ok := expr.Callee.(*ast.MemberExpression); ok {
 				a.invalidateMutexAcquisitionsForWrite(member.Object)
+				if place, placed := a.resolvePlace(member.Object); placed {
+					a.noteLambdaEnvironmentWrite(place, expressionToken(member.Object))
+				}
 			}
 		}
 		if isMethodCall && best[0].Function.ReceiverConsuming {

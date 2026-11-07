@@ -60,7 +60,7 @@ func (a *Analyzer) checkUnionPayloadFields(unionType Type, variant UnionVariant,
 			}
 		}
 		if valueType.Kind != InvalidType {
-			if !a.validateOwningConstructionSource(field.Value) {
+			if !a.validateOwningConstructionSource(field.Value, TransferSiteConstruction) {
 				valid = false
 			}
 		}
@@ -124,7 +124,7 @@ func (a *Analyzer) resolveResultValueInitializer(resultType Type, expr ast.Expre
 		a.addErrorAtToken(expressionToken(payload), "cannot initialize %s with %s(%s)", typeDisplayName(resultType), name, typeDisplayName(valueType))
 		return Type{Kind: InvalidType}, true
 	}
-	if !a.validateOwningConstructionSource(payload) {
+	if !a.validateOwningConstructionSource(payload, TransferSiteConstruction) {
 		return Type{Kind: InvalidType}, true
 	}
 	return resultType, true

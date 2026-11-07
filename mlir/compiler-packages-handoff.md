@@ -4901,3 +4901,252 @@ set/del/all()/len(). New code must use these accessors instead of map indexing; 
 `previous.child()` instead of copying. copySymbols is removed. Tests in internal/sema construct tables with
 symbolTableOf(map). Suites internal/sema, internal/ir/semantic, internal/lowering/secmlir and a targeted cmd/lsp
 subset green. Benchmark: 3.62 GB / 2.07 s -> 1.94 GB / 1.70 s per analysis. Binaries rebuilt. Working set released.
+
+## Claude: P17-40 fresh match subjects (released, 2026-11-07)
+
+Files: internal/sema/analyzer.go (analyzeMatch: constructed-subject moves, borrowed payload of a fresh subject),
+internal/sema/analyzer_union_state.go (constructedMatchSubject), internal/sema/cleanup_match_bindings.go
+(recordMatchSubjectPlace, matchPlanBorrowsPayload), internal/ir/semantic/match_owned_payload.go,
+internal/ir/semantic/payload_reference.go (borrowEndPosition), rules/control-flow/flowcontrol_match.md § 13,
+new fixture testdata/semantic_ir/fresh_subject_borrows.sec + internal/lowering/secmlir/fresh_subject_borrows_test.go,
+internal/sema/copy_move_test.go (the former rejection test now asserts acceptance; owner decision 2026-11-07).
+Sema soundness fix: `match Some(<-h)` never committed the move of h, so a later use of h was accepted; it is now
+S1088. P17-40 closed. Found an MLIR verifier gap, recorded in governance/lowering.yaml remaining: the ownership/place
+verifiers accept sec.own.destroy_place while a payload borrow of the Place is still live. Suites internal/sema,
+internal/ir/semantic, internal/lowering/secmlir green. Binaries rebuilt.
+
+## Codex: P17 live payload borrow versus destruction verifier (active, 2026-11-07)
+
+Reserved: lowering.sec-mlir-package17's remaining verifier-ordering gap,
+mlir/lib/Analysis new shared borrow/destruction check, VerifyPlaceReferences.cpp,
+VerifyOwnership.cpp, analysis build/header wiring, lit regression cases and
+governance/lowering.yaml. Will consume explicit P15 Place/reference/end-borrow
+facts and CFG, without a source borrow checker. Claude's latest fresh-subject
+producer changes remain untouched; native source regression will be exercised.
+
+## Claude: P17-37 named-field borrows and guarded owned try handlers (released, 2026-11-07)
+
+Files: internal/sema/match_field_patterns.go (fresh-subject field borrows, freshMatchSubject),
+internal/ir/semantic/match_field_bindings.go (borrowMatchField through a stored subject's Place, storageFieldBindings;
+copyTrivialFieldBindings removed), internal/ir/semantic/builder.go (match arm gate; buildTryHandler takes an owned
+error only on a true guard), fixtures payload_bindings.sec (+3 functions), fresh_subject_borrows.sec (+FieldOfFresh),
+new guarded_try_handlers.sec + guarded_try_handlers_test.go; ownership_capabilities_test.go boundary row now expects
+"guarded try handler that moves an owned error payload"; match_field_patterns_test.go drops the temporary-subject
+rejection (owner decision 2026-11-07 covers payload fields). P17-37 stays open only for guarded moves of an owned error
+payload (needs a Sema guard Place for try payloads). New governance remaining: borrowing an owned try-handler binding
+(`ref e`) hits an internal error ("static-provenance root e has no static binding") instead of a named boundary.
+Suites internal/sema, internal/ir/semantic, internal/lowering/secmlir green. Binaries rebuilt.
+
+## Claude: P17-37 closed — guarded owned try payloads (released, 2026-11-07)
+
+Files: internal/sema/cleanup_match_bindings.go (tryGuardPlaces, ResolvedTryGuardPlaceOf), internal/sema/analyzer.go
+(field + reset), internal/sema/analyzer_try_handlers.go (handler binding is now Local), internal/ir/semantic/builder.go
+(buildTryHandler guardedMove), match_owned_payload.go (tryGuardCandidate), match_error_variants.go (matchErrorArm.test),
+try_local_handlers.go, testdata/semantic_ir/guarded_try_handlers.sec, guarded_try_handlers_test.go (also verifies
+package17_variants/error_handler_payload.sec), ownership_capabilities_test.go (row removed).
+Sema fix: try handler bindings were declared without Local (static Place root); this also removes the internal error on
+`ref e` of an owned handler binding. Suites internal/sema, internal/ir/semantic, internal/lowering/secmlir green, plus
+the Try/Handler subsets of cmd/compiler and cmd/lsp. P17: 60/66. Binaries rebuilt.
+
+## Codex: P17 payload-borrow/destruction verifier gap closed (released, 2026-11-07)
+
+Closed the ENTIRE existing remaining item that allowed own.destroy_place while
+a payload borrow was live. verifyBorrowDestruction is shared by both
+--sec-verify-places and --sec-verify-ownership, in a focused 180-line sibling
+file, not in a source borrow checker. It consumes explicit P15 operations and
+end markers. A matching end must select the same SSA holder through unambiguous
+CFG forwarding AND match borrow/lifetime IDs. Copies/reborrows remain distinct;
+a mutable move ends its source holder while its destination keeps the referent
+dependency. Canonical Place containment, distinct stored fields, storage aliases,
+CFG branches and loop redefinition are covered. Indexed paths without supplied
+disjointness facts stay conservative. Visited origin queries include the
+projection path, preventing repeated CFG diamonds from duplicating identical
+work while keeping distinct field alternatives. No layout/target heuristics.
+
+Rejects overlapping own.destroy_place, own.replace_place, own.destroy_value and
+own.discard before the holder ends. Diagnostics identify the terminal action
+and attach the retained holder's origin. Sixteen negative and twelve positive
+split-input cases check both passes; correct ends on every path, unrelated
+owners/fields, moved/copied/derived holders and loop-forwarded references pass.
+
+Confirmed final checks:
+- cmake --build build/sec-mlir --target sec-mlir-opt -j 4
+- llvm-lit -sv build/sec-mlir/test: 220/220 pass (last complete run includes all
+  28 new scenarios). Build has the pre-existing cleanup_scope_id narrowing
+  warning in VerifyOwnership.cpp; no new compile failure.
+- SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test -p 4 ./internal/lowering/secmlir -count=1
+  Complete suite passed twice, final run 15.873s after the latest Claude P17-37
+  guarded-handler Local/guard-Place changes.
+- Refreshed TestSchema13(FreshSubjectBorrows|PayloadBindings|Guarded) subset passes
+  with 32/64-bit source-to-verified-MLIR modules.
+- yamlstatus check: 0 problems in 45 fragments; lowering.yaml canonical;
+  owning path check 0 missing/79 checked; git diff --check clean.
+
+Governance housekeeping: owned_fixed_array_observation.sec was a stale missing
+path; its MakeHandles().Len case is now TemporaryLength in ownership_variants.sec,
+so the reference was repathed using yamlstatus (only this owner referenced it).
+Canonical formatting also removes two redundant quotes without value changes.
+
+Counts at our closure: file 96 -> 95 remaining, P17 14 -> 13. Shared concurrent
+changes matter: the turn began at 97/15; Claude added the owned try-borrow gap
+and then closed that gap and guarded owned try payloads. Only the verifier
+ordering point was closed by this task; package17-todo.md changes remain Claude's.
+Latest handoff reviewed: Claude's P17-37 closed entry is compatible, no source
+producer or Sema files were changed here. No new missing decision/blocker.
+
+Files changed by this task:
+- mlir/lib/Analysis/VerifyBorrowDestruction.cpp (new)
+- mlir/lib/Analysis/ReferenceFlow.h
+- mlir/lib/Analysis/VerifyOwnership.cpp
+- mlir/lib/Analysis/VerifyPlaceReferences.cpp
+- mlir/lib/Analysis/CMakeLists.txt
+- mlir/test/Analysis/invalid-schema13-borrow-destruction.mlir (new)
+- mlir/test/Analysis/schema13-borrow-destruction.mlir (new)
+- governance/lowering.yaml
+- mlir/compiler-packages-handoff.md
+
+Local sec-mlir-opt rebuilt; no checked-in bin/ or vscode/ artifacts changed by
+this task, no commit. Working set released.
+
+## Claude: P17-13 / P17-35 transfer-plan completion (working set, 2026-11-07)
+
+Claude is completing P17-13 (remaining transfer-plan producers: copy return,
+copy capture, construction copies, match bindings, branch uses, observation /
+borrow distinction) and P17-35 (builder producers consume the immutable plans).
+Working set: internal/sema/{transfer_plans,return_ownership,analyzer_lifetime,
+analyzer_inference,match_arm_bindings,transfer_destinations}*.go and new sema
+tests; internal/ir/semantic producers that still infer ownership; package17-todo.md;
+governance/lowering.yaml. Please avoid these until released.
+
+## Claude: P17-13 / P17-35 closed — transfer plans complete (released, 2026-11-07)
+
+- Sema publishes transfer plans for every accepted copy/move site: copy returns,
+  construction copies (struct fields, union/Option/Result payloads), copy
+  captures, match arm results (new site `branch`) and by-value payload / named
+  field / if-is / try-handler bindings (new site `match-binding`, keyed by the
+  bound identifier; `SourceFresh` for a try handler's error).
+- New queries: `ResolvedOwnershipUseOf` (transfer / borrow-shared /
+  borrow-mutable / reference / observation), `ResolvedTryHandlerBindingTransferOf`;
+  new facts `ResolvedUnionConstruction.PayloadActions`, `ResolvedTry.SuccessTransfer`.
+- Builder consumes them for union payloads, try-handler payload bindings and
+  Option try; `ownedLocalMoveLowerable`/`fieldMoveLowerable`/`ownedArgumentLowerable`
+  accept site `branch`; the capability preflight leaves `match-binding` plans
+  to the payload producers. No MLIR, dialect or verifier change.
+- Tests: TestTransferPlansCoverEveryUseSite (sema), TestBuilderConsumesResolvedTransferPlans
+  (ir/semantic); sema, ir, lowering suites and targeted cmd/lsp + cmd/compiler
+  subsets pass. yamlstatus check 0 problems.
+
+Files: internal/sema/{transfer_plans,return_ownership,call_ownership,
+analyzer_lifetime,analyzer,analyzer_inference,owning_construction,
+union_construction_inference,match_arm_bindings,match_field_patterns,
+analyzer_try_handlers,semantic_facts}.go, internal/sema/transfer_plan_sites_test.go (new),
+internal/ir/semantic/{builder,cleanup_producers,ownership_capabilities,
+match_error_variants,option_try}.go, internal/ir/semantic/transfer_plan_consumers_test.go (new),
+package17-todo.md, governance/lowering.yaml. Working set released; no commit.
+
+## Claude: P18 section A baseline (working set, 2026-11-07)
+
+Claude starts SEC-MLIR-P18 with section A (P18-01..04): execution snapshot and
+predecessor matrix, sync-v1 audit, `T[]` Sema confirmation and MD-074 /
+capacity / growth governance. Working set: package18-todo.md, governance
+collection/allocation/lowering P18 entries, possibly missing-decisions.yaml for
+sync conflicts. No compiler code yet. Please avoid these until released.
+
+## Claude: P18 section A done (released, 2026-11-07)
+
+P18-01..04 closed: baseline/predecessor matrix, sync-v1 audit (no conflict;
+destruction.md § 17.3(3) added for reverse logical order and reclamation
+authority, no renumbering), T[] Sema confirmation and MD-074/capacity/growth
+record. New governance entry lowering.sec-mlir-package18 (partial).
+package18-todo.md P18-06 and the inventory no longer plan WithCapacity/Reserve
+for T[] (list/map/set only, collections.md § 6.3). No compiler code changed.
+Next: section B Sema plans (P18-05..12). Working set released; no commit.
+
+## Claude: P18-05 / P18-06 Sema plans (released, 2026-11-07)
+
+New internal/sema/dynamic_array_plans.go (ResolveDynamicArrayPlan,
+ResolvedDynamicArrayPlanOf; owner backing InvalidationDomainID allocated in
+recordResolvedPlace for T[] Places only) and dynamic_array_allocation_plans.go
+(ResolvedAllocationOperationPlan, ResolvedAllocationPlanOf for T[] Append,
+recorded from recordCollectionGrowth). Tests TestDynamicArrayPlans,
+TestDynamicArrayAllocationPlans. No IR/MLIR change; T[] stays unsupported in
+Semantic IR. Sema/IR/lowering suites and targeted cmd/compiler + cmd/lsp
+allocation subsets pass. Working set released; no commit.
+
+## Claude: modernization pass 1 archived (released, 2026-11-07)
+
+parser_recovery.md revision 2.1 (§§ 22-66 freshness audit; §§ 23, 27, 42-44,
+47, 58 corrected, § 27(4) added), grammar.md @target synchronization note,
+14 stale parser_recovery.md citations in Go comments repathed (comments only,
+internal/parser, internal/cst, internal/sema, internal/fixes, cmd/lsp tests).
+Corrections moved to applied/: sec-compiler-rulebooks-modernization-pass1-20261028-20261107.md
+and the superseded MD-126 proposal (-20261107). Governance: parser.yaml
+follow-up closed; core.yaml gains the compiler_known_members.md Priority 2
+review. Parser/cst/fixes/formatter tests and 39 targeted LSP recovery tests
+pass. Working set released; no commit.
+
+## Claude: lambda captures v2 (released, 2026-11-07)
+
+capture(ref x) / capture(ref mut x) parsed (ast.LambdaCaptureSharedBorrow /
+MutableBorrow, MutToken), formatted (cst SpacedKeyword) and printed by
+`sec parse`. New internal/sema/lambda_capabilities.go: owned captures are
+mutable, mut fn / -> fn inferred from environment writes and moves (hooks in
+markPlaceUnavailable, publishTransferPlan, applyAssignmentOwnership, ref mut
+borrows/arguments, mutating receivers), canInitialize allows capability
+strengthening, mut fn calls need mutable access, -> fn calls consume. Borrow
+captures are ref T / ref mut T holders (owner decision: `*name`, like match
+ref bindings), borrowed at construction and held by the closure binding.
+Type.FunctionEnvironmentMoveOnly + -> fn are MoveOnly. MD-127 opened
+(copyability of function values with unknown environment). lambda-functions.md
+revision 2.1 examples synced. No IR/MLIR change (lambdas are not lowered).
+Sema, parser, cst, formatter, ir, lowering suites and targeted cmd/compiler +
+cmd/lsp subsets pass. Working set released; no commit.
+
+## Claude: P18-07..12 Sema plans (released, 2026-11-07)
+
+Working set (Sema only, no rulebook edits while Codex renumbers rulebooks):
+internal/sema storage_relations.go (new: BackingRelation, ReclamationAuthority,
+AllocationIdentityID/ContextID/ReclamationPlanID), dynamic_array_index_plans.go
+(new: ResolvedDynamicArrayIndexPlan/Of), dynamic_array_allocation_plans.go
+(identities, relations, ResolvedBackingTransitionPlan), dynamic_array_plans.go
+(empty backing facts, DestructionTransitions), place_identities.go tables,
+index_plans.go / try_failure_set.go / analyzer_inference.go hooks,
+analyzer_lifetime.go (S1007 runtime-index help: borrow instead of `:<-`).
+Growth transition choice: advance-epoch on the owner's BackingDomain (§ 29).
+P18-11/12 verified by tests (S1162 conflicts, @noPanic, growth effect).
+package18-todo.md P18-07..12 [x]; governance lowering.sec-mlir-package18 gains
+two remaining items (.Len bounds proofs need structural-mutation invalidation;
+P15/P16 reference epoch facts must name the backing domain). Sema, IR,
+lowering suites and targeted cmd/compiler + cmd/lsp subsets pass. Released;
+no commit.
+
+## Claude: block comments no longer nest (released, 2026-11-07)
+
+Owner decision: the first `*/` ends a block comment; an inner `/*` is text.
+Codex, note for the paragraph pass: rules/foundations/lexical_structure.md
+§ 5.3 is rewritten ("Block comments do not nest"), § 5.2 says "first following
+*/", and the token-list and summary lines near the end are updated; lsp.md
+"Semantic tokens" drops "nested". Code: internal/lexer/lexer.go
+(readBlockComment, skipBlockComment), vscode/syntaxes/sec.tmLanguage.json (no
+recursive include), formatter block_comments.go doc, tests in lexer, formatter
+and cmd/lsp, fixtures testdata/lexer/{interpolation_balanced_valid,
+unterminated_block_comment_invalid}.sec and
+testdata/formatter/interpolation_alignment.expected.sec. governance/lexer.yaml
+updated. Lexer, cst, formatter, parser suites and cmd/lsp/cmd/compiler comment
+subsets pass. Released; no commit.
+
+## Claude: governance remaining items, unions/defer batch (released, 2026-11-07)
+
+Code: internal/sema analyzer_union_state.go (knownVariantTest accepts mutable
+bindings through version-tracked facts via variantFactUsable; `is not`
+complement; Option `is None` match form read as a state test),
+match_reachable_state.go (provableMatchVariants, matchArmTopState),
+analyzer.go match coverage (plainKinds; Option/Result plans publish no IR
+proof or ProvenInactive), internal/parser/expression.go
+(rejectLegacyWordMoveArgument). Tests: union_construction_forms_test.go,
+match_reachable_state_mutable_test.go, defer_contexts_test.go, parser
+TestRejectLegacyWordFormMoveArgument. Governance: declarations.yaml
+frontend.unions (4 items verified/closed, refinement item narrowed),
+control_flow.yaml frontend.defer-v2 (defer contexts verified). Sema, IR,
+lowering, parser suites and targeted cmd subsets pass. Released; no commit.
+

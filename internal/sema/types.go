@@ -177,18 +177,18 @@ type Type struct {
 	// FunctionCapability is the callable environment authority from
 	// rules/declarations/lambda-functions.md. The zero value is normalized to
 	// CallableShared for compatibility with pre-capability semantic facts.
-	FunctionCapability      CallableCapability
+	FunctionCapability CallableCapability
 	// FunctionEnvironmentMoveOnly marks a closure value whose known
 	// environment makes it move-only: a move-only owned capture or a
 	// `ref mut` capture (lambda-functions.md §27). It is a property of the
 	// value, not part of the function type's identity.
 	FunctionEnvironmentMoveOnly bool
-	GenericParameters       []string
-	GenericConstraints      []GenericConstraint
-	Fields                  []StructField
-	RegisterWidth           int64
-	RegisterAllocationOrder string
-	RegisterByteOrder       string
+	GenericParameters           []string
+	GenericConstraints          []GenericConstraint
+	Fields                      []StructField
+	RegisterWidth               int64
+	RegisterAllocationOrder     string
+	RegisterByteOrder           string
 	// RegisterShadow is the register-level shadow default after inheritance.
 	RegisterShadow      RegisterShadowPolicy
 	RegisterFields      []RegisterField
@@ -1756,6 +1756,11 @@ func equalityComparable(typ Type, visiting map[string]bool) bool {
 		// ordinary identity or content equality for owning dynamic arrays.
 		return arrayShapeOf(typ) == ArrayShapeFixed && typ.Element != nil && equalityComparable(*typ.Element, visiting)
 	case StructType:
+		// duration is a signed nanosecond count with equality and ordering
+		// (temporal.md § 5.3; owner decision 2026-11-08).
+		if isCoreDurationType(typ) {
+			return true
+		}
 		// Compiler-known struct types without ordinary stored-field semantics
 		// represent resources, collections, or opaque runtime descriptors.
 		if typ.Intrinsic {
@@ -1798,4 +1803,11 @@ func equalityComparable(typ Type, visiting map[string]bool) bool {
 	default:
 		return false
 	}
+}
+
+// isCoreDurationType recognizes the compiler-known `duration`, built in or
+// declared by the core module, never a type of that spelling in another
+// module.
+func isCoreDurationType(typ Type) bool {
+	return typ.Kind == StructType && typ.Name == "duration" && (typ.Module == "" || typ.Module == "core")
 }

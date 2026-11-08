@@ -2,24 +2,27 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-13
-- **Last updated:** 2026-09-28
+- **Last updated:** 2026-11-08 (stable chapter, subsection, and paragraph numbering); 2026-09-28
 - **Document revision:** 1.2
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/types/default_values.md`
+- **Repository baseline reviewed:** `50655d3bc5d2e2596935dc5609cb1db1387e0cec`
 - **Implementation governance:** `governance/types.yaml`
 
-## Status
+---
 
-This document is the canonical default-value and default-initialization rulebook
+## § 1 Status
+
+**§ 1(1)** This document is the canonical default-value and default-initialization rulebook
 for Sec.
 
-The canonical filename is:
+**§ 1(2)** The canonical filename is:
 
 ```text
 default_values.md
 ```
 
-This rulebook records the language decisions for:
+**§ 1(3)** This rulebook records the language decisions for:
 
 - primitive defaults;
 - named-type defaults;
@@ -32,28 +35,28 @@ This rulebook records the language decisions for:
 - compiler validation;
 - lowering and backend behavior.
 
-This rulebook defines semantics.
+**§ 1(4)** This rulebook defines semantics.
 
-The explicit default clause has the canonical spelling:
+**§ 1(5)** The explicit default clause has the canonical spelling:
 
 ```sec
 type Port int range 1..65535 default 8080
 ```
 
-Its grammar is `"default" ConstantExpression`, after every type contract in a
+**§ 1(6)** Its grammar is `"default" ConstantExpression`, after every type contract in a
 named-type declaration.
 
-Implementation progress is tracked by `frontend.default-values` and
+**§ 1(7)** Implementation progress is tracked by `frontend.default-values` and
 `frontend.default-values-inherited-membership` in `governance/types.yaml`.
 
 ---
 
-# Purpose
+## § 2 Purpose
 
-A default value is the value the language uses when a value is intentionally
+**§ 2(1)** A default value is the value the language uses when a value is intentionally
 default-initialized.
 
-Default initialization is not:
+**§ 2(2)** Default initialization is not:
 
 ```text
 uninitialized storage
@@ -64,33 +67,33 @@ an implicit allocation
 an implicit resource acquisition
 ```
 
-A default value is a valid semantic value of its type.
+**§ 2(3)** A default value is a valid semantic value of its type.
 
-The compiler must be able to construct it deterministically.
+**§ 2(4)** The compiler must be able to construct it deterministically.
 
 ---
 
-# Core rule
+## § 3 Core rule
 
-Every type is either:
+**§ 3(1)** Every type is either:
 
 ```text
 Defaultable
 NonDefaultable
 ```
 
-A defaultable type has exactly one compiler-resolved default value.
+**§ 3(2)** A defaultable type has exactly one compiler-resolved default value.
 
-A non-defaultable type cannot be omitted from a context that requires default
+**§ 3(3)** A non-defaultable type cannot be omitted from a context that requires default
 initialization.
 
-The compiler must never treat undefined storage as a default value.
+**§ 3(4)** The compiler must never treat undefined storage as a default value.
 
 ---
 
-# Default precedence
+## § 4 Default precedence
 
-The compiler resolves the default value of a type in this order:
+**§ 4(1)** The compiler resolves the default value of a type in this order:
 
 ```text
 1. Explicit default declared by the type
@@ -100,13 +103,13 @@ The compiler resolves the default value of a type in this order:
 5. No default
 ```
 
-An explicit type default overrides every implicit default rule.
+**§ 4(2)** An explicit type default overrides every implicit default rule.
 
-An explicit default must satisfy every rule and contract of the type.
+**§ 4(3)** An explicit default must satisfy every rule and contract of the type.
 
 ---
 
-# Primitive defaults
+## § 5 Primitive defaults
 
 | Type family | Default |
 |---|---|
@@ -120,11 +123,11 @@ An explicit default must satisfy every rule and contract of the type.
 | `char` | zero character, written `0t` |
 | `rune` | Unicode scalar zero, written `0r` |
 
-## Numeric types
+### § 5.1 Numeric types
 
-All ordinary numeric primitive types default to zero.
+**§ 5.1(1)** All ordinary numeric primitive types default to zero.
 
-This includes:
+**§ 5.1(2)** This includes:
 
 ```text
 int
@@ -151,9 +154,9 @@ decimal
 decimal128
 ```
 
-where supported by the compiler and target.
+**§ 5.1(3)** where supported by the compiler and target.
 
-Examples:
+**§ 5.1(4)** Examples:
 
 ```sec
 let mut count: int
@@ -161,7 +164,7 @@ let mut ratio: float64
 let mut amount: decimal
 ```
 
-Their initial values are semantically:
+**§ 5.1(5)** Their initial values are semantically:
 
 ```sec
 0
@@ -169,35 +172,35 @@ Their initial values are semantically:
 0.0
 ```
 
-according to the destination type.
+**§ 5.1(6)** according to the destination type.
 
-The exact physical bit representation remains target- and type-defined.
+**§ 5.1(7)** The exact physical bit representation remains target- and type-defined.
 
-The temporal types `date`, `time`, `datetime`, and `duration` are
+**§ 5.1(8)** The temporal types `date`, `time`, `datetime`, and `duration` are
 `NonDefaultable`. Their backing representations do not create implicit
 defaults, and an implementation must not infer a zero, epoch, empty, or
 backend-derived value for them.
 
-`datetime.Now`, `date.Today`, and `time.Now` are operations, not defaults.
+**§ 5.1(9)** `datetime.Now`, `date.Today`, and `time.Now` are operations, not defaults.
 Default initialization must never read a clock.
 
 ---
 
-## Boolean
+### § 5.2 Boolean
 
-`bool` defaults to:
+**§ 5.2(1)** `bool` defaults to:
 
 ```sec
 false
 ```
 
-Example:
+**§ 5.2(2)** Example:
 
 ```sec
 let mut enabled: bool
 ```
 
-is equivalent to:
+**§ 5.2(3)** is equivalent to:
 
 ```sec
 let mut enabled: bool := false
@@ -205,47 +208,47 @@ let mut enabled: bool := false
 
 ---
 
-## String
+### § 5.3 String
 
-`string` defaults to the empty string:
+**§ 5.3(1)** `string` defaults to the empty string:
 
 ```sec
 ""
 ```
 
-Example:
+**§ 5.3(2)** Example:
 
 ```sec
 let mut name: string
 ```
 
-is equivalent to:
+**§ 5.3(3)** is equivalent to:
 
 ```sec
 let mut name: string := ""
 ```
 
-The empty string default must not require dynamic allocation.
+**§ 5.3(4)** The empty string default must not require dynamic allocation.
 
 ---
 
-## Character
+### § 5.4 Character
 
-`char` defaults to the zero character value.
+**§ 5.4(1)** `char` defaults to the zero character value.
 
-The canonical explicit zero literal is:
+**§ 5.4(2)** The canonical explicit zero literal is:
 
 ```sec
 0t
 ```
 
-Example:
+**§ 5.4(3)** Example:
 
 ```sec
 let mut character: char
 ```
 
-is equivalent to:
+**§ 5.4(4)** is equivalent to:
 
 ```sec
 let mut character: char := 0t
@@ -253,23 +256,23 @@ let mut character: char := 0t
 
 ---
 
-## Rune
+### § 5.5 Rune
 
-`rune` defaults to Unicode scalar value zero.
+**§ 5.5(1)** `rune` defaults to Unicode scalar value zero.
 
-The canonical explicit zero literal is:
+**§ 5.5(2)** The canonical explicit zero literal is:
 
 ```sec
 0r
 ```
 
-Example:
+**§ 5.5(3)** Example:
 
 ```sec
 let mut value: rune
 ```
 
-is equivalent to:
+**§ 5.5(4)** is equivalent to:
 
 ```sec
 let mut value: rune := 0r
@@ -277,54 +280,54 @@ let mut value: rune := 0r
 
 ---
 
-# Named primitive types
+## § 6 Named primitive types
 
-A named type based on a defaultable primitive type inherits the primitive
+**§ 6(1)** A named type based on a defaultable primitive type inherits the primitive
 default when:
 
 - the named type declares no explicit default;
 - the inherited value satisfies every contract;
 - no type-specific rule disables default inheritance.
 
-Example:
+**§ 6(2)** Example:
 
 ```sec
 type UserName string
 ```
 
-Default:
+**§ 6(3)** Default:
 
 ```sec
 UserName("")
 ```
 
-Example:
+**§ 6(4)** Example:
 
 ```sec
 type Counter uint64
 ```
 
-Default:
+**§ 6(5)** Default:
 
 ```sec
 Counter(0)
 ```
 
-Nominal identity is preserved.
+**§ 6(6)** Nominal identity is preserved.
 
-The result is a value of the named type, not the underlying primitive type.
+**§ 6(7)** The result is a value of the named type, not the underlying primitive type.
 
 ---
 
-# Explicit type defaults
+## § 7 Explicit type defaults
 
-A named type may declare an explicit default value using the canonical syntax:
+**§ 7(1)** A named type may declare an explicit default value using the canonical syntax:
 
 ```sec
 type Port int range 1..65535 default 8080
 ```
 
-The clause appears after every type contract:
+**§ 7(2)** The clause appears after every type contract:
 
 ```text
 NamedTypeDeclaration
@@ -334,7 +337,7 @@ DefaultClause
     := "default" Expression
 ```
 
-The default expression is ordinary `Expression` syntax evaluated in a
+**§ 7(3)** The default expression is ordinary `Expression` syntax evaluated in a
 `SemanticCompileTimeRequiredContext` (`rules/compiler/compile_time_evaluation.md`
 § 8(5)). It may read immutable values already established by semantic CTE and
 call ordinary functions or read property getters whose concrete execution is
@@ -348,7 +351,7 @@ fn DefaultPort() int {
 type Port int range 1..65535 default DefaultPort()
 ```
 
-The declared default:
+**§ 7(4)** The declared default:
 
 - must be established by semantic CTE;
 - must be representable by the type;
@@ -364,27 +367,27 @@ The declared default:
 - must not call a fallible runtime constructor;
 - becomes the type's canonical default value.
 
-(MD-011; `rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md` §§ 3.6–3.10, 3.35–3.38.)
+**§ 7(5)** (MD-011; `rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md` §§ 3.6–3.10, 3.35–3.38.)
 
-Example:
+**§ 7(6)** Example:
 
 ```sec
 type Port int range 1..65535 default 8080
 ```
 
-Default:
+**§ 7(7)** Default:
 
 ```sec
 Port(8080)
 ```
 
-Example:
+**§ 7(8)** Example:
 
 ```sec
 type User string in ["Admin", "User", "Other"] default "User"
 ```
 
-Default:
+**§ 7(9)** Default:
 
 ```sec
 User("User")
@@ -392,27 +395,27 @@ User("User")
 
 ---
 
-# Explicit default overrides implicit rules
+## § 8 Explicit default overrides implicit rules
 
-Example:
+**§ 8(1)** Example:
 
 ```sec
 type Temperature int range -50..100 default 20
 ```
 
-Although zero satisfies the range, the default is:
+**§ 8(2)** Although zero satisfies the range, the default is:
 
 ```sec
 Temperature(20)
 ```
 
-Example:
+**§ 8(3)** Example:
 
 ```sec
 type User string in ["Admin", "User", "Other"] default "Other"
 ```
 
-Although `"Admin"` is the first listed value, the default is:
+**§ 8(4)** Although `"Admin"` is the first listed value, the default is:
 
 ```sec
 User("Other")
@@ -420,81 +423,81 @@ User("Other")
 
 ---
 
-# Invalid explicit defaults
+## § 9 Invalid explicit defaults
 
-Invalid:
+**§ 9(1)** Invalid:
 
 ```sec
 type Port int range 1..65535 default 0
 ```
 
-Reason:
+**§ 9(2)** Reason:
 
 ```text
 0 does not satisfy range 1..65535
 ```
 
-Invalid:
+**§ 9(3)** Invalid:
 
 ```sec
 type User string in ["Admin", "User", "Other"] default "Guest"
 ```
 
-Reason:
+**§ 9(4)** Reason:
 
 ```text
 "Guest" is not a valid member of the type
 ```
 
-Invalid:
+**§ 9(5)** Invalid:
 
 ```sec
 type PositiveEven int range 1..100 even default 3
 ```
 
-Reason:
+**§ 9(6)** Reason:
 
 ```text
 3 violates the even contract
 ```
 
-The declaration itself is a compile-time error.
+**§ 9(7)** The declaration itself is a compile-time error.
 
-The compiler must not silently replace an invalid explicit default with an
+**§ 9(8)** The compiler must not silently replace an invalid explicit default with an
 implicit value.
 
 ---
 
-# Range-constrained numeric types
+## § 10 Range-constrained numeric types
 
-A range-constrained numeric type without an explicit default uses the valid value
+**§ 10(1)** A range-constrained numeric type without an explicit default uses the valid value
 nearest to zero.
 
-The complete type contracts participate in determining validity.
+**§ 10(2)** The complete type contracts participate in determining validity.
 
 ---
 
-## Zero inside the valid range
+### § 10.1 Zero inside the valid range
 
-Example:
+**§ 10.1(1)** Example:
 
 ```sec
 type Percent int range 0..100
 ```
 
-Default:
+**§ 10.1(2)** Default:
 
 ```sec
 Percent(0)
 ```
 
-Example:
+**§ 10.1(3)** Example:
 
 ```sec
 type Offset int range -100..100
 ```
 
-Default:
+**§ 10.1(4)** Default:
 
 ```sec
 Offset(0)
@@ -502,78 +505,78 @@ Offset(0)
 
 ---
 
-## Positive-only range
+### § 10.2 Positive-only range
 
-Example:
+**§ 10.2(1)** Example:
 
 ```sec
 type Port int range 1..65535
 ```
 
-Default:
+**§ 10.2(2)** Default:
 
 ```sec
 Port(1)
 ```
 
-`1` is the valid value nearest to zero.
+**§ 10.2(3)** `1` is the valid value nearest to zero.
 
 ---
 
-## Negative-only range
+### § 10.3 Negative-only range
 
-Example:
+**§ 10.3(1)** Example:
 
 ```sec
 type Temperature int range -100..-5
 ```
 
-Default:
+**§ 10.3(2)** Default:
 
 ```sec
 Temperature(-5)
 ```
 
-`-5` is the valid value nearest to zero.
+**§ 10.3(3)** `-5` is the valid value nearest to zero.
 
 ---
 
-## Exclusive range bounds
+### § 10.4 Exclusive range bounds
 
-Exclusive bounds participate in default calculation.
+**§ 10.4(1)** Exclusive bounds participate in default calculation.
 
-Example:
+**§ 10.4(2)** Example:
 
 ```sec
 type Positive int range 0..<100
 ```
 
-When zero is valid under the exact range syntax, default is zero.
+**§ 10.4(3)** When zero is valid under the exact range syntax, default is zero.
 
-Example conceptually excluding zero:
+**§ 10.4(4)** Example conceptually excluding zero:
 
 ```sec
 type Positive int range 0<..100
 ```
 
-If such lower-exclusive syntax is supported, default is the smallest valid
+**§ 10.4(5)** If such lower-exclusive syntax is supported, default is the smallest valid
 positive value.
 
-Exact range syntax remains governed by the range rulebook.
+**§ 10.4(6)** Exact range syntax remains governed by the range rulebook.
 
 ---
 
-# Additional numeric contracts
+## § 11 Additional numeric contracts
 
-The default must satisfy all contracts, not only `range`.
+**§ 11(1)** The default must satisfy all contracts, not only `range`.
 
-Example:
+**§ 11(2)** Example:
 
 ```sec
 type PositiveEven int range 1..100 even
 ```
 
-Valid values nearest to zero begin with:
+**§ 11(3)** Valid values nearest to zero begin with:
 
 ```text
 2
@@ -582,19 +585,19 @@ Valid values nearest to zero begin with:
 ...
 ```
 
-Default:
+**§ 11(4)** Default:
 
 ```sec
 PositiveEven(2)
 ```
 
-Example:
+**§ 11(5)** Example:
 
 ```sec
 type NegativeEven int range -100..-1 even
 ```
 
-Default:
+**§ 11(6)** Default:
 
 ```sec
 NegativeEven(-2)
@@ -602,200 +605,200 @@ NegativeEven(-2)
 
 ---
 
-# Ambiguous nearest-to-zero values
+## § 12 Ambiguous nearest-to-zero values
 
-When two different valid values are equally near zero and no other canonical
+**§ 12(1)** When two different valid values are equally near zero and no other canonical
 rule selects one, the type has no implicit default.
 
-The type must declare an explicit default.
+**§ 12(2)** The type must declare an explicit default.
 
-Example conceptually:
+**§ 12(3)** Example conceptually:
 
 ```sec
 type NonZeroOdd int range -9..9 odd
 ```
 
-The nearest valid values may be:
+**§ 12(4)** The nearest valid values may be:
 
 ```text
 -1
 1
 ```
 
-Neither is closer to zero.
+**§ 12(5)** Neither is closer to zero.
 
-The compiler must require an explicit declaration such as:
+**§ 12(6)** The compiler must require an explicit declaration such as:
 
 ```sec
 type NonZeroOdd int range -9..9 odd default 1
 ```
 
-This avoids an arbitrary positive or negative bias.
+**§ 12(7)** This avoids an arbitrary positive or negative bias.
 
 ---
 
-# Floating and decimal ranges
+## § 13 Floating and decimal ranges
 
-The same nearest-to-zero rule applies to constrained floating and decimal types.
+**§ 13(1)** The same nearest-to-zero rule applies to constrained floating and decimal types.
 
-Example:
+**§ 13(2)** Example:
 
 ```sec
 type PositiveAmount decimal range 0.01..1000000.00
 ```
 
-Default:
+**§ 13(3)** Default:
 
 ```sec
 PositiveAmount(0.01)
 ```
 
-The selected value must be exactly representable by the declared type and scale.
+**§ 13(4)** The selected value must be exactly representable by the declared type and scale.
 
-For plain `float`, representability uses the platform-selected width
+**§ 13(5)** For plain `float`, representability uses the platform-selected width
 (`rules/types/types.md`, "Binary floating-point types"): float32 on a 32-bit
 platform and float64 on a 64-bit platform. The nearest-valid default is
 therefore deterministic once the target platform is resolved, and a
 range-constrained plain `float` receives an implicit default like `float32` and
 `float64` do (MD-014; `rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md` §§ 6.14–6.17).
 
-If there is no unique nearest representable valid value, an explicit default is
+**§ 13(6)** If there is no unique nearest representable valid value, an explicit default is
 required.
 
 ---
 
-# `in [...]` constrained types
+## § 14 `in [...]` constrained types
 
-A type constrained by an ordered `in [...]` list uses the first listed value as
+**§ 14(1)** A type constrained by an ordered `in [...]` list uses the first listed value as
 its implicit default.
 
-Example:
+**§ 14(2)** Example:
 
 ```sec
 type User string in ["Admin", "User", "Other"]
 ```
 
-Default:
+**§ 14(3)** Default:
 
 ```sec
 User("Admin")
 ```
 
-The list order is semantically significant for default selection.
+**§ 14(4)** The list order is semantically significant for default selection.
 
-The compiler and formatter must preserve the declared order.
+**§ 14(5)** The compiler and formatter must preserve the declared order.
 
 ---
 
-## Numeric `in [...]`
+### § 14.1 Numeric `in [...]`
 
-Example:
+**§ 14.1(1)** Example:
 
 ```sec
 type RetryCount int in [1, 3, 5]
 ```
 
-Default:
+**§ 14.1(2)** Default:
 
 ```sec
 RetryCount(1)
 ```
 
-The nearest-to-zero rule does not replace the first-item rule for an explicit
+**§ 14.1(3)** The nearest-to-zero rule does not replace the first-item rule for an explicit
 `in [...]` list.
 
 ---
 
-## Boolean `in [...]`
+### § 14.2 Boolean `in [...]`
 
-Example:
+**§ 14.2(1)** Example:
 
 ```sec
 type RequiredBool bool in [true]
 ```
 
-Default:
+**§ 14.2(2)** Default:
 
 ```sec
 RequiredBool(true)
 ```
 
-The underlying primitive default `false` is invalid and is not used.
+**§ 14.2(3)** The underlying primitive default `false` is invalid and is not used.
 
-The first listed value is used.
+**§ 14.2(4)** The first listed value is used.
 
 ---
 
-## Explicit default for `in [...]`
+### § 14.3 Explicit default for `in [...]`
 
-Example:
+**§ 14.3(1)** Example:
 
 ```sec
 type User string in ["Admin", "User", "Other"] default "User"
 ```
 
-Default:
+**§ 14.3(2)** Default:
 
 ```sec
 User("User")
 ```
 
-The explicit declaration overrides the first-item rule.
+**§ 14.3(3)** The explicit declaration overrides the first-item rule.
 
 ---
 
-## Empty `in [...]` list
+### § 14.4 Empty `in [...]` list
 
-A type with an empty `in [...]` constraint is invalid.
+**§ 14.4(1)** A type with an empty `in [...]` constraint is invalid.
 
-Invalid:
+**§ 14.4(2)** Invalid:
 
 ```sec
 type Impossible int in []
 ```
 
-Such a type has no valid values and cannot have a valid default.
+**§ 14.4(3)** Such a type has no valid values and cannot have a valid default.
 
 ---
 
-## Duplicate values
+### § 14.5 Duplicate values
 
-Duplicate entries in `in [...]` are invalid and must be rejected.
+**§ 14.5(1)** Duplicate entries in `in [...]` are invalid and must be rejected.
 
 ---
 
-# Multiple constraints including `in [...]`
+## § 15 Multiple constraints including `in [...]`
 
-Every value in `in [...]` must satisfy every other contract on the type. The
+**§ 15(1)** Every value in `in [...]` must satisfy every other contract on the type. The
 first listed value is the implicit default.
 
-Example:
+**§ 15(2)** Example:
 
 ```sec
 type SmallEven int in [2, 4, 6, 8] even
 ```
 
-Default:
+**§ 15(3)** Default:
 
 ```sec
 SmallEven(2)
 ```
 
-This is invalid because some listed values violate `even`:
+**§ 15(4)** This is invalid because some listed values violate `even`:
 
 ```sec
 type InvalidEven int in [1, 2, 3, 4] even
 ```
 
-Invalid entries are declaration errors; they are never silently filtered.
+**§ 15(5)** Invalid entries are declaration errors; they are never silently filtered.
 
 ---
 
-# Defaults and contracts
+## § 16 Defaults and contracts
 
-A default is part of the type's semantic definition.
+**§ 16(1)** A default is part of the type's semantic definition.
 
-The compiler must prove at declaration time that the default satisfies:
+**§ 16(2)** The compiler must prove at declaration time that the default satisfies:
 
 ```text
 range
@@ -811,53 +814,53 @@ unique where applicable
 other canonical contracts
 ```
 
-A default is not revalidated at every ordinary use after the declaration has
+**§ 16(3)** A default is not revalidated at every ordinary use after the declaration has
 been proven.
 
 ---
 
-# Defaults and units
+## § 17 Defaults and units
 
-A unit-bearing numeric type normally defaults to numeric zero when zero is valid.
+**§ 17(1)** A unit-bearing numeric type normally defaults to numeric zero when zero is valid.
 
-Example:
+**§ 17(2)** Example:
 
 ```sec
 type Distance decimal<m>
 ```
 
-Default:
+**§ 17(3)** Default:
 
 ```sec
 Distance(0)
 ```
 
-A constrained unit-bearing type follows its constraints.
+**§ 17(4)** A constrained unit-bearing type follows its constraints.
 
-Example:
+**§ 17(5)** Example:
 
 ```sec
 type PositiveDistance decimal<m> range 0.1..1000.0
 ```
 
-Default:
+**§ 17(6)** Default:
 
 ```sec
 PositiveDistance(0.1)
 ```
 
-An explicit unit-bearing default must have a compatible unit and exact
+**§ 17(7)** An explicit unit-bearing default must have a compatible unit and exact
 conversion.
 
 ---
 
-# Struct defaults
+## § 18 Struct defaults
 
-A struct type has a default value when every stored field has a default value.
+**§ 18(1)** A struct type has a default value when every stored field has a default value.
 
-The struct default is constructed field by field in declaration order.
+**§ 18(2)** The struct default is constructed field by field in declaration order.
 
-Example:
+**§ 18(3)** Example:
 
 ```sec
 type Position struct {
@@ -868,7 +871,7 @@ type Position struct {
 }
 ```
 
-Default:
+**§ 18(4)** Default:
 
 ```sec
 Position {
@@ -881,26 +884,26 @@ Position {
 
 ---
 
-# Empty struct literal
+## § 19 Empty struct literal
 
-A defaultable struct may be written:
+**§ 19(1)** A defaultable struct may be written:
 
 ```sec
 Position {}
 ```
 
-This constructs the struct default.
+**§ 19(2)** This constructs the struct default.
 
-It does not create uninitialized fields.
+**§ 19(3)** It does not create uninitialized fields.
 
 ---
 
-# Omitted struct fields
+## § 20 Omitted struct fields
 
-Stored fields omitted from a struct literal are initialized with their declared
+**§ 20(1)** Stored fields omitted from a struct literal are initialized with their declared
 type's default value.
 
-Example:
+**§ 20(2)** Example:
 
 ```sec
 Position {
@@ -908,7 +911,7 @@ Position {
 }
 ```
 
-is semantically equivalent to:
+**§ 20(3)** is semantically equivalent to:
 
 ```sec
 Position {
@@ -919,15 +922,15 @@ Position {
 }
 ```
 
-The compiler may lower the two forms identically.
+**§ 20(4)** The compiler may lower the two forms identically.
 
 ---
 
-# Nested struct defaults
+## § 21 Nested struct defaults
 
-Default initialization is recursive.
+**§ 21(1)** Default initialization is recursive.
 
-Example:
+**§ 21(2)** Example:
 
 ```sec
 type Point struct {
@@ -942,7 +945,7 @@ type Window struct {
 }
 ```
 
-Default:
+**§ 21(3)** Default:
 
 ```sec
 Window {
@@ -955,19 +958,19 @@ Window {
 }
 ```
 
-Therefore:
+**§ 21(4)** Therefore:
 
 ```sec
 Window {}
 ```
 
-is valid.
+**§ 21(5)** is valid.
 
 ---
 
-# Explicit field values override defaults
+## § 22 Explicit field values override defaults
 
-Example:
+**§ 22(1)** Example:
 
 ```sec
 Window {
@@ -975,7 +978,7 @@ Window {
 }
 ```
 
-uses:
+**§ 22(2)** uses:
 
 ```text
 origin
@@ -988,15 +991,15 @@ title
     string default
 ```
 
-No field may be initialized twice.
+**§ 22(3)** No field may be initialized twice.
 
 ---
 
-# Non-defaultable struct fields
+## § 23 Non-defaultable struct fields
 
-A struct literal may omit a field only when that field's type is defaultable.
+**§ 23(1)** A struct literal may omit a field only when that field's type is defaultable.
 
-Example conceptually:
+**§ 23(2)** Example conceptually:
 
 ```sec
 type ResourceHolder struct {
@@ -1005,7 +1008,7 @@ type ResourceHolder struct {
 }
 ```
 
-If `File` has no default, this is invalid:
+**§ 23(3)** If `File` has no default, this is invalid:
 
 ```sec
 ResourceHolder {
@@ -1013,22 +1016,22 @@ ResourceHolder {
 }
 ```
 
-Diagnostic:
+**§ 23(4)** Diagnostic:
 
 ```text
 field `file` has no default value and must be initialized
 ```
 
-The complete struct type may itself be non-defaultable.
+**§ 23(5)** The complete struct type may itself be non-defaultable.
 
 ---
 
-# Field-level defaults
+## § 24 Field-level defaults
 
-Field-level default syntax is not defined by this rulebook unless already
+**§ 24(1)** Field-level default syntax is not defined by this rulebook unless already
 defined elsewhere.
 
-A future rule may permit:
+**§ 24(2)** A future rule may permit:
 
 ```sec
 type Config struct {
@@ -1036,9 +1039,9 @@ type Config struct {
 }
 ```
 
-or another canonical spelling.
+**§ 24(3)** or another canonical spelling.
 
-Until that syntax is explicitly approved:
+**§ 24(4)** Until that syntax is explicitly approved:
 
 - defaults belong to field types;
 - struct literals may provide explicit field values;
@@ -1046,12 +1049,12 @@ Until that syntax is explicitly approved:
 
 ---
 
-# Struct spread and defaults
+## § 25 Struct spread and defaults
 
-A struct spread provides fields from the spread source according to `spread`
+**§ 25(1)** A struct spread provides fields from the spread source according to `spread`
 rules.
 
-Conceptual resolution order:
+**§ 25(2)** Conceptual resolution order:
 
 ```text
 1. explicit source fields and spreads
@@ -1059,13 +1062,13 @@ Conceptual resolution order:
 3. omitted-field default initialization
 ```
 
-Defaults do not overwrite fields supplied by spread.
+**§ 25(3)** Defaults do not overwrite fields supplied by spread.
 
 ---
 
-# Parser example
+## § 26 Parser example
 
-Given:
+**§ 26(1)** Given:
 
 ```sec
 type Parser struct {
@@ -1079,7 +1082,7 @@ type Parser struct {
 }
 ```
 
-This literal:
+**§ 26(2)** This literal:
 
 ```sec
 Parser {
@@ -1089,14 +1092,14 @@ Parser {
 }
 ```
 
-is valid only when:
+**§ 26(3)** is valid only when:
 
 - `lexer.Lexer` can be moved or copied into `l`;
 - `list[string] {}` is a valid explicit empty-list construction;
 - `lexer.Token` is defaultable;
 - `bool` is defaultable.
 
-The omitted fields become:
+**§ 26(4)** The omitted fields become:
 
 ```sec
 curToken: lexer.Token {}
@@ -1107,9 +1110,9 @@ inRefExpression: false
 
 ---
 
-# Token example
+## § 27 Token example
 
-Given:
+**§ 27(1)** Given:
 
 ```sec
 type Token struct {
@@ -1121,19 +1124,19 @@ type Token struct {
 }
 ```
 
-and:
+**§ 27(2)** and:
 
 ```sec
 type TokenType string
 ```
 
-then:
+**§ 27(3)** then:
 
 ```sec
 Token {}
 ```
 
-uses:
+**§ 27(4)** uses:
 
 ```sec
 Token {
@@ -1145,51 +1148,51 @@ Token {
 }
 ```
 
-unless `TokenType` declares another explicit or constrained default.
+**§ 27(5)** unless `TokenType` declares another explicit or constrained default.
 
 ---
 
-# Arrays
+## § 28 Arrays
 
-The canonical fixed-array rule is:
+**§ 28(1)** The canonical fixed-array rule is:
 
 ```text
 an array is defaultable when its element type is defaultable;
 every element receives the element default
 ```
 
-Example:
+**§ 28(2)** Example:
 
 ```sec
 let mut values: int[4]
 ```
 
-is semantically equivalent to:
+**§ 28(3)** is semantically equivalent to:
 
 ```sec
 [0, 0, 0, 0]
 ```
 
-A zero-length fixed array is defaultable without constructing an element.
+**§ 28(4)** A zero-length fixed array is defaultable without constructing an element.
 
 ---
 
-# Owning dynamic arrays
+## § 29 Owning dynamic arrays
 
-`T[]` is defaultable independently of whether `T` is defaultable. Its default
+**§ 29(1)** `T[]` is defaultable independently of whether `T` is defaultable. Its default
 is an initialized, non-allocating empty owner with length and capacity zero and
 no initialized elements. Default construction does not construct a `T`.
 
-This rule applies only to the owning dynamic array. It does not create a null
+**§ 29(2)** This rule applies only to the owning dynamic array. It does not create a null
 or origin-free default for a safe slice.
 
 ---
 
-# Slices
+## § 30 Slices
 
-A slice is a non-owning view.
+**§ 30(1)** A slice is a non-owning view.
 
-A universal implicit slice default must not be invented without defining:
+**§ 30(2)** A universal implicit slice default must not be invented without defining:
 
 ```text
 origin
@@ -1199,39 +1202,39 @@ mutability
 empty-view representation
 ```
 
-An explicit empty slice literal may be defined separately.
+**§ 30(3)** An explicit empty slice literal may be defined separately.
 
-A safe slice has no implicit default and is non-defaultable.
+**§ 30(4)** A safe slice has no implicit default and is non-defaultable.
 
 ---
 
-# List defaults
+## § 31 List defaults
 
-`list[T]` is defaultable independently of whether `T` is defaultable. Its
+**§ 31(1)** `list[T]` is defaultable independently of whether `T` is defaultable. Its
 default is an initialized empty list with length and capacity zero, no element
 storage, no initialized elements and no allocation.
 
-`list[T, Capacity]` is likewise defaultable. Its default has length zero,
+**§ 31(2)** `list[T, Capacity]` is likewise defaultable. Its default has length zero,
 maximum capacity `Capacity`, no initialized elements and no hidden growth
 allocation.
 
-The canonical explicit forms are:
+**§ 31(3)** The canonical explicit forms are:
 
 ```sec
 list[string] {}
 list[Packet, 32] {}
 ```
 
-These are collection literals, not struct literals. Empty construction does not
+**§ 31(4)** These are collection literals, not struct literals. Empty construction does not
 allocate or default-construct elements. Later dynamic growth remains fallible
 and requires an approved allocation context. Map and set literal syntax remains
 governed by their own collection rules.
 
 ---
 
-# Enums
+## § 32 Enums
 
-Every valid enum is non-empty and defaultable. Its default is the single member
+**§ 32(1)** Every valid enum is non-empty and defaultable. Its default is the single member
 marked `default`, when present, and otherwise its first declared member. Member
 identity selects the default; underlying numeric zero or an empty string has no
 special priority.
@@ -1249,12 +1252,12 @@ enum ConnectionState {
 }
 ```
 
-The defaults are `Status.UNKNOWN` and `ConnectionState.DISCONNECTED`.
+**§ 32(2)** The defaults are `Status.UNKNOWN` and `ConnectionState.DISCONNECTED`.
 The marker does not alter the initializer, `iota`, aliases, or initializer
 repetition. For an open bit-backed enum, the default is still a declared member;
 an unnamed raw pattern is never selected merely because it is zero.
 
-The same member-selection rule applies to string-backed enums:
+**§ 32(3)** The same member-selection rule applies to string-backed enums:
 
 ```sec
 enum Program string {
@@ -1263,21 +1266,21 @@ enum Program string {
 }
 ```
 
-The default is `Program.VIQ`. The empty string has no special default priority,
+**§ 32(4)** The default is `Program.VIQ`. The empty string has no special default priority,
 and every string-backed member must still provide an explicit initializer.
 
-A mutable enum declaration without an initializer is initialized with the
+**§ 32(5)** A mutable enum declaration without an initializer is initialized with the
 resolved enum default. This is initialized storage and does not require a later
 definite assignment before first read. An enum used in an omitted struct field
 uses the same resolved default.
 
 ---
 
-# Unions
+## § 33 Unions
 
-A union has no implicit first-variant default.
+**§ 33(1)** A union has no implicit first-variant default.
 
-A union is `Defaultable` only when exactly one declared variant is explicitly
+**§ 33(2)** A union is `Defaultable` only when exactly one declared variant is explicitly
 marked `default` and that variant can be default-constructed.
 
 - A payload-less default variant is constructible.
@@ -1294,9 +1297,9 @@ type State union {
 let mut state: State
 ```
 
-The resolved default is `State.Idle`.
+**§ 33(3)** The resolved default is `State.Idle`.
 
-A mutable binding of a NonDefaultable union has one explicit exception to the
+**§ 33(4)** A mutable binding of a NonDefaultable union has one explicit exception to the
 general omitted-initializer rule:
 
 ```sec
@@ -1308,27 +1311,27 @@ type PendingState union {
 let mut pending: PendingState
 ```
 
-The binding begins in the compiler-known `empty` initialization state. `empty`
+**§ 33(5)** The binding begins in the compiler-known `empty` initialization state. `empty`
 is not a default value, a valid union value, `null`, `None`, `Nothing`, or a
 hidden union variant. The binding must contain a real union value before it may
 escape or be used in a context requiring a value. `is empty` and the `empty`
 match pattern inspect this initialization state under the union and match
 rules.
 
-Immutable union bindings still require an explicit initializer.
+**§ 33(6)** Immutable union bindings still require an explicit initializer.
 
-A struct-like union payload construction may omit a field whose type is
+**§ 33(7)** A struct-like union payload construction may omit a field whose type is
 Defaultable; that field receives its normal resolved default. A NonDefaultable
 payload field must be supplied explicitly.
 
 ---
 
-# Option and Result
+## § 34 Option and Result
 
-`Option[T]` and `Result[T, E]` do not receive an implicit default merely from
+**§ 34(1)** `Option[T]` and `Result[T, E]` do not receive an implicit default merely from
 their representation.
 
-Possible defaults such as:
+**§ 34(2)** Possible defaults such as:
 
 ```text
 None
@@ -1336,17 +1339,17 @@ Ok(default(T))
 Err(default(E))
 ```
 
-must be explicitly defined by their canonical core rules.
+**§ 34(3)** must be explicitly defined by their canonical core rules.
 
-Representation zero is not enough.
+**§ 34(4)** Representation zero is not enough.
 
 ---
 
-# References
+## § 35 References
 
-Safe references have no universal default.
+**§ 35(1)** Safe references have no universal default.
 
-The language must not fabricate:
+**§ 35(2)** The language must not fabricate:
 
 ```text
 null ref T
@@ -1354,36 +1357,36 @@ dangling ref T
 reference to temporary default storage
 ```
 
-Therefore:
+**§ 35(3)** Therefore:
 
 ```text
 ref T
 ref mut T
 ```
 
-are non-defaultable unless a specific wrapper type defines optional reference
+**§ 35(4)** are non-defaultable unless a specific wrapper type defines optional reference
 semantics.
 
 ---
 
-# Raw pointers
+## § 36 Raw pointers
 
-`RawPtr[T]` default semantics must be defined by `raw_pointers.md`.
+**§ 36(1)** `RawPtr[T]` default semantics must be defined by `raw_pointers.md`.
 
-If a null raw pointer value is supported, it may be a valid explicit raw-pointer
+**§ 36(2)** If a null raw pointer value is supported, it may be a valid explicit raw-pointer
 default.
 
-This must not imply a valid reference or owned allocation.
+**§ 36(3)** This must not imply a valid reference or owned allocation.
 
-No reference default may be derived from raw-pointer zero.
+**§ 36(4)** No reference default may be derived from raw-pointer zero.
 
 ---
 
-# Resources
+## § 37 Resources
 
-Unique resource types normally have no implicit default.
+**§ 37(1)** Unique resource types normally have no implicit default.
 
-Examples:
+**§ 37(2)** Examples:
 
 ```text
 File
@@ -1396,39 +1399,39 @@ Process
 Allocation owner
 ```
 
-A closed, detached, invalid, or null representation is not automatically a valid
+**§ 37(3)** A closed, detached, invalid, or null representation is not automatically a valid
 semantic default.
 
-A resource type may define an explicit valid default only when its contract
+**§ 37(4)** A resource type may define an explicit valid default only when its contract
 makes that state meaningful.
 
 ---
 
-# Function values and closures
+## § 38 Function values and closures
 
-Function-value defaults require a canonical callable or empty-callable model.
+**§ 38(1)** Function-value defaults require a canonical callable or empty-callable model.
 
-The language must not fabricate an invalid call target.
+**§ 38(2)** The language must not fabricate an invalid call target.
 
-Until explicitly defined, function and capturing closure types are
+**§ 38(3)** Until explicitly defined, function and capturing closure types are
 non-defaultable.
 
 ---
 
-# Interfaces
+## § 39 Interfaces
 
-General interface values require a defined empty or default dynamic state.
+**§ 39(1)** General interface values require a defined empty or default dynamic state.
 
-Until owned and borrowed erased representations define such a state, general
+**§ 39(2)** Until owned and borrowed erased representations define such a state, general
 interface types are non-defaultable.
 
-A specific interface wrapper may define an explicit default.
+**§ 39(3)** A specific interface wrapper may define an explicit default.
 
 ---
 
-# Static values
+## § 40 Static values
 
-Static storage may use default initialization only when:
+**§ 40(1)** Static storage may use default initialization only when:
 
 - the type is defaultable;
 - initialization is compile-time representable;
@@ -1436,80 +1439,80 @@ Static storage may use default initialization only when:
 - no runtime constructor is required;
 - destruction policy is valid.
 
-This does not introduce hidden global constructors.
+**§ 40(2)** This does not introduce hidden global constructors.
 
 ---
 
-# Mutable declarations without initializer
+## § 41 Mutable declarations without initializer
 
-A mutable declaration may omit an initializer only when its type is defaultable.
+**§ 41(1)** A mutable declaration may omit an initializer only when its type is defaultable.
 
-Example:
+**§ 41(2)** Example:
 
 ```sec
 let mut count: int
 ```
 
-Equivalent:
+**§ 41(3)** Equivalent:
 
 ```sec
 let mut count: int := 0
 ```
 
-Example:
+**§ 41(4)** Example:
 
 ```sec
 let mut user: User
 ```
 
-uses the resolved default of `User`.
+**§ 41(5)** uses the resolved default of `User`.
 
 ---
 
-# Immutable declarations without initializer
+## § 42 Immutable declarations without initializer
 
-An immutable binding must not omit its initializer merely because the type has a
+**§ 42(1)** An immutable binding must not omit its initializer merely because the type has a
 default.
 
-Invalid:
+**§ 42(2)** Invalid:
 
 ```sec
 let count: int
 ```
 
-Reason:
+**§ 42(3)** Reason:
 
 ```text
 an immutable binding must be initialized explicitly
 ```
 
-Default initialization is available to omitted struct fields and approved
+**§ 42(4)** Default initialization is available to omitted struct fields and approved
 mutable-declaration contexts.
 
-This preserves the existing Sec rule for immutable empty bindings.
+**§ 42(5)** This preserves the existing Sec rule for immutable empty bindings.
 
 ---
 
-# Reinitialization
+## § 43 Reinitialization
 
-Default assignment may be expressed explicitly using the type's default
+**§ 43(1)** Default assignment may be expressed explicitly using the type's default
 construction when syntax permits.
 
-Examples:
+**§ 43(2)** Examples:
 
 ```sec
 value = Type {}
 ```
 
-or a future compiler-known operation such as:
+**§ 43(3)** or a future compiler-known operation such as:
 
 ```sec
 value = default(Type)
 ```
 
-No general default-expression syntax is introduced by this rulebook.
+**§ 43(4)** No general default-expression syntax is introduced by this rulebook.
 
-Assignment remains subject to:
+**§ 43(5)** Assignment remains subject to:
 
 ```text
 mutability
@@ -1523,13 +1526,13 @@ destruction
 
 ---
 
-# Default is not zeroed bytes
+## § 44 Default is not zeroed bytes
 
-The compiler must construct the semantic default.
+**§ 44(1)** The compiler must construct the semantic default.
 
-It must not assume that all-bits-zero is valid for every type.
+**§ 44(2)** It must not assume that all-bits-zero is valid for every type.
 
-All-bits-zero may differ from the semantic default for:
+**§ 44(3)** All-bits-zero may differ from the semantic default for:
 
 ```text
 range-constrained numbers
@@ -1543,25 +1546,25 @@ nontrivial aggregates
 target-specific representations
 ```
 
-Example:
+**§ 44(4)** Example:
 
 ```sec
 type Port int range 1..65535
 ```
 
-Default is:
+**§ 44(5)** Default is:
 
 ```sec
 Port(1)
 ```
 
-not zeroed bytes interpreted as `Port`.
+**§ 44(6)** not zeroed bytes interpreted as `Port`.
 
 ---
 
-# Default is not uninitialized storage
+## § 45 Default is not uninitialized storage
 
-Backend values such as:
+**§ 45(1)** Backend values such as:
 
 ```text
 LLVM undef
@@ -1570,30 +1573,30 @@ uninitialized stack slot
 uninitialized memref
 ```
 
-must never implement a source-level default.
+**§ 45(2)** must never implement a source-level default.
 
-Omitted fields must receive explicit semantic default construction before use.
+**§ 45(3)** Omitted fields must receive explicit semantic default construction before use.
 
 ---
 
-# Default and ownership
+## § 46 Default and ownership
 
-A default owning value establishes normal ownership.
+**§ 46(1)** A default owning value establishes normal ownership.
 
-If the default owns no resource or allocation, destruction may be trivial.
+**§ 46(2)** If the default owns no resource or allocation, destruction may be trivial.
 
-If a type declares an owning explicit default, the compiler must verify that
+**§ 46(3)** If a type declares an owning explicit default, the compiler must verify that
 constructing it does not require hidden allocation or resource acquisition.
 
-A default must not create shared unique ownership accidentally.
+**§ 46(4)** A default must not create shared unique ownership accidentally.
 
 ---
 
-# Default and copy classification
+## § 47 Default and copy classification
 
-Defaultability is distinct from copyability.
+**§ 47(1)** Defaultability is distinct from copyability.
 
-A type may be:
+**§ 47(2)** A type may be:
 
 ```text
 defaultable and copyable
@@ -1602,49 +1605,49 @@ non-defaultable and copyable
 non-defaultable and move-only
 ```
 
-Examples are type-specific.
+**§ 47(3)** Examples are type-specific.
 
-The compiler must not infer one property from the other.
+**§ 47(4)** The compiler must not infer one property from the other.
 
 ---
 
-# Default and destruction
+## § 48 Default and destruction
 
-A default value follows ordinary destruction rules.
+**§ 48(1)** A default value follows ordinary destruction rules.
 
-A default containing only trivial fields may have trivial destruction.
+**§ 48(2)** A default containing only trivial fields may have trivial destruction.
 
-A default with nontrivial owned fields must be validly constructed and destroyed
+**§ 48(3)** A default with nontrivial owned fields must be validly constructed and destroyed
 exactly once.
 
-Omitted-field default construction participates in aggregate cleanup if later
+**§ 48(4)** Omitted-field default construction participates in aggregate cleanup if later
 field construction fails.
 
 ---
 
-# Default and allocation
+## § 49 Default and allocation
 
-Implicit default initialization must not allocate dynamically.
+**§ 49(1)** Implicit default initialization must not allocate dynamically.
 
-If constructing a type's meaningful empty value requires allocation, the type is
+**§ 49(2)** If constructing a type's meaningful empty value requires allocation, the type is
 not implicitly defaultable unless the language explicitly approves a
 non-allocating representation.
 
-An explicit constructor may allocate and return `Result`.
+**§ 49(3)** An explicit constructor may allocate and return `Result`.
 
 ---
 
-# Compile-time resolution
+## § 50 Compile-time resolution
 
-The compiler resolves defaults during type checking.
+**§ 50(1)** The compiler resolves defaults during type checking.
 
-Conceptual query:
+**§ 50(2)** Conceptual query:
 
 ```text
 DefaultValueOf(Type)
 ```
 
-The result is one of:
+**§ 50(3)** The result is one of:
 
 ```text
 Resolved constant/default construction
@@ -1653,33 +1656,33 @@ Invalid type declaration
 Ambiguous implicit default
 ```
 
-The resolution must be deterministic.
+**§ 50(4)** The resolution must be deterministic.
 
 ---
 
-# Default dependency graph
+## § 51 Default dependency graph
 
-Aggregate defaults may depend on other type defaults.
+**§ 51(1)** Aggregate defaults may depend on other type defaults.
 
-The compiler must detect cycles.
+**§ 51(2)** The compiler must detect cycles.
 
-Example conceptually:
+**§ 51(3)** Example conceptually:
 
 ```text
 A default requires B
 B default requires A
 ```
 
-A cycle is valid only when no runtime recursive value construction is required,
+**§ 51(4)** A cycle is valid only when no runtime recursive value construction is required,
 such as through a non-owning indirection explicitly defined by another rule.
 
-Ordinary by-value recursive default construction is invalid.
+**§ 51(5)** Ordinary by-value recursive default construction is invalid.
 
 ---
 
-# Diagnostics
+## § 52 Diagnostics
 
-The compiler must provide stable diagnostics for:
+**§ 52(1)** The compiler must provide stable diagnostics for:
 
 ```text
 types.invalid-explicit-default
@@ -1703,16 +1706,16 @@ backend.default-left-undefined
 
 ---
 
-# Diagnostic examples
+## § 53 Diagnostic examples
 
-## Invalid explicit default
+### § 53.1 Invalid explicit default
 
 ```text
 error[S....]: default value 0 is invalid for Port
 note: Port requires range 1..65535
 ```
 
-## Ambiguous nearest value
+### § 53.2 Ambiguous nearest value
 
 ```text
 error[S....]: NonZeroOdd has no unique implicit default
@@ -1720,14 +1723,14 @@ note: both -1 and 1 are equally near zero
 help: declare an explicit default
 ```
 
-## Missing non-defaultable field
+### § 53.3 Missing non-defaultable field
 
 ```text
 error[S....]: field `file` must be initialized
 note: File has no default value
 ```
 
-## Immutable declaration
+### § 53.4 Immutable declaration
 
 ```text
 error[S....]: immutable binding `count` requires an initializer
@@ -1735,13 +1738,13 @@ error[S....]: immutable binding `count` requires an initializer
 
 ---
 
-# Formatter
+## § 54 Formatter
 
-The formatter preserves explicit default declarations.
+**§ 54(1)** The formatter preserves explicit default declarations.
 
-It does not insert explicit values for omitted fields.
+**§ 54(2)** It does not insert explicit values for omitted fields.
 
-Example input:
+**§ 54(3)** Example input:
 
 ```sec
 Position {
@@ -1749,27 +1752,27 @@ Position {
 }
 ```
 
-remains structurally partial in source.
+**§ 54(4)** remains structurally partial in source.
 
-The compiler applies defaults semantically.
+**§ 54(5)** The compiler applies defaults semantically.
 
-The formatter may align a canonical `default` clause once its grammar is fixed.
+**§ 54(6)** The formatter may align a canonical `default` clause once its grammar is fixed.
 
-It must not rewrite:
+**§ 54(7)** It must not rewrite:
 
 ```sec
 Position {}
 ```
 
-into every expanded field unless a separate refactoring is requested.
+**§ 54(8)** into every expanded field unless a separate refactoring is requested.
 
 ---
 
-# LSP
+## § 55 LSP
 
-The LSP should expose default information in hover and completion.
+**§ 55(1)** The LSP should expose default information in hover and completion.
 
-Example hover:
+**§ 55(2)** Example hover:
 
 ```text
 Type: Port
@@ -1778,7 +1781,7 @@ Source: explicit type default
 Contracts: range 1..65535
 ```
 
-Example:
+**§ 55(3)** Example:
 
 ```text
 Type: User
@@ -1786,13 +1789,13 @@ Default: "Admin"
 Source: first value in `in [...]`
 ```
 
-Example omitted field hint:
+**§ 55(4)** Example omitted field hint:
 
 ```text
 column: int = 0
 ```
 
-The LSP may offer:
+**§ 55(5)** The LSP may offer:
 
 ```text
 expand defaulted fields
@@ -1800,13 +1803,13 @@ insert explicit default
 declare explicit type default
 ```
 
-These are code actions, not ordinary formatting.
+**§ 55(6)** These are code actions, not ordinary formatting.
 
 ---
 
-# Semantic IR
+## § 56 Semantic IR
 
-Semantic IR must distinguish:
+**§ 56(1)** Semantic IR must distinguish:
 
 ```text
 explicit source initialization
@@ -1815,7 +1818,7 @@ omitted-field default initialization
 aggregate default construction
 ```
 
-Conceptual operations:
+**§ 56(2)** Conceptual operations:
 
 ```text
 ConstructPrimitiveDefault
@@ -1827,17 +1830,17 @@ ConstructStructDefault
 InitializeOmittedField
 ```
 
-Exact operation names may differ.
+**§ 56(3)** Exact operation names may differ.
 
-The semantic distinction must remain visible for diagnostics and verification.
+**§ 56(4)** The semantic distinction must remain visible for diagnostics and verification.
 
 ---
 
-# Backend lowering
+## § 57 Backend lowering
 
-The backend must lower semantic defaults to defined values.
+**§ 57(1)** The backend must lower semantic defaults to defined values.
 
-It must not leave omitted fields as:
+**§ 57(2)** It must not leave omitted fields as:
 
 ```text
 undef
@@ -1845,7 +1848,7 @@ poison
 uninitialized bytes
 ```
 
-For a struct literal:
+**§ 57(3)** For a struct literal:
 
 1. resolve every stored field;
 2. use explicit source value when supplied;
@@ -1856,11 +1859,11 @@ For a struct literal:
 
 ---
 
-# Optimization
+## § 58 Optimization
 
-The compiler may optimize default construction.
+**§ 58(1)** The compiler may optimize default construction.
 
-Examples:
+**§ 58(2)** Examples:
 
 ```text
 constant aggregate
@@ -1870,16 +1873,16 @@ elided writes to dead fields
 shared immutable empty string representation
 ```
 
-Optimization must preserve the semantic default.
+**§ 58(3)** Optimization must preserve the semantic default.
 
-It may use zero filling only after proving that zero bytes represent the exact
+**§ 58(4)** It may use zero filling only after proving that zero bytes represent the exact
 default for every affected part.
 
 ---
 
-# Required tests
+## § 59 Required tests
 
-Create or update:
+**§ 59(1)** Create or update:
 
 ```text
 default_values_valid.sec
@@ -1898,9 +1901,9 @@ default_arrays_invalid.sec
 
 ---
 
-# Primitive tests
+## § 60 Primitive tests
 
-Test:
+**§ 60(1)** Test:
 
 ```text
 every numeric type -> 0
@@ -1912,9 +1915,9 @@ rune -> 0r
 
 ---
 
-# Range tests
+## § 61 Range tests
 
-Test:
+**§ 61(1)** Test:
 
 ```text
 zero valid
@@ -1931,9 +1934,9 @@ invalid explicit default
 
 ---
 
-# `in [...]` tests
+## § 62 `in [...]` tests
 
-Test:
+**§ 62(1)** Test:
 
 ```text
 string list
@@ -1949,9 +1952,9 @@ additional contract interaction
 
 ---
 
-# Struct tests
+## § 63 Struct tests
 
-Test:
+**§ 63(1)** Test:
 
 ```text
 empty defaultable struct literal
@@ -1967,9 +1970,9 @@ construction failure cleanup
 
 ---
 
-# Collection and array tests
+## § 64 Collection and array tests
 
-Test:
+**§ 64(1)** Test:
 
 ```text
 default numeric fixed array
@@ -1986,9 +1989,9 @@ list and struct literal categories remain distinct
 
 ---
 
-# Backend tests
+## § 65 Backend tests
 
-Verify:
+**§ 65(1)** Verify:
 
 ```text
 no omitted field remains undef
@@ -2004,9 +2007,9 @@ no safe slice is fabricated without a valid origin
 
 ---
 
-# Required synchronization
+## § 66 Required synchronization
 
-This rulebook must remain synchronized with:
+**§ 66(1)** This rulebook must remain synchronized with:
 
 ```text
 types.md
@@ -2034,18 +2037,18 @@ language-rulebook-status.md
 
 ---
 
-# Appendix A — Compiler conformance requirements
+## Appendix A — Compiler conformance requirements
 
-## A.1 Defaultability interface
+### Appendix A.1 Defaultability interface
 
-Add compiler-owned type queries such as:
+**Appendix A.1(1)** Add compiler-owned type queries such as:
 
 ```go
 func DefaultValueOf(t Type) DefaultResolution
 func IsDefaultable(t Type) bool
 ```
 
-Conceptual result:
+**Appendix A.1(2)** Conceptual result:
 
 ```go
 type DefaultResolution struct {
@@ -2055,13 +2058,13 @@ type DefaultResolution struct {
 }
 ```
 
-Exact implementation types may differ.
+**Appendix A.1(3)** Exact implementation types may differ.
 
 ---
 
-## A.2 Primitive defaults
+### Appendix A.2 Primitive defaults
 
-Implement canonical primitive defaults:
+**Appendix A.2(1)** Implement canonical primitive defaults:
 
 ```text
 numeric -> zero
@@ -2071,13 +2074,13 @@ char -> zero char
 rune -> zero rune
 ```
 
-Add constant and target-representation tests.
+**Appendix A.2(2)** Add constant and target-representation tests.
 
 ---
 
-## A.3 Named types
+### Appendix A.3 Named types
 
-Resolve named-type defaults after:
+**Appendix A.3(1)** Resolve named-type defaults after:
 
 ```text
 base type
@@ -2086,17 +2089,17 @@ units
 explicit default
 ```
 
-Preserve nominal result type.
+**Appendix A.3(2)** Preserve nominal result type.
 
-Do not return only the underlying primitive type.
+**Appendix A.3(3)** Do not return only the underlying primitive type.
 
 ---
 
-## A.4 Explicit default clause
+### Appendix A.4 Explicit default clause
 
-Synchronize exact grammar.
+**Appendix A.4(1)** Synchronize exact grammar.
 
-Parse and retain:
+**Appendix A.4(2)** Parse and retain:
 
 ```text
 default expression
@@ -2105,15 +2108,15 @@ token
 constant value
 ```
 
-Require compile-time evaluation.
+**Appendix A.4(3)** Require compile-time evaluation.
 
-Validate against the complete type.
+**Appendix A.4(4)** Validate against the complete type.
 
 ---
 
-## A.5 Range defaults
+### Appendix A.5 Range defaults
 
-For a constrained numeric type:
+**Appendix A.5(1)** For a constrained numeric type:
 
 1. test zero;
 2. if zero is valid, use zero;
@@ -2121,28 +2124,28 @@ For a constrained numeric type:
 4. if no value exists, reject the type;
 5. if the nearest result is ambiguous, require explicit default.
 
-Use exact arithmetic appropriate to the type.
+**Appendix A.5(2)** Use exact arithmetic appropriate to the type.
 
-Do not convert decimal search through binary float.
+**Appendix A.5(3)** Do not convert decimal search through binary float.
 
 ---
 
-## A.6 `in [...]` defaults
+### Appendix A.6 `in [...]` defaults
 
-Validate every listed value against the base type and every other contract.
+**Appendix A.6(1)** Validate every listed value against the base type and every other contract.
 Reject the declaration when any listed value is invalid; do not filter the
 list. Preserve source order and use the first listed value as the implicit
 default.
 
-Reject empty and duplicate lists.
+**Appendix A.6(2)** Reject empty and duplicate lists.
 
-An explicit default overrides this result.
+**Appendix A.6(3)** An explicit default overrides this result.
 
 ---
 
-## A.7 Struct omitted fields
+### Appendix A.7 Struct omitted fields
 
-Update struct-literal Sema:
+**Appendix A.7(1)** Update struct-literal Sema:
 
 1. resolve explicit fields and spreads;
 2. reject unknown or duplicate fields;
@@ -2153,32 +2156,32 @@ Update struct-literal Sema:
 
 ---
 
-## A.8 Backend correction
+### Appendix A.8 Backend correction
 
-Replace current aggregate construction from undefined base values unless every
+**Appendix A.8(1)** Replace current aggregate construction from undefined base values unless every
 field is filled before any read.
 
-For omitted fields, emit resolved defaults explicitly.
+**Appendix A.8(2)** For omitted fields, emit resolved defaults explicitly.
 
-Verify no source-level default depends on backend `undef`.
-
----
-
-## A.9 Mutable declarations
-
-Permit omitted initializer only for mutable bindings with defaultable type.
-
-Create explicit semantic initialization.
-
-Reject non-defaultable types.
-
-Keep immutable omitted initialization invalid.
+**Appendix A.8(3)** Verify no source-level default depends on backend `undef`.
 
 ---
 
-## A.10 Partial construction cleanup
+### Appendix A.9 Mutable declarations
 
-If a later field construction fails:
+**Appendix A.9(1)** Permit omitted initializer only for mutable bindings with defaultable type.
+
+**Appendix A.9(2)** Create explicit semantic initialization.
+
+**Appendix A.9(3)** Reject non-defaultable types.
+
+**Appendix A.9(4)** Keep immutable omitted initialization invalid.
+
+---
+
+### Appendix A.10 Partial construction cleanup
+
+**Appendix A.10(1)** If a later field construction fails:
 
 - destroy previously constructed nontrivial explicit fields;
 - destroy previously constructed nontrivial defaulted fields;
@@ -2187,9 +2190,9 @@ If a later field construction fails:
 
 ---
 
-## A.11 LSP
+### Appendix A.11 LSP
 
-Expose:
+**Appendix A.11(1)** Expose:
 
 ```text
 default source
@@ -2199,15 +2202,15 @@ omitted field values
 invalid or ambiguous default
 ```
 
-Add code actions for explicit expansion.
+**Appendix A.11(2)** Add code actions for explicit expansion.
 
 ---
 
-## A.12 Diagnostics
+### Appendix A.12 Diagnostics
 
-Register stable diagnostics.
+**Appendix A.12(1)** Register stable diagnostics.
 
-Use related locations for:
+**Appendix A.12(2)** Use related locations for:
 
 ```text
 type declaration
@@ -2218,21 +2221,21 @@ omitted field
 
 ---
 
-## A.13 Documentation consistency
+### Appendix A.13 Documentation consistency
 
-Remove legacy statements that require every field, leave omissions without a
+**Appendix A.13(1)** Remove legacy statements that require every field, leave omissions without a
 semantic value, force every range default to zero, or assume underlying zero is
 always valid.
 
-Do not leave conflicting canonical rules.
+**Appendix A.13(2)** Do not leave conflicting canonical rules.
 
 ---
 
-# Design summary
+## § 67 Design summary
 
-Sec has semantic default values.
+**§ 67(1)** Sec has semantic default values.
 
-Primitive defaults are:
+**§ 67(2)** Primitive defaults are:
 
 ```text
 numeric -> 0
@@ -2242,32 +2245,32 @@ char -> 0t
 rune -> 0r
 ```
 
-A constrained numeric type defaults to zero when zero is valid.
+**§ 67(3)** A constrained numeric type defaults to zero when zero is valid.
 
-Otherwise it defaults to the unique valid representable value nearest zero.
+**§ 67(4)** Otherwise it defaults to the unique valid representable value nearest zero.
 
-A type constrained by `in [...]` defaults to the first listed value; every
+**§ 67(5)** A type constrained by `in [...]` defaults to the first listed value; every
 listed value must already satisfy all other contracts.
 
-A type may declare an explicit default.
+**§ 67(6)** A type may declare an explicit default.
 
-The explicit default overrides every implicit rule and must satisfy every type
+**§ 67(7)** The explicit default overrides every implicit rule and must satisfy every type
 contract.
 
-A struct is defaultable when all stored fields are defaultable.
+**§ 67(8)** A struct is defaultable when all stored fields are defaultable.
 
-Omitted struct fields receive their field type's default.
+**§ 67(9)** Omitted struct fields receive their field type's default.
 
-Default initialization never means uninitialized storage or backend `undef`.
+**§ 67(10)** Default initialization never means uninitialized storage or backend `undef`.
 
-Mutable bindings may omit initialization only when their type is defaultable.
+**§ 67(11)** Mutable bindings may omit initialization only when their type is defaultable.
 
-Immutable bindings still require explicit initialization.
+**§ 67(12)** Immutable bindings still require explicit initialization.
 
-Defaultability is distinct from copyability, ownership, and allocation.
+**§ 67(13)** Defaultability is distinct from copyability, ownership, and allocation.
 
-The compiler resolves defaults during type checking.
+**§ 67(14)** The compiler resolves defaults during type checking.
 
-Semantic IR records default construction.
+**§ 67(15)** Semantic IR records default construction.
 
-The backend must materialize fully defined values.
+**§ 67(16)** The backend must materialize fully defined values.

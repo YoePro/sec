@@ -173,6 +173,7 @@ func (a *Analyzer) setConstInt(name string, expr ast.Expression) {
 }
 
 func (a *Analyzer) updateAssignedConstInt(name string, stmt *ast.AssignmentStatement) {
+	a.advanceFirstIterationValue(name, stmt, false)
 	value, ok := a.assignmentIntegerValue(name, stmt)
 	if ok && stmt.Operator != "=" {
 		// An overflowing compound assignment fails at run time (S1023); no

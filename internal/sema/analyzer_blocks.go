@@ -34,6 +34,10 @@ func (a *Analyzer) analyzeBlockStatementsWithRecovery(block *ast.BlockStatement,
 	a.scopeDepth++
 	refinementCount := len(a.activeConditionFacts)
 	defer func() {
+		a.recordBlockExitKnownVariants(block)
+		if _, wanted := a.blockExitConstInts[block]; wanted {
+			a.blockExitConstInts[block] = copyConstInts(a.constInts)
+		}
 		a.activeConditionFacts = a.activeConditionFacts[:refinementCount]
 		newNames := make([]string, 0)
 		for name := range a.symbols.all() {

@@ -2,35 +2,36 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-13
-- **Last updated:** 2026-10-09
+- **Last updated:** 2026-11-08 (stable chapter, subsection, and paragraph numbering); 2026-10-09
 - **Document revision:** 2.1
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/types/contracts.md`
+- **Repository baseline reviewed:** `50655d3bc5d2e2596935dc5609cb1db1387e0cec`
 - **Implementation governance:** `governance/types.yaml`
 - **Replaces:** `rules/types/variable-contracts.txt`
 
 ---
 
-## Scope and governance
+## § 1 Scope and governance
 
-This is the canonical Sec rulebook for type contracts. Its canonical filename is
+**§ 1(1)** This is the canonical Sec rulebook for type contracts. Its canonical filename is
 `contracts.md`; the obsolete variable-contract rulebook is no longer canonical.
 
-Contracts belong only to named types. They do not attach to variables, mutable
+**§ 1(2)** Contracts belong only to named types. They do not attach to variables, mutable
 or immutable bindings, ordinary struct fields, or individual storage locations.
 
-Implementation progress is tracked by `frontend.type-contracts-v2` in
+**§ 1(3)** Implementation progress is tracked by `frontend.type-contracts-v2` in
 [`governance/types.yaml`](../../governance/types.yaml).
 
-Static proof of a local contract fact is not by itself a required CTE context.
+**§ 1(4)** Static proof of a local contract fact is not by itself a required CTE context.
 The contract and default positions listed in "Compile-time-required contract
 positions" are explicitly classified as `SemanticCompileTimeRequiredContext`s.
 Otherwise canonical runtime contract behavior remains when the value is not
 statically established.
 
-## Core rule
+## § 2 Core rule
 
-A contract restricts the valid semantic values of a named type:
+**§ 2(1)** A contract restricts the valid semantic values of a named type:
 
 ```sec
 type Percentage int range 0..100
@@ -38,7 +39,7 @@ type Role string in ["admin", "user", "guest"]
 type FiniteTemperature float finite
 ```
 
-Use those types at storage sites:
+**§ 2(2)** Use those types at storage sites:
 
 ```sec
 let mut percentage: Percentage := 50
@@ -46,7 +47,7 @@ let mut role: Role := "user"
 let mut temperature: FiniteTemperature := 20.0
 ```
 
-These obsolete variable-level forms are invalid:
+**§ 2(3)** These obsolete variable-level forms are invalid:
 
 ```sec
 let mut percentage: int range 0..100 := 50
@@ -54,7 +55,7 @@ let mut role: string in ["admin", "user", "guest"] := "user"
 let mut temperature: float finite := 20.0
 ```
 
-Ordinary struct fields use named constrained types:
+**§ 2(4)** Ordinary struct fields use named constrained types:
 
 ```sec
 type Age int range 0..130
@@ -64,14 +65,14 @@ type User struct {
 }
 ```
 
-Inline field contracts are not Sec 0.1 syntax. They are recognized legacy
+**§ 2(5)** Inline field contracts are not Sec 0.1 syntax. They are recognized legacy
 syntax and receive a focused migration diagnostic; because a correction would
 have to choose a new named type, no automatic rewrite applies
 (`rules/foundations/grammar.md`; `rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md` § 4).
 
-## Compile-time-required contract positions
+## § 3 Compile-time-required contract positions
 
-Contract arguments and explicit defaults are ordinary Sec `Expression` syntax;
+**§ 3(1)** Contract arguments and explicit defaults are ordinary Sec `Expression` syntax;
 Sec 0.1 has no separate restricted constant language for them. Every position
 that needs its value before runtime lowering is a
 `SemanticCompileTimeRequiredContext` under
@@ -93,7 +94,7 @@ regex pattern
 explicit default expression
 ```
 
-The owning rule below supplies each position's required result type and
+**§ 3(2)** The owning rule below supplies each position's required result type and
 domain. An immutable value already established by semantic CTE may be read when
 ordinary visibility and dependency rules permit it; ordinary mutable static
 state is not CTE-readable merely because its initial value was once known.
@@ -118,13 +119,13 @@ type Port int
     default DefaultPort()
 ```
 
-Argumentless contracts (`odd`, `even`, `finite`, `notEmpty`, `unique`) introduce
+**§ 3(3)** Argumentless contracts (`odd`, `even`, `finite`, `notEmpty`, `unique`) introduce
 no argument expression but participate fully in compile-time validation of every
 compile-time-known value or default (MD-011; `rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md` § 3).
 
-## Composition
+## § 4 Composition
 
-Contracts written sequentially are implicit conjunction. Every contract must
+**§ 4(1)** Contracts written sequentially are implicit conjunction. Every contract must
 pass, in source order:
 
 ```sec
@@ -132,17 +133,17 @@ type PositiveEven int range 1..100 even
 type SmallStep int range 0..100 multipleOf 5
 ```
 
-Sec does not introduce `and`, `or`, or `not` as contract-composition keywords.
+**§ 4(2)** Sec does not introduce `and`, `or`, or `not` as contract-composition keywords.
 Alternative finite values use `in [...]`; arbitrary validation requires a
 separately specified mechanism.
 
-The compiler rejects contract sets that are provably unsatisfiable, including
+**§ 4(3)** The compiler rejects contract sets that are provably unsatisfiable, including
 `odd even`, `odd` combined with an even `multipleOf`, and empty intersections of
 known integer ranges and divisibility constraints.
 
-## Applicability
+## § 5 Applicability
 
-The initial contracts apply as follows:
+**§ 5(1)** The initial contracts apply as follows:
 
 | Contract | Applicable type families |
 |---|---|
@@ -155,18 +156,18 @@ The initial contracts apply as follows:
 | `minByteLen`, `maxByteLen`, `exactByteLen` | string-like named types only |
 | `unique` | supported collection-shaped named types with comparable elements |
 
-The compiler rejects a contract that does not apply to the named base type.
+**§ 5(2)** The compiler rejects a contract that does not apply to the named base type.
 
-## Range
+## § 6 Range
 
-Canonical shape:
+**§ 6(1)** Canonical shape:
 
 ```sec
 type Percent int range 0..100
 type Port int range 1..<65536
 ```
 
-Each bound is an ordinary expression evaluated in a
+**§ 6(2)** Each bound is an ordinary expression evaluated in a
 `SemanticCompileTimeRequiredContext` and must produce a value compatible with the
 named base type; it is not limited to a signed numeric literal. The range
 operator controls inclusivity according to the range grammar. Runtime-dependent
@@ -179,21 +180,21 @@ let MaximumPort: int := 0xFFFF
 type Port int range 1..MaximumPort
 ```
 
-The compiler validates constant initializers and explicit defaults at compile
+**§ 6(3)** The compiler validates constant initializers and explicit defaults at compile
 time. A numeric type without an explicit default uses zero when valid, otherwise
 the unique exactly representable valid value nearest zero. An equal-distance tie
 requires an explicit default. Full default semantics are in `default_values.md`.
 
-## Ordered membership
+## § 7 Ordered membership
 
-Canonical shape:
+**§ 7(1)** Canonical shape:
 
 ```sec
 type Role string in ["admin", "user", "guest"]
 type RetryCount int in [1, 3, 5]
 ```
 
-The list:
+**§ 7(2)** The list:
 
 - must contain at least one compile-time constant;
 - must preserve source order;
@@ -201,7 +202,7 @@ The list:
 - must contain only values compatible with the named base type;
 - must contain only values satisfying every other contract on the type.
 
-Invalid:
+**§ 7(3)** Invalid:
 
 ```sec
 type EmptyRole string in []
@@ -209,19 +210,19 @@ type DuplicateRole string in ["admin", "admin"]
 type InvalidEven int in [1, 2, 3] even
 ```
 
-Invalid membership entries are declaration errors. They are not silently
+**§ 7(4)** Invalid membership entries are declaration errors. They are not silently
 filtered. Without an explicit type default, the first listed value is the
 default.
 
-Membership uses normal Sec semantic equality. It performs no text coercion,
+**§ 7(5)** Membership uses normal Sec semantic equality. It performs no text coercion,
 case folding, numeric narrowing, or comparison by memory identity.
 
-## Integer contracts
+## § 8 Integer contracts
 
-`odd` accepts integer values with a nonzero low bit. `even` accepts integer
+**§ 8(1)** `odd` accepts integer values with a nonzero low bit. `even` accepts integer
 values with a zero low bit. They cannot appear together.
 
-`multipleOf divisor` requires a nonzero integer divisor established by semantic
+**§ 8(2)** `multipleOf divisor` requires a nonzero integer divisor established by semantic
 CTE. Its sign does not affect validity:
 
 ```sec
@@ -229,22 +230,22 @@ type PageOffset int multipleOf 4096
 type PositiveEven int range 1..100 even
 ```
 
-All integer constraints participate in compile-time consistency and default
+**§ 8(3)** All integer constraints participate in compile-time consistency and default
 resolution; checking each independently is insufficient.
 
-## String and collection contracts
+## § 9 String and collection contracts
 
-`regex pattern` requires a string pattern established by semantic CTE and
+**§ 9(1)** `regex pattern` requires a string pattern established by semantic CTE and
 applies to string-like named types.
 
-The canonical production is `RegexContract ::= Contextual("regex") Expression`
+**§ 9(2)** The canonical production is `RegexContract ::= Contextual("regex") Expression`
 under `TypeContract` (`rules/foundations/grammar.md`), superseding the earlier
 `ConstantExpression` shape. `regex` is a reserved contract spelling and is
 unavailable as a user declaration name (`rules/foundations/lexical_structure.md`
 § 7.3). It has no same-line requirement (MD-009;
 `rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md` § 10).
 
-The regular-expression language itself is not defined by this rulebook. Regular
+**§ 9(3)** The regular-expression language itself is not defined by this rulebook. Regular
 expressions are useful outside type contracts, so Sec requires one dedicated
 regex rulebook that owns the pattern syntax, escape interpretation over decoded
 Sec strings, Unicode matching semantics, anchoring, whole-value validation
@@ -255,20 +256,20 @@ reuses that language and must never define a second, contract-private regex
 grammar. Until the dedicated rulebook is accepted, regex contracts cannot be
 validated (MD-010; `rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md` § 2).
 
-`minLen`, `maxLen`, and `exactLen` take nonnegative integer values established
+**§ 9(4)** `minLen`, `maxLen`, and `exactLen` take nonnegative integer values established
 by semantic CTE.
 For strings, `Len` is the number of decoded Unicode scalar
 values, without normalization, grapheme clustering or display-width counting.
 `minLen`, `maxLen`, `exactLen` and `notEmpty` use this count. For supported
 collections these contracts continue to count direct logical elements.
 
-The string-only contracts `minByteLen`, `maxByteLen` and `exactByteLen` take
+**§ 9(5)** The string-only contracts `minByteLen`, `maxByteLen` and `exactByteLen` take
 nonnegative integers established by semantic CTE and compare the encoded UTF-8
 byte count (the value-form `SizeOf`, MD-058). They do not apply to arrays or other collections.
 Rune and byte contracts are independent requirements in the same source-ordered
 conjunction; neither unit is silently substituted for the other.
 
-`notEmpty` means `Len > 0`. For strings this also implies `SizeOf > 0`.
+**§ 9(6)** `notEmpty` means `Len > 0`. For strings this also implies `SizeOf > 0`.
 Compile-time validation and runtime validation use the same units, including
 explicit defaults, literal initialization and checked conversion.
 
@@ -279,7 +280,7 @@ type Bounded string minLen 1 maxLen 8 maxByteLen 32
 // "éΩ" has Len == 2 and SizeOf == 4.
 ```
 
-Runtime conversion evaluates its source exactly once and checks inherited and
+**§ 9(7)** Runtime conversion evaluates its source exactly once and checks inherited and
 local contracts in canonical order. On failure no constrained value is
 constructed; the first failed length contract is reported through
 `ConversionError.Contract(ContractError.Violation { Kind, DeclarationIndex })`.
@@ -287,33 +288,33 @@ The byte contracts use `ContractKind.MinByteLen`, `MaxByteLen` and
 `ExactByteLen`. Empty strings, embedded U+0000 and non-BMP scalars use these
 same counting rules; terminators are not part of SizeOf.
 
-`unique` requires every direct element of the contracted collection to be
+**§ 9(8)** `unique` requires every direct element of the contracted collection to be
 semantically unequal to every other direct element. It does not recurse into
 nested elements. The element type must support equality.
 
-## Finite
+## § 10 Finite
 
-`finite` applies to float and decimal named types and excludes NaN and infinity
+**§ 10(1)** `finite` applies to float and decimal named types and excludes NaN and infinity
 where the representation supports them:
 
 ```sec
 type FiniteTemperature float finite
 ```
 
-A range does not replace `finite`; code must not rely on NaN comparison behavior
+**§ 10(2)** A range does not replace `finite`; code must not rely on NaN comparison behavior
 as validation. On decimal representations without NaN or infinity the contract
 may be representation-trivial while remaining semantically meaningful.
 
-## Explicit defaults
+## § 11 Explicit defaults
 
-The canonical clause follows every contract:
+**§ 11(1)** The canonical clause follows every contract:
 
 ```sec
 type Port int range 1..65535 default 8080
 type Role string in ["admin", "user", "guest"] default "user"
 ```
 
-The default is an ordinary expression evaluated in a
+**§ 11(2)** The default is an ordinary expression evaluated in a
 `SemanticCompileTimeRequiredContext`. Its evaluation may use transient
 evaluator-local allocation where semantic CTE permits it, but CTE evaluability
 and static materializability remain separate: the resulting value must be
@@ -326,22 +327,22 @@ type EvenValue int even default 4    // valid
 type EvenValue int even default 3    // compile-time contract error
 ```
 
-An invalid explicit default invalidates the type declaration; the compiler never
+**§ 11(3)** An invalid explicit default invalidates the type declaration; the compiler never
 substitutes an implicit default (MD-011; `rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md` §§ 3.6–3.10, 3.35–3.38).
 
-Default precedence and aggregate defaultability are defined by
+**§ 11(4)** Default precedence and aggregate defaultability are defined by
 `default_values.md`.
 
-## Initialization and assignment
+## § 12 Initialization and assignment
 
-A compile-time literal initializer can be proved when the declaration is
+**§ 12(1)** A compile-time literal initializer can be proved when the declaration is
 analyzed:
 
 ```sec
 let mut percentage: Percentage := 50
 ```
 
-Runtime conversion into a constrained named type is fallible. Mutation of a
+**§ 12(2)** Runtime conversion into a constrained named type is fallible. Mutation of a
 constrained named value therefore uses the canonical `try` assignment form:
 
 ```sec
@@ -352,12 +353,12 @@ try percentage = Percentage(value) {
 }
 ```
 
-Compound assignment follows the same rule. There is no hidden variable-level
+**§ 12(3)** Compound assignment follows the same rule. There is no hidden variable-level
 contract setter; the invariant belongs to the named type.
 
-## Conversion failure layers
+## § 13 Conversion failure layers
 
-Conversion into a constrained named type distinguishes three semantic layers,
+**§ 13(1)** Conversion into a constrained named type distinguishes three semantic layers,
 which must never collapse into one undifferentiated conversion error:
 
 1. **No conversion relation.** When the source and target types have no defined
@@ -378,7 +379,7 @@ which must never collapse into one undifferentiated conversion error:
    valid for the underlying target domain. A failure here belongs to named-type
    validation.
 
-For a conversion into a constrained named type the order is: verify the
+**§ 13(2)** For a conversion into a constrained named type the order is: verify the
 conversion relation exists, evaluate the source, convert into the underlying
 target domain and stop on intrinsic failure, then evaluate the declared contracts
 in canonical source order and stop on the first failure; only then does the
@@ -397,12 +398,12 @@ type SmallOdd int8
 51      success
 ```
 
-A compile-time-known invalid value is diagnosed at compile time rather than
+**§ 13(3)** A compile-time-known invalid value is diagnosed at compile time rather than
 lowered into a runtime failure.
 
-### Public conversion and contract errors
+### § 13.1 Public conversion and contract errors
 
-A runtime-dependent checked conversion reports failure through one public error
+**§ 13.1(1)** A runtime-dependent checked conversion reports failure through one public error
 channel, `ConversionError`. A declared contract failure is carried inside it as
 the independently meaningful `ContractError`. The canonical declarations of
 `ContractKind`, `ContractError`, and `ConversionError` are owned by
@@ -442,16 +443,16 @@ fn Convert(value: int) Result[Percent, ConversionError] {
 }
 ```
 
-For a runtime value `150`, the `int` representation is valid but the range
+**§ 13.1(2)** For a runtime value `150`, the `int` representation is valid but the range
 contract fails: the result is the `Contract` variant holding a `Violation` with
 `Kind: ContractKind.Range` and `DeclarationIndex: 0`. Payload construction and
 pattern syntax remain governed by the union and match rulebooks.
 
-(MD-012 resolved 2026-10-08; `rules/corrections/applied/md012-md022-conversion-errors-ffi-literals-correction-20261008.md` §§ 3–5.)
+**§ 13.1(3)** (MD-012 resolved 2026-10-08; `rules/corrections/applied/md012-md022-conversion-errors-ffi-literals-correction-20261008.md` §§ 3–5.)
 
-## Diagnostics
+## § 14 Diagnostics
 
-Stable diagnostics are required for:
+**§ 14(1)** Stable diagnostics are required for:
 
 - inapplicable or unsatisfiable contract sets;
 - empty or duplicate membership lists;
@@ -461,10 +462,10 @@ Stable diagnostics are required for:
 - ambiguous or unavailable implicit defaults;
 - fallible constrained assignment outside `try`.
 
-Diagnostics should point to both the offending value/default and the relevant
+**§ 14(2)** Diagnostics should point to both the offending value/default and the relevant
 contract declaration when practical.
 
-## Related rulebooks
+## § 15 Related rulebooks
 
 - `default_values.md` defines default selection and defaultability.
 - `types.md` defines named identity, declarations, conversions and assignment.

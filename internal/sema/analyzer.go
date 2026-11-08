@@ -228,11 +228,21 @@ type Analyzer struct {
 	// lambdaBorrowCaptures holds the validated `ref`/`ref mut` captures of
 	// each lambda, which the closure's binding then holds (lambda_capabilities.go).
 	lambdaBorrowCaptures map[*ast.LambdaExpression][]lambdaBorrowCapture
+	// firstIterationConsts and firstIterationDepth hold the pre-loop values
+	// of loop-assigned bindings for first-iteration overflow warnings, and
+	// blockExitConstInts the constants requested branch blocks end with
+	// (constant_scopes.go).
+	firstIterationConsts map[string]*big.Int
+	firstIterationDepth  int
+	blockExitConstInts   map[*ast.BlockStatement]map[string]*big.Int
+	// blockExitKnownVariants holds the variants proven at each block's end
+	// for the join after it (variant_state_joins.go).
+	blockExitKnownVariants map[*ast.BlockStatement]knownVariantSet
 	// resolvedDynamicArrayIndexPlans holds P18-09 owning-array index plans.
 	resolvedDynamicArrayIndexPlans map[*ast.IndexExpression]ResolvedDynamicArrayIndexPlan
 	// lambdaEnvironment is the environment use of the lambda body being
 	// analyzed, nil outside lambdas.
-	lambdaEnvironment *lambdaEnvironmentState
+	lambdaEnvironment          *lambdaEnvironmentState
 	resolvedCallableIdentities map[ast.Expression]ResolvedCallableIdentity
 	resolvedClosureCreations   map[*ast.LambdaExpression]ClosureCreationSummary
 	// SEC-MLIR Package 14 sections 14-17: compact Sema-owned array literal
@@ -517,6 +527,9 @@ type loopEdgeState struct {
 	// referenceOrigins carries outer reference holders' origins across the
 	// edge (reference_origin_join.go).
 	referenceOrigins map[string]Type
+	// knownVariants is the proven variant state at the edge
+	// (variant_state_joins.go).
+	knownVariants knownVariantSet
 }
 
 // loopBreakFrame collects the edge states of the nearest active loop.
@@ -556,6 +569,7 @@ func (a *Analyzer) captureLoopEdgeState() loopEdgeState {
 		localRefContainers: copyLocalRefContainers(a.localRefContainers),
 		arenaGenerations:   copyArenaGenerations(a.arenaGenerations),
 		referenceOrigins:   captureReferenceOrigins(a.symbols),
+		knownVariants:      a.currentKnownVariants(),
 	}
 }
 
@@ -8027,6 +8041,9 @@ func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement, all
 	defer func() {
 		a.arrayIndexMutationEpoch++
 		a.invalidateAssignmentProofFacts(stmt)
+		if len(a.errors) == errorsBefore {
+			a.recordAssignedVariant(stmt)
+		}
 	}()
 	a.recordReferenceWriteUse(stmt.Target)
 	a.recordDeferPlaceExpression(stmt.Target)
@@ -11295,6 +11312,42 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 	branches := []branchAnalysis{}
 	patternError := false
 	seenEmpty := false
+	// Constants and variant proofs every continuing arm ends with hold after
+	// the match (constant_scopes.go, variant_state_joins.go). An arm without
+	// a block leaves both as they were before the match.
+	beforeConstants := copyConstInts(a.constInts)
+	beforeVariants := a.currentKnownVariants()
+	joinConstants := []map[string]*big.Int{}
+	joinVariants := []knownVariantSet{}
+	for _, arm := range expr.Arms {
+		if arm != nil {
+			a.wantBlockExitConstants(arm.BlockBody)
+		}
+	}
+	armConstants := a.startConstantBranches()
+	addArmJoin := func(arm *ast.MatchArm, branch branchAnalysis) {
+		if !branch.continues {
+			return
+		}
+		if arm != nil && arm.BlockBody != nil {
+			joinConstants = append(joinConstants, a.blockExitConstInts[arm.BlockBody])
+			joinVariants = append(joinVariants, a.blockExitKnownVariants[arm.BlockBody])
+			return
+		}
+		joinConstants = append(joinConstants, beforeConstants)
+		joinVariants = append(joinVariants, beforeVariants)
+	}
+	defer func() {
+		for _, arm := range expr.Arms {
+			if arm != nil {
+				delete(a.blockExitConstInts, arm.BlockBody)
+			}
+		}
+	}()
+	defer func() {
+		a.mergeBranchExitConstants(joinConstants)
+		a.assertKnownVariants(intersectKnownVariants(joinVariants))
+	}()
 	// MD-042: a soundly proven active variant restricts the reachable domain.
 	provenActive := a.provenMatchVariant(expr.Subject, subjectType, maybeEmptySubject)
 	provenVariant := ""
@@ -11335,7 +11388,9 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 			if !a.admitEmptyMatchArm(expr, arm, maybeEmptySubject, catchAll, &seenEmpty) {
 				continue
 			}
+			armConstants.enter(a)
 			armType, branch := a.analyzeMatchArmBody(arm, matchPatternInfo{})
+			addArmJoin(arm, branch)
 			branches = append(branches, branch)
 			plan.Arms = append(plan.Arms, a.resolvedMatchArmFromAnalysis(subjectType, sourceIndex, arm, matchPatternInfo{}, armType, valueContext))
 			addArmResult(arm, armType)
@@ -11476,8 +11531,10 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 			a.recordResultStateFact(binding, state, arm.Pattern.Token)
 		}
 		info.BorrowedSubject = borrowedSubject
+		armConstants.enter(a)
 		armType, branch := a.analyzeMatchArmBody(arm, info)
 		a.activeConditionFacts = a.activeConditionFacts[:armRefinementCount]
+		addArmJoin(arm, branch)
 		branches = append(branches, branch)
 		resolvedArm := a.resolvedMatchArmFromAnalysis(subjectType, sourceIndex, arm, info, armType, valueContext)
 		// Semantic IR carries reachable-state proofs for declared unions only
@@ -11491,6 +11548,9 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 		addArmResult(arm, armType)
 	}
 
+	if armConstants.entered {
+		armConstants.finish(a)
+	}
 	if catchAll && subjectType.Kind == ResultType && !seenKinds["Err"] &&
 		!(len(subjectType.TypeArgs) == 2 && concreteErrorDomainCovered(subjectType.TypeArgs[1], seenVariants)) {
 		a.addErrorAtToken(expr.Token, "catch-all pattern may not hide Err")
@@ -11513,6 +11573,8 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 	}
 	recordPlan := true
 	if !exhaustive {
+		joinConstants = append(joinConstants, beforeConstants)
+		joinVariants = append(joinVariants, beforeVariants)
 		branches = append(branches, branchAnalysis{assigned: beforeAssigned, moved: beforeMoved, availabilityStates: beforeMoveReasons, closedResources: beforeClosedResources, borrows: beforeBorrows, localRefContainers: beforeLocalRefContainers, arenaGenerations: beforeArenaGenerations, continues: true})
 	}
 	a.assigned = mergeContinuingAssigned(beforeAssigned, branches...)
@@ -12462,7 +12524,13 @@ func (a *Analyzer) validateUnitComparison(expr *ast.InfixExpression, leftType, r
 	left, right := effectiveUnitSemantics(leftType), effectiveUnitSemantics(rightType)
 	if !isNumericType(leftType) || !isNumericType(rightType) || !leftType.Dimension.Equal(rightType.Dimension) ||
 		!unitKindCompatible(left, right) || !unitOriginCompatible(left, right) || left.Role != right.Role {
-		a.addErrorAtToken(expr.Token, "cannot compare incompatible unit quantities %s and %s", typeDisplayName(leftType), typeDisplayName(rightType))
+		if isCoreDurationType(leftType) || isCoreDurationType(rightType) {
+			// temporal.md § 5.5(1)–(2): a comparison operand is not a
+			// contextual duration position, so the quantity needs duration(...).
+			a.addErrorAtTokenWithMetadata(expr.Token, "", "Write the conversion, for example `duration(250<ms>)`: a comparison does not turn a time quantity into a duration.", "cannot compare %s and %s", typeDisplayName(leftType), typeDisplayName(rightType))
+		} else {
+			a.addErrorAtToken(expr.Token, "cannot compare incompatible unit quantities %s and %s", typeDisplayName(leftType), typeDisplayName(rightType))
+		}
 		return false
 	}
 	if left.Transform == LogarithmicUnitTransform || right.Transform == LogarithmicUnitTransform {
@@ -12566,6 +12634,11 @@ func canCompareOrdered(left Type, right Type) bool {
 	switch left.Kind {
 	case CharType, RuneType, StringType:
 		return left.Kind == right.Kind && sameConcreteType(left, right)
+	}
+	// Two durations order by their signed nanosecond count (owner decision
+	// 2026-11-08); duration has no arithmetic operators in Sec 0.1.
+	if isCoreDurationType(left) || isCoreDurationType(right) {
+		return isCoreDurationType(left) && isCoreDurationType(right)
 	}
 
 	if !isNumericType(left) || !isNumericType(right) {

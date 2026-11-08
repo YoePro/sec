@@ -46,8 +46,10 @@ type AllocationContextID uint32
 type ReclamationPlanID uint32
 
 func (id AllocationIdentityID) String() string { return identityString("allocation", uint32(id)) }
-func (id AllocationContextID) String() string  { return identityString("allocation-context", uint32(id)) }
-func (id ReclamationPlanID) String() string    { return identityString("reclamation", uint32(id)) }
+func (id AllocationContextID) String() string {
+	return identityString("allocation-context", uint32(id))
+}
+func (id ReclamationPlanID) String() string { return identityString("reclamation", uint32(id)) }
 
 func (a *placeIdentityAllocator) allocation(key string) AllocationIdentityID {
 	return allocateIdentity(&a.allocations, key, 1)
@@ -81,13 +83,13 @@ func reclamationAuthorityOf(origin StorageOrigin) ReclamationAuthority {
 type BackingTransitionKind string
 
 const (
-	BackingTransitionNone              BackingTransitionKind = "none"
-	BackingTransitionEstablishDomain   BackingTransitionKind = "establish-domain"
-	BackingTransitionAdvanceEpoch      BackingTransitionKind = "advance-epoch"
-	BackingTransitionReplaceDomain     BackingTransitionKind = "replace-domain"
-	BackingTransitionEndDomain         BackingTransitionKind = "end-domain"
-	BackingTransitionReclaim           BackingTransitionKind = "reclaim"
-	BackingTransitionDestroyElements   BackingTransitionKind = "destroy-elements-reverse"
+	BackingTransitionNone            BackingTransitionKind = "none"
+	BackingTransitionEstablishDomain BackingTransitionKind = "establish-domain"
+	BackingTransitionAdvanceEpoch    BackingTransitionKind = "advance-epoch"
+	BackingTransitionReplaceDomain   BackingTransitionKind = "replace-domain"
+	BackingTransitionEndDomain       BackingTransitionKind = "end-domain"
+	BackingTransitionReclaim         BackingTransitionKind = "reclaim"
+	BackingTransitionDestroyElements BackingTransitionKind = "destroy-elements-reverse"
 	// BackingTransitionReclaimPerPlan reclaims the bytes only when the
 	// backing's allocation plan gives OwningValue authority (§ 30(3)).
 	BackingTransitionReclaimPerPlan BackingTransitionKind = "reclaim-per-allocation-plan"

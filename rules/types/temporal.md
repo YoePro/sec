@@ -2,8 +2,8 @@
 
 - **Status:** Normative, phase 1 representation and wall-clock contract
 - **Created:** 2026-09-28
-- **Last updated:** 2026-10-13
-- **Document revision:** 1.2
+- **Last updated:** 2026-11-08
+- **Document revision:** 1.3
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/types/temporal.md`
 - **Implementation governance:** `governance/types.yaml`
@@ -353,7 +353,7 @@ conversion: it requires `try` (S1139) and fails with the core
 range and `ConversionError.PrecisionLoss` for a fractional nanosecond count
 without a rounding mode.
 
-### 5.8 Duration arithmetic overflow
+### 5.8 Duration operators and arithmetic overflow
 
 **§ 5.8(1)** Arithmetic on `duration` values, where defined, follows Sec's
 ordinary checked-overflow rules. No duration-specific wrapping, clamping,
@@ -362,7 +362,7 @@ saturation or silent loss exists:
 ```sec
 let span := duration(5<s>)
 let offset := duration(-2<s>)
-let combined := span + offset   // 3 seconds; ordinary checked arithmetic
+let combined := span + offset   // illustrative only: not defined in Sec 0.1 (§ 5.8(4))
 ```
 
 **§ 5.8(2)** An implementation must not introduce an overflowing intermediate
@@ -373,6 +373,24 @@ wider intermediate or equivalent checked arithmetic.
 **§ 5.8(3)** A target or profile that cannot implement these checks and
 results rejects the operation at compile time instead of changing its
 temporal meaning.
+
+**§ 5.8(4)** Sec 0.1 defines the comparisons `==`, `!=`, `<`, `<=`, `>` and
+`>=` between two `duration` values; they compare the signed nanosecond
+counts. No arithmetic operator (`+`, `-`, unary `-`, `*`, `/`, `%`, or a
+compound assignment) is defined on `duration` in Sec 0.1 (owner decision
+2026-11-08); the example in § 5.8(1) and § 5.8(2)–(3) describe the rule any
+later defined duration arithmetic follows.
+
+```sec
+fn Expired(elapsed: duration, timeout: duration) bool {
+    return elapsed >= timeout
+}
+```
+
+**§ 5.8(5)** A comparison operand is not a contextual position of
+§ 5.5(1): a time quantity compared with a `duration` needs the written
+conversion, as in `elapsed > duration(250<ms>)`. A `duration` never compares
+with a plain number or with a non-`duration` quantity.
 
 ### 5.9 Concurrency boundaries
 

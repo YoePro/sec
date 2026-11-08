@@ -1,6 +1,7 @@
 package sema
 
 import (
+	"math/big"
 	"sec/internal/ast"
 	"sec/internal/diagnostics"
 	"sec/internal/lexer"
@@ -52,6 +53,25 @@ func (a *Analyzer) analyzeSwitchStatement(stmt *ast.SwitchStatement) {
 
 	branches := make([]branchAnalysis, 0, len(clauses)+1)
 	clauseFlows := make([]ResolvedSwitchClauseFlow, 0, len(clauses))
+	// Constants and variant proofs every continuing clause ends with hold
+	// after the switch; a fallthrough edge enters the next body with state
+	// this join does not model, so any fallthrough disables the merge.
+	joinConstants := []map[string]*big.Int{}
+	joinVariants := []knownVariantSet{}
+	anyFallthrough := false
+	clauseConstants := a.startConstantBranches()
+	for _, clause := range clauses {
+		if clause != nil {
+			a.wantBlockExitConstants(clause.Body)
+		}
+	}
+	defer func() {
+		for _, clause := range clauses {
+			if clause != nil {
+				delete(a.blockExitConstInts, clause.Body)
+			}
+		}
+	}()
 	var fallthroughEntry *branchAnalysis
 	for i, clause := range clauses {
 		if clause == nil {
@@ -66,8 +86,18 @@ func (a *Analyzer) analyzeSwitchStatement(stmt *ast.SwitchStatement) {
 		if fallthroughEntry != nil {
 			a.applySwitchEntryMerge(directEntry, *fallthroughEntry)
 		}
+		if fallthroughEntry != nil {
+			clauseConstants.keep(a)
+		} else {
+			clauseConstants.enter(a)
+		}
 		branch := a.analyzeSwitchCaseBody(clause.Body)
 		branches = append(branches, branch)
+		anyFallthrough = anyFallthrough || branch.fallsThrough
+		if branch.continues {
+			joinConstants = append(joinConstants, a.blockExitConstInts[clause.Body])
+			joinVariants = append(joinVariants, a.blockExitKnownVariants[clause.Body])
+		}
 		clauseFlows = append(clauseFlows, ResolvedSwitchClauseFlow{
 			SourceIndex:  i,
 			Default:      clause.Default,
@@ -84,6 +114,9 @@ func (a *Analyzer) analyzeSwitchStatement(stmt *ast.SwitchStatement) {
 			fallthroughEntry = nil
 		}
 	}
+	if clauseConstants.entered {
+		clauseConstants.finish(a)
+	}
 	if stmt.Default == nil {
 		a.warnIncompleteEnumSwitch(stmt, tracker)
 	}
@@ -91,6 +124,8 @@ func (a *Analyzer) analyzeSwitchStatement(stmt *ast.SwitchStatement) {
 	exhaustive := stmt.Default != nil || tracker.isExhaustive()
 	a.recordResolvedSwitchFlow(stmt, subjectType, hasSubject, exhaustive, clauseFlows)
 	if !exhaustive {
+		joinConstants = append(joinConstants, copyConstInts(a.constInts))
+		joinVariants = append(joinVariants, a.currentKnownVariants())
 		branches = append(branches, branchAnalysis{assigned: before, moved: beforeMoved, availabilityStates: beforeMoveReasons, closedResources: beforeClosedResources, borrows: beforeBorrows, localRefContainers: beforeLocalRefContainers, arenaGenerations: beforeArenaGenerations, continues: true})
 	}
 	a.assigned = mergeContinuingAssigned(before, branches...)
@@ -98,6 +133,10 @@ func (a *Analyzer) analyzeSwitchStatement(stmt *ast.SwitchStatement) {
 	a.closedResources = mergeContinuingClosedResources(beforeClosedResources, branches...)
 	a.borrows = mergeContinuingBorrows(beforeBorrows, branches...)
 	a.localRefContainers = mergeContinuingLocalRefContainers(beforeLocalRefContainers, branches...)
+	if !anyFallthrough {
+		defer a.mergeBranchExitConstants(joinConstants)
+		defer a.assertKnownVariants(intersectKnownVariants(joinVariants))
+	}
 	a.arenaGenerations = mergeContinuingArenaGenerations(beforeArenaGenerations, branches...)
 	a.mergeContinuingReferenceOrigins(branches...)
 }

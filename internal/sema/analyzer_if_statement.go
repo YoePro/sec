@@ -1,6 +1,7 @@
 package sema
 
 import (
+	"math/big"
 	"sec/internal/ast"
 )
 
@@ -39,6 +40,11 @@ func (a *Analyzer) analyzeIfStatement(stmt *ast.IfStatement) {
 		}
 	}
 
+	a.wantBlockExitConstants(stmt.Consequence, stmt.Alternative)
+	defer func() {
+		delete(a.blockExitConstInts, stmt.Consequence)
+		delete(a.blockExitConstInts, stmt.Alternative)
+	}()
 	before := copyAssigned(a.assigned)
 	beforeMoved := copyMoved(a.moved)
 	beforeMoveReasons := copyAvailabilityStates(a.availabilityStates)
@@ -94,6 +100,8 @@ func (a *Analyzer) analyzeIfStatement(stmt *ast.IfStatement) {
 		a.recordResultStateFact(resultBinding, resultTrueState, statementToken(stmt))
 	}
 	var thenBranch branchAnalysis
+	siblings := a.startConstantBranches()
+	siblings.enter(a)
 	if optionBindingValid {
 		thenBranch = a.analyzeOptionBindingBranchWithCallGraphReachability(stmt, optionBinding, thenReachable)
 	} else if availabilityTest != nil {
@@ -109,6 +117,7 @@ func (a *Analyzer) analyzeIfStatement(stmt *ast.IfStatement) {
 	}
 	if stmt.Alternative != nil {
 		var elseBranch branchAnalysis
+		siblings.enter(a)
 		elseRefinementCount := len(a.activeConditionFacts)
 		if stmt.OptionBinding == nil && elseReachable {
 			a.recordPathConditionFact(stmt.Condition, false)
@@ -124,6 +133,7 @@ func (a *Analyzer) analyzeIfStatement(stmt *ast.IfStatement) {
 			elseBranch = a.analyzeBranchBlockWithCallGraphReachability(stmt.Alternative, elseReachable)
 		}
 		a.activeConditionFacts = a.activeConditionFacts[:elseRefinementCount]
+		siblings.finish(a)
 		if !elseReachable {
 			elseBranch.continues = false
 		}
@@ -141,6 +151,22 @@ func (a *Analyzer) analyzeIfStatement(stmt *ast.IfStatement) {
 			}
 			a.recordResultStateFact(resultBinding, state, statementToken(stmt))
 		}
+		joinVariants := []knownVariantSet{}
+		if thenBranch.continues {
+			joinVariants = append(joinVariants, a.blockExitKnownVariants[stmt.Consequence])
+		}
+		if elseBranch.continues {
+			joinVariants = append(joinVariants, a.blockExitKnownVariants[stmt.Alternative])
+		}
+		defer a.assertKnownVariants(intersectKnownVariants(joinVariants))
+		joinConstants := []map[string]*big.Int{}
+		if thenBranch.continues {
+			joinConstants = append(joinConstants, a.blockExitConstInts[stmt.Consequence])
+		}
+		if elseBranch.continues {
+			joinConstants = append(joinConstants, a.blockExitConstInts[stmt.Alternative])
+		}
+		defer a.mergeBranchExitConstants(joinConstants)
 		a.recordResolvedIfFlow(stmt, thenReachable, elseReachable, thenBranch, elseBranch)
 		a.assigned = mergeContinuingAssigned(before, thenBranch, elseBranch)
 		a.moved, a.availabilityStates = mergeContinuingMoveState(beforeMoved, beforeMoveReasons, thenBranch, elseBranch)
@@ -180,6 +206,24 @@ func (a *Analyzer) analyzeIfStatement(stmt *ast.IfStatement) {
 		// state until the enclosing block ends.
 		a.recordResultStateFact(resultBinding, oppositeResultState(resultTrueState), statementToken(stmt))
 	}
+	joinVariants := []knownVariantSet{}
+	if thenBranch.continues {
+		joinVariants = append(joinVariants, a.blockExitKnownVariants[stmt.Consequence])
+	}
+	if fallthroughBranch.continues && stmt.OptionBinding == nil && stmt.Condition != nil {
+		joinVariants = append(joinVariants, a.knownVariantsAfterNegation(stmt.Condition))
+	} else if fallthroughBranch.continues {
+		joinVariants = append(joinVariants, a.currentKnownVariants())
+	}
+	defer a.assertKnownVariants(intersectKnownVariants(joinVariants))
+	joinConstants := []map[string]*big.Int{}
+	if thenBranch.continues {
+		joinConstants = append(joinConstants, a.blockExitConstInts[stmt.Consequence])
+	}
+	if fallthroughBranch.continues {
+		joinConstants = append(joinConstants, copyConstInts(a.constInts))
+	}
+	defer a.mergeBranchExitConstants(joinConstants)
 	a.recordResolvedIfFlow(stmt, thenReachable, elseReachable, thenBranch, fallthroughBranch)
 	a.assigned = mergeContinuingAssigned(before, thenBranch, fallthroughBranch)
 	a.moved, a.availabilityStates = mergeContinuingMoveState(beforeMoved, beforeMoveReasons, thenBranch, fallthroughBranch)

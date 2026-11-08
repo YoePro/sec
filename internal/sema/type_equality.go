@@ -8,6 +8,9 @@ func canCompareEquality(left Type, right Type) bool {
 	if left.Kind == InvalidType || right.Kind == InvalidType {
 		return true
 	}
+	if isCoreDurationType(left) || isCoreDurationType(right) {
+		return isCoreDurationType(left) && isCoreDurationType(right)
+	}
 	if !EqualityComparable(left) || !EqualityComparable(right) {
 		return false
 	}

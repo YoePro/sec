@@ -2,21 +2,21 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-17
-- **Last updated:** 2026-10-28 (§§ 5, 8, 25A, 28 reachable-state exhaustiveness, proven-inactive arms and payload-bearing variant patterns, MD-029/MD-042); 2026-09-03
+- **Last updated:** 2026-11-08 (stable chapter, subsection, and paragraph numbering); 2026-10-28 (§§ 5, 8, 25A, 28 reachable-state exhaustiveness, proven-inactive arms and payload-bearing variant patterns, MD-029/MD-042); 2026-09-03
 - **Document revision:** 2.2
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/control-flow/flowcontrol_match.md`
 - **Replaces:** `rules/control-flow/flowcontrol_match.txt`
-- **Repository baseline reviewed:** `56be75d`
+- **Repository baseline reviewed:** `50655d3bc5d2e2596935dc5609cb1db1387e0cec`
 - **Implementation governance:** `governance/control_flow.yaml`
 
 ---
 
-## 1. Purpose
+## § 1 Purpose
 
-`match` performs exhaustive structural and variant-based branching.
+**§ 1(1)** `match` performs exhaustive structural and variant-based branching.
 
-It is used for:
+**§ 1(2)** It is used for:
 
 - union variants;
 - `Result[T, E]`;
@@ -29,21 +29,21 @@ It is used for:
 - exhaustive control flow;
 - value-producing branch selection.
 
-`match` is not Sec's general value-comparison construct.
+**§ 1(3)** `match` is not Sec's general value-comparison construct.
 
-Use:
+**§ 1(4)** Use:
 
 - `if` for a `bool` condition;
 - `switch` for ordinary literal, range, or relational value selection;
 - `match` for structural or variant selection.
 
-Sec 0.1 does not define general runtime type matching or a recursive pattern language.
+**§ 1(5)** Sec 0.1 does not define general runtime type matching or a recursive pattern language.
 
 ---
 
-## 2. Core syntax
+## § 2 Core syntax
 
-Statement form:
+**§ 2(1)** Statement form:
 
 ```sec
 match result {
@@ -57,7 +57,7 @@ match result {
 }
 ```
 
-Expression form:
+**§ 2(2)** Expression form:
 
 ```sec
 let message := match status {
@@ -67,7 +67,7 @@ let message := match status {
 }
 ```
 
-Guarded arm:
+**§ 2(3)** Guarded arm:
 
 ```sec
 match option {
@@ -77,13 +77,13 @@ match option {
 }
 ```
 
-A `match` must contain at least one arm.
+**§ 2(4)** A `match` must contain at least one arm.
 
 ---
 
-## 3. Subject evaluation
+## § 3 Subject evaluation
 
-The subject expression is evaluated exactly once.
+**§ 3(1)** The subject expression is evaluated exactly once.
 
 ```sec
 match ReadResult() {
@@ -92,19 +92,19 @@ match ReadResult() {
 }
 ```
 
-`ReadResult()` executes exactly once.
+**§ 3(2)** `ReadResult()` executes exactly once.
 
-The resulting subject value or subject Place is the single semantic subject for all arm tests, guards, payload bindings, ownership actions, and final ownership-state merging.
+**§ 3(3)** The resulting subject value or subject Place is the single semantic subject for all arm tests, guards, payload bindings, ownership actions, and final ownership-state merging.
 
-The backend must not re-evaluate the source expression while lowering individual arms.
+**§ 3(4)** The backend must not re-evaluate the source expression while lowering individual arms.
 
 ---
 
-## 4. Arm ordering
+## § 4 Arm ordering
 
-Arms are considered in source order.
+**§ 4(1)** Arms are considered in source order.
 
-For each arm:
+**§ 4(2)** For each arm:
 
 1. the pattern is tested;
 2. when the pattern matches, candidate pattern bindings become visible to the guard;
@@ -114,23 +114,23 @@ For each arm:
 6. ownership actions associated with the selected arm are committed according to this rulebook;
 7. the arm body executes.
 
-Exactly one arm executes.
+**§ 4(3)** Exactly one arm executes.
 
-No later pattern or guard is evaluated after an arm has been selected.
+**§ 4(4)** No later pattern or guard is evaluated after an arm has been selected.
 
 ---
 
-## 5. Exhaustiveness
+## § 5 Exhaustiveness
 
-`match` is exhaustive.
+**§ 5(1)** `match` is exhaustive.
 
-Every reachable semantic state of the subject must be covered by the arm set or by an unguarded catch-all pattern.
+**§ 5(2)** Every reachable semantic state of the subject must be covered by the arm set or by an unguarded catch-all pattern.
 
-Coverage is based on the resolved subject type and proven control-flow state, not merely on source spelling.
+**§ 5(3)** Coverage is based on the resolved subject type and proven control-flow state, not merely on source spelling.
 
-A guarded arm does not by itself exhaust its underlying pattern because the guard may evaluate to `false`.
+**§ 5(4)** A guarded arm does not by itself exhaust its underlying pattern because the guard may evaluate to `false`.
 
-A finite set of guarded whole-payload arms may jointly cover a variant when
+**§ 5(5)** A finite set of guarded whole-payload arms may jointly cover a variant when
 the payload is a closed enum and every reachable underlying enum value class is
 selected by a direct equality guard on the payload binding. For example,
 `Some(site) where site == SameSite.Strict` contributes the `Strict` value class.
@@ -146,9 +146,9 @@ match option {
 }
 ```
 
-This is exhaustive.
+**§ 5(6)** This is exhaustive.
 
-This is not:
+**§ 5(7)** This is not:
 
 ```sec
 match option {
@@ -157,9 +157,9 @@ match option {
 }
 ```
 
-because `Some` values for which the guard is false remain uncovered.
+**§ 5(8)** because `Some` values for which the guard is false remain uncovered.
 
-**Reachable-state exhaustiveness (MD-042).** When authoritative analysis soundly
+**§ 5(9)** **Reachable-state exhaustiveness (MD-042).** When authoritative analysis soundly
 proves that the subject can only be in a smaller variant set at the match
 point, only that set needs coverage:
 
@@ -178,7 +178,7 @@ match figure {
 }
 ```
 
-The proof must hold for the actual subject: immutable known value facts,
+**§ 5(10)** The proof must hold for the actual subject: immutable known value facts,
 trusted path refinements and applicable compiler-known provenance. Mutation,
 reassignment, aliases, foreign or dynamic calls, property reads with unproved
 stability, invalidated flow assumptions and unknown results conservatively
@@ -192,15 +192,15 @@ variant is known. Arms excluded only by such a proof are legal (§ 25A).
 
 ---
 
-## 6. Catch-all pattern
+## § 6 Catch-all pattern
 
-The catch-all pattern is:
+**§ 6(1)** The catch-all pattern is:
 
 ```text
 _
 ```
 
-It matches every remaining reachable state not handled by an earlier selected arm.
+**§ 6(2)** It matches every remaining reachable state not handled by an earlier selected arm.
 
 ```sec
 match direction {
@@ -209,11 +209,11 @@ match direction {
 }
 ```
 
-An unguarded catch-all must be the final reachable arm.
+**§ 6(3)** An unguarded catch-all must be the final reachable arm.
 
-An arm after an unguarded catch-all is unreachable and is invalid.
+**§ 6(4)** An arm after an unguarded catch-all is unreachable and is invalid.
 
-A guarded catch-all is not exhaustive by itself:
+**§ 6(5)** A guarded catch-all is not exhaustive by itself:
 
 ```sec
 match value {
@@ -224,11 +224,11 @@ match value {
 
 ---
 
-## 7. Result errors must not be hidden
+## § 7 Result errors must not be hidden
 
-A catch-all must not silently hide an unhandled `Err` variant.
+**§ 7(1)** A catch-all must not silently hide an unhandled `Err` variant.
 
-This is invalid when `_` would absorb `Err`:
+**§ 7(2)** This is invalid when `_` would absorb `Err`:
 
 ```sec
 match result {
@@ -237,7 +237,7 @@ match result {
 }
 ```
 
-Handle the error explicitly:
+**§ 7(3)** Handle the error explicitly:
 
 ```sec
 match result {
@@ -246,7 +246,7 @@ match result {
 }
 ```
 
-An explicit `Err(_)` pattern handles the error variant and discards its payload
+**§ 7(4)** An explicit `Err(_)` pattern handles the error variant and discards its payload
 without introducing a binding. This is valid:
 
 ```sec
@@ -256,7 +256,7 @@ match result {
 }
 ```
 
-This differs from the catch-all `_`, which may not hide an unhandled `Err`.
+**§ 7(5)** This differs from the catch-all `_`, which may not hide an unhandled `Err`.
 Name the payload only when the handler needs to use it:
 
 ```sec
@@ -271,9 +271,9 @@ match result {
 
 ---
 
-## 8. Variant patterns
+## § 8 Variant patterns
 
-A payload-less variant is matched by its resolved variant name.
+**§ 8(1)** A payload-less variant is matched by its resolved variant name.
 
 ```sec
 match direction {
@@ -283,11 +283,11 @@ match direction {
 }
 ```
 
-Namespace qualification follows the normal name-resolution rules.
+**§ 8(2)** Namespace qualification follows the normal name-resolution rules.
 
-Variant spelling is resolved semantically. The backend must not infer variant identity from textual names.
+**§ 8(3)** Variant spelling is resolved semantically. The backend must not infer variant identity from textual names.
 
-A **bare variant pattern** is also valid for a variant that carries a payload
+**§ 8(4)** A **bare variant pattern** is also valid for a variant that carries a payload
 (MD-029). It selects every value of that variant without extracting the
 payload; it is not a test that the payload is empty or default:
 
@@ -298,7 +298,7 @@ match figure {
 }
 ```
 
-An unguarded bare variant contributes full coverage of that variant; a guarded
+**§ 8(5)** An unguarded bare variant contributes full coverage of that variant; a guarded
 one contributes only the guarded subset. Because data exists but is not
 inspected, the compiler issues a configurable **Information** diagnostic by
 default that names the payload type or fields and suggests a binding form.
@@ -310,9 +310,9 @@ rule applies to `Err(...)` error variants (`rules/errors/errorhandling.md`
 
 ---
 
-## 9. Whole-payload binding
+## § 9 Whole-payload binding
 
-A variant carrying one payload may bind that payload as a whole value.
+**§ 9(1)** A variant carrying one payload may bind that payload as a whole value.
 
 ```sec
 match result {
@@ -321,7 +321,7 @@ match result {
 }
 ```
 
-A struct-like union variant may also bind its complete payload object when that form is defined for the union:
+**§ 9(2)** A struct-like union variant may also bind its complete payload object when that form is defined for the union:
 
 ```sec
 match shape {
@@ -330,13 +330,13 @@ match shape {
 }
 ```
 
-The binding exists only within that arm's guard and body according to the guard rules below.
+**§ 9(3)** The binding exists only within that arm's guard and body according to the guard rules below.
 
 ---
 
-## 10. Shallow named-field destructuring
+## § 10 Shallow named-field destructuring
 
-Struct-like union payloads support canonical shallow named-field destructuring.
+**§ 10(1)** Struct-like union payloads support canonical shallow named-field destructuring.
 
 ```sec
 match shape {
@@ -345,48 +345,48 @@ match shape {
 }
 ```
 
-Partial binding is valid and requires no `..` marker:
+**§ 10(2)** Partial binding is valid and requires no `..` marker:
 
 ```sec
 Rectangle { width } => Use(width)
 ```
 
-Omitted fields:
+**§ 10(3)** Omitted fields:
 
 - are not bound;
 - do not constrain the matched value beyond variant selection;
 - are not copied or moved merely because the pattern omits them.
 
-Fields may be renamed:
+**§ 10(4)** Fields may be renamed:
 
 ```sec
 Rectangle { width: w, height: h } => Use(w, h)
 ```
 
-Fields may be borrowed:
+**§ 10(5)** Fields may be borrowed:
 
 ```sec
 Rectangle { width: ref w, height: ref h } => Inspect(w, h)
 Rectangle { width: ref mut w } => Modify(w)
 ```
 
-Destructuring is shallow.
+**§ 10(6)** Destructuring is shallow.
 
-Sec 0.1 does not define recursive nested destructuring such as:
+**§ 10(7)** Sec 0.1 does not define recursive nested destructuring such as:
 
 ```sec
 Some(Ok(value)) => Use(value)
 ```
 
-Use another `match` for the nested value.
+**§ 10(8)** Use another `match` for the nested value.
 
 ---
 
-## 11. The `empty` pattern
+## § 11 The `empty` pattern
 
-A mutable non-defaultable union binding may have the compiler-known initialization state `empty` according to the union rules.
+**§ 11(1)** A mutable non-defaultable union binding may have the compiler-known initialization state `empty` according to the union rules.
 
-When that state is reachable, `match` may inspect it:
+**§ 11(2)** When that state is reachable, `match` may inspect it:
 
 ```sec
 match state {
@@ -396,7 +396,7 @@ match state {
 }
 ```
 
-`empty` is not:
+**§ 11(3)** `empty` is not:
 
 - a union variant;
 - a value of the union type;
@@ -405,31 +405,31 @@ match state {
 - `null`;
 - a hidden numeric tag exposed to the program.
 
-If control-flow analysis proves that the subject is initialized, `empty` is not part of exhaustiveness.
+**§ 11(4)** If control-flow analysis proves that the subject is initialized, `empty` is not part of exhaustiveness.
 
-If `empty` is reachable, exhaustive coverage must include it or an unguarded catch-all.
+**§ 11(5)** If `empty` is reachable, exhaustive coverage must include it or an unguarded catch-all.
 
-`_` covers reachable `empty` state together with every other remaining reachable state.
+**§ 11(6)** `_` covers reachable `empty` state together with every other remaining reachable state.
 
-A moved-from union is not `empty`.
+**§ 11(7)** A moved-from union is not `empty`.
 
 ---
 
-## 12. Payload binding scope
+## § 12 Payload binding scope
 
-Pattern bindings exist only within their arm.
+**§ 12(1)** Pattern bindings exist only within their arm.
 
-They are visible:
+**§ 12(2)** They are visible:
 
 - in that arm's guard;
 - in that arm's body.
 
-They are not visible:
+**§ 12(3)** They are not visible:
 
 - in another arm;
 - after the `match`.
 
-Normal Sec no-shadowing rules apply.
+**§ 12(4)** Normal Sec no-shadowing rules apply.
 
 ```sec
 let value := 10
@@ -440,21 +440,21 @@ match result {
 }
 ```
 
-is invalid because the pattern binding would shadow the existing `value`.
+**§ 12(5)** is invalid because the pattern binding would shadow the existing `value`.
 
 ---
 
-## 13. Whole-payload ownership modes
+## § 13 Whole-payload ownership modes
 
-Pattern bindings follow normal Sec ownership and borrowing rules.
+**§ 13(1)** Pattern bindings follow normal Sec ownership and borrowing rules.
 
-For a whole-payload plain binding:
+**§ 13(2)** For a whole-payload plain binding:
 
 ```sec
 Some(value)
 ```
 
-where the payload type is `T`:
+**§ 13(3)** where the payload type is `T`:
 
 - if `T` is implicitly copyable, the binding receives a copy;
 - if `T` is move-only and the subject is an owned reusable Place from which ownership may legally be transferred, the binding receives the payload by move;
@@ -462,120 +462,120 @@ where the payload type is `T`:
 - the compiler must never silently clone the payload;
 - the compiler must never silently change a by-value binding into a borrow.
 
-For explicit shared borrowing:
+**§ 13(4)** For explicit shared borrowing:
 
 ```sec
 Some(ref value)
 ```
 
-`value` has type `ref T`.
+**§ 13(5)** `value` has type `ref T`.
 
-For explicit mutable borrowing:
+**§ 13(6)** For explicit mutable borrowing:
 
 ```sec
 Some(ref mut value)
 ```
 
-`value` has type `ref mut T`, and the subject must provide mutable borrowing authority.
+**§ 13(7)** `value` has type `ref mut T`, and the subject must provide mutable borrowing authority.
 
-The borrow is branch-scoped and must satisfy the normal overlap and escape rules.
+**§ 13(8)** The borrow is branch-scoped and must satisfy the normal overlap and escape rules.
 
-A fresh temporary subject, such as `match MakeOption() { Some(ref value) => ... }`, may also be borrowed from with `ref` or `ref mut`, for its whole payload or a named payload field such as `Boxed { head: ref h }` (owner decision 2026-11-07). The temporary lives through the whole match, the arm borrows its payload in place, and the borrow ends with the arm, before the temporary is destroyed (see `rules/memory/destruction.md` § 8(8)). Like any payload borrow, it cannot escape the arm. A subject that is itself a reference returned by a call has no temporary to borrow from; its payload origin is that of the returned reference.
+**§ 13(9)** A fresh temporary subject, such as `match MakeOption() { Some(ref value) => ... }`, may also be borrowed from with `ref` or `ref mut`, for its whole payload or a named payload field such as `Boxed { head: ref h }` (owner decision 2026-11-07). The temporary lives through the whole match, the arm borrows its payload in place, and the borrow ends with the arm, before the temporary is destroyed (see `rules/memory/destruction.md` § 8(8)). Like any payload borrow, it cannot escape the arm. A subject that is itself a reference returned by a call has no temporary to borrow from; its payload origin is that of the returned reference.
 
-A subject constructed in place, such as `match Some(<-handle) { ... }`, takes the operands it is built from when the subject is evaluated, exactly as the same construction does in a `let` initializer. After the match, `handle` is moved.
+**§ 13(10)** A subject constructed in place, such as `match Some(<-handle) { ... }`, takes the operands it is built from when the subject is evaluated, exactly as the same construction does in a `let` initializer. After the match, `handle` is moved.
 
 ---
 
-## 14. Borrowed subjects cannot transfer ownership
+## § 14 Borrowed subjects cannot transfer ownership
 
-A subject accessed only through `ref UnionType` does not own the union value and therefore cannot transfer ownership of a move-only payload.
+**§ 14(1)** A subject accessed only through `ref UnionType` does not own the union value and therefore cannot transfer ownership of a move-only payload.
 
-A plain by-value payload binding from a shared borrowed subject is valid only when the payload can be copied under the normal copy rules.
+**§ 14(2)** A plain by-value payload binding from a shared borrowed subject is valid only when the payload can be copied under the normal copy rules.
 
-Move-only payload access requires an explicit borrow:
+**§ 14(3)** Move-only payload access requires an explicit borrow:
 
 ```sec
 Some(ref value)
 ```
 
-A `ref mut UnionType` subject may provide:
+**§ 14(4)** A `ref mut UnionType` subject may provide:
 
 ```sec
 Some(ref value)
 Some(ref mut value)
 ```
 
-according to ordinary borrowing authority.
+**§ 14(5)** according to ordinary borrowing authority.
 
-It still cannot move an owned payload out merely because mutable access exists. Mutable borrow authority is not ownership authority.
+**§ 14(6)** It still cannot move an owned payload out merely because mutable access exists. Mutable borrow authority is not ownership authority.
 
 ---
 
-## 15. No hidden partial moves from shallow field destructuring
+## § 15 No hidden partial moves from shallow field destructuring
 
-Shallow named-field destructuring must not create hidden partial moves from a union payload.
+**§ 15(1)** Shallow named-field destructuring must not create hidden partial moves from a union payload.
 
-A plain field binding is therefore by-value copy only.
+**§ 15(2)** A plain field binding is therefore by-value copy only.
 
 ```sec
 Packet { header, payload }
 ```
 
-is valid for a field only when that field's type is implicitly copyable.
+**§ 15(3)** is valid for a field only when that field's type is implicitly copyable.
 
-If a destructured field is move-only, plain by-value field binding is a compile-time error.
+**§ 15(4)** If a destructured field is move-only, plain by-value field binding is a compile-time error.
 
-Use:
+**§ 15(5)** Use:
 
 ```sec
 Packet { payload: ref p }
 ```
 
-or:
+**§ 15(6)** or:
 
 ```sec
 Packet { payload: ref mut p }
 ```
 
-when borrowing is intended.
+**§ 15(7)** when borrowing is intended.
 
-When ownership of move-only content is required, bind the complete payload by value and perform explicit ownership operations on that complete value.
+**§ 15(8)** When ownership of move-only content is required, bind the complete payload by value and perform explicit ownership operations on that complete value.
 
-The compiler must not silently clone a field and must not leave the reusable union subject in a hidden partially moved state through shallow field destructuring.
+**§ 15(9)** The compiler must not silently clone a field and must not leave the reusable union subject in a hidden partially moved state through shallow field destructuring.
 
 ---
 
-## 16. Guards
+## § 16 Guards
 
-A guard uses `where`:
+**§ 16(1)** A guard uses `where`:
 
 ```sec
 Pattern where condition => body
 ```
 
-The guard expression must have type `bool`.
+**§ 16(2)** The guard expression must have type `bool`.
 
-The pattern is tested before the guard.
+**§ 16(3)** The pattern is tested before the guard.
 
-The guard is evaluated only when the pattern matches.
+**§ 16(4)** The guard is evaluated only when the pattern matches.
 
-If the guard evaluates to `false`, matching continues with the next arm.
+**§ 16(5)** If the guard evaluates to `false`, matching continues with the next arm.
 
-Bindings introduced by the pattern are visible in the guard.
+**§ 16(6)** Bindings introduced by the pattern are visible in the guard.
 
 ---
 
-## 17. Guards and move-only payloads
+## § 17 Guards and move-only payloads
 
-Ownership transfer for a move-only by-value payload binding must not be committed merely because the pattern matched.
+**§ 17(1)** Ownership transfer for a move-only by-value payload binding must not be committed merely because the pattern matched.
 
-The move is committed only after:
+**§ 17(2)** The move is committed only after:
 
 1. the pattern matches; and
 2. the guard, when present, evaluates to `true`; and
 3. the arm is selected.
 
-Example:
+**§ 17(3)** Example:
 
 ```sec
 match option {
@@ -585,7 +585,7 @@ match option {
 }
 ```
 
-When `value` is move-only:
+**§ 17(4)** When `value` is move-only:
 
 - the first pattern may expose a candidate binding to the guard;
 - the guard may inspect or borrow the candidate under normal rules;
@@ -594,21 +594,21 @@ When `value` is move-only:
 - later arms must see the ownership state that exists after the guard's actual side effects but without a committed payload move from the rejected arm;
 - if the guard is true, the move into `value` is committed before the arm body uses `value` as its owned binding.
 
-A consuming use of a prospective move-only binding inside the guard is invalid.
+**§ 17(5)** A consuming use of a prospective move-only binding inside the guard is invalid.
 
-Explicit `ref` and `ref mut` pattern bindings create the corresponding candidate borrow for guard evaluation. A borrow from an arm whose guard fails ends before the next arm is tested, subject to ordinary side effects already performed by the guard.
+**§ 17(6)** Explicit `ref` and `ref mut` pattern bindings create the corresponding candidate borrow for guard evaluation. A borrow from an arm whose guard fails ends before the next arm is tested, subject to ordinary side effects already performed by the guard.
 
 ---
 
-## 18. Ownership state after `match`
+## § 18 Ownership state after `match`
 
-Ownership analysis is path-sensitive across match arms.
+**§ 18(1)** Ownership analysis is path-sensitive across match arms.
 
-Every continuing arm contributes its resulting ownership state.
+**§ 18(2)** Every continuing arm contributes its resulting ownership state.
 
-If a move-only payload is moved from a reusable union subject in an arm, the compiler must mark the affected subject or Place unavailable on that path according to the ownership model.
+**§ 18(3)** If a move-only payload is moved from a reusable union subject in an arm, the compiler must mark the affected subject or Place unavailable on that path according to the ownership model.
 
-Example:
+**§ 18(4)** Example:
 
 ```sec
 match value {
@@ -619,28 +619,28 @@ match value {
 Use(value)
 ```
 
-If `resource` is move-only and the `Some` arm continues after consuming the payload, `value` is not definitely available after the `match`.
+**§ 18(5)** If `resource` is move-only and the `Some` arm continues after consuming the payload, `value` is not definitely available after the `match`.
 
-The post-match merge must conservatively combine the continuing arm states.
+**§ 18(6)** The post-match merge must conservatively combine the continuing arm states.
 
-Conceptually:
+**§ 18(7)** Conceptually:
 
 ```text
 Available + Moved
     ConditionallyAvailable
 ```
 
-A later whole-value use is invalid unless every continuing path establishes an available value through legal reinitialization.
+**§ 18(8)** A later whole-value use is invalid unless every continuing path establishes an available value through legal reinitialization.
 
-A terminating arm does not contribute an ownership state to a later merge point because that path does not continue.
+**§ 18(9)** A terminating arm does not contribute an ownership state to a later merge point because that path does not continue.
 
-The compiler must enforce this rule. It is not an advisory analysis.
+**§ 18(10)** The compiler must enforce this rule. It is not an advisory analysis.
 
 ---
 
-## 19. Statement `match`
+## § 19 Statement `match`
 
-A `match` may be used only for control flow and side effects.
+**§ 19(1)** A `match` may be used only for control flow and side effects.
 
 ```sec
 match result {
@@ -649,18 +649,18 @@ match result {
 }
 ```
 
-An expression arm in statement context is evaluated in statement context.
+**§ 19(2)** An expression arm in statement context is evaluated in statement context.
 
-A produced value must not disappear merely because the surrounding construct is `match`.
+**§ 19(3)** A produced value must not disappear merely because the surrounding construct is `match`.
 
-The normal discard rules apply:
+**§ 19(4)** The normal discard rules apply:
 
 - ordinary implicitly discardable call results may use the established implicit call-result discard behavior;
 - must-use values may not be implicitly discarded;
 - explicit discard must be written when required or intentionally used;
 - ownership and destruction of discarded results follow `discard.md`.
 
-When a statement arm needs explicit discard, use a block:
+**§ 19(5)** When a statement arm needs explicit discard, use a block:
 
 ```sec
 match option {
@@ -672,13 +672,13 @@ match option {
 }
 ```
 
-`match` itself does not create a new blanket implicit-discard rule.
+**§ 19(6)** `match` itself does not create a new blanket implicit-discard rule.
 
 ---
 
-## 20. Expression `match`
+## § 20 Expression `match`
 
-A `match` may produce a value.
+**§ 20(1)** A `match` may produce a value.
 
 ```sec
 let message := match status {
@@ -688,9 +688,9 @@ let message := match status {
 }
 ```
 
-Every continuing arm must produce a value assignable to one common result type.
+**§ 20(2)** Every continuing arm must produce a value assignable to one common result type.
 
-A branch that returns, propagates, or otherwise terminates does not need to produce the match result value.
+**§ 20(3)** A branch that returns, propagates, or otherwise terminates does not need to produce the match result value.
 
 ```sec
 let value := match result {
@@ -699,13 +699,13 @@ let value := match result {
 }
 ```
 
-The match result's ownership classification follows its resolved result type and the ownership action that produced each continuing arm result.
+**§ 20(4)** The match result's ownership classification follows its resolved result type and the ownership action that produced each continuing arm result.
 
 ---
 
-## 21. Value-producing arm blocks
+## § 21 Value-producing arm blocks
 
-Sec 0.1 supports a contextual value-producing block specifically in the result position of an expression-match arm.
+**§ 21(1)** Sec 0.1 supports a contextual value-producing block specifically in the result position of an expression-match arm.
 
 ```sec
 let price := match product {
@@ -718,17 +718,17 @@ let price := match product {
 }
 ```
 
-In such a block, the final expression on every continuing path is the arm result.
+**§ 21(2)** In such a block, the final expression on every continuing path is the arm result.
 
-`CalculateBookPrice(book)` above is therefore the value produced by the `Book` arm.
+**§ 21(3)** `CalculateBookPrice(book)` above is therefore the value produced by the `Book` arm.
 
-This rule does not make arbitrary Sec blocks into expressions.
+**§ 21(4)** This rule does not make arbitrary Sec blocks into expressions.
 
-Outside this contextual match-arm result position, ordinary block semantics remain unchanged.
+**§ 21(5)** Outside this contextual match-arm result position, ordinary block semantics remain unchanged.
 
-### Continuing paths
+### § 21.1 Continuing paths
 
-Every path that reaches the end of a value-producing arm block must reach a final value expression assignable to the match result type.
+**§ 21.1(1)** Every path that reaches the end of a value-producing arm block must reach a final value expression assignable to the match result type.
 
 ```sec
 let result := match value {
@@ -744,9 +744,9 @@ let result := match value {
 }
 ```
 
-The `return` path terminates. The continuing path produces `Transform(data)`.
+**§ 21.1(2)** The `return` path terminates. The continuing path produces `Transform(data)`.
 
-This is invalid when `Log(data)` returns `void`:
+**§ 21.1(3)** This is invalid when `Log(data)` returns `void`:
 
 ```sec
 let result := match value {
@@ -758,25 +758,25 @@ let result := match value {
 }
 ```
 
-because the continuing `A` arm does not produce the required result value.
+**§ 21.1(4)** because the continuing `A` arm does not produce the required result value.
 
-### Ownership of the final expression
+### § 21.2 Ownership of the final expression
 
-If the final expression produces or transfers a move-only value, ownership of the match result must be established before cleanup destroys arm-local values required to produce that result.
+**§ 21.2(1)** If the final expression produces or transfers a move-only value, ownership of the match result must be established before cleanup destroys arm-local values required to produce that result.
 
-Conceptually, arm-result ownership is committed before arm-scope cleanup runs.
+**§ 21.2(2)** Conceptually, arm-result ownership is committed before arm-scope cleanup runs.
 
-The backend may optimize representation but must preserve this semantic ordering.
+**§ 21.2(3)** The backend may optimize representation but must preserve this semantic ordering.
 
 ---
 
-## 22. Result type compatibility
+## § 22 Result type compatibility
 
-All continuing value-producing arms must produce compatible types under the normal Sec type system.
+**§ 22(1)** All continuing value-producing arms must produce compatible types under the normal Sec type system.
 
-Named type identity remains significant.
+**§ 22(2)** Named type identity remains significant.
 
-No match-specific implicit conversion is introduced.
+**§ 22(3)** No match-specific implicit conversion is introduced.
 
 ```sec
 let value := match option {
@@ -785,15 +785,15 @@ let value := match option {
 }
 ```
 
-is invalid when `number` has type `int`.
+**§ 22(4)** is invalid when `number` has type `int`.
 
-Likewise, different named semantic types remain distinct even when their representation types are compatible.
+**§ 22(5)** Likewise, different named semantic types remain distinct even when their representation types are compatible.
 
 ---
 
-## 23. Return and termination analysis
+## § 23 Return and termination analysis
 
-`match` participates in function return analysis.
+**§ 23(1)** `match` participates in function return analysis.
 
 ```sec
 fn Convert(result: Result[int, IOError]) int {
@@ -810,15 +810,15 @@ fn Convert(result: Result[int, IOError]) int {
 }
 ```
 
-An exhaustive match whose every arm terminates is itself non-continuing.
+**§ 23(2)** An exhaustive match whose every arm terminates is itself non-continuing.
 
-If at least one reachable arm continues, control may continue after the match.
+**§ 23(3)** If at least one reachable arm continues, control may continue after the match.
 
 ---
 
-## 24. Definite assignment
+## § 24 Definite assignment
 
-An exhaustive match can establish definite assignment when every continuing arm establishes the required assignment state.
+**§ 24(1)** An exhaustive match can establish definite assignment when every continuing arm establishes the required assignment state.
 
 ```sec
 fn Convert(option: Option[int]) int {
@@ -838,15 +838,15 @@ fn Convert(option: Option[int]) int {
 }
 ```
 
-Only continuing arms contribute to the state after the match.
+**§ 24(2)** Only continuing arms contribute to the state after the match.
 
-The same path-sensitive rule applies to initialization state, union `empty` state, ownership state, borrow state, and other compiler analyses that merge across control flow.
+**§ 24(3)** The same path-sensitive rule applies to initialization state, union `empty` state, ownership state, borrow state, and other compiler analyses that merge across control flow.
 
 ---
 
-## 25. Duplicate and unreachable arms
+## § 25 Duplicate and unreachable arms
 
-A duplicate unguarded pattern is invalid.
+**§ 25(1)** A duplicate unguarded pattern is invalid.
 
 ```sec
 match option {
@@ -856,7 +856,7 @@ match option {
 }
 ```
 
-A pattern fully covered by an earlier unguarded arm is unreachable.
+**§ 25(2)** A pattern fully covered by an earlier unguarded arm is unreachable.
 
 ```sec
 match option {
@@ -866,9 +866,9 @@ match option {
 }
 ```
 
-The guarded `Some` arm is unreachable because the earlier unguarded `Some` already covers every `Some` value.
+**§ 25(3)** The guarded `Some` arm is unreachable because the earlier unguarded `Some` already covers every `Some` value.
 
-A guarded arm may precede an unguarded fallback for the same pattern:
+**§ 25(4)** A guarded arm may precede an unguarded fallback for the same pattern:
 
 ```sec
 match option {
@@ -878,9 +878,9 @@ match option {
 }
 ```
 
-## 25A. Proven-inactive arms (MD-042)
+## § 25A Proven-inactive arms (MD-042)
 
-A correctly typed arm for a variant that is impossible **solely because of the
+**§ 25A(1)** A correctly typed arm for a variant that is impossible **solely because of the
 subject's proven current state** (§ 5) is **legal**. It may be kept for
 clarity, reviewability or a future broader value source. The compiler reports
 it with a default **Information** diagnostic that explains the proof, not with
@@ -894,11 +894,11 @@ match figure {
 }
 ```
 
-An inactive arm must still be syntactically valid, name a declared variant,
+**§ 25A(2)** An inactive arm must still be syntactically valid, name a declared variant,
 use a valid binding shape, type-check its guard and body and respect ownership
 and lifetime obligations.
 
-Proven inactivity differs from source-order redundancy. The compiler
+**§ 25A(3)** Proven inactivity differs from source-order redundancy. The compiler
 distinguishes:
 
 1. a structurally invalid, duplicate or earlier-covered arm — **Error** (this
@@ -906,10 +906,10 @@ distinguishes:
 2. a valid arm excluded only by a proven subject state — **Information**;
 3. an arm not proven excluded — no inactivity diagnostic.
 
-The classification does not depend on whether lowering later removes the arm.
+**§ 25A(4)** The classification does not depend on whether lowering later removes the arm.
 The formatter never removes inactive arms.
 
-The declared error type and the errors a specific expression can produce are
+**§ 25A(5)** The declared error type and the errors a specific expression can produce are
 distinct facts. Widening a core error enum does not make every operation able
 to produce every new variant: a `try` whose failures provably arise only from
 an integer division may keep a legally typed
@@ -921,34 +921,34 @@ variants its implementation can produce. Failure provenance restricts the
 active error set only when it is complete and sound; it is a semantic proof,
 not an ABI property or an inference from a variant name.
 
-Rules: `rules/corrections/applied/md029-md042-md102-pattern-reachability-some-correction-20261028.md` §§ 8–10.
+**§ 25A(6)** Rules: `rules/corrections/applied/md029-md042-md102-pattern-reachability-some-correction-20261028.md` §§ 8–10.
 
 ---
 
-## 26. Ordinary enums
+## § 26 Ordinary enums
 
-Ordinary enums are closed over their declared underlying value classes,
+**§ 26(1)** Ordinary enums are closed over their declared underlying value classes,
 including integer and string values.
 
-Exhaustiveness is based on distinct reachable declared values, not merely member spellings.
+**§ 26(2)** Exhaustiveness is based on distinct reachable declared values, not merely member spellings.
 
-If multiple enum members are aliases for the same underlying value, they
+**§ 26(3)** If multiple enum members are aliases for the same underlying value, they
 represent one runtime value class for coverage and duplicate/unreachable
 analysis.
 
-A match need not contain separate arms for every alias spelling.
+**§ 26(4)** A match need not contain separate arms for every alias spelling.
 
-The compiler must normalize enum aliases before coverage analysis.
+**§ 26(5)** The compiler must normalize enum aliases before coverage analysis.
 
 ---
 
-## 27. Open bit-backed enums
+## § 27 Open bit-backed enums
 
-A `bit` or `bit[N]` hardware enum is open over the complete representable bit domain.
+**§ 27(1)** A `bit` or `bit[N]` hardware enum is open over the complete representable bit domain.
 
-Declared members do not necessarily exhaust that domain.
+**§ 27(2)** Declared members do not necessarily exhaust that domain.
 
-Therefore:
+**§ 27(3)** Therefore:
 
 ```sec
 match status {
@@ -957,23 +957,23 @@ match status {
 }
 ```
 
-is exhaustive only when the declared members provably cover the complete representable bit domain.
+**§ 27(4)** is exhaustive only when the declared members provably cover the complete representable bit domain.
 
-Otherwise an additional arm such as:
+**§ 27(5)** Otherwise an additional arm such as:
 
 ```sec
 _ => UnknownEncoding()
 ```
 
-is required.
+**§ 27(6)** is required.
 
-The compiler must base exhaustiveness on the actual bit width and normalized numeric value classes.
+**§ 27(7)** The compiler must base exhaustiveness on the actual bit width and normalized numeric value classes.
 
 ---
 
-## 28. `Result[T, E]`
+## § 28 `Result[T, E]`
 
-`Result[T, E]` uses the same match machinery with compiler-known variants:
+**§ 28(1)** `Result[T, E]` uses the same match machinery with compiler-known variants:
 
 ```sec
 match result {
@@ -982,17 +982,17 @@ match result {
 }
 ```
 
-General `match` does not propagate `Err` implicitly.
+**§ 28(2)** General `match` does not propagate `Err` implicitly.
 
-Both success and error states must be covered explicitly according to the Result/error rules.
+**§ 28(3)** Both success and error states must be covered explicitly according to the Result/error rules.
 
-Use `try` when success should continue implicitly and errors should be propagated or handled through try-handler semantics.
+**§ 28(4)** Use `try` when success should continue implicitly and errors should be propagated or handled through try-handler semantics.
 
-Use `match` when both `Ok` and `Err` belong to explicit branch control flow.
+**§ 28(5)** Use `match` when both `Ok` and `Err` belong to explicit branch control flow.
 
-### Concrete error variants
+### § 28.1 Concrete error variants
 
-An ordinary `match` on `Result[T, ConcreteError]` may use
+**§ 28.1(1)** An ordinary `match` on `Result[T, ConcreteError]` may use
 `Err(ConcreteError.Variant)` to match one specific variant of the closed
 concrete error payload:
 
@@ -1006,18 +1006,18 @@ match result {
 }
 ```
 
-Specific `Err(ConcreteError.Variant)` arms participate in ordinary closed
+**§ 28.1(2)** Specific `Err(ConcreteError.Variant)` arms participate in ordinary closed
 exhaustiveness. When every variant of the concrete error type is covered
 together with `Ok`, the match is exhaustive without an `Err(error)` arm. When
 one or more variants remain uncovered, the match is non-exhaustive unless
 another valid arm covers them.
 
-`Err(error)` binds the complete error payload and covers the complete `Err`
+**§ 28.1(3)** `Err(error)` binds the complete error payload and covers the complete `Err`
 branch, so an `Err(ConcreteError.Variant)` arm after it is unreachable, and an
 `Err(error)` arm after arms covering every variant is unreachable as well.
 Concrete-variant arms before an `Err(error)` arm are valid.
 
-The variant must belong to the subject's own error type. Enum error variants
+**§ 28.1(4)** The variant must belong to the subject's own error type. Enum error variants
 are compared by their underlying value class, like ordinary enum arms. A
 payload-carrying union error variant may be selected as a bare variant, with
 its single payload bound (`Err(FileError.NotFound(info))`) or with shallow
@@ -1026,7 +1026,7 @@ is one level deep (MD-029; `rules/errors/errorhandling.md` §§ 15.3, 27.2b).
 With one unambiguous closed concrete error type the contextual
 `Err(.Variant...)` spelling is also valid (activated in Sec 0.1.2).
 
-This is an explicit, deliberately narrow Sec 0.1 Result/error refinement
+**§ 28.1(5)** This is an explicit, deliberately narrow Sec 0.1 Result/error refinement
 exception to the restricted nested-pattern model (§ 32). It is not a general
 recursive or destructuring pattern facility and not a permanent pattern-model
 guarantee; a later Sec version may replace or generalize it. Open-error
@@ -1034,9 +1034,9 @@ narrowing for `Result[T, error]` below is unchanged (MD-008; `rules/corrections/
 
 ---
 
-## 29. `Option[T]`
+## § 29 `Option[T]`
 
-`Option[T]` uses compiler-known variants:
+**§ 29(1)** `Option[T]` uses compiler-known variants:
 
 ```sec
 match option {
@@ -1045,15 +1045,15 @@ match option {
 }
 ```
 
-`None` is a real `Option[T]` value.
+**§ 29(2)** `None` is a real `Option[T]` value.
 
-It is not the union initialization state `empty`.
+**§ 29(3)** It is not the union initialization state `empty`.
 
-Whole-payload binding of `Some` follows the ownership rules in this document.
+**§ 29(4)** Whole-payload binding of `Some` follows the ownership rules in this document.
 
-### Open `error` narrowing
+### § 29.1 Open `error` narrowing
 
-`Result[T, error]` preserves the concrete identity and payload of widened Sec
+**§ 29.1(1)** `Result[T, error]` preserves the concrete identity and payload of widened Sec
 errors. Its `Err` branch may therefore use error-specific concrete patterns:
 
 ```sec
@@ -1064,7 +1064,7 @@ match result {
 }
 ```
 
-The root `error` domain is open. Concrete error arms alone are not exhaustive;
+**§ 29.1(2)** The root `error` domain is open. Concrete error arms alone are not exhaustive;
 an `Err(errorValue)` or `Err(_)` fallback is required unless control-flow facts
 prove a narrower closed state. Generic `_` still may not hide an unhandled
 `Err`. This is an error-specific narrowing rule, not general runtime type
@@ -1072,11 +1072,11 @@ matching.
 
 ---
 
-## 30. Direct boolean matching is not part of Sec 0.1
+## § 30 Direct boolean matching is not part of Sec 0.1
 
-A plain `bool` subject should use `if` / `else`.
+**§ 30(1)** A plain `bool` subject should use `if` / `else`.
 
-This is not a Sec 0.1 match form:
+**§ 30(2)** This is not a Sec 0.1 match form:
 
 ```sec
 match ready {
@@ -1085,7 +1085,7 @@ match ready {
 }
 ```
 
-Use:
+**§ 30(3)** Use:
 
 ```sec
 if ready {
@@ -1095,17 +1095,17 @@ if ready {
 }
 ```
 
-A union or enum variant may of course contain or expose a `bool` payload. The structural variant may be matched, after which the boolean may be inspected with a guard or ordinary `if`.
+**§ 30(4)** A union or enum variant may of course contain or expose a `bool` payload. The structural variant may be matched, after which the boolean may be inspected with a guard or ordinary `if`.
 
-`match` is justified by the structural or variant domain, not by the boolean value itself.
+**§ 30(5)** `match` is justified by the structural or variant domain, not by the boolean value itself.
 
 ---
 
-## 31. Literal and range patterns are not part of Sec 0.1
+## § 31 Literal and range patterns are not part of Sec 0.1
 
-Ordinary literal value matching belongs to `switch` or `if`.
+**§ 31(1)** Ordinary literal value matching belongs to `switch` or `if`.
 
-Do not write:
+**§ 31(2)** Do not write:
 
 ```sec
 match value {
@@ -1115,9 +1115,9 @@ match value {
 }
 ```
 
-Use `switch`.
+**§ 31(3)** Use `switch`.
 
-Range patterns are likewise not part of Sec 0.1:
+**§ 31(4)** Range patterns are likewise not part of Sec 0.1:
 
 ```sec
 match value {
@@ -1126,15 +1126,15 @@ match value {
 }
 ```
 
-Use the range facilities of `switch`.
+**§ 31(5)** Use the range facilities of `switch`.
 
-Enum member patterns are not classified as ordinary literal patterns merely because enum members have numeric representations.
+**§ 31(6)** Enum member patterns are not classified as ordinary literal patterns merely because enum members have numeric representations.
 
 ---
 
-## 32. Unsupported pattern forms in Sec 0.1
+## § 32 Unsupported pattern forms in Sec 0.1
 
-Sec 0.1 does not define:
+**§ 32(1)** Sec 0.1 does not define:
 
 - pattern alternatives such as `A | B`;
 - general literal patterns;
@@ -1148,17 +1148,17 @@ Sec 0.1 does not define:
 - regex patterns;
 - guard syntax other than `where`.
 
-Write separate arms, nested matches, `switch`, or `if` as appropriate.
+**§ 32(2)** Write separate arms, nested matches, `switch`, or `if` as appropriate.
 
 ---
 
-## 33. No fallthrough
+## § 33 No fallthrough
 
-Match arms never fall through.
+**§ 33(1)** Match arms never fall through.
 
-There is no `fallthrough` operation for `match`.
+**§ 33(2)** There is no `fallthrough` operation for `match`.
 
-Each selected arm either:
+**§ 33(3)** Each selected arm either:
 
 - completes its own body and reaches the match merge;
 - produces the match expression value;
@@ -1168,36 +1168,36 @@ Each selected arm either:
 
 ---
 
-## 34. `break` and `continue`
+## § 34 `break` and `continue`
 
-`match` is not a `break` or `continue` target.
+**§ 34(1)** `match` is not a `break` or `continue` target.
 
-A `break` or `continue` written inside a match arm applies only when an enclosing loop or other construct legally provides that target.
+**§ 34(2)** A `break` or `continue` written inside a match arm applies only when an enclosing loop or other construct legally provides that target.
 
-Before such control transfer, ordinary cleanup rules apply to scopes exited by the edge.
+**§ 34(3)** Before such control transfer, ordinary cleanup rules apply to scopes exited by the edge.
 
-The match construct itself does not create an implicit loop-like control target.
+**§ 34(4)** The match construct itself does not create an implicit loop-like control target.
 
 ---
 
-## 35. Empty matches
+## § 35 Empty matches
 
-This is invalid in Sec 0.1:
+**§ 35(1)** This is invalid in Sec 0.1:
 
 ```sec
 match value {
 }
 ```
 
-Even if a future type system introduces an uninhabited type, zero-arm match syntax is not part of Sec 0.1.
+**§ 35(2)** Even if a future type system introduces an uninhabited type, zero-arm match syntax is not part of Sec 0.1.
 
-The compiler should report one focused diagnostic.
+**§ 35(3)** The compiler should report one focused diagnostic.
 
 ---
 
-## 36. Compiler analysis requirements
+## § 36 Compiler analysis requirements
 
-Before lowering, Sema and ownership/borrow analysis must resolve at least:
+**§ 36(1)** Before lowering, Sema and ownership/borrow analysis must resolve at least:
 
 - subject type and evaluation identity;
 - whether the subject is a reusable Place or temporary;
@@ -1226,27 +1226,27 @@ Before lowering, Sema and ownership/borrow analysis must resolve at least:
 - required cleanup and destruction edges;
 - discard or must-use behavior for statement-arm results.
 
-No backend may infer these facts from emitted low-level code.
+**§ 36(2)** No backend may infer these facts from emitted low-level code.
 
 ---
 
-## 37. LSP requirements
+## § 37 LSP requirements
 
-The LSP is an interactive view of compiler-resolved match semantics.
+**§ 37(1)** The LSP is an interactive view of compiler-resolved match semantics.
 
-It must not implement a parallel match, ownership, borrow, or exhaustiveness analyzer.
+**§ 37(2)** It must not implement a parallel match, ownership, borrow, or exhaustiveness analyzer.
 
-Compiler-produced facts must be available to the LSP early enough for normal interactive editing.
+**§ 37(3)** Compiler-produced facts must be available to the LSP early enough for normal interactive editing.
 
-### Payload binding hover
+### § 37.1 Payload binding hover
 
-For a binding such as:
+**§ 37.1(1)** For a binding such as:
 
 ```sec
 Some(value)
 ```
 
-hover must be able to expose at least:
+**§ 37.1(2)** hover must be able to expose at least:
 
 ```text
 Type: Resource
@@ -1255,43 +1255,43 @@ Source: option.Some payload
 Commit: when this arm is selected
 ```
 
-For a copyable payload:
+**§ 37.1(3)** For a copyable payload:
 
 ```text
 Binding mode: copy
 ```
 
-For borrowed payloads:
+**§ 37.1(4)** For borrowed payloads:
 
 ```text
 Binding mode: shared borrow
 ```
 
-or:
+**§ 37.1(5)** or:
 
 ```text
 Binding mode: mutable borrow
 ```
 
-### Guard-aware move display
+### § 37.2 Guard-aware move display
 
-For a guarded move-only binding, tooling must distinguish a prospective arm move from an already committed move.
+**§ 37.2(1)** For a guarded move-only binding, tooling must distinguish a prospective arm move from an already committed move.
 
-Before a guarded arm is selected, the LSP must not display the subject as already moved merely because the pattern text contains a by-value move-only binding.
+**§ 37.2(2)** Before a guarded arm is selected, the LSP must not display the subject as already moved merely because the pattern text contains a by-value move-only binding.
 
-It may display:
+**§ 37.2(3)** It may display:
 
 ```text
 Ownership effect: moves payload if this arm is selected
 ```
 
-### Post-match availability
+### § 37.3 Post-match availability
 
-When ownership merging produces a state such as `Moved`, `PartiallyAvailable`, or `ConditionallyAvailable`, hover and diagnostics must use the compiler's resolved state.
+**§ 37.3(1)** When ownership merging produces a state such as `Moved`, `PartiallyAvailable`, or `ConditionallyAvailable`, hover and diagnostics must use the compiler's resolved state.
 
-A mandatory use-after-move or conditionally-unavailable error must be published by the LSP as the same language-safety diagnostic produced by the compiler.
+**§ 37.3(2)** A mandatory use-after-move or conditionally-unavailable error must be published by the LSP as the same language-safety diagnostic produced by the compiler.
 
-Tooling should identify:
+**§ 37.3(3)** Tooling should identify:
 
 - the arm that caused the move;
 - the binding receiving ownership;
@@ -1299,17 +1299,17 @@ Tooling should identify:
 - the merge that makes later use unavailable;
 - valid borrow/reinitialization alternatives when provable.
 
-Configurable ownership inlay hints may show non-obvious `copy`, `move`, `ref`, and `ref mut` effects.
+**§ 37.3(4)** Configurable ownership inlay hints may show non-obvious `copy`, `move`, `ref`, and `ref mut` effects.
 
-The underlying ownership correctness is mandatory even when visual hints are disabled.
+**§ 37.3(5)** The underlying ownership correctness is mandatory even when visual hints are disabled.
 
 ---
 
-## 38. Semantic IR requirements
+## § 38 Semantic IR requirements
 
-Resolved match semantics must be explicit before target lowering.
+**§ 38(1)** Resolved match semantics must be explicit before target lowering.
 
-Semantic IR must preserve or encode:
+**§ 38(2)** Semantic IR must preserve or encode:
 
 - one evaluated subject;
 - source arm order;
@@ -1331,19 +1331,19 @@ Semantic IR must preserve or encode:
 - merge ownership state;
 - exhaustiveness proof and impossible residual edge.
 
-Payload extraction or borrowing must occur only after the appropriate variant has been established.
+**§ 38(3)** Payload extraction or borrowing must occur only after the appropriate variant has been established.
 
-A move from a reusable subject through a guarded by-value binding must not be represented as committed on the guard-false edge.
+**§ 38(4)** A move from a reusable subject through a guarded by-value binding must not be represented as committed on the guard-false edge.
 
-The backend must not perform match exhaustiveness analysis or reconstruct source ownership policy.
+**§ 38(5)** The backend must not perform match exhaustiveness analysis or reconstruct source ownership policy.
 
 ---
 
-## 39. Diagnostics
+## § 39 Diagnostics
 
-Match diagnostics should be specific and source-related.
+**§ 39(1)** Match diagnostics should be specific and source-related.
 
-Required categories include:
+**§ 39(2)** Required categories include:
 
 - empty match;
 - invalid subject type;
@@ -1366,13 +1366,13 @@ Required categories include:
 - expression arm that fails to produce a value on a continuing path;
 - must-use result implicitly discarded by statement match.
 
-Ownership diagnostics should include related locations for the source Place, move-producing arm, and later invalid use when available.
+**§ 39(3)** Ownership diagnostics should include related locations for the source Place, move-producing arm, and later invalid use when available.
 
 ---
 
-## 40. Design summary
+## § 40 Design summary
 
-Sec 0.1 `match` follows these rules:
+**§ 40(1)** Sec 0.1 `match` follows these rules:
 
 1. `match` is for structural and variant branching.
 2. The subject is evaluated exactly once.

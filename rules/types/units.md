@@ -2,22 +2,22 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-18
-- **Last updated:** 2026-10-27 (MD-062 unit metadata value types)
+- **Last updated:** 2026-11-08 (stable chapter, subsection, and paragraph numbering); 2026-10-27 (MD-062 unit metadata value types)
 - **Document revision:** 2.2
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/types/units.md`
 - **Replaces:** `rules/types/units.txt`
-- **Repository baseline reviewed:** `20b3606`
+- **Repository baseline reviewed:** `50655d3bc5d2e2596935dc5609cb1db1387e0cec`
 - **Implementation governance:** `governance/types.yaml`
 
 ---
 
-## Purpose
+## § 1 Purpose
 
-Sec units attach semantic meaning to numeric quantities so that the compiler can
+**§ 1(1)** Sec units attach semantic meaning to numeric quantities so that the compiler can
 reject or warn about numerically valid but semantically suspicious operations.
 
-The unit system is designed to prevent mistakes such as:
+**§ 1(2)** The unit system is designed to prevent mistakes such as:
 
 - mixing incompatible physical units;
 - confusing quantities with the same machine representation;
@@ -27,26 +27,26 @@ The unit system is designed to prevent mistakes such as:
 - silently applying an unknown runtime conversion relationship;
 - silently rounding or truncating a unit conversion.
 
-Unit checking is a compile-time semantic feature. A backend representation must
+**§ 1(3)** Unit checking is a compile-time semantic feature. A backend representation must
 not be used to infer unit meaning.
 
-Static unit conversion/dimension proof is not automatically a semantic-CTE
+**§ 1(4)** Static unit conversion/dimension proof is not automatically a semantic-CTE
 request. An owning unit/type source position that requires evaluation before
 runtime lowering must declare the appropriate required context explicitly. CTE
 preserves the exact nominal unit and carrier semantics rather than evaluating
 only the underlying representation.
 
-Implementation status is maintained outside this rulebook.
+**§ 1(5)** Implementation status is maintained outside this rulebook.
 
 ---
 
-## Core principles
+## § 2 Core principles
 
-A unit is semantic identity.
+**§ 2(1)** A unit is semantic identity.
 
-A unit is not inherently tied to one numeric representation.
+**§ 2(2)** A unit is not inherently tied to one numeric representation.
 
-The following concepts are separate:
+**§ 2(3)** The following concepts are separate:
 
 ```text
 unit identity
@@ -59,7 +59,7 @@ transform
 scale and transform metadata
 ```
 
-For example, the unit `m` may be carried by different numeric types:
+**§ 2(4)** For example, the unit `m` may be carried by different numeric types:
 
 ```sec
 let exactDistance: decimal<m> := 10
@@ -67,56 +67,56 @@ let measuredDistance: float64<m> := 10
 let counterDistance: int64<m> := 10
 ```
 
-All three quantities use the same unit identity `m` while using different
+**§ 2(5)** All three quantities use the same unit identity `m` while using different
 numeric carriers.
 
-A unit declaration may provide a default numeric representation. The default is
+**§ 2(6)** A unit declaration may provide a default numeric representation. The default is
 only shorthand selection. It is not part of the unit's semantic identity.
 
-Unit semantics must survive semantic analysis and Semantic IR until all unit
+**§ 2(7)** Unit semantics must survive semantic analysis and Semantic IR until all unit
 validation, conversion, diagnostics, and lowering decisions are complete.
 Runtime values do not need to carry unit metadata after those decisions have
 been fully lowered.
 
 ---
 
-## Unit declarations
+## § 3 Unit declarations
 
-Canonical declaration syntax:
+**§ 3(1)** Canonical declaration syntax:
 
 ```sec
 unit m physical
 ```
 
-A declaration may specify a preferred/default numeric representation:
+**§ 3(2)** A declaration may specify a preferred/default numeric representation:
 
 ```sec
 unit Item uint other
 ```
 
-Conceptually:
+**§ 3(3)** Conceptually:
 
 ```text
 unit Name [DefaultNumericRepresentation] [Category]
 ```
 
-If the default numeric representation is omitted, it is `decimal`.
+**§ 3(4)** If the default numeric representation is omitted, it is `decimal`.
 
-If the category is omitted, it is `other`.
+**§ 3(5)** If the category is omitted, it is `other`.
 
-Canonical public and standard-library units should normally spell their category
+**§ 3(6)** Canonical public and standard-library units should normally spell their category
 explicitly.
 
-The optional default numeric representation must be a supported plain numeric
+**§ 3(7)** The optional default numeric representation must be a supported plain numeric
 scalar carrier. It must not itself be unit-bearing.
 
-Compiler-known hardware layout forms such as `bit` and `register` are not unit
+**§ 3(8)** Compiler-known hardware layout forms such as `bit` and `register` are not unit
 numeric carriers.
 
-The default numeric representation does not restrict explicit use of another
+**§ 3(9)** The default numeric representation does not restrict explicit use of another
 compatible numeric carrier.
 
-Example:
+**§ 3(10)** Example:
 
 ```sec
 unit Item uint other
@@ -125,37 +125,37 @@ let count: <Item> := 4
 let exactCount: decimal<Item> := 4
 ```
 
-`<Item>` uses `uint` because the unit declares it as its default numeric
+**§ 3(11)** `<Item>` uses `uint` because the unit declares it as its default numeric
 representation. `decimal<Item>` uses the same unit identity with a different
 numeric carrier.
 
 ---
 
-## Unit names and compiler-known names
+## § 4 Unit names and compiler-known names
 
-A unit name must not collide with a compiler-known type, type constructor,
+**§ 4(1)** A unit name must not collide with a compiler-known type, type constructor,
 keyword, or other name reserved by the language in the relevant namespace.
 
-In particular, these are not valid user unit declarations:
+**§ 4(2)** In particular, these are not valid user unit declarations:
 
 ```sec
 unit bit information
 unit byte information
 ```
 
-`bit` has compiler-known hardware semantics and `byte` is a compiler-known type.
+**§ 4(3)** `bit` has compiler-known hardware semantics and `byte` is a compiler-known type.
 
-Information units should use non-conflicting names or symbols, for example:
+**§ 4(4)** Information units should use non-conflicting names or symbols, for example:
 
 ```sec
 unit octet uint information
 unit KiB uint information
 ```
 
-A unit symbol stored in metadata may still be `"B"`, `"KiB"`, or another
+**§ 4(5)** A unit symbol stored in metadata may still be `"B"`, `"KiB"`, or another
 human-facing spelling that does not need to be the source identifier.
 
-Declared unit symbols occupy a separate unit-symbol namespace, not the shared
+**§ 4(6)** Declared unit symbols occupy a separate unit-symbol namespace, not the shared
 declaration namespace of `rules/foundations/names_scopes_visibility.md`. A unit
 symbol therefore does not conflict with an ordinary identifier of the same
 spelling: after `unit s physical`, a local, parameter, or field named `s` is
@@ -163,16 +163,16 @@ valid, and unit symbol `<s>` still names the unit. Shadowing, duplicate
 declaration, and visually confusable checks do not compare unit symbols with
 ordinary identifiers (`rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md` § 8).
 
-The same holds for ordinary type declarations: a project may declare
+**§ 4(7)** The same holds for ordinary type declarations: a project may declare
 `type A int` or `type K struct { ... }` although trusted core declares the
 units `A` (ampere) and `K` (kelvin), and a unit and an ordinary type of the
 same spelling may coexist even within one module (MD-040, 2026-10-13,
 `rules/corrections/applied/md040-md046-md047-md056-units-register-bits-rounding-correction-20261013.md`
 § 2).
 
-### Qualified unit references
+### § 4.1 Qualified unit references
 
-A reference to a unit **always** uses the `<...>` spelling, whether or not an
+**§ 4.1(1)** A reference to a unit **always** uses the `<...>` spelling, whether or not an
 ordinary type of the same name exists. A unit declaration keeps the
 `unit Name ...` syntax; it is a declaration, not a reference.
 
@@ -212,15 +212,15 @@ impl Volt {
 - A bare unit name is never a unit reference: `impl rpm`, `rpm(hz)` and a type
   written `rpm` are errors whose help names the `<rpm>` spelling.
 
-Every unit metadata member, plus the implicit `Name` and `Category`, is
+**§ 4.1(2)** Every unit metadata member, plus the implicit `Name` and `Category`, is
 readable as `<U>.Member` with the exact value type given in "Unit metadata
 value types" below (MD-062, 2026-10-27).
 
 ---
 
-## Unit categories
+## § 5 Unit categories
 
-Sec 0.1 defines these compiler-known unit categories:
+**§ 5(1)** Sec 0.1 defines these compiler-known unit categories:
 
 ```text
 physical
@@ -230,16 +230,16 @@ ratio
 other
 ```
 
-The category controls high-level semantic and diagnostic policy.
+**§ 5(2)** The category controls high-level semantic and diagnostic policy.
 
-Category is not the same as dimension or system.
+**§ 5(3)** Category is not the same as dimension or system.
 
-### `physical`
+### § 5.1 `physical`
 
-`physical` is used for physical quantities that participate in dimensional
+**§ 5.1(1)** `physical` is used for physical quantities that participate in dimensional
 analysis.
 
-Examples include:
+**§ 5.1(2)** Examples include:
 
 ```text
 length
@@ -251,45 +251,45 @@ frequency
 rotational frequency
 ```
 
-A physical unit normally declares an explicit `Dimension`.
+**§ 5.1(3)** A physical unit normally declares an explicit `Dimension`.
 
-### `currency`
+### § 5.2 `currency`
 
-`currency` is used for currencies and currency-denominated quantities.
+**§ 5.2(1)** `currency` is used for currencies and currency-denominated quantities.
 
-Different named currencies remain semantically distinct even when they use the
+**§ 5.2(2)** Different named currencies remain semantically distinct even when they use the
 same numeric carrier.
 
-Examples:
+**§ 5.2(3)** Examples:
 
 ```sec
 unit EUR currency
 unit SEK currency
 ```
 
-If a currency unit omits `Dimension`, the compiler assigns it a unique currency
+**§ 5.2(4)** If a currency unit omits `Dimension`, the compiler assigns it a unique currency
 semantic axis derived from the unit identity. The compiler must not infer a
 runtime exchange rate from dimensional compatibility.
 
-### `information`
+### § 5.3 `information`
 
-`information` is used for quantities representing information amount.
+**§ 5.3(1)** `information` is used for quantities representing information amount.
 
-Its canonical base dimension is:
+**§ 5.3(2)** Its canonical base dimension is:
 
 ```text
 information
 ```
 
-An information unit that omits `Dimension` defaults to:
+**§ 5.3(3)** An information unit that omits `Dimension` defaults to:
 
 ```text
 [information^1]
 ```
 
-Systems such as IEC belong in `System`, not in the category.
+**§ 5.3(4)** Systems such as IEC belong in `System`, not in the category.
 
-Example:
+**§ 5.3(5)** Example:
 
 ```sec
 unit KiB uint information
@@ -303,11 +303,11 @@ impl <KiB> {
 }
 ```
 
-### `ratio`
+### § 5.4 `ratio`
 
-`ratio` is used for semantically named dimensionless quantities.
+**§ 5.4(1)** `ratio` is used for semantically named dimensionless quantities.
 
-Examples include:
+**§ 5.4(2)** Examples include:
 
 ```text
 percent
@@ -316,21 +316,21 @@ ppm
 basis point
 ```
 
-A ratio unit defaults to an empty dimension vector:
+**§ 5.4(3)** A ratio unit defaults to an empty dimension vector:
 
 ```text
 []
 ```
 
-A named ratio retains nominal identity even though its mathematical dimension is
+**§ 5.4(4)** A named ratio retains nominal identity even though its mathematical dimension is
 dimensionless.
 
-### `other`
+### § 5.5 `other`
 
-`other` is used for application and domain-specific quantities that do not need
+**§ 5.5(1)** `other` is used for application and domain-specific quantities that do not need
 an additional compiler-known category policy.
 
-Examples may include:
+**§ 5.5(2)** Examples may include:
 
 ```text
 Item
@@ -339,19 +339,19 @@ Batch
 Request
 ```
 
-`other` does not mean that the compiler ignores the unit. Domain units still
+**§ 5.5(3)** `other` does not mean that the compiler ignores the unit. Domain units still
 participate in type checking and unit algebra.
 
-If an `other` unit omits `Dimension`, the compiler assigns a unique semantic
+**§ 5.5(4)** If an `other` unit omits `Dimension`, the compiler assigns a unique semantic
 base axis derived from the unit identity.
 
 ---
 
-## Category provenance in derived expressions
+## § 6 Category provenance in derived expressions
 
-A structural unit expression may combine factors from multiple categories.
+**§ 6(1)** A structural unit expression may combine factors from multiple categories.
 
-Examples:
+**§ 6(2)** Examples:
 
 ```text
 <EUR/s>
@@ -360,20 +360,20 @@ Examples:
 <Packet/s>
 ```
 
-Such a structural expression is not forced into exactly one source category.
+**§ 6(3)** Such a structural expression is not forced into exactly one source category.
 The compiler retains category provenance for semantic checks and diagnostics.
 
-For example, a structural expression containing a currency factor remains known
+**§ 6(4)** For example, a structural expression containing a currency factor remains known
 to contain currency even when divided by a physical time unit.
 
 ---
 
-## Dimensions
+## § 7 Dimensions
 
-A dimension is a normalized mapping from semantic axes to non-zero integer
+**§ 7(1)** A dimension is a normalized mapping from semantic axes to non-zero integer
 exponents.
 
-Canonical syntax:
+**§ 7(2)** Canonical syntax:
 
 ```sec
 impl <m> {
@@ -385,20 +385,20 @@ impl <mps> {
 }
 ```
 
-The old spelling using multiplication inside dimension metadata is not
+**§ 7(3)** The old spelling using multiplication inside dimension metadata is not
 canonical:
 
 ```text
 length * 1
 ```
 
-Canonical Sec 0.1 uses:
+**§ 7(4)** Canonical Sec 0.1 uses:
 
 ```text
 length^1
 ```
 
-Dimension rules:
+**§ 7(5)** Dimension rules:
 
 - every exponent is a non-zero compile-time integer;
 - an axis may occur only once in one declared `Dimension` vector;
@@ -408,7 +408,7 @@ Dimension rules:
 - axes whose resulting exponent is zero are removed;
 - an empty normalized dimension vector is dimensionless.
 
-The canonical SI base axes are:
+**§ 7(6)** The canonical SI base axes are:
 
 ```text
 length
@@ -420,71 +420,71 @@ amount_of_substance
 luminous_intensity
 ```
 
-Additional compiler-known or domain axes may be defined by the unit model.
+**§ 7(7)** Additional compiler-known or domain axes may be defined by the unit model.
 
 ---
 
-## Dimensionless identity
+## § 8 Dimensionless identity
 
-Sec has one canonical structural dimensionless identity:
+**§ 8(1)** Sec has one canonical structural dimensionless identity:
 
 ```text
 <1>
 ```
 
-Examples:
+**§ 8(2)** Examples:
 
 ```text
 <m/m>       -> <1>
 <s^-1*s>    -> <1>
 ```
 
-Named dimensionless units, especially ratio units, do not lose their nominal
+**§ 8(3)** Named dimensionless units, especially ratio units, do not lose their nominal
 identity merely because their normalized dimension is `<1>`.
 
-For example, a named percent value remains percent unless a defined operation or
+**§ 8(4)** For example, a named percent value remains percent unless a defined operation or
 conversion produces an ordinary dimensionless scalar.
 
 ---
 
-## Kind
+## § 9 Kind
 
-`Dimension` answers:
+**§ 9(1)** `Dimension` answers:
 
 ```text
 What mathematical dimension does this quantity have?
 ```
 
-`Kind` answers:
+**§ 9(2)** `Kind` answers:
 
 ```text
 What semantic quantity does this value represent?
 ```
 
-Units may declare:
+**§ 9(3)** Units may declare:
 
 ```sec
 Kind: UnitKind.Energy
 ```
 
-or:
+**§ 9(4)** or:
 
 ```sec
 Kind: UnitKind.Torque
 ```
 
-Two units may have the same dimension while having different Kinds.
+**§ 9(5)** Two units may have the same dimension while having different Kinds.
 
-Example:
+**§ 9(6)** Example:
 
 ```text
 energy  -> [mass^1, length^2, time^-2]
 torque  -> [mass^1, length^2, time^-2]
 ```
 
-Equal dimension therefore does not prove semantic compatibility.
+**§ 9(7)** Equal dimension therefore does not prove semantic compatibility.
 
-Another important example is:
+**§ 9(8)** Another important example is:
 
 ```text
 Hz
@@ -496,55 +496,55 @@ rpm
     Kind: UnitKind.RotationalFrequency
 ```
 
-A fixed numeric relationship may exist while the Kinds remain intentionally
+**§ 9(9)** A fixed numeric relationship may exist while the Kinds remain intentionally
 different.
 
-### Known and unknown Kind
+### § 9.1 Known and unknown Kind
 
-`Kind` metadata is optional in Sec 0.1 so that existing catalogs and local units
+**§ 9.1(1)** `Kind` metadata is optional in Sec 0.1 so that existing catalogs and local units
 can migrate incrementally.
 
-If omitted, the unit's Kind is `UnitKind.Unknown`. `Kind` may also name a
+**§ 9.1(2)** If omitted, the unit's Kind is `UnitKind.Unknown`. `Kind` may also name a
 member of a user-declared enum ("Unit metadata value types" (4)); `Unknown` is
 an absence marker, never a compatibility fact.
 
-Unknown Kind must not be used as evidence that two different named units are
+**§ 9.1(3)** Unknown Kind must not be used as evidence that two different named units are
 implicitly semantically compatible.
 
-When both Kinds are known and differ, the compiler must not perform implicit
+**§ 9.1(4)** When both Kinds are known and differ, the compiler must not perform implicit
 cross-unit conversion merely because dimensions and scales match.
 
-An explicit validated conversion may cross Kind boundaries.
+**§ 9.1(5)** An explicit validated conversion may cross Kind boundaries.
 
-### Kind inference
+### § 9.2 Kind inference
 
-The compiler must not invent Kind solely from a dimension vector.
+**§ 9.2(1)** The compiler must not invent Kind solely from a dimension vector.
 
-For example:
+**§ 9.2(2)** For example:
 
 ```text
 <N*m>
 ```
 
-must not automatically become either energy or torque.
+**§ 9.2(3)** must not automatically become either energy or torque.
 
-A target named unit may provide the expected Kind and validate the structural
+**§ 9.2(4)** A target named unit may provide the expected Kind and validate the structural
 expression when the operation is otherwise compatible.
 
-Addition and subtraction preserve Kind when the operands are compatible.
+**§ 9.2(5)** Addition and subtraction preserve Kind when the operands are compatible.
 Multiplication and division generally produce an unknown Kind unless a specific
 rule can preserve it without ambiguity.
 
-Multiplication or division by a dimensionless ratio may preserve the other
+**§ 9.2(6)** Multiplication or division by a dimensionless ratio may preserve the other
 operand's Kind where the operation is semantically valid.
 
 ---
 
-## System
+## § 10 System
 
-`System` is descriptive and conversion metadata for a named unit system.
+**§ 10(1)** `System` is descriptive and conversion metadata for a named unit system.
 
-The standard systems are the members of the core enum `UnitSystem`
+**§ 10(2)** The standard systems are the members of the core enum `UnitSystem`
 (`rules/library/core-library.md` § 27): `Unspecified`, `Other`, `SI`, `CGS`,
 `CGSGaussian`, `CGSElectrostatic`, `CGSElectromagnetic`, `IEC`, `Imperial`,
 `USCustomary`, `Nautical`, `Astronomical`, `Natural`, `Planck`, `Atomic`,
@@ -553,22 +553,22 @@ user-declared enum. Historical units (for example region- or period-specific
 aln, famn and cubit) keep distinct unit identities and their declared
 transforms; their provenance is `UnitSystem.Historical`, not a status.
 
-A matching system never proves fixed convertibility or a currency exchange
+**§ 10(3)** A matching system never proves fixed convertibility or a currency exchange
 relationship. System does not determine dimensional compatibility.
 
-Two units from different systems may be dimensionally compatible.
+**§ 10(4)** Two units from different systems may be dimensionally compatible.
 Two units in the same system may represent completely different dimensions.
 
-`System` must not be used as a replacement for `Category`, `Dimension`, or
+**§ 10(5)** `System` must not be used as a replacement for `Category`, `Dimension`, or
 `Kind`.
 
 ---
 
-## Named units
+## § 11 Named units
 
-A declared unit has nominal identity.
+**§ 11(1)** A declared unit has nominal identity.
 
-Example:
+**§ 11(2)** Example:
 
 ```sec
 unit mps physical
@@ -583,24 +583,24 @@ impl <mps> {
 }
 ```
 
-The type:
+**§ 11(3)** The type:
 
 ```text
 <mps>
 ```
 
-uses the named unit `mps`.
+**§ 11(4)** uses the named unit `mps`.
 
-Named identity is not erased merely because another unit or structural unit
+**§ 11(5)** Named identity is not erased merely because another unit or structural unit
 expression has the same dimension and scale.
 
 ---
 
-## Structural unit expressions
+## § 12 Structural unit expressions
 
-A unit annotation may contain a structural unit expression.
+**§ 12(1)** A unit annotation may contain a structural unit expression.
 
-Examples:
+**§ 12(2)** Examples:
 
 ```text
 <m/s>
@@ -612,7 +612,7 @@ Examples:
 <1>
 ```
 
-A structural unit expression supports:
+**§ 12(3)** A structural unit expression supports:
 
 - named unit factors;
 - multiplication with `*`;
@@ -621,36 +621,36 @@ A structural unit expression supports:
 - parentheses when needed for grouping;
 - the structural identity `1`.
 
-The compiler resolves and canonicalizes structural expressions semantically.
+**§ 12(4)** The compiler resolves and canonicalizes structural expressions semantically.
 
-For example, factor ordering does not change the structural result:
+**§ 12(5)** For example, factor ordering does not change the structural result:
 
 ```text
 <kg*m/s^2>
 <m*kg/s^2>
 ```
 
-are structurally equivalent after canonicalization.
+**§ 12(6)** are structurally equivalent after canonicalization.
 
-The formatter must not replace a structural expression with a named unit or
+**§ 12(7)** The formatter must not replace a structural expression with a named unit or
 reorder source factors merely because the compiler canonicalizes them
 internally.
 
 ---
 
-## Named unit versus structural unit expression
+## § 13 Named unit versus structural unit expression
 
-These are intentionally distinct:
+**§ 13(1)** These are intentionally distinct:
 
 ```text
 <mps>   named unit
 <m/s>   structural unit expression
 ```
 
-They may describe compatible mathematical quantities while retaining different
+**§ 13(2)** They may describe compatible mathematical quantities while retaining different
 source-level identity.
 
-If a structural expression is checked against a target named unit, the compiler
+**§ 13(3)** If a structural expression is checked against a target named unit, the compiler
 may validate the expression against the target's:
 
 - dimension;
@@ -659,93 +659,93 @@ may validate the expression against the target's:
 - point/difference role;
 - numeric carrier exactness.
 
-Without target context, the compiler must not arbitrarily choose one named unit
+**§ 13(4)** Without target context, the compiler must not arbitrarily choose one named unit
 when several named units could match the same structural result.
 
-An anonymous structural result remains structural unless an unambiguous language
+**§ 13(5)** An anonymous structural result remains structural unless an unambiguous language
 rule or explicit target gives it named identity.
 
 ---
 
-## Unit-bearing numeric types
+## § 14 Unit-bearing numeric types
 
-A unit-bearing numeric type consists of:
+**§ 14(1)** A unit-bearing numeric type consists of:
 
 ```text
 numeric carrier + unit descriptor
 ```
 
-Explicit form:
+**§ 14(2)** Explicit form:
 
 ```sec
 let distance: decimal<m> := 10
 let sampleRate: uint64<Hz> := 48000
 ```
 
-The numeric carrier controls numeric representation and ordinary numeric
+**§ 14(3)** The numeric carrier controls numeric representation and ordinary numeric
 representability.
 
-The unit descriptor controls unit identity and semantic compatibility.
+**§ 14(4)** The unit descriptor controls unit identity and semantic compatibility.
 
-A numeric cast and a unit conversion are different operations.
+**§ 14(5)** A numeric cast and a unit conversion are different operations.
 
-Changing `uint64` to `decimal` does not by itself change the unit.
+**§ 14(6)** Changing `uint64` to `decimal` does not by itself change the unit.
 Changing `m` to `mm` does not by itself authorize changing the numeric carrier.
 
 ---
 
-## Unit-only type shorthand
+## § 15 Unit-only type shorthand
 
-A unit-only type annotation uses angle brackets:
+**§ 15(1)** A unit-only type annotation uses angle brackets:
 
 ```sec
 let distance: <m> := 10
 ```
 
-For a single named unit, `<Unit>` selects that unit's declared default numeric
+**§ 15(2)** For a single named unit, `<Unit>` selects that unit's declared default numeric
 representation.
 
-If no default was explicitly declared, the default is `decimal`.
+**§ 15(3)** If no default was explicitly declared, the default is `decimal`.
 
-Therefore:
+**§ 15(4)** Therefore:
 
 ```sec
 unit m physical
 ```
 
-makes:
+**§ 15(5)** makes:
 
 ```text
 <m>
 ```
 
-shorthand for a quantity equivalent to:
+**§ 15(6)** shorthand for a quantity equivalent to:
 
 ```text
 decimal<m>
 ```
 
-For a compound structural unit expression, the default numeric carrier is
+**§ 15(7)** For a compound structural unit expression, the default numeric carrier is
 `decimal` unless an explicit numeric carrier is written.
 
-Example:
+**§ 15(8)** Example:
 
 ```text
 <m/s>          default decimal carrier
 float64<m/s>   explicit binary floating-point carrier
 ```
 
-This rule avoids accidentally inheriting an unsuitable integer carrier from one
+**§ 15(9)** This rule avoids accidentally inheriting an unsuitable integer carrier from one
 factor of a derived expression.
 
 ---
 
-## Quantity literals
+## § 16 Quantity literals
 
-Decided by MD-015 (2026-10-13,
+**§ 16(1)** Decided by MD-015 (2026-10-13,
 `rules/corrections/applied/md015-time-unit-duration-conversion-correction-20261013.md`).
 
-A numeric literal immediately followed by a unit annotation is one
+**§ 16(2)** A numeric literal immediately followed by a unit annotation is one
 unit-bearing numeric quantity:
 
 ```text
@@ -765,17 +765,17 @@ let distance := 100<m>
 let velocity := distance / seconds
 ```
 
-`UnitAnnotation` and `UnitExpression` are the ordinary unit grammar and name
+**§ 16(3)** `UnitAnnotation` and `UnitExpression` are the ordinary unit grammar and name
 resolution of "Structural unit expressions"; there is one general production,
 not a time-only parser. A leading sign is an ordinary unary expression, not
 part of the literal.
 
-The `<` must follow the literal without intervening whitespace and the
+**§ 16(4)** The `<` must follow the literal without intervening whitespace and the
 complete annotation must close on the same line; otherwise `<` is the ordinary
 comparison operator (`5 < s`, `5<count`). Formatting keeps the adjacent
 spelling (`500<ms>`).
 
-The numeric carrier is the expected unit-bearing numeric type when it has the
+**§ 16(5)** The numeric carrier is the expected unit-bearing numeric type when it has the
 same unit coordinates (`let t: int64<ms> := 250<ms>`), otherwise the unit's
 default carrier exactly as for the unit-only type shorthand (`5<s>` is
 `decimal<s>` unless `s` declares another default). An integral literal does
@@ -783,7 +783,7 @@ not by itself select an integer carrier. The literal must initialize that
 carrier exactly. Unknown units and malformed unit expressions receive the
 ordinary unit diagnostics.
 
-A quantity with the dimension of time stays a unit-bearing quantity; it
+**§ 16(6)** A quantity with the dimension of time stays a unit-bearing quantity; it
 becomes a `duration` only through the conversion of
 `rules/types/temporal.md` § 5. Only the literal itself is materialized in an
 expected-`duration` position; once bound, the quantity keeps its unit type
@@ -792,13 +792,13 @@ core units (`rules/types/temporal.md` § 5.2).
 
 ---
 
-## Unit metadata
+## § 17 Unit metadata
 
-Unit metadata is declared in the unit's ordinary `impl` block.
+**§ 17(1)** Unit metadata is declared in the unit's ordinary `impl` block.
 
-Canonical metadata names are PascalCase.
+**§ 17(2)** Canonical metadata names are PascalCase.
 
-Sec 0.1 recognizes these unit metadata fields:
+**§ 17(3)** Sec 0.1 recognizes these unit metadata fields:
 
 ```text
 LongName
@@ -817,35 +817,35 @@ LogFactor
 Reference
 ```
 
-The parser may accept older case/underscore variants for migration, but
+**§ 17(4)** The parser may accept older case/underscore variants for migration, but
 canonical generated and formatted metadata spelling is PascalCase.
 
-`Name` and `Category` are not metadata fields: they are implicit,
+**§ 17(5)** `Name` and `Category` are not metadata fields: they are implicit,
 declaration-derived members, and writing `Name:` or `Category:` inside
 `impl <U>` is an error ("Unit metadata value types" (6)). A metadata key
 defined twice for one unit, including through migration spellings that
 normalize to the same key or across several `impl <U>` blocks, is an error
 naming both declarations.
 
-### `LongName`
+### § 17.1 `LongName`
 
-Human-readable unit name.
+**§ 17.1(1)** Human-readable unit name.
 
-### `Symbol`
+### § 17.2 `Symbol`
 
-Human-readable symbol used by documentation, formatting, or tooling.
+**§ 17.2(1)** Human-readable symbol used by documentation, formatting, or tooling.
 
-The symbol does not define source identity.
+**§ 17.2(2)** The symbol does not define source identity.
 
-### `BaseUnit`
+### § 17.3 `BaseUnit`
 
-Marks a unit as the catalog's canonical/base unit where the unit system uses that
+**§ 17.3(1)** Marks a unit as the catalog's canonical/base unit where the unit system uses that
 concept. `BaseUnit` is the only spelling; there is no `IsBaseunit`,
 `IsBaseUnit` or `IsBase` alias.
 
-### `Status`
+### § 17.4 `Status`
 
-Allowed values are the members of the closed core enum `UnitStatus`:
+**§ 17.4(1)** Allowed values are the members of the closed core enum `UnitStatus`:
 
 ```text
 UnitStatus.Active
@@ -853,30 +853,30 @@ UnitStatus.Deprecated
 UnitStatus.Obsolete
 ```
 
-Default:
+**§ 17.4(2)** Default:
 
 ```text
 UnitStatus.Active
 ```
 
-Historical provenance is not a status: a historical unit may be `Active`.
+**§ 17.4(3)** Historical provenance is not a status: a historical unit may be `Active`.
 
-Use of deprecated or obsolete units may produce diagnostics according to the
+**§ 17.4(4)** Use of deprecated or obsolete units may produce diagnostics according to the
 normal diagnostic policy.
 
-### `Dimension`
+### § 17.5 `Dimension`
 
-The normalized semantic dimension vector.
+**§ 17.5(1)** The normalized semantic dimension vector.
 
-### `Kind`
+### § 17.6 `Kind`
 
-Optional semantic quantity kind.
+**§ 17.6(1)** Optional semantic quantity kind.
 
-### `Scale`
+### § 17.7 `Scale`
 
-The linear scale relative to the canonical quantity representation.
+**§ 17.7(1)** The linear scale relative to the canonical quantity representation.
 
-For a linear unit, `Scale` must be a non-zero compile-time numeric
+**§ 17.7(2)** For a linear unit, `Scale` must be a non-zero compile-time numeric
 expression; positive and negative values are valid (MD-062, superseding the
 former strictly-positive rule). A negative scale reverses coordinate
 direction: conversion ratios, value intervals and range proofs must handle the
@@ -885,24 +885,24 @@ it is not invertible. Negative scales on affine units remain under MD-048.
 Exact rational forms are preferred where practical; the compiler keeps the
 exact rational for unit algebra.
 
-### `System`
+### § 17.8 `System`
 
-Named unit system metadata.
+**§ 17.8(1)** Named unit system metadata.
 
-### Transform metadata
+### § 17.9 Transform metadata
 
-`Transform`, `Offset`, `Origin`, `LogBase`, `LogFactor`, and `Reference` are
+**§ 17.9(1)** `Transform`, `Offset`, `Origin`, `LogBase`, `LogFactor`, and `Reference` are
 defined below.
 
 ---
 
-## Unit metadata value types
+## § 18 Unit metadata value types
 
-This section integrates MD-062
+**§ 18(1)** This section integrates MD-062
 (`rules/corrections/md062-unit-metadata-value-types-correction-20261027.md`,
 §§ 1–16). Paragraph numbers are stable.
 
-**(1) Observation surface.** A named unit `<U>` exposes exactly 16 read-only
+**§ 18(2)** **(1) Observation surface.** A named unit `<U>` exposes exactly 16 read-only
 metadata members: the 14 metadata fields above plus the implicit `Name` and
 `Category`. Each read is an immutable, typed, compile-time-known value that
 may be constant-folded or materialized in ordinary runtime code. Reads never
@@ -930,7 +930,7 @@ the compiler's exact unit semantics; in particular the `decimal` projection of
 | `LogFactor` | `decimal` | `LogFactor:` | compile-time error on read |
 | `Reference` | `decimal` or `decimal<V>` | `Reference:` | compile-time error on read |
 
-**(2) Named units only.** Reads require a resolvable named unit. A structural
+**§ 18(3)** **(2) Named units only.** Reads require a resolvable named unit. A structural
 expression such as `<m/s>` has no `Name`, `Category` or other public
 metadata: `<m/s>.Name` and `<m/s>.Dimension` are errors, although the compiler
 still knows its dimension for unit algebra. The optional default numeric
@@ -938,7 +938,7 @@ carrier (`uint` in `unit Item uint other`) is not a member; `<U>.DefaultNumericT
 or any other seventeenth member is an error. Source, import and declaration
 order never change a member's type or value.
 
-**(3) Core enums.** `UnitKind`, `UnitSystem`, `UnitOrigin`, `UnitTransform`,
+**§ 18(4)** **(3) Core enums.** `UnitKind`, `UnitSystem`, `UnitOrigin`, `UnitTransform`,
 `UnitCategory` and `UnitStatus` are ordinary nominal closed Sec enums declared
 in `sec/core` (`rules/library/core-library.md` § 27), with ordinary enum
 equality and `match`. No shadow enum types exist in Sema, Semantic IR, the LSP
@@ -950,7 +950,7 @@ compatibility stays with point semantics and MD-048. Extending `UnitKind` or
 `UnitSystem` is a deliberate change to the core declaration, never an open
 enum.
 
-**(4) User enum values.** `Kind:`, `System:` and `Origin:` may name a
+**§ 18(5)** **(4) User enum values.** `Kind:`, `System:` and `Origin:` may name a
 compile-time-known member of any ordinary declared enum. The read keeps that
 enum's exact nominal type, identified by canonical module and declaration
 identity, not by spelling: `LaboratoryKind.ParticleFlux` and
@@ -974,7 +974,7 @@ impl <Flux> {
 let selected := <Flux>.Kind // LaboratoryKind
 ```
 
-**(5) Canonical spelling and migration.** Newly written enum-backed metadata
+**§ 18(6)** **(5) Canonical spelling and migration.** Newly written enum-backed metadata
 uses qualified members such as `Kind: UnitKind.Length`,
 `System: UnitSystem.SI` and `Transform: UnitTransform.Logarithmic`. Legacy
 bare names in Sec 0.1 catalogs (`Kind: energy`, `Kind: temperature`,
@@ -991,7 +991,7 @@ conversions or case-insensitive enum lookup elsewhere. The formatter rewrites
 legacy names only under a documented policy that preserves the resolved
 meaning.
 
-**(6) `Name` and `Category`.** `Name` is the declaration identifier (not
+**§ 18(7)** **(6) `Name` and `Category`.** `Name` is the declaration identifier (not
 `LongName`, `Symbol`, an import alias or an internal ID) and does not change
 with the importing module. `Category` is the declared category, or
 `UnitCategory.Other` when omitted; the `unit` declaration grammar and its
@@ -1000,7 +1000,7 @@ category tokens are unchanged. `<U>.Name` is the value member;
 declared, and resolution must keep the two forms apart rather than shadow
 either.
 
-**(7) `UnitDimension`.** `UnitDimension` is a public, nominal, compiler-known,
+**§ 18(8)** **(7) `UnitDimension`.** `UnitDimension` is a public, nominal, compiler-known,
 opaque, immutable, copyable `sec/core` value type. Its complete Sec 0.1 public
 surface is the read-only properties `AxisCount: uint` (number of non-zero
 axes) and `IsDimensionless: bool` (the normalized axis set is empty), and the
@@ -1012,7 +1012,7 @@ defaultable, has no destructor or owned resource, may be stored in aggregates
 and passed or returned by value, needs no heap allocation, and has no
 guaranteed FFI layout.
 
-A dimension is a finite map from semantic axis identity to non-zero
+**§ 18(9)** A dimension is a finite map from semantic axis identity to non-zero
 mathematical integer exponent; multiplication adds and division subtracts
 exponents and zero entries are erased, so spelling and iteration order are
 irrelevant. `a == b` holds iff both maps have the same axis identities with the
@@ -1020,7 +1020,7 @@ same exponents; it is independent of unit name, category, Kind, scale, system,
 transform, point/difference role and storage. Equal dimensions (energy and
 torque) never make units interchangeable.
 
-The SI base axes (`length`, `mass`, `time`, `electric_current`,
+**§ 18(10)** The SI base axes (`length`, `mass`, `time`, `electric_current`,
 `thermodynamic_temperature`, `amount_of_substance`, `luminous_intensity`) and
 `information` have fixed compiler-known identities. A user or domain axis is
 identified by its defining `ModuleIdentity` and declared name: two modules
@@ -1032,7 +1032,7 @@ qualified axes must resolve against accessible metadata, each exponent is a
 non-zero compile-time integer, duplicate resolved axes are rejected, and
 exponent overflow is a deterministic diagnostic, never wrapping.
 
-Runtime equality must stay correct for parameters and aggregate fields. It may
+**§ 18(11)** Runtime equality must stay correct for parameters and aggregate fields. It may
 use statically materialized descriptors or collision-free canonical IDs;
 hash-only equality without collision checking and pointer identity without
 guaranteed global interning are invalid. Equality across modules and separate
@@ -1049,14 +1049,14 @@ fn SameDimension(left: UnitDimension, right: UnitDimension) bool {
 }
 ```
 
-**(8) Omitted `Dimension`.** The category defaults in "Compiler-known
+**§ 18(12)** **(8) Omitted `Dimension`.** The category defaults in "Compiler-known
 defaults by category" apply. For a `physical` unit with no `Dimension:` the
 dimension is unknown: that is an absence of knowledge, not a `UnitDimension`
 value, not dimensionless, and not an `Option`; reading `<U>.Dimension` is a
 source-positioned error. A declared `Dimension: []` (or an omitted one on a
 `ratio` unit) is an ordinary dimensionless value with `AxisCount == 0`.
 
-**(9) Numeric members.** `Scale`, `Offset`, `LogBase` and `LogFactor` read as
+**§ 18(13)** **(9) Numeric members.** `Scale`, `Offset`, `LogBase` and `LogFactor` read as
 `decimal`. `Reference` reads as `decimal` for a dimensionless reference and as
 `decimal<V>` for a reference quantity in linear unit `V` (`Reference: 1`,
 `Reference: 0.001<W>`); its concrete type is resolved statically and its unit
@@ -1067,7 +1067,7 @@ identity is kept. Omitted `Scale` of a linear unit is exactly `1` and omitted
 `Reference > 0` rule: the admissible domain, including zero as a divisor and
 negative references, belongs to MD-048.
 
-The `decimal` read of `Scale` projects the exact rational to the nearest
+**§ 18(14)** The `decimal` read of `Scale` projects the exact rational to the nearest
 representable `decimal`, breaking exact ties with `RoundingMode.NearestEven`.
 It is one deterministic projection, independent of host, target, iteration
 order and optimization flags, and is not a rounding permission for unit
@@ -1080,7 +1080,7 @@ semantics. When an accepted value cannot be represented in its public type
 under the governing numeric contract, the read or materialization fails with a
 source-positioned diagnostic; the declaration is not altered.
 
-**(10) Defaults and diagnostics.** Defaults are typed immutable constants, not
+**§ 18(15)** **(10) Defaults and diagnostics.** Defaults are typed immutable constants, not
 optional, deferred or runtime-fetched values. Missing `LongName` or `Symbol`
 is an error only on read; declarations without them stay valid. `LogBase`,
 `LogFactor` and `Reference` have no defaults, and a logarithmic declaration
@@ -1090,7 +1090,7 @@ required origin. Explicit malformed, mistyped, duplicate, unknown or
 non-constant metadata is always diagnosed and never replaced by a default.
 Metadata reads cannot be assigned, mutably addressed or set.
 
-**(11) Resolution.** The member name is resolved after the named unit; one of
+**§ 18(16)** **(11) Resolution.** The member name is resolved after the named unit; one of
 the 16 names yields the field's typed constant, reused from the facts bound
 during analysis rather than reparsed. Enum-typed members compare only with the
 same nominal enum type. Compile-time and runtime uses give the same values,
@@ -1104,12 +1104,12 @@ ordinary type and when it is imported under a module alias.
 
 ---
 
-## Transform model
+## § 19 Transform model
 
-A unit's transform describes how its numeric coordinate relates to its canonical
+**§ 19(1)** A unit's transform describes how its numeric coordinate relates to its canonical
 quantity representation.
 
-Sec 0.1 defines these transform modes:
+**§ 19(2)** Sec 0.1 defines these transform modes:
 
 ```text
 linear
@@ -1117,31 +1117,31 @@ affine
 logarithmic
 ```
 
-If `Transform` is omitted, it defaults to:
+**§ 19(3)** If `Transform` is omitted, it defaults to:
 
 ```text
 linear
 ```
 
-Transform is independent of Category.
+**§ 19(4)** Transform is independent of Category.
 
-A physical unit may be logarithmic.
+**§ 19(5)** A physical unit may be logarithmic.
 A ratio unit may be logarithmic.
 A physical unit may use an affine transform.
 
 ---
 
-## Linear transform
+## § 20 Linear transform
 
-Linear units use `Scale`.
+**§ 20(1)** Linear units use `Scale`.
 
-Conceptually:
+**§ 20(2)** Conceptually:
 
 ```text
 canonical = value * Scale
 ```
 
-Example:
+**§ 20(3)** Example:
 
 ```sec
 unit mm physical
@@ -1156,40 +1156,40 @@ impl <mm> {
 }
 ```
 
-`Transform: UnitTransform.Linear` may be written explicitly but is normally
+**§ 20(4)** `Transform: UnitTransform.Linear` may be written explicitly but is normally
 omitted.
 
 ---
 
-## Affine transform
+## § 21 Affine transform
 
-Affine units use:
+**§ 21(1)** Affine units use:
 
 ```text
 Scale
 Offset
 ```
 
-Conceptually:
+**§ 21(2)** Conceptually:
 
 ```text
 canonical = value * Scale + Offset
 ```
 
-An affine unit that represents a point must also define a compatible `Origin`.
+**§ 21(3)** An affine unit that represents a point must also define a compatible `Origin`.
 
-Affine conversion must not be reduced to scale-only arithmetic.
+**§ 21(4)** Affine conversion must not be reduced to scale-only arithmetic.
 
-The compiler must preserve the difference between point values and differences.
+**§ 21(5)** The compiler must preserve the difference between point values and differences.
 
 ---
 
-## Logarithmic transform
+## § 22 Logarithmic transform
 
-A logarithmic unit uses transform metadata instead of pretending that ordinary
+**§ 22(1)** A logarithmic unit uses transform metadata instead of pretending that ordinary
 `Scale` alone describes its representation.
 
-Canonical metadata includes:
+**§ 22(2)** Canonical metadata includes:
 
 ```text
 Transform: UnitTransform.Logarithmic
@@ -1198,16 +1198,16 @@ LogFactor
 Reference
 ```
 
-Conceptually, a logarithmic value maps to a compatible linear quantity through
+**§ 22(3)** Conceptually, a logarithmic value maps to a compatible linear quantity through
 its declared base, factor, and reference quantity.
 
-`Reference` must resolve to a compile-time reference compatible with the target
+**§ 22(4)** `Reference` must resolve to a compile-time reference compatible with the target
 linear quantity domain.
 
-For a dimensionless logarithmic ratio, a dimensionless reference such as `1`
+**§ 22(5)** For a dimensionless logarithmic ratio, a dimensionless reference such as `1`
 may be valid.
 
-Example shape:
+**§ 22(6)** Example shape:
 
 ```sec
 unit dB ratio
@@ -1225,33 +1225,33 @@ impl <dB> {
 }
 ```
 
-Ordinary linear arithmetic must not be silently applied to logarithmic unit
+**§ 22(7)** Ordinary linear arithmetic must not be silently applied to logarithmic unit
 values.
 
-Unless a specialized rule explicitly permits an operation, arithmetic on
+**§ 22(8)** Unless a specialized rule explicitly permits an operation, arithmetic on
 logarithmic values must use explicit conversion to a compatible linear quantity
 or an explicitly defined logarithmic operation.
 
 ---
 
-## Point and difference semantics
+## § 23 Point and difference semantics
 
-Some quantities represent points in a coordinate space rather than free
+**§ 23(1)** Some quantities represent points in a coordinate space rather than free
 vectors/differences.
 
-Examples include:
+**§ 23(2)** Examples include:
 
 - absolute temperature readings;
 - timestamps;
 - altitudes relative to a declared datum;
 - other measurements with a meaningful origin.
 
-`Origin` marks the canonical origin used by a point quantity.
+**§ 23(3)** `Origin` marks the canonical origin used by a point quantity.
 
-A linear transform may still represent a point when `Origin` is present.
+**§ 23(4)** A linear transform may still represent a point when `Origin` is present.
 Therefore point semantics are not identical to affine transform semantics.
 
-Example concept:
+**§ 23(5)** Example concept:
 
 ```text
 Kelvin
@@ -1263,12 +1263,12 @@ Celsius
     Origin: UnitOrigin.AbsoluteZero
 ```
 
-`Offset` defines the coordinate displacement; `Origin` defines the semantic
+**§ 23(6)** `Offset` defines the coordinate displacement; `Origin` defines the semantic
 point space.
 
-### Point algebra
+### § 23.1 Point algebra
 
-For compatible point `P` and difference `D` quantities:
+**§ 23.1(1)** For compatible point `P` and difference `D` quantities:
 
 ```text
 P - P -> D
@@ -1278,45 +1278,45 @@ D + D -> D
 D - D -> D
 ```
 
-The following is invalid:
+**§ 23.1(2)** The following is invalid:
 
 ```text
 P + P
 ```
 
-Multiplication and division of point quantities are invalid unless a specialized
+**§ 23.1(3)** Multiplication and division of point quantities are invalid unless a specialized
 rule explicitly defines their meaning.
 
-Comparisons between points require compatible dimension, Kind, origin, and a
+**§ 23.1(4)** Comparisons between points require compatible dimension, Kind, origin, and a
 valid conversion relationship.
 
-### Difference result
+### § 23.2 Difference result
 
-Subtracting two compatible points produces a difference quantity.
+**§ 23.2(1)** Subtracting two compatible points produces a difference quantity.
 
-For an affine unit, the offset cancels when producing the difference. The
+**§ 23.2(2)** For an affine unit, the offset cancels when producing the difference. The
 difference uses scale semantics, not point-offset semantics.
 
-Sec 0.1 may infer an anonymous difference quantity.
+**§ 23.2(3)** Sec 0.1 may infer an anonymous difference quantity.
 
-This rulebook does not introduce a general source syntax such as
+**§ 23.2(4)** This rulebook does not introduce a general source syntax such as
 `difference<Celsius>`.
 
-When a stable explicit type is required, code may use a separately named linear
+**§ 23.2(5)** When a stable explicit type is required, code may use a separately named linear
 difference unit or another compatible declared difference quantity.
 
-A future version may add dedicated ergonomic syntax for point/difference type
+**§ 23.2(6)** A future version may add dedicated ergonomic syntax for point/difference type
 relationships without changing the semantic model defined here.
 
 ---
 
-## Ratio semantics
+## § 24 Ratio semantics
 
-Ratios are mathematically dimensionless but semantically significant.
+**§ 24(1)** Ratios are mathematically dimensionless but semantically significant.
 
-A named ratio unit preserves its name, scale, and Kind.
+**§ 24(2)** A named ratio unit preserves its name, scale, and Kind.
 
-Example:
+**§ 24(3)** Example:
 
 ```sec
 unit percent ratio
@@ -1331,35 +1331,35 @@ impl <percent> {
 }
 ```
 
-When semantically valid, multiplication by a linear ratio acts dimensionally as
+**§ 24(4)** When semantically valid, multiplication by a linear ratio acts dimensionally as
 multiplication by a scalar while preserving the other operand's dimension and
 Kind.
 
-The compiler must not erase a named ratio prematurely merely because its
+**§ 24(5)** The compiler must not erase a named ratio prematurely merely because its
 normalized dimension is empty.
 
 ---
 
-## Currency semantics
+## § 25 Currency semantics
 
-Currencies are nominal and runtime relationships between different currencies
+**§ 25(1)** Currencies are nominal and runtime relationships between different currencies
 must never be invented by the compiler.
 
-Example:
+**§ 25(2)** Example:
 
 ```sec
 unit EUR currency
 unit SEK currency
 ```
 
-These remain different units.
+**§ 25(3)** These remain different units.
 
-A value in `SEK` is not implicitly converted to `EUR` through an external or
+**§ 25(4)** A value in `SEK` is not implicitly converted to `EUR` through an external or
 current market rate.
 
-### Derived currency expressions
+### § 25.1 Derived currency expressions
 
-Structural currency expressions are valid:
+**§ 25.1(1)** Structural currency expressions are valid:
 
 ```text
 <EUR/s>
@@ -1367,56 +1367,56 @@ Structural currency expressions are valid:
 <EUR/SEK>
 ```
 
-They are not language errors.
+**§ 25.1(2)** They are not language errors.
 
-Because such expressions can easily be mistaken for compiler-known exchange
+**§ 25.1(3)** Because such expressions can easily be mistaken for compiler-known exchange
 relationships, the compiler should emit a warning-class diagnostic by default
 when an anonymous derived structural unit contains currency through
 multiplication or division.
 
-The warning must not make otherwise valid code fail to compile under the normal
+**§ 25.1(4)** The warning must not make otherwise valid code fail to compile under the normal
 warning policy.
 
-Tooling may distinguish especially suspicious currency ratios from ordinary
+**§ 25.1(5)** Tooling may distinguish especially suspicious currency ratios from ordinary
 currency-per-time rates, but both remain valid unit expressions.
 
-### Runtime/configured currency conversion
+### § 25.2 Runtime/configured currency conversion
 
-Sec supports an explicit factor-provided conversion form:
+**§ 25.2(1)** Sec supports an explicit factor-provided conversion form:
 
 ```sec
 let eur := <EUR>(sek, factor)
 ```
 
-For a source quantity in `SEK` and a target `EUR`, `factor` must have compatible
+**§ 25.2(2)** For a source quantity in `SEK` and a target `EUR`, `factor` must have compatible
 unit algebra equivalent to:
 
 ```text
 <EUR/SEK>
 ```
 
-The compiler validates:
+**§ 25.2(3)** The compiler validates:
 
 ```text
 SEK * EUR/SEK -> EUR
 ```
 
-The compiler validates the unit relationship but does not validate or invent the
+**§ 25.2(4)** The compiler validates the unit relationship but does not validate or invent the
 runtime market value of `factor`.
 
-The factor may be runtime or configured data.
+**§ 25.2(5)** The factor may be runtime or configured data.
 
-This two-argument factor form applies to linear factor-based conversions. It is
+**§ 25.2(6)** This two-argument factor form applies to linear factor-based conversions. It is
 not sufficient for affine or logarithmic conversions unless their specialized
 rules explicitly reduce to such a factor.
 
 ---
 
-## Information semantics
+## § 26 Information semantics
 
-Information quantities use Category `information`.
+**§ 26(1)** Information quantities use Category `information`.
 
-Example:
+**§ 26(2)** Example:
 
 ```sec
 unit KiB uint information
@@ -1431,30 +1431,30 @@ impl <KiB> {
 }
 ```
 
-A structural rate is valid:
+**§ 26(3)** A structural rate is valid:
 
 ```text
 <KiB/s>
 ```
 
-The result combines information amount with time dimension.
+**§ 26(4)** The result combines information amount with time dimension.
 
-The names `bit` and `byte` remain unavailable for user unit declarations because
+**§ 26(5)** The names `bit` and `byte` remain unavailable for user unit declarations because
 they already have compiler-known language meanings.
 
 ---
 
-## Arithmetic
+## § 27 Arithmetic
 
-Unit-bearing arithmetic is validated after ordinary numeric operator validity.
+**§ 27(1)** Unit-bearing arithmetic is validated after ordinary numeric operator validity.
 
-The unit system does not make an otherwise invalid numeric operation valid.
+**§ 27(2)** The unit system does not make an otherwise invalid numeric operation valid.
 
-### Addition and subtraction
+### § 27.1 Addition and subtraction
 
-Addition and subtraction require compatible quantity semantics.
+**§ 27.1(1)** Addition and subtraction require compatible quantity semantics.
 
-The compiler must consider:
+**§ 27.1(2)** The compiler must consider:
 
 - dimension;
 - named identity or valid conversion relationship;
@@ -1463,30 +1463,30 @@ The compiler must consider:
 - point/difference role;
 - numeric carrier exactness.
 
-Compatible linear units of the same known Kind may use an exact fixed conversion
+**§ 27.1(3)** Compatible linear units of the same known Kind may use an exact fixed conversion
 path when the language context permits it.
 
-Different known Kinds are not implicitly combined merely because dimensions
+**§ 27.1(4)** Different known Kinds are not implicitly combined merely because dimensions
 match.
 
-Point arithmetic follows the point rules rather than ordinary scalar addition.
+**§ 27.1(5)** Point arithmetic follows the point rules rather than ordinary scalar addition.
 
-Logarithmic arithmetic follows specialized logarithmic rules and must not fall
+**§ 27.1(6)** Logarithmic arithmetic follows specialized logarithmic rules and must not fall
 through to linear arithmetic.
 
-### Multiplication and division
+### § 27.2 Multiplication and division
 
-For ordinary linear quantities, multiplication and division combine structural
+**§ 27.2(1)** For ordinary linear quantities, multiplication and division combine structural
 unit expressions by adding or subtracting dimension exponents.
 
-The result normally has structural unit identity.
+**§ 27.2(2)** The result normally has structural unit identity.
 
-The compiler must not invent a named result or Kind when several semantic
+**§ 27.2(3)** The compiler must not invent a named result or Kind when several semantic
 interpretations are possible.
 
-Target context may validate the result against a named target.
+**§ 27.2(4)** Target context may validate the result against a named target.
 
-Examples:
+**§ 27.2(5)** Examples:
 
 ```text
 <m> / <s>       -> <m/s>
@@ -1494,28 +1494,28 @@ Examples:
 <Packet> / <s>  -> <Packet/s>
 ```
 
-Point operands and logarithmic operands are restricted as defined by their
+**§ 27.2(6)** Point operands and logarithmic operands are restricted as defined by their
 specialized rules.
 
-### Remainder
+### § 27.3 Remainder
 
-Remainder requires compatible unit-bearing numeric operands and preserves the
+**§ 27.3(1)** Remainder requires compatible unit-bearing numeric operands and preserves the
 left operand's unit semantics when the underlying numeric remainder operation is
 valid.
 
-### Comparison
+### § 27.4 Comparison
 
-Equality and ordering require compatible quantity semantics and a valid exact or
+**§ 27.4(1)** Equality and ordering require compatible quantity semantics and a valid exact or
 explicitly permitted conversion path.
 
-The compiler must not compare different currencies by inventing an exchange
+**§ 27.4(2)** The compiler must not compare different currencies by inventing an exchange
 rate.
 
 ---
 
-## Exact fixed conversions
+## § 28 Exact fixed conversions
 
-A fixed conversion may be compiler-known when all of the following hold:
+**§ 28(1)** A fixed conversion may be compiler-known when all of the following hold:
 
 - source and target dimensions are compatible;
 - source and target point/difference roles are compatible;
@@ -1525,41 +1525,41 @@ A fixed conversion may be compiler-known when all of the following hold:
   carrier;
 - the language context permits an implicit fixed conversion.
 
-Example candidates include metric prefix changes such as `m` and `mm`.
+**§ 28(2)** Example candidates include metric prefix changes such as `m` and `mm`.
 
-A fixed relationship does not imply implicit conversion when Kinds differ.
+**§ 28(3)** A fixed relationship does not imply implicit conversion when Kinds differ.
 
-For example, `Hz` and `rpm` may have a fixed scale relationship but different
+**§ 28(4)** For example, `Hz` and `rpm` may have a fixed scale relationship but different
 Kinds. Their conversion remains explicit.
 
 ---
 
-## No hidden precision loss
+## § 29 No hidden precision loss
 
-The compiler must not silently round, truncate, overflow, or otherwise lose
+**§ 29(1)** The compiler must not silently round, truncate, overflow, or otherwise lose
 numeric information merely to make a unit conversion fit a target carrier.
 
-If an otherwise valid unit conversion is not exactly representable in the target
+**§ 29(2)** If an otherwise valid unit conversion is not exactly representable in the target
 numeric carrier, implicit conversion is not permitted.
 
-The programmer must choose one of:
+**§ 29(3)** The programmer must choose one of:
 
 - a more suitable numeric carrier;
 - an explicit numeric conversion;
 - an explicit rounding policy (see "Explicit rounding");
 - another explicitly defined conversion operation.
 
-Unit compatibility and numeric representability are both required.
+**§ 29(4)** Unit compatibility and numeric representability are both required.
 
 ---
 
-## Explicit rounding
+## § 30 Explicit rounding
 
-Decided by MD-047 (2026-10-13,
+**§ 30(1)** Decided by MD-047 (2026-10-13,
 `rules/corrections/applied/md040-md046-md047-md056-units-register-bits-rounding-correction-20261013.md`
 § 5).
 
-No unit or numeric conversion silently rounds, truncates, overflows or loses
+**§ 30(2)** No unit or numeric conversion silently rounds, truncates, overflows or loses
 precision. A program may request one explicit rounding mode as an additional
 argument of the ordinary typed numeric or unit conversion; there is no new
 keyword or rounding operator:
@@ -1570,13 +1570,13 @@ let hz := try uint16<Hz>(speed, RoundingMode.Ceil)
 let low := int8(value, RoundingMode.Floor)
 ```
 
-The argument is a case of the one core `RoundingMode` enum
+**§ 30(3)** The argument is a case of the one core `RoundingMode` enum
 (`rules/library/core-library.md` § 10.3). Rounding cannot manufacture unit
 compatibility: the conversion must still satisfy every type, dimension, Kind,
 range and named-type rule, and units with different Kinds still need a
 declared conversion.
 
-Rounding happens exactly once, after the exact mathematical unit transform
+**§ 30(4)** Rounding happens exactly once, after the exact mathematical unit transform
 (scale and, where defined, offset), to a value representable in the target
 carrier. No intermediate value is rounded and then transformed again.
 Logarithmic and affine details remain with MD-048.
@@ -1590,7 +1590,7 @@ Logarithmic and affine details remain with MD-048.
 | `Ceil` | 2 | -1 | 3 | -2 |
 | `Floor` | 1 | -2 | 2 | -3 |
 
-Without a mode, an exact representable conversion succeeds; a statically known
+**§ 30(5)** Without a mode, an exact representable conversion succeeds; a statically known
 inexact or out-of-range conversion is a compile-time error, and a dynamic
 checked conversion uses `ConversionError`. With a mode, the chosen loss of the
 fractional part is permitted, but no other error is: a known out-of-range
@@ -1603,15 +1603,15 @@ constant or bounded integer source needs none. Failures use the core
 
 ---
 
-## Explicit unit conversion functions
+## § 31 Explicit unit conversion functions
 
-A unit may define explicit conversion functions in its `impl <Unit>` block.
+**§ 31(1)** A unit may define explicit conversion functions in its `impl <Unit>` block.
 
-A conversion function whose name equals the target unit participates in
+**§ 31(2)** A conversion function whose name equals the target unit participates in
 constructor-style conversion resolution and is called `<Unit>(value)`
 (MD-040). Other unit functions are called `<Unit>.Name(...)`.
 
-Example:
+**§ 31(3)** Example:
 
 ```sec
 unit Hz physical
@@ -1636,10 +1636,10 @@ impl <rpm> {
 }
 ```
 
-The exact body may use ordinary explicit numeric/unit conversion syntax as
+**§ 31(4)** The exact body may use ordinary explicit numeric/unit conversion syntax as
 permitted by the type and conversion rules.
 
-Conversion-function rules:
+**§ 31(5)** Conversion-function rules:
 
 - the conversion is explicit at the call site;
 - the function name equals the target unit declaration name;
@@ -1651,27 +1651,27 @@ Conversion-function rules:
   explicit and validated;
 - assignment alone must not silently call a user-defined conversion function.
 
-An explicitly called conversion function is authoritative for that call even if
+**§ 31(6)** An explicitly called conversion function is authoritative for that call even if
 a fixed scale path also exists.
 
 ---
 
-## Constructor-style unit conversion
+## § 32 Constructor-style unit conversion
 
-Unit conversion and numeric construction may appear call-shaped.
+**§ 32(1)** Unit conversion and numeric construction may appear call-shaped.
 
-Examples include:
+**§ 32(2)** Examples include:
 
 ```sec
 let exact: decimal<m> := decimal<m>(value)
 let eur := <EUR>(sek, factor)
 ```
 
-A unit conversion or factor-provided conversion is always written with the
+**§ 32(3)** A unit conversion or factor-provided conversion is always written with the
 qualified unit reference `<Unit>(...)` (MD-040); `decimal<m>(value)` remains a
 carrier-qualified conversion.
 
-Sema resolves whether the call is:
+**§ 32(4)** Sema resolves whether the call is:
 
 - numeric carrier conversion;
 - unit conversion;
@@ -1679,87 +1679,87 @@ Sema resolves whether the call is:
 - factor-provided unit conversion;
 - another valid callable form.
 
-The parser must preserve enough information for semantic resolution and must not
+**§ 32(5)** The parser must preserve enough information for semantic resolution and must not
 infer conversion semantics from spelling alone.
 
 ---
 
-## Unit identity and named types
+## § 33 Unit identity and named types
 
-A unit and a named type are related but distinct concepts.
+**§ 33(1)** A unit and a named type are related but distinct concepts.
 
-A unit supplies semantic quantity identity.
+**§ 33(2)** A unit supplies semantic quantity identity.
 A named type may add independent nominal identity and contracts.
 
-Example:
+**§ 33(3)** Example:
 
 ```sec
 type Distance decimal<m>
 type Altitude decimal<m>
 ```
 
-`Distance` and `Altitude` are different named types even though both use the same
+**§ 33(4)** `Distance` and `Altitude` are different named types even though both use the same
 numeric carrier and unit.
 
-Named type identity continues to follow the normal named-type rules.
+**§ 33(5)** Named type identity continues to follow the normal named-type rules.
 
-Unit compatibility does not erase named type identity.
+**§ 33(6)** Unit compatibility does not erase named type identity.
 
 ---
 
-## Contracts on unit-bearing named types
+## § 34 Contracts on unit-bearing named types
 
-A unit-bearing named type may use contracts when the contract is valid for its
+**§ 34(1)** A unit-bearing named type may use contracts when the contract is valid for its
 numeric carrier and quantity semantics.
 
-Example:
+**§ 34(2)** Example:
 
 ```sec
 type PositiveDistance decimal<m> range 0..
 ```
 
-Contracts belong to the named type, not to the unit declaration itself unless a
+**§ 34(3)** Contracts belong to the named type, not to the unit declaration itself unless a
 separate unit metadata rule explicitly defines a unit invariant.
 
-Unit conversion must not bypass named-type contracts.
+**§ 34(4)** Unit conversion must not bypass named-type contracts.
 
 ---
 
-## Structural result selection
+## § 35 Structural result selection
 
-When multiplication or division produces a structural unit result, the compiler
+**§ 35(1)** When multiplication or division produces a structural unit result, the compiler
 must preserve that structural result unless target context or another explicit
 rule identifies a named target.
 
-If several named units share compatible dimension and scale, the compiler must
+**§ 35(2)** If several named units share compatible dimension and scale, the compiler must
 not pick one arbitrarily.
 
-This is especially important where different Kinds share one dimension.
+**§ 35(3)** This is especially important where different Kinds share one dimension.
 
-Example:
+**§ 35(4)** Example:
 
 ```text
 <N*m>
 ```
 
-must not become energy or torque without semantic context.
+**§ 35(5)** must not become energy or torque without semantic context.
 
 ---
 
-## Evaluation order
+## § 36 Evaluation order
 
-Unit checking must not change Sec expression evaluation order.
+**§ 36(1)** Unit checking must not change Sec expression evaluation order.
 
-Conversions that require runtime computation are ordinary evaluated operations
+**§ 36(2)** Conversions that require runtime computation are ordinary evaluated operations
 at their source position.
 
-Compile-time unit metadata checks do not create hidden source-visible evaluation.
+**§ 36(3)** Compile-time unit metadata checks do not create hidden source-visible evaluation.
 
 ---
 
-## Diagnostics
+## § 37 Diagnostics
 
-Unit diagnostics must distinguish at least:
+**§ 37(1)** Unit diagnostics must distinguish at least:
 
 - unknown unit;
 - invalid unit expression;
@@ -1776,29 +1776,29 @@ Unit diagnostics must distinguish at least:
 - deprecated or obsolete unit use;
 - anonymous derived currency warning.
 
-A diagnostic should report both the numeric type and unit semantics when that
+**§ 37(2)** A diagnostic should report both the numeric type and unit semantics when that
 information helps explain the error.
 
-Example shape:
+**§ 37(3)** Example shape:
 
 ```text
 cannot implicitly convert frequency Hz to rotational_frequency rpm
 help: use an explicit unit conversion
 ```
 
-Warnings must remain warnings unless project diagnostic policy promotes them.
+**§ 37(4)** Warnings must remain warnings unless project diagnostic policy promotes them.
 
-In particular, `<EUR/s>` and `<SEK/EUR>` are valid expressions and must not be
+**§ 37(5)** In particular, `<EUR/s>` and `<SEK/EUR>` are valid expressions and must not be
 rejected merely because currency participates in structural algebra.
 
 ---
 
-## LSP requirements
+## § 38 LSP requirements
 
-The LSP must consume unit facts produced by the compiler rather than implement a
+**§ 38(1)** The LSP must consume unit facts produced by the compiler rather than implement a
 second independent unit algebra.
 
-Hover and related semantic information should expose, when known:
+**§ 38(2)** Hover and related semantic information should expose, when known:
 
 ```text
 unit name
@@ -1819,13 +1819,13 @@ point or difference role
 conversion exactness
 ```
 
-The LSP should surface unit warnings while editing, including derived currency
+**§ 38(3)** The LSP should surface unit warnings while editing, including derived currency
 warnings and deprecated/obsolete unit use.
 
-For an incompatible operation, tooling should show the semantic reason, not only
+**§ 38(4)** For an incompatible operation, tooling should show the semantic reason, not only
 the underlying numeric type mismatch.
 
-Hover on a metadata read shows the concrete result type from "Unit metadata
+**§ 38(5)** Hover on a metadata read shows the concrete result type from "Unit metadata
 value types", including a user enum type for custom `Kind`, `System` or
 `Origin`, never a generic enum or `any`. Completion on a `UnitDimension`
 offers exactly `AxisCount` and `IsDimensionless`. A missing-metadata
@@ -1833,23 +1833,23 @@ diagnostic explains how to declare or correct the value.
 
 ---
 
-## Formatter requirements
+## § 39 Formatter requirements
 
-Canonical unit declaration metadata spelling is PascalCase.
+**§ 39(1)** Canonical unit declaration metadata spelling is PascalCase.
 
-Canonical dimension syntax uses `^` integer exponents:
+**§ 39(2)** Canonical dimension syntax uses `^` integer exponents:
 
 ```text
 [length^1, time^-1]
 ```
 
-Canonical structural unit expressions use compact operator spacing:
+**§ 39(3)** Canonical structural unit expressions use compact operator spacing:
 
 ```text
 <kg*m/s^2>
 ```
 
-The formatter must not:
+**§ 39(4)** The formatter must not:
 
 - replace `<m/s>` with `<mps>`;
 - replace a named unit with a structural expression;
@@ -1859,18 +1859,18 @@ The formatter must not:
 - rewrite exact written numeric metadata such as `Scale: 1 / 60`;
 - rename `BaseUnit` or emit `IsBaseunit`.
 
-The formatter recognizes typed metadata values such as `UnitKind.Energy` and
+**§ 39(5)** The formatter recognizes typed metadata values such as `UnitKind.Energy` and
 legacy bare names in unit metadata, stays idempotent, and rewrites a legacy
 name only under the documented migration policy ("Unit metadata value types"
 (5)).
 
-Semantic canonicalization belongs to the compiler, not source rewriting.
+**§ 39(6)** Semantic canonicalization belongs to the compiler, not source rewriting.
 
 ---
 
-## Compiler semantic representation
+## § 40 Compiler semantic representation
 
-The compiler must preserve sufficient information to distinguish:
+**§ 40(1)** The compiler must preserve sufficient information to distinguish:
 
 - the numeric carrier;
 - named versus structural unit identity;
@@ -1889,29 +1889,29 @@ The compiler must preserve sufficient information to distinguish:
 - point/difference role;
 - conversion plan and exactness.
 
-The compiler must not reduce all unit-bearing quantities to only a dimension
+**§ 40(2)** The compiler must not reduce all unit-bearing quantities to only a dimension
 vector.
 
-Doing so would lose distinctions such as energy versus torque and Hz versus rpm.
+**§ 40(3)** Doing so would lose distinctions such as energy versus torque and Hz versus rpm.
 
 ---
 
-## Semantic IR and lowering
+## § 41 Semantic IR and lowering
 
-Semantic IR must retain resolved unit semantics until unit-sensitive operations
+**§ 41(1)** Semantic IR must retain resolved unit semantics until unit-sensitive operations
 have been made explicit.
 
-A conversion inserted or required by Sema must be represented explicitly enough
+**§ 41(2)** A conversion inserted or required by Sema must be represented explicitly enough
 for later verification and lowering.
 
-After all semantic unit behavior has been lowered into explicit numeric
+**§ 41(3)** After all semantic unit behavior has been lowered into explicit numeric
 operations, runtime checks, or conversion calls, backend IR may erase unit
 metadata that no longer affects runtime behavior.
 
-LLVM or target code must never be asked to rediscover source-language units from
+**§ 41(4)** LLVM or target code must never be asked to rediscover source-language units from
 numeric representation.
 
-For metadata reads, Semantic IR keeps the resolved member, the unit
+**§ 41(5)** For metadata reads, Semantic IR keeps the resolved member, the unit
 declaration, the concrete enum identity, the normalized dimension and whether
 a numeric value is exact or the projected `decimal` read. Lowering may fold or
 materialize read-only constants only after legality, precision and identity
@@ -1923,12 +1923,12 @@ registry. A path that cannot lower them fails with
 
 ---
 
-## Standard-library unit catalog
+## § 42 Standard-library unit catalog
 
-Standard-library units should declare complete metadata appropriate to their
+**§ 42(1)** Standard-library units should declare complete metadata appropriate to their
 category.
 
-For ordinary linear physical units, the catalog should normally provide:
+**§ 42(2)** For ordinary linear physical units, the catalog should normally provide:
 
 ```text
 LongName
@@ -1941,20 +1941,20 @@ Scale
 System
 ```
 
-`Transform: linear` may be omitted because linear is the default.
+**§ 42(3)** `Transform: linear` may be omitted because linear is the default.
 
-Existing units that do not yet declare `Kind` remain syntactically valid, but the
+**§ 42(4)** Existing units that do not yet declare `Kind` remain syntactically valid, but the
 catalog should add Kind where it materially improves semantic safety, especially
 for units sharing one dimension with different meanings.
 
-Affine and logarithmic units require their additional transform metadata before
+**§ 42(5)** Affine and logarithmic units require their additional transform metadata before
 they are considered semantically complete.
 
 ---
 
-## Compiler-known defaults by category
+## § 43 Compiler-known defaults by category
 
-The compiler may synthesize only these safe defaults:
+**§ 43(1)** The compiler may synthesize only these safe defaults:
 
 ```text
 no explicit numeric representation
@@ -2000,7 +2000,7 @@ no Offset on a linear unit
     -> 0
 ```
 
-The compiler must not synthesize:
+**§ 43(2)** The compiler must not synthesize:
 
 - a Kind from dimension alone;
 - an exchange rate;
@@ -2011,11 +2011,11 @@ The compiler must not synthesize:
 
 ---
 
-## Validation of metadata
+## § 44 Validation of metadata
 
-The compiler must validate unit metadata before using it for algebra.
+**§ 44(1)** The compiler must validate unit metadata before using it for algebra.
 
-At minimum:
+**§ 44(2)** At minimum:
 
 - `Scale` is non-zero for linear units (negative is valid; MD-062);
 - enum-backed metadata names a member of the field's permitted enum (core
@@ -2034,21 +2034,21 @@ At minimum:
 - unit identifiers do not collide with compiler-known reserved names;
 - default numeric representations are valid numeric carriers.
 
-Invalid metadata is a compile-time error.
+**§ 44(3)** Invalid metadata is a compile-time error.
 
 ---
 
-## Explicit versus implicit conversion policy
+## § 45 Explicit versus implicit conversion policy
 
-Sec distinguishes four important cases.
+**§ 45(1)** Sec distinguishes four important cases.
 
-### Same named unit
+### § 45.1 Same named unit
 
-No unit conversion is required. Numeric carrier conversion may still be needed.
+**§ 45.1(1)** No unit conversion is required. Numeric carrier conversion may still be needed.
 
-### Different named units with fixed exact compatible relationship
+### § 45.2 Different named units with fixed exact compatible relationship
 
-An implicit conversion is permitted only when:
+**§ 45.2(1)** An implicit conversion is permitted only when:
 
 - the language context permits it;
 - known Kinds are compatible;
@@ -2056,17 +2056,17 @@ An implicit conversion is permitted only when:
 - conversion is exact in the destination carrier;
 - no runtime/configured factor is required.
 
-Otherwise conversion must be explicit.
+**§ 45.2(2)** Otherwise conversion must be explicit.
 
-### Different known Kinds
+### § 45.3 Different known Kinds
 
-Conversion is explicit even if dimension and fixed scale relationship are known.
+**§ 45.3(1)** Conversion is explicit even if dimension and fixed scale relationship are known.
 
-### Runtime/configured relationship
+### § 45.4 Runtime/configured relationship
 
-Conversion is explicit and must receive or call the relationship explicitly.
+**§ 45.4(1)** Conversion is explicit and must receive or call the relationship explicitly.
 
-Currency conversion is the primary example:
+**§ 45.4(2)** Currency conversion is the primary example:
 
 ```sec
 let eur := <EUR>(sek, factor)
@@ -2074,12 +2074,12 @@ let eur := <EUR>(sek, factor)
 
 ---
 
-## Interaction with `try`
+## § 46 Interaction with `try`
 
-Unit conversion itself is not automatically fallible merely because it changes
+**§ 46(1)** Unit conversion itself is not automatically fallible merely because it changes
 units.
 
-If a conversion operation can fail because of:
+**§ 46(2)** If a conversion operation can fail because of:
 
 - numeric overflow;
 - explicit checked rounding policy;
@@ -2087,22 +2087,22 @@ If a conversion operation can fail because of:
 - external conversion service;
 - another fallible implementation detail;
 
-that operation must expose ordinary Sec `Result` semantics and use `try` like any
+**§ 46(3)** that operation must expose ordinary Sec `Result` semantics and use `try` like any
 other fallible operation.
 
-The unit system must not hide such failure.
+**§ 46(4)** The unit system must not hide such failure.
 
 ---
 
-## Interaction with registers and FFI
+## § 47 Interaction with registers and FFI
 
-Units may describe the semantic meaning of numeric hardware or foreign values.
+**§ 47(1)** Units may describe the semantic meaning of numeric hardware or foreign values.
 
-A unit annotation does not change ABI representation by itself.
+**§ 47(2)** A unit annotation does not change ABI representation by itself.
 
-Register field width, FFI ABI type, and unit semantics remain separate.
+**§ 47(3)** Register field width, FFI ABI type, and unit semantics remain separate.
 
-Decided by MD-046 (2026-10-13,
+**§ 47(4)** Decided by MD-046 (2026-10-13,
 `rules/corrections/applied/md040-md046-md047-md056-units-register-bits-rounding-correction-20261013.md`
 § 4); `rules/declarations/registers.md` § 12 owns the field rules:
 
@@ -2131,19 +2131,19 @@ let retained := bit[12](frequency)<rpm> // uint16<rpm>
 let invalid := bit[12](frequency)<Hz>   // error: unit change without conversion
 ```
 
-FFI metadata or wrappers may use units to validate arguments and results, but a
+**§ 47(5)** FFI metadata or wrappers may use units to validate arguments and results, but a
 foreign ABI does not gain hidden runtime unit metadata.
 
-Runtime/configured conversion relationships must remain explicit at the Sec
+**§ 47(6)** Runtime/configured conversion relationships must remain explicit at the Sec
 boundary.
 
 ---
 
-## Future unit-polymorphic generics
+## § 48 Future unit-polymorphic generics
 
-Sec 0.1 does not define generic parameters over units.
+**§ 48(1)** Sec 0.1 does not define generic parameters over units.
 
-A future design may support concepts such as:
+**§ 48(2)** A future design may support concepts such as:
 
 ```sec
 fn Add[U](a: decimal<U>, b: decimal<U>) decimal<U> {
@@ -2151,20 +2151,20 @@ fn Add[U](a: decimal<U>, b: decimal<U>) decimal<U> {
 }
 ```
 
-This example is conceptual future syntax, not Sec 0.1 syntax.
+**§ 48(3)** This example is conceptual future syntax, not Sec 0.1 syntax.
 
-Current generic parameters are type parameters. Unit parameters require a
+**§ 48(4)** Current generic parameters are type parameters. Unit parameters require a
 separate design.
 
-The Sec 0.1 unit model must preserve unit identity independently from numeric
+**§ 48(5)** The Sec 0.1 unit model must preserve unit identity independently from numeric
 carrier so that future unit polymorphism can be added without redesigning the
 basic quantity model.
 
 ---
 
-## Non-goals for Sec 0.1
+## § 49 Non-goals for Sec 0.1
 
-This rulebook does not define:
+**§ 49(1)** This rulebook does not define:
 
 - arbitrary user-defined unit categories;
 - arbitrary user-defined transform modes;
@@ -2175,14 +2175,14 @@ This rulebook does not define:
 - automatic semantic Kind inference from dimension alone;
 - runtime reflection that requires every numeric value to carry unit metadata.
 
-These may be extended by later rulebooks only when they preserve the safety model
+**§ 49(2)** These may be extended by later rulebooks only when they preserve the safety model
 defined here.
 
 ---
 
-## Summary of invariants
+## § 50 Summary of invariants
 
-The following rules are normative:
+**§ 50(1)** The following rules are normative:
 
 1. A unit is semantic identity and is not inherently bound to one numeric type.
 2. A unit-bearing quantity combines a numeric carrier with unit semantics.

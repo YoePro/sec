@@ -46,7 +46,8 @@ func (a *Analyzer) analyzeWhileStatement(stmt *ast.WhileStatement) {
 
 	a.symbols = previousSymbols.child()
 	a.constInts = copyConstInts(previousConstInts)
-	a.forgetLoopAssignedConstants(stmt.Body)
+	endFirstIteration := a.forgetLoopAssignedConstants(stmt.Body, !constantConditionKnown || constantCondition, stmt.Condition)
+	defer endFirstIteration()
 	a.assigned = copyAssigned(previousAssigned)
 	a.moved = copyMoved(previousMoved)
 	a.availabilityStates = copyAvailabilityStates(previousMoveReasons)
@@ -77,6 +78,9 @@ func (a *Analyzer) analyzeWhileStatement(stmt *ast.WhileStatement) {
 		}
 		a.analyzeBlockStatements(stmt.Body)
 		a.activeConditionFacts = a.activeConditionFacts[:bodyFacts]
+	}
+	endFirstIteration()
+	if stmt.Body != nil {
 	}
 	hasReachableBreak := a.blockHasReachableBreakToCurrentLoop(stmt.Body)
 	a.recordResolvedWhileFlow(stmt, constantConditionKnown, constantCondition, hasReachableBreak)
@@ -146,6 +150,19 @@ func (a *Analyzer) analyzeWhileStatement(stmt *ast.WhileStatement) {
 	a.localRefContainers = mergeLoopReferenceState(previousLocalRefContainers, loopLocalRefContainers, breakFrame)
 	a.arenaGenerations = mergeLoopArenaGenerations(previousArenaGenerations, loopArenaGenerations, breakFrame.breakArenaGenerations())
 	a.loopDepth = previousLoopDepth
+	// A variant proven on every exit edge (each reachable break, and the
+	// condition-false exit unless the condition is always true) holds after
+	// the loop (flowcontrol_while.md § 28; MD-042).
+	exits := make([]knownVariantSet, 0, len(breakFrame.breaks)+1)
+	if hasReachableBreak {
+		for _, edge := range breakFrame.breaks {
+			exits = append(exits, edge.knownVariants)
+		}
+	}
+	if !conditionAlwaysTrue && stmt.Condition != nil {
+		exits = append(exits, a.knownVariantsAfterNegation(stmt.Condition))
+	}
+	a.assertKnownVariants(intersectKnownVariants(exits))
 }
 
 // ResolvedWhileFlow is the compiler-owned condition and exit fact for one

@@ -3499,6 +3499,11 @@ func (a *Analyzer) inferPlainArithmeticExpression(expr *ast.InfixExpression, lef
 			a.addErrorAtTokenWithMetadata(expr.Token, "", help, "operator %s requires numeric operands", expr.Operator)
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
+		if isCoreDurationType(leftType) || isCoreDurationType(rightType) {
+			// Owner decision 2026-11-08: duration has comparisons only.
+			a.addErrorAtTokenWithMetadata(expr.Token, "", "duration supports ==, !=, <, <=, > and >= only; arithmetic on durations is not part of Sec 0.1.", "operator %s is not defined for duration", expr.Operator)
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
 		a.addErrorAtToken(expr.Token, "operator %s requires numeric operands", expr.Operator)
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}

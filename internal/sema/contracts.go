@@ -593,6 +593,12 @@ func (a *Analyzer) checkIntegerAssignmentRange(symbol Symbol, stmt *ast.Assignme
 
 	result, ok := a.assignmentIntegerValue(symbol.Name, stmt)
 	if !ok {
+		// An overflow certain on a loop's first iteration still warns.
+		if first, known := a.firstIterationAssignmentValue(symbol.Name, stmt); known && stmt.Operator != "=" {
+			if a.warnCompoundAssignmentOverflowOnFirstIteration(symbol, stmt, first) {
+				a.advanceFirstIterationValue(symbol.Name, stmt, true)
+			}
+		}
 		return false
 	}
 	if stmt.Operator != "=" && a.warnCompoundAssignmentOverflow(symbol, stmt, result) {
@@ -610,6 +616,16 @@ func (a *Analyzer) checkIntegerAssignmentRange(symbol Symbol, stmt *ast.Assignme
 // semantics (operators.md "Compile-time overflow"); it never ends analysis of
 // the assignment. It reports whether it warned.
 func (a *Analyzer) warnCompoundAssignmentOverflow(symbol Symbol, stmt *ast.AssignmentStatement, result *big.Int) bool {
+	return a.warnCompoundOverflow(symbol, stmt, result, "")
+}
+
+// warnCompoundAssignmentOverflowOnFirstIteration is the same S1023 warning
+// for an overflow certain when a loop body runs for the first time.
+func (a *Analyzer) warnCompoundAssignmentOverflowOnFirstIteration(symbol Symbol, stmt *ast.AssignmentStatement, result *big.Int) bool {
+	return a.warnCompoundOverflow(symbol, stmt, result, " on the first loop iteration")
+}
+
+func (a *Analyzer) warnCompoundOverflow(symbol Symbol, stmt *ast.AssignmentStatement, result *big.Int, when string) bool {
 	representation, _, ok := a.integerRepresentation(symbol.Type)
 	if !ok || representation.MinInteger == nil || representation.MaxInteger == nil {
 		return false
@@ -621,9 +637,9 @@ func (a *Analyzer) warnCompoundAssignmentOverflow(symbol Symbol, stmt *ast.Assig
 		stmt.Token,
 		diagnostics.OperatorIntegerOverflow,
 		fmt.Sprintf("Ensure a dominating condition proves the operation remains within %s..%s, or use a wider integer type. The operation retains checked runtime semantics.", representation.MinInteger, representation.MaxInteger),
-		"integer operation %s may overflow %s",
+		"integer operation %s may overflow %s%s",
 		stmt.Target.String()+" "+stmt.Operator+" "+stmt.Value.String(),
-		typeDisplayName(symbol.Type),
+		typeDisplayName(symbol.Type), when,
 	)
 	return true
 }

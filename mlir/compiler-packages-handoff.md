@@ -5150,3 +5150,44 @@ frontend.unions (4 items verified/closed, refinement item narrowed),
 control_flow.yaml frontend.defer-v2 (defer contexts verified). Sema, IR,
 lowering, parser suites and targeted cmd subsets pass. Released; no commit.
 
+## Claude: variant proofs across joins (released, 2026-11-08)
+
+New internal/sema/variant_state_joins.go (currentKnownVariants,
+intersectKnownVariants, assertKnownVariants, recordAssignedVariant,
+blockExitKnownVariants). Hooks: analyzer_blocks.go (record at block exit),
+loopEdgeState.knownVariants, analyzer_while_flow.go (break edges +
+condition-false exit), analyzer_if_statement.go (branch joins),
+analyzeAssignmentStatement (variant constructor assignment). gofmt applied to
+analyzer.go, types.go, storage_relations.go (alignment only). Test
+TestVariantProofsCrossJoins. Governance: control_flow while break-exit item
+closed; declarations frontend.unions refinement item narrowed. Sema, IR,
+lowering and targeted cmd/compiler + cmd/lsp subsets pass. Released; no
+commit.
+
+## Claude: constant precision + duration comparisons (released, 2026-11-08)
+
+Constant tracking: constant_scopes.go first-iteration domain
+(forgetLoopAssignedConstants now returns an end func and takes the loop
+condition; firstIterationCondition evaluator), branch constant merge
+(wantBlockExitConstants, mergeBranchExitConstants) wired into
+analyzer_if_statement.go, analyzer_blocks.go, analyzer_while_flow.go,
+analyzer_for.go, constants.go, contracts.go (S1023 "on the first loop
+iteration"). duration: isCoreDurationType (types.go), equality/ordering in
+type_equality.go and canCompareOrdered, focused diagnostics for arithmetic and
+quantity comparisons. Rulebook: rules/types/temporal.md revision 1.3
+§ 5.8(4)-(5) (owner decision: comparisons only) - Codex, note for the
+paragraph pass. Tests: TestFirstIterationOverflowAndBranchConstantJoin,
+TestDurationComparisonsOnly. Governance sema.yaml and types.yaml updated.
+Sema, IR, lowering and targeted cmd subsets pass. Released; no commit.
+
+## Claude: match/switch joins and sibling constants (released, 2026-11-08)
+
+analyzer.go match analysis and analyzer_switch.go: constant and variant-proof
+joins over continuing arms/clauses (non-exhaustive path keeps pre-join state;
+fallthrough disables the switch merge). constant_scopes.go constantBranches:
+if/else, match arms and switch clauses start each sibling from the pre-join
+constants and intersect at the join (fallthrough-entered clauses keep the
+current state). Tests TestMatchAndSwitchJoinConstantsAndVariants,
+TestSiblingBranchesStartFromPreJoinConstants. Governance sema.yaml updated.
+Sema, IR, lowering and targeted cmd subsets pass. Released; no commit.
+

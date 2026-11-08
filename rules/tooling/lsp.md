@@ -1,12 +1,24 @@
 # Language Server Protocol
 
-## Status
+- **Status:** Normative
+- **Created:** 2026-07-31
+- **Last updated:** 2026-11-08 (stable chapter, subsection, and paragraph numbering)
+- **Document revision:** 1
+- **Sec language version:** 0.1
+- **Canonical path:** `rules/tooling/lsp.md`
+- **Repository baseline reviewed:** `50655d3bc5d2e2596935dc5609cb1db1387e0cec`
+- **Related governance:** `governance/tooling_lsp.yaml`
+- **Related rulebooks:** `rules/tooling/formatter.md`, `rules/tooling/diagnostics.md`, `rules/compiler/compiler_analysis.md`, `rules/compiler/parser_recovery.md`, `rules/compiler/semantic_ir.md`, `rules/projects/projects.md`, `rules/projects/modules.md`, `rules/analysis/call_graph.md`, `rules/analysis/stack_analysis.md`, `rules/analysis/effect_analysis.md`, `rules/analysis/escape_analysis.md`
 
-This document is the canonical rulebook for the Sec language server.
+---
 
-The language server already exists and provides a useful initial feature set.
+## § 1 Status
 
-This rulebook:
+**§ 1(1)** This document is the canonical rulebook for the Sec language server.
+
+**§ 1(2)** The language server already exists and provides a useful initial feature set.
+
+**§ 1(3)** This rulebook:
 
 - records the current implementation accurately;
 - defines the required architecture;
@@ -16,30 +28,30 @@ This rulebook:
 - defines future knowledge-pack integration;
 - provides an implementation plan for Codex.
 
-The canonical executable remains:
+**§ 1(4)** The canonical executable remains:
 
 ```text
 lsp-sec
 ```
 
-The current entry point is:
+**§ 1(5)** The current entry point is:
 
 ```text
 cmd/lsp
 ```
 
-The implementation must be reorganized without discarding working behavior.
+**§ 1(6)** The implementation must be reorganized without discarding working behavior.
 
 ---
 
-# Vision
+## § 2 Vision
 
-The Sec language server must be better than any competing language server in
+**§ 2(1)** The Sec language server must be better than any competing language server in
 the practical quality of its assistance.
 
-This means more than feature count.
+**§ 2(2)** This means more than feature count.
 
-The server must be:
+**§ 2(3)** The server must be:
 
 - more accurate;
 - more explanatory;
@@ -54,18 +66,18 @@ The server must be:
 - more responsive;
 - more deterministic.
 
-The server must expose the knowledge already produced by the Sec compiler
+**§ 2(4)** The server must expose the knowledge already produced by the Sec compiler
 instead of recreating a weaker editor-specific approximation.
 
-The language server must never silently invent language semantics.
+**§ 2(5)** The language server must never silently invent language semantics.
 
 ---
 
-# Fundamental rules
+## § 3 Fundamental rules
 
-## One semantic source of truth
+### § 3.1 One semantic source of truth
 
-The compiler workspace is the sole owner of:
+**§ 3.1(1)** The compiler workspace is the sole owner of:
 
 ```text
 lexical truth
@@ -91,10 +103,10 @@ target analysis
 diagnostic truth
 ```
 
-The LSP must not maintain a separate lexer, parser, AST, semantic analyzer,
+**§ 3.1(2)** The LSP must not maintain a separate lexer, parser, AST, semantic analyzer,
 type system, ownership model, or diagnostic system.
 
-Every diagnostic presented by the LSP must originate from the same diagnostic
+**§ 3.1(3)** Every diagnostic presented by the LSP must originate from the same diagnostic
 model used by:
 
 ```text
@@ -105,47 +117,47 @@ sec test
 sec fmt --fix
 ```
 
-The LSP is a protocol adapter and interactive client of compiler services.
+**§ 3.1(4)** The LSP is a protocol adapter and interactive client of compiler services.
 
-The compiler owns one canonical semantic call graph for each concrete
+**§ 3.1(5)** The compiler owns one canonical semantic call graph for each concrete
 `CompilationPlan`. The LSP consumes that graph and its compiler-produced
 analysis views. It must not construct, cache as semantic truth, or incrementally
 maintain a second LSP-specific call graph.
 
 ---
 
-## Shared formatter
+### § 3.2 Shared formatter
 
-LSP formatting must call the same formatter implementation as:
+**§ 3.2(1)** LSP formatting must call the same formatter implementation as:
 
 ```text
 sec fmt
 ```
 
-LSP safe fixes must call the same fix engine as:
+**§ 3.2(2)** LSP safe fixes must call the same fix engine as:
 
 ```text
 sec fmt --fix
 ```
 
-LSP formatting resolves its effective options through the same configuration code as `sec fmt`: the document's project `.sec/sec.toml` `[format]` table, or the formatter defaults for a stand-alone file. An invalid configuration produces no edit (`formatter.md` § 4(18)–(22); MD-036/MD-054, 2026-10-12).
+**§ 3.2(3)** LSP formatting resolves its effective options through the same configuration code as `sec fmt`: the document's project `.sec/sec.toml` `[format]` table, or the formatter defaults for a stand-alone file. An invalid configuration produces no edit (`formatter.md` § 4(18)–(22); MD-036/MD-054, 2026-10-12).
 
-The `sec fmt` directory selection and bulk malformed-file policy (`formatter.md` §§ 28(9)–28(13), MD-037) apply only to the CLI. The LSP formats the open document with the same formatter and configuration, under its own § 25 behavior.
+**§ 3.2(4)** The `sec fmt` directory selection and bulk malformed-file policy (`formatter.md` §§ 28(9)–28(13), MD-037) apply only to the CLI. The LSP formats the open document with the same formatter and configuration, under its own § 25 behavior.
 
-The LSP may expose all formatter functionality or a negotiated subset.
+**§ 3.2(5)** The LSP may expose all formatter functionality or a negotiated subset.
 
-It must not contain an independent formatter implementation.
+**§ 3.2(6)** It must not contain an independent formatter implementation.
 
-The editor extension must not contain Sec formatting rules.
+**§ 3.2(7)** The editor extension must not contain Sec formatting rules.
 
 ---
 
-## Complete LSP support
+### § 3.3 Complete LSP support
 
-The Sec language server targets the complete Language Server Protocol 3.18
+**§ 3.3(1)** The Sec language server targets the complete Language Server Protocol 3.18
 surface.
 
-The server must:
+**§ 3.3(2)** The server must:
 
 - implement the complete base protocol correctly;
 - negotiate capabilities correctly;
@@ -155,19 +167,19 @@ The server must:
 - never crash because a client sends a valid but unknown future enum value;
 - preserve compatibility with clients supporting earlier negotiated subsets.
 
-Features not meaningful for Sec must still follow protocol rules.
+**§ 3.3(3)** Features not meaningful for Sec must still follow protocol rules.
 
-They may remain unadvertised or return a valid empty result as required by the
+**§ 3.3(4)** They may remain unadvertised or return a valid empty result as required by the
 protocol.
 
 ---
 
-## Error-tolerant editing
+### § 3.4 Error-tolerant editing
 
-The parser and compiler workspace must preserve useful structure around
+**§ 3.4(1)** The parser and compiler workspace must preserve useful structure around
 recoverable syntax errors.
 
-A recoverable error must not unnecessarily remove:
+**§ 3.4(2)** A recoverable error must not unnecessarily remove:
 
 ```text
 semantic highlighting
@@ -180,45 +192,45 @@ formatting of unaffected regions
 code actions
 ```
 
-Where a syntax repair is unambiguous, the compiler must produce a structured,
+**§ 3.4(3)** Where a syntax repair is unambiguous, the compiler must produce a structured,
 machine-applicable fix.
 
-Example:
+**§ 3.4(4)** Example:
 
 ```sec
 fn myfunc(a string) void {
 }
 ```
 
-Diagnostic:
+**§ 3.4(5)** Diagnostic:
 
 ```text
 expected `:` between parameter name `a` and type `string`
 ```
 
-Fix:
+**§ 3.4(6)** Fix:
 
 ```sec
 fn myfunc(a: string) void {
 }
 ```
 
-The fix may be applied:
+**§ 3.4(7)** The fix may be applied:
 
 - explicitly through a quick fix;
 - on save when safe fixes on save are enabled;
 - by `sec fmt --fix`.
 
-Ordinary `sec fmt` does not apply this repair.
+**§ 3.4(8)** Ordinary `sec fmt` does not apply this repair.
 
 ---
 
-## Expose all compiler knowledge
+### § 3.5 Expose all compiler knowledge
 
-Every useful fact available from the compiler pipeline should be exposable
+**§ 3.5(1)** Every useful fact available from the compiler pipeline should be exposable
 through standard LSP features or namespaced Sec extensions.
 
-This includes facts from:
+**§ 3.5(2)** This includes facts from:
 
 ```text
 lexer
@@ -242,16 +254,16 @@ target analysis
 lowering analysis
 ```
 
-The LSP must not wait for a separate editor-specific reimplementation of an
+**§ 3.5(3)** The LSP must not wait for a separate editor-specific reimplementation of an
 analysis that already exists in the compiler.
 
 ---
 
-## No silent semantic edits
+### § 3.6 No silent semantic edits
 
-The language server must never silently change program meaning.
+**§ 3.6(1)** The language server must never silently change program meaning.
 
-Automatic text changes are divided into:
+**§ 3.6(2)** Automatic text changes are divided into:
 
 ```text
 canonical formatting
@@ -262,28 +274,28 @@ refactoring
 behavior-changing transformation
 ```
 
-Each category has separate permissions.
+**§ 3.6(3)** Each category has separate permissions.
 
-The LSP must explain ownership-changing and behavior-changing edits before
+**§ 3.6(4)** The LSP must explain ownership-changing and behavior-changing edits before
 application.
 
 ---
 
-# Current implementation status
+## § 4 Current implementation status
 
-The current implementation is substantial and must be preserved during
+**§ 4(1)** The current implementation is substantial and must be preserved during
 reorganization.
 
-The status below reflects the repository implementation in `cmd/lsp` and
+**§ 4(2)** The status below reflects the repository implementation in `cmd/lsp` and
 `vscode`.
 
 ---
 
-## Implemented
+### § 4.1 Implemented
 
 ### Transport and lifecycle
 
-Implemented:
+**§ 4.1(1)** Implemented:
 
 - JSON-RPC transport over stdio;
 - `Content-Length` message framing;
@@ -297,7 +309,7 @@ Implemented:
 
 ### Document synchronization
 
-Implemented:
+**§ 4.1(2)** Implemented:
 
 - `textDocument/didOpen`;
 - `textDocument/didChange`;
@@ -308,7 +320,7 @@ Implemented:
 
 ### Diagnostics
 
-Implemented:
+**§ 4.1(3)** Implemented:
 
 - lexer/parser execution through compiler packages;
 - Sema execution through the compiler Sema package;
@@ -339,7 +351,7 @@ Implemented:
 
 ### Formatting
 
-Implemented:
+**§ 4.1(4)** Implemented:
 
 - full-document formatting;
 - line-ending preservation;
@@ -358,7 +370,7 @@ Implemented:
 
 ### Completion
 
-Implemented:
+**§ 4.1(5)** Implemented:
 
 - global completion;
 - member completion;
@@ -377,7 +389,7 @@ Implemented:
 - limited completion recovery for incomplete `if` conditions;
 - survival of incomplete function source in tested cases.
 
-Type-qualified completion for a string-backed enum exposes its declared
+**§ 4.1(6)** Type-qualified completion for a string-backed enum exposes its declared
 members exactly like an integer-backed closed enum. Hover shows the nominal enum
 type, `string` underlying representation, closed domain, and declared constant
 value. Explicit `static let` members are readonly type-qualified members;
@@ -387,7 +399,7 @@ modifier diagnostic for an implementation binding.
 
 ### Hover
 
-Implemented:
+**§ 4.1(7)** Implemented:
 
 - markdown hover;
 - symbol hover;
@@ -408,7 +420,7 @@ Implemented:
 
 ### Navigation
 
-Implemented:
+**§ 4.1(8)** Implemented:
 
 - `textDocument/definition` capability advertisement and request handling;
 - compiler-owned use-to-declaration bindings produced during Sema;
@@ -444,7 +456,7 @@ Implemented:
   execution relation in item data and do not merge with synchronous calls to
   the same target.
 
-The initial implementation resolves from the current immutable document text
+**§ 4.1(9)** The initial implementation resolves from the current immutable document text
 and compiler-loaded source set. A persistent workspace symbol index,
 declaration/type-definition distinction, implementation navigation, references,
 rename, indirect/open call targets, non-synchronous relationships beyond the
@@ -454,7 +466,7 @@ snapshots, and richer copy/move/borrow occurrence classification remain pending.
 
 ### Document symbols
 
-Implemented:
+**§ 4.1(10)** Implemented:
 
 - module symbols;
 - type symbols;
@@ -475,7 +487,7 @@ Implemented:
 
 ### Interface conformance code lens
 
-Implemented (2026-10-04): `textDocument/codeLens` places one lens on every
+**§ 4.1(11)** Implemented (2026-10-04): `textDocument/codeLens` places one lens on every
 interface declared in the document. The module is assembled and analyzed once
 per target selected by its `#target` files (or for the active target when it has
 none), each with that target's scalar plan, and the lens summarizes the result:
@@ -486,7 +498,7 @@ members, and targets without an implementation. Its command
 implementing types when every target conforms. Results are cached until the
 source/import closure, project configuration or analysis epoch changes.
 
-As of 2026-10-14, listing code lenses only parses the active snapshot and returns
+**§ 4.1(12)** As of 2026-10-14, listing code lenses only parses the active snapshot and returns
 interface-name ranges with versioned declaration/snapshot data and no command.
 `codeLensProvider.resolveProvider` advertises `codeLens/resolve`; resolving the
 item runs the existing compiler-owned cross-target conformance projection on
@@ -501,7 +513,7 @@ commands are recomputed from compiler facts. Queued cancellation and edits can
 skip obsolete resolve work, and formatting may overtake it. Cancellation inside
 an already-running compiler analysis remains separate scheduling work.
 
-As of 2026-11-03, implementing-type declarations (including enums and named
+**§ 4.1(13)** As of 2026-11-03, implementing-type declarations (including enums and named
 scalar types) also show their explicit conformance across the selected targets.
 A successful lens names the type and concrete interfaces, for example
 `✓ Handle (Native, Writable) conforms on 2 targets`. A failing lens identifies
@@ -510,7 +522,7 @@ the type, target and interface-qualified member, for example
 An interface declared on one target but absent on another is reported as
 `Native (no declared conformance)`; another valid interface cannot mask it.
 
-Enumeration adds type-name candidates without loading targets or invoking Sema.
+**§ 4.1(14)** Enumeration adds type-name candidates without loading targets or invoking Sema.
 Resolving a candidate with no explicit compiler-owned conformance on any selected
 target returns no command. Type views match exact module/type identities, reuse
 the same cached target report and worker pool, and validate the source snapshot
@@ -518,7 +530,7 @@ and declaration kind. Their command lists failing members, or the implemented
 interface declarations when every target conforms. Unresolved compiler facts
 are never presented as successful conformance.
 
-As of 2026-11-05, whole-program `sec analyse` and `sec analyse --all` also
+**§ 4.1(15)** As of 2026-11-05, whole-program `sec analyse` and `sec analyse --all` also
 project these compiler-owned conformance facts across distinct physical targets
 from same-module source directives and the owning Project Target's Variants.
 An explicit `--target` or explicitly selected target-directed source limits
@@ -527,7 +539,7 @@ keep their existing scope. The CLI reuses ordinary source/import/project
 validation and each target's scalar plan; it does not discover methods or infer
 conformance from names or diagnostic text.
 
-`--verbose` lists the type/module, concrete interface, target, proof state and
+**§ 4.1(16)** `--verbose` lists the type/module, concrete interface, target, proof state and
 failing members; `--json` adds a `conformances` array with declaration spans and
 member diagnostic IDs, messages and spans. Missing explicit declarations and
 unproven facts are reported as unproven findings, never success. Conformance
@@ -537,7 +549,7 @@ Clean conformance remains silent in the default human presentation.
 
 ### Workspace symbols
 
-Implemented (`workspace/symbol`, VS Code "Go to Symbol in Workspace"):
+**§ 4.1(17)** Implemented (`workspace/symbol`, VS Code "Go to Symbol in Workspace"):
 
 - `workspaceSymbolProvider` and workspace-folder tracking from `initialize`
   (`workspaceFolders`, falling back to `rootUri`/`rootPath`) and
@@ -596,12 +608,12 @@ Implemented (`workspace/symbol`, VS Code "Go to Symbol in Workspace"):
   semantic analysis or workspace traversal. Resolve is a read-only request that
   formatting may overtake.
 
-Pending: generated and dependency read-only provenance once the shared compiler
+**§ 4.1(18)** Pending: generated and dependency read-only provenance once the shared compiler
 workspace exposes it, and moving declaration summaries into that shared index.
 
 ### Semantic tokens
 
-Implemented:
+**§ 4.1(19)** Implemented:
 
 - `textDocument/semanticTokens/full`;
 - lexical fallback when semantic analysis is unavailable;
@@ -616,18 +628,18 @@ Implemented:
   implemented `@noCopy` path;
 - resilience against selected panics during active editing.
 
-Every multiline lexer token that receives semantic highlighting is encoded as
+**§ 4.1(20)** Every multiline lexer token that receives semantic highlighting is encoded as
 separate single-line semantic tokens. In particular, every non-empty physical
 line of an ordinary or documentation block comment receives the same
 comment classification and modifiers as its enclosing lexer token. Segment
 starts and lengths use the protocol's UTF-16 code-unit coordinates, including
 when astral Unicode scalars occur before or inside the segment.
 
-`new` is classified as a keyword. Bare lifecycle `init` and `free` members are
+**§ 4.1(21)** `new` is classified as a keyword. Bare lifecycle `init` and `free` members are
 recognized contextually inside impl bodies without changing the classification
 of an ordinary function named `init`.
 
-Hover and signature help for an initializer show its parameters, constructed
+**§ 4.1(22)** Hover and signature help for an initializer show its parameters, constructed
 type, and optional construction error separately. Hover on `new Type(args...)`
 shows the selected init overload and whether `try`/handling is required.
 Definition/references connect lifecycle construction to the selected explicit
@@ -636,7 +648,7 @@ init (or identify the permitted implicit path). Completion offers `init` and
 
 ### Project and source integration
 
-Implemented:
+**§ 4.1(23)** Implemented:
 
 - core loading from `sec/core`;
 - project-root discovery through `.sec/sec.toml`;
@@ -652,7 +664,7 @@ Implemented:
 
 ### VS Code extension
 
-Implemented:
+**§ 4.1(24)** Implemented:
 
 - VS Code language activation;
 - `.sec` and `.se` file recognition;
@@ -668,7 +680,7 @@ Implemented:
 
 ### Tests
 
-Implemented tests cover, among other areas:
+**§ 4.1(25)** Implemented tests cover, among other areas:
 
 - compiler diagnostics;
 - stable Sema diagnostic IDs;
@@ -696,16 +708,16 @@ Implemented tests cover, among other areas:
 
 ---
 
-## Partially implemented
+### § 4.2 Partially implemented
 
 ### Shared compiler workspace
 
-The LSP uses the compiler's lexer, parser, AST, Sema, and diagnostics packages.
+**§ 4.2(1)** The LSP uses the compiler's lexer, parser, AST, Sema, and diagnostics packages.
 
-However, it still directly orchestrates compilation independently inside
+**§ 4.2(2)** However, it still directly orchestrates compilation independently inside
 `cmd/lsp`.
 
-The LSP currently constructs:
+**§ 4.2(3)** The LSP currently constructs:
 
 ```text
 lexer
@@ -715,18 +727,18 @@ import inclusion
 Sema analyzer
 ```
 
-for multiple features.
+**§ 4.2(4)** for multiple features.
 
-This must move into a shared compiler workspace and snapshot API.
+**§ 4.2(5)** This must move into a shared compiler workspace and snapshot API.
 
 ### Diagnostics
 
-Sema diagnostics are structured.
+**§ 4.2(6)** Sema diagnostics are structured.
 
-Parser diagnostics are currently plain strings whose positions are recovered by
+**§ 4.2(7)** Parser diagnostics are currently plain strings whose positions are recovered by
 parsing message text.
 
-Parser diagnostics must become structured compiler diagnostics containing:
+**§ 4.2(8)** Parser diagnostics must become structured compiler diagnostics containing:
 
 ```text
 stable ID
@@ -741,17 +753,17 @@ recovery metadata
 
 ### Formatter
 
-The formatter is currently implemented directly inside `cmd/lsp/main.go`.
+**§ 4.2(9)** The formatter is currently implemented directly inside `cmd/lsp/main.go`.
 
-It is not yet shared with `sec fmt`.
+**§ 4.2(10)** It is not yet shared with `sec fmt`.
 
-The implementation is useful but architecturally misplaced.
+**§ 4.2(11)** The implementation is useful but architecturally misplaced.
 
 ### Incomplete-source handling
 
-Completion and semantic tokens contain selected recovery behavior.
+**§ 4.2(12)** Completion and semantic tokens contain selected recovery behavior.
 
-The central LSP parse paths now consume the parser's `ParseResult`, including
+**§ 4.2(13)** The central LSP parse paths now consume the parser's `ParseResult`, including
 structured diagnostics, recovery context, episode association and error state.
 The partial AST retains failed declarations, statements, impl members,
 match/handler patterns, and selected invalid expressions/types. Episode-aware
@@ -760,10 +772,10 @@ shared delimiter stack now keeps migrated recovery scans inside their nested
 parenthesis, bracket, and brace boundaries and exposes their skipped ranges to
 tooling.
 
-The general parser and compiler workspace do not yet provide a complete
+**§ 4.2(14)** The general parser and compiler workspace do not yet provide a complete
 error-tolerant syntax tree.
 
-After a non-fatal parser error, the LSP may continue semantic analysis over
+**§ 4.2(15)** After a non-fatal parser error, the LSP may continue semantic analysis over
 retained declarations and unaffected subtrees. It must not publish semantic
 diagnostics whose primary location lies inside a parser recovery range, and a
 local malformed body must not hide independent declaration diagnostics in
@@ -771,15 +783,15 @@ following siblings.
 
 ### Project loading
 
-Project and stdlib loading exist but remain feature-specific and partly
+**§ 4.2(16)** Project and stdlib loading exist but remain feature-specific and partly
 hardcoded.
 
-The final compiler workspace must resolve all core, stdlib, project, platform,
+**§ 4.2(17)** The final compiler workspace must resolve all core, stdlib, project, platform,
 target, and generated sources through the canonical module system.
 
 ### Document snapshots
 
-Open-document text now has a versioned snapshot store. `didOpen` and full-text
+**§ 4.2(18)** Open-document text now has a versioned snapshot store. `didOpen` and full-text
 `didChange` updates record versions and reject stale updates. Feature handlers
 read immutable snapshots. `didClose` removes the overlay and clears published
 diagnostics; `didSave` refreshes diagnostics. `willSave` and
@@ -788,18 +800,18 @@ Incremental edits and stale-result suppression remain pending.
 
 ### Protocol transport and types
 
-JSON-RPC framing and envelope types now live in `internal/lsp/protocol`.
+**§ 4.2(19)** JSON-RPC framing and envelope types now live in `internal/lsp/protocol`.
 Request routing and most LSP feature parameter types remain in `cmd/lsp` until
 the server and feature packages are extracted.
 
-The types are still handwritten. This is sufficient for the present subset but
+**§ 4.2(20)** The types are still handwritten. This is sufficient for the present subset but
 not for complete LSP 3.18 coverage.
 
 ---
 
-## Not implemented
+### § 4.3 Not implemented
 
-The following major areas are not yet implemented:
+**§ 4.3(1)** The following major areas are not yet implemented:
 
 - complete LSP 3.18 protocol support;
 - generated LSP protocol types;
@@ -862,11 +874,11 @@ The following major areas are not yet implemented:
 
 ---
 
-# Architecture
+## § 5 Architecture
 
-## Required package structure
+### § 5.1 Required package structure
 
-The implementation should move toward:
+**§ 5.1(1)** The implementation should move toward:
 
 ```text
 cmd/lsp/
@@ -885,7 +897,7 @@ internal/fixes/
 internal/refactor/
 ```
 
-Suggested feature files:
+**§ 5.1(2)** Suggested feature files:
 
 ```text
 internal/lsp/features/
@@ -910,7 +922,7 @@ internal/lsp/features/
     links.go
 ```
 
-Suggested Sec-specific files:
+**§ 5.1(3)** Suggested Sec-specific files:
 
 ```text
 internal/lsp/sec/
@@ -922,7 +934,7 @@ internal/lsp/sec/
     lowering.go
 ```
 
-`cmd/lsp/main.go` should eventually contain only:
+**§ 5.1(4)** `cmd/lsp/main.go` should eventually contain only:
 
 ```text
 process startup
@@ -934,9 +946,9 @@ exit status
 
 ---
 
-## Compiler workspace
+### § 5.2 Compiler workspace
 
-A long-lived compiler workspace owns:
+**§ 5.2(1)** A long-lived compiler workspace owns:
 
 ```text
 workspace folders
@@ -955,9 +967,9 @@ analysis caches
 diagnostic configuration
 ```
 
-The LSP does not construct isolated frontend pipelines per feature.
+**§ 5.2(2)** The LSP does not construct isolated frontend pipelines per feature.
 
-Conceptual API:
+**§ 5.2(3)** Conceptual API:
 
 ```text
 workspace.OpenDocument(uri, version, text)
@@ -973,15 +985,15 @@ workspace.Fixes(snapshot, range)
 workspace.Refactor(snapshot, request)
 ```
 
-The same workspace services should be reusable by CLI tools.
+**§ 5.2(4)** The same workspace services should be reusable by CLI tools.
 
 ---
 
-## Snapshots
+### § 5.3 Snapshots
 
-Every request operates on an immutable workspace snapshot.
+**§ 5.3(1)** Every request operates on an immutable workspace snapshot.
 
-A snapshot includes:
+**§ 5.3(2)** A snapshot includes:
 
 ```text
 document versions
@@ -998,12 +1010,12 @@ module graph version
 call graph version
 ```
 
-Results from an older snapshot must not overwrite results for a newer document
+**§ 5.3(3)** Results from an older snapshot must not overwrite results for a newer document
 version.
 
-Analysis is deterministic for a given snapshot.
+**§ 5.3(4)** Analysis is deterministic for a given snapshot.
 
-Call-graph results are valid only for the exact snapshot and
+**§ 5.3(5)** Call-graph results are valid only for the exact snapshot and
 `CompilationPlan` from which the compiler produced them. A target switch,
 active implementation-variant change, relevant declaration change, or changed
 indirect target set invalidates affected graph facts. Partial or completed
@@ -1011,11 +1023,11 @@ results from an older graph snapshot must not overwrite newer results.
 
 ---
 
-## Incremental analysis
+### § 5.4 Incremental analysis
 
-The workspace must invalidate only affected results.
+**§ 5.4(1)** The workspace must invalidate only affected results.
 
-Dependency tracking should distinguish:
+**§ 5.4(2)** Dependency tracking should distinguish:
 
 ```text
 lexical change
@@ -1031,7 +1043,7 @@ manifest change
 core or stdlib change
 ```
 
-The system may reuse:
+**§ 5.4(3)** The system may reuse:
 
 ```text
 unchanged tokens
@@ -1043,31 +1055,31 @@ unchanged call graph regions
 unchanged target analyses
 ```
 
-Correctness takes priority over reuse.
+**§ 5.4(4)** Correctness takes priority over reuse.
 
 ---
 
-# LSP protocol requirements
+## § 6 LSP protocol requirements
 
-## Protocol version
+### § 6.1 Protocol version
 
-The target protocol version is:
+**§ 6.1(1)** The target protocol version is:
 
 ```text
 LSP 3.18
 ```
 
-Protocol types should be generated from the official LSP 3.18 meta model where
+**§ 6.1(2)** Protocol types should be generated from the official LSP 3.18 meta model where
 practical.
 
-Generated enum handling must preserve unknown values when the protocol permits
+**§ 6.1(3)** Generated enum handling must preserve unknown values when the protocol permits
 future extension.
 
 ---
 
-## Base protocol
+### § 6.2 Base protocol
 
-Required:
+**§ 6.2(1)** Required:
 
 - correct headers;
 - UTF-8 JSON payloads;
@@ -1082,14 +1094,14 @@ Required:
 - internal-error handling;
 - server-not-initialized handling.
 
-One malformed request must not terminate the server unless transport integrity is
+**§ 6.2(2)** One malformed request must not terminate the server unless transport integrity is
 lost.
 
 ---
 
-## Lifecycle
+### § 6.3 Lifecycle
 
-Required:
+**§ 6.3(1)** Required:
 
 ```text
 initialize
@@ -1098,16 +1110,16 @@ shutdown
 exit
 ```
 
-The server must reject invalid lifecycle ordering according to the protocol.
+**§ 6.3(2)** The server must reject invalid lifecycle ordering according to the protocol.
 
-Initialization must inspect client capabilities before advertising server
+**§ 6.3(3)** Initialization must inspect client capabilities before advertising server
 capabilities.
 
 ---
 
-## Document synchronization
+### § 6.4 Document synchronization
 
-Required:
+**§ 6.4(1)** Required:
 
 ```text
 didOpen
@@ -1118,17 +1130,17 @@ willSave
 willSaveWaitUntil
 ```
 
-Incremental synchronization should be the preferred mode.
+**§ 6.4(2)** Incremental synchronization should be the preferred mode.
 
-Full synchronization may remain as a negotiated fallback.
+**§ 6.4(3)** Full synchronization may remain as a negotiated fallback.
 
-Document versions are mandatory for change ordering.
+**§ 6.4(4)** Document versions are mandatory for change ordering.
 
 ---
 
-## Language features
+### § 6.5 Language features
 
-The server must implement every applicable standard feature:
+**§ 6.5(1)** The server must implement every applicable standard feature:
 
 ```text
 completion
@@ -1171,13 +1183,13 @@ document diagnostics
 workspace diagnostics
 ```
 
-Features must use compiler facts and shared indexes.
+**§ 6.5(2)** Features must use compiler facts and shared indexes.
 
 ---
 
-## Workspace features
+### § 6.6 Workspace features
 
-Required where applicable:
+**§ 6.6(1)** Required where applicable:
 
 ```text
 workspace folders
@@ -1192,13 +1204,13 @@ execute command
 apply edit
 ```
 
-Workspace edits must be version-aware.
+**§ 6.6(2)** Workspace edits must be version-aware.
 
 ---
 
-## Window and progress features
+### § 6.7 Window and progress features
 
-Required:
+**§ 6.7(1)** Required:
 
 ```text
 show message
@@ -1209,9 +1221,9 @@ work-done progress
 partial results
 ```
 
-Long analyses must support cancellation and progress reporting.
+**§ 6.7(2)** Long analyses must support cancellation and progress reporting.
 
-Call hierarchy, root reachability, path explanations, and graph visualization
+**§ 6.7(3)** Call hierarchy, root reachability, path explanations, and graph visualization
 may return partial results when the client supports them. Every result must
 identify its snapshot and active `CompilationPlan`; cancellation must stop
 further traversal without publishing an incomplete result as a complete closed
@@ -1219,25 +1231,25 @@ target set or complete cause path.
 
 ---
 
-# Responsiveness model
+## § 7 Responsiveness model
 
-The LSP must remain interactive while deep analysis continues.
+**§ 7(1)** The LSP must remain interactive while deep analysis continues.
 
-Diagnostic refreshes for open siblings are coalesced into one module job.
+**§ 7(2)** Diagnostic refreshes for open siblings are coalesced into one module job.
 A job analyzes one captured overlay and routes compiler diagnostics to each
 source document; it must not repeat whole-module analysis for each open file.
 Superseded jobs and results are discarded, publications carry document versions,
 and shutdown prevents pending diagnostic publication.
 
-## Immediate tier
+### § 7.1 Immediate tier
 
-Target response:
+**§ 7.1(1)** Target response:
 
 ```text
 within one editor frame where practical
 ```
 
-Includes:
+**§ 7.1(2)** Includes:
 
 - lexical tokens;
 - bracket and delimiter knowledge;
@@ -1246,9 +1258,9 @@ Includes:
 - basic local completion;
 - local document symbols.
 
-## Fast tier
+### § 7.2 Fast tier
 
-Includes:
+**§ 7.2(1)** Includes:
 
 - local Sema;
 - type-aware completion;
@@ -1259,9 +1271,9 @@ Includes:
 - unit resolution;
 - local code actions.
 
-## Deep tier
+### § 7.3 Deep tier
 
-Includes:
+**§ 7.3(1)** Includes:
 
 - workspace references;
 - call graph;
@@ -1273,15 +1285,15 @@ Includes:
 - deadlock analysis;
 - large refactorings.
 
-Deep results arrive asynchronously but are tied to the exact snapshot.
+**§ 7.3(2)** Deep results arrive asynchronously but are tied to the exact snapshot.
 
 ---
 
-# Error-tolerant syntax model
+## § 8 Error-tolerant syntax model
 
-## Recovery nodes
+### § 8.1 Recovery nodes
 
-The parser must support explicit recovery structures such as:
+**§ 8.1(1)** The parser must support explicit recovery structures such as:
 
 ```text
 MissingToken
@@ -1293,7 +1305,7 @@ RecoveredType
 RecoveredBlock
 ```
 
-Conceptual recovered parameter:
+**§ 8.1(2)** Conceptual recovered parameter:
 
 ```text
 Parameter {
@@ -1303,17 +1315,17 @@ Parameter {
 }
 ```
 
-The recovered node lets the LSP understand intended structure while preserving
+**§ 8.1(3)** The recovered node lets the LSP understand intended structure while preserving
 the error.
 
 ---
 
-## Stable syntax identity
+### § 8.2 Stable syntax identity
 
-Unchanged declarations and subtrees should retain stable identities across
+**§ 8.2(1)** Unchanged declarations and subtrees should retain stable identities across
 nearby edits where practical.
 
-This improves:
+**§ 8.2(2)** This improves:
 
 - semantic-token deltas;
 - diagnostics stability;
@@ -1324,11 +1336,11 @@ This improves:
 
 ---
 
-## Recovery limits
+### § 8.3 Recovery limits
 
-Recovery must not fabricate arbitrary semantics.
+**§ 8.3(1)** Recovery must not fabricate arbitrary semantics.
 
-A recovered fact must record confidence:
+**§ 8.3(2)** A recovered fact must record confidence:
 
 ```text
 exact
@@ -1337,15 +1349,15 @@ probable recovery
 unknown
 ```
 
-Only exact and unambiguous recoveries may produce automatic safe fixes.
+**§ 8.3(3)** Only exact and unambiguous recoveries may produce automatic safe fixes.
 
 ---
 
-# Formatting and fixing
+## § 9 Formatting and fixing
 
-## Shared pipeline
+### § 9.1 Shared pipeline
 
-The canonical edit pipeline is:
+**§ 9.1(1)** The canonical edit pipeline is:
 
 ```text
 source snapshot
@@ -1355,15 +1367,15 @@ source snapshot
     -> text edits
 ```
 
-A code action or refactoring must not hand-format its generated text.
+**§ 9.1(2)** A code action or refactoring must not hand-format its generated text.
 
-It constructs a structured edit and delegates canonical output to the formatter.
+**§ 9.1(3)** It constructs a structured edit and delegates canonical output to the formatter.
 
 ---
 
-## Ordinary formatting
+### § 9.2 Ordinary formatting
 
-Used by:
+**§ 9.2(1)** Used by:
 
 ```text
 sec fmt
@@ -1372,7 +1384,7 @@ textDocument/rangeFormatting
 format on save
 ```
 
-Ordinary formatting:
+**§ 9.2(2)** Ordinary formatting:
 
 - preserves semantics;
 - does not require successful Sema;
@@ -1383,13 +1395,13 @@ Ordinary formatting:
 - produces canonical Sec style;
 - is idempotent.
 
-It may normalize accepted, unambiguous noncanonical syntax.
+**§ 9.2(3)** It may normalize accepted, unambiguous noncanonical syntax.
 
 ---
 
-## Syntax normalization without `--fix`
+### § 9.3 Syntax normalization without `--fix`
 
-The formatter may normalize:
+**§ 9.3(1)** The formatter may normalize:
 
 ```text
 func -> fn
@@ -1397,44 +1409,44 @@ x++  -> x += 1
 x--  -> x -= 1
 ```
 
-only when the intended construct is unambiguous.
+**§ 9.3(2)** only when the intended construct is unambiguous.
 
-Example:
+**§ 9.3(3)** Example:
 
 ```sec
 func Run() void {
 }
 ```
 
-becomes:
+**§ 9.3(4)** becomes:
 
 ```sec
 fn Run() void {
 }
 ```
 
-A call or identifier named `func` remains unchanged.
+**§ 9.3(5)** A call or identifier named `func` remains unchanged.
 
-Example:
+**§ 9.3(6)** Example:
 
 ```sec
 func(callback)
 ```
 
-remains unchanged.
+**§ 9.3(7)** remains unchanged.
 
-Increment and decrement are statement-only aliases.
+**§ 9.3(8)** Increment and decrement are statement-only aliases.
 
-They do not produce a value.
+**§ 9.3(9)** They do not produce a value.
 
-The resulting compound assignment must still satisfy mutability, contract, and
+**§ 9.3(10)** The resulting compound assignment must still satisfy mutability, contract, and
 `try` requirements.
 
 ---
 
-## Safe fixes
+### § 9.4 Safe fixes
 
-Used by:
+**§ 9.4(1)** Used by:
 
 ```text
 sec fmt --fix
@@ -1443,9 +1455,9 @@ LSP fix all
 safe fixes on save
 ```
 
-Safe fixes may use Sema.
+**§ 9.4(2)** Safe fixes may use Sema.
 
-A fix is safe only when:
+**§ 9.4(3)** A fix is safe only when:
 
 - the intended correction is unique;
 - the corrected program preserves the apparent intent;
@@ -1455,7 +1467,7 @@ A fix is safe only when:
 - affected source ranges are exact;
 - the result can be formatted canonically.
 
-Examples:
+**§ 9.4(4)** Examples:
 
 ```text
 insert missing parameter colon
@@ -1466,9 +1478,9 @@ add a missing comma when grammar and surrounding structure are unambiguous
 
 ---
 
-## Missing comma
+### § 9.5 Missing comma
 
-Implemented (2026-10-03). A P2002 missing-comma diagnostic whose repair the
+**§ 9.5(1)** Implemented (2026-10-03). A P2002 missing-comma diagnostic whose repair the
 parser proved — a struct field, parameter, call argument, or array element
 that begins on a later line than the previous item — offers:
 
@@ -1476,92 +1488,92 @@ that begins on a later line than the previous item — offers:
 Insert missing ','
 ```
 
-The edit inserts `,` directly after the previous item and before any trailing
+**§ 9.5(2)** The edit inserts `,` directly after the previous item and before any trailing
 comment, exactly as the opt-in formatter correction of
 `rules/tooling/formatter.md` § 27(37). Same-line adjacency gets no quick fix.
 
 ---
 
-## Missing parameter colon
+### § 9.6 Missing parameter colon
 
-Input:
+**§ 9.6(1)** Input:
 
 ```sec
 fn myfunc(a string) void {
 }
 ```
 
-Diagnostic:
+**§ 9.6(2)** Diagnostic:
 
 ```text
 expected `:` between parameter name `a` and type `string`
 ```
 
-Quick fix:
+**§ 9.6(3)** Quick fix:
 
 ```text
 Insert missing `:`
 ```
 
-Result:
+**§ 9.6(4)** Result:
 
 ```sec
 fn myfunc(a: string) void {
 }
 ```
 
-Ordinary `sec fmt` does not apply this fix.
+**§ 9.6(5)** Ordinary `sec fmt` does not apply this fix.
 
-`sec fmt --fix` may apply it.
+**§ 9.6(6)** `sec fmt --fix` may apply it.
 
-Safe fixes on save may apply it.
+**§ 9.6(7)** Safe fixes on save may apply it.
 
-Optional inline correction may apply it while typing when enabled.
+**§ 9.6(8)** Optional inline correction may apply it while typing when enabled.
 
 ---
 
-## Ownership fix
+### § 9.7 Ownership fix
 
-Input:
+**§ 9.7(1)** Input:
 
 ```sec
 let destination := source
 ```
 
-when the resolved copy classification does not permit copying `source` and an
+**§ 9.7(2)** when the resolved copy classification does not permit copying `source` and an
 explicit ownership transfer is legal.
 
-Quick fix:
+**§ 9.7(3)** Quick fix:
 
 ```sec
 let destination :<- source
 ```
 
-The fix is considered automatically safe only when no later source use becomes
+**§ 9.7(4)** The fix is considered automatically safe only when no later source use becomes
 invalid.
 
-When later uses exist, the action must explain the consequence and be classified
+**§ 9.7(5)** When later uses exist, the action must explain the consequence and be classified
 as a refactoring or multi-edit fix rather than a trivial safe fix.
 
-Ordinary formatting must never change:
+**§ 9.7(6)** Ordinary formatting must never change:
 
 ```sec
 let value := Function()
 ```
 
-to:
+**§ 9.7(7)** to:
 
 ```sec
 let value :<- Function()
 ```
 
-Direct construction from a temporary already uses the canonical form.
+**§ 9.7(8)** Direct construction from a temporary already uses the canonical form.
 
 ---
 
-## Save behavior
+### § 9.8 Save behavior
 
-Recommended defaults:
+**§ 9.8(1)** Recommended defaults:
 
 ```text
 format on save
@@ -1577,17 +1589,17 @@ automatic semantic edits while typing
     disabled
 ```
 
-Users may configure the categories independently.
+**§ 9.8(2)** Users may configure the categories independently.
 
-An editor client must not hide which fixes were applied.
+**§ 9.8(3)** An editor client must not hide which fixes were applied.
 
 ---
 
-# Diagnostics
+## § 10 Diagnostics
 
-## Shared diagnostic model
+### § 10.1 Shared diagnostic model
 
-Compiler diagnostics must contain:
+**§ 10.1(1)** Compiler diagnostics must contain:
 
 ```text
 stable ID
@@ -1606,9 +1618,9 @@ analysis confidence
 data payload
 ```
 
-The LSP maps this structure to protocol diagnostics.
+**§ 10.1(2)** The LSP maps this structure to protocol diagnostics.
 
-Protocol positions use the client's negotiated position encoding. While the
+**§ 10.1(3)** Protocol positions use the client's negotiated position encoding. While the
 server does not negotiate another encoding, every feature maps compiler
 Unicode-scalar columns and token widths to the protocol's UTF-16 code-unit
 default. Astral Unicode scalars therefore occupy two protocol character units
@@ -1620,15 +1632,15 @@ the inverse UTF-16-to-byte conversion. Both directions treat LF, CRLF, and bare
 CR as one physical line ending and must not reinterpret compiler scalar columns
 as protocol columns.
 
-It must not parse compiler message text to rediscover locations or IDs.
+**§ 10.1(4)** It must not parse compiler message text to rediscover locations or IDs.
 
 ---
 
-## Explanation quality
+### § 10.2 Explanation quality
 
-A diagnostic should explain the cause chain.
+**§ 10.2(1)** A diagnostic should explain the cause chain.
 
-Example:
+**§ 10.2(2)** Example:
 
 ```text
 This call is not ISR-safe
@@ -1637,13 +1649,13 @@ which calls Write
 which may block in platform/linux/file.sec
 ```
 
-Every relevant chain entry should be navigable.
+**§ 10.2(3)** Every relevant chain entry should be navigable.
 
 ---
 
-## Diagnostic origin
+### § 10.3 Diagnostic origin
 
-The client must be able to distinguish:
+**§ 10.3(1)** The client must be able to distinguish:
 
 ```text
 lexer
@@ -1662,11 +1674,11 @@ future knowledge pack
 
 ---
 
-## Safety and advisory diagnostics
+### § 10.4 Safety and advisory diagnostics
 
-Mandatory language-safety errors cannot be disabled.
+**§ 10.4(1)** Mandatory language-safety errors cannot be disabled.
 
-Advisory diagnostics use the configurable diagnostics model:
+**§ 10.4(2)** Advisory diagnostics use the configurable diagnostics model:
 
 ```text
 off
@@ -1675,7 +1687,7 @@ warning
 error
 ```
 
-Examples include:
+**§ 10.4(3)** Examples include:
 
 ```text
 style.merge-compatible-declarations
@@ -1687,9 +1699,9 @@ ownership.implicit-discarded-result
 
 ---
 
-## Diagnostic preview
+### § 10.5 Diagnostic preview
 
-Before applying a fix, the LSP should show:
+**§ 10.5(1)** Before applying a fix, the LSP should show:
 
 ```text
 files changed
@@ -1703,16 +1715,16 @@ target variants affected
 
 ---
 
-# Completion
+## § 11 Completion
 
-Completion must be semantic and context-sensitive.
+**§ 11(1)** Completion must be semantic and context-sensitive.
 
-Member completion uses the receiver at the active document cursor, including
+**§ 11(2)** Member completion uses the receiver at the active document cursor, including
 selectors nested in calls and `Ok(...)` / `Err(...)`. Same-module declarations
 from disk and unsaved overlays participate even when other declarations have
 recoverable syntax errors.
 
-It considers:
+**§ 11(3)** It considers:
 
 ```text
 syntax position
@@ -1735,9 +1747,9 @@ availability
 
 ---
 
-## Completion ranking
+### § 11.1 Completion ranking
 
-Prefer:
+**§ 11.1(1)** Prefer:
 
 1. exact valid symbols in scope;
 2. members valid for the resolved receiver;
@@ -1747,10 +1759,10 @@ Prefer:
 6. syntax keywords valid at the position;
 7. snippets and templates.
 
-Invalid or unavailable candidates should not appear as ordinary top-ranked
+**§ 11.1(2)** Invalid or unavailable candidates should not appear as ordinary top-ranked
 completion items.
 
-Expected-type member filtering (decision 2026-10-03): when a member selector is
+**§ 11.1(3)** Expected-type member filtering (decision 2026-10-03): when a member selector is
 written directly as a returned value — in a function or method body, or in a
 property getter, whose expected type is the property's declared type — member
 completion offers only members whose value type matches the expected type:
@@ -1761,7 +1773,7 @@ intermediate steps of a longer selector chain. Inside a property getter, the
 property itself is not offered on `self`, because returning it would recurse.
 Outside a direct return value, member completion is unfiltered.
 
-The same expected-type rule applies to subject and operand positions
+**§ 11.1(4)** The same expected-type rule applies to subject and operand positions
 (decision 2026-10-03):
 
 - the right operand of `==` or `!=` completes only values of the left
@@ -1783,7 +1795,7 @@ The same expected-type rule applies to subject and operand positions
   subjects. Strings, comments, completed tests, and ordinary members named
   `is` retain their ordinary completion behavior (2026-10-14).
 
-Within a `select` operation position, completion offers only canonical
+**§ 11.1(5)** Within a `select` operation position, completion offers only canonical
 selectable operations valid for the resolved type and context. In Sec 0.1 it
 must not offer `TrySend`, `TryReceive`, `TryLock`, `TryAcquire`, or
 `CancelRequested` as primitive select candidates. Hover on a branch binding
@@ -1793,11 +1805,11 @@ duplicate select-only declaration.
 
 ---
 
-## Unavailable completion explanation
+### § 11.2 Unavailable completion explanation
 
-The LSP may expose a secondary explanation for unavailable items.
+**§ 11.2(1)** The LSP may expose a secondary explanation for unavailable items.
 
-Examples:
+**§ 11.2(2)** Examples:
 
 ```text
 Advance()
@@ -1816,9 +1828,9 @@ Unavailable on the selected target.
 
 ---
 
-## Completion resolve
+### § 11.3 Completion resolve
 
-Expensive information may be filled through completion-item resolve:
+**§ 11.3(1)** Expensive information may be filled through completion-item resolve:
 
 ```text
 documentation
@@ -1832,37 +1844,37 @@ contract metadata
 
 ---
 
-## Auto-import
+### § 11.4 Auto-import
 
-The LSP may index unimported core and stdlib declarations for completion.
+**§ 11.4(1)** The LSP may index unimported core and stdlib declarations for completion.
 
-It must not make those symbols silently visible to Sema.
+**§ 11.4(2)** It must not make those symbols silently visible to Sema.
 
-Instead it provides an additional text edit or code action inserting the
+**§ 11.4(3)** Instead it provides an additional text edit or code action inserting the
 canonical import.
 
-Example:
+**§ 11.4(4)** Example:
 
 ```sec
 import "units"
 ```
 
-Sec does not require a `std/units` source spelling.
+**§ 11.4(5)** Sec does not require a `std/units` source spelling.
 
 ---
 
-# Hover
+## § 12 Hover
 
-Hover should present the most useful compiler-known information.
+**§ 12(1)** Hover should present the most useful compiler-known information.
 
-Hover on a string `+` or `+=` states the source-selected failure mode from Sema's
+**§ 12(2)** Hover on a string `+` or `+=` states the source-selected failure mode from Sema's
 plan and separates ordinary materialization, which may panic, from `try`, which
 reports `StringError`, and from an unhandled `Result` operand, which is invalid
 (MD-039). Its `try` quick fixes and refactors are offered only when analysis of the
 edited source proves them; `+=` with an unhandled operand offers both `try`
 placements, naming that the operand's `try` leaves the append in panic mode.
 
-General hover may include:
+**§ 12(3)** General hover may include:
 
 ```text
 declaration
@@ -1882,7 +1894,7 @@ target availability
 source location
 ```
 
-For a resolved callable, hover may additionally expose compiler-owned call-graph
+**§ 12(4)** For a resolved callable, hover may additionally expose compiler-owned call-graph
 facts:
 
 ```text
@@ -1900,22 +1912,22 @@ effect, panic, allocation, stack, and unsafe-provenance paths
 active target variant and CompilationPlan
 ```
 
-The presentation must distinguish proven direct facts, conservative possible
+**§ 12(5)** The presentation must distinguish proven direct facts, conservative possible
 facts, and open-world contracts. Unknown facts must not be displayed as closed
 or complete.
 
-Unknown facts must be omitted or explicitly marked unavailable.
+**§ 12(6)** Unknown facts must be omitted or explicitly marked unavailable.
 
-The LSP must never invent metadata that the compiler has not resolved.
+**§ 12(7)** The LSP must never invent metadata that the compiler has not resolved.
 
-Hover on `try` and its operand consumes Sema's resolved revision-2 facts. It
+**§ 12(8)** Hover on `try` and its operand consumes Sema's resolved revision-2 facts. It
 shows the protected carrier/operation, success type, locally handled states,
 unhandled states that propagate, propagation target, concrete-to-`error`
 widening, and remaining panic effect where relevant. For Option it explains
 Some success and None propagation/recovery; it must not claim Option cannot use
 try.
 
-Focused coverage includes single and multiple partial Result handlers, guarded
+**§ 12(9)** Focused coverage includes single and multiple partial Result handlers, guarded
 catch-all handlers, guarded handlers followed by variant handlers, exhaustive
 catch-all fallback, and residual concrete-to-`error` widening. Checked arithmetic,
 indexing, and narrowing conversions are covered at both the `try` keyword and
@@ -1925,7 +1937,7 @@ valid neighboring tries remain visible in a document with unrelated errors.
 Handler presentation requires a completed Sema handler plan, and incompatible
 Result propagation does not publish a completed Sema propagation fact.
 
-Carrier-incompatible handler diagnostics explain the actual carrier and offer
+**§ 12(10)** Carrier-incompatible handler diagnostics explain the actual carrier and offer
 the correct Result or Option patterns. Completion and hover expose `.Ok()` and
 `.Err()` as consuming projections returning Option, and `OkRef`/`ErrRef` as
 shared borrowed properties. Later-use diagnostics link to a consuming
@@ -1934,7 +1946,7 @@ and open-error hover may distinguish static type `error` from a concrete error
 identity proven by Sema. The LSP never reconstructs a parallel Result, Option,
 error, or ownership model.
 
-Hover on `await worker` consumes Sema's resolved operand specialization and
+**§ 12(11)** Hover on `await worker` consumes Sema's resolved operand specialization and
 always reports `TaskOutcome[T]` with the concrete `T`; it must not display bare
 `T` or `Result[T, TaskError]`. Hover, completion, and navigation expose the
 exact closed `TaskError` members `OutOfMemory`, `ResourceLimit`,
@@ -1942,26 +1954,26 @@ exact closed `TaskError` members `OutOfMemory`, `ResourceLimit`,
 the single canonical panic declaration. Await-related examples and code actions
 use `RequestCancel()` and never synthesize legacy `cancel()`.
 
-## Default information
+### § 12.1 Default information
 
-Hover and type completion expose the shared compiler-resolved default value and
+**§ 12.1(1)** Hover and type completion expose the shared compiler-resolved default value and
 its origin, including explicit type defaults, range-derived defaults and the
 first value of `in [...]`. Non-defaultable types are reported as having no
 default.
 
-For omitted defaultable struct fields, inlay information may show the resolved
+**§ 12.1(2)** For omitted defaultable struct fields, inlay information may show the resolved
 value without modifying source. Explicit code actions may expand defaulted
 fields, insert an explicit default value, or declare a named-type default. These
 are refactorings and must not run as ordinary formatting. The LSP must call the
 same `DefaultValueOf` semantics as Sema rather than reimplement selection.
 
-An error parameter (MD-120) is presented so that a constrained unknown `E: error`, the explicit root `error` and a concrete instantiation stay distinct; a specialized location shows its concrete argument. Completion in a template offers only whole-channel `Err(...)` bindings, never variants of an unknown `E`.
+**§ 12.1(3)** An error parameter (MD-120) is presented so that a constrained unknown `E: error`, the explicit root `error` and a concrete instantiation stay distinct; a specialized location shows its concrete argument. Completion in a template offers only whole-channel `Err(...)` bindings, never variants of an unknown `E`.
 
 ---
 
-# Signature help
+## § 13 Signature help
 
-Signature help includes:
+**§ 13(1)** Signature help includes:
 
 ```text
 overload candidates
@@ -1978,13 +1990,13 @@ error return
 documentation
 ```
 
-A consuming move-only parameter should be clearly marked.
+**§ 13(2)** A consuming move-only parameter should be clearly marked.
 
 ---
 
-# Navigation and references
+## § 14 Navigation and references
 
-Required:
+**§ 14(1)** Required:
 
 ```text
 go to declaration
@@ -1995,7 +2007,7 @@ find references
 document highlight
 ```
 
-Navigation must work across:
+**§ 14(2)** Navigation must work across:
 
 ```text
 project modules
@@ -2006,7 +2018,7 @@ generated sources
 target-specific variants
 ```
 
-References distinguish:
+**§ 14(3)** References distinguish:
 
 ```text
 read
@@ -2023,11 +2035,11 @@ override or interface implementation
 
 ---
 
-# Rename
+## § 15 Rename
 
-Rename must be semantic.
+**§ 15(1)** Rename must be semantic.
 
-It must:
+**§ 15(2)** It must:
 
 - resolve the exact symbol;
 - respect visibility;
@@ -2039,17 +2051,17 @@ It must:
 - update documentation links where supported;
 - preview multi-file changes.
 
-Prepare-rename must reject keywords, invalid scopes, and non-renamable compiler
+**§ 15(3)** Prepare-rename must reject keywords, invalid scopes, and non-renamable compiler
 symbols.
 
 ---
 
-# Semantic tokens
+## § 16 Semantic tokens
 
-Semantic tokens should distinguish Sec-specific meaning when client capability
+**§ 16(1)** Semantic tokens should distinguish Sec-specific meaning when client capability
 allows it.
 
-Useful custom token types or modifiers may include:
+**§ 16(2)** Useful custom token types or modifiers may include:
 
 ```text
 unit
@@ -2065,19 +2077,19 @@ unsafe
 deprecated
 ```
 
-Fallback clients use standard token types and modifiers.
+**§ 16(3)** Fallback clients use standard token types and modifiers.
 
-Moved or unavailable bindings may be visually de-emphasized.
+**§ 16(4)** Moved or unavailable bindings may be visually de-emphasized.
 
-The semantic meaning remains available independently of color configuration.
+**§ 16(5)** The semantic meaning remains available independently of color configuration.
 
 ---
 
-# Inlay hints
+## § 17 Inlay hints
 
-Inlay hints should be individually configurable.
+**§ 17(1)** Inlay hints should be individually configurable.
 
-Implemented (2026-10-04), `textDocument/inlayHint` from Sema facts:
+**§ 17(2)** Implemented (2026-10-04), `textDocument/inlayHint` from Sema facts:
 
 - inferred type (`sec.inlayHints.types`): `: T` after the name of a `let`
   without a declared type, from the resolved binding; left out when the
@@ -2110,7 +2122,7 @@ Implemented (2026-10-04), `textDocument/inlayHint` from Sema facts:
   (`sec.inlayHints.*` in VS Code); hints are restricted to the requested range
   and never change source.
 
-Ownership hints (`sec.inlayHints.ownership`, 2026-10-04) show only effects
+**§ 17(3)** Ownership hints (`sec.inlayHints.ownership`, 2026-10-04) show only effects
 the source does not spell, from Sema facts:
 
 - `ref` or `ref mut` before a plain place passed to a reference parameter,
@@ -2130,10 +2142,10 @@ the source does not spell, from Sema facts:
   when its type copies semantically, and after a semantically copying match
   binding.
 
-Explicit `<-` and `ref` forms, temporaries, existing references, and trivial
+**§ 17(4)** Explicit `<-` and `ref` forms, temporaries, existing references, and trivial
 copies get no hint.
 
-Inlay hint resolve (2026-10-29): `inlayHintProvider.resolveProvider`
+**§ 17(5)** Inlay hint resolve (2026-10-29): `inlayHintProvider.resolveProvider`
 advertises `inlayHint/resolve`. Hints retain stable label parts and opaque data
 for the exact source snapshot. Resolve adds Markdown tooltips and declaration
 locations from the existing resolved binding type or selected call parameter;
@@ -2141,7 +2153,7 @@ imported declarations retain their own URI and range. Types without one physical
 declaration do not acquire a guessed target. Ownership and default-preview hints
 explain the already resolved effect or omitted defaults without changing source.
 
-The client’s `textDocument.inlayHint.resolveSupport.properties` controls lazy
+**§ 17(6)** The client’s `textDocument.inlayHint.resolveSupport.properties` controls lazy
 `tooltip`, `label.tooltip` and `label.location` properties independently;
 unsupported lazy properties are supplied when listing hints. Resolve regenerates
 the current hint using current compiler facts and settings, preserves its label,
@@ -2150,10 +2162,10 @@ or unmatched hints are rejected; changed or closed source snapshots require a
 fresh hint request. Resolve uses the read-only worker queue and is superseded by
 queued document changes or close notifications.
 
-Pending: generic instantiation, resolved
+**§ 17(7)** Pending: generic instantiation, resolved
 overload, unit conversion, contract, error type, allocation and target hints.
 
-Possible categories:
+**§ 17(8)** Possible categories:
 
 ```text
 inferred type
@@ -2171,7 +2183,7 @@ allocation
 target
 ```
 
-Call navigation and references also distinguish:
+**§ 17(9)** Call navigation and references also distinguish:
 
 ```text
 direct call
@@ -2189,7 +2201,7 @@ interrupt entry
 await or join synchronization
 ```
 
-Examples:
+**§ 17(10)** Examples:
 
 ```text
 resource /* moved */
@@ -2199,15 +2211,15 @@ resource /* moved */
 value /* copied */
 ```
 
-Hints must not overwhelm the source by default.
+**§ 17(11)** Hints must not overwhelm the source by default.
 
-Ownership hints for non-obvious consumption are high priority.
+**§ 17(12)** Ownership hints for non-obvious consumption are high priority.
 
 ---
 
-# Code lens
+## § 18 Code lens
 
-Code lenses may expose:
+**§ 18(1)** Code lenses may expose:
 
 ```text
 reference count
@@ -2225,20 +2237,20 @@ callers
 callees
 ```
 
-Generic declarations, concrete specialization identity, substitution context,
+**§ 18(2)** Generic declarations, concrete specialization identity, substitution context,
 and generic diagnostics come from the compiler workspace and the canonical
 boundary in `rules/compiler/generics_lowering.md`. The LSP must not implement an
 independent generic-lowering engine. Navigation from a concrete use resolves to
 its source generic declaration; concrete-specialization inspection may be
 presented separately, with origin-module provenance retained when available.
 
-Call-graph lenses use the compiler-owned graph for the active
+**§ 18(3)** Call-graph lenses use the compiler-owned graph for the active
 `CompilationPlan`. They may show direct and possible counts separately, mark an
 open callable contract, identify roots, and expose same-stack recursion, spawn
 origins, synchronization origins, and available cause paths. A possible or
 open-world relationship must not be presented as a confirmed direct call.
 
-Example:
+**§ 18(4)** Example:
 
 ```text
 Stack: 416 bytes local, 1.8 KiB maximum path
@@ -2247,41 +2259,41 @@ Blocking: no
 Targets: 3 valid, 1 invalid
 ```
 
-Expensive lenses may load lazily.
+**§ 18(5)** Expensive lenses may load lazily.
 
 ---
 
-# Shaped values
+## § 19 Shaped values
 
-Completion and hover for shaped values consume the canonical compiler-known
+**§ 19(1)** Completion and hover for shaped values consume the canonical compiler-known
 member registry and resolved Sema facts. The LSP must not maintain an
 independent shaped API table.
 
-Hover presents the exact resolved expression/member type and exact property or
+**§ 19(2)** Hover presents the exact resolved expression/member type and exact property or
 call return type. Where useful for correct use it additionally presents `Rank`,
 `Shape`, `Len`, whether shape knowledge is static or runtime, `IsContiguous`,
 `Layout`, `MemorySpace`, an unsafe `Ptr` requirement, and any runtime shape
 check requiring `try`.
 
-Hover must preserve the distinction between normal absence and failure. For
+**§ 19(3)** Hover must preserve the distinction between normal absence and failure. For
 example, `Normalize() -> Option[vector[float32, 3]]` states that zero magnitude
 produces `None`, while a storage-producing operation displays its exact
 `Result[..., StorageError]` and principal failure condition.
 
-When a shaped operation requires `try` only because compatibility is not
+**§ 19(4)** When a shaped operation requires `try` only because compatibility is not
 statically proven, hover states the runtime shape condition rather than implying
 allocation failure. When Sema proves compatibility, hover presents the
 infallible result. It must never invent shaped facts that Sema has not resolved.
 
 ---
 
-# Ownership support
+## § 20 Ownership support
 
-Ownership is a first-class editor feature.
+**§ 20(1)** Ownership is a first-class editor feature.
 
-## Hover state
+### § 20.1 Hover state
 
-Example:
+**§ 20.1(1)** Example:
 
 ```text
 Type: Buffer
@@ -2292,7 +2304,7 @@ Active borrows: 0
 Destruction: end of scope
 ```
 
-After move:
+**§ 20.1(2)** After move:
 
 ```text
 Type: Buffer
@@ -2303,9 +2315,9 @@ Move location: line 18
 
 ---
 
-## Partial values
+### § 20.2 Partial values
 
-For a partially available struct:
+**§ 20.2(1)** For a partially available struct:
 
 ```text
 session
@@ -2319,13 +2331,13 @@ Moved:
     file
 ```
 
-The LSP should explain which operations require the complete value.
+**§ 20.2(2)** The LSP should explain which operations require the complete value.
 
 ---
 
-## Ownership actions
+### § 20.3 Ownership actions
 
-Possible actions:
+**§ 20.3(1)** Possible actions:
 
 ```text
 Go to move
@@ -2341,11 +2353,11 @@ Show ownership path
 
 ---
 
-## Ownership preview
+### § 20.4 Ownership preview
 
-An ownership-changing action must explain its effects.
+**§ 20.4(1)** An ownership-changing action must explain its effects.
 
-Example:
+**§ 20.4(2)** Example:
 
 ```text
 Change `:=` to `:<-`
@@ -2354,17 +2366,17 @@ source becomes unavailable after line 14
 later use at line 21 would become invalid
 ```
 
-Such an action is not classified as automatically safe unless all consequences
+**§ 20.4(3)** Such an action is not classified as automatically safe unless all consequences
 are resolved.
 
 ---
 
-## Match ownership and coverage
+### § 20.5 Match ownership and coverage
 
-The LSP consumes compiler-resolved match facts and does not implement a
+**§ 20.5(1)** The LSP consumes compiler-resolved match facts and does not implement a
 parallel pattern, ownership, borrow, or exhaustiveness analyzer.
 
-Hover on a payload or field binding exposes its resolved type and binding mode:
+**§ 20.5(2)** Hover on a payload or field binding exposes its resolved type and binding mode:
 
 ```text
 copy
@@ -2374,30 +2386,30 @@ mutable borrow
 temporary forwarding
 ```
 
-For a guarded move-only binding, tooling distinguishes a prospective move from
+**§ 20.5(3)** For a guarded move-only binding, tooling distinguishes a prospective move from
 a committed move and may display `moves payload if this arm is selected`.
 Pattern success alone must not make the subject appear moved.
 
-After a match, hover and mandatory diagnostics expose compiler-produced
+**§ 20.5(4)** After a match, hover and mandatory diagnostics expose compiler-produced
 `Moved`, `Partially available`, or `Conditionally available` state and retain
 related locations for the affected Place, moving arm, ownership binding, move
 commit, later invalid use, and merge reason where available.
 
-Configurable inlay hints may show `copy`, `move`, `ref`, `ref mut`, or `moves if
+**§ 20.5(5)** Configurable inlay hints may show `copy`, `move`, `ref`, `ref mut`, or `moves if
 selected`. Disabling hints never disables ownership analysis or diagnostics.
 
-Exhaustiveness diagnostics and generated-match actions use the resolved
+**§ 20.5(6)** Exhaustiveness diagnostics and generated-match actions use the resolved
 coverage domain, including ordinary enum underlying value classes, open bit-enum
 domains, guarded residual coverage, and reachable compiler-known union `empty`
 state. Generated patterns must not introduce direct bool, general literal,
 range, nested recursive, or ordinary struct-subject patterns.
 
-Completion and code actions must not recommend payload use that is invalid in
+**§ 20.5(7)** Completion and code actions must not recommend payload use that is invalid in
 the compiler-resolved ownership state.
 
 ### Error patterns, inactive arms and `Some` (MD-029/MD-042/MD-102)
 
-The parsed contextual `Err(.Variant...)` form, its resolved qualified variant
+**§ 20.5(8)** The parsed contextual `Err(.Variant...)` form, its resolved qualified variant
 and its payload-binding sites keep source locations for hover, diagnostics,
 references and go-to-definition. After `Err(.` completion offers the variants
 of the one concrete error type supplied by the protected channel or `Result`
@@ -2415,7 +2427,7 @@ report the same advisory identities
 
 ### Register shadow knowledge (MD-113)
 
-Amendment 2026-10-30 (`rules/corrections/applied/MD-113-shadow-knowledge-across-calls-decision-20261030.md` §§ 4(8), 7(7), 9(7)). Completion, hover and
+**§ 20.5(9)** Amendment 2026-10-30 (`rules/corrections/applied/MD-113-shadow-knowledge-across-calls-decision-20261030.md` §§ 4(8), 7(7), 9(7)). Completion, hover and
 go-to-definition for `self.IsShadowKnown(T.Field...)` use Sema's selector
 resolution: the selector links to the final field and shows the whole path, and
 no LSP-only parser exists. Reserved-name diagnostics for `Read`, `Write` and
@@ -2429,7 +2441,7 @@ state.
 
 ### Hardware fact declarations (MD-111)
 
-Amendment 2026-10-30 (`rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md` § 13(3)). Completion and hover for
+**§ 20.5(10)** Amendment 2026-10-30 (`rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md` § 13(3)). Completion and hover for
 `hardware region`, `hardware resource` and `hardware endpoint` members come from
 the compiler's metadata schema: allowed members, exact types, requiredness,
 enum cases and their meaning, with no separate LSP or formatter copy. Navigation
@@ -2441,9 +2453,9 @@ alias facts for bindings.
 
 ---
 
-# Contracts
+## § 21 Contracts
 
-The LSP should display:
+**§ 21(1)** The LSP should display:
 
 ```text
 nominal type
@@ -2455,7 +2467,7 @@ failing expression
 valid range or set
 ```
 
-Example:
+**§ 21(2)** Example:
 
 ```text
 Type: Percent
@@ -2464,7 +2476,7 @@ Contract: range 0..100
 Proof: runtime check required
 ```
 
-Code actions may:
+**§ 21(3)** Code actions may:
 
 ```text
 insert required try handling
@@ -2476,25 +2488,25 @@ explain proof failure
 
 ---
 
-# Units
+## § 22 Units
 
-The LSP must use the compiler's canonical unit model.
+**§ 22(1)** The LSP must use the compiler's canonical unit model.
 
-It may know that a unit symbol is available from the standard-library module:
+**§ 22(2)** It may know that a unit symbol is available from the standard-library module:
 
 ```sec
 import "units"
 ```
 
-When a unit is not imported, the LSP offers an import action.
+**§ 22(3)** When a unit is not imported, the LSP offers an import action.
 
-It must not silently inject unit symbols into compiler scope.
+**§ 22(4)** It must not silently inject unit symbols into compiler scope.
 
 ---
 
-## Unit hover
+### § 22.1 Unit hover
 
-When compiler metadata exists, hover may show:
+**§ 22.1(1)** When compiler metadata exists, hover may show:
 
 ```text
 Name
@@ -2518,7 +2530,7 @@ Definition
 Source module
 ```
 
-Example:
+**§ 22.1(2)** Example:
 
 ```text
 Name: metre per second
@@ -2529,12 +2541,12 @@ Offset: 0
 System: SI
 ```
 
-When metadata is not implemented, show only verified facts.
+**§ 22.1(3)** When metadata is not implemented, show only verified facts.
 Unknown Kind is shown as unknown and is never guessed from dimension. Tooling
 preserves named versus structural source identity and does not rewrite `<m/s>`
 to `<mps>`.
 
-Example:
+**§ 22.1(4)** Example:
 
 ```text
 Resolved symbol: m
@@ -2544,9 +2556,9 @@ Dimension metadata: not yet available
 
 ---
 
-## Unit actions
+### § 22.2 Unit actions
 
-Possible actions:
+**§ 22.2(1)** Possible actions:
 
 ```text
 Import "units"
@@ -2557,21 +2569,21 @@ Find unit references
 Show exact scale and offset
 ```
 
-The LSP surfaces compiler diagnostics for incompatible dimension or Kind,
+**§ 22.2(2)** The LSP surfaces compiler diagnostics for incompatible dimension or Kind,
 point/difference and Origin misuse, invalid affine/logarithmic arithmetic,
 lossy conversion, deprecated units, and derived currency warnings. Expressions
 such as `<EUR/s>` and `<SEK/EUR>` remain valid when warned about.
 
-Code actions may offer a compiler-proven fixed conversion, declared conversion
+**§ 22.2(3)** Code actions may offer a compiler-proven fixed conversion, declared conversion
 function, in-scope factor-provided conversion, or exact carrier change. They
 must not invent an exchange rate or rounding policy. Unit algebra and derivation
 facts come from Sema rather than an LSP-owned implementation.
 
 ---
 
-# Target-aware analysis
+## § 23 Target-aware analysis
 
-The LSP must understand the active:
+**§ 23(1)** The LSP must understand the active:
 
 ```text
 project
@@ -2584,26 +2596,26 @@ features
 diagnostic policy
 ```
 
-Users must be able to change the active target without restarting the server.
+**§ 23(2)** Users must be able to change the active target without restarting the server.
 
 ---
 
-## Multi-target diagnostics
+### § 23.1 Multi-target diagnostics
 
-Implemented sharing (2026-11-04): background target comparison and interface/type
+**§ 23.1(1)** Implemented sharing (2026-11-04): background target comparison and interface/type
 conformance lenses use one common per-target Sema snapshot service. Identical
 active-document, prepared source/import closure, effective target/configuration
 and analysis-epoch inputs share an in-flight computation and completed result.
 The lens presentation cache follows the same source/plan fingerprint.
 
-Snapshots contain detached compiler diagnostics, warnings and structured
+**§ 23.1(2)** Snapshots contain detached compiler diagnostics, warnings and structured
 conformance facts. Readers receive independent copies; mutable analyzers are
 never shared between consumers. Completed snapshots are bounded to 32 entries
 and 8 MiB, and failed computations publish no successful empty snapshot. Source
 preparation/parsing still runs per request; parsing caches, incremental analysis
 and cross-target recomputation while typing remain separate work.
 
-A diagnostic records applicability:
+**§ 23.1(3)** A diagnostic records applicability:
 
 ```text
 all targets
@@ -2613,7 +2625,7 @@ one architecture
 one profile
 ```
 
-Example:
+**§ 23.1(4)** Example:
 
 ```text
 linux/amd64: valid
@@ -2625,9 +2637,9 @@ baremetal/cortex-m4: invalid
 
 ---
 
-## Target status
+### § 23.2 Target status
 
-The LSP should provide:
+**§ 23.2(1)** The LSP should provide:
 
 ```text
 target selection
@@ -2640,16 +2652,16 @@ platform symbol navigation
 
 ---
 
-# Compiler analysis
+## § 24 Compiler analysis
 
-Everything produced by compiler analysis should be available in the editor.
+**§ 24(1)** Everything produced by compiler analysis should be available in the editor.
 
-## Call graph
+### § 24.1 Call graph
 
-The canonical semantics are defined by `call_graph.md`. The LSP exposes
+**§ 24.1(1)** The canonical semantics are defined by `call_graph.md`. The LSP exposes
 compiler-owned graph facts and does not define another graph model.
 
-Required callable queries include:
+**§ 24.1(2)** Required callable queries include:
 
 ```text
 direct callers
@@ -2677,7 +2689,7 @@ active target variant and CompilationPlan
 
 ### Relationship classification
 
-Call hierarchy, hover, code lens, navigation, and graph views preserve both the
+**§ 24.1(3)** Call hierarchy, hover, code lens, navigation, and graph views preserve both the
 dispatch kind and the execution relationship. They distinguish:
 
 ```text
@@ -2697,13 +2709,13 @@ interrupt
 callback
 ```
 
-Same-stack calls are not conflated with task-, thread-, or process-creation
+**§ 24.1(4)** Same-stack calls are not conflated with task-, thread-, or process-creation
 edges. Consequently, same-stack recursion is reported separately from task
 spawn cycles, thread-start cycles, and process-launch cycles.
 
 ### Call hierarchy
 
-Incoming-call results distinguish:
+**§ 24.1(5)** Incoming-call results distinguish:
 
 ```text
 confirmed direct caller
@@ -2718,38 +2730,38 @@ foreign callback entry
 interrupt root
 ```
 
-Outgoing-call results distinguish direct callees, closed possible-target sets,
+**§ 24.1(6)** Outgoing-call results distinguish direct callees, closed possible-target sets,
 and open callable contracts. An open target set must retain its compiler-proven
 callable contract instead of being shown as an empty or complete target set.
 
 ### Root and path explanations
 
-For a callable or diagnostic, the LSP may expose all known root classes that
+**§ 24.1(7)** For a callable or diagnostic, the LSP may expose all known root classes that
 reach it and the compiler-owned cause path for an effect, panic, allocation,
 stack contribution, unsafe boundary, reference escape, or ownership fact. Path
 steps retain implicit edges and execution-context boundaries.
 
-Task-spawn origin, and `await` or `join` synchronization origin where known,
+**§ 24.1(8)** Task-spawn origin, and `await` or `join` synchronization origin where known,
 must be navigable. Await and join synchronization are not displayed as ordinary
 call edges to the task body. Continuation information is shown as a separate
 synchronization fact.
 
 ### Target and snapshot requirements
 
-Every graph response belongs to one concrete `CompilationPlan` and active
+**§ 24.1(9)** Every graph response belongs to one concrete `CompilationPlan` and active
 target variant. Cross-plan comparison is presented as comparison of separate
 graphs, never as one merged runtime graph.
 
-Deep graph requests support cancellation, work-done progress, and partial
+**§ 24.1(10)** Deep graph requests support cancellation, work-done progress, and partial
 results. Partial target discovery must remain visibly partial. The LSP must not
 label a target set closed, a path complete, or a root set exhaustive until the
 compiler analysis for that snapshot has established that fact.
 
 ---
 
-## Stack analysis
+### § 24.2 Stack analysis
 
-Display:
+**§ 24.2(1)** Display:
 
 ```text
 semantic local estimate
@@ -2762,9 +2774,9 @@ task entry contribution
 
 ---
 
-## Allocation and escape analysis
+### § 24.3 Allocation and escape analysis
 
-Display:
+**§ 24.3(1)** Display:
 
 ```text
 allocation sites
@@ -2778,9 +2790,9 @@ no-allocation violations
 
 ---
 
-## Effect analysis
+### § 24.4 Effect analysis
 
-Display:
+**§ 24.4(1)** Display:
 
 ```text
 may allocate
@@ -2793,13 +2805,13 @@ may call foreign code
 may acquire locks
 ```
 
-Cause chains must be navigable.
+**§ 24.4(2)** Cause chains must be navigable.
 
 ---
 
-## ISR analysis
+### § 24.5 ISR analysis
 
-Display:
+**§ 24.5(1)** Display:
 
 ```text
 ISR safe or unsafe
@@ -2814,9 +2826,9 @@ unsafe call
 
 ---
 
-## Concurrency analysis
+### § 24.6 Concurrency analysis
 
-When implemented, expose:
+**§ 24.6(1)** When implemented, expose:
 
 ```text
 task and thread transferability
@@ -2829,13 +2841,13 @@ cancellation paths
 structured-concurrency violations
 ```
 
-A heuristic finding must be marked as heuristic.
+**§ 24.6(2)** A heuristic finding must be marked as heuristic.
 
 ---
 
-## Lowering analysis
+### § 24.7 Lowering analysis
 
-Optional advanced views may show:
+**§ 24.7(1)** Optional advanced views may show:
 
 ```text
 Semantic IR
@@ -2846,23 +2858,23 @@ ABI
 target instruction summary
 ```
 
-These are debugging and optimization views.
+**§ 24.7(2)** These are debugging and optimization views.
 
-They do not redefine source semantics.
-
----
-
-# Better code analysis
-
-Better code analysis identifies valid but improvable code.
-
-It produces advisory diagnostics and refactoring actions.
-
-It is distinct from formatting and compiler-error correction.
+**§ 24.7(3)** They do not redefine source semantics.
 
 ---
 
-## Analysis categories
+## § 25 Better code analysis
+
+**§ 25(1)** Better code analysis identifies valid but improvable code.
+
+**§ 25(2)** It produces advisory diagnostics and refactoring actions.
+
+**§ 25(3)** It is distinct from formatting and compiler-error correction.
+
+---
+
+### § 25.1 Analysis categories
 
 ```text
 style
@@ -2880,9 +2892,9 @@ hardware safety
 
 ---
 
-## Merge compatible declarations
+### § 25.2 Merge compatible declarations
 
-Example:
+**§ 25.2(1)** Example:
 
 ```sec
 let mut Audi: Car
@@ -2891,31 +2903,31 @@ let mut Volvo: Car
 let mut Skoda: Car
 ```
 
-The canonical compact form is:
+**§ 25.2(2)** The canonical compact form is:
 
 ```sec
 Car mut: Audi, Saab, Volvo, Skoda
 ```
 
-Suggested diagnostic:
+**§ 25.2(3)** Suggested diagnostic:
 
 ```text
 style.merge-compatible-declarations
 ```
 
-Default severity:
+**§ 25.2(4)** Default severity:
 
 ```text
 info
 ```
 
-Suggested action:
+**§ 25.2(5)** Suggested action:
 
 ```text
 Merge compatible declarations
 ```
 
-The action is allowed only when:
+**§ 25.2(6)** The action is allowed only when:
 
 - declarations are in the same scope;
 - declarations have the exact same type;
@@ -2926,13 +2938,13 @@ The action is allowed only when:
 - no visibility or lifetime boundary changes;
 - no initializer dependency changes meaning.
 
-Ordinary formatting does not perform this transformation.
+**§ 25.2(7)** Ordinary formatting does not perform this transformation.
 
 ---
 
-## Typed declaration tables
+### § 25.3 Typed declaration tables
 
-Example:
+**§ 25.3(1)** Example:
 
 ```sec
 type TokenType string
@@ -2945,9 +2957,9 @@ TokenType (
 )
 ```
 
-The LSP should understand this as a related declaration table.
+**§ 25.3(2)** The LSP should understand this as a related declaration table.
 
-It may provide:
+**§ 25.3(3)** It may provide:
 
 ```text
 sort declaration table
@@ -2958,14 +2970,14 @@ convert compatible declarations to table
 split table
 ```
 
-Sorting must not occur automatically unless declaration order is semantically
+**§ 25.3(4)** Sorting must not occur automatically unless declaration order is semantically
 irrelevant and the user explicitly requests it.
 
 ---
 
-## Function analysis
+### § 25.4 Function analysis
 
-Possible advisory findings:
+**§ 25.4(1)** Possible advisory findings:
 
 ```text
 large function
@@ -2979,9 +2991,9 @@ unnecessary copy
 avoidable allocation
 ```
 
-A large-function diagnostic should provide evidence.
+**§ 25.4(2)** A large-function diagnostic should provide evidence.
 
-Example:
+**§ 25.4(3)** Example:
 
 ```text
 Statements: 146
@@ -2993,16 +3005,16 @@ Suggested extraction regions: 3
 
 ---
 
-# File and type organization
+## § 26 File and type organization
 
-## Primary type per file
+### § 26.1 Primary type per file
 
-The recommended Sec organization follows the broad convention used by several
+**§ 26.1(1)** The recommended Sec organization follows the broad convention used by several
 languages and codebases:
 
 > One primary public nominal type per source file.
 
-The same file should normally contain:
+**§ 26.1(2)** The same file should normally contain:
 
 ```text
 the primary type
@@ -3012,7 +3024,7 @@ nested or subordinate types
 direct documentation
 ```
 
-Example:
+**§ 26.1(3)** Example:
 
 ```text
 Car.sec
@@ -3020,13 +3032,13 @@ Car.sec
     impl Car
 ```
 
-This is a code-quality recommendation, not a mandatory language rule.
+**§ 26.1(4)** This is a code-quality recommendation, not a mandatory language rule.
 
 ---
 
-## File organization diagnostics
+### § 26.2 File organization diagnostics
 
-Suggested advisory diagnostics:
+**§ 26.2(1)** Suggested advisory diagnostics:
 
 ```text
 style.multiple-primary-types-per-file
@@ -3035,7 +3047,7 @@ style.impl-separated-from-type
 style.unrelated-declaration-in-file
 ```
 
-Default severity:
+**§ 26.2(2)** Default severity:
 
 ```text
 info
@@ -3043,9 +3055,9 @@ info
 
 ---
 
-## File refactorings
+### § 26.3 File refactorings
 
-Required actions:
+**§ 26.3(1)** Required actions:
 
 ```text
 Move type to new file
@@ -3057,9 +3069,9 @@ Move type to another module
 Move related private helpers
 ```
 
-Moving within the same module is simpler than moving between modules.
+**§ 26.3(2)** Moving within the same module is simpler than moving between modules.
 
-Cross-module moves must update:
+**§ 26.3(3)** Cross-module moves must update:
 
 ```text
 imports
@@ -3071,21 +3083,21 @@ tests
 generated metadata
 ```
 
-Multi-file moves require preview.
+**§ 26.3(4)** Multi-file moves require preview.
 
 ---
 
-# Refactoring
+## § 27 Refactoring
 
-Refactoring is a core language-server responsibility.
+**§ 27(1)** Refactoring is a core language-server responsibility.
 
-It must use compiler identity and structured edits.
+**§ 27(2)** It must use compiler identity and structured edits.
 
 ---
 
-## Required refactorings
+### § 27.1 Required refactorings
 
-Initial and planned actions include:
+**§ 27.1(1)** Initial and planned actions include:
 
 ```text
 Rename symbol
@@ -3121,57 +3133,57 @@ Remove unused imports
 
 ---
 
-## Refactoring safety classes
+### § 27.2 Refactoring safety classes
 
-Every action is classified.
+**§ 27.2(1)** Every action is classified.
 
 ### Formatting
 
-No semantic change.
+**§ 27.2(2)** No semantic change.
 
-May run automatically.
+**§ 27.2(3)** May run automatically.
 
 ### Syntax normalization
 
-Unambiguous canonicalization.
+**§ 27.2(4)** Unambiguous canonicalization.
 
-May run automatically.
+**§ 27.2(5)** May run automatically.
 
 ### Safe semantic fix
 
-Compiler-proven unique correction.
+**§ 27.2(6)** Compiler-proven unique correction.
 
-May run on save when enabled.
+**§ 27.2(7)** May run on save when enabled.
 
 ### Code cleanup
 
-Valid-code improvement preserving behavior.
+**§ 27.2(8)** Valid-code improvement preserving behavior.
 
-Requires configured cleanup or explicit action.
+**§ 27.2(9)** Requires configured cleanup or explicit action.
 
 ### Structural refactoring
 
-Changes declarations or file organization while preserving behavior.
+**§ 27.2(10)** Changes declarations or file organization while preserving behavior.
 
-Requires explicit action and preview for multi-file edits.
+**§ 27.2(11)** Requires explicit action and preview for multi-file edits.
 
 ### Behavior-changing refactoring
 
-Changes ownership, API, effects, or runtime behavior.
+**§ 27.2(12)** Changes ownership, API, effects, or runtime behavior.
 
-Always requires explicit confirmation and consequence preview.
+**§ 27.2(13)** Always requires explicit confirmation and consequence preview.
 
 ### Potentially lossy action
 
-May drop information, comments, compatibility, or behavior.
+**§ 27.2(14)** May drop information, comments, compatibility, or behavior.
 
-Must never run automatically.
+**§ 27.2(15)** Must never run automatically.
 
 ---
 
-## Refactoring preview
+### § 27.3 Refactoring preview
 
-Preview must show:
+**§ 27.3(1)** Preview must show:
 
 ```text
 files created
@@ -3190,11 +3202,11 @@ diagnostics introduced
 
 ---
 
-## Refactoring examples
+### § 27.4 Refactoring examples
 
 ### Move type to file
 
-Preview:
+**§ 27.4(1)** Preview:
 
 ```text
 Create: Car.sec
@@ -3207,7 +3219,7 @@ Module remains: vehicles
 
 ### Change parameter to ref
 
-Preview:
+**§ 27.4(2)** Preview:
 
 ```text
 Call sites affected: 17
@@ -3218,7 +3230,7 @@ Lifetime conflicts introduced: 1
 
 ### Merge declarations
 
-Preview:
+**§ 27.4(3)** Preview:
 
 ```text
 4 declarations become 1 declaration group
@@ -3229,11 +3241,11 @@ No symbol-identity changes
 
 ---
 
-# Standard-library awareness
+## § 28 Standard-library awareness
 
-The compiler workspace must index the complete standard library.
+**§ 28(1)** The compiler workspace must index the complete standard library.
 
-The LSP may use this index for:
+**§ 28(2)** The LSP may use this index for:
 
 ```text
 completion
@@ -3248,32 +3260,32 @@ contracts
 target availability
 ```
 
-Import spelling follows Sec module rules.
+**§ 28(3)** Import spelling follows Sec module rules.
 
-Examples:
+**§ 28(4)** Examples:
 
 ```sec
 import "fmt"
 import "units"
 ```
 
-The LSP must not require artificial `std/` prefixes when the language does not.
+**§ 28(5)** The LSP must not require artificial `std/` prefixes when the language does not.
 
-Current hardcoded module mappings must be replaced by canonical module discovery.
+**§ 28(6)** Current hardcoded module mappings must be replaced by canonical module discovery.
 
 ---
 
-# Sec-specific protocol extensions
+## § 29 Sec-specific protocol extensions
 
-Standard LSP features must be used wherever they are sufficient.
+**§ 29(1)** Standard LSP features must be used wherever they are sufficient.
 
-Rich Sec-specific data uses the namespace:
+**§ 29(2)** Rich Sec-specific data uses the namespace:
 
 ```text
 sec/...
 ```
 
-Possible requests:
+**§ 29(3)** Possible requests:
 
 ```text
 sec/ownershipState
@@ -3295,7 +3307,7 @@ sec/semanticIR
 sec/mlir
 ```
 
-Every extension must:
+**§ 29(4)** Every extension must:
 
 - be versioned;
 - use capability negotiation;
@@ -3306,27 +3318,27 @@ Every extension must:
 
 ---
 
-# Knowledge Packs
+## § 30 Knowledge Packs
 
-## Status
+### § 30.1 Status
 
-Knowledge Packs are a future feature.
+**§ 30.1(1)** Knowledge Packs are a future feature.
 
-They are not required for Sec 0.1.
+**§ 30.1(2)** They are not required for Sec 0.1.
 
-The LSP architecture must leave a clean integration point, but no complete
+**§ 30.1(3)** The LSP architecture must leave a clean integration point, but no complete
 Knowledge Pack system is required before 0.1.
 
-A first public implementation may be targeted for Sec 1.0.
+**§ 30.1(4)** A first public implementation may be targeted for Sec 1.0.
 
 ---
 
-## Future purpose
+### § 30.2 Future purpose
 
-A Knowledge Pack provides versioned domain knowledge that enriches compiler and
+**§ 30.2(1)** A Knowledge Pack provides versioned domain knowledge that enriches compiler and
 LSP analysis.
 
-Potential domains include:
+**§ 30.2(2)** Potential domains include:
 
 ```text
 microcontrollers
@@ -3341,13 +3353,13 @@ safety standards
 industry rules
 ```
 
-Example future pack:
+**§ 30.2(3)** Example future pack:
 
 ```text
 STM32F411
 ```
 
-It may contain:
+**§ 30.2(4)** It may contain:
 
 ```text
 memory map
@@ -3365,9 +3377,9 @@ documentation references
 
 ---
 
-## Future rules
+### § 30.3 Future rules
 
-A Knowledge Pack may enrich:
+**§ 30.3(1)** A Knowledge Pack may enrich:
 
 ```text
 hover
@@ -3379,7 +3391,7 @@ target validation
 documentation
 ```
 
-It may not:
+**§ 30.3(2)** It may not:
 
 - redefine Sec syntax;
 - replace Sema;
@@ -3389,7 +3401,7 @@ It may not:
 - silently add symbols to source scope;
 - claim unknown facts as proven.
 
-Knowledge Pack results must identify:
+**§ 30.3(3)** Knowledge Pack results must identify:
 
 ```text
 source
@@ -3398,23 +3410,23 @@ applicability
 confidence
 ```
 
-Declarative packs are preferred over executable plugins.
+**§ 30.3(4)** Declarative packs are preferred over executable plugins.
 
-Executable analyzer plugins, if ever supported, require a separate security and
+**§ 30.3(5)** Executable analyzer plugins, if ever supported, require a separate security and
 sandboxing design.
 
 ---
 
-# Privacy, security, and telemetry
+## § 31 Privacy, security, and telemetry
 
-The language server must work fully offline.
+**§ 31(1)** The language server must work fully offline.
 
-Source code must not be transmitted externally by default.
+**§ 31(2)** Source code must not be transmitted externally by default.
 
-Telemetry is disabled by default unless a later explicit project decision
+**§ 31(3)** Telemetry is disabled by default unless a later explicit project decision
 changes that rule.
 
-Any future telemetry must be:
+**§ 31(4)** Any future telemetry must be:
 
 - opt-in;
 - documented;
@@ -3423,13 +3435,13 @@ Any future telemetry must be:
 - free of identifiers;
 - free of file paths unless explicitly approved.
 
-Knowledge Packs must not imply network access.
+**§ 31(5)** Knowledge Packs must not imply network access.
 
 ---
 
-# Logging
+## § 32 Logging
 
-Logging levels should include:
+**§ 32(1)** Logging levels should include:
 
 ```text
 off
@@ -3440,11 +3452,11 @@ debug
 trace
 ```
 
-Protocol trace logging must be independently configurable.
+**§ 32(2)** Protocol trace logging must be independently configurable.
 
-Logs must avoid dumping entire source documents by default.
+**§ 32(3)** Logs must avoid dumping entire source documents by default.
 
-Internal panics should produce:
+**§ 32(4)** Internal panics should produce:
 
 ```text
 request method
@@ -3453,13 +3465,13 @@ internal stack trace in server log
 safe client-facing error
 ```
 
-The server should remain alive when possible.
+**§ 32(5)** The server should remain alive when possible.
 
 ---
 
-# Configuration
+## § 33 Configuration
 
-Recommended configuration areas:
+**§ 33(1)** Recommended configuration areas:
 
 ```text
 sec.languageServer.path
@@ -3479,26 +3491,26 @@ sec.activeTarget
 sec.diagnostics
 ```
 
-Configuration changes should update the workspace without restarting the server
+**§ 33(2)** Configuration changes should update the workspace without restarting the server
 where possible.
 
-Closure and callable-flow analysis depth is selected in the project manifest:
+**§ 33(3)** Closure and callable-flow analysis depth is selected in the project manifest:
 
 ```toml
 [analysis]
 lsp_depth = "interactive"
 ```
 
-Supported values are `interactive`, `standard`, and `deep`. The default is
+**§ 33(4)** Supported values are `interactive`, `standard`, and `deep`. The default is
 `interactive` when the section, key, or project manifest is absent. The setting
 changes resource budget and optional precision, never source-language semantics
 or which safety proofs are required.
 
-The server must re-read this value after project-configuration notifications or
+**§ 33(5)** The server must re-read this value after project-configuration notifications or
 watched-file changes, invalidate analysis facts produced under the old depth,
 and refresh affected open-document diagnostics without a server restart.
 
-When pitfall analysis is implemented, its optional configuration and result
+**§ 33(6)** When pitfall analysis is implemented, its optional configuration and result
 filtering follow `pitfall_analysis.md`. Configuration reload must invalidate
 affected pitfall state and refresh diagnostics and code actions without a
 server restart. Optional pitfall settings never suppress the normative compiler
@@ -3506,11 +3518,11 @@ diagnostic that owns a proven language error.
 
 ---
 
-# Testing
+## § 34 Testing
 
-## Protocol tests
+### § 34.1 Protocol tests
 
-Required:
+**§ 34.1(1)** Required:
 
 - initialization negotiation;
 - lifecycle ordering;
@@ -3526,9 +3538,9 @@ Required:
 
 ---
 
-## Feature tests
+### § 34.2 Feature tests
 
-Each feature requires:
+**§ 34.2(1)** Each feature requires:
 
 ```text
 unit tests
@@ -3543,9 +3555,9 @@ stale-snapshot tests
 
 ---
 
-## Shared compiler tests
+### § 34.3 Shared compiler tests
 
-Verify that:
+**§ 34.3(1)** Verify that:
 
 ```text
 sec check
@@ -3553,13 +3565,13 @@ LSP diagnostics
 sec fmt --fix diagnostics
 ```
 
-produce the same IDs, ranges, messages, and fixes for the same snapshot.
+**§ 34.3(2)** produce the same IDs, ranges, messages, and fixes for the same snapshot.
 
 ---
 
-## Formatter integration tests
+### § 34.4 Formatter integration tests
 
-Verify:
+**§ 34.4(1)** Verify:
 
 - CLI and LSP produce byte-identical formatting;
 - ordinary formatting never applies semantic fixes;
@@ -3570,9 +3582,9 @@ Verify:
 
 ---
 
-## Refactoring tests
+### § 34.5 Refactoring tests
 
-Every refactoring tests:
+**§ 34.5(1)** Every refactoring tests:
 
 ```text
 symbol identity
@@ -3586,13 +3598,13 @@ API changes
 rollback on failure
 ```
 
-Multi-file edits must be atomic from the client's perspective.
+**§ 34.5(2)** Multi-file edits must be atomic from the client's perspective.
 
 ---
 
-## Performance tests
+### § 34.6 Performance tests
 
-Measure:
+**§ 34.6(1)** Measure:
 
 ```text
 startup
@@ -3606,13 +3618,13 @@ large-workspace behavior
 cancellation latency
 ```
 
-Performance regressions require tracked baselines.
+**§ 34.6(2)** Performance regressions require tracked baselines.
 
 ---
 
-# Required synchronization
+## § 35 Required synchronization
 
-This rulebook requires synchronization with:
+**§ 35(1)** This rulebook requires synchronization with:
 
 ```text
 formatter.md
@@ -3645,17 +3657,17 @@ deadlock_analysis.md
 language-rulebook-status.md
 ```
 
-Files that do not yet exist remain planned dependencies.
+**§ 35(2)** Files that do not yet exist remain planned dependencies.
 
 ---
 
-# Appendix A — Codex implementation plan
+## Appendix A — Codex implementation plan
 
-## A.1 Preserve working behavior
+### Appendix A.1 Preserve working behavior
 
-Before moving code, create coverage for all current behavior.
+**Appendix A.1(1)** Before moving code, create coverage for all current behavior.
 
-Do not regress:
+**Appendix A.1(2)** Do not regress:
 
 ```text
 diagnostics
@@ -3672,16 +3684,16 @@ format on save
 
 ---
 
-## A.2 Move protocol transport
+### Appendix A.2 Move protocol transport
 
-Create:
+**Appendix A.2(1)** Create:
 
 ```text
 internal/lsp/protocol
 internal/lsp/server
 ```
 
-Move:
+**Appendix A.2(2)** Move:
 
 ```text
 JSON-RPC framing
@@ -3693,15 +3705,15 @@ capability negotiation
 lifecycle
 ```
 
-Keep `cmd/lsp/main.go` as bootstrap.
+**Appendix A.2(3)** Keep `cmd/lsp/main.go` as bootstrap.
 
 ---
 
-## A.3 Generate protocol types
+### Appendix A.3 Generate protocol types
 
-Use the LSP 3.18 meta model where practical.
+**Appendix A.3(1)** Use the LSP 3.18 meta model where practical.
 
-Requirements:
+**Appendix A.3(2)** Requirements:
 
 - generated files are reproducible;
 - unknown extensible enum values are preserved;
@@ -3711,27 +3723,27 @@ Requirements:
 
 ---
 
-## A.4 Create compiler workspace
+### Appendix A.4 Create compiler workspace
 
-Create:
+**Appendix A.4(1)** Create:
 
 ```text
 internal/compiler/workspace
 internal/compiler/snapshot
 ```
 
-Move LSP-specific direct calls to lexer, parser, and Sema behind shared workspace
+**Appendix A.4(2)** Move LSP-specific direct calls to lexer, parser, and Sema behind shared workspace
 services.
 
-The workspace must be reusable by CLI commands.
+**Appendix A.4(3)** The workspace must be reusable by CLI commands.
 
 ---
 
-## A.5 Unify source loading
+### Appendix A.5 Unify source loading
 
-Replace LSP-specific core and import inclusion with the canonical module loader.
+**Appendix A.5(1)** Replace LSP-specific core and import inclusion with the canonical module loader.
 
-Support:
+**Appendix A.5(2)** Support:
 
 ```text
 core
@@ -3743,16 +3755,16 @@ generated sources
 open-document overlays
 ```
 
-Remove permanent hardcoded stdlib module switches when canonical discovery is
+**Appendix A.5(3)** Remove permanent hardcoded stdlib module switches when canonical discovery is
 available.
 
 ---
 
-## A.6 Structured parser diagnostics
+### Appendix A.6 Structured parser diagnostics
 
-Replace parser error strings with structured diagnostics.
+**Appendix A.6(1)** Replace parser error strings with structured diagnostics.
 
-Add:
+**Appendix A.6(2)** Add:
 
 ```text
 stable IDs
@@ -3763,36 +3775,36 @@ fixes
 recovery nodes
 ```
 
-Do not parse line and column from human-readable error text.
+**Appendix A.6(3)** Do not parse line and column from human-readable error text.
 
 ---
 
-## A.7 Error-tolerant syntax tree
+### Appendix A.7 Error-tolerant syntax tree
 
-Implement recovery nodes and continue analysis after local recoverable errors.
+**Appendix A.7(1)** Implement recovery nodes and continue analysis after local recoverable errors.
 
-First required recovery:
+**Appendix A.7(2)** First required recovery:
 
 ```sec
 fn myfunc(a string) void {
 }
 ```
 
-Recovered as a parameter with a missing colon.
+**Appendix A.7(3)** Recovered as a parameter with a missing colon.
 
-Provide a machine-applicable insertion fix.
+**Appendix A.7(4)** Provide a machine-applicable insertion fix.
 
 ---
 
-## A.8 Shared formatter
+### Appendix A.8 Shared formatter
 
-Move `formatSource` and supporting logic from `cmd/lsp` to:
+**Appendix A.8(1)** Move `formatSource` and supporting logic from `cmd/lsp` to:
 
 ```text
 internal/formatter
 ```
 
-Use it from:
+**Appendix A.8(2)** Use it from:
 
 ```text
 sec fmt
@@ -3802,23 +3814,23 @@ LSP on-type formatting
 refactoring output
 ```
 
-Preserve all current formatter tests.
+**Appendix A.8(3)** Preserve all current formatter tests.
 
-The formatter-rulebook filename migration to `rules/tooling/formatter.md` is complete.
+**Appendix A.8(4)** The formatter-rulebook filename migration to `rules/tooling/formatter.md` is complete.
 
 ---
 
-## A.9 Shared fix engine
+### Appendix A.9 Shared fix engine
 
-Create:
+**Appendix A.9(1)** Create:
 
 ```text
 internal/fixes
 ```
 
-Consume compiler diagnostics containing structured edits.
+**Appendix A.9(2)** Consume compiler diagnostics containing structured edits.
 
-Support:
+**Appendix A.9(3)** Support:
 
 ```text
 single fix
@@ -3828,13 +3840,13 @@ safe fixes on save
 sec fmt --fix
 ```
 
-Do not duplicate fix logic in LSP handlers.
+**Appendix A.9(4)** Do not duplicate fix logic in LSP handlers.
 
 ---
 
-## A.10 Document snapshots
+### Appendix A.10 Document snapshots
 
-Implement:
+**Appendix A.10(1)** Implement:
 
 ```text
 versioned documents
@@ -3845,13 +3857,13 @@ didClose
 didSave
 ```
 
-Protect all document access through the snapshot model.
+**Appendix A.10(2)** Protect all document access through the snapshot model.
 
 ---
 
-## A.11 Cancellation and progress
+### Appendix A.11 Cancellation and progress
 
-Implement:
+**Appendix A.11(1)** Implement:
 
 ```text
 $/cancelRequest
@@ -3859,15 +3871,15 @@ workDoneProgress
 partial results
 ```
 
-Every deep workspace analysis must periodically check cancellation.
+**Appendix A.11(2)** Every deep workspace analysis must periodically check cancellation.
 
 ---
 
-## A.12 Split features
+### Appendix A.12 Split features
 
-Move features into `internal/lsp/features`.
+**Appendix A.12(1)** Move features into `internal/lsp/features`.
 
-Each feature receives:
+**Appendix A.12(2)** Each feature receives:
 
 ```text
 server context
@@ -3876,13 +3888,13 @@ workspace snapshot
 request parameters
 ```
 
-It must not instantiate compiler frontend phases directly.
+**Appendix A.12(3)** It must not instantiate compiler frontend phases directly.
 
 ---
 
-## A.13 Complete diagnostics
+### Appendix A.13 Complete diagnostics
 
-Add:
+**Appendix A.13(1)** Add:
 
 ```text
 related information
@@ -3895,13 +3907,13 @@ result IDs
 unchanged reports
 ```
 
-Retain push diagnostics for clients requiring them.
+**Appendix A.13(2)** Retain push diagnostics for clients requiring them.
 
 ---
 
-## A.14 Implement code actions
+### Appendix A.14 Implement code actions
 
-Initial code actions:
+**Appendix A.14(1)** Initial code actions:
 
 ```text
 insert missing colon
@@ -3913,9 +3925,9 @@ merge compatible declarations
 move primary type to file
 ```
 
-Classify every action by safety class.
+**Appendix A.14(2)** Classify every action by safety class.
 
-Current implementation includes the user-invoked `S1007` quick fix for a
+**Appendix A.14(3)** Current implementation includes the user-invoked `S1007` quick fix for a
 proven invalid copy of a named value, including move-only, compiler-known
 non-copyable, and generic values without proven copyability. It replaces only
 the diagnosed source statement's `:=` or `=` operator with `:<-` or `<-`,
@@ -3924,17 +3936,17 @@ automatically.
 
 ---
 
-## A.15 Implement navigation
+### Appendix A.15 Implement navigation
 
-Initial `textDocument/definition` support is implemented through Sema-owned
+**Appendix A.15(1)** Initial `textDocument/definition` support is implemented through Sema-owned
 use-to-declaration bindings. It covers local and cross-file declarations,
 members, and selected overloads without an LSP-owned name resolver.
 
-Initial `textDocument/documentHighlight` support is also implemented through
+**Appendix A.15(2)** Initial `textDocument/documentHighlight` support is also implemented through
 those bindings. It finds exact same-document occurrences, keeps shadowed names
 separate, and classifies declarations and direct assignment targets as writes.
 
-Initial standard call hierarchy is implemented over the compiler-owned direct
+**Appendix A.15(3)** Initial standard call hierarchy is implemented over the compiler-owned direct
 call graph. It covers validated synchronous direct calls and statically resolved
 methods in the current source snapshot. Hover also consumes initial
 program/task/thread root reachability and same-stack SCC results. Task and
@@ -3943,7 +3955,7 @@ outside same-stack recursion. Indirect targets, other execution boundaries,
 specializations, additional root classes, and complete `CompilationPlan`
 identity remain pending.
 
-Remaining order:
+**Appendix A.15(4)** Remaining order:
 
 ```text
 declaration
@@ -3953,27 +3965,27 @@ references
 rename
 ```
 
-Build a shared workspace symbol index.
+**Appendix A.15(5)** Build a shared workspace symbol index.
 
 ---
 
-## A.16 Implement signature help and inlay hints
+### Appendix A.16 Implement signature help and inlay hints
 
-Use Sema-resolved overloads.
+**Appendix A.16(1)** Use Sema-resolved overloads.
 
-Prioritize ownership and parameter hints.
+**Appendix A.16(2)** Prioritize ownership and parameter hints.
 
 ---
 
-## A.17 Implement refactoring engine
+### Appendix A.17 Implement refactoring engine
 
-Create:
+**Appendix A.17(1)** Create:
 
 ```text
 internal/refactor
 ```
 
-Initial refactorings:
+**Appendix A.17(2)** Initial refactorings:
 
 ```text
 rename
@@ -3984,44 +3996,44 @@ extract function
 change parameter to ref
 ```
 
-All multi-file actions require preview metadata.
+**Appendix A.17(3)** All multi-file actions require preview metadata.
 
 ---
 
-## A.18 Implement compiler-analysis views
+### Appendix A.18 Implement compiler-analysis views
 
-Add code lenses and Sec-specific endpoints incrementally as compiler analyses
+**Appendix A.18(1)** Add code lenses and Sec-specific endpoints incrementally as compiler analyses
 become available.
 
-Do not create weaker duplicate analyses inside LSP.
+**Appendix A.18(2)** Do not create weaker duplicate analyses inside LSP.
 
 ---
 
-## A.19 Units integration
+### Appendix A.19 Units integration
 
-Replace hardcoded unit presentation with compiler unit metadata.
+**Appendix A.19(1)** Replace hardcoded unit presentation with compiler unit metadata.
 
-Implement auto-import:
+**Appendix A.19(2)** Implement auto-import:
 
 ```sec
 import "units"
 ```
 
-Do not make unimported units silently visible.
+**Appendix A.19(3)** Do not make unimported units silently visible.
 
 ---
 
-## A.20 Target integration
+### Appendix A.20 Target integration
 
-Load active target and output variant from the canonical project model.
+**Appendix A.20(1)** Load active target and output variant from the canonical project model.
 
-Add target switching and per-target diagnostics.
+**Appendix A.20(2)** Add target switching and per-target diagnostics.
 
 ---
 
-## A.21 VS Code settings
+### Appendix A.21 VS Code settings
 
-Add separate settings for:
+**Appendix A.21(1)** Add separate settings for:
 
 ```text
 format on save
@@ -4034,23 +4046,23 @@ analysis features
 trace
 ```
 
-Keep client logic thin.
+**Appendix A.21(2)** Keep client logic thin.
 
 ---
 
-## A.22 Knowledge Pack reservation
+### Appendix A.22 Knowledge Pack reservation
 
-Add only stable extension points and capability names.
+**Appendix A.22(1)** Add only stable extension points and capability names.
 
-Do not implement a complete Knowledge Pack system for Sec 0.1.
+**Appendix A.22(2)** Do not implement a complete Knowledge Pack system for Sec 0.1.
 
-Mark Knowledge Packs as future in status documents.
+**Appendix A.22(3)** Mark Knowledge Packs as future in status documents.
 
 ---
 
-## A.23 Status updates
+### Appendix A.23 Status updates
 
-Update `language-rulebook-status.md`:
+**Appendix A.23(1)** Update `language-rulebook-status.md`:
 
 ```text
 lsp.md
@@ -4060,16 +4072,16 @@ knowledge_packs.md
     Future or deferred candidate
 ```
 
-Remove `lsp.md` from Candidate.
+**Appendix A.23(2)** Remove `lsp.md` from Candidate.
 
-Add it to the canonical written set.
+**Appendix A.23(3)** Add it to the canonical written set.
 
-Record the current implemented, partial, and missing LSP features in
+**Appendix A.23(4)** Record the current implemented, partial, and missing LSP features in
 `governance/tooling_lsp.yaml`.
 
 ---
 
-## A.24 Recommended implementation order
+### Appendix A.24 Recommended implementation order
 
 ```text
 1. Freeze current behavior with tests.
@@ -4091,16 +4103,16 @@ Record the current implemented, partial, and missing LSP features in
 
 ---
 
-# Design summary
+## § 36 Design summary
 
-## Enum domains and conversions
+### § 36.1 Enum domains and conversions
 
-Enum hover should identify ordinary enums as closed over their declared numeric
+**§ 36.1(1)** Enum hover should identify ordinary enums as closed over their declared numeric
 value classes and bit-backed enums as open over every value representable by
 `bit[N]`. For hardware enums it should make clear that unnamed patterns may
 occur at runtime.
 
-When declared members do not exhaust an open bit-backed enum, match diagnostics
+**§ 36.1(2)** When declared members do not exhaust an open bit-backed enum, match diagnostics
 should explain the uncovered hardware encodings and may suggest a final `_`
 fallback. Checked runtime integer-to-enum conversion hover and signatures show
 fallibility and the `EnumValueError` family so that the reason for `try` is
@@ -4108,56 +4120,56 @@ visible.
 
 ---
 
-The Sec language server is an interactive view of the real compiler.
+**§ 36.1(3)** The Sec language server is an interactive view of the real compiler.
 
-It does not own a parallel frontend or diagnostic system.
+**§ 36.1(4)** It does not own a parallel frontend or diagnostic system.
 
-It uses the same formatter as `sec fmt` and the same fix engine as
+**§ 36.1(5)** It uses the same formatter as `sec fmt` and the same fix engine as
 `sec fmt --fix`.
 
-It targets complete LSP 3.18 support.
+**§ 36.1(6)** It targets complete LSP 3.18 support.
 
-It remains useful on incomplete source through structured parser recovery.
+**§ 36.1(7)** It remains useful on incomplete source through structured parser recovery.
 
-It exposes ownership, contracts, units, targets, effects, stack, allocation,
+**§ 36.1(8)** It exposes ownership, contracts, units, targets, effects, stack, allocation,
 escape, ISR, concurrency, and lowering knowledge whenever the compiler provides
 that knowledge.
 
-It treats refactoring as a first-class capability.
+**§ 36.1(9)** It treats refactoring as a first-class capability.
 
-It supports code-quality analysis such as declaration merging and one primary
+**§ 36.1(10)** It supports code-quality analysis such as declaration merging and one primary
 type per file without confusing those improvements with formatting.
 
-It explains consequences before applying ownership-changing or multi-file edits.
+**§ 36.1(11)** It explains consequences before applying ownership-changing or multi-file edits.
 
-Knowledge Packs are reserved as a future enrichment system and are not required
+**§ 36.1(12)** Knowledge Packs are reserved as a future enrichment system and are not required
 for Sec 0.1.
 
-## Ownership revision 2 integration
+### § 36.2 Ownership revision 2 integration
 
-The LSP consumes the same canonical ownership facts as Sema; it does not build a
+**§ 36.2(1)** The LSP consumes the same canonical ownership facts as Sema; it does not build a
 parallel ownership state machine. Hover, diagnostics, semantic tokens, and code
 actions may expose place availability (including partial and conditional
 states), unavailability reason and source location, copy-versus-consume,
 required `<-` markers, capture mode, and refinement from `is available` / `is
 not available`.
 
-When compiler facts make a repair unambiguous, the LSP may suggest forms such as
+**§ 36.2(2)** When compiler facts make a repair unambiguous, the LSP may suggest forms such as
 `Consume(<-resource)`, `capture(<-resource)`, an appropriate borrow capture, or
 `discard place` for explicit convergence. It must also explain when selected
 target policy forbids required runtime ownership bookkeeping. These actions use
 programmer-facing mentor language and are offered only when Sema proves their
 ownership consequence.
 
-## Source-test discovery and execution integration
+### § 36.3 Source-test discovery and execution integration
 
-The compiler workspace is the sole authority for test declaration discovery,
+**§ 36.3(1)** The compiler workspace is the sole authority for test declaration discovery,
 stable identity, source range, category, and test-compilation diagnostics. The
 LSP supports an explicit `TestCompilationPlan` view so same-directory
 `*_test.sec`, project `tests/` modules, and compiler-known `testing.*` resolve
 without contaminating production analysis.
 
-The server exposes compiler-owned runnable metadata for Run Test, Debug Test,
+**§ 36.3(2)** The server exposes compiler-owned runnable metadata for Run Test, Debug Test,
 tests in a file/module, and project tests where the client supports those
 actions. Editor extensions may map this metadata to a native testing UI but
 must not parse Sec independently or invent an editor-specific runner. Every
@@ -4165,9 +4177,9 @@ editor invocation uses the same discovery, selection, plan, harness, cleanup,
 and execution-provider semantics as `sec test` in
 `rules/tooling/testing.md`.
 
-## Compile-time evaluation integration
+### § 36.4 Compile-time evaluation integration
 
-The LSP consumes compiler-owned CTE values, provenance, and diagnostics and
+**§ 36.4(1)** The LSP consumes compiler-owned CTE values, provenance, and diagnostics and
 must not implement a separate evaluator. Diagnostics distinguish
 `NotEvaluable`, `EvaluationFailed`, `ResourceLimit`, `DependencyCycle`,
 `ResultNotMaterializable`, `ImplementationGap`,
@@ -4175,7 +4187,7 @@ must not implement a separate evaluator. Diagnostics distinguish
 language error for `SemanticOperationFailed`. Cancellation of obsolete editor
 work is not a source diagnostic.
 
-The LSP consumes the same compiler-known registry as Sema. Hover/completion
+**§ 36.4(2)** The LSP consumes the same compiler-known registry as Sema. Hover/completion
 shows `value.SizeOf` and `TypeName.SizeOf` as authoritative read-only
 `uint` properties and never advertises global `SizeOf(TypeName)`.
 `ToString() Result[string, StringError]` is shown as a compiler-provided fallback unless an
@@ -4183,30 +4195,30 @@ eligible exact user replacement resolves first. Tooling may identify fallback,
 authoritative, privileged-core-backed, and ordinary replacement categories, but
 must not infer compiler authority or source visibility from underscore spelling.
 
-## Channel v2 integration
+### § 36.5 Channel v2 integration
 
-The LSP consumes the exact compiler-known ordinary-channel identities from
+**§ 36.5(1)** The LSP consumes the exact compiler-known ordinary-channel identities from
 `rules/concurrency/channels.md`. Hover exposes the canonical declarations and
 variant payloads for `Channel[T]`, its endpoints, options, statistics, tickets,
 send/receive results, revocation results, and message dispositions.
 
-Completion uses `Tx` and `Rx`, offers `Revoke()` on `MessageTicket[T]` rather
+**§ 36.5(2)** Completion uses `Tx` and `Rx`, offers `Revoke()` on `MessageTicket[T]` rather
 than `Sender[T]`, distinguishes blocking and non-blocking result families, and
 does not expose the removed `Priority` capability. `Statistics()` is offered
 only when the resolved channel capability facts permit it, or is annotated with
 that capability requirement. Navigation treats compiler-known/source-visible
 channel identities as the same semantic symbols consumed by Sema.
 
-## Thread v2 integration
+### § 36.6 Thread v2 integration
 
-Hover, completion, and navigation consume the exact CamelCase portable thread
+**§ 36.6(1)** Hover, completion, and navigation consume the exact CamelCase portable thread
 surface from `rules/concurrency/threads.md`. Tooling exposes
 `ThreadSetting[T]`, `ThreadPriority`, `ThreadStartMode`, `ThreadStatus`,
 `ThreadTerminationKind`, `ThreadTermination`, `ThreadSpawnError`,
 `ThreadStartError`, `ThreadConfig`, non-generic `ThreadStorage`, and `CpuSet`
 with their exact declarations and ownership constraints.
 
-Completion does not offer lowercase legacy thread members, portable
+**§ 36.6(2)** Completion does not offer lowercase legacy thread members, portable
 `SetPriority`/`SetAffinity`, `ThreadSchedulingError`,
 `ThreadTerminationError`, or `ThreadObserver.Wait`/observer select. Navigation
 from `ThreadPlatform` resolves to the selected target's concrete declaration.
@@ -4214,9 +4226,9 @@ Hover distinguishes configuration preference from requirement, reports
 explicit-storage borrow lifetime, and shows terminal `Value`, `Panic`, or
 `Termination` availability only for the matching joined status.
 
-## Scheduling v2 integration
+### § 36.7 Scheduling v2 integration
 
-Hover for `Task.Yield()` identifies a logical task scheduling point, a
+**§ 36.7(1)** Hover for `Task.Yield()` identifies a logical task scheduling point, a
 current-task cancellation point, and the absence of a synchronization edge.
 Hover for `Thread.Yield()` identifies a physical scheduler hint that is neither
 cancellation-aware nor synchronizing. Completion and diagnostics use the real
@@ -4224,23 +4236,23 @@ execution context: ordinary `main` has attached `ThreadContext` but no implicit
 `TaskContext`. Tooling does not expose portable `ThreadSchedulingError`,
 `Thread.SetPriority`, or `Thread.SetAffinity` surfaces.
 
-## Thread-local v2 integration
+### § 36.8 Thread-local v2 integration
 
-Hover, completion, and navigation consume the exact identities from
+**§ 36.8(1)** Hover, completion, and navigation consume the exact identities from
 `rules/concurrency/thread_local.md`. `ThreadLocal[T]` exposes both constructors
 and exactly `Borrow`, `BorrowMut`, and `Replace`; tooling does not suggest the
 removed `Value`, `value`, `Take`, `Get`, or `Set` surfaces.
 
-Tooling exposes `ThreadAttachError` with exactly `AlreadyAttached`,
+**§ 36.8(2)** Tooling exposes `ThreadAttachError` with exactly `AlreadyAttached`,
 `ResourceUnavailable`, and `NativeFailure`, and exposes the owned
 `ThreadAttachment` with its `Context` property and lifecycle-destruction
 semantics. Navigation from `ThreadAttachment.Context` resolves to canonical
 `ThreadContext`. Diagnostics retain the TLS key, borrow creation, and invalid
 suspension/escape locations where available.
 
-## Debug-information source-coordinate integration
+### § 36.9 Debug-information source-coordinate integration
 
-LSP and debug information consume compatible canonical source-file and range
+**§ 36.9(1)** LSP and debug information consume compatible canonical source-file and range
 identities. Protocol UTF-16 conversion remains an LSP transport concern;
 `rules/compiler/debug_information.md` consumes compiler source coordinates and
 lowers them to the selected physical debug format. A future debugger plugin may

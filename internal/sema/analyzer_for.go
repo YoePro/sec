@@ -34,7 +34,8 @@ func (a *Analyzer) analyzeForStatement(stmt *ast.ForStatement) {
 
 	a.symbols = previousSymbols.child()
 	a.constInts = copyConstInts(previousConstInts)
-	a.forgetLoopAssignedConstants(stmt.Body)
+	endFirstIteration := a.forgetLoopAssignedConstants(stmt.Body, true, nil)
+	defer endFirstIteration()
 	a.assigned = copyAssigned(previousAssigned)
 	a.moved = copyMoved(previousMoved)
 	a.availabilityStates = copyAvailabilityStates(previousMoveReasons)
@@ -67,6 +68,7 @@ func (a *Analyzer) analyzeForStatement(stmt *ast.ForStatement) {
 	if stmt.Body != nil {
 		a.enterLoopBodyFacts()
 		a.analyzeBlockStatements(stmt.Body)
+		endFirstIteration()
 	}
 	a.activeCollectionIterations = a.activeCollectionIterations[:activeIterations]
 

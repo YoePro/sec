@@ -21,7 +21,7 @@ func TestResolvedLambdaCaptureFacts(t *testing.T) {
 @noCopy
 type Resource struct { value: int, }
 
-fn Test(ref view: int) void {
+fn Test(view: ref int) void {
 	let number := 1
 	let resource := Resource { value: 2 }
 	let copied := capture(number, view) fn() int { return number }
@@ -80,7 +80,7 @@ fn Test(ref view: int) void {
 func TestLambdaCapturePreservesNestedReferentDependencies(t *testing.T) {
 	source := `module main
 type Holder struct { view: ref int, }
-fn Test(ref input: int) void {
+fn Test(input: ref int) void {
 	let holder := Holder { view: input }
 	let callback := capture(holder) fn() void {}
 	discard callback

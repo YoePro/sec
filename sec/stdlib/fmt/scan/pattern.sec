@@ -1,6 +1,64 @@
 module scan
 
 /**
+ * Represents one token from a validated composite format.
+ *
+ * Description:
+ * Literal text is borrowed from the original format string.
+ * Automatic and indexed placeholders remain distinct until
+ * the scanner assigns their destination indexes.
+ *
+ * Ownership:
+ * Literal views cannot outlive the format source.
+ *
+ * Allocation:
+ * Does not allocate.
+ */
+type _ScanPatternToken union {
+    // Unmodified literal text.
+    Literal(StringView)
+
+    // Escaped opening brace: {{.
+    EscapedOpen
+
+    // Escaped closing brace: }}.
+    EscapedClose
+
+    // Automatically indexed placeholder: {}.
+    Automatic
+
+    // Explicitly indexed placeholder: {0}, {1}, etc.
+    Indexed(uint)
+}
+
+/**
+ * Describes one token and the next format position.
+ */
+type _ScanPatternStep struct {
+    Token:    _ScanPatternToken,
+    NextRune: uint,
+}
+
+/**
+ * Identifies a sequence of literal format tokens.
+ *
+ * Description:
+ * StartRune and EndRune delimit a sequence in the original
+ * format string. Escaped braces remain encoded as two
+ * characters until the sequence is matched against input.
+ *
+ * Ownership:
+ * Contains positions only and owns no text.
+ *
+ * Allocation:
+ * Does not allocate.
+ */
+type _ScanLiteralRun struct {
+    StartRune: uint,
+    EndRune:   uint,
+}
+
+/**
  * Matches a literal format span against input bytes.
  *
  * Description:
@@ -78,4 +136,414 @@ fn MatchLiteralByte(input: string, inputOffset: uint, expected: byte) Option[uin
     }
 
     return Some(inputOffset + 1)
+}
+
+/**
+ * Reads one token from a validated composite format.
+ *
+ * Description:
+ * The caller must first validate the complete format with
+ * ValidateCompositeFormat().
+ *
+ * This function extracts tokens without independently deciding
+ * argument-count validity or mixed addressing rules.
+ *
+ * Parameters:
+ * - format: Borrowed, validated composite format.
+ * - startRune: Current rune position within format.
+ *
+ * Returns:
+ * - Ok(Some(step)): Next token and following position.
+ * - Ok(None): End of format.
+ *
+ * Errors:
+ * - FormatError.InvalidFormat: Invalid token syntax or bounds.
+ * - FormatError.UnsupportedFormat: Unsupported field specifier.
+ *
+ * Allocation:
+ * Does not allocate.
+ */
+fn _NextScanPatternToken(format: StringView, startRune: uint) Result[Option[_ScanPatternStep], FormatError] {
+    if startRune > format.Len {
+        return Err(FormatError.InvalidFormat)
+    }
+
+    if startRune == format.Len {
+        return Ok(None)
+    }
+
+    let current := format.RuneAt(startRune)
+
+    if current == 123r {
+        let nextRune := startRune + 1
+
+        if nextRune >= format.Len {
+            return Err(FormatError.InvalidFormat)
+        }
+
+        let next := format.RuneAt(nextRune)
+
+        if next == 123r {
+            return Ok(Some(_ScanPatternStep {
+                Token: _ScanPatternToken.EscapedOpen,
+                NextRune: nextRune + 1,
+            }))
+        }
+
+        if next == 125r {
+            return Ok(Some(_ScanPatternStep {
+                Token: _ScanPatternToken.Automatic,
+                NextRune: nextRune + 1,
+            }))
+        }
+
+        if next == 58r {
+            return Err(FormatError.UnsupportedFormat)
+        }
+
+        let mut position := nextRune
+        let mut index: uint := 0
+
+        while position < format.Len {
+            let character := format.RuneAt(position)
+
+            if character < 48r || character > 57r {
+                break
+            }
+
+            let digit := uint(int(character) - 48)
+
+            let scaled := try index * 10u {
+                Err(_) => return Err(FormatError.InvalidFormat)
+            }
+
+            index = try scaled + digit {
+                Err(_) => return Err(FormatError.InvalidFormat)
+            }
+
+            position += 1
+        }
+
+        if position == nextRune || position >= format.Len {
+            return Err(FormatError.InvalidFormat)
+        }
+
+        let closing := format.RuneAt(position)
+
+        if closing == 58r {
+            return Err(FormatError.UnsupportedFormat)
+        }
+
+        if closing != 125r {
+            return Err(FormatError.InvalidFormat)
+        }
+
+        return Ok(Some(_ScanPatternStep {
+            Token: _ScanPatternToken.Indexed(index),
+            NextRune: position + 1,
+        }))
+    }
+
+    if current == 125r {
+        if startRune + 1 >= format.Len {
+            return Err(FormatError.InvalidFormat)
+        }
+
+        if format.RuneAt(startRune + 1) != 125r {
+            return Err(FormatError.InvalidFormat)
+        }
+
+        return Ok(Some(_ScanPatternStep {
+            Token: _ScanPatternToken.EscapedClose,
+            NextRune: startRune + 2,
+        }))
+    }
+
+    let mut endRune := startRune
+
+    while endRune < format.Len {
+        let character := format.RuneAt(endRune)
+
+        if character == 123r || character == 125r {
+            break
+        }
+
+        endRune += 1
+    }
+
+    let literal := format[startRune..<endRune]
+
+    return Ok(Some(_ScanPatternStep {
+        Token: _ScanPatternToken.Literal(literal),
+        NextRune: endRune,
+    }))
+}
+
+/**
+ * Finds the literal sequence following a placeholder.
+ *
+ * Description:
+ * Collects the positions of consecutive literal tokens,
+ * including escaped braces, until the next placeholder
+ * or end of format.
+ *
+ * Adjacent placeholders are rejected as ambiguous.
+ *
+ * Parameters:
+ * - format: Validated composite format.
+ * - afterPlaceholder: Rune position immediately after a field.
+ *
+ * Returns:
+ * - Ok(Some(run)): Literal sequence delimiting the field.
+ * - Ok(None): No following delimiter; field is terminal.
+ *
+ * Errors:
+ * - FormatError.InvalidFormat: Adjacent placeholders or
+ * malformed format syntax.
+ * - FormatError.UnsupportedFormat: Unsupported field syntax.
+ *
+ * Allocation:
+ * Does not allocate.
+ */
+fn _FindFollowingLiteralRun(format: StringView, afterPlaceholder: uint) Result[Option[_ScanLiteralRun], FormatError] {
+    if afterPlaceholder > format.Len {
+        return Err(FormatError.InvalidFormat)
+    }
+
+    let mut position   := afterPlaceholder
+    let mut hasLiteral := false
+
+    while position < format.Len {
+        let next := try _NextScanPatternToken(format, position)
+
+        match next {
+            None => {
+                break
+            }
+
+            Some(step) => {
+                match step.Token {
+                    _ScanPatternToken.Automatic => {
+                        if !hasLiteral {
+                            return Err(FormatError.InvalidFormat)
+                        }
+
+                        break
+                    }
+
+                    _ScanPatternToken.Indexed(_) => {
+                        if !hasLiteral {
+                            return Err(FormatError.InvalidFormat)
+                        }
+
+                        break
+                    }
+
+                    _ => {
+                        hasLiteral = true
+                        position = step.NextRune
+                    }
+                }
+            }
+        }
+    }
+
+    if !hasLiteral {
+        return Ok(None)
+    }
+
+    return Ok(Some(_ScanLiteralRun {
+        StartRune: afterPlaceholder,
+        EndRune: position,
+    }))
+}
+
+/**
+ * Matches a literal format run at a specific input position.
+ *
+ * Description:
+ * Processes consecutive literal format tokens, including
+ * escaped opening and closing braces.
+ *
+ * The format must already have passed composite validation.
+ * The input position advances only when the entire run matches.
+ *
+ * Parameters:
+ * - input: Borrowed UTF-8 input text.
+ * - startRune: Starting rune index in the input.
+ * - format: Validated composite format.
+ * - run: Literal token sequence to match.
+ *
+ * Returns:
+ * - Ok(Some(position)): Position after the complete match.
+ * - Ok(None): Input does not match the literal sequence.
+ *
+ * Errors:
+ * - FormatError: Invalid format token sequence or bounds.
+ *
+ * Ownership:
+ * Does not consume or modify either text source.
+ *
+ * Allocation:
+ * Does not allocate.
+ */
+fn _MatchLiteralRunAt(
+    input:     StringView,
+    startRune: uint,
+    format:    StringView,
+    run:       _ScanLiteralRun,
+) Result[Option[_ScanPosition], FormatError] {
+    if run.StartRune >= run.EndRune || run.EndRune > format.Len {
+        return Err(FormatError.InvalidFormat)
+    }
+
+    if startRune > input.Len {
+        return Ok(None)
+    }
+
+    let mut formatRune := run.StartRune
+    let mut inputRune  := startRune
+    let mut inputByte  := input[..<startRune].SizeOf
+
+    while formatRune < run.EndRune {
+        let next := try _NextScanPatternToken(format, formatRune)
+
+        match next {
+            None => {
+                return Err(FormatError.InvalidFormat)
+            }
+
+            Some(step) => {
+                if step.NextRune > run.EndRune {
+                    return Err(FormatError.InvalidFormat)
+                }
+
+                let nextRune := step.NextRune
+
+                match step.Token {
+                    Literal(text) => {
+                        let remaining := input[inputRune..]
+
+                        if !remaining.StartsWith(text) {
+                            return Ok(None)
+                        }
+
+                        inputRune += text.Len
+                        inputByte += text.SizeOf
+                    }
+
+                    EscapedOpen => {
+                        if inputRune >= input.Len {
+                            return Ok(None)
+                        }
+
+                        if input.RuneAt(inputRune) != 123r {
+                            return Ok(None)
+                        }
+
+                        inputRune += 1
+                        inputByte += 1
+                    }
+
+                    EscapedClose => {
+                        if inputRune >= input.Len {
+                            return Ok(None)
+                        }
+
+                        if input.RuneAt(inputRune) != 125r {
+                            return Ok(None)
+                        }
+
+                        inputRune += 1
+                        inputByte += 1
+                    }
+
+                    _ => {
+                        return Err(FormatError.InvalidFormat)
+                    }
+                }
+
+                formatRune = nextRune
+            }
+        }
+    }
+
+    return Ok(Some(_ScanPosition {
+        RuneIndex: inputRune,
+        ByteOffset: inputByte,
+    }))
+}
+
+/**
+ * Finds the first occurrence of a literal format run in input.
+ *
+ * Description:
+ * Searches from startRune and tests the complete literal
+ * sequence at each Unicode scalar boundary.
+ *
+ * Escaped braces are interpreted by _MatchLiteralRunAt().
+ * The returned position identifies the beginning of the
+ * delimiter, not the position after it.
+ *
+ * Parameters:
+ * - input: Borrowed UTF-8 input text.
+ * - startRune: First rune position eligible for matching.
+ * - format: Validated composite format string.
+ * - run: Literal sequence to locate.
+ *
+ * Returns:
+ * - Ok(Some(position)): Start of the first matching delimiter.
+ * - Ok(None): No matching delimiter was found.
+ *
+ * Errors:
+ * - FormatError: Invalid literal run or format token.
+ *
+ * Ownership:
+ * Does not consume or modify the input or format.
+ *
+ * Allocation:
+ * Does not allocate.
+ */
+fn _FindNextLiteralRun(
+    input:     StringView,
+    startRune: uint,
+    format:    StringView,
+    run:       _ScanLiteralRun,
+) Result[Option[_ScanPosition], FormatError] {
+    if run.StartRune >= run.EndRune || run.EndRune > format.Len {
+        return Err(FormatError.InvalidFormat)
+    }
+
+    if startRune > input.Len {
+        return Ok(None)
+    }
+
+    let mut runeIndex  := startRune
+    let mut byteOffset := input[..<startRune].SizeOf
+
+    for character in input[startRune..] {
+        let candidate := try _MatchLiteralRunAt(
+            input,
+            runeIndex,
+            format,
+            run,
+        )
+
+        match candidate {
+            Some(_) => {
+                return Ok(Some(_ScanPosition {
+                    RuneIndex: runeIndex,
+                    ByteOffset: byteOffset,
+                }))
+            }
+
+            None => {
+            }
+        }
+
+        runeIndex += 1
+        byteOffset += character.Utf8Length
+    }
+
+    return Ok(None)
 }

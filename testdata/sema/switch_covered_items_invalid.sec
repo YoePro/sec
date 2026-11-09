@@ -1,0 +1,72 @@
+module main
+
+enum State { Ready = 1, Alias = 1, Busy = 2 }
+
+fn Ranges(value: int) void {
+    switch value {
+    case >= 0:
+        return
+    case > 10:
+        return
+    case 0..100:
+        return
+    }
+    switch value {
+    case 0..100:
+        return
+    case 50:
+        return
+    case 20..30:
+        return
+    }
+    switch value {
+    case 0..10, 5:
+        return
+    }
+    switch value {
+    case 4:
+        return
+    case 4..4:
+        return
+    }
+}
+
+fn DuplicateInt(value: int) void {
+    switch value {
+    case 5:
+        return
+    case 5:
+        return
+    }
+}
+
+fn DuplicateBool(value: bool) void {
+    switch value {
+    case true:
+        return
+    case true:
+        return
+    default:
+        return
+    }
+}
+
+fn DuplicateString(value: string) void {
+    switch value {
+    case "same":
+        return
+    case "same":
+        return
+    }
+}
+
+fn DuplicateAlias(value: State) void {
+    switch value {
+    case State.Ready:
+        return
+    case State.Alias:
+        return
+    default:
+        return
+    }
+}

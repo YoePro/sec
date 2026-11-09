@@ -1,0 +1,32 @@
+module main
+
+fn Again(ticket: MessageTicket[int]) void {
+    discard ticket.Revoke()
+    discard ticket.Revoke()
+}
+
+fn Shared(ticket: ref MessageTicket[int]) void {
+    discard ticket.Revoke()
+}
+
+fn Exclusive(ticket: ref mut MessageTicket[int]) void {
+    discard ticket.Revoke()
+}
+
+fn Borrowed(ticket: MessageTicket[int]) void {
+    let view := ref ticket
+    discard ticket.Revoke()
+    discard view
+    discard ticket.Revoke()
+}
+
+fn Arity(ticket: MessageTicket[int]) void {
+    discard ticket.Revoke(1)
+    discard ticket.Revoke()
+}
+
+fn Legacy(sender: Sender[int], ticket: MessageTicket[int]) void {
+    discard sender.Revoke(ticket)
+    discard ticket.Revoke()
+    sender.Close()
+}

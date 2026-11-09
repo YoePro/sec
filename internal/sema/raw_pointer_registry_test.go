@@ -63,7 +63,7 @@ func TestRawPointerRegistrySurface(t *testing.T) {
 				t.Fatalf("unspecified operation: %+v", member)
 			}
 			wantEffects := 0
-			if strings.HasPrefix(member.Name, "Volatile") {
+			if strings.HasPrefix(member.Name, "Volatile") || member.Name == "Read" || member.Name == "Write" {
 				wantEffects = 1
 			}
 			if len(member.Effects) != wantEffects {

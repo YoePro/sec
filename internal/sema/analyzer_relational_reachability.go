@@ -38,7 +38,12 @@ func (a *Analyzer) pureIntegerCondition(condition ast.Expression) bool {
 }
 
 func (a *Analyzer) pureIntegerOperand(operand ast.Expression) bool {
-	if _, constant := a.constantConditionIntegerValue(operand); constant {
+	// Character and rune literals (`48r`, `'0'`) are code-point constants:
+	// comparisons on char and rune values are totally ordered by code point,
+	// so their negation is as sound as an integer one and the resulting path
+	// fact bounds later integer conversions (rules/types/types.md —
+	// "Explicit conversions").
+	if _, constant := a.scalarBoundConstant(operand); constant {
 		return true
 	}
 	// Only a binding that keeps its value for its whole lifetime qualifies:
@@ -53,6 +58,9 @@ func (a *Analyzer) pureIntegerOperand(operand ast.Expression) bool {
 	symbol, exists := a.symbols.lookup(identifier.Value)
 	if !exists || symbol.TransientConstant || symbol.Mutable && !a.currentStableBindings[identifier.Value] {
 		return false
+	}
+	if typ, typed := a.expressionTypes[operand]; typed && (typ.Kind == CharType || typ.Kind == RuneType) {
+		return true
 	}
 	_, _, integer := a.integerInterval(operand)
 	return integer

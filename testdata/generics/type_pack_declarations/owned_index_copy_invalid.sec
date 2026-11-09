@@ -1,0 +1,24 @@
+module main
+
+@noCopy
+type Handle struct { Id: int }
+
+fn Touch[T](value: ref T) void {}
+fn Copy[T](value: T) void {}
+
+fn BorrowThenCopy[...Types](values: ...Types) void {
+    Touch(values[0])
+    let copied := values[0]
+}
+
+fn ValueCall[...Types](values: ...Types) void {
+    Copy(values[0])
+}
+
+fn main() int {
+    let first := Handle { Id: 1 }
+    BorrowThenCopy(<-first)
+    let second := Handle { Id: 2 }
+    ValueCall(<-second)
+    return 0
+}

@@ -308,6 +308,9 @@ fn Valid(mutex: Mutex[State]) void {
 	assertSemaErrors(t, errors, nil)
 }
 
+// A function containing cancel requires a cancellable execution; the
+// requirement is inferred and rejected where ordinary program entry calls it
+// (cancellation.md §§ 19–22, scheduling.md § 22).
 func TestCancelOutsideCancellableContext(t *testing.T) {
 	input := `
 module main
@@ -316,12 +319,16 @@ fn Invalid() void {
     cancel
     let value := 1
 }
+
+fn main() void {
+    Invalid()
+}
 `
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"cancel is not valid outside a task or explicit thread context at 5:5",
 		"unreachable statement at 6:5",
+		"call requires a current cancellable task or thread execution context because Invalid uses cancel at 5:5; ordinary program entry is not a cancellable task or thread at 10:5",
 	})
 }
 
@@ -335,11 +342,15 @@ fn Invalid() void {
     }
     callback()
 }
+
+fn main() void {
+    Invalid()
+}
 `
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"cancel is not valid outside a task or explicit thread context at 6:9",
+		"call requires a current cancellable task or thread execution context because lambda uses cancel at 6:9; ordinary program entry is not a cancellable task or thread at 12:5",
 	})
 }
 

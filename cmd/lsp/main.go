@@ -3117,7 +3117,7 @@ func contextHasFunction(context completionContext) bool {
 var secKeywords = append([]string{
 	"after", "asm", "assert", "await", "break", "cancel", "case", "capture", "continue", "default",
 	"defer", "detach", "discard", "else", "enum", "extends", "extern", "fallthrough", "false", "fn", "for", "free",
-	"get", "if", "impl", "implements", "import", "in", "interface",
+	"get", "if", "impl", "implements", "import", "in", "interface", "join",
 	"let", "match", "module", "mut", "new", "null", "panic", "process",
 	"property", "range", "ref", "return", "select", "self", "set", "spawn", "static", "struct",
 	"require", "switch", "task", "thread", "true", "try", "type", "unit", "union",

@@ -1,0 +1,11 @@
+module main
+
+fn MissingUnsafe(pointer: RawPtr[int]) int { return pointer.Read() }
+
+fn WrongValue(pointer: RawPtr[int]) void {
+    unsafe { pointer.Write(true) }
+}
+
+fn Untyped(pointer: RawPtr[void]) void {
+    unsafe { discard pointer.Read() }
+}

@@ -1,0 +1,59 @@
+module match_payload_discards_valid
+
+type Plain union {
+    Value(int)
+    Fields { Count: int }
+    Empty
+}
+
+type Owned union {
+    Work(Task[int])
+    Fields { Work: Thread[int] }
+    Empty
+}
+
+fn OptionIgnore(value: Option[int]) int {
+    return match value { Some(_) => 1
+        None => 0 }
+}
+
+fn OptionBare(value: Option[int]) int {
+    return match value { Option.Some => 1
+        None => 0 }
+}
+
+fn ResultIgnore(value: Result[int, ArithmeticError]) int {
+    return match value { Ok(_) => 1
+        Err(_) => 0 }
+}
+
+fn UnionIgnore(value: Plain) int {
+    return match value { Value(_) => 1
+        Fields(_) => 2
+        Empty => 0 }
+}
+
+fn UnionBare(value: Plain) int {
+    return match value { Plain.Value => 1
+        Plain.Fields => 2
+        Empty => 0 }
+}
+
+fn FieldsEmpty(value: Plain) int {
+    return match value { Value(_) => 1
+        Fields {} => 2
+        Empty => 0 }
+}
+
+fn RetainObligations(value: Owned) int {
+    return match value {
+        Work(ref work) => 1
+        Fields { Work: ref worker } => 2
+        Empty => 0
+    }
+}
+
+fn ReferencePayload(value: Option[ref Task[int]]) int {
+    return match value { Some(_) => 1
+        None => 0 }
+}

@@ -2,7 +2,7 @@ module main
 
 type Percent int range 0..100
 type Age int range 0..130
-type PageSize int range 10..100 multipleOf 10 odd
+type PageSize int range 10..100 multipleOf 10
 type Role string in ["admin", "user", "guest"]
 type Tags string[] notEmpty unique
 type Measurement float finite

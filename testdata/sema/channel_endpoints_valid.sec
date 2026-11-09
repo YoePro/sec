@@ -1,0 +1,20 @@
+module main
+fn Extract(channel: Channel[int]) void {
+    let sender :<- channel.Tx
+    let receiver :<- channel.Rx
+    discard sender
+    discard receiver
+}
+fn BorrowFields(channel: ref mut Channel[int]) void {
+    let sender := ref channel.Tx
+    let receiver := ref channel.Rx
+    discard sender
+    discard receiver
+}
+fn Construct() void {
+    let channel := Channel[int](0)
+    let sender :<- channel.Tx
+    let receiver :<- channel.Rx
+    discard sender
+    discard receiver
+}

@@ -534,7 +534,7 @@ integrations:
 
   - id: frontend.map-indexed-upsert
     area: frontend
-    status: partial
+    status: implemented
     integrated: "2026-08-11"
     rules:
       - rules/collections/collections.md
@@ -542,15 +542,15 @@ integrations:
       - rules/compiler/parser_recovery.md
       - rules/control-flow/flowcontrol_for.md
       - rules/compiler/compiler_analysis.md
-    remaining:
-      - make existing map entries produce indexed Places and missing lookup use checked key-access failure
-      - make indexed assignment an upsert, including bodyless try for fallible upsert
     implemented:
+      - "indexed map lookup (2026-11-08, TestMapIndexLookupAndUpsert): `values[key]` checks the key against K and yields the existing entry's V Place (P15 Place with an index projection; read, ref and ref mut uses); a missing key panics without try (may-panic-bounds effect, @noPanic) and is IndexError.OutOfBounds under try (owner decision, collections.md § 14.4); ResolvedMapIndexPlan / ResolvedMapIndexPlanOf"
+      - "indexed upsert assignment (2026-11-08): `try values[key] = value` and `try values[key] <- value` insert a missing key, never fail on it, and fail with CollectionError (try-assignment error type, bodyless propagation or local handlers); without try they are rejected with focused help; a compound assignment reads the existing entry like a lookup"
       - Map mutation has no Set method and never reinterprets declaration operators as indexed assignment (2026-10-16). Dynamic/bounded map values and reference receivers reject Set with S1157 and explicit indexed-upsert guidance; the shared compiler/LSP registry exposes no Set. Indexed := and :<- produce P2013 and one reported InvalidStatement, including bodyless and locally handled try, while preserving following bindings and declarations. Canonical = and <- remain assignment syntax, ordinary let initialization and user-defined Set methods remain valid. Parser recovery, all-depth Sema, CLI output preservation and unsaved LSP diagnostics are verified; this does not implement indexed lookup/upsert execution or its missing-key failure family.
       - Frontend key-value map iteration is verified for dynamic/bounded owners and shared/mutable references (2026-10-16, collections.md sections 14.2 and 14.6). Existing canonical binding validation enforces exactly key/value positions, independent copy requirements, copy-free discard, shared keys and mutable values only with authority; invalid headers publish no entry facts and structural mutation invalidates body validation. ForIterationDependencies now retains detached MapIterationEntries with component types, modes, discard decisions, locations and explicitly unspecified order; compiler and LSP consume the same facts without protocol Next discovery. Hover presents both components and order. Shared type snapshots preserve constant capacity arguments, including bounded component types. All-depth/reanalysis, nominal and noncopyable components, invalid modes, CLI and LSP checks pass. Executable map representation and entry-loop lowering remain in lowering.semantic-ir-v2; the IR boundary still rejects maps without partial output.
     revised: "2026-10-16"
-    summary: Canonical map key-value iteration facts, binding rules and mutation spelling are enforced by Sema and shared with tooling. Indexed Place lookup and fallible upsert remain below; executable map operations remain in lowering.semantic-ir-v2.
+    summary: Canonical map key-value iteration facts, binding rules, mutation spelling, indexed Place lookup and fallible upsert are enforced by Sema and shared with tooling. Executable map operations remain in lowering.semantic-ir-v2.
     code:
+      - internal/sema/map_index_plans.go
       - internal/sema/compiler_known_calls.go
       - internal/parser/indexed_declaration_recovery.go
       - internal/parser/parser.go
@@ -559,6 +559,7 @@ integrations:
       - internal/sema/semantic_snapshot.go
       - cmd/lsp/iterator_hover.go
     tests:
+      - internal/sema/map_index_plans_test.go
       - internal/sema/map_assignment_surface_test.go
       - internal/parser/indexed_declaration_recovery_test.go
       - cmd/compiler/map_assignment_surface_test.go
@@ -595,8 +596,8 @@ integrations:
       - rules/corrections/applied/md058-collection-capacity-reservation-correction-20261012.md
     remaining:
       - map lower-level AllocationError at collection API boundaries
-      - retain IndexError, RangeError, and key-access errors for checked access
     implemented:
+      - "checked access keeps its access-specific error family (2026-11-09, TestCheckedAccessErrorFamilies): under try, fixed-array, list, owning T[], slice and map-key access fail with IndexError (a missing map key included, collections.md § 14.4) and slice ranges with RangeError; neither is accepted by a CollectionError channel"
       - The canonical compiler-known CollectionError definition is centralized in builtinCollectionErrorType with exactly AllocationFailed, CapacityExceeded and SizeOverflow, its existing uint enum representation and Error eligibility (2026-10-14). Fresh builtin registrations own their case metadata. Unknown cases and implicit AllocationError-to-CollectionError returns are rejected. Semantic IR preserves core::CollectionError, its three case identities and typed constant producers; real Sec MLIR verification preserves the same family on 32-bit and 64-bit scalar plans through current scalar/trivial passes. Native enum representation conversion and allocation-failure mapping are not implied by this normalization.
       - "Normal absence/rejection frontend contracts completed and centralized (2026-10-16): collection_outcomes.go owns dynamic-array/list RemoveAt -> Option[T], list Remove/Contains and map ContainsKey/set Remove/Contains -> bool, list IndexOf -> Option[uint], map Remove -> Option[V], and list Insert/set Add -> Result[bool, CollectionError]. Negative signed and compatible named RemoveAt indexes remain valid normal-outcome inputs; invalid Insert positions and duplicate Add are documented as Ok(false), with structural/resource errors kept separate. Sema, hover and synthetic definitions share receiver-specialized contracts for dynamic/bounded families. All-depth positive/negative typing, nominal payload identity and CLI/LSP presentation are verified. This closes the frontend result-contract point; executable removal/insertion/search implementations and ownership/growth mechanics remain in the corresponding collection/P18 work."
     revised: "2026-10-16"
@@ -613,6 +614,7 @@ integrations:
       - testdata/sema/collection_errors_invalid.sec
       - testdata/semantic_ir/collection_errors/valid.sec
       - internal/sema/collection_outcomes_test.go
+      - internal/sema/checked_access_errors_test.go
       - cmd/compiler/collection_outcomes_test.go
       - cmd/lsp/collection_outcomes_test.go
       - testdata/sema/collection_outcomes_valid.sec

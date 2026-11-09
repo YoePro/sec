@@ -235,3 +235,29 @@ impl Res {
 		})
 	}
 }
+
+// A lambda that names the binding its let initializes gets the focused
+// direct-recursion diagnostic (lambda-functions.md § 33).
+func TestLambdaDirectRecursionDiagnostic(t *testing.T) {
+	errors := analyzeSourceRaw(t, `module main
+
+fn F() int {
+    let factorial := fn(value: int) int {
+        return value * factorial(value - 1)
+    }
+    let again := fn() int {
+        let copy := again
+        return 0
+    }
+    return 0
+}
+`)
+	if len(errors) != 2 {
+		t.Fatalf("diagnostics = %v", errors)
+	}
+	for _, err := range errors {
+		if !strings.Contains(err.Message, "the binding its let is initializing") {
+			t.Fatalf("unexpected diagnostic %q", err.Message)
+		}
+	}
+}

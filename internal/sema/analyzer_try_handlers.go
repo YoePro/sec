@@ -190,7 +190,7 @@ func (a *Analyzer) analyzeMatchErrorNarrowing(member *ast.MemberExpression, erro
 // binding its payload and reports the omitted-payload Information (MD-029).
 //
 // Rules:
-//   - rules/control-flow/flowcontrol_match.md — "Concrete error variants"
+//   - rules/control-flow/flowcontrol_match.md — §8(5), "Concrete error variants"
 //   - rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md — §§ 9.2–9.6, 9.11–9.13
 func (a *Analyzer) analyzeMatchConcreteErrorVariant(member *ast.MemberExpression, errorType Type) (matchPatternInfo, bool) {
 	if errorType.Kind != EnumType && errorType.Kind != UnionType {
@@ -205,6 +205,9 @@ func (a *Analyzer) analyzeMatchConcreteErrorVariant(member *ast.MemberExpression
 			return matchPatternInfo{}, false
 		}
 		a.bindDefinition(member.Property.Token, variant.Token)
+		if !a.checkMatchVariantDiscard(errorType, variant, "Err("+member.String()+")", member.Property.Token) {
+			return matchPatternInfo{}, false
+		}
 		// MD-029: a bare variant selects a payload-carrying error variant
 		// without binding its payload.
 		if variant.Payload != nil || len(variant.PayloadFields) > 0 {

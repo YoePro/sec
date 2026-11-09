@@ -1,0 +1,5 @@
+module main
+
+fn AttachmentFailure() Result[void, ThreadAttachError] {
+    return Err(ThreadAttachError.AlreadyAttached)
+}

@@ -274,3 +274,19 @@ func (a *Analyzer) registerLambdaBorrowCaptures(holder string, lambda *ast.Lambd
 func (state *lambdaEnvironmentState) environmentMoveOnly() bool {
 	return state != nil && (state.moveOnlyOwned || state.mutableBorrow)
 }
+
+// reportLambdaSelfReference explains a lambda body naming the binding its own
+// let initializes: that binding does not exist until the lambda value is
+// created, and Sec 0.1 has no recursive-closure binding form.
+//
+// Rules:
+//   - rules/declarations/lambda-functions.md — § 33 "Direct recursion"
+func (a *Analyzer) reportLambdaSelfReference(token lexer.Token, name string) bool {
+	if !a.inLambda || !a.lambdaInitializerNames[name] {
+		return false
+	}
+	a.addErrorAtTokenWithMetadata(token, diagnostics.UnknownCallTarget,
+		"A lambda cannot call itself through the binding it initializes; use a named function for direct recursion.",
+		"lambda cannot refer to %s, the binding its let is initializing; %s does not exist until the lambda value is created", name, name)
+	return true
+}

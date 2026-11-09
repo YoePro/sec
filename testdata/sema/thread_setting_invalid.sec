@@ -1,0 +1,12 @@
+module main
+
+fn PlainValue() ThreadSetting[int] {
+    return 42
+}
+
+fn WrongPayload() ThreadSetting[int] {
+    return ThreadSetting[int].Preferred("worker")
+}
+
+fn WrongArity(value: ThreadSetting[int, string]) void {
+}

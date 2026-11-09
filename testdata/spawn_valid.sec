@@ -1,5 +1,11 @@
 module spawn_valid
 
+// Every spawned task is awaited and every thread detached or joined (a
+// value-producing one is joined) before its scope ends (owned-handle
+// resolution, threads.md § 34). `spawn process` (not implemented yet) and
+// spawning a callable returned by a call (its guard safety is unprovable) are
+// covered by their own fixtures once supported.
+
 fn Work() void {
 }
 
@@ -26,40 +32,47 @@ fn ThreadSpawn() void {
     detach worker
 }
 
-fn ProcessSpawn() void {
-    let worker := spawn process Work()
-}
-
 fn SpawnReturningValue() void {
     let implicitTask := spawn Calculate()
+    await implicitTask
     let explicitTask := spawn task Calculate()
+    await explicitTask
     let workerThread := spawn thread Calculate()
+    join workerThread
 }
 
 fn SpawnWithArguments() void {
     let implicitTask := spawn Add(10, 20)
+    await implicitTask
     let explicitTask := spawn task Add(30, 40)
+    await explicitTask
     let workerThread := spawn thread Add(50, 60)
+    join workerThread
 }
 
 fn SpawnExpressionArgument() void {
     let worker := spawn Add(1 + 2, 3 * 4)
+    await worker
 }
 
 fn SpawnNestedCallArgument() void {
     let worker := spawn Add(Calculate(), Calculate())
+    await worker
 }
 
 fn SpawnMethodCall() void {
     let worker := spawn Worker.Run()
+    await worker
 }
 
 fn SpawnExplicitTaskMethodCall() void {
     let worker := spawn task Worker.Run()
+    await worker
 }
 
 fn SpawnThreadMethodCall() void {
     let worker := spawn thread Worker.Run()
+    detach worker
 }
 
 type Worker struct {
@@ -77,12 +90,16 @@ impl Worker {
 
 fn SpawnInstanceMethod(worker: ref Worker) void {
     let taskHandle := spawn worker.Process()
+    await taskHandle
     let threadHandle := spawn thread worker.Process()
+    join threadHandle
 }
 
 fn SpawnGenericFunction() void {
     let taskHandle := spawn Identity[int](10)
+    await taskHandle
     let threadHandle := spawn thread Identity[int](20)
+    join threadHandle
 }
 
 fn Identity[T](value: T) T {
@@ -91,7 +108,9 @@ fn Identity[T](value: T) T {
 
 fn SpawnQualifiedFunction() void {
     let taskHandle := spawn Run()
+    await taskHandle
     let threadHandle := spawn thread Run()
+    detach threadHandle
 }
 
 fn Run() void {
@@ -99,29 +118,27 @@ fn Run() void {
 
 fn MultipleSpawnStatements() void {
     let first := spawn Work()
+    await first
     let second := spawn task Work()
+    await second
     let third := spawn thread Work()
-    let fourth := spawn process Work()
+    detach third
 }
 
 fn SpawnInIf(condition: bool) void {
     if condition {
         let worker := spawn Work()
+        await worker
     } else {
         let worker := spawn thread Work()
+        detach worker
     }
 }
 
 fn SpawnInLoop() void {
     for index in 0..<4 {
         let worker := spawn Add(index, index)
+        await worker
     }
 }
 
-fn SpawnFromReturnedCallable() void {
-    let worker := spawn GetWorker()()
-}
-
-fn GetWorker() fn() void {
-    return Work
-}

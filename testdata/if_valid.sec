@@ -58,14 +58,12 @@ fn Range(score: int) void {
     }
 }
 
-fn StringTest(v: string) void {
-
-    let nu: decimal := 55
+fn StringTest(v: string, nu: decimal) void {
 
     if v == "banana" {
         if nu != 55 {
             return
-        } else if true {
+        } else if v.Len > 3 {
             return
         } else {
             return

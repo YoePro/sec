@@ -1,0 +1,14 @@
+module main
+
+fn Unknown() void {
+    discard ThreadStartMode.Immediate
+    discard ThreadPriority.Realtime
+}
+
+fn WrongIdentity(mode: ThreadStartMode) ThreadPriority {
+    return mode
+}
+
+fn NotAnError() error {
+    return ThreadPriority.Normal
+}

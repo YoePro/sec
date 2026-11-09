@@ -1,0 +1,28 @@
+module main
+
+fn Start(mode: ThreadStartMode) int {
+    match mode {
+        ThreadStartMode.Eager => { return 1 }
+        ThreadStartMode.Deferred => { return 2 }
+    }
+}
+
+fn Priority(value: ThreadPriority) int {
+    match value {
+        ThreadPriority.Lowest => { return 1 }
+        ThreadPriority.Low => { return 2 }
+        ThreadPriority.Normal => { return 3 }
+        ThreadPriority.High => { return 4 }
+        ThreadPriority.Highest => { return 5 }
+    }
+}
+
+type DefaultSettings struct {
+    Mode: ThreadStartMode,
+    Priority: ThreadPriority,
+}
+
+fn Defaults() void {
+    let settings := DefaultSettings{}
+    discard settings
+}

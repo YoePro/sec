@@ -1,0 +1,7 @@
+module main
+
+fn Invalid(value: ThreadTermination) void {
+    discard value.NativeCode
+    discard ThreadTerminationKind.Native
+    discard ThreadTermination{Kind: 1}
+}

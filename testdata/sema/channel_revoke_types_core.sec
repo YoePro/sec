@@ -1,0 +1,12 @@
+module core
+
+enum MessageDisposition {
+    Received
+    Expired
+    Discarded
+}
+
+type ChannelRevokeResult[T] union {
+    Revoked(T)
+    Unavailable(MessageDisposition)
+}

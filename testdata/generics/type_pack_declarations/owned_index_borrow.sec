@@ -1,0 +1,28 @@
+module main
+
+@noCopy
+type Handle struct { Id: int }
+
+fn Touch[T](value: ref T) void {}
+
+fn Borrow[...Types](values: ...Types) void {
+    Touch(values[0])
+    let k := 0
+    Touch(values[k])
+    Touch(ref values[0])
+}
+
+fn Mixed[...Types](values: ...Types) void {
+    Touch(values[0])
+    let copied := values[1]
+    Touch(copied)
+}
+
+fn main() int {
+    let first := Handle { Id: 1 }
+    Borrow(<-first)
+    let second := Handle { Id: 2 }
+    Mixed(<-second, 42)
+    Borrow(true)
+    return 0
+}

@@ -1,0 +1,17 @@
+module main
+
+enum ThreadSchedulingError error {
+    ProjectSchedulingFailure
+}
+
+enum ThreadTerminationError error {
+    ProjectTerminationFailure
+}
+
+enum ThreadContextError error {
+    ProjectContextFailure
+}
+
+fn ProjectFailure() error {
+    return ThreadContextError.ProjectContextFailure
+}

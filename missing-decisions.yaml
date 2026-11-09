@@ -1,6 +1,6 @@
 schema_version: 1
-updated: "2026-11-07"
-last_id: MD-127
+updated: "2026-11-09"
+last_id: MD-129
 purpose: >-
   Tracks normative decisions that are missing or insufficiently precise and
   therefore constrain implementation. Remove an entry only after the owning
@@ -1083,4 +1083,46 @@ decisions:
       plain closures and needs no new syntax. Governance owner: declarations
       frontend.lambda-functions-v2.
     classification: constraining
+    status: open
+
+  - id: MD-128
+    area: spawn-creation-failure-ownership
+    rulebooks:
+      - rules/concurrency/spawn.md
+      - rules/concurrency/tasks.md
+      - rules/concurrency/threads.md
+      - rules/concurrency/processes.md
+      - rules/memory/ownership.md
+    description: >-
+      Raised 2026-11-09 by the spawn.md modernization audit
+      (applied correction rules/corrections/applied/spawn-modernization-audit-20261109.md § 4(1); spawn.md revision 2.0 deliberately leaves it open, see spawn-normative-fix-20261109 § 31). For
+      `match spawn task Work(<-resource)`, when creation returns
+      `Err(TaskSpawnError)`, must `resource` stay owned and usable by the caller
+      (as processes.md already specifies for `spawn process` through
+      transactional startup commit), or is ownership irreversibly committed to
+      the creation machinery and cleaned up on failure? `TaskSpawnError`
+      carries no payload to restore the value, and ownership.md § 14 commits
+      call-argument transfer at call entry without an unambiguous spawn
+      creation-failure contract. Same question for `spawn thread`. The answer
+      fixes source availability, cleanup obligations and Semantic IR commit
+      facts. Governance owner: concurrency.spawn-v1.
+    classification: constraining
+    status: open
+
+  - id: MD-129
+    area: spawn-already-cancelled-parent
+    rulebooks:
+      - rules/concurrency/spawn.md
+      - rules/concurrency/cancellation.md
+    description: >-
+      Raised 2026-11-09 by the spawn.md modernization audit
+      (applied correction rules/corrections/applied/spawn-modernization-audit-20261109.md § 4(2); spawn.md revision 2.0 § 24(3) deliberately defers to the cancellation/structured-task rules).
+      spawn.md § 24(3) no longer guarantees either outcome for a child created
+      after cancellation was requested and defers to the structured task and
+      cancellation relationship; cancellation.md § 55
+      delegates to task relationship rules without resolving it. Decide whether
+      creation succeeds with the child already cancelled, fails with a
+      TaskSpawnError, or is a documented per-kind difference. Should be decided
+      after MD-128. Governance owner: concurrency.spawn-v1.
+    classification: localized
     status: open

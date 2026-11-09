@@ -2636,7 +2636,7 @@ func (fb *functionBuilder) buildResolvedMatch(expr *ast.MatchExpression, resultT
 		if err != nil {
 			return builtValue{}, err
 		}
-		if matchPlanContinues(plan) {
+		if plan.CanContinue() {
 			merge = fb.newBlock()
 		}
 	}
@@ -2879,15 +2879,6 @@ func (fb *functionBuilder) markMatchArmTerminators(blocks []*Block, arm sema.Res
 	}
 }
 
-func matchPlanContinues(plan sema.ResolvedMatchPlan) bool {
-	for _, arm := range plan.Arms {
-		if arm.Flow == sema.MatchArmContinues || arm.Flow == sema.MatchArmProducesValue {
-			return true
-		}
-	}
-	return false
-}
-
 func (fb *functionBuilder) emitMatchPattern(subject builtValue, plan sema.ResolvedMatchPlan, arm sema.ResolvedMatchArm, matchedBlock, nextBlock *Block, boolType TypeID, matchID MatchID, token lexer.Token) error {
 	meta := Operation{
 		MatchID: matchID, MatchArmIndex: arm.SourceIndex, MatchStage: "pattern",
@@ -3091,135 +3082,6 @@ func (fb *functionBuilder) rebindMatchArm(armPlan sema.ResolvedMatchArm, value b
 		return fmt.Errorf("guarded match binding %s has no resolved identity", armPlan.BindingName)
 	}
 	fb.bindings[fb.armPayloadBindings[0]] = binding{value: value.id, typ: value.typ}
-	return nil
-}
-
-func (fb *functionBuilder) buildMatchExpressionArm(arm *ast.MatchArm, plan sema.ResolvedMatchArm, merge *Block, resultType TypeID, matchID MatchID) error {
-	if arm.ReturnBody != nil {
-		return fb.buildReturn(arm.ReturnBody)
-	}
-	if arm.BlockBody != nil {
-		return fb.buildMatchExpressionBlockArm(arm, plan, merge, resultType, matchID)
-	}
-	if arm.Body == nil || plan.Flow != sema.MatchArmProducesValue {
-		return fb.unsupported("non-expression match arm", arm.Token)
-	}
-	depth := len(fb.temporaries)
-	value, err := fb.buildExpr(arm.Body, resultType)
-	if err != nil {
-		return err
-	}
-	// The arm is its temporaries' scope (owner decision 2026-11-06; P17-40).
-	if err := fb.endRegionTemporaries(depth); err != nil {
-		return err
-	}
-	fb.runScopeCleanup(sema.CleanupExitFallthrough, arm.Token)
-	if err := fb.endArmTemporaries(fb.armTemporaryDepth); err != nil {
-		return err
-	}
-	fb.emit(Operation{Kind: OpBranch, Successors: []BranchTarget{{Block: merge.ID, Arguments: []ValueID{value.id}}}, MatchID: matchID, MatchArmIndex: plan.SourceIndex, MatchStage: "body-exit", MatchPatternKind: string(plan.PatternKind), Location: location(arm.Token)})
-	fb.current = nil
-	return nil
-}
-
-// buildMatchExpressionBlockArm lowers a block arm of a match expression. A
-// value-producing block yields its final expression; the value is built first
-// and leaving the block then runs its owned-value cleanup, as a value-producing
-// handler block does (flowcontrol_match.md; destruction.md § 6.2; P17-42). A
-// block that leaves by return, loop control or termination never reaches the
-// merge.
-func (fb *functionBuilder) buildMatchExpressionBlockArm(arm *ast.MatchArm, plan sema.ResolvedMatchArm, merge *Block, resultType TypeID, matchID MatchID) error {
-	statements := arm.BlockBody.Statements
-	popScope := fb.enterBuildScope(arm.BlockBody)
-	defer popScope()
-	fb.pendingHomes = append(fb.pendingHomes, fb.armPayloadBindings...)
-	// Sema leaves a block arm that falls through without a flow; in a match
-	// expression its final expression is the arm's value.
-	if plan.Flow != sema.MatchArmProducesValue && plan.Flow != "" {
-		if err := fb.buildStatements(statements); err != nil {
-			return err
-		}
-		if fb.current != nil {
-			return fb.unsupported("match expression block arm without a value", arm.Token)
-		}
-		return nil
-	}
-	if len(statements) == 0 {
-		return fb.unsupported("match expression block arm without a final expression", arm.Token)
-	}
-	final, ok := statements[len(statements)-1].(*ast.ExpressionStatement)
-	if !ok || final.Expression == nil {
-		return fb.unsupported("match expression block arm without a final expression", arm.Token)
-	}
-	if err := fb.buildStatements(statements[:len(statements)-1]); err != nil {
-		return err
-	}
-	if fb.current == nil {
-		return nil
-	}
-	depth := len(fb.temporaries)
-	value, err := fb.buildExpr(final.Expression, resultType)
-	if err != nil {
-		return err
-	}
-	if err := fb.endRegionTemporaries(depth); err != nil {
-		return err
-	}
-	fb.runScopeCleanup(sema.CleanupExitFallthrough, arm.BlockBody.Token)
-	if err := fb.endArmTemporaries(fb.armTemporaryDepth); err != nil {
-		return err
-	}
-	fb.emit(Operation{Kind: OpBranch, Successors: []BranchTarget{{Block: merge.ID, Arguments: []ValueID{value.id}}}, MatchID: matchID, MatchArmIndex: plan.SourceIndex, MatchStage: "body-exit", MatchPatternKind: string(plan.PatternKind), Location: location(arm.Token)})
-	fb.current = nil
-	return nil
-}
-
-func (fb *functionBuilder) buildMatchStatementArm(arm *ast.MatchArm, plan sema.ResolvedMatchArm, continuation *Block, matchID MatchID) error {
-	if arm.ReturnBody != nil {
-		return fb.buildReturn(arm.ReturnBody)
-	}
-	if arm.BlockBody != nil {
-		// A match payload's home list is its arm body (MD-065).
-		fb.pendingHomes = append(fb.pendingHomes, fb.armPayloadBindings...)
-		if err := fb.buildScope(arm.BlockBody); err != nil {
-			return err
-		}
-	} else if arm.Body != nil {
-		armType, ok := fb.owner.analyzer.ResolvedTypeOf(arm.Body)
-		if !ok {
-			return fb.unsupported("untyped match statement arm", arm.Token)
-		}
-		armTypeID, err := fb.owner.internType(armType)
-		if err != nil {
-			return err
-		}
-		if _, err := fb.buildExpr(arm.Body, armTypeID); err != nil {
-			return err
-		}
-		// A statement arm's expression is a full expression of its own.
-		if err := fb.endFullExpression(); err != nil {
-			return err
-		}
-		if armType.Kind != sema.VoidType && (sema.CopyClassificationOf(armType) != sema.CopyTrivial || !sema.TriviallyDestructible(armType)) {
-			return fb.unsupported("ignored non-trivial match statement arm value", arm.Token)
-		}
-	}
-	if fb.current == nil {
-		return nil
-	}
-	if continuation == nil {
-		return fmt.Errorf("continuing match arm %d has no continuation", plan.SourceIndex)
-	}
-	fb.runScopeCleanup(sema.CleanupExitFallthrough, arm.Token)
-	if err := fb.endArmTemporaries(fb.armTemporaryDepth); err != nil {
-		return err
-	}
-	fb.emit(Operation{
-		Kind: OpBranch, Successors: []BranchTarget{{Block: continuation.ID}}, MatchID: matchID,
-		MatchArmIndex: plan.SourceIndex, MatchStage: "body-exit",
-		MatchPatternKind: string(plan.PatternKind), Location: location(arm.Token),
-	})
-	fb.current = nil
 	return nil
 }
 

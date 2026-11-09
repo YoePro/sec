@@ -1,0 +1,7 @@
+module main
+
+fn Invalid() void {
+    discard ThreadSpawnError.Unsupported
+    discard ThreadSpawnError.ResourceUnavailable
+    discard ThreadStartError.Unsupported
+}

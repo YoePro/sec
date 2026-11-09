@@ -11,6 +11,8 @@ import (
 // argument contracts before publishing a result.
 // Rules: rules/compiler/compiler_known_members.md — "Lookup order";
 // rules/collections/collections.md — §§6.7,13.10,13.12,14.5,14.8,15.5;
+// rules/concurrency/threads.md — §43(1–4), observer wait prohibition;
+// rules/concurrency/channels.md — §§18,30, consuming ticket-owned revocation;
 // rules/corrections/md109-core-string-materialization-correction.md — §§2.1–2.2,9.3.
 func (a *Analyzer) inferValidatedCompilerKnownMemberCall(expr *ast.CallExpression) (Type, expressionValue, bool) {
 	memberExpr, ok := expr.Callee.(*ast.MemberExpression)
@@ -53,6 +55,10 @@ func (a *Analyzer) inferValidatedCompilerKnownMemberCall(expr *ast.CallExpressio
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 	}
 	lookupType := dereferenceType(receiverType)
+	if isThreadObserverType(lookupType) && memberExpr.Property.Value == "Wait" {
+		a.reportThreadObserverWait(memberExpr.Property.Token)
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+	}
 	if lookupType.Kind == StringType && (memberExpr.Property.Value == "FromByteArray" || memberExpr.Property.Value == "FromRuneArray") {
 		a.addErrorAtTokenWithMetadata(memberExpr.Property.Token, diagnostics.UnknownCallTarget,
 			"Call string."+memberExpr.Property.Value+"(data) using the type name; the input is borrowed.",
@@ -115,6 +121,11 @@ func (a *Analyzer) inferValidatedCompilerKnownMemberCall(expr *ast.CallExpressio
 		}
 	}
 	switch member.Name {
+	case "Revoke":
+		if lookupType.Name == "MessageTicket" {
+			return a.inferTicketRevokeCall(expr, memberExpr, receiverType)
+		}
+		return Type{}, expressionValue{}, false
 	case "Ok", "Err":
 		return a.inferConsumingResultProjection(expr, memberExpr, receiverType, lookupType, member)
 	case "Borrow", "BorrowMut", "Replace":

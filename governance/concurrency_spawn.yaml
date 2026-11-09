@@ -1,0 +1,145 @@
+schema_version: 1
+area: concurrency-spawn
+purpose: >-
+  Cross-execution-kind spawn syntax, semantic dispatch, input evaluation,
+  creation-failure boundary, and shared ownership/capability integration.
+integrations:
+  - id: concurrency.spawn-v1
+    area: concurrency
+    feature: cross-kind-spawn-boundary
+    status: partial
+    integrated: "2026-11-09"
+    document_revision: "2.0"
+    repository_baseline: dce854ecb317eb62923c638c23a1baaac354be02
+    summary: >-
+      Tracks the common spawn syntax and compiler boundary for task, thread, and
+      process execution; concrete lifecycle, configuration, transfer, runtime,
+      and completion behavior remain with their specialist owners. The source
+      rulebook is undergoing modernization while retaining every established
+      paragraph number.
+    rules:
+      - rules/concurrency/spawn.md
+      - rules/foundations/grammar.md
+      - rules/concurrency/tasks.md
+      - rules/concurrency/threads.md
+      - rules/concurrency/processes.md
+      - rules/concurrency/concurrency.md
+      - rules/concurrency/cancellation.md
+      - rules/concurrency/scheduling.md
+      - rules/memory/ownership.md
+      - rules/memory/borrowing.md
+      - rules/memory/transferability.md
+      - rules/compiler/semantic_ir.md
+    code:
+      - internal/ast/ast.go
+      - internal/parser/parser.go
+      - internal/sema/analyzer.go
+      - internal/sema/types.go
+      - internal/parser/expression.go
+      - internal/sema/analyzer_inference.go
+    tests:
+      - internal/sema/concurrency_test.go
+      - internal/parser/parser_test.go
+      - internal/parser/spawn_forms_test.go
+      - internal/formatter/spawn_forms_test.go
+      - internal/sema/spawn_blocks_test.go
+      - cmd/compiler/spawn_grammar_test.go
+      - cmd/lsp/spawn_grammar_test.go
+      - testdata/formatter/spawn_forms.sec
+      - testdata/formatter/spawn_forms.expected.sec
+      - testdata/parser/spawn_missing_operand_invalid.sec
+      - testdata/sema/spawn_blocks_invalid.sec
+    implemented:
+      - >-
+        The parser and AST represent spawn constructs and distinguish task,
+        thread, and process execution-kind modifiers.
+      - >-
+        Initial frontend task and thread handle identities and spawn syntax
+        exist; current task-spawn typing has legacy direct-Task[T] paths.
+      - >-
+        The frontend rejects process spawn where its process materialization,
+        startup transfer, and lifecycle requirements are not implemented; it
+        does not silently degrade it to task/thread spawn.
+      - >-
+        Initial task-handle must-use and unresolved-lifecycle checks exist, as
+        documented by concurrency_task.yaml.
+      - Grammar section 89 expression/block alternatives and default/task/thread/process contextual spellings are preserved through parser and formatter, including ordinary identifiers with those spellings; missing operands preserve surrounding syntax and produce one canonical parser diagnostic in CLI/LSP, while valid spawned blocks report their separate unimplemented semantic capability rather than deprecated syntax (2026-11-09)
+    remaining:
+      - >-
+        Unify spawn typing with canonical fallible Result[Task[T],
+        TaskSpawnError], Result[Thread[T], ThreadSpawnError], and
+        Result[Process[T], ProcessSpawnError] without flattening callable T.
+      - >-
+        Preserve task, physical-thread, and isolated-process execution
+        identities and reject unsupported target capabilities at compile time.
+      - >-
+        Preserve eager task/process creation and default eager / explicit
+        deferred thread creation, including callable start boundaries.
+      - >-
+        Propagate correct task, thread, and process current-execution facts
+        without inventing a task parent or TaskContext where none exists.
+      - >-
+        Validate boundary-specific owned, borrowed, mutable, capture, callable,
+        and method-receiver transferability and lifetime proofs.
+      - >-
+        Resolve source ownership and cleanup across creation success,
+        argument-evaluation failure, and task/thread/process creation failure
+        according to finalized normative ownership-commit rules (MD-128).
+      - >-
+        Ensure one-shot creation failure and lifecycle-owner facts survive
+        Semantic IR verification, target lowering, and LSP presentation.
+      - >-
+        Integrate resource-amplification and recursive-spawn diagnostics
+        according to the selected target/profile; do not make a universal
+        static-bound rule for valid hosted dynamic creation.
+      - >-
+        Complete integration with cancellation.md parent-child semantics after
+        the already-cancelled-parent creation behavior is fully specified.
+    required_tests:
+      - default spawn and spawn task have canonical fallible task result
+      - spawn thread has canonical fallible physical-thread result
+      - spawn process has canonical fallible process result or rejects unsupported capability
+      - spawn block and callable-expression forms preserve the chosen execution kind
+      - nested Result callable return is preserved inside the created handle
+      - deferred physical-thread callable does not execute before Start commit
+      - successful task creation does not imply a physical-thread identity
+      - spawn outside a task context does not fabricate Task.Current
+      - spawned process receiver state is child-local, never an ordinary parent borrow
+      - borrowed task/thread payloads obey lifetime, affinity, and transferability proofs
+      - process spawn rejects ordinary cross-process ref and ref mut transfers
+      - move-only named inputs require explicit move markers
+      - failed creation never leaks or double-destroys prepared resources
+      - created handles cannot be silently discarded or implicitly detached
+      - dynamic recursive creation obeys target-profile resource constraints
+    governance_reconciliation:
+      - >-
+        concurrency_task.yaml retains Task[T], TaskOutcome[T], task creation,
+        task ownership and terminal outcome implementation ownership.
+      - >-
+        concurrency_thread.yaml retains ThreadConfig, eager/deferred start,
+        Thread[T] lifecycle and physical-thread implementation ownership.
+      - >-
+        concurrency_process.yaml retains process-entry materialization,
+        transactional process startup, Process[T], and process lifecycle.
+      - >-
+        concurrency_cancellation.yaml owns cancellation propagation, effects,
+        and Context; concurrency_scheduling.yaml owns executor scheduling.
+      - >-
+        Separate normative/decision review is required before setting universal
+        failure-commit or cancellation-inheritance facts here.
+    verification_notes:
+      - >-
+        Drafted by source comparison on 2026-11-09; no compiler tests executed
+        and no repository modifications made.
+    verification:
+      - command: go vet -p 4 ./internal/parser ./internal/formatter ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-11-09
+      - command: go test -p 4 ./internal/formatter ./internal/sema -count=1
+        result: passed on 2026-11-09; formatter 1.749s, Sema 17.716s
+      - command: go test -short -p 4 ./internal/parser -count=1
+        result: passed on 2026-11-09 (24.154s), including the bounded mutation/recovery corpus; the unrestricted mutation run was manually stopped after 86.841s while actively checking its corpus, with no failure observed before interruption
+      - command: go test -p 4 ./internal/parser ./internal/formatter ./internal/sema ./cmd/compiler ./cmd/lsp -run "TestSpawnGrammar|TestSpawnMissing|TestParseSpawn|TestFormatSpawn|TestSpawnBlock" -count=1
+        result: passed on 2026-11-09; eight grammar forms, contextual identifiers, missing-operand recovery, formatting golden/idempotence, block capability boundaries and CLI/LSP diagnostic parity
+      - command: go run ./cmd/yamlstatus check; go run ./cmd/yamlstatus -paths -file concurrency_spawn.yaml
+        result: passed on 2026-11-09 after spawn.md revision 2.0 was applied from spawn-normative-fix-20261109; no compiler tests run
+    revised: "2026-11-09"

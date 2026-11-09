@@ -1,7 +1,7 @@
 module main
 
 type View struct { value: ref int }
-fn Identity(ref value: int) ref int { return value }
+fn Identity(value: ref int) ref int { return value }
 fn ThroughCall() ref int {
     let backing := 10
     return Identity(ref backing)

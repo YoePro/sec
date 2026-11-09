@@ -9735,7 +9735,7 @@ fn Invalid(value: int, name: string) void {
 
 	expected := []string{
 		"switch case must be compatible with subject type int, got string at 6:7",
-		"duplicate switch case value 1 at 10:7",
+		"duplicate switch case value 1 at 10:7, earlier equivalent case at 8:7",
 		"subjectless switch case must be bool, got int at 15:7",
 		"fallthrough is not allowed in the final switch case at 21:3",
 	}
@@ -9759,7 +9759,7 @@ fn Select(command: string) void {
 
 	errors := analyzeSourceRaw(t, input)
 	expected := []string{
-		`duplicate switch case value "start" at 8:7, earlier equivalent string case at 6:7`,
+		`duplicate switch case value "start" at 8:7, earlier equivalent case at 6:7`,
 	}
 	assertSemaErrors(t, errors, expected)
 	if errors[0].ID != diagnostics.DuplicateSwitchCase {
@@ -9896,7 +9896,7 @@ fn Invalid(value: int) void {
 	errors := analyzeSourceRaw(t, input)
 
 	expected := []string{
-		"switch case value 50 is already covered by previous case at 8:7",
+		"switch case value 50 is already covered by previous case at 8:7, earlier covering case at 6:8",
 		"switch case range overlaps previous case at 10:9",
 	}
 
@@ -9953,9 +9953,8 @@ fn Invalid(value: int) void {
 	errors := analyzeSourceRaw(t, input)
 
 	expected := []string{
-		"unreachable switch case; previous case already covers this condition at 8:7",
-		"unreachable switch case; previous case already covers this condition at 15:7",
-		"unreachable switch case; previous case already covers this condition at 22:7",
+		"unreachable switch case; previous case already covers this condition at 8:7, earlier covering case at 6:7",
+		"unreachable switch case; previous case already covers this condition at 15:7, earlier covering case at 13:7",
 	}
 
 	assertSemaErrors(t, errors, expected)
@@ -10057,7 +10056,7 @@ fn Invalid(value: bool) void {
 	errors := analyzeSourceRaw(t, input)
 
 	expected := []string{
-		"duplicate switch case value true at 8:7",
+		"duplicate switch case value true at 8:7, earlier equivalent case at 6:7",
 	}
 
 	assertSemaErrors(t, errors, expected)
@@ -10242,9 +10241,8 @@ func TestCompilerIntrinsicTypesAreRegistered(t *testing.T) {
 		"ThreadStatus",
 		"ThreadSpawnError",
 		"ThreadStartError",
-		"ThreadSchedulingError",
-		"ThreadTerminationError",
-		"ThreadContextError",
+		"ThreadAttachError",
+		"ThreadStartMode",
 		"Mutex",
 		"MutexGuard",
 		"Atomic",
@@ -10406,8 +10404,8 @@ type Message struct {
 
 fn Use() void {
 	let channel := Channel[Message](32)
-	let tx := channel.tx
-	let rx := channel.rx
+	let tx :<- channel.Tx
+	let rx :<- channel.Rx
 	let received := rx.Receive()
 	let attempt := rx.TryReceive()
 	discard tx
@@ -10448,10 +10446,10 @@ type Message struct {
 
 fn Use() void {
 	let channel := Channel[Message](1)
-	let tx := channel.tx
+	let tx :<- channel.Tx
 	let sent := tx.Send(Message{ value: 1 })
 	let ticket := tx.SendRevocable(Message{ value: 2 })
-	let revoke := tx.Revoke(ticket)
+	let revoke := ticket.Revoke()
 	discard sent
 	discard revoke
 }
@@ -10484,8 +10482,8 @@ type Message struct {
 
 fn Use() void {
 	let channel := Channel[Message](1)
-	let tx := channel.tx
-	let rx := channel.rx
+	let tx :<- channel.Tx
+	let rx :<- channel.Rx
 	let outbound := Message{ value: 1 }
 
 	match rx.Receive() {
@@ -10530,7 +10528,7 @@ type Message struct {
 
 fn Use() void {
 	let channel := Channel[Message](1)
-	let tx := channel.tx
+	let tx :<- channel.Tx
 	let moved :<- tx
 	let again := tx
 	discard moved
@@ -10554,7 +10552,7 @@ type Message struct {
 
 fn Use() void {
 	let channel := Channel[Message](1)
-	let tx := channel.tx
+	let tx :<- channel.Tx
 	let mut value := 1
 	let message := Message{ view: ref mut value }
 	let sent := tx.Send(message)
@@ -10580,7 +10578,7 @@ type Message struct {
 
 fn Use() void {
 	let channel := Channel[Message](1)
-	let tx := channel.tx
+	let tx :<- channel.Tx
 	let sent := tx.Send(1)
 }
 `
@@ -10602,8 +10600,8 @@ type Message struct {
 
 fn Use(work: Task[int]) void {
 	let channel := Channel[Message](1)
-	let tx := channel.tx
-	let rx := channel.rx
+	let tx :<- channel.Tx
+	let rx :<- channel.Rx
 	let outbound := Message{ value: 1 }
 
 	select {
@@ -10684,7 +10682,7 @@ fn Use(rx: Receiver[int]) void {
 		first := rx.Receive() => {
 			discard first
 		}
-		second := rx.TryReceive() => {
+		second := rx.Receive() => {
 			discard second
 		}
 	}
@@ -10706,7 +10704,7 @@ fn Use(tx: Sender[int]) void {
 	select {
 		tx.Send(1) => {
 		}
-		tx.TrySend(2) => {
+		tx.Send(2) => {
 		}
 	}
 }
@@ -10752,7 +10750,7 @@ type Message struct {
 
 fn Use() void {
 	let channel := Channel[Message](1)
-	let tx := channel.tx
+	let tx :<- channel.Tx
 	let mut value := 1
 	let message := Message{ view: ref mut value }
 	select {
@@ -10782,7 +10780,7 @@ type Message struct {
 
 fn Use() void {
 	let channel := Channel[Message](1)
-	let tx := channel.tx
+	let tx :<- channel.Tx
 	let second := tx.Share()
 	let mut value := 1
 	let message := Message{ view: ref mut value }

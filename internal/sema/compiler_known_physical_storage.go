@@ -15,9 +15,9 @@ func compilerKnownRawPointerMembers(typ Type) []CompilerKnownMember {
 	}
 	members := []CompilerKnownMember{
 		{ID: "CKM-RAWPTR-READ", Name: "Read", Result: element,
-			Signature: "unsafe fn Read() T", Documentation: "Reads the pointee without acquiring pointee ownership. Ordinary access is distinct from volatile access.", Receiver: "RawPtr[T]", Rule: ruleRawPointers + " — §11"},
+			Signature: "unsafe fn Read() T", Documentation: "Reads the pointee without acquiring pointee ownership. Ordinary access is distinct from volatile access.", Receiver: "RawPtr[T]", Rule: ruleRawPointers + " — §11", Effects: []EffectKind{EffectMemoryRead}},
 		{ID: "CKM-RAWPTR-WRITE", Name: "Write", Result: builtinType("void"),
-			Signature: "unsafe fn Write(value: T) void", Documentation: "Writes the pointee without acquiring storage ownership or implicitly destroying a live non-trivial value. Ordinary access is distinct from volatile access.", Receiver: "RawPtr[T]", Rule: ruleRawPointers + " — §12"},
+			Signature: "unsafe fn Write(value: T) void", Documentation: "Writes the pointee without acquiring storage ownership or implicitly destroying a live non-trivial value. Ordinary access is distinct from volatile access.", Receiver: "RawPtr[T]", Rule: ruleRawPointers + " — §12", Effects: []EffectKind{EffectMemoryWrite}},
 		{ID: "CKM-RAWPTR-VOLATILE-READ", Name: "VolatileRead", Result: element,
 			Signature: "unsafe fn VolatileRead() T", Documentation: "Observable physical-storage read that the optimizer may not remove, merge, or reorder.", Receiver: "RawPtr[T] to a validated physical region", Rule: "rules/platform/volatile.md — §§9–11",
 			TargetRestriction: "requires a target region with validated volatile access", AllocationBehavior: AllocationFree, Effects: []EffectKind{EffectVolatileRead}},

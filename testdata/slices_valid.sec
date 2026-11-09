@@ -208,7 +208,7 @@ fn SharedSliceDescriptorCopy() int {
 }
 
 fn MoveMutableSlice(values: ref mut int[]) int {
-    let moved := values
+    let moved :<- values
 
     moved[0] = 99
 

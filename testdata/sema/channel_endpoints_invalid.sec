@@ -1,0 +1,24 @@
+module main
+fn LowerTx(channel: Channel[int]) void { let endpoint :<- channel.tx }
+fn LowerRx(channel: Channel[int]) void { let endpoint :<- channel.rx }
+fn CopyEndpoint(channel: Channel[int]) void { let endpoint := channel.Tx }
+fn RepeatTx(channel: Channel[int]) void {
+    let sender :<- channel.Tx
+    let again :<- channel.Tx
+    discard sender
+}
+fn RepeatRx(channel: Channel[int]) void {
+    let receiver :<- channel.Rx
+    let again :<- channel.Rx
+    discard receiver
+}
+fn WholeAfterPartial(channel: Channel[int]) void {
+    let sender :<- channel.Tx
+    let whole :<- channel
+    discard sender
+}
+fn BorrowAfterMove(channel: Channel[int]) void {
+    let sender :<- channel.Tx
+    let view := ref channel.Tx
+    discard sender
+}

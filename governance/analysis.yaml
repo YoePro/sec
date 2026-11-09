@@ -258,8 +258,9 @@ integrations:
       - pitfall.ownership.last-use-argument-copy recommends <-name for final-use whole local/parameter aggregate arguments whose selected ordinary value parameter performs a trivial copy and whose estimated value size reaches the existing 64-byte large-value policy; exact parameter types, canonical binding identity and transfer plans, complete body uses and conservative borrow/dependency checks are required, including new initializers and try handlers; later uses, reference/member dependencies, delayed execution, nested candidates, cheap views, mandatory transfers and invalid copies withhold duplicate advice
       - ordinary value argument ownership checks publish selected trivial/semantic copies through ResolvedTransferPlanOf; copy_move.md revision 2.2 clarifies caller-selected explicit moves to ordinary owning value parameters without signature changes, while -> parameters require transfer; noncopyable argument help now explains the existing explicit-move alternative; findings remain SuggestedEdit with no automatic fix and share registry, whole-body budget, dependency-qualified cache, CLI and LSP publication
       - "Individual CLI selection verified 2026-11-03: `sec analyse pitfalls` is the MD-017 canonical spelling registered by tooling.cli; the real CLI process isolates its optional human/verbose/JSON output on a mixed-family source, preserves exact owner diagnostics and positions, follows transitive function focus, stays silent on clean source and rejects mandatory language errors. Canonical names and conflicting --all/selector rejection are covered. BUG-000020 repairs shared JSON emission of already-selected Sema advisories without new semantic inference or diagnostic serialization. This closes only the existing explicit-selector item, not the remaining analysis semantics or source-edit requirements."
+      - "predecessor access (2026-11-09, pitfall_predecessor.go, TestPitfallPredecessorNeedsPositiveIndex): values[i - 1] without a proof that i >= 1 reports pitfall.bounds.predecessor-needs-positive-index; dominating guards (i > 0, i >= 1, i != 0 for uint), else branches, early exits, range loops starting at 1 or more, constants and contract minimums suppress it, a write to i ends the proof, and the proven lower-neighbor finding keeps zero-based loop neighbors without an overlapping report; findings and the final-element finding explain checked unsigned underflow versus a signed bounds violation (§ 25.7(5))"
+      - "predecessor access in reverse and stepped loops (2026-11-09, TestPitfallPredecessorInReverseAndSteppedLoops): a descending `start..end step -k` range proves its binding >= 1 when end >= 1 (exclusive `..<end` when end >= 0), an ascending stepped range from its start, and a while condition at every body entry; a descending range reaching 0 keeps the finding"
     remaining:
-      - "MD-074/MD-088 pitfall extension (rules/analysis/pitfall_analysis.md \"Final-element access requires non-empty proof\", 2026-10-17): predecessor access values[i - 1] with i possibly 0 and reverse loops, and explaining whether the hazard is checked unsigned underflow or a bounds violation, are not implemented yet"
       - extend canonical fact consumption beyond resolved bindings and compiler-known Len to normalized range, bounds, control-flow, Place/provenance, collection-shape, effect, layout, and FFI contract facts
       - generalize the implemented canonical upper/lower-neighbor slice to additional normalized iteration domains, offsets, steps, and proven endpoint guards without weakening false-positive suppression
       - implement the count-versus-inclusive-endpoint advisory once a semantic contract or trusted metadata can establish that a value is an element count; extend omitted-last-element intent evidence to chunking, sentinels, and range contracts
@@ -825,7 +826,6 @@ integrations:
     rules:
       - rules/declarations/interfaces.md
       - rules/analysis/closure_analysis.md
-      - rules/corrections/applied/types-callable-model-correction-20260816.md
       - rules/analysis/call_graph.md
       - rules/control-flow/defer.md
       - rules/tooling/testing.md
@@ -1144,8 +1144,6 @@ integrations:
       - rules/control-flow/defer.md
       - rules/analysis/call_graph.md
       - rules/tooling/diagnostics.md
-      - rules/corrections/applied/correction25-20260823.md
-      - rules/corrections/applied/correction28-20260823.md
     code:
       - internal/sema/arena_invalidation_diagnostics.go
       - internal/diagnostics/diagnostics.go
@@ -1237,7 +1235,6 @@ integrations:
       - command: go test ./... -count=1
         result: passed on 2026-10-11 except the unrelated stale generated unicode.sec check; `sec sema sec` reports the same 59 library errors as HEAD
     bug_reference:
-      - rules/corrections/applied/correction28-20260823.md
     governance_reconciliation:
       - Narrow "semantic validation of mutable Arena.Reset calls" to syntax, receiver mutability, and generation mutation until dependency-crossing legality is implemented.
       - Keep stale-generation rejection as implemented in its represented subset; it is not the same as Reset legality proof.

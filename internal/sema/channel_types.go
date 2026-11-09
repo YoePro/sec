@@ -27,3 +27,41 @@ func builtinChannelCapabilityType() Type {
 		Kind: EnumType, Underlying: "int", EnumValues: values,
 		EnumConsts: builtinEnumConsts(values), EnumDefault: "Revocation"}
 }
+
+// channelEndpointFields describes ordinary stored owning endpoint fields in
+// the canonical order, so member lookup, Place projection and partial moves
+// share one source identity instead of a channel-specific ownership path.
+// Rules: rules/concurrency/channels.md §§15(1–5),21(1–6),57(3).
+func channelEndpointFields(message Type) []StructField {
+	return []StructField{{Name: "Tx", Type: senderType(message)}, {Name: "Rx", Type: receiverType(message)}}
+}
+
+// channelType returns the same concrete field shape used by the generic Channel
+// template; constructor inference cannot drop its stored-field identities.
+// Rules: rules/concurrency/channels.md §15(1–5),§21.
+func channelType(message Type) Type {
+	return Type{Name: "Channel", Kind: StructType, Intrinsic: true, TypeArgs: []Type{message}, Fields: channelEndpointFields(message)}
+}
+
+// rejectLegacyChannelEndpoint explains non-canonical lowercase endpoint names;
+// canonical Tx/Rx are resolved by ordinary stored-field lookup.
+// Rules: rules/concurrency/channels.md §§3(3),15(3),62–63.
+func (a *Analyzer) rejectLegacyChannelEndpoint(expr *ast.MemberExpression, owner Type) bool {
+	if !isChannelType(owner) {
+		return false
+	}
+	canonical := ""
+	switch expr.Property.Value {
+	case "tx":
+		canonical = "Tx"
+	case "rx":
+		canonical = "Rx"
+	}
+	if canonical == "" {
+		return false
+	}
+	a.addErrorAtTokenWithMetadata(expr.Property.Token, "",
+		"Use the canonical stored field `"+canonical+"`; extract its owning endpoint with an explicit move, for example `let endpoint :<- channel."+canonical+"`.",
+		"unknown member %s on %s; use %s", expr.Property.Value, typeDisplayName(owner), canonical)
+	return true
+}

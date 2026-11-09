@@ -389,10 +389,11 @@ const (
 	InvalidDeferredCleanup = "S1203"
 	// Raw-pointer mentor categories distinguish authorization from invalidity.
 	// Rules: rules/memory/raw_pointers.md — §34(1–4).
-	RawPointerUnsafeRequired   = "S1204"
-	RawPointerInvalidOperation = "S1205"
-	RawPointerDanglingOrigin   = "S1206"
-	HardwareRegionOverlap      = "A2010"
+	RawPointerUnsafeRequired      = "S1204"
+	RawPointerInvalidOperation    = "S1205"
+	RawPointerDanglingOrigin      = "S1206"
+	AsmInvalidRegisterOperandType = "S1207"
+	HardwareRegionOverlap         = "A2010"
 
 	// UnionVariantPayloadRequired rejects a payload-carrying union variant
 	// used as a value without its payload.
@@ -520,6 +521,7 @@ var registry = map[string]Definition{
 	RawPointerUnsafeRequired:              {ID: RawPointerUnsafeRequired, Name: "unsafe.raw-pointer-context", Family: "unsafe", DefaultSeverity: SeverityError, Mandatory: true},
 	RawPointerInvalidOperation:            {ID: RawPointerInvalidOperation, Name: "unsafe.raw-pointer-operation", Family: "unsafe", DefaultSeverity: SeverityError, Mandatory: true},
 	RawPointerDanglingOrigin:              {ID: RawPointerDanglingOrigin, Name: "unsafe.raw-pointer-dangling", Family: "unsafe", DefaultSeverity: SeverityError, Mandatory: true},
+	AsmInvalidRegisterOperandType:         {ID: AsmInvalidRegisterOperandType, Name: "asm.invalid-register-operand-type", Family: "asm", DefaultSeverity: SeverityError, Mandatory: true},
 	StaticStoreOfShortLivedReference:      {ID: StaticStoreOfShortLivedReference, Name: "escape.static-store-of-short-lived-reference", Family: "escape", DefaultSeverity: SeverityError, Mandatory: true},
 	ThreadLocalStoreOfShortLivedReference: {ID: ThreadLocalStoreOfShortLivedReference, Name: "escape.thread-local-store-of-short-lived-reference", Family: "escape", DefaultSeverity: SeverityError, Mandatory: true},
 	ProductionDependsOnTest:               {ID: ProductionDependsOnTest, Name: "testing.production-dependency-on-test", Family: "testing", DefaultSeverity: SeverityError, Mandatory: true},

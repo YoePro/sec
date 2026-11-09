@@ -1,0 +1,58 @@
+module main
+
+enum State int {
+    Ready = 10
+    Alias = 10
+    Busy = 20
+}
+
+fn AliasCase(value: State) int {
+    switch value {
+    case State.Alias:
+        return 10
+    case State.Busy:
+        return 20
+    }
+}
+
+fn Grouped(value: State) int {
+    switch value {
+    case State.Alias, State.Busy:
+        return 1
+    }
+}
+
+fn Defaulted(value: State) int {
+    switch value {
+    case State.Busy:
+        return 2
+    default:
+        return 1
+    }
+}
+
+fn Echo(value: State) State { return value }
+
+fn Dynamic(value: State) int {
+    switch value {
+    case State.Ready:
+        return 1
+    case Echo(State.Busy):
+        return 2
+    default:
+        return 3
+    }
+}
+
+fn main() int {
+    if AliasCase(State.Ready) != 10 { return 1 }
+    if AliasCase(State.Alias) != 10 { return 2 }
+    if AliasCase(State.Busy) != 20 { return 3 }
+    if Grouped(State.Ready) != 1 { return 4 }
+    if Grouped(State.Busy) != 1 { return 5 }
+    if Defaulted(State.Ready) != 1 { return 6 }
+    if Defaulted(State.Busy) != 2 { return 7 }
+    if Dynamic(State.Ready) != 1 { return 8 }
+    if Dynamic(State.Busy) != 2 { return 9 }
+    return 0
+}

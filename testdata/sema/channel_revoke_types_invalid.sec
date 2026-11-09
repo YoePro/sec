@@ -1,0 +1,8 @@
+module main
+
+fn Invalid() void {
+    discard MessageDisposition.Orphaned
+    discard MessageDisposition.ReceiverClosed
+    discard MessageDisposition.Revoked
+    discard ChannelRevokeResult[int].Unavailable(1)
+}

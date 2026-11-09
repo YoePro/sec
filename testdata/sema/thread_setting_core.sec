@@ -1,0 +1,10 @@
+module core
+
+type ThreadSetting[T] union {
+    // Use the selected target/profile default.
+    Default
+    // Request the supplied value as a preference.
+    Preferred(T)
+    // Require the supplied value as part of the configuration.
+    Required(T)
+}

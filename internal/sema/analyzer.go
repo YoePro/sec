@@ -114,6 +114,7 @@ type Analyzer struct {
 	typePackByValueLoops         map[sourceTokenKey]lexer.Token
 	typePackLoopBorrows          map[*ast.ForStatement]ResolvedReferencePlan
 	typePackIndexes              map[*ast.IndexExpression]int
+	typePackIndexReaders         map[*ast.IndexExpression]sourceTokenKey
 	typePackBorrowedIndexes      map[*ast.IndexExpression]bool
 	typePackIndexLimits          map[sourceTokenKey]typePackIndexLimit
 	typePackForwards             map[*ast.CallExpression]*typePackForward
@@ -238,8 +239,13 @@ type Analyzer struct {
 	// blockExitKnownVariants holds the variants proven at each block's end
 	// for the join after it (variant_state_joins.go).
 	blockExitKnownVariants map[*ast.BlockStatement]knownVariantSet
+	// resolvedMapIndexPlans holds indexed map lookups and upserts.
+	resolvedMapIndexPlans map[*ast.IndexExpression]ResolvedMapIndexPlan
 	// resolvedDynamicArrayIndexPlans holds P18-09 owning-array index plans.
 	resolvedDynamicArrayIndexPlans map[*ast.IndexExpression]ResolvedDynamicArrayIndexPlan
+	// lambdaInitializerNames holds the bindings a let is initializing with a
+	// lambda, for the direct-recursion diagnostic.
+	lambdaInitializerNames map[string]bool
 	// lambdaEnvironment is the environment use of the lambda body being
 	// analyzed, nil outside lambdas.
 	lambdaEnvironment          *lambdaEnvironmentState
@@ -282,24 +288,30 @@ type Analyzer struct {
 	resolvedPropertyAccesses    map[ast.Expression]ResolvedPropertyAccess
 	nextBindingID               BindingID
 	definitionTokens            map[sourceTokenKey][]lexer.Token
-	callGraph                   *CallGraph
-	escapeAnalysis              *EscapeAnalysis
-	parameterUsageAnalysis      *ParameterUsageAnalysis
-	importedParameterDemands    map[CallableID]persistedParameterDemand
-	pitfallAnalysis             *PitfallAnalysis
-	resolvedStateRequirements   map[ast.Expression]ResolvedStateRequirement
-	pitfallDiagnosticOwners     map[pitfallRootCause]int
-	boundsDiagnostics           map[sourceTokenKey]int
-	boundsFindings              map[sourceTokenKey][]PitfallFinding
-	boundsIncomplete            map[sourceTokenKey]bool
-	currentCallable             CallableID
-	callGraphPathReachable      bool
-	generatedIdentities         *GeneratedIdentityIndex
-	spawnCallExpression         *ast.CallExpression
-	spawnCallExecution          CallExecutionRelation
-	typeDefinitionTokens        map[string]lexer.Token
-	invalidTypeDeclarations     map[sourceTokenKey]bool
-	genericTypeDefinitions      map[string]lexer.Token
+	// moduleVariables records module-level bindings per declaring module
+	// (module_variables.go).
+	moduleVariables map[string]map[string]Symbol
+	// definitionJournals undo definition writes made while a loop body is
+	// replayed for its fixed point (definition_journal.go).
+	definitionJournals        []definitionJournal
+	callGraph                 *CallGraph
+	escapeAnalysis            *EscapeAnalysis
+	parameterUsageAnalysis    *ParameterUsageAnalysis
+	importedParameterDemands  map[CallableID]persistedParameterDemand
+	pitfallAnalysis           *PitfallAnalysis
+	resolvedStateRequirements map[ast.Expression]ResolvedStateRequirement
+	pitfallDiagnosticOwners   map[pitfallRootCause]int
+	boundsDiagnostics         map[sourceTokenKey]int
+	boundsFindings            map[sourceTokenKey][]PitfallFinding
+	boundsIncomplete          map[sourceTokenKey]bool
+	currentCallable           CallableID
+	callGraphPathReachable    bool
+	generatedIdentities       *GeneratedIdentityIndex
+	spawnCallExpression       *ast.CallExpression
+	spawnCallExecution        CallExecutionRelation
+	typeDefinitionTokens      map[string]lexer.Token
+	invalidTypeDeclarations   map[sourceTokenKey]bool
+	genericTypeDefinitions    map[string]lexer.Token
 	// confusableSkeletons caches UTS #39 skeletons and confusableModuleIndex
 	// indexes module declarations a local may not shadow (MD-001).
 	confusableSkeletons         map[string]string
@@ -425,7 +437,7 @@ type Analyzer struct {
 	diagnosticRules           diagnostics.RulePolicy
 	explicitDiscardAdvisories map[*ast.DiscardStatement]Error
 	discardStates             map[*ast.DiscardStatement]DiscardSourceState
-	implicitDiscards          map[*ast.ExpressionStatement]Error
+	implicitDiscards          map[ast.Expression]Error
 	// Conflicting associated storage declarations across the merged impl surface.
 	implStorageConflicts map[*ast.LetStatement]implStorageConflict
 	// placeIdentities allocates the canonical P15 storage, invalidation,
@@ -449,6 +461,9 @@ type Analyzer struct {
 	placeBaseExpr               ast.Expression
 	loopBackedgePlaces          map[string]bool
 	cancellableDepth            int
+	// executionRequirements holds the operations each callable performs that
+	// need a current-execution context (task_context_requirement.go).
+	executionRequirements map[CallableID][]executionRequirementSite
 	// terminalReturnDepth carries the intrinsically transferring return
 	// context through structural construction. constructionOwnershipDepth is
 	// narrower: it admits explicit <- only while an owning field or payload is
@@ -684,11 +699,12 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.warnings = nil
 	a.explicitDiscardAdvisories = map[*ast.DiscardStatement]Error{}
 	a.discardStates = map[*ast.DiscardStatement]DiscardSourceState{}
-	a.implicitDiscards = map[*ast.ExpressionStatement]Error{}
+	a.implicitDiscards = map[ast.Expression]Error{}
 	a.implStorageConflicts = nil
 	a.symbols = newSymbolTable()
 	a.completionSymbols = newSymbolTable()
 	a.predeclaredStatic = map[sourceTokenKey]bool{}
+	a.moduleVariables = nil
 	a.expressionTypes = map[ast.Expression]Type{}
 	a.expectedExpressionTypes = map[ast.Expression]Type{}
 	a.bindingIDs = map[sourceTokenKey]BindingID{}
@@ -702,6 +718,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.typePackByValueLoops = nil
 	a.typePackLoopBorrows = nil
 	a.typePackIndexes = nil
+	a.typePackIndexReaders = nil
 	a.typePackBorrowedIndexes = nil
 	a.typePackIndexLimits = nil
 	a.typePackForwards = nil
@@ -793,6 +810,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.resolvedListIndexPlans = map[*ast.IndexExpression]ResolvedListIndexPlan{}
 	a.resolvedSliceIndexPlans = map[*ast.IndexExpression]ResolvedSliceIndexPlan{}
 	a.resolvedDynamicArrayIndexPlans = map[*ast.IndexExpression]ResolvedDynamicArrayIndexPlan{}
+	a.resolvedMapIndexPlans = map[*ast.IndexExpression]ResolvedMapIndexPlan{}
 	a.activeConditionFacts = nil
 	a.conditionBindingVersions = map[string]uint64{}
 	a.conditionProofBarrier = 0
@@ -886,6 +904,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.placeBaseExpr = nil
 	a.loopBackedgePlaces = nil
 	a.cancellableDepth = 0
+	a.executionRequirements = nil
 	a.loopDepth = 0
 	a.loopBreakFrames = nil
 	a.scopeDepth = 0
@@ -1156,7 +1175,7 @@ func (a *Analyzer) bindDefinitions(use lexer.Token, declarations []lexer.Token) 
 	if len(valid) == 0 {
 		return
 	}
-	a.definitionTokens[sourceTokenLocation(use)] = valid
+	a.writeDefinitions(sourceTokenLocation(use), valid)
 }
 
 func (a *Analyzer) setDefinitions(use lexer.Token, declarations ...lexer.Token) {
@@ -1358,6 +1377,8 @@ func isNilStatement(stmt ast.Statement) bool {
 	case *ast.UnreachableStatement:
 		return stmt == nil
 	case *ast.DetachStatement:
+		return stmt == nil
+	case *ast.JoinStatement:
 		return stmt == nil
 	case *ast.CancelStatement:
 		return stmt == nil
@@ -1570,7 +1591,7 @@ func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 			if stmt.Name == nil {
 				return
 			}
-			if a.rejectCompareExchangeResultNonEnum(stmt.Name.Value, stmt.Name.Token) || a.rejectIPCCoreEnumNonEnum(stmt.Name.Value, stmt.Name.Token) || a.rejectUnitMetadataEnumNonEnum(stmt.Name.Value, stmt.Name.Token) {
+			if a.rejectCompareExchangeResultNonEnum(stmt.Name.Value, stmt.Name.Token) || a.rejectIPCCoreEnumNonEnum(stmt.Name.Value, stmt.Name.Token) || a.rejectThreadAttachErrorNonEnum(stmt.Name.Value, stmt.Name.Token) || a.rejectThreadLifecycleErrorNonEnum(stmt.Name.Value, stmt.Name.Token) || a.rejectThreadConfigurationNonEnum(stmt.Name.Value, stmt.Name.Token) || a.rejectUnitMetadataEnumNonEnum(stmt.Name.Value, stmt.Name.Token) {
 				return
 			}
 			if a.rejectIntrinsicTypeRedeclaration(stmt.Name.Value, stmt.Name.Token) {
@@ -1584,6 +1605,15 @@ func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 				return
 			}
 			if a.registerMutexDeclaration(stmt) {
+				return
+			}
+			if a.registerThreadTerminationDeclaration(stmt) {
+				return
+			}
+			if a.registerChannelRevokeDeclaration(stmt) {
+				return
+			}
+			if a.registerThreadSettingDeclaration(stmt) {
 				return
 			}
 			if a.registerContextDeclaration(stmt) {
@@ -1642,7 +1672,7 @@ func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 			if stmt.Name == nil {
 				return
 			}
-			if a.rejectInstantNonOpaqueDeclaration(stmt.Name.Value, stmt.Name.Token) || a.rejectMutexNonOpaqueDeclaration(stmt.Name.Value, stmt.Name.Token) || a.rejectContextNonOpaqueDeclaration(stmt.Name.Value, stmt.Name.Token) {
+			if a.rejectInstantNonOpaqueDeclaration(stmt.Name.Value, stmt.Name.Token) || a.rejectMutexNonOpaqueDeclaration(stmt.Name.Value, stmt.Name.Token) || a.rejectContextNonOpaqueDeclaration(stmt.Name.Value, stmt.Name.Token) || a.rejectThreadSettingNonUnion(stmt.Name.Value, stmt.Name.Token) || a.rejectChannelRevokeNonUnion(stmt.Name.Value, stmt.Name.Token) || a.rejectThreadTerminationNonStruct(stmt.Name.Value, stmt.Name.Token) {
 				return
 			}
 			if a.rejectIntrinsicTypeRedeclaration(stmt.Name.Value, stmt.Name.Token) {
@@ -1661,10 +1691,10 @@ func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 			if stmt.Name == nil {
 				return
 			}
-			if a.rejectCompareExchangeResultNonEnum(stmt.Name.Value, stmt.Name.Token) || a.rejectIPCCoreEnumNonEnum(stmt.Name.Value, stmt.Name.Token) || a.rejectUnitMetadataEnumNonEnum(stmt.Name.Value, stmt.Name.Token) {
+			if a.rejectCompareExchangeResultNonEnum(stmt.Name.Value, stmt.Name.Token) || a.rejectIPCCoreEnumNonEnum(stmt.Name.Value, stmt.Name.Token) || a.rejectThreadAttachErrorNonEnum(stmt.Name.Value, stmt.Name.Token) || a.rejectThreadLifecycleErrorNonEnum(stmt.Name.Value, stmt.Name.Token) || a.rejectThreadConfigurationNonEnum(stmt.Name.Value, stmt.Name.Token) || a.rejectUnitMetadataEnumNonEnum(stmt.Name.Value, stmt.Name.Token) {
 				return
 			}
-			if a.rejectInstantNonOpaqueDeclaration(stmt.Name.Value, stmt.Name.Token) || a.rejectMutexNonOpaqueDeclaration(stmt.Name.Value, stmt.Name.Token) || a.rejectContextNonOpaqueDeclaration(stmt.Name.Value, stmt.Name.Token) {
+			if a.rejectInstantNonOpaqueDeclaration(stmt.Name.Value, stmt.Name.Token) || a.rejectMutexNonOpaqueDeclaration(stmt.Name.Value, stmt.Name.Token) || a.rejectContextNonOpaqueDeclaration(stmt.Name.Value, stmt.Name.Token) || a.rejectThreadSettingNonUnion(stmt.Name.Value, stmt.Name.Token) || a.rejectChannelRevokeNonUnion(stmt.Name.Value, stmt.Name.Token) || a.rejectThreadTerminationNonStruct(stmt.Name.Value, stmt.Name.Token) || a.rejectThreadTerminationKindNonEnum(stmt.Name.Value, stmt.Name.Token) || a.rejectMessageDispositionInterface(stmt.Name.Value, stmt.Name.Token) {
 				return
 			}
 			if a.rejectIntrinsicTypeRedeclaration(stmt.Name.Value, stmt.Name.Token) {
@@ -2309,6 +2339,8 @@ func (a *Analyzer) analyzeStatement(stmt ast.Statement) {
 		a.recordCleanupPanic(stmt.Token)
 	case *ast.DetachStatement:
 		a.analyzeDetachStatement(stmt)
+	case *ast.JoinStatement:
+		a.analyzeJoinStatement(stmt)
 	case *ast.CancelStatement:
 		a.analyzeCancelStatement(stmt)
 	case *ast.ExpressionStatement:
@@ -2549,6 +2581,10 @@ func (a *Analyzer) checkUnresolvedTaskAtScopeExit(name string) {
 	if _, moved := a.moved[name]; moved {
 		return
 	}
+	if _, joined := a.closedResources[name]; joined {
+		// threads.md § 34, tasks.md § 17: a joined handle's lifecycle is resolved.
+		return
+	}
 	kind := "task"
 	if isThreadType(symbol.Type) {
 		kind = "thread"
@@ -2661,7 +2697,13 @@ func (a *Analyzer) analyzeCancelStatement(stmt *ast.CancelStatement) {
 	if a.cancellableDepth > 0 {
 		return
 	}
-	a.addErrorAtToken(stmt.Token, "cancel is not valid outside a task or explicit thread context")
+	if a.currentCallable == "" {
+		a.addErrorAtToken(stmt.Token, "cancel is not valid outside a task or explicit thread context")
+		return
+	}
+	// cancellation.md §§ 19–22: the callable requires a cancellable
+	// execution; roots without one are rejected after the call graph exists.
+	a.recordExecutionRequirement(requiresCancellableExecution, "cancel", stmt.Token)
 }
 
 func (a *Analyzer) bindAvailabilityPlaceRoot(expr ast.Expression) {
@@ -2784,7 +2826,6 @@ type loopIterationAnalysisState struct {
 	loopEdgeState
 	symbols           *symbolTable
 	completionSymbols *symbolTable
-	definitionTokens  map[sourceTokenKey][]lexer.Token
 	constInts         map[string]*big.Int
 	scopeDepth        int
 }
@@ -2798,7 +2839,6 @@ func (a *Analyzer) captureLoopIterationAnalysisState() loopIterationAnalysisStat
 		loopEdgeState:     a.captureLoopEdgeState(),
 		symbols:           snapshot,
 		completionSymbols: completionSnapshot,
-		definitionTokens:  copyDefinitionTokens(a.definitionTokens),
 		constInts:         copyConstInts(a.constInts),
 		scopeDepth:        a.scopeDepth,
 	}
@@ -3013,9 +3053,10 @@ func (a *Analyzer) analyzeSelectStatement(stmt *ast.SelectStatement) {
 		}
 		branches = append(branches, a.analyzeSelectBranchBody(branch))
 	}
-	if !selectHasDefault(stmt) {
-		branches = append(branches, branchAnalysis{assigned: beforeAssigned, moved: beforeMoved, availabilityStates: beforeMoveReasons, closedResources: beforeClosedResources, borrows: beforeBorrows, localRefContainers: beforeLocalRefContainers, arenaGenerations: beforeArenaGenerations, continues: true})
-	}
+	// select.md §§ 4(4), 35; cancellation.md §§ 14, 26: a select without
+	// default continues only through a committed branch; cancellation that
+	// wins first terminates the current execution and reaches no statement
+	// after the select. Every branch already models its own path.
 	a.assigned = mergeContinuingAssigned(beforeAssigned, branches...)
 	a.moved, a.availabilityStates = mergeContinuingMoveState(beforeMoved, beforeMoveReasons, branches...)
 	a.closedResources = mergeContinuingClosedResources(beforeClosedResources, branches...)
@@ -3074,11 +3115,28 @@ func (a *Analyzer) selectBranchResultType(branch *ast.SelectBranch) (Type, bool)
 		return Type{Name: "void", Kind: VoidType}, true
 	case ast.SelectOperationBranch:
 		return a.selectableOperationType(branch.Value)
+	case ast.SelectJoinBranch:
+		// threads.md § 35, tasks.md § 17(13)–(16): a selected join commits
+		// exactly the ordinary join in this branch's state; a non-selected
+		// one changes nothing.
+		if branch.Value == nil {
+			return Type{Kind: InvalidType}, false
+		}
+		errorsBefore := len(a.errors)
+		a.analyzeJoinStatement(&ast.JoinStatement{Token: branch.Token, Value: branch.Value})
+		if len(a.errors) != errorsBefore {
+			return Type{Kind: InvalidType}, true
+		}
+		return Type{Name: "void", Kind: VoidType}, true
 	default:
 		return Type{Kind: InvalidType}, false
 	}
 }
 
+// selectableOperationType resolves eligible wait operations and preserves the
+// explicit prohibition on synthesizing observer completion waits.
+// Rules: rules/concurrency/select.md — selectable operations;
+// rules/concurrency/threads.md — §43(1–4).
 func (a *Analyzer) selectableOperationType(expr ast.Expression) (Type, bool) {
 	switch expr := expr.(type) {
 	case *ast.AwaitExpression:
@@ -3091,20 +3149,27 @@ func (a *Analyzer) selectableOperationType(expr ast.Expression) (Type, bool) {
 			return Type{Kind: InvalidType}, false
 		}
 		receiverType, ok := a.compilerKnownReceiverType(member.Object)
+		receiverType = dereferenceType(receiverType)
 		if !ok {
 			a.inferExpression(expr)
 			return Type{Kind: InvalidType}, false
 		}
+		if isThreadObserverType(receiverType) {
+			a.reportThreadObserverWait(member.Property.Token)
+			return Type{Kind: InvalidType}, true
+		}
+		// select.md § 54(3): TrySend/TryReceive never wait, so they are
+		// ordinary calls, not selectable operations.
 		if isReceiverType(receiverType) {
 			switch member.Property.Value {
-			case "Receive", "TryReceive":
+			case "Receive":
 				typ, _ := a.inferExpression(expr)
 				return typ, true
 			}
 		}
 		if isSenderType(receiverType) {
 			switch member.Property.Value {
-			case "Send", "TrySend", "SendRevocable":
+			case "Send", "SendRevocable":
 				typ, _ := a.inferExpression(expr)
 				return typ, true
 			}
@@ -3112,7 +3177,11 @@ func (a *Analyzer) selectableOperationType(expr ast.Expression) (Type, bool) {
 		a.inferExpression(expr)
 		return Type{Kind: InvalidType}, false
 	default:
-		a.inferExpression(expr)
+		typ, _ := a.inferExpression(expr)
+		if isThreadObserverType(typ) {
+			a.reportThreadObserverWait(expressionToken(expr))
+			return Type{Kind: InvalidType}, true
+		}
 		return Type{Kind: InvalidType}, false
 	}
 }
@@ -3124,6 +3193,17 @@ type selectResource struct {
 }
 
 func (a *Analyzer) selectExclusiveResource(branch *ast.SelectBranch) (selectResource, bool) {
+	if branch != nil && branch.Value != nil && branch.Kind == ast.SelectJoinBranch {
+		root, ok := borrowRootName(branch.Value)
+		if !ok {
+			return selectResource{}, false
+		}
+		kind := "thread"
+		if typ, typed := a.expressionTypes[branch.Value]; typed && isTaskType(typ) || a.symbolIsTask(root) {
+			kind = "task"
+		}
+		return selectResource{Root: root, Kind: kind, Token: branch.Token}, true
+	}
 	if branch == nil || branch.Value == nil || branch.Kind != ast.SelectOperationBranch {
 		return selectResource{}, false
 	}
@@ -3140,6 +3220,7 @@ func (a *Analyzer) selectExclusiveResource(branch *ast.SelectBranch) (selectReso
 			return selectResource{}, false
 		}
 		receiverType, ok := a.compilerKnownReceiverType(member.Object)
+		receiverType = dereferenceType(receiverType)
 		if !ok {
 			return selectResource{}, false
 		}
@@ -3170,6 +3251,7 @@ func (a *Analyzer) selectMovedMessageResource(branch *ast.SelectBranch) (selectR
 		return selectResource{}, false
 	}
 	receiverType, ok := a.compilerKnownReceiverType(member.Object)
+	receiverType = dereferenceType(receiverType)
 	if !ok || !isSenderType(receiverType) {
 		return selectResource{}, false
 	}
@@ -3281,56 +3363,6 @@ func (a *Analyzer) analyzeUnsafeStatement(stmt *ast.UnsafeStatement) {
 	for name := range previousAssigned {
 		if updatedAssigned[name] {
 			a.assigned[name] = true
-		}
-	}
-}
-
-func (a *Analyzer) analyzeAsmStatement(stmt *ast.AsmStatement) {
-	if !a.inUnsafe {
-		a.addErrorAtToken(stmt.Token, "asm is only allowed inside unsafe")
-		return
-	}
-	if stmt.Block != nil {
-		a.analyzeAsmBlock(stmt)
-		return
-	}
-	if stmt.Template == nil {
-		a.addErrorAtToken(stmt.Token, "asm statement requires string template")
-	}
-}
-
-func unsafeAsmReturns(stmt *ast.UnsafeStatement) bool {
-	if stmt == nil || stmt.Body == nil || len(stmt.Body.Statements) != 1 {
-		return false
-	}
-	asmStmt, ok := stmt.Body.Statements[0].(*ast.AsmStatement)
-	return ok && asmStmt.Block != nil && len(asmStmt.Block.Outputs) > 0
-}
-
-func (a *Analyzer) analyzeAsmBlock(stmt *ast.AsmStatement) {
-	if stmt.Block.Template == nil {
-		a.addErrorAtToken(stmt.Token, "asm block requires string template")
-	}
-	for _, input := range stmt.Block.Inputs {
-		if input.Value == nil {
-			a.addErrorAtToken(stmt.Token, "asm input %s missing value", input.Register)
-			continue
-		}
-		a.inferExpression(input.Value)
-	}
-	if len(stmt.Block.Outputs) == 0 {
-		a.addErrorAtToken(stmt.Token, "asm block requires at least one output")
-	}
-	for _, output := range stmt.Block.Outputs {
-		if output.Name == "" {
-			continue
-		}
-		outputType := a.currentFunctionReturn
-		if outputType.Kind == InvalidType || outputType.Kind == VoidType {
-			outputType = Type{Name: "int64", Kind: IntType}
-		}
-		if a.defineSymbol(output.Name, outputType, false, output.Token) {
-			a.assigned[output.Name] = true
 		}
 	}
 }
@@ -3932,6 +3964,8 @@ func statementUsesSelf(stmt ast.Statement) bool {
 	case *ast.AssertStatement:
 		return expressionUsesSelf(stmt.Condition)
 	case *ast.DetachStatement:
+		return expressionUsesSelf(stmt.Value)
+	case *ast.JoinStatement:
 		return expressionUsesSelf(stmt.Value)
 	case *ast.ReturnStatement:
 		return expressionUsesSelf(stmt.Value)
@@ -5515,14 +5549,6 @@ func copyMoved(in map[string]lexer.Token) map[string]lexer.Token {
 	return out
 }
 
-func copyDefinitionTokens(in map[sourceTokenKey][]lexer.Token) map[sourceTokenKey][]lexer.Token {
-	out := make(map[sourceTokenKey][]lexer.Token, len(in))
-	for key, tokens := range in {
-		out[key] = append([]lexer.Token(nil), tokens...)
-	}
-	return out
-}
-
 func copyBorrows(in map[string][]borrowRecord) map[string][]borrowRecord {
 	out := make(map[string][]borrowRecord, len(in))
 	for name, records := range in {
@@ -5956,7 +5982,7 @@ func (a *Analyzer) checkLoopBackedgeFixedPoint(
 
 	previousSymbols := a.symbols
 	previousCompletionSymbols := a.completionSymbols
-	previousDefinitionTokens := a.definitionTokens
+	a.beginDefinitionJournal()
 	previousConstInts := a.constInts
 	previousAssigned := a.assigned
 	previousMoved := a.moved
@@ -5979,7 +6005,6 @@ func (a *Analyzer) checkLoopBackedgeFixedPoint(
 		}
 	}
 	a.completionSymbols = entry.completionSymbols.child()
-	a.definitionTokens = copyDefinitionTokens(entry.definitionTokens)
 	a.constInts = copyConstInts(entry.constInts)
 	a.assigned = copyAssigned(entry.assigned)
 	a.moved = copyMoved(headerMoved)
@@ -6005,7 +6030,7 @@ func (a *Analyzer) checkLoopBackedgeFixedPoint(
 
 	a.symbols = previousSymbols
 	a.completionSymbols = previousCompletionSymbols
-	a.definitionTokens = previousDefinitionTokens
+	a.endDefinitionJournal()
 	a.constInts = previousConstInts
 	a.assigned = previousAssigned
 	a.moved = previousMoved
@@ -6594,6 +6619,21 @@ func isPlainUnitNumericCarrier(typ Type, ref *ast.TypeReference) bool {
 }
 
 func (a *Analyzer) analyzeTypeDeclarationBody(stmt *ast.TypeDeclStatement) {
+	if (stmt.Name.Value == "ChannelRevokeResult" || stmt.Name.Value == "MessageDisposition") && a.isTrustedCoreBuiltinDeclaration(stmt.Name.Value, stmt.Name.Token) {
+		if stmt.Name.Value == "ChannelRevokeResult" {
+			typ := a.types[stmt.Name.Value]
+			disposition := a.types["MessageDisposition"]
+			typ.UnionVariants[1].Payload = &disposition
+			a.types[stmt.Name.Value] = typ
+		}
+		return // Exact union validated at registration (channels.md §§13–14).
+	}
+	if (stmt.Name.Value == "ThreadTermination" || stmt.Name.Value == "ThreadTerminationKind") && a.isTrustedCoreBuiltinDeclaration(stmt.Name.Value, stmt.Name.Token) {
+		return // Exact metadata was validated during registration (threads.md §23).
+	}
+	if stmt.Name.Value == "ThreadSetting" && a.isTrustedCoreBuiltinDeclaration(stmt.Name.Value, stmt.Name.Token) {
+		return // Exact generic union validated during registration (threads.md §4).
+	}
 	if (stmt.Name.Value == "Mutex" || stmt.Name.Value == "MutexGuard" || stmt.Name.Value == "Context") && a.isTrustedCoreBuiltinDeclaration(stmt.Name.Value, stmt.Name.Token) {
 		return // The opaque identity was validated during registration (§§5–6,8).
 	}
@@ -7899,6 +7939,7 @@ func (a *Analyzer) analyzePropertyAccessorBody(target Type, name string, body *a
 	previousInFunctionBody := a.inFunctionBody
 	previousScopeDepth := a.scopeDepth
 	a.symbols = previousSymbols.child()
+	a.scopeModuleVariables()
 	a.constInts = copyConstInts(previousConstInts)
 	a.assigned = copyAssigned(previousAssigned)
 	a.moved = map[string]lexer.Token{}
@@ -8059,7 +8100,7 @@ func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement, all
 		return
 	}
 	if index, ok := stmt.Target.(*ast.IndexExpression); ok {
-		a.analyzeIndexAssignmentStatement(stmt, index)
+		a.analyzeIndexAssignmentStatement(stmt, index, allowFallible)
 		return
 	}
 
@@ -8864,6 +8905,7 @@ func (a *Analyzer) validateCompilerKnownGenericType(token lexer.Token, typ *Type
 		"Receiver",
 		"MessageTicket",
 		"ChannelSendResult",
+		"ChannelTrySendResult",
 		"ChannelTryReceiveResult",
 		"ChannelRevokeResult":
 		if len(typ.TypeArgs) != 1 {
@@ -11731,6 +11773,10 @@ func matchPatternAlreadyCovered(info matchPatternInfo, seenKinds map[string]bool
 	return false
 }
 
+// analyzeMatchPattern resolves a structural variant or catch-all and its
+// payload binding, retaining lifecycle obligations in non-binding patterns.
+// Rules: rules/control-flow/flowcontrol_match.md §§6-9,13-15;
+// rules/control-flow/discard.md §18.
 func (a *Analyzer) analyzeMatchPattern(pattern ast.Expression, subjectType Type) (matchPatternInfo, bool) {
 	if a.rejectCarrierFamilyMismatch(pattern, subjectType) {
 		return matchPatternInfo{}, false
@@ -11776,6 +11822,9 @@ func (a *Analyzer) analyzeMatchPattern(pattern ast.Expression, subjectType Type)
 			variant, variantOK := lookupUnionVariant(subjectType, pattern.Property.Value)
 			if ownerOK && a.resolveTypeName(owner) == subjectType.Name && variantOK {
 				a.bindDefinition(pattern.Property.Token, variant.Token)
+				if !a.checkMatchVariantDiscard(subjectType, variant, pattern.String(), pattern.Property.Token) {
+					return matchPatternInfo{}, false
+				}
 				// MD-029: a bare variant selects a payload-carrying variant
 				// without binding its payload.
 				if variant.Payload != nil || len(variant.PayloadFields) > 0 {
@@ -11818,6 +11867,9 @@ func (a *Analyzer) analyzeMatchPattern(pattern ast.Expression, subjectType Type)
 		if subjectType.Kind == UnionType {
 			if variant, ok := lookupUnionVariant(subjectType, pattern.Value); ok {
 				a.bindDefinition(pattern.Token, variant.Token)
+				if !a.checkMatchVariantDiscard(subjectType, variant, pattern.Value, pattern.Token) {
+					return matchPatternInfo{}, false
+				}
 				// MD-029: a bare variant selects a payload-carrying variant
 				// without binding its payload.
 				if variant.Payload != nil || len(variant.PayloadFields) > 0 {
@@ -11882,119 +11934,6 @@ func (a *Analyzer) analyzeUnionPayloadMatchPattern(pattern *ast.CallExpression, 
 		a.bindDefinition(variantToken, variant.Token)
 	}
 	return a.analyzeUnionPayloadPattern(variantName, pattern.Arguments, pattern.Token, subjectType)
-}
-
-func (a *Analyzer) analyzeUnionPayloadPattern(variantName string, arguments []ast.Expression, token lexer.Token, subjectType Type) (matchPatternInfo, bool) {
-	variant, ok := lookupUnionVariant(subjectType, variantName)
-	if !ok {
-		a.addErrorAtToken(token, "unknown union variant %s.%s", typeDisplayName(subjectType), variantName)
-		return matchPatternInfo{}, false
-	}
-	if variant.Payload == nil && len(variant.PayloadFields) == 0 {
-		a.addErrorAtToken(token, "payload-less union variant %s.%s must not bind a payload", typeDisplayName(subjectType), variant.Name)
-		return matchPatternInfo{}, false
-	}
-	if len(arguments) != 1 {
-		a.addErrorAtToken(token, "union variant %s.%s requires 1 payload binding, got %d", typeDisplayName(subjectType), variant.Name, len(arguments))
-		return matchPatternInfo{}, false
-	}
-	bindingExpression := arguments[0]
-	binding, borrowed, mutable, ok := unionPayloadPatternBinding(bindingExpression)
-	if !ok {
-		a.addErrorAtToken(expressionToken(bindingExpression), "union payload pattern must bind an identifier, ref identifier, or ref mut identifier")
-		return matchPatternInfo{}, false
-	}
-
-	info := matchPatternInfo{Kind: "variant", Variant: variant.Name, VariantIndex: unionVariantIndex(subjectType, variant.Name), PayloadVariant: variant.Name}
-	if binding.Value == "_" {
-		info.PayloadDiscard = true
-		return info, true
-	}
-	info.BindingName = binding.Value
-	info.PayloadToken = binding.Token
-	info.PayloadBorrow = borrowed
-	info.PayloadBorrowMutable = mutable
-	info.PayloadNode = binding
-	if borrowed {
-		info.PayloadBorrowToken = expressionToken(bindingExpression)
-	}
-	var payloadType Type
-	if variant.Payload != nil {
-		payloadType = *variant.Payload
-	} else {
-		payloadType = Type{
-			Name:   typeDisplayName(subjectType) + "." + variant.Name,
-			Kind:   StructType,
-			Fields: variant.PayloadFields,
-		}
-	}
-	info.BindingType = payloadType
-	if borrowed {
-		info.BindingType = Type{
-			Name:             referenceTypeName(payloadType, mutable),
-			Kind:             ReferenceType,
-			Element:          &payloadType,
-			ReferenceMutable: mutable,
-		}
-	}
-	return info, true
-}
-
-// analyzeResultPayloadPattern implements Result payload bindings. Err(_) may
-// intentionally discard an error payload only when recursive discardability
-// proves that no unresolved lifecycle obligation can be lost.
-//
-// Rules:
-//   - rules/control-flow/flowcontrol_match.md — §7 "Result errors must not be hidden"
-//   - rules/errors/errorhandling.md — §17 "Err(_) and explicit error acknowledgement"
-//   - rules/control-flow/discard.md — §18 "Recursive discardability"
-//   - rules/corrections/applied/correction20-20260823.md — Err(_) discard
-func (a *Analyzer) analyzeResultPayloadPattern(kind string, expr ast.Expression, token lexer.Token, payloadType Type) (matchPatternInfo, bool) {
-	info := matchPatternInfo{Kind: kind, PayloadVariant: kind}
-	if expr == nil {
-		return info, true
-	}
-	binding, borrowed, mutable, ok := unionPayloadPatternBinding(expr)
-	if !ok {
-		a.addErrorAtToken(expressionToken(expr), "%s payload pattern must bind an identifier, ref identifier, or ref mut identifier", kind)
-		return matchPatternInfo{}, false
-	}
-	if binding.Value == "_" {
-		if kind == "Err" && !a.isDiscardable(payloadType) {
-			a.addErrorAtTokenWithMetadata(binding.Token, diagnostics.NonDiscardableValue,
-				"Bind the error and resolve its task or thread obligation instead of using Err(_).",
-				"Err(_) cannot ignore %s because it may contain an unresolved lifecycle handle", a.nonDiscardableSubject(payloadType))
-			return matchPatternInfo{}, false
-		}
-		info.PayloadDiscard = true
-		return info, true
-	}
-	info.BindingName = binding.Value
-	info.BindingType = payloadType
-	info.PayloadToken = binding.Token
-	info.PayloadBorrow = borrowed
-	info.PayloadBorrowMutable = mutable
-	info.PayloadNode = binding
-	if borrowed {
-		info.PayloadBorrowToken = expressionToken(expr)
-		info.BindingType = Type{
-			Name: referenceTypeName(payloadType, mutable), Kind: ReferenceType,
-			Element: &payloadType, ReferenceMutable: mutable,
-		}
-	}
-	return info, true
-}
-
-func unionPayloadPatternBinding(expr ast.Expression) (binding *ast.Identifier, borrowed bool, mutable bool, ok bool) {
-	switch expr := expr.(type) {
-	case *ast.Identifier:
-		return expr, false, false, true
-	case *ast.RefExpression:
-		binding, ok := expr.Value.(*ast.Identifier)
-		return binding, true, expr.Mutable, ok
-	default:
-		return nil, false, false, false
-	}
 }
 
 func (a *Analyzer) finalizeMatchBranch(info matchPatternInfo, branch branchAnalysis) branchAnalysis {
@@ -13053,10 +12992,6 @@ func (a *Analyzer) intrinsicGenericType(name string, args ...Type) Type {
 	return typ
 }
 
-func channelType(message Type) Type {
-	return Type{Name: "Channel", Kind: StructType, Intrinsic: true, TypeArgs: []Type{message}}
-}
-
 func senderType(message Type) Type {
 	return Type{Name: "Sender", Kind: StructType, Intrinsic: true, TypeArgs: []Type{message}}
 }
@@ -13424,6 +13359,11 @@ func statementToken(stmt ast.Statement) lexer.Token {
 			return lexer.Token{}
 		}
 		return stmt.Token
+	case *ast.JoinStatement:
+		if stmt == nil {
+			return lexer.Token{}
+		}
+		return stmt.Token
 	case *ast.DetachStatement:
 		if stmt == nil {
 			return lexer.Token{}
@@ -13644,4 +13584,10 @@ func expressionEndToken(expr ast.Expression) lexer.Token {
 // already emitted.
 func parserReported(recovery *ast.RecoveryInfo) bool {
 	return recovery != nil && recovery.Reported
+}
+
+// symbolIsTask reports a visible Task[T] binding.
+func (a *Analyzer) symbolIsTask(name string) bool {
+	symbol, ok := a.symbols.lookup(name)
+	return ok && isTaskType(symbol.Type)
 }

@@ -5191,3 +5191,922 @@ current state). Tests TestMatchAndSwitchJoinConstantsAndVariants,
 TestSiblingBranchesStartFromPreJoinConstants. Governance sema.yaml updated.
 Sema, IR, lowering and targeted cmd subsets pass. Released; no commit.
 
+## Claude: borrow formatting + map indexing (released, 2026-11-09)
+
+Formatter: internal/cst/ownership_roles.go marks `ref`/`ref mut` in borrow
+expressions and pattern bindings as spaced keywords (markBorrowKeywords).
+Maps: new internal/sema/map_index_plans.go (ResolvedMapIndexPlan, lookup and
+upsert); hooks in analyzer_inference.go (inferIndexExpression),
+place.go (map entry Places), try_failure_set.go, index_plans.go,
+index_assignment.go (allowFallible), analyzer_try_assignment.go
+(CollectionError for upsert). Owner decision: missing map key panics without
+try and is IndexError.OutOfBounds under try. Codex, note for the paragraph
+pass: rules/collections/collections.md § 14.4 and the error-family list in
+§ 16 were edited. Governance: tooling.yaml borrowing item closed,
+collections.yaml frontend.map-indexed-upsert implemented. Tests
+TestFormatBorrowExpressionAndPatternSpacing, TestMapIndexLookupAndUpsert.
+Sema, IR, lowering, formatter, cst and targeted cmd subsets pass. Released;
+no commit.
+
+## Claude: rulebook documentation of 2026-11-08/09 work (released, 2026-11-09)
+
+Codex, note for the paragraph pass (new subparagraphs only, no renumbering):
+rules/tooling/formatter.md § 21(12) (ref/ref mut spacing), rules/foundations/
+operators.md § 18.1(3) (first-loop-iteration S1023), rules/collections/
+collections.md § 14.5 (upsert without try invalid, compound assignment and
+entry borrows behave like lookups). No code change. Released; no commit.
+
+## Claude: checked-access errors, slicing try, definition journal (released, 2026-11-09)
+
+Verified and closed: collections frontend.collection-errors checked-access
+item (TestCheckedAccessErrorFamilies), errors try-short-circuit slicing part
+(item narrowed to nested checked conversions). Performance: new
+internal/sema/definition_journal.go replaces the loop-header definitionTokens
+copy (copyDefinitionTokens removed) with a replay undo journal; bindDefinitions
+and impl_navigation write through writeDefinitions. methods.sec peak RSS
+587 -> 542 MB. Governance collections.yaml, errors.yaml, tooling_lsp.yaml.
+Sema and targeted cmd/compiler + cmd/lsp (navigation, hover, completion)
+subsets pass. Released; no commit.
+
+
+## Claude: lambda rejection diagnostics (released, 2026-11-09)
+
+Working set: internal/parser/expression.go (lambda parsing, capture entries,
+attribute-before-lambda), internal/sema lambda/let analysis and the
+unknown-name emitters, new tests, governance/declarations.yaml
+(frontend.lambda-functions-v2).
+## Codex: non-binding match payload discardability (in progress, 2026-11-09)
+
+Taking frontend.match-v2 remaining point 1: enforce recursive discardability
+for Some(_), Ok(_), ordinary union payload ignores and bare payload variants,
+including deliberately empty field patterns. Working in focused match pattern
+helpers/tests, extracting those helpers from analyzer.go without changing other
+Sema responsibilities. No map indexing, definition journal or package producer
+work planned. Existing S1006 identity retained. Will update evidence and release.
+
+## Codex: non-binding match payload discardability closed (released, 2026-11-09)
+
+Closed frontend.match-v2's entire first remaining item. Non-binding Some(_),
+Ok(_), ordinary union payload ignores, bare/qualified variants and deliberately
+empty field patterns now share recursive discardability with Err(_), including
+concrete/contextual nested error variant patterns. S1006 remains the mandatory
+identity, with a source anchor and advice to bind/resolve the obligation.
+Only the selected variant's payload is checked; unrelated variants do not
+invalidate a payload-less pattern. Reference payloads, ordinary payloads and
+explicit payload/field borrows remain accepted. No new language decision.
+
+Extracted analyzeUnionPayloadPattern, analyzeResultPayloadPattern and
+unionPayloadPatternBinding from analyzer.go into match_payload_patterns.go;
+preserved unrelated in-flight analyzer edits. No Sec library, parser, map,
+Go binary or MLIR operation changes by this task. Claudes's latest lambda
+rejection working set was read before release; no changes to that area.
+
+Verification:
+- go test -p 4 ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir -count=1
+  passed (44.336s / 18.055s / 4.195s); no native execution claim for Task/Thread.
+- go test -p 4 ./cmd/compiler ./cmd/lsp -run TestNonBindingMatchPayload -count=1
+  passed; seventeen invalid source cases retain registered JSON/LSP S1006
+  diagnostics, guidance and source ranges. Eight valid matches retain plans.
+- yamlstatus check: 0 problems in 45 fragments; owner fmt check canonical;
+  owner path check: 0 missing, 59 checked; git diff --check clean.
+- governance/control_flow.yaml remaining: 68 -> 67;
+  frontend.match-v2 remaining: 12 -> 11. No newly split remaining item.
+
+Files changed by this task:
+- internal/sema/analyzer.go (two bare-pattern checks and helper extraction only)
+- internal/sema/analyzer_try_handlers.go
+- internal/sema/error_patterns.go
+- internal/sema/match_field_patterns.go
+- internal/sema/match_payload_patterns.go (new)
+- internal/sema/match_payload_discard_test.go (new)
+- cmd/compiler/match_payload_discard_test.go (new)
+- cmd/lsp/match_payload_discard_test.go (new)
+- testdata/sema/match_payload_discards_invalid.sec (new)
+- testdata/sema/match_payload_discards_valid.sec (new)
+- governance/control_flow.yaml (yamlstatus edits only)
+- mlir/compiler-packages-handoff.md
+
+Working set released. No commit.
+Done: focused parser diagnostics with recovery (generic lambda, attribute,
+capture expression, expression body; skipCaptureEntry terminates on an
+unbalanced closer or a line break, verified by the mutation robustness test)
+and Sema direct-recursion diagnostic (lambdaInitializerNames,
+reportLambdaSelfReference). Parser, Sema, formatter, cst and targeted cmd
+subsets pass. Released; no commit.
+
+## Codex: statement-match result obligations (working, 2026-11-09)
+
+Taking frontend.match-v2 remaining point 5: apply ordinary must-use and
+recursive discardability checks to statement-arm expression results. Working
+in match_arm_bindings.go, expression_statements.go and implicit-discard
+occurrence bookkeeping, with focused fixtures/tests. No lambda/parser changes.
+Non-trivial statement-arm lowering remains its existing named boundary and is
+separately owned by the remaining statement-arm cleanup/lowering items.
+
+## Claude: module-scoped module variables (released, 2026-11-09)
+
+New internal/sema/module_variables.go (scopeModuleVariables,
+analyzeModuleStatement); Symbol.Module; hooks in analyzer_function_body.go,
+analyzer_test_bodies.go, the property accessor body (analyzer.go) and
+analyzeModuleBodies. Governance declarations.yaml names-scopes item closed.
+Note: cmd/lsp TestAnalyzeLoadsFmtPackageAndTransitiveImports and
+TestAnalyzeGroupedPackageImportsAndShortNames fail with or without this change
+(the stdlib fmt draft now returns Result from Println). Sema, IR, lowering and
+targeted cmd subsets otherwise pass. Released; no commit.
+
+## Codex: statement-match result obligations closed (released, 2026-11-09)
+
+Closed the entire frontend.match-v2 remaining item about ordinary discardability
+and must-use rules on statement-arm results (previous position 5). Statement
+expression arms now use analyzeExpressionStatement once and do not take the
+owning branch-value path used by value-producing match expressions. The shared
+checker enforces S1005 for call/stored Result, Task/Thread and aggregate
+obligations, and S1006 when recursive discardability is not established (E:
+error). Return arms, value-producing matches, explicit block discard, void
+results and non-owning references retain their respective behavior. Legal
+ordinary call results retain the existing policy-controlled advisory and
+selected-callable provenance. The implicit-discard table now keys by source
+expression so synthetic arm wrappers cannot multiply advisories on replay.
+
+Verification:
+- go test -p 4 ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir -count=1
+  passed (20.588s / 9.356s / 2.971s).
+- go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run 'TestStatementMatchResults|TestImplicitDiscard' -count=1
+  passed (0.194s / 10.744s / 9.903s). Twelve mandatory errors, source ranges,
+  registered CLI JSON/LSP identity and help, suppression resistance, all three
+  analysis depths, advisory off/default/warning/error policy, loop/defer
+  replay deduplication and repeat-analysis stability covered.
+- yamlstatus check: 0 problems in 45 fragments; owner fmt check canonical;
+  owner path check: 0 missing of 67 checked; git diff --check clean.
+- governance/control_flow.yaml remaining 67 -> 66;
+  frontend.match-v2 remaining 11 -> 10. No new remaining item or MD.
+
+Files changed by this task:
+- internal/sema/analyzer.go (implicitDiscards key type and initialization only)
+- internal/sema/expression_statements.go
+- internal/sema/implicit_discard_advisory.go
+- internal/sema/match_arm_bindings.go
+- internal/sema/match_statement_results_test.go (new)
+- cmd/compiler/match_statement_results_test.go (new)
+- cmd/lsp/match_statement_results_test.go (new)
+- testdata/sema/match_statement_results_invalid.sec (new)
+- testdata/sema/match_statement_results_valid.sec (new)
+- governance/control_flow.yaml (yamlstatus only)
+- mlir/compiler-packages-handoff.md
+
+Latest Claude module-variable release read before handoff; unrelated changes
+preserved. Non-trivial statement-arm destruction/lowering still has its
+pre-existing explicit Semantic IR capability boundary and separate remaining
+owners. This closes source result validation, not that backend work. No Sec
+library, parser, binary or MLIR operation files changed here. No commit.
+Working set released.
+## Codex: canonical match continuation decision (working, 2026-11-09)
+
+Taking frontend.match-v2 remaining point 3 (termination from ResolvedMatchPlan).
+Existing source-domain matrix already covers the main implementation; removing
+the residual duplicate Sema/IR continuation classifiers in favor of one
+ResolvedMatchPlan query, including conservative incomplete/unknown-plan flow.
+Working in analyzer_statement_flow.go, a focused match-plan flow helper and
+Semantic IR's match-continuation call site/tests. No parser/library changes.
+The separate full statement-flow/cleanup unification owner stays open.
+
+## Claude: governance path hygiene (released, 2026-11-09)
+
+yamlstatus -paths: 11 -> 0 missing references. Removed references to applied
+corrections consolidated in 82de3843 and to retired readiness tests
+(float_operators_test.go, wide_readiness_test.go,
+llvm_contract_readiness_test.go); ffi.yaml foreign_conversions.go ->
+foreign_c_types.go; lowering.yaml invalid-schema11-module-metadata.mlir ->
+invalid-schema11-emitter-metadata.mlir. tooling.yaml destruction-path item
+closed as verified. Governance only; no code change. Released; no commit.
+
+## Codex: canonical match continuation closed (released, 2026-11-09)
+
+Closed frontend.match-v2's full termination-from-ResolvedMatchPlan item
+(previous remaining position 3). The primary source-domain implementation was
+already present. ResolvedMatchPlan.CanContinue now provides one conservative
+continuation decision to Sema return/reachability and Semantic IR match merge
+creation, replacing their two classifiers. Missing exhaustiveness, missing
+arms and unknown/future flow cannot establish termination. Source matrices
+cover Option, Result, ordinary unions, enum aliases, complete open-bit enum
+domains, guards and nested/unsafe blocks; added Result and a mixed return /
+continuing Option case. IR tests assert merge-block absence/presence as well
+as returns. No new language rule or missing decision.
+
+Verification:
+- SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test -p 4 ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir -count=1
+  passed (18.134s / 8.281s / 19.308s), local MLIR optimizer enabled.
+- go test -p 4 ./internal/sema ./internal/ir/semantic ./cmd/compiler ./cmd/lsp -run 'TestMatch(Termination|Continuation)|TestTryNestedMatch' -count=1
+  passed (0.032s / 0.014s / 4.551s / 5.313s); includes compiler/LSP
+  missing-return and S3001-unreachable presentation of the shared source matrix.
+- yamlstatus check: 0 problems in 45 fragments; owner fmt canonical;
+  owner path check 0 missing / 77 checked; git diff --check clean.
+- governance/control_flow.yaml remaining 66 -> 65;
+  frontend.match-v2 remaining 10 -> 9. No new remaining item.
+
+Files changed by this task:
+- internal/sema/match_plan_flow.go (new)
+- internal/sema/match_plan_flow_test.go (new)
+- internal/sema/analyzer_statement_flow.go
+- internal/sema/match_termination_matrix_test.go
+- internal/ir/semantic/builder.go (shared continuation query only)
+- internal/ir/semantic/match_termination_matrix_test.go
+- testdata/control_flow/match_termination/valid.sec
+- governance/control_flow.yaml (yamlstatus only)
+- mlir/compiler-packages-handoff.md
+
+Latest Claude governance-path-hygiene release read before handoff; preserved
+unrelated edits. The separate frontend.match-termination-consistency remaining
+items still cover replacing other package-level structural statement-flow
+reconstruction and complete cleanup-flow unification. Those are not claimed
+closed here. No parser, Sec library, checked-in binary or C++ MLIR files changed.
+No commit. Working set released.
+
+## Claude: predecessor-access pitfall (released, 2026-11-09)
+
+New internal/sema/pitfall_predecessor.go (rule
+pitfall.bounds.predecessor-needs-positive-index, registered last in the rule
+registry; positivity guards from if/else, early exits and ascending range
+loops, invalidated by writes). Hooks: pitfall_analysis.go (walkExpression, for
+loops, builder field), pitfall_final_element.go (if branches, final-element
+underflow explanation), pitfall_block_flow.go, pitfall_guard_flow.go.
+Governance analysis.yaml item narrowed to reverse loops. Sema and targeted
+cmd/compiler + cmd/lsp pitfall/diagnostic subsets pass. Released; no commit.
+
+## Codex: owned statement-match continuation (working, 2026-11-09)
+
+Taking frontend.match-v2 remaining point 8: non-trivial ownership/cleanup/discard
+at statement-match continuation. Reuse the canonical discard producer for arm
+results and preserve full-expression / arm-scope cleanup ordering. Extracting
+the statement-arm builder to a focused sibling file; source + IR + schema13
+32/64-bit verifier regression coverage planned. No pitfall or parser changes.
+
+## Codex: owned statement-match continuation closed (released, 2026-11-09)
+
+Closed frontend.match-v2's entire non-trivial statement-continuation item
+(previous remaining position 8). Fresh call and try-success arm results now
+use the canonical discardExpression producer: own.discard with its destruction
+plan precedes full-expression temporary ends, arm-scope cleanup and the branch
+to the match continuation. Removed the statement-specific non-trivial result
+boundary. Existing guard-success ownership commits, moved-source cancellation,
+arm-body locals, borrowed temporary destruction and failure cleanup remain
+explicit. Match does not gain implicit consumption of arbitrary stored values;
+ordinary expression capability boundaries stay fail-closed. Extracted
+buildMatchStatementArm from builder.go to focused match_statement.go.
+
+Regression first reproduced the package17 'ignored non-trivial match statement
+arm value' failure. Fixture now covers fresh results in both Option arms,
+guarded owned-payload transfer into a returned value, the guard-false fallback,
+block-local cleanup, shared borrowed temporaries, and try-success result discard
+with failure propagation. IR checks assert five static owned result discards,
+origin and plan metadata, result discard before arm cleanup/continuation and
+borrowed temporary end (destroy_value or destroy_place). Deterministic output
+passes all place/reference/borrow/cleanup/destruction/ownership/match-CFG/union
+verifiers on 32- and 64-bit scalar plans.
+
+Verification:
+- SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test -p 4 ./internal/ir/semantic ./internal/lowering/secmlir -count=1
+  final complete suites passed (6.617s / 17.068s).
+- go test -p 4 ./cmd/compiler ./cmd/lsp -run 'Test(StatementMatch|MatchTermination|NonBindingMatchPayload|ImplicitDiscard)' -count=1
+  passed (19.282s / 16.631s). Sema complete suite also passed (20.162s)
+  during this task; no Sema source changed here.
+- yamlstatus check: 0 problems in 45 fragments; owner fmt canonical;
+  owner path check 0 missing / 83 checked; git diff --check clean.
+- governance/control_flow.yaml remaining 65 -> 64;
+  frontend.match-v2 remaining 9 -> 8. No new missing decision.
+
+Boundaries: P17 sections 103/134 explicitly defer physical cleanup and LLVM
+destruction lowering; this task closes the high-level IR/schema13 continuation
+work, not those later stages. The common emitter still rejects Result[void, E]
+with 'void has no MLIR value type'; the try fixture uses Result[int, IndexError]
+to keep that unrelated carrier-representation boundary separate. No new match
+rule, hidden runtime mechanism or alternate compiler track introduced.
+
+Files changed by this task:
+- internal/ir/semantic/builder.go (statement-arm builder extraction only)
+- internal/ir/semantic/match_statement.go (new)
+- internal/ir/semantic/discard.go (traceability comment)
+- internal/ir/semantic/match_statement_owned_test.go (new)
+- internal/lowering/secmlir/match_statement_owned_test.go (new)
+- testdata/semantic_ir/match_statement_owned.sec (new)
+- governance/control_flow.yaml (yamlstatus only)
+- mlir/compiler-packages-handoff.md
+
+Latest Claude predecessor-pitfall release read before handoff; its working
+files and all unrelated changes preserved. No Sec library, parser, checked-in
+binary or C++ MLIR files changed. No commit. Working set released.
+## Codex: owned match arm-result ordering (working, 2026-11-09)
+
+Taking frontend.match-v2 remaining point 4: move-only arm-result ownership
+before arm-scope cleanup. Auditing source transfer/cancellation and result
+forwarding for arm-local, payload and fresh results in expression/block arms;
+consolidating the common result/cleanup/merge ordering into a focused builder.
+No parser, pitfall or Sec library changes planned.
+
+## Claude: predecessor pitfall in reverse/stepped loops (released, 2026-11-09)
+
+pitfall_predecessor.go loopPositiveIndexGuard handles constant steps
+(descending ranges prove positivity from their end bound); pitfall_while.go
+uses the while condition as a positivity proof at body entry. Test
+TestPitfallPredecessorInReverseAndSteppedLoops. Governance analysis.yaml
+reverse-loop item closed. Sema and pitfall cmd subsets pass. Released; no
+commit.
+
+## Codex: owned match arm-result ordering closed (released, 2026-11-09)
+
+Closed frontend.match-v2's move-only arm-result-before-cleanup item (previous
+remaining position 4). Extracted expression-arm builders from builder.go into
+match_expression.go and consolidated finishMatchExpressionArm. Result building
+commits Sema-resolved moves and registration cancellation; region temporaries
+end, then block-local cleanup and the separate owning payload-binding scope
+end, and only then is the result handed to the merge. The block-arm path
+previously omitted the payload-binding fallthrough scope; source returning an
+owned payload from a block arm failed with the P17 'scope exit with owned
+locals outside a cleanup-aware block' boundary. The regression now succeeds.
+
+Tests cover an arm-local returned value alongside another owned local, explicit
+inline move into a bound match result, payload forwarding from a block arm,
+guarded payload forwarding with the later-arm fallback, and fresh results.
+IR asserts source move -> cancellation -> cleanup -> merge-result forwarding.
+Generated schema13 passes place/reference/match/cleanup/destruction/ownership
+verification on both 32- and 64-bit scalar plans. Physical destruction lowering
+remains the separate P17 sections 103/134 boundary.
+
+Verification:
+- SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test -p 4 ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir -count=1
+  complete suites passed (20.041s / 9.051s / 20.839s).
+- go test -p 4 ./cmd/compiler ./cmd/lsp -run 'Test(MatchTermination|StatementMatch|NonBindingMatchPayload|ImplicitDiscard)' -count=1
+  passed (18.714s / 16.218s).
+- yamlstatus check: 0 problems in 45 fragments; owner fmt canonical;
+  owner path check: 0 missing / 87 checked; git diff --check clean.
+- governance/control_flow.yaml remaining 64 -> 63;
+  frontend.match-v2 remaining 8 -> 7. No new remaining item.
+
+Separate parser finding retained by expanding the existing final parser/full
+coverage remaining item, without a duplicate MD: bare `<-local` as the final
+expression of an owning match-arm block is rejected as an unexpected token by
+statement dispatch. Grammar sections 56(2)/87(1) already define the expression
+form, so this is implementation work, not a missing language decision. Inline
+explicit move arms and terminal-return local/payload forwarding are covered by
+this task's valid fixture. No parser change or complete syntax-coverage claim.
+
+Files changed by this task:
+- internal/ir/semantic/builder.go (expression-arm builder extraction only)
+- internal/ir/semantic/match_expression.go (new)
+- internal/ir/semantic/match_owned_results_test.go (new)
+- internal/lowering/secmlir/match_owned_results_test.go (new)
+- testdata/semantic_ir/match_owned_results.sec (new)
+- governance/control_flow.yaml (yamlstatus only)
+- mlir/compiler-packages-handoff.md
+
+Latest Claude reverse/stepped predecessor-pitfall release read before handoff;
+its files and unrelated changes preserved. No Sema source, Sec library, parser,
+checked-in binary or C++ MLIR files changed. No commit. Working set released.
+## Codex: canonical covered-switch diagnostics (working, 2026-11-09)
+
+Taking frontend.switch-statements-v2 remaining point 2: canonical unreachable
+policy and earlier-case provenance for statically covered items. Working in
+analyzer_switch_coverage.go and focused source/diagnostic tests. Preserve the
+published S1015 duplicate-constant identity; fully covered non-duplicate items
+use S3001. Correct false unreachable classification of partial relational
+coverage by a finite range (switch rulebook section 22). No pitfall changes.
+
+## Codex: covered-switch diagnostic policy closed (released, 2026-11-09)
+
+Closed frontend.switch-statements-v2 remaining point 2 (canonical policy for
+statically covered cases/items). Existing full-coverage proofs for values,
+normalized ranges and relations now use mandatory S3001, exact source anchors,
+actionable help and navigable earlier-case provenance. Equivalent bool, integer,
+string and enum-alias values retain published mandatory S1015, now with the
+same proof presentation. Both identities remain mandatory even when configured
+off. Comma alternatives and closed singleton ranges follow the same policy.
+Partial range overlap retains its separate source-validity check.
+
+Fixed a false-positive proof: an earlier finite range such as 0..100 does not
+make a later >50 relation unreachable; values above 100 still select it.
+Only full coverage proves unreachable. Partial relational overlap and dynamic
+bounds stay conservative, as switch sections 22/23 require. Extended existing
+monolithic test expectations to include related locations, and removed the
+old incorrect expectation that this partial relation must be rejected.
+Further normalized/dynamic coverage inference and CFG work remain owned by
+other existing switch remaining items; no new remaining item introduced.
+
+Verification:
+- go test -p 4 ./internal/sema -count=1
+  final complete Sema suite passed (15.191s).
+- SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test -p 4 ./cmd/compiler ./cmd/lsp -run 'TestCoveredSwitchItems|TestNativeTrackBuildsAndRuns/switch_partial_relations' -count=1
+  passed (2.319s / 0.907s). Ten source errors preserve S3001/S1015 in CLI JSON
+  and LSP with help and related locations. Native build/execution verifies
+  first-match selection inside the finite range, the later > relation outside
+  it, and the later < relation on negative input.
+- Full IR and Sec MLIR package results also passed (7.579s / 18.924s) during
+  the full pipeline run; that run initially had one stale bool diagnostic text
+  expectation in Sema, updated before the final successful complete Sema run.
+- yamlstatus check: 0 problems in 45 fragments; owner fmt canonical;
+  owner path check: 0 missing / 53 checked; git diff --check clean.
+- governance/control_flow.yaml remaining 63 -> 62;
+  frontend.switch-statements-v2 remaining 9 -> 8. No new blocker or MD.
+
+Files changed by this task:
+- internal/sema/analyzer_switch_coverage.go
+- internal/sema/analyzer_test.go (proof-location expectations and corrected partial-relation expectation)
+- internal/sema/switch_covered_items_test.go (new)
+- cmd/compiler/switch_covered_items_test.go (new)
+- cmd/compiler/native_track_test.go (native fixture registration)
+- cmd/lsp/switch_covered_items_test.go (new)
+- testdata/sema/switch_covered_items_invalid.sec (new)
+- testdata/sema/switch_partial_relations_valid.sec (new)
+- testdata/build/native/switch_partial_relations.sec (new)
+- governance/control_flow.yaml (yamlstatus only)
+- mlir/compiler-packages-handoff.md
+
+Latest Claude predecessor reverse/stepped-loop release rechecked; no overlap
+with its files. No Sec library, parser, IR implementation, checked-in binary
+or C++ MLIR changes by this task. No commit. Working set released.
+## Codex: enum-switch conformance closure (working, 2026-11-09)
+
+Auditing frontend.switch-statements-v2 remaining point 3, whose own wording
+already describes implemented same-enum equality / exhaustive-switch lowering.
+Adding end-to-end alias/comma-alternative/no-default/default conformance and
+checking the Sema -> IR proof/enum.compare -> native execution chain before
+moving this stale remaining item. No claim for string-enum/P23 lowering or for
+future canonical switch CFG work. No parser or pitfall implementation changes.
+
+## Codex: integer enum-switch point closed (released, 2026-11-09)
+
+Closed the stale frontend.switch-statements-v2 enum-switch remaining item
+after source-to-native verification of the existing implementation. No compiler
+behavior change was necessary. New shared fixture covers aliases in one value
+class, comma alternatives, exhaustive switches without default, default cases
+and a dynamic later case. Semantic IR assertions verify enum.compare eq,
+separate tests selecting the same comma-clause body, Sema-proven synthesized
+unreachable residuals only without default, and dynamic evaluation on the first
+test's failure edge. The native runner executes nine result checks.
+
+Also corrected the integration summary's stale claim that integer enum, bool
+and eligible named-integer subjects were all still unsupported. String subjects
+(P23), generalized coverage and canonical frontend CFG/cleanup work stay open.
+
+Validation:
+- SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test -p 4 ./internal/ir/semantic ./cmd/compiler -run 'TestEnumSwitchValueClasses|TestSwitchLowersToOrderedTests|TestNativeTrackBuildsAndRuns/(enum_switch_classes|enums)$' -count=1
+  passed (0.021s / 3.304s), including actual native builds and execution.
+- yamlstatus check: 0 problems in 45 fragments; owner fmt canonical;
+  owner path check: 0 missing / 55 checked.
+- Task-specific git diff --check passed. Workspace-wide check reports an
+  unrelated new blank line at EOF in testdata/spawn_valid.sec; left untouched.
+- governance/control_flow.yaml remaining 62 -> 61;
+  frontend.switch-statements-v2 remaining 8 -> 7. No new MD or blocker.
+
+Files changed by this task:
+- internal/ir/semantic/enum_switch_classes_test.go (new)
+- testdata/build/native/enum_switch_classes.sec (new)
+- cmd/compiler/native_track_test.go (one fixture registration)
+- governance/control_flow.yaml (yamlstatus only)
+- mlir/compiler-packages-handoff.md
+
+Latest handoff re-read before release; no new overlapping Claude entry. No
+compiler implementation, Sec library, checked-in binary or C++ MLIR edits.
+No commit. Working set released.
+
+## Claude: valid-fixture audit (released, 2026-11-09)
+
+Modernized testdata/{basic_types,crc32,for,if,slices,spawn,variables1}_valid.sec
+to current rules (checked conversions with try, list/set/map, :<- for ref mut,
+awaited/detached handles, no contradictory contracts, no constant-dead
+branches). New cmd/compiler/valid_fixtures_test.go (TestValidFixturesPassCheck,
+~3.5 min) checks every *_valid.sec fixture outside a documented exception
+list. Governance control_flow.yaml if-statements audit item closed. Released;
+no commit.
+
+
+## Codex: MD-117 implicit pack-position borrow (working, 2026-11-09)
+
+Taking frontend.for-loops-v2 remaining point 1. Delay indexed owned-pack copy
+requirements until selected call parameter modes distinguish an implicit borrow
+from an actual value read. Preserve ordinary borrow authority and per-position
+copy checks, including mixed copyable/move-only sequences. Working in
+internal/sema/type_pack_iteration.go, new type_pack_index_reads.go, small Analyzer
+state/reset and selected-call borrow hook, plus focused source/CLI/LSP tests.
+No P17/MLIR lowering changes or Sec library edits.
+
+## Codex: MD-117 implicit pack-position borrow closed (released, 2026-11-09)
+
+Closed frontend.for-loops-v2 remaining point 1. An indexed owned pack element
+passed to a selected ref parameter is borrowed implicitly, including move-only
+concrete types; candidate overload probing does not commit that classification.
+Actual indexed value reads are retained until selection, then require a copy
+only for their own concrete position. Repeated implicit/explicit borrows and
+mixed borrowed move-only / copied integer positions now pass. Value parameters,
+local copies and by-value loops still reject unavailable copies. Ordinary
+mutable authority, index limits, element move-out and borrow-conflict checks
+remain active, covered by the full existing pack suite. Diagnostic related
+locations now say by-value pack read, covering both loops and indexes.
+
+Validation:
+- Full internal/sema suite passed (17.660s).
+- go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run 'TestOwnedPackIndexCallBorrow|TestTypePack' -count=1
+  passed (0.742s / 2.604s / 2.347s): actual copies retain concrete type/position
+  and template provenance; valid input has no compiler/LSP errors.
+- Read-only Go overlay replacing type_pack_iteration.go with pre-fix HEAD
+  contents fails the new valid fixture for Borrow and Mixed, reproducing the
+  original regression. No source file was reverted for this check.
+- go vet -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp passed.
+- yamlstatus check: 0 problems in 45 fragments; owner fmt canonical;
+  owner paths: 0 missing / 56 checked; task-specific git diff --check passed.
+- Observed control_flow.yaml remaining before this edit 60 -> 59;
+  frontend.for-loops-v2 remaining 13 -> 12. Claude's separate if-fixture audit
+  accounts for the earlier independent file-count reduction. No new MD/blocker.
+
+Files changed by this task:
+- internal/sema/analyzer.go (one index-reader map plus reset only; preserve other dirty changes)
+- internal/sema/analyzer_lifetime.go (selected parameter borrow hook and rule reference)
+- internal/sema/type_pack_iteration.go (deferred per-position copy requirements)
+- internal/sema/type_pack_index_reads.go (new)
+- internal/sema/type_pack_index_reads_test.go (new)
+- cmd/compiler/type_pack_index_borrow_test.go (new)
+- cmd/lsp/type_pack_index_borrow_test.go (new)
+- testdata/generics/type_pack_declarations/owned_index_borrow.sec (new)
+- testdata/generics/type_pack_declarations/owned_index_copy_invalid.sec (new)
+- governance/control_flow.yaml (yamlstatus only)
+- mlir/compiler-packages-handoff.md
+
+Re-read latest handoff: Claude's valid-fixture audit is released; no overlapping
+active task recorded. This closes the compiler/LSP checking point, not physical
+P24 reference lowering, which remains separately tracked. No Sec library,
+checked-in binary, C++ MLIR edits or commit. Working set released.
+
+## Claude: join statement (released, 2026-11-09)
+
+New ast.JoinStatement; parser contextual `join <name>` (contextualJoin,
+parseJoinStatement); internal/sema/thread_join.go (owned Thread[T], resolves
+the thread for scope exit via closedResources, second join rejected); CST
+spacing role; LSP keyword completion. Codex, note for the paragraph pass:
+rules/foundations/grammar.md gained § 61A "Join statement", JoinStatement in
+the statement list and `join` in the § 112 contextual spellings.
+testdata/spawn_valid.sec joins its value-producing threads. Governance
+concurrency_thread.yaml join item narrowed to runtime synchronization.
+Parser, Sema, CST, formatter and targeted cmd subsets pass. Released; no
+commit.
+
+
+## Codex: ordinary raw-memory effects (working, 2026-11-09)
+
+Taking analysis.raw-pointers remaining point 6 in memory.yaml. Publish distinct
+memory-read/memory-write registry and call-graph events for validated ordinary
+raw accesses; keep volatile effects distinct and do not infer MMIO from a bare
+pointer. A raw write without local-origin proof conservatively contributes
+MayMutateExternalState; a read alone adds no volatile, I/O or nondeterminism
+claim. Working in raw-pointer registry/validation and call-graph effect summaries
+plus focused shared-source tests. No parser/join overlap with Claude.
+
+## Codex: ordinary raw-memory effects closed (released, 2026-11-09)
+
+Closed analysis.raw-pointers remaining point 6: validated ordinary Read and
+Write now publish distinct memory-read / memory-write effects from the shared
+compiler-known registry. Volatile operations retain their existing identities;
+no volatile/device/MMIO behavior is inferred from raw address possession or an
+ordinary read/write. Invalid unsafe/type/value accesses emit no successful
+access event. Mere possession and forwarding emit no dereference event.
+
+Ordinary reads remain direct ordered facts without inventing MayIO,
+MayAccessVolatile, nondeterministic input or unknown allocation/panic domains.
+A raw write conservatively contributes MayMutateExternalState because bare
+RawPtr carries no local-storage confinement proof. Transitive summaries retain
+the write's source and call-site cause. Storage/mapping/FFI provenance and
+specialized target-domain integration remain the other existing raw-pointer
+remaining items, not claims of this change. CLI verbose analysis and LSP hover
+consume the same canonical effects without a separate UI classifier.
+
+Validation:
+- Complete Sema suite passed (16.273s).
+- go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run 'TestRawMemory|TestRejectedRawMemory|TestRawPointerRegistrySurface|TestCompilerKnownRawPointerVolatileAccess' -count=1
+  passed (0.046s / 1.270s / 3.851s). Shared fixtures verify source effects,
+  transitive write provenance, no invented may-domains, rejected-access silence,
+  verbose CLI analysis and all four ordinary/volatile member hovers.
+- go vet -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp passed.
+- yamlstatus check: 0 problems in 45 fragments; owner fmt canonical;
+  owner paths: 0 missing / 13 checked; task-specific git diff --check clean.
+- memory.yaml remaining 324 -> 323; analysis.raw-pointers remaining 6 -> 5.
+  No new MD or blocker.
+
+Files changed by this task:
+- internal/sema/call_graph.go
+- internal/sema/call_graph_summaries.go
+- internal/sema/compiler_known_physical_storage.go
+- internal/sema/raw_pointer_operations.go
+- internal/sema/raw_pointer_registry_test.go
+- internal/sema/raw_memory_effects_test.go (new)
+- cmd/compiler/raw_memory_effects_test.go (new)
+- cmd/lsp/raw_memory_effects_test.go (new)
+- testdata/sema/raw_memory_effects.sec (new)
+- testdata/sema/raw_memory_effects_invalid.sec (new)
+- governance/memory.yaml (yamlstatus only)
+- mlir/compiler-packages-handoff.md
+
+Latest handoff re-read: Claude's join statement work is released and does not
+overlap these files. No parser, Sec library, physical lowering or checked-in
+binary changes. No commit. Working set released.
+
+## Claude: task join, selectable join, select continuation (released, 2026-11-09)
+
+join now accepts Task[T] too (tasks.md § 17). New ast.SelectJoinBranch,
+parser `join handle =>` select branch, Sema reuses analyzeJoinStatement in
+the branch state and treats the handle as an exclusive select resource.
+analyzeSelectStatement no longer adds a "no branch selected" continuation
+for a select without default (cancellation terminates; select.md §§ 4(4), 35).
+TrySend/TryReceive are no longer selectable (select.md § 54(3)); two old
+duplicate-branch tests now use Receive/Send. Codex, note for the paragraph
+pass: grammar.md § 63 gained SelectJoinBranch and § 61A(3) names tasks.md
+§ 17. Governance concurrency_select.yaml (5 items closed),
+concurrency_thread.yaml. Parser, Sema, CST, formatter, IR and select/await/
+channel/spawn cmd subsets pass. Released; no commit.
+
+## Claude: channel calls through references, ChannelTrySendResult (released, 2026-11-09)
+
+inferChannelCall and the select helpers dereference ref/ref mut endpoints;
+Close through a reference is rejected. New compiler-known
+ChannelTrySendResult[T] (types.go, analyzer.go generic arity list); TrySend
+returns it. Test TestChannelCallsThroughReferences. Governance
+concurrency_channels.yaml. Sema, IR and channel/select cmd subsets pass.
+Released; no commit.
+
+## Claude: Task.Current / Thread.Current surface (released, 2026-11-09)
+
+New internal/sema/execution_context.go (Task.Current, Thread.Current,
+Task.Yield, Thread.Yield), compiler-known TaskContext type, CancelRequested
+property on TaskContext/ThreadContext (compiler_known_members.go). Test
+TestExecutionContextSurface. Governance concurrency_cancellation.yaml (two
+items closed, context-requirement item added). Sema and targeted cmd subsets
+pass. Released; no commit.
+
+
+## Claude: task-context requirement (released, 2026-11-09)
+
+Taking concurrency_cancellation.yaml frontend.cancellation-effect-v1 (Task.Current
+/Task.Yield/cancel context requirement, scheduling.md § 22). Working set: new
+internal/sema/task_context_requirement.go (+ test) reading the call graph
+through its existing read API only, execution_context.go, the cancel
+statement analysis, governance/concurrency_cancellation.yaml. No edits to
+call_graph*.go (Codex's raw-memory effect work).
+
+## Codex release (2026-11-09): immutable raw-pointer null aliases
+
+recordRawPointerNullBinding now propagates proven nullness through immutable copy
+bindings/chains and stable dominating null paths. provenNullRawPointerBinding is
+the shared conservative predicate used by copying and rejection. Rejected Read,
+Write, VolatileRead/Write and AsRef/AsRefMut aliases keep S1142, related alias source
+and mentor help, publish no successful memory event and produce no IR artifact.
+Unknown/reassigned/non-null cases and mere copy/return of null remain accepted.
+
+Files: internal/sema/raw_pointer_null_proof.go; new raw_null_alias_test.go in Sema,
+CLI and LSP; testdata/sema/raw_null_alias_{valid,invalid}.sec; governance/memory.yaml.
+No execution-context, channel, parser, call-graph or sec/ changes. Your current
+TaskContext/cancellation working set is unaffected.
+
+Validation: full Sema 17.287s; alias/null/mentor regressions passed
+0.166s / 11.271s / 3.611s; vet passed. Final alias-only checks with CopyNullOnly
+passed 0.012s / 3.017s / 1.951s. Governance: 1 implemented added, 1 remaining narrowed,
+0 closed (analysis.raw-pointers 5 → 5). Other known alignment/range/lifetime
+contradictions remain open; no new language decision. Released; no commit.
+
+## Codex release (2026-11-09): immutable raw-pointer origin aliases
+
+recordRawPointerOriginBinding now retains a clone of the known .Ptr origin Place
+when an immutable raw pointer is copied/chained. Existing AsRef/AsRefMut checks
+therefore preserve dangling-owner and live-borrow contradictions through aliases,
+with canonical S1206/S1161/S1162 and original move/borrow source links. CLI/LSP use
+the same Sema proof; invalid source emits no IR. A pointer copy does not retain
+its owner or create reference authority. Live/unknown origins, reassigned pointer
+sources/destinations and mere storage/return of a dangling address remain accepted
+under the existing raw-pointer contract.
+
+Changed: internal/sema/raw_pointer_references.go; new raw_origin_alias_test.go in
+Sema/CLI/LSP; testdata/sema/raw_origin_alias_{valid,invalid}.sec;
+governance/memory.yaml. No execution-context/channel/parser, call-graph, sec/ or
+binary edits. Complete Sema 18.640s; focused Sema/CLI/LSP
+0.079s / 16.497s / 6.288s; vet passed. Governance: 1 implemented added,
+1 remaining narrowed, 0 closed (analysis.raw-pointers 5 → 5). Released; no commit.
+
+## Claude: task-context requirement completion (2026-11-09)
+
+Done: new internal/sema/task_context_requirement.go (requirements recorded
+per callable, checked from every call-graph root through Roots/Outgoing only;
+new pipeline step "execution-context", so the schedule now has 11 stages).
+analyzeCancelStatement records the requirement instead of rejecting cancel in
+every named function; two old cancel tests were rewritten to call through
+main (cancellation.md §§ 19-22). No call_graph*.go edits. Sema and targeted
+cmd/compiler + cmd/lsp subsets (incl. TestValidFixturesPassCheck) pass.
+Released; no commit.
+
+
+## Codex: canonical Channel endpoint fields (2026-11-09)
+
+Closed concurrency.channels-v2 remaining[1]: Tx/Rx are ordinary stored fields
+with concrete Sender[T]/Receiver[T] types and independent partial moves.
+Lowercase tx/rx receive replacement help; implicit copies, repeated extraction,
+borrowing a moved field and whole-channel reuse after partial moves are rejected.
+LSP completion shares the field table; hover reads the resolved stored-field plan
+when the field has no source declaration token.
+
+Changed channel_types.go, Channel template metadata, member inference, old Go
+channel test snippets and new source-backed Sema/CLI/LSP tests. Full Sema passed
+(20.862s), focused Sema/CLI/LSP passed (0.034s/4.866s/8.148s), vet passed.
+All 84 selected LSP hover/canonical-channel tests also passed.
+Governance validated: 1 whole remaining point closed, 23 → 22. No constructor,
+runtime, sec/ or binary edits. Released; no commit.
+
+## Claude: test execution context (released, 2026-11-09)
+
+Owner decision: a test body runs like ordinary program entry (no logical task,
+no cancellable execution). rules/tooling/testing.md revision 1.1 § 9.7 (Codex,
+note for the paragraph pass). task_context_requirement.go checks every
+CallableBodyTest node as an entry (test roots exist only in plan-bound graphs)
+and dedupes repeated requirement records. Test
+TestExecutionContextRequirementsInTests. Governance concurrency_cancellation.yaml.
+Released; no commit.
+
+
+## Claude: remove legacy `ref name: Type` parameters (working, 2026-11-09)
+
+Working set: internal/parser/parser.go (parseParameters), parser_test.go,
+legacy-form Sema test snippets (payload_escape, copy_move, analyzer_closure,
+defaults, analyzer_call_borrow), testdata/crc32_valid.sec and four
+testdata/sema escape/closure fixtures, governance declarations.yaml.
+`ref self` receivers stay. No sec/, channel, spawn or memory edits.
+
+## Codex: exact ThreadAttachError (released, 2026-11-09)
+
+Closed concurrency.thread-local-v2 remaining[12], 25 → 24: reserved nominal core
+error enum AlreadyAttached/ResourceUnavailable/NativeFailure. Trusted source must
+match the exact enum; project redeclarations, malformed core declarations and
+NotAttached are rejected. Typed Result/open-error use and exhaustive matching
+work; LSP completion/hover use canonical Sema facts.
+
+Changed thread_attach_error.go, builtin registration, core refinement hooks and
+new Sema/CLI/LSP tests with testdata/sema/thread_attach_error_* fixtures.
+Full Sema passed (23.205s), focused Sema/CLI/LSP passed (0.029s/2.167s/4.770s),
+vet and governance validation/path checks passed. No parser, existing parameter
+test snippets, sec/, runtime or AttachCurrent signature changes. Released;
+no commit. Your legacy-parameter working set is unaffected.
+Result: parseParameters diagnoses legacy `ref [mut] name: Type` with the
+canonical replacement and recovers into the borrowed TypeReference; `ref self`
+unchanged. 5 fixtures + 11 Go test snippet files migrated; new
+TestParseRejectsLegacyRefParameterSpelling. Parser, formatter, cst, IR and
+cmd/compiler fixture subsets pass; Sema passes except Codex's untracked
+TestThreadAttachErrorCoreDeclaration (single-line enum replacement fails to
+parse, unrelated to parameters). Governance declarations.yaml. Released; no commit.
+
+## Codex: exact thread creation/start errors (released, 2026-11-09)
+
+Closed concurrency.thread-v2 remaining[10], 30 → 29: ThreadSpawnError now has
+the exact seven variants, ThreadStartError the exact four (threads.md §§18–19).
+Legacy Unsupported and ThreadSpawnError.ResourceUnavailable are rejected.
+Both are nominal core error enums; trusted source must match exactly and retains
+source locations, while untrusted redeclarations cannot replace the identities.
+
+Changed thread_lifecycle_errors.go, builtin registration/core refinement hooks,
+new Sema/CLI/LSP tests and testdata/sema/thread_lifecycle_errors_* fixtures,
+governance/concurrency_thread.yaml. Full Sema 20.294s; focused Sema/CLI/LSP
+0.039s/3.840s/10.283s; vet, governance validation and paths passed.
+No parser, sec/, runtime or spawn/control-flow edits. Released; no commit.
+The ThreadAttachError single-line test noted above was fixed before its release;
+the complete Sema suite has passed since that fix, including this run.
+
+## Codex: spawn grammar boundary (released, 2026-11-09)
+
+Closed concurrency.spawn-v1 remaining[2], 10 → 9. Eight default/task/thread/process
+expression/block forms and contextual identifiers are tested through parser and
+formatter, with stable golden output. Missing operands preserve enclosing syntax
+and receive one parser diagnostic, including LSP recovery trees (Sema suppresses
+the follow-up callable-shape error). Valid blocks now report the separate missing
+child-body/capture capability, not deprecated grammar. Block execution remains
+unimplemented; spawn result/ownership/runtime behavior is unchanged.
+
+Changed parser/expression.go, the two Sema boundary checks, focused new tests and
+testdata fixtures, governance/concurrency_spawn.yaml. Parser full short mode
+passed (24.154s), full formatter/Sema (1.749s/17.716s), targeted CLI/LSP
+(1.035s/1.902s), vet and governance checks passed. The unrestricted mutation test
+was manually stopped after 86.841s; its stack showed active corpus verification,
+not a spawn-parser loop. No sec/ or binary edits. Released; no commit.
+
+## Codex: thread configuration enums (released, 2026-11-09)
+
+Closed concurrency.thread-v2 remaining[2], 29 → 28. ThreadStartMode is the exact
+Eager/Deferred enum (default Eager); ThreadPriority now includes Lowest and
+Highest around Low/Normal/High. Both are reserved nominal non-error core enums.
+Trusted declarations must match exactly and retain source locations; untrusted
+replacement, unknown variants, cross-enum returns and error-root use are rejected.
+Relative priority intents imply neither native numeric values nor real-time
+scheduling. ThreadConfig defaults/start behavior and runtime remain separate work.
+
+Changed thread_configuration_enums.go, builtin/core refinement hooks, new
+Sema/CLI/LSP tests and testdata/sema/thread_configuration_enums_* fixtures,
+governance/concurrency_thread.yaml. Full Sema passed 15.141s; focused Sema/CLI/LSP
+0.032s/3.722s/12.259s; vet, governance validation and paths passed. No sec/,
+parser or binary edits. Released; no commit.
+
+## Codex: legacy portable thread errors removed (released, 2026-11-09)
+
+Closed concurrency.thread-v2 remaining[22], 28 → 27. ThreadSchedulingError,
+ThreadTerminationError and ThreadContextError no longer exist in builtin/error
+registries or implicit LSP completion/hover. ThreadAttachError remains canonical.
+Ordinary project declarations may still use the old spellings; no blacklist or
+alias to the canonical attachment error is introduced.
+
+Changed types.go, the builtin inventory assertion and new Sema/CLI/LSP tests plus
+testdata/sema/thread_legacy_errors_* fixtures. Updated concurrency_thread.yaml
+and removed the stale existence claim in concurrency_thread_local.yaml (no
+additional TLS remaining point closed). Full Sema passed 15.777s; focused
+Sema/CLI/LSP 0.043s/7.908s/19.433s; vet passed. No sec/, parser, runtime,
+execution-context or binary edits. Released; no commit.
+
+## Codex: ThreadSetting union (released, 2026-11-09)
+
+Closed concurrency.thread-v2 remaining[1], 27 → 26. ThreadSetting[T] is the
+canonical nominal core union Default/Preferred(T)/Required(T). Ordinary union
+construction, contextual variants and exhaustive matching preserve payload T;
+plain T cannot become Preferred(T) implicitly. Trusted declarations must match
+the non-error generic union exactly, including owning rather than ref payloads.
+
+Changed thread_setting.go, builtin/trusted declaration hooks, new Sema/CLI/LSP
+tests and testdata/sema/thread_setting_* fixtures, owning governance. Full Sema
+18.144s; focused Sema/CLI/LSP 0.008s/2.159s/4.772s; vet, governance and paths
+passed. LSP tests cover concrete binding hover and template variant completion;
+explicit generic-selector completion (ThreadSetting[int].) has an existing LSP
+gap and was not broadened by this type task. No sec/, runtime, ThreadConfig or
+binary changes. No behavior derived from blocking.md,
+concurrency_runtime_model.md or events.md. Released; no commit.
+
+## Codex: termination metadata and observer wait boundary (released, 2026-11-09)
+
+Closed two concurrency.thread-v2 points ([9], [16]), 26 → 24. Portable metadata
+is exactly ThreadTerminationKind Requested/External/Fault/Unknown and
+ThreadTermination { Kind: ThreadTerminationKind }. Trusted source shapes and
+source locations are validated; native status fields do not enter this payload.
+Thread.Termination availability and platform metadata remain separate work.
+
+Observer Wait calls and select waits now receive focused metadata-only/owner-join
+guidance, without a synthetic completion operation. Observer copies, ordinary
+metadata reads and explicit discard remain valid. No lifecycle owner is created.
+
+Changed thread_termination.go, thread_observer_wait.go, builtin/core hooks,
+compiler_known_calls.go and select eligibility, plus new thread_metadata_boundaries
+Sema/CLI/LSP tests and testdata fixtures. Full Sema 15.185s; focused Sema/CLI/LSP
+0.009s/3.485s/5.471s; vet, governance validation and paths passed. No sec/, parser,
+runtime, terminal availability or binary edits. No implementation derived from
+blocking.md, concurrency_runtime_model.md or events.md. Released; no commit.
+
+## Codex: canonical channel revoke types (released, 2026-11-09)
+
+Closed concurrency.channels-v2 remaining[8], 22 → 21. ChannelRevokeResult[T] is
+the exact non-error nominal core union Revoked(T) | Unavailable(MessageDisposition).
+The payload retains the full Received/Expired/Discarded enum and its source
+identities, supporting nested exhaustive matching. Trusted declaration validation
+rejects extra dispositions, ref/changed payloads and error markers. Project source
+cannot replace either reserved identity. Runtime and ticket authority stay open.
+
+Changed channel_revoke_types.go, builtin/core hooks and new Sema/CLI/LSP tests
+with testdata/sema/channel_revoke_types_* fixtures. Extracted exactCoreUnionDeclaration
+from ThreadSetting into core_union_declarations.go; existing ThreadSetting tests
+remain green and thread governance links the helper without closing another point.
+Full Sema 15.484s; focused Sema/CLI/LSP 0.013s/3.506s/7.136s; vet, governance
+and paths passed. No sec/, runtime, ticket-authority or binary changes. Excluded
+books were not used. Released; no commit.
+
+## Codex: ticket-owned Revoke (released, 2026-11-09)
+
+Closed concurrency.channels-v2 remaining[7], 21 → 20. MessageTicket[T].Revoke()
+returns concrete ChannelRevokeResult[T] and consumes the owned receiver through
+canonical Place/borrow/receiver-move facts. References, live loans, repeated use
+and wrong arity are rejected; failed calls publish no receiver move. Independent
+stored ticket fields and calls after sender close are source-valid. Legacy
+Sender.Revoke(ticket) is rejected with ticket.Revoke() migration help.
+
+Changed channel_ticket_revoke.go, compiler member registry/dispatch, removed the
+sender revoke branch and migrated its one old test. New Sema/CLI/LSP tests with
+testdata/sema/ticket_revoke_* fixtures verify ownership facts, partial moves,
+rollback after rejected calls and shared completion/hover. Full Sema 16.512s;
+focused Sema/CLI/LSP 0.029s/4.084s/9.489s; vet, governance and paths passed.
+Runtime ticket validity/generation and channel commit races remain separate work.
+No sec/, runtime or binary edits; excluded books unused. Released; no commit.
+
+## Codex: asm high-level register operands (released, 2026-11-09)
+
+Closed platform.inline-assembly-v1 remaining[9], 53 → 52. Register inputs and
+inferred outputs reject high-level/nominal/constrained types with mandatory
+S1207 asm.invalid-register-operand-type and explicit representation guidance.
+Twenty source cases cover strings, bool/char/rune, nominal/ranged/enum values,
+aggregates, refs, resources, collections, vector, callable and named outputs.
+Primitive/RawPtr carriers and explicit primitive conversion remain accepted.
+Width, register class, ABI and target-capability validation stay separate;
+the existing int/uint width policy is unchanged.
+
+Extracted the small asm analysis area from analyzer.go into analyzer_asm.go;
+registered S1207 and added Sema/CLI/LSP tests plus testdata/sema/asm_operand_types_*.
+Full Sema/diagnostics passed 15.332s/0.001s; focused Sema/CLI/LSP
+0.006s/2.480s/1.611s; final CLI artifact-suppression check 2.510s; existing
+compiler/LSP asm regressions passed 4.884s/2.174s; vet/governance/paths passed.
+The diagnostics suite exposed a stale '# Diagnostics' test marker; only that
+marker was updated to the current default_values.md section 52, preserving the
+entire inventory assertion. No rulebook, sec/, runtime or binary edits;
+excluded books unused. Released; no commit.

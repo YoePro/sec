@@ -1,0 +1,29 @@
+module main
+
+fn Work() void {
+}
+
+fn Forms() void {
+    let task    := 1
+    let thread  := 2
+    let process := 3
+    discard task
+    discard thread
+    discard process
+    let a := spawn Work()
+    let b := spawn task Work()
+    let c := spawn thread Work()
+    let d := spawn process Work()
+    let e := spawn {
+        Work()
+    }
+    let f := spawn task {
+        Work()
+    }
+    let g := spawn thread {
+        Work()
+    }
+    let h := spawn process {
+        Work()
+    }
+}

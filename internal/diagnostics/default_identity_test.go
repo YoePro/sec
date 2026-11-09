@@ -24,13 +24,13 @@ func TestDefaultDiagnosticStableIdentities(t *testing.T) {
 
 // TestDefaultRulebookDiagnosticInventory checks the complete normative list,
 // so adding the final two identities cannot conceal another unregistered name.
-// Rules: rules/types/default_values.md — "Diagnostics".
+// Rules: rules/types/default_values.md — §52 "Diagnostics".
 func TestDefaultRulebookDiagnosticInventory(t *testing.T) {
 	data, err := os.ReadFile("../../rules/types/default_values.md")
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, section, found := strings.Cut(string(data), "\n# Diagnostics\n")
+	_, section, found := strings.Cut(string(data), "\n## § 52 Diagnostics\n")
 	if !found {
 		t.Fatal("missing normative diagnostic section")
 	}

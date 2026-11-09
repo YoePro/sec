@@ -36,6 +36,16 @@ func (d *Document) applyOwnershipSpacingRoles(node any, indexes map[concreteToke
 			}
 			break
 		}
+	case *ast.RefExpression:
+		// `ref value` and `ref mut value` keep one space between their words
+		// (rules/tooling/formatter.md §§ 6(6), 21; borrowing syntax).
+		if node.Token.Type == lexer.REF {
+			d.markBorrowKeywords(node.Token, indexes, mark)
+		}
+	case *ast.MatchPatternBinding:
+		if node.Mode != ast.MatchBindingValue && node.Token.Type == lexer.REF {
+			d.markBorrowKeywords(node.Token, indexes, mark)
+		}
 	case *ast.LambdaExpression:
 		// A capture list stays attached to capture and separated from fn;
 		// the lambda return type follows its parameter list with one space.
@@ -59,5 +69,26 @@ func (d *Document) applyOwnershipSpacingRoles(node any, indexes map[concreteToke
 				}
 			}
 		}
+	}
+}
+
+// markBorrowKeywords marks a parsed `ref` keyword and a directly following
+// `mut` on the same line as spaced keywords, so `ref   mut  x` formats as
+// `ref mut x`. Comments between the words keep their source spacing.
+func (d *Document) markBorrowKeywords(ref lexer.Token, indexes map[concreteTokenKey]int, mark func(lexer.Token, Role)) {
+	index, ok := indexes[keyForToken(ref)]
+	if !ok {
+		return
+	}
+	mark(ref, SpacedKeyword)
+	for next := index + 1; next < len(d.Elements); next++ {
+		element := d.Elements[next]
+		if element.Kind == Whitespace {
+			continue
+		}
+		if element.Kind == Token && element.Token.Type == lexer.MUT && element.Token.Line == ref.Line {
+			mark(element.Token, SpacedKeyword)
+		}
+		return
 	}
 }

@@ -279,6 +279,9 @@ func (a *Analyzer) inferExpressionUnrecorded(expr ast.Expression) (Type, express
 					"%s is a type, not a value", expr.Value)
 				return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 			}
+			if a.reportLambdaSelfReference(expr.Token, expr.Value) {
+				return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+			}
 			a.addErrorAtToken(expr.Token, "undefined variable %s", expr.Value)
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
@@ -550,13 +553,23 @@ func (a *Analyzer) inferExpressionWithExpected(expr ast.Expression, expected Typ
 // rules/concurrency/mutex.md — §§39–40; rules/memory/transferability.md — §§15,17–18.
 func (a *Analyzer) inferSpawnExpression(expr *ast.SpawnExpression) (Type, expressionValue) {
 	if expr.Body != nil {
-		a.addErrorAtToken(expr.Token, "spawn block syntax is deprecated; spawn requires a callable expression")
+		// rules/concurrency/spawn.md §2(2–3), grammar.md §89: block syntax
+		// is canonical even while its capture/child-body lowering is absent.
+		a.addErrorAtTokenWithMetadata(expr.Token, "",
+			"This block is valid spawn syntax. Use a callable expression until spawned block bodies and their capture environments are implemented.",
+			"compiler capability unavailable: spawned block body for %s", expr.Kind)
 		a.withCancellableContext(func() {
 			a.analyzeBlockStatements(expr.Body)
 		})
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 	if expr.Value == nil {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
+	// rules/foundations/grammar.md §89; rules/tooling/diagnostics.md —
+	// recovery: the parser already diagnosed a missing operand. In an LSP
+	// recovery tree it must not become a second callable-shape diagnostic.
+	if _, invalid := expr.Value.(*ast.InvalidExpression); invalid {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 	switch expr.Value.(type) {
@@ -1027,8 +1040,8 @@ func (a *Analyzer) inferMemberExpression(expr *ast.MemberExpression) (Type, bool
 		return a.refinedCompilerKnownType(member.Result), true
 	}
 
-	if memberType, ok := a.inferChannelMember(expr, objectType); ok {
-		return memberType, true
+	if a.rejectLegacyChannelEndpoint(expr, objectType) {
+		return Type{Kind: InvalidType}, false
 	}
 
 	if fieldType, ok := lookupStructField(objectType, expr.Property.Value); ok {
@@ -1131,21 +1144,6 @@ func (a *Analyzer) inferPointerMember(expr *ast.MemberExpression, objectType Typ
 		return Type{Kind: InvalidType}, false
 	}
 	return compilerKnownRawPointerResult(objectType), true
-}
-
-func (a *Analyzer) inferChannelMember(expr *ast.MemberExpression, objectType Type) (Type, bool) {
-	if !isChannelType(objectType) {
-		return Type{}, false
-	}
-	messageType := objectType.TypeArgs[0]
-	switch expr.Property.Value {
-	case "tx":
-		return senderType(messageType), true
-	case "rx":
-		return receiverType(messageType), true
-	default:
-		return Type{}, false
-	}
 }
 
 func (a *Analyzer) inferStaticMemberExpression(expr *ast.MemberExpression) (Type, bool) {
@@ -1318,6 +1316,9 @@ func (a *Analyzer) inferIndexExpression(expr *ast.IndexExpression) (Type, expres
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 	leftType = dereferenceType(leftType)
+	if isCompilerKnownMapType(leftType) {
+		return a.inferMapIndexExpression(expr, leftType)
+	}
 	indexType, _ := a.inferExpression(expr.Index)
 	if indexType.Kind == InvalidType {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
@@ -1854,6 +1855,9 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 		return typ, value
 	}
 	if typ, value, ok := a.inferCompilerKnownMemberCall(expr); ok {
+		return typ, value
+	}
+	if typ, value, ok := a.inferExecutionContextCall(expr); ok {
 		return typ, value
 	}
 	if typ, value, ok := a.inferChannelCall(expr); ok {
@@ -2506,6 +2510,16 @@ func (a *Analyzer) inferChannelCall(expr *ast.CallExpression) (Type, expressionV
 	if !ok {
 		return Type{}, expressionValue{}, false
 	}
+	// A channel endpoint reached through `ref`/`ref mut` uses the same
+	// members; only Close consumes the endpoint and needs an owned one.
+	throughReference := receiverType.Kind == ReferenceType
+	receiverType = dereferenceType(receiverType)
+	if throughReference && member.Property.Value == "Close" && (isSenderType(receiverType) || isReceiverType(receiverType)) {
+		a.addErrorAtTokenWithMetadata(member.Property.Token, "",
+			"Close consumes the channel endpoint, which a reference does not own; close the owning binding.",
+			"%s.Close requires an owned %s, got a reference", visibilityBaseName(receiverType.Name), typeDisplayName(receiverType))
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+	}
 	if isSenderType(receiverType) {
 		return a.inferSenderCall(expr, member, receiverType)
 	}
@@ -2580,18 +2594,14 @@ func (a *Analyzer) inferSenderCall(expr *ast.CallExpression, member *ast.MemberE
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		a.markMoveSource(expr.Arguments[0])
-		return a.intrinsicGenericType("ChannelSendResult", messageType), expressionValue{Display: expr.String()}, true
+		// channels.md § 10: TrySend reports WouldBlock(T) as well as Closed(T).
+		return a.intrinsicGenericType("ChannelTrySendResult", messageType), expressionValue{Display: expr.String()}, true
 	case "Revoke":
-		if !a.checkCompilerKnownCallArity(expr, "Sender.Revoke", 1, 1) {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		ticketType, _ := a.inferExpressionWithExpected(expr.Arguments[0], messageTicketType(messageType))
-		if ticketType.Kind != InvalidType && !sameConcreteType(ticketType, messageTicketType(messageType)) {
-			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "Sender.Revoke ticket must be MessageTicket[%s], got %s", typeDisplayName(messageType), typeDisplayName(ticketType))
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		a.markMoveSource(expr.Arguments[0])
-		return a.intrinsicGenericType("ChannelRevokeResult", messageType), expressionValue{Display: expr.String()}, true
+		// rules/concurrency/channels.md §§18,30: the ticket owns revoke.
+		a.addErrorAtTokenWithMetadata(member.Property.Token, "",
+			"Call ticket.Revoke() on the owning MessageTicket[T]; the originating Sender is not required.",
+			"Sender.Revoke is not part of the channel API; use MessageTicket.Revoke()")
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 	case "Close":
 		if !a.checkCompilerKnownCallArity(expr, "Sender.Close", 0, 0) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
@@ -2972,6 +2982,9 @@ func (a *Analyzer) inferCallAsConversion(expr *ast.CallExpression) (Type, expres
 				a.addErrorAtTokenWithMetadata(expr.Token, diagnostics.UnknownCallTarget,
 					"None is the Option variant without a payload; write None without parentheses.",
 					"None is not a function and takes no arguments")
+				return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+			}
+			if a.reportLambdaSelfReference(expr.Token, name) {
 				return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 			}
 			a.addErrorAtTokenWithMetadata(expr.Token, diagnostics.UnknownCallTarget,

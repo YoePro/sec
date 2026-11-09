@@ -12,6 +12,18 @@ import (
 // rules/types/units.md — Exact fixed conversions; rules/memory/ownership.md — Ownership transfer.
 // rules/memory/destruction.md — §6.1(1) (success-only destruction responsibility).
 func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
+	if _, lambda := stmt.Value.(*ast.LambdaExpression); lambda && stmt.Name != nil {
+		// lambda-functions.md § 33: the binding does not exist while its
+		// lambda is created, so a self-reference gets a focused diagnostic.
+		if a.lambdaInitializerNames == nil {
+			a.lambdaInitializerNames = map[string]bool{}
+		}
+		name := stmt.Name.Value
+		if !a.lambdaInitializerNames[name] {
+			a.lambdaInitializerNames[name] = true
+			defer delete(a.lambdaInitializerNames, name)
+		}
+	}
 	errorsBefore := len(a.errors)
 	defer a.recordStringBindingLength(stmt, errorsBefore)
 	if stmt != nil && stmt.Static && a.inFunctionBody {

@@ -430,7 +430,7 @@ fn Test() void {
     Borrow(first)
 }
 
-fn Borrow(ref mut value: int) void {
+fn Borrow(value: ref mut int) void {
 }
 `
 
@@ -693,7 +693,7 @@ func TestRefParameterDoesNotMoveMoveOnlyLocal(t *testing.T) {
 	input := `
 module main
 
-fn Borrow(ref mut value: int) void {
+fn Borrow(value: ref mut int) void {
 }
 
 fn Test() void {
@@ -2848,7 +2848,7 @@ type Choice union {
 	None,
 }
 
-fn Test(choice: Choice, ref fallback: int) void {
+fn Test(choice: Choice, fallback: ref int) void {
 	let mut holder := fallback
 	match choice {
 		Some(ref value) => {
@@ -2879,7 +2879,7 @@ type Choice union {
 	None,
 }
 
-fn Get(choice: Choice, ref fallback: int) View {
+fn Get(choice: Choice, fallback: ref int) View {
 	match choice {
 		Some(ref value) => {
 			return View { value: value }

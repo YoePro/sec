@@ -1,1 +1,747 @@
 module scan
+
+/**
+ * Reports an error while traversing formatted input.
+ *
+ * Description:
+ * Separates invalid format patterns from input mismatches.
+ */
+type _ScanCursorError union error {
+    // The format contains an invalid token sequence.
+    Pattern(FormatError)
+
+    // Literal text did not match at this UTF-8 byte offset.
+    LiteralMismatch(uint)
+
+    // Field extraction failed.
+    FieldRead(_ScanFieldReadError)
+}
+
+/**
+ * Represents a field event produced by formatted scanning.
+ *
+ * Description:
+ * Contains either an extracted field or a missing input field.
+ * Literal format tokens are consumed internally by the cursor.
+ *
+ * Ownership:
+ * Extracted text borrows the original input.
+ *
+ * Allocation:
+ * Does not allocate.
+ */
+type _ScanFieldEvent union {
+    // A field was extracted but has not been converted.
+    Extracted {
+        ArgumentIndex: uint,
+        ByteOffset:    uint,
+        Text:          StringView,
+    }
+
+    // A required field could not be extracted.
+    Missing {
+        ArgumentIndex: uint,
+        ByteOffset:    uint,
+    }
+}
+
+/**
+ * Describes the outcome of scanning input structure.
+ *
+ * Description:
+ * Reports whether all format tokens were processed or
+ * scanning stopped because a required field was missing.
+ *
+ * ExtractedFields counts extracted fields, not assignments.
+ *
+ * Ownership:
+ * Contains only scalar values.
+ *
+ * Allocation:
+ * Does not allocate.
+ */
+type _ScanTraversal union {
+    // All format tokens were successfully processed.
+    Complete {
+        ExtractedFields: uint,
+        ConsumedBytes:   uint,
+    }
+
+    // Scanning stopped at a missing field.
+    Missing {
+        ExtractedFields: uint,
+        ArgumentIndex:   uint,
+        ByteOffset:      uint,
+    }
+}
+
+/**
+ * Reports successful structural validation of a strict scan.
+ *
+ * Description:
+ * Counts extracted field occurrences and consumed UTF-8 bytes.
+ * No destination values have been converted or assigned.
+ */
+type _ScanStructureSummary struct {
+    ExtractedFields: uint,
+    ConsumedBytes:   uint,
+}
+
+/**
+ * Reports a strict scan structure validation failure.
+ *
+ * Description:
+ * Separates cursor failures, missing fields and trailing input.
+ *
+ * All positions are zero-based UTF-8 byte offsets.
+ */
+type _ScanStructureError union error {
+    // Format or input traversal failed.
+    Cursor(_ScanCursorError)
+
+    // A required field was unavailable.
+    MissingValue {
+        ArgumentIndex: uint,
+        ByteOffset:    uint,
+    }
+
+    // Input remains after the complete format was matched.
+    TrailingInput {
+        ByteOffset: uint,
+    }
+}
+
+/**
+ * Describes the result of reading a scan placeholder.
+ *
+ * Description:
+ * Distinguishes a non-placeholder token, unavailable input,
+ * and a successfully extracted field.
+ *
+ * Extracted text borrows the original input storage.
+ *
+ * Allocation:
+ * Does not allocate.
+ */
+type _ScanPlaceholderRead union {
+    // The current format position is not a placeholder.
+    NotPlaceholder
+
+    // The requested field could not be extracted.
+    Missing {
+        ArgumentIndex: uint,
+        ByteOffset:    uint,
+    }
+
+    // A field was extracted but not converted or assigned.
+    Extracted {
+        ArgumentIndex: uint,
+        ByteOffset:    uint,
+        Text:          StringView,
+    }
+}
+
+/**
+ * Maintains the current position during formatted scanning.
+ *
+ * Description:
+ * Tracks format progress in rune units and input progress
+ * in both rune and UTF-8 byte units.
+ *
+ * Both text sources are borrowed and must remain alive
+ * throughout the scanner lifetime.
+ *
+ * Ownership:
+ * Does not own or copy text storage.
+ *
+ * Allocation:
+ * Does not allocate.
+ */
+@noCopy
+type _ScanCursor struct {
+    _input:  StringView,
+    _format: StringView,
+
+    _inputRune:  uint,
+    _inputByte:  uint,
+    _formatRune: uint,
+
+    _automaticIndex: uint,
+    _finished:       bool,
+}
+
+impl _ScanCursor {
+    /**
+     * Creates a scanner over validated format and input text.
+     *
+     * Parameters:
+     * - input: Source text to scan.
+     * - format: Previously validated composite format.
+     *
+     * Ownership:
+     * Retains borrowed StringView holders.
+     *
+     * Allocation:
+     * Does not allocate.
+     */
+    init(input: StringView, format: StringView) {
+        self._input = input
+        self._format = format
+
+        self._inputRune = 0
+        self._inputByte = 0
+        self._formatRune = 0
+
+        self._automaticIndex = 0
+        self._finished = false
+    }
+
+    /**
+     * Advances to the next formatted input field.
+     *
+     * Description:
+     * Consumes literal format sequences internally.
+     * Yields only extracted fields or missing-field events.
+     *
+     * Once the format is exhausted or a field is missing,
+     * subsequent calls return Ok(None).
+     *
+     * Returns:
+     * - Ok(Some(Extracted)): A field was extracted.
+     * - Ok(Some(Missing)): A field could not be extracted.
+     * - Ok(None): Scanning has finished.
+     *
+     * Errors:
+     * - Pattern: Invalid format syntax.
+     * - LiteralMismatch: Input does not match literal text.
+     * - FieldRead: Field extraction failed.
+     *
+     * Ownership:
+     * Extracted text borrows the original input.
+     *
+     * Allocation:
+     * Does not allocate.
+     */
+    fn Next() Result[Option[_ScanFieldEvent], _ScanCursorError] {
+        if self._finished {
+            return Ok(None)
+        }
+
+        while true {
+            if self._formatRune > self._format.Len {
+                return Err(
+                    _ScanCursorError.Pattern(FormatError.InvalidFormat),
+                )
+            }
+
+            if self._formatRune == self._format.Len {
+                self._finished = true
+                return Ok(None)
+            }
+
+            if try self._ConsumeNextLiteral() {
+                continue
+            }
+
+            if self._formatRune == self._format.Len {
+                self._finished = true
+                return Ok(None)
+            }
+
+            let next := try self._ConsumePlaceholder()
+
+            match next {
+                NotPlaceholder => {
+                    return Err(
+                        _ScanCursorError.Pattern(FormatError.InvalidFormat),
+                    )
+                }
+
+                Missing {
+                    ArgumentIndex: index,
+                    ByteOffset: offset
+                } => {
+                    self._finished = true
+
+                    return Ok(Some(_ScanFieldEvent.Missing {
+                        ArgumentIndex: index,
+                        ByteOffset: offset,
+                    }))
+                }
+
+                Extracted {
+                    ArgumentIndex: index,
+                    ByteOffset: offset,
+                    Text: text
+                } => {
+                    return Ok(Some(_ScanFieldEvent.Extracted {
+                        ArgumentIndex: index,
+                        ByteOffset: offset,
+                        Text: text,
+                    }))
+                }
+            }
+        }
+    }
+
+    /**
+     * Consumes a complete literal format run.
+     *
+     * Description:
+     * Matches the run at the current input position.
+     * Advances both cursors only when the entire run matches.
+     *
+     * Parameters:
+     * - run: Literal token sequence from the current format.
+     *
+     * Returns:
+     * - Ok(): The complete literal run matched.
+     *
+     * Errors:
+     * - Pattern: Invalid literal run.
+     * - LiteralMismatch: Input does not match the run.
+     *
+     * Allocation:
+     * Does not allocate.
+     */
+    fn _ConsumeLiteralRun(run: _ScanLiteralRun) Result[void, _ScanCursorError] {
+        if run.StartRune != self._formatRune {
+            return Err(_ScanCursorError.Pattern(FormatError.InvalidFormat))
+        }
+
+        let matched := try _MatchLiteralRunAt(
+            self._input,
+            self._inputRune,
+            self._format,
+            run,
+        ) {
+            Err(cause) => {
+                return Err(_ScanCursorError.Pattern(cause))
+            }
+        }
+
+        match matched {
+            None => {
+                return Err(
+                    _ScanCursorError.LiteralMismatch(self._inputByte),
+                )
+            }
+
+            Some(position) => {
+                self._inputRune = position.RuneIndex
+                self._inputByte = position.ByteOffset
+                self._formatRune = run.EndRune
+
+                return Ok()
+            }
+        }
+    }
+
+    /**
+     * Consumes the next consecutive literal format tokens.
+     *
+     * Description:
+     * Collects literal text and escaped braces from the current
+     * format position until a placeholder or end of format.
+     *
+     * Matches the complete sequence against the input.
+     * Leaves the next placeholder unconsumed.
+     *
+     * Returns:
+     * - Ok(true): One complete literal run was consumed.
+     * - Ok(false): The next token is a placeholder or the
+     * format has reached its end.
+     *
+     * Errors:
+     * - Pattern: Invalid format token sequence.
+     * - LiteralMismatch: Input does not match the literal run.
+     *
+     * Ownership:
+     * Does not consume the input or format strings.
+     *
+     * Allocation:
+     * Does not allocate.
+     */
+    fn _ConsumeNextLiteral() Result[bool, _ScanCursorError] {
+        let startRune    := self._formatRune
+        let mut position := startRune
+
+        while position < self._format.Len {
+            let next := try _NextScanPatternToken(
+                self._format,
+                position,
+            ) {
+                Err(cause) => {
+                    return Err(_ScanCursorError.Pattern(cause))
+                }
+            }
+
+            match next {
+                None => {
+                    return Err(
+                        _ScanCursorError.Pattern(FormatError.InvalidFormat),
+                    )
+                }
+
+                Some(step) => {
+                    match step.Token {
+                        Literal(_) => {
+                            position = step.NextRune
+                        }
+
+                        EscapedOpen => {
+                            position = step.NextRune
+                        }
+
+                        EscapedClose => {
+                            position = step.NextRune
+                        }
+
+                        Automatic => {
+                            break
+                        }
+
+                        Indexed(_) => {
+                            break
+                        }
+                    }
+                }
+            }
+        }
+
+        if position == startRune {
+            return Ok(false)
+        }
+
+        let run := _ScanLiteralRun {
+            StartRune: startRune,
+            EndRune: position,
+        }
+
+        try self._ConsumeLiteralRun(run)
+
+        return Ok(true)
+    }
+
+    /**
+     * Reads the placeholder at the current format position.
+     *
+     * Description:
+     * Resolves automatic or explicitly indexed placeholders.
+     * Extracts their input fields using the common scan parser.
+     *
+     * Cursor positions advance only after successful extraction.
+     * No destination value is converted or assigned.
+     *
+     * Returns:
+     * - NotPlaceholder: No placeholder at the current position.
+     * - Missing: The requested field is unavailable.
+     * - Extracted: Field text and destination argument index.
+     *
+     * Errors:
+     * - Pattern: Invalid format syntax.
+     * - FieldRead: Field extraction failed.
+     *
+     * Ownership:
+     * Extracted text borrows the original input.
+     *
+     * Allocation:
+     * Does not allocate.
+     */
+    fn _ConsumePlaceholder() Result[_ScanPlaceholderRead, _ScanCursorError] {
+        let next := try _NextScanPatternToken(
+            self._format,
+            self._formatRune,
+        ) {
+            Err(cause) => {
+                return Err(_ScanCursorError.Pattern(cause))
+            }
+        }
+
+        match next {
+            None => {
+                return Ok(_ScanPlaceholderRead.NotPlaceholder)
+            }
+
+            Some(step) => {
+                let mut argumentIndex: uint := 0
+                let mut automatic := false
+
+                match step.Token {
+                    Automatic => {
+                        argumentIndex = self._automaticIndex
+                        automatic = true
+                    }
+
+                    Indexed(index) => {
+                        argumentIndex = index
+                    }
+
+                    _ => {
+                        return Ok(_ScanPlaceholderRead.NotPlaceholder)
+                    }
+                }
+
+                let field := try _ReadScanPlaceholder(
+                    self._input,
+                    self._inputRune,
+                    self._format,
+                    step.NextRune,
+                ) {
+                    Err(_ScanFieldReadError.DelimiterNotFound) => {
+                        return Err(
+                            _ScanCursorError.LiteralMismatch(self._inputByte),
+                        )
+                    }
+
+                    Err(cause) => {
+                        return Err(_ScanCursorError.FieldRead(cause))
+                    }
+                }
+
+                match field {
+                    None => {
+                        return Ok(_ScanPlaceholderRead.Missing {
+                            ArgumentIndex: argumentIndex,
+                            ByteOffset: self._inputByte,
+                        })
+                    }
+
+                    Some(value) => {
+                        let startByte := self._inputByte
+
+                        self._inputRune = value.Next.RuneIndex
+                        self._inputByte = value.Next.ByteOffset
+                        self._formatRune = step.NextRune
+
+                        if automatic {
+                            self._automaticIndex += 1
+                        }
+
+                        return Ok(_ScanPlaceholderRead.Extracted {
+                            ArgumentIndex: argumentIndex,
+                            ByteOffset: startByte,
+                            Text: value.Text,
+                        })
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Reads the input field belonging to a format placeholder.
+ *
+ * Description:
+ * Inspects the validated format after a placeholder and
+ * determines whether the field has a literal delimiter.
+ *
+ * A following literal run is not consumed.
+ * A terminal placeholder reads one whitespace-delimited token.
+ *
+ * Does not convert text or assign destination values.
+ *
+ * Parameters:
+ * - input: Borrowed source text.
+ * - inputRune: Starting rune position in the input.
+ * - format: Validated composite format.
+ * - afterPlaceholder: Rune position immediately after the placeholder.
+ *
+ * Returns:
+ * - Ok(Some(field)): Extracted field and ending position.
+ * - Ok(None): No matching field was found.
+ *
+ * Errors:
+ * - Pattern: Invalid or ambiguous format sequence.
+ * - Range: Invalid input range.
+ *
+ * Ownership:
+ * The extracted field borrows the original input.
+ *
+ * Allocation:
+ * Does not allocate.
+ */
+fn _ReadScanPlaceholder(
+    input:            StringView,
+    inputRune:        uint,
+    format:           StringView,
+    afterPlaceholder: uint,
+) Result[Option[_ScanField], _ScanFieldReadError] {
+    let delimiter := try _FindFollowingLiteralRun(
+        format,
+        afterPlaceholder,
+    ) {
+        Err(cause) => {
+            return Err(_ScanFieldReadError.Pattern(cause))
+        }
+    }
+
+    match delimiter {
+        Some(run) => {
+            let extracted := try _ReadPlaceholderField(
+                input,
+                inputRune,
+                format,
+                _ScanFieldBoundary.LiteralRun(run),
+            )
+
+            match extracted {
+                Some(field) => {
+                    return Ok(Some(field))
+                }
+
+                None => {
+                    if inputRune == input.Len {
+                        return Ok(None)
+                    }
+
+                    return Err(_ScanFieldReadError.DelimiterNotFound)
+                }
+            }
+        }
+
+        None => {
+            return _ReadPlaceholderField(
+                input,
+                inputRune,
+                format,
+                _ScanFieldBoundary.Token,
+            )
+        }
+    }
+}
+
+/**
+ * Inspects formatted input without converting field values.
+ *
+ * Description:
+ * Traverses the input using _ScanCursor.Next().
+ * Verifies literal matching and records the number of
+ * extracted fields.
+ *
+ * The composite format must already be validated.
+ * Conversion, assignment and trailing-input validation
+ * remain the responsibility of the caller.
+ *
+ * Parameters:
+ * - input: Borrowed source text.
+ * - format: Validated composite format.
+ *
+ * Returns:
+ * - Complete: All format tokens were processed.
+ * - Missing: A required field could not be extracted.
+ *
+ * Errors:
+ * - _ScanCursorError: Invalid pattern, literal mismatch
+ * or field extraction failure.
+ *
+ * Ownership:
+ * Does not modify or consume the input.
+ *
+ * Allocation:
+ * Does not allocate.
+ */
+fn _InspectScanFields(input: StringView, format: StringView) Result[_ScanTraversal, _ScanCursorError] {
+    let mut cursor := new _ScanCursor(input, format)
+    let mut extracted: uint := 0
+
+    while true {
+        let next := try cursor.Next()
+
+        match next {
+            None => {
+                return Ok(_ScanTraversal.Complete {
+                    ExtractedFields: extracted,
+                    ConsumedBytes: cursor._inputByte,
+                })
+            }
+
+            Some(event) => {
+                match event {
+                    Extracted {} => {
+                        extracted += 1
+                    }
+
+                    Missing {
+                        ArgumentIndex: index,
+                        ByteOffset: offset
+                    } => {
+                        return Ok(_ScanTraversal.Missing {
+                            ExtractedFields: extracted,
+                            ArgumentIndex: index,
+                            ByteOffset: offset,
+                        })
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Validates the structure of a strict formatted scan.
+ *
+ * Description:
+ * Requires every format token to match and all input bytes
+ * to be consumed.
+ *
+ * The composite format must already be validated.
+ * Does not perform type conversion or destination assignment.
+ *
+ * Parameters:
+ * - input: Borrowed input text.
+ * - format: Validated composite format.
+ *
+ * Returns:
+ * - Ok(summary): The entire input matches the format.
+ *
+ * Errors:
+ * - Cursor: Format parsing or literal matching failed.
+ * - MissingValue: A required field was not available.
+ * - TrailingInput: Unconsumed input remains.
+ *
+ * Ownership:
+ * Does not consume or modify either text source.
+ *
+ * Allocation:
+ * Does not allocate.
+ */
+fn _ValidateStrictScanStructure(
+    input:  StringView,
+    format: StringView,
+) Result[_ScanStructureSummary, _ScanStructureError] {
+    let traversal := try _InspectScanFields(input, format) {
+        Err(cause) => {
+            return Err(_ScanStructureError.Cursor(cause))
+        }
+    }
+
+    match traversal {
+        Complete {
+            ExtractedFields: count,
+            ConsumedBytes: consumed
+        } => {
+            if consumed != input.SizeOf {
+                return Err(_ScanStructureError.TrailingInput {
+                    ByteOffset: consumed,
+                })
+            }
+
+            return Ok(_ScanStructureSummary {
+                ExtractedFields: count,
+                ConsumedBytes: consumed,
+            })
+        }
+
+        Missing {
+            ArgumentIndex: index,
+            ByteOffset: offset
+        } => {
+            return Err(_ScanStructureError.MissingValue {
+                ArgumentIndex: index,
+                ByteOffset: offset,
+            })
+        }
+    }
+}

@@ -24,6 +24,7 @@ func (b *pitfallBuilder) walkBlock(block *ast.BlockStatement) {
 	inheritedProofs := b.activeNonEmptyProofs
 	inheritedPreceding := b.activePreceding
 	inheritedGuards := b.activeIndexGuards
+	inheritedPositive := b.activePositiveIndexes
 	inheritedCapacity := b.activeCapacityEqualities
 	liveCapacity := mergeCapacityEqualities(inheritedCapacity, nil)
 	liveNonEmpty := clonePitfallNonEmptyProofs(inheritedProofs)
@@ -38,6 +39,9 @@ func (b *pitfallBuilder) walkBlock(block *ast.BlockStatement) {
 			b.inspectLengthEndpointIntent(loop, block.Statements, index, entryProofs)
 		}
 		b.activePreceding = block.Statements[:index]
+		// A statement that may write the index (a loop body included) ends
+		// its positivity fact before the statement runs.
+		b.activePositiveIndexes = b.survivingIndexGuards(b.activePositiveIndexes, statement)
 		b.walkStatement(statement)
 		liveCapacity = b.survivingCapacityEqualities(liveCapacity, statement)
 		liveCapacity = mergeCapacityEqualities(liveCapacity, b.capacityContinuationProof(statement))
@@ -51,11 +55,13 @@ func (b *pitfallBuilder) walkBlock(block *ast.BlockStatement) {
 		}
 		b.activeIndexGuards = b.survivingIndexGuards(b.activeIndexGuards, statement)
 		b.activeIndexGuards = append(b.activeIndexGuards, b.continuationIndexGuards(statement)...)
+		b.activePositiveIndexes = append(b.survivingIndexGuards(b.activePositiveIndexes, statement), b.continuationPositiveIndexGuards(statement)...)
 		if !b.analyzer.statementCanFallThrough(statement) {
 			break
 		}
 	}
 	b.activeIndexGuards = inheritedGuards
+	b.activePositiveIndexes = inheritedPositive
 	b.activeNonEmptyProofs = inheritedProofs
 	b.activePreceding = inheritedPreceding
 	b.activeCapacityEqualities = inheritedCapacity

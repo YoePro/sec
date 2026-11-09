@@ -17,10 +17,10 @@ func TestCallBoundedArgumentBorrowOverlap(t *testing.T) {
 
 type Pair struct { left: int, right: int }
 
-fn MutateBoth(ref mut left: int, ref mut right: int) void {}
-fn MutateAndShare(ref mut left: int, ref right: int) void {}
-fn MutateAndRead(ref mut left: int, right: int) void {}
-fn ShareBoth(ref left: int, ref right: int) void {}
+fn MutateBoth(left: ref mut int, right: ref mut int) void {}
+fn MutateAndShare(left: ref mut int, right: ref int) void {}
+fn MutateAndRead(left: ref mut int, right: int) void {}
+fn ShareBoth(left: ref int, right: ref int) void {}
 
 fn InvalidMutableOverlap() void {
 	let mut value := 1
@@ -68,7 +68,7 @@ fn ValidDisjointAndShared() void {
 func TestCallBoundedArgumentBorrowChecksExistingBorrow(t *testing.T) {
 	errors := analyzeSourceRaw(t, `module main
 
-fn Mutate(ref mut value: int) void {}
+fn Mutate(value: ref mut int) void {}
 
 fn Check() void {
 	let mut value := 1

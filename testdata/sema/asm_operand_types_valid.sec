@@ -1,0 +1,33 @@
+module main
+
+type Count int64
+
+fn Allowed(signed: int64, unsigned: uint64, floating: float64, pointer: RawPtr[byte], named: Count) void {
+    unsafe {
+        asm {
+            "nop"
+            inputs: rdi(signed)
+            outputs: rax
+        }
+        asm {
+            "nop"
+            inputs: rdi(unsigned)
+            outputs: rax
+        }
+        asm {
+            "nop"
+            inputs: xmm0(floating)
+            outputs: rax
+        }
+        asm {
+            "nop"
+            inputs: rsi(pointer)
+            outputs: rax
+        }
+        asm {
+            "nop"
+            inputs: rdi(int64(named))
+            outputs: rax
+        }
+    }
+}

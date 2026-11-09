@@ -1,0 +1,46 @@
+module main
+@noCopy
+type Session struct { Id: int }
+
+fn DanglingCopy() void {
+    let owner := Session { Id: 1 }
+    unsafe {
+        let pointer: RawPtr[Session] := owner.Ptr
+        let alias := pointer
+        let moved :<- owner
+        let view := alias.AsRef
+    }
+}
+fn DanglingChain() void {
+    let owner := Session { Id: 1 }
+    unsafe {
+        let pointer: RawPtr[Session] := owner.Ptr
+        let alias := pointer
+        let chained := alias
+        let moved :<- owner
+        let view := chained.AsRefMut
+    }
+}
+fn ExclusiveConflict() int {
+    let mut value := 1
+    let grant := ref mut value
+    unsafe {
+        let pointer: RawPtr[int] := value.Ptr
+        let alias := pointer
+        let view := alias.AsRefMut
+        *grant = 2
+        return *view
+    }
+}
+fn SharedConflict() int {
+    let mut value := 1
+    let grant := ref mut value
+    unsafe {
+        let pointer: RawPtr[int] := value.Ptr
+        let alias := pointer
+        let chained := alias
+        let view := chained.AsRef
+        *grant = 2
+        return *view
+    }
+}

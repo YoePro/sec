@@ -270,6 +270,7 @@ const (
 	contextualHardware    = "hardware"
 	contextualDo          = "do"
 	contextualDetach      = "detach"
+	contextualJoin        = "join"
 	contextualNot         = "not"
 	contextualIs          = "is"
 	contextualX           = "x"

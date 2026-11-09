@@ -40,110 +40,189 @@ integrations:
       - rules/tooling/lsp.md
       - language-rulebook-status.md
     normative:
-      - "spawn thread Callable(...) returns Result[Thread[T], ThreadSpawnError] where T is the complete declared callable return type."
-      - "Thread[T] is @noCopy and remains a physical/native execution identity distinct from Task[T] and Process[T]."
-      - "ThreadSetting[T] is exactly Default, Preferred(T), Required(T); plain T never implicitly means Preferred(T)."
-      - "ThreadStartMode is exactly Eager and Deferred."
-      - "ThreadPriority is exactly Lowest, Low, Normal, High, Highest and does not imply real-time scheduling."
-      - "CpuSet is a compiler-known immutable CPU-index set and is not an alias of set[uint]."
-      - "ThreadStorage is non-generic @noCopy storage created by ThreadStorage(capacity), with compile-time-required capacity and no dynamic allocation."
-      - "ThreadConfig is @noCopy with exact fields Name, Stack, Affinity, Priority, Start, Storage."
-      - "Named ThreadConfig values are consumed by spawn thread using the normal <- marker."
-      - "Explicit ThreadStorage is a requirement and remains exclusively borrowed until thread/native cleanup releases it."
-      - "ThreadStatus is exactly Created, Running, Completed, Cancelled, Panicked, Terminated."
-      - "ThreadTerminationKind is exactly Requested, External, Fault, Unknown; ThreadTermination contains exactly Kind."
-      - "Thread[T] public portable surface is ID, Name, Status, Value, Panic, Termination, Platform, Observe, Start, RequestCancel."
-      - "All portable Thread[T] public member names use CamelCase."
-      - "Value is available only after successful join and Status == Completed."
-      - "Panic is available only after successful join and Status == Panicked."
-      - "Termination is available only after successful join and Status == Terminated."
-      - "join Thread[T] consumes the one-shot join capability but preserves the Thread[T] handle and is selectable in Sec 0.1."
-      - "If current-execution cancellation wins before join commit, join consumes nothing and the surrounding cleanup still owns the unresolved Thread[T] lifecycle."
-      - "ThreadObserver[T] is copyable, non-owning, metadata-only, and has no Wait()/primitive select operation in Sec 0.1."
-      - "RequestCancel is cooperative, idempotent, non-consuming, and does not resolve lifecycle ownership."
-      - "Thread.Current() returns ThreadContext for the physical/native execution identity; CancelRequested is a bool observation and not selectable."
-      - "Thread.AttachCurrent() is owned by thread-local-v2 and returns Result[ThreadAttachment, ThreadAttachError] without exposing ThreadContextError."
-      - "ThreadSpawnError.ThreadLocalInitializationFailed covers pre-commit TLS runtime/target infrastructure failure, not lazy user factory failure."
-      - "ThreadPlatform is target-resolved; every thread-capable target must provide a complete concrete declaration with native ID metadata."
-      - "Portable safe Sec defines no general hard-kill Thread[T] method."
-      - "ThreadSchedulingError and ThreadContextError are not retained as portable Sec 0.1 APIs without a canonical public operation."
+      - spawn thread Callable(...) returns Result[Thread[T], ThreadSpawnError] where T is the complete declared callable return type.
+      - Thread[T] is @noCopy and remains a physical/native execution identity distinct from Task[T] and Process[T].
+      - ThreadSetting[T] is exactly Default, Preferred(T), Required(T); plain T never implicitly means Preferred(T).
+      - ThreadStartMode is exactly Eager and Deferred.
+      - ThreadPriority is exactly Lowest, Low, Normal, High, Highest and does not imply real-time scheduling.
+      - CpuSet is a compiler-known immutable CPU-index set and is not an alias of set[uint].
+      - ThreadStorage is non-generic @noCopy storage created by ThreadStorage(capacity), with compile-time-required capacity and no dynamic allocation.
+      - ThreadConfig is @noCopy with exact fields Name, Stack, Affinity, Priority, Start, Storage.
+      - Named ThreadConfig values are consumed by spawn thread using the normal <- marker.
+      - Explicit ThreadStorage is a requirement and remains exclusively borrowed until thread/native cleanup releases it.
+      - ThreadStatus is exactly Created, Running, Completed, Cancelled, Panicked, Terminated.
+      - ThreadTerminationKind is exactly Requested, External, Fault, Unknown; ThreadTermination contains exactly Kind.
+      - Thread[T] public portable surface is ID, Name, Status, Value, Panic, Termination, Platform, Observe, Start, RequestCancel.
+      - All portable Thread[T] public member names use CamelCase.
+      - Value is available only after successful join and Status == Completed.
+      - Panic is available only after successful join and Status == Panicked.
+      - Termination is available only after successful join and Status == Terminated.
+      - join Thread[T] consumes the one-shot join capability but preserves the Thread[T] handle and is selectable in Sec 0.1.
+      - If current-execution cancellation wins before join commit, join consumes nothing and the surrounding cleanup still owns the unresolved Thread[T] lifecycle.
+      - ThreadObserver[T] is copyable, non-owning, metadata-only, and has no Wait()/primitive select operation in Sec 0.1.
+      - RequestCancel is cooperative, idempotent, non-consuming, and does not resolve lifecycle ownership.
+      - Thread.Current() returns ThreadContext for the physical/native execution identity; CancelRequested is a bool observation and not selectable.
+      - Thread.AttachCurrent() is owned by thread-local-v2 and returns Result[ThreadAttachment, ThreadAttachError] without exposing ThreadContextError.
+      - ThreadSpawnError.ThreadLocalInitializationFailed covers pre-commit TLS runtime/target infrastructure failure, not lazy user factory failure.
+      - ThreadPlatform is target-resolved; every thread-capable target must provide a complete concrete declaration with native ID metadata.
+      - Portable safe Sec defines no general hard-kill Thread[T] method.
+      - ThreadSchedulingError and ThreadContextError are not retained as portable Sec 0.1 APIs without a canonical public operation.
     implemented:
-      - "compiler-known Thread[T] identity exists and is classified move-only"
-      - "compiler-known legacy ThreadObserver[T], ThreadConfig, ThreadContext, ThreadID, ThreadPriority, ThreadStatus and several thread error identities exist"
-      - "unresolved Thread[T] locals are diagnosed at scope exit"
-      - "discard thread is rejected for unresolved handles"
-      - "detach Thread[void] and detach Thread[T] discard have initial frontend recognition"
+      - "join statement (2026-11-09, grammar.md § 61A, thread_join.go, TestParseJoinStatement, TestThreadJoinStatement): contextual `join worker` parses (join(x) stays a call), formats and completes as a keyword; Sema requires an owned Thread[T] binding, resolves the thread for scope exit on every joining path, preserves the handle (ID stays readable) and rejects a second join and joining a task or through a reference"
+      - compiler-known Thread[T] identity exists and is classified move-only
+      - compiler-known legacy ThreadObserver[T], ThreadConfig, ThreadContext, ThreadID, ThreadPriority, ThreadStatus and several thread error identities exist
+      - unresolved Thread[T] locals are diagnosed at scope exit
+      - discard thread is rejected for unresolved handles
+      - detach Thread[void] and detach Thread[T] discard have initial frontend recognition
       - "exact CamelCase surface (2026-10-03): the compiler-known registry exposes Thread[T].ID (ThreadID), Name (string), Status (ThreadStatus), Observe() (ThreadObserver[T]), Start() (Result[void, ThreadStartError]), and RequestCancel(), and ThreadObserver[T].ID, Name, and Status only; Value, Panic, Termination, and Platform are deliberately absent until their analyses exist; legacy lowercase spellings such as worker.status are rejected with help naming the CamelCase member; LSP completion and hover present exactly this surface from the shared registry (TestThreadV2SourceSurface, TestThreadV2SurfaceInCompletionAndHover)"
-      - "threads revision 2.0 and its spawn, scheduling, runtime-model, select, cancellation, Semantic IR, platform-model, and LSP cross-rulebook corrections are synchronized"
+      - threads revision 2.0 and its spawn, scheduling, runtime-model, select, cancellation, Semantic IR, platform-model, and LSP cross-rulebook corrections are synchronized
+      - ThreadSpawnError and ThreadStartError have the exact closed portable enum inventories from threads.md sections 18-19, nominal core error identity and first-variant defaults; trusted source declarations must match exactly, ordinary redeclarations and obsolete Unsupported/resource variants are rejected, and Result/open-error use, exhaustive matches and LSP enum completion/hover share the canonical type facts (2026-11-09)
+      - ThreadStartMode is the exact Eager/Deferred non-error core enum with Eager default; ThreadPriority is the exact Lowest/Low/Normal/High/Highest relative-intent non-error core enum, distinct from native scheduler values and ThreadConfig default preferences. Both reserve nominal identities, require exact trusted source declarations, reject untrusted replacement and unsupported variants, and support ordinary enum defaults, exhaustive matching and shared LSP completion/hover (2026-11-09)
+      - Removed stale portable ThreadSchedulingError, ThreadTerminationError and ThreadContextError from builtin and error-family registration; they no longer appear as implicit types or LSP completions/hover. Canonical ThreadAttachError is preserved, while ordinary project declarations using former spellings remain valid and project-owned (2026-11-09)
+      - ThreadSetting[T] is the canonical nominal core generic union Default | Preferred(T) | Required(T). Ordinary generic-union construction, contextual variant construction and exhaustive matching preserve concrete payload types; plain T is not implicitly converted to a preference. Trusted core declarations must match exactly, including owning T payloads and the non-error union identity; ordinary source cannot replace the reserved type. Sema, CLI and LSP share the union facts (2026-11-09)
+      - "ThreadTerminationKind is the exact Requested/External/Fault/Unknown nominal non-error core enum; ThreadTermination is the ordinary portable metadata struct with exactly Kind: ThreadTerminationKind and no universal native status fields. Trusted declarations validate the complete canonical shapes and preserve member source locations; construction, exhaustive classification, field hover and kind completion share compiler facts. Terminal Thread member availability remains separately tracked (2026-11-09)"
+      - "ThreadObserver has no hidden Wait or selectable completion capability: ordinary Wait calls and select operands are rejected with focused metadata-only/owner-join guidance. Observer copying, metadata reads and explicit discard remain valid, while LSP exposes only the existing canonical metadata catalog without owner or Wait operations (2026-11-09; threads.md sections 40 and 43)"
     remaining:
-      - "implement exact ThreadSetting[T] union and remove implicit plain-value preference behavior"
-      - "implement exact ThreadStartMode and ThreadPriority declarations"
-      - "implement canonical CpuSet literal/type identity"
-      - "replace legacy ThreadStorage[N] concept with non-generic @noCopy ThreadStorage(capacity)"
-      - "require compile-time ThreadStorage capacity and provision target-aligned backing storage without dynamic allocation"
-      - "implement exact @noCopy ThreadConfig and contextual inline defaults"
-      - "implement named ThreadConfig consumption through ordinary <- semantics"
-      - "implement explicit storage borrow transfer/release across spawn, join, detach and failure cleanup"
-      - "implement raw spawn thread Result[Thread[T], ThreadSpawnError]"
-      - "freeze exact ThreadSpawnError and ThreadStartError source declarations"
-      - "add the remaining CamelCase Thread[T] members Value, Panic, and Termination with terminal-availability analysis, and Platform with target-resolved ThreadPlatform"
-      - "implement exact ThreadTerminationKind/ThreadTermination"
-      - "implement terminal Value/Panic/Termination availability analysis"
-      - "implement deferred Start state and fallible Start()"
-      - "implement one-shot join capability and terminal completion synchronization"
-      - "implement selectable join Thread[T] according to select-v2"
-      - "implement join cancellation race without implicit detach/termination/join cleanup policy"
-      - "implement copyable metadata-only ThreadObserver[T]"
-      - "remove/suppress hidden ThreadObserver Wait/select behavior until an exact API is designed"
-      - "implement detach runtime cleanup and detached borrow/storage escape analysis"
-      - "implement RequestCancel and Thread.Current/ThreadContext exact physical-thread semantics"
-      - "implement Thread.Yield physical scheduling hint"
-      - "provide target-resolved complete ThreadPlatform declarations for every supported thread target"
-      - "remove stale portable ThreadSchedulingError, ThreadTerminationError, and ThreadContextError identities; attachment uses the separately owned ThreadAttachError"
-      - "remove the legacy universal worker.platform.Terminate() implementation assumption from the portable thread API"
-      - "complete thread spawn/join memory-model integration"
-      - "complete thread data-race/deadlock/starvation analysis"
-      - "complete thread Semantic IR facts without making the legacy opcode-name list normative"
-      - "complete target-specific lowering/runtime integration"
-      - "extend LSP thread presentation to Value/Panic/Termination availability, Platform, and navigation once those Sema facts exist"
+      - implement canonical CpuSet literal/type identity
+      - replace legacy ThreadStorage[N] concept with non-generic @noCopy ThreadStorage(capacity)
+      - require compile-time ThreadStorage capacity and provision target-aligned backing storage without dynamic allocation
+      - implement exact @noCopy ThreadConfig and contextual inline defaults
+      - implement named ThreadConfig consumption through ordinary <- semantics
+      - implement explicit storage borrow transfer/release across spawn, join, detach and failure cleanup
+      - implement raw spawn thread Result[Thread[T], ThreadSpawnError]
+      - add the remaining CamelCase Thread[T] members Value, Panic, and Termination with terminal-availability analysis, and Platform with target-resolved ThreadPlatform
+      - implement terminal Value/Panic/Termination availability analysis
+      - implement deferred Start state and fallible Start()
+      - implement terminal completion synchronization and join-owned native cleanup for join (the statement and its one-shot capability check are frontend-complete)
+      - implement runtime readiness and commit of a selectable join Thread[T] (frontend branch, one-shot check and no-effect non-selection are implemented in concurrency.select-v2)
+      - implement join cancellation race without implicit detach/termination/join cleanup policy
+      - implement copyable metadata-only ThreadObserver[T]
+      - implement detach runtime cleanup and detached borrow/storage escape analysis
+      - implement RequestCancel and Thread.Current/ThreadContext exact physical-thread semantics
+      - implement Thread.Yield physical scheduling hint
+      - provide target-resolved complete ThreadPlatform declarations for every supported thread target
+      - remove the legacy universal worker.platform.Terminate() implementation assumption from the portable thread API
+      - complete thread spawn/join memory-model integration
+      - complete thread data-race/deadlock/starvation analysis
+      - complete thread Semantic IR facts without making the legacy opcode-name list normative
+      - complete target-specific lowering/runtime integration
+      - extend LSP thread presentation to Value/Panic/Termination availability, Platform, and navigation once those Sema facts exist
     required_tests:
-      - "spawn thread raw result is Result[Thread[T], ThreadSpawnError]"
-      - "unsupported physical-thread target is a compile-time diagnostic"
-      - "ThreadSetting[T] variants are exactly Default, Preferred(T), Required(T)"
-      - "plain thread configuration values do not implicitly become Preferred"
-      - "ThreadPriority variants are exact and portable relative only"
-      - "CpuSet is not set[uint] and validates target CPU indices"
-      - "ThreadStorage is non-generic, noCopy, compile-time-sized, and allocation-free"
-      - "ThreadConfig fields/defaults and noCopy behavior are exact"
-      - "named ThreadConfig spawn requires ordinary move consumption"
-      - "explicit storage borrow remains active until cleanup"
-      - "eager/deferred start semantics and Start errors"
-      - "ThreadSpawnError variants are exact"
-      - "ThreadStatus variants are exact"
-      - "ThreadTerminationKind/ThreadTermination are exact"
-      - "Thread[T] public surface is CamelCase and exact"
-      - "Value/Panic/Termination availability matches joined terminal status"
-      - "move-only Value extracts once"
-      - "join consumes one join capability and preserves handle"
-      - "join Thread[T] is selectable and non-selected join has no effect"
-      - "caller cancellation before join commit preserves unresolved lifecycle ownership"
-      - "ThreadObserver[T] is copyable/non-owning and exposes no Wait/select"
-      - "detach result-discard and borrowed-state rules"
-      - "RequestCancel is cooperative/non-consuming/idempotent"
-      - "Thread.Current identifies the physical execution thread"
-      - "CancelRequested is bool and not selectable"
-      - "Thread.Yield creates no synchronization edge"
-      - "ThreadPlatform resolves to a complete target declaration"
-      - "status polling does not substitute for join synchronization"
-      - "Semantic IR rejects duplicated join/result ownership"
+      - spawn thread raw result is Result[Thread[T], ThreadSpawnError]
+      - unsupported physical-thread target is a compile-time diagnostic
+      - ThreadSetting[T] variants are exactly Default, Preferred(T), Required(T)
+      - plain thread configuration values do not implicitly become Preferred
+      - ThreadPriority variants are exact and portable relative only
+      - CpuSet is not set[uint] and validates target CPU indices
+      - ThreadStorage is non-generic, noCopy, compile-time-sized, and allocation-free
+      - ThreadConfig fields/defaults and noCopy behavior are exact
+      - named ThreadConfig spawn requires ordinary move consumption
+      - explicit storage borrow remains active until cleanup
+      - eager/deferred start semantics and Start errors
+      - ThreadSpawnError variants are exact
+      - ThreadStatus variants are exact
+      - ThreadTerminationKind/ThreadTermination are exact
+      - Thread[T] public surface is CamelCase and exact
+      - Value/Panic/Termination availability matches joined terminal status
+      - move-only Value extracts once
+      - join consumes one join capability and preserves handle
+      - join Thread[T] is selectable and non-selected join has no effect
+      - caller cancellation before join commit preserves unresolved lifecycle ownership
+      - ThreadObserver[T] is copyable/non-owning and exposes no Wait/select
+      - detach result-discard and borrowed-state rules
+      - RequestCancel is cooperative/non-consuming/idempotent
+      - Thread.Current identifies the physical execution thread
+      - CancelRequested is bool and not selectable
+      - Thread.Yield creates no synchronization edge
+      - ThreadPlatform resolves to a complete target declaration
+      - status polling does not substitute for join synchronization
+      - Semantic IR rejects duplicated join/result ownership
     governance_reconciliation:
-      - "concurrency_thread.yaml owns portable Thread[T], ThreadConfig, ThreadStorage, thread lifecycle, terminal metadata, observer and current-thread surfaces"
-      - "concurrency_select.yaml remains owner of generic select source-order/readiness/commit semantics while thread-v2 owns what thread join commit means"
-      - "concurrency_cancellation.yaml remains owner of general cooperative cancellation and cancellation-point commit semantics"
-      - "panic governance remains owner of PanicInfo"
-      - "platform governance remains owner of concrete target ThreadPlatform declarations"
-      - "concrete Semantic IR vocabulary remains owned by rules/compiler/semantic_ir.md"
-      - "implementation status belongs in this split governance fragment rather than root implementation-status.yaml"
+      - concurrency_thread.yaml owns portable Thread[T], ThreadConfig, ThreadStorage, thread lifecycle, terminal metadata, observer and current-thread surfaces
+      - concurrency_select.yaml remains owner of generic select source-order/readiness/commit semantics while thread-v2 owns what thread join commit means
+      - concurrency_cancellation.yaml remains owner of general cooperative cancellation and cancellation-point commit semantics
+      - panic governance remains owner of PanicInfo
+      - platform governance remains owner of concrete target ThreadPlatform declarations
+      - concrete Semantic IR vocabulary remains owned by rules/compiler/semantic_ir.md
+      - implementation status belongs in this split governance fragment rather than root implementation-status.yaml
     corrections_applied:
       - rules/corrections/applied/threads-v2-cross-rulebook-correction-20260924.md
       - rules/corrections/applied/thread-local-v2-cross-rulebook-correction-20260927.md
+    revised: "2026-11-09"
+    code:
+      - internal/sema/thread_lifecycle_errors.go
+      - internal/sema/types.go
+      - internal/sema/type_declarations.go
+      - internal/sema/thread_configuration_enums.go
+      - internal/sema/thread_setting.go
+      - internal/sema/analyzer.go
+      - internal/sema/thread_termination.go
+      - internal/sema/thread_observer_wait.go
+      - internal/sema/compiler_known_calls.go
+      - internal/sema/core_union_declarations.go
+    tests:
+      - internal/sema/thread_lifecycle_errors_test.go
+      - cmd/compiler/thread_lifecycle_errors_test.go
+      - cmd/lsp/thread_lifecycle_errors_test.go
+      - testdata/sema/thread_lifecycle_errors_valid.sec
+      - testdata/sema/thread_lifecycle_errors_invalid.sec
+      - testdata/sema/thread_lifecycle_errors_core.sec
+      - internal/sema/thread_configuration_enums_test.go
+      - cmd/compiler/thread_configuration_enums_test.go
+      - cmd/lsp/thread_configuration_enums_test.go
+      - testdata/sema/thread_configuration_enums_valid.sec
+      - testdata/sema/thread_configuration_enums_invalid.sec
+      - testdata/sema/thread_configuration_enums_core.sec
+      - internal/sema/thread_legacy_errors_test.go
+      - cmd/compiler/thread_legacy_errors_test.go
+      - cmd/lsp/thread_legacy_errors_test.go
+      - testdata/sema/thread_legacy_errors_valid.sec
+      - testdata/sema/thread_legacy_errors_invalid.sec
+      - testdata/sema/thread_legacy_errors_local.sec
+      - internal/sema/thread_setting_test.go
+      - cmd/compiler/thread_setting_test.go
+      - cmd/lsp/thread_setting_test.go
+      - testdata/sema/thread_setting_valid.sec
+      - testdata/sema/thread_setting_invalid.sec
+      - testdata/sema/thread_setting_core.sec
+      - internal/sema/thread_metadata_boundaries_test.go
+      - cmd/compiler/thread_metadata_boundaries_test.go
+      - cmd/lsp/thread_metadata_boundaries_test.go
+      - testdata/sema/thread_termination_valid.sec
+      - testdata/sema/thread_termination_invalid.sec
+      - testdata/sema/thread_termination_core.sec
+      - testdata/sema/thread_observer_wait_valid.sec
+      - testdata/sema/thread_observer_wait_invalid.sec
+    verification:
+      - command: go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run "^Test(ChannelRevokeTypes|ThreadSetting)" -count=1
+        result: passed on 2026-11-09 after extracting exactCoreUnionDeclaration from ThreadSetting for shared closed-union validation; no thread remaining point changed
+      - command: go vet -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-11-09 after termination metadata and observer wait boundaries
+      - command: go test -p 4 ./internal/sema -count=1
+        result: passed on 2026-11-09 (15.185s) after termination metadata and observer wait boundaries
+      - command: go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run "^TestThread(MetadataBoundaries|TerminationCore)" -count=1
+        result: passed on 2026-11-09; Sema 0.009s, CLI 3.485s, LSP 5.471s; exact termination metadata and trusted declaration validation, Kind hover/enum completion, metadata-only observer copies/reads, three Wait/select rejections and CLI/LSP diagnostic parity
+      - command: go vet -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-11-09 after ThreadSetting generic union integration
+      - command: go test -p 4 ./internal/sema -count=1
+        result: passed on 2026-11-09 (18.144s) after ThreadSetting generic union integration
+      - command: go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run "^TestThreadSetting" -count=1
+        result: passed on 2026-11-09; Sema 0.008s, CLI 2.159s, LSP 4.772s; concrete and contextual variants, exhaustive matching, plain-value and payload/arity rejection, trusted source shape/provenance and LSP binding hover/variant completion
+      - command: go vet -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-11-09 after legacy portable error removal
+      - command: go test -p 4 ./internal/sema -count=1
+        result: passed on 2026-11-09 (15.777s) after removing legacy portable thread errors
+      - command: go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run "TestThreadLegacyErrors|TestThreadAttachError|TestThreadLifecycleErrors|TestThreadConfigurationEnums" -count=1
+        result: passed on 2026-11-09; Sema 0.043s, CLI 7.908s, LSP 19.433s; legacy identities are absent from portable type/error registries, completion and hover, unknown source references are diagnosed and ordinary project declarations plus ThreadAttachError remain valid
+      - command: go test -p 4 ./internal/sema -count=1
+        result: passed on 2026-11-09 (15.141s) after canonical ThreadStartMode/ThreadPriority integration
+      - command: go vet -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-11-09
+      - command: go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run "TestThreadConfigurationEnums|TestThreadLifecycleErrors|TestThreadV2" -count=1
+        result: passed on 2026-11-09; Sema 0.032s, CLI 3.722s, LSP 12.259s; exact configuration enums, defaults, trusted source locations/validation, nominal and non-error identity, exhaustive matches, unsupported variants and canonical completion/hover
+      - command: go vet -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-11-09
+      - command: go test -p 4 ./internal/sema -count=1
+        result: passed on 2026-11-09 (20.294s)
+      - command: go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run "TestThreadLifecycleErrors|TestThreadAttachError|TestThreadLocal|TestThreadV2" -count=1
+        result: passed on 2026-11-09; Sema 0.039s, CLI 3.840s, LSP 10.283s; exact error variants, nominal identities, trusted source refinement, malformed and untrusted declarations, exhaustive matching, Result/open-error compatibility, completion/hover and obsolete-variant diagnostics

@@ -493,7 +493,6 @@ integrations:
       - rules/declarations/impl.md
       - rules/declarations/static.md
       - rules/foundations/operators.md
-      - rules/corrections/applied/semantic-ir-properties-correction-20260813.md
     related_integrations:
       - frontend.properties
     code:
@@ -709,6 +708,7 @@ integrations:
       - testdata/ownership/explicit_return_invalid.sec
       - testdata/parser/explicit_return_missing_invalid.sec
     implemented:
+      - "Legacy `ref name: Type` parameter spelling removed (2026-11-09; grammar.md §33): parseParameters reports a focused diagnostic naming the canonical `name: ref Type` / `name: ref mut Type` replacement and recovers into the canonical borrowed TypeReference, so AST and signature identity have one form. `ref self` receivers are unchanged. Fixtures (crc32_valid and four testdata/sema escape/closure files) and Go test snippets were migrated; TestParseRejectsLegacyRefParameterSpelling covers both modes and the receiver form."
       - ordinary named fn declarations with mandatory explicit return types and bodies
       - parameter parsing including canonical name colon ref Type and name colon ref mut Type, trailing commas, duplicate diagnostics, resolved parameter and result types, and function-local scopes
       - signature registration before body analysis, including direct and mutual recursion
@@ -764,7 +764,6 @@ integrations:
       - "MD-117 static pack methods of a generic owner called as Box[int].Make(...): reports the error of ordinary static generic-owner methods (`Box.Make is not generic`), so it follows that gap rather than being pack-specific (monomorphization.md §§8.2,9.3)."
       - "MD-117 reference-holder positions in Semantic IR: an owned pack with a reference element, and for ref or ref values[k] over it which must reborrow instead of forming ref ref T (references.md §3.4(10); correction MD-119 §6(2)), stop at the named boundary shared with ordinary T = ref int; both need reference-typed generic arguments under compiler.monomorphization."
       - remove whole-self consuming ordinary/interface receiver behavior while retaining consuming callable values and member consumption under mutable/exclusive authority
-      - remove legacy ref name colon Type parameter spelling after migrating remaining formatter, bootstrap, diagnostics, and examples, and normalize legacy and canonical reference modes to one AST and signature identity during the transition
       - preserve forced-consuming parameter modes in first-class callable types, Semantic IR parameter ownership, call ArgumentActions, Sec MLIR, and LLVM lowering
       - implement per-element copy or move transfer for direct variadic arguments and destruction of remaining owned pack elements
       - make receiver-capability inference distinguish shared and mutable/exclusive ordinary methods, member ownership effects, and complete interface conformance for every parameter ownership and variadic contract
@@ -891,6 +890,7 @@ integrations:
       - returning a closure that borrows a local or by-value parameter is rejected (S1131); borrow-capture of a reference holder is rejected in favor of `capture(name)`
       - a function-value type mismatch that differs only in callable capability names the authority in its help
       - "`-> fn` callables and closures with a move-only owned or `ref mut` capture are move-only (Type.FunctionEnvironmentMoveOnly, § 27); capture records carry CaptureSharedBorrow/CaptureMutableBorrow with CaptureTransferBorrow, and parameter usage counts a `ref mut` capture as a write"
+      - "dedicated rejection diagnostics (2026-11-09, TestParseRejectedLambdaFormsRecover, TestLambdaDirectRecursionDiagnostic): generic lambdas, attributes before a lambda (only @noPanic gets the own-line advice), arbitrary capture expressions and expression bodies each report one focused parser diagnostic and parsing continues; a lambda naming the binding its let initializes reports the direct-recursion diagnostic instead of an unknown name"
     remaining:
       - preserve parameter ownership modes and native variadic shape in first-class callable type identity and calls
       - "non-lexical liveness for closure borrow holders: a closure holding `ref`/`ref mut` captures keeps its borrows to the end of its lexical scope (borrow_liveness.go keeps aggregates lexical), which needs borrow tracking through closures copied, stored in aggregates, passed to calls and returned from them"
@@ -899,7 +899,6 @@ integrations:
       - allow owned closure environments to escape and allow borrowed environments only within valid borrow lifetimes
       - select compiler-managed environment storage without implicit source-level allocation semantics
       - implement native typed variadic lambdas after the functions-v2 variadic pack model exists
-      - add dedicated rejection and diagnostics for generic lambdas, attributes, arbitrary capture expressions, shorthand bodies, and direct recursive initializer binding
       - represent function values, captures, capability, ownership, lifetime, escape class, and closure calls in Semantic IR
       - lower capturing environments and indirect calls through Sec MLIR and LLVM without assuming foreign callback ABI compatibility
       - complete the revision-2.0 parser, Sema, ownership, borrow, escape, formatter, LSP, analysis, Semantic IR, and backend test matrix
@@ -980,9 +979,9 @@ integrations:
       - no-shadowing enforcement exists for some inherited value-symbol scopes but is not a unified rule across parameters, members, types, generics, imports, aliases, and compiler-provided contextual bindings
       - the compiler maintains separate symbol, type, generic-type, function, and member registries rather than one uniformly collision-checked declaration namespace
       - module and member namespace checks cover substantial declaration subsets but cross-category coverage is distributed across feature-specific code paths
+      - "module variables are module-scoped (2026-11-09, module_variables.go, TestModuleVariablesAreModuleScoped): Symbol.Module records the declaring module; every function, accessor and test body and every module-level statement sees only its own module's variables, so a project `let value` no longer collides with core locals (S1004) and two modules may declare the same module variable name"
     remaining:
       - enforce the no-shadowing rule for nested declarations, import bindings and aliases (needs the file-local import bindings of frontend.modules), and members made directly visible by the declaration grammar
-      - module-level variables live in the analyzer's shared symbol table, so a project `let value` at module scope leaks into the analysis of other modules (core locals named `value` then report S1004); module variables must be scoped to their module (found 2026-10-04)
       - reject generic parameters that shadow an enclosing generic parameter (blocked on generic methods with additional type parameters) or directly visible members
       - complete one declaration namespace per scope across all declaration categories instead of relying on category-specific registries and collision checks
       - provide stable dedicated diagnostics that identify both the new declaration and the hidden or conflicting declaration

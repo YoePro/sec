@@ -1,0 +1,130 @@
+module main
+
+type Count int64
+type Bounded int64 range 1..10
+
+enum Mode {
+    On
+    Off
+}
+
+type Payload struct { Value: int64 }
+type Choice union { Empty }
+@noCopy
+type Resource struct { Value: int64 }
+
+fn Invalid(text: string, flag: bool, charValue: char, runeValue: rune, count: Count, bounded: Bounded, mode: Mode, payload: Payload, choice: Choice, shared: ref int64, exclusive: ref mut int64, fixed: int64[2], dynamic: list[int64], mapping: map[int64, int64], members: set[int64], vectorValue: vector[int64, 2], resource: Resource, callback: fn() void) void {
+    unsafe {
+        asm {
+            "nop"
+            inputs: rdi(text)
+            outputs: rax
+        }
+        asm {
+            "nop"
+            inputs: rdi(flag)
+            outputs: rax
+        }
+        asm {
+            "nop"
+            inputs: rdi(charValue)
+            outputs: rax
+        }
+        asm {
+            "nop"
+            inputs: rdi(runeValue)
+            outputs: rax
+        }
+        asm {
+            "nop"
+            inputs: rdi(count)
+            outputs: rax
+        }
+        asm {
+            "nop"
+            inputs: rdi(bounded)
+            outputs: rax
+        }
+        asm {
+            "nop"
+            inputs: rdi(mode)
+            outputs: rax
+        }
+        asm {
+            "nop"
+            inputs: rdi(payload)
+            outputs: rax
+        }
+        asm {
+            "nop"
+            inputs: rdi(choice)
+            outputs: rax
+        }
+        asm {
+            "nop"
+            inputs: rdi(shared)
+            outputs: rax
+        }
+        asm {
+            "nop"
+            inputs: rdi(exclusive)
+            outputs: rax
+        }
+        asm {
+            "nop"
+            inputs: rdi(fixed)
+            outputs: rax
+        }
+        asm {
+            "nop"
+            inputs: rdi(dynamic)
+            outputs: rax
+        }
+        asm {
+            "nop"
+            inputs: rdi(mapping)
+            outputs: rax
+        }
+        asm {
+            "nop"
+            inputs: rdi(members)
+            outputs: rax
+        }
+        asm {
+            "nop"
+            inputs: rdi(vectorValue)
+            outputs: rax
+        }
+        asm {
+            "nop"
+            inputs: rdi(resource)
+            outputs: rax
+        }
+        asm {
+            "nop"
+            inputs: rdi(callback)
+            outputs: rax
+        }
+    }
+}
+
+fn BoolOutput() bool {
+    unsafe {
+        asm {
+            "nop"
+            outputs: rax(result)
+        }
+        return result
+    }
+}
+
+fn NominalOutput() Count {
+    unsafe {
+        asm {
+            "nop"
+            outputs: rax(result)
+        }
+        return result
+    }
+}
+

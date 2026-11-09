@@ -165,8 +165,12 @@ const (
 	// InvalidReferenceGeneration (sec-mlir-dialect package 15 P15-48).
 	EffectMayPanicInvalidReference    EffectKind = "may-panic-invalid-reference"
 	EffectMayUseNondeterministicInput EffectKind = "may-use-nondeterministic-input"
-	EffectVolatileRead                EffectKind = "volatile-read"
-	EffectVolatileWrite               EffectKind = "volatile-write"
+	// Ordinary raw memory access is distinct from volatile/device access.
+	// Rules: rules/memory/raw_pointers.md §31(1–6).
+	EffectMemoryRead    EffectKind = "memory-read"
+	EffectMemoryWrite   EffectKind = "memory-write"
+	EffectVolatileRead  EffectKind = "volatile-read"
+	EffectVolatileWrite EffectKind = "volatile-write"
 )
 
 type EffectSite struct {

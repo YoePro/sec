@@ -483,6 +483,9 @@ func (p *Parser) parseStatement() ast.Statement {
 		if p.curToken.Lexeme == contextualDetach {
 			return p.parseDetachStatement()
 		}
+		if p.curToken.Lexeme == contextualJoin && p.peekToken.Type == lexer.IDENT && p.peekToken.Line == p.curToken.Line {
+			return p.parseJoinStatement()
+		}
 		if p.peekToken.Type == lexer.COLON {
 			if next := p.tokenAfterPeek(); next == lexer.WHILE || next == lexer.FOR {
 				return p.parseUnsupportedLoopLabel()
@@ -1214,6 +1217,20 @@ func (p *Parser) parseDetachStatement() ast.Statement {
 		stmt.DiscardResult = true
 		stmt.DiscardToken = p.curToken
 	}
+	return stmt
+}
+
+// parseJoinStatement parses `join worker`. `join` is a contextual spelling:
+// only a name following it on the same line makes a join statement, so
+// `join(x)` or `join = 1` stay ordinary expressions.
+//
+// Rules:
+//   - rules/foundations/grammar.md — § 61A "Join statement"
+//   - rules/concurrency/threads.md — § 34 "Join semantics"
+func (p *Parser) parseJoinStatement() ast.Statement {
+	stmt := &ast.JoinStatement{Token: p.curToken}
+	p.nextToken()
+	stmt.Value = p.parseExpression(LOWEST)
 	return stmt
 }
 
@@ -2024,6 +2041,16 @@ func (p *Parser) parseSelectBranch() *ast.SelectBranch {
 			return branch
 		}
 	default:
+		if p.curToken.Type == lexer.IDENT && p.curToken.Lexeme == contextualJoin && p.peekToken.Type == lexer.IDENT && p.peekToken.Line == p.curToken.Line {
+			// grammar.md § 63: a selectable `join handle` branch.
+			branch.Kind = ast.SelectJoinBranch
+			p.nextToken()
+			branch.Value = p.parseExpression(LOWEST)
+			if branch.Value == nil || !p.expectPeek(lexer.ARROW) {
+				return branch
+			}
+			break
+		}
 		if p.curToken.Type == lexer.IDENT && p.peekToken.Type == lexer.DECLARE {
 			branch.Binding = &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme}
 			p.nextToken()
@@ -3947,6 +3974,20 @@ func (p *Parser) parseParameters(allowVariadic bool) []*ast.Parameter {
 			return nil
 		}
 		p.nextToken()
+		if ref && p.curToken.Type != lexer.SELF {
+			// Grammar § 33 spells a borrowed parameter `name: ref Type`. The
+			// legacy prefix form is diagnosed but still parsed into the
+			// canonical borrowed type so downstream recovery stays precise.
+			//
+			// Rules:
+			//   - rules/foundations/grammar.md § 33 — Parameter
+			//   - rules/compiler/parser_recovery.md — "Parameter-list recovery"
+			spelling := "ref"
+			if mutableRef {
+				spelling = "ref mut"
+			}
+			p.addError("legacy parameter spelling `%s %s: Type` is not supported; write `%s: %s Type` at %d:%d", spelling, p.curToken.Lexeme, p.curToken.Lexeme, spelling, p.curToken.Line, p.curToken.Column)
+		}
 
 		parameter := &ast.Parameter{
 			Token:      p.curToken,

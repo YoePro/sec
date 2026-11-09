@@ -52,6 +52,7 @@ func (a *Analyzer) analyzeTestBody(declaration *ast.TestDeclaration) {
 	previousScopeDepth := a.scopeDepth
 
 	a.symbols = previousSymbols.child()
+	a.scopeModuleVariables()
 	a.constInts = copyConstInts(previousConstInts)
 	a.assigned = copyAssigned(previousAssigned)
 	a.moved = map[string]lexer.Token{}

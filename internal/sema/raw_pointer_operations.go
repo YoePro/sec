@@ -47,6 +47,9 @@ func (a *Analyzer) inferRawPointerCall(expr *ast.CallExpression) (Type, expressi
 			a.reportInvalidRawPointerOperation(member.Property.Token, rawPointerTypedHelp, "RawPtr[void].Read cannot materialize a value; select a concrete pointee type")
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
+		if known {
+			a.recordCompilerKnownEffects(knownMember, member.Property.Token)
+		}
 		return element, expressionValue{Display: expr.String()}, true
 	case "Write":
 		if !a.callUnsafeAuthorized(expr) {
@@ -68,6 +71,9 @@ func (a *Analyzer) inferRawPointerCall(expr *ast.CallExpression) (Type, expressi
 		if !a.canInitialize(element, valueType, expr.Arguments[0]) {
 			a.reportInvalidRawPointerOperation(expressionToken(expr.Arguments[0]), rawPointerArgumentHelp, "RawPtr.Write value must be %s, got %s", typeDisplayName(element), typeDisplayName(valueType))
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		if known {
+			a.recordCompilerKnownEffects(knownMember, member.Property.Token)
 		}
 		return a.types["void"], expressionValue{Display: expr.String()}, true
 	case "VolatileRead":

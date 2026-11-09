@@ -130,29 +130,36 @@ func (a *Analyzer) recordTypePackByValueLoop(token lexer.Token) {
 }
 
 // checkTypePackByValueLoops rejects each selected pack call whose template
-// copies an owned element that is not implicitly copyable in that
-// specialization, naming the position and concrete type (§38A(10)(1-2)).
+// copies an owned element in a loop or indexed value read that is not
+// implicitly copyable in that specialization. Selected reference arguments
+// borrow instead; diagnostics name the position and concrete type.
+// Rules: rules/declarations/functions.md §38A(4)(3),(5)(2),(5),(10)(1–2).
 func (a *Analyzer) checkTypePackByValueLoops(instances []typePackInstance) {
-	if len(a.typePackByValueLoops) == 0 {
+	if len(a.typePackByValueLoops) == 0 && len(a.typePackIndexReaders) == 0 {
 		return
 	}
 	for _, instance := range instances {
 		call, function := instance.origin, instance.function
 		loop, copies := a.typePackByValueLoops[sourceTokenLocation(function.Token)]
-		if !copies {
-			continue
-		}
 		sequence, ok := inferredTypePack(function)
 		if !ok {
 			continue
 		}
 		for position, element := range sequence {
+			read := loop
+			if !copies {
+				var indexed bool
+				read, indexed = a.typePackValueRead(function, position)
+				if !indexed {
+					continue
+				}
+			}
 			if classification := CopyClassificationOf(element); classification == CopyMoveOnly || classification == CopyNonCopyable {
 				endLine, endColumn := call.Token.EndPosition()
 				a.appendError(Error{Severity: diagnostics.SeverityError,
 					Message: fmt.Sprintf("%s copies pack elements by value, but position %d is %s, which is not implicitly copyable; use a ref binding or ref values[k] in %s", function.Name, position, typeDisplayName(element), function.Name),
 					File:    call.Token.File, Line: call.Token.Line, Column: call.Token.Column, EndLine: endLine, EndColumn: endColumn,
-					PreviousFile: loop.File, PreviousLine: loop.Line, PreviousColumn: loop.Column, RelatedLabel: "by-value pack loop"})
+					PreviousFile: read.File, PreviousLine: read.Line, PreviousColumn: read.Column, RelatedLabel: "by-value pack read"})
 				break
 			}
 		}
@@ -204,10 +211,13 @@ func (a *Analyzer) typePackIndexElement(expr *ast.IndexExpression, packElement T
 	if a.summaryPass {
 		return element, true
 	}
-	// Reading an owned element by value copies it, which only a specialization
-	// can prove (§38A(5)(5)); an explicit `ref values[k]` borrows instead.
-	if element.Kind != ReferenceType && !a.typePackBorrowedIndexes[expr] {
-		a.recordTypePackByValueLoop(expressionToken(expr.Index))
+	// Defer copy requirements until the call parameter has been selected:
+	// values[k] may be borrowed implicitly instead of read by value.
+	if element.Kind != ReferenceType {
+		if a.typePackIndexReaders == nil {
+			a.typePackIndexReaders = map[*ast.IndexExpression]sourceTokenKey{}
+		}
+		a.typePackIndexReaders[expr] = sourceTokenLocation(a.currentFunctionToken)
 	}
 	if a.typePackIndexLimits == nil {
 		a.typePackIndexLimits = map[sourceTokenKey]typePackIndexLimit{}

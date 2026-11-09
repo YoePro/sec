@@ -4343,7 +4343,7 @@ fn Test() void {
 
 func TestParseInlineAsmBlock(t *testing.T) {
 	input := `
-fn _sysWrite(fd: int64, ref ptr: byte, len: int64) int64 {
+fn _sysWrite(fd: int64, ptr: ref byte, len: int64) int64 {
 	unsafe {
 		asm {
 			"syscall"
@@ -4360,7 +4360,7 @@ fn _sysWrite(fd: int64, ref ptr: byte, len: int64) int64 {
 	checkParserErrors(t, p)
 
 	fn := program.Statements[0].(*ast.FunctionDeclaration)
-	if !fn.Parameters[1].Ref {
+	if !fn.Parameters[1].Type.Ref {
 		t.Fatal("ptr parameter should be ref")
 	}
 	if fn.Parameters[1].Name.Value != "ptr" || fn.Parameters[1].Type.Name != "byte" {
@@ -4432,7 +4432,7 @@ func TestParseExternFunctionDeclaration(t *testing.T) {
 	input := `
 extern "C" fn write(fd: int32, buffer: RawPtr[byte], length: uint) int64
 
-fn Use(ref mut value: int) void {
+fn Use(value: ref mut int) void {
 }
 `
 
@@ -4457,7 +4457,7 @@ fn Use(ref mut value: int) void {
 	}
 
 	useFn := program.Statements[1].(*ast.FunctionDeclaration)
-	if !useFn.Parameters[0].Ref || !useFn.Parameters[0].MutableRef {
+	if !useFn.Parameters[0].Type.Ref || !useFn.Parameters[0].Type.MutableRef {
 		t.Fatalf("expected ref mut parameter: %+v", useFn.Parameters[0])
 	}
 }
@@ -4489,7 +4489,7 @@ type Buffer struct {
     data: byte[4],
 }
 
-fn Write(ref value: byte) void {
+fn Write(value: ref byte) void {
 }
 
 impl Buffer {
@@ -5794,6 +5794,56 @@ fn Test() void {
 	}
 }
 
+// Lambda forms outside Sec 0.1 each get one focused diagnostic and the
+// parser keeps going: generic lambdas, attributes before a lambda,
+// arbitrary capture expressions and expression bodies (lambda-functions.md
+// §§ 2, 14, 31–32).
+func TestParseRejectedLambdaFormsRecover(t *testing.T) {
+	cases := map[string]struct{ source, want string }{
+		"generic":            {"let f := fn[T](value: T) T {\n\t\treturn value\n\t}", "generic lambdas are not part of Sec 0.1"},
+		"attribute":          {"let f := @inline fn(value: int) int {\n\t\treturn value\n\t}", "lambda expressions do not accept attributes; remove @inline"},
+		"capture expression": {"let f := capture(v + 1, v) fn() int {\n\t\treturn v\n\t}", "arbitrary capture expressions are not part of Sec 0.1"},
+		"expression body":    {"let f := fn(value: int) int => value * 2", "lambda expression bodies are not part of Sec 0.1"},
+	}
+	for name, test := range cases {
+		t.Run(name, func(t *testing.T) {
+			p := New(lexer.New("fn Test(v: int) void {\n\t" + test.source + "\n\tlet following := 1\n}\n"))
+			program := p.ParseProgram()
+			if len(p.Errors()) != 1 || !strings.Contains(p.Errors()[0], test.want) {
+				t.Fatalf("diagnostics = %v, want one containing %q", p.Errors(), test.want)
+			}
+			fn := program.Statements[0].(*ast.FunctionDeclaration)
+			last := fn.Body.Statements[len(fn.Body.Statements)-1].(*ast.LetStatement)
+			if last.Name.Value != "following" {
+				t.Fatalf("parsing did not continue after the lambda: %v", fn.Body.Statements)
+			}
+		})
+	}
+}
+
+// `join worker` is a contextual join statement; `join(value)` and a binding
+// named join stay ordinary expressions (grammar.md § 61A).
+func TestParseJoinStatement(t *testing.T) {
+	p := New(lexer.New("fn Test(worker: int) int {\n\tjoin worker\n\tlet value := join(2)\n\treturn value\n}\n"))
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+	body := program.Statements[0].(*ast.FunctionDeclaration).Body.Statements
+	join, ok := body[0].(*ast.JoinStatement)
+	if !ok || join.Value.String() != "worker" || join.String() != "join worker" {
+		t.Fatalf("join statement = %#v", body[0])
+	}
+	if _, call := body[1].(*ast.LetStatement).Value.(*ast.CallExpression); !call {
+		t.Fatalf("join(2) must stay a call: %#v", body[1])
+	}
+	selected := New(lexer.New("fn Test(worker: int) void {\n\tselect {\n\t\tjoin worker => {\n\t\t}\n\t}\n}\n"))
+	selectProgram := selected.ParseProgram()
+	checkParserErrors(t, selected)
+	branch := selectProgram.Statements[0].(*ast.FunctionDeclaration).Body.Statements[0].(*ast.SelectStatement).Branches[0]
+	if branch.Kind != ast.SelectJoinBranch || branch.Value.String() != "worker" || branch.Body == nil {
+		t.Fatalf("select join branch = %#v", branch)
+	}
+}
+
 func TestParseDeferStatement(t *testing.T) {
 	input := `
 fn Test() void {
@@ -7078,4 +7128,26 @@ fn After() void {
 	if len(parameterType.FunctionParameterTypes) != 2 || parameterType.FunctionParameterTypes[1].Name != "int" {
 		t.Fatalf("function type = %#v, want an invalid first parameter type and int", parameterType)
 	}
+}
+
+func TestParseRejectsLegacyRefParameterSpelling(t *testing.T) {
+	cases := map[string]string{
+		"fn Read(ref value: int) void {}\n":      "legacy parameter spelling `ref value: Type` is not supported; write `value: ref Type`",
+		"fn Write(ref mut value: int) void {}\n": "legacy parameter spelling `ref mut value: Type` is not supported; write `value: ref mut Type`",
+	}
+	for input, want := range cases {
+		p := New(lexer.New(input))
+		program := p.ParseProgram()
+		errors := p.Errors()
+		if len(errors) != 1 || !strings.Contains(errors[0], want) {
+			t.Fatalf("errors for %q = %#v, want one containing %q", input, errors, want)
+		}
+		fn, ok := program.Statements[0].(*ast.FunctionDeclaration)
+		if !ok || len(fn.Parameters) != 1 || !fn.Parameters[0].Type.Ref {
+			t.Fatalf("legacy parameter should recover as a borrowed parameter: %#v", program.Statements)
+		}
+	}
+	p := New(lexer.New("type Box struct { value: int }\nimpl Box {\n    fn Get(ref self) int { return self.value }\n}\n"))
+	p.ParseProgram()
+	checkParserErrors(t, p)
 }

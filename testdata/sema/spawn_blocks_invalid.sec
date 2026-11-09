@@ -1,0 +1,20 @@
+module main
+
+fn Work() void {
+}
+
+fn Default() void {
+    let worker := spawn { Work() }
+}
+
+fn Task() void {
+    let worker := spawn task { Work() }
+}
+
+fn Thread() void {
+    let worker := spawn thread { Work() }
+}
+
+fn Process() void {
+    let worker := spawn process { Work() }
+}

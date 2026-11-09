@@ -45,6 +45,8 @@ func (a *Analyzer) runSemanticAnalysisPipeline(program *ast.Program) {
 			})},
 		{id: "no-block", dependencies: []string{"callable-bodies", "string-materializations"}, priority: 70,
 			run: once(func() { a.validateNoBlockGuarantees(program) })},
+		{id: "execution-context", dependencies: []string{"callable-bodies"}, priority: 71,
+			run: once(func() { a.validateExecutionContextRequirements() })},
 		{id: "parameter-demand", dependencies: []string{"callable-bodies", "no-panic", "no-alloc", "no-block"}, priority: 80,
 			run: func() analysisStepResult {
 				a.parameterUsageAnalysis = buildParameterUsageAnalysis(program, a)
@@ -83,6 +85,6 @@ func (a *Analyzer) analyzeModuleBodies(program *ast.Program) {
 			a.addTopLevelStatementError(stmt)
 			return
 		}
-		a.analyzeStatement(stmt)
+		a.analyzeModuleStatement(stmt)
 	})
 }

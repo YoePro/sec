@@ -19,7 +19,17 @@ func TestMatchTerminationMatrix(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			errors := analyzeSourceRaw(t, string(data))
+			analyzer, errors := analyzeSourceWithAnalyzerRaw(t, string(data))
+			lines := strings.Split(string(data), "\n")
+			if len(analyzer.resolvedMatchPlans) == 0 {
+				t.Fatal("missing resolved match plans")
+			}
+			for expression, plan := range analyzer.resolvedMatchPlans {
+				wantContinuation := name == "continuing_invalid" || strings.Contains(lines[expression.Token.Line-1], "// continues")
+				if plan.CanContinue() != wantContinuation {
+					t.Errorf("match at line %d: continuation = %v, want %v", expression.Token.Line, plan.CanContinue(), wantContinuation)
+				}
+			}
 			if name == "valid" {
 				if len(errors) != 0 {
 					t.Fatal(errors)

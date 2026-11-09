@@ -1,0 +1,14 @@
+module main
+
+fn Metadata() ThreadTermination {
+    return ThreadTermination{Kind: ThreadTerminationKind.Fault}
+}
+
+fn Inspect(value: ThreadTermination) int {
+    match value.Kind {
+        ThreadTerminationKind.Requested => { return 1 }
+        ThreadTerminationKind.External => { return 2 }
+        ThreadTerminationKind.Fault => { return 3 }
+        ThreadTerminationKind.Unknown => { return 4 }
+    }
+}

@@ -133,3 +133,20 @@ func TestFormatBorrowCaptureSpacing(t *testing.T) {
 		t.Fatalf("non-idempotent borrow capture formatting:\n%s", again)
 	}
 }
+
+// ref and ref mut in borrow expressions and pattern bindings keep exactly
+// one space between their words, a comment between them is preserved, and
+// formatting is idempotent; parameter and capture borrows already were.
+// Rules: rules/tooling/formatter.md §§ 6(6), 21; rules/memory/borrowing.md.
+func TestFormatBorrowExpressionAndPatternSpacing(t *testing.T) {
+	source := "module main\n\nfn Use(a: ref Box, b: ref mut Box) int {\n    let r := ref   a.value\n    let m := ref  mut b.value\n    return 0\n}\n\nfn Pat(p: ref mut Pair, o: Option[Box]) int {\n    match p {\n        Two { left: ref   mut l, right: ref  r } => {\n            return *r\n        }\n        One(ref   mut  b) => {\n            return 0\n        }\n    }\n}\n\nfn Opt(o: Option[Box]) int {\n    match o {\n        Some(ref /* keep */ v) => {\n            return 0\n        }\n        None => {\n            return 1\n        }\n    }\n}\n"
+	got := Format(Source{Text: source}, Options{}).Text
+	for _, want := range []string{"let r := ref a.value", "let m := ref mut b.value", "Two { left: ref mut l, right: ref r }", "One(ref mut b)", "Some(ref /* keep */ v)"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("missing %q in:\n%s", want, got)
+		}
+	}
+	if again := Format(Source{Text: got}, Options{}).Text; again != got {
+		t.Fatalf("non-idempotent borrow formatting:\n%s", again)
+	}
+}

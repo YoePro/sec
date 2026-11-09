@@ -6,15 +6,35 @@ import (
 )
 
 // recordRawPointerNullBinding marks an immutable RawPtr[T] binding whose
-// initializer is the null sentinel. The binding cannot be reassigned, so the
-// fact holds for its whole scope.
+// initializer is null or copies a binding proven null on the current path.
+// The destination cannot be reassigned, so the copied fact survives that path.
+// Rules: rules/memory/raw_pointers.md §§5.1,7(6–8),32,34(2–4).
 func (a *Analyzer) recordRawPointerNullBinding(name string, value ast.Expression) {
 	symbol, ok := a.symbols.lookup(name)
-	if !ok || symbol.Mutable || symbol.Volatile || symbol.Type.Kind != RawPtrType || !a.isNullSentinel(value) {
+	if !ok || symbol.Mutable || symbol.Volatile || symbol.Type.Kind != RawPtrType {
+		return
+	}
+	proven := a.isNullSentinel(value)
+	if source, identifier := value.(*ast.Identifier); !proven && identifier {
+		_, proven = a.provenNullRawPointerBinding(source.Value)
+	}
+	if !proven {
 		return
 	}
 	symbol.RawPointerNull = true
 	a.symbols.set(name, symbol)
+}
+
+// provenNullRawPointerBinding requires immutable null initialization or a stable
+// binding with a dominating null path fact. Unknown, volatile or reassignable
+// path values do not become null proofs merely because their type is RawPtr.
+// Rules: rules/memory/raw_pointers.md §§7(6–8),32(2),34(2–4).
+func (a *Analyzer) provenNullRawPointerBinding(name string) (Symbol, bool) {
+	symbol, ok := a.symbols.lookup(name)
+	if !ok || symbol.Volatile || dereferenceType(symbol.Type).Kind != RawPtrType {
+		return Symbol{}, false
+	}
+	return symbol, symbol.RawPointerNull && !symbol.Mutable || a.currentStableBindings[name] && a.activeFactsProveNull(name)
 }
 
 // rejectProvenNullDereference reports raw access or safe-reference formation
@@ -34,14 +54,7 @@ func (a *Analyzer) rejectProvenNullDereference(member *ast.MemberExpression, ope
 	if !ok {
 		return false
 	}
-	symbol, ok := a.symbols.lookup(ident.Value)
-	if !ok || symbol.Volatile {
-		return false
-	}
-	proven := symbol.RawPointerNull && !symbol.Mutable
-	if !proven && a.currentStableBindings[ident.Value] {
-		proven = a.activeFactsProveNull(ident.Value)
-	}
+	symbol, proven := a.provenNullRawPointerBinding(ident.Value)
 	if !proven {
 		return false
 	}

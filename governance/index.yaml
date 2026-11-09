@@ -50,6 +50,8 @@ fragments:
     owns: scheduling policy, execution contexts, and scheduling guarantees
   - path: concurrency_select.yaml
     owns: select expressions, cases, and selection semantics
+  - path: concurrency_spawn.yaml
+    owns: cross-kind spawn syntax, dispatch, and creation-failure boundary
   - path: concurrency_structured.yaml
     owns: structured-concurrency scopes and child-lifetime rules
   - path: concurrency_task.yaml

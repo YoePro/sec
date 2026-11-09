@@ -398,6 +398,7 @@ integrations:
       - internal/sema/symbol_table_test.go
       - cmd/lsp/main_test.go
     implemented:
+      - "loop-header definition snapshots removed (2026-11-09, definition_journal.go, TestDefinitionJournalRestoresReplayWrites): a loop-body replay journals the definition keys it writes and restores them, nested replays included, instead of copying the whole definitionTokens map at each loop header; `sec check sec/stdlib/net/http/methods.sec` peak RSS 587 MB -> 542 MB, 1.62 s -> 1.47 s, identical diagnostics"
       - the builtin type table is built once and shared read-only for lookups (builtinType), while each Analyzer still receives its own mutable copy; compiler-known member lookup previously rebuilt the whole table for every member expression, which dominated CPU and garbage collection
       - hover and semantic-token requests on sec/stdlib/net/url/url.sec dropped from about 0.6 s to about 0.12 s each, and module diagnostics from about 1.2 s to about 0.72 s including the 600 ms debounce
       - LSP diagnostic messages no longer repeat the primary location; a related location stays in the text and is attached as relatedInformation
@@ -412,7 +413,6 @@ integrations:
       - "Layered scope tables (2026-11-06, step 2 of the responsiveness plan): Analyzer.symbols and completionSymbols are a symbolTable (internal/sema/symbol_table.go), a chain of layers instead of a map. Entering a branch, loop, switch case, test, function, accessor, match arm, try handler, defer or lambda body opens a child layer instead of copying every visible symbol; leaving restores the parent and discards the child's writes and removals, so the observable behavior of the former copies is kept. A lambda hides enclosing locals in its layer instead of copying all module-level symbols. A loop-header snapshot forks the current layer (snapshot and continuing analysis each get a child). Chains deeper than 48 layers are flattened. copySymbols is gone. BenchmarkAnalyzeStdlibDocument went from 3.62 GB and 2.07 s to 1.94 GB and 1.70 s per analysis. Tests: TestSymbolTableLayersBehaveLikeScopeCopies, TestSymbolTableDepthIsBounded, and the internal/sema, internal/ir/semantic and internal/lowering/secmlir suites unchanged and green."
     remaining:
       - reuse parsed core and unchanged module sources across requests instead of re-parsing and re-analyzing them for every new document version (completion, rename, code lenses and diagnostics still analyze afresh)
-      - "the loop-header snapshot still copies definitionTokens (copyDefinitionTokens, map of token slices), now the largest single allocator at ~200 MB per analysis of sec/stdlib/net/http/methods.sec; a layered map with clipped slices would remove it like the symbol tables"
     verification:
       - command: scripted stdio LSP session on sec/stdlib/net/url/url.sec (initialize, didOpen, semanticTokens, documentSymbol, formatting, hover x3, willSaveWaitUntil, didSave)
         result: measured on 2026-10-02 after the change; per-request latency about 0.12 s, formatting 0.004 s

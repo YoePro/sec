@@ -1,0 +1,92 @@
+module match_statement_results
+
+fn Checked() Result[int, ArithmeticError] {
+    return Ok(1)
+}
+
+fn Calls(value: Option[int]) void {
+    match value {
+        Some(n) => Checked()
+        None => Checked()
+    }
+}
+
+fn Constructors(value: Option[int]) void {
+    match value {
+        Some(n) => Checked()
+        None => Checked()
+    }
+}
+
+fn Block(value: Option[int]) void {
+    match value {
+        Some(n) => { Checked() }
+        None => {}
+    }
+}
+
+fn EchoTask(value: Task[int]) Task[int] { return <-value }
+fn EchoThread(value: Thread[int]) Thread[int] { return <-value }
+
+fn TaskResult(choice: Option[int], pending: Task[int]) void {
+    match choice {
+        Some(n) => EchoTask(<-pending)
+        None => {}
+    }
+}
+
+fn ThreadResult(choice: Option[int], worker: Thread[int]) void {
+    match choice {
+        Some(n) => EchoThread(<-worker)
+        None => {}
+    }
+}
+
+fn StoredResult(choice: Option[int], result: Result[int, ArithmeticError]) void {
+    match choice {
+        Some(n) => result
+        None => {}
+    }
+}
+
+fn Nested(choice: Option[int]) void {
+    match choice {
+        Some(n) => {
+            match choice {
+                Some(m) => Checked()
+                None => {}
+            }
+        }
+        None => {}
+    }
+}
+
+fn Defer(choice: Option[int]) void {
+    defer {
+        match choice {
+            Some(n) => Checked()
+            None => {}
+        }
+    }
+}
+
+type Work union {
+    Pending(Task[int])
+    Other
+}
+
+fn EchoWork(value: Work) Work { return <-value }
+
+fn Aggregate(choice: Option[int], work: Work) void {
+    match choice {
+        Some(n) => EchoWork(<-work)
+        None => {}
+    }
+}
+
+fn GenericError[E: error](choice: Option[int], problem: E) void {
+    match choice {
+        Some(n) => problem
+        None => {}
+    }
+}

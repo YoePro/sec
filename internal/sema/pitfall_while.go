@@ -112,7 +112,12 @@ func (b *pitfallBuilder) walkWhileStatement(loop *ast.WhileStatement) {
 		}
 		b.activeCapacityEqualities = mergeCapacityEqualities(outerEqualities, b.capacityBranchProof(loop.Condition, true))
 	}
+	// The condition holds at every body entry, so its positivity facts
+	// start each iteration; writes in the body end them as usual.
+	outerPositive := b.activePositiveIndexes
+	b.activePositiveIndexes = append(b.survivingIndexGuards(outerPositive, loop), b.positiveIndexGuards(loop.Condition, true)...)
 	b.withLoopIndexGuards(loop, guards, func() { b.walkBlock(loop.Body) })
+	b.activePositiveIndexes = outerPositive
 }
 
 // inspectWhileCapacityIndex reports only accesses whose canonical index and

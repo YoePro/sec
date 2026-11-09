@@ -1,0 +1,49 @@
+module match_statement_results_valid
+
+fn Number() int { return 7 }
+fn Nothing() void {}
+fn Checked() Result[int, ArithmeticError] { return Ok(1) }
+
+fn Statements(choice: Option[int]) void {
+    match choice {
+        Some(n) => Number() // advisory
+        None => Nothing()
+    }
+    match choice {
+        Some(n) => { discard Checked() }
+        None => {}
+    }
+    for i in 0..<2 {
+        match choice {
+            Some(n) => Number() // advisory
+            None => {}
+        }
+    }
+    defer {
+        match choice {
+            Some(n) => Number() // advisory
+            None => {}
+        }
+    }
+}
+
+fn Value(choice: Option[int]) Result[int, ArithmeticError] {
+    return match choice {
+        Some(n) => Checked()
+        None => Checked()
+    }
+}
+
+fn Returns(choice: Option[int]) Result[int, ArithmeticError] {
+    match choice {
+        Some(n) => return Checked()
+        None => return Checked()
+    }
+}
+
+fn Borrowed(choice: Option[int], item: ref Task[int]) void {
+    match choice {
+        Some(n) => item
+        None => {}
+    }
+}

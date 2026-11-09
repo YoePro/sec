@@ -8,6 +8,30 @@ import (
 	"strings"
 )
 
+// implicitStoredFieldHover presents concrete compiler-resolved stored fields
+// whose canonical type metadata has no source declaration to navigate to.
+// Rules: rules/tooling/lsp.md — "Hover";
+// rules/concurrency/channels.md — §§15(3),62(2).
+func implicitStoredFieldHover(text string, program *ast.Program, analyzer *sema.Analyzer, token lexer.Token) (hoverResult, bool) {
+	for _, expression := range astExpressionsInProgram(program) {
+		member, ok := expression.(*ast.MemberExpression)
+		if !ok || member.Property == nil || !sameSourceToken(member.Property.Token, token) {
+			continue
+		}
+		plan, ok := analyzer.ResolvedStructMemberOf(member)
+		if !ok || plan.Kind != sema.MemberStoredField || int(plan.FieldID) >= len(plan.OwnerType.Fields) {
+			continue
+		}
+		field := plan.OwnerType.Fields[plan.FieldID]
+		if field.Token.Line != 0 || field.Name != plan.FieldName {
+			continue
+		}
+		field.Type = plan.MemberType
+		return hoverResult{Contents: markupContent{Kind: "markdown", Value: structFieldHover(field)}, Range: tokenRange(text, token)}, true
+	}
+	return hoverResult{}, false
+}
+
 // declaredMemberHover uses exact compiler definition identity for qualified
 // methods and associated storage. Equal spellings on another owner or local
 // cannot supply a type or receiver category. Fields/properties/events are

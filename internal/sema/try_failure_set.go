@@ -178,6 +178,9 @@ func (a *Analyzer) runtimeCheckedIndex(index *ast.IndexExpression) bool {
 	if plan, ok := a.resolvedListIndexPlans[index]; ok {
 		return plan.CheckKind == ArrayIndexRuntimeCheck
 	}
+	if plan, ok := a.resolvedMapIndexPlans[index]; ok {
+		return !plan.Upsert && plan.CheckKind == ArrayIndexRuntimeCheck
+	}
 	containerType, ok := a.expressionTypes[index.Left]
 	if !ok {
 		return false
@@ -414,6 +417,7 @@ func (a *Analyzer) commitTryFailurePoints(points []TryFailurePoint) {
 				a.resolvedSliceIndexPlans[index] = cloneSliceIndexPlan(plan)
 			}
 			a.commitFallibleDynamicArrayIndex(index, point.ErrorType)
+			a.commitFallibleMapIndex(index, point.ErrorType)
 			if plan, ok := a.resolvedListIndexPlans[index]; ok {
 				plan.FailureMode = ArrayIndexFailureFallible
 				plan.ErrorType = point.ErrorType

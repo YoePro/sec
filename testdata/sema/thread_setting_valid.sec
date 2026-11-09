@@ -1,0 +1,21 @@
+module main
+
+fn DefaultSetting() ThreadSetting[int] {
+    return ThreadSetting[int].Default
+}
+
+fn PreferredSetting() ThreadSetting[int] {
+    return ThreadSetting[int].Preferred(42)
+}
+
+fn RequiredSetting() ThreadSetting[string] {
+    return Required("worker")
+}
+
+fn Inspect(value: ThreadSetting[int]) int {
+    match value {
+        ThreadSetting.Default => { return 0 }
+        ThreadSetting.Preferred(item) => { return item }
+        ThreadSetting.Required(item) => { return item }
+    }
+}

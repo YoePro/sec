@@ -9,6 +9,7 @@ import (
 // isolated branch state before checking a guard and arm body. Binding names
 // and borrow keywords retain distinct source provenance for navigation.
 // Rules: rules/control-flow/flowcontrol_match.md — Payload bindings, Guards;
+// rules/control-flow/flowcontrol_match.md — §19(2)-(6);
 // rules/memory/borrowing.md — §§8,33(3); rules/concurrency/atomics.md — §44(4–5).
 func (a *Analyzer) analyzeMatchArmBody(arm *ast.MatchArm, info matchPatternInfo) (Type, branchAnalysis) {
 	previousSymbols := a.symbols
@@ -137,17 +138,24 @@ func (a *Analyzer) analyzeMatchArmBody(arm *ast.MatchArm, info matchPatternInfo)
 	if arm.Body == nil {
 		return Type{Kind: InvalidType}, a.finalizeMatchBranch(info, branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), availabilityStates: copyAvailabilityStates(a.availabilityStates), closedResources: copyMoved(a.closedResources), borrows: copyBorrows(a.borrows), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), referenceOrigins: captureReferenceOrigins(a.symbols), continues: true})
 	}
-	a.constructionOwnershipDepth++
-	bodyType, _ := a.inferExpression(arm.Body)
-	a.constructionOwnershipDepth--
-	ownershipValid := true
-	if a.terminalReturnDepth > 0 {
-		ownershipValid = !a.validateTerminalReturnConstruction(arm.Body)
+	var bodyType Type
+	if !a.matchArmValueContext {
+		bodyType = a.analyzeExpressionStatement(&ast.ExpressionStatement{
+			Token: expressionToken(arm.Body), Expression: arm.Body,
+		})
 	} else {
-		ownershipValid = a.validateOwningConstructionSource(arm.Body, TransferSiteBranch)
-	}
-	if ownershipValid {
-		a.markMoveSource(arm.Body)
+		a.constructionOwnershipDepth++
+		bodyType, _ = a.inferExpression(arm.Body)
+		a.constructionOwnershipDepth--
+		ownershipValid := true
+		if a.terminalReturnDepth > 0 {
+			ownershipValid = !a.validateTerminalReturnConstruction(arm.Body)
+		} else {
+			ownershipValid = a.validateOwningConstructionSource(arm.Body, TransferSiteBranch)
+		}
+		if ownershipValid {
+			a.markMoveSource(arm.Body)
+		}
 	}
 	return bodyType, a.finalizeMatchBranch(info, branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), availabilityStates: copyAvailabilityStates(a.availabilityStates), closedResources: copyMoved(a.closedResources), borrows: copyBorrows(a.borrows), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), referenceOrigins: captureReferenceOrigins(a.symbols), continues: true})
 }

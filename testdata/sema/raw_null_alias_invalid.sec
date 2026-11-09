@@ -1,0 +1,61 @@
+module main
+
+fn CopyRead() int {
+    unsafe {
+        let empty: RawPtr[int] := null
+        let alias := empty
+        return alias.Read()
+    }
+}
+fn CopyWrite() void {
+    unsafe {
+        let empty: RawPtr[int] := null
+        let alias := empty
+        alias.Write(1)
+    }
+}
+fn ChainedVolatileRead() int {
+    unsafe {
+        let empty: RawPtr[int] := null
+        let alias := empty
+        let another := alias
+        return another.VolatileRead()
+    }
+}
+fn CopyVolatileWrite() void {
+    unsafe {
+        let empty: RawPtr[int] := null
+        let alias := empty
+        alias.VolatileWrite(1)
+    }
+}
+fn CopyAsRef() void {
+    unsafe {
+        let empty: RawPtr[int] := null
+        let alias := empty
+        let view := alias.AsRef
+    }
+}
+fn CopyAsRefMut() void {
+    unsafe {
+        let empty: RawPtr[int] := null
+        let alias := empty
+        let view := alias.AsRefMut
+    }
+}
+fn PathCopy(pointer: RawPtr[int]) int {
+    unsafe {
+        if pointer is null {
+            let alias := pointer
+            return alias.Read()
+        }
+        return 0
+    }
+}
+fn FalseEdgeCopy(pointer: RawPtr[int]) int {
+    unsafe {
+        if pointer is not null { return 0 }
+        let alias := pointer
+        return alias.Read()
+    }
+}

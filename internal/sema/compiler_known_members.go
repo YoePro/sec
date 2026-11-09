@@ -287,6 +287,11 @@ func compilerKnownValueMembers(typ Type) []CompilerKnownMember {
 			CompilerKnownMember{ID: prefix + "ISNEGATIVE", Name: "IsNegative", Kind: CompilerKnownProperty, Result: boolType},
 			CompilerKnownMember{ID: prefix + "SIGN", Name: "Sign", Kind: CompilerKnownProperty, Result: builtinType("int")})
 	}
+	// cancellation.md §§ 8(2), 9(2): the live, immutable cancellation
+	// observation of the current task or thread view.
+	if context := dereferenceType(typ); context.Kind == StructType && (context.Name == "TaskContext" || context.Name == "ThreadContext") && context.Module == "" {
+		members = append(members, CompilerKnownMember{ID: "CKM-" + strings.ToUpper(context.Name) + "-CANCELREQUESTED", Name: "CancelRequested", Kind: CompilerKnownProperty, Result: boolType})
+	}
 	// core-library.md § 27.5 (MD-062): the complete public UnitDimension
 	// surface besides == and !=; no setters, Get methods or legacy spellings.
 	if dereferenceType(typ).Kind == UnitDimensionType {
@@ -357,6 +362,7 @@ func compilerKnownValueMembers(typ Type) []CompilerKnownMember {
 	members = append(members, compilerKnownThreadLocalMembers(sequence)...)
 	members = append(members, compilerKnownAtomicMembers(sequence)...)
 	members = append(members, compilerKnownMutexMembers(sequence)...)
+	members = append(members, compilerKnownTicketMembers(sequence)...)
 	if sequence.Kind == ArrayType && arrayShapeOf(sequence) == ArrayShapeDynamic && sequence.Element != nil {
 		members = append(members,
 			CompilerKnownMember{ID: "CKM-DYNAMIC-ARRAY-APPEND", Name: "Append", Kind: CompilerKnownMethod, Result: compilerKnownResult(builtinType("void"), builtinType("CollectionError")), StructuralMutation: true},

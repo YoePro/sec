@@ -1,0 +1,12 @@
+module main
+
+fn Recover() void {
+    let a := spawn
+    let b := spawn task
+    let c := spawn thread
+    let d := spawn process
+}
+
+fn After() int {
+    return 42
+}

@@ -25,7 +25,7 @@ fn TestLetDeclarations() void {
     let inferredDecimal := 3.14
     let inferredBoolean := true
     let inferredString := "Sec"
-    let inferredCharacter := 'S'
+    let inferredCharacter: char := 'S'
 
     let explicitInteger: int := inferredInteger
     let explicitDecimal: decimal := inferredDecimal
@@ -333,8 +333,8 @@ fn WidenSigned(value: int64) int256 {
     return int256(intermediate)
 }
 
-fn NarrowSigned(value: int256) int8 {
-    return int8(value)
+fn NarrowSigned(value: int256) Result[int8, ConversionError] {
+    return Ok(try int8(value))
 }
 
 fn WidenUnsigned(value: uint64) uint256 {
@@ -342,16 +342,16 @@ fn WidenUnsigned(value: uint64) uint256 {
     return uint256(intermediate)
 }
 
-fn NarrowUnsigned(value: uint256) uint8 {
-    return uint8(value)
+fn NarrowUnsigned(value: uint256) Result[uint8, ConversionError] {
+    return Ok(try uint8(value))
 }
 
-fn SignedToUnsigned(value: int128) uint128 {
-    return uint128(value)
+fn SignedToUnsigned(value: int128) Result[uint128, ConversionError] {
+    return Ok(try uint128(value))
 }
 
-fn UnsignedToSigned(value: uint128) int128 {
-    return int128(value)
+fn UnsignedToSigned(value: uint128) Result[int128, ConversionError] {
+    return Ok(try int128(value))
 }
 
 fn TestNamedIntegerConversions(value: int128) SignedIdentifier {
@@ -507,8 +507,8 @@ fn CompareRunes(left: rune, right: rune) bool {
     return left != right
 }
 
-fn ConvertRuneToCharacterCode(value: rune) CharacterCode {
-    return CharacterCode(value)
+fn ConvertRuneToCharacterCode(value: rune) Result[CharacterCode, ConversionError] {
+    return Ok(try CharacterCode(value))
 }
 
 fn CompileTimeString() string {

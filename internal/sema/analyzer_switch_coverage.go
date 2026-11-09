@@ -38,6 +38,24 @@ func newSwitchCoverageTracker() *switchCoverageTracker {
 	}
 }
 
+// reportSwitchCoverage retains the covering source item and actionable help.
+// Fully covered non-duplicate items use mandatory S3001; equivalent compile-time
+// values retain the published mandatory duplicate-constant identity S1015.
+// Rules: rules/control-flow/flowcontrol_switch.md §§20-22,34;
+// rules/tooling/diagnostics.md §21(4)-(6).
+func (a *Analyzer) reportSwitchCoverage(token, previous lexer.Token, id, format string, args ...any) {
+	label := "earlier covering case"
+	help := "The earlier case already covers this item. Remove it or change the cases so the later item has reachable values."
+	if id == diagnostics.DuplicateSwitchCase {
+		label = "earlier equivalent case"
+		help = "Remove the duplicate case or combine its body with the first case for this value."
+	}
+	endLine, endColumn := token.EndPosition()
+	a.appendError(Error{ID: id, Severity: diagnostics.SeverityError, Message: fmt.Sprintf(format, args...), Help: help,
+		File: token.File, Line: token.Line, Column: token.Column, EndLine: endLine, EndColumn: endColumn,
+		PreviousFile: previous.File, PreviousLine: previous.Line, PreviousColumn: previous.Column, RelatedLabel: label})
+}
+
 func (a *Analyzer) analyzeSwitchRangeCase(item *ast.SwitchRangeCase, subjectType Type) {
 	if !isOrderedSwitchType(subjectType) {
 		a.addErrorAtToken(item.Token, "switch range requires ordered subject type")
@@ -67,14 +85,13 @@ func (a *Analyzer) analyzeSwitchRangeCase(item *ast.SwitchRangeCase, subjectType
 // Rules:
 //   - rules/control-flow/flowcontrol_switch.md — §20 "Duplicate compile-time values"
 //   - rules/declarations/enums.md — §7 "Value aliases"
-//   - rules/corrections/applied/correction24-20260823.md — "Bug 3 — enum aliases bypass duplicate switch-case detection"
 func (a *Analyzer) checkSwitchValueCoverage(expr ast.Expression, tracker *switchCoverageTracker) {
 	if tracker == nil {
 		return
 	}
 	if literal, ok := expr.(*ast.BooleanLiteral); ok && tracker.subjectType.Kind == BoolType {
-		if _, exists := tracker.boolValues[literal.Value]; exists {
-			a.addErrorAtToken(expressionToken(expr), "duplicate switch case value %t", literal.Value)
+		if previous, exists := tracker.boolValues[literal.Value]; exists {
+			a.reportSwitchCoverage(expressionToken(expr), previous, diagnostics.DuplicateSwitchCase, "duplicate switch case value %t", literal.Value)
 			return
 		}
 		tracker.boolValues[literal.Value] = expressionToken(expr)
@@ -94,17 +111,7 @@ func (a *Analyzer) checkSwitchValueCoverage(expr ast.Expression, tracker *switch
 			return
 		}
 		if previous, exists := tracker.stringValues[value.String]; exists {
-			token := expressionToken(expr)
-			endLine, endColumn := token.EndPosition()
-			a.appendError(Error{
-				ID: diagnostics.DuplicateSwitchCase, Severity: diagnostics.SeverityError,
-				Help:    "Remove the duplicate case or combine its body with the first case for this string value.",
-				Message: fmt.Sprintf("duplicate switch case value %q", value.String),
-				File:    token.File, Line: token.Line, Column: token.Column,
-				EndLine: endLine, EndColumn: endColumn,
-				PreviousFile: previous.File, PreviousLine: previous.Line, PreviousColumn: previous.Column,
-				RelatedLabel: "earlier equivalent string case",
-			})
+			a.reportSwitchCoverage(expressionToken(expr), previous, diagnostics.DuplicateSwitchCase, "duplicate switch case value %q", value.String)
 			return
 		}
 		tracker.stringValues[value.String] = expressionToken(expr)
@@ -112,12 +119,7 @@ func (a *Analyzer) checkSwitchValueCoverage(expr ast.Expression, tracker *switch
 	}
 	if _, key, ok := a.switchEnumCaseVariant(expr, tracker.subjectType); ok {
 		if previous, exists := tracker.enumValues[key]; exists {
-			a.addErrorAtTokenWithPreviousID(
-				expressionToken(expr),
-				previous,
-				diagnostics.DuplicateSwitchCase,
-				"duplicate switch case enum underlying value",
-			)
+			a.reportSwitchCoverage(expressionToken(expr), previous, diagnostics.DuplicateSwitchCase, "duplicate switch case enum underlying value")
 			return
 		}
 		tracker.enumValues[key] = expressionToken(expr)
@@ -128,13 +130,13 @@ func (a *Analyzer) checkSwitchValueCoverage(expr ast.Expression, tracker *switch
 		return
 	}
 	key := value.String()
-	if _, exists := tracker.values[key]; exists {
-		a.addErrorAtToken(expressionToken(expr), "duplicate switch case value %s", key)
+	if previous, exists := tracker.values[key]; exists {
+		a.reportSwitchCoverage(expressionToken(expr), previous, diagnostics.DuplicateSwitchCase, "duplicate switch case value %s", key)
 		return
 	}
 	for _, previous := range tracker.ranges {
 		if previous.contains(value) {
-			a.addErrorAtToken(expressionToken(expr), "switch case value %s is already covered by previous case", key)
+			a.reportSwitchCoverage(expressionToken(expr), previous.token, diagnostics.UnreachableStatement, "switch case value %s is already covered by previous case", key)
 			return
 		}
 	}
@@ -236,6 +238,9 @@ func (t *switchCoverageTracker) isExhaustive() bool {
 	return len(classes) > 0 && len(t.enumValues) == len(classes)
 }
 
+// checkSwitchRangeCoverage distinguishes full coverage from forbidden partial
+// range overlap, retaining the earlier item as the unreachable proof witness.
+// Rules: rules/control-flow/flowcontrol_switch.md §§21-22,34.
 func (a *Analyzer) checkSwitchRangeCoverage(expr *ast.RangeExpression, tracker *switchCoverageTracker) {
 	if tracker == nil || expr == nil {
 		return
@@ -245,24 +250,33 @@ func (a *Analyzer) checkSwitchRangeCoverage(expr *ast.RangeExpression, tracker *
 		return
 	}
 	for _, previous := range tracker.ranges {
-		if previous.relational && !current.coveredBy(previous) {
-			continue
+		if current.coveredBy(previous) {
+			a.reportSwitchCoverage(expr.Token, previous.token, diagnostics.UnreachableStatement, "unreachable switch case; previous case already covers this condition")
+			return
 		}
-		if current.overlaps(previous) {
-			a.addErrorAtToken(expr.Token, "%s", switchCoverageOverlapMessage(current, previous))
+		if !previous.relational && current.overlaps(previous) {
+			a.addErrorAtToken(expr.Token, "switch case range overlaps previous case")
 			return
 		}
 	}
-	for key := range tracker.values {
+	for key, previous := range tracker.values {
 		value, ok := new(big.Int).SetString(key, 10)
 		if ok && current.contains(value) {
-			a.addErrorAtToken(expr.Token, "switch case range overlaps previous case")
+			singleton := switchConstRange{min: value, max: value}
+			if current.coveredBy(singleton) {
+				a.reportSwitchCoverage(expr.Token, previous, diagnostics.UnreachableStatement, "unreachable switch case; previous case already covers this condition")
+			} else {
+				a.addErrorAtToken(expr.Token, "switch case range overlaps previous case")
+			}
 			return
 		}
 	}
 	tracker.ranges = append(tracker.ranges, current)
 }
 
+// checkSwitchRelationalCoverage reports only fully covered relational items;
+// a finite earlier range cannot hide a later unbounded relation by mere overlap.
+// Rules: rules/control-flow/flowcontrol_switch.md §§22-23,34.
 func (a *Analyzer) checkSwitchRelationalCoverage(item *ast.SwitchRelationalCase, tracker *switchCoverageTracker) {
 	if tracker == nil || item == nil {
 		return
@@ -272,26 +286,12 @@ func (a *Analyzer) checkSwitchRelationalCoverage(item *ast.SwitchRelationalCase,
 		return
 	}
 	for _, previous := range tracker.ranges {
-		if previous.relational {
-			if current.coveredBy(previous) {
-				a.addErrorAtToken(item.Token, "unreachable switch case; previous case already covers this condition")
-				return
-			}
-			continue
-		}
-		if current.overlaps(previous) {
-			a.addErrorAtToken(item.Token, "unreachable switch case; previous case already covers this condition")
+		if current.coveredBy(previous) {
+			a.reportSwitchCoverage(item.Token, previous.token, diagnostics.UnreachableStatement, "unreachable switch case; previous case already covers this condition")
 			return
 		}
 	}
 	tracker.ranges = append(tracker.ranges, current)
-}
-
-func switchCoverageOverlapMessage(current switchConstRange, previous switchConstRange) string {
-	if current.relational || previous.relational {
-		return "unreachable switch case; previous case already covers this condition"
-	}
-	return "switch case range overlaps previous case"
 }
 
 func switchConstRangeFromExpression(expr *ast.RangeExpression) (switchConstRange, bool) {

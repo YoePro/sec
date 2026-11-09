@@ -1,0 +1,64 @@
+module main
+@noCopy
+type Session struct { Id: int }
+
+fn LiveOrigin() int {
+    let mut value := 1
+    unsafe {
+        let pointer: RawPtr[int] := value.Ptr
+        let alias := pointer
+        let chained := alias
+        let view := chained.AsRef
+        return *view
+    }
+}
+fn UnknownOrigin(pointer: RawPtr[int]) int {
+    let alias := pointer
+    unsafe {
+        let view := alias.AsRef
+        return *view
+    }
+}
+fn PointerCopyIsNotBorrow() int {
+    let mut value := 1
+    unsafe {
+        let pointer: RawPtr[int] := value.Ptr
+        let alias := pointer
+        value = 2
+        let view := alias.AsRef
+        return *view
+    }
+}
+fn ReassignedDestination(other: RawPtr[int]) int {
+    let mut value := 1
+    unsafe {
+        let pointer: RawPtr[int] := value.Ptr
+        let mut alias := pointer
+        alias = other
+        let grant := ref mut value
+        let view := alias.AsRef
+        *grant = 2
+        return *view
+    }
+}
+fn ReassignedSource(other: RawPtr[int]) int {
+    let mut value := 1
+    unsafe {
+        let mut pointer: RawPtr[int] := value.Ptr
+        pointer = other
+        let alias := pointer
+        let grant := ref mut value
+        let view := alias.AsRef
+        *grant = 2
+        return *view
+    }
+}
+fn StoreAfterMove() RawPtr[Session] {
+    let owner := Session { Id: 1 }
+    unsafe {
+        let pointer: RawPtr[Session] := owner.Ptr
+        let alias := pointer
+        let moved :<- owner
+        return alias
+    }
+}

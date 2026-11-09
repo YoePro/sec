@@ -142,6 +142,8 @@ func errorPayloadPlace(resultPlace Place, selection errorSelection, token lexer.
 // against the error value stored at errorPlace. It returns the binding info
 // (single payload) or the field bindings (shallow fields), applying the
 // omitted-payload Information for a bare payload-carrying variant.
+// Rules: rules/control-flow/flowcontrol_match.md §§8(5),28;
+// rules/errors/errorhandling.md §15.3; rules/control-flow/discard.md §18.
 func (a *Analyzer) analyzeErrorPayloadPattern(subject ast.Expression, errorPlace Place, hasPlace bool, pattern *ast.MatchPattern, selection errorSelection) (matchPatternInfo, bool) {
 	info := matchPatternInfo{Variant: selection.variantKey(), EnumCaseName: typeDisplayName(selection.errorType) + "." + selection.name}
 	payload := pattern.ErrorPayload
@@ -155,6 +157,9 @@ func (a *Analyzer) analyzeErrorPayloadPattern(subject ast.Expression, errorPlace
 	variant := selection.variant
 	carriesPayload := variant.Payload != nil || len(variant.PayloadFields) > 0
 	if payload == nil {
+		if !a.checkMatchVariantDiscard(selection.errorType, variant, "Err("+selection.name+")", selection.token) {
+			return info, false
+		}
 		if carriesPayload {
 			a.reportOmittedPayloadPattern(selection.token, selection.errorType, variant)
 		}

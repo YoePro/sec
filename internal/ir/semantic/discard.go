@@ -96,7 +96,10 @@ func (fb *functionBuilder) discardOwnedField(stmt *ast.DiscardStatement, member 
 	return true, nil
 }
 
-// discardExpression evaluates expr and consumes its value.
+// discardExpression evaluates expr and consumes its value, including a
+// statement-match arm result before its arm cleanup and continuation.
+// Rules: rules/control-flow/discard.md §§9-10,36;
+// rules/control-flow/flowcontrol_match.md §19(2)-(6).
 func (fb *functionBuilder) discardExpression(expr ast.Expression, provenance DiscardProvenance, token lexer.Token) error {
 	typ, ok := fb.owner.analyzer.ResolvedTypeOf(expr)
 	if !ok {

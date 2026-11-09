@@ -31,13 +31,13 @@ type View struct { value: ref Point }
 type MutView struct { value: ref mut Point }
 type Pair union { Left(Point), Right(Point) }
 
-fn ResultReturn(value: Result[Point, Problem], ref fallback: Point) View {
+fn ResultReturn(value: Result[Point, Problem], fallback: ref Point) View {
     match value {
         Ok(ref point) => { return View { value: point } }
         Err(_) => { return View { value: fallback } }
     }
 }
-fn ErrReturn(value: Result[Point, Problem], ref fallback: Problem) ref Problem {
+fn ErrReturn(value: Result[Point, Problem], fallback: ref Problem) ref Problem {
     match value {
         Ok(_) => { return fallback }
         Err(ref problem) => { return problem }

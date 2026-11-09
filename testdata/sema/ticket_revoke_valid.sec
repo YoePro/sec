@@ -1,0 +1,26 @@
+module main
+
+fn Revoke(ticket: MessageTicket[int]) ChannelRevokeResult[int] {
+    return ticket.Revoke()
+}
+
+fn AfterSenderClose(sender: Sender[int], ticket: MessageTicket[int]) ChannelRevokeResult[int] {
+    sender.Close()
+    return ticket.Revoke()
+}
+
+type Pair struct {
+    First: MessageTicket[int],
+    Second: MessageTicket[int],
+}
+
+fn Fields(pair: Pair) ChannelRevokeResult[int] {
+    discard pair.First.Revoke()
+    return pair.Second.Revoke()
+}
+
+fn AfterBorrow(ticket: MessageTicket[int]) ChannelRevokeResult[int] {
+    let view := ref ticket
+    discard view
+    return ticket.Revoke()
+}

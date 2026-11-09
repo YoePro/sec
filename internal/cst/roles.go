@@ -664,6 +664,16 @@ func (d *Document) ApplyProgramRoles(program *ast.Program) {
 					mark(node.DiscardToken, SpacedBefore)
 				}
 			}
+		case *ast.SelectBranch:
+			// grammar.md § 63: `join handle =>` keeps one space after join.
+			if node.Kind == ast.SelectJoinBranch && node.Value != nil {
+				mark(node.Token, SpacedKeyword)
+			}
+		case *ast.JoinStatement:
+			// rules/concurrency/threads.md § 34: contextual `join handle`.
+			if node.Token.Lexeme == "join" && node.Value != nil {
+				mark(node.Token, SpacedKeyword)
+			}
 		case *ast.AssertStatement:
 			// rules/errors/panic.md §15.1 and formatter.md §23(1) statement syntax.
 			if node.Token.Type == lexer.ASSERT && node.Condition != nil {

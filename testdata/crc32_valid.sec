@@ -45,9 +45,9 @@ impl Crc32Context {
 
         let mut table: uint32[256]
 
-        int mut: i
+        let mut i: uint32 := 0
         while i < 256 {
-            let mut crc := uint32(i)
+            let mut crc := i
             int mut: j
             while j < 8 {
                 if (crc & 1) != 0 {
@@ -62,9 +62,9 @@ impl Crc32Context {
         }
 
         // Pure lambda taking 'tbl' via ref parameter instead of capturing outer state
-        let bitProcessor: fn(uint32, uint8, ref uint32[256]) uint32 := fn(currentCrc: uint32, byteVal: uint8, ref tbl: uint32[256]) uint32 {
-            let index: uint8 := uint8(currentCrc ^ uint32(byteVal))
-            return (currentCrc >> 8) ^ tbl[int(index)]
+        let bitProcessor: fn(uint32, uint8, ref uint32[256]) uint32 := fn(currentCrc: uint32, byteVal: uint8, tbl: ref uint32[256]) uint32 {
+            let index := (currentCrc ^ uint32(byteVal)) & 0xFF
+            return (currentCrc >> 8) ^ tbl[index]
         }
 
         uint32 mut: crcState := self.InitialValue

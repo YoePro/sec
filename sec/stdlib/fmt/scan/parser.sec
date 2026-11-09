@@ -34,6 +34,41 @@ type _ScanField struct {
 }
 
 /**
+ * Selects how a formatted input field ends.
+ *
+ * Description:
+ * LiteralRun uses a sequence of validated format tokens.
+ * Token stops at Unicode whitespace or end of input.
+ */
+type _ScanFieldBoundary union {
+    // The field ends before the next matching literal run.
+    LiteralRun(_ScanLiteralRun)
+
+    // The field ends at whitespace or end of input.
+    Token
+}
+
+/**
+ * Reports a failure during internal scan field extraction.
+ *
+ * Description:
+ * Preserves format parsing and string range errors separately.
+ */
+type _ScanFieldReadError union error {
+    // The literal pattern is invalid.
+    Pattern(FormatError)
+
+    // The requested input range is invalid.
+    Range(RangeError)
+
+    /**
+     * The input contains text, but the required literal
+     * delimiter could not be found.
+     */
+    DelimiterNotFound
+}
+
+/**
  * Finds the next exact literal in input.
  *
  * Description:
@@ -96,9 +131,7 @@ fn _FindNextLiteral(input: StringView, startRune: uint, literal: StringView) Opt
  * Description:
  * Finds the first exact delimiter occurrence after startRune.
  * Returns the preceding text as a borrowed StringView.
- *
- * An empty field is valid at this level. The destination
- * parser decides whether an empty value is acceptable.
+ * The delimiter is not consumed.
  *
  * Parameters:
  * - input: Source text.
@@ -106,7 +139,7 @@ fn _FindNextLiteral(input: StringView, startRune: uint, literal: StringView) Opt
  * - literal: Non-empty delimiter to locate.
  *
  * Returns:
- * - Ok(Some(field)): Field and position after its delimiter.
+ * - Ok(Some(field)): Field and position at the delimiter.
  * - Ok(None): Delimiter not found.
  *
  * Errors:
@@ -137,10 +170,7 @@ fn _ReadFieldUntilLiteral(
 
             return Ok(Some(_ScanField {
                 Text: field,
-                Next: _ScanPosition {
-                    RuneIndex: position.RuneIndex + literal.Len,
-                    ByteOffset: position.ByteOffset + literal.SizeOf,
-                },
+                Next: position,
             }))
         }
     }
@@ -205,4 +235,132 @@ fn _ReadNextToken(input: StringView, startRune: uint) Result[Option[_ScanField],
             ByteOffset: endByte,
         },
     }))
+}
+
+/**
+ * Extracts a field preceding a literal format run.
+ *
+ * Description:
+ * Searches for the first complete occurrence of a literal
+ * format run, including escaped braces.
+ *
+ * Returns the preceding text as a borrowed StringView.
+ * The delimiter remains unconsumed.
+ *
+ * Parameters:
+ * - input: Borrowed input text.
+ * - startRune: First rune position of the field.
+ * - format: Validated composite format.
+ * - run: Literal sequence delimiting the field.
+ *
+ * Returns:
+ * - Ok(Some(field)): Extracted field and delimiter position.
+ * - Ok(None): Delimiter not found.
+ *
+ * Errors:
+ * - Pattern: Invalid literal format run.
+ * - Range: Invalid input range.
+ *
+ * Ownership:
+ * Returned text borrows the original input.
+ *
+ * Allocation:
+ * Does not allocate.
+ */
+fn _ReadFieldUntilLiteralRun(
+    input:     StringView,
+    startRune: uint,
+    format:    StringView,
+    run:       _ScanLiteralRun,
+) Result[Option[_ScanField], _ScanFieldReadError] {
+    if startRune > input.Len {
+        return Err(
+            _ScanFieldReadError.Range(RangeError.OutOfBounds),
+        )
+    }
+
+    let found := try _FindNextLiteralRun(
+        input,
+        startRune,
+        format,
+        run,
+    ) {
+        Err(cause) => {
+            return Err(_ScanFieldReadError.Pattern(cause))
+        }
+    }
+
+    match found {
+        None => return Ok(None)
+
+        Some(position) => {
+            let field := try input[startRune..<position.RuneIndex] {
+                Err(cause) => {
+                    return Err(_ScanFieldReadError.Range(cause))
+                }
+            }
+
+            return Ok(Some(_ScanField {
+                Text: field,
+                Next: position,
+            }))
+        }
+    }
+}
+
+/**
+ * Extracts one formatted input field.
+ *
+ * Description:
+ * Dispatches to either literal-run matching or token extraction.
+ * Does not convert the field or assign destination values.
+ *
+ * A following delimiter remains unconsumed.
+ *
+ * Parameters:
+ * - input: Borrowed input text.
+ * - startRune: First rune position of the field.
+ * - format: Validated composite format string.
+ * - boundary: Field termination rule.
+ *
+ * Returns:
+ * - Ok(Some(field)): Extracted field and ending position.
+ * - Ok(None): No matching field was found.
+ *
+ * Errors:
+ * - Pattern: Invalid literal format run.
+ * - Range: Invalid input range.
+ *
+ * Ownership:
+ * Returned text borrows the original input.
+ *
+ * Allocation:
+ * Does not allocate.
+ */
+fn _ReadPlaceholderField(
+    input:     StringView,
+    startRune: uint,
+    format:    StringView,
+    boundary:  _ScanFieldBoundary,
+) Result[Option[_ScanField], _ScanFieldReadError] {
+    match boundary {
+        LiteralRun(run) => {
+            return _ReadFieldUntilLiteralRun(
+                input,
+                startRune,
+                format,
+                run,
+            )
+        }
+
+        Token => {
+            let result := try _ReadNextToken(input, startRune) {
+                Err(cause) => {
+                    return Err(_ScanFieldReadError.Range(cause))
+                }
+            }
+
+            return Ok(result)
+        }
+    }
 }

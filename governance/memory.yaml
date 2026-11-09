@@ -1150,19 +1150,53 @@ integrations:
       - compiler-known member identity and unsafe classification exist for represented RawPtr operations
       - volatile raw-pointer operations publish ordered volatile effect sites
       - some raw-pointer type and argument constraints are known to Sema
+      - "Ordinary raw-memory effects (2026-11-09; raw_pointers.md section 31): validated Read/Write publish stable memory-read/memory-write identities from the shared compiler-known registry, with ordered call-graph source sites. VolatileRead/VolatileWrite retain separate canonical volatile identities; possession/copy/return of a raw pointer produces no access effect. An ordinary read alone implies neither volatile access, I/O nor nondeterministic input; a raw write without local-storage proof conservatively contributes MayMutateExternalState with a transitive call-site cause. No MMIO/device domain is invented from a bare pointer; mapping/foreign-domain facts remain separately tracked. Invalid accesses publish no successful access event. CLI analysis and LSP hover consume the same facts."
+      - "Immutable raw-pointer null aliases (2026-11-09; raw_pointers.md §§5.1,7(3,6-9a),32,34): nullability proven for an immutable pointer initializer now survives immutable copy bindings and copy chains, including copies from a stable binding on a dominating null path. Shared provenNullRawPointerBinding supplies the same conservative proof to binding propagation and access rejection. Unknown pointers, mutable/reassigned destinations, reassigned path sources and volatile bindings receive no invented proof; copying/returning a null pointer remains legal inside the required unsafe syntax context. Read, Write, VolatileRead, VolatileWrite, AsRef and AsRefMut through a proven-null alias reject with canonical S1142 and the alias declaration as related source, without successful access effects or emitted IR. Source-backed Sema/CLI/LSP tests share the same valid/invalid fixtures; no parallel editor classifier or new language decision."
+      - "Immutable raw-pointer origin aliases (2026-11-09; raw_pointers.md §§4(4),5.1,23(5-7),24(3-7),32(3),34, MD-070 §4(2),§5(3)): a copied/chained immutable RawPtr now retains a detached clone of its known .Ptr origin Place. Existing AsRef/AsRefMut validation therefore rejects the same known dangling owner and overlapping live-borrow contradictions through aliases as through the original pointer. Canonical S1206/S1161/S1162 diagnostics and move/borrow source locations are shared by Sema, CLI and LSP; rejected source produces no IR. Live and unknown origins remain accepted under their existing unsafe obligations; mutable/reassigned pointer sources or destinations receive no stale origin proof, and merely storing/returning a dangling raw address remains permitted without granting safe-reference authority or retaining its owner. Shared valid/invalid source fixtures cover direct copies, chains, moved owners and mutable/shared conflicts. No new syntax, ownership guarantee or parallel editor provenance model."
     remaining:
       - retain optional known raw origin, range, alignment, nullability and lifetime facts without pretending the bare RawPtr type guarantees them
-      - feed known raw-pointer contradictions into compile-time rejection even inside unsafe
+      - complete compile-time rejection of other known raw-pointer contradictions even inside unsafe, including represented origin/range/alignment/lifetime facts; proven-null direct accesses and immutable pointer-copy aliases (including stable null-path copies) now reject all four access operations and AsRef/AsRefMut through the canonical S1142 diagnostic; immutable copied/chained .Ptr origin aliases also preserve the existing availability and live-borrow rejection for AsRef/AsRefMut; general raw access, other origins and mapping/FFI facts still require integration
       - integrate raw-pointer effects into noPanic, noAlloc, noBlock, ISR and call-graph analyses
       - connect FFI retention, ownership and extent contracts to raw-pointer facts
       - connect runtime mapping lifetime and address-space contracts to raw-pointer facts
-      - distinguish ordinary memory Read and Write effects from volatile and MMIO effects
     required_tests:
       - known-null fact reaches raw read diagnostic
       - known mapping end marks dependent raw pointer potentially dangling without extending mapping lifetime
       - volatile operations contribute volatile effects
       - raw pointer possession alone contributes no dereference effect
       - ISR call path includes raw helper effects
+    code:
+      - internal/sema/raw_pointer_operations.go
+      - internal/sema/compiler_known_physical_storage.go
+      - internal/sema/call_graph.go
+      - internal/sema/call_graph_summaries.go
+      - internal/sema/raw_pointer_null_proof.go
+      - internal/sema/raw_pointer_references.go
+    tests:
+      - internal/sema/raw_pointer_registry_test.go
+      - internal/sema/raw_memory_effects_test.go
+      - cmd/compiler/raw_memory_effects_test.go
+      - cmd/lsp/raw_memory_effects_test.go
+      - testdata/sema/raw_memory_effects.sec
+      - testdata/sema/raw_memory_effects_invalid.sec
+      - internal/sema/raw_null_alias_test.go
+      - cmd/compiler/raw_null_alias_test.go
+      - cmd/lsp/raw_null_alias_test.go
+      - testdata/sema/raw_null_alias_valid.sec
+      - testdata/sema/raw_null_alias_invalid.sec
+      - internal/sema/raw_origin_alias_test.go
+      - cmd/compiler/raw_origin_alias_test.go
+      - cmd/lsp/raw_origin_alias_test.go
+      - testdata/sema/raw_origin_alias_valid.sec
+      - testdata/sema/raw_origin_alias_invalid.sec
+    revised: "2026-11-09"
+    verification:
+      - command: go test -p 4 ./internal/sema -count=1; go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run "TestRawOriginAlias|TestRawPointerReferenceConversions|TestRawNullAlias|TestRawPointerMentor" -count=1; go vet -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: "Passed 2026-11-09: complete Sema 18.640s; focused Sema/CLI/LSP 0.079s / 16.497s / 6.288s; vet passed. Four copied-origin contradictions preserve canonical IDs/help and earlier move/borrow locations, with no IR artifact. Valid live/unknown/reassigned origins and pointer storage after owner move remain accepted. 1 implemented point added, 1 remaining narrowed, 0 closed; analysis.raw-pointers remaining 5 to 5."
+      - command: go test -p 4 ./internal/sema -count=1; go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run "TestRawNullAlias|TestProvenNullRawPointer|TestRawPointerMentor" -count=1; go vet -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: "Passed 2026-11-09: complete Sema 17.287s; targeted Sema 0.166s, CLI 11.271s and LSP 3.611s; vet passes. Final alias-only checks, including permitted copy/return of null without access, pass 0.012s / 3.017s / 1.951s. Eight source-invalid alias accesses retain canonical S1142/source/help, publish no successful effects and emit no artifact. Unknown, reassigned and non-null path cases remain accepted. 1 implemented point added, 1 remaining narrowed, 0 closed; analysis.raw-pointers remaining 5 to 5."
+      - command: go test -p 4 ./internal/sema -count=1; go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run 'TestRawMemory|TestRejectedRawMemory|TestRawPointerRegistrySurface|TestCompilerKnownRawPointerVolatileAccess' -count=1; go vet -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: "Passed on 2026-11-09: complete Sema suite (16.273s); focused Sema/CLI/LSP tests (0.046s/1.270s/3.851s); vet clean. Checks ordinary versus volatile identities, no access from mere possession, conservative transitive external-write provenance, no invented I/O/nondeterminism domains, rejected-operation silence, verbose analysis output and source-resolved LSP hover."
 
   - id: semantic-ir.raw-pointers
     area: semantic-ir-raw-pointer-facts

@@ -170,6 +170,13 @@ func (g *CallGraph) directDomainCauses(id CallableID) []EffectDomainCause {
 		}
 	}
 	for _, effect := range g.effects[id] {
+		// An ordinary read is retained as an ordered direct memory effect,
+		// but alone proves none of the may-domains (in particular volatile,
+		// I/O or nondeterministic input). Storage-domain facts add those
+		// independently. Rules: raw_pointers.md §31; effect_analysis.md §§35–37.
+		if effect.Kind == EffectMemoryRead {
+			continue
+		}
 		if domain, known := summaryDomainForEffect(effect.Kind); known {
 			uncertain := effect.Kind == EffectMayPanicForeign || effect.Kind == EffectMayPanicUnknownCallee
 			add(domain, effect.Source, string(effect.Kind), uncertain, effect)
@@ -246,7 +253,11 @@ func summaryDomainForEffect(kind EffectKind) (SummaryEffect, bool) {
 		return SummaryMaySpawn, true
 	case EffectMayIO:
 		return SummaryMayIO, true
-	case EffectMayMutateExternalState:
+	case EffectMayMutateExternalState, EffectMemoryWrite:
+		// Bare raw pointers do not prove locally confined storage, so a
+		// write may mutate external state. This adds no volatile/MMIO fact.
+		// Rules: rules/memory/raw_pointers.md §31(2),(4);
+		// rules/analysis/effect_analysis.md §36(1–3).
 		return SummaryMayMutateExternalState, true
 	case EffectVolatileRead, EffectVolatileWrite:
 		return SummaryMayAccessVolatile, true

@@ -330,7 +330,6 @@ integrations:
       - rules/declarations/unions.md
       - rules/control-flow/discard.md
       - rules/errors/errorhandling.md
-      - rules/corrections/applied/ownership-errorhandling-correction-20260824.md
       - rules/corrections/applied/return-context-ownership-forwarding-correction-20260903.md
     code:
       - internal/ast/ast.go

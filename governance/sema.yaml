@@ -164,7 +164,6 @@ integrations:
       - internal/ir/semantic
       - internal/lowering/secmlir
       - internal/formatter/formatter_test.go
-      - cmd/compiler/float_operators_test.go
       - testdata/codegen/float_operators/matrix.sec
       - testdata/codegen/float_operators/effects.sec
       - testdata/codegen/float_operators/effects.c

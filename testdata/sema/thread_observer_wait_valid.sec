@@ -1,0 +1,11 @@
+module main
+
+fn Metadata(observer: ThreadObserver[int]) void {
+    let copy := observer
+    let name: string := copy.Name
+    let status: ThreadStatus := observer.Status
+    discard name
+    discard status
+    discard copy
+    discard observer
+}

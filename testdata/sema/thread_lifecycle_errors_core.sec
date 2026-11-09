@@ -1,0 +1,29 @@
+module core
+
+enum ThreadSpawnError error {
+    // Memory for the thread/control representation could not be obtained.
+    OutOfMemory
+    // The target/runtime thread resource limit was reached.
+    ResourceLimit
+    // Required runtime stack/backing storage could not be established.
+    StackAllocationFailed
+    // Runtime-derived configuration could not be instantiated.
+    InvalidConfiguration
+    // The native environment denied creation.
+    PermissionDenied
+    // TLS runtime infrastructure could not be established before execution.
+    ThreadLocalInitializationFailed
+    // An otherwise unrepresented target/runtime creation failure.
+    NativeFailure
+}
+
+enum ThreadStartError error {
+    // The deferred thread cannot start from its current state.
+    InvalidState
+    // Required runtime/native start resources are unavailable.
+    ResourceUnavailable
+    // The runtime/native environment denied start.
+    PermissionDenied
+    // An otherwise unrepresented target/runtime start failure.
+    NativeFailure
+}

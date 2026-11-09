@@ -1,0 +1,26 @@
+module main
+
+fn SpawnFailure(value: ThreadSpawnError) Result[int, ThreadSpawnError] {
+    match value {
+        ThreadSpawnError.OutOfMemory => { return Err(value) }
+        ThreadSpawnError.ResourceLimit => { return Err(value) }
+        ThreadSpawnError.StackAllocationFailed => { return Err(value) }
+        ThreadSpawnError.InvalidConfiguration => { return Err(value) }
+        ThreadSpawnError.PermissionDenied => { return Err(value) }
+        ThreadSpawnError.ThreadLocalInitializationFailed => { return Err(value) }
+        ThreadSpawnError.NativeFailure => { return Err(value) }
+    }
+}
+
+fn StartFailure(value: ThreadStartError) Result[void, ThreadStartError] {
+    match value {
+        ThreadStartError.InvalidState => { return Err(value) }
+        ThreadStartError.ResourceUnavailable => { return Err(value) }
+        ThreadStartError.PermissionDenied => { return Err(value) }
+        ThreadStartError.NativeFailure => { return Err(value) }
+    }
+}
+
+fn Erase() error {
+    return ThreadSpawnError.OutOfMemory
+}

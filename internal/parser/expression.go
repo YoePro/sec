@@ -135,11 +135,17 @@ func (p *Parser) parseExpression(currentPrecedence precedence) ast.Expression {
 	case lexer.AT:
 		// MD-030 § 5(2): an attribute is never an expression prefix; a
 		// lambda's @noPanic is written on its own line before its `let`.
-		if p.peekToken.Type == lexer.IDENT && compilerKnownAttributeName(p.peekToken.Lexeme) &&
-			(p.tokenAfterPeek() == lexer.FN || p.tokenAfterPeek() == lexer.CAPTURE) {
+		if p.peekToken.Type == lexer.IDENT && (p.tokenAfterPeek() == lexer.FN || p.tokenAfterPeek() == lexer.CAPTURE) {
 			attribute := p.peekToken
-			p.addDiagnostic(compilerdiagnostics.AttributeNotAllowedOnTarget, p.curToken, nil, nil,
-				"@%s cannot prefix a lambda expression; write it on its own line before the let that directly initializes the lambda at %d:%d", attribute.Lexeme, p.curToken.Line, p.curToken.Column)
+			if attribute.Lexeme == "noPanic" {
+				p.addDiagnostic(compilerdiagnostics.AttributeNotAllowedOnTarget, p.curToken, nil, nil,
+					"@%s cannot prefix a lambda expression; write it on its own line before the let that directly initializes the lambda at %d:%d", attribute.Lexeme, p.curToken.Line, p.curToken.Column)
+			} else {
+				// lambda-functions.md § 32: lambda expressions take no
+				// attributes; only @noPanic attaches through its let.
+				p.addDiagnostic(compilerdiagnostics.AttributeNotAllowedOnTarget, p.curToken, nil, nil,
+					"lambda expressions do not accept attributes; remove @%s (only @noPanic may annotate a lambda, on its own line before the let that initializes it) at %d:%d", attribute.Lexeme, p.curToken.Line, p.curToken.Column)
+			}
 			p.nextToken()
 			p.nextToken()
 			if p.curToken.Type == lexer.CAPTURE {
@@ -431,10 +437,24 @@ func (p *Parser) parseCaptureLambdaExpression() ast.Expression {
 				p.peekToken.Line,
 				p.peekToken.Column,
 			)
-			return nil
+			if !p.skipCaptureEntry() {
+				return nil
+			}
+			if p.peekToken.Type == lexer.COMMA {
+				p.nextToken()
+			}
+			continue
 		}
 		capture.Name = &ast.Identifier{Token: p.curToken, Value: p.curToken.Lexeme}
-		captures = append(captures, capture)
+		if p.peekToken.Type != lexer.COMMA && p.peekToken.Type != lexer.RPAREN && p.peekToken.Type != lexer.EOF {
+			// lambda-functions.md § 14: captures name bindings only.
+			p.addError("capture entries name a local binding; arbitrary capture expressions are not part of Sec 0.1: bind the value first (`let value := ...`) and capture that binding at %d:%d", p.peekToken.Line, p.peekToken.Column)
+			if !p.skipCaptureEntry() {
+				return nil
+			}
+		} else {
+			captures = append(captures, capture)
+		}
 
 		if p.peekToken.Type == lexer.COMMA {
 			p.nextToken()
@@ -456,6 +476,14 @@ func (p *Parser) parseCaptureLambdaExpression() ast.Expression {
 func (p *Parser) parseLambdaExpression(captures []ast.LambdaCapture, captureOpen lexer.Token) ast.Expression {
 	expr := &ast.LambdaExpression{Token: p.curToken, CaptureOpen: captureOpen, Captures: captures}
 
+	if p.peekToken.Type == lexer.LBRACKET {
+		// lambda-functions.md § 31: a lambda is one concrete callable; a
+		// generic one would be a template. Skip the parameter list and keep
+		// parsing the lambda.
+		p.nextToken()
+		p.addError("generic lambdas are not part of Sec 0.1; declare a named generic function and use a concrete specialization as the callable value at %d:%d", p.curToken.Line, p.curToken.Column)
+		p.skipBalancedGroup(lexer.LBRACKET, lexer.RBRACKET)
+	}
 	if !p.expectPeek(lexer.LPAREN) {
 		return nil
 	}
@@ -473,6 +501,20 @@ func (p *Parser) parseLambdaExpression(captures []ast.LambdaCapture, captureOpen
 	p.nextToken()
 	expr.ReturnType = p.parseTypeReference()
 
+	if p.peekToken.Type == lexer.ARROW {
+		// lambda-functions.md § 2: a lambda always has a block body; the
+		// expression shorthand is recovered as a block returning it.
+		p.nextToken()
+		arrow := p.curToken
+		p.addError("lambda expression bodies are not part of Sec 0.1; write a block such as `{ return ... }` at %d:%d", arrow.Line, arrow.Column)
+		p.nextToken()
+		value := p.parseExpression(LOWEST)
+		if value == nil {
+			return nil
+		}
+		expr.Body = &ast.BlockStatement{Token: arrow, EndToken: p.curToken, Statements: []ast.Statement{&ast.ReturnStatement{Token: arrow, Value: value}}}
+		return expr
+	}
 	expr.Body = p.parseFunctionBlockStatement()
 	if expr.Body == nil {
 		return nil
@@ -842,7 +884,8 @@ func (p *Parser) skipMatchArm(start lexer.Token) RecoveryEvent {
 // task default.
 //
 // Rules:
-//   - rules/concurrency/tasks.md — spawn expressions
+//   - rules/concurrency/spawn.md — §2(1–9)
+//   - rules/foundations/grammar.md — §89
 //   - rules/foundations/lexical_structure.md — §8 contextual reserved words
 func (p *Parser) parseSpawnExpression() ast.Expression {
 	expr := &ast.SpawnExpression{Token: p.curToken, Kind: contextualTask}
@@ -856,6 +899,15 @@ func (p *Parser) parseSpawnExpression() ast.Expression {
 		expr.Body = p.parseStatementBlock("spawn body")
 		return expr
 	}
+	// Preserve the enclosing delimiter so malformed spawn operands cannot
+	// consume a call argument, array boundary or surrounding block.
+	switch p.peekToken.Type {
+	case lexer.EOF, lexer.SEMICOLON, lexer.RBRACE, lexer.COMMA, lexer.RPAREN, lexer.RBRACKET, lexer.LET, lexer.RETURN:
+		message := "spawn requires an expression or block after its execution kind"
+		p.addDiagnostic(compilerdiagnostics.ParserInvalidExpression, expr.Token, nil, nil, "%s", message)
+		expr.Value = p.invalidExpression(expr.Token, message, compilerdiagnostics.ParserInvalidExpression)
+		return expr
+	}
 	p.nextToken()
 	expr.Value = p.parseExpression(PREFIX)
 	if expr.Value == nil {
@@ -864,6 +916,8 @@ func (p *Parser) parseSpawnExpression() ast.Expression {
 	return expr
 }
 
+// isSpawnKindModifier recognizes modifiers only at the spawn grammar boundary.
+// Rules: rules/concurrency/spawn.md — §2(4–9); rules/foundations/grammar.md — §89.
 func isSpawnKindModifier(value string) bool {
 	switch value {
 	case contextualTask, contextualThread, contextualProcess:
@@ -2644,4 +2698,54 @@ func (p *Parser) rejectLegacyWordMoveArgument(arg ast.Expression) (ast.Expressio
 		return nil, false
 	}
 	return source, true
+}
+
+// skipBalancedGroup consumes from the current opening token through its
+// matching closing token, or stops at end of file.
+func (p *Parser) skipBalancedGroup(open, close lexer.TokenType) {
+	depth := 1
+	for depth > 0 && p.peekToken.Type != lexer.EOF {
+		p.nextToken()
+		switch p.curToken.Type {
+		case open:
+			depth++
+		case close:
+			depth--
+		}
+	}
+}
+
+// skipCaptureEntry consumes the rest of an invalid capture entry up to, but
+// not including, the next top-level comma or the closing parenthesis. It
+// reports false when the list does not continue there (an unbalanced closer,
+// a line break into the next statement, or end of file), so the caller stops
+// parsing the capture clause instead of looping.
+func (p *Parser) skipCaptureEntry() bool {
+	depth := 0
+	start := p.curToken.Line
+	for p.peekToken.Type != lexer.EOF {
+		switch p.peekToken.Type {
+		case lexer.LPAREN, lexer.LBRACKET, lexer.LBRACE:
+			depth++
+		case lexer.RPAREN:
+			if depth == 0 {
+				return true
+			}
+			depth--
+		case lexer.RBRACKET, lexer.RBRACE:
+			if depth == 0 {
+				return false
+			}
+			depth--
+		case lexer.COMMA:
+			if depth == 0 {
+				return true
+			}
+		}
+		if depth == 0 && p.peekToken.Line > start+1 {
+			return false
+		}
+		p.nextToken()
+	}
+	return false
 }

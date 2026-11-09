@@ -1,0 +1,42 @@
+module main
+fn Unknown(pointer: RawPtr[int]) int {
+    unsafe {
+        let alias := pointer
+        return alias.Read()
+    }
+}
+fn NonNullPath(pointer: RawPtr[int]) int {
+    unsafe {
+        if pointer is not null {
+            let alias := pointer
+            return alias.Read()
+        }
+        return 0
+    }
+}
+fn ReassignedDestination(pointer: RawPtr[int]) int {
+    unsafe {
+        let empty: RawPtr[int] := null
+        let mut alias := empty
+        alias = pointer
+        return alias.Read()
+    }
+}
+fn ReassignedSource(pointer: RawPtr[int], other: RawPtr[int]) int {
+    unsafe {
+        if pointer is null {
+            pointer = other
+            let alias := pointer
+            return alias.Read()
+        }
+        return 0
+    }
+}
+
+fn CopyNullOnly() RawPtr[int] {
+    unsafe {
+        let empty: RawPtr[int] := null
+        let alias := empty
+        return alias
+    }
+}

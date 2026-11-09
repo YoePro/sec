@@ -165,7 +165,7 @@ func TestAnalyzerPublishesDependencyAndFixedPointSchedule(t *testing.T) {
 				}
 				seen[record.ID] = true
 			}
-			if len(records) != 10 || !seen["pitfalls"] {
+			if len(records) != 11 || !seen["pitfalls"] {
 				t.Fatalf("missing pipeline stages: %+v", records)
 			}
 			before := analyzer.AnalysisSchedule()
@@ -226,7 +226,7 @@ func TestAnalysisScheduleDoesNotTreatCompletionAsValidity(t *testing.T) {
 		if errors := analyzer.Analyze(program); len(errors) == 0 {
 			t.Fatal("completed schedule erased normative type error")
 		}
-		if len(analyzer.AnalysisSchedule()) != 10 {
+		if len(analyzer.AnalysisSchedule()) != 11 {
 			t.Fatal("semantic recovery omitted execution provenance")
 		}
 	}

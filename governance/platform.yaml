@@ -607,9 +607,16 @@ integrations:
       - internal/parser/parser.go
       - internal/sema/analyzer.go
       - sec/platform/linux/amd64/raw_syscall.sec
+      - internal/sema/analyzer_asm.go
+      - internal/diagnostics/diagnostics.go
     tests:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
+      - internal/sema/asm_operand_types_test.go
+      - cmd/compiler/asm_operand_types_test.go
+      - cmd/lsp/asm_operand_types_test.go
+      - testdata/sema/asm_operand_types_valid.sec
+      - testdata/sema/asm_operand_types_invalid.sec
     implemented:
       - parser recognizes asm statements and the structured asm block form
       - structured parser retains assembly template plus inputs, outputs, and clobbers
@@ -618,6 +625,7 @@ integrations:
       - Linux/amd64 platform syscall source uses structured inline assembly with fixed syscall registers and explicit rcx/r11/memory clobbers
       - effect-analysis trust provenance already recognizes facts trusted through an inline assembly declaration
       - unsafe governance already identifies inline assembly as an unsafe trust boundary and requires effect/target analyses to remain active
+      - Direct register inputs and inferred outputs reject high-level, nominal, constrained, enum, aggregate, reference, resource-owning, collection, shaped and callable types with registered mandatory S1207 asm.invalid-register-operand-type and explicit representation-extraction guidance. Primitive integer/float and RawPtr carriers retain their existing behavior; width, target operand-class and ABI validation remain separately tracked. Source-backed tests cover eighteen invalid input types, two invalid output types, explicit primitive conversion and invalid-IR suppression (2026-11-09)
     incorrect_or_partial:
       - current LLVM asm block lowering supports exactly one output and hardcodes the result type to i64
       - current LLVM lowering coerces every asm input to i64, including implicit integer extension/truncation, contrary to the exact-width rule
@@ -641,7 +649,6 @@ integrations:
       - replace current target-sized/int64 asm coercion model with fixed-width direct integer operands and exact logical width matching
       - support float32/float64 only for compatible target operand classes
       - support RawPtr[T] as the canonical raw-address operand without silently converting it into an integer semantic type
-      - reject direct string, bool, rune, user-defined, constrained, enum, aggregate, reference, owned-resource, collection, and shaped-type register operands in Sec 0.1
       - reserve future target-defined SIMD/GPU machine operand categories without making Sec vectors/tensors direct asm operands
       - resolve fixed registers, register classes, immediates, address/memory operands, and target-defined constraints against target knowledge rather than LLVM spelling
       - validate immediate width/range and known operand-form restrictions before final backend emission where practical
@@ -760,3 +767,15 @@ integrations:
       - automatic inference of atomicity, interrupt masking, ordering, completion, blocking, or other correctness-critical semantics from instruction mnemonics
       - a specific future GPU/SIMD machine-vector operand design
       - "target applicability scope syntax such as the exact ownership of #target versus @target"
+    revised: "2026-11-09"
+    verification:
+      - command: go test -p 4 ./internal/ir/... ./cmd/compiler ./cmd/lsp -run "TestAsmOperandTypes|TestUnsafeNamedAsm|TestInlineAsm|TestGenerateUnsafe" -count=1
+        result: passed on 2026-11-09; compiler 4.884s and LSP 2.174s asm boundary regressions passed; IR packages compiled with no matching selected tests
+      - command: go test -p 4 ./internal/sema ./internal/diagnostics -count=1
+        result: passed on 2026-11-09; Sema 15.332s, diagnostics 0.001s; the stale default-rulebook inventory heading marker was updated to section 52 without weakening its assertions
+      - command: go vet -p 4 ./internal/sema ./internal/diagnostics ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-11-09
+      - command: go test -p 4 ./cmd/compiler -run "^TestAsmOperandTypesCLI$" -count=1
+        result: passed on 2026-11-09 (2.510s); final CLI regression also asserts that invalid emit-ir produces no artifact
+      - command: go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run "^TestAsmOperandTypes" -count=1
+        result: passed on 2026-11-09; Sema 0.006s, CLI 2.480s, LSP 1.611s; twenty high-level input/output operand errors have canonical S1207, while primitive carriers, RawPtr and explicit conversion remain valid

@@ -10,6 +10,7 @@ import (
 )
 
 // recordImplicitDiscard records one legal standalone ordinary call result.
+// Source-expression identity deduplicates synthetic match-arm statement wrappers.
 // Summary/backedge probes do not duplicate advice, and promotion is delayed
 // until mandatory semantic analysis has completed so policy cannot alter flow.
 // Rules: rules/control-flow/discard.md — §§10–13,37–38;
@@ -39,7 +40,7 @@ func (a *Analyzer) recordImplicitDiscard(stmt *ast.ExpressionStatement, typ Type
 		fact.PreviousFile, fact.PreviousLine, fact.PreviousColumn = declaration.File, declaration.Line, declaration.Column
 		fact.RelatedLabel = "selected callable declaration"
 	}
-	a.implicitDiscards[stmt] = fact
+	a.implicitDiscards[stmt.Expression] = fact
 }
 
 // emitImplicitDiscardAdvisories publishes the deduplicated source occurrences

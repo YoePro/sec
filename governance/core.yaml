@@ -21,7 +21,6 @@ integrations:
       - rules/library/core-library.md
       - rules/types/types.md
       - rules/foundations/names_scopes_visibility.md
-      - rules/corrections/applied/correction-string-slice-helper-20260823.md
     code:
       - internal/sema/function_visibility.go
       - internal/sema/parameter_naming.go

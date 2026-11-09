@@ -1,0 +1,45 @@
+module main
+
+type Handle struct { id: int }
+impl Handle { free {} }
+fn Make(id: int) Handle { return Handle { id: id } }
+
+fn Local(value: Option[int]) Handle {
+    return match value {
+        Some(n) => {
+            let keep := Make(90)
+            let result := Make(n)
+            result
+        }
+        None => Make(0)
+    }
+}
+
+fn Explicit(value: Option[int], owned: Handle) int {
+    let result := match value {
+        Some(n) => <-owned
+        None => Make(0)
+    }
+    return result.id
+}
+
+fn Payload(value: Option[Handle]) Handle {
+    return match value {
+        Some(handle) => {
+            let keep := Make(92)
+            handle
+        }
+        None => Make(0)
+    }
+}
+
+fn Guarded(value: Option[Handle], enabled: bool) Handle {
+    return match value {
+        Some(handle) where enabled => {
+            let keep := Make(93)
+            handle
+        }
+        Some(handle) => handle
+        None => Make(0)
+    }
+}

@@ -596,6 +596,10 @@ func (a *Analyzer) resolvePlacePath(expr ast.Expression) (Place, bool) {
 			elementType = containerType.Element
 		} else if isCompilerKnownListType(containerType) {
 			elementType = &containerType.TypeArgs[0]
+		} else if isCompilerKnownMapType(containerType) {
+			// collections.md § 14.4: an existing entry's value is a Place
+			// keyed by the evaluated key.
+			elementType = &containerType.TypeArgs[1]
 		} else if containerType.Kind == VariadicPackType && containerType.Element != nil {
 			if position, known := a.typePackConstantPosition(expr); known {
 				if element, pack := typePackElementType(*containerType.Element, strconv.Itoa(position)); pack {

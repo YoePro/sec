@@ -55,10 +55,10 @@ func (a *Analyzer) recordImplNavigation(program *ast.Program) {
 		// These links describe source organization, not semantic uses. Do not
 		// run bindDefinitions' production-to-test dependency checks for them.
 		if len(group.extensions) != 0 {
-			a.definitionTokens[sourceTokenLocation(group.primary)] = group.extensions
+			a.writeDefinitions(sourceTokenLocation(group.primary), group.extensions)
 		}
 		for _, extension := range group.extensions {
-			a.definitionTokens[sourceTokenLocation(extension)] = []lexer.Token{group.primary}
+			a.writeDefinitions(sourceTokenLocation(extension), []lexer.Token{group.primary})
 		}
 	}
 }

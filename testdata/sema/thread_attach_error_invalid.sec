@@ -1,0 +1,5 @@
+module main
+
+fn Invalid() void {
+    discard ThreadAttachError.NotAttached
+}

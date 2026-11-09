@@ -1,0 +1,21 @@
+module core
+
+enum ThreadStartMode {
+    // Creation may execute the callable as soon as creation commits.
+    Eager
+    // The callable waits for a successful Start commit.
+    Deferred
+}
+
+enum ThreadPriority {
+    // Lowest portable relative priority.
+    Lowest
+    // Below the target's normal priority.
+    Low
+    // Portable normal relative priority.
+    Normal
+    // Above normal.
+    High
+    // Highest relative priority, without a real-time scheduling guarantee.
+    Highest
+}

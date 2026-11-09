@@ -138,6 +138,27 @@ func (ds *DetachStatement) TokenLiteral() string {
 	return ds.Token.Lexeme
 }
 
+// JoinStatement is `join worker`: it waits for terminal thread completion
+// and consumes the thread's one-shot join capability while preserving the
+// Thread[T] handle (rules/concurrency/threads.md § 34).
+type JoinStatement struct {
+	Token lexer.Token
+	Value Expression
+}
+
+func (js *JoinStatement) statementNode() {}
+
+func (js *JoinStatement) TokenLiteral() string {
+	return js.Token.Lexeme
+}
+
+func (js *JoinStatement) String() string {
+	if js.Value == nil {
+		return "join"
+	}
+	return "join " + js.Value.String()
+}
+
 type CancelStatement struct {
 	Token lexer.Token
 }
@@ -1301,6 +1322,9 @@ const (
 	SelectOperationBranch SelectBranchKind = "operation"
 	SelectTimeoutBranch   SelectBranchKind = "timeout"
 	SelectDefaultBranch   SelectBranchKind = "default"
+	// SelectJoinBranch is `join worker => { ... }` (threads.md § 35,
+	// tasks.md § 17(13)).
+	SelectJoinBranch SelectBranchKind = "join"
 )
 
 type SelectBranch struct {

@@ -996,7 +996,6 @@ integrations:
       - internal/layout/scalar_plan_test.go
       - internal/lowering/secmlir/emitter_test.go
       - mlir/test/Conversion/SecIntegerToArith
-      - cmd/compiler/wide_readiness_test.go
       - testdata/codegen/wide_legacy/
     implemented:
       - exact arbitrary-width integer bounds and constant validation
@@ -1112,7 +1111,6 @@ integrations:
       - internal/sema/collectionshape/empty_lists_test.go
       - internal/sema/collectionshape/length_test.go
       - testdata/sema/collection_contracts/
-      - cmd/compiler/llvm_contract_readiness_test.go
       - testdata/codegen/llvm_contracts
       - internal/sema/contract_named_operators_test.go
       - internal/sema/type_diagnostic_locations_test.go

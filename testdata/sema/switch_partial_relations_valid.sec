@@ -1,0 +1,24 @@
+module main
+
+fn Partial(value: int, bound: int) void {
+    switch value {
+    case 0..100:
+        return
+    case > 50:
+        return
+    case < 50:
+        return
+    }
+    switch value {
+    case <= -10:
+        return
+    case < 0:
+        return
+    }
+    switch value {
+    case >= bound:
+        return
+    case > 10:
+        return
+    }
+}

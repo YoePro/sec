@@ -432,6 +432,7 @@ func explicitMoveSource(expr ast.Expression) ast.Expression {
 //   - rules/memory/borrowing.md — §15.2 "Call-site borrow creation"
 //   - rules/memory/borrowing.md — §15.3 "Reborrowed arguments"
 //   - rules/memory/borrowing.md — §15.4(1–5) argument order and overlap
+//   - rules/declarations/functions.md — §38A(4)(3),(5) pack-position call borrows
 func (a *Analyzer) validateCallArgumentBorrows(function Function, sourceArgs []ast.Expression, preparedSpreadValues []bool) bool {
 	reservations := []borrowRecord{}
 	valid := true
@@ -445,6 +446,9 @@ func (a *Analyzer) validateCallArgumentBorrows(function Function, sourceArgs []a
 		}
 
 		mutable, borrowed := callParameterBorrowMode(parameter)
+		if borrowed {
+			a.recordTypePackIndexBorrow(arg)
+		}
 		if !borrowed {
 			place, reusable := a.resolvePlace(arg)
 			if !reusable {

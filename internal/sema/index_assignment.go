@@ -8,12 +8,15 @@ import "sec/internal/ast"
 // Rules:
 //   - rules/collections/collections.md — §8.4 "Replacement"
 //   - rules/memory/borrowing.md — §§12,14.3–14.4 (projected overlap, not whole-owner read)
-func (a *Analyzer) analyzeIndexAssignmentStatement(stmt *ast.AssignmentStatement, index *ast.IndexExpression) {
+func (a *Analyzer) analyzeIndexAssignmentStatement(stmt *ast.AssignmentStatement, index *ast.IndexExpression, allowFallible bool) {
 	targetType, _ := a.inferIndexExpression(index)
 	if targetType.Kind == InvalidType {
 		return
 	}
 	a.setResolvedIndexUse(index, ArrayIndexWrite)
+	if !a.recordMapUpsert(stmt, index, allowFallible) {
+		return
+	}
 	if a.rejectShapedMetadataWrite(index) {
 		return
 	}

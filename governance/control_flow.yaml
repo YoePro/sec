@@ -533,8 +533,8 @@ integrations:
       - explicit if-try conformance covers Result[bool,E] propagation, true/false success, negation and parenthesized local bool recovery; int, string and struct success types and non-bool local recovery remain rejected by Sema/CLI/LSP. Grouped-expression parsing now restores the outer header brace boundary while allowing inner try handlers, instead of rejecting valid parenthesized handlers. Semantic IR tests verify typed CFG and exactly-once calls; current unsupported sec.result backend boundary is tested with existing output preservation, without claiming binary execution.
       - "Raw-null if integration closed by audit and source-backed regression coverage (2026-11-03; flowcontrol_if.md §23, raw_pointers.md §7(3–9a), MD-024 §5): existing Sema admits is null and is not null only in explicit unsafe contexts, on RawPtr subjects, yielding bool. Seven positive tests include if/else-if, logical conditions, returns, locals, calls and arguments, with four retained negated tests and resolved raw subject types. Ten invalid cases cover four missing unsafe contexts, an ordinary if body that still requires unsafe for RawPtr.Read, safe-reference/integer subjects, both forbidden null equality forms and proven-null dereference despite unsafe. An unsafe block inside the if body cannot authorize its condition, and a preceding unsafe block cannot leak permission. CLI check/sema accept the valid matrix; check/sema/emit-ir/emit-mlir/emit-llvm reject all invalid cases before artifact output. CLI retains the four owning null IDs and help across nine occurrences; LSP retains those IDs and source ranges alongside the existing raw-read unsafe rejection. This work adds integration evidence and closes stale frontend governance; no new production behavior or native null-test lowering is claimed."
       - "state tests in value positions (verified 2026-11-04; MD-006): `value is Variant` and `value is not Variant` on unions, Option and Result lower in Semantic IR as a variant test with constant edges to a merge (Result edges unwrap the projected payload for the Result guard verifier) and run natively in bindings, `&&` operands and if conditions (testdata/build/native/state_tests.sec in TestNativeTrackBuildsAndRuns). The empty-state test and owned subjects stay named boundaries ('empty-state test (needs a runtime initialization flag)', 'state test of a subject that needs ownership')."
+      - "example and regression audit (2026-11-09): no fixture or example outside the sec/stdlib and sec/core drafts uses a stale Length or IsEmpty() (the remaining hits are user-declared members and StringView's declared IsEmpty() method, core-library.md § 5.8); seven unreferenced *_valid.sec fixtures (basic_types, crc32, for, if, slices, spawn, variables1) were modernized to current rules, and TestValidFixturesPassCheck (cmd/compiler) now requires every *_valid.sec fixture outside a documented exception list to pass sec check, so payload-after-state-test and other stale assumptions cannot return unnoticed"
     remaining:
-      - audit compiler examples and regression sources for stale Length, IsEmpty(), and Option payload-after-state-test assumptions
       - complete the revision-2.0 parser, Sema, flow-analysis, formatter, diagnostics, LSP, Semantic IR, and backend regression matrix
     required_tests:
       - bool condition accepted
@@ -743,7 +743,7 @@ integrations:
     document_revision: "2.0"
     repository_baseline: 56be75d
     replaces: rules/control-flow/flowcontrol_switch.txt
-    summary: Tracks revision-2.0 subject and subjectless switch statements. Parser and Sema support ordered value, range, relational, and comma-separated alternatives, default and explicit fallthrough validation, independent case scopes, continuing-path assignment merges, termination analysis, compiler-owned ResolvedSwitchFlow coverage facts, and substantial compile-time duplicate and coverage diagnostics. Semantic IR and the compilation track lower integer subject switches and subjectless switches with value, relational and range alternatives, reached-only comma alternatives and explicit body-to-body fallthrough (2026-10-17); enum, bool, string and named-type subjects, cleanup edges and the complete regression matrix remain.
+    summary: Tracks revision-2.0 subject and subjectless switch statements. Parser and Sema support ordered value, range, relational, and comma-separated alternatives, default and explicit fallthrough validation, independent case scopes, continuing-path assignment merges, termination analysis, compiler-owned ResolvedSwitchFlow coverage facts, and substantial compile-time duplicate and coverage diagnostics. Semantic IR and the compilation track lower integer, integer-enum, bool and eligible named-integer subject switches and subjectless switches, with lazy alternatives and explicit fallthrough. String subjects, generalized named-type coverage, cleanup edges and the complete regression matrix remain.
     rules:
       - rules/control-flow/flowcontrol_switch.md
       - rules/control-flow/flowcontrol_if.md
@@ -794,6 +794,14 @@ integrations:
       - cmd/lsp/switch_string_constants_test.go
       - testdata/sema/switch_string_constants/valid.sec
       - testdata/sema/switch_string_constants/duplicate_invalid.sec
+      - internal/sema/switch_covered_items_test.go
+      - cmd/compiler/switch_covered_items_test.go
+      - cmd/lsp/switch_covered_items_test.go
+      - testdata/sema/switch_covered_items_invalid.sec
+      - testdata/sema/switch_partial_relations_valid.sec
+      - testdata/build/native/switch_partial_relations.sec
+      - internal/ir/semantic/enum_switch_classes_test.go
+      - testdata/build/native/enum_switch_classes.sec
     implemented:
       - subject and subjectless switch parsing with AST source-order retention
       - value, range, relational, and comma-separated case alternatives
@@ -822,11 +830,11 @@ integrations:
       - "Focused nested-switch lowering coverage completed 2026-10-29: source-backed Semantic IR assertions check all 12 break/continue operations against their enclosing loop ID and actual condition/exit successor, with no extra loop records introduced by switches. A shared native fixture exercises while and range-for loops, nested subject/subjectless switches, default cases, fallthrough followed by continue, and restoring the outer loop target after an inner loop ends. Five independently checked runtime results pass through the single Sema/Semantic IR/Sec-MLIR/LLVM/clang track. The native regression runner now bounds execution time so a future wrong CFG target cannot hang the test or masquerade as an expected trap. Existing lowering behavior already handles these cases; this closes the required focused verification point without claiming new cleanup or string/named-switch capabilities."
       - "Computed string switch coverage (2026-10-29): the shared semantic compile-time evaluator establishes case equality for composed strings, decoded escapes and immutable module bindings, rejecting equal values across clauses or within comma alternatives with the registered duplicate-case diagnostic, actionable help and the earlier equivalent case location. Only resolved equality-compatible cases participate; unavailable calls/getters and unknown runtime values do not establish a duplicate proof. Distinct Unicode scalar sequences are not normalized. Source-backed Sema, CLI JSON and LSP tests verify proofs and diagnostic provenance. String switch Semantic IR/backend lowering remains separate remaining work."
       - "named integer switch subjects (2026-11-04; semantic_ir.md § 7(4)): a named integer subject without units or contracts compares through its carrier's int.compare and keeps its identity, for value, comma, relational and range alternatives; testdata/build/native/named_scalars.sec runs natively."
+      - "Canonical covered-case diagnostics (2026-11-09; flowcontrol_switch.md sections 20-23/34, diagnostics.md section 21): all established constant-value, normalized-range and relational full-coverage proofs publish mandatory S3001 with the earlier covering item, exact token range, actionable help and navigable related source location; duplicate bool/integer/string/enum value classes retain the published mandatory S1015 identity and get the same provenance quality. Comma alternatives and singleton ranges use the same policy. Partial range overlap stays a separate source-validity check; mere finite-range overlap no longer falsely proves an unbounded relational case unreachable. Dynamic bounds remain conservative. Expanded reasoning beyond existing normalized coverage facts remains in the other switch coverage/CFG items. Tests preserve both mandatory identities against suppression and carry proofs through CLI JSON/LSP; native execution verifies first-match behavior and reachable values outside a finite earlier range."
+      - "enum switch subjects (2026-10-18): Semantic IR tests each enum case alternative with same-enum equality (enum.compare eq); a Sema-proven exhaustive enum switch without default ends in a synthesized unreachable; built and executed with integer enums (TestNativeTrackBuildsAndRuns/enums)"
     remaining:
       - split comma-separated alternatives into explicit per-alternative frontend CFG edges instead of retaining conservative aggregate state
-      - route every statically covered case and item through the canonical unreachable-code policy with useful earlier-case provenance
       - make ownership, destruction, cleanup, Semantic IR, lowering, and interprocedural analyses consume the resolved switch flow and future canonical switch plan
-      - "enum switch subjects (2026-10-18): Semantic IR tests each enum case alternative with same-enum equality (enum.compare eq); a Sema-proven exhaustive enum switch without default ends in a synthesized unreachable; built and executed with integer enums (TestNativeTrackBuildsAndRuns/enums)"
       - lower string switch subjects through Semantic IR and the compilation track (blocked on P23 string values); bool and named-integer subjects lower and run natively (bool_switch.sec, named_scalars.sec)
       - implement full unit-aware and named-semantic-type-aware overlap reasoning
       - extend relational coverage reasoning for dynamic expressions where reachability is statically provable
@@ -861,6 +869,12 @@ integrations:
       - definite assignment includes unmatched path when coverage is incomplete
       - terminating switch recognized when every reachable path terminates
     verification:
+      - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test -p 4 ./internal/ir/semantic ./cmd/compiler -run 'TestEnumSwitchValueClasses|TestSwitchLowersToOrderedTests|TestNativeTrackBuildsAndRuns/(enum_switch_classes|enums)$' -count=1
+        result: "Passed on 2026-11-09: source-backed Semantic IR conformance and actual native execution verify enum value aliases, distinct comma alternatives entering one body, Sema-proven exhaustive residuals without default, default branches, and reached-only dynamic case evaluation. Closes stale remaining item for already implemented integer enum switch lowering; string subjects/P23 and canonical frontend CFG work remain separate."
+      - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test -p 4 ./cmd/compiler ./cmd/lsp -run "TestCoveredSwitchItems|TestNativeTrackBuildsAndRuns/switch_partial_relations" -count=1
+        result: passed on 2026-11-09 (2.319s / 0.907s); canonical CLI JSON/LSP identities and navigable earlier-case proofs, plus actual native build/execution of partially covered relational cases
+      - command: go test -p 4 ./internal/sema -count=1
+        result: passed on 2026-11-09 (15.191s); complete Sema suite including ten coverage diagnostics, mandatory suppression resistance, comma alternatives, singleton range coverage, aliases and conservative partial/dynamic relations
       - command: go test ./internal/sema ./internal/diagnostics ./internal/ir/semantic/... -count=1 -timeout=120s; go test -race ./cmd/compiler ./cmd/lsp -run 'TestComputedStringSwitch|TestSwitchStructPattern|TestSwitchWildcard' -count=1 -timeout=150s; go vet ./internal/sema ./internal/diagnostics ./internal/ir/semantic/... ./cmd/compiler ./cmd/lsp
         result: "Passed on 2026-10-29: full Sema 15.831s, diagnostics and Semantic IR suites passed; targeted CLI/LSP race tests passed (4.504s/3.303s); vet passed. Regression reproduced before the fix as zero duplicate errors instead of three. frontend.switch-statements-v2 remaining 10 to 9; global Remaining 2379 to 2378 at this snapshot."
       - command: go test ./internal/ir/semantic -count=1; SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./cmd/compiler -run TestNativeTrackBuildsAndRuns -count=1 -timeout=120s; go vet ./internal/ir/semantic ./cmd/compiler
@@ -889,7 +903,7 @@ integrations:
         result: passed on 2026-10-01; value use, guards, payload binding, wildcard items, and loop-control targeting produce focused diagnostics without cascades
       - command: go test ./internal/formatter -run Switch -count=1
         result: passed with no matching focused tests; formatter coverage remains in the required matrix
-    revised: "2026-10-29"
+    revised: "2026-11-09"
 
   - id: frontend.match-v2
     area: frontend-control-flow-ownership-and-lowering
@@ -924,6 +938,7 @@ integrations:
       - rules/tooling/diagnostics.md
       - rules/tooling/lsp.md
       - rules/mlir/packages/sec-mlir-dialect_package12.md
+      - rules/mlir/packages/sec-mlir-dialect_package17.md
     code:
       - internal/ast/ast.go
       - internal/parser/expression.go
@@ -943,6 +958,18 @@ integrations:
       - internal/lowering/secmlir/emitter.go
       - internal/sema/analyzer_union_state.go
       - internal/ir/semantic/builder.go
+      - internal/sema/match_payload_patterns.go
+      - internal/sema/match_field_patterns.go
+      - internal/sema/error_patterns.go
+      - internal/sema/analyzer_try_handlers.go
+      - internal/sema/expression_statements.go
+      - internal/sema/implicit_discard_advisory.go
+      - internal/sema/match_arm_bindings.go
+      - internal/sema/match_plan_flow.go
+      - internal/sema/analyzer_statement_flow.go
+      - internal/ir/semantic/match_statement.go
+      - internal/ir/semantic/discard.go
+      - internal/ir/semantic/match_expression.go
     tests:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
@@ -961,6 +988,30 @@ integrations:
       - internal/sema/match_field_patterns_test.go
       - internal/ir/semantic/match_field_bindings_test.go
       - testdata/semantic_ir/match_field_patterns.sec
+      - internal/sema/match_payload_discard_test.go
+      - cmd/compiler/match_payload_discard_test.go
+      - cmd/lsp/match_payload_discard_test.go
+      - testdata/sema/match_payload_discards_invalid.sec
+      - testdata/sema/match_payload_discards_valid.sec
+      - internal/sema/match_statement_results_test.go
+      - cmd/compiler/match_statement_results_test.go
+      - cmd/lsp/match_statement_results_test.go
+      - testdata/sema/match_statement_results_invalid.sec
+      - testdata/sema/match_statement_results_valid.sec
+      - internal/sema/match_plan_flow_test.go
+      - internal/sema/match_termination_matrix_test.go
+      - internal/ir/semantic/match_termination_matrix_test.go
+      - cmd/compiler/match_termination_matrix_test.go
+      - cmd/lsp/match_termination_matrix_test.go
+      - testdata/control_flow/match_termination/valid.sec
+      - testdata/control_flow/match_termination/continuing_invalid.sec
+      - testdata/control_flow/match_termination/unreachable_invalid.sec
+      - internal/ir/semantic/match_statement_owned_test.go
+      - internal/lowering/secmlir/match_statement_owned_test.go
+      - testdata/semantic_ir/match_statement_owned.sec
+      - internal/ir/semantic/match_owned_results_test.go
+      - internal/lowering/secmlir/match_owned_results_test.go
+      - testdata/semantic_ir/match_owned_results.sec
     implemented:
       - "guard consumption (2026-10-30, internal/sema/match_arm_bindings.go rejectGuardConsumedBindings): a match guard that consumes its arm's payload or field binding is rejected, as for try-handler guards, so a false guard leaves the subject and payload for later arms (TestErrorPatternGuardOwnership)"
       - "MD-042 IR and tooling (2026-10-30; semantic_ir.md § 71(6), lsp.md \"Error patterns, inactive arms and Some\"): ResolvedMatchPlan.ProvenActive keeps the proven variant with its provenance (immutable binding, basis construction or state-test, source token) and ResolvedMatchArm.ProvenInactive marks the arms the proof excludes; Semantic IR MatchRecord.ProvenActive/MatchArmRecord.ProvenInactive carry the reachable subset separately from the declared domain and arm coverage, the verifier rejects a proof on a non-union subject, an unknown basis or an inactive arm on the proven variant, the inactive arm keeps its lowered body and the residual stays the verbatim exhaustive-match-fallthrough; LSP hover on an inactive arm shows the proof; CLI JSON/human and LSP report the same A2008 identity, Information severity and pattern location (TestReachableStateProofProvenance, TestMatchRecordsCarryReachableStateProof, TestInactiveMatchArmCLI, TestInactiveMatchArmLSP). Semantic IR does not yet lower `is` tests, so state-test proofs reach IR once that operation exists."
@@ -1015,19 +1066,19 @@ integrations:
       - "explicit payload binding actions and guarded commit (verified 2026-11-04): every plain payload binding resolves to copy-trivial, copy-semantic, copy-conditional or move, and borrows only with an explicit ref pattern (resolvedMatchBindingAction); a guarded arm reads the candidate payload in its guard and commits a move only on guard success, so the guard-false continuation keeps ownership for later arms. --sec-verify-union-guards accepts the commit through single-predecessor blocks dominated by the variant test (lit union-guard-dominance.mlir, invalid-union-guard-dominance.mlir). Test: testdata/semantic_ir/match_guard_owned.sec in TestSchema13EmitsTryChainsAndOwnedErrorPayloads."
       - "borrowed match subjects (2026-11-05; flowcontrol_match.md § 14): a `ref`/`ref mut` union, Option or Result subject matches its referent; plain bindings copy copyable payloads, `ref` (and `ref mut` through a `ref mut` subject) borrow, and moving a move-only payload is rejected with S1052 'out of a borrowed match subject'; `ref mut` through a shared subject is rejected (S1165). Semantic IR lowers them (2026-11-05): the referent is dereferenced once (place.deref, also for a whole `ref` subject), a subject Semantic IR cannot copy is read in observe mode for the variant tests, `ref`/`ref mut` payloads borrow from the payload Place, and copy-trivial payloads are read from the payload Place under the variant test; copying field or semantic-copy bindings stay a named boundary. Tests: TestMatchOverBorrowedSubject, testdata/semantic_ir/match_borrowed_subjects.sec in TestSchema13EmitsTryChainsAndOwnedErrorPayloads (all ownership, borrow, place and match verifiers on 32/64-bit plans)."
       - "Contextual value-producing arm blocks (2026-11-06; flowcontrol_match.md §§ 21–22): in a match expression a continuing arm block yields its final expression, analyzed while the block's locals are live, with expression-arm ownership validation and move marking; a void or missing final value and incompatible types are rejected (TestMatchArmBlockValues over testdata/sema/match_arm_blocks_invalid.sec). Semantic IR builds the value, runs the arm scope cleanup and branches to the merge; returning paths leave through function cleanup (TestSchema13MatchArmBlocks, 32/64, testdata/semantic_ir/match_arm_blocks.sec, including --sec-verify-match-cfg)."
+      - "Non-binding payload patterns enforce recursive discardability (2026-11-09; flowcontrol_match.md section 8(5), discard.md section 18): Some(_), Ok(_), ordinary union Variant(_), bare/qualified payload variants, empty field patterns and nested concrete/contextual Err variants share the existing S1006 check; Task/Thread obligations cannot be silently ignored, including nested aggregates and guarded/statement matches. Discardable and reference payloads, explicit borrow bindings and payload-less variants remain valid. Payload binding helpers moved from analyzer.go into match_payload_patterns.go. Seventeen invalid cases and eight valid matches are covered with registered compiler JSON and LSP diagnostic transport."
+      - "Statement match expression arms obey ordinary result obligations (2026-11-09; flowcontrol_match.md section 19(2)-(6), discard.md sections 10-14): reuse analyzeExpressionStatement once for statement arms, including try statement context, instead of treating their results as owning match-expression transfers. Calls, stored Result values, Task/Thread and obligation-carrying aggregates require explicit handling (S1005); an unconstrained-discardability E: error is S1006. Legal ordinary call results use the existing configurable implicit-discard advisory with selected-callable provenance. Source-expression keyed occurrences deduplicate synthetic arm wrappers across loop/backedge visits. Expression-match values, returns, explicit discard and non-owning reference results retain their distinct semantics."
+      - "Canonical statement-match continuation completed and verified (2026-11-09; flowcontrol_match.md sections 5, 23-24): ResolvedMatchPlan.CanContinue is the single conservative decision consumed by Sema return/reachability analysis and Semantic IR statement-match continuation creation, replacing separate classifiers. Coverage and arm flow remain compiler-owned normalized facts for Option, Result, unions, enum aliases, full open-bit domains, guards and nested/unsafe blocks. Missing coverage, absent arms or unknown/future arm flow cannot prove termination. Shared source matrices check continuing versus terminating plans and corresponding IR merge-block presence; CLI/LSP preserve missing-return and S3001 diagnostics. Broader structural statement-flow and cleanup unification remains owned by frontend.match-termination-consistency."
+      - "Owned statement-match continuation (2026-11-09; flowcontrol_match.md section 19(2)-(6), discard.md sections 9-10, P17 sections 63/103/111): fresh ordinary call and try-success arm results use the shared terminal discard producer, emitting own.discard with the type-level destruction plan before full-expression temporaries end, arm-scope cleanup runs and control branches to the merge. Removed the statement-match-specific non-trivial result boundary. Guarded payload moves retain transfer/cancellation and guard-false ownership, body locals clean up separately, and borrowed argument temporaries end through destroy_value or destroy_place. A focused sibling builder replaces the extracted monolithic builder section. Source-to-IR ordering/count checks and deterministic 32/64-bit schema13 output pass all place, borrow, cleanup, destruction, ownership, match-CFG and union-guard verifiers. Physical cleanup/destruction lowering remains outside P17 under its section 103/134 gates."
+      - "Move-only match arm results precede both cleanup scopes (2026-11-09; flowcontrol_match.md section 21.2(1)-(3), destruction.md section 6.2, P17 sections 38/40/55/63/111): expression and value-producing block arms share finishMatchExpressionArm. Building the result commits Sema-resolved moves and cancels the source registration before region temporaries, body-local cleanup, the distinct owning payload-binding scope cleanup and the merge branch. Fixed the missing payload-scope fallthrough cleanup that rejected a returned owned payload from a block arm with the P17 cleanup-aware-block boundary. Regression coverage checks source move/cancellation before cleanup and merge for local, explicit expression-arm, payload, guarded and fresh results; schema13 ownership/cleanup/match verification passes on 32/64-bit plans."
     remaining:
-      - "Non-binding patterns skip the discardability check outside Err: `Some(_)` and bare `Some` on Option[Task[int]] pass Sema, while `Err(_)` is rejected, though flowcontrol_match.md § 8 says `Variant(_)` and bare variants never waive non-discardability. Probe 2026-11-02; `Task` then stops at the Semantic IR boundary, so no program compiles past it yet."
       - lower the compiler-known empty union pattern and reachable empty state through Semantic IR and MLIR with a runtime initialization flag, and expose empty-state facts through LSP
       - complete ownership, destruction, Semantic IR, lowering, and LSP facts for discarded Err payloads beyond the represented frontend subset
-      - derive statement-match termination from ResolvedMatchPlan so exhaustive Option, union, enum-alias, open-bit-enum, and nested matches agree with return and reachability analysis
       - retain precise Moved, PartiallyAvailable, and ConditionallyAvailable states and provenance across every continuing arm
-      - apply ordinary discardability and must-use rules to statement-match arm results rather than erasing produced values
-      - establish move-only arm-result ownership before arm-scope cleanup
       - expose compiler-resolved binding action, prospective guarded move, commit location, post-match availability, and coverage through LSP hover, diagnostics, hints, completion, and refactoring
       - extend ResolvedMatchPlan and CFG binding actions beyond none, discard, and copy-trivial to Move, SharedBorrow, MutableBorrow, TemporaryForward, field bindings, guard-success commit, and ownership merges
       - extend explicit source-order CFG with reachable compiler-known empty state once frontend initialization-state facts exist
-      - extend statement-match continuation with non-trivial ownership, cleanup, and discard effects
-      - complete parser, Sema, ownership, borrowing, formatter, diagnostics, LSP, Semantic IR, MLIR, LLVM, and end-to-end coverage
+      - "complete parser, Sema, ownership, borrowing, formatter, diagnostics, LSP, Semantic IR, MLIR, LLVM, and end-to-end coverage Parser rejection verified 2026-11-09: a bare <-local final expression in an owning match-arm block is rejected as an unexpected statement-start token, although inline explicit-move arms work; grammar.md sections 56(2)/87(1) already define the expression form. This parser coverage gap is separate from the implemented arm-result ownership/cleanup ordering."
     required_tests:
       - match subject expression evaluates exactly once
       - source arm order is preserved
@@ -1084,6 +1135,26 @@ integrations:
       - LSP distinguishes prospective guarded move from committed move
       - LSP publishes compiler use-after-match-move diagnostics with related move arm
     verification:
+      - command: go test -p 4 ./cmd/compiler ./cmd/lsp -run "Test(MatchTermination|StatementMatch|NonBindingMatchPayload|ImplicitDiscard)" -count=1
+        result: passed on 2026-11-09; compiler 18.714s and LSP 16.218s, existing shared match flow and obligation diagnostics preserved
+      - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test -p 4 ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir -count=1
+        result: passed on 2026-11-09; complete suites 20.041s / 9.051s / 20.839s, including explicit ownership transfer/cancellation and both body-local and payload scope cleanup before owned result merge on 32/64-bit scalar plans
+      - command: go test -p 4 ./cmd/compiler ./cmd/lsp -run "Test(StatementMatch|MatchTermination|NonBindingMatchPayload|ImplicitDiscard)" -count=1
+        result: passed on 2026-11-09; compiler 19.282s and LSP 16.631s, shared result obligations and discard advisory presentation unchanged
+      - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test -p 4 ./internal/ir/semantic ./internal/lowering/secmlir -count=1
+        result: passed on 2026-11-09; complete suites 6.617s and 17.068s; owned statement-match source regression, cleanup ordering and deterministic schema13 ownership verification on 32/64-bit scalar plans
+      - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test -p 4 ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir -count=1
+        result: passed on 2026-11-09; complete suites 18.134s, 8.281s and 19.308s with the local native optimizer enabled
+      - command: go test -p 4 ./internal/sema ./internal/ir/semantic ./cmd/compiler ./cmd/lsp -run "TestMatch(Termination|Continuation)|TestTryNestedMatch" -count=1
+        result: passed on 2026-11-09; canonical continuation query, incomplete/future-flow conservatism, normalized source-domain plans, IR continuation blocks and compiler/LSP return/unreachable parity
+      - command: go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run "TestStatementMatchResults|TestImplicitDiscard" -count=1
+        result: passed on 2026-11-09; twelve mandatory source errors including Task/Thread, nested match, defer, Result and generic error obligations; shared CLI JSON/LSP identities; all analysis depths, advisory suppression/promotion, repeated visits, explicit discard, value/return arms and reference values
+      - command: go test -p 4 ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir -count=1
+        result: passed on 2026-11-09; complete suites after shared statement-arm result validation
+      - command: go test -p 4 ./cmd/compiler ./cmd/lsp -run TestNonBindingMatchPayload -count=1
+        result: passed on 2026-11-09; compiler JSON and LSP preserve the seventeen mandatory S1006 errors with guidance and source positions
+      - command: go test -p 4 ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir -count=1
+        result: passed on 2026-11-09; complete Sema, Semantic IR and Sec MLIR suites
       - command: GOMAXPROCS=2 go test ./internal/sema -run 'TestExhaustiveMatchExpressionWithReturningBlockArmsIsNever|TestResolvedMatchPlanRetainsAllTerminatingExpressionFlow|TestMatchStatementReturnArmsSatisfyFunctionReturn|TestResolvedMatchPlanIsReadOnlyAndNumeric' -count=1
         result: passed
       - command: go test ./internal/parser -run Match -count=1
@@ -1098,6 +1169,7 @@ integrations:
         result: passed; no dedicated match ownership presentation tests exist yet
       - command: go test ./internal/sema ./cmd/lsp -run 'TestMatchRejectsDirectBoolSubjectWithFocusedGuidance|TestAnalyzeRejectsDirectBoolMatchWithIfElseGuidance' -count=1
         result: passed on 2026-09-03
+    revised: "2026-11-09"
 
   - id: frontend.for-loops-v2
     area: frontend-control-flow-ownership-and-lowering
@@ -1148,6 +1220,9 @@ integrations:
       - internal/sema/iterator_lowering_readiness.go
       - internal/sema/analyzer_inference.go
       - internal/sema/string_ranges.go
+      - internal/sema/type_pack_iteration.go
+      - internal/sema/type_pack_index_reads.go
+      - internal/sema/analyzer_lifetime.go
     tests:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
@@ -1169,6 +1244,11 @@ integrations:
       - cmd/lsp/string_ranges_test.go
       - testdata/sema/string_ranges/valid.sec
       - testdata/sema/string_ranges/lifetime_invalid.sec
+      - internal/sema/type_pack_index_reads_test.go
+      - cmd/compiler/type_pack_index_borrow_test.go
+      - cmd/lsp/type_pack_index_borrow_test.go
+      - testdata/generics/type_pack_declarations/owned_index_borrow.sec
+      - testdata/generics/type_pack_declarations/owned_index_copy_invalid.sec
     implemented:
       - "MD-117 pack loop modes and constant indexing (2026-11-01; functions.md §38A(5)(2),(4)-(6), semantic_ir.md §27A(5)-(6)): for ref mut reborrows each ref mut parameter per use; for ref over an owned position borrows through a read-only value root with Sema's loop borrow; values[k] requires a non-negative compile-time constant index (never a flow-known let mut), has the opaque element Types[k] so different positions do not unify, is checked per selected call for existence and for copyability of an owned by-value read, and lowers to the expanded parameter as a holder pass, reborrow, copy or value-root borrow; moving an element or a ref mut holder out of the pack and mutable borrows through shared or owned positions are rejected (TestPackLoopBindingModes, TestPackIndexSelectsPosition, TestTypePackIndexing)"
       - "MD-117 pack loop backfill (2026-11-01; functions.md §38A(5)(7), flowcontrol_for.md §13A(3)): each loop has its own opaque element Types[binding], so nested loops over one pack do not unify their elements; by-value diagnostics follow source order; nested loops, switch, continue, break, try, panic and return in the body and empty-pack iteration are verified in Semantic IR; the LSP reports the same rules (TestTypePackIterationTemplate, TestTypePackByValueDiagnosticsAreOrdered, TestPackLoopBodyControlFlow, TestPackLoopLSP)"
@@ -1215,8 +1295,8 @@ integrations:
       - "explicit range steps lower end to end (verified 2026-11-04): ascending and descending inclusive/exclusive ranges with `step` run natively (testdata/build/native/range_steps.sec in TestNativeTrackBuildsAndRuns); the old 'for range with an explicit step' rejection is gone."
       - "descending iteration is explicit (flowcontrol_for.md §§ 23, 27): `start > end` without a step is zero iterations and is never inferred as descending, and an unsigned range rejects a negative step ('unsigned range uint cannot use negative step -3; use a signed range type or while')."
       - "MD-126 StringView frontend iteration completed (2026-11-05; flowcontrol_for.md 19): StringView and ref StringView select the string-family category, yielding rune values and the ordinary view-relative integer index for two-binding loops. for ref over decoded text rejects with S1199. One-time iterable borrowing stays live through the loop, including mutable calls, and ends at loop exit. Plain strings and MD-117/MD-119 pack forms retain their paths. Source-backed Sema, compiler check, LSP hover/diagnostic and formatter tests pass; full Sema regressions cover existing pack/binding modes. Executable traversal remains the named P23 StringView boundary, not a newly introduced iterator protocol."
+      - "MD-117 implicit indexed pack borrows (2026-11-09; functions.md sections 38A(4)(3),38A(5), borrowing.md section 15): Touch(values[k]) with a selected ref parameter borrows an owned pack position, including move-only concrete elements. Indexed copy requirements are delayed until parameter selection and checked per referenced position; an unrelated copyable position does not require the borrowed position to be copyable. Actual by-value calls, local copies, by-value loops, illegal mutable authority, out-of-range indexes and element extraction retain their checks. Shared fixtures cover repeated implicit/explicit borrows, independent specializations and mixed move-only/copyable positions through Sema, CLI JSON and unsaved LSP buffers. Physical reference lowering remains owned by its existing P24 work."
     remaining:
-      - "MD-117 implicit call-site borrow of an owned pack position: Touch(values[k]) with a ref parameter is still checked as a by-value read, so a move-only element is rejected at the call although only a borrow is needed; explicit ref values[k] works (§38A(5)(5))"
       - carry Arena generation through the shared loop-header and backedge fixed-point analysis, including continue edges and replay
       - normalize loop-header whitespace in the formatter (the formatter currently preserves intra-line spacing in every for header) and expose binding modes through compiler-owned LSP facts beyond the resolved reference type
       - complete float and decimal range lowering with resolved-type arithmetic and stable source-visible endpoint behavior
@@ -1281,6 +1361,8 @@ integrations:
       - reachable break restores a continuing post-loop path
       - break and continue execute required cleanup edges
     verification:
+      - command: go test -p 4 ./internal/sema -count=1; go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run 'TestOwnedPackIndexCallBorrow|TestTypePack' -count=1; go vet -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: "Passed 2026-11-09: complete Sema suite (17.660s); focused pack Sema/CLI/LSP suites (0.742s/2.604s/2.347s); vet clean. Replacing type_pack_iteration.go through a read-only Go overlay with its pre-fix contents makes the new valid fixture fail for Borrow and Mixed move-only positions, reproducing the regression. Real copies retain concrete position/type and related template locations."
       - command: go vet -p 4 ./internal/sema ./internal/ir/semantic ./internal/diagnostics ./internal/formatter ./cmd/compiler ./cmd/lsp
         result: passed on 2026-11-05
       - command: go test -p 4 ./cmd/lsp -run 'StringRange|ForBinding|Iterator|CompilerKnown|Slice|Borrow|Escape' -count=1 -timeout=180s
@@ -1313,7 +1395,7 @@ integrations:
         result: passed across all packages on 2026-10-02 after the structural-stability check
       - command: go test ./internal/sema -run 'TestForBinding|TestStructural|TestNonStructural|TestIteratorStorage' -count=1
         result: passed on 2026-10-29 with loop-binding borrows of the iterable and binding-position modes; frontend.for-loops-v2 remaining 19 to 14
-    revised: "2026-11-05"
+    revised: "2026-11-09"
 
   - id: frontend.loop-break-targeted-exit-analysis
     area: frontend-control-flow

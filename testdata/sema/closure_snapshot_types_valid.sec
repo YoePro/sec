@@ -3,7 +3,7 @@ module main
 type Entry struct { values: int[2], }
 type Holder struct { view: ref Entry, }
 
-fn Test(ref view: Entry) int {
+fn Test(view: ref Entry) int {
     let holder := Holder { view: view }
     let operation := capture(view, holder) fn() int {
         return view.values[0] + holder.view.values[1]

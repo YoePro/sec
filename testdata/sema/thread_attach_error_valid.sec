@@ -1,0 +1,17 @@
+module main
+
+fn Failure() Result[void, ThreadAttachError] {
+    return Err(ThreadAttachError.AlreadyAttached)
+}
+
+fn Describe(value: ThreadAttachError) int {
+    match value {
+        ThreadAttachError.AlreadyAttached => { return 1 }
+        ThreadAttachError.ResourceUnavailable => { return 2 }
+        ThreadAttachError.NativeFailure => { return 3 }
+    }
+}
+
+fn Erase() error {
+    return ThreadAttachError.NativeFailure
+}

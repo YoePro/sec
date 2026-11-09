@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-01
-- **Last updated:** 2026-11-07 (stable chapter, subsection, and paragraph numbering)
+- **Last updated:** 2026-11-09 (§ 18.1(3) first-loop-iteration overflow warning); 2026-11-07 (stable chapter, subsection, and paragraph numbering)
 - **Document revision:** 1
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/foundations/operators.md`
@@ -1317,6 +1317,25 @@ available at the expression itself.
 **§ 18.1(2)** The accepted operation retains ordinary checked runtime semantics. Suppressing
 or downgrading the warning must never turn overflow into wrapping or undefined
 behavior.
+
+**§ 18.1(3)** Inside a loop body, a binding the body assigns has no known constant
+value, because later iterations see what earlier ones left. The local constant
+analysis may still use the value from before the loop for the first iteration
+when the loop condition can hold with that value; an overflow certain there
+reports `S1023` naming the first loop iteration. A loop whose condition is false
+on entry produces no such warning:
+
+```sec
+let mut n: uint := 3
+while ready {
+    n -= 4                     // S1023: may overflow uint on the first loop iteration
+}
+
+let mut m: uint := 0
+while m > 0 {
+    m -= 1                     // no warning: the body never runs with m == 0
+}
+```
 
 ### § 18.2 Runtime overflow
 

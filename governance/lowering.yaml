@@ -359,7 +359,7 @@ integrations:
       - mlir/test/Dialect/Sec/schema10-array-ops.mlir
       - mlir/test/Dialect/Sec/invalid-schema10-array-ops.mlir
       - mlir/test/Dialect/Sec/schema10-module-metadata.mlir
-      - mlir/test/Dialect/Sec/invalid-schema11-module-metadata.mlir
+      - mlir/test/Dialect/Sec/invalid-schema11-emitter-metadata.mlir
       - mlir/test/Dialect/Sec/schema9-structs.mlir
       - mlir/test/Dialect/Sec/invalid-schema9-structs.mlir
       - mlir/test/Analysis/schema10-array-index-guards.mlir

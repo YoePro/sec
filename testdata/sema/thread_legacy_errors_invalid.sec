@@ -1,0 +1,10 @@
+module main
+
+fn Scheduling(value: ThreadSchedulingError) void {
+}
+
+fn Termination(value: ThreadTerminationError) void {
+}
+
+fn Context(value: ThreadContextError) void {
+}

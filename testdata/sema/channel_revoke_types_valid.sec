@@ -1,0 +1,22 @@
+module main
+
+fn Revoked() ChannelRevokeResult[int] {
+    return ChannelRevokeResult[int].Revoked(42)
+}
+
+fn Unavailable() ChannelRevokeResult[string] {
+    return ChannelRevokeResult[string].Unavailable(MessageDisposition.Discarded)
+}
+
+fn Inspect(value: ChannelRevokeResult[int]) int {
+    match value {
+        ChannelRevokeResult.Revoked(item) => { return item }
+        ChannelRevokeResult.Unavailable(disposition) => {
+            match disposition {
+                MessageDisposition.Received => { return 1 }
+                MessageDisposition.Expired => { return 2 }
+                MessageDisposition.Discarded => { return 3 }
+            }
+        }
+    }
+}

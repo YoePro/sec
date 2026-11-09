@@ -70,17 +70,7 @@ func (a *Analyzer) matchStatementDefinitelyReturns(stmt *ast.MatchStatement) boo
 	if !ok {
 		plan, ok = a.matchTerminationPlans[stmt.Match]
 	}
-	if !ok || !plan.Exhaustive || len(plan.Arms) == 0 {
-		return false
-	}
-	for _, arm := range plan.Arms {
-		switch arm.Flow {
-		case MatchArmReturns, MatchArmTerminates, MatchArmLoopControl:
-		default:
-			return false
-		}
-	}
-	return true
+	return ok && !plan.CanContinue()
 }
 
 // matchArmDefinitelyReturns classifies explicit arm returns and block bodies

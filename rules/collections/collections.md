@@ -1,7 +1,7 @@
 # Collections
 
 **Created:** 2026-08-11  
-**Last updated:** 2026-10-19 (P16-04 canonical slice normalization, failure and classification synchronization)
+**Last updated:** 2026-11-08 (§ 14.4 missing-key failure: panic, or IndexError.OutOfBounds under try); 2026-10-19 (P16-04 canonical slice normalization, failure and classification synchronization)
 **Document revision:** 1  
 **Language version:** Sec 0.1  
 **Status:** Draft for Sec 0.1
@@ -1929,11 +1929,17 @@ A successful lookup produces the value Place for the existing entry.
 Normal read/borrow context then determines whether the value is copied,
 borrowed, or mutably borrowed.
 
-A missing key is a checked access failure using the canonical key-access error
-family.
+A missing key is a checked access failure, handled like an index outside the
+bounds of an array (owner decision 2026-11-08):
 
-A fallible access form may use `try` according to the ordinary fallible-access
-and bodyless-try rules.
+```sec
+let count := users[key]          // missing key: panic (bounds failure)
+let found := try users[key]      // missing key: Err(IndexError.OutOfBounds)
+```
+
+Without `try` the failure is the ordinary bounds panic. With `try`, according
+to the ordinary fallible-access and bodyless-try rules, it is
+`IndexError.OutOfBounds`. Maps define no separate key-access error type.
 
 A lookup does not insert.
 
@@ -1974,6 +1980,19 @@ try users[id] <- user
 ```
 
 The exact move behavior remains governed by the ownership and assignment rules.
+
+An upsert written without `try` is invalid, because inserting a missing key may
+need structural growth that can fail:
+
+```sec
+users[id] = user                 // error: map upsert requires try
+```
+
+A compound assignment such as `users[id] += 1` is not an upsert. It reads and
+replaces the existing entry, so a missing key fails like a lookup (§ 14.4).
+
+An existing entry may be borrowed with `ref users[id]` or `ref mut users[id]`
+under the ordinary borrowing rules; a missing key fails like a lookup.
 
 ## 14.6 Map iteration
 
@@ -2345,9 +2364,8 @@ operation actually requires an Error.
 Examples:
 
 ```text
-IndexError
+IndexError        (also a missing map key, § 14.4)
 RangeError
-key-access error family
 ```
 
 Do not collapse all error domains into one global collection error merely to

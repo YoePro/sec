@@ -1022,9 +1022,12 @@ type Symbol struct {
 	Storage          StorageOrigin
 	AddressStability AddressStability
 	Local            bool
-	Parameter        bool // a function parameter binding
-	ScopeDepth       int
-	RegisterAccess   RegisterFieldAccess
+	// Module is the declaring module of a module-level binding
+	// (module_variables.go); empty for locals and compiler-known values.
+	Module         string
+	Parameter      bool // a function parameter binding
+	ScopeDepth     int
+	RegisterAccess RegisterFieldAccess
 	// CallableIdentity is present only when closure analysis has proved the
 	// exact callable value currently stored in this binding.
 	CallableIdentity    ResolvedCallableIdentity
@@ -1257,20 +1260,17 @@ func newBuiltinTypes() map[string]Type {
 		"ThreadLocal":           {Name: "ThreadLocal", Kind: StructType, GenericParameters: []string{"T"}},
 		"ThreadConfig":          {Name: "ThreadConfig", Kind: StructType},
 		"ThreadContext":         {Name: "ThreadContext", Kind: StructType},
+		"TaskContext":           {Name: "TaskContext", Kind: StructType}, // cancellation.md § 8
 		"ThreadID":              {Name: "ThreadID", Kind: StructType},
-		"ThreadPriority":        {Name: "ThreadPriority", Kind: EnumType, Underlying: "uint", EnumValues: []string{"Low", "Normal", "High"}, EnumConsts: builtinEnumConsts([]string{"Low", "Normal", "High"})},
+		"ThreadPriority":        builtinThreadConfigurationEnumType("ThreadPriority"),
+		"ThreadStartMode":       builtinThreadConfigurationEnumType("ThreadStartMode"),
+		"ThreadSetting":         builtinThreadSettingType(),
+		"ThreadTerminationKind": builtinThreadTerminationKindType(),
+		"ThreadTermination":     builtinThreadTerminationType(),
 		"ThreadStatus":          {Name: "ThreadStatus", Kind: EnumType, Underlying: "uint", EnumValues: []string{"Created", "Running", "Completed", "Cancelled", "Panicked", "Terminated"}, EnumConsts: builtinEnumConsts([]string{"Created", "Running", "Completed", "Cancelled", "Panicked", "Terminated"})},
-		"ThreadSpawnError":      {Name: "ThreadSpawnError", Kind: EnumType, Underlying: "uint", EnumValues: []string{"Unsupported", "ResourceUnavailable", "PermissionDenied", "InvalidConfiguration", "ThreadLocalInitializationFailed", "NativeFailure"}, EnumConsts: builtinEnumConsts([]string{"Unsupported", "ResourceUnavailable", "PermissionDenied", "InvalidConfiguration", "ThreadLocalInitializationFailed", "NativeFailure"})},
-		"ThreadStartError":      {Name: "ThreadStartError", Kind: EnumType, Underlying: "uint", EnumValues: []string{"InvalidState", "Unsupported", "NativeFailure"}, EnumConsts: builtinEnumConsts([]string{"InvalidState", "Unsupported", "NativeFailure"})},
-		"ThreadSchedulingError": {Name: "ThreadSchedulingError", Kind: EnumType, Underlying: "uint", EnumValues: []string{"Unsupported", "PermissionDenied", "InvalidState", "NativeFailure"}, EnumConsts: builtinEnumConsts([]string{"Unsupported", "PermissionDenied", "InvalidState", "NativeFailure"})},
-		"ThreadTerminationError": {
-			Name:       "ThreadTerminationError",
-			Kind:       EnumType,
-			Underlying: "uint",
-			EnumValues: []string{"Unsupported", "PermissionDenied", "InvalidState", "NativeFailure"},
-			EnumConsts: builtinEnumConsts([]string{"Unsupported", "PermissionDenied", "InvalidState", "NativeFailure"}),
-		},
-		"ThreadContextError":    {Name: "ThreadContextError", Kind: EnumType, Underlying: "uint", EnumValues: []string{"NotAttached", "AlreadyAttached", "ResourceUnavailable", "NativeFailure"}, EnumConsts: builtinEnumConsts([]string{"NotAttached", "AlreadyAttached", "ResourceUnavailable", "NativeFailure"})},
+		"ThreadSpawnError":      builtinThreadLifecycleErrorType("ThreadSpawnError"),
+		"ThreadStartError":      builtinThreadLifecycleErrorType("ThreadStartError"),
+		"ThreadAttachError":     builtinThreadAttachErrorType(),
 		"Mutex":                 builtinMutexType("Mutex"),
 		"MutexGuard":            builtinMutexType("MutexGuard"),
 		"Context":               builtinContextType(),
@@ -1291,7 +1291,7 @@ func newBuiltinTypes() map[string]Type {
 				{Name: "Full"},
 			},
 		},
-		"Channel":        {Name: "Channel", Kind: StructType, GenericParameters: []string{"T"}},
+		"Channel":        {Name: "Channel", Kind: StructType, GenericParameters: []string{"T"}, Fields: channelEndpointFields(Type{Name: "T", Kind: GenericType})},
 		"Sender":         {Name: "Sender", Kind: StructType, GenericParameters: []string{"T"}},
 		"Receiver":       {Name: "Receiver", Kind: StructType, GenericParameters: []string{"T"}},
 		"MessageTicket":  {Name: "MessageTicket", Kind: StructType, GenericParameters: []string{"T"}},
@@ -1306,6 +1306,17 @@ func newBuiltinTypes() map[string]Type {
 				{Name: "Closed", Payload: &Type{Name: "T", Kind: GenericType}},
 			},
 		},
+		// rules/concurrency/channels.md § 10(1): nonblocking send result.
+		"ChannelTrySendResult": {
+			Name:              "ChannelTrySendResult",
+			Kind:              UnionType,
+			GenericParameters: []string{"T"},
+			UnionVariants: []UnionVariant{
+				{Name: "Sent"},
+				{Name: "WouldBlock", Payload: &Type{Name: "T", Kind: GenericType}},
+				{Name: "Closed", Payload: &Type{Name: "T", Kind: GenericType}},
+			},
+		},
 		"ChannelTryReceiveResult": {
 			Name:              "ChannelTryReceiveResult",
 			Kind:              UnionType,
@@ -1316,24 +1327,10 @@ func newBuiltinTypes() map[string]Type {
 				{Name: "Closed"},
 			},
 		},
-		"ChannelRevokeResult": {
-			Name:              "ChannelRevokeResult",
-			Kind:              UnionType,
-			GenericParameters: []string{"T"},
-			UnionVariants: []UnionVariant{
-				{Name: "Revoked", Payload: &Type{Name: "T", Kind: GenericType}},
-				{Name: "Unavailable", Payload: &Type{Name: "MessageDisposition", Kind: EnumType}},
-			},
-		},
-		"MessageDisposition": {
-			Name:       "MessageDisposition",
-			Kind:       EnumType,
-			Underlying: "uint",
-			EnumValues: []string{"Received", "Expired", "Discarded"},
-			EnumConsts: builtinEnumConsts([]string{"Received", "Expired", "Discarded"}),
-		},
-		"Result":  {Name: "Result", Kind: ResultType, GenericParameters: []string{"T", "E"}},
-		"decimal": {Name: "decimal", Kind: DecimalType},
+		"ChannelRevokeResult": builtinChannelRevokeResultType(),
+		"MessageDisposition":  builtinMessageDispositionType(),
+		"Result":              {Name: "Result", Kind: ResultType, GenericParameters: []string{"T", "E"}},
+		"decimal":             {Name: "decimal", Kind: DecimalType},
 		"decimal128": {
 			Name: "decimal128",
 			Kind: DecimalType,
@@ -1374,7 +1371,7 @@ func newBuiltinTypes() map[string]Type {
 		"AllocationError", "ArithmeticError", "IndexError", "EnumValueError", "ContractError", "CollectionError",
 		"FormatError", "StringError",
 		"TaskSpawnError", "TaskError",
-		"ThreadSpawnError", "ThreadStartError", "ThreadSchedulingError", "ThreadTerminationError", "ThreadContextError",
+		"ThreadSpawnError", "ThreadStartError",
 	} {
 		typ := types[name]
 		typ.ErrorAssignable = true

@@ -47,7 +47,6 @@ integrations:
       - internal/ast/ast.go
       - internal/lexer/lexer.go
       - internal/parser/expression.go
-      - internal/sema/foreign_conversions.go
       - cmd/lsp/analysis_configuration.go
     tests:
       - internal/parser/parser_test.go

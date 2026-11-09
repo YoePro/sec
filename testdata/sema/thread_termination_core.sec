@@ -1,0 +1,12 @@
+module core
+
+enum ThreadTerminationKind {
+    Requested
+    External
+    Fault
+    Unknown
+}
+
+type ThreadTermination struct {
+    Kind: ThreadTerminationKind,
+}

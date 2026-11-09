@@ -60,3 +60,16 @@ fn Guarded(value: Option[int], enabled: bool) int {
         None => { return 0 }
     }
 }
+fn Result(value: Result[int, ArithmeticError]) int {
+    match value {
+        Ok(number) => { return number }
+        Err(_) => { return 0 }
+    }
+}
+fn Continuing(value: Option[int]) int {
+    match value { // continues
+        Some(number) => { return number }
+        None => {}
+    }
+    return 42
+}

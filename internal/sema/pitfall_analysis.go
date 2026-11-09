@@ -264,6 +264,11 @@ var pitfallRuleRegistry = []PitfallRuleDefinition{
 	{ID: PitfallForeignExtentOrigin, Family: PitfallForeignContracts, RequiredFacts: []string{"foreign-buffer-extent-contracts", "place-provenance", "compiler-known-members"}, MinimumDepth: AnalysisInteractive, DefaultConfidence: PitfallConfidenceHigh},
 	{ID: PitfallForeignExtentUnit, Family: PitfallForeignContracts, RequiredFacts: []string{"foreign-buffer-extent-contracts", "extent-quantities", "resolved-element-layout"}, MinimumDepth: AnalysisInteractive, DefaultConfidence: PitfallConfidenceHigh},
 	{ID: PitfallLastUseArgumentCopy, Family: PitfallAPIUsage, RequiredFacts: []string{"resolved-bindings", "resolved-calls", "resolved-construction", "transfer-plans", "binding-uses", "borrow-dependencies", "copy-cost-policy"}, MinimumDepth: AnalysisInteractive, DefaultConfidence: PitfallConfidenceHigh},
+	{
+		ID: PitfallPredecessorNeedsPositiveIndex, Family: PitfallBoundsAndRanges,
+		RequiredFacts: []string{"resolved-bindings", "constant-values", "control-flow", "bounds", "expression-types", "range-domain"},
+		MinimumDepth:  AnalysisInteractive, DefaultConfidence: PitfallConfidenceHigh,
+	},
 }
 
 // PitfallRules returns a defensive, deterministic snapshot of the canonical
@@ -350,6 +355,7 @@ type pitfallBuilder struct {
 	handledIntervalChains    map[*ast.InfixExpression]bool
 	activeNonEmptyProofs     map[string]lexer.Token
 	activeIndexGuards        []pitfallIndexGuard
+	activePositiveIndexes    []pitfallIndexGuard // index bindings proven >= 1 (pitfall_predecessor.go)
 	activeCapacityEqualities map[string]lexer.Token
 	activeCapacityWhiles     []capacityWhileContext
 	activeLengthConditions   []ast.Expression // enclosing true if conditions, for Len relations
@@ -485,7 +491,12 @@ func (b *pitfallBuilder) walkStatement(statement ast.Statement) {
 		if guard, ok := b.loopIndexGuard(statement); ok && b.guardSurvivesStatement(guard, statement) {
 			guards = append(guards, guard)
 		}
+		outerPositive := b.activePositiveIndexes
+		if positive, ok := b.loopPositiveIndexGuard(statement); ok {
+			b.activePositiveIndexes = append(append([]pitfallIndexGuard(nil), outerPositive...), positive)
+		}
 		b.withLoopIndexGuards(statement, guards, func() { b.walkBlock(statement.Body) })
+		b.activePositiveIndexes = outerPositive
 	case *ast.WhileStatement:
 		b.walkWhileStatement(statement)
 	case *ast.DeferStatement:
@@ -526,6 +537,7 @@ func (b *pitfallBuilder) walkExpression(expression ast.Expression) {
 		b.inspectDirectIndexAtLength(index)
 		if !b.boundsOnly {
 			b.inspectFinalElementAccess(index)
+			b.inspectPredecessorAccess(index)
 			b.inspectDirectCapacityIndex(index)
 			b.inspectWhileCapacityIndex(index)
 		}

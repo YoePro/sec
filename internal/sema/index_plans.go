@@ -356,6 +356,7 @@ func (a *Analyzer) setResolvedIndexUse(expr *ast.IndexExpression, use ArrayIndex
 		a.resolvedSliceIndexPlans[expr] = cloneSliceIndexPlan(slice)
 	}
 	a.setDynamicArrayIndexUse(expr, use)
+	a.setMapIndexUse(expr, use)
 	listPlan, listOK := a.resolvedListIndexPlans[expr]
 	if listOK {
 		listPlan.UseKind = use

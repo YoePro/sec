@@ -11,7 +11,7 @@ fn Aggregate() View {
     let value := 10
     return View { value: ref value }
 }
-fn Identity(ref value: int) ref int { return value }
+fn Identity(value: ref int) ref int { return value }
 fn ThroughCall() ref int {
     let value := 10
     return Identity(ref value)
@@ -24,13 +24,13 @@ fn Store(target: ref mut View) void {
     let value := 10
     target.value = ref value
 }
-fn MatchReturn(choice: Choice, ref fallback: int) View {
+fn MatchReturn(choice: Choice, fallback: ref int) View {
     match choice {
         Some(ref value) => { return View { value: value } }
         None => { return View { value: fallback } }
     }
 }
-fn MatchStore(choice: Choice, ref fallback: int) void {
+fn MatchStore(choice: Choice, fallback: ref int) void {
     let mut holder := fallback
     match choice {
         Some(ref value) => { holder = value }

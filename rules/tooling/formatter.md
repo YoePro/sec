@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-07-31
-- **Last updated:** 2026-11-04 (owner clarifications: preserve authored declaration blank lines in compact style, § 7(4), and mandatory function/comment separation, § 7(7a)); 2026-10-28 (MD-029/MD-042 error-pattern and inactive-arm preservation §§ 20(11)–20(12); MD-062 metadata spacing and preservation policy §§ 22(11)–22(13)); 2026-10-27 (MD-099 comment-column cap §§ 9(10a), 12(6a); MD-100 enum-only exemption § 15(4a); MD-037 `sec fmt` path selection §§ 28(9)–28(14)); 2026-10-18 (trailing single-line block comments, MD-097; direct unsafe call, MD-079)
+- **Last updated:** 2026-11-09 (borrow keyword spacing, § 21(12)); 2026-11-04 (owner clarifications: preserve authored declaration blank lines in compact style, § 7(4), and mandatory function/comment separation, § 7(7a)); 2026-10-28 (MD-029/MD-042 error-pattern and inactive-arm preservation §§ 20(11)–20(12); MD-062 metadata spacing and preservation policy §§ 22(11)–22(13)); 2026-10-27 (MD-099 comment-column cap §§ 9(10a), 12(6a); MD-100 enum-only exemption § 15(4a); MD-037 `sec fmt` path selection §§ 28(9)–28(14)); 2026-10-18 (trailing single-line block comments, MD-097; direct unsafe call, MD-079)
 - **Document revision:** 2.3
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/tooling/formatter.md`
@@ -1262,6 +1262,15 @@ target: ref mut Buffer
 ```
 
 § 21(11) Alignment may treat ownership or mutability markers as structural prefix information, but must never separate a marker from the identifier or type component to which the grammar attaches it.
+
+§ 21(12) In borrow expressions, `ref`/`ref mut` pattern bindings and `ref`/`ref mut` captures, the formatter writes exactly one space between `ref`, an optional `mut`, and the operand or binding name. A comment between the words is preserved with its source spacing, and a line break between them is not removed.
+
+```sec
+let view := ref mut buffer.data
+Some(ref value) => Use(value)
+let add := capture(ref base, ref mut total) fn() void {
+}
+```
 
 ---
 

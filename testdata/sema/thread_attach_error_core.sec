@@ -1,0 +1,7 @@
+module core
+
+enum ThreadAttachError error {
+    AlreadyAttached
+    ResourceUnavailable
+    NativeFailure
+}

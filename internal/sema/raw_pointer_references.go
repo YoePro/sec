@@ -50,11 +50,27 @@ func (a *Analyzer) inferRawPointerReferenceConversion(member *ast.MemberExpressi
 
 // recordRawPointerOriginBinding remembers the Place an immutable RawPtr[T]
 // binding takes its address from (`place.Ptr`, `r.Ptr` or `(*r).Ptr`; the
-// latter two address the referent).
+// latter two address the referent), including immutable pointer copy chains.
+// Copying the address preserves provenance but does not retain the owner or
+// grant safe-reference authority.
+// Rules: rules/memory/raw_pointers.md §§5.1,23(2,5–7),24(3–7),32(3);
+// rules/corrections/applied/md070-rawptr-safe-reference-conversions-correction-20261021.md §4(2),§5(3).
 func (a *Analyzer) recordRawPointerOriginBinding(name string, value ast.Expression) {
 	symbol, ok := a.symbols.lookup(name)
+	if !ok || symbol.Mutable || symbol.Volatile || symbol.Type.Kind != RawPtrType {
+		return
+	}
+	if identifier, copied := value.(*ast.Identifier); copied {
+		source, known := a.symbols.lookup(identifier.Value)
+		if known && source.Type.Kind == RawPtrType && !source.Mutable && !source.Volatile && source.RawPointerOrigin != nil {
+			origin := clonePlace(*source.RawPointerOrigin)
+			symbol.RawPointerOrigin = &origin
+			a.symbols.set(name, symbol)
+		}
+		return
+	}
 	member, isMember := value.(*ast.MemberExpression)
-	if !ok || symbol.Mutable || symbol.Volatile || symbol.Type.Kind != RawPtrType || !isMember || member.Property == nil || member.Property.Value != "Ptr" {
+	if !isMember || member.Property == nil || member.Property.Value != "Ptr" {
 		return
 	}
 	place, ok := a.resolvePlace(member.Object)

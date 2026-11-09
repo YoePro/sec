@@ -90,7 +90,9 @@ func (a *Analyzer) typeFromDeclarationWithName(name string, stmt *ast.TypeDeclSt
 // Rules: rules/library/core-library.md; rules/concurrency/mutex.md §§5–8,13;
 // rules/types/contracts.md "Public conversion and contract errors" (ContractError, MD-012).
 // rules/concurrency/atomics.md — §§4–6 (MemoryOrder, CompareExchangeResult).
-// rules/concurrency/channels.md — §§4–5 (ChannelCapability).
+// rules/concurrency/channels.md — §§4–5,13–14 (capability and revoke types).
+// rules/concurrency/thread_local.md — §29 (ThreadAttachError).
+// rules/concurrency/threads.md — §§4–6,18–19,23 (configuration, errors and termination metadata).
 func isCoreBuiltinDeclaration(name string) bool {
 	// rules/concurrency/ipc.md — §§6,27,44,55,68,79,94;
 	// rules/concurrency/processes.md — §§5.12–5.13.
@@ -103,7 +105,7 @@ func isCoreBuiltinDeclaration(name string) bool {
 	}
 	switch name {
 	case "ArithmeticError", "IndexError", "RangeError", "PrecisionError", "FormatError", "StringError", "ContractError", "TaskOutcome", "TaskSpawnError", "TaskError",
-		"date", "time", "datetime", "duration", "Instant", "MemoryOrder", "CompareExchangeResult", "ChannelCapability", "Mutex", "MutexGuard", "Context", "ContextError":
+		"date", "time", "datetime", "duration", "Instant", "MemoryOrder", "CompareExchangeResult", "ChannelCapability", "Mutex", "MutexGuard", "Context", "ContextError", "ThreadAttachError", "ThreadSpawnError", "ThreadStartError", "ThreadPriority", "ThreadStartMode", "ThreadSetting", "ThreadTerminationKind", "ThreadTermination", "ChannelRevokeResult", "MessageDisposition":
 		return true
 	default:
 		return false
@@ -278,7 +280,23 @@ func compilerOwnedImplIdentity(target Type) bool {
 // rules/types/default_values.md — Enums;
 // rules/concurrency/atomics.md — §§4–6; rules/concurrency/ipc.md — §§6,27,44,55,68,79,94;
 // rules/concurrency/processes.md — §§5.12–5.13.
+// rules/concurrency/thread_local.md — §29 (exact attachment error).
 func (a *Analyzer) typeFromEnumDeclaration(name string, enum *ast.EnumDeclaration) Type {
+	if name == "MessageDisposition" && a.isTrustedCoreBuiltinDeclaration(name, enum.Name.Token) {
+		return a.exactCoreEnumDeclaration(enum, builtinMessageDispositionType(), "rules/concurrency/channels.md §13")
+	}
+	if name == "ThreadTerminationKind" && a.isTrustedCoreBuiltinDeclaration(name, enum.Name.Token) {
+		return a.exactCoreEnumDeclaration(enum, builtinThreadTerminationKindType(), "rules/concurrency/threads.md §23")
+	}
+	if typ, canonical := a.threadConfigurationEnumFromDeclaration(enum); canonical {
+		return typ
+	}
+	if typ, canonical := a.threadLifecycleErrorFromDeclaration(enum); canonical {
+		return typ
+	}
+	if typ, canonical := a.threadAttachErrorFromDeclaration(enum); canonical {
+		return typ
+	}
 	if typ, canonical := a.ipcCoreEnumFromDeclaration(enum); canonical {
 		return typ
 	}

@@ -38,7 +38,7 @@ func (b *pitfallBuilder) inspectFinalElementAccess(index *ast.IndexExpression) {
 		Subject:        PitfallSubject{Expression: index.String(), Source: index.Token},
 		EvidenceFor: []PitfallEvidence{
 			{Strength: PitfallEvidenceProof, Fact: "the index subtracts one from the Len of the same collection", Source: lengthToken},
-			{Strength: PitfallEvidenceStrong, Fact: "no non-empty proof dominates this final-element access", Source: index.Token},
+			{Strength: PitfallEvidenceStrong, Fact: "no non-empty proof dominates this final-element access; for an empty collection Len - 1 is checked unsigned underflow that fails before any indexing", Source: index.Token},
 		},
 		OwningRule: "checked-arithmetic-and-bounds",
 		Actions: []PitfallSuggestedAction{{
@@ -107,15 +107,20 @@ func (b *pitfallBuilder) walkIfStatement(statement *ast.IfStatement) {
 	b.activeNonEmptyProofs = mergePitfallNonEmptyProofs(outerProofs, b.nonEmptyBranchProof(statement.Condition, true))
 	outerLengthConditions := b.activeLengthConditions
 	b.activeLengthConditions = append(append([]ast.Expression(nil), outerLengthConditions...), statement.Condition)
+	outerPositive := b.activePositiveIndexes
 	if trueReachable {
+		b.activePositiveIndexes = append(append([]pitfallIndexGuard(nil), outerPositive...), b.positiveIndexGuards(statement.Condition, true)...)
 		b.withIndexGuards(guards, func() { b.walkBlock(statement.Consequence) })
 	}
+	b.activePositiveIndexes = outerPositive
 	b.activeLengthConditions = outerLengthConditions
 	b.activeCapacityEqualities = mergeCapacityEqualities(outerCapacityEqualities, b.capacityBranchProof(statement.Condition, false))
 	b.activeNonEmptyProofs = mergePitfallNonEmptyProofs(outerProofs, b.nonEmptyBranchProof(statement.Condition, false))
 	if falseReachable {
+		b.activePositiveIndexes = append(append([]pitfallIndexGuard(nil), outerPositive...), b.positiveIndexGuards(statement.Condition, false)...)
 		b.withIndexGuards(b.falseIndexGuards(statement.Condition), func() { b.walkBlock(statement.Alternative) })
 	}
+	b.activePositiveIndexes = outerPositive
 	b.activeNonEmptyProofs = outerProofs
 	b.activeCapacityEqualities = outerCapacityEqualities
 }

@@ -22,9 +22,9 @@ integrations:
       - Task[T] and Thread[T] expose the shared compiler-known fn RequestCancel() void member through Sema and LSP.
       - RequestCancel calls enforce the exact zero-argument signature, return void, and do not consume or resolve the owning handle lifecycle obligation.
       - LSP completion and hover project the canonical member identity, exact signature, and cooperative idempotent non-consuming semantics from Sema's registry.
+      - "current-execution surface (2026-11-09, execution_context.go, TestExecutionContextSurface): Task.Current() TaskContext and Thread.Current() ThreadContext with the bool CancelRequested property in CamelCase (lowercase spellings get the canonical-name help), Task.Yield()/Thread.Yield() void, exact zero-argument signatures; CancelRequested is never selectable"
     remaining:
-      - Implement Task.Current and TaskContext cancellation observation.
-      - Synchronize Thread.Current/ThreadContext to CancelRequested CamelCase.
+      - "Reject Thread.Current() on a target/profile without the physical-thread capability (cancellation.md § 24); the logical-task requirement is enforced by frontend.cancellation-effect-v1."
       - Implement runtime request/observation state and wakeup integration.
       - Implement cancellation-point registration and commit races.
       - Integrate deterministic cleanup and terminal outcome publication.
@@ -52,7 +52,7 @@ integrations:
 
   - id: frontend.cancellation-effect-v1
     area: inferred-cancellable-execution-effect
-    status: planned
+    status: partial
     normative:
       - Functions containing cancel require current cancellable execution.
       - The requirement propagates transitively through calls.
@@ -60,11 +60,19 @@ integrations:
       - Callable/function values preserve the requirement and cannot erase it.
       - Task.Current carries a specific current-logical-task requirement.
       - Thread.Current carries a physical-thread capability requirement.
+    code:
+      - internal/sema/task_context_requirement.go
+      - internal/sema/execution_context.go
+    tests:
+      - internal/sema/task_context_requirement_test.go
+      - internal/sema/concurrency_test.go
+    implemented:
+      - "per-callable inferred requirements (2026-11-09): `cancel` records a cancellable-execution requirement and Task.Current()/Task.Yield() a logical-task requirement on the containing callable, lambdas included; the former lexical rejection of cancel in every named function is removed (cancellation.md §§ 19-20)"
+      - "requirements propagate through synchronous and deferred call-graph edges, recursion included, and are checked from every root: ordinary program entry rejects both (scheduling.md § 22), a spawned thread rejects only the logical-task requirement, a spawned task satisfies both; spawn edges start new roots; the diagnostic lands on main's first call on the path naming the requiring callable and operation, or on the operation itself (TestExecutionContextRequirements)"
+      - "test bodies run like ordinary program entry (owner decision 2026-11-09, testing.md § 9.7): every test body node is checked as an entry, so Task.Current()/Task.Yield()/cancel reached from a test without spawning are rejected (TestExecutionContextRequirementsInTests)"
     remaining:
-      - Add effect field/facts to callable semantic representation.
-      - Propagate through direct calls, recursion/SCCs, generics and indirect callable values.
-      - Add context-validity diagnostics at call sites.
-      - Preserve effect into Semantic IR indirect-call metadata.
+      - "Carry the requirement in callable values and function types so assignment/conversion cannot erase it (§ 21(3)-(4)); calls through function values with unknown target sets are not checked yet."
+      - "Preserve the effect into Semantic IR indirect-call metadata."
     required_tests:
       - id: direct-cancel-effect
         expectation: Function containing cancel is callable only from valid cancellable execution.

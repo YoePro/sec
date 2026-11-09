@@ -2,8 +2,8 @@
 
 - **Status:** Normative
 - **Created:** 2026-09-02
-- **Last updated:** 2026-09-02
-- **Document revision:** 1.0
+- **Last updated:** 2026-11-09 (§ 9.7 test execution context, owner decision)
+- **Document revision:** 1.1
 - **Sec language version:** 0.1
 - **Repository baseline reviewed:** `814a584`
 - **Canonical path:** `rules/tooling/testing.md`
@@ -676,6 +676,26 @@ If an invocation has already recorded a failure, a later skip request does not e
 The primary outcome remains `Failed`.
 
 Tooling may retain the skip request as additional diagnostic information.
+
+### 9.7 Execution context
+
+A test body runs in the same current-execution context as ordinary program
+entry (`rules/concurrency/scheduling.md` § 22): it is not a logical task and
+not a cancellable thread (owner decision 2026-11-09). `Task.Current()`,
+`Task.Yield()` and `cancel`, directly in the test body or reached through its
+synchronous calls, are therefore invalid there
+(`rules/concurrency/cancellation.md` §§ 19–23). Code that needs a task is
+spawned and awaited inside the test:
+
+```sec
+test "observes its own task" {
+    let work := spawn ObserveCancellation()
+    let observed := await work
+}
+```
+
+A runner may execute tests with task machinery internally; that does not
+give the test body a source-visible `TaskContext`.
 
 ---
 

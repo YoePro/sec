@@ -67,6 +67,8 @@ func freshMatchSubject(a *Analyzer, subject ast.Expression) bool {
 // union value stored at subjectPlace. A match subject passes its own Place;
 // an MD-029 error pattern passes the Err payload Place of its Result subject,
 // so field borrows project through the selected error variant.
+// Rules: rules/control-flow/flowcontrol_match.md §§8(5),10,12-15;
+// rules/control-flow/discard.md §18.
 func (a *Analyzer) analyzeUnionFieldPatternAt(subject ast.Expression, subjectPlace Place, hasPlace bool, pattern *ast.MatchPattern, subjectType Type) (matchPatternInfo, bool) {
 	variantName, variantToken := pattern.Name, pattern.NameToken
 	if variantToken.Line == 0 {
@@ -97,6 +99,9 @@ func (a *Analyzer) analyzeUnionFieldPatternAt(subject ast.Expression, subjectPla
 	}
 	info := matchPatternInfo{Kind: "variant", Variant: variant.Name, VariantIndex: unionVariantIndex(subjectType, variant.Name)}
 	payloadType := FieldPayloadType(subjectType, variant)
+	if len(pattern.Fields) == 0 && !a.checkMatchPayloadDiscard(variantName+" {}", payloadType, variantToken) {
+		return matchPatternInfo{}, false
+	}
 	seenFields, seenNames := map[string]bool{}, map[string]bool{}
 	valid := true
 	for _, field := range pattern.Fields {

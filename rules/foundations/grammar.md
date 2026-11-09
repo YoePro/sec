@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-02
-- **Last updated:** 2026-11-07 (stable chapter, subsection, and paragraph numbering)
+- **Last updated:** 2026-11-09 (§ 61A join statement, § 63 SelectJoinBranch); 2026-11-07 (stable chapter, subsection, and paragraph numbering)
 - **Document revision:** 1
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/foundations/grammar.md`
@@ -1924,6 +1924,7 @@ Statement
       | DeferStatement
       | DiscardStatement
       | DetachStatement
+      | JoinStatement
       | CancelStatement
       | UnsafeStatement
       | AsmStatement
@@ -2410,6 +2411,29 @@ detach task discard
 
 ---
 
+## § 61A Join statement
+
+```text
+JoinStatement
+    ::= Contextual("join") Identifier
+```
+
+**§ 61A(1)** Example:
+
+```sec
+join worker
+```
+
+**§ 61A(2)** `join` is a contextual spelling. It forms a join statement only when an
+identifier follows it on the same line; `join(value)` and other uses of `join`
+remain ordinary expressions.
+
+**§ 61A(3)** The semantics, including the one-shot join capability and the preserved
+handle, are owned by `rules/concurrency/tasks.md` § 17 for `Task[T]` and
+`rules/concurrency/threads.md` § 34 for `Thread[T]`.
+
+---
+
 ## § 62 Cancel statement
 
 ```text
@@ -2436,11 +2460,15 @@ SelectStatement
 SelectBranch
     ::= SelectOperationBranch
       | SelectBindingBranch
+      | SelectJoinBranch
       | SelectTimeoutBranch
       | SelectDefaultBranch
 
 SelectOperationBranch
     ::= Expression "=>" Block
+
+SelectJoinBranch
+    ::= Contextual("join") Identifier "=>" Block
 
 SelectBindingBranch
     ::= Identifier ":=" Expression "=>" Block
@@ -3781,6 +3809,7 @@ set
 event
 using
 detach
+join
 step
 register
 bit

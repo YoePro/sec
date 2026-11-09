@@ -48,6 +48,7 @@ func (a *Analyzer) analyzeFunctionBodyInScope(fn *ast.FunctionDeclaration, name 
 	previousUnsafe := a.inUnsafe
 	previousScopeDepth := a.scopeDepth
 	a.symbols = previousSymbols.child()
+	a.scopeModuleVariables()
 	a.constInts = copyConstInts(previousConstInts)
 	a.assigned = copyAssigned(previousAssigned)
 	a.moved = map[string]lexer.Token{}

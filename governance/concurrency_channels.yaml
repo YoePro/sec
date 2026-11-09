@@ -55,23 +55,24 @@ integrations:
       - Sec 0.1 channels define no ref Context overloads.
       - Select readiness is non-destructive and only the selected branch commits.
     implemented:
+      - blocking Send returns ChannelSendResult[T] (Sent | Closed(T)) and TrySend the new compiler-known ChannelTrySendResult[T] (Sent | WouldBlock(T) | Closed(T)), matchable by variant (2026-11-09, channels.md §§ 9-10, TestChannelCallsThroughReferences)
+      - channel members resolve through ref/ref mut endpoints, also as select operations; Close consumes the endpoint and is rejected through a reference with a focused diagnostic (2026-11-09)
       - compiler-known intrinsic identities currently exist for Channel[T], Sender[T], Receiver[T], and MessageTicket[T]
       - initial compiler-known supporting identities exist for several legacy channel result/configuration types
       - legacy Channel[T](capacity) recognition exists in semantic analysis
       - legacy endpoint member resolution and basic Send/TrySend/Receive/TryReceive/Close/Discard/Share recognition exist
       - initial select semantic recognition exists for channel send/receive/try/revocable operations
       - ChannelCapability is a real core enum and a matching reserved standalone compiler identity with exactly Revocation, Expiration, ISRSafeSend and Statistics; Priority and user redeclarations are rejected, and LSP shares the canonical closed set, variant documentation and core source navigation; runtime provisioning and feature validation remain separate work
+      - "Channel[T] exposes canonical stored Tx: Sender[T] and Rx: Receiver[T] fields with ordinary partial-move tracking; both endpoints can be moved independently, while implicit copies, repeated extraction, use of moved fields and whole-value reuse after partial moves are rejected; lowercase tx/rx receive canonical-name help, and LSP completion/hover use the same concrete compiler facts (2026-11-09)"
+      - ChannelRevokeResult[T] is the exact non-error nominal core union Revoked(T) | Unavailable(MessageDisposition), with the complete closed Received/Expired/Discarded disposition enum retained in its payload. Concrete and contextual construction plus nested exhaustive matching use ordinary union/enum rules; trusted declarations preserve source identities and reject extra dispositions, borrowed/retyped payloads or error markers, and ordinary source cannot replace either identity (2026-11-09)
+      - Revoke authority is exposed on MessageTicket[T].Revoke(), returning concrete ChannelRevokeResult[T] and consuming the owned receiver through canonical Place, borrow and receiver-move facts. Borrowed references, active overlapping loans, repeated use and invalid arity are rejected without publishing a successful receiver move. Independent stored ticket fields and calls after sender close remain valid; legacy Sender.Revoke(ticket) is rejected with migration help, and LSP shares the ticket-owned signature, ownership documentation and completion (2026-11-09)
     remaining:
-      - replace legacy channel.tx/channel.rx with canonical Tx/Rx source member identities and preserve ordinary partial-move tracking
       - implement fallible Channel constructors using AllocationError and remove any infallible dynamic-allocation assumption
       - ensure invalid ChannelOptions and unsupported feature combinations are compile-time diagnostics rather than runtime ChannelCreateError variants
       - implement ChannelStatistics and saturating counter semantics
       - change Share() from Sender[T] to Option[Sender[T]] and implement MaxSenders/generation-safe sender-slot reuse
-      - split blocking Send and TrySend into ChannelSendResult[T] and ChannelTrySendResult[T]
       - implement WouldBlock(T) ownership return for full buffered and unmatched rendezvous TrySend
       - implement ChannelRevocableSendResult[T] and pre-commit Closed(T) ownership return with no ticket creation
-      - move revoke authority from Sender[T].Revoke(ticket) to consuming MessageTicket[T].Revoke()
-      - implement exact ChannelRevokeResult[T] and MessageDisposition Received/Expired/Discarded
       - keep ticket valid independently of originating Sender[T] lifetime
       - implement expiration capability with construction-provisioned metadata and no hidden per-send allocation
       - implement Statistics capability without adding queue-depth/waiter-count API
@@ -135,19 +136,61 @@ integrations:
       - select, cancellation, memory-model, Semantic IR, and LSP rulebooks contain the required channel v2 cross-rulebook synchronization
       - language-rulebook-status.md records concurrency/channels.md revision 2.0 as Written while implementation remains partial
       - governance/concurrency_channels.yaml remains the already-registered sole owner of concurrency.channels-v2
-    revised: "2026-10-16"
+    revised: "2026-11-09"
     code:
       - internal/sema/channel_types.go
       - internal/sema/types.go
       - internal/sema/type_declarations.go
       - sec/core/channel.sec
+      - internal/sema/analyzer_inference.go
+      - internal/sema/channel_revoke_types.go
+      - internal/sema/core_union_declarations.go
+      - internal/sema/channel_ticket_revoke.go
+      - internal/sema/compiler_known_calls.go
+      - internal/sema/compiler_known_members.go
     tests:
       - internal/sema/channel_capability_test.go
       - cmd/compiler/channel_capability_test.go
       - cmd/lsp/channel_capability_test.go
       - testdata/sema/channel_capability_valid.sec
       - testdata/sema/channel_capability_invalid.sec
+      - internal/sema/channel_endpoints_test.go
+      - cmd/compiler/channel_endpoints_test.go
+      - cmd/lsp/channel_endpoints_test.go
+      - testdata/sema/channel_endpoints_valid.sec
+      - testdata/sema/channel_endpoints_invalid.sec
+      - internal/sema/channel_revoke_types_test.go
+      - cmd/compiler/channel_revoke_types_test.go
+      - cmd/lsp/channel_revoke_types_test.go
+      - testdata/sema/channel_revoke_types_valid.sec
+      - testdata/sema/channel_revoke_types_invalid.sec
+      - testdata/sema/channel_revoke_types_core.sec
+      - internal/sema/channel_ticket_revoke_test.go
+      - cmd/compiler/channel_ticket_revoke_test.go
+      - cmd/lsp/channel_ticket_revoke_test.go
+      - testdata/sema/ticket_revoke_valid.sec
+      - testdata/sema/ticket_revoke_invalid.sec
     verification:
+      - command: go vet -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-11-09 after ticket-owned Revoke integration
+      - command: go test -p 4 ./internal/sema -count=1
+        result: passed on 2026-11-09 (16.512s) after ticket-owned Revoke integration
+      - command: go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run "TestTicketOwnedRevoke|TestChannelRevokeTypes|TestChannelOperations" -count=1
+        result: passed on 2026-11-09; Sema 0.029s, CLI 4.084s, LSP 9.489s; consuming receiver facts, field partial moves, reference/live-borrow/repeated-use/arity rejection, sender-independent calls, legacy migration help and canonical LSP hover/completion
+      - command: go vet -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-11-09 after canonical revoke type integration
+      - command: go test -p 4 ./internal/sema -count=1
+        result: passed on 2026-11-09 (15.484s) after canonical revoke type integration
+      - command: go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run "^Test(ChannelRevokeTypes|ThreadSetting)" -count=1
+        result: passed on 2026-11-09; Sema 0.013s, CLI 3.506s, LSP 7.136s; complete nominal disposition payload, nested exhaustive matching, invalid variants/payloads, trusted source shape/tokens and shared LSP types/variant completion; ThreadSetting regressions pass after union-validator extraction
+      - command: go test -p 4 ./cmd/lsp -run "Test.*Hover|TestCanonicalChannelEndpoints" -count=1
+        result: passed on 2026-11-09; all 84 selected hover and canonical-channel tests passed
+      - command: go vet -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-11-09
+      - command: go test -p 4 ./internal/sema -count=1
+        result: passed on 2026-11-09 (20.862s)
+      - command: go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run "TestCanonicalChannelEndpoints|TestChannel|TestNoBlock" -count=1
+        result: passed on 2026-11-09; canonical Tx/Rx use ordinary stored-field identity and partial moves; implicit copies, repeated extraction, whole-channel reuse and lowercase names are rejected; LSP completion and concrete endpoint hover agree with Sema
       - command: go test ./internal/sema ./internal/ir/... ./cmd/compiler -count=1
         result: passed on 2026-10-16 after registering the canonical ChannelCapability core enum
       - command: go test ./internal/sema ./cmd/compiler ./cmd/lsp -race -run 'TestChannelCapability|TestAtomic' -count=1

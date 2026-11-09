@@ -280,6 +280,9 @@ func (b *pitfallBuilder) walkIndependentGuardBody(body *ast.BlockStatement) {
 	b.activeCapacityWhiles = nil
 	b.activeCapacityEqualities = nil
 	outerNonEmpty, outerPreceding := b.activeNonEmptyProofs, b.activePreceding
+	outerPositive := b.activePositiveIndexes
+	b.activePositiveIndexes = nil
+	defer func() { b.activePositiveIndexes = outerPositive }()
 	b.activeIndexGuards = nil
 	b.activeNonEmptyProofs, b.activePreceding = nil, nil
 	b.walkBlock(body)

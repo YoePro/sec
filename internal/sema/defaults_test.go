@@ -273,7 +273,7 @@ type Holder struct {
     value: ref int,
 }
 
-fn Invalid(ref source: int) Holder {
+fn Invalid(source: ref int) Holder {
     let mut view: ref int
     return Holder {}
 }

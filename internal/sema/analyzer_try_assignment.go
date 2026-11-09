@@ -126,6 +126,11 @@ func (a *Analyzer) tryAssignmentErrorType(stmt *ast.AssignmentStatement) (Type, 
 		return a.types["StringError"], true
 	}
 	switch target := stmt.Target.(type) {
+	case *ast.IndexExpression:
+		// collections.md § 14.5: a map upsert grows with CollectionError.
+		if plan, ok := a.resolvedMapIndexPlans[target]; ok && plan.Upsert {
+			return plan.UpsertErrorType, true
+		}
 	case *ast.MemberExpression:
 		// The decimal Scale setter fails with PrecisionError (core-library.md § 10.1).
 		if a.decimalScaleWrites[stmt] {

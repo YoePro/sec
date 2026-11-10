@@ -271,32 +271,6 @@ func guaranteeCauseLines(graph *sema.CallGraph, id sema.CallableID, attributes [
 	return lines
 }
 
-// blockingHoverLine presents the compiler-owned blocking summary.
-//
-// Rules:
-//   - rules/concurrency/blocking.md — "Call graph analysis"
-func blockingHoverLine(graph *sema.CallGraph, id sema.CallableID) string {
-	summary := graph.BlockSummary(id)
-	if !summary.MayBlock {
-		return "May block: `no`"
-	}
-	names := []string{}
-	for _, step := range summary.BlockPath {
-		if node, ok := graph.Node(step); ok {
-			names = append(names, node.Name)
-		}
-	}
-	line := "May block: `yes` via `" + strings.Join(names, "` -> `") + "`"
-	if direct := graph.BlockSummary(summary.BlockPath[len(summary.BlockPath)-1]).DirectEffects; len(direct) > 0 {
-		cause := string(direct[0].Kind)
-		if direct[0].Operation != "" {
-			cause = direct[0].Operation
-		}
-		line += fmt.Sprintf(" (%s at %d:%d)", cause, direct[0].Source.Line, direct[0].Source.Column)
-	}
-	return line
-}
-
 // writtenAttributeAt finds the attribute whose name token is at token, with
 // the attachment set it belongs to and its function declaration, if any.
 func writtenAttributeAt(program *ast.Program, token lexer.Token) (*ast.Attribute, []*ast.Attribute, *ast.FunctionDeclaration) {

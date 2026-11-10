@@ -1,0 +1,19 @@
+module main
+
+type Signed int8
+type Unsigned uint8
+
+fn Choose(first: Signed, second: Unsigned) int { return 11 }
+fn Choose(first: Unsigned, second: Signed) int { return 22 }
+fn Choose(first: int8, second: uint8) int { return 33 }
+fn Nested(value: Signed) int { return Choose(value, Unsigned(1)) }
+
+fn main() int {
+    let signed: Signed := 1
+    let unsigned: Unsigned := 1
+    if Choose(signed, unsigned) != 11 { return 1 }
+    if Choose(unsigned, signed) != 22 { return 2 }
+    if Choose(int8(1), uint8(1)) != 33 { return 3 }
+    if Nested(signed) != 11 { return 4 }
+    return 0
+}

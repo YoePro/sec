@@ -1,0 +1,26 @@
+module main
+
+fn Pause() void {
+    Task.Yield()
+}
+
+fn ViaValue() void {
+    let pause := Pause
+    pause()
+}
+
+fn Deferred() void {
+    defer {
+        Pause()
+    }
+}
+
+fn main() void {
+    Thread.Yield()
+    let direct := spawn Pause()
+    await direct
+    let indirect := spawn ViaValue()
+    await indirect
+    let deferred := spawn Deferred()
+    await deferred
+}

@@ -1,0 +1,11 @@
+module main
+
+type Duck struct {}
+impl Duck { fn Next() Option[int] { return None } }
+fn DuckLoop() void {
+    let mut duck := Duck{}
+    for value in duck { discard value }
+}
+fn SharedView(values: ref Iterator[int]) void {
+    for value in values { discard value }
+}

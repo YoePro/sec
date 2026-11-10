@@ -184,16 +184,29 @@ LogicalResult verifyScalarKind(Operation *operation, IntegerType type,
   return success();
 }
 
+// isSecOriginIntegerStorage recognizes scalar slots with source provenance,
+// including named integer carriers, for physical load/store normalization.
+// Rules: rules/compiler/semantic_ir.md, section 7(3)-(5);
+// rules/corrections/applied/md087-p5-p6-p8-reference-boundaries-correction-20261021.md,
+// section 5(3)-(4).
 bool isSecOriginIntegerStorage(Value value) {
   auto alloca = value.getDefiningOp<memref::AllocaOp>();
   if (!alloca)
     return false;
   auto type = alloca.getType();
-  return type.getRank() == 0 && isa<IntegerType>(type.getElementType()) &&
+  return type.getRank() == 0 &&
+         isa<IntegerType>(namedCarrier(type.getElementType())) &&
          alloca->hasAttr("sec.storage_id") &&
          alloca->getAttrOfType<StringAttr>("sec.scalar_kind") != nullptr;
 }
 
+// normalizeSecIntegerStorage erases nominal integer identity only at physical
+// storage lowering, retaining carrier width/signedness for provenance checks
+// and semantic load bridges. Named chains obey the same rule as plain carriers.
+// Rules: rules/compiler/semantic_ir.md, section 7(3)-(5);
+// rules/types/types.md, section 22.1(1)-(6);
+// rules/corrections/applied/md087-p5-p6-p8-reference-boundaries-correction-20261021.md,
+// sections 4(6), 5(3)-(4).
 LogicalResult normalizeSecIntegerStorage(ModuleOp module) {
   WalkResult result = module.walk([&](memref::AllocaOp alloca) {
     auto oldType = alloca.getType();
@@ -201,7 +214,7 @@ LogicalResult normalizeSecIntegerStorage(ModuleOp module) {
         !isPlainSemanticInteger(oldType.getElementType()) ||
         !alloca->hasAttr("sec.storage_id"))
       return WalkResult::advance();
-    auto elementType = cast<IntegerType>(oldType.getElementType());
+    auto elementType = cast<IntegerType>(namedCarrier(oldType.getElementType()));
     if (failed(verifyScalarKind(
             alloca, elementType,
             alloca->getAttrOfType<StringAttr>("sec.scalar_kind"),
@@ -285,6 +298,66 @@ public:
     auto converted = FunctionType::get(rewriter.getContext(),
                                        signature.getConvertedTypes(), results);
     rewriter.modifyOpInPlace(op, [&] { op.setType(converted); });
+    return success();
+  }
+};
+
+// namedIntegerStorage selects scalar local storage whose named carrier has
+// already been resolved by the plan. Reference-dependent storage stays at P15.
+// Rules: rules/compiler/semantic_ir.md, section 7(3)-(5);
+// rules/mlir/packages/sec-mlir-dialect_package15.md, section 67.
+Value namedIntegerStorage(Operation *op) {
+  if (!isa<sec::StorageDeclareOp, sec::StorageInitOp, sec::StorageLoadOp,
+           sec::StorageStoreOp>(op))
+    return {};
+  Value value = isa<sec::StorageDeclareOp>(op) ? op->getResult(0)
+                                              : op->getOperand(0);
+  auto storage = dyn_cast<sec::StorageType>(value.getType());
+  return storage && isa<sec::NamedType>(storage.getElementType()) &&
+                 isPlainSemanticInteger(storage.getElementType())
+             ? value
+             : Value{};
+}
+
+// NamedIntegerStorageLowering materializes named scalar locals as carrier
+// memrefs together with their accesses. Semantic named values are converted
+// by the same P8 type converter, preserving checked arithmetic signedness.
+// Rules: rules/compiler/semantic_ir.md, section 7(3)-(5);
+// rules/types/types.md, section 22.1(1)-(6);
+// rules/corrections/applied/md087-p5-p6-p8-reference-boundaries-correction-20261021.md,
+// sections 4(6), 5(3)-(4).
+class NamedIntegerStorageLowering final : public ConversionPattern {
+public:
+  NamedIntegerStorageLowering(TypeConverter &converter, MLIRContext *context)
+      : ConversionPattern(converter, MatchAnyOpTypeTag(), 1, context) {}
+
+  LogicalResult matchAndRewrite(Operation *op, ArrayRef<Value> operands,
+                                ConversionPatternRewriter &rewriter) const override {
+    Value storage = namedIntegerStorage(op);
+    if (!storage || sec::isReferenceDependentStorage(storage))
+      return failure();
+    if (isa<sec::StorageDeclareOp>(op)) {
+      Type element = cast<sec::StorageType>(storage.getType()).getElementType();
+      if (failed(verifyScalarKind(op, cast<IntegerType>(namedCarrier(element)),
+                                 op->getAttrOfType<StringAttr>("sec.scalar_kind"),
+                                 "Sec-origin named integer storage")))
+        return failure();
+      auto type = cast<MemRefType>(
+          getTypeConverter()->convertType(storage.getType()));
+      auto alloca = memref::AllocaOp::create(rewriter, op->getLoc(), type);
+      for (StringRef name : {"sec.storage_id", "sec.source_name",
+                             "sec.storage_class", "sec.mutable",
+                             "sec.scalar_kind"})
+        if (Attribute attribute = op->getAttr(name))
+          alloca->setAttr(name, attribute);
+      rewriter.replaceOp(op, alloca.getResult());
+    } else if (isa<sec::StorageLoadOp>(op)) {
+      rewriter.replaceOpWithNewOp<memref::LoadOp>(op, operands[0], ValueRange{});
+    } else {
+      memref::StoreOp::create(rewriter, op->getLoc(), operands[1], operands[0],
+                             ValueRange{});
+      rewriter.eraseOp(op);
+    }
     return success();
   }
 };
@@ -875,6 +948,15 @@ public:
         return std::nullopt;
       return IntegerType::get(context, integer.getWidth());
     });
+    // Named local storage becomes physical in the same pass as its values;
+    // P5 cannot place semantic !sec.named elements in builtin memrefs.
+    // Rules: rules/compiler/semantic_ir.md, section 7(5).
+    typeConverter.addConversion([&](sec::StorageType type) -> std::optional<Type> {
+      if (!isa<sec::NamedType>(type.getElementType()) ||
+          !isPlainSemanticInteger(type.getElementType()))
+        return type;
+      return MemRefType::get({}, signlessType(context, type.getElementType()));
+    });
     // MD-087 § 5(3): the only bridge is a temporary same-width
     // builtin.unrealized_conversion_cast between a semantic siN/uiN and the
     // signless iN; it carries no conversion semantics and is reconciled or
@@ -900,6 +982,12 @@ public:
                            func::FuncDialect, cf::ControlFlowDialect,
                            memref::MemRefDialect>();
     target.addLegalDialect<sec::SecDialect>();
+    target.addDynamicallyLegalOp<sec::StorageDeclareOp, sec::StorageInitOp,
+                                 sec::StorageLoadOp, sec::StorageStoreOp>(
+        [](Operation *op) {
+          Value storage = namedIntegerStorage(op);
+          return !storage || sec::isReferenceDependentStorage(storage);
+        });
     target.addIllegalOp<sec::NumericConvertExactOp,
                         sec::NumericConvertCheckedOp>();
     target.addDynamicallyLegalOp<sec::StaticLoadOp, sec::StaticStoreOp>(
@@ -935,6 +1023,7 @@ public:
       return op.getValue().getType() == op.getMemRefType().getElementType();
     });
     RewritePatternSet patterns(context);
+    patterns.add<NamedIntegerStorageLowering>(typeConverter, context);
     patterns.add<FunctionTypeLowering, BranchLowering, CondBranchLowering,
                  SecIntegerStoreLowering,
                  SecCallTypeLowering<sec::CallDirectOp>,

@@ -456,6 +456,9 @@ func (ev *EnumValue) TokenLiteral() string {
 }
 
 type InterfaceDeclaration struct {
+	// InvalidMembers retain diagnosed requirements without publishing a callable contract.
+	// Rules: rules/declarations/interfaces.md — §3.3; rules/compiler/parser_recovery.md — Invalid AST nodes.
+	InvalidMembers    []*InvalidMember
 	Token             lexer.Token
 	Name              *Identifier
 	GenericParameters []*GenericParameter
@@ -1107,8 +1110,10 @@ func (td *TestDeclaration) TokenLiteral() string {
 type ReceiverCapability string
 
 const (
-	ReceiverShared    ReceiverCapability = "shared"
-	ReceiverMutable   ReceiverCapability = "mutable"
+	ReceiverShared  ReceiverCapability = "shared"
+	ReceiverMutable ReceiverCapability = "mutable"
+	// ReceiverConsuming is retained only for rejecting legacy/constructed ASTs.
+	// Ordinary methods have no such receiver contract (ownership.md §9).
 	ReceiverConsuming ReceiverCapability = "consuming"
 )
 
@@ -2567,7 +2572,7 @@ func (fd *FreeDeclaration) implMemberNode() {}
 
 func (fd *FreeDeclaration) TokenLiteral() string { return fd.Token.Lexeme }
 
-// InvalidMember retains a malformed or disallowed impl member and the exact
+// InvalidMember retains a malformed or disallowed impl/interface member and the exact
 // region skipped while finding the next member boundary.
 type InvalidMember struct {
 	Token    lexer.Token
@@ -2841,9 +2846,10 @@ type StructLiteralField struct {
 	Name   *Identifier
 	Value  Expression
 	Spread bool
-	// Positional marks a component of a compiler-known shaped metadata
-	// literal (`Shape[3] { 2, 0, 4 }`): it has a Value and no Name
-	// (shaped-types.md §§ 4.1, 6.0, 15.3; MD-016).
+	// Positional marks a shaped metadata or CpuSet literal component. Value
+	// is source-owned; Name is a synthetic private component key, not a field.
+	// Rules: rules/collections/shaped-types.md §§4.1,6.0,15.3 (MD-016);
+	// rules/concurrency/threads.md §7(2).
 	Positional bool
 }
 

@@ -1,0 +1,32 @@
+module main
+
+type Counter struct { current: int }
+impl Counter implements Iterator[int] {
+    fn Next() Option[int] { return None }
+}
+type Words struct { current: int }
+impl Words implements Iterator[string] {
+    fn Next() Option[string] { return None }
+}
+fn Concrete() void {
+    let mut counter := Counter{}
+    for value in counter { discard value }
+    let mut words := Words{}
+    for value in words { discard value }
+}
+fn Generic[I: Iterator[int]](values: ref mut I) void {
+    for value in values { discard value }
+}
+fn View(values: ref mut Iterator[int]) void {
+    for value in values { discard value }
+}
+fn Plain() void {
+    let value := 1
+    discard value
+}
+fn First() int {
+    let mut counter := Counter{}
+    for value in counter { return value }
+    return 0
+}
+fn main() void { Concrete() }

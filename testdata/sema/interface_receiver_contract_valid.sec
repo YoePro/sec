@@ -1,0 +1,15 @@
+module main
+interface Resource {
+    fn Inspect() int
+    mut fn Update() void
+    fn Take(-> value: int) void
+    fn Apply(callback: -> fn() int) int
+}
+fn Invoke(-> callback: -> fn() int) int {
+    return callback()
+}
+fn Take(-> value: int) int { return value }
+fn MoveArgument() int {
+    let value := 3
+    return Take(<-value)
+}

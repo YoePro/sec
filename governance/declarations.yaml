@@ -374,12 +374,12 @@ integrations:
       - "Optional implicit-empty catch-all guidance (2026-10-29; unions.md §10.4): A2009 / union.implicit-empty-catch-all is a nonmandatory Warning at an accepted unguarded underscore when Sema already proves the subject may be empty and no explicit empty arm exists. Uses existing match reachability and accepted arm source indices; it never changes coverage, initialization, ownership or lowering. Explicit empty arms (including guarded ones), initialized/defaulted/parameter subjects and initialized refinements receive no warning. The ordinary project diagnostic policy supports off/info/warning/error; CLI human output, JSON identity/range/help and unsaved-source LSP projection are tested, including repeated analysis and mandatory coverage with advice disabled."
       - "state tests in value positions (verified 2026-11-04; MD-006): `value is Variant` and `value is not Variant` on unions, Option and Result lower in Semantic IR as a variant test with constant edges to a merge (Result edges unwrap the projected payload for the Result guard verifier) and run natively in bindings, `&&` operands and if conditions (testdata/build/native/state_tests.sec in TestNativeTrackBuildsAndRuns). The empty-state test and owned subjects stay named boundaries ('empty-state test (needs a runtime initialization flag)', 'state test of a subject that needs ownership')."
       - "verified 2026-11-07 (TestUnionConstructionAndDestructuringForms): shallow named-field payload destructuring with shorthand, rename, omitted fields and field-level `ref`/`ref mut`, with field Places and no hidden moves; explicit generic constructor qualification (`Option[int].Some(10)`, `Box[int].Full(3)`); explicit `<-` required when a reusable move-only source enters a payload outside a terminal return (copy_move.md § 10.4)"
-      - "legacy word-form `move source` in a call argument or union payload reports one focused parser diagnostic and keeps parsing the source (2026-11-07, TestRejectLegacyWordFormMoveArgument); the let-initializer form was already rejected"
+      - legacy word-form `move source` in a call argument or union payload reports one focused parser diagnostic and keeps parsing the source (2026-11-07, TestRejectLegacyWordFormMoveArgument); the let-initializer form was already rejected
       - "variant proofs cross joins (2026-11-08, TestVariantProofsCrossJoins): if branches, while loops (break edges and the condition-false exit, so while-condition variant tests refine the exit) and direct assignments of a variant constructor (`x = Some(1)`, `c = Choice.No`)"
       - "MD-042 reachable-state proofs extended 2026-11-07 (TestReachableStateProofsForMutableBindingsAndOption): mutable bindings and owned by-value parameters use version-tracked path facts invalidated by assignment, any call and loop entry; Option subjects and the parser's `is None` form participate; `is not` facts excluding every other variant prove the remaining one (early exit); Semantic IR proofs stay union-only, so Option/Result plans carry no proof"
     remaining:
       - formalize mutable NonDefaultable union declarations as source-observable empty initialization state rather than only legacy unassigned state
-      - "record active-variant refinement for later member and payload analyses (beyond match exhaustiveness and impossible state tests), and keep a proof across calls that provably cannot reach the binding (today every call invalidates mutable-binding proofs)"
+      - record active-variant refinement for later member and payload analyses (beyond match exhaustiveness and impossible state tests), and keep a proof across calls that provably cannot reach the binding (today every call invalidates mutable-binding proofs)
       - classify the finite indirection carrier used by unions.md §18 (`Box[List[T]]`), which no rulebook defines yet (missing-decisions.yaml MD-018)
       - provide complete backend layout metadata, equality lowering, construction, match, destruction, and runtime-dependent empty-state lowering
       - expose empty-state, active-variant, ownership, and exhaustiveness facts through diagnostics and LSP
@@ -425,12 +425,45 @@ integrations:
       - internal/sema/types.go
       - internal/formatter/formatter.go
       - cmd/lsp/main.go
+      - internal/sema/property_visibility.go
+      - internal/sema/analyzer_inference.go
+      - internal/diagnostics/diagnostics.go
+      - internal/sema/property_effects.go
+      - internal/sema/property_accessor_bodies.go
+      - internal/sema/analyzer_no_panic.go
+      - internal/sema/allocation_facts.go
+      - internal/sema/receiver_mutability.go
+      - internal/sema/property_receivers.go
+      - internal/sema/place.go
+      - internal/sema/static_receiver.go
     tests:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
       - internal/sema/semantic_facts_test.go
       - cmd/lsp/main_test.go
       - internal/formatter/formatter_test.go
+      - internal/sema/property_visibility_test.go
+      - cmd/compiler/property_visibility_test.go
+      - cmd/lsp/property_visibility_test.go
+      - testdata/sema/property_visibility/valid.sec
+      - testdata/sema/property_visibility/owner_invalid.sec
+      - testdata/sema/property_visibility/module_invalid.sec
+      - testdata/sema/property_visibility/sibling.sec
+      - testdata/sema/property_visibility/core_owner.sec
+      - testdata/sema/property_visibility/core_consumer_invalid.sec
+      - internal/sema/property_effects_test.go
+      - internal/sema/allocation_physical_storage_test.go
+      - cmd/compiler/property_effects_test.go
+      - cmd/lsp/property_effects_test.go
+      - testdata/sema/property_effects/valid.sec
+      - testdata/sema/property_effects/callers_invalid.sec
+      - testdata/sema/property_effects/unreachable_invalid.sec
+      - internal/sema/property_receivers_test.go
+      - cmd/compiler/property_receivers_test.go
+      - cmd/lsp/property_receivers_test.go
+      - testdata/sema/property_receivers/valid.sec
+      - testdata/sema/property_receivers/authority_invalid.sec
+      - testdata/sema/property_receivers/borrow_invalid.sec
     implemented:
       - property declarations with get, set value, and try set value accessors
       - parser recovery for missing property names, types, colons, and setter parameters
@@ -454,7 +487,32 @@ integrations:
       - static-versus-instance property category checks in interface conformance and inheritance
       - formatter preservation and receiver-aware LSP completion, hover, and definition support for static properties
       - compiler-owned resolved property access facts distinguish read, write, fallible-write, and compound-update operations before Semantic IR lowering
+      - Property reads and writes enforce public, exact-module-internal (_) and declaring-type-private (__) visibility for instance and static access. Same-module owner extensions retain private access; unrelated types in the same module and external importers do not. Registered property facts preserve the impl declaring module independently from the receiver type, including core properties on module-less primitives. S1216 properties.not-visible reports one access failure with mentor help and a related declaration before accessor/IR facts are published. Source-backed Sema/CLI/LSP diagnostic tests cover both directions, owner extensions, module boundaries and trusted core primitive properties (2026-11-10).
+      - Source property getters, setters and fallible setters have distinct canonical callable identities even without attributes. Validated reads and stores publish synchronous generated accessor edges in the shared call graph; compound updates retain separate getter and setter sites. Ordinary effect, foreign uncertainty, nested property and deferred-cleanup propagation reaches callers and @noPanic verification without treating member syntax as pure. Accessor allocation coverage inspects real bodies and setter parameter cleanup, preserving allocation-free proofs and conservative unknowns. Compiler-semantic members retain their owning intrinsic effect producers; property operation lowering remains separately tracked (2026-11-10).
+      - Instance getter receiver mutability is inferred together with ordinary methods to a fixed point, including direct writes, mutable borrows, self-qualified and implicit property reads, and method/property dependency chains. Local, parameter and match-binding shadowing does not fabricate receiver mutation. Mutating getter access requires writable storage, ref mut or a fresh owned temporary; S1219 properties.mutable-receiver-required carries declaration provenance and help. Reads use canonical receiver-wide shared/mutable borrow conflict checks and publish receiver reference plans/facts. Property setter Places preserve the authority of their receiver instead of gaining mutability merely from setter availability. Broader receiver/returned-reference closure remains explicit in remaining (2026-11-10).
     verification:
+      - command: go vet -p 4 ./internal/sema ./internal/diagnostics ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-11-10 after property receiver authority and mutability inference
+      - command: go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run "^TestPropertyReceiver" -count=1
+        result: passed on 2026-11-10; Sema 0.023s, CLI 3.070s and LSP 2.867s; direct/transitive getter mutation, mutable borrowing, writable and fresh receivers, shadowing, five authority failures, two live-borrow conflicts, related getter declarations and invalid artifact suppression
+      - command: go test -p 4 ./internal/sema ./internal/diagnostics ./internal/ir/semantic -count=1
+        result: passed on 2026-11-10; complete Sema 16.223s, diagnostics 0.002s and Semantic IR 6.881s after inferred getter receiver authority and shared method/property fixed-point propagation; final focused tests also cover a shadowing match payload binding
+      - command: go vet -p 4 ./internal/sema ./internal/diagnostics ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-11-10 after property accessor effects and allocation coverage integration
+      - command: go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run "^TestPropertyEffects" -count=1
+        result: passed on 2026-11-10; Sema 0.035s, CLI 3.242s and LSP 2.052s; read versus write effects, distinct compound sites, static/nested/deferred access, foreign unknowns, recoverable setter errors, unreachable calls and S1092 caller diagnostics before artifact production
+      - command: go test -p 4 ./internal/sema ./internal/diagnostics ./internal/ir/semantic -count=1
+        result: passed on 2026-11-10; complete Sema 19.318s, diagnostics 0.002s and Semantic IR 6.964s after accessor call identities, effect edges and allocation coverage; hardware getter/setter nodes remain allocation-free across profiles and analysis depths
+      - command: go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run "^TestPropertyVisibility" -count=1
+        result: passed on 2026-11-10; final Sema 0.019s, CLI 3.401s, LSP 2.198s after declaring-module and trusted-core checks; six owner violations, four external-module violations, two spoofed-core accesses, owner extensions, related declarations and invalid IR artifact suppression
+      - command: go test -p 4 ./internal/sema ./internal/diagnostics -count=1
+        result: passed on 2026-11-10; complete Sema 18.930s and diagnostics 0.002s after the trusted-core property boundary; spelling module core in untrusted source does not grant internal-property access
+      - command: go vet -p 4 ./internal/sema ./internal/diagnostics ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-11-10 after property visibility and declaring-module facts
+      - command: go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run "^TestPropertyVisibility" -count=1
+        result: passed on 2026-11-10; Sema 0.012s, CLI 3.347s, LSP 2.067s; final Sema-only rerun including core primitive properties passed 0.014s; instance/static reads and writes, owner extensions, six owner violations, four module violations, two core violations, related declarations and no invalid IR artifact
+      - command: go test -p 4 ./internal/sema ./internal/diagnostics ./internal/ir/semantic -count=1
+        result: passed on 2026-11-10; complete Sema 18.294s, diagnostics 0.002s, Semantic IR 7.198s after property visibility and declaring-module facts
       - command: go test ./internal/parser ./internal/sema ./internal/formatter -run 'InterfaceProperty|InterfaceImplementation|Properties|PropertyAccessAndFallibleAssignment|FormatInterface' -count=1
         result: passed
       - command: go test ./cmd/lsp -run 'SemanticTokensClassifyContextualSet|Interface|Property' -count=1
@@ -463,11 +521,10 @@ integrations:
         result: passed
     remaining:
       - explicit property read/write operation implementation in Semantic IR and lowering through MLIR and LLVM
-      - complete self borrow and mutability rules for property accessors
-      - explicit property effect model
-      - property visibility rules
       - property overriding semantics and complete interface receiver/static-category conformance
       - complete fallible compound-assignment behavior
+      - Complete accessor receiver/borrow propagation through all control-flow and indirect/nested receiver paths, and retained or returned reference dependency summaries. Direct method/getter fixed-point inference, receiver authority, conservative receiver-wide live-borrow checks and callee reference facts are implemented (2026-11-10); do not treat a reference-valued property as independent stored backing.
+    revised: "2026-11-10"
 
   - id: frontend.property-readability
     area: frontend-property-access
@@ -551,7 +608,7 @@ integrations:
     area: frontend-analysis-and-tooling
     status: partial
     integrated: "2026-09-03"
-    revised: "2026-11-01"
+    revised: "2026-11-10"
     document_revision: "2.1"
     summary: >-
       Implements canonical behavioral interface declarations, inherited
@@ -585,6 +642,8 @@ integrations:
       - internal/lsp/features/semantic_tokens.go
       - cmd/lsp/main.go
       - vscode/syntaxes/sec.tmLanguage.json
+      - internal/parser/interface_receivers.go
+      - internal/sema/interface_receiver_contract.go
     tests:
       - internal/parser/interface_placement_test.go
       - internal/sema/interface_diagnostics_test.go
@@ -597,6 +656,15 @@ integrations:
       - internal/formatter/formatter_test.go
       - testdata/interface_valid.sec
       - testdata/interface_invalid.sec
+      - internal/parser/interface_receivers_test.go
+      - internal/sema/interface_receiver_contract_test.go
+      - internal/formatter/interface_receiver_contract_test.go
+      - cmd/compiler/interface_receiver_contract_test.go
+      - cmd/lsp/interface_receiver_contract_test.go
+      - testdata/parser/interface_consuming_receiver_invalid.sec
+      - testdata/sema/interface_receiver_contract_valid.sec
+      - testdata/formatter/header_spacing.sec
+      - testdata/formatter/header_spacing.expected.sec
     implemented:
       - "MD-120 error-constrained generic interfaces (2026-11-01; interfaces.md §§ 7.1, 9): complete concrete conformance, instantiated borrowed views, rejection of a bare view and of FormatSink[IOError] -> FormatSink[error], E inferred from a unique compatible conformance (conformingViewArgument) (rules/corrections/applied/MD-120-generic-error-parameters-approved-20261031-20261101.md; TestGenericErrorParameters, TestGenericErrorChannelSpecializations, TestGenericErrorUnionInstance, TestErrorCategoryConstraintSyntax, TestGenericErrorParameterHover)"
       - "interface conformance diagnostics and Self (2026-10-04): `Self` in requirement parameter and result types resolves to a placeholder during interface resolution and is substituted with the conforming type before conformance comparison and in generic-constraint satisfaction; missing members report S1106 interfaces.missing-member on the implements reference and incompatible members S1107 interfaces.incompatible-member on the implementing member, both with the requirement as related location labelled interface requirement (sema.Error.RelatedLabel, shown by CLI, JSON, and LSP); incompatible methods name the first difference and show the Self-substituted requirement as help, so platform implementations such as stdlib/os file.windows.amd64.sec now show their conformance errors in their own file. Tests: internal/sema/interface_conformance_test.go"
@@ -621,10 +689,10 @@ integrations:
       - statically resolved Iterator[T] conformance publishes the selected concrete Next operation without runtime dispatch
       - "MD-057 Sema (2026-10-18): a call argument whose concrete type has valid explicit conformance (including interface inheritance) is accepted for a ref I / ref mut I parameter, explicitly borrowed or through the ordinary implicit call-site borrow; shared authority never becomes a ref mut view and mutability/lifetime checks of the call-site borrow still apply; matching member names without implements do not conform; a by-value Iterator[T] parameter is S1172 interfaces.by-value-parameter with both repairs (TestBorrowedInterfaceViewsAcceptConformingArguments, TestBorrowedInterfaceViewsRejectInvalidUses; testdata/sema/interface_views_*.sec)"
       - "stable interface diagnostics (2026-11-01): P2038 parser.interface-conformance-placement identifies obsolete type-level conformance, implements on impl extends and impl Interface for Type, with exact keyword ranges and canonical primary-impl repair help; S1190 interfaces.conformance-placement guards recovered/programmatic extension ASTs. RecoveryInfo.Reported suppresses duplicate parser/Sema errors without accepting the invalid clause. S1189 interfaces.receiver-capability covers rejected method receivers and shared Iterator view iteration, with actionable authority advice and method declaration links. Existing stricter-than-shared conformance mismatches retain dedicated S1107 with their requirement link. Source fixtures, public CLI JSON and LSP regressions retain identities/ranges/help and accept valid exclusive calls. No interface runtime representation or dispatch lowering is claimed."
+      - Whole-self consuming interface receiver requirements are rejected with P2039 parser.consuming-interface-receiver. Recovery retains InvalidMembers and later valid requirements without registering the rejected methods; Sema independently rejects constructed/imported consuming-receiver AST contracts with S1211 interfaces.consuming-receiver. Completion consumes the resulting valid semantic method set. Consuming ordinary parameters and consuming callable-value types remain accepted and formatted, with source-backed parser/Sema/CLI/LSP regressions and invalid IR artifact suppression (2026-11-10).
     remaining:
       - "MD-120 Semantic IR for generic interface views: borrowed interface dispatch has no Semantic IR yet (MD-057), so ref mut FormatSink[E] calls stay an explicit boundary until that exists"
       - "MD-057 borrowed interface views (rules synced 2026-10-18: interfaces.md § 7.1, § 9.1; generics.md § 11; flowcontrol_for.md § 13, § 37.1, § 40, § 42). Known hole (verified 2026-10-18): Semantic IR rejects interface method dispatch and view iteration (readiness reason names the missing runtime dispatch); no view representation exists in the compilation track (MD-108); correction § 8.8 escape/overlap and § 8.10 allocation/cleanup/debug tests are not written. Other interfaces written by value keep their unspecified treatment (MD-107)"
-      - remove `-> fn` whole-self consuming instance receiver contracts from parser/Sema/tooling while preserving consuming ordinary parameters and consuming callable-value capability
       - permit owned member consumption only through sufficient mutable/exclusive receiver authority and ordinary partial-ownership rules
       - preserve and validate same-name interface method overload sets through declaration, inheritance, conformance, and call resolution
       - complete generic interface inheritance, constraint conformance, and canonical cross-module specialization identity beyond concrete requirement substitution
@@ -635,6 +703,16 @@ integrations:
       - complete indirect interface target sets in call-graph and effect analysis
       - expose receiver capability and inherited requirement provenance in hover, completion, and diagnostics
     verification:
+      - command: go test -p 4 ./internal/sema ./internal/diagnostics -count=1
+        result: passed on 2026-11-10; complete Sema 15.197s, diagnostics 0.002s after removal of whole-self consuming interface receiver contracts
+      - command: go vet -p 4 ./internal/parser ./internal/ast/... ./internal/sema ./internal/diagnostics ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-11-10
+      - command: go test -p 4 ./cmd/compiler ./cmd/lsp -run "TestInterfaceReceiverContract|TestInterfaceReceiverCompletion|TestHeaderSpacing" -count=1
+        result: passed on 2026-11-10; CLI 1.016s, LSP 2.383s; two canonical parser errors without Sema cascades, no invalid IR artifact, removed methods absent from completion and valid mutable/shared methods retained
+      - command: go test -p 4 ./internal/formatter -count=1
+        result: passed on 2026-11-10 (1.506s), including valid consuming parameters, callable capabilities, header goldens and invalid receiver syntax preservation/idempotence
+      - command: go test -short -p 4 ./internal/parser ./internal/ast/... ./internal/cst ./internal/sema ./internal/diagnostics -count=1
+        result: passed on 2026-11-10 in the combined verification run; parser short recovery corpus 25.157s, AST and walk 0.001s each, CST 0.008s, complete Sema 17.272s and diagnostics 0.002s. That run exposed a legacy formatter fixture accepting the removed receiver form; the fixture was migrated to ordinary consuming parameters and the complete formatter suite passed separately.
       - command: GOCACHE=/tmp/sec-go-cache go test ./internal/diagnostics ./internal/sema -count=1
         result: passed on 2026-11-01; registry and full Sema regressions, recovered extension guard, valid exclusive receivers and original conformance diagnostics pass
       - command: GOCACHE=/tmp/sec-go-cache go test ./internal/parser -count=1
@@ -690,6 +768,17 @@ integrations:
       - internal/sema/return_ownership.go
       - internal/sema/type_pack_methods.go
       - internal/sema/generic_function_instances.go
+      - internal/sema/ordinary_receiver_contract.go
+      - internal/sema/receiver_facts.go
+      - internal/sema/resolved_calls.go
+      - internal/sema/call_graph_identity.go
+      - internal/sema/call_graph_callables.go
+      - internal/sema/type_pack_spreads.go
+      - internal/sema/analyzer_lifetime.go
+      - internal/sema/analyzer_inference.go
+      - internal/cst/header_roles.go
+      - internal/ir/semantic/reference_receiver.go
+      - internal/diagnostics/diagnostics.go
     tests:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
@@ -707,6 +796,12 @@ integrations:
       - testdata/ownership/explicit_return_valid.sec
       - testdata/ownership/explicit_return_invalid.sec
       - testdata/parser/explicit_return_missing_invalid.sec
+      - internal/sema/ordinary_receiver_contract_test.go
+      - cmd/compiler/ordinary_receiver_contract_test.go
+      - cmd/lsp/ordinary_receiver_contract_test.go
+      - testdata/sema/ordinary_receiver_contract_valid.sec
+      - testdata/sema/ordinary_receiver_contract_invalid.sec
+      - internal/ir/semantic/receiver_value_copy_test.go
     implemented:
       - "Legacy `ref name: Type` parameter spelling removed (2026-11-09; grammar.md §33): parseParameters reports a focused diagnostic naming the canonical `name: ref Type` / `name: ref mut Type` replacement and recovers into the canonical borrowed TypeReference, so AST and signature identity have one form. `ref self` receivers are unchanged. Fixtures (crc32_valid and four testdata/sema escape/closure files) and Go test snippets were migrated; TestParseRejectsLegacyRefParameterSpelling covers both modes and the receiver form."
       - ordinary named fn declarations with mandatory explicit return types and bodies
@@ -758,12 +853,12 @@ integrations:
       - "MD-117 argument-deducible pack overloads (2026-10-31; functions.md §38A(4)(5),(6)(1-2), generics.md §29): competing pack signatures now use ordinary argument-only overload selection instead of the blanket S1177 gate. Expected-type inference defers before argument preparation when argument signatures provide the type substitutions, preserving exactly-once nested calls/moves and excluding return types from discrimination. Fixed generic signatures retain preference over equivalent pack signatures; ambiguity produces ordinary errors and no selected-call facts or committed moves. Existing single-pack expected-result inference is preserved. Multiple pack candidates needing an undeduced scalar generic parameter retain a narrow S1177 partial-inference boundary. Source-backed Sema and configured CLI tests cover distinct fixed prefixes, empty tails, typed/inferred/return contexts, fixed generic ranking, nested consuming calls, return-only ambiguity, transactional ambiguity and legacy contextual inference; supported overloads reach Sec MLIR without IR-builder changes. Helpers are in internal/sema/type_pack_overloads.go."
       - "MD-117 staged partial overload inference (2026-10-31; generics.md §§14,18,20,29, functions.md §38A(4)(5),(6)(1-2),(9)): pack overload sets prepare arguments once and rank uncached partial signatures using argument-derived or explicit substitutions. Known constraints may eliminate candidates; dependent constraints wait until a unique winner receives missing scalar types from expected result context. Deductions already supplied by arguments/explicit types remain fixed, and full constraints are checked before publishing the selected call or committing outer moves. The partial-inference S1177 gate is removed: ambiguous results, missing context and failed constraints receive ordinary semantic errors with no emitted artifact or incomplete instance-cache entries. Source-backed 32/64 tests cover independent Option[int]/Option[bool] instances, explicit prefixes, deferred Option None, nested consuming arguments, ambiguity, missing context with a prepared move, constraints and preservation of argument-bound types. Supported cases reach IR/Sec MLIR and LSP concrete signatures through existing consumers; no IR or public-fact shape changes."
       - "MD-117 concrete-owner pack-only methods (2026-10-31; functions.md §§21-24,38A): instance and static methods with [...Types] and unused/Len-only bodies support owned non-reference, shared and exclusive pack arguments, including empty tails and implicit self. Ordinary receiver authority and receiver/argument loan or move conflicts are checked before call-entry commit. Returned references retain canonical receiver provenance; local receivers pass and temporary receiver escapes fail. Generic-instance cache hits refresh late-bound reference/reset summaries without changing specialization identities, extracted into internal/sema/generic_function_instances.go. Source-backed 32/64-bit Sema, CLI and LSP tests cover the subset. Generic/interface owners, additional scalar method generics, element bodies and method IR specialization remain explicit boundaries; no executable method-pack support is claimed."
+      - Resolved ordinary Function and open interface-call contracts no longer carry a consuming-receiver mode; obsolete receiver-consuming overload checks, call-site moves, callable projection, pack-forwarding gates and Semantic IR exclusions are removed. Constructed ordinary declarations using the legacy receiver marker fail with S1212 functions.consuming-receiver before registration; interface declarations retain their independent S1211/P2039 rejection. Shared receiver copies and mutable/exclusive member transfers remain valid, and consuming callable types, ordinary consuming parameters and compiler-owned terminal lifecycle operations keep their separate ownership models (2026-11-10).
     remaining:
       - "MD-117 call/Sema completion: complete contextual literal rules, once-only argument preparation and concrete position/type diagnostics for the remaining forms; runtime-length heterogeneous inference stays rejected. Forwarding targets are tracked under frontend.spread (functions.md §38A; correction §§3,4,10)."
       - "MD-117 pack methods on interface owners: an interface requirement has no static expansion and reports S1177; whether such a requirement is valid at all, given no runtime dispatch of packs, needs confirming against functions.md §38A(1),(9) and interfaces.md."
       - "MD-117 static pack methods of a generic owner called as Box[int].Make(...): reports the error of ordinary static generic-owner methods (`Box.Make is not generic`), so it follows that gap rather than being pack-specific (monomorphization.md §§8.2,9.3)."
       - "MD-117 reference-holder positions in Semantic IR: an owned pack with a reference element, and for ref or ref values[k] over it which must reborrow instead of forming ref ref T (references.md §3.4(10); correction MD-119 §6(2)), stop at the named boundary shared with ordinary T = ref int; both need reference-typed generic arguments under compiler.monomorphization."
-      - remove whole-self consuming ordinary/interface receiver behavior while retaining consuming callable values and member consumption under mutable/exclusive authority
       - preserve forced-consuming parameter modes in first-class callable types, Semantic IR parameter ownership, call ArgumentActions, Sec MLIR, and LLVM lowering
       - implement per-element copy or move transfer for direct variadic arguments and destruction of remaining owned pack elements
       - make receiver-capability inference distinguish shared and mutable/exclusive ordinary methods, member ownership effects, and complete interface conformance for every parameter ownership and variadic contract
@@ -777,6 +872,12 @@ integrations:
       - runtime-generic callables or unresolved overload sets as function values
       - native variadic ABI equivalence with C or foreign varargs
     verification:
+      - command: go vet -p 4 ./internal/sema ./internal/diagnostics ./internal/ir/... ./internal/cst ./internal/formatter ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-11-10
+      - command: go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run "TestOrdinaryReceiver|TestOrdinaryMethodCannotConsumeWholeSelf|TestMethodMayConsumeOwnedSelfMember|TestInterfaceReceiverContract|TestTicketRevoke|TestArenaRelease" -count=1
+        result: passed on 2026-11-10; Sema 0.056s, CLI 4.738s, LSP 4.461s; ordinary receiver copies/member moves, consuming callable/parameter preservation, constructed AST rejection, forbidden whole-self transfers, terminal builtin regressions and invalid IR artifact suppression
+      - command: go test -p 4 ./internal/sema ./internal/diagnostics ./internal/ir/... ./internal/cst ./internal/formatter -count=1
+        result: passed on 2026-11-10; full Sema 17.893s, diagnostics 0.002s, Semantic IR 7.968s and nominal 0.136s, CST 0.008s and formatter 2.108s after removal of consuming ordinary receiver facts
       - command: go test ./internal/sema ./internal/ir/semantic/... -count=1; SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./cmd/compiler ./cmd/lsp -run "Test.*TypePack" -count=1; go vet ./internal/sema ./cmd/compiler ./cmd/lsp
         result: "Passed 2026-10-31: full Sema 31.582s, Semantic IR 9.579s, nominal 0.513s; configured CLI 0.434s/LSP 0.082s and vet. Concrete-owner method authority, implicit/static dispatch, overlap, move and reference escape regressions pass on 32/64-bit plans. Unsupported method specialization emits no partial IR. 1 implemented point added, 1 remaining point narrowed, 0 closed; remaining 9 to 9."
       - command: go test ./internal/sema ./internal/ir/semantic/... -count=1; SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./cmd/compiler ./cmd/lsp -run "Test.*TypePack" -count=1
@@ -813,7 +914,7 @@ integrations:
         result: passed
       - command: go test ./internal/parser ./internal/sema -run 'Test(ParseExplicitMoveCallArgument|CallArgumentsRequireVisibleReusableSourceTransfer|ConsumingParameterConsumesCopyableArgument)' -count=1
         result: passed
-    revised: "2026-10-31"
+    revised: "2026-11-10"
 
   - id: frontend.lambda-functions-v2
     area: frontend-analysis-and-lowering
@@ -833,8 +934,8 @@ integrations:
       capability is inferred from environment mutation and consumption, a
       callable may strengthen but never weaken its authority, `mut fn` calls
       need mutable access and `-> fn` calls consume the callable. Escaping
-      environments, non-lexical closure borrow liveness, closure copyability
-      for unknown environments (MD-127) and closure lowering remain.
+      environments, non-lexical closure borrow liveness, closure copyability for
+      unknown environments (MD-127) and closure lowering remain.
     rules:
       - rules/declarations/lambda-functions.md
       - rules/declarations/functions.md
@@ -894,7 +995,7 @@ integrations:
     remaining:
       - preserve parameter ownership modes and native variadic shape in first-class callable type identity and calls
       - "non-lexical liveness for closure borrow holders: a closure holding `ref`/`ref mut` captures keeps its borrows to the end of its lexical scope (borrow_liveness.go keeps aggregates lexical), which needs borrow tracking through closures copied, stored in aggregates, passed to calls and returned from them"
-      - "track borrow captures of a lambda that is not bound to a local (passed directly as an argument or stored in a field) beyond the construction-time conflict check"
+      - track borrow captures of a lambda that is not bound to a local (passed directly as an argument or stored in a field) beyond the construction-time conflict check
       - "closure copyability when the environment is not known from the value (function-typed parameters, declared-type bindings, fields): MD-127"
       - allow owned closure environments to escape and allow borrowed environments only within valid borrow lifetimes
       - select compiler-managed environment storage without implicit source-level allocation semantics
@@ -932,6 +1033,8 @@ integrations:
       - internal/parser/parser.go
       - internal/lsp/server
       - cmd/lsp/main.go
+      - internal/sema/generic_scope_members.go
+      - internal/sema/generic_scopes.go
     tests:
       - internal/sema/corehelpers/frontend_test.go
       - cmd/lsp/function_visibility_test.go
@@ -953,6 +1056,12 @@ integrations:
       - testdata/names/nominal_capitalization_invalid.sec
       - internal/parser/parser_test.go
       - cmd/lsp/main_test.go
+      - internal/sema/generic_member_shadowing_test.go
+      - cmd/compiler/generic_member_shadowing_test.go
+      - cmd/lsp/generic_member_shadowing_test.go
+      - testdata/names/generic_member_shadowing/valid.sec
+      - testdata/names/generic_member_shadowing/invalid.sec
+      - testdata/names/generic_member_shadowing/unsupported_invalid.sec
     implemented:
       - "ordinary module-scope private functions (2026-10-09, core.string-slice-helper frontend slice): direct calls, contextual generic calls and first-class callable binding require the exact declaring source file; trusted core provenance does not grant sibling-file access. Source context is restored across semantic passes, shadowing/confusable surfaces are file-aware, and ordinary/expected-return LSP completion shares the function boundary. Private types/module variables and type-member owner enforcement retain their existing separate work."
       - "unit and type namespaces (2026-10-04): an ordinary type, enum, struct, or interface of one module may use the spelling of a unit declared in another module (core `A`/`K`, stdlib units); the unit entry moves to a separate unit table, its impl block in its own module binds to the unit with its own impl-block key, unit metadata and representation updates go to the unit entry, and the ordinary type keeps its definition, impl, and methods, in either declaration order. Tests: internal/sema/unit_type_namespace_test.go"
@@ -974,6 +1083,7 @@ integrations:
       - S1040 names.parameter-shadows-type is a mandatory compiler diagnostic with the previous type declaration location
       - "unit symbols occupy a separate unit-symbol namespace (rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md § 8): parameters (S1040), generic parameters, and locals (S1057) never shadow a unit, and module functions and variables may share a unit's spelling; unit-vs-unit duplicates are still rejected. This clears the former S1040 errors for parameters day/ms/us in sec/core/date.sec and sec/core/duration.sec"
       - local variables, loop bindings, pattern bindings, and lambda parameters that hide a visible generic parameter, a same-module source type, or an accessible free function report mandatory S1057 names.local-shadows-declaration with the hidden declaration's location; the binding is still declared to avoid cascades, and unit names are exempt because unit symbols occupy their own namespace
+      - "Generic parameters cannot shadow enclosing generic parameters or directly visible impl members (2026-11-10). Sema checks nested generic definition origins and the complete registered owner surface: fields/register fields, properties/events, methods, nested types and associated storage. The existing mandatory S1105 diagnostic identifies the generic header and hidden declaration, including later members, static methods and extension fragments. Synthetic impl parameters reopen the owner scope without false collisions; re-entering the same source declaration and disjoint sibling method parameters remain valid. Header validation also runs at the unsupported type-pack body gate. Generic scope entry/restoration and body-scope dispatch were extracted from analyzer.go into generic_scopes.go; this does not enable ordinary method-level generic execution or other pack expansion."
     partial:
       - "qualified unit references (MD-040, 2026-10-13, units.md 'Qualified unit references', rules/corrections/applied/md040-md046-md047-md056-units-register-bits-rounding-correction-20261013.md): unit type entries live in the unit table, never the ordinary type table, and module declaration checks give units their own namespace, so `unit Volt` and `type Volt` coexist in one module in either order; `impl <Volt>` (parser target name = unit) resolves only the unit in its own module and holds metadata and unit functions, registered as `<Volt>.Name` and the conversion function as `<Volt>`; `impl Volt` resolves only the type; `<Volt>(value)` calls the conversion function or converts to `<Volt>`, `<Volt>.Name(...)` calls a unit function and `<Volt>.Symbol`/`.LongName` read metadata as string; bare `impl rpm`, `rpm(x)` and a type `rpm` are errors with <rpm> help. All core, stdlib, testdata and test sources were migrated; LSP unit conversion actions now offer `<U>(value)` (TestUnitAndSameSpelledTypeInOneModuleCoexist, TestLegacyUnqualifiedUnitReferencesAreRejected, TestExtendedUnitCodeActions)"
       - no-shadowing enforcement exists for some inherited value-symbol scopes but is not a unified rule across parameters, members, types, generics, imports, aliases, and compiler-provided contextual bindings
@@ -982,7 +1092,6 @@ integrations:
       - "module variables are module-scoped (2026-11-09, module_variables.go, TestModuleVariablesAreModuleScoped): Symbol.Module records the declaring module; every function, accessor and test body and every module-level statement sees only its own module's variables, so a project `let value` no longer collides with core locals (S1004) and two modules may declare the same module variable name"
     remaining:
       - enforce the no-shadowing rule for nested declarations, import bindings and aliases (needs the file-local import bindings of frontend.modules), and members made directly visible by the declaration grammar
-      - reject generic parameters that shadow an enclosing generic parameter (blocked on generic methods with additional type parameters) or directly visible members
       - complete one declaration namespace per scope across all declaration categories instead of relying on category-specific registries and collision checks
       - provide stable dedicated diagnostics that identify both the new declaration and the hidden or conflicting declaration
       - make LSP rename validation consume the same namespace, shadowing, reserved-name, capitalization, overload, and visibility rules as Sema
@@ -995,6 +1104,12 @@ integrations:
       - reuse of the same local name in disjoint sibling scopes remains valid
       - overloads differing only by return type remain rejected
     verification:
+      - command: go vet -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-11-10
+      - command: go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run "^TestGenericMemberShadowing" -count=1
+        result: passed on 2026-11-10; Sema 0.009s, CLI 2.623s and LSP 1.748s. Eight collision cases retain S1105 and exact hidden declaration origins; sibling/static/extension scopes stay valid, unsupported body expansion does not suppress header validation, and invalid scope produces no IR artifact. The previous validator accepted the initial six-case regression without errors. Remaining 5 to 4.
+      - command: go test -p 4 ./internal/sema ./internal/ir/semantic -count=1
+        result: passed on 2026-11-10; complete Sema 18.742s and Semantic IR 7.022s after generic scope extraction and header checks.
       - command: go test ./internal/sema ./internal/diagnostics ./internal/parser ./cmd/lsp -count=1
         result: passed, including same-module generic type shadowing diagnostics and prior naming regressions
       - command: go test ./internal/sema ./internal/diagnostics -run 'TestNominalTypeCapitalization|TestGenericParameterCapitalization|TestRegistryIsValid|TestKnownDiagnosticSeverities' -count=1
@@ -1015,6 +1130,7 @@ integrations:
         result: regression test failed before the implementation because nine invalid parameter names were accepted
       - command: go test ./...
         result: passed, including Sema naming and LSP diagnostic regressions
+    revised: "2026-11-10"
 
   - id: frontend.impl-extensions
     area: frontend-analysis-and-tooling
@@ -1235,6 +1351,7 @@ integrations:
       - cmd/lsp/import_static_test.go
       - testdata/import_static/main.sec
     implemented:
+      - "Duplicate and self imports (2026-11-10; modules.md §§ 14, 21): the shared resolver check sema.ImportIdentityIssues runs in the CLI and LSP import loaders; a repeated import of one resolved module source set in a source file (also through an alias) reports mandatory S1217 modules.duplicate-import with the first import as related location, and an import of the importer's own module reports S1218 modules.self-import instead of a duplicate module declaration; flat-layout sibling modules stay valid. TestCLIRejectsDuplicateAndSelfImports, TestAnalyzeReportsDuplicateAndSelfImports"
       - CLI semantic and build/emit entry paths assemble unselected same-module sibling files for canonical directory modules and manifest-bearing project roots before Sema; existing input files are deduplicated
       - sibling selection is non-recursive, ordered, target-filtered, excludes automatically discovered test sources, and retains original source paths
       - sibling parser errors block CLI compilation rather than causing misleading single-file unknown-type errors; legacy standalone paths outside canonical directory/root module naming remain isolated
@@ -1264,7 +1381,6 @@ integrations:
       - validate every resolved import destination's module declaration, source membership, and active-plan selection
       - derive default qualifiers from resolved ModuleName and support aliases without rewriting declaration or module identity
       - enforce per-file qualifier uniqueness and require aliases when distinct ModuleIdentities share one ModuleName
-      - reject duplicate canonical ModuleIdentity imports per source file and integrate canonical self-import checks with resolver diagnostics
       - keep imported declarations qualified, prevent implicit name injection and re-export, and reject unsupported selective and wildcard imports
       - enforce internal-directory access during canonical resolution before declaration visibility checks
       - integrate the canonical ModuleGraph into compiler and LSP resolution, cycle diagnostics, and CompilationPlan processing
@@ -1444,7 +1560,7 @@ integrations:
       - existing Package 11 infallible enum conversion fixtures continue to pass
     revised: "2026-11-05"
     verification:
-      - command: SEC_MLIR_BIN=$PWD/build/sec-mlir/bin SEC_LEGACY_MLIR_BIN=/home/jonas/mlir/llvm-project/build/bin go test -p 4 ./internal/ir/semantic ./internal/lowering/secmlir -count=1 -timeout=180s
+      - command: SEC_MLIR_BIN=$PWD/build/sec-mlir/bin SEC_LEGACY_MLIR_BIN=$SEC_LEGACY_MLIR_BIN go test -p 4 ./internal/ir/semantic ./internal/lowering/secmlir -count=1 -timeout=180s
         result: "Passed 2026-11-05: complete suites 6.300s and 16.303s; canonical LLVM lowering on 32/64-bit plans and actual native success/failure execution. Focused compiler enum regressions and go vet on both implementation packages also passed."
       - command: GOCACHE=/tmp/sec-go-cache go test ./internal/sema ./internal/ir/semantic -run 'TestEnumConversionFactsAreDetached|TestEnumConversionDecisionIsRecorded|TestEnumConversionSnapshot' -count=1
         result: passed on 2026-11-03; reproduced writable enum/target-bound leakage before the fix, then verified defensive snapshots, nested numeric/string enum arguments, fixed nominal generic identity, per-analysis plan reset, no query-time proof reconstruction and independent Sema/IR ownership.
@@ -1782,6 +1898,7 @@ integrations:
       - instance initializers belong to construction rather than the static dependency graph
       - static and instance names share the combined member-name namespace but are different semantic categories
     implemented:
+      - "Instance-qualified static access (2026-11-10; static.md § 8, § 28): a static fn called through a value (`box.Make()`) and type-owned static storage read through a value (`box.Limit`) report mandatory S1210 static.type-qualified-access-required with a type-qualified replacement instead of silently resolving or reporting an unknown member; mixed static/instance overload sets keep ordinary resolution. static_receiver.go, analyzer_inference.go; TestStaticMembersRequireTypeQualifiedAccess"
       - "Static/physical-placement separation verified (2026-11-02; static.md §22, attributes.md physical-placement boundary, storage.md §16): module, explicit static, associated and function-local storage do not acquire an absolute address, MMIO binding or target-selected memory space, and type-owned values do not become instance fields. Ordinary register snapshots also stay ordinary storage. The Semantic IR verifier now rejects static Place roots in MMIO or target memory spaces even when all repeated roots consistently carry the same forged space; the current Static representation has no physical-placement contract, while hardware bindings have separate authority and representation. Source tests reject conceptual section/memory-space attributes through the closed attribute set (local unknown @calls remain separately rejected runtime-call syntax). Actual Sec MLIR/LLVM emission of ordinary scalar statics retains ordinary globals without explicit sections, address-space casts, non-default LLVM spaces or volatile/MMIO access. Rejected placement source creates no IR artifact. No placement syntax or runtime backend capability is invented."
       - "Static/instance LSP conformance (2026-11-02; static.md §§6,8–9,26; lsp.md Hover/Navigation and references/Document symbols/Semantic tokens): qualified methods and static values have hover from exact compiler definition identity, including static/mutable storage categories and method documentation. Static method/property/value categories appear in the document outline and position-exact semantic tokens at declarations and resolved uses, retaining readonly and compiler-owned function-local static facts. Source tests jointly cover hover, references, outline and semantic tokens for primary/extension members, immutable/mutable static storage, instance methods/properties/fields/events, same-spelled members on different owners and function-local statics. Reference results retain the correct declaration/use pair. Unsupported per-instance let storage is still diagnosed and never presented as static. Cohesive outline, callable/member-hover and declaration-classification helpers are extracted from main.go; LSP performs no member inference or runtime lowering."
       - "Associated storage cross-category conflicts (2026-11-02; static.md §6, impl.md §§22–23, properties.md §12): the valid primary/extension member surface is collected before registering static bindings. Static storage cannot silently coexist with a field, register field, instance/static method, instance/static property, event, nested type, enum or unit of the same owner/name, regardless of member or fragment order. A rejected binding never enters symbols/completion or initializer expression analysis. S1197 static.associated-member-conflict is a registered mandatory Error with repair guidance and both declaration locations. The source matrix covers 54 category/ordering cases, separate source files in both visitation orders and a positive surface preserving legal overloads and independent owners (including a generic owner). CLI JSON and LSP publish the canonical conflicts and editor related locations. Method-overload identity and its broader conformance matrix retain their separate remaining item."
@@ -1819,7 +1936,7 @@ integrations:
       - lower compile-time associated values and addressable immutable associated storage consistently through Sec MLIR and every backend
       - complete focused nested-impl and generic-specialization identity tests for associated immutable values
       - verify and complete static overload/member distinction and duplicate diagnostics across every primary and extension fragment member category
-      - complete targeted diagnostics rejecting instance-qualified access to static methods and every remaining storage edge case
+      - complete every remaining static storage edge case (targeted instance-qualified access diagnostics for static fn and static let are implemented, S1210)
       - lower static properties through Semantic IR, Sec MLIR, and the backend
       - materialize function-local static declarations as one persistent storage location in Semantic IR and backend lowering
       - extend static compile-time evaluation from known runtime-call and local-capture rejection to the complete compiler-known evaluator contract
@@ -1937,7 +2054,7 @@ integrations:
       - acyclic module-level non-generic struct declarations are resolved in semantic dependency order rather than source order, including multi-hop forward field graphs whose complete nested shapes are consumed by member analysis
       - dependency ordering and S1055 recursive-layout paths traverse non-generic named by-value wrappers around structs, preserving wrapper nominal identity while exposing the complete underlying field shape and rejecting wrapper-mediated infinite-size cycles
     remaining:
-      - "MD-019 struct layout modifiers (decided 2026-11-05; grammar.md \"Struct type declaration\", struct.md \u00a7 15A): parse `pack(N)`/`minAlign(N)` after `struct` and `minAlign(N)`/`byteOffset(N)` on stored fields before tags into the AST with spans; Sema validates compile-time integer arguments (positive power of two for alignments, nonnegative offsets), duplicates, conflicts, bodyless foreign structs, `@pack`-style misuse and misaligned references with registered diagnostics; formatter spacing and LSP hover; parser recovery tests"
+      - "MD-019 struct layout modifiers (decided 2026-11-05; grammar.md \"Struct type declaration\", struct.md § 15A): parse `pack(N)`/`minAlign(N)` after `struct` and `minAlign(N)`/`byteOffset(N)` on stored fields before tags into the AST with spans; Sema validates compile-time integer arguments (positive power of two for alignments, nonnegative offsets), duplicates, conflicts, bodyless foreign structs, `@pack`-style misuse and misaligned references with registered diagnostics; formatter spacing and LSP hover; parser recovery tests"
       - extend dependency-ordered struct resolution and recursive-layout validation through associated declarations, mixed struct/union containment, and finite nominal reference cycles before every field-dependent analysis
       - lower generic structs across all supported operations
       - extend the implemented schema-9 copy-trivial struct path with later-package move, semantic-copy, borrow, cleanup, and ownership-sensitive spread cases
@@ -2064,6 +2181,7 @@ integrations:
       - internal/lowering/secmlir
       - internal/lowering/secmlir/function_symbols.go
       - internal/lowering/secmlir/emitter_options.go
+      - internal/ir/semantic/type_identity.go
     tests:
       - internal/sema/analyzer_test.go
       - internal/ir/semantic
@@ -2071,6 +2189,11 @@ integrations:
       - internal/lowering/secmlir/function_symbols_test.go
       - testdata/build/native/overload_identity.sec
       - cmd/compiler/native_track_test.go
+      - internal/lowering/secmlir/overload_specialization_symbols_test.go
+      - testdata/build/native/overload_specialization_identity.sec
+      - internal/ir/semantic/overload_identity_test.go
+      - internal/lowering/secmlir/overload_nominal_identity_test.go
+      - testdata/build/native/overload_nominal_identity.sec
     implemented:
       - ordinary overload groups are registered in Sema by source name
       - overload identity excludes return type
@@ -2080,14 +2203,14 @@ integrations:
       - the exact selected ordinary callable is retained in resolved Sema call facts
       - "Physical-carrier overload collision regression completed 2026-10-29: int8 and uint8 parameters lower to the same signless i8 carrier while preserving distinct canonical function IDs, emitted symbols and call targets. The source-backed native program returns different observable results from each overload; emitter tests retain separate definitions/calls on 32/64-bit plans, across source and IR declaration reordering."
       - "Same-name/same-arity end-to-end overload tests completed 2026-10-29: a source fixture defines Select(int8), Select(uint8) and Select(int16), calls all three with independently typed arguments, and verifies distinct runtime results through the single Sema/Semantic IR/Sec-MLIR/LLVM/clang compilation track."
-      - "Deterministic ordinary-overload symbols completed 2026-10-29: resolvedFunctionSymbols consumes canonical Semantic IR FunctionID values and derives local overload symbols using their complete identity digest, independent of declaration position, arity and physical scalar carriers. Definitions and direct/foreign call emission share this one map. Distinct-ID symbol collisions are rejected rather than aliased. Unique source names retain existing local numbering; this does not establish a stable external ABI or reclassify source overloads. Signature-dimension/generic/variadic coverage remains separately tracked."
+      - "Deterministic ordinary-overload symbols completed 2026-10-29: resolvedFunctionSymbols consumes canonical Semantic IR FunctionID values and derives local overload symbols using their complete identity digest, independent of declaration position, arity and physical scalar carriers. Definitions and direct/foreign call emission share this one map. Distinct-ID symbol collisions are rejected rather than aliased. Unique ordinary unspecialized source names retain existing local numbering; this does not establish a stable external ABI or reclassify source overloads. Overload signature construction and native variadic ABI coverage remain separately tracked. Concrete generic/type-pack specializations now also derive their symbols from their canonical identity, even when only one sibling is demanded (2026-11-10)."
+      - Deterministic overload/specialization symbols are independent of source/IR traversal order, module identity collisions, target-width changes and repeated emission. A sole demanded specialization of an overloaded generic function now uses its complete canonical Semantic IR FunctionID instead of a positional sec_fn_N name; adding a same-spelled callable in another module does not rename or alias it. Direct calls and definitions consume the same symbol map. Source-backed 32/64-bit tests retain exact selected targets across ordering changes and repeated builds; the native overload_specialization_identity program returns the expected overload result (2026-11-10).
+      - "Same-arity parameter-type overload track acceptance verified on 2026-11-10: native source distinguishes Choose(Signed, Unsigned), Choose(Unsigned, Signed) and Choose(int8, uint8), including a nested selected call. Named signed/unsigned eight-bit arguments share physical integer carriers without conflating definitions or call symbols. Source-backed emitter checks cover 32/64-bit plans; the existing ordinary and generic overload native cases remain covered. This closes the stale acceptance item beyond the earlier primitive-only coverage; unavailable type families retain their existing explicit unsupported-lowering boundaries."
+      - "Semantic IR definitions and direct calls preserve the exact Sema-selected ordinary callable through the same canonical FunctionID projection, with no downstream overload ranking. Fixed nested reference/array/slice identity construction to recurse into canonical element facts instead of display names: nominal referent modules and concrete generic substitutions now survive (ref T in a concrete specialization becomes ref int or ref bool). Regression tests compare all five source-position call selections with emitted IR on 32/64-bit plans and reject nested nominal module collisions; reference/slice and pack-specialization expectations now require the complete identity. Identity logic was extracted from builder.go into type_identity.go (2026-11-10)."
     partial:
-      - Represented ordinary overloads now retain semantic identities in deterministic local symbols; complete signature-dimension auditing, module/generic specialization determinism, native variadic identity and remaining unsupported-family coverage are still tracked below.
+      - Selected ordinary calls, nested nominal signature facts and same-arity overload execution are verified. The full callable signature-dimension audit and native variadic/foreign-varargs identity separation remain pending.
     remaining:
-      - preserve the exact Sema-selected callable identity in Semantic IR call facts
       - ensure symbol identity includes parameter types and all signature dimensions that participate in callable identity, while excluding return type and non-discriminating ownership mode exactly as required by the rulebooks
-      - support same-arity parameter-type overloads through the compilation track or reject them with an explicit unsupported-lowering diagnostic before producing IR
-      - preserve deterministic overload symbols across source order, modules, generic specialization, and repeated builds
       - integrate native variadic overload identity later without conflating it with C/foreign varargs
     governance_reconciliation:
       - frontend.functions-v2 already records the broad remaining work to represent calls in Semantic IR and lower calls through Sec MLIR/LLVM. This supplement makes the specifically missing ordinary-overload symbol and selected-callable identity problem explicit.
@@ -2099,8 +2222,24 @@ integrations:
       - return type never contributes to overload symbol identity because such source overloads are already invalid
       - forced-consuming versus ordinary mode does not create a distinct overload symbol because such source overload pairs are already invalid
       - unsupported backend paths fail before publishing invalid or ambiguous IR
-    revised: "2026-10-29"
+    revised: "2026-11-10"
     verification:
+      - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test -p 4 ./cmd/compiler -run "^TestNativeTrackBuildsAndRuns$" -count=1
+        result: passed on 2026-11-10; complete native fixture matrix 49.562s, including primitive, generic-specialization and nominal same-arity overload programs.
+      - command: go vet -p 4 ./internal/ir/semantic ./internal/lowering/secmlir ./cmd/compiler
+        result: passed on 2026-11-10
+      - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test -p 4 ./internal/lowering/secmlir ./cmd/compiler -run "TestOverload|TestNativeTrackBuildsAndRuns/overload_" -count=1
+        result: passed on 2026-11-10; emitter 0.109s and all three ordinary, generic and nominal overload native cases 2.792s; distinct selected runtime outcomes and 32/64-bit emitted symbols.
+      - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test -p 4 ./internal/ir/semantic ./internal/lowering/secmlir -count=1
+        result: passed on 2026-11-10; complete Semantic IR 6.787s and emitter/integration 17.815s after canonical nested element identity correction. Initial failures were old abbreviated IDs; updated expectations require nominal modules and concrete generic referents. Remaining 4 to 2.
+      - command: go vet -p 4 ./internal/lowering/secmlir ./cmd/compiler
+        result: passed on 2026-11-10
+      - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test -p 4 ./cmd/compiler -run "^TestNativeTrackBuildsAndRuns$" -count=1
+        result: passed on 2026-11-10; full native fixture matrix 51.632s, including overload_identity and new overload_specialization_identity through the single source-to-binary track
+      - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test -p 4 ./internal/lowering/secmlir ./internal/ir/semantic -count=1
+        result: passed on 2026-11-10; complete emitter/integration suite 19.190s and Semantic IR 7.596s
+      - command: go test -p 4 ./internal/lowering/secmlir -run "^TestOverloadSpecializationSymbols$|^TestOverloadSymbolsPreserveSemanticIdentity$" -count=1
+        result: passed on 2026-11-10; 0.022s; sole demanded generic-overload specialization, source/IR traversal order, 32/64-bit plans, canonical module identity, repeated byte-identical emission and shared call/definition symbols; new regression first failed against positional sec_fn_N symbols
       - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./internal/lowering/secmlir -count=1; SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./cmd/compiler -run "TestNativeTrackBuildsAndRuns|TestMatchField" -count=1 -timeout=150s; go vet ./internal/lowering/secmlir ./cmd/compiler
         result: "passed 2026-10-29: full Sec MLIR emission suite 20.7s, native/match selection 20.2s and vet; explicit native overload case also passed without a skip. Emitter test covers source and IR declaration permutations on 32/64-bit plans and exact definition/callee correspondence. Three whole points closed, remaining 8 to 5."
 

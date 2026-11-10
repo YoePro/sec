@@ -125,18 +125,22 @@ func (a *Analyzer) checkSwitchValueCoverage(expr ast.Expression, tracker *switch
 		tracker.enumValues[key] = expressionToken(expr)
 		return
 	}
-	value, ok := constantIntegerValue(expr)
+	value, ok := a.switchCaseConstant(expr, tracker.subjectType)
 	if !ok {
 		return
 	}
 	key := value.String()
+	display := key
+	if _, plain := expr.(*ast.IntegerLiteral); !plain {
+		display = expr.String() // keep the unit or named conversion visible
+	}
 	if previous, exists := tracker.values[key]; exists {
-		a.reportSwitchCoverage(expressionToken(expr), previous, diagnostics.DuplicateSwitchCase, "duplicate switch case value %s", key)
+		a.reportSwitchCoverage(expressionToken(expr), previous, diagnostics.DuplicateSwitchCase, "duplicate switch case value %s", display)
 		return
 	}
 	for _, previous := range tracker.ranges {
 		if previous.contains(value) {
-			a.reportSwitchCoverage(expressionToken(expr), previous.token, diagnostics.UnreachableStatement, "switch case value %s is already covered by previous case", key)
+			a.reportSwitchCoverage(expressionToken(expr), previous.token, diagnostics.UnreachableStatement, "switch case value %s is already covered by previous case", display)
 			return
 		}
 	}
@@ -245,7 +249,7 @@ func (a *Analyzer) checkSwitchRangeCoverage(expr *ast.RangeExpression, tracker *
 	if tracker == nil || expr == nil {
 		return
 	}
-	current, ok := switchConstRangeFromExpression(expr)
+	current, ok := a.switchConstRangeFromExpression(expr, tracker.subjectType)
 	if !ok {
 		return
 	}
@@ -281,7 +285,7 @@ func (a *Analyzer) checkSwitchRelationalCoverage(item *ast.SwitchRelationalCase,
 	if tracker == nil || item == nil {
 		return
 	}
-	current, ok := switchConstRangeFromRelationalCase(item)
+	current, ok := a.switchConstRangeFromRelationalCase(item, tracker.subjectType)
 	if !ok {
 		return
 	}
@@ -294,17 +298,17 @@ func (a *Analyzer) checkSwitchRelationalCoverage(item *ast.SwitchRelationalCase,
 	tracker.ranges = append(tracker.ranges, current)
 }
 
-func switchConstRangeFromExpression(expr *ast.RangeExpression) (switchConstRange, bool) {
+func (a *Analyzer) switchConstRangeFromExpression(expr *ast.RangeExpression, subject Type) (switchConstRange, bool) {
 	out := switchConstRange{token: expr.Token, maxExclusive: expr.Exclusive}
 	if expr.Start != nil {
-		value, ok := constantIntegerValue(expr.Start)
+		value, ok := a.switchCaseConstant(expr.Start, subject)
 		if !ok {
 			return switchConstRange{}, false
 		}
 		out.min = value
 	}
 	if expr.End != nil {
-		value, ok := constantIntegerValue(expr.End)
+		value, ok := a.switchCaseConstant(expr.End, subject)
 		if !ok {
 			return switchConstRange{}, false
 		}
@@ -314,8 +318,8 @@ func switchConstRangeFromExpression(expr *ast.RangeExpression) (switchConstRange
 	return out, true
 }
 
-func switchConstRangeFromRelationalCase(item *ast.SwitchRelationalCase) (switchConstRange, bool) {
-	value, ok := constantIntegerValue(item.Value)
+func (a *Analyzer) switchConstRangeFromRelationalCase(item *ast.SwitchRelationalCase, subject Type) (switchConstRange, bool) {
+	value, ok := a.switchCaseConstant(item.Value, subject)
 	if !ok {
 		return switchConstRange{}, false
 	}
@@ -413,4 +417,61 @@ func upperBoundCovers(outer switchConstRange, inner switchConstRange) bool {
 		return false
 	}
 	return !outer.maxExclusive || inner.maxExclusive
+}
+
+// switchCaseConstant returns the compile-time integer coordinate of a switch
+// case value in the subject's own representation, so duplicate and overlap
+// checks compare like with like: a plain integer literal, a quantity literal
+// whose unit is exactly the subject's unit, or an explicit conversion of such
+// a value into the subject's named semantic type. A compatible but different
+// unit (for example km against m) is left unproven rather than compared by
+// raw coefficient.
+//
+// Rules:
+//   - rules/control-flow/flowcontrol_switch.md — §§ 20–21, § 26 "Named semantic types and units"
+func (a *Analyzer) switchCaseConstant(expr ast.Expression, subject Type) (*big.Int, bool) {
+	switch value := expr.(type) {
+	case *ast.QuantityLiteral:
+		typ, typed := a.expressionTypes[expr]
+		if !typed || subject.Unit == "" || typ.Unit != subject.Unit {
+			return nil, false
+		}
+		return constantIntegerValue(value.Value)
+	case *ast.PrefixExpression:
+		if value.Operator != "-" {
+			break
+		}
+		if _, quantity := value.Right.(*ast.QuantityLiteral); !quantity {
+			break
+		}
+		inner, ok := a.switchCaseConstant(value.Right, subject)
+		if !ok {
+			return nil, false
+		}
+		return new(big.Int).Neg(inner), true
+	case *ast.CallExpression:
+		if len(value.Arguments) != 1 || !subject.Named {
+			return nil, false
+		}
+		typ, typed := a.expressionTypes[expr]
+		if !typed || !sameConcreteType(typ, subject) {
+			return nil, false
+		}
+		callee, isIdentifier := value.Callee.(*ast.Identifier)
+		if !isIdentifier {
+			return nil, false
+		}
+		if _, isType := a.types[a.resolveTypeName(callee.Value)]; !isType {
+			return nil, false
+		}
+		// The converted operand is compared in the subject's carrier,
+		// keeping its unit.
+		carrier := subject
+		carrier.Named = false
+		return a.switchCaseConstant(value.Arguments[0], carrier)
+	}
+	if subject.Unit != "" {
+		return nil, false
+	}
+	return constantIntegerValue(expr)
 }

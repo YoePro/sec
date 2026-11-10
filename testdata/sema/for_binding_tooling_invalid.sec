@@ -1,0 +1,4 @@
+module main
+fn Invalid(values: int[3]) void {
+    for ref index, item in values {}
+}

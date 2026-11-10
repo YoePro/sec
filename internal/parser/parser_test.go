@@ -2795,7 +2795,7 @@ func TestParseInterfaceReceiverCapabilities(t *testing.T) {
 interface Resource {
 	fn Inspect() int
 	mut fn Update() void
-	-> fn Detach() int
+	fn Take(-> item: int) void
 	static fn Create() int
 }
 `
@@ -2807,7 +2807,7 @@ interface Resource {
 	if len(iface.Methods) != 4 {
 		t.Fatalf("methods = %d, want 4", len(iface.Methods))
 	}
-	if iface.Methods[0].ReceiverCapability != "" || iface.Methods[1].ReceiverCapability != ast.ReceiverMutable || iface.Methods[2].ReceiverCapability != ast.ReceiverConsuming || !iface.Methods[3].Static {
+	if iface.Methods[0].ReceiverCapability != "" || iface.Methods[1].ReceiverCapability != ast.ReceiverMutable || iface.Methods[2].ReceiverCapability != "" || !iface.Methods[2].Parameters[0].Consuming || !iface.Methods[3].Static {
 		t.Fatalf("receiver capabilities = %#v", iface.Methods)
 	}
 }

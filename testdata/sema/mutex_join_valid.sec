@@ -1,0 +1,27 @@
+module main
+fn Consume(-> guard: MutexGuard[int]) void { discard guard }
+fn Physical(value: ref Mutex[int], worker: Thread[int]) void {
+    let guard := value.Lock()
+    discard guard
+    join worker
+}
+fn Logical(value: ref Mutex[int], worker: Task[int]) void {
+    let guard := value.Lock()
+    Consume(<-guard)
+    join worker
+}
+fn Scoped(value: ref Mutex[int], worker: Thread[int]) void {
+    if true {
+        let guard := value.Lock()
+    }
+    join worker
+}
+fn AfterJoin(value: ref Mutex[int], worker: Thread[int]) void {
+    join worker
+    let guard := value.Lock()
+}
+fn Selected(value: ref Mutex[int], worker: Thread[int]) void {
+    let guard := value.Lock()
+    discard guard
+    select { join worker => {} }
+}

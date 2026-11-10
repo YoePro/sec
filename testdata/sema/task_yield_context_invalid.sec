@@ -1,0 +1,44 @@
+module main
+
+fn Pause() void {
+    Task.Yield()
+}
+
+fn Wrapper() void {
+    Pause()
+}
+
+fn ViaValue() void {
+    let pause := Pause
+    pause()
+}
+
+fn Deferred() void {
+    defer {
+        Pause()
+    }
+}
+
+fn ThreadEntry() void {
+    Pause()
+}
+
+fn Recursive(again: bool) void {
+    if again {
+        Recursive(false)
+    }
+    Pause()
+}
+
+fn main() void {
+    Task.Yield()
+    Wrapper()
+    Wrapper()
+    Recursive(true)
+    ViaValue()
+    Deferred()
+    let valid := spawn Pause()
+    await valid
+    let worker := spawn thread ThreadEntry()
+    join worker
+}

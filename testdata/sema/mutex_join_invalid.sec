@@ -1,0 +1,25 @@
+module main
+fn Physical(value: ref Mutex[int], worker: Thread[int]) void {
+    let guard := value.Lock()
+    join worker
+}
+fn Logical(value: ref Mutex[int], worker: Task[int]) void {
+    let guard := value.Lock()
+    join worker
+}
+fn Moved(value: ref Mutex[int], worker: Thread[int]) void {
+    let guard := value.Lock()
+    let transferred :<- guard
+    join worker
+}
+fn Multiple(left: ref Mutex[int], right: ref Mutex[int], worker: Thread[int]) void {
+    let first := left.Lock()
+    let second := right.Lock()
+    join worker
+}
+fn Selected(value: ref Mutex[int], worker: Thread[int]) void {
+    let guard := value.Lock()
+    select {
+        join worker => {}
+    }
+}

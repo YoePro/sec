@@ -2832,7 +2832,7 @@ func globalCompletionItems(text string, analyzer *sema.Analyzer, context complet
 			add(completionItem{Label: name, Kind: 3, Detail: functionCompletionDetail(overloads)})
 		}
 		for _, binding := range visibleLocalBindings(analyzer, text, context) {
-			add(completionItem{Label: binding.Name, Kind: 6, Detail: lspTypeName(binding.Type)})
+			add(iteratorBindingCompletion(analyzer, binding))
 		}
 		for name, symbol := range analyzer.Symbols() {
 			if strings.Contains(name, ".") {
@@ -2875,7 +2875,7 @@ func addReturnValueCompletionItems(text string, analyzer *sema.Analyzer, context
 
 	for _, binding := range visibleLocalBindings(analyzer, text, context) {
 		if completionTypeMatches(analyzer, expected, binding.Type) {
-			add(completionItem{Label: binding.Name, Kind: 6, Detail: lspTypeName(binding.Type)})
+			add(iteratorBindingCompletion(analyzer, binding))
 		}
 	}
 	for name, symbol := range analyzer.Symbols() {

@@ -88,11 +88,11 @@ integrations:
       - "-uses PATH (2026-11-01): read-only reverse references in code/tests/rules with exact YAML scalar file/line, integration ID, status and field; includes completed and library integrations without requiring remaining points or source-file existence. Exact normalized repository-relative/native absolute paths, stable human/JSON output, -dir/-file/-id filters, empty reports and malformed/incompatible/ambiguous-request rejection are covered. Structured rule requirements and prose are not path references; source files and YAML stay unchanged (IDEAS.md §3)."
       - "-paths (2026-11-04): read-only existence checks for code/tests/rules, including evidence and nested plan lists, completed and library integrations, with exact YAML file/line, owner, status, field and original path. Normalized repository-relative and native absolute paths, symlink handling, deterministic human/JSON output, -dir/-file/-id scope and optional -go filter for internal/cmd Go paths are supported. Structured rule requirements and paragraph references are not filenames. Findings return a full report and nonzero status; other filesystem errors fail without false missing findings. No source or YAML edits; IDEAS.md section 2 complete."
       - "-grep TEXT (2026-11-04): read-only literal case-insensitive search of all top-level remaining checklist items, including library owners, decoded Unicode/multiline strings and structured item ID/description/expectation values. Reports retain original point, exact YAML file/line, owner/status and 1-based checklist index/count in deterministic human/JSON output. -dir/positional-directory/-file/-id filters, successful empty reports, unknown/ambiguous IDs and incompatible/empty-request rejection are covered. Metadata, mapping keys, implemented/partial and nested plan notes are excluded. Selection shares its existing item-location lookup with search. No source/YAML changes during queries; IDEAS.md section 9 complete."
+      - Versioned -snapshot FILE creates portable per-integration checklist-count baselines without overwriting files. -diff FILE or HEAD reports deterministic before/after/delta remaining, implemented and partial counts per fragment and integration, with separate compiler/library totals and explicit added/removed IDs, file moves and status/scope changes; -json emits the versioned report. HEAD reads committed YAML without checkout/index changes. Invalid schemas, duplicate IDs, negative counts, nonportable paths and conflicting flags fail explicitly. Equal-count text rewrites are outside count comparison (2026-11-10; IDEAS.md section 7).
     remaining:
       - canonical key order per integration, which needs an agreed order first (IDEAS.md section 4.1)
       - "-md: missing-decision cross-references and stale references to closed decisions (IDEAS.md section 5)"
       - "-corrections: applied-correction bookkeeping (IDEAS.md section 6)"
-      - "-diff BASELINE: remaining-count changes against a snapshot or HEAD (IDEAS.md section 7)"
       - "-diagnostics: diagnostic registry versus governance and next free ID (IDEAS.md section 8)"
     area: governance
     integrated: "2026-10-09"
@@ -110,6 +110,9 @@ integrations:
       - cmd/yamlstatus/uses.go
       - cmd/yamlstatus/paths.go
       - cmd/yamlstatus/grep.go
+      - cmd/yamlstatus/count_snapshot.go
+      - cmd/yamlstatus/count_diff.go
+      - cmd/yamlstatus/count_git.go
     tests:
       - cmd/yamlstatus/main_test.go
       - cmd/yamlstatus/selection_test.go
@@ -120,7 +123,14 @@ integrations:
       - cmd/yamlstatus/uses_test.go
       - cmd/yamlstatus/paths_test.go
       - cmd/yamlstatus/grep_test.go
+      - cmd/yamlstatus/count_diff_test.go
     verification:
+      - command: go run ./cmd/yamlstatus -snapshot "$COUNT_BASELINE"; go run ./cmd/yamlstatus -diff "$COUNT_BASELINE"; go run ./cmd/yamlstatus -diff HEAD -json
+        result: passed on 2026-11-10 against the real ledger; 322 integration counts captured; own governance update reported compiler remaining 2240 to 2239 and governance.yamlstatus-tooling remaining 5 to 4, with libraries unchanged; HEAD report generated without checkout/index changes
+      - command: go vet ./cmd/yamlstatus
+        result: passed on 2026-11-10 after snapshot/count-diff implementation
+      - command: go test -race ./cmd/yamlstatus -count=1
+        result: passed on 2026-11-10 (1.172s); snapshot round trip, compiler/library separation, additions/removals/moves/status/scope changes, deterministic reports, HEAD read-only comparison, malformed baselines, duplicate owners and flag validation
       - command: "go test -p 4 ./cmd/yamlstatus -count=1; go test -p 4 -race ./cmd/yamlstatus -count=1; go vet -p 4 ./cmd/yamlstatus; go run ./cmd/yamlstatus -grep C:: -file ffi.yaml -json; go run ./cmd/yamlstatus check"
         result: "2026-11-04: full normal (0.026s) and race (1.161s) suites and vet passed with disk GOCACHE/GOTMPDIR. Live literal C:: search in ffi.yaml returned five remaining points. Tests verify structured/folded/Unicode/literal matching, field and completed/partial/nested prose exclusion, exact locations/index/count, library inclusion, deterministic human/JSON output, empty results, filters, malformed requests, ambiguous IDs and unchanged YAML. Remaining 6 to 5 for this ID, governance.yaml 20 to 19; no replacement remaining."
       - command: go test -p 4 ./cmd/yamlstatus -count=1; go test -p 4 -race ./cmd/yamlstatus -count=1; go vet -p 4 ./cmd/yamlstatus; go run ./cmd/yamlstatus -paths -json; go run ./cmd/yamlstatus check
@@ -135,7 +145,7 @@ integrations:
         result: 0 problems in 47 fragments on 2026-10-09 after fixing the 24 problems found by the first run
       - command: go test ./cmd/yamlstatus -count=1
         result: passed on 2026-10-09 with well-formed and broken ledgers covering every check category, refused problem-introducing edits, and unblocked edits of fragments with pre-existing problems
-    revised: "2026-11-04"
+    revised: "2026-11-10"
 
   - id: governance.allocation-storage-origin-taxonomy
     area: rulebook-consistency

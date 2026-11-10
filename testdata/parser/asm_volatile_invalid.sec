@@ -1,0 +1,15 @@
+module main
+fn Invalid() void {
+    unsafe {
+        asm volatile "nop"
+        let afterFirst := 1
+        volatile asm("nop")
+        let afterSecond := 2
+        @volatile asm {
+            "nop"
+            outputs: rax(result)
+        }
+        let afterThird := 3
+    }
+}
+fn Following() void {}

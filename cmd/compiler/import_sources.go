@@ -32,6 +32,7 @@ func resolveStdlibImportsInto(program *ast.Program, target CompilerTarget, seen 
 		printDiagnosticSummary(diagnosticSummary{Errors: len(issues)})
 		exitCLI(3)
 	}
+	identities := map[[2]string]*ast.ImportStatement{}
 	for _, stmt := range append([]ast.Statement{}, program.Statements...) {
 		importStmt, ok := stmt.(*ast.ImportStatement)
 		if !ok {
@@ -45,6 +46,13 @@ func resolveStdlibImportsInto(program *ast.Program, target CompilerTarget, seen 
 			exitCLI(3)
 		}
 		if issues := sema.ImportedModuleConflicts(importStmt, sourcePaths, os.ReadFile); len(issues) != 0 {
+			for _, issue := range issues {
+				printSemaError(os.Stderr, issue)
+			}
+			printDiagnosticSummary(diagnosticSummary{Errors: len(issues)})
+			exitCLI(3)
+		}
+		if issues := sema.ImportIdentityIssues(importStmt, "", "", sourcePaths, identities); len(issues) != 0 {
 			for _, issue := range issues {
 				printSemaError(os.Stderr, issue)
 			}

@@ -1,0 +1,31 @@
+module vault
+
+type Vault struct { Value: int }
+
+impl Vault {
+    property Public: int { get { return self.Value } set value { self.Value = value } }
+    property _Local: int { get { return self.Value } set value { self.Value = value } }
+    property __Secret: int { get { return self.Value } set value { self.Value = value } }
+    static property _StaticLocal: int { get { return 1 } set value { discard value } }
+    static property __StaticSecret: int { get { return 2 } set value { discard value } }
+
+    fn Inside(other: ref mut Vault) int {
+        other.__Secret = 3
+        Vault.__StaticSecret = 4
+        return other.__Secret + Vault.__StaticSecret
+    }
+}
+
+impl extends Vault {
+    fn Extended(other: ref mut Vault) int {
+        other.__Secret = 5
+        return other.__Secret
+    }
+}
+
+fn SameModule(value: ref mut Vault) int {
+    value._Local = 1
+    value.Public = 2
+    Vault._StaticLocal = 3
+    return value._Local + value.Public + Vault._StaticLocal
+}

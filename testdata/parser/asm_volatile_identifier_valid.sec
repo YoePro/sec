@@ -1,0 +1,14 @@
+module main
+fn Valid() int {
+    let volatile := 4
+    unsafe {
+        asm "nop"
+        asm("nop")
+        asm {
+            "nop"
+            inputs: rax(volatile)
+            outputs: rax(result)
+        }
+    }
+    return volatile
+}

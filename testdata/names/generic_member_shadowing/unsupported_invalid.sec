@@ -1,0 +1,9 @@
+module main
+
+type Deferred struct { value: int }
+impl Deferred {
+    fn Read[Size, ...Types](values: ...ref Types) void {
+        discard values
+    }
+    property Size: int { get { return self.value } }
+}

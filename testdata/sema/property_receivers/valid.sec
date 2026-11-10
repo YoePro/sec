@@ -1,0 +1,48 @@
+module main
+
+type Counter struct { _value: int, }
+impl Counter {
+    property Indirect: int { get { return self.Direct } }
+    property Bare: int { get { return Direct } }
+    property ThroughMethod: int { get { return self.Bump() } }
+    property Borrow: int {
+        get { let pointer := ref mut self._value
+return *pointer }
+    }
+    property Pure: int { get { return self._value } }
+    property Shadow: int { get { let Direct := 4
+return Direct } }
+    property ShadowBinding: int {
+        get {
+            let choice: Option[int] := Some(4)
+            match choice {
+                Some(Direct) => return Direct
+                None => return 0
+            }
+        }
+    }
+    property Direct: int {
+        get { self._value = 1
+return self._value }
+        set value { self._value = value }
+    }
+    fn ThroughProperty() int { return self.Indirect }
+    fn BareMethod() int { return Direct }
+    fn ShadowParameter(Direct: int) int { return Direct }
+    fn Bump() int { self._value = 2
+return self._value }
+}
+fn Shared(value: ref Counter) int { return value.Pure }
+fn Shadowed(value: ref Counter) int { return value.Shadow }
+fn ShadowBindingRead(value: ref Counter) int { return value.ShadowBinding }
+fn Read(value: ref mut Counter) int { return value.Indirect }
+fn BareRead(value: ref mut Counter) int { return value.Bare }
+fn MethodRead(value: ref mut Counter) int { return value.ThroughMethod }
+fn BorrowRead(value: ref mut Counter) int { return value.Borrow }
+fn Store(value: ref mut Counter) void { value.Direct = 8 }
+fn Owned() int {
+    let mut value := Counter { _value: 0 }
+    value.Direct = 3
+    return value.Direct
+}
+fn Fresh() int { return Counter { _value: 0 }.Direct }

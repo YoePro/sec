@@ -1,0 +1,20 @@
+module main
+fn Iterate(values: ref mut int[3]) void {
+    for   copy   in   values   {
+        discard copy
+    }
+    for   ref   shared   in   values   {
+        discard shared
+    }
+    for   index   ,ref   mut   item   in   values   {
+        discard index
+        discard item
+    }
+    for   _   in   values   {}
+    for   cursor   in   0 ..< 3   step   1   {
+        discard cursor
+    }
+    for   ref /* keep */ commented in values {
+        discard commented
+    }
+}

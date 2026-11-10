@@ -308,6 +308,9 @@ func (p *Parser) isTargetDirectiveStart() bool {
 //   - rules/compiler/parser_recovery.md — "Lexer errors"
 //   - rules/compiler/parser_recovery.md — "Interaction with Sema"
 func (p *Parser) parseStatement() ast.Statement {
+	if statement, handled := p.parseUnsupportedVolatileAsm(); handled {
+		return statement
+	}
 	switch p.curToken.Type {
 	case lexer.HASH:
 		return p.parseCompilerDirective()
@@ -2262,190 +2265,6 @@ func (p *Parser) parseUnsafeStatement() ast.Statement {
 	return stmt
 }
 
-func (p *Parser) parseAsmStatement() ast.Statement {
-	stmt := &ast.AsmStatement{Token: p.curToken}
-
-	switch p.peekToken.Type {
-	case lexer.LBRACE:
-		p.nextToken()
-		block := p.parseAsmBlock()
-		if block == nil {
-			return nil
-		}
-		stmt.Block = block
-		return stmt
-	case lexer.STRING:
-		p.nextToken()
-		stmt.Template = &ast.StringLiteral{Token: p.curToken, Value: trimStringQuotes(p.curToken.Lexeme)}
-		return stmt
-	case lexer.LPAREN:
-		p.nextToken()
-		if !p.expectPeek(lexer.STRING) {
-			return nil
-		}
-		stmt.Template = &ast.StringLiteral{Token: p.curToken, Value: trimStringQuotes(p.curToken.Lexeme)}
-		if !p.expectPeek(lexer.RPAREN) {
-			return nil
-		}
-		return stmt
-	default:
-		p.addError("asm statement requires string template at %d:%d", p.peekToken.Line, p.peekToken.Column)
-		return nil
-	}
-}
-
-func (p *Parser) parseAsmBlock() *ast.AsmBlock {
-	block := &ast.AsmBlock{Token: p.curToken}
-
-	p.nextToken()
-	if p.curToken.Type != lexer.STRING {
-		p.addError("asm block requires string template at %d:%d", p.curToken.Line, p.curToken.Column)
-		p.skipCurrentBlock()
-		return nil
-	}
-	block.Template = &ast.StringLiteral{Token: p.curToken, Value: trimStringQuotes(p.curToken.Lexeme)}
-
-	p.nextToken()
-	for p.curToken.Type != lexer.RBRACE && p.curToken.Type != lexer.EOF {
-		if p.curToken.Type == lexer.COMMENT {
-			p.nextToken()
-			continue
-		}
-		if p.curToken.Type != lexer.IDENT {
-			p.addError("expected asm section at %d:%d", p.curToken.Line, p.curToken.Column)
-			p.skipCurrentBlock()
-			return nil
-		}
-
-		switch p.curToken.Lexeme {
-		case contextualInputs:
-			inputs, ok := p.parseAsmInputs()
-			if !ok {
-				return nil
-			}
-			block.Inputs = inputs
-		case contextualOutputs:
-			outputs, ok := p.parseAsmOutputs()
-			if !ok {
-				return nil
-			}
-			block.Outputs = outputs
-		case contextualClobbers:
-			clobbers, ok := p.parseAsmClobbers()
-			if !ok {
-				return nil
-			}
-			block.Clobbers = clobbers
-		default:
-			p.addError("unknown asm section %q at %d:%d", p.curToken.Lexeme, p.curToken.Line, p.curToken.Column)
-			p.skipCurrentBlock()
-			return nil
-		}
-	}
-
-	return block
-}
-
-func (p *Parser) parseAsmInputs() ([]ast.AsmOperand, bool) {
-	if !p.expectPeek(lexer.COLON) {
-		return nil, false
-	}
-
-	inputs := []ast.AsmOperand{}
-	p.nextToken()
-	for p.curToken.Type != lexer.RBRACE && p.curToken.Type != lexer.EOF {
-		if p.curToken.Type == lexer.COMMENT || p.curToken.Type == lexer.COMMA {
-			p.nextToken()
-			continue
-		}
-		if p.curToken.Type == lexer.IDENT && p.peekToken.Type == lexer.COLON {
-			return inputs, true
-		}
-		if p.curToken.Type != lexer.IDENT {
-			p.addError("expected asm input at %d:%d", p.curToken.Line, p.curToken.Column)
-			return nil, false
-		}
-		register := p.curToken.Lexeme
-		if !p.expectPeek(lexer.LPAREN) {
-			return nil, false
-		}
-		p.nextToken()
-		value := p.parseExpression(LOWEST)
-		if value == nil {
-			return nil, false
-		}
-		if !p.expectPeek(lexer.RPAREN) {
-			return nil, false
-		}
-		inputs = append(inputs, ast.AsmOperand{Register: register, Value: value})
-		p.nextToken()
-	}
-	return inputs, true
-}
-
-func (p *Parser) parseAsmOutputs() ([]ast.AsmOutput, bool) {
-	if !p.expectPeek(lexer.COLON) {
-		return nil, false
-	}
-
-	outputs := []ast.AsmOutput{}
-	p.nextToken()
-	for p.curToken.Type != lexer.RBRACE && p.curToken.Type != lexer.EOF {
-		if p.curToken.Type == lexer.COMMENT || p.curToken.Type == lexer.COMMA {
-			p.nextToken()
-			continue
-		}
-		if p.curToken.Type == lexer.IDENT && p.peekToken.Type == lexer.COLON {
-			return outputs, true
-		}
-		if p.curToken.Type != lexer.IDENT {
-			p.addError("expected asm output at %d:%d", p.curToken.Line, p.curToken.Column)
-			return nil, false
-		}
-		output := ast.AsmOutput{Register: p.curToken.Lexeme}
-		if p.peekToken.Type == lexer.LPAREN {
-			p.nextToken()
-			if !p.expectPeek(lexer.IDENT) {
-				return nil, false
-			}
-			output.Name = p.curToken.Lexeme
-			output.Token = p.curToken
-			if !p.expectPeek(lexer.RPAREN) {
-				return nil, false
-			}
-		}
-		outputs = append(outputs, output)
-
-		p.nextToken()
-	}
-	return outputs, true
-}
-
-func (p *Parser) parseAsmClobbers() ([]string, bool) {
-	if !p.expectPeek(lexer.COLON) {
-		return nil, false
-	}
-
-	clobbers := []string{}
-	p.nextToken()
-	for p.curToken.Type != lexer.RBRACE && p.curToken.Type != lexer.EOF {
-		if p.curToken.Type == lexer.COMMENT || p.curToken.Type == lexer.COMMA {
-			p.nextToken()
-			continue
-		}
-		if p.curToken.Type == lexer.IDENT && p.peekToken.Type == lexer.COLON {
-			return clobbers, true
-		}
-		if p.curToken.Type != lexer.IDENT {
-			p.addError("expected asm clobber at %d:%d", p.curToken.Line, p.curToken.Column)
-			return nil, false
-		}
-		clobbers = append(clobbers, p.curToken.Lexeme)
-		p.nextToken()
-	}
-	return clobbers, true
-}
-
 func isSwitchClauseStart(token lexer.Token) bool {
 	return token.Type == lexer.CASE || token.Type == lexer.DEFAULT
 }
@@ -2748,11 +2567,12 @@ func (p *Parser) parseTypeDeclStatement() ast.Statement {
 
 	p.rejectAdditionalTypeDeclarationNames(stmt.Name.Value)
 
-	// rules/concurrency/mutex.md §§5–6,8,13(1), cancellation.md §43(4):
+	// rules/concurrency/mutex.md §§5–6,8,13(1), cancellation.md §43(4),
+	// rules/concurrency/threads.md §7(1):
 	// the canonical opaque runtime identities omit their base type.
 	// Source provenance and declaration ownership are checked by Sema.
 	if ((stmt.Name.Value == "Instant" && len(stmt.GenericParameters) == 0) ||
-		stmt.Name.Value == "Mutex" || stmt.Name.Value == "MutexGuard" || stmt.Name.Value == "Context") &&
+		stmt.Name.Value == "Mutex" || stmt.Name.Value == "MutexGuard" || stmt.Name.Value == "Context" || stmt.Name.Value == "CpuSet") &&
 		(p.peekToken.Type == lexer.EOF || p.peekToken.Line > p.curToken.Line) {
 		return stmt
 	}
@@ -3030,16 +2850,10 @@ func (p *Parser) parseInterfaceDeclaration() ast.Statement {
 			stmt.Methods = append(stmt.Methods, fn)
 			p.attachDocumentation(documentation, fn)
 		case lexer.CONSUME_ARROW:
-			if !p.expectPeek(lexer.FN) {
-				return nil
+			invalid := p.parseConsumingInterfaceReceiver()
+			if invalid != nil {
+				stmt.InvalidMembers = append(stmt.InvalidMembers, invalid)
 			}
-			fn := p.parseFunctionSignature(true)
-			if fn == nil {
-				return nil
-			}
-			fn.ReceiverCapability = ast.ReceiverConsuming
-			stmt.Methods = append(stmt.Methods, fn)
-			p.attachDocumentation(documentation, fn)
 		case lexer.STATIC:
 			// rules/declarations/static.md, sections 11-12; properties.md,
 			// section 10. Interfaces preserve the static/instance category.

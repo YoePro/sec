@@ -24,16 +24,19 @@ func runCLI(args []string, out, errOut io.Writer) error {
 	random := flags.Bool("random", false, "Choose a random matching remaining point")
 	point := flags.Int("point", 0, "Choose a remaining point by its 1-based index (requires -id)")
 	exclude := flags.String("exclude", "", "Exclude points containing this text (case insensitive)")
-	jsonOutput := flags.Bool("json", false, "Print selection, search or path reports as JSON")
+	jsonOutput := flags.Bool("json", false, "Print selection, search, path or count-diff reports as JSON")
 	grep := flags.String("grep", "", "Find all remaining points containing literal text (case insensitive; supports -file, -id and -json)")
 	uses := flags.String("uses", "", "List code/tests/rules references to a repository path (supports -file, -id and -json)")
 	paths := flags.Bool("paths", false, "Report missing code/tests/rules paths (supports -file, -id and -json)")
 	goPaths := flags.Bool("go", false, "With -paths, check only .go paths under internal/ and cmd/")
+	snapshotFile := flags.String("snapshot", "", "Save portable checklist counts to a new JSON baseline file")
+	diffBaseline := flags.String("diff", "", "Compare checklist counts with a snapshot file or HEAD (supports -json)")
 	verbose := flags.Bool("verbose", false, "Show all data otherwise just the most relevant.")
 	html := flags.Bool("html", false, "Return the output as HTML.")
 	itemOnly := flags.Bool("itemonly", false, "Only show the status for items")
 	flags.Usage = func() {
 		fmt.Fprintln(errOut, "Usage: yamlstatus [options] [directory]\nWithout selection options, prints implementation statistics.\nWith -file or -id, selects the first matching remaining point; -random randomizes selection.\nWith -uses PATH, lists integrations referencing a file in code/tests/rules.\nWith -paths, checks listed paths for existence; -go restricts to internal/ and cmd/ Go files.")
+		fmt.Fprintln(errOut, "With -snapshot FILE, saves portable counts; -diff FILE|HEAD compares counts by fragment and ID.")
 		flags.PrintDefaults()
 		fmt.Fprintln(errOut, "\n"+editUsage)
 	}
@@ -48,6 +51,51 @@ func runCLI(args []string, out, errOut io.Writer) error {
 	}
 	if flags.NArg() == 1 {
 		*dir = flags.Arg(0)
+	}
+	snapshotMode, diffMode, invalidCountOption := false, false, false
+	flags.Visit(func(option *flag.Flag) {
+		switch option.Name {
+		case "snapshot":
+			snapshotMode = true
+		case "diff":
+			diffMode = true
+		case "dir", "json":
+		default:
+			invalidCountOption = true
+		}
+	})
+	if snapshotMode || diffMode {
+		if snapshotMode == diffMode || snapshotMode && strings.TrimSpace(*snapshotFile) == "" || diffMode && strings.TrimSpace(*diffBaseline) == "" {
+			return fmt.Errorf("specify exactly one non-empty -snapshot FILE or -diff BASELINE")
+		}
+		if invalidCountOption || snapshotMode && *jsonOutput {
+			return fmt.Errorf("-snapshot/-diff cannot be combined with selection, search, paths or statistics presentation options; -json is supported only with -diff")
+		}
+		stats, err := collectStats(*dir)
+		if err != nil {
+			return err
+		}
+		current, err := snapshotCounts(*dir, stats)
+		if err != nil {
+			return err
+		}
+		if *snapshotFile != "" {
+			if err := writeCountSnapshot(*snapshotFile, current); err != nil {
+				return err
+			}
+			fmt.Fprintf(out, "Saved checklist counts for %d integrations\n", len(current.Entries))
+			return nil
+		}
+		var baseline countSnapshot
+		if *diffBaseline == "HEAD" {
+			baseline, err = headCountSnapshot(*dir)
+		} else {
+			baseline, err = readCountSnapshot(*diffBaseline)
+		}
+		if err != nil {
+			return err
+		}
+		return printCountDiff(out, compareCounts(baseline, current), *jsonOutput)
 	}
 	usesMode, grepMode := false, false
 	flags.Visit(func(option *flag.Flag) {

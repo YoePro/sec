@@ -35,7 +35,9 @@ func (a *Analyzer) validateGenericTypeParameterNames(parameters []*ast.GenericPa
 // a visible declaration: a type, enum, interface, function, or variable of the
 // declaring module, or an always-available core declaration. The check runs
 // when entering the generic scope, after the complete module surface has been
-// registered. Unit symbols live in their own namespace.
+// registered. Enclosing generic scopes and directly visible impl members are
+// included; re-entering the same declaration is not shadowing. Unit symbols
+// live in their own namespace.
 //
 // Rules: rules/foundations/names_scopes_visibility.md — §8 Shadowing,
 // §15 Generic parameters (visible type and value prohibition), §17 Name
@@ -57,6 +59,21 @@ func (a *Analyzer) validateGenericParameterTypeShadowing(parameters []*ast.Gener
 			continue
 		}
 		name := parameter.Name.Value
+		if previous, exists := a.genericTypeDefinitions[name]; exists &&
+			validDefinitionToken(previous) && !sameSourceToken(previous, parameter.Name.Token) {
+			a.addErrorAtTokenWithPreviousID(parameter.Name.Token, previous, diagnostics.GenericParameterShadowsDeclaration,
+				"generic parameter %s shadows enclosing generic parameter %s", name, name)
+			continue
+		}
+		// Synthetic impl parameters reopen their owner's scope; they are not
+		// new declarations inside a method or nested declaration.
+		if a.implGenericParameterTargets[parameter] == "" {
+			if declaration, ok := a.genericScopeMember(name); ok {
+				a.reportShadowing(parameter.Name.Token, declaration, diagnostics.GenericParameterShadowsDeclaration,
+					"generic parameter %s shadows directly visible member %s", name, name)
+				continue
+			}
+		}
 		declaration, ok := a.visibleShadowedDeclaration(name, true)
 		if !ok {
 			continue

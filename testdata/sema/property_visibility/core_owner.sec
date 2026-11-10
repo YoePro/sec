@@ -1,0 +1,7 @@
+module core
+
+impl int32 {
+    property _LocalValue: int { get { return 1 } }
+    property __PrivateValue: int { get { return 2 } }
+    fn ReadInternal() int { return self._LocalValue + self.__PrivateValue }
+}

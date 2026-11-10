@@ -194,6 +194,31 @@ per-integration changes in remaining/implemented counts against it, or against
 `git show HEAD:governance/...`. That turns the manual "remaining 7 to 6"
 bookkeeping in verification results into one command.
 
+**Implemented (2026-11-10).** `-snapshot FILE` creates a new version-1 JSON
+baseline with ledger-relative fragment paths and per-ID status, scope and
+remaining/implemented/partial counts; an existing file is never overwritten.
+`-diff FILE` compares the current ledger with a snapshot, and `-diff HEAD`
+reads the committed YAML subtree without a checkout or index changes.
+Both report compiler/library totals separately, changed fragment counts and
+changed integrations, including added/removed owners, file moves, status and
+scope changes. Deltas are after minus before; removed owners are explicitly
+marked and are not described as completed implementation. Use `-json` with
+`-diff` for a versioned machine-readable report. Ordering is deterministic.
+
+These modes use the whole ledger selected by `-dir` (or its positional form);
+selection/search/path flags and statistics presentation options cannot be
+combined with them. Unknown snapshot versions/fields, trailing JSON, duplicate
+IDs, negative counts and nonportable fragment paths are rejected. Snapshots
+hold counts, not point text, so equal-count point replacements are not detected.
+
+```bash
+go run ./cmd/yamlstatus -snapshot /tmp/before-counts.json
+# After implementing and synchronizing governance:
+go run ./cmd/yamlstatus -diff /tmp/before-counts.json
+go run ./cmd/yamlstatus -diff HEAD -json
+```
+
+
 ## 8. `-diagnostics`: registry versus governance
 
 Compare the diagnostic IDs registered in `internal/diagnostics` with the IDs

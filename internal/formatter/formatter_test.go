@@ -1103,9 +1103,11 @@ func TestFormatterDoesNotCanonicalizeInvalidExpressionPattern(t *testing.T) {
 	}
 }
 
+// TestFormatInterfaceReceiverSignatures formats valid receiver requirements and
+// ordinary consuming parameters (rules/declarations/interfaces.md §3.3).
 func TestFormatInterfaceReceiverSignatures(t *testing.T) {
-	input := "interface Resource {\nmut fn Update( value: int, ) void\n-> fn Detach( ) int\nstatic fn Create( ) int\n}\n"
-	want := "interface Resource {\n    mut fn Update(value: int) void\n    -> fn Detach() int\n    static fn Create() int\n}\n"
+	input := "interface Resource {\nmut fn Update( value: int, ) void\nfn Detach( -> value: int ) int\nstatic fn Create( ) int\n}\n"
+	want := "interface Resource {\n    mut fn Update(value: int) void\n    fn Detach(->value: int) int\n    static fn Create() int\n}\n"
 	if got := Format(Source{Text: input}, Options{}).Text; got != want {
 		t.Fatalf("formatted interface signatures:\n%s\nwant:\n%s", got, want)
 	}

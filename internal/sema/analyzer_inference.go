@@ -296,7 +296,9 @@ func (a *Analyzer) inferExpressionUnrecorded(expr ast.Expression) (Type, express
 					a.addErrorAtToken(expr.Token, "property %s has no getter", expr.Value)
 					return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 				}
-				a.recordResolvedPropertyRead(expr, a.types[a.currentImplTarget], property)
+				if !a.recordResolvedPropertyRead(expr, a.types[a.currentImplTarget], property) {
+					return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+				}
 			}
 			if symbol.RegisterAccess == RegisterWriteOnly {
 				a.addErrorAtToken(expr.Token, "register field %s is write-only and cannot be read", expr.Value)
@@ -743,7 +745,15 @@ func (a *Analyzer) inferExpectedUnionVariantExpression(expr ast.Expression, expe
 	}
 }
 
+// inferStructLiteral resolves compiler-owned literals before ordinary aggregate
+// and union construction, preserving each family's own component contracts.
+// Rules: rules/declarations/struct.md — struct literals;
+// rules/collections/shaped-types.md — §§4.1,6.0,15.3;
+// rules/concurrency/threads.md — §§7(2–6),8(1–7).
 func (a *Analyzer) inferStructLiteral(expr *ast.StructLiteral) (Type, expressionValue) {
+	if typ, handled := a.inferCpuSetLiteral(expr); handled {
+		return typ, expressionValue{Display: expr.String()}
+	}
 	if typ, handled := a.inferShapedMetadataLiteral(expr); handled {
 		return typ, expressionValue{Display: expr.String()}
 	}
@@ -768,9 +778,10 @@ func (a *Analyzer) inferStructLiteral(expr *ast.StructLiteral) (Type, expression
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 	// Rules: rules/concurrency/mutex.md — §§4–8,18(1),(6),
+	// rules/concurrency/threads.md — §8(4–6);
 	// rules/concurrency/atomics.md — §§7(5–7),11: opaque
 	// synchronization/acquisition state is never an ordinary source struct.
-	if typ.Intrinsic && (isMutexType(typ) || isMutexGuardType(typ) || typ.Name == "Context" || isAtomicType(typ)) {
+	if typ.Intrinsic && (isMutexType(typ) || isMutexGuardType(typ) || typ.Name == "Context" || typ.Name == "ThreadStorage" || isAtomicType(typ)) {
 		a.addErrorAtToken(expr.Token, "%s has no source struct constructor; its representation is runtime-private", typ.Name)
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
@@ -1081,7 +1092,9 @@ func (a *Analyzer) inferMemberExpression(expr *ast.MemberExpression) (Type, bool
 			if !readable {
 				return Type{Kind: InvalidType}, false
 			}
-			a.recordResolvedPropertyRead(expr, protected, returnProperty)
+			if !a.recordResolvedPropertyRead(expr, protected, returnProperty) {
+				return Type{Kind: InvalidType}, false
+			}
 			return returnProperty.Type, true
 		}
 	}
@@ -1110,7 +1123,9 @@ func (a *Analyzer) inferMemberExpression(expr *ast.MemberExpression) (Type, bool
 		a.resolvedStructMemberPlans[expr] = ResolvedStructMemberPlan{
 			Kind: MemberProperty, OwnerType: objectType, MemberType: property.Type, FieldName: property.Name,
 		}
-		a.recordResolvedPropertyRead(expr, objectType, property)
+		if !a.recordResolvedPropertyRead(expr, objectType, property) {
+			return Type{Kind: InvalidType}, false
+		}
 		return property.Type, true
 	}
 
@@ -1124,6 +1139,10 @@ func (a *Analyzer) inferMemberExpression(expr *ast.MemberExpression) (Type, bool
 		a.addErrorAtTokenWithMetadata(expr.Property.Token, "",
 			"use the canonical CamelCase member `"+canonical+"`; lowercase member spellings are not Sec 0.1 syntax",
 			"unknown member %s on %s", expr.Property.Value, typeDisplayName(objectType))
+		return Type{Kind: InvalidType}, false
+	}
+	if a.instanceQualifiedStaticStorage(objectType, expr.Property.Value) {
+		a.reportInstanceQualifiedStatic(expr.Property.Token, objectType, expr.Property.Value)
 		return Type{Kind: InvalidType}, false
 	}
 	a.addErrorAtToken(expr.Property.Token, "unknown member %s on %s", expr.Property.Value, typeDisplayName(objectType))
@@ -1167,6 +1186,9 @@ func (a *Analyzer) inferStaticMemberExpression(expr *ast.MemberExpression) (Type
 		// rules/declarations/static.md, sections 8 and 11. Static
 		// properties use type-qualified lookup and getter semantics.
 		if property, found := lookupProperty(typ, expr.Property.Value); found {
+			if !a.checkPropertyVisibility(typ, property, expr.Property.Token) {
+				return Type{Kind: InvalidType}, true
+			}
 			if !property.Static {
 				a.addErrorAtToken(expr.Property.Token, "instance property %s.%s requires a value receiver", typeDisplayName(typ), expr.Property.Value)
 				return Type{Kind: InvalidType}, true
@@ -1912,6 +1934,10 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 				if !isMethodCall {
 					return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 				}
+				if member, ok := expr.Callee.(*ast.MemberExpression); ok && member.Property != nil && allStaticFunctions(methodFunctions) {
+					a.reportInstanceQualifiedStatic(member.Property.Token, methodReceiver.Type, member.Property.Value)
+					return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+				}
 				if member, ok := expr.Callee.(*ast.MemberExpression); ok && member.Property != nil {
 					if selected, ok := resolvedInterfaceOverloads(methodReceiver.Type, member.Property.Value); ok {
 						methodFunctions = selected
@@ -2270,11 +2296,7 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 				}
 			}
 		}
-		if isMethodCall && best[0].Function.ReceiverConsuming {
-			if member, ok := expr.Callee.(*ast.MemberExpression); ok {
-				a.consumeMethodReceiver(expr, member.Object)
-			}
-		}
+
 		a.markClosedResourceCall(best[0].Function, methodReceiver, isMethodCall, expr.Token)
 		return best[0].Function.ReturnType, expressionValue{Display: expr.String()}
 	}
@@ -2383,6 +2405,11 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 	return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 }
 
+// inferCompilerKnownConstructor dispatches compiler-owned storage constructors.
+// Rules: rules/concurrency/thread_local.md — §§4(2),7;
+// rules/concurrency/atomics.md — §7; rules/concurrency/mutex.md — §18;
+// rules/concurrency/channels.md — channel construction;
+// rules/concurrency/threads.md — §8(1–7).
 func (a *Analyzer) inferCompilerKnownConstructor(expr *ast.CallExpression) (Type, expressionValue, bool) {
 	name := callExpressionName(expr)
 	if name == "Channel" {
@@ -2407,6 +2434,12 @@ func (a *Analyzer) inferCompilerKnownConstructor(expr *ast.CallExpression) (Type
 	}
 	if name == "Atomic" {
 		return a.inferAtomicConstructor(expr)
+	}
+	if name == "ThreadStorage" {
+		return a.inferThreadStorageConstructor(expr)
+	}
+	if name == "ThreadLocal" {
+		return a.inferThreadLocalConstructor(expr)
 	}
 	if name != "Mutex" {
 		return Type{}, expressionValue{}, false

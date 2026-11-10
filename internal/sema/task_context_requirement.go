@@ -4,6 +4,7 @@ import (
 	"sort"
 	"strconv"
 
+	"sec/internal/diagnostics"
 	"sec/internal/lexer"
 )
 
@@ -86,50 +87,76 @@ func (a *Analyzer) validateExecutionContextRequirements() {
 	}
 }
 
+// reportExecutionRequirementsFrom follows synchronous/deferred calls from one
+// execution root and reports unmet requirements at its first call, retaining
+// the source operation as a navigable witness for transitive requirements.
+// Rules: rules/concurrency/cancellation.md — §§19–23;
+// rules/concurrency/scheduling.md — §§7(2),22,50,57;
+// rules/tooling/diagnostics.md — §§8–12.
 func (a *Analyzer) reportExecutionRequirementsFrom(root CallRoot, forbidden map[executionRequirementKind]string) {
-	// firstEdge maps each reached callable to the root's call site that
-	// leads to it; the root itself maps to nil.
-	firstEdge := map[CallableID]*CallSite{root.Node: nil}
-	queue := []CallableID{root.Node}
+	// Keep one traversal state per first call from the root. Joining solely by
+	// callee loses other invalid calls when several paths reach the same body.
+	// This remains finite for recursive graphs: at most nodes × root call sites.
+	type path struct {
+		callable CallableID
+		entry    CallSiteID
+	}
+	initial := path{callable: root.Node}
+	firstEdge := map[path]*CallSite{initial: nil}
+	queue := []path{initial}
 	for len(queue) > 0 {
 		current := queue[0]
 		queue = queue[1:]
-		for _, site := range a.callGraph.Outgoing(current) {
+		for _, site := range a.callGraph.Outgoing(current.callable) {
 			if site.Execution != CallExecutionSynchronous && site.Execution != CallExecutionDeferred {
 				continue
 			}
+			edge := firstEdge[current]
+			if current == initial {
+				copied := site
+				edge = &copied
+			}
 			for _, target := range site.Targets {
-				if _, seen := firstEdge[target]; seen {
+				if target == root.Node {
+					continue // The root's own requirements are checked directly.
+				}
+				next := path{callable: target, entry: edge.ID}
+				if _, seen := firstEdge[next]; seen {
 					continue
 				}
-				edge := firstEdge[current]
-				if current == root.Node {
-					copied := site
-					edge = &copied
-				}
-				firstEdge[target] = edge
-				queue = append(queue, target)
+				firstEdge[next] = edge
+				queue = append(queue, next)
 			}
 		}
 	}
-	callables := make([]CallableID, 0, len(firstEdge))
-	for callable := range firstEdge {
-		callables = append(callables, callable)
+	paths := make([]path, 0, len(firstEdge))
+	for reached := range firstEdge {
+		paths = append(paths, reached)
 	}
-	sort.Slice(callables, func(i, j int) bool { return callables[i] < callables[j] })
+	sort.Slice(paths, func(i, j int) bool {
+		if paths[i].callable != paths[j].callable {
+			return paths[i].callable < paths[j].callable
+		}
+		return paths[i].entry < paths[j].entry
+	})
 	reported := map[string]bool{}
-	for _, callable := range callables {
+	for _, reached := range paths {
+		callable := reached.callable
 		for _, requirement := range a.executionRequirements[callable] {
 			reason, invalid := forbidden[requirement.Kind]
 			if !invalid {
 				continue
 			}
-			edge := firstEdge[callable]
+			id := ""
+			if requirement.Kind == requiresLogicalTask {
+				id = diagnostics.LogicalTaskContextRequired
+			}
+			edge := firstEdge[reached]
 			if edge == nil {
 				key := string(requirement.Kind) + "@" + tokenLocation(requirement.Source)
 				if !reported[key] {
 					reported[key] = true
-					a.addErrorAtTokenWithMetadata(requirement.Source, "", a.executionRequirementHelp(requirement.Kind),
+					a.addErrorAtTokenWithMetadata(requirement.Source, id, a.executionRequirementHelp(requirement.Kind),
 						"%s requires a current %s; %s", requirement.Operation, executionRequirementNoun(requirement.Kind), reason)
 				}
 				continue
@@ -140,8 +167,17 @@ func (a *Analyzer) reportExecutionRequirementsFrom(root CallRoot, forbidden map[
 			}
 			reported[key] = true
 			callee := a.callableDisplayName(callable)
-			a.addErrorAtTokenWithMetadata(edge.Source, "", a.executionRequirementHelp(requirement.Kind),
+			if requirement.Kind != requiresLogicalTask {
+				a.addErrorAtTokenWithMetadata(edge.Source, id, a.executionRequirementHelp(requirement.Kind),
+					"call requires a current %s because %s uses %s at %d:%d; %s", executionRequirementNoun(requirement.Kind), callee, requirement.Operation, requirement.Source.Line, requirement.Source.Column, reason)
+				continue
+			}
+			before := len(a.errors)
+			a.addErrorAtTokenWithMetadataAndPrevious(edge.Source, requirement.Source, id, a.executionRequirementHelp(requirement.Kind),
 				"call requires a current %s because %s uses %s at %d:%d; %s", executionRequirementNoun(requirement.Kind), callee, requirement.Operation, requirement.Source.Line, requirement.Source.Column, reason)
+			if len(a.errors) > before {
+				a.errors[len(a.errors)-1].RelatedLabel = "current-execution requirement introduced here"
+			}
 		}
 	}
 }

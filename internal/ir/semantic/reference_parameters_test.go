@@ -55,9 +55,9 @@ func TestPackage15LowersReferenceParametersAndPassing(t *testing.T) {
 		`Peek(%0 pair: !3 [shared-reference] {borrow=#1 lifetime=#1 validity=proven proof=caller-owned-borrow`,
 		`[mutable-reference] {borrow=#3 lifetime=#3 validity=proven proof=caller-owned-borrow`,
 		"ref.deref-place %0", "place.read", "place.write",
-		`call.direct "main::Peek(ref Pair)"(%4[shared-reference])`,
+		`call.direct "main::Peek(ref main::Pair)"(%4[shared-reference])`,
 		"ref.copy-shared %7", "ref.reborrow-mut %16",
-		`call.direct "main::Bump(ref mut Pair)"(%17[mutable-reference])`,
+		`call.direct "main::Bump(ref mut main::Pair)"(%17[mutable-reference])`,
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("module lacks %q:\n%s", want, text)

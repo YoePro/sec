@@ -165,8 +165,8 @@ integrations:
       - gaps that cross a line break or hold a comment are never changed, and malformed documents are left byte-for-byte unchanged
       - the pass runs before indentation and alignment so later column alignment observes the canonical token spelling; CLI and LSP share it
       - Remaining horizontal delimiter, call, assertion-message and panic spacing now uses source-wide shared-parser confirmation plus CST token/group roles. Complete same-line parentheses/brackets compact inner trivia and trailing commas, non-empty braces get one inner space and empty braces stay compact, and literal field colons and comma separators use canonical gaps. Aggregate literal prefix gaps retain their source spelling; declaration and executable opening braces retain their existing parser-owned spacing roles. Opaque literal text, foreign qualifiers, comment-bearing group boundaries, multiline groups and rejected syntax remain protected. Four line-oriented horizontal spacing passes and their private delimiter/call scanners were removed.
-    remaining:
-      - continuation-line indentation for operators split across lines remains owned by formatter-canonical-layout
+    governance_reconciliation:
+      - "Deduplicated 2026-11-10: continuation-line indentation for operators split across lines is tracked only as tooling.formatter-v2 formatter-canonical-layout remaining work."
     verification:
       - command: go test ./... -count=1
         result: full run on 2026-10-12 found the pre-existing stale generated Unicode library test plus an LSP Token{} prefix regression; the regression was fixed and complete CST/formatter/compiler/LSP suites passed on the final rerun. Only the unrelated generated Unicode artifact remains unresolved.
@@ -424,8 +424,8 @@ integrations:
       - reject unsupported options before formatting any files and return exit code 1 for input errors
       - verify that ordinary in-place formatting makes a subsequent check pass
       - report byte-preserved lexically malformed or delimiter-incomplete files with format.malformed-source instead of falsely accepting unchanged uncertain source as canonical
-    remaining:
-      - canonical-style coverage remains limited to the current shared formatter implementation
+    governance_reconciliation:
+      - "Deduplicated 2026-11-10: canonical-style coverage limits are tracked only as tooling.formatter-v2 formatter-canonical-layout / formatter-language-surface remaining work; this CLI surface has no separate open work."
     verification:
       - command: go test ./cmd/compiler ./cmd/lsp -run 'Fmt|Formatting|Format|HeaderSpacing|Alignment|Help' -count=1
         result: passed on 2026-10-28 after MD-037 completion; actual CLI directory/check/fix processes, frozen snapshots, reserved roots and shared CLI/LSP formatting regressions pass
@@ -459,8 +459,8 @@ integrations:
       - propagate read errors, write errors, and short writes; CLI failures exit with code 1 and diagnostics on standard error
       - reject combinations with --check or file paths and reject unsupported options before processing input
       - verify CLI standard output and standard error separately through subprocess tests
-    remaining:
-      - canonical-style coverage remains limited to the current shared formatter implementation
+    governance_reconciliation:
+      - "Deduplicated 2026-11-10: canonical-style coverage limits are tracked only as tooling.formatter-v2 formatter-canonical-layout / formatter-language-surface remaining work; this stdin surface has no separate open work."
     verification:
       - command: go test ./cmd/compiler ./internal/formatter -count=1
         result: passed, including stdin CLI and I/O failure tests

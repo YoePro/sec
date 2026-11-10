@@ -1,0 +1,14 @@
+module main
+type Count int
+type Box[T] struct { Value: T }
+static let Integer := ThreadLocal[int](7)
+static let Text := ThreadLocal[string]("seed")
+static let Nominal := ThreadLocal[Count](Count(3))
+static let Aggregate := ThreadLocal[Box[int]](Box[int]{Value: 4})
+fn Access() void {
+    static let Local := ThreadLocal[bool](true)
+    let value: ref bool := Local.Borrow()
+    discard value
+}
+fn Seed() int { return 7 }
+static let Callable := ThreadLocal[fn() int](Seed)

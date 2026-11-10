@@ -65,3 +65,55 @@ func TestIteratorResolutionsSnapshot(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+// TestIteratorBindingResolutionFacts preserves the exact yielded binding and
+// distinguishes a valid borrowed dispatch requirement from a concrete target.
+// Rules: rules/control-flow/flowcontrol_for.md — §§37–37.1;
+// rules/compiler/semantic_ir.md — §109(1–4),§115(2).
+func TestIteratorBindingResolutionFacts(t *testing.T) {
+	data, err := os.ReadFile("../../testdata/tooling/iterator_binding_presentation.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, errors := analyzeSourceWithAnalyzer(t, string(data))
+	if len(errors) != 0 {
+		t.Fatal(errors)
+	}
+	facts := a.IteratorResolutions()
+	if len(facts) != 5 {
+		t.Fatal(facts)
+	}
+	seen := map[BindingID]bool{}
+	views := 0
+	for _, fact := range facts {
+		binding, found := a.ResolvedBindingDeclaredAt(fact.Binding.File, fact.Binding.Line, fact.Binding.Column)
+		if !found || fact.BindingID == 0 || fact.BindingID != binding.ID || seen[fact.BindingID] {
+			t.Fatal("lost binding identity", fact, binding)
+		}
+		seen[fact.BindingID] = true
+		if fact.BorrowedView {
+			views++
+			if fact.GenericTemplate || fact.NextCallable != "" || fact.NextTarget != "" || !strings.Contains(fact.Display(), "runtime interface requirement Next() Option[int]") {
+				t.Fatal("invented concrete dispatch", fact)
+			}
+		}
+	}
+	if views != 1 {
+		t.Fatal("missing borrowed view", facts)
+	}
+	data, err = os.ReadFile("../../testdata/tooling/iterator_binding_presentation_invalid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := parser.New(lexer.New(string(data)))
+	program := p.ParseProgram()
+	if len(p.Errors()) != 0 {
+		t.Fatal(p.Errors())
+	}
+	if errors := a.Analyze(program); len(errors) == 0 {
+		t.Fatal("accepted invalid iterator sources")
+	}
+	if facts := a.IteratorResolutions(); len(facts) != 0 {
+		t.Fatal("invalid or stale resolution", facts)
+	}
+}

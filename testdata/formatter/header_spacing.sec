@@ -9,7 +9,7 @@ type Control register[16]   msb - first    big - endian {
 interface Factory {
     static   fn   Make()   int
     mut   fn   Change()   void
-    ->   fn   End()   void
+    fn   End(->   value: int)   void
 }
 
 impl   extends   Control {

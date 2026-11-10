@@ -1,0 +1,8 @@
+module vault
+
+impl extends Vault {
+    fn Sibling(other: ref mut Vault) int {
+        other.__Secret = 8
+        return other.__Secret
+    }
+}

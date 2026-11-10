@@ -555,38 +555,6 @@ func callReservationArgumentIndex(record borrowRecord) int {
 	return index
 }
 
-// consumeMethodReceiver records ownership termination for a consuming method
-// receiver after the call has been selected and validated.
-//
-// Rules:
-//   - rules/memory/ownership.md — §9 "Methods and self"
-//   - rules/memory/copy_move.md — §18 "Methods and self"
-//   - rules/memory/destruction.md — §6.1(3) (consumed receiver cleanup)
-func (a *Analyzer) consumeMethodReceiver(call *ast.CallExpression, expression ast.Expression) {
-	identifier, ok := expression.(*ast.Identifier)
-	if !ok {
-		before := len(a.errors)
-		place, reusable := a.resolvePlace(expression)
-		a.markMoveSource(expression)
-		if reusable && len(a.errors) == before {
-			a.recordReceiverMove(call, place)
-		}
-		return
-	}
-	if a.checkBorrowedMove(identifier.Value, identifier.Token) {
-		return
-	}
-	if place, ok := a.rootPlace(identifier.Value); ok {
-		a.recordReceiverMove(call, place)
-	}
-	a.moved[identifier.Value] = identifier.Token
-	a.availabilityStates[identifier.Value] = unavailableState("consumed by method call")
-	if place, ok := a.rootPlace(identifier.Value); ok {
-		a.recordOwnedCleanupCancellation(place, identifier.Token, "consumed by method call")
-	}
-	a.endBorrowsHeldBy(identifier.Value)
-}
-
 // markMovedCallArguments commits validated argument transfers only after every
 // outer-call argument is ready. Borrowed and prepared spread values do not
 // consume their source Places.

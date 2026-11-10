@@ -536,7 +536,9 @@ func (a *Analyzer) resolvePlacePath(expr ast.Expression) (Place, bool) {
 		if property, ok := lookupProperty(objectType, expr.Property.Value); ok {
 			base = appendPlaceProjection(base, PlaceProjection{Kind: PlaceProperty, Name: expr.Property.Value, Token: expr.Property.Token})
 			base.Type = property.Type
-			base.Mutable = property.HasSetter
+			// rules/declarations/properties.md §8; rules/memory/borrowing.md §7:
+			// an accessor cannot grant more authority than its receiver.
+			base.Mutable = base.Mutable && property.HasSetter
 			base.Addressable = false
 			base.PartialMoveSafe = false
 			return base, true

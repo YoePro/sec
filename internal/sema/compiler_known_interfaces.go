@@ -89,12 +89,20 @@ func compilerKnownInterfaceMember(method Function) (CompilerKnownMember, bool) {
 	return CompilerKnownMember{}, false
 }
 
-// CompilerKnownIntrinsicSymbolByID recovers interface-requirement and value
+// CompilerKnownIntrinsicSymbolByID recovers yield, interface-requirement and value
 // presentation directly from the registries, including after an editor restart.
 // Receiver-dependent members continue to use their resolved member facts.
 // Rules: rules/compiler/compiler_known_members.md — Stable member identity, LSP, Synthetic definitions;
-// rules/declarations/interfaces.md — §9.1.
+// rules/declarations/interfaces.md — §9.1;
+// rules/concurrency/scheduling.md — §§7,11,55–56.
 func CompilerKnownIntrinsicSymbolByID(id string) (CompilerKnownMember, bool) {
+	for _, owner := range []string{"Task", "Thread"} {
+		for _, member := range CompilerKnownMembersForType(builtinType(owner), true) {
+			if member.ID == id {
+				return member, true
+			}
+		}
+	}
 	for _, iface := range CompilerKnownInterfaces() {
 		for _, method := range iface.InterfaceMethods {
 			if method.CompilerKnownID == id {

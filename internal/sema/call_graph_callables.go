@@ -25,16 +25,16 @@ type CallableParameterContract struct {
 // Rules: rules/analysis/call_graph.md — "Callable contract", "Open callable
 // contract", "Conservative unknown facts"; rules/declarations/interfaces.md.
 type OpenCallableContract struct {
-	Operation                          string
-	ID                                 CallableContractID
-	Parameters                         []CallableParameterContract
-	ReturnType                         string
-	Receiver                           string
-	ReceiverMutable, ReceiverConsuming bool
-	Capability                         CallableCapability
-	ABI                                string
-	Unsafe                             bool
-	Provenance                         string
+	Operation       string
+	ID              CallableContractID
+	Parameters      []CallableParameterContract
+	ReturnType      string
+	Receiver        string
+	ReceiverMutable bool
+	Capability      CallableCapability
+	ABI             string
+	Unsafe          bool
+	Provenance      string
 }
 
 // functionTypeGraphContract constructs the public invocation contract after
@@ -200,8 +200,8 @@ func validGraphCallableContract(contract *OpenCallableContract, scope CallGraphS
 func interfaceInvocationContract(receiver Type, required Function) *OpenCallableContract {
 	iface := dereferenceType(receiver)
 	contract := &OpenCallableContract{Operation: required.Name, ReturnType: graphTypeIdentity(required.ReturnType), Receiver: graphTypeIdentity(iface),
-		ReceiverMutable: required.ReceiverMutable, ReceiverConsuming: required.ReceiverConsuming,
-		ABI: "Sec", Unsafe: required.Unsafe, Provenance: "validated-interface-declaration"}
+		ReceiverMutable: required.ReceiverMutable,
+		ABI:             "Sec", Unsafe: required.Unsafe, Provenance: "validated-interface-declaration"}
 	for _, parameter := range required.Parameters {
 		contract.Parameters = append(contract.Parameters, CallableParameterContract{TypeIdentity: graphTypeIdentity(parameter.Type),
 			Ref: parameter.Ref || parameter.Type.Kind == ReferenceType, MutableRef: parameter.MutableRef || (parameter.Type.Kind == ReferenceType && parameter.Type.ReferenceMutable), Consuming: parameter.Consuming, Variadic: parameter.Variadic})

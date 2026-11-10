@@ -1,0 +1,24 @@
+module main
+@noCopy
+type Payload struct { Value: int }
+type Container struct { Item: Payload }
+impl Container {
+    fn ReleaseField() void {
+        let item :<- self.Item
+        discard item
+    }
+}
+type Number struct { Value: int }
+impl Number {
+    fn Copy() Number { return self }
+    fn Read() int { return self.Value }
+}
+fn Consume(-> value: Payload) void { discard value }
+fn Invoke(-> callback: -> fn() int) int { return callback() }
+fn Use() int {
+    let mut owner := Container{Item: Payload{Value: 3}}
+    owner.ReleaseField()
+    let number := Number{Value: 4}
+    let copy := number.Copy()
+    return number.Read() + copy.Read()
+}

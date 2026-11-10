@@ -1,0 +1,12 @@
+module main
+
+fn Invalid(signed: int) void {
+    discard CpuSet { 2, 1u + 1u }
+    discard CpuSet { -1 }
+    discard CpuSet { "cpu" }
+    discard CpuSet { CPU: 2 }
+    let wrong: set[uint] := CpuSet { 0 }
+    discard CpuSet[int] { 0 }
+    discard CpuSet { signed }
+    discard CpuSet { signed... }
+}

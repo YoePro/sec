@@ -107,7 +107,7 @@ func (a *Analyzer) ResolvedImplicitReceiverOf(expr *ast.Identifier) (ImplicitRec
 // or reborrow) and an owned receiver Place is implicitly borrowed with the
 // method's receiver capability.
 func (a *Analyzer) recordReceiverReferencePlan(callee Function, receiver ast.Expression) {
-	if a.summaryPass || !functionUsesReceiver(callee) || callee.ReceiverConsuming || receiver == nil {
+	if a.summaryPass || !functionUsesReceiver(callee) || receiver == nil {
 		return
 	}
 	if identifier, ok := receiver.(*ast.Identifier); ok {
@@ -138,7 +138,7 @@ func (a *Analyzer) recordReceiverReferencePlan(callee Function, receiver ast.Exp
 //   - rules/mlir/packages/sec-mlir-dialect_package15.md — §§ 47, 48, 60
 //   - rules/declarations/impl.md — § 8 "self"
 func (a *Analyzer) recordReceiverReborrow(call *ast.CallExpression, callee Function) {
-	if a.summaryPass || !functionUsesReceiver(callee) || callee.ReceiverConsuming || !functionUsesReceiver(a.currentFunctionMetadata) || !a.currentFunctionMetadata.ReceiverMutable {
+	if a.summaryPass || !functionUsesReceiver(callee) || !functionUsesReceiver(a.currentFunctionMetadata) || !a.currentFunctionMetadata.ReceiverMutable {
 		return
 	}
 	switch callee := call.Callee.(type) {

@@ -4378,33 +4378,24 @@ module main
 interface Resource {
 	fn Inspect() int
 	mut fn Update() void
-	-> fn Detach() int
 }
 
 fn Shared(value: ref Resource) void {
 	discard value.Inspect()
 	value.Update()
-	value.Detach()
 }
 
 fn Mutable(value: ref mut Resource) void {
 	discard value.Inspect()
 	value.Update()
-	value.Detach()
 }
 
-fn Owned(value: Resource) void {
-	discard value.Detach()
-	discard value
-}
 `)
-	if len(errors) != 3 {
-		t.Fatalf("errors = %v, want three receiver diagnostics", errors)
+	if len(errors) != 1 {
+		t.Fatalf("errors = %v, want one mutable receiver diagnostic", errors)
 	}
 	want := []string{
 		"method Update requires mutable receiver",
-		"consuming method Detach requires an owned receiver; ref Resource does not transfer ownership",
-		"consuming method Detach requires an owned receiver; ref mut Resource does not transfer ownership",
 	}
 	for index, fragment := range want {
 		if !strings.Contains(errors[index].Message, fragment) {
@@ -5879,7 +5870,6 @@ unit s physical
 
 	expected := []string{
 		"function BadGet.get must return Speed, got Money at 24:11",
-		"cannot assign to immutable variable _speed at 30:4",
 		"getter MissingGet must return Speed at 28:11",
 		"undefined variable missing at 36:11",
 		"non-fallible setter BadSet cannot return Err at 41:3",

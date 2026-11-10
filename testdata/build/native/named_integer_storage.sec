@@ -1,0 +1,27 @@
+module main
+
+type Meters int
+type Distance Meters
+type Count uint8
+type Wide uint256
+
+fn main() int {
+    let mut signed: Distance := -7
+    signed += Distance(2)
+    if signed != Distance(-5) { return 1 }
+    signed = Distance(12)
+    signed /= Distance(3)
+    if signed != Distance(4) { return 2 }
+
+    let mut count: Count := 250
+    count /= Count(2)
+    if count != Count(125) { return 3 }
+    count = Count(255)
+    count /= Count(255)
+    if count != Count(1) { return 4 }
+
+    let mut wide: Wide := 340282366920938463463374607431768211456
+    wide += Wide(1)
+    if wide != Wide(340282366920938463463374607431768211457) { return 5 }
+    return 0
+}

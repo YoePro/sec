@@ -30,9 +30,9 @@ integrations:
       - Lock resolves exactly the zero-argument, duration and ref Context overloads, returning MutexGuard[T], Option[MutexGuard[T]] and Result[MutexGuard[T], ContextError] respectively; TryLock remains zero-argument only; canonical temporal conversion admits time quantity literals but rejects implicit conversion of typed quantities, wrong dimensions and inexact nanoseconds; Context calls preserve ordinary shared-borrow checks without consuming or retaining the Context, and shared compiler facts expose the selected result and complete signatures to LSP; runtime wait/commit behavior remains separate work
       - Sema rejects proven same-execution reacquisition by Lock or TryLock using canonical synchronization-resource identity, with both acquisitions in CLI/LSP diagnostics; local guard moves, replacement, lexical lifetime and successful Option/Result extraction preserve held-resource evidence, while released or consumed guards, disjoint resources and unresolved aliases do not produce false self-lock proofs; mutable writes and calls conservatively invalidate stale resource provenance
       - Execution-bound guard escape checks reject task/thread spawn arguments, receivers, known closure environments (including nested captured callables), child results, channel sends and static/thread-local stores that carry MutexGuard capabilities; canonical type/Place/capture facts preserve references, named types, aggregates and acquisition provenance, while ordinary same-execution calls/returns and local closures remain valid; opaque callable/aggregate and unresolved generic dependencies require positive guard-freedom evidence and report S1125 Unproven when that evidence is unavailable, preventing capture erasure from permitting transfer; rejected spawn transfers restore source ownership/borrows, canonical escape facts retain known and unknown boundaries, CLI/LSP share the proof classification and navigable guard origins, and a spawned call returning a function keeps the complete callable result type
+      - Standalone task and thread joins apply the shared live-MutexGuard boundary check after join-operand/lifecycle validation, with a related guard declaration. Consumed, discarded and scope-ended guards do not diagnose; moved bindings and multiple live guards do. Selected join branches commit a ready capability without a duplicate join-wait diagnostic; the enclosing select remains the suspension boundary. Source-backed Sema/CLI/LSP tests verify parity and prevent invalid IR artifacts; guard diagnostics are ordered by binding name (2026-11-10).
     remaining:
       - Implement deterministic guard destruction/release lowering.
-      - Implement suspending-join live-guard diagnostics; spawn guard transfers and await/select boundaries are enforced.
       - Complete direct forwarding for fields/properties/methods and lifetime-aware references.
       - Reject consuming complete-T forwarded operations.
       - Integrate acquire/release synchronization with memory-model facts.
@@ -65,6 +65,12 @@ integrations:
     corrections_applied:
       - rules/corrections/applied/mutex-v2-cross-rulebook-correction-20260907.md
     verification:
+      - command: go vet -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-11-10 after join guard boundary changes
+      - command: go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run "TestMutexJoinBoundary|TestAwaitRejectsLiveMutexGuard|TestAwaitAllowsConsumedMutexGuard|TestThreadJoinStatement|TestSelectJoinBranch" -count=1
+        result: passed on 2026-11-10; Sema 0.059s, CLI 3.121s, LSP 1.975s; five standalone-join guard diagnostics, one enclosing-select diagnostic, released/moved/scoped guards, related declarations and invalid IR artifact suppression
+      - command: go test -p 4 ./internal/sema -count=1
+        result: passed on 2026-11-10; complete Sema suite 18.484s after join boundary checks
       - command: go test ./internal/sema ./internal/ir/... ./cmd/compiler -count=1
         result: passed on 2026-10-16 after execution-bound guard escape enforcement, opaque/generic proof gating and complete spawned callable-result typing; an initial decimal-range test failure did not recur in its focused and full reruns
       - command: go vet ./internal/sema ./cmd/compiler ./cmd/lsp
@@ -99,7 +105,7 @@ integrations:
         result: passed on 2026-10-16; canonical naming, shared-reference calls, retained Lock/TryLock result types and blocking distinction, guard suspension regressions, and LSP hover/completion/navigation
       - command: go test ./internal/sema -run 'Test(AwaitRejectsLiveMutexGuard|AwaitAllowsConsumedMutexGuard|SelectRejectsLiveMutexGuard|SelectAllowsMovedMutexGuard)' -count=1
         result: passed on 2026-09-22
-    revised: "2026-10-16"
+    revised: "2026-11-10"
     code:
       - internal/sema/analyzer_mutex_calls.go
       - internal/sema/mutex_members.go
@@ -123,6 +129,8 @@ integrations:
       - internal/sema/channel_types.go
       - internal/sema/escape_storage_domain.go
       - internal/sema/mutex_guard_callable_escape.go
+      - internal/sema/mutex_guard_boundaries.go
+      - internal/sema/thread_join.go
     tests:
       - internal/sema/mutex_naming_test.go
       - internal/sema/concurrency_test.go
@@ -155,6 +163,11 @@ integrations:
       - testdata/sema/mutex_guard_escape_valid.sec
       - testdata/sema/mutex_guard_escape_invalid.sec
       - testdata/sema/mutex_guard_escape_unproven_invalid.sec
+      - internal/sema/mutex_join_test.go
+      - cmd/compiler/mutex_join_test.go
+      - cmd/lsp/mutex_join_test.go
+      - testdata/sema/mutex_join_valid.sec
+      - testdata/sema/mutex_join_invalid.sec
 
   - id: semantic-ir.mutex-v2
     area: semantic-ir-mutex-context-facts

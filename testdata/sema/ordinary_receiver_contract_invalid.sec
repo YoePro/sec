@@ -1,0 +1,8 @@
+module main
+type Item struct { Value: int }
+fn Take(-> item: Item) void { discard item }
+impl Item {
+    fn DiscardWhole() void { discard self }
+    fn PassWhole() void { Take(<-self) }
+    fn ReturnWhole() Item { return <-self }
+}

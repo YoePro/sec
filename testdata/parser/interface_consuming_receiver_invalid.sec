@@ -1,0 +1,9 @@
+module main
+interface Resource {
+    -> fn Detach() int
+    fn Inspect() int
+    -> fn Drop(-> value: int) void
+    mut fn Update() void
+    fn Take(-> value: int) void
+}
+fn Following() void {}

@@ -1,0 +1,10 @@
+module client
+
+fn OtherModule(value: ref mut Vault) void {
+    discard value.Public
+    value.Public = 3
+    discard value._Local
+    value._Local = 4
+    discard Vault._StaticLocal
+    Vault._StaticLocal = 5
+}

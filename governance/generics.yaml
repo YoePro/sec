@@ -455,13 +455,13 @@ integrations:
 
   - id: frontend.generic-union-recursive-storage
     area: frontend-generics-and-representation
-    status: partial
+    status: implemented
     audited: "2026-08-19"
     repository_baseline: c515862
     document_revision: "2.0"
     document_created: "2026-08-14"
     document_last_updated: "2026-08-14"
-    summary: Generic struct and union inline-storage guards avoid recursive host-type construction, while the shared source by-value layout graph owns complete field, variant, source-argument and nested generic-carrier dependency diagnostics. Concrete union payloads are checked again after substitution. Cross-template forward-reference finalization remains partial in Sema; representation-dependent consumers reject unresolved field/variant metadata before cache reuse or IR allocation. This entry covers recursive storage, independently of canonical specialization demand and non-convergence.
+    summary: Generic struct and union inline-storage guards avoid recursive host-type construction, while the shared source by-value layout graph owns complete field, variant, source-argument and nested generic-carrier dependency diagnostics. Concrete union payloads are checked again after substitution. Cross-template forward references finalize without predeclaration skeletons (verified 2026-11-10); representation-dependent consumers reject unresolved field/variant metadata before cache reuse or IR allocation. This entry covers recursive storage, independently of canonical specialization demand and non-convergence.
     rules:
       - rules/declarations/generics.md
       - rules/declarations/unions.md
@@ -499,6 +499,7 @@ integrations:
       - testdata/generics/storage_paths_cross_b.sec
       - testdata/generics/storage_paths_scoped_invalid.sec
     implemented:
+      - "Forward generic template finalization verified (2026-11-10): templates naming later templates through fields, union payloads, nested generic arguments and multi-level chains leave no InvalidType field, payload or type-argument metadata in the type table or the concrete instance cache, and member access through the chain resolves; Semantic IR emits the concrete forward-referenced struct types. TestForwardGenericTemplateReferencesFinalize"
       - generic declaration name and arity pre-registration
       - generic struct template parameter scopes
       - generic struct direct recursive-storage diagnostic
@@ -515,10 +516,6 @@ integrations:
       - changing generic source arguments, including argument transformations that stabilize at a finite instantiation set, are rejected as recursive by-value storage when the layout graph proves infinite representation; source spelling alone never supplies a non-converging InstantiationKey proof
       - one shared by-value layout diagnostic carries the complete field/variant path, declared ordered generic parameters, source argument transformations, shortest nested generic-carrier field witnesses and navigable declaration/dependency locations across files; registered S1055/S1071 Invalid proofs replace competing local generic-recursion messages in CLI and LSP
       - "Concrete generic storage closure (2026-11-03; generics_lowering.md §§4,7–8): struct and union interning checks all supplied field/variant metadata before nominal or synthetic-payload cache reuse, type allocation or copy/destruction classification. InvalidType, generic parameters and unresolved packs are rejected with their field/variant path; nested arguments, array/reference elements, named bases and callable signatures are included. The same predicate protects generic specialization admission. Regressions reproduced cached structs, direct union payloads and named payloads being accepted with InvalidType before the fix; fresh and cached paths now fail without allocating partial IR. Corrupted retained source facts make public Build return an error and no module. Valid concrete source still builds verified IR. Forward-template resolution itself and general specialization demand remain separate open work."
-    partial:
-      - generic type references encountered before a referenced generic declaration has completed body analysis can retain InvalidType template metadata, requiring a broader forward-template finalization audit
-    remaining:
-      - audit and fix forward references between generic type templates so declaration order cannot preserve incomplete predeclaration skeletons
     bug_reference:
       - correction8.md
     governance_reconciliation:

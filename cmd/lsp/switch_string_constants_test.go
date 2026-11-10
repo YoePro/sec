@@ -39,7 +39,7 @@ func TestComputedStringSwitchLSP(t *testing.T) {
 					t.Fatalf("incorrect duplicate diagnostic: %+v", d)
 				}
 				link := d.RelatedInformation[0]
-				if link.Location.URI != uri || link.Location.Range.Start.Line != lines[1]-1 || link.Message != "earlier equivalent string case" {
+				if link.Location.URI != uri || link.Location.Range.Start.Line != lines[1]-1 || link.Message != "earlier equivalent case" {
 					t.Fatalf("incorrect duplicate provenance: %+v", d)
 				}
 			}

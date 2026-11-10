@@ -177,7 +177,7 @@ integrations:
       - destruction-classification-boundary
       - ownership-errorhandling-sync
       - ownership-lsp-v2
-      - "ownership-mentor-diagnostics: extend registered IDs and mentor help beyond the implemented use-after-move, conditional, and partial availability diagnostics to missing move markers (§ 33.1), move while borrowed, invalid overlap, and static-ownership policy (§ 33.4)"
+      - "ownership-mentor-diagnostics: registered ID and mentor help for the static-ownership target policy (§ 33.4) once that policy is enforced (missing move markers, move while borrowed and invalid overlap are verified with IDs and help since 2026-11-10)"
       - ownership-formatter-v2
     semantic_ir_remaining:
       - represent copy versus consume explicitly
@@ -350,6 +350,7 @@ integrations:
       - internal/parser/parser_test.go
       - internal/lexer/lexer_test.go
     implemented:
+      - "Ownership mentor diagnostic IDs verified (2026-11-10; ownership.md § 33): missing move markers at call, construction and binding sites (S1007), use after move (S1088), move while borrowed (S1163), argument overlap (S1160) and Result projection consumption (S1006) carry registered IDs and actionable help; TestOwnershipFailuresCarryStableIDsAndHelp pins them"
       - Recursive CopyClassification/CopyClassificationOf support including trivial, semantic, conditional, move-only, and explicitly non-copyable classes.
       - "@noCopy is already recognized as a type-level copy prohibition in current frontend classification."
       - Explicit :<- and <- parsing/AST/Sema support for established declaration and assignment forms.
@@ -371,7 +372,7 @@ integrations:
       - "result-projection-state-proof: permit a non-discardable alternate payload only when control-flow proves that Result state unreachable"
       - complete Place availability integration including nested/indexed/sliced/opaque alias cases and the ownership-v2 Availability/UnavailableReason model
       - align discard convergence, conditional availability, conditional replacement, and custom-free partial-move prohibition with ownership-v2
-      - stable diagnostic IDs and mentor diagnostics for missing <-, implicit consuming construction, use-after-move, move while borrowed, invalid overlap, move from non-owned/fixed storage, and Result projection consumption
+      - "stable diagnostic and policy for moving out of non-owned/fixed storage: `Take(<-Global)` from non-copyable static storage is accepted today without a diagnostic; blocked on MD-130"
     required_tests:
       - ordinary by-value parameter copies a copyable reusable argument and leaves the source available
       - ordinary by-value parameter rejects a reusable @noCopy/move-only argument instead of consuming it implicitly

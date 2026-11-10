@@ -1,6 +1,6 @@
 schema_version: 1
-updated: "2026-11-09"
-last_id: MD-129
+updated: "2026-11-10"
+last_id: MD-130
 purpose: >-
   Tracks normative decisions that are missing or insufficiently precise and
   therefore constrain implementation. Remove an entry only after the owning
@@ -1125,4 +1125,25 @@ decisions:
       TaskSpawnError, or is a documented per-kind difference. Should be decided
       after MD-128. Governance owner: concurrency.spawn-v1.
     classification: localized
+    status: open
+
+  - id: MD-130
+    area: static-storage-move-out
+    rulebooks:
+      - rules/declarations/static.md
+      - rules/memory/ownership.md
+    description: >-
+      Raised 2026-11-10 while probing ownership mentor diagnostics.
+      `Take(<-Global)` where `static let Global: Res` has a non-copyable type
+      is accepted today without any diagnostic, leaving program-wide static
+      storage unavailable for every other function in a way Sema cannot track.
+      static.md only says a referenced static object may not be moved while a
+      reference holder can reach it (§ 5, § 20); ownership.md has no rule for
+      consuming static storage. Decide whether moving out of static storage is
+      always rejected (borrow with ref, or replace through an explicit
+      operation), allowed only for `static let mut` with same-scope
+      re-initialization, or something else, and which diagnostic ID/help the
+      compiler reports. Governance owner: frontend.copy-move (move from
+      non-owned/fixed storage).
+    classification: constraining
     status: open

@@ -167,30 +167,6 @@ type noPanicAccessor struct {
 	kind       string
 }
 
-// enterNoPanicAccessor gives an accessor annotated with a verified guarantee
-// its own call-graph callable while its body is analysed, so the effects of
-// exactly that accessor are summarized and verified; the other accessor of
-// the property does not acquire the guarantee. It returns the restore step.
-//
-// Rules:
-//   - rules/foundations/attributes.md — "Callable-body attachment (MD-030)"
-//   - rules/errors/panic.md — § 21
-func (a *Analyzer) enterNoPanicAccessor(target Type, property, kind string, attributes []*ast.Attribute, body *ast.BlockStatement, returnType Type) func() {
-	if _, ok := EffectiveGuaranteeOf(attributes, GuaranteeNoPanic); !ok || body == nil || a.summaryPass {
-		return func() {}
-	}
-	function := Function{
-		Name: property + "." + strings.ReplaceAll(kind, " ", "-"), ImplTarget: target.Name,
-		Module: a.currentModule, Token: body.Token, ReturnType: returnType,
-		DeclarationEnd: body.EndToken,
-	}
-	id := a.callGraph.addCallable(function)
-	a.noPanicAccessors = append(a.noPanicAccessors, noPanicAccessor{attributes: attributes, callable: id, name: target.Name + "." + property, kind: kind})
-	previous := a.currentCallable
-	a.currentCallable = id
-	return func() { a.currentCallable = previous }
-}
-
 // validateBodyNoPanicGuarantees verifies the MD-030 callable bodies: init,
 // free, property accessors and directly initialized lambdas.
 func (a *Analyzer) validateBodyNoPanicGuarantees(target string, member ast.ImplMember) {

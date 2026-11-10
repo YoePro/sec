@@ -1,0 +1,23 @@
+module vault
+
+type Vault struct { Value: int }
+
+impl Vault {
+    property __Secret: int { get { return self.Value } set value { self.Value = value } }
+    static property __StaticSecret: int { get { return 2 } set value { discard value } }
+}
+
+fn Outside(value: ref mut Vault) void {
+    discard value.__Secret
+    value.__Secret = 1
+    discard Vault.__StaticSecret
+    Vault.__StaticSecret = 2
+}
+
+type Intruder struct {}
+impl Intruder {
+    fn OtherOwner(value: ref mut Vault) void {
+        discard value.__Secret
+        value.__Secret = 1
+    }
+}

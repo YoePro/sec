@@ -26,7 +26,7 @@ func TestComputedStringSwitchCLI(t *testing.T) {
 		if d.ID == nil || *d.ID != diagnostics.DuplicateSwitchCase || d.Unregistered || d.Severity != diagnostics.SeverityError || d.Primary == nil || d.Primary.Span.File != fixture || d.Primary.Span.Start.Line != lines[0] || len(d.Help) != 1 || len(d.Related) != 1 {
 			t.Fatalf("incorrect duplicate diagnostic: %+v", d)
 		}
-		if d.Related[0].Span.Start.Line != lines[1] || d.Related[0].Span.File != fixture || d.Related[0].Message.Text != "earlier equivalent string case" {
+		if d.Related[0].Span.Start.Line != lines[1] || d.Related[0].Span.File != fixture || d.Related[0].Message.Text != "earlier equivalent case" {
 			t.Fatalf("incorrect duplicate provenance: %+v", d)
 		}
 	}

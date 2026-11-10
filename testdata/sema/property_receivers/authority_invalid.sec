@@ -1,0 +1,18 @@
+module main
+
+type Counter struct { _value: int, }
+type Wrapper struct { counter: Counter, }
+impl Counter {
+    property Value: int {
+        get { self._value = 1
+return self._value }
+        set value { self._value = value }
+    }
+}
+fn Shared(value: ref Counter) int { return value.Value }
+fn Immutable() int { let value := Counter { _value: 0 }
+return value.Value }
+fn Projected(value: ref Wrapper) int { return value.counter.Value }
+fn StoreShared(value: ref Counter) void { value.Value = 2 }
+fn StoreImmutable() void { let value := Counter { _value: 0 }
+value.Value = 2 }

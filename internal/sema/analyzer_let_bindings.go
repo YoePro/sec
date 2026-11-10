@@ -66,6 +66,9 @@ func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
 		a.addErrorAtToken(token, "variable %s cannot have type void; void is only valid as a function result or in an explicitly permitted type argument", stmt.Name.Value)
 		ok = false
 	}
+	if ok && !a.validateThreadLocalKeyStorage(stmt, declaredType) {
+		ok = false
+	}
 	if ok && stmt.Value == nil && stmt.Mutable && stmt.Address == nil {
 		resolution := DefaultValueOf(declaredType)
 		stmt.Value = defaultExpression(resolution, declaredType, stmt.Name.Token)

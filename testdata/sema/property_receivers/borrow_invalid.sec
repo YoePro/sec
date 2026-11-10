@@ -1,0 +1,20 @@
+module main
+
+type Counter struct { _value: int, }
+impl Counter {
+    property Mutating: int { get { self._value = 1
+return self._value } }
+    property Pure: int { get { return self._value } }
+}
+fn SharedConflict() int {
+    let mut value := Counter { _value: 0 }
+    let hold := ref value._value
+    let observed := value.Mutating
+    return observed + *hold
+}
+fn MutableConflict() int {
+    let mut value := Counter { _value: 0 }
+    let hold := ref mut value._value
+    let observed := value.Pure
+    return observed + *hold
+}

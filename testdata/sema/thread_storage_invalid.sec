@@ -1,0 +1,18 @@
+module main
+
+fn Invalid(dynamic: uint) void {
+    discard ThreadStorage[int](4096)
+    discard ThreadStorage()
+    discard ThreadStorage(1, 2)
+    discard ThreadStorage(dynamic)
+    discard ThreadStorage(-1)
+    discard ThreadStorage("stack")
+    let storage := ThreadStorage(4096)
+    let copy := storage
+    storage.Capacity = 2
+    discard ThreadStorage { _capacity: 1 }
+    discard storage._capacity
+}
+
+fn Legacy(value: ThreadStorage[uint]) void {
+}

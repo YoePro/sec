@@ -1,0 +1,12 @@
+module main
+
+fn Work() void {
+    Task.Yield()
+    Thread.Yield()
+}
+
+fn main() void {
+    Thread.Yield()
+    let work := spawn Work()
+    await work
+}

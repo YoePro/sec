@@ -1,0 +1,12 @@
+module main
+
+fn Pick[T](value: T) int { return 11 }
+fn Pick[T](left: T, right: T) int { return 22 }
+fn Unrelated(value: int) int { return value }
+
+fn main() int {
+    let value: int8 := 4
+    if Pick[int8](value) != 11 { return 1 }
+    if Unrelated(0) != 0 { return 2 }
+    return 0
+}

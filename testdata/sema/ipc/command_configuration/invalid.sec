@@ -1,0 +1,7 @@
+module main
+
+fn Invalid() void {
+    discard CommandConfigurationError.Unsupported
+    discard CommandConfigurationError.InvalidIoResource
+    let other: IPCError := CommandConfigurationError.InvalidIOResource
+}

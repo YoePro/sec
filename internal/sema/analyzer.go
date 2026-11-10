@@ -105,6 +105,8 @@ type Analyzer struct {
 	expectedExpressionTypes      map[ast.Expression]Type
 	bindingIDs                   map[sourceTokenKey]BindingID
 	bindingFacts                 map[sourceTokenKey]ResolvedBinding
+	forBindingModes              map[sourceTokenKey]ForBindingResolution
+	threadStorageCapacities      map[*ast.CallExpression]string
 	compilerKnownMemberFacts     map[sourceTokenKey]CompilerKnownMember
 	compilerKnownValueFacts      map[sourceTokenKey]CompilerKnownValue
 	resolvedTestMetadata         map[*ast.TestDeclaration]ResolvedTestMetadata
@@ -709,6 +711,8 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.expectedExpressionTypes = map[ast.Expression]Type{}
 	a.bindingIDs = map[sourceTokenKey]BindingID{}
 	a.bindingFacts = map[sourceTokenKey]ResolvedBinding{}
+	a.forBindingModes = map[sourceTokenKey]ForBindingResolution{}
+	a.threadStorageCapacities = map[*ast.CallExpression]string{}
 	a.compilerKnownMemberFacts = map[sourceTokenKey]CompilerKnownMember{}
 	a.compilerKnownValueFacts = map[sourceTokenKey]CompilerKnownValue{}
 	a.resolvedTestMetadata = map[*ast.TestDeclaration]ResolvedTestMetadata{}
@@ -1604,6 +1608,12 @@ func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 			if a.registerInstantDeclaration(stmt) {
 				return
 			}
+			if a.registerThreadStorageDeclaration(stmt) {
+				return
+			}
+			if a.registerCpuSetDeclaration(stmt) {
+				return
+			}
 			if a.registerMutexDeclaration(stmt) {
 				return
 			}
@@ -1672,7 +1682,7 @@ func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 			if stmt.Name == nil {
 				return
 			}
-			if a.rejectInstantNonOpaqueDeclaration(stmt.Name.Value, stmt.Name.Token) || a.rejectMutexNonOpaqueDeclaration(stmt.Name.Value, stmt.Name.Token) || a.rejectContextNonOpaqueDeclaration(stmt.Name.Value, stmt.Name.Token) || a.rejectThreadSettingNonUnion(stmt.Name.Value, stmt.Name.Token) || a.rejectChannelRevokeNonUnion(stmt.Name.Value, stmt.Name.Token) || a.rejectThreadTerminationNonStruct(stmt.Name.Value, stmt.Name.Token) {
+			if a.rejectInstantNonOpaqueDeclaration(stmt.Name.Value, stmt.Name.Token) || a.rejectMutexNonOpaqueDeclaration(stmt.Name.Value, stmt.Name.Token) || a.rejectCpuSetNonOpaque(stmt.Name.Value, stmt.Name.Token) || a.rejectThreadStorageNonStruct(stmt.Name.Value, stmt.Name.Token) || a.rejectContextNonOpaqueDeclaration(stmt.Name.Value, stmt.Name.Token) || a.rejectThreadSettingNonUnion(stmt.Name.Value, stmt.Name.Token) || a.rejectChannelRevokeNonUnion(stmt.Name.Value, stmt.Name.Token) || a.rejectThreadTerminationNonStruct(stmt.Name.Value, stmt.Name.Token) {
 				return
 			}
 			if a.rejectIntrinsicTypeRedeclaration(stmt.Name.Value, stmt.Name.Token) {
@@ -1694,7 +1704,7 @@ func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 			if a.rejectCompareExchangeResultNonEnum(stmt.Name.Value, stmt.Name.Token) || a.rejectIPCCoreEnumNonEnum(stmt.Name.Value, stmt.Name.Token) || a.rejectThreadAttachErrorNonEnum(stmt.Name.Value, stmt.Name.Token) || a.rejectThreadLifecycleErrorNonEnum(stmt.Name.Value, stmt.Name.Token) || a.rejectThreadConfigurationNonEnum(stmt.Name.Value, stmt.Name.Token) || a.rejectUnitMetadataEnumNonEnum(stmt.Name.Value, stmt.Name.Token) {
 				return
 			}
-			if a.rejectInstantNonOpaqueDeclaration(stmt.Name.Value, stmt.Name.Token) || a.rejectMutexNonOpaqueDeclaration(stmt.Name.Value, stmt.Name.Token) || a.rejectContextNonOpaqueDeclaration(stmt.Name.Value, stmt.Name.Token) || a.rejectThreadSettingNonUnion(stmt.Name.Value, stmt.Name.Token) || a.rejectChannelRevokeNonUnion(stmt.Name.Value, stmt.Name.Token) || a.rejectThreadTerminationNonStruct(stmt.Name.Value, stmt.Name.Token) || a.rejectThreadTerminationKindNonEnum(stmt.Name.Value, stmt.Name.Token) || a.rejectMessageDispositionInterface(stmt.Name.Value, stmt.Name.Token) {
+			if a.rejectInstantNonOpaqueDeclaration(stmt.Name.Value, stmt.Name.Token) || a.rejectMutexNonOpaqueDeclaration(stmt.Name.Value, stmt.Name.Token) || a.rejectCpuSetNonOpaque(stmt.Name.Value, stmt.Name.Token) || a.rejectThreadStorageNonStruct(stmt.Name.Value, stmt.Name.Token) || a.rejectContextNonOpaqueDeclaration(stmt.Name.Value, stmt.Name.Token) || a.rejectThreadSettingNonUnion(stmt.Name.Value, stmt.Name.Token) || a.rejectChannelRevokeNonUnion(stmt.Name.Value, stmt.Name.Token) || a.rejectThreadTerminationNonStruct(stmt.Name.Value, stmt.Name.Token) || a.rejectThreadTerminationKindNonEnum(stmt.Name.Value, stmt.Name.Token) || a.rejectMessageDispositionInterface(stmt.Name.Value, stmt.Name.Token) {
 				return
 			}
 			if a.rejectIntrinsicTypeRedeclaration(stmt.Name.Value, stmt.Name.Token) {
@@ -1886,49 +1896,6 @@ func genericParameterNameValues(parameters []*ast.GenericParameter) []string {
 		names = append(names, param.Name.Value)
 	}
 	return names
-}
-
-func (a *Analyzer) withGenericTypeParameters(parameters []*ast.GenericParameter, visit func()) {
-	a.validateGenericParameterTypeShadowing(parameters)
-	previous := a.genericTypes
-	previousDefinitions := a.genericTypeDefinitions
-	current := map[string]Type{}
-	currentDefinitions := map[string]lexer.Token{}
-	for name, typ := range previous {
-		current[name] = typ
-	}
-	for name, token := range previousDefinitions {
-		currentDefinitions[name] = token
-	}
-	for _, param := range parameters {
-		if param == nil || param.Name == nil {
-			continue
-		}
-		kind := GenericType
-		if param.TypePack {
-			kind = GenericTypePackType
-		}
-		current[param.Name.Value] = Type{
-			Name: param.Name.Value,
-			Kind: kind,
-		}
-		currentDefinitions[param.Name.Value] = param.Name.Token
-		a.recordDefinition(param.Name.Token)
-	}
-	a.genericTypes = current
-	a.genericTypeDefinitions = currentDefinitions
-	for _, param := range parameters {
-		if param == nil || param.Name == nil {
-			continue
-		}
-		a.genericTypes[param.Name.Value] = a.constrainedGenericParameterType(param)
-		a.recordGenericParameterFact(a.genericTypes[param.Name.Value], param.Name.Token, a.implGenericParameterTargets[param])
-	}
-	defer func() {
-		a.genericTypes = previous
-		a.genericTypeDefinitions = previousDefinitions
-	}()
-	visit()
 }
 
 func (a *Analyzer) registerImplTypeDeclarations(program *ast.Program) {
@@ -3066,30 +3033,6 @@ func (a *Analyzer) analyzeSelectStatement(stmt *ast.SelectStatement) {
 	a.mergeContinuingReferenceOrigins(branches...)
 }
 
-func (a *Analyzer) checkMutexGuardsAcrossSelect(token lexer.Token) {
-	a.checkLiveMutexGuardsAcrossBoundary(token, "select")
-}
-
-// checkLiveMutexGuardsAcrossBoundary enforces suspension/blocking boundaries
-// for compiler-known MutexGuard[T] bindings. A guard explicitly consumed before
-// the boundary no longer holds the acquisition and therefore does not diagnose.
-//
-// Rules:
-//   - rules/concurrency/mutex.md — §41 "Await while holding a guard"
-//   - rules/concurrency/await.md — §42 "Mutex guards across await"
-//   - rules/concurrency/select.md — "Mutex guards across select"
-func (a *Analyzer) checkLiveMutexGuardsAcrossBoundary(token lexer.Token, boundary string) {
-	for name, symbol := range a.symbols.all() {
-		if !isMutexGuardType(symbol.Type) {
-			continue
-		}
-		if _, moved := a.moved[name]; moved {
-			continue
-		}
-		a.addErrorAtTokenWithPrevious(token, symbol.Token, "mutex guard %s remains active across %s", name, boundary)
-	}
-}
-
 func selectHasDefault(stmt *ast.SelectStatement) bool {
 	for _, branch := range stmt.Branches {
 		if branch != nil && branch.Kind == ast.SelectDefaultBranch {
@@ -3123,7 +3066,7 @@ func (a *Analyzer) selectBranchResultType(branch *ast.SelectBranch) (Type, bool)
 			return Type{Kind: InvalidType}, false
 		}
 		errorsBefore := len(a.errors)
-		a.analyzeJoinStatement(&ast.JoinStatement{Token: branch.Token, Value: branch.Value})
+		a.analyzeJoinCommit(&ast.JoinStatement{Token: branch.Token, Value: branch.Value}, false)
 		if len(a.errors) != errorsBefore {
 			return Type{Kind: InvalidType}, true
 		}
@@ -3389,6 +3332,9 @@ func (a *Analyzer) registerFunctionDeclaration(fn *ast.FunctionDeclaration) {
 }
 
 func (a *Analyzer) registerFunctionDeclarationNamed(fn *ast.FunctionDeclaration, name string) {
+	if !a.validateOrdinaryReceiverContract(fn) {
+		return
+	}
 	if isCompilerKnownFunctionName(name) || isCompilerKnownValueName(name) {
 		a.addErrorAtToken(fn.Name.Token, "function %s is compiler-known and cannot be declared", name)
 		return
@@ -3791,19 +3737,6 @@ func (a *Analyzer) analyzeFunctionBody(fn *ast.FunctionDeclaration) {
 	a.analyzeFunctionBodyNamed(fn, fn.Name.Value)
 }
 
-func (a *Analyzer) analyzeFunctionBodyNamed(fn *ast.FunctionDeclaration, name string) {
-	if a.rejectUnavailableTypePackExpansion(fn) {
-		return
-	}
-	if len(fn.GenericParameters) > 0 {
-		a.withGenericTypeParameters(fn.GenericParameters, func() {
-			a.analyzeFunctionBodyInScope(fn, name)
-		})
-		return
-	}
-	a.analyzeFunctionBodyInScope(fn, name)
-}
-
 // rejectExplicitImplSelfParameter reports the legacy explicit receiver
 // parameter with its registered migration diagnostic: impl methods receive
 // self implicitly, and receiver capability is written on the method.
@@ -3918,326 +3851,6 @@ func functionParameterNames(fn *ast.FunctionDeclaration) map[string]bool {
 		}
 	}
 	return names
-}
-
-func (a *Analyzer) functionBodyWritesTargetMember(block *ast.BlockStatement, target Type, shadowed map[string]bool) bool {
-	if block == nil {
-		return false
-	}
-	return a.blockWritesTargetMember(block, target, targetAssignableMemberNames(target), shadowed)
-}
-
-func targetAssignableMemberNames(target Type) map[string]bool {
-	names := map[string]bool{}
-	for _, field := range target.Fields {
-		names[field.Name] = true
-	}
-	for _, field := range target.RegisterFields {
-		if field.Name != "_" {
-			names[field.Name] = true
-		}
-	}
-	for _, property := range target.Properties {
-		if property.HasSetter {
-			names[property.Name] = true
-		}
-	}
-	return names
-}
-
-func statementUsesSelf(stmt ast.Statement) bool {
-	switch stmt := stmt.(type) {
-	case *ast.LetStatement:
-		return expressionUsesSelf(stmt.Value) || expressionUsesSelf(stmt.Address)
-	case *ast.LetGroupStatement:
-		for _, let := range stmt.Lets {
-			if statementUsesSelf(let) {
-				return true
-			}
-		}
-	case *ast.AssignmentStatement:
-		return expressionUsesSelf(stmt.Target) || expressionUsesSelf(stmt.Value)
-	case *ast.TryAssignmentStatement:
-		return stmt.Assignment != nil && statementUsesSelf(stmt.Assignment)
-	case *ast.ExpressionStatement:
-		return expressionUsesSelf(stmt.Expression)
-	case *ast.AssertStatement:
-		return expressionUsesSelf(stmt.Condition)
-	case *ast.DetachStatement:
-		return expressionUsesSelf(stmt.Value)
-	case *ast.JoinStatement:
-		return expressionUsesSelf(stmt.Value)
-	case *ast.ReturnStatement:
-		return expressionUsesSelf(stmt.Value)
-	case *ast.IfStatement:
-		return expressionUsesSelf(stmt.Condition) || functionBodyUsesSelf(stmt.Consequence) || functionBodyUsesSelf(stmt.Alternative)
-	case *ast.ForStatement:
-		return expressionUsesSelf(stmt.Iterable) || expressionUsesSelf(stmt.Step) || functionBodyUsesSelf(stmt.Body)
-	case *ast.WhileStatement:
-		return expressionUsesSelf(stmt.Condition) || functionBodyUsesSelf(stmt.Body)
-	case *ast.DeferStatement:
-		return functionBodyUsesSelf(stmt.Body)
-	case *ast.UnsafeStatement:
-		return functionBodyUsesSelf(stmt.Body)
-	case *ast.MatchStatement:
-		return expressionUsesSelf(stmt.Match)
-	}
-	return false
-}
-
-func statementWritesSelf(stmt ast.Statement) bool {
-	switch stmt := stmt.(type) {
-	case *ast.AssignmentStatement:
-		return assignmentTargetUsesSelf(stmt.Target)
-	case *ast.TryAssignmentStatement:
-		return stmt.Assignment != nil && statementWritesSelf(stmt.Assignment)
-	case *ast.LetGroupStatement:
-		return false
-	case *ast.IfStatement:
-		return functionBodyWritesSelf(stmt.Consequence) || functionBodyWritesSelf(stmt.Alternative)
-	case *ast.ForStatement:
-		return functionBodyWritesSelf(stmt.Body)
-	case *ast.WhileStatement:
-		return functionBodyWritesSelf(stmt.Body)
-	case *ast.DeferStatement:
-		return functionBodyWritesSelf(stmt.Body)
-	case *ast.UnsafeStatement:
-		return functionBodyWritesSelf(stmt.Body)
-	case *ast.MatchStatement:
-		if stmt.Match == nil {
-			return false
-		}
-		for _, arm := range stmt.Match.Arms {
-			if arm != nil && functionBodyWritesSelf(arm.BlockBody) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func (a *Analyzer) blockWritesTargetMember(block *ast.BlockStatement, target Type, memberNames map[string]bool, inheritedShadowed map[string]bool) bool {
-	if block == nil {
-		return false
-	}
-	shadowed := copyBoolMap(inheritedShadowed)
-	for _, stmt := range block.Statements {
-		if a.statementWritesTargetMember(stmt, target, memberNames, shadowed) {
-			return true
-		}
-		addStatementDeclarationsToShadowed(stmt, shadowed)
-	}
-	return false
-}
-
-func (a *Analyzer) statementWritesTargetMember(stmt ast.Statement, target Type, memberNames map[string]bool, shadowed map[string]bool) bool {
-	// A `ref mut` borrow of a receiver member, or a `ref mut` payload
-	// binding over a receiver-rooted match subject, needs a mutable receiver
-	// as much as an assignment does (borrowing.md § 7).
-	if statementMutablyBorrowsReceiver(stmt, memberNames, shadowed) {
-		return true
-	}
-	switch stmt := stmt.(type) {
-	case *ast.MatchStatement:
-		if stmt.Match == nil {
-			return false
-		}
-		if a.expressionCallsMutableTargetMethod(stmt.Match.Subject, target) {
-			return true
-		}
-		for _, arm := range stmt.Match.Arms {
-			if arm == nil {
-				continue
-			}
-			armShadowed := shadowed
-			if arm.Pattern != nil && arm.Pattern.Binding != nil && arm.Pattern.Binding.Name != nil {
-				armShadowed = copyBoolMap(shadowed)
-				armShadowed[arm.Pattern.Binding.Name.Value] = true
-			}
-			if a.expressionCallsMutableTargetMethod(arm.Guard, target) || a.expressionCallsMutableTargetMethod(arm.Body, target) ||
-				arm.ReturnBody != nil && a.expressionCallsMutableTargetMethod(arm.ReturnBody.Value, target) ||
-				a.blockWritesTargetMember(arm.BlockBody, target, memberNames, armShadowed) {
-				return true
-			}
-		}
-		return false
-	case *ast.LetStatement:
-		return stmt.Ownership == ast.OwnershipMove && isSelfMemberProjection(stmt.Value) || a.expressionCallsMutableTargetMethod(stmt.Value, target)
-	case *ast.LetGroupStatement:
-		for _, let := range stmt.Lets {
-			if let != nil && (let.Ownership == ast.OwnershipMove && isSelfMemberProjection(let.Value) || a.expressionCallsMutableTargetMethod(let.Value, target)) {
-				return true
-			}
-		}
-		return false
-	case *ast.AssignmentStatement:
-		return assignmentTargetUsesSelf(stmt.Target) || assignmentTargetUsesUnshadowedMember(stmt.Target, memberNames, shadowed) ||
-			stmt.Ownership == ast.OwnershipMove && isSelfMemberProjection(stmt.Value) || a.expressionCallsMutableTargetMethod(stmt.Value, target)
-	case *ast.TryAssignmentStatement:
-		return stmt.Assignment != nil && a.statementWritesTargetMember(stmt.Assignment, target, memberNames, shadowed)
-	case *ast.ExpressionStatement:
-		return a.expressionCallsMutableTargetMethod(stmt.Expression, target)
-	case *ast.DiscardStatement:
-		return isSelfMemberProjection(stmt.Value) || a.expressionCallsMutableTargetMethod(stmt.Value, target)
-	case *ast.AssertStatement:
-		return a.expressionCallsMutableTargetMethod(stmt.Condition, target)
-	case *ast.ReturnStatement:
-		return a.expressionCallsMutableTargetMethod(stmt.Value, target)
-	case *ast.IfStatement:
-		return a.expressionCallsMutableTargetMethod(stmt.Condition, target) || a.blockWritesTargetMember(stmt.Consequence, target, memberNames, shadowed) || a.blockWritesTargetMember(stmt.Alternative, target, memberNames, shadowed)
-	case *ast.ForStatement:
-		loopShadowed := copyBoolMap(shadowed)
-		for _, binding := range stmt.Bindings {
-			if !binding.Discard {
-				loopShadowed[binding.Name] = true
-			}
-		}
-		return a.expressionCallsMutableTargetMethod(stmt.Iterable, target) || a.expressionCallsMutableTargetMethod(stmt.Step, target) || a.blockWritesTargetMember(stmt.Body, target, memberNames, loopShadowed)
-	case *ast.WhileStatement:
-		return a.expressionCallsMutableTargetMethod(stmt.Condition, target) || a.blockWritesTargetMember(stmt.Body, target, memberNames, shadowed)
-	case *ast.DeferStatement:
-		return a.blockWritesTargetMember(stmt.Body, target, memberNames, shadowed)
-	case *ast.UnsafeStatement:
-		return a.blockWritesTargetMember(stmt.Body, target, memberNames, shadowed)
-	case *ast.SelectStatement:
-		for _, branch := range stmt.Branches {
-			if branch == nil {
-				continue
-			}
-			if a.expressionCallsMutableTargetMethod(branch.Value, target) {
-				return true
-			}
-			branchShadowed := copyBoolMap(shadowed)
-			if branch.Binding != nil {
-				branchShadowed[branch.Binding.Value] = true
-			}
-			if a.blockWritesTargetMember(branch.Body, target, memberNames, branchShadowed) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// expressionCallsMutableTargetMethod reports calls that require this impl
-// method's implicit self receiver to be writable. Every evaluated expression
-// retains that requirement, including returned and discarded call results.
-func (a *Analyzer) expressionCallsMutableTargetMethod(expr ast.Expression, target Type) bool {
-	switch expr := expr.(type) {
-	case nil, *ast.Identifier, *ast.IntegerLiteral, *ast.FloatLiteral, *ast.BooleanLiteral, *ast.CharLiteral, *ast.StringLiteral:
-		return false
-	case *ast.PrefixExpression:
-		if expr.Operator == "<-" && isSelfMemberProjection(expr.Right) {
-			return true
-		}
-		return a.expressionCallsMutableTargetMethod(expr.Right, target)
-	case *ast.InfixExpression:
-		return a.expressionCallsMutableTargetMethod(expr.Left, target) || a.expressionCallsMutableTargetMethod(expr.Right, target)
-	case *ast.RangeExpression:
-		return a.expressionCallsMutableTargetMethod(expr.Start, target) || a.expressionCallsMutableTargetMethod(expr.End, target)
-	case *ast.BitExtractionExpression:
-		return a.expressionCallsMutableTargetMethod(expr.Value, target)
-	case *ast.ConversionExpression:
-		return a.expressionCallsMutableTargetMethod(expr.Value, target)
-	case *ast.OkExpression:
-		return a.expressionCallsMutableTargetMethod(expr.Value, target)
-	case *ast.ErrExpression:
-		return a.expressionCallsMutableTargetMethod(expr.Value, target)
-	case *ast.TryExpression:
-		return a.expressionCallsMutableTargetMethod(expr.Expression, target)
-	case *ast.MemberExpression:
-		return a.expressionCallsMutableTargetMethod(expr.Object, target)
-	case *ast.IndexExpression:
-		return a.expressionCallsMutableTargetMethod(expr.Left, target) || a.expressionCallsMutableTargetMethod(expr.Index, target)
-	case *ast.SliceExpression:
-		return a.expressionCallsMutableTargetMethod(expr.Left, target) || a.expressionCallsMutableTargetMethod(expr.Start, target) || a.expressionCallsMutableTargetMethod(expr.End, target)
-	case *ast.RefExpression:
-		return a.expressionCallsMutableTargetMethod(expr.Value, target)
-	case *ast.ArrayLiteral:
-		for _, element := range expr.Elements {
-			if a.expressionCallsMutableTargetMethod(element, target) {
-				return true
-			}
-		}
-	case *ast.SpreadExpression:
-		return a.expressionCallsMutableTargetMethod(expr.Value, target)
-	case *ast.StructLiteral:
-		for _, field := range expr.Fields {
-			if field != nil && a.expressionCallsMutableTargetMethod(field.Value, target) {
-				return true
-			}
-		}
-	case *ast.CallExpression:
-		if a.callRequiresMutableTargetReceiver(expr, target) {
-			return true
-		}
-		if a.expressionCallsMutableTargetMethod(expr.Callee, target) {
-			return true
-		}
-		for _, argument := range expr.Arguments {
-			if a.expressionCallsMutableTargetMethod(argument, target) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func (a *Analyzer) callRequiresMutableTargetReceiver(call *ast.CallExpression, target Type) bool {
-	member, ok := call.Callee.(*ast.MemberExpression)
-	if !ok || member.Property == nil {
-		return false
-	}
-	receiver, ok := member.Object.(*ast.Identifier)
-	if !ok || receiver.Value != "self" {
-		return false
-	}
-	for _, function := range a.functions[target.Name+"."+member.Property.Value] {
-		if function.ImplTarget == target.Name && function.ReceiverMutable {
-			return true
-		}
-	}
-	return false
-}
-
-func addStatementDeclarationsToShadowed(stmt ast.Statement, shadowed map[string]bool) {
-	switch stmt := stmt.(type) {
-	case *ast.LetStatement:
-		if stmt != nil && stmt.Name != nil {
-			shadowed[stmt.Name.Value] = true
-		}
-	case *ast.LetGroupStatement:
-		if stmt == nil {
-			return
-		}
-		for _, let := range stmt.Lets {
-			if let != nil && let.Name != nil {
-				shadowed[let.Name.Value] = true
-			}
-		}
-	}
-}
-
-func assignmentTargetUsesSelf(expr ast.Expression) bool {
-	switch expr := expr.(type) {
-	case *ast.MemberExpression:
-		return expressionUsesSelf(expr.Object)
-	case *ast.IndexExpression:
-		return assignmentTargetUsesSelf(expr.Left)
-	}
-	return false
-}
-
-func assignmentTargetUsesUnshadowedMember(expr ast.Expression, memberNames map[string]bool, shadowed map[string]bool) bool {
-	switch expr := expr.(type) {
-	case *ast.Identifier:
-		return memberNames[expr.Value] && !shadowed[expr.Value]
-	case *ast.MemberExpression:
-		return expressionUsesSelf(expr.Object)
-	case *ast.IndexExpression:
-		return assignmentTargetUsesUnshadowedMember(expr.Left, memberNames, shadowed)
-	}
-	return false
 }
 
 func copyBoolMap(in map[string]bool) map[string]bool {
@@ -6089,25 +5702,6 @@ func referenceOriginStatesEqual(left, right map[string]localReferenceOrigin) boo
 	return true
 }
 
-func mergeBreakAssigned(before map[string]bool, breaks []map[string]bool) map[string]bool {
-	merged := copyAssigned(before)
-	if len(breaks) == 0 {
-		return merged
-	}
-
-	for name := range before {
-		assigned := true
-		for _, breakAssigned := range breaks {
-			if !breakAssigned[name] {
-				assigned = false
-				break
-			}
-		}
-		merged[name] = assigned
-	}
-	return merged
-}
-
 func (a *Analyzer) analyzeTypeDeclaration(stmt *ast.TypeDeclStatement) {
 	if stmt == nil || stmt.Name == nil || a.invalidTypeDeclaration(stmt.Name.Token) {
 		return
@@ -6272,6 +5866,9 @@ func (a *Analyzer) analyzeInterfaceDeclarationBody(stmt *ast.InterfaceDeclaratio
 	seenMethods := map[string]lexer.Token{}
 	for _, method := range stmt.Methods {
 		if method == nil || method.Name == nil {
+			continue
+		}
+		if !a.validateInterfaceReceiverContract(method) {
 			continue
 		}
 		// rules/declarations/interfaces.md section 9 and
@@ -6453,12 +6050,11 @@ func (a *Analyzer) mergeInheritedInterfaceRequirements(iface *Type) {
 
 func (a *Analyzer) interfaceMethodRequirement(interfaceName string, fn *ast.FunctionDeclaration) Function {
 	function := Function{
-		Name:              fn.Name.Value,
-		Module:            a.currentModule,
-		Token:             fn.Name.Token,
-		Static:            fn.Static,
-		ReceiverMutable:   fn.ReceiverCapability == ast.ReceiverMutable,
-		ReceiverConsuming: fn.ReceiverCapability == ast.ReceiverConsuming,
+		Name:            fn.Name.Value,
+		Module:          a.currentModule,
+		Token:           fn.Name.Token,
+		Static:          fn.Static,
+		ReceiverMutable: fn.ReceiverCapability == ast.ReceiverMutable,
 	}
 	if !fn.Static {
 		function.ImplTarget = interfaceName
@@ -6506,7 +6102,7 @@ func (a *Analyzer) interfaceMethodRequirement(interfaceName string, fn *ast.Func
 }
 
 func sameInterfaceRequirementSignature(left Function, right Function) bool {
-	if left.Static != right.Static || left.ReceiverMutable != right.ReceiverMutable || left.ReceiverConsuming != right.ReceiverConsuming {
+	if left.Static != right.Static || left.ReceiverMutable != right.ReceiverMutable {
 		return false
 	}
 	if len(left.Parameters) != len(right.Parameters) {
@@ -6630,6 +6226,9 @@ func (a *Analyzer) analyzeTypeDeclarationBody(stmt *ast.TypeDeclStatement) {
 	}
 	if (stmt.Name.Value == "ThreadTermination" || stmt.Name.Value == "ThreadTerminationKind") && a.isTrustedCoreBuiltinDeclaration(stmt.Name.Value, stmt.Name.Token) {
 		return // Exact metadata was validated during registration (threads.md §23).
+	}
+	if stmt.Name.Value == "ThreadStorage" && a.isTrustedCoreBuiltinDeclaration(stmt.Name.Value, stmt.Name.Token) {
+		return // Exact noCopy metadata validated during registration (threads.md §8).
 	}
 	if stmt.Name.Value == "ThreadSetting" && a.isTrustedCoreBuiltinDeclaration(stmt.Name.Value, stmt.Name.Token) {
 		return // Exact generic union validated during registration (threads.md §4).
@@ -7213,80 +6812,6 @@ func (a *Analyzer) registerImplDeclarations(program *ast.Program) {
 	a.resolveImplMethodReceiverMutability(program)
 }
 
-type implMethodDeclaration struct {
-	Target Type
-	Name   string
-	Source *ast.FunctionDeclaration
-}
-
-// resolveImplMethodReceiverMutability computes receiver mutability after every
-// impl method has been registered. Method declarations may be in any source
-// order, and a mutating receiver requirement can propagate through calls.
-func (a *Analyzer) resolveImplMethodReceiverMutability(program *ast.Program) {
-	if program == nil {
-		return
-	}
-
-	methods := []implMethodDeclaration{}
-	for _, stmt := range program.Statements {
-		impl, ok := stmt.(*ast.ImplStatement)
-		if !ok || impl == nil || !a.validImplStatements[impl] || impl.Target == nil {
-			continue
-		}
-		target, ok := a.types[impl.Target.Name]
-		if !ok {
-			continue
-		}
-		for _, member := range impl.Members {
-			fn, ok := member.(*ast.FunctionDeclaration)
-			if !ok || fn == nil || fn.Name == nil {
-				continue
-			}
-			name := target.Name + "." + fn.Name.Value
-			if len(a.functions[name]) == 0 {
-				continue
-			}
-			methods = append(methods, implMethodDeclaration{Target: target, Name: name, Source: fn})
-		}
-	}
-
-	for _, method := range methods {
-		a.setImplMethodReceiverMutable(method.Name, method.Target.Name, false)
-	}
-	for changed := true; changed; {
-		changed = false
-		for _, method := range methods {
-			if !a.functionBodyWritesTargetMember(method.Source.Body, method.Target, functionParameterNames(method.Source)) {
-				continue
-			}
-			if a.implMethodReceiverMutable(method.Name, method.Target.Name) {
-				continue
-			}
-			a.setImplMethodReceiverMutable(method.Name, method.Target.Name, true)
-			changed = true
-		}
-	}
-}
-
-func (a *Analyzer) implMethodReceiverMutable(name string, targetName string) bool {
-	for _, function := range a.functions[name] {
-		if function.ImplTarget == targetName && function.ReceiverMutable {
-			return true
-		}
-	}
-	return false
-}
-
-func (a *Analyzer) setImplMethodReceiverMutable(name string, targetName string, mutable bool) {
-	functions := a.functions[name]
-	for index := range functions {
-		if functions[index].ImplTarget == targetName {
-			functions[index].ReceiverMutable = mutable
-		}
-	}
-	a.functions[name] = functions
-}
-
 // registerImplStatement registers implementation members with their explicit
 // static/instance category; unsupported instance bindings are never made static.
 // Rules: rules/declarations/impl.md — "Static members";
@@ -7481,16 +7006,17 @@ func (a *Analyzer) registerImplStatement(stmt *ast.ImplStatement) {
 			errorType = a.resolveSetterErrorContract(property.Setter.ErrorType, property.Setter.Token, property.Name.Value)
 		}
 
-		target.Properties = append(target.Properties, Property{
-			Name:      property.Name.Value,
-			Type:      propertyType,
-			Token:     property.Name.Token,
-			Static:    property.Static,
-			Fallible:  property.Setter != nil && property.Setter.Fallible,
-			Error:     errorType,
-			HasGetter: property.Getter != nil,
-			HasSetter: property.Setter != nil,
-		})
+		target.Properties = append(target.Properties, propertyWithAccessors(target, property, Property{
+			DeclaringModule: a.currentModule,
+			Name:            property.Name.Value,
+			Type:            propertyType,
+			Token:           property.Name.Token,
+			Static:          property.Static,
+			Fallible:        property.Setter != nil && property.Setter.Fallible,
+			Error:           errorType,
+			HasGetter:       property.Getter != nil,
+			HasSetter:       property.Setter != nil,
+		}))
 		a.recordDefinition(property.Name.Token)
 		targetChanged = true
 	}
@@ -7869,118 +7395,6 @@ func (a *Analyzer) analyzeInitBody(targetName string, initializer *ast.InitDecla
 		Body:       initializer.Body,
 	}
 	a.analyzeFunctionBodyInScope(fn, initFunctionName(targetName))
-}
-
-func (a *Analyzer) analyzePropertyBody(target Type, property *ast.PropertyDeclaration, propertyType Type) {
-	if property.Getter != nil {
-		a.analyzeGetterBody(target, property, propertyType)
-	}
-	if property.Setter != nil {
-		a.analyzeSetterBody(target, property, propertyType)
-	}
-}
-
-func (a *Analyzer) analyzeGetterBody(target Type, property *ast.PropertyDeclaration, propertyType Type) {
-	restore := a.enterNoPanicAccessor(target, property.Name.Value, "get", property.GetterAttributes, property.Getter, propertyType)
-	a.analyzePropertyAccessorBody(target, property.Name.Value+".get", property.Getter, propertyType, false, property.Static, nil, Type{})
-	restore()
-	if !a.blockDefinitelyReturns(property.Getter) {
-		a.addErrorAtToken(property.Name.Token, "getter %s must return %s", property.Name.Value, typeDisplayName(propertyType))
-	}
-}
-
-func (a *Analyzer) analyzeSetterBody(target Type, property *ast.PropertyDeclaration, propertyType Type) {
-	// rules/compiler/parser_recovery.md, "Missing setter parameter" and
-	// "Interaction with Sema": retain the body for tooling but do not invent a
-	// parameter or emit dependent semantic diagnostics beneath an invalid setter.
-	if property.Setter.Invalid {
-		return
-	}
-	if !property.Setter.Fallible && blockReturnsErr(property.Setter.Body) {
-		a.addErrorAtToken(property.Setter.Token, "non-fallible setter %s cannot return Err", property.Name.Value)
-	}
-	returnType := Type{Name: "void", Kind: VoidType}
-	if property.Setter.Fallible {
-		// rules/errors/errorhandling.md — §24: the declared contract is the
-		// only source of the setter error type; it is never inferred.
-		registered, ok := lookupProperty(target, property.Name.Value)
-		if !ok || registered.Error == nil {
-			return
-		}
-		returnType = Type{Name: "Result", Kind: ResultType, TypeArgs: []Type{{Name: "void", Kind: VoidType}, *registered.Error}}
-		previous := a.fallibleSetterBody
-		a.fallibleSetterBody = true
-		defer func() { a.fallibleSetterBody = previous }()
-	}
-	accessor := "set"
-	if property.Setter.Fallible {
-		accessor = "try set"
-	}
-	restore := a.enterNoPanicAccessor(target, property.Name.Value, accessor, property.Setter.Attributes, property.Setter.Body, returnType)
-	a.analyzePropertyAccessorBody(target, property.Name.Value+".set", property.Setter.Body, returnType, true, property.Static, property.Setter.Parameter, propertyType)
-	restore()
-}
-
-func (a *Analyzer) analyzePropertyAccessorBody(target Type, name string, body *ast.BlockStatement, returnType Type, mutableSelf, static bool, setterParameter *ast.Identifier, setterType Type) {
-	if body == nil || returnType.Kind == InvalidType {
-		return
-	}
-
-	previousSymbols := a.symbols
-	previousConstInts := a.constInts
-	previousAssigned := a.assigned
-	previousMoved := a.moved
-	previousMoveReasons := a.availabilityStates
-	previousBorrows := a.borrows
-	previousLocalRefContainers := a.localRefContainers
-	previousArenaGenerations := a.arenaGenerations
-	previousFunctionName := a.currentFunctionName
-	previousFunctionReturn := a.currentFunctionReturn
-	previousInFunctionBody := a.inFunctionBody
-	previousScopeDepth := a.scopeDepth
-	a.symbols = previousSymbols.child()
-	a.scopeModuleVariables()
-	a.constInts = copyConstInts(previousConstInts)
-	a.assigned = copyAssigned(previousAssigned)
-	a.moved = map[string]lexer.Token{}
-	a.availabilityStates = placeAvailabilityStates{}
-	a.borrows = a.staticHolderBorrows()
-	a.localRefContainers = map[string]localReferenceOrigin{}
-	a.arenaGenerations = map[string]int{}
-	a.currentFunctionName = name
-	a.currentFunctionReturn = returnType
-	a.inFunctionBody = true
-	a.scopeDepth = 0
-	defer func() {
-		a.symbols = previousSymbols
-		a.constInts = previousConstInts
-		a.assigned = previousAssigned
-		a.moved = previousMoved
-		a.availabilityStates = previousMoveReasons
-		a.borrows = previousBorrows
-		a.localRefContainers = previousLocalRefContainers
-		a.arenaGenerations = previousArenaGenerations
-		a.currentFunctionName = previousFunctionName
-		a.currentFunctionReturn = previousFunctionReturn
-		a.inFunctionBody = previousInFunctionBody
-		a.scopeDepth = previousScopeDepth
-	}()
-
-	// rules/declarations/static.md, sections 9 and 12. Static accessors have
-	// no implicit receiver and cannot see instance fields or properties.
-	if !static {
-		a.defineInstanceSymbols(target, mutableSelf, body.Token)
-	}
-	if setterParameter != nil {
-		// rules/foundations/names_scopes_visibility.md §8: the setter value
-		// parameter must not silently replace a visible declaration.
-		a.validateParameterTypeShadowing(setterParameter)
-		a.symbols.set(setterParameter.Value, Symbol{Name: setterParameter.Value, Type: setterType, Mutable: false, Token: setterParameter.Token, Storage: StorageOriginAutomatic, Local: true, ScopeDepth: 0})
-		a.assigned[setterParameter.Value] = true
-		delete(a.constInts, setterParameter.Value)
-	}
-
-	a.analyzeBlockStatements(body)
 }
 
 func blockReturnsErr(block *ast.BlockStatement) bool {
@@ -8557,6 +7971,9 @@ func (a *Analyzer) analyzeMemberAssignmentStatement(stmt *ast.AssignmentStatemen
 	registerFieldOK := false
 	decimalScale := false
 	if propertyOK {
+		if property.Type.Kind == InvalidType {
+			return
+		}
 		targetType = property.Type
 		a.bindDefinition(member.Property.Token, property.Token)
 	} else if staticSymbolOK {
@@ -9305,7 +8722,7 @@ func (a *Analyzer) exactUserToStringReplacement(typ Type) (Function, bool) {
 	functions := a.accessibleFunctions(a.functions[typ.Name+".ToString"])
 	matches := make([]Function, 0, 1)
 	for _, function := range functions {
-		if function.ImplTarget != typ.Name || function.Static || function.ReceiverMutable || function.ReceiverConsuming ||
+		if function.ImplTarget != typ.Name || function.Static || function.ReceiverMutable ||
 			len(function.GenericParameters) != 0 || len(function.Parameters) != 0 ||
 			!isToStringResultType(function.ReturnType) {
 			continue
@@ -9650,33 +9067,6 @@ func expressionRootIdentifier(expr ast.Expression) (string, bool) {
 	}
 }
 
-func (a *Analyzer) lookupPropertyOnMember(expr *ast.MemberExpression) (Property, bool) {
-	objectType, _ := a.inferPlaceBase(expr.Object)
-	if objectType.Kind == InvalidType {
-		return Property{}, false
-	}
-	property, ok := a.lookupResolvedProperty(objectType, expr.Property.Value)
-	return property, ok && !property.Static
-}
-
-// lookupStaticPropertyOnMember implements the type-qualified write boundary
-// from rules/declarations/static.md, sections 8 and 11.
-func (a *Analyzer) lookupStaticPropertyOnMember(expr *ast.MemberExpression) (Property, bool) {
-	if root, ok := expressionRootIdentifier(expr.Object); ok && root == "self" {
-		return Property{}, false
-	}
-	path, ok := typePathFromExpression(expr.Object)
-	if !ok {
-		return Property{}, false
-	}
-	typ, ok := a.types[a.resolveTypeName(path)]
-	if !ok {
-		return Property{}, false
-	}
-	property, ok := lookupProperty(typ, expr.Property.Value)
-	return property, ok && property.Static
-}
-
 // lookupStaticSymbolOnMember enforces type-qualified static storage writes as
 // specified by rules/declarations/static.md, sections 6-8.
 func (a *Analyzer) lookupStaticSymbolOnMember(expr *ast.MemberExpression) (Symbol, bool) {
@@ -9878,9 +9268,13 @@ func (a *Analyzer) inheritedCoreProperty(typ Type, name string) (Property, bool)
 // resolveReadableProperty implements the property read boundary from
 // rules/declarations/properties.md. correction12.md requires lookup metadata to
 // remain available for writes while expression reads reject missing getters.
+// Visibility follows rules/foundations/names_scopes_visibility.md §§12.1–12.3.
 func (a *Analyzer) resolveReadableProperty(typ Type, name string, token lexer.Token) (Property, bool) {
 	property, ok := a.lookupResolvedProperty(typ, name)
 	if !ok {
+		return Property{}, false
+	}
+	if !a.checkPropertyVisibility(typ, property, token) {
 		return Property{}, false
 	}
 	a.bindDefinition(token, property.Token)
@@ -10680,12 +10074,12 @@ func functionTypeParameterForArgument(typ Type, argumentIndex int) (Type, bool) 
 	return Type{}, false
 }
 
-// functionCallableCapability preserves an existing method/function authority
-// when it is represented as a first-class callable type.
+// functionCallableCapability projects ordinary shared/mutable method authority
+// into a bound callable type; consuming callable values have their own Type
+// capability and never originate from a whole-self receiver contract.
+// Rules: rules/declarations/functions.md — §§22,24–25;
+// rules/memory/ownership.md — §9.
 func functionCallableCapability(function Function) CallableCapability {
-	if function.ReceiverConsuming {
-		return CallableConsuming
-	}
 	if function.ReceiverMutable {
 		return CallableMutable
 	}
@@ -11570,6 +10964,8 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 		}
 		armRefinementCount := len(a.activeConditionFacts)
 		if binding, state, known := matchArmResultState(expr.Subject, arm); known {
+			a.recordResultStateFact(binding, state, arm.Pattern.Token)
+		} else if binding, state, known := a.directResultArmState(expr.Subject, arm); known {
 			a.recordResultStateFact(binding, state, arm.Pattern.Token)
 		}
 		info.BorrowedSubject = borrowedSubject

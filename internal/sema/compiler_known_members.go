@@ -260,6 +260,7 @@ func compilerKnownValueMembers(typ Type) []CompilerKnownMember {
 	boolType := builtinType("bool")
 
 	members = append(members, compilerKnownShapedFactMembers(typ, false)...)
+	members = append(members, threadStorageMembers(typ)...)
 
 	if compilerKnownPointerReceiver(typ) {
 		members = append(members, CompilerKnownMember{ID: "CKM-PTR-VALUE", Name: "Ptr", LegacyNames: []string{"ptr"}, Kind: CompilerKnownProperty, Result: compilerKnownRawPointerResult(typ), Unsafe: true})
@@ -558,8 +559,13 @@ func compilerKnownThreadMembers(typ Type) []CompilerKnownMember {
 	return members
 }
 
+// compilerKnownStaticMembers exposes type-qualified associated operations and
+// semantic properties to the common resolver and tooling catalog.
+// Rules: rules/compiler/compiler_known_members.md — Built-in type member lookup;
+// rules/concurrency/scheduling.md — §§7(1),11(1),55–56.
 func compilerKnownStaticMembers(typ Type) []CompilerKnownMember {
 	members := compilerKnownShapedFactMembers(typ, true)
+	members = append(members, executionContextStaticMembers(typ)...)
 	if compilerKnownSizedType(typ) {
 		members = append(members, CompilerKnownMember{ID: "CKM-SIZEOF-TYPE", Name: "SizeOf", Kind: CompilerKnownProperty, Result: builtinType("uint")})
 	}

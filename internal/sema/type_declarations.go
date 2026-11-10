@@ -92,7 +92,7 @@ func (a *Analyzer) typeFromDeclarationWithName(name string, stmt *ast.TypeDeclSt
 // rules/concurrency/atomics.md — §§4–6 (MemoryOrder, CompareExchangeResult).
 // rules/concurrency/channels.md — §§4–5,13–14 (capability and revoke types).
 // rules/concurrency/thread_local.md — §29 (ThreadAttachError).
-// rules/concurrency/threads.md — §§4–6,18–19,23 (configuration, errors and termination metadata).
+// rules/concurrency/threads.md — §§4–8,18–19,23 (configuration, errors and termination metadata).
 func isCoreBuiltinDeclaration(name string) bool {
 	// rules/concurrency/ipc.md — §§6,27,44,55,68,79,94;
 	// rules/concurrency/processes.md — §§5.12–5.13.
@@ -105,7 +105,7 @@ func isCoreBuiltinDeclaration(name string) bool {
 	}
 	switch name {
 	case "ArithmeticError", "IndexError", "RangeError", "PrecisionError", "FormatError", "StringError", "ContractError", "TaskOutcome", "TaskSpawnError", "TaskError",
-		"date", "time", "datetime", "duration", "Instant", "MemoryOrder", "CompareExchangeResult", "ChannelCapability", "Mutex", "MutexGuard", "Context", "ContextError", "ThreadAttachError", "ThreadSpawnError", "ThreadStartError", "ThreadPriority", "ThreadStartMode", "ThreadSetting", "ThreadTerminationKind", "ThreadTermination", "ChannelRevokeResult", "MessageDisposition":
+		"date", "time", "datetime", "duration", "Instant", "MemoryOrder", "CompareExchangeResult", "ChannelCapability", "Mutex", "MutexGuard", "Context", "ContextError", "ThreadAttachError", "ThreadSpawnError", "ThreadStartError", "ThreadPriority", "ThreadStartMode", "ThreadSetting", "CpuSet", "ThreadStorage", "ThreadTerminationKind", "ThreadTermination", "ChannelRevokeResult", "MessageDisposition":
 		return true
 	default:
 		return false

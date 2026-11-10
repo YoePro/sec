@@ -1,0 +1,22 @@
+module main
+
+type Holder[T] struct {
+    Value: T,
+}
+
+impl Holder[T] {
+    fn First[U, ...Types](value: U, rest: ...ref Types) U { return value }
+    fn Second[U, ...Types](value: U, rest: ...ref Types) U { return value }
+}
+
+impl extends Holder[T] {
+    static fn Third[U, ...Types](value: U, rest: ...ref Types) U { return value }
+}
+
+type Other struct { Item: int }
+impl Other {
+    fn Read[Value, ...Types](value: Value, rest: ...ref Types) Value { return value }
+}
+
+fn Identity[T](value: T) T { return value }
+fn main() int { return 0 }

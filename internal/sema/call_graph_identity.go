@@ -24,7 +24,7 @@ func callableID(function Function) CallableID {
 	}
 	key := []any{function.Module, function.Token.File, function.Name, function.ImplTarget,
 		parameters, graphTypeIdentity(function.ReturnType), function.GenericParameters,
-		function.Static, function.ReceiverConsuming,
+		function.Static, false, // Reserved identity slot: ordinary receivers never consume whole self.
 		function.Extern, function.ABI, function.LinkName}
 	encoded, _ := json.Marshal(key)
 	return CallableID("declaration|" + graphIdentityDigest(encoded))

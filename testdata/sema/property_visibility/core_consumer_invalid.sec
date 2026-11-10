@@ -1,0 +1,6 @@
+module core
+
+fn CannotReadCoreInternals(value: int32) void {
+    discard value._LocalValue
+    discard value.__PrivateValue
+}

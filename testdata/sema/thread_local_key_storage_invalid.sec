@@ -1,0 +1,8 @@
+module main
+type Holder struct { Key: ThreadLocal[int] }
+fn Invalid() void {
+    let automatic := ThreadLocal[int]{}
+    let explicit: ThreadLocal[int] := ThreadLocal[int]{}
+    let mut mutable := ThreadLocal[int]{}
+    let aggregate := Holder{Key: ThreadLocal[int]{}}
+}

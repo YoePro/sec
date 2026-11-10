@@ -1,0 +1,23 @@
+module main
+
+type Holder[T] struct {
+    Value: int,
+}
+
+impl Holder[T] {
+    fn Outer[T, ...Types](value: T, rest: ...ref Types) T { return value }
+    fn Field[Value, ...Types](value: Value, rest: ...ref Types) Value { return value }
+    fn Method[Later, ...Types](value: Later, rest: ...ref Types) Later { return value }
+    fn Property[Size, ...Types](value: Size, rest: ...ref Types) Size { return value }
+    fn Nested[Inner, ...Types](value: Inner, rest: ...ref Types) Inner { return value }
+    fn Storage[Limit, ...Types](value: Limit, rest: ...ref Types) Limit { return value }
+    fn Later() int { return self.Value }
+    type Inner struct {}
+    static let Limit: int := 1
+    property Size: int { get { return self.Value } }
+}
+
+impl extends Holder[T] {
+    static fn StaticOuter[T, ...Types](value: T, rest: ...ref Types) T { return value }
+    fn Extended[Value, ...Types](value: Value, rest: ...ref Types) Value { return value }
+}

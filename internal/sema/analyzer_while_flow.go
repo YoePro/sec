@@ -32,6 +32,13 @@ func (a *Analyzer) analyzeWhileStatement(stmt *ast.WhileStatement) {
 		}
 	}
 
+	// Whether the condition holds on first entry, from the constants before
+	// the loop: a proven-true first test removes the zero-iteration exit.
+	firstEntryHolds, firstEntryKnown := false, false
+	if stmt.Condition != nil && !constantConditionKnown {
+		firstEntryHolds, firstEntryKnown = a.firstIterationCondition(stmt.Condition, nil)
+	}
+
 	previousSymbols := a.symbols
 	previousConstInts := a.constInts
 	previousAssigned := a.assigned
@@ -101,6 +108,7 @@ func (a *Analyzer) analyzeWhileStatement(stmt *ast.WhileStatement) {
 	}
 
 	loopConstInts := a.constInts
+	loopAssigned := a.assigned
 	loopMoved := a.moved
 	loopMoveReasons := a.availabilityStates
 	loopClosedResources := a.closedResources
@@ -130,20 +138,42 @@ func (a *Analyzer) analyzeWhileStatement(stmt *ast.WhileStatement) {
 		}
 	}
 	conditionAlwaysTrue := constantConditionKnown && constantCondition
-	if conditionAlwaysTrue && hasReachableBreak && len(breakFrame.breaks) > 0 {
-		a.assigned = mergeBreakAssigned(previousAssigned, breakFrame.breakAssigned())
-	} else {
-		a.assigned = previousAssigned
-	}
-	// rules/declarations/unions.md — §8.3: without a reachable break the loop
-	// exits only through its condition becoming false, so a false `is empty`
-	// test proves the binding initialized after the loop.
-	if hasStateTest && !hasReachableBreak {
+	// Definite assignment after the loop is the intersection over every
+	// reachable exit: the zero-iteration condition-false exit (absent when
+	// the first test is proven true), the condition-false exit after an
+	// iteration (body fall-through and continue edges), and each reachable
+	// break (flowcontrol_while.md § 28).
+	assignedExits := []map[string]bool{}
+	refinedBinding := ""
+	if hasStateTest {
+		// rules/declarations/unions.md — §8.3: a false `is empty` test proves
+		// the binding initialized on every condition-false exit.
 		if binding, refined := stateTestRefinement(stateTest, false); refined {
-			a.assigned = copyAssigned(a.assigned)
-			a.assigned[binding] = true
+			refinedBinding = binding
 		}
 	}
+	conditionFalseExit := func(assigned map[string]bool) {
+		if refinedBinding != "" {
+			assigned = copyAssigned(assigned)
+			assigned[refinedBinding] = true
+		}
+		assignedExits = append(assignedExits, assigned)
+	}
+	if !conditionAlwaysTrue && stmt.Condition != nil {
+		if !firstEntryKnown || !firstEntryHolds {
+			conditionFalseExit(previousAssigned)
+		}
+		if bodyFallsThrough {
+			conditionFalseExit(loopAssigned)
+		}
+		for _, edge := range breakFrame.continues {
+			conditionFalseExit(edge.assigned)
+		}
+	}
+	if hasReachableBreak {
+		assignedExits = append(assignedExits, breakFrame.breakAssigned()...)
+	}
+	a.assigned = intersectExitAssigned(previousAssigned, refinedBinding, assignedExits)
 	a.moved, a.availabilityStates = mergeLoopMoveState(previousMoved, previousMoveReasons, loopMoved, loopMoveReasons, breakFrame)
 	a.closedResources = mergeLoopClosedResourceState(previousClosedResources, loopClosedResources, breakFrame, bodyFallsThrough, conditionAlwaysTrue)
 	a.borrows = mergeLoopBorrowState(previousBorrows, loopBorrows, breakFrame)
@@ -297,4 +327,33 @@ func nonBoolConditionMessage(condition ast.Expression, construct string, got Typ
 		return "try expression in " + construct + " condition must produce bool, got " + typeDisplayName(got)
 	}
 	return construct + " condition must be bool, got " + typeDisplayName(got)
+}
+
+// intersectExitAssigned keeps a binding visible before the loop (or the
+// state-test binding) definitely assigned only when every exit assigns it. With
+// no reachable exit, the code after the loop is unreachable and the state
+// before the loop is retained.
+func intersectExitAssigned(before map[string]bool, refinedBinding string, exits []map[string]bool) map[string]bool {
+	if len(exits) == 0 {
+		return before
+	}
+	merged := copyAssigned(before)
+	names := make([]string, 0, len(before)+1)
+	for name := range before {
+		names = append(names, name)
+	}
+	if refinedBinding != "" {
+		names = append(names, refinedBinding)
+	}
+	for _, name := range names {
+		assigned := true
+		for _, exit := range exits {
+			if !exit[name] {
+				assigned = false
+				break
+			}
+		}
+		merged[name] = assigned
+	}
+	return merged
 }

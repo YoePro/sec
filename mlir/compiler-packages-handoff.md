@@ -6110,3 +6110,572 @@ The diagnostics suite exposed a stale '# Diagnostics' test marker; only that
 marker was updated to the current default_values.md section 52, preserving the
 entire inventory assertion. No rulebook, sec/, runtime or binary edits;
 excluded books unused. Released; no commit.
+
+## Codex: static TLS key declarations (released, 2026-11-10)
+
+Closed concurrency.thread-local-v2 remaining[2], 24 → 23. Automatic key bindings
+receive mandatory S1208 thread-local.automatic-key with static let guidance;
+owned aggregate storage is checked too. Module bindings and explicit local
+statics retain static duration; borrowed key bindings remain valid. Rejected
+bindings use existing poisoned-symbol recovery. Constructors, first-access
+initialization, runtime lifetime and per-thread slot provenance remain open.
+
+Changed thread_local_key_storage.go, let-binding hook, diagnostic registration,
+new Sema/CLI/LSP tests and two testdata fixtures, owning governance. Full Sema
+15.582s and diagnostics 0.002s passed; focused Sema/CLI/LSP
+0.022s/2.621s/1.739s passed, including no IR artifact on invalid keys.
+Vet, governance validation, format and path checks passed. No sec/, runtime,
+spawn, excluded rulebook or binary edits. Released; no commit.
+
+## Claude: post-loop definite assignment (working, 2026-11-10)
+
+Working set: internal/sema analyzer_while_flow.go / analyzer_for.go
+definite-assignment merge after loops (break-path join), new test file,
+governance control_flow.yaml (while-statements-v2). No concurrency, memory,
+channel, spawn or thread rulebook work.
+Result: while loops merge definite assignment over every reachable exit
+(zero-iteration exit unless the first test is proven true, body end and
+continue edges, breaks); mergeBreakAssigned replaced by intersectExitAssigned.
+for loops unchanged (flowcontrol_for.md § 33). Test
+TestWhileExitDefiniteAssignment; full Sema, IR and cmd/compiler subsets pass.
+Also recorded yesterday's char/rune guard conversion fix in types.yaml.
+Governance control_flow.yaml. Released; no commit.
+
+## Codex: TLS initial-value constructor (released, 2026-11-10)
+
+Closed concurrency.thread-local-v2 remaining[2], 23 → 22. ThreadLocal[T](initial)
+checks concrete T through canonical implicit-copy classification, ordinary
+initializer/contract validation and argument ownership. noCopy and containing
+generic aggregates receive mandatory S1209 with factory guidance. Exact arity,
+nominal/aggregate/scalar/string and callable-valued templates are tested.
+Factory execution, static key materialization and per-thread initialization stay
+open; the constructor does not claim eagerly initialized TLS slots.
+
+Changed thread_local_constructor.go, constructor dispatch, diagnostic registry,
+new Sema/CLI/LSP tests and two source fixtures, owning governance. Complete Sema
+20.894s and diagnostics 0.002s passed; focused Sema/CLI/LSP
+0.042s/7.463s/5.134s passed, including invalid-IR artifact suppression.
+Vet and governance checks passed. No sec/, runtime, loop-flow, excluded rulebook
+or persistent binary changes by this task. Released; no commit.
+
+## Claude: Result projection proof from direct match arms (released, 2026-11-10)
+
+An Ok(...)/Err(...) arm of a match directly on an immutable Result binding
+proves that state in the arm (result_state_proof.go directResultArmState,
+hook beside matchArmResultState in analyzer.go). Test
+TestResultProjectionUsesDirectMatchArmState; full Sema and IR pass.
+Governance errors.yaml (remaining item narrowed). Released; no commit.
+
+## Claude: constant merge at try-handler and fallthrough joins (working, 2026-11-10)
+
+Working set: internal/sema constant_scopes.go, try-handler join and switch
+fallthrough constant handling (analyzer_try_*.go, analyzer_switch.go), new
+test, governance sema.yaml (operators-v2 constant tracking item).
+
+## Codex: reject C-style volatile asm forms (released, 2026-11-10)
+
+Closed platform.inline-assembly-v1 remaining[17], 52 → 51. asm volatile,
+volatile asm and @volatile asm receive P2012 parser.reserved-syntax with ordinary
+asm/explicit-unsafe guidance. Invalid AST recovery preserves following bindings
+and the enclosing function; Sema does not duplicate the parser error. volatile
+remains an ordinary identifier, and accepted asm forms retain their behavior.
+
+Extracted the existing asm parser functions into internal/parser/asm.go, with
+one statement dispatch hook and focused source-backed parser/CLI/LSP tests.
+Short-mode parser recovery corpus 33.814s, CST 0.023s, formatter 1.944s passed;
+focused parser/CLI/LSP 0.008s/5.470s/5.097s passed, including invalid IR artifact
+suppression and existing operand checks. Vet and governance checks passed.
+No sec/, runtime, backend, excluded rulebook or persistent binary edits by this
+task. Asm observability/effect/target/lowering points remain open. Released;
+no commit.
+Result: returning/terminating try handlers keep pre-try constants; a
+fallthrough-entered switch clause starts from the pre-switch ∩ previous-exit
+constants and the post-switch constant merge no longer depends on fallthrough.
+Test TestConstantJoinThroughTryHandlersAndFallthrough; full Sema, IR and
+cmd/compiler subsets pass except pre-existing TestComputedStringSwitchCLI
+(expects related label "earlier equivalent string case", HEAD emits "earlier
+equivalent case"; fails without this change too). Governance sema.yaml.
+Released; no commit.
+
+## Codex: mutex guard across join (released, 2026-11-10)
+
+Closed concurrency.mutex-v2 remaining[2], 6 → 5. Valid standalone task/thread
+join operands run the shared live-guard boundary check, retaining related guard
+declarations and resolving lifecycle for error recovery. Selected join commits
+are already ready, so only their enclosing select diagnoses the boundary.
+Moved bindings and multiple guards are rejected; discard, consuming calls,
+ended scopes and acquisition after join remain valid.
+
+Extracted shared boundary checks from analyzer.go to mutex_guard_boundaries.go
+with deterministic binding-name ordering; thread_join.go separates potentially
+waiting joins from ready selected commits. New source-backed Sema/CLI/LSP tests
+verify six diagnostics without cascades and no invalid IR artifact. Full Sema
+18.484s passed; focused Sema/CLI/LSP 0.059s/3.121s/1.975s and vet passed.
+Mutex governance, validation and paths synchronized. No sec/, constant-flow,
+runtime, binary or excluded-rulebook edits by this task. Released; no commit.
+
+## Codex: yamlstatus snapshot/count diff (released, 2026-11-10)
+
+Closed governance.yamlstatus-tooling remaining[4], 5 → 4. -snapshot FILE creates
+a portable versioned count baseline, refusing overwrite. -diff FILE or HEAD
+reports deterministic before/after/delta counts per fragment and ID, separating
+compiler/library totals and labeling added/removed IDs, file moves and status/
+scope changes. -json emits the versioned diff; HEAD reads committed YAML via
+Git without checkout/index changes. Equal-count text rewrites are outside scope.
+
+New count_snapshot.go/count_diff.go/count_git.go with focused tests, CLI flags,
+IDEAS.md and codex.md usage. Whole yamlstatus race suite passed 1.172s; vet
+passed. Real-ledger snapshot/diff captured 322 owners and verified this task's
+compiler remaining 2240 → 2239, ID 5 → 4; libraries unchanged. Governance checks
+passed. No compiler/Sema, sec/, runtime or binary edits. Released; no commit.
+
+## Claude: static members through an instance (working, 2026-11-10)
+
+Reserving diagnostic S1210 static.type-qualified-access-required
+(static.md § 8). Working set: internal/diagnostics/diagnostics.go (one ID),
+internal/sema analyzer_inference.go (instance member/call paths),
+static_receiver.go, new test, governance declarations.yaml
+(static-declarations-members), rules diagnostic catalog if one lists IDs.
+Result: S1210 static.type-qualified-access-required added (diagnostics.go;
+gofmt realigned the HardwareRegionOverlap line). box.Make() (all candidates
+static) and box.Limit (type-owned static storage) are rejected with a
+type-qualified help. Test TestStaticMembersRequireTypeQualifiedAccess; full
+Sema/diagnostics, cmd/compiler and cmd/lsp subsets pass. Governance
+declarations.yaml. Released; no commit.
+
+## Codex: remove consuming interface receiver syntax (released, 2026-11-10)
+
+Closed frontend.interfaces remaining[3], 12 → 11. P2039 rejects -> fn interface
+receiver requirements; AST InvalidMembers retain diagnosed ranges without
+publishing callable contracts. Sema independently rejects constructed AST
+consuming requirements with S1211 interfaces.consuming-receiver. Completion
+uses the canonical valid method set; consuming ordinary parameters and callable
+values remain valid. Ordinary consuming-method removal is a separate point.
+
+Changed focused parser/Sema helpers and small dispatch hooks, diagnostic registry,
+AST invalid-member storage, new parser/Sema/formatter/CLI/LSP tests and fixtures.
+Migrated stale receiver tests and header goldens to valid consuming parameters;
+invalid source formatting preserves the rejected contract and its diagnostics.
+Short parser corpus 25.157s, AST/walk/CST passed; final whole Sema 15.197s and
+diagnostics 0.002s passed; whole formatter 1.506s; final CLI/LSP
+1.016s/2.383s; vet passed. Governance validated. A pre-existing private absolute
+path in enum conversion verification evidence in the same fragment was replaced
+by SEC_LEGACY_MLIR_BIN without changing the recorded test result.
+No sec/, yamlstatus implementation, runtime or binary edits. Released; no commit.
+
+## Codex: ordinary receiver ownership model (released, 2026-11-10)
+
+Closed frontend.functions-v2 remaining[5], 11 → 10. Removed ReceiverConsuming
+from resolved Function and open-call contracts, with the obsolete overload,
+receiver move, callable projection, pack-forwarding and IR gate branches.
+Ordinary constructed AST receiver modes now fail before registration with
+S1212 functions.consuming-receiver; AST's legacy marker remains solely for
+rejection guards. Declaration callable IDs retain their reserved false slot;
+open invocation contracts no longer advertise the removed receiver capability.
+
+Shared whole-self copies, exclusive owned-field moves, consuming callable
+values, consuming ordinary parameters and compiler-known terminal operations
+keep their independent semantics. New source-backed Sema/CLI/LSP tests verify
+these and prevent invalid IR artifacts. Full Sema 17.893s, diagnostics 0.002s,
+Semantic IR 7.968s/nominal 0.136s, CST 0.008s, formatter 2.108s passed; focused
+Sema/CLI/LSP 0.056s/4.738s/4.461s and vet passed. Governance validated.
+No sec/, yamlstatus implementation, runtime or binary edits. Released; no commit.
+
+## Codex: for-header spacing and binding-mode facts (released, 2026-11-10)
+
+Closed frontend.for-loops-v2 remaining[2], 12 → 11. Parser-owned CST roles
+normalize ref/ref mut and binding commas alongside existing for/in/range/step
+spacing; comments and newline gaps remain protected. Sema ForBindingModes
+publishes detached/source-ordered validated value/ref/ref mut/discard modes and
+binding types. Invalid headers publish none; Analyzer reset clears the view.
+LSP hover at for/name/ref tokens reads only these facts and retains existing
+Iterator/Next and map descriptions. No LSP-local binding/type inference.
+
+New focused CST/Sema helpers, small hooks and formatting/Sema/CLI/LSP tests with
+shared source goldens. Whole CST 0.007s, formatter 1.446s, Sema 16.001s passed;
+focused formatter/Sema/CLI/LSP 0.015s/0.028s/0.863s/24.482s and vet passed.
+Governance validated. No sec/, yamlstatus implementation, runtime, loop-state
+or binary edits. Released; no commit.
+
+## Claude: ownership mentor diagnostic audit + MD-130 (released, 2026-11-10)
+
+Verified S1007/S1088/S1163/S1160/S1006 IDs and help; pinned by
+TestOwnershipFailuresCarryStableIDsAndHelp (test only, no compiler change).
+Found `Take(<-Global)` from non-copyable static storage accepted silently;
+owner chose to log it: MD-130 (missing-decisions.yaml, last_id MD-130).
+Governance lifetime.yaml copy-move and ownership-v2 items narrowed.
+Released; no commit.
+
+## Codex: canonical yield source surfaces (released, 2026-11-10)
+
+Closed concurrency.scheduling-v2 former remaining[1] and [4], 19 → 17.
+Task.Yield/Thread.Yield now have distinct associated-function registry IDs and
+exact static fn Yield() void signatures. Sema records selected member facts;
+existing zero value/type argument checks and task-context requirements remain.
+Instance calls are rejected. Shared catalog supplies completion, hover and warm/
+cold synthetic navigation, documenting task scheduling/cancellation versus
+physical-thread hint and no synchronization/fairness guarantees.
+
+New execution_context_members.go, small catalog/resolver/ID-lookup hooks,
+source-backed Sema/CLI/LSP tests. Complete Sema 16.456s and diagnostics 0.002s
+passed; focused Sema/CLI/LSP 0.061s/1.809s/7.501s and vet passed. Governance
+validated; two completion records added. Runtime cancellation/commit, scheduling
+lowering, target capability policy and broad tooling remain separate points.
+No sec/, excluded thread rulebooks, binaries or yamlstatus implementation edits.
+Released; no commit.
+
+## Codex: Task.Yield context validation (released, 2026-11-10)
+
+Closed concurrency.scheduling-v2 former remaining[1], 17 → 16. The existing
+root requirement traversal retained only one path to a shared callee, suppressing
+other invalid root call-site diagnostics. It now visits (callee, first root call)
+states with bounded recursion handling. Function-value/defer/direct paths to the
+same task-dependent body each diagnose; spawned tasks remain separate valid roots.
+S1213 concurrency.logical-task-context-required identifies logical-task failures;
+transitive diagnostics link to the originating operation with explicit task
+context guidance. Original bare-cancel diagnostic presentation is retained.
+
+Changed task_context_requirement.go, diagnostic registry and new source-backed
+Sema/CLI/LSP tests. Complete Sema 16.007s/diagnostics 0.002s passed; final focused
+Sema 0.128s, diagnostics 0.002s, CLI 5.931s, LSP 9.640s and vet passed. Tests cover
+seven invalid program/thread call sites, a test root, valid spawned tasks,
+function values, defer, repeated callees, recursion, related origins and invalid
+IR artifact suppression. Governance validated. The transient concurrent switch
+helper build break was resolved before final focused/vet reruns.
+No sec/, runtime/lowering, yamlstatus implementation or excluded rulebook edits.
+Released; no commit.
+
+## Claude: remaining-reduction batch (released, 2026-11-10)
+
+Closed: testing std/ import sync (already done in rulebooks), closure-analysis
+sec analyse integration (already implemented), tooling borrowing/destruction
+traceability (verified citations), memory.yaml arena-value-traits stale plan
+(11 items; new TestArenaResetThroughMovedOwnerInvalidatesEarlierAllocation),
+switch unit/named-type overlap (analyzer_switch_coverage.go switchCaseConstant,
+TestSwitchOverlapIsUnitAndNamedTypeAware). Full Sema/IR pass; cmd/compiler
+Switch subset only fails the pre-existing TestComputedStringSwitchCLI.
+Released; no commit.
+
+## Codex: CpuSet frontend identity/literal (released, 2026-11-10)
+
+Closed concurrency.thread-v2 former remaining[1], 24 → 23. CpuSet is a reserved
+nominal opaque copyable core identity, distinct from set[uint]. Its positional
+literal validates uint components, non-negative selected-target uint range and
+known duplicate indices (S1214 with earlier index location); named fields,
+spreads and generic arguments are rejected. Trusted declaration refinement
+accepts exactly type CpuSet, retaining source provenance. AST source components
+remain available; synthetic positional keys are not exposed as public fields.
+
+Added cpu_set.go and small parser/registration/inference hooks, AST documentation,
+source-backed Sema/formatter/CLI/LSP tests. Parser short corpus 27.504s passed;
+whole Sema 16.569s/diagnostics 0.002s/formatter 1.574s passed; focused
+Sema 0.026s/formatter 0.003s/CLI 3.211s/LSP 3.028s and vet passed. Governance
+validated. Tests prove 32/64-bit uint bounds, exact declarations, eight invalid
+forms, duplicate source locations, canonical formatting and nominal hover.
+Native IR explicitly rejects type CpuSet; it is not an empty-struct value.
+Target CPU topology/affinity application and physical representation remain
+separate; no host CPU limits inferred. Temporary concurrent switch syntax
+failures resolved before final focused/full/vet runs.
+No sec/, excluded rulebooks, yamlstatus implementation or binary edits.
+Released; no commit.
+
+## Claude: switch short-circuit/reachability + stale switch label tests (released, 2026-11-10)
+
+analyzer_switch.go: per-alternative body-entry edges for comma cases
+(applySwitchEntryMerge now variadic), call-graph reachability after an
+always-matching subjectless alternative; analyzeSwitchCaseItem extracted.
+Fixed stale "earlier equivalent string case" expectation in
+cmd/compiler and cmd/lsp switch_string_constants_test.go (label unified in
+e1c5b87b). Also closed verified arena backing, generic forward-template and
+formatter dedup items. Tests TestSwitchFlowRegressionMatrix,
+TestArenaBackingBorrowEndsOnEveryPathAndCannotEscape,
+TestForwardGenericTemplateReferencesFinalize. Full Sema/IR pass. Released; no commit.
+
+## Codex: non-generic ThreadStorage frontend (released, 2026-11-10)
+
+Closed concurrency.thread-v2 former remaining[1], 23 → 22. Added nominal,
+reserved non-generic @noCopy ThreadStorage and ThreadStorage(capacity). The
+constructor requires one uint value established by canonical semantic CTE;
+S1215 thread.invalid-storage-capacity explains invalid capacities. Capacity
+facts are detached strings keyed by the constructor syntax, reset per analysis,
+and never become type arguments. Trusted core refinement validates the exact
+noCopy private _capacity: uint metadata shape. Capacity is a read-only shared
+compiler member; implicit copies, legacy generic syntax, ordinary struct
+fabrication and private metadata access fail. Explicit :<- and consuming
+argument moves remain valid.
+
+Added thread_storage.go with small registration/constructor/catalog hooks,
+source-backed Sema/CLI/LSP tests and fixtures. Complete Sema 17.907s,
+diagnostics 0.002s and Semantic IR 7.251s passed; focused Sema 0.008s/CLI
+2.807s/LSP 3.559s and vet passed. Governance validated, backing point narrowed
+to consume these capacity facts. Native IR still explicitly rejects
+ThreadStorage until target-aligned backing/storage ownership is implemented;
+no dynamic allocation, target layout or runtime storage support is claimed.
+No sec/, excluded rulebooks, yamlstatus implementation or binary edits.
+Released; no commit.
+
+## Codex: property visibility (released, 2026-11-10)
+
+Closed frontend.properties former remaining[4], 6 → 5. Instance/static
+property reads and writes now enforce public, exact-module-internal (_) and
+declaring-type-private (__) access, including same-module owner extensions.
+Added Property.DeclaringModule so core impl properties on module-less primitive
+types retain their source ownership. Core source provenance is checked for
+underscore members; untrusted source spelling module core gains no authority.
+S1216 properties.not-visible carries a related property declaration and help;
+inaccessible access does not publish resolved read/write operations.
+
+New property_visibility.go extracts two lookup functions from analyzer.go,
+adds canonical visibility/declaring-owner checks, and hooks readable/static
+reads and write-target lookup without invoking getters for writes. New source
+fixtures and Sema/CLI/LSP diagnostic tests cover six owner violations, four
+external-module violations, two spoofed-core accesses and valid owner/core/
+extension access. Final whole Sema 18.930s/diagnostics 0.002s passed; whole
+Semantic IR passed 7.198s before the final provenance guard. Final focused
+Sema 0.019s/CLI 3.401s/LSP 2.198s and vet passed. Governance validated.
+Completion visibility filtering is not changed by this frontend access task.
+No sec/, runtime/lowering, yamlstatus implementation or binary edits.
+Released; no commit.
+
+## Claude: duplicate and self imports (working, 2026-11-10)
+
+Reserving S1217 modules.duplicate-import and S1218 modules.self-import
+(modules.md §§ 14, 21). Working set: internal/diagnostics/diagnostics.go,
+internal/sema/import_diagnostics.go, cmd/compiler/import_sources.go,
+cmd/lsp/import_sources.go, new tests, governance declarations.yaml
+(frontend.modules item 9).
+Result: S1217/S1218 added; sema.ImportIdentityIssues wired into
+cmd/compiler/import_sources.go and cmd/lsp/import_sources.go (LSP passes the
+analyzed file and its module because its resolver omits that file).
+Identity = resolved module source set, so flat-layout siblings stay valid.
+Tests TestCLIRejectsDuplicateAndSelfImports, TestAnalyzeReportsDuplicateAndSelfImports;
+cmd/compiler Import/Module/fixtures and cmd/lsp Import/Definition/Module
+subsets pass except the pre-existing fmt.Println pair. Released; no commit.
+
+## Codex: property accessor effect graph (released, 2026-11-10)
+
+Closed frontend.properties remaining[3], 5 → 4. Source getters, setters and
+fallible setters now have distinct callable contracts even without @noPanic.
+Validated operations publish synchronous generated call sites; compound updates
+retain both sites at the same syntax location. Shared effect propagation now
+sees accessor calls, nested properties, deferred cleanup and foreign unknowns;
+ordinary stores do not inherit getter effects. @noPanic caller diagnostics use
+the real accessor path. Reachability still filters impossible calls.
+
+New property_effects.go owns the contracts and graph hooks. Extracted accessor
+body analysis from analyzer.go to property_accessor_bodies.go. Allocation
+coverage now recognizes source accessor bodies and setter parameter cleanup;
+existing physical-storage tests explicitly include allocation-free accessor
+nodes across profiles/depths. Intrinsic-only members keep their owning effect
+producers; no property execution/lowering or narrower borrow model is claimed.
+
+Whole Sema 19.318s, diagnostics 0.002s and Semantic IR 6.964s passed. Focused
+Sema 0.035s, CLI 3.242s, LSP 2.052s and vet passed. Governance check/fmt/path
+validation passed. No sec/, excluded rulebook, yamlstatus implementation or
+binary edits. Released; no commit.
+
+## Codex: property receiver mutability (released, 2026-11-10)
+
+Implemented a bounded portion of frontend.properties receiver/borrow work;
+4 → 4 remaining, no whole remaining item closed. Direct getter requirements
+are inferred with ordinary methods to a shared fixed point, including writes,
+mutable borrows, qualified/implicit property dependencies and method calls.
+Local, parameter and match-payload shadowing retains shared access. Getters
+receive inferred self authority and publish callee receiver reference facts.
+
+Read access checks actual writable/ref mut/fresh receiver authority before
+publishing an operation. S1219 properties.mutable-receiver-required carries
+help and a related declaration. Canonical receiver-wide shared/mutable live-
+borrow checks and receiver reference plans are reused; no backing-field guess.
+Property Place mutability now preserves receiver authority for setter writes.
+Extracted existing receiver inference from analyzer.go to receiver_mutability.go.
+Updated one historical test which incorrectly rejected a mutating getter body.
+
+Remaining item now names all-control-flow/indirect/nested receiver propagation
+and retained/returned reference summaries explicitly; these are not claimed
+complete. Also removed the stale unannotated-accessor effect gap from the
+MD-030 frontend.panic follow-up (still 6 remaining); its other follow-ups stay.
+
+Complete Sema 16.223s, diagnostics 0.002s and Semantic IR 6.881s passed.
+Final focused Sema 0.023s, CLI 3.070s and LSP 2.867s passed, including shadowed
+match bindings, five authority failures and two borrow conflicts. Vet passed;
+governance check/fmt/paths and diff checks passed. No sec/, excluded rulebook,
+runtime/MLIR, yamlstatus implementation or binary edits. Released; no commit.
+
+## Codex: named integer local storage (released, 2026-11-10)
+
+Closed frontend.types-core former remaining[1], 14 → 13. Mutable named
+integer locals now build and execute through the single source-to-binary
+track, including nested nominal chains. The emitter retains named storage
+identity and attaches canonical carrier scalar_kind metadata. P8 lowers the
+named declaration/init/load/store family together to carrier memrefs, keeping
+storage IDs and scalar provenance; checked arithmetic and unsigned behavior
+retain their original interpretation. Address-taken/reference-dependent
+storage remains high-level at the existing P15 boundary.
+
+Changed SecIntegerToArith.cpp and the emitter storage metadata hook; added
+named_integer_storage.go, a source-backed emitter test, three MLIR regressions
+and native normal/overflow fixtures in the existing native matrix. Native
+cases cover signed nested types, high-bit uint8 division, replacement and
+uint256 values. No new operations, schema syntax or parallel lowering path.
+
+Validation after the ignored optimizer rebuild completed: all 61 integer/core/
+LLVM conversion lit tests passed, including 32/64-bit layouts, idempotence,
+invalid carrier metadata and retained reference storage. Complete emitter
+suite 19.230s and Semantic IR 7.300s passed with SEC_MLIR_BIN; full native
+fixture matrix passed 50.058s (new normal program exit 0, overflow traps).
+Vet and governance check/fmt/path validation passed. An earlier concurrent
+relink/test attempt was discarded due to temporary executable unavailability;
+the reported results are the subsequent stable-tool runs.
+
+A distinct existing operator limitation surfaced during fixture preparation:
+named uint8 compound shift reaches Semantic IR with invalid int.shift-checked.
+Recorded under the existing frontend.operators-v2 matrix remaining item in
+governance/sema.yaml, without claiming a shift fix or adding another point.
+No sec/, manual/, excluded rulebook, yamlstatus implementation or tracked bin/
+changes. Only ignored build/sec-mlir tooling was rebuilt. Released; no commit.
+
+## Codex: two remaining points (released, 2026-11-10)
+
+Closed two complete remaining items:
+- concurrency.ipc-v1: 86 → 85 (former remaining[53]);
+- frontend.function-overload-backend-identity: 5 → 4 (former remaining[4]).
+
+CommandConfigurationError is now a canonical nominal core error enum with its
+exact nine variants, including InvalidIOResource before OutOfMemory. Shared
+IPC enum machinery handles standalone identity, trusted declaration refinement
+and shape validation; untrusted same-spelling declarations cannot replace it.
+New source fixtures cover Result/error patterns, copies/default facts, trusted
+valid/malformed source, wrong variants and nominal separation. CLI verifies IR;
+LSP type hover/completion use shared Sema facts. No Command I/O runtime or
+ownership rollback is claimed; no sec/ declaration was edited.
+
+A sole emitted specialization of a generic overload family previously received
+a positional sec_fn_N name. The regression reproduced symbol changes when IR
+order changed. function_symbols.go now derives every concrete generic/type-pack
+specialization's local symbol from its full canonical FunctionID, even with no
+emitted sibling. Ordinary overload groups retain the existing identity hashes;
+unique ordinary unspecialized names keep their current numbering. Definitions
+and calls share the same map. New tests cover source/IR traversal order,
+32/64-bit plans, distinct module identities, repeated emission and a native
+program selecting the intended generic overload. No external ABI policy change.
+
+Validation: IPC focused Sema/CLI/LSP 0.011s/4.285s/5.047s; whole Sema/
+diagnostics/IR 18.427s/0.002s/7.238s. Symbol-focused tests 0.022s; complete
+emitter/integration suite 19.190s and Semantic IR 7.596s with SEC_MLIR_BIN.
+Full native fixture matrix 51.632s passed, including ordinary overload and
+new specialization cases. Both vet commands passed; governance check/fmt/paths,
+diff and shareable-path checks passed. No sec/, manual/, excluded thread-rulebook,
+yamlstatus implementation, MLIR C++ or binary edits. Released; no commit.
+
+## Codex: selected overload call identities (released, 2026-11-10)
+
+Closed frontend.function-overload-backend-identity former remaining[1] and [3],
+4 → 2. The complete signature-dimension audit and variadic identity remain open.
+
+Fixed canonicalSemaType: structural reference/array/slice identities recurse
+through semantic elements instead of display names, retaining nested nominal
+modules and concrete generic referents. The regression reproduced an identity
+collision between equally spelled nominal referents from different modules.
+Concrete pack helper IDs now say ref int/ref bool instead of stale ref T.
+Extracted functionID from builder.go into type_identity.go with rule references;
+Sema already qualifies method names with their impl owner, so no additional
+owner prefix was added. Existing source/type/pack identity expectations updated.
+
+Source-backed tests compare all five ordinary call sites with exact Sema
+selections on 32/64-bit plans. New nominal native fixture distinguishes three
+same-arity two-argument overloads and a nested call, despite shared eight-bit
+physical carriers. Emitter tests check distinct definitions and selected calls.
+This acceptance point had existing primitive-only implementation/evidence; it
+was verified and closed, not represented as a newly invented dispatch feature.
+No cross-module source resolver expansion is claimed; the nominal-module
+collision test exercises resolved semantic type facts.
+
+Validation: complete Semantic IR 6.787s, complete emitter/integration 17.815s,
+focused overload emitter/native 0.109s/2.792s, complete native matrix 49.562s,
+and vet all passed. Initial full-suite failures were abbreviated identity
+expectations; final assertions require canonical modules/concrete referents.
+Governance check/fmt/paths passed (22 references, no missing paths). Updated
+only the owning declarations integration; no sec/, manual/, MLIR C++, excluded
+thread rules, yamlstatus implementation or binary edits. Released; no commit.
+
+## Codex: generic scope shadowing (released, 2026-11-10)
+
+Closed frontend.names-scopes-visibility former remaining[2], 5 → 4.
+Generic parameter validation now checks enclosing generic definition origins
+and the complete directly visible impl member surface. Reuses S1105 with the
+hidden source declaration, including forward methods/properties, nested types,
+associated storage, static methods and extension fragments. Synthetic impl
+parameters reopen the owner's scope; the same declaration's re-entry and
+sibling method parameter names are accepted. A body-expansion capability gate
+still validates the generic header, so it cannot hide a later member collision.
+
+Added generic_scope_members.go. Extracted generic scope entry/restoration and
+body-scope dispatch from analyzer.go into generic_scopes.go with rule references.
+No ordinary method-generic or pack execution feature is enabled by this change.
+
+New testdata/names/generic_member_shadowing source fixtures cover eight exact
+header/hidden-declaration pairs, valid sibling/owner/extension/static scopes,
+a different owner's same-spelled generic parameter, and an unsupported pack
+body that still reports its invalid header. CLI/LSP retain S1105 and related
+origins; check/emit-ir reject before producing an artifact. The old validator
+accepted the initial six-case regression without errors (reproduced by a local
+Go overlay, without changing the shared tree).
+
+Validation: whole Sema 18.742s and Semantic IR 7.022s passed. Final focused
+Sema/CLI/LSP 0.009s/2.623s/1.748s and vet passed; governance check/fmt/paths
+passed (38 references, no missing paths). No sec/, manual/, MLIR C++, excluded
+thread-rulebook, yamlstatus implementation or binary edits. Released; no commit.
+
+## Codex: iterator binding presentation (released, 2026-11-10)
+
+Closed frontend.for-loops-v2 former remaining[6], 11 → 10. Sema iterator
+snapshots now carry the exact yielded BindingID and distinguish a borrowed
+interface-view requirement from a concrete Next target. Valid exclusive views
+were formerly omitted from this presentation query. They now display the
+runtime interface requirement; generic templates retain per-specialization
+selection, with no fabricated concrete callable in either case.
+
+Ordinary and expected-return local-binding completion preserve the value's
+existing type Detail and add the canonical Iterator[T]/yield/Next description.
+Hover at binding uses consumes the same resolution by BindingID, extending the
+existing loop-header/source hover. No conformance inference in the LSP. Same
+names in disjoint int/string loops or a plain local cannot share descriptions.
+Changes: iterator_tooling.go/tests, iterator_hover.go, new iterator_completion.go,
+two existing local-binding completion hooks, new source-backed LSP tests and
+valid/invalid testdata/tooling fixtures. No iterator execution/lowering changes.
+
+Validation: complete Sema 16.756s and Semantic IR 7.158s passed; LSP iterator,
+for-binding and expected/member-return completion selection passed 52.246s;
+compiler iterator selection 1.258s and vet passed. Tests cover concrete, generic,
+exclusive borrowed views, expected-return completion, exact binding IDs,
+invalid duck/shared-view sources and snapshot replacement. Initial new-test
+failure expected only two semantic errors on reused invalid input; the final
+assertion requires rejection and zero published resolutions, allowing existing
+recovery diagnostics. Governance check/fmt/paths passed (75 references).
+No sec/, manual/, excluded thread-rulebook, yamlstatus implementation, C++ or
+binary edits. Released; no commit.
+
+## Codex: blocking hover evidence (released, 2026-11-10)
+
+Closed frontend.blocking-effects former remaining[4], 4 → 3. Basic may-block
+hover/path presentation already existed; completed its conservative evidence
+and public-source regression coverage. The renderer now describes unverified
+foreign calls and unresolved targets as unknown blocking behavior, and exposes
+all direct causes at the compiler-selected shortest path endpoint. Mixed bodies
+no longer hide a represented Mutex.Lock wait behind their first foreign cause.
+Definition, selected-call and guarantee hover continue to use one renderer.
+
+Extracted blockingHoverLine from attributes.go into blocking_hover.go and added
+blockingEffectHoverCause. No compiler effect inference or graph traversal was
+added to the LSP. New testdata/tooling/blocking_hover.sec and LSP regression
+cover nine pure/direct/transitive/recursive/deferred/foreign/unknown/mixed
+callables and a callee-selected call occurrence. The valid fixture is checked
+for zero parser/Sema errors before testing its hovers; the original renderer
+fails the valid-source regression under a local Go overlay.
+
+Validation: focused blocking/attribute/call-graph hover suite passed 16.118s;
+compiler check of the source fixture reports zero errors/warnings; vet passed.
+Governance check/fmt/paths passed (15 references). No sec/, manual/, yamlstatus
+implementation, C++ or binary edits. No new thread semantics, wait categories,
+maySuspend classification or target/runtime guarantees. Released; no commit.

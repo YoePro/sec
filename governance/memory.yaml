@@ -27,6 +27,7 @@ integrations:
       - internal/sema/copy_move_test.go
       - internal/sema/destruction_test.go
     implemented:
+      - "Stale work plan reconciled (verified 2026-11-10): the 11 original remaining steps (MoveOnly/non-trivial destruction traits, aggregate derivation, stable ArenaDomainID at every creation site and across owner moves, domain-keyed epochs, source-name diagnostics, stale-reference validation, owner-move/Reset/Release regressions, correction25 traceability) are implemented; copy_classification.go, analyzer_arena.go, arena_parameter_effects.go, arena_invalidation_diagnostics.go, analyzer_arena_flow.go; tests TestArenaOwnershipTraitsPropagateThroughAggregates, TestArenaStableDomainCompletion, TestArenaEffectSitesCarryStableDomains, TestArenaDomainIdentitySurvivesOwnerMove"
       - compiler-known Arena type exists
       - Arena New and Alloc return Arena-origin reference metadata
       - Arena Reset and Release update a represented generation state
@@ -39,18 +40,6 @@ integrations:
       - owner moves preserve ArenaDomain identity and epoch state
       - diagnostics keep source display names separate from semantic domain identity to the destination
       - Reset through a moved-to owner can therefore fail to stale references created through the moved-from owner
-    remaining:
-      - make Arena explicitly MoveOnly in compiler-owned type traits
-      - make Arena explicitly non-trivially destructible
-      - derive containing aggregate copy/destruction traits correctly from Arena
-      - introduce stable ArenaDomainID separate from lexical owner names
-      - assign ArenaDomainID at all Arena creation sites
-      - carry ArenaDomainID and current epoch through Arena ownership moves
-      - key epoch validity by ArenaDomainID rather than source variable name
-      - keep diagnostic naming/source provenance separate from semantic identity
-      - update stale-reference validation to consume domain/epoch identity
-      - add owner-move/Reset/Release regression coverage
-      - add correction25 traceability comments to touched Arena/type-trait functions
     bug_reference:
       - correction29.md
     governance_reconciliation:
@@ -77,6 +66,8 @@ integrations:
       - internal/sema/lifetime_test.go
       - internal/sema/analyzer_test.go
     implemented:
+      - "Implicit destruction and escape verified (2026-11-10): the backing borrow ends at implicit Arena destruction on every continuing path (if arms, loop iterations, early return inside the Arena scope, match arms, sequential re-borrowing), and escapes into a returned aggregate, a parameter-backed returned Arena and consuming calls are rejected. TestArenaBackingBorrowEndsOnEveryPathAndCannotEscape"
+      - "Borrowed-backing regressions and traceability verified (2026-11-10): TestArenaFromBufferBorrowsBackingForArenaLifetime (arena_from_buffer_valid/invalid fixtures: implicit/ref mut backing, owner moves, Release, return/consuming transfers, Reset staleness) and TestBorrowedArenaRetainsBackingBorrowUntilRelease; FromBuffer code cites rules/memory/arena.md § 10 and § 4.2(3), which absorbed the retired correction25 document"
       - Arena.FromBuffer compiler-known member recognition
       - exact ref mut byte[] argument-shape validation
       - ArenaEffectCreateBorrowed call-graph event
@@ -88,14 +79,9 @@ integrations:
       - Reset retains and Release ends the backing borrow
       - direct conflicting backing access is rejected while the borrowed Arena lives
     partial:
-      - implicit destruction does not yet end the represented backing borrow on every path
-      - return/escape, nested Arena, capture, and task transfer remain incomplete
+      - nested Arena, closure capture, and task transfer of a borrowed-backing Arena remain incomplete
     remaining:
-      - end the borrow on implicit Arena destruction
-      - enforce backing lifetime on Arena return/escape
       - integrate nested Arena parent/backing dependencies
-      - add focused borrowed-backing lifetime regression tests
-      - add correction25 traceability comments
     bug_reference:
       - correction29.md
 

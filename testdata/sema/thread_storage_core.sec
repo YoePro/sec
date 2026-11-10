@@ -1,0 +1,6 @@
+module core
+
+@noCopy
+type ThreadStorage struct {
+    _capacity: uint
+}

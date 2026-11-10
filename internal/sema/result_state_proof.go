@@ -208,3 +208,26 @@ func matchArmResultState(subject ast.Expression, arm *ast.MatchArm) (string, str
 	}
 	return "", "", false
 }
+
+// directResultArmState returns the Result state an `Ok(...)` or `Err(...)`
+// arm of a match directly on a Result binding proves inside that arm, so
+// `match r { Ok(_) => r.Ok() }` may forget the unreachable alternate payload.
+// recordResultStateFact keeps the proof to immutable bindings.
+//
+// Rules:
+//   - rules/errors/errorhandling.md — §6.1 "Consuming projections" (state proven unreachable by control flow)
+//   - rules/control-flow/flowcontrol_match.md — arm-local refinement
+func (a *Analyzer) directResultArmState(subject ast.Expression, arm *ast.MatchArm) (string, string, bool) {
+	identifier, ok := subject.(*ast.Identifier)
+	if !ok || identifier == nil || arm == nil || arm.Pattern == nil {
+		return "", "", false
+	}
+	if typ, typed := a.expressionTypes[subject]; !typed || typ.Kind != ResultType {
+		return "", "", false
+	}
+	switch arm.Pattern.Name {
+	case "Ok", "Err":
+		return identifier.Value, arm.Pattern.Name, true
+	}
+	return "", "", false
+}

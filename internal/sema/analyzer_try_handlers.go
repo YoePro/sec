@@ -343,7 +343,7 @@ func tryHandlerRecoveryValueHelp(successType Type) string {
 // using compiler-resolved branch and match facts rather than syntax alone.
 // Rules: rules/errors/errorhandling.md — §§15,21–22;
 // rules/control-flow/flowcontrol_match.md — §23 "Return and termination analysis".
-func (a *Analyzer) analyzeTryHandlerBody(handler *ast.TryHandler, successType Type, errorType Type, bindingName string) ResolvedTryHandlerFlow {
+func (a *Analyzer) analyzeTryHandlerBody(handler *ast.TryHandler, successType Type, errorType Type, bindingName string) (flow ResolvedTryHandlerFlow) {
 	// rules/errors/errorhandling.md §22: guards and handler bodies are
 	// outside the protected set of this try.
 	a.tryHandlerDepth++
@@ -398,7 +398,14 @@ func (a *Analyzer) analyzeTryHandlerBody(handler *ast.TryHandler, successType Ty
 			}
 		}
 		a.symbols = previousSymbols
-		a.restoreConstInts(previousConstInts)
+		// A handler that returns or terminates never reaches the join, so
+		// its writes cannot invalidate constants after the try; a value-
+		// producing handler keeps only the constants it left unchanged.
+		if flow == TryHandlerReturns || flow == TryHandlerTerminates {
+			a.constInts = previousConstInts
+		} else {
+			a.restoreConstInts(previousConstInts)
+		}
 	}()
 
 	if handler.Guard != nil {

@@ -42,6 +42,7 @@ integrations:
     implemented:
       - IPCError, SharedMemoryError, IPCSyncError, IPCSharedError and IPCAtomicError are exact real core error enums with one reserved nominal compiler identity per family. Standalone registration and trusted core source retain the same closed variant sets, error-root/Result compatibility, ordinary enum defaults and source declaration/member provenance. Project declarations, module-core spoofing and malformed trusted replacements are rejected without altering the canonical fallback. Existing Semantic IR preserves enum identities and constants; formatter round trips and shared LSP enum hover/completion/navigation use the real declarations without a parallel IPC model. This completes the error identity point only, without claiming IPC operation surfaces, runtime error production, transport, target capability or resource lowering.
       - CommandInputMode is exactly Inherit/Closed/Pipe/Resource and CommandOutputMode is exactly Inherit/Discard/Pipe/Resource, as real reserved nominal core enums with matching standalone registration. Both remain copyable non-error values with Inherit defaults; Resource is a separate closed variant retaining its owned File/Pipe capability meaning. Trusted declaration checks share the canonical IPC core-enum path, rejecting altered shapes, error markers, defaults, variant sets and non-enum replacements while preserving exact fallback identities. Sema, verified enum Semantic IR, formatter and source-backed LSP hover/completion/navigation cover both complete sets. This completes the mode-enum extension only; Command configuration ownership, Resource binding, Take*Pipe and process-start behavior remain separate pending points.
+      - CommandConfigurationError is a canonical nominal core error enum with exactly InvalidState, InvalidWorkingDirectory, NotFound, NotDirectory, PermissionDenied, InvalidEnvironmentName, InvalidEnvironmentValue, InvalidIOResource and OutOfMemory in that order. Standalone/core identities agree; trusted refinement validates the complete source shape, while malformed trusted declarations and untrusted same-spelling declarations cannot change it. InvalidIOResource is available to Result/error patterns, verified Semantic IR and shared LSP type hover/completion. This source error-surface extension does not claim Command resource binding or ownership rollback implementation (2026-11-10).
     remaining:
       - add compiler-known/core identities for Pipe, PipeReader, PipeWriter, IPCPair[T], IPCSender[T], IPCReceiver[T], SharedMemory, SharedReadMapping, SharedWriteMapping, IPCMutex, IPCMutexGuard, IPCSemaphore, SharedValue[T], SharedValueGuard[T], and IPCAtomic[T]
       - add exact CreatePipe(), CreateIPC[T](), CreateSharedMemory(), CreateIPCMutex(), CreateIPCSemaphore(), CreateSharedValue[T](), and CreateIPCAtomic[T]() source surfaces
@@ -95,7 +96,6 @@ integrations:
       - implement all-or-nothing composite transfer and destination materialization rollback for capability-bearing typed messages
       - add File.Duplicate() Result[File, IOError] to the canonical File surface and implementation
       - add PipeReader.Duplicate() and PipeWriter.Duplicate() using IOError as specified by rules/concurrency/ipc.md
-      - extend CommandConfigurationError with InvalidIOResource
       - add ownership-consuming Command SetStdin(File), SetStdin(PipeReader), SetStdout(File), SetStdout(PipeWriter), SetStderr(File), and SetStderr(PipeWriter) overloads
       - preserve Command configuration transactionality so failed resource binding leaves both previous configuration and source ownership intact
       - on successful Command.Start establish the child standard-stream capability and release any unnecessary retained parent-side configuration capability
@@ -179,7 +179,7 @@ integrations:
       - governance/concurrency_process.yaml reflects Command Resource modes/API/target facts and the resolved IPC standard-I/O boundary
       - concurrency.ipc-v1 remains unique to this fragment and is not duplicated into adjacent concurrency, memory, lowering, or analysis fragments
       - language-rulebook-status.md records IPC revision 1.0 as Written with partial compiler integration of its five core error enums; IPC operations, runtime and platform integration remain pending
-    revised: "2026-10-17"
+    revised: "2026-11-10"
     code:
       - sec/core/ipc_errors.sec
       - internal/sema/ipc_core_enums.go
@@ -204,7 +204,20 @@ integrations:
       - testdata/sema/ipc/command_modes_invalid.sec
       - testdata/sema/ipc/command_modes_spoof_invalid.sec
       - testdata/sema/ipc/command_modes_core_shape_invalid.sec
+      - internal/sema/command_configuration_error_test.go
+      - cmd/compiler/command_configuration_error_test.go
+      - cmd/lsp/command_configuration_error_test.go
+      - testdata/sema/ipc/command_configuration/core.sec
+      - testdata/sema/ipc/command_configuration/core_invalid.sec
+      - testdata/sema/ipc/command_configuration/valid.sec
+      - testdata/sema/ipc/command_configuration/invalid.sec
     verification:
+      - command: go vet -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-11-10
+      - command: go test -p 4 ./internal/sema ./internal/diagnostics ./internal/ir/semantic -count=1
+        result: passed on 2026-11-10; complete Sema 18.427s, diagnostics 0.002s and Semantic IR 7.238s after CommandConfigurationError integration
+      - command: go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run "^TestCommandConfigurationError" -count=1
+        result: passed on 2026-11-10; Sema 0.011s, CLI 4.285s and LSP 5.047s; canonical order and identity on 32/64-bit plans, defaults/copies, trusted refinement, missing-variant and spoofed declarations, unknown variants, nominal separation, verified IR, hover and completion
       - command: go test ./internal/sema ./internal/ir/... ./internal/formatter ./cmd/compiler -count=1
         result: "2026-10-17: complete Sema, Semantic IR and formatter suites passed. The compiler suite initially reported six missing-sec-mlir-opt failures; all affected tests and then the complete compiler suite passed with SEC_MLIR_BIN selected as recorded separately. No source changes were required for tool discovery."
       - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./cmd/compiler -count=1

@@ -284,3 +284,15 @@ func (b *constantBranches) finish(a *Analyzer) {
 	b.collect(a)
 	a.constInts = b.joined
 }
+
+// intersectConstInts returns the constants two incoming edges agree on. A nil
+// edge state is unknown and contributes nothing.
+func intersectConstInts(left, right map[string]*big.Int) map[string]*big.Int {
+	out := map[string]*big.Int{}
+	for name, value := range left {
+		if other, ok := right[name]; ok && other.Cmp(value) == 0 {
+			out[name] = new(big.Int).Set(value)
+		}
+	}
+	return out
+}

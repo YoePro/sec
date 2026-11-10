@@ -178,9 +178,6 @@ func (a *Analyzer) canPassImplicitMethodReceiver(function Function, receiver met
 	if !exactReceiver && !inheritedCoreReceiver && !inheritedInterfaceReceiver {
 		return false
 	}
-	if function.ReceiverConsuming {
-		return receiver.Type.Kind != ReferenceType && receiver.Symbol != nil
-	}
 	if function.ReceiverMutable {
 		if receiver.Type.Kind == ReferenceType {
 			return receiver.Type.ReferenceMutable
@@ -241,17 +238,11 @@ func (a *Analyzer) instantiateGenericImplMethod(function Function, receiver meth
 // rules/declarations/functions.md — §§22,24.
 func (a *Analyzer) implicitMethodReceiverError(function Function, receiver methodReceiverInfo) string {
 	displayName := visibilityBaseName(function.Name)
-	if function.ReceiverConsuming && receiver.Type.Kind == ReferenceType {
-		return fmt.Sprintf("consuming method %s requires an owned receiver; %s does not transfer ownership", displayName, typeDisplayName(receiver.Type))
-	}
 	if receiver.Symbol != nil {
 		if receiver.Symbol.Addressed {
 			return fmt.Sprintf("method %s requires writable receiver storage", displayName)
 		}
 		return fmt.Sprintf("method %s requires mutable receiver", displayName)
-	}
-	if function.ReceiverConsuming {
-		return fmt.Sprintf("consuming method %s requires an owned named receiver", displayName)
 	}
 	if function.ReceiverMutable {
 		receiverText := "the receiver"

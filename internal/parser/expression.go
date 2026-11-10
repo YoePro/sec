@@ -1739,6 +1739,7 @@ func (p *Parser) parseStructLiteralExpression(left ast.Expression) ast.Expressio
 // Rules:
 //   - rules/control-flow/flowcontrol_switch.md — §§28, 35, 40
 //   - rules/foundations/grammar.md — "StructLiteralItem"
+//   - rules/concurrency/threads.md — §7(2), positional CpuSet indices
 //   - rules/compiler/parser_recovery.md — "Struct literal recovery"
 //   - rules/compiler/parser_recovery.md — "Missing closing brace"
 func (p *Parser) parseStructLiteralWithType(ref *ast.TypeReference) ast.Expression {
@@ -1770,9 +1771,10 @@ func (p *Parser) parseStructLiteralWithType(ref *ast.TypeReference) ast.Expressi
 		field := &ast.StructLiteralField{Token: expressionToken(value)}
 		_, namedField := value.(*ast.Identifier)
 		namedField = namedField && p.peekToken.Type == lexer.COLON
-		if isShapedMetadataLiteralType(ref.Name) && !namedField {
+		if (isShapedMetadataLiteralType(ref.Name) || ref.Name == "CpuSet") && !namedField {
 			// MD-016: shaped metadata literals list their components in
-			// order; no other struct gains positional literal syntax.
+			// order; threads.md §7(2) likewise defines CpuSet { indices }.
+			// Ordinary structs do not gain positional literal syntax.
 			field.Value = value
 			field.Positional = true
 			// A synthetic, never-public component name keeps every analysis

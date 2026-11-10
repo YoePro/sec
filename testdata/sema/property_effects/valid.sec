@@ -1,0 +1,59 @@
+module main
+
+type Counter struct { _value: int, }
+enum CounterError error { Invalid, }
+
+fn Read(value: ref Counter) int { return value.ReadRisk }
+@noPanic
+fn Store(value: ref mut Counter, raw: int) void { value.ReadRisk = raw }
+@noPanic
+fn ReadSafe(value: ref Counter) int { return value.WriteRisk }
+fn StoreRisk(value: ref mut Counter, raw: int) void { value.WriteRisk = raw }
+fn Update(value: ref mut Counter) void { value.WriteRisk += 1 }
+fn StaticRead() int { return Counter.StaticRisk }
+fn DeferredRead(value: ref Counter) int { return value.Deferred }
+fn NestedRead(value: ref Counter) int { return value.Nested }
+@noPanic
+fn CheckedStore(value: ref mut Counter, raw: int) Result[void, CounterError] {
+    try value.Checked = raw
+    return Ok()
+}
+
+extern "C" fn Foreign() void
+fn ForeignRead(value: ref Counter) int { return value.ForeignRisk }
+
+fn Increment(value: int) int { return value + 1 }
+
+impl Counter {
+    property ReadRisk: int {
+        get { return Increment(self._value) }
+        set value { self._value = value }
+    }
+    property WriteRisk: int {
+        get { return self._value }
+        set value { self._value = Increment(value) }
+    }
+    static property StaticRisk: int {
+        get { return Increment(1) }
+    }
+    property Deferred: int {
+        get {
+            defer { discard Increment(1) }
+            return self._value
+        }
+    }
+    property Nested: int {
+        get { return self.ReadRisk }
+    }
+    property ForeignRisk: int {
+        get { unsafe { Foreign() } return 0 }
+    }
+    property Checked: int {
+        get { return self._value }
+        @noPanic
+        try set value CounterError {
+            if value < 0 { return Err(CounterError.Invalid) }
+            self._value = value
+        }
+    }
+}

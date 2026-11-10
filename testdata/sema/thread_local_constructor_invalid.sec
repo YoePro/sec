@@ -1,0 +1,10 @@
+module main
+@noCopy
+type Resource struct { Value: int }
+type Box[T] struct { Value: T }
+static let ResourceKey := ThreadLocal[Resource](Resource{Value: 1})
+static let AggregateKey := ThreadLocal[Box[Resource]](Box[Resource]{Value: Resource{Value: 2}})
+static let BadType := ThreadLocal[int]("wrong")
+static let Missing := ThreadLocal[int]()
+static let Extra := ThreadLocal[int](1, 2)
+static let MissingType := ThreadLocal(1)

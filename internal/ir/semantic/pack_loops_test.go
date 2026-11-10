@@ -45,7 +45,7 @@ fn main() int {
 		t.Fatal(err)
 	}
 	text := Format(module)
-	for _, want := range []string{"for-pack condition=", `"main::Size[T=int](ref T)"`, `"main::Size[T=bool](ref T)"`, "edge=continue"} {
+	for _, want := range []string{"for-pack condition=", `"main::Size[T=int](ref int)"`, `"main::Size[T=bool](ref bool)"`, "edge=continue"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("missing %q:\n%s", want, text)
 		}
@@ -98,7 +98,7 @@ fn main() int {
 		t.Fatal(err)
 	}
 	text := Format(module)
-	for _, want := range []string{"ref.reborrow-mut %0", "ref.reborrow-mut %1", `"main::TouchMut[T=int](ref mut T)"`, `"main::TouchMut[T=bool](ref mut T)"`, "place.value-root %0", "place.value-root %1", "ref.borrow-shared", `"main::Touch[T=bool](ref T)"`} {
+	for _, want := range []string{"ref.reborrow-mut %0", "ref.reborrow-mut %1", `"main::TouchMut[T=int](ref mut int)"`, `"main::TouchMut[T=bool](ref mut bool)"`, "place.value-root %0", "place.value-root %1", "ref.borrow-shared", `"main::Touch[T=bool](ref bool)"`} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("missing %q:\n%s", want, text)
 		}
@@ -149,7 +149,7 @@ fn main() int {
 		t.Fatal(err)
 	}
 	text := Format(module)
-	for _, want := range []string{`"main::Touch[T=bool](ref T)"`, `"main::Touch[T=int](ref T)"`, `"main::TouchMut[T=bool](ref mut T)"`, "ref.reborrow-shared %0", "ref.reborrow-mut %0", "place.value-root %1", `"main::Keep[T=bool](bool)"`} {
+	for _, want := range []string{`"main::Touch[T=bool](ref bool)"`, `"main::Touch[T=int](ref int)"`, `"main::TouchMut[T=bool](ref mut bool)"`, "ref.reborrow-shared %0", "ref.reborrow-mut %0", "place.value-root %1", `"main::Keep[T=bool](bool)"`} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("missing %q:\n%s", want, text)
 		}
@@ -208,7 +208,7 @@ fn main() int {
 		t.Fatal(err)
 	}
 	text := Format(module)
-	for _, want := range []string{`"main::Size[T=int](ref T)"`, `"main::Size[T=bool](ref T)"`, "panic reason=ExplicitPanic"} {
+	for _, want := range []string{`"main::Size[T=int](ref int)"`, `"main::Size[T=bool](ref bool)"`, "panic reason=ExplicitPanic"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("missing %q:\n%s", want, text)
 		}

@@ -76,10 +76,10 @@ integrations:
       - LSP completion and hover consume the shared compiler-known ThreadLocal member identities and concrete substituted signatures
       - ThreadAttachError is a reserved nominal core error enum with exactly AlreadyAttached, ResourceUnavailable and NativeFailure; trusted source refinement validates the complete canonical declaration, ordinary redeclarations and NotAttached are rejected, and typed Result/open-error uses, exhaustive matching and shared LSP enum hover/completion are tested (2026-11-09)
       - ThreadContextError is no longer registered or presented as a portable builtin; the exact ThreadAttachError identity remains available. AttachCurrent ownership/signature integration remains separately tracked (2026-11-09; concurrency.thread-v2 legacy error removal)
+      - Local automatic ThreadLocal key declarations, including keys embedded in owned aggregate storage, are rejected with mandatory S1208 thread-local.automatic-key and static let guidance. Module-level bindings and explicit function-local statics retain static storage; references to existing static keys remain valid. Source-backed Sema, CLI and LSP tests share the compiler decision; invalid keys prevent IR artifact emission (2026-11-10).
+      - ThreadLocal[T](initial) resolves one concrete payload type and accepts only implicitly copyable T, including concrete generic aggregates and callable-valued payloads. Canonical copy classification rejects noCopy and containing aggregates with mandatory S1209 thread-local.initial-not-copyable and factory guidance; ordinary initializer compatibility, contracts and call-site ownership remain enforced. Exact type/value argument arity, CLI/LSP parity and invalid-IR artifact suppression are tested. Factory execution, static key materialization and per-thread initialization remain separately open (2026-11-10).
     remaining:
       - implement ThreadLocal slot borrow provenance, Borrow/BorrowMut exclusivity, and Replace conflict analysis
-      - implement static-key-only ThreadLocal declaration validation
-      - implement copyability-gated initial-value constructor
       - implement factory initializer ownership and first-access execution
       - implement deterministic lazy initialization rather than target-chosen eager/lazy user initialization
       - implement per-thread initialization state including initializing/initialized/failed internal states
@@ -151,11 +151,16 @@ integrations:
         description: Legacy text conflates user TLS factory failure with ThreadSpawnError.ThreadLocalInitializationFailed; v2 restricts that spawn error to TLS runtime infrastructure setup.
     corrections_applied:
       - rules/corrections/applied/thread-local-v2-cross-rulebook-correction-20260927.md
-    revised: "2026-11-09"
+    revised: "2026-11-10"
     code:
       - internal/sema/thread_attach_error.go
       - internal/sema/types.go
       - internal/sema/type_declarations.go
+      - internal/sema/thread_local_key_storage.go
+      - internal/sema/analyzer_let_bindings.go
+      - internal/diagnostics/diagnostics.go
+      - internal/sema/thread_local_constructor.go
+      - internal/sema/analyzer_inference.go
     tests:
       - internal/sema/thread_attach_error_test.go
       - cmd/compiler/thread_attach_error_test.go
@@ -163,7 +168,29 @@ integrations:
       - testdata/sema/thread_attach_error_core.sec
       - testdata/sema/thread_attach_error_valid.sec
       - testdata/sema/thread_attach_error_invalid.sec
+      - internal/sema/thread_local_key_storage_test.go
+      - cmd/compiler/thread_local_key_storage_test.go
+      - cmd/lsp/thread_local_key_storage_test.go
+      - testdata/sema/thread_local_key_storage_valid.sec
+      - testdata/sema/thread_local_key_storage_invalid.sec
+      - internal/sema/thread_local_constructor_test.go
+      - cmd/compiler/thread_local_constructor_test.go
+      - cmd/lsp/thread_local_constructor_test.go
+      - testdata/sema/thread_local_constructor_valid.sec
+      - testdata/sema/thread_local_constructor_invalid.sec
     verification:
+      - command: go vet -p 4 ./internal/sema ./internal/diagnostics ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-11-10 after TLS initial-value constructor changes
+      - command: go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run "TestThreadLocalConstructor|TestThreadLocalKeyStorage|TestThreadLocalV2|TestThreadLocalReplace" -count=1
+        result: passed on 2026-11-10; Sema 0.042s, CLI 7.463s, LSP 5.134s; concrete copyability, argument validation, static key regressions and invalid-IR artifact suppression
+      - command: go test -p 4 ./internal/sema ./internal/diagnostics -count=1
+        result: passed on 2026-11-10; Sema 20.894s, diagnostics 0.002s; complete suites after TLS constructor validation
+      - command: go vet -p 4 ./internal/sema ./internal/diagnostics ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-11-10
+      - command: go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run "TestThreadLocalKeyStorage|TestThreadLocalV2|TestThreadLocalReplace" -count=1
+        result: passed on 2026-11-10; Sema 0.022s, CLI 2.621s, LSP 1.739s; four invalid automatic key declarations, static declarations, borrowed keys, registered diagnostics and IR artifact suppression
+      - command: go test -p 4 ./internal/sema ./internal/diagnostics -count=1
+        result: passed on 2026-11-10; Sema 15.582s, diagnostics 0.002s
       - command: go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run "TestThreadLegacyErrors|TestThreadAttachError|TestThreadLifecycleErrors|TestThreadConfigurationEnums" -count=1
         result: passed on 2026-11-09; ThreadContextError is no longer a portable builtin and canonical ThreadAttachError remains usable; the remaining AttachCurrent integration is unchanged
       - command: go vet -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp

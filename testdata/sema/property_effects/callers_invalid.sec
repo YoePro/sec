@@ -1,0 +1,15 @@
+module main
+
+type Counter struct { _value: int, }
+impl Counter {
+    property Value: int {
+        get { return self._value + 1 }
+        set value { self._value = value + 1 }
+    }
+}
+@noPanic
+fn Read(value: ref Counter) int { return value.Value }
+@noPanic
+fn Store(value: ref mut Counter, raw: int) void { value.Value = raw }
+@noPanic
+fn Update(value: ref mut Counter) void { value.Value += 1 }

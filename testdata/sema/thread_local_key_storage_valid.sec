@@ -1,0 +1,8 @@
+module main
+let ModuleKey := ThreadLocal[int]{}
+static let ExplicitKey := ThreadLocal[int]{}
+fn Access() void {
+    static let Persistent := ThreadLocal[int]{}
+    let borrowed := ref Persistent
+    discard borrowed
+}

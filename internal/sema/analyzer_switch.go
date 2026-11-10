@@ -54,8 +54,9 @@ func (a *Analyzer) analyzeSwitchStatement(stmt *ast.SwitchStatement) {
 	branches := make([]branchAnalysis, 0, len(clauses)+1)
 	clauseFlows := make([]ResolvedSwitchClauseFlow, 0, len(clauses))
 	// Constants and variant proofs every continuing clause ends with hold
-	// after the switch; a fallthrough edge enters the next body with state
-	// this join does not model, so any fallthrough disables the merge.
+	// after the switch. A fallthrough-entered body starts from the constants
+	// both of its entry edges agree on; variant proofs across a fallthrough
+	// edge are not modelled, so any fallthrough disables their merge.
 	joinConstants := []map[string]*big.Int{}
 	joinVariants := []knownVariantSet{}
 	anyFallthrough := false
@@ -73,25 +74,54 @@ func (a *Analyzer) analyzeSwitchStatement(stmt *ast.SwitchStatement) {
 		}
 	}()
 	var fallthroughEntry *branchAnalysis
+	// Call-graph reachability of the unmatched path: after an alternative
+	// that always matches, later case tests never run, and a body is reached
+	// only through its own reachable test or a reachable fallthrough edge.
+	previousReachable := a.callGraphPathReachable
+	unmatchedReachable := true
+	fallthroughReachable := false
+	defer func() { a.callGraphPathReachable = previousReachable }()
+	var fallthroughConstants map[string]*big.Int
 	for i, clause := range clauses {
 		if clause == nil {
 			continue
 		}
-		a.analyzeSwitchCaseItems(clause, hasSubject, subjectType, tracker)
+		a.callGraphPathReachable = previousReachable && unmatchedReachable
+		testsReachable := a.callGraphPathReachable
+		itemMatches, alwaysMatches := a.analyzeSwitchCaseItems(clause, hasSubject, subjectType, tracker)
+		if alwaysMatches {
+			unmatchedReachable = false
+		}
+		bodyReachable := testsReachable || fallthroughEntry != nil && fallthroughReachable
+		a.callGraphPathReachable = previousReachable && bodyReachable
 		a.analyzeSwitchFallthrough(clause, i == len(clauses)-1)
 		// rules/control-flow/flowcontrol_switch.md; correction24.md: the
 		// direct case-test path and a preceding fallthrough edge meet at the
 		// destination body. Fallthrough bypasses this clause's test expressions.
+		// The unmatched continuation keeps the state after every alternative.
 		directEntry := a.currentBranchAnalysisState()
-		if fallthroughEntry != nil {
-			a.applySwitchEntryMerge(directEntry, *fallthroughEntry)
+		bodyEntry := directEntry
+		if len(itemMatches) > 1 {
+			// Comma alternatives short-circuit: the body is entered right
+			// after whichever alternative matched first, so later
+			// alternatives' effects hold only on some entry paths.
+			a.applySwitchEntryMerge(itemMatches[0], itemMatches[1:]...)
+			bodyEntry = a.currentBranchAnalysisState()
 		}
 		if fallthroughEntry != nil {
+			a.applySwitchEntryMerge(bodyEntry, *fallthroughEntry)
+		}
+		if fallthroughEntry != nil {
+			// The direct case-test entry carries the pre-switch constants and
+			// the fallthrough edge the previous body's exit constants; the
+			// body starts with the values both agree on.
 			clauseConstants.keep(a)
+			a.constInts = intersectConstInts(clauseConstants.before, fallthroughConstants)
 		} else {
 			clauseConstants.enter(a)
 		}
 		branch := a.analyzeSwitchCaseBody(clause.Body)
+		fallthroughReachable = bodyReachable && branch.fallsThrough
 		branches = append(branches, branch)
 		anyFallthrough = anyFallthrough || branch.fallsThrough
 		if branch.continues {
@@ -110,8 +140,10 @@ func (a *Analyzer) analyzeSwitchStatement(stmt *ast.SwitchStatement) {
 			copy := branch
 			copy.continues = true
 			fallthroughEntry = &copy
+			fallthroughConstants = a.blockExitConstInts[clause.Body]
 		} else {
 			fallthroughEntry = nil
+			fallthroughConstants = nil
 		}
 	}
 	if clauseConstants.entered {
@@ -133,30 +165,33 @@ func (a *Analyzer) analyzeSwitchStatement(stmt *ast.SwitchStatement) {
 	a.closedResources = mergeContinuingClosedResources(beforeClosedResources, branches...)
 	a.borrows = mergeContinuingBorrows(beforeBorrows, branches...)
 	a.localRefContainers = mergeContinuingLocalRefContainers(beforeLocalRefContainers, branches...)
+	defer a.mergeBranchExitConstants(joinConstants)
 	if !anyFallthrough {
-		defer a.mergeBranchExitConstants(joinConstants)
 		defer a.assertKnownVariants(intersectKnownVariants(joinVariants))
 	}
 	a.arenaGenerations = mergeContinuingArenaGenerations(beforeArenaGenerations, branches...)
 	a.mergeContinuingReferenceOrigins(branches...)
 }
 
-// applySwitchEntryMerge joins the direct case-test entry with the preceding
-// clause's fallthrough edge at the destination case body.
+// applySwitchEntryMerge joins the entry edges of a case body: the direct
+// case-test entry with the preceding clause's fallthrough edge, or the match
+// edges of short-circuiting comma alternatives.
 //
 // Rules:
 //   - rules/control-flow/flowcontrol_switch.md — §16 "Explicit `fallthrough`", §19 "Fallthrough and scope"
 //   - rules/corrections/applied/correction24-20260823.md — "Architectural correction"
-func (a *Analyzer) applySwitchEntryMerge(direct, fallthroughEntry branchAnalysis) {
-	direct.continues = true
-	fallthroughEntry.continues = true
-	a.assigned = mergeContinuingAssigned(direct.assigned, direct, fallthroughEntry)
-	a.moved, a.availabilityStates = mergeContinuingMoveState(direct.moved, direct.availabilityStates, direct, fallthroughEntry)
-	a.closedResources = mergeContinuingClosedResources(direct.closedResources, direct, fallthroughEntry)
-	a.borrows = mergeContinuingBorrows(direct.borrows, direct, fallthroughEntry)
-	a.localRefContainers = mergeContinuingLocalRefContainers(direct.localRefContainers, direct, fallthroughEntry)
-	a.arenaGenerations = mergeContinuingArenaGenerations(direct.arenaGenerations, direct, fallthroughEntry)
-	a.mergeContinuingReferenceOrigins(direct, fallthroughEntry)
+func (a *Analyzer) applySwitchEntryMerge(direct branchAnalysis, others ...branchAnalysis) {
+	branches := append([]branchAnalysis{direct}, others...)
+	for i := range branches {
+		branches[i].continues = true
+	}
+	a.assigned = mergeContinuingAssigned(direct.assigned, branches...)
+	a.moved, a.availabilityStates = mergeContinuingMoveState(direct.moved, direct.availabilityStates, branches...)
+	a.closedResources = mergeContinuingClosedResources(direct.closedResources, branches...)
+	a.borrows = mergeContinuingBorrows(direct.borrows, branches...)
+	a.localRefContainers = mergeContinuingLocalRefContainers(direct.localRefContainers, branches...)
+	a.arenaGenerations = mergeContinuingArenaGenerations(direct.arenaGenerations, branches...)
+	a.mergeContinuingReferenceOrigins(branches...)
 }
 
 // analyzeSwitchCaseItems validates every comma-separated case alternative
@@ -169,51 +204,72 @@ func (a *Analyzer) applySwitchEntryMerge(direct, fallthroughEntry branchAnalysis
 //   - rules/control-flow/flowcontrol_switch.md — §6 "Value cases", §8 "Range cases", §10 "Relational cases"
 //   - rules/control-flow/flowcontrol_switch.md — §12 "Subjectless switch", §28 "No pattern matching"
 //   - rules/control-flow/flowcontrol_switch.md — §36 "Sema requirements for subject switch", §37 "Sema requirements for subjectless switch", §40 "Required diagnostics"
-func (a *Analyzer) analyzeSwitchCaseItems(clause *ast.SwitchCase, hasSubject bool, subjectType Type, tracker *switchCoverageTracker) {
+func (a *Analyzer) analyzeSwitchCaseItems(clause *ast.SwitchCase, hasSubject bool, subjectType Type, tracker *switchCoverageTracker) ([]branchAnalysis, bool) {
 	if clause.Default {
-		return
+		return nil, false
 	}
+	always := false
 
+	// matches holds the analysis state right after each alternative: the
+	// state in which the body is entered when that alternative matches.
+	var matches []branchAnalysis
 	for _, item := range clause.Items {
-		switch item := item.(type) {
-		case *ast.SwitchValueCase:
-			if a.rejectSwitchPattern(item.Value, subjectType) {
-				continue
+		a.analyzeSwitchCaseItem(item, hasSubject, subjectType, tracker)
+		if len(clause.Items) > 1 {
+			matches = append(matches, a.currentBranchAnalysisState())
+		}
+		// A subjectless alternative proven true always matches, so later
+		// alternatives and later case tests never run.
+		if value, ok := item.(*ast.SwitchValueCase); ok && !hasSubject && !always {
+			if holds, known := a.constantBooleanValue(value.Value); known && holds {
+				always = true
+				a.callGraphPathReachable = false
 			}
-			valueType, _ := a.inferExpressionWithExpected(item.Value, subjectType)
-			if valueType.Kind == InvalidType {
-				continue
-			}
-			if hasSubject {
-				if !canCompareEquality(subjectType, valueType) {
-					a.addErrorAtToken(expressionToken(item.Value), "switch case must be compatible with subject type %s, got %s", typeDisplayName(subjectType), typeDisplayName(valueType))
-				}
-				a.checkSwitchValueCoverage(item.Value, tracker)
-			} else if valueType.Kind != BoolType {
-				a.addErrorAtToken(expressionToken(item.Value), "subjectless switch case must be bool, got %s", typeDisplayName(valueType))
-			}
-		case *ast.SwitchRangeCase:
-			if !hasSubject {
-				a.addErrorAtToken(item.Token, "subjectless switch case must be bool, got range")
-				continue
-			}
-			a.analyzeSwitchRangeCase(item, subjectType)
-			a.checkSwitchRangeCoverage(item.Range, tracker)
-		case *ast.SwitchRelationalCase:
-			if !hasSubject {
-				a.addErrorAtToken(item.Token, "subjectless switch case must be bool, got relational case")
-				continue
-			}
-			if !isOrderedSwitchType(subjectType) {
-				a.addErrorAtToken(item.Token, "relational switch case requires ordered subject type")
-				continue
-			}
-			valueType, _ := a.inferExpressionWithExpected(item.Value, subjectType)
-			if valueType.Kind != InvalidType && !canCompareEquality(subjectType, valueType) {
+		}
+	}
+	return matches, always
+}
+
+// analyzeSwitchCaseItem validates one case alternative.
+func (a *Analyzer) analyzeSwitchCaseItem(item ast.SwitchCaseItem, hasSubject bool, subjectType Type, tracker *switchCoverageTracker) {
+	switch item := item.(type) {
+	case *ast.SwitchValueCase:
+		if a.rejectSwitchPattern(item.Value, subjectType) {
+			return
+		}
+		valueType, _ := a.inferExpressionWithExpected(item.Value, subjectType)
+		if valueType.Kind == InvalidType {
+			return
+		}
+		if hasSubject {
+			if !canCompareEquality(subjectType, valueType) {
 				a.addErrorAtToken(expressionToken(item.Value), "switch case must be compatible with subject type %s, got %s", typeDisplayName(subjectType), typeDisplayName(valueType))
 			}
-			a.checkSwitchRelationalCoverage(item, tracker)
+			a.checkSwitchValueCoverage(item.Value, tracker)
+		} else if valueType.Kind != BoolType {
+			a.addErrorAtToken(expressionToken(item.Value), "subjectless switch case must be bool, got %s", typeDisplayName(valueType))
 		}
+	case *ast.SwitchRangeCase:
+		if !hasSubject {
+			a.addErrorAtToken(item.Token, "subjectless switch case must be bool, got range")
+			return
+		}
+		a.analyzeSwitchRangeCase(item, subjectType)
+		a.checkSwitchRangeCoverage(item.Range, tracker)
+	case *ast.SwitchRelationalCase:
+		if !hasSubject {
+			a.addErrorAtToken(item.Token, "subjectless switch case must be bool, got relational case")
+			return
+		}
+		if !isOrderedSwitchType(subjectType) {
+			a.addErrorAtToken(item.Token, "relational switch case requires ordered subject type")
+			return
+		}
+		valueType, _ := a.inferExpressionWithExpected(item.Value, subjectType)
+		if valueType.Kind != InvalidType && !canCompareEquality(subjectType, valueType) {
+			a.addErrorAtToken(expressionToken(item.Value), "switch case must be compatible with subject type %s, got %s", typeDisplayName(subjectType), typeDisplayName(valueType))
+		}
+		a.checkSwitchRelationalCoverage(item, tracker)
 	}
 }
 

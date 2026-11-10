@@ -26,6 +26,14 @@ func resolveSourceImportsForTarget(program *ast.Program, seen map[string]bool, s
 	if len(issues) != 0 {
 		return issues
 	}
+	identities := map[[2]string]*ast.ImportStatement{}
+	importerModule := ""
+	for _, statement := range program.Statements {
+		if module, ok := statement.(*ast.ModuleStatement); ok && module != nil {
+			importerModule = module.Path
+			break
+		}
+	}
 	for _, stmt := range append([]ast.Statement{}, program.Statements...) {
 		importStmt, ok := stmt.(*ast.ImportStatement)
 		if !ok || importStmt == nil {
@@ -50,6 +58,10 @@ func resolveSourceImportsForTarget(program *ast.Program, seen map[string]bool, s
 			return data, err
 		}); len(conflicts) != 0 {
 			issues = append(issues, conflicts...)
+			continue
+		}
+		if identityIssues := sema.ImportIdentityIssues(importStmt, sourceFile, importerModule, sourcePaths, identities); len(identityIssues) != 0 {
+			issues = append(issues, identityIssues...)
 			continue
 		}
 		importedStatements := []ast.Statement{}

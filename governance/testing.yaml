@@ -62,6 +62,7 @@ integrations:
       - internal/sema/test_dependency_direction_test.go
       - cmd/compiler/test_command_test.go
     implemented:
+      - "Standard-library import spelling synchronized (verified 2026-11-10): rules/projects/modules.md § 8 and projects.md § 16(2) use direct canonical logical paths such as `import \"io\"` and `import \"net/http\"`; no source-visible std/ prefix remains in either rulebook"
       - contextual top-level `test "name" { ... }` recognition retains a distinct ast.TestDeclaration with its source name and ordinary Sec body while `test` remains an identifier outside the declaration shape
       - declaration-shaped nested tests are diagnosed with P2011 and recovered without losing later statements in the enclosing body
       - malformed top-level test headers retain an explicitly invalid ast.TestDeclaration and recover their body across missing names, forbidden parameters, and forbidden return types with stable P2020; ordinary function-name and call positions keep `test` as an identifier
@@ -96,7 +97,6 @@ integrations:
       - add compiler-workspace/LSP test discovery and test compilation views with Run Test and Debug Test metadata for editor clients
       - integrate the VS Code extension with compiler-owned test metadata and the editor-native test UI without adding an independent Sec test parser
       - add required parser, Sema, cleanup, subtest, discovery, CLI, LSP, hosted, and provider regression tests from rules/tooling/testing.md
-      - synchronize rules/projects/modules.md and rules/projects/projects.md to remove the obsolete source-visible std/... standard-library import prefix and preserve direct logical imports such as `import "io"` and `import "net/http"`
     corrections_applied:
       - rules/corrections/applied/compiler-testing-cross-rulebook-correction-20260926.md
     deferred:

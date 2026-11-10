@@ -2,6 +2,9 @@ package sema
 
 import (
 	"fmt"
+	"path/filepath"
+	"sort"
+	"strings"
 
 	"sec/internal/ast"
 	"sec/internal/diagnostics"
@@ -39,4 +42,67 @@ func ImportedModuleConflicts(stmt *ast.ImportStatement, paths []string, read fun
 		errors = append(errors, issue)
 	}
 	return errors
+}
+
+// ImportIdentityIssues rejects an import whose resolved canonical module
+// identity (the resolved set of module source files) contains the importing
+// file itself, or was already imported by the same source file under any
+// spelling or alias. previous maps importer file and module identity to the
+// first import for one resolution pass. importerFallback names the analyzed
+// source file when the import token carries no file, and importerModule its
+// declared module when the resolver leaves that file out of its own
+// directory module (an editor buffer); then a same-directory import whose
+// final path segment names the importer's module is also a self-import.
+// Rules: rules/projects/modules.md — § 14 "Self-imports, duplicate imports, and cycles", § 21.
+func ImportIdentityIssues(stmt *ast.ImportStatement, importerFallback, importerModule string, sourcePaths []string, previous map[[2]string]*ast.ImportStatement) []Error {
+	if stmt == nil || len(sourcePaths) == 0 {
+		return nil
+	}
+	importerFile := stmt.Token.File
+	if importerFile == "" {
+		importerFile = importerFallback
+	}
+	importer := canonicalSourcePath(importerFile)
+	members := make([]string, 0, len(sourcePaths))
+	for _, path := range sourcePaths {
+		members = append(members, canonicalSourcePath(path))
+	}
+	sort.Strings(members)
+	sameDirectoryModule := false
+	if importerModule != "" && importerFile != "" && filepath.Dir(members[0]) == filepath.Dir(importer) {
+		segments := strings.Split(stmt.Path, "/")
+		sameDirectoryModule = segments[len(segments)-1] == importerModule
+	}
+	for _, member := range members {
+		if importerFile != "" && member == importer || sameDirectoryModule {
+			issue := UnresolvedSourceImport(stmt)
+			issue.ID = diagnostics.SelfImport
+			issue.Message = fmt.Sprintf("module cannot import itself through %q", stmt.Path)
+			issue.Help = "Files of one module share one namespace and need no import; remove this import."
+			return []Error{issue}
+		}
+	}
+	key := [2]string{importer, strings.Join(members, "\x00")}
+	if first, seen := previous[key]; seen {
+		issue := UnresolvedSourceImport(stmt)
+		issue.ID = diagnostics.DuplicateImport
+		issue.Message = fmt.Sprintf("module %q is already imported in this source file", stmt.Path)
+		issue.Help = "Import each module once per source file; use the first import's qualifier, or give that single import the alias you need."
+		token := first.PathToken
+		if token.Line == 0 {
+			token = first.Token
+		}
+		issue.PreviousFile, issue.PreviousLine, issue.PreviousColumn = token.File, token.Line, token.Column
+		issue.RelatedLabel = "first import of this module"
+		return []Error{issue}
+	}
+	previous[key] = stmt
+	return nil
+}
+
+func canonicalSourcePath(path string) string {
+	if absolute, err := filepath.Abs(path); err == nil {
+		path = absolute
+	}
+	return filepath.Clean(path)
 }

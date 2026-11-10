@@ -1,0 +1,22 @@
+module main
+
+extern "C" fn External() void
+
+fn Pure() int { return 1 }
+fn Direct(lock: ref Mutex[int]) void {
+    let guard := lock.Lock()
+    discard guard
+}
+fn Nested(lock: ref Mutex[int]) void { Direct(lock) }
+fn Foreign() void { External() }
+fn Unknown(callback: fn() void) void { callback() }
+fn Mixed(lock: ref Mutex[int]) void {
+    External()
+    let guard := lock.Lock()
+    discard guard
+}
+fn Deferred(lock: ref Mutex[int]) void { defer { Direct(lock) } }
+fn Recursive(lock: ref Mutex[int], count: int) void {
+    if count > 0 { Recursive(lock, count - 1) } else { Direct(lock) }
+}
+fn Calls(lock: ref Mutex[int]) void { Nested(lock) }

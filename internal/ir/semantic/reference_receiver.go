@@ -27,7 +27,7 @@ import (
 // its own; a method of a generic implementation is built per specialization.
 func (b *builder) instanceMethodLowerable(function sema.Function) bool {
 	return b.maxPackage >= referenceLoweringPackage && !function.Static && function.ImplTarget != "" &&
-		!function.ReceiverConsuming && len(function.GenericParameters) == 0
+		len(function.GenericParameters) == 0
 }
 
 // addReceiverParameter adds the explicit `self` reference parameter.

@@ -743,6 +743,7 @@ func (d *Document) ApplyProgramRoles(program *ast.Program) {
 			}
 		case *ast.ForStatement:
 			mark(node.Token, SpacedKeyword)
+			d.applyForBindingSpacingRoles(node, indexes, mark)
 			if len(node.Bindings) > 0 && node.Iterable != nil {
 				last := node.Bindings[len(node.Bindings)-1].Token
 				markIndex(nextTokenAtDepth(last, func(typ lexer.TokenType) bool { return typ == lexer.IN }), BinaryOperator)

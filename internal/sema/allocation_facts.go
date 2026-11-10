@@ -116,7 +116,8 @@ func (a *Analyzer) allocationCoverageUnknowns() map[CallableID][]AllocationEvide
 
 // allocationCoverageUnknownsForProgram computes the same coverage evidence for
 // a completed body-analysis input before the final tooling snapshot is retained.
-// Rules: rules/memory/allocation.md — §24(2),(6).
+// Rules: rules/memory/allocation.md — §24(2),(6);
+// rules/declarations/properties.md — §14 (accessor bodies and setter cleanup).
 func (a *Analyzer) allocationCoverageUnknownsForProgram(program *ast.Program) map[CallableID][]AllocationEvidence {
 	unknown := map[CallableID][]AllocationEvidence{}
 	bodies := map[CallableID]*ast.BlockStatement{}
@@ -127,12 +128,36 @@ func (a *Analyzer) allocationCoverageUnknownsForProgram(program *ast.Program) ma
 			functions[callableID(fn)] = fn
 		}
 	}
+	// rules/declarations/properties.md §14 and
+	// rules/analysis/effect_analysis.md §10: accessor bodies need the same
+	// coverage and parameter-cleanup checks as ordinary callable bodies.
+	for _, owner := range a.types {
+		for _, property := range owner.Properties {
+			for _, function := range []*Function{property.GetterCallable, property.SetterCallable} {
+				if function != nil {
+					functions[callableID(*function)] = *function
+				}
+			}
+		}
+	}
 	if program != nil {
 		walkASTValue(reflect.ValueOf(program), func(value any) {
 			var token lexer.Token
 			var body *ast.BlockStatement
 			var params []*ast.Parameter
 			switch value := value.(type) {
+			case *ast.PropertyDeclaration:
+				if value != nil {
+					if value.Getter != nil {
+						for _, node := range a.callGraph.NodesForDeclaration(value.Getter.Token) {
+							bodies[node.ID] = value.Getter
+						}
+					}
+					if value.Setter != nil && value.Setter.Body != nil {
+						token = value.Setter.Body.Token
+						body = value.Setter.Body
+					}
+				}
 			case *ast.FunctionDeclaration:
 				if value != nil && value.Name != nil {
 					token = value.Name.Token

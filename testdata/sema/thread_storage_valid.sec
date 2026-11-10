@@ -1,0 +1,13 @@
+module main
+
+let Capacity := 4096u
+
+fn Consume(-> storage: ThreadStorage) uint {
+    return storage.Capacity
+}
+
+fn Allocate() uint {
+    let storage := ThreadStorage(Capacity)
+    let moved :<- storage
+    return Consume(<-moved)
+}

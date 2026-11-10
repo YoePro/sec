@@ -8,7 +8,8 @@ import (
 // ipcErrorVariants defines the exact closed portable error sets shared by
 // standalone Sema and trusted core declarations, independently of target IPC
 // support. Unsupported target operations never become an extra error variant.
-// Rules: rules/concurrency/ipc.md — §§6,27,44,55,68,79,124.
+// Rules: rules/concurrency/ipc.md — §§6,27,44,55,68,79,97,124;
+// rules/concurrency/processes.md — §5.9.
 func ipcErrorVariants(name string) []string {
 	switch name {
 	case "IPCError":
@@ -21,13 +22,16 @@ func ipcErrorVariants(name string) []string {
 		return []string{"Closed", "LayoutMismatch", "OwnerDied", "PermissionDenied", "OutOfMemory", "ResourceLimit", "MappingFailed", "DuplicationFailed", "NativeFailure"}
 	case "IPCAtomicError":
 		return []string{"PermissionDenied", "OutOfMemory", "ResourceLimit", "DuplicationFailed", "NativeFailure"}
+	case "CommandConfigurationError":
+		return []string{"InvalidState", "InvalidWorkingDirectory", "NotFound", "NotDirectory", "PermissionDenied", "InvalidEnvironmentName", "InvalidEnvironmentValue", "InvalidIOResource", "OutOfMemory"}
 	}
 	return nil
 }
 
 // builtinIPCErrorType reserves one nominal core error identity and its ordinary
 // enum default (first member). It supplies no operation or runtime transport.
-// Rules: rules/concurrency/ipc.md — §§6,27,44,55,68,79;
+// Rules: rules/concurrency/ipc.md — §§6,27,44,55,68,79,97;
+// rules/concurrency/processes.md — §5.9;
 // rules/types/default_values.md — "Enums".
 func builtinIPCErrorType(name string) Type {
 	values := ipcErrorVariants(name)
@@ -63,8 +67,8 @@ func builtinCommandIOModeType(name string) Type {
 
 // ipcCoreEnumType selects the canonical compiler-owned enum shape; project
 // types cannot acquire these identities by spelling or structural similarity.
-// Rules: rules/concurrency/ipc.md — §§6,27,44,55,68,79,94;
-// rules/concurrency/processes.md — §§5.12–5.13.
+// Rules: rules/concurrency/ipc.md — §§6,27,44,55,68,79,94,97;
+// rules/concurrency/processes.md — §§5.9,5.12–5.13.
 func ipcCoreEnumType(name string) (Type, bool) {
 	if len(ipcErrorVariants(name)) != 0 {
 		return builtinIPCErrorType(name), true
@@ -78,7 +82,7 @@ func ipcCoreEnumType(name string) (Type, bool) {
 // ipcCoreEnumFromDeclaration accepts only the exact canonical core enum,
 // retaining real declaration/member locations for hover and navigation. On
 // malformed trusted source the reserved fallback remains exact for recovery.
-// Rules: rules/concurrency/ipc.md — §§6,27,44,55,68,79,94;
+// Rules: rules/concurrency/ipc.md — §§6,27,44,55,68,79,94,97;
 // rules/concurrency/processes.md — §§5.12–5.13;
 // rules/library/core-library.md — compiler-known core declarations.
 func (a *Analyzer) ipcCoreEnumFromDeclaration(enum *ast.EnumDeclaration) (Type, bool) {
@@ -127,8 +131,8 @@ func (a *Analyzer) exactCoreEnumDeclaration(enum *ast.EnumDeclaration, typ Type,
 
 // rejectIPCCoreEnumNonEnum prevents trusted core from replacing a portable enum
 // identity with a scalar, struct, union or interface of the same spelling.
-// Rules: rules/concurrency/ipc.md — §§6,27,44,55,68,79,94;
-// rules/concurrency/processes.md — §§5.12–5.13.
+// Rules: rules/concurrency/ipc.md — §§6,27,44,55,68,79,94,97;
+// rules/concurrency/processes.md — §§5.9,5.12–5.13.
 func (a *Analyzer) rejectIPCCoreEnumNonEnum(name string, token lexer.Token) bool {
 	if _, known := ipcCoreEnumType(name); !known || !a.isTrustedCoreBuiltinDeclaration(name, token) {
 		return false

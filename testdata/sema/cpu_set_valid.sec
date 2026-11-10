@@ -1,0 +1,10 @@
+module main
+
+fn Use(index: uint) CpuSet {
+    let cpus := CpuSet { 2, 3 }
+    let copy := cpus
+    discard copy
+    discard CpuSet {}
+    discard CpuSet { index }
+    return cpus
+}

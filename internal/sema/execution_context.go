@@ -34,6 +34,13 @@ func (a *Analyzer) inferExecutionContextCall(expr *ast.CallExpression) (Type, ex
 	if !a.checkCompilerKnownCallArity(expr, name, 0, 0) {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 	}
+	if member.Property.Value == "Yield" {
+		known, found := compilerKnownMember(a.types[owner.Value], "Yield", true)
+		if found {
+			a.compilerKnownMemberFacts[sourceTokenLocation(member.Property.Token)] = known
+			result = known.Result
+		}
+	}
 	if owner.Value == "Task" {
 		a.recordExecutionRequirement(requiresLogicalTask, name+"()", member.Property.Token)
 	}

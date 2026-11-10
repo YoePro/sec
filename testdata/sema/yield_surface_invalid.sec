@@ -1,0 +1,17 @@
+module main
+
+fn BadArguments() void {
+    Task.Yield(1)
+    Thread.Yield(1)
+    Task.Yield[int]()
+    Thread.Yield[int]()
+}
+
+fn BadInstances(work: ref Task[int], worker: ref Thread[int]) void {
+    work.Yield()
+    worker.Yield()
+}
+
+fn main() void {
+    Task.Yield()
+}

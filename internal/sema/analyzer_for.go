@@ -121,6 +121,7 @@ func (a *Analyzer) analyzeForStatement(stmt *ast.ForStatement) {
 // Rules:
 //   - rules/control-flow/flowcontrol_for.md — §12 "Iterable expression evaluation", §13 "Sec 0.1 iterable categories"
 func (a *Analyzer) analyzeForIterable(stmt *ast.ForStatement) {
+	errorsBefore := len(a.errors)
 	if stmt.Iterable == nil {
 		a.addErrorAtToken(stmt.Token, "for loop requires an iterable expression")
 		return
@@ -147,6 +148,9 @@ func (a *Analyzer) analyzeForIterable(stmt *ast.ForStatement) {
 		if a.defineSymbol(binding.Name, bindingTypes[i], false, binding.Token) {
 			a.assigned[binding.Name] = true
 		}
+	}
+	if len(a.errors) == errorsBefore {
+		a.recordForBindingModes(stmt, bindingTypes)
 	}
 }
 

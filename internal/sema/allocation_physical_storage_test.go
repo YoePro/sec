@@ -24,6 +24,7 @@ func TestAllocationPhysicalStorageSeparation(t *testing.T) {
 	}
 	expected := map[string]AllocationKnowledge{
 		"Read": AllocationFree, "Write": AllocationFree, "Bind": AllocationFree,
+		"IsReady.get": AllocationFree, "IsReady.set": AllocationFree,
 		"Volatile": AllocationFree, "Forward": AllocationFree, "main": AllocationFree,
 		"Mixed": AllocationMayAllocate, "Lookalike.VolatileRead": AllocationMayAllocate, "UserMember": AllocationMayAllocate,
 		"MapRegion": AllocationUnknown, "UnknownMapping": AllocationUnknown,

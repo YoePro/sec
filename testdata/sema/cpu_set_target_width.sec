@@ -1,0 +1,5 @@
+module main
+
+fn WideIndex() CpuSet {
+    return CpuSet { 4294967296u }
+}

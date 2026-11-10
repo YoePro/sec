@@ -113,6 +113,7 @@ integrations:
       - rules/tooling/lsp.md
       - rules/tooling/formatter.md
     implemented:
+      - "Source traceability to rules/memory/borrowing.md verified (2026-11-10): compiler sources carry 100 § citations in 52 files (internal/, cmd/), and every cited section number exists in the current rulebook headings"
       - Current frontend already emits several borrow-conflict diagnostics with a previous/source location and exposes foundational semantic facts to LSP/formatter infrastructure.
       - Formatter preserves established ref/ref mut syntax in functions and supported patterns.
       - Active rulebooks and governance use the canonical borrowing.md revision-2 path; the replaced borrowing.md rulebook has been removed.
@@ -124,7 +125,6 @@ integrations:
     remaining:
       - surface referent Place/provenance alternatives, borrow kind, holder, live-range/end reason, reborrow parent, mutability authority, and temporal validity dependencies in hover/analysis where useful
       - offer only safe code actions such as narrowing/reordering use, changing an explicitly compatible API to ref/ref mut when user edits declaration, or restructuring scope; do not silently change ownership semantics
-      - support source/code traceability comments referring to stable borrowing § clauses
     required_tests:
       - borrow conflict diagnostic includes related borrow origin
       - loop-carried diagnostic explains previous iteration
@@ -313,6 +313,7 @@ integrations:
       - rules/tooling/formatter.md
       - rules/control-flow/discard.md
     implemented:
+      - "Source traceability to rules/memory/destruction.md verified (2026-11-10): compiler sources carry 50 § citations in 30 files (internal/, cmd/), and every cited section number exists in the current rulebook headings"
       - Current frontend already emits selected move/resource/defer diagnostics with related source locations.
       - Formatter/LSP already preserve several ownership/move constructs and expose initial ownership facts.
       - Shared Sema accepts repeated discard of already unavailable discardable Places and retains resolved operand facts, so LSP diagnostics do not duplicate stale use-after-discard logic.
@@ -325,7 +326,6 @@ integrations:
       - mentor diagnostics must explain which value is affected, where ownership/destruction responsibility originated, what earlier move/discard/replacement changed it, and how to fix the source safely
       - diagnose conditional cleanup requiring forbidden runtime bookkeeping and suggest static restructuring or explicit discard convergence
       - surface destruction classification, custom free, cleanup owner, pending deferred use, partial/conditional state, allocator/release authority, and expected terminal action in hover/analysis where useful
-      - support compiler source comments/traceability references to stable destruction § clauses
     required_tests:
       - use-after-destruction/move diagnostic links to earlier terminal ownership action
       - custom-free partial-move diagnostic identifies free and suggests moving whole value or redesigning ownership

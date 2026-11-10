@@ -82,10 +82,9 @@ integrations:
       - ThreadSetting[T] is the canonical nominal core generic union Default | Preferred(T) | Required(T). Ordinary generic-union construction, contextual variant construction and exhaustive matching preserve concrete payload types; plain T is not implicitly converted to a preference. Trusted core declarations must match exactly, including owning T payloads and the non-error union identity; ordinary source cannot replace the reserved type. Sema, CLI and LSP share the union facts (2026-11-09)
       - "ThreadTerminationKind is the exact Requested/External/Fault/Unknown nominal non-error core enum; ThreadTermination is the ordinary portable metadata struct with exactly Kind: ThreadTerminationKind and no universal native status fields. Trusted declarations validate the complete canonical shapes and preserve member source locations; construction, exhaustive classification, field hover and kind completion share compiler facts. Terminal Thread member availability remains separately tracked (2026-11-09)"
       - "ThreadObserver has no hidden Wait or selectable completion capability: ordinary Wait calls and select operands are rejected with focused metadata-only/owner-join guidance. Observer copying, metadata reads and explicit discard remain valid, while LSP exposes only the existing canonical metadata catalog without owner or Wait operations (2026-11-09; threads.md sections 40 and 43)"
+      - CpuSet is a reserved nominal opaque copyable core identity, distinct from set[uint], with the canonical positional literal CpuSet { index, ... }. Sema validates uint components, non-negative selected-target uint range and compile-time-proven duplicates (S1214 with the earlier index); named fields, spreads and generic arguments are rejected. Trusted source refinement accepts only type CpuSet and retains declaration provenance. CLI/LSP share the type and diagnostics, formatting is canonical/idempotent, and native IR remains explicitly unsupported for type CpuSet rather than treating it as an empty struct. No target CPU count or affinity capability is inferred from the host; applying affinity and physical representation remain separate work (2026-11-10).
+      - "ThreadStorage is a reserved non-generic nominal @noCopy core storage owner. ThreadStorage(capacity) validates one compile-time uint capacity through canonical semantic CTE and records detached constructor capacity evidence independently of type identity; value/type argument arity, runtime/negative/wrong-type capacities and legacy ThreadStorage[T] are rejected. Trusted source metadata must match the canonical private _capacity: uint struct. Public Capacity is read-only and shared by Sema/LSP; implicit copies, source struct fabrication and private-field access fail while ordinary explicit moves remain valid. Native emission retains its named unsupported boundary until target-aligned backing is implemented; no allocation or backing-layout implementation is claimed (2026-11-10)."
     remaining:
-      - implement canonical CpuSet literal/type identity
-      - replace legacy ThreadStorage[N] concept with non-generic @noCopy ThreadStorage(capacity)
-      - require compile-time ThreadStorage capacity and provision target-aligned backing storage without dynamic allocation
       - implement exact @noCopy ThreadConfig and contextual inline defaults
       - implement named ThreadConfig consumption through ordinary <- semantics
       - implement explicit storage borrow transfer/release across spawn, join, detach and failure cleanup
@@ -107,6 +106,7 @@ integrations:
       - complete thread Semantic IR facts without making the legacy opcode-name list normative
       - complete target-specific lowering/runtime integration
       - extend LSP thread presentation to Value/Panic/Termination availability, Platform, and navigation once those Sema facts exist
+      - Provision target-aligned ThreadStorage backing storage without dynamic allocation, consuming the validated compile-time constructor-capacity facts; frontend compile-time uint capacity checks are implemented (2026-11-10).
     required_tests:
       - spawn thread raw result is Result[Thread[T], ThreadSpawnError]
       - unsupported physical-thread target is a compile-time diagnostic
@@ -148,7 +148,7 @@ integrations:
     corrections_applied:
       - rules/corrections/applied/threads-v2-cross-rulebook-correction-20260924.md
       - rules/corrections/applied/thread-local-v2-cross-rulebook-correction-20260927.md
-    revised: "2026-11-09"
+    revised: "2026-11-10"
     code:
       - internal/sema/thread_lifecycle_errors.go
       - internal/sema/types.go
@@ -160,6 +160,14 @@ integrations:
       - internal/sema/thread_observer_wait.go
       - internal/sema/compiler_known_calls.go
       - internal/sema/core_union_declarations.go
+      - internal/sema/cpu_set.go
+      - internal/parser/parser.go
+      - internal/parser/expression.go
+      - internal/ast/ast.go
+      - internal/sema/analyzer_inference.go
+      - internal/diagnostics/diagnostics.go
+      - internal/sema/thread_storage.go
+      - internal/sema/compiler_known_members.go
     tests:
       - internal/sema/thread_lifecycle_errors_test.go
       - cmd/compiler/thread_lifecycle_errors_test.go
@@ -193,7 +201,37 @@ integrations:
       - testdata/sema/thread_termination_core.sec
       - testdata/sema/thread_observer_wait_valid.sec
       - testdata/sema/thread_observer_wait_invalid.sec
+      - internal/sema/cpu_set_test.go
+      - internal/formatter/cpu_set_test.go
+      - cmd/compiler/cpu_set_test.go
+      - cmd/lsp/cpu_set_test.go
+      - testdata/sema/cpu_set_valid.sec
+      - testdata/sema/cpu_set_invalid.sec
+      - testdata/sema/cpu_set_core.sec
+      - testdata/sema/cpu_set_target_width.sec
+      - testdata/formatter/cpu_set.sec
+      - testdata/formatter/cpu_set.expected.sec
+      - internal/sema/thread_storage_test.go
+      - cmd/compiler/thread_storage_test.go
+      - cmd/lsp/thread_storage_test.go
+      - testdata/sema/thread_storage_valid.sec
+      - testdata/sema/thread_storage_invalid.sec
+      - testdata/sema/thread_storage_core.sec
     verification:
+      - command: go vet -p 4 ./internal/sema ./internal/diagnostics ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-11-10 after non-generic ThreadStorage frontend integration
+      - command: go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run "^TestThreadStorage" -count=1
+        result: passed on 2026-11-10; Sema 0.008s, CLI 2.807s, LSP 3.559s; exact noCopy source declaration, compile-time constructor facts and reset, explicit move, eleven invalid forms, read-only Capacity hover/completion, hidden metadata and no unsupported IR artifact
+      - command: go test -p 4 ./internal/sema ./internal/diagnostics ./internal/ir/semantic -count=1
+        result: passed on 2026-11-10; complete Sema 17.907s, diagnostics 0.002s and Semantic IR 7.251s after non-generic ThreadStorage frontend integration
+      - command: go vet -p 4 ./internal/parser ./internal/sema ./internal/diagnostics ./internal/formatter ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-11-10 after CpuSet frontend integration
+      - command: go test -p 4 ./internal/sema ./internal/formatter ./cmd/compiler ./cmd/lsp -run "^TestCpuSet" -count=1
+        result: passed on 2026-11-10; Sema 0.026s, formatter 0.003s, CLI 3.211s, LSP 3.028s; opaque nominal identity, trusted/untrusted source declarations, uint components, eight invalid forms, duplicate locations, target-width bounds, formatting, hover and explicit unsupported IR boundary
+      - command: go test -p 4 ./internal/sema ./internal/diagnostics ./internal/formatter -count=1
+        result: passed on 2026-11-10; complete Sema 16.569s, diagnostics 0.002s, formatter 1.574s after CpuSet frontend integration
+      - command: go test -short -p 4 ./internal/parser -count=1
+        result: passed on 2026-11-10; parser 27.504s including positional CpuSet literals and opaque core declaration syntax
       - command: go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run "^Test(ChannelRevokeTypes|ThreadSetting)" -count=1
         result: passed on 2026-11-09 after extracting exactCoreUnionDeclaration from ThreadSetting for shared closed-union validation; no thread remaining point changed
       - command: go vet -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp

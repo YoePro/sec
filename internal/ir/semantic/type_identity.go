@@ -38,6 +38,25 @@ func (b *builder) semanticIdentity(t sema.Type) (string, string) {
 // on a nongeneric named declaration do not create source generic parameters.
 // Rules: rules/types/types.md — Type identity, Named types, Generic and parameterized types.
 func canonicalSemaType(t sema.Type) string {
+	// Structural carriers must recurse into semantic elements: their display
+	// names omit the declaring module of a nested nominal type.
+	if !t.Named && t.Element != nil {
+		switch t.Kind {
+		case sema.ReferenceType:
+			prefix := "ref "
+			if t.ReferenceMutable {
+				prefix = "ref mut "
+			}
+			return prefix + canonicalSemaType(*t.Element)
+		case sema.ArrayType:
+			if length, fixed := sema.FixedArrayLength(t); fixed {
+				return canonicalSemaType(*t.Element) + "[" + length.String() + "]"
+			}
+			return canonicalSemaType(*t.Element) + "[]"
+		case sema.SliceType:
+			return canonicalSemaType(*t.Element) + "[]"
+		}
+	}
 	name := t.Name
 	if t.Module != "" && (t.Named || t.Declared) {
 		name = t.Module + "::" + name
@@ -70,4 +89,19 @@ func locateUnsupportedType(err error, token lexer.Token) error {
 		return &copy
 	}
 	return err
+}
+
+// functionID projects a Sema-selected declaration's complete parameter types
+// into the same key used at its definition and calls. Sema's qualified Name
+// already includes the impl owner. Return type and consuming parameter mode do
+// not distinguish source overloads; concrete generic arguments are supplied by
+// the specialization producer instead of re-running overload resolution.
+// Rules: rules/declarations/functions.md — §§11,19–20;
+// rules/compiler/semantic_ir.md — §61(1–4).
+func functionID(f sema.Function, types *TypeTable) FunctionID {
+	parts := make([]string, len(f.Parameters))
+	for i, p := range f.Parameters {
+		parts[i] = canonicalSemaType(p.Type)
+	}
+	return FunctionID(f.Module + "::" + f.Name + "(" + strings.Join(parts, ",") + ")")
 }

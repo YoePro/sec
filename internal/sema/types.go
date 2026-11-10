@@ -440,14 +440,23 @@ type StructTag struct {
 }
 
 type Property struct {
-	Name      string
-	Type      Type
-	Token     lexer.Token
-	Static    bool
-	Fallible  bool
-	Error     *Type
-	HasGetter bool
-	HasSetter bool
+	// DeclaringModule belongs to the impl, including core impls on primitive
+	// types whose builtin type identity itself has no source module.
+	// Rules: rules/foundations/names_scopes_visibility.md — §§12.2–12.3.
+	DeclaringModule string
+	Name            string
+	Type            Type
+	Token           lexer.Token
+	Static          bool
+	Fallible        bool
+	Error           *Type
+	HasGetter       bool
+	HasSetter       bool
+	// Accessor callables retain distinct implementation identities, including
+	// unannotated bodies. Rules: rules/declarations/properties.md — §14;
+	// rules/analysis/effect_analysis.md — §10(1–2).
+	GetterCallable *Function
+	SetterCallable *Function
 }
 
 type Event struct {
@@ -665,7 +674,6 @@ type Function struct {
 	AllocationEffect  AllocationEffect
 	ImplTarget        string
 	ReceiverMutable   bool
-	ReceiverConsuming bool
 	Initializer       bool
 	ConstructionType  *Type
 	ConstructionError *Type
@@ -1259,6 +1267,8 @@ func newBuiltinTypes() map[string]Type {
 		"ThreadObserver":        {Name: "ThreadObserver", Kind: StructType, GenericParameters: []string{"T"}},
 		"ThreadLocal":           {Name: "ThreadLocal", Kind: StructType, GenericParameters: []string{"T"}},
 		"ThreadConfig":          {Name: "ThreadConfig", Kind: StructType},
+		"CpuSet":                builtinCpuSetType(),
+		"ThreadStorage":         builtinThreadStorageType(),
 		"ThreadContext":         {Name: "ThreadContext", Kind: StructType},
 		"TaskContext":           {Name: "TaskContext", Kind: StructType}, // cancellation.md § 8
 		"ThreadID":              {Name: "ThreadID", Kind: StructType},
@@ -1382,8 +1392,9 @@ func newBuiltinTypes() map[string]Type {
 		types[iface.Name] = iface
 	}
 
-	// rules/concurrency/ipc.md — §§6,27,44,55,68,79: nominal core errors.
-	for _, name := range []string{"IPCError", "SharedMemoryError", "IPCSyncError", "IPCSharedError", "IPCAtomicError"} {
+	// rules/concurrency/ipc.md — §§6,27,44,55,68,79,97 and
+	// rules/concurrency/processes.md — §5.9: nominal core errors.
+	for _, name := range []string{"IPCError", "SharedMemoryError", "IPCSyncError", "IPCSharedError", "IPCAtomicError", "CommandConfigurationError"} {
 		types[name] = builtinIPCErrorType(name)
 	}
 	// rules/concurrency/ipc.md — §94; rules/concurrency/processes.md — §§5.12–5.13.

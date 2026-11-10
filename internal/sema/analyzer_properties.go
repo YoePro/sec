@@ -25,8 +25,12 @@ func resolvedPropertyAccessKind(property Property, operator string) ResolvedProp
 //
 // Rules:
 //   - rules/declarations/properties.md — §4 "Getter semantics" and §15 "Lowering"
-func (a *Analyzer) recordResolvedPropertyRead(expr ast.Expression, owner Type, property Property) {
+func (a *Analyzer) recordResolvedPropertyRead(expr ast.Expression, owner Type, property Property) bool {
+	if !a.validatePropertyReadReceiver(expr, property) {
+		return false
+	}
 	a.recordResolvedPropertyAccess(expr, owner, property, PropertyRead, "")
+	return true
 }
 
 // recordResolvedPropertyWrite records the setter operation selected for a
@@ -52,6 +56,7 @@ func (a *Analyzer) recordResolvedPropertyAccess(expr ast.Expression, owner Type,
 		a.resolvedPropertyAccesses = map[ast.Expression]ResolvedPropertyAccess{}
 	}
 	a.recordRegisterPropertyAccess(expr, owner, property, kind)
+	a.recordPropertyAccessorEffects(expr, property, kind)
 	a.resolvedPropertyAccesses[expr] = ResolvedPropertyAccess{
 		Kind:         kind,
 		OwnerType:    owner,

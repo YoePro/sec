@@ -1,0 +1,5 @@
+module main
+
+fn Affinity() CpuSet {
+    return CpuSet {2,3,4}
+}

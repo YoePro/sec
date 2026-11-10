@@ -644,6 +644,7 @@ integrations:
       - cmd/compiler/native_track_test.go
       - testdata/build/native/switch_loop_control.sec
     implemented:
+      - "post-loop definite assignment (2026-11-10; flowcontrol_while.md § 23, § 28): a while loop intersects the assigned state of every reachable exit — the zero-iteration condition-false exit (omitted when the first test is proven true from pre-loop constants), the condition-false exit after an iteration (body fall-through and continue edges), and every reachable break; the while-true break special case and the `is empty` refinement are instances of the same merge. for loops keep the zero-iteration path (flowcontrol_for.md § 33). analyzer_while_flow.go intersectExitAssigned, TestWhileExitDefiniteAssignment"
       - "condition moves across iterations (fixed 2026-10-29; internal/sema/analyzer_while_flow.go): the while condition runs before every iteration, so the loop header and backedge fixed point now start from the pre-condition move state; `while Consume(<-token) {}` (with or without && / ||) reports S1089 \"may be unavailable on a later loop iteration\", while a body that reinitializes the place stays valid. Previously the condition's move was folded into the loop-entry state and never rechecked. Test: TestWhileConditionMoveIsCheckedAcrossIterations."
       - lexer recognition and AST representation of while statements
       - while condition and mandatory block parsing with missing-condition recovery
@@ -681,7 +682,6 @@ integrations:
     remaining:
       - carry Arena generation through loop-header and backedge fixed points, continue edges, change detection, and replay
       - extend non-literal condition proof beyond the current integer-comparison and boolean-operator subset and route other non-continuing flow through the canonical unreachable-code policy
-      - generalize post-loop definite-assignment merging to the all-reachable-continuing-path rule instead of relying on while-true break special cases
       - complete focused short-circuit, condition-frequency, try-condition, nesting, formatter, diagnostics, LSP, Semantic IR, and backend coverage
       - "Semantic IR: explicit loop cleanup edges for loops whose bodies own non-trivially destructible storage or defer (§ 66(1)), loop-carried ownership/availability state (§ 66(2)–(3)), and while loops nested in for/switch once those constructs reach Semantic IR"
       - "Sec MLIR: loop records are admitted from Semantic IR package gate 13; emit-sec-mlir (P12) and the dialect do not yet carry them"
@@ -803,6 +803,7 @@ integrations:
       - internal/ir/semantic/enum_switch_classes_test.go
       - testdata/build/native/enum_switch_classes.sec
     implemented:
+      - "Unit- and named-type-aware switch overlap (2026-11-10; flowcontrol_switch.md §§ 20–21, 26): duplicate, covered and overlapping case values compare in the subject representation — quantity literals with exactly the subject unit and conversions into the subject named semantic type are compile-time coordinates; compatible-but-different units are not compared by raw coefficient and incompatible units stay rejected; messages keep the source spelling (55<m>, Speed(1)). analyzer_switch_coverage.go switchCaseConstant; TestSwitchOverlapIsUnitAndNamedTypeAware"
       - subject and subjectless switch parsing with AST source-order retention
       - value, range, relational, and comma-separated case alternatives
       - unique final default validation
@@ -833,10 +834,8 @@ integrations:
       - "Canonical covered-case diagnostics (2026-11-09; flowcontrol_switch.md sections 20-23/34, diagnostics.md section 21): all established constant-value, normalized-range and relational full-coverage proofs publish mandatory S3001 with the earlier covering item, exact token range, actionable help and navigable related source location; duplicate bool/integer/string/enum value classes retain the published mandatory S1015 identity and get the same provenance quality. Comma alternatives and singleton ranges use the same policy. Partial range overlap stays a separate source-validity check; mere finite-range overlap no longer falsely proves an unbounded relational case unreachable. Dynamic bounds remain conservative. Expanded reasoning beyond existing normalized coverage facts remains in the other switch coverage/CFG items. Tests preserve both mandatory identities against suppression and carry proofs through CLI JSON/LSP; native execution verifies first-match behavior and reachable values outside a finite earlier range."
       - "enum switch subjects (2026-10-18): Semantic IR tests each enum case alternative with same-enum equality (enum.compare eq); a Sema-proven exhaustive enum switch without default ends in a synthesized unreachable; built and executed with integer enums (TestNativeTrackBuildsAndRuns/enums)"
     remaining:
-      - split comma-separated alternatives into explicit per-alternative frontend CFG edges instead of retaining conservative aggregate state
       - make ownership, destruction, cleanup, Semantic IR, lowering, and interprocedural analyses consume the resolved switch flow and future canonical switch plan
       - lower string switch subjects through Semantic IR and the compilation track (blocked on P23 string values); bool and named-integer subjects lower and run natively (bool_switch.sec, named_scalars.sec)
-      - implement full unit-aware and named-semantic-type-aware overlap reasoning
       - extend relational coverage reasoning for dynamic expressions where reachability is statically provable
       - complete code generation for every Sema-supported switch subject and case family
       - complete the revision-2.0 parser, Sema, CFG, formatter, diagnostics, LSP, Semantic IR, ownership, and backend regression matrix
@@ -1223,6 +1222,13 @@ integrations:
       - internal/sema/type_pack_iteration.go
       - internal/sema/type_pack_index_reads.go
       - internal/sema/analyzer_lifetime.go
+      - internal/cst/for_binding_roles.go
+      - internal/cst/roles.go
+      - internal/sema/for_binding_tooling.go
+      - cmd/lsp/iterator_hover.go
+      - internal/sema/iterator_tooling.go
+      - cmd/lsp/iterator_completion.go
+      - cmd/lsp/main.go
     tests:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
@@ -1249,6 +1255,18 @@ integrations:
       - cmd/lsp/type_pack_index_borrow_test.go
       - testdata/generics/type_pack_declarations/owned_index_borrow.sec
       - testdata/generics/type_pack_declarations/owned_index_copy_invalid.sec
+      - internal/formatter/for_binding_headers_test.go
+      - internal/sema/for_binding_tooling_test.go
+      - cmd/compiler/for_binding_headers_test.go
+      - cmd/lsp/for_binding_headers_test.go
+      - testdata/formatter/for_binding_headers.sec
+      - testdata/formatter/for_binding_headers.expected.sec
+      - testdata/tooling/for_binding_empty.sec
+      - testdata/sema/for_binding_tooling_invalid.sec
+      - internal/sema/iterator_tooling_test.go
+      - cmd/lsp/iterator_binding_presentation_test.go
+      - testdata/tooling/iterator_binding_presentation.sec
+      - testdata/tooling/iterator_binding_presentation_invalid.sec
     implemented:
       - "MD-117 pack loop modes and constant indexing (2026-11-01; functions.md §38A(5)(2),(4)-(6), semantic_ir.md §27A(5)-(6)): for ref mut reborrows each ref mut parameter per use; for ref over an owned position borrows through a read-only value root with Sema's loop borrow; values[k] requires a non-negative compile-time constant index (never a flow-known let mut), has the opaque element Types[k] so different positions do not unify, is checked per selected call for existence and for copyability of an owned by-value read, and lowers to the expanded parameter as a holder pass, reborrow, copy or value-root borrow; moving an element or a ref mut holder out of the pack and mutable borrows through shared or owned positions are rejected (TestPackLoopBindingModes, TestPackIndexSelectsPosition, TestTypePackIndexing)"
       - "MD-117 pack loop backfill (2026-11-01; functions.md §38A(5)(7), flowcontrol_for.md §13A(3)): each loop has its own opaque element Types[binding], so nested loops over one pack do not unify their elements; by-value diagnostics follow source order; nested loops, switch, continue, break, try, panic and return in the body and empty-pack iteration are verified in Semantic IR; the LSP reports the same rules (TestTypePackIterationTemplate, TestTypePackByValueDiagnosticsAreOrdered, TestPackLoopBodyControlFlow, TestPackLoopLSP)"
@@ -1296,14 +1314,14 @@ integrations:
       - "descending iteration is explicit (flowcontrol_for.md §§ 23, 27): `start > end` without a step is zero iterations and is never inferred as descending, and an unsigned range rejects a negative step ('unsigned range uint cannot use negative step -3; use a signed range type or while')."
       - "MD-126 StringView frontend iteration completed (2026-11-05; flowcontrol_for.md 19): StringView and ref StringView select the string-family category, yielding rune values and the ordinary view-relative integer index for two-binding loops. for ref over decoded text rejects with S1199. One-time iterable borrowing stays live through the loop, including mutable calls, and ends at loop exit. Plain strings and MD-117/MD-119 pack forms retain their paths. Source-backed Sema, compiler check, LSP hover/diagnostic and formatter tests pass; full Sema regressions cover existing pack/binding modes. Executable traversal remains the named P23 StringView boundary, not a newly introduced iterator protocol."
       - "MD-117 implicit indexed pack borrows (2026-11-09; functions.md sections 38A(4)(3),38A(5), borrowing.md section 15): Touch(values[k]) with a selected ref parameter borrows an owned pack position, including move-only concrete elements. Indexed copy requirements are delayed until parameter selection and checked per referenced position; an unrelated copyable position does not require the borrowed position to be copyable. Actual by-value calls, local copies, by-value loops, illegal mutable authority, out-of-range indexes and element extraction retain their checks. Shared fixtures cover repeated implicit/explicit borrows, independent specializations and mixed move-only/copyable positions through Sema, CLI JSON and unsaved LSP buffers. Physical reference lowering remains owned by its existing P24 work."
+      - For-header ref/ref mut keywords and multi-binding commas receive parser-owned CST spacing roles, completing ordinary intra-line for/in/range/step spacing without changing comments, line breaks or binding authority. Sema publishes detached, source-ordered ForBindingModes only after a header validates, with explicit value/ref/ref mut/discard mode and resolved binding type; reset and invalid-header tests prevent stale or positive invalid facts. LSP hover at for, binding names and ref keywords consumes these facts and retains existing Iterator/Next and map information. Shared CLI/LSP formatting goldens and typed source tests cover all modes (2026-11-10).
+      - "Dedicated iterator binding presentation completed 2026-11-10: Sema snapshots now retain each yielded BindingID and explicitly classify borrowed interface-view requirements alongside concrete and generic-constraint resolutions. LSP ordinary and expected-return completion preserve the yielded value type and show the canonical Iterator[T], element type and selected Next description; hover on uses of the loop binding resolves the same fact by binding identity. Equal spellings in disjoint loops or ordinary locals cannot inherit another resolution. Valid ref mut Iterator[T] views publish their runtime interface requirement without inventing a concrete target; generic templates continue to defer selection to specialization. Invalid conformance, duck typing and shared views supply no Next promise. This is tooling over existing loop semantics; iterator runtime/lowering and cleanup remain separate remaining work."
     remaining:
       - carry Arena generation through the shared loop-header and backedge fixed-point analysis, including continue edges and replay
-      - normalize loop-header whitespace in the formatter (the formatter currently preserves intra-line spacing in every for header) and expose binding modes through compiler-owned LSP facts beyond the resolved reference type
       - complete float and decimal range lowering with resolved-type arithmetic and stable source-visible endpoint behavior
       - lower dynamic arrays, lists, slices, strings, maps, sets, and vectors through Semantic IR and the compilation track
       - extend structural-stability checking to user-defined operations and calls that receive mutable authority over the iterated collection (requires interprocedural structural-mutation summaries) and to collections reached through Iterator[T] sources
       - lower compiler-known Iterator[T] loops through Semantic IR and the compilation track as repeated statically resolved Next calls with Some/None control flow and cleanup
-      - expose Iterator[T], resolved element type, and selected Next operation in dedicated LSP hover and completion contexts beyond ordinary shared Sema diagnostics
       - complete iterator ownership and cleanup validation for move-only yielded T, break, continue, return, and error exits
       - represent yielded component modes, iteration state, source authority, structural stability, and cleanup edges explicitly in Semantic IR
       - complete the revision-2.0 parser, Sema, ownership, borrowing, flow, cleanup, formatter, diagnostics, LSP, Semantic IR, and backend regression matrix
@@ -1361,6 +1379,20 @@ integrations:
       - reachable break restores a continuing post-loop path
       - break and continue execute required cleanup edges
     verification:
+      - command: go test ./cmd/compiler -run "Iterator" -count=1
+        result: passed on 2026-11-10; existing compiler iterator tests 1.258s after shared snapshot presentation changes.
+      - command: go vet -p 4 ./internal/sema ./cmd/lsp
+        result: passed on 2026-11-10
+      - command: go test -p 4 ./cmd/lsp -run "Iterator|ForBinding|Expected.*Completion|MemberCompletion.*Return" -count=1
+        result: passed on 2026-11-10; 52.246s. Source-backed concrete int/string, generic constraint and borrowed-view cases retain compiler descriptions in completion/use-site hover, including expected-return filtering. Same-spelling ordinary locals, invalid duck loops and shared interface views do not inherit iterator promises. Existing iterator/header/navigation and neighboring completion tests remain green. Remaining 11 to 10.
+      - command: go test -p 4 ./internal/sema ./internal/ir/semantic -count=1
+        result: passed on 2026-11-10; complete Sema 16.756s and Semantic IR 7.158s after iterator snapshot binding/view publication. Snapshot tests verify distinct bindings, borrowed requirements without concrete targets, and invalid/reanalyzed-source fact removal.
+      - command: go vet -p 4 ./internal/cst ./internal/formatter ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-11-10
+      - command: go test -p 4 ./internal/formatter ./internal/sema ./cmd/compiler ./cmd/lsp -run "TestFormatForBindingHeaders|TestForBindingModeFacts|TestForBindingHeaders|TestIteratorHoverUsesCompilerResolution" -count=1
+        result: passed on 2026-11-10; formatter 0.015s, Sema 0.028s, CLI 0.863s and LSP 24.482s; canonical/idempotent golden, all binding modes, comment preservation, accepted typed source, detached/reset/invalid-header facts and retained Iterator/Next hover
+      - command: go test -p 4 ./internal/cst ./internal/formatter ./internal/sema -count=1
+        result: passed on 2026-11-10; complete CST 0.007s, formatter 1.446s and Sema 16.001s after for-header spacing and validated binding-mode facts
       - command: go test -p 4 ./internal/sema -count=1; go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run 'TestOwnedPackIndexCallBorrow|TestTypePack' -count=1; go vet -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp
         result: "Passed 2026-11-09: complete Sema suite (17.660s); focused pack Sema/CLI/LSP suites (0.742s/2.604s/2.347s); vet clean. Replacing type_pack_iteration.go through a read-only Go overlay with its pre-fix contents makes the new valid fixture fail for Borrow and Mixed move-only positions, reproducing the regression. Real copies retain concrete position/type and related template locations."
       - command: go vet -p 4 ./internal/sema ./internal/ir/semantic ./internal/diagnostics ./internal/formatter ./cmd/compiler ./cmd/lsp
@@ -1395,7 +1427,7 @@ integrations:
         result: passed across all packages on 2026-10-02 after the structural-stability check
       - command: go test ./internal/sema -run 'TestForBinding|TestStructural|TestNonStructural|TestIteratorStorage' -count=1
         result: passed on 2026-10-29 with loop-binding borrows of the iterable and binding-position modes; frontend.for-loops-v2 remaining 19 to 14
-    revised: "2026-11-09"
+    revised: "2026-11-10"
 
   - id: frontend.loop-break-targeted-exit-analysis
     area: frontend-control-flow
@@ -1712,6 +1744,8 @@ integrations:
       - testdata/switch_valid.sec
       - testdata/switch_invalid.sec
     implemented:
+      - "Comma-alternative short-circuit state (2026-11-10): the state after each alternative is a separate body-entry edge merged at the case body, while the unmatched continuation keeps the state after every alternative; an always-matching subjectless alternative makes later alternatives and case tests call-graph unreachable, and a body is reachable only through its own reachable test or a reachable fallthrough edge (analyzer_switch.go)"
+      - "Switch flow regression matrix (2026-11-10): lazy later consuming case tests, short-circuit comma alternatives, move and assignment state across fallthrough, destination tests skipped on the fallthrough edge, no reachable effect from case tests after an always-matching subjectless alternative, and open bit-backed enum non-exhaustiveness; enum alias/value-class/closed-enum rows remain covered by switch_coverage_test, analyzer_test and analyzer_switch_flow_test. TestSwitchFlowRegressionMatrix"
       - switch subject expression is inferred once
       - subject and subjectless switch syntax and source order are preserved
       - value, range, relational, and comma-separated alternatives are represented
@@ -1732,9 +1766,7 @@ integrations:
       - a durable frontend ResolvedSwitchFlow exists, but the full cross-layer ResolvedSwitchPlan and per-alternative CFG are not yet published to Semantic IR
     remaining:
       - build a canonical path-sensitive resolved switch CFG
-      - preserve source-order and comma-alternative short-circuit state
       - make definite assignment, ownership, resources, borrows, termination, call/effect reachability, Semantic IR, diagnostics, and lowering consume the same resolved switch plan
-      - complete the remaining lazy-case, fallthrough-state, enum-exhaustiveness, and open-bit-domain regression matrix
     bug_reference:
       - correction24.md
     governance_reconciliation:

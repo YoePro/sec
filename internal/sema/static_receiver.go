@@ -3,6 +3,7 @@ package sema
 import (
 	"sec/internal/ast"
 	"sec/internal/diagnostics"
+	"sec/internal/lexer"
 )
 
 // inferImplicitImplProperty resolves an unqualified property only when the
@@ -32,7 +33,9 @@ func (a *Analyzer) inferImplicitImplProperty(expr *ast.Identifier) (Type, bool) 
 	if !ok {
 		return Type{Kind: InvalidType}, true
 	}
-	a.recordResolvedPropertyRead(expr, target, property)
+	if !a.recordResolvedPropertyRead(expr, target, property) {
+		return Type{Kind: InvalidType}, true
+	}
 	return property.Type, true
 }
 
@@ -57,4 +60,36 @@ func (a *Analyzer) staticReceiverlessCandidates(call *ast.CallExpression, functi
 			"method %s requires an instance receiver in static method %s", callExpressionName(call), a.currentFunctionMetadata.Name)
 	}
 	return allowed
+}
+
+// reportInstanceQualifiedStatic rejects a static member reached through a
+// value: static members are accessed through their type so shared type-level
+// state stays explicit.
+// Rules: rules/declarations/static.md — § 8 "Static member access", § 28.
+func (a *Analyzer) reportInstanceQualifiedStatic(token lexer.Token, owner Type, member string) {
+	ownerName := typeDisplayName(owner)
+	a.addErrorAtTokenWithMetadata(token, diagnostics.StaticTypeQualifiedAccess,
+		"Write "+ownerName+"."+member+" instead of reaching the static member through a value.",
+		"static member %s must be accessed through type %s", member, ownerName)
+}
+
+// instanceQualifiedStaticStorage reports whether member names type-owned
+// static storage of owner, which a value receiver must not reach.
+func (a *Analyzer) instanceQualifiedStaticStorage(owner Type, member string) bool {
+	if owner.Name == "" {
+		return false
+	}
+	symbol, ok := a.symbols.lookup(owner.Name + "." + member)
+	return ok && symbol.Storage == StorageOriginStatic
+}
+
+// allStaticFunctions reports a non-empty candidate set whose every member is
+// a static fn, which an explicit value receiver must not call.
+func allStaticFunctions(functions []Function) bool {
+	for _, function := range functions {
+		if !function.Static {
+			return false
+		}
+	}
+	return len(functions) > 0
 }

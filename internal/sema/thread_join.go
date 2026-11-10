@@ -14,6 +14,16 @@ import "sec/internal/ast"
 //   - rules/concurrency/tasks.md — § 17 "Join"
 //   - rules/foundations/grammar.md — § 61A "Join statement"
 func (a *Analyzer) analyzeJoinStatement(stmt *ast.JoinStatement) {
+	a.analyzeJoinCommit(stmt, true)
+}
+
+// analyzeJoinCommit validates and commits the one-shot join capability.
+// Standalone joins may wait; selected joins are already ready and are covered
+// by the enclosing select boundary instead. Invalid waits still resolve the
+// lifecycle for diagnostic recovery, avoiding an unrelated scope-exit cascade.
+// Rules: rules/concurrency/mutex.md — §41(2–3);
+// rules/concurrency/tasks.md — §17(13–16); rules/concurrency/threads.md — §§34–35.
+func (a *Analyzer) analyzeJoinCommit(stmt *ast.JoinStatement, mayWait bool) {
 	if stmt == nil || stmt.Value == nil {
 		return
 	}
@@ -45,6 +55,9 @@ func (a *Analyzer) analyzeJoinStatement(stmt *ast.JoinStatement) {
 			"join consumes the one-shot join capability; the handle stays usable for terminal inspection.",
 			"%s %s was already joined at %d:%d", kind, identifier.Value, previous.Line, previous.Column)
 		return
+	}
+	if mayWait {
+		a.checkLiveMutexGuardsAcrossBoundary(stmt.Token, "join")
 	}
 	a.closedResources[identifier.Value] = stmt.Token
 }

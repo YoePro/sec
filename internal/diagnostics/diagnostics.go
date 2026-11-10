@@ -82,6 +82,7 @@ const (
 	ParserInvalidHardwareDeclaration              = "P2036"
 	ParserMutFnInImpl                             = "P2037"
 	ParserInterfaceConformancePlacement           = "P2038"
+	ParserConsumingInterfaceReceiver              = "P2039"
 	MissingModuleDeclaration                      = "S1001"
 	DuplicateModuleDeclaration                    = "S1002"
 	ModuleDeclarationConflict                     = "S1003"
@@ -292,6 +293,11 @@ const (
 	// ImportedModuleMismatch rejects conflicting module headers in one import.
 	// Rules: rules/projects/modules.md — §§3,9,21.
 	ImportedModuleMismatch = "S1158"
+	// DuplicateImport and SelfImport reject a repeated import of one canonical
+	// module identity in a source file and a module importing itself.
+	// Rules: rules/projects/modules.md — §§ 14, 21.
+	DuplicateImport = "S1217"
+	SelfImport      = "S1218"
 	// Borrow conflict identities follow requested semantic actions, preserving
 	// origins and mentor explanations rather than classifying rendered prose.
 	// Rules: rules/memory/borrowing.md — §§7,8,9,12,15,21–23,32–33;
@@ -361,6 +367,16 @@ const (
 
 	// InterfaceReceiverCapability identifies a rejected method/iteration receiver.
 	InterfaceReceiverCapability = "S1189"
+	InterfaceConsumingReceiver  = "S1211"
+	OrdinaryConsumingReceiver   = "S1212"
+	// LogicalTaskContextRequired identifies a real-task requirement at an invalid root.
+	LogicalTaskContextRequired = "S1213"
+	CpuSetLiteral              = "S1214"
+	ThreadStorageCapacity      = "S1215"
+	PropertyNotVisible         = "S1216"
+	// PropertyReceiverMutable requires writable authority for an inferred mutating getter.
+	// Rules: rules/declarations/properties.md — §8; rules/memory/borrowing.md — §7.
+	PropertyReceiverMutable = "S1219"
 	// InterfaceConformancePlacement is the Sema guard for recovered/programmatic ASTs.
 	InterfaceConformancePlacement = "S1190"
 	// MD-120 uses separate rules for Result eligibility, variant knowledge and
@@ -393,7 +409,12 @@ const (
 	RawPointerInvalidOperation    = "S1205"
 	RawPointerDanglingOrigin      = "S1206"
 	AsmInvalidRegisterOperandType = "S1207"
-	HardwareRegionOverlap         = "A2010"
+	ThreadLocalAutomaticKey       = "S1208"
+	ThreadLocalInitialNotCopyable = "S1209"
+	// StaticTypeQualifiedAccess rejects a static member reached through a
+	// value instead of its type (rules/declarations/static.md § 8).
+	StaticTypeQualifiedAccess = "S1210"
+	HardwareRegionOverlap     = "A2010"
 
 	// UnionVariantPayloadRequired rejects a payload-carrying union variant
 	// used as a value without its payload.
@@ -476,10 +497,19 @@ var registry = map[string]Definition{
 	FillElementNotCopyable:                {ID: FillElementNotCopyable, Name: "collections.fill-element-not-copyable", Family: "collections", DefaultSeverity: SeverityError, Mandatory: true},
 	UnknownCallTarget:                     {ID: UnknownCallTarget, Name: "names.unknown-call-target", Family: "names", DefaultSeverity: SeverityError, Mandatory: true},
 	ImportedModuleMismatch:                {ID: ImportedModuleMismatch, Name: "modules.inconsistent-source-module", Family: "modules", DefaultSeverity: SeverityError, Mandatory: true},
+	DuplicateImport:                       {ID: DuplicateImport, Name: "modules.duplicate-import", Family: "modules", DefaultSeverity: SeverityError, Mandatory: true},
+	SelfImport:                            {ID: SelfImport, Name: "modules.self-import", Family: "modules", DefaultSeverity: SeverityError, Mandatory: true},
 	BorrowExplicitRefRequired:             {ID: BorrowExplicitRefRequired, Name: "borrowing.explicit-ref-required", Family: "borrowing", DefaultSeverity: SeverityError, Mandatory: true},
 	AtomicOrderNotCompileTime:             {ID: AtomicOrderNotCompileTime, Name: "atomic.order-not-compile-time", Family: "atomic", DefaultSeverity: SeverityError, Mandatory: true},
 	AtomicInvalidMemoryOrder:              {ID: AtomicInvalidMemoryOrder, Name: "atomic.invalid-memory-order", Family: "atomic", DefaultSeverity: SeverityError, Mandatory: true},
 	InterfaceReceiverCapability:           {ID: InterfaceReceiverCapability, Name: "interfaces.receiver-capability", Family: "interfaces", DefaultSeverity: SeverityError, Mandatory: true},
+	InterfaceConsumingReceiver:            {ID: InterfaceConsumingReceiver, Name: "interfaces.consuming-receiver", Family: "interfaces", DefaultSeverity: SeverityError, Mandatory: true},
+	OrdinaryConsumingReceiver:             {ID: OrdinaryConsumingReceiver, Name: "functions.consuming-receiver", Family: "functions", DefaultSeverity: SeverityError, Mandatory: true},
+	LogicalTaskContextRequired:            {ID: LogicalTaskContextRequired, Name: "concurrency.logical-task-context-required", Family: "concurrency", DefaultSeverity: SeverityError, Mandatory: true},
+	CpuSetLiteral:                         {ID: CpuSetLiteral, Name: "thread.invalid-cpu-set-literal", Family: "thread", DefaultSeverity: SeverityError, Mandatory: true},
+	ThreadStorageCapacity:                 {ID: ThreadStorageCapacity, Name: "thread.invalid-storage-capacity", Family: "thread", DefaultSeverity: SeverityError, Mandatory: true},
+	PropertyNotVisible:                    {ID: PropertyNotVisible, Name: "properties.not-visible", Family: "properties", DefaultSeverity: SeverityError, Mandatory: true},
+	PropertyReceiverMutable:               {ID: PropertyReceiverMutable, Name: "properties.mutable-receiver-required", Family: "properties", DefaultSeverity: SeverityError, Mandatory: true},
 	InterfaceConformancePlacement:         {ID: InterfaceConformancePlacement, Name: "interfaces.conformance-placement", Family: "interfaces", DefaultSeverity: SeverityError, Mandatory: true},
 	GuardConsumesBinding:                  {ID: GuardConsumesBinding, Name: "ownership.guard-consumes-binding", Family: "ownership", DefaultSeverity: SeverityError, Mandatory: true},
 	StaticInstanceReceiverRequired:        {ID: StaticInstanceReceiverRequired, Name: "static.instance-receiver-required", Family: "static", DefaultSeverity: SeverityError, Mandatory: true},
@@ -521,6 +551,9 @@ var registry = map[string]Definition{
 	RawPointerUnsafeRequired:              {ID: RawPointerUnsafeRequired, Name: "unsafe.raw-pointer-context", Family: "unsafe", DefaultSeverity: SeverityError, Mandatory: true},
 	RawPointerInvalidOperation:            {ID: RawPointerInvalidOperation, Name: "unsafe.raw-pointer-operation", Family: "unsafe", DefaultSeverity: SeverityError, Mandatory: true},
 	RawPointerDanglingOrigin:              {ID: RawPointerDanglingOrigin, Name: "unsafe.raw-pointer-dangling", Family: "unsafe", DefaultSeverity: SeverityError, Mandatory: true},
+	ThreadLocalAutomaticKey:               {ID: ThreadLocalAutomaticKey, Name: "thread-local.automatic-key", Family: "thread-local", DefaultSeverity: SeverityError, Mandatory: true},
+	ThreadLocalInitialNotCopyable:         {ID: ThreadLocalInitialNotCopyable, Name: "thread-local.initial-not-copyable", Family: "thread-local", DefaultSeverity: SeverityError, Mandatory: true},
+	StaticTypeQualifiedAccess:             {ID: StaticTypeQualifiedAccess, Name: "static.type-qualified-access-required", Family: "static", DefaultSeverity: SeverityError, Mandatory: true},
 	AsmInvalidRegisterOperandType:         {ID: AsmInvalidRegisterOperandType, Name: "asm.invalid-register-operand-type", Family: "asm", DefaultSeverity: SeverityError, Mandatory: true},
 	StaticStoreOfShortLivedReference:      {ID: StaticStoreOfShortLivedReference, Name: "escape.static-store-of-short-lived-reference", Family: "escape", DefaultSeverity: SeverityError, Mandatory: true},
 	ThreadLocalStoreOfShortLivedReference: {ID: ThreadLocalStoreOfShortLivedReference, Name: "escape.thread-local-store-of-short-lived-reference", Family: "escape", DefaultSeverity: SeverityError, Mandatory: true},
@@ -706,6 +739,7 @@ var registry = map[string]Definition{
 	ParserRemovedUppercaseForeignQualifier: parserDefinition(ParserRemovedUppercaseForeignQualifier, "parser.removed-uppercase-foreign-qualifier"),
 	ParserInvalidHardwareDeclaration:       parserDefinition(ParserInvalidHardwareDeclaration, "parser.invalid-hardware-declaration"),
 	ParserInterfaceConformancePlacement:    parserDefinition(ParserInterfaceConformancePlacement, "parser.interface-conformance-placement"),
+	ParserConsumingInterfaceReceiver:       parserDefinition(ParserConsumingInterfaceReceiver, "parser.consuming-interface-receiver"),
 	ParserMutFnInImpl:                      parserDefinition(ParserMutFnInImpl, "parser.mut-fn-in-impl"),
 	ParserCompatibilitySyntax: {
 		ID:              ParserCompatibilitySyntax,

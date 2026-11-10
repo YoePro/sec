@@ -342,7 +342,7 @@ func (e *emitter) emitOperation(function *semantic.Function, operation semantic.
 		}
 		fmt.Fprintf(&e.out, "%s = \"sec.storage.declare\"() {sec.mutable = %t, sec.source_name = %s, sec.storage_class = %s, sec.storage_id = %d : i32",
 			storageName(storage.ID), storage.Mutable, mlirString(storage.Name), mlirString(string(storage.Class)), storage.ID)
-		if scalarKind, ok := e.scalarKind(storage.Type); ok {
+		if scalarKind, ok := e.storageScalarKind(storage.Type); ok {
 			fmt.Fprintf(&e.out, ", sec.scalar_kind = %s", mlirString(scalarKind))
 		}
 		if storage.AddressTaken {

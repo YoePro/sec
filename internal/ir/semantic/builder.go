@@ -4236,13 +4236,6 @@ func ownershipForParameter(p sema.FunctionParameter, maxPackage uint8) (Ownershi
 	}
 	return "", &UnsupportedFeatureError{Feature: "non-scalar parameter type " + p.Type.Name, Package: maxPackage}
 }
-func functionID(f sema.Function, types *TypeTable) FunctionID {
-	parts := make([]string, len(f.Parameters))
-	for i, p := range f.Parameters {
-		parts[i] = canonicalSemaType(p.Type)
-	}
-	return FunctionID(f.Module + "::" + f.Name + "(" + strings.Join(parts, ",") + ")")
-}
 
 // parseDecimal reads an exact decimal literal with no coefficient-width
 // limit; parseDecimalFor fits it to a decimal type.

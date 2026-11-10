@@ -1,0 +1,10 @@
+module main
+type Counter struct { _value: int, }
+impl Counter {
+    property ReadRisk: int { get { return self._value + 1 } }
+}
+@noPanic
+fn Unreachable(value: ref Counter) int {
+    if false { return value.ReadRisk }
+    return 0
+}

@@ -1,0 +1,31 @@
+module main
+
+fn Failure() Result[void, CommandConfigurationError] {
+    return Err(CommandConfigurationError.InvalidIOResource)
+}
+fn DefaultError() CommandConfigurationError {
+    let value: CommandConfigurationError := CommandConfigurationError.InvalidState
+    return value
+}
+fn Explain(value: CommandConfigurationError) int {
+    match value {
+        InvalidState => return 0
+        InvalidWorkingDirectory => return 1
+        NotFound => return 2
+        NotDirectory => return 3
+        PermissionDenied => return 4
+        InvalidEnvironmentName => return 5
+        InvalidEnvironmentValue => return 6
+        InvalidIOResource => return 7
+        OutOfMemory => return 8
+    }
+}
+fn Copy(value: CommandConfigurationError) CommandConfigurationError {
+    let copy := value
+    return copy
+}
+fn main() int {
+    if Explain(CommandConfigurationError.InvalidIOResource) != 7 { return 1 }
+    if DefaultError() != CommandConfigurationError.InvalidState { return 2 }
+    return 0
+}

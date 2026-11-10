@@ -1,0 +1,14 @@
+module main
+
+fn Pause() void {
+    Task.Yield()
+}
+
+test "ordinary tests are not tasks" {
+    Pause()
+}
+
+test "spawned work is a task" {
+    let work := spawn Pause()
+    await work
+}

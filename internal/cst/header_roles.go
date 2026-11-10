@@ -55,8 +55,7 @@ func (d *Document) applyHeaderSpacingRoles(node any, indexes map[concreteTokenKe
 				continue
 			}
 			if element.Kind == Token && ((node.Static && element.Token.Type == lexer.STATIC) ||
-				(node.ReceiverCapability == ast.ReceiverMutable && element.Token.Type == lexer.MUT) ||
-				(node.ReceiverCapability == ast.ReceiverConsuming && element.Token.Type == lexer.CONSUME_ARROW)) {
+				(node.ReceiverCapability == ast.ReceiverMutable && element.Token.Type == lexer.MUT)) {
 				mark(element.Token, SpacedKeyword)
 			}
 			break

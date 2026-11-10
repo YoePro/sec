@@ -1,0 +1,12 @@
+module core
+
+enum CommandConfigurationError error {
+    InvalidState
+    InvalidWorkingDirectory
+    NotFound
+    NotDirectory
+    PermissionDenied
+    InvalidEnvironmentName
+    InvalidEnvironmentValue
+    OutOfMemory
+}

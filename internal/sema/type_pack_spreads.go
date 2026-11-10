@@ -218,10 +218,6 @@ func (a *Analyzer) typePackForwardCandidates(call *ast.CallExpression, functions
 			a.typePackForwardUnavailable(token, "into a callable returning a value that contains a reference")
 			return nil, receiver, false
 		}
-		if function.ReceiverConsuming {
-			a.typePackForwardUnavailable(token, "into a method consuming its receiver")
-			return nil, receiver, false
-		}
 		if isMethodCall && dereferenceType(receiver.Type).Kind != StructType {
 			if kind := dereferenceType(receiver.Type).Kind; kind == InterfaceType || kind == GenericType {
 				a.typePackForwardUnavailable(token, "through interface dispatch")

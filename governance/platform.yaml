@@ -609,6 +609,7 @@ integrations:
       - sec/platform/linux/amd64/raw_syscall.sec
       - internal/sema/analyzer_asm.go
       - internal/diagnostics/diagnostics.go
+      - internal/parser/asm.go
     tests:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
@@ -617,6 +618,11 @@ integrations:
       - cmd/lsp/asm_operand_types_test.go
       - testdata/sema/asm_operand_types_valid.sec
       - testdata/sema/asm_operand_types_invalid.sec
+      - internal/parser/asm_volatile_test.go
+      - cmd/compiler/asm_volatile_test.go
+      - cmd/lsp/asm_volatile_test.go
+      - testdata/parser/asm_volatile_invalid.sec
+      - testdata/parser/asm_volatile_identifier_valid.sec
     implemented:
       - parser recognizes asm statements and the structured asm block form
       - structured parser retains assembly template plus inputs, outputs, and clobbers
@@ -626,6 +632,7 @@ integrations:
       - effect-analysis trust provenance already recognizes facts trusted through an inline assembly declaration
       - unsafe governance already identifies inline assembly as an unsafe trust boundary and requires effect/target analyses to remain active
       - Direct register inputs and inferred outputs reject high-level, nominal, constrained, enum, aggregate, reference, resource-owning, collection, shaped and callable types with registered mandatory S1207 asm.invalid-register-operand-type and explicit representation-extraction guidance. Primitive integer/float and RawPtr carriers retain their existing behavior; width, target operand-class and ABI validation remain separately tracked. Source-backed tests cover eighteen invalid input types, two invalid output types, explicit primitive conversion and invalid-IR suppression (2026-11-09)
+      - C-style asm volatile, volatile asm and @volatile asm forms are rejected with canonical P2012 parser.reserved-syntax and guidance to ordinary asm in explicit unsafe context. Invalid AST nodes retain diagnosed recovery and preserve following declarations without dependent Sema errors; ordinary volatile identifiers and existing asm forms remain valid. Parser, CLI and LSP share the rejection, and invalid forms cannot emit IR artifacts (2026-11-10).
     incorrect_or_partial:
       - current LLVM asm block lowering supports exactly one output and hardcodes the result type to i64
       - current LLVM lowering coerces every asm input to i64, including implicit integer extension/truncation, contrary to the exact-width rule
@@ -657,7 +664,6 @@ integrations:
       - remove implicit architecture-specific default clobbers and require every destroyed undeclared machine resource to be represented explicitly
       - support target machine resources beyond general registers where the target contract defines them
       - make ordinary asm observable by default and preserve its occurrence on live execution paths without turning containing declarations into LinkRoots
-      - do not add asm volatile, volatile asm, @volatile asm, or other C-style volatile source forms
       - represent memory as compiler-visible unknown memory interaction rather than hardware ordering/synchronization/completion
       - support precise known memory footprints where practical instead of forcing every asm operation to unknown memory
       - represent external/system effects separately from ordinary memory effects
@@ -767,8 +773,14 @@ integrations:
       - automatic inference of atomicity, interrupt masking, ordering, completion, blocking, or other correctness-critical semantics from instruction mnemonics
       - a specific future GPU/SIMD machine-vector operand design
       - "target applicability scope syntax such as the exact ownership of #target versus @target"
-    revised: "2026-11-09"
+    revised: "2026-11-10"
     verification:
+      - command: go vet -p 4 ./internal/parser ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-11-10 after volatile asm rejection and parser extraction
+      - command: go test -p 4 ./internal/parser ./cmd/compiler ./cmd/lsp -run "TestAsmVolatileSyntax|TestParseUnsafeAsm|TestAsmOperandTypes" -count=1
+        result: passed on 2026-11-10; parser 0.008s, CLI 5.470s, LSP 5.097s; three C-style modifiers rejected, recovery retains following bindings, ordinary volatile identifier remains valid, invalid IR artifact suppressed
+      - command: go test -short -p 4 ./internal/parser ./internal/cst ./internal/formatter -count=1
+        result: passed on 2026-11-10; parser bounded recovery corpus 33.814s, CST 0.023s, formatter 1.944s after asm parser extraction
       - command: go test -p 4 ./internal/ir/... ./cmd/compiler ./cmd/lsp -run "TestAsmOperandTypes|TestUnsafeNamedAsm|TestInlineAsm|TestGenerateUnsafe" -count=1
         result: passed on 2026-11-09; compiler 4.884s and LSP 2.174s asm boundary regressions passed; IR packages compiled with no matching selected tests
       - command: go test -p 4 ./internal/sema ./internal/diagnostics -count=1

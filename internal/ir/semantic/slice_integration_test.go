@@ -29,9 +29,9 @@ func TestPackage16SliceElementReferenceOrigins(t *testing.T) {
 		}
 		text := Format(m)
 		for name, want := range map[string]string{
-			"First(ref int[])":        "returns-from=[param#0[*]]",
-			"Slot(ref mut int[],int)": "returns-from=[param#0[*]]",
-			"RightOf(ref Pair[],int)": "returns-from=[param#0[*].field#1]",
+			"First(ref int[])":              "returns-from=[param#0[*]]",
+			"Slot(ref mut int[],int)":       "returns-from=[param#0[*]]",
+			"RightOf(ref main::Pair[],int)": "returns-from=[param#0[*].field#1]",
 		} {
 			start := strings.Index(text, `func "main::`+name)
 			if start < 0 {

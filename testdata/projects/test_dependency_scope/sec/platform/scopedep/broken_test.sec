@@ -1,0 +1,5 @@
+module scopedep
+
+test "broken platform test" {
+    let :=
+}

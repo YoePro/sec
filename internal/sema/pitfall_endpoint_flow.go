@@ -388,6 +388,7 @@ func (s *pitfallEndpointScan) expression(expression ast.Expression, flow pitfall
 	case *ast.LambdaExpression:
 		return flow
 	case *ast.SpawnExpression:
+		flow = s.expression(expression.Configuration, flow)
 		return s.expression(expression.Value, flow)
 	case *ast.AwaitExpression:
 		flow = s.expression(expression.Value, flow)

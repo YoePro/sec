@@ -103,6 +103,17 @@ func CompilerKnownIntrinsicSymbolByID(id string) (CompilerKnownMember, bool) {
 			}
 		}
 	}
+	// cancellation.md §§35–38: fixed, non-generic context member identities
+	// also remain navigable before any source-backed request warms the cache.
+	for _, owner := range []string{"Context", "ContextSource"} {
+		for _, static := range []bool{false, true} {
+			for _, member := range CompilerKnownMembersForType(builtinType(owner), static) {
+				if member.ID == id {
+					return member, true
+				}
+			}
+		}
+	}
 	for _, iface := range CompilerKnownInterfaces() {
 		for _, method := range iface.InterfaceMethods {
 			if method.CompilerKnownID == id {

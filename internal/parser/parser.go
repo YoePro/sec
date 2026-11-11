@@ -2567,12 +2567,12 @@ func (p *Parser) parseTypeDeclStatement() ast.Statement {
 
 	p.rejectAdditionalTypeDeclarationNames(stmt.Name.Value)
 
-	// rules/concurrency/mutex.md §§5–6,8,13(1), cancellation.md §43(4),
+	// rules/concurrency/mutex.md §§5–6,8,13(1), cancellation.md §§35–36,43(4),
 	// rules/concurrency/threads.md §7(1):
 	// the canonical opaque runtime identities omit their base type.
 	// Source provenance and declaration ownership are checked by Sema.
 	if ((stmt.Name.Value == "Instant" && len(stmt.GenericParameters) == 0) ||
-		stmt.Name.Value == "Mutex" || stmt.Name.Value == "MutexGuard" || stmt.Name.Value == "Context" || stmt.Name.Value == "CpuSet") &&
+		stmt.Name.Value == "Mutex" || stmt.Name.Value == "MutexGuard" || stmt.Name.Value == "Context" || stmt.Name.Value == "ContextSource" || stmt.Name.Value == "CpuSet") &&
 		(p.peekToken.Type == lexer.EOF || p.peekToken.Line > p.curToken.Line) {
 		return stmt
 	}

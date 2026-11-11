@@ -46,17 +46,7 @@ func (a *Analyzer) pureIntegerOperand(operand ast.Expression) bool {
 	if _, constant := a.scalarBoundConstant(operand); constant {
 		return true
 	}
-	// Only a binding that keeps its value for its whole lifetime qualifies:
-	// an immutable binding, or a mutable working binding (such as an owned
-	// parameter) that the function never assigns, mutably borrows, or
-	// captures. A member read can change through a method call that the
-	// comparison facts do not see.
-	identifier, ok := operand.(*ast.Identifier)
-	if !ok || identifier == nil {
-		return false
-	}
-	symbol, exists := a.symbols.lookup(identifier.Value)
-	if !exists || symbol.TransientConstant || symbol.Mutable && !a.currentStableBindings[identifier.Value] {
+	if !a.relationalPlace(operand) {
 		return false
 	}
 	if typ, typed := a.expressionTypes[operand]; typed && (typ.Kind == CharType || typ.Kind == RuneType) {
@@ -64,6 +54,36 @@ func (a *Analyzer) pureIntegerOperand(operand ast.Expression) bool {
 	}
 	_, _, integer := a.integerInterval(operand)
 	return integer
+}
+
+// relationalPlace accepts a value whose comparison facts stay exact until a
+// write the proof versions observe: an immutable binding, a mutable binding
+// changed only by direct assignment (never mutably borrowed or captured, so
+// each write bumps its proof version), or a stored struct field read through
+// such a binding by value. Field writes and every non-conversion call are
+// full proof barriers, so no setter, alias or method can change the field
+// unseen; computed property getters and reads through references are not
+// stable places.
+func (a *Analyzer) relationalPlace(operand ast.Expression) bool {
+	switch operand := operand.(type) {
+	case *ast.Identifier:
+		if operand == nil {
+			return false
+		}
+		symbol, exists := a.symbols.lookup(operand.Value)
+		return exists && !symbol.TransientConstant && !symbol.Volatile && symbol.Type.Kind != ReferenceType &&
+			(!symbol.Mutable || a.currentStableBindings[operand.Value] || a.currentVersionTrackedBindings[operand.Value])
+	case *ast.MemberExpression:
+		if operand == nil || operand.Property == nil {
+			return false
+		}
+		plan, ok := a.resolvedStructMemberPlans[operand]
+		if !ok || plan.Kind != MemberStoredField || plan.OwnerType.Kind != StructType {
+			return false
+		}
+		return a.relationalPlace(operand.Object)
+	}
+	return false
 }
 
 // negatedIntegerCondition returns the condition that holds exactly when a
@@ -178,6 +198,22 @@ func (a *Analyzer) enterLoopBodyFacts() {
 // path. Local shadowing is not permitted, so a name identifies one binding of
 // the function.
 func stableBindingsOf(function *ast.FunctionDeclaration) map[string]bool {
+	return bindingStabilityOf(function, true)
+}
+
+// versionTrackedBindingsOf names the parameters and locals whose every write
+// is a direct assignment: never mutably borrowed and never mentioned inside a
+// lambda or spawn. Each direct assignment bumps the binding's proof version,
+// so a comparison fact on such a binding stays valid exactly until its next
+// write, and relational reachability may use it per binding rather than only
+// for bindings the whole function never changes.
+// Rules: rules/tooling/diagnostics.md — § 21 "Proven unreachable and dead code";
+// rules/errors/panic.md — § 15.8(1) proof facts and invalidation.
+func versionTrackedBindingsOf(function *ast.FunctionDeclaration) map[string]bool {
+	return bindingStabilityOf(function, false)
+}
+
+func bindingStabilityOf(function *ast.FunctionDeclaration, assignmentsChange bool) map[string]bool {
 	stable := map[string]bool{}
 	if function == nil || function.Body == nil {
 		return stable
@@ -203,7 +239,7 @@ func stableBindingsOf(function *ast.FunctionDeclaration) map[string]bool {
 				declared[node.Name.Value] = true
 			}
 		case *ast.AssignmentStatement:
-			if node != nil {
+			if node != nil && assignmentsChange {
 				if root, ok := expressionRootName(node.Target); ok {
 					changed[root] = true
 				}

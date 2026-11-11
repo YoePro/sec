@@ -1,0 +1,28 @@
+module rawfacts
+
+fn NullFacts(input: RawPtr[int]) void {
+    unsafe {
+        let empty: RawPtr[int] := null
+        let copied := empty
+        let known := copied
+        if input is null {
+            let branch := input
+        }
+        let outside := input
+        let mut mutable: RawPtr[int] := null
+        let unknown := mutable
+    }
+}
+
+type Session struct { Id: int }
+
+fn OriginFacts() void {
+    let session := Session { Id: 1 }
+    unsafe {
+        let pointer := session.Ptr
+        let alias := pointer
+        let before := alias
+        discard session
+        let invalidated := alias
+    }
+}

@@ -63,7 +63,7 @@ func (a *Analyzer) typeFromDeclarationWithName(name string, stmt *ast.TypeDeclSt
 		// SemanticCompileTimeRequiredContext.
 		constant, outcome := a.semanticCompileTimeConstantVisiting(stmt.Default, map[string]bool{}, typ)
 		ok := outcome == compileTimeEvaluated
-		if outcome == compileTimeRequiresExecution || outcome == compileTimeForbiddenClock {
+		if outcome == compileTimeRequiresExecution || outcome == compileTimeForbiddenClock || outcome == compileTimeExecutionFailed {
 			typ.InvalidExplicitDefault = true
 			a.reportCompileTimeRequirement(stmt.Default, outcome, "default", diagnostics.InvalidExplicitDefault, "")
 		} else if !ok {
@@ -93,7 +93,12 @@ func (a *Analyzer) typeFromDeclarationWithName(name string, stmt *ast.TypeDeclSt
 // rules/concurrency/channels.md — §§4–5,13–14 (capability and revoke types).
 // rules/concurrency/thread_local.md — §29 (ThreadAttachError).
 // rules/concurrency/threads.md — §§4–8,18–19,23 (configuration, errors and termination metadata).
+// rules/errors/panic.md — §13(2–7) (PanicID and PanicInfo).
 func isCoreBuiltinDeclaration(name string) bool {
+	// rules/concurrency/cancellation.md — §36: reserved opaque core owner.
+	if name == "ContextSource" {
+		return true
+	}
 	// rules/concurrency/ipc.md — §§6,27,44,55,68,79,94;
 	// rules/concurrency/processes.md — §§5.12–5.13.
 	if len(ipcErrorVariants(name)) != 0 || len(commandIOModeVariants(name)) != 0 {
@@ -104,7 +109,7 @@ func isCoreBuiltinDeclaration(name string) bool {
 		return true
 	}
 	switch name {
-	case "ArithmeticError", "IndexError", "RangeError", "PrecisionError", "FormatError", "StringError", "ContractError", "TaskOutcome", "TaskSpawnError", "TaskError",
+	case "ArithmeticError", "IndexError", "RangeError", "PrecisionError", "FormatError", "StringError", "ContractError", "TaskOutcome", "TaskSpawnError", "TaskError", "PanicID", "PanicInfo",
 		"date", "time", "datetime", "duration", "Instant", "MemoryOrder", "CompareExchangeResult", "ChannelCapability", "Mutex", "MutexGuard", "Context", "ContextError", "ThreadAttachError", "ThreadSpawnError", "ThreadStartError", "ThreadPriority", "ThreadStartMode", "ThreadSetting", "CpuSet", "ThreadStorage", "ThreadTerminationKind", "ThreadTermination", "ChannelRevokeResult", "MessageDisposition":
 		return true
 	default:

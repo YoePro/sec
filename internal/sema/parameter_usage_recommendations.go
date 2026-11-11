@@ -92,6 +92,16 @@ func sharedReferenceRecommendation(parameter ParameterUsageParameterSummary) Par
 		result.Status = "blocked"
 		return result
 	}
+	// Size alone cannot establish a copy cost for an owning transfer or an
+	// unresolved generic copy operation. This policy does not change demand.
+	// Rules: rules/memory/copy_move.md §22(1–6);
+	// rules/analysis/parameter_usage_analysis.md §§63–65,92.
+	classification := CopyClassificationOf(parameter.DeclaredType)
+	if classification != CopyTrivial && classification != CopySemantic {
+		result.Status = "not-preferred"
+		result.Reasons = []string{"implicit copying is not proven for copy classification " + string(classification)}
+		return result
+	}
 	result.EstimatedSizeBytes, result.SizeKnown = estimatedTypeSizeBytes(parameter.DeclaredType, map[string]bool{})
 	if !result.SizeKnown {
 		result.Status = "not-preferred"
@@ -208,6 +218,9 @@ func (a *Analyzer) emitLargeValueParameterAdvisory(parameter ParameterUsageParam
 		return
 	}
 	help := "Pass the parameter by shared reference when the function does not need to own or copy the whole value."
+	if evidence := recommendation.CopyAdvice(); evidence != "" {
+		help += " " + evidence
+	}
 	if typ.Kind == ArrayType {
 		a.addWarningAtTokenWithMetadata(parameter.Declaration, diagnostics.LargeValueParameter, help, "parameter %q passes large array %s by value; consider ref %s", parameter.Name, typeDisplayName(typ), typeDisplayName(typ))
 		return

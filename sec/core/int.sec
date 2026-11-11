@@ -80,11 +80,27 @@ impl int {
     }
 
     /**
-     * Parses the text form of an integer literal (see `_parseInt`). The empty
-     * string parses as 0.
+     * Parses an integer from an owned string.
+     *
+     * Allocation:
+     * Does not allocate.
      */
     static fn Parse(inStr: string) Result[int, NumberParseError] {
         if inStr == "" {
+            return Ok(0)
+        }
+
+        return _parseInt(inStr[..])
+    }
+
+    /**
+     * Parses an integer directly from borrowed UTF-8 text.
+     *
+     * Allocation:
+     * Does not allocate.
+     */
+    static fn Parse(inStr: StringView) Result[int, NumberParseError] {
+        if inStr.IsEmpty() {
             return Ok(0)
         }
 
@@ -216,7 +232,7 @@ impl int {
  * Allocation:
  * Does not allocate.
  */
-fn _parseInt(inStr: string) Result[int, NumberParseError] {
+fn _parseInt(inStr: StringView) Result[int, NumberParseError] {
     let mut index: uint := 0
     let mut end:   uint := inStr.Len
 
@@ -343,7 +359,7 @@ fn _parseInt(inStr: string) Result[int, NumberParseError] {
 
 // The radix an integer's text selects at index: 16 or 2 after an ASCII
 // `0x`/`0b` prefix, otherwise 10.
-fn _integerRadixAt(text: string, index: uint) uint8 {
+fn _integerRadixAt(text: StringView, index: uint) uint8 {
     if index + 1 >= text.Len || text.RuneAt(index) != 48r {
         return 10
     }

@@ -101,6 +101,7 @@ func (a *Analyzer) analyzeIfStatement(stmt *ast.IfStatement) {
 	}
 	var thenBranch branchAnalysis
 	siblings := a.startConstantBranches()
+	defer func() { siblings.finishFirstIteration(a, stmt.Alternative == nil) }()
 	siblings.enter(a)
 	if optionBindingValid {
 		thenBranch = a.analyzeOptionBindingBranchWithCallGraphReachability(stmt, optionBinding, thenReachable)

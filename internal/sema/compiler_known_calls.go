@@ -35,6 +35,9 @@ func (a *Analyzer) inferValidatedCompilerKnownMemberCall(expr *ast.CallExpressio
 				return Type{}, expressionValue{}, false
 			}
 			a.compilerKnownMemberFacts[sourceTokenLocation(memberExpr.Property.Token)] = member
+			if isCancellationContextType(typ) && a.expressionNamesType(memberExpr.Object) {
+				return a.inferCancellationContextCall(expr, member)
+			}
 			switch member.Name {
 			case "FromByteArray", "FromRuneArray":
 				return a.inferCompilerKnownStringConstructor(expr, member)
@@ -103,6 +106,9 @@ func (a *Analyzer) inferValidatedCompilerKnownMemberCall(expr *ast.CallExpressio
 		}
 	}
 	a.compilerKnownMemberFacts[sourceTokenLocation(memberExpr.Property.Token)] = member
+	if isCancellationContextType(lookupType) {
+		return a.inferCancellationContextCall(expr, member)
+	}
 	if member.StructuralMutation && a.structurallyMutatesIteratedCollection(memberExpr.Object, member.Name, memberExpr.Property.Token) {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 	}

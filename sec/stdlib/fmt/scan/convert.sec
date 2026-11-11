@@ -1,0 +1,135 @@
+module scan
+
+/**
+ * Reports a failure while converting a scan field to int.
+ *
+ * Description:
+ * Preserves numeric parsing and string materialization errors.
+ */
+type _ScanIntError union error {
+    // The input is not a valid integer.
+    Number(NumberParseError)
+
+    // The borrowed field could not be materialized.
+    Text(StringError)
+}
+
+/**
+ * Represents an integer field after scan conversion.
+ *
+ * Description:
+ * Preserves the distinction between missing input and
+ * a successfully converted integer.
+ *
+ * Allocation:
+ * Does not allocate.
+ */
+type _ScanIntEvent union {
+    // The requested input field was unavailable.
+    Missing {
+        ArgumentIndex: uint,
+        ByteOffset:    uint,
+    }
+
+    // The input field was converted successfully.
+    Value {
+        ArgumentIndex: uint,
+        ByteOffset:    uint,
+        Number:        int,
+    }
+}
+
+/**
+ * Reports a failure converting a scan field to int.
+ */
+type _ScanIntConversionError union error {
+    // Integer parsing failed.
+    Number {
+        ArgumentIndex: uint,
+        ByteOffset:    uint,
+        Cause:         NumberParseError,
+    }
+
+    // String materialization failed.
+    Text(StringError)
+}
+
+/**
+ * Parses an integer directly from a borrowed scan field.
+ *
+ * Description:
+ * Rejects empty fields and delegates numeric parsing
+ * to the shared core integer parser.
+ *
+ * Allocation:
+ * Does not allocate.
+ */
+fn _ParseScanInt(field: StringView) Result[int, NumberParseError] {
+    if field.IsEmpty() {
+        return Err(NumberParseError.InvalidNumber)
+    }
+
+    return int.Parse(field)
+}
+
+/**
+ * Converts a scan field event to an integer event.
+ *
+ * Description:
+ * Preserves missing fields without conversion.
+ * Converts extracted text using _ParseScanInt().
+ * Never modifies a destination.
+ *
+ * Parameters:
+ * - event: Field event produced by _ScanCursor.Next().
+ *
+ * Returns:
+ * - Ok(Missing): No field was available.
+ * - Ok(Value): Integer conversion succeeded.
+ *
+ * Errors:
+ * - Number: Invalid integer text or representability.
+ * - Text: Field materialization failed.
+ *
+ * Allocation:
+ * May allocate when materializing a StringView.
+ */
+fn _ConvertScanIntEvent(event: _ScanFieldEvent) Result[_ScanIntEvent, _ScanIntConversionError] {
+    match event {
+        Missing {
+            ArgumentIndex: index,
+            ByteOffset: offset
+        } => {
+            return Ok(_ScanIntEvent.Missing {
+                ArgumentIndex: index,
+                ByteOffset: offset,
+            })
+        }
+
+        Extracted {
+            ArgumentIndex: index,
+            ByteOffset: offset,
+            Text: text
+        } => {
+            let number := try _ParseScanInt(text) {
+                Err(_ScanIntError.Number(cause)) => {
+                    return Err(_ScanIntConversionError.Number {
+                        ArgumentIndex: index,
+                        ByteOffset: offset,
+                        Cause: cause,
+                    })
+                }
+
+                Err(_ScanIntError.Text(cause)) => {
+                    return Err(_ScanIntConversionError.Text(cause))
+                }
+            }
+
+            return Ok(_ScanIntEvent.Value {
+                ArgumentIndex: index,
+                ByteOffset: offset,
+                Number: number,
+            })
+        }
+    }
+}

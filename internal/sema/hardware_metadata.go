@@ -26,6 +26,7 @@ type HardwareModuleContext struct {
 // declaration collection. It does not select source files (MD-111 §§4(2),12).
 // Rules: rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md — §§2–8,13(2).
 func (a *Analyzer) SetHardwareModuleContext(context HardwareModuleContext) {
+	a.recordConfiguration(func(b *Analyzer) { b.SetHardwareModuleContext(context) })
 	clone := HardwareModuleContext{ModuleNames: map[modules.ModuleIdentity]modules.ModuleName{}, Files: map[string]modules.ModuleIdentity{}, Imports: map[string]map[string][]modules.ModuleIdentity{}}
 	for id, name := range context.ModuleNames {
 		clone.ModuleNames[id] = name

@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -14,6 +15,7 @@ import (
 // Rules: rules/memory/raw_pointers.md §34; rules/tooling/diagnostics.md §§8–9.
 func TestRawPointerMentorCompilerDiagnostics(t *testing.T) {
 	path := "../../testdata/tooling/raw_pointer_mentor_invalid.sec"
+	var baseline []emittedOccurrence
 	for _, command := range []string{"sema", "check", "analyse", "emit-ir", "emit-sec-mlir", "emit-mlir", "emit-llvm"} {
 		t.Run(command, func(t *testing.T) {
 			args := []string{command, path, "--diagnostic-format=json"}
@@ -29,6 +31,11 @@ func TestRawPointerMentorCompilerDiagnostics(t *testing.T) {
 				t.Fatalf("rejected source produced artifact: %v", err)
 			}
 			doc := decodeOccurrenceDocument(t, stderr)
+			if baseline == nil {
+				baseline = doc.Occurrences
+			} else if !reflect.DeepEqual(baseline, doc.Occurrences) {
+				t.Fatalf("%s changed canonical raw-pointer occurrences", command)
+			}
 			counts := map[string]int{}
 			for _, d := range doc.Occurrences {
 				if d.ID == nil {
@@ -38,6 +45,11 @@ func TestRawPointerMentorCompilerDiagnostics(t *testing.T) {
 				counts[id]++
 				if d.Unregistered || d.Primary == nil || d.Primary.Span.File != path || len(d.Help) != 1 || len(d.Fixes) != 0 {
 					t.Fatalf("missing mentor metadata: %+v", d)
+				}
+				if strings.HasPrefix(d.Message.Text, "RawPtr.Read requires") || strings.HasPrefix(d.Message.Text, "RawPtr.Write requires") {
+					if strings.Contains(d.Help[0].Text, "volatile") {
+						t.Fatalf("ordinary access acquired volatile caller obligations: %+v", d)
+					}
 				}
 				if id == diagnostics.RawPointerNullDereference || id == diagnostics.RawPointerDanglingOrigin {
 					if len(d.Related) != 1 || d.Related[0].Span.File != path {

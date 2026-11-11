@@ -35,10 +35,19 @@ func TestParameterContracts(t *testing.T) {
 			t.Fatal("declaration policy changed inferred body demand", name)
 		}
 	}
-	for _, name := range []string{"Borrowed", "ReadToken", "Fixed"} {
+	for _, name := range []string{"Borrowed", "Fixed"} {
 		if results[name].Status != "recommended" {
 			t.Fatalf("%s: %+v", name, results[name])
 		}
+	}
+	// noCopy forbids the copy whose cost would justify AvoidCopyCost; this
+	// does not change the body's independently inferred borrow demand.
+	// Rules: rules/memory/copy_move.md §22(1–6).
+	if token := results["ReadToken"]; token.Status != "not-preferred" || !strings.Contains(strings.Join(token.Reasons, ","), "implicit copying is not proven") {
+		t.Fatalf("non-copyable value received copy-cost advice: %+v", token)
+	}
+	if parameterUsageSummaryNamed(t, analysis, "ReadToken").Parameters[0].Demand.Ownership != ParameterBorrowSufficient {
+		t.Fatal("copy-cost policy changed noCopy body demand")
 	}
 	if results["Consume"].Status != "blocked" {
 		t.Fatal(results["Consume"])
@@ -55,7 +64,7 @@ func TestParameterContracts(t *testing.T) {
 			}
 		}
 	}
-	if len(warned) != 3 {
+	if len(warned) != 2 {
 		t.Fatalf("unexpected advisories: %v", warned)
 	}
 	if !reflect.DeepEqual(before, analysis.Summaries()) {

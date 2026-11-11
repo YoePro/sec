@@ -223,6 +223,9 @@ func TestRawPointerCallerContracts(t *testing.T) {
 		if strings.HasPrefix(member.Name, "Volatile") && !strings.Contains(strings.Join(member.CallerObligations, " "), "does not establish synchronization") {
 			t.Fatalf("volatile obligations incomplete: %+v", member)
 		}
+		if (member.Name == "Read" || member.Name == "Write") && strings.Contains(strings.Join(member.CallerObligations, " "), "volatile") {
+			t.Fatalf("ordinary memory effects acquired volatile caller obligations: %+v", member)
+		}
 	}
 	if count != 8 {
 		t.Fatalf("typed raw-pointer contracts: %d", count)

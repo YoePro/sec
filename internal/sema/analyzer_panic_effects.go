@@ -157,6 +157,7 @@ func (a *Analyzer) recordContractConversionEffect(call *ast.CallExpression) {
 		return
 	}
 	a.callGraph.addEffect(a.currentCallable, EffectSite{Kind: EffectMayPanicContract, Source: call.Token, PanicReasonIDs: []diagnostics.PanicReasonID{diagnostics.PanicReasonContractFailure}})
+	a.noteUncheckedContract(call.Token, "this conversion", a.expressionTypes[call])
 }
 
 // resolveContractFailureEffect removes the contract panic of a conversion

@@ -23,7 +23,8 @@ func resolveStdlibImportsWithSources(program *ast.Program, target CompilerTarget
 
 // resolveStdlibImportsInto validates source/import layout before recursive
 // loading, qualification and declaration visibility.
-// Rules: rules/projects/projects.md — §15; rules/projects/modules.md — §§9,13.
+// Rules: rules/projects/projects.md — §15; rules/projects/modules.md — §§9,13;
+// rules/tooling/testing.md — §§4.3,25,28.4 (production dependencies only).
 func resolveStdlibImportsInto(program *ast.Program, target CompilerTarget, seen map[string]bool, sourceFiles []string) {
 	if issues := cliProjectModuleErrors(program); len(issues) != 0 {
 		for _, issue := range issues {
@@ -40,7 +41,8 @@ func resolveStdlibImportsInto(program *ast.Program, target CompilerTarget, seen 
 		}
 
 		sourcePaths, ok := sourceIncludePathsWithSources(importStmt.Path, target, sourceFiles)
-		if !ok {
+		sourcePaths = productionDependencySources(sourcePaths)
+		if !ok || len(sourcePaths) == 0 {
 			printSemaError(os.Stderr, sema.UnresolvedSourceImport(importStmt))
 			printDiagnosticSummary(diagnosticSummary{Errors: 1})
 			exitCLI(3)

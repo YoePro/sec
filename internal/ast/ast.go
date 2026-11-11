@@ -2857,8 +2857,12 @@ type SpawnExpression struct {
 	Token     lexer.Token
 	KindToken lexer.Token
 	Kind      string
-	Value     Expression
-	Body      *BlockStatement
+	// Configuration retains a named physical-thread configuration separately
+	// from the child callable. Rules: rules/concurrency/threads.md §10;
+	// rules/concurrency/spawn.md §4.
+	Configuration Expression
+	Value         Expression
+	Body          *BlockStatement
 }
 
 func (se *SpawnExpression) expressionNode() {}
@@ -2867,12 +2871,19 @@ func (se *SpawnExpression) TokenLiteral() string {
 	return se.Token.Lexeme
 }
 
+// String renders execution kind, named configuration and child operand without
+// dropping the configuration's ordinary ownership-transfer marker.
+// Rules: rules/concurrency/spawn.md — §§2,4;
+// rules/concurrency/threads.md — §10(3).
 func (se *SpawnExpression) String() string {
 	prefix := "spawn"
 	if se.Kind != "" && se.Kind != "task" {
 		prefix += " " + se.Kind
 	}
 	if se.Value != nil {
+		if se.Configuration != nil {
+			prefix += " " + se.Configuration.String()
+		}
 		return prefix + " " + se.Value.String()
 	}
 	return prefix + " {...}"

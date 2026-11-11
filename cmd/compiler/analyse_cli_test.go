@@ -104,7 +104,7 @@ func TestAnalyseFamilySelection(t *testing.T) {
 	if code != 0 || strings.Contains(usage, "pitfall.") {
 		t.Fatalf("parameter-usage must not report pitfalls: %d %s", code, usage)
 	}
-	for _, name := range []string{"isr", "deadlocks", "data-races"} {
+	for _, name := range []string{"deadlocks", "data-races"} {
 		stdout, stderr, code := runCLIForDiagnostics(t, "analyse", name, analyseAdvisoryFixture)
 		if code != 1 || stdout != "" || !strings.Contains(stderr, "the "+name+" analysis cannot run on its own") {
 			t.Fatalf("%s: %d %q %s", name, code, stdout, stderr)

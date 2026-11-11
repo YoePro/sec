@@ -105,14 +105,13 @@ type ByCall int range 1..MaxPort()
 type ByProperty int range 1..Standards.MaxPort
 type DefaultByCall int default MaxPort()
 `)
+	// MaxPort() and the static getter Standards.MaxPort are executed by the
+	// semantic CTE executor; only the mutable static cannot be established.
 	want := []struct {
 		id      string
 		subject string
 	}{
 		{diagnostics.InvalidContractArgument, "Counter"},
-		{diagnostics.SemanticCompileTimeExecutionUnavailable, "MaxPort()"},
-		{diagnostics.SemanticCompileTimeExecutionUnavailable, "Standards.MaxPort"},
-		{diagnostics.SemanticCompileTimeExecutionUnavailable, "MaxPort()"},
 	}
 	if len(errors) != len(want) {
 		t.Fatalf("errors = %v, want %d", errors, len(want))

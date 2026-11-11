@@ -36,6 +36,6 @@ func TestArenaFromBufferBorrowsBackingForArenaLifetime(t *testing.T) {
 		"Arena.FromBuffer requires mutable contiguous byte storage borrowed as ref mut byte[], such as a let mut byte[] or byte[N], got int[2] at 56:39",
 		"Arena.Release cannot consume arena arena through a borrowed reference at 61:5",
 		"Arena.Reset requires mutable arena arena at 65:5",
-		"cannot use values after arena arena was reset at 71:5, previous declaration at 69:23",
+		"Invalid: cannot use values after arena arena was reset at 71:5, values refers to storage allocated from arena arena in epoch 0 at 69:23, Reset of arena arena ends that epoch here at 70:11",
 	})
 }

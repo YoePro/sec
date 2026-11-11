@@ -59,6 +59,16 @@ func (a *Analyzer) validateTypeImplementsInterface(typ Type, iface Type) {
 		}
 	}()
 	addFailure := func(member string, token lexer.Token, requirement lexer.Token, id string, help string, format string, args ...any) {
+		// An inherited requirement names the interface that declares it
+		// (interfaces.md § 5): the related location is in that interface.
+		if owner := a.interfaceRequirementOwners[sourceTokenLocation(requirement)]; owner != "" && owner != iface.Name {
+			inherited := iface.Name + " inherits " + member + " from " + owner + "."
+			if help == "" {
+				help = inherited
+			} else {
+				help = inherited + " " + help
+			}
+		}
 		diagnostic := a.addInterfaceConformanceError(token, requirement, id, help, format, args...)
 		fact.Failures = append(fact.Failures, InterfaceConformanceFailure{Member: member, Diagnostic: diagnostic})
 	}
@@ -74,6 +84,14 @@ func (a *Analyzer) validateTypeImplementsInterface(typ Type, iface Type) {
 				"declare "+implMethodDisplay(substituteInterfaceSelf(required, typ))+" in the impl of "+typ.Name,
 				"type %s implements %s but is missing method %s", typ.Name, iface.Name, required.Name)
 			continue
+		}
+		for _, method := range methods {
+			if hasCompatibleInterfaceMethod(typ, iface, []Function{method}, required) && validDefinitionToken(method.Token) {
+				member := a.interfaceMember("method", required.Name, required.Token, method.Token)
+				member.RequirementMutable, member.ImplementationMutable, member.Static = required.ReceiverMutable, method.ReceiverMutable, required.Static
+				fact.Members = append(fact.Members, member)
+				break
+			}
 		}
 		if !hasCompatibleInterfaceMethod(typ, iface, methods, required) {
 			method := closestInterfaceCandidate(methods, required)
@@ -95,6 +113,11 @@ func (a *Analyzer) validateTypeImplementsInterface(typ Type, iface Type) {
 
 	for _, required := range iface.InterfaceProperties {
 		property, ok := lookupProperty(typ, required.Name)
+		if ok && validDefinitionToken(property.Token) {
+			member := a.interfaceMember("property", required.Name, required.Token, property.Token)
+			member.Static = required.Static
+			fact.Members = append(fact.Members, member)
+		}
 		if !ok {
 			addFailure(required.Name, a.interfaceClauseAnchor(typ, iface, required.Token), required.Token, diagnostics.InterfaceMemberMissing, "declare the property in the impl of "+typ.Name, "type %s implements %s but is missing property %s", typ.Name, iface.Name, required.Name)
 			continue
@@ -133,6 +156,9 @@ func (a *Analyzer) validateTypeImplementsInterface(typ Type, iface Type) {
 
 	for _, required := range iface.InterfaceEvents {
 		event, ok := lookupEvent(typ, required.Name)
+		if ok && validDefinitionToken(event.Token) {
+			fact.Members = append(fact.Members, a.interfaceMember("event", required.Name, required.Token, event.Token))
+		}
 		if !ok {
 			addFailure(required.Name, a.interfaceClauseAnchor(typ, iface, required.Token), required.Token, diagnostics.InterfaceMemberMissing, "declare the event in the impl of "+typ.Name, "type %s implements %s but is missing event %s", typ.Name, iface.Name, required.Name)
 			continue

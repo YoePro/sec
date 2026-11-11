@@ -1,0 +1,10 @@
+module main
+
+fn Eq(a: char, b: rune) bool { return a == b }
+fn Ne(a: char, b: rune) bool { return a != b }
+fn Lt(a: char, b: rune) bool { return a < b }
+fn Le(a: char, b: rune) bool { return a <= b }
+fn Gt(a: char, b: rune) bool { return a > b }
+fn Ge(a: char, b: rune) bool { return a >= b }
+fn IntegerChar(a: int, b: char) bool { return a == b }
+fn IntegerRune(a: uint, b: rune) bool { return a < b }

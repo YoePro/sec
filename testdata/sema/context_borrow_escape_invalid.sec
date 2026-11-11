@@ -1,0 +1,7 @@
+module main
+
+fn Escape() ref Context {
+    let root := Context.Background()
+    let source := root.WithCancel()
+    return source.Context
+}

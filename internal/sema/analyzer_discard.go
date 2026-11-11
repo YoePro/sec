@@ -126,6 +126,7 @@ func (a *Analyzer) analyzeDiscardStatement(stmt *ast.DiscardStatement) {
 		// ownership handling because markMoveSource deliberately does not descend
 		// into call expressions.
 		a.markMoveSource(stmt.Value)
+		a.endTemporaryArenaBacking(stmt.Value)
 		return
 	}
 	symbol, exists := a.symbols.lookup(ident.Value)

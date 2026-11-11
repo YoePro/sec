@@ -38,7 +38,16 @@ func (a *Analyzer) restoreConstInts(previous map[string]*big.Int) {
 // domain and must run right after the first analysis of the body.
 func (a *Analyzer) forgetLoopAssignedConstants(body *ast.BlockStatement, firstIterationReachable bool, condition ast.Expression) func() {
 	previousFirst, previousDepth := a.firstIterationConsts, a.firstIterationDepth
-	restore := func() { a.firstIterationConsts, a.firstIterationDepth = previousFirst, previousDepth }
+	// An enclosing loop's first-iteration values of bindings this loop
+	// assigns are no longer exact once this loop may have run.
+	restore := func() {
+		if len(previousFirst) > 0 && body != nil {
+			for _, name := range a.loopAssignedNames(body) {
+				delete(previousFirst, name)
+			}
+		}
+		a.firstIterationConsts, a.firstIterationDepth = previousFirst, previousDepth
+	}
 	if body == nil || len(a.constInts) == 0 {
 		a.firstIterationConsts = nil
 		return restore
@@ -87,7 +96,7 @@ func (a *Analyzer) advanceFirstIterationValue(name string, stmt *ast.AssignmentS
 	if _, known := a.firstIterationConsts[name]; !known {
 		return
 	}
-	if a.scopeDepth != a.firstIterationDepth || overflowed {
+	if !a.firstIterationWriteExact() || overflowed {
 		delete(a.firstIterationConsts, name)
 		return
 	}
@@ -248,22 +257,102 @@ type constantBranches struct {
 	before  map[string]*big.Int
 	joined  map[string]*big.Int
 	entered bool
+
+	// The first-iteration domain of an enclosing loop joins like the
+	// ordinary constants: each sibling starts from the pre-join values and
+	// the join keeps what every continuing sibling agrees on, so a write in
+	// one branch no longer ends the domain for the binding.
+	firstActive  bool
+	firstStarted bool
+	firstBefore  map[string]*big.Int
+	firstJoined  map[string]*big.Int
+	firstSeen    bool
+	firstDepth   int
 }
 
 func (a *Analyzer) startConstantBranches() *constantBranches {
-	return &constantBranches{before: copyConstInts(a.constInts)}
+	b := &constantBranches{before: copyConstInts(a.constInts)}
+	if a.firstIterationConsts != nil {
+		b.firstActive = true
+		b.firstBefore = copyConstInts(a.firstIterationConsts)
+		b.firstDepth = a.scopeDepth + 1
+		if a.firstIterationBranchDepths == nil {
+			a.firstIterationBranchDepths = map[int]int{}
+		}
+		a.firstIterationBranchDepths[b.firstDepth]++
+	}
+	return b
 }
 
 // enter starts the next sibling from the pre-join constants.
 func (b *constantBranches) enter(a *Analyzer) {
 	b.collect(a)
 	a.constInts = copyConstInts(b.before)
+	if b.firstActive {
+		if b.firstStarted {
+			b.collectFirst(a.firstIterationConsts)
+		}
+		b.firstStarted = true
+		a.firstIterationConsts = copyConstInts(b.firstBefore)
+	}
 }
 
 // keep starts the next sibling from the current constants, for an entry
 // (such as a switch fallthrough) whose state differs from the pre-join one.
 func (b *constantBranches) keep(a *Analyzer) {
 	b.collect(a)
+	if b.firstActive {
+		if b.firstStarted {
+			b.collectFirst(a.firstIterationConsts)
+		}
+		b.firstStarted = true
+		a.firstIterationConsts = intersectConstInts(b.firstBefore, a.firstIterationConsts)
+	}
+}
+
+func (b *constantBranches) collectFirst(exit map[string]*big.Int) {
+	if !b.firstSeen {
+		b.firstSeen = true
+		b.firstJoined = copyConstInts(exit)
+		return
+	}
+	b.firstJoined = intersectConstInts(b.firstJoined, exit)
+}
+
+// finishFirstIteration ends the first-iteration join: the last sibling's
+// exit joins the others, and includeBefore adds the implicit path that runs
+// no sibling (an if without else, a non-exhaustive switch).
+func (b *constantBranches) finishFirstIteration(a *Analyzer, includeBefore bool) {
+	if !b.firstActive {
+		return
+	}
+	b.firstActive = false
+	if a.firstIterationBranchDepths[b.firstDepth] > 0 {
+		a.firstIterationBranchDepths[b.firstDepth]--
+	}
+	if b.firstStarted {
+		b.collectFirst(a.firstIterationConsts)
+	}
+	if includeBefore || !b.firstSeen {
+		b.collectFirst(b.firstBefore)
+	}
+	if a.firstIterationConsts != nil {
+		a.firstIterationConsts = b.firstJoined
+	}
+}
+
+// firstIterationWriteExact reports that the current write runs exactly when
+// the first iteration reaches it on its path: directly in the loop body or
+// inside branches whose join merges the first-iteration domain. Writes in any
+// other nested scope (an inner loop, a handler, a deferred body) end the
+// domain for the written binding.
+func (a *Analyzer) firstIterationWriteExact() bool {
+	for depth := a.firstIterationDepth + 1; depth <= a.scopeDepth; depth++ {
+		if a.firstIterationBranchDepths[depth] == 0 {
+			return false
+		}
+	}
+	return a.scopeDepth >= a.firstIterationDepth
 }
 
 func (b *constantBranches) collect(a *Analyzer) {

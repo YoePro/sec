@@ -109,6 +109,9 @@ func (a *Analyzer) inferLambdaExpression(expr *ast.LambdaExpression) (Type, expr
 	a.inLambda = true
 	a.lambdaOuterSymbols = captureCandidates
 	a.loopDepth = 0
+	previousLoopStarts := a.loopStarts
+	a.loopStarts = nil
+	defer func() { a.loopStarts = previousLoopStarts }()
 	// A lambda declared inside a test is its own callable boundary. Its return
 	// statements follow the declared lambda return type, not test-return rules.
 	a.currentTest = nil

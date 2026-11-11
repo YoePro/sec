@@ -32,7 +32,7 @@ func TestArenaInvalidationLSPDiagnostics(t *testing.T) {
 	}
 	for _, value := range errs {
 		got := semaDiagnostic(value, 3, string(data))
-		if got.Code != value.ID || got.Severity != 1 || !strings.HasPrefix(got.Message, "Invalid: ") || !strings.Contains(got.Message, value.Help) || len(got.RelatedInformation) != 1 || got.RelatedInformation[0].Message != "live Arena dependency" || got.RelatedInformation[0].Location.Range.Start.Line != value.PreviousLine-1 || got.Range.Start.Line != value.Line-1 || got.Range.Start.Character != value.Column-1 {
+		if got.Code != value.ID || got.Severity != 1 || !strings.HasPrefix(got.Message, "Invalid: ") || !strings.Contains(got.Message, value.Help) || len(got.RelatedInformation) != len(value.RelatedLocations()) || len(got.RelatedInformation) < 2 || got.RelatedInformation[0].Message != "live Arena dependency" || got.RelatedInformation[0].Location.Range.Start.Line != value.PreviousLine-1 || got.Range.Start.Line != value.Line-1 || got.Range.Start.Character != value.Column-1 {
 			t.Fatal(got)
 		}
 		width := 5

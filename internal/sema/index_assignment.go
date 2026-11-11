@@ -46,6 +46,16 @@ func (a *Analyzer) analyzeIndexAssignmentStatement(stmt *ast.AssignmentStatement
 		}
 		a.recordResolvedCompoundAssignment(stmt, targetType, exprType)
 	}
+	// A constrained element checks the stored value against its contracts
+	// (contracts.md § 12; MD-131): try selects ContractError, otherwise an
+	// update panics on violation.
+	if hasContracts(targetType) {
+		if allowFallible {
+			a.markContractedTryTarget(stmt)
+		} else if stmt.Operator != "=" {
+			a.recordCompoundContractEffect(expressionToken(index.Left), index.String(), targetType)
+		}
+	}
 	if a.checkStorageDomainStore(stmt.Target, targetType, stmt.Value, exprType) {
 		return
 	}

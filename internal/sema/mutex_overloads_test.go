@@ -108,7 +108,7 @@ func TestMutexContextCoreIdentity(t *testing.T) {
 		t.Fatal(errorType)
 	}
 	p = parser.New(lexer.NewWithFile(string(data), file))
-	if errors := NewAnalyzer().Analyze(p.ParseProgram()); len(errors) != 2 {
+	if errors := NewAnalyzer().Analyze(p.ParseProgram()); len(errors) != 3 {
 		t.Fatal(errors)
 	}
 }

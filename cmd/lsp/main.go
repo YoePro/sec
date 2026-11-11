@@ -417,11 +417,16 @@ func (s *server) handle(message rpcMessage) error {
 						"includeText": false,
 					},
 				},
-				"experimental":               map[string]any{"targetSelection": true},
-				"documentFormattingProvider": true,
-				"documentSymbolProvider":     true,
-				"workspaceSymbolProvider":    map[string]any{"resolveProvider": true},
-				"inlayHintProvider":          map[string]any{"resolveProvider": true},
+				"experimental":                    map[string]any{"targetSelection": true},
+				"documentFormattingProvider":      true,
+				"documentRangeFormattingProvider": true,
+				"documentOnTypeFormattingProvider": map[string]any{
+					"firstTriggerCharacter": "}",
+					"moreTriggerCharacter":  []string{"\n"},
+				},
+				"documentSymbolProvider":  true,
+				"workspaceSymbolProvider": map[string]any{"resolveProvider": true},
+				"inlayHintProvider":       map[string]any{"resolveProvider": true},
 				"codeLensProvider": map[string]any{
 					"resolveProvider": true,
 				},
@@ -434,6 +439,7 @@ func (s *server) handle(message rpcMessage) error {
 				"hoverProvider":             true,
 				"definitionProvider":        true,
 				"typeDefinitionProvider":    true,
+				"implementationProvider":    true,
 				"referencesProvider":        true,
 				"documentHighlightProvider": true,
 				"renameProvider": map[string]any{
@@ -608,6 +614,8 @@ func (s *server) handle(message rpcMessage) error {
 			return err
 		}
 		return s.respond(message.ID, []textEdit{})
+	case "textDocument/rangeFormatting", "textDocument/onTypeFormatting":
+		return s.handleSelectionFormatting(message)
 	case "textDocument/formatting":
 		var params formattingParams
 		if err := json.Unmarshal(message.Params, &params); err != nil {
@@ -717,6 +725,20 @@ func (s *server) handle(message rpcMessage) error {
 			return s.respond(message.ID, nil)
 		}
 		locations := typeDefinitionsForSource(params.TextDocument.URI, snapshot.Text, params.Position, s.sourceOverlay())
+		if len(locations) == 0 {
+			return s.respond(message.ID, nil)
+		}
+		return s.respond(message.ID, locations)
+	case "textDocument/implementation":
+		var params definitionParams
+		if err := json.Unmarshal(message.Params, &params); err != nil {
+			return err
+		}
+		snapshot, ok := s.documentSnapshots.Snapshot(params.TextDocument.URI)
+		if !ok {
+			return s.respond(message.ID, nil)
+		}
+		locations := implementationsForSource(params.TextDocument.URI, snapshot.Text, params.Position, s.sourceOverlay())
 		if len(locations) == 0 {
 			return s.respond(message.ID, nil)
 		}
@@ -2668,6 +2690,11 @@ func memberCompletionItems(exprType sema.Type, analyzer *sema.Analyzer, prefix s
 	}
 	for _, method := range interfaceCompletionMethods(exprType, static) {
 		label, _ := interfaceMethodLabel(method)
+		// Inherited requirements name their declaring interface
+		// (interfaces.md § 5); the label carries the receiver capability.
+		if owner, ok := analyzer.InterfaceRequirementOwnerAt(method.Token.File, method.Token.Line, method.Token.Column); ok && owner != exprTypeInterfaceName(exprType) {
+			label += "\n\ninherited from " + owner
+		}
 		addTyped(completionItem{Label: method.Name, Kind: 2, Detail: lspTypeName(method.ReturnType), Documentation: label}, method.ReturnType)
 	}
 

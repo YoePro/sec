@@ -63,3 +63,34 @@ func TestSourceModuleResolverRejectsInvalidManifest(t *testing.T) {
 		t.Fatalf("invalid manifest resolved to %v", got)
 	}
 }
+
+// Module resolution consumes the Project UUID root, never the display name:
+// renaming [project].name keeps every ModuleIdentity, and two Projects that
+// share a display name but differ in UUID yield distinct identities for the
+// same Project-relative module.
+// Rules: rules/projects/projects.md — §§ 49(1), 49(4); rules/projects/modules.md — §§ 2.2, 9, 17.
+func TestSourceModuleResolverIgnoresProjectDisplayName(t *testing.T) {
+	base := t.TempDir()
+	first := filepath.Join(base, "first")
+	second := filepath.Join(base, "second")
+	const uuidA = "e3856637-43bf-4166-bf83-07edd6e03c5d"
+	const uuidB = "0b1f4f4e-9d0a-4c47-8f43-3f6cbd1b2a10"
+	writeIdentityFile(t, filepath.Join(first, ".sec", "sec.toml"), "[project]\nname = \"shared\"\nuuid = \""+uuidA+"\"\n")
+	writeIdentityFile(t, filepath.Join(second, ".sec", "sec.toml"), "[project]\nname = \"shared\"\nuuid = \""+uuidB+"\"\n")
+	module := filepath.Join("drivers", "gpio", "gpio.sec")
+
+	before, ok := NewSourceModuleResolver("", base).ModuleIdentity(filepath.Join(first, module))
+	if !ok || before.ImportRootIdentity != projectRootPrefix+uuidA {
+		t.Fatalf("first project identity = %v (%v)", before, ok)
+	}
+	other, ok := NewSourceModuleResolver("", base).ModuleIdentity(filepath.Join(second, module))
+	if !ok || other == before || other.CanonicalImportPath != before.CanonicalImportPath {
+		t.Fatalf("same-named projects with distinct UUIDs must differ only by root: %v vs %v", before, other)
+	}
+
+	writeIdentityFile(t, filepath.Join(first, ".sec", "sec.toml"), "[project]\nname = \"Renamed Display Name\"\nuuid = \""+uuidA+"\"\n")
+	after, ok := NewSourceModuleResolver("", base).ModuleIdentity(filepath.Join(first, module))
+	if !ok || after != before {
+		t.Fatalf("rename changed module identity: %v -> %v", before, after)
+	}
+}

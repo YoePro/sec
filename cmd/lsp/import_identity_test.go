@@ -11,7 +11,7 @@ import (
 
 // The editor reports the same canonical import-identity errors as the
 // compiler: a repeated import of one module in a source file (under any
-// alias) and a module importing itself.
+// alias), a module importing itself, and two imports binding one qualifier.
 // Rules: rules/projects/modules.md — §§ 14, 21.
 func TestAnalyzeReportsDuplicateAndSelfImports(t *testing.T) {
 	dir := t.TempDir()
@@ -24,6 +24,14 @@ func TestAnalyzeReportsDuplicateAndSelfImports(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "app", "util", "util.sec"), []byte("module util\n\nfn One() int {\n    return 1\n}\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
+	for _, module := range []string{"a/util", "b/util"} {
+		if err := os.MkdirAll(filepath.Join(dir, "app", module), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "app", module, "util.sec"), []byte("module util\n\nfn One() int {\n    return 1\n}\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
 	sourcePath := filepath.Join(dir, "app", "main.sec")
 	selfSource := "module util\n\nimport \"util\"\n"
 	if err := os.WriteFile(filepath.Join(dir, "app", "util", "extra.sec"), []byte(selfSource), 0644); err != nil {
@@ -33,6 +41,7 @@ func TestAnalyzeReportsDuplicateAndSelfImports(t *testing.T) {
 		path, source, code, message string
 	}{
 		{sourcePath, "module main\n\nimport \"util\"\nimport u \"util\"\n\nfn Use() int {\n    return u.One()\n}\n", diagnostics.DuplicateImport, `module "util" is already imported in this source file`},
+		{sourcePath, "module main\n\nimport \"a/util\"\nimport \"b/util\"\n\nfn Use() int {\n    return util.One()\n}\n", diagnostics.ImportQualifierCollision, `import "b/util" binds qualifier util`},
 		{filepath.Join(dir, "app", "util", "extra.sec"), selfSource, diagnostics.SelfImport, `module cannot import itself through "util"`},
 	} {
 		found := false

@@ -19,7 +19,7 @@ func TestDiagnosticCatalogSchemasContainEveryStructField(t *testing.T) {
 		typ    reflect.Type
 		fields []diagnosticCatalogField
 	}{
-		{name: "definition", typ: reflect.TypeOf(diagnostics.Definition{}), fields: diagnosticDefinitionFields},
+		{name: "definition", typ: reflect.TypeOf(diagnosticCatalogDefinition{}), fields: diagnosticDefinitionFields},
 		{name: "semantic occurrence", typ: reflect.TypeOf(sema.Error{}), fields: semanticOccurrenceFields},
 		{name: "parser occurrence", typ: reflect.TypeOf(parser.Diagnostic{}), fields: parserOccurrenceFields},
 		{name: "token", typ: reflect.TypeOf(lexer.Token{}), fields: diagnosticTokenFields},
@@ -74,9 +74,10 @@ func TestBuildDiagnosticCatalogContainsEveryRegisteredDefinition(t *testing.T) {
 	if catalog.Summary.Active+catalog.Summary.Retired != catalog.Summary.Total {
 		t.Fatalf("status counts do not cover every definition: active=%d retired=%d total=%d", catalog.Summary.Active, catalog.Summary.Retired, catalog.Summary.Total)
 	}
-	// S1020 and the associated-static advisory, plus S1152 retired by MD-029.
-	if catalog.Summary.Retired != 3 {
-		t.Fatalf("retired definitions = %d, want 3", catalog.Summary.Retired)
+	// S1020 and the associated-static advisory, S1152 retired by MD-029 and
+	// S1069 retired by MD-131.
+	if catalog.Summary.Retired != 4 {
+		t.Fatalf("retired definitions = %d, want 4", catalog.Summary.Retired)
 	}
 }
 
@@ -140,7 +141,10 @@ func TestDiagnosticCatalogDetailMatchesRegisteredDefinition(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := map[string]string{}
-	for _, line := range strings.Split(strings.TrimSpace(output.String()), "\n") {
+	// The definition fields form the first block; extended explanation
+	// sections (§ 13(6)) follow after a blank line.
+	header, _, _ := strings.Cut(output.String(), "\n\n")
+	for _, line := range strings.Split(strings.TrimSpace(header), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) != 2 {
 			t.Fatalf("invalid detail line %q", line)
@@ -167,5 +171,46 @@ func TestDiagnosticCatalogDetailRejectsUnknownIDAndExtraArguments(t *testing.T) 
 	}
 	if err := runDiagnosticCatalogCommand([]string{diagnostics.UnreachableStatement, "--json"}, &bytes.Buffer{}); err == nil {
 		t.Fatal("expected mixed detail and JSON arguments to fail")
+	}
+}
+
+// `sec diagnostics S3001` renders the registry-owned extended sections and
+// the JSON catalog carries the same explanation; a diagnostic without one
+// keeps the plain detail and omits the JSON field.
+// Rules: rules/tooling/diagnostics.md — §13(4)–(6).
+func TestDiagnosticCatalogDetailIncludesExtendedExplanation(t *testing.T) {
+	var out bytes.Buffer
+	if err := runDiagnosticCatalogCommand([]string{diagnostics.UnreachableStatement}, &out); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"DESCRIPTION\n", "EXPLANATION\n", "COMMON CAUSES\n", "VALID ALTERNATIVES\n", "EXAMPLE\n", "let x := 2   // S3001", "RELATED\nS1045, A2008", "SINCE\nSec 0.1"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("S3001 detail lacks %q:\n%s", want, out.String())
+		}
+	}
+	out.Reset()
+	if err := runDiagnosticCatalogCommand([]string{diagnostics.UseAfterDiscard}, &out); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out.String(), "DESCRIPTION") {
+		t.Errorf("unexplained diagnostic rendered extended sections:\n%s", out.String())
+	}
+
+	out.Reset()
+	if err := runDiagnosticCatalogCommand([]string{"--json"}, &out); err != nil {
+		t.Fatal(err)
+	}
+	var catalog diagnosticCatalog
+	if err := json.Unmarshal(out.Bytes(), &catalog); err != nil {
+		t.Fatal(err)
+	}
+	for _, definition := range catalog.Definitions {
+		_, explained := diagnostics.Explain(definition.ID)
+		if explained != (definition.Explanation != nil) {
+			t.Errorf("%s: JSON explanation presence %v, registry %v", definition.ID, definition.Explanation != nil, explained)
+		}
+		if definition.ID == diagnostics.UnreachableStatement && (definition.Explanation == nil || len(definition.Explanation.Causes) == 0) {
+			t.Errorf("S3001 JSON explanation incomplete: %+v", definition.Explanation)
+		}
 	}
 }

@@ -1,0 +1,29 @@
+module main
+
+fn Leaf() void {
+    panic "ISR prerequisite witness"
+}
+
+fn Root() void {
+    Leaf()
+}
+
+fn Unrelated() void {
+    panic "unrelated witness"
+}
+
+fn NoEffects() void {
+    assert true
+}
+
+fn Opaque(action: fn() void) void {
+    action()
+}
+
+fn AllocatingLeaf() void {
+    let arena := Arena.WithCapacity(64u)
+}
+
+fn AllocatingRoot() void {
+    AllocatingLeaf()
+}

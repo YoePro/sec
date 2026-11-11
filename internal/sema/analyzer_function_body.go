@@ -62,6 +62,9 @@ func (a *Analyzer) analyzeFunctionBodyInScope(fn *ast.FunctionDeclaration, name 
 	previousStableBindings := a.currentStableBindings
 	defer func() { a.currentStableBindings = previousStableBindings }()
 	a.currentStableBindings = stableBindingsOf(fn)
+	previousVersionTracked := a.currentVersionTrackedBindings
+	defer func() { a.currentVersionTrackedBindings = previousVersionTracked }()
+	a.currentVersionTrackedBindings = versionTrackedBindingsOf(fn)
 	previousLoopWritten := a.loopWrittenNames
 	defer func() { a.loopWrittenNames = previousLoopWritten }()
 	a.loopWrittenNames = loopAssignedNames(fn)

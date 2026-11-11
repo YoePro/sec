@@ -32,7 +32,7 @@ func TestDeferredArenaContinuationLSP(t *testing.T) {
 		}
 		for i, lines := range [][2]int{{7, 5}, {13, 11}, {20, 17}} {
 			d := errors[i]
-			if d.Severity != 1 || d.Range.Start.Line != lines[0]-1 || !strings.Contains(d.Message, "cannot use values after arena mem") || len(d.RelatedInformation) != 1 || d.RelatedInformation[0].Location.URI != uri || d.RelatedInformation[0].Location.Range.Start.Line != lines[1]-1 {
+			if d.Severity != 1 || d.Range.Start.Line != lines[0]-1 || !strings.Contains(d.Message, "cannot use values after arena mem") || len(d.RelatedInformation) != 2 || d.RelatedInformation[0].Location.URI != uri || d.RelatedInformation[0].Location.Range.Start.Line != lines[1]-1 {
 				t.Fatal(d)
 			}
 		}

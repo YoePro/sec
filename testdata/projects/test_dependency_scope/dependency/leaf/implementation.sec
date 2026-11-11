@@ -1,0 +1,5 @@
+module leaf
+
+fn Value() int {
+    return 7
+}

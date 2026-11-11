@@ -1,0 +1,26 @@
+module ranges
+
+fn Before( ) int { return  1 }
+
+/** Focus documentation. */
+fn Focus() int {
+    let label := "😀"
+    return 1 + 2
+}
+
+fn After( ) int { return  3 }
+
+type Box struct {
+x:int,
+longName:int,
+}
+
+impl Box {
+fn Read( ) int {
+return self.x
+}
+
+fn Twice( ) int {
+return self.x*2
+}
+}

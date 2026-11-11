@@ -1,0 +1,33 @@
+module main
+
+type Holder struct {
+    Config: ThreadConfig
+}
+
+fn Work() void {}
+
+fn Named(config: ThreadConfig) void {
+    let worker := spawn thread <-config Work()
+    join worker
+}
+
+fn Projected(holder: Holder) void {
+    let worker := spawn thread <-holder.Config Work()
+    join worker
+}
+
+fn Conditional(config: ThreadConfig, start: bool) void {
+    if start {
+        let worker := spawn thread <-config Work()
+        join worker
+    } else {
+        discard config
+    }
+}
+
+fn Ordinary() void {
+    let worker := spawn thread Work()
+    join worker
+    let work := spawn task Work()
+    await work
+}

@@ -157,6 +157,8 @@ integrations:
       - rules/projects/modules.md
       - rules/declarations/generics.md
     code:
+      - cmd/lsp/implementation.go
+      - internal/sema/interface_tooling.go
       - internal/ast/ast.go
       - internal/parser/parser.go
       - internal/parser/expression.go
@@ -167,6 +169,7 @@ integrations:
       - cmd/lsp/request_queue.go
       - internal/sema/semantic_facts.go
     tests:
+      - cmd/lsp/implementation_test.go
       - cmd/lsp/type_definition_components_test.go
       - testdata/lsp/type_components/catalog.sec
       - testdata/lsp/type_components/use.sec
@@ -186,9 +189,9 @@ integrations:
       - compiler-known scalar types without a source declaration return no fabricated location
       - "Type-component navigation completed 2026-10-28: parser TypeReference.NameToken retains the final real nominal identifier across qualification, ref/container nesting and expression-derived conversion/constructor references. Sema binds that token to its nominal declaration and exposes one readonly source-provenance query; LSP prioritizes an explicitly selected type component without a spelling lookup or wrapper/element guess. Actual imported catalog fixtures cover generic constructors/arguments, Result/Option, ref/ref mut, fixed/dynamic arrays, slices, list/map/set, vector/matrix/tensor/tensor_view and nested combinations. Negative cases preserve no-target behavior for unresolved qualified types despite a same-spelled local type, module qualifiers and shape extents; whole compound bindings do not arbitrarily select an element. Generic constraints/inferred specialization facts and future shared-workspace provenance remain separate existing items."
       - "Generic type-definition navigation completed 2026-10-29: real imported-module fixtures cover each conjunct of function/type generic constraints, specialized interface/type arguments, nested and constrained generic structs, explicit generic call arguments, inferred/explicit specialized nominal call results and resolved member values. Generic parameters and compound values never choose an arbitrary constraint or element type; ordinary definition still points to the real generic parameter declaration. Negative source covers an unresolved qualified constraint despite a same-spelled local type, plus invalid generic/concrete T shadowing. The regression exposed and fixed name-only fallback for generic types: ResolvedTypeDeclarationLocation now withholds generic/invalid/unresolved types and lives beside the other queries in type_navigation.go. No LSP resolver or generic inference rules were introduced."
+      - "2026-11-11: textDocument/implementation (lsp.md § 14(1)). initialize advertises implementationProvider and the request is read-only analysis. From an interface (declaration or any use resolving to it) it returns every explicitly conforming type; from an interface method, property or event requirement the implementing member of each conforming type, from Sema's InterfaceConformanceFact.Members (InterfaceImplementationsAt) in deterministic location order. Other symbols return no result. Semantic rename is implemented under tooling.lsp-rename (cmd/lsp/implementation.go; TestImplementationNavigation)."
     remaining:
       - integrate generated, platform-selected, dependency, and target-variant sources through the future shared workspace symbol index
-      - implement the separately required textDocument/implementation and semantic rename surfaces
     verification:
       - command: go test ./cmd/lsp -run 'TestGenericTypeDefinitionNavigation|TestGenericConstraintNavigationDoesNotGuessSameSpelledType|TestTypeDefinition|TestHoverPresentsOrderedMultipleGenericConstraints' -count=1 -timeout=120s; go vet ./internal/sema ./cmd/lsp
         result: passed on 2026-10-29 (12.267s), followed by the final imported-module generic navigation selection (5.121s) including both type-declaration constraint conjuncts. Exact URI/ranges, explicit/inferred specialization, ordinary generic declaration navigation and no-target guards pass. The invalid-shadow regression failed before the guard by selecting the unrelated concrete T. Remaining 3 to 2.

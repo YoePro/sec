@@ -1,0 +1,20 @@
+module copyadvice
+
+type Frame struct { Data: int[16] }
+
+@noCopy
+type Owner struct { Data: int[16] }
+
+fn Read(value: Frame) int { return value.Data[0] }
+fn Forward(value: Frame) int { return Read(value) }
+fn ObserveOwner(value: Owner) int { return value.Data[0] }
+fn Retain(value: Frame) Frame { return value }
+fn Consume(->value: Frame) void { discard value }
+fn Transfer(value: Frame) void { Consume(<-value) }
+
+fn ValidCopies(value: Frame) int {
+    let first := Read(value)
+    let second := Forward(value)
+    let retained := Retain(value)
+    return first + second + retained.Data[0]
+}

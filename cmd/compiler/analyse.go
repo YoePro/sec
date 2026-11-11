@@ -159,7 +159,7 @@ func runAnalyseCommand(args []string, out io.Writer) {
 		exitCLI(1)
 	}
 	if command.family != "" {
-		if family, _ := findAnalysisFamily(command.family); family.Availability != analysisAvailable {
+		if family, _ := findAnalysisFamily(command.family); family.Availability == analysisNotSelectable {
 			reportToolError("analysis", "the %s analysis cannot run on its own: %s", family.Name, family.Limitation)
 			exitCLI(1)
 		}
@@ -205,6 +205,11 @@ func runAnalyseCommand(args []string, out io.Writer) {
 	}
 	if report.counts[analyseClassError] > 0 {
 		exitCLI(3)
+	}
+	// An explicitly requested proof must not turn prerequisite inspection into
+	// successful ISR verification (rules/tooling/cli.md §5.6(4)).
+	if family, ok := findAnalysisFamily(command.family); ok && family.Availability == analysisIncomplete {
+		exitCLI(1)
 	}
 }
 
@@ -290,9 +295,14 @@ func buildAnalyseReport(analyzer *sema.Analyzer, selected map[string]bool, targe
 		}
 	}
 	report.addFocusOpenTargetLimitations(graph)
+	if family == "isr" {
+		report.addISRPrerequisites(graph, nodes, names)
+	}
 	if family == "" {
 		report.addCallGraph(graph, nodes, names, inSelection)
 		report.addIterators(analyzer, inSelection)
+		report.addSchedulingPoints(analyzer, inSelection)
+		report.addRawPointers(analyzer, inSelection)
 		report.addEffects(graph, nodes, names)
 		report.addAllocationFacts(analyzer, nodes, names)
 		report.addEscape(analyzer.EscapeAnalysis(), inSelection)
@@ -710,6 +720,8 @@ func (r analyseReport) document(command analyseCommand, occurrences []emittedOcc
 			continue
 		case family.Availability == analysisAvailable:
 			entry.Status, entry.Complete = "executed", true
+		case family.Availability == analysisIncomplete && r.family == family.Name:
+			entry.Status, entry.Note = "executed", family.Limitation
 		default:
 			entry.Status, entry.Note = "not-selectable", family.Limitation
 		}

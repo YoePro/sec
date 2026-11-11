@@ -404,13 +404,13 @@ integrations:
       - "MD-014 (rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md § 6, 2026-10-03): plain float carries the platform width (FloatBits from ResolvedScalarPlan.PointerWidthBits, 64 by default), so range-constrained plain float derives its nearest-valid default like float32/float64 and the former no-default fallback is removed (testdata/defaults fixtures moved accordingly)"
       - "generic instance defaults (2026-10-07): synthesized default struct literals and struct-like union-variant literals carry their exact instantiated type, so `let mut b: Box[int]`, nested generic fields, and `Cell[int]` default variants are accepted instead of failing with \"Box requires 1 generic arguments, got 0\"; an unconstrained T and instances over NonDefaultable arguments stay rejected (TestGenericInstanceDefaultsUseExactInstantiatedType)"
       - "source-related default diagnostics (2026-10-08): named declarations retain type/default locations through inheritance and generic substitution; explicit-default representability links to the type declaration, invalid defaults link to the precise inherited/local contract, membership conjunction failures locate the original member and conflicting contract, ambiguous/missing defaults identify their defining type or field, and immutable missing initializers link to their declared type; owning IDs, severity and help are preserved through CLI JSON/human output and cross-file LSP UTF-16 overlays"
+      - "2026-11-11: explicit defaults execute ordinary Sec functions, type-associated static functions and static property getters through the semantic CTE executor (compile_time_evaluation.md § 8(5)-(7)); foreign calls, wall-clock reads and static mutation are rejected as S1224, failures fail closed (S1223/S1225/S1226) and constructs the executor does not run keep S1101; static materializability stays a separate check of the established value (TestSemanticCTEExecutesOrdinaryFunctions, TestSemanticCTEStaticPropertyGetters)."
     remaining:
       - represent explicit, mutable, omitted-field, aggregate, array-element, range-derived, membership-derived, and empty-collection initialization origins in Semantic IR
       - lower synthesized mutable, struct, fixed-array, owning dynamic-array, and list defaults through the maintained Semantic IR and Sec MLIR pipelines
       - track partial aggregate, array, and collection construction cleanup for nontrivial elements and failure paths
       - add a verifier proving all readable struct fields and fixed-array elements are initialized, constrained defaults are valid, empty owning descriptors are complete, and no safe slice is fabricated without provenance
       - implement exact successors for exclusive decimal upper bounds; blocked on MD-049 (source-level decimal scale domain and nearest-valid search policy)
-      - execute calls and property getters in explicit defaults once the canonical semantic CTE executor exists (currently S1101 compile-time.execution-unavailable), while rejecting I/O, volatile, FFI, and fallible runtime operations and keeping static materializability separate from transient evaluator allocation
     verification:
       - command: SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./... -count=1
         result: passed on 2026-10-08; full Go suite and default matrix on both scalar plans, actual Sec MLIR verification/lowering passes, clang compilation and x86-64 scalar/decimal execution; extended named native/fixed-width/explicit floating-default cases also passed in focused rerun
@@ -468,7 +468,7 @@ integrations:
     status: partial
     integrated: "2026-08-09"
     audited: "2026-08-12"
-    revised: "2026-11-10"
+    revised: "2026-11-11"
     summary: >-
       Tracks implemented core type syntax and semantics migrated from the
       retired types.txt rulebook under the canonical rules/types/types.md
@@ -573,6 +573,11 @@ integrations:
       - mlir/test/Conversion/SecIntegerToArith/invalid-named-storage-provenance.mlir
       - testdata/build/native/named_integer_storage.sec
       - testdata/build/native/named_integer_storage_overflow.sec
+      - internal/ir/semantic/character_comparison_test.go
+      - cmd/compiler/character_comparison_test.go
+      - cmd/lsp/character_comparison_test.go
+      - testdata/build/native/character_predicates.sec
+      - testdata/sema/character_comparisons_invalid.sec
     implemented:
       - "MD-120 (2026-11-01; types.md \"Core generic result and option types\"): Result[T, E] admits a generic parameter constrained by error; an unconstrained parameter and non-error types stay rejected (rules/corrections/applied/MD-120-generic-error-parameters-approved-20261031-20261101.md; TestGenericErrorParameters, TestGenericErrorChannelSpecializations, TestGenericErrorUnionInstance, TestErrorCategoryConstraintSyntax, TestGenericErrorParameterHover)"
       - "MD-073 (applied 2026-10-31, rules/corrections/applied/MD-073-string-to-char-array-byte-preserving-correction-20261031.md): string.ToCharArray() has the exact source contract Result[char[], CollectionError] in the registry, hover and rulebooks; one char per UTF-8 byte, no rune range check; implicit byte[]/char[] interchange and a StringError channel are rejected (TestStringToCharArrayIsByteMaterialization). Execution stays with P23-33 under the P18/P19 array materialization"
@@ -631,6 +636,7 @@ integrations:
       - "MD-126 frontend StringView identity (2026-11-05; types.md StringView; core-library.md 5.8): a distinct compiler-known string-view kind is trivially destructible/copyable as a borrow holder, carries reference provenance, has the exact read-only registry surface and is shown as StringView by LSP hover. No implicit conversion to string or mutable view form is admitted. View readers have separate operation IDs and ToString remains content materialization, not the universal type-summary fallback. Semantic IR type tables, physical representation and release gating remain separate remaining work."
       - "MD-126 Semantic IR StringView type (2026-11-06; types.md StringView; semantic_ir.md § 17(9)): internType maps StringView to the distinct string-view type kind (no element type, never string or rune[]) from package 16; views are shared-reference holders with reference metadata, parameters/returns/call results carry Sema facts, and Sec MLIR spells the type !sec.string_view. Evidence: internal/ir/semantic/string_views.go, string_views_test.go, internal/lowering/secmlir/string_views_test.go (32/64-bit), mlir/test/Analysis/schema13-string-views.mlir."
       - Ordinary mutable local storage of named integer types and nested named chains lowers through the single compilation track. Sec MLIR emission preserves nominal storage identity and emits the canonical integer carrier scalar_kind; P8 lowers declare/init/load/store together to signless carrier memrefs, retaining slot identity, width, signed arithmetic behavior and checked failure edges. Address-taken/reference-dependent storage remains at its P15 boundary. Native programs cover signed chained types, high-bit uint8 division, uint256 values, replacement stores and overflow trapping; conversion tests cover 32/64-bit plans, repeated lowering and invalid provenance (2026-11-10).
+      - "MD-105 character comparison closure (implemented 2026-10-18; conformance verified 2026-11-11): same-type char/rune comparisons preserve character types and source provenance through int.compare / sec.int.cmp and lower unsigned through ui8/ui32. The stale resolved remaining item is closed after actual native amd64 execution of the existing characters fixture plus a new parameter-driven six-predicate matrix covering equality, both orderings, char high-bit boundaries, NUL, supplementary and maximum Unicode scalars, the surrogate gap and source constant agreement. Real LLVM emission on linux-amd64 and linux-armv7 retains all six predicates over i8/i32 with unsigned relational comparisons. Semantic IR verifies on 32/64-bit plans and rejects mixed char/rune or equal-width integer identity substitutions. CLI and LSP reject all six mixed character operators and character/integer pairs with registered diagnostics. No new source semantics or character arithmetic is introduced; native arm execution is not claimed."
     remaining:
       - "known hole (verified 2026-10-17): no lowering route lowers the global len(...) call or materializes numeric text for string(numericValue); the uint length and the ToString equality are therefore unverified at run time (MD-051 closed 2026-10-17 on the owner's decision that byte counts as uint8; MD-093 decided 2026-10-26: Sema rejects Name(number), while the accepted explicit materialization/nominal-conversion sequence still stops at unsupported intermediate-Result routing and P23 text materialization)"
       - "known hole (verified 2026-10-17): the corrected core string algorithms (rune-position search and slicing, split, FromRuneArray, ToByteArray) and the migrated stdlib str/http code are verified only by compilation; `sec test` cannot execute test bodies yet, so the correction § 9 runtime conformance gates (UTF-8 negative cases, rune-index oracle, multibyte separators, allocation failure, HTTP malformed input, plus MD-092 CharAt/ByteAt byte equality over ASCII/NUL/high/continuation bytes and identical at/past-SizeOf panics) remain open"
@@ -643,7 +649,6 @@ integrations:
       - decimal division precision and failure policy implementation
       - complete decimal comparison lowering
       - complete runtime contract failure paths for decimal overflow, division by zero, and precision exhaustion
-      - "resolved 2026-10-18 (MD-105, formerly this hole): char/rune comparison of the same character type reuses int.compare / sec.int.cmp over !sec.char / !sec.rune and lowers unsigned via char -> ui8 / rune -> ui32 (semantic_ir.md § 125, operators.md \"Rune ordering\", package7.md amendment); native fixture characters.sec covers all six predicates, a top-bit char and a rune above U+FFFF"
       - "MD-126 0.1.2 release/version admission policy for StringView and string ranges (MD-126 header: planned implementation gate 0.1.2 unless the owner changes the release target); the Sema identity and the Semantic IR/Sec MLIR type are implemented"
     governance_reconciliation:
       - "representation audit completion does not implement every backend representation: collection/array work remains with frontend.collections; register, union and interface work remains with frontend.registers, frontend.unions and frontend.interfaces; task/thread work remains with concurrency.tasks-v2 and concurrency.thread-v2; quantity facts and operations remain with frontend.units-v2; any remains explicitly listed here. Maintained Semantic IR and physical Result/Option/aggregate lowering remain with the integrations in governance/lowering.yaml. Legacy unsupported boundaries are implementation capabilities, not new source-language restrictions."
@@ -651,6 +656,8 @@ integrations:
       - explicit callable parameter ownership modes and variadic callable type syntax remain with frontend.functions-v2 and frontend.lambda-functions-v2 in governance/declarations.yaml; inferred variadic shape is covered here without claiming those syntax/ownership integrations complete.
       - The retired llvm_float_readiness_test.go no longer exists. Current float_core, floats, float_literals and float operator/core matrices live in cmd/compiler/native_track_test.go on the single native track. Repaired the test-file reference without claiming a new float runtime verification.
     verification:
+      - command: SEC_MLIR_BIN="${SEC_MLIR_BIN}" go test -p 4 ./internal/ir/semantic ./cmd/compiler ./cmd/lsp -run 'CharacterComparison|TestNativeTrackBuildsAndRuns/(characters|character_predicates)$' -count=1 -v -timeout=120s; go vet -p 4 ./internal/ir/semantic ./cmd/compiler ./cmd/lsp
+        result: "Passed 2026-11-11 without skips: Semantic IR 0.027s, compiler 6.265s (actual native builds/runs and both LLVM targets), LSP 0.902s; vet passed. Six predicates, source provenance and nominal operand identity, unsigned high-bit char semantics, full scalar rune bounds, source constant agreement and eight mandatory mixed-type errors are covered. This closes a stale already-resolved remaining record; production character semantics were already implemented."
       - command: go vet -p 4 ./internal/lowering/secmlir ./cmd/compiler
         result: passed on 2026-11-10
       - command: "\"$LLVM_LIT\" -v build/sec-mlir/test/Conversion/SecIntegerToArith build/sec-mlir/test/Conversion/SecToCore build/sec-mlir/test/Conversion/SecToLLVM"
@@ -1070,6 +1077,10 @@ integrations:
       - rules/mlir/dialect-versions/sec_mlir_dialect_v18.md
       - rules/mlir/lowering-versions/sec_mlir_lowering_v18.md
     code:
+      - internal/sema/index_assignment.go
+      - internal/sema/reference_dereference.go
+      - internal/sema/analyzer_try_assignment.go
+      - internal/sema/contract_check_advisories.go
       - internal/sema/unique_contracts.go
       - internal/sema/collectionshape/unique.go
       - internal/sema/type_references.go
@@ -1116,6 +1127,7 @@ integrations:
       - internal/lowering/secmlir
       - sec/core/error.sec
     tests:
+      - internal/sema/constrained_member_compound_test.go
       - internal/sema/collectionshape/unique_test.go
       - testdata/sema/collection_contracts/unique_semantics_valid.sec
       - testdata/sema/collection_contracts/unique_semantics_invalid.sec
@@ -1241,6 +1253,9 @@ integrations:
       - a missing regex pattern at a line end, EOF, following contract word, or default clause emits one parser diagnostic, retains an InvalidExpression pattern, and preserves the contract list, default clause, and following declarations
       - Sema restricts regex to string named types, requires a compile-time string pattern, retains the escape-decoded pattern as sema.RegexContract, and rejects the declaration with mandatory S1058 types.regex-contract-unavailable plus help instead of silently dropping the unvalidatable contract (MD-010)
       - "MD-012 public declarations (2026-10-08, rules/corrections/applied/md012-md022-conversion-errors-ffi-literals-correction-20261008.md § 3): sec/core/error.sec declares ContractKind (Range, In, Odd, Even, MultipleOf, Finite, Regex, MinLen, MaxLen, ExactLen, NotEmpty, Unique, MinByteLen, MaxByteLen, ExactByteLen), ContractError.Violation { Kind, DeclarationIndex } and ConversionError (OutOfRange, InvalidScalar, PrecisionLoss, ScaleOverflow, NonFinite, Contract(ContractError)) with adjacent member documentation; the compiler-known ContractError identity is refined by this trusted core declaration (isCoreBuiltinDeclaration) instead of a competing compiler shape"
+      - "Panicking and try forms of constrained assignment (2026-11-11, owner decision MD-131; contracts.md § 12): `p = Percent(x)` and `p += n` without try are valid and panic with ContractFailure on a run-time violation; the try forms make it a handled ContractError. Locals, statics, fields, properties and `*ref` referents share the rule; compound updates publish the may-panic-contract effect, so @noPanic rejects them like an untried conversion. Every remaining untried run-time contract check reports Information A2011 contracts.unchecked-contract-may-panic; literals proven at compile time report nothing. S1069 is retired. TestContractedVariableAssignmentPanicsWithoutTry, TestConstrainedMemberCompoundAssignment"
+      - "Fallible constrained assignment through try for every target kind (2026-11-11; contracts.md § 12, MD-131): locals, statics, fields, properties, fixed-array elements and `*r` referents of a constrained named type accept `try target = value` and `try target op= value` with the compiler-known ContractError channel (local handlers or propagation); the index and dereference assignment paths now mark contracted try targets like the member path (markContractedTryTarget), and an untried compound update of a constrained element records the may-panic contract effect and A2011 at the element target like locals, fields and referents. Unconstrained elements still reject try with S1096. Run-time execution of the checks stays under the lowering items below (TestConstrainedElementAndReferentAssignment, TestConstrainedMemberCompoundAssignment)."
+      - "2026-11-11: contract arguments execute ordinary Sec functions, type-associated static functions and static property getters through the semantic CTE executor (MD-011; compile_time_evaluation.md § 8(5)-(7)), so `range 0..Limit()` establishes its bound before literal and conversion checks use it; failures are S1223-S1226 and unexecuted forms keep S1101 (TestSemanticCTEExecutesOrdinaryFunctions, TestContractArgumentsThatCannotBeEstablishedAtCompileTime)."
     partial:
       - membership supports primitive/scalar/enum and payload-less union compile-time values; payload-bearing and aggregate construction still requires the canonical semantic CTE executor for the full named-value equality domain
       - finite and collection notEmpty/unique/length contracts have frontend representation but not complete runtime validation semantics; native bodyless string checks work for valid UTF-8, while MD-050 must settle invalid-string policy
@@ -1248,12 +1263,11 @@ integrations:
       - contract facts are not yet represented end-to-end in the maintained Semantic IR and Sec MLIR pipelines
       - "MD-010 (rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md § 2): the regex language moves to a dedicated future regex rulebook; the contract continues to evaluate and retain the pattern and reject the contract with S1058"
     remaining:
+      - "rulebook synchronization for MD-131: contracts.md § 12(2)-(3) still states that mutation of a constrained value uses the try form, and diagnostics.md still lists S1069 as active and has no A2011 entry (owner text)"
       - define the canonical regular-expression syntax/engine (MD-010), then replace S1058 with compile-time pattern validation, literal/default proofs, and runtime regex validation
       - implement runtime string validation for minLen, maxLen, exactLen, and notEmpty; native bodyless checks are implemented for valid UTF-8; since MD-050 (2026-10-17) every string is valid UTF-8, so only valid-text validation remains
       - implement runtime supported collection-shaped minLen, maxLen, exactLen, notEmpty, and unique validation
-      - execute calls and property getters in contract arguments once the canonical semantic CTE executor exists (currently S1101 compile-time.execution-unavailable); MD-011 already classifies every contract position as a SemanticCompileTimeRequiredContext
       - implement runtime validation for explicit conversion into constrained named types
-      - implement canonical fallible constrained assignment and compound-assignment behavior through try
       - report runtime contract validation through ConversionError.Contract(ContractError.Violation { Kind, DeclarationIndex }) with the first violated contract in source order; `try Percent(value)` still uses the compiler-known ContractError as its error type (MD-012 decided 2026-10-08, rules/corrections/applied/md012-md022-conversion-errors-ffi-literals-correction-20261008.md §§ 3–4)
       - preserve contract identity and validation requirements in Semantic IR
       - lower runtime validation and failure paths through the maintained Sec MLIR pipeline

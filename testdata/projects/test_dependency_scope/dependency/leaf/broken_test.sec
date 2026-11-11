@@ -1,0 +1,6 @@
+module leaf
+
+// A valid test declaration with an invalid body detects semantic leakage too.
+test "broken transitive dependency" {
+    UnknownTestOnlyFunction()
+}

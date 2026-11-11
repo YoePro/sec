@@ -739,6 +739,7 @@ func (b *parameterUsageBuilder) walkExpressionChildren(expression ast.Expression
 	case *ast.LambdaExpression:
 		b.recordCaptureCreationDemand(expression)
 	case *ast.SpawnExpression:
+		b.walkExpression(expression.Configuration)
 		b.walkExpression(expression.Value)
 		b.walkBlock(expression.Body)
 	case *ast.AwaitExpression:

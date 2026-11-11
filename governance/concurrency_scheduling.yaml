@@ -70,17 +70,17 @@ integrations:
       - Task.Yield() has the exact static fn Yield() void source surface and CKM-TASK-YIELD identity in the shared compiler catalog. Sema rejects extra value/type arguments and instance calls, retaining the logical-task requirement. LSP completion, hover and warm/cold synthetic navigation use the catalog and explain scheduling/cancellation, no implicit main task and no synchronization/fairness guarantee. Source-backed Sema/CLI/LSP coverage is included; runtime commits and lowering remain separate (2026-11-10).
       - Thread.Yield() has the exact static fn Yield() void source surface and distinct CKM-THREAD-YIELD identity in the shared compiler catalog. Sema rejects extra value/type arguments and instance calls. LSP completion, hover and warm/cold synthetic navigation explain the physical-thread scheduler hint, no implicit cancellation and no synchronization/fairness guarantee. Source-backed Sema/CLI/LSP coverage is included; runtime behavior and lowering remain separate (2026-11-10).
       - Task.Yield logical-task requirements are validated through synchronous and deferred call-graph paths from program, test and physical-thread roots. Traversal retains every distinct first call from a root, so shared callees no longer suppress diagnostics at other invalid call sites, including function-value and defer paths; recursive graphs terminate and spawned tasks start separate valid roots. Mandatory S1213 concurrency.logical-task-context-required carries actionable task guidance and a related source operation for transitive requirements; Sema/CLI/LSP share the facts (2026-11-10).
+      - "Separate scheduling/cancellation operation facts completed 2026-11-11 (scheduling.md sections 7-15,50,55-56): successful canonical yield signature resolution publishes ResolvedSchedulingPoint with independent TaskSchedulingPoint, CurrentCancellationPoint and PhysicalSchedulerHint properties, stable compiler-known member ID and source token. Task.Yield has the two logical-task properties; Thread.Yield only the physical scheduler hint. Detached per-call and deterministically source-ordered snapshot queries expose facts without a second syntax/name classifier; repeated inference deduplicates and Analyzer reuse clears obsolete facts. Signature-invalid and instance calls get no facts; facts retained for a signature-valid call in an invalid execution context are not context/profile safety proof. sec analyse --verbose consumes these same facts with exact function focus and no default-output noise. Runtime first-commit races, target realization, migration proof and other wait operations remain with their separately tracked owning requirements."
+      - "Stale portable ThreadSchedulingError identity conformance verified 2026-11-11 (scheduling.md sections 34(1-3),56(3)): builtin/error registration already removed by the threads-v2 implementation; source-backed Sema and CLI reject undeclared use while accepting ordinary project-owned declarations and canonical ThreadAttachError. LSP exposes no stale completion, hover, definition or type-definition; navigation regression added. This closes the stale scheduling checklist duplicate without claiming new runtime scheduling behavior."
+      - "Ordinary-main Task.Current/Task.Yield rejection completed and verified 2026-11-11 (scheduling.md sections 21-22,50,57): the existing shared execution-requirement validator rejects both operations directly and through synchronous helpers, function values and deferred calls with S1213, source spans, spawn guidance and transitive operation witnesses. Dedicated source-backed regression coverage verifies six independent forbidden root calls on 32/64-bit scalar plans, accepted real task roots, and ordinary main/physical-thread Thread.Current and Thread.Yield controls. Compiler JSON and LSP share the diagnostics; invalid main cannot publish a Semantic IR artifact. No new runtime scheduling implementation or target realization is claimed."
     remaining:
       - implement Task.Yield cancellation-point first-commit behavior
       - ensure Thread.Yield does not observe/commit cancellation implicitly
       - remove target-dependent implicit root-task semantics from main/program entry
-      - reject Task.Current and Task.Yield in ordinary main
-      - model scheduling point versus cancellation point as separate semantic facts
       - model task migration permission/restriction explicitly
       - preserve execution-affine/TLS physical-thread provenance through scheduler lowering
       - prevent backend preemption/migration from violating validated thread-bound borrow facts
       - synchronize ThreadPriority/CpuSet/ThreadConfig rules with threads-v2
-      - remove/internalize stale portable ThreadSchedulingError identity
       - complete CompilationPlan scheduling capability declarations
       - complete physical worker blocking versus logical task suspension analysis
       - complete starvation/cooperative-progress diagnostics
@@ -138,12 +138,9 @@ integrations:
       - id: concurrency.scheduling-v2.legacy-ir-opcode-list
         severity: medium
         description: Legacy scheduling.md gives a concrete opcode list as if owned by the scheduling book rather than semantic_ir.md.
-      - id: concurrency.scheduling-v2.stale-thread-scheduling-error
-        severity: medium
-        description: Legacy compiler-known ThreadSchedulingError identity remains despite no portable Sec 0.1 operation owning such an error.
     corrections_applied:
       - rules/corrections/applied/scheduling-v2-cross-rulebook-correction-20260927.md
-    revised: "2026-11-10"
+    revised: "2026-11-11"
     code:
       - internal/sema/execution_context.go
       - internal/sema/execution_context_members.go
@@ -151,6 +148,11 @@ integrations:
       - internal/sema/compiler_known_interfaces.go
       - internal/sema/task_context_requirement.go
       - internal/diagnostics/diagnostics.go
+      - internal/sema/scheduling_points.go
+      - internal/sema/analyzer.go
+      - cmd/compiler/analyse_scheduling.go
+      - cmd/compiler/analyse.go
+      - internal/sema/types.go
     tests:
       - internal/sema/yield_surface_test.go
       - cmd/compiler/yield_surface_test.go
@@ -163,7 +165,37 @@ integrations:
       - testdata/sema/task_yield_context_valid.sec
       - testdata/sema/task_yield_context_invalid.sec
       - testdata/sema/task_yield_context_invalid_test.sec
+      - internal/sema/scheduling_points_test.go
+      - cmd/compiler/analyse_scheduling_test.go
+      - testdata/sema/scheduling_point_facts_valid.sec
+      - internal/sema/thread_legacy_errors_test.go
+      - cmd/compiler/thread_legacy_errors_test.go
+      - cmd/lsp/thread_legacy_errors_test.go
+      - testdata/sema/thread_legacy_errors_valid.sec
+      - testdata/sema/thread_legacy_errors_invalid.sec
+      - testdata/sema/thread_legacy_errors_local.sec
+      - internal/sema/main_task_context_test.go
+      - cmd/compiler/main_task_context_test.go
+      - cmd/lsp/main_task_context_test.go
+      - testdata/sema/main_task_context_valid.sec
+      - testdata/sema/main_task_context_invalid.sec
     verification:
+      - command: go vet -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: passed 2026-11-11 after ordinary-main task-context integration coverage.
+      - command: go test -race -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run '^TestMainTaskContext' -count=1 -timeout=120s
+        result: "passed 2026-11-11: Sema 1.061s, compiler 11.486s, LSP 10.228s; direct/helper/function-value/defer rejection, 32/64-bit Sema, valid task and physical-thread controls, registered JSON/LSP diagnostics and no invalid IR artifact."
+      - command: go vet -p 4 ./cmd/lsp
+        result: passed 2026-11-11 after stale scheduling identity navigation regression.
+      - command: go test -race -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run '^TestThreadLegacyErrors' -count=1 -timeout=90s
+        result: "passed 2026-11-11: Sema 1.025s, compiler 18.081s, LSP 64.513s; absent implicit identities and LSP completion/hover/definition/type-definition, canonical attachment errors and ordinary project declarations."
+      - command: go test -race -p 4 ./internal/sema ./cmd/compiler -run 'ResolvedSchedulingPoints|AnalyseSchedulingPoints' -count=1 -timeout=90s
+        result: "passed 2026-11-11: final Sema 1.124s and compiler 26.746s; includes same-spelled ordinary Yield negative control, three canonical yield sites, immutable per-call/snapshot queries, deterministic replay/reset, invalid signatures/instances, separately rejected task context and focused/default/verbose CLI presentation."
+      - command: go vet -p 4 ./internal/sema ./cmd/compiler
+        result: passed 2026-11-11.
+      - command: go test -p 4 ./internal/sema ./internal/ir/semantic -count=1 -timeout=120s
+        result: "passed 2026-11-11: complete Sema 21.350s and Semantic IR 8.086s."
+      - command: go test -p 4 ./internal/sema ./cmd/compiler -run 'ResolvedSchedulingPoints|AnalyseSchedulingPoints|YieldSurface|TaskYieldContextDiagnostics|TaskContextRequirement' -count=1 -timeout=90s
+        result: "passed 2026-11-11: Sema 0.042s, compiler 5.855s; initial focused role/query tests, existing signature and task-context rejection, verbose/focused/default CLI presentation."
       - command: go vet -p 4 ./internal/sema ./internal/diagnostics ./cmd/compiler ./cmd/lsp
         result: passed on 2026-11-10 after task-context path validation; transient concurrent switch-helper build break resolved before final focused and vet reruns
       - command: go test -p 4 ./internal/sema ./internal/diagnostics ./cmd/compiler ./cmd/lsp -run "TestTaskYieldContext|TestExecutionContext|TestYieldSurface|TestRegistryIsValid|TestCancelOutsideCancellableContext|TestCancelInsideOrdinaryLambdaIsRejected" -count=1

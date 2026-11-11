@@ -133,11 +133,12 @@ func (a *Analyzer) analyzeDereferenceAssignmentStatement(stmt *ast.AssignmentSta
 	if placeOK && a.checkBorrowedMutationPlace(place, target.Token) {
 		return
 	}
-	if hasContracts(referent) && !allowFallible {
-		start := len(a.errors)
-		a.addErrorAtTokenWithMetadata(target.Token, diagnostics.ConstrainedAssignmentRequiresTry, "use try assignment with an Err handler", "assigning referent *%s requires try because %s has contracts", target.Right.String(), typeDisplayName(referent))
-		a.relateConstrainedAssignment(start, referent)
-		return
+	if hasContracts(referent) {
+		if allowFallible {
+			a.markContractedTryTarget(stmt)
+		} else if stmt.Operator != "=" {
+			a.recordCompoundContractEffect(target.Token, "*"+target.Right.String(), referent)
+		}
 	}
 	if !a.validateMoveAssignmentTarget(stmt) {
 		return

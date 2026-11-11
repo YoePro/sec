@@ -141,7 +141,7 @@ func noPanicEffectHelp(kind EffectKind) string {
 	case EffectMayPanicStringMaterialization:
 		return "A runtime string + or += without try panics if its result cannot be materialized. Write try and handle or propagate StringError, or build the text from constants."
 	case EffectMayPanicContract:
-		return "Converting a run-time value into a constrained type panics when the value breaks the type's contract. Use try to handle ContractError."
+		return "Converting a run-time value into a constrained type, or a compound update of a constrained target, panics when the value breaks the type's contract. Use try to handle ContractError."
 	case EffectMayPanicExplicit:
 		return "An explicit panic always panics when reached. Return an error instead, or remove @noPanic."
 	case EffectMayPanicAssertion:

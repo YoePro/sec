@@ -34,10 +34,35 @@ func (b *builder) semanticIdentity(t sema.Type) (string, string) {
 }
 
 // canonicalSemaType recursively retains nominal argument identities, including
-// nested specializations and constant shape parameters. Fixed carrier arguments
-// on a nongeneric named declaration do not create source generic parameters.
-// Rules: rules/types/types.md — Type identity, Named types, Generic and parameterized types.
+// nested specializations, callable contracts, sequence authority and constant
+// shape parameters. Fixed carrier arguments on a nongeneric named declaration
+// do not create source generic parameters.
+// Rules: rules/types/types.md — Type identity, Named types, Generic and
+// parameterized types, Arrays, References, Function types.
 func canonicalSemaType(t sema.Type) string {
+	// A function type's display spelling is not its identity: nested nominal
+	// modules, capability and variadic shape must survive independently of it.
+	if !t.Named && t.Kind == sema.FunctionType {
+		parameters := make([]string, len(t.FunctionParameterTypes))
+		for index, parameter := range t.FunctionParameterTypes {
+			parameters[index] = canonicalSemaType(parameter)
+		}
+		if t.FunctionVariadic && len(parameters) > 0 {
+			parameters[len(parameters)-1] = "..." + parameters[len(parameters)-1]
+		}
+		capability := ""
+		switch t.FunctionCapability {
+		case sema.CallableMutable:
+			capability = "mut "
+		case sema.CallableConsuming:
+			capability = "-> "
+		}
+		result := "<unresolved>"
+		if t.FunctionReturnType != nil {
+			result = canonicalSemaType(*t.FunctionReturnType)
+		}
+		return capability + "fn(" + strings.Join(parameters, ",") + ") " + result
+	}
 	// Structural carriers must recurse into semantic elements: their display
 	// names omit the declaring module of a nested nominal type.
 	if !t.Named && t.Element != nil {
@@ -52,9 +77,14 @@ func canonicalSemaType(t sema.Type) string {
 			if length, fixed := sema.FixedArrayLength(t); fixed {
 				return canonicalSemaType(*t.Element) + "[" + length.String() + "]"
 			}
-			return canonicalSemaType(*t.Element) + "[]"
+			return "own " + canonicalSemaType(*t.Element) + "[]"
 		case sema.SliceType:
+			if t.ReferenceMutable {
+				return "mut " + canonicalSemaType(*t.Element) + "[]"
+			}
 			return canonicalSemaType(*t.Element) + "[]"
+		case sema.VariadicPackType:
+			return "pack(" + canonicalSemaType(*t.Element) + ")"
 		}
 	}
 	name := t.Name
@@ -95,13 +125,17 @@ func locateUnsupportedType(err error, token lexer.Token) error {
 // into the same key used at its definition and calls. Sema's qualified Name
 // already includes the impl owner. Return type and consuming parameter mode do
 // not distinguish source overloads; concrete generic arguments are supplied by
-// the specialization producer instead of re-running overload resolution.
-// Rules: rules/declarations/functions.md — §§11,19–20;
+// the specialization producer instead of re-running overload resolution. Native
+// variadic shape is an input signature dimension, independently of ABI lowering.
+// Rules: rules/declarations/functions.md — §§11,19–20,28,36;
 // rules/compiler/semantic_ir.md — §61(1–4).
 func functionID(f sema.Function, types *TypeTable) FunctionID {
 	parts := make([]string, len(f.Parameters))
 	for i, p := range f.Parameters {
 		parts[i] = canonicalSemaType(p.Type)
+		if p.Variadic {
+			parts[i] = "..." + parts[i]
+		}
 	}
 	return FunctionID(f.Module + "::" + f.Name + "(" + strings.Join(parts, ",") + ")")
 }

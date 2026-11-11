@@ -1,0 +1,21 @@
+module main
+
+fn Invalid(context: ref Context, source: ref ContextSource, wallClock: datetime) void {
+    discard Context.Background(1)
+    discard Context.Background[int]()
+    discard context.WithCancel(1)
+    discard context.WithTimeout()
+    discard context.WithTimeout("later")
+    discard context.WithDeadline(wallClock)
+    source.Cancel(1)
+    source.Cancel[int]()
+    discard source.Context()
+    context.Cancel()
+    context.IsCancelled = true
+    discard ContextSource {}
+    discard ContextSource()
+}
+
+fn Copy(source: ContextSource) void {
+    let copied := source
+}

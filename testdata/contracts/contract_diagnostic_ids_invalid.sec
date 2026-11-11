@@ -15,6 +15,7 @@ fn main() void {
     let percent: Percent := 101
     let name: Name := ""
     let mut current: Percent := 1
+    // A literal assignment is proven at compile time: no diagnostic.
     current = 2
     discard percent
     discard name

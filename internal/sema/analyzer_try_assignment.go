@@ -45,7 +45,7 @@ func (a *Analyzer) analyzeTryAssignmentStatement(stmt *ast.TryAssignmentStatemen
 	errorType, ok := a.tryAssignmentErrorType(stmt.Assignment)
 	if !ok {
 		a.addErrorAtTokenWithMetadata(stmt.Token, diagnostics.TryAssignmentWithoutFallibleTarget,
-			"try assignment is for targets that can reject a value: a property with a `try set` error contract, or a variable of a constrained named type. Remove try for an ordinary assignment.",
+			"try assignment is for targets that can reject a value: a property with a `try set` error contract, or a variable, field, property, element or referent of a constrained named type. Remove try for an ordinary assignment.",
 			"try assignment requires a fallible assignment target with a known error type")
 		return
 	}
@@ -131,23 +131,40 @@ func (a *Analyzer) tryAssignmentErrorType(stmt *ast.AssignmentStatement) (Type, 
 		if plan, ok := a.resolvedMapIndexPlans[target]; ok && plan.Upsert {
 			return plan.UpsertErrorType, true
 		}
+		// A constrained element checks the stored value (MD-131).
+		if a.contractedMemberTryTargets[stmt] {
+			return a.types["ContractError"], true
+		}
+	case *ast.PrefixExpression:
+		// `try *r = value` / `try *r op= value` on a constrained referent.
+		if a.contractedMemberTryTargets[stmt] {
+			return a.types["ContractError"], true
+		}
 	case *ast.MemberExpression:
 		// The decimal Scale setter fails with PrecisionError (core-library.md § 10.1).
 		if a.decimalScaleWrites[stmt] {
 			return a.types["PrecisionError"], true
 		}
 		property, ok := a.lookupPropertyOnMember(target)
-		if !ok || property.Error == nil {
-			return Type{}, false
+		if ok && property.Error != nil {
+			return *property.Error, true
 		}
-		return *property.Error, true
+		// A constrained field or infallible property target checks the
+		// stored value against its contracts (contracts.md § 12).
+		if a.contractedMemberTryTargets[stmt] {
+			return a.types["ContractError"], true
+		}
+		return Type{}, false
 	case *ast.Identifier:
 		property, ok := a.lookupCurrentImplProperty(target.Value)
 		if ok {
-			if property.Error == nil {
-				return Type{}, false
+			if property.Error != nil {
+				return *property.Error, true
 			}
-			return *property.Error, true
+			if hasContracts(property.Type) {
+				return a.types["ContractError"], true
+			}
+			return Type{}, false
 		}
 		symbol, ok := a.symbols.lookup(target.Value)
 		if ok && hasContracts(symbol.Type) {

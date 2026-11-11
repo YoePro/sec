@@ -913,6 +913,7 @@ func (p *Parser) parseSpawnExpression() ast.Expression {
 	if expr.Value == nil {
 		return nil
 	}
+	p.parseNamedThreadConfiguration(expr)
 	return expr
 }
 

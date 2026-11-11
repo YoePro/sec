@@ -874,7 +874,11 @@ func (a *Analyzer) referentOfMovedHolder(place Place) bool {
 //   - rules/tooling/diagnostics.md — §§7, 25
 func (a *Analyzer) checkPlaceAvailableForRead(place Place, token lexer.Token) bool {
 	movedAt, movedKey, partial, unavailable := a.unavailablePlace(place)
-	if !unavailable || partial && a.suppressPlaceRootRead > 0 {
+	if !unavailable {
+		a.recordPlaceUse(place, token)
+		return false
+	}
+	if partial && a.suppressPlaceRootRead > 0 {
 		return false
 	}
 	if a.loopBackedgePlaces[movedKey] {

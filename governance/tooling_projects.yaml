@@ -63,7 +63,7 @@ integrations:
 
   - id: tooling.project-identity
     area: tooling-projects
-    status: partial
+    status: implemented
     integrated: "2026-10-04"
     summary: >-
       Human-readable ProjectName and stable RFC 9562 ProjectUUID identity (§
@@ -105,9 +105,8 @@ integrations:
       - "`[project].module` root ModuleName override (§ 53(8))"
       - Manifest.RootModuleName resolves the optional root-library override or the complete ProjectName when it is a valid ModuleName; other human names require an override only when root source exists. Root command/firmware Targets use main; a simultaneously different root library name is rejected (§14). Shared Sema validation emits registered mandatory S1148 on the exact module-name token for mismatches or explicitly malformed/duplicate overrides. CLI checks selected roots and otherwise omitted mismatched siblings before analysis; LSP consumes the same checker and unsaved manifest overlays. Nested ordinary modules are unaffected; general invalid-manifest CLI/LSP diagnostics remain separate work.
       - Unsupported multiline identity strings now name their owning project field in reader-capability errors, allowing malformed root overrides to be diagnosed without attributing unrelated identity/version failures to root module naming.
-    remaining:
-      - make module resolution consume ProjectUUID/import-root identity rather than ProjectName (§ 49(4), rules/projects/modules.md)
-    revised: "2026-10-13"
+      - "Module resolution consumes ProjectUUID, not ProjectName (verified 2026-11-11; projects.md § 49(4), modules.md §§ 2.2, 9, 17): SourceModuleResolver roots every Project source at project:<UUID> plus its Project-relative directory, and import source resolution is path-based below the Project root; no resolver reads the display name (ProjectName is used only by Manifest.RootModuleName as the § 14 default root-library ModuleName). A rename keeps every ModuleIdentity and same-named Projects with distinct UUIDs get distinct identities. Moving import resolution into one CompilationPlan-aware shared module graph stays with tooling.lsp-import-resolution. TestSourceModuleResolverIgnoresProjectDisplayName"
+    revised: "2026-11-11"
     verification:
       - command: go vet ./...
         result: passed on 2026-10-13

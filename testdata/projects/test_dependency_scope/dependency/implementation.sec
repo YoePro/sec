@@ -1,0 +1,7 @@
+module dependency
+
+import "leaf"
+
+fn Value() int {
+    return leaf.Value()
+}

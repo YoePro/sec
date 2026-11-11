@@ -167,3 +167,12 @@ func interfaceRequirementOwner(program *ast.Program, token lexer.Token) (lexer.T
 	}
 	return lexer.Token{}, false
 }
+
+// exprTypeInterfaceName names the interface a completion receiver is typed
+// as, looking through a reference view.
+func exprTypeInterfaceName(typ sema.Type) string {
+	if typ.Kind == sema.ReferenceType && typ.Element != nil {
+		typ = *typ.Element
+	}
+	return typ.Name
+}

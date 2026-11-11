@@ -183,7 +183,7 @@ func nextRequestIndex(items []rpcMessage) int {
 }
 
 func isPriorityFormattingRequest(method string) bool {
-	return method == "textDocument/formatting" || method == "textDocument/willSaveWaitUntil"
+	return method == "textDocument/formatting" || method == "textDocument/rangeFormatting" || method == "textDocument/onTypeFormatting" || method == "textDocument/willSaveWaitUntil"
 }
 
 // isDeferrableAnalysisRequest reports a read-only request whose answer does
@@ -195,6 +195,7 @@ func isDeferrableAnalysisRequest(method string) bool {
 		"textDocument/semanticTokens/full",
 		"textDocument/definition",
 		"textDocument/typeDefinition",
+		"textDocument/implementation",
 		"textDocument/references",
 		"textDocument/documentHighlight",
 		"textDocument/documentSymbol",

@@ -136,6 +136,7 @@ func foreignExtentSignatureOf(function Function) foreignExtentSignature {
 // Rules: rules/analysis/pitfall_analysis.md — "Canonical foreign extent relationships",
 // "Incremental behavior"; rules/compiler/compiler_analysis.md — §§9–10.
 func (a *Analyzer) SetForeignBufferExtentContracts(s *ForeignBufferExtentContractStore) {
+	a.recordConfiguration(func(b *Analyzer) { b.SetForeignBufferExtentContracts(s) })
 	a.foreignExtentContracts = nil
 	if s == nil {
 		return

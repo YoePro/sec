@@ -1,6 +1,6 @@
 schema_version: 1
-updated: "2026-11-10"
-last_id: MD-130
+updated: "2026-11-11"
+last_id: MD-131
 purpose: >-
   Tracks normative decisions that are missing or insufficiently precise and
   therefore constrain implementation. Remove an entry only after the owning
@@ -1147,3 +1147,26 @@ decisions:
       non-owned/fixed storage).
     classification: constraining
     status: open
+
+  - id: MD-131
+    area: constrained-assignment-without-try
+    rulebooks:
+      - rules/types/contracts.md
+      - rules/errors/panic.md
+      - rules/tooling/diagnostics.md
+    description: >-
+      contracts.md § 12(2)-(3) required the try assignment form for every
+      mutation of a constrained named value, and the compiler reported the
+      mandatory error S1069 types.constrained-assignment-requires-try.
+      Decided by the owner 2026-11-11: Sec offers both a panicking and a
+      non-panicking form. `p = Percent(x)` / `p += n` without try is valid,
+      checks the contracts at run time and panics with ContractFailure on
+      violation; `try p = Percent(x)` / `try p += n` makes the violation a
+      handled ContractError. Every run-time contract check outside try
+      (conversion, compound update of a local, field, property or referent)
+      reports the Information advisory A2011
+      contracts.unchecked-contract-may-panic; @noPanic still rejects it. S1069
+      is retired. Implemented 2026-11-11; contracts.md § 12(2)-(3) and the
+      diagnostics.md registry text still need the owner's rulebook update.
+    classification: constraining
+    status: decided-implementation-pending

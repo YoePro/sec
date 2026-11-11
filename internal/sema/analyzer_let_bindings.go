@@ -26,6 +26,7 @@ func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
 	}
 	errorsBefore := len(a.errors)
 	defer a.recordStringBindingLength(stmt, errorsBefore)
+	defer a.recordLifetimeBinding(stmt, errorsBefore)
 	if stmt != nil && stmt.Static && a.inFunctionBody {
 		if reference, ok := stmt.Value.(*ast.RefExpression); ok && reference != nil {
 			a.dropStaticHolderBorrow(reference)

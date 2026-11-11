@@ -167,7 +167,7 @@ func (a *Analyzer) applyContract(typ Type, contractNode ast.Contract) Type {
 			constant, outcome := a.semanticCompileTimeConstantVisiting(value, map[string]bool{}, typ)
 			ok := outcome == compileTimeEvaluated
 			if !ok {
-				if outcome == compileTimeRequiresExecution || outcome == compileTimeForbiddenClock {
+				if outcome == compileTimeRequiresExecution || outcome == compileTimeForbiddenClock || outcome == compileTimeExecutionFailed {
 					a.reportCompileTimeRequirement(value, outcome, "membership value", diagnostics.InvalidContractArgument, "")
 					continue
 				}
@@ -217,7 +217,7 @@ func (a *Analyzer) applyContract(typ Type, contractNode ast.Contract) Type {
 			// a nonzero compile-time integer divisor; a divisor that cannot be
 			// established is rejected instead of silently dropping the contract.
 			value, outcome := a.semanticCompileTimeInteger(contract.Value)
-			if outcome == compileTimeRequiresExecution || outcome == compileTimeForbiddenClock {
+			if outcome == compileTimeRequiresExecution || outcome == compileTimeForbiddenClock || outcome == compileTimeExecutionFailed {
 				a.reportCompileTimeRequirement(contract.Value, outcome, "multipleOf divisor", diagnostics.InvalidContractArgument, "")
 				return typ
 			}
@@ -235,7 +235,7 @@ func (a *Analyzer) applyContract(typ Type, contractNode ast.Contract) Type {
 		}
 		if isLengthContractName(contract.Name) {
 			value, outcome := a.semanticCompileTimeInteger(contract.Value)
-			if outcome == compileTimeRequiresExecution || outcome == compileTimeForbiddenClock {
+			if outcome == compileTimeRequiresExecution || outcome == compileTimeForbiddenClock || outcome == compileTimeExecutionFailed {
 				a.reportCompileTimeRequirement(contract.Value, outcome, contract.Name+" value", diagnostics.InvalidContractArgument, "")
 				return typ
 			}
@@ -283,7 +283,7 @@ func (a *Analyzer) applyRegexContract(typ Type, contract *ast.RegexContract) Typ
 		return typ
 	}
 	pattern, outcome := a.semanticCompileTimeConstant(contract.Pattern)
-	if outcome == compileTimeRequiresExecution || outcome == compileTimeForbiddenClock {
+	if outcome == compileTimeRequiresExecution || outcome == compileTimeForbiddenClock || outcome == compileTimeExecutionFailed {
 		a.reportCompileTimeRequirement(contract.Pattern, outcome, "regex pattern", diagnostics.InvalidContractArgument, "")
 		return typ
 	}

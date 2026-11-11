@@ -21,7 +21,7 @@ func TestDeferredArenaContinuationCLI(t *testing.T) {
 	}
 	for i, lines := range [][2]int{{7, 5}, {13, 11}, {20, 17}} {
 		d := doc.Occurrences[i]
-		if d.Primary == nil || d.Primary.Span.Start.Line != lines[0] || len(d.Related) != 1 || d.Related[0].Span.Start.Line != lines[1] || !strings.Contains(d.Message.Text, "cannot use values after arena mem") {
+		if d.Primary == nil || d.Primary.Span.Start.Line != lines[0] || len(d.Related) != 2 || d.Related[0].Span.Start.Line != lines[1] || d.Related[1].Span.Start.Line <= lines[1] || d.Related[1].Span.Start.Line >= lines[0] || !strings.Contains(d.Message.Text, "cannot use values after arena mem") {
 			t.Fatal(d)
 		}
 	}

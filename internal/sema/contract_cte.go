@@ -31,6 +31,10 @@ const (
 	// compileTimeForbiddenClock is permanently invalid semantic CTE, unlike a
 	// deterministic getter whose execution merely awaits the CTE executor.
 	compileTimeForbiddenClock
+	// compileTimeExecutionFailed: the semantic CTE executor ran the
+	// expression and established no value; the failure is recorded in the
+	// analyzer's CTE results (cte_requests.go).
+	compileTimeExecutionFailed
 )
 
 // semanticCompileTimeConstant evaluates a contract or default expression in a
@@ -63,6 +67,14 @@ func (a *Analyzer) semanticCompileTimeConstant(expr ast.Expression) (DefaultCons
 // rules/types/temporal.md — §3 (no clock input in semantic CTE).
 // rules/mlir/packages/sec-mlir-dialect_package20.md — §§12–20,82.
 func (a *Analyzer) semanticCompileTimeConstantVisiting(expr ast.Expression, visiting map[string]bool, context Type, resolver ...compileTimeIdentifierResolver) (DefaultConstant, compileTimeOutcome) {
+	// A required position executed by the semantic CTE executor reads the
+	// established outcome (cte_requests.go).
+	if value, outcome, established := a.establishedCompileTimeValue(expr); established {
+		if outcome == compileTimeEvaluated {
+			return a.prepareCompileTimeConstant(value, context)
+		}
+		return value, outcome
+	}
 	var identifier compileTimeIdentifierResolver
 	if len(resolver) > 0 {
 		identifier = resolver[0]
@@ -164,6 +176,11 @@ func (a *Analyzer) semanticCompileTimeConstantResolving(expr ast.Expression, vis
 		binding, ok := a.moduleImmutableBindings[a.currentModule][expr.Value]
 		if !ok || binding.Value == nil || visiting[expr.Value] {
 			return DefaultConstant{}, compileTimeNotConstant
+		}
+		// A static initialized by semantic CTE execution has an established
+		// value (cte_requests.go).
+		if value, outcome, established := a.establishedCompileTimeValue(binding.Value); established {
+			return value, outcome
 		}
 		visiting[expr.Value] = true
 		defer delete(visiting, expr.Value)
@@ -312,7 +329,15 @@ func (a *Analyzer) reportCompileTimeRequirement(expr ast.Expression, outcome com
 	switch outcome {
 	case compileTimeAlreadyInvalid, compileTimeEvaluated:
 		return
+	case compileTimeExecutionFailed:
+		a.reportCompileTimeExecutionFailure(expr, position)
 	case compileTimeRequiresExecution:
+		// The probe analysis defers the position to the semantic CTE
+		// executor instead of reporting it (cte_requests.go).
+		if a.cteProbe {
+			a.deferCompileTimeExecution(expr)
+			return
+		}
 		a.addErrorAtTokenWithMetadata(expressionToken(expr), diagnostics.SemanticCompileTimeExecutionUnavailable,
 			"Use a literal or an immutable compile-time binding until compile-time execution of calls and property getters is implemented.",
 			"%s %s requires compile-time execution of a call or property getter, which the compiler does not implement yet", position, expr.String())

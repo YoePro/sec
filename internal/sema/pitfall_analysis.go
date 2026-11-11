@@ -623,6 +623,7 @@ func (b *pitfallBuilder) walkExpression(expression ast.Expression) {
 	case *ast.LambdaExpression:
 		b.walkIndependentGuardBody(expression.Body)
 	case *ast.SpawnExpression:
+		b.walkExpression(expression.Configuration)
 		b.walkExpression(expression.Value)
 		b.walkIndependentGuardBody(expression.Body)
 	case *ast.AwaitExpression:
@@ -1061,6 +1062,7 @@ func visitStatementExpressions(statement ast.Statement, visit func(ast.Expressio
 		case *ast.LambdaExpression:
 			walkBlock(expression.Body)
 		case *ast.SpawnExpression:
+			walkExpression(expression.Configuration)
 			walkExpression(expression.Value)
 			walkBlock(expression.Body)
 		case *ast.AwaitExpression:

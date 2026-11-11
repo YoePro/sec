@@ -338,7 +338,7 @@ integrations:
     area: tooling
     status: implemented
     integrated: "2026-08-27"
-    revised: "2026-10-26"
+    revised: "2026-11-11"
     summary: >-
       Aligns structural type, initializer, tag and trailing-comment columns
       within compatible declaration groups through the shared CLI/LSP formatter,
@@ -357,6 +357,12 @@ integrations:
       - internal/formatter/formatter.go
       - cmd/compiler/main.go
       - cmd/lsp/main.go
+      - internal/cst/formatting_regions.go
+      - internal/formatter/range.go
+      - cmd/lsp/format_document.go
+      - cmd/lsp/format_selection.go
+      - cmd/lsp/format_configuration.go
+      - cmd/lsp/request_queue.go
     tests:
       - internal/cst/binding_roles_test.go
       - internal/formatter/binding_alignment_test.go
@@ -369,6 +375,12 @@ integrations:
       - internal/formatter/formatter_test.go
       - cmd/compiler/main_test.go
       - cmd/lsp/main_test.go
+      - internal/formatter/range_test.go
+      - cmd/lsp/format_selection_test.go
+      - testdata/formatter/range_selection.sec
+      - testdata/formatter/range_selection.expected.sec
+      - testdata/formatter/range_imports.sec
+      - testdata/formatter/range_opaque.sec
     implemented:
       - "2026-10-26: completed the whole declaration-alignment extension (§ 9(1)–(10)): parser-owned CST binding name/type/initializer roles drive compatible let, type-first and parenthesized named-value groups, including static/mutable declarations, := and :<- and attached line/block comments. Existing struct/register field type/tag, callable parameter and named-type tables cover the other declaration families. Columns use structural anchors, the colon binds left, primary/secondary padding candidates fall back per group, and blank lines, standalone/inline comments, multiple bindings on one line, incompatible rows and multiline expressions delimit safe groups. Golden tests preserve syntax/literal/comment tokens, cover widths 2/4/6, both styles, cap fallback and idempotence, and compare exact CLI/LSP output. Nominal trailing-comment alignment now consumes the configured indentation width and lives in trailing_comment_alignment.go. MD-099/MD-100 are completed on 2026-10-27 under tooling.formatter-v2: comment caps apply to ordinary groups and only explicit enum-value runs are exempt."
       - align trailing comments in consecutive struct, enum, register, union, and equivalent nominal declaration items to one visual column
@@ -379,10 +391,12 @@ integrations:
       - provide in-place sec fmt formatting for one or more explicit source files with atomic replacement and permission preservation
       - expose identical output through LSP document formatting without editor-side alignment logic
       - "inline block comment fix (2026-10-18, formerly identified bug tooling.formatter.inline-block-comment-breaks-field-alignment): the root cause was the parser — a one-line `/* ... */` with code before and after it on the same line (`c: int /* inline */,`, `a /* note */ + b`) was not skipped and produced a parse error, so the formatter saw uncertain syntax and lost the following fields' roles. Parser.nextToken now treats such a comment as inline trivia (still recorded as an inline comment attachment); every field keeps the § 9(5) type column (TestFormatInlineBlockCommentKeepsFieldAlignment, TestParseInlineBlockCommentsAsTrivia; formatter.md § 9(5), § 9(8), § 12(9a)). TestFormatTokenSpacingLeavesUnroledAndMultilineGaps had only passed because of that parse error and now expects the canonical output"
+      - "2026-11-11: completed range and on-type formatting. LSP advertises and routes both methods through shared formatter RangeEdit/OnTypeEdit and shared project/viewport configuration. CST physical-line envelopes of parser-owned top-level declarations preserve enclosing impl/type indentation and alignment, attached comments, complete import groups and exact unselected bytes including blank lines and CRLF. Canonical formatting runs with full document context; only the selected units become one minimal UTF-16 edit. Full-document ranges equal document formatting. Real closing braces and whitespace newlines trigger on-type; literal/comment contents, unsupported triggers, invalid positions, incomplete/malformed syntax and invalid configuration cannot produce speculative edits. Live snapshots precede disk fallback; neither mode writes source or changes semantic contracts. Formatting priority respects preceding synchronization. Source/golden/protocol/race tests cover configured 2/4/6-space indentation, LF/CRLF, Unicode, imports, nested methods/field alignment, unchanged neighbors, adaptive width, invalid input and idempotence."
     remaining:
-      - complete range and on-type formatting; recursive directory/project selection and check/fix modes are implemented under tooling.formatter-check-explicit-files (MD-037, 2026-10-28); document-formatting minimal enclosing edits and stdin are implemented
       - migrate the remaining trimmed-line indentation and alignment decisions to the parser-owned lossless comment/trivia attachments now returned by the shared formatter
     verification:
+      - command: go test -p 4 ./internal/cst ./internal/formatter -count=1 -timeout=120s; go test -p 4 ./cmd/compiler ./cmd/lsp -run '^Test(Format|Formatting|RangeFormatting|SelectionFormatting|LSPFormatting|LSPPreferredWidth|RunFmt|Fmt)' -count=1 -timeout=120s; go test -p 4 -race ./cmd/lsp -run 'SelectionFormatting|FormatDocumentMinimalEdit|LSPFormattingUsesProject|LSPPreferredWidth|FormattingOvertakes|RequestQueue|ServerAnswersConcurrent' -count=1 -timeout=180s; go vet -p 4 ./internal/cst ./internal/formatter ./cmd/lsp
+        result: "passed on 2026-11-11: full CST/formatter 0.007s/1.834s; compiler/LSP formatting 0.253s/0.085s; final protocol/configuration/queue race suite 17.755s; vet passed. An earlier broader Fmt selector also selected TestAnalyzeLoadsFmtPackageAndTransitiveImports, which fails on an unhandled fmt.Println Result; overlay restoring all pre-task LSP production files reproduces the same failure (2.191s). This unrelated source/API test is not claimed passing."
       - command: go test ./internal/cst ./internal/formatter -count=1; go test ./cmd/compiler ./cmd/lsp -run "BindingAlignment|Fmt|Format|Formatting" -count=1
         result: passed on 2026-10-26 with GOCACHE set; whole declaration-alignment extension verified including existing field/register/parameter/named-type families, exact CLI/LSP goldens, all indentation widths, both styles, padding fallback, literal/comment token preservation and idempotence; remaining for this ID 3 to 2 and formatting.yaml 20 to 19
       - command: go test ./internal/formatter ./cmd/compiler ./cmd/lsp -run 'TrailingComment|AlignsDeclaration|RunFmtCommand' -count=1
@@ -469,7 +483,7 @@ integrations:
     area: tooling
     status: partial
     integrated: "2026-09-23"
-    revised: "2026-11-04"
+    revised: "2026-11-11"
     document_revision: "2.1"
     repository_baseline: main-reviewed-2026-09-23
     summary: Tracks conformance of the shared Sec formatter to formatter revision 2.1. The repository has a usable but primarily bespoke, line-oriented CLI/LSP formatter plus a lexical CST foundation that is not yet its primary engine. The formatter must migrate to a CST-driven architecture while preserving existing behavior, then complete the configured, grammar-aware formatting and correction contract.
@@ -778,10 +792,7 @@ integrations:
         behavior from ordinary formatting, replace the remaining line-oriented
         recognizers with a grammar-aware correction engine, expose canonical
         project configuration, and complete the § 26–§ 27 catalogue.
-      - >-
-        formatter-cli-lsp-unification: Complete project configuration, effective
-        width, format-on-save, range/on-type, and exact-output equivalence
-        behavior required by § 28.
+      - "formatter-cli-lsp-unification: Complete project configuration, effective width, format-on-save, and exact-output equivalence behavior required by § 28. Range/on-type support is implemented under tooling.formatter-declaration-comment-alignment (2026-11-11); broader language-layout and configuration conformance remain here."
       - >-
         formatter-invariants-and-tests: Enforce every § 29 and § 31 invariant
         and complete the § 30 golden, second-pass, round-trip, malformed-source,

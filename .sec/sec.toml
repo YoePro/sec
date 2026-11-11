@@ -51,13 +51,13 @@ indentation_width = 4
 width_mode = "fixed"
 
 # Preferred line width in columns (positive integer), not a hard limit.
-line_width = 120
+line_width = 160
 
 # Adaptive limits in columns (positive integers): minimum <= maximum,
 # and minimum <= fallback <= maximum. Used when width_mode = "adaptive".
 adaptive_min_width = 80
 adaptive_max_width = 200
-adaptive_fallback_width = 120
+adaptive_fallback_width = 160
 
 # Optional supported syntax corrections: true enables them; false keeps
 # formatting limited to layout. Default: false. CLI --fix can opt in.

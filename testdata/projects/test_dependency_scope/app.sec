@@ -1,0 +1,9 @@
+module app
+
+import "dependency"
+import "scopefixture"
+import p "platform/scopedep"
+
+fn Value() int {
+    return dependency.Value() + scopefixture.Zero() + p.Zero()
+}

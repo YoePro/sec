@@ -21,6 +21,9 @@ const (
 	// analysisAvailable families have a canonical producer the command can
 	// run and report on its own.
 	analysisAvailable analysisFamilyAvailability = "available"
+	// analysisIncomplete exposes canonical prerequisite facts on explicit
+	// selection, but cannot complete the requested proof and exits nonzero.
+	analysisIncomplete analysisFamilyAvailability = "incomplete"
 	// analysisNotSelectable families run only as mandatory diagnostics of
 	// every compilation or are not implemented; selecting one alone fails
 	// with an explanation instead of reporting a misleading clean result.
@@ -59,7 +62,7 @@ func analysisFamilies() []analysisFamily {
 		{Name: "closures", Title: "closure analysis", Description: "closure creation, capture transfer and callable target facts (details with --verbose)",
 			Availability: analysisAvailable},
 		{Name: "isr", Title: "ISR analysis", Description: "interrupt-handler safety: no allocation, no panic, no blocking",
-			Availability: analysisNotSelectable, Limitation: "its checks run as mandatory diagnostics of every compilation and cannot yet be selected alone; run `sec analyse` or `sec check`"},
+			Availability: analysisIncomplete, Limitation: isrInspectionLimitation},
 		{Name: "deadlocks", Title: "deadlock analysis", Description: "lock-order and same-resource reacquisition hazards",
 			Availability: analysisNotSelectable, Limitation: "only same-resource reacquisition is checked, as a mandatory diagnostic of every compilation; the individually selectable deadlock analysis is not implemented yet"},
 		{Name: "data-races", Title: "data race analysis", Description: "unsynchronized shared mutable state across tasks and interrupts",

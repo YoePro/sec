@@ -8,10 +8,10 @@ purpose: >-
 integrations:
   - id: diagnostics.unreachable-statement-s3001
     area: semantic-diagnostics
-    status: partial
+    status: implemented
     integrated: "2026-09-16"
     audited: "2026-09-22"
-    revised: "2026-10-04"
+    revised: "2026-11-11"
     summary: Sema emits the reserved mandatory S3001 diagnostic for the first statement after a terminating statement in a block and for the first statement in an if branch or while body excluded by a literal or currently supported folded integer/boolean condition, with a source range and actionable explanation shared by CLI and LSP.
     rules:
       - rules/tooling/diagnostics.md
@@ -34,6 +34,7 @@ integrations:
       - cmd/compiler/main_test.go
       - cmd/lsp/main_test.go
     implemented:
+      - "Path-fact unreachability extended (2026-11-11; diagnostics.md § 21): a switch clause whose every alternative (value, range, relational, subjectless bool) is proven false by dominating facts reports S3001 unless entered by fallthrough; relational proofs use version-tracked mutable bindings (only direct assignments, never mutably borrowed or captured) per binding instead of whole-function stability, and by-value stored-field reads whose facts end at field writes and call barriers; getters and reference roots stay excluded. Match arms decided by path facts remain MD-042 inactive-arm information (flowcontrol_match.md § 25A), not S3001. TestSwitchClausesDecidedByPathFactsAreUnreachable, TestRelationalReachabilityTracksBindingsAndStoredFields"
       - S3001 control-flow.unreachable-statement is registered as a mandatory semantic error
       - statements after terminating return, break, continue, and other established non-continuing paths retain the error and carry S3001, an exact source range, and actionable help
       - non-empty branches excluded by literal false and literal true conditions report S3001 on their first statement while empty excluded branches remain valid
@@ -44,9 +45,10 @@ integrations:
       - "known-variant state tests (2026-10-04): `binding is Variant` on an immutable binding whose active variant is proven by construction or a dominating test reports S3001 on the excluded branch, either direction (governed in declarations.yaml frontend.unions; TestKnownActiveVariantDecidesStateTests)"
       - CLI prints the stable code and help; LSP publishes the same Sema code and help
       - the canonical sec diagnostics S3001 detail command exposes S3001 identity, family, default severity, mandatory/configurable state, and active status from the central registry
-    remaining:
-      - "route additional proven-unreachable paths through the same canonical S3001 diagnostic where their flow proof exists, beyond the constant-condition and stable-binding relational subsets: match and switch arms decided by path facts, member reads with mutation-aware invalidation, and per-binding instead of whole-function stability"
-      - implement structured localization, richer extended rule explanations, and machine-readable emitted-diagnostic output
+      - "Extended explanation and machine-readable output (2026-11-11; diagnostics.md §§ 13(4)-(6), 14): `sec diagnostics S3001` renders the registry-owned description, extended explanation of the proof basis, common causes, valid alternatives, example, related IDs (S1045, A2008) and language version from internal/diagnostics/explanations.go, and `sec diagnostics --json` carries the same optional explanation per definition. Emitted S3001 occurrences were already machine-readable through `--diagnostic-format json` (diagnostics.emitted-occurrence-json). TestDiagnosticCatalogDetailIncludesExtendedExplanation, TestExplanationsReferenceRegisteredDiagnostics"
+    governance_reconciliation:
+      - structured localization of S3001 (message/help keys, locale catalogs, English fallback) is the general errors.diagnostics unimplemented item diagnostics.localized-catalogs, not S3001-specific work
+      - extended explanations for the other registered diagnostics are tracked as errors.diagnostics unimplemented item diagnostics.extended-explanations
     corrections_applied:
       - rules/corrections/applied/compiler-testing-cross-rulebook-correction-20260926.md
     verification:
@@ -452,7 +454,8 @@ integrations:
           types.invalid-contract-argument, S1067
           types.incompatible-in-contract-value, S1068
           types.value-violates-contract, and S1069
-          types.constrained-assignment-requires-try. Names S1059-S1063 come from
+          types.constrained-assignment-requires-try (retired 2026-11-11 by
+          MD-131; replaced by the A2011 Information advisory). Names S1059-S1063 come from
           rules/types/default_values.md "Diagnostics"; status detail is owned by
           frontend.default-values and frontend.type-contracts-v2.
       - id: diagnostics.s1070-authoritative-member-replacement
@@ -606,6 +609,12 @@ integrations:
           A2001 exists, but richer evidence-driven mentor analysis remains
           incomplete.
     unimplemented:
+      - id: diagnostics.extended-explanations
+        description: >-
+          The § 13(6) explanation registry and its CLI/JSON rendering exist
+          (internal/diagnostics/explanations.go), but only S3001 has an entry;
+          the other registered diagnostics still lack description, extended
+          explanation, causes, alternatives and examples.
       - id: diagnostics.localized-catalogs
         description: >-
           Structured localization catalogs, template validation, locale

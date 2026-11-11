@@ -21,7 +21,7 @@ func TestAnalyseClosures(t *testing.T) {
 	if code != 0 || stderr != "" {
 		t.Fatalf("closure facts: %d %s %s", code, verbose, stderr)
 	}
-	for _, want := range []string{"closures:", "creation at", "environment=true, captures=1", "environment=false, captures=0", "capture seed: mode=copy-capture, transfer=copy", "capture other:", "call at", "analyses: closures"} {
+	for _, want := range []string{"closures:", "creation at", "environment=true, captures=1", "capability=fn,", "environment=false, captures=0", "capture seed: mode=copy-capture, transfer=copy", "capture other:", "call at", "analyses: closures"} {
 		if !strings.Contains(verbose, want) {
 			t.Errorf("missing %q:\n%s", want, verbose)
 		}

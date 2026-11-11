@@ -1,0 +1,5 @@
+module dependency
+
+test "explicit dependency" {
+    testing.ExpectEqual(7, Value())
+}

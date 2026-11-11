@@ -32,11 +32,29 @@ func (a *Analyzer) analyzeWhileStatement(stmt *ast.WhileStatement) {
 		}
 	}
 
+	// A pure condition that dominating path facts decide at entry: proven
+	// false, the loop runs zero times like a constant-false loop and its body
+	// is unreachable; proven true, the zero-iteration exit is impossible.
+	entryProvenTrue := false
+	if stmt.Condition != nil && !constantConditionKnown {
+		if value, known := a.relationalConditionValue(stmt.Condition); known {
+			if value {
+				entryProvenTrue = true
+			} else {
+				a.diagnoseRelationallyUnreachableBlock(stmt.Body, false, "loop body")
+				constantConditionKnown, constantCondition = true, false
+			}
+		}
+	}
+
 	// Whether the condition holds on first entry, from the constants before
 	// the loop: a proven-true first test removes the zero-iteration exit.
 	firstEntryHolds, firstEntryKnown := false, false
 	if stmt.Condition != nil && !constantConditionKnown {
 		firstEntryHolds, firstEntryKnown = a.firstIterationCondition(stmt.Condition, nil)
+		if entryProvenTrue {
+			firstEntryHolds, firstEntryKnown = true, true
+		}
 	}
 
 	previousSymbols := a.symbols
@@ -64,6 +82,7 @@ func (a *Analyzer) analyzeWhileStatement(stmt *ast.WhileStatement) {
 	a.arenaGenerations = copyArenaGenerations(previousArenaGenerations)
 	a.loopDepth++
 	defer a.enterCleanupLoop()()
+	defer a.enterLoopBody(stmt.Token)()
 	stateTest, hasStateTest := a.whileConditionStateTest(stmt)
 	if hasStateTest {
 		if binding, refined := stateTestRefinement(stateTest, true); refined {
@@ -90,7 +109,11 @@ func (a *Analyzer) analyzeWhileStatement(stmt *ast.WhileStatement) {
 	if stmt.Body != nil {
 	}
 	hasReachableBreak := a.blockHasReachableBreakToCurrentLoop(stmt.Body)
-	a.recordResolvedWhileFlow(stmt, constantConditionKnown, constantCondition, hasReachableBreak)
+	// A loop whose first test is proven true and whose body never reaches
+	// the next test (no fall-through, no continue) exits only by break.
+	reachesNextTest := stmt.Body == nil || a.blockCanFallThrough(stmt.Body) || len(a.loopBreakFrames[frame].continues) > 0
+	entersOnceOnly := firstEntryKnown && firstEntryHolds && !reachesNextTest
+	a.recordResolvedWhileFlow(stmt, constantConditionKnown, constantCondition, hasReachableBreak, entersOnceOnly)
 	if constantConditionKnown && !constantCondition {
 		a.callGraphPathReachable = previousCallGraphPathReachable
 		a.popLoopBreakFrame(frame)
@@ -228,7 +251,7 @@ func (a *Analyzer) ResolvedWhileFlowOf(stmt *ast.WhileStatement) (ResolvedWhileF
 //
 // Rules:
 //   - rules/control-flow/flowcontrol_while.md — §§19–20, §28
-func (a *Analyzer) recordResolvedWhileFlow(stmt *ast.WhileStatement, conditionKnown bool, conditionValue bool, hasReachableBreak bool) {
+func (a *Analyzer) recordResolvedWhileFlow(stmt *ast.WhileStatement, conditionKnown bool, conditionValue bool, hasReachableBreak bool, entersOnceOnly bool) {
 	if a == nil || stmt == nil {
 		return
 	}
@@ -236,7 +259,7 @@ func (a *Analyzer) recordResolvedWhileFlow(stmt *ast.WhileStatement, conditionKn
 		ConditionKnown:     conditionKnown,
 		ConditionValue:     conditionValue,
 		HasReachableBreak:  hasReachableBreak,
-		ContinuesAfterLoop: !conditionKnown || !conditionValue || hasReachableBreak,
+		ContinuesAfterLoop: (!conditionKnown || !conditionValue || hasReachableBreak) && (!entersOnceOnly || hasReachableBreak),
 	}
 }
 

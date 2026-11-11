@@ -53,7 +53,7 @@ integrations:
     audited: "2026-08-20"
     repository_baseline: c515862
     primary_rule: rules/memory/arena.md
-    summary: Arena.FromBuffer retains its supplied mutable backing Place as an exclusive borrow owned by the resulting Arena. The holder and ArenaDomain identity transfer across owner moves, Reset retains the backing borrow, Release ends it, and direct conflicting backing access is rejected. Escape, task, nested-Arena, and implicit-destruction integration remains partial.
+    summary: Arena.FromBuffer retains its mutable backing dependency for the resulting Arena lifetime. Backing and nested parent-domain dependencies follow local owner moves; Reset retains them, Release and implicit scope/temporary destruction end them. Parent Reset/Release is rejected while a child remains live, including direct temporary allocation backing and grandchildren; independent parent allocation remains legal. Borrowed owner escape is rejected. Closure capture and task-transfer integration remain partial.
     rules:
       - rules/memory/arena.md
       - rules/memory/borrowing.md
@@ -61,10 +61,20 @@ integrations:
       - rules/memory/reference_model.md
     code:
       - internal/sema/analyzer.go
+      - internal/sema/analyzer_arena.go
+      - internal/sema/arena_nested.go
+      - internal/sema/arena_invalidation_diagnostics.go
+      - internal/sema/analyzer_discard.go
+      - internal/sema/expression_statements.go
     tests:
       - internal/sema/allocation_test.go
       - internal/sema/lifetime_test.go
       - internal/sema/analyzer_test.go
+      - internal/sema/arena_nested_test.go
+      - cmd/compiler/arena_nested_test.go
+      - cmd/lsp/arena_nested_test.go
+      - testdata/sema/arena_nested_valid.sec
+      - testdata/sema/arena_nested_invalid.sec
     implemented:
       - "Implicit destruction and escape verified (2026-11-10): the backing borrow ends at implicit Arena destruction on every continuing path (if arms, loop iterations, early return inside the Arena scope, match arms, sequential re-borrowing), and escapes into a returned aggregate, a parameter-backed returned Arena and consuming calls are rejected. TestArenaBackingBorrowEndsOnEveryPathAndCannotEscape"
       - "Borrowed-backing regressions and traceability verified (2026-11-10): TestArenaFromBufferBorrowsBackingForArenaLifetime (arena_from_buffer_valid/invalid fixtures: implicit/ref mut backing, owner moves, Release, return/consuming transfers, Reset staleness) and TestBorrowedArenaRetainsBackingBorrowUntilRelease; FromBuffer code cites rules/memory/arena.md § 10 and § 4.2(3), which absorbed the retired correction25 document"
@@ -78,12 +88,16 @@ integrations:
       - Arena owner moves transfer backing-borrow responsibility
       - Reset retains and Release ends the backing borrow
       - direct conflicting backing access is rejected while the borrowed Arena lives
+      - "Nested Arena parent/backing dependencies completed (2026-11-11; arena.md section 51): FromBuffer retains a strong dependency on every represented parent ArenaDomain in its backing reference, including fresh Alloc results without a source buffer binding. Parent Reset/Release is rejected with canonical Invalid diagnostics and the live child origin; child Reset retains the dependency, while child Release, implicit scope destruction and legal explicit/implicit constructor-temporary discard end it. Existing borrow-holder transfer/flow joins preserve dependencies across child and parent owner moves, nested grandchildren, branches, loop scopes, break and continue. This is a domain validity dependency, not an exclusive borrow of the parent owner: disjoint parent allocations remain legal. Borrowed temporary-backed child owners retain escape rejection and friendly parent names. General closure/task transfer and full NLL remain separate incomplete work."
     partial:
-      - nested Arena, closure capture, and task transfer of a borrowed-backing Arena remain incomplete
-    remaining:
-      - integrate nested Arena parent/backing dependencies
+      - closure capture and task transfer of a borrowed-backing Arena remain incomplete; nested parent/backing dependencies are implemented
+    remaining: []
     bug_reference:
       - correction29.md
+    revised: "2026-11-11"
+    verification:
+      - command: go test -p 4 ./internal/sema -count=1; go test -p 4 ./cmd/compiler ./cmd/lsp -run 'NestedArena|ArenaInvalidation|ArenaMultiOrigin' -count=1 -timeout=120s; go vet -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: "Passed on 2026-11-11 after final temporary-discard cleanup: complete Sema 18.532s; compiler/LSP 19.336s/4.360s; vet clean. New valid/invalid source fixtures verify seven canonical parent/child invalidation errors and one borrowed-child escape, temporary versus named backing, moved parent/child owners, distinct child domains, grandchildren, child Reset retention, explicit Release, implicit scope/loop/break/continue destruction, legal independent parent allocation and explicit/implicit constructor-temporary discard. Before the fix the direct Alloc-result backing regression produced only three errors instead of four; new retained facts close that hole. Existing closure/task-transfer partial is preserved."
 
   - id: frontend.transferability
     area: boundary-transfer-validation
@@ -906,7 +920,8 @@ integrations:
 
   - id: tooling.references
     area: diagnostics-lsp-reference-tooling
-    status: planned
+    status: partial
+    revised: "2026-11-11"
     integrated: "2026-08-29"
     document_revision: "2.0"
     repository_baseline: fafd8cb
@@ -914,11 +929,24 @@ integrations:
       - rules/memory/references.md
       - rules/tooling/lsp.md
       - rules/tooling/diagnostics.md
+    evidence:
+      code:
+        - internal/sema/borrow_facts_at.go
+        - internal/sema/lifetime_facts_at.go
+        - internal/sema/return_reference_summary.go
+        - cmd/lsp/borrow_hover.go
+        - cmd/lsp/lifetime_hover.go
+        - cmd/lsp/call_graph_hover.go
+      tests:
+        - cmd/lsp/borrow_hover_test.go
+        - cmd/lsp/lifetime_hover_test.go
+        - internal/sema/lifetime_mentor_test.go
+    implemented:
+      - "2026-11-11: reference facts from shared Sema analysis. The **Borrow** hover (ResolvedBorrowsAt) shows reference kind, canonical referent Place and alternative origins, provenance, storage domain (automatic/static/thread-local/Arena/allocator-backed, in source terms), reborrow parent, authority, holder and live-range end, and validity dependencies; the **Lifetime** hover (ResolvedLifetimeAt) shows origin, Arena generation and the Reset/Release sites that invalidate it. No LSP lifetime engine exists (TestBorrowHover, TestLifetimeHover)."
+      - "2026-11-11: returned-reference and retention summaries. Function hover renders the callee's ReturnReferenceSummary with source parameter names (`into pair.a`, `into left or right`, or an explicit not-established origin); the Lifetime hover at a holder shows the instantiated returned origin and which binding retains the borrow until when (TestReturnedReferenceSummaryHover, TestLifetimeHover)."
+      - "2026-11-11: reference mentor diagnostics. S1222 names the stale Arena use, the allocation origin with its epoch, the invalidating Reset/Release and remedies; S1128 names the local origin, the reference formation and the returned dependency with owned/caller-backed alternatives; borrow conflicts S1159-S1167 carry origin, holder and repair help (TestArenaUseAfterInvalidationMentor and existing returned-local/borrow-conflict suites)."
     remaining:
-      - expose canonical origin, possible-origin set, lifetime/borrow dependency, storage domain and invalidation cause from shared Sema facts
-      - show returned-reference and retention summaries where useful
       - show mapping/view and generation dependencies without exposing implementation-only jargon as primary UX
-      - produce mentor diagnostics identifying source origin, invalidating/escape operation, rejected use and practical remedy
       - include ISR root/context as related information when reference failure occurs under interrupt execution
       - ensure LSP/compiler/sec analyse parity and dependency-driven incremental invalidation
     required_tests:
@@ -990,12 +1018,21 @@ integrations:
 
   - id: tooling.reference-model
     area: reference-diagnostics-lsp-analysis
-    status: planned
+    status: partial
+    revised: "2026-11-11"
     repository_baseline: 814a584
+    evidence:
+      code:
+        - internal/sema/lifetime_facts_at.go
+        - internal/sema/analyzer_arena.go
+      tests:
+        - internal/sema/lifetime_mentor_test.go
+        - cmd/compiler/defer_arena_continuation_test.go
+    implemented:
+      - "2026-11-11: cause-chain mentor diagnostic for stale references. S1222 arena.use-after-invalidation carries the chain reference creation (allocation origin, labelled with its epoch) -> invalidating event (the Reset/Release on the analyzed path, as a related location, or help naming an invalidation through a callee) -> invalid use (primary span), with remedies; CLI JSON and LSP relatedInformation preserve the order (TestArenaUseAfterInvalidationMentor, TestDeferredArenaContinuationCLI)."
     remaining:
       - show reference kind/origin/bounds/storage identity/epoch dependency and invalidation source in LSP
       - show selected runtime representation separately from source guarantee
-      - provide cause-chain mentor diagnostics from reference creation to invalidating event to invalid use
       - show compact/default epoch policy where useful
       - ensure compiler/LSP/sec analyse parity and incremental invalidation
     required_tests:
@@ -1286,7 +1323,7 @@ integrations:
 
   - id: tooling.raw-pointers
     area: raw-pointer-lsp-diagnostics-formatter
-    status: partial
+    status: implemented
     document_revision: "2.2"
     reviewed: "2026-09-01"
     repository_baseline: 814a584
@@ -1306,16 +1343,16 @@ integrations:
       - "Canonical RawPtr formatting audit completed (2026-11-06): the shared formatter preserves RawPtr[T], all seven Read/Write/VolatileRead/VolatileWrite/Offset/AddBytes/Difference method spellings, negative arithmetic operands, method chains, comments and unsafe function/block/direct-call boundaries without introducing C-style syntax. Existing CST formatting already supplies the complete behavior; golden and token-preservation regressions cover indentation 2/4/6, LF/CRLF, fix on/off, idempotence, CLI check/write/check and actual LSP document edits. Conversion formatting remains separately owned and open."
       - "Raw-pointer mentor diagnostics completed (2026-11-06): mandatory S1204 identifies missing unsafe authorization for the nine canonical RawPtr operations, Place.Ptr and explicit raw-address conversions; call diagnostics reuse canonical registry caller obligations without treating them as proofs. S1205 identifies invalid concrete pointees, write/offset/difference argument types, arity and conversion-call type arguments. Existing S1142 null checks retain their identity and distinguish access from reference formation, and S1206 identifies already-known unavailable origins during AsRef/AsRefMut. Null errors link to the pointer binding and dangling-origin errors to the ownership-invalidating operation; existing borrow-conflict diagnostics keep their canonical authority evidence. Repairs distinguish accepting unproven obligations from fixing contradicted validity and never automatically insert unsafe. The shared semantic producer supplies identical CLI human/JSON and LSP help and source links. Raw operation inference and helpers are extracted from the analyzer monoliths into a focused sibling file. No new alignment, address-space, epoch or lifetime proof producer is claimed by this diagnostic closure."
       - "Raw/reference conversion formatting completed (2026-11-06, owner naming clarification): AsRef and AsRefMut are properties without parentheses, used inside unsafe blocks; .Ptr, explicit integer/raw and raw/raw conversion syntax, reference type annotations, grouped dereferences and multiline property chains retain their tokens and unsafe boundaries. Parser-confirmed member dots receive a compact CST spacing role, correcting source . Ptr and pointer . AsRef without changing decimal/range dots, literal contents, comments or recovered missing members. Golden/token-preservation matrices cover indentation 2/4/6, LF/CRLF, fix on/off and idempotence; CLI check/write/check and actual LSP document edits share the golden. Completion, hover and synthetic definitions expose unsafe properties; call signature help is absent for property reads. Legacy property calls are diagnosed, not silently rewritten or authorized."
-    remaining:
-      - show known address-space, nullability, range, alignment and lifetime facts where useful
-      - ensure compiler, LSP and sec analyse parity
+      - "Compiler/LSP/sec analyse parity completed (2026-11-11; raw_pointers.md sections 34-35, lsp.md section 10.1): all seven CLI frontend gates preserve the complete ordered 39-occurrence safety/validity matrix, including identity, severity, primary/related spans, help, notes, fixes and source. Sema-to-LSP projection is verified for LF/CRLF, UTF-16 non-BMP positions and unsaved operation changes, with exact IDs, messages, help and navigable causal origins; valid source remains accepted. Canonical ordinary/volatile effects already share CLI analysis and hover tests. Corrected rawPointerCallerContract so ordinary memory-read/write effects do not attach volatile/device caller obligations; explicit volatile effects retain those obligations. Known address-space, nullability, range, alignment and lifetime fact presentation remains separate."
+      - "Known raw-pointer fact presentation completed (2026-11-11; raw_pointers.md sections 7,23-24,32,35(4-6)): source-local immutable snapshots expose the null proofs, address origin and origin invalidation already retained by Sema, at binding declarations and identifier uses. LSP hover and sec analyse share the exact display/query; a branch-local null proof does not leak to later uses, mutable/unknown pointers do not acquire a null proof, raw alias origins survive address copies without retaining storage, and known invalidation is distinguished from established lifetime validity. Unknown address-space, range, alignment and full lifetime guarantees remain explicitly not established; no new proof producer is claimed. Summary passes and speculative backedge replay do not replace facts; outputs are source ordered, detached and reset on analyzer reuse. Existing analysis.raw-pointers ownership covers future provenance/domain proof producers."
+    remaining: []
     required_tests:
       - completion includes canonical RawPtr members
       - unsafe members are clearly marked
       - known-null diagnostic explains that unsafe does not legalize null dereference
       - formatter preserves RawPtr[T] and member spellings
       - compiler and LSP agree on raw-pointer validity diagnostics
-    revised: "2026-11-06"
+    revised: "2026-11-11"
     code:
       - internal/sema/compiler_known_physical_storage.go
       - internal/sema/compiler_known_synthetic.go
@@ -1334,6 +1371,12 @@ integrations:
       - internal/sema/raw_pointer_references.go
       - internal/sema/raw_pointer_null_proof.go
       - internal/diagnostics/diagnostics.go
+      - internal/sema/raw_pointer_tooling.go
+      - internal/sema/analyzer_inference.go
+      - cmd/lsp/hover.go
+      - cmd/compiler/analyse.go
+      - cmd/compiler/analyse_raw_pointers.go
+      - internal/sema/analyzer.go
     tests:
       - internal/sema/raw_pointer_registry_test.go
       - cmd/lsp/raw_pointer_registry_test.go
@@ -1368,10 +1411,17 @@ integrations:
       - testdata/formatter/raw_pointer_conversions.sec
       - testdata/formatter/raw_pointer_conversions.expected.sec
       - testdata/formatter/raw_pointer_conversion_invalid.sec
+      - internal/sema/raw_pointer_tooling_test.go
+      - cmd/compiler/raw_pointer_facts_test.go
+      - cmd/lsp/raw_pointer_facts_test.go
+      - testdata/tooling/raw_pointer_facts.sec
     verification_notes:
-      - The ordinary RawPtr formatter item is closed by complete source-backed regression coverage on 2026-11-06; broader diagnostic/analysis parity remain separate remaining items.
-      - Direct, ref and ref mut RawPtr receivers retain one applicable registry surface. Twenty-five valid call sites verify shared hover/signature safety text and structured argument types; nested and incomplete-call fixtures check source boundaries and reject unknown/user-lookalike/void-pointer signature inference. Further pointer fact display and broader tool parity remain open.
+      - Known pointer facts are exposed through detached source-local snapshots; missing address-space, range, alignment and lifetime guarantees remain explicitly unproven. The presentation work is complete for represented Sema facts. New proof producers and physical raw-pointer/domain integration remain owned by analysis.raw-pointers and the semantic/platform/lowering integrations.
     verification:
+      - command: go test -p 4 ./internal/sema -count=1; go test -p 4 ./cmd/compiler ./cmd/lsp -run 'RawPointer|RawMemory|AnalyseCLI' -count=1 -timeout=180s; go vet -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: "Passed on 2026-11-11: full Sema 20.179s; broad compiler/LSP selections 21.337s/134.665s; vet clean. New source-backed snapshot tests verify null aliases, branch-local versus post-branch proof, mutable uncertainty, address-copy provenance, origin invalidation, detached results and analyzer reuse. CLI analysis and hover share the display; unsaved initialization edits replace stale null proofs. Focused tests also passed (Sema 0.004s, compiler 1.178s, LSP 6.573s); final CLI rerun after omitting empty sections passed 1.185s."
+      - command: go test -p 4 ./internal/sema -count=1; go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run 'RawPointerMentor|RawPointerCallerContracts|RawMemoryEffect|RawPointerSafety' -count=1; go vet -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: "Passed on 2026-11-11: full Sema (22.119s), focused Sema/CLI/LSP (0.108s/12.837s/66.463s) and vet. All seven CLI gates retain identical complete 39-occurrence JSON payloads. LSP projection matches canonical Sema IDs, messages/help, primary/related ranges and related messages for LF, CRLF, non-BMP UTF-16 and unsaved-operation edits. Ordinary raw memory events retain non-volatile caller obligations; restoring the old registry through a read-only Go overlay fails TestRawPointerCallerContracts, reproducing the regression."
       - command: go vet -p 4 ./internal/sema/... ./internal/ir/semantic ./internal/formatter ./internal/cst ./cmd/compiler ./cmd/lsp
         result: passed on 2026-11-06 after the final property signature-help guard
       - command: go test -p 4 ./cmd/lsp -run 'RawPointerReferenceProperty|RawPointerSafetyOutsideUnsafeContext|RawPointerSignatureCallSelection' -count=1

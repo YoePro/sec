@@ -1,0 +1,6 @@
+module dependency
+
+// Deliberately malformed: importing production must never parse this file.
+test "broken dependency" {
+    let :=
+}

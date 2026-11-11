@@ -17,7 +17,7 @@ func TestTypeDiagnosticLocationsCLI(t *testing.T) {
 			args := []string{command, "../../testdata/sema/type_locations"}
 			_, output, code := runCLIForDiagnostics(t, append(args, "--diagnostic-format=json")...)
 			document := decodeOccurrenceDocument(t, output)
-			if code != 3 || document.Summary.Errors != 13 || len(document.Occurrences) != 13 {
+			if code != 3 || document.Summary.Errors != 12 || len(document.Occurrences) != 12 {
 				t.Fatal(code, output)
 			}
 			for _, e := range document.Occurrences {

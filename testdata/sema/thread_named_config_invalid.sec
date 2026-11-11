@@ -1,0 +1,42 @@
+module main
+
+fn Work() void {}
+fn Accept(config: ThreadConfig) void {}
+fn AcceptSource(source: ContextSource) void {}
+
+fn Missing(config: ThreadConfig) void {
+    discard spawn thread config Work()
+}
+
+fn Reuse(config: ThreadConfig) void {
+    let worker := spawn thread <-config Work()
+    join worker
+    Accept(config)
+}
+
+fn Twice(config: ThreadConfig) void {
+    let worker := spawn thread <-config Work()
+    join worker
+    discard spawn thread <-config Work()
+}
+
+fn Wrong(config: int) void {
+    discard spawn thread <-config Work()
+}
+
+fn Borrowed(config: ref ThreadConfig) void {
+    discard spawn thread <-config Work()
+}
+
+fn Conflict(config: ThreadConfig) void {
+    discard spawn thread <-config Accept(<-config)
+    let worker := spawn thread <-config Work()
+    join worker
+}
+
+fn Rollback(config: ThreadConfig, source: ContextSource) void {
+    discard spawn thread config AcceptSource(<-source)
+    let worker := spawn thread <-config Work()
+    join worker
+    AcceptSource(<-source)
+}

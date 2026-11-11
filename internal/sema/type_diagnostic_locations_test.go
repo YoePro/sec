@@ -24,7 +24,7 @@ func TestTypeDiagnosticSourceLocations(t *testing.T) {
 		files = append(files, sourceFile{name: path, source: string(data)})
 	}
 	_, errors := analyzeSourceFilesRaw(t, files...)
-	want := map[string]int{diagnostics.DefaultViolatesContract: 1, diagnostics.InvalidMembershipValue: 2, diagnostics.DefaultNotRepresentable: 1, diagnostics.AmbiguousImplicitDefault: 2, diagnostics.InvalidDefaultedField: 2, diagnostics.MissingNonDefaultableField: 1, diagnostics.ValueViolatesContract: 2, diagnostics.ConstrainedAssignmentRequiresTry: 1, diagnostics.ImmutableRequiresInitializer: 1}
+	want := map[string]int{diagnostics.DefaultViolatesContract: 1, diagnostics.InvalidMembershipValue: 2, diagnostics.DefaultNotRepresentable: 1, diagnostics.AmbiguousImplicitDefault: 2, diagnostics.InvalidDefaultedField: 2, diagnostics.MissingNonDefaultableField: 1, diagnostics.ValueViolatesContract: 2, diagnostics.ImmutableRequiresInitializer: 1}
 	counts := map[string]int{}
 	for _, e := range errors {
 		counts[e.ID]++

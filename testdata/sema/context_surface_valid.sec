@@ -1,0 +1,48 @@
+module main
+
+fn Root() Context {
+    return Context.Background()
+}
+
+fn Child(context: ref Context) ContextSource {
+    return context.WithCancel()
+}
+
+fn Timed(context: ref Context, timeout: duration) ContextSource {
+    return context.WithTimeout(timeout)
+}
+
+fn Deadline(context: ref Context, deadline: Instant) ContextSource {
+    return context.WithDeadline(deadline)
+}
+
+fn MoveDeadline(context: ref Context, deadline: Instant) ContextSource {
+    return context.WithDeadline(<-deadline)
+}
+
+fn BorrowChild(source: ref ContextSource) ref Context {
+    return source.Context
+}
+
+fn Observe(context: ref Context) bool {
+    let error: Option[ContextError] := context.Error
+    let deadline: Option[Instant] := context.Deadline
+    return context.IsCancelled
+}
+
+fn Request(source: ref ContextSource) void {
+    source.Cancel()
+    source.Cancel()
+}
+
+fn Owned() void {
+    let root := Context.Background()
+    let source := root.WithCancel()
+    source.Cancel()
+    let cancelled := source.Context.IsCancelled
+    Consume(<-source)
+}
+
+fn Consume(source: ContextSource) void {
+    source.Cancel()
+}

@@ -9,6 +9,14 @@ module core
 type Context
 
 /**
+ * Owns a derived child Context, cancellation authority and registrations.
+ * May be moved; cannot be copied or expose its child as an owned value.
+ * Rules: rules/concurrency/cancellation.md sections 36 and 38.
+ */
+@noCopy
+type ContextSource
+
+/**
  * Describes operation-local context cancellation or deadline expiration.
  * Distinct from terminal cancellation of the current task or thread.
  * Rules: rules/concurrency/mutex.md sections 7 and 24.

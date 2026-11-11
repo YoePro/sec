@@ -330,6 +330,7 @@ func (a *Analyzer) AllocationCapabilities() layout.AllocationCapabilities {
 // Rules: rules/platform/target_profiles.md — §§2,23,31-32;
 // rules/memory/allocation.md — §§22,29(1),(5).
 func (a *Analyzer) SetAllocationProfile(profile string) {
+	a.recordConfiguration(func(b *Analyzer) { b.SetAllocationProfile(profile) })
 	a.targetProfile = profile
 	a.allocationProfileSelected = true
 }

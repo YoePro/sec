@@ -1,0 +1,6 @@
+module core
+
+// Implicit core loading must not parse its own tests.
+test "broken core test" {
+    let :=
+}

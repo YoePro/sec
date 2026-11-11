@@ -6679,3 +6679,1481 @@ compiler check of the source fixture reports zero errors/warnings; vet passed.
 Governance check/fmt/paths passed (15 references). No sec/, manual/, yamlstatus
 implementation, C++ or binary edits. No new thread semantics, wait categories,
 maySuspend classification or target/runtime guarantees. Released; no commit.
+
+## Claude: import qualifier collisions (working, 2026-11-11)
+
+Reserving S1220 modules.import-qualifier-collision (modules.md § 11, § 21).
+Working set: internal/diagnostics/diagnostics.go, internal/sema/import_diagnostics.go,
+the two import loaders (no signature change), import identity tests,
+governance declarations.yaml (frontend.modules item 8).
+
+## Codex: raw-pointer tool parity (working, 2026-11-11)
+
+Taking tooling.raw-pointers remaining[2] (compiler/LSP/sec analyse parity).
+Strengthen the existing 39-occurrence safety/validity matrix from category
+counts to complete canonical occurrence equality across CLI gates and Sema/LSP
+projection checks. Found and fixing ordinary Read/Write acquiring volatile
+caller obligations because rawPointerCallerContract used any nonempty Effects
+as its volatile discriminator. No parser/join or known pointer-fact production
+changes; keep pointer fact presentation as the separate remaining item.
+
+## Codex: raw-pointer compiler/LSP/analyse parity closed (released, 2026-11-11)
+
+Closed tooling.raw-pointers former remaining[2]. Existing canonical producers
+already served the CLI/LSP; completed the parity audit with exact conformance
+checks and corrected one real registry regression: ordinary memory Read/Write
+inherited volatile/device obligations because any nonempty effect list was
+used as the volatile discriminator. Now only explicit volatile effects add
+those obligations. Ordinary memory-read/write identities and actual volatile
+obligations remain intact; unsafe never supplies a new pointer-validity proof.
+
+The seven CLI frontend gates now compare all 39 complete ordered JSON
+occurrences, including identity, severity, primary/related ranges, notes, help,
+fixes and source. The LSP regression independently obtains canonical Sema facts
+and verifies exact protocol projection, including related labels/locations and
+help text. LF, CRLF, a non-BMP comment before the operation and an unsaved
+Read-to-VolatileRead edit are covered. Existing raw-memory analysis/hover tests
+retain the shared effect identities. Known pointer-fact presentation remains
+one separate open item; no new target, provenance or lifetime producer claimed.
+
+Validation:
+- Whole Sema passed (22.119s).
+- go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run 'RawPointerMentor|RawPointerCallerContracts|RawMemoryEffect|RawPointerSafety' -count=1
+  passed (0.108s / 12.837s / 66.463s).
+- go vet -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp passed.
+- A read-only Go overlay restoring the old registry fails the new ordinary
+  caller-obligation assertion in TestRawPointerCallerContracts.
+- yamlstatus check: 0 problems in 46 fragments; owner fmt canonical;
+  owner paths: 0 missing / 57 checked; scoped git diff --check clean.
+- Count snapshot diff: memory.yaml remaining 308 -> 307;
+  tooling.raw-pointers remaining 2 -> 1. Global compiler remaining 2193 -> 2192
+  at this snapshot; no other integration changed in that comparison.
+
+Files changed by this task:
+- internal/sema/compiler_known_physical_storage.go
+- internal/sema/raw_pointer_registry_test.go
+- cmd/compiler/raw_pointer_mentor_test.go
+- cmd/lsp/raw_pointer_mentor_test.go
+- governance/memory.yaml (yamlstatus only)
+- mlir/compiler-packages-handoff.md
+
+Latest handoff re-read: Claude reserves import-qualifier collisions and S1220
+in import diagnostics/loaders and declarations.yaml. No overlap with this task;
+preserve its work and its binary changes. No Sec library, manual, parser,
+physical lowering, yamlstatus implementation or binary edits by Codex. No new
+MD/blocker, no commit. Working set released.
+Result: S1220 added; collision check inside sema.ImportIdentityIssues
+(ImportLocalQualifier exported). Distinct same-named modules under aliases
+still collide in the flattened CLI import model (existing remaining item).
+Sema, diagnostics, cmd/compiler import/fixture and cmd/lsp import subsets
+pass except the pre-existing fmt.Println pair. Released; no commit.
+
+## Claude: internal-directory import access (working, 2026-11-11)
+
+Reserving S1221 modules.internal-import (modules.md § 13, § 21). Same working
+set as the import checks (diagnostics.go, sema/import_diagnostics.go, import
+identity tests, declarations.yaml frontend.modules item 11).
+Result: S1221 NOT added. Internal access is already enforced in project mode
+by project.ProjectImportAccess (S1149) in CLI and LSP before resolution;
+without a project there is no root to judge internal markers against. Added
+TestCLIEnforcesInternalImportAccess as regression and closed item 11 as
+verified. Released; no commit.
+
+## Codex: known raw-pointer fact presentation (working, 2026-11-11)
+
+Taking tooling.raw-pointers remaining[1], the final item. Publish source-local
+immutable presentation snapshots of existing null/origin/invalidation facts for
+raw-pointer bindings and uses, then share them between LSP hover and sec analyse.
+Unknown address-space/range/alignment/lifetime obligations stay unproven; no new
+proof or ownership-retention producer. Working in focused raw-pointer tooling
+files plus small Analyzer state, inference/binding and UI hooks. Avoid Claude's
+relational reachability, switch and import working files.
+
+## Claude: S3001 path facts for switch, per-binding and stored fields (released, 2026-11-11)
+
+analyzer_switch.go switchClauseProvenImpossible; analyzer_relational_reachability.go
+versionTrackedBindingsOf + relationalPlace (stored fields by value);
+Analyzer.currentVersionTrackedBindings. Tests
+TestSwitchClausesDecidedByPathFactsAreUnreachable,
+TestRelationalReachabilityTracksBindingsAndStoredFields. Full Sema/IR and
+cmd/compiler fixture/switch/pitfall subsets pass. cmd/lsp currently does not
+build because of Codex's in-progress raw_pointer_tooling.go (sourceTokenKey
+fields); an earlier LSP run's hover failure was in Codex's hover.go area.
+Also: no S1221; internal access stays S1149. Released; no commit.
+
+Codex status: sourceTokenKey field names are corrected; Sema and both CLI/LSP
+fact-presentation tests now build and pass (0.004s / 1.178s / 6.573s). The source
+fixture is valid after replacing the reserved binding name `after`. Broader
+regressions and vet are running. Analyzer edits add only the pointer snapshot
+map/reset and retain Claude's concurrent version-tracked binding changes.
+
+## Codex: raw-pointer known-fact presentation ID closed (released, 2026-11-11)
+
+Closed the final tooling.raw-pointers remaining item and set its status to
+implemented. Source-local detached snapshots project only retained Sema null,
+raw-origin and origin-availability facts. Hover and verbose sec analyse share
+RawPointerFact.Display; neither consumer re-runs pointer safety analysis.
+
+Immutable null aliases and dominating null-branch facts display proven null;
+mutable/unknown values and unguarded later uses do not inherit that proof.
+Raw address aliases preserve a known originating Place without keeping its
+storage alive; after explicit discard, presentation names the invalidating
+source operation. Available storage never becomes a full raw lifetime proof.
+Address space, range, alignment and full lifetime validity are explicitly not
+established: this task creates no proof producers or target/domain assumptions.
+Their future producers remain tracked by analysis.raw-pointers and the other
+semantic/platform/lowering owners. Speculative replay and summary passes cannot
+replace the source snapshots; results are ordered/detached and reset per run.
+
+Validation:
+- Full Sema passed (20.179s).
+- go test -p 4 ./cmd/compiler ./cmd/lsp -run 'RawPointer|RawMemory|AnalyseCLI' -count=1 -timeout=180s
+  passed (21.337s / 134.665s), including current LSP build, hover, signature,
+  mentor diagnostic, property, raw-memory and CLI presentation regressions.
+- New Sema/CLI/LSP fact tests initially passed 0.004s / 1.178s / 6.573s;
+  final focused CLI rerun after suppressing empty sections passed 1.185s.
+- go vet -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp passed, including final rerun.
+- Snapshot tests verify branch locality, aliases, mutable uncertainty, origin
+  invalidation, detached outputs, exact source queries and analyzer reuse.
+  Same-URI unsaved edits remove the old initialization/null proof.
+- yamlstatus check: 0 problems in 46 fragments; owner fmt canonical;
+  paths: 0 missing / 67 checked; task-scoped git diff --check clean.
+- memory.yaml remaining 307 -> 306; tooling.raw-pointers 1 -> 0, partial ->
+  implemented. The separate errors_diagnostics.yaml reduction in this run's
+  count diff belongs to Claude's S3001 work. No new MD/blocker.
+
+Files changed by this task:
+- internal/sema/analyzer.go (pointer snapshot map/reset only)
+- internal/sema/analyzer_inference.go (expression snapshot hook)
+- internal/sema/raw_pointer_references.go (post-initialization binding hook)
+- internal/sema/raw_pointer_tooling.go (new)
+- internal/sema/raw_pointer_tooling_test.go (new)
+- cmd/lsp/hover.go (append canonical facts)
+- cmd/lsp/raw_pointer_facts_test.go (new)
+- cmd/compiler/analyse.go (fact reporting hook)
+- cmd/compiler/analyse_raw_pointers.go (new)
+- cmd/compiler/raw_pointer_facts_test.go (new)
+- testdata/tooling/raw_pointer_facts.sec (new, valid Sema source)
+- governance/memory.yaml (yamlstatus only)
+- mlir/compiler-packages-handoff.md
+
+Re-read latest handoff: Claude's S3001 relational/switch work is released.
+Its earlier report of in-progress sourceTokenKey/LSP compilation failure is
+resolved; the broad current LSP selection passes. Preserve Claude's Analyzer
+version-tracking edits, imports, switch files and binaries. No Sec library,
+manual, physical lowering, C++ MLIR or binary edits by this task. No commit.
+Working set released.
+
+## Codex: nested Arena backing dependencies (working, 2026-11-11)
+
+Taking frontend.arena-borrowed-backing-lifetime final remaining item. Existing
+named-buffer cases work, but direct temporary backing from
+Arena.FromBuffer(try parent.Alloc[byte](...)) failed to block parent Reset.
+New arena_nested.go retains explicit parent-domain dependencies as flow-owned
+borrow records, using existing holder move/Release/scope/join lifecycle. This
+is not an exclusive borrow of the parent owner. Working in borrowRecord kind,
+Arena construction/escape helper and invalidation diagnostics; no switch or
+relational-reachability changes. New nested source tests and CLI/LSP checks.
+
+## Claude: dynamic relational switch coverage (released, 2026-11-11)
+
+analyzer_switch.go: switchItemCondition (shared), recordSwitchUnmatchedFacts,
+unmatched-path facts in the clause loop, no double report for clauses whose
+items already have coverage errors. Test
+TestSwitchUnmatchedPathFactsCoverDynamicCases; full Sema/IR, cmd/compiler
+fixture/switch/native and cmd/lsp switch subsets pass. Governance
+control_flow.yaml (switch-statements-v2). Released; no commit.
+
+## Codex: nested Arena parent/backing point completed (released, 2026-11-11)
+
+Completed frontend.arena-borrowed-backing-lifetime's final remaining point:
+nested parent/backing dependencies. Named-buffer cases already worked, but
+Arena.FromBuffer(try parent.Alloc[byte](...)) had no source buffer holder and
+incorrectly allowed parent Reset. The original source regression produced only
+three errors instead of four. FromBuffer now retains explicit parent-domain
+borrow records even for fresh backing references. Existing flow joins, owner
+holder moves, Release and lexical destruction carry/end the dependency.
+
+The relation is a strong domain dependency, not an exclusive owner borrow;
+independent allocations and moves of the parent owner remain valid. A child's
+Reset retains its dependency. Live children block parent Reset/Release with
+canonical Sema/CLI/LSP Invalid diagnostics, the child declaration and practical
+Release/scope help. Grandchildren block ending their own parent; moved child
+owners preserve their responsibility. Friendly parent names replace internal
+domain IDs in escape messages, and witness selection is deterministic.
+
+Also handled constructor temporaries: legal explicit and implicit discard end
+their backing dependencies when the temporary Arena is destroyed, allowing
+later parent Reset. The valid regression covers scope end, branches, loop
+iterations, break/continue, repeated allocation and parent/child owner moves.
+The invalid fixture contains seven parent/child invalidation errors plus one
+borrowed-child escape. Existing closure capture and task transfer remain in the
+same pre-existing partial item (with its stale nested-Arena wording removed).
+The ID remains partial; no unsupported closure/task behavior is claimed closed.
+No physical Arena allocation/destruction lowering was added.
+
+Validation (final state):
+- Full Sema passed 18.532s.
+- go test -p 4 ./cmd/compiler ./cmd/lsp -run 'NestedArena|ArenaInvalidation|ArenaMultiOrigin' -count=1 -timeout=120s
+  passed 19.336s / 4.360s; JSON/LSP retain IDs, Invalid proof, help and child origins.
+- go vet -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp passed.
+- yamlstatus check: 0 problems in 46 fragments; owner fmt canonical;
+  owner paths: 0 missing / 18 checked; scoped git diff --check clean.
+- memory.yaml remaining 306 -> 305;
+  frontend.arena-borrowed-backing-lifetime remaining 1 -> 0, partial 1 unchanged.
+  The control_flow.yaml reduction in the count diff is Claude's separate work.
+
+Files changed by this task:
+- internal/sema/analyzer.go (parent-dependency borrow kind and friendly owner field only)
+- internal/sema/analyzer_arena.go (construction/escape integration and stable witness ordering)
+- internal/sema/arena_invalidation_diagnostics.go
+- internal/sema/arena_nested.go (new)
+- internal/sema/analyzer_discard.go (constructor-temporary cleanup hook)
+- internal/sema/expression_statements.go (legal implicit temporary cleanup hook)
+- internal/sema/arena_nested_test.go (new)
+- cmd/compiler/arena_nested_test.go (new)
+- cmd/lsp/arena_nested_test.go (new)
+- testdata/sema/arena_nested_valid.sec (new)
+- testdata/sema/arena_nested_invalid.sec (new)
+- governance/memory.yaml (yamlstatus only)
+- mlir/compiler-packages-handoff.md
+
+Latest handoff re-read: Claude's dynamic relational switch coverage is released
+and does not overlap this Arena work. Preserve its switch/relational/import
+changes and binaries. No Sec library, manual, C++ MLIR or binary changes by this
+task. No new MD or blocker; no commit. Working set released.
+
+## Codex: legal large-copy advice integration (working, 2026-11-11)
+
+Taking tooling.copy-move remaining[1]. Existing reverse escape/parameter demand
+and A2001 presentation are integrated, but policy mistakenly advertised a large
+@noCopy owner as AvoidCopyCost. New source regression reproduces this. Gate
+copy-cost policy on canonical copy classification, keep semantic demand intact,
+and share explicit size/use evidence plus optional API-design wording between
+A2001 and detailed LSP hover. No automatic ownership or signature edits.
+Working in parameter_usage_recommendations.go, parameter_copy_advice.go,
+parameter_insight.go and focused source/CLI/LSP tests. No overlap with Arena,
+imports or switch analysis.
+
+## Claude: while entry decided by path facts (released, 2026-11-11)
+
+analyzer_while_flow.go: relational entry decision (false -> S3001 body and
+zero-iteration loop; true + body never reaching the next test -> loop does
+not continue); recordResolvedWhileFlow gains entersOnceOnly;
+analyzer_statement_flow.go definitelyReturns uses !ContinuesAfterLoop
+(equivalent for constant conditions). Test TestWhileEntryDecidedByPathFacts.
+Sema/IR, cmd/lsp while/loop and cmd/compiler fixture/loop subsets pass,
+except TestTypePackLoopsCLI ("main::Size[T=int](ref T)" missing from emit-ir),
+which fails without this change too. Released; no commit.
+
+## Codex: legal large-copy advice integration (released, 2026-11-11)
+
+Closed the whole tooling.copy-move reverse escape/parameter-usage advice item.
+Canonical copy classification now gates AvoidCopyCost: only proven trivial or
+semantic copies qualify. A large noCopy owner previously received a misleading
+recommended/AvoidCopyCost result; the source regression reproduced it before
+the fix. Non-copyable/move-only/conditional classifications get no copy-cost
+claim. Escape, consuming, custom cleanup and identity blockers still precede
+cost policy, and semantic demand is unchanged. Updated the old parameter
+contract regression that had explicitly expected advice for noCopy ReadToken;
+it now separately verifies that inferred borrow demand remains intact.
+
+A2001 help and detailed LSP hover share known estimated byte size and modeled
+call-local read/non-retention/ownership/identity evidence. They explain that
+the by-value copy is legal and a reference API is optional. Size remains a cost
+estimate, never an ABI/layout guarantee. Concise/off hover modes stay concise;
+configured advisory severity does not change source validity. No API/ownership
+code action is offered. The source fixture exercises direct and transitive
+read-only calls, valid repeated copies, retained values, ownership transfer
+and a noCopy owner. No new ownership semantics or lowering was added.
+
+Validation:
+- Full internal/sema passed 21.481s after correcting the stale noCopy expectation.
+- go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run 'LargeCopyAdvice|ParameterInsight|ParameterRecommendation' -count=1 -timeout=120s
+  passed 0.028s / 2.461s / 27.539s.
+- go test -p 4 ./cmd/compiler ./cmd/lsp -run 'OwnershipMentor|OwnershipUseOrigin|ParameterContract' -count=1 -timeout=120s
+  passed 21.055s / 4.328s.
+- go vet -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp passed.
+- yamlstatus check: 0 problems in 46 fragments; owner formatting canonical;
+  copy-move paths: 0 missing / 46 checked; scoped git diff --check clean.
+- tooling.yaml remaining 33 -> 32; tooling.copy-move remaining 2 -> 1.
+  Copy/operation/availability inspection is the separate remaining item.
+  The simultaneous control_flow.yaml reduction belongs to Claude.
+
+Files changed by this task:
+- internal/sema/parameter_usage_recommendations.go
+- internal/sema/parameter_copy_advice.go (new)
+- internal/sema/parameter_usage_contracts_test.go
+- internal/sema/large_copy_advice_test.go (new)
+- cmd/lsp/parameter_insight.go
+- cmd/lsp/large_copy_advice_test.go (new)
+- cmd/compiler/large_copy_advice_test.go (new)
+- testdata/tooling/large_copy_advice.sec (new)
+- governance/tooling.yaml (yamlstatus only)
+- mlir/compiler-packages-handoff.md
+
+Latest handoff re-read includes Claude's released while-entry path facts and
+its separately reported pre-existing TypePackLoopsCLI failure. No overlap with
+those changes; preserve all concurrent relational/switch/while/import files
+and binaries. No Sec library, manual, MLIR/C++ or binary edits by this task.
+No new MD/blocker; no commit. Working set released.
+
+## Codex: range and on-type formatting (working, 2026-11-11)
+
+Taking the whole range/on-type item of tooling.formatter-declaration-comment-alignment
+in governance/formatting.yaml. Shared formatter owns structural selection and
+canonical bytes; LSP only adapts live snapshots, project settings and UTF-16
+positions. Planning conservative complete top-level syntax units (including
+impls/alignment groups) and no edits for uncertain syntax. Working in new
+CST/formatter selection files, format_document.go/configuration, focused LSP
+routing/capability additions and formatting request priority. No Sema, control
+flow, imports or native lowering changes. Will release with exact tests/files.
+
+## Codex: range and on-type formatting (released, 2026-11-11)
+
+Closed the whole range/on-type remaining item of
+ tooling.formatter-declaration-comment-alignment. Shared formatter RangeEdit
+formats with full-document context and uses CST physical-line envelopes of
+parser-owned top-level statements to return one minimal selected edit. A
+nested member selects its enclosing impl/type, preserving indentation and
+alignment context; an import selects its complete sortable group. Unselected
+bytes, blank lines and line endings remain exact. Full-document ranges match
+document formatting. OnTypeEdit accepts real closing braces and whitespace
+newlines only; comment/literal contents cannot trigger formatting. Incomplete
+or malformed documents receive no speculative local edit. No Sema is invoked.
+
+LSP advertises/routs both protocol methods, reads current snapshots before
+falling back to disk, validates exact UTF-16 coordinates, and shares canonical
+project settings plus viewport/adaptive-width resolution with document
+formatting. Client tab preferences cannot override project configuration.
+Both modes receive formatting priority behind preceding document sync. They
+return previewable edits and never write source or manifest files. The
+existing document formatter's snapshot reading and edit adaptation were
+extracted into shared helpers without changing its canonical output.
+
+Validation:
+- Full CST/formatter suites passed 0.007s / 1.834s.
+- go test -p 4 ./cmd/compiler ./cmd/lsp -run '^Test(Format|Formatting|RangeFormatting|SelectionFormatting|LSPFormatting|LSPPreferredWidth|RunFmt|Fmt)' -count=1 -timeout=120s
+  passed 0.253s / 0.085s.
+- go test -p 4 -race ./cmd/lsp -run 'SelectionFormatting|FormatDocumentMinimalEdit|LSPFormattingUsesProject|LSPPreferredWidth|FormattingOvertakes|RequestQueue|ServerAnswersConcurrent' -count=1 -timeout=180s
+  passed 17.755s in the final state. Source/golden/protocol tests cover
+  indentation 2/4/6, LF/CRLF, Unicode and invalid surrogate-pair positions,
+  exact unchanged neighbors/blank lines, impl methods and field alignment,
+  imports, idempotence, actual opaque triggers, live snapshot versus stale
+  disk, disk fallback, adaptive width, invalid input/config and capabilities.
+- go vet -p 4 ./internal/cst ./internal/formatter ./cmd/lsp passed.
+- An earlier broad 'Fmt' selector also ran
+  TestAnalyzeLoadsFmtPackageAndTransitiveImports, which fails because
+  fmt.Println returns Result[uint, fmt.WriteFormatError] and its fixture does
+  not handle it. A temporary Go overlay restoring all four pre-task LSP
+  production files and excluding the new adapter/tests reproduces the exact
+  failure (2.191s). No concurrent files were changed for this check; this
+  unrelated API/fixture test is not claimed passing.
+- yamlstatus check: 0 problems in 46 fragments; canonical owner formatting;
+  owner paths 0 missing / 35 checked; scoped git diff --check clean.
+- formatting.yaml remaining 13 -> 12;
+  tooling.formatter-declaration-comment-alignment remaining 2 -> 1.
+  The other item is migration of remaining trimmed-line indentation/alignment.
+  formatter-v2's broad CLI/LSP item now cross-references this completed support
+  while retaining its other existing conformance requirements; count unchanged.
+
+Files changed by this task:
+- internal/cst/formatting_regions.go (new)
+- internal/formatter/range.go (new)
+- internal/formatter/range_test.go (new)
+- cmd/lsp/format_document.go
+- cmd/lsp/format_configuration.go
+- cmd/lsp/format_selection.go (new)
+- cmd/lsp/format_selection_test.go (new)
+- cmd/lsp/main.go (formatting capabilities and routing only)
+- cmd/lsp/request_queue.go (formatting priority methods only)
+- cmd/lsp/formatting.md
+- testdata/formatter/range_selection.sec (new)
+- testdata/formatter/range_selection.expected.sec (new)
+- testdata/formatter/range_imports.sec (new)
+- testdata/formatter/range_opaque.sec (new)
+- governance/formatting.yaml (yamlstatus only)
+- mlir/compiler-packages-handoff.md
+
+Latest handoff re-read: no newer Claude entry since the released while-entry
+path facts; no overlap. Preserve concurrent Sema/IR/import/control-flow work
+and binaries. No Sec library, manual, MLIR/C++ or binary edits by this task.
+No new MD or task blocker; no commit. Working set released.
+
+## Codex: allocation-context origin (working, 2026-11-11)
+
+Taking tooling.arena remaining[4], show allocation-context origin. Existing
+allocation descriptions already distinguish implicit profile selection,
+explicit domains, created Arena domains and unknown backing. Complete their
+source provenance using the compiler's GeneratedIdentities registry, preserving
+origin through owner moves without decoding domain IDs or guessing from names.
+Shared Sema descriptions feed existing CLI and operation/callable LSP hover.
+Working in allocation_context_facts.go and focused Sema/CLI/LSP tests; no Arena
+ownership transitions or concurrent control-flow/import code changes.
+
+## Codex: allocation-context origin (released, 2026-11-11)
+
+Closed the whole tooling.arena allocation-context-origin item. Existing
+AllocationContextFact now exposes SelectedDomainOrigin and CreatedDomainOrigin
+as detached lexer tokens from the canonical GeneratedIdentities registry.
+Nothing decodes domain IDs or resolves a receiver spelling to invent provenance.
+The shared description automatically feeds sec analyse and operation/callable
+LSP hover. Explicit context origins survive owner moves and synchronous
+transitive calls; same-spelled Arena owners stay distinct. Created-domain
+origins never stand in for their unresolved backing context. Implicit selection
+continues to expose actual profile/availability/storage-origin evidence without
+a fabricated source location. Missing provenance is explicitly unresolved.
+No ownership transition, domain-selection rule, allocation routing or physical
+backend behavior was changed.
+
+Validation:
+- New source-based origin tests passed Sema/compiler/LSP 0.018s/1.395s/12.072s.
+- Full Sema and Semantic IR passed 21.147s / 8.163s.
+- go test -p 4 ./cmd/compiler ./cmd/lsp -run 'AllocationContext|AllocationOperationHover|AnalyseAllocation|AllocationHoverCanonicalParity' -count=1 -timeout=120s
+  passed 1.563s / 47.820s.
+- go test -p 4 -race ./internal/sema ./cmd/compiler ./cmd/lsp -run '^TestAllocationContextOrigins' -count=1 -timeout=120s
+  passed 1.108s / 10.271s / 70.076s. Covers actual domain source tokens,
+  owner moves, same-spelled independent receivers, created/backing separation,
+  canonical registry identity, transitive context paths, unknown provenance,
+  source-position refresh while preserving identity and old snapshots, CLI
+  rendering and unsaved LSP source changes.
+- An earlier broad allocation race run passed compiler 10.062s but LSP reached
+  its 180s timeout while running TestAllocationHoverCanonicalParity. That broad
+  race run is not claimed passing; the broad functional and focused race runs
+  above completed. No assertion/race failure preceded the timeout.
+- go vet -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp passed.
+- yamlstatus check: 0 problems in 46 fragments; owner format canonical;
+  owner paths 0 missing / 12 checked; scoped git diff --check clean.
+- tooling.yaml remaining 32 -> 31; tooling.arena remaining 8 -> 7.
+  Provider/capacity/epoch, other dependency presentation, byte-accurate demand,
+  planning, lifecycle diagnostics and full request parity remain separate items.
+
+Files changed by this task:
+- internal/sema/allocation_context_facts.go
+- internal/sema/allocation_context_origins_test.go (new)
+- cmd/compiler/allocation_context_origins_test.go (new)
+- cmd/lsp/allocation_context_origins_test.go (new)
+- governance/tooling.yaml (yamlstatus only)
+- mlir/compiler-packages-handoff.md
+
+Latest handoff re-read: no newer Claude entry since its released while-entry
+path facts. No overlap with its control-flow/import work. No Sec library,
+manual, MLIR/C++ or binary changes by this task. No new MD or language-decision
+blocker; no commit. Working set released.
+
+## Claude: first-iteration constants across branches (released, 2026-11-11)
+
+constant_scopes.go: constantBranches joins the first-iteration domain
+(finishFirstIteration, firstIterationWriteExact; Analyzer.firstIterationBranchDepths),
+inner loops remove assigned names from the enclosing domain (stale S1023 fix);
+deferred finish calls in if/switch/match. Test
+TestFirstIterationDomainJoinsAcrossBranches. Full Sema/IR and cmd/compiler
+fixture/overflow subsets pass. Governance sema.yaml. Released; no commit.
+
+## Claude: member duplicate/conflict diagnostic identity (working, 2026-11-11)
+
+Reserving S1221 declarations.duplicate-declaration for duplicate same-signature
+functions/methods, member-versus-field conflicts and repeated associated
+members (static.md § 28, functions.md overloads). Working set:
+diagnostics.go, analyzer.go duplicate/conflict sites (messages unchanged
+except the duplicated location in "associated member … already declared"),
+new test, governance declarations.yaml (static-declarations-members item 5).
+Result: S1221 declarations.duplicate-declaration added; analyzer.go tags the
+duplicate same-signature function site, 12 member-conflict sites and the
+repeated associated member (message no longer embeds its location twice).
+Test TestStaticAndInstanceMemberDuplicatesHaveStableIdentity; diagnostics,
+Sema, cmd/compiler and cmd/lsp diagnostic/static subsets pass. Released; no commit.
+
+## Claude: rename rules verification + result-projection dedup (released, 2026-11-11)
+
+Test-only: TestRenameConsumesSemaNamespaceRules (cmd/lsp/rename_test.go)
+pins shadowing, same-signature overload, capitalization rejection and a
+valid overload join; declarations.yaml names-scopes item closed as verified.
+lifetime.yaml copy-move result-projection-state-proof deduplicated onto
+errors.yaml result-projection-discardability. Released; no commit.
+
+## Codex: Arena invalidation blocker cause chains (working, 2026-11-11)
+
+Taking tooling.arena remaining[2], show Reset/Release blockers with cause chains.
+Preserve existing legality and one diagnostic per operation; extend provenance
+with deterministic borrow/defer retention witnesses and nested child backing.
+Expose detached canonical blocked-operation facts for shared presentation and
+LSP operation hover, keeping missing facts distinct from positive legality.
+Working in arena_invalidation_diagnostics.go, the existing retention predicate
+in analyzer_arena.go, a focused tooling projection, allocation_operation_hover.go
+and source/CLI/LSP tests. No analyzer.go duplicate/member/constant-flow edits;
+Claude's latest duplicate-diagnostic work is released and has no overlap.
+
+## Claude: closure summaries carry callable capability (released, 2026-11-11)
+
+analyzer_closure.go ClosureCreationSummary.Capability/EnvironmentMoveOnly
+(from the lambda type); cmd/compiler/analyse_closures.go prints them.
+Tests TestClosureCreationSummariesCarryCallableCapability, TestAnalyseClosures.
+Governance analysis.yaml closure-analysis item 23. Released; no commit.
+
+## Codex: Arena invalidation blocker cause chains (released, 2026-11-11)
+
+Closed the whole tooling.arena Reset/Release blocker cause-chain item.
+The existing immediate-local retention predicate moved out of analyzer_arena.go
+into arena_invalidation_tooling.go and now returns deterministic source-spanned
+witnesses. It preserves the original deferred-use, additional borrow-holder and
+reference-carrier conditions, including dependencies without a source token.
+No admission, NLL, epoch or ownership transition rule changed.
+
+S1126/S1127 keep the live Arena dependency as their first related location and
+append its retaining borrow/deferred use or a nested child's backing source.
+Each rejected operation still emits one mandatory Invalid occurrence. Existing
+CLI human/JSON and LSP diagnostic adapters expose the ordered cause links.
+ArenaInvalidationBlockersAt projects detached finalized Sema diagnostics at
+exact source-qualified operation coordinates; it runs no second analysis and
+its absence makes no positive legality proof. Operation hover appends the same
+proof, dependency/retention locations and repair help even for rejected calls.
+No internal defer/domain holder names are printed.
+
+Validation:
+- Full Sema/Semantic IR passed 24.847s / 9.397s.
+- go test -p 4 ./cmd/compiler ./cmd/lsp -run 'ArenaInvalidation|NestedArena|ArenaMultiOrigin' -count=1 -timeout=120s
+  passed 22.983s / 10.670s. Existing count assertions were updated to require
+  the expanded canonical chain while preserving IDs, severity, primary range
+  and first dependency links. Precise nested counts were subsequently tightened
+  and rerun with 'NestedArena': compiler 4.237s / LSP 1.788s, both passing.
+- go test -p 4 -race ./internal/sema ./cmd/lsp -run 'ArenaInvalidationBlocker' -count=1 -timeout=120s
+  passed 1.166s / 24.373s. Source-backed tests verify deferred/borrowed/nested
+  witnesses, moved owners, deterministic order, exact source matching,
+  detached Related slices, analyzer reset, actual invalid-call hover ranges,
+  unsaved position refresh and suppression of compiler-internal holder names.
+- go vet -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp passed.
+- yamlstatus check: 0 problems in 46 fragments; owner format canonical;
+  owner paths 0 missing / 28 checked; scoped git diff --check clean.
+- tooling.yaml remaining 31 -> 30; tooling.arena remaining 7 -> 6.
+  The analysis.yaml closure and declarations.yaml names/scopes reductions
+  in the concurrent count diff belong to Claude, not this task.
+
+Files changed by this task:
+- internal/sema/analyzer_arena.go (retention predicate extraction only)
+- internal/sema/arena_invalidation_diagnostics.go
+- internal/sema/arena_invalidation_tooling.go (new)
+- internal/sema/arena_invalidation_tooling_test.go (new)
+- cmd/lsp/allocation_operation_hover.go
+- cmd/lsp/arena_invalidation_hover_test.go (new)
+- cmd/compiler/arena_invalidation_diagnostics_test.go
+- cmd/lsp/arena_invalidation_diagnostics_test.go
+- cmd/compiler/arena_multi_origin_test.go
+- cmd/lsp/arena_multi_origin_test.go
+- cmd/compiler/arena_nested_test.go (expanded related-link assertions only)
+- cmd/lsp/arena_nested_test.go (expanded related-link assertions only)
+- governance/tooling.yaml (yamlstatus only)
+- mlir/compiler-packages-handoff.md
+
+Latest handoff re-read includes Claude's released closure-capability summaries
+and member duplicate/conflict identities. No overlap; preserve their analysis,
+closure, declaration and binary changes. No Sec library, manual, MLIR/C++ or
+binary changes by this task. No new MD/blocker; no commit. Working set released.
+
+## Codex: close stale character-comparison remaining (working, 2026-11-11)
+
+Taking frontend.types-core's already-resolved MD-105 character comparison item
+in types.yaml. Baseline native characters fixture passes without skips. Audit
+and close with adversarial conformance: all six predicates on parameter values,
+unsigned char high-bit and supplementary/max rune boundaries, same-type IR
+verification and mixed-type rejection, and target-width-independent emitted
+representations. This is a stale ledger/conformance closure, not a new source
+feature. Working in dedicated fixtures/tests and native fixture registration;
+no Sema production, closure or member-diagnostic code changes planned.
+
+## Codex: MD-105 character-comparison conformance closure (released, 2026-11-11)
+
+Closed frontend.types-core's stale remaining item beginning "resolved
+2026-10-18 (MD-105...)". Production character comparison was already implemented;
+this task adds adversarial end-to-end conformance and moves the verified
+record into implemented. It introduces no new character arithmetic, implicit
+conversions or production lowering behavior.
+
+The new native fixture computes independent bitmasks for all six char and rune
+predicates over function parameters. It covers equality/both orderings, NUL,
+char 0x7F/0x80/0xFF, supplementary and maximum rune scalars, noncharacters,
+valid endpoints around the surrogate gap, and source constant comparisons.
+Registered in the normal native fixture matrix. The Semantic IR regression
+checks selected 32/64-bit scalar plans, character parameter identity, all six
+int.compare predicates, bool results and source provenance, then injects
+illegal mixed char/rune and equal-width integer identities and requires the
+verifier to reject int.compare. A separate invalid source exercises all six
+mixed character operators plus int/char and uint/rune, preserving the shared
+mandatory registered S1016/S1019 diagnostics in CLI and LSP.
+
+Validation (no skips):
+- Baseline native characters fixture passed 0.958s before changes.
+- SEC_MLIR_BIN="${SEC_MLIR_BIN}" go test -p 4 ./internal/ir/semantic ./cmd/compiler ./cmd/lsp -run 'CharacterComparison|TestNativeTrackBuildsAndRuns/(characters|character_predicates)$' -count=1 -v -timeout=120s
+  passed: Semantic IR 0.027s, compiler 6.265s, LSP 0.902s. Actual LLVM
+  emission on linux-amd64/linux-armv7 retains eq/ne/ult/ule/ugt/uge over i8/i32;
+  native amd64 builds and executes both the old and new fixtures successfully.
+  Native ARM execution is not claimed. CLI check/emit-ir/emit-llvm all reject
+  the eight mixed-type source cases before output; LSP projects the same IDs.
+  Final explicit module-pointer-width assertion also passed the focused IR run.
+- go vet -p 4 ./internal/ir/semantic ./cmd/compiler ./cmd/lsp passed.
+- yamlstatus check: 0 problems in 46 fragments; canonical owner formatting;
+  owner paths 0 missing / 102 checked; scoped git diff --check clean.
+- types.yaml remaining 46 -> 45; frontend.types-core remaining 13 -> 12.
+
+Files changed by this task:
+- testdata/build/native/character_predicates.sec (new)
+- testdata/sema/character_comparisons_invalid.sec (new)
+- internal/ir/semantic/character_comparison_test.go (new)
+- cmd/compiler/character_comparison_test.go (new)
+- cmd/lsp/character_comparison_test.go (new)
+- cmd/compiler/native_track_test.go (new fixture registration only)
+- governance/types.yaml (yamlstatus only)
+- mlir/compiler-packages-handoff.md
+
+Latest handoff re-read: no new Claude entry since the released closure-capability
+and member identity work. No overlap. No production Sema, LLVM/MLIR or dialect
+files, Sec library, manual or binaries changed by this task. No new MD/blocker;
+no commit. Working set released.
+
+### Claude — 2026-11-11 closure ownership integration (released)
+
+Working set: internal/sema/closure_ownership_integration_test.go (new),
+governance/analysis.yaml (sema.closure-analysis). Test-only verification; no
+production code, no new diagnostic IDs. Closed "integration with ownership
+analysis for capture and callable copy/move legality". No commit. Released.
+
+### Claude — 2026-11-11 transfer-site ownership hover (released)
+
+Working set: cmd/lsp/ownership_operation_hover.go (new), cmd/lsp/hover.go
+(one deferred suffix), cmd/lsp/ownership_operation_hover_test.go (new),
+governance/tooling.yaml (tooling.copy-move). Reads ResolvedTransferPlans only;
+no Sema change, no diagnostic IDs. No commit. Released.
+
+## Codex: scoped test dependency source isolation (reserved, 2026-11-11)
+
+Taking tooling.language-testing's whole remaining point "keep dependency module
+tests out of a scoped test run unless those tests are explicitly selected".
+Working set: compiler import/core source loading, focused dependency selection
+fixtures and CLI tests, governance/testing.yaml. No closure, P17, LSP production
+or MLIR changes. Imported production dependencies must not parse/analyze their
+_test.sec files; explicit test selections continue through the test command.
+
+## Codex: scoped test dependency source isolation (released, 2026-11-11)
+
+Closed the whole tooling.language-testing remaining point about excluding
+unselected dependency tests from scoped runs. The regression first reproduced
+exit 2 from parsing dependency/broken_test.sec before any selected test could
+be listed. Automatic import closure now excludes *_test.sec before import
+identity/conflict inspection and parsing, across project, stdlib, platform and
+transitive dependency routes. Implicit core loading applies the same selection.
+A dependency containing only test files remains unresolved (registered S1051).
+Explicit dependency test files still compile/discover, including when selected
+alongside the app; explicitly selected malformed/semantically invalid tests
+still fail. Production checks use the same exclusion.
+
+Verification:
+- go test -p 4 ./cmd/compiler -run 'TestSecTest|Import|CoreLibrary' -count=1 -timeout=120s
+  passed, 16.863s (existing test command and import/core regressions included).
+- go test -race -p 4 ./cmd/compiler -run '^TestSecTestDependencyScope$' -count=1 -timeout=60s
+  passed, 5.208s. Fixtures cover direct, transitive, standard-library, platform
+  and implicit core poison tests, explicit good/bad selections, JSON listing,
+  name filtering, production checks and test-only import rejection.
+- go vet -p 4 ./cmd/compiler passed.
+- yamlstatus check: 0 problems / 46 fragments; owner paths 0 missing / 46 checked.
+- yamlstatus fmt -check governance/testing.yaml: canonical (exit 0). It also
+  reports the pre-existing unrelated testing.compiler-verification-v1
+  integrated:null type hazard; no historical integration date invented.
+- testing.yaml remaining 16 -> 15; tooling.language-testing 16 -> 15.
+  Concurrent tooling.copy-move implemented +1 is Claude's released hover work,
+  not part of this task. Test harness execution remains its separate open item;
+  listing/compilation coverage is not a claim of PASS/FAIL runtime execution.
+
+Files changed by this task:
+- cmd/compiler/import_source_selection.go (new)
+- cmd/compiler/import_sources.go
+- cmd/compiler/main.go (implicit core selection only)
+- cmd/compiler/test_dependency_scope_test.go (new)
+- testdata/projects/test_dependency_scope/app.sec (new)
+- testdata/projects/test_dependency_scope/app_test.sec (new)
+- testdata/projects/test_dependency_scope/dependency/implementation.sec (new)
+- testdata/projects/test_dependency_scope/dependency/dependency_test.sec (new)
+- testdata/projects/test_dependency_scope/dependency/broken_test.sec (new)
+- testdata/projects/test_dependency_scope/dependency/leaf/implementation.sec (new)
+- testdata/projects/test_dependency_scope/dependency/leaf/broken_test.sec (new)
+- testdata/projects/test_dependency_scope/missingcase/implementation.sec (new)
+- testdata/projects/test_dependency_scope/missingcase/onlytests/only_test.sec (new)
+- testdata/projects/test_dependency_scope/sec/core/broken_test.sec (new)
+- testdata/projects/test_dependency_scope/sec/platform/scopedep/implementation.sec (new)
+- testdata/projects/test_dependency_scope/sec/platform/scopedep/broken_test.sec (new)
+- testdata/projects/test_dependency_scope/sec/stdlib/scopefixture/implementation.sec (new)
+- testdata/projects/test_dependency_scope/sec/stdlib/scopefixture/broken_test.sec (new)
+- governance/testing.yaml (yamlstatus only)
+- mlir/compiler-packages-handoff.md
+
+Latest handoff re-read includes Claude's released transfer-site ownership hover.
+No overlapping working set. No source-library, LSP, MLIR, binary or manual edits
+by this task; no new MD/blocker, no commit. Working set released.
+
+### Claude — 2026-11-11 project identity in module resolution (released)
+
+Working set: internal/project/module_identity_test.go (new test),
+governance/tooling_projects.yaml (tooling.project-identity -> implemented).
+Verification only; no production change, no diagnostic IDs. No commit. Released.
+
+## Codex: CLI analysis agreement conformance (reserved, 2026-11-11)
+
+Taking tooling.cli's remaining cold/incremental/parallel agreement and
+optimized-build validation point (MD-017 correction section 11(9)-(11)).
+Working set: new cmd/compiler/analyse_consistency_test.go and tooling.yaml.
+Test the existing compiler PitfallCache API through the canonical CLI report
+builder, with actual cache hits, invalidation and parallel consumers, and compare
+public CLI output from optimized/unoptimized temporary compiler binaries.
+No new cache/workspace semantics or claim that CLI persists a workspace cache.
+No changes to closure, ownership hover, P17, Sema production or MLIR code.
+
+## Codex: CLI analysis agreement conformance (released, 2026-11-11)
+
+Closed tooling.cli's whole remaining cold/incremental/parallel agreement and
+optimized-build validation point (MD-017 correction section 11(9)-(11)). This is
+completion of conformance tests for existing behavior, not new source semantics
+or persistent CLI workspace caching.
+
+New tests use the source-backed mixed_families fixture, ordinary canonical Sema
+and AnalyzeWithPitfallCache, then build the exact canonical CLI report. They
+compare the complete report, including owner warnings, optional finding facts,
+severity/counts, evidence sections, limitations and canonical focus scope. Six
+contexts cover linux-amd64/linux-armv7 and Interactive/Standard/Deep, with all
+available individual families plus the default selection, whole-unit and two
+function roots. Focused findings/warnings must equal the applicable subset of
+whole-unit findings. Genuine warm hits are required for Standard/Deep; editing
+the loop bound requires misses and removes the finding, then restoring source
+must restore the cold report. Four parallel consumers share the admitted cache
+for each context. The controlled fixture has no imports or external contracts;
+complete source hashing conservatively versions all producer dependencies.
+This is test hosting of the existing cache API, not a production fingerprint
+producer or a general workspace/cache feature claim.
+
+Separate temporary trimpath-built optimized and unoptimized (-gcflags=all=-N -l)
+compiler binaries match the ordinary CLI harness byte-for-byte on stdout/stderr
+and exit code for 13 cases: help variants, family and focused analysis, explicit
+32-bit target, human verbose, JSON, clean findings, incomplete Interactive depth,
+mandatory rejection and unknown/unavailable analysis selection. Expected baseline
+exit statuses and JSON schema/complete/incomplete/rejected states are asserted,
+so equal failures cannot masquerade as a passing agreement check.
+
+Verification:
+- go test -p 4 ./cmd/compiler -run '^TestAnalyse(ColdIncrementalParallel|OptimizedBuild)Agreement$' -count=1 -timeout=240s
+  passed 18.012s before final focused-subset and baseline-state assertions.
+- Final: go test -race -p 4 ./cmd/compiler -run '^TestAnalyse(ColdIncrementalParallel|OptimizedBuild)Agreement$' -count=1 -timeout=180s
+  passed 28.041s, including the final assertions and both binary builds.
+- go vet -p 4 ./cmd/compiler passed.
+- yamlstatus check: 0 problems / 46 fragments; tooling.yaml canonical, no type
+  hazards; tooling.cli path references 0 missing / 35 checked.
+- Scoped git diff --check clean.
+- tooling.yaml remaining 30 -> 29; tooling.cli remaining 2 -> 1. Its remaining
+  individual ISR/deadlock/data-race selector point stays open.
+
+Files changed by this task:
+- cmd/compiler/analyse_consistency_test.go (new; reuses existing Sec fixtures)
+- governance/tooling.yaml (tooling.cli only, through yamlstatus)
+- mlir/compiler-packages-handoff.md
+
+Latest handoff re-read includes Claude's released project-identity verification;
+no overlap. No production code, libraries, tracked binaries, MLIR or rulebook
+changes; no new MD/blocker and no commit. Working set released.
+
+### Claude — 2026-11-11 diagnostic extended explanations (released)
+
+Working set: internal/diagnostics/explanations.go (new, separate from the
+ID registry), internal/diagnostics/explanations_test.go (new),
+cmd/compiler/diagnostic_catalog.go (+ test), governance/errors_diagnostics.yaml.
+No new diagnostic IDs; diagnostics.go untouched. No commit. Released.
+
+## Codex: explicit ISR prerequisite inspection (reserved, 2026-11-11)
+
+Working set: cmd/compiler/analyse_cli.go, analyse.go, new analyse_isr.go and
+focused tests/fixtures, governance/tooling.yaml. Enable `sec analyse isr` to
+inspect existing canonical panic/allocation facts while always reporting
+incomplete and exit 1 until resolved interrupt roots/profiles and the broader
+ISR proof exist. Mandatory source errors still reject first with exit 3.
+Keep full ISR/deadlock/data-race CLI completion open; no Sema/MLIR or diagnostic
+registry changes, and no claim of completed ISR safety analysis.
+
+## Codex: explicit ISR prerequisite inspection (released, 2026-11-11)
+
+`sec analyse isr` now compiles/analyzes source before reporting existing
+canonical callable panic/allocation prerequisites, rather than rejecting the
+selector before Sema runs. The new incomplete registry state is explicit-only:
+default/all preserve their existing not-selectable ISR entry and limitation.
+No IRQ roots or ISR profile are inferred from ordinary callables. Verbose output
+uses canonical effect/Arena summaries, cause sites and transitive call paths;
+unknown allocation remains visible separately from a false MayAllocate value.
+Function focus uses the existing source/callable resolver and reachable graph.
+
+Every completed explicit ISR inspection remains incomplete, at every depth and
+even for a callable with no recorded effects. JSON v1 has status=incomplete,
+analyses=[isr, executed, complete:false, note=limitation], and the command exits
+1. Human output always includes the missing proof/profile limitation. Mandatory
+semantic errors still exit 3 with canonical rejected-report diagnostics. No
+unproven/safe classification is fabricated from the prerequisite summaries.
+This is an implemented inspection step, NOT completed ISR analysis and NOT a
+closure of tooling.cli. Remaining ISR profile/root binding and blocking, stack,
+race, deadlock, runtime and foreign-safety producers remain required, along
+with separate deadlock/data-race selection. Existing normative rules define
+these dependencies; no missing-decision entry is needed for absent producers.
+
+Validation:
+- go test -p 4 ./cmd/compiler -run '^TestAnalyse(ISRPrerequisiteInspection|FamilySelection|JSONReport|PresentationModes|OptimizedBuildAgreement)$|^TestCLIHelpForms$' -count=1 -timeout=120s
+  passed, 52.153s; includes optimized and unoptimized trimpath-built binaries.
+- go test -race -p 4 ./cmd/compiler -run '^TestAnalyseISRPrerequisiteInspection$' -count=1 -timeout=90s
+  passed, 71.361s. Three depths, short/long focus/depth aliases, deterministic
+  JSON, transitive panic and allocation causes, open callbacks/unknown
+  allocation, unrelated-source exclusion, effect-free incompleteness and
+  mandatory semantic rejection verified.
+- go vet -p 4 ./cmd/compiler passed.
+- yamlstatus check: 0 problems / 46 fragments; canonical tooling.yaml without
+  type hazards; tooling.cli paths: 0 missing / 38 checked; scoped diff check clean.
+- tooling.yaml remaining 29 -> 29; tooling.cli remaining 1 -> 1. The existing
+  combined remaining item was updated in place to describe the real boundary.
+
+Files changed by this task:
+- cmd/compiler/analyse_isr.go (new)
+- cmd/compiler/analyse_isr_test.go (new)
+- testdata/tooling/analyse_cli/isr_prerequisites.sec (new)
+- cmd/compiler/analyse_cli.go (incomplete registry state and ISR limitation)
+- cmd/compiler/analyse.go (explicit-only report and failing completion path)
+- cmd/compiler/analyse_cli_test.go (ISR now tested by its dedicated suite)
+- governance/tooling.yaml (tooling.cli only, through yamlstatus)
+- mlir/compiler-packages-handoff.md
+
+Latest handoff re-read includes Claude's released diagnostic explanations work;
+no overlap. Existing raw-pointer report integration in analyse.go is preserved.
+No Sema/MLIR/library/manual/binary edits by this task; no commit. Released.
+
+### Claude — 2026-11-11 constrained member compound assignment (released)
+
+Working set: internal/sema/analyzer.go (member/identifier assignment
+contract checks; one Analyzer field appended at struct end),
+internal/sema/analyzer_try_assignment.go (ContractError channel for
+constrained field/property targets; S1096 help text), new
+internal/sema/constrained_member_compound_test.go, governance/declarations.yaml.
+Reuses S1069; no new IDs. No commit. Released.
+
+## Codex: overload signature identity audit (reserved, 2026-11-11)
+
+Taking frontend.function-overload-backend-identity's complete signature identity
+item. Working in internal/ir/semantic/type_identity.go and focused identity
+regressions, emitter symbol tests, governance/declarations.yaml. Audit parameter
+type structure, authority, shape and callable contracts without adding return
+or forced-consuming outer-parameter dimensions. Native variadic ABI execution
+remains the separate remaining item; no Sema overload ranking changes.
+
+## Codex: overload signature identity audit (released, 2026-11-11)
+
+Closed the complete input-signature identity item of
+frontend.function-overload-backend-identity. The new regression first failed
+with callback identity collisions, owning-array/slice collisions and bare-slice
+authority collisions; it also exposed presentation-dependent callback keys.
+canonicalSemaType now derives structural callable keys from ordered canonical
+parameter/result types, normalized shared/mutable/consuming capability and
+variadic shape. Nested nominal modules survive independently of display text.
+Dynamic owning arrays are distinct from slices; bare mutable slice authority
+and ephemeral pack element identity are explicit. functionID additionally
+preserves ordinary native-variadic parameter shape independently of ABI support.
+
+The audit covers parameter ordering/arity, nominal and generic/constant argument
+identity, exact arbitrary-precision fixed bounds, reference/slice authority,
+owner/view distinction and nested callable contracts. Outer return types,
+parameter names, forced-consuming mode and non-discriminating declaration
+safety/static/receiver properties do not create distinct source overload keys.
+Existing ordinary keys retain their spelling unless one of the missing
+structural dimensions applies. No source overload ranking is repeated here.
+
+This identity fix does not add physical callback, dynamic-array or variadic ABI
+support. Unsupported representations keep their existing gates. The separately
+tracked native-variadic ABI/execution and foreign-varargs integration remains
+open. Existing selected-call projection and deterministic emitter symbol maps
+consume these keys without a second downstream signature resolver.
+
+Validation:
+- SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test -p 4 ./internal/ir/semantic ./internal/lowering/secmlir -count=1 -timeout=120s
+  passed: complete Semantic IR 6.929s and emitter/integration 17.092s.
+- SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test -p 4 ./cmd/compiler -run 'TestNativeTrackBuildsAndRuns/overload_' -count=1 -v -timeout=90s
+  passed 2.844s, no skips: ordinary, specialization and nominal overload
+  programs build/execute through the single source-to-binary track.
+- go test -race -p 4 ./internal/ir/semantic -run '^TestOverload(CompleteSignatureIdentity|NestedNominalIdentity|SelectedCallIdentity)$' -count=1 -timeout=60s
+  passed 1.055s; final traceability-only comment changes do not change behavior.
+- go vet -p 4 ./internal/ir/semantic ./internal/lowering/secmlir passed.
+- yamlstatus check: 0 problems / 46 fragments. declarations.yaml canonical,
+  no type hazards. Owner paths 0 missing / 23 checked; scoped diff check clean.
+- declarations.yaml remaining 134 -> 133; current owner remaining 2 -> 1.
+
+Files changed by this task:
+- internal/ir/semantic/type_identity.go
+- internal/ir/semantic/overload_signature_test.go (new)
+- governance/declarations.yaml (this owner only, through yamlstatus)
+- mlir/compiler-packages-handoff.md
+
+Latest handoff re-read includes Claude's released constrained member compound
+assignment work. Its declarations.yaml changes were preserved; no Sema edits
+or overlap. No new MD, rulebook, source-library, manual or binary changes; no
+commit. Working set released.
+
+### Claude — 2026-11-11 working set: unchecked contract assignment (in progress)
+
+Reserving A2011 contracts.unchecked-contract-may-panic (Information). User
+decision 2026-11-11: assignment/compound to a constrained type without try is
+valid and panics on violation; every untried run-time contract check reports
+A2011. S1069 stops being emitted for those forms. Working set:
+internal/sema (assignment paths, contract effects), internal/diagnostics.
+
+### Claude — 2026-11-11 unchecked contract assignment (released)
+
+Done (MD-131, owner decision): untried constrained assignment/compound is
+valid and panics with ContractFailure; try gives ContractError. New A2011
+contracts.unchecked-contract-may-panic (Information) for every remaining
+may-panic-contract effect; S1069 retired (registry line kept, Retired: true).
+Files: internal/diagnostics/diagnostics.go (+A2011, S1069 retired),
+internal/sema/{analyzer.go, reference_dereference.go, analyzer_panic_effects.go,
+analyzer_no_panic.go, contract_check_advisories.go (new)} and tests;
+testdata/contracts/contract_diagnostic_ids_invalid.sec comment;
+cmd/compiler + cmd/lsp count tests. No commit. Released.
+
+## Codex: task canonical core panic metadata (reserved, 2026-11-11)
+
+User redirected to implementation from modern process/thread/task books; do not
+modernize blocking/events/runtime-model this turn. Taking concurrency.tasks-v2
+remaining core PanicInfo declaration: panic.md section 13 has fixed its shape.
+Working set: new sec/core/panic.sec, narrow trusted-core declaration integration,
+focused conformance tests, governance/concurrency_task.yaml. No spawn ownership
+or cancellation decisions (MD-128/129), no runtime panic transport claim.
+
+### Claude — 2026-11-11 tooling hovers + constrained try targets (released)
+
+Four remaining items closed; no diagnostic IDs added, no Semantic IR/lowering
+or rulebook edits.
+1. tooling.copy-move (now implemented): later-use **Availability** hover.
+   New internal/sema/place_use_facts.go (ResolvedPlaceUseAt), hooks in
+   place.go checkPlaceAvailableForRead, ownership_transfer_context.go
+   (incoming move per root), analyzer_for.go / analyzer_while_flow.go /
+   analyzer_lambda.go (loop starts); cmd/lsp/place_use_hover.go.
+2. tooling.borrowing: **Borrow** hover. internal/sema/borrow_facts_at.go
+   (ResolvedBorrowsAt; registerBorrow notes the holder);
+   cmd/lsp/borrow_hover.go.
+3. tooling.destruction: **Destruction** hover.
+   internal/sema/destruction_facts_at.go (ResolvedDestructionAt;
+   recordDeferPlace notes defer uses); cmd/lsp/destruction_hover.go.
+4. frontend.type-contracts-v2: try on constrained fixed-array elements and
+   `*r` referents (ContractError), A2011 for untried element compound updates
+   (index_assignment.go, reference_dereference.go, analyzer_try_assignment.go,
+   contract_check_advisories.go markContractedTryTarget).
+New Analyzer fields appended at the struct end and reset in Analyze.
+cmd/lsp/hover.go gains three deferred sections. No commit. Released.
+
+## Codex: task canonical core panic metadata (released, 2026-11-11)
+
+Closed concurrency.tasks-v2's whole remaining source-declaration point for
+PanicInfo. The owner shape is already decided in panic.md section 13 and the
+applied panic-info-compiler-known correction: new sec/core/panic.sec supplies
+PanicID over uint32 and precisely ID/File/Line/Column/Function in PanicInfo.
+Compiler standalone fallbacks and source declarations now share module core.
+
+A cohesive Sema registration helper validates the exact trusted source form,
+retains canonical fallback representation/copyability and records real type and
+field source locations. Ordinary source, including a convincing core-looking
+path/module spelling, cannot redeclare these names. Six malformed trusted
+variants are rejected through registered ReservedDeclarationName diagnostics;
+invalid declarations cannot replace the fallback shape. Source and fallback
+TaskOutcome.Panicked refer to the same nominal PanicInfo. Tests cover 32/64-bit
+plans, copyability, task source integration, CLI core loading and LSP navigation
+to the real declaration. No new diagnostic IDs.
+
+This closes declaration integration, not task outcome runtime production,
+allocation-free panic construction, process panic transport or the whole panic
+correction. Those requirements remain separately open. MD-128/129 and the
+old blocking/events/runtime-model books were not modified. The user's latest
+scope explicitly allows later implementation from task/process/thread/spawn/
+atomics/await and related current concurrency books.
+
+Verification:
+- go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run 'PanicMetadataCore|CompilerKnownPanicInfo' -count=1 -timeout=90s
+  passed: Sema 0.031s, compiler 1.021s, LSP 1.952s. Final focused rerun also
+  passed after reading Claude's latest released working set.
+- go test -p 4 ./internal/sema ./internal/ir/semantic -count=1 -timeout=120s
+  passed: complete Sema 21.400s, complete Semantic IR 8.471s.
+- go test -race -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run 'PanicMetadataCore|CompilerKnownPanicInfo' -count=1 -timeout=90s
+  passed: Sema 1.165s, compiler 7.242s, LSP 10.832s.
+- go vet -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp passed.
+- New core file formatted with sec fmt. Task governance canonicalized through
+  yamlstatus before mutation (formatting alone preserves all decoded values).
+- yamlstatus check: 0 problems / 46 fragments; canonical task fragment, no type
+  hazards; owner paths 0 missing / 32 checked; scoped git diff --check clean.
+- concurrency_task.yaml remaining 10 -> 9; concurrency.tasks-v2 10 -> 9.
+  Concurrent tooling/types remaining reductions in the snapshot comparison
+  belong to Claude's released hover/contract work, not this task.
+
+Files changed by this task:
+- sec/core/panic.sec (new)
+- internal/sema/panic_metadata_declarations.go (new)
+- internal/sema/panic_metadata_declarations_test.go (new)
+- internal/sema/types.go (canonical panic module identity)
+- internal/sema/type_declarations.go (trusted source allowlist)
+- internal/sema/analyzer.go (registration and validated-declaration hooks only)
+- cmd/compiler/panic_metadata_core_test.go (new)
+- cmd/lsp/panic_metadata_core_test.go (new)
+- governance/concurrency_task.yaml (yamlstatus only)
+- mlir/compiler-packages-handoff.md
+
+Latest handoff re-read includes Claude's four released hover/contract points.
+Existing assignment, borrow, hover and Analyzer-field/reset changes are
+preserved. No new MD, normative rulebook, manual, MLIR or binary changes, and
+no commit. Working set released.
+
+### Claude — 2026-11-11 working set: tooling facts round 2 (in progress)
+
+tooling.arena (Arena backing/provider/capacity/domain/epoch/profile hover),
+tooling.lifetime-analysis (Sema lifetime facts + hover), tooling.destruction
+mentor diagnostics. Working set: internal/sema (new *_facts_at.go files,
+analyzer_arena.go hooks), cmd/lsp hover files. No Semantic IR/lowering.
+
+## Codex: separate yield scheduling/cancellation facts (reserved, 2026-11-11)
+
+Taking concurrency.scheduling-v2's remaining separate scheduling-point versus
+cancellation-point facts item. Working set: new focused Sema fact/query file,
+execution_context.go's successful yield resolution, Analyzer map/reset hooks,
+source-backed tests, governance/concurrency_scheduling.yaml. No runtime commit,
+ISR/profile or migration proof is claimed; no edits to the three July books.
+
+Reserving S1222 arena.use-after-invalidation (arena.md §§ 38, 44(1);
+lifetime_analysis.md mentor diagnostics) for the stale Arena reference use
+that today is an unregistered raw error.
+
+## Codex: separate yield scheduling/cancellation facts (released, 2026-11-11)
+
+Closed concurrency.scheduling-v2's whole separate scheduling-point versus
+cancellation-point semantic-facts item (scheduling.md sections 7-15,50,55-56).
+Successful canonical yield signature resolution now publishes a per-call
+ResolvedSchedulingPoint containing source provenance, stable selected member ID
+and independent TaskSchedulingPoint/CurrentCancellationPoint/PhysicalSchedulerHint
+properties. Task.Yield carries both logical properties; Thread.Yield carries
+only the physical hint. No source spelling classifier or parallel call resolver.
+Per-call and source-ordered detached snapshot queries are shared compiler APIs;
+repeated inference deduplicates and Analyzer reuse clears old program facts.
+
+Facts describe source requirements, not execution-context/profile validity or
+runtime behavior. Invalid signatures and instance calls publish no facts. A
+signature-valid Task.Yield in ordinary main retains its role but still gets the
+mandatory context rejection; consumers must not turn partial facts into proof.
+No synchronization, fairness, migration or cancellation-commit guarantee is
+inferred. Other wait operations keep their own rulebook/integration owners.
+Runtime first-commit behavior and Semantic IR/lowering remain separate items.
+
+sec analyse --verbose consumes these same facts and respects canonical function
+focus; ordinary output gets no new noise. The new fixture includes an ordinary
+free function named Yield that must not acquire concurrency semantics.
+
+Validation:
+- go test -p 4 ./internal/sema ./cmd/compiler -run 'ResolvedSchedulingPoints|AnalyseSchedulingPoints|YieldSurface|TaskYieldContextDiagnostics|TaskContextRequirement' -count=1 -timeout=90s
+  passed: Sema 0.042s, CLI 5.855s before adding the ordinary-Yield control.
+- go test -p 4 ./internal/sema ./internal/ir/semantic -count=1 -timeout=120s
+  passed: complete Sema 21.350s, complete Semantic IR 8.086s.
+- Final: go test -race -p 4 ./internal/sema ./cmd/compiler -run 'ResolvedSchedulingPoints|AnalyseSchedulingPoints' -count=1 -timeout=90s
+  passed: Sema 1.124s, CLI 26.746s, including the final ordinary-Yield control,
+  detached snapshots, deterministic replay/reset, invalid calls, context
+  rejection and default/focused/verbose presentation.
+- go vet -p 4 ./internal/sema ./cmd/compiler passed.
+- yamlstatus check: 0 problems / 46 fragments; canonical scheduling fragment,
+  no type hazards; owner paths 0 missing / 42 checked; scoped diff check clean.
+- concurrency_scheduling.yaml remaining 16 -> 15; owner remaining 16 -> 15.
+
+Files changed by this task:
+- internal/sema/scheduling_points.go (new)
+- internal/sema/scheduling_points_test.go (new)
+- internal/sema/execution_context.go (post-validation fact publication)
+- internal/sema/analyzer.go (map at struct end and Analyze reset only)
+- cmd/compiler/analyse_scheduling.go (new)
+- cmd/compiler/analyse_scheduling_test.go (new)
+- cmd/compiler/analyse.go (verbose facts section registration only)
+- testdata/sema/scheduling_point_facts_valid.sec (new)
+- governance/concurrency_scheduling.yaml (yamlstatus only)
+- mlir/compiler-packages-handoff.md
+
+Latest handoff re-read: Claude is working on Arena/lifetime/destruction tooling
+and has reserved S1222. No overlap with yield resolution/facts; existing Analyzer
+and report changes preserved. No changes to July blocking/events/runtime-model
+books, runtime, libraries, diagnostics registry, MLIR or binaries. No new MD;
+no commit. Working set released.
+
+## Codex: stale scheduling error conformance (reserved, 2026-11-11)
+
+Verifying and closing concurrency.scheduling-v2's stale portable
+ThreadSchedulingError item. Production removal and Sema/CLI/LSP tests already
+exist; extending the LSP regression to cover absent definition/type-definition
+navigation. Working set: cmd/lsp/thread_legacy_errors_test.go,
+governance/concurrency_scheduling.yaml (yamlstatus only), this handoff.
+No overlap with Claude's Arena/lifetime work; no runtime or July-book changes.
+
+## Codex: stale scheduling error conformance (released, 2026-11-11)
+
+Closed the stale portable ThreadSchedulingError remaining item in
+concurrency.scheduling-v2, scheduling.md sections 34(1-3),56(3). This is verified
+conformance/governance reconciliation: threads-v2 already removed the identity
+from production; no new runtime implementation is claimed. Removed the obsolete
+identified_bugs entry asserting that it still existed. Existing canonical
+ThreadAttachError and ordinary project declarations with former spellings stay
+valid. Added LSP definition/type-definition negative checks alongside existing
+completion and hover coverage for all three retired thread error identities.
+
+Validation:
+- go test -race -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run '^TestThreadLegacyErrors' -count=1 -timeout=90s
+  passed: Sema 1.025s, compiler 18.081s, LSP 64.513s.
+- go vet -p 4 ./cmd/lsp passed.
+- yamlstatus check: 0 problems / 46 fragments; canonical fragment, 0 hazards;
+  path check before final code reference addition: 0 missing / 48 checked.
+- Remaining: scheduling file 15 -> 14; concurrency.scheduling-v2 15 -> 14.
+
+Exact files changed:
+- cmd/lsp/thread_legacy_errors_test.go
+- governance/concurrency_scheduling.yaml (yamlstatus only)
+- mlir/compiler-packages-handoff.md
+
+Latest handoff re-read: no new overlapping reservation; Claude's Arena/lifetime
+work remains separate. No new MD. No runtime, library, July-book or binary
+changes by this task. Working set released.
+
+### Claude — 2026-11-11 tooling facts round 2 (released)
+
+Result: S1222 arena.use-after-invalidation added (replaces the raw stale
+Arena-use error; message text unchanged, second related location = the
+invalidating Reset/Release). New internal/sema/arena_facts_at.go
+(ResolvedArenaAt), lifetime_facts_at.go (ResolvedLifetimeAt, S1222 builder);
+hooks in analyzer_arena.go (noteArenaCreation/noteArenaUse/
+noteArenaInvalidation) and analyzer_let_bindings.go (recordLifetimeBinding);
+Analyzer fields added next to Codex's schedulingPoints, reset in Analyze.
+cmd/lsp arena_hover.go, lifetime_hover.go. Tests updated for the extra
+related location: internal/sema lifetime_test.go, arena_from_buffer_test.go;
+cmd/compiler + cmd/lsp arena_multi_origin_test.go,
+defer_arena_continuation_test.go. Governance: tooling.arena,
+tooling.lifetime-analysis (now partial), tooling.destruction. No commit.
+Released.
+
+## Codex: ordinary main task-context rejection (reserved, 2026-11-11)
+
+Taking concurrency.scheduling-v2's complete Task.Current/Task.Yield rejection
+in ordinary main item. Verifying existing shared requirement propagation with
+source-backed direct/helper/function-value/defer cases, valid spawned-task and
+physical-thread controls, 32/64-bit Sema and compiler/LSP diagnostics. Working
+set: new main_task_context tests in Sema/compiler/LSP and testdata/sema,
+governance/concurrency_scheduling.yaml and this handoff. Claude's released
+Arena/lifetime work remains separate. Runtime scheduling/lowering not claimed.
+
+## Codex: ordinary main task-context rejection (released, 2026-11-11)
+
+Closed concurrency.scheduling-v2's whole `reject Task.Current and Task.Yield
+in ordinary main` item (scheduling.md sections 21-22,50,57). The shared production
+requirement validator already enforces this rule; this task adds the missing
+combined source-backed integration coverage and reconciles governance, without
+claiming new runtime implementation. Six independent invalid root calls cover
+both operations, direct and helper calls, a function value and defer. Sema
+asserts exact error sites, registered S1213, spawn guidance and operation
+witnesses on 32/64-bit scalar plans. Valid controls keep Thread.Current/Yield
+in ordinary main and a physical thread, and Task.Current/Yield plus indirect
+and deferred operations in a spawned task. Compiler JSON rejects invalid main
+before publishing an IR artifact; LSP shares all six errors/four witnesses.
+
+Validation:
+- go test -race -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run '^TestMainTaskContext' -count=1 -timeout=120s
+  passed: Sema 1.061s, compiler 11.486s, LSP 10.228s.
+- go vet -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp passed.
+- yamlstatus check: 0 problems / 46 fragments; canonical fragment, 0 hazards;
+  owner paths: 0 missing / 54 checked; scoped diff check clean.
+- Remaining: scheduling file 14 -> 13; concurrency.scheduling-v2 14 -> 13.
+
+Exact changed files:
+- internal/sema/main_task_context_test.go (new)
+- cmd/compiler/main_task_context_test.go (new)
+- cmd/lsp/main_task_context_test.go (new)
+- testdata/sema/main_task_context_valid.sec (new)
+- testdata/sema/main_task_context_invalid.sec (new)
+- governance/concurrency_scheduling.yaml (yamlstatus only)
+- mlir/compiler-packages-handoff.md
+
+Latest handoff re-read: Claude released Arena/lifetime facts round 2; no overlap.
+No new MD. No runtime, production compiler, libraries, July books, MLIR or
+binaries changed by this task. Target/runtime root-entry realization remains
+its separately tracked item. Working set released.
+
+## Codex: Context/ContextSource source surface (reserved, 2026-11-11)
+
+Taking concurrency.context-v1's whole source-visible ContextSource registration
+and Context/ContextSource public surface point (cancellation.md sections 35-38).
+Working set: specialized Context Sema types/member/call helpers, minimal shared
+registration/dispatch hooks, core/context.sec, Sema/compiler/LSP tests and
+fixtures, concurrency_cancellation.yaml (yamlstatus only), this handoff. Runtime
+cancellation, deadlines, parent-child lifetime proofs and lowering remain their
+separate items. Claude's Arena/lifetime release is preserved; no edits there.
+
+### Claude — 2026-11-11 interfaces/reference tooling (released)
+
+Done: textDocument/implementation (cmd/lsp/implementation.go, capability +
+request_queue read-only); interface requirement provenance and receiver
+capability (internal/sema/interface_tooling.go Members/owner facts,
+interface_validation.go member recording + inherited-help prefix,
+analyzer.go three noteInterfaceRequirementOwner calls + one field;
+cmd/lsp/interface_member_hover.go, completion documentation); returned-
+reference summary in function hover (return_reference_summary.go
+ReturnReferenceOriginsOfCallable, call_graph_hover.go); storage domain in
+borrow hover. Governance: tooling_lsp, declarations (frontend.interfaces),
+memory (tooling.references, tooling.reference-model). No new diagnostic IDs,
+no Semantic IR changes, no commit. Released.
+
+## Codex: Context/ContextSource surface and LSP (released, 2026-11-11)
+
+Closed TWO complete concurrency.context-v1 remaining items:
+1. source-visible ContextSource registration and Context/ContextSource public
+   member surfaces;
+2. LSP hover/completion/navigation.
+Rules: cancellation.md sections 33,35-38,43; source shape matches the applied
+cancellation-v2 correction. No new normative decision needed.
+
+ContextSource is a trusted opaque @noCopy core declaration, nominal core
+identity, move-only owner and non-trivial destruction requirement. Exact core
+metadata is validated, ordinary replacement is reserved, and source cannot
+fabricate Context/ContextSource through empty struct/call constructors. Named
+ordinary functions called Context still participate in normal overload lookup.
+
+Exact shared-catalog source surface (nine members):
+- static Context.Background() Context
+- context.WithCancel() ContextSource
+- context.WithTimeout(timeout: duration) ContextSource
+- context.WithDeadline(deadline: Instant) ContextSource
+- context.IsCancelled: bool
+- context.Error: Option[ContextError]
+- context.Deadline: Option[Instant]
+- source.Context: ref Context
+- source.Cancel() void
+
+Cancel is non-consuming and callable through an immutable binding or shared
+reference. Properties are read-only and have no call parentheses. Context has
+no Cancel authority. Ordinary call-boundary argument move validation is reused;
+explicitly moving a named Instant argument is supported. The borrowed child
+property retains receiver origin, so returning a local source's Context is
+rejected by ordinary local-reference escape checks. Full parent-child lifetime
+dependencies, runtime cancellation/first-wins/deadline state, cleanup and lowering
+remain the existing separate requirements. Runtime helper panic/allocation/
+blocking effects stay conservatively unknown, never freedom proof.
+
+LSP projects every signature, result type, rule and documentation from the
+shared catalog; no editor-specific Context API model. Completion distinguishes
+static/instance surfaces. Warm member navigation and cold-ID navigation work
+for all nine. Borrowed Context/ContextSource receiver hover and typeDefinition
+reach actual core declarations. Found/fixed a general Sema type-navigation gap:
+if an unnamed reference wrapper has no declaration, follow its resolved element;
+named aliases keep their own declaration. Generic/unresolved/source-less types
+still invent no declaration.
+
+Validation:
+- Final source/call changes: go test -race -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run '^TestCancellationContext' -count=1 -timeout=180s
+  passed: Sema 1.079s, compiler 11.453s, LSP 114.200s. This run preceded the
+  subsequent typeDefinition query fix, tested separately below.
+- After query fix: go test -race -p 4 ./cmd/lsp -run '^TestCancellationContextTypeNavigation$|^TestTypeDefinitionUsesResolvedSemaType$|^TestTypeDefinitionReturnsNothingForBuiltinType$' -count=1 -timeout=90s
+  passed: LSP 20.125s.
+- go test -p 4 ./cmd/lsp -run '^TestTypeDefinition' -count=1 -timeout=120s
+  passed after query fix: complete typeDefinition suite 23.300s.
+- Complete Sema/Semantic IR after final call ownership change:
+  go test -p 4 ./internal/sema ./internal/ir/semantic -count=1 -timeout=120s
+  passed: Sema 25.572s, Semantic IR 10.389s.
+- go test -short -p 4 ./internal/parser ./internal/formatter -count=1 -timeout=90s
+  passed: parser 41.127s, formatter 4.120s.
+- go vet -p 4 ./internal/parser ./internal/sema ./internal/formatter ./internal/ir/semantic ./cmd/compiler ./cmd/lsp
+  passed; final go vet -p 4 ./internal/sema ./cmd/lsp also passed after query fix.
+- emit-ir valid fixture: expected compiler exit 4 [unsupported-lowering] for
+  type Context, with no artifact. No runtime/native support is implied.
+- yamlstatus check: 0 problems / 46 fragments; canonical owner fragment,
+  0 hazards; owner references 0 missing / 25 checked; scoped diff check clean.
+- Our remaining counts: concurrency_cancellation.yaml 19 -> 17;
+  concurrency.context-v1 5 -> 3. Snapshot also contains Claude's six completed
+  interface/reference-tooling items; those are not attributed to this task.
+
+Exact files changed by this task:
+- internal/parser/parser.go (opaque ContextSource allowlist + rule reference)
+- internal/sema/context_types.go (source identity and exact declaration checks)
+- internal/sema/context_members.go (new specialized inventory)
+- internal/sema/context_calls.go (new specialized call validation)
+- internal/sema/types.go (builtin and destruction registration only)
+- internal/sema/type_declarations.go (reserved ContextSource only)
+- internal/sema/copy_classification.go (movable ContextSource classification)
+- internal/sema/compiler_known_members.go (catalog registration hooks only)
+- internal/sema/compiler_known_calls.go (context dispatch hooks only)
+- internal/sema/compiler_known_interfaces.go (cold registry lookup only)
+- internal/sema/analyzer_inference.go (opaque constructors and child-reference
+  origin hooks only; pre-existing raw-pointer expression hook preserved)
+- internal/sema/type_navigation.go (reference-wrapper fallback)
+- internal/sema/context_surface_test.go (new)
+- internal/sema/mutex_overloads_test.go (three actual core identities now)
+- internal/formatter/mutex_declarations_test.go (second opaque owner round-trip)
+- cmd/compiler/context_surface_test.go (new)
+- cmd/lsp/context_surface_test.go (new)
+- sec/core/context.sec (ContextSource declaration only)
+- testdata/sema/context_surface_valid.sec (new)
+- testdata/sema/context_surface_invalid.sec (new)
+- testdata/sema/context_borrow_escape_invalid.sec (new)
+- governance/concurrency_cancellation.yaml (yamlstatus only)
+- mlir/compiler-packages-handoff.md
+
+Latest handoff re-read: Claude released interfaces/reference tooling while this
+ran. Preserved those changes, no overlap with this working set. No new MD, no
+July-book/runtime/MLIR/binary edits and no commit. Working set released.
+
+### Claude — 2026-11-11 working set: semantic CTE executor (in progress)
+
+compiler.compile-time-evaluation (owner chose this area). New
+internal/sema/cte_*.go: an executor over the typed AST + Sema resolved facts
+(no new name/overload resolution, compile_time_evaluation.md § 51), shared
+operator semantics via compileTimeBinary, budgets, failure taxonomy, and a
+two-phase Analyze (pending required requests -> execute -> one re-analysis
+with established values). Touches internal/sema/contract_cte.go,
+contracts.go, type_declarations.go, analyzer.go (Analyze tail + fields).
+Reserving S1223 compile-time.evaluation-failed, S1224
+compile-time.forbidden-effect, S1225 compile-time.resource-limit, S1226
+compile-time.dependency-cycle. No Semantic IR/lowering changes.
+
+## Codex: named ThreadConfig consumption (reserved, 2026-11-11)
+
+Taking concurrency.thread-v2's whole named ThreadConfig consumption through
+ordinary <- semantics item (threads.md sections 10(2-4),20; spawn.md section 4).
+Working set: focused parser/Sema helpers, SpawnExpression configuration identity,
+minimal inference/traversal hooks, source-backed parser/Sema/CLI/LSP/formatter
+regressions, concurrency_thread.yaml and this handoff. Exact configuration
+fields/defaults, inline block sugar, storage lifecycle, fallible spawn result
+and runtime startup remain separate existing items. No edits to Claude's CTE
+executor/Analyze tail/contract helpers or reserved S1223-S1226 diagnostics.
+
+### Claude — 2026-11-11 semantic CTE executor (released)
+
+Result: S1223 compile-time.evaluation-failed, S1224
+compile-time.forbidden-effect, S1225 compile-time.resource-limit, S1226
+compile-time.dependency-cycle (registered, no producer yet) added.
+New internal/sema/cte_executor.go, cte_requests.go, cte_configuration.go and
+cte_executor_test.go. Analyze now starts with prepareCompileTimeEvaluation:
+only when a type contract/default contains a call or member read, a probe
+Analyze runs on a freshly configured analyzer (rebuildBase + recorded
+SetAllocationProfile/SetHardwareModuleContext/SetForeignBufferExtentContracts;
+legacy AST default materialization off), defers the required positions,
+executes them and the real analysis reads the values. Touched:
+contract_cte.go (compileTimeExecutionFailed, established lookup in
+semanticCompileTimeConstantVisiting, probe deferral), contracts.go and
+type_declarations.go (route failures), analyzer.go (fields + Analyze entry),
+analyzer_target_plan.go, allocation_facts.go, hardware_metadata.go,
+foreign_buffer_extent.go (configuration recording). contract_cte_test.go
+expectation updated (MaxPort() now executes). Known: reusing one analyzer for
+a second Analyze is not idempotent (119 Sema tests differ), so the probe uses
+a fresh analyzer; a fresh analyzer on an already analyzed AST differs in one
+test (TestGenericInstanceDefaultsUseExactInstantiatedType); that difference
+comes from legacy AST default materialization, which the probe turns off.
+TestCompileTimeProbeLeavesASTUnchanged verifies all 633 valid fixtures
+analyze identically after a probe. No Semantic IR/lowering changes, no commit.
+Released.
+
+## Codex: named ThreadConfig consumption (released, 2026-11-11)
+
+Closed concurrency.thread-v2's WHOLE named ThreadConfig consumption through
+ordinary <- semantics item, threads.md sections 10(3-4),20 and spawn.md section
+4(1),(10). SpawnExpression now retains Configuration separately from the child
+callable. Parser accepts spawn thread <-config Work(), including tracked struct
+projections, and retains an omitted marker for ordinary consuming diagnostics.
+Task/process and unconfigured thread operands keep their existing grammar.
+Missing callable recovery preserves the following binding/function.
+
+Focused Sema helpers resolve configuration in the spawning execution before
+child arguments, reuse a consuming config parameter through ordinary ownership
+validation and publish standard move/partial-move plans. Availability is checked
+after child argument preparation without evaluating configuration twice, so
+child arguments cannot already have consumed the same storage. Source-invalid
+preparation restores move/availability/borrow state for both config and child
+arguments. Tests ensure a later valid use still works after such a failure.
+Shared self-use/parameter-usage/pitfall walkers now visit configuration too.
+No new ownership rules, registry diagnostic or editor-only validator.
+
+Seven negative source cases: missing marker, read after consumption, repeated
+consumption, int configuration, borrowed configuration, duplicate config/payload
+transfer, and missing config marker after a moved ContextSource child argument.
+The latter two verify rollback through a following valid spawn/use. Valid
+source covers whole and projected moves, conditional consumption and unchanged
+ordinary thread/task spawn. Compiler JSON/LSP use S1007 and normal consuming
+help; invalid source cannot publish IR. Formatter preserves/idempotently
+round-trips config versus callable and the <- marker.
+
+Boundaries: the existing separate exact @noCopy ThreadConfig fields/defaults
+item remains open; this step uses the existing source type and an ordinary
+consuming boundary, not a completed ThreadConfig representation. Inline block
+configuration, storage borrow lifecycle, fallible spawn Result typing, runtime
+creation/failure rollback and startup remain separate. No MD-128 runtime policy
+is inferred. emit-ir valid fixture retains named [unsupported-lowering] type
+ThreadConfig (compiler exit 4, no artifact). No native support claimed.
+
+Validation:
+- Final: go test -race -p 4 ./internal/parser ./internal/formatter ./internal/sema ./cmd/compiler ./cmd/lsp -run NamedThreadConfiguration -count=1 -timeout=120s
+  all passed: parser 1.013s, formatter 1.057s, Sema 1.055s, CLI 11.130s,
+  LSP 13.996s. An earlier JSON test assertion error was fixed before this run.
+- go test -short -p 4 ./internal/parser ./internal/formatter -count=1 -timeout=120s
+  passed: parser 30.777s, formatter 3.613s.
+- go vet -p 4 ./internal/ast ./internal/parser ./internal/formatter ./internal/sema ./internal/ir/semantic ./cmd/compiler ./cmd/lsp
+  passed; final compiler-only vet also passed after its test assertion fix.
+- Latest broad integration after Claude's CTE release:
+  go test -p 4 ./internal/sema ./internal/ir/semantic -count=1 -timeout=150s
+  passed: Sema 22.088s, Semantic IR 7.151s.
+- yamlstatus: 0 problems / 46 fragments; canonical thread fragment, 0 hazards,
+  0 missing / 100 owner path references. Scoped diff check/gofmt check clean.
+- Our remaining: concurrency_thread.yaml 22 -> 21; concurrency.thread-v2
+  22 -> 21. Snapshot also includes Claude's four completed CTE requirements;
+  those changes are not attributed to this task.
+
+Exact files changed by this task:
+- internal/ast/ast.go (SpawnExpression Configuration/String only)
+- internal/parser/expression.go (configuration parser hook only)
+- internal/parser/spawn_configuration.go (new)
+- internal/parser/spawn_configuration_test.go (new)
+- internal/formatter/spawn_configuration_test.go (new)
+- internal/sema/thread_spawn_configuration.go (new)
+- internal/sema/thread_spawn_configuration_test.go (new)
+- internal/sema/analyzer_inference.go (inferSpawnExpression config hooks only)
+- internal/sema/analyzer.go (expressionUsesSelf SpawnExpression arm only)
+- internal/sema/parameter_usage.go (configuration traversal only)
+- internal/sema/pitfall_analysis.go (two configuration traversals only)
+- internal/sema/pitfall_endpoint_flow.go (configuration traversal only)
+- cmd/compiler/thread_spawn_configuration_test.go (new)
+- cmd/lsp/thread_spawn_configuration_test.go (new)
+- testdata/sema/thread_named_config_valid.sec (new)
+- testdata/sema/thread_named_config_invalid.sec (new)
+- testdata/parser/thread_config_missing_callable_invalid.sec (new)
+- governance/concurrency_thread.yaml (yamlstatus only)
+- mlir/compiler-packages-handoff.md
+
+Latest handoff re-read: Claude released semantic CTE while this task ran; its
+executor, diagnostics, Analyze fields/probe path and contract changes are
+preserved. The final broad Sema/IR suite passed with that release. No new MD,
+no core/library, July-book, runtime, MLIR or binary edits and no commit by this
+task. Working set released.
+
+### Claude — 2026-11-11 semantic CTE round 2: statics and getters (released)
+
+Static initializers that call Sec functions or read static getters now run on
+the CTE executor (static.md § 15) instead of being rejected: deferred during
+analysis, executed in executeDeferredStaticInitializers just before
+freezeStaticScalarInitializers, so ResolvedStatic.Initializer and Semantic IR
+statics receive the value (verified: init=4096, no startup code; no Semantic
+IR code changed). Static property getters execute; S1226 now has a producer
+(static value cycles, also through functions); probe prescan = contracts and
+defaults with calls/member reads, or reading an executing module static.
+Files: internal/sema/static.go, cte_executor.go, cte_requests.go,
+analyzer.go (deferredStatics field, Analyze reset + one call before freeze),
+tests analyzer_test.go (11 obsolete "must be compile-time evaluable"
+expectations removed, static validation test now uses a foreign call),
+contract_cte_test.go, cte_executor_test.go. Governance: compiler.yaml,
+types.yaml. No commit. Released.
+
+### Claude — 2026-11-11 semantic CTE round 3: aggregates, variants, LSP (released)
+
+Executor now runs struct values (DefaultConstant gained an Aggregate pointer
+field in internal/sema/types.go; scalar consumers ignore it), instance
+methods/getters with receiver write-back, Ok/Err/Some/None, handler-free try,
+match (statement and expression) and if-binding. New
+internal/sema/cte_aggregates.go, cte_variants.go; Analyzer.CompileTimeValueAt
++ cmd/lsp/compile_time_value_hover.go (hover.go one more deferred section).
+No Semantic IR/lowering changes, no new diagnostic IDs, no commit. Released.

@@ -1,6 +1,7 @@
 # Formatter presentation context
 
-`textDocument/formatting` uses the project's `[format]` settings through
+`textDocument/formatting`, `textDocument/rangeFormatting` and
+`textDocument/onTypeFormatting` use the project's `[format]` settings through
 `internal/formatconfig`, also used by `sec fmt`. Canonical style, indentation,
 format version and alignment limits remain project-owned. Standard client
 `tabSize`/`insertSpaces` preferences do not override those settings.
@@ -26,4 +27,20 @@ canonical columns. Width is a preference rather than a source validity limit;
 this change does not claim complete wrapping of every language construct.
 
 Rules: `rules/tooling/formatter.md` §4(9–23), §10 and §16(1–2). Complete language
-layout and range/on-type formatting remain separate governance work.
+layout remains separate governance work.
+
+Range formatting expands to complete parser/CST top-level declarations; a
+nested member selects its containing impl or type so indentation and alignment
+retain their context. Imports select their sortable group. The formatter uses
+full-document context and returns one minimal edit inside the selected units.
+Unselected bytes, including blank lines and line endings, remain unchanged.
+A full-document range yields the same bytes as document formatting.
+
+On-type formatting triggers after `}` or newline and selects the same complete
+syntax unit. Literal/comment contents cannot act as triggers. Malformed or
+incomplete source receives no speculative edit. Both local modes use the latest
+snapshot, UTF-16 positions and formatting priority behind preceding document
+synchronization. They perform no semantic analysis or source-file writes.
+
+Rules: `rules/tooling/formatter.md` §§5,9,12,13,25,28,29;
+`rules/tooling/lsp.md` Appendix A.8.

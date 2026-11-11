@@ -1,0 +1,7 @@
+module missingcase
+
+import "onlytests"
+
+fn Value() int {
+    return 0
+}

@@ -169,6 +169,7 @@ func (a *Analyzer) inferExpression(expr ast.Expression) (Type, expressionValue) 
 	typ, value := a.inferExpressionUnrecorded(expr)
 	if expr != nil {
 		a.expressionTypes[expr] = typ
+		a.recordRawPointerExpressionFact(expr, typ)
 		a.recordEnumConstant(expr, typ)
 		a.recordResolvedOperator(expr, typ)
 		a.recordResolvedOperatorEffect(expr)
@@ -583,6 +584,20 @@ func (a *Analyzer) inferSpawnExpression(expr *ast.SpawnExpression) (Type, expres
 	execution, graphSpawn := spawnExecutionRelation(expr.Kind)
 	previousMoved, previousReasons := copyMoved(a.moved), copyAvailabilityStates(a.availabilityStates)
 	previousBorrows := copyBorrows(a.borrows)
+	configurationCommitted := false
+	if expr.Configuration != nil {
+		// threads.md §20: invalid source preparation must not leave either
+		// the configuration or child arguments spuriously consumed.
+		defer func() {
+			if !configurationCommitted {
+				a.moved, a.availabilityStates, a.borrows = previousMoved, previousReasons, previousBorrows
+			}
+		}()
+	}
+	configurationFunction, configurationValid := a.prepareNamedThreadConfiguration(expr)
+	if !configurationValid {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
 	spawnedType, _ := a.inferSpawnValue(expr.Value, execution, graphSpawn)
 	if spawnedType.Kind == InvalidType {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
@@ -604,6 +619,10 @@ func (a *Analyzer) inferSpawnExpression(expr *ast.SpawnExpression) (Type, expres
 	case "", "task":
 		return taskType(returnType), expressionValue{Display: expr.String()}
 	case "thread":
+		if !a.consumeNamedThreadConfiguration(expr, configurationFunction) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
+		configurationCommitted = true
 		return threadType(returnType), expressionValue{Display: expr.String()}
 	case "process":
 		a.addErrorAtToken(expr.Token, "spawn process is not implemented yet")
@@ -779,9 +798,10 @@ func (a *Analyzer) inferStructLiteral(expr *ast.StructLiteral) (Type, expression
 	}
 	// Rules: rules/concurrency/mutex.md — §§4–8,18(1),(6),
 	// rules/concurrency/threads.md — §8(4–6);
+	// rules/concurrency/cancellation.md — §§35–36;
 	// rules/concurrency/atomics.md — §§7(5–7),11: opaque
 	// synchronization/acquisition state is never an ordinary source struct.
-	if typ.Intrinsic && (isMutexType(typ) || isMutexGuardType(typ) || typ.Name == "Context" || typ.Name == "ThreadStorage" || isAtomicType(typ)) {
+	if typ.Intrinsic && (isMutexType(typ) || isMutexGuardType(typ) || isCancellationContextType(typ) || typ.Name == "ThreadStorage" || isAtomicType(typ)) {
 		a.addErrorAtToken(expr.Token, "%s has no source struct constructor; its representation is runtime-private", typ.Name)
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
@@ -1047,6 +1067,11 @@ func (a *Analyzer) inferMemberExpression(expr *ast.MemberExpression) (Type, bool
 		}
 		if member.Name == "OkRef" || member.Name == "ErrRef" {
 			return a.inferBorrowedResultProjection(expr, objectType, member)
+		}
+		// cancellation.md §§35(4),38: this property borrows the child
+		// identity from its source, never an independent owned Context.
+		if member.ID == "CKM-CONTEXTSOURCE-CONTEXT" {
+			return a.referenceTypeWithOriginFromExpression(a.refinedCompilerKnownType(member.Result), expr.Object), true
 		}
 		return a.refinedCompilerKnownType(member.Result), true
 	}
@@ -2412,6 +2437,14 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 // rules/concurrency/threads.md — §8(1–7).
 func (a *Analyzer) inferCompilerKnownConstructor(expr *ast.CallExpression) (Type, expressionValue, bool) {
 	name := callExpressionName(expr)
+	// cancellation.md §§35–38: opaque owners are created by Background or
+	// derivation, never by fabricated empty runtime-state constructors.
+	if (name == "Context" || name == "ContextSource") && len(a.functions[name]) == 0 && a.expressionNamesType(expr.Callee) {
+		a.addErrorAtTokenWithMetadata(expr.Token, diagnostics.UnknownCallTarget,
+			"Create a root with Context.Background(), or derive a child source with context.WithCancel(), WithTimeout(duration) or WithDeadline(Instant).",
+			"%s has no source constructor; its representation is runtime-private", name)
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+	}
 	if name == "Channel" {
 		if len(expr.GenericArguments) != 1 {
 			a.addErrorAtToken(expr.Token, "Channel requires exactly 1 message type, got %d", len(expr.GenericArguments))

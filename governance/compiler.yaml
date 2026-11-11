@@ -682,18 +682,20 @@ integrations:
       - effect analysis already provides canonical effect facts that CTE can consume for permitted-effect decisions
       - ownership, borrowing, destruction, layout, and Semantic IR rulebooks already define the semantic facts the CTE service must preserve
       - "MD-011 (rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md § 3, 2026-10-03): compile_time_evaluation.md § 8(5)–(7) classifies contract arguments and explicit defaults as SemanticCompileTimeRequiredContexts; internal/sema/contract_cte.go evaluates them through the shared compile-time evaluation (literals and operators, immutable module bindings via the shared integer evaluator, immutable primitive bindings) instead of a contract-only evaluator, and classifies calls and property getters as legal semantic CTE awaiting the executor (S1101)"
+      - "2026-11-11: semantic CTE executor foundation for required contract and default positions (compile_time_evaluation.md §§ 2, 3, 6, 8(5)-(7), 19-22, 40, 47-51, 54, 72). internal/sema/cte_executor.go executes the analyzed AST with Sema facts only: identifiers bind through DefinitionsAt to declaration-keyed frame values, calls through resolvedCalls (direct and type-associated static functions with available bodies), operators through the shared compileTimeBinary with the resolved type of every intermediate (overflow, zero divisor and out-of-range conversions are SemanticOperationFailed), so there is no second arithmetic and no new name or overload resolution. Executed: let/let mut, assignment and compound assignment to locals, if, while, integer for-range with step, switch with explicit fallthrough, break/continue, return, assert, panic, recursion and mutual recursion; path-sensitive legality means an unexecuted forbidden operation does not invalidate the evaluation. Because contracts and defaults are analyzed before function bodies, cte_requests.go runs a probe analysis on a freshly configured analyzer (constructor plus recorded scalar plan, profile, hardware and foreign-contract configuration; legacy AST default materialization off) only when a contract or default contains a call or member read; the probe defers each required position, types it with ordinary Sema resolution and executes it, and the real analysis reads the established value. Failures are fail-closed diagnostics naming position, root expression, reason, executed call chain (recursion collapsed) and the statement where evaluation stopped: S1223 compile-time.evaluation-failed (assert, panic, semantic operation failure, non-CTE value such as a mutable static), S1224 compile-time.forbidden-effect (foreign call, wall clock, static mutation), S1225 compile-time.resource-limit (ExecutionSteps, CallDepth; explicitly not a nontermination proof); unexecuted legal forms keep S1101 with the construct named (TestSemanticCTEExecutesOrdinaryFunctions, TestSemanticCTEFailureCategories, TestSemanticCTEControlFlowAndStaticCalls, TestContractArgumentsThatCannotBeEstablishedAtCompileTime)."
+      - "2026-11-11: static initializers and static property getters run on the semantic CTE executor (static.md §§ 15-16; compile_time_evaluation.md §§ 9, 21, 39, 65). validateStaticInitializerExpression routes calls to Sec functions and static getter reads to the executor instead of rejecting them (a direct foreign call stays a runtime-initializer error); the analysis defers them and executes them after every body is analyzed (executeDeferredStaticInitializers), immediately before freezeStaticScalarInitializers, which then materializes the established scalar value through the existing ResolvedStatic.Initializer path, so Semantic IR receives module statics such as init=4096 with no startup code. Contracts and defaults that read such a static use the probe. The executor reads immutable statics through their initializer, rejects reading a mutable static (S1223) and reports a static value that needs itself, also through called functions, as S1226 compile-time.dependency-cycle with the chain. Static property getters execute from their getter body (Sema's getter callable identity), in contracts, defaults and static initializers. A root that ordinary analysis already rejected gets no CTE follow-up diagnostic. Earlier tests that expected function-calling static initializers to be rejected were updated to the § 15 rule (TestSemanticCTEStaticInitializers, TestSemanticCTEStaticPropertyGetters, TestStaticInitializerValidationAndDependencyOrder)."
+      - "2026-11-11: struct, Option and Result values in the semantic CTE executor (compile_time_evaluation.md §§ 2(2), 11, 20, 26, 32, 46). DefaultConstant carries a CompileTimeAggregate (struct type and ordered fields, or the active variant and payload) that scalar consumers ignore; a field write clones first, so copies keep Sec value semantics. Struct literals follow Sema's construction plan with omitted fields from resolved defaults; field reads and field/compound writes work on locals and the receiver; instance methods and instance getters execute with a receiver frame, and a method that mutates its receiver writes the value back to the receiver Place; implicit members resolve through ResolvedPlaceOf (receiver root plus projections). Ok/Err/Some/None construct variants; handler-free try unwraps Ok/Some and returns Err/None from the enclosing function; match runs in statement and expression position with variant payload bindings, guards and catch-all, and `if value is Some(binding)` binds the payload (TestSemanticCTEStructValues, TestSemanticCTEResultOptionTryAndMatch)."
+      - "2026-11-11: required CTE never depends on MLIR/LLVM folding: the executor runs inside Sema before Semantic IR exists, and Semantic IR receives the established static values as ordinary initializers (verified init=4096 without startup code)."
+      - "2026-11-11: CTE outcomes in LSP (§ 73). Analyzer.CompileTimeValueAt exposes the established value (rendered as Sec source, including struct and variant values) or the failure category, reason and executed call chain of a required root; hover on the root of a contract argument, explicit default or static initializer shows it without an editor evaluator (cmd/lsp/compile_time_value_hover.go; TestCompileTimeValueHover)."
     remaining:
       - "static reference materialization (MD-081 applied; compile_time_evaluation.md §§ 28(6), 36(5)): represent a `ref S` static initializer as a typed symbolic reference target (never an evaluator address or a read of a mutable static), and materialize it through a target symbol/relocation selected by the CompilationPlan with a fail-closed materialization diagnostic when the target cannot represent it; Sema validation is implemented; Semantic IR rejects such statics explicitly until P15-42 static-held borrows and P24 reference lowering exist"
       - implement explicit PlanTimeRequiredContext and SemanticCompileTimeRequiredContext classification in compiler semantic state beyond the contract/default positions (MD-011 contract and default positions use Analyzer.semanticCompileTimeConstant since 2026-10-03)
-      - implement the semantic CTE executor for ordinary functions, static and instance methods, and property getters with path-sensitive legality; contract/default positions currently report S1101 compile-time.execution-unavailable for calls and getters
       - preserve the existing restricted plan-time evaluator for attributes/source selection and prevent ordinary semantic function calls from creating phase cycles
       - implement a canonical typed Semantic IR CTE execution service rather than relying only on AST/literal-specific constant evaluation
-      - execute ordinary user-defined functions during semantic CTE without requiring const-fn/comptime source modifiers
-      - implement nested calls, if/switch/match/for/while execution, recursion, and mutual recursion
-      - implement path-sensitive CTE effect legality so forbidden effects on unexecuted branches do not invalidate the concrete evaluation
-      - reject executed filesystem, network, environment, clock, ambient-random, target-memory, volatile, atomic, barrier, concurrency, foreign-call, and unsupported-runtime operations
+      - "execute union variant construction, field patterns, error-variant narrowing patterns and try with local handlers during semantic CTE (match with variant payload bindings and guards, catch-all, if-binding, Ok/Err/Some/None and handler-free try execute since 2026-11-11)"
+      - "reject executed filesystem, network, environment, ambient-random, target-memory, volatile, atomic, barrier and concurrency operations as forbidden effects (foreign calls, wall-clock reads and static mutation are S1224 compile-time.forbidden-effect since 2026-11-11; compiler-known operations without an executable body are still reported as an implementation gap)"
       - support deterministic transient evaluator-local allocation independently of runtime target allocators
-      - execute ordinary Sec ownership, move, borrow, destruction, defer, Result/Option, try, assert, and panic semantics during CTE
+      - "execute ownership, move, borrow, destruction and defer semantics during CTE, including reference parameters (Result/Option, handler-free try, assert and panic execute since 2026-11-11; struct values keep value semantics by copy-on-write)"
       - represent evaluator-local references/raw pointers using deterministic semantic identity independent of compiler-host addresses
       - prevent transient addresses and generational/liveness identities from escaping materialization
       - implement typed CompileTimeValue representation with canonical Sec TypeIdentity and SemanticValue
@@ -701,25 +703,21 @@ integrations:
       - materialize supported scalar, fixed aggregate, enum/union/Option/Result, and immutable string values through ordinary target storage/layout lowering
       - allow dynamic owning collections transiently in CTE while rejecting static escape when the concrete type lacks defined materialization
       - implement recursive materialization graph validation and explicit materialization-failure reasons
-      - detect compile-time value/type/layout dependency cycles without conflating them with ordinary terminating function recursion
-      - implement finite ExecutionSteps, CallDepth, TransientMemory, and AggregateValueSize evaluator budgets
-      - distinguish resource exhaustion from semantic nontermination and from target runtime out-of-memory
+      - "detect type/layout dependency cycles and value cycles through contract and default positions without conflating them with terminating recursion (a static whose executed initializer reads itself, directly or through called functions, is S1226 compile-time.dependency-cycle since 2026-11-11; recursion and mutual recursion execute normally)"
+      - "implement the TransientMemory and AggregateValueSize evaluator budgets (ExecutionSteps 1,000,000 and CallDepth 256 are enforced as S1225 compile-time.resource-limit since 2026-11-11)"
       - implement cross-module CTE body availability using compatible canonical semantic artifacts
       - preserve origin scope for private/sourcefile-only helper execution without leaking source visibility to importers
       - request and execute canonical generic concrete instances through the monomorphization/generic-lowering contracts
       - implement conservative CTE dependency tracking for declaration semantics, immutable values, generic concrete instances, type facts, layout facts, CompilationPlan facts, and imported semantic artifacts
       - implement deterministic CTE result memoization and correct invalidation
       - prevent resource-limit and cancellation outcomes from becoming permanent semantic negative caches
-      - implement CompileTimeProvenance including RequiredBy, RootExpression, CurrentCallStack, GenericInstantiationContext, and OriginModule
-      - distinguish NotEvaluable, EvaluationFailed, DependencyCycle, ResourceLimit, ResultNotMaterializable, ImplementationGap, Cancelled, and CompilerInvariantFailure
+      - "complete CompileTimeProvenance with GenericInstantiationContext and OriginModule (RequiredBy position, RootExpression, the executed call chain and the stop location are reported since 2026-11-11)"
+      - "produce the ResultNotMaterializable, Cancelled and CompilerInvariantFailure outcomes (NotEvaluable, EvaluationFailed, ForbiddenEffect, ResourceLimit, DependencyCycle and ImplementationGap are distinguished since 2026-11-11 as S1223, S1224, S1225, S1226 and S1101)"
       - rename/standardize ordinary semantic operation failure classification as SemanticOperationFailed
-      - make required CTE fail closed rather than silently emitting runtime initializers or host-executed substitutes
       - permit optional optimizer early evaluation to reuse evaluator machinery without turning optional failure into source diagnostics
       - integrate CTE as a semantic service around typed Sema/Semantic IR and the Sec MLIR -> MLIR -> LLVM -> artifact pipeline
       - allow MLIR infrastructure reuse internally only when canonical Sec and target-plan semantics are preserved
-      - ensure required CTE does not depend on optional MLIR/LLVM constant folding
       - audit every compiler-known Sec declaration for complete canonical declaration and owning module (rulebook A/B choices are MD-016)
-      - expose compiler CTE values/provenance/diagnostics through LSP without a separate editor evaluator
     required_tests:
       - plan-time attribute expression accepts permitted plan inputs and rejects ordinary semantic user-function dependency
       - semantic CTE executes an ordinary user function without const-fn/comptime syntax
@@ -792,9 +790,21 @@ integrations:
       - command: go test ./...
         result: passed on 2026-10-02
     tests:
+      - cmd/lsp/compile_time_value_hover_test.go
+      - internal/sema/cte_executor_test.go
+      - internal/sema/contract_cte_test.go
       - internal/sema/compiler_known_members_test.go
       - cmd/lsp/main_test.go
     code:
+      - internal/sema/cte_aggregates.go
+      - internal/sema/cte_variants.go
+      - cmd/lsp/compile_time_value_hover.go
+      - internal/sema/cte_executor.go
+      - internal/sema/cte_requests.go
+      - internal/sema/cte_configuration.go
+      - internal/sema/contract_cte.go
+      - internal/sema/contracts.go
+      - internal/sema/type_declarations.go
       - internal/sema/compiler_known_members.go
       - internal/diagnostics/diagnostics.go
       - cmd/lsp/main.go

@@ -1,0 +1,9 @@
+module ranges
+
+fn Emoji() string { return "😀"+"x" }
+
+fn Literal() string { return "}" }
+
+fn Comment() int {
+return 1 // }
+}

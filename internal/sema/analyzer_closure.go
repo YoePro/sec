@@ -79,6 +79,12 @@ type ClosureCreationSummary struct {
 	Captures                  []CaptureRecord
 	DependenciesKnown         bool
 	Source                    lexer.Token
+	// Capability is the callable environment capability inferred from how
+	// the body used its environment (shared fn, mut fn or consuming -> fn),
+	// and EnvironmentMoveOnly whether the environment cannot be copied.
+	// Rules: rules/analysis/closure_analysis.md — § 3(2), § 9.3(3).
+	Capability          CallableCapability
+	EnvironmentMoveOnly bool
 }
 
 // recordNamedCallableIdentity publishes the exact declaration selected for an
@@ -305,5 +311,11 @@ func (a *Analyzer) ResolvedClosureCreationOf(lambda *ast.LambdaExpression) (Clos
 	}
 	summary.Targets = cloneCallableTargetSet(summary.Targets)
 	summary.Captures = cloneCaptureRecords(summary.Captures)
+	if lambdaType, typed := a.expressionTypes[lambda]; typed && lambdaType.Kind == FunctionType {
+		summary.Capability = normalizedCallableCapability(lambdaType.FunctionCapability)
+		summary.EnvironmentMoveOnly = lambdaType.FunctionEnvironmentMoveOnly
+	} else {
+		summary.Capability = normalizedCallableCapability("")
+	}
 	return summary, true
 }

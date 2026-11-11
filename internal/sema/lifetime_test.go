@@ -643,7 +643,7 @@ fn Invalid() Result[void, AllocationError] {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"cannot use storage after arena mem was reset at 8:19, previous declaration at 6:24",
+		"Invalid: cannot use storage after arena mem was reset at 8:19, storage refers to storage allocated from arena mem in epoch 0 at 6:24, Reset of arena mem ends that epoch here at 7:9",
 	})
 }
 
@@ -680,7 +680,7 @@ fn Invalid(condition: bool) Result[void, AllocationError] {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"cannot use storage after arena mem was reset at 10:19, previous declaration at 6:24",
+		"Invalid: cannot use storage after arena mem was reset at 10:19, storage refers to storage allocated from arena mem in epoch 0 at 6:24, Reset of arena mem ends that epoch here at 8:13",
 	})
 }
 
@@ -721,7 +721,7 @@ fn Invalid() Result[void, AllocationError] {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"cannot use storage after arena mem was reset at 10:19, previous declaration at 6:24",
+		"Invalid: cannot use storage after arena mem was reset at 10:19, storage refers to storage allocated from arena mem in epoch 0 at 6:24, Reset of arena mem ends that epoch here at 8:13",
 	})
 }
 
@@ -743,7 +743,7 @@ fn Invalid(condition: bool) Result[void, AllocationError] {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"cannot use storage after arena mem was reset at 11:19, previous declaration at 6:24",
+		"Invalid: cannot use storage after arena mem was reset at 11:19, storage refers to storage allocated from arena mem in epoch 0 at 6:24, Reset of arena mem ends that epoch here at 8:13",
 	})
 }
 
@@ -765,7 +765,7 @@ fn Invalid() Result[void, AllocationError] {
 
 	errors := analyzeSourceRaw(t, input)
 	assertSemaErrors(t, errors, []string{
-		"cannot use storage after arena mem was reset at 11:19, previous declaration at 6:24",
+		"Invalid: cannot use storage after arena mem was reset at 11:19, storage refers to storage allocated from arena mem in epoch 0 at 6:24, Reset of arena mem ends that epoch here at 8:13",
 	})
 }
 
@@ -785,7 +785,7 @@ fn Invalid() Result[void, AllocationError] {
 }
 `
 	assertSemaErrors(t, analyzeSourceRaw(t, input), []string{
-		"cannot use storage after arena original was reset at 9:16, previous declaration at 6:21",
+		"Invalid: cannot use storage after arena original was reset at 9:16, storage refers to storage allocated from arena original in epoch 0 at 6:21, Reset of arena original ends that epoch here at 8:8",
 	})
 }
 

@@ -50,7 +50,7 @@ type _NumberScan struct {
  * Allocation:
  * Does not allocate.
  */
-fn _ValidateNumberSuffix(source: string, start: uint, end: uint) Result[void, NumberParseError] {
+fn _ValidateNumberSuffix(source: StringView, start: uint, end: uint) Result[void, NumberParseError] {
     if start >= end || end > source.Len {
         return Err(NumberParseError.InvalidNumber)
     }

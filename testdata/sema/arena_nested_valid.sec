@@ -1,0 +1,57 @@
+module nestedarena
+
+fn ReleaseEndsDependency() Result[void, AllocationError] {
+    let mut parent := try Arena.WithCapacity(128u)
+    let buffer := try parent.Alloc[byte](64u)
+    let mut child := Arena.FromBuffer(buffer)
+    child.Reset()
+    child.Release()
+    let observed := buffer[0]
+    parent.Reset()
+    parent.Release()
+    return Ok()
+}
+
+fn TemporaryAndMovedOwners() Result[void, AllocationError] {
+    let mut parent := try Arena.WithCapacity(128u)
+    let child := Arena.FromBuffer(try parent.Alloc[byte](64u))
+    let mut owner :<- child
+    let mut movedParent :<- parent
+    let other := try movedParent.Alloc[byte](8u)
+    owner.Release()
+    movedParent.Reset()
+    return Ok()
+}
+
+fn ScopeAndGrandchildren(flag: bool) Result[void, AllocationError] {
+    let mut parent := try Arena.WithCapacity(128u)
+    if flag {
+        let mut child := Arena.FromBuffer(try parent.Alloc[byte](64u))
+        if flag {
+            let grandchild := Arena.FromBuffer(try child.Alloc[byte](16u))
+        }
+        child.Reset()
+    }
+    parent.Reset()
+    return Ok()
+}
+
+fn IterationScope(flag: bool) Result[void, AllocationError] {
+    let mut parent := try Arena.WithCapacity(128u)
+    for index in 0..<2 {
+        let child := Arena.FromBuffer(try parent.Alloc[byte](16u))
+        if flag { continue }
+        break
+    }
+    parent.Reset()
+    return Ok()
+}
+
+fn DiscardTemporary() Result[void, AllocationError] {
+    let mut parent := try Arena.WithCapacity(128u)
+    discard Arena.FromBuffer(try parent.Alloc[byte](16u))
+    parent.Reset()
+    Arena.FromBuffer(try parent.Alloc[byte](16u))
+    parent.Reset()
+    return Ok()
+}

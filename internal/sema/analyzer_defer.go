@@ -146,6 +146,7 @@ func (a *Analyzer) recordDeferPlace(place Place, token lexer.Token) {
 	if _, exists := a.deferCaptures[key]; exists {
 		return
 	}
+	a.noteDeferredUse(place, token)
 	a.deferCaptures[key] = borrowRecord{
 		Root: place.Root, Place: place, Holder: "$defer", Kind: deferredUse, Token: token,
 	}

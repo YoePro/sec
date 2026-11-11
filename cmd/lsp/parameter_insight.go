@@ -131,6 +131,9 @@ func parameterInsightHover(analyzer *sema.Analyzer, token lexer.Token, mode stri
 						continue
 					}
 					lines = append(lines, fmt.Sprintf("Candidate `%s`: %s. Confidence: %s. Reasons: %s. Blockers: %s.", candidate.Candidate, candidate.Status, candidate.Confidence, strings.Join(candidate.Reasons, "; "), strings.Join(candidate.Blockers, "; ")))
+					if evidence := candidate.CopyAdvice(); evidence != "" {
+						lines = append(lines, evidence)
+					}
 				}
 			} else if demand.Precision != sema.ParameterDemandExact || summary.Precision != sema.ParameterDemandExact {
 				lines = append(lines, fmt.Sprintf("Parameter `%s`: demand analysis is incomplete (parameter=%s, callable=%s).", parameter.Name, demand.Precision, summary.Precision))

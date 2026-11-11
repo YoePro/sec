@@ -1,0 +1,33 @@
+module main
+
+fn Observe() bool {
+    return Task.Current().CancelRequested
+}
+
+fn Pause() void {
+    Task.Yield()
+}
+
+fn TaskWork() void {
+    let current := Task.Current()
+    Task.Yield()
+    let observe := Observe
+    let observed := observe()
+    defer {
+        Pause()
+    }
+}
+
+fn ThreadWork() void {
+    let physical := Thread.Current()
+    Thread.Yield()
+}
+
+fn main() void {
+    let physical := Thread.Current()
+    Thread.Yield()
+    let work := spawn TaskWork()
+    await work
+    let worker := spawn thread ThreadWork()
+    join worker
+}

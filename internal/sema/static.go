@@ -133,6 +133,7 @@ func (a *Analyzer) validateStaticInitializerExpression(name string, expression a
 		return
 	}
 	invalid, reported := false, false
+	executes := false
 	settled := map[ast.Expression]bool{}
 	visitStatementExpressions(&ast.LetStatement{Value: expression}, func(candidate ast.Expression) {
 		if invalid || settled[candidate] {
@@ -157,8 +158,13 @@ func (a *Analyzer) validateStaticInitializerExpression(name string, expression a
 				callee = candidate.Function.Value
 				ok = true
 			}
-			if ok && (len(a.functions[callee]) > 0 || a.externSymbols[callee].Name != "") {
+			// A call to an ordinary Sec function is executed by semantic CTE
+			// (static.md § 15; compile_time_evaluation.md § 9); a direct
+			// foreign call is a runtime operation.
+			if ok && a.externSymbols[callee].Name != "" {
 				invalid = true
+			} else if ok && len(a.functions[callee]) > 0 {
+				executes = true
 			}
 		case *ast.Identifier:
 			// A clock read is runtime nondeterministic input, even though it is
@@ -179,8 +185,10 @@ func (a *Analyzer) validateStaticInitializerExpression(name string, expression a
 		case *ast.MemberExpression:
 			if path, ok := typePathFromExpression(candidate.Object); ok {
 				if typ, exists := a.types[a.resolveTypeName(path)]; exists {
+					// A static getter is ordinary Sec code executed by
+					// semantic CTE (static.md § 15).
 					if property, found := lookupProperty(typ, candidate.Property.Value); found && property.Static {
-						invalid = true
+						executes = true
 					}
 				}
 			}
@@ -188,7 +196,31 @@ func (a *Analyzer) validateStaticInitializerExpression(name string, expression a
 	})
 	if invalid && !reported {
 		a.addErrorAtToken(token, "static initializer for %s must be compile-time evaluable; runtime execution or invocation-local state is not allowed", name)
+		return
 	}
+	if executes && !invalid {
+		a.requireStaticInitializerExecution(name, expression)
+	}
+}
+
+// requireStaticInitializerExecution routes a static initializer that calls
+// Sec functions to the semantic CTE executor: the probe defers it, and this
+// analysis either reads the established value or reports the failure. No
+// runtime initializer is ever substituted (compile_time_evaluation.md §§ 9(4), 65).
+func (a *Analyzer) requireStaticInitializerExecution(name string, expression ast.Expression) {
+	if a.cteProbe {
+		a.deferCompileTimeExecution(expression)
+		return
+	}
+	if result, ok := a.cteResults[expression]; ok {
+		if result.Failure != nil {
+			a.reportCompileTimeExecutionFailure(expression, "static initializer for "+name)
+		}
+		return
+	}
+	// Without a probe the initializer executes after this analysis has
+	// analyzed every body (executeDeferredStaticInitializers).
+	a.deferredStatics = append(a.deferredStatics, deferredStaticInitializer{name: name, value: expression, module: a.currentModule, file: a.currentSourceFile})
 }
 
 // validateStaticReferenceInitializer checks the origin of a reference in a

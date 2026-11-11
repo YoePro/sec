@@ -46,7 +46,7 @@ func (a *Analyzer) statementDefinitelyReturns(stmt ast.Statement) bool {
 		return a.switchStatementDefinitelyReturns(stmt)
 	case *ast.WhileStatement:
 		if flow, ok := a.resolvedWhileFlows[stmt]; ok {
-			return flow.ConditionKnown && flow.ConditionValue && !flow.HasReachableBreak
+			return !flow.ContinuesAfterLoop
 		}
 	}
 	return statementDefinitelyReturns(stmt)

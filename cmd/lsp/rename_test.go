@@ -108,3 +108,35 @@ func TestRenameSpansModuleFiles(t *testing.T) {
 		t.Fatalf("workspace edit = %+v, want one edit in each module file", edit.Changes)
 	}
 }
+
+// Rename validation consumes the compiler's own namespace, shadowing,
+// overload and capitalization rules by re-analyzing the renamed program:
+// shadowing an outer binding, colliding with a same-signature function and
+// lowercasing a nominal type are rejected with the Sema diagnostic, while
+// joining a different-signature overload set stays valid.
+//
+// Rules:
+//   - rules/tooling/lsp.md — § 15 "Rename"
+//   - rules/foundations/names_scopes_visibility.md — no shadowing, one namespace per scope
+func TestRenameConsumesSemaNamespaceRules(t *testing.T) {
+	uri := "file:///rename_rules.sec"
+	for _, test := range []struct {
+		text, needle, newName, reason string
+	}{
+		{"module main\n\nfn F(outer: int) int {\n    if outer > 0 {\n        let inner := 1\n        return inner\n    }\n    return outer\n}\n", "inner", "outer", `variable "outer" already declared`},
+		{"module main\n\nfn A(v: int) int {\n    return v\n}\n\nfn B(v: int) int {\n    return v\n}\n\nfn Use() int {\n    return A(1) + B(2)\n}\n", "B(v", "A", `duplicate function "A" with same signature`},
+		{"module main\n\ntype Point struct {\n    x: int,\n}\n\nfn Use(p: Point) int {\n    return p.x\n}\n", "Point struct", "point", "must begin with an uppercase letter"},
+		{"module main\n\nfn A(v: int) int {\n    return v\n}\n\nfn B(v: string) int {\n    return 1\n}\n\nfn Use() int {\n    return A(1) + B(\"x\")\n}\n", "B(v", "A", ""},
+	} {
+		_, err := renameAt(t, uri, test.text, test.needle, 0, test.newName, sourceOverlay{})
+		if test.reason == "" {
+			if err != nil {
+				t.Fatalf("rename %s -> %s rejected: %v", test.needle, test.newName, err)
+			}
+			continue
+		}
+		if err == nil || !strings.Contains(err.Error(), test.reason) {
+			t.Fatalf("rename %s -> %s error = %v, want %q", test.needle, test.newName, err, test.reason)
+		}
+	}
+}

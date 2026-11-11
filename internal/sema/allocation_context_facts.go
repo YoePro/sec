@@ -22,16 +22,29 @@ type AllocationContextFact struct {
 	Context        AllocationContext
 	SelectedDomain string
 	CreatedDomain  string
-	Path           []CallableID
+	// Origins belong to the selected/created domain's canonical lexical
+	// provenance, never the current receiver spelling or the allocation site.
+	SelectedDomainOrigin lexer.Token
+	CreatedDomainOrigin  lexer.Token
+	Path                 []CallableID
 }
 
 // AllocationContextFacts correlates allocation sites with already-resolved
 // string plans and Arena result types. It never selects a domain, derives one
 // from a lexical name, or assumes that every operation uses the ambient context.
 // Facts are deterministic detached values; folded text has no allocation site.
+// Domain origins project the generated-identity registry's current source
+// tokens, never coordinates decoded from an identity or the current receiver.
 // Rules: rules/memory/allocation.md — §§5(4),(8),6(6),17,24,29(1),(3);
+// rules/compiler/compiler.md — §71;
 // rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md — §§5.8,5.10–5.14.
 func (a *Analyzer) AllocationContextFacts() []AllocationContextFact {
+	origins := map[string]lexer.Token{}
+	for _, identity := range a.GeneratedIdentities() {
+		if identity.Kind == "arena-domain" {
+			origins[identity.ID] = identity.Source
+		}
+	}
 	contexts := map[sourceTokenKey]AllocationContext{}
 	ambiguousContexts := map[sourceTokenKey]bool{}
 	for root, site := range a.stringMaterializationSites {
@@ -100,6 +113,8 @@ func (a *Analyzer) AllocationContextFacts() []AllocationContextFact {
 					fact.CreatedDomain = value.created
 				}
 			}
+			fact.SelectedDomainOrigin = origins[fact.SelectedDomain]
+			fact.CreatedDomainOrigin = origins[fact.CreatedDomain]
 			facts = append(facts, fact)
 		}
 	}
@@ -175,10 +190,25 @@ func AllocationContextDescription(fact AllocationContextFact) string {
 		return fmt.Sprintf("implicit allocation context: %s; profile %s; origin %s; domain identity unresolved", availability, profile, fact.Context.Origin)
 	}
 	if fact.SelectedDomain != "" {
-		return fmt.Sprintf("explicit Arena allocation domain: %s (receiver %s)", fact.SelectedDomain, fact.Arena)
+		return fmt.Sprintf("explicit Arena allocation domain: %s (receiver %s); %s", fact.SelectedDomain, fact.Arena, allocationOriginDescription("allocation context origin", fact.SelectedDomainOrigin))
 	}
 	if fact.CreatedDomain != "" {
-		return fmt.Sprintf("created Arena domain: %s; backing allocation context unresolved", fact.CreatedDomain)
+		return fmt.Sprintf("created Arena domain: %s; backing allocation context unresolved; %s", fact.CreatedDomain, allocationOriginDescription("created domain origin", fact.CreatedDomainOrigin))
 	}
 	return "allocation context/domain unresolved"
+}
+
+// allocationOriginDescription renders only canonical source provenance. An
+// absent origin stays unresolved; a created domain never identifies its backing
+// context. Implicit contexts retain target/profile evidence without a fake source.
+// Rules: rules/memory/allocation.md §§5(8),6(6),29(1),(3);
+// rules/memory/arena.md §§4.2,4.3,67(4); rules/compiler/compiler.md §71.
+func allocationOriginDescription(label string, source lexer.Token) string {
+	if source.Line <= 0 || source.Column <= 0 {
+		return label + " unresolved"
+	}
+	if source.File == "" {
+		return fmt.Sprintf("%s: line %d:%d", label, source.Line, source.Column)
+	}
+	return fmt.Sprintf("%s: %s:%d:%d", label, source.File, source.Line, source.Column)
 }

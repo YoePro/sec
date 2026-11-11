@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"sec/internal/diagnostics"
 )
 
 // TestArenaMultiOriginLSP uses the shared semantic join and validity producer
@@ -26,7 +28,11 @@ func TestArenaMultiOriginLSP(t *testing.T) {
 			t.Fatal(suffix, values)
 		}
 		for _, value := range values {
-			if value.Severity != 1 || len(value.RelatedInformation) != 1 || value.RelatedInformation[0].Location.URI != uri {
+			wantRelated := 1
+			if value.Code == diagnostics.ArenaResetLiveDependency || value.Code == diagnostics.ArenaReleaseLiveDependency || value.Code == diagnostics.ArenaUseAfterInvalidation {
+				wantRelated = 2
+			}
+			if value.Severity != 1 || len(value.RelatedInformation) != wantRelated || value.RelatedInformation[0].Location.URI != uri {
 				t.Fatal(value)
 			}
 		}

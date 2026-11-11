@@ -96,8 +96,45 @@ func ImportIdentityIssues(stmt *ast.ImportStatement, importerFallback, importerM
 		issue.RelatedLabel = "first import of this module"
 		return []Error{issue}
 	}
+	// Distinct modules may share a ModuleName, but each import binding in one
+	// source file needs a unique local qualifier (modules.md § 11).
+	qualifier := ImportLocalQualifier(stmt)
+	qualifierKey := [2]string{importer, "qualifier\x00" + qualifier}
+	if first, seen := previous[qualifierKey]; seen && qualifier != "" {
+		issue := UnresolvedSourceImport(stmt)
+		issue.ID = diagnostics.ImportQualifierCollision
+		issue.Message = fmt.Sprintf("import %q binds qualifier %s, which an earlier import in this source file already binds", stmt.Path, qualifier)
+		issue.Help = fmt.Sprintf("Give one of the imports a distinct alias, for example `import %sAlias %q`.", qualifier, stmt.Path)
+		token := first.PathToken
+		if token.Line == 0 {
+			token = first.Token
+		}
+		issue.PreviousFile, issue.PreviousLine, issue.PreviousColumn = token.File, token.Line, token.Column
+		issue.RelatedLabel = "earlier import binding " + qualifier
+		return []Error{issue}
+	}
 	previous[key] = stmt
+	if qualifier != "" {
+		previous[qualifierKey] = stmt
+	}
 	return nil
+}
+
+// ImportLocalQualifier is the file-local binding an import introduces: its
+// alias, otherwise the final segment of the canonical import path.
+// Rules: rules/projects/modules.md — §§ 10–11.
+func ImportLocalQualifier(stmt *ast.ImportStatement) string {
+	if stmt == nil {
+		return ""
+	}
+	if stmt.Alias != "" {
+		return stmt.Alias
+	}
+	trimmed := strings.Trim(strings.TrimSuffix(stmt.Path, ".sec"), "/")
+	if index := strings.LastIndex(trimmed, "/"); index >= 0 {
+		return trimmed[index+1:]
+	}
+	return trimmed
 }
 
 func canonicalSourcePath(path string) string {

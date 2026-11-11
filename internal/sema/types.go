@@ -816,6 +816,9 @@ type MembershipContract struct {
 func (MembershipContract) contractNode() {}
 
 type DefaultConstant struct {
+	// Aggregate is a struct value established by the semantic CTE executor
+	// (cte_aggregates.go); scalar consumers ignore it.
+	Aggregate   *CompileTimeAggregate
 	Nominal     membership.Value
 	NominalText bool
 	FloatBits   int
@@ -1260,7 +1263,7 @@ func newBuiltinTypes() map[string]Type {
 		// source-visible representation is owned by panic.md § 13; runtime and
 		// lowering layers must consume this shape rather than inventing one.
 		"PanicID":               panicIDType(),
-		"PanicInfo":             {Name: "PanicInfo", Kind: StructType, Named: true},
+		"PanicInfo":             {Name: "PanicInfo", Module: "core", Kind: StructType, Named: true},
 		"ProcessID":             processIDType(64),
 		"ProcessStatus":         processStatusType(),
 		"Thread":                {Name: "Thread", Kind: StructType, GenericParameters: []string{"T"}},
@@ -1284,6 +1287,7 @@ func newBuiltinTypes() map[string]Type {
 		"Mutex":                 builtinMutexType("Mutex"),
 		"MutexGuard":            builtinMutexType("MutexGuard"),
 		"Context":               builtinContextType(),
+		"ContextSource":         builtinContextSourceType(),
 		"ContextError":          builtinContextErrorType(),
 		"MemoryOrder":           builtinMemoryOrderType(),
 		"ChannelCapability":     builtinChannelCapabilityType(),
@@ -1475,6 +1479,7 @@ func builtinEnumConsts(values []string) map[string]EnumValue {
 //   - rules/corrections/applied/panic-info-compiler-known-correction-20260907.md — § 2.1 "Exact declaration"
 func panicIDType() Type {
 	typ := unsignedType("PanicID", 1<<32-1)
+	typ.Module = "core"
 	typ.Named = true
 	typ.Underlying = "uint32"
 	typ.BitWidth = 32
@@ -1711,6 +1716,7 @@ func compilerKnownRequiresDestruction(typ Type) bool {
 		"Mutex",
 		"MutexGuard",
 		"Context",
+		"ContextSource",
 		"Subscription",
 		"Channel",
 		"Sender",

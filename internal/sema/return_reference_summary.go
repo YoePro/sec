@@ -105,3 +105,48 @@ func (a *Analyzer) ResolvedCallReferenceOf(call *ast.CallExpression) (ReferenceF
 	facts, ok := a.resolvedCallReferences[call]
 	return facts, ok
 }
+
+// ReturnReferenceOriginsOfCallable renders the returned-reference origin
+// summary of one analyzed callable with source parameter names, for tooling
+// (references.md returned-reference summaries; lsp.md "Hover"). It returns
+// false when the callable returns no reference; Unknown origins are reported
+// as such rather than guessed.
+func (a *Analyzer) ReturnReferenceOriginsOfCallable(id CallableID) ([]string, bool, bool) {
+	if a == nil || id == "" {
+		return nil, false, false
+	}
+	for _, functions := range a.functions {
+		for _, function := range functions {
+			if callableID(function) != id {
+				continue
+			}
+			summary, ok := a.ReturnReferenceSummaryOf(function)
+			if !ok {
+				return nil, false, false
+			}
+			origins := []string{}
+			for _, origin := range summary.Origins {
+				root := ""
+				switch origin.Kind {
+				case ReturnOriginParameter:
+					if origin.Parameter >= 0 && origin.Parameter < len(function.Parameters) {
+						root = function.Parameters[origin.Parameter].Name
+					}
+					if origin.Pack {
+						root += "[…]"
+					}
+				case ReturnOriginReceiver:
+					root = "self"
+				case ReturnOriginStatic:
+					root = origin.Static
+				}
+				if root == "" {
+					continue
+				}
+				origins = append(origins, Place{Root: root, Projections: origin.Projections}.String())
+			}
+			return origins, summary.Unknown, true
+		}
+	}
+	return nil, false, false
+}

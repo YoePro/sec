@@ -36,8 +36,9 @@ func requiresOwnershipTransfer(typ Type) bool {
 func copyClassificationOf(typ Type, visiting map[string]bool) CopyClassification {
 	// Canonical @noCopy guards and standalone Contexts are movable owners,
 	// never implicitly copyable values.
-	// Rules: rules/concurrency/mutex.md — §§6(2–4),8(1–4),28.
-	if typ.Intrinsic && typ.Kind == StructType && (typ.Name == "MutexGuard" || typ.Name == "Context") {
+	// Rules: rules/concurrency/mutex.md — §§6(2–4),8(1–4),28;
+	// rules/concurrency/cancellation.md — §§35–36.
+	if typ.Intrinsic && typ.Kind == StructType && (typ.Name == "MutexGuard" || isCancellationContextType(typ)) {
 		return CopyMoveOnly
 	}
 	if typ.ExplicitlyNonCopyable {

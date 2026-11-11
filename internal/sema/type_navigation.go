@@ -5,6 +5,8 @@ import "sec/internal/lexer"
 // ResolvedTypeDeclarationLocation returns declaration provenance recorded by
 // Sema without exposing its mutable symbol tables. A generic or unresolved
 // type cannot borrow the declaration of a same-spelled concrete type.
+// Unnamed reference wrappers lead to their resolved element declaration;
+// named reference aliases retain their own declaration when present.
 // Rules: rules/tooling/lsp.md — "Navigation and references", A.15;
 // rules/declarations/generics.md — §30;
 // rules/foundations/names_scopes_visibility.md — resolved declaration identity.
@@ -13,6 +15,9 @@ func (a *Analyzer) ResolvedTypeDeclarationLocation(typ Type) (lexer.Token, bool)
 		return lexer.Token{}, false
 	}
 	token, ok := a.typeDefinitionTokens[typ.Name]
+	if !ok && typ.Kind == ReferenceType && typ.Element != nil {
+		return a.ResolvedTypeDeclarationLocation(*typ.Element)
+	}
 	return token, ok
 }
 

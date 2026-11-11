@@ -1188,8 +1188,13 @@ fn Test() void {
 	assertSemaErrors(t, errors, expected)
 }
 
-func TestContractedVariableAssignmentRequiresTry(t *testing.T) {
-	input := `
+// Owner decision 2026-11-11: assignment to a constrained variable without try
+// is valid. A literal is proven at compile time; a compound update is checked
+// at run time, panics on violation and reports A2011; the try forms report
+// nothing.
+func TestContractedVariableAssignmentPanicsWithoutTry(t *testing.T) {
+	input := `module main
+
 type Percent int range 0..100
 
 let mut p: Percent := 50
@@ -1200,15 +1205,19 @@ fn Test() void {
 	try p += 1 { Err(error) => { discard error } }
 }
 `
-
-	errors := analyzeSource(t, input)
-
-	expected := []string{
-		"assigning variable p requires try because Percent has contracts at 6:2, contract requiring checked assignment at 2:18",
-		"assigning variable p requires try because Percent has contracts at 7:2, contract requiring checked assignment at 2:18",
+	analyzer, errors := analyzeSourceWithAnalyzerRaw(t, input)
+	if len(errors) != 0 {
+		t.Fatalf("errors = %v", errors)
 	}
-
-	assertSemaErrors(t, errors, expected)
+	advisories := []Error{}
+	for _, warning := range analyzer.Warnings() {
+		if warning.ID == diagnostics.UncheckedContractMayPanic {
+			advisories = append(advisories, warning)
+		}
+	}
+	if len(advisories) != 1 || advisories[0].Line != 8 || advisories[0].Column != 2 || advisories[0].Severity != diagnostics.SeverityInformation {
+		t.Fatalf("A2011 advisories = %+v, want one at 8:2", advisories)
+	}
 }
 
 func TestNamedTypeRegistryRangeContractAndInitialization(t *testing.T) {
@@ -5318,7 +5327,9 @@ let result := First
 	invalid := `
 module main
 
-fn LoadConfiguration() int { return 1 }
+extern "C" fn ReadConfiguration() int
+
+fn LoadConfiguration() int { return ReadConfiguration() }
 
 static let RuntimeValue: int := LoadConfiguration()
 static let A: int := B
@@ -5336,9 +5347,11 @@ fn Captured(input: int) int {
 `
 	errors := analyzeSourceRaw(t, invalid)
 	wants := []string{
-		"static initializer for RuntimeValue must be compile-time evaluable",
+		// static.md § 15: an initializer may execute Sec functions, but an
+		// executed foreign call is a forbidden compile-time effect.
+		"static initializer for RuntimeValue LoadConfiguration() performs an effect forbidden during compile-time evaluation",
 		"cyclic static initialization: A -> B -> A",
-		"static initializer for Value must be compile-time evaluable",
+		"static initializer for Value LoadConfiguration() performs an effect forbidden during compile-time evaluation",
 		"static initializer for ValueFromInput must be compile-time evaluable",
 	}
 	for _, want := range wants {
@@ -6220,10 +6233,7 @@ let s := Pick("hello")
 `
 
 	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
-	assertSemaErrors(t, errors, []string{
-		"static initializer for i must be compile-time evaluable; runtime execution or invocation-local state is not allowed at 10:5",
-		"static initializer for s must be compile-time evaluable; runtime execution or invocation-local state is not allowed at 11:5",
-	})
+	assertSemaErrors(t, errors, []string{})
 
 	if len(analyzer.functions["Pick"]) != 2 {
 		t.Fatalf("wrong overload count. got=%d want=2", len(analyzer.functions["Pick"]))
@@ -6366,7 +6376,6 @@ let p := Pick(10)
 	errors := analyzeSource(t, input)
 
 	expected := []string{
-		"static initializer for p must be compile-time evaluable; runtime execution or invocation-local state is not allowed at 13:5",
 		"ambiguous call to Pick at 13:10",
 	}
 
@@ -6387,9 +6396,7 @@ let x := Print(10)
 `
 
 	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
-	assertSemaErrors(t, errors, []string{
-		"static initializer for x must be compile-time evaluable; runtime execution or invocation-local state is not allowed at 10:5",
-	})
+	assertSemaErrors(t, errors, []string{})
 
 	if analyzer.symbols.get("x").Type.Name != "int" {
 		t.Fatalf("wrong x type. got=%q want=int", analyzer.symbols.get("x").Type.Name)
@@ -6414,10 +6421,7 @@ let selectedInt := Set(50)
 `
 
 	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
-	assertSemaErrors(t, errors, []string{
-		"static initializer for selectedNamed must be compile-time evaluable; runtime execution or invocation-local state is not allowed at 13:5",
-		"static initializer for selectedInt must be compile-time evaluable; runtime execution or invocation-local state is not allowed at 14:5",
-	})
+	assertSemaErrors(t, errors, []string{})
 
 	if analyzer.symbols.get("selectedNamed").Type.Name != "Percent" {
 		t.Fatalf("wrong selectedNamed type. got=%q want=Percent", analyzer.symbols.get("selectedNamed").Type.Name)
@@ -6438,10 +6442,7 @@ let y: int := Add(3, 4)
 `
 
 	analyzer, errors := analyzeSourceWithAnalyzer(t, input)
-	assertSemaErrors(t, errors, []string{
-		"static initializer for x must be compile-time evaluable; runtime execution or invocation-local state is not allowed at 6:5",
-		"static initializer for y must be compile-time evaluable; runtime execution or invocation-local state is not allowed at 7:5",
-	})
+	assertSemaErrors(t, errors, []string{})
 
 	if analyzer.symbols.get("x").Type.Name != "int" {
 		t.Fatalf("wrong x type: %+v", analyzer.symbols.get("x"))
@@ -6464,8 +6465,6 @@ let w: int := Add(1.5, 1.5)
 	errors := analyzeSource(t, input)
 
 	expected := []string{
-		"static initializer for v must be compile-time evaluable; runtime execution or invocation-local state is not allowed at 6:5",
-		"static initializer for w must be compile-time evaluable; runtime execution or invocation-local state is not allowed at 7:5",
 		"cannot initialize float with int at 6:17",
 		"argument 1 to Add must be int, got decimal at 7:19",
 		"argument 2 to Add must be int, got decimal at 7:24",
@@ -6486,7 +6485,6 @@ let wrongCount := Add(1)
 	errors := analyzeSource(t, input)
 
 	expected := []string{
-		"static initializer for wrongCount must be compile-time evaluable; runtime execution or invocation-local state is not allowed at 6:5",
 		"function Add expects 2 arguments, got 1 at 6:19",
 	}
 

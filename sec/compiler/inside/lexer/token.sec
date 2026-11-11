@@ -1,0 +1,179 @@
+module lexer
+
+/*
+ * Token and source-location model for the Sec bootstrap compiler.
+ *
+ * Rulebook references:
+ * rules/foundations/lexical_structure.md
+ * §1.3  Unicode scalar values / source positions
+ * §6    Identifiers
+ * §7    Reserved words
+ * §16   Operators and punctuation (longest match)
+ * §18   Token boundaries
+ * §20   Lexical errors
+ */
+
+/**
+ * One-based line/column plus byte offset for tooling.
+ * Column counts Unicode scalar values; tab counts as one scalar (§1.3).
+ */
+type SourcePos struct {
+    File:   string,
+    Line:   uint,
+    Column: uint,
+    Offset: uint,
+}
+
+type SourceSpan struct {
+    Start: SourcePos,
+    End:   SourcePos,
+}
+
+/**
+ * Lexical token kind.
+ * Keywords are separate variants so the parser can match them directly.
+ * Literal and identifier payloads keep the original spelling (§18, §20).
+ */
+type TokenKind union {
+    // Special
+    Illegal,
+    Eof,
+
+    // Names & literals (spelling preserved)
+    Ident(string),
+    Int(string),
+    Float(string),
+    String(string),
+    Char(string),
+    RawString(string),
+    InterpString(string),
+    Void,
+
+    // Keywords (§7.1)
+    KwAfter,
+    KwAsm,
+    KwAssert,
+    KwAwait,
+    KwBreak,
+    KwCancel,
+    KwCapture,
+    KwCase,
+    KwContinue,
+    KwDefault,
+    KwDefer,
+    KwDiscard,
+    KwElse,
+    KwEnum,
+    KwExtern,
+    KwExtends,
+    KwFallthrough,
+    KwFalse,
+    KwFn,
+    KwFor,
+    KwFree,
+    KwGet,
+    KwModule,
+    KwIf,
+    KwImpl,
+    KwImplements,
+    KwImport,
+    KwIn,
+    KwInterface,
+    KwLet,
+    KwMatch,
+    KwMut,
+    KwNew,
+    KwNull,
+    KwPanic,
+    KwProperty,
+    KwRef,
+    KwReturn,
+    KwRequire,
+    KwSelf,
+    KwSelect,
+    KwSpawn,
+    KwStatic,
+    KwStruct,
+    KwSwitch,
+    KwTrue,
+    KwTry,
+    KwType,
+    KwUnit,
+    KwUnion,
+    KwUnsafe,
+    KwWhere,
+    KwWhile,
+
+    // Operators & punctuation (§16, longest match)
+    Assign,       // =
+    Declare,      // :=
+    Arrow,        // =>
+    ConsumeArrow, // ->
+    MoveAssign,   // <-
+    MoveDeclare,  // :<-
+
+    Plus,
+    Minus,
+    Asterisk,
+    Slash,
+    Percent,
+    Increment, // ++
+    Decrement, // --
+
+    PlusAssign,
+    MinusAssign,
+    AsteriskAssign,
+    SlashAssign,
+    PercentAssign,
+
+    Eq,
+    Neq,
+    Lt,
+    Lte,
+    Gt,
+    Gte,
+    And,
+    Or,
+    Not,
+
+    BitAnd,
+    BitOr,
+    BitXor,
+    BitNot,
+    ShiftLeft,
+    ShiftRight,
+    BitAndAssign,
+    BitOrAssign,
+    BitXorAssign,
+    ShiftLeftAssign,
+    ShiftRightAssign,
+
+    Dot,
+    Range,          // ..
+    RangeExclusive, // ..<
+    Spread,         // ...
+
+    Comma,
+    Colon,
+    DoubleColon, // ::
+    Semicolon,
+    Question,
+    Underscore,  // bare _ (§6.3)
+    At,
+    Hash,
+
+    LParen,
+    RParen,
+    LBrace,
+    RBrace,
+    LBracket,
+    RBracket,
+
+    // Comments are retained for formatter / docs / LSP (§5.5)
+    Comment(string),
+}
+
+type Token struct {
+    Kind: TokenKind,
+    Span: SourceSpan,
+}

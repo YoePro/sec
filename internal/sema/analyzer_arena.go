@@ -1,5 +1,5 @@
 // Arena frontend validity and epoch facts. This represented subset does not
-// establish complete NLL, nested/captured/foreign retention or epoch exhaustion.
+// establish complete NLL, captured/foreign retention or epoch exhaustion.
 // Rules: rules/memory/arena.md — §§4.2–4.7, 35–46;
 // rules/memory/reference_model.md — §30;
 // rules/corrections/applied/correction25-20260823.md — Part II traceability.
@@ -21,6 +21,7 @@ func (a *Analyzer) recordArenaEffect(kind ArenaEffectKind, arena string, domain 
 	if a.summaryPass || !a.callGraphPathReachable {
 		return
 	}
+	a.noteArenaInvalidation(kind, domain, source)
 	a.callGraph.addArenaEffect(a.currentCallable, ArenaEffectSite{
 		Kind:        kind,
 		Arena:       arena,
@@ -97,6 +98,9 @@ func (a *Analyzer) bindArenaDomainFromExpression(holder string, expr ast.Express
 	}
 	symbol.Type.ArenaDomainID = domain
 	a.symbols.set(holder, symbol)
+	if _, recorded := a.arenaUses[sourceTokenLocation(symbol.Token)]; !recorded {
+		a.noteArenaUse(symbol.Token, holder, domain)
+	}
 }
 
 // newArenaDomainID records the abstract lexical creation/owner site with its
@@ -142,7 +146,7 @@ func (a *Analyzer) checkStaleArenaReference(symbol Symbol, token lexer.Token) bo
 		if display == "" {
 			display = origin.Name
 		}
-		a.addErrorAtTokenWithPrevious(token, origin.Token, "cannot use %s after arena %s was reset", symbol.Name, display)
+		a.reportArenaUseAfterInvalidation(symbol, origin.Name, display, origin.Token, origin.Generation, token)
 		return true
 	}
 	return false
@@ -251,26 +255,6 @@ func (a *Analyzer) validateArenaAllocationElement(method string, reference *ast.
 	return true
 }
 
-// arenaDependencyEscapesImmediateLocal recognizes represented deferred
-// uses and additional borrow/reference-container holders of an Arena-backed
-// local. Absence here does not prove absence of unrepresented dependencies.
-// Rules: rules/memory/arena.md — §36(2–4), §44(1); rules/control-flow/defer.md — deferred execution.
-func (a *Analyzer) arenaDependencyEscapesImmediateLocal(name, owner string) bool {
-	for _, records := range a.borrows {
-		for _, record := range records {
-			if isDeferredUseKind(record.Kind) && record.Root == name || record.Holder != "" && record.Holder != name && record.Holder != owner && record.Root == name {
-				return true
-			}
-		}
-	}
-	for holder, origin := range a.localRefContainers {
-		if holder != name && holder != owner && origin.Name == name {
-			return true
-		}
-	}
-	return false
-}
-
 // inferArenaConstructorCall validates compiler-known borrowed and owned/growable
 // construction, assigning a fresh domain and recording backing/effect facts.
 // Rules: rules/memory/arena.md — §§5(1–5), 10–13, 19–21, 35–38, 43–45;
@@ -305,7 +289,9 @@ func (a *Analyzer) inferArenaConstructorCall(expr *ast.CallExpression, member Co
 			}
 		}
 		arena := a.types["Arena"]
+		a.retainNestedArenaBacking(expr, argumentType)
 		arena.ArenaDomainID = a.newArenaDomainID(expr.Token, "creation")
+		a.noteArenaCreation(expr, member.Name, arena.ArenaDomainID)
 		a.recordArenaEffect(ArenaEffectCreateBorrowed, "", arena.ArenaDomainID, callCalleeDefinitionToken(expr), false)
 		return arena, expressionValue{Display: expr.String()}, true
 	}
@@ -319,6 +305,7 @@ func (a *Analyzer) inferArenaConstructorCall(expr *ast.CallExpression, member Co
 	}
 	arena := a.types["Arena"]
 	arena.ArenaDomainID = a.newArenaDomainID(expr.Token, "creation")
+	a.noteArenaCreation(expr, member.Name, arena.ArenaDomainID)
 	a.recordArenaEffect(effect, "", arena.ArenaDomainID, callCalleeDefinitionToken(expr), true)
 	return arenaResultType(arena, a.types["AllocationError"]), expressionValue{Display: expr.String()}, true
 }
@@ -370,6 +357,7 @@ func (a *Analyzer) inferArenaCall(expr *ast.CallExpression) (Type, expressionVal
 		symbol.Type.ArenaDomainID = domain
 		a.symbols.set(receiver.Value, symbol)
 	}
+	a.noteArenaUse(receiver.Token, owner, domain)
 	switch member.Property.Value {
 	case "New":
 		if len(expr.GenericArguments) != 1 {
@@ -495,11 +483,12 @@ func (a *Analyzer) inferArenaCall(expr *ast.CallExpression) (Type, expressionVal
 
 // arenaBorrowedBacking returns the backing borrow an Arena owner binding
 // still controls, choosing the earliest source position deterministically.
+// Rules: rules/memory/arena.md — §§10(6–9),51(3–7).
 func (a *Analyzer) arenaBorrowedBacking(holder string) (borrowRecord, bool) {
 	var records []borrowRecord
 	for _, list := range a.borrows {
 		for _, record := range list {
-			if record.Holder == holder && record.Kind == mutableBorrow {
+			if record.Holder == holder && (record.Kind == mutableBorrow || record.Kind == arenaParentDependency) {
 				records = append(records, record)
 			}
 		}
@@ -508,10 +497,19 @@ func (a *Analyzer) arenaBorrowedBacking(holder string) (borrowRecord, bool) {
 		return borrowRecord{}, false
 	}
 	sort.Slice(records, func(i, j int) bool {
+		if records[i].Token.File != records[j].Token.File {
+			return records[i].Token.File < records[j].Token.File
+		}
 		if records[i].Token.Line != records[j].Token.Line {
 			return records[i].Token.Line < records[j].Token.Line
 		}
-		return records[i].Token.Column < records[j].Token.Column
+		if records[i].Token.Column != records[j].Token.Column {
+			return records[i].Token.Column < records[j].Token.Column
+		}
+		if records[i].Kind != records[j].Kind {
+			return records[i].Kind == mutableBorrow
+		}
+		return records[i].Root < records[j].Root
 	})
 	return records[0], true
 }
@@ -535,7 +533,7 @@ func (a *Analyzer) rejectBorrowedArenaMove(name string, token lexer.Token) bool 
 		return false
 	}
 	a.addErrorAtTokenWithMetadataAndPrevious(token, record.Token, diagnostics.BorrowOwnershipEndConflict, borrowedArenaHelp,
-		"cannot move arena %s out of its binding while it controls borrowed backing %s", name, record.Root)
+		"cannot move arena %s out of its binding while it controls borrowed backing %s", name, arenaBackingDisplay(record))
 	return true
 }
 
@@ -557,7 +555,7 @@ func (a *Analyzer) rejectBorrowedArenaReturn(value ast.Expression) bool {
 		}
 		if record, borrowed := a.arenaBorrowedBacking(value.Value); borrowed {
 			a.addErrorAtTokenWithMetadataAndPrevious(value.Token, record.Token, diagnostics.BorrowEscape, borrowedArenaHelp,
-				"cannot return arena %s: its backing %s is borrowed here and must outlive the Arena", value.Value, record.Root)
+				"cannot return arena %s: its backing %s is borrowed here and must outlive the Arena", value.Value, arenaBackingDisplay(record))
 			return true
 		}
 	case *ast.CallExpression:

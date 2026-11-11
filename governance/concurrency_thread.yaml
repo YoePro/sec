@@ -84,9 +84,9 @@ integrations:
       - "ThreadObserver has no hidden Wait or selectable completion capability: ordinary Wait calls and select operands are rejected with focused metadata-only/owner-join guidance. Observer copying, metadata reads and explicit discard remain valid, while LSP exposes only the existing canonical metadata catalog without owner or Wait operations (2026-11-09; threads.md sections 40 and 43)"
       - CpuSet is a reserved nominal opaque copyable core identity, distinct from set[uint], with the canonical positional literal CpuSet { index, ... }. Sema validates uint components, non-negative selected-target uint range and compile-time-proven duplicates (S1214 with the earlier index); named fields, spreads and generic arguments are rejected. Trusted source refinement accepts only type CpuSet and retains declaration provenance. CLI/LSP share the type and diagnostics, formatting is canonical/idempotent, and native IR remains explicitly unsupported for type CpuSet rather than treating it as an empty struct. No target CPU count or affinity capability is inferred from the host; applying affinity and physical representation remain separate work (2026-11-10).
       - "ThreadStorage is a reserved non-generic nominal @noCopy core storage owner. ThreadStorage(capacity) validates one compile-time uint capacity through canonical semantic CTE and records detached constructor capacity evidence independently of type identity; value/type argument arity, runtime/negative/wrong-type capacities and legacy ThreadStorage[T] are rejected. Trusted source metadata must match the canonical private _capacity: uint struct. Public Capacity is read-only and shared by Sema/LSP; implicit copies, source struct fabrication and private-field access fail while ordinary explicit moves remain valid. Native emission retains its named unsupported boundary until target-aligned backing is implemented; no allocation or backing-layout implementation is claimed (2026-11-10)."
+      - "Named ThreadConfig consumption completed 2026-11-11 (threads.md sections 10(3-4),20; spawn.md section 4(1),(10)): parser/AST retain the named configuration separately from the child callable in spawn thread <-config Work(), including tracked struct projections. The configuration is resolved in the spawning execution before child argument preparation, then ordinary consuming-argument validation publishes canonical move/partial-move facts and source availability. Missing markers use S1007 and normal ownership guidance; reused, double-selected, borrowed or wrong-type configurations are rejected. Availability is checked again after child arguments without re-evaluating configuration; invalid source preparation restores config and child-argument move/borrow state. Specialized helpers and shared traversals preserve self-use, parameter demand and pitfall analysis. Parser recovery keeps following syntax after a missing callable; formatter preserves/idempotently round-trips the marker and operand boundary; compiler/LSP share seven negative source cases. Exact ThreadConfig fields/noCopy/defaults, inline block sugar, fallible Result typing, runtime creation rollback/storage lifecycle and lowering remain separate existing items; emit-ir still rejects type ThreadConfig explicitly."
     remaining:
       - implement exact @noCopy ThreadConfig and contextual inline defaults
-      - implement named ThreadConfig consumption through ordinary <- semantics
       - implement explicit storage borrow transfer/release across spawn, join, detach and failure cleanup
       - implement raw spawn thread Result[Thread[T], ThreadSpawnError]
       - add the remaining CamelCase Thread[T] members Value, Panic, and Termination with terminal-availability analysis, and Platform with target-resolved ThreadPlatform
@@ -148,7 +148,7 @@ integrations:
     corrections_applied:
       - rules/corrections/applied/threads-v2-cross-rulebook-correction-20260924.md
       - rules/corrections/applied/thread-local-v2-cross-rulebook-correction-20260927.md
-    revised: "2026-11-10"
+    revised: "2026-11-11"
     code:
       - internal/sema/thread_lifecycle_errors.go
       - internal/sema/types.go
@@ -168,6 +168,11 @@ integrations:
       - internal/diagnostics/diagnostics.go
       - internal/sema/thread_storage.go
       - internal/sema/compiler_known_members.go
+      - internal/parser/spawn_configuration.go
+      - internal/sema/thread_spawn_configuration.go
+      - internal/sema/parameter_usage.go
+      - internal/sema/pitfall_analysis.go
+      - internal/sema/pitfall_endpoint_flow.go
     tests:
       - internal/sema/thread_lifecycle_errors_test.go
       - cmd/compiler/thread_lifecycle_errors_test.go
@@ -217,7 +222,27 @@ integrations:
       - testdata/sema/thread_storage_valid.sec
       - testdata/sema/thread_storage_invalid.sec
       - testdata/sema/thread_storage_core.sec
+      - internal/parser/spawn_configuration_test.go
+      - internal/formatter/spawn_configuration_test.go
+      - internal/sema/thread_spawn_configuration_test.go
+      - cmd/compiler/thread_spawn_configuration_test.go
+      - cmd/lsp/thread_spawn_configuration_test.go
+      - testdata/sema/thread_named_config_valid.sec
+      - testdata/sema/thread_named_config_invalid.sec
+      - testdata/parser/thread_config_missing_callable_invalid.sec
     verification:
+      - command: go test -p 4 ./internal/sema ./internal/ir/semantic -count=1 -timeout=150s
+        result: "passed 2026-11-11 after final handoff synchronization with Claude semantic CTE release: complete Sema 22.088s, Semantic IR 7.151s."
+      - command: go test -race -p 4 ./internal/parser ./internal/formatter ./internal/sema ./cmd/compiler ./cmd/lsp -run NamedThreadConfiguration -count=1 -timeout=120s
+        result: "passed 2026-11-11: final parser 1.013s, formatter 1.057s, Sema 1.055s, compiler 11.130s, LSP 13.996s; whole/projected configuration move facts, seven invalid uses, child/config rollback, missing callable recovery and registered JSON/LSP consuming diagnostics."
+      - command: go vet -p 4 ./internal/ast ./internal/parser ./internal/formatter ./internal/sema ./internal/ir/semantic ./cmd/compiler ./cmd/lsp
+        result: passed 2026-11-11; final compiler-only vet also passed after fixing the JSON assertion in its new test.
+      - command: go test -short -p 4 ./internal/parser ./internal/formatter -count=1 -timeout=120s
+        result: "passed 2026-11-11: parser 30.777s, formatter 3.613s."
+      - command: go test -p 4 ./internal/sema ./internal/ir/semantic -count=1 -timeout=150s
+        result: "passed 2026-11-11: complete Sema 23.094s, Semantic IR 9.218s."
+      - command: go test -race -p 4 ./cmd/compiler -run '^TestNamedThreadConfigurationCLI$' -count=1 -timeout=90s
+        result: "passed 2026-11-11: compiler 11.200s; valid source, seven JSON errors, registered S1007 with consuming guidance, no invalid IR artifact."
       - command: go vet -p 4 ./internal/sema ./internal/diagnostics ./cmd/compiler ./cmd/lsp
         result: passed on 2026-11-10 after non-generic ThreadStorage frontend integration
       - command: go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run "^TestThreadStorage" -count=1

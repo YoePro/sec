@@ -1,0 +1,70 @@
+module nestedarena
+
+fn TemporaryBacking() Result[void, AllocationError] {
+    let mut parent := try Arena.WithCapacity(128u)
+    let mut child := Arena.FromBuffer(try parent.Alloc[byte](64u))
+    parent.Reset()
+    child.Release()
+    return Ok()
+}
+
+fn ResetParent() Result[void, AllocationError] {
+    let mut parent := try Arena.WithCapacity(128u)
+    let buffer := try parent.Alloc[byte](64u)
+    let mut child := Arena.FromBuffer(buffer)
+    parent.Reset()
+    child.Release()
+    return Ok()
+}
+
+fn ReleaseParent() Result[void, AllocationError] {
+    let mut parent := try Arena.WithCapacity(128u)
+    let buffer := try parent.Alloc[byte](64u)
+    let mut child := Arena.FromBuffer(buffer)
+    parent.Release()
+    child.Release()
+    return Ok()
+}
+
+fn Grandchild() Result[void, AllocationError] {
+    let mut parent := try Arena.WithCapacity(128u)
+    let buffer := try parent.Alloc[byte](64u)
+    let mut child := Arena.FromBuffer(buffer)
+    let nestedBuffer := try child.Alloc[byte](16u)
+    let mut grandchild := Arena.FromBuffer(nestedBuffer)
+    child.Release()
+    grandchild.Release()
+    return Ok()
+}
+
+fn ResetChildRetainsParent() Result[void, AllocationError] {
+    let mut parent := try Arena.WithCapacity(128u)
+    let mut child := Arena.FromBuffer(try parent.Alloc[byte](64u))
+    child.Reset()
+    parent.Reset()
+    child.Release()
+    return Ok()
+}
+
+fn MovedChild() Result[void, AllocationError] {
+    let mut parent := try Arena.WithCapacity(128u)
+    let child := Arena.FromBuffer(try parent.Alloc[byte](64u))
+    let mut owner :<- child
+    parent.Release()
+    owner.Release()
+    return Ok()
+}
+
+fn MovedParent() Result[void, AllocationError] {
+    let mut parent := try Arena.WithCapacity(128u)
+    let mut child := Arena.FromBuffer(try parent.Alloc[byte](64u))
+    let mut owner :<- parent
+    owner.Reset()
+    child.Release()
+    return Ok()
+}
+
+fn EscapeParent(parent: ref mut Arena) Result[Arena, AllocationError] {
+    let child := Arena.FromBuffer(try parent.Alloc[byte](16u))
+    return Ok(<-child)
+}

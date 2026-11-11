@@ -48,6 +48,7 @@ func TestFormatPreservesOpaqueMutexDeclarations(t *testing.T) {
 // TestFormatPreservesMutexContextDeclarations keeps the opaque Context and
 // operation-local error marker intact before and after formatting.
 // Rules: rules/concurrency/mutex.md — §§7–8;
+// rules/concurrency/cancellation.md — §§35–36;
 // rules/tooling/formatter.md — "Attributes", "Type declarations".
 func TestFormatPreservesMutexContextDeclarations(t *testing.T) {
 	data, err := os.ReadFile("../../sec/core/context.sec")
@@ -69,7 +70,7 @@ func TestFormatPreservesMutexContextDeclarations(t *testing.T) {
 			switch declaration := statement.(type) {
 			case *ast.TypeDeclStatement:
 				owners++
-				if declaration.Name.Value != "Context" || declaration.BaseType != nil || declaration.StructType != nil || len(declaration.GenericParameters) != 0 || len(declaration.Attributes) != 1 || declaration.Attributes[0].Name.Value != "noCopy" {
+				if (declaration.Name.Value != "Context" && declaration.Name.Value != "ContextSource") || declaration.BaseType != nil || declaration.StructType != nil || len(declaration.GenericParameters) != 0 || len(declaration.Attributes) != 1 || declaration.Attributes[0].Name.Value != "noCopy" {
 					t.Fatal(declaration)
 				}
 			case *ast.EnumDeclaration:
@@ -79,7 +80,7 @@ func TestFormatPreservesMutexContextDeclarations(t *testing.T) {
 				}
 			}
 		}
-		if owners != 1 || errors != 1 {
+		if owners != 2 || errors != 1 {
 			t.Fatal(owners, errors)
 		}
 	}

@@ -1,0 +1,5 @@
+module scopefixture
+
+test "broken stdlib test" {
+    UnknownTestOnlyFunction()
+}

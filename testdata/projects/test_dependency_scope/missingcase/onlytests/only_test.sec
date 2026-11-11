@@ -1,0 +1,5 @@
+module onlytests
+
+test "not a production dependency" {
+    testing.Expect(true)
+}

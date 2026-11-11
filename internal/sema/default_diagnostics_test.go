@@ -115,7 +115,6 @@ func TestContractDiagnosticsUseStableIdentities(t *testing.T) {
 		diagnostics.IncompatibleMembershipValue,
 		diagnostics.ValueViolatesContract,
 		diagnostics.ValueViolatesContract,
-		diagnostics.ConstrainedAssignmentRequiresTry,
 	}
 	if len(errors) != len(want) {
 		t.Fatalf("errors = %v, want %d", errors, len(want))

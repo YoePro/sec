@@ -19,6 +19,7 @@ func NewAnalyzerWithScalarPlan(plan layout.ResolvedScalarPlan) *Analyzer {
 //   - rules/memory/allocation.md — §22; rules/platform/target_profiles.md — §31
 func NewAnalyzerWithScalarPlanAndDepth(plan layout.ResolvedScalarPlan, depth AnalysisDepth) *Analyzer {
 	analyzer := NewAnalyzerWithDepth(depth)
+	analyzer.rebuildBase = func() *Analyzer { return NewAnalyzerWithScalarPlanAndDepth(plan, depth) }
 	analyzer.SetAllocationProfile(plan.Profile)
 	analyzer.referencePolicy = plan.References
 	if plan.PointerWidthBits != 32 && plan.PointerWidthBits != 64 {

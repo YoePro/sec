@@ -1,0 +1,9 @@
+module main
+
+fn Broken(config: ThreadConfig) void {
+    let worker := spawn thread <-config
+    let following := 1
+    discard following
+}
+
+fn After() void {}

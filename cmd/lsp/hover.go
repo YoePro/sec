@@ -27,6 +27,13 @@ func hoverForSourceWithParameterInsight(uri string, text string, pos position, i
 	defer release()
 	defer func() {
 		if token, ok := sourceTokenAtPosition(uri, text, pos); ok {
+			if fact, ok := analyzer.RawPointerFactAt(token.File, token.Line, token.Column); ok {
+				if !found {
+					result = hoverResult{Contents: markupContent{Kind: "markdown"}, Range: tokenRange(text, token)}
+					found = true
+				}
+				result.Contents.Value += "\n\n" + fact.Display()
+			}
 			if suffix := shadowContractHover(analyzer, token); suffix != "" {
 				if !found {
 					result = hoverResult{Contents: markupContent{Kind: "markdown", Value: "Register member"}, Range: tokenRange(text, token)}
@@ -37,6 +44,62 @@ func hoverForSourceWithParameterInsight(uri string, text string, pos position, i
 			if suffix := inactiveArmHover(program, analyzer, token); suffix != "" {
 				if !found {
 					result = hoverResult{Contents: markupContent{Kind: "markdown", Value: "Match arm"}, Range: tokenRange(text, token)}
+					found = true
+				}
+				result.Contents.Value += suffix
+			}
+			if suffix := ownershipOperationHover(analyzer, token); suffix != "" {
+				if !found {
+					result = hoverResult{Contents: markupContent{Kind: "markdown", Value: "Ownership transfer"}, Range: tokenRange(text, token)}
+					found = true
+				}
+				result.Contents.Value += suffix
+			}
+			if suffix := compileTimeValueHover(analyzer, token); suffix != "" {
+				if !found {
+					result = hoverResult{Contents: markupContent{Kind: "markdown", Value: "Compile-time value"}, Range: tokenRange(text, token)}
+					found = true
+				}
+				result.Contents.Value += suffix
+			}
+			if suffix := interfaceMemberHover(analyzer, token); suffix != "" {
+				if !found {
+					result = hoverResult{Contents: markupContent{Kind: "markdown", Value: "Interface member"}, Range: tokenRange(text, token)}
+					found = true
+				}
+				result.Contents.Value += suffix
+			}
+			if suffix := lifetimeHover(analyzer, token); suffix != "" {
+				if !found {
+					result = hoverResult{Contents: markupContent{Kind: "markdown", Value: "Lifetime"}, Range: tokenRange(text, token)}
+					found = true
+				}
+				result.Contents.Value += suffix
+			}
+			if suffix := arenaHover(analyzer, token); suffix != "" {
+				if !found {
+					result = hoverResult{Contents: markupContent{Kind: "markdown", Value: "Arena"}, Range: tokenRange(text, token)}
+					found = true
+				}
+				result.Contents.Value += suffix
+			}
+			if suffix := destructionHover(analyzer, token); suffix != "" {
+				if !found {
+					result = hoverResult{Contents: markupContent{Kind: "markdown", Value: "Destruction"}, Range: tokenRange(text, token)}
+					found = true
+				}
+				result.Contents.Value += suffix
+			}
+			if suffix := borrowHover(analyzer, token); suffix != "" {
+				if !found {
+					result = hoverResult{Contents: markupContent{Kind: "markdown", Value: "Borrow"}, Range: tokenRange(text, token)}
+					found = true
+				}
+				result.Contents.Value += suffix
+			}
+			if suffix := placeUseHover(analyzer, token); suffix != "" {
+				if !found {
+					result = hoverResult{Contents: markupContent{Kind: "markdown", Value: "Place use"}, Range: tokenRange(text, token)}
 					found = true
 				}
 				result.Contents.Value += suffix

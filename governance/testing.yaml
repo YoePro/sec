@@ -6,7 +6,7 @@ integrations:
     area: language-testing-and-tooling
     status: partial
     repository_baseline: 814a584
-    revised: "2026-10-11"
+    revised: "2026-11-11"
     summary: >-
       Implements the canonical Sec 0.1 source testing model: *_test.sec source
       selection, top-level test declarations, compiler-known testing operations,
@@ -50,6 +50,8 @@ integrations:
       - internal/sema/test_dependency_direction.go
       - cmd/compiler/test_command.go
       - internal/diagnostics/diagnostics.go
+      - cmd/compiler/import_source_selection.go
+      - cmd/compiler/import_sources.go
     tests:
       - internal/parser/parser_test.go
       - internal/cst/roles_test.go
@@ -61,6 +63,7 @@ integrations:
       - cmd/compiler/test_command_test.go
       - internal/sema/test_dependency_direction_test.go
       - cmd/compiler/test_command_test.go
+      - cmd/compiler/test_dependency_scope_test.go
     implemented:
       - "Standard-library import spelling synchronized (verified 2026-11-10): rules/projects/modules.md § 8 and projects.md § 16(2) use direct canonical logical paths such as `import \"io\"` and `import \"net/http\"`; no source-visible std/ prefix remains in either rulebook"
       - contextual top-level `test "name" { ... }` recognition retains a distinct ast.TestDeclaration with its source name and ordinary Sec body while `test` remains an identifier outside the declaration shape
@@ -80,6 +83,7 @@ integrations:
       - "first sec test command (2026-10-09, cmd/compiler/test_command.go): selects *_test.sec files from explicit files, directories and globs or, without arguments, from the project root with .sec/sec.toml; compiles each directory's test files with their white-box production module without aborting on the first failing module; discovers top-level tests from Sema ResolvedTests metadata; filters by --run regular expression; --list discovers and compiles only; reports a structured per-test model (module, name, identity, source location, status) as human lines or --json; keeps compilation failure, execution unavailable and test outcomes distinct with exit statuses 3, 4 and 1, and reports an empty selection or an unmatched filter explicitly"
       - "test-only dependency direction (2026-10-11, testing.md §§ 25, 26.2, 40.1): every resolved name from production source to a declaration in *_test.sec source is mandatory S1145 testing.production-dependency-on-test with the test declaration as related location, reported once per use (members of a test-only type are covered by the type) while Test -> Production and Test -> Test stay valid; sec test validates the production graph of the tested directory module on its own (its production files and their own imports, no test source) before the TestCompilationPlan, so neither a test-only helper nor a test-only import can make production source compile (§ 25.3); imports are still flattened program-wide, so source-file-local import bindings remain frontend.modules work"
       - "testing namespace completion (2026-10-11, testing.md § 11.4): inside a test body, LSP completion after `testing.` lists exactly the Sema-owned implemented testing surface (sema.TestingNamespaceMembers: Pass, Fail, Skip, Log, Expect, Require, ExpectEqual, RequireEqual, one item per overload with its signature) filtered by the typed prefix and nothing else; outside a test body testing members are not offered; Run and TestResult appear once Sema implements them (cmd/lsp/testing_completion.go, TestTestingNamespaceCompletionListsOnlyTestingMembers)"
+      - "Scoped test dependency isolation (2026-11-11): automatic recursive imports and implicit core loading exclude *_test.sec before identity validation, parsing and analysis; direct/transitive project, standard-library and platform dependencies contribute production sources only. Explicit file selections retain dependency tests and their parser/Sema failures; test-only imports remain unresolved with S1051. CLI JSON listing and name filters retain only explicitly selected tests (rules/tooling/testing.md sections 4.3-4.4, 25, 28.4)."
     remaining:
       - require TestCompilationPlan context in addition to the implemented *_test.sec filename check, complete remaining declaration diagnostics, and callable-effect facts
       - add TestCompilationPlan as an explicit compilation mode and keep production validity independent from test-only declarations
@@ -90,7 +94,6 @@ integrations:
       - implement synchronous hierarchical subtests, runtime sibling-name validation, child result attribution, and child-failure propagation to the parent
       - generate a static selected-test harness without runtime reflection, constructor registration, or a mandatory heap
       - "complete sec test: project-model source universe (production source directories and tests/ instead of a recursive scan of the project root), canonical module/path selectors once the CLI/project model defines them, fail-fast scheduling, execution through the harness with PASS/FAIL/SKIP outcomes and failure records, and the test-only dependency direction"
-      - keep dependency module tests out of a scoped test run unless those tests are explicitly selected
       - support selection before final linking so constrained target artifacts may include only the selected test set and required code
       - add hosted native TestExecutionProvider support and distinguish CompilationFailed, ExecutionUnavailable, ExecutionFailed, and completed test outcomes
       - define execution-provider interfaces sufficient for later simulator, emulator, debug-probe, hardware-farm, reset, fault, and timeout reporting without making transport a source-language rule
@@ -108,6 +111,12 @@ integrations:
       - explicit source-level per-test timeout syntax
       - testing.Parallel and runner-controlled source-visible parallel scheduling
     verification:
+      - command: go test -race -p 4 ./cmd/compiler -run ^TestSecTestDependencyScope$ -count=1 -timeout=60s
+        result: passed 2026-11-11 (5.208s); scoped dependency isolation and explicit selection regression under the race detector.
+      - command: go vet -p 4 ./cmd/compiler
+        result: passed 2026-11-11.
+      - command: go test -p 4 ./cmd/compiler -run 'TestSecTest|Import|CoreLibrary' -count=1 -timeout=120s
+        result: passed 2026-11-11 (16.863s); regression reproduced dependency parser leakage before fix, now selected tests compile/list successfully despite malformed direct/platform/core tests and semantically invalid transitive/stdlib tests; explicit invalid selections fail, explicit valid dependency selection succeeds, production check succeeds, and test-only dependency import reports S1051.
       - command: go test ./cmd/compiler -run TestSecTest -count=1
         result: passed on 2026-10-09 with listing, unavailable execution, JSON and regexp selection, unmatched filters, compilation failure, test-boundary try, and selection errors; sec test --list over sec/stdlib/str with the two \u escapes of split_test.sec corrected and join files removed discovers 35 tests
       - command: go test ./internal/sema -run 'TestBodylessTryPropagatesToTheTestBoundary|TestTestBoundaryDoesNotExtendBeyondTheTestBody' -count=1

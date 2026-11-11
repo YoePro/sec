@@ -298,6 +298,25 @@ const (
 	// Rules: rules/projects/modules.md — §§ 14, 21.
 	DuplicateImport = "S1217"
 	SelfImport      = "S1218"
+	// ImportQualifierCollision rejects two imports binding one local qualifier.
+	ImportQualifierCollision = "S1220"
+	// DuplicateDeclaration rejects a same-signature callable declared twice, a
+	// member colliding with another member category of the same name, and a
+	// repeated associated member, across primary and extension fragments.
+	DuplicateDeclaration = "S1221"
+	// ArenaUseAfterInvalidation rejects a use of a reference or slice into
+	// Arena storage after the Reset/Release that ended its epoch.
+	// Rules: rules/memory/arena.md — §§ 38, 44(1).
+	ArenaUseAfterInvalidation = "S1222"
+	// Required semantic compile-time evaluation outcomes that executed but
+	// established no value (compile_time_evaluation.md §§ 47–49, 54, 72):
+	// a reached assert/panic/semantic operation failure or non-CTE value,
+	// a forbidden executed effect, an exhausted evaluator budget and a
+	// compile-time value dependency cycle.
+	CompileTimeEvaluationFailed = "S1223"
+	CompileTimeForbiddenEffect  = "S1224"
+	CompileTimeResourceLimit    = "S1225"
+	CompileTimeDependencyCycle  = "S1226"
 	// Borrow conflict identities follow requested semantic actions, preserving
 	// origins and mentor explanations rather than classifying rendered prose.
 	// Rules: rules/memory/borrowing.md — §§7,8,9,12,15,21–23,32–33;
@@ -459,6 +478,13 @@ const (
 	// handling a reachable empty union state without an explicit empty arm.
 	// Rules: rules/declarations/unions.md — §10.4.
 	ImplicitEmptyCatchAll = "A2009"
+	// UncheckedContractMayPanic explains a run-time contract check outside
+	// try: a conversion into, or a compound update of, a constrained named
+	// type that panics with ContractFailure on violation. Owner decision
+	// 2026-11-11: the untried form is valid; try makes the failure a handled
+	// ContractError.
+	// Rules: rules/types/contracts.md — § 12; rules/errors/panic.md — ContractFailure.
+	UncheckedContractMayPanic = "A2011"
 	// ImplicitDiscardedResult explains a legal ordinary call-result discard.
 	// Rules: rules/control-flow/discard.md — §§12,37–38.
 	ImplicitDiscardedResult = "A3001"
@@ -488,6 +514,7 @@ var registry = map[string]Definition{
 	OmittedPayloadPattern:                 {ID: OmittedPayloadPattern, Name: "union.omitted-payload-pattern", Family: "union", DefaultSeverity: SeverityInformation, Mandatory: false},
 	InactiveMatchArm:                      {ID: InactiveMatchArm, Name: "control-flow.inactive-match-arm", Family: "control-flow", DefaultSeverity: SeverityInformation, Mandatory: false},
 	ImplicitEmptyCatchAll:                 {ID: ImplicitEmptyCatchAll, Name: "union.implicit-empty-catch-all", Family: "union", DefaultSeverity: SeverityWarning, Mandatory: false},
+	UncheckedContractMayPanic:             {ID: UncheckedContractMayPanic, Name: "contracts.unchecked-contract-may-panic", Family: "types", DefaultSeverity: SeverityInformation, Mandatory: false},
 	DurationConversionInvalid:             {ID: DurationConversionInvalid, Name: "temporal.invalid-duration-conversion", Family: "temporal", DefaultSeverity: SeverityError, Mandatory: true},
 	UnionVariantPayloadRequired:           {ID: UnionVariantPayloadRequired, Name: "union.variant-payload-required", Family: "union", DefaultSeverity: SeverityError, Mandatory: true},
 	UnionPatternPayloadBindingRequired:    {ID: UnionPatternPayloadBindingRequired, Name: "union.pattern-payload-binding-required", Family: "union", DefaultSeverity: SeverityError, Mandatory: true, Retired: true},
@@ -499,6 +526,13 @@ var registry = map[string]Definition{
 	ImportedModuleMismatch:                {ID: ImportedModuleMismatch, Name: "modules.inconsistent-source-module", Family: "modules", DefaultSeverity: SeverityError, Mandatory: true},
 	DuplicateImport:                       {ID: DuplicateImport, Name: "modules.duplicate-import", Family: "modules", DefaultSeverity: SeverityError, Mandatory: true},
 	SelfImport:                            {ID: SelfImport, Name: "modules.self-import", Family: "modules", DefaultSeverity: SeverityError, Mandatory: true},
+	ImportQualifierCollision:              {ID: ImportQualifierCollision, Name: "modules.import-qualifier-collision", Family: "modules", DefaultSeverity: SeverityError, Mandatory: true},
+	DuplicateDeclaration:                  {ID: DuplicateDeclaration, Name: "declarations.duplicate-declaration", Family: "declarations", DefaultSeverity: SeverityError, Mandatory: true},
+	ArenaUseAfterInvalidation:             {ID: ArenaUseAfterInvalidation, Name: "arena.use-after-invalidation", Family: "arena", DefaultSeverity: SeverityError, Mandatory: true},
+	CompileTimeEvaluationFailed:           {ID: CompileTimeEvaluationFailed, Name: "compile-time.evaluation-failed", Family: "compile-time", DefaultSeverity: SeverityError, Mandatory: true},
+	CompileTimeForbiddenEffect:            {ID: CompileTimeForbiddenEffect, Name: "compile-time.forbidden-effect", Family: "compile-time", DefaultSeverity: SeverityError, Mandatory: true},
+	CompileTimeResourceLimit:              {ID: CompileTimeResourceLimit, Name: "compile-time.resource-limit", Family: "compile-time", DefaultSeverity: SeverityError, Mandatory: true},
+	CompileTimeDependencyCycle:            {ID: CompileTimeDependencyCycle, Name: "compile-time.dependency-cycle", Family: "compile-time", DefaultSeverity: SeverityError, Mandatory: true},
 	BorrowExplicitRefRequired:             {ID: BorrowExplicitRefRequired, Name: "borrowing.explicit-ref-required", Family: "borrowing", DefaultSeverity: SeverityError, Mandatory: true},
 	AtomicOrderNotCompileTime:             {ID: AtomicOrderNotCompileTime, Name: "atomic.order-not-compile-time", Family: "atomic", DefaultSeverity: SeverityError, Mandatory: true},
 	AtomicInvalidMemoryOrder:              {ID: AtomicInvalidMemoryOrder, Name: "atomic.invalid-memory-order", Family: "atomic", DefaultSeverity: SeverityError, Mandatory: true},
@@ -607,7 +641,7 @@ var registry = map[string]Definition{
 	InvalidContractArgument:                       {ID: InvalidContractArgument, Name: "types.invalid-contract-argument", Family: "types", DefaultSeverity: SeverityError, Mandatory: true},
 	IncompatibleMembershipValue:                   {ID: IncompatibleMembershipValue, Name: "types.incompatible-in-contract-value", Family: "types", DefaultSeverity: SeverityError, Mandatory: true},
 	ValueViolatesContract:                         {ID: ValueViolatesContract, Name: "types.value-violates-contract", Family: "types", DefaultSeverity: SeverityError, Mandatory: true},
-	ConstrainedAssignmentRequiresTry:              {ID: ConstrainedAssignmentRequiresTry, Name: "types.constrained-assignment-requires-try", Family: "types", DefaultSeverity: SeverityError, Mandatory: true},
+	ConstrainedAssignmentRequiresTry:              {ID: ConstrainedAssignmentRequiresTry, Name: "types.constrained-assignment-requires-try", Family: "types", DefaultSeverity: SeverityError, Mandatory: true, Retired: true},
 	AuthoritativeMemberReplacement:                {ID: AuthoritativeMemberReplacement, Name: "members.authoritative-compiler-property", Family: "members", DefaultSeverity: SeverityError, Mandatory: true},
 	RecursiveUnionLayout:                          {ID: RecursiveUnionLayout, Name: "union.recursive-by-value-layout", Family: "union", DefaultSeverity: SeverityError, Mandatory: true},
 	ArenaUnsizedAllocationType:                    {ID: ArenaUnsizedAllocationType, Name: "arena.unsized-allocation-type", Family: "arena", DefaultSeverity: SeverityError, Mandatory: true},

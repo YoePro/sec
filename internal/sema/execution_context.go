@@ -38,6 +38,7 @@ func (a *Analyzer) inferExecutionContextCall(expr *ast.CallExpression) (Type, ex
 		known, found := compilerKnownMember(a.types[owner.Value], "Yield", true)
 		if found {
 			a.compilerKnownMemberFacts[sourceTokenLocation(member.Property.Token)] = known
+			a.recordSchedulingPoint(expr, known, member.Property.Token)
 			result = known.Result
 		}
 	}

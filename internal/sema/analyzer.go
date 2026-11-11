@@ -102,6 +102,7 @@ type Analyzer struct {
 	completionSymbols            *symbolTable
 	predeclaredStatic            map[sourceTokenKey]bool
 	expressionTypes              map[ast.Expression]Type
+	rawPointerToolingFacts       map[sourceTokenKey]RawPointerFact
 	expectedExpressionTypes      map[ast.Expression]Type
 	bindingIDs                   map[sourceTokenKey]BindingID
 	bindingFacts                 map[sourceTokenKey]ResolvedBinding
@@ -484,13 +485,64 @@ type Analyzer struct {
 	// validated source expression (transfer_plans.go).
 	resolvedTransferPlans map[ast.Expression]ResolvedTransferPlan
 	transferDestinations  map[transferDestinationKey]TransferDestinationID
+
+	// firstIterationBranchDepths counts, per scope depth, the open branch
+	// joins that merge the first-iteration domain (constantBranches).
+	firstIterationBranchDepths map[int]int
+
+	// currentVersionTrackedBindings are changed only by direct assignment, so
+	// versioned proof facts on them stay valid until their next write.
+	currentVersionTrackedBindings map[string]bool
+	// contractedMemberTryTargets marks try assignments whose field or
+	// property target has a constrained named type, so the statement's
+	// error channel is ContractError (contracts.md § 12).
+	contractedMemberTryTargets map[*ast.AssignmentStatement]bool
+	// uncheckedContractSites describes may-panic contract effect sites for
+	// the A2011 advisory, keyed by source location.
+	uncheckedContractSites map[sourceTokenKey]uncheckedContractSite
+	// placeUses are the availability facts of accepted local reads,
+	// incomingMoves the move that last initialized each root, and
+	// loopStarts the enclosing loop statements (copy_move.md § 29(2)).
+	placeUses     map[sourceTokenKey]ResolvedPlaceUse
+	incomingMoves map[PlaceRootID]ast.Expression
+	loopStarts    []lexer.Token
+	// borrowHolders links borrow creation sites to their holder binding.
+	borrowHolders map[sourceTokenKey]borrowHolderFact
+	// deferredUses are the defer-body uses of outer bindings, keyed by
+	// the binding's declaration.
+	deferredUses map[sourceTokenKey][]lexer.Token
+	// arenaCreations and arenaUses are the Arena tooling facts.
+	arenaCreations map[string]ArenaCreationFact
+	arenaUses      map[sourceTokenKey]arenaUseFact
+	// lifetimeFacts and arenaInvalidations are the lifetime tooling facts.
+	lifetimeFacts      map[sourceTokenKey]ResolvedLifetimeFact
+	arenaInvalidations map[string][]ArenaInvalidation
+	// interfaceRequirementOwners names the interface that declares each
+	// requirement, keyed by the requirement's declaration token.
+	interfaceRequirementOwners map[sourceTokenKey]string
+	// Semantic compile-time evaluation (cte_requests.go): the constructor
+	// and recorded configuration to rebuild an equivalent analyzer, the
+	// probe flag, the probe's pending required requests and the outcomes
+	// this analysis reads.
+	rebuildBase            func() *Analyzer
+	configurationReplay    []func(*Analyzer)
+	replayingConfiguration bool
+	cteProbe               bool
+	ctePending             []ctePendingRequest
+	cteResults             map[ast.Expression]cteResult
+	deferredStatics        []deferredStaticInitializer
+	// schedulingPoints separates logical scheduling/cancellation from physical
+	// scheduler hints at successfully resolved yield calls (scheduling.md §15).
+	schedulingPoints map[*ast.CallExpression]ResolvedSchedulingPoint
 }
 
 type borrowKind string
 
 const (
-	sharedBorrow               borrowKind = "shared"
-	mutableBorrow              borrowKind = "mutable"
+	sharedBorrow  borrowKind = "shared"
+	mutableBorrow borrowKind = "mutable"
+	// rules/memory/arena.md §51: validity dependency, not an exclusive borrow of the Arena owner.
+	arenaParentDependency      borrowKind = "arena-parent-dependency"
 	deferredUse                borrowKind = "deferred-use"
 	deferredReferenceHolderUse borrowKind = "deferred-reference-holder-use"
 )
@@ -499,6 +551,7 @@ const dynamicArrayLength int64 = -1
 const maxReferenceOriginAlternatives = 16
 
 type borrowRecord struct {
+	ArenaOwner  string // Display name for a parent-domain dependency; Root keeps canonical domain identity.
 	Root        string
 	Place       Place
 	Holder      string
@@ -656,6 +709,9 @@ func (a *Analyzer) AnalysisBudget() AnalysisBudget { return a.analysisBudget }
 // Rules: rules/compiler/compiler_analysis.md — §§9–10,14;
 // rules/compiler/compiler_pipeline.md — §§23(3), 27, 33(1).
 func (a *Analyzer) Analyze(program *ast.Program) []Error {
+	a.prepareCompileTimeEvaluation(program)
+	a.ctePending = nil
+	a.deferredStatics = nil
 	a.hardwareFacts = hardware.Facts{}
 	a.hardwareFactsValid = false
 	a.hardwareImports = nil
@@ -683,11 +739,21 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.ownedCleanupCancellations = nil
 	a.ownedCleanupDeclarations = nil
 	a.ownedCleanupAssignments = nil
+	a.placeUses = nil
+	a.incomingMoves = nil
+	a.loopStarts = nil
+	a.borrowHolders = nil
+	a.deferredUses = nil
+	a.arenaCreations = nil
+	a.arenaUses = nil
+	a.lifetimeFacts = nil
+	a.arenaInvalidations = nil
 	// P16 range identities belong to this analysis, never an earlier edit.
 	// Rules: rules/mlir/packages/sec-mlir-dialect_package16.md — § 26.
 	a.placeIdentities.sliceRanges = nil
 	a.analyzedContractNodes = map[ast.Contract]bool{}
 	a.errors = nil
+	a.rawPointerToolingFacts = nil
 	a.analysisSchedule = nil
 	a.trustedCoreSources = map[string]bool{}
 	if program != nil {
@@ -860,6 +926,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.noPanicLambdas = nil
 	a.noPanicLambdaSeen = map[*ast.LambdaExpression]bool{}
 	a.atomicFenceOrders = map[*ast.CallExpression]string{}
+	a.schedulingPoints = map[*ast.CallExpression]ResolvedSchedulingPoint{}
 	a.invalidInterfaceInheritance = map[string]bool{}
 	a.registerDeclarations = map[string]*ast.TypeDeclStatement{}
 	a.registerResolutionState = map[string]uint8{}
@@ -954,6 +1021,8 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	// Rules: rules/control-flow/discard.md — §§5,38.
 	a.emitExplicitDiscardAdvisories()
 	a.emitImplicitDiscardAdvisories()
+	a.emitUncheckedContractAdvisories()
+	a.executeDeferredStaticInitializers(program)
 	a.freezeStaticScalarInitializers()
 
 	return cloneSemanticErrors(a.errors)
@@ -1590,6 +1659,9 @@ func hasAttribute(attributes []*ast.Attribute, name string) bool {
 func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 	seenUnits := map[string]lexer.Token{}
 	a.withProgramModules(program, func(stmt ast.Statement) {
+		if a.registerPanicMetadataDeclaration(stmt) {
+			return
+		}
 		switch stmt := stmt.(type) {
 		case *ast.TypeDeclStatement:
 			if stmt.Name == nil {
@@ -3519,7 +3591,7 @@ func (a *Analyzer) registerFunctionDeclarationBody(fn *ast.FunctionDeclaration, 
 				a.addErrorAtTokenWithPrevious(fn.Name.Token, existing.Token, "function overloads cannot differ only by consuming parameter mode")
 				return
 			}
-			a.addErrorAtTokenWithPrevious(fn.Name.Token, existing.Token, "duplicate function %q with same signature", name)
+			a.addErrorAtTokenWithPreviousID(fn.Name.Token, existing.Token, diagnostics.DuplicateDeclaration, "duplicate function %q with same signature", name)
 			return
 		}
 	}
@@ -3933,7 +4005,7 @@ func expressionUsesSelf(expr ast.Expression) bool {
 			}
 		}
 	case *ast.SpawnExpression:
-		return expressionUsesSelf(expr.Value) || functionBodyUsesSelf(expr.Body)
+		return expressionUsesSelf(expr.Configuration) || expressionUsesSelf(expr.Value) || functionBodyUsesSelf(expr.Body)
 	case *ast.AwaitExpression:
 		return expressionUsesSelf(expr.Value)
 	}
@@ -5907,6 +5979,7 @@ func (a *Analyzer) analyzeInterfaceDeclarationBody(stmt *ast.InterfaceDeclaratio
 		}
 		methodGroups[requirement.Name] = append(methodGroups[requirement.Name], requirement)
 		iface.InterfaceMethods = append(iface.InterfaceMethods, requirement)
+		a.noteInterfaceRequirementOwner(requirement.Token, stmt.Name.Value)
 	}
 
 	seenProperties := map[string]lexer.Token{}
@@ -5939,6 +6012,7 @@ func (a *Analyzer) analyzeInterfaceDeclarationBody(stmt *ast.InterfaceDeclaratio
 			SetterFallible: property.SetterFallible,
 		})
 		a.recordInterfaceSetterContract(stmt.Name.Value, property)
+		a.noteInterfaceRequirementOwner(property.Name.Token, stmt.Name.Value)
 	}
 	seenEvents := map[string]lexer.Token{}
 	for _, event := range stmt.Events {
@@ -5961,6 +6035,7 @@ func (a *Analyzer) analyzeInterfaceDeclarationBody(stmt *ast.InterfaceDeclaratio
 			Payload: payload,
 			Token:   event.Name.Token,
 		})
+		a.noteInterfaceRequirementOwner(event.Name.Token, stmt.Name.Value)
 	}
 
 	a.mergeInheritedInterfaceRequirements(&iface)
@@ -6215,6 +6290,9 @@ func isPlainUnitNumericCarrier(typ Type, ref *ast.TypeReference) bool {
 }
 
 func (a *Analyzer) analyzeTypeDeclarationBody(stmt *ast.TypeDeclStatement) {
+	if (stmt.Name.Value == "PanicID" || stmt.Name.Value == "PanicInfo") && a.isTrustedCoreBuiltinDeclaration(stmt.Name.Value, stmt.Name.Token) {
+		return // Exact source metadata validated at registration (panic.md §13).
+	}
 	if (stmt.Name.Value == "ChannelRevokeResult" || stmt.Name.Value == "MessageDisposition") && a.isTrustedCoreBuiltinDeclaration(stmt.Name.Value, stmt.Name.Token) {
 		if stmt.Name.Value == "ChannelRevokeResult" {
 			typ := a.types[stmt.Name.Value]
@@ -6912,19 +6990,19 @@ func (a *Analyzer) registerImplStatement(stmt *ast.ImplStatement) {
 				continue
 			}
 			if _, exists := fields[name]; exists {
-				a.addErrorAtToken(fn.Name.Token, "method %s conflicts with field %s in %s", name, name, stmt.Target.Name)
+				a.addErrorAtTokenWithID(fn.Name.Token, diagnostics.DuplicateDeclaration, "method %s conflicts with field %s in %s", name, name, stmt.Target.Name)
 				continue
 			}
 			if _, exists := properties[name]; exists {
-				a.addErrorAtToken(fn.Name.Token, "method %s conflicts with property %s in %s", name, name, stmt.Target.Name)
+				a.addErrorAtTokenWithID(fn.Name.Token, diagnostics.DuplicateDeclaration, "method %s conflicts with property %s in %s", name, name, stmt.Target.Name)
 				continue
 			}
 			if _, exists := events[name]; exists {
-				a.addErrorAtToken(fn.Name.Token, "method %s conflicts with event %s in %s", name, name, stmt.Target.Name)
+				a.addErrorAtTokenWithID(fn.Name.Token, diagnostics.DuplicateDeclaration, "method %s conflicts with event %s in %s", name, name, stmt.Target.Name)
 				continue
 			}
 			if _, exists := a.types[stmt.Target.Name+"."+name]; exists {
-				a.addErrorAtToken(fn.Name.Token, "method %s conflicts with nested type %s in %s", name, name, stmt.Target.Name)
+				a.addErrorAtTokenWithID(fn.Name.Token, diagnostics.DuplicateDeclaration, "method %s conflicts with nested type %s in %s", name, name, stmt.Target.Name)
 				continue
 			}
 			a.checkConfusableInDomains(name, fn.Name.Token, fields, properties, events, methods, a.typeMethodTokens(stmt.Target.Name))
@@ -6963,7 +7041,7 @@ func (a *Analyzer) registerImplStatement(stmt *ast.ImplStatement) {
 			continue
 		}
 		if _, exists := fields[property.Name.Value]; exists {
-			a.addErrorAtToken(property.Name.Token, "property %s conflicts with field %s in %s", property.Name.Value, property.Name.Value, stmt.Target.Name)
+			a.addErrorAtTokenWithID(property.Name.Token, diagnostics.DuplicateDeclaration, "property %s conflicts with field %s in %s", property.Name.Value, property.Name.Value, stmt.Target.Name)
 			continue
 		}
 		if previous, exists := properties[property.Name.Value]; exists {
@@ -6972,15 +7050,15 @@ func (a *Analyzer) registerImplStatement(stmt *ast.ImplStatement) {
 			continue
 		}
 		if _, exists := events[property.Name.Value]; exists {
-			a.addErrorAtToken(property.Name.Token, "property %s conflicts with event %s in %s", property.Name.Value, property.Name.Value, stmt.Target.Name)
+			a.addErrorAtTokenWithID(property.Name.Token, diagnostics.DuplicateDeclaration, "property %s conflicts with event %s in %s", property.Name.Value, property.Name.Value, stmt.Target.Name)
 			continue
 		}
 		if _, exists := methods[property.Name.Value]; exists || len(a.functions[stmt.Target.Name+"."+property.Name.Value]) > 0 {
-			a.addErrorAtToken(property.Name.Token, "property %s conflicts with method %s in %s", property.Name.Value, property.Name.Value, stmt.Target.Name)
+			a.addErrorAtTokenWithID(property.Name.Token, diagnostics.DuplicateDeclaration, "property %s conflicts with method %s in %s", property.Name.Value, property.Name.Value, stmt.Target.Name)
 			continue
 		}
 		if _, exists := a.types[stmt.Target.Name+"."+property.Name.Value]; exists {
-			a.addErrorAtToken(property.Name.Token, "property %s conflicts with nested type %s in %s", property.Name.Value, property.Name.Value, stmt.Target.Name)
+			a.addErrorAtTokenWithID(property.Name.Token, diagnostics.DuplicateDeclaration, "property %s conflicts with nested type %s in %s", property.Name.Value, property.Name.Value, stmt.Target.Name)
 			continue
 		}
 		a.checkConfusableInDomains(property.Name.Value, property.Name.Token, fields, properties, events, methods, a.typeMethodTokens(stmt.Target.Name))
@@ -7109,7 +7187,7 @@ func (a *Analyzer) analyzeImplAssociatedLet(targetName string, stmt *ast.LetStat
 		}
 	}
 	if previous, exists := a.symbols.lookup(qualifiedName); exists {
-		a.addErrorAtToken(stmt.Name.Token, "associated member %s already declared at %d:%d, previous declaration at %d:%d", qualifiedName, stmt.Name.Token.Line, stmt.Name.Token.Column, previous.Token.Line, previous.Token.Column)
+		a.addErrorAtTokenWithPreviousID(stmt.Name.Token, previous.Token, diagnostics.DuplicateDeclaration, "associated member %s already declared", qualifiedName)
 		return
 	}
 	symbol := Symbol{Name: qualifiedName, Type: declaredType, Mutable: stmt.Mutable, Token: stmt.Name.Token, Storage: StorageOriginStatic, Local: false}
@@ -7125,19 +7203,19 @@ func (a *Analyzer) registerImplEventDeclaration(targetName string, target *Type,
 	}
 	name := event.Name.Value
 	if _, exists := fields[name]; exists {
-		a.addErrorAtToken(event.Name.Token, "event %s conflicts with field %s in %s", name, name, targetName)
+		a.addErrorAtTokenWithID(event.Name.Token, diagnostics.DuplicateDeclaration, "event %s conflicts with field %s in %s", name, name, targetName)
 		return
 	}
 	if _, exists := methods[name]; exists || len(a.functions[targetName+"."+name]) > 0 {
-		a.addErrorAtToken(event.Name.Token, "event %s conflicts with method %s in %s", name, name, targetName)
+		a.addErrorAtTokenWithID(event.Name.Token, diagnostics.DuplicateDeclaration, "event %s conflicts with method %s in %s", name, name, targetName)
 		return
 	}
 	if _, exists := properties[name]; exists {
-		a.addErrorAtToken(event.Name.Token, "event %s conflicts with property %s in %s", name, name, targetName)
+		a.addErrorAtTokenWithID(event.Name.Token, diagnostics.DuplicateDeclaration, "event %s conflicts with property %s in %s", name, name, targetName)
 		return
 	}
 	if _, exists := a.types[targetName+"."+name]; exists {
-		a.addErrorAtToken(event.Name.Token, "event %s conflicts with nested type %s in %s", name, name, targetName)
+		a.addErrorAtTokenWithID(event.Name.Token, diagnostics.DuplicateDeclaration, "event %s conflicts with nested type %s in %s", name, name, targetName)
 		return
 	}
 	if previous, exists := events[name]; exists {
@@ -7562,6 +7640,10 @@ func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement, all
 		a.addErrorAtToken(target.Token, "assigning fallible property %s requires try", target.Value)
 		return
 	}
+	if propertyOK && property.Fallible && property.Error != nil && stmt.Operator != "=" && hasContracts(property.Type) {
+		a.addErrorAtToken(target.Token, "compound %s on fallible property %s of constrained type %s would mix ContractError with %s; compute the new value with a checked %s conversion first, then assign it", stmt.Operator, target.Value, typeDisplayName(property.Type), typeDisplayName(*property.Error), typeDisplayName(property.Type))
+		return
+	}
 	// rules/memory/borrowing.txt: rebinding a mutable reference holder replaces
 	// its borrowed authority; it does not mutate the referent. Release the old
 	// holder edge before creating the replacement borrow, but restore it if the
@@ -7584,11 +7666,8 @@ func (a *Analyzer) analyzeAssignmentStatement(stmt *ast.AssignmentStatement, all
 		return
 	}
 
-	if hasContracts(symbol.Type) && !allowFallible {
-		start := len(a.errors)
-		a.addErrorAtTokenWithMetadata(target.Token, diagnostics.ConstrainedAssignmentRequiresTry, "use try assignment with an Err handler", "assigning variable %s requires try because %s has contracts", target.Value, typeDisplayName(symbol.Type))
-		a.relateConstrainedAssignment(start, symbol.Type)
-		return
+	if hasContracts(symbol.Type) && !allowFallible && stmt.Operator != "=" {
+		a.recordCompoundContractEffect(target.Token, target.Value, symbol.Type)
 	}
 	if !a.validateMoveAssignmentTarget(stmt) {
 		return
@@ -7873,6 +7952,7 @@ func (a *Analyzer) registerBorrow(holder string, expr *ast.RefExpression) {
 	if expr.Mutable {
 		kind = mutableBorrow
 	}
+	a.noteBorrowHolder(expr.Token, holder)
 	for _, alternative := range placeOriginAlternatives(place) {
 		root := alternative.Root
 		a.borrows[root] = append(a.borrows[root], borrowRecord{
@@ -8057,6 +8137,21 @@ func (a *Analyzer) analyzeMemberAssignmentStatement(stmt *ast.AssignmentStatemen
 		}
 	} else if placeOK && a.checkBorrowedMutationPlace(place, member.Property.Token) {
 		return
+	}
+	// contracts.md § 12(2)-(3): the result of a compound update of a
+	// constrained field or property is a runtime value checked against the
+	// contracts: under try it fails with ContractError, without try it panics
+	// with ContractFailure and reports A2011, exactly like a local.
+	if contracted := hasContracts(targetType) && !registerFieldOK && !decimalScale; contracted {
+		if stmt.Operator != "=" && propertyOK && property.Fallible {
+			a.addErrorAtToken(member.Property.Token, "compound %s on fallible property %s of constrained type %s would mix ContractError with %s; compute the new value with a checked %s conversion first, then assign it", stmt.Operator, member.Property.Value, typeDisplayName(targetType), typeDisplayName(*property.Error), typeDisplayName(targetType))
+			return
+		}
+		if allowFallible && !(propertyOK && property.Fallible) {
+			a.markContractedTryTarget(stmt)
+		} else if stmt.Operator != "=" && !allowFallible {
+			a.recordCompoundContractEffect(member.Property.Token, member.String(), targetType)
+		}
 	}
 
 	valueType, _ := a.inferExpressionWithExpected(stmt.Value, targetType)
@@ -10761,6 +10856,7 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 		}
 	}
 	armConstants := a.startConstantBranches()
+	defer func() { armConstants.finishFirstIteration(a, false) }()
 	addArmJoin := func(arm *ast.MatchArm, branch branchAnalysis) {
 		if !branch.continues {
 			return

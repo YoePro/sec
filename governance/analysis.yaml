@@ -1782,6 +1782,8 @@ integrations:
       - cmd/lsp/main_test.go
       - cmd/compiler/main_test.go
     implemented:
+      - "Closure analysis synchronized with lambda v2 (2026-11-11; closure_analysis.md § 3(2), § 9.3(3)): capture records use the v2 copy/move/shared-borrow/mutable-borrow modes, and ClosureCreationSummary now carries the inferred callable capability (fn / mut fn / -> fn) and environment move-only fact from the lambda type; sec analyse closures prints capability and environment-move-only. TestClosureCreationSummariesCarryCallableCapability, TestAnalyseClosures"
+      - "Ownership integration verified (2026-11-11; closure_analysis.md § 4(2), § 24): capture transfer and callable copy/move legality are decided by the ordinary ownership analysis, not re-modelled: `<-` captures move the outer Place at construction (S1088 use-after/second move, S1089 loop and conditional moves, S1163 move under a live borrow), consuming and move-only closures reject implicit copy (S1007), `:<-` moves the callable to its destination, and capability strength is checked at callable parameters. TestClosureCaptureOwnershipIntegration"
       - "sec analyse integration verified (2026-11-10; closure_analysis.md § 79): `sec analyse` and `--all` run every analysis including closures, and `sec analyse closures` selects it alone (cmd/compiler/analyse_cli.go, analyse_closures.go; TestAnalyseClosures, analyse_cli_test)"
       - defensive closure capture and creation snapshots detach the supported structural Type surface on SourcePlace, direct referent Places, aggregate-contained referent Places, and recursively retained AlternativeOrigins as well as CapturedType, exact index projections, tags, and callable target slices; consumers can no longer mutate compiler-owned Place type internals, and named recursive types use the existing bounded semantic snapshot surface
       - lambda and explicit capture parsing with capture-list AST retention
@@ -1855,7 +1857,6 @@ integrations:
       - propagate handle-specific and aggregate-contained callable target, contract, and environment dependencies beyond implemented direct local function-value captures
       - integration with escape analysis for environment escape and retention destinations
       - integration with lifetime/storage validation for environment and captured dependency validity
-      - integration with ownership analysis for capture and callable copy/move legality
       - extend implemented call-graph integration from exact local callable values to joined targets, callable parameters, returns, aggregates, and open contracts
       - integration with effect, stack, ISR, concurrency, and parameter-usage analyses through callable target/contract and environment facts
       - persisted versioned closure/callable summaries for separate compilation and conservative stale/missing-summary fallback
@@ -1865,7 +1866,6 @@ integrations:
       - explicit cache and summary invalidation when persistent closure-analysis services are introduced
       - Semantic IR representation of function-value creation/calls, closure creation, capture transfer, environment dependencies, and callable forwarding required by downstream analyses
       - closure/environment lowering that obeys storage.md and never repairs escape with implicit heap promotion or hidden allocation
-      - synchronize closure-analysis implementation with lambda v2 capture modes and callable-capability inference
       - dedicated positive, negative, interprocedural, CFA-precision, recursion, analysis-budget, LSP-integration, and termination regression tests
 
   - id: sema.escape-analysis

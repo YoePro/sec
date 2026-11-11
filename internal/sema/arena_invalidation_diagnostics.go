@@ -13,14 +13,28 @@ import (
 )
 
 // checkArenaInvalidationDependencies rejects an explicitly selected Reset or
-// Release when a represented current-epoch reference/slice has a dependent
-// holder or deferred use. Stable declaration ordering picks one witness per
+// Release when a represented child Arena, current-epoch reference/slice has a
+// dependent holder or deferred use. Stable declaration ordering picks one witness per
 // operation rather than emitting duplicates for all aliases. Immediate locals
 // still use the separate stale-use check; this is not a complete NLL proof.
 // Rules: rules/memory/arena.md — §§36(1–4), 44(1–2), 119(1–3), 120(1);
+// rules/memory/arena.md — §51(3–7) nested Arena backing dependencies;
 // rules/tooling/diagnostics.md — §§9, 28;
 // rules/corrections/applied/correction28-20260823.md — "Bug 1" and "Bug 2".
 func (a *Analyzer) checkArenaInvalidationDependencies(operation, domain, owner string, token lexer.Token) bool {
+	if dependency, ok := a.nestedArenaDependency(domain); ok {
+		declaration := dependency.Token
+		name := "temporary child Arena"
+		if symbol, bound := a.symbols.lookup(dependency.Holder); bound {
+			declaration = symbol.Token
+			name = dependency.Holder
+		}
+		err := arenaInvalidationDependencyDiagnostic(operation, owner, name, token, declaration)
+		err.Help += " Release the child Arena or end its owning scope first. Resetting the child does not end its backing dependency."
+		err.Related = []RelatedLocation{arenaRetentionLocation(dependency.Token, "child Arena retains parent backing here")}
+		a.appendError(err)
+		return true
+	}
 	names := make([]string, 0, a.symbols.len())
 	for name := range a.symbols.all() {
 		names = append(names, name)
@@ -57,10 +71,13 @@ func (a *Analyzer) checkArenaInvalidationDependencies(operation, domain, owner s
 		if !typeCarriesReferenceOrigin(symbol.Type) || !depends {
 			continue
 		}
-		if !a.arenaDependencyEscapesImmediateLocal(name, owner) {
+		retainers := a.arenaDependencyRetentionWitnesses(name, owner)
+		if len(retainers) == 0 {
 			continue
 		}
-		a.appendError(arenaInvalidationDependencyDiagnostic(operation, owner, name, token, symbol.Token))
+		err := arenaInvalidationDependencyDiagnostic(operation, owner, name, token, symbol.Token)
+		err.Related = retainers
+		a.appendError(err)
 		return true
 	}
 	return false

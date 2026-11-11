@@ -1,0 +1,44 @@
+module main
+
+fn CompareChar(a: char, b: char) int {
+    let mut result := 0
+    if a == b { result += 1 }
+    if a != b { result += 2 }
+    if a < b { result += 4 }
+    if a <= b { result += 8 }
+    if a > b { result += 16 }
+    if a >= b { result += 32 }
+    return result
+}
+
+fn CompareRune(a: rune, b: rune) int {
+    let mut result := 0
+    if a == b { result += 1 }
+    if a != b { result += 2 }
+    if a < b { result += 4 }
+    if a <= b { result += 8 }
+    if a > b { result += 16 }
+    if a >= b { result += 32 }
+    return result
+}
+
+fn main() int {
+    // Equality: ==, <=, >=. Less: !=, <, <=. Greater: !=, >, >=.
+    if CompareChar(0t, 0t) != 41 { return 1 }
+    if CompareChar(0xFFt, 0xFFt) != 41 { return 2 }
+    if CompareChar(0t, 0xFFt) != 14 { return 3 }
+    if CompareChar(0x80t, 0x7Ft) != 50 { return 4 }
+    if CompareChar(0x7Ft, 0x80t) != 14 { return 5 }
+    if CompareChar(0xFFt, 0t) != 50 { return 6 }
+    if CompareRune(0r, 0r) != 41 { return 7 }
+    if CompareRune(0x10FFFFr, 0x10FFFFr) != 41 { return 8 }
+    if CompareRune(0x10000r, 0xFFFFr) != 50 { return 9 }
+    if CompareRune(0x10FFFFr, 0r) != 50 { return 10 }
+    if CompareRune(0r, 0x10FFFFr) != 14 { return 11 }
+    if CompareRune(0xD7FFr, 0xE000r) != 14 { return 12 }
+    if CompareRune(0xE000r, 0xD7FFr) != 50 { return 13 }
+    // Source constant comparisons must agree with parameter comparisons.
+    assert 0x80t > 0x7Ft
+    assert 0x10000r > 0xFFFFr
+    return 0
+}

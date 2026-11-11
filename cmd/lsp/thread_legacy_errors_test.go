@@ -9,7 +9,8 @@ import (
 // TestThreadLegacyErrorsLSP removes stale portable completions and synthetic
 // hover, retaining canonical attachment errors and project-declared identities.
 // Rules: rules/concurrency/threads.md — §§3,71(7);
-// rules/concurrency/thread_local.md — §§29,37.
+// rules/concurrency/thread_local.md — §§29,37;
+// rules/concurrency/scheduling.md — §§34(1–3),56(3).
 func TestThreadLegacyErrorsLSP(t *testing.T) {
 	data, err := os.ReadFile("../../testdata/sema/thread_legacy_errors_invalid.sec")
 	if err != nil {
@@ -32,6 +33,13 @@ func TestThreadLegacyErrorsLSP(t *testing.T) {
 		offset := strings.Index(source, name)
 		if hover, ok := hoverForSource(uri, source, offsetPosition(source, offset)); ok {
 			t.Fatal("legacy hover", name, hover)
+		}
+		pos := offsetPosition(source, offset)
+		if locations := definitionsForSource(uri, source, pos); len(locations) != 0 {
+			t.Fatal("legacy definition", name, locations)
+		}
+		if locations := typeDefinitionsForSource(uri, source, pos); len(locations) != 0 {
+			t.Fatal("legacy type definition", name, locations)
 		}
 	}
 	count := 0

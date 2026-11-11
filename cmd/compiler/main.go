@@ -693,12 +693,16 @@ func statementTokenForSource(stmt ast.Statement) lexer.Token {
 	}
 }
 
+// parseCoreLibrary loads implicit core production sources without core's own
+// tests. Explicit core test selection uses the ordinary test compilation path.
+// Rules: rules/tooling/testing.md — §§4.3–4.4,28.4.
 func parseCoreLibrary(sourceFiles []string) *ast.Program {
 	root := findCompilerSourceRoot(sourceFiles)
 	matches, err := filepath.Glob(filepath.Join(root, "sec", "core", "*.sec"))
 	if err != nil || len(matches) == 0 {
 		return nil
 	}
+	matches = productionDependencySources(matches)
 	sort.Strings(matches)
 	core := &ast.Program{}
 	for _, path := range matches {

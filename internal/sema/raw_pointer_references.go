@@ -56,6 +56,7 @@ func (a *Analyzer) inferRawPointerReferenceConversion(member *ast.MemberExpressi
 // Rules: rules/memory/raw_pointers.md §§5.1,23(2,5–7),24(3–7),32(3);
 // rules/corrections/applied/md070-rawptr-safe-reference-conversions-correction-20261021.md §4(2),§5(3).
 func (a *Analyzer) recordRawPointerOriginBinding(name string, value ast.Expression) {
+	defer a.recordRawPointerBindingFact(name)
 	symbol, ok := a.symbols.lookup(name)
 	if !ok || symbol.Mutable || symbol.Volatile || symbol.Type.Kind != RawPtrType {
 		return

@@ -24,6 +24,8 @@ type diagnosticCatalogDefinition struct {
 	DefaultSeverity diagnostics.Severity `json:"default_severity"`
 	Mandatory       bool                 `json:"mandatory"`
 	Retired         bool                 `json:"retired"`
+	// Explanation is the optional extended documentation (§ 13(6)).
+	Explanation *diagnostics.Explanation `json:"explanation,omitempty"`
 }
 
 type diagnosticCatalogSummary struct {
@@ -58,6 +60,7 @@ var diagnosticDefinitionFields = []diagnosticCatalogField{
 	{Name: "DefaultSeverity", Type: "Severity", Required: true, Description: "Default error, warning, or information classification."},
 	{Name: "Mandatory", Type: "bool", Required: true, Description: "Whether configuration may suppress or demote the diagnostic."},
 	{Name: "Retired", Type: "bool", Required: true, Description: "Whether the stable identifier is reserved for a rule that is no longer emitted."},
+	{Name: "Explanation", Type: "*Explanation", Required: false, Description: "Extended documentation: short description, explanation, common causes, valid alternatives, example, related IDs and language version; omitted when the diagnostic has none yet."},
 }
 
 var semanticOccurrenceFields = []diagnosticCatalogField{
@@ -177,7 +180,47 @@ func writeDiagnosticDefinitionDetail(output io.Writer, id string) error {
 	fmt.Fprintf(w, "MANDATORY\t%t\n", definition.Mandatory)
 	fmt.Fprintf(w, "CONFIGURABLE\t%t\n", !definition.Mandatory)
 	fmt.Fprintf(w, "STATUS\t%s\n", status)
-	return w.Flush()
+	if err := w.Flush(); err != nil {
+		return err
+	}
+	if explanation, ok := diagnostics.Explain(definition.ID); ok {
+		writeDiagnosticExplanation(output, explanation)
+	}
+	return nil
+}
+
+// writeDiagnosticExplanation renders the registry-owned extended sections of
+// § 13(6) after the definition fields.
+// Rules: rules/tooling/diagnostics.md — §13(5)–(6).
+func writeDiagnosticExplanation(output io.Writer, explanation diagnostics.Explanation) {
+	section := func(title, body string) {
+		if body != "" {
+			fmt.Fprintf(output, "\n%s\n%s\n", title, body)
+		}
+	}
+	list := func(title string, items []string) {
+		if len(items) == 0 {
+			return
+		}
+		fmt.Fprintf(output, "\n%s\n", title)
+		for _, item := range items {
+			fmt.Fprintf(output, "  - %s\n", item)
+		}
+	}
+	section("DESCRIPTION", explanation.Description)
+	section("EXPLANATION", explanation.Details)
+	list("COMMON CAUSES", explanation.Causes)
+	list("VALID ALTERNATIVES", explanation.Alternatives)
+	if explanation.Example != "" {
+		fmt.Fprintf(output, "\nEXAMPLE\n")
+		for _, line := range strings.Split(explanation.Example, "\n") {
+			fmt.Fprintf(output, "    %s\n", line)
+		}
+	}
+	if len(explanation.Related) != 0 {
+		section("RELATED", strings.Join(explanation.Related, ", "))
+	}
+	section("SINCE", explanation.Since)
 }
 
 func buildDiagnosticCatalog() diagnosticCatalog {
@@ -201,6 +244,7 @@ func buildDiagnosticCatalog() diagnosticCatalog {
 			DefaultSeverity: definition.DefaultSeverity,
 			Mandatory:       definition.Mandatory,
 			Retired:         definition.Retired,
+			Explanation:     catalogExplanation(definition.ID),
 		})
 		catalog.Summary.Total++
 		if definition.Retired {
@@ -259,4 +303,12 @@ func writeDiagnosticFieldTable(w *tabwriter.Writer, title string, fields []diagn
 		fmt.Fprintf(w, "%s\t%s\t%t\t%s\n", field.Name, field.Type, field.Required, field.Description)
 	}
 	fmt.Fprintln(w)
+}
+
+func catalogExplanation(id string) *diagnostics.Explanation {
+	explanation, ok := diagnostics.Explain(id)
+	if !ok {
+		return nil
+	}
+	return &explanation
 }

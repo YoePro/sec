@@ -19,8 +19,9 @@ func (r *analyseReport) addClosures(analyzer *sema.Analyzer, inSelection func(le
 		if !inSelection(creation.Source) {
 			continue
 		}
-		section.add("creation at %s: body %s, environment=%t, captures=%d, dependencies-known=%t",
-			analysePosition(creation.Source), creation.Body, creation.HasEnvironment, len(creation.Captures), creation.DependenciesKnown)
+		section.add("creation at %s: body %s, environment=%t, captures=%d, dependencies-known=%t, capability=%s, environment-move-only=%t",
+			analysePosition(creation.Source), creation.Body, creation.HasEnvironment, len(creation.Captures), creation.DependenciesKnown,
+			callableCapabilitySpelling(creation.Capability), creation.EnvironmentMoveOnly)
 		for _, capture := range creation.Captures {
 			section.add("  capture %s: mode=%s, transfer=%s, source at %s, source-unavailable=%t",
 				capture.Name, capture.Mode, capture.Transfer, analysePosition(capture.Source), capture.SourceBecomesUnavailable)
@@ -45,4 +46,17 @@ func (r *analyseReport) addClosures(analyzer *sema.Analyzer, inSelection func(le
 			section.add("call at %s: %s targets=[%s]", analysePosition(site.Source), precision, strings.Join(targets, ", "))
 		}
 	}
+}
+
+// callableCapabilitySpelling presents an inferred callable capability with its
+// source spelling.
+// Rules: rules/declarations/functions.md — callable environment capability.
+func callableCapabilitySpelling(capability sema.CallableCapability) string {
+	switch capability {
+	case sema.CallableMutable:
+		return "mut fn"
+	case sema.CallableConsuming:
+		return "-> fn"
+	}
+	return "fn"
 }

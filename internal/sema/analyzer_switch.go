@@ -61,6 +61,9 @@ func (a *Analyzer) analyzeSwitchStatement(stmt *ast.SwitchStatement) {
 	joinVariants := []knownVariantSet{}
 	anyFallthrough := false
 	clauseConstants := a.startConstantBranches()
+	defer func() {
+		clauseConstants.finishFirstIteration(a, stmt.Default == nil && !tracker.isExhaustive())
+	}()
 	for _, clause := range clauses {
 		if clause != nil {
 			a.wantBlockExitConstants(clause.Body)
@@ -81,18 +84,42 @@ func (a *Analyzer) analyzeSwitchStatement(stmt *ast.SwitchStatement) {
 	unmatchedReachable := true
 	fallthroughReachable := false
 	defer func() { a.callGraphPathReachable = previousReachable }()
+	// Facts of the unmatched path: every earlier clause's pure alternatives
+	// were false before a later test runs or a later body is entered
+	// directly. A fallthrough edge may come from a matched clause, so a body
+	// entered that way sees none of them.
+	factsBefore := len(a.activeConditionFacts)
+	var unmatchedFacts []activeConditionFact
+	defer func() {
+		if len(a.activeConditionFacts) > factsBefore {
+			a.activeConditionFacts = a.activeConditionFacts[:factsBefore]
+		}
+	}()
 	var fallthroughConstants map[string]*big.Int
 	for i, clause := range clauses {
 		if clause == nil {
 			continue
 		}
 		a.callGraphPathReachable = previousReachable && unmatchedReachable
+		a.activeConditionFacts = append(a.activeConditionFacts[:factsBefore], unmatchedFacts...)
 		testsReachable := a.callGraphPathReachable
+		itemErrors := len(a.errors)
 		itemMatches, alwaysMatches := a.analyzeSwitchCaseItems(clause, hasSubject, subjectType, tracker)
+		// A clause whose alternatives already carry a coverage or type
+		// diagnostic is not reported a second time as path-impossible.
+		itemsDiagnosed := len(a.errors) > itemErrors
 		if alwaysMatches {
 			unmatchedReachable = false
 		}
-		bodyReachable := testsReachable || fallthroughEntry != nil && fallthroughReachable
+		impossible := fallthroughEntry == nil && !itemsDiagnosed && a.switchClauseProvenImpossible(stmt.Subject, clause)
+		if impossible {
+			a.diagnoseRelationallyUnreachableBlock(clause.Body, false, "case")
+		}
+		bodyReachable := !impossible && (testsReachable || fallthroughEntry != nil && fallthroughReachable)
+		clauseUnmatched := a.recordSwitchUnmatchedFacts(stmt.Subject, clause)
+		if fallthroughEntry != nil {
+			a.activeConditionFacts = a.activeConditionFacts[:factsBefore]
+		}
 		a.callGraphPathReachable = previousReachable && bodyReachable
 		a.analyzeSwitchFallthrough(clause, i == len(clauses)-1)
 		// rules/control-flow/flowcontrol_switch.md; correction24.md: the
@@ -122,6 +149,7 @@ func (a *Analyzer) analyzeSwitchStatement(stmt *ast.SwitchStatement) {
 		}
 		branch := a.analyzeSwitchCaseBody(clause.Body)
 		fallthroughReachable = bodyReachable && branch.fallsThrough
+		unmatchedFacts = append(unmatchedFacts, clauseUnmatched...)
 		branches = append(branches, branch)
 		anyFallthrough = anyFallthrough || branch.fallsThrough
 		if branch.continues {
@@ -542,4 +570,103 @@ func (a *Analyzer) isDirectSwitchFallthrough(stmt *ast.FallthroughStatement) boo
 		}
 	}
 	return false
+}
+
+// switchClauseProvenImpossible reports a non-default clause whose every
+// alternative is proven false by the dominating path facts, using the same
+// relational proof as if conditions: `subject == value`, `subject in range`
+// and `subject <op> value` for a subject switch, and the boolean alternative
+// itself for a subjectless switch.
+//
+// Rules:
+//   - rules/tooling/diagnostics.md — § 21(1), (3)–(6) "Proven unreachable and dead code"
+//   - rules/control-flow/flowcontrol_switch.md — § 23 "Dynamic overlap"
+func (a *Analyzer) switchClauseProvenImpossible(subject ast.Expression, clause *ast.SwitchCase) bool {
+	if clause == nil || clause.Default || len(clause.Items) == 0 || clause.Body == nil {
+		return false
+	}
+	for _, item := range clause.Items {
+		condition, ok := a.switchItemCondition(subject, item)
+		if !ok {
+			return false
+		}
+		value, known := a.relationalConditionValue(condition)
+		if !known || value {
+			return false
+		}
+	}
+	return true
+}
+
+// switchItemCondition is the boolean condition under which one case
+// alternative matches: `subject == value`, the bound conjunction of a range,
+// `subject <op> value`, or the subjectless alternative itself. A descending
+// constant range is normalized as switch coverage does; a descending
+// exclusive range has no condition here.
+func (a *Analyzer) switchItemCondition(subject ast.Expression, item ast.SwitchCaseItem) (ast.Expression, bool) {
+	switch item := item.(type) {
+	case *ast.SwitchValueCase:
+		if subject == nil {
+			return item.Value, item.Value != nil
+		}
+		return &ast.InfixExpression{Token: expressionToken(item.Value), Left: subject, Operator: "==", Right: item.Value}, true
+	case *ast.SwitchRangeCase:
+		if subject == nil || item.Range == nil {
+			return nil, false
+		}
+		start, end := item.Range.Start, item.Range.End
+		if start != nil && end != nil {
+			low, lowKnown := a.integerConstantValue(start)
+			high, highKnown := a.integerConstantValue(end)
+			if lowKnown && highKnown && low.Cmp(high) > 0 {
+				if item.Range.Exclusive {
+					return nil, false
+				}
+				start, end = end, start
+			}
+		}
+		var parts []ast.Expression
+		if start != nil {
+			parts = append(parts, &ast.InfixExpression{Token: item.Token, Left: subject, Operator: ">=", Right: start})
+		}
+		if end != nil {
+			operator := "<="
+			if item.Range.Exclusive {
+				operator = "<"
+			}
+			parts = append(parts, &ast.InfixExpression{Token: item.Token, Left: subject, Operator: operator, Right: end})
+		}
+		switch len(parts) {
+		case 0:
+			return nil, false
+		case 1:
+			return parts[0], true
+		}
+		return &ast.InfixExpression{Token: item.Token, Left: parts[0], Operator: "&&", Right: parts[1]}, true
+	case *ast.SwitchRelationalCase:
+		if subject == nil {
+			return nil, false
+		}
+		return &ast.InfixExpression{Token: item.Token, Left: subject, Operator: item.Operator, Right: item.Value}, true
+	}
+	return nil, false
+}
+
+// recordSwitchUnmatchedFacts records, for the path on which no alternative of
+// clause matched, the negation of every pure alternative condition, and
+// returns the recorded facts. Impure alternatives contribute nothing.
+// Rules: rules/control-flow/flowcontrol_switch.md — §§ 22–23 relational and dynamic coverage.
+func (a *Analyzer) recordSwitchUnmatchedFacts(subject ast.Expression, clause *ast.SwitchCase) []activeConditionFact {
+	if clause == nil || clause.Default {
+		return nil
+	}
+	before := len(a.activeConditionFacts)
+	for _, item := range clause.Items {
+		if condition, ok := a.switchItemCondition(subject, item); ok && a.pureIntegerCondition(condition) {
+			a.recordPathConditionFact(condition, false)
+		}
+	}
+	recorded := append([]activeConditionFact(nil), a.activeConditionFacts[before:]...)
+	a.activeConditionFacts = a.activeConditionFacts[:before]
+	return recorded
 }

@@ -644,6 +644,7 @@ integrations:
       - cmd/compiler/native_track_test.go
       - testdata/build/native/switch_loop_control.sec
     implemented:
+      - "Path-fact while entry (2026-11-11; flowcontrol_while.md §§ 19–20, 28): a pure while condition decided at entry by dominating path facts (per-binding versioned facts, stored fields) is routed through the canonical unreachable-code policy: proven false, the body reports S3001 and the loop is a zero-iteration loop; proven true (or true from first-entry constants) with a body that never reaches the next test and has no reachable break, ResolvedWhileFlow.ContinuesAfterLoop is false, so following code reports S3001 and return analysis is satisfied. TestWhileEntryDecidedByPathFacts"
       - "post-loop definite assignment (2026-11-10; flowcontrol_while.md § 23, § 28): a while loop intersects the assigned state of every reachable exit — the zero-iteration condition-false exit (omitted when the first test is proven true from pre-loop constants), the condition-false exit after an iteration (body fall-through and continue edges), and every reachable break; the while-true break special case and the `is empty` refinement are instances of the same merge. for loops keep the zero-iteration path (flowcontrol_for.md § 33). analyzer_while_flow.go intersectExitAssigned, TestWhileExitDefiniteAssignment"
       - "condition moves across iterations (fixed 2026-10-29; internal/sema/analyzer_while_flow.go): the while condition runs before every iteration, so the loop header and backedge fixed point now start from the pre-condition move state; `while Consume(<-token) {}` (with or without && / ||) reports S1089 \"may be unavailable on a later loop iteration\", while a body that reinitializes the place stays valid. Previously the condition's move was folded into the loop-entry state and never rechecked. Test: TestWhileConditionMoveIsCheckedAcrossIterations."
       - lexer recognition and AST representation of while statements
@@ -681,7 +682,6 @@ integrations:
       - "union/Option/Result variant proofs cross loop exits (2026-11-08, TestVariantProofsCrossJoins): a variant proven on every reachable break edge and on the condition-false exit (unless the condition is always true) holds after the loop"
     remaining:
       - carry Arena generation through loop-header and backedge fixed points, continue edges, change detection, and replay
-      - extend non-literal condition proof beyond the current integer-comparison and boolean-operator subset and route other non-continuing flow through the canonical unreachable-code policy
       - complete focused short-circuit, condition-frequency, try-condition, nesting, formatter, diagnostics, LSP, Semantic IR, and backend coverage
       - "Semantic IR: explicit loop cleanup edges for loops whose bodies own non-trivially destructible storage or defer (§ 66(1)), loop-carried ownership/availability state (§ 66(2)–(3)), and while loops nested in for/switch once those constructs reach Semantic IR"
       - "Sec MLIR: loop records are admitted from Semantic IR package gate 13; emit-sec-mlir (P12) and the dialect do not yet carry them"
@@ -803,6 +803,7 @@ integrations:
       - internal/ir/semantic/enum_switch_classes_test.go
       - testdata/build/native/enum_switch_classes.sec
     implemented:
+      - "Dynamic relational switch coverage (2026-11-11; flowcontrol_switch.md §§ 22–23): the unmatched path keeps the negation of every earlier pure alternative (value, range bounds, relational, subjectless comparison) as a versioned path fact for later tests and directly entered bodies, so a later case already covered by dynamic operands (`case < limit` twice, `< limit` after `<= limit`, repeated `x < y`) is proven unreachable with S3001; fallthrough-entered bodies see none of these facts, impure alternatives add none, and clauses already carrying a coverage diagnostic are not reported twice. TestSwitchUnmatchedPathFactsCoverDynamicCases"
       - "Unit- and named-type-aware switch overlap (2026-11-10; flowcontrol_switch.md §§ 20–21, 26): duplicate, covered and overlapping case values compare in the subject representation — quantity literals with exactly the subject unit and conversions into the subject named semantic type are compile-time coordinates; compatible-but-different units are not compared by raw coefficient and incompatible units stay rejected; messages keep the source spelling (55<m>, Speed(1)). analyzer_switch_coverage.go switchCaseConstant; TestSwitchOverlapIsUnitAndNamedTypeAware"
       - subject and subjectless switch parsing with AST source-order retention
       - value, range, relational, and comma-separated case alternatives
@@ -836,7 +837,6 @@ integrations:
     remaining:
       - make ownership, destruction, cleanup, Semantic IR, lowering, and interprocedural analyses consume the resolved switch flow and future canonical switch plan
       - lower string switch subjects through Semantic IR and the compilation track (blocked on P23 string values); bool and named-integer subjects lower and run natively (bool_switch.sec, named_scalars.sec)
-      - extend relational coverage reasoning for dynamic expressions where reachability is statically provable
       - complete code generation for every Sema-supported switch subject and case family
       - complete the revision-2.0 parser, Sema, CFG, formatter, diagnostics, LSP, Semantic IR, ownership, and backend regression matrix
     required_tests:

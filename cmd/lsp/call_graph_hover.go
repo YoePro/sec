@@ -94,8 +94,29 @@ func callGraphHoverSuffix(analyzer *sema.Analyzer, uri string, text string, pos 
 		lines = append(lines, "Direct Arena effects: `"+strings.Join(effects, "`, `")+"`")
 	}
 	lines = append(lines, allocationHoverLines(analyzer, graph, node.ID)...)
+	lines = append(lines, returnedReferenceHoverLines(analyzer, node.ID)...)
 	lines = append(lines, panicHoverLines(graph, node.ID)...)
 	lines = append(lines, tryAssignmentFlowHoverLines(analyzer, node.ID)...)
 	lines = append(lines, blockingHoverLine(graph, node.ID))
 	return "\n\n" + strings.Join(lines, "\n\n")
+}
+
+// returnedReferenceHoverLines presents the callable's returned-reference
+// origin summary (the Places a returned reference or view may refer to),
+// naming parameters by source name; an unknown summary says so.
+// Rules: rules/memory/references.md — returned-reference summaries;
+// rules/tooling/lsp.md — "Hover".
+func returnedReferenceHoverLines(analyzer *sema.Analyzer, id sema.CallableID) []string {
+	origins, unknown, ok := analyzer.ReturnReferenceOriginsOfCallable(id)
+	if !ok {
+		return nil
+	}
+	if len(origins) == 0 {
+		return []string{"Returned reference: origin not established; callers treat it conservatively"}
+	}
+	line := "Returned reference: into `" + strings.Join(origins, "` or `") + "`; the result is valid only while that origin is"
+	if unknown {
+		line += " (other origins not established)"
+	}
+	return []string{line}
 }

@@ -12,10 +12,11 @@ func (a *Analyzer) validateLetOwnership(stmt *ast.LetStatement) bool {
 	}
 	valid := a.validateNamedOwnershipSource(stmt.Ownership, stmt.Value, stmt.Name.Token, true, stmt.Type == nil, TransferSiteInitialization)
 	_, planned := a.resolvedTransferPlans[stmt.Value]
-	if valid && planned {
-		if place, ok := a.rootPlace(stmt.Name.Value); ok && place.RootToken == stmt.Name.Token {
+	if place, ok := a.rootPlace(stmt.Name.Value); ok && place.RootToken == stmt.Name.Token {
+		if valid && planned {
 			a.bindTransferDestinationPlace(stmt.Value, place)
 		}
+		a.noteIncomingTransfer(stmt.Value, place)
 	}
 	return valid
 }
@@ -30,7 +31,12 @@ func (a *Analyzer) validateAssignmentOwnership(stmt *ast.AssignmentStatement) bo
 	}
 	valid := a.validateNamedOwnershipSource(stmt.Ownership, stmt.Value, stmt.Token, false, false, TransferSiteAssignment)
 	_, planned := a.resolvedTransferPlans[stmt.Value]
-	if valid && planned {
+	if place, ok := a.resolvePlace(stmt.Target); ok && stmt.Operator == "=" {
+		if valid && planned {
+			a.bindTransferDestinationPlace(stmt.Value, place)
+		}
+		a.noteIncomingTransfer(stmt.Value, place)
+	} else if valid && planned {
 		if place, ok := a.resolvePlace(stmt.Target); ok {
 			a.bindTransferDestinationPlace(stmt.Value, place)
 		}

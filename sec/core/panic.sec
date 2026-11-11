@@ -1,0 +1,20 @@
+module core
+
+/**
+ * Stable, target-independent panic reason identifier.
+ * Rules: rules/errors/panic.md section 13(2).
+ */
+type PanicID uint32
+
+/**
+ * Copyable panic observation metadata. File and Function refer to compiler
+ * diagnostic metadata; creating the minimum value requires no allocation.
+ * Rules: rules/errors/panic.md section 13(3)-(7).
+ */
+type PanicInfo struct {
+    ID:       PanicID,
+    File:     string,
+    Line:     uint,
+    Column:   uint,
+    Function: string,
+}

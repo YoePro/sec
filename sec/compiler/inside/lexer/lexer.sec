@@ -1,0 +1,446 @@
+module lexer
+/*
+ * Hand-written lexer for the Sec bootstrap compiler.
+ *
+ * Rulebook:
+ * rules/foundations/lexical_structure.md
+ *      §1   Source files / encoding
+ *      §3   Whitespace
+ *      §5   Comments
+ *      §6   Identifiers
+ *      §7   Reserved words
+ *      §16  Operators (longest match)
+ *      §18  Token boundaries
+ *      §20  Lexical errors
+ */
+
+type Lexer struct {
+    source: string,
+    pos:    uint,
+    line:   uint,
+    column: uint,
+    file:   string,
+    // diagnostics: DiagnosticList, // whatever diagnostic type you already have
+}
+
+impl Lexer implements Iterator[Token] {
+    init(inFile: string, inSource: string) {
+        self.source = inSource
+        self.pos = 0
+        self.line = 1
+        self.column = 1
+        self.file = inFile
+        // self.diagnostics = DiagnosticList.Empty()
+    }
+
+    // Iterator[T] (§37): mut fn Next() Option[T] in the interface;
+    // concrete impl uses ordinary fn.
+    fn Next() Option[Token] {
+        let token := self._nextToken()
+
+        match token.Kind {
+            TokenKind.Eof => {
+                return None()
+            }
+            _ => {
+                return Some(token)
+            }
+        }
+    }
+
+    fn _nextToken() Token {
+        self._skipWhitespace()
+
+        let start := self._currentPos()
+
+        if self._atEnd {
+            return Token {
+                Kind: TokenKind.Eof,
+                Span: SourceSpan {
+                    Start: start,
+                    End:   start,
+                },
+            }
+        }
+
+        let ch := self._peek()
+
+        // Bare '_' vs identifier — lexical_structure.md §6.3
+        if ch == '_' && !isIdentifierContinue(self._peekNext()) {
+            return self._takeOne(TokenKind.Underscore, start)
+        }
+
+        if isIdentifierStart(ch) {
+            return self._readIdentifierOrKeyword(start)
+        }
+
+        if ch.IsAscii && ch.IsDigit {
+            return self._readNumber(start)
+        }
+
+        return self._readOperatorOrPunct(start)
+    }
+
+    // -------------------------------------------------------------------------
+    // Cursor
+    // -------------------------------------------------------------------------
+
+    property _atEnd: bool {
+        get {
+            return self.pos >= self.source.SizeOf
+        }
+    }
+
+    fn _currentPos() SourcePos {
+        return SourcePos {
+            File:   self.file,
+            Line:   self.line,
+            Column: self.column,
+            Offset: self.pos,
+        }
+    }
+
+    // / Next Unicode scalar, or 0r at end.
+    fn _peek() rune {
+        if self._atEnd {
+            return 0r
+        }
+        return self.source.RuneAt(self.pos)
+    }
+
+    // / Scalar after the one at pos, or 0r.
+    fn _peekNext() rune {
+        if self._atEnd {
+            return 0r
+        }
+        let ch   := self.source.RuneAt(self.pos)
+        let next := self.pos + ch.Utf8Length
+        if next >= self.source.SizeOf {
+            return 0r
+        }
+        return self.source.RuneAt(next)
+    }
+
+    fn _peekOffset(n: uint) rune {
+        let mut offset := self.pos
+        let mut i: uint := 0
+        while i < n {
+            if offset >= self.source.SizeOf {
+                return 0r
+            }
+            let ch := self.source.RuneAt(offset)
+            offset += ch.Utf8Length
+            i += 1
+        }
+        if offset >= self.source.SizeOf {
+            return 0r
+        }
+        return self.source.RuneAt(offset)
+    }
+
+    // / Advance one Unicode scalar. Updates line/column (§1.3).
+    fn _advance() void {
+        if self._atEnd() {
+            return
+        }
+
+        let ch := self.source.RuneAt(self.pos)
+        self.pos += ch.Utf8Length
+
+        if ch == '\n' {
+            self.line += 1
+            self.column = 1
+        } else {
+            // Tab counts as one scalar for lexical column (§1.3).
+            self.column += 1
+        }
+    }
+
+    fn _takeOne(kind: TokenKind, start: SourcePos) Token {
+        self._advance()
+        return Token {
+            Kind: kind,
+            Span: SourceSpan {
+                Start: start,
+                End:   self._currentPos(),
+            },
+        }
+    }
+
+    fn _takeTwo(kind: TokenKind, start: SourcePos) Token {
+        self._advance()
+        self._advance()
+        return Token {
+            Kind: kind,
+            Span: SourceSpan {
+                Start: start,
+                End:   self._currentPos(),
+            },
+        }
+    }
+
+    fn _takeThree(kind: TokenKind, start: SourcePos) Token {
+        self._advance()
+        self._advance()
+        self._advance()
+        return Token {
+            Kind: kind,
+            Span: SourceSpan {
+                Start: start,
+                End:   self._currentPos(),
+            },
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Whitespace (§3)
+    // Ordinary lexical whitespace: space, tab, LF, CR.
+    // Other Unicode spacing is a lexical error (handled later if needed).
+    // -------------------------------------------------------------------------
+
+    fn _isWhitespace(ch: rune) bool {
+        return ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r'
+    }
+
+    fn _skipWhitespace() void {
+        while !self._atEnd() && self._isWhitespace(self._peek()) {
+            self._advance()
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Identifiers & keywords (§6, §7)
+    // -------------------------------------------------------------------------
+
+    fn _readIdentifierOrKeyword(start: SourcePos) Token {
+        let begin := self.pos
+
+        // First scalar already known to be IdentifierStart.
+        self._advance()
+
+        while !self._atEnd {
+            let ch := self._peek()
+            if !isIdentifierContinue(ch) {
+                break
+            }
+            self._advance()
+        }
+
+        let spelling := self.source.Slice(begin, self.pos) // adjust if API is fallible
+        let kind     := keywordKind(spelling)
+
+        return Token {
+            Kind: kind,
+            Span: SourceSpan {
+                Start: start,
+                End:   self._currentPos(),
+            },
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Numbers — integers first (§ literals; full float/base later)
+    // -------------------------------------------------------------------------
+
+    fn _readNumber(start: SourcePos) Token {
+        let begin := self.pos
+
+        // Decimal digits for now. 0x / 0b / floats in a later pass.
+        while !self._atEnd {
+            let ch := self._peek()
+            if !ch.IsDigit {
+                break
+            }
+            self._advance()
+        }
+
+        let spelling := self.source[begin..<self.pos]
+
+        return Token {
+            Kind: TokenKind.Int(spelling),
+            Span: SourceSpan {
+                Start: start,
+                End:   self._currentPos(),
+            },
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Operators & punctuation — longest match (§16)
+    // -------------------------------------------------------------------------
+
+    fn _readOperatorOrPunct(start: SourcePos) Token {
+        let ch := self._peek()
+
+        switch ch {
+            case '=':
+                if self._peekNext() == '=' {
+                    return self._takeTwo(TokenKind.Eq, start)
+                }
+                if self._peekNext() == '>' {
+                    return self._takeTwo(TokenKind.Arrow, start)
+                }
+                return self._takeOne(TokenKind.Assign, start)
+            case ':':
+                // :<-  then  :=  then  ::  then  :
+                if self._peekNext() == '<' && self._peekOffset(2) == '-' {
+                    return self._takeThree(TokenKind.MoveDeclare, start)
+                }
+                if self._peekNext() == '=' {
+                    return self._takeTwo(TokenKind.Declare, start)
+                }
+                if self._peekNext() == ':' {
+                    return self._takeTwo(TokenKind.DoubleColon, start)
+                }
+                return self._takeOne(TokenKind.Colon, start)
+
+            case '.':
+                if self._peekNext() == '.' && self._peekOffset(2) == '.' {
+                    return self._takeThree(TokenKind.Spread, start)
+                }
+                if self._peekNext() == '.' && self._peekOffset(2) == '<' {
+                    return self._takeThree(TokenKind.RangeExclusive, start)
+                }
+                if self._peekNext() == '.' {
+                    return self._takeTwo(TokenKind.Range, start)
+                }
+                return self._takeOne(TokenKind.Dot, start)
+
+            case '+':
+                if self._peekNext() == '+' {
+                    return self._takeTwo(TokenKind.Increment, start)
+                }
+                if self._peekNext() == '=' {
+                    return self._takeTwo(TokenKind.PlusAssign, start)
+                }
+                return self._takeOne(TokenKind.Plus, start)
+
+            case '-':
+                if self._peekNext() == '>' {
+                    return self._takeTwo(TokenKind.ConsumeArrow, start)
+                }
+                if self._peekNext() == '-' {
+                    return self._takeTwo(TokenKind.Decrement, start)
+                }
+                if self._peekNext() == '=' {
+                    return self._takeTwo(TokenKind.MinusAssign, start)
+                }
+                return self._takeOne(TokenKind.Minus, start)
+            case '*':
+                if self._peekNext() == '=' {
+                    return self._takeTwo(TokenKind.AsteriskAssign, start)
+                }
+                return self._takeOne(TokenKind.Asterisk, start)
+
+            case '/':
+                // Comments are not operators; caller may route // and /* here later.
+                if self._peekNext() == '=' {
+                    return self._takeTwo(TokenKind.SlashAssign, start)
+                }
+                return self._takeOne(TokenKind.Slash, start)
+
+            case '%':
+                if self._peekNext() == '=' {
+                    return self._takeTwo(TokenKind.PercentAssign, start)
+                }
+                return self._takeOne(TokenKind.Percent, start)
+
+            case '!':
+                if self._peekNext() == '=' {
+                    return self._takeTwo(TokenKind.Neq, start)
+                }
+                return self._takeOne(TokenKind.Not, start)
+
+            case '<':
+                if self._peekNext() == '-' {
+                    return self._takeTwo(TokenKind.MoveAssign, start)
+                }
+                if self._peekNext() == '<' && self._peekOffset(2) == '=' {
+                    return self._takeThree(TokenKind.ShiftLeftAssign, start)
+                }
+                if self._peekNext() == '<' {
+                    return self._takeTwo(TokenKind.ShiftLeft, start)
+                }
+                if self._peekNext() == '=' {
+                    return self._takeTwo(TokenKind.Lte, start)
+                }
+                return self._takeOne(TokenKind.Lt, start)
+
+            case '>':
+                if self._peekNext() == '>' && self._peekOffset(2) == '=' {
+                    return self._takeThree(TokenKind.ShiftRightAssign, start)
+                }
+                if self._peekNext() == '>' {
+                    return self._takeTwo(TokenKind.ShiftRight, start)
+                }
+                if self._peekNext() == '=' {
+                    return self._takeTwo(TokenKind.Gte, start)
+                }
+                return self._takeOne(TokenKind.Gt, start)
+
+            case '&':
+                if self._peekNext() == '&' {
+                    return self._takeTwo(TokenKind.And, start)
+                }
+                if self._peekNext() == '=' {
+                    return self._takeTwo(TokenKind.BitAndAssign, start)
+                }
+                return self._takeOne(TokenKind.BitAnd, start)
+
+            case '|':
+                if self._peekNext() == '|' {
+                    return self._takeTwo(TokenKind.Or, start)
+                }
+                if self._peekNext() == '=' {
+                    return self._takeTwo(TokenKind.BitOrAssign, start)
+                }
+                return self._takeOne(TokenKind.BitOr, start)
+
+            case '^':
+                if self._peekNext() == '=' {
+                    return self._takeTwo(TokenKind.BitXorAssign, start)
+                }
+                return self._takeOne(TokenKind.BitXor, start)
+
+            case '~':
+                return self._takeOne(TokenKind.BitNot, start)
+
+            case ',':
+                return self._takeOne(TokenKind.Comma, start)
+            case ';':
+                return self._takeOne(TokenKind.Semicolon, start)
+            case '?':
+                return self._takeOne(TokenKind.Question, start)
+            case '@':
+                return self._takeOne(TokenKind.At, start)
+            case '#':  return self._takeOne(TokenKind.Hash, start)
+
+            case '(':
+                return self._takeOne(TokenKind.LParen, start)
+            case ')':
+                return self._takeOne(TokenKind.RParen, start)
+            case '{':
+                return self._takeOne(TokenKind.LBrace, start)
+            case '}':
+                return self._takeOne(TokenKind.RBrace, start)
+            case '[':
+                return self._takeOne(TokenKind.LBracket, start)
+            case ']':
+                return self._takeOne(TokenKind.RBracket, start)
+
+            default:
+                // §20 — one illegal scalar, then recover
+                return self._takeOne(TokenKind.Illegal, start)
+        }
+    }
+}
+
+fn isIdentifierStart(ch: rune) bool {
+    // §6.1
+    return ch == '_' || ch.IsLetter
+}
+
+fn isIdentifierContinue(ch: rune) bool {
+    // §6.1 — letter, ASCII digit, or '_'
+    return ch == '_' || ch.IsLetter || ch.IsDigit
+}

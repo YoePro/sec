@@ -48,6 +48,7 @@ func TestNativeTrackBuildsAndRuns(t *testing.T) {
 		{"overload_nominal_identity", 0, false},
 		{"integer_conversions", 0, false},
 		{"characters", 0, false},
+		{"character_predicates", 0, false},
 		{"enums", 0, false},
 		{"enum_switch_classes", 0, false},
 		{"range_steps", 0, false},

@@ -42,7 +42,7 @@ func TestTypeDiagnosticLocationsLSP(t *testing.T) {
 	}
 	a := sema.NewAnalyzer()
 	errors := a.Analyze(program)
-	if len(errors) != 13 {
+	if len(errors) != 12 {
 		t.Fatal(errors)
 	}
 	for _, e := range errors {

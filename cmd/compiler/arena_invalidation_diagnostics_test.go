@@ -39,7 +39,7 @@ func TestArenaInvalidationCLIDiagnostics(t *testing.T) {
 					t.Fatal(value)
 				}
 				count[*value.ID]++
-				if value.Unregistered || value.Source != "sema" || value.Arguments["proof_state"] != "Invalid" || value.Primary == nil || value.Primary.Span.File != path || len(value.Related) != 1 || value.Related[0].Span.File != path || value.Related[0].Message == nil || value.Related[0].Message.Text != "live Arena dependency" || len(value.Help) != 1 {
+				if value.Unregistered || value.Source != "sema" || value.Arguments["proof_state"] != "Invalid" || value.Primary == nil || value.Primary.Span.File != path || len(value.Related) < 2 || value.Related[0].Span.File != path || value.Related[0].Message == nil || value.Related[0].Message.Text != "live Arena dependency" || len(value.Help) != 1 {
 					t.Fatal(value)
 				}
 			}

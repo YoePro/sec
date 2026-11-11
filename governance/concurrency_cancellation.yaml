@@ -24,7 +24,7 @@ integrations:
       - LSP completion and hover project the canonical member identity, exact signature, and cooperative idempotent non-consuming semantics from Sema's registry.
       - "current-execution surface (2026-11-09, execution_context.go, TestExecutionContextSurface): Task.Current() TaskContext and Thread.Current() ThreadContext with the bool CancelRequested property in CamelCase (lowercase spellings get the canonical-name help), Task.Yield()/Thread.Yield() void, exact zero-argument signatures; CancelRequested is never selectable"
     remaining:
-      - "Reject Thread.Current() on a target/profile without the physical-thread capability (cancellation.md § 24); the logical-task requirement is enforced by frontend.cancellation-effect-v1."
+      - Reject Thread.Current() on a target/profile without the physical-thread capability (cancellation.md § 24); the logical-task requirement is enforced by frontend.cancellation-effect-v1.
       - Implement runtime request/observation state and wakeup integration.
       - Implement cancellation-point registration and commit races.
       - Integrate deterministic cleanup and terminal outcome publication.
@@ -71,8 +71,8 @@ integrations:
       - "requirements propagate through synchronous and deferred call-graph edges, recursion included, and are checked from every root: ordinary program entry rejects both (scheduling.md § 22), a spawned thread rejects only the logical-task requirement, a spawned task satisfies both; spawn edges start new roots; the diagnostic lands on main's first call on the path naming the requiring callable and operation, or on the operation itself (TestExecutionContextRequirements)"
       - "test bodies run like ordinary program entry (owner decision 2026-11-09, testing.md § 9.7): every test body node is checked as an entry, so Task.Current()/Task.Yield()/cancel reached from a test without spawning are rejected (TestExecutionContextRequirementsInTests)"
     remaining:
-      - "Carry the requirement in callable values and function types so assignment/conversion cannot erase it (§ 21(3)-(4)); calls through function values with unknown target sets are not checked yet."
-      - "Preserve the effect into Semantic IR indirect-call metadata."
+      - Carry the requirement in callable values and function types so assignment/conversion cannot erase it (§ 21(3)-(4)); calls through function values with unknown target sets are not checked yet.
+      - Preserve the effect into Semantic IR indirect-call metadata.
     required_tests:
       - id: direct-cancel-effect
         expectation: Function containing cancel is callable only from valid cancellable execution.
@@ -98,11 +98,9 @@ integrations:
       - Parent cancellation propagates downward; child cancellation does not propagate upward.
       - ContextSource destruction is not itself a cancellation event.
     remaining:
-      - Complete source-visible ContextSource registration and the Context/ContextSource public member surfaces; Context and ContextError declarations are registered.
       - Implement ownership/borrow/lifetime checks.
       - Implement first-wins terminal state and coherent IsCancelled/Error observation.
       - Implement parent-child cancellation propagation and deadline registration.
-      - Implement LSP hover/completion/navigation.
     required_tests:
       - id: context-first-terminal-cause
         expectation: Whichever of cancellation/deadline commits first remains Context.Error permanently.
@@ -114,7 +112,9 @@ integrations:
         expectation: Destroying ContextSource ends child lifetime without synthesizing ContextError.Cancelled.
     implemented:
       - canonical opaque @noCopy Context and the closed ContextError error enum Cancelled and DeadlineExceeded have source-visible core declarations and matching reserved compiler identities, sufficient for the mutex Context overload; ContextSource, Context operations, runtime cancellation state and propagation are not implemented by this declaration slice
-    revised: "2026-10-16"
+      - "Context/ContextSource source surface completed 2026-11-11 (cancellation.md sections 35-38,43): canonical trusted opaque @noCopy ContextSource declaration, reserved nominal core identity, move-only classification and destruction requirement; malformed trusted declarations, untrusted replacement, representation fabrication and implicit copies are rejected. Shared registry provides Context.Background, WithCancel, WithTimeout(duration), WithDeadline(Instant), IsCancelled: bool, Error: Option[ContextError], Deadline: Option[Instant], and ContextSource.Context: ref Context plus non-consuming Cancel() void callable on immutable bindings/shared references. Exact type/value arity, temporal distinctions and read-only property syntax are enforced; the borrowed Context retains source origin for ordinary local-reference escape checking. Shared LSP completion, hover and warm/cold member navigation cover all nine members. Ordinary functions named Context retain normal overload resolution. Runtime helper effects remain conservatively unknown, and emit-ir still fails closed at unsupported type Context; runtime state, parent/child lifetime dependencies, deadlines and lowering remain separately tracked."
+      - "Context/ContextSource LSP hover/completion/navigation completed 2026-11-11: all nine public members project exact signatures, temporal and borrowed result types, cancellation-authority separation, stable identities and rule references from the shared Sema registry; instance/type-qualified completion excludes opposite-scope operations and Context has no Cancel. Warm source navigation and cold member-ID navigation share registry metadata. Borrowed Context and ContextSource receiver hover and typeDefinition reach their real opaque core declarations. Sema type navigation now unwraps unnamed references when no declaration exists for the wrapper, preserving named alias declarations and withholding targets for unresolved/generic/builtin-without-source types. This closes source presentation; runtime state and parent-child lifetime proofs remain separate."
+    revised: "2026-11-11"
     rules:
       - rules/concurrency/mutex.md
       - rules/concurrency/cancellation.md
@@ -124,11 +124,42 @@ integrations:
       - internal/parser/parser.go
       - internal/sema/types.go
       - internal/sema/type_declarations.go
+      - internal/sema/context_members.go
+      - internal/sema/context_calls.go
+      - internal/sema/compiler_known_members.go
+      - internal/sema/compiler_known_calls.go
+      - internal/sema/compiler_known_interfaces.go
+      - internal/sema/copy_classification.go
+      - internal/sema/analyzer_inference.go
+      - internal/sema/type_navigation.go
     tests:
       - internal/sema/mutex_overloads_test.go
       - cmd/lsp/mutex_overloads_test.go
       - internal/formatter/mutex_declarations_test.go
+      - internal/sema/context_surface_test.go
+      - cmd/compiler/context_surface_test.go
+      - cmd/lsp/context_surface_test.go
+      - testdata/sema/context_surface_valid.sec
+      - testdata/sema/context_surface_invalid.sec
+      - testdata/sema/context_borrow_escape_invalid.sec
+      - cmd/lsp/type_definition_test.go
     verification:
+      - command: go test -p 4 ./cmd/lsp -run '^TestTypeDefinition' -count=1 -timeout=120s
+        result: "passed 2026-11-11 after final reference-wrapper query fix: complete typeDefinition suite 23.300s."
+      - command: go test -race -p 4 ./cmd/lsp -run '^TestCancellationContextTypeNavigation$|^TestTypeDefinitionUsesResolvedSemaType$|^TestTypeDefinitionReturnsNothingForBuiltinType$' -count=1 -timeout=90s
+        result: "passed 2026-11-11 after the reference-wrapper navigation fix: LSP 20.125s; borrowed Context and ContextSource reach real core declarations, ordinary expression/member/type-reference navigation and source-less builtin rejection are preserved."
+      - command: go test -race -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run '^TestCancellationContext' -count=1 -timeout=180s
+        result: "passed 2026-11-11 after final ordinary argument ownership/move integration: Sema 1.079s, compiler 11.453s, LSP 114.200s; all nine members, scope-filtered completion, hover, warm/cold definitions, 14 malformed source uses, local borrowed-context escape and immutable Cancel."
+      - command: go run ./cmd/compiler emit-ir testdata/sema/context_surface_valid.sec
+        result: "expected compiler exit 4 on 2026-11-11: named unsupported-lowering at type Context, no IR artifact published; source registration does not enable runtime lowering."
+      - command: go test -p 4 ./internal/sema ./internal/ir/semantic -count=1 -timeout=120s
+        result: "passed 2026-11-11 after final ordinary argument ownership/move integration: complete Sema 25.572s, Semantic IR 10.389s; includes existing Context-named generic overload regressions."
+      - command: go vet -p 4 ./internal/parser ./internal/sema ./internal/formatter ./internal/ir/semantic ./cmd/compiler ./cmd/lsp
+        result: passed 2026-11-11 after final source surface changes.
+      - command: go test -short -p 4 ./internal/parser ./internal/formatter -count=1 -timeout=90s
+        result: "passed 2026-11-11: complete short parser suite 41.127s and formatter 4.120s; exact opaque ContextSource parsing and actual core source round-trip."
+      - command: go test -p 4 ./internal/sema ./internal/ir/semantic -count=1 -timeout=120s
+        result: "passed 2026-11-11 after final source borrow-origin and conservative runtime-effect changes: complete Sema 30.141s, Semantic IR 12.965s."
       - command: go vet ./internal/parser ./internal/sema ./cmd/compiler ./cmd/lsp ./internal/formatter
         result: passed on 2026-10-16
       - command: go test ./internal/sema ./cmd/compiler ./cmd/lsp ./internal/formatter -race -run 'Mutex|NoBlock|TestAtomic|TestChannelCapability|TestLSPPresentsEveryDefaultForm' -count=1

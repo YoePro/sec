@@ -95,7 +95,13 @@ func rawPointerCallerContract(member CompilerKnownMember, pointer, element Type)
 				"Ensure the storage is writable and that no other live safe reference or unmodeled foreign access overlaps it for the whole live range of the exclusive reference.")
 		}
 	}
-	if len(member.Effects) > 0 {
+	// Ordinary memory effects do not establish a volatile/device contract.
+	// Rules: rules/memory/raw_pointers.md — §31(2–6); rules/platform/volatile.md — §§9–12.
+	volatile := false
+	for _, effect := range member.Effects {
+		volatile = volatile || effect == EffectVolatileRead || effect == EffectVolatileWrite || effect == EffectMayAccessVolatile
+	}
+	if volatile {
 		member.CallerObligations = append(member.CallerObligations,
 			"Validate the physical region's access width, alignment, address space and platform permissions for this volatile operation.",
 			"Volatile access does not establish synchronization, atomicity, hardware privilege, mapping authority, DMA ownership or cache coherence.")

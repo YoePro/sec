@@ -1,0 +1,5 @@
+module app
+
+test "selected app" {
+    testing.ExpectEqual(7, Value())
+}

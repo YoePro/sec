@@ -3,6 +3,8 @@ package main
 import (
 	"strings"
 	"testing"
+
+	"sec/internal/diagnostics"
 )
 
 // TestArenaMultiOriginCLI verifies the analysis tool and backend entry gate
@@ -25,7 +27,12 @@ func TestArenaMultiOriginCLI(t *testing.T) {
 			t.Fatal(command, doc)
 		}
 		for _, value := range doc.Occurrences {
-			if value.Primary == nil || value.Primary.Span.File != path || len(value.Related) != 1 || value.Related[0].Span.File != path {
+			wantRelated := 1
+			// S1222 also names the Reset/Release that ended the epoch.
+			if value.ID != nil && (*value.ID == diagnostics.ArenaResetLiveDependency || *value.ID == diagnostics.ArenaReleaseLiveDependency || *value.ID == diagnostics.ArenaUseAfterInvalidation) {
+				wantRelated = 2
+			}
+			if value.Primary == nil || value.Primary.Span.File != path || len(value.Related) != wantRelated || value.Related[0].Span.File != path {
 				t.Fatal(value)
 			}
 		}

@@ -38,6 +38,7 @@ func (a *Analyzer) analyzeExpressionStatement(stmt *ast.ExpressionStatement) Typ
 		if isCallLikeExpression(stmt.Expression) && len(a.errors) == errorsBefore {
 			a.recordImplicitDiscard(stmt, exprType)
 		}
+		a.endTemporaryArenaBacking(stmt.Expression)
 		return exprType
 	}
 	if a.inDeferBlock && exprType.Kind == ResultType {

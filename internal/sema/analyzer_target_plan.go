@@ -21,12 +21,16 @@ func NewAnalyzerWithScalarPlanAndDepth(plan layout.ResolvedScalarPlan, depth Ana
 	analyzer := NewAnalyzerWithDepth(depth)
 	analyzer.rebuildBase = func() *Analyzer { return NewAnalyzerWithScalarPlanAndDepth(plan, depth) }
 	analyzer.SetAllocationProfile(plan.Profile)
+	analyzer.planTargetOS, analyzer.planTargetArch = plan.TargetOS, plan.TargetArch
+	analyzer.planFingerprints = plan.Fingerprints()
 	analyzer.referencePolicy = plan.References
 	if plan.PointerWidthBits != 32 && plan.PointerWidthBits != 64 {
 		return analyzer
 	}
 	analyzer.types["int"] = targetSignedIntegerType("int", plan.PointerWidthBits)
 	analyzer.types["uint"] = targetUnsignedIntegerType("uint", plan.PointerWidthBits)
+	// rules/concurrency/threads.md §10: configuration payload bounds follow the selected plan.
+	analyzer.types["ThreadConfig"] = builtinThreadConfigType(analyzer.types)
 	// MD-014: plain float follows the platform width exactly like int and
 	// uint; there is no separate float-width policy.
 	// Rules: rules/corrections/applied/missing-decisions-md010-md014-correction-20261003.md — §§ 6.3–6.9
@@ -63,4 +67,23 @@ func (a *Analyzer) ScalarPlanWidthBits() uint16 {
 		return 0
 	}
 	return a.scalarPlanWidthBits
+}
+
+// PlanTarget is the selected CompilationPlan's os and arch identity, empty
+// when the analyzer was built without a plan; source selection matches
+// `@target` selectors against it.
+func (a *Analyzer) PlanTarget() (string, string) {
+	if a == nil {
+		return "", ""
+	}
+	return a.planTargetOS, a.planTargetArch
+}
+
+// PlanFingerprints are the selected CompilationPlan's semantic fingerprints
+// (platform_model.md § 23); empty without a plan.
+func (a *Analyzer) PlanFingerprints() layout.PlanFingerprints {
+	if a == nil {
+		return layout.PlanFingerprints{}
+	}
+	return a.planFingerprints
 }

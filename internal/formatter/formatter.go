@@ -172,6 +172,7 @@ func format(text string, options Options) string {
 		normal = fixRedundantControlConditionParentheses(normal)
 		normal = fixStateTestBadPractice(normal)
 		normal = fixLegacyAssignedNamedType(normal)
+		normal = fixLegacyTargetDirective(normal)
 	}
 	normal = formatModuleStatic(normal)
 	normal = formatHardwareDeclarations(normal)

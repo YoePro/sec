@@ -44,6 +44,15 @@ func TestIfRawNullUnsafeBoundaryCLI(t *testing.T) {
 				continue
 			}
 			doc := decodeOccurrenceDocument(t, stderr)
+			// Unnecessary-unsafe advisories are Information (unsafe.md
+			// § 50(5)); this matrix checks the errors.
+			errorsOnly := doc.Occurrences[:0:0]
+			for _, occurrence := range doc.Occurrences {
+				if occurrence.Severity == "error" {
+					errorsOnly = append(errorsOnly, occurrence)
+				}
+			}
+			doc.Occurrences = errorsOnly
 			if code != 3 || stdout != "" || doc.Summary.Errors != 10 || len(doc.Occurrences) != 10 {
 				t.Fatal(command, code, stdout, stderr)
 			}

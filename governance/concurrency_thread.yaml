@@ -84,9 +84,10 @@ integrations:
       - "ThreadObserver has no hidden Wait or selectable completion capability: ordinary Wait calls and select operands are rejected with focused metadata-only/owner-join guidance. Observer copying, metadata reads and explicit discard remain valid, while LSP exposes only the existing canonical metadata catalog without owner or Wait operations (2026-11-09; threads.md sections 40 and 43)"
       - CpuSet is a reserved nominal opaque copyable core identity, distinct from set[uint], with the canonical positional literal CpuSet { index, ... }. Sema validates uint components, non-negative selected-target uint range and compile-time-proven duplicates (S1214 with the earlier index); named fields, spreads and generic arguments are rejected. Trusted source refinement accepts only type CpuSet and retains declaration provenance. CLI/LSP share the type and diagnostics, formatting is canonical/idempotent, and native IR remains explicitly unsupported for type CpuSet rather than treating it as an empty struct. No target CPU count or affinity capability is inferred from the host; applying affinity and physical representation remain separate work (2026-11-10).
       - "ThreadStorage is a reserved non-generic nominal @noCopy core storage owner. ThreadStorage(capacity) validates one compile-time uint capacity through canonical semantic CTE and records detached constructor capacity evidence independently of type identity; value/type argument arity, runtime/negative/wrong-type capacities and legacy ThreadStorage[T] are rejected. Trusted source metadata must match the canonical private _capacity: uint struct. Public Capacity is read-only and shared by Sema/LSP; implicit copies, source struct fabrication and private-field access fail while ordinary explicit moves remain valid. Native emission retains its named unsupported boundary until target-aligned backing is implemented; no allocation or backing-layout implementation is claimed (2026-11-10)."
-      - "Named ThreadConfig consumption completed 2026-11-11 (threads.md sections 10(3-4),20; spawn.md section 4(1),(10)): parser/AST retain the named configuration separately from the child callable in spawn thread <-config Work(), including tracked struct projections. The configuration is resolved in the spawning execution before child argument preparation, then ordinary consuming-argument validation publishes canonical move/partial-move facts and source availability. Missing markers use S1007 and normal ownership guidance; reused, double-selected, borrowed or wrong-type configurations are rejected. Availability is checked again after child arguments without re-evaluating configuration; invalid source preparation restores config and child-argument move/borrow state. Specialized helpers and shared traversals preserve self-use, parameter demand and pitfall analysis. Parser recovery keeps following syntax after a missing callable; formatter preserves/idempotently round-trips the marker and operand boundary; compiler/LSP share seven negative source cases. Exact ThreadConfig fields/noCopy/defaults, inline block sugar, fallible Result typing, runtime creation rollback/storage lifecycle and lowering remain separate existing items; emit-ir still rejects type ThreadConfig explicitly."
+      - "Named ThreadConfig consumption completed 2026-11-11 (threads.md sections 10(3-4),20; spawn.md section 4(1),(10)): parser/AST retain the named configuration separately from the child callable in spawn thread <-config Work(), including tracked struct projections. The configuration is resolved in the spawning execution before child argument preparation, then ordinary consuming-argument validation publishes canonical move/partial-move facts and source availability. Missing markers use S1007 and normal ownership guidance; reused, double-selected, borrowed or wrong-type configurations are rejected. Availability is checked again after child arguments without re-evaluating configuration; invalid source preparation restores config and child-argument move/borrow state. Specialized helpers and shared traversals preserve self-use, parameter demand and pitfall analysis. Parser recovery keeps following syntax after a missing callable; formatter preserves/idempotently round-trips the marker and operand boundary; compiler/LSP share seven negative source cases. Exact ThreadConfig fields/noCopy/defaults and inline block sugar were completed on 2026-11-12 (see the following evidence); fallible Result typing, runtime creation rollback/storage lifecycle and lowering remain separate existing items; emit-ir still rejects type ThreadConfig explicitly."
+      - "Exact ThreadConfig source contract completed 2026-11-12 (threads.md sections 10-11): reserved nominal non-generic core @noCopy struct with exactly Name: ThreadSetting[string], Stack: ThreadSetting[uint], Affinity: ThreadSetting[CpuSet], Priority: ThreadSetting[ThreadPriority], Start: ThreadStartMode and Storage: Option[ref mut ThreadStorage]. Trusted declarations validate all nested reference/generic shapes and retain field navigation identities; untrusted replacements fail. ThreadConfig() and omitted literal fields use the exact initializer defaults Default/Default/Default/Default/Eager/None without changing ordinary ThreadSetting defaultability. Stack payload bounds follow the selected scalar plan. Contextual spawn thread { fields } Work() materializes one fresh ordinary struct literal, requires no synthetic move marker and distinguishes spawned bodies/empty inline config with missing-call recovery. Ordinary typed union/aggregate checks reject plain priority and mismatched fields, while configuration source errors do not commit ownership preparation. Formatter round-trips the syntax; CLI and LSP share diagnostics, field hover and completion including references. LSP member completion was extracted into a focused sibling file. Immutable construction plans carry all defaults with legacy AST materialization on or off. Runtime storage lifecycle, fallible spawn and native lowering remain separately tracked; valid source still fails native emission explicitly with unsupported-lowering type ThreadConfig and publishes no artifact."
+      - "Portable hard-termination boundary completed 2026-11-12 (threads.md sections 40(6),52(7),53(1-4); applied thread correction section 23): audit confirms no universal platform.Terminate method or compiler catalog identity is retained. Typed Sema rejection now reports mandatory S1227 / thread.termination-not-portable for the removed lowercase platform path and undeclared direct/captured Terminate on canonical Thread[T] and ThreadObserver[T], including borrowed receivers. Inferred spawn handles now retain the same canonical intrinsic Thread identity as declared parameters instead of constructing a flag-less lookalike. The source-spanned error explains owner RequestCancel plus join and the requirement for an explicitly declared unsafe target-specific API with specified lifecycle/storage/cleanup effects. Lookup remains ordinary for explicitly declared methods and unrelated receivers, including user-owned platform fields and native control functions. Invalid calls acquire no executable compiler member facts and do not consume the owner join capability. CLI human/JSON and LSP diagnostics agree on nine negative cases; invalid IR emission publishes no artifact. Catalog/completion/hover/navigation expose no fabricated termination capability, while declared ordinary methods remain navigable. Actual target-specific termination operations and native thread lifecycle implementation are not introduced by this removal."
     remaining:
-      - implement exact @noCopy ThreadConfig and contextual inline defaults
       - implement explicit storage borrow transfer/release across spawn, join, detach and failure cleanup
       - implement raw spawn thread Result[Thread[T], ThreadSpawnError]
       - add the remaining CamelCase Thread[T] members Value, Panic, and Termination with terminal-availability analysis, and Platform with target-resolved ThreadPlatform
@@ -100,7 +101,6 @@ integrations:
       - implement RequestCancel and Thread.Current/ThreadContext exact physical-thread semantics
       - implement Thread.Yield physical scheduling hint
       - provide target-resolved complete ThreadPlatform declarations for every supported thread target
-      - remove the legacy universal worker.platform.Terminate() implementation assumption from the portable thread API
       - complete thread spawn/join memory-model integration
       - complete thread data-race/deadlock/starvation analysis
       - complete thread Semantic IR facts without making the legacy opcode-name list normative
@@ -148,7 +148,7 @@ integrations:
     corrections_applied:
       - rules/corrections/applied/threads-v2-cross-rulebook-correction-20260924.md
       - rules/corrections/applied/thread-local-v2-cross-rulebook-correction-20260927.md
-    revised: "2026-11-11"
+    revised: "2026-11-12"
     code:
       - internal/sema/thread_lifecycle_errors.go
       - internal/sema/types.go
@@ -173,6 +173,11 @@ integrations:
       - internal/sema/parameter_usage.go
       - internal/sema/pitfall_analysis.go
       - internal/sema/pitfall_endpoint_flow.go
+      - internal/sema/thread_config.go
+      - internal/sema/defaults.go
+      - internal/sema/analyzer_target_plan.go
+      - cmd/lsp/member_completion.go
+      - internal/sema/thread_termination_boundary.go
     tests:
       - internal/sema/thread_lifecycle_errors_test.go
       - cmd/compiler/thread_lifecycle_errors_test.go
@@ -230,7 +235,45 @@ integrations:
       - testdata/sema/thread_named_config_valid.sec
       - testdata/sema/thread_named_config_invalid.sec
       - testdata/parser/thread_config_missing_callable_invalid.sec
+      - internal/sema/thread_config_test.go
+      - cmd/compiler/thread_config_test.go
+      - cmd/lsp/thread_config_test.go
+      - testdata/sema/thread_config_valid.sec
+      - testdata/sema/thread_config_invalid.sec
+      - testdata/sema/thread_config_core.sec
+      - testdata/sema/thread_config_target.sec
+      - testdata/parser/thread_inline_config_blocks.sec
+      - testdata/parser/thread_inline_config_recovery.sec
+      - testdata/lsp/thread_config_fields.sec
+      - internal/sema/thread_termination_boundary_test.go
+      - cmd/compiler/thread_termination_boundary_test.go
+      - cmd/lsp/thread_termination_boundary_test.go
+      - testdata/sema/thread_termination_boundary_valid.sec
+      - testdata/sema/thread_termination_boundary_invalid.sec
+      - testdata/lsp/thread_termination_boundary_completion.sec
     verification:
+      - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test -p 4 ./cmd/compiler -run '^TestNativeTrackNamesUnloweredConstructs$' -count=1 -timeout=60s
+        result: "passed 2026-11-12 (1.138s): the single native track retains named unsupported-lowering diagnostics after the canonical Thread identity adjustment."
+      - command: go test -race -p 4 ./cmd/compiler ./cmd/lsp -run '^TestPortableThreadTerminationBoundary(CLI|LSP)$' -count=1 -timeout=120s
+        result: "passed 2026-11-12 after canonical inferred Thread identity fix: CLI 21.383s, LSP 47.808s. Final nine errors share mandatory S1227 and repair guidance; human/JSON output, no invalid artifact, no phantom completion/hover/definition and ordinary explicit method navigation are verified."
+      - command: go test -race -p 4 ./internal/sema -run '^TestPortableThreadTerminationBoundary$' -count=1 -timeout=60s
+        result: "passed 2026-11-12 (1.043s): final nine source cases include inferred spawn owner canonical identity, declared and borrowed owner/observer diagnostics, explicit method controls, source spans/help, catalog absence and no executable member facts for invalid calls."
+      - command: go test -p 4 ./internal/sema ./internal/ir/semantic ./internal/diagnostics -count=1 -timeout=120s
+        result: "passed 2026-11-12 after canonical inferred Thread identity fix: complete Sema 31.885s, Semantic IR 9.709s, diagnostics 0.002s."
+      - command: go vet -p 4 ./internal/sema ./internal/diagnostics ./cmd/compiler ./cmd/lsp
+        result: passed 2026-11-12 after portable thread termination boundary changes.
+      - command: go test -p 4 ./internal/sema ./internal/diagnostics ./cmd/compiler ./cmd/lsp -run 'Test(PortableThreadTerminationBoundary|RegistryIsValid)' -count=1 -timeout=90s
+        result: "passed 2026-11-12: Sema 0.011s, diagnostic registry 0.002s, CLI 3.352s, LSP 8.477s; seven mandatory typed diagnostics with ID/span/help, source control cases, ordinary explicit method navigation, no phantom catalog/member facts and no invalid artifact publication."
+      - command: go test -race -p 4 ./cmd/lsp -run '^TestThreadConfigLSP$' -count=1 -timeout=90s
+        result: passed 2026-11-12 (22.655s) after aligning reference member projection with Sema's single-level referent selection (references.md section 3.4(6)).
+      - command: go vet -p 4 ./internal/ast ./internal/parser ./internal/formatter ./internal/sema ./internal/ir/semantic ./cmd/compiler ./cmd/lsp
+        result: passed 2026-11-12
+      - command: go test -p 4 ./cmd/lsp -run 'Test(MemberCompletion|CompletionReturnsStructMembersAfterDot|CompletionFiltersStructMembersAfterDotPrefix|CompletionIncludesRawPtrMembers|CompletionScopesTemporalBackingFieldsToCore|InterfaceReceiverCompletion|HardwareInstanceCompletionAndHover|ThreadConfig)' -count=1 -timeout=120s
+        result: "passed 2026-11-12 (10.276s): member-completion extraction/reference projection preserves expected-type filtering, ordinary/private core fields, RawPtr, interface and hardware completion."
+      - command: go test -race -p 4 ./internal/parser ./internal/formatter ./internal/sema ./cmd/compiler ./cmd/lsp -run 'Test(InlineThreadConfiguration|FormatInlineThreadConfiguration|ThreadConfig|NamedThreadConfiguration|FormatNamedThreadConfiguration)' -count=1 -timeout=120s
+        result: "passed 2026-11-12: parser 1.020s, formatter 1.135s, Sema 1.223s, compiler 38.831s, LSP 66.774s; includes canonical fields/defaults/noCopy, trusted-core validation, target-width stack payloads, inline parser recovery/formatter round-trip, CLI/LSP diagnostics and native unsupported/no-artifact assertions."
+      - command: go test -p 4 ./internal/parser ./internal/formatter ./internal/sema ./internal/ir/semantic ./cmd/compiler ./cmd/lsp -count=1 -timeout=180s
+        result: "2026-11-12: complete parser (160.118s), formatter (2.173s), Sema (29.908s) and Semantic IR (8.554s) passed. Full compiler and LSP suites reached the 180s limit in TestAnalyseFocusGraphForms and TestAllocationConsumerParity respectively; no full CLI/LSP pass claimed. Focused thread and member-completion suites below passed."
       - command: go test -p 4 ./internal/sema ./internal/ir/semantic -count=1 -timeout=150s
         result: "passed 2026-11-11 after final handoff synchronization with Claude semantic CTE release: complete Sema 22.088s, Semantic IR 7.151s."
       - command: go test -race -p 4 ./internal/parser ./internal/formatter ./internal/sema ./cmd/compiler ./cmd/lsp -run NamedThreadConfiguration -count=1 -timeout=120s

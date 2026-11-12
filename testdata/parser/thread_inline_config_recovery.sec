@@ -1,0 +1,7 @@
+module main
+fn Broken() void {
+    let worker := spawn thread { Name: Default }
+    let following := 1
+    discard following
+}
+fn After() void {}

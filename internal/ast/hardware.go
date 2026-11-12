@@ -19,6 +19,8 @@ type HardwareDeclaration struct {
 	Category  string
 	Name      *Identifier
 	Members   []*HardwareMember
+	// Attributes are the source-selection attributes written before it.
+	Attributes []*Attribute
 	// Invalid marks a declaration whose header or member syntax was
 	// malformed and only partially retained for recovery.
 	Invalid bool

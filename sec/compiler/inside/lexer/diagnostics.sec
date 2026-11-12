@@ -1,0 +1,61 @@
+/*
+ * File:        diagnostics.sec
+ * Purpose:     Lexical diagnostics emitted while scanning. No tokens.
+ * Author:      YoePro
+ * Created:     2026-11-12
+ *
+ * Dependencies (not obvious from imports):
+ * - internal/diagnostics catalog IDs (L1020, L1015, ...)
+ * - rules/foundations/lexical_structure.md §20
+ *
+ * Update log:
+ */
+module lexer
+
+/**
+ * One lexical diagnostic.
+ *
+ * lexical_structure.md §20: stable ID, source range, no cascade.
+ * Severity lives in the catalog, not on each emission.
+ */
+type Diagnostic struct {
+    ID:      string,
+    Message: string,
+    Span:    SourceSpan,
+}
+
+enum LexerFault error {
+    /** Cursor bounds were not a valid scalar range. */
+    InvalidBounds,
+}
+
+/**
+ * Owning list of diagnostics for one scan.
+ * Append-only during lexing.
+ */
+type DiagnosticList struct {
+    _items: list[Diagnostic],
+}
+
+impl DiagnosticList {
+    init() {
+        self._items = list[Diagnostic] {}
+    }
+
+    property Len: uint {
+        get {
+            return self._items.Len
+        }
+    }
+
+    property Items: ref list[Diagnostic] {
+        get {
+            return ref self._items
+        }
+    }
+
+    // Appending can fail only on storage exhaustion; the caller decides.
+    fn Add(item: Diagnostic) Result[void, CollectionError] {
+        return self._items.Append(item)
+    }
+}

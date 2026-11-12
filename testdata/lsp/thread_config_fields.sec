@@ -1,0 +1,4 @@
+module main
+fn Inspect(config: ref ThreadConfig) void {
+    discard config.Stack
+}

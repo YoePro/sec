@@ -316,7 +316,55 @@ const (
 	CompileTimeEvaluationFailed = "S1223"
 	CompileTimeForbiddenEffect  = "S1224"
 	CompileTimeResourceLimit    = "S1225"
-	CompileTimeDependencyCycle  = "S1226"
+	// CompileTimeResultNotMaterializable distinguishes storage validation from execution failure.
+	CompileTimeResultNotMaterializable = "S1244"
+	CompileTimeDependencyCycle         = "S1226"
+	// CompileTimeCompilerInvariantFailure reports a fault of the compile-time
+	// evaluator itself, a compiler bug rather than a source property
+	// (compile_time_evaluation.md §§ 57, 72(2)).
+	CompileTimeCompilerInvariantFailure = "S1228"
+	// Program initialization and shutdown plan verification before lowering
+	// (initialization.md §§ 34, 39, 42): a required runtime facility the
+	// TargetProfile cannot provide, a startup or shutdown dependency cycle,
+	// demanded deterministic static destruction the profile does not
+	// support, and a Target without a supported normal termination policy.
+	ProgramRuntimeUnsupported           = "S1229"
+	ProgramStartupCycle                 = "S1230"
+	ProgramShutdownCycle                = "S1231"
+	ProgramStaticDestructionUnsupported = "S1232"
+	ProgramTerminationUnsupported       = "S1233"
+	// Source selection (attributes.md §§ 22, 23, 27, 28): two target variants
+	// of one symbol active in one plan, mutually exclusive variants with
+	// different public shapes, and an @when condition naming an undeclared
+	// or ill-typed compile-time parameter.
+	OverlappingTargetVariants = "S1237"
+	IncompatibleVariantShape  = "S1235"
+	UnknownConfigParameter    = "S1236"
+	// NoActiveVariant reports a use of a symbol whose every variant source
+	// selection excluded for this plan (attributes.md § 24).
+	NoActiveVariant = "S1238"
+	// CompilerCapabilityUnavailable reports valid source that the current
+	// compiler implementation does not support yet, distinct from source
+	// and target errors (compiler_pipeline.md § 32).
+	CompilerCapabilityUnavailable = "S1239"
+	// Unsafe context diagnostics from the canonical unsafe-operation
+	// registry (unsafe.md §§ 5, 47, 50): a call or operation that needs an
+	// unsafe context, and an unsafe context that authorizes nothing or is
+	// nested in another one (informational).
+	UnsafeCallRequiresContext      = "S1240"
+	UnsafeOperationRequiresContext = "S1241"
+	UnsafeUnnecessary              = "S1242"
+	UnsafeRedundant                = "S1243"
+
+	// ThreadTerminationNotPortable rejects a fabricated portable hard-kill
+	// capability on the compiler-owned Thread/ThreadObserver identities.
+	// Rules: rules/concurrency/threads.md — §§40(6),52(7),53(1–4).
+	ThreadTerminationNotPortable = "S1227"
+
+	// TaskFailureDomainMismatch explains incompatible task creation/termination
+	// categories and prevents silent flattening of nested callable results.
+	// Rules: rules/concurrency/tasks.md — §§11–15,30(1),(8–9).
+	TaskFailureDomainMismatch = "S1234"
 	// Borrow conflict identities follow requested semantic actions, preserving
 	// origins and mentor explanations rather than classifying rendered prose.
 	// Rules: rules/memory/borrowing.md — §§7,8,9,12,15,21–23,32–33;
@@ -531,8 +579,24 @@ var registry = map[string]Definition{
 	ArenaUseAfterInvalidation:             {ID: ArenaUseAfterInvalidation, Name: "arena.use-after-invalidation", Family: "arena", DefaultSeverity: SeverityError, Mandatory: true},
 	CompileTimeEvaluationFailed:           {ID: CompileTimeEvaluationFailed, Name: "compile-time.evaluation-failed", Family: "compile-time", DefaultSeverity: SeverityError, Mandatory: true},
 	CompileTimeForbiddenEffect:            {ID: CompileTimeForbiddenEffect, Name: "compile-time.forbidden-effect", Family: "compile-time", DefaultSeverity: SeverityError, Mandatory: true},
+	CompileTimeResultNotMaterializable:    {ID: CompileTimeResultNotMaterializable, Name: "compile-time.result-not-materializable", Family: "compile-time", DefaultSeverity: SeverityError, Mandatory: true},
 	CompileTimeResourceLimit:              {ID: CompileTimeResourceLimit, Name: "compile-time.resource-limit", Family: "compile-time", DefaultSeverity: SeverityError, Mandatory: true},
 	CompileTimeDependencyCycle:            {ID: CompileTimeDependencyCycle, Name: "compile-time.dependency-cycle", Family: "compile-time", DefaultSeverity: SeverityError, Mandatory: true},
+	CompileTimeCompilerInvariantFailure:   {ID: CompileTimeCompilerInvariantFailure, Name: "compile-time.compiler-invariant-failure", Family: "compile-time", DefaultSeverity: SeverityError, Mandatory: true},
+	ProgramRuntimeUnsupported:             {ID: ProgramRuntimeUnsupported, Name: "initialization.unsupported-runtime-requirement", Family: "initialization", DefaultSeverity: SeverityError, Mandatory: true},
+	ProgramStartupCycle:                   {ID: ProgramStartupCycle, Name: "initialization.startup-dependency-cycle", Family: "initialization", DefaultSeverity: SeverityError, Mandatory: true},
+	ProgramShutdownCycle:                  {ID: ProgramShutdownCycle, Name: "initialization.shutdown-dependency-cycle", Family: "initialization", DefaultSeverity: SeverityError, Mandatory: true},
+	ProgramStaticDestructionUnsupported:   {ID: ProgramStaticDestructionUnsupported, Name: "initialization.unsupported-static-destruction", Family: "initialization", DefaultSeverity: SeverityError, Mandatory: true},
+	ProgramTerminationUnsupported:         {ID: ProgramTerminationUnsupported, Name: "initialization.unsupported-termination-policy", Family: "initialization", DefaultSeverity: SeverityError, Mandatory: true},
+	OverlappingTargetVariants:             {ID: OverlappingTargetVariants, Name: "attribute.overlapping-target-variants", Family: "attribute", DefaultSeverity: SeverityError, Mandatory: true},
+	IncompatibleVariantShape:              {ID: IncompatibleVariantShape, Name: "attribute.incompatible-variant-shape", Family: "attribute", DefaultSeverity: SeverityError, Mandatory: true},
+	UnknownConfigParameter:                {ID: UnknownConfigParameter, Name: "attribute.unknown-config-parameter", Family: "attribute", DefaultSeverity: SeverityError, Mandatory: true},
+	NoActiveVariant:                       {ID: NoActiveVariant, Name: "attribute.no-active-variant", Family: "attribute", DefaultSeverity: SeverityError, Mandatory: true},
+	CompilerCapabilityUnavailable:         {ID: CompilerCapabilityUnavailable, Name: "compiler.capability-unavailable", Family: "compiler-capability", DefaultSeverity: SeverityError, Mandatory: true},
+	UnsafeCallRequiresContext:             {ID: UnsafeCallRequiresContext, Name: "unsafe.call-requires-context", Family: "unsafe", DefaultSeverity: SeverityError, Mandatory: true},
+	UnsafeOperationRequiresContext:        {ID: UnsafeOperationRequiresContext, Name: "unsafe.operation-requires-context", Family: "unsafe", DefaultSeverity: SeverityError, Mandatory: true},
+	UnsafeUnnecessary:                     {ID: UnsafeUnnecessary, Name: "unsafe.unnecessary", Family: "unsafe", DefaultSeverity: SeverityInformation},
+	UnsafeRedundant:                       {ID: UnsafeRedundant, Name: "unsafe.redundant", Family: "unsafe", DefaultSeverity: SeverityInformation},
 	BorrowExplicitRefRequired:             {ID: BorrowExplicitRefRequired, Name: "borrowing.explicit-ref-required", Family: "borrowing", DefaultSeverity: SeverityError, Mandatory: true},
 	AtomicOrderNotCompileTime:             {ID: AtomicOrderNotCompileTime, Name: "atomic.order-not-compile-time", Family: "atomic", DefaultSeverity: SeverityError, Mandatory: true},
 	AtomicInvalidMemoryOrder:              {ID: AtomicInvalidMemoryOrder, Name: "atomic.invalid-memory-order", Family: "atomic", DefaultSeverity: SeverityError, Mandatory: true},
@@ -542,6 +606,8 @@ var registry = map[string]Definition{
 	LogicalTaskContextRequired:            {ID: LogicalTaskContextRequired, Name: "concurrency.logical-task-context-required", Family: "concurrency", DefaultSeverity: SeverityError, Mandatory: true},
 	CpuSetLiteral:                         {ID: CpuSetLiteral, Name: "thread.invalid-cpu-set-literal", Family: "thread", DefaultSeverity: SeverityError, Mandatory: true},
 	ThreadStorageCapacity:                 {ID: ThreadStorageCapacity, Name: "thread.invalid-storage-capacity", Family: "thread", DefaultSeverity: SeverityError, Mandatory: true},
+	ThreadTerminationNotPortable:          {ID: ThreadTerminationNotPortable, Name: "thread.termination-not-portable", Family: "thread", DefaultSeverity: SeverityError, Mandatory: true},
+	TaskFailureDomainMismatch:             {ID: TaskFailureDomainMismatch, Name: "task.failure-domain-mismatch", Family: "task", DefaultSeverity: SeverityError, Mandatory: true},
 	PropertyNotVisible:                    {ID: PropertyNotVisible, Name: "properties.not-visible", Family: "properties", DefaultSeverity: SeverityError, Mandatory: true},
 	PropertyReceiverMutable:               {ID: PropertyReceiverMutable, Name: "properties.mutable-receiver-required", Family: "properties", DefaultSeverity: SeverityError, Mandatory: true},
 	InterfaceConformancePlacement:         {ID: InterfaceConformancePlacement, Name: "interfaces.conformance-placement", Family: "interfaces", DefaultSeverity: SeverityError, Mandatory: true},

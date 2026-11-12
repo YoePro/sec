@@ -32,6 +32,9 @@ type checkedConversion struct {
 	source  Type
 	target  Type
 	failure ConversionFailureKind
+	// failures lists every intrinsic variant in runtime priority order;
+	// failure is its first entry.
+	failures []ConversionFailureKind
 }
 
 // recordCheckedConversion classifies an explicit conversion call once its
@@ -39,12 +42,14 @@ type checkedConversion struct {
 // and rune) compare the compiler-proven value interval of the argument with
 // the target's intrinsic domain, so constants and values refined by
 // dominating conditions need no runtime check; rune additionally excludes
-// surrogate code points. Floating conversions involving a c:: scalar compare
-// formats. Declared contracts of constrained named types and unit
+// surrogate code points. Conversions involving a binary floating or decimal
+// type, Sec-only and c:: alike, are classified by numericConversionMayFail
+// (checked_numeric_conversions.go). Declared contracts of constrained named types and unit
 // conversions keep their own paths.
 //
 // Rules:
-//   - rules/types/types.md — "Explicit conversions": a conversion that may fail requires try
+//   - rules/types/types.md — § 25(5) "Explicit conversions": a conversion that may fail requires try
+//   - rules/mlir/normative-sync/sec_float_numeric_sync_v1.md — §§ 12–15 floating conversions
 //   - rules/platform/ffi.md — §8 "C-to-Sec and Sec-to-C scalar conversions"
 //   - rules/corrections/applied/md012-md022-conversion-errors-ffi-literals-correction-20261008.md — §2.5, §4.1–4.8
 func (a *Analyzer) recordCheckedConversion(call *ast.CallExpression, target, source Type) {
@@ -85,17 +90,34 @@ func (a *Analyzer) recordCheckedConversion(call *ast.CallExpression, target, sou
 		delete(a.checkedConversions, call)
 		return
 	}
-	failure, mayFail := a.conversionMayFail(target, source, argument)
-	if !mayFail {
+	failures := a.conversionMayFail(target, source, argument)
+	if len(failures) == 0 {
 		// A body can be analyzed more than once (summary passes see fewer
 		// path facts); the latest analysis of the call decides.
 		delete(a.checkedConversions, call)
 		return
 	}
-	a.checkedConversions[call] = checkedConversion{source: source, target: target, failure: failure}
+	a.checkedConversions[call] = checkedConversion{source: source, target: target, failure: failures[0], failures: failures}
 }
 
-func (a *Analyzer) conversionMayFail(target, source Type, argument ast.Expression) (ConversionFailureKind, bool) {
+// conversionMayFail returns the intrinsic ConversionError variants one
+// explicit conversion can still produce after Sema's value proof, in runtime
+// priority order; empty means the conversion is proved exact.
+//
+// Rules:
+//   - rules/types/types.md — § 25(5), § 25(7), § 25(9) "Explicit conversions"
+func (a *Analyzer) conversionMayFail(target, source Type, argument ast.Expression) []ConversionFailureKind {
+	if failure, mayFail := a.integerFamilyConversionMayFail(target, source, argument); mayFail {
+		return []ConversionFailureKind{failure}
+	}
+	if sameConcreteType(target, source) {
+		return nil
+	}
+	failures, _ := a.numericConversionMayFail(target, source, argument)
+	return failures
+}
+
+func (a *Analyzer) integerFamilyConversionMayFail(target, source Type, argument ast.Expression) (ConversionFailureKind, bool) {
 	if sameConcreteType(target, source) {
 		return "", false
 	}
@@ -115,11 +137,6 @@ func (a *Analyzer) conversionMayFail(target, source Type, argument ast.Expressio
 			return ConversionFailureInvalidScalar, true
 		}
 		return "", false
-	}
-	if target.Kind == FloatType && source.Kind == FloatType && (isForeignCScalar(target) || isForeignCScalar(source)) {
-		if source.FloatBits == 0 || target.FloatBits == 0 || source.FloatBits > target.FloatBits {
-			return ConversionFailurePrecisionLoss, true
-		}
 	}
 	return "", false
 }
@@ -190,6 +207,9 @@ func portableDomainType(typ Type, width uint16) Type {
 		return targetSignedIntegerType("int", width)
 	case "uint":
 		return targetUnsignedIntegerType("uint", width)
+	case "float":
+		// MD-014: plain float has the platform width.
+		typ.FloatBits = int(width)
 	}
 	return typ
 }
@@ -197,6 +217,18 @@ func portableDomainType(typ Type, width uint16) Type {
 func conversionDomainMayFailAt(target, source Type) (ConversionFailureKind, bool) {
 	targetMin, targetMax, targetOK := scalarIntegerDomain(target)
 	sourceMin, sourceMax, sourceOK := scalarIntegerDomain(source)
+	if isIntegerType(source) || isIntegerType(target) || !sourceOK || !targetOK {
+		var minimum, maximum *big.Int
+		if isIntegerType(source) && sourceOK {
+			minimum, maximum = sourceMin, sourceMax
+		}
+		if failures, handled := numericConversionFailures(target, source, minimum, maximum); handled {
+			if len(failures) == 0 {
+				return "", false
+			}
+			return failures[0], true
+		}
+	}
 	if !targetOK || !sourceOK {
 		return "", false
 	}
@@ -267,6 +299,32 @@ func (a *Analyzer) reportCheckedConversions() {
 		conversion := a.checkedConversions[call]
 		a.addErrorAtTokenWithMetadata(expressionToken(call), diagnostics.CheckedConversionRequiresTry,
 			"Write try before the conversion to propagate ConversionError, handle it with try ... { Err(_) => ... }, or prove the value range first (for example with an if condition).",
-			"converting %s to %s may fail with ConversionError.%s and requires try", typeDisplayName(conversion.source), typeDisplayName(conversion.target), conversion.failure)
+			"converting %s to %s may fail with %s and requires try", typeDisplayName(conversion.source), typeDisplayName(conversion.target), conversionFailureList(conversion.checkedFailures()))
 	}
+}
+
+// checkedFailures is the complete variant list of a checked conversion;
+// conversions recorded with only their primary failure report that one.
+func (c checkedConversion) checkedFailures() []ConversionFailureKind {
+	if len(c.failures) > 0 {
+		return c.failures
+	}
+	return []ConversionFailureKind{c.failure}
+}
+
+// CheckedConversionFailuresOf returns every intrinsic ConversionError variant
+// a checked explicit conversion can produce, in runtime priority order
+// (NonFinite, OutOfRange, PrecisionLoss), for lowering and tooling.
+//
+// Rules:
+//   - rules/mlir/normative-sync/sec_float_numeric_sync_v1.md — § 12 "Error priority"
+func (a *Analyzer) CheckedConversionFailuresOf(call *ast.CallExpression) []ConversionFailureKind {
+	if a == nil {
+		return nil
+	}
+	conversion, ok := a.checkedConversions[call]
+	if !ok || conversion.failure == ConversionFailureContract {
+		return nil
+	}
+	return append([]ConversionFailureKind(nil), conversion.checkedFailures()...)
 }

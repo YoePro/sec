@@ -1,0 +1,33 @@
+module main
+
+type Point struct { x: int, text: string }
+type AppError enum error { Bad }
+type Choice union {
+    Empty
+    Selected(Point)
+    Record { point: Point, code: int }
+}
+
+fn MakePoint() Point { return Point { x: 42, text: "Sec" } }
+fn Nested() Result[Option[Point], AppError] { return Ok(Some(MakePoint())) }
+fn Failed() Result[Option[Point], AppError] { return Err(AppError.Bad) }
+fn BuildSelected() Choice { return Choice.Selected(MakePoint()) }
+fn Fields() Choice { return Choice.Record { point: MakePoint(), code: 7 } }
+fn BuildEmpty() Choice { return Choice.Empty }
+fn NoValue() Option[Point] { return None }
+fn VoidSuccess() Result[void, AppError] { return Ok() }
+
+type Concrete int
+fn Nominal() Concrete { return Concrete(42) }
+
+let Plain: Point := MakePoint()
+let Wrapped: Result[Option[Point], AppError] := Nested()
+let ApplicationFailure: Result[Option[Point], AppError] := Failed()
+let Tagged: Choice := BuildSelected()
+let FieldTagged: Choice := Fields()
+let PayloadFree: Choice := BuildEmpty()
+let Absent: Option[Point] := NoValue()
+let NoPayload: Result[void, AppError] := VoidSuccess()
+let Named: Concrete := Nominal()
+
+fn main() int { return 0 }

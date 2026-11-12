@@ -1,0 +1,31 @@
+module main
+
+fn Work() void {}
+fn Take(config: ThreadConfig) void { discard config }
+fn Defaults() void {
+    let config := ThreadConfig()
+    Take(<-config)
+    let literal := ThreadConfig {}
+    Take(<-literal)
+    let worker := spawn thread {} Work()
+    join worker
+}
+fn Inline() void {
+    let worker := spawn thread {
+        Name: Preferred("worker")
+        Stack: Required(65536)
+        Affinity: Preferred(CpuSet { 2, 3 })
+        Priority: Required(ThreadPriority.High)
+        Start: ThreadStartMode.Deferred
+    } Work()
+    join worker
+}
+fn Partial() void {
+    let worker := spawn thread { Name: Default } Work()
+    join worker
+}
+fn Storage() void {
+    let mut storage := ThreadStorage(4096)
+    let config := ThreadConfig { Storage: Some(ref mut storage) }
+    Take(<-config)
+}

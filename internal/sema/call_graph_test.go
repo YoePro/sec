@@ -20,12 +20,12 @@ func TestCallGraphExposesExecutionSpecificSCCViews(t *testing.T) {
 module main
 
 fn TaskA() void {
-	let child := spawn task TaskB()
+	let child := try spawn task TaskB() { Err(_) => { return } }
 	detach child
 }
 
 fn TaskB() void {
-	let child := spawn task TaskA()
+	let child := try spawn task TaskA() { Err(_) => { return } }
 	detach child
 }
 
@@ -40,7 +40,7 @@ fn ThreadB() void {
 }
 
 fn main() void {
-	let taskChild := spawn task TaskA()
+	let taskChild := try spawn task TaskA() { Err(_) => { return } }
 	let threadChild := spawn thread ThreadA()
 	detach taskChild
 	detach threadChild

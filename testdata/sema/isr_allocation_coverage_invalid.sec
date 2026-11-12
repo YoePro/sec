@@ -33,7 +33,7 @@ fn CleanupRoot() void { CleanupLeaf() }
 unsafe fn UnsafeRoot() void { unsafe { Forward() } }
 @interruptSafe
 fn SpawnRoot() void {
-    let worker := spawn AllocatingWorker()
+    let worker := try spawn AllocatingWorker() { Err(_) => { return } }
     detach worker
 }
 @interruptSafe

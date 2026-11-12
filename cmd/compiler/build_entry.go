@@ -23,7 +23,11 @@ func validateBuildEntry(analyzed analyzedProgram, inputFile string) []sema.Error
 		return nil
 	}
 	module, anchor := entryModuleOf(analyzed.Program, inputFile)
-	return analyzed.Analyzer.ValidateProgramEntry(buildTargetKind(inputFile), module, anchor)
+	// Every executable Target's build resolves its canonical initialization
+	// and shutdown plans; entry-contract failures reject it before lowering
+	// (initialization.md §§ 8, 9, 38–39).
+	_, _, errors := analyzed.Analyzer.ProgramPlans(buildTargetKind(inputFile), module, anchor)
+	return errors
 }
 
 // buildTargetKind consumes the resolved project snapshot for valid manifests

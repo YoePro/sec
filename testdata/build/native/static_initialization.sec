@@ -1,0 +1,40 @@
+module main
+
+// Statics are established from compile-time values: BufferSize() runs
+// during compilation, never as hidden startup code (initialization.md
+// §§ 4, 6, 7; static.md § 15). The program returns 0 when every static holds
+// its compile-time value at entry.
+
+fn BufferSize() int {
+    let mut size := 1
+    for i in 0..11 {
+        size = size * 2
+    }
+    return size
+}
+
+fn Half(n: int) int {
+    return n / 2
+}
+
+let Size: int := BufferSize()
+let HalfSize: int := Half(Size)
+let mut Calls: int := Half(8)
+
+fn Bump() int {
+    Calls = Calls + 1
+    return Calls
+}
+
+fn main() int {
+    if Size != 4096 {
+        return 1
+    }
+    if HalfSize != 2048 {
+        return 2
+    }
+    if Bump() != 5 {
+        return 3
+    }
+    return 0
+}

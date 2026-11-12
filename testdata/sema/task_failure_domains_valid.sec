@@ -1,0 +1,44 @@
+module main
+
+enum AppError error { Bad }
+
+type OtherOutcome[T] union {
+    Completed(T)
+    Failed(TaskSpawnError)
+}
+
+fn Values(info: PanicInfo) void {
+    let completed: TaskOutcome[int] := Completed(3)
+    let cancelled: TaskOutcome[int] := Cancelled
+    let panicked: TaskOutcome[int] := Panicked(info)
+    let failed: TaskOutcome[int] := Failed(TaskError.NativeFailure)
+    let empty: TaskOutcome[void] := Completed
+    let nested: TaskOutcome[Result[int, AppError]] := Completed(Err(AppError.Bad))
+    let qualified := TaskOutcome.Completed[Result[int, AppError]](Err(AppError.Bad))
+    let other: OtherOutcome[int] := Failed(TaskSpawnError.NativeFailure)
+    discard completed
+    discard cancelled
+    discard panicked
+    discard failed
+    discard empty
+    discard nested
+    discard qualified
+    discard other
+}
+
+fn Inspect(worker: Task[Result[int, AppError]]) void {
+    let outcome := await worker
+    match outcome {
+        Completed(result) => { discard result }
+        Cancelled => {}
+        Panicked(info) => { discard info }
+        Failed(failure) => { discard failure }
+    }
+}
+
+fn Creation(creation: Result[Task[int], TaskSpawnError]) void {
+    match creation {
+        Ok(worker) => { discard await worker }
+        Err(failure) => { discard failure }
+    }
+}

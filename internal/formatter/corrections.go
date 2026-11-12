@@ -2,6 +2,7 @@ package formatter
 
 import (
 	"sort"
+	"strconv"
 	"strings"
 
 	"sec/internal/ast"
@@ -198,6 +199,47 @@ func fixMissingListSeparators(text string) string {
 	sort.Sort(sort.Reverse(sort.IntSlice(offsets)))
 	for _, offset := range offsets {
 		text = text[:offset] + "," + text[offset:]
+	}
+	return text
+}
+
+// fixLegacyTargetDirective migrates the file-level `#target(os:, arch:)`
+// compatibility form to the canonical file-level `@target(...)` with the
+// same meaning: both select the whole file for matching plans, and the
+// compatibility form's `arch: "any"` is no arch restriction, so it is
+// omitted. Ordinary formatting never performs it (attributes.md § 25(5)).
+//
+// This is an opt-in Language Correction and must never run during ordinary
+// formatting.
+//
+// Rules:
+//   - rules/foundations/attributes.md — § 25 "#target compatibility form"
+//   - rules/tooling/formatter.md — § 26 "Language Corrections model"
+func fixLegacyTargetDirective(text string) string {
+	p := parser.New(lexer.New(text))
+	program := p.ParseProgram()
+	if program == nil || len(p.Errors()) > 0 {
+		return text
+	}
+	for _, statement := range program.Statements {
+		directive, ok := statement.(*ast.TargetDirective)
+		if !ok || directive.Canonical || directive.OS == "" || directive.Arch == "" {
+			continue
+		}
+		start := directive.Token.ByteStart
+		if start < 0 || start >= len(text) || text[start] != '#' {
+			return text
+		}
+		end := strings.IndexByte(text[start:], ')')
+		if end < 0 || strings.Contains(text[start:start+end], "\n") {
+			return text
+		}
+		replacement := "@target(os: " + strconv.Quote(directive.OS)
+		if directive.Arch != "any" {
+			replacement += ", arch: " + strconv.Quote(directive.Arch)
+		}
+		replacement += ")"
+		return text[:start] + replacement + text[start+end+1:]
 	}
 	return text
 }

@@ -7,6 +7,6 @@ fn Work() void {
 
 fn main() void {
     Thread.Yield()
-    let work := spawn Work()
+    let work := try spawn Work() { Err(_) => { return } }
     await work
 }

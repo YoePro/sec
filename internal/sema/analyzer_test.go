@@ -439,7 +439,7 @@ fn TaskWork(value: int) void {}
 fn ThreadWork() void {}
 
 fn main() void {
-	let taskHandle := spawn task TaskWork(Build())
+	let taskHandle := try spawn task TaskWork(Build()) { Err(_) => { return } }
 	let threadHandle := spawn thread ThreadWork()
 	detach taskHandle
 	detach threadHandle
@@ -487,17 +487,17 @@ func TestCallGraphSpawnCycleIsNotSameStackRecursion(t *testing.T) {
 module main
 
 fn A() void {
-	let child := spawn B()
+	let child := try spawn B() { Err(_) => { return } }
 	detach child
 }
 
 fn B() void {
-	let child := spawn A()
+	let child := try spawn A() { Err(_) => { return } }
 	detach child
 }
 
 fn main() void {
-	let child := spawn A()
+	let child := try spawn A() { Err(_) => { return } }
 	detach child
 }
 `)
@@ -9309,7 +9309,7 @@ fn Test() void {
 	errors := analyzeSourceRaw(t, input)
 
 	expected := []string{
-		"cannot discard spawn result because successful creation would abandon Task[int] at 9:2",
+		"cannot discard spawn result because successful creation would abandon Result[Task[int], TaskSpawnError] at 9:2",
 	}
 
 	assertSemaErrors(t, errors, expected)
@@ -12463,15 +12463,26 @@ func TestExplicitDecimalToIntegerConversions(t *testing.T) {
 	input := `
 module main
 
-fn Test(value: decimal, exact: decimal128) int128 {
+fn Test(value: decimal, exact: decimal128) Result[int128, ConversionError] {
+	let small: int := try int(value)
+	let wide: int128 := try int128(exact)
+	return Ok(int128(small) + wide)
+}
+
+fn Unchecked(value: decimal, exact: decimal128) int128 {
 	let small: int := int(value)
 	let wide: int128 := int128(exact)
 	return int128(small) + wide
 }
 `
 
+	// A decimal may be fractional or beyond the integer range, so the
+	// relation exists but needs try (types.md § 25(5)).
 	errors := analyzeSourceRaw(t, input)
-	assertSemaErrors(t, errors, nil)
+	assertSemaErrors(t, errors, []string{
+		"converting decimal to int may fail with ConversionError.OutOfRange or ConversionError.PrecisionLoss and requires try at 11:20",
+		"converting decimal128 to int128 may fail with ConversionError.OutOfRange or ConversionError.PrecisionLoss and requires try at 12:22",
+	})
 }
 
 func TestBasicTypesBitwiseAndCharRules(t *testing.T) {

@@ -294,6 +294,20 @@ type TargetDirective struct {
 	Token lexer.Token
 	OS    string
 	Arch  string
+	// Canonical marks the file-level `@target(...)` form; the legacy
+	// `#target(os:, arch:)` compatibility form leaves it false. Selectors
+	// holds every selector in source order, OS and Arch included
+	// (attributes.md §§ 15, 17, 25).
+	Canonical bool
+	Attribute *Attribute
+	Selectors []TargetSelector
+}
+
+// TargetSelector is one `name: "value"` selector of a target selection.
+type TargetSelector struct {
+	Token lexer.Token
+	Name  string
+	Value string
 }
 
 func (td *TargetDirective) statementNode() {}
@@ -363,10 +377,13 @@ func (tds *TypeDeclStatement) TokenLiteral() string {
 }
 
 type UnitDeclStatement struct {
-	Token    lexer.Token
-	Name     *Identifier
-	BaseType *TypeReference
-	Category string
+	Token lexer.Token
+	// Attributes are the source-selection attributes (@target, @when)
+	// written before this top-level statement (attributes.md §§ 16, 26).
+	Attributes []*Attribute
+	Name       *Identifier
+	BaseType   *TypeReference
+	Category   string
 }
 
 func (uds *UnitDeclStatement) statementNode() {}
@@ -457,6 +474,9 @@ func (ev *EnumValue) TokenLiteral() string {
 
 type InterfaceDeclaration struct {
 	// InvalidMembers retain diagnosed requirements without publishing a callable contract.
+	// Attributes are the source-selection attributes (@target, @when)
+	// written before this top-level statement (attributes.md §§ 16, 26).
+	Attributes []*Attribute
 	// Rules: rules/declarations/interfaces.md — §3.3; rules/compiler/parser_recovery.md — Invalid AST nodes.
 	InvalidMembers    []*InvalidMember
 	Token             lexer.Token
@@ -932,7 +952,10 @@ func (ms *ModuleStatement) TokenLiteral() string {
 }
 
 type ImportStatement struct {
-	Token      lexer.Token
+	Token lexer.Token
+	// Attributes are the source-selection attributes (@target, @when)
+	// written before this top-level statement (attributes.md §§ 16, 26).
+	Attributes []*Attribute
 	AliasToken lexer.Token
 	PathToken  lexer.Token
 	Alias      string
@@ -1007,7 +1030,10 @@ func (ls *LetStatement) TokenLiteral() string {
 
 type LetGroupStatement struct {
 	Token lexer.Token
-	Lets  []*LetStatement
+	// Attributes are the source-selection attributes (@target, @when)
+	// written before this top-level statement (attributes.md §§ 16, 26).
+	Attributes []*Attribute
+	Lets       []*LetStatement
 }
 
 func (lgs *LetGroupStatement) statementNode() {}
@@ -1094,8 +1120,11 @@ type FunctionDeclaration struct {
 //   - rules/tooling/testing.md — §6 "Test identity"
 type TestDeclaration struct {
 	Token lexer.Token
-	Name  *StringLiteral
-	Body  *BlockStatement
+	// Attributes are the source-selection attributes (@target, @when)
+	// written before this top-level statement (attributes.md §§ 16, 26).
+	Attributes []*Attribute
+	Name       *StringLiteral
+	Body       *BlockStatement
 	// Invalid marks a retained test whose declaration header violates the
 	// canonical parameter-free and return-type-free source form.
 	Invalid bool
@@ -1508,9 +1537,12 @@ type AsmOutput struct {
 }
 
 type StructStatement struct {
-	Token  lexer.Token
-	Name   *Identifier
-	Fields []*StructField
+	Token lexer.Token
+	// Attributes are the source-selection attributes (@target, @when)
+	// written before this top-level statement (attributes.md §§ 16, 26).
+	Attributes []*Attribute
+	Name       *Identifier
+	Fields     []*StructField
 }
 
 func (ss *StructStatement) statementNode() {}
@@ -2518,7 +2550,10 @@ type MatchArm struct {
 }
 
 type ImplStatement struct {
-	Token      lexer.Token
+	Token lexer.Token
+	// Attributes are the source-selection attributes (@target, @when)
+	// written before this top-level statement (attributes.md §§ 16, 26).
+	Attributes []*Attribute
 	Extends    bool
 	Target     *TypeReference
 	Implements []*TypeReference
@@ -2861,8 +2896,11 @@ type SpawnExpression struct {
 	// from the child callable. Rules: rules/concurrency/threads.md §10;
 	// rules/concurrency/spawn.md §4.
 	Configuration Expression
-	Value         Expression
-	Body          *BlockStatement
+	// InlineConfiguration retains contextual braces without inventing a source
+	// type name. Rules: rules/concurrency/threads.md — §11.
+	InlineConfiguration bool
+	Value               Expression
+	Body                *BlockStatement
 }
 
 func (se *SpawnExpression) expressionNode() {}
@@ -2882,7 +2920,11 @@ func (se *SpawnExpression) String() string {
 	}
 	if se.Value != nil {
 		if se.Configuration != nil {
-			prefix += " " + se.Configuration.String()
+			if se.InlineConfiguration {
+				prefix += " {...}"
+			} else {
+				prefix += " " + se.Configuration.String()
+			}
 		}
 		return prefix + " " + se.Value.String()
 	}
@@ -2960,4 +3002,72 @@ func SetArgumentsOpen(expr Expression, open lexer.Token) {
 	case *NewExpression:
 		node.ArgumentsOpen = open
 	}
+}
+
+// StatementAttributes returns the attributes written before a top-level
+// statement, for every statement kind that can carry them.
+func StatementAttributes(statement Statement) []*Attribute {
+	switch statement := statement.(type) {
+	case *FunctionDeclaration:
+		if statement == nil {
+			return nil
+		}
+		return statement.Attributes
+	case *TypeDeclStatement:
+		if statement == nil {
+			return nil
+		}
+		return statement.Attributes
+	case *EnumDeclaration:
+		if statement == nil {
+			return nil
+		}
+		return statement.Attributes
+	case *LetStatement:
+		if statement == nil {
+			return nil
+		}
+		return statement.Attributes
+	case *LetGroupStatement:
+		if statement == nil {
+			return nil
+		}
+		return statement.Attributes
+	case *ImportStatement:
+		if statement == nil {
+			return nil
+		}
+		return statement.Attributes
+	case *ImplStatement:
+		if statement == nil {
+			return nil
+		}
+		return statement.Attributes
+	case *InterfaceDeclaration:
+		if statement == nil {
+			return nil
+		}
+		return statement.Attributes
+	case *UnitDeclStatement:
+		if statement == nil {
+			return nil
+		}
+		return statement.Attributes
+	case *StructStatement:
+		if statement == nil {
+			return nil
+		}
+		return statement.Attributes
+	case *TestDeclaration:
+		if statement == nil {
+			return nil
+		}
+		return statement.Attributes
+	case *HardwareDeclaration:
+		if statement == nil {
+			return nil
+		}
+		return statement.Attributes
+	}
+	return nil
 }

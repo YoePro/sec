@@ -1,0 +1,10 @@
+module main
+
+fn Owner(worker: Thread[void]) void {
+    worker.
+    join worker
+}
+
+fn Observer(observer: ThreadObserver[int]) void {
+    observer.
+}

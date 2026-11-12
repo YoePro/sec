@@ -42,7 +42,7 @@ fn Recursive(name: string, depth: int) Result[string, StringError] {
 }
 fn Deferred(name: string) void { defer { discard Render(name) } }
 fn Spawner() void {
-    let worker := spawn Deferred("world")
+    let worker := try spawn Deferred("world") { Err(_) => { return } }
     detach worker
 }
 fn main() void { Combined("world") }

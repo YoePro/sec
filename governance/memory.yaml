@@ -162,12 +162,13 @@ integrations:
     status: partial
     remaining:
       - complete unsafe fn/method and unsafe extern callable safety checking
-      - centralize unsafe operation classification
       - preserve caller obligations and safe-wrapper boundaries
     rules:
       - rules/memory/unsafe.md
       - rules/memory/raw_pointers.md
     code:
+      - internal/sema/unsafe_operations.go
+      - cmd/lsp/unsafe_actions.go
       - internal/sema/analyzer.go
       - internal/sema/analyzer_function_body.go
       - sec/platform/linux/amd64/raw_syscall.sec
@@ -176,6 +177,8 @@ integrations:
       - sec/platform/linux/arm64/raw_syscall.sec
       - sec/platform/linux/armv7/raw_syscall.sec
     tests:
+      - internal/sema/unsafe_operations_test.go
+      - cmd/lsp/unsafe_actions_test.go
       - testdata/tooling/raw_pointer_unsafe_body_invalid.sec
       - internal/sema/unsafe_function_body_test.go
       - cmd/compiler/unsafe_function_body_test.go
@@ -204,6 +207,7 @@ integrations:
     implemented:
       - "direct single-call form (MD-079 decided 2026-10-18; unsafe.md § 4(9)–(13), grammar.md UnsafeCallExpression, formatter.md § 19(14)): `unsafe Call()` parses at prefix precedence as an expression or statement and records ast.CallExpression.Unsafe; Sema authorizes exactly that call (Analyzer.callUnsafeAuthorized) — its receiver, arguments and neighbors keep their own requirements and ordinary type checking applies; a block-less unsafe without a call is a parse error; the formatter keeps one space and never converts between forms; Semantic IR prints unsafe-direct@loc(...) on the call; the native track builds and runs a prefixed call"
       - "Unsafe callable bodies start outside an unsafe context: unmarked raw-pointer operations and unsafe calls are rejected even inside unsafe fn, explicit unsafe blocks remain valid and do not leak permission, and callable caller requirements remain enforced."
+      - "2026-11-12: unsafe operation classification is centralized in one canonical registry (sema.UnsafeOperations, internal/sema/unsafe_operations.go): every requirement (unsafe callable calls including type-pack forwarding, raw-pointer Read/Write/Volatile*, Offset/AddBytes/Difference, AsRef/AsRefMut, Ptr/ptr address formation, raw address conversions, null sentinel and null tests, inline assembly) goes through Analyzer.authorizeUnsafe, which records the site's kind, authorization and obligations; the registry fixes each kind's explanation, caller obligations (raw-pointer obligations from the compiler-known member registry), safe alternative, whether call-form unsafe may authorize it and its diagnostic (S1240 unsafe.call-requires-context, S1204, S1080, S1241 unsafe.operation-requires-context). Compiler and LSP consume the same registry (UnsafeOperationSites, UnsafeOperationAt) (TestUnsafeOperationRegistry)."
     revised: "2026-10-18"
 
   - id: frontend.references
@@ -832,11 +836,12 @@ integrations:
 
   - id: tooling.unsafe
     status: partial
+    implemented:
+      - "2026-11-12: safe unsafe code actions: an unsafe call missing its context gets the exact quick fix `unsafe Call(...)`, an unnecessary or redundant call-form `unsafe` gets a remove fix, and every edit is reparsed and reanalyzed before it is offered; the wrap is withheld when the call would still be an error, so tooling never implies that unsafe repairs a proven-invalid operation. Unsafe blocks are not unwrapped, because Sec has no bare block statement to keep (cmd/lsp/unsafe_actions.go; TestUnsafeHoverAndCodeActions)."
+      - "2026-11-12: unsafe mentor diagnostics distinguish missing context from proven invalidity: a missing context names the operation, the caller obligations the context would accept, how to authorize it (call-form or block), a safe alternative and that unsafe never makes a proven-invalid operation valid; proven-invalid raw-pointer operations keep their own identities (S1205 raw-pointer-operation, S1142 raw-pointer-null) whose help says adding unsafe cannot repair them; unnecessary and redundant unsafe contexts are S1242 unsafe.unnecessary and S1243 unsafe.redundant Information advisories published by the CLI and LSP alike (TestUnsafeOperationRegistry, TestUnsafeHoverAndCodeActions)."
     remaining:
       - complete unsafe-aware formatter/LSP
       - show caller obligations/trust provenance
-      - provide wrap/remove unsafe code actions safely
-      - produce mentor diagnostics distinguishing missing context from proven invalidity
       - provide optional whole-program trust reports
 
   - id: semantic-ir.references

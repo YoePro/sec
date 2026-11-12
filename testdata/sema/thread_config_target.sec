@@ -1,0 +1,5 @@
+module main
+
+fn Config() void {
+    discard ThreadConfig { Stack: Required(4294967296) }
+}

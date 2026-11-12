@@ -1,0 +1,11 @@
+module main
+
+@noCopy
+type ThreadConfig struct {
+    Name: ThreadSetting[string],
+    Stack: ThreadSetting[uint],
+    Affinity: ThreadSetting[CpuSet],
+    Priority: ThreadSetting[ThreadPriority],
+    Start: ThreadStartMode,
+    Storage: Option[ref mut ThreadStorage],
+}

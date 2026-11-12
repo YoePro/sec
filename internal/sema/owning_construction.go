@@ -45,7 +45,7 @@ func (a *Analyzer) checkUnionPayloadFields(unionType Type, variant UnionVariant,
 
 		valueType, _ := a.inferOwningConstructionValue(field.Value, expectedField.Type)
 		if valueType.Kind != InvalidType && !a.canInitialize(expectedField.Type, valueType, field.Value) {
-			a.addErrorAtToken(expressionToken(field.Value), "payload field %s for %s.%s must be %s, got %s", name, typeDisplayName(unionType), variant.Name, typeDisplayName(expectedField.Type), typeDisplayName(valueType))
+			a.addTaskTypeMismatchError(expressionToken(field.Value), expectedField.Type, valueType, "payload field %s for %s.%s must be %s, got %s", name, typeDisplayName(unionType), variant.Name, typeDisplayName(expectedField.Type), typeDisplayName(valueType))
 			valid = false
 			continue
 		}
@@ -121,7 +121,7 @@ func (a *Analyzer) resolveResultValueInitializer(resultType Type, expr ast.Expre
 		return valueType, true
 	}
 	if !a.canInitialize(expected, valueType, payload) {
-		a.addErrorAtToken(expressionToken(payload), "cannot initialize %s with %s(%s)", typeDisplayName(resultType), name, typeDisplayName(valueType))
+		a.addTaskTypeMismatchError(expressionToken(payload), expected, valueType, "cannot initialize %s with %s(%s)", typeDisplayName(resultType), name, typeDisplayName(valueType))
 		return Type{Kind: InvalidType}, true
 	}
 	if !a.validateOwningConstructionSource(payload, TransferSiteConstruction) {

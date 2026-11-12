@@ -31,7 +31,7 @@ fn TrustedA(value: int) void {
 fn TrustedB(value: int) void { TrustedA(value) }
 fn SpawnA(value: int) void {
     if value == 0 {
-        let worker := spawn AllocA(0)
+        let worker := try spawn AllocA(0) { Err(_) => { return } }
         detach worker
     } else { SpawnB(value - 1) }
 }

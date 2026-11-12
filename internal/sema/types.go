@@ -1269,7 +1269,6 @@ func newBuiltinTypes() map[string]Type {
 		"Thread":                {Name: "Thread", Kind: StructType, GenericParameters: []string{"T"}},
 		"ThreadObserver":        {Name: "ThreadObserver", Kind: StructType, GenericParameters: []string{"T"}},
 		"ThreadLocal":           {Name: "ThreadLocal", Kind: StructType, GenericParameters: []string{"T"}},
-		"ThreadConfig":          {Name: "ThreadConfig", Kind: StructType},
 		"CpuSet":                builtinCpuSetType(),
 		"ThreadStorage":         builtinThreadStorageType(),
 		"ThreadContext":         {Name: "ThreadContext", Kind: StructType},
@@ -1418,6 +1417,7 @@ func newBuiltinTypes() map[string]Type {
 	installCompilerKnownPanicInfo(types)
 	installCompilerKnownTaskErrorPayload(types)
 	installCompilerKnownStringErrorPayloads(types)
+	types["ThreadConfig"] = builtinThreadConfigType(types)
 
 	return types
 }

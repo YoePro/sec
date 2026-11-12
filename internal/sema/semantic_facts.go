@@ -1928,7 +1928,13 @@ func (a *Analyzer) proveShiftCount(resolved ResolvedOperator, left, right ast.Ex
 func resolvedIntegerInfixOperator(operator string, left Type, right Type, result Type) (ResolvedOperator, bool) {
 	builtin := isBuiltinIntegerOperatorType(left) && isBuiltinIntegerOperatorType(right)
 	named := isNamedIntegerOperatorType(left) && sameConcreteType(left, right)
-	if !builtin && !named {
+	// A shift count is an integer of its own type: it is never shaped to the
+	// left operand, and the result keeps the left operand's type
+	// (operators.md § 37(2)–(3) "Shift operators").
+	shift := (operator == "<<" || operator == ">>") &&
+		(isBuiltinIntegerOperatorType(left) || isNamedIntegerOperatorType(left)) &&
+		(isBuiltinIntegerOperatorType(right) || isNamedIntegerOperatorType(right))
+	if !builtin && !named && !shift {
 		return ResolvedOperator{}, false
 	}
 	resolved := ResolvedOperator{LeftType: left, RightType: &right, ResultType: result, FailureBehavior: OperatorDoesNotFail}
@@ -2013,7 +2019,10 @@ func (a *Analyzer) recordResolvedCompoundAssignment(stmt *ast.AssignmentStatemen
 	// An untyped numeric operand takes the target's type, as in `count += 1`
 	// on a uint: the literal is shaped by context, never a mixed-type
 	// operation (types.md "Context shaping").
-	if !sameConcreteType(target, value) && isUntypedNumericExpression(stmt.Value) && a.canInitializeUnrecorded(target, value, stmt.Value) {
+	// A shift count is the exception: it keeps its own integer type, since
+	// only the left operand decides the result (operators.md § 37(2)–(3)).
+	shift := operator == "<<" || operator == ">>"
+	if !shift && !sameConcreteType(target, value) && isUntypedNumericExpression(stmt.Value) && a.canInitializeUnrecorded(target, value, stmt.Value) {
 		value = target
 	}
 	if floating, ok := resolvedFloatInfixOperator(operator, target, value, target); ok {

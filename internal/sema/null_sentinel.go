@@ -20,7 +20,7 @@ func (a *Analyzer) isNullSentinel(expr ast.Expression) bool {
 //   - rules/platform/ffi.md — §11 "null"
 //   - rules/memory/raw_pointers.md — § 7(9) the sentinel syntax is restricted by the FFI rules
 func (a *Analyzer) inferNullSentinel(expr *ast.Identifier) (Type, expressionValue) {
-	if !a.inUnsafe {
+	if !a.authorizeUnsafe(UnsafeNullSentinel, "null", expr.Token, nil, nil) {
 		a.addErrorAtTokenWithMetadata(expr.Token, diagnostics.NullOutsideUnsafe,
 			"Move the operation into an unsafe { } block whose proof obligations you accept.",
 			"null is an unsafe raw-pointer sentinel and may be used only inside an unsafe context")
@@ -57,7 +57,7 @@ func (a *Analyzer) inferNullTestExpression(expr *ast.NullTestExpression) (Type, 
 	if expr.Negated {
 		test = "is not null"
 	}
-	if !a.inUnsafe {
+	if !a.authorizeUnsafe(UnsafeNullSentinel, test, expr.NullToken, nil, nil) {
 		a.addErrorAtTokenWithMetadata(expr.NullToken, diagnostics.NullOutsideUnsafe,
 			"Move the test into an unsafe { } block.",
 			"%s uses the unsafe raw-pointer sentinel and may be written only inside an unsafe context", test)

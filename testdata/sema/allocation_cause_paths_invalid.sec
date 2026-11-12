@@ -14,7 +14,7 @@ fn RecursiveRoot(value: int) void {
 }
 @noAlloc
 fn Spawner() void {
-    let worker := spawn Allocate()
+    let worker := try spawn Allocate() { Err(_) => { return } }
     detach worker
 }
 fn main() void { Root() }

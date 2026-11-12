@@ -531,6 +531,47 @@ type Analyzer struct {
 	ctePending             []ctePendingRequest
 	cteResults             map[ast.Expression]cteResult
 	deferredStatics        []deferredStaticInitializer
+	// cteMemo holds successful receiver-free call results of this analysis.
+	cteMemo map[string]DefaultConstant
+	// cteMemoDependencies are the dependencies of each memoized result.
+	cteMemoDependencies map[string][]CompileTimeDependency
+	// moveSources are the identifier and member expressions Sema accepted
+	// as ownership transfers; the CTE executor ends the source's destruction
+	// responsibility when it executes one (compile_time_evaluation.md § 26).
+	moveSources map[ast.Expression]bool
+	// cteFactContext names the type fact (a range bound or the default)
+	// whose required position is being analyzed, so a deferred CTE request
+	// knows which fact it establishes (cte_conversions.go).
+	cteFactContext *cteFactRequest
+	// sourceSelection is the plan's source-selection facts; activeProgram
+	// and excludedStatements are the result of applying them
+	// (source_selection.go).
+	sourceSelection    *SourceSelection
+	activeProgram      *ast.Program
+	excludedStatements []ast.Statement
+	// planTargetOS and planTargetArch are the selected plan's target
+	// identity, empty without a plan.
+	planTargetOS, planTargetArch string
+	// planFingerprints are the selected plan's semantic fingerprints.
+	planFingerprints layout.PlanFingerprints
+	// Unsafe operation sites, active unsafe blocks and call-form prefixes
+	// (unsafe_operations.go).
+	unsafeSites        []UnsafeOperationSite
+	unsafeSiteIndex    map[sourceTokenKey]int
+	unsafeContexts     []unsafeContext
+	unsafePrefixes     map[*ast.CallExpression]bool
+	usedUnsafePrefixes map[*ast.CallExpression]bool
+	unsafeAdvisories   []Error
+	// fileTargets are the canonical file-level selections by file.
+	fileTargets map[string][]ast.TargetSelector
+	// compileTimeContexts classify every compile-time-required position
+	// (cte_contexts.go).
+	compileTimeContexts map[ast.Expression]CompileTimeContext
+	// detachSites are accepted detach statements by callable, and
+	// programTargetKind the Target kind selected before analysis
+	// (program_plans.go).
+	detachSites       []programDetachSite
+	programTargetKind ProgramTargetKind
 	// schedulingPoints separates logical scheduling/cancellation from physical
 	// scheduler hints at successfully resolved yield calls (scheduling.md §15).
 	schedulingPoints map[*ast.CallExpression]ResolvedSchedulingPoint
@@ -709,9 +750,20 @@ func (a *Analyzer) AnalysisBudget() AnalysisBudget { return a.analysisBudget }
 // Rules: rules/compiler/compiler_analysis.md — §§9–10,14;
 // rules/compiler/compiler_pipeline.md — §§23(3), 27, 33(1).
 func (a *Analyzer) Analyze(program *ast.Program) []Error {
+	// attributes.md § 13: source selection precedes ordinary Sema; excluded
+	// declarations stay parsed but never enter this analysis.
+	a.classifyCompileTimeContexts(program)
+	program, selectionErrors := a.selectActiveSource(program)
+	a.activeProgram = program
 	a.prepareCompileTimeEvaluation(program)
 	a.ctePending = nil
 	a.deferredStatics = nil
+	a.cteMemo = nil
+	a.cteMemoDependencies = nil
+	a.moveSources = nil
+	a.unsafeSites, a.unsafeSiteIndex, a.unsafeContexts = nil, nil, nil
+	a.unsafePrefixes, a.usedUnsafePrefixes, a.unsafeAdvisories = nil, nil, nil
+	a.detachSites = nil
 	a.hardwareFacts = hardware.Facts{}
 	a.hardwareFactsValid = false
 	a.hardwareImports = nil
@@ -764,6 +816,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 		}
 	}
 	a.errorKeys = map[string]bool{}
+	a.errors = append(a.errors, selectionErrors...)
 	a.warnings = nil
 	a.explicitDiscardAdvisories = map[*ast.DiscardStatement]Error{}
 	a.discardStates = map[*ast.DiscardStatement]DiscardSourceState{}
@@ -1024,6 +1077,8 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.emitUncheckedContractAdvisories()
 	a.executeDeferredStaticInitializers(program)
 	a.freezeStaticScalarInitializers()
+	a.reportUnusedUnsafePrefixes()
+	a.explainUnavailableVariants()
 
 	return cloneSemanticErrors(a.errors)
 }
@@ -1680,6 +1735,9 @@ func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 			if a.registerInstantDeclaration(stmt) {
 				return
 			}
+			if a.registerThreadConfigDeclaration(stmt) {
+				return
+			}
 			if a.registerThreadStorageDeclaration(stmt) {
 				return
 			}
@@ -1754,7 +1812,7 @@ func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 			if stmt.Name == nil {
 				return
 			}
-			if a.rejectInstantNonOpaqueDeclaration(stmt.Name.Value, stmt.Name.Token) || a.rejectMutexNonOpaqueDeclaration(stmt.Name.Value, stmt.Name.Token) || a.rejectCpuSetNonOpaque(stmt.Name.Value, stmt.Name.Token) || a.rejectThreadStorageNonStruct(stmt.Name.Value, stmt.Name.Token) || a.rejectContextNonOpaqueDeclaration(stmt.Name.Value, stmt.Name.Token) || a.rejectThreadSettingNonUnion(stmt.Name.Value, stmt.Name.Token) || a.rejectChannelRevokeNonUnion(stmt.Name.Value, stmt.Name.Token) || a.rejectThreadTerminationNonStruct(stmt.Name.Value, stmt.Name.Token) {
+			if a.rejectInstantNonOpaqueDeclaration(stmt.Name.Value, stmt.Name.Token) || a.rejectMutexNonOpaqueDeclaration(stmt.Name.Value, stmt.Name.Token) || a.rejectCpuSetNonOpaque(stmt.Name.Value, stmt.Name.Token) || a.rejectThreadStorageNonStruct(stmt.Name.Value, stmt.Name.Token) || a.rejectThreadConfigNonStruct(stmt.Name.Value, stmt.Name.Token) || a.rejectContextNonOpaqueDeclaration(stmt.Name.Value, stmt.Name.Token) || a.rejectThreadSettingNonUnion(stmt.Name.Value, stmt.Name.Token) || a.rejectChannelRevokeNonUnion(stmt.Name.Value, stmt.Name.Token) || a.rejectThreadTerminationNonStruct(stmt.Name.Value, stmt.Name.Token) {
 				return
 			}
 			if a.rejectIntrinsicTypeRedeclaration(stmt.Name.Value, stmt.Name.Token) {
@@ -1776,7 +1834,7 @@ func (a *Analyzer) registerTypeDeclarations(program *ast.Program) {
 			if a.rejectCompareExchangeResultNonEnum(stmt.Name.Value, stmt.Name.Token) || a.rejectIPCCoreEnumNonEnum(stmt.Name.Value, stmt.Name.Token) || a.rejectThreadAttachErrorNonEnum(stmt.Name.Value, stmt.Name.Token) || a.rejectThreadLifecycleErrorNonEnum(stmt.Name.Value, stmt.Name.Token) || a.rejectThreadConfigurationNonEnum(stmt.Name.Value, stmt.Name.Token) || a.rejectUnitMetadataEnumNonEnum(stmt.Name.Value, stmt.Name.Token) {
 				return
 			}
-			if a.rejectInstantNonOpaqueDeclaration(stmt.Name.Value, stmt.Name.Token) || a.rejectMutexNonOpaqueDeclaration(stmt.Name.Value, stmt.Name.Token) || a.rejectCpuSetNonOpaque(stmt.Name.Value, stmt.Name.Token) || a.rejectThreadStorageNonStruct(stmt.Name.Value, stmt.Name.Token) || a.rejectContextNonOpaqueDeclaration(stmt.Name.Value, stmt.Name.Token) || a.rejectThreadSettingNonUnion(stmt.Name.Value, stmt.Name.Token) || a.rejectChannelRevokeNonUnion(stmt.Name.Value, stmt.Name.Token) || a.rejectThreadTerminationNonStruct(stmt.Name.Value, stmt.Name.Token) || a.rejectThreadTerminationKindNonEnum(stmt.Name.Value, stmt.Name.Token) || a.rejectMessageDispositionInterface(stmt.Name.Value, stmt.Name.Token) {
+			if a.rejectInstantNonOpaqueDeclaration(stmt.Name.Value, stmt.Name.Token) || a.rejectMutexNonOpaqueDeclaration(stmt.Name.Value, stmt.Name.Token) || a.rejectCpuSetNonOpaque(stmt.Name.Value, stmt.Name.Token) || a.rejectThreadStorageNonStruct(stmt.Name.Value, stmt.Name.Token) || a.rejectThreadConfigNonStruct(stmt.Name.Value, stmt.Name.Token) || a.rejectContextNonOpaqueDeclaration(stmt.Name.Value, stmt.Name.Token) || a.rejectThreadSettingNonUnion(stmt.Name.Value, stmt.Name.Token) || a.rejectChannelRevokeNonUnion(stmt.Name.Value, stmt.Name.Token) || a.rejectThreadTerminationNonStruct(stmt.Name.Value, stmt.Name.Token) || a.rejectThreadTerminationKindNonEnum(stmt.Name.Value, stmt.Name.Token) || a.rejectMessageDispositionInterface(stmt.Name.Value, stmt.Name.Token) {
 				return
 			}
 			if a.rejectIntrinsicTypeRedeclaration(stmt.Name.Value, stmt.Name.Token) {
@@ -2726,6 +2784,7 @@ func (a *Analyzer) analyzeDetachStatement(stmt *ast.DetachStatement) {
 			a.availabilityStates[ident.Value] = unavailableState("detached")
 		}
 	}
+	a.noteDetachSite(stmt.Token)
 }
 
 func (a *Analyzer) analyzeCancelStatement(stmt *ast.CancelStatement) {
@@ -3362,9 +3421,11 @@ func (a *Analyzer) analyzeUnsafeStatement(stmt *ast.UnsafeStatement) {
 	a.symbols = previousSymbols.child()
 	a.constInts = copyConstInts(previousConstInts)
 	a.assigned = copyAssigned(previousAssigned)
+	a.enterUnsafeContext(stmt)
 	a.inUnsafe = true
 
 	a.analyzeBlockStatements(stmt.Body)
+	a.leaveUnsafeContext()
 	if unsafeAsmReturns(stmt) && a.currentFunctionReturn.Kind != InvalidType && a.currentFunctionReturn.Kind != VoidType && a.currentFunctionReturn.Name != "int64" {
 		a.addErrorAtToken(stmt.Token, "asm output rax cannot return %s", typeDisplayName(a.currentFunctionReturn))
 	}
@@ -3606,7 +3667,9 @@ func (a *Analyzer) registerFunctionDeclarationBody(fn *ast.FunctionDeclaration, 
 
 	a.functions[name] = append(a.functions[name], function)
 	nodeID := a.callGraph.addCallable(function)
-	if isProgramEntryFunction(function) {
+	// A library Target has no program entry (initialization.md § 26), so its
+	// `main` is an ordinary function, not a program-entry root.
+	if isProgramEntryFunction(function) && a.programTargetKind != ProgramTargetLibrary {
 		a.callGraph.addRoot(CallRootProgramEntry, nodeID, function.Token)
 	}
 }
@@ -5018,142 +5081,6 @@ func (a *Analyzer) localReferenceOriginInExpression(expr ast.Expression) (string
 	return "", lexer.Token{}, false
 }
 
-// analyzeResultReturnStatement validates the Result arm and its terminal payload
-// transfer. The terminal Ok/Err exception permits omission of an explicit move
-// marker, but it does not turn an ordinary indexed read into owning extraction.
-//
-// Rules:
-//   - rules/errors/errorhandling.md — §5 "Ok and Err"
-//   - rules/errors/errorhandling.md — §5.1 "Direct Option carrier returns"
-//   - rules/memory/copy_move.md — §9 "Return boundaries"
-//   - rules/memory/copy_move.md — §10.3 "Result construction"
-//   - rules/collections/collections.md — §8.5 "Move-only indexed reads"
-func (a *Analyzer) analyzeResultReturnStatement(functionName string, returnType Type, stmt *ast.ReturnStatement) {
-	if len(returnType.TypeArgs) != 2 {
-		return
-	}
-
-	// The direct `return try expression` form is a narrow Result forwarding
-	// boundary: failure propagates as Err(E), while success is reconstructed as
-	// Ok(T). Keeping this check at the return boundary prevents ordinary T
-	// expressions from acquiring an implicit T -> Result[T, E] conversion.
-	//
-	// Rules:
-	//   - rules/errors/errorhandling.md — §26 "return try expression"
-	//   - rules/memory/copy_move.md — §9 "Return boundaries"
-	if tryExpr, ok := stmt.Value.(*ast.TryExpression); ok && len(tryExpr.Handlers) == 0 {
-		a.analyzeReturnTryResultForwarding(functionName, returnType, tryExpr)
-		return
-	}
-
-	switch expr := stmt.Value.(type) {
-	case *ast.OkExpression:
-		expected := returnType.TypeArgs[0]
-		if len(expr.Arguments) > 1 {
-			a.addErrorAtToken(expr.Token, "Ok expects 1 argument, got %d", len(expr.Arguments))
-			return
-		}
-		if expr.Value == nil {
-			if expected.Kind != VoidType {
-				a.addErrorAtToken(expr.Token, "function %s must return Ok(%s), got Ok()", functionName, typeDisplayName(expected))
-			}
-			return
-		}
-		// The declared Result success type is also the constructor context. This
-		// is required for payload-less generic-union variants such as None, whose
-		// concrete Option[T] specialization cannot be recovered from spelling.
-		valueType, _ := a.inferExpressionWithExpected(expr.Value, expected)
-		if valueType.Kind == InvalidType {
-			return
-		}
-		if a.validateTerminalReturnConstruction(expr.Value) {
-			return
-		}
-		if !a.canInitialize(expected, valueType, expr.Value) {
-			a.addErrorAtToken(expressionToken(expr.Value), "function %s must return Ok(%s), got Ok(%s)", functionName, typeDisplayName(expected), typeDisplayName(valueType))
-			return
-		}
-		if a.checkDeclaredContractExpression(expected, expr.Value) {
-			return
-		}
-		a.recordFunctionReturnOrigin(expected, expr.Value)
-		if a.checkReturningReferenceToLocal(functionName, expected, valueType, expr.Value) {
-			return
-		}
-		if a.checkExpressionEscapesLocalReference(functionName, expr.Value) {
-			return
-		}
-		a.markResourceTransfer(expr.Value)
-		a.markMoveSource(expr.Value)
-	case *ast.ErrExpression:
-		if len(expr.Arguments) != 1 {
-			a.addErrorAtToken(expr.Token, "Err expects 1 argument, got %d", len(expr.Arguments))
-			return
-		}
-		valueType, _ := a.inferExpression(expr.Value)
-		if valueType.Kind == InvalidType {
-			return
-		}
-		if a.validateTerminalReturnConstruction(expr.Value) {
-			return
-		}
-		expected := returnType.TypeArgs[1]
-		if !a.canInitialize(expected, valueType, expr.Value) {
-			a.addErrorAtToken(expressionToken(expr.Value), "function %s must return Err(%s), got Err(%s)", functionName, typeDisplayName(expected), typeDisplayName(valueType))
-			return
-		}
-		if a.checkDeclaredContractExpression(expected, expr.Value) {
-			return
-		}
-		a.recordFunctionReturnOrigin(expected, expr.Value)
-		a.markMoveSource(expr.Value)
-	default:
-		valueType, _ := a.inferExpressionWithExpected(stmt.Value, returnType)
-		if valueType.Kind == InvalidType {
-			return
-		}
-
-		// A Result-returning function may directly return an expression that
-		// already produces a compatible Result. This is an ordinary return of the
-		// complete carrier; it does not implicitly wrap a success value in Ok(...).
-		//
-		// Rules:
-		//   - rules/errors/errorhandling.md — §5 "Ok and Err"
-		//   - rules/errors/errorhandling.md — §7 "Result is must-use"
-		//   - rules/memory/copy_move.md — §9 "Return boundaries"
-		if valueType.Kind == ResultType {
-			if !a.canInitialize(returnType, valueType, stmt.Value) {
-				a.addTypeMismatchError(expressionToken(stmt.Value), returnType, valueType, stmt.Value, "function %s must return %s, got %s", functionName, typeDisplayName(returnType), typeDisplayName(valueType))
-				return
-			}
-
-			if a.validateTerminalReturnConstruction(stmt.Value) {
-				return
-			}
-
-			a.recordFunctionReturnOrigin(returnType, stmt.Value)
-
-			if a.checkReturningReferenceToLocal(functionName, returnType, valueType, stmt.Value) {
-				return
-			}
-
-			if a.checkExpressionEscapesMatchPayload(functionName, stmt.Value) {
-				return
-			}
-
-			if a.checkExpressionEscapesLocalReference(functionName, stmt.Value) {
-				return
-			}
-
-			a.markResourceTransfer(stmt.Value)
-			a.markMoveSource(stmt.Value)
-			return
-		}
-
-		a.addErrorAtToken(expressionToken(stmt.Value), "function %s returning %s must return Ok(...) or Err(...)", functionName, typeDisplayName(returnType))
-	}
-}
-
 // analyzeReturnTryResultForwarding validates the success half of direct
 // `return try expression` after ordinary bodyless-try analysis has validated
 // its failure channel. The resolved fact is consumed verbatim by Semantic IR.
@@ -6305,8 +6232,8 @@ func (a *Analyzer) analyzeTypeDeclarationBody(stmt *ast.TypeDeclStatement) {
 	if (stmt.Name.Value == "ThreadTermination" || stmt.Name.Value == "ThreadTerminationKind") && a.isTrustedCoreBuiltinDeclaration(stmt.Name.Value, stmt.Name.Token) {
 		return // Exact metadata was validated during registration (threads.md §23).
 	}
-	if stmt.Name.Value == "ThreadStorage" && a.isTrustedCoreBuiltinDeclaration(stmt.Name.Value, stmt.Name.Token) {
-		return // Exact noCopy metadata validated during registration (threads.md §8).
+	if (stmt.Name.Value == "ThreadStorage" || stmt.Name.Value == "ThreadConfig") && a.isTrustedCoreBuiltinDeclaration(stmt.Name.Value, stmt.Name.Token) {
+		return // Exact noCopy metadata validated during registration (threads.md §§8,10).
 	}
 	if stmt.Name.Value == "ThreadSetting" && a.isTrustedCoreBuiltinDeclaration(stmt.Name.Value, stmt.Name.Token) {
 		return // Exact generic union validated during registration (threads.md §4).
@@ -6961,7 +6888,7 @@ func (a *Analyzer) registerImplStatement(stmt *ast.ImplStatement) {
 		}
 		if let, ok := member.(*ast.LetStatement); ok {
 			if !let.Static {
-				a.addErrorAtToken(let.Token, "instance member %s requires per-instance storage and initialization, which are not implemented yet", let.Name.Value)
+				a.reportCapabilityUnavailable(let.Token, "Declare the field in the type's struct declaration until per-instance impl storage is implemented.", "instance member %s requires per-instance storage and initialization, which are not implemented yet", let.Name.Value)
 				continue
 			}
 			a.analyzeImplAssociatedLet(stmt.Target.Name, let)
@@ -7009,7 +6936,7 @@ func (a *Analyzer) registerImplStatement(stmt *ast.ImplStatement) {
 			methods[name] = fn.Name.Token
 			if len(fn.GenericParameters) > 0 && genericTypePackName(fn.GenericParameters) == "" {
 				a.validateGenericTypeParameterNames(fn.GenericParameters)
-				a.addErrorAtToken(fn.Name.Token, "generic methods with additional type parameters are not supported yet")
+				a.reportCapabilityUnavailable(fn.Name.Token, "Use a generic free function or the owning type's parameters until method-level generic parameters are implemented.", "generic methods with additional type parameters are not supported yet")
 				continue
 			}
 			a.withImplTarget(stmt.Target.Name, func() {
@@ -12461,14 +12388,6 @@ func (a *Analyzer) checkInitializerType(target Type, value Type, expr ast.Expres
 		typeDisplayName(value),
 	)
 	return false
-}
-
-func taskType(result Type) Type {
-	return Type{Name: "Task", Kind: StructType, TypeArgs: []Type{result}}
-}
-
-func threadType(result Type) Type {
-	return Type{Name: "Thread", Kind: StructType, TypeArgs: []Type{result}}
 }
 
 func (a *Analyzer) intrinsicGenericType(name string, args ...Type) Type {

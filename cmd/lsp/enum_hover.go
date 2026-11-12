@@ -79,5 +79,8 @@ func enumTypeHoverContents(typ sema.Type, program *ast.Program) string {
 			contents += "\n\n" + documentationCommentText(attachment.Comments)
 		}
 	}
+	if explanation := sema.TaskTypeExplanation(typ); explanation != "" {
+		contents += "\n\n" + explanation
+	}
 	return contents
 }

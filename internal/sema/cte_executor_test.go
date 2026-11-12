@@ -1,11 +1,13 @@
 package sema
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"sec/internal/ast"
 	"sec/internal/diagnostics"
 	"sec/internal/lexer"
 	"sec/internal/parser"
@@ -580,6 +582,367 @@ fn Main() int {
 `
 	errors := analyzeSourceRaw(t, source)
 	want := []string{"A 0..120", "B 0..7", "C 0..42"}
+	if len(errors) != len(want) {
+		t.Fatalf("errors = %v", errors)
+	}
+	for index, contract := range want {
+		if errors[index].ID != diagnostics.ValueViolatesContract || !strings.Contains(errors[index].Message, contract) {
+			t.Errorf("error %d = %q, want contract %s", index, errors[index].Message, contract)
+		}
+	}
+}
+
+// Language-defined operation failures are SemanticOperationFailed, distinct
+// from a reached assert or panic, and still the registered S1223.
+// Rules: rules/compiler/compile_time_evaluation.md — §§ 47(4)–(6), 54.
+func TestSemanticCTESemanticOperationFailed(t *testing.T) {
+	errors := analyzeSourceRaw(t, `module main
+
+fn Divide(n: int) int {
+    return 100 / n
+}
+
+fn Check(n: int) int {
+    assert n > 0
+    return n
+}
+
+type A int range 0..Divide(0)
+type B int range 0..Check(0)
+`)
+	if len(errors) != 2 || errors[0].ID != diagnostics.CompileTimeEvaluationFailed || errors[1].ID != diagnostics.CompileTimeEvaluationFailed {
+		t.Fatalf("errors = %v", errors)
+	}
+	if !strings.Contains(errors[0].Message, "failed a semantic operation during compile-time evaluation: division by zero") || !strings.Contains(errors[0].Help, "SemanticOperationFailed") {
+		t.Errorf("division = %q / %q", errors[0].Message, errors[0].Help)
+	}
+	if !strings.Contains(errors[1].Message, "failed during compile-time evaluation: assertion") {
+		t.Errorf("assert = %q", errors[1].Message)
+	}
+}
+
+// AggregateValueSize and TransientMemory are enforced ResourceLimit budgets,
+// and receiver-free calls are memoized within one analysis so a naive
+// exponential recursion that would exhaust ExecutionSteps completes.
+// Rules: rules/compiler/compile_time_evaluation.md — §§ 48(4), 49, 60.
+func TestSemanticCTEBudgetsAndMemoization(t *testing.T) {
+	// AggregateValueSize: one value larger than the budget fails even when
+	// TransientMemory still has room.
+	large := &CompileTimeAggregate{Fields: map[string]DefaultConstant{}}
+	for field := 0; field <= cteMaxAggregateValueSize; field++ {
+		name := fmt.Sprintf("f%d", field)
+		large.Names = append(large.Names, name)
+		large.Fields[name] = DefaultConstant{Kind: IntType}
+	}
+	executor := newCTEExecutor(&Analyzer{}, nil)
+	if executor.chargeAggregate(DefaultConstant{Kind: StructType, Aggregate: large}, lexer.Token{Line: 1}) || executor.failure == nil ||
+		executor.failure.Kind != cteResourceLimit || !strings.Contains(executor.failure.Reason, "AggregateValueSize") {
+		t.Fatalf("aggregate budget failure = %+v", executor.failure)
+	}
+
+	var wide strings.Builder
+	wide.WriteString("module main\n\ntype Wide struct {\n")
+	for field := 0; field < 40; field++ {
+		fmt.Fprintf(&wide, "    f%d: int,\n", field)
+	}
+	wide.WriteString("}\n\nfn Churn() int {\n    let mut value := Wide {}\n    let mut i := 0\n    while i < 1000000 {\n        value.f0 = i\n        i = i + 1\n    }\n    return value.f0\n}\n\ntype C int range 0..Churn()\n")
+	errors := analyzeSourceRaw(t, wide.String())
+	if len(errors) != 1 || errors[0].ID != diagnostics.CompileTimeResourceLimit || !strings.Contains(errors[0].Message, "TransientMemory") {
+		t.Fatalf("transient errors = %v", errors)
+	}
+
+	errors = analyzeSourceRaw(t, `module main
+
+fn Fib(n: int) int {
+    if n < 2 {
+        return n
+    }
+    return Fib(n - 1) + Fib(n - 2)
+}
+
+type F int range 0..Fib(30)
+
+fn Main() int {
+    let f: F := 832040
+    let g: F := 832041 + 1
+    return 0
+}
+`)
+	if len(errors) != 1 || errors[0].ID != diagnostics.ValueViolatesContract || !strings.Contains(errors[0].Message, "F 0..832040") {
+		t.Fatalf("memoized Fib errors = %v", errors)
+	}
+}
+
+// A fault of the evaluator itself is a CompilerInvariantFailure outcome, not
+// a source failure category (§ 57).
+func TestSemanticCTECompilerInvariantFailure(t *testing.T) {
+	executor := newCTEExecutor(nil, nil)
+	result := executor.evaluate(&ast.Identifier{Value: "x"})
+	if result.Failure == nil || result.Failure.Kind != cteCompilerInvariantFailure || !strings.Contains(result.Failure.Reason, "internal compile-time evaluator failure") {
+		t.Fatalf("result = %+v", result.Failure)
+	}
+}
+
+// A successfully evaluated value outside the owning construct's domain is
+// diagnosed by that construct, not classified as an evaluator failure: a
+// range bound beyond the base type, a non-integer range bound and an
+// unrepresentable default.
+// Rules: rules/compiler/compile_time_evaluation.md — § 62.
+func TestSemanticCTEOwningContextValidation(t *testing.T) {
+	errors := analyzeSourceRaw(t, `module main
+
+fn Big() int {
+    return 300
+}
+
+fn Flag() bool {
+    return true
+}
+
+type Small int8 range 0..Big()
+type Odd int range 0..Flag()
+type D int8 default Big()
+`)
+	want := []struct{ id, text string }{
+		{diagnostics.InvalidContractArgument, "range upper bound Big() evaluates to 300, which does not fit the base type of Small"},
+		{diagnostics.InvalidContractArgument, "range upper bound Flag() of Odd must be an integer, got true"},
+		{diagnostics.DefaultNotRepresentable, "default value Big() is not representable by D"},
+	}
+	if len(errors) != len(want) {
+		t.Fatalf("errors = %v", errors)
+	}
+	for index, expected := range want {
+		if errors[index].ID != expected.id || !strings.Contains(errors[index].Message, expected.text) {
+			t.Errorf("error %d = %s %q, want %s %q", index, errors[index].ID, errors[index].Message, expected.id, expected.text)
+		}
+	}
+}
+
+// Union variants with tuple and field payloads are constructed and matched
+// (payload, field and payload-free patterns), errors are narrowed with
+// `Err(Type.Variant)` and `Err(.Variant)`, and `try` with local handlers
+// selects the first accepting handler, binding or comparing the error.
+// Rules: rules/compiler/compile_time_evaluation.md — §§ 20, 46;
+// rules/control-flow/flowcontrol_match.md; rules/errors/errorhandling.md — try handlers.
+func TestSemanticCTEUnionsPatternsAndHandlers(t *testing.T) {
+	errors := analyzeSourceRaw(t, `module main
+
+type State union {
+    idle
+    running
+}
+
+type Number union {
+    Integer(int)
+    Pair {
+        a: int,
+        b: int,
+    }
+}
+
+type Fail enum error {
+    Bad,
+    Worse,
+}
+
+fn Value(n: Number) int {
+    return match n {
+        Integer(value) => value
+        Pair { a, b: second } => a * 10 + second
+    }
+}
+
+fn StateCode(s: State) int {
+    return match s {
+        idle => 1
+        running => 2
+    }
+}
+
+fn Parse(n: int) Result[int, Fail] {
+    if n < 0 {
+        return Err(Fail.Bad)
+    }
+    if n > 1000 {
+        return Err(Fail.Worse)
+    }
+    return Ok(n)
+}
+
+fn Recover(n: int) int {
+    let v := try Parse(n) {
+        Err(Fail.Bad) => 7
+        Err(error) => 8
+    }
+    return v
+}
+
+fn Narrow(n: int) int {
+    return match Parse(n) {
+        Ok(value) => value
+        Err(Fail.Bad) => 100
+        Err(.Worse) => 200
+    }
+}
+
+type A int range 0..Value(Number.Integer(5))
+type B int range 0..Value(Number.Pair { a: 2, b: 3 })
+type C int range 0..StateCode(State.running)
+type D int range 0..Recover(-1)
+type E int range 0..Recover(5000)
+type F int range 0..Narrow(-5)
+type G int range 0..Narrow(2000)
+
+fn Main() int {
+    let a: A := 6
+    let b: B := 24
+    let c: C := 3
+    let d: D := 8
+    let e: E := 9
+    let f: F := 101
+    let g: G := 201
+    return 0
+}
+`)
+	want := []string{"A 0..5", "B 0..23", "C 0..2", "D 0..7", "E 0..8", "F 0..100", "G 0..200"}
+	if len(errors) != len(want) {
+		t.Fatalf("errors = %v", errors)
+	}
+	for index, contract := range want {
+		if errors[index].ID != diagnostics.ValueViolatesContract || !strings.Contains(errors[index].Message, contract) {
+			t.Errorf("error %d = %q, want contract %s", index, errors[index].Message, contract)
+		}
+	}
+}
+
+// Generic functions execute through their concrete instance, and the call
+// chain of a failure names the instantiation (GenericInstantiationContext).
+// Rules: rules/compiler/compile_time_evaluation.md — §§ 45, 59.
+func TestSemanticCTEGenericInstances(t *testing.T) {
+	errors := analyzeSourceRaw(t, `module main
+
+fn Pick[T](a: T, b: T, first: bool) T {
+    if first {
+        return a
+    }
+    return b
+}
+
+fn Checked[T](value: T, ok: bool) T {
+    assert ok, "rejected"
+    return value
+}
+
+type A int range 0..Pick(3, 9, false)
+type B int range 0..Checked(10, false)
+
+fn Main() int {
+    let a: A := 10
+    return 0
+}
+`)
+	if len(errors) != 2 {
+		t.Fatalf("errors = %v", errors)
+	}
+	if errors[0].ID != diagnostics.CompileTimeEvaluationFailed || !strings.Contains(errors[0].Message, "rejected (in Checked[T = int])") {
+		t.Errorf("generic failure = %q", errors[0].Message)
+	}
+	if errors[1].ID != diagnostics.ValueViolatesContract || !strings.Contains(errors[1].Message, "A 0..9") {
+		t.Errorf("generic result = %q", errors[1].Message)
+	}
+}
+
+// Optional early evaluation reuses the executor without source diagnostics:
+// a failure only means the fold is unavailable.
+// Rules: rules/compiler/compile_time_evaluation.md — § 7(5)–(7).
+func TestOptionalCompileTimeValue(t *testing.T) {
+	source := `module main
+
+fn Six() int {
+    return 2 * 3
+}
+
+fn Broken() int {
+    return 1 / 0
+}
+
+fn Main() int {
+    return Six() + Broken()
+}
+`
+	p := parser.New(lexer.NewWithFile(source, "main.sec"))
+	program := p.ParseProgram()
+	analyzer := NewAnalyzer()
+	if errors := analyzer.Analyze(program); len(errors) != 0 {
+		t.Fatal(errors)
+	}
+	var six, broken ast.Expression
+	for _, statement := range program.Statements {
+		if function, ok := statement.(*ast.FunctionDeclaration); ok && function.Name.Value == "Main" {
+			sum := function.Body.Statements[0].(*ast.ReturnStatement).Value.(*ast.InfixExpression)
+			six, broken = sum.Left, sum.Right
+		}
+	}
+	value, ok, err := analyzer.OptionalCompileTimeValue(program, six)
+	if err != nil || !ok || value.Integer == nil || value.Integer.Int64() != 6 {
+		t.Fatalf("Six() = %+v %v %v", value, ok, err)
+	}
+	before := len(analyzer.errors)
+	if _, ok, err := analyzer.OptionalCompileTimeValue(program, broken); ok || err != nil || len(analyzer.errors) != before {
+		t.Fatalf("Broken() optional evaluation = %v %v, errors %d -> %d", ok, err, before, len(analyzer.errors))
+	}
+}
+
+// Error-variant payload patterns bind the error payload, and a block handler
+// yields its final expression value.
+// Rules: rules/control-flow/flowcontrol_match.md — open error narrowing;
+// rules/errors/errorhandling.md — § 21.1.
+func TestSemanticCTEErrorPayloadPatternsAndBlockHandlers(t *testing.T) {
+	errors := analyzeSourceRaw(t, `module main
+
+type ParseError union error {
+    TooLong(int)
+    Empty
+}
+
+fn Parse(n: int) Result[int, ParseError] {
+    if n == 0 {
+        return Err(ParseError.Empty)
+    }
+    if n > 9 {
+        return Err(ParseError.TooLong(n))
+    }
+    return Ok(n)
+}
+
+fn Length(n: int) int {
+    return match Parse(n) {
+        Ok(value) => value
+        Err(ParseError.TooLong(length)) => length * 2
+        Err(ParseError.Empty) => 1
+    }
+}
+
+fn Fallback(n: int) int {
+    let value := try Parse(n) {
+        Err(error) => {
+            let base := 40
+            base + 2
+        }
+    }
+    return value
+}
+
+type A int range 0..Length(12)
+type B int range 0..Fallback(0)
+
+fn Main() int {
+    let a: A := 25
+    let b: B := 43
+    return 0
+}
+`)
+	want := []string{"A 0..24", "B 0..42"}
 	if len(errors) != len(want) {
 		t.Fatalf("errors = %v", errors)
 	}

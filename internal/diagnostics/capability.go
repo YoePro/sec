@@ -18,3 +18,16 @@ type CapabilityFailure interface {
 	error
 	ImplementationCapability() ImplementationCapability
 }
+
+// IsImplementationCapability reports whether a diagnostic identity reports
+// an implementation-capability boundary rather than a source or target
+// error: the compiler-capability family and the semantic CTE execution
+// boundary (compile_time_evaluation.md § 56).
+// Rules: rules/compiler/compiler_pipeline.md — § 32(2)–(4).
+func IsImplementationCapability(id string) bool {
+	if id == SemanticCompileTimeExecutionUnavailable {
+		return true
+	}
+	definition, ok := Lookup(id)
+	return ok && definition.Family == "compiler-capability"
+}

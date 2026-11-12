@@ -92,6 +92,23 @@ func analyzeProgramWithSourcesForReport(program *ast.Program, target CompilerTar
 	// Rules: rules/analysis/pitfall_analysis.md — "Interactive analysis";
 	// rules/compiler/compiler_analysis.md — §15.
 	analyzer.SetPitfallSourcePriority(sourceFiles)
+	// The owning Target's kind is known before analysis, so a library
+	// Target never acquires a program-entry root (initialization.md § 26).
+	if len(sourceFiles) > 0 {
+		analyzer.SetProgramTargetKind(buildTargetKind(sourceFiles[0]))
+	}
+	// attributes.md § 13: @target and @when select active source from the
+	// plan's target identity and the manifest's typed parameters.
+	selection, parameterProblems := cliSourceSelection(target, sourceFiles)
+	for _, problem := range parameterProblems {
+		reportToolError("manifest", "%s", problem)
+		summary.Errors++
+	}
+	if len(parameterProblems) > 0 {
+		printDiagnosticSummary(summary)
+		exitCLI(3)
+	}
+	analyzer.SetSourceSelection(selection)
 	errors := analyzer.Analyze(program)
 	if retainErrors {
 		onlyConformance := true
@@ -109,7 +126,7 @@ func analyzeProgramWithSourcesForReport(program *ast.Program, target CompilerTar
 	if !deferSemaWarnings || len(errors) > 0 {
 		printSemaWarnings(analyzer)
 	}
-	for _, warning := range analyzer.Warnings() {
+	for _, warning := range append(analyzer.Warnings(), analyzer.UnsafeAdvisories()...) {
 		if warning.Severity == diagnostics.SeverityInformation {
 			summary.Information++
 		} else {

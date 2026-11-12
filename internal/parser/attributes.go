@@ -102,6 +102,11 @@ func (p *Parser) parseAttributedStatement() ast.Statement {
 		return nil
 	}
 	member := p.recoveryContext == RecoveryContextMember
+	if p.atFileStart && !member && !local {
+		if target := findAttribute(attributes, contextualTarget); target != nil {
+			return p.fileLevelTarget(target, attributes)
+		}
+	}
 	p.nextToken()
 	start := p.curToken
 	statement := p.parseStatement()
@@ -448,7 +453,29 @@ func (p *Parser) attachAttributes(statement ast.Statement, attributes []*ast.Att
 			statement.AddressToken = address.Token
 			statement.AddressAlias = len(address.Arguments) == 2
 		}
+	case *ast.ImportStatement:
+		statement.Attributes = append(statement.Attributes, accepted...)
+	case *ast.ImplStatement:
+		statement.Attributes = append(statement.Attributes, accepted...)
+	case *ast.InterfaceDeclaration:
+		statement.Attributes = append(statement.Attributes, accepted...)
+	case *ast.UnitDeclStatement:
+		statement.Attributes = append(statement.Attributes, accepted...)
+	case *ast.StructStatement:
+		statement.Attributes = append(statement.Attributes, accepted...)
+	case *ast.TestDeclaration:
+		statement.Attributes = append(statement.Attributes, accepted...)
+	case *ast.HardwareDeclaration:
+		statement.Attributes = append(statement.Attributes, accepted...)
+	case *ast.ModuleStatement:
+		// attributes.md § 16(4): @target does not attach to a module
+		// declaration; a file-level @target precedes it instead.
+		for _, attribute := range accepted {
+			p.addDiagnostic(compilerdiagnostics.AttributeNotAllowedOnTarget, attribute.Token, nil, nil,
+				"@%s does not attach to a module declaration; write a file-level @target as the file's first line at %d:%d", attribute.Name.Value, attribute.Token.Line, attribute.Token.Column)
+		}
 	case *ast.LetGroupStatement:
+		statement.Attributes = append(statement.Attributes, accepted...)
 		if address := findAttribute(accepted, "address"); address != nil {
 			p.addDiagnostic(compilerdiagnostics.AttributeNotAllowedOnTarget, statement.Token, nil, nil,
 				"@address cannot annotate grouped let declarations at %d:%d", statement.Token.Line, statement.Token.Column)
@@ -565,20 +592,24 @@ func (p *Parser) checkTargetAgainstFile(target *ast.Attribute) {
 		if argument.Name == nil || !ok {
 			continue
 		}
-		file := ""
-		switch argument.Name.Value {
-		case "os":
-			file = p.fileTarget.OS
-		case "arch":
-			file = p.fileTarget.Arch
-		default:
+		file, selected := "", false
+		for _, selector := range p.fileTarget.Selectors {
+			if selector.Name == argument.Name.Value {
+				file, selected = selector.Value, true
+			}
+		}
+		if !selected {
 			continue
+		}
+		form := "#target"
+		if p.fileTarget.Canonical {
+			form = "@target"
 		}
 		if literal.Value != file {
 			p.addDiagnostic(compilerdiagnostics.AttributeConflict, argument.Token, nil, nil,
-				"@target(%s: %q) at %d:%d contradicts the file's #target(%s: %q) at %d:%d; the declaration could never be active",
+				"@target(%s: %q) at %d:%d contradicts the file's %s(%s: %q) at %d:%d; the declaration could never be active",
 				argument.Name.Value, literal.Value, argument.Token.Line, argument.Token.Column,
-				argument.Name.Value, file, p.fileTarget.Token.Line, p.fileTarget.Token.Column)
+				form, argument.Name.Value, file, p.fileTarget.Token.Line, p.fileTarget.Token.Column)
 		}
 	}
 }
@@ -668,4 +699,41 @@ func CompilerKnownAttribute(name string) (AttributeInfo, bool) {
 		info.TargetText = "any top-level declaration"
 	}
 	return info, true
+}
+
+// fileLevelTarget turns the `@target(...)` written as a file's first
+// source-bearing line into the file's target selection; it never attaches to
+// the following statement (attributes.md §§ 15, 16). The current token stays
+// on the end of the attribute set, so the next statement parses normally.
+//
+// Rules:
+//   - rules/foundations/attributes.md — § 15 "File-level @target", § 17 "Target selectors"
+func (p *Parser) fileLevelTarget(target *ast.Attribute, attributes []*ast.Attribute) ast.Statement {
+	for _, attribute := range attributes {
+		if attribute != target {
+			p.addDiagnostic(compilerdiagnostics.AttributeNotAllowedOnTarget, attribute.Token, nil, nil,
+				"@%s cannot accompany a file-level @target; the file-level @target stands alone as the file's first line at %d:%d", attribute.Name.Value, attribute.Token.Line, attribute.Token.Column)
+		}
+	}
+	directive := &ast.TargetDirective{Token: target.Token, Canonical: true, Attribute: target}
+	for _, argument := range target.Arguments {
+		if argument == nil || argument.Name == nil {
+			continue
+		}
+		literal, ok := argument.Value.(*ast.StringLiteral)
+		if !ok {
+			p.addDiagnostic(compilerdiagnostics.AttributeInvalidArgument, argument.Token, nil, nil,
+				"@target selector values must be string literals at %d:%d", argument.Token.Line, argument.Token.Column)
+			continue
+		}
+		directive.Selectors = append(directive.Selectors, ast.TargetSelector{Token: argument.Token, Name: argument.Name.Value, Value: literal.Value})
+		switch argument.Name.Value {
+		case "os":
+			directive.OS = literal.Value
+		case "arch":
+			directive.Arch = literal.Value
+		}
+	}
+	p.fileTarget = directive
+	return directive
 }

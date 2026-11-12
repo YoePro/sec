@@ -461,7 +461,7 @@ fn Calculate() int {
 }
 
 fn Run() void {
-    let task := spawn Calculate()
+    let task := try spawn Calculate() { Err(_) => { return } }
     let outcome := await task
 }
 `
@@ -2695,7 +2695,7 @@ fn Worker() void {
 }
 
 fn Spawner() void {
-	let worker := spawn Worker()
+	let worker := try spawn Worker() { Err(_) => { return } }
 	detach worker
 }
 `
@@ -3222,7 +3222,7 @@ fn TaskWork() void {}
 fn ThreadWork() void {}
 
 fn main() void {
-	let taskHandle := spawn task TaskWork()
+	let taskHandle := try spawn task TaskWork() { Err(_) => { return } }
 	let threadHandle := spawn thread ThreadWork()
 	detach taskHandle
 	detach threadHandle

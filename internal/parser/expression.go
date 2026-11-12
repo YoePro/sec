@@ -525,6 +525,10 @@ func (p *Parser) parseLambdaExpression(captures []ast.LambdaCapture, captureOpen
 
 func (p *Parser) parseMatchExpression() *ast.MatchExpression {
 	expr := &ast.MatchExpression{Token: p.curToken}
+	previousArmsProduceValue := p.matchArmsProduceValue
+	p.matchArmsProduceValue = !p.nextMatchIsStatement
+	p.nextMatchIsStatement = false
+	defer func() { p.matchArmsProduceValue = previousArmsProduceValue }()
 	p.nextToken()
 
 	previousStopBeforeBrace := p.stopBeforeBrace
@@ -620,7 +624,14 @@ func (p *Parser) parseMatchArm() *ast.MatchArm {
 	switch p.peekToken.Type {
 	case lexer.LBRACE:
 		p.nextToken()
+		// In expression-match result position a block arm ends with its
+		// contextual value expression, including forms that start no
+		// statement such as a literal, a sign or a move expression.
+		// Rules: rules/foundations/grammar.md — § 56(2) "Match arms",
+		// § 87(1) "Move expression".
+		p.allowFinalBlockValue = p.matchArmsProduceValue
 		arm.BlockBody = p.parseStatementBlock("match arm")
+		p.allowFinalBlockValue = false
 	case lexer.RETURN:
 		p.nextToken()
 		returnStmt := p.parseReturnStatement()
@@ -893,6 +904,10 @@ func (p *Parser) parseSpawnExpression() ast.Expression {
 		p.nextToken()
 		expr.KindToken = p.curToken
 		expr.Kind = p.curToken.Lexeme
+	}
+	if expr.Kind == contextualThread && p.inlineThreadConfigurationAhead() {
+		p.parseInlineThreadConfiguration(expr)
+		return expr
 	}
 	if p.peekToken.Type == lexer.LBRACE {
 		p.nextToken()

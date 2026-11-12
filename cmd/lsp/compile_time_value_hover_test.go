@@ -31,9 +31,11 @@ fn Main() int {
 `
 	uri := uriFromPath(filepath.Join(t.TempDir(), "main.sec"))
 	for _, test := range []struct{ marker, want string }{
-		{"Limit() + 1", "`Limit() + 1` = `101`, established by semantic compile-time evaluation"},
-		{"Limit()\ntype Broken", "`Limit()` = `100`"},
-		{"Divide(0)", "EvaluationFailed: division by zero"},
+		{"Limit() + 1", "`Limit() + 1` = `101: int`, established by semantic compile-time evaluation"},
+		{"Limit()\ntype Broken", "`Limit()` = `100: int`"},
+		{"Limit()\ntype Broken", "required by: range upper bound (SemanticCompileTimeRequiredContext)"},
+		{"Limit() + 1", "required by: static initializer (SemanticCompileTimeRequiredContext)"},
+		{"Divide(0)", "SemanticOperationFailed: division by zero"},
 	} {
 		idx := strings.Index(text, test.marker)
 		if idx < 0 {

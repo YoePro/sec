@@ -115,6 +115,7 @@ func analysisForTarget(uri, text string, overlay sourceOverlay, target platformt
 		if plan, err := definition.ScalarPlan(); err == nil {
 			planKey = plan
 			analyzer = sema.NewAnalyzerWithScalarPlanAndDepth(plan, sema.AnalysisInteractive)
+			analyzer.SetSourceSelection(lspSourceSelection(analyzer, path, overlay))
 		}
 	}
 	analysisCache.Lock()

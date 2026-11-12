@@ -1077,7 +1077,7 @@ integrations:
       - expose compiler-resolved binding action, prospective guarded move, commit location, post-match availability, and coverage through LSP hover, diagnostics, hints, completion, and refactoring
       - extend ResolvedMatchPlan and CFG binding actions beyond none, discard, and copy-trivial to Move, SharedBorrow, MutableBorrow, TemporaryForward, field bindings, guard-success commit, and ownership merges
       - extend explicit source-order CFG with reachable compiler-known empty state once frontend initialization-state facts exist
-      - "complete parser, Sema, ownership, borrowing, formatter, diagnostics, LSP, Semantic IR, MLIR, LLVM, and end-to-end coverage Parser rejection verified 2026-11-09: a bare <-local final expression in an owning match-arm block is rejected as an unexpected statement-start token, although inline explicit-move arms work; grammar.md sections 56(2)/87(1) already define the expression form. This parser coverage gap is separate from the implemented arm-result ownership/cleanup ordering."
+      - "complete parser, Sema, ownership, borrowing, formatter, diagnostics, LSP, Semantic IR, MLIR, LLVM, and end-to-end coverage (the 2026-11-09 parser rejection of a final value expression in an expression-match arm block - a move expression, literal or sign - was fixed 2026-11-12 per grammar.md § 56(2)/§ 87(1): internal/parser/expression.go parseMatchArm, TestParseMatchArmBlockFinalValueExpressions, TestParseNestedMatchKeepsArmResultPosition, TestParseMatchArmBlockFinalValueStaysContextual)"
     required_tests:
       - match subject expression evaluates exactly once
       - source arm order is preserved

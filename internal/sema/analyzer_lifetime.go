@@ -378,6 +378,7 @@ func (a *Analyzer) markExplicitMoveSource(expr ast.Expression) bool {
 	if len(place.Projections) == 0 && place.Type.Kind != ReferenceType {
 		a.endBorrowsHeldBy(place.Root)
 	}
+	a.recordMoveSource(expr)
 	return true
 }
 

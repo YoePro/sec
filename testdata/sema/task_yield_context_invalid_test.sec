@@ -9,6 +9,6 @@ test "ordinary tests are not tasks" {
 }
 
 test "spawned work is a task" {
-    let work := spawn Pause()
+    let work := try spawn Pause() { Err(_) => { return } }
     await work
 }

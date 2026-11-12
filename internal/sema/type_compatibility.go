@@ -314,6 +314,13 @@ func canExplicitConvert(target Type, value Type) bool {
 	if isIntegerType(target) && (isIntegerType(value) || value.Kind == DecimalType || value.Kind == CharType || value.Kind == RuneType) {
 		return true
 	}
+	// A binary floating value converts to an integer only when it is finite,
+	// in range and integral; the relation exists and is checked (try).
+	// Rules: rules/mlir/normative-sync/sec_float_numeric_sync_v1.md — § 15
+	// "Float to integer"; rules/types/types.md — § 25(3)–(5).
+	if isIntegerType(target) && value.Kind == FloatType {
+		return true
+	}
 
 	if isIntegerType(target) && value.Kind == EnumType {
 		return value.Underlying != "string"

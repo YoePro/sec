@@ -169,6 +169,14 @@ func defaultValueOf(typ Type, visiting map[string]bool) DefaultResolution {
 		}
 		return result
 	case StructType:
+		// rules/concurrency/threads.md §10(1): the explicit core initializer fixes all six fields.
+		if typ.Name == "ThreadConfig" && typ.Module == "core" && typ.Intrinsic {
+			result := DefaultResolution{Kind: StructDefault}
+			for _, field := range typ.Fields {
+				result.Fields = append(result.Fields, DefaultField{Name: field.Name, Value: threadConfigFieldDefault(typ, field)})
+			}
+			return result
+		}
 		if typ.Intrinsic {
 			return DefaultResolution{Kind: NoDefault}
 		}

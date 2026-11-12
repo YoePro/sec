@@ -75,7 +75,10 @@ func formatImportRegion(text string, compact bool) string {
 			}
 			moduleLine = statement.Token.Line
 		case *ast.ImportStatement:
-			if moduleLine == 0 {
+			// An import selected by @target/@when keeps its own declaration
+			// and position: merging or reordering would move the attribute
+			// onto another statement (attributes.md § 16).
+			if moduleLine == 0 || len(statement.Attributes) > 0 {
 				return text
 			}
 			declaration, grouped := byImportToken[statement.Token.ByteStart]

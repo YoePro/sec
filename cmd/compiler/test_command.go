@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"sec/internal/ast"
+	"sec/internal/lexer"
 	"sec/internal/sema"
 )
 
@@ -371,7 +372,14 @@ func analyzeTestProgram(program *ast.Program, target CompilerTarget, sourceFiles
 	}
 	analyzer := sema.NewAnalyzerWithScalarPlanAndDepth(plan, sema.AnalysisStandard)
 	analyzer.SetHardwareModuleContext(cliHardwareModuleContext(program, target, sourceFiles))
+	analyzer.SetProgramTargetKind(sema.ProgramTargetTest)
 	errors := analyzer.Analyze(program)
+	// The generated harness entry uses the same initialization and shutdown
+	// model as every executable Target (initialization.md § 27).
+	if len(errors) == 0 {
+		_, _, planErrors := analyzer.ProgramPlans(sema.ProgramTargetTest, "", lexer.Token{})
+		errors = append(errors, planErrors...)
+	}
 	printSemaWarnings(analyzer)
 	for _, err := range errors {
 		printSemaError(os.Stderr, err)

@@ -32,8 +32,11 @@ func (a *Analyzer) validateAttributeSemantics(program *ast.Program) {
 				continue
 			}
 			a.validateAttributeArgumentValues(attribute)
-			if !implementedAttributes[attribute.Name.Value] {
-				a.addErrorAtToken(attribute.Token, "attribute @%s is not implemented yet", attribute.Name.Value)
+			// Source selection applies @target and @when when the plan
+			// supplies its selection facts (source_selection.go).
+			selectionApplied := a.sourceSelection != nil && (attribute.Name.Value == "target" || attribute.Name.Value == "when")
+			if !implementedAttributes[attribute.Name.Value] && !selectionApplied {
+				a.reportCapabilityUnavailable(attribute.Token, "The attribute is valid Sec; the compiler rejects it rather than accept it without its meaning.", "attribute @%s is not implemented yet", attribute.Name.Value)
 			}
 		}
 	}
@@ -51,6 +54,8 @@ func (a *Analyzer) validateAttributeSemantics(program *ast.Program) {
 			if statement != nil {
 				check(statement.Attributes)
 			}
+		case *ast.ImportStatement, *ast.InterfaceDeclaration, *ast.UnitDeclStatement, *ast.StructStatement, *ast.LetGroupStatement, *ast.TestDeclaration, *ast.HardwareDeclaration:
+			check(ast.StatementAttributes(statement))
 		case *ast.LetStatement:
 			if statement != nil {
 				check(statement.Attributes)
@@ -59,6 +64,7 @@ func (a *Analyzer) validateAttributeSemantics(program *ast.Program) {
 			if statement == nil {
 				continue
 			}
+			check(statement.Attributes)
 			for _, member := range statement.Members {
 				if function, ok := member.(*ast.FunctionDeclaration); ok && function != nil {
 					check(function.Attributes)
@@ -273,13 +279,29 @@ func whenCondition(expr ast.Expression) bool {
 		return expr.Operator == "!" && whenCondition(expr.Right)
 	case *ast.InfixExpression:
 		switch expr.Operator {
-		case "&&", "||", "==", "!=":
+		case "&&", "||":
 			return whenCondition(expr.Left) && whenCondition(expr.Right)
+		case "==", "!=":
+			// A typed parameter compares with a literal of its type
+			// (attributes.md § 28; projects.md § 24(5)).
+			return whenOperand(expr.Left) && whenOperand(expr.Right)
 		}
 	}
 	return false
 }
 
+func whenOperand(expr ast.Expression) bool {
+	switch expr.(type) {
+	case *ast.IntegerLiteral, *ast.StringLiteral:
+		return true
+	}
+	return whenCondition(expr)
+}
+
 // AttributeImplemented reports whether Sema applies the meaning of a
 // compiler-known attribute; tooling uses it to describe an attribute's status.
-func AttributeImplemented(name string) bool { return implementedAttributes[name] }
+// @target and @when are applied by source selection in every compilation
+// plan the compiler and the editor configure (source_selection.go).
+func AttributeImplemented(name string) bool {
+	return implementedAttributes[name] || name == "target" || name == "when"
+}

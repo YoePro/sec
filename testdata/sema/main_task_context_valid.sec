@@ -26,7 +26,7 @@ fn ThreadWork() void {
 fn main() void {
     let physical := Thread.Current()
     Thread.Yield()
-    let work := spawn TaskWork()
+    let work := try spawn TaskWork() { Err(_) => { return } }
     await work
     let worker := spawn thread ThreadWork()
     join worker

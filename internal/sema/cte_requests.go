@@ -17,6 +17,9 @@ type ctePendingRequest struct {
 	Root   ast.Expression
 	Module string
 	File   string
+	// Fact is the type fact the request establishes, when it is a range
+	// bound or a type default.
+	Fact *cteFactRequest
 }
 
 // prepareCompileTimeEvaluation establishes the values of required positions
@@ -61,6 +64,10 @@ func (a *Analyzer) executePendingCompileTimeRequests(program *ast.Program) map[a
 			continue
 		}
 		executor := newCTEExecutor(a, program)
+		executor.results = results
+		if request.Fact != nil {
+			executor.inProgress = []string{"the " + request.Fact.Fact + " of " + request.Fact.TypeName}
+		}
 		if static, ok := a.staticBindingOfInitializer(request.Root); ok {
 			results[request.Root] = executor.evaluateStatic(static.Name, sourceTokenLocation(static.Declaration.Name.Token), request.Root)
 		} else {
@@ -84,7 +91,12 @@ func (a *Analyzer) staticBindingOfInitializer(root ast.Expression) (ResolvedStat
 
 // deferCompileTimeExecution records a pending request in the probe.
 func (a *Analyzer) deferCompileTimeExecution(expr ast.Expression) {
-	a.ctePending = append(a.ctePending, ctePendingRequest{Root: expr, Module: a.currentModule, File: a.currentSourceFile})
+	request := ctePendingRequest{Root: expr, Module: a.currentModule, File: a.currentSourceFile}
+	if a.cteFactContext != nil {
+		fact := *a.cteFactContext
+		request.Fact = &fact
+	}
+	a.ctePending = append(a.ctePending, request)
 }
 
 // establishedCompileTimeValue returns the probe's outcome for a root.
@@ -114,6 +126,9 @@ func (a *Analyzer) reportCompileTimeExecutionFailure(expr ast.Expression, positi
 	id, help := diagnostics.SemanticCompileTimeExecutionUnavailable, "Use a literal or an immutable compile-time binding, or restructure the evaluated code into forms the compile-time evaluator executes."
 	category := "is not executed by the compile-time evaluator yet"
 	switch failure.Kind {
+	case cteResultNotMaterializable:
+		id, category = diagnostics.CompileTimeResultNotMaterializable, "was evaluated, but its result is not statically materializable"
+		help = "The compile-time computation succeeded. Its complete stored value graph must have a defined static representation; transient addresses, backing storage and cyclic evaluator objects cannot escape into runtime storage."
 	case cteEvaluationFailed, cteNotEvaluable:
 		id, category = diagnostics.CompileTimeEvaluationFailed, "failed during compile-time evaluation"
 		help = "The evaluation ran ordinary Sec semantics and reached a failure; fix the evaluated code or its arguments so the required value can be established."
@@ -121,6 +136,12 @@ func (a *Analyzer) reportCompileTimeExecutionFailure(expr ast.Expression, positi
 			category = "is not compile-time evaluable"
 			help = "Semantic CTE may read locals, parameters and immutable compile-time values only."
 		}
+	case cteSemanticOperationFailed:
+		id, category = diagnostics.CompileTimeEvaluationFailed, "failed a semantic operation during compile-time evaluation"
+		help = "The evaluated code reached a language-defined operation failure (SemanticOperationFailed), such as checked overflow, division by zero or an out-of-range conversion; fix the evaluated code or its arguments."
+	case cteCompilerInvariantFailure:
+		id, category = diagnostics.CompileTimeCompilerInvariantFailure, "stopped on an internal compiler failure during compile-time evaluation"
+		help = "This is a compiler bug, not an error in the source. Please report it with this source."
 	case cteForbiddenEffect:
 		id, category = diagnostics.CompileTimeForbiddenEffect, "performs an effect forbidden during compile-time evaluation"
 		help = "Compile-time evaluation runs ordinary Sec code without I/O, clocks, foreign calls or static mutation; move that effect to runtime code or keep it on a path this evaluation does not execute."
@@ -132,7 +153,7 @@ func (a *Analyzer) reportCompileTimeExecutionFailure(expr ast.Expression, positi
 		help = "Break the cycle so the value does not require itself."
 	}
 	chain := ""
-	if names := compactCallChain(failure.CallStack); len(names) > 0 {
+	if names := compactCallChain(failure.CallStack, a.currentModule); len(names) > 0 {
 		chain = " (in " + strings.Join(names, " -> ") + ")"
 	}
 	err := Error{ID: id, Severity: diagnostics.SeverityError, Help: help,
@@ -301,17 +322,27 @@ func reflectContainsExecution(value reflect.Value, depth int) bool {
 // compactCallChain renders the executed call chain, collapsing repeated
 // consecutive frames of recursion as `Name ×N` and eliding the middle of a
 // long chain.
-func compactCallChain(stack []cteCallSite) []string {
+func compactCallChain(stack []cteCallSite, module string) []string {
+	label := func(site cteCallSite) string {
+		name := site.Function
+		if site.Module != "" && module != "" && site.Module != module {
+			name = site.Module + "." + name
+		}
+		if site.Instantiation != "" {
+			name += "[" + site.Instantiation + "]"
+		}
+		return name
+	}
 	names := []string{}
 	for index := 0; index < len(stack); {
 		end := index
-		for end < len(stack) && stack[end].Function == stack[index].Function {
+		for end < len(stack) && label(stack[end]) == label(stack[index]) {
 			end++
 		}
 		if count := end - index; count > 1 {
-			names = append(names, fmt.Sprintf("%s ×%d", stack[index].Function, count))
+			names = append(names, fmt.Sprintf("%s ×%d", label(stack[index]), count))
 		} else {
-			names = append(names, stack[index].Function)
+			names = append(names, label(stack[index]))
 		}
 		index = end
 	}
@@ -355,6 +386,9 @@ func (a *Analyzer) executeDeferredStaticInitializers(program *ast.Program) {
 		previousModule, previousFile := a.currentModule, a.currentSourceFile
 		a.currentModule, a.currentSourceFile = deferred.module, deferred.file
 		result := newCTEExecutor(a, program).evaluateStatic(static.Name, sourceTokenLocation(static.Declaration.Name.Token), deferred.value)
+		if result.Failure == nil && static.Type.Kind != "" {
+			result.Type = static.Type
+		}
 		a.currentModule, a.currentSourceFile = previousModule, previousFile
 		if a.cteResults == nil {
 			a.cteResults = map[ast.Expression]cteResult{}
@@ -371,8 +405,12 @@ func (a *Analyzer) executeDeferredStaticInitializers(program *ast.Program) {
 // position, its established value rendered as Sec source, or the failure
 // category and reason with the executed call chain.
 type CompileTimeValueFact struct {
-	Root      string
-	Value     string
+	Root  string
+	Value string
+	// Type is the display name of the value's canonical Sec type.
+	Type string
+	// Context names the required position's evaluator class and construct.
+	Context   string
 	Failure   string
 	Reason    string
 	CallChain []string
@@ -395,14 +433,20 @@ func (a *Analyzer) CompileTimeValueAt(file string, line, column int) (CompileTim
 			text = text[1 : len(text)-1]
 		}
 		fact := CompileTimeValueFact{Root: text}
+		if context, classified := a.compileTimeContexts[root]; classified {
+			fact.Context = context.Construct + " (" + string(context.Class) + ")"
+		}
 		if result.Failure != nil {
 			if result.Failure.Kind == cteSuppressed {
 				return CompileTimeValueFact{}, false
 			}
-			fact.Failure, fact.Reason, fact.CallChain = string(result.Failure.Kind), result.Failure.Reason, compactCallChain(result.Failure.CallStack)
+			fact.Failure, fact.Reason, fact.CallChain = string(result.Failure.Kind), result.Failure.Reason, compactCallChain(result.Failure.CallStack, "")
 			return fact, true
 		}
 		fact.Value = renderCompileTimeValue(result.Value)
+		if result.Type.Kind != "" {
+			fact.Type = typeDisplayName(result.Type)
+		}
 		return fact, true
 	}
 	return CompileTimeValueFact{}, false
@@ -438,4 +482,52 @@ func renderCompileTimeValue(value DefaultConstant) string {
 		return value.Exact.RatString()
 	}
 	return string(value.Kind)
+}
+
+// OptionalCompileTimeValue lets an optimizer try early evaluation of an
+// ordinary expression with the same executor (compile_time_evaluation.md
+// § 7(5)–(7)). A failed optional evaluation only means the fold is not used:
+// it never produces a source diagnostic and never changes validity. An
+// evaluator fault is still a compiler invariant failure and is returned as
+// an error rather than hidden (§ 7(6)).
+func (a *Analyzer) OptionalCompileTimeValue(program *ast.Program, expr ast.Expression) (DefaultConstant, bool, error) {
+	if a == nil || expr == nil {
+		return DefaultConstant{}, false, nil
+	}
+	errorsBefore := len(a.errors)
+	result := newCTEExecutor(a, program).evaluate(expr)
+	a.errors = a.errors[:errorsBefore]
+	if result.Failure != nil {
+		if result.Failure.Kind == cteCompilerInvariantFailure {
+			return DefaultConstant{}, false, fmt.Errorf("%s", result.Failure.Reason)
+		}
+		return DefaultConstant{}, false, nil
+	}
+	return result.Value, true, nil
+}
+
+// CompileTimeValue is the typed outcome of one required semantic CTE request
+// (compile_time_evaluation.md § 11): the canonical Sec type, its
+// module-qualified TypeIdentity, independent of display spelling, import
+// aliases and evaluator representation, and the SemanticValue the executor
+// established.
+type CompileTimeValue struct {
+	Type         Type
+	TypeIdentity string
+	Value        DefaultConstant
+}
+
+// CompileTimeValueOf returns the typed compile-time value this analysis
+// established for a required root expression, or false when the root was
+// not evaluated or its evaluation failed.
+// Rules: rules/compiler/compile_time_evaluation.md — §§ 11, 31(3), 73.
+func (a *Analyzer) CompileTimeValueOf(expr ast.Expression) (CompileTimeValue, bool) {
+	if a == nil || expr == nil {
+		return CompileTimeValue{}, false
+	}
+	result, ok := a.cteResults[expr]
+	if !ok || result.Failure != nil || result.Type.Kind == "" {
+		return CompileTimeValue{}, false
+	}
+	return CompileTimeValue{Type: result.Type, TypeIdentity: canonicalTypeIdentity(result.Type), Value: result.Value}, true
 }

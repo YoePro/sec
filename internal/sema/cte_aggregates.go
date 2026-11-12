@@ -17,10 +17,13 @@ type CompileTimeAggregate struct {
 	// variant and its payload (nil for a payload-free variant such as None).
 	Variant string
 	Payload *DefaultConstant
+	// Owner is the logical identity of a value of a custom-free type
+	// (cte_ownership.go); copies of the same value share it.
+	Owner int
 }
 
 func (aggregate *CompileTimeAggregate) clone() *CompileTimeAggregate {
-	copy := &CompileTimeAggregate{Type: aggregate.Type, Names: append([]string(nil), aggregate.Names...), Fields: make(map[string]DefaultConstant, len(aggregate.Fields)), Variant: aggregate.Variant, Payload: aggregate.Payload}
+	copy := &CompileTimeAggregate{Type: aggregate.Type, Names: append([]string(nil), aggregate.Names...), Fields: make(map[string]DefaultConstant, len(aggregate.Fields)), Variant: aggregate.Variant, Payload: aggregate.Payload, Owner: aggregate.Owner}
 	for name, value := range aggregate.Fields {
 		copy.Fields[name] = value
 	}
@@ -70,7 +73,11 @@ func (x *cteExecutor) structLiteral(literal *ast.StructLiteral) (DefaultConstant
 		aggregate.Names = append(aggregate.Names, field.FieldName)
 		aggregate.Fields[field.FieldName] = value
 	}
-	return DefaultConstant{Kind: StructType, Aggregate: aggregate}, true
+	value := DefaultConstant{Kind: StructType, Aggregate: aggregate}
+	if !x.chargeAggregate(value, literal.Token) {
+		return DefaultConstant{}, false
+	}
+	return value, true
 }
 
 // defaultValue converts a resolved default into an evaluator value.
@@ -96,6 +103,11 @@ func (x *cteExecutor) defaultValue(resolution DefaultResolution, typ Type, at le
 	case PrimitiveDefault, NamedDefault, RangeDefault, MembershipDefault, ExplicitTypeDefault, EnumDefault:
 		value := resolution.Value
 		if value.Kind == "" && value.Integer == nil && value.Exact == nil && value.Lexeme == "" && value.Nominal.Owner == "" {
+			// A default established by semantic CTE is read from its fact,
+			// establishing it on demand (§§ 38, 41).
+			if request, pending := x.factRequest(canonicalTypeIdentity(typ), "default", 0); pending {
+				return x.establishFact(request, at)
+			}
 			x.fail(cteImplementationGap, at, "the default of %s is not executed by the compile-time evaluator yet", typeDisplayName(typ))
 			return DefaultConstant{}, false
 		}
@@ -140,6 +152,9 @@ func (x *cteExecutor) withField(object DefaultConstant, path []string, value Def
 	aggregate := object.Aggregate.clone()
 	aggregate.Fields[path[0]] = updated
 	object.Aggregate = aggregate
+	if !x.chargeAggregate(object, at) {
+		return DefaultConstant{}, false
+	}
 	return object, true
 }
 

@@ -28,6 +28,6 @@ fn Conditional(config: ThreadConfig, start: bool) void {
 fn Ordinary() void {
     let worker := spawn thread Work()
     join worker
-    let work := spawn task Work()
+    let work := try spawn task Work() { Err(_) => { return } }
     await work
 }

@@ -29,7 +29,7 @@ func (a *Analyzer) inferThreadLocalConstructor(expr *ast.CallExpression) (Type, 
 		return invalid, display, true
 	}
 	if actual.Kind == FunctionType && len(actual.FunctionParameterTypes) == 0 && actual.FunctionReturnType != nil && sameConcreteType(*actual.FunctionReturnType, payload) && !a.canInitialize(payload, actual, expr.Arguments[0]) {
-		a.addErrorAtToken(expr.Token, "compiler capability unavailable: ThreadLocal factory initialization requires lazy first-access execution")
+		a.reportCapabilityUnavailable(expr.Token, "Initialize the ThreadLocal with a value until lazy first-access factory execution is implemented.", "compiler capability unavailable: ThreadLocal factory initialization requires lazy first-access execution")
 		return invalid, display, true
 	}
 	if !implicitlyCopyable(payload) {

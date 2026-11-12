@@ -75,7 +75,7 @@ func (a *Analyzer) analyzeReturnStatement(functionName string, returnType Type, 
 	}
 
 	if returnType.Kind == FunctionType && containsCapturedLambdaExpression(stmt.Value) {
-		a.addErrorAtToken(expressionToken(stmt.Value), "escaping captured lambda is not supported yet")
+		a.reportCapabilityUnavailable(expressionToken(stmt.Value), "Return a lambda without captures until escaping capture environments are implemented.", "escaping captured lambda is not supported yet")
 		return
 	}
 

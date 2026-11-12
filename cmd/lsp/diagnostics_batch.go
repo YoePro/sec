@@ -137,6 +137,13 @@ func analyzeDiagnosticBatchWithDependencies(snapshots []lspserver.Snapshot, over
 					results[doc.snapshot.URI] = append(results[doc.snapshot.URI], semaDiagnosticWithSources(warning, 2, doc.snapshot.URI, doc.snapshot.Text, overlay))
 				}
 			}
+			// Unnecessary/redundant unsafe contexts are informational
+			// advisories (unsafe.md § 50(5)).
+			for _, advisory := range analyzer.UnsafeAdvisories() {
+				if diagnosticBelongsToSource(advisory, path) {
+					results[doc.snapshot.URI] = append(results[doc.snapshot.URI], semaDiagnosticWithSources(advisory, 3, doc.snapshot.URI, doc.snapshot.Text, overlay))
+				}
+			}
 		}
 		release()
 	}

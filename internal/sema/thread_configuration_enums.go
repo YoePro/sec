@@ -20,7 +20,7 @@ func threadConfigurationVariants(name string) []string {
 
 // builtinThreadConfigurationEnumType reserves a nominal non-error core enum.
 // Eager is the default start mode; priority's ordinary enum default is distinct
-// from the Normal preference used by a ThreadConfig initializer.
+// from the ThreadSetting.Default used by a ThreadConfig initializer.
 // Rules: rules/concurrency/threads.md — §§5–6,10;
 // rules/types/default_values.md — "Enums".
 func builtinThreadConfigurationEnumType(name string) Type {

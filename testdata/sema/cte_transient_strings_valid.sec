@@ -1,0 +1,14 @@
+module main
+
+fn Grow(count: int) string {
+    let mut text := "x"
+    for index in 0..<count {
+        text = try text + text { Err(_) => "fallback" }
+    }
+    return text
+}
+
+let Small: string := Grow(3)
+let Independent: string := Grow(4)
+
+fn main() int { return 0 }

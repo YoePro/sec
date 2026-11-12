@@ -1417,3 +1417,33 @@ func TestFormatPreservesRegisterShadowModifiers(t *testing.T) {
 		t.Fatalf("wrong register shadow formatting:\n%s\nwant:\n%s", got, want)
 	}
 }
+
+// An import selected by @target keeps its attribute: the import region is
+// never merged or reordered around it, and the file-level @target stays the
+// first line.
+// Rules: rules/foundations/attributes.md — §§ 15, 16; rules/tooling/formatter.md — § 13.
+func TestFormatterKeepsSelectedImports(t *testing.T) {
+	source := "@target(os: \"linux\")\n\nmodule main\n\n@target(os: \"linux\")\nimport \"fmt\"\n\nimport \"math\"\n\nfn main() int {\n    return 0\n}\n"
+	formatted := Format(Source{Text: source}, Options{}).Text
+	if formatted != source {
+		t.Fatalf("formatted:\n%s", formatted)
+	}
+}
+
+// The opt-in Language Corrections migrate the #target compatibility form to
+// the canonical file-level @target with the same selection; ordinary
+// formatting leaves it unchanged.
+// Rules: rules/foundations/attributes.md — § 25; rules/tooling/formatter.md — § 26.
+func TestFormatterMigratesLegacyTargetOnlyWithFix(t *testing.T) {
+	for input, want := range map[string]string{
+		"#target(os: \"linux\", arch: \"amd64\")\nmodule main\n": "@target(os: \"linux\", arch: \"amd64\")\nmodule main\n",
+		"#target(os: \"freebsd\", arch: \"any\")\nmodule main\n": "@target(os: \"freebsd\")\nmodule main\n",
+	} {
+		if got := Format(Source{Text: input}, Options{}).Text; got != input {
+			t.Errorf("ordinary formatting rewrote %q to %q", input, got)
+		}
+		if got := Format(Source{Text: input}, Options{Fix: true}).Text; got != want {
+			t.Errorf("fix %q = %q, want %q", input, got, want)
+		}
+	}
+}

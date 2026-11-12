@@ -55,6 +55,13 @@ func hoverForSourceWithParameterInsight(uri string, text string, pos position, i
 				}
 				result.Contents.Value += suffix
 			}
+			if suffix := unsafeOperationHover(analyzer, token); suffix != "" {
+				if !found {
+					result = hoverResult{Contents: markupContent{Kind: "markdown", Value: "Unsafe operation"}, Range: tokenRange(text, token)}
+					found = true
+				}
+				result.Contents.Value += suffix
+			}
 			if suffix := compileTimeValueHover(analyzer, token); suffix != "" {
 				if !found {
 					result = hoverResult{Contents: markupContent{Kind: "markdown", Value: "Compile-time value"}, Range: tokenRange(text, token)}

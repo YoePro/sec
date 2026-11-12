@@ -389,8 +389,8 @@ func (a *Analyzer) inferTypePackForward(call *ast.CallExpression, functions []Fu
 		}
 	}
 	for _, candidate := range candidates {
-		if candidate.Unsafe && !a.callUnsafeAuthorized(call) {
-			a.addErrorAtToken(token, "calling unsafe function %s requires unsafe", candidate.Name)
+		if candidate.Unsafe && !a.authorizeUnsafe(UnsafeCallableCall, candidate.Name, token, call, nil) {
+			a.addErrorAtTokenWithMetadata(token, diagnostics.UnsafeCallRequiresContext, missingUnsafeHelp(UnsafeCallableCall, nil), "calling unsafe function %s requires unsafe", candidate.Name)
 			return invalid, value
 		}
 	}

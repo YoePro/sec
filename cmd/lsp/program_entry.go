@@ -23,21 +23,10 @@ func lspProgramEntryErrors(analyzer *sema.Analyzer, program *ast.Program, source
 	if analyzer == nil || program == nil || sourcePath == "" {
 		return nil
 	}
-	root := findProjectRoot(sourcePath)
-	manifestPath := filepath.Join(root, ".sec", "sec.toml")
-	manifest, ok := overlay.Sources[normalizedSourcePath(manifestPath)]
-	if !ok {
-		data, err := os.ReadFile(manifestPath)
-		if err != nil {
-			return nil
-		}
-		manifest = string(data)
-	}
-	target, found := project.TargetForSource(project.ParseManifestTargets(manifest), root, sourcePath)
+	kind, found := lspSourceTargetKind(sourcePath, overlay)
 	if !found {
 		return nil
 	}
-	kind := sema.ProgramTargetKind(target.Kind)
 	if kind != sema.ProgramTargetCommand && kind != sema.ProgramTargetFirmware {
 		return nil
 	}
@@ -53,4 +42,30 @@ func lspProgramEntryErrors(analyzer *sema.Analyzer, program *ast.Program, source
 		return nil
 	}
 	return analyzer.ValidateProgramEntry(kind, module, anchor)
+}
+
+// lspSourceTargetKind reads the kind of the manifest Target that owns a
+// source, from the unsaved manifest overlay when present. It is the same
+// selection the entry check uses, and it is applied before analysis so a
+// library Target never acquires a program-entry root
+// (initialization.md § 26).
+func lspSourceTargetKind(sourcePath string, overlay sourceOverlay) (sema.ProgramTargetKind, bool) {
+	if sourcePath == "" {
+		return "", false
+	}
+	root := findProjectRoot(sourcePath)
+	manifestPath := filepath.Join(root, ".sec", "sec.toml")
+	manifest, ok := overlay.Sources[normalizedSourcePath(manifestPath)]
+	if !ok {
+		data, err := os.ReadFile(manifestPath)
+		if err != nil {
+			return "", false
+		}
+		manifest = string(data)
+	}
+	target, found := project.TargetForSource(project.ParseManifestTargets(manifest), root, sourcePath)
+	if !found || target.Kind == "" {
+		return "", false
+	}
+	return sema.ProgramTargetKind(target.Kind), true
 }

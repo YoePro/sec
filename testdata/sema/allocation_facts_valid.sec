@@ -24,7 +24,7 @@ fn RecursiveUnknown(value: int) void {
     if value == 0 { Foreign() } else { RecursiveUnknown(value - 1) }
 }
 fn Spawner() void {
-    let worker := spawn Allocate()
+    let worker := try spawn Allocate() { Err(_) => { return } }
     detach worker
 }
 fn Open(operation: fn(int) int, value: int) int { return operation(value) }

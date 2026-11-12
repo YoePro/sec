@@ -1,0 +1,10 @@
+module main
+
+enum AppError error { Bad }
+
+fn Inspect(outcome: TaskOutcome[Result[int, AppError]], creation: TaskSpawnError, execution: TaskError, empty: TaskOutcome[void]) void {
+    discard outcome
+    discard creation
+    discard execution
+    discard empty
+}

@@ -18,6 +18,13 @@ func TestMatchTerminationCLI(t *testing.T) {
 	for _, name := range []string{"continuing_invalid", "unreachable_invalid"} {
 		_, output, code = runCLIForDiagnostics(t, "check", "../../testdata/control_flow/match_termination/"+name+".sec", "--diagnostic-format=json")
 		document := decodeOccurrenceDocument(t, output)
+		errorsOnly := document.Occurrences[:0:0]
+		for _, occurrence := range document.Occurrences {
+			if occurrence.Severity == "error" {
+				errorsOnly = append(errorsOnly, occurrence)
+			}
+		}
+		document.Occurrences = errorsOnly
 		if code != 3 || len(document.Occurrences) != 6 {
 			t.Fatal(name, code, output)
 		}

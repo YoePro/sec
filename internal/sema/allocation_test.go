@@ -161,7 +161,7 @@ fn Worker() void {
 
 fn main() void {
 	Forward()
-	let worker := spawn Worker()
+	let worker := try spawn Worker() { Err(_) => { return } }
 	detach worker
 }
 `)
@@ -199,7 +199,7 @@ fn Worker() void {
 }
 
 fn main() void {
-	let worker := spawn Worker()
+	let worker := try spawn Worker() { Err(_) => { return } }
 	detach worker
 }
 `)

@@ -17,10 +17,10 @@ fn Deferred() void {
 
 fn main() void {
     Thread.Yield()
-    let direct := spawn Pause()
+    let direct := try spawn Pause() { Err(_) => { return } }
     await direct
-    let indirect := spawn ViaValue()
+    let indirect := try spawn ViaValue() { Err(_) => { return } }
     await indirect
-    let deferred := spawn Deferred()
+    let deferred := try spawn Deferred() { Err(_) => { return } }
     await deferred
 }

@@ -13,7 +13,7 @@ fn Calculate() int {
 }
 
 fn Run() void {
-    let work := spawn Calculate()
+    let work := try spawn Calculate() { Err(_) => { return } }
     let outcome := await work
 }
 `
@@ -44,7 +44,7 @@ fn Load() Result[int, IOError] {
 }
 
 fn Run() void {
-    let work := spawn Load()
+    let work := try spawn Load() { Err(_) => { return } }
     let outcome: TaskOutcome[Result[int, IOError]] := await work
     return
 }
@@ -63,7 +63,7 @@ fn Calculate() int {
 }
 
 fn Run() void {
-    let taskHandle := spawn task Calculate()
+    let taskHandle := try spawn task Calculate() { Err(_) => { return } }
     let threadHandle := spawn thread Calculate()
     let outcome := await taskHandle
 }
@@ -95,7 +95,7 @@ fn Work() void {
 }
 
 fn Run() void {
-    let work := spawn Work()
+    let work := try spawn Work() { Err(_) => { return } }
     let outcome: TaskOutcome[void] := await work
 }
 `
@@ -119,7 +119,7 @@ fn Work() void {
 }
 
 fn Run() void {
-    let taskHandle := spawn Work()
+    let taskHandle := try spawn Work() { Err(_) => { return } }
     let threadHandle := spawn thread Work()
     detach taskHandle
     detach threadHandle
@@ -139,7 +139,7 @@ fn Calculate() int {
 }
 
 fn Invalid() void {
-    let taskHandle := spawn Calculate()
+    let taskHandle := try spawn Calculate() { Err(_) => { return } }
     let threadHandle := spawn thread Calculate()
     detach taskHandle
     detach threadHandle
@@ -164,7 +164,7 @@ fn Calculate() int {
 }
 
 fn Run() void {
-    let taskHandle := spawn Calculate()
+    let taskHandle := try spawn Calculate() { Err(_) => { return } }
     let threadHandle := spawn thread Calculate()
     detach taskHandle discard
     detach threadHandle discard
@@ -185,7 +185,7 @@ fn Work() void {
 fn Invalid() void {
     let value := 1
     detach value
-    let taskHandle := spawn Work()
+    let taskHandle := try spawn Work() { Err(_) => { return } }
     detach taskHandle
     await taskHandle
 }
@@ -226,7 +226,7 @@ fn Work() int {
 }
 
 fn Invalid() void {
-    let work := spawn Work()
+    let work := try spawn Work() { Err(_) => { return } }
 }
 `
 
@@ -271,7 +271,7 @@ fn Work() int { return 1 }
 
 fn Invalid(mutex: Mutex[State]) void {
 	let guard := mutex.Lock()
-	let work := spawn Work()
+	let work := try spawn Work() { Err(_) => { return } }
 	let outcome := await work
 	discard outcome
 	discard guard
@@ -298,7 +298,7 @@ fn Consume(guard: MutexGuard[State]) void {}
 fn Valid(mutex: Mutex[State]) void {
 	let guard := mutex.Lock()
 	Consume(<-guard)
-	let work := spawn Work()
+	let work := try spawn Work() { Err(_) => { return } }
 	let outcome := await work
 	discard outcome
 }
@@ -359,9 +359,9 @@ func TestCancelInsideSpawnedLambdaIsAllowed(t *testing.T) {
 module main
 
 fn Run() void {
-    let work := spawn fn() void {
+    let work := try spawn fn() void {
         cancel
-    }
+    } { Err(_) => { return } }
     await work
 }
 `

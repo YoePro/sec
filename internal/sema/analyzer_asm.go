@@ -9,8 +9,8 @@ import (
 // analyzeAsmStatement enforces the unsafe source boundary before operand checks.
 // Rules: rules/platform/inline_assembly.md — unsafe boundary and §§22–27.
 func (a *Analyzer) analyzeAsmStatement(stmt *ast.AsmStatement) {
-	if !a.inUnsafe {
-		a.addErrorAtToken(stmt.Token, "asm is only allowed inside unsafe")
+	if !a.authorizeUnsafe(UnsafeInlineAssemblyBlock, "asm", stmt.Token, nil, nil) {
+		a.addErrorAtTokenWithMetadata(stmt.Token, diagnostics.UnsafeOperationRequiresContext, missingUnsafeHelp(UnsafeInlineAssemblyBlock, nil), "asm is only allowed inside unsafe")
 		return
 	}
 	if stmt.Block != nil {

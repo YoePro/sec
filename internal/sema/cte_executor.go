@@ -3,6 +3,7 @@ package sema
 import (
 	"fmt"
 	"math/big"
+	"sort"
 	"strings"
 
 	"sec/internal/ast"
@@ -15,6 +16,9 @@ import (
 type cteFailureKind string
 
 const (
+	// cteResultNotMaterializable: execution succeeded, but the complete
+	// returned graph has no legal static representation (§§30,36,54).
+	cteResultNotMaterializable cteFailureKind = "ResultNotMaterializable"
 	// cteNotEvaluable: the executed path reads state that is not a
 	// compile-time value (for example a mutable static).
 	cteNotEvaluable cteFailureKind = "NotEvaluable"
@@ -22,6 +26,13 @@ const (
 	// failure (SemanticOperationFailed: overflow, division by zero, checked
 	// conversion, contract violation).
 	cteEvaluationFailed cteFailureKind = "EvaluationFailed"
+	// cteSemanticOperationFailed: a language-defined operation failure such
+	// as checked overflow, division by zero or an out-of-range conversion
+	// (§ 47(4)); not a Sec error type.
+	cteSemanticOperationFailed cteFailureKind = "SemanticOperationFailed"
+	// cteCompilerInvariantFailure: the evaluator itself failed; this is a
+	// compiler bug, never a property of the source (§ 57).
+	cteCompilerInvariantFailure cteFailureKind = "CompilerInvariantFailure"
 	// cteForbiddenEffect: the executed path performs an effect semantic CTE
 	// forbids (foreign call, ambient clock, mutation of static state).
 	cteForbiddenEffect cteFailureKind = "ForbiddenEffect"
@@ -41,6 +52,10 @@ const (
 type cteCallSite struct {
 	Function string
 	Call     lexer.Token
+	// Module is the callee's origin module and Instantiation the concrete
+	// generic arguments of a generic callee, for provenance (§ 59).
+	Module        string
+	Instantiation string
 }
 
 // cteFailure describes why a required evaluation established no value.
@@ -55,6 +70,11 @@ type cteFailure struct {
 type cteResult struct {
 	Value   DefaultConstant
 	Failure *cteFailure
+	// Type is the canonical Sec type of the established value: the
+	// resolved type of the root expression, or a static's declared type.
+	Type Type
+	// Dependencies are the conservative inputs of the outcome (§ 58).
+	Dependencies []CompileTimeDependency
 }
 
 // Evaluator budgets (§ 48(4)). They protect the compiler process and are not
@@ -78,6 +98,15 @@ type cteFrame struct {
 	values map[sourceTokenKey]DefaultConstant
 	// receiver is the struct value an instance method or getter runs on.
 	receiver *DefaultConstant
+	// moved marks owned bindings whose responsibility a move or discard
+	// ended; cleanups is the invocation's unified cleanup stack; scopes are
+	// the active lexical scopes; pending are bindings the next scope owns
+	// (cte_ownership.go).
+	moved    map[sourceTokenKey]bool
+	aliases  map[sourceTokenKey]ast.Expression
+	cleanups []cteCleanup
+	scopes   []*cteScope
+	pending  []sourceTokenKey
 }
 
 // cteExecutor executes canonical typed Sec semantics over the analyzed AST.
@@ -106,6 +135,23 @@ type cteExecutor struct {
 	// pendingReturn is the early-return value of a propagating try.
 	returns       []Type
 	pendingReturn *DefaultConstant
+	// transient counts evaluator-owned scalar cells and UTF-8 bytes allocated
+	// during this request, independent of target runtime allocation.
+	transient int
+	// dependencies collects the request's dependencies, one set per active
+	// call; rootModule is the module the request belongs to.
+	dependencies []map[CompileTimeDependency]bool
+	rootModule   string
+	// ownership tracks custom-free values and their destruction.
+	ownership *cteOwnership
+	// program is the analyzed program; results are the outcomes of this
+	// analysis's requests, shared with facts established on demand;
+	// inProgress names the type facts enclosing evaluations establish.
+	program    *ast.Program
+	results    map[ast.Expression]cteResult
+	inProgress []string
+	// patternBindings are the bindings the current arm's pattern made.
+	patternBindings []sourceTokenKey
 }
 
 func (x *cteExecutor) currentFunctionReturn() Type {
@@ -116,7 +162,7 @@ func (x *cteExecutor) currentFunctionReturn() Type {
 }
 
 func newCTEExecutor(a *Analyzer, program *ast.Program) *cteExecutor {
-	x := &cteExecutor{a: a, functions: map[sourceTokenKey]*ast.FunctionDeclaration{}, getters: map[sourceTokenKey]*ast.BlockStatement{}, active: map[*ast.FunctionDeclaration]int{}, visiting: map[sourceTokenKey]bool{}}
+	x := &cteExecutor{a: a, program: program, functions: map[sourceTokenKey]*ast.FunctionDeclaration{}, getters: map[sourceTokenKey]*ast.BlockStatement{}, active: map[*ast.FunctionDeclaration]int{}, visiting: map[sourceTokenKey]bool{}}
 	var visit func(ast.Statement)
 	visit = func(statement ast.Statement) {
 		switch statement := statement.(type) {
@@ -132,6 +178,10 @@ func newCTEExecutor(a *Analyzer, program *ast.Program) *cteExecutor {
 				switch member := member.(type) {
 				case *ast.FunctionDeclaration:
 					visit(member)
+				case *ast.FreeDeclaration:
+					if member != nil && member.Body != nil {
+						x.ownershipState().freeBody[sourceTokenLocation(member.Token)] = member.Body
+					}
 				case *ast.PropertyDeclaration:
 					if member != nil && member.Getter != nil {
 						x.getters[sourceTokenLocation(member.Getter.Token)] = member.Getter
@@ -173,8 +223,25 @@ func (x *cteExecutor) evaluateStatic(name string, declaration sourceTokenKey, ro
 }
 
 // evaluate executes a root expression in a fresh top-level frame.
-func (x *cteExecutor) evaluate(root ast.Expression) cteResult {
-	x.frames = []*cteFrame{{values: map[sourceTokenKey]DefaultConstant{}}}
+func (x *cteExecutor) evaluate(root ast.Expression) (result cteResult) {
+	// An evaluator fault is a compiler invariant failure, reported as such
+	// and never as a property of the source (§ 57).
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			result = cteResult{Failure: &cteFailure{Kind: cteCompilerInvariantFailure, Reason: fmt.Sprintf("internal compile-time evaluator failure: %v", recovered), At: expressionToken(root), CallStack: append([]cteCallSite(nil), x.calls...)}}
+		}
+	}()
+	x.frames = []*cteFrame{newCTEFrame(nil)}
+	x.rootModule = x.a.currentModule
+	if static, ok := x.a.staticBindingOfInitializer(root); ok && static.Module != "" {
+		x.rootModule = static.Module
+	}
+	x.dependencies = []map[CompileTimeDependency]bool{{}}
+	defer func() {
+		result.Dependencies = sortedDependencies(x.dependencies[0])
+	}()
+	rootType, _ := x.a.ResolvedTypeOf(root)
+	x.dependOnType(rootType)
 	value, ok := x.eval(root)
 	if x.failure != nil {
 		return cteResult{Failure: x.failure}
@@ -185,11 +252,23 @@ func (x *cteExecutor) evaluate(root ast.Expression) cteResult {
 	if !ok {
 		return cteResult{Failure: &cteFailure{Kind: cteNotEvaluable, Reason: "the expression does not establish a compile-time value", At: expressionToken(root)}}
 	}
-	return cteResult{Value: value}
+	// Validate before any recursive ownership accounting, so an unsupported
+	// cyclic result cannot reach a tree-only cleanup or serialization walk.
+	// Rules: rules/compiler/compile_time_evaluation.md — §§30,36,57.
+	prepared := finishCTEMaterialization(cteResult{Value: value, Type: rootType})
+	if prepared.Failure != nil {
+		prepared.Failure.At = expressionToken(root)
+		return prepared
+	}
+	if leaked, found := x.unaccountedOwnership(value); found {
+		return cteResult{Failure: &cteFailure{Kind: cteImplementationGap, Reason: "a temporary " + typeDisplayName(leaked) + " with a custom free is destroyed at a point the compile-time evaluator does not model yet", At: expressionToken(root)}}
+	}
+	return prepared
 }
 
 // eval evaluates one expression through the shared compile-time evaluator
 // with executor-owned identifier and expression resolvers.
+// Rules: rules/compiler/compile_time_evaluation.md — §§11,24,48–49,51(3).
 func (x *cteExecutor) eval(expr ast.Expression) (DefaultConstant, bool) {
 	if expr == nil || !x.step(expressionToken(expr)) {
 		return DefaultConstant{}, false
@@ -200,6 +279,9 @@ func (x *cteExecutor) eval(expr ast.Expression) (DefaultConstant, bool) {
 	}
 	switch outcome {
 	case compileTimeEvaluated:
+		if _, literal := expr.(*ast.StringLiteral); literal && !x.reserveStringStorage(len(value.String), 0, expressionToken(expr)) {
+			return DefaultConstant{}, false
+		}
 		return value, true
 	case compileTimeForbiddenClock:
 		x.fail(cteForbiddenEffect, expressionToken(expr), "%s reads the current wall-clock time", expr.String())
@@ -230,7 +312,15 @@ func (x *cteExecutor) identifier(identifier *ast.Identifier) (DefaultConstant, c
 		return value, compileTimeEvaluated
 	}
 	if declaration, ok := x.declarationOf(identifier.Token); ok {
+		if alias, aliased := x.frame().aliases[declaration]; aliased {
+			value, ok := x.eval(alias)
+			if !ok {
+				return DefaultConstant{}, compileTimeNotConstant
+			}
+			return value, compileTimeEvaluated
+		}
 		if value, bound := x.frame().values[declaration]; bound {
+			x.noteMove(identifier, value)
 			return value, compileTimeEvaluated
 		}
 		if static, isStatic := x.a.staticBindings[declaration]; isStatic {
@@ -239,6 +329,7 @@ func (x *cteExecutor) identifier(identifier *ast.Identifier) (DefaultConstant, c
 	}
 	value, outcome := x.a.semanticCompileTimeConstantVisiting(identifier, map[string]bool{}, Type{})
 	if outcome == compileTimeEvaluated {
+		x.depend(CTEDependsOnImmutableValue, identifier.Value)
 		return value, outcome
 	}
 	x.fail(cteNotEvaluable, identifier.Token, "%s is not a compile-time value; semantic CTE reads only locals, parameters and immutable compile-time-established values, never mutable static state", identifier.Value)
@@ -248,6 +339,11 @@ func (x *cteExecutor) identifier(identifier *ast.Identifier) (DefaultConstant, c
 // expression handles the forms the shared literal/operator evaluator does
 // not execute: calls, conversions and checked arithmetic.
 func (x *cteExecutor) expression(expr ast.Expression) (DefaultConstant, compileTimeOutcome, bool) {
+	if reason, at, forbidden := x.forbiddenOperation(expr); forbidden {
+		x.fail(cteForbiddenEffect, at, "%s, which semantic CTE never performs", reason)
+		return DefaultConstant{}, compileTimeNotConstant, true
+	}
+	x.dependOnLayout(expr)
 	if value, ok, handled := x.variantExpression(expr); handled {
 		if !ok {
 			return DefaultConstant{}, compileTimeNotConstant, true
@@ -255,6 +351,17 @@ func (x *cteExecutor) expression(expr ast.Expression) (DefaultConstant, compileT
 		return value, compileTimeEvaluated, true
 	}
 	switch expr := expr.(type) {
+	case *ast.PrefixExpression:
+		if expr.Operator != "<-" || expr.Right == nil {
+			break
+		}
+		// An explicit move transfers the Place's value; the source's
+		// responsibility ends where Sema accepted the transfer.
+		value, ok := x.eval(expr.Right)
+		if !ok {
+			return DefaultConstant{}, compileTimeNotConstant, true
+		}
+		return value, compileTimeEvaluated, true
 	case *ast.TryExpression:
 		value, ok := x.tryExpression(expr)
 		if !ok {
@@ -309,6 +416,15 @@ func (x *cteExecutor) expression(expr ast.Expression) (DefaultConstant, compileT
 			if !ok {
 				return DefaultConstant{}, compileTimeNotConstant, true
 			}
+			x.noteMove(expr, value)
+			// A field read of a temporary ends the temporary with its full
+			// expression; the field itself is detached when moved out.
+			if !isPlaceExpression(expr.Object) {
+				x.destroyValue(object, true, expressionToken(expr))
+				if x.failure != nil {
+					return DefaultConstant{}, compileTimeNotConstant, true
+				}
+			}
 			return value, compileTimeEvaluated, true
 		}
 		value, ok := x.getter(expr)
@@ -352,10 +468,20 @@ func (x *cteExecutor) infix(expr *ast.InfixExpression) (DefaultConstant, bool) {
 	return x.binary(expr.Operator, left, right, expr, expr.Token)
 }
 
+// binary executes a typed binary operation, reserving transient text storage
+// before concatenation and preserving checked arithmetic semantics.
+// Rules: rules/compiler/compile_time_evaluation.md — §§20,24,33,47–49;
+// rules/foundations/operators.md — String concatenation.
 func (x *cteExecutor) binary(operator string, left, right DefaultConstant, typed ast.Expression, at lexer.Token) (DefaultConstant, bool) {
 	if (operator == "/" || operator == "%") && right.Integer != nil && right.Integer.Sign() == 0 {
-		x.fail(cteEvaluationFailed, at, "division by zero")
+		x.fail(cteSemanticOperationFailed, at, "division by zero")
 		return DefaultConstant{}, false
+	}
+	if operator == "+" && (left.Kind == StringType || left.Kind == CharType || left.Kind == RuneType) &&
+		(right.Kind == StringType || right.Kind == CharType || right.Kind == RuneType) && !left.NominalText && !right.NominalText {
+		if !x.reserveStringStorage(len(left.String), len(right.String), at) {
+			return DefaultConstant{}, false
+		}
 	}
 	value, outcome := x.a.compileTimeBinary(operator, left, right)
 	if outcome != compileTimeEvaluated {
@@ -370,12 +496,13 @@ func (x *cteExecutor) binary(operator string, left, right DefaultConstant, typed
 
 // inDomain applies the checked-integer result rule of the resolved type.
 func (x *cteExecutor) inDomain(value DefaultConstant, typ Type, at lexer.Token, what string) (DefaultConstant, bool) {
+	x.dependOnType(typ)
 	if value.Integer == nil {
 		return value, true
 	}
 	low, high, integer := scalarIntegerDomain(typ)
 	if integer && (value.Integer.Cmp(low) < 0 || value.Integer.Cmp(high) > 0) {
-		x.fail(cteEvaluationFailed, at, "%s: %s does not fit %s", what, value.Integer.String(), typeDisplayName(typ))
+		x.fail(cteSemanticOperationFailed, at, "%s: %s does not fit %s", what, value.Integer.String(), typeDisplayName(typ))
 		return DefaultConstant{}, false
 	}
 	return value, true
@@ -388,9 +515,24 @@ func (x *cteExecutor) convert(expr ast.Expression, value DefaultConstant) (Defau
 		x.fail(cteImplementationGap, expressionToken(expr), "conversion %s has no resolved target type", expr.String())
 		return DefaultConstant{}, false
 	}
+	x.dependOnType(target)
 	if hasContracts(target) {
-		x.fail(cteImplementationGap, expressionToken(expr), "checked conversion into constrained type %s is not executed by the compile-time evaluator yet", typeDisplayName(target))
-		return DefaultConstant{}, false
+		// Outside try only a conversion Sema proved valid remains; a
+		// failure here is a semantic operation failure.
+		call, isCall := expr.(*ast.CallExpression)
+		if !isCall || len(call.Arguments) != 1 {
+			x.fail(cteImplementationGap, expressionToken(expr), "checked conversion into constrained type %s is not executed by the compile-time evaluator yet", typeDisplayName(target))
+			return DefaultConstant{}, false
+		}
+		converted, failure, ok := x.checkConversion(call, target, value)
+		if !ok {
+			return DefaultConstant{}, false
+		}
+		if failure != nil {
+			x.fail(cteSemanticOperationFailed, expressionToken(expr), "conversion %s failed with ConversionError.%s", expr.String(), renderCompileTimeValue(*failure))
+			return DefaultConstant{}, false
+		}
+		return converted, true
 	}
 	if _, _, integer := scalarIntegerDomain(target); integer && value.Integer != nil {
 		return x.inDomain(value, target, expressionToken(expr), "conversion out of range")
@@ -433,8 +575,8 @@ func (x *cteExecutor) call(call *ast.CallExpression) (DefaultConstant, bool) {
 	case resolved.Kind != ResolvedDirectCall && resolved.Kind != ResolvedStaticMethodCall:
 		x.fail(cteImplementationGap, call.Token, "%s dispatch of %s is not executed by the compile-time evaluator yet", resolved.Kind, function.Name)
 		return DefaultConstant{}, false
-	case function.GenericSubstitution != nil || len(function.GenericParameters) > 0:
-		x.fail(cteImplementationGap, call.Token, "generic call %s is not executed by the compile-time evaluator yet", function.Name)
+	case len(function.GenericParameters) > 0 && function.GenericSubstitution == nil:
+		x.fail(cteImplementationGap, call.Token, "generic call %s has no concrete instantiation to execute", function.Name)
 		return DefaultConstant{}, false
 	}
 	declaration := x.functions[sourceTokenLocation(function.Token)]
@@ -446,6 +588,13 @@ func (x *cteExecutor) call(call *ast.CallExpression) (DefaultConstant, bool) {
 		}
 		return DefaultConstant{}, false
 	}
+	// A returned reference must keep aliasing its Place in the caller; the
+	// executor fails closed rather than return a copy that would silently
+	// lose writes through it (compile_time_evaluation.md §§ 28, 56).
+	if function.ReturnType.Kind == ReferenceType {
+		x.fail(cteImplementationGap, call.Token, "%s returns a reference, which the compile-time evaluator does not execute yet", function.Name)
+		return DefaultConstant{}, false
+	}
 	if len(x.frames) >= cteMaxCallDepth {
 		x.fail(cteResourceLimit, call.Token, "the CallDepth budget of %d nested calls was reached", cteMaxCallDepth)
 		return DefaultConstant{}, false
@@ -454,7 +603,7 @@ func (x *cteExecutor) call(call *ast.CallExpression) (DefaultConstant, bool) {
 		x.fail(cteImplementationGap, call.Token, "call %s with default, variadic or spread arguments is not executed by the compile-time evaluator yet", function.Name)
 		return DefaultConstant{}, false
 	}
-	frame := &cteFrame{values: map[sourceTokenKey]DefaultConstant{}}
+	frame := newCTEFrame(nil)
 	var receiverExpr ast.Expression
 	if function.ImplTarget != "" && !function.Static {
 		if member, ok := call.Callee.(*ast.MemberExpression); ok {
@@ -472,11 +621,37 @@ func (x *cteExecutor) call(call *ast.CallExpression) (DefaultConstant, bool) {
 			return DefaultConstant{}, false
 		}
 	}
+	// A reference parameter binds the argument Place's value; a `ref mut`
+	// parameter's final value is written back to that Place when the call
+	// returns. Borrowing rules exclude every other access to the Place
+	// during the call, so this is exact (compile_time_evaluation.md § 28).
+	type cteWriteBack struct {
+		parameter sourceTokenKey
+		place     ast.Expression
+	}
+	writeBacks := []cteWriteBack{}
 	for index, argument := range call.Arguments {
 		parameter := function.Parameters[index]
-		if parameter.Ref || parameter.MutableRef || parameter.Variadic {
-			x.fail(cteImplementationGap, expressionToken(argument), "reference or variadic parameter %s is not executed by the compile-time evaluator yet", parameter.Name)
+		if parameter.Variadic {
+			x.fail(cteImplementationGap, expressionToken(argument), "variadic parameter %s is not executed by the compile-time evaluator yet", parameter.Name)
 			return DefaultConstant{}, false
+		}
+		reference := parameter.Ref || parameter.MutableRef || parameter.Type.Kind == ReferenceType
+		mutable := parameter.MutableRef || parameter.Type.Kind == ReferenceType && parameter.Type.ReferenceMutable
+		if reference {
+			place := argument
+			if reference, ok := argument.(*ast.RefExpression); ok {
+				place = reference.Value
+			}
+			if !isPlaceExpression(place) {
+				// Sema rejects a borrow of a temporary.
+				x.fail(cteImplementationGap, expressionToken(argument), "reference argument %s does not name a local Place the compile-time evaluator can bind", argument.String())
+				return DefaultConstant{}, false
+			}
+			if mutable {
+				writeBacks = append(writeBacks, cteWriteBack{parameter: sourceTokenLocation(parameter.Token), place: place})
+			}
+			argument = place
 		}
 		value, ok := x.eval(argument)
 		if !ok {
@@ -484,12 +659,43 @@ func (x *cteExecutor) call(call *ast.CallExpression) (DefaultConstant, bool) {
 		}
 		frame.values[sourceTokenLocation(parameter.Token)] = value
 	}
+	// A call without a receiver depends only on its arguments and immutable
+	// compile-time values, so its successful result is reused within this
+	// analysis; failures are never cached (§§ 49(4), 60).
+	memoKey := ""
+	ownedArgument := false
+	for _, value := range frame.values {
+		ownedArgument = ownedArgument || len(ownedIdentities(value, nil)) > 0
+	}
+	if frame.receiver == nil && len(writeBacks) == 0 && !ownedArgument {
+		memoKey = x.memoKey(function, call.Arguments, frame)
+		if value, hit := x.a.cteMemo[memoKey]; hit && memoKey != "" {
+			x.mergeDependencies(x.a.cteMemoDependencies[memoKey])
+			return value, true
+		}
+	}
 	x.frames = append(x.frames, frame)
-	x.calls = append(x.calls, cteCallSite{Function: function.Name, Call: call.Token})
-	x.returns = append(x.returns, function.ReturnType)
+	x.calls = append(x.calls, cteCallSite{Function: function.Name, Call: call.Token, Module: function.Module, Instantiation: genericInstantiationText(function)})
+	returnType := function.ReturnType
+	if function.GenericSubstitution != nil {
+		returnType = substituteGenericType(returnType, function.GenericSubstitution)
+	}
+	x.returns = append(x.returns, returnType)
+	x.pushDependencies()
+	x.depend(CTEDependsOnDeclaration, string(callableID(function)))
+	if instantiation := genericInstantiationText(function); instantiation != "" {
+		x.depend(CTEDependsOnGenericInstance, function.Module+"."+function.Name+"["+instantiation+"]")
+	}
+	x.dependOnModule(function.Module)
 	x.active[declaration]++
-	control, value := x.block(declaration.Body)
+	for _, parameter := range function.Parameters {
+		if !parameter.Ref && !parameter.MutableRef && parameter.Type.Kind != ReferenceType {
+			x.registerBinding(sourceTokenLocation(parameter.Token), substituteGenericType(parameter.Type, function.GenericSubstitution))
+		}
+	}
+	control, value := x.invocation(declaration.Body)
 	x.active[declaration]--
+	callDependencies := x.popDependencies()
 	x.returns = x.returns[:len(x.returns)-1]
 	x.calls = x.calls[:len(x.calls)-1]
 	x.frames = x.frames[:len(x.frames)-1]
@@ -501,9 +707,22 @@ func (x *cteExecutor) call(call *ast.CallExpression) (DefaultConstant, bool) {
 	if frame.receiver != nil && function.ReceiverMutable {
 		if receiverExpr == nil {
 			*x.frame().receiver = *frame.receiver
-		} else if !x.store(receiverExpr, *frame.receiver, call.Token) {
+		} else if !x.writeBack(receiverExpr, *frame.receiver, call.Token) {
 			return DefaultConstant{}, false
 		}
+	}
+	for _, back := range writeBacks {
+		if !x.writeBack(back.place, frame.values[back.parameter], call.Token) {
+			return DefaultConstant{}, false
+		}
+	}
+	// A receiver that was a temporary ends with the call's full
+	// expression (destruction.md § 8).
+	if frame.receiver != nil && receiverExpr != nil && !isPlaceExpression(receiverExpr) {
+		x.destroyValue(*frame.receiver, true, call.Token)
+	}
+	if x.failure != nil {
+		return DefaultConstant{}, false
 	}
 	if control != cteReturn {
 		if function.ReturnType.Kind == VoidType || function.ReturnType.Kind == InvalidType && function.ReturnType.Name == "" {
@@ -512,11 +731,36 @@ func (x *cteExecutor) call(call *ast.CallExpression) (DefaultConstant, bool) {
 		x.fail(cteImplementationGap, call.Token, "%s finished without returning a value", function.Name)
 		return DefaultConstant{}, false
 	}
-	return x.inDomain(value, function.ReturnType, call.Token, "returned value out of range")
+	value, ok = x.inDomain(value, returnType, call.Token, "returned value out of range")
+	// A result holding a custom-free value has an identity of its own and is
+	// never reused.
+	if ok && memoKey != "" && len(ownedIdentities(value, nil)) == 0 {
+		if x.a.cteMemo == nil {
+			x.a.cteMemo = map[string]DefaultConstant{}
+		}
+		x.a.cteMemo[memoKey] = value
+		if x.a.cteMemoDependencies == nil {
+			x.a.cteMemoDependencies = map[string][]CompileTimeDependency{}
+		}
+		x.a.cteMemoDependencies[memoKey] = callDependencies
+	}
+	return value, ok
 }
 
-// block executes statements in order until a control transfer.
+// block executes a nested block as its own lexical scope: its owned
+// bindings are destroyed when it ends, its defers stay registered.
 func (x *cteExecutor) block(block *ast.BlockStatement) (cteControl, DefaultConstant) {
+	if block == nil {
+		return cteNormal, DefaultConstant{}
+	}
+	x.enterScope()
+	control, value := x.blockStatements(block)
+	x.leaveScope()
+	return control, value
+}
+
+// blockStatements executes statements in order until a control transfer.
+func (x *cteExecutor) blockStatements(block *ast.BlockStatement) (cteControl, DefaultConstant) {
 	if block == nil {
 		return cteNormal, DefaultConstant{}
 	}
@@ -544,6 +788,10 @@ func (x *cteExecutor) statement(statement ast.Statement) (cteControl, DefaultCon
 	if !x.step(statementToken(statement)) {
 		return cteNormal, DefaultConstant{}
 	}
+	if reason, at, forbidden := forbiddenStatement(statement); forbidden {
+		x.fail(cteForbiddenEffect, at, "%s, which semantic CTE never performs", reason)
+		return cteNormal, DefaultConstant{}
+	}
 	switch statement := statement.(type) {
 	case *ast.CommentStatement:
 		return cteNormal, DefaultConstant{}
@@ -551,18 +799,63 @@ func (x *cteExecutor) statement(statement ast.Statement) (cteControl, DefaultCon
 		x.eval(statement.Expression)
 		return cteNormal, DefaultConstant{}
 	case *ast.DiscardStatement:
+		// discard ends the value's ownership now (destruction.md § 12).
 		if statement.Value != nil {
-			x.eval(statement.Value)
+			if value, ok := x.eval(statement.Value); ok {
+				if identifier, named := statement.Value.(*ast.Identifier); named {
+					if declaration, found := x.declarationOf(identifier.Token); found {
+						x.frame().moved[declaration] = true
+					}
+				}
+				x.destroyValue(value, true, statement.Token)
+			}
 		}
+		return cteNormal, DefaultConstant{}
+	case *ast.DeferStatement:
+		x.registerDefer(statement.Body)
 		return cteNormal, DefaultConstant{}
 	case *ast.LetStatement:
 		if statement.Static || statement.Value == nil || statement.Name == nil {
 			x.fail(cteImplementationGap, statement.Token, "this let form is not executed by the compile-time evaluator yet")
 			return cteNormal, DefaultConstant{}
 		}
+		// `let r := ref x` / `ref mut x` binds a reference to a local Place:
+		// reads and writes through r reach the Place itself (§ 28(3)).
+		if reference, isRef := statement.Value.(*ast.RefExpression); isRef && reference.Value != nil && isPlaceExpression(reference.Value) {
+			binding := sourceTokenLocation(statement.Name.Token)
+			if x.frame().aliases == nil {
+				x.frame().aliases = map[sourceTokenKey]ast.Expression{}
+			}
+			x.frame().aliases[binding] = reference.Value
+			x.declare(binding)
+			return cteNormal, DefaultConstant{}
+		}
+		// Copying a reference binding aliases the same Place; any other
+		// reference-typed value has no evaluator representation yet.
+		if valueType, typed := x.a.ResolvedTypeOf(statement.Value); typed && valueType.Kind == ReferenceType {
+			if identifier, named := statement.Value.(*ast.Identifier); named {
+				key, found := x.declarationOf(identifier.Token)
+				if alias, aliased := x.frame().aliases[key]; found && aliased {
+					binding := sourceTokenLocation(statement.Name.Token)
+					x.frame().aliases[binding] = alias
+					x.declare(binding)
+					return cteNormal, DefaultConstant{}
+				}
+			}
+			// A call reports why its reference result has no representation.
+			if call, isCall := statement.Value.(*ast.CallExpression); isCall {
+				x.eval(call)
+			}
+			x.fail(cteImplementationGap, statement.Token, "this reference-valued binding is not executed by the compile-time evaluator yet")
+			return cteNormal, DefaultConstant{}
+		}
 		value, ok := x.eval(statement.Value)
 		if ok {
-			x.frame().values[sourceTokenLocation(statement.Name.Token)] = value
+			binding := sourceTokenLocation(statement.Name.Token)
+			x.frame().values[binding] = value
+			x.declare(binding)
+			typ, _ := x.a.ResolvedTypeOf(statement.Value)
+			x.registerBinding(binding, typ)
 		}
 		return cteNormal, DefaultConstant{}
 	case *ast.AssignmentStatement:
@@ -694,11 +987,43 @@ func (x *cteExecutor) assign(statement *ast.AssignmentStatement) {
 // value or the current receiver; any other Place is state outside this
 // evaluation (§§ 20(2), 21(1)).
 func (x *cteExecutor) store(target ast.Expression, value DefaultConstant, at lexer.Token) bool {
+	return x.storeValue(target, value, at, true)
+}
+
+// writeBack updates a Place through which a call mutated its value (a
+// `ref mut` argument or a mutating receiver). Parts of the old value that
+// the new value no longer holds were replaced inside the call and are
+// destroyed; parts it still holds stay alive.
+func (x *cteExecutor) writeBack(target ast.Expression, value DefaultConstant, at lexer.Token) bool {
+	if old, ok := x.placeValue(target); ok {
+		x.destroyReplaced(old, value, at)
+		if x.failure != nil {
+			return false
+		}
+	}
+	return x.storeValue(target, value, at, false)
+}
+
+func (x *cteExecutor) storeValue(target ast.Expression, value DefaultConstant, at lexer.Token, replace bool) bool {
 	root, path := memberPath(target)
 	identifier, ok := root.(*ast.Identifier)
 	if !ok {
 		x.fail(cteImplementationGap, at, "assignment to %s is not executed by the compile-time evaluator yet", target.String())
 		return false
+	}
+	return x.storePlace(identifier, path, value, at, replace, target)
+}
+
+// storePlace writes through a binding or a field path of it. A local
+// reference binding writes through to the Place it refers to.
+func (x *cteExecutor) storePlace(identifier *ast.Identifier, path []string, value DefaultConstant, at lexer.Token, replace bool, target ast.Expression) bool {
+	if declaration, found := x.declarationOf(identifier.Token); found {
+		if alias, aliased := x.frame().aliases[declaration]; aliased {
+			aliasRoot, aliasPath := memberPath(alias)
+			if root, ok := aliasRoot.(*ast.Identifier); ok {
+				return x.storePlace(root, append(append([]string(nil), aliasPath...), path...), value, at, replace, target)
+			}
+		}
 	}
 	if receiver := x.frame().receiver; receiver != nil {
 		place, resolved := x.a.ResolvedPlaceOf(identifier)
@@ -728,11 +1053,36 @@ func (x *cteExecutor) store(target ast.Expression, value DefaultConstant, at lex
 		x.fail(cteForbiddenEffect, identifier.Token, "assignment to %s mutates state outside this evaluation; semantic CTE never mutates static state", target.String())
 		return false
 	}
+	frame := x.frame()
+	if !replace {
+		// The caller already destroyed what the call replaced.
+	} else if len(path) == 0 && frame.registered(declaration) {
+		// Replacing an available owned value destroys the old value and keeps
+		// the registration; reinitializing a moved binding registers anew
+		// (destruction.md §§ 6.1(4)–(5), 13).
+		if frame.moved[declaration] {
+			frame.values[declaration] = value
+			typ, _ := x.a.ResolvedTypeOf(identifier)
+			x.registerBinding(declaration, typ)
+			return true
+		}
+		x.destroyValue(current, true, at)
+		if x.failure != nil {
+			return false
+		}
+	} else if len(path) > 0 {
+		if old, ok := fieldAtPath(current, path); ok {
+			x.destroyValue(old, false, at)
+			if x.failure != nil {
+				return false
+			}
+		}
+	}
 	updated, ok := x.withField(current, path, value, at)
 	if !ok {
 		return false
 	}
-	x.frame().values[declaration] = updated
+	frame.values[declaration] = updated
 	return true
 }
 
@@ -759,7 +1109,7 @@ func (x *cteExecutor) forRange(statement *ast.ForStatement) (cteControl, Default
 			return cteNormal, DefaultConstant{}
 		}
 		if value.Integer == nil || value.Integer.Sign() <= 0 {
-			x.fail(cteEvaluationFailed, statement.StepToken, "for-loop step must be a positive integer")
+			x.fail(cteSemanticOperationFailed, statement.StepToken, "for-loop step must be a positive integer")
 			return cteNormal, DefaultConstant{}
 		}
 		step = value.Integer
@@ -776,6 +1126,7 @@ func (x *cteExecutor) forRange(statement *ast.ForStatement) (cteControl, Default
 		}
 		if !binding.Discard {
 			x.frame().values[sourceTokenLocation(binding.Token)] = DefaultConstant{Kind: IntType, Lexeme: current.String(), Integer: new(big.Int).Set(current)}
+			x.frame().pending = []sourceTokenKey{sourceTokenLocation(binding.Token)}
 		}
 		control, value := x.block(statement.Body)
 		if x.failure != nil {
@@ -854,6 +1205,8 @@ func (x *cteExecutor) switchStatement(statement *ast.SwitchStatement) (cteContro
 // contents are never CTE state (§ 21(1)–(2)); needing a value that is being
 // established is a compile-time value dependency cycle (§ 39).
 func (x *cteExecutor) staticValue(identifier *ast.Identifier, declaration sourceTokenKey, static ResolvedStatic) (DefaultConstant, compileTimeOutcome) {
+	x.depend(CTEDependsOnImmutableValue, static.Module+"."+static.Name)
+	x.dependOnModule(static.Module)
 	if static.Mutable {
 		x.fail(cteNotEvaluable, identifier.Token, "%s is a mutable static; semantic CTE never reads mutable static state", identifier.Value)
 		return DefaultConstant{}, compileTimeNotConstant
@@ -873,7 +1226,7 @@ func (x *cteExecutor) staticValue(identifier *ast.Identifier, declaration source
 	x.visiting[declaration] = true
 	x.statics = append(x.statics, identifier.Value)
 	frames := x.frames
-	x.frames = []*cteFrame{{values: map[sourceTokenKey]DefaultConstant{}}}
+	x.frames = []*cteFrame{newCTEFrame(nil)}
 	value, ok := x.eval(static.Declaration.Value)
 	x.frames = frames
 	x.statics = x.statics[:len(x.statics)-1]
@@ -911,6 +1264,13 @@ func (x *cteExecutor) getter(expr *ast.MemberExpression) (DefaultConstant, bool)
 		return DefaultConstant{}, false
 	}
 	body := x.getters[sourceTokenLocation(property.GetterCallable.Token)]
+	if property.Type.Kind == ReferenceType {
+		x.fail(cteImplementationGap, expressionToken(expr), "getter %s returns a reference, which the compile-time evaluator does not execute yet", expr.String())
+		return DefaultConstant{}, false
+	}
+	getterAt := property.GetterCallable.Token
+	x.depend(CTEDependsOnDeclaration, fmt.Sprintf("getter %s.%s at %s:%d:%d", typeDisplayName(access.OwnerType), access.Name, getterAt.File, getterAt.Line, getterAt.Column))
+	x.dependOnType(access.OwnerType)
 	if body == nil {
 		x.fail(cteImplementationGap, expressionToken(expr), "the getter of %s is not available to this compile-time evaluation", expr.String())
 		return DefaultConstant{}, false
@@ -920,9 +1280,9 @@ func (x *cteExecutor) getter(expr *ast.MemberExpression) (DefaultConstant, bool)
 		return DefaultConstant{}, false
 	}
 	name := typeDisplayName(access.OwnerType) + "." + access.Name
-	x.frames = append(x.frames, &cteFrame{values: map[sourceTokenKey]DefaultConstant{}, receiver: receiver})
+	x.frames = append(x.frames, newCTEFrame(receiver))
 	x.calls = append(x.calls, cteCallSite{Function: name, Call: expressionToken(expr)})
-	control, value := x.block(body)
+	control, value := x.invocation(body)
 	x.calls = x.calls[:len(x.calls)-1]
 	x.frames = x.frames[:len(x.frames)-1]
 	if x.failure != nil {
@@ -933,4 +1293,36 @@ func (x *cteExecutor) getter(expr *ast.MemberExpression) (DefaultConstant, bool)
 		return DefaultConstant{}, false
 	}
 	return x.inDomain(value, property.Type, expressionToken(expr), "getter result out of range")
+}
+
+// memoKey identifies a receiver-free call by callable identity and the
+// rendered argument values in parameter order.
+func (x *cteExecutor) memoKey(function Function, arguments []ast.Expression, frame *cteFrame) string {
+	parts := []string{string(callableID(function))}
+	for _, parameter := range function.Parameters {
+		value, ok := frame.values[sourceTokenLocation(parameter.Token)]
+		if !ok {
+			return ""
+		}
+		parts = append(parts, string(value.Kind)+":"+renderCompileTimeValue(value))
+	}
+	return strings.Join(parts, "\x00")
+}
+
+// genericInstantiationText spells a generic callee's concrete arguments in
+// declaration order, for example `T = int`.
+func genericInstantiationText(function Function) string {
+	if function.GenericSubstitution == nil {
+		return ""
+	}
+	names := make([]string, 0, len(function.GenericSubstitution))
+	for name := range function.GenericSubstitution {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	parts := []string{}
+	for _, name := range names {
+		parts = append(parts, name+" = "+typeDisplayName(function.GenericSubstitution[name]))
+	}
+	return strings.Join(parts, ", ")
 }

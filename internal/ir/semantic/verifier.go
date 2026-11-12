@@ -896,7 +896,7 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 			return err
 		}
 	case OpIntShiftChecked:
-		if !validIntegerShiftKind(op.IntegerShift) || !validCheckedResults(module.Types, op, values, 2) || !isBuiltinIntegerType(module.Types, values[op.Operands[1]].Type) || shiftKindSigned(op.IntegerShift) != isSignedBuiltinIntegerType(module.Types, integerCarrierOf(module.Types, values[op.Operands[0]].Type)) {
+		if !validIntegerShiftKind(op.IntegerShift) || !validCheckedResults(module.Types, op, values, 2) || !isBuiltinIntegerType(module.Types, integerCarrierOf(module.Types, values[op.Operands[1]].Type)) || shiftKindSigned(op.IntegerShift) != isSignedBuiltinIntegerType(module.Types, integerCarrierOf(module.Types, values[op.Operands[0]].Type)) {
 			return fmt.Errorf("invalid int.shift-checked")
 		}
 	case OpIntCompare:

@@ -64,8 +64,18 @@ func (a *Analyzer) typeFromDeclarationWithName(name string, stmt *ast.TypeDeclSt
 		constant, outcome := a.semanticCompileTimeConstantVisiting(stmt.Default, map[string]bool{}, typ)
 		ok := outcome == compileTimeEvaluated
 		if outcome == compileTimeRequiresExecution || outcome == compileTimeForbiddenClock || outcome == compileTimeExecutionFailed {
-			typ.InvalidExplicitDefault = true
+			if a.cteProbe && outcome == compileTimeRequiresExecution {
+				// The probe keeps a default that awaits execution as a pending
+				// value, so construction plans include it and the executor
+				// establishes it on demand (compile_time_evaluation.md § 38).
+				typ.ExplicitDefault = &DefaultConstant{}
+			} else {
+				typ.InvalidExplicitDefault = true
+			}
+			previousFact := a.cteFactContext
+			a.cteFactContext = &cteFactRequest{TypeIdentity: canonicalTypeIdentity(typ), TypeName: typeDisplayName(typ), Fact: "default"}
 			a.reportCompileTimeRequirement(stmt.Default, outcome, "default", diagnostics.InvalidExplicitDefault, "")
+			a.cteFactContext = previousFact
 		} else if !ok {
 			typ.InvalidExplicitDefault = true
 			a.addErrorAtTokenWithMetadata(stmt.DefaultToken, diagnostics.InvalidExplicitDefault, "use an allocation-free compile-time constant", "default for %s must be a compile-time primitive constant", name)
@@ -110,7 +120,7 @@ func isCoreBuiltinDeclaration(name string) bool {
 	}
 	switch name {
 	case "ArithmeticError", "IndexError", "RangeError", "PrecisionError", "FormatError", "StringError", "ContractError", "TaskOutcome", "TaskSpawnError", "TaskError", "PanicID", "PanicInfo",
-		"date", "time", "datetime", "duration", "Instant", "MemoryOrder", "CompareExchangeResult", "ChannelCapability", "Mutex", "MutexGuard", "Context", "ContextError", "ThreadAttachError", "ThreadSpawnError", "ThreadStartError", "ThreadPriority", "ThreadStartMode", "ThreadSetting", "CpuSet", "ThreadStorage", "ThreadTerminationKind", "ThreadTermination", "ChannelRevokeResult", "MessageDisposition":
+		"date", "time", "datetime", "duration", "Instant", "MemoryOrder", "CompareExchangeResult", "ChannelCapability", "Mutex", "MutexGuard", "Context", "ContextError", "ThreadAttachError", "ThreadSpawnError", "ThreadStartError", "ThreadPriority", "ThreadStartMode", "ThreadSetting", "CpuSet", "ThreadStorage", "ThreadConfig", "ThreadTerminationKind", "ThreadTermination", "ChannelRevokeResult", "MessageDisposition":
 		return true
 	default:
 		return false

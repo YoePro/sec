@@ -76,6 +76,7 @@ func TestNativeTrackBuildsAndRuns(t *testing.T) {
 		{"try_positions", 0, false},
 		{"match_loop_control", 0, false},
 		{"state_tests", 0, false},
+		{"static_initialization", 0, false},
 	} {
 		t.Run(test.fixture, func(t *testing.T) {
 			program := filepath.Join(t.TempDir(), test.fixture)
@@ -123,5 +124,28 @@ func TestNativeTrackNamesUnloweredConstructs(t *testing.T) {
 	}
 	if _, err := exec.LookPath(program); err == nil {
 		t.Fatal("a rejected build produced a program")
+	}
+}
+
+// Statics reach the artifact as compile-time initialized storage: no global
+// constructor, no startup function and no runtime-initialization call exists,
+// even when an initializer calls Sec functions, and a runtime-free program
+// acquires no runtime startup.
+// Rules: rules/compiler/initialization.md — §§ 4, 6, 7, 11, 45.2, 45.3.
+func TestStaticInitializationHasNoHiddenStartup(t *testing.T) {
+	testsupport.RequireSecMLIROptPath(t)
+	stdout, stderr, code := runCLIForDiagnostics(t, "emit-llvm", "../../testdata/build/native/static_initialization.sec", "-o", "-")
+	if code != 0 {
+		t.Fatalf("emit-llvm: %d %s", code, stderr)
+	}
+	for _, want := range []string{"= internal constant i64 4096", "= internal constant i64 2048", "= internal global i64 4", "define i32 @main()"} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("LLVM lacks %q:\n%s", want, stdout)
+		}
+	}
+	for _, forbidden := range []string{"global_ctors", "sec_runtime_init"} {
+		if strings.Contains(stdout, forbidden) {
+			t.Errorf("LLVM contains hidden startup %q", forbidden)
+		}
 	}
 }

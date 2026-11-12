@@ -1,0 +1,52 @@
+module main
+
+enum AppError error { Bad }
+
+fn Work() int { return 42 }
+fn Nothing() void { }
+fn Load() Result[int, AppError] { return Err(AppError.Bad) }
+fn Identity[T](value: T) T { return value }
+
+type Worker struct { }
+impl Worker {
+    static fn Run() int { return 7 }
+}
+
+fn Default() Result[Task[int], TaskSpawnError] { return spawn Work() }
+fn Explicit() Result[Task[int], TaskSpawnError] { return spawn task Work() }
+fn Empty() Result[Task[void], TaskSpawnError] { return spawn Nothing() }
+fn Nested() Result[Task[Result[int, AppError]], TaskSpawnError] { return spawn Load() }
+fn Generic() Result[Task[int], TaskSpawnError] { return spawn Identity[int](1) }
+fn Method() Result[Task[int], TaskSpawnError] { return spawn task Worker.Run() }
+fn Lambda() Result[Task[int], TaskSpawnError] { return spawn fn() int { return 2 } }
+fn TaskLambda() Result[Task[int], TaskSpawnError] { return spawn task fn() int { return 3 } }
+fn Callable() Result[Task[int], TaskSpawnError] {
+    let operation := fn() int { return 4 }
+    return spawn operation()
+}
+
+fn Propagate() Result[TaskOutcome[Result[int, AppError]], TaskSpawnError] {
+    let worker := try spawn Load()
+    return Ok(await worker)
+}
+
+fn HandleLocally() void {
+    let worker := try spawn Work() { Err(failure) => { discard failure
+        return } }
+    discard await worker
+}
+
+fn HandleMatch() void {
+    match spawn task Work() {
+        Ok(worker) => { discard await worker }
+        Err(failure) => { discard failure }
+    }
+}
+
+fn Main() void {
+    let creation := spawn Work()
+    match creation {
+        Ok(worker) => { discard await worker }
+        Err(failure) => { discard failure }
+    }
+}

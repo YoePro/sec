@@ -319,10 +319,14 @@ func contractApplicabilityTypeName(typ Type) string {
 func (a *Analyzer) applyRangeContract(typ Type, contract *ast.RangeContract) Type {
 	rangeContract := RangeContract{Token: contract.Token, Exclusive: contract.Exclusive}
 	exactBounds := typ.Kind == DecimalType || typ.Kind == FloatType
+	previousFact := a.cteFactContext
+	defer func() { a.cteFactContext = previousFact }()
 	bound := func(expr ast.Expression, position string) (*big.Int, *big.Rat, string, bool) {
 		if expr == nil {
 			return nil, nil, "", false
 		}
+		// A deferred bound request establishes this contract's fact.
+		a.cteFactContext = &cteFactRequest{TypeIdentity: canonicalTypeIdentity(typ), TypeName: typeDisplayName(typ), Fact: "range " + position + " bound", ContractIndex: len(typ.Contracts)}
 		if exactBounds {
 			exact, lexeme, outcome := a.semanticCompileTimeExact(expr)
 			if outcome != compileTimeEvaluated {
@@ -338,12 +342,28 @@ func (a *Analyzer) applyRangeContract(typ Type, contract *ast.RangeContract) Typ
 		value, outcome := a.semanticCompileTimeInteger(expr)
 		if outcome != compileTimeEvaluated {
 			if constant, constantOutcome := a.semanticCompileTimeConstant(expr); constantOutcome == compileTimeEvaluated && constant.Integer == nil {
-				// A non-integer constant bound on an integer type keeps the
-				// existing range-domain diagnostics; nothing to record.
+				// The owning contract validates the evaluated value
+				// (compile_time_evaluation.md § 62): a non-numeric bound is
+				// never a range bound. Numeric non-integer bounds keep the
+				// existing range-domain diagnostics.
+				if constant.Exact == nil && constant.Nominal.Owner == "" {
+					a.addErrorAtTokenWithMetadata(expressionToken(expr), diagnostics.InvalidContractArgument, "use an integer value of the base type",
+						"range %s bound %s of %s must be an integer, got %s", position, expr.String(), typeDisplayName(typ), renderCompileTimeValue(constant))
+				}
 				return nil, nil, "", false
 			}
 			a.reportCompileTimeRequirement(expr, outcome, "range "+position+" bound", diagnostics.InvalidContractArgument, "use a value established at compile time")
 			return nil, nil, "", false
+		}
+		// A value established by executing code is validated against the
+		// base type by the contract (§ 62(4)); literal bounds are already
+		// checked by literal typing.
+		if _, executed := a.cteResults[expr]; executed {
+			if low, high, integer := scalarIntegerDomain(typ); integer && (value.Cmp(low) < 0 || value.Cmp(high) > 0) {
+				a.addErrorAtTokenWithMetadata(expressionToken(expr), diagnostics.InvalidContractArgument, "the evaluated bound must be representable by the base type",
+					"range %s bound %s evaluates to %s, which does not fit the base type of %s", position, expr.String(), value.String(), typeDisplayName(typ))
+				return nil, nil, "", false
+			}
 		}
 		return value, nil, "", true
 	}

@@ -18,12 +18,12 @@ fn Add(left: int, right: int) int {
 }
 
 fn ExplicitTaskSpawn() void {
-    let worker := spawn task Work()
+    let worker := try spawn task Work() { Err(_) => { return } }
     await worker
 }
 
 fn ImplicitTaskSpawn() void {
-    let worker := spawn Work()
+    let worker := try spawn Work() { Err(_) => { return } }
     await worker
 }
 
@@ -33,40 +33,40 @@ fn ThreadSpawn() void {
 }
 
 fn SpawnReturningValue() void {
-    let implicitTask := spawn Calculate()
+    let implicitTask := try spawn Calculate() { Err(_) => { return } }
     await implicitTask
-    let explicitTask := spawn task Calculate()
+    let explicitTask := try spawn task Calculate() { Err(_) => { return } }
     await explicitTask
     let workerThread := spawn thread Calculate()
     join workerThread
 }
 
 fn SpawnWithArguments() void {
-    let implicitTask := spawn Add(10, 20)
+    let implicitTask := try spawn Add(10, 20) { Err(_) => { return } }
     await implicitTask
-    let explicitTask := spawn task Add(30, 40)
+    let explicitTask := try spawn task Add(30, 40) { Err(_) => { return } }
     await explicitTask
     let workerThread := spawn thread Add(50, 60)
     join workerThread
 }
 
 fn SpawnExpressionArgument() void {
-    let worker := spawn Add(1 + 2, 3 * 4)
+    let worker := try spawn Add(1 + 2, 3 * 4) { Err(_) => { return } }
     await worker
 }
 
 fn SpawnNestedCallArgument() void {
-    let worker := spawn Add(Calculate(), Calculate())
+    let worker := try spawn Add(Calculate(), Calculate()) { Err(_) => { return } }
     await worker
 }
 
 fn SpawnMethodCall() void {
-    let worker := spawn Worker.Run()
+    let worker := try spawn Worker.Run() { Err(_) => { return } }
     await worker
 }
 
 fn SpawnExplicitTaskMethodCall() void {
-    let worker := spawn task Worker.Run()
+    let worker := try spawn task Worker.Run() { Err(_) => { return } }
     await worker
 }
 
@@ -89,14 +89,14 @@ impl Worker {
 }
 
 fn SpawnInstanceMethod(worker: ref Worker) void {
-    let taskHandle := spawn worker.Process()
+    let taskHandle := try spawn worker.Process() { Err(_) => { return } }
     await taskHandle
     let threadHandle := spawn thread worker.Process()
     join threadHandle
 }
 
 fn SpawnGenericFunction() void {
-    let taskHandle := spawn Identity[int](10)
+    let taskHandle := try spawn Identity[int](10) { Err(_) => { return } }
     await taskHandle
     let threadHandle := spawn thread Identity[int](20)
     join threadHandle
@@ -107,7 +107,7 @@ fn Identity[T](value: T) T {
 }
 
 fn SpawnQualifiedFunction() void {
-    let taskHandle := spawn Run()
+    let taskHandle := try spawn Run() { Err(_) => { return } }
     await taskHandle
     let threadHandle := spawn thread Run()
     detach threadHandle
@@ -117,9 +117,9 @@ fn Run() void {
 }
 
 fn MultipleSpawnStatements() void {
-    let first := spawn Work()
+    let first := try spawn Work() { Err(_) => { return } }
     await first
-    let second := spawn task Work()
+    let second := try spawn task Work() { Err(_) => { return } }
     await second
     let third := spawn thread Work()
     detach third
@@ -127,7 +127,7 @@ fn MultipleSpawnStatements() void {
 
 fn SpawnInIf(condition: bool) void {
     if condition {
-        let worker := spawn Work()
+        let worker := try spawn Work() { Err(_) => { return } }
         await worker
     } else {
         let worker := spawn thread Work()
@@ -137,7 +137,7 @@ fn SpawnInIf(condition: bool) void {
 
 fn SpawnInLoop() void {
     for index in 0..<4 {
-        let worker := spawn Add(index, index)
+        let worker := try spawn Add(index, index) { Err(_) => { return } }
         await worker
     }
 }

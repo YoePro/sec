@@ -15,7 +15,7 @@ test "second" {
     operation()
 }
 test "worker" {
-    let pending := spawn Worker()
+    let pending := try spawn Worker() { Err(_) => { return } }
     discard await pending
 }
 test "empty" { }

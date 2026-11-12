@@ -58,6 +58,9 @@ func (a *Analyzer) inferValidatedCompilerKnownMemberCall(expr *ast.CallExpressio
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 	}
 	lookupType := dereferenceType(receiverType)
+	if a.rejectPortableThreadTerminationMember(lookupType, memberExpr.Property.Value, memberExpr.Property.Token) {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+	}
 	if isThreadObserverType(lookupType) && memberExpr.Property.Value == "Wait" {
 		a.reportThreadObserverWait(memberExpr.Property.Token)
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true

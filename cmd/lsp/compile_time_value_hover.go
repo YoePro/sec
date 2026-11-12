@@ -22,7 +22,15 @@ func compileTimeValueHover(analyzer *sema.Analyzer, token lexer.Token) string {
 		return ""
 	}
 	if fact.Failure == "" {
-		return "\n\n**Compile-time value**\n\n- `" + fact.Root + "` = `" + fact.Value + "`, established by semantic compile-time evaluation"
+		value := "`" + fact.Value + "`"
+		if fact.Type != "" {
+			value = "`" + fact.Value + ": " + fact.Type + "`"
+		}
+		text := "\n\n**Compile-time value**\n\n- `" + fact.Root + "` = " + value + ", established by semantic compile-time evaluation"
+		if fact.Context != "" {
+			text += "\n- required by: " + fact.Context
+		}
+		return text
 	}
 	line := "- `" + fact.Root + "`: " + fact.Failure + ": " + fact.Reason
 	if len(fact.CallChain) > 0 {

@@ -1,0 +1,26 @@
+module main
+
+fn Owner(worker: Thread[void]) void {
+    worker.platform.Terminate()
+    worker.Terminate()
+    let callback := worker.Terminate
+    join worker
+}
+
+fn Observer(observer: ThreadObserver[int]) void {
+    observer.platform.Terminate()
+    observer.Terminate()
+}
+
+fn Borrowed(worker: ref Thread[void]) void {
+    worker.platform.Terminate()
+    worker.Terminate()
+}
+
+fn Work() void {}
+fn Inferred() void {
+    let worker := spawn thread Work()
+    worker.platform.Terminate()
+    worker.Terminate()
+    join worker
+}

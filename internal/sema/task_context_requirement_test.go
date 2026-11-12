@@ -44,7 +44,7 @@ fn ThreadWork() int {
 }
 
 fn main() void {
-    let work := spawn TaskWork()
+    let work := try spawn TaskWork() { Err(_) => { return } }
     await work
     let worker := spawn thread ThreadWork()
     join worker
@@ -76,7 +76,7 @@ fn main() void {
 // A test body runs like ordinary program entry (testing.md § 9.7): no
 // logical task and no cancellable execution unless the test spawns one.
 func TestExecutionContextRequirementsInTests(t *testing.T) {
-	source := "module main\n\nfn Observe() bool {\n    return Task.Current().CancelRequested\n}\n\ntest \"direct\" {\n    let observed := Observe()\n}\n\ntest \"spawned\" {\n    let work := spawn Observe()\n    let observed := await work\n}\n"
+	source := "module main\n\nfn Observe() bool {\n    return Task.Current().CancelRequested\n}\n\ntest \"direct\" {\n    let observed := Observe()\n}\n\ntest \"spawned\" {\n    let work := try spawn Observe() { Err(_) => { return } }\n    let observed := await work\n}\n"
 	p := parser.New(lexer.NewWithFile(source, "observe_test.sec"))
 	program := p.ParseProgram()
 	if len(p.Errors()) != 0 {

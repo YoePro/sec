@@ -12,6 +12,9 @@ import (
 func typedHover(rng lspRange, name string, typ sema.Type) hoverResult {
 	contents := fmt.Sprintf("```sec\n%s: %s\n```", name, lspTypeName(typ))
 	contents += unitQuantityHoverSuffix(typ)
+	if explanation := sema.TaskTypeExplanation(typ); explanation != "" {
+		contents += "\n\n" + explanation
+	}
 	// rules/tooling/lsp.md "Hover" lists contracts; they are resolved Sema
 	// facts, including inherited contracts, never re-parsed from source.
 	if contracts := sema.ContractDisplays(typ); len(contracts) > 0 {

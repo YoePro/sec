@@ -1,0 +1,30 @@
+module main
+
+fn Grow(count: int) string {
+    let mut text := "x"
+    for index in 0..<count {
+        text = try text + text { Err(_) => "fallback" }
+    }
+    return text
+}
+
+fn Churn() string {
+    let mut text := Grow(14)
+    for index in 0..<1000 {
+        text = try text + "" { Err(_) => "fallback" }
+    }
+    return text
+}
+
+let Oversized: string := Grow(40)
+let Cumulative: string := Churn()
+let Independent: string := Grow(3)
+
+fn main() int { return 0 }
+
+fn ExplicitResource() int {
+    let arena := try Arena.WithCapacity(16u) { Err(_) => { return 0 } }
+    return 1
+}
+
+let RuntimeResource: int := ExplicitResource()

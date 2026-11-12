@@ -87,6 +87,10 @@ type Parser struct {
 	// fileTarget is the file's #target compatibility directive, against
 	// which statement-level @target selectors are checked for contradiction.
 	fileTarget *ast.TargetDirective
+	// atFileStart is true while the next top-level statement is the
+	// file's first source-bearing statement, where `@target` selects the
+	// whole file (attributes.md § 15).
+	atFileStart bool
 
 	// allowFinalBlockValue is set immediately before parsing a block whose
 	// final statement may be a contextual result-position expression (a try
@@ -94,6 +98,11 @@ type Parser struct {
 	// inherit it; blockAllowsFinalValue holds it for the current block.
 	allowFinalBlockValue  bool
 	blockAllowsFinalValue bool
+	// nextMatchIsStatement marks the match about to be parsed as a match
+	// statement; matchArmsProduceValue holds, for the arms being parsed,
+	// whether a block arm may end with its contextual value expression.
+	nextMatchIsStatement  bool
+	matchArmsProduceValue bool
 
 	errors            []string
 	warnings          []string
@@ -130,7 +139,10 @@ type Parser struct {
 	skipExpressionComments bool
 	documentation          []ast.DocumentationAttachment
 	sourceTokens           []lexer.Token
-	sourceTokenKeys        map[string]struct{}
+	// lineFirstColumns maps a source line to the column of its first token
+	// (stray_brace_recovery.go).
+	lineFirstColumns map[int]int
+	sourceTokenKeys  map[string]struct{}
 }
 
 type diagnosticKey struct {
@@ -260,7 +272,9 @@ func (p *Parser) ParseProgram() *ast.Program {
 
 		start := p.curToken
 		diagnosticStart := len(p.diagnostics)
+		p.atFileStart = sourceStatementCount(program.Statements) == 0
 		stmt := p.parseStatement()
+		p.atFileStart = false
 
 		if parsedStatementPresent(stmt) {
 			program.Statements = append(program.Statements, stmt)
@@ -1266,6 +1280,10 @@ func (p *Parser) parseCompilerDirective() ast.Statement {
 }
 
 func (p *Parser) parseMatchStatement() ast.Statement {
+	// A match statement that ends a value-producing block is that block's
+	// contextual value, so its arms keep the result position.
+	// Rules: rules/foundations/grammar.md — § 56(2), § 57 "Match statement".
+	p.nextMatchIsStatement = !p.blockAllowsFinalValue
 	expr := p.parseMatchExpression()
 	if expr == nil {
 		return nil
@@ -1339,8 +1357,13 @@ func (p *Parser) parseIfStatement() ast.Statement {
 			}
 			stmt.Consequence = p.parseStatementBlock("if body")
 		} else if p.peekToken.Type != lexer.LBRACE {
-			p.addError("expected '{' after if condition at %d:%d", p.peekToken.Line, p.peekToken.Column)
-			return stmt
+			recovered, found := p.recoverConditionBodyBrace("if", stmt.Condition)
+			if !found {
+				p.addError("expected '{' after if condition at %d:%d", p.peekToken.Line, p.peekToken.Column)
+				return stmt
+			}
+			stmt.Condition = recovered
+			stmt.Consequence = p.parseStatementBlock("if body")
 		} else {
 			p.nextToken()
 			stmt.Consequence = p.parseStatementBlock("if body")
@@ -1757,7 +1780,13 @@ func (p *Parser) parseWhileStatement() ast.Statement {
 			stmt.Body = p.parseStatementBlock("while body")
 			return stmt
 		}
-		p.addError("expected '{' after while condition at %d:%d", p.peekToken.Line, p.peekToken.Column)
+		recovered, found := p.recoverConditionBodyBrace("while", stmt.Condition)
+		if !found {
+			p.addError("expected '{' after while condition at %d:%d", p.peekToken.Line, p.peekToken.Column)
+			return stmt
+		}
+		stmt.Condition = recovered
+		stmt.Body = p.parseStatementBlock("while body")
 		return stmt
 	}
 	p.nextToken()
@@ -1893,7 +1922,16 @@ func (p *Parser) parseSwitchStatement() ast.Statement {
 	p.nextToken()
 	p.nextToken()
 
-	for p.curToken.Type != lexer.RBRACE && p.curToken.Type != lexer.EOF {
+	for p.curToken.Type != lexer.EOF {
+		if p.curToken.Type == lexer.RBRACE {
+			// MD-132: a deeper-indented `}` followed by another case keeps
+			// the switch open instead of closing it early.
+			if p.strayClosingBrace(stmt.Token, "switch", switchContinuesWith) {
+				p.nextToken()
+				continue
+			}
+			break
+		}
 		if p.curToken.Type == lexer.COMMENT {
 			p.nextToken()
 			continue
@@ -2432,6 +2470,11 @@ func (p *Parser) parseTargetDirective(hashToken lexer.Token) ast.Statement {
 		return nil
 	}
 
+	// `arch: "any"` in the compatibility form places no arch restriction.
+	stmt.Selectors = []ast.TargetSelector{{Token: hashToken, Name: "os", Value: stmt.OS}}
+	if stmt.Arch != "any" {
+		stmt.Selectors = append(stmt.Selectors, ast.TargetSelector{Token: hashToken, Name: "arch", Value: stmt.Arch})
+	}
 	p.fileTarget = stmt
 	return stmt
 }
@@ -3978,8 +4021,18 @@ func (p *Parser) parseStatementBlock(name string) *ast.BlockStatement {
 		p.blockAllowsFinalValue = previousAllowsFinal
 	}()
 
+	opener := p.curToken
 	p.nextToken()
-	for p.curToken.Type != lexer.RBRACE && p.curToken.Type != lexer.EOF {
+	for p.curToken.Type != lexer.EOF {
+		if p.curToken.Type == lexer.RBRACE {
+			// MD-132: inside a function body, a deeper-indented `}` followed
+			// by a statement-only token cannot end the function.
+			if name == "function body" && p.strayClosingBrace(opener, name, functionBodyContinuesWith) {
+				p.nextToken()
+				continue
+			}
+			break
+		}
 		p.endRecoveryEpisode()
 		var documentation []lexer.Token
 		if p.curToken.Type == lexer.COMMENT {
@@ -7728,4 +7781,16 @@ func isKeywordSpelling(token lexer.Token) bool {
 		}
 	}
 	return true
+}
+
+// sourceStatementCount counts the source-bearing statements parsed so far;
+// comments are not source-bearing.
+func sourceStatementCount(statements []ast.Statement) int {
+	count := 0
+	for _, statement := range statements {
+		if _, comment := statement.(*ast.CommentStatement); !comment {
+			count++
+		}
+	}
+	return count
 }

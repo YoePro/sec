@@ -1,0 +1,34 @@
+module main
+
+enum AppError error { Bad }
+type Holder struct { Failure: TaskError }
+
+fn NeedExecution(failure: TaskError) void { discard failure }
+
+fn Invalid(spawnFailure: TaskSpawnError, executionFailure: TaskError, info: PanicInfo, outcome: TaskOutcome[Result[int, AppError]]) void {
+    let creationAsExecution: TaskError := spawnFailure
+    let executionAsCreation: TaskSpawnError := executionFailure
+    let wrongFailed: TaskOutcome[int] := Failed(spawnFailure)
+    let panicAsFailure: TaskOutcome[int] := Failed(info)
+    let failureAsPanic: TaskOutcome[int] := Panicked(executionFailure)
+    let cancellationWithValue: TaskOutcome[int] := Cancelled(1)
+    let wrongCompletion: TaskOutcome[int] := Completed("wrong")
+    let flattened: Result[int, AppError] := outcome
+    let unwrapped := try outcome
+    let applicationAsFailure: TaskOutcome[Result[int, AppError]] := Failed(AppError.Bad)
+    let droppedResult: TaskOutcome[Result[int, AppError]] := Completed(12)
+    let qualified := TaskOutcome.Failed[int](spawnFailure)
+    let missing: TaskOutcome[int] := Panicked
+    let holder := Holder { Failure: spawnFailure }
+    NeedExecution(spawnFailure)
+}
+
+fn WrongReturn(failure: TaskSpawnError) TaskError { return failure }
+fn WrongResult(failure: TaskSpawnError) Result[int, TaskError] { return Err(failure) }
+fn WrongAwait(creation: Result[Task[int], TaskSpawnError]) void { discard await creation }
+
+fn WrongCategories() void {
+    discard TaskError.InvalidConfiguration
+    discard TaskError.Cancelled
+    discard TaskError.Panicked
+}

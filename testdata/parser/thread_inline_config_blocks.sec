@@ -1,0 +1,9 @@
+module main
+fn Work() void {}
+fn Blocks() void {
+    spawn thread {}
+    spawn thread { Work() }
+    spawn task { Work() }
+    let empty := spawn thread { /* configuration */ } Work()
+    let configured := spawn thread { /* field */ Unknown: 1 } Work()
+}

@@ -40,13 +40,13 @@ type TokenKind union {
     Eof,
 
     // Names & literals (spelling preserved)
-    Ident(string),
-    Int(string),
-    Float(string),
-    String(string),
-    Char(string),
-    RawString(string),
-    InterpString(string),
+    Ident(StringView),
+    Int(StringView),
+    Float(StringView),
+    String(StringView),
+    Char(StringView),
+    RawString(StringView),
+    InterpString(StringView),
     Void,
 
     // Keywords (§7.1)
@@ -170,7 +170,7 @@ type TokenKind union {
     RBracket,
 
     // Comments are retained for formatter / docs / LSP (§5.5)
-    Comment(string),
+    Comment(StringView),
 }
 
 type Token struct {

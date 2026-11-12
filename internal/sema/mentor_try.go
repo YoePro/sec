@@ -50,6 +50,10 @@ func carrierTryHelp(actual Type, success Type, family string, expr ast.Expressio
 // Rules: rules/tooling/lsp.md — Unit actions; rules/types/units.md — LSP requirements;
 // rules/errors/error-handling.md — Simple try propagation.
 func (a *Analyzer) addTypeMismatchError(token lexer.Token, expected Type, actual Type, expr ast.Expression, format string, args ...any) {
+	if help := taskFailureMismatchHelp(expected, actual); help != "" {
+		a.addErrorAtTokenWithMetadata(token, diagnostics.TaskFailureDomainMismatch, help, format, args...)
+		return
+	}
 	if reason := a.durationConversionRejection(expected, actual, expr); reason != "" {
 		a.addErrorAtTokenWithMetadata(token, diagnostics.DurationConversionInvalid, durationConversionHelp, "%s: %s", fmt.Sprintf(format, args...), reason)
 		return

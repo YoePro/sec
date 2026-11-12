@@ -550,109 +550,6 @@ func (a *Analyzer) inferExpressionWithExpected(expr ast.Expression, expected Typ
 	return a.typeWithExpectedDimension(expr, typ, value, expected)
 }
 
-// inferSpawnExpression validates the child callable/result and execution-bound
-// guard dependencies before committing ownership across the execution boundary.
-// Rules: rules/concurrency/spawn.md — "Result type", "Ownership transfer", "Captures and callable values";
-// rules/concurrency/mutex.md — §§39–40; rules/memory/transferability.md — §§15,17–18.
-func (a *Analyzer) inferSpawnExpression(expr *ast.SpawnExpression) (Type, expressionValue) {
-	if expr.Body != nil {
-		// rules/concurrency/spawn.md §2(2–3), grammar.md §89: block syntax
-		// is canonical even while its capture/child-body lowering is absent.
-		a.addErrorAtTokenWithMetadata(expr.Token, "",
-			"This block is valid spawn syntax. Use a callable expression until spawned block bodies and their capture environments are implemented.",
-			"compiler capability unavailable: spawned block body for %s", expr.Kind)
-		a.withCancellableContext(func() {
-			a.analyzeBlockStatements(expr.Body)
-		})
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
-	}
-	if expr.Value == nil {
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
-	}
-	// rules/foundations/grammar.md §89; rules/tooling/diagnostics.md —
-	// recovery: the parser already diagnosed a missing operand. In an LSP
-	// recovery tree it must not become a second callable-shape diagnostic.
-	if _, invalid := expr.Value.(*ast.InvalidExpression); invalid {
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
-	}
-	switch expr.Value.(type) {
-	case *ast.CallExpression, *ast.LambdaExpression:
-	default:
-		a.addErrorAtToken(expressionToken(expr.Value), "spawn requires a callable expression")
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
-	}
-	execution, graphSpawn := spawnExecutionRelation(expr.Kind)
-	previousMoved, previousReasons := copyMoved(a.moved), copyAvailabilityStates(a.availabilityStates)
-	previousBorrows := copyBorrows(a.borrows)
-	configurationCommitted := false
-	if expr.Configuration != nil {
-		// threads.md §20: invalid source preparation must not leave either
-		// the configuration or child arguments spuriously consumed.
-		defer func() {
-			if !configurationCommitted {
-				a.moved, a.availabilityStates, a.borrows = previousMoved, previousReasons, previousBorrows
-			}
-		}()
-	}
-	configurationFunction, configurationValid := a.prepareNamedThreadConfiguration(expr)
-	if !configurationValid {
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
-	}
-	spawnedType, _ := a.inferSpawnValue(expr.Value, execution, graphSpawn)
-	if spawnedType.Kind == InvalidType {
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
-	}
-	returnType := spawnedType
-	if _, lambda := expr.Value.(*ast.LambdaExpression); lambda {
-		// A lambda is the child callable; a call returning a function instead
-		// has that function value as its child result (spawn.md, "Result type").
-		if spawnedType.Kind != FunctionType || spawnedType.FunctionReturnType == nil {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
-		}
-		returnType = *spawnedType.FunctionReturnType
-	}
-	if a.checkMutexGuardSpawn(expr, returnType) {
-		a.moved, a.availabilityStates, a.borrows = previousMoved, previousReasons, previousBorrows
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
-	}
-	switch expr.Kind {
-	case "", "task":
-		return taskType(returnType), expressionValue{Display: expr.String()}
-	case "thread":
-		if !a.consumeNamedThreadConfiguration(expr, configurationFunction) {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
-		}
-		configurationCommitted = true
-		return threadType(returnType), expressionValue{Display: expr.String()}
-	case "process":
-		a.addErrorAtToken(expr.Token, "spawn process is not implemented yet")
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
-	default:
-		a.addErrorAtToken(expr.Token, "unknown spawn kind %s", expr.Kind)
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
-	}
-}
-
-func (a *Analyzer) inferSpawnValue(expr ast.Expression, execution CallExecutionRelation, graphSpawn bool) (Type, expressionValue) {
-	call, isCall := expr.(*ast.CallExpression)
-	if !isCall {
-		return a.inferExpressionInCancellableContext(expr)
-	}
-	previousCall := a.spawnCallExpression
-	previousExecution := a.spawnCallExecution
-	a.spawnCallExpression = call
-	if graphSpawn {
-		a.spawnCallExecution = execution
-	} else {
-		a.spawnCallExecution = ""
-	}
-	defer func() {
-		a.spawnCallExpression = previousCall
-		a.spawnCallExecution = previousExecution
-	}()
-	return a.inferExpressionInCancellableContext(expr)
-}
-
 func (a *Analyzer) inferExpressionInCancellableContext(expr ast.Expression) (Type, expressionValue) {
 	var typ Type
 	var value expressionValue
@@ -677,6 +574,10 @@ func (a *Analyzer) inferAwaitExpression(expr *ast.AwaitExpression) (Type, expres
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 	if !isTaskType(valueType) {
+		if help := TaskTypeExplanation(valueType); help != "" {
+			a.addErrorAtTokenWithMetadata(expressionToken(expr.Value), diagnostics.TaskFailureDomainMismatch, help, "await requires an owning Task[T], got %s", typeDisplayName(valueType))
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
 		a.addErrorAtToken(expressionToken(expr.Value), "await requires Task[T], got %s", typeDisplayName(valueType))
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
@@ -732,24 +633,24 @@ func (a *Analyzer) inferExpectedUnionVariantExpression(expr ast.Expression, expe
 			return Type{}, expressionValue{}, false
 		}
 		if len(variant.PayloadFields) > 0 {
-			a.addErrorAtToken(expr.Token, "union variant %s.%s requires named payload fields", typeDisplayName(expected), variant.Name)
+			a.addTaskCategoryError(expr.Token, expected, "union variant %s.%s requires named payload fields", typeDisplayName(expected), variant.Name)
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		if variant.Payload == nil {
 			if len(expr.Arguments) != 0 {
-				a.addErrorAtToken(expr.Token, "union variant %s.%s expects 0 arguments, got %d", typeDisplayName(expected), variant.Name, len(expr.Arguments))
+				a.addTaskCategoryError(expr.Token, expected, "union variant %s.%s expects 0 arguments, got %d", typeDisplayName(expected), variant.Name, len(expr.Arguments))
 				return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 			}
 			return expected, expressionValue{Display: expr.String()}, true
 		}
 		if len(expr.Arguments) != 1 {
-			a.addErrorAtToken(expr.Token, "union variant %s.%s expects 1 argument, got %d", typeDisplayName(expected), variant.Name, len(expr.Arguments))
+			a.addTaskCategoryError(expr.Token, expected, "union variant %s.%s expects 1 argument, got %d", typeDisplayName(expected), variant.Name, len(expr.Arguments))
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		payloadType := *variant.Payload
 		valueType, _ := a.inferOwningConstructionValue(expr.Arguments[0], payloadType)
 		if valueType.Kind != InvalidType && !a.canInitialize(payloadType, valueType, expr.Arguments[0]) {
-			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "union variant %s.%s payload must be %s, got %s", typeDisplayName(expected), variant.Name, typeDisplayName(payloadType), typeDisplayName(valueType))
+			a.addTaskCategoryError(expressionToken(expr.Arguments[0]), expected, "union variant %s.%s payload must be %s, got %s", typeDisplayName(expected), variant.Name, typeDisplayName(payloadType), typeDisplayName(valueType))
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		if valueType.Kind != InvalidType && a.checkCompileTimeContractExpression(payloadType, expr.Arguments[0]) {
@@ -883,7 +784,7 @@ func (a *Analyzer) inferStructLiteral(expr *ast.StructLiteral) (Type, expression
 			continue
 		}
 		if valueType.Kind != InvalidType && !a.canInitialize(fieldType, valueType, field.Value) {
-			a.addErrorAtToken(expressionToken(field.Value), "cannot initialize field %s with %s", field.Name.Value, typeDisplayName(valueType))
+			a.addTaskTypeMismatchError(expressionToken(field.Value), fieldType, valueType, "cannot initialize field %s with %s", field.Name.Value, typeDisplayName(valueType))
 			planValid = false
 			continue
 		}
@@ -915,7 +816,7 @@ func (a *Analyzer) inferStructLiteral(expr *ast.StructLiteral) (Type, expression
 			planValid = false
 			continue
 		}
-		resolution := DefaultValueOf(field.Type)
+		resolution := threadConfigFieldDefault(typ, field)
 		if resolution.Kind == NoDefault {
 			start := len(a.errors)
 			// rules/types/default_values.md, "Diagnostics": an omitted field
@@ -954,7 +855,7 @@ func (a *Analyzer) inferStructLiteral(expr *ast.StructLiteral) (Type, expression
 			if _, supplied := seen[field.Name]; supplied {
 				continue
 			}
-			resolution := DefaultValueOf(field.Type)
+			resolution := threadConfigFieldDefault(typ, field)
 			value := defaultExpression(resolution, field.Type, expr.Token)
 			if value == nil {
 				continue
@@ -1160,6 +1061,9 @@ func (a *Analyzer) inferMemberExpression(expr *ast.MemberExpression) (Type, bool
 	if typ, ok := a.shapedMetadataProperty(objectType, expr.Property.Value); ok {
 		return typ, true
 	}
+	if a.rejectPortableThreadTerminationMember(objectType, expr.Property.Value, expr.Property.Token) {
+		return Type{Kind: InvalidType}, false
+	}
 	if canonical, ok := caseInsensitiveCompilerKnownMember(objectType, expr.Property.Value); ok {
 		a.addErrorAtTokenWithMetadata(expr.Property.Token, "",
 			"use the canonical CamelCase member `"+canonical+"`; lowercase member spellings are not Sec 0.1 syntax",
@@ -1178,7 +1082,7 @@ func (a *Analyzer) inferMemberExpression(expr *ast.MemberExpression) (Type, bool
 // Rules: rules/memory/raw_pointers.md — §§17(7–9),34(1–4).
 func (a *Analyzer) inferPointerMember(expr *ast.MemberExpression, objectType Type) (Type, bool) {
 	memberName := expr.Property.Value
-	if !a.inUnsafe {
+	if !a.authorizeUnsafe(UnsafeAddressOf, memberName, expr.Property.Token, nil, nil) {
 		a.addErrorAtTokenWithMetadata(expr.Property.Token, diagnostics.RawPointerUnsafeRequired,
 			"Form this addressable Place pointer inside an unsafe { } block; call-form unsafe cannot authorize a property read. Verify its lifetime and access contract first; the pointer does not retain the owner or grant borrow authority.", "member %s requires unsafe", memberName)
 		return Type{Kind: InvalidType}, false
@@ -1430,8 +1334,8 @@ func (a *Analyzer) inferStringPointerIndex(expr *ast.IndexExpression) (Type, boo
 	if dereferenceType(objectType).Kind != StringType {
 		return Type{}, false
 	}
-	if !a.inUnsafe {
-		a.addErrorAtToken(member.Property.Token, "member ptr requires unsafe")
+	if !a.authorizeUnsafe(UnsafeAddressOf, "ptr", member.Property.Token, nil, nil) {
+		a.addErrorAtTokenWithMetadata(member.Property.Token, diagnostics.RawPointerUnsafeRequired, missingUnsafeHelp(UnsafeAddressOf, nil), "member ptr requires unsafe")
 		return Type{Kind: InvalidType}, true
 	}
 	if !isAddressablePointerSource(member.Object) {
@@ -1493,7 +1397,7 @@ func (a *Analyzer) inferEnumValueExpression(expr *ast.MemberExpression) (Type, b
 	}
 	value, ok := typ.EnumConsts[expr.Property.Value]
 	if !ok {
-		a.addErrorAtToken(expr.Property.Token, "unknown enum value: %s.%s has never been declared", typeName, expr.Property.Value)
+		a.addTaskCategoryError(expr.Property.Token, typ, "unknown enum value: %s.%s has never been declared", typeName, expr.Property.Value)
 		return Type{Kind: InvalidType}, true
 	}
 	a.bindDefinition(expr.Property.Token, value.Token)
@@ -1528,7 +1432,7 @@ func (a *Analyzer) inferConversionExpression(expr *ast.ConversionExpression) (Ty
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 
-	if (targetType.Kind == RawPtrType || valueType.Kind == RawPtrType) && !a.inUnsafe {
+	if (targetType.Kind == RawPtrType || valueType.Kind == RawPtrType) && !a.authorizeUnsafe(UnsafeRawAddressConvert, "RawPtr conversion", expr.Token, nil, nil) {
 		a.addErrorAtTokenWithMetadata(expr.Token, diagnostics.RawPointerUnsafeRequired,
 			"Perform an allowed raw-address conversion inside an unsafe { } block after checking the target pointer width, address space and representation. Unsafe does not create a missing conversion or legalize truncation; use AsRef/AsRefMut for a safe reference.", "conversion involving RawPtr requires unsafe")
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
@@ -1891,6 +1795,7 @@ func (a *Analyzer) inferTestingOperationCall(expr *ast.CallExpression) (Type, ex
 }
 
 func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressionValue) {
+	a.noteUnsafePrefix(expr)
 	defer a.invalidateCallProofFacts(expr)
 	if typ, value, ok := a.inferTestingOperationCall(expr); ok {
 		return typ, value
@@ -2238,12 +2143,12 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 		if !isMethodCall && best[0].Function.GenericTypePack != "" && functionUsesReceiver(best[0].Function) {
 			methodReceiver, isMethodCall = a.implicitTypePackReceiver(best[0].Function, expr)
 		}
-		if best[0].Function.Unsafe && !a.callUnsafeAuthorized(expr) {
+		if best[0].Function.Unsafe && !a.authorizeUnsafe(UnsafeCallableCall, name, expr.Token, expr, nil) {
 			kind := "function"
 			if best[0].Function.Extern {
 				kind = "extern function"
 			}
-			a.addErrorAtToken(expr.Token, "calling unsafe %s %s requires unsafe", kind, name)
+			a.addErrorAtTokenWithMetadata(expr.Token, diagnostics.UnsafeCallRequiresContext, missingUnsafeHelp(UnsafeCallableCall, nil), "calling unsafe %s %s requires unsafe", kind, name)
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
 		if a.checkCompileTimeCallArgumentContracts(best[0].Function, sourceArgs) {
@@ -2434,7 +2339,7 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 // Rules: rules/concurrency/thread_local.md — §§4(2),7;
 // rules/concurrency/atomics.md — §7; rules/concurrency/mutex.md — §18;
 // rules/concurrency/channels.md — channel construction;
-// rules/concurrency/threads.md — §8(1–7).
+// rules/concurrency/threads.md — §§8(1–7),10(1).
 func (a *Analyzer) inferCompilerKnownConstructor(expr *ast.CallExpression) (Type, expressionValue, bool) {
 	name := callExpressionName(expr)
 	// cancellation.md §§35–38: opaque owners are created by Background or
@@ -2444,6 +2349,9 @@ func (a *Analyzer) inferCompilerKnownConstructor(expr *ast.CallExpression) (Type
 			"Create a root with Context.Background(), or derive a child source with context.WithCancel(), WithTimeout(duration) or WithDeadline(Instant).",
 			"%s has no source constructor; its representation is runtime-private", name)
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+	}
+	if name == "ThreadConfig" && len(a.functions[name]) == 0 && a.expressionNamesType(expr.Callee) {
+		return a.inferThreadConfigConstructor(expr)
 	}
 	if name == "Channel" {
 		if len(expr.GenericArguments) != 1 {
@@ -2749,6 +2657,7 @@ func (a *Analyzer) inferGenericUnionVariantInstance(template Type, variant Union
 }
 
 func (a *Analyzer) inferCallExpressionWithExpected(expr *ast.CallExpression, expected Type) (callType Type, callValue expressionValue, matched bool) {
+	a.noteUnsafePrefix(expr)
 	defer func() {
 		if matched {
 			a.invalidateCallProofFacts(expr)
@@ -2871,8 +2780,8 @@ func (a *Analyzer) inferCallExpressionWithExpected(expr *ast.CallExpression, exp
 		if !a.validateConsumingPackSpreads(function, expr) || a.rejectUnavailableTypePackCall(function, expr, preparedSpreadValues) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
-		if function.Unsafe && !a.callUnsafeAuthorized(expr) {
-			a.addErrorAtToken(expr.Token, "calling unsafe function %s requires unsafe", name)
+		if function.Unsafe && !a.authorizeUnsafe(UnsafeCallableCall, name, expr.Token, expr, nil) {
+			a.addErrorAtTokenWithMetadata(expr.Token, diagnostics.UnsafeCallRequiresContext, missingUnsafeHelp(UnsafeCallableCall, nil), "calling unsafe function %s requires unsafe", name)
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		if a.checkCompileTimeCallArgumentContracts(function, args) {
@@ -3094,7 +3003,7 @@ func (a *Analyzer) inferCallAsConversion(expr *ast.CallExpression) (Type, expres
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 
-	if (targetType.Kind == RawPtrType || valueType.Kind == RawPtrType) && !a.inUnsafe {
+	if (targetType.Kind == RawPtrType || valueType.Kind == RawPtrType) && !a.authorizeUnsafe(UnsafeRawAddressConvert, "RawPtr conversion", expr.Token, nil, nil) {
 		a.addErrorAtTokenWithMetadata(expr.Token, diagnostics.RawPointerUnsafeRequired,
 			"Perform an allowed raw-address conversion inside an unsafe { } block after checking the target pointer width, address space and representation. Unsafe does not create a missing conversion or legalize truncation; use AsRef/AsRefMut for a safe reference.", "conversion involving RawPtr requires unsafe")
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
@@ -3232,6 +3141,10 @@ func (a *Analyzer) inferTryExpression(expr *ast.TryExpression) (Type, expression
 	}
 
 	if valueType.Kind != ResultType || len(valueType.TypeArgs) != 2 {
+		if help := TaskTypeExplanation(valueType); help != "" {
+			a.addErrorAtTokenWithMetadata(expr.Token, diagnostics.TaskFailureDomainMismatch, help, "ordinary try cannot unwrap %s", typeDisplayName(valueType))
+			return valueType, expressionValue{Display: expr.String()}
+		}
 		a.addErrorAtToken(expr.Token, "try requires Result expression, Option expression, or a language-defined runtime check such as checked arithmetic, indexing, or a constrained conversion; %s contains none", expr.Expression.String())
 		return valueType, expressionValue{Display: expr.String()}
 	}

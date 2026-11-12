@@ -1,114 +1,195 @@
 module lexer
 
-fn keywordKind(spelling: string) TokenKind {
-    switch spelling {
-        case "after":
-            return TokenKind.KwAfter
-        case "asm":
-            return TokenKind.KwAsm
-        case "assert":
-            return TokenKind.KwAssert
-        case "await":
-            return TokenKind.KwAwait
-        case "break":
-            return TokenKind.KwBreak
-        case "cancel":
-            return TokenKind.KwCancel
-        case "capture":
-            return TokenKind.KwCapture
-        case "case":
-            return TokenKind.KwCase
-        case "continue":
-            return TokenKind.KwContinue
-        case "default":
-            return TokenKind.KwDefault
-        case "defer":
-            return TokenKind.KwDefer
-        case "discard":
-            return TokenKind.KwDiscard
-        case "else":
-            return TokenKind.KwElse
-        case "enum":
-            return TokenKind.KwEnum
-        case "extern":
-            return TokenKind.KwExtern
-        case "extends":
-            return TokenKind.KwExtends
-        case "fallthrough":
-            return TokenKind.KwFallthrough
-        case "false":
-            return TokenKind.KwFalse
-        case "fn":
-            return TokenKind.KwFn
-        case "for":
-            return TokenKind.KwFor
-        case "free":
-            return TokenKind.KwFree
-        case "get":
-            return TokenKind.KwGet
-        case "module":
-            return TokenKind.KwModule
-        case "if":
-            return TokenKind.KwIf
-        case "impl":
-            return TokenKind.KwImpl
-        case "implements":
-            return TokenKind.KwImplements
-        case "import":
-            return TokenKind.KwImport
-        case "in":
-            return TokenKind.KwIn
-        case "interface":
-            return TokenKind.KwInterface
-        case "let":
-            return TokenKind.KwLet
-        case "match":
-            return TokenKind.KwMatch
-        case "mut":
-            return TokenKind.KwMut
-        case "new":
-            return TokenKind.KwNew
-        case "null":
-            return TokenKind.KwNull
-        case "panic":
-            return TokenKind.KwPanic
-        case "property":
-            return TokenKind.KwProperty
-        case "ref":
-            return TokenKind.KwRef
-        case "return":
-            return TokenKind.KwReturn
-        case "require":
-            return TokenKind.KwRequire
-        case "self":
-            return TokenKind.KwSelf
-        case "select":
-            return TokenKind.KwSelect
-        case "spawn":
-            return TokenKind.KwSpawn
-        case "static":
-            return TokenKind.KwStatic
-        case "struct":
-            return TokenKind.KwStruct
-        case "switch":
-            return TokenKind.KwSwitch
-        case "true":
-            return TokenKind.KwTrue
-        case "try":
-            return TokenKind.KwTry
-        case "type":
-            return TokenKind.KwType
-        case "unit":
-            return TokenKind.KwUnit
-        case "union":
-            return TokenKind.KwUnion
-        case "unsafe":
-            return TokenKind.KwUnsafe
-        case "where":
-            return TokenKind.KwWhere
-        case "while":
-            return TokenKind.KwWhile
+/*
+ * File:        keywords.sec
+ * Purpose:     Reserved-word classification of an identifier spelling.
+ *
+ * Rulebook: rules/foundations/lexical_structure.md §7 (reserved words).
+ *
+ * The spelling is a StringView borrowed from the source text, so
+ * classification never allocates: candidates are selected by rune count
+ * and compared with the ordinal StringView.StartsWith.
+ */
+
+// True when the view holds exactly the given word.
+fn isWord(spelling: StringView, word: string) bool {
+    return spelling.Len == word.Len && spelling.StartsWith(word[..])
+}
+
+// The keyword kind of a spelling, or Ident carrying the borrowed spelling.
+fn keywordKind(spelling: StringView) TokenKind {
+    switch spelling.Len {
+        case 2:
+            if isWord(spelling, "fn") {
+                return TokenKind.KwFn
+            }
+            if isWord(spelling, "if") {
+                return TokenKind.KwIf
+            }
+            if isWord(spelling, "in") {
+                return TokenKind.KwIn
+            }
+        case 3:
+            if isWord(spelling, "asm") {
+                return TokenKind.KwAsm
+            }
+            if isWord(spelling, "for") {
+                return TokenKind.KwFor
+            }
+            if isWord(spelling, "get") {
+                return TokenKind.KwGet
+            }
+            if isWord(spelling, "let") {
+                return TokenKind.KwLet
+            }
+            if isWord(spelling, "mut") {
+                return TokenKind.KwMut
+            }
+            if isWord(spelling, "new") {
+                return TokenKind.KwNew
+            }
+            if isWord(spelling, "ref") {
+                return TokenKind.KwRef
+            }
+            if isWord(spelling, "try") {
+                return TokenKind.KwTry
+            }
+        case 4:
+            if isWord(spelling, "case") {
+                return TokenKind.KwCase
+            }
+            if isWord(spelling, "else") {
+                return TokenKind.KwElse
+            }
+            if isWord(spelling, "enum") {
+                return TokenKind.KwEnum
+            }
+            if isWord(spelling, "free") {
+                return TokenKind.KwFree
+            }
+            if isWord(spelling, "impl") {
+                return TokenKind.KwImpl
+            }
+            if isWord(spelling, "null") {
+                return TokenKind.KwNull
+            }
+            if isWord(spelling, "self") {
+                return TokenKind.KwSelf
+            }
+            if isWord(spelling, "true") {
+                return TokenKind.KwTrue
+            }
+            if isWord(spelling, "type") {
+                return TokenKind.KwType
+            }
+            if isWord(spelling, "unit") {
+                return TokenKind.KwUnit
+            }
+        case 5:
+            if isWord(spelling, "after") {
+                return TokenKind.KwAfter
+            }
+            if isWord(spelling, "await") {
+                return TokenKind.KwAwait
+            }
+            if isWord(spelling, "break") {
+                return TokenKind.KwBreak
+            }
+            if isWord(spelling, "defer") {
+                return TokenKind.KwDefer
+            }
+            if isWord(spelling, "false") {
+                return TokenKind.KwFalse
+            }
+            if isWord(spelling, "match") {
+                return TokenKind.KwMatch
+            }
+            if isWord(spelling, "panic") {
+                return TokenKind.KwPanic
+            }
+            if isWord(spelling, "spawn") {
+                return TokenKind.KwSpawn
+            }
+            if isWord(spelling, "union") {
+                return TokenKind.KwUnion
+            }
+            if isWord(spelling, "where") {
+                return TokenKind.KwWhere
+            }
+            if isWord(spelling, "while") {
+                return TokenKind.KwWhile
+            }
+        case 6:
+            if isWord(spelling, "assert") {
+                return TokenKind.KwAssert
+            }
+            if isWord(spelling, "cancel") {
+                return TokenKind.KwCancel
+            }
+            if isWord(spelling, "extern") {
+                return TokenKind.KwExtern
+            }
+            if isWord(spelling, "module") {
+                return TokenKind.KwModule
+            }
+            if isWord(spelling, "import") {
+                return TokenKind.KwImport
+            }
+            if isWord(spelling, "return") {
+                return TokenKind.KwReturn
+            }
+            if isWord(spelling, "select") {
+                return TokenKind.KwSelect
+            }
+            if isWord(spelling, "static") {
+                return TokenKind.KwStatic
+            }
+            if isWord(spelling, "struct") {
+                return TokenKind.KwStruct
+            }
+            if isWord(spelling, "switch") {
+                return TokenKind.KwSwitch
+            }
+            if isWord(spelling, "unsafe") {
+                return TokenKind.KwUnsafe
+            }
+        case 7:
+            if isWord(spelling, "capture") {
+                return TokenKind.KwCapture
+            }
+            if isWord(spelling, "default") {
+                return TokenKind.KwDefault
+            }
+            if isWord(spelling, "discard") {
+                return TokenKind.KwDiscard
+            }
+            if isWord(spelling, "extends") {
+                return TokenKind.KwExtends
+            }
+            if isWord(spelling, "require") {
+                return TokenKind.KwRequire
+            }
+        case 8:
+            if isWord(spelling, "continue") {
+                return TokenKind.KwContinue
+            }
+            if isWord(spelling, "property") {
+                return TokenKind.KwProperty
+            }
+        case 9:
+            if isWord(spelling, "interface") {
+                return TokenKind.KwInterface
+            }
+        case 10:
+            if isWord(spelling, "implements") {
+                return TokenKind.KwImplements
+            }
+        case 11:
+            if isWord(spelling, "fallthrough") {
+                return TokenKind.KwFallthrough
+            }
         default:
             return TokenKind.Ident(spelling)
     }
+    return TokenKind.Ident(spelling)
 }

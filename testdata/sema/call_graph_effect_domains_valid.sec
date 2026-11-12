@@ -17,7 +17,7 @@ fn Nested(pointer: RawPtr[int], value: int) void {
 fn Top(pointer: RawPtr[int], value: int) void { Nested(pointer, value) }
 fn Worker() void { discard ClockLeaf() }
 fn Spawner() void {
-    let child := spawn task Worker()
+    let child := try spawn task Worker() { Err(_) => { return } }
     detach child
 }
 fn RecursiveA(pointer: RawPtr[int]) void { RecursiveB(pointer) }

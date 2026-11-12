@@ -62,8 +62,10 @@ func requireTargetCanEmitLLVM(target CompilerTarget) (TargetDefinition, error) {
 	if !ok {
 		return TargetDefinition{}, fmt.Errorf("unsupported target %s", target.String())
 	}
-	if !definition.CanEmitLLVM || definition.LLVMTriple == "" {
-		return TargetDefinition{}, fmt.Errorf("target %s cannot emit LLVM yet", target.String())
+	// A missing compiler stage is an implementation-capability boundary,
+	// not an invalid target (platform_model.md § 15).
+	if err := definition.CompilerSupport().Require(platformtarget.StageObjectEmission); err != nil {
+		return TargetDefinition{}, err
 	}
 	return definition, nil
 }
@@ -75,8 +77,8 @@ func requireTargetCanLink(target CompilerTarget) (TargetDefinition, error) {
 	if err != nil {
 		return TargetDefinition{}, err
 	}
-	if !definition.CanLink {
-		return TargetDefinition{}, fmt.Errorf("target %s cannot link yet", target.String())
+	if err := definition.CompilerSupport().Require(platformtarget.StageLinking); err != nil {
+		return TargetDefinition{}, err
 	}
 	return definition, nil
 }

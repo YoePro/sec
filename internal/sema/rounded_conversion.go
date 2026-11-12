@@ -71,7 +71,7 @@ func (a *Analyzer) inferRoundedConversion(expr ast.Expression, valueExpr, modeEx
 		return invalid, display
 	}
 	if !isIntegerType(target) {
-		a.addErrorAtTokenWithMetadata(token, "",
+		a.reportCapabilityUnavailable(token,
 			"This compiler applies an explicit RoundingMode to integer target carriers; rounding to a decimal or binary floating carrier is not implemented yet.",
 			"rounded conversion to %s is not implemented yet", typeDisplayName(target))
 		return invalid, display

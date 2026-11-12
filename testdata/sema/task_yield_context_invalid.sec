@@ -37,7 +37,7 @@ fn main() void {
     Recursive(true)
     ViaValue()
     Deferred()
-    let valid := spawn Pause()
+    let valid := try spawn Pause() { Err(_) => { return } }
     await valid
     let worker := spawn thread ThreadEntry()
     join worker

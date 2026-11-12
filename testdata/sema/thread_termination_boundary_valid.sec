@@ -1,0 +1,31 @@
+module main
+
+type NativeControl struct {}
+impl NativeControl {
+    fn Terminate() void {}
+}
+
+type OtherWorker struct {
+    platform: NativeControl,
+}
+
+impl OtherWorker {
+    fn Terminate() void {}
+}
+
+unsafe fn NativeTerminate(control: ref NativeControl) void {}
+
+fn Explicit(control: NativeControl, worker: OtherWorker) void {
+    control.Terminate()
+    worker.platform.Terminate()
+    worker.Terminate()
+    unsafe NativeTerminate(control)
+}
+
+fn Cooperative(worker: Thread[void]) void {
+    let observer := worker.Observe()
+    worker.RequestCancel()
+    join worker
+    discard worker.ID
+    discard observer.Status
+}

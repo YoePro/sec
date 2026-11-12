@@ -1,0 +1,22 @@
+module main
+
+fn Work() void {}
+fn Take(config: ThreadConfig) void { discard config }
+fn PlainPriority() void {
+    let worker := spawn thread { Priority: ThreadPriority.High } Work()
+    join worker
+}
+fn WrongStack() void { discard ThreadConfig { Stack: Required("large") } }
+fn WrongName() void { discard ThreadConfig { Name: Preferred(12) } }
+fn WrongStart() void { discard ThreadConfig { Start: 1 } }
+fn WrongAffinity() void { discard ThreadConfig { Affinity: Required(2) } }
+fn WrongStorage(storage: ref ThreadStorage) void {
+    discard ThreadConfig { Storage: Some(storage) }
+}
+fn Extra() void { discard ThreadConfig { Unknown: Default } }
+fn Copy() void {
+    let config := ThreadConfig()
+    Take(config)
+}
+fn Arity() void { discard ThreadConfig(1) }
+fn Generic() void { discard ThreadConfig[int]() }

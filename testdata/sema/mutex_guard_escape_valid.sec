@@ -17,7 +17,7 @@ fn Closure(value: ref Mutex[int]) void {
 fn Nothing() void {}
 fn Parent(value: ref Mutex[int]) void {
     let guard := value.Lock()
-    let work := spawn Nothing()
+    let work := try spawn Nothing() { Err(_) => { return } }
     discard guard
     await work
 }
@@ -27,13 +27,13 @@ fn BorrowMutex(value: ref Mutex[int]) void {
     discard guard
 }
 fn TransferMutex(value: ref Mutex[int]) void {
-    let work := spawn BorrowMutex(value)
+    let work := try spawn BorrowMutex(value) { Err(_) => { return } }
     await work
 }
 
 fn TakeSender(sender: Sender[MutexGuard[int]]) void { discard sender }
 fn TransportHandle(sender: Sender[MutexGuard[int]]) void {
-    let work := spawn TakeSender(<-sender)
+    let work := try spawn TakeSender(<-sender) { Err(_) => { return } }
     await work
 }
 
@@ -41,13 +41,13 @@ type Phantom[T] struct { Count: int, }
 fn TakePhantom(value: Phantom[MutexGuard[int]]) void { discard value }
 fn PhantomTransfer() void {
     let value := Phantom[MutexGuard[int]] { Count: 1 }
-    let work := spawn TakePhantom(value)
+    let work := try spawn TakePhantom(value) { Err(_) => { return } }
     await work
 }
 
 fn Invoke(callback: fn() void) void { callback() }
 fn KnownCallable() void {
     let callback := Nothing
-    let work := spawn Invoke(callback)
+    let work := try spawn Invoke(callback) { Err(_) => { return } }
     await work
 }

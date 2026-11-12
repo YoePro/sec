@@ -1,0 +1,28 @@
+module main
+
+fn Work() int { return 42 }
+
+enum AppError error { Bad }
+
+fn DirectOwner() Task[int] {
+    return spawn Work()
+}
+
+fn AwaitBeforeHandlingCreation() void {
+    let creation := spawn Work()
+    discard await creation
+}
+
+fn WrongPropagation() Result[TaskOutcome[int], AppError] {
+    let worker := try spawn task Work()
+    return Ok(await worker)
+}
+
+fn DiscardCreation() void {
+    discard spawn Work()
+}
+
+fn DiscardBinding() void {
+    let creation := spawn Work()
+    discard creation
+}

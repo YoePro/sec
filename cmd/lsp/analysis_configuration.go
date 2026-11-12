@@ -9,6 +9,7 @@ import (
 	"sec/internal/ast"
 	"sec/internal/diagnostics"
 	platformtarget "sec/internal/platform/target"
+	"sec/internal/project"
 	"sec/internal/sema"
 )
 
@@ -41,7 +42,61 @@ func newLSPAnalyzerForInputsAtDepth(uri string, program *ast.Program, overlay so
 	analyzer := newTargetLSPAnalyzer(uri, program, overlay, depth)
 	analyzer.SetHardwareModuleContext(lspHardwareModuleContext(program, pathFromURI(uri)))
 	analyzer.SetDiagnosticRules(lspDiagnosticRules(pathFromURI(uri)))
+	if kind, ok := lspSourceTargetKind(pathFromURI(uri), overlay); ok {
+		analyzer.SetProgramTargetKind(kind)
+	}
+	analyzer.SetSourceSelection(lspSourceSelection(analyzer, pathFromURI(uri), overlay))
 	return analyzer
+}
+
+// lspSourceSelection gives the editor the CLI's source selection: the
+// analysis plan's target identity and the governing manifest's typed
+// parameters, from the unsaved manifest when open. Manifest parameter
+// problems are reported by manifest diagnostics, not here.
+// Rules: rules/foundations/attributes.md — §§ 13, 27; rules/tooling/lsp.md — "Target-aware analysis".
+func lspSourceSelection(analyzer *sema.Analyzer, sourcePath string, overlay sourceOverlay) sema.SourceSelection {
+	targetOS, targetArch := analyzer.PlanTarget()
+	selection := sema.SourceSelection{
+		Target:     map[string]string{},
+		Parameters: map[string]sema.CompileTimeParameter{},
+		Normalize: func(selector, value string) string {
+			switch selector {
+			case "os":
+				return platformtarget.NormalizeOS(value)
+			case "arch":
+				return platformtarget.NormalizeArch(value)
+			}
+			return value
+		},
+	}
+	if targetOS != "" {
+		selection.Target["os"] = targetOS
+	}
+	if targetArch != "" {
+		selection.Target["arch"] = targetArch
+	}
+	if sourcePath == "" {
+		return selection
+	}
+	root := findProjectRoot(sourcePath)
+	manifestPath := filepath.Join(root, ".sec", "sec.toml")
+	manifest, ok := overlay.Sources[normalizedSourcePath(manifestPath)]
+	if !ok {
+		data, err := os.ReadFile(manifestPath)
+		if err != nil {
+			return selection
+		}
+		manifest = string(data)
+	}
+	targetName := ""
+	if owner, found := project.TargetForSource(project.ParseManifestTargets(manifest), root, sourcePath); found {
+		targetName = owner.Name
+	}
+	parameters, _ := project.ParseManifestParameters(manifest, targetName)
+	for name, parameter := range parameters {
+		selection.Parameters[name] = sema.CompileTimeParameter{Kind: parameter.Kind, Bool: parameter.Bool, Text: parameter.Text}
+	}
+	return selection
 }
 
 // lspDiagnosticRules reads the governing project's `[diagnostics.rules]`
@@ -68,7 +123,9 @@ func newTargetLSPAnalyzer(uri string, program *ast.Program, overlay sourceOverla
 	if len(programs) > 0 && programs[0] != nil {
 		for _, statement := range programs[0].Statements {
 			directive, ok := statement.(*ast.TargetDirective)
-			if !ok || directive == nil || (directive.Token.File != "" && filepath.Clean(directive.Token.File) != filepath.Clean(sourcePath)) {
+			// A canonical file-level @target selects source; only the
+			// #target compatibility form chooses the analysis plan.
+			if !ok || directive == nil || directive.Canonical || (directive.Token.File != "" && filepath.Clean(directive.Token.File) != filepath.Clean(sourcePath)) {
 				continue
 			}
 			target := platformtarget.Target{OS: platformtarget.NormalizeOS(directive.OS), Arch: platformtarget.NormalizeArch(directive.Arch)}

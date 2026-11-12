@@ -23,6 +23,16 @@ func (p *Parser) recordSourceToken(token lexer.Token) {
 	}
 	p.sourceTokenKeys[key] = struct{}{}
 	p.sourceTokens = append(p.sourceTokens, token)
+	// The first recorded token of a line gives its indentation, used only as
+	// recovery evidence for a stray closing brace (MD-132).
+	if token.Line > 0 && token.Type != lexer.EOF {
+		if p.lineFirstColumns == nil {
+			p.lineFirstColumns = map[int]int{}
+		}
+		if _, seen := p.lineFirstColumns[token.Line]; !seen {
+			p.lineFirstColumns[token.Line] = token.Column
+		}
+	}
 }
 
 // buildCommentAttachments classifies preserved comment groups from exact token

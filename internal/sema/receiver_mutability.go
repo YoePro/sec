@@ -301,6 +301,22 @@ func (a *Analyzer) statementWritesTargetMember(stmt ast.Statement, target Type, 
 		return a.blockWritesTargetMember(stmt.Body, target, memberNames, shadowed)
 	case *ast.UnsafeStatement:
 		return a.blockWritesTargetMember(stmt.Body, target, memberNames, shadowed)
+	case *ast.SwitchStatement:
+		// Every case body is part of the method body: a write or a mutating
+		// self call in one case makes the receiver mutable (impl.md §8).
+		if a.expressionCallsMutableTargetMethod(stmt.Subject, target, shadowed) {
+			return true
+		}
+		cases := stmt.Cases
+		if stmt.Default != nil {
+			cases = append(append([]*ast.SwitchCase(nil), cases...), stmt.Default)
+		}
+		for _, clause := range cases {
+			if clause != nil && a.blockWritesTargetMember(clause.Body, target, memberNames, shadowed) {
+				return true
+			}
+		}
+		return false
 	case *ast.SelectStatement:
 		for _, branch := range stmt.Branches {
 			if branch == nil {

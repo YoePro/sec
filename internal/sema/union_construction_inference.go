@@ -74,7 +74,7 @@ func (a *Analyzer) inferCallAsUnionVariantConstructor(expr *ast.CallExpression, 
 	}
 
 	if len(concreteVariant.PayloadFields) > 0 {
-		a.addErrorAtToken(expr.Token, "%s variant %s.%s requires named payload fields", sumSourceKind(unionType), typeDisplayName(unionType), concreteVariant.Name)
+		a.addTaskCategoryError(expr.Token, unionType, "%s variant %s.%s requires named payload fields", sumSourceKind(unionType), typeDisplayName(unionType), concreteVariant.Name)
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 	}
 
@@ -84,21 +84,21 @@ func (a *Analyzer) inferCallAsUnionVariantConstructor(expr *ast.CallExpression, 
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		if len(expr.Arguments) != 0 {
-			a.addErrorAtToken(expr.Token, "%s variant %s.%s expects 0 arguments, got %d", sumSourceKind(unionType), typeDisplayName(unionType), concreteVariant.Name, len(expr.Arguments))
+			a.addTaskCategoryError(expr.Token, unionType, "%s variant %s.%s expects 0 arguments, got %d", sumSourceKind(unionType), typeDisplayName(unionType), concreteVariant.Name, len(expr.Arguments))
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		return unionType, expressionValue{Display: expr.String()}, true
 	}
 
 	if len(expr.Arguments) != 1 {
-		a.addErrorAtToken(expr.Token, "%s variant %s.%s expects 1 argument, got %d", sumSourceKind(unionType), typeDisplayName(unionType), concreteVariant.Name, len(expr.Arguments))
+		a.addTaskCategoryError(expr.Token, unionType, "%s variant %s.%s expects 1 argument, got %d", sumSourceKind(unionType), typeDisplayName(unionType), concreteVariant.Name, len(expr.Arguments))
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 	}
 
 	payloadType := *concreteVariant.Payload
 	valueType, _ := a.inferOwningConstructionValue(expr.Arguments[0], payloadType)
 	if valueType.Kind != InvalidType && !a.canInitialize(payloadType, valueType, expr.Arguments[0]) {
-		a.addErrorAtToken(expressionToken(expr.Arguments[0]), "%s variant %s.%s payload must be %s, got %s", sumSourceKind(unionType), typeDisplayName(unionType), concreteVariant.Name, typeDisplayName(payloadType), typeDisplayName(valueType))
+		a.addTaskCategoryError(expressionToken(expr.Arguments[0]), unionType, "%s variant %s.%s payload must be %s, got %s", sumSourceKind(unionType), typeDisplayName(unionType), concreteVariant.Name, typeDisplayName(payloadType), typeDisplayName(valueType))
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 	}
 	if valueType.Kind != InvalidType && a.checkCompileTimeContractExpression(payloadType, expr.Arguments[0]) {

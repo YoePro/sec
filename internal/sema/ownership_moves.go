@@ -21,6 +21,7 @@ func (a *Analyzer) markMoveSource(expr ast.Expression) bool {
 		}
 		a.moved[expr.Value] = expr.Token
 		a.availabilityStates[expr.Value] = unavailableState("moved")
+		a.recordMoveSource(expr)
 		return true
 	case *ast.MemberExpression:
 		place, ok := a.resolvePlace(expr)
@@ -28,6 +29,7 @@ func (a *Analyzer) markMoveSource(expr ast.Expression) bool {
 			return false
 		}
 		a.markPlaceUnavailable(place, expr.Property.Token, "moved")
+		a.recordMoveSource(expr)
 		return true
 	case *ast.StructLiteral:
 		moved := false
@@ -167,4 +169,13 @@ func (a *Analyzer) markResourceTransfer(expr ast.Expression) bool {
 		return a.markResourceTransfer(expr.Value)
 	}
 	return false
+}
+
+// recordMoveSource publishes an accepted ownership transfer of a Place for
+// consumers that execute the program, such as semantic CTE.
+func (a *Analyzer) recordMoveSource(expr ast.Expression) {
+	if a.moveSources == nil {
+		a.moveSources = map[ast.Expression]bool{}
+	}
+	a.moveSources[expr] = true
 }

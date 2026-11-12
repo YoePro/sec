@@ -32,7 +32,7 @@ func (a *Analyzer) inferRawPointerCall(expr *ast.CallExpression) (Type, expressi
 
 	switch member.Property.Value {
 	case "Read":
-		if !a.callUnsafeAuthorized(expr) {
+		if !a.authorizeUnsafe(UnsafeRawPointerAccess, "RawPtr.Read", member.Property.Token, expr, rawPointerObligations(receiverType, "Read")) {
 			a.reportRawPointerUnsafe(member.Property.Token, receiverType, "Read", "RawPtr.Read requires unsafe because it reads through a raw pointer")
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
@@ -52,7 +52,7 @@ func (a *Analyzer) inferRawPointerCall(expr *ast.CallExpression) (Type, expressi
 		}
 		return element, expressionValue{Display: expr.String()}, true
 	case "Write":
-		if !a.callUnsafeAuthorized(expr) {
+		if !a.authorizeUnsafe(UnsafeRawPointerAccess, "RawPtr.Write", member.Property.Token, expr, rawPointerObligations(receiverType, "Write")) {
 			a.reportRawPointerUnsafe(member.Property.Token, receiverType, "Write", "RawPtr.Write requires unsafe because it writes through a raw pointer")
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
@@ -77,7 +77,7 @@ func (a *Analyzer) inferRawPointerCall(expr *ast.CallExpression) (Type, expressi
 		}
 		return a.types["void"], expressionValue{Display: expr.String()}, true
 	case "VolatileRead":
-		if !a.callUnsafeAuthorized(expr) {
+		if !a.authorizeUnsafe(UnsafeRawPointerAccess, "RawPtr.VolatileRead", member.Property.Token, expr, rawPointerObligations(receiverType, "VolatileRead")) {
 			a.reportRawPointerUnsafe(member.Property.Token, receiverType, "VolatileRead", "RawPtr.VolatileRead requires unsafe because it performs observable physical-storage access")
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
@@ -97,7 +97,7 @@ func (a *Analyzer) inferRawPointerCall(expr *ast.CallExpression) (Type, expressi
 		}
 		return element, expressionValue{Display: expr.String()}, true
 	case "VolatileWrite":
-		if !a.callUnsafeAuthorized(expr) {
+		if !a.authorizeUnsafe(UnsafeRawPointerAccess, "RawPtr.VolatileWrite", member.Property.Token, expr, rawPointerObligations(receiverType, "VolatileWrite")) {
 			a.reportRawPointerUnsafe(member.Property.Token, receiverType, "VolatileWrite", "RawPtr.VolatileWrite requires unsafe because it performs observable physical-storage access")
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
@@ -122,7 +122,7 @@ func (a *Analyzer) inferRawPointerCall(expr *ast.CallExpression) (Type, expressi
 		}
 		return a.types["void"], expressionValue{Display: expr.String()}, true
 	case "Offset":
-		if !a.callUnsafeAuthorized(expr) {
+		if !a.authorizeUnsafe(UnsafeRawPointerArith, "RawPtr.Offset", member.Property.Token, expr, rawPointerObligations(receiverType, "Offset")) {
 			a.reportRawPointerUnsafe(member.Property.Token, receiverType, "Offset", "RawPtr.Offset requires unsafe because it performs raw-pointer arithmetic")
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
@@ -139,7 +139,7 @@ func (a *Analyzer) inferRawPointerCall(expr *ast.CallExpression) (Type, expressi
 		}
 		return receiverType, expressionValue{Display: expr.String()}, true
 	case "AddBytes":
-		if !a.callUnsafeAuthorized(expr) {
+		if !a.authorizeUnsafe(UnsafeRawPointerArith, "RawPtr.AddBytes", member.Property.Token, expr, rawPointerObligations(receiverType, "AddBytes")) {
 			a.reportRawPointerUnsafe(member.Property.Token, receiverType, "AddBytes", "RawPtr.AddBytes requires unsafe because it performs raw-pointer arithmetic")
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
@@ -156,7 +156,7 @@ func (a *Analyzer) inferRawPointerCall(expr *ast.CallExpression) (Type, expressi
 		}
 		return receiverType, expressionValue{Display: expr.String()}, true
 	case "Difference":
-		if !a.callUnsafeAuthorized(expr) {
+		if !a.authorizeUnsafe(UnsafeRawPointerArith, "RawPtr.Difference", member.Property.Token, expr, rawPointerObligations(receiverType, "Difference")) {
 			a.reportRawPointerUnsafe(member.Property.Token, receiverType, "Difference", "RawPtr.Difference requires unsafe because it performs raw-pointer arithmetic")
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
@@ -221,4 +221,13 @@ func (a *Analyzer) rawPointerArgumentIsInt(expr ast.Expression, operation string
 // Rules: rules/memory/raw_pointers.md — §14(6).
 func isRawBytePointer(typ Type) bool {
 	return typ.Kind == RawPtrType && len(typ.TypeArgs) == 1 && typ.TypeArgs[0].Name == "byte"
+}
+
+// rawPointerObligations are a raw-pointer member's caller obligations from
+// the compiler-known member registry.
+func rawPointerObligations(pointer Type, operation string) []string {
+	if member, ok := compilerKnownMember(pointer, operation, false); ok {
+		return member.CallerObligations
+	}
+	return nil
 }

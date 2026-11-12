@@ -48,3 +48,39 @@ func TestFormatNamedThreadConfiguration(t *testing.T) {
 		t.Fatal(again)
 	}
 }
+
+// TestFormatInlineThreadConfiguration preserves contextual braces, explicit
+// wrappers and the following child call; formatting never adds a move marker.
+// Rules: rules/concurrency/threads.md — §§10(4),11;
+// rules/tooling/formatter.md — §§16,29.
+func TestFormatInlineThreadConfiguration(t *testing.T) {
+	data, err := os.ReadFile("../../testdata/sema/thread_config_valid.sec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := Format(Source{Text: string(data)}, Options{})
+	if result.Malformed || !strings.Contains(result.Text, "} Work()") || strings.Contains(result.Text, "spawn thread <-") {
+		t.Fatal(result)
+	}
+	p := parser.New(lexer.New(result.Text))
+	program := p.ParseProgram()
+	if len(p.Errors()) != 0 {
+		t.Fatal(p.Errors(), result.Text)
+	}
+	count := 0
+	ast.Visit(program, func(node any) bool {
+		if spawn, ok := node.(*ast.SpawnExpression); ok && spawn.InlineConfiguration {
+			count++
+			if spawn.Configuration == nil || spawn.Value == nil {
+				t.Fatal(spawn)
+			}
+		}
+		return true
+	})
+	if count != 3 {
+		t.Fatal(count, result.Text)
+	}
+	if again := Format(Source{Text: result.Text}, Options{}); again.Malformed || again.Text != result.Text {
+		t.Fatal(again)
+	}
+}

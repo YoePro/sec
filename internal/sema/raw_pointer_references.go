@@ -25,7 +25,7 @@ func (a *Analyzer) inferRawPointerReferenceConversion(member *ast.MemberExpressi
 	invalid := expressionValue{Display: member.String()}
 	operation := "RawPtr." + member.Property.Value
 	mutable := member.Property.Value == "AsRefMut"
-	if !a.inUnsafe {
+	if !a.authorizeUnsafe(UnsafeRawToSafeReference, operation, member.Property.Token, nil, rawPointerObligations(pointer, member.Property.Value)) {
 		reference := "ref T"
 		if mutable {
 			reference = "ref mut T"

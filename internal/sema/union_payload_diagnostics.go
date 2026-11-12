@@ -28,6 +28,9 @@ func (a *Analyzer) reportUnionVariantPayloadRequired(token lexer.Token, union Ty
 		}
 		help = fmt.Sprintf("`%s` carries a payload; construct it with %s, for example `%s(value)`.", name, payload, name)
 	}
+	if explanation := TaskTypeExplanation(union); explanation != "" {
+		help += " " + explanation
+	}
 	a.addErrorAtTokenWithMetadata(token, diagnostics.UnionVariantPayloadRequired, help,
 		"%s variant %s requires payload", sumSourceKind(union), name)
 }

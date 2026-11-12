@@ -570,6 +570,10 @@ func parseAndAnalyzeSourceForTargetWithAnalyzerMode(input string, sourceFile str
 	}
 
 	analyzer := analyzeProgramWithSourcesRetained(program, target, []string{sourceFile}, summary, printSuccessSummary)
+	// Semantic IR and lowering consume only the active source (attributes.md § 13(3)).
+	if active := analyzer.ActiveProgram(); active != nil {
+		program = active
+	}
 
 	return analyzedProgram{Program: program, Analyzer: analyzer}
 }
@@ -905,7 +909,9 @@ func printParserWarningsForFile(path string, warnings []string) {
 //   - rules/declarations/static.md — "Diagnostics"
 //   - rules/tooling/diagnostics.md — §4 "Severity and policy"
 func printSemaWarnings(analyzer *sema.Analyzer) {
-	for _, warning := range analyzer.Warnings() {
+	// Unnecessary/redundant unsafe advisories are informational like the
+	// other advisories (unsafe.md § 50(5)); compiler and LSP show the same.
+	for _, warning := range append(analyzer.Warnings(), analyzer.UnsafeAdvisories()...) {
 		label := "Warning"
 		if warning.Severity == diagnostics.SeverityInformation {
 			label = "Info"
@@ -937,7 +943,9 @@ func diagnosticCountLabel(count int, singular string) string {
 func validateProgramTarget(program *ast.Program, current CompilerTarget) error {
 	for _, stmt := range program.Statements {
 		target, ok := stmt.(*ast.TargetDirective)
-		if !ok {
+		// A canonical file-level @target selects the file instead
+		// (source selection); only the #target compatibility form rejects.
+		if !ok || target.Canonical {
 			continue
 		}
 
@@ -1842,6 +1850,33 @@ func qualifyLocalCallsInExpression(expr ast.Expression, module string, localFunc
 		for _, arg := range expr.Arguments {
 			qualifyLocalCallsInExpression(arg, module, localFunctions)
 		}
+	case *ast.SpawnExpression:
+		// A spawned call, its configuration and a spawned block call
+		// module-local functions like any other expression.
+		qualifyLocalCallsInExpression(expr.Configuration, module, localFunctions)
+		qualifyLocalCallsInExpression(expr.Value, module, localFunctions)
+		qualifyLocalCalls(expr.Body, module, localFunctions)
+	case *ast.AwaitExpression:
+		qualifyLocalCallsInExpression(expr.Value, module, localFunctions)
+	case *ast.StructLiteral:
+		for _, field := range expr.Fields {
+			if field != nil {
+				qualifyLocalCallsInExpression(field.Value, module, localFunctions)
+			}
+		}
+	case *ast.ArrayLiteral:
+		for _, element := range expr.Elements {
+			qualifyLocalCallsInExpression(element, module, localFunctions)
+		}
+	case *ast.IndexExpression:
+		qualifyLocalCallsInExpression(expr.Left, module, localFunctions)
+		qualifyLocalCallsInExpression(expr.Index, module, localFunctions)
+	case *ast.LambdaExpression:
+		qualifyLocalCalls(expr.Body, module, localFunctions)
+	case *ast.NewExpression:
+		for _, argument := range expr.Arguments {
+			qualifyLocalCallsInExpression(argument, module, localFunctions)
+		}
 	case *ast.PrefixExpression:
 		qualifyLocalCallsInExpression(expr.Right, module, localFunctions)
 	case *ast.InfixExpression:
@@ -1908,9 +1943,12 @@ func printASTStatement(stmt ast.Statement, prefix string, last bool) {
 	switch stmt := stmt.(type) {
 	case *ast.TargetDirective:
 		printASTBranch(prefix, last, "Target")
-		children := []string{
-			"OS: " + stmt.OS,
-			"Arch: " + stmt.Arch,
+		children := []string{}
+		for _, selector := range stmt.Selectors {
+			children = append(children, selector.Name+": "+selector.Value)
+		}
+		if len(children) == 0 {
+			children = []string{"OS: " + stmt.OS, "Arch: " + stmt.Arch}
 		}
 		printASTLeaves(childPrefix(prefix, last), children)
 
@@ -2789,6 +2827,14 @@ func formatVariants(variants []*ast.Identifier) string {
 func printStatement(stmt ast.Statement) {
 	switch stmt := stmt.(type) {
 	case *ast.TargetDirective:
+		if stmt.Canonical {
+			parts := []string{}
+			for _, selector := range stmt.Selectors {
+				parts = append(parts, fmt.Sprintf("%s: %q", selector.Name, selector.Value))
+			}
+			fmt.Printf("@target(%s)\n", strings.Join(parts, ", "))
+			return
+		}
 		fmt.Printf("#target(os: %q, arch: %q)\n", stmt.OS, stmt.Arch)
 
 	case *ast.ModuleStatement:

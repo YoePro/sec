@@ -92,6 +92,8 @@ func destructionClassification(plan sema.ResolvedDestructionPlan) string {
 		return family + "; destroys only the active, initialized payload"
 	case sema.DestructionResource:
 		return "compiler-known resource; released through its own contract"
+	case sema.DestructionDynamicArray:
+		return "owning dynamic array; destroys its initialized elements in reverse index order, then releases its backing"
 	case sema.DestructionUnsupported:
 		return "no destruction plan in the compilation track yet: " + plan.Unsupported
 	}

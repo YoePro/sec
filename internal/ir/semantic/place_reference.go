@@ -81,6 +81,9 @@ type PlaceMetadata struct {
 	// VariantProven marks a union payload Place formed under the
 	// active-variant proof of the same union storage.
 	VariantProven bool
+	// BackingDomain is the owner's backing InvalidationDomainID an owning
+	// dynamic-array element Place depends on (package18 §§ 76–77).
+	BackingDomain uint32
 }
 
 // ReferenceValidity is the validity policy of a direct reference.
@@ -145,7 +148,12 @@ func placeConsumer(kind OpKind) bool {
 		// P17 ownership operations on a Place (package17 §§ 52–58).
 		OpOwnCopyFromPlace, OpOwnMoveFromPlace, OpOwnInitializePlace, OpOwnReplacePlace, OpOwnDestroyPlace,
 		// P17 cleanup registration of a Place and defer captures (§§ 38, 42).
-		OpCleanupTrackOwned, OpCleanupDeferRegister:
+		OpCleanupTrackOwned, OpCleanupDeferRegister,
+		// P18 dynamic-array length observes an owner Place (package18 §§ 13, 49–50).
+		OpDynamicArrayLength, OpDynamicArrayIndexInBounds, OpDynamicArrayElementPlace,
+		// P18 growth and storage transitions of an owner Place (§§ 58–67).
+		OpDynamicArrayHasBacking, OpDynamicArrayHasCapacity, OpDynamicArrayGrowBacking, OpDynamicArrayAppendPrepared,
+		OpStorageEstablishDomain, OpStorageAdvanceEpoch, OpStorageEndDomain, OpStorageReclaim:
 		return true
 	}
 	return false

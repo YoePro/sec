@@ -84,6 +84,10 @@ type DestructionPlanRecord struct {
 	// plan and the exact count, in reverse index order.
 	Element      string
 	ElementCount string
+	// BackingTransitions is a dynamic array's ordered backing work after
+	// the reverse-order element destruction: end the backing domain, then
+	// reclaim per the allocation plan (package18 §§ 30–32, 54, 61–62).
+	BackingTransitions []string
 	// Variants destroy only the active, initialized, unmoved payload.
 	Variants []DestructionVariantRecord
 	// Resource names a compiler-known resource's release contract.
@@ -132,7 +136,8 @@ func ownedCopyClass(module *Module, id TypeID) string {
 	switch typ.Kind {
 	case TypeNamed:
 		return ownedCopyClass(module, typ.Base)
-	case TypeMutableSlice:
+	case TypeMutableSlice, TypeDynamicArray:
+		// `T[]` is move-only for every element type (P18 § 5).
 		return "move-only"
 	case TypeReference:
 		if typ.Mutable {
@@ -465,7 +470,14 @@ func formatDestructionPlans(out *strings.Builder, plans []DestructionPlanRecord)
 			fmt.Fprintf(out, " field#%d=%q", field.Field, field.Plan)
 		}
 		if plan.Element != "" {
-			fmt.Fprintf(out, " element=%q count=%s", plan.Element, plan.ElementCount)
+			fmt.Fprintf(out, " element=%q", plan.Element)
+			// A dynamic array's element count is a value fact (P18 § 52).
+			if plan.ElementCount != "" {
+				fmt.Fprintf(out, " count=%s", plan.ElementCount)
+			}
+		}
+		if len(plan.BackingTransitions) != 0 {
+			fmt.Fprintf(out, " backing=[%s]", strings.Join(plan.BackingTransitions, ","))
 		}
 		for _, variant := range plan.Variants {
 			fmt.Fprintf(out, " variant#%d=%q", variant.Variant, variant.Plan)

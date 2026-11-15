@@ -132,6 +132,10 @@ func verifyTypes(table *TypeTable) error {
 			if _, ok := table.Lookup(t.Error); !ok {
 				return fmt.Errorf("result !%d has invalid error type", id)
 			}
+		case TypeDynamicArray:
+			if err := verifyDynamicArrayType(table, id, t); err != nil {
+				return err
+			}
 		case TypeArray:
 			if _, ok := table.Lookup(t.Element); !ok {
 				return fmt.Errorf("array !%d has invalid element type !%d", id, t.Element)
@@ -543,6 +547,9 @@ func verifyFunction(module *Module, fn *Function, functions map[FunctionID]*Func
 	if err := verifyPlaceReferenceFunction(module, fn, blocks, values, dom); err != nil {
 		return err
 	}
+	if err := verifyDynamicArrayTransitions(fn); err != nil {
+		return err
+	}
 	if err := verifyOwnershipFlow(module, fn); err != nil {
 		return err
 	}
@@ -659,6 +666,9 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 		}
 		return 0
 	}()
+	if err := verifyFloatSemantics(module, op, values); err != nil {
+		return err
+	}
 	// A Place is never a language value (semantic_ir.md § 96(5)).
 	if !placeConsumer(op.Kind) {
 		for _, operand := range op.Operands {
@@ -1123,7 +1133,7 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 			return fmt.Errorf("invalid bool.not")
 		}
 	case OpBoundsFailure:
-		if len(op.Operands) != 0 || len(op.Results) != 0 || len(op.Successors) != 0 || (op.ArrayOperation != "fixed-array-index" && op.ArrayOperation != "slice-index" && op.ArrayOperation != "slice-range") {
+		if len(op.Operands) != 0 || len(op.Results) != 0 || len(op.Successors) != 0 || (op.ArrayOperation != "fixed-array-index" && op.ArrayOperation != "slice-index" && op.ArrayOperation != "slice-range" && op.ArrayOperation != "dynamic-array-index") {
 			return fmt.Errorf("invalid fail.bounds")
 		}
 	case OpVolatileRead, OpVolatileWrite:
@@ -1165,6 +1175,15 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 		}
 	case OpStaticLoad, OpStaticStore, OpPlaceStaticRoot:
 		if err := verifyStaticOperation(module, op, values); err != nil {
+			return err
+		}
+	case OpStorageEstablishDomain, OpStorageAdvanceEpoch, OpStorageEndDomain, OpStorageReclaim,
+		OpDynamicArrayHasBacking, OpDynamicArrayHasCapacity, OpDynamicArrayGrowBacking, OpDynamicArrayAppendPrepared, OpDynamicArrayAllocate:
+		if err := verifyDynamicArrayStorageOperation(module.Types, op, values); err != nil {
+			return err
+		}
+	case OpDynamicArrayEmpty, OpDynamicArrayLength, OpDynamicArrayIndexInBounds, OpDynamicArrayElementPlace:
+		if err := verifyDynamicArrayOperation(module.Types, op, values); err != nil {
 			return err
 		}
 	default:

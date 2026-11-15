@@ -108,6 +108,24 @@ func (b *builder) importDestructionPlans(set sema.DestructionPlanSet, typ sema.T
 				return err
 			}
 			record.Element, record.ElementCount = string(plan.Element), plan.ElementCount
+		case sema.DestructionDynamicArray:
+			if b.maxPackage < dynamicArrayLoweringPackage {
+				return &UnsupportedFeatureError{Feature: "owning dynamic array destruction (P18)", Package: b.maxPackage}
+			}
+			if typ.Element == nil {
+				return fmt.Errorf("dynamic-array destruction plan %q has no element type", id)
+			}
+			if err := add(plan.Element, *typ.Element); err != nil {
+				return err
+			}
+			record.Element = string(plan.Element)
+			resolved, dynamic := sema.ResolveDynamicArrayPlan(typ)
+			if !dynamic {
+				return fmt.Errorf("dynamic-array destruction plan %q has no resolved dynamic-array plan", id)
+			}
+			for _, transition := range resolved.DestructionTransitions {
+				record.BackingTransitions = append(record.BackingTransitions, string(transition))
+			}
 		case sema.DestructionVariant:
 			// A union's custom free runs before its active payload is
 			// destroyed, as a struct's runs before its fields (destruction.md § 15.5).
@@ -233,7 +251,7 @@ func (fb *functionBuilder) trackOwnedParameters(decl *ast.FunctionDeclaration) e
 
 // trackOwned emits cleanup.track-owned for one owned value's registration.
 func (fb *functionBuilder) trackOwned(token lexer.Token, registration sema.ResolvedOwnedCleanupRegistration, value builtValue, typ sema.Type) error {
-	if fb.inDeferBody {
+	if fb.inDeferBody && fb.bodyCleanupPlan == nil {
 		return fb.unsupported("an owned local inside a defer body", token)
 	}
 	if _, ok := fb.cleanupPlan(); !ok {
@@ -268,6 +286,9 @@ func (fb *functionBuilder) trackOwned(token lexer.Token, registration sema.Resol
 
 // cleanupPlan is Sema's cleanup plan of the function being built.
 func (fb *functionBuilder) cleanupPlan() (sema.ResolvedCleanupPlan, bool) {
+	if fb.bodyCleanupPlan != nil {
+		return *fb.bodyCleanupPlan, true
+	}
 	if fb.resolved == nil {
 		return sema.ResolvedCleanupPlan{}, false
 	}
@@ -348,7 +369,10 @@ func (fb *functionBuilder) scopeCleanupExit(kind sema.CleanupExitKind, source le
 		registered[registration.Scope] = true
 	}
 	for _, exit := range plan.Exits {
-		if exit.Kind != kind || exit.FunctionExit || !exit.RunsCleanup || exit.Source.Line != source.Line || exit.Source.Column != source.Column {
+		// Completing a defer body is its invocation's exit; the body's
+		// registrations run there as the region's scope cleanup.
+		functionExit := exit.FunctionExit && fb.bodyCleanupPlan == nil
+		if exit.Kind != kind || functionExit || !exit.RunsCleanup || exit.Source.Line != source.Line || exit.Source.Column != source.Column {
 			continue
 		}
 		for _, scope := range exit.Exited {

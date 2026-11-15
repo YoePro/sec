@@ -825,6 +825,8 @@ type Operation struct {
 	FloatLexeme string
 	// Float is const.float's canonical binary payload (package20.md § 18).
 	Float *FloatConstant
+	// FloatSemantics retains strict P20 policies and the resolved scalar origin.
+	FloatSemantics FloatSemantics
 	// UnitMetadata is the provenance of a constant folded from a unit
 	// metadata read (MD-062 § 12(7); unit_metadata.go).
 	UnitMetadata *UnitMetadataFacts
@@ -947,6 +949,9 @@ type Operation struct {
 	Place          *PlaceMetadata
 	Reference      *ReferenceMetadata
 	ReferenceGuard ValueID
+	// Backing carries the P18 storage-transition and allocation facts of
+	// dynamic-array growth and storage.* operations (dynamic_array_storage.go).
+	Backing *BackingMetadata
 }
 
 func (o Operation) IsTerminator() bool {

@@ -111,5 +111,9 @@ func (fb *functionBuilder) buildResolvedDefault(typ sema.Type, resolution sema.D
 		}
 		return fb.result(op, typeID), nil
 	}
+	if resolution.Kind == sema.EmptyDynamicArrayDefault && fb.owner.maxPackage >= dynamicArrayLoweringPackage {
+		// P18 § 7: the canonical empty owner; no element, no allocation.
+		return fb.buildDynamicArrayEmpty(typeID, loc), nil
+	}
 	return builtValue{}, fb.unsupported("resolved default "+string(resolution.Kind)+" for "+typ.Name, lexer.Token{})
 }

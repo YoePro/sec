@@ -124,8 +124,10 @@ func TestDestructionPlansArraysVariantsAndBoundaries(t *testing.T) {
 		t.Fatalf("Owner plan: %+v", plan)
 	}
 	items, _ := owner.Plan(plan.Fields[0].Plan)
-	if items.Kind != DestructionUnsupported || !strings.Contains(items.Unsupported, "P18") {
-		t.Fatalf("dynamic array plan must be the P18 boundary: %+v", items)
+	// P18 § 54: an owning dynamic array has its own non-trivial plan with
+	// an element plan, even for a trivially destructible element.
+	if items.Kind != DestructionDynamicArray || items.Element == "" {
+		t.Fatalf("dynamic array plan: %+v", items)
 	}
 	arena := ResolveDestructionPlans(Type{Name: "Arena", Kind: StructType, Intrinsic: true})
 	if plan, _ := arena.Plan(arena.Root); plan.Kind != DestructionResource || plan.Resource != "Arena" {

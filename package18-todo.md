@@ -204,26 +204,55 @@ hidden allocation, mandatory runtime, physical descriptor or allocator choice
 
 ## C. Add the Semantic IR representation
 
-- [ ] P18-13 — Semantic IR dynamic-array type distinct from fixed arrays and
-  slices; printer, verifier, type interning (§ 52).
-- [ ] P18-14 — Move and destruction-plan representation of `T[]` values,
-  connected to P17 plans when available (§§ 53–54).
-- [ ] P18-15 — Storage transition operations: `StorageEstablishDomainOp`,
+- [x] P18-13 — Semantic IR dynamic-array type distinct from fixed arrays and
+  slices; printer, verifier, type interning (§ 52). Done 2026-11-15:
+  `dynamic-array<!T>` (dynamic_array_types.go), package-18 gate; package 17
+  still reports "dynamic array type". Sec-MLIR stops at "semantic type
+  dynamic-array" until schema 14 (P18-27/28).
+- [x] P18-14 — Move and destruction-plan representation of `T[]` values,
+  connected to P17 plans when available (§§ 53–54). Done 2026-11-15:
+  move-only copy class, non-trivial `dynamic-array element=…` destruction
+  plan (Sema DestructionDynamicArray), cleanup.track-owned and by-value
+  moves through the P17 ownership ops.
+- [x] P18-15 — Storage transition operations: `StorageEstablishDomainOp`,
   `StorageAdvanceEpochOp`, `StorageEndDomainOp`, `StorageReclaimOp`
-  (§§ 58–62).
-- [ ] P18-16 — Allocation backing operation and the checked allocation
-  convention (candidate, failure, reason) (§§ 63–64).
+  (§§ 58–62). Done 2026-11-15: `storage.establish-domain`,
+  `storage.advance-epoch`, `storage.end-domain`, `storage.reclaim` with
+  BackingMetadata (domain, origin, relation, authority, reclamation plan,
+  stability, space) and a CFG verifier; Append emits establish/advance (and
+  reclaim under OwningValue); the T[] destruction plan carries
+  `backing=[…end-domain,reclaim-per-allocation-plan]`. Explicit end/reclaim
+  emission when destruction is expanded belongs to section F.
+- [x] P18-16 — Allocation backing operation and the checked allocation
+  convention (candidate, failure, reason) (§§ 63–64). Done 2026-11-15:
+  `dynamic-array.allocate` (owned candidate, failed, AllocationError; the
+  candidate never reaches its failure edge) and the convention on
+  `dynamic-array.grow-backing` (failed -> AllocationError path ->
+  CollectionError.AllocationFailed, no panic). Producers are P18-18.
 - [ ] P18-17 — Internal append and growth operations, growth transition
   application, element ownership during growth, non-relocatable elements,
-  address stability (§§ 35–37, 65–70).
+  address stability (§§ 35–37, 65–70). Update 2026-11-15 (Claude): single
+  `Append` of a trivial element lowers (has-backing / has-capacity /
+  grow-backing / storage transition / append-prepared, Movable backing, no
+  element moves on growth). Open: non-trivial elements (MD-135), range
+  Append, non-relocatable elements (§ 69).
 - [ ] P18-18 — Construction from existing compiler/core producers; keep
   `ToByteArray`/`ToRuneArray` at the MD-072 boundary (§§ 72–73).
-- [ ] P18-19 — Dynamic-array Place, `DynamicArrayIndexInBoundsOp`,
+- [x] P18-19 — Dynamic-array Place, `DynamicArrayIndexInBoundsOp`,
   `DynamicArrayElementPlaceOp`, element reference epoch dependency (§§ 74–77).
-- [ ] P18-20 — Empty owner slicing and indexing; no null owning-array value
-  (§§ 78–80).
-- [ ] P18-21 — Length operations: `.Len` and `len(...)` are both `uint` and the
-  same count (MD-074, decided 2026-10-17) (§§ 13–14, 49–50).
+  Done 2026-11-15: `dynamic-array.index-in-bounds` and the guarded
+  `dynamic-array.element-place` (owner authority, `backing=#domain`) for
+  reads, plain/compound writes, try indexing (IndexError) and direct shared/
+  mutable element borrows. Sema reference facts naming the backing domain as
+  epoch and paths through an element remain governance items.
+- [x] P18-20 — Empty owner slicing and indexing; no null owning-array value
+  (§§ 78–80). Done 2026-11-15: `ref values[..]`/`ref mut values[a..b]` borrow
+  the owner Place with `dynamic-array.length` as extent (no allocation); an
+  empty owner's index fails through the ordinary bounds path; the empty owner
+  is the owned `dynamic-array.empty`, never a null value.
+- [x] P18-21 — Length operations: `.Len` and `len(...)` are both `uint` and the
+  same count (MD-074, decided 2026-10-17) (§§ 13–14, 49–50). Done 2026-11-15:
+  both lower to `dynamic-array.length` over the owner's Place (no move).
 - [ ] P18-22 — Partial construction, safe empty-with-capacity state and
   element destruction order (§§ 32–34).
 

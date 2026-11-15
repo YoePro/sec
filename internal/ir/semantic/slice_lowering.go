@@ -154,6 +154,10 @@ func (fb *functionBuilder) p16SliceExpression(expr ast.Expression) (builtValue, 
 			value, err := fb.lowerSliceCreation(expr, plan)
 			return value, true, err
 		case sema.SliceSourceDynamicArray:
+			if fb.owner.maxPackage >= dynamicArrayLoweringPackage {
+				value, err := fb.lowerSliceCreation(expr, plan)
+				return value, true, err
+			}
 			feature = "owning dynamic-array to slice lowering (P18)"
 		}
 		return builtValue{}, true, fb.unsupported(feature, expr.Token)

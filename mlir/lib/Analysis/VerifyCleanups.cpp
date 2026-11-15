@@ -87,14 +87,14 @@ Value consumedValue(Operation *op) {
   return Value();
 }
 
-bool isCleanupOp(Operation *op) {
-  return isa<sec::CleanupTrackOwnedOp, sec::CleanupCancelOp, sec::CleanupDeferRegisterOp,
-             sec::CleanupRunScopeOp, sec::CleanupRunFunctionOp>(op);
-}
-
+// Verifier checks one invocation: a function body, or a defer body, which is
+// its own invocation (defer.md section 10). A defer body may register and
+// clean owned locals of its own scopes; it holds no nested defer (defer.md
+// section 18) and no function exit, and nothing it registered is still
+// active when it yields (P17-41).
 class Verifier {
 public:
-  explicit Verifier(func::FuncOp function) : function(function) {}
+  explicit Verifier(Region &body, bool deferBody = false) : body(body), deferBody(deferBody) {}
 
   LogicalResult run() {
     if (failed(collect()))
@@ -108,8 +108,10 @@ public:
 private:
   LogicalResult collect() {
     llvm::DenseSet<int32_t> ordinals;
-    for (Block &block : function.getBody()) {
+    for (Block &block : body) {
       for (Operation &op : block) {
+        if (deferBody && isa<sec::CleanupDeferRegisterOp, sec::CleanupRunFunctionOp>(op))
+          return op.emitOpError("is not valid inside a defer body");
         if (isa<sec::CleanupRunFunctionOp, sec::CleanupRunScopeOp, sec::CleanupCancelOp>(op))
           hasExitOps = true;
         if (auto track = dyn_cast<sec::CleanupTrackOwnedOp>(op)) {
@@ -122,13 +124,8 @@ private:
             return failure();
           for (Value capture : defer.getCaptures())
             registrations[defer.getCleanupActionId()].captures.push_back(rootOf(capture));
-          // A defer body holds no registration or exit of its own (section 45).
-          WalkResult nested = defer.getBody().walk([&](Operation *inner) {
-            if (isCleanupOp(inner))
-              return inner->emitOpError("is not valid inside a defer body"), WalkResult::interrupt();
-            return WalkResult::advance();
-          });
-          if (nested.wasInterrupted())
+          // The body is verified as its own invocation (section 45).
+          if (failed(Verifier(defer.getBody(), true).run()))
             return failure();
         }
       }
@@ -220,11 +217,11 @@ private:
   }
 
   void solve() {
-    entry[&function.getBody().front()] = State{};
+    entry[&body.front()] = State{};
     bool changed = true;
     while (changed) {
       changed = false;
-      for (Block &block : function.getBody()) {
+      for (Block &block : body) {
         auto found = entry.find(&block);
         if (found == entry.end())
           continue;
@@ -255,7 +252,7 @@ private:
   }
 
   LogicalResult check() {
-    for (Block &block : function.getBody()) {
+    for (Block &block : body) {
       auto found = entry.find(&block);
       if (found == entry.end())
         continue;
@@ -330,6 +327,10 @@ private:
         if (stateOf(state, action) & Consumed)
           return op.emitOpError("would destroy a moved value");
     }
+    if (isa<sec::CleanupDeferYieldOp>(op))
+      for (auto &[action, registration] : registrations)
+        if (stateOf(state, action) & (Live | Consumed))
+          return op.emitOpError("yields a defer body with a live cleanup registration of its own");
     if (auto ret = dyn_cast<func::ReturnOp>(op)) {
       Operation *previous = op.getPrevNode();
       bool ran = previous && isa<sec::CleanupRunFunctionOp>(previous);
@@ -348,7 +349,8 @@ private:
     return success();
   }
 
-  func::FuncOp function;
+  Region &body;
+  bool deferBody = false;
   bool hasExitOps = false;
   llvm::DenseMap<int32_t, Registration> registrations;
   llvm::DenseMap<Block *, State> entry;
@@ -357,7 +359,7 @@ private:
 class VerifyCleanupsPass final : public sec::impl::SecVerifyCleanupsBase<VerifyCleanupsPass> {
 public:
   void runOnOperation() override {
-    if (failed(Verifier(getOperation()).run()))
+    if (failed(Verifier(getOperation().getBody()).run()))
       signalPassFailure();
   }
 };

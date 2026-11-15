@@ -47,15 +47,25 @@ type CalendarFields struct {
 }
 
 // Calendar operation failures; NotImplemented is temporary scaffolding.
+/**
+ * Describes recoverable calendar API failures.
+ *
+ * Description:
+ * The NotImplemented variant is temporary for the stub stage and does
+ * not imply a supported conversion. Other variants specify stable error
+ * categories; precise source positions belong to parse errors, not here.
+ */
 enum CalendarError error {
-    // The operation has no implementation yet; NOT a successful calendar result.
+    // An API declaration exists, but no implementation is provided yet.
     NotImplemented,
-    // The month identifier is invalid in the selected calendar/year.
+    // The requested year is invalid under the selected calendar's era rules.
+    InvalidYear,
+    // The month code or intercalary marker is invalid for the calendar/year.
     InvalidMonth,
-    // The day number is invalid in the selected calendar/month.
+    // The day is invalid for the chosen calendar/year/month.
     InvalidDay,
-    // A requested year or serial day exceeds supported representational limits.
+    // The represented absolute day/coordinates exceed the supported range.
     OutOfRange,
-    // The selected algorithm or variant is not available on this target.
+    // The algorithm or its required data are unavailable on this target.
     UnsupportedSystem,
 }

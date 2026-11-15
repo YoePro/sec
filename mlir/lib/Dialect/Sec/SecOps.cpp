@@ -158,7 +158,8 @@ LogicalResult verifyStoragePair(Operation *operation, Value storage,
 // a bounded reference and reuses the same actions (sec_mlir_dialect.md v12.5;
 // sec-mlir-dialect_package16.md sections 64-65); the type itself is gated to
 // schema 12 elsewhere.
-LogicalResult verifyArgumentActions(Operation *operation, unsigned arity) {
+LogicalResult verifyArgumentActions(Operation *operation, unsigned arity,
+                                    bool foreign = false) {
   auto actions = operation->getAttrOfType<ArrayAttr>("sec.argument_actions");
   if (!actions)
     return operation->emitOpError("requires sec.argument_actions array attribute");
@@ -177,6 +178,14 @@ LogicalResult verifyArgumentActions(Operation *operation, unsigned arity) {
     // (rules/mlir/dialect-versions/sec_mlir_dialect_v13.md, section 25).
     auto module = operation->getParentOfType<ModuleOp>();
     auto version = module ? module->getAttrOfType<IntegerAttr>("sec.dialect_version") : IntegerAttr{};
+    // A foreign call never consumes an owned value: foreign consumption needs
+    // FFI ownership contract metadata that does not exist, and ownership
+    // moves to foreign code only through an owning Sec wrapper (section 25;
+    // rules/platform/ffi.md sections 35-36).
+    if (string && string.getValue() == "move" && foreign)
+      return operation->emitOpError(
+          "foreign call cannot consume an owned argument: ownership transfer "
+          "to foreign code goes through an owning Sec wrapper");
     if (string && string.getValue() == "move" && expected == "copy-trivial" && version && version.getInt() >= 13)
       continue;
     if (!string || string.getValue() != expected)
@@ -208,7 +217,7 @@ LogicalResult verifyCall(CallOp call, bool requireExtern) {
     return call.emitOpError("operand types must match callee inputs");
   if (!llvm::equal(call->getResultTypes(), signature.getResults()))
     return call.emitOpError("result types must match callee results");
-  return verifyArgumentActions(call, call->getNumOperands());
+  return verifyArgumentActions(call, call->getNumOperands(), requireExtern);
 }
 
 } // namespace

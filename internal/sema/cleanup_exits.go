@@ -87,7 +87,9 @@ func (a *Analyzer) recordCleanupScope(id, parent CleanupScopeID, block *ast.Bloc
 		flow.roots = map[CallableID]CleanupScopeID{}
 	}
 	flow.scopes[id] = cleanupScopeFacts{Parent: parent, Invocation: a.currentCallable, Source: block.Token, InLoop: a.loopDepth > 0, Defer: a.inDeferBlock}
-	if _, rooted := flow.roots[a.currentCallable]; !rooted && !a.inDeferBlock {
+	// A defer body is its own invocation (defer.md § 10): its first scope
+	// roots the body's cleanup plan, separate from the enclosing function.
+	if _, rooted := flow.roots[a.currentCallable]; !rooted {
 		flow.roots[a.currentCallable] = id
 	}
 }
@@ -95,7 +97,7 @@ func (a *Analyzer) recordCleanupScope(id, parent CleanupScopeID, block *ast.Bloc
 // recordCleanupBlockExit records falling off the end of a block that can
 // fall through; falling off the function root is a function exit.
 func (a *Analyzer) recordCleanupBlockExit(id CleanupScopeID, block *ast.BlockStatement) {
-	if id == 0 || a.inDeferBlock || !a.blockCanFallThrough(block) {
+	if id == 0 || !a.blockCanFallThrough(block) {
 		return
 	}
 	a.recordCleanupExit(CleanupExitFallthrough, block.Token, id, []CleanupScopeID{id}, a.cleanupFlow.roots[a.currentCallable] == id, nil, "")
@@ -110,10 +112,15 @@ func (a *Analyzer) enterCleanupLoop() func() {
 // recordCleanupJump records break/continue: it leaves every scope up to the
 // innermost loop's entry scope.
 func (a *Analyzer) recordCleanupJump(kind CleanupExitKind, token lexer.Token) {
-	if len(a.cleanupFlow.loopEntries) == 0 || a.inDeferBlock {
+	if len(a.cleanupFlow.loopEntries) == 0 {
 		return
 	}
 	entry := a.cleanupFlow.loopEntries[len(a.cleanupFlow.loopEntries)-1]
+	// A jump belongs to the loop of its own invocation; a defer body never
+	// leaves itself through an enclosing loop (defer.md § 18).
+	if a.cleanupFlow.scopes[entry].Invocation != a.currentCallable {
+		return
+	}
 	a.recordCleanupExit(kind, token, a.currentCleanupScope, a.cleanupScopeChain(a.currentCleanupScope, entry), false, nil, "")
 }
 
@@ -132,9 +139,6 @@ func (a *Analyzer) recordCleanupReturn(stmt *ast.ReturnStatement) {
 
 // recordCleanupPanic records a non-unwinding exit, which runs no cleanup.
 func (a *Analyzer) recordCleanupPanic(token lexer.Token) {
-	if a.inDeferBlock {
-		return
-	}
 	a.recordCleanupExit(CleanupExitPanic, token, a.currentCleanupScope, nil, false, nil, "")
 }
 

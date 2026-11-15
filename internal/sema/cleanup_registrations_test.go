@@ -36,8 +36,8 @@ func TestOwnedCleanupInitializationPlans(t *testing.T) {
 		seen[name]++
 		switch name {
 		case "Dynamic":
-			if root.Kind != DestructionUnsupported || root.Unsupported == "" {
-				t.Fatal("P18 boundary was silently classified as supported destruction")
+			if root.Kind != DestructionDynamicArray || root.Element == "" {
+				t.Fatal("an owning dynamic array lost its P18 destruction plan")
 			}
 		case "Array":
 			if root.Kind != DestructionFixedArray || root.ElementCount != "2" || root.Element == "" {

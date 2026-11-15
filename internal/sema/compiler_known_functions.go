@@ -36,6 +36,12 @@ func (a *Analyzer) inferCompilerKnownFunction(expr *ast.CallExpression) (Type, e
 		if dereferenceType(argumentType).Kind == SliceType {
 			a.recordSliceLengthUse(expr, expr.Arguments[0])
 		}
+		if _, dynamic := ResolveDynamicArrayPlan(argumentType); dynamic && !a.summaryPass {
+			if a.dynamicArrayLengthCalls == nil {
+				a.dynamicArrayLengthCalls = map[*ast.CallExpression]bool{}
+			}
+			a.dynamicArrayLengthCalls[expr] = true
+		}
 		// The registry result: uint, the same count as .Len (MD-074/MD-088).
 		return knownFunction.Result, expressionValue{Display: expr.String()}, true
 	}

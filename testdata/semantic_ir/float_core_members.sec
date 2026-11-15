@@ -1,0 +1,76 @@
+module main
+
+// P20 §§28–36,87: every supported core member on all primitive float types.
+
+fn CoreF32(x: float32, low: float32, high: float32) Result[float32, RangeError] {
+    discard float32.Min
+    discard float32.Max
+    discard float32.Epsilon
+    discard float32.Infinity
+    discard float32.NegativeInfinity
+    discard float32.NaN
+    discard x.Abs()
+    discard x.IsFinite()
+    discard x.IsInfinite()
+    discard x.IsNaN()
+    discard x.IsNormal()
+    discard x.IsSubnormal()
+    discard x.Floor()
+    discard x.Ceiling()
+    discard x.Truncate()
+    discard x.Round()
+    discard x.Min(low)
+    discard x.Max(high)
+    let bounded := try x.Clamp(low, high)
+    return Ok(bounded)
+}
+
+fn CoreF64(x: float64, low: float64, high: float64) Result[float64, RangeError] {
+    discard float64.Min
+    discard float64.Max
+    discard float64.Epsilon
+    discard float64.Infinity
+    discard float64.NegativeInfinity
+    discard float64.NaN
+    discard x.Abs()
+    discard x.IsFinite()
+    discard x.IsInfinite()
+    discard x.IsNaN()
+    discard x.IsNormal()
+    discard x.IsSubnormal()
+    discard x.Floor()
+    discard x.Ceiling()
+    discard x.Truncate()
+    discard x.Round()
+    discard x.Min(low)
+    discard x.Max(high)
+    let bounded := try x.Clamp(low, high)
+    return Ok(bounded)
+}
+
+fn CorePlatform(x: float, low: float, high: float) Result[float, RangeError] {
+    discard float.Min
+    discard float.Max
+    discard float.Epsilon
+    discard float.Infinity
+    discard float.NegativeInfinity
+    discard float.NaN
+    discard x.Abs()
+    discard x.IsFinite()
+    discard x.IsInfinite()
+    discard x.IsNaN()
+    discard x.IsNormal()
+    discard x.IsSubnormal()
+    discard x.Floor()
+    discard x.Ceiling()
+    discard x.Truncate()
+    discard x.Round()
+    discard x.Min(low)
+    discard x.Max(high)
+    let bounded := try x.Clamp(low, high)
+    return Ok(bounded)
+}
+
+fn main() int {
+    return 0
+}

@@ -2,7 +2,10 @@ package semantic
 
 import (
 	"fmt"
+	"slices"
 	"strings"
+
+	"sec/internal/sema"
 )
 
 // Derived destruction and remaining-subobject state (P17-30; package17
@@ -62,6 +65,9 @@ func trivialDestruction(module *Module, id TypeID) bool {
 		return trivialDestruction(module, typ.Base)
 	case TypeArray:
 		return typ.Length == "0" || trivialDestruction(module, typ.Element)
+	case TypeDynamicArray:
+		// A `T[]` may own backing reclamation (P18 § 54).
+		return false
 	case TypeStruct:
 		definition, found := structDefinition(module, id)
 		return found && definition.TriviallyDestructible
@@ -103,8 +109,9 @@ func verifyDestructionPlanGraph(module *Module) error {
 		if plan.CustomFree && plan.Kind != "struct" && (plan.Kind != "active-variant" || typ.Kind != TypeUnion) {
 			return fmt.Errorf("destruction plan %q: custom free belongs to a struct or union plan", plan.ID)
 		}
-		if plan.Kind != "struct" && len(plan.Fields) != 0 || plan.Kind != "fixed-array" && (plan.Element != "" || plan.ElementCount != "") ||
-			plan.Kind != "active-variant" && len(plan.Variants) != 0 || plan.Kind != "compiler-known-resource" && plan.Resource != "" {
+		if plan.Kind != "struct" && len(plan.Fields) != 0 || plan.Kind != "fixed-array" && plan.Kind != "dynamic-array" && plan.Element != "" || plan.Kind != "fixed-array" && plan.ElementCount != "" ||
+			plan.Kind != "active-variant" && len(plan.Variants) != 0 || plan.Kind != "compiler-known-resource" && plan.Resource != "" ||
+			plan.Kind != "dynamic-array" && len(plan.BackingTransitions) != 0 {
 			return fmt.Errorf("destruction plan %q carries steps of another kind", plan.ID)
 		}
 		switch plan.Kind {
@@ -135,6 +142,21 @@ func verifyDestructionPlanGraph(module *Module) error {
 		case "fixed-array":
 			if typ.Kind != TypeArray || plan.Element == "" || plan.ElementCount != typ.Length {
 				return fmt.Errorf("fixed-array destruction plan %q needs one element plan and the exact count", plan.ID)
+			}
+			if err := step(plan, plan.Element, typ.Element); err != nil {
+				return err
+			}
+		case "dynamic-array":
+			// P18 § 54: elements in reverse index order, then the backing.
+			if typ.Kind != TypeDynamicArray || plan.Element == "" {
+				return fmt.Errorf("dynamic-array destruction plan %q needs one element plan and a dynamic array", plan.ID)
+			}
+			want := []string{string(sema.BackingTransitionEndDomain), string(sema.BackingTransitionReclaimPerPlan)}
+			if !trivialDestruction(module, typ.Element) {
+				want = append([]string{string(sema.BackingTransitionDestroyElements)}, want...)
+			}
+			if !slices.Equal(plan.BackingTransitions, want) {
+				return fmt.Errorf("dynamic-array destruction plan %q must destroy elements in reverse order, end its backing domain, then reclaim per plan: got %v", plan.ID, plan.BackingTransitions)
 			}
 			if err := step(plan, plan.Element, typ.Element); err != nil {
 				return err
@@ -212,7 +234,7 @@ func ownedPlace(id ValueID, definitions map[ValueID]Operation) (string, OwnedPat
 			return fmt.Sprintf("storage:$%d", op.Storage), reverseOwnedPath(reversed), true
 		case OpPlaceStaticRoot:
 			return fmt.Sprintf("static:@%d", op.Static), reverseOwnedPath(reversed), true
-		case OpPlaceArrayElement, OpSliceElementPlace:
+		case OpPlaceArrayElement, OpSliceElementPlace, OpDynamicArrayElementPlace:
 			return "", nil, false
 		default:
 			return fmt.Sprintf("place:%%%d", id), reverseOwnedPath(reversed), true

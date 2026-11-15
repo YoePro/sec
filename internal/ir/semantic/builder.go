@@ -42,7 +42,13 @@ func Build(program *ast.Program, analyzer *sema.Analyzer, options BuildOptions) 
 	if err := analyzer.ValidateIteratorLoweringReadiness(program, identity); err != nil {
 		return nil, err
 	}
-	if err := analyzer.ValidateAllocationLoweringReadiness(program, identity); err != nil {
+	var preserved func(sema.AllocationContextFact) bool
+	if options.MaxPackage >= dynamicArrayLoweringPackage {
+		// P18 dynamic-array growth carries its context, identity and
+		// reclamation authority on dynamic-array.grow-backing.
+		preserved = analyzer.IsDynamicArrayAppendGrowth
+	}
+	if err := analyzer.ValidateAllocationLoweringReadinessPreserving(program, identity, preserved); err != nil {
 		return nil, err
 	}
 	if err := validateOwnershipLoweringCapabilities(program, analyzer, identity, options.MaxPackage); err != nil {
@@ -160,8 +166,11 @@ type functionBuilder struct {
 	// unsafeScopes retains lexical authorization provenance for physical effects.
 	// Rules: rules/memory/unsafe.md §4; rules/compiler/semantic_ir.md §47(3).
 	unsafeScopes []Location
-	// inDeferBody marks building a defer region, which holds no registrations.
-	inDeferBody bool
+	// inDeferBody marks building a defer region. bodyCleanupPlan is that
+	// body's own cleanup plan: a defer body is its own invocation, so its
+	// owned locals register and are destroyed inside the region (P17-41).
+	inDeferBody     bool
+	bodyCleanupPlan *sema.ResolvedCleanupPlan
 	// resolved is the Sema function being built; cleanupOrdinal counts its
 	// owned-value cleanup registrations (P17).
 	resolved       *sema.Function
@@ -264,6 +273,13 @@ type binding struct {
 	mutable bool
 	// capture is the Place parameter a defer body reads this binding through.
 	capture ValueID
+	// referent is the referent Place parameter a defer body uses a captured
+	// reference holder through: the holder was dereferenced once where the
+	// defer registered, and its reference facts are retained for the uses.
+	referent         ValueID
+	referentType     TypeID
+	referentMutable  bool
+	referentMetadata *ReferenceMetadata
 }
 
 // buildFunction preserves resolved signature identities and emits canonical body
@@ -495,6 +511,11 @@ func (b *builder) internType(t sema.Type) (TypeID, error) {
 	if !ok {
 		return 0, &UnsupportedFeatureError{Feature: "type " + t.Name, Package: b.maxPackage}
 	}
+	// MD-014 / P20 §6: platform float comes from the selected plan,
+	// not the legacy builtin type's binary64 placeholder.
+	if kind == TypeFloat && target {
+		width = b.module.PointerWidthBits
+	}
 	base := Type{Kind: kind, Name: t.Name, Signed: signed, BitWidth: width, TargetSize: target}
 	if t.Named || t.Declared {
 		return b.internNamedScalar(t)
@@ -514,7 +535,15 @@ func (b *builder) internArrayType(t sema.Type) (TypeID, error) {
 	}
 	length, fixed := sema.FixedArrayLength(t)
 	if !fixed {
-		return 0, &UnsupportedFeatureError{Feature: "dynamic array type " + t.Name, Package: b.maxPackage}
+		// Owning `T[]` is a Package 18 type of its own (§ 52).
+		if b.maxPackage < dynamicArrayLoweringPackage {
+			return 0, &UnsupportedFeatureError{Feature: "dynamic array type " + t.Name, Package: b.maxPackage}
+		}
+		element, err := b.internType(*t.Element)
+		if err != nil {
+			return 0, err
+		}
+		return b.module.Types.InternDynamicArray(element)
 	}
 	element, err := b.internType(*t.Element)
 	if err != nil {
@@ -887,6 +916,17 @@ func (fb *functionBuilder) buildStatements(statements []ast.Statement) error {
 				return err
 			}
 		case *ast.ExpressionStatement:
+			if try, isTry := stmt.Expression.(*ast.TryExpression); isTry && fb.owner.maxPackage >= dynamicArrayLoweringPackage {
+				// `try values.Append(x)`: a statement try whose success is
+				// void yields no value to consume (errorhandling.md § 8).
+				if typ, typed := fb.owner.analyzer.TypeOf(try); !typed || typ.Kind != sema.VoidType {
+					return fb.unsupported("statement try with a non-void success value", stmt.Token)
+				}
+				if _, err := fb.buildExpr(try, 0); err != nil {
+					return err
+				}
+				continue
+			}
 			call, ok := stmt.Expression.(*ast.CallExpression)
 			if !ok {
 				return fb.unsupported("expression statement", stmt.Token)
@@ -1041,6 +1081,13 @@ func (fb *functionBuilder) buildAssignment(stmt *ast.AssignmentStatement) error 
 		if index, ok := stmt.Target.(*ast.IndexExpression); ok {
 			if plan, ok := fb.owner.slicePlans.indexes[index]; ok {
 				return fb.lowerSliceIndexWrite(stmt, index, plan)
+			}
+		}
+	}
+	if fb.owner.maxPackage >= dynamicArrayLoweringPackage {
+		if index, ok := stmt.Target.(*ast.IndexExpression); ok {
+			if plan, ok := fb.owner.analyzer.ResolvedDynamicArrayIndexPlanOf(index); ok {
+				return fb.lowerDynamicArrayIndexWrite(stmt, index, plan)
 			}
 		}
 	}
@@ -1783,6 +1830,19 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 			return value, err
 		}
 	}
+	if arrayLiteral, ok := expr.(*ast.ArrayLiteral); ok && fb.owner.maxPackage >= dynamicArrayLoweringPackage {
+		if _, dynamic := fb.owner.analyzer.ResolvedDynamicArrayPlanOf(arrayLiteral); dynamic {
+			if len(arrayLiteral.Elements) != 0 {
+				return builtValue{}, fb.unsupported("non-empty dynamic-array literal needs allocation (P18-16)", arrayLiteral.Token)
+			}
+			typ, _ := fb.owner.analyzer.ResolvedTypeOf(arrayLiteral)
+			typeID, err := fb.owner.internType(typ)
+			if err != nil {
+				return builtValue{}, err
+			}
+			return fb.buildDynamicArrayEmpty(typeID, location(arrayLiteral.Token)), nil
+		}
+	}
 	if arrayLiteral, ok := expr.(*ast.ArrayLiteral); ok && fb.owner.maxPackage >= 14 {
 		plan, resolved := fb.owner.analyzer.ResolvedArrayLiteralPlanOf(arrayLiteral)
 		if !resolved || plan.Length == nil {
@@ -1958,6 +2018,9 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 		if bind.capture != 0 {
 			return fb.result(Operation{Kind: OpPlaceRead, Operands: []ValueID{bind.capture}, Location: loc}, bind.typ), nil
 		}
+		if bind.referent != 0 {
+			return builtValue{}, fb.unsupported("whole reference value of a reference holder a defer body captured", e.Token)
+		}
 		if owned, isOwned := fb.ownedStorages[fact.ID]; isOwned {
 			return fb.readOwnedStorage(e, fact.ID, owned)
 		}
@@ -2132,6 +2195,11 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 		if fb.owner.maxPackage < 14 {
 			return builtValue{}, fb.unsupported("fixed-array index", e.Token)
 		}
+		if fb.owner.maxPackage >= dynamicArrayLoweringPackage {
+			if plan, ok := fb.owner.analyzer.ResolvedDynamicArrayIndexPlanOf(e); ok {
+				return fb.lowerDynamicArrayIndexRead(e, plan)
+			}
+		}
 		return fb.buildArrayIndexRead(e, typeID)
 	case *ast.TryExpression:
 		if fb.owner.maxPackage < 9 {
@@ -2165,6 +2233,9 @@ func (fb *functionBuilder) buildFixedArrayLength(expr *ast.MemberExpression, res
 	}
 	length, fixed := sema.FixedArrayLength(receiverType)
 	if !fixed {
+		if _, dynamic := sema.ResolveDynamicArrayPlan(receiverType); dynamic && fb.owner.maxPackage >= dynamicArrayLoweringPackage {
+			return fb.buildDynamicArrayLength(expr.Object, expr.Property.Token)
+		}
 		return builtValue{}, fb.unsupported("non-fixed array Len", expr.Token)
 	}
 	if fb.owner.maxPackage >= ownershipLoweringPackage && !sema.TriviallyDestructible(receiverType) {
@@ -3735,6 +3806,9 @@ func (fb *functionBuilder) buildResolvedOperatorWithFailure(expr ast.Expression,
 	if !semanticOperatorKind(resolved, &op) {
 		return builtValue{}, fb.unsupported("operator "+string(resolved.Kind), expressionToken(expr))
 	}
+	if op.Kind == OpFloatCompare {
+		op.FloatSemantics = resolvedFloatSemantics(fb.owner.module.Types, leftType, op)
+	}
 	if resolved.RuntimeCheck || resolved.ShiftCountProven {
 		// A proven shift keeps the checked operation (Semantic IR has no
 		// unchecked shift); its failure edge is dead.
@@ -3931,6 +4005,14 @@ func (fb *functionBuilder) buildCall(call *ast.CallExpression) (builtValue, erro
 	if fb.owner.analyzer.IsTypePackForward(call) {
 		return fb.buildPackForward(call)
 	}
+	if fb.owner.analyzer.IsDynamicArrayLengthCall(call) && fb.owner.maxPackage >= dynamicArrayLoweringPackage && len(call.Arguments) == 1 {
+		return fb.buildDynamicArrayLength(call.Arguments[0], call.Token)
+	}
+	if plan, allocating := fb.owner.analyzer.ResolvedAllocationPlanOf(call); allocating && fb.owner.maxPackage >= dynamicArrayLoweringPackage {
+		if member, ok := call.Callee.(*ast.MemberExpression); ok && member.Property != nil {
+			return fb.buildDynamicArrayAppend(call, member, plan)
+		}
+	}
 	resolved, ok := fb.owner.analyzer.ResolvedCallTarget(call)
 	if !ok {
 		// Public lookup is implemented, but checked materialization needs
@@ -4117,6 +4199,10 @@ func (fb *functionBuilder) buildCall(call *ast.CallExpression) (builtValue, erro
 }
 
 func (fb *functionBuilder) result(op Operation, typ TypeID) builtValue {
+	// P20 §§18,63–69: stamp policies at production, never in a consumer.
+	if floatSemanticOperation(op.Kind) && op.FloatSemantics.SourceType == 0 {
+		op.FloatSemantics = resolvedFloatSemantics(fb.owner.module.Types, typ, op)
+	}
 	v := fb.newValue(typ, OwnershipImmediate, op.Location)
 	op.Results = []Value{v}
 	fb.emit(op)

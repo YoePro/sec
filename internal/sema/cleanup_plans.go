@@ -3,6 +3,7 @@ package sema
 import (
 	"sort"
 
+	"sec/internal/ast"
 	"sec/internal/lexer"
 )
 
@@ -90,8 +91,9 @@ func (a *Analyzer) resolvedCleanupPlanOfInvocation(invocation CallableID) (Resol
 		return ResolvedCleanupPlan{}, false
 	}
 	plan := ResolvedCleanupPlan{Invocation: invocation, Root: root}
+	deferBody := flow.scopes[root].Defer
 	for id, facts := range flow.scopes {
-		if facts.Invocation == invocation && !facts.Defer {
+		if facts.Invocation == invocation && facts.Defer == deferBody {
 			plan.Scopes = append(plan.Scopes, ResolvedCleanupScope{ID: id, Parent: facts.Parent, Source: facts.Source, InLoop: facts.InLoop})
 		}
 	}
@@ -186,4 +188,20 @@ func tryPropagates(kind ResolvedTryKind) bool {
 		return true
 	}
 	return false
+}
+
+// ResolvedDeferBodyCleanupPlanOf returns the detached cleanup plan of a defer
+// body, which is its own invocation (defer.md § 10): owned locals declared in
+// the body register in the body's scopes and are destroyed when the body
+// completes, never by the enclosing function (P17-41).
+// Rules: rules/control-flow/defer.md — §§ 10–12; rules/memory/destruction.md — § 8.
+func (a *Analyzer) ResolvedDeferBodyCleanupPlanOf(stmt *ast.DeferStatement) (ResolvedCleanupPlan, bool) {
+	if a == nil || stmt == nil {
+		return ResolvedCleanupPlan{}, false
+	}
+	deferPlan, ok := a.resolvedDeferPlans[stmt]
+	if !ok {
+		return ResolvedCleanupPlan{}, false
+	}
+	return a.resolvedCleanupPlanOfInvocation(deferPlan.Body)
 }

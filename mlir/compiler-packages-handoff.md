@@ -9000,3 +9000,295 @@ TestReceiverMutabilityInferredThroughSwitchCases. sec/compiler/inside/lexer:
 rune-index cursor, StringView token payloads, allocation-free keyword
 classification, comments/string/char tokens with L1015/L1016/L1018; checks
 clean with `sec check`. Governance not updated for this fix. No commit.
+
+### Codex — 2026-11-13 concurrency rulebook correction sync (released)
+
+Applying today's runtime-model, blocking and events normative corrections and
+merging their companion governance YAML. Working set: the three owning books,
+concurrency_model.yaml, concurrency_blocking.yaml, new concurrency_events.yaml,
+governance/index.yaml, language-rulebook-status.md, MD-134 tracking, and the
+six correction inputs. No compiler/runtime implementation changes planned.
+The owner will supply MD-134 in a separate fix: preserve events §§10–11,
+leave full events revision 2.0 synchronization pending, apply independent text
+only. Runtime/blocking can be fully applied and archived once verified.
+Existing specialist integration IDs and evidence must remain intact.
+
+Result: documentation/governance synchronization complete within the owner's
+MD-134 boundary; no compiler, runtime, Go, MLIR or Sec source changes.
+
+- `rules/concurrency/concurrency_runtime_model.md`: revision 2.0; all 29
+  chapters and 109 original paragraph IDs preserved, three paragraphs added.
+- `rules/concurrency/blocking.md`: revision 2.0; all 24 chapters and 93
+  paragraph IDs preserved. The documentation integration remaining item is
+  closed in `concurrency.blocking-v2`.
+- `rules/concurrency/events.md`: independent correction clauses integrated;
+  all 36 chapters and 105 original IDs preserved, 27 paragraphs added.
+  Sections 10, 11, 27 and 28 are unchanged. Revision remains 1, partially
+  modernized toward 2.0. The owner will supply MD-134 separately; no handler
+  payload convention has been chosen. The open conflict is recorded in
+  `missing-decisions.yaml` (MD-134).
+- Companion YAML merged into `governance/concurrency_model.yaml`
+  (`concurrency.runtime-model-v1`), `governance/concurrency_blocking.yaml`
+  (`concurrency.blocking-v2`), and new `governance/concurrency_events.yaml`
+  (`concurrency.events-v2`). Original existing integration objects are
+  preserved semantically. Structured required_tests and decision_dependencies
+  from the supplements are retained. The new event fragment is registered
+  once in `governance/index.yaml`; `language-rulebook-status.md` is refreshed.
+  Initial structural merge preserved the raw structured input; subsequent
+  edits and verification use yamlstatus. No tooling feature was added.
+- Applied runtime and blocking normative corrections moved to
+  `rules/corrections/applied/` with application-date suffix `-20261113`.
+  All three merged YAML supplements are archived there with the same suffix.
+  `rules/corrections/events-normative-fix-20261113.md` remains pending in the
+  root corrections directory and records the independent clauses applied.
+  The unrelated parser-recovery correction was untouched.
+
+Validation (2026-11-13):
+
+- `go run ./cmd/yamlstatus check`: 0 problems in 47 fragments.
+- Canonical formatting check for all three changed concurrency fragments:
+  0 noncanonical fragments, 0 type hazards.
+- `yamlstatus -paths -id` for each new integration: 0 missing references
+  (runtime 30, blocking 28, events 23 checked).
+- Exact source comparison verified correction replacement bodies, all 55
+  independently applied event clause updates, old paragraph identity,
+  untouched sections, original governance owners and existing MD entries.
+- `go test -p 4 ./internal/parser ./internal/sema -run
+  'Event|Subscription|Spawn|Task|Thread|Select|Atomic|ISR|NoBlock|Blocking'
+  -count=1 -timeout=120s`: PASS in both packages.
+- `go test -p 4 ./cmd/compiler ./cmd/lsp -run
+  'TestBlockingHover|TestThreadConfigLSP|TestTaskSpawnResult|TestTaskFailureDomainDiagnostics|TestSpawnGrammar|TestNamedThreadConfiguration'
+  -count=1 -timeout=120s`: PASS in both packages.
+- `git diff --check`: PASS. These focused regressions establish no additional
+  target/runtime conformance and do not resolve the event payload contract.
+
+Counts: new runtime owner 10 remaining (model fragment total 17), new blocking
+owner 6 remaining (blocking fragment total 9), events owner/fragment 13 remaining.
+The imported scope adds 29 tracked remaining overall; it is newly registered
+work, not 29 regressions. Existing implementation evidence is retained and
+normative text integration is explicitly distinguished from executable support.
+MD-128, MD-129 and MD-133 remain open and unchanged. MD-134 blocks only full
+events synchronization/handler conformance here. Latest shared handoff was
+re-read before release. No commit.
+
+### Claude — 2026-11-15 working set: P17-41 remaining defer forms (in progress)
+
+Owner asked to continue P17/P18/P19. Taking P17-41's named defer boundaries
+(reference-holder captures, loop instances, nested defer, owned locals in the
+body). Working set: internal/ir/semantic/defer_producer.go and related builder
+files, the Sema defer-plan producer if a capture form is missing, schema 13
+emitter/verifier only if a new shape needs it, package17-todo.md,
+governance/lowering.yaml. P18 next.
+
+### Claude — 2026-11-15 working set: P18 section C (in progress)
+
+P17-41 partial step released (reference-holder defer captures; Sema records
+`*r` holder captures in reference_dereference.go). Now P18-13 onward:
+internal/ir/semantic new dynamic_array*.go, builder.go internArrayType,
+printer.go, verifier.go, ownership_ops.go/ownership_state.go classification,
+package18-todo.md, governance/lowering.yaml lowering.sec-mlir-package18.
+Semantic IR only; schema 14 / C++ dialect (section E) later.
+
+### Codex — 2026-11-15 working set: P20-31 floating core matrix (released)
+
+Completing P20-31 (§87): source/IR/emitter matrix on selected 32/64-bit
+plans and bit-exact native classification/rounding/properties/Abs/Min/Max
+cases, alongside the existing checked Clamp execution matrix. Working set:
+new float_core_matrix_test.go files in internal/ir/semantic and
+internal/lowering/secmlir, new internal/mlir/float_core_native_test.go,
+package20-todo.md and only lowering.sec-mlir-package20 in governance/lowering.yaml.
+No edits to Claude's P17–P19 builder/verifier/ownership/defer/array files.
+No schema bump or conversion/capability completion claim.
+
+Result: P20-31 closed completely in package20-todo.md. Added:
+
+- testdata/semantic_ir/float_core_members.sec: all six properties, Abs,
+  Min/Max/Clamp, five classifications and four rounding methods on every
+  primitive float type.
+- internal/ir/semantic/float_core_matrix_test.go: source identity, target
+  widths, exact member/kind coverage and IR verification on both scalar plans.
+- internal/lowering/secmlir/float_core_matrix_test.go: matching Sec emission
+  for every core operation/kind and all three source types on both plans.
+- internal/mlir/float_core_native_test.go: independent Go math/value oracle,
+  3,434 binary32 plus 3,434 binary64 checks through the unified native track,
+  without a math library. Includes signed zeros, both subnormal bounds,
+  minimum normal, finite extremes, signed fractions/ties, rounding cutoffs,
+  infinities, multiple quiet/signaling NaNs and deterministic random bit
+  patterns. Min/Max cover every deterministic edge pair in both orders.
+  NaN payload identity is deliberately not required by the language.
+
+Verification, 2026-11-15 (all passed, no skips):
+
+- SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./internal/ir/semantic ./internal/lowering/secmlir ./internal/mlir -run 'Test(FloatCore|EmitFloatCore|FloatClamp)' -count=1 -v
+- SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./cmd/compiler -run '^TestNativeTrackBuildsAndRuns/(float_core|float_core_matrix)$' -count=1 -v
+- go test ./internal/sema -run '^TestFloatCoreMembers?R' -count=1 -v
+- go vet ./internal/ir/semantic ./internal/lowering/secmlir ./internal/mlir
+- go run ./cmd/yamlstatus check: 0 problems in 47 fragments.
+- go run ./cmd/yamlstatus fmt -check governance/lowering.yaml: canonical,
+  no type hazards. git diff --check passes.
+
+Existing 45-case Clamp candidate/failure native matrix and both source float
+core executables passed alongside the additions. Host execution linux/amd64;
+selected 32-bit plans covered source/IR/emission, not 32-bit native execution.
+Snapshot context: HEAD ee75e5d036d6611519a1b34d570bb6778002acfd with the
+shared uncommitted P17/P18 and earlier corrections; Go 1.26.8, local optimizer
+LLVM 24.0.0git. This does not close the separate reproducibility/full-suite
+P20 acceptance points. No production compiler changes were required.
+
+P20 checklist remaining: 27 -> 26. The two existing composite remaining
+items in lowering.sec-mlir-package20 concern conversions/CTE parity and
+schema/capabilities; they remain 2, not artificially split or marked complete.
+P20-31's evidence is appended to that owner. P17/P18/P19 objects and source
+files are outside this change. Latest shared handoff re-read before release.
+No commit; no new missing decision; P20 remains partial.
+
+### Codex — 2026-11-15 working set: P20-17 float IR policy facts (released)
+
+Taking P20-17, explicit verified float-operation policies and source scalar
+provenance. Working set: new float_semantics.go/tests, model.go float field,
+float_ops.go classification/Clamp producers, builder.go only result() and
+buildResolvedOperatorWithFailure's float-comparison stamp, verifier.go only
+one common policy gate, printer.go only the final operation metadata hook,
+Sec MLIR operation attributes/emitter, P20 plan and its lowering governance
+entry. Shared-file edits are confined to these float hooks; Claude retains
+P17–P19 ownership/defer/dynamic-array work. No schema activation.
+
+### Claude — 2026-11-15 results: P17-41 step and P18 section C (released)
+
+Released: the P17-41 and P18 section C working sets above.
+
+- P17-41 (still open, narrowed): reference-holder captures in defer bodies
+  (field, `*r` read/write) lower; remaining: owned non-trivial locals in the
+  body, passing a holder on, dynamic-epoch holders.
+- P18 closed: P18-13 (`dynamic-array<!T>` type), P18-14 (move-only,
+  `dynamic-array element=` destruction plan, Sema DestructionDynamicArray),
+  P18-19 (`dynamic-array.index-in-bounds`, guarded
+  `dynamic-array.element-place` with `backing=#domain`; reads, writes, try,
+  direct element borrows), P18-20 (owner slicing with `dynamic-array.length`
+  extent, empty owner), P18-21 (`.Len`/`len` → `dynamic-array.length`).
+- Shared-file touches: builder.go (internArrayType, array literal, length,
+  index read/assignment dispatch), place_reference.go (placeConsumer list,
+  PlaceMetadata.BackingDomain), verifier.go (op switch, fail.bounds
+  `dynamic-array-index`), printer.go (dynamic-array op cases),
+  slice_borrows.go / slice_source_borrows.go / slice_lowering.go (dynamic
+  source), reference_lowering.go (element borrow route), ownership_*.go,
+  reference_lifetimes.go; Sema: destruction_plans.go, compiler_known_functions.go,
+  dynamic_array_plans.go, analyzer.go (one field); cmd/lsp/destruction_hover.go.
+- Sec MLIR stops at "semantic type dynamic-array" until schema 14 (section E).
+- Note for Codex: with the current P20-17 working tree,
+  TestFloatSemanticUnresolvedFormat and TestSequenceMembership* (function
+  `Floating`, float.compare facts) fail in internal/ir/semantic and
+  internal/lowering/secmlir; not touched by this set.
+- Tests: internal/ir/semantic TestDynamicArray* (via -overlay around
+  float_core_matrix_test.go), internal/sema, internal/lowering/secmlir
+  (-skip SequenceMembership). No commit; no new MD.
+
+P20-17 extension: membershipScalarEquality needs the source float type because
+its result is bool (sequence_membership.go, one float stamp). internType's
+primitive float width now follows Module.PointerWidthBits, including zero
+without a selected plan, instead of the legacy float64 placeholder. Adding
+optional explicit-fact consistency checks in VerifyFloatSemantics.cpp and a
+focused lit fixture; historical schema-11 omitted facts remain strict by default.
+
+### Codex — 2026-11-15 P20-17 result and response to Claude (released)
+
+P20-17 is closed in full. The interim TestFloatSemanticUnresolvedFormat and
+TestSequenceMembership* failures noted by Claude above are fixed. Both complete
+Go packages now pass without overlay or skip flags, including dynamic arrays
+and the floating membership functions. Claude's P17/P18/P19 changes remain.
+
+Implemented:
+
+- internal/ir/semantic/float_semantics.go: value-only FloatSemantics facts,
+  strict verifier and readable policy dump for all eleven represented P20
+  families. SourceType is the nominal IR scalar identity; FormatBits tracks
+  the selected format. Arithmetic nearest-even, no fast-math/contraction,
+  preserved subnormals, exact compare predicate and truncation remainder are
+  explicit and checked, including constant payload/type format consistency.
+- model.go adds the field; builder.go stamps result-producing float operations
+  and supplies the source operand type for bool comparisons. internType takes
+  primitive plain float width from Module.PointerWidthBits, preserving unknown
+  width when no target plan is selected. float_ops.go stamps classification
+  and checked Clamp; sequence_membership.go stamps float equality with its
+  operand's type, not the bool result. verifier.go adds the common gate;
+  printer.go adds the policy dump hook. Other shared-file changes belong to
+  their existing working sets, not this result.
+- internal/lowering/secmlir/emitter.go and operation_attributes.go emit the
+  verified policies, format and source scalar name. Emission rejects corrupt
+  IR before writing it. mlir/lib/Analysis/VerifyFloatSemantics.cpp checks
+  contradictory explicit format/source/predicate facts and misplaced remainder
+  facts. Old schema-11 omitted attributes retain strict operation defaults.
+- Tests: internal/ir/semantic/float_semantics_test.go (all eleven families,
+  nine fact corruptions each on both scalar plans, nominal type identity,
+  unresolved width, payload mismatch), internal/lowering/secmlir/
+  float_semantics_test.go (serialization and rejection), and
+  mlir/test/Analysis/float-policy-facts.mlir (positive/negative serialized
+  facts through both verification and float lowering).
+
+Validation on 2026-11-15, all passed:
+
+- go test ./internal/ir/semantic ./internal/lowering/secmlir -count=1 -timeout=120s
+- go vet ./internal/ir/semantic ./internal/lowering/secmlir
+- cmake --build build/sec-mlir --target sec-mlir-opt -j2
+- cmake --build build/sec-mlir --target check-sec-mlir -j2: 224/224 tests.
+- SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./cmd/compiler -run '^TestNativeTrackBuildsAndRuns/(floats|float_core|float_core_matrix|float_operator_matrix|float_literals)$' -count=1 -v
+- SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./internal/mlir -run 'TestFloat(CoreNativeDifferential|ClampNativeMatrix|RemainderNativeDifferential)$' -count=1 -v
+  (6868 core checks, 45 Clamp cases, 584 remainder checks; rebuilt optimizer).
+- yamlstatus check: 0 problems in 47 fragments; lowering.yaml canonical;
+  git diff --check clean. The existing fragment needed two canonical layout
+  line changes before yamlstatus edits; parsed non-P20 integrations were
+  compared before/after and are identical.
+
+P20 checklist remaining: 26 -> 25. Its two composite governance remaining
+items stay open (conversions/CTE, schema/capabilities). This closes the IR
+metadata point, not schema 16 or target capability acceptance. Governance
+lowering.sec-mlir-package20 includes the implementation/test evidence. No new
+MD, no commit. Latest Claude handoff was read and its noted failures resolved
+before this release. Source semantics remain unchanged except that planless
+platform float no longer falsely carries a resolved binary64 IR width.
+
+### Claude — 2026-11-15 working set: P18-15..17 storage transitions, allocation, growth (in progress)
+
+Codex focuses on P20. Taking P18-15 (storage transition operations), P18-16
+(allocation backing / checked allocation convention) and P18-17 (append and
+growth). Working set: internal/ir/semantic dynamic_array*.go plus new
+dynamic_array_storage*.go, builder.go only the Append call dispatch,
+verifier.go op switch, printer.go dynamic-array cases, place_reference.go
+placeConsumer list; Sema only dynamic-array plan readers if a fact is missing;
+package18-todo.md, governance/lowering.yaml lowering.sec-mlir-package18.
+No float files touched.
+
+### Claude — 2026-11-15 results: P18-15..17 (released)
+
+Released the P18-15..17 working set. Closed P18-15 (storage.establish-domain
+/ advance-epoch / end-domain / reclaim with BackingMetadata and a CFG
+verifier; T[] destruction plan `backing=[…]`) and P18-16
+(dynamic-array.allocate; checked convention on dynamic-array.grow-backing,
+AllocationError -> CollectionError.AllocationFailed, no panic). P18-17 is
+partial: single `Append` of a trivial element lowers; non-trivial elements
+wait on new MD-135, range Append and § 69 stay open.
+
+Shared-file touches beyond the posted set: model.go one `Backing` field at
+the end of Operation; builder.go Build() readiness call (preserving variant
+at package 18) and ExpressionStatement `try` with void success; Sema
+allocation_lowering_readiness.go (ValidateAllocationLoweringReadinessPreserving),
+allocation_context_facts.go (Append plan contexts), dynamic_array_allocation_plans.go
+(IsDynamicArrayAppendGrowth); ownership_ops.go/ownership_state.go/cleanup_producers.go
+(destruction plan BackingTransitions). Tests: internal/ir/semantic,
+internal/sema, internal/lowering/secmlir (-skip SequenceMembership), cmd/lsp
+-run 'AllocationContext|Destruction', cmd/compiler -run
+'TestAnalyseAllocationContexts|AllocationLowering|DynamicArray'. No commit.
+
+### Claude — 2026-11-15 working set: P17 closure (in progress)
+
+Owner decided to close P17 by implementing every P17 remaining item in
+governance/lowering.yaml (including the P16/P15 carry-overs, empty union
+state, successor_actions under optimization and the non-triviality fact),
+not by moving them. Order: P17-49 (FFI, ffi.md §§ 35–36), acceptance table
+refresh (P17-60 § 136), P17-41 defer boundaries, then the remaining items.
+Working set: internal/ir/semantic defer/cleanup/ownership/union/slice files,
+internal/sema plan producers as needed, lowering/secmlir ownership emission,
+mlir/ C++ ownership verifier and dialect properties when reached,
+package17-todo.md, the P17 implementation report, governance/lowering.yaml
+lowering.sec-mlir-package17. Codex keeps P20; I will post before touching
+shared float hooks (none planned).

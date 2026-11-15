@@ -1057,6 +1057,15 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
   Update 2026-11-03: a defer body reads owned values through their capture Places
   (fields, shared borrows, borrowed receivers). Replacing a captured owner after
   the defer stays a named boundary; --sec-verify-cleanups rejects the ordering.
+  Update 2026-11-15 (Claude): a proven reference holder is captured without
+  copying the reference: `ref.deref-place` runs once where the defer registers and
+  the body uses the referent Place for field projections and `*r` reads and
+  writes (Sema now records `*r` as a holder capture). Schema 13 inspection
+  verification passes (`TestDeferCapturesReferenceHolders`). A nested defer is
+  invalid Sec (defer.md § 18, S1203). Remaining named boundaries: per-registration
+  instances in loops (owned values and mutable storage of the loop body), an owned
+  non-trivial local in the body, passing a captured holder on, and a dynamic-epoch
+  holder.
 - [x] P17-42 — Insert planned scope cleanup before exited-scope edges, and function
   cleanup after return/Err transfer but before return. Keep panic/raw process-exit/
   proven-unreachable endpoints outside normal cleanup; no hidden unwinding.
@@ -1152,7 +1161,7 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
   move, equal replacement identities, a defer body returning or reaching outer values,
   and panic as a cleanup exit (`schema13-ownership-ops.mlir` and its invalid companion).
   Path-sensitive state is P17-52 to P17-54.
-- [ ] P17-49 — Extend constructor/call/branch/return ownership attributes and
+- [x] P17-49 — Extend constructor/call/branch/return ownership attributes and
   predecessor action enums. Foreign consumption requires existing declared FFI
   ownership metadata; do not invent release or ownership contracts.
 
@@ -1163,6 +1172,13 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
   `construct-direct`, struct fields admit `move` and `copy-semantic-infallible`,
   and call results, returns and branches carry verified ownership actions.
   Remaining: foreign consumption, which needs declared FFI ownership metadata.
+  Done 2026-11-15 (Claude): no FFI ownership metadata is needed. ffi.md
+  §§ 35–36 (present since 2026-08-16) route ownership transfer to foreign
+  code through an owning Sec wrapper; every foreign ABI (C, system, Sec)
+  rejects owning non-trivial Sec types in parameters and results, so foreign
+  consumption has no producer (TestForeignSignaturesRejectOwnedSecValues).
+  The C++ dialect now rejects `move` on `sec.call.foreign`
+  (invalid-schema13-foreign-consumption.mlir); direct calls keep `move`.
 - [x] P17-50 — Emit the exact resolved ownership/cleanup plans, regions and source
   provenance. Earlier scalar/trivial lowering must preserve address-taken and
   non-trivial storage and must not erase identities/actions before verification.
@@ -1366,7 +1382,7 @@ criterion/evidence rows. Nothing in this table is a completed acceptance claim.
 | No mandatory runtime, physical cleanup/destructor ABI or LLVM decisions | P17-30, 33, 46, 50, 57, 59 |
 | check-sec-mlir, full Go gates and operational legacy paths | P17-02, 55, 58, 61, 64 |
 
-## P17-60 acceptance evidence — 2026-11-03
+## P17-60 acceptance evidence — 2026-11-03, refreshed 2026-11-15
 
 One row per § 136 criterion. "Met" names its evidence; "Partial" and "Not met"
 name what remains and its owning item. P17 is not complete while any row is
@@ -1378,22 +1394,22 @@ Partial or Not met (P17-62).
 | 2 | previous package regressions remain green | Partial | TestPackage17KeepsPackage16Programs (package-16 fixtures still build at 17); full `go test ./...` result in P17-61. The two `cmd/lsp` fmt-package tests fail on the owner's draft `sec/stdlib`, outside P17. |
 | 3 | ownership/destruction/defer/discard synchronization applied | Met | P17-03 done 2026-11-05: audit recorded, B/C/E merged, MD-125 (option B) applied to destruction.md, semantic_ir.md and defer.md with the P17 sync texts reconciled. Owner decisions 2026-11-03 in destruction.md § 8(8)–(9). Inherited-registration implementation is tracked separately. |
 | 4 | Semantic IR ownership amendment applied | Met | P17-04; `ownership_ops.go`, `cleanup_ops.go`, `ownership_state.go`. |
-| 5 | schema-v13 dialect rulebook installed | Partial | `sec_mlir_dialect_v13.md` present and implemented; P17-05 synchronization against v11/v12 not recorded. |
-| 6 | lowering-v13 rulebook installed | Partial | `sec_mlir_lowering_v13.md` present; P17-05 open as above. |
-| 7 | copy classification is complete for concrete runtime types | Partial | P17-08 done; implicit semantic copy with an infallible plan (P17-09) is not produced by lowering. |
-| 8 | destruction classification is complete for concrete runtime types | Partial | P17-10/14; a union with custom free has no accepted plan (named boundary). |
-| 9 | ResolvedTransferPlan API implemented/read-only | Partial | P17-12/13: branch-use and some construction sites remain (P17-13 note). |
+| 5 | schema-v13 dialect rulebook installed | Met | `sec_mlir_dialect_v13.md` implemented; P17-05 synchronization recorded 2026-11-06 (spelling, MD-031/MD-061 intersections, backed by emitted-and-verified code). |
+| 6 | lowering-v13 rulebook installed | Met | `sec_mlir_lowering_v13.md`; P17-05 done 2026-11-06. |
+| 7 | copy classification is complete for concrete runtime types | Met | P17-08/09. Sec 0.1 has no semantic-copy leaf (copy_move.md § 3.3(2)); no concrete type classifies CopySemantic (TestNoConcreteTypeIsSemanticallyCopyable, 2026-11-15). |
+| 8 | destruction classification is complete for concrete runtime types | Met | P17-10/14; custom-free unions carry `custom_free` on their active-variant plan since 2026-11-04 (row 24, CustomFreeUnion); owning T[] since 2026-11-15 (P18-14). |
+| 9 | ResolvedTransferPlan API implemented/read-only | Met | P17-12/13; P17-13 done 2026-11-07 (return slots, constructed fields, payload sites, branch uses). |
 | 10 | ResolvedDestructionPlan API implemented/read-only | Met | P17-14; `destruction_plans.go`, ResolveDestructionPlans. |
 | 11 | ResolvedCleanupPlan API implemented/read-only | Met | P17-21/22/24; `cleanup_plans.go`, ResolvedCleanupPlanOf. |
 | 12 | explicit trivial copy IR implemented | Met | own.copy, own.copy-from-place (P17-26). |
-| 13 | explicit infallible semantic copy IR implemented | Partial | own.semantic-copy op and verifier exist (P17-26); no source producer (P17-09). |
+| 13 | explicit infallible semantic copy IR implemented | Met | own.semantic-copy op and verifier (P17-26); no Sec 0.1 source producer exists by rule (row 7). |
 | 14 | explicit move IR implemented | Met | own.move, cancel (P17-26, P17-35). |
 | 15 | copy/move from Place implemented | Met | own.move-from-place for storage, fields, payloads, error payloads; partial-path state (P17-27 note). |
 | 16 | initialization/reinitialization implemented | Met | P17-28; whole and field reinitialization. |
-| 17 | replacement implemented | Partial | Whole, field, conditional and post-field-move replacement lower; a fallible RHS (P17-39) and replacement of an owner a defer reads are named boundaries. |
+| 17 | replacement implemented | Met | Whole, field, conditional, post-field-move and fallible-RHS replacement (P17-39 done 2026-11-06); replacing an owner a defer reads lowers (probe 2026-11-15). |
 | 18 | partial struct field move implemented | Met | P17-36 note 2026-11-03; Field* fixtures. |
 | 19 | field reinitialization implemented | Met | assignOwnedField; FieldReplaceAndReinitialize. |
-| 20 | active variant payload move implemented | Partial | match, if-binding, try, Ok()/Err(), error variants, handlers, guarded single payloads; guarded whole named-field payloads and guarded handlers on owned errors remain (P17-37). |
+| 20 | active variant payload move implemented | Met | P17-37 done 2026-11-07, incl. guarded named-field payloads and guarded handlers on owned errors (guarded_try_handlers.sec). |
 | 21 | arbitrary fixed-array element partial move remains rejected | Met | "fixed-array partial move is deferred" (ownership_state.go); invalid lit `moves out of an array element`. |
 | 22 | explicit/implicit discard IR implemented | Met | own.discard explicit/implicit/conditional; stored fields through their Place and `discard try ...` since 2026-11-04 (P17-40). |
 | 23 | non-trivial destruction IR implemented | Met | own.destroy-value, own.destroy-place with skipped paths and if_owned. |
@@ -1407,7 +1423,7 @@ Partial or Not met (P17-62).
 | 31 | return/error payload excluded from cleanup | Met | Verifier "would destroy the returned value"; propagation returns (P17-23 note). |
 | 32 | no cleanup-on-panic assumption introduced | Met | Panic exits run no cleanup; `panic` is an invalid exit kind (lit). |
 | 33 | schema-v13 own/cleanup ops implemented | Met | P17-47/48. |
-| 34 | ownership metadata added to constructors/calls/branches/returns | Partial | P17-46 done; foreign consumption awaits declared FFI ownership metadata (P17-49). |
+| 34 | ownership metadata added to constructors/calls/branches/returns | Met | P17-46; P17-49 closed 2026-11-15: foreign calls never consume (ffi.md §§ 35–36; foreign `move` rejected by the dialect). |
 | 35 | --sec-verify-ownership registered | Met | P17-52. |
 | 36 | --sec-verify-cleanups registered | Met | P17-54. |
 | 37 | --sec-verify-destruction-plans registered | Met | P17-53. |

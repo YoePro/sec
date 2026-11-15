@@ -1,0 +1,114 @@
+# Proposed new governance fragment: governance/concurrency_events.yaml
+# Register in governance/index.yaml next to other concurrency fragments:
+#   - path: concurrency_events.yaml
+#     owns: event members, subscription lifecycle, event dispatch and event lowering
+# No other fragment's existing integration ID is replaced by this file.
+schema_version: 1
+area: concurrency-events
+purpose: >-
+  Sec 0.1 instance events, fixed-capacity subscriber storage, publication
+  authority, subscription lifecycle, synchronous dispatch, and target/runtime
+  event lowering. A new normative revision requires the owner's MD-134 decision
+  about borrowed versus by-value handler payloads.
+integrations:
+  - id: concurrency.events-v2
+    area: concurrency
+    feature: events-and-subscriptions
+    status: partial
+    reviewed: "2026-11-13"
+    document_revision: "2.0-proposed"
+    repository_baseline: ee75e5d036d6611519a1b34d570bb6778002acfd
+    summary: >-
+      Tracks language-visible Event[T], Event[T,N], EventStorage[T,N],
+      Subscription and EventSubscribeResult, short/full declaration forms,
+      owner-only publication, fixed-capacity synchronous dispatch, subscription
+      ownership/lifetimes and compiler-known surface. Parser and initial Sema
+      support exist, but runtime subscriber storage, dispatch and lowering do
+      not. Handler payload ownership is unresolved (proposed MD-134).
+    rules:
+      - rules/concurrency/events.md
+      - rules/foundations/grammar.md
+      - rules/declarations/impl.md
+      - rules/declarations/interfaces.md
+      - rules/declarations/lambda-functions.md
+      - rules/declarations/functions.md
+      - rules/memory/ownership.md
+      - rules/memory/borrowing.md
+      - rules/memory/destruction.md
+      - rules/memory/transferability.md
+      - rules/concurrency/concurrency_memory_model.md
+      - rules/platform/interrupts.md
+      - rules/platform/target_profiles.md
+      - rules/compiler/semantic_ir.md
+    code:
+      - internal/ast/ast.go
+      - internal/parser/parser.go
+      - internal/sema/types.go
+      - internal/sema/analyzer_inference.go
+      - internal/sema/copy_classification.go
+    tests:
+      - internal/parser/parser_test.go
+      - internal/sema/analyzer_test.go
+      - testdata/event_valid.sec
+      - testdata/event_invalid.sec
+    normative:
+      - Instance event storage belongs to the declaring owner type and impl exposure cannot add instance storage.
+      - The Sec 0.1 bodyless exposure syntax is event Name using existingStorage; event policy blocks are invalid.
+      - Event[T] has default fixed subscription capacity four; Event[T,N] and EventStorage[T,N] require valid compile-time capacity.
+      - Default event dispatch is synchronous, ordered by subscription, non-allocating and non-implicitly-thread-safe.
+      - Publication is restricted to the declaring owner impl; ordinary external visibility grants subscription, not publication.
+      - Subscribe returns exactly EventSubscribeResult with Subscribed(Subscription) and Full.
+      - Subscription is move-only and consuming Close or deterministic destruction unregisters its one registration.
+      - Event-bearing storage, subscription lifetime, callback captures and relocation remain subject to canonical ownership and borrow rules.
+      - Default events are not arbitrary ISR-safe notifications, channels, completion primitives or implicit asynchronous dispatch.
+      - The exact handler parameter and payload ownership model must be approved via MD-134; neither current frontend typing nor old borrowed wording settles it.
+    implemented:
+      - Parser recognizes Event[T] and compile-time-capacity Event[T,N] and EventStorage[T,N] type forms.
+      - Parser handles short-form instance fields, bodyless impl event Name using storage and interface event requirements.
+      - Parser rejects impl event policy bodies according to grammar.md §31.
+      - Compiler-known Event, EventStorage, Subscription and EventSubscribeResult type identities exist in internal/sema/types.go.
+      - Compiler-known EventSubscribeResult has Subscribed(Subscription) and Full union variants.
+      - Frontend validates positive compile-time event capacity, event member registration and owner-backed event exposure on supported source paths.
+      - Frontend validates owner-only Publish, Publish payload type and by-value fn(T) void Subscribe handler type on current implemented paths; handler semantics still require MD-134 reconciliation.
+      - Frontend recognizes consuming Subscription.Close() as a void operation.
+      - Copy classification treats compiler-known Event/EventStorage as noncopyable; core-owned Subscription requires deterministic destruction.
+    remaining:
+      - Resolve proposed MD-134 owner decision and align event handler/payload signature, ownership, callable API and tests across all relevant rulebooks.
+      - Implement actual fixed-capacity per-instance subscriber storage without default hidden allocation.
+      - Implement synchronous subscription-order publication dispatch with correct nested/reentrant behavior and handler panic cleanup.
+      - Enforce active subscription lifetime and owner relocation/storage address stability, including after Subscription movement and destruction.
+      - Implement handler capture lifetime/escape, resource cleanup and cross-execution transferability proof for event subscription.
+      - Implement safe handler unsubscribe/add during publication without stale invocation or premature callable destruction.
+      - Enforce complete fixed-capacity Full behavior and exact ownership/cleanup of handler arguments on failure.
+      - Enforce default no-concurrent-access policy and coordinate permitted external synchronization with data-race and memory-model analysis.
+      - Enforce default ISR publication rejection with appropriate interrupt-context proofs.
+      - Complete event interface typed-value observation, conformance and visibility checks across source/IR/LSP.
+      - Publish event semantic facts, synchronous callback effects and lifecycle transfer into canonical Semantic IR.
+      - Implement target-valid runtime lowering, link/runtime support and deterministic event storage cleanup without inventing unsupported API policies.
+      - Synchronize current event implementation tests and diagnostics with exact rulebook owner contracts after MD-134.
+    required_tests:
+      - Short-form Event[T] and Event[T,N] default/explicit capacity valid syntax; invalid or nonconstant capacities rejected.
+      - EventStorage[T,N] requires explicit capacity, and impl event exposure references compatible existing storage.
+      - An impl event body/policy block is rejected as syntax in Sec 0.1.
+      - Owner Publish is accepted; external Publish and interface-view Publish are rejected.
+      - Subscribe returns exactly EventSubscribeResult; Full creates no Subscription.
+      - Consuming Subscription.Close and deterministic destruction unregister exactly once; second Close or invalid copy rejected.
+      - Capturing handler environments cannot outlive referenced/captured storage; move-only captures are not cloned.
+      - Active subscriptions preserve backing storage identity and reject unproved event-owner relocation.
+      - Synchronous subscription-order delivery, nested publication and add/remove during dispatch preserve exact rules.
+      - Callback panic does not fabricate normal completion or double-destroy active subscription state.
+      - Unsynchronized concurrent event access and ordinary ISR publication are rejected.
+      - Interface observation does not grant publication authority or create hidden storage.
+      - No silent dynamic allocation, asynchronous dispatch or invented public policy block is emitted.
+      - Semantic IR retains event ownership, subscriptions and dispatch facts; unsupported target lowering fails closed.
+      - Handler payload mode and move-only payload test matrix follows the approved MD-134 outcome.
+    governance_reconciliation:
+      - Existing governance/declarations.yaml owns general impl/interface/member coherence and should retain its existing integration IDs.
+      - Existing governance/lifetime.yaml owns general borrow, escape and deterministic destruction proof; it should not lose coverage.
+      - Existing governance/parser.yaml owns general grammar recovery and event-form parser fixtures.
+      - Existing governance/concurrency_model.yaml owns umbrella execution/scheduling semantics, not event-specific implementation tracking.
+      - Proposed events fragment owns implementation evidence and remaining work extracted from events.md revision 1 §33; do not retain that mutable inventory in the normative rulebook.
+      - Event-specific public API is currently partially modeled; no event subscriber runtime or dispatch implementation is claimed.
+    verification_notes:
+      - Prepared by source/book comparison on 2026-11-13. No repository modifications and no compiler test execution.
+      - Proposed MD-134 requires user approval; revision 2.0 should not be reported as fully synchronized before that decision.

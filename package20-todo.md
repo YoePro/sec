@@ -234,10 +234,28 @@ longer type silently as invalid. CTE parity is not audited yet.
   build exact `const.int`. Clamp (2026-10-26) is `float.clamp-checked`
   (value, failed) building Err(RangeError.InvalidRange) or Ok; the value is
   consumed only on success. Remaining: conversions, float-to-bool.
-- [ ] P20-17 — Make float-operation metadata explicit and verified: resolved
+- [x] P20-17 — Make float-operation metadata explicit and verified: resolved
   binary format, nearest-even policy, no fast-math, no contraction, preserved
   subnormals, comparison predicate, truncation remainder and source scalar
   provenance (§§18, 20–27, 63–69).
+
+  Completed 2026-11-15 (Codex): value-only FloatSemantics facts accompany all
+  eleven represented float-operation families, including constants, core
+  members and checked Clamp. Source TypeID keeps plain float distinct from
+  explicit-width floats. Primitive platform float now takes its width from
+  the selected plan; a missing plan remains explicitly unresolved instead of
+  retaining the legacy builtin binary64 placeholder. Comparisons retain the
+  unordered != predicate, including equality synthesized for membership.
+  IR verification rejects absent/contradictory policies, source type/format
+  substitutions and mismatched constant payload formats. Dumps and emission
+  expose the verified facts; the MLIR verifier checks explicit format,
+  scalar/predicate consistency and remainder applicability in addition to
+  strict arithmetic policies. Historical schema-11 fixtures without explicit
+  attributes keep strict operation defaults; schema 16 remains pending.
+  Evidence: full semantic IR/emitter Go suites, policy mutation tests on both
+  scalar plans, 224/224 lit tests, five float source native fixtures and
+  existing native core/Clamp/remainder differential tests. CTE/conversions
+  and target capability acceptance retain their independent open points.
 - [ ] P20-18 — Model checked conversion candidate/failed/reason results with
   `ConversionError` mapping and prove candidate consumption is success-only.
   Preserve guard order: non-finite, range, then precision/integrality (§§41,
@@ -372,8 +390,25 @@ longer type silently as invalid. CTE parity is not audited yet.
   FloatRemainder.cpp, preserving truncation remainder, subnormals and x's zero
   sign. All 584 independent edge/random differential cases execute through
   the native track without a math library. NaN payload identity is not assumed.
-- [ ] P20-31 — Test properties, Abs/Min/Max/Clamp, all classification cases
+- [x] P20-31 — Test properties, Abs/Min/Max/Clamp, all classification cases
   and rounding ties/signs/non-finite values (§87).
+
+  Completed 2026-11-15 (Codex): new shared source fixture exercises all six
+  properties, Abs/Min/Max, all five classification kinds, all four rounding
+  kinds and checked Clamp for float32/float64/plain float. Source-to-IR tests
+  verify the source identity and selected format on 32/64-bit scalar plans;
+  emission tests verify every operation/kind for each source type. Native
+  differential tests perform 3,434 checks per binary format (6,868 total):
+  exact property bits, signed zeros, smallest/largest signed subnormals,
+  smallest normal, finite extremes, positive/negative fractions and ties,
+  rounding precision cutoffs, infinities, multiple quiet/signaling NaNs and
+  deterministic random bit patterns. NaN payload identity is not required.
+  Min/Max include both operand orders and NaN propagation. Existing 45-case
+  checked Clamp native matrix and both source float-core executables also
+  pass. No math library is linked. Native execution is linux/amd64; 32-bit
+  target coverage here is source/IR/emission, not native process execution.
+  P20-19 CTE parity, schema 16, conversions, target capabilities and full
+  package acceptance remain separate open points.
 - [ ] P20-32 — Test conversions at 2^24/2^53 boundaries; signed/unsigned
   bounds; 128/256-bit values; widening/narrowing; NaN/infinity/subnormals;
   bool conversion; constant failures; and success-only IR values (§88).

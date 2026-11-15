@@ -562,6 +562,9 @@ type Analyzer struct {
 	unsafePrefixes     map[*ast.CallExpression]bool
 	usedUnsafePrefixes map[*ast.CallExpression]bool
 	unsafeAdvisories   []Error
+	// dynamicArrayLengthCalls are the compiler-known len(...) calls whose
+	// argument is an owning dynamic array (P18 § 50).
+	dynamicArrayLengthCalls map[*ast.CallExpression]bool
 	// fileTargets are the canonical file-level selections by file.
 	fileTargets map[string][]ast.TargetSelector
 	// compileTimeContexts classify every compile-time-required position
@@ -763,6 +766,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.moveSources = nil
 	a.unsafeSites, a.unsafeSiteIndex, a.unsafeContexts = nil, nil, nil
 	a.unsafePrefixes, a.usedUnsafePrefixes, a.unsafeAdvisories = nil, nil, nil
+	a.dynamicArrayLengthCalls = nil
 	a.detachSites = nil
 	a.hardwareFacts = hardware.Facts{}
 	a.hardwareFactsValid = false

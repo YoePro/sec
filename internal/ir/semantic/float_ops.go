@@ -279,7 +279,9 @@ func (fb *functionBuilder) buildFloatCoreCall(call *ast.CallExpression, member *
 			return builtValue{}, true, err
 		}
 	}
-	return fb.result(Operation{Kind: operation.kind, Operands: operands, FloatCore: operation.core, Location: location(member.Property.Token)}, resultType), true, nil
+	op := Operation{Kind: operation.kind, Operands: operands, FloatCore: operation.core, Location: location(member.Property.Token)}
+	op.FloatSemantics = resolvedFloatSemantics(fb.owner.module.Types, floatType, op)
+	return fb.result(op, resultType), true, nil
 }
 
 func verifyFloatCoreOperation(module *Module, op Operation, values map[ValueID]Value) error {
@@ -363,7 +365,9 @@ func (fb *functionBuilder) buildFloatClamp(call *ast.CallExpression, member *ast
 	loc := location(member.Property.Token)
 	clamped := fb.newValue(floatType, OwnershipImmediate, loc)
 	failed := fb.newValue(boolType, OwnershipImmediate, loc)
-	fb.emit(Operation{Kind: OpFloatClampChecked, Operands: operands, Results: []Value{clamped, failed}, Location: loc})
+	op := Operation{Kind: OpFloatClampChecked, Operands: operands, Results: []Value{clamped, failed}, Location: loc}
+	op.FloatSemantics = resolvedFloatSemantics(fb.owner.module.Types, floatType, op)
+	fb.emit(op)
 	errorBlock, successBlock, merge := fb.newBlock(), fb.newBlock(), fb.newBlock()
 	parameter := fb.newValue(resultType, OwnershipImmediate, loc)
 	merge.Parameters = []Value{parameter}

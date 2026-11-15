@@ -20,7 +20,8 @@ func (fb *functionBuilder) lowerSliceCreation(expr *ast.RefExpression, plan sema
 		return builtValue{}, fmt.Errorf("slice creation plan has inconsistent resolved authority")
 	}
 	reborrow := plan.SourceKind == sema.SliceSourceSlice
-	if !plan.HasValidEvaluationOrder() || !reborrow && plan.SourceLength == nil {
+	dynamic := plan.SourceKind == sema.SliceSourceDynamicArray
+	if !plan.HasValidEvaluationOrder() || !reborrow && !dynamic && plan.SourceLength == nil {
 		return builtValue{}, fmt.Errorf("slice plan lacks source extent or operand schedule")
 	}
 	var place builtValue
@@ -28,6 +29,15 @@ func (fb *functionBuilder) lowerSliceCreation(expr *ast.RefExpression, plan sema
 	var err error
 	if reborrow {
 		place, parent, err = fb.sliceSourceValue(rangeExpr.Left)
+	} else if dynamic {
+		// An owning T[] is borrowed through its owner Place; the empty owner
+		// yields a valid empty slice without backing (package18 § 78).
+		place, err = fb.dynamicArrayOwnerPlace(rangeExpr.Left)
+		if err == nil && mutable {
+			if typ, _ := fb.owner.module.Types.Lookup(place.typ); !typ.Mutable {
+				return builtValue{}, fb.unsupported("mutable slice of a read-only dynamic-array owner Place", expr.Token)
+			}
+		}
 	} else {
 		sourcePlan := plan.ReferenceFacts
 		sourcePlan.Place = plan.SourcePlace
@@ -40,7 +50,10 @@ func (fb *functionBuilder) lowerSliceCreation(expr *ast.RefExpression, plan sema
 	loc := location(expr.Token)
 	uintType := fb.owner.module.Types.Intern(Type{Kind: TypeUint, Name: "uint", TargetSize: true})
 	operands := []ValueID{0}
-	if !reborrow {
+	if dynamic {
+		extent := fb.result(Operation{Kind: OpDynamicArrayLength, Operands: []ValueID{place.id}, Location: loc}, uintType)
+		operands[0] = extent.id
+	} else if !reborrow {
 		extent := fb.result(Operation{Kind: OpConstInt, Integer: cloneBigInt(plan.SourceLength), Location: loc}, uintType)
 		operands[0] = extent.id
 	}

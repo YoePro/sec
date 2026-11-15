@@ -20,6 +20,21 @@ func operationAttributes(operation semantic.Operation, synthesized bool) []strin
 	if proof := operation.ConversionProof; proof != nil {
 		attribute("sec.conversion_proof", fmt.Sprintf("{basis = %s, plan_pointer_width = %d : i32}", mlirString(proof.Basis), proof.PlanPointerWidthBits))
 	}
+	// P20 §§18,64–69: emit the verified strict policy explicitly; the Sec
+	// operation verifier remains authoritative before lowering erases it.
+	if facts := operation.FloatSemantics; facts.SourceType != 0 {
+		attribute("sec.float_format", fmt.Sprintf("%d : i32", facts.FormatBits))
+		attribute("sec.rounding", mlirString(facts.Rounding))
+		attribute("sec.fast_math", mlirString(facts.FastMath))
+		attribute("sec.contraction", mlirString(facts.Contraction))
+		attribute("sec.denormal", mlirString(facts.Subnormals))
+		if facts.ComparisonPredicate != "" {
+			attribute("sec.comparison_predicate", mlirString(facts.ComparisonPredicate))
+		}
+		if facts.RemainderKind != "" {
+			attribute("sec.remainder_kind", mlirString(facts.RemainderKind))
+		}
+	}
 	if synthesized {
 		attribute("sec.synthesized", "true")
 	}

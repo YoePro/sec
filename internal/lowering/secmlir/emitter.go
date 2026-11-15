@@ -281,6 +281,10 @@ func (e *emitter) emitFunction(function *semantic.Function) error {
 
 func (e *emitter) emitOperation(function *semantic.Function, operation semantic.Operation, values map[semantic.ValueID]semantic.Value, storages map[semantic.StorageID]semantic.Storage) error {
 	e.out.WriteString("    ")
+	if facts := operation.FloatSemantics; facts.SourceType != 0 {
+		source, _ := e.module.Types.Lookup(facts.SourceType)
+		e.extraAttributes = append(e.extraAttributes, "sec.float_source_scalar = "+mlirString(source.Name))
+	}
 	switch operation.Kind {
 	case semantic.OpVolatileRead, semantic.OpVolatileWrite:
 		// copy_move.md §19 / volatile.md §§9–11: do not erase the physical
@@ -313,10 +317,12 @@ func (e *emitter) emitOperation(function *semantic.Function, operation semantic.
 		if operation.Float != nil && operation.Float.Canonical {
 			// The canonical binary payload rounded once by the frontend; the
 			// lowering never reparses the lexeme (package20.md §§ 74, 76).
-			fmt.Fprintf(&e.out, "\"sec.const.float\"() <{bits = %d : i64, lexeme = %s}> : () -> ", int64(operation.Float.Bits), mlirString(operation.FloatLexeme))
+			fmt.Fprintf(&e.out, "\"sec.const.float\"() <{bits = %d : i64, lexeme = %s}> ", int64(operation.Float.Bits), mlirString(operation.FloatLexeme))
 		} else {
-			fmt.Fprintf(&e.out, "\"sec.const.float\"() <{lexeme = %s}> : () -> ", mlirString(operation.FloatLexeme))
+			fmt.Fprintf(&e.out, "\"sec.const.float\"() <{lexeme = %s}> ", mlirString(operation.FloatLexeme))
 		}
+		e.emitOperationAttributes(operation, false)
+		e.out.WriteString(" : () -> ")
 		return e.finishResultOperation(operation)
 	case semantic.OpConstDecimal:
 		if err := e.emitResult(operation); err != nil {
@@ -1108,7 +1114,7 @@ func (e *emitter) emitSemanticIntegerOperation(operation semantic.Operation, nam
 	if attributeName != "" {
 		fmt.Fprintf(&e.out, " <{%s = %s}>", attributeName, mlirString(attributeValue))
 	}
-	if operation.TryHandlerKind != "" || operation.MatchID != 0 || operation.ConversionProof != nil {
+	if operation.TryHandlerKind != "" || operation.MatchID != 0 || operation.ConversionProof != nil || operation.FloatSemantics.SourceType != 0 {
 		e.out.WriteByte(' ')
 		e.emitOperationAttributes(operation, false)
 	}

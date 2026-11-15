@@ -1,42 +1,220 @@
 module calendar
 
 /*
- * Sec Standard Library — temporal API scaffold
- * Canonical path: stdlib/temporal/calendar/partial.sec
- * Module: calendar
- * Purpose: Partial components without invented missing values.
- * Status: Draft API, NOT IMPLEMENTED, not compiler-verified
- * Revision: 0.1
- * Updated: 2026-10-16
- * Governing rulebook: stdlib/temporal/calendar/std-temporal-calendar.md
- * Standards / dependencies: Sec std-temporal.md
- * NOTE: Stub results are explicit NotImplemented failures. No successful
- *       behavior is claimed by this file.
+ * Sec Standard Library — temporal/calendar
+ * File: calendar/partial.sec
+ * Purpose: Partial calendar coordinates and date compatibility queries.
+ * Status: Draft candidate API v0.3; NOT IMPLEMENTED, not compiler-verified
+ * Revision: 0.3
+ * Updated: 2026-11-15
+ * Rulebook: stdlib/temporal/calendar/std-temporal-calendar.md
+ * References: rules/types/temporal.md; Library of Congress EDTF;
+ *             GEDCOM 7 (comparison and scope references, not full conformance).
  */
 
-// Partial calendar coordinates. None denotes a truly absent component.
-// A partial date is NOT necessarily approximate or historically uncertain.
+/**
+ * Stores exactly the calendar coordinates known from an incomplete date.
+ *
+ * Description:
+ * None denotes a component not supplied, NOT a default value, an
+ * approximate component, or an uncertain interpretation. The year is
+ * expressed using the chosen calendar's year numbering. Month identity
+ * is stable and independent of its ordinal within a given year.
+ * CalendarSystem is supplied separately to the operations below.
+ * Values are unvalidated until ValidatePartial succeeds.
+ * Ownership: Copyable value; no allocation.
+ * Standards: EDTF reduced-precision dates are related, but a missing year
+ * with known day/month is a Sec-specific extension, not an EDTF claim.
+ */
 type PartialDate struct {
-    // Known year or None when the original expression omitted a year.
+    // Known calendar year; None if it was not supplied.
     Year: Option[int],
-    // Known calendar-month identity or None when it was not specified.
+    // Known stable calendar month; None if it was not supplied.
     Month: Option[CalendarMonth],
-    // Known day-of-month or None when the expression did not specify one.
+    // Known day-of-month; None if it was not supplied.
     Day: Option[int],
 }
 
 /**
- * Checks whether present components can coexist in the chosen calendar.
+ * Validates that a partial date can describe at least one day.
+ *
  * Description:
- *   Does NOT insert missing components or resolve uncertainty. Missing
- *   year means e.g. 29 February may remain conditionally possible.
+ * Missing components remain unspecified. Validation uses
+ * calendar-specific rules and the representable core date
+ * range. A missing year may permit leap-day dates.
+ *
+ * Gregorian and Julian calendars are currently supported.
+ * Other systems require their calendar conversion algorithms.
+ *
  * Parameters:
- *   - value: Exact known/missing component representation.
- *   - system: Calendar system for constraints.
- * Returns: Ok(void) for a possible partial date, not a unique full date.
- * Errors: CalendarError.NotImplemented, InvalidMonth, InvalidDay, OutOfRange.
- * Ownership: Pure, no allocation.
+ * - value: Partial calendar coordinates.
+ * - system: Calendar system used for validation.
+ *
+ * Returns:
+ * Ok() if at least one representable date satisfies
+ * every supplied component.
+ *
+ * Errors:
+ * - CalendarError.InvalidMonth: Invalid month identity.
+ * - CalendarError.InvalidDay: Invalid day of month.
+ * - CalendarError.OutOfRange: No representable date.
+ * - CalendarError.NotImplemented: Unsupported conversion.
+ *
+ * Ownership:
+ * Pure calculation without allocation or I/O.
  */
 fn ValidatePartial(value: PartialDate, system: CalendarSystem) Result[void, CalendarError] {
+    // Only calendars with implemented absolute-date
+    // conversion can currently satisfy the full contract.
+    if system not in [CalendarSystem.Gregorian, CalendarSystem.Julian] {
+        return Err(CalendarError.NotImplemented)
+    }
+
+    // Year 2000 is a leap year in both supported calendars.
+    // It is only a witness for yearless validation, never
+    // an inferred or stored year.
+    let mut year := 2000
+
+    if value.Year is Some(knownYear) {
+        year = knownYear
+    }
+
+    // When the month is unknown, January and December
+    // bound the possible dates within the selected year.
+    let mut firstMonth := CalendarMonth {
+        Number: 1,
+        IsLeap: false,
+    }
+
+    let mut lastMonth := CalendarMonth {
+        Number: 12,
+        IsLeap: false,
+    }
+
+    if value.Month is Some(knownMonth) {
+        firstMonth = knownMonth
+        lastMonth = knownMonth
+    }
+
+    // Validate the month identities and obtain their lengths.
+    let firstLength := try DaysInMonth(year, firstMonth, system)
+    let lastLength  := try DaysInMonth(year, lastMonth, system)
+
+    let mut firstDay := 1
+    let mut lastDay  := lastLength
+
+    if value.Day is Some(knownDay) {
+        // The supplied day must exist in the selected month,
+        // or in both boundary months when no month is given.
+        if knownDay not in 1..firstLength ||
+            knownDay not in 1..lastLength {
+            return Err(CalendarError.InvalidDay)
+        }
+
+        firstDay = knownDay
+        lastDay = knownDay
+    }
+
+    let first := CalendarFields {
+        Year: year,
+        Month: firstMonth,
+        Day: firstDay,
+    }
+
+    let last := CalendarFields {
+        Year: year,
+        Month: lastMonth,
+        Day: lastDay,
+    }
+
+    // Check whether the first candidate fits in core date.
+    match ToDate(first, system) {
+        Ok(_) => {
+            return Ok()
+        }
+
+        Err(CalendarError.OutOfRange) => {
+            // The selected year may cross a core date boundary.
+            // Check its last possible matching date as well.
+        }
+
+        Err(e) => {
+            return Err(e)
+        }
+    }
+
+    match ToDate(last, system) {
+        Ok(_) => {
+            return Ok()
+        }
+
+        Err(e) => {
+            return Err(e)
+        }
+    }
+}
+
+/**
+ * Tests whether a known core date satisfies every present component.
+ *
+ * Description:
+ * The candidate is converted into calendar coordinates under system.
+ * Any missing component is a wildcard, not a default. The partial value
+ * must first satisfy the same validity requirements as ValidatePartial;
+ * an invalid partial input is an error, not simply a false match.
+ * Parameters:
+ * - value: Partial date to test.
+ * - candidate: One fully known core absolute day.
+ * - system: Explicit proleptic calendar; no historical adoption rules.
+ * Returns: true exactly when all supplied components match candidate.
+ * Errors: NotImplemented, InvalidYear, InvalidMonth, InvalidDay,
+ * OutOfRange, UnsupportedSystem.
+ * Ownership: Pure, no allocation or I/O.
+ */
+fn MatchesDate(value: PartialDate, candidate: date, system: CalendarSystem) Result[bool, CalendarError] {
+    return Err(CalendarError.NotImplemented)
+}
+
+/**
+ * Tests whether two partial descriptions admit at least one common day.
+ *
+ * Description:
+ * The result describes date compatibility only, NOT proof that two
+ * historical events are the same event. The comparison is symmetric and
+ * is limited to dates representable by core date and the selected system.
+ * Missing components are constraints left open, never filled with the
+ * host's current date. Invalid partial inputs produce an error.
+ * This is not a generic comparison of approximate/uncertain dates.
+ * Parameters:
+ * - left: First partial description.
+ * - right: Second partial description.
+ * - system: One explicit calendar system used for both descriptions.
+ * Returns: true if a representable core date satisfies both descriptions.
+ * Errors: NotImplemented, InvalidYear, InvalidMonth, InvalidDay,
+ * OutOfRange, UnsupportedSystem.
+ * Ownership: Pure; no allocation or I/O.
+ */
+fn MayDescribeSameDate(left: PartialDate, right: PartialDate, system: CalendarSystem) Result[bool, CalendarError] {
+    return Err(CalendarError.NotImplemented)
+}
+
+/**
+ * Converts a fully specified partial date to its unique core absolute day.
+ *
+ * Description:
+ * Returns None if any of Year, Month or Day is absent. Never fills in
+ * the current year, day 1 or another invented default. All known
+ * coordinates must be valid, even when the result is None.
+ * Historical civil labels must instead use temporal/calendar/historical.
+ * Parameters:
+ * - value: Partial calendar coordinates.
+ * - system: Explicit proleptic calendar algorithm.
+ * Returns: Some(date) when complete and valid; otherwise None for an
+ * incomplete but valid partial description.
+ * Errors: NotImplemented, InvalidYear, InvalidMonth, InvalidDay,
+ * OutOfRange, UnsupportedSystem.
+ * Ownership: Pure; no allocation or I/O.
+ */
+fn ToDateIfComplete(value: PartialDate, system: CalendarSystem) Result[Option[date], CalendarError] {
     return Err(CalendarError.NotImplemented)
 }

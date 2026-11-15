@@ -250,6 +250,9 @@ func (fb *functionBuilder) lowerBorrowPlace(reference *ast.RefExpression, plan s
 				return builtValue{}, fb.unsupported("field borrow whose member plan differs from its resolved Place", step.Token)
 			}
 		case *ast.IndexExpression:
+			if dynamicPlan, dynamic := fb.owner.analyzer.ResolvedDynamicArrayIndexPlanOf(step); dynamic {
+				return fb.dynamicArrayElementBorrowPlace(reference, step, dynamicPlan, len(steps))
+			}
 			indexPlan, ok := fb.owner.analyzer.ResolvedArrayIndexPlanOf(step)
 			if !ok || projection.Kind != sema.PlaceIndex {
 				return builtValue{}, fb.unsupported("element borrow without a resolved fixed-array index plan", step.Token)

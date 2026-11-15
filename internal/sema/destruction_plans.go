@@ -15,12 +15,18 @@ type DestructionPlanID string
 type DestructionPlanKind string
 
 const (
-	DestructionTrivial     DestructionPlanKind = "trivial"
-	DestructionStruct      DestructionPlanKind = "struct"
-	DestructionFixedArray  DestructionPlanKind = "fixed-array"
-	DestructionVariant     DestructionPlanKind = "active-variant"
-	DestructionResource    DestructionPlanKind = "compiler-known-resource"
-	DestructionUnsupported DestructionPlanKind = "unsupported"
+	DestructionTrivial    DestructionPlanKind = "trivial"
+	DestructionStruct     DestructionPlanKind = "struct"
+	DestructionFixedArray DestructionPlanKind = "fixed-array"
+	// DestructionDynamicArray destroys an owning `T[]`: its initialized,
+	// still-owned elements in reverse index order, then the backing through
+	// the recorded reclamation authority. It is non-trivial even for a
+	// trivially destructible element, since the value may own backing
+	// (P18 §§ 32, 54; destruction.md § 7.4).
+	DestructionDynamicArray DestructionPlanKind = "dynamic-array"
+	DestructionVariant      DestructionPlanKind = "active-variant"
+	DestructionResource     DestructionPlanKind = "compiler-known-resource"
+	DestructionUnsupported  DestructionPlanKind = "unsupported"
 )
 
 // DestructionFieldStep destroys one remaining owned stored field. Steps are
@@ -160,8 +166,9 @@ func (b *destructionPlanBuilder) plan(typ Type) DestructionPlanID {
 		plan.Kind, plan.Unsupported = DestructionUnsupported, "generic template; only concrete instantiations have destruction plans"
 	case typ.Kind == AnyType:
 		plan.Kind, plan.Unsupported = DestructionUnsupported, "any has no concrete destruction plan"
-	case typ.Kind == ArrayType && arrayShapeOf(typ) == ArrayShapeDynamic:
-		plan.Kind, plan.Unsupported = DestructionUnsupported, "owning dynamic array destruction and backing release belong to P18"
+	case typ.Kind == ArrayType && arrayShapeOf(typ) == ArrayShapeDynamic && typ.Element != nil:
+		plan.Kind = DestructionDynamicArray
+		plan.Element = b.plan(*typ.Element)
 	case typ.Kind == StructType && compilerKnownRequiresDestruction(typ):
 		plan.Kind, plan.Resource = DestructionResource, typ.Name
 	case typ.Kind == StructType && (typ.CustomFree || !triviallyDestructible(typ, map[string]bool{})):

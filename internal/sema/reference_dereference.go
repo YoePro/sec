@@ -59,6 +59,11 @@ func (a *Analyzer) inferDereferenceExpression(expr *ast.PrefixExpression) (Type,
 		return Type{Kind: InvalidType}, invalid
 	}
 	referent := *referenceType.Element
+	// A deferred `*holder` depends on the holder's reference authority; the
+	// defer captures the holder (defer.md §§ 9–11).
+	if holder, named := expr.Right.(*ast.Identifier); named && a.inDeferBlock {
+		a.recordDeferReferenceHolder(holder.Value, holder.Token)
+	}
 	if !a.isPlaceBase(expr) {
 		switch CopyClassificationOf(referent) {
 		case CopyTrivial, CopySemantic:

@@ -628,8 +628,8 @@ fn main() int {
 }
 
 // A defer registers an isolated body over capture Places, never copies, so it reads
-// the value current when it runs; each exit runs cleanup. What the body cannot yet
-// represent stays a named boundary. Rules: rules/control-flow/defer.md §§9–11;
+// the value current when it runs; each exit runs cleanup. An owned local of the
+// body registers and ends inside the region. Rules: rules/control-flow/defer.md §§9–11;
 // rules/mlir/packages/sec-mlir-dialect_package17.md §§41–44,74,77.
 func TestDeferRegistersIsolatedBody(t *testing.T) {
 	module, err := analyzedModule(t, ownedLocalSource+`
@@ -667,14 +667,83 @@ fn main() int {
 			t.Errorf("missing %q in:\n%s", want, text)
 		}
 	}
-	for _, item := range []struct{ source, want string }{
-		{"fn Use() void {\n    defer {\n        let h := Make(1)\n        discard h\n    }\n}\n", "owned local inside a defer body"},
-		{"fn Use(a: ref int) void {\n    defer {\n        let x := *a\n        discard x\n    }\n}\n", "not a resolved capture"},
-	} {
-		_, err := analyzedModule(t, ownedLocalSource+item.source+"fn main() int {\n    return 0\n}\n", 17)
-		if err == nil || !strings.Contains(err.Error(), item.want) {
-			t.Errorf("%s: want %q, got %v", item.source, item.want, err)
+	// An owned local of the body registers in the body's own scope and its
+	// discard ends it there (P17-41; defer.md § 10).
+	local, err := analyzedModule(t, ownedLocalSource+"fn Use() void {\n    defer {\n        let h := Make(1)\n        discard h\n    }\n}\n"+"fn main() int {\n    return 0\n}\n", 17)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Verify(local); err != nil {
+		t.Fatal(err)
+	}
+	if body := Format(local); !strings.Contains(body, "cleanup.track-owned") || !strings.Contains(body, "own.discard") {
+		t.Errorf("a body-owned local is not registered and discarded in the region:\n%s", body)
+	}
+}
+
+// A defer captures a proven reference holder without copying the reference:
+// the holder is dereferenced once where the defer registers and the body
+// reads and writes the referent through that Place, by field or as `*r`.
+// Passing the holder itself on from the body stays a named boundary.
+// The holder is captured for field projections and `*r`, which Sema records.
+// Rules: rules/control-flow/defer.md — §§ 9–11; rules/mlir/packages/sec-mlir-dialect_package17.md — §§ 41–44.
+func TestDeferCapturesReferenceHolders(t *testing.T) {
+	module, err := analyzedModule(t, ownedLocalSource+`
+type Acc struct {
+    v: int,
+}
+
+fn Field(acc: ref mut Acc) void {
+    defer {
+        acc.v = acc.v + 1
+    }
+}
+
+fn Star(value: ref int) int {
+    let mut seen := 0
+    defer {
+        seen = *value
+    }
+    return seen
+}
+
+fn Bump(counter: ref mut int) void {
+    defer {
+        *counter = *counter + 1
+    }
+}
+
+fn main() int {
+    return 0
+}
+`, 17)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Verify(module); err != nil {
+		t.Fatal(err)
+	}
+	text := Format(module)
+	for _, function := range []string{"main::Field", "main::Star", "main::Bump"} {
+		start := strings.Index(text, `func "`+function)
+		if start < 0 {
+			t.Fatalf("missing %s", function)
 		}
+		body := text[start:]
+		if end := strings.Index(body, "\n  }"); end >= 0 {
+			body = body[:end]
+		}
+		deref := strings.Index(body, "ref.deref-place")
+		register := strings.Index(body, "cleanup.defer-register")
+		if deref < 0 || register < 0 || deref > register || strings.Count(body, "ref.deref-place") != 1 {
+			t.Errorf("%s must dereference its holder once, before registering:\n%s", function, body)
+		}
+	}
+	_, err = analyzedModule(t, ownedLocalSource+"type Acc struct {\n    v: int,\n}\n\nfn Touch(acc: ref mut Acc) void {\n}\n\nfn Use(acc: ref mut Acc) void {\n    defer {\n        Touch(acc)\n    }\n}\n\nfn main() int {\n    return 0\n}\n", 17)
+	// Passing the holder itself on would copy a `ref mut` into the region;
+	// it stays a named boundary.
+	if err == nil || !strings.Contains(err.Error(), "not a resolved capture") {
+		t.Errorf("passing a holder on from a defer body: %v", err)
 	}
 }
 

@@ -24,40 +24,40 @@ integrations:
       race/deadlock analysis, Semantic IR, target profiles, and lowering while
       leaving detailed construct semantics in their specialist rulebooks.
     normative:
-      - "Tasks, threads, processes, ISR execution, and foreign callback contexts remain semantically distinct execution kinds."
-      - "Concurrency does not weaken ownership, borrowing, deterministic destruction, or explicit failure semantics."
-      - "Execution creation is explicit; work is never silently spawned or detached."
-      - "Task creation is fallible and task await always yields TaskOutcome[T]."
-      - "TaskOutcome[T] remains distinct from a task function's own Result[T,E]."
-      - "Boundary transferability is specific to task, thread, process, ISR, and foreign contexts and is not implied by ordinary assignability or bitwise copyability."
-      - "Shared mutable state requires explicit synchronization or another concurrency-safe ownership mechanism."
-      - "Volatile access is not synchronization."
-      - "Ordinary unsynchronized data races are invalid Sec behavior."
-      - "Data-race and deadlock algorithms remain owned by their dedicated analysis rulebooks."
-      - "Semantic IR preserves concurrency meaning without making concurrency.md own concrete opcode names."
-      - "Concurrency lowering consumes validated Semantic IR and immutable CompilationPlan facts rather than compiler-host facts."
-      - "Process-specific design remains outside the umbrella book until its owning process and IPC rulebooks define it."
+      - Tasks, threads, processes, ISR execution, and foreign callback contexts remain semantically distinct execution kinds.
+      - Concurrency does not weaken ownership, borrowing, deterministic destruction, or explicit failure semantics.
+      - Execution creation is explicit; work is never silently spawned or detached.
+      - Task creation is fallible and task await always yields TaskOutcome[T].
+      - TaskOutcome[T] remains distinct from a task function's own Result[T,E].
+      - Boundary transferability is specific to task, thread, process, ISR, and foreign contexts and is not implied by ordinary assignability or bitwise copyability.
+      - Shared mutable state requires explicit synchronization or another concurrency-safe ownership mechanism.
+      - Volatile access is not synchronization.
+      - Ordinary unsynchronized data races are invalid Sec behavior.
+      - Data-race and deadlock algorithms remain owned by their dedicated analysis rulebooks.
+      - Semantic IR preserves concurrency meaning without making concurrency.md own concrete opcode names.
+      - Concurrency lowering consumes validated Semantic IR and immutable CompilationPlan facts rather than compiler-host facts.
+      - Process-specific design remains outside the umbrella book until its owning process and IPC rulebooks define it.
     implementation_evidence:
       existing_frontend_and_governance:
-        - "Existing parser and Sema concurrency coverage is tracked by the specialist governance entries."
-        - "Task and Thread compiler-known type and lifecycle work exists, while specialist rulebooks own detailed coverage."
-        - "Mutex[T], MutexGuard[T], and static storage have existing frontend slices tracked by their specialist entries."
-        - "Transferability, data-race analysis, deadlock analysis, Semantic IR, lowering, platform, and tooling have dedicated governance entries."
-        - "Target-profile governance distinguishes task, scheduler, native-thread, synchronization, atomic, detached-execution, and local-storage capabilities."
+        - Existing parser and Sema concurrency coverage is tracked by the specialist governance entries.
+        - Task and Thread compiler-known type and lifecycle work exists, while specialist rulebooks own detailed coverage.
+        - Mutex[T], MutexGuard[T], and static storage have existing frontend slices tracked by their specialist entries.
+        - Transferability, data-race analysis, deadlock analysis, Semantic IR, lowering, platform, and tooling have dedicated governance entries.
+        - Target-profile governance distinguishes task, scheduler, native-thread, synchronization, atomic, detached-execution, and local-storage capabilities.
       synchronization_debt_resolved_by_rulebook_revision:
-        - "The umbrella no longer presents task creation as infallible or task await as returning T directly."
-        - "Detailed mutex, data-race, deadlock, and Semantic IR inventories were returned to their owning rulebooks."
-        - "Superseded .txt references were removed except for the still-canonical unfinished process rulebook."
-        - "Process details beyond stable cross-boundary invariants were removed."
+        - The umbrella no longer presents task creation as infallible or task await as returning T directly.
+        - Detailed mutex, data-race, deadlock, and Semantic IR inventories were returned to their owning rulebooks.
+        - Superseded .txt references were removed except for the still-canonical unfinished process rulebook.
+        - Process details beyond stable cross-boundary invariants were removed.
     removed_from_normative_book:
-      - "Mutable implementation status and current code or test coverage."
-      - "Direct task-spawn examples that assume infallible Task[T] creation."
-      - "Direct task-await examples that assume await Task[T] yields T."
-      - "Detailed mutex overload design duplicated from mutex.md."
-      - "Ad-hoc race and deadlock algorithms duplicated from their analysis rulebooks."
-      - "Hard-coded Semantic IR opcode inventory duplicated from semantic_ir.md."
-      - "Stale .txt references for rulebooks now using canonical .md paths."
-      - "Process-specific design assertions owned by unfinished process and IPC rulebooks."
+      - Mutable implementation status and current code or test coverage.
+      - Direct task-spawn examples that assume infallible Task[T] creation.
+      - Direct task-await examples that assume await Task[T] yields T.
+      - Detailed mutex overload design duplicated from mutex.md.
+      - Ad-hoc race and deadlock algorithms duplicated from their analysis rulebooks.
+      - Hard-coded Semantic IR opcode inventory duplicated from semantic_ir.md.
+      - Stale .txt references for rulebooks now using canonical .md paths.
+      - Process-specific design assertions owned by unfinished process and IPC rulebooks.
     correction_dependency:
       required: false
       reason: >-
@@ -65,48 +65,302 @@ integrations:
         await cross-rulebook semantics are already tracked by the task-v2
         correction package, so no additional correction document is required.
     implemented:
-      - "Frontend await consumes Task[T] and produces invariant TaskOutcome[T] through canonical shared Sema facts used by compiler and LSP."
-      - "Compiler-known TaskOutcome[T] preserves Completed(T), Cancelled, Panicked(PanicInfo), and Failed(TaskError) without inventing TaskError variants."
-      - "Nested Result return types remain inside TaskOutcome rather than being flattened or reclassified."
-      - "TaskOutcome[void] uses a payload-less Completed variant while retaining the complete outcome union."
-      - "LSP hover displays the same compiler-owned TaskOutcome[T] inferred by Sema."
-      - "The core surface declares TaskOutcome[T] and TaskSpawnError; trusted-core provenance prevents user code from shadowing their compiler-known identities."
+      - Frontend await consumes Task[T] and produces invariant TaskOutcome[T] through canonical shared Sema facts used by compiler and LSP.
+      - Compiler-known TaskOutcome[T] preserves Completed(T), Cancelled, Panicked(PanicInfo), and Failed(TaskError) without inventing TaskError variants.
+      - Nested Result return types remain inside TaskOutcome rather than being flattened or reclassified.
+      - TaskOutcome[void] uses a payload-less Completed variant while retaining the complete outcome union.
+      - LSP hover displays the same compiler-owned TaskOutcome[T] inferred by Sema.
+      - The core surface declares TaskOutcome[T] and TaskSpawnError; trusted-core provenance prevents user code from shadowing their compiler-known identities.
     remaining:
-      - "Synchronize all umbrella-level examples and tests with fallible task creation."
-      - "Complete canonical boundary-transfer validation through frontend.transferability and analysis.transferability."
-      - "Complete data-race and deadlock analysis through their dedicated governance integrations."
-      - "Complete Semantic IR concurrency facts and verification through analysis.semantic-ir-v2 and semantic-ir.transferability."
-      - "Complete lowering/runtime mappings without changing source semantics or relying on compiler-host facts."
-      - "Complete platform/runtime execution-capability resolution through compiler.platform-model and target-profile governance."
-      - "Keep process-specific remaining work separate until processes.md is authored."
+      - Synchronize all umbrella-level examples and tests with fallible task creation.
+      - Complete canonical boundary-transfer validation through frontend.transferability and analysis.transferability.
+      - Complete data-race and deadlock analysis through their dedicated governance integrations.
+      - Complete Semantic IR concurrency facts and verification through analysis.semantic-ir-v2 and semantic-ir.transferability.
+      - Complete lowering/runtime mappings without changing source semantics or relying on compiler-host facts.
+      - Complete platform/runtime execution-capability resolution through compiler.platform-model and target-profile governance.
+      - Keep process-specific remaining work separate until processes.md is authored.
     required_tests:
       - id: execution-kind-distinction
-        expectation: "Task, Thread, process-adapter, ISR, and foreign callback contexts remain semantically distinguishable."
+        expectation: Task, Thread, process-adapter, ISR, and foreign callback contexts remain semantically distinguishable.
       - id: no-implicit-execution
-        expectation: "Ordinary calls never become implicit spawn or detach operations."
+        expectation: Ordinary calls never become implicit spawn or detach operations.
       - id: task-spawn-fallible
-        expectation: "Task creation has type Result[Task[T], TaskSpawnError]."
+        expectation: Task creation has type Result[Task[T], TaskSpawnError].
       - id: task-await-outcome
-        expectation: "await Task[T] yields TaskOutcome[T] without flow-sensitive collapse."
+        expectation: await Task[T] yields TaskOutcome[T] without flow-sensitive collapse.
       - id: nested-task-result
-        expectation: "Task[Result[T,E]] preserves Completed(Err(E)) as normal completion distinct from Failed(TaskError)."
+        expectation: Task[Result[T,E]] preserves Completed(Err(E)) as normal completion distinct from Failed(TaskError).
       - id: move-only-boundary-transfer
-        expectation: "Move-only values cross execution boundaries explicitly and are never silently cloned."
+        expectation: Move-only values cross execution boundaries explicitly and are never silently cloned.
       - id: detached-borrow-rejection
-        expectation: "Detached execution cannot retain a source-scope borrow that may expire."
+        expectation: Detached execution cannot retain a source-scope borrow that may expire.
       - id: task-thread-affinity
-        expectation: "Migratable tasks cannot retain thread-affine state without a canonical proof."
+        expectation: Migratable tasks cannot retain thread-affine state without a canonical proof.
       - id: shared-mutable-requires-sync
-        expectation: "Concurrent shared mutation without synchronization or safe ownership is rejected."
+        expectation: Concurrent shared mutation without synchronization or safe ownership is rejected.
       - id: volatile-not-sync
-        expectation: "Volatile access never satisfies synchronization requirements by itself."
+        expectation: Volatile access never satisfies synchronization requirements by itself.
       - id: mutex-guard-boundary
-        expectation: "MutexGuard restrictions are consumed from mutex.md across suspension and execution boundaries."
+        expectation: MutexGuard restrictions are consumed from mutex.md across suspension and execution boundaries.
       - id: data-race-analysis-owner
-        expectation: "Race findings consume canonical Place and provenance facts from the dedicated analysis."
+        expectation: Race findings consume canonical Place and provenance facts from the dedicated analysis.
       - id: deadlock-analysis-owner
-        expectation: "Deadlock findings consume canonical wait and resource facts from the dedicated analysis."
+        expectation: Deadlock findings consume canonical wait and resource facts from the dedicated analysis.
       - id: semantic-ir-concurrency
-        expectation: "Semantic IR preserves execution kind, transfer, synchronization, completion, cancellation, and outcome facts."
+        expectation: Semantic IR preserves execution kind, transfer, synchronization, completion, cancellation, and outcome facts.
       - id: compilation-plan-concurrency
-        expectation: "Concurrency validation and lowering use selected CompilationPlan facts rather than host facts."
+        expectation: Concurrency validation and lowering use selected CompilationPlan facts rather than host facts.
+
+  - id: concurrency.runtime-model-v1
+    area: concurrency-runtime
+    feature: execution-runtime-realization-boundary
+    status: partial
+    reviewed: "2026-11-13"
+    prepared: "2026-11-13"
+    document_revision: "2.0"
+    repository_baseline: ee75e5d036d6611519a1b34d570bb6778002acfd
+    summary: >-
+      Common target/runtime realization contract for logical tasks, physical
+      threads, isolated Sec-callable processes, completion, waiting, storage,
+      target capability validation, cleanup, and Semantic IR. Public APIs and
+      kind-specific lifecycle remain owned by tasks-v2, thread-v2, processes-v2,
+      cancellation-v2, scheduling-v2, select-v2, and the other specialist
+      integrations. Runtime lowering and target execution support are not
+      implied by frontend syntax or compiler-known type identities.
+    rules:
+      - rules/concurrency/concurrency_runtime_model.md
+      - rules/concurrency/concurrency.md
+      - rules/concurrency/spawn.md
+      - rules/concurrency/tasks.md
+      - rules/concurrency/threads.md
+      - rules/concurrency/processes.md
+      - rules/concurrency/await.md
+      - rules/concurrency/scheduling.md
+      - rules/concurrency/blocking.md
+      - rules/concurrency/cancellation.md
+      - rules/concurrency/select.md
+      - rules/concurrency/channels.md
+      - rules/concurrency/mutex.md
+      - rules/concurrency/atomics.md
+      - rules/concurrency/thread_local.md
+      - rules/concurrency/concurrency_memory_model.md
+      - rules/memory/ownership.md
+      - rules/memory/transferability.md
+      - rules/platform/target_profiles.md
+      - rules/platform/platform_model.md
+      - rules/platform/interrupts.md
+      - rules/compiler/semantic_ir.md
+    code:
+      - internal/ast/ast.go
+      - internal/parser/parser.go
+      - internal/sema/analyzer.go
+      - internal/sema/types.go
+      - sec/core/task.sec
+      - sec/core/error.sec
+    tests:
+      - internal/sema/concurrency_test.go
+      - internal/parser/parser_test.go
+    normative:
+      - >-
+        Tasks, physical threads, and Sec-callable processes have distinct
+        execution kinds and independent target capabilities; unsupported
+        capabilities fail at compile time without silent fallback.
+      - >-
+        Raw spawn results preserve T and use exact kind-specific Result types;
+        post-creation completion and runtime failure domains remain distinct.
+      - >-
+        TaskOutcome[T], Thread[T] terminal members, and Process[T] completion
+        have different owners and must not be flattened into one result API.
+      - >-
+        Physical-thread deferred start is permitted by ThreadStartMode.Deferred;
+        task and Sec-process creation remain eager in Sec 0.1.
+      - >-
+        Main has ThreadContext but no implicit root TaskContext; logical task
+        migration preserves task identity and respects TLS/thread-affine proofs.
+      - >-
+        Target-private execution control/storage may specialize freely only when
+        observable ownership, completion, publication, allocation, and cleanup
+        contracts survive.
+      - >-
+        ThreadStorage(capacity) is the only canonical explicit physical-thread
+        storage API referenced here; TaskStorage[StateSize] is not introduced as
+        a public API.
+      - >-
+        Atomic emulation and physical worker blocking require exact context/plan
+        proofs and cannot silently change ISR, progress, cancellation, or
+        memory-order semantics.
+      - >-
+        Select retains source-order ready-branch priority, one committed branch,
+        and no losing-branch operand consumption.
+      - >-
+        Detach is explicit, kind-specific, and not a universal request to cancel
+        at program shutdown; target lifecycle/reaping remains binding.
+      - >-
+        Error type declarations and closed inventories are owned by the
+        respective tasks, threads, processes, and thread-local rulebooks; no
+        stale central core/errors.sec public contract is imposed.
+      - >-
+        Semantic IR and lowering preserve execution kind, cancellation,
+        ownership commit, completion, source provenance, and CompilationPlan
+        capabilities without inferring semantics from raw backend state.
+    implemented:
+      - >-
+        The compiler frontend recognizes task/thread/process spawn forms,
+        represents distinct execution-kind syntax, and has partial compiler-
+        known task/thread types and ownership checks; supported exact slices are
+        enumerated by the specialist concurrency integrations.
+      - >-
+        Callable and explicitly typed lambda task spawns produce canonical
+        Result[Task[T], TaskSpawnError] in Sema as recorded under
+        concurrency.tasks-v2; block return typing remains undecided in MD-133.
+      - >-
+        ThreadConfig, ThreadStorage, and ThreadSetting frontend/source
+        declarations have implemented validated slices recorded under
+        concurrency.thread-v2; physical backing, runtime lifecycle, and complete
+        thread execution remain separate work.
+      - >-
+        Process execution isolation is retained as a separate semantic kind;
+        unimplemented process-spawn realization is explicitly rejected rather
+        than downgraded to task/thread execution.
+      - Normative runtime-model revision 2.0 and companion governance integrated on 2026-11-13, preserving all 29 chapters and 109 existing paragraph IDs; three paragraphs added. This is documentation synchronization, not additional runtime implementation.
+    remaining:
+      - >-
+        Validate complete target/runtime capabilities using immutable
+        CompilationPlan facts for all source-visible execution kinds and
+        context-sensitive waits, including absence of hidden host fallback.
+      - >-
+        Complete target/runtime task creation, runtime terminal outcome
+        production, scheduler and resource-bound allocation policy without
+        changing fallible task Result or TaskOutcome types.
+      - >-
+        Complete native thread eager/deferred start, join, detach, native
+        terminal state, backing ThreadStorage borrow/cleanup, TLS attachment,
+        and physical-context propagation through the applicable specialists.
+      - >-
+        Complete isolated process startup adapters, transactional transport,
+        process completion payload/reaping, observation and detach via the
+        processes/IPC specialists; do not treat ordinary parent memory as child
+        storage.
+      - >-
+        Implement task suspension/physical thread waiting with accurate blocking
+        and cancellation first-commit behavior under each supported profile and
+        ensure Task.Yield/Thread.Yield remain distinct.
+      - >-
+        Provide exact readiness registration, source-order selection,
+        losing-branch rollback, cancellation wakeup, and completion
+        synchronization for all supported waitable operations.
+      - >-
+        Validate atomic operation realization, widths, memory orders,
+        interrupt-context compatibility, and admissible target emulation;
+        exclude hidden blocking fallbacks without proof.
+      - >-
+        Complete detached lifecycle cleanup/shutdown/reaping policies with
+        explicit target-capability requirements and without automatic
+        cancellation or invented source-level owners.
+      - >-
+        Complete Semantic IR facts, verifier contracts, target lowering,
+        diagnostics and LSP presentation of runtime capability failures and
+        preservation of source ownership/cancellation/completion semantics.
+      - >-
+        Resolve the previously opened MD-128 and MD-129 before claiming
+        universal task/thread failure-transfer or already-cancelled-parent
+        semantics; resolve MD-133 before supporting return-typed spawn blocks.
+    required_tests:
+      - id: runtime-kind-distinction
+        expectation: >-
+          Task, Thread, Process remain distinct even when a platform realizes
+          tasks using native physical threads.
+      - id: runtime-spawn-types
+        expectation: >-
+          Raw spawn returns exact Result[Task[T], TaskSpawnError],
+          Result[Thread[T], ThreadSpawnError], or Result[Process[T],
+          ProcessSpawnError], preserving nested T.
+      - id: runtime-no-capability-fallback
+        expectation: >-
+          Unsupported selected target capabilities yield compile-time errors,
+          not an unrelated runtime error or silent execution-kind fallback.
+      - id: runtime-main-thread-not-task
+        expectation: >-
+          Program main has ThreadContext and no implicit TaskContext.
+      - id: runtime-thread-deferred
+        expectation: >-
+          Deferred thread callable never executes before successful Start
+          commit; startup and state remain thread-specific.
+      - id: runtime-static-storage
+        expectation: >-
+          ThreadStorage is non-generic with compile-time capacity; explicit
+          backing is not silently replaced by dynamic allocation or a public
+          TaskStorage type.
+      - id: runtime-terminal-distinction
+        expectation: >-
+          TaskOutcome, Thread post-join states and Process completion preserve
+          exact kind-specific error/panic/cancel/normal-terminal distinctions.
+      - id: runtime-process-error-inventory
+        expectation: >-
+          ProcessSpawnError has exactly the closed variants from processes.md,
+          excluding removed ExecutableNotFound and InvalidConfiguration.
+      - id: runtime-select-commit
+        expectation: >-
+          Only one branch commits, multiple ready branches honor source order,
+          and losing branches leave their operands unconsumed.
+      - id: runtime-tls-attachment
+        expectation: >-
+          TLS identity follows the physical thread; foreign attachment does not
+          fabricate task identity or run lazy user factories eagerly.
+      - id: runtime-atomic-emulation
+        expectation: >-
+          Target atomics reject unproven width/order/context and never gain an
+          implicit blocking or ISR-unsafe fallback.
+      - id: runtime-detach-shutdown
+        expectation: >-
+          Detach transfers cleanup authority without universally requesting
+          shutdown cancellation or fabricating a completion synchronization
+          edge.
+      - id: runtime-isr-validation
+        expectation: >-
+          All reachable ISR operations and generated helpers satisfy exact
+          noAlloc/noBlock/noPanic/progress/platform proof obligations.
+      - id: runtime-ir-lowering
+        expectation: >-
+          Semantic IR preserves capability, kind, owned transfer, first-commit,
+          terminal state, and memory publication until checked target lowering.
+    decision_dependencies:
+      - id: MD-128
+        subject: task-and-thread-creation-failure-ownership
+        status: open
+      - id: MD-129
+        subject: spawn-from-already-cancelled-parent
+        status: open
+      - id: MD-133
+        subject: task-spawn-block-return-type
+        status: open
+    governance_reconciliation:
+      - >-
+        The old runtime-model §1 implementation inventory is withdrawn from the
+        normative book. Historical evidence is not automatically promoted to
+        currently implemented status; specialist governance remains the source
+        of truth for each executable feature.
+      - >-
+        This integration covers only cross-kind target/runtime obligations; it
+        does not duplicate specialist task/thread/process integration IDs or
+        rename any existing governance entry.
+      - >-
+        Keep this integration inside governance/concurrency_model.yaml, whose
+        path already exists in governance/index.yaml; do not register this merge
+        supplement as a separate fragment.
+    verification_notes:
+      - >-
+        Prepared by normative source comparison against Git main on 2026-11-13.
+        No compiler tests were executed for this correction; integration must
+        verify the listed contracts and record actual results.
+      - "Integration verification on 2026-11-13: focused existing parser, Sema, compiler and LSP tests passed. These regression checks do not establish runtime conformance or settle the event handler payload decision."
+    revised: "2026-11-13"
+    corrections_applied:
+      - rules/corrections/applied/concurrency-runtime-model-normative-fix-20261113-20261113.md
+    governance_inputs:
+      - rules/corrections/applied/concurrency-runtime-model-governance-merge-20261113-20261113.yaml
+    verification:
+      - command: go test -p 4 ./cmd/compiler ./cmd/lsp -run 'TestBlockingHover|TestThreadConfigLSP|TestTaskSpawnResult|TestTaskFailureDomainDiagnostics|TestSpawnGrammar|TestNamedThreadConfiguration' -count=1 -timeout=120s
+        result: PASS on 2026-11-13; existing concurrency tooling regression subset only.
+      - command: go test -p 4 ./internal/parser ./internal/sema -run 'Event|Subscription|Spawn|Task|Thread|Select|Atomic|ISR|NoBlock|Blocking' -count=1 -timeout=120s
+        result: PASS on 2026-11-13; existing frontend regression subset only, not runtime conformance.

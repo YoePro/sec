@@ -67,6 +67,9 @@ type CleanupFacts struct {
 type Region struct {
 	Entry  BlockID
 	Blocks []*Block
+	// Loops are the loop records of loops inside the region, numbered in
+	// the region as its own invocation (defer.md § 10).
+	Loops []LoopRecord
 }
 
 // verifyCleanupOperation checks one cleanup.* operation's local contract.
@@ -234,7 +237,7 @@ func verifyDeferRegion(module *Module, fn *Function, op Operation, functions map
 		}
 	}
 	// The isolated body: entry parameters become the body's inputs.
-	body := &Function{ID: fn.ID + "#defer", Name: fn.Name, ReturnType: fn.ReturnType, Entry: region.Entry, Location: fn.Location, Storages: fn.Storages}
+	body := &Function{ID: fn.ID + "#defer", Name: fn.Name, ReturnType: fn.ReturnType, Entry: region.Entry, Location: fn.Location, Storages: fn.Storages, Loops: region.Loops}
 	for _, block := range region.Blocks {
 		copied := *block
 		if block.ID == region.Entry {

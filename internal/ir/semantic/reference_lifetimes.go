@@ -31,7 +31,7 @@ func sliceHolderAliasIDs(ended ValueID, fn *Function, blocks map[BlockID]*Block,
 				if len(op.Operands) == 1 && len(op.Results) == 1 {
 					graph[op.Operands[0]] = append(graph[op.Operands[0]], edge{value: op.Results[0].ID, derived: true})
 				}
-			case OpSliceElementPlace, OpReferenceDerefPlace, OpPlaceField, OpPlaceArrayElement, OpPlaceUnionPayload:
+			case OpSliceElementPlace, OpReferenceDerefPlace, OpPlaceField, OpPlaceArrayElement, OpPlaceUnionPayload, OpDynamicArrayElementPlace:
 				if len(op.Operands) != 0 && len(op.Results) == 1 {
 					graph[op.Operands[0]] = append(graph[op.Operands[0]], edge{value: op.Results[0].ID})
 				}

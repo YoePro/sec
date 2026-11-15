@@ -44,7 +44,11 @@ func (fb *functionBuilder) membershipScalarEquality(left, right builtValue, bool
 		fb.current = merge
 		return builtValue{id: result.ID, typ: boolean}
 	}
-	return fb.result(Operation{Kind: kind, IntegerCompare: IntegerCompareEQ, Operands: []ValueID{left.id, right.id}, Operator: "==", Location: loc}, boolean)
+	op := Operation{Kind: kind, IntegerCompare: IntegerCompareEQ, Operands: []ValueID{left.id, right.id}, Operator: "==", Location: loc}
+	if kind == OpFloatCompare {
+		op.FloatSemantics = resolvedFloatSemantics(fb.owner.module.Types, left.typ, op)
+	}
+	return fb.result(op, boolean)
 }
 
 // buildSequenceMembership builds constant-size search CFG over a long fixed

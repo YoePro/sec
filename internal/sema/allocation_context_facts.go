@@ -56,6 +56,18 @@ func (a *Analyzer) AllocationContextFacts() []AllocationContextFact {
 			contexts[key] = plan.Allocation.Context
 		}
 	}
+	// A dynamic-array allocation plan names the context its growth consumes
+	// (package18 §§ 56–57).
+	for _, plan := range a.allocationOperationPlans {
+		if !plan.MayAllocate {
+			continue
+		}
+		key := sourceTokenLocation(plan.Source)
+		if previous, exists := contexts[key]; exists && previous != plan.Context {
+			ambiguousContexts[key] = true
+		}
+		contexts[key] = plan.Context
+	}
 	// A Result's success type preserves the frontend's selected Arena domain.
 	// Constructors instead preserve the domain of the Arena they create.
 	type domains struct{ selected, created string }

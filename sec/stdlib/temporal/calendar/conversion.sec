@@ -1,93 +1,633 @@
 module calendar
 
 /*
- * Sec Standard Library — temporal API scaffold
- * Canonical path: stdlib/temporal/calendar/conversion.sec
- * Module: calendar
- * Purpose: Stateless conversions between core date and calendar coordinates.
- * Status: Draft API, NOT IMPLEMENTED, not compiler-verified
- * Revision: 0.1
- * Updated: 2026-10-16
- * Governing rulebook: stdlib/temporal/calendar/std-temporal-calendar.md
- * Standards / dependencies: Sec std-temporal.md
- * NOTE: Stub results are explicit NotImplemented failures. No successful
- *       behavior is claimed by this file.
+ * Sec Standard Library — temporal/calendar
+ * File: calendar/conversion.sec
+ * Purpose: Pure conversion and stable-month/ordinal queries.
+ * Status: Draft candidate API v0.2; NOT IMPLEMENTED, not compiler-verified
+ * Revision: 0.2
+ * Updated: 2026-11-15
+ * Rulebook: stdlib/temporal/calendar/std-temporal-calendar.md
+ * References: rules/types/temporal.md; rules/types/units.md;
+ *             UTS #35, calendar month codes (conceptual reference).
  */
 
 /**
- * Projects an absolute core date onto the selected calendar system.
+ * Projects an absolute date into a calendar system.
  *
  * Description:
- *   Does not use timezones, historical adoption profiles or locale.
+ * Converts a serial epoch day to Gregorian or Julian
+ * calendar coordinates. Uses astronomical year numbering.
+ * Does not apply historical jurisdiction-specific rules.
+ *
  * Parameters:
- *   - value: Unzoned absolute core day.
- *   - system: Explicit calendar system.
+ * - value: Absolute core date.
+ * - system: Target calendar system.
+ *
  * Returns:
- *   Calendar-specific year, month and day; no owning heap allocation required.
+ * Calendar-specific year, month and day.
+ *
  * Errors:
- *   - CalendarError.NotImplemented: Scaffold only.
- *   - CalendarError.OutOfRange: Calendar coordinates cannot be represented.
- * Ownership: Pure value conversion, no I/O.
- * Standards: Calendar-specific algorithms; see child rulebook.
+ * - CalendarError.OutOfRange: Coordinates cannot
+ *     be represented by the public field types.
+ * - CalendarError.NotImplemented: Calendar conversion
+ *     is not yet implemented for the selected system.
+ *
+ * Ownership:
+ * Pure calculation without allocation or I/O.
  */
 fn FromDate(value: date, system: CalendarSystem) Result[CalendarFields, CalendarError] {
-    return Err(CalendarError.NotImplemented)
+    let mut z := int64(value.EpochDays)
+    let mut year:      int64 := 0
+    let mut dayOfYear: int64 := 0
+
+    match system {
+        CalendarSystem.Gregorian => {
+            // Align the epoch with the Gregorian era.
+            z += 719468
+
+            let era       := _floorDiv(z, 146097)
+            let dayOfEra  := z - era * 146097
+            let yearOfEra := (dayOfEra - dayOfEra / 1460 + dayOfEra / 36524 - dayOfEra / 146096) / 365
+
+            year = yearOfEra + era * 400
+
+            dayOfYear = dayOfEra - (365 * yearOfEra + yearOfEra / 4 - yearOfEra / 100)
+        }
+
+        CalendarSystem.Julian => {
+            // Align the epoch with the Julian era.
+            z += 719470
+
+            let era       := _floorDiv(z, 1461)
+            let dayOfEra  := z - era * 1461
+            let yearOfEra := (dayOfEra - dayOfEra / 1460) / 365
+
+            year = yearOfEra + era * 4
+            dayOfYear = dayOfEra - 365 * yearOfEra
+        }
+
+        _ => {
+            return Err(CalendarError.NotImplemented)
+        }
+    }
+
+    // Recover month and day from the March-based year.
+    let monthIndex := (5 * dayOfYear + 2) / 153
+    let day        := dayOfYear - (153 * monthIndex + 2) / 5 + 1
+    let mut month  := monthIndex + 3
+
+    if monthIndex >= 10 {
+        month = monthIndex - 9
+    }
+
+    // January and February belong to the following year.
+    if month <= 2 {
+        year += 1
+    }
+
+    let resultYear := try int(year) {
+        Err(_) => return Err(CalendarError.OutOfRange)
+    }
+
+    return Ok(CalendarFields {
+        Year: resultYear,
+        Month: CalendarMonth {
+            Number: int(month),
+            IsLeap: false,
+        },
+        Day: int(day),
+    })
 }
 
 /**
- * Converts validated calendar coordinates into a core absolute day.
- * Description: Never assumes historical local civil adoption or timezone.
+ * Converts calendar coordinates to an absolute core date.
+ *
+ * Description:
+ * Supports proleptic Gregorian and Julian calendars.
+ * Uses astronomical year numbering, including year zero.
+ * Does not apply historical calendar adoption rules.
+ *
  * Parameters:
- *   - fields: Calendar coordinate tuple.
- *   - system: Explicit calendar system.
- * Returns: Core absolute day matching the selected calendar system.
+ * - fields: Calendar-specific year, month and day.
+ * - system: Calendar system used for interpretation.
+ *
+ * Returns:
+ * Absolute date preserving the represented calendar day.
+ *
  * Errors:
- *   - CalendarError.NotImplemented: Scaffold only.
- *   - CalendarError.InvalidMonth: Illegal calendar-month identity.
- *   - CalendarError.InvalidDay: Illegal day within the month.
- *   - CalendarError.OutOfRange: Result not representable by core date.
- * Ownership: Pure value conversion; no I/O or string allocation.
+ * - CalendarError.InvalidMonth: Invalid month identity.
+ * - CalendarError.InvalidDay: Invalid day of month.
+ * - CalendarError.OutOfRange: Unrepresentable date.
+ * - CalendarError.NotImplemented: Calendar conversion
+ *     is not yet implemented for the selected system.
+ *
+ * Ownership:
+ * Pure calculation without allocation or I/O.
  */
 fn ToDate(fields: CalendarFields, system: CalendarSystem) Result[date, CalendarError] {
-    return Err(CalendarError.NotImplemented)
+    // Only Gregorian and Julian conversion is implemented.
+    if system not in [CalendarSystem.Gregorian, CalendarSystem.Julian] {
+        return Err(CalendarError.NotImplemented)
+    }
+
+    // Validate the complete calendar date.
+    let month  := try MonthOrdinal(fields.Year, fields.Month, system)
+    let maxDay := try DaysInMonth(fields.Year, fields.Month, system)
+
+    if fields.Day not in 1..maxDay {
+        return Err(CalendarError.InvalidDay)
+    }
+
+    // TODO: This is a bug. This is correct bur gives
+    /* Error: try requires Result expression, Option expression, or a language-defined runtime check such as checked arithmetic, indexing, or a constrained conversion; int64(fields.Year) contains none */
+    let mut year := try int64(fields.Year) {
+        Err(_) => return Err(CalendarError.OutOfRange)
+    }
+
+    // All dates representable by core date fall within
+    // these bounds. Reject larger years before arithmetic.
+    if year < -6_000_000 || year > 6_000_000 {
+        return Err(CalendarError.OutOfRange)
+    }
+
+    let m := int64(month)
+    let d := int64(fields.Day)
+
+    // Use March as the first month internally.
+    // February becomes the final month of the prior year.
+    if m <= 2 {
+        year -= 1
+    }
+
+    let mut mp := m - 3
+
+    if m <= 2 {
+        mp = m + 9
+    }
+
+    // Day position in the March-based year.
+    let dayOfYear := (153 * mp + 2) / 5 + d - 1
+
+    let mut epochDays: int64 := 0
+
+    match system {
+        CalendarSystem.Gregorian => {
+            // Gregorian calendar repeats every 400 years.
+            let era       := _floorDiv(year, 400)
+            let yearOfEra := year - era * 400
+            let dayOfEra  := yearOfEra * 365 + yearOfEra / 4 - yearOfEra / 100 + dayOfYear
+
+            epochDays = era * 146097 + dayOfEra - 719468
+        }
+
+        CalendarSystem.Julian => {
+            // Julian calendar repeats every four years.
+            let era       := _floorDiv(year, 4)
+            let yearOfEra := year - era * 4
+            let dayOfEra  := yearOfEra * 365 + dayOfYear
+
+            epochDays = era * 1461 + dayOfEra - 719470
+        }
+
+        _ => {
+            return Err(CalendarError.NotImplemented)
+        }
+    }
+
+    // Core date uses a signed 32-bit epoch-day count.
+    let checkedDays := try int32(epochDays) {
+        Err(_) => return Err(CalendarError.OutOfRange)
+    }
+
+    return Ok(new date(checkedDays))
 }
 
 /**
- * Validates a full coordinate tuple against the selected calendar.
+ * Validates complete calendar date coordinates.
+ *
+ * Description:
+ * Verifies that the year and month form a valid calendar
+ * combination and that the day exists within that month.
+ * Does not apply historical calendar adoption rules.
+ *
  * Parameters:
- *   - fields: Calendar coordinate tuple.
- *   - system: Explicit calendar system.
- * Returns: Ok(void) only when all components are meaningful together.
- * Errors: CalendarError.NotImplemented, InvalidMonth, InvalidDay, OutOfRange.
- * Ownership: Pure operation.
+ * - fields: Calendar year, month and day.
+ * - system: Calendar system used for validation.
+ *
+ * Returns:
+ * Ok() when all calendar components are valid.
+ *
+ * Errors:
+ * - CalendarError.InvalidYear: Invalid calendar year.
+ * - CalendarError.InvalidMonth: Invalid month identity.
+ * - CalendarError.InvalidDay: Day outside the month.
+ * - CalendarError.NotImplemented: Calendar rules incomplete.
+ * - CalendarError.OutOfRange: Unsupported calculation range.
+ *
+ * Ownership:
+ * Pure validation without allocation or I/O.
  */
 fn ValidateFields(fields: CalendarFields, system: CalendarSystem) Result[void, CalendarError] {
-    return Err(CalendarError.NotImplemented)
+    // DaysInMonth also validates the year and month identity.
+    let maxDay := try DaysInMonth(fields.Year, fields.Month, system)
+
+    // A valid day must exist within the selected calendar month.
+    if fields.Day not in 1..maxDay {
+        return Err(CalendarError.InvalidDay)
+    }
+
+    return Ok()
 }
 
 /**
- * Returns the number of months in the chosen year.
+ * Returns the number of months in a calendar year.
+ *
+ * Description:
+ * Gregorian and Julian years always contain twelve months.
+ * Hebrew years use the fixed 19-year lunisolar cycle.
+ * Tabular Islamic years always contain twelve months.
+ *
  * Parameters:
- *   - year: Year in the selected calendar's numbering system.
- *   - system: Calendar system.
- * Returns: Count including inserted months, when present.
- * Errors: CalendarError.NotImplemented, OutOfRange, UnsupportedSystem.
- * Ownership: Pure operation.
+ * - year: Calendar year in the selected system.
+ * - system: Calendar system used for the calculation.
+ *
+ * Returns:
+ * Number of months, including intercalary months.
+ *
+ * Errors:
+ * - CalendarError.InvalidYear: Invalid year for the system.
+ *
+ * Ownership:
+ * Pure calculation, no allocation or I/O.
  */
 fn MonthsInYear(year: int, system: CalendarSystem) Result[int, CalendarError] {
-    return Err(CalendarError.NotImplemented)
+    match system {
+        CalendarSystem.Gregorian => {
+            return Ok(12)
+        }
+
+        CalendarSystem.Julian => {
+            return Ok(12)
+        }
+
+        CalendarSystem.Hebrew => {
+            if year < 1 {
+                return Err(CalendarError.InvalidYear)
+            }
+
+            let cycleYear := year % 19
+
+            if cycleYear in [0, 3, 6, 8, 11, 14, 17] {
+                return Ok(13)
+            }
+
+            return Ok(12)
+        }
+
+        CalendarSystem.IslamicTabular => {
+            if year < 1 {
+                return Err(CalendarError.InvalidYear)
+            }
+
+            return Ok(12)
+        }
+    }
 }
 
 /**
- * Returns valid days in a specific calendar month of a given year.
+ * Returns the number of days in a calendar month.
+ *
+ * Description:
+ * Applies calendar-specific month lengths and leap rules.
+ * Hebrew Heshvan and Kislev depend on total year length.
+ * Islamic tabular month 12 awaits a selected leap scheme.
+ *
  * Parameters:
- *   - year: Calendar-specific year.
- *   - month: Month with explicit leap-month flag.
- *   - system: Calendar system.
- * Returns: Day count.
- * Errors: CalendarError.NotImplemented, InvalidMonth, OutOfRange.
- * Ownership: Pure operation.
+ * - year: Year in the selected calendar system.
+ * - month: Stable calendar month identity.
+ * - system: Calendar system defining the month rules.
+ *
+ * Returns:
+ * Number of days in the selected month.
+ *
+ * Errors:
+ * - CalendarError.InvalidYear: Invalid calendar year.
+ * - CalendarError.InvalidMonth: Invalid month identity.
+ * - CalendarError.OutOfRange: Unsupported calculation range.
+ * - CalendarError.NotImplemented: Unspecified Islamic
+ *     tabular leap-year variant for month 12.
+ *
+ * Ownership:
+ * Pure calculation without allocation or I/O.
  */
 fn DaysInMonth(year: int, month: CalendarMonth, system: CalendarSystem) Result[int, CalendarError] {
-    return Err(CalendarError.NotImplemented)
+    // Validate the month identity against the selected year.
+    let ordinal := try MonthOrdinal(year, month, system)
+
+    match system {
+        CalendarSystem.Gregorian => {
+            if ordinal == 2 {
+                let leap := year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)
+
+                if leap {
+                    return Ok(29)
+                }
+
+                return Ok(28)
+            }
+
+            if ordinal in [4, 6, 9, 11] {
+                return Ok(30)
+            }
+
+            return Ok(31)
+        }
+
+        CalendarSystem.Julian => {
+            if ordinal == 2 {
+                if year % 4 == 0 {
+                    return Ok(29)
+                }
+
+                return Ok(28)
+            }
+
+            if ordinal in [4, 6, 9, 11] {
+                return Ok(30)
+            }
+
+            return Ok(31)
+        }
+
+        CalendarSystem.Hebrew => {
+            // Bound intermediate calculations to the supported
+            // integer domain of this initial implementation.
+            if year > 10_000_000 {
+                return Err(CalendarError.OutOfRange)
+            }
+
+            // Adar I exists only in leap years and has 30 days.
+            // MonthOrdinal already validated this identity.
+            if month.IsLeap {
+                return Ok(30)
+            }
+
+            // Heshvan and Kislev depend on the year's total length.
+            if month.Number in [2, 3] {
+                let y    := int64(year)
+                let days := _hebrewNewYear(y + 1) - _hebrewNewYear(y)
+
+                // Heshvan has 30 days in complete years.
+                if month.Number == 2 {
+                    if days in [355, 385] {
+                        return Ok(30)
+                    }
+
+                    return Ok(29)
+                }
+
+                // Kislev has 29 days in deficient years.
+                if days in [353, 383] {
+                    return Ok(29)
+                }
+
+                return Ok(30)
+            }
+
+            // Fixed 29-day months in the Hebrew calendar.
+            if month.Number in [4, 6, 8, 10, 12] {
+                return Ok(29)
+            }
+
+            // Tishri, Shevat, Nisan, Sivan and Av.
+            return Ok(30)
+        }
+
+        CalendarSystem.IslamicTabular => {
+            // Month 12 depends on the selected leap-year scheme.
+            // Do not silently choose one before it is specified.
+            if ordinal == 12 {
+                return Err(CalendarError.NotImplemented)
+            }
+
+            // Odd months have 30 days; even months have 29.
+            if ordinal % 2 == 0 {
+                return Ok(29)
+            }
+
+            return Ok(30)
+        }
+
+        _ => {
+            return Err(CalendarError.UnsupportedSystem)
+        }
+    }
+}
+
+/**
+ * Returns the stable identity of a month at a given position.
+ *
+ * Description:
+ * Ordinals are one-based. Hebrew leap years insert Adar I
+ * at ordinal 6, shifting Adar II and later months forward.
+ * The returned month identity remains stable across years.
+ *
+ * Parameters:
+ * - year: Year in the selected calendar system.
+ * - ordinal: One-based month position within the year.
+ * - system: Calendar system defining month order.
+ *
+ * Returns:
+ * Stable calendar month identity.
+ *
+ * Errors:
+ * - CalendarError.InvalidYear: Invalid calendar year.
+ * - CalendarError.InvalidMonth: Ordinal outside the year.
+ *
+ * Ownership:
+ * Pure calculation without allocation or I/O.
+ */
+fn MonthAt(year: int, ordinal: int, system: CalendarSystem) Result[CalendarMonth, CalendarError] {
+    let count := try MonthsInYear(year, system)
+
+    if ordinal < 1 || ordinal > count {
+        return Err(CalendarError.InvalidMonth)
+    }
+
+    if system == CalendarSystem.Hebrew && count == 13 {
+        if ordinal == 6 {
+            return Ok(CalendarMonth {
+                Number: 5,
+                IsLeap: true,
+            })
+        }
+
+        if ordinal > 6 {
+            return Ok(CalendarMonth {
+                Number: ordinal - 1,
+                IsLeap: false,
+            })
+        }
+    }
+
+    return Ok(CalendarMonth {
+        Number: ordinal,
+        IsLeap: false,
+    })
+}
+
+/**
+ * Returns a calendar month's ordinal position within a year.
+ *
+ * Description:
+ * Converts a stable month identity into its one-based
+ * position in the selected year. Hebrew leap years shift
+ * Adar II and subsequent months by one position.
+ *
+ * Parameters:
+ * - year: Year in the selected calendar system.
+ * - month: Stable month identity.
+ * - system: Calendar system defining month order.
+ *
+ * Returns:
+ * One-based month ordinal.
+ *
+ * Errors:
+ * - CalendarError.InvalidYear: Invalid calendar year.
+ * - CalendarError.InvalidMonth: Month identity is not
+ *     present or valid in the selected year.
+ *
+ * Ownership:
+ * Pure calculation without allocation or I/O.
+ */
+fn MonthOrdinal(year: int, month: CalendarMonth, system: CalendarSystem) Result[int, CalendarError] {
+    let count := try MonthsInYear(year, system)
+
+    // Month identities range from 1 to 12, regardless of whether
+    // the calendar year contains an additional leap month.
+    if month.Number not in 1..12 {
+        return Err(CalendarError.InvalidMonth)
+    }
+
+    if month.IsLeap {
+        // Only the Hebrew calendar supports a leap month in our
+        // current model, and only in years containing 13 months.
+        // Adar I is represented by the stable identity M05L.
+        if system != CalendarSystem.Hebrew || count != 13 || month.Number != 5 {
+            return Err(CalendarError.InvalidMonth)
+        }
+
+        // Adar I occupies the sixth position in a Hebrew leap year.
+        return Ok(6)
+    }
+
+    // In Hebrew calendar leap years, Adar I occupies position 6.
+    // All subsequent months (M06–M12) therefore have their
+    // ordinal positions shifted forward by one.
+    if system == CalendarSystem.Hebrew && count == 13 && month.Number >= 6 {
+        return Ok(month.Number + 1)
+    }
+
+    return Ok(month.Number)
+}
+
+/**
+ * Calculates elapsed days to the provisional Hebrew new year.
+ *
+ * Description:
+ * Uses the fixed Hebrew calendar's 19-year Metonic cycle
+ * and mean lunar conjunction calculation.
+ * Applies the weekday postponement rule.
+ *
+ * Parameters:
+ * - year: Positive Hebrew AM year.
+ *
+ * Returns:
+ * Elapsed day count before final new-year corrections.
+ *
+ * Ownership:
+ * Pure integer arithmetic without allocation or I/O.
+ */
+fn _hebrewElapsedDays(year: int64) int64 {
+    // Number of lunar months preceding Tishri of this year.
+    let months := (235 * year - 234) / 19
+
+    // Compute elapsed days and fractional day parts.
+    // Each day contains 25,920 traditional parts.
+    let parts := 12084 + 13753 * months
+    let days  := 29 * months + parts / 25920
+
+    // Apply the first weekday postponement.
+    if (3 * (days + 1)) % 7 < 3 {
+        return days + 1
+    }
+
+    return days
+}
+
+/**
+ * Calculates the adjusted beginning of a Hebrew year.
+ *
+ * Description:
+ * Applies the additional postponement rules that
+ * prevent invalid Hebrew calendar year lengths.
+ *
+ * Parameters:
+ * - year: Positive Hebrew AM year.
+ *
+ * Returns:
+ * Adjusted elapsed day count for Tishri 1.
+ *
+ * Ownership:
+ * Pure calculation without allocation or I/O.
+ */
+fn _hebrewNewYear(year: int64) int64 {
+    let current := _hebrewElapsedDays(year)
+    let next    := _hebrewElapsedDays(year + 1)
+
+    // Prevent a year of 356 days.
+    if next - current == 356 {
+        return current + 2
+    }
+
+    // Prevent a year of 382 days.
+    // The preceding year is only needed after AM year 1.
+    if year > 1 {
+        let previous := _hebrewElapsedDays(year - 1)
+
+        if current - previous == 382 {
+            return current + 1
+        }
+    }
+
+    return current
+}
+
+/**
+ * Divides two integers, rounding toward negative infinity.
+ *
+ * Description:
+ * Unlike Sec's ordinary integer division, negative
+ * non-integral quotients are rounded downward.
+ * The divisor must be strictly positive.
+ *
+ * Parameters:
+ * - value: Signed dividend.
+ * - divisor: Strictly positive divisor.
+ *
+ * Returns:
+ * Mathematical floor of value / divisor.
+ *
+ * Ownership:
+ * Pure calculation without allocation.
+ */
+fn _floorDiv(value: int64, divisor: int64) int64 {
+    let mut quotient := value / divisor
+
+    if value % divisor < 0 {
+        quotient -= 1
+    }
+
+    return quotient
 }

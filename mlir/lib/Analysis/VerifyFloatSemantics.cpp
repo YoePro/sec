@@ -79,6 +79,53 @@ LogicalResult verifyClamp(sec::FloatClampCheckedOp clamp) {
   return success();
 }
 
+// Check optional serialized P20 facts against the operation's actual scalar
+// and predicate. Older schema-11 fixtures may omit facts and retain strict
+// operation semantics; contradictory explicit facts must never be ignored.
+// Rules: rules/mlir/packages/sec-mlir-dialect_package20.md — §§18,64–69,74–76,81.
+LogicalResult verifyExplicitFloatFacts(Operation *op) {
+  Type scalar = op->getNumOperands() ? op->getOperand(0).getType()
+                                   : op->getResult(0).getType();
+  auto format = op->getAttrOfType<IntegerAttr>("sec.float_format");
+  if (op->hasAttr("sec.float_format")) {
+    if (!format || (format.getInt() != 0 && format.getInt() != 32 && format.getInt() != 64))
+      return op->emitOpError("invalid explicit float format fact");
+    if (auto native = dyn_cast<mlir::FloatType>(scalar))
+      if (format.getInt() != native.getWidth())
+        return op->emitOpError("float format fact disagrees with scalar type");
+  }
+  if (op->hasAttr("sec.float_source_scalar")) {
+    auto source = op->getAttrOfType<StringAttr>("sec.float_source_scalar");
+    if (!source || (source.getValue() != "float" && source.getValue() != "float32" && source.getValue() != "float64"))
+      return op->emitOpError("invalid float source scalar fact");
+    unsigned width = source.getValue() == "float32" ? 32 : source.getValue() == "float64" ? 64 : 0;
+    if (width) {
+      if (isa<sec::FloatType>(scalar))
+        return op->emitOpError("float source scalar fact loses platform scalar identity");
+      if (auto native = dyn_cast<mlir::FloatType>(scalar))
+        if (native.getWidth() != width)
+          return op->emitOpError("float source scalar fact disagrees with scalar type");
+      if (format && format.getInt() != width)
+        return op->emitOpError("float source scalar fact disagrees with format fact");
+    }
+  }
+  if (op->hasAttr("sec.comparison_predicate")) {
+    auto compare = dyn_cast<sec::FloatCmpOp>(op);
+    auto predicate = op->getAttrOfType<StringAttr>("sec.comparison_predicate");
+    if (!compare || !predicate)
+      return op->emitOpError("invalid explicit float comparison predicate fact");
+    std::string expected = compare.getPredicate() == "ne" ? "une" : ("o" + compare.getPredicate()).str();
+    if (predicate.getValue() != expected)
+      return op->emitOpError("float comparison predicate fact disagrees with source predicate");
+  }
+  if (op->hasAttr("sec.remainder_kind")) {
+    auto binary = dyn_cast<sec::FloatBinaryOp>(op);
+    if (!binary || binary.getKind() != "rem")
+      return op->emitOpError("remainder fact requires float rem operation");
+  }
+  return success();
+}
+
 // Run registered operation verifiers as well as the cross-operation policy
 // checks. This P20 boundary requires canonical constant bits; historical
 // lexeme-only constants can still round-trip through the dialect itself.
@@ -90,7 +137,8 @@ LogicalResult verifyFloats(ModuleOp module) {
             sec::FloatCmpOp, sec::FloatAbsOp, sec::FloatMinimumOp,
             sec::FloatMaximumOp, sec::FloatClassifyOp, sec::FloatRoundOp,
             sec::FloatPropertyOp, sec::FloatClampCheckedOp>(op)) {
-      if (failed(verify(op, false))) return WalkResult::interrupt();
+      if (failed(verify(op, false)) || failed(verifyExplicitFloatFacts(op)))
+        return WalkResult::interrupt();
       if (auto constant = dyn_cast<sec::ConstFloatOp>(op)) {
         if (!constant.getBitsAttr()) {
           constant.emitOpError("P20 float constants require canonical bits");

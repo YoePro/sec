@@ -42,3 +42,196 @@ integrations:
         result: passed on 2026-11-10; zero errors and zero warnings.
       - command: go test ./cmd/lsp -run "TestBlockingHover|TestAttributeHover|TestHoverShowsCallGraphReachabilityAndRecursion" -count=1
         result: passed on 2026-11-10; 16.118s. All nine source callables and a resolved call-site hover agree with canonical summaries; mixed evidence and unknown/foreign explanations are visible. Existing attribute and call-graph hover tests pass. The original renderer fails the valid-source regression on the unexplained foreign effect. Remaining 4 to 3.
+
+  - id: concurrency.blocking-v2
+    area: concurrency
+    feature: blocking-suspension-runtime-and-commit-semantics
+    status: partial
+    prepared: "2026-11-13"
+    document_revision: "2.0"
+    repository_baseline: ee75e5d036d6611519a1b34d570bb6778002acfd
+    summary: Tracks the cross-operation Sec 0.1 distinction between synchronous MayBlock and logical-task MaySuspend, execution-context-specific waits, target/progress validation, cancellation/selection commit discipline, guard liveness, synchronization and compiler/runtime lowering. This umbrella entry does not own the existing frontend BlockSummary implementation in frontend.blocking-effects, the public API of any wait primitive, or the specialist runtime/lifecycle/analysis implementation. The normative revision 2.0 correction is integrated; runtime and broader effect coverage remain partial.
+    rules:
+      - rules/concurrency/blocking.md
+      - rules/analysis/effect_analysis.md
+      - rules/analysis/deadlock_analysis.md
+      - rules/foundations/attributes.md
+      - rules/concurrency/await.md
+      - rules/concurrency/tasks.md
+      - rules/concurrency/threads.md
+      - rules/concurrency/processes.md
+      - rules/concurrency/ipc.md
+      - rules/concurrency/channels.md
+      - rules/concurrency/select.md
+      - rules/concurrency/mutex.md
+      - rules/concurrency/scheduling.md
+      - rules/concurrency/cancellation.md
+      - rules/concurrency/concurrency_runtime_model.md
+      - rules/concurrency/concurrency_memory_model.md
+      - rules/platform/target_profiles.md
+      - rules/platform/interrupts.md
+      - rules/compiler/initialization.md
+      - rules/compiler/semantic_ir.md
+      - rules/tooling/diagnostics.md
+      - rules/tooling/lsp.md
+    code:
+      - internal/sema/analyzer_noblock.go
+      - internal/sema/call_graph.go
+      - internal/sema/analyzer.go
+      - cmd/lsp/blocking_hover.go
+    tests:
+      - internal/sema/noblock_test.go
+      - cmd/lsp/blocking_hover_test.go
+    normative:
+      - >-
+        MayBlock denotes synchronous blocking/physical execution-domain
+        occupation and MaySuspend denotes logical-task suspension; they are
+        separate semantic/effect-analysis facts.
+      - >-
+        @noBlock is a verified transitive guarantee of no synchronous blocking;
+        it does not by itself forbid MaySuspend. No new public @noSuspend
+        attribute is established by this entry.
+      - >-
+        Ordinary main has physical ThreadContext but no fabricated root
+        TaskContext; a real task wait may suspend and a physical-thread wait may
+        park/block according to the selected CompilationPlan.
+      - >-
+        Await consumes Task[T] and transfers the complete TaskOutcome[T]; caller
+        cancellation before commit retains internal child lifecycle and follows
+        await.md cleanup, never implicit detach.
+      - >-
+        Join is execution-kind-specific, resolves the one-shot join capability,
+        preserves the handle where defined, and carries only its own
+        completion/synchronization contract.
+      - >-
+        Select uses exactly the source-order ready-branch priority and at most
+        one committed operation; nonselected branches do not consume prepared
+        ownership or invent synchronization effects.
+      - >-
+        Ordinary in-process channels remain distinct from typed IPC. Their exact
+        send/receive/try results and ownership commit are owned by channels.md
+        and ipc.md; cancellation does not invent new variants.
+      - >-
+        Mutex[T], IPCMutexGuard and SharedValueGuard retain their exact owning
+        execution-identity and guard-live-across-wait restrictions; no general
+        unapproved guard exception is introduced.
+      - >-
+        Context cancellation/deadline, select timeout and terminal
+        current-execution cancellation are distinct operation outcomes.
+      - >-
+        ISR-safe spawn is possible only where the entire bounded creation
+        operation is proven compatible with noBlock/noAlloc and all ISR
+        requirements; blocking/suspending waits and both Yield operations remain
+        invalid in an ISR.
+      - >-
+        Successful task/thread completion synchronization, process join,
+        atomic/IPC publication and mere scheduling or timeout are distinct
+        visibility contracts; process join never publishes ordinary private
+        child storage.
+      - >-
+        Concrete Semantic IR opcode names and backend realization are owned by
+        semantic_ir.md and target/lowering rulebooks. The blocking book
+        preserves semantic wait, commit and effect facts rather than inventing a
+        fixed opcode vocabulary.
+    implemented:
+      - >-
+        Initial frontend synchronous BlockSummary analysis, its existing
+        represented wait sites and the LSP blocking hover presentation are
+        tracked with source/test evidence by the existing
+        frontend.blocking-effects integration; no additional runtime
+        implementation is asserted by this supplement.
+      - Integrated blocking.md revision 2.0 and companion governance on 2026-11-13, preserving all 24 chapters and 93 paragraph IDs. The existing frontend.blocking-effects owner and other rulebooks' public API declarations remain unchanged; no new runtime implementation is asserted.
+    remaining:
+      - >-
+        Complete MaySuspend classification and selected-target physical worker
+        blocking versus logical-task suspension, without changing
+        frontend.blocking-effects ownership or overclaiming current coverage.
+      - >-
+        Extend the existing blocking summaries to process, command, IPC, pipe,
+        timer and all canonical mutex/context/duration wait overloads; preserve
+        direct and transitive foreign/unknown cause provenance.
+      - >-
+        Feed exact wait/readiness and guard-liveness facts into dedicated
+        deadlock, ISR, executor starvation and resource-progress analyses.
+      - >-
+        Preserve selected-branch and cancellation-before-commit ownership facts
+        through Semantic IR and target lowering; prevent losing-branch effects
+        and unapproved physical-blocking/busy-spin fallbacks.
+      - >-
+        Verify effect and physical wait classification in ordinary main, real
+        task, native thread, foreign callback, and ISR contexts under different
+        selected target-profile capabilities.
+      - >-
+        Preserve kind-specific completion synchronization and process isolation;
+        no arbitrary private process-memory publication or invented generic
+        BlockingError is permitted.
+    required_tests:
+      - id: independent-effects
+        expectation: >-
+          A task-aware suspension may have MaySuspend without MayBlock;
+          physical-worker blocking has MayBlock, and @noBlock rejects only the
+          latter while other declared restrictions remain enforced.
+      - id: ordinary-main-no-task
+        expectation: >-
+          An eligible wait may run in physical main without manufacturing
+          TaskContext, Task.Current or Task.Yield capability.
+      - id: wait-commit-cancellation
+        expectation: >-
+          Only one of operation commit and pre-commit current-execution
+          cancellation commits, with no partial ownership transfer.
+      - id: consuming-await-cleanup
+        expectation: >-
+          Caller cancellation before await commit retains the consumed task
+          lifecycle and performs terminal child cleanup without detach.
+      - id: select-source-priority
+        expectation: >-
+          Simultaneously ready select candidates select the first eligible
+          source branch; all nonselected branches preserve prepared ownership.
+      - id: guard-live-across-wait
+        expectation: >-
+          Canonical ordinary/IPC guard restrictions use actual live ranges and
+          the owning guard's defined suspension/wait boundary.
+      - id: isr-proofs
+        expectation: >-
+          Waiting, both Yield operations and unproven blocking fallbacks are
+          rejected from ISR while a fully proven bounded noAlloc/noBlock
+          compatible spawn handoff is not prohibited by a blanket rule.
+      - id: completion-edges
+        expectation: >-
+          Task/thread completion and IPC/atomic synchronization edges are
+          respected, while yield, timeout, losing select registration and
+          process-private memory have no invented publication edges.
+      - id: runtime-lowering
+        expectation: >-
+          Target lowering consumes semantic context/effect/commit facts and
+          fails closed when no conforming wait realization is available.
+    governance_reconciliation:
+      - >-
+        frontend.blocking-effects retains its existing implementation and LSP
+        BlockSummary/hover evidence and owns the corresponding frontend code;
+        this entry owns only the broader runtime/effect integration.
+      - concurrency.runtime-model-v1 was integrated alongside this correction in governance/concurrency_model.yaml on 2026-11-13; normative synchronization does not establish target/runtime implementation.
+      - >-
+        Specific operations stay with existing await, task, thread, process,
+        IPC, select, mutex, channel, cancellation and scheduling governance
+        entries; analysis and lowering have their own owners.
+      - >-
+        Do not register a second governance fragment path. Append this item
+        within the existing concurrency_blocking.yaml integrations list.
+    verification_notes:
+      - >-
+        Prepared by comparing repository rulebook and governance text on
+        2026-11-13. No compiler tests or repository modifications were performed
+        in preparing this supplement. Revalidate against the actual integration
+        baseline and update status/evidence when applied.
+      - "Integration verification on 2026-11-13: focused existing parser, Sema, compiler and LSP tests passed. These regression checks do not establish runtime conformance or settle the event handler payload decision."
+    revised: "2026-11-13"
+    corrections_applied:
+      - rules/corrections/applied/blocking-normative-fix-20261113-20261113.md
+    governance_inputs:
+      - rules/corrections/applied/blocking-governance-merge-20261113-20261113.yaml
+    verification:
+      - command: go test -p 4 ./cmd/compiler ./cmd/lsp -run 'TestBlockingHover|TestThreadConfigLSP|TestTaskSpawnResult|TestTaskFailureDomainDiagnostics|TestSpawnGrammar|TestNamedThreadConfiguration' -count=1 -timeout=120s
+        result: PASS on 2026-11-13; existing concurrency tooling regression subset only.
+      - command: go test -p 4 ./internal/parser ./internal/sema -run 'Event|Subscription|Spawn|Task|Thread|Select|Atomic|ISR|NoBlock|Blocking' -count=1 -timeout=120s
+        result: PASS on 2026-11-13; existing frontend regression subset only, not runtime conformance.

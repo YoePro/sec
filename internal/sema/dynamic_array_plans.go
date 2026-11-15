@@ -163,3 +163,10 @@ func (a *Analyzer) ResolvedDynamicArrayPlanOf(expr ast.Expression) (ResolvedDyna
 	plan.DestructionTransitions = append([]BackingTransitionKind(nil), plan.DestructionTransitions...)
 	return plan, true
 }
+
+// IsDynamicArrayLengthCall reports whether a call is the compiler-known
+// len(...) of an owning dynamic array: the same uint count as `.Len`
+// (MD-074; package18 §§ 13, 50).
+func (a *Analyzer) IsDynamicArrayLengthCall(call *ast.CallExpression) bool {
+	return a != nil && a.dynamicArrayLengthCalls[call]
+}

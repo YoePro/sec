@@ -44,6 +44,9 @@ func (fb *functionBuilder) referenceHolder(holder *ast.Identifier) (builtValue, 
 	if !ok || held.storage != 0 {
 		return builtValue{}, nil, fb.unsupported("reference held in mutable storage", holder.Token)
 	}
+	if held.referent != 0 {
+		return builtValue{}, nil, fb.unsupported("passing on a reference holder a defer body captured", holder.Token)
+	}
 	metadata, ok := fb.references[held.value]
 	if !ok {
 		return builtValue{}, nil, fb.unsupported("reference holder "+holder.Value+" without lowered reference facts", holder.Token)
@@ -134,6 +137,13 @@ func (fb *functionBuilder) derefHolderPlace(expr ast.Expression, validity sema.R
 	if holder == nil || len(steps) == 0 && !explicitWholeReferent(expr) {
 		return builtValue{}, false, nil, fb.unsupported(wholeReferent, expressionToken(expr))
 	}
+	if place, mutable, metadata, captured := fb.capturedReferent(holder); captured {
+		if ReferenceValidity(validity) != metadata.Validity {
+			return builtValue{}, false, nil, fb.unsupported("reference use whose validity policy differs from its reference", expressionToken(expr))
+		}
+		place, err := fb.projectPlace(steps, resolved.Projections, place, mutable, placeMetadataOf(resolved))
+		return place, mutable, metadata, err
+	}
 	reference, metadata, err := fb.referenceHolder(holder)
 	if err != nil {
 		return builtValue{}, false, nil, err
@@ -161,6 +171,9 @@ func (fb *functionBuilder) derefHolderPlace(expr ast.Expression, validity sema.R
 // (validating a dynamic-epoch reference) and returns its referent Place and
 // authority.
 func (fb *functionBuilder) derefWholeHolder(holder *ast.Identifier) (builtValue, bool, *ReferenceMetadata, error) {
+	if place, mutable, metadata, captured := fb.capturedReferent(holder); captured {
+		return place, mutable, metadata, nil
+	}
 	reference, metadata, err := fb.referenceHolder(holder)
 	if err != nil {
 		return builtValue{}, false, nil, err
@@ -538,6 +551,17 @@ func dereferenceOfValue(expr ast.Expression, analyzer *sema.Analyzer) (*ast.Pref
 // using the facts recorded with that value: one validation, ref.deref-place
 // and place.read. Only copy-trivial referents are read here.
 func (fb *functionBuilder) lowerValueDereference(prefix *ast.PrefixExpression) (builtValue, error) {
+	// A defer body reads the referent of a captured holder through the
+	// referent Place established where the defer registered.
+	if holder, named := prefix.Right.(*ast.Identifier); named {
+		if place, _, _, captured := fb.capturedReferent(holder); captured {
+			placeType, ok := fb.owner.module.Types.Lookup(place.typ)
+			if !ok || !fb.storageAllowed(placeType.Element) {
+				return builtValue{}, fb.unsupported("non-copy-trivial read through a reference", prefix.Token)
+			}
+			return fb.result(Operation{Kind: OpPlaceRead, Operands: []ValueID{place.id}, Location: location(prefix.Token)}, placeType.Element), nil
+		}
+	}
 	reference, err := fb.buildExpr(prefix.Right, 0)
 	if err != nil {
 		return builtValue{}, err

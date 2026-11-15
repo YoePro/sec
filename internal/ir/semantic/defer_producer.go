@@ -39,8 +39,17 @@ func (fb *functionBuilder) buildDefer(stmt *ast.DeferStatement) error {
 		if _, seen := saved[capture.Binding]; seen {
 			continue
 		}
+		if capture.Kind == sema.DeferCaptureReferenceHolder {
+			operand, parameter, err := fb.captureReferenceHolder(capture, loc, saved)
+			if err != nil {
+				return err
+			}
+			operands = append(operands, operand)
+			parameters = append(parameters, parameter)
+			continue
+		}
 		if capture.Kind != sema.DeferCaptureValueUse {
-			return fb.unsupported("defer capturing a reference holder", capture.Use)
+			return fb.unsupported("defer capture of kind "+string(capture.Kind), capture.Use)
 		}
 		bound, known := fb.bindings[capture.Binding]
 		// An owned value is captured as a Place like any other: the defer reads
@@ -92,8 +101,11 @@ func (fb *functionBuilder) buildDefer(stmt *ast.DeferStatement) error {
 	for _, storage := range fb.fn.Storages {
 		storagesBefore[storage.ID] = true
 	}
-	outerBlocks, outerCurrent, outerLoops := fb.fn.Blocks, fb.current, fb.loops
-	fb.fn.Blocks, fb.loops, fb.inDeferBody = nil, nil, true
+	outerBlocks, outerCurrent, outerLoops, outerRecords := fb.fn.Blocks, fb.current, fb.loops, fb.fn.Loops
+	fb.fn.Blocks, fb.loops, fb.fn.Loops, fb.inDeferBody = nil, nil, nil, true
+	if body, ok := fb.owner.analyzer.ResolvedDeferBodyCleanupPlanOf(stmt); ok {
+		fb.bodyCleanupPlan = &body
+	}
 	entry := fb.newBlock()
 	entry.Parameters = parameters
 	fb.current = entry
@@ -101,11 +113,15 @@ func (fb *functionBuilder) buildDefer(stmt *ast.DeferStatement) error {
 	if err == nil && fb.current != nil {
 		fb.emit(Operation{Kind: OpCleanupDeferYield, Cleanup: &CleanupFacts{}, Location: loc})
 	}
-	region := &Region{Entry: entry.ID, Blocks: fb.fn.Blocks}
+	if err == nil && fb.bodyCleanupPlan != nil {
+		err = fb.verifyCleanupExitsEmitted(*fb.bodyCleanupPlan)
+	}
+	fb.bodyCleanupPlan = nil
+	region := &Region{Entry: entry.ID, Blocks: fb.fn.Blocks, Loops: fb.fn.Loops}
 	if err == nil {
 		err = fb.requireIsolatedDeferBody(region, stmt, storagesBefore)
 	}
-	fb.fn.Blocks, fb.current, fb.loops, fb.inDeferBody = outerBlocks, outerCurrent, outerLoops, false
+	fb.fn.Blocks, fb.current, fb.loops, fb.fn.Loops, fb.inDeferBody = outerBlocks, outerCurrent, outerLoops, outerRecords, false
 	restore()
 	if err != nil {
 		return err
@@ -223,4 +239,49 @@ func (fb *functionBuilder) markDeferReadOwners(body *ast.BlockStatement) {
 		}
 		return nil
 	})
+}
+
+// captureReferenceHolder captures a reference holder for a defer body. A
+// `ref mut` reference is never copied into the region: the holder is
+// dereferenced once where the defer registers, and the body uses the
+// referent Place with the reference's authority and facts. Only a proven
+// reference is captured this way; a dynamic-epoch reference must be
+// validated when the defer runs, which stays a named boundary.
+// Rules: rules/control-flow/defer.md — §§ 9–11; rules/mlir/packages/sec-mlir-dialect_package17.md — §§ 41–44.
+func (fb *functionBuilder) captureReferenceHolder(capture sema.ResolvedDeferCapture, loc Location, saved map[sema.BindingID]binding) (ValueID, Value, error) {
+	bound, known := fb.bindings[capture.Binding]
+	if !known || bound.storage != 0 || bound.capture != 0 || bound.referent != 0 {
+		return 0, Value{}, fb.unsupported("defer capturing a reference holder in mutable storage", capture.Use)
+	}
+	metadata, ok := fb.references[bound.value]
+	if !ok {
+		return 0, Value{}, fb.unsupported("defer capturing a reference holder without lowered reference facts", capture.Use)
+	}
+	if metadata.Validity != ReferenceProven {
+		return 0, Value{}, fb.unsupported("defer capturing a dynamic-epoch reference holder", capture.Use)
+	}
+	refType, ok := fb.owner.module.Types.Lookup(bound.typ)
+	if !ok || refType.Kind != TypeReference {
+		return 0, Value{}, fb.unsupported("defer capturing a reference holder that is not a reference value", capture.Use)
+	}
+	placeType := fb.owner.module.Types.Intern(Type{Kind: TypePlace, Element: refType.Element, Mutable: refType.Mutable})
+	place := fb.placeResult(Operation{Kind: OpReferenceDerefPlace, Operands: []ValueID{bound.value}, Reference: metadata, Location: loc}, placeType)
+	parameter := fb.newValue(placeType, OwnershipCompilerTemporary, loc)
+	saved[capture.Binding] = bound
+	fb.bindings[capture.Binding] = binding{typ: bound.typ, referent: parameter.ID, referentType: placeType, referentMutable: refType.Mutable, referentMetadata: metadata}
+	return place.id, parameter, nil
+}
+
+// capturedReferent returns the referent Place of a reference holder a defer
+// body captured.
+func (fb *functionBuilder) capturedReferent(holder *ast.Identifier) (builtValue, bool, *ReferenceMetadata, bool) {
+	fact, ok := fb.owner.analyzer.ResolvedBindingOf(holder)
+	if !ok {
+		return builtValue{}, false, nil, false
+	}
+	held, ok := fb.bindings[fact.ID]
+	if !ok || held.referent == 0 {
+		return builtValue{}, false, nil, false
+	}
+	return builtValue{id: held.referent, typ: held.referentType}, held.referentMutable, held.referentMetadata, true
 }

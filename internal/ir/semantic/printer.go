@@ -102,6 +102,9 @@ func formatType(t Type) string {
 	if t.Kind == TypeArray {
 		return fmt.Sprintf("array<!%d, %q>", t.Element, t.Length)
 	}
+	if t.Kind == TypeDynamicArray {
+		return fmt.Sprintf("dynamic-array<!%d>", t.Element)
+	}
 	if t.Kind == TypeSharedSlice || t.Kind == TypeMutableSlice {
 		return fmt.Sprintf("%s<!%d>", t.Kind, t.Element)
 	}
@@ -228,6 +231,31 @@ func formatOperation(out *strings.Builder, op Operation) {
 		fmt.Fprintf(out, " %%%d, %%%d", op.Operands[0], op.Operands[1])
 		if op.ReferenceGuard != 0 {
 			fmt.Fprintf(out, " valid=%%%d", op.ReferenceGuard)
+		}
+	case OpDynamicArrayLength:
+		fmt.Fprintf(out, " %%%d", op.Operands[0])
+	case OpDynamicArrayHasBacking, OpDynamicArrayHasCapacity, OpDynamicArrayGrowBacking, OpDynamicArrayAppendPrepared, OpDynamicArrayAllocate,
+		OpStorageEstablishDomain, OpStorageAdvanceEpoch, OpStorageEndDomain, OpStorageReclaim:
+		for index, operand := range op.Operands {
+			if index > 0 {
+				out.WriteByte(',')
+			}
+			fmt.Fprintf(out, " %%%d", operand)
+		}
+		if op.Integer != nil {
+			fmt.Fprintf(out, " count=%s", op.Integer.String())
+		}
+		formatBackingMetadata(out, op.Backing)
+	case OpDynamicArrayIndexInBounds, OpDynamicArrayElementPlace:
+		fmt.Fprintf(out, " %%%d, %%%d signed=%t", op.Operands[0], op.Operands[1], op.ArrayIndexSigned)
+		if op.Kind == OpDynamicArrayElementPlace {
+			fmt.Fprintf(out, " bounds=%s proof=%s guard=%%%d", op.ArrayCheckKind, op.ArrayProofKind, op.ArrayGuard)
+			if op.Integer != nil {
+				fmt.Fprintf(out, " index=%s", op.Integer.String())
+			}
+			if op.Place != nil {
+				fmt.Fprintf(out, " {root=#%d storage=#%d backing=#%d}", op.Place.Root, op.Place.Storage, op.Place.BackingDomain)
+			}
 		}
 	case OpSliceLength, OpStringRuneLength, OpStringViewByteLength:
 		fmt.Fprintf(out, " %%%d", op.Operands[0])
@@ -478,6 +506,7 @@ func formatOperation(out *strings.Builder, op Operation) {
 			fmt.Fprintf(out, "range-id=#%d ", op.Slice.DynamicRange)
 		}
 	}
+	formatFloatSemantics(out, op.FloatSemantics)
 	out.WriteString(formatLocation(op.Location))
 }
 func formatTarget(out *strings.Builder, t BranchTarget) {

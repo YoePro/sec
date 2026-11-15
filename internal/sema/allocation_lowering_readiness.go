@@ -45,6 +45,17 @@ func (e *AllocationLoweringError) ImplementationCapability() diagnostics.Impleme
 // Rules: rules/memory/allocation.md — §§19,25(1)–(5),26(1)–(3);
 // rules/compiler/compiler_pipeline.md — §§32–34.
 func (a *Analyzer) ValidateAllocationLoweringReadiness(program *ast.Program, module string) error {
+	return a.ValidateAllocationLoweringReadinessPreserving(program, module, nil)
+}
+
+// ValidateAllocationLoweringReadinessPreserving is the same check for a
+// representation that carries some selected allocation facts itself:
+// preserved reports each fact the caller represents without erasing its
+// context, domain or reclamation authority. An unresolved context is never
+// preserved.
+// Rules: rules/memory/allocation.md — §§25(1)–(5),26(1)–(3);
+// rules/mlir/packages/sec-mlir-dialect_package18.md — §§ 56, 63–67.
+func (a *Analyzer) ValidateAllocationLoweringReadinessPreserving(program *ast.Program, module string, preserved func(AllocationContextFact) bool) error {
 	if a == nil || program == nil || a.iteratorLoweringProgram == nil {
 		return &AllocationLoweringError{Reason: "completed allocation facts for this program are required"}
 	}
@@ -88,6 +99,9 @@ func (a *Analyzer) ValidateAllocationLoweringReadiness(program *ast.Program, mod
 		switch fact.Kind {
 		case ArenaEffectAllocate, ArenaEffectCollectionGrowth, ArenaEffectCreateOwned, ArenaEffectCreateGrowable:
 		default:
+			continue
+		}
+		if fact.ContextKnown && preserved != nil && preserved(fact) {
 			continue
 		}
 		reason := "the selected allocation context/domain has no preserving backend representation"

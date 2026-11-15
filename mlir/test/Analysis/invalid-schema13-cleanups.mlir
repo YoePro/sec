@@ -231,3 +231,34 @@ module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 :
     return
   }
 }
+
+// -----
+
+module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 : i32, sec.module_id = "slice-ops-32", sec.source_files = [], sec.target_os = "linux", sec.target_arch = "armv7", sec.target_triple = "armv7-unknown-linux-gnueabihf", sec.target_abi = "gnu", sec.target_profile = "hosted", sec.target_endianness = "little", dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32>>} {
+  func.func @body_local_live() {
+    "sec.cleanup.defer_register"() <{cleanup_action_id = 1 : i32, cleanup_scope_id = 1 : i32, cleanup_registration_ordinal = 2 : i32, defer_id = 1 : i32}> ({
+      %v = "sec.const.int"() <{value = "1"}> : () -> si32
+      "sec.cleanup.track_owned"(%v) <{cleanup_action_id = 2 : i32, cleanup_scope_id = 2 : i32, cleanup_registration_ordinal = 1 : i32, destruction_plan = "p"}> : (si32) -> ()
+      // expected-error@+1 {{yields a defer body with a live cleanup registration of its own}}
+      "sec.cleanup.defer_yield"() : () -> ()
+    }) : () -> ()
+    "sec.cleanup.run_function"() <{exit_kind = "fallthrough"}> : () -> ()
+    return
+  }
+}
+
+// -----
+
+module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 : i32, sec.module_id = "slice-ops-32", sec.source_files = [], sec.target_os = "linux", sec.target_arch = "armv7", sec.target_triple = "armv7-unknown-linux-gnueabihf", sec.target_abi = "gnu", sec.target_profile = "hosted", sec.target_endianness = "little", dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32>>} {
+  func.func @nested_defer() {
+    "sec.cleanup.defer_register"() <{cleanup_action_id = 1 : i32, cleanup_scope_id = 1 : i32, cleanup_registration_ordinal = 1 : i32, defer_id = 1 : i32}> ({
+      // expected-error@+1 {{not valid inside a defer body}}
+      "sec.cleanup.defer_register"() <{cleanup_action_id = 2 : i32, cleanup_scope_id = 2 : i32, cleanup_registration_ordinal = 1 : i32, defer_id = 2 : i32}> ({
+        "sec.cleanup.defer_yield"() : () -> ()
+      }) : () -> ()
+      "sec.cleanup.defer_yield"() : () -> ()
+    }) : () -> ()
+    "sec.cleanup.run_function"() <{exit_kind = "fallthrough"}> : () -> ()
+    return
+  }
+}

@@ -1,6 +1,6 @@
 schema_version: 1
-updated: "2026-11-12"
-last_id: MD-133
+updated: "2026-11-15"
+last_id: MD-135
 purpose: >-
   Tracks normative decisions that are missing or insufficiently precise and
   therefore constrain implementation. Remove an entry only after the owning
@@ -1231,4 +1231,56 @@ decisions:
       commit and MD-129 already-cancelled-parent behavior. Governance owner:
       concurrency.tasks-v2.
     classification: localized
+    status: open
+
+  - id: MD-134
+    area: event-handler-payload-ownership
+    rulebooks:
+      - rules/concurrency/events.md
+      - rules/declarations/functions.md
+      - rules/declarations/lambda-functions.md
+      - rules/memory/ownership.md
+      - rules/memory/borrowing.md
+    description: >-
+      Raised by rules/corrections/events-normative-fix-20261113.md, sections
+      0(3) and 10-11. events.md section 10(1) declares an owning by-value
+      fn(data: T) void handler, while sections 11(1)-(3) require borrowed
+      synchronous delivery without taking ownership or implicitly cloning
+      move-only payloads. Multiple independent subscribers cannot all receive
+      ownership of the same move-only T under the ordinary function rules.
+      Decide the exact Publish argument and Subscribe callback signature,
+      payload lifetime, capture/borrow constraints and behavior for copyable
+      and move-only T. A borrowed fn(ref T) callback and a constrained
+      by-value/copy delivery model are distinct alternatives, not approved
+      conventions. The owner confirmed on 2026-11-13 that MD-134 will be
+      supplied as a separate correction file. Preserve sections 10-11 until
+      then; current frontend fn(T) checking is evidence, not a normative
+      decision. Independent event modernization and governance extraction
+      may proceed, but full revision 2.0 synchronization and payload-mode
+      conformance remain blocked. Governance owner: concurrency.events-v2.
+    classification: constraining
+    status: open
+  - id: MD-135
+    area: dynamic-array-append-failure-element-ownership
+    rulebooks:
+      - rules/collections/collections.md
+      - rules/mlir/packages/sec-mlir-dialect_package18.md
+      - rules/memory/ownership.md
+      - rules/memory/destruction.md
+    description: >-
+      collections.md section 6.7 says `Append(value) -> Result[void,
+      CollectionError]` must not lose the element on allocation failure, and
+      package18 section 37 says no element ownership is lost on failure. For a
+      move-only or non-trivially destructible T, the argument is moved into
+      Append, but the Err(CollectionError) result carries no payload, so no
+      rule says who owns the value after a failed append: whether it is
+      destroyed exactly once at the end of the call's full expression (like
+      an unconsumed argument temporary), whether the argument is only
+      conditionally moved so the caller's binding stays initialized on
+      failure, or whether the failure type must return the value. Trivially
+      copyable and destructible elements are unaffected and lower today
+      (P18-17); Semantic IR rejects Append of a non-trivial element as a
+      named boundary until this is decided. Governance owner:
+      lowering.sec-mlir-package18.
+    classification: constraining
     status: open

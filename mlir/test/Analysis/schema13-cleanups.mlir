@@ -29,6 +29,19 @@ module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 :
     "sec.cleanup.run_function"() <{exit_kind = "return"}> : () -> ()
     return
   }
+  // A defer body is its own invocation: it registers and cleans an owned
+  // local of its own scope before it yields (P17-41; defer.md section 10).
+  // CHECK-LABEL: func.func @body_local
+  func.func @body_local() {
+    "sec.cleanup.defer_register"() <{cleanup_action_id = 1 : i32, cleanup_scope_id = 1 : i32, cleanup_registration_ordinal = 2 : i32, defer_id = 1 : i32}> ({
+      %v = "sec.const.int"() <{value = "1"}> : () -> si32
+      "sec.cleanup.track_owned"(%v) <{cleanup_action_id = 2 : i32, cleanup_scope_id = 2 : i32, cleanup_registration_ordinal = 1 : i32, destruction_plan = "p"}> : (si32) -> ()
+      "sec.cleanup.run_scope"() <{scope_ids = array<i32: 2>, exit_kind = "fallthrough"}> : () -> ()
+      "sec.cleanup.defer_yield"() : () -> ()
+    }) : () -> ()
+    "sec.cleanup.run_function"() <{exit_kind = "fallthrough"}> : () -> ()
+    return
+  }
   // CHECK-LABEL: func.func @panics
   func.func @panics(%v: !sec.int, %c: i1) {
     "sec.cleanup.track_owned"(%v) <{cleanup_action_id = 1 : i32, cleanup_scope_id = 1 : i32, cleanup_registration_ordinal = 1 : i32, destruction_plan = "p"}> : (!sec.int) -> ()

@@ -64,8 +64,8 @@ func verifySliceBorrowOperation(types *TypeTable, op Operation, values map[Value
 		}
 	} else {
 		array, ok := types.Lookup(source.Element)
-		if source.Kind != TypePlace || !ok || array.Kind != TypeArray {
-			return fmt.Errorf("%s requires a fixed-array Place", op.Kind)
+		if source.Kind != TypePlace || !ok || array.Kind != TypeArray && array.Kind != TypeDynamicArray {
+			return fmt.Errorf("%s requires a fixed-array or owning dynamic-array Place", op.Kind)
 		}
 		element, writable = array.Element, source.Mutable
 	}
@@ -104,8 +104,13 @@ func verifySliceBorrowSource(types *TypeTable, op Operation, values map[ValueID]
 	}
 	sourceType, _ := types.Lookup(values[op.Operands[0]].Type)
 	array, _ := types.Lookup(sourceType.Element)
-	length, valid := new(big.Int).SetString(array.Length, 10)
-	if !valid || extent.Kind != OpConstInt || extent.Integer == nil || extent.Integer.Cmp(length) != 0 {
+	if array.Kind == TypeDynamicArray {
+		// An owning array's extent is its runtime length, observed through
+		// the same owner Place (package18 §§ 13, 78).
+		if extent.Kind != OpDynamicArrayLength || len(extent.Operands) != 1 || extent.Operands[0] != op.Operands[0] {
+			return fmt.Errorf("%s range extent must be the same owner's dynamic-array.length", op.Kind)
+		}
+	} else if length, valid := new(big.Int).SetString(array.Length, 10); !valid || extent.Kind != OpConstInt || extent.Integer == nil || extent.Integer.Cmp(length) != 0 {
 		return fmt.Errorf("%s range extent must equal the fixed-array length", op.Kind)
 	}
 	for id := op.Operands[0]; ; {

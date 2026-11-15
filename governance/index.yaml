@@ -36,6 +36,8 @@ fragments:
     owns: channels, sends, receives, and channel lifecycle
   - path: concurrency_cancellation.yaml
     owns: cancellation model, requests, and propagation
+  - path: concurrency_events.yaml
+    owns: event members, subscription lifecycle, synchronous dispatch and event lowering
   - path: concurrency_ipc.yaml
     owns: inter-process communication, process-shared storage/synchronization, and capability-transfer semantics
   - path: concurrency_memory_model.yaml

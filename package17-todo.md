@@ -1042,7 +1042,7 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
     `testdata/semantic_ir/fresh_subject_borrows.sec`;
     `TestUnionPayloadPatternBorrowsFromTemporarySubject` (replaces the former
     rejection test) and `TestConstructedMatchSubjectMovesItsOperands`.
-- [ ] P17-41 — Lower executed defer sites into regions with binding/Place captures.
+- [x] P17-41 — Lower executed defer sites into regions with binding/Place captures.
   Preserve function scope and iteration-instance identity; never copy captures or
   collapse dynamic registrations into one active boolean per source site.
 
@@ -1066,6 +1066,31 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
   instances in loops (owned values and mutable storage of the loop body), an owned
   non-trivial local in the body, passing a captured holder on, and a dynamic-epoch
   holder.
+  Update 2026-11-16 (Claude): a defer body is its own invocation. Sema gives it
+  its own cleanup plan (`ResolvedDeferBodyCleanupPlanOf`), so owned locals of the
+  body register and end inside the region (run-scope before defer-yield); the
+  C++ `--sec-verify-cleanups` verifies the body as its own invocation and rejects
+  a body that yields with a live registration, a nested defer or run_function.
+  Loops inside a body keep their own loop records. A captured holder passed on is
+  a `ref.reborrow-shared`/`ref.reborrow-mut` of its captured referent Place
+  (Go and C++ derivation checks follow the capture). In loops, an owner a defer
+  reads registers `per-execution` in the function scope and loop storage a defer
+  reads is a `defer-instance` storage (defer.md §§ 8, 13). Remaining: a
+  dynamic-epoch holder capture, which no program reaches today — the only
+  dynamic-epoch references are Arena references, and Arena allocation stops at
+  the allocation readiness gate (`lowering.arena`).
+  Update 2026-11-16 (Claude), later: the dynamic-epoch capture lowers in the
+  builder (the holder's own Place is captured and read out with
+  `place.read … holder` on body entry, then validated per use) and the
+  verifier rejects validating at registration and holder escapes (white-box
+  `TestDeferDynamicEpochHolderValidatesWhenTheBodyRuns`). Open until a source
+  program reaches it: Arena references arrive with P19-14/15/18/20 (task for
+  Codex: `codex-p19-arena-references-task.md`); the source test follows as
+  P19-21.
+  Done 2026-11-16 (Claude, owner decision): every capture form lowers and
+  verifies; the dynamic-epoch holder's source-level test belongs to P19-21
+  (package19-todo.md), where the P17 defer interaction with Arena references
+  is defined.
 - [x] P17-42 — Insert planned scope cleanup before exited-scope edges, and function
   cleanup after return/Err transfer but before return. Keep panic/raw process-exit/
   proven-unreachable endpoints outside normal cleanup; no hidden unwinding.
@@ -1417,7 +1442,7 @@ Partial or Not met (P17-62).
 | 25 | cleanup tracking/cancellation implemented | Met | cleanup.track-owned/cancel incl. if_active (P17-33). |
 | 26 | unified cleanup registration order implemented | Met | Ordinals checked by --sec-verify-cleanups (`@order`, `@defer_order`). |
 | 27 | defer registration region implemented | Met | cleanup.defer-register with isolated region (P17-41 note). |
-| 28 | defer captures Place/binding identity | Partial | Value and owned captures through Places; reference-holder captures, owned locals or nested defer in a body remain (P17-41). |
+| 28 | defer captures Place/binding identity | Met | Value, owned, reference-holder (field, `*r`, passed on), dynamic-epoch holder (validated when the body runs; white-box, source test in P19-21), body-owned locals and per-registration loop instances (2026-11-16); nested defer is invalid (§ 18). |
 | 29 | scope cleanup implemented | Met | cleanup.run-scope on every exit kind incl. arm temporaries (P17-42). |
 | 30 | function-exit cleanup implemented | Met | cleanup.run-function before every return (P17-42). |
 | 31 | return/error payload excluded from cleanup | Met | Verifier "would destroy the returned value"; propagation returns (P17-23 note). |

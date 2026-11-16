@@ -60,11 +60,15 @@ bool isPlaceConsumer(Operation *operation) {
 // dereferenced reference) and the stored-field path below it.
 struct Chain {
   Value root;
+  // A static root is the global it names, so its Place and its static.load
+  // denote the same storage (SVV-3).
+  StringRef global;
   SmallVector<int64_t> fields;
   bool valid = false;
 
   bool operator==(const Chain &other) const {
-    return valid && other.valid && root == other.root && fields == other.fields;
+    return valid && other.valid && root == other.root && global == other.global &&
+           fields == other.fields;
   }
 };
 
@@ -90,7 +94,7 @@ Chain placeChain(Value place) {
     else if (auto root = dyn_cast_or_null<sec::PlaceStorageOp>(definition))
       chain.root = root.getStorage();
     else if (auto root = dyn_cast_or_null<sec::PlaceStaticOp>(definition))
-      chain.root = root.getPlace();
+      chain.global = root.getGlobal();
     else if (auto deref = dyn_cast_or_null<sec::PlaceDerefOp>(definition))
       chain.root = deref.getReference();
     else
@@ -120,6 +124,9 @@ Chain valueChain(Value value) {
         return Chain{};
     } else if (auto load = dyn_cast_or_null<sec::StorageLoadOp>(definition)) {
       chain.root = load.getStorage();
+      chain.valid = true;
+    } else if (auto load = dyn_cast_or_null<sec::StaticLoadOp>(definition)) {
+      chain.global = load.getGlobal();
       chain.valid = true;
     } else {
       chain.root = value;
@@ -179,7 +186,21 @@ Value derivationSource(Value source) {
   // Follow field, element and payload projections down to the dereference
   // that roots the sub-Place.
   Value place = source;
-  while (Operation *definition = place.getDefiningOp()) {
+  while (true) {
+    // A defer body's capture parameter stands for the capture operand of its
+    // registration, which may be a dereferenced holder (P17-41).
+    if (auto argument = dyn_cast<BlockArgument>(place)) {
+      Block *owner = argument.getOwner();
+      auto defer = dyn_cast_or_null<sec::CleanupDeferRegisterOp>(owner->getParentOp());
+      if (defer && owner->isEntryBlock() && argument.getArgNumber() < defer.getCaptures().size()) {
+        place = defer.getCaptures()[argument.getArgNumber()];
+        continue;
+      }
+      break;
+    }
+    Operation *definition = place.getDefiningOp();
+    if (!definition)
+      break;
     if (auto deref = dyn_cast<sec::PlaceDerefOp>(definition))
       return deref.getReference();
     if (auto element = dyn_cast<sec::SliceElementPlaceOp>(definition))

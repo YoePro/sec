@@ -1,0 +1,47 @@
+module main
+
+fn ExactWideInteger() float64 {
+    let value: int256 := 1606938044258990275541962092341162602522202993782792835301376
+    return float64(value)
+}
+
+fn ExactMaximum() float32 {
+    let value: uint128 := 340282346638528859811704183484516925440
+    return float32(value)
+}
+
+fn ExactMinimum() int64 {
+    let value: float64 := -9223372036854775808.0
+    return int64(value)
+}
+
+fn FloatCategories() float32 {
+    let infinity := float64.Infinity
+    let negative := -infinity
+    let nan := float64.NaN
+    let a := float32(infinity)
+    let b := float32(negative)
+    let c := float32(nan)
+    let d := bool(nan)
+    let e := bool(float64.NegativeInfinity)
+    let zero: float64 := -0.0
+    let f := bool(zero)
+    return a
+}
+
+fn MutableRuntime() Result[int32, ConversionError] {
+    let mut value: float64 := 0.5
+    return Ok(try int32(value))
+}
+
+fn HalfOpenSigned(value: float64) Result[int256, ConversionError] {
+    return Ok(try int256(value))
+}
+
+fn HalfOpenUnsigned(value: float32) Result[uint128, ConversionError] {
+    return Ok(try uint128(value))
+}
+
+fn Portable(value: float) Result[int, ConversionError] {
+    return Ok(try int(value))
+}

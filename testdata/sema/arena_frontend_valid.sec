@@ -1,0 +1,45 @@
+module arena_frontend_valid
+
+fn Borrowed(buffer: ref mut byte[]) Result[void, AllocationError] {
+    let mut arena := Arena.FromBuffer(buffer)
+    let value := try arena.New[byte]()
+    discard *value
+    arena.Reset()
+    let values := try arena.Alloc[byte](0u)
+    discard values
+    arena.Release()
+    return Ok()
+}
+
+fn Owned() Result[void, AllocationError] {
+    let mut arena := try Arena.WithCapacity(64u)
+    let mut moved :<- arena
+    let first := try moved.New[int128]()
+    discard first
+    let second := try moved.Alloc[uint256](1u)
+    discard second
+    moved.Reset()
+    moved.Release()
+    return Ok()
+}
+
+fn Growing() Result[void, AllocationError] {
+    let mut arena := try Arena.Growable(16u)
+    let values := try arena.Alloc[byte](4u)
+    discard values[0]
+    arena.Reset()
+    arena.Release()
+    return Ok()
+}
+
+fn ReturnOwner() Result[Arena, AllocationError] {
+    let arena := try Arena.WithCapacity(32u)
+    return Ok(<-arena)
+}
+
+fn EmptyBorrowed() void {
+    let mut buffer: byte[0]
+    let mut arena := Arena.FromBuffer(ref mut buffer)
+    arena.Reset()
+    arena.Release()
+}

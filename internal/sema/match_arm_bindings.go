@@ -114,6 +114,11 @@ func (a *Analyzer) analyzeMatchArmBody(arm *ast.MatchArm, info matchPatternInfo)
 
 	if arm.ReturnBody != nil {
 		a.analyzeReturnStatement(a.currentFunctionName, a.currentFunctionReturn, arm.ReturnBody)
+		// A match arm's `return` leaves the invocation like a return statement
+		// and runs function cleanup (destruction.md § 6.2).
+		if a.inFunctionBody && a.currentTest == nil && !a.inDeferBlock {
+			a.recordCleanupReturn(arm.ReturnBody)
+		}
 		return Type{Kind: InvalidType}, a.finalizeMatchBranch(info, branchAnalysis{assigned: copyAssigned(a.assigned), moved: copyMoved(a.moved), availabilityStates: copyAvailabilityStates(a.availabilityStates), closedResources: copyMoved(a.closedResources), borrows: copyBorrows(a.borrows), localRefContainers: copyLocalRefContainers(a.localRefContainers), arenaGenerations: copyArenaGenerations(a.arenaGenerations), referenceOrigins: captureReferenceOrigins(a.symbols), continues: false})
 	}
 	if arm.BlockBody != nil {

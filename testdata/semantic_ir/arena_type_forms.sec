@@ -1,0 +1,10 @@
+module main
+
+fn Observe(arena: ref Arena) void {
+}
+
+fn Mutate(arena: ref mut Arena) void {
+}
+
+fn Owned(arena: Arena) void {
+}

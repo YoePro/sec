@@ -1,6 +1,9 @@
 package semantic
 
 import (
+	"fmt"
+	"sort"
+
 	"sec/internal/ast"
 	"sec/internal/ast/walk"
 	"sec/internal/sema"
@@ -39,7 +42,15 @@ func (fb *functionBuilder) buildDefer(stmt *ast.DeferStatement) error {
 		if _, seen := saved[capture.Binding]; seen {
 			continue
 		}
-		if capture.Kind == sema.DeferCaptureReferenceHolder {
+		// A reference holder the body passes on is captured like one it
+		// dereferences: through its referent Place (P17-41).
+		holderValue := false
+		if bound, known := fb.bindings[capture.Binding]; known && capture.Kind == sema.DeferCaptureValueUse && bound.storage == 0 {
+			if typ, ok := fb.owner.module.Types.Lookup(bound.typ); ok && typ.Kind == TypeReference {
+				holderValue = true
+			}
+		}
+		if capture.Kind == sema.DeferCaptureReferenceHolder || holderValue {
 			operand, parameter, err := fb.captureReferenceHolder(capture, loc, saved)
 			if err != nil {
 				return err
@@ -63,12 +74,17 @@ func (fb *functionBuilder) buildDefer(stmt *ast.DeferStatement) error {
 		// outlives its scope until the defer runs (markDeferReadOwners). In a
 		// loop each registration would need its own instance (defer.md §§ 8, 13).
 		if root, ok := fb.cleanupPlan(); tracked && ok && fb.trackedScopes[capture.Binding] != root.Root {
-			return fb.unsupported("P17 defer in a loop reading an owned value of the loop body", capture.Use)
+			return fb.unsupported("defer reading an owned value registered outside the function scope", capture.Use)
 		}
-		// A Place captures the slot, so every registration would read the last
-		// iteration's instance instead of its own (defer.md § 13).
+		// Loop storage a defer reads becomes a per-declaration instance that
+		// outlives its iteration until this registration has run, so each
+		// registration reads its own iteration's instance (defer.md §§ 8, 13).
 		if bound.storage != 0 && fb.loopStorages[bound.storage] {
-			return fb.unsupported("P17 defer reading mutable storage declared in its loop", capture.Use)
+			for index := range fb.fn.Storages {
+				if fb.fn.Storages[index].ID == bound.storage {
+					fb.fn.Storages[index].DeferInstance = true
+				}
+			}
 		}
 		root := capture.Place
 		root.Projections = nil
@@ -109,6 +125,27 @@ func (fb *functionBuilder) buildDefer(stmt *ast.DeferStatement) error {
 	entry := fb.newBlock()
 	entry.Parameters = parameters
 	fb.current = entry
+	// A captured dynamic-epoch holder is read out of its Place when the body
+	// starts; each use then validates it against the current epoch.
+	captured := make([]sema.BindingID, 0, len(saved))
+	for id := range saved {
+		captured = append(captured, id)
+	}
+	sort.Slice(captured, func(i, j int) bool { return captured[i] < captured[j] })
+	for _, id := range captured {
+		held := fb.bindings[id]
+		if held.holderCapture == 0 {
+			continue
+		}
+		reference := fb.newValue(held.typ, OwnershipSharedReference, loc)
+		if typ, ok := fb.owner.module.Types.Lookup(held.typ); ok && typ.Mutable {
+			reference.Ownership = OwnershipMutableReference
+		}
+		facts := cloneReferenceMetadata(held.holderMetadata)
+		fb.emit(Operation{Kind: OpPlaceRead, Operands: []ValueID{held.holderCapture}, Results: []Value{reference}, PlaceReadMode: PlaceReadHolder, Reference: facts, Location: loc})
+		fb.recordReference(reference.ID, facts)
+		fb.bindings[id] = binding{value: reference.ID, typ: held.typ}
+	}
 	err := fb.buildScope(stmt.Body)
 	if err == nil && fb.current != nil {
 		fb.emit(Operation{Kind: OpCleanupDeferYield, Cleanup: &CleanupFacts{}, Location: loc})
@@ -257,12 +294,26 @@ func (fb *functionBuilder) captureReferenceHolder(capture sema.ResolvedDeferCapt
 	if !ok {
 		return 0, Value{}, fb.unsupported("defer capturing a reference holder without lowered reference facts", capture.Use)
 	}
-	if metadata.Validity != ReferenceProven {
-		return 0, Value{}, fb.unsupported("defer capturing a dynamic-epoch reference holder", capture.Use)
-	}
 	refType, ok := fb.owner.module.Types.Lookup(bound.typ)
 	if !ok || refType.Kind != TypeReference {
 		return 0, Value{}, fb.unsupported("defer capturing a reference holder that is not a reference value", capture.Use)
+	}
+	if metadata.Validity == ReferenceDynamicEpoch {
+		// A dynamic-epoch holder is validated when the body runs: the defer
+		// captures the holder's own Place and the body reads the holder out
+		// of it on entry, so every use validates its current epoch then
+		// (defer.md §§ 9–11; reference_semantics generation rules).
+		root := capture.Place
+		root.Projections = nil
+		placeType := fb.owner.module.Types.Intern(Type{Kind: TypePlace, Element: bound.typ})
+		place := fb.placeResult(Operation{Kind: OpPlaceValueRoot, Operands: []ValueID{bound.value}, Place: placeMetadataOf(root), Location: loc}, placeType)
+		parameter := fb.newValue(placeType, OwnershipCompilerTemporary, loc)
+		saved[capture.Binding] = bound
+		fb.bindings[capture.Binding] = binding{typ: bound.typ, holderCapture: parameter.ID, holderMetadata: metadata}
+		return place.id, parameter, nil
+	}
+	if metadata.Validity != ReferenceProven {
+		return 0, Value{}, fb.unsupported("defer capturing a reference holder of unknown validity", capture.Use)
 	}
 	placeType := fb.owner.module.Types.Intern(Type{Kind: TypePlace, Element: refType.Element, Mutable: refType.Mutable})
 	place := fb.placeResult(Operation{Kind: OpReferenceDerefPlace, Operands: []ValueID{bound.value}, Reference: metadata, Location: loc}, placeType)
@@ -284,4 +335,56 @@ func (fb *functionBuilder) capturedReferent(holder *ast.Identifier) (builtValue,
 		return builtValue{}, false, nil, false
 	}
 	return builtValue{id: held.referent, typ: held.referentType}, held.referentMutable, held.referentMetadata, true
+}
+
+// verifyHolderReads keeps a holder read out of a defer capture a reference
+// holder: it is validated, dereferenced, reborrowed, copied when shared or
+// compared, and never escapes as an ordinary value (P17-41).
+func verifyHolderReads(fn *Function) error {
+	holders := map[ValueID]bool{}
+	storageRoots := map[ValueID]bool{}
+	var walk func(blocks []*Block) error
+	walk = func(blocks []*Block) error {
+		for _, block := range blocks {
+			for _, op := range block.Operations {
+				// Any Place an operation forms (storage, value root or a
+				// projection of one) may hold a proven holder; only a defer
+				// capture parameter is restricted to dynamic-epoch holders.
+				if len(op.Results) == 1 && op.Kind != OpPlaceRead {
+					storageRoots[op.Results[0].ID] = true
+				}
+				if op.Kind == OpPlaceRead && op.PlaceReadMode == PlaceReadHolder && len(op.Results) == 1 {
+					holders[op.Results[0].ID] = true
+					// A defer capture holds only a dynamic-epoch holder; a
+					// proven holder is read only from its mutable storage.
+					if op.Reference != nil && op.Reference.Validity != ReferenceDynamicEpoch && !storageRoots[op.Operands[0]] {
+						return fmt.Errorf("place.read holder of a proven reference from a capture; a defer captures only a dynamic-epoch reference holder")
+					}
+				}
+			}
+		}
+		for _, block := range blocks {
+			for _, op := range block.Operations {
+				allowed := false
+				switch op.Kind {
+				case OpReferenceIsValid, OpReferenceDerefPlace, OpReferenceReborrowShared, OpReferenceReborrowMutable, OpReferenceCopyShared, OpReferenceCompare,
+					OpSliceLength, OpSliceIndexInBounds, OpSliceElementPlace, OpSliceReborrowShared, OpSliceReborrowMutable, OpSliceCopyShared,
+					OpStringViewByteLength, OpStringViewDecodeNext, OpReferenceEndBorrow:
+					allowed = true
+				}
+				for _, operand := range operationOperands(op) {
+					if holders[operand] && !allowed {
+						return fmt.Errorf("captured holder %%%d escapes through %s", operand, op.Kind)
+					}
+				}
+				if op.Region != nil {
+					if err := walk(op.Region.Blocks); err != nil {
+						return err
+					}
+				}
+			}
+		}
+		return nil
+	}
+	return walk(fn.Blocks)
 }

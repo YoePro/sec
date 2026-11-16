@@ -1,5 +1,10 @@
 package sema
 
+import (
+	"fmt"
+	"math/big"
+)
+
 // cteMaterializationGraph validates semantic values before their storage
 // handoff, independently of physical target layout and lowering support.
 // Pointer keys are compiler bookkeeping only, never Sec value identities.
@@ -48,7 +53,32 @@ func (g *cteMaterializationGraph) value(value DefaultConstant, typ Type, path st
 	case FunctionType, VariadicPackType:
 		return g.reject(cteImplementationGap, path, "static materialization of "+typeDisplayName(typ)+" is not represented by the evaluator")
 	case ArrayType:
-		return g.reject(cteImplementationGap, path, "fixed-array evaluator values have no canonical element representation yet")
+		// A fixed array materializes its elements in index order
+		// (compile_time_evaluation.md § 32); an owning dynamic array has no
+		// static materialization.
+		switch {
+		case arrayShapeOf(typ) == ArrayShapeDynamic:
+			return g.reject(cteResultNotMaterializable, path, "dynamic owning collection "+typeDisplayName(typ)+" has no defined static materialization")
+		case arrayShapeOf(typ) != ArrayShapeFixed || typ.Element == nil:
+			return g.reject(cteImplementationGap, path, "array "+typeDisplayName(typ)+" has no exact fixed length to materialize")
+		}
+		if value.Aggregate == nil {
+			return g.reject(cteCompilerInvariantFailure, path, "missing fixed-array value for "+typeDisplayName(typ))
+		}
+		if length, fixed := FixedArrayLength(typ); !fixed || length.Cmp(big.NewInt(int64(len(value.Aggregate.Elements)))) != 0 {
+			return g.reject(cteCompilerInvariantFailure, path, "fixed-array value does not hold its exact length")
+		}
+		clean := value.Aggregate.clone()
+		clean.Owner = 0
+		for index, element := range clean.Elements {
+			materialized, failure := g.value(element, *typ.Element, fmt.Sprintf("%s[%d]", path, index), depth+1)
+			if failure != nil {
+				return DefaultConstant{}, failure
+			}
+			clean.Elements[index] = materialized
+		}
+		value.Aggregate = clean
+		return value, nil
 	case NeverType:
 		return g.reject(cteCompilerInvariantFailure, path, "never has no value to materialize")
 	case VoidType:

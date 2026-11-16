@@ -1,7 +1,6 @@
 package semantic
 
 import (
-	"errors"
 	"os"
 	"strings"
 	"testing"
@@ -141,15 +140,16 @@ func TestGenericImplMethodsSpecialize(t *testing.T) {
 	}
 }
 
-// A template alone builds nothing, and an argument whose ownership the
-// template plans cannot express stays a named boundary rather than reusing
-// plans computed for an unknown parameter.
+// A template alone builds nothing. An ownership-sensitive argument resolves
+// the template's symbolic ownership facts per specialization: the owned
+// parameter registers with the concrete type's destruction plan and the
+// return transfers it (monomorphization.md §§ 11.2, 11.4).
 func TestGenericSpecializationBoundaries(t *testing.T) {
 	module, err := analyzedModule(t, "module main\nfn Id[T](value: T) T { return value }\n", 17)
 	if err != nil || len(module.Functions) != 0 {
 		t.Fatal(err, module)
 	}
-	_, err = analyzedModule(t, `module main
+	module, err = analyzedModule(t, `module main
 type Handle struct { Code: int }
 impl Handle {
     free {
@@ -164,9 +164,21 @@ fn Use() int {
     return 0
 }
 `, 17)
-	var unsupported *UnsupportedFeatureError
-	if !errors.As(err, &unsupported) || !strings.Contains(unsupported.Feature, "ownership-sensitive argument T=main::Handle") {
-		t.Fatalf("err = %v", err)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Verify(module); err != nil {
+		t.Fatal(err)
+	}
+	keep := specializationIDs(module)["main::Keep[T=main::Handle](main::Handle)"]
+	if keep == nil {
+		t.Fatalf("missing Keep[T=main::Handle] in %v", specializationIDs(module))
+	}
+	text := Format(&Module{Types: module.Types, Functions: []*Function{keep}})
+	for _, want := range []string{`cleanup.track-owned %0`, `plan="destroy:main:struct:Handle"`, "cleanup.cancel", "reason=transferred"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("Keep[T=main::Handle] lacks %q:\n%s", want, text)
+		}
 	}
 }
 

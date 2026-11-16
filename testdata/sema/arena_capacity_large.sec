@@ -1,0 +1,8 @@
+module arena_capacity_large
+
+fn Large() Result[void, AllocationError] {
+    let mut arena := try Arena.WithCapacity(9223372036854775808u)
+    arena.Reset()
+    arena.Release()
+    return Ok()
+}

@@ -2707,7 +2707,14 @@ func (me *MemberExpression) TokenLiteral() string {
 }
 
 func (me *MemberExpression) String() string {
-	owner := me.Object.String()
+	// Recovery may leave parts missing; printing must never panic.
+	owner := ""
+	if me.Object != nil {
+		owner = me.Object.String()
+	}
+	if me.Property == nil {
+		return owner + "."
+	}
 	if _, indexed := me.Object.(*IndexExpression); !indexed && len(me.OwnerGenericArguments) > 0 {
 		arguments := make([]string, 0, len(me.OwnerGenericArguments))
 		for _, argument := range me.OwnerGenericArguments {

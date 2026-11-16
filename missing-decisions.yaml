@@ -1,6 +1,6 @@
 schema_version: 1
-updated: "2026-11-15"
-last_id: MD-135
+updated: "2026-11-16"
+last_id: MD-136
 purpose: >-
   Tracks normative decisions that are missing or insufficiently precise and
   therefore constrain implementation. Remove an entry only after the owning
@@ -1283,4 +1283,26 @@ decisions:
       named boundary until this is decided. Governance owner:
       lowering.sec-mlir-package18.
     classification: constraining
+    status: open
+
+  - id: MD-136
+    area: arena-empty-construction
+    rulebooks:
+      - rules/memory/arena.md
+      - rules/types/default_values.md
+      - rules/mlir/packages/sec-mlir-dialect_package19.md
+    description: >-
+      The frontend accepts Arena {} through its internal empty-struct
+      representation, and the P19 arena-reference handoff uses it before
+      New/Alloc. Arena is a semantic builtin, not an ordinary source struct;
+      arena.md sections 10-13 and P19 sections 11-18 define FromBuffer,
+      WithCapacity and Growable, but no rule defines the backing ownership,
+      fixed/growable policy, capacity, provider, creation fallibility or
+      validity of Arena {} or its implicit default. Decide whether these
+      source forms are allowed and their contract, or require a defined
+      constructor. Existing acceptance is preserved; no backing/provider
+      is guessed. This blocks lowering Arena {} and the handoff's exact
+      example, not the defined constructors or their Sema plans. Governance
+      owner: lowering.sec-mlir-package19.
+    classification: localized
     status: open

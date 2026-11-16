@@ -1,0 +1,12 @@
+module method_identity_effects
+
+type Host[T] struct {}
+impl Host[T] {
+    fn Crash() int { panic "owner" }
+    fn GenericCrash[U]() int { panic "method" }
+}
+
+@noPanic
+fn OwnerEffect(host: Host[int]) int { return host.Crash() }
+@noPanic
+fn MethodEffect(host: Host[int]) int { return host.GenericCrash[bool]() }

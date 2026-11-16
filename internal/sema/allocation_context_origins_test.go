@@ -39,7 +39,7 @@ func TestAllocationContextOrigins(t *testing.T) {
 		t.Fatal("same-spelled receivers conflated origins", other)
 	}
 	created := a.AllocationContexts(callGraphNodeIDByName(t, a.CallGraph(), "Created"))
-	if len(created) != 1 || created[0].CreatedDomainOrigin.Line != 30 || created[0].SelectedDomainOrigin.Line != 0 || !strings.Contains(AllocationContextDescription(created[0]), "backing allocation context unresolved") {
+	if len(created) != 1 || created[0].CreatedDomainOrigin.Line != 30 || created[0].SelectedDomainOrigin.Line != 0 || !strings.Contains(AllocationContextDescription(created[0]), "backing allocation context: available") {
 		t.Fatal("created origin mistaken for backing", created)
 	}
 	origins := map[string]lexer.Token{}
@@ -50,7 +50,7 @@ func TestAllocationContextOrigins(t *testing.T) {
 		if fact.SelectedDomainOrigin != origins[fact.SelectedDomain] || fact.CreatedDomainOrigin != origins[fact.CreatedDomain] {
 			t.Fatal("noncanonical provenance", fact)
 		}
-		if fact.ContextKnown && (fact.SelectedDomainOrigin.Line != 0 || fact.CreatedDomainOrigin.Line != 0) {
+		if fact.ContextKnown && fact.SelectedDomain == "" && fact.CreatedDomain == "" && (fact.SelectedDomainOrigin.Line != 0 || fact.CreatedDomainOrigin.Line != 0) {
 			t.Fatal("invented implicit source origin", fact)
 		}
 	}

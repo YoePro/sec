@@ -1,0 +1,22 @@
+module interrupt_helpers
+
+@interruptSafe
+fn Helper() void {}
+
+@isr
+fn Entry() void {
+    Helper()
+}
+
+fn Ordinary(callback: fn() void) void {
+    Helper()
+    let local := Helper
+    local()
+    callback()
+}
+
+fn Entry(value: int) int { return value }
+
+fn Overloaded() int {
+    return Entry(1)
+}

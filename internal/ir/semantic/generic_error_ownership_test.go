@@ -9,9 +9,10 @@ import (
 	"testing"
 )
 
-// Source ownership conformance is independent of the P17 per-specialization
-// cleanup gate: a valid owning E must fail by name without a partial IR module.
-// Rules: rules/compiler/monomorphization.md — §11.2; MD-120 §§4(6),11(4–5).
+// A valid owning E specializes with its concrete ownership: the consuming
+// parameter registers with E's destruction plan and transfers into the
+// returned Err, and a fresh unit variant is passed by move.
+// Rules: rules/compiler/monomorphization.md — §§11.2,11.4; MD-120 §§4(6),11(4–5).
 func TestGenericErrorOwnershipLoweringBoundary(t *testing.T) {
 	data, err := os.ReadFile("../../../testdata/sema/generic_error_ownership/lowering_boundary.sec")
 	if err != nil {
@@ -27,7 +28,16 @@ func TestGenericErrorOwnershipLoweringBoundary(t *testing.T) {
 		t.Fatal(errors)
 	}
 	module, err := Build(program, a, BuildOptions{RequestedModule: "main", MaxPackage: 17})
-	if err == nil || module != nil || !strings.Contains(err.Error(), "ownership-sensitive argument E=") {
-		t.Fatalf("boundary: module=%v error=%v", module, err)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Verify(module); err != nil {
+		t.Fatal(err)
+	}
+	text := Format(module)
+	for _, want := range []string{`Wrap[E=main::OwnedError](main::OwnedError)`, `plan="destroy:main:union:OwnedError"`, "result.err", "(%0[move])"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("missing %q:\n%s", want, text)
+		}
 	}
 }

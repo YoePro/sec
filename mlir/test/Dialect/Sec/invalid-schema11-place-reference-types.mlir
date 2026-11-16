@@ -22,8 +22,9 @@ module {
 // -----
 
 module {
+  // A Place may address a reference holder (P17), never another Place.
   // expected-error@+1 {{sec.place referent must be an ordinary value type, not storage, a Place or a reference}}
-  func.func private @place_of_ref(%value: !sec.place<!sec.ref<i32>, "ro">)
+  func.func private @place_of_place(%value: !sec.place<!sec.place<i32, "ro">, "ro">)
 }
 
 // -----

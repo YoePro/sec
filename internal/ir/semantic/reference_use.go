@@ -41,14 +41,35 @@ func (fb *functionBuilder) referenceHolder(holder *ast.Identifier) (builtValue, 
 		return builtValue{}, nil, fmt.Errorf("missing resolved binding for %s", holder.Value)
 	}
 	held, ok := fb.bindings[fact.ID]
-	if !ok || held.storage != 0 {
-		return builtValue{}, nil, fb.unsupported("reference held in mutable storage", holder.Token)
+	if ok && held.storage != 0 {
+		// Holders in mutable storage lower from package 17 (P16 carry-over).
+		if fb.owner.maxPackage < ownershipLoweringPackage {
+			return builtValue{}, nil, fb.unsupported("reference held in mutable storage", holder.Token)
+		}
+		return fb.readStoredHolder(holder, held)
+	}
+	if !ok {
+		return builtValue{}, nil, fmt.Errorf("binding %d has no IR value", fact.ID)
 	}
 	if held.referent != 0 {
 		return builtValue{}, nil, fb.unsupported("passing on a reference holder a defer body captured", holder.Token)
 	}
 	metadata, ok := fb.references[held.value]
 	if !ok {
+		// A holder bound out of an aggregate (a pattern payload) carries no
+		// reference facts of its own: it is read with Sema's facts for this
+		// use (package15 § 101).
+		if facts, resolved := fb.owner.analyzer.ResolvedHolderReadOf(holder); resolved && facts.Checkable() && held.storage == 0 && held.capture == 0 && fb.owner.maxPackage >= ownershipLoweringPackage {
+			root, rooted := fb.owner.analyzer.ResolvedPlaceOf(holder)
+			if !rooted {
+				return builtValue{}, nil, fb.unsupported("reference holder "+holder.Value+" without a resolved Place", holder.Token)
+			}
+			root.Projections = nil
+			placeType := fb.owner.module.Types.Intern(Type{Kind: TypePlace, Element: held.typ})
+			place := fb.placeResult(Operation{Kind: OpPlaceValueRoot, Operands: []ValueID{held.value}, Place: placeMetadataOf(root), Location: location(holder.Token)}, placeType)
+			value, metadata := fb.holderRead(place, held.typ, facts, location(holder.Token))
+			return value, metadata, nil
+		}
 		return builtValue{}, nil, fb.unsupported("reference holder "+holder.Value+" without lowered reference facts", holder.Token)
 	}
 	return builtValue{id: held.value, typ: held.typ}, metadata, nil
@@ -66,6 +87,13 @@ func (fb *functionBuilder) referenceHolderExpression(expr ast.Expression) (built
 			if metadata, ok := fb.references[value.id]; ok {
 				return value, metadata, holder.Token, nil
 			}
+		}
+		if value, metadata, ok, err := fb.readContainedHolder(holder); ok || err != nil {
+			return value, metadata, holder.Token, err
+		}
+	case *ast.MemberExpression:
+		if value, metadata, ok, err := fb.readContainedHolder(holder); ok || err != nil {
+			return value, metadata, holder.Token, err
 		}
 	}
 	return builtValue{}, nil, expressionToken(expr), fb.unsupported("reference pass of a non-holder expression", expressionToken(expr))
@@ -133,6 +161,13 @@ func (fb *functionBuilder) derefUsePlace(expr ast.Expression, use sema.ResolvedR
 // fixed-array elements of expr below it, returning the Place, its authority
 // and the holder's reference facts.
 func (fb *functionBuilder) derefHolderPlace(expr ast.Expression, validity sema.ReferenceValidityPolicy, resolved sema.Place, wholeReferent string) (builtValue, bool, *ReferenceMetadata, error) {
+	if contained, steps, ok := fb.containedHolderPath(expr); ok {
+		reference, metadata, _, err := fb.readContainedHolder(contained)
+		if err != nil {
+			return builtValue{}, false, nil, err
+		}
+		return fb.derefReference(expr, reference, metadata, steps, validity, resolved)
+	}
 	holder, steps := referencePath(expr)
 	if holder == nil || len(steps) == 0 && !explicitWholeReferent(expr) {
 		return builtValue{}, false, nil, fb.unsupported(wholeReferent, expressionToken(expr))
@@ -326,7 +361,7 @@ func (fb *functionBuilder) lowerReferenceWrite(stmt *ast.AssignmentStatement, us
 	if stmt.Operator != "=" {
 		return fb.lowerReferenceCompoundWrite(stmt, use)
 	}
-	if !use.TrivialReplacement {
+	if !use.TrivialReplacement && fb.owner.maxPackage < ownershipLoweringPackage {
 		return fb.unsupported("non-trivial replacement through a reference", stmt.Token)
 	}
 	place, mutable, err := fb.derefUsePlace(stmt.Target, use)
@@ -340,6 +375,18 @@ func (fb *functionBuilder) lowerReferenceWrite(stmt *ast.AssignmentStatement, us
 	value, err := fb.buildExpr(stmt.Value, placeType.Element)
 	if err != nil {
 		return err
+	}
+	if !use.TrivialReplacement {
+		// A referent reached through a valid `ref mut` is always available;
+		// replacement destroys its old value by plan and leaves the new one
+		// owned by the referent's owner (destruction.md § 13; package17 § 64).
+		concrete := fb.owner.concreteType(use.Place.Type)
+		planID, err := fb.owner.importDestructionPlans(sema.ResolveDestructionPlans(concrete), concrete)
+		if err != nil {
+			return err
+		}
+		fb.emit(Operation{Kind: OpOwnReplacePlace, Operands: []ValueID{place.id, value.id}, Ownership: &OwnershipFacts{DestructionPlan: planID}, Location: location(stmt.Token)})
+		return nil
 	}
 	fb.emit(Operation{Kind: OpPlaceWrite, Operands: []ValueID{place.id, value.id}, Location: location(stmt.Token)})
 	return nil
@@ -443,6 +490,11 @@ func (fb *functionBuilder) lowerReferenceEquality(expr ast.Expression, use sema.
 // parameter is reborrowed shared, and a mutable reference to a ref mut
 // parameter is reborrowed mutably for the call, never silently copied.
 func (fb *functionBuilder) lowerReferencePass(expr ast.Expression, use sema.ResolvedReferenceUse) (builtValue, error) {
+	if holder, ok := expr.(*ast.Identifier); ok {
+		if referent, mutable, metadata, captured := fb.capturedReferent(holder); captured {
+			return fb.passCapturedReferent(holder, referent, mutable, metadata, use)
+		}
+	}
 	source, metadata, token, err := fb.referenceHolderExpression(expr)
 	if err != nil {
 		return builtValue{}, err
@@ -582,4 +634,249 @@ func (fb *functionBuilder) lowerValueDereference(prefix *ast.PrefixExpression) (
 	placeType := fb.owner.module.Types.Intern(Type{Kind: TypePlace, Element: refType.Element, Mutable: refType.Mutable})
 	place := fb.placeResult(Operation{Kind: OpReferenceDerefPlace, Operands: []ValueID{reference.id}, Reference: metadata, ReferenceGuard: guard, Location: loc}, placeType)
 	return fb.result(Operation{Kind: OpPlaceRead, Operands: []ValueID{place.id}, Location: loc}, refType.Element), nil
+}
+
+// passCapturedReferent passes on a reference holder a defer body captured.
+// The body holds the holder's referent Place, never a copy of the holder,
+// so the call receives a borrow of that Place derived from the holder's
+// borrow under Sema's facts for the pass: shared for a ref parameter,
+// mutable only through a ref mut holder (P17-41; borrowing.md § 11).
+// Rules: rules/control-flow/defer.md — §§ 9–11; rules/memory/borrowing.md — § 11;
+// rules/mlir/packages/sec-mlir-dialect_package15.md — § 60.
+func (fb *functionBuilder) passCapturedReferent(holder *ast.Identifier, referent builtValue, mutable bool, metadata *ReferenceMetadata, use sema.ResolvedReferenceUse) (builtValue, error) {
+	if use.Facts.MutableAuthority && !mutable {
+		return builtValue{}, fb.unsupported("passing a shared reference to a ref mut parameter", holder.Token)
+	}
+	derived := referenceMetadataOf(use.Facts)
+	derived.SourceBorrow = metadata.Borrow
+	if derived.Validity != metadata.Validity {
+		return builtValue{}, fb.unsupported("reference pass whose validity policy differs from its reference", holder.Token)
+	}
+	if derived.Borrow == metadata.Borrow {
+		return builtValue{}, fb.unsupported("captured reference pass without a distinct resolved borrow identity", holder.Token)
+	}
+	if len(derived.OriginStorages) == 0 {
+		derived.OriginStorages = append([]uint32(nil), metadata.OriginStorages...)
+	}
+	placeType, _ := fb.owner.module.Types.Lookup(referent.typ)
+	// A reborrow of the referent Place the holder was dereferenced into.
+	kind, ownership := OpReferenceReborrowShared, OwnershipSharedReference
+	if use.Facts.MutableAuthority {
+		kind, ownership = OpReferenceReborrowMutable, OwnershipMutableReference
+	}
+	loc := location(holder.Token)
+	referenceType := fb.owner.module.Types.Intern(Type{Kind: TypeReference, Element: placeType.Element, Mutable: use.Facts.MutableAuthority})
+	value := fb.newValue(referenceType, ownership, loc)
+	fb.emit(Operation{Kind: kind, Operands: []ValueID{referent.id}, Results: []Value{value}, Reference: derived, Location: loc})
+	fb.recordReference(value.ID, derived)
+	return builtValue{id: value.ID, typ: referenceType}, nil
+}
+
+// readStoredHolder reads a direct reference holder kept in mutable storage at
+// one use: the holder may have been rebound (references.md § 3.4(5)), so the
+// read carries Sema's facts for this point, whose origins cover every
+// reference that can reach it, and the verifier checks them against the
+// stores that reach the read. The holder is read out of its Place, never
+// copied as a value.
+// Rules: rules/memory/references.md — § 3.4(5); rules/memory/borrowing.md — § 8.2;
+// rules/memory/lifetime_analysis.md — § 11.
+func (fb *functionBuilder) readStoredHolder(holder *ast.Identifier, held binding) (builtValue, *ReferenceMetadata, error) {
+	typ, ok := fb.owner.module.Types.Lookup(held.typ)
+	if !ok || !isBorrowValueType(fb.owner.module, held.typ) {
+		return builtValue{}, nil, fmt.Errorf("stored holder %s is not a reference, slice or view", holder.Value)
+	}
+	facts, ok := fb.owner.analyzer.ResolvedHolderReadOf(holder)
+	if !ok || !facts.Checkable() {
+		return builtValue{}, nil, fb.unsupported("reference held in mutable storage without checkable facts at this read", holder.Token)
+	}
+	root, ok := fb.owner.analyzer.ResolvedPlaceOf(holder)
+	if !ok {
+		return builtValue{}, nil, fb.unsupported("reference held in mutable storage without a resolved Place", holder.Token)
+	}
+	root.Projections = nil
+	loc := location(holder.Token)
+	fb.markStorageAddressTaken(held.storage)
+	placeType := fb.owner.module.Types.Intern(Type{Kind: TypePlace, Element: held.typ, Mutable: true})
+	place := fb.placeResult(Operation{Kind: OpPlaceStorageRoot, Storage: held.storage, Place: placeMetadataOf(root), Location: loc}, placeType)
+	metadata := referenceMetadataOf(facts)
+	ownership := OwnershipSharedReference
+	if typ.Mutable || typ.Kind == TypeMutableSlice {
+		ownership = OwnershipMutableReference
+	}
+	value := fb.newValue(held.typ, ownership, loc)
+	fb.emit(Operation{Kind: OpPlaceRead, Operands: []ValueID{place.id}, Results: []Value{value}, PlaceReadMode: PlaceReadHolder, Reference: metadata, Location: loc})
+	fb.recordReference(value.ID, metadata)
+	return builtValue{id: value.ID, typ: held.typ}, metadata, nil
+}
+
+// rebindStoredHolder lowers `r = otherRef` (and `r <- other` for a move-only
+// mutable holder) to a store into the holder's storage: the holder now holds
+// the new reference and nothing is written through the old one (references.md
+// § 3.4(5)). The old reference's borrow ends with the holder when no derived
+// dependency survives (borrowing.md §§ 8.2, 35.2(3)); later reads carry
+// Sema's facts for their point.
+func (fb *functionBuilder) rebindStoredHolder(stmt *ast.AssignmentStatement) (bool, error) {
+	identifier, ok := stmt.Target.(*ast.Identifier)
+	if !ok || stmt.Operator != "=" && stmt.Operator != "<-" || fb.owner.maxPackage < ownershipLoweringPackage {
+		return false, nil
+	}
+	fact, ok := fb.owner.analyzer.ResolvedBindingOf(identifier)
+	if !ok {
+		return false, nil
+	}
+	held, ok := fb.bindings[fact.ID]
+	if !ok || held.storage == 0 {
+		return false, nil
+	}
+	typ, ok := fb.owner.module.Types.Lookup(held.typ)
+	if !ok || !isBorrowValueType(fb.owner.module, held.typ) {
+		return false, nil
+	}
+	if (typ.Mutable || typ.Kind == TypeMutableSlice) != (stmt.Operator == "<-") {
+		return true, fb.unsupported("holder rebind whose operator does not match the holder's authority", stmt.Token)
+	}
+	value, err := fb.buildExpr(stmt.Value, held.typ)
+	if err != nil {
+		return true, err
+	}
+	if value.typ != held.typ {
+		return true, fmt.Errorf("rebound reference differs from the holder's type")
+	}
+	fb.emit(Operation{Kind: OpStorageStore, Storage: held.storage, Operands: []ValueID{value.id}, Location: location(stmt.Token)})
+	return true, nil
+}
+
+// containedHolderPath splits a use whose reference is read out of an
+// aggregate (`*h.target`, `h.target.left`, `v.items[0]`) into that contained
+// holder expression and the steps applied through the reference.
+func (fb *functionBuilder) containedHolderPath(expr ast.Expression) (ast.Expression, []ast.Expression, bool) {
+	if fb.owner.maxPackage < ownershipLoweringPackage {
+		return nil, nil, false
+	}
+	var steps []ast.Expression
+	current := expr
+	if prefix, ok := current.(*ast.PrefixExpression); ok && prefix.Operator == "*" {
+		current = prefix.Right
+	}
+	for {
+		if _, contained := fb.owner.analyzer.ResolvedContainedReadOf(current); contained {
+			return current, steps, true
+		}
+		switch step := current.(type) {
+		case *ast.MemberExpression:
+			steps = append([]ast.Expression{step}, steps...)
+			current = step.Object
+			continue
+		case *ast.IndexExpression:
+			steps = append([]ast.Expression{step}, steps...)
+			current = step.Left
+			continue
+		}
+		return nil, nil, false
+	}
+}
+
+// derefReference validates a reference once, dereferences it and projects
+// the steps below it.
+func (fb *functionBuilder) derefReference(expr ast.Expression, reference builtValue, metadata *ReferenceMetadata, steps []ast.Expression, validity sema.ReferenceValidityPolicy, resolved sema.Place) (builtValue, bool, *ReferenceMetadata, error) {
+	if ReferenceValidity(validity) != metadata.Validity {
+		return builtValue{}, false, nil, fb.unsupported("reference use whose validity policy differs from its reference", expressionToken(expr))
+	}
+	refType, ok := fb.owner.module.Types.Lookup(reference.typ)
+	if !ok || refType.Kind != TypeReference {
+		return builtValue{}, false, nil, fmt.Errorf("contained holder of %s is not a reference value", expr.String())
+	}
+	loc := location(expressionToken(expr))
+	guard, err := fb.validateReference(reference, metadata, loc)
+	if err != nil {
+		return builtValue{}, false, nil, err
+	}
+	placeType := fb.owner.module.Types.Intern(Type{Kind: TypePlace, Element: refType.Element, Mutable: refType.Mutable})
+	place := fb.placeResult(Operation{Kind: OpReferenceDerefPlace, Operands: []ValueID{reference.id}, Reference: metadata, ReferenceGuard: guard, Location: loc}, placeType)
+	place, err = fb.projectPlace(steps, resolved.Projections, place, refType.Mutable, placeMetadataOf(resolved))
+	return place, refType.Mutable, metadata, err
+}
+
+// readContainedHolder reads a reference, slice or view stored in an
+// aggregate out of the aggregate's field or element Place, with the contained
+// origin facts Sema resolved for that path (package15 § 101). The aggregate
+// is observed in place, never copied, and the holder is never moved out.
+func (fb *functionBuilder) readContainedHolder(expr ast.Expression) (builtValue, *ReferenceMetadata, bool, error) {
+	facts, ok := fb.owner.analyzer.ResolvedContainedReadOf(expr)
+	if !ok || fb.owner.maxPackage < ownershipLoweringPackage {
+		return builtValue{}, nil, false, nil
+	}
+	token := expressionToken(expr)
+	if !facts.Checkable() {
+		return builtValue{}, nil, true, fb.unsupported("reference read out of an aggregate without checkable facts", token)
+	}
+	resolved, ok := fb.owner.analyzer.ResolvedPlaceOf(expr)
+	if !ok {
+		return builtValue{}, nil, true, fb.unsupported("reference read out of an aggregate without a resolved Place", token)
+	}
+	root, steps := referencePath(expr)
+	if root == nil || len(steps) == 0 {
+		return builtValue{}, nil, true, fb.unsupported("reference read out of an aggregate path that is not rooted in a binding", token)
+	}
+	place, mutable, err := fb.bindingRootPlace(root)
+	if err != nil {
+		return builtValue{}, nil, true, err
+	}
+	place, err = fb.projectPlace(steps, resolved.Projections, place, mutable, placeMetadataOf(resolved))
+	if err != nil {
+		return builtValue{}, nil, true, err
+	}
+	typ, _ := fb.owner.module.Types.Lookup(place.typ)
+	value, metadata := fb.holderRead(place, typ.Element, facts, location(token))
+	return value, metadata, true, nil
+}
+
+// holderRead reads the reference held at place with the facts of this read.
+func (fb *functionBuilder) holderRead(place builtValue, typeID TypeID, facts sema.ReferenceFacts, loc Location) (builtValue, *ReferenceMetadata) {
+	typ, _ := fb.owner.module.Types.Lookup(typeID)
+	ownership := OwnershipSharedReference
+	if typ.Mutable || typ.Kind == TypeMutableSlice {
+		ownership = OwnershipMutableReference
+	}
+	metadata := referenceMetadataOf(facts)
+	value := fb.newValue(typeID, ownership, loc)
+	fb.emit(Operation{Kind: OpPlaceRead, Operands: []ValueID{place.id}, Results: []Value{value}, PlaceReadMode: PlaceReadHolder, Reference: metadata, Location: loc})
+	fb.recordReference(value.ID, metadata)
+	return builtValue{id: value.ID, typ: typeID}, metadata
+}
+
+// bindingRootPlace is the root Place of a binding: its owned or mutable
+// storage, a defer capture, or the read-only root of an SSA value.
+func (fb *functionBuilder) bindingRootPlace(identifier *ast.Identifier) (builtValue, bool, error) {
+	fact, ok := fb.owner.analyzer.ResolvedBindingOf(identifier)
+	if !ok {
+		return builtValue{}, false, fmt.Errorf("missing resolved binding for %s", identifier.Value)
+	}
+	bound, ok := fb.bindings[fact.ID]
+	if !ok {
+		return builtValue{}, false, fmt.Errorf("binding %d has no IR value", fact.ID)
+	}
+	loc := location(identifier.Token)
+	var facts *PlaceMetadata
+	if place, resolved := fb.owner.analyzer.ResolvedPlaceOf(identifier); resolved {
+		root := place
+		root.Projections = nil
+		facts = placeMetadataOf(root)
+	}
+	switch {
+	case bound.capture != 0:
+		return builtValue{id: bound.capture, typ: fb.owner.module.Types.Intern(Type{Kind: TypePlace, Element: bound.typ, Mutable: bound.mutable})}, bound.mutable, nil
+	case fb.isOwnedStorage(fact.ID):
+		return fb.ownedStoragePlace(fb.ownedStorages[fact.ID], identifier.Token), true, nil
+	case bound.storage != 0:
+		fb.markStorageAddressTaken(bound.storage)
+		placeType := fb.owner.module.Types.Intern(Type{Kind: TypePlace, Element: bound.typ, Mutable: true})
+		return fb.placeResult(Operation{Kind: OpPlaceStorageRoot, Storage: bound.storage, Place: facts, Location: loc}, placeType), true, nil
+	default:
+		if facts == nil {
+			return builtValue{}, false, fb.unsupported("aggregate root without a resolved Place", identifier.Token)
+		}
+		placeType := fb.owner.module.Types.Intern(Type{Kind: TypePlace, Element: bound.typ})
+		return fb.placeResult(Operation{Kind: OpPlaceValueRoot, Operands: []ValueID{bound.value}, Place: facts, Location: loc}, placeType), false, nil
+	}
 }

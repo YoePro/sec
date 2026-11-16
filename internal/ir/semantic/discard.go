@@ -24,7 +24,7 @@ func (fb *functionBuilder) buildDiscard(stmt *ast.DiscardStatement) error {
 		if !ok {
 			return fb.unsupported("discard of an unresolved binding", stmt.Token)
 		}
-		if !sema.TriviallyDestructible(fact.Type) {
+		if !fb.owner.triviallyDestructible(fact.Type) {
 			return fb.discardOwnedBinding(stmt, fact, loc)
 		}
 		bind, ok := fb.bindings[fact.ID]
@@ -64,7 +64,7 @@ func (fb *functionBuilder) buildDiscard(stmt *ast.DiscardStatement) error {
 func (fb *functionBuilder) discardOwnedField(stmt *ast.DiscardStatement, member *ast.MemberExpression, loc Location) (bool, error) {
 	typ, typed := fb.owner.analyzer.ResolvedTypeOf(member)
 	state, resolved := fb.owner.analyzer.ResolvedDiscardSourceStateOf(stmt)
-	if !typed || !resolved || sema.TriviallyDestructible(typ) || fb.owner.maxPackage < ownershipLoweringPackage {
+	if !typed || !resolved || fb.owner.triviallyDestructible(typ) || fb.owner.maxPackage < ownershipLoweringPackage {
 		return false, nil
 	}
 	root, chain := memberRoot(member)
@@ -105,7 +105,7 @@ func (fb *functionBuilder) discardExpression(expr ast.Expression, provenance Dis
 	if !ok {
 		return fb.unsupported("discard of an untyped expression", token)
 	}
-	if !sema.TriviallyDestructible(typ) {
+	if !fb.owner.triviallyDestructible(typ) {
 		return fb.discardFreshOwned(expr, typ, provenance, token)
 	}
 	value, err := fb.buildExpr(expr, 0)
@@ -204,6 +204,14 @@ func (fb *functionBuilder) discardSliceHolder(value builtValue, token lexer.Toke
 	facts := fb.references[value.id]
 	if facts == nil {
 		return true, fmt.Errorf("discarded slice holder has no reference facts")
+	}
+	// Discarding a holder ends the authority it alone holds only after every
+	// derived dependency has ended (borrowing.md §§ 8.2(1), 35.2(3)): with a
+	// derived reborrow or copy alive, the holder ends with it, not here.
+	for id, derived := range fb.references {
+		if id != value.id && derived != nil && derived.SourceBorrow == facts.Borrow && derived.Borrow != facts.Borrow {
+			return true, nil
+		}
 	}
 	fb.emit(Operation{Kind: OpReferenceEndBorrow, Operands: []ValueID{value.id}, Reference: cloneReferenceMetadata(facts), Location: location(token)})
 	return true, nil

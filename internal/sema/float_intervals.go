@@ -60,10 +60,13 @@ func (a *Analyzer) floatingConstantValue(expr ast.Expression, typ Type) (*big.Ra
 }
 
 // recordFloatingBindingConstant snapshots an immutable initializer after its
-// proven implicit unit conversion. Symbols carry the fact through lexical scope
-// copies, so shadowing, mutable values and later function analyses cannot reuse it.
+// proven implicit unit conversion, retaining IEEE NaN/infinity categories for
+// typed conversion checks separately from finite rational values. Symbols carry
+// the fact through lexical scope copies, so shadowing, mutable values and later
+// function analyses cannot reuse it.
 // Rules: rules/types/units.md — Exact fixed conversions;
-// rules/foundations/names_scopes_visibility.md — Lexical scopes.
+// rules/foundations/names_scopes_visibility.md — Lexical scopes;
+// rules/mlir/packages/sec-mlir-dialect_package20.md — §§47–55,59.
 func (a *Analyzer) recordFloatingBindingConstant(name string, expr ast.Expression) {
 	symbol, ok := a.symbols.lookup(name)
 	if !ok || symbol.Mutable || symbol.Volatile || symbol.Type.Kind != FloatType {
@@ -73,10 +76,16 @@ func (a *Analyzer) recordFloatingBindingConstant(name string, expr ast.Expressio
 	if source, ok := a.expressionTypes[expr]; ok && source.Kind == FloatType {
 		typ = source
 	}
-	value, ok := a.floatingConstantValue(expr, typ)
-	if !ok {
+	constantValue, known := a.numericFloatConstantOf(expr, typ)
+	if !known {
 		return
 	}
+	if constantValue.special != "" {
+		symbol.numericFloatSpecial = constantValue.special
+		a.symbols.set(name, symbol)
+		return
+	}
+	value := constantValue.value
 	if plan, ok := a.UnitConversionPlanOf(expr); ok {
 		value.Add(new(big.Rat).Mul(value, plan.Factor), plan.Offset)
 	}

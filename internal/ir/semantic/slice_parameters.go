@@ -83,7 +83,7 @@ func (fb *functionBuilder) lowerSliceArgument(arg ast.Expression, param TypeID) 
 		if value.typ != param {
 			sourceType, _ := fb.owner.module.Types.Lookup(value.typ)
 			if paramType.Kind == TypeSharedSlice && sourceType.Kind == TypeMutableSlice && sourceType.Element == paramType.Element {
-				use, ok := fb.owner.analyzer.ResolvedReferenceUseOf(arg)
+				use, ok := fb.owner.referenceUseOf(arg)
 				metadata := fb.references[value.id]
 				if !ok || use.Kind != sema.ReferenceUsePass || !use.Facts.Checkable() || use.Facts.MutableAuthority || metadata == nil {
 					return builtValue{}, fmt.Errorf("mutable slice expression argument has no resolved shared pass")
@@ -102,7 +102,7 @@ func (fb *functionBuilder) lowerSliceArgument(arg ast.Expression, param TypeID) 
 	loc := location(holder.Token)
 	if sharedBoundedView(paramType.Kind) {
 		if sourceType.Kind == TypeMutableSlice && sourceType.Element == paramType.Element {
-			use, ok := fb.owner.analyzer.ResolvedReferenceUseOf(holder)
+			use, ok := fb.owner.referenceUseOf(holder)
 			if !ok || use.Kind != sema.ReferenceUsePass || !use.Facts.Checkable() || use.Facts.MutableAuthority {
 				return builtValue{}, fmt.Errorf("mutable slice argument %s has no resolved shared pass", holder.Value)
 			}
@@ -121,7 +121,7 @@ func (fb *functionBuilder) lowerSliceArgument(arg ast.Expression, param TypeID) 
 	if sourceType.Kind != TypeMutableSlice || source.typ != param {
 		return builtValue{}, fb.unsupported("passing a shared slice holder to a mutable slice parameter", holder.Token)
 	}
-	use, ok := fb.owner.analyzer.ResolvedReferenceUseOf(holder)
+	use, ok := fb.owner.referenceUseOf(holder)
 	if !ok || use.Kind != sema.ReferenceUsePass {
 		return builtValue{}, fmt.Errorf("mutable slice argument %s has no resolved pass", holder.Value)
 	}

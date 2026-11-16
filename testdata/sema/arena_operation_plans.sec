@@ -1,0 +1,40 @@
+module main
+
+fn Borrowed() Result[void, AllocationError] {
+    let mut buffer: byte[32]
+    let mut arena := Arena.FromBuffer(ref mut buffer)
+    let first := try arena.New[byte]()
+    discard *first
+    discard first
+    let second := try arena.Alloc[byte](2u)
+    discard second
+    arena.Reset()
+    let empty := try arena.Alloc[byte](0u)
+    discard empty
+    arena.Release()
+    return Ok()
+}
+
+fn Owned() Result[void, AllocationError] {
+    let mut arena := try Arena.WithCapacity(64u)
+    let mut renamed :<- arena
+    let value := try renamed.New[uint256]()
+    discard value
+    renamed.Release()
+    return Ok()
+}
+
+fn Growing() Result[void, AllocationError] {
+    let mut arena := try Arena.Growable(16u)
+    let values := try arena.Alloc[byte](3u)
+    discard values
+    arena.Release()
+    return Ok()
+}
+
+fn UnknownBacking(arena: ref mut Arena, count: uint) Result[void, AllocationError] {
+    let value := try arena.Alloc[byte](count)
+    discard value
+    arena.Reset()
+    return Ok()
+}

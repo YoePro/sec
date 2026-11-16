@@ -1,0 +1,28 @@
+module method_overloads
+
+interface Named { fn Name() string }
+type Label struct {}
+impl Label implements Named { fn Name() string { return "label" } }
+
+type Host[T] struct { Value: T }
+impl Host[T] {
+    fn Select[U](tag: int, value: U) U { return value }
+    fn Select[U](tag: bool, value: U) U { return value }
+    static fn SelectStatic[U](tag: int, value: U) U { return value }
+    static fn SelectStatic[U](tag: bool, value: U) U { return value }
+    fn Filter[U: Named](value: U, tag: int) int { return 1 }
+    fn Filter(value: int, tag: int) int { return 2 }
+    fn Preference[U](value: U) uint { return 1u }
+    fn Preference[U](values: ...U) uint { return values.Len }
+    fn ResultChoice[U, V](value: U) Option[V] { return None }
+    fn ResultChoice[U, V](value: ref U) Option[V] { return None }
+}
+
+fn IntegerTag(host: Host[int]) bool { return host.Select(1, true) }
+fn BooleanTag(host: Host[int]) string { return host.Select[string](true, "text") }
+fn StaticIntegerTag() bool { return Host[int].SelectStatic[bool](1, true) }
+fn StaticBooleanTag() string { return Host[int].SelectStatic(true, "text") }
+fn ConstraintFails(host: Host[int]) int { return host.Filter(1, 0) }
+fn ConstraintSatisfied(host: Host[int]) int { return host.Filter(Label {}, 0) }
+fn FixedArity(host: Host[int]) uint { return host.Preference[bool](true) }
+fn SelectedResult(host: Host[int]) Option[string] { return host.ResultChoice[int](1) }

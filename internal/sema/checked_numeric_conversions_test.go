@@ -174,8 +174,8 @@ fn Test() float32 {
 }
 `)
 	assertSemaErrors(t, errors, []string{
-		"converting float64 to int32 may fail with ConversionError.NonFinite, ConversionError.OutOfRange or ConversionError.PrecisionLoss and requires try at 13:25",
-		"converting float64 to float32 may fail with ConversionError.OutOfRange or ConversionError.PrecisionLoss and requires try at 14:9",
+		"constant conversion from float64 to int32 fails with ConversionError.PrecisionLoss at 13:31",
+		"constant conversion from float64 to float32 fails with ConversionError.PrecisionLoss at 14:17",
 	})
 }
 

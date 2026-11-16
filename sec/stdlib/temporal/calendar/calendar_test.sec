@@ -1,0 +1,714 @@
+module calendar
+
+/*
+ * Sec Standard Library — temporal/calendar
+ * File: calendar/calendar_test.sec
+ * Purpose: Calendar API conformance and regression tests.
+ * Revision: 0.1
+ * Updated: 2026-11-16
+ *
+ * Rulebooks:
+ * - stdlib/temporal/calendar/std-temporal-calendar.md
+ * - stdlib/temporal/calendar/systems/std-temporal-calendar-systems.md
+ * - rules/tooling/testing.md
+ *
+ * Tests use the compiler-known testing namespace.
+ * No external test framework or import is required.
+ */
+
+// Test-only helpers.
+
+fn _testMonth(number: int) CalendarMonth {
+    return CalendarMonth {
+        Number: number,
+        IsLeap: false,
+    }
+}
+
+fn _testLeapMonth(number: int) CalendarMonth {
+    return CalendarMonth {
+        Number: number,
+        IsLeap: true,
+    }
+}
+
+fn _testFields(year: int, month: int, day: int) CalendarFields {
+    return CalendarFields {
+        Year: year,
+        Month: _testMonth(month),
+        Day: day,
+    }
+}
+
+fn _testPartial(year: Option[int], month: Option[CalendarMonth], day: Option[int]) PartialDate {
+    return PartialDate {
+        Year: year,
+        Month: month,
+        Day: day,
+    }
+}
+
+// ------------------------------------------------------------
+// Gregorian calendar
+// ------------------------------------------------------------
+
+test "Gregorian Unix epoch is day zero" {
+    let absolute := try ToDate(_testFields(1970, 1, 1))
+
+    testing.ExpectEqual(0, absolute.EpochDays)
+}
+
+test "Gregorian days around Unix epoch" {
+    let previousDay := try ToDate(_testFields(1969, 12, 31))
+    let nextDay     := try ToDate(_testFields(1970, 1, 2))
+
+    testing.ExpectEqual(-1, previousDay.EpochDays)
+    testing.ExpectEqual(1, nextDay.EpochDays)
+}
+
+test "Gregorian leap year rules" {
+    testing.ExpectEqual(28, try DaysInMonth(1900, _testMonth(2)))
+    testing.ExpectEqual(29, try DaysInMonth(2000, _testMonth(2)))
+    testing.ExpectEqual(29, try DaysInMonth(2024, _testMonth(2)))
+    testing.ExpectEqual(28, try DaysInMonth(2025, _testMonth(2)))
+}
+
+test "Gregorian month lengths" {
+    testing.ExpectEqual(31, try DaysInMonth(2026, _testMonth(1)))
+    testing.ExpectEqual(30, try DaysInMonth(2026, _testMonth(4)))
+    testing.ExpectEqual(31, try DaysInMonth(2026, _testMonth(12)))
+}
+
+test "Gregorian date round-trip" {
+    let original := _testFields(2026, 11, 16)
+
+    let absolute := try ToDate(original)
+    let restored := try FromDate(absolute)
+
+    testing.ExpectEqual(original.Year, restored.Year)
+    testing.ExpectEqual(original.Month.Number, restored.Month.Number)
+    testing.ExpectEqual(original.Day, restored.Day)
+    testing.ExpectEqual(false, restored.Month.IsLeap)
+}
+
+test "Gregorian astronomical year zero round-trip" {
+    let absolute := try ToDate(_testFields(0, 2, 29))
+    let restored := try FromDate(absolute)
+
+    testing.ExpectEqual(0, restored.Year)
+    testing.ExpectEqual(2, restored.Month.Number)
+    testing.ExpectEqual(29, restored.Day)
+}
+
+test "Gregorian negative year round-trip" {
+    let absolute := try ToDate(_testFields(-44, 3, 15))
+    let restored := try FromDate(absolute)
+
+    testing.ExpectEqual(-44, restored.Year)
+    testing.ExpectEqual(3, restored.Month.Number)
+    testing.ExpectEqual(15, restored.Day)
+}
+
+test "Gregorian rejects February 29 in 1900" {
+    match ToDate(_testFields(1900, 2, 29)) {
+        Ok(_) => testing.Fail("Expected InvalidDay")
+        Err(CalendarError.InvalidDay) => {
+        }
+        Err(_) => testing.Fail("Expected CalendarError.InvalidDay")
+    }
+}
+
+test "Gregorian rejects April 31" {
+    match ValidateFields(_testFields(2026, 4, 31)) {
+        Ok(_) => testing.Fail("April 31 must be invalid")
+        Err(CalendarError.InvalidDay) => {
+        }
+        Err(_) => testing.Fail("Expected CalendarError.InvalidDay")
+    }
+}
+
+test "Gregorian rejects invalid month identity" {
+    match MonthOrdinal(2026, _testMonth(13)) {
+        Ok(_) => testing.Fail("Month 13 must be invalid")
+        Err(CalendarError.InvalidMonth) => {
+        }
+        Err(_) => testing.Fail("Expected CalendarError.InvalidMonth")
+    }
+}
+
+// ------------------------------------------------------------
+// Julian calendar
+// ------------------------------------------------------------
+
+test "Julian epoch corresponds to December 19 1969" {
+    let absolute := try ToDate(
+        _testFields(1969, 12, 19),
+        CalendarSystem.Julian,
+    )
+
+    testing.ExpectEqual(0, absolute.EpochDays)
+}
+
+test "Julian 1900 is a leap year" {
+    let days := try DaysInMonth(
+        1900,
+        _testMonth(2),
+        CalendarSystem.Julian,
+    )
+
+    testing.ExpectEqual(29, days)
+}
+
+test "Julian leap date round-trip" {
+    let absolute := try ToDate(
+        _testFields(1900, 2, 29),
+        CalendarSystem.Julian,
+    )
+
+    let restored := try FromDate(
+        absolute,
+        CalendarSystem.Julian,
+    )
+
+    testing.ExpectEqual(1900, restored.Year)
+    testing.ExpectEqual(2, restored.Month.Number)
+    testing.ExpectEqual(29, restored.Day)
+}
+
+test "Gregorian and Julian dates agree on absolute day" {
+    // Proleptic calendar correspondence.
+    // No historical adoption rules are applied.
+    let absolute := try ToDate(_testFields(1582, 10, 15))
+
+    let julian := try FromDate(
+        absolute,
+        CalendarSystem.Julian,
+    )
+
+    testing.ExpectEqual(1582, julian.Year)
+    testing.ExpectEqual(10, julian.Month.Number)
+    testing.ExpectEqual(5, julian.Day)
+}
+
+test "Swedish 1753 transition reference dates" {
+    // This tests calendar arithmetic, not the historical
+    // transition rules themselves.
+    let absolute := try ToDate(_testFields(1753, 3, 1))
+
+    let julian := try FromDate(
+        absolute,
+        CalendarSystem.Julian,
+    )
+
+    testing.ExpectEqual(1753, julian.Year)
+    testing.ExpectEqual(2, julian.Month.Number)
+    testing.ExpectEqual(18, julian.Day)
+}
+
+// ------------------------------------------------------------
+// Month identity and ordinal conversion
+// ------------------------------------------------------------
+
+test "Gregorian years always contain twelve months" {
+    testing.ExpectEqual(12, try MonthsInYear(1900))
+    testing.ExpectEqual(12, try MonthsInYear(2000))
+    testing.ExpectEqual(12, try MonthsInYear(2026))
+}
+
+test "Gregorian month identity and ordinal are inverse" {
+    let month   := try MonthAt(2026, 12)
+    let ordinal := try MonthOrdinal(2026, month)
+
+    testing.ExpectEqual(12, month.Number)
+    testing.ExpectEqual(false, month.IsLeap)
+    testing.ExpectEqual(12, ordinal)
+}
+
+test "MonthAt rejects ordinal outside the year" {
+    match MonthAt(2026, 13) {
+        Ok(_) => testing.Fail("Expected InvalidMonth")
+        Err(CalendarError.InvalidMonth) => {
+        }
+        Err(_) => testing.Fail("Expected CalendarError.InvalidMonth")
+    }
+}
+
+test "Gregorian rejects leap month identity" {
+    match MonthOrdinal(2026, _testLeapMonth(5)) {
+        Ok(_) => testing.Fail("Gregorian calendar has no leap month")
+        Err(CalendarError.InvalidMonth) => {
+        }
+        Err(_) => testing.Fail("Expected CalendarError.InvalidMonth")
+    }
+}
+
+// ------------------------------------------------------------
+// Hebrew calendar
+// ------------------------------------------------------------
+
+test "Hebrew nineteen-year leap cycle" {
+    testing.ExpectEqual(
+        13,
+        try MonthsInYear(5784, CalendarSystem.Hebrew),
+    )
+
+    testing.ExpectEqual(
+        12,
+        try MonthsInYear(5785, CalendarSystem.Hebrew),
+    )
+
+    testing.ExpectEqual(
+        13,
+        try MonthsInYear(5787, CalendarSystem.Hebrew),
+    )
+}
+
+test "Hebrew leap year inserts Adar I" {
+    let adarI  := try MonthAt(5784, 6, CalendarSystem.Hebrew)
+    let adarII := try MonthAt(5784, 7, CalendarSystem.Hebrew)
+
+    testing.ExpectEqual(5, adarI.Number)
+    testing.ExpectEqual(true, adarI.IsLeap)
+
+    testing.ExpectEqual(6, adarII.Number)
+    testing.ExpectEqual(false, adarII.IsLeap)
+}
+
+test "Hebrew Adar II has stable identity" {
+    let leapOrdinal := try MonthOrdinal(
+        5784,
+        _testMonth(6),
+        CalendarSystem.Hebrew,
+    )
+
+    let ordinaryOrdinal := try MonthOrdinal(
+        5785,
+        _testMonth(6),
+        CalendarSystem.Hebrew,
+    )
+
+    testing.ExpectEqual(7, leapOrdinal)
+    testing.ExpectEqual(6, ordinaryOrdinal)
+}
+
+test "Hebrew ordinary year rejects Adar I" {
+    match MonthOrdinal(
+        5785,
+        _testLeapMonth(5),
+        CalendarSystem.Hebrew,
+    ) {
+        Ok(_) => testing.Fail("Adar I cannot occur in an ordinary year")
+        Err(CalendarError.InvalidMonth) => {
+        }
+        Err(_) => testing.Fail("Expected CalendarError.InvalidMonth")
+    }
+}
+
+test "Hebrew variable Heshvan and Kislev lengths" {
+    testing.ExpectEqual(
+        29,
+        try DaysInMonth(5784, _testMonth(2), CalendarSystem.Hebrew),
+    )
+
+    testing.ExpectEqual(
+        29,
+        try DaysInMonth(5784, _testMonth(3), CalendarSystem.Hebrew),
+    )
+
+    testing.ExpectEqual(
+        30,
+        try DaysInMonth(5785, _testMonth(2), CalendarSystem.Hebrew),
+    )
+
+    testing.ExpectEqual(
+        30,
+        try DaysInMonth(5785, _testMonth(3), CalendarSystem.Hebrew),
+    )
+}
+
+test "Hebrew Adar I contains thirty days" {
+    let days := try DaysInMonth(
+        5784,
+        _testLeapMonth(5),
+        CalendarSystem.Hebrew,
+    )
+
+    testing.ExpectEqual(30, days)
+}
+
+test "Hebrew rejects invalid year zero" {
+    match MonthsInYear(0, CalendarSystem.Hebrew) {
+        Ok(_) => testing.Fail("Hebrew AM year zero must be invalid")
+        Err(CalendarError.InvalidYear) => {
+        }
+        Err(_) => testing.Fail("Expected CalendarError.InvalidYear")
+    }
+}
+
+// ------------------------------------------------------------
+// Islamic tabular calendar
+// ------------------------------------------------------------
+
+test "Islamic tabular calendar has twelve months" {
+    testing.ExpectEqual(
+        12,
+        try MonthsInYear(1447, CalendarSystem.IslamicTabular),
+    )
+}
+
+test "Islamic tabular months alternate lengths" {
+    testing.ExpectEqual(
+        30,
+        try DaysInMonth(
+            1447,
+            _testMonth(1),
+            CalendarSystem.IslamicTabular,
+        ),
+    )
+
+    testing.ExpectEqual(
+        29,
+        try DaysInMonth(
+            1447,
+            _testMonth(2),
+            CalendarSystem.IslamicTabular,
+        ),
+    )
+}
+
+test "Islamic tabular month twelve awaits leap scheme" {
+    match DaysInMonth(
+        1447,
+        _testMonth(12),
+        CalendarSystem.IslamicTabular,
+    ) {
+        Ok(_) => testing.Fail("Expected NotImplemented")
+        Err(CalendarError.NotImplemented) => {
+        }
+        Err(_) => testing.Fail("Expected CalendarError.NotImplemented")
+    }
+}
+
+// ------------------------------------------------------------
+// Partial date validation
+// ------------------------------------------------------------
+
+test "Partial year without month or day is valid" {
+    let partial := _testPartial(Some(1852), None, None)
+
+    try ValidatePartial(partial)
+}
+
+test "Partial month and day without year is valid" {
+    let partial := _testPartial(
+        None,
+        Some(_testMonth(5)),
+        Some(18),
+    )
+
+    try ValidatePartial(partial)
+}
+
+test "Partial February 29 without year is possible" {
+    let partial := _testPartial(
+        None,
+        Some(_testMonth(2)),
+        Some(29),
+    )
+
+    try ValidatePartial(partial)
+}
+
+test "Partial February 29 in 1900 is invalid" {
+    let partial := _testPartial(
+        Some(1900),
+        Some(_testMonth(2)),
+        Some(29),
+    )
+
+    match ValidatePartial(partial) {
+        Ok(_) => testing.Fail("Expected InvalidDay")
+        Err(CalendarError.InvalidDay) => {
+        }
+        Err(_) => testing.Fail("Expected CalendarError.InvalidDay")
+    }
+}
+
+test "Partial April 31 is invalid" {
+    let partial := _testPartial(
+        None,
+        Some(_testMonth(4)),
+        Some(31),
+    )
+
+    match ValidatePartial(partial) {
+        Ok(_) => testing.Fail("April 31 cannot exist")
+        Err(CalendarError.InvalidDay) => {
+        }
+        Err(_) => testing.Fail("Expected CalendarError.InvalidDay")
+    }
+}
+
+// ------------------------------------------------------------
+// Partial date matching
+// ------------------------------------------------------------
+
+test "Partial date matches known components" {
+    let partial := _testPartial(
+        Some(1852),
+        Some(_testMonth(5)),
+        None,
+    )
+
+    let matching  := try ToDate(_testFields(1852, 5, 18))
+    let different := try ToDate(_testFields(1852, 6, 18))
+
+    testing.ExpectEqual(true, try MatchesDate(partial, matching))
+    testing.ExpectEqual(false, try MatchesDate(partial, different))
+}
+
+test "Partial date without year matches different years" {
+    let partial := _testPartial(
+        None,
+        Some(_testMonth(5)),
+        Some(18),
+    )
+
+    let first  := try ToDate(_testFields(1852, 5, 18))
+    let second := try ToDate(_testFields(2026, 5, 18))
+
+    testing.ExpectEqual(true, try MatchesDate(partial, first))
+    testing.ExpectEqual(true, try MatchesDate(partial, second))
+}
+
+test "Compatible partial descriptions share a possible day" {
+    let first := _testPartial(Some(1852), None, None)
+
+    let second := _testPartial(
+        None,
+        Some(_testMonth(5)),
+        Some(18),
+    )
+
+    testing.ExpectEqual(
+        true,
+        try MayDescribeSameDate(first, second),
+    )
+}
+
+test "Conflicting partial years cannot describe same day" {
+    let first  := _testPartial(Some(1852), None, None)
+    let second := _testPartial(Some(1853), None, None)
+
+    testing.ExpectEqual(
+        false,
+        try MayDescribeSameDate(first, second),
+    )
+}
+
+test "Individually valid partials may be incompatible" {
+    let first := _testPartial(Some(1900), None, None)
+
+    let second := _testPartial(
+        None,
+        Some(_testMonth(2)),
+        Some(29),
+    )
+
+    testing.ExpectEqual(
+        false,
+        try MayDescribeSameDate(first, second),
+    )
+}
+
+// ------------------------------------------------------------
+// Partial date conversion
+// ------------------------------------------------------------
+
+test "Complete partial date converts to Some date" {
+    let partial := _testPartial(
+        Some(2026),
+        Some(_testMonth(11)),
+        Some(16),
+    )
+
+    let converted := try ToDateIfComplete(partial)
+
+    if converted is Some(absolute) {
+        let expected := try ToDate(_testFields(2026, 11, 16))
+
+        testing.ExpectEqual(expected.EpochDays, absolute.EpochDays)
+    } else {
+        testing.Fail("Expected Some(date)")
+    }
+}
+
+test "Incomplete partial date converts to None" {
+    let partial := _testPartial(
+        Some(2026),
+        Some(_testMonth(11)),
+        None,
+    )
+
+    let converted := try ToDateIfComplete(partial)
+
+    testing.Expect(converted is None)
+}
+
+// ------------------------------------------------------------
+// Gregorian convenience overloads
+// ------------------------------------------------------------
+
+test "Convenience ToDate equals explicit Gregorian ToDate" {
+    let fields := _testFields(2026, 11, 16)
+
+    let implicit := try ToDate(fields)
+    let explicit := try ToDate(fields, CalendarSystem.Gregorian)
+
+    testing.ExpectEqual(explicit.EpochDays, implicit.EpochDays)
+}
+
+test "Convenience FromDate equals explicit Gregorian FromDate" {
+    let absolute := try ToDate(_testFields(2026, 11, 16))
+
+    let implicit := try FromDate(absolute)
+    let explicit := try FromDate(absolute, CalendarSystem.Gregorian)
+
+    testing.ExpectEqual(explicit.Year, implicit.Year)
+    testing.ExpectEqual(explicit.Month.Number, implicit.Month.Number)
+    testing.ExpectEqual(explicit.Day, implicit.Day)
+}
+
+test "Convenience validation equals explicit Gregorian validation" {
+    let fields := _testFields(2026, 11, 16)
+
+    try ValidateFields(fields)
+    try ValidateFields(fields, CalendarSystem.Gregorian)
+}
+
+test "Convenience partial functions equal explicit Gregorian calls" {
+    let partial := _testPartial(
+        Some(2026),
+        Some(_testMonth(11)),
+        None,
+    )
+
+    let absolute := try ToDate(_testFields(2026, 11, 16))
+
+    let implicitMatch := try MatchesDate(partial, absolute)
+    let explicitMatch := try MatchesDate(
+        partial,
+        absolute,
+        CalendarSystem.Gregorian,
+    )
+
+    testing.ExpectEqual(explicitMatch, implicitMatch)
+
+    let implicitCompatible := try MayDescribeSameDate(partial, partial)
+    let explicitCompatible := try MayDescribeSameDate(
+        partial,
+        partial,
+        CalendarSystem.Gregorian,
+    )
+
+    testing.ExpectEqual(explicitCompatible, implicitCompatible)
+}
+
+test "Hebrew New Year 5785 matches Gregorian October 3 2024" {
+    let hebrew := CalendarFields {
+        Year: 5785,
+        Month: _testMonth(1),
+        Day: 1,
+    }
+
+    let absolute  := try ToDate(hebrew, CalendarSystem.Hebrew)
+    let gregorian := try FromDate(absolute)
+
+    testing.ExpectEqual(2024, gregorian.Year)
+    testing.ExpectEqual(10, gregorian.Month.Number)
+    testing.ExpectEqual(3, gregorian.Day)
+}
+
+test "Hebrew Adar I 5784 matches Gregorian February 10 2024" {
+    let hebrew := CalendarFields {
+        Year: 5784,
+        Month: _testLeapMonth(5),
+        Day: 1,
+    }
+
+    let absolute  := try ToDate(hebrew, CalendarSystem.Hebrew)
+    let gregorian := try FromDate(absolute)
+
+    testing.ExpectEqual(2024, gregorian.Year)
+    testing.ExpectEqual(2, gregorian.Month.Number)
+    testing.ExpectEqual(10, gregorian.Day)
+}
+
+test "Hebrew Adar II retains stable month identity" {
+    let absolute := try ToDate(_testFields(2024, 3, 11))
+    let hebrew   := try FromDate(absolute, CalendarSystem.Hebrew)
+
+    testing.ExpectEqual(5784, hebrew.Year)
+    testing.ExpectEqual(6, hebrew.Month.Number)
+    testing.ExpectEqual(false, hebrew.Month.IsLeap)
+    testing.ExpectEqual(1, hebrew.Day)
+}
+
+test "Hebrew calendar round-trip preserves absolute date" {
+    let original := try ToDate(_testFields(2026, 11, 16))
+
+    let hebrew   := try FromDate(original, CalendarSystem.Hebrew)
+    let restored := try ToDate(hebrew, CalendarSystem.Hebrew)
+
+    testing.ExpectEqual(original.EpochDays, restored.EpochDays)
+}
+
+test "Hebrew partial Adar I without year is valid" {
+    let partial := _testPartial(
+        None,
+        Some(_testLeapMonth(5)),
+        Some(30),
+    )
+
+    try ValidatePartial(partial, CalendarSystem.Hebrew)
+}
+
+test "Hebrew Heshvan 30 is possible without year" {
+    let partial := _testPartial(
+        None,
+        Some(_testMonth(2)),
+        Some(30),
+    )
+
+    try ValidatePartial(partial, CalendarSystem.Hebrew)
+}
+
+test "Hebrew Heshvan 30 is invalid in 5784" {
+    let partial := _testPartial(
+        Some(5784),
+        Some(_testMonth(2)),
+        Some(30),
+    )
+
+    match ValidatePartial(partial, CalendarSystem.Hebrew) {
+        Ok(_) => testing.Fail("Heshvan 5784 has 29 days")
+        Err(CalendarError.InvalidDay) => {
+        }
+        Err(_) => testing.Fail("Expected CalendarError.InvalidDay")
+    }
+}
+
+test "Hebrew month cannot contain day 31" {
+    let partial := _testPartial(
+        None,
+        None,
+        Some(31),
+    )
+
+    match ValidatePartial(partial, CalendarSystem.Hebrew) {
+        Ok(_) => testing.Fail("Hebrew months contain at most 30 days")
+        Err(CalendarError.InvalidDay) => {
+        }
+        Err(_) => testing.Fail("Expected CalendarError.InvalidDay")
+    }
+}

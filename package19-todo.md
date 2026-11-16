@@ -48,6 +48,25 @@ internal/lowering/secmlir/emitter.go
 mlir/include, mlir/lib/Dialect/Sec
 ```
 
+## Current execution checkpoint — 2026-11-16
+
+This checkpoint supersedes the historical inventory where they differ:
+HEAD `7520210ab62ff36024a796f3076c1df4250460be`, shared dirty working tree
+with Claude's P17 work and Codex's P20/P19 changes; Go 1.26.8 linux/amd64.
+Canonical lowering governance records P13–P16 implemented and P17/P18 partial.
+The allocation readiness gate remains closed for Arena IR. No schema-15 or
+native Arena execution is claimed. P19-01/02 remain open: this checkpoint is
+not the complete predecessor/synchronization acceptance audit.
+
+`internal/sema/arena_operation_plans.go` now publishes detached constructor,
+allocation, Reset and Release snapshots, reusing the existing generated Arena
+identity and P15 domain/epoch allocator. Missing layout/default/provider,
+state-version, epoch-exhaustion and destruction facts remain explicitly named;
+the snapshots are not a lowering-readiness certificate. MD-136 blocks only
+unresolved `Arena {}`/implicit-default semantics; defined constructors can
+progress independently. Do not infer a backing/provider from the old internal
+empty-struct representation.
+
 ## Current authority, decisions and predecessor gates
 
 Rulebooks remain authoritative. Open decisions that constrain P19 (do not
@@ -83,9 +102,17 @@ runtime (§§ 143–148, 162–163).
   paragraph against `arena.md`, `allocation.md`, `storage.md`,
   `reference_model.md` and effect analysis; merge missing amendments without
   renumbering; record conflicts as MD entries (§ 1).
-- [ ] P19-03 — Confirm against current Sema: Arena is a semantic builtin,
+- [x] P19-03 — Confirm against current Sema: Arena is a semantic builtin,
   lowercase `arena` is not a keyword, move-only ownership, ArenaDomain
   identity and the owner-state versus validity-epoch distinction (§§ 4–8).
+
+  Completed 2026-11-16: source-backed tests use builtin Arena without a
+  declaration and ordinary lowercase arena bindings, confirm MoveOnly and
+  nontrivial destruction, preserve constructor provenance through owner moves,
+  and keep repeated allocation in one epoch while Reset advances and Release
+  ends it. Canonical P15 identities match source dynamic-epoch reference uses.
+  The matrix runs at three analysis depths and no/32/64-bit scalar plans.
+  This frontend conformance does not complete Arena IR/destruction lowering.
 
 ## B. Publish immutable Arena and allocation-context plans in Sema
 
@@ -93,19 +120,58 @@ runtime (§§ 143–148, 162–163).
   fixed (`FromBuffer`, borrowed-backing lifetime, empty borrowed Arena),
   owned fixed (`WithCapacity`), growable (no relocation of live
   allocations); capacity units and layout source (§§ 9–20).
+
+  Partial 2026-11-16: `ArenaCapacityFacts` retains initial byte-capacity sources
+  independently of allocation element counts. Borrowed fixed arrays and static
+  slices reuse canonical exact extents; dynamic byte backing and unknown Arena
+  parameter backing stay distinct. Owned/growable requests preserve exact or
+  runtime requested bytes without guessing provider-delivered extent. Moves
+  and Reset retain the creation source and backing/growth policy. Queries detach
+  arbitrary-precision counts. Provider extent, current remaining capacity,
+  layout/alignment and checked allocation-fit plans remain open.
 - [ ] P19-05 — Safe typed allocation restrictions: trivially destructible
   `T` only, `New[T]` and `Alloc[T](count)` semantics, temporary mutable
   Arena borrow, repeated allocation not invalidating prior allocations,
   zero-element and zero-sized `T`, full default initialization (§§ 21–31,
   143–145).
-- [ ] P19-06 — `AllocationError` mapping, stable `Result` contract and
+- [x] P19-06 — `AllocationError` mapping, stable `Result` contract and
   allocation atomicity (§§ 32–35).
+
+  Completed 2026-11-16 at the Sema-plan boundary: `ArenaFailurePlan` records
+  all four canonical failure-condition mappings to the existing AllocationError,
+  the unchanged source Result type and either no established domain (failed
+  creation) or unchanged owner/allocations (failed allocation). Unknown failure
+  conditions have no implicit fallback mapping. The existing ErrorCauses view
+  now derives from this one contract. FromBuffer/Reset/Release remain without
+  a fallible plan; zero capacity/count and dynamic counts retain Result.
+  Public queries detach mapping and nested result/error-type data. Source
+  tests cover all constructors and New/Alloc at three analysis depths and
+  no/32/64-bit scalar plans. Full Sema/IR/emitter suites pass. Provider execution,
+  initialization, source IR producers and native lowering remain separate open
+  points; this contract does not open allocation readiness.
+
 - [ ] P19-07 — Reset: dependency rule with non-lexical liveness, transition,
   no zeroing, atomicity, epoch exhaustion (§§ 36–42); reuse the existing
   generation/invalidation facts.
 - [ ] P19-08 — Release: dependency rule, transition, per-backing-kind
   behavior, implicit destruction, panic cleanup boundary (§§ 43–48).
-- [ ] P19-09 — Nested Arena facts (§§ 49–50).
+- [x] P19-09 — Nested Arena facts (§§ 49–50).
+
+  Completed 2026-11-16: `arena_parent_plans.go` publishes the already checked
+  parent origins, canonical invalidation domains and retained epochs in child
+  Arena operation plans. Borrowed backing and the parent's reclamation authority
+  remain distinct: child Release ends its loan and domain, without individually
+  reclaiming parent allocations. Child operations inherit creation dependencies
+  by stable child domain, preserving parent facts across owner moves and child
+  Reset. Joined backing preserves every possible parent in deterministic order.
+  Public queries detach the parent snapshots and reanalysis clears them.
+  Source tests cover named/temporary backing, moved owners, grandchildren,
+  branches/loops/scope cleanup, zero-length backing, parent Reset epochs and
+  joined origins, including three analysis depths and no/32/64-bit scalar plans.
+  Existing nested dependency diagnostics remain the source liveness authority.
+  Full Sema, Semantic IR and emitter tests pass. Source IR production still
+  requires the other incomplete P19 plans; allocation readiness is unchanged.
+
 - [ ] P19-10 — Allocation context: `MayAllocate` vs
   `RequiresAllocationContext`, selection order, lexical Arenas are not
   ambient candidates, compiler-managed local context, synchronous
@@ -113,25 +179,125 @@ runtime (§§ 143–148, 162–163).
   explicit Arena context, target-provided context, no-allocation profile,
   `@noAlloc` vs missing ambient context, spawn/task/thread and foreign
   entrypoint boundaries (§§ 51–64).
-- [ ] P19-11 — Ordered effects and per-operation effect summaries; Arena
+- [x] P19-11 — Ordered effects and per-operation effect summaries; Arena
   resource identity; allocation not CSE-safe and not movable across
   Reset/Release (§§ 65–69).
+
+  Completed 2026-11-16 at the Sema-plan boundary: each successful operation
+  retains its existing ordered call-graph event, callable/direct-effect index,
+  canonical domain resource and storage transition. Ordering barriers and
+  CSE-unsafety are explicit; equal-looking allocations keep distinct events.
+  Provider acquire/grow/reclaim effects remain explicitly unknown until the
+  provider is resolved. Borrowed Release ends the loan without reclaiming
+  backing; zero-count allocation requires no growth while keeping source
+  MayAllocate and Result. Source tests cover moved owners, separate resources,
+  Reset ordering and parameter backing across three depths and no/32/64-bit
+  plans. This is the Sema effect contract; IR production, schema and physical
+  optimization/provider implementation remain separate open points.
 - [ ] P19-12 — Plans and read-only queries: Arena state plans, operation
   plans (create, allocation, reset, release) (§§ 70–76).
+  Partial 2026-11-16 (P19-04/05/07/08/12; P19-06 completed separately): constructor/allocation/reset/release
+  read-only queries publish represented decisions at successful final-body
+  analysis. They retain borrowed/owned and fixed/growable facts, byte capacity
+  versus element counts, stable Result/AllocationError contracts, failure
+  atomicity, explicit Arena context, canonical allocation/domain/epoch IDs,
+  receiver/backing Places and element defaultability/trivial destruction.
+  Mutation tests cover nested type/Place facts, identities and reanalysis;
+  invalid allocation/dependency forms get no operation plan. Unresolved facts
+  stay named instead of defaulted. Remaining: full layout/default and checked
+  extent/capacity/growth plans, provider/reclamation and retained-borrow
+  lifetime contracts, state versions, epoch exhaustion/rekey and implicit
+  destruction. P19-04/05/07/08 and P19-12 therefore remain unchecked.
+
+  Partial update 2026-11-16 (P19-10/12/28): allocation-context analysis facts
+  now consume stored successful Arena operation contexts. Explicit selected
+  domains stay distinct from constructor-created domains and ambient backing
+  context, including in diagnostics presentation. Known semantic availability
+  does not certify a physical provider. Missing/conflicting plans stay unknown;
+  read-only queries perform no inference or identity allocation. Context
+  propagation/callable summaries and separate-compilation metadata remain open.
+
 - [ ] P19-13 — Allocation-context callable summary, context origin, basic
   Arena demand summary, demand semantics, interprocedural demand boundary,
   strict profile validation, statically impossible allocation (§§ 77–83).
 
 ## C. Add the Semantic IR representation
 
-- [ ] P19-14 — Semantic IR Arena type and allocation-context type (§§ 84–85).
-- [ ] P19-15 — Arena operations with Place-based mutation; creation returns
+- [x] P19-14 — Semantic IR Arena type and allocation-context type (§§ 84–85).
+
+  Completed 2026-11-16: `internal/ir/semantic/arena_types.go` interns one
+  canonical Arena owner type independent of backing/profile/target width,
+  and a distinct internal allocation-context type. The source type mapper
+  admits Arena from package 19 and rejects it by name in older packages;
+  references retain the same Arena identity and authority. Ownership checks
+  retain MoveOnly and nontrivial destruction. The verifier rejects physical
+  or nominal specialization of either semantic type and context storage in
+  arrays, Results, named wrappers, references/Places, aggregate payloads,
+  local/static storage or ordinary results. No source AllocationContext type
+  is registered; foreign context parameters are rejected. Tests cover source
+  parameter modes and both scalar plans plus planless analysis, canonical
+  interning, malformed type/storage forms and the unsupported emitter gate.
+  This is the type milestone only: operation producers, implicit Arena
+  destruction, context propagation, schema 15 and physical lowering remain
+  owned by their unchecked points.
+- [x] P19-15 — Arena operations with Place-based mutation; creation returns
   an owned value: `ArenaCreateBorrowedOp`, `ArenaCreateOwnedFixedOp`,
   `ArenaCreateGrowableOp`, `ArenaNewOp`, `ArenaAllocOp`, `ArenaResetOp`,
   `ArenaReleaseOp`, `ArenaDestroyOp` (§§ 86–96).
-- [ ] P19-16 — Nested Arena IR (§ 97).
-- [ ] P19-17 — Explicit allocation-context propagation and selection in
+
+  Completed 2026-11-16: the eight operations have explicit Semantic IR
+  contracts in `arena_operations.go`, with canonical storage transitions,
+  separate state versions/validity epochs, borrowed/owned/growth facts and
+  resolved provider/capacity/layout/default/dependency plan references.
+  Creation produces an owned Arena; New/Alloc/Reset require writable Places;
+  Release/Destroy consume an owner and terminate its domain. Destroy retains
+  its P17 Arena resource destruction plan and cause. Borrowed creation retains
+  the transferred byte-slice borrow; owned creation/allocation use the checked
+  candidate/failed/AllocationError shape. Verification rejects failed-candidate
+  publication, reused creation domains, malformed transitions and use after
+  transfer across blocks. Deterministic printing preserves these semantic
+  facts. Tests exercise all operations with no/32/64-bit scalar plans and
+  integrate a New candidate with the P15 dynamic-validity CFG. This closes
+  the operation representation only: source plan completion/production,
+  context propagation, schema 15 emission and native lowering remain separate
+  open points (P19-12/17/18/20/22–29). No allocation-readiness gate is opened.
+
+- [x] P19-16 — Nested Arena IR (§ 97).
+
+  Completed 2026-11-16: `ArenaParentDependency` on borrowed creation retains
+  canonical parent storage identity, existing P15 reference/domain/epoch facts
+  and P16 static or symbolic borrow bounds. Verification requires this record
+  for an Arena-derived backing slice, checks it against the transferred borrow
+  and any represented source bounds, and rejects parent/child domain identity
+  conflation or individual reclamation of parent bytes. A CFG fixed-point
+  analysis blocks parent Reset/Release/Destroy while a child may remain live;
+  child terminal release removes that dependency, while child Reset retains
+  it, including zero-length backing. Deterministic printing includes parent
+  storage/reference/range facts. Tests cover scalar plans, malformed metadata,
+  terminal causes, branch joins, loops and retained bounds. This is nested
+  Semantic IR support: source plan production/builders, context propagation,
+  schema 15 and physical lowering remain separate open milestones.
+
+- [x] P19-17 — Explicit allocation-context propagation and selection in
   Semantic IR (§§ 98–99).
+
+  Completed 2026-11-16: functions retain RequiresAllocationContext separately
+  from other effects and receive one marked compiler-hidden context input,
+  deterministically first. Internal calls explicitly forward that SSA
+  capability with its own argument action; ordinary calls receive none.
+  AllocationContextFacts preserves the selected propagated, explicit-Arena,
+  target-provided or compiler-local origin and resolved origin-plan reference.
+  Context-producing operations retain resolved authority/provider/proof
+  selection; owned Arena creation requires an explicit selected capability.
+  Verification checks requirement/signature agreement, SSA dominance, origin
+  consistency, writable explicit Arena authority and ordinary foreign ABI/data
+  escape boundaries. Printing exposes hidden arguments and context selection.
+  Tests cover all origins, invalid signatures/forwarding/origins/ABI/escapes,
+  missing owned-creation context and rejection at the pre-schema-15 emitter.
+  This closes the Semantic IR representation and verification milestone;
+  source summary/origin-proof production and builder integration remain
+  P19-13/20, with schema/physical work still open. Source readiness is unchanged.
+
 - [ ] P19-18 — P15 integration: Arena references built from source carry
   dynamic-epoch facts and reach the existing validity CFG; P19 retires the
   white-box-only status of `TestPackage15DynamicReferenceUseValidatesOnce`
@@ -176,7 +342,18 @@ runtime (§§ 143–148, 162–163).
 
 ## G. Tests (package-required matrices)
 
-- [ ] P19-31 — Source/frontend tests (§ 149).
+- [x] P19-31 — Source/frontend tests (§ 149).
+
+  Completed 2026-11-16: dedicated valid/invalid source fixtures cover the full
+  frontend matrix using defined constructors, including owner move/return,
+  rejected copying and local-reference escape, zero count/backing, Reset after
+  final use versus retained reference/slice/nested child, and consuming Release
+  with use-after-release/double-release rejection. Tests run at three analysis
+  depths and no/32/64-bit scalar plans, require correctly located diagnostics
+  and no operation plans for rejected invalidations. Valid cases must cover
+  all five operation kinds and three constructors. Full Sema/Semantic IR/emitter
+  suites and Sema vet pass. This is frontend conformance, not source IR/native
+  Arena acceptance; MD-136 empty/default construction remains separate.
 - [ ] P19-32 — Type-restriction tests (§ 150).
 - [ ] P19-33 — Allocation atomicity tests (§ 151).
 - [ ] P19-34 — Reset tests (§ 152).

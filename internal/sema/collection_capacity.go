@@ -14,8 +14,10 @@ import "sec/internal/ast"
 
 // collectionTypeReceiver resolves the type-form receiver of an associated
 // collection call. The parser keeps `list[T].Member` as an indexed owner
-// with OwnerGenericArguments, and `map[K, V].Member` / `set[T].Member` as the
-// bare collection name with the type arguments on the call.
+// with OwnerGenericArguments. Other collection type owners retain their own
+// arguments on the member, independently of a method's argument list.
+// Rules: rules/declarations/generics.md — §§9,18,20;
+// rules/collections/collections.md — §§13.12,14.8,15.5.
 func (a *Analyzer) collectionTypeReceiver(call *ast.CallExpression, member *ast.MemberExpression) (Type, bool) {
 	var name string
 	var arguments []*ast.TypeReference
@@ -36,10 +38,14 @@ func (a *Analyzer) collectionTypeReceiver(call *ast.CallExpression, member *ast.
 			arguments = []*ast.TypeReference{argument}
 		}
 	case *ast.Identifier:
-		if len(call.GenericArguments) == 0 {
+		arguments = member.OwnerGenericArguments
+		if len(arguments) == 0 {
+			arguments = call.GenericArguments
+		}
+		if len(arguments) == 0 {
 			return Type{}, false
 		}
-		name, arguments = owner.Value, call.GenericArguments
+		name = owner.Value
 	default:
 		return Type{}, false
 	}

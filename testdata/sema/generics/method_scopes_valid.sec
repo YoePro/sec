@@ -1,0 +1,51 @@
+module method_scopes
+
+interface Ranked {
+    fn Rank() int
+}
+
+interface Named {
+    fn Name() string
+}
+
+type Box[T: Ranked] struct {
+    Value: T
+}
+
+impl Box[T] {
+    fn Select[U: Named](owner: T, value: U) U {
+        return value
+    }
+
+    static fn SelectStatic[U: Named](owner: T, value: U) T {
+        return owner
+    }
+
+    fn Nested[U: Ranked](value: Box[U]) Box[U] {
+        return value
+    }
+
+    fn Sibling[U](value: U) U {
+        return value
+    }
+
+    fn Owner(value: T) T {
+        return value
+    }
+}
+
+type Converter struct {}
+
+impl Converter {
+    fn Identity[U](value: U) U {
+        return value
+    }
+
+    static fn IdentityStatic[U](value: U) U {
+        return value
+    }
+}
+
+fn Outside[U](value: U) U {
+    return value
+}

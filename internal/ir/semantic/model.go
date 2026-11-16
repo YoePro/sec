@@ -291,6 +291,10 @@ type ConversionProof struct {
 }
 
 type Function struct {
+	// RequiresAllocationContext is the resolved P19 callable requirement;
+	// it is separate from MayAllocate and does not change the source type.
+	RequiresAllocationContext bool
+
 	ID         FunctionID
 	Name       string
 	LinkName   string
@@ -318,12 +322,19 @@ type Function struct {
 	// template: its template and concrete scalar generic arguments.
 	Specialization *SpecializationFacts
 	Location       Location
+	// deferCaptureBorrows maps a defer body's capture parameter to the
+	// borrow of the reference whose referent the enclosing function
+	// dereferenced into it; verification only (cleanup_ops.go).
+	deferCaptureBorrows map[ValueID]uint32
 }
 
 // SpecializationFacts identify one demand-driven concrete instantiation of a
 // generic template (monomorphization.md §§ 4, 9.1). A type pack's sequence is
 // in TypePackFacts instead.
 type SpecializationFacts struct {
+	// Identity is the canonical Sema identity of a method-local specialization.
+	// Rules: rules/compiler/semantic_ir.md — §75(2–5).
+	Identity  string
 	Template  string
 	Arguments []SpecializationArgument
 }
@@ -515,6 +526,9 @@ type MatchArmRecord struct {
 }
 
 type Parameter struct {
+	// HiddenAllocationContext marks the first compiler-only P19 input.
+	HiddenAllocationContext bool
+
 	Name     string
 	Value    Value
 	Location Location
@@ -550,6 +564,10 @@ type Storage struct {
 	// addresses; P5 trivial-core lowering must not erase it before the P15
 	// representation boundary is discharged.
 	AddressTaken bool
+	// DeferInstance marks loop storage a defer reads: each declaration is a
+	// new instance that lives until the defer registered in its iteration has
+	// run (defer.md §§ 8, 13). Its physical storage is a lowering concern.
+	DeferInstance bool
 }
 
 type OpKind string
@@ -717,6 +735,10 @@ type UnionPayloadAction string
 const (
 	PlaceReadObserve   = "observe"
 	PlaceReadCandidate = "candidate"
+	// PlaceReadHolder reads a dynamic-epoch reference holder a defer body
+	// captured out of its Place when the body runs, so the body validates it
+	// then and never at registration (defer.md §§ 9–11; P17-41).
+	PlaceReadHolder = "holder"
 )
 
 const (
@@ -814,6 +836,9 @@ type BranchTarget struct {
 	Arguments []ValueID
 }
 type Operation struct {
+	// AllocationContext explicitly selects/forwards a P19 SSA capability.
+	AllocationContext *AllocationContextFacts
+
 	Kind        OpKind
 	Location    Location
 	Results     []Value
@@ -838,6 +863,9 @@ type Operation struct {
 	Storage   StorageID
 	Static    StaticID
 	Callee    FunctionID
+	// Property marks a call.direct as a property accessor operation
+	// (semantic_ir.md § 26; property_ops.go).
+	Property *PropertyFacts
 	// ConversionProof is required on numeric.convert-exact and
 	// enum.to-integer (MD-104).
 	ConversionProof *ConversionProof
@@ -952,6 +980,8 @@ type Operation struct {
 	// Backing carries the P18 storage-transition and allocation facts of
 	// dynamic-array growth and storage.* operations (dynamic_array_storage.go).
 	Backing *BackingMetadata
+	// Arena retains resolved P19 state, epoch and operation-plan facts.
+	Arena *ArenaOperationFacts
 }
 
 func (o Operation) IsTerminator() bool {

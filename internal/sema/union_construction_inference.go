@@ -43,11 +43,15 @@ func (a *Analyzer) inferCallAsUnionVariantConstructor(expr *ast.CallExpression, 
 	a.bindDefinition(member.Property.Token, variant.Token)
 
 	unionType := template
-	if len(expr.GenericArguments) > 0 {
+	ownerArguments := member.OwnerGenericArguments
+	if len(ownerArguments) == 0 {
+		ownerArguments = expr.GenericArguments
+	}
+	if len(ownerArguments) > 0 {
 		explicit, ok := a.resolveType(&ast.TypeReference{
 			Token:    expr.Token,
 			Name:     typeName,
-			TypeArgs: expr.GenericArguments,
+			TypeArgs: ownerArguments,
 		})
 		if !ok {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true

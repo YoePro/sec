@@ -27,7 +27,13 @@ func (a *Analyzer) inferValidatedCompilerKnownMemberCall(expr *ast.CallExpressio
 	if typ, isCollection := a.collectionTypeReceiver(expr, memberExpr); isCollection {
 		return a.inferCollectionWithCapacity(expr, memberExpr, typ)
 	}
-	if path, static := typePathFromExpression(memberExpr.Object); static {
+	owner := memberExpr.Object
+	// Preserve the parser's indexed-value alternative, but do not evaluate a
+	// canonical generic type owner as a value (generics.md §§9,18,20).
+	if indexed, ok := owner.(*ast.IndexExpression); ok && len(memberExpr.OwnerGenericArguments) > 0 && a.expressionNamesType(indexed.Left) {
+		owner = indexed.Left
+	}
+	if path, static := typePathFromExpression(owner); static {
 		typ, exists := a.types[a.resolveTypeName(path)]
 		if exists {
 			member, memberExists := compilerKnownMember(typ, memberExpr.Property.Value, true)

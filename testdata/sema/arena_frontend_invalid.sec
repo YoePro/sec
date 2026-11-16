@@ -1,0 +1,52 @@
+module arena_frontend_invalid
+
+fn CopyOwner() Result[void, AllocationError] {
+    let arena := try Arena.WithCapacity(32u)
+    let copy := arena
+    return Ok()
+}
+
+fn UseAfterRelease() Result[void, AllocationError] {
+    let mut arena := try Arena.WithCapacity(32u)
+    arena.Release()
+    arena.Reset()
+    return Ok()
+}
+
+fn DoubleRelease() Result[void, AllocationError] {
+    let mut arena := try Arena.WithCapacity(32u)
+    arena.Release()
+    arena.Release()
+    return Ok()
+}
+
+fn ReturnLocalReference() Result[ref mut byte, AllocationError] {
+    let mut arena := try Arena.WithCapacity(32u)
+    let value := try arena.New[byte]()
+    return Ok(value)
+}
+
+fn ResetLiveReference() Result[void, AllocationError] {
+    let mut arena := try Arena.WithCapacity(32u)
+    let value := try arena.New[byte]()
+    defer { discard *value }
+    arena.Reset()
+    return Ok()
+}
+
+fn ResetLiveSlice() Result[void, AllocationError] {
+    let mut arena := try Arena.WithCapacity(32u)
+    let values := try arena.Alloc[byte](4u)
+    defer { discard values[0] }
+    arena.Reset()
+    return Ok()
+}
+
+fn ResetParent() Result[void, AllocationError] {
+    let mut parent := try Arena.WithCapacity(32u)
+    let buffer := try parent.Alloc[byte](16u)
+    let mut child := Arena.FromBuffer(buffer)
+    parent.Reset()
+    child.Reset()
+    return Ok()
+}

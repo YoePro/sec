@@ -36,7 +36,7 @@ func (a *Analyzer) inferTypePackCall(function Function, refs []*ast.TypeReferenc
 	if !ok {
 		return Function{}, false
 	}
-	return a.completePackOverload(function, substitution, expected)
+	return a.completeGenericOverload(function, substitution, expected)
 }
 
 // deduceTypePackArguments establishes only argument-derived substitutions; a

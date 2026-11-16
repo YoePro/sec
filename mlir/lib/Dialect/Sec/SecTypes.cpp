@@ -71,13 +71,18 @@ StorageType::verify(function_ref<InFlightDiagnostic()> emitError,
 }
 
 // Places and references are typed views of an ordinary referent: the
-// referent is never void, storage, a Place or a reference itself, and Place
-// authority is exactly "ro" or "rw" (sec_mlir_dialect_v11.md sections 2-5).
+// referent is never void, storage or a Place, a reference never views
+// another reference, and Place authority is exactly "ro" or "rw"
+// (sec_mlir_dialect_v11.md sections 2-5). A Place may address a reference
+// holder's own location, such as a holder kept in mutable storage, which its
+// uses read out with `sec.place.read` action "holder" (P17).
 static LogicalResult verifyReferentType(function_ref<InFlightDiagnostic()> emitError,
-                                        StringRef kind, Type elementType) {
+                                        StringRef kind, Type elementType,
+                                        bool holderPlace = false) {
   if (!elementType || isa<NoneType>(elementType))
     return emitError() << kind << " referent type must be non-void";
-  if (isa<StorageType, PlaceType, RefType, RefMutType>(elementType))
+  if (isa<StorageType, PlaceType>(elementType) ||
+      (!holderPlace && isa<RefType, RefMutType>(elementType)))
     return emitError() << kind
                        << " referent must be an ordinary value type, not storage, a Place or a reference";
   return success();
@@ -87,7 +92,7 @@ LogicalResult PlaceType::verify(function_ref<InFlightDiagnostic()> emitError,
                                 Type elementType, StringAttr authority) {
   if (!authority || (authority.getValue() != "ro" && authority.getValue() != "rw"))
     return emitError() << "sec.place authority must be \"ro\" or \"rw\"";
-  return verifyReferentType(emitError, "sec.place", elementType);
+  return verifyReferentType(emitError, "sec.place", elementType, /*holderPlace=*/true);
 }
 
 LogicalResult RefType::verify(function_ref<InFlightDiagnostic()> emitError,
@@ -151,9 +156,10 @@ LogicalResult CoreErrorType::verify(
 LogicalResult ResultType::verify(
     function_ref<InFlightDiagnostic()> emitError, Type successType,
     Type errorType) {
-  if (!successType || !errorType || isa<NoneType>(successType) ||
-      isa<NoneType>(errorType))
-    return emitError() << "sec.result requires non-void success and error types";
+  // Dialect v5 § 6: Result[void, E] uses the void-success convention, the
+  // builtin `none` as its success type; the error type is never void.
+  if (!successType || !errorType || isa<NoneType>(errorType))
+    return emitError() << "sec.result requires a success type (none for void) and a non-void error type";
   return success();
 }
 

@@ -1,0 +1,187 @@
+module main
+
+// Ownership-sensitive generic specializations (monomorphization.md §§ 11.2,
+// 11.4, 12.3): each specialization resolves the template's symbolic
+// ownership, cleanup and destruction facts for its concrete argument.
+
+type Box struct {
+    value: int,
+}
+
+impl Box {
+    free {
+    }
+}
+
+type Cell[T] struct {
+    value: T,
+    count: int,
+}
+
+impl Cell[T] {
+    fn Count() int {
+        return self.count
+    }
+
+    fn Set(-> value: T) void {
+        self.value = Pass(<-value)
+        self.count = self.count + 1
+    }
+}
+
+type Either[T] union {
+    Left(T)
+    Right(int)
+}
+
+type Failure union error {
+    Bad
+}
+
+fn Pass[T](-> value: T) T {
+    return value
+}
+
+fn Keep[T](value: T) T {
+    return value
+}
+
+fn Peek[T](value: ref T) int {
+    return 1
+}
+
+fn Local[T](value: T) T {
+    let x :<- value
+    return x
+}
+
+fn Forward[T](value: T) T {
+    return Keep(<-value)
+}
+
+fn Ignore[T](value: T) void {
+    let x :<- value
+}
+
+fn Throw[T](value: T) void {
+    discard value
+}
+
+fn Statement[T](value: T) void {
+    Keep(<-value)
+}
+
+fn Fresh[T](value: T) void {
+    discard Keep(<-value)
+}
+
+fn Reassign[T](a: T, b: T) T {
+    let mut x :<- a
+    x = Keep(<-b)
+    return x
+}
+
+fn Choose[T](flag: bool, a: T, b: T) T {
+    if flag {
+        return a
+    }
+    return b
+}
+
+fn Wrap[T](value: T) Option[T] {
+    return Some(<-value)
+}
+
+fn Unwrap[T](o: Option[T], fallback: T) T {
+    match o {
+        Some(v) => return v
+        None => return fallback
+    }
+}
+
+fn MakeCell[T](value: T) Cell[T] {
+    return Cell[T] { value: <-value, count: 1 }
+}
+
+fn Open[T](cell: Cell[T]) T {
+    return cell.value
+}
+
+fn MakeLeft[T](value: T) Either[T] {
+    return Either[T].Left(<-value)
+}
+
+fn TakeLeft[T](e: Either[T], fallback: T) T {
+    match e {
+        Left(v) => return v
+        Right(n) => return fallback
+    }
+}
+
+fn Check[T](value: T, ok: bool) Result[T, Failure] {
+    if ok {
+        return Ok(<-value)
+    }
+    return Err(Failure.Bad)
+}
+
+fn Through[T](value: T) Result[T, Failure] {
+    let v := try Check(<-value, true)
+    return Ok(<-v)
+}
+
+fn Deferred[T](value: T) int {
+    let held :<- value
+    defer {
+        let n := Peek(ref held)
+    }
+    return 2
+}
+
+fn Loop[T](value: T, n: int) T {
+    let mut current :<- value
+    for i in 0..n {
+        current = Keep(<-current)
+    }
+    return current
+}
+
+fn Make(value: int) Box {
+    return Box{value: value}
+}
+
+fn Owned() int {
+    let a := Forward(Make(1))
+    let b := Local(Make(2))
+    Ignore(Make(3))
+    Throw(Make(4))
+    Statement(Make(5))
+    Fresh(Make(6))
+    let r := Reassign(Make(7), Make(8))
+    let c := Choose(true, Make(9), Make(10))
+    let u := Unwrap(Wrap(Make(11)), Make(12))
+    let mut cell := MakeCell(Make(13))
+    cell.Set(Make(14))
+    let n := cell.Count()
+    let o := Open(<-cell)
+    let e := TakeLeft(MakeLeft(Make(15)), Make(16))
+    let t := Through(Make(17))
+    let d := Deferred(Make(18))
+    let l := Loop(Make(19), 2)
+    return a.value + b.value + r.value + c.value + u.value + n + o.value + e.value + d + l.value
+}
+
+fn Trivial() int {
+    Ignore(1)
+    Throw(2)
+    Statement(3)
+    Fresh(4)
+    let mut cell := MakeCell(5)
+    cell.Set(6)
+    let t := Through(7)
+    return Forward(1) + Local(2) + Reassign(3, 4) + Choose(false, 5, 6) + Unwrap(Wrap(7), 8) + Open(<-cell) + TakeLeft(MakeLeft(9), 10) + Deferred(11) + Loop(12, 2)
+}
+
+fn main() int {
+    return Owned() + Trivial()
+}

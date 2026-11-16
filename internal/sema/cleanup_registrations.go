@@ -29,6 +29,9 @@ func (a *Analyzer) ownedCleanupRegistrationForBinding(binding BindingID) (Resolv
 			return registration, true
 		}
 	}
+	if registration, exists := a.ownedCleanupEmptyDeclarations[binding]; exists {
+		return registration, true
+	}
 	return ResolvedOwnedCleanupRegistration{}, false
 }
 
@@ -71,11 +74,15 @@ func (a *Analyzer) recordOwnedCleanupInitialization(stmt *ast.LetStatement, erro
 	if len(a.errors) != errorsBefore || stmt.Static || stmt.Address != nil || a.currentCleanupScope == 0 {
 		return
 	}
-	if stmt.Value == nil {
+	symbol, exists := a.symbols.lookup(stmt.Name.Value)
+	if !exists || !symbol.Local || symbol.Type.Kind == InvalidType || !mayRequireDestruction(symbol.Type) {
 		return
 	}
-	symbol, exists := a.symbols.lookup(stmt.Name.Value)
-	if !exists || !symbol.Local || symbol.Type.Kind == InvalidType || TriviallyDestructible(symbol.Type) {
+	// An owned union declared in its empty state registers nothing at the
+	// declaration; the template lets each assignment register its value
+	// (default_values.md § 33(5); destruction.md § 13.3; MD-125).
+	emptyUnion := stmt.Value == nil && stmt.Mutable && symbol.Type.Kind == UnionType
+	if stmt.Value == nil && !emptyUnion {
 		return
 	}
 	binding := a.bindingIDs[sourceTokenLocation(stmt.Name.Token)]
@@ -92,6 +99,13 @@ func (a *Analyzer) recordOwnedCleanupInitialization(stmt *ast.LetStatement, erro
 		Binding: binding, Place: cloneSlicePlanPlace(place),
 		Activation:  CleanupAfterInitialization,
 		Destruction: ResolveDestructionPlans(symbol.Type),
+	}
+	if emptyUnion {
+		if a.ownedCleanupEmptyDeclarations == nil {
+			a.ownedCleanupEmptyDeclarations = map[BindingID]ResolvedOwnedCleanupRegistration{}
+		}
+		a.ownedCleanupEmptyDeclarations[binding] = registration
+		return
 	}
 	if a.ownedCleanupInitializations == nil {
 		a.ownedCleanupInitializations = map[*ast.LetStatement]ResolvedOwnedCleanupRegistration{}

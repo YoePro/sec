@@ -1,0 +1,9 @@
+module main
+
+fn InvalidSource(value: string) float64 {
+    return float64(value)
+}
+
+fn InvalidArity(value: float64) float32 {
+    return float32(value, value)
+}

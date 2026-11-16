@@ -113,6 +113,9 @@ func ownershipProperties(op semantic.Operation) []string {
 					}
 					properties = append(properties, "unless_active = array<i32: "+strings.Join(actions, ", ")+">")
 				}
+				if facts.PerExecution {
+					properties = append(properties, "per_execution")
+				}
 			}
 		case semantic.OpCleanupCancel:
 			number("cleanup_action_id", facts.Action)

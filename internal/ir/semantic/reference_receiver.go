@@ -15,7 +15,8 @@ import (
 // Place; a call passes the receiver argument Sema resolved: an implicit borrow
 // of an owned receiver Place, a reference holder passed shared or reborrowed,
 // or the caller's own `self`. Ordinary methods cannot consume whole self
-// (functions.md §22); generic implementations still need specialization support.
+// (functions.md §22). Generic method bodies use the same receiver path after
+// their demanded owner and method substitutions are fixed.
 //
 // Rules:
 //   - rules/declarations/impl.md — § 8 "self", § 11 "Methods"
@@ -212,7 +213,9 @@ func (fb *functionBuilder) lowerReceiverWrite(stmt *ast.AssignmentStatement) (bo
 	if !ok || stmt.Operator != "=" {
 		return true, fb.unsupported("receiver write other than a plain field assignment", stmt.Token)
 	}
-	if !fb.owner.concreteTriviallyDestructible(plans[len(plans)-1].MemberType) {
+	leaf := plans[len(plans)-1].MemberType
+	owned := !fb.owner.concreteTriviallyDestructible(leaf)
+	if owned && fb.owner.maxPackage < ownershipLoweringPackage {
 		return true, fb.unsupported("non-trivial replacement of a receiver field", stmt.Token)
 	}
 	place, mutable, err := fb.receiverPlace(plans, steps)
@@ -226,6 +229,19 @@ func (fb *functionBuilder) lowerReceiverWrite(stmt *ast.AssignmentStatement) (bo
 	value, err := fb.buildExpr(stmt.Value, placeType.Element)
 	if err != nil {
 		return true, err
+	}
+	if owned {
+		// The referent behind a valid `ref mut self` is always available, so
+		// its field is replaced: the old value is destroyed by its plan and
+		// the new one stays under the caller's ownership of the referent
+		// (destruction.md § 13; package17 § 64).
+		concrete := fb.owner.concreteType(leaf)
+		planID, err := fb.owner.importDestructionPlans(sema.ResolveDestructionPlans(concrete), concrete)
+		if err != nil {
+			return true, err
+		}
+		fb.emit(Operation{Kind: OpOwnReplacePlace, Operands: []ValueID{place.id, value.id}, Ownership: &OwnershipFacts{DestructionPlan: planID}, Location: location(stmt.Token)})
+		return true, nil
 	}
 	fb.emit(Operation{Kind: OpPlaceWrite, Operands: []ValueID{place.id, value.id}, Location: location(stmt.Token)})
 	return true, nil
@@ -279,7 +295,7 @@ func (fb *functionBuilder) buildReceiverArgument(call *ast.CallExpression, calle
 // passReceiver passes the enclosing method's own receiver to another
 // instance method: copied when shared, reborrowed when the callee needs a
 // mutable receiver or the caller's receiver is mutable.
-func (fb *functionBuilder) passReceiver(call *ast.CallExpression, mutable bool, loc Location) (builtValue, error) {
+func (fb *functionBuilder) passReceiver(site ast.Expression, mutable bool, loc Location) (builtValue, error) {
 	if fb.receiver.typ == 0 {
 		return builtValue{}, fmt.Errorf("self outside an instance method")
 	}
@@ -299,7 +315,8 @@ func (fb *functionBuilder) passReceiver(call *ast.CallExpression, mutable bool, 
 	// A mutable receiver is never copied: it is reborrowed for the call with
 	// the fresh identity Sema resolved, mutable or shared as the callee needs
 	// (package15.md §§ 47-48, 60).
-	facts, ok := fb.owner.analyzer.ResolvedReceiverReborrowOf(call)
+	// The reborrow is keyed by the call or property operation that passes it.
+	facts, ok := fb.owner.analyzer.ResolvedPropertyReceiverReborrowOf(site)
 	if !ok || !facts.Checkable() {
 		return builtValue{}, &UnsupportedFeatureError{Feature: "reborrow of a mutable receiver without resolved reborrow facts", Package: fb.owner.maxPackage, Location: loc}
 	}

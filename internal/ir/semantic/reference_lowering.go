@@ -113,7 +113,7 @@ func (fb *functionBuilder) p15Reference(expr ast.Expression) (builtValue, error)
 	if reference, ok := expr.(*ast.RefExpression); ok {
 		return builtValue{}, fb.unsupported("reference creation without a resolved reference plan", reference.Token)
 	}
-	if use, ok := analyzer.ResolvedReferenceUseOf(expr); ok {
+	if use, ok := fb.owner.referenceUseOf(expr); ok {
 		if !use.Facts.Checkable() {
 			return builtValue{}, fb.unsupported("uncheckable safe reference "+string(use.Kind), token)
 		}
@@ -569,7 +569,7 @@ func (fb *functionBuilder) placeResult(op Operation, typ TypeID) builtValue {
 //   - rules/corrections/applied/md076-call-lifetime-temporary-borrows-correction-20261021.md — § 9
 func (fb *functionBuilder) lowerTemporaryBorrow(expr ast.Expression, plan sema.ResolvedReferencePlan) (builtValue, error) {
 	token := expressionToken(expr)
-	owned := !sema.TriviallyDestructible(plan.Place.Type)
+	owned := !fb.owner.triviallyDestructible(plan.Place.Type)
 	if owned && fb.owner.maxPackage < ownershipLoweringPackage {
 		return builtValue{}, fb.unsupported("borrowed temporary that needs full-expression cleanup", token)
 	}

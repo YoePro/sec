@@ -19,8 +19,8 @@ type arenaGenericRequirement struct {
 }
 
 // genericInstantiation is one call that selects a specialization of a
-// generic template. caller is the enclosing template when the substitution
-// still names that template's parameters (a forwarded instantiation).
+// generic template. caller is the enclosing generic declaration, including
+// calls with fixed concrete arguments; forwarded marks symbolic substitutions.
 type genericInstantiation struct {
 	function     Function
 	template     sourceTokenKey
@@ -46,7 +46,9 @@ func (a *Analyzer) recordArenaGenericRequirement(method string, element Type, to
 }
 
 // recordGenericInstantiation retains the substitution of a resolved call to
-// a generic template, once per call site.
+// a generic template, once per call site. Calls in generic bodies retain their
+// enclosing declaration even when their own arguments happen to be concrete.
+// Rules: rules/compiler/monomorphization.md — §§6.1–6.4,7.2.
 func (a *Analyzer) recordGenericInstantiation(function Function, call lexer.Token) {
 	if a.summaryPass || len(function.GenericSubstitution) == 0 || !validDefinitionToken(function.Token) {
 		return
@@ -56,6 +58,9 @@ func (a *Analyzer) recordGenericInstantiation(function Function, call lexer.Toke
 		template:     sourceTokenLocation(function.Token),
 		substitution: function.GenericSubstitution,
 		call:         call,
+	}
+	if _, generic := a.genericCallableTemplate(a.currentFunctionMetadata); generic {
+		instantiation.caller = sourceTokenLocation(a.currentFunctionMetadata.Token)
 	}
 	for _, typ := range function.GenericSubstitution {
 		if typeMentionsGenericParameter(typ) {
@@ -159,8 +164,6 @@ func arenaAllocationElementFailure(method string, element Type) (string, string,
 	return "", "", "", false
 }
 
-// typeMentionsGenericParameter reports whether a type still contains an
-// unresolved template parameter anywhere in its structure.
 // reportNonConvergingSelfSpecialization rejects a template that calls itself
 // with a parameter replaced by a type properly containing that parameter, such
 // as Grow[T] calling Grow[Box[T]]: every specialization then demands a new,
@@ -207,6 +210,9 @@ func typeMentionsGenericName(typ Type, name string) bool {
 	return false
 }
 
+// typeMentionsGenericParameter detects unresolved arguments through nominal,
+// element and callable types before a specialization can become concrete.
+// Rules: rules/compiler/monomorphization.md — §§4.1,6,8.2,13.3.
 func typeMentionsGenericParameter(typ Type) bool {
 	if typ.Kind == GenericType {
 		return true
@@ -218,6 +224,14 @@ func typeMentionsGenericParameter(typ Type) bool {
 		if typeMentionsGenericParameter(argument) {
 			return true
 		}
+	}
+	for _, parameter := range typ.FunctionParameterTypes {
+		if typeMentionsGenericParameter(parameter) {
+			return true
+		}
+	}
+	if typ.FunctionReturnType != nil && typeMentionsGenericParameter(*typ.FunctionReturnType) {
+		return true
 	}
 	return false
 }

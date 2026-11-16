@@ -142,6 +142,9 @@ func hoverForSourceWithParameterInsight(uri string, text string, pos position, i
 		if hover, ok := interfaceSourceHover(text, program, analyzer, token); ok {
 			return hover, true
 		}
+		if hover, ok := methodGenericCallHover(text, program, analyzer, token); ok {
+			return hover, true
+		}
 		if hover, ok := typePackCallHover(text, program, analyzer, token); ok {
 			return hover, true
 		}

@@ -33,6 +33,8 @@ struct Registration {
   int32_t scope = 0;
   Operation *site = nullptr;
   SmallVector<Value> captures; // The roots an active defer still reads (section 113).
+  // perExecution registrations add an instance per execution (P17-41).
+  bool perExecution = false;
 };
 
 using State = std::map<int32_t, uint8_t>;
@@ -118,6 +120,7 @@ private:
           if (failed(add(&op, track.getCleanupActionId(), rootOf(track.getTracked()),
                          false, track.getCleanupScopeId(), track.getCleanupRegistrationOrdinal(), ordinals)))
             return failure();
+          registrations[track.getCleanupActionId()].perExecution = track.getPerExecution();
         } else if (auto defer = dyn_cast<sec::CleanupDeferRegisterOp>(op)) {
           if (failed(add(&op, defer.getCleanupActionId(), Value(), true,
                          defer.getCleanupScopeId(), defer.getCleanupRegistrationOrdinal(), ordinals)))
@@ -297,6 +300,10 @@ private:
       // iteration's live instance instead of registering again (MD-125).
       auto unless = track.getUnlessActive();
       bool selfInherited = unless && llvm::is_contained(*unless, track.getCleanupActionId());
+      // A per-execution registration adds a new instance; earlier instances
+      // stay registered in their own positions (defer.md section 13).
+      if (track.getPerExecution())
+        return success();
       if (!selfInherited && (stateOf(state, track.getCleanupActionId()) & (Live | Consumed)))
         return op.emitOpError("registers an action that is still active on a path");
       // Its cleanup would run before an earlier defer that reads the same owner

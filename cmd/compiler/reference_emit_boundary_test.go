@@ -129,13 +129,12 @@ fn main() int {
     return 0
 }
 `, "cannot return reference to local variable local"},
+		// Contained slice reads and recovery joins of slice holders lower
+		// since P17; an owning dynamic array still stops at the inspection
+		// package's named boundary (P18).
 		"beyond-package-16": {`module main
-type Holder struct {
-    View: ref int[],
-}
-fn Read(data: ref int[]) int {
-    let holder := Holder { View: data }
-    return holder.View[0]
+fn Read(values: int[]) uint {
+    return values.Len
 }
 `, "unsupported-lowering"},
 	} {

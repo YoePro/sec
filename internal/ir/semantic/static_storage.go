@@ -3,6 +3,7 @@ package semantic
 import (
 	"fmt"
 	"math/big"
+	"strconv"
 	"strings"
 
 	"sec/internal/ast"
@@ -35,6 +36,50 @@ type Static struct {
 type StaticInitializer struct {
 	Integer *big.Int
 	Bool    *bool
+	// Components hold a struct's fields in declaration order or a fixed
+	// array's elements in index order (compile_time_evaluation.md § 32).
+	Aggregate  bool
+	Components []StaticInitializer
+	// Variant is a union, Option or Result value: its active variant and
+	// payload (compile_time_evaluation.md § 32(3); SVV-2).
+	Variant *StaticVariantInitializer
+	// Enum names the case of an enum value; String is a string value.
+	Enum   *string
+	String *string
+}
+
+// StaticVariantInitializer is the active variant of a static tagged value and
+// its payload: none for an empty variant (or Ok of Result[void, E]), the
+// payload for a single-payload variant, and an Aggregate of the fields in
+// declaration order for a named-field variant.
+type StaticVariantInitializer struct {
+	Name    string
+	Payload *StaticInitializer
+}
+
+func formatStaticInitializer(initializer StaticInitializer) string {
+	switch {
+	case initializer.Aggregate:
+		parts := make([]string, len(initializer.Components))
+		for index, component := range initializer.Components {
+			parts[index] = formatStaticInitializer(component)
+		}
+		return "{" + strings.Join(parts, ", ") + "}"
+	case initializer.Integer != nil:
+		return initializer.Integer.String()
+	case initializer.Bool != nil:
+		return fmt.Sprintf("%t", *initializer.Bool)
+	case initializer.Variant != nil:
+		if initializer.Variant.Payload == nil {
+			return initializer.Variant.Name
+		}
+		return initializer.Variant.Name + "(" + formatStaticInitializer(*initializer.Variant.Payload) + ")"
+	case initializer.Enum != nil:
+		return "." + *initializer.Enum
+	case initializer.String != nil:
+		return strconv.Quote(*initializer.String)
+	}
+	return "?"
 }
 
 const (
@@ -53,11 +98,8 @@ func formatStatics(out *strings.Builder, statics []Static) {
 		if static.Function != "" {
 			fmt.Fprintf(out, " function=%q", static.Function)
 		}
-		switch {
-		case static.Initializer.Integer != nil:
-			fmt.Fprintf(out, " init=%s", static.Initializer.Integer.String())
-		case static.Initializer.Bool != nil:
-			fmt.Fprintf(out, " init=%t", *static.Initializer.Bool)
+		if formatStaticInitializer(static.Initializer) != "?" {
+			fmt.Fprintf(out, " init=%s", formatStaticInitializer(static.Initializer))
 		}
 		if static.AddressTaken {
 			out.WriteString(" address-taken")
@@ -80,24 +122,9 @@ func verifyStatics(module *Module) (map[StaticID]Static, error) {
 		if !ok {
 			return nil, fmt.Errorf("static @%d has an unknown type", static.ID)
 		}
-		if static.Initializer.Integer != nil && static.Initializer.Bool != nil {
-			return nil, fmt.Errorf("static @%d has conflicting initializers", static.ID)
-		}
-		switch {
-		case static.Initializer.Integer != nil:
-			if typ.Kind != TypeInt && typ.Kind != TypeUint && typ.Kind != TypeByte && typ.Kind != TypeChar && typ.Kind != TypeRune {
-				return nil, fmt.Errorf("static @%d has an integer initializer for a non-integer type", static.ID)
-			}
-			if !staticIntegerFits(module, typ, static.Initializer.Integer) {
-				return nil, fmt.Errorf("static @%d initializer is outside its scalar domain", static.ID)
-			}
-
-		case static.Initializer.Bool != nil:
-			if typ.Kind != TypeBool {
-				return nil, fmt.Errorf("static @%d has a bool initializer for a non-bool type", static.ID)
-			}
-		default:
-			return nil, fmt.Errorf("static @%d has no compile-time initializer", static.ID)
+		_ = typ
+		if err := verifyStaticInitializer(module, static.Type, static.Initializer); err != nil {
+			return nil, fmt.Errorf("static @%d: %w", static.ID, err)
 		}
 		statics[static.ID] = static
 	}
@@ -184,10 +211,9 @@ func (b *builder) registerStatic(static sema.ResolvedStatic) (StaticID, error) {
 	if err != nil {
 		return 0, locateUnsupportedType(err, token)
 	}
-	typ, _ := b.module.Types.Lookup(typeID)
-	initializer, ok := resolvedStaticInitializerOf(static.Initializer, typ.Kind)
+	initializer, ok := b.staticInitializerOf(static.Initializer, typeID)
 	if !ok {
-		return 0, &UnsupportedFeatureError{Feature: "static " + static.Name + " whose type or initializer has no resolved scalar compile-time value", Package: b.maxPackage, Location: location(token)}
+		return 0, &UnsupportedFeatureError{Feature: "static " + static.Name + " whose type or initializer has no resolved compile-time value", Package: b.maxPackage, Location: location(token)}
 	}
 	name := b.module.Identity + "::" + static.Name
 	if static.Function != "" {
@@ -208,7 +234,56 @@ func (b *builder) registerStatic(static sema.ResolvedStatic) (StaticID, error) {
 // resolvedStaticInitializerOf consumes Sema's immutable scalar CTE result. It
 // does not reevaluate source expressions or read runtime static storage.
 // Rules: rules/declarations/static.md §§15–16; rules/compiler/semantic_ir.md §28(5).
-func resolvedStaticInitializerOf(value sema.ResolvedStaticInitializer, kind TypeKind) (StaticInitializer, bool) {
+func (b *builder) staticInitializerOf(value sema.ResolvedStaticInitializer, typeID TypeID) (StaticInitializer, bool) {
+	typ, _ := b.module.Types.Lookup(typeID)
+	kind := typ.Kind
+	if value.Aggregate {
+		// A struct's fields in declaration order; a fixed array's elements.
+		var types []TypeID
+		switch kind {
+		case TypeStruct:
+			definition, found := structDefinition(b.module, typeID)
+			if !found {
+				return StaticInitializer{}, false
+			}
+			for _, field := range definition.Fields {
+				types = append(types, field.Type)
+			}
+		case TypeArray:
+			for range value.Components {
+				types = append(types, typ.Element)
+			}
+		default:
+			return StaticInitializer{}, false
+		}
+		if len(types) != len(value.Components) {
+			return StaticInitializer{}, false
+		}
+		result := StaticInitializer{Aggregate: true, Components: []StaticInitializer{}}
+		for index, component := range value.Components {
+			converted, ok := b.staticInitializerOf(component, types[index])
+			if !ok {
+				return StaticInitializer{}, false
+			}
+			result.Components = append(result.Components, converted)
+		}
+		return result, true
+	}
+	if value.Variant != nil {
+		return b.staticVariantInitializerOf(*value.Variant, typeID)
+	}
+	if value.Scalar != nil {
+		switch kind {
+		case TypeEnum:
+			if member := value.Scalar.Nominal.Member; member != "" {
+				return StaticInitializer{Enum: &member}, true
+			}
+		case TypeString:
+			text := value.Scalar.String
+			return StaticInitializer{String: &text}, true
+		}
+		return StaticInitializer{}, false
+	}
 	integer := kind == TypeInt || kind == TypeUint || kind == TypeByte || kind == TypeChar || kind == TypeRune
 	if integer && value.Integer != nil && value.Bool == nil {
 		return StaticInitializer{Integer: new(big.Int).Set(value.Integer)}, true
@@ -334,4 +409,76 @@ func staticIntegerFits(module *Module, typ Type, value *big.Int) bool {
 	}
 	half := new(big.Int).Rsh(limit, 1)
 	return value.Cmp(new(big.Int).Neg(half)) >= 0 && value.Cmp(half) < 0
+}
+
+// verifyStaticInitializer checks a compile-time initializer against its type:
+// a scalar in its domain, or a struct's fields and a fixed array's elements,
+// each complete and in order (compile_time_evaluation.md § 32).
+func verifyStaticInitializer(module *Module, typeID TypeID, initializer StaticInitializer) error {
+	typ, ok := module.Types.Lookup(typeID)
+	if !ok {
+		return fmt.Errorf("initializer of an unknown type")
+	}
+	set := 0
+	for _, present := range []bool{initializer.Integer != nil, initializer.Bool != nil, initializer.Aggregate, initializer.Variant != nil, initializer.Enum != nil, initializer.String != nil} {
+		if present {
+			set++
+		}
+	}
+	if set != 1 {
+		return fmt.Errorf("needs exactly one compile-time initializer")
+	}
+	switch {
+	case initializer.Integer != nil:
+		if typ.Kind != TypeInt && typ.Kind != TypeUint && typ.Kind != TypeByte && typ.Kind != TypeChar && typ.Kind != TypeRune {
+			return fmt.Errorf("integer initializer for a non-integer type")
+		}
+		if !staticIntegerFits(module, typ, initializer.Integer) {
+			return fmt.Errorf("initializer is outside its scalar domain")
+		}
+	case initializer.Bool != nil:
+		if typ.Kind != TypeBool {
+			return fmt.Errorf("bool initializer for a non-bool type")
+		}
+	case initializer.Variant != nil:
+		return verifyStaticVariant(module, typeID, *initializer.Variant)
+	case initializer.Enum != nil:
+		definition, found := enumDefinition(module, typeID)
+		if !found {
+			return fmt.Errorf("enum initializer for a non-enum type")
+		}
+		for _, enumCase := range definition.Cases {
+			if enumCase.Name == *initializer.Enum {
+				return nil
+			}
+		}
+		return fmt.Errorf("enum initializer names unknown case %q", *initializer.Enum)
+	case initializer.String != nil:
+		if typ.Kind != TypeString {
+			return fmt.Errorf("string initializer for a non-string type")
+		}
+	case typ.Kind == TypeStruct:
+		definition, found := structDefinition(module, typeID)
+		if !found || len(definition.Fields) != len(initializer.Components) {
+			return fmt.Errorf("struct initializer does not list every field")
+		}
+		for index, field := range definition.Fields {
+			if err := verifyStaticInitializer(module, field.Type, initializer.Components[index]); err != nil {
+				return err
+			}
+		}
+	case typ.Kind == TypeArray:
+		length, ok := parseCanonicalArrayLength(typ.Length)
+		if !ok || length.Cmp(big.NewInt(int64(len(initializer.Components)))) != 0 {
+			return fmt.Errorf("array initializer does not list every element")
+		}
+		for _, component := range initializer.Components {
+			if err := verifyStaticInitializer(module, typ.Element, component); err != nil {
+				return err
+			}
+		}
+	default:
+		return fmt.Errorf("aggregate initializer for a %s type", typ.Kind)
+	}
+	return nil
 }

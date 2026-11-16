@@ -165,6 +165,11 @@ func (a *Analyzer) analyzeLetStatement(stmt *ast.LetStatement) {
 			a.recordRawPointerOriginBinding(stmt.Name.Value, stmt.Value)
 			a.recordOwnedCleanupInitialization(stmt, errorsBefore)
 		}
+		if ok && defined && stmt.Value == nil && stmt.Mutable {
+			// An owned union declared empty keeps a registration template for
+			// its assignments (default_values.md § 33(5)).
+			a.recordOwnedCleanupInitialization(stmt, errorsBefore)
+		}
 		return
 	}
 

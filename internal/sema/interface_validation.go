@@ -86,14 +86,14 @@ func (a *Analyzer) validateTypeImplementsInterface(typ Type, iface Type) {
 			continue
 		}
 		for _, method := range methods {
-			if hasCompatibleInterfaceMethod(typ, iface, []Function{method}, required) && validDefinitionToken(method.Token) {
+			if a.hasCompatibleInterfaceMethod(typ, iface, []Function{method}, required) && validDefinitionToken(method.Token) {
 				member := a.interfaceMember("method", required.Name, required.Token, method.Token)
 				member.RequirementMutable, member.ImplementationMutable, member.Static = required.ReceiverMutable, method.ReceiverMutable, required.Static
 				fact.Members = append(fact.Members, member)
 				break
 			}
 		}
-		if !hasCompatibleInterfaceMethod(typ, iface, methods, required) {
+		if !a.hasCompatibleInterfaceMethod(typ, iface, methods, required) {
 			method := closestInterfaceCandidate(methods, required)
 			// An unresolved type is already diagnosed where it is written;
 			// comparing against it would only report a cascade.
@@ -170,10 +170,17 @@ func (a *Analyzer) validateTypeImplementsInterface(typ Type, iface Type) {
 }
 
 // hasCompatibleInterfaceMethod checks the substituted signature and receiver contract.
-// Rules: rules/declarations/interfaces.md — §6 "Conformance requirements".
-func hasCompatibleInterfaceMethod(typ Type, iface Type, methods []Function, required Function) bool {
+// Rules: rules/declarations/interfaces.md — §§6,9;
+// rules/declarations/generics.md — §§8–10,14,22.
+func (a *Analyzer) hasCompatibleInterfaceMethod(typ Type, iface Type, methods []Function, required Function) bool {
 	required = substituteInterfaceSelf(required, typ)
 	for _, method := range methods {
+		// Bind only the owner. A method-local template cannot become a finite
+		// interface witness by inferring or dropping its own parameter list.
+		if len(method.GenericParameters) != 0 || method.GenericTypePack != "" {
+			continue
+		}
+		method = a.instantiateGenericImplMethod(method, methodReceiverInfo{Type: typ})
 		if compatibleInterfaceMethodSignature(method, required) &&
 			method.Static == required.Static &&
 			(required.ReceiverMutable || !method.ReceiverMutable) &&

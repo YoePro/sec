@@ -35,6 +35,9 @@ type specialization struct {
 // specializations.
 type specializationState struct {
 	templates map[string]*ast.FunctionDeclaration
+	// functions holds each template's resolved declaration, the identity of
+	// its template analysis facts such as the cleanup plan.
+	functions map[string]sema.Function
 	demanded  map[FunctionID]*specialization
 	pending   []*specialization
 }
@@ -53,6 +56,21 @@ func (b *builder) registerGenericTemplate(decl *ast.FunctionDeclaration, resolve
 		b.specializations.templates = map[string]*ast.FunctionDeclaration{}
 	}
 	b.specializations.templates[genericTemplateKey(resolved)] = decl
+	if b.specializations.functions == nil {
+		b.specializations.functions = map[string]sema.Function{}
+	}
+	b.specializations.functions[genericTemplateKey(resolved)] = resolved
+}
+
+// templateFunction is the resolved template declaration of the function being
+// built: the specialization's template, or the function itself.
+func (fb *functionBuilder) templateFunction() sema.Function {
+	if fb.specialization != nil {
+		if template, ok := fb.owner.specializations.functions[genericTemplateKey(fb.specialization.function)]; ok {
+			return template
+		}
+	}
+	return *fb.resolved
 }
 
 // isGenericInstance reports a call target that Sema instantiated from a
@@ -128,14 +146,10 @@ func (b *builder) demandSpecialization(call *ast.CallExpression, target sema.Fun
 		if !concreteSemaType(typ) {
 			return nil, unsupported("generic specialization with an unresolved argument " + name)
 		}
-		// The template's ownership, cleanup and transfer plans were computed
-		// for an unknown parameter. Only a trivially copyable and destructible
-		// argument is guaranteed to need none of them (monomorphization.md
-		// § 11.2), so other arguments stay a boundary until those plans are
-		// derived per specialization.
-		if !sema.TriviallyCopyable(typ) || !sema.TriviallyDestructible(typ) {
-			return nil, unsupported("generic specialization with the ownership-sensitive argument " + name + "=" + canonicalSemaType(typ))
-		}
+		// The template's ownership, cleanup and transfer facts are symbolic
+		// for an unknown parameter; the specialization resolves them against
+		// this concrete argument while its body is built (generic_cleanup.go;
+		// monomorphization.md §§ 11.2, 11.4).
 		typeID, err := b.internType(typ)
 		if err != nil {
 			return nil, locateUnsupportedType(err, call.Token)
@@ -209,7 +223,15 @@ func (b *builder) demandSpecialization(call *ast.CallExpression, target sema.Fun
 		}
 		signature[index] = canonicalSemaType(parameter.Type)
 	}
-	id := FunctionID(fmt.Sprintf("%s::%s[%s](%s)", target.Module, target.Name, strings.Join(arguments, ","), strings.Join(signature, ",")))
+	id := FunctionID(fmt.Sprintf("%s::%s[%s](%s)", target.Module, qualifiedCallableName(target), strings.Join(arguments, ","), strings.Join(signature, ",")))
+	methodID, identity, err := b.methodSpecializationIdentity(target, substitution)
+	if err != nil {
+		return nil, err
+	}
+	if methodID != "" {
+		id = methodID
+		generic.Identity = identity
+	}
 	if existing, seen := b.specializations.demanded[id]; seen {
 		return existing, nil
 	}
@@ -239,7 +261,8 @@ func (b *builder) demandSpecialization(call *ast.CallExpression, target sema.Fun
 // Building a body may demand more of them. Pack methods use ordinary explicit
 // receiver parameters where needed, followed by their concrete pack positions.
 // Rules: rules/compiler/semantic_ir.md §27A(2),(4);
-// rules/declarations/functions.md §38A(9); rules/declarations/impl.md §§8,11,13.
+// rules/declarations/functions.md §38A(9); rules/declarations/impl.md §§8,11,13;
+// rules/declarations/generics.md §9; rules/compiler/monomorphization.md §§6.4,9.3.
 func (b *builder) buildSpecializations() error {
 	for len(b.specializations.pending) > 0 {
 		spec := b.specializations.pending[0]
@@ -250,9 +273,7 @@ func (b *builder) buildSpecializations() error {
 		}
 		// Pack methods reuse the concrete pack and ordinary receiver producers
 		// (rules/compiler/semantic_ir.md §§27A(4),60(3),61(4)).
-		if spec.function.ImplTarget != "" && len(decl.GenericParameters) != 0 && spec.facts == nil {
-			return &UnsupportedFeatureError{Feature: "generic method with generic parameters of its own for " + spec.function.Name, Package: b.maxPackage, Location: location(spec.token)}
-		}
+
 		if spec.facts != nil && len(decl.Parameters) != 0 {
 			if name := decl.Parameters[len(decl.Parameters)-1].Name; name != nil {
 				if fact, ok := b.analyzer.ResolvedBindingOf(name); ok {
@@ -314,6 +335,13 @@ func verifySpecializationFacts(module *Module, fn *Function) error {
 	}
 	if facts.Template == "" || len(facts.Arguments) == 0 {
 		return fmt.Errorf("function %s has incomplete specialization facts", fn.ID)
+	}
+	// Method-local specializations carry the same canonical Sema identity in
+	// their facts and their physical callable key (semantic_ir.md §75(2–5)).
+	if facts.Identity != "" || strings.Contains(string(fn.ID), "[instance=") {
+		if facts.Identity == "" || !strings.HasSuffix(string(fn.ID), "[instance="+facts.Identity+"]") {
+			return fmt.Errorf("function %s has inconsistent method specialization identity", fn.ID)
+		}
 	}
 	seen := map[string]bool{}
 	for _, argument := range facts.Arguments {
@@ -391,4 +419,14 @@ func verifyTypePackFacts(module *Module, fn *Function) error {
 		}
 	}
 	return nil
+}
+
+// qualifiedCallableName is a callable's name qualified by its owner: methods
+// carry it already (`Box.Get`), a property accessor (`Count.get`) gets its
+// owner prefixed, so equal property names of different owners stay distinct.
+func qualifiedCallableName(function sema.Function) string {
+	if function.ImplTarget != "" && !strings.HasPrefix(function.Name, function.ImplTarget+".") {
+		return function.ImplTarget + "." + function.Name
+	}
+	return function.Name
 }

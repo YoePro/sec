@@ -17,7 +17,7 @@ func (a *Analyzer) enterOwnedMatchBinding(arm *ast.MatchArm, info matchPatternIn
 		}
 		a.matchGuardPlaces[arm] = cloneSlicePlanPlace(place)
 	}
-	if info.BindingName == "" || TriviallyDestructible(info.BindingType) || resolvedMatchBindingAction(info) != MatchBindingMove {
+	if info.BindingName == "" || !mayRequireDestruction(info.BindingType) || !movesMatchBinding(resolvedMatchBindingAction(info)) {
 		return func() {}
 	}
 	if a.matchArmScopes == nil {
@@ -84,7 +84,7 @@ func (a *Analyzer) enterOwnedHandlerBinding(handler *ast.TryHandler, name string
 		}
 		a.tryGuardPlaces[handler] = cloneSlicePlanPlace(place)
 	}
-	if name == "" || name == "_" || TriviallyDestructible(typ) || CopyClassificationOf(typ) == CopyTrivial {
+	if name == "" || name == "_" || !mayRequireDestruction(typ) || CopyClassificationOf(typ) == CopyTrivial {
 		return func() {}
 	}
 	if a.handlerScopes == nil {

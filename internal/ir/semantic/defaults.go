@@ -91,7 +91,7 @@ func (fb *functionBuilder) buildResolvedDefault(typ sema.Type, resolution sema.D
 			return builtValue{}, fmt.Errorf("array default length fact mismatch for %s", typ.Name)
 		}
 		if length.Sign() != 0 {
-			if resolution.ArrayElementDefault == nil || (fb.owner.maxPackage < ownershipLoweringPackage && (sema.CopyClassificationOf(*typ.Element) != sema.CopyTrivial || !sema.TriviallyDestructible(*typ.Element))) {
+			if resolution.ArrayElementDefault == nil || (fb.owner.maxPackage < ownershipLoweringPackage && (fb.owner.copyClassificationOf(*typ.Element) != sema.CopyTrivial || !fb.owner.triviallyDestructible(*typ.Element))) {
 				return builtValue{}, fb.unsupported("non-trivial fixed-array default for "+typ.Name, lexer.Token{})
 			}
 		}
@@ -103,7 +103,7 @@ func (fb *functionBuilder) buildResolvedDefault(typ sema.Type, resolution sema.D
 			Kind: OpArrayDefault, ArrayElementType: elementType,
 			ArrayLength: length.String(), Location: loc,
 		}
-		if fb.owner.maxPackage >= ownershipLoweringPackage && (sema.CopyClassificationOf(typ) != sema.CopyTrivial || !sema.TriviallyDestructible(typ)) {
+		if fb.owner.maxPackage >= ownershipLoweringPackage && (fb.owner.copyClassificationOf(typ) != sema.CopyTrivial || !fb.owner.triviallyDestructible(typ)) {
 			value := fb.newValue(typeID, OwnershipOwned, loc)
 			op.Results = []Value{value}
 			fb.emit(op)

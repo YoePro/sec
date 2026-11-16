@@ -1,0 +1,13 @@
+module arena_parent_plans
+
+fn NewEpochAndEmptyBacking() Result[void, AllocationError] {
+    let mut parent := try Arena.WithCapacity(64u)
+    let mut first := Arena.FromBuffer(try parent.Alloc[byte](16u))
+    first.Release()
+    parent.Reset()
+    let mut second := Arena.FromBuffer(try parent.Alloc[byte](0u))
+    second.Reset()
+    second.Release()
+    parent.Release()
+    return Ok()
+}

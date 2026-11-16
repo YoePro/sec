@@ -127,6 +127,10 @@ func implTargetParameterConstraints(target Type, parameter string) []GenericCons
 	return constraints
 }
 
+// containsEquivalentConstraintMethod merges only identical guaranteed method
+// requirements; an overload or a different result must remain a separate fact.
+// Rules: rules/declarations/generics.md — §§12,15;
+// rules/declarations/interfaces.md — "Conformance requirements".
 func containsEquivalentConstraintMethod(methods []Function, candidate Function) bool {
 	for _, method := range methods {
 		if method.Name == candidate.Name &&
@@ -142,6 +146,10 @@ func containsEquivalentConstraintMethod(methods []Function, candidate Function) 
 // member surface carried by a constrained generic parameter. The cloned
 // requirement uses the parameter itself as its compile-time receiver so the
 // ordinary overload, receiver-capability, and ownership checks remain active.
+// This lookup uses the template's declared guarantees, including method-level
+// parameters; concrete call-site types do not enlarge that member surface.
+// Rules: rules/declarations/generics.md — §§5.6,9,12–15,33;
+// rules/compiler/monomorphization.md — §§5.1–5.3.
 func (a *Analyzer) constrainedGenericMethodCall(expr *ast.CallExpression) ([]Function, methodReceiverInfo, bool) {
 	member, ok := expr.Callee.(*ast.MemberExpression)
 	if !ok || member.Property == nil || a.expressionNamesType(member.Object) {

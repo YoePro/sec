@@ -242,3 +242,23 @@ LogicalResult CleanupRunFunctionOp::verify() {
     return failure();
   return verifyExitKind(*this, getExitKind(), true);
 }
+
+// Empty union state (P17-19 follow-up): only mutable union storage has it,
+// and it exists from schema 13. Rules: rules/types/default_values.md section 33;
+// rules/control-flow/flowcontrol_match.md section 11.
+static LogicalResult verifyEmptyStateStorage(Operation *op, Value storage) {
+  if (failed(requireOwnershipSchema(op)))
+    return failure();
+  auto type = dyn_cast<StorageType>(storage.getType());
+  if (!type || !isa<UnionType>(type.getElementType()))
+    return op->emitOpError("requires !sec.storage of a !sec.union");
+  auto declare = storage.getDefiningOp<StorageDeclareOp>();
+  auto mutableAttr = declare ? declare->getAttrOfType<BoolAttr>("sec.mutable") : BoolAttr{};
+  if (!mutableAttr || !mutableAttr.getValue())
+    return op->emitOpError("requires a mutable storage declaration");
+  return success();
+}
+
+LogicalResult StorageInitEmptyOp::verify() { return verifyEmptyStateStorage(*this, getStorage()); }
+
+LogicalResult StorageIsEmptyOp::verify() { return verifyEmptyStateStorage(*this, getStorage()); }

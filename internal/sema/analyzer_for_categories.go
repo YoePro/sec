@@ -30,7 +30,7 @@ func (a *Analyzer) compilerKnownIterator(source Type) (Type, Function, Type, boo
 			continue
 		}
 		for _, method := range a.functions[concrete.Name+"."+required.Name] {
-			if !hasCompatibleInterfaceMethod(concrete, iface, []Function{method}, required) {
+			if !a.hasCompatibleInterfaceMethod(concrete, iface, []Function{method}, required) {
 				continue
 			}
 			method.CompilerKnownID = required.CompilerKnownID

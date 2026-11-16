@@ -9292,3 +9292,1014 @@ mlir/ C++ ownership verifier and dialect properties when reached,
 package17-todo.md, the P17 implementation report, governance/lowering.yaml
 lowering.sec-mlir-package17. Codex keeps P20; I will post before touching
 shared float hooks (none planned).
+
+### Codex — 2026-11-16 results: P20-13 (released)
+
+Closed the detached Sema numeric-conversion plan milestone. New
+internal/sema/numeric_conversion_plan.go publishes typed primitive float
+conversion snapshots at the successful conversion hook; Analyzer owns one
+map/reset. Queries detach scalar types/domains, exactness proofs and canonical
+ConversionError failure lists, never infer and never create missing facts.
+Platform width is explicitly zero without a CompilationPlan. Literal shaping,
+decimal, named/unit and ABI conversions retain their existing paths.
+
+The 96-pair source matrix covers float/float32/float64, int/uint and fixed
+8..256-bit signed/unsigned integers in both directions, plus float-to-bool,
+at all three analysis depths and plan settings (none/32/64). Extra cases check
+constant/path proofs, invalid casts, mutation isolation and reanalysis reset.
+Corrected checked_numeric_conversions.go's finite binary32 bound: uint128
+can exceed Max below 2^128 and must retain OutOfRange plus PrecisionLoss.
+
+Validation (2026-11-16):
+- go test -p 4 ./internal/sema ./internal/ir/semantic -count=1: passed.
+- go test -p 4 ./internal/sema -run '^TestResolvedNumericConversionPlans' -count=1: passed.
+- go vet -p 4 ./internal/sema: passed.
+- yamlstatus check: 0 problems in 47 fragments; lowering.yaml canonical;
+  P20 path check: 82 references, none missing; git diff --check clean.
+
+P20 checklist unchecked: 25 -> 24. Governance's two composite remaining
+items stay 2 -> 2; the conversion item now credits the completed Sema plan.
+P20-14/15/18/19/26 still own validation, try/IR integration, CTE and physical
+conversion lowering. package20-todo.md and lowering.sec-mlir-package20 are
+synchronized. No P17 IR/MLIR or sec/ files touched; Claude's active P17
+working set was re-read. No new MD and no commit. Working set released.
+
+### Claude — 2026-11-16 progress: P17 closure (in progress)
+
+Closed: P17-49 (no FFI metadata needed, ffi.md §§ 35–36; dialect rejects
+`move` on sec.call.foreign); acceptance rows 5–9, 13, 17, 20, 34 refreshed;
+defer loop instances (per-execution owners, defer-instance storage); empty
+union state (storage.init_empty / storage.is_empty, owned unions via MD-125
+conditional registration); successor_actions restore pass
+(--sec-annotate-successor-actions); complete destruction-plan tables;
+allocator pairing (vacuous in schema 13, P18-30 for schema 14). P17-41 is
+narrowed to the dynamic-epoch holder (unreachable while Arena allocation is
+gated). Remaining P17 items: three P16 carry-overs, the P15 statics/generics
+move, and the dynamic-epoch holder.
+
+Shared touches: model.go (Function.deferCaptureBorrows, Storage.DeferInstance),
+builder.go (semaTypes/internType wrapper, empty decl, match empty dispatch,
+emptyStorages), cleanup_ops.go (Region.Loops, CleanupFacts.PerExecution),
+place_reference.go, reference_use.go, verifier.go, printer.go; Sema:
+cleanup_exits.go, cleanup_plans.go (ResolvedDeferBodyCleanupPlanOf),
+cleanup_registrations.go, cleanup_assignments.go (EmptyDeclaration),
+analyzer.go (one field), analyzer_let_bindings.go; C++: SecOps.cpp,
+OwnershipOps.cpp, SecOwnershipOps.td, SecDialect.cpp (empty-state pattern
+kind), VerifyCleanups.cpp, VerifyOwnership.cpp, VerifyPlaceReferences.cpp,
+Passes.td/h, new AnnotateSuccessorActions.cpp. check-sec-mlir 226/226.
+
+### Claude — 2026-11-16 task for Codex: P19 part 1 (arena references in Semantic IR)
+
+Owner asked to close P17 first and offered Codex a share. P17-41's last form
+(a defer capturing a dynamic-epoch reference holder) is implemented in the
+builder and verifier, but no source program reaches it: Arena references are
+the only dynamic-epoch source and stop at the allocation readiness gate.
+Task file: `codex-p19-arena-references-task.md` (P19-01..08, 12, 14, 15, 18,
+20; no schema 15). Claude keeps defer_producer.go, reference_use.go,
+cleanup_ops.go, union_empty_state.go and VerifyCleanups.cpp, and adds the
+source test (P19-21) once arena references reach Semantic IR. Claude next:
+the P16 carry-over items in lowering.sec-mlir-package17.
+
+### Codex — 2026-11-16 results: P20-14 (released)
+
+Closed Sema typed numeric conversion enforcement. New
+internal/sema/numeric_conversion_validation.go checks known typed constants
+with exact finite bounds before precision/integrality, diagnoses guaranteed
+failure even under try and retains canonical ConversionError causes. Wide
+integer singleton values are proved exact through 256 bits; float-to-integer
+plans retain detached half-open power-of-two bounds and finite/range/integral
+check order. Float narrowing maps NaN/infinity categories; bool uses une-zero.
+
+Shared touches: analyzer_inference.go primitive validation hook and stale-plan
+removal, checked_numeric_conversions.go singleton/category exactness;
+float_intervals.go immutable finite/category recording, types.go one Symbol
+category string. numeric_conversion_plan.go adds check order, integer bounds
+and constant IEEE category evidence. All new semantic helpers have rulebook
+references. No sec/, P17 IR/ownership/MLIR or native codegen edits.
+
+Tests: new source fixtures numeric_conversion_validation[_invalid].sec and
+numeric_conversion_validation_test.go; existing constant-proof diagnostic
+expectations now require compile-time errors, not suggestions to add try.
+Coverage includes exact/inexact wide powers, largest finite float32, all
+integer widths, half-open signed/unsigned boundaries, range-before-precision,
+underflow/overflow, nonfinite and chained constants, mutable runtime values,
+three plan settings and detached bound/check mutations.
+
+Validation (2026-11-16): full internal/sema and internal/ir/semantic suites
+passed with -p 4 -count=1; go vet -p 4 ./internal/sema passed. Final targeted
+conversion suite passed after conservatively retaining unknown formats.
+yamlstatus check: 0 problems / 47 fragments; lowering.yaml canonical; P20
+path check: 86 references, none missing; git diff --check clean.
+
+P20 unchecked 24 -> 23; governance composite remaining 2 -> 2. P20-26 still
+owns physical guard/cast lowering; P20-19 owns full CTE/runtime parity.
+P20 todo and lowering.sec-mlir-package20 synchronized. No new MD or commit.
+
+Claude's new P19 part-1 task and codex-p19-arena-references-task.md pointer
+were seen during final synchronization. That working set is not started in
+this P20 turn; the owner requested another P20 point. Claude retains the
+listed P17/defer files. P20-14 working set released.
+
+### Codex — 2026-11-16 results: P19 Sema plan foundation (released)
+
+First P19 delivery for codex-p19-arena-references-task.md. Added detached
+ResolvedArenaOperationPlan and create/allocation/reset/release queries in
+internal/sema/arena_operation_plans.go. Successful final-body publication
+hooks live in analyzer_arena.go; Analyzer owns one map/reset. No new identity
+family: frontend Arena domain strings and P15 invalidation/epoch IDs are
+reused, along with canonical allocation/context IDs. Plans retain represented
+backing/growth, counts and units, Result/AllocationError/atomicity contracts,
+receiver/backing Places and element restrictions. Missing layout/default,
+capacity/growth/provider/reclamation/state-version/epoch-exhaustion/implicit
+cleanup facts are explicitly Unresolved, not invented or silently certified.
+Invalid Alloc count typing now returns before publishing a plan.
+
+P19-03 is closed (builtin/lowercase/MoveOnly/domain/epoch conformance).
+P19-04..08/12 remain partial; P19-14/15/18/20 and the task's IR acceptance
+are NOT completed. In particular, allocation readiness has NOT been opened.
+The next producer work must consume these plans, supply the unresolved facts
+and preserve reference validity/ownership, not simply whitelist Arena effects.
+No schema 15, emitter, physical lowering, P17/defer or sec/ edits.
+
+New MD-136: Arena {} and implicit Arena defaults have no specified
+backing/growth/provider/creation contract in arena.md/default_values.md/P19.
+Current frontend empty-struct acceptance is preserved. Do not infer a provider
+for the task's exact example; defined FromBuffer/WithCapacity/Growable paths
+can proceed independently. missing-decisions.yaml updated through MD-136.
+
+Validation: GOTMPDIR=$HOME/.cache/sec-gotmp go test -p 4 on internal/sema,
+internal/ir/semantic and internal/lowering/secmlir, filtered by
+'Arena|Package15DynamicReferenceUseValidatesOnce|DynamicReference': passed.
+New fixtures test 14 operations across three depths and three scalar plans,
+canonical reference/producer epoch agreement, move-preserved provenance,
+zero-count Result stability, rejected authority/element/count/dependency,
+mutation isolation, no query allocation and reset on reanalysis. go vet -p 4
+./internal/sema passed with the same GOTMPDIR. No full CLI/LSP suite run.
+
+P19 todo unchecked 44 -> 43. New governance owner
+lowering.sec-mlir-package19 registers one completed point, partial plan evidence
+and the other 43 remaining points (newly visible tracking, not regressions).
+Latest execution checkpoint/predecessor state recorded in package19-todo.md;
+P19-01/02 audit remains open. yamlstatus check: 0 problems / 47 fragments;
+lowering.yaml canonical; P19 paths: 14 checked, none missing. No commit.
+Working set released; Claude retains the posted P17/defer files.
+
+### Codex — 2026-11-16 results: P19-14 semantic types (released)
+
+P19-14 is complete. Canonical Semantic IR Arena and compiler-internal
+allocation-context types live in internal/ir/semantic/arena_types.go.
+Arena maps separately from empty structs, gated to package 19; backing kind,
+provider and physical width are not type parameters. Owned/ref/ref-mut
+source parameter types preserve this identity across planless/32/64-bit
+analysis. Arena stays move-only and non-trivially destructible.
+
+Module verification rejects malformed Arena/context types and contexts in
+ordinary wrappers, aggregate payloads, storage, results and foreign parameters.
+AllocationContext is not a source-visible type. Existing printing suffices.
+The emitter explicitly rejects both types pending schema 15; no schema or
+physical representation was added. Context production/propagation, Arena
+operations, implicit resource cleanup and source allocation readiness remain
+open (P19-15/17/18/20/23); the overall task acceptance is not complete.
+
+Working set: new arena_types.go and tests, small dispatch hooks in builder.go
+and verifier.go, ownership_ops.go/ownership_state.go classification, two source
+fixtures and emitter rejection tests. No edits to sec/ or Claude's claimed
+P17/defer files. No rules or missing decisions changed.
+
+Validation: focused Arena/ownership/destruction/dynamic-reference tests pass
+across sema, Semantic IR and emitter. Full Semantic IR and emitter suites pass
+with GOTMPDIR=$HOME/.cache/sec-gotmp go test -p 4 (7.901s/1.865s).
+The first full run failed TestPackage15LowersReferenceParametersAndPassing,
+TestPackage15LowersExplicitReborrows (numeric ID expectations),
+TestPackage16SliceValuesInAggregates and TestPackage16SourceDependencyMatrix
+(projected-holder boundary). Isolated tests and repeat full suites passed
+without edits to those tests; a temporary overlay excluding this milestone's
+hooks/tests also passed the full IR suite. Keep the transient failures visible;
+they are not claimed fixed here. go vet -p 4 on IR/emitter passed.
+
+P19 todo and lowering.sec-mlir-package19 synchronized: 1 whole point closed,
+remaining 43 -> 42. Ledger check: 0 problems/47 fragments; lowering.yaml
+canonical; P19 paths: 23 checked, none missing. No commit. Working set released;
+Claude retains P17/defer and the schema/emitter/physical P19 work.
+
+### Codex — 2026-11-16 results: P19-15 Arena operations (released)
+
+P19-15 operation representation is complete. New arena_operations.go defines
+all eight create/New/Alloc/Reset/Release/Destroy operations, typed shape
+verification and deterministic formatting. ArenaOperationFacts retains state
+versions separately from validity epochs, backing/growth and resolved opaque
+provider/capacity/layout/default/dependency plan references. Domain and storage
+transition vocabulary reuse BackingMetadata; no new identity allocator or
+physical descriptor is introduced. The plan references do not implement the
+still-missing Sema provider/layout/default/capacity/state-version producers.
+
+Creation produces an owned Arena. New/Alloc/Reset require writable Places.
+New/Alloc candidates retain P15/P16 types and dynamic-epoch metadata. Reset
+requires AdvanceEpoch; Release/Destroy require EndDomain and consume ownership.
+Destroy names a P17 compiler-known-resource Arena destruction plan and cause.
+Borrowed creation consumes its mutable byte-slice borrow and retains the actual
+source borrow identity. Owned creation/allocation preserve the checked
+candidate/failed/AllocationError shape and atomic-failure contract. Candidate
+publication is restricted to the success region (including a success block
+argument); failure and failed/success joins cannot use the candidate.
+
+New arena_verification.go checks fresh creation domains and cross-block uses
+after borrowed-backing transfer or owner consumption. Small dispatches touch
+model.go, verifier.go, printer.go, place_reference.go (Place consumers) and
+ownership_ops.go (consumption classification). No edits to Claude's claimed
+defer/reference_use/cleanup/union files, sec/, dialect or emitter implementation.
+
+Tests: arena_operations_test.go exercises all eight operations on planless,
+32- and 64-bit plans; negative shape/state/epoch/provider/initialization/
+ownership/candidate tests; retained-borrow identity, domain freshness and
+success-argument handling. A New candidate goes through the existing P15
+ref.is-valid/dereference CFG, and dropping its guard is rejected. This is
+white-box operation integration, not closure of P19-18's source milestone.
+
+Validation: focused Arena|DynamicReference|Ownership|Destruction tests pass in
+sema, Semantic IR and emitter. Full IR/emitter suites passed with
+GOTMPDIR=$HOME/.cache/sec-gotmp go test -p 4 -count=1 (7.221s/1.631s);
+go vet -p 4 on IR/emitter passed. Ledger: 0 problems/47 fragments;
+lowering.yaml canonical, 29 P19 path references checked, none missing;
+git diff --check clean.
+
+P19 todo/governance: one whole representation point closed, remaining 42 -> 41.
+P19-12/17/18/20/22–29 and source readiness remain open; no readiness gate was
+changed. Next source work still needs complete preserving Sema facts and a
+resolved constructor path (MD-136 continues to block Arena {}). Overall Arena
+source/defer task acceptance is not complete. No commit. Working set released.
+
+### Codex — 2026-11-16 results: P19-16 nested Arena IR (released)
+
+P19-16 is complete at the Semantic IR representation boundary. New
+arena_nested.go adds ArenaParentDependency on borrowed creation: canonical
+parent storage identity, existing P15 ReferenceMetadata (domain/current epoch,
+borrow/lifetime/origins) and P16 static half-open or symbolic range identity.
+Arena-derived byte-slice input must retain this dependency. Verification checks
+it against the transferred source borrow and available source range facts,
+requires distinct parent/child domains and forbids individual reclamation of
+parent bytes. Printing preserves the full parent dependency deterministically.
+
+A CFG may-live fixed point blocks parent Reset/Release/Destroy while a nested
+child can still live. Child terminal release removes the dependency; child
+Reset retains it, even with zero-byte backing. Branches that release on every
+path permit parent Reset; one surviving path blocks it. Tests cover all scalar
+plans, malformed identity/lifetime/epoch/range records, known-bound mutation,
+terminal causes, joins and loop convergence. The loop and child-Reset transfer
+unit cases isolate lifecycle checking rather than pretend to be source builders.
+
+Working set: new arena_nested.go/tests; small ArenaOperationFacts/printing,
+arena_verification.go and verifier.go hooks. No sec/, schema/emitter, source
+readiness or Claude-owned P17/defer/reference_use/cleanup/union edits. Source
+nested Sema plans/producers and full task acceptance remain open, as do
+context propagation, schema 15 and physical lowering. No new MD or commit.
+
+Validation: focused sema/IR/emitter Arena|DynamicReference|Ownership|Destruction
+suite passed. Final full IR/emitter suites passed with
+GOTMPDIR=$HOME/.cache/sec-gotmp go test -p 4 -count=1 (6.930s/1.615s);
+final Arena tests and go vet -p 4 IR/emitter passed. Ledger check: 0 problems /
+47 fragments; lowering.yaml canonical; 31 P19 path references, none missing;
+git diff --check clean. Todo/governance synchronized: one whole point closed,
+P19 remaining 41 -> 40. Working set released.
+
+### Codex — 2026-11-16 results: P19-17 allocation context IR (released)
+
+P19-17 is complete at the IR representation/verification boundary.
+allocation_context.go defines explicit from-Arena/target/compiler-local
+context producers and selected-origin facts. Function.RequiresAllocationContext
+requires exactly one first, marked compiler-hidden context parameter with
+compiler-temporary ownership. Direct calls explicitly forward it with the
+allocation-context argument action; ordinary callees receive none. The source
+FunctionID/type identity is unchanged. The first-parameter convention is fixed
+for this high-level representation; physical ABI work remains separate.
+
+Selection carries an SSA capability and its canonical origin. Explicit Arena
+selection requires writable authority and a domain; target/compiler-local
+selection retains an opaque resolved OriginPlan reference. That reference owns
+entry/provider/profile or bounded-lifetime/no-escape/backing/failure proofs;
+this change does NOT produce or verify those source proof plans. Propagated
+inputs retain a distinct origin. Owned Arena creation now requires an actual
+selected SSA context, not just BackingMetadata's numeric Context identity.
+
+Verification rejects unmarked/mispositioned/missing hidden inputs, requirement
+mismatch, missing/unsolicited forwarding, changed origin/plan/domain, invalid
+SSA use, ordinary data/CFG escape and ordinary foreign ABI contexts. Context
+operands participate in SSA dominance even when selected via operation metadata.
+Printing preserves hidden-input and selected-origin facts. Existing P18
+allocation consumers remain P19-19 integration work; no source readiness gate
+is widened and no ambient lexical Arena discovery is introduced.
+
+Working set: new allocation_context.go/tests; small model/verifier/printer and
+Place-consumer hooks; owned-creation IR test fixtures now provide a marked
+context input. One emitter test confirms hidden-context modules still reject
+without output before schema 15. No sec/, source Sema/builder, emitter production,
+C++ or Claude-owned defer/reference_use/cleanup/union edits.
+
+Validation: full IR/emitter suites passed (7.686s/2.110s), final added context
+and Arena tests passed; focused Sema Arena/context tests passed (0.808s).
+go vet -p 4 IR/emitter passed. Tests cover all four origins, context-free calls,
+signature/ABI/SSA/escape mutations, missing owned-creation selection and emitter
+rejection. Commands use GOTMPDIR=$HOME/.cache/sec-gotmp and -p 4.
+
+Todo/governance synchronized: one whole IR point closed, P19 remaining 40 -> 39.
+Source summaries/origin proof plans and producer/build integration remain
+P19-13/20; P19-18's source dynamic-epoch/defer acceptance is still open. Next
+priority is completing the preserving source plans/producers, not treating
+these IR records as permission to bypass allocation readiness. MD-136 still
+blocks only undefined Arena {} semantics. No new MD or commit. Working set released.
+
+### Codex — 2026-11-16 results: P19-09 Sema parent plans (released)
+
+P19-09 is complete at the source Sema fact boundary. New
+internal/sema/arena_parent_plans.go publishes Parents in the existing
+ResolvedArenaOperationPlan. Each possible parent retains its original origin
+alternative, canonical P15 invalidation-domain/epoch identities, borrowed
+backing relation and the parent's Arena reclamation authority. This is the
+same origin set already used by retainNestedArenaBacking, not a parallel
+liveness model. Terminal child Release ends the retained loan/domain, without
+individually reclaiming parent bytes; existing source checking owns that rule.
+
+Child operations inherit creation facts by stable child domain, preserving
+parent dependencies through child/parent owner moves and child Reset. Joined
+origins stay separate and deterministically ordered. Generic public operation
+queries detach the new slice; they infer nothing, allocate no identities and
+clear on reanalysis. Parameter/unknown backing remains constrained by the
+existing unresolved operation facts; this does not manufacture storage/range,
+provider/default/layout/state-version facts or certify source IR readiness.
+
+Working set: new arena_parent_plans.go/tests and two testdata/sema fixtures;
+small publication/snapshot hooks in arena_operation_plans.go. Source fixtures
+cover named/temporary backing, moved owners, grandchildren, conditional/loop
+scope destruction, zero-length backing and parent Reset across two epochs.
+The matrix runs at three depths and no/32/64-bit plans. Another source test
+checks that joined left/right allocations retain both possible parent domains
+on child create/Reset/Release. Existing nested-invalid diagnostics still pass.
+
+Validation: full Sema, Semantic IR and emitter suites passed with
+GOTMPDIR=$HOME/.cache/sec-gotmp go test -p 4 -count=1
+(27.936s/7.968s/1.783s). go vet -p 4 ./internal/sema passed. Focused source
+parent-plan and nested-dependency tests passed. No sec/, IR/schema/emitter,
+readiness or Claude-owned P17/defer/reference_use/cleanup/union edits.
+
+Todo/governance synchronized: one whole Sema point closed, P19 remaining
+39 -> 38. Source Arena production and the overall dynamic-epoch/defer task
+acceptance remain open, requiring the remaining preserving plans (P19-12/20).
+No new MD or commit. Working set released.
+
+### Codex — 2026-11-16 results: P19-06 failure plans (released)
+
+P19-06 is complete at the Section B Sema-plan boundary. New
+arena_failure_plans.go records canonical exhausted/unsupported/invalid-extent/
+alignment failure mappings to the existing AllocationError variants. Unknown
+conditions have no fallback mapping. Existing ErrorCauses now derives from
+this one contract instead of keeping a second literal list.
+
+ArenaFailurePlan retains the unchanged source Result type and an explicit
+failure outcome: no domain established for failed creation; existing owner,
+epoch/cursor/allocations unchanged for failed allocation. FromBuffer/Reset/
+Release have no fallible plan. Empty capacity/count and dynamic counts retain
+Result. Provider execution and actual initialization are NOT implemented by
+this record; source IR producers, schema and native lowering remain open.
+Existing IR success-region candidate verification remains in force, and
+allocation readiness is unchanged.
+
+New source fixture arena_failure_contracts.sec supplements the existing Arena
+operation fixture. Tests cover all constructor/New/Alloc forms, four mappings,
+unknown-condition rejection, zero/dynamic counts and stable compiler-known
+error identity across three analysis depths and no/32/64-bit plans. Public
+queries detach mapping slices and nested Result/error type data without
+allocating identities. Only arena_operation_plans.go publication/snapshot
+hooks accompany the focused helper/tests. No sec/, IR/schema/provider or
+Claude-owned P17/defer/reference_use/cleanup/union edits.
+
+Validation: full Sema/IR/emitter suites passed with
+GOTMPDIR=$HOME/.cache/sec-gotmp go test -p 4 -count=1
+(26.538s/7.983s/1.816s); go vet -p 4 ./internal/sema passed. Ledger: 0 problems /
+47 fragments; lowering.yaml canonical; 42 P19 path references, none missing;
+git diff --check clean. Todo/governance and older partial-plan labels synced:
+one whole Sema point closed, P19 remaining 38 -> 37. Other preserving source
+plans and overall Arena/dynamic-reference/defer acceptance remain open.
+No new MD or commit. Working set released.
+
+### Codex — 2026-11-16 results: P19 resolved element defaults (released)
+
+Bounded partial P19-05/12 increment completed. ResolvedArenaOperationPlan now
+publishes ElementDefault for successful New/Alloc using the existing canonical
+DefaultValueOf result at source recording time, before type snapshots discard
+source contracts. ElementDefaultable derives from that same resolution.
+Consumers no longer need to re-resolve or assume zero initialization.
+
+New arena_default_plans.go detaches exact integer/rational values, structural
+fields, compact/legacy array elements, union payloads and CTE aggregate maps,
+names and payloads. Queries infer nothing and allocate no identities. New
+source fixture/tests cover default 8080, ordered struct/array defaults, zero
+and dynamic counts across three analysis depths and no/32/64-bit plans, plus
+mutation isolation for exact/aggregate constants.
+
+Full Sema/Semantic IR/emitter suites passed (35.012s/10.961s/1.872s) using
+GOTMPDIR=$HOME/.cache/sec-gotmp go test -p 4 -count=1. Sema vet passed.
+Ledger: 0 problems / 47 fragments; lowering canonical; 45 P19 paths checked,
+none missing; git diff --check clean. Governance evidence synchronized.
+
+This retains the semantic default value only. Physical initialization/layout,
+capacity/provider/state-version plans and source IR production remain open;
+canonical initialization remains explicitly unresolved and readiness unchanged.
+Zero whole checklist points closed: P19 remaining 37 -> 37. No sec/, schema,
+Claude-owned P17/defer/reference_use/cleanup or emitter edits. Working set
+released; no new MD or commit.
+
+### Claude — 2026-11-16 progress: P17 carry-overs
+
+Closed in lowering.sec-mlir-package17 (one implemented entry each): holder
+rebind in mutable storage (references, slices, StringView, uniform and
+`joined` provenance joins, verifyHolderStorageJoins); contained references
+read out of aggregates and payload bindings (ResolvedContainedReadOf,
+`place.read … holder`), including try-recovery joins of slice holders
+(verifyHolderParameterJoins); MD-065 mixed-join slice end placement
+(§ 6(3) region edges; remaining layouts fail closed per § 6(5)) and the
+discard-with-live-child end fix. Sema: no write use for `r = otherRef`;
+holder/contained read facts with identities allocated after analysis;
+`joined` provenance; recovery origin joins for references/slices. C++:
+Place of a reference holder, `sec.place.read` action "holder". New forms are
+gated at package 17; package 16 keeps its boundaries. check-sec-mlir 227/227.
+Note for Codex: TestArenaOperationPlans/TestArenaTypesAwaitSchema15 were red
+briefly during your P19 work and are green now.
+
+### Codex — 2026-11-16 results: P19-11 ordered operation effects (released)
+
+P19-11 completed at the Sema-plan boundary. New arena_effect_plans.go links
+successful operation plans to existing ordered ArenaEffectSite events using
+the callable/direct-effect index and canonical invalidation-domain resource.
+Creation establishes the domain, Reset advances its epoch, and Release ends
+it. All effects require order preservation and are not CSE-safe; separate
+allocations remain distinct across Reset/Release. This source visitation
+sequence is not a claim that conditional/loop bodies execute exactly once.
+
+Provider acquire/conditional growth/reclaim actions retain explicit unknown
+provider effects. Borrowed Release ends its backing loan without reclaiming
+parent bytes. Unknown parameter backing is not provider-free. Zero-count
+allocation needs no growth while source MayAllocate/Result stay stable.
+Queries detach effects and allocate no identities. Missing source events leave
+an explicit unresolved fact instead of creating a second event stream.
+
+Source matrix covers all operations, moved owners, independent resources,
+repeated allocations, resets, zero counts and parameter backing at three
+depths and no/32/64-bit plans. Targeted Sema/IR/emitter suites passed
+(1.102s/0.025s/0.004s), Sema vet passed. Full-suite concurrent CTE/static
+failures are recorded below for Claude; those files were left untouched.
+Also detached newly added CTE aggregate Elements in our default snapshots.
+Ledger: 0 problems / 47 fragments; lowering canonical; 48 P19 path references,
+none missing. Todo/governance synchronized: one whole point, 37 -> 36.
+Source IR producers/provider/layout/state-version plans, schema and physical
+lowering remain open; allocation readiness unchanged. No sec/ or Claude-owned
+P17/defer/reference_use/cleanup edits; no new MD or commit. Working set released.
+
+Codex validation note during P19-11 (2026-11-16): targeted Arena tests and
+Sema vet passed. Full shared-tree Sema/IR run currently fails outside this
+working set: TestCTEMaterializationGraphRejectsUnsafeGraphs (fixed-array
+category expectation), three TestStaticStoreOf* tests (new unsupported ref
+static initializer diagnostic), and three Package15 static-root boundary
+checks expecting "resolved scalar compile-time value" while current code
+says "resolved compile-time value". Emitter suite passed (1.826s).
+These overlap ongoing CTE/static work; leaving those files/tests untouched.
+Also extended our Arena default snapshot for the new CompileTimeAggregate
+Elements field, with mutation regression. No request to change your CTE code.
+
+### Claude — 2026-11-16 progress: aggregate statics (P15 carry-over part 1)
+
+Closed: struct and fixed-array statics of integer/bool values, materialized
+by semantic CTE (literals, ranges, executed code) and emitted as one
+aggregate sec.static.global (`initial = "aggregate"`, nested
+`sec.static_initializer`, verified by StaticGlobalOp). Sema: the CTE executor
+evaluates fixed-array literals and materializes fixed arrays; struct/array
+literal static initializers run on the executor unless they hold a `ref`.
+Builder: struct field assignment through a mutable static. Owner decided the
+other two parts (ownership-sensitive generic specializations, method-level
+generics) wait. Remaining P17: those parts, union/Option/Result statics,
+and the dynamic-epoch defer holder (needs Codex's P19 arena references).
+
+### Codex — 2026-11-16 results: P19-31 frontend conformance (released)
+
+P19-31 completed: arena_frontend_conformance_test.go and valid/invalid source
+fixtures cover the package19 section149 frontend matrix. Defined constructors
+avoid MD-136 empty/default construction. Tests cover builtin/lowercase Arena,
+all constructors and five operation kinds, copy rejection, owner moves/return,
+New/Alloc (including wide elements), zero count/backing, Reset after final use,
+Reset blocked by retained ref/slice/nested child, consuming Release and use
+or second Release afterward, and local Arena reference return rejection.
+
+Matrix: three depths and no/32/64-bit scalar plans; invalid functions each
+require one correctly located diagnostic, Reset names its live dependency,
+and rejected Reset/Release must not publish operation plans. This is frontend
+test coverage, not a claim of complete NLL or source IR/native Arena support.
+Production code, allocation readiness, schema, sec/ and Claude-owned P17 files
+were untouched.
+
+Full Sema/Semantic IR/emitter suites now pass (34.253s/10.040s/2.485s), using
+GOTMPDIR=$HOME/.cache/sec-gotmp go test -p 4 -count=1; Sema vet passes. The
+concurrent CTE/static failures reported above are no longer present. Ledger:
+0 problems / 47 fragments, lowering canonical, 51 P19 references checked and
+none missing; diff check clean. Todo/governance synchronized: one whole test
+point closed, P19 remaining 36 -> 35. No new MD or commit; working set released.
+
+### Claude — 2026-11-16 governance: P1–P17 closure split (owner decisions)
+
+Owner goal: P1–P17 closed without carry-over. Done:
+- New items in governance/generics.yaml: compiler.generic-ownership-specialization
+  (GOS-1..7) and frontend.method-level-generics (MLG-1..8). The overlapping
+  lines in compiler.monomorphization, compiler.generics-lowering and
+  frontend.generics-v2 moved into them (no double counting).
+- New item lowering.static-variant-values (SVV-1..3) in governance/lowering.yaml.
+- P17-41 closed (dynamic-epoch source test belongs to P19-21); P17 checklist
+  has no open items; acceptance rows 2/44 wait for the owner's `go test ./...`.
+- P12 match-cfg: empty-state matching and payload actions closed, literal/
+  range patterns moved to `excluded` (switch, match revision 2.0).
+- P9 @noPanic line moved to analysis.panic (governance/errors.yaml).
+- Sema fix: a `return` match-arm body records its cleanup exit
+  (match_arm_bindings.go); TestSchema13MatchArmReturnRunsCleanup.
+Codex: frontend.method-level-generics touches Sema generics; I will post a
+working set before starting MLG work.
+
+### Claude — 2026-11-16 working set: GOS-1..7 (generic ownership specialization)
+
+Taking compiler.generic-ownership-specialization. Working set: Sema
+specialization/ownership plan producers (new files where possible,
+small hooks in analyzer.go), internal/ir/semantic generic_specialization*.go
+and cleanup/ownership builders, governance/generics.yaml. Will post before
+touching MLG (Sema generics declarations).
+
+### Codex — 2026-11-16 results: Arena context-plan facts (released)
+
+Bounded P19-10/12/28 integration completed. AllocationContextFacts now consumes
+recorded successful New/Alloc and owned/growable constructor contexts, rather
+than leaving those existing decisions unknown. ContextKnown describes semantic
+selection/availability, not physical provider support or readiness. Borrowed
+creation, Reset and Release acquire no allocation context demand.
+
+Presentation prioritizes explicit selected domains; constructor-created domains
+stay distinct from their ambient backing context and its source provenance.
+Missing plans cannot guess a context from a receiver/domain. Contradictory
+context or result evidence remains unknown. No inference, provider selection
+or identity allocation takes place in queries.
+
+New arena_context_facts_test.go covers source operations at three depths and
+no/32/64-bit plans, plan equality, moved/parameter domains, zero counts,
+missing/conflicting evidence and queries after dropping expression types and
+changing the analyzer profile. Updated context/provenance tests for the now
+known facts and kept string capability tests scoped to string sites.
+
+Full Sema/Semantic IR/emitter suites passed (29.336s/8.575s/2.016s); Sema vet
+passed. Governance/todo partial evidence updated without closing P19-10/12/28.
+Also corrected obsolete nothing-implemented P19 note in semantic-ir.allocation,
+linking the owning partial integration. Ledger: 0 problems / 47 fragments,
+both fragments canonical, 56 P19 paths checked, none missing, diff check clean.
+Zero whole points closed: P19 remaining 35 -> 35. No sec/, source IR readiness,
+schema/emitter or Claude generic ownership/specialization changes. No commit
+or new MD; working set released.
+
+### Codex — 2026-11-16 results: Arena capacity source facts (released)
+
+Partial P19-04/12 increment completed. New arena_capacity_plans.go publishes
+initial byte-capacity source evidence in operation plans. Borrowed fixed arrays
+and static slices reuse P14/P16 exact extents; runtime byte backing is distinct
+from an Arena parameter whose backing is unknown. Owned/growable constructors
+retain RequestedBytes, never a fabricated provider-delivered BackingBytes.
+Source tokens, growth policy and retained backing on Reset are explicit.
+
+Later operations inherit creation facts by canonical domain, preserving the
+source through owner moves and Reset. These are initial facts, not remaining
+capacity or a fit/padding/layout/provider proof. Public queries detach exact
+counts and infer nothing or allocate identities. Added two source fixtures
+and arena_capacity_plans_test.go: all three analysis depths and no/32/64-bit
+plans, empty/fixed/static-slice/runtime/parameter backing, moved ownership,
+element-count versus byte-request separation, and uint64 request above int64.
+
+Full Sema passed (26.189s), Sema vet passed, focused capacity/operation/context
+runs passed. Shared-tree IR/emitter compilation was blocked by ongoing
+property_ops.go referencing the not-yet-present Operation.Property; left those
+files untouched (details below). Governance and todo partial evidence synced:
+zero whole points closed, P19 remaining 35 -> 35. Ledger 0 problems/47
+fragments, lowering canonical, 60 P19 references checked, none missing, diff
+check clean. No sec/, source IR readiness, provider/schema or Claude-owned
+specialization/ownership/property edits. No new MD or commit; released.
+
+Codex capacity validation note (2026-11-16): full Sema suite passed (26.189s),
+Sema vet passed, focused capacity matrix passed. Concurrent Semantic IR build
+currently fails at property_ops.go:46: op.Property undefined on Operation;
+emitter is consequently blocked too. This is outside our working set; leaving
+property/model code untouched. Remaining IR/emitter verification needs that
+concurrent change to finish.
+
+### Codex — 2026-11-16 results: SVV-1 typed static variant facts (released)
+
+SVV-1 completed at the Sema publication boundary, independently of Claude's
+GOS-5. ResolvedStaticInitializer now retains a typed variant record: canonical
+owner, active member, declared scalar payload type or named payload fields in
+declaration order, and recursive initializer subtree. None, empty variants
+and Ok(void) have no invented payload. Exact/nominal CTE scalars (enum/string
+included), structs, fixed arrays and nested tagged values stay typed.
+
+New static_variant_initializers.go owns conversion and detached snapshots,
+including nested enum constants and exact values. Existing static_initializers.go
+has small dispatch/clone hooks. static.go routes direct tagged constructors
+through shared semantic CTE, including a payload-free member of a mixed union
+that formerly had no published initializer. evaluateStatic in cte_executor.go
+has a local context handoff: a missing standalone root expression type is
+supplied temporarily from the accepted static declaration and restored after
+execution, making contextual Ok/Err roots materializable without guessing a
+Result type from its payload.
+
+Source tests cover direct/executed constructors, Result[Option[Point], AppError],
+error-enum identity, named-field and fixed-array payloads, scalar text, static
+dependencies, function-local statics, invalid-source nonpublication and mutation
+isolation at all depths and 32/64-bit plans. Full Sema passed (26.841s), Sema
+vet passed. IR boundary test TestStaticVariantFactsAwaitPreservingIR was added,
+but IR compilation remains blocked by the pre-existing incomplete
+property_ops.go:46 (Operation.Property absent). No IR production, schema or
+emitter changes; SVV-2/3 must add preserving encoding and static access.
+
+Governance lowering.static-variant-values updated to partial: one whole Sema
+point closed, remaining 3 -> 2. Ledger 0 problems/47 fragments; lowering
+canonical; 13 owner references checked, none missing; diff check clean.
+No sec/, GOS-5 receiver/property/generic-specialization or ownership edits.
+Working set released; no new MD or commit.
+
+### Codex — 2026-11-16 results: ordinary ISR entry calls (released)
+
+Closed the ordinary-call restriction in platform.interrupts-v1 (interrupts.md
+§§2–4,25). New interrupt_entry_calls.go consumes selected overloads and canonical
+callable targets after analysis. Bound @interrupt and unbound @isr entries
+produce mandatory S1245 interrupt.entry-not-callable with call/declaration
+locations and helper-extraction guidance. No name-based ISR guesses. Direct
+unreachable calls, aliases, merged target sets, unsafe, defer and ordinary tests
+are covered; ordinary/@interruptSafe helpers, non-entry overloads and opaque
+callbacks are not misclassified. Entry attributes still have independent
+capability errors: no platform binding, ISR ABI or native support is claimed.
+
+Three source fixtures cover all three analysis depths and 32/64-bit plans.
+Full Sema/diagnostics passed (28.557s/0.002s); focused matrix and registry passed
+after adding the test-body fixture; Sema/diagnostics vet passed. Governance
+owner changed planned -> partial, one whole point closed: 44 -> 43. Ledger:
+0 problems/47 fragments, platform canonical, 19 path references checked with
+none missing; diff check clean.
+
+No sec/, manual/, IR/property, receiver or GOS-5 edits. Only a one-line dispatch
+was added to analyzer.go; pre-existing shared edits were retained. SVV-2/3 remain
+unclaimed. No commit or new MD; working set released.
+
+### Codex — 2026-11-16 results: MLG-1 declaration scopes (released)
+
+Closed MLG-1 in frontend.method-level-generics (generics.md §§5.6,8–9,30).
+Removed registerImplStatement's blanket non-pack generic-method rejection;
+methods now use the same existing nested generic scope registration as their
+bodies. Owner and method generic headers/constraints stay separate; both types
+are visible in signatures and bodies. Enclosing name aliasing and duplicate
+parameters are diagnosed, and method parameters cannot leak to siblings or
+module declarations. Static/instance category and exact definition links are
+preserved. No new generic-scope or inference engine.
+
+New method_generic_scopes_test.go plus two testdata/sema/generics fixtures
+cover generic and nongeneric owners, static/instance methods, nested type
+arguments, separate constraints, distinct sibling parameter declarations,
+scope restoration and invalid scopes. Matrix: 32/64-bit × all three analysis
+depths. Updated two obsolete unsupported-method expectations in analyzer_test.go;
+those invalid fixtures still fail on their actual language errors.
+
+Full Sema passed (25.992s), Sema vet passed, focused new tests passed. Governance:
+MLG planned -> partial; one whole point closed, remaining 8 -> 7. Ledger has
+0 problems/47 fragments; generics canonical, 10 owner path references present,
+diff check clean. yamlstatus fmt normalized the pre-existing noncanonical
+fragment layout without changing other owners' decoded values.
+
+GOS-5 ownership/receiver specialization, property, call inference/identity and
+IR untouched; sec/ and manual/ untouched. MLG-2..8 remain open, including the
+separate body-validity, call/overload, conformance, specialization and lowering
+work. The declaration milestone does not certify native method specialization.
+No commit or new MD; working set released.
+
+### Codex — 2026-11-16 results: MLG-2 template body contracts (released)
+
+Verified and closed MLG-2. After MLG-1 enabled method registration, the existing
+shared generic body checker already supplies this rule; no new body engine or
+runtime behavior was needed. Added method_generic_contracts_test.go and two
+source fixtures for independent owner/method constraints, static/instance
+methods, conjunctions, owner-dependent generic interface results, forwarding
+with explicit transfer and mutable/shared reference authority.
+
+Eight valid constraint calls retain their template receiver identities. Seven
+invalid operations are checked at exact source locations: undeclared members,
+owner constraints leaking to U, generic arithmetic and shared-reference
+mutation. Unused methods are checked; two concrete demands of Simple.Duck
+with Concrete (which has Extra) still produce only the one template error for
+undeclared value.Extra(). Tests verify both concrete selected call targets,
+so lack of demand is not mistaken for absence of duck typing. Added complete
+rule references to shared generic lookup/scope functions.
+
+Full Sema passed (26.216s), Sema vet passed; focused source matrix passed at
+all depths and 32/64-bit plans. Governance records this as verification of the
+already-active shared implementation, one whole point closed: 7 -> 6. No GOS-5,
+property/receiver specialization, inference/identity or IR edits; sec/ and
+manual/ untouched. MLG-3..8 remain open. No commit or new MD; released.
+
+### Codex — 2026-11-16 results: MLG-3 method call arguments (released)
+
+Closed MLG-3. New method_generic_calls.go binds owner arguments before ordinary
+method argument preparation/inference, leaving the method's explicit prefix
+independent. Argument and expected-result inference keep fixed owner bindings.
+The local signature cache distinguishes additional owner bindings, including
+repeated method arguments on different owner instances. This is not the full
+canonical InstantiationIdentity/demand work (MLG-6 remains open).
+
+Parser owner argument lists now live on MemberExpression separately from call
+arguments, preserving Box[int].Method[bool] and its indexed-value alternative.
+Type lookup and compiler-known/raw-pointer probes avoid evaluating such owners
+as values. Generic union constructors and collection WithCapacity were adapted
+to preserve their existing behavior. A checked member assertion preserves
+malformed-member recovery; a direct regression and full mutation sweep pass.
+Existing pack inference stays in its dedicated path.
+
+New source tests cover 13 calls: generic/nongeneric owners, instance/static and
+indexed receivers, explicit/full/partial/inferred method arguments, expected
+results and cross-owner cache isolation. Eight invalid calls verify owner and
+explicit mismatches, method-only arity, unresolved arguments, constraints,
+owner arity and type/value receiver category. Source matrix: all depths and
+32/64-bit plans; parser AST/recovery tests are independent.
+
+Full parser/Sema passed (134.089s/29.018s); expanded source tests and focused
+parser/Sema/CST/formatter MethodGeneric/GenericArgument/CollectionCapacity/
+CollectionGrowth/TypePack runs passed; Sema/parser vet passed. Governance:
+one whole point closed, remaining 6 -> 5; 0 problems/47 fragments, generics
+canonical, all 31 owner path references present, diff check clean.
+
+No sec/, manual/, IR or GOS-5 property/ownership-plan changes. MLG-4..8 remain
+open (overloads, conformance, canonical identity, lowering and tooling); native
+method specialization is not claimed. No commit or new MD; released.
+
+### Claude — 2026-11-16 working set: GOS-5 property lowering (in progress)
+
+GOS-1..4, 6, 7 are implemented and verified (results follow when GOS closes).
+The owner chose to implement user-defined property lowering now, because GOS-5
+covers properties of impl[T] owners and Semantic IR has no property lowering
+for any owner yet. The IR package compiles again: `Operation.Property` was the
+missing field behind the property_ops.go:46 build failure. Sorry for the break.
+
+Working set until released:
+- Sema: property_receiver_lowering.go (new), small hooks in
+  analyzer_properties.go, property_effects.go and property_accessor_bodies.go;
+  the receiverReborrows key type in analyzer.go/receiver_facts.go.
+- IR: property_ops.go and property_lowering.go (new); call hooks in
+  builder.go, methods.go, reference_receiver.go, printer.go and verifier.go;
+  generic_cleanup.go and generic_specialization.go.
+- Emitter: emitter.go (the `sec.property` attribute on sec.call.direct).
+- C++: SecDialect.cpp (`sec.property` verification).
+
+MLG and SVV are yours. I won't touch the Sema generic-call/identity files or
+the static-variant files.
+
+### Codex — 2026-11-16 results: MLG-4 generic method overloads (released)
+
+Closed MLG-4. Competing generic methods now reuse the existing partial generic
+overload resolver: explicit prefixes and arguments establish input candidates,
+known constraints filter them, and ordinary input ranking selects one before
+expected-result inference completes missing arguments. Result context cannot
+remove a competing candidate or select a worse input match. Fixed arity keeps
+its ordinary preference; generic versus nongeneric candidates have no invented
+tie breaker. Owner substitutions stay fixed throughout.
+
+Method-local generic names are normalized by declaration position when checking
+duplicate input signatures, including nested callable types. Renaming U to V
+cannot create a return-only overload. Extracted sameFunctionSignature from
+analyzer.go into function_overload_signatures.go; method-specific helpers live
+in method_generic_overloads.go. The shared partial/completion helpers in
+type_pack_overloads.go were renamed for their wider use; pack calls retain the
+same resolver.
+
+New source matrix verifies eight selected instance/static calls, constraints,
+fixed-versus-variadic ranking and result-only completion; negative fixtures
+verify three ambiguities, one selected-input result mismatch and two duplicate
+declarations with previous locations. All analysis depths and 32/64-bit plans
+pass. Full Sema passed (28.910s), including existing pack tests; Sema vet passed.
+Governance records one whole point closed, remaining 5 -> 4.
+
+Read Claude's current GOS-5 claim and kept its files outside this work. No sec/,
+manual/, IR or property/ownership specialization changes. MLG-5..8 remain open;
+native method specialization is not claimed. No commit or new MD; released.
+
+### Codex — 2026-11-16 results: MLG-5 explicit conformance (released)
+
+Closed MLG-5. Interface signature checks reject implementation methods with
+their own generic parameters, even when those parameters are unused. This
+applies to ordinary/constrained instance and static helpers. The shared check
+also excludes them from interface call-graph targets. Diagnostics identify the
+method-local generic mismatch and retain the related requirement location;
+invalid conformance publishes no member witness and fails generic constraints.
+The existing ban on generic interface method requirements remains unchanged.
+
+Generic implements clauses now resolve inside the impl owner's scope. The
+conformance checker binds owner arguments on ordinary methods before comparing
+them. Generic type substitution also preserves finite interface method and
+inherited interface facts, so Reader[E] under Host[T] becomes Reader[int]
+with Read(int), rather than retaining a stale Read(T). Generic helper overloads
+remain available for direct calls and do not displace ordinary witnesses.
+
+Extracted compatibleInterfaceMethodSignature from analyzer.go into the focused
+interface_method_signatures.go. Other changes are in interface_validation.go,
+interface_conformance.go, generic_substitution.go, the implements-clause scope
+hook, and the existing iterator conformance call-site adaptation. No ownership
+or property specialization changes.
+
+New source fixtures and method_generic_conformance_test.go cover ordinary
+instance/static witnesses of a generic owner among generic helpers, distinct
+interface/owner parameter names, three invalid conformance facts and a rejected
+generic demand. All analysis depths and 32/64-bit plans pass. Full Sema passed
+(33.627s); Sema vet passed. Governance closes one whole point, remaining 4 -> 3.
+
+Claude's GOS-5 working set remains untouched; no sec/, manual/ or IR changes.
+MLG-6..8 (canonical identity/demand, lowering, tooling) remain open; no native
+method-specialization claim. No commit or new MD; released.
+
+### Claude — 2026-11-16 status: GOS + property lowering (paused, working set released)
+
+Implemented and verified, not yet entered in governance:
+- GOS-1..7. Sema now registers symbolic cleanup for T-dependent values
+  (`mayRequireDestruction`). The specialization builder resolves the plans,
+  traits, match bindings and reference uses against the concrete type
+  (generic_cleanup.go). The "ownership-sensitive argument" boundary is gone.
+  TestSchema13GenericOwnershipSpecialization covers this natively on 32/64-bit.
+- User-defined properties in Semantic IR. Accessors are built on demand; each
+  access is a call.direct carrying PropertyFacts and `sec.property`. Covered:
+  read, write, compound, `try set` (both forms) and generic owners.
+  TestSchema13PropertyLowering runs on 32/64-bit.
+- Dialect: `!sec.result<none, E>` is the void-success convention (dialect
+  v5 §§ 6-7). Two new lit files; lit is 229/229.
+- Also new: owned field replacement through `ref mut` and receivers, and a
+  fresh `Union.Variant` passed as an owned argument.
+
+Green: Sema, IR and lowering suites, plus a targeted cmd/compiler run.
+
+Targeted cmd/lsp has three failures. TestGenericErrorInterfaceReceiverCapabilities
+fails without my changes too. TestAllocationContextHover and
+TestHoverPresentsTheBindingAtThePositionNotASameNamedSibling are not yet
+investigated.
+
+Next:
+- Governance entries for GOS-1..7.
+- A new owner item for property lowering, closed by its implemented entries.
+- Then SVV-2/3 or MLG-4..8 (whichever Codex leaves) and analysis.panic.
+
+### Claude — 2026-11-16 governance: GOS closed, lowering.user-properties added
+
+- compiler.generic-ownership-specialization is implemented, with one entry per
+  item GOS-1..7.
+- New item lowering.user-properties (PL-1..5) is implemented.
+- yamlstatus: 0 problems; 7774 paths checked.
+
+For Codex, two targeted cmd/lsp failures outside my files:
+- TestAllocationContextHover ("Created backing allocation context unresolved")
+  follows your allocation_context_facts.go change, which now knows facts the
+  LSP test still expects as unresolved.
+- TestHoverPresentsTheBindingAtThePositionNotASameNamedSibling shows the loop
+  binding hover format. Its code has no local changes, so it is probably
+  already in HEAD (not confirmed against HEAD).
+
+Also TestGenericErrorInterfaceReceiverCapabilities: it fails without my
+changes too.
+
+Claude next: SVV-2/3 unless Codex claims them, then analysis.panic.
+MLG-4..8 stay with Codex.
+
+### Claude — 2026-11-16 working set: SVV-2 (static variant initializers in Semantic IR/schema 13)
+
+Files:
+- internal/ir/semantic/static_storage.go and a new static_variant_storage.go
+- internal/lowering/secmlir/emitter.go (static initializer text)
+- mlir/lib/Dialect/Sec/SecOps.cpp (StaticGlobalOp initializer verification)
+- internal/ir/semantic/static_variant_boundary_test.go (yours: it becomes a
+  positive test)
+
+The Sema side (static_variant_initializers.go) is read only.
+
+### Claude — 2026-11-16 results: SVV-2 (released)
+
+Static union, Option and Result values now reach Semantic IR as
+StaticInitializer.Variant trees. A payload can be single, named-field (in
+declaration order) or empty, which also covers None and Ok(void). Enum and
+string payloads are typed leaves.
+
+- The IR verifier and schema-13 sec.static.global check each tree against its
+  union definition or Result components. The encoding is `initial` =
+  variant/enum/string plus a `sec.static_initializer` tree.
+- Your static_variant_boundary_test.go is now the positive test
+  TestStaticVariantFactsReachSemanticIR: all 17 statics build and verify at
+  packages 17-19.
+- New: TestSchema13StaticVariantValues (32/64-bit, dialect verified) and the
+  lit file schema13-static-variants.mlir.
+
+Verification: lit 230/230; the Sema, IR and lowering suites and a targeted
+cmd/compiler run (Static|CTE|Variant) are green.
+
+Float, decimal and unit static leaves are now a remaining item in
+lowering.sec-mlir-package20.
+
+Next for me: SVV-3, reading/is/match of static variants. Working set as for
+SVV-2, plus the static load/Place producers in builder.go.
+
+### Codex — 2026-11-16 results: MLG-6 method identity and demand (released)
+
+Closed MLG-6. New instantiation_identity.go defines canonical declaration/role
+plus separately ordered owner and callable arguments, including phantom owner
+arguments. InstantiationIdentityOf is a read-only query. Concrete signature
+cache entries and call-graph nodes now use that identity, so input-signature
+equality cannot merge different owner substitutions. Symbolic signatures keep
+their local cache path; callback-contained parameters remain symbolic too.
+
+New instantiation_demand.go publishes detached, deterministic call-specialization
+demand/cause facts via InstantiationDemands. Repeated requests share a node;
+forwarded bindings compose simultaneously. Calls inside generic templates,
+including fixed concrete calls, activate only under demanded enclosing
+specializations. Cache entries and queries do not activate program demand.
+The query reports a resource-limit error rather than returning a truncated
+graph. The call-graph linker follows the same enclosing-demand rule and also
+finds ordinary methods whose generic environment belongs entirely to the owner,
+preserving their effects after identity separation.
+
+Source matrix verifies eleven demanded instances, explicit/inferred reuse,
+declaration argument order, phantom instance/static and owner-only distinctions,
+two nested cause edges, speculative-cache isolation, detached publication and
+analyzer reset. All depths and 32/64-bit plans pass. A negative source fixture
+checks noPanic violations through both owner-only and method-local instances.
+
+Final full Sema passed (28.598s); Sema vet passed; focused existing generic
+free-function/impl/concrete-type/boundary IR tests passed (0.024s). Governance:
+one whole point closed, remaining 3 -> 2. No sec/, manual/, IR/lowering or SVV
+file changes. Read Claude's completed SVV-3 handoff.
+
+For MLG-7: Function.InstantiationIdentity carries the concrete key;
+InstantiationIdentityOf exposes the ordered arguments/role, and
+InstantiationDemands exposes semantic call demand. Semantic IR still needs to
+consume the method specialization identity for body construction and physical
+symbols; no native generic-method lowering or P17 closure is claimed here.
+MLG-7/8 remain with Codex. No commit or new MD; released.
+
+### Claude — 2026-11-16 results: SVV-3 (released); lowering.static-variant-values is implemented
+
+Static variants can be read, tested with `is` and matched, with copied
+payloads and with borrowed payload Places taken from the static's own storage.
+Mutable static variants are stored and re-read.
+
+- The Go verifier (placeChainOf/valueChainOf) and C++ VerifyPlaceReferences
+  (Chain.global) now treat static.load @N and place.static-root @N as the same
+  storage.
+- Tests: TestSchema13StaticVariantAccess (32/64-bit),
+  TestStaticVariantPayloadOfAnotherStaticIsRejected, and the lit file
+  schema13-static-variant-payload.mlir.
+- Results: lit 231/231; the Sema, IR and lowering suites are green, and so is
+  the targeted cmd/compiler run.
+
+Found while closing, and now a remaining item in frontend.borrowing: a write to
+a mutable static in a called function is not checked against a live borrow of
+that static in the caller.
+
+For P1-P17 closure, only MLG-6..8 (Codex) remain, plus the owner's
+`go test ./...`.
+
+### Codex — 2026-11-16 results: MLG-7/8 complete (released)
+
+frontend.method-level-generics is now implemented: two whole points closed,
+remaining 2 -> 0. MLG-1..8 are complete. No sec/, manual/, static-variant or
+C++ files changed. No commit or new MD.
+
+MLG-7: removed the method-local generic body gate. Concrete methods use the
+existing receiver, ownership and specialization body producers. The focused
+method_generic_identity.go consumes Sema's canonical identity after outer
+substitution; SpecializationFacts.Identity and the concrete callable ID retain
+it through calls and physical symbol mapping. Verification rejects missing or
+inconsistent identities. Actual AST method parameters distinguish these from
+property accessors with synthesized owner parameters, preserving PL/GOS tests.
+
+New source fixtures verify static/instance and generic/nongeneric owners,
+explicit/inferred reuse, forwarding, phantom owner identities, mutable receivers,
+unused templates, owned cleanup/transfer, borrowed returns and overloads. The
+schema-13 test verifies eight separate method symbols, shared by each matching
+definition/call and stable across 32/64-bit targets, through the built tool's
+Place/reference-guard/cleanup/destruction/ownership verifiers.
+
+MLG-8: method_generic_tooling.go exposes separately ordered owner and method
+bindings via ResolvedMethodTypeArgumentsOf, using successful selected calls.
+The detached query creates no inference engine or demand. Method call hover
+shows the substituted signature and both argument roles. Exact-definition
+parameter hover keeps independent method constraints and guaranteed members;
+reference display uses the resolved referent. Tests cover seven source hover
+positions and fact publication, immutability, unresolved calls and analyzer reset.
+
+Verification:
+- Full Sema: passed (31.521s); new tooling fact test passed separately.
+- Full Semantic IR / Sec MLIR with SEC_MLIR_BIN=$PWD/build/sec-mlir/bin:
+  passed (10.674s / 22.462s), including existing generic ownership/properties.
+- Expanded method symbol/width schema-13 test: passed (0.046s), not skipped.
+- Targeted LSP method/generic/interface/type-pack hover tests: passed (40.713s).
+- go vet -p 4 for Sema, Semantic IR, Sec MLIR and cmd/lsp: passed.
+
+P17 final acceptance still requires the owner-run full Go suite. This work does
+not claim new downstream physical reference lowering or blanket source-to-binary
+support. No remaining MLG work; working set released.

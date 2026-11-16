@@ -143,6 +143,10 @@ func (a *Analyzer) validateStaticInitializerExpression(name string, expression a
 		case *ast.RuntimeCallExpression, *ast.NewExpression, *ast.TryExpression,
 			*ast.SpawnExpression, *ast.AwaitExpression, *ast.LambdaExpression:
 			invalid = true
+		case *ast.OkExpression, *ast.ErrExpression:
+			// Tagged static values use the same CTE value graph as calls.
+			// Rules: rules/compiler/compile_time_evaluation.md — §§32,46.
+			executes = true
 		case *ast.RefExpression:
 			// MD-081: `ref S` / `ref mut S` of a static Place, or of a field or
 			// constant-index element of one, is a materializable static
@@ -166,7 +170,18 @@ func (a *Analyzer) validateStaticInitializerExpression(name string, expression a
 			} else if ok && len(a.functions[callee]) > 0 {
 				executes = true
 			}
+			if ok && callee == "Some" {
+				executes = true
+			}
+			if member, ok := candidate.Callee.(*ast.MemberExpression); ok {
+				if typ, known := a.nominalMemberOwner(member, Type{}); known && typ.Kind == UnionType && unionVariantHasPayload(typ, member.Property.Value) {
+					executes = true
+				}
+			}
 		case *ast.Identifier:
+			if candidate.Value == "None" {
+				executes = true
+			}
 			// A clock read is runtime nondeterministic input, even though it is
 			// spelled as a value rather than a call.
 			//
@@ -185,6 +200,9 @@ func (a *Analyzer) validateStaticInitializerExpression(name string, expression a
 		case *ast.MemberExpression:
 			if path, ok := typePathFromExpression(candidate.Object); ok {
 				if typ, exists := a.types[a.resolveTypeName(path)]; exists {
+					if typ.Kind == UnionType && unionVariantDeclared(typ, candidate.Property.Value) && !payloadlessUnion(typ) {
+						executes = true
+					}
 					// A static getter is ordinary Sec code executed by
 					// semantic CTE (static.md § 15).
 					if property, found := lookupProperty(typ, candidate.Property.Value); found && property.Static {
@@ -197,6 +215,22 @@ func (a *Analyzer) validateStaticInitializerExpression(name string, expression a
 	if invalid && !reported {
 		a.addErrorAtToken(token, "static initializer for %s must be compile-time evaluable; runtime execution or invocation-local state is not allowed", name)
 		return
+	}
+	// A struct or fixed-array literal is a fixed aggregate the semantic CTE
+	// executor materializes recursively (compile_time_evaluation.md § 32).
+	// One holding a reference keeps the static-held borrow boundary instead
+	// (MD-081).
+	switch expression.(type) {
+	case *ast.StructLiteral, *ast.ArrayLiteral:
+		holdsReference := false
+		visitStatementExpressions(&ast.LetStatement{Value: expression}, func(candidate ast.Expression) {
+			if _, isRef := candidate.(*ast.RefExpression); isRef {
+				holdsReference = true
+			}
+		})
+		if !holdsReference {
+			executes = true
+		}
 	}
 	if executes && !invalid {
 		a.requireStaticInitializerExecution(name, expression)

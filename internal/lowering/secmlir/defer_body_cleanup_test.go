@@ -146,3 +146,148 @@ fn main() int {
 		t.Fatalf("native verify: %v\n%s", err, out)
 	}
 }
+
+// P17-41: a defer body that passes on a reference holder it captured holds
+// the holder's referent Place (dereferenced once where the defer registers)
+// and passes a reborrow of it derived from the holder's borrow: shared for a
+// ref parameter, mutable only from a ref mut holder. The holder itself is
+// never copied into the region.
+// Rules: rules/control-flow/defer.md — §§ 9–11; rules/memory/borrowing.md — § 11;
+// rules/mlir/packages/sec-mlir-dialect_package15.md — §§ 60, 78.
+func TestSchema13DeferPassesCapturedHolders(t *testing.T) {
+	tool := testsupport.RequireSecMLIROptPath(t)
+	source := `module main
+
+type Box struct {
+    value: int,
+}
+
+fn Use(b: ref Box) void {
+}
+
+fn Bump(b: ref mut Box) void {
+}
+
+fn Pass(b: ref Box, m: ref mut Box) void {
+    defer {
+        Use(b)
+        Use(m)
+        Bump(m)
+    }
+}
+
+fn main() int {
+    return 0
+}
+`
+	parsed := parser.New(lexer.NewWithFile(source, "holders.sec")).Parse()
+	analyzer := sema.NewAnalyzerWithScalarPlan(layout.ResolvedScalarPlan{PointerWidthBits: 64})
+	if errors := analyzer.Analyze(parsed.Program); len(errors) != 0 {
+		t.Fatal(errors)
+	}
+	module, err := semantic.Build(parsed.Program, analyzer, semantic.BuildOptions{RequestedModule: "main", SourceFiles: []string{"holders.sec"}, MaxPackage: 17})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := semantic.Verify(module); err != nil {
+		t.Fatal(err)
+	}
+	text := semantic.Format(module)
+	if strings.Count(text, "ref.deref-place") != 2 || strings.Count(text, "ref.reborrow-shared") != 2 || strings.Count(text, "ref.reborrow-mut") != 1 || strings.Contains(text, "ref.copy-shared") {
+		t.Errorf("captured holders are not passed as reborrows of their referent Places:\n%s", text)
+	}
+	output, err := EmitWithOptions(module, testPlan(64), EmitOptions{DialectVersion: 13})
+	if err != nil {
+		t.Fatal(err)
+	}
+	verify := exec.Command(tool, "--sec-verify-slice-guards", "--sec-verify-places", "--sec-verify-reference-guards", "--sec-verify-borrow-semantics", "--sec-verify-cleanups", "--sec-verify-destruction-plans", "--sec-verify-ownership", "-", "-o", os.DevNull)
+	verify.Stdin = bytes.NewReader(output)
+	if out, err := verify.CombinedOutput(); err != nil {
+		t.Fatalf("native verify: %v\n%s", err, out)
+	}
+}
+
+// P17-41: a defer in a loop registers once per execution and each
+// registration reads its own iteration's instance (defer.md § 13). An owned
+// loop value the defer reads registers per execution in the function scope,
+// so it is destroyed after its own defer runs (§ 8), never at the end of its
+// iteration; mutable loop storage the defer reads becomes a per-declaration
+// defer instance whose physical storage is a lowering concern.
+// Rules: rules/control-flow/defer.md — §§ 8, 9, 13; rules/memory/destruction.md — §§ 6, 8;
+// rules/mlir/packages/sec-mlir-dialect_package17.md — §§ 41–45.
+func TestSchema13DeferInLoopInstances(t *testing.T) {
+	tool := testsupport.RequireSecMLIROptPath(t)
+	source := `module main
+
+type Box struct {
+    value: int,
+}
+
+impl Box {
+    free {
+    }
+}
+
+fn Use(b: ref Box) void {
+}
+
+fn Make() Box {
+    return Box{value: 1}
+}
+
+fn Owned() void {
+    for i in 0..3 {
+        let b := Make()
+        defer {
+            Use(ref b)
+        }
+    }
+}
+
+fn Counter() void {
+    for i in 0..3 {
+        let mut n := i
+        defer {
+            n = n + 1
+        }
+        n = n * 2
+    }
+}
+
+fn main() int {
+    return 0
+}
+`
+	parsed := parser.New(lexer.NewWithFile(source, "loops.sec")).Parse()
+	analyzer := sema.NewAnalyzerWithScalarPlan(layout.ResolvedScalarPlan{PointerWidthBits: 64})
+	if errors := analyzer.Analyze(parsed.Program); len(errors) != 0 {
+		t.Fatal(errors)
+	}
+	module, err := semantic.Build(parsed.Program, analyzer, semantic.BuildOptions{RequestedModule: "main", SourceFiles: []string{"loops.sec"}, MaxPackage: 17})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := semantic.Verify(module); err != nil {
+		t.Fatal(err)
+	}
+	text := semantic.Format(module)
+	for _, want := range []string{"per-execution", "defer-instance"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("missing %q in:\n%s", want, text)
+		}
+	}
+	output, err := EmitWithOptions(module, testPlan(64), EmitOptions{DialectVersion: 13})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"per_execution", "sec.defer_instance = true"} {
+		if !bytes.Contains(output, []byte(want)) {
+			t.Errorf("schema 13 lacks %q:\n%s", want, output)
+		}
+	}
+	verify := exec.Command(tool, "--sec-verify-slice-guards", "--sec-verify-places", "--sec-verify-reference-guards", "--sec-verify-borrow-semantics", "--sec-verify-cleanups", "--sec-verify-destruction-plans", "--sec-verify-ownership", "-", "-o", os.DevNull)
+	verify.Stdin = bytes.NewReader(output)
+	if out, err := verify.CombinedOutput(); err != nil {
+		t.Fatalf("native verify: %v\n%s", err, out)
+	}
+}

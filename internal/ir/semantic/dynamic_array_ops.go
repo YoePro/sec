@@ -256,7 +256,7 @@ func (fb *functionBuilder) lowerDynamicArrayIndexRead(expr *ast.IndexExpression,
 // Rules: rules/foundations/operators.md — "Assignment evaluation order", "Compound assignment";
 // rules/mlir/packages/sec-mlir-dialect_package18.md — §§ 42, 74–76.
 func (fb *functionBuilder) lowerDynamicArrayIndexWrite(stmt *ast.AssignmentStatement, index *ast.IndexExpression, plan sema.ResolvedDynamicArrayIndexPlan) error {
-	if plan.UseKind != sema.ArrayIndexWrite || plan.Action != sema.ArrayTransferConstructDirect || !sema.TriviallyDestructible(plan.ElementType) || sema.CopyClassificationOf(plan.ElementType) != sema.CopyTrivial {
+	if plan.UseKind != sema.ArrayIndexWrite || plan.Action != sema.ArrayTransferConstructDirect || !fb.owner.triviallyDestructible(plan.ElementType) || fb.owner.copyClassificationOf(plan.ElementType) != sema.CopyTrivial {
 		return fb.unsupported("non-trivial dynamic-array element replacement", stmt.Token)
 	}
 	place, err := fb.lowerDynamicArrayElementPlace(index, plan)

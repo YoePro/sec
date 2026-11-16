@@ -1,0 +1,41 @@
+module method_contracts
+
+interface Ranked { fn Rank() int }
+interface Named { fn Name() string }
+interface Produces[R] { fn Produce() R }
+interface Writable { mut fn Bump() void }
+
+type Host[T: Ranked] struct { Value: T }
+
+fn ReadName[V: Named](value: V) string {
+    return value.Name()
+}
+
+impl Host[T] {
+    fn Read[U: Named](value: U) string {
+        discard self.Value.Rank()
+        return value.Name()
+    }
+
+    static fn ReadStatic[U: Named](owner: T, value: U) string {
+        discard owner.Rank()
+        return value.Name()
+    }
+
+    fn Transform[U: Produces[T]](value: U) T {
+        return value.Produce()
+    }
+
+    fn Combined[U: Ranked & Named](value: U) string {
+        discard value.Rank()
+        return value.Name()
+    }
+
+    fn Forward[U: Named](value: U) string {
+        return ReadName(<-value)
+    }
+
+    fn Write[U: Writable](value: ref mut U) void {
+        value.Bump()
+    }
+}

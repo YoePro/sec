@@ -1,0 +1,6 @@
+module static_variants_invalid
+
+type Choice union { Number(int) }
+
+let BrokenNumber: Choice := Choice.Number(true)
+let BrokenOption: Option[int] := Some("wrong")

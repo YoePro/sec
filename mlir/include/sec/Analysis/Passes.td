@@ -74,6 +74,21 @@ def SecVerifyCleanups : Pass<"sec-verify-cleanups", "mlir::func::FuncOp"> {
   }];
 }
 
+def SecAnnotateSuccessorActions : Pass<"sec-annotate-successor-actions", "mlir::ModuleOp"> {
+  let summary = "Restore branch ownership action metadata dropped by optimization";
+  let description = [{
+    `sec.successor_actions` is dialect-scoped discardable metadata on
+    `cf.br` / `cf.cond_br` (dialect v13 section 26), so a rewrite that
+    recreates a branch drops it. The action of a forwarded operand is fixed by
+    its type: "move" for a value that needs destruction, "non-owning" for a
+    reference or slice holder, "copy" otherwise. This pass writes the missing
+    metadata of every ownership-sensitive branch on schema 13 and leaves
+    existing metadata for --sec-verify-ownership to check. An optimization
+    pipeline over schema 13 runs it before ownership verification (P17-57).
+  }];
+  let dependentDialects = ["mlir::cf::ControlFlowDialect"];
+}
+
 def SecVerifyOwnership : Pass<"sec-verify-ownership", "mlir::ModuleOp"> {
   let summary = "Verify owned values path-sensitively";
   let description = [{

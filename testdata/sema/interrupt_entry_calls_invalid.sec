@@ -1,0 +1,35 @@
+module interrupt_calls
+
+@isr
+fn Entry() void {}
+
+@interrupt(vector: 15)
+fn Bound() void {}
+
+@interruptSafe
+fn Helper() void {}
+
+fn Direct() void {
+    Entry()
+    Bound()
+    Helper()
+}
+
+fn Indirect(flag: bool) void {
+    let callback := Entry
+    callback()
+    let mut selected: fn() void := Helper
+    if flag {
+        selected = Entry
+    }
+    selected()
+}
+
+fn Protected() void {
+    unsafe { Entry() }
+    if false { Bound() }
+}
+
+fn Deferred() void {
+    defer { Entry() }
+}

@@ -1,0 +1,4 @@
+module main
+
+fn Invalid(value: AllocationContext) void {
+}

@@ -389,7 +389,7 @@ func (fb *functionBuilder) buildDynamicArrayAppend(call *ast.CallExpression, mem
 	if plan.Operation != sema.AllocationDynamicArrayAppend || len(call.Arguments) != 1 {
 		return builtValue{}, fb.unsupported("dynamic-array range Append (P18-17)", token)
 	}
-	if !sema.TriviallyDestructible(plan.ElementType) || sema.CopyClassificationOf(plan.ElementType) != sema.CopyTrivial {
+	if !fb.owner.triviallyDestructible(plan.ElementType) || fb.owner.copyClassificationOf(plan.ElementType) != sema.CopyTrivial {
 		return builtValue{}, fb.unsupported("Append of a non-trivial element (element ownership on failure, MD-135)", token)
 	}
 	if plan.Receiver == nil || plan.Allocation == 0 || plan.Transition.Domain == 0 ||

@@ -3011,6 +3011,11 @@ func registerFieldHover(field sema.RegisterField) string {
 //   - rules/tooling/lsp.md — "Hover"
 //   - rules/collections/shaped-types.md — shaped type syntax and static dimensions
 func lspTypeName(typ sema.Type) string {
+	// Resolved referents override a reference's original template spelling.
+	// Rules: rules/declarations/generics.md — §§9,25; rules/tooling/lsp.md — §12.
+	if !typ.Named && typ.Kind == sema.ReferenceType {
+		return sema.TypeDisplayName(typ)
+	}
 	// rules/types/types.md — Named types: fixed carrier arguments do not
 	// create source parameters on a nongeneric named declaration.
 	if typ.Named && typ.FixedNamedArguments {

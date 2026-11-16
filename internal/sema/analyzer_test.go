@@ -7838,7 +7838,6 @@ impl Box[T] {
 	expected := []string{
 		"unknown generic parameter U in impl target Box at 8:10",
 		"Box requires 1 generic arguments, got 0 at 11:6",
-		"generic methods with additional type parameters are not supported yet at 15:5",
 	}
 	assertSemaErrors(t, errors, expected)
 }
@@ -8514,7 +8513,6 @@ func TestGenericsInvalidFixture(t *testing.T) {
 		"Box requires 1 generic arguments, got 0 at 108:6",
 		"Invalid: recursive by-value struct layout has infinite size: Node[T].next (stores Node[T]) -> Node[T] at 98:5, layout declaration Node[T] at 97:6",
 		"Invalid: recursive by-value struct layout has infinite size: Infinite[T].next (stores Infinite[T[]]) -> Infinite[T] at 102:5, layout declaration Infinite[T] at 101:6",
-		"generic methods with additional type parameters are not supported yet at 112:8",
 		"Box requires 1 generic arguments, got 0 at 61:35",
 		"Box requires 1 generic arguments, got 2 at 64:35",
 		"int is not generic at 67:44",

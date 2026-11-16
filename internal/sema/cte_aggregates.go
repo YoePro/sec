@@ -1,6 +1,8 @@
 package sema
 
 import (
+	"math/big"
+
 	"sec/internal/ast"
 	"sec/internal/lexer"
 )
@@ -17,13 +19,16 @@ type CompileTimeAggregate struct {
 	// variant and its payload (nil for a payload-free variant such as None).
 	Variant string
 	Payload *DefaultConstant
+	// Elements are a fixed array's values in index order
+	// (compile_time_evaluation.md § 32).
+	Elements []DefaultConstant
 	// Owner is the logical identity of a value of a custom-free type
 	// (cte_ownership.go); copies of the same value share it.
 	Owner int
 }
 
 func (aggregate *CompileTimeAggregate) clone() *CompileTimeAggregate {
-	copy := &CompileTimeAggregate{Type: aggregate.Type, Names: append([]string(nil), aggregate.Names...), Fields: make(map[string]DefaultConstant, len(aggregate.Fields)), Variant: aggregate.Variant, Payload: aggregate.Payload, Owner: aggregate.Owner}
+	copy := &CompileTimeAggregate{Type: aggregate.Type, Names: append([]string(nil), aggregate.Names...), Fields: make(map[string]DefaultConstant, len(aggregate.Fields)), Variant: aggregate.Variant, Payload: aggregate.Payload, Owner: aggregate.Owner, Elements: append([]DefaultConstant(nil), aggregate.Elements...)}
 	for name, value := range aggregate.Fields {
 		copy.Fields[name] = value
 	}
@@ -205,4 +210,47 @@ func (x *cteExecutor) receiverPlace(identifier *ast.Identifier) (DefaultConstant
 		}
 	}
 	return value, true, true
+}
+
+// arrayLiteral evaluates a fixed-array literal from Sema's literal plan: its
+// elements in source order and range segments expanded in ascending order
+// (compile_time_evaluation.md § 32; collections.md § 5.6a).
+func (x *cteExecutor) arrayLiteral(literal *ast.ArrayLiteral) (DefaultConstant, bool) {
+	plan, ok := x.a.ResolvedArrayLiteralPlanOf(literal)
+	typ, typed := x.a.expressionTypes[literal]
+	if !ok || !typed || plan.Length == nil || arrayShapeOf(typ) != ArrayShapeFixed {
+		x.fail(cteImplementationGap, literal.Token, "array literal %s has no fixed-array plan the compile-time evaluator can execute", literal.String())
+		return DefaultConstant{}, false
+	}
+	var elements []DefaultConstant
+	for _, entry := range plan.Entries {
+		switch entry.Kind {
+		case ArrayLiteralElement:
+			if entry.SourceIndex < 0 || entry.SourceIndex >= len(literal.Elements) {
+				x.fail(cteImplementationGap, literal.Token, "array literal %s has an unresolved element", literal.String())
+				return DefaultConstant{}, false
+			}
+			value, ok := x.eval(literal.Elements[entry.SourceIndex])
+			if !ok {
+				return DefaultConstant{}, false
+			}
+			elements = append(elements, value)
+		case ArrayLiteralRange:
+			if entry.RangeLower == nil || entry.RangeUpper == nil || entry.Length == nil {
+				x.fail(cteImplementationGap, literal.Token, "array literal %s has an unresolved range segment", literal.String())
+				return DefaultConstant{}, false
+			}
+			for value := new(big.Int).Set(entry.RangeLower); entry.Length.Sign() > 0 && value.Cmp(entry.RangeUpper) <= 0; value = new(big.Int).Add(value, big.NewInt(1)) {
+				elements = append(elements, DefaultConstant{Kind: entry.Type.Kind, Integer: new(big.Int).Set(value), Token: literal.Token})
+			}
+		default:
+			x.fail(cteImplementationGap, literal.Token, "array literal %s spreads a value the compile-time evaluator does not materialize yet", literal.String())
+			return DefaultConstant{}, false
+		}
+	}
+	if big.NewInt(int64(len(elements))).Cmp(plan.Length) != 0 {
+		x.fail(cteImplementationGap, literal.Token, "array literal %s does not match its planned length", literal.String())
+		return DefaultConstant{}, false
+	}
+	return DefaultConstant{Kind: ArrayType, Token: literal.Token, Aggregate: &CompileTimeAggregate{Type: typ, Elements: elements}}, true
 }

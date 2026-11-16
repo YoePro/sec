@@ -1,4 +1,5 @@
 add_mlir_library(SecMLIRAnalysis
+  AnnotateSuccessorActions.cpp
   VerifyFloatSemantics.cpp
   VerifyCheckedIntegerGuards.cpp
   VerifyCleanups.cpp

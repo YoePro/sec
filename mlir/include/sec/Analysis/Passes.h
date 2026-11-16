@@ -33,6 +33,7 @@ mlir::LogicalResult verifyReferenceGuards(mlir::func::FuncOp function);
 std::unique_ptr<mlir::Pass> createSecVerifyBorrowSemanticsPass();
 std::unique_ptr<mlir::Pass> createSecVerifyCleanupsPass();
 std::unique_ptr<mlir::Pass> createSecVerifyOwnershipPass();
+std::unique_ptr<mlir::Pass> createSecAnnotateSuccessorActionsPass();
 std::unique_ptr<mlir::Pass> createSecVerifyDestructionPlansPass();
 mlir::LogicalResult verifyBorrowSemantics(mlir::func::FuncOp function);
 

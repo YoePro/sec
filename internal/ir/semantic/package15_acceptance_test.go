@@ -215,7 +215,7 @@ fn Use() int {
     let fixed := ref label
     return 0
 }
-`, "has no resolved scalar compile-time value"},
+`, "has no resolved compile-time value"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			module, err := buildPackage15Source(t, "module main\n"+test.source, "")

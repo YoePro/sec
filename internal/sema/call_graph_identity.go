@@ -17,6 +17,11 @@ import (
 // distinct. Bodies and guarantee changes invalidate facts, not declaration IDs.
 // Rules: rules/analysis/call_graph.md — "Callable node identity", "Incremental tests".
 func callableID(function Function) CallableID {
+	// Distinct phantom substitutions may have identical callable signatures.
+	// Rules: rules/compiler/monomorphization.md — §§4.3,6.4,12.4.
+	if function.InstantiationIdentity != "" {
+		return CallableID("instantiation|" + function.InstantiationIdentity)
+	}
 	parameters := make([]string, len(function.Parameters))
 	for i, parameter := range function.Parameters {
 		parameters[i] = fmt.Sprintf("%s:%t:%t:%t:%t", graphTypeIdentity(parameter.Type), parameter.Ref, parameter.MutableRef,

@@ -1,0 +1,26 @@
+module method_identity
+
+type Host[Z, A] struct {}
+impl Host[Z, A] {
+    fn Echo[M, N](value: M, other: N) M { return value }
+    static fn Static[M](value: M) M { return value }
+    fn Size() int { return 1 }
+    fn Forward[V](value: V) V { return self.Echo[V, bool](<-value, true) }
+    fn Unused[U](value: U) int { return self.Echo[int, bool](1, true) }
+}
+type Plain struct {}
+impl Plain {
+    static fn Pass[U](value: U) U { return value }
+    static fn Unused[U](value: U) int { return Plain.Pass[int](1) }
+}
+
+fn First(host: Host[int, bool]) string { return host.Echo[string, int]("one", 1) }
+fn Repeat(host: Host[int, bool]) string { return host.Echo("two", 2) }
+fn Other(host: Host[bool, int]) string { return host.Echo[string, int]("three", 3) }
+fn FirstStatic() string { return Host[int, bool].Static[string]("one") }
+fn OtherStatic() string { return Host[bool, int].Static[string]("two") }
+fn FirstSize(host: Host[int, bool]) int { return host.Size() }
+fn OtherSize(host: Host[bool, int]) int { return host.Size() }
+fn FirstForward(host: Host[int, bool]) string { return host.Forward("one") }
+fn OtherForward(host: Host[bool, int]) string { return host.Forward("two") }
+fn PlainCall() string { return Plain.Pass[string]("text") }

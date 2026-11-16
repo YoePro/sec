@@ -68,9 +68,12 @@ def Sec_CleanupTrackOwnedOp : Sec_CleanupOp<"cleanup.track_owned"> {
   let summary = "Register an automatic destruction responsibility for a value or Place";
   // unless_active (MD-125): register only on paths where none of these
   // actions is live; elsewhere that inherited registration keeps its position.
+  // per_execution (P17-41; defer.md sections 8, 13): each execution registers
+  // a new instance, as a defer in a loop does, so an owner a later defer
+  // reads lives until its own registration's defer has run.
   let arguments = (ins AnyType:$tracked, I32Attr:$cleanup_action_id, I32Attr:$cleanup_scope_id,
     I32Attr:$cleanup_registration_ordinal, StrAttr:$destruction_plan,
-    OptionalAttr<DenseI32ArrayAttr>:$unless_active);
+    OptionalAttr<DenseI32ArrayAttr>:$unless_active, UnitAttr:$per_execution);
 }
 def Sec_CleanupCancelOp : Sec_CleanupOp<"cleanup.cancel"> {
   let summary = "Cancel one active automatic cleanup responsibility";
@@ -95,3 +98,19 @@ def Sec_CleanupRunFunctionOp : Sec_CleanupOp<"cleanup.run_function"> {
 }
 
 #endif
+
+// Compiler-known `empty` initialization state of a mutable NonDefaultable
+// union binding (default_values.md section 33(4)-(5); semantic_ir.md section
+// 23(4)). `empty` is not a union value or variant; these operations set and
+// test the storage's initialization state without reading a value.
+def Sec_StorageInitEmptyOp : Sec_Op<"storage.init_empty"> {
+  let summary = "Initialize union storage to the compiler-known empty state";
+  let arguments = (ins AnyType:$storage);
+  let hasVerifier = 1;
+}
+def Sec_StorageIsEmptyOp : Sec_Op<"storage.is_empty"> {
+  let summary = "Test whether union storage still holds the empty state";
+  let arguments = (ins AnyType:$storage);
+  let results = (outs I1:$result);
+  let hasVerifier = 1;
+}

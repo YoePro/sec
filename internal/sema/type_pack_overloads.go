@@ -22,12 +22,12 @@ func typePackOverloadSet(functions []Function) bool {
 	return false
 }
 
-// partialPackOverload constructs an uncached argument signature. Constraints
+// partialGenericOverload constructs an uncached argument signature. Constraints
 // independent of unresolved parameters may eliminate a candidate; dependent
 // constraints wait for completion after ordinary argument-only ranking.
 // Rules: rules/declarations/generics.md §§14,18,20,29;
-// rules/declarations/functions.md §38A(4)(5),(9).
-func (a *Analyzer) partialPackOverload(function Function, refs []*ast.TypeReference, arguments []Type) (Function, bool) {
+// rules/declarations/functions.md §§19–20,38A(4)(5),(9).
+func (a *Analyzer) partialGenericOverload(function Function, refs []*ast.TypeReference, arguments []Type) (Function, bool) {
 	var substitution map[string]Type
 	var ok bool
 	if function.GenericTypePack != "" {
@@ -36,8 +36,11 @@ func (a *Analyzer) partialPackOverload(function Function, refs []*ast.TypeRefere
 		if len(refs) > len(function.GenericParameters) || !functionAcceptsArgumentCount(function, len(arguments)) {
 			return Function{}, false
 		}
-		substitution, ok = map[string]Type{}, true
+		substitution, ok = genericInferenceBindings(function), true
 		fixed := map[string]struct{}{}
+		for name := range substitution {
+			fixed[name] = struct{}{}
+		}
 		for i, ref := range refs {
 			typ, known := a.resolveType(ref)
 			if !known {
@@ -97,12 +100,12 @@ func (a *Analyzer) partialPackOverload(function Function, refs []*ast.TypeRefere
 	return out, true
 }
 
-// completePackOverload uses expected context only for missing substitutions of
+// completeGenericOverload uses expected context only for missing substitutions of
 // the already selected declaration. Argument/explicit deductions remain fixed;
 // no expected return type can remove a competing candidate or overwrite them.
 // Rules: rules/declarations/generics.md §§14,18,20,29;
-// rules/declarations/functions.md §38A(4)(5),(9).
-func (a *Analyzer) completePackOverload(function Function, partial map[string]Type, expected Type) (Function, bool) {
+// rules/declarations/functions.md §§19–20,38A(4)(5),(9).
+func (a *Analyzer) completeGenericOverload(function Function, partial map[string]Type, expected Type) (Function, bool) {
 	substitution := map[string]Type{}
 	fixed := map[string]struct{}{}
 	for name, typ := range partial {

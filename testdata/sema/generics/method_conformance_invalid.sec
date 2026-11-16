@@ -1,0 +1,23 @@
+module method_conformance_invalid
+
+interface Named { fn Name() string }
+interface Reader { fn Read(value: int) int }
+interface Maker { static fn Make(value: int) int }
+
+type Instance struct {}
+impl Instance implements Reader {
+    fn Read[U](value: int) int { return value }
+}
+
+type Static struct {}
+impl Static implements Maker {
+    static fn Make[U](value: int) int { return value }
+}
+
+type Constrained struct {}
+impl Constrained implements Reader {
+    fn Read[U: Named](value: int) int { return value }
+}
+
+fn Require[R: Reader](reader: R) int { return reader.Read(1) }
+fn InvalidDemand(value: Instance) int { return Require(value) }

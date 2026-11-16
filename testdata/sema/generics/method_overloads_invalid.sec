@@ -1,0 +1,18 @@
+module method_overloads_invalid
+
+type Host[T] struct { Value: T }
+impl Host[T] {
+    fn Ambiguous[U](left: U, right: int) Option[int] { return None }
+    fn Ambiguous[V](left: int, right: V) Option[string] { return None }
+    fn Partial[U, V](left: U, right: int) Option[V] { return None }
+    fn Partial[U, V](left: int, right: U) Option[int] { return None }
+    fn Rank[U](value: U) int { return 1 }
+    fn Rank(value: int) int { return 2 }
+    fn WrongResult[U](value: U) Option[string] { return None }
+    fn WrongResult[U](value: ref U) Option[int] { return None }
+}
+
+fn ExplicitAmbiguity(host: Host[int]) Option[int] { return host.Ambiguous[int](1, 1) }
+fn PartialAmbiguity(host: Host[int]) Option[string] { return host.Partial[int](1, 1) }
+fn NoInventedPreference(host: Host[int]) int { return host.Rank(1) }
+fn InputRankingBeforeResult(host: Host[int]) Option[int] { return host.WrongResult[int](1) }

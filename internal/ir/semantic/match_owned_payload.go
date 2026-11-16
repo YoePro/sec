@@ -211,7 +211,7 @@ func (fb *functionBuilder) storedPayloadPlace(owned ownedStorage, place builtVal
 func (fb *functionBuilder) buildTryOperand(expr ast.Expression) (builtValue, error) {
 	if _, chain, stored := fb.storedSubject(expr); stored && len(chain) != 0 && fb.owner.maxPackage >= ownershipLoweringPackage {
 		// A tried stored field leaves; its owner keeps the remaining fields.
-		if typ, ok := fb.owner.analyzer.ResolvedTypeOf(expr); ok && !sema.TriviallyDestructible(typ) {
+		if typ, ok := fb.owner.analyzer.ResolvedTypeOf(expr); ok && !fb.owner.triviallyDestructible(typ) {
 			place, element, err := fb.storedSubjectPlace(expr)
 			if err != nil {
 				return builtValue{}, err
@@ -271,7 +271,7 @@ func (fb *functionBuilder) endFreshMatchSubject(subjectExpr ast.Expression, subj
 		}
 		return nil
 	}
-	if fb.owner.maxPackage < ownershipLoweringPackage || !isFreshOwner(subjectExpr) || sema.TriviallyDestructible(plan.SubjectType) || arm.BindingAction == sema.MatchBindingMove {
+	if fb.owner.maxPackage < ownershipLoweringPackage || !isFreshOwner(subjectExpr) || fb.owner.triviallyDestructible(plan.SubjectType) || arm.BindingAction == sema.MatchBindingMove {
 		return nil
 	}
 	if arm.BindingAction == sema.MatchBindingBorrowShared || arm.BindingAction == sema.MatchBindingBorrowMutable {
@@ -340,7 +340,7 @@ func activePayloadTrivial(subject sema.Type, arm sema.ResolvedMatchArm) bool {
 // destroys it in place (destruction.md § 8(8)) after the arm's borrows end.
 func (fb *functionBuilder) materializeMatchSubject(expr *ast.MatchExpression, plan sema.ResolvedMatchPlan) (builtValue, *matchSubjectPlace, bool, error) {
 	borrows := matchBorrowsPayload(plan)
-	if fb.owner.maxPackage < ownershipLoweringPackage || !isFreshOwner(expr.Subject) || sema.TriviallyDestructible(plan.SubjectType) && !borrows {
+	if fb.owner.maxPackage < ownershipLoweringPackage || !isFreshOwner(expr.Subject) || fb.owner.triviallyDestructible(plan.SubjectType) && !borrows {
 		return builtValue{}, nil, false, nil
 	}
 	needed := borrows || movesFieldPayload(fb.owner.analyzer, expr)

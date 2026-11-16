@@ -25,7 +25,7 @@ type ResolvedOwnedCleanupCancellation struct {
 // Rules: rules/memory/destruction.md — §6.1(3), §18;
 // rules/mlir/packages/sec-mlir-dialect_package17.md — §§27,38,73.
 func (a *Analyzer) recordOwnedCleanupCancellation(place Place, source lexer.Token, reason string) {
-	if TriviallyDestructible(place.Type) || !validDefinitionToken(source) {
+	if !mayRequireDestruction(place.Type) || !validDefinitionToken(source) {
 		return
 	}
 	binding := a.bindingIDs[sourceTokenLocation(place.RootToken)]

@@ -54,7 +54,8 @@ func (path OwnedPath) overlaps(other OwnedPath) bool {
 }
 
 // trivialDestruction reports whether ending a value of the type needs no
-// destruction action.
+// destruction action. Arena requires terminal Release even for borrowed backing.
+// Rules: rules/mlir/packages/sec-mlir-dialect_package19.md — §§47–48,84,96.
 func trivialDestruction(module *Module, id TypeID) bool {
 	typ, ok := module.Types.Lookup(id)
 	if !ok {
@@ -65,8 +66,8 @@ func trivialDestruction(module *Module, id TypeID) bool {
 		return trivialDestruction(module, typ.Base)
 	case TypeArray:
 		return typ.Length == "0" || trivialDestruction(module, typ.Element)
-	case TypeDynamicArray:
-		// A `T[]` may own backing reclamation (P18 § 54).
+	case TypeArena, TypeDynamicArray:
+		// Arena ends its domain; a T[] may own backing reclamation (P18 §54).
 		return false
 	case TypeStruct:
 		definition, found := structDefinition(module, id)

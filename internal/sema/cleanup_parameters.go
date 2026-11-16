@@ -29,7 +29,7 @@ func (a *Analyzer) recordOwnedCleanupParameters(root CleanupScopeID) {
 	}
 	for _, parameter := range a.currentFunctionMetadata.Parameters {
 		if parameter.Ref || parameter.MutableRef || parameter.Variadic || parameter.Type.Kind == ReferenceType ||
-			parameter.Type.Kind == InvalidType || TriviallyDestructible(parameter.Type) {
+			parameter.Type.Kind == InvalidType || !mayRequireDestruction(parameter.Type) {
 			continue
 		}
 		binding := a.bindingIDs[sourceTokenLocation(parameter.Token)]

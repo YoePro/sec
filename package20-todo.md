@@ -198,15 +198,45 @@ longer type silently as invalid. CTE parity is not audited yet.
   same-type argument and arity checks, a PascalCase misspelling diagnostic,
   and static-property receivers (`float64.NegativeInfinity.Abs()`).
   Remaining: `SquareRoot` (no `MathError` yet, § 37) and named/unit floats.
-- [ ] P20-13 — Implement a detached, read-only resolved numeric-conversion
+- [x] P20-13 — Implement a detached, read-only resolved numeric-conversion
   plan for all P20 binary-float pairs, integer widths through 256 bits, and
   float-to-bool. Carry selected-plan width, exactness proof, runtime-check
   classification and canonical `ConversionError` mapping (§§42–61).
-- [ ] P20-14 — Enforce typed conversion semantics: exact widening, checked
+
+  Completed 2026-11-16: `internal/sema/numeric_conversion_plan.go` publishes
+  detached plans at successful typed conversion resolution, reusing the
+  checked-conversion classifier and retaining source/target identity, selected
+  widths (explicitly unknown without a plan), exactness basis and argument
+  bounds/constant, ordered canonical `ConversionError` causes, and total
+  float-to-bool classification. Queries neither infer nor populate facts;
+  repeated analysis clears stale plans. Source-backed tests cover all 96
+  primitive pairs through 256-bit integers on both scalar plans and without
+  a plan, at all three analysis depths, plus constant/path proofs, invalid
+  casts, literal/decimal boundaries and mutation isolation. Corrected the
+  classifier's binary32 finite bound: uint128 can fail with OutOfRange as
+  well as PrecisionLoss. This completes the Sema plan milestone only;
+  P20-14/15/18/19/26 retain validation, integration, CTE and lowering work.
+- [x] P20-14 — Enforce typed conversion semantics: exact widening, checked
   narrowing with finite range and round-trip proof, integer-to-float exactness,
   safe finite/range/integral float-to-integer guards, and explicit float-to-bool
   behavior (§§45–55). Constant known failure is a diagnostic, not a guaranteed
   runtime branch.
+
+  Completed 2026-11-16 (Sema): exact rational checks apply finite range
+  before precision/integrality, with half-open power-of-two integer bounds.
+  Wide integer singleton proofs accept exactly representable values beyond
+  the significand's consecutive-integer range, through 256 bits. Immutable
+  IEEE NaN/infinity categories survive bindings, signs and proven conversions;
+  float narrowing maps them, integer conversion rejects them as NonFinite,
+  and bool retains total unordered-inequality-to-zero semantics. Known invalid
+  typed constants are diagnosed even under try and acquire no successful
+  plan. Mutable values and unresolved platform facts remain conservative.
+  Plans publish ordered finite/range/integral, finite-range/significand or
+  category/range/round-trip checks and detached integer bounds. Tests cover
+  all integer widths, signed boundaries, fractional boundary priority,
+  underflow/overflow, wide exact/inexact integers, nonfinite and chained
+  constants, all three plan settings and mutation isolation. P20-26 still
+  owns the physical guards/casts; P20-19 owns full CTE/runtime parity.
 - [ ] P20-15 — Integrate plans with existing `try`, local handlers and failure
   sets using `ConversionError`; retain success-only values and do not create a
   hidden union or a second public conversion-error family (§§56–59).

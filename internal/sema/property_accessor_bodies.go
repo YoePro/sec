@@ -122,9 +122,14 @@ func (a *Analyzer) analyzePropertyAccessorBody(target Type, name string, body *a
 		// rules/foundations/names_scopes_visibility.md §8: the setter value
 		// parameter must not silently replace a visible declaration.
 		a.validateParameterTypeShadowing(setterParameter)
-		a.symbols.set(setterParameter.Value, Symbol{Name: setterParameter.Value, Type: setterType, Mutable: false, Token: setterParameter.Token, Storage: StorageOriginAutomatic, Local: true, ScopeDepth: 0})
+		a.symbols.set(setterParameter.Value, Symbol{Name: setterParameter.Value, Type: setterType, Mutable: false, Token: setterParameter.Token, Storage: StorageOriginAutomatic, Local: true, Parameter: true, ScopeDepth: 0})
 		a.assigned[setterParameter.Value] = true
 		delete(a.constInts, setterParameter.Value)
+		// The value parameter is a binding like a function parameter, so its
+		// uses, ownership transfers and owned cleanup resolve through it
+		// (properties.md § 5; destruction.md § 6.1).
+		a.recordDefinition(setterParameter.Token)
+		a.recordBinding(setterParameter.Token, BindingParameter, setterParameter.Value, setterType, false)
 	}
 
 	a.analyzeBlockStatements(body)

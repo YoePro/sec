@@ -143,10 +143,15 @@ func (fb *functionBuilder) normalizeSliceHolderEnds(value ValueID) error {
 			case sliceEndLive, 0:
 				retained = append(retained, op)
 			case sliceEndLive | sliceEndEnded:
-				if !prefixEnds {
-					return fb.unsupportedSliceEndJoin(op)
+				edges, ok := []sliceEndEdge(nil), false
+				if prefixEnds {
+					edges, ok = sliceLiveEndEdges(block.ID, blocks, outgoing)
 				}
-				edges, ok := sliceLiveEndEdges(block.ID, blocks, outgoing)
+				if !ok {
+					// § 6(3): the end may move to where each live path enters the
+					// mixed region when nothing there sees the borrow.
+					edges, ok = fb.mixedRegionEndEdges(block, retained, value, blocks, outgoing)
+				}
 				if !ok {
 					return fb.unsupportedSliceEndJoin(op)
 				}
@@ -172,4 +177,97 @@ func (fb *functionBuilder) normalizeSliceHolderEnds(value ValueID) error {
 // Rules: rules/corrections/applied/md065-path-exact-borrow-end-correction-20261021.md — §6(5).
 func (fb *functionBuilder) unsupportedSliceEndJoin(op Operation) error {
 	return &UnsupportedFeatureError{Feature: "slice borrow end at a join requiring a resolved edge schedule (P16-36 / MD-065)", Package: fb.owner.maxPackage, Location: op.Location}
+}
+
+// mixedRegionEndEdges places the end of value, which some paths into block
+// have already executed, on the edges where still-live paths enter the mixed
+// region that leads to block. The move is equivalent (MD-065 § 6(3)) only
+// when no operation of the region, or of block before the end, uses value or
+// a reference derived from it, every path through the region continues to
+// block, and the region holds no other end of value; otherwise the end keeps
+// its fail-closed boundary (§ 6(5)).
+func (fb *functionBuilder) mixedRegionEndEdges(block *Block, before []Operation, value ValueID, blocks []*Block, outgoing map[BlockID]uint8) ([]sliceEndEdge, bool) {
+	derived := map[ValueID]bool{value: true}
+	if facts := fb.references[value]; facts != nil {
+		for id, other := range fb.references {
+			if other != nil && other.SourceBorrow == facts.Borrow && other.Borrow != facts.Borrow {
+				derived[id] = true
+			}
+		}
+	}
+	uses := func(ops []Operation) bool {
+		for _, op := range ops {
+			for _, operand := range operationOperands(op) {
+				if derived[operand] {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	if uses(before) {
+		return nil, false
+	}
+	byID := map[BlockID]*Block{}
+	for _, candidate := range blocks {
+		byID[candidate.ID] = candidate
+	}
+	region := map[BlockID]bool{}
+	var edges []sliceEndEdge
+	var collect func(target BlockID) bool
+	collect = func(target BlockID) bool {
+		for _, predecessor := range blocks {
+			if len(predecessor.Operations) == 0 {
+				continue
+			}
+			terminator := predecessor.Operations[len(predecessor.Operations)-1]
+			for index, edge := range terminator.Successors {
+				if edge.Block != target {
+					continue
+				}
+				switch outgoing[predecessor.ID] {
+				case sliceEndEnded, 0:
+				case sliceEndLive:
+					edges = append(edges, sliceEndEdge{predecessor, index})
+				case sliceEndLive | sliceEndEnded:
+					if region[predecessor.ID] {
+						continue
+					}
+					region[predecessor.ID] = true
+					if !collect(predecessor.ID) {
+						return false
+					}
+				default:
+					return false
+				}
+			}
+		}
+		return true
+	}
+	if !collect(block.ID) {
+		return nil, false
+	}
+	for id := range region {
+		member := byID[id]
+		if member == nil || uses(member.Operations) {
+			return nil, false
+		}
+		for _, parameter := range member.Parameters {
+			if derived[parameter.ID] {
+				return nil, false
+			}
+		}
+		for _, op := range member.Operations {
+			if op.Kind == OpReferenceEndBorrow && len(op.Operands) > 0 && op.Operands[0] == value {
+				return nil, false
+			}
+		}
+		terminator := member.Operations[len(member.Operations)-1]
+		for _, successor := range terminator.Successors {
+			if successor.Block != block.ID && !region[successor.Block] {
+				return nil, false
+			}
+		}
+	}
+	return edges, len(edges) > 0
 }

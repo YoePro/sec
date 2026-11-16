@@ -44,7 +44,7 @@ func (fb *functionBuilder) emitErrorVariantPattern(subject builtValue, plan sema
 	if !ok || result.Kind != TypeResult || len(plan.SubjectType.TypeArgs) != 2 {
 		return fb.unsupported("concrete error variant match without a Result subject", token)
 	}
-	if !sema.TriviallyCopyable(plan.SubjectType.TypeArgs[1]) && fb.matchSubjectPlace == nil {
+	if !fb.owner.triviallyCopyable(plan.SubjectType.TypeArgs[1]) && fb.matchSubjectPlace == nil {
 		return fb.unsupported("concrete error variant match on a non-trivially-copyable error type", token)
 	}
 	name := arm.UnionVariantName

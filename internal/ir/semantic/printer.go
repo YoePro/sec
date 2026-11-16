@@ -131,8 +131,14 @@ func formatFunction(out *strings.Builder, fn *Function) {
 		}
 		fmt.Fprintf(out, "%%%d %s: !%d [%s]", p.Value.ID, p.Name, p.Value.Type, p.Value.Ownership)
 		formatReferenceMetadata(out, p.Reference)
+		if p.HiddenAllocationContext {
+			out.WriteString(" hidden-allocation-context")
+		}
 	}
 	fmt.Fprintf(out, ") -> !%d", fn.ReturnType)
+	if fn.RequiresAllocationContext {
+		out.WriteString(" requires-allocation-context")
+	}
 	if fn.Extern {
 		fmt.Fprintf(out, " extern abi=%q link=%q %s\n", fn.ABI, fn.LinkName, formatLocation(fn.Location))
 		return
@@ -156,6 +162,9 @@ func formatFunction(out *strings.Builder, fn *Function) {
 			addressTaken := ""
 			if s.AddressTaken {
 				addressTaken = " address-taken"
+			}
+			if s.DeferInstance {
+				addressTaken += " defer-instance"
 			}
 			fmt.Fprintf(out, "      $%d %s: !%d mutable=%t class=%s%s %s\n", s.ID, s.Name, s.Type, s.Mutable, s.Class, addressTaken, formatLocation(s.Location))
 		}
@@ -234,6 +243,12 @@ func formatOperation(out *strings.Builder, op Operation) {
 		}
 	case OpDynamicArrayLength:
 		fmt.Fprintf(out, " %%%d", op.Operands[0])
+	case OpAllocationContextFromArena, OpAllocationContextTarget, OpAllocationContextCompilerLocal:
+		for _, operand := range op.Operands {
+			fmt.Fprintf(out, " %%%d", operand)
+		}
+	case OpArenaCreateBorrowed, OpArenaCreateOwnedFixed, OpArenaCreateGrowable, OpArenaNew, OpArenaAlloc, OpArenaReset, OpArenaRelease, OpArenaDestroy:
+		formatArenaOperation(out, op)
 	case OpDynamicArrayHasBacking, OpDynamicArrayHasCapacity, OpDynamicArrayGrowBacking, OpDynamicArrayAppendPrepared, OpDynamicArrayAllocate,
 		OpStorageEstablishDomain, OpStorageAdvanceEpoch, OpStorageEndDomain, OpStorageReclaim:
 		for index, operand := range op.Operands {
@@ -302,7 +317,7 @@ func formatOperation(out *strings.Builder, op Operation) {
 		fmt.Fprintf(out, " $%d", op.Storage)
 	case OpStorageInit, OpStorageStore:
 		fmt.Fprintf(out, " $%d, %%%d", op.Storage, op.Operands[0])
-	case OpStorageLoad:
+	case OpStorageLoad, OpStorageInitEmpty, OpStorageIsEmpty:
 		fmt.Fprintf(out, " $%d", op.Storage)
 	case OpStaticLoad:
 		fmt.Fprintf(out, " @%d", op.Static)
@@ -340,6 +355,9 @@ func formatOperation(out *strings.Builder, op Operation) {
 		}
 		if op.PackForward != nil {
 			out.WriteString(formatPackForwardFacts(op.PackForward))
+		}
+		if op.Property != nil {
+			out.WriteString(formatPropertyFacts(op.Property))
 		}
 		formatReferenceMetadata(out, op.Reference)
 	case OpBranch:
@@ -487,6 +505,7 @@ func formatOperation(out *strings.Builder, op Operation) {
 		}
 		out.WriteByte(']')
 	}
+	formatAllocationContext(out, op.AllocationContext)
 	out.WriteString(formatUnitMetadata(op.UnitMetadata))
 	if len(op.Results) > 0 {
 		out.WriteString(" : ")

@@ -293,6 +293,7 @@ func (a *Analyzer) inferArenaConstructorCall(expr *ast.CallExpression, member Co
 		arena.ArenaDomainID = a.newArenaDomainID(expr.Token, "creation")
 		a.noteArenaCreation(expr, member.Name, arena.ArenaDomainID)
 		a.recordArenaEffect(ArenaEffectCreateBorrowed, "", arena.ArenaDomainID, callCalleeDefinitionToken(expr), false)
+		a.recordArenaOperationPlan(expr, ArenaOperationCreate, member.Name, arena.ArenaDomainID, 0, 0, arena)
 		return arena, expressionValue{Display: expr.String()}, true
 	}
 	if !a.canInitialize(a.types["uint"], argumentType, expr.Arguments[0]) {
@@ -307,7 +308,9 @@ func (a *Analyzer) inferArenaConstructorCall(expr *ast.CallExpression, member Co
 	arena.ArenaDomainID = a.newArenaDomainID(expr.Token, "creation")
 	a.noteArenaCreation(expr, member.Name, arena.ArenaDomainID)
 	a.recordArenaEffect(effect, "", arena.ArenaDomainID, callCalleeDefinitionToken(expr), true)
-	return arenaResultType(arena, a.types["AllocationError"]), expressionValue{Display: expr.String()}, true
+	result := arenaResultType(arena, a.types["AllocationError"])
+	a.recordArenaOperationPlan(expr, ArenaOperationCreate, member.Name, arena.ArenaDomainID, 0, 0, result)
+	return result, expressionValue{Display: expr.String()}, true
 }
 
 // inferArenaCall validates typed allocation and explicit Reset/Release
@@ -381,7 +384,9 @@ func (a *Analyzer) inferArenaCall(expr *ast.CallExpression) (Type, expressionVal
 		}
 		a.recordArenaEffect(ArenaEffectAllocate, receiver.Value, domain, member.Property.Token, true)
 		refType := Type{Name: "ref mut " + typeDisplayName(elementType), Kind: ReferenceType, Element: &elementType, ReferenceMutable: true, ReferenceOriginName: domain, ReferenceOriginDisplayName: owner, ReferenceOriginToken: receiver.Token, ReferenceOriginLocal: allocationLocal, ReferenceOriginStorage: StorageOriginArena, ReferenceOriginGeneration: a.arenaGenerations[domain]}
-		return arenaResultType(refType, a.types["AllocationError"]), expressionValue{Display: expr.String()}, true
+		result := arenaResultType(refType, a.types["AllocationError"])
+		a.recordArenaOperationPlan(expr, ArenaOperationNew, "", domain, a.arenaGenerations[domain], a.arenaGenerations[domain], result)
+		return result, expressionValue{Display: expr.String()}, true
 	case "Alloc":
 		if len(expr.GenericArguments) != 1 {
 			a.addErrorAtToken(expr.Token, "Arena.Alloc requires exactly 1 type argument, got %d", len(expr.GenericArguments))
@@ -396,7 +401,10 @@ func (a *Analyzer) inferArenaCall(expr *ast.CallExpression) (Type, expressionVal
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		countType, _ := a.inferExpressionWithExpected(expr.Arguments[0], a.types["uint"])
-		if countType.Kind != InvalidType && !a.canInitialize(a.types["uint"], countType, expr.Arguments[0]) {
+		if countType.Kind == InvalidType {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		if !a.canInitialize(a.types["uint"], countType, expr.Arguments[0]) {
 			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "Arena.Alloc count must be uint, got %s", typeDisplayName(countType))
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
@@ -423,7 +431,9 @@ func (a *Analyzer) inferArenaCall(expr *ast.CallExpression) (Type, expressionVal
 		}
 		errType := a.types["AllocationError"]
 		a.recordArenaEffect(ArenaEffectAllocate, receiver.Value, domain, member.Property.Token, true)
-		return arenaResultType(refSliceType, errType), expressionValue{Display: expr.String()}, true
+		result := arenaResultType(refSliceType, errType)
+		a.recordArenaOperationPlan(expr, ArenaOperationAlloc, "", domain, a.arenaGenerations[domain], a.arenaGenerations[domain], result)
+		return result, expressionValue{Display: expr.String()}, true
 	case "Reset":
 		if len(expr.GenericArguments) != 0 {
 			a.addErrorAtToken(expr.Token, "Arena.Reset does not take type arguments")
@@ -445,6 +455,7 @@ func (a *Analyzer) inferArenaCall(expr *ast.CallExpression) (Type, expressionVal
 			a.recordArenaParameterReset(receiver.Value)
 		}
 		a.recordArenaEffect(ArenaEffectReset, receiver.Value, domain, member.Property.Token, false)
+		a.recordArenaOperationPlan(expr, ArenaOperationReset, "", domain, a.arenaGenerations[domain]-1, a.arenaGenerations[domain], a.types["void"])
 		return Type{Name: "void", Kind: VoidType}, expressionValue{Display: expr.String()}, true
 	case "Release":
 		if len(expr.GenericArguments) != 0 {
@@ -475,6 +486,7 @@ func (a *Analyzer) inferArenaCall(expr *ast.CallExpression) (Type, expressionVal
 		}
 		a.endBorrowsHeldBy(receiver.Value)
 		a.recordArenaEffect(ArenaEffectRelease, receiver.Value, domain, member.Property.Token, false)
+		a.recordArenaOperationPlan(expr, ArenaOperationRelease, "", domain, a.arenaGenerations[domain]-1, a.arenaGenerations[domain], a.types["void"])
 		return a.types["void"], expressionValue{Display: expr.String()}, true
 	default:
 		return Type{}, expressionValue{}, false

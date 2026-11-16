@@ -1,0 +1,19 @@
+module method_calls_invalid
+
+interface Named { fn Name() string }
+type Box[T] struct { Value: T }
+impl Box[T] {
+    fn Pick[U](owner: T, value: U) U { return value }
+    fn Empty[U, V](value: U) Option[V] { return None }
+    fn Restricted[U: Named](value: U) U { return value }
+    static fn PickStatic[U](owner: T, value: U) U { return value }
+}
+
+fn BadOwner(box: Box[int]) bool { return box.Pick[bool](true, true) }
+fn BadExplicit(box: Box[int]) int { return box.Pick[int](1, true) }
+fn TooMany(box: Box[int]) bool { return box.Pick[int, bool](1, true) }
+fn Unresolved(box: Box[int]) void { discard box.Empty[bool](true) }
+fn BadConstraint(box: Box[int]) int { return box.Restricted[int](1) }
+fn OwnerArity() bool { return Box[int, bool].PickStatic[bool](1, true) }
+fn TypeIsNotAnInstance() bool { return Box[int].Pick[bool](1, true) }
+fn ValueIsNotAType(box: Box[int]) bool { return box.PickStatic[bool](1, true) }

@@ -217,6 +217,17 @@ func (x *cteExecutor) step(at lexer.Token) bool {
 // evaluateStatic executes a static initializer, recording its declaration
 // as being established so a dependency back to it is a cycle.
 func (x *cteExecutor) evaluateStatic(name string, declaration sourceTokenKey, root ast.Expression) cteResult {
+	// Contextual constructors such as Ok/Err may have no standalone expression
+	// type. The accepted static declaration supplies their canonical expected
+	// type during execution; never infer one from the active payload.
+	// Rules: rules/compiler/compile_time_evaluation.md — §§32,46–47;
+	// rules/declarations/static.md — §15.
+	if _, typed := x.a.expressionTypes[root]; !typed {
+		if binding, known := x.a.staticBindingOfInitializer(root); known {
+			x.a.expressionTypes[root] = binding.Type
+			defer delete(x.a.expressionTypes, root)
+		}
+	}
 	x.visiting[declaration] = true
 	x.statics = append(x.statics, name)
 	return x.evaluate(root)
@@ -392,6 +403,12 @@ func (x *cteExecutor) expression(expr ast.Expression) (DefaultConstant, compileT
 		return value, compileTimeEvaluated, true
 	case *ast.StructLiteral:
 		value, ok := x.structLiteral(expr)
+		if !ok {
+			return DefaultConstant{}, compileTimeNotConstant, true
+		}
+		return value, compileTimeEvaluated, true
+	case *ast.ArrayLiteral:
+		value, ok := x.arrayLiteral(expr)
 		if !ok {
 			return DefaultConstant{}, compileTimeNotConstant, true
 		}

@@ -85,7 +85,7 @@ func (a *Analyzer) linkGenericSpecializations() {
 			if site.Caller != templateID || constraintTokens[sourceTokenLocation(site.Source)] {
 				continue
 			}
-			if inner, forwarded := a.genericInstantiations[sourceTokenLocation(site.Source)]; forwarded && inner.forwarded && inner.caller == template {
+			if inner, nested := a.genericInstantiations[sourceTokenLocation(site.Source)]; nested && inner.caller == template {
 				composed := make(map[string]Type, len(inner.substitution))
 				for name, typ := range inner.substitution {
 					composed[name] = substituteGenericType(typ, substitution)
@@ -118,7 +118,7 @@ func (a *Analyzer) linkGenericSpecializations() {
 	}
 	instantiations := make([]genericInstantiation, 0, len(a.genericInstantiations))
 	for _, instantiation := range a.genericInstantiations {
-		if !instantiation.forwarded {
+		if !instantiation.forwarded && instantiation.caller == (sourceTokenKey{}) {
 			instantiations = append(instantiations, instantiation)
 		}
 	}
@@ -127,11 +127,13 @@ func (a *Analyzer) linkGenericSpecializations() {
 	}
 }
 
-// genericTemplateAt finds the template whose declaration token is key.
+// genericTemplateAt finds a callable template, including an ordinary method
+// whose generic environment belongs entirely to its owner.
+// Rules: rules/compiler/monomorphization.md — §§6.4,9.3,12.4–12.5.
 func (a *Analyzer) genericTemplateAt(key sourceTokenKey, name string) (Function, bool) {
 	for _, function := range a.functions[name] {
-		if len(function.GenericParameters) > 0 && sourceTokenLocation(function.Token) == key {
-			return function, true
+		if sourceTokenLocation(function.Token) == key {
+			return a.genericCallableTemplate(function)
 		}
 	}
 	return Function{}, false

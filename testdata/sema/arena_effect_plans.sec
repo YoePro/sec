@@ -1,0 +1,27 @@
+module arena_effect_plans
+
+fn Order() Result[void, AllocationError] {
+    let mut leftBuffer: byte[32]
+    let mut rightBuffer: byte[32]
+    let mut left := Arena.FromBuffer(ref mut leftBuffer)
+    let mut right := Arena.FromBuffer(ref mut rightBuffer)
+    let first := try left.Alloc[byte](1u)
+    discard first
+    let second := try left.Alloc[byte](1u)
+    discard second
+    right.Reset()
+    left.Reset()
+    let third := try left.Alloc[byte](1u)
+    discard third
+    left.Release()
+    right.Release()
+    return Ok()
+}
+
+fn GrowEmpty() Result[void, AllocationError] {
+    let mut arena := try Arena.Growable(0u)
+    let values := try arena.Alloc[byte](0u)
+    discard values
+    arena.Release()
+    return Ok()
+}

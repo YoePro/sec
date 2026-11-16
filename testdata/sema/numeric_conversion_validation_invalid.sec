@@ -1,0 +1,72 @@
+module main
+
+fn InexactInteger() Result[float64, ConversionError] {
+    let value: int256 := 1606938044258990275541962092341162602522202993782792835301377
+    return Ok(try float64(value))
+}
+
+fn IntegerOverflow() Result[float32, ConversionError] {
+    let value: uint128 := 340282366920938463463374607431768211455
+    return Ok(try float32(value))
+}
+
+fn NarrowFraction() Result[float32, ConversionError] {
+    let value: float64 := 0.1
+    return Ok(try float32(value))
+}
+
+fn NarrowOverflow() Result[float32, ConversionError] {
+    let value: float64 := 1e40
+    return Ok(try float32(value))
+}
+
+fn Underflow() Result[float32, ConversionError] {
+    let value: float64 := 1e-50
+    return Ok(try float32(value))
+}
+
+fn UpperBound() Result[int64, ConversionError] {
+    let value: float64 := 9223372036854775808.0
+    return Ok(try int64(value))
+}
+
+fn BelowMinimum() Result[int8, ConversionError] {
+    let value: float64 := -128.5
+    return Ok(try int8(value))
+}
+
+fn FractionAtMaximum() Result[int8, ConversionError] {
+    let value: float64 := 127.5
+    return Ok(try int8(value))
+}
+
+fn NegativeUnsigned() Result[uint256, ConversionError] {
+    let value: float64 := -0.5
+    return Ok(try uint256(value))
+}
+
+fn NaNToInt() Result[int32, ConversionError] {
+    let value: float64 := float64.NaN
+    return Ok(try int32(value))
+}
+
+fn InfToInt() Result[uint256, ConversionError] {
+    let value: float32 := float32.Infinity
+    return Ok(try uint256(value))
+}
+
+fn NegInfToInt() Result[int128, ConversionError] {
+    let value: float64 := float64.NegativeInfinity
+    return Ok(try int128(value))
+}
+
+fn ConvertedInfinity() Result[int32, ConversionError] {
+    let value := float32(float64.Infinity)
+    return Ok(try int32(value))
+}
+
+fn ConvertedFraction() Result[int32, ConversionError] {
+    let half: float64 := 0.5
+    let value := float32(half)
+    return Ok(try int32(value))
+}

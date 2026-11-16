@@ -1,0 +1,31 @@
+module method_calls
+
+type Box[T] struct { Value: T }
+impl Box[T] {
+    fn Pick[U](owner: T, value: U) U { return value }
+    fn Pair[U, V](first: U, second: V) V { return second }
+    fn Empty[U, V](value: U) Option[V] { return None }
+    static fn PickStatic[U](owner: T, value: U) U { return value }
+    static fn PairStatic[U, V](owner: T, first: U, second: V) V { return second }
+}
+
+fn Explicit(box: Box[int]) bool { return box.Pick[bool](1, true) }
+fn Inferred(box: Box[int]) bool { return box.Pick(1, true) }
+fn Prefix(box: Box[int]) bool { return box.Pair[string]("first", true) }
+fn Expected(box: Box[int]) Option[string] { return box.Empty[bool](true) }
+fn ExpectedInferred(box: Box[int]) Option[string] { return box.Empty(true) }
+fn StaticExplicit() bool { return Box[int].PickStatic[bool](1, true) }
+fn StaticInferred() bool { return Box[int].PickStatic(1, true) }
+fn StaticPrefix() bool { return Box[int].PairStatic[string](1, "first", true) }
+fn OtherOwner(box: Box[bool]) string { return box.Pick[string](true, "value") }
+fn SameMethodArgsOtherOwner(box: Box[bool]) bool { return box.Pick[bool](false, true) }
+
+fn Indexed(values: Box[int][1], index: int) bool { return values[index].Pick[bool](1, true) }
+
+type Simple struct {}
+impl Simple {
+    fn Identity[U](value: U) U { return value }
+    static fn Pair[U, V](first: U, second: V) V { return second }
+}
+fn SimpleInstance(value: Simple) bool { return value.Identity[bool](true) }
+fn SimpleStatic() bool { return Simple.Pair[string]("first", true) }

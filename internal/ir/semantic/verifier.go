@@ -28,6 +28,12 @@ func Verify(module *Module) error {
 	if err := verifyTypes(module.Types); err != nil {
 		return err
 	}
+	if err := verifyArenaTypes(module); err != nil {
+		return err
+	}
+	if err := verifyArenaDomains(module); err != nil {
+		return err
+	}
 	if err := verifyEnumUnionDefinitions(module); err != nil {
 		return err
 	}
@@ -362,6 +368,9 @@ func unionVariant(module *Module, typeID TypeID, index UnionVariantIndex) (Union
 }
 
 func verifyFunction(module *Module, fn *Function, functions map[FunctionID]*Function) error {
+	if err := verifyAllocationContextSignature(module, fn); err != nil {
+		return err
+	}
 	if _, ok := module.Types.Lookup(fn.ReturnType); !ok {
 		return fmt.Errorf("invalid return type !%d", fn.ReturnType)
 	}
@@ -547,7 +556,28 @@ func verifyFunction(module *Module, fn *Function, functions map[FunctionID]*Func
 	if err := verifyPlaceReferenceFunction(module, fn, blocks, values, dom); err != nil {
 		return err
 	}
+	if err := verifyAllocationContexts(module, fn, functions); err != nil {
+		return err
+	}
+	if err := verifyArenaCandidates(fn, blocks, dom); err != nil {
+		return err
+	}
+	if err := verifyArenaTransfers(module, fn, blocks); err != nil {
+		return err
+	}
+	if err := verifyNestedArenaLiveness(fn, blocks); err != nil {
+		return err
+	}
 	if err := verifyDynamicArrayTransitions(fn); err != nil {
+		return err
+	}
+	if err := verifyEmptyStorageReads(fn); err != nil {
+		return err
+	}
+	if err := verifyHolderReads(fn); err != nil {
+		return err
+	}
+	if err := verifyHolderStorageJoins(fn); err != nil {
 		return err
 	}
 	if err := verifyOwnershipFlow(module, fn); err != nil {
@@ -616,6 +646,9 @@ func verifyMatchRecords(types *TypeTable, fn *Function, blocks map[BlockID]*Bloc
 
 func operationOperands(op Operation) []ValueID {
 	operands := append([]ValueID(nil), op.Operands...)
+	if op.AllocationContext != nil && !isAllocationContextProducer(op.Kind) {
+		operands = append(operands, op.AllocationContext.Value)
+	}
 	for _, successor := range op.Successors {
 		operands = append(operands, successor.Arguments...)
 	}
@@ -646,6 +679,9 @@ func addValue(types *TypeTable, values map[ValueID]Value, v Value) error {
 // Rules: rules/compiler/semantic_ir.md — §§20,126.2–4,126.6–20.
 func verifyOperation(module *Module, fn *Function, op Operation, values map[ValueID]Value, storages map[StorageID]Storage, functions map[FunctionID]*Function, blocks map[BlockID]*Block) error {
 
+	if op.Arena != nil && !isArenaOperation(op.Kind) {
+		return fmt.Errorf("Arena facts on non-Arena operation %s", op.Kind)
+	}
 	if op.Volatile != nil && op.Kind != OpVolatileRead && op.Kind != OpVolatileWrite {
 		return fmt.Errorf("volatile access facts on non-volatile operation")
 	}
@@ -798,6 +834,10 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 		if len(op.Results) != 1 || storages[op.Storage].ID == 0 || resultType != storages[op.Storage].Type {
 			return fmt.Errorf("invalid storage.load")
 		}
+	case OpStorageInitEmpty, OpStorageIsEmpty:
+		if err := verifyEmptyStateOperation(module.Types, op, storages); err != nil {
+			return err
+		}
 	case OpDirectCall, OpForeignCall:
 		callee := functions[op.Callee]
 		if callee == nil {
@@ -823,12 +863,17 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 		if err := verifyPackForwardFacts(fn, &op); err != nil {
 			return err
 		}
+		if err := verifyPropertyFacts(module, op, callee); err != nil {
+			return err
+		}
 		for i, id := range op.Operands {
 			if values[id].Type != callee.Parameters[i].Value.Type {
 				return fmt.Errorf("call argument type mismatch")
 			}
 			want := ArgumentCopyTrivial
-			if reference, ok := referenceType(module.Types, callee.Parameters[i].Value.Type); ok {
+			if callee.Parameters[i].HiddenAllocationContext {
+				want = ArgumentAllocationContext
+			} else if reference, ok := referenceType(module.Types, callee.Parameters[i].Value.Type); ok {
 				want = ArgumentSharedReference
 				if reference.Mutable {
 					want = ArgumentMutableReference
@@ -1175,6 +1220,14 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 		}
 	case OpStaticLoad, OpStaticStore, OpPlaceStaticRoot:
 		if err := verifyStaticOperation(module, op, values); err != nil {
+			return err
+		}
+	case OpAllocationContextFromArena, OpAllocationContextTarget, OpAllocationContextCompilerLocal:
+		if err := verifyAllocationContextProducer(module, op, values); err != nil {
+			return err
+		}
+	case OpArenaCreateBorrowed, OpArenaCreateOwnedFixed, OpArenaCreateGrowable, OpArenaNew, OpArenaAlloc, OpArenaReset, OpArenaRelease, OpArenaDestroy:
+		if err := verifyArenaOperation(module, op, values); err != nil {
 			return err
 		}
 	case OpStorageEstablishDomain, OpStorageAdvanceEpoch, OpStorageEndDomain, OpStorageReclaim,
@@ -1887,6 +1940,10 @@ func placeChainOf(id ValueID, definitions map[ValueID]Operation) placeChain {
 			return placeChain{kind: "value", key: uint64(op.Operands[0]), fields: reverseFields(reversed), ok: true}
 		case OpPlaceStorageRoot:
 			return placeChain{kind: "storage", key: uint64(op.Storage), fields: reverseFields(reversed), ok: true}
+		case OpPlaceStaticRoot:
+			// A static's Place and its static.load denote the same storage
+			// (SVV-3; compile_time_evaluation.md § 32(3)).
+			return placeChain{kind: "static", key: uint64(op.Static), fields: reverseFields(reversed), ok: true}
 		case OpReferenceDerefPlace:
 			if len(op.Operands) != 1 {
 				return placeChain{}
@@ -1916,6 +1973,8 @@ func valueChainOf(id ValueID, definitions map[ValueID]Operation) placeChain {
 			continue
 		case OpStorageLoad:
 			return placeChain{kind: "storage", key: uint64(op.Storage), fields: reverseFields(reversed), ok: true}
+		case OpStaticLoad:
+			return placeChain{kind: "static", key: uint64(op.Static), fields: reverseFields(reversed), ok: true}
 		case OpPlaceRead:
 			if len(op.Operands) != 1 {
 				return placeChain{}
@@ -2282,7 +2341,7 @@ func verifyStorageDominance(fn *Function, blocks map[BlockID]*Block, dom map[Blo
 					return fmt.Errorf("duplicate storage.declare $%d", op.Storage)
 				}
 				decl[op.Storage] = position{b.ID, index}
-			case OpStorageInit:
+			case OpStorageInit, OpStorageInitEmpty:
 				if _, ok := init[op.Storage]; ok {
 					return fmt.Errorf("duplicate storage.init $%d", op.Storage)
 				}
@@ -2290,7 +2349,7 @@ func verifyStorageDominance(fn *Function, blocks map[BlockID]*Block, dom map[Blo
 					return fmt.Errorf("storage.init before declaration")
 				}
 				init[op.Storage] = position{b.ID, index}
-			case OpStorageLoad, OpStorageStore, OpPlaceStorageRoot:
+			case OpStorageLoad, OpStorageStore, OpPlaceStorageRoot, OpStorageIsEmpty:
 				d, dok := decl[op.Storage]
 				i, iok := init[op.Storage]
 				use := position{b.ID, index}

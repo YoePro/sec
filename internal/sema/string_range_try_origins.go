@@ -7,7 +7,7 @@ import "sec/internal/ast"
 // Rules: rules/errors/errorhandling.md — §§9,21–22;
 // rules/memory/borrowing.md — §5.5 (MD-126).
 func (a *Analyzer) rememberStringViewRecovery(value ast.Expression, typ Type) {
-	if typ.Kind != StringViewType {
+	if typ.Kind != StringViewType && typ.Kind != ReferenceType {
 		return
 	}
 	if origin, ok := a.directReferenceOrigin(value); ok {
@@ -20,7 +20,9 @@ func (a *Analyzer) rememberStringViewRecovery(value ast.Expression, typ Type) {
 // Rules: rules/errors/errorhandling.md — §§9,21–22;
 // rules/memory/borrowing.md — §5.5 (MD-126).
 func (a *Analyzer) joinStringViewTryOrigins(expr *ast.TryExpression, typ Type, plan ResolvedTryPlan) Type {
-	if typ.Kind != StringViewType || a.statementTries[expr] {
+	// Views, slices and direct references recovered by a handler keep every
+	// continuing origin (P17 recovery joins of holders).
+	if typ.Kind != StringViewType && typ.Kind != ReferenceType || a.statementTries[expr] {
 		return typ
 	}
 	var origins []localReferenceOrigin

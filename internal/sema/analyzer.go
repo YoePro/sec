@@ -43,6 +43,7 @@ type Analyzer struct {
 	loopAssignments             map[*ast.BlockStatement][]string
 	dynamicArrayOwners          map[ast.Expression]DynamicArrayOwner
 	allocationOperationPlans    map[*ast.CallExpression]ResolvedAllocationOperationPlan
+	arenaOperationPlans         map[*ast.CallExpression]ResolvedArenaOperationPlan
 	ownedFieldAssignments       map[*ast.AssignmentStatement]CleanupPreviousValue
 	matchSubjectPlaces          map[*ast.MatchExpression]Place
 	handlerScopes               map[*ast.TryHandler]*ast.BlockStatement
@@ -50,6 +51,9 @@ type Analyzer struct {
 	ownedCleanupParameters      map[BindingID]ownedCleanupParameter
 	ownedCleanupCancellations   map[sourceTokenKey][]ResolvedOwnedCleanupCancellation
 	ownedCleanupDeclarations    map[BindingID]*ast.LetStatement
+	// ownedCleanupEmptyDeclarations holds the registration template of an
+	// owned union binding declared empty; its assignments register.
+	ownedCleanupEmptyDeclarations map[BindingID]ResolvedOwnedCleanupRegistration
 	// matchArmValueContext is true while the arms of a match expression are
 	// analyzed: a continuing block arm then yields its final expression
 	// (flowcontrol_match.md § 21).
@@ -209,7 +213,10 @@ type Analyzer struct {
 	resolvedEnumConversions map[ast.Expression]ResolvedEnumConversion
 	// Accepted explicit conversion call identities; ordinary/intrinsic calls are excluded.
 	// Rules: rules/declarations/enums.md — §12; rules/tooling/lsp.md — Hover.
-	enumConversionCalls        map[*ast.CallExpression]bool
+	enumConversionCalls map[*ast.CallExpression]bool
+
+	resolvedNumericConversionPlans map[*ast.CallExpression]ResolvedNumericConversionPlan
+
 	resolvedIntegerConversions map[*ast.CallExpression]ResolvedIntegerConversion
 	resolvedNamedConversions   map[*ast.CallExpression]ResolvedNamedConversion
 	resolvedForRangeSteps      map[*ast.ForStatement]*big.Int
@@ -223,12 +230,15 @@ type Analyzer struct {
 	resolvedCallReferences     map[*ast.CallExpression]ReferenceFacts
 	resolvedCompareExchanges   map[*ast.CallExpression]ResolvedCompareExchange
 	staticBindings             map[sourceTokenKey]ResolvedStatic
-	receiverReborrows          map[*ast.CallExpression]ReferenceFacts
-	matchTerminationPlans      map[*ast.MatchExpression]ResolvedMatchPlan
-	resolvedOptionIfBindings   map[*ast.IfStatement]ResolvedOptionIfBinding
-	resolvedAvailabilityTests  map[*ast.AvailabilityExpression]ResolvedAvailabilityTest
-	resolvedStateTests         map[*ast.StateTestExpression]ResolvedStateTest
-	resolvedLambdaCaptures     map[*ast.LambdaExpression][]CaptureRecord
+	receiverReborrows          map[ast.Expression]ReferenceFacts
+	// compoundGetterReborrows: the getter reborrow of a compound property
+	// update's single receiver (property_receiver_lowering.go).
+	compoundGetterReborrows   map[ast.Expression]ReferenceFacts
+	matchTerminationPlans     map[*ast.MatchExpression]ResolvedMatchPlan
+	resolvedOptionIfBindings  map[*ast.IfStatement]ResolvedOptionIfBinding
+	resolvedAvailabilityTests map[*ast.AvailabilityExpression]ResolvedAvailabilityTest
+	resolvedStateTests        map[*ast.StateTestExpression]ResolvedStateTest
+	resolvedLambdaCaptures    map[*ast.LambdaExpression][]CaptureRecord
 	// lambdaBorrowCaptures holds the validated `ref`/`ref mut` captures of
 	// each lambda, which the closure's binding then holds (lambda_capabilities.go).
 	lambdaBorrowCaptures map[*ast.LambdaExpression][]lambdaBorrowCapture
@@ -391,6 +401,12 @@ type Analyzer struct {
 	stringRanges                map[*ast.SliceExpression]ResolvedStringRangePlan
 	resolvedSliceLengthPlans    map[ast.Expression]ResolvedSliceLengthPlan
 	resolvedReferenceUses       map[ast.Expression]ResolvedReferenceUse
+	// resolvedHolderReads holds the reference facts of each read of a holder
+	// kept in a mutable binding (reference_plans.go).
+	resolvedHolderReads map[*ast.Identifier]ReferenceFacts
+	// resolvedContainedReads holds the facts of references read out of an
+	// aggregate path (reference_plans.go).
+	resolvedContainedReads map[ast.Expression]ReferenceFacts
 	// referenceParameterFacts holds the reference facts of each ref/ref mut
 	// parameter, keyed by its declaration location (P15-47).
 	referenceParameterFacts map[sourceTokenKey]ReferenceFacts
@@ -698,6 +714,9 @@ func (e loopEdgeState) clearBinding(name string, clearMoves bool) {
 }
 
 type genericInstanceKey struct {
+	// BoundArguments separates owner arguments from a method's own list.
+	// Rules: rules/declarations/generics.md — §§9,18,25.
+	BoundArguments string
 	Declaration    string
 	Arguments      string
 	ConstArguments string
@@ -794,12 +813,14 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.ownedCleanupParameters = nil
 	a.ownedCleanupCancellations = nil
 	a.ownedCleanupDeclarations = nil
+	a.ownedCleanupEmptyDeclarations = nil
 	a.ownedCleanupAssignments = nil
 	a.placeUses = nil
 	a.incomingMoves = nil
 	a.loopStarts = nil
 	a.borrowHolders = nil
 	a.deferredUses = nil
+	a.arenaOperationPlans = nil
 	a.arenaCreations = nil
 	a.arenaUses = nil
 	a.lifetimeFacts = nil
@@ -893,6 +914,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.resolvedEnumConstants = map[ast.Expression]*big.Int{}
 	a.resolvedEnumConversions = map[ast.Expression]ResolvedEnumConversion{}
 	a.enumConversionCalls = nil
+	a.resolvedNumericConversionPlans = map[*ast.CallExpression]ResolvedNumericConversionPlan{}
 	a.resolvedIntegerConversions = map[*ast.CallExpression]ResolvedIntegerConversion{}
 	a.resolvedNamedConversions = map[*ast.CallExpression]ResolvedNamedConversion{}
 	a.resolvedTransferPlans = map[ast.Expression]ResolvedTransferPlan{}
@@ -912,7 +934,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.resolvedCallReferences = map[*ast.CallExpression]ReferenceFacts{}
 	a.resolvedCompareExchanges = map[*ast.CallExpression]ResolvedCompareExchange{}
 	a.staticBindings = map[sourceTokenKey]ResolvedStatic{}
-	a.receiverReborrows = map[*ast.CallExpression]ReferenceFacts{}
+	a.receiverReborrows = map[ast.Expression]ReferenceFacts{}
 	a.matchTerminationPlans = map[*ast.MatchExpression]ResolvedMatchPlan{}
 	a.resolvedOptionIfBindings = map[*ast.IfStatement]ResolvedOptionIfBinding{}
 	a.resolvedAvailabilityTests = map[*ast.AvailabilityExpression]ResolvedAvailabilityTest{}
@@ -930,6 +952,8 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.stringRanges = map[*ast.SliceExpression]ResolvedStringRangePlan{}
 	a.resolvedSliceLengthPlans = map[ast.Expression]ResolvedSliceLengthPlan{}
 	a.resolvedReferenceUses = map[ast.Expression]ResolvedReferenceUse{}
+	a.resolvedHolderReads = map[*ast.Identifier]ReferenceFacts{}
+	a.resolvedContainedReads = map[ast.Expression]ReferenceFacts{}
 	a.referenceParameterFacts = map[sourceTokenKey]ReferenceFacts{}
 	a.receiverFacts = map[sourceTokenKey]ReferenceFacts{}
 	a.implicitReceiverUses = map[*ast.Identifier]ImplicitReceiverUse{}
@@ -1066,6 +1090,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.validateStaticInitialization(program)
 	a.validateInterfaceConformance()
 	a.runSemanticAnalysisPipeline(program)
+	a.validateInterruptEntryCalls(program)
 	instances := a.typePackInstances()
 	a.checkTypePackByValueLoops(instances)
 	a.checkTypePackIndexLimits(instances)
@@ -1083,6 +1108,9 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.freezeStaticScalarInitializers()
 	a.reportUnusedUnsafePrefixes()
 	a.explainUnavailableVariants()
+	// Holder and contained reads take their borrow identities after every
+	// other identity, so they never renumber existing facts.
+	a.allocateHolderReadIdentities()
 
 	return cloneSemanticErrors(a.errors)
 }
@@ -3683,21 +3711,6 @@ func isProgramEntryFunction(function Function) bool {
 		return false
 	}
 	return function.ReturnType.Kind == VoidType || (function.ReturnType.Kind == IntType && function.ReturnType.Name == "int")
-}
-
-func sameFunctionSignature(left Function, right Function) bool {
-	if len(left.Parameters) != len(right.Parameters) {
-		return false
-	}
-	for i := range left.Parameters {
-		if left.Parameters[i].Ref != right.Parameters[i].Ref || left.Parameters[i].MutableRef != right.Parameters[i].MutableRef || left.Parameters[i].Variadic != right.Parameters[i].Variadic {
-			return false
-		}
-		if !sameConcreteType(left.Parameters[i].Type, right.Parameters[i].Type) {
-			return false
-		}
-	}
-	return true
 }
 
 func functionParametersDifferOnlyByConsumingMode(left []FunctionParameter, right []FunctionParameter) bool {
@@ -6824,7 +6837,8 @@ func (a *Analyzer) registerImplDeclarations(program *ast.Program) {
 // registerImplStatement registers implementation members with their explicit
 // static/instance category; unsupported instance bindings are never made static.
 // Rules: rules/declarations/impl.md — "Static members";
-// rules/declarations/static.md — "Static declarations in implementations".
+// rules/declarations/static.md — "Static declarations in implementations";
+// rules/declarations/generics.md — §§5.6,8–9,30 (nested owner/method scopes).
 func (a *Analyzer) registerImplStatement(stmt *ast.ImplStatement) {
 	if !a.validImplStatements[stmt] {
 		return
@@ -6867,7 +6881,9 @@ func (a *Analyzer) registerImplStatement(stmt *ast.ImplStatement) {
 				a.addErrorAtTokenWithMetadata(stmt.Token, diagnostics.InterfaceConformancePlacement, "Move the implements list to the primary impl of "+stmt.Target.Name+"; keep the extension members here.", "impl extends %s cannot declare interface conformance; place implements on the primary impl", stmt.Target.Name)
 			}
 		} else {
-			target.Implements = a.resolveImplementedInterfaces(stmt.Implements, stmt.Target.Name)
+			a.withGenericTypeParameters(genericParams, func() {
+				target.Implements = a.resolveImplementedInterfaces(stmt.Implements, stmt.Target.Name)
+			})
 			targetChanged = true
 		}
 	}
@@ -6938,11 +6954,8 @@ func (a *Analyzer) registerImplStatement(stmt *ast.ImplStatement) {
 			}
 			a.checkConfusableInDomains(name, fn.Name.Token, fields, properties, events, methods, a.typeMethodTokens(stmt.Target.Name))
 			methods[name] = fn.Name.Token
-			if len(fn.GenericParameters) > 0 && genericTypePackName(fn.GenericParameters) == "" {
-				a.validateGenericTypeParameterNames(fn.GenericParameters)
-				a.reportCapabilityUnavailable(fn.Name.Token, "Use a generic free function or the owning type's parameters until method-level generic parameters are implemented.", "generic methods with additional type parameters are not supported yet")
-				continue
-			}
+			// Method headers enter their own generic scope inside the owner's
+			// scope, just as their bodies do (generics.md §§5.6,9,30).
 			a.withImplTarget(stmt.Target.Name, func() {
 				a.withGenericTypeParameters(genericParams, func() {
 					a.registerFunctionDeclarationNamed(fn, stmt.Target.Name+"."+fn.Name.Value)
@@ -7275,7 +7288,7 @@ func interfaceIncludesConstraint(candidate Type, required Type, visiting map[str
 //   - rules/declarations/interfaces.md — §6 "Conformance requirements"
 func (a *Analyzer) typeSatisfiesInterfaceRequirements(typ Type, iface Type) bool {
 	for _, required := range iface.InterfaceMethods {
-		if !hasCompatibleInterfaceMethod(typ, iface, a.functions[typ.Name+"."+required.Name], required) {
+		if !a.hasCompatibleInterfaceMethod(typ, iface, a.functions[typ.Name+"."+required.Name], required) {
 			return false
 		}
 	}
@@ -7297,23 +7310,6 @@ func (a *Analyzer) typeSatisfiesInterfaceRequirements(typ Type, iface Type) bool
 	for _, required := range iface.InterfaceEvents {
 		event, ok := lookupEvent(typ, required.Name)
 		if !ok || !sameConcreteType(event.Payload, required.Payload) {
-			return false
-		}
-	}
-	return true
-}
-
-func compatibleInterfaceMethodSignature(method Function, required Function) bool {
-	methodParams := explicitInterfaceComparableParameters(method.Parameters)
-	requiredParams := explicitInterfaceComparableParameters(required.Parameters)
-	if len(methodParams) != len(requiredParams) {
-		return false
-	}
-	for i := range methodParams {
-		if methodParams[i].Ref != requiredParams[i].Ref || methodParams[i].MutableRef != requiredParams[i].MutableRef || methodParams[i].Consuming != requiredParams[i].Consuming {
-			return false
-		}
-		if !sameConcreteType(methodParams[i].Type, requiredParams[i].Type) {
 			return false
 		}
 	}
@@ -9063,6 +9059,11 @@ func (a *Analyzer) resolveTypeName(name string) string {
 	return name
 }
 
+// typePathFromExpression retains the symbolic path of a type/member selector,
+// including a parser-retained generic-owner/index ambiguity. Actual type versus
+// value classification remains with resolved name lookup.
+// Rules: rules/declarations/generics.md — §§9,18,20;
+// rules/foundations/names_scopes_visibility.md — §17.
 func typePathFromExpression(expr ast.Expression) (string, bool) {
 	switch expr := expr.(type) {
 	case *ast.Identifier:
@@ -9072,7 +9073,11 @@ func typePathFromExpression(expr ast.Expression) (string, bool) {
 		// unit's conversion function and unit functions (unitFunctionKey).
 		return expr.String(), true
 	case *ast.MemberExpression:
-		left, ok := typePathFromExpression(expr.Object)
+		owner := expr.Object
+		if indexed, ok := owner.(*ast.IndexExpression); ok && len(expr.OwnerGenericArguments) > 0 {
+			owner = indexed.Left
+		}
+		left, ok := typePathFromExpression(owner)
 		if !ok {
 			return "", false
 		}
@@ -9839,7 +9844,17 @@ func (a *Analyzer) methodCallReceiver(expr *ast.CallExpression) (methodReceiverI
 	return info, receiverType.Kind != InvalidType
 }
 
+// expressionNamesType distinguishes type-qualified access from an indexed
+// value, respecting visible value bindings before the type registry.
+// Rules: rules/declarations/generics.md — §§9,18,20;
+// rules/foundations/names_scopes_visibility.md — §17.
 func (a *Analyzer) expressionNamesType(expr ast.Expression) bool {
+	// A parser-retained Type[T].Method[U] ambiguity is type-qualified only
+	// when its base resolves to a type, never an ordinary indexed value.
+	// Rules: rules/declarations/generics.md — §§9,18,20.
+	if indexed, ok := expr.(*ast.IndexExpression); ok {
+		return a.expressionNamesType(indexed.Left)
+	}
 	if ident, ok := expr.(*ast.Identifier); ok {
 		if _, exists := a.symbols.lookup(ident.Value); exists {
 			return false
@@ -9895,8 +9910,11 @@ func (a *Analyzer) explicitGenericFunctionInstance(function Function, refs []*as
 		return Function{}, false, false
 	}
 
-	substitution := map[string]Type{}
+	substitution := genericInferenceBindings(function)
 	fixed := map[string]struct{}{}
+	for name := range substitution {
+		fixed[name] = struct{}{}
+	}
 	for i, ref := range refs {
 		typ, ok := a.resolveType(ref)
 		if !ok {

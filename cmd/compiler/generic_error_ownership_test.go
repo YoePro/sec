@@ -8,8 +8,8 @@ import (
 	"testing"
 )
 
-// Source conformance is checked independently of the named ownership-sensitive
-// specialization boundary; failed inspection must leave no partial IR artifact.
+// Source conformance is checked independently of lowering, and an owning E
+// specializes with its concrete ownership in the emitted IR.
 // Rules: rules/errors/errorhandling.md — §§20,29; MD-120 §11(4–5);
 // rules/compiler/monomorphization.md — §11.2.
 func TestGenericErrorOwnershipCLI(t *testing.T) {
@@ -51,12 +51,17 @@ func TestGenericErrorOwnershipCLI(t *testing.T) {
 		}
 		if name == "lowering_boundary" {
 			artifact := filepath.Join(root, "out.ir")
-			stdout, output, code := runCLIForDiagnostics(t, "emit-ir", path, "-o", artifact)
-			if code == 0 || stdout != "" || !strings.Contains(output, "[unsupported-lowering]") || !strings.Contains(output, "generic specialization with the ownership-sensitive argument") {
-				t.Fatal(code, stdout, output)
+			_, output, code := runCLIForDiagnostics(t, "emit-ir", path, "-o", artifact)
+			if code != 0 {
+				t.Fatal(code, output)
 			}
-			if _, err := os.Stat(artifact); !os.IsNotExist(err) {
-				t.Fatalf("failed lowering left output: %v", err)
+			ir, err := os.ReadFile(artifact)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// The owning E specializes with its concrete destruction plan.
+			if !strings.Contains(string(ir), "Wrap[E=main::OwnedError](main::OwnedError)") || !strings.Contains(string(ir), `plan="destroy:main:union:OwnedError"`) {
+				t.Fatal(string(ir))
 			}
 		}
 	}

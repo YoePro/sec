@@ -46,7 +46,7 @@ func TestAllocationContextFacts(t *testing.T) {
 		t.Fatal("folded text acquired a runtime context")
 	}
 	alloc := contexts("Allocate")
-	if len(alloc) != 2 || alloc[0].SelectedDomain == "" || alloc[0].SelectedDomain != alloc[1].SelectedDomain || alloc[0].Arena != "mem" || alloc[1].Arena != "moved" || alloc[0].ContextKnown || alloc[1].CreatedDomain != "" {
+	if len(alloc) != 2 || alloc[0].SelectedDomain == "" || alloc[0].SelectedDomain != alloc[1].SelectedDomain || alloc[0].Arena != "mem" || alloc[1].Arena != "moved" || !alloc[0].ContextKnown || !alloc[1].ContextKnown || alloc[0].Context.Origin != StorageOriginArena || alloc[1].CreatedDomain != "" {
 		t.Fatal(alloc)
 	}
 	other := contexts("OtherDomain")
@@ -54,7 +54,7 @@ func TestAllocationContextFacts(t *testing.T) {
 		t.Fatal("lexical names conflated distinct domains", other, alloc)
 	}
 	created := contexts("Created")
-	if len(created) != 1 || created[0].CreatedDomain == "" || created[0].SelectedDomain != "" || created[0].ContextKnown {
+	if len(created) != 1 || created[0].CreatedDomain == "" || created[0].SelectedDomain != "" || !created[0].ContextKnown || created[0].Context != render[0].Context {
 		t.Fatal("created Arena was used as its backing context", created)
 	}
 	for _, name := range []string{"Forward", "Recursive", "Deferred"} {

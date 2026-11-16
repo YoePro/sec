@@ -1,0 +1,133 @@
+module main
+
+// User-defined properties lower to calls of their accessor functions with
+// explicit property operations (semantic_ir.md § 26; properties.md § 15).
+
+type Box struct {
+    value: int,
+}
+
+impl Box {
+    free {
+    }
+}
+
+type SpeedError union error {
+    Negative
+}
+
+type Counter struct {
+    count: int,
+}
+
+impl Counter {
+    property Count: int {
+        get {
+            return count
+        }
+        set v {
+            count = v
+        }
+    }
+
+    property Fresh: Box {
+        get {
+            return Box{value: count}
+        }
+    }
+
+    static property Limit: int {
+        get {
+            return 10
+        }
+    }
+
+    fn Bump() void {
+        self.Count = self.Count + 1
+        Count = Count + 1
+        self.Count += 2
+        Count -= 1
+    }
+
+    fn Read() int {
+        return self.Count + Count
+    }
+}
+
+type Cell[T] struct {
+    value: T,
+    count: int,
+}
+
+impl Cell[T] {
+    property Count: int {
+        get {
+            return self.count
+        }
+    }
+
+    property Value: T {
+        set v {
+            self.value = Pass(<-v)
+        }
+    }
+}
+
+type Car struct {
+    speed: int,
+}
+
+impl Car {
+    property Speed: int {
+        get {
+            return speed
+        }
+        try set value SpeedError {
+            if value < 0 {
+                return Err(SpeedError.Negative)
+            }
+            speed = value
+        }
+    }
+}
+
+fn Pass[T](-> value: T) T {
+    return value
+}
+
+fn Propagate(c: ref mut Car, v: int) Result[void, SpeedError] {
+    let held := Box{value: 1}
+    try c.Speed = v
+    try c.Speed += 1
+    return Ok()
+}
+
+fn Handled(v: int) int {
+    let mut c := Car { speed: 0 }
+    try c.Speed = v {
+        Err(e) => return -1
+    }
+    try c.Speed -= 1 {
+        Err(e) => return -2
+    }
+    return c.Speed
+}
+
+fn Generic() int {
+    let mut c := Cell[Box] { value: Box{value: 1}, count: 0 }
+    c.Value = Box{value: 2}
+    let mut i := Cell[int] { value: 1, count: 0 }
+    i.Value = 3
+    return c.Count + i.Count
+}
+
+fn main() int {
+    let mut c := Counter { count: 0 }
+    c.Bump()
+    c.Count = 5
+    c.Count += 3
+    let f := c.Fresh
+    let mut car := Car { speed: 0 }
+    let r := Propagate(ref mut car, 3)
+    return c.Read() + f.value + c.Count + Counter.Limit + Handled(4) + Generic()
+}

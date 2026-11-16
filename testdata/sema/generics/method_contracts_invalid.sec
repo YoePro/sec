@@ -1,0 +1,51 @@
+module method_contracts_invalid
+
+interface Named { fn Name() string }
+interface Writable { mut fn Bump() void }
+
+type Concrete struct {}
+impl Concrete {
+    fn Name() string { return "concrete" }
+    fn Extra() int { return 1 }
+}
+
+type Host[T: Named] struct { Value: T }
+
+impl Host[T] {
+    fn Unconstrained[U](value: U) string {
+        return value.Name()
+    }
+
+    static fn UnconstrainedStatic[U](value: U) string {
+        return value.Name()
+    }
+
+    fn Undeclared[U: Named](value: U) int {
+        return value.Extra()
+    }
+
+    fn NoOwnerConstraintLeak[U](value: U) string {
+        return value.Name()
+    }
+
+    fn Arithmetic[U](value: U) U {
+        return value + value
+    }
+
+    fn SharedCannotMutate[U: Writable](value: ref U) void {
+        value.Bump()
+    }
+}
+
+// This concrete argument has Extra, but that must not legalize the template.
+type Simple struct {}
+impl Simple {
+    fn Duck[U](value: U) int {
+        return value.Extra()
+    }
+}
+
+fn Demand(owner: Simple, first: Concrete, second: Concrete) int {
+    discard owner.Duck(<-first)
+    return owner.Duck(<-second)
+}

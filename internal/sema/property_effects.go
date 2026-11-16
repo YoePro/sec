@@ -36,7 +36,13 @@ func propertyWithAccessors(owner Type, declaration *ast.PropertyDeclaration, pro
 		}
 		property.SetterCallable = makeCallable(kind, setter.Body, result)
 		if property.SetterCallable != nil {
-			property.SetterCallable.Parameters = []FunctionParameter{{Type: property.Type}}
+			parameter := FunctionParameter{Type: property.Type}
+			if setter.Parameter != nil {
+				// The value parameter is the setter's owned by-value binding
+				// (properties.md § 5), with its own binding identity.
+				parameter.Name, parameter.Token = setter.Parameter.Value, setter.Parameter.Token
+			}
+			property.SetterCallable.Parameters = []FunctionParameter{parameter}
 			property.SetterCallable.ReceiverMutable = !property.Static
 		}
 	}

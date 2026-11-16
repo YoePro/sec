@@ -210,7 +210,7 @@ integrations:
 
   - id: platform.interrupts-v1
     area: platform-interrupts
-    status: planned
+    status: partial
     integrated: "2026-08-29"
     document_revision: "1.0"
     repository_baseline: fafd8cb
@@ -233,11 +233,11 @@ integrations:
       - rules/compiler/linking.md
       - rules/analysis/isr_analysis.md
       - rules/analysis/stack_analysis.md
-    implemented: []
+    implemented:
+      - "Ordinary ISR entry calls (2026-11-16; interrupts.md sections 2-4, 25): Sema rejects calls whose selected declaration or canonical callable target is annotated @isr or @interrupt, with mandatory S1245 interrupt.entry-not-callable, the call and declaration locations, and helper-extraction guidance. Selected overloads, direct calls in unreachable branches, function-value aliases, merged target sets, defer, unsafe and ordinary test bodies use the same restriction. Ordinary helpers, @interruptSafe helpers, same-named non-entry overloads and unknown callbacks are not classified by spelling. Attribute capability/binding/effect verification remains independent and incomplete; this source restriction does not enable native ISR support."
     remaining:
       - add canonical platform interrupt identities and resolution into CompilationPlan, including domains, logical sources, routes, entries, classes, bindability, ABI, priority/masking, pending/active, claim/completion, stack domains, profiles, and provenance
       - resolve @interrupt named identities and raw numeric bindings through the same canonical platform interrupt model
-      - reject ordinary calls to ISR entry functions while preserving ordinary reusable @interruptSafe helpers
       - model directional MayPreempt, MayNest, and MayReenter relations independently of raw numeric priority ordering
       - model target entry/return mask effects, unmaskable classes, and effective masking relationships
       - model external IRQ, software-triggered, fault/exception, non-maskable, and target-defined interrupt classes
@@ -347,6 +347,19 @@ integrations:
       - relevant platform edits invalidate dependent ISR work while unrelated edits preserve unrelated caches
       - stale separate-compilation summaries cannot serve as positive ISR-safety proofs
       - interrupt analysis and generated artifact identities are deterministic
+    revised: "2026-11-16"
+    code:
+      - internal/sema/interrupt_entry_calls.go
+      - internal/sema/analyzer.go
+      - internal/diagnostics/diagnostics.go
+    tests:
+      - internal/sema/interrupt_entry_calls_test.go
+      - testdata/sema/interrupt_entry_calls_invalid.sec
+      - testdata/sema/interrupt_entry_helpers.sec
+      - testdata/sema/interrupt_entry_testing_invalid_test.sec
+    verification:
+      - command: GOTMPDIR=$HOME/.cache/sec-gotmp go test -p 4 ./internal/sema ./internal/diagnostics -count=1
+        result: "Passed on 2026-11-16 (28.557s / 0.002s). Focused TestInterruptEntryCalls and registry validation also passed after adding the ordinary-test fixture: three source fixtures at all three analysis depths and 32/64-bit plans, including positive helper/overload/unknown-callback cases. go vet -p 4 ./internal/sema ./internal/diagnostics passed. One whole remaining point closed, 44 -> 43. No sec/, IR/property or GOS-5 changes."
 
   - id: frontend.fixed-address-bindings
     area: frontend-analysis-and-lowering

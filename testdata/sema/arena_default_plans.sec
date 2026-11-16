@@ -1,0 +1,19 @@
+module arena_default_plans
+
+type Port uint range 1..65535 default 8080
+
+type Entry struct {
+    Port: Port,
+    Enabled: bool,
+    Samples: byte[3],
+}
+
+fn Defaults(arena: ref mut Arena, count: uint) Result[void, AllocationError] {
+    let entry := try arena.New[Entry]()
+    discard entry
+    let ports := try arena.Alloc[Port](count)
+    discard ports
+    let empty := try arena.Alloc[Entry](0u)
+    discard empty
+    return Ok()
+}

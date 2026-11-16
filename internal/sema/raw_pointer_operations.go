@@ -188,6 +188,9 @@ func (a *Analyzer) inferRawPointerCall(expr *ast.CallExpression) (Type, expressi
 // rawPointerCallMayHaveValueReceiver leaves type-qualified/static lookup to its owner.
 // Rules: rules/compiler/compiler_known_members.md — "RawPtr[T] compiler-known members".
 func (a *Analyzer) rawPointerCallMayHaveValueReceiver(expr ast.Expression) bool {
+	if a.expressionNamesType(expr) {
+		return false
+	}
 	switch expr := expr.(type) {
 	case *ast.Identifier:
 		_, exists := a.symbols.lookup(expr.Value)

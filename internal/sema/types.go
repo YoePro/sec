@@ -651,7 +651,11 @@ type Function struct {
 	// GenericSubstitution is the concrete (or forwarded) template argument
 	// map of an instantiated generic function; nil for templates and
 	// ordinary functions.
-	GenericSubstitution      map[string]Type
+	GenericSubstitution map[string]Type
+	// InstantiationIdentity is the canonical concrete semantic specialization,
+	// including independent owner and callable arguments. Empty for templates.
+	// Rules: rules/compiler/monomorphization.md — §§4,6.4.
+	InstantiationIdentity    string
 	Name                     string
 	Module                   string
 	CompilerKnownID          string
@@ -996,6 +1000,8 @@ type Symbol struct {
 	mutexAcquisition *mutexAcquisition
 	// FloatingConstant is an immutable finite value in this binding's unit coordinates.
 	FloatingConstant *big.Rat
+	// Immutable IEEE category; P20 §§47–55,59 (rules/mlir/packages/sec-mlir-dialect_package20.md).
+	numericFloatSpecial string
 	// DecimalConstant is the exact value of an immutable decimal binding
 	// whose initializer is a compile-time known decimal (MD-066 § 6(1)).
 	DecimalConstant *big.Rat

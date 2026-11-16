@@ -1,0 +1,21 @@
+module method_conformance
+
+interface Reader[E] {
+    fn Read(value: E) E
+}
+interface Maker {
+    static fn Make(value: int) int
+}
+
+type Host[T] struct { Value: T }
+impl Host[T] implements Reader[T], Maker {
+    fn Read[U](value: U) U { return value }
+    fn Read(value: T) T { return value }
+    static fn Make[U](value: U) U { return value }
+    static fn Make(value: int) int { return value }
+}
+
+fn ReadThrough[R: Reader[int]](reader: R) int { return reader.Read(1) }
+fn Demand(host: Host[int]) int { return ReadThrough(host) }
+fn Helper(host: Host[int]) bool { return host.Read[bool](true) }
+fn StaticHelper() bool { return Host[int].Make[bool](true) }

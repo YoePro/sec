@@ -11,6 +11,8 @@ import (
 // AllocationContextFact exposes selection evidence for one canonical allocation
 // site. CreatedDomain is the resulting Arena's abstract creation-site identity, not the domain backing
 // its construction. Empty domain IDs and ContextKnown=false remain unresolved.
+// ContextKnown describes semantic context selection/availability, not a resolved
+// physical provider, reclamation plan or lowering-readiness guarantee.
 // Rules: rules/memory/allocation.md — §§5,6,8,17(6)-(9),29(1),(3);
 // rules/memory/arena.md — §§4.2,4.3,67(4).
 type AllocationContextFact struct {
@@ -68,6 +70,21 @@ func (a *Analyzer) AllocationContextFacts() []AllocationContextFact {
 		}
 		contexts[key] = plan.Context
 	}
+	// P19 records explicit Arena selection and constructor backing context at
+	// successful source analysis. Publish those existing decisions; do not
+	// select a context from currently visible bindings or recreate a provider.
+	// Rules: rules/mlir/packages/sec-mlir-dialect_package19.md — §§52–54,72–76.
+	for _, plan := range a.arenaOperationPlans {
+		if plan.Operation != ArenaOperationNew && plan.Operation != ArenaOperationAlloc &&
+			!(plan.Operation == ArenaOperationCreate && plan.Fallible) {
+			continue
+		}
+		key := sourceTokenLocation(plan.Source)
+		if previous, exists := contexts[key]; exists && previous != plan.Context {
+			ambiguousContexts[key] = true
+		}
+		contexts[key] = plan.Context
+	}
 	// A Result's success type preserves the frontend's selected Arena domain.
 	// Constructors instead preserve the domain of the Arena they create.
 	type domains struct{ selected, created string }
@@ -110,6 +127,10 @@ func (a *Analyzer) AllocationContextFacts() []AllocationContextFact {
 			value, correlated := results[key]
 			conflict := ambiguousResults[key] ||
 				correlated && site.Kind == ArenaEffectAllocate && site.Domain != "" && value.selected != site.Domain
+			if conflict {
+				fact.ContextKnown = false
+				fact.Context = AllocationContext{}
+			}
 			switch {
 			case conflict:
 			case site.Domain != "" && site.Kind == ArenaEffectAllocate:
@@ -187,27 +208,38 @@ func (a *Analyzer) AllocationContexts(id CallableID) []AllocationContextFact {
 
 // AllocationContextDescription renders semantic selection evidence consistently
 // for CLI and LSP. Internal domain tokens are analysis-local identities; a newly
-// created Arena is kept distinct from its still-unresolved backing context.
+// created Arena is kept distinct from its backing allocation context. Known
+// selection never hides an explicit Arena domain or invents ambient provenance.
 // Rules: rules/memory/allocation.md — §§5(8),29(1),(3); rules/memory/arena.md — §§4.2,4.3,67(4).
 func AllocationContextDescription(fact AllocationContextFact) string {
-	if fact.ContextKnown {
-		availability := "available"
-		if !fact.Context.Available {
-			availability = "unavailable"
-		}
-		profile := fact.Context.Profile
-		if profile == "" {
-			profile = "unresolved"
-		}
-		return fmt.Sprintf("implicit allocation context: %s; profile %s; origin %s; domain identity unresolved", availability, profile, fact.Context.Origin)
-	}
 	if fact.SelectedDomain != "" {
 		return fmt.Sprintf("explicit Arena allocation domain: %s (receiver %s); %s", fact.SelectedDomain, fact.Arena, allocationOriginDescription("allocation context origin", fact.SelectedDomainOrigin))
 	}
 	if fact.CreatedDomain != "" {
+		if fact.ContextKnown {
+			return fmt.Sprintf("created Arena domain: %s; backing allocation context: %s; %s", fact.CreatedDomain, allocationContextAvailabilityDescription(fact.Context), allocationOriginDescription("created domain origin", fact.CreatedDomainOrigin))
+		}
 		return fmt.Sprintf("created Arena domain: %s; backing allocation context unresolved; %s", fact.CreatedDomain, allocationOriginDescription("created domain origin", fact.CreatedDomainOrigin))
 	}
+	if fact.ContextKnown {
+		return "implicit allocation context: " + allocationContextAvailabilityDescription(fact.Context) + "; domain identity unresolved"
+	}
 	return "allocation context/domain unresolved"
+}
+
+// allocationContextAvailabilityDescription renders recorded semantic context
+// availability without asserting physical provider support or source provenance.
+// Rules: rules/memory/allocation.md — §§5(8),17,29(1),(3).
+func allocationContextAvailabilityDescription(context AllocationContext) string {
+	availability := "available"
+	if !context.Available {
+		availability = "unavailable"
+	}
+	profile := context.Profile
+	if profile == "" {
+		profile = "unresolved"
+	}
+	return fmt.Sprintf("%s; profile %s; origin %s", availability, profile, context.Origin)
 }
 
 // allocationOriginDescription renders only canonical source provenance. An

@@ -160,7 +160,7 @@ func (a *Analyzer) recordReceiverReborrow(call *ast.CallExpression, callee Funct
 	}
 	place.RootKind = PlaceRootReceiver
 	if a.receiverReborrows == nil {
-		a.receiverReborrows = map[*ast.CallExpression]ReferenceFacts{}
+		a.receiverReborrows = map[ast.Expression]ReferenceFacts{}
 	}
 	a.receiverReborrows[call] = a.referenceFactsForPlace(place, callee.ReceiverMutable, call.Token)
 }

@@ -42,6 +42,18 @@ module attributes {sec.dialect_version = 13 : i32, sec.semantic_ir_version = 1 :
     "sec.cleanup.run_function"() <{exit_kind = "fallthrough"}> : () -> ()
     return
   }
+  // A per-execution registration adds an instance on each loop iteration,
+  // as the defer that reads it does (P17-41; defer.md section 13).
+  // CHECK-LABEL: func.func @per_execution
+  func.func @per_execution(%v: !sec.int, %c: i1) {
+    cf.br ^bb1
+  ^bb1:
+    "sec.cleanup.track_owned"(%v) <{cleanup_action_id = 1 : i32, cleanup_scope_id = 1 : i32, cleanup_registration_ordinal = 1 : i32, destruction_plan = "p", per_execution}> : (!sec.int) -> ()
+    cf.cond_br %c, ^bb1, ^bb2
+  ^bb2:
+    "sec.cleanup.run_function"() <{exit_kind = "fallthrough"}> : () -> ()
+    return
+  }
   // CHECK-LABEL: func.func @panics
   func.func @panics(%v: !sec.int, %c: i1) {
     "sec.cleanup.track_owned"(%v) <{cleanup_action_id = 1 : i32, cleanup_scope_id = 1 : i32, cleanup_registration_ordinal = 1 : i32, destruction_plan = "p"}> : (!sec.int) -> ()

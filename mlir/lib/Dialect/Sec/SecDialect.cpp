@@ -367,7 +367,8 @@ LogicalResult SecDialect::verifyOperationAttribute(Operation *operation,
     if (kind != "enum-value" && kind != "union-variant" &&
         kind != "result-ok" && kind != "result-err" &&
         kind != "result-err-variant" && kind != "option-some" &&
-        kind != "option-none" && kind != "catch-all")
+        kind != "option-none" && kind != "catch-all" &&
+        kind != "empty-state")
       return operation->emitError("invalid sec.match_pattern_kind");
     return success();
   }
@@ -540,6 +541,25 @@ LogicalResult SecDialect::verifyOperationAttribute(Operation *operation,
                << "sec.return_origins contains duplicate entry \"" << text
                << "\"";
     }
+    return success();
+  }
+  // Semantic IR § 26: a property accessor call keeps its property operation,
+  // so later stages never infer property semantics from field accesses.
+  if (name == "sec.property") {
+    auto dictionary = dyn_cast<DictionaryAttr>(value);
+    if (operation->getName().getStringRef() != "sec.call.direct" || !dictionary)
+      return operation->emitError("sec.property is a dictionary on sec.call.direct");
+    auto kind = dictionary.getAs<StringAttr>("kind");
+    auto propertyName = dictionary.getAs<StringAttr>("name");
+    auto owner = dictionary.getAs<StringAttr>("owner");
+    auto isStatic = dictionary.getAs<BoolAttr>("static");
+    if (!kind || !propertyName || !owner || !isStatic || dictionary.size() != 4 ||
+        propertyName.getValue().empty() || owner.getValue().empty())
+      return operation->emitError("sec.property requires exactly kind, name, owner and static");
+    llvm::StringRef text = kind.getValue();
+    if (text != "read" && text != "write" && text != "fallible-write" &&
+        text != "compound-read" && text != "compound-write")
+      return operation->emitError() << "sec.property has unknown kind \"" << text << "\"";
     return success();
   }
   if (name == "sec.match_id" || name == "sec.match_arm_index") {

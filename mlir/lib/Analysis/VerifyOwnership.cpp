@@ -548,6 +548,10 @@ private:
       if (isa<sec::OwnInitializePlaceOp, sec::OwnReplacePlaceOp, sec::OwnMoveFromPlaceOp, sec::OwnDestroyPlaceOp,
               sec::PlaceWriteOp, sec::StorageInitOp, sec::StorageStoreOp>(op) && index == 0)
         continue;
+      // The empty union state is an initialization state, not a value: setting
+      // or testing it reads nothing (default_values.md section 33(5)).
+      if (isa<sec::StorageInitEmptyOp, sec::StorageIsEmptyOp>(op))
+        continue;
       if (auto discard = dyn_cast<sec::OwnDiscardOp>(op); discard && discard.getIfOwned())
         continue;
       Subobject target = isa<sec::PlaceType>(operand.getType()) ? resolve(operand) : Subobject{operand, "", false, false};

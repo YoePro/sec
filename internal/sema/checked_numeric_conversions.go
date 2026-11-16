@@ -71,7 +71,13 @@ func numericConversionFailures(target, source Type, minimum, maximum *big.Int) (
 		if magnitude.Cmp(new(big.Int).Lsh(big.NewInt(1), precision)) <= 0 {
 			return nil, true
 		}
-		if magnitude.Cmp(new(big.Int).Lsh(big.NewInt(1), exponent)) >= 0 {
+		// The largest finite value is 2^exponent - 2^(exponent-precision),
+		// not 2^exponent: uint128 includes values above binary32 Max.
+		maximumFinite := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), exponent), new(big.Int).Lsh(big.NewInt(1), exponent-precision))
+		if minimum.Cmp(maximum) == 0 && magnitude.Cmp(maximumFinite) <= 0 && ratExactInFloat(new(big.Rat).SetInt(minimum), target.FloatBits) {
+			return nil, true
+		}
+		if magnitude.Cmp(maximumFinite) > 0 {
 			return []ConversionFailureKind{ConversionFailureOutOfRange, ConversionFailurePrecisionLoss}, true
 		}
 		return []ConversionFailureKind{ConversionFailurePrecisionLoss}, true
@@ -180,12 +186,21 @@ func (a *Analyzer) numericConversionMayFail(target, source Type, argument ast.Ex
 func (a *Analyzer) constantNumericConversionExact(target, source Type, argument ast.Expression) bool {
 	var value *big.Rat
 	switch source.Kind {
+	case IntType, UintType:
+		low, high, known := a.scalarValueInterval(argument, source)
+		if !known || low.Cmp(high) != 0 || target.Kind != FloatType || (target.FloatBits != 32 && target.FloatBits != 64) {
+			return false
+		}
+		return finiteNumericConversionFailure(target, new(big.Rat).SetInt(low)) == ""
 	case FloatType:
-		known, ok := a.floatingConstantValue(argument, source)
+		knownValue, ok := a.numericFloatConstantOf(argument, source)
 		if !ok {
 			return false
 		}
-		value = known
+		if knownValue.special != "" {
+			return target.Kind == FloatType || target.Kind == BoolType
+		}
+		value = knownValue.value
 	case DecimalType:
 		known, ok := a.decimalConstantValue(argument)
 		if !ok {

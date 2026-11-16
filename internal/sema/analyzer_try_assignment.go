@@ -98,6 +98,9 @@ func (a *Analyzer) analyzeTryAssignmentStatement(stmt *ast.TryAssignmentStatemen
 		ErrorType:           errorType,
 		EnclosingResultType: a.currentFunctionReturn,
 	}
+	// The failure edge leaves the function like a propagating try, running
+	// every enclosing scope's cleanup (destruction.md § 6.2; P17 § 40).
+	a.recordCleanupExit(CleanupExitErrorPropagation, stmt.Token, a.currentCleanupScope, a.cleanupScopeChain(a.currentCleanupScope, 0), true, nil, "")
 }
 
 func (a *Analyzer) analyzeTryAssignmentHandlers(stmt *ast.TryAssignmentStatement, errorType Type) {

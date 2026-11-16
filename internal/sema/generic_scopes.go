@@ -56,7 +56,10 @@ func (a *Analyzer) withGenericTypeParameters(parameters []*ast.GenericParameter,
 // analyzeFunctionBodyNamed validates generic headers even if heterogeneous
 // body expansion reaches an implementation gate. Unsupported bodies cannot
 // hide a conflicting declaration; supported bodies use the same scoped types.
-// Rules: rules/declarations/generics.md — §§9,16A;
+// For a method these types compose the owner and method constraints. Analysis
+// does not wait for a call or substitute a concrete argument into the template.
+// Rules: rules/declarations/generics.md — §§9,15,16A,33;
+// rules/compiler/monomorphization.md — §§5.1–5.3;
 // rules/foundations/names_scopes_visibility.md — §§8,15.
 func (a *Analyzer) analyzeFunctionBodyNamed(fn *ast.FunctionDeclaration, name string) {
 	if a.rejectUnavailableTypePackExpansion(fn) {

@@ -228,5 +228,8 @@ func (fb *functionBuilder) sliceSourceValue(expr ast.Expression) (builtValue, *R
 			return value, fb.references[value.id], nil
 		}
 	}
+	if value, facts, contained, err := fb.readContainedHolder(expr); contained || err != nil {
+		return value, facts, err
+	}
 	return builtValue{}, nil, fb.unsupported("slice source value or projected holder (P16-36)", expressionToken(expr))
 }

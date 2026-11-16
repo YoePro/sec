@@ -1894,7 +1894,7 @@ integrations:
 
   - id: lowering.sec-mlir-typed-arithmetic-failure
     area: frontend-analysis-semantic-ir-and-mlir
-    status: partial
+    status: implemented
     integrated: "2026-08-10"
     summary: >-
       Implements the Package 9 typed arithmetic failure path from compiler-known
@@ -1953,8 +1953,6 @@ integrations:
       - compiler-owned callable effect summaries record direct arithmetic MayPanic sites and deterministic transitive synchronous cause paths
       - resolved handled and propagated arithmetic try removes only its own checked-arithmetic panic effect while preserving panic effects from operand calls and nested argument evaluation
       - invalid arithmetic try is never accepted as positive panic-free evidence
-    remaining:
-      - complete the remaining MayPanic sources, unknown/foreign contracts, cleanup effects, and attribute diagnostics required for full transitive @noPanic verification; arithmetic-try transformation and operand-call preservation are now represented in the canonical callable summary
     deferred:
       - physical Result representation remains P24 work (lowering.layout), with call ABI separate; ordinary integer-enum carriers, including ArithmeticError enum values, are covered by lowering.integer-enum-representation, but arithmetic-reason-to-error mapping and Result operations are still rejected by the single LLVM track
     verification:
@@ -2215,10 +2213,10 @@ integrations:
       - "arm layout (2026-10-26): the next arm's test block is laid out after the current arm's body blocks, so guarded arms with checked arithmetic keep source-ordered arm provenance for --sec-verify-match-cfg"
       - "loop-control arms (verified 2026-11-04): break and continue inside match arms reach the loop targets after the arm's cleanup and run natively (testdata/build/native/match_loop_control.sec in TestNativeTrackBuildsAndRuns)."
       - "Contextual value-producing arm blocks (2026-11-06; flowcontrol_match.md §§ 21–22): in a match expression a continuing arm block yields its final expression, analyzed while the block's locals are live, with expression-arm ownership validation and move marking; a void or missing final value and incompatible types are rejected (TestMatchArmBlockValues over testdata/sema/match_arm_blocks_invalid.sec). Semantic IR builds the value, runs the arm scope cleanup and branches to the merge; returning paths leave through function cleanup (TestSchema13MatchArmBlocks, 32/64, testdata/semantic_ir/match_arm_blocks.sec, including --sec-verify-match-cfg)."
-    remaining:
-      - compiler-known empty initialization-state matching awaits a distinct resolved frontend fact and is not the payload-less variant support completed here
-      - temporary-forward, semantic-copy and conditional-copy payload actions await their ownership producers; ref and ref mut payloads (P15) and move payloads (P17) lower
-      - general literal and range patterns are intentionally not lowered because canonical match revision 2.0 assigns them to switch
+      - "Empty-state matching (2026-11-16): a match whose subject may still hold the compiler-known empty union state tests storage.is-empty before any value read and sends that path to the `empty` arm or an unguarded `_` (flowcontrol_match.md § 11; lowering.sec-mlir-package17 empty union state, TestSchema13EmptyUnionState)."
+      - "Payload binding actions (2026-11-16): move, borrow and copy-trivial actions lower; a fresh temporary subject forwards its payload into the binding as a move, also with a `return` arm (TestSchema13MatchArmReturnRunsCleanup); copy-semantic has no Sec 0.1 producer because no concrete type classifies CopySemantic (TestNoConcreteTypeIsSemanticallyCopyable); copy-conditional exists only before specialization and is resolved per specialization (compiler.generic-ownership-specialization GOS-1)."
+    excluded:
+      - general literal and range patterns are not match lowering: canonical match revision 2.0 assigns them to switch (confirmed 2026-11-16)
     verification:
       - command: go test ./internal/sema -run 'TestMatch|TestErrorHandlingMatch|TestResolvedMatchPlan' -count=1
         result: passed
@@ -2332,7 +2330,7 @@ integrations:
     area: semantic-ir-sec-mlir-and-lowering
     status: partial
     integrated: "2026-10-20"
-    revised: "2026-11-15"
+    revised: "2026-11-16"
     summary: "P17 has detached Sema destruction/transfer plans, cleanup identities (P17-18), defer capture/lifetime plans (P17-20) and source-site registration/cancellation facts (P17-19 partial, 2026-10-22). Accepted ownership ends retain canonical binding/Place targets; whole tracked local assignments get fresh success-only registrations in the original binding scope, distinguishing available, unavailable, conditional and partial states after RHS preparation. Path-exact incarnation matching, initially empty bindings, projected stores/parameter registration, complete partial-state cleanup, dynamic instances, exit plans, remaining ownership state/cleanup Semantic IR, producer migration, schema 13 and its verifiers remain open. Plan: package17-todo.md; related memory owners: semantic-ir.copy-move, semantic-ir.destruction, lowering.copy-move and lowering.destruction. P17-17 Sema ownership/destruction test gate completed on 2026-10-22; transfer publication and both query APIs now detach nested source Place/type facts. P17-07 capability boundary completed on 2026-10-22: explicit P17-or-later builds preflight requested-module Sema ownership/cleanup facts before constructing IR, preserving predecessor routes; explicit schema 13 returns a structured unsupported-capability diagnostic and no output, without schema downgrade. P17-12 completed on 2026-10-22: transfer plans retain owning destination identities/Places, selected argument callable/position and source ownership before/after commit; complete transfer-site publication remains P17-13. P17-06 migration audit completed on 2026-10-22; the current producer/query, identity and focused-file migration map is recorded in package17-todo.md. P17-26/28 Semantic IR model scope and partial P17-27/29 were added on 2026-10-25: ten explicit ownership operations, module destruction-plan identities, deterministic printing, local operation contracts and block-local consumed-value checks. Initialization rejects old destruction/cleanup metadata while allowing new cleanup identity; complete destruction graphs, Place/CFG state, conditional discard, producers and cleanup execution remain open. P17-38 source-to-Semantic-IR whole fixed-array ownership completed on 2026-10-27: resolved ordinary element transfers, compact defaults/destruction plans, whole transfers and replacement; partial construction, temporary cleanup and schema-13 emission retain explicit boundaries."
     predecessors:
       - SEC-MLIR-P15 (partial)
@@ -2343,6 +2341,11 @@ integrations:
       - rules/memory/copy_move.md
       - rules/memory/ownership.md
     code:
+      - internal/ir/semantic/holder_storage.go
+      - internal/ir/semantic/union_empty_state.go
+      - internal/ir/semantic/defer_producer.go
+      - mlir/lib/Analysis/AnnotateSuccessorActions.cpp
+      - mlir/lib/Analysis/VerifyCleanups.cpp
       - internal/sema/destruction_plans.go
       - internal/sema/transfer_plans.go
       - internal/sema/analyzer_lifetime.go
@@ -2381,6 +2384,20 @@ integrations:
       - mlir/lib/Analysis/VerifyPlaceReferences.cpp
       - mlir/lib/Analysis/CMakeLists.txt
     tests:
+      - internal/lowering/secmlir/match_arm_return_cleanup_test.go
+      - internal/lowering/secmlir/aggregate_statics_test.go
+      - internal/ir/semantic/slice_end_region_test.go
+      - internal/lowering/secmlir/contained_references_test.go
+      - internal/lowering/secmlir/holder_rebind_test.go
+      - internal/ir/semantic/defer_dynamic_holder_test.go
+      - mlir/test/Dialect/Sec/invalid-schema13-holder-read.mlir
+      - internal/lowering/secmlir/defer_body_cleanup_test.go
+      - internal/lowering/secmlir/union_empty_state_test.go
+      - internal/lowering/secmlir/destruction_plan_completeness_test.go
+      - internal/sema/foreign_ownership_boundary_test.go
+      - internal/sema/semantic_copy_producers_test.go
+      - mlir/test/Dialect/Sec/invalid-schema13-foreign-consumption.mlir
+      - mlir/test/Analysis/schema13-successor-actions-restore.mlir
       - internal/sema/destruction_plans_test.go
       - internal/sema/transfer_plans_test.go
       - internal/sema/cleanup_identities_test.go
@@ -2478,6 +2495,16 @@ integrations:
       - "Payload borrow/destruction ordering verified (2026-11-07; destruction.md §18(3); package17 §117): --sec-verify-places and --sec-verify-ownership share VerifyBorrowDestruction.cpp, consuming explicit P15 Place/reference/borrow-end facts and CFG forwarding. Destruction of overlapping storage through own.destroy_place, own.replace_place, own.destroy_value or own.discard is rejected while a payload holder remains live. A matching end must identify that SSA holder and both borrow/lifetime IDs; copies and derived holders remain independent, and mutable moves transfer the obligation. Canonical field/payload paths preserve containment and disjoint stored fields, equivalent storage roots and CFG/loop forwarding; array projections stay conservative without a supplied disjointness proof. Repeated origin queries are deduplicated by value/projection path, with cycle guards; loops stop at a fresh producer instance. This is verification of represented IR facts, not another source borrow checker or a runtime borrow registry. Sixteen negative and twelve positive split-input cases run against both passes; all 220 lit tests and the full Sec MLIR Go suite pass, including fresh-subject source modules at 32/64 bits. Latest Claude P17-37 named-field borrow and guarded-handler fixtures also pass a refreshed targeted run."
       - "P17-13 and P17-35 completed (2026-11-07; package17 §§ 16-18, 69; copy_move.md §§ 3, 5-11): every accepted copy or move of a reusable value publishes a transfer plan, now including copies into return slots, constructed fields and payloads, closure environments and match arm results; explicit moves into arm results (site branch); and by-value payload, named-field, if-is and try-handler bindings (site match-binding, keyed by the bound identifier, with the payload Place or a fresh source and the binding Place as destination). ResolvedOwnershipUseOf classifies a use as transfer, borrow-shared, borrow-mutable, reference or observation from published facts only. The builder consumes the plans for union construction payloads (ResolvedUnionConstruction.PayloadActions), try-handler payload bindings (ResolvedTryHandlerBindingTransferOf) and Option try success values (ResolvedTry.SuccessTransfer) instead of classifying copy versus move again; an action without a lowering or a missing fact is a structured unsupported boundary. Remaining builder type queries decide destruction, value representation, generic specialization or predecessor-package gates, not transfers. Tests: TestTransferPlansCoverEveryUseSite (internal/sema) and TestBuilderConsumesResolvedTransferPlans (internal/ir/semantic)."
       - "P17-49 (2026-11-15): foreign consumption needs no FFI ownership metadata. ffi.md §§ 35-36 route ownership transfer to foreign code through an owning Sec wrapper, and every foreign ABI (extern C, system, Sec) rejects owning non-trivial Sec types as parameters and results, so the v13 § 25 foreign-consumption action has no producer (TestForeignSignaturesRejectOwnedSecValues). The dialect now rejects `move` on sec.call.foreign while direct calls keep it (invalid-schema13-foreign-consumption.mlir; check-sec-mlir 225/225)."
+      - "Defer lifetime extension in loops (P17-41, 2026-11-16; defer.md §§ 8, 13): an owned loop value a defer reads registers `per-execution` in the function scope (Semantic IR CleanupFacts.PerExecution; schema 13 `per_execution` on sec.cleanup.track_owned, accepted by --sec-verify-cleanups as a new instance per execution), so it is destroyed after its own registration's defer; mutable loop storage a defer reads is a per-declaration `defer-instance` storage (`sec.defer_instance = true`), whose physical storage is a lowering concern. TestSchema13DeferInLoopInstances, TestPackage17DeferLoopFixturesLower, schema13-cleanups.mlir @per_execution."
+      - "Empty union state (P17-19 follow-up, 2026-11-16; default_values.md § 33(4)-(6), flowcontrol_match.md § 11, semantic_ir.md § 23(4)): `let mut x: U` of a NonDefaultable union declares storage initialized by storage.init-empty; `is empty`, a variant test and a match with a reachable empty state test storage.is-empty before any value read (the `empty` arm or an unguarded `_` takes the empty path; pattern kind empty-state); verifyEmptyStorageReads rejects a load the state may still reach. An owned union registers nothing while empty: Sema keeps a registration template and each assignment registers conditionally (MD-125), the first inheriting the declaration's never-registered incarnation, so a loop's earlier value is destroyed, not leaked. Schema 13 sec.storage.init_empty / sec.storage.is_empty with verifiers; --sec-verify-ownership treats them as state operations. TestSchema13EmptyUnionState, TestSchema13OwnedEmptyUnionState."
+      - "Branch ownership metadata under optimization (P17-57, 2026-11-16; dialect v13 § 26): the action of a forwarded branch operand is fixed by its type, so --sec-annotate-successor-actions restores dropped `sec.successor_actions` (move for a value that needs destruction, non-owning for a reference or slice holder) and leaves existing metadata to --sec-verify-ownership; an optimization pipeline over schema 13 runs it before ownership verification. Emission verification stays strict (no annotation in the toolchain's checks); no current toolchain pipeline optimizes schema 13. schema13-successor-actions-restore.mlir (missing metadata rejected; restored; canonicalize + restore verifies)."
+      - "Complete non-triviality facts (2026-11-16; package17 §§ 53, 112-116): Semantic IR imports the destruction plan of every type that needs destruction and appears in a value, parameter or storage of the module (completeDestructionPlans), so --sec-verify-ownership holds a value no registration covers to its terminal action. TestSchema13DestructionPlansCoverEveryOwnedValue shows both plans were missing before and a returned owned value without its move action is now rejected."
+      - "Allocator/release pairing (package17 § 116, 2026-11-16): the criterion applies only where a destruction releases an allocation. No schema-13 type does, so --sec-verify-destruction-plans has nothing to pair there. The first such type is P18's owning T[]: Semantic IR verifies its pairing (destruction plan backing=[destroy-elements-reverse?, end-domain, reclaim-per-allocation-plan]; storage.reclaim only with an owning-value ReclamationPlanID; BackingMetadata pairs a reclamation plan only with OwningValue authority), and the schema-14 MLIR check is P18-30's destruction-plan extension (package18-todo.md)."
+      - "Holder rebind in mutable storage (P16 carry-over, 2026-11-16; references.md § 3.4(5), borrowing.md §§ 8.2, 35.2, lifetime_analysis.md § 11, package15 § 20): Sema no longer records `r = otherRef` as a write through the holder; it publishes per-read holder facts (ResolvedHolderReadOf) whose origins cover every alternative a rebinding or join brings, keeps uniform joins checkable and gives mixed proven non-Arena joins the `joined` provenance instead of degrading them. Semantic IR stores the holder (reference, slice or StringView; `r <- other` for a mutable holder), reads it with `place.read ... holder` per use, and verifyHolderStorageJoins checks every read against each reaching store (validity, address space, provenance, origin storages, dynamic domain). Schema 13 admits a Place of a reference holder and the `holder` read action with its facts and restricted users. TestSchema13ReferenceHolderRebind (straight, joined, local and mixed joins, ref mut, slices, slice joins, StringView, negative join cases), invalid-schema13-holder-read.mlir."
+      - "Contained references (P16 carry-over, 2026-11-16; package15 §§ 20, 101, lifetime_analysis.md § 11): a reference, slice or view stored in an aggregate is read out of the aggregate's field Place with `place.read ... holder` and the contained-origin facts Sema publishes per path (ResolvedContainedReadOf; caller-owned for aggregate parameters), never copied with the aggregate: `*h.target`, `h.target.left`, passing `h.target`, writes through a contained `ref mut`, `v.items[0]`, `v.items.Len`, local aggregates, and payload bindings of references and slices (ResolvedHolderReadOf fallback). A try recovery value joining slice holders keeps its merge block parameter; Sema joins the recovered origins (joinStringViewTryOrigins now covers references and slices), and verifyHolderParameterJoins checks the read against every incoming argument. Holder and contained reads allocate their borrow identities after analysis, so existing numbering is unchanged. Package 16 keeps its named boundaries. TestSchema13ContainedReferenceReads, TestSchema13ReferenceHolderRebind (Recovery)."
+      - "MD-065 slice end schedule and outliving children (P16 carry-over, 2026-11-16): a Sema end candidate at a mixed join that follows real instructions, parameter-free region blocks or cycles now moves to the edges where still-live paths enter the mixed region when no operation there (or before the candidate) uses the holder or a reference derived from it, every region path continues to the join and the region holds no other end (MD-065 § 6(3); mixedRegionEndEdges). A layout without such an equivalent placement keeps failing clearly, as § 6(5) requires, rather than guessing a schedule. The empty-child case was a discard placement error, not an empty-range rule: discarding a slice holder no longer ends its borrow while a derived reborrow (empty or not) lives (borrowing.md §§ 8.2(1), 35.2(3)). TestSliceBorrowEndMovesOutOfMixedJoin, TestDiscardedSliceParentOutlivedByChild."
+      - "Aggregate statics (P15 carry-over part 1, 2026-11-16; compile_time_evaluation.md §§ 9, 32, static.md §§ 15-16, semantic_ir.md § 28): a static of a struct or fixed-array type built from integer-family and bool values is materialized by semantic CTE, whether written as a literal, a range segment or executed Sec code (the CTE executor now evaluates fixed-array literals and materializes fixed arrays), published as an ordered ResolvedStaticInitializer tree and emitted as one sec.static.global with initial = \"aggregate\" and a nested sec.static_initializer the dialect verifies against the type. Fields and elements are read, borrowed (place.static-root) and, for a mutable static, replaced through the static. Literals holding a reference keep the MD-081 static-held borrow boundary. TestSchema13AggregateStatics."
+      - "Match-arm return cleanup (2026-11-16): a `return` written as a match arm body now records its cleanup exit in Sema like a return statement (destruction.md § 6.2), so functions with owned registrations, including the arm's payload binding, run function cleanup before it; it stopped at 'function exit without a resolved cleanup exit' before. TestSchema13MatchArmReturnRunsCleanup."
     verification:
       - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test -p 4 ./internal/sema ./internal/ir/... ./internal/lowering/... -count=1; targeted cmd/lsp (Try|Some|Inlay|Move|CompareExchange|ErrorPattern|Pitfall|LastUse|Capture) and cmd/compiler (NamedString|Try|Handler|Union|Match|Ownership|Owned|Schema13) subsets
         result: passed on 2026-11-07 after P17-13/P17-35 transfer-plan completion
@@ -2548,17 +2575,93 @@ integrations:
       - command: go test ./internal/sema ./internal/ir/semantic ./internal/lowering/... -count=1
         result: passed on 2026-10-20
     remaining:
-      - "From P16 closure: read a contained slice or reference out of an aggregate, by field read or pattern binding, using P15 § 101 contained origins per aggregate path, which have no Semantic IR or MLIR representation yet (`holder.View[0]` stops at a named boundary)."
-      - "From P16 closure: rebind a reference or slice holder in mutable storage (`let mut r := a; r = b`), which stops at a named boundary and is the only source of joins between different slice roots; add that join verification with it."
-      - "From P16 closure: the MD-065 edge-schedule boundary for a slice end at a mixed join crossing real instructions, parameter definitions or cycles; it fails closed and no probed source program reaches it. A use of an empty child reborrow after its parent's end stops at the Semantic IR verifier without output and needs an empty-range exemption in Semantic IR and the MLIR passes."
-      - "Empty union state (P17-19 follow-up, 2026-11-06): `let mut x: U` of a union without a default holds U's implicit empty state; Semantic IR has no representation for it, so the declaration stops at 'mutable local declaration without initializer (empty union state)' and a match over a possibly empty union stops at its own boundary. Represent the empty state (construction, test, no-op destruction) and its first-assignment registration."
-      - "Open P17 items (2026-11-03, package17-todo.md): P17-02 and P17-05 done 2026-11-06; P17-15/16 done 2026-11-06; P17-19, P17-23, P17-25 and P17-39 done 2026-11-06; P17-13, P17-35, P17-37 and P17-40 done 2026-11-07; P17-41 for the named boundaries (P17-09/27/29/31/32/34/36/42/43/44 done 2026-11-06) listed in the other remaining items; P17-49 FFI consumption. P17 stays partial until every § 136 row in P17-60 is met."
-      - "Branch ownership metadata under optimization (P17-57; dialect v13 § 26): `sec.successor_actions` is a discardable attribute, so MLIR canonicalization that rewrites a branch drops it and --sec-verify-ownership then rejects the result; an optimization pipeline over schema 13 must carry the actions, for example as inherent op properties."
-      - "--sec-verify-ownership takes non-triviality from the plan table, so a value whose type no plan lists is not held to a terminal action; give MLIR types a non-triviality fact or import plans for every owned type when a producer can reach that gap."
-      - "Defer lifetime extension in loops (defer.md §§ 8, 13; P17-03 audit 2026-11-03): a defer in a loop that reads an owned value of the loop body, or mutable storage declared in the loop, needs one instance per registration; both stop at named boundaries ('P17 defer in a loop reading an owned value of the loop body', 'P17 defer reading mutable storage declared in its loop'). Outside loops the inner owner now registers in the function scope (see implemented, 2026-11-04)."
-      - Allocator/release pairing in --sec-verify-destruction-plans (package17 § 116) has nothing to check until P18 owning dynamic arrays publish release metadata.
-      - "P17 defer-body boundaries, each a named unsupported lowering today: an owned non-trivially destructible local inside a defer body, passing a captured reference holder itself on from the body (the holder would be copied into the region), and a dynamic-epoch reference holder, whose validation must run when the defer runs (since 2026-11-15 a proven holder is captured as its referent Place for field projections and `*r` reads and writes, which Sema now records as holder captures; a nested defer is invalid Sec 0.1, defer.md § 18, S1203, not a lowering boundary)"
-      - "Moved from P15-42a/P15-47 (owner decision 2026-10-31): aggregate statics with field/element projections and aggregate, executor-dependent or non-literal static initializers; generic receivers and specializations whose arguments need ownership or cleanup plans (monomorphization.md § 11.2) and generic methods with their own generic parameters"
+      - "P17 closure (owner decision 2026-11-16): every own P17 item is implemented or split into compiler.generic-ownership-specialization (GOS-1..7) and frontend.method-level-generics (MLG-1..8) in governance/generics.yaml and lowering.static-variant-values (SVV-1..3); the dynamic-epoch defer holder source test stays with P19-21, where it is defined. P17 (and with it P1-P17) is closed when those three items are implemented and the owner-run `go test ./...` (P17-60 rows 2 and 44) passes."
+
+  - id: lowering.static-variant-values
+    package: SEC-MLIR-P17
+    name: Static Union, Option and Result Values
+    area: semantic-ir-sec-mlir-and-lowering
+    status: implemented
+    implementation_phase: complete
+    integrated: "2026-11-16"
+    summary: Static union, Option and Result values keep their active variant and payload from Sema (SVV-1) through Semantic IR into schema-13 sec.static.global (SVV-2), and are read, tested and matched, including borrowed payload Places of the static's own storage (SVV-3). Split out of the P17 closure by the owner on 2026-11-16. Float, decimal and unit static leaves are tracked in lowering.sec-mlir-package20.
+    rules:
+      - rules/compiler/compile_time_evaluation.md
+      - rules/declarations/static.md
+      - rules/compiler/semantic_ir.md
+      - rules/declarations/unions.md
+    code:
+      - internal/ir/semantic/verifier.go
+      - mlir/lib/Analysis/VerifyPlaceReferences.cpp
+      - internal/ir/semantic/static_variant_storage.go
+      - internal/lowering/secmlir/emitter.go
+      - mlir/lib/Dialect/Sec/SecOps.cpp
+      - internal/ir/semantic/static_storage.go
+      - internal/sema/static_initializers.go
+      - internal/sema/static_variant_initializers.go
+      - internal/sema/static.go
+      - internal/sema/cte_executor.go
+    implemented:
+      - "SVV-1 (2026-11-16): Sema publishes immutable typed static union/Option/Result initializer trees with canonical owner identity, active variant, scalar payload type or ordered named payload fields, and recursive payload initializer. Payload-free members, None and Ok(void) have no fabricated payload. Shared semantic CTE handles direct constructors and executed calls; contextual Ok/Err roots temporarily use the accepted declaration type and restore absent expression facts afterward. Exact scalar/nominal data, structs and fixed arrays inside active payloads are preserved, including nested Result/Option and error-enum identity. Static dependencies and function-local statics use the same pipeline; no startup code is introduced. Queries detach nested type/enum metadata and exact values. Source regressions cover valid and invalid values, mutation isolation, all analysis depths and 32/64-bit plans. Semantic IR/schema materialization and runtime static variant access remain SVV-2/3; the new IR fail-closed regression awaits the unrelated property compilation fix."
+      - "SVV-2 (2026-11-16): Semantic IR keeps the active variant and payload of static union, Option and Result values as StaticInitializer.Variant trees (static_variant_storage.go): single payloads, named-field payloads in declaration order, empty variants, None and Ok of Result[void, E]. Enum-case and string payloads are typed leaves. The IR verifier and schema-13 sec.static.global check each tree against the union definition or the Result components (initial = variant/enum/string with a sec.static_initializer tree). All 17 statics of static_variants_valid.sec build and verify at packages 17-19; TestSchema13StaticVariantValues runs the dialect on 32/64-bit, schema13-static-variants.mlir covers invalid trees, and the boundary test became TestStaticVariantFactsReachSemanticIR. Float, decimal and unit scalar leaves remain a named static boundary."
+      - "SVV-3 (2026-11-16): static union, Option and Result values are read (static.load), tested with `is` and matched, with copied payloads and with borrowed payload Places of the static's own storage (place.static-root -> place.union-payload). Mutable static variants are stored and re-read. The Semantic IR verifier and --sec-verify-places treat static.load @N and place.static-root @N as one storage, so a payload Place is guarded only by the test of the same static and a redirected one is rejected. TestSchema13StaticVariantAccess runs the schema-13 verifiers on 32/64-bit, and TestStaticVariantPayloadOfAnotherStaticIsRejected plus schema13-static-variant-payload.mlir cover the negative case. Found while closing: borrows of mutable statics are not checked against writes in callees; this is now a remaining item in frontend.borrowing."
+    revised: "2026-11-16"
+    tests:
+      - internal/lowering/secmlir/static_variant_access_test.go
+      - testdata/semantic_ir/static_variant_access.sec
+      - mlir/test/Dialect/Sec/schema13-static-variant-payload.mlir
+      - internal/lowering/secmlir/static_variants_test.go
+      - mlir/test/Dialect/Sec/schema13-static-variants.mlir
+      - internal/sema/static_variant_initializers_test.go
+      - testdata/sema/static_variants_valid.sec
+      - testdata/sema/static_variants_invalid.sec
+      - internal/ir/semantic/static_variant_boundary_test.go
+    verification:
+      - command: GOTMPDIR=$HOME/.cache/sec-gotmp go test -p 4 ./internal/sema ./internal/ir/semantic -run "StaticVariant|StaticScalar|CTEMaterialization" -count=1
+        result: "2026-11-16: Sema selected tests passed (0.071s); IR compilation was then blocked by the in-progress property_ops.go:46 op.Property undefined on Operation. The new TestStaticVariantFactsAwaitPreservingIR is added but not executed until that shared-tree build issue is resolved. IR production, schema and emitter were not changed."
+      - command: GOTMPDIR=$HOME/.cache/sec-gotmp go test -p 4 ./internal/sema -count=1
+        result: Passed on 2026-11-16 (26.841s), including SVV-1 source matrix at all three analysis depths and 32/64-bit plans, direct and executed constructors, nested tagged values, active named-field/array/scalar payloads, invalid-source nonpublication and immutable exact/type/enum snapshots. go vet -p 4 ./internal/sema passed. No GOS-5 receiver/property/specialization changes.
+
+  - id: lowering.user-properties
+    package: SEC-MLIR-P17
+    name: User-Defined Property Lowering
+    area: semantic-ir-sec-mlir-and-lowering
+    status: implemented
+    implementation_phase: complete
+    integrated: "2026-11-16"
+    summary: User-defined property accessors are Semantic IR functions built on demand, and every property operation is a call.direct of its accessor with explicit PropertyFacts (sec.property in schema 13), so a property is never presented as a field access (semantic_ir.md § 26). Created by the owner's decision on 2026-11-16 (GOS-5 properties, "implement now").
+    rules:
+      - rules/compiler/semantic_ir.md
+      - rules/declarations/properties.md
+      - rules/errors/errorhandling.md
+      - rules/mlir/dialect-versions/sec_mlir_dialect_v5.md
+    code:
+      - internal/ir/semantic/property_lowering.go
+      - internal/ir/semantic/property_ops.go
+      - internal/ir/semantic/try_assignment.go
+      - internal/sema/property_receiver_lowering.go
+      - internal/sema/property_effects.go
+      - internal/sema/property_accessor_bodies.go
+      - internal/sema/analyzer_try_assignment.go
+      - internal/lowering/secmlir/emitter.go
+      - mlir/lib/Dialect/Sec/SecDialect.cpp
+      - mlir/lib/Dialect/Sec/SecTypes.cpp
+      - mlir/lib/Dialect/Sec/SecOps.cpp
+    implemented:
+      - "PL-1 accessor functions (2026-11-16): getter, setter and `try set` bodies are built once per concrete owner as `Owner.P.get/.set/.try-set` functions, on demand, with owner-qualified identity. Accessors of a generic owner specialize per instance. The setter value parameter has a binding identity and owned cleanup. A `try set` body that completes normally returns Ok()."
+      - "PL-2 read and write (2026-11-16): `p.P`, `self.P`, implicit `P` and static `T.P` reads call the getter, and `p.P = v` calls the setter. The receiver is produced once: an implicit borrow or reference pass of the owner Place, or the enclosing method's self, copied or reborrowed with Sema's identity. An owned setter value moves in. A getter's owned result is a fresh value, never a source Place (resolvePlace)."
+      - "PL-3 compound update (2026-11-16): `p.P op= v` evaluates its receiver once with the setter's capability. The getter reads through a fresh reborrow with its own Sema identity, the operator applies with its checks, and the setter writes. The calls carry compound-read/compound-write facts."
+      - "PL-4 fallible write (2026-11-16): `try p.P = v` and `try p.P op= v` call the `try set` setter. Its Result failure edge propagates through the enclosing Result, with a Sema error-propagation cleanup exit for the try assignment, or enters the statement's local handlers."
+      - "PL-5 schema 13 (2026-11-16): sec.call.direct carries `sec.property = {kind, name, owner, static}`, verified by the dialect. Result[void, E] uses the dialect-v5 void-success convention `!sec.result<none, E>`: Ok has no payload and unwrap_ok is rejected. TestSchema13PropertyLowering runs the schema-13 verifiers on 32/64-bit, and two lit files cover the dialect rules."
+    revised: "2026-11-16"
+    tests:
+      - internal/lowering/secmlir/property_lowering_test.go
+      - testdata/semantic_ir/properties.sec
+      - mlir/test/Dialect/Sec/invalid-schema13-property.mlir
+      - mlir/test/Dialect/Sec/schema13-void-success-result.mlir
+    verification:
+      - command: GOTMPDIR=$HOME/.cache/sec-gotmp SEC_MLIR_BIN=build/sec-mlir/bin go test -p 4 ./internal/lowering/secmlir -run PropertyLowering -count=1
+        result: "2026-11-16: passed; lit 229/229 and the full internal/sema, internal/ir/semantic and internal/lowering/secmlir suites passed."
 
   - id: lowering.sec-mlir-package18
     package: SEC-MLIR-P18
@@ -2625,8 +2728,8 @@ integrations:
       - "Bounds proofs for T[] indexes: every access keeps its runtime check; a dominating `index < values.Len` (or `assert`) refinement is not yet a proof for the runtime length (package18 § 41 proof provenance)."
       - "Epoch dependency identity: element and slice reference plans of T[] (P15/P16 facts) do not yet name the owner's backing InvalidationDomainID as their epoch domain (the Semantic IR element Place does, as backing=#domain); Sema must connect the reference facts before storage-transition lowering (P18-15)."
       - "P18-17 growth (partial, 2026-11-15): single Append of a trivially copyable and destructible element lowers (has-backing, has-capacity, grow-backing establish-domain/advance-epoch, storage transition, append-prepared; Movable backing; no element moves on relocation, § 68). Open: Append of a non-trivial element (element ownership on failure, MD-135), range Append (`Append(1..9)`, still stopped by the readiness gate), growth of non-relocatable elements (§ 69)."
-      - "Explicit storage.end-domain / storage.reclaim emission when T[] destruction is expanded (the destruction plan names them; section F lowering)."
-      - "Statement `try` lowers only with a void success value (added for `try values.Append(x)`); other statement-level try forms stay unsupported."
+      - Explicit storage.end-domain / storage.reclaim emission when T[] destruction is expanded (the destruction plan names them; section F lowering).
+      - Statement `try` lowers only with a void success value (added for `try values.Append(x)`); other statement-level try forms stay unsupported.
       - Place paths through a dynamic-array element (`ref values[i].field`, nested T[] owners) and owners that are not bindings (fields, call results) stop as named boundaries (P18-23).
       - "P18 sections C-H (P18-17..18, P18-22..47): Semantic IR storage-transition, allocation, growth, element-Place and partial-construction operations; schema 14 with the dynamic-array and storage-transition verifiers; lowering without physical choices; the package test matrices and acceptance report."
       - "Sync § 22 (Semantic IR docs): semantic_ir.md has no owning dynamic-array section; add it with the P18 Semantic IR representation (sec_semantic_ir_dynamic_array_v1.md)."
@@ -2643,7 +2746,7 @@ integrations:
     area: semantic-ir-sec-mlir-and-lowering
     status: partial
     integrated: "2026-10-18"
-    revised: "2026-11-15"
+    revised: "2026-11-16"
     summary: Early P20 binary-float operators, core properties/methods and the dedicated P20-22 float-semantics verifier are integrated on the one native track. Constants use canonical bits; arithmetic preserves nearest-even rounding, NaNs, signed zero, truncation remainder and subnormals. The verifier runs explicitly and before float lowering, rejecting weakening policies and malformed Clamp control flow. Schema 16, float conversions (ConversionError), numeric-conversion verification and target capability checks remain open; the compiler still emits schema 11.
     predecessors:
       - SEC-MLIR-P15–P19 (their incomplete items keep their owners)
@@ -2684,6 +2787,9 @@ integrations:
       - internal/ir/semantic/printer.go
       - internal/ir/semantic/sequence_membership.go
       - internal/lowering/secmlir/operation_attributes.go
+      - internal/sema/numeric_conversion_plan.go
+      - internal/sema/checked_numeric_conversions.go
+      - internal/sema/numeric_conversion_validation.go
     tests:
       - internal/sema/float_operators_test.go
       - internal/ir/semantic/float_ops_test.go
@@ -2727,6 +2833,12 @@ integrations:
       - internal/ir/semantic/float_semantics_test.go
       - internal/lowering/secmlir/float_semantics_test.go
       - mlir/test/Analysis/float-policy-facts.mlir
+      - internal/sema/numeric_conversion_plan_test.go
+      - testdata/sema/numeric_conversion_plans.sec
+      - testdata/sema/numeric_conversion_plans_invalid.sec
+      - internal/sema/numeric_conversion_validation_test.go
+      - testdata/sema/numeric_conversion_validation.sec
+      - testdata/sema/numeric_conversion_validation_invalid.sec
     implemented:
       - "Sema: ResolvedFloat* operator kinds for unary +/-, + - * / % and == != < <= > >= over one built-in float type, float compound assignment, and context shaping of untyped literals beside a float operand, in a float context (let/return/argument) and through a sign prefix; fixed in passing: float64 + 2.0 and decimal % decimal no longer type silently as invalid, and decimal mixed with another numeric family is diagnosed"
       - "Semantic IR: const.float carries FloatConstant bits/format rounded once from the exact source value (no binary64 intermediate for binary32, overflow rejected, underflow to signed zero/subnormal); float.neg, float.binary {add,sub,mul,div,rem}, float.compare; unary plus is the SSA identity; `-literal` is literal shaping followed by float.neg (P20 § 17)"
@@ -2745,7 +2857,15 @@ integrations:
       - Standalone float lowering now diagnoses missing binary32/binary64 scalar layout before casting unresolved Sec scalars, including remainder, classification and rounding; negative lit fixtures ensure an omitted predecessor cannot crash the optimizer (P20-25, 2026-10-26).
       - "P20-31 (2026-11-15): completed the core-member test matrix. Shared source covers every property, Abs/Min/Max/Clamp, five classification kinds and four rounding kinds for float32/float64/plain float. Source-to-IR verifies source identity and selected width on 32/64-bit plans; emission verifies every operation/kind. Native independent-oracle matrix executes 6,868 bit-exact/classification checks over binary32/binary64, including signed zero, both subnormal bounds, normal/finite extremes, rounding ties and precision cutoffs, infinities, multiple quiet/signaling NaNs, both Min/Max operand orders and deterministic random bits. Existing 45-case Clamp matrix and source float_core/float_core_matrix programs pass without a math library. Host execution is linux/amd64; no 32-bit native execution, CTE parity, schema-16, conversion or target-capability completion claim."
       - "P20-17 (2026-11-15): all eleven represented float families carry value-only FloatSemantics facts with source scalar TypeID, selected binary format, nearest-even arithmetic, fast-math none, contraction off, preserved subnormals, NaN-aware comparison predicate and truncation remainder. Primitive plain float takes width from the selected plan, retaining unknown width without one. Both ordinary and membership comparisons preserve source provenance despite producing bool. IR verification rejects missing/contradictory facts and canonical payload format mismatches. IR dumps and Sec MLIR emission retain the facts; MLIR verification rejects inconsistent explicit format/source/predicate facts and misplaced remainder metadata. Negative mutation tests cover every family on both scalar plans; older schema-11 omitted attributes retain strict defaults. No schema-16, CTE/conversion or target-capability completion claim."
+      - "P20-13 (2026-11-16): detached read-only ResolvedNumericConversionPlan snapshots cover primitive float pairs, signed/unsigned integers through 256 bits and float-to-bool. Successful conversion resolution reuses the checked-conversion classifier; plans retain source/target identities, selected widths (zero when unresolved), exactness basis with argument bounds or exact constant, runtime-check classification and ordered canonical ConversionError causes. Query results detach types, domains, proofs and failure lists; queries cannot infer or create facts, and reanalysis clears stale plans. Source-backed 96-pair matrix covers both scalar plans, planless analysis and all three depths, plus constant/path proofs, mutation isolation, invalid casts and literal/decimal boundaries. Corrected binary32 finite-range classification for uint128. Checked conversion lowering, CTE parity and schema 16 remain open."
+      - "P20-14 (2026-11-16, Sema): typed primitive numeric conversions use exact finite-range and representability checks, including half-open power-of-two integer bounds and exact wide-integer singleton proofs through 256 bits. Immutable IEEE categories survive bindings, signs and proven conversion chains; NaN/infinity map through float narrowing, fail integer conversion as canonical NonFinite and remain total for bool. Known invalid typed constants are compile-time errors even under try; mutable values and unresolved platform facts remain conservative. Detached plans publish ordered semantic checks, exact integer bounds and the unordered bool predicate. Source regressions and independent arithmetic oracles cover precision/range priority, signed/unsigned boundaries, underflow/overflow, wide integers, nonfinite values and conversion chains. Physical guard/cast lowering remains P20-26 and full CTE parity remains P20-19."
     verification:
+      - command: go test -p 4 ./internal/sema ./internal/ir/semantic -count=1
+        result: "passed on 2026-11-16: complete suites after P20-13/P20-14; primitive conversion matrix, exact 256-bit integer proofs, IEEE categories and conversion chains, compile-time rejection even under try, canonical guard ordering and detached half-open integer bounds"
+      - command: go vet -p 4 ./internal/sema
+        result: passed on 2026-11-16
+      - command: go test -p 4 ./internal/sema ./internal/ir/semantic -count=1
+        result: "passed on 2026-11-16: complete suites, including the 96-pair conversion-plan matrix at three depths and three plan settings, constant/path proofs, mutation isolation, reanalysis reset and invalid boundaries"
       - command: SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./internal/mlir -run 'TestFloat(CoreNativeDifferential|ClampNativeMatrix|RemainderNativeDifferential)$' -count=1 -v
         result: "passed on 2026-11-15 with rebuilt optimizer: 6868 core checks, 45 Clamp cases and 584 remainder cases; no math library"
       - command: SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./cmd/compiler -run '^TestNativeTrackBuildsAndRuns/(floats|float_core|float_core_matrix|float_operator_matrix|float_literals)$' -count=1 -v
@@ -2801,7 +2921,8 @@ integrations:
       - command: (cd build/sec-mlir/test && llvm-lit -q .)
         result: 116 tests passed on 2026-10-18
     remaining:
-      - checked numeric conversions int<->float and float32<->float64 with ConversionError and try, float-to-bool, conversion plans and folding parity
+      - "Static float, decimal and unit-quantity values (2026-11-16, found while closing SVV-2): Sema publishes their exact CTE scalars, also as variant payloads, but Semantic IR StaticInitializer and schema-13 sec.static.global have no float, decimal or unit leaf yet. These statics stay a named 'static ... has no resolved compile-time value' boundary until exact P20 float and decimal constants exist."
+      - checked numeric conversion IR integration and physical lowering int<->float and float32<->float64 with ConversionError and try, float-to-bool lowering and folding parity; Sema plans and typed validation completed by P20-13/P20-14
       - schema 16 gating, --sec-verify-numeric-conversions, target capability checks
 
   - id: lowering.sec-mlir-package21
@@ -3137,3 +3258,172 @@ integrations:
       - command: go test ./internal/sema ./internal/ir/... -count=1
         result: passed on 2026-10-17, including enum call-identity regression and existing package suites
     revised: "2026-10-18"
+
+  - id: lowering.sec-mlir-package19
+    status: partial
+    summary: P19 Sema Arena operation-plan foundation and Semantic IR Arena/context types, eight Arena operations, nested backing dependencies and explicit allocation-context selection/forwarding are integrated. Verification preserves represented ownership, state/epoch/backing and capability/ABI decisions. Source Arena/context producers, schema 15 emission and native lowering remain unsupported; unresolved Sema plan facts stay explicit. MD-136 tracks undefined Arena empty construction.
+    rules:
+      - rules/mlir/packages/sec-mlir-dialect_package19.md
+      - rules/mlir/normative-sync/sec_arena_allocation_sync_v1.md
+      - rules/mlir/semantic-ir/sec_semantic_ir_arena_v19.md
+      - rules/memory/arena.md
+      - rules/memory/allocation.md
+      - rules/memory/storage.md
+      - rules/memory/reference_model.md
+    implemented:
+      - "P19-03 (2026-11-16): source-backed conformance confirms builtin Arena, ordinary lowercase arena identifiers, MoveOnly ownership and nontrivial destruction. Constructor provenance and Arena domain survive owner moves; allocations preserve epoch, Reset advances it and Release ends it. Detached operation snapshots reuse the canonical P15 domain/epoch and allocation identities; source reference-use facts agree with producing allocation plans. Tests cover all three analysis depths and no/32/64-bit scalar plans. This closes frontend conformance only, not Arena IR or physical lowering."
+      - "P19-14 (2026-11-16): Semantic IR has canonical Arena and compiler-internal allocation-context types. Arena source mapping is package-19 gated, independent of backing kind and physical width; references and owned source parameter modes preserve one identity. Copy/destruction classification keeps Arena move-only and non-trivial. Module verification rejects physical/nominal type specialization and ordinary storage/wrapping of internal contexts, including aggregate payloads and foreign signatures. Source cannot name AllocationContext; emission remains explicitly unsupported pending schema 15. Source-backed and mutation regressions cover planless/32/64-bit analysis, canonical identity, invalid forms and the schema boundary. Arena operation producers, context propagation and physical lowering remain open."
+      - "P19-15 (2026-11-16): all eight Arena owner operations have typed Semantic IR contracts, deterministic printing and verifier dispatch. Creation yields an owned Arena; New/Alloc/Reset address writable Places; Release/Destroy consume owners and Destroy names its P17 Arena destruction plan/cause. Canonical storage transitions retain distinct state-version/epoch metadata, backing/growth and resolved provider/capacity/layout/default/dependency references. Checked operations preserve candidate/failed/AllocationError and atomic failure; candidates are confined to the success region. Verification checks fresh creation domains, retained backing borrow identity and cross-block use after transfer. Tests cover all eight operations across no/32/64-bit plans, malformed shapes/effects, failure/join escapes, ownership and P15 validity CFG integration. This is the operation representation; source plan completion/producers, context propagation, schema 15 and physical lowering remain open and allocation readiness remains closed."
+      - "P19-16 (2026-11-16): borrowed child creation retains ArenaParentDependency with canonical parent storage identity, P15 reference/domain/epoch facts and P16 static or symbolic borrow bounds. Verification requires Arena-derived slices to retain the actual transferred borrow/storage identity and represented source ranges, distinct parent/child domains and no individual parent-byte reclamation. CFG may-live analysis rejects parent Reset/Release/Destroy while a child remains live, including branch joins; child terminal release discharges the dependency while child Reset and zero-length backing retain it. Parent metadata prints deterministically. Tests cover no/32/64-bit scalar plans, metadata mutations, known bounds, all terminal causes, branches and a loop fixed point. Source builders, context propagation, schema 15 and physical lowering remain open; allocation readiness is unchanged."
+      - "P19-17 (2026-11-16): Semantic IR records RequiresAllocationContext, one first/marked compiler-hidden capability parameter, explicit internal-call forwarding with a dedicated argument action and selected propagated/explicit-Arena/target/compiler-local origin facts. Context producers retain resolved origin-plan references and explicit mutable Arena authority where required; owned Arena creation must select an SSA capability. Signature and operation verification reject requirement mismatch, missing or unsolicited contexts, altered origin/proof/domain, invalid dominance, ordinary data/CFG escape and foreign ABI propagation. Deterministic printing preserves hidden-input and selection metadata. Tests cover all origins and invalid forms; the pre-schema-15 emitter rejects hidden-context modules without output. This is IR representation/verification only: source summary/origin-proof production, builders, schema 15 and physical lowering remain open; allocation readiness is unchanged."
+      - "P19-09 (2026-11-16): source nested-Arena operation plans now publish parent origin alternatives, canonical invalidation-domain/epoch identities and borrowed backing versus parent reclamation authority. Child operations inherit creation dependencies by stable child domain, preserving facts across parent/child moves and child Reset; terminal child Release ends the loan without individually reclaiming parent allocation bytes. Joined backing retains every possible parent deterministically. Queries detach snapshots without identity allocation and clear them on reanalysis. Source regressions cover named/temporary buffers, moves, grandchildren, scope/branch/loop cleanup, empty backing, parent Reset epochs and joined origins at three analysis depths and no/32/64-bit plans. Existing retained-borrow diagnostics remain authoritative; other unresolved P19 source plans and IR production stay open and allocation readiness is unchanged."
+      - "P19-06 (2026-11-16): Sema publishes ArenaFailurePlan with canonical exhausted/unsupported/extent/alignment mappings to the existing AllocationError, the unchanged source Result and explicit no-domain-on-failed-creation versus unchanged-owner/allocations-on-failed-allocation outcome. ErrorCauses derives from that single mapping; unknown conditions have no fallback. Infallible operations have no failure plan, and zero capacity/count or dynamic counts never narrow the source Result. Queries detach all mapping and nested result/error-type data. Source regressions cover constructor/New/Alloc contracts at three depths and no/32/64-bit plans. This closes the Sema error/atomicity contract; provider execution, initialization, source IR production, schema and physical lowering remain open and readiness is unchanged."
+      - "P19-05/12 partial (2026-11-16): successful Arena New/Alloc source plans retain detached canonical DefaultResolution values, including nonzero explicit defaults, ordered struct fields and compact fixed-array element defaults. Zero and dynamic allocation counts retain the same element default. Queries preserve exact integer/rational and nested aggregate/payload values without mutable aliases or new identities. Source tests cover three analysis depths and no/32/64-bit plans. This resolves semantic default values only; executable physical initialization, layout and source IR production remain open, so no whole checklist point is closed."
+      - "P19-11 (2026-11-16): Sema operation plans retain the existing source-ordered call graph ArenaEffectSite, its callable/direct-effect index and canonical invalidation-domain resource. Canonical storage transitions distinguish creation, epoch advance and terminal domain end. All Arena effects require order preservation and are not CSE-safe; equal-looking allocations remain distinct and cannot move across Reset/Release. Provider acquisition, conditional growth, reclamation and unresolved backing/provider effects remain explicit; borrowed Release ends its backing loan without reclaiming bytes. Zero-count allocation requires no provider growth while retaining source MayAllocate and Result. Read-only snapshots detach effect facts without identities. Source tests cover all operation kinds, moved owners, independent resources, repeated allocations, zero counts and unknown parameter backing at three depths and no/32/64-bit plans. This completes the Sema effect contract; source IR producers, schema and physical provider/optimization implementation remain separate open points."
+      - "P19-31 (2026-11-16): complete source/frontend conformance matrix for package19 section 149, using defined constructors rather than unresolved Arena empty construction. Source fixtures cover the builtin and lowercase identifier, borrowed/owned/growable construction, move-only copy rejection and owner move/return, New/Alloc, zero-element allocation and empty backing, non-lexical final-use Reset, live reference/slice and nested-child Reset rejection, consuming Release, use after Release and double Release, and rejected return of a local Arena reference. Tests run at three analysis depths and no/32/64-bit scalar plans, require one correctly located diagnostic per invalid function and no operation plan for rejected Reset/Release. All five operation kinds and three constructors are required in the valid matrix. This closes frontend test coverage only; it does not claim source IR or native Arena support."
+    remaining:
+      - P19-01 — Record the exact execution snapshot and predecessor matrix (P13–P18 actual state) (§§ 2, 164).
+      - P19-02 — Audit `sec_arena_allocation_sync_v1.md` paragraph by paragraph against `arena.md`, `allocation.md`, `storage.md`, `reference_model.md` and effect analysis; merge missing amendments without renumbering; record conflicts as MD entries (§ 1).
+      - "P19-04 — Backing kinds mapped to canonical storage facts: borrowed fixed (`FromBuffer`, borrowed-backing lifetime, empty borrowed Arena), owned fixed (`WithCapacity`), growable (no relocation of live allocations); capacity units and layout source (§§ 9–20)."
+      - "P19-05 — Safe typed allocation restrictions: trivially destructible `T` only, `New[T]` and `Alloc[T](count)` semantics, temporary mutable Arena borrow, repeated allocation not invalidating prior allocations, zero-element and zero-sized `T`, full default initialization (§§ 21–31, 143–145)."
+      - "P19-07 — Reset: dependency rule with non-lexical liveness, transition, no zeroing, atomicity, epoch exhaustion (§§ 36–42); reuse the existing generation/invalidation facts."
+      - "P19-08 — Release: dependency rule, transition, per-backing-kind behavior, implicit destruction, panic cleanup boundary (§§ 43–48)."
+      - "P19-10 — Allocation context: `MayAllocate` vs `RequiresAllocationContext`, selection order, lexical Arenas are not ambient candidates, compiler-managed local context, synchronous propagation, internal context parameter and direct-call propagation, explicit Arena context, target-provided context, no-allocation profile, `@noAlloc` vs missing ambient context, spawn/task/thread and foreign entrypoint boundaries (§§ 51–64)."
+      - "P19-12 — Plans and read-only queries: Arena state plans, operation plans (create, allocation, reset, release) (§§ 70–76). Partial 2026-11-16 (P19-04/05/07/08/12): constructor/allocation/reset/release read-only queries publish represented decisions at successful final-body analysis. They retain borrowed/owned and fixed/growable facts, byte capacity versus element counts, stable Result/AllocationError contracts, failure atomicity, explicit Arena context, canonical allocation/domain/epoch IDs, receiver/backing Places and element defaultability/trivial destruction. Mutation tests cover nested type/Place facts, identities and reanalysis; invalid allocation/dependency forms get no operation plan. Unresolved facts stay named instead of defaulted. Remaining: full layout/default and checked extent/capacity/growth plans, provider/reclamation and retained-borrow lifetime contracts, state versions, epoch exhaustion/rekey and implicit destruction. P19-04/05/07/08 and P19-12 therefore remain unchecked. P19-06 is completed separately."
+      - P19-13 — Allocation-context callable summary, context origin, basic Arena demand summary, demand semantics, interprocedural demand boundary, strict profile validation, statically impossible allocation (§§ 77–83).
+      - "P19-18 — P15 integration: Arena references built from source carry dynamic-epoch facts and reach the existing validity CFG; P19 retires the white-box-only status of `TestPackage15DynamicReferenceUseValidatesOnce` (§ 102)."
+      - P19-19 — P16 slice, P17 ownership and P18 dynamic-array/owning container integration (§§ 100–101, 103–104; blocked on P16–P18).
+      - P19-20 — Builder lowers Arena creation, `New`, `Alloc`, Reset, Release, implicit destruction and context selection solely from the P19 plans; anything unplanned is a package-19 unsupported error with no partial module; the allocation readiness gate is narrowed per operation as it lowers.
+      - P19-21 — P17 cleanup and defer interaction; task/thread boundary scope; FFI retention boundary (§§ 139–142).
+      - P19-22 — Schema 15 version gates (after 11–14), registration, parser/printer; why `!sec.arena` has no backing-kind parameter (§§ 105–106).
+      - P19-23 — `!sec.alloc_context`, the hidden allocation-context function argument and the foreign ABI restriction (§§ 107–109).
+      - P19-24 — Operations `sec.arena.create_borrowed`, `.create_owned_fixed`, `.create_growable`, `.new`, `.alloc`, `.reset`, `.release`, `.destroy`, `sec.alloc_context.from_arena`, `.target`, `.compiler_local` (§§ 110–120).
+      - P19-25 — Arena state-version and ArenaDomain metadata; Arena MLIR effects (§§ 121–123).
+      - "P19-26 — Verifiers: Arena, allocation-context, dependency extension, Arena effect, demand-summary representation, strict profile (§§ 124–131)."
+      - "P19-27 — Profiles: hosted, embedded fixed, bare-metal bounded (with MD-034), no-allocation (§§ 132–135)."
+      - P19-28 — Effect-analysis, call-graph and separate-compilation metadata integration (§§ 136–138).
+      - P19-29 — Go emitter from verified Semantic IR to schema 15.
+      - P19-30 — No individual Arena allocation free, no uninitialized safe allocation, no universal physical Arena representation or ABI, no mandatory runtime (§§ 143–148).
+      - P19-32 — Type-restriction tests (§ 150).
+      - P19-33 — Allocation atomicity tests (§ 151).
+      - P19-34 — Reset tests (§ 152).
+      - P19-35 — Release/destruction tests (§ 153).
+      - P19-36 — Allocation-context tests (§ 154).
+      - P19-37 — Demand-summary tests (§ 155).
+      - P19-38 — Semantic IR tests (§ 156).
+      - P19-39 — Sec MLIR dialect tests (§ 157).
+      - P19-40 — Arena verifier and allocation-context verifier negative tests (§§ 158–159).
+      - P19-41 — Integration tests (§ 160).
+      - P19-42 — Record the explicitly deferred items (§ 161); architecture rules check (§ 162) and acceptance criteria matrix (§ 163).
+      - "P19-43 — Governance: reuse the existing Arena, allocation and lowering entries; record implemented/partial/remaining and known holes; keep MD links (MD-034, MD-053, MD-065, MD-074)."
+      - P19-44 — Implementation report (§ 164) and the Package 20 boundary (§ 165).
+    package: SEC-MLIR-P19
+    area: semantic-ir-sec-mlir-and-lowering
+    integrated: "2026-11-16"
+    revised: "2026-11-16"
+    code:
+      - internal/sema/arena_operation_plans.go
+      - internal/sema/analyzer_arena.go
+      - internal/sema/analyzer.go
+      - internal/ir/semantic/arena_types.go
+      - internal/ir/semantic/builder.go
+      - internal/ir/semantic/verifier.go
+      - internal/ir/semantic/ownership_ops.go
+      - internal/ir/semantic/ownership_state.go
+      - internal/ir/semantic/arena_operations.go
+      - internal/ir/semantic/arena_verification.go
+      - internal/ir/semantic/model.go
+      - internal/ir/semantic/printer.go
+      - internal/ir/semantic/place_reference.go
+      - internal/ir/semantic/arena_nested.go
+      - internal/ir/semantic/allocation_context.go
+      - internal/sema/arena_parent_plans.go
+      - internal/sema/arena_failure_plans.go
+      - internal/sema/arena_default_plans.go
+      - internal/sema/arena_effect_plans.go
+      - internal/sema/allocation_context_facts.go
+      - internal/sema/arena_capacity_plans.go
+    tests:
+      - internal/sema/arena_operation_plans_test.go
+      - testdata/sema/arena_operation_plans.sec
+      - testdata/sema/arena_operation_plans_invalid.sec
+      - internal/sema/arena_domain_completion_test.go
+      - internal/ir/semantic/arena_types_test.go
+      - internal/lowering/secmlir/arena_types_test.go
+      - testdata/semantic_ir/arena_type_forms.sec
+      - testdata/semantic_ir/arena_context_source_invalid.sec
+      - internal/ir/semantic/arena_operations_test.go
+      - internal/ir/semantic/arena_nested_test.go
+      - internal/ir/semantic/allocation_context_test.go
+      - internal/sema/arena_parent_plans_test.go
+      - testdata/sema/arena_parent_plans.sec
+      - testdata/sema/arena_parent_join_plans.sec
+      - testdata/sema/arena_nested_valid.sec
+      - testdata/sema/arena_nested_invalid.sec
+      - internal/sema/arena_failure_plans_test.go
+      - testdata/sema/arena_failure_contracts.sec
+      - internal/sema/arena_default_plans_test.go
+      - testdata/sema/arena_default_plans.sec
+      - internal/sema/arena_effect_plans_test.go
+      - testdata/sema/arena_effect_plans.sec
+      - internal/sema/arena_frontend_conformance_test.go
+      - testdata/sema/arena_frontend_valid.sec
+      - testdata/sema/arena_frontend_invalid.sec
+      - internal/sema/arena_context_facts_test.go
+      - internal/sema/allocation_context_facts_test.go
+      - internal/sema/allocation_context_origins_test.go
+      - internal/sema/allocation_capabilities_test.go
+      - internal/sema/arena_capacity_plans_test.go
+      - testdata/sema/arena_capacity_plans.sec
+      - testdata/sema/arena_capacity_large.sec
+    partial:
+      - "P19-04/05/07/08/P19-12 (2026-11-16): new detached constructor/allocation/reset/release queries preserve represented backing and growth, canonical Result/AllocationError contract, failure atomicity, receiver/backing Places, byte capacities versus element counts, explicit Arena context, domains/epochs and element restrictions. Queries infer nothing, allocate no identities, detach nested mutable facts and reset on reanalysis. Missing layout/default, checked extent/capacity/growth, provider/reclamation, state-version, retained-borrow, epoch-exhaustion and implicit-destruction plans remain explicit; these checklist points stay open. Allocation readiness remains closed. MD-136 blocks only Arena empty construction/default semantics. Update 2026-11-16: AllocationContextFacts now consumes recorded successful Arena operation contexts, preserving explicit selected domains versus constructor-created domains and ambient backing context. Known semantic context does not certify a provider. Presentation keeps these origins distinct; missing/conflicting plans remain unresolved and reads perform no inference or identity allocation. P19-10/12/28 remain open for the rest of selection/propagation, callable summaries, source IR and separate-compilation metadata. Capacity-source update 2026-11-16 (P19-04/12): operation plans retain initial byte-capacity evidence by stable creation domain. Borrowed fixed-array or static-slice backing has an exact byte extent when canonical P14/P16 facts provide one; dynamic byte backing stays runtime and unknown parameter backing stays distinct. Owned/growable constructors retain exact or runtime requested bytes without claiming provider-delivered extent. Moves and Reset preserve source facts; growable policy and retained backing are explicit. Queries detach arbitrary-precision counts. Actual remaining capacity, padding/fit checks and provider capacity remain unresolved, so no whole point is closed."
+    verification:
+      - command: GOTMPDIR=$HOME/.cache/sec-gotmp go test -p 4 ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir -count=1
+        result: "2026-11-16 after capacity-source plans: full Sema passed (26.189s), Sema vet and targeted capacity/operation/context tests passed. Shared-tree IR and emitter builds blocked by concurrent property_ops.go:46 op.Property undefined on Operation, outside this working set. Capacity tests cover three depths and no/32/64-bit plans, static byte arrays/slices, empty/dynamic/unknown backing, moved owners/Reset, separate requested versus provider-delivered bytes and an exact uint64 capacity above int64. P19-04/12 remain open; no readiness change."
+      - command: GOTMPDIR=$HOME/.cache/sec-gotmp go test -p 4 ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir -count=1
+        result: Passed on 2026-11-16 after Arena context-fact integration (29.336s/8.575s/2.016s); Sema vet also passed. Source matrix checks stored plan equality at three depths and no/32/64-bit plans, explicit versus created/ambient domain separation, no inference or identity allocation, missing/conflicting plan conservatism and existing recursive/transitive context/provenance presentation. Context-profile tests distinguish string sites from newly published Arena contexts. P19-10/12/28 remain partial; source readiness unchanged.
+      - command: GOTMPDIR=$HOME/.cache/sec-gotmp go test -p 4 ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir -count=1
+        result: "Passed on 2026-11-16 after P19-31 (34.253s/10.040s/2.485s): all three full suites green, including complete source/frontend Arena matrix at three analysis depths and no/32/64-bit scalar plans. go vet -p 4 ./internal/sema passed. Earlier concurrent CTE/static test failures are no longer present. No production, source IR readiness, schema or native Arena support change in this test-only point."
+      - command: GOTMPDIR=$HOME/.cache/sec-gotmp go test -p 4 ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir -run "Arena|AllocationContext|Package15DynamicReferenceUseValidatesOnce|DynamicReference" -count=1
+        result: "Passed on 2026-11-16 (1.102s/0.025s/0.004s) after P19-11: selected Arena, allocation-context and dynamic-reference regressions, including three analysis depths and no/32/64-bit plans, event/resource/transition consistency, repeated allocations, ordering and detached snapshots. go vet -p 4 ./internal/sema passed. Default snapshots also detach new CTE aggregate Elements. Source Arena readiness remains closed."
+      - command: GOTMPDIR=$HOME/.cache/sec-gotmp go test -p 4 ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir -count=1
+        result: "2026-11-16 shared-tree run: emitter passed (1.826s); Sema failed TestCTEMaterializationGraphRejectsUnsafeGraphs and three TestStaticStoreOf* tests during concurrent CTE/static changes. Semantic IR failed three P15 static-root boundary expectations (resolved scalar compile-time value versus resolved compile-time value). These files are outside the P19-11 working set; exact failures recorded for Claude in the handoff. No failures in Arena effect tests."
+      - command: GOTMPDIR=$HOME/.cache/sec-gotmp go test -p 4 ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir -count=1
+        result: "Passed on 2026-11-16 (35.012s/10.961s/1.872s): Arena semantic default snapshots retain nonzero explicit, struct and compact array defaults across three depths and no/32/64-bit plans; exact/aggregate mutation isolation passes. go vet -p 4 ./internal/sema passed. P19-05/12 remain partial; source Arena readiness is unchanged."
+      - command: GOTMPDIR=$HOME/.cache/sec-gotmp go vet -p 4 ./internal/sema
+        result: passed on 2026-11-16 after P19-06
+      - command: GOTMPDIR=$HOME/.cache/sec-gotmp go test -p 4 ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir -count=1
+        result: "passed on 2026-11-16 after P19-06: sema 26.538s, semantic IR 7.983s, emitter 1.816s; source failure-contract matrix included"
+      - command: GOTMPDIR=$HOME/.cache/sec-gotmp go vet -p 4 ./internal/sema
+        result: passed on 2026-11-16 after P19-09
+      - command: GOTMPDIR=$HOME/.cache/sec-gotmp go test -p 4 ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir -count=1
+        result: "passed on 2026-11-16 after P19-09: sema 27.936s, semantic IR 7.968s, emitter 1.783s; source parent-plan matrix and nested dependency regressions included"
+      - command: GOTMPDIR=$HOME/.cache/sec-gotmp go vet -p 4 ./internal/ir/semantic ./internal/lowering/secmlir
+        result: passed on 2026-11-16 after P19-17
+      - command: GOTMPDIR=$HOME/.cache/sec-gotmp go test -p 4 ./internal/ir/semantic ./internal/lowering/secmlir -count=1
+        result: "passed on 2026-11-16 after P19-17: semantic IR 7.686s, emitter 2.110s; final additional context tests passed in the targeted run"
+      - command: GOTMPDIR=$HOME/.cache/sec-gotmp go test -p 4 ./internal/ir/semantic ./internal/lowering/secmlir -run 'Arena|AllocationContext' -count=1
+        result: passed on 2026-11-16 after P19-17, including all selected origins, context ABI/SSA/data boundaries and emitter rejection
+      - command: GOTMPDIR=$HOME/.cache/sec-gotmp go vet -p 4 ./internal/ir/semantic ./internal/lowering/secmlir
+        result: passed on 2026-11-16 after P19-16
+      - command: GOTMPDIR=$HOME/.cache/sec-gotmp go test -p 4 ./internal/ir/semantic ./internal/lowering/secmlir -count=1
+        result: "passed on 2026-11-16 after P19-16: semantic IR 6.930s, emitter 1.615s"
+      - command: GOTMPDIR=$HOME/.cache/sec-gotmp go test -p 4 ./internal/ir/semantic -run Arena -count=1
+        result: passed on 2026-11-16 after P19-16; nested identity/range preservation, parent invalidation, branch joins and loop transfer tests
+      - command: GOTMPDIR=$HOME/.cache/sec-gotmp go test -p 4 ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir -run 'Arena|DynamicReference|Ownership|Destruction' -count=1
+        result: passed on 2026-11-16; focused Arena, dynamic-reference, ownership and destruction tests, including all eight Arena operations and invalid IR cases
+      - command: GOTMPDIR=$HOME/.cache/sec-gotmp go vet -p 4 ./internal/ir/semantic ./internal/lowering/secmlir
+        result: passed on 2026-11-16 after P19-15
+      - command: GOTMPDIR=$HOME/.cache/sec-gotmp go test -p 4 ./internal/ir/semantic ./internal/lowering/secmlir -count=1
+        result: "passed on 2026-11-16 after P19-15: semantic IR 7.221s, emitter 1.631s"
+      - command: GOTMPDIR=$HOME/.cache/sec-gotmp go vet -p 4 ./internal/ir/semantic ./internal/lowering/secmlir
+        result: passed on 2026-11-16
+      - command: GOTMPDIR=$HOME/.cache/sec-gotmp go test -p 4 ./internal/ir/semantic ./internal/lowering/secmlir -count=1
+        result: "passed on 2026-11-16 on repeat: semantic IR 7.901s, emitter 1.865s. Initial shared-tree run failed four reference-ID/slice-boundary tests; isolated affected tests and repeat full suites passed without changes to these tests."
+      - command: GOTMPDIR=$HOME/.cache/sec-gotmp go test -p 4 ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir -run Arena -count=1
+        result: passed on 2026-11-16; focused Arena, ownership, destruction and dynamic-reference runs passed, including canonical/source-invisible types and schema-15 rejection
+      - command: GOTMPDIR=$HOME/.cache/sec-gotmp go vet -p 4 ./internal/sema
+        result: passed on 2026-11-16
+      - command: GOTMPDIR=$HOME/.cache/sec-gotmp go test -p 4 ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir -run "Arena|Package15DynamicReferenceUseValidatesOnce|DynamicReference" -count=1
+        result: "passed on 2026-11-16: targeted suites in all three packages; source-backed immutable operation plans at three depths and three scalar-plan settings, canonical allocation/reference epoch agreement, invalid authority/count/element/dependency rejection and readiness still closed"

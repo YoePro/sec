@@ -43,7 +43,7 @@ func (fb *functionBuilder) buildMatchStatementArm(arm *ast.MatchArm, plan sema.R
 			// Match grants no new implicit consumption of an arbitrary
 			// stored value. Preserve ordinary expression support boundaries.
 			if armType.Kind != sema.VoidType && armType.Kind != sema.NeverType &&
-				(sema.CopyClassificationOf(armType) != sema.CopyTrivial || !sema.TriviallyDestructible(armType)) {
+				(fb.owner.copyClassificationOf(armType) != sema.CopyTrivial || !fb.owner.triviallyDestructible(armType)) {
 				return fb.unsupported("non-call statement expression result requiring ownership", expressionToken(arm.Body))
 			}
 			armTypeID, err := fb.owner.internType(armType)

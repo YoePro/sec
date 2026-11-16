@@ -158,12 +158,10 @@ integrations:
       - "MD-122 lowering (generics.md § 15; compiler_known_members.md Generic lookup): in a specialization select an exact user ToString or the concrete fallback; the call stops at a named boundary until P23 string lowering. Interface values need dispatch of ToString, which needs a view-table entry for every interface. A per-specialization @noPanic and @noAlloc proof through the selected ToString replaces today's conservative unknown callee."
       - "MD-117 call-site tooling (correction § 10(3)): Complete call-site tooling beyond the supported shared-pack subset, including unresolved/incomplete calls and future pack modes. Hover and signature help already project selected ordered types and concrete pointwise receiving signatures for successfully resolved shared-pack calls, the formatter round-trips ...Types, ...ref Types, ...ref mut Types and <-values... idempotently, and the syntax reference documents the forms; diagnostics name the template location plus the concrete instantiation and argument position (§ 10(1)-(2))."
       - "MD-117 conformance and acceptance (correction § 14): one regression matrix covering § 14(1) positive syntax/inference, § 14(2) negative checks, § 14(3) iteration, § 14(4) ownership/spread, § 14(5) lifetimes and § 14(6) lowering/tooling; MD-117 may be marked implemented and the correction archived only when every owner item passes (§ 14(7)). The matrix also carries the MD-119 conformance cases (applied correction § 8; references.md § 3.4(10)): carried holders keep ref T/ref mut T, explicit *value/projection/reborrow, no implicit deref, no ref ref T, no copied or moved-out ref mut element, origin-preserving returned reborrows, each case distinguishing Sema from Semantic IR/Sec MLIR/executable support. MD-118 (fmt API) stays open separately and is not counted here."
-      - extend generic-parameter hover to future method-level generic parameters, and show concrete specialization arguments at instantiated uses
-      - extend positional-prefix inference to method-level generic arguments once method-level generic declarations are implemented; parser recovery already rejects generic argument holes
-      - implement method-level generics for instance and static methods, including nested owning/method scopes, overload resolution, monomorphization, and lowering
+      - show concrete specialization arguments at instantiated uses in generic-parameter hover
       - complete generic named-type contracts, implementation-member composition, Semantic IR, deterministic symbols, ABI, and lowering beyond the implemented concrete frontend identity, carrier substitution, and ordinary explicit conversions
       - complete generic interface inheritance validation across modules and canonical cross-module specialization identity beyond the implemented local concrete requirement substitution
-      - extend explicit-conformance checks to generic impl scopes and future method-level generics; concrete struct, named-type, union, enum, and interface substitutions are now checked
+      - extend explicit-conformance checks to generic impl scopes; concrete struct, named-type, union, enum, and interface substitutions are now checked
       - extend constraint-guaranteed generic-body operations beyond implemented instance method calls to interface properties, events, static requirements, operators, ownership capabilities, defaultability, and copyability
       - complete generic primary and impl extends member composition for every substituted member category
       - specialize static storage independently for every concrete generic instantiation
@@ -289,12 +287,10 @@ integrations:
     remaining:
       - "MD-117 concrete lowering: consume verified ordered pack specializations and expanded concrete callable signatures without redoing inference or adding erased pack ABIs, boxing, hidden heap allocation or runtime dictionaries; preserve effects, source evaluation and cleanup supplied by the semantic owners (correction §§9,14(6); generics_lowering.md §§3,7)."
       - consume canonical InstantiationIdentity and concrete specialization facts from compiler.monomorphization without recreating demand, identity, or substitution semantics
-      - implement method-level generic lowering for already canonical concrete method specializations
       - complete generic named-type lowering and preserve nominal identity independently of physical representation
       - implement canonical Sec 0.1 generic enum Semantic IR, Sec MLIR, lowering, diagnostics, and backend tests beyond the implemented parser and Sema subset
       - ensure generic constraint lowering never introduces hidden runtime dictionaries, type descriptors, type erasure, implicit boxing, or runtime reflection
       - lower concrete generic impl properties, methods, nested declarations, associated immutable values, and static storage while preserving canonical owner identity
-      - concretize copy/move classification, ownership actions, partial-move eligibility, destruction obligations, and cleanup requirements before ownership-sensitive executable lowering
       - complete generic union ownership, destruction, match, layout-readiness, Semantic IR, and backend paths
       - make concrete generic callable signatures the exclusive input to ABI classification and executable call lowering
       - prevent unresolved generic parameters, partially specialized nominal types, and unresolved generic constraint operations from entering canonical compiler-generated executable Sec MLIR
@@ -381,17 +377,16 @@ integrations:
       - unresolved generic parameters are rejected by represented concrete lowering paths where current checks exist
       - unresolved generic extern declarations are rejected before callable registration and every semantic CLI/backend entry; diagnostics retain Invalid proof state, declaration links and all unresolved parameters, while generic Sec wrappers may call concrete extern providers
       - "Semantic IR monomorphization of generic free functions (2026-10-31; internal/ir/semantic/generic_specialization.go): a generic template builds nothing; each selected call demands one concrete function identified by its ordered arguments (main::Pair[A=bool,B=int](bool,int), main::Select[T=int,...Types<bool>](int,ref bool)), deduplicated across call sites and nesting. The typed template is built under the call's substitution without cloning the AST (§ 8.3); forwarded arguments inside a specialization are made concrete through the enclosing substitution, so Twice[T=int] reuses Id[T=int] and Down[T=int] recurses into itself. Function.Specialization carries template and arguments and is verified. Generic structs and Option payloads specialize (Box<int>, Wrap[T=int]); a template move of an unknown parameter becomes a trivial copy for a trivially copyable argument (§ 11.2). Demand stops with a resource-limit failure after 4096 specializations (§ 18.7). Sema substituteGenericType now also substitutes union variant payloads, which fixed `match Wrap(3) { Some(v) => ... }` reporting payload type T. Tests: internal/ir/semantic/generic_specialization_test.go, type_pack_boundary_test.go, TestSharedTypePackSpecializationCLI."
-      - "polymorphic self-recursion terminates (2026-11-04; monomorphization.md \u00a7 18.5; BUG-000023): a generic template calling itself with a parameter replaced by a type properly containing it (`Grow[T]` -> `Grow[Box[T]]`) is reported as S1198 generics.non-converging-specialization at the call and is not recorded, so Sema and the call graph never follow the infinite chain; unchanged, permuted and finite mutually recursive arguments stay valid. Test: TestGenericSelfRecursionWithGrowingArgumentIsRejected."
+      - "polymorphic self-recursion terminates (2026-11-04; monomorphization.md § 18.5; BUG-000023): a generic template calling itself with a parameter replaced by a type properly containing it (`Grow[T]` -> `Grow[Box[T]]`) is reported as S1198 generics.non-converging-specialization at the call and is not recorded, so Sema and the call graph never follow the infinite chain; unchanged, permuted and finite mutually recursive arguments stay valid. Test: TestGenericSelfRecursionWithGrowingArgumentIsRejected."
     remaining:
       - "MD-120 backend gates (§ 11(5)): specializations with E = error need a Semantic IR representation of the open error root, and owning error payloads need per-specialization ownership and destruction plans; both are explicit unsupported boundaries today"
-      - "specialize generic arguments that are not trivially copyable and trivially destructible: the template's ownership, cleanup and transfer plans are computed for an unknown parameter, so Semantic IR rejects such arguments by name until those plans are derived per specialization (monomorphization.md § 11.2, § 12.3)"
-      - "Semantic IR specialization of generic methods and generic impl members, imported templates, and constraint-mediated calls inside a specialization (static resolution per § 10.2; Measure[T: Sized] calling value.Size() still stops at instance method call without receiver facts)"
+      - "Semantic IR specialization of generic impl members, imported templates, and constraint-mediated calls inside a specialization (static resolution per § 10.2; Measure[T: Sized] calling value.Size() still stops at instance method call without receiver facts)"
       - "MD-117 specialization (function identity and empty arity done for shared packs in Semantic IR, lowering.yaml 2026-10-30): make the ordered concrete pack sequence, nominal/reference/mode identities and empty arity part of canonical specialization/cache identity; demand-check concrete element operations and preserve template plus instantiation/position diagnostics, cross-module and target compatibility (correction §§4(6),9,10; monomorphization.md §9.1)."
       - make InstantiationIdentity and InstantiationKey canonical across all generic declaration families and modules
       - separate generic resolution and inference ownership from canonical specialization application
       - implement one canonical demand/provenance graph for nested concrete specialization requests
       - guarantee template-level semantic validation from declared constraints without concrete duck typing
-      - complete method-level generic specialization and generic named-type specialization
+      - complete generic named-type specialization
       - complete explicit-conformance-driven generic constraint resolution
       - preserve distinct per-specialization static storage through all shared and separate-compilation paths
       - carry concrete specialization identity and provenance through Semantic IR and every Sec MLIR lowering path
@@ -452,6 +447,168 @@ integrations:
         result: passed on 2026-10-13
       - command: go test -race ./internal/sema ./cmd/compiler ./cmd/lsp -run 'GenericExtern|ExternRejectsUnresolved' -count=1
         result: passed on 2026-10-13; unresolved and phantom generic externs are excluded from callable catalogs and rejected consistently before all eight CLI backend paths, while LSP retains declaration provenance and generic Sec wrappers call concrete providers
+
+  - id: compiler.generic-ownership-specialization
+    area: generic-specialization-ownership
+    status: implemented
+    implementation_phase: complete
+    integrated: "2026-11-16"
+    summary: >-
+      Split out of the P17 closure (owner decision 2026-11-16) together with the
+      matching compiler.monomorphization and compiler.generics-lowering lines: a
+      concrete specialization whose generic argument needs ownership (not
+      trivially copyable or destructible) resolves its copy/move, transfer,
+      destruction, cleanup, defer, discard and replacement facts for the
+      substituted type, so Semantic IR lowers it instead of rejecting the
+      argument by name. P1-P17 close when this item is implemented.
+    rules:
+      - rules/compiler/monomorphization.md
+      - rules/compiler/generics_lowering.md
+      - rules/declarations/generics.md
+      - rules/memory/copy_move.md
+      - rules/memory/destruction.md
+      - rules/mlir/packages/sec-mlir-dialect_package17.md
+    code:
+      - internal/sema/generic_cleanup.go
+      - internal/sema/cleanup_parameters.go
+      - internal/sema/cleanup_registrations.go
+      - internal/sema/cleanup_cancellations.go
+      - internal/sema/cleanup_assignments.go
+      - internal/sema/cleanup_match_bindings.go
+      - internal/ir/semantic/generic_cleanup.go
+      - internal/ir/semantic/generic_specialization.go
+      - internal/ir/semantic/cleanup_producers.go
+      - internal/ir/semantic/reference_receiver.go
+      - internal/ir/semantic/reference_use.go
+    implemented:
+      - "GOS-1 (2026-11-16): a specialization resolves the template's copy/move facts for its concrete argument. Template validity already makes every unproven-copy T value a move; the builder reclassifies template types through the substitution (triviallyCopyable/copyClassificationOf), and copy-conditional match bindings become copy-trivial or move (matchPlanOf). T = int keeps trivial copies; a move-only T moves and cancels. Partial moves of a T field out of a parameter use the concrete owner's state."
+      - "GOS-2 (2026-11-16): Sema registers owned cleanup for parameters, locals, match/handler bindings, assignments and cancellations whose type mentions a generic parameter (mayRequireDestruction), with the symbolic generic destruction plan (monomorphization.md § 11.4). The specialization resolves each registration against the concrete type: it imports the concrete destruction plans or drops the registration for a concrete no-op destruction. The cleanup plan is read from the template's callable identity."
+      - "GOS-3 (2026-11-16): defer, discard, replacement and return transfer of T values lower with concrete facts. A defer reads a T owner. An explicit or implicit discard ends a move-only T with own.discard and its plan. A `let mut x :<- a; x = Keep(<-b)` replacement uses own.replace-place, also in loops. Returns transfer and cancel."
+      - "GOS-4 (2026-11-16): the 'generic specialization with the ownership-sensitive argument' boundary is removed. Specialized bodies consume the concrete plans through specialization-aware accessors (generic_cleanup.go). A fresh unit variant `E.Empty` is now an owned argument (also non-generic). TestGenericSpecializationBoundaries and TestGenericErrorOwnershipLoweringBoundary were turned into positive tests, as was the CLI emit-ir check."
+      - "GOS-5 (2026-11-16): methods and properties of impl[T] owners with a move-only T specialize per concrete owner. `self.value = Pass(<-v)` through a `ref mut self` (and through any `ref mut` holder) replaces the owned field with its plan (own.replace-place), also for non-generic owners. Properties lower through lowering.user-properties."
+      - "GOS-6 (2026-11-16): generic structs and unions holding an owned T are covered: construction (Cell[T] literal, Either[T].Left), payload binding and match moving the payload, field moves out of a T-holding parameter, and destruction with the concrete Cell[main::Box] and Either[main::Box] plans."
+      - "GOS-7 (2026-11-16): TestSchema13GenericOwnershipSpecialization runs the place, reference-guard, cleanup, destruction-plan and ownership verifiers on 32/64-bit over testdata/semantic_ir/generic_ownership_specialization.sec. It covers free functions, impl[T] receivers, generic structs/unions, Option/Result payloads, try, defer and loops. Move-only and trivial arguments are checked per specialization."
+    revised: "2026-11-16"
+    tests:
+      - internal/lowering/secmlir/generic_ownership_specialization_test.go
+      - testdata/semantic_ir/generic_ownership_specialization.sec
+      - internal/ir/semantic/generic_specialization_test.go
+      - internal/ir/semantic/generic_error_ownership_test.go
+      - cmd/compiler/generic_error_ownership_test.go
+    verification:
+      - command: GOTMPDIR=$HOME/.cache/sec-gotmp SEC_MLIR_BIN=build/sec-mlir/bin go test -p 4 ./internal/lowering/secmlir ./internal/ir/semantic -run "GenericOwnership|GenericSpecialization|GenericError" -count=1
+        result: "2026-11-16: passed; full internal/sema, internal/ir/semantic and internal/lowering/secmlir suites and the targeted cmd/compiler run also passed."
+
+  - id: frontend.method-level-generics
+    area: method-level-generic-parameters
+    status: implemented
+    integrated: "2026-11-16"
+    summary: "All MLG-1 through MLG-8 are implemented: composed declaration scopes, template guarantees, independent owner/method inference, argument-only overload resolution, finite explicit interface conformance, canonical specialization identity and demand, concrete Semantic IR method bodies and compiler-owned hover bindings. Method-local specializations preserve Sema identity through direct calls and physical symbol assignment, using the existing receiver/ownership lowering. Full Sema, Semantic IR and Sec MLIR suites and targeted LSP tests pass. This owner is complete; P17 final acceptance remains conditional on the separately required owner-run full Go suite and does not claim new downstream physical reference support."
+    rules:
+      - rules/declarations/generics.md
+      - rules/compiler/monomorphization.md
+      - rules/compiler/generics_lowering.md
+      - rules/foundations/grammar.md
+      - rules/compiler/parser_recovery.md
+      - rules/declarations/static.md
+      - rules/declarations/functions.md
+      - rules/declarations/interfaces.md
+      - rules/compiler/semantic_ir.md
+      - rules/tooling/lsp.md
+    remaining: []
+    implemented:
+      - "MLG-1 (2026-11-16; generics.md sections 5.6, 8-9, 30): instance and static method generic declarations use the existing nested generic-scope registration/body path instead of an unconditional unsupported-method gate. The owner parameters remain visible with their declared constraints; method parameters retain their separate ordered header, constraints and declaration identities. Name collisions with enclosing generic parameters and duplicates are diagnosed; method parameters do not leak to sibling methods or module declarations. Source tests verify registered signatures, generic type arguments, owner/method constraint separation, definition links, static versus instance category and scope restoration on all analysis depths and 32/64-bit plans. Removed only the obsolete unsupported-method expectations from existing invalid-fixture tests. Complete body-validity, call inference/overloads, conformance, specialization identity and IR lowering remain MLG-2 through MLG-7."
+      - "MLG-2 verified and closed (2026-11-16; generics.md sections 9, 12-15, 33; monomorphization.md sections 5.1-5.3): the existing template body checker, enabled for ordinary generic methods by MLG-1, validates unused instance/static methods under the separate declared owner and method constraints. Constraint conjunctions, owner-dependent generic interface results, forwarding with explicit transfer and mutable-reference requirements retain their ordinary rules. New source regressions prove eight calls resolve to their template constraint receiver, reject unconstrained/undeclared members and unsupported generic arithmetic, prevent owner guarantees from leaking to method parameters, and reject mutation through a shared reference. A nongeneric owner method remains invalid when demanded twice with a concrete type that has the undeclared member; the template error is emitted once, and both concrete call targets are independently verified. All three analysis depths and 32/64-bit plans are covered. No new body engine or concrete duck typing was introduced; implementation traceability was clarified. Call-inference completeness, overloads, conformance, identity, lowering and tooling remain MLG-3 through MLG-8."
+      - "MLG-3 (2026-11-16; generics.md sections 9, 18, 20, 25): method calls bind the owner environment before method argument inference. Explicit arguments address only the method parameter list; positional prefixes infer the rest from arguments and permitted result context. Parser member-owner arguments remain separate from call arguments, including Box[int].Method[bool](...), without losing the indexed-value alternative. Static owner resolution, instance/category checks, constrained arguments and owner-aware local signature cache keys prevent owner/method confusion and cross-owner reuse. Existing pack inference remains in its own path; generic union constructors and collection WithCapacity consume the preserving owner representation. Compiler-known/raw-pointer probes leave type owners to type lookup instead of reporting undefined variables. Thirteen positive source calls cover generic/nongeneric owners, static/instance/indexed receivers, full/partial/inferred arguments, expected results and repeated method arguments under different owners at every depth on 32/64-bit plans. Eight invalid calls cover fixed-owner mismatch, explicit mismatch/arity, unresolved types, constraints, owner arity and receiver category. Parser recovery handles a missing member without panic; full mutation tests pass. Canonical specialization identity and executable method lowering remain MLG-6/7."
+      - "MLG-4 (2026-11-16; functions.md sections 19-20; generics.md sections 9, 18, 20, 29-30): competing method templates use the existing two-stage generic overload resolver. Explicit method prefixes and input arguments establish candidate substitutions while preserving fixed owner bindings; known constraint failures eliminate candidates. Ordinary input ranks and fixed-versus-variadic preference choose a unique declaration before expected-result context may complete unresolved arguments. Expected return types cannot disambiguate candidates or select a worse input match; no generic-versus-nongeneric preference is invented. Method-local generic names are compared by position in complete input signatures, including nested callable types, so renaming a parameter cannot introduce a return-only overload. Signature comparison was extracted from analyzer.go into a focused sibling. Source regressions cover eight selected instance/static methods, constraint success/failure, fixed arity, result-only completion, three ambiguities, an input-selected result mismatch and two duplicate declarations at all analysis depths on 32/64-bit plans. Full Sema and vet pass; canonical method specialization identity and lowering remain MLG-6/7."
+      - "MLG-5 (2026-11-16; generics.md sections 8-10, 14, 22; interfaces.md sections 4-6, 9, 12): explicit interface witnesses must have finite signatures without method-local generic parameters. Ordinary and constrained instance/static templates cannot satisfy a nongeneric requirement by dropping unused parameters; shared signature checking also excludes such templates from interface call-graph targets. Invalid conformance is diagnosed at the method with the requirement as a related location, publishes no member witness, and cannot satisfy a generic constraint. Generic impl implements clauses resolve in the owner's scope. Concrete owner arguments bind ordinary method signatures before comparison; substitution preserves the methods and inherited interface facts of generic interfaces, including different interface/owner parameter names. Generic helpers remain callable alongside ordinary conformance methods. Source matrices check valid generic-owner instance/static witnesses and helpers, three invalid conformance facts and a rejected generic demand at every analysis depth on 32/64-bit plans. The existing rejection of method-level generic interface requirements remains covered. Interface input comparison was extracted from analyzer.go into interface_method_signatures.go. Canonical specialization identity, method lowering and remaining tooling remain MLG-6 through MLG-8."
+      - "MLG-6 (2026-11-16; monomorphization.md sections 4, 6-9, 12): canonical InstantiationIdentity facts combine the registered declaration and specialization role with independently ordered owner and callable arguments, including phantom arguments and pack sequences. Complete instances use that identity in the semantic signature cache and call graph; explicit and inferred requests reuse it, while distinct owner substitutions remain distinct even for identical runtime signatures. InstantiationIdentityOf reads complete substitutions without creating demand. InstantiationDemands publishes detached, deterministic current-program call-specialization demand and cause edges, composes forwarded substitutions and groups repeated requests. Calls inside unused generic bodies, including calls with fixed concrete arguments, remain inactive until their enclosing specialization is demanded; speculative cache entries and queries do not activate them. An explicit resource-limit error prevents truncated graphs from masquerading as complete. Ordinary methods of generic owners retain their template effects, and nested generic calls follow the same enclosing-demand rule. Callable-contained generic parameters remain symbolic. Source tests check eleven demands, declaration argument order, independent instance/static and owner-only identities, repeated inferred/explicit calls, nested causes, cache/query isolation, detached publication and analyzer reset on all depths and 32/64-bit plans. A negative fixture preserves noPanic checking for owner-only and method-local specializations. Semantic IR method construction and physical symbol integration remain MLG-7; native method specialization is not claimed."
+      - "MLG-7 (2026-11-16; generics_lowering.md sections 2-4 and 7; monomorphization.md sections 4, 6.4, 9.3, 11 and 15.3; semantic_ir.md sections 60-61 and 75): scalar method-local generic templates now build demanded concrete bodies through the existing specialization, receiver and ownership producers instead of the unsupported-own-parameters gate. After composing outer substitutions, methodSpecializationIdentity consumes the canonical Sema key for method-local specialization facts and callable IDs; definitions and direct calls retain distinct phantom-owner and overload identities through the ordinary symbol mapper. The verifier rejects missing or inconsistent canonical method identities. Property accessor templates are identified by their actual AST parameter list so synthesized owner parameters do not become method-local ones. Source fixtures verify generic and nongeneric owners, instance/static methods, explicit/inferred reuse, forwarding, shared/mutable receivers, unused-template omission, owned cleanup/transfer, borrowed returns and overloads. Schema-13 MLIR verifies places, reference guards, cleanup, destruction and ownership on 32/64-bit plans, with eight distinct method symbols stable across widths. Existing generic-function, pack and property specialization behavior remains verified by the full IR/lowering suites. This completes method-level Semantic IR integration; no new physical reference-lowering or whole-program P17 acceptance claim is made."
+      - "MLG-8 (2026-11-16; generics.md sections 9, 18-20 and 30; lsp.md section 12): ResolvedMethodTypeArgumentsOf publishes declaration-ordered owner and method bindings from the exact successful Sema-selected call, with detached types and the canonical specialization identity. It performs no overload selection or speculative specialization. Method call hover presents the substituted signature, owner arguments and method arguments independently, covering static, instance, explicit, inferred and constrained calls. Existing exact-definition generic-parameter hover exposes method-local constraints and guaranteed members without confusing them with the impl owner's parameters. Reference hover spelling follows the resolved referent rather than stale template text. Source-backed tests cover seven declaration/call hover cases, independent owner/method environments, immutable publication, unresolved calls and analyzer reset. Focused LSP generic/interface/type-pack hover regressions pass; the LSP does not create a parallel generic inference model."
+    revised: "2026-11-16"
+    code:
+      - internal/sema/analyzer.go
+      - internal/sema/generic_scopes.go
+      - internal/sema/generic_naming.go
+      - internal/sema/generic_constraints.go
+      - internal/sema/method_generic_calls.go
+      - internal/sema/generic_function_instances.go
+      - internal/sema/analyzer_inference.go
+      - internal/sema/compiler_known_calls.go
+      - internal/sema/raw_pointer_operations.go
+      - internal/sema/collection_capacity.go
+      - internal/sema/union_construction_inference.go
+      - internal/parser/expression.go
+      - internal/sema/method_generic_overloads.go
+      - internal/sema/function_overload_signatures.go
+      - internal/sema/type_pack_overloads.go
+      - internal/sema/type_pack_calls.go
+      - internal/sema/interface_method_signatures.go
+      - internal/sema/interface_validation.go
+      - internal/sema/interface_conformance.go
+      - internal/sema/generic_substitution.go
+      - internal/sema/analyzer_for_categories.go
+      - internal/sema/instantiation_identity.go
+      - internal/sema/instantiation_demand.go
+      - internal/sema/arena_generic_requirements.go
+      - internal/sema/call_graph_identity.go
+      - internal/sema/call_graph_specializations.go
+      - internal/sema/types.go
+      - internal/ir/semantic/generic_specialization.go
+      - internal/ir/semantic/method_generic_identity.go
+      - internal/ir/semantic/model.go
+      - internal/ir/semantic/methods.go
+      - internal/ir/semantic/reference_receiver.go
+      - internal/sema/method_generic_tooling.go
+      - cmd/lsp/method_generic_hover.go
+      - cmd/lsp/hover.go
+      - cmd/lsp/main.go
+    tests:
+      - internal/sema/method_generic_scopes_test.go
+      - internal/sema/analyzer_test.go
+      - testdata/sema/generics/method_scopes_valid.sec
+      - testdata/sema/generics/method_scopes_invalid.sec
+      - internal/sema/method_generic_contracts_test.go
+      - testdata/sema/generics/method_contracts_valid.sec
+      - testdata/sema/generics/method_contracts_invalid.sec
+      - internal/sema/method_generic_calls_test.go
+      - internal/parser/method_generic_calls_test.go
+      - testdata/sema/generics/method_calls_valid.sec
+      - testdata/sema/generics/method_calls_invalid.sec
+      - testdata/parser/method_generic_calls.sec
+      - testdata/parser/method_generic_calls_invalid.sec
+      - internal/sema/method_generic_overloads_test.go
+      - testdata/sema/generics/method_overloads_valid.sec
+      - testdata/sema/generics/method_overloads_invalid.sec
+      - testdata/sema/generics/method_overload_duplicates_invalid.sec
+      - internal/sema/method_generic_conformance_test.go
+      - testdata/sema/generics/method_conformance_valid.sec
+      - testdata/sema/generics/method_conformance_invalid.sec
+      - internal/sema/method_generic_identity_test.go
+      - testdata/sema/generics/method_identity.sec
+      - testdata/sema/generics/method_identity_effects_invalid.sec
+      - internal/ir/semantic/method_generic_specialization_test.go
+      - internal/lowering/secmlir/method_generic_specialization_test.go
+      - testdata/generics/specialization/method_generics.sec
+      - testdata/generics/specialization/method_generics_modes.sec
+      - internal/sema/method_generic_tooling_test.go
+      - cmd/lsp/method_generic_hover_test.go
+      - testdata/tooling/generics/method_hover.sec
+    verification:
+      - command: SEC_MLIR_BIN=$PWD/build/sec-mlir/bin GOTMPDIR=$HOME/.cache/sec-gotmp go test -p 4 ./internal/ir/semantic ./internal/lowering/secmlir -count=1
+        result: Passed on 2026-11-16 (10.674s / 22.462s). Full Sema passed (31.521s); the added TestMethodTypeArgumentFacts passed separately. Targeted LSP TestMethodGenericHover, TypePackDeclarationTooling and generic/interface/declared hover regressions passed (40.713s). The expanded schema-13 method symbol/width test passed with the built MLIR tool on both widths (0.046s). go vet -p 4 for Sema, Semantic IR, Sec MLIR and cmd/lsp passed. Two whole points closed, remaining 2 -> 0; owner status implemented. No sec/, manual/, static-variant or C++ changes. The full Go suite/P17 final acceptance was not run.
+      - command: GOTMPDIR=$HOME/.cache/sec-gotmp go test -p 4 ./internal/sema -count=1
+        result: Passed on 2026-11-16 (28.598s); go vet -p 4 ./internal/sema passed. The identity/demand source matrix passes at every analysis depth on 32/64-bit plans; two negative noPanic cases pass. Focused TestGenericFreeFunctionsSpecialize, TestGenericImplMethodsSpecialize and TestGenericSpecialization tests in internal/ir/semantic pass (0.024s). One whole point closed, remaining 3 -> 2. No sec/, manual/, IR/lowering or Claude SVV changes. MLG-7 retains method body lowering and physical specialization-symbol consumption; P17 is not closed.
+      - command: GOTMPDIR=$HOME/.cache/sec-gotmp go test -p 4 ./internal/sema -count=1
+        result: Passed on 2026-11-16 (33.627s); go vet -p 4 ./internal/sema passed. New source conformance matrix passes at all three analysis depths on 32/64-bit plans. Invalid instance/static/constrained generic methods produce three incompatible-member facts with related requirement locations, and an invalid conformance fails a generic constraint. Valid generic owners retain ordinary witnesses among generic helpers; distinct interface/owner parameter names pass a focused follow-up. Full suite retains the prohibition on generic interface requirements. One whole point closed, remaining 4 -> 3. No sec/, manual/, IR, GOS-5 property or receiver-specialization edits.
+      - command: GOTMPDIR=$HOME/.cache/sec-gotmp go test -p 4 ./internal/sema -count=1
+        result: Passed on 2026-11-16 (28.910s); go vet ./internal/sema passed. New overload source matrix passes at all three depths on 32/64-bit plans, including eight selected targets, three ambiguities, one result mismatch and two duplicate signatures. Existing type-pack regressions pass in the full Sema suite. One whole point closed, remaining 5 -> 4. No sec/, manual/, IR or GOS-5 property/ownership specialization edits. Native generic method lowering remains open.
+      - command: GOTMPDIR=$HOME/.cache/sec-gotmp go test -p 4 ./internal/parser ./internal/sema -count=1
+        result: Passed on 2026-11-16 (134.089s / 29.018s), including the complete parser mutation/recovery sweep. Expanded 13-call source matrix and eight invalid-call checks then passed, along with focused MethodGeneric/GenericArgument/CollectionCapacity/CollectionGrowth/TypePack cases in parser, Sema, CST and formatter. go vet -p 4 ./internal/sema ./internal/parser passed. One whole point closed, remaining 6 -> 5. No sec/, manual/, IR or GOS-5 property/ownership specialization edits. No native method lowering claim.
+      - command: GOTMPDIR=$HOME/.cache/sec-gotmp go test -p 4 ./internal/sema -count=1
+        result: Passed on 2026-11-16 (26.216s); go vet -p 4 ./internal/sema passed. Focused TestMethodGenericTemplateContracts passed on 32/64-bit plans at Interactive/Standard/Deep depth, including seven distinct template failures, eight constraint-resolved calls, and two concrete demands with one template diagnostic. MLG-2 was already supplied by the shared checker after MLG-1; this change adds regression coverage and traceability, without new runtime behavior. One verified whole point closed, remaining 7 -> 6. No GOS-5, IR, sec/ or manual/ changes.
+      - command: GOTMPDIR=$HOME/.cache/sec-gotmp go test -p 4 ./internal/sema -count=1
+        result: Passed on 2026-11-16 (25.992s), including new declaration-scope matrix on 32/64-bit plans at Interactive/Standard/Deep depth and invalid owner-name collisions, duplicates and out-of-scope uses. go vet -p 4 ./internal/sema passed. One whole point closed, remaining 8 -> 7. No sec/, IR, property, receiver or GOS-5 specialization changes; native method specialization remains separately tracked.
 
   - id: frontend.generic-union-recursive-storage
     area: frontend-generics-and-representation

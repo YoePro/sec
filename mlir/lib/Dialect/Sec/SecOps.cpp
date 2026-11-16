@@ -556,6 +556,12 @@ LogicalResult verifyResultConstructor(ResultOp operation, bool successValue) {
   if (!result)
     return operation.emitOpError("result must have !sec.result type");
   Type expected = successValue ? result.getSuccessType() : result.getErrorType();
+  // Dialect v5 § 7: Ok of a void-success Result has no success operand.
+  if (successValue && isa<NoneType>(expected)) {
+    if (operation->getNumOperands() != 0)
+      return operation.emitOpError("Ok of a void-success Result takes no payload");
+    return success();
+  }
   if (operation->getNumOperands() != 1 ||
       operation->getOperand(0).getType() != expected)
     return operation.emitOpError("payload type must exactly match Result component");
@@ -580,6 +586,8 @@ LogicalResult ResultUnwrapOkOp::verify() {
   auto result = dyn_cast<ResultType>(getValue().getType());
   if (!result)
     return emitOpError("operand must have !sec.result type");
+  if (isa<NoneType>(result.getSuccessType()))
+    return emitOpError("a void-success Result has no Ok payload to unwrap");
   if (getResult().getType() != result.getSuccessType())
     return emitOpError("result type must exactly match Result success type");
   return success();
@@ -1167,6 +1175,28 @@ LogicalResult PlaceDerefOp::verify() {
 }
 
 LogicalResult PlaceReadOp::verify() {
+  // A holder read takes a reference holder out of its own Place (mutable
+  // storage, or a defer capture of a dynamic-epoch holder) with the facts of
+  // that read; it only feeds validation, dereference, reborrow, shared copy
+  // or comparison and never copies a mutable reference as a value (P17).
+  if (getAction() == "holder") {
+    auto place = requirePlace(*this, getPlace().getType(), "operand");
+    if (failed(place))
+      return failure();
+    if (getResult().getType() != place->getElementType() ||
+        !isa<RefType, RefMutType, SliceType, SliceMutType, StringViewType>(getResult().getType()))
+      return emitOpError("a holder read yields the reference, slice or view its Place holds");
+    if (!(*this)->getAttrOfType<DictionaryAttr>("sec.reference"))
+      return emitOpError("a holder read carries the sec.reference facts of its point");
+    for (Operation *user : getResult().getUsers())
+      if (!isa<RefIsValidOp, PlaceDerefOp, RefReborrowSharedOp, RefReborrowMutOp,
+               RefCopySharedOp, RefCompareOp, RefEndBorrowOp, SliceLenOp,
+               SliceIndexInBoundsOp, SliceElementPlaceOp, SliceReborrowSharedOp,
+               SliceReborrowMutOp, SliceCopySharedOp, StringViewByteLenOp,
+               StringViewDecodeNextOp, SliceRangeNormalizeOp, SliceRangeCheckOp>(user))
+        return emitOpError("a holder read may only be validated, dereferenced, reborrowed, copied when shared or compared");
+    return success();
+  }
   // An observation copies nothing: its result only answers an active-variant test.
   if (getAction() == "observe" || getAction() == "candidate") {
     // A candidate is the payload a match guard may inspect before the arm commits
@@ -1301,8 +1331,126 @@ LogicalResult RefCompareOp::verify() {
   return success();
 }
 
+// verifyStaticComponent checks one compile-time initializer component of a
+// static aggregate: a decimal integer or bool leaf, or an array of a struct's
+// fields in declaration order or a fixed array's elements
+// (compile_time_evaluation.md section 32).
+static LogicalResult verifyStaticComponent(Operation *op, Type type, Attribute value) {
+  if (auto structType = dyn_cast<StructType>(type)) {
+    auto components = dyn_cast<ArrayAttr>(value);
+    if (!components || components.size() != structType.getFields().size())
+      return op->emitOpError("struct static initializer lists every field in declaration order");
+    for (auto [field, component] : llvm::zip(structType.getFields(), components)) {
+      auto fieldAttr = dyn_cast<StructFieldAttr>(field);
+      if (!fieldAttr || failed(verifyStaticComponent(op, fieldAttr.getType(), component)))
+        return failure();
+    }
+    return success();
+  }
+  if (auto arrayType = dyn_cast<ArrayType>(type)) {
+    auto components = dyn_cast<ArrayAttr>(value);
+    unsigned long long length = 0;
+    if (!components || arrayType.getLength().getValue().getAsInteger(10, length) || components.size() != length)
+      return op->emitOpError("array static initializer lists every element");
+    for (Attribute component : components)
+      if (failed(verifyStaticComponent(op, arrayType.getElementType(), component)))
+        return failure();
+    return success();
+  }
+  // SVV-2: a union, Option or Result value names its active variant and
+  // carries the payload that variant declares (compile_time_evaluation.md
+  // § 32(3)); an enum names a declared case and a string carries its text.
+  auto dictionaryEntry = [&](StringRef key) -> Attribute {
+    auto dictionary = dyn_cast<DictionaryAttr>(value);
+    return dictionary ? dictionary.get(key) : Attribute{};
+  };
+  auto verifyVariantPayload = [&](StringRef variant, Type payload, ArrayAttr fields) -> LogicalResult {
+    auto dictionary = dyn_cast<DictionaryAttr>(value);
+    Attribute component = dictionary.get("payload");
+    if (dictionary.size() != (component ? 2u : 1u))
+      return op->emitOpError() << "variant " << variant << " static initializer has only variant and payload entries";
+    if (fields && !fields.empty()) {
+      auto components = dyn_cast_or_null<ArrayAttr>(component);
+      if (!components || components.size() != fields.size())
+        return op->emitOpError() << "variant " << variant << " static initializer lists every payload field";
+      for (auto [field, item] : llvm::zip(fields, components)) {
+        auto fieldAttr = dyn_cast<UnionFieldAttr>(field);
+        if (!fieldAttr || failed(verifyStaticComponent(op, fieldAttr.getType(), item)))
+          return failure();
+      }
+      return success();
+    }
+    if (!payload || isa<NoneType>(payload)) {
+      if (component)
+        return op->emitOpError() << "variant " << variant << " has no payload";
+      return success();
+    }
+    if (!component)
+      return op->emitOpError() << "variant " << variant << " static initializer requires its payload";
+    return verifyStaticComponent(op, payload, component);
+  };
+  if (auto unionType = dyn_cast<UnionType>(type)) {
+    auto name = dyn_cast_or_null<StringAttr>(dictionaryEntry("variant"));
+    if (!name)
+      return op->emitOpError("union static initializer names its active variant");
+    for (Attribute attribute : unionType.getVariants())
+      if (auto variant = dyn_cast<UnionVariantAttr>(attribute); variant && variant.getName() == name)
+        return verifyVariantPayload(name.getValue(), variant.getPayload(), variant.getFields());
+    return op->emitOpError() << "union static initializer names unknown variant " << name.getValue();
+  }
+  if (auto resultType = dyn_cast<ResultType>(type)) {
+    auto name = dyn_cast_or_null<StringAttr>(dictionaryEntry("variant"));
+    if (!name || (name.getValue() != "Ok" && name.getValue() != "Err"))
+      return op->emitOpError("Result static initializer names Ok or Err");
+    Type payload = name.getValue() == "Ok" ? resultType.getSuccessType() : resultType.getErrorType();
+    return verifyVariantPayload(name.getValue(), payload, ArrayAttr{});
+  }
+  if (auto enumType = dyn_cast<EnumType>(type)) {
+    auto name = dyn_cast_or_null<StringAttr>(dictionaryEntry("enum"));
+    if (!name || cast<DictionaryAttr>(value).size() != 1)
+      return op->emitOpError("enum static initializer names exactly one case");
+    for (Attribute attribute : enumType.getCases())
+      if (auto enumCase = dyn_cast<EnumCaseAttr>(attribute); enumCase && enumCase.getName() == name)
+        return success();
+    return op->emitOpError() << "enum static initializer names unknown case " << name.getValue();
+  }
+  if (isa<StringType>(type)) {
+    auto text = dyn_cast_or_null<StringAttr>(dictionaryEntry("string"));
+    if (!text || cast<DictionaryAttr>(value).size() != 1)
+      return op->emitOpError("string static initializer carries exactly its text");
+    return success();
+  }
+  auto leaf = dyn_cast<StringAttr>(value);
+  if (!leaf)
+    return op->emitOpError("static initializer leaf must be a decimal or bool string");
+  if (type.isInteger(1))
+    return leaf.getValue() == "true" || leaf.getValue() == "false"
+               ? success()
+               : op->emitOpError("bool static component must be true or false");
+  if (!isBuiltinIntegerSemanticType(type))
+    return op->emitOpError("static aggregate components are builtin integers, bools or aggregates of them");
+  StringRef digits = leaf.getValue().starts_with("-") ? leaf.getValue().drop_front() : leaf.getValue();
+  if (digits.empty() || !llvm::all_of(digits, [](char c) { return c >= '0' && c <= '9'; }))
+    return op->emitOpError("integer static component requires a decimal value");
+  return success();
+}
+
 LogicalResult StaticGlobalOp::verify() {
   Type type = getType();
+  StringRef treeKind = isa<StructType, ArrayType>(type)      ? "aggregate"
+                       : isa<UnionType, ResultType>(type) ? "variant"
+                       : isa<EnumType>(type)              ? "enum"
+                       : isa<StringType>(type)            ? "string"
+                                                          : "";
+  if (!treeKind.empty()) {
+    if (getInitial() != treeKind)
+      return emitOpError() << "static of this type requires initial = \"" << treeKind << "\"";
+    auto components = (*this)->getAttr("sec.static_initializer");
+    if (!components)
+      return emitOpError() << treeKind << " static requires its sec.static_initializer tree";
+    if (failed(verifyStaticComponent(*this, type, components)))
+      return failure();
+  } else {
   bool isBool = type.isInteger(1);
   if (!isBool && !isBuiltinIntegerSemanticType(type))
     return emitOpError("static storage supports builtin integer and bool types");
@@ -1313,6 +1461,7 @@ LogicalResult StaticGlobalOp::verify() {
     StringRef digits = initial.starts_with("-") ? initial.drop_front() : initial;
     if (digits.empty() || !llvm::all_of(digits, [](char c) { return c >= '0' && c <= '9'; }))
       return emitOpError("integer static requires a decimal initial value");
+  }
   }
   // sec.static_id is the module-local StaticID; two statics never share it
   // (MD-116 § 2(4)). Only earlier siblings are compared so a duplicate is

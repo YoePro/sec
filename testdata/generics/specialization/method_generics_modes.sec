@@ -1,0 +1,15 @@
+module main
+
+type Handle struct { Value: int }
+impl Handle { free {} }
+type Helper struct {}
+impl Helper {
+    static fn Keep[U](value: U) U { return value }
+    static fn Borrow[U](value: ref U) ref U { return value }
+    static fn Choose[U](value: U, tag: int) U { return value }
+    static fn Choose[U](value: U, tag: bool) U { return value }
+}
+fn Owned(value: Handle) Handle { return Helper.Keep(<-value) }
+fn Borrowed(value: ref int) ref int { return Helper.Borrow[int](value) }
+fn IntegerTag() int { return Helper.Choose(1, 1) }
+fn BooleanTag() int { return Helper.Choose(2, true) }

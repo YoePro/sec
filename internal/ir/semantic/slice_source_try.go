@@ -42,6 +42,13 @@ func (fb *functionBuilder) completeSliceTryMerge(expr *ast.TryExpression, merge 
 					continue
 				}
 				if incoming != nil || len(edge.Arguments) != 1 || edge.Arguments[0] != success.id {
+					// A recovery value joins slice holders: the merge keeps its
+					// block parameter, and each use reads the joined holder with
+					// Sema's facts, which cover every incoming origin (P17;
+					// lifetime_analysis.md § 11).
+					if fb.owner.maxPackage >= ownershipLoweringPackage && len(merge.Parameters) == 1 {
+						return builtValue{id: merge.Parameters[0].ID, typ: merge.Parameters[0].Type}, nil
+					}
 					return builtValue{}, fb.unsupported("slice recovery holder joins (P16-26/P16-36)", expr.Token)
 				}
 				incoming = edge

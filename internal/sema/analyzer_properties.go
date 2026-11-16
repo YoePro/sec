@@ -57,6 +57,7 @@ func (a *Analyzer) recordResolvedPropertyAccess(expr ast.Expression, owner Type,
 	}
 	a.recordRegisterPropertyAccess(expr, owner, property, kind)
 	a.recordPropertyAccessorEffects(expr, property, kind)
+	a.recordPropertyReceiver(expr, property, kind)
 	a.resolvedPropertyAccesses[expr] = ResolvedPropertyAccess{
 		Kind:         kind,
 		OwnerType:    owner,

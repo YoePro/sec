@@ -1,0 +1,405 @@
+module main
+
+fn Convert_float_float(value: float) float {
+    return float(value)
+}
+
+fn Convert_float_float32(value: float) Result[float32, ConversionError] {
+    return Ok(try float32(value))
+}
+
+fn Convert_float_float64(value: float) float64 {
+    return float64(value)
+}
+
+fn Convert_float_int(value: float) Result[int, ConversionError] {
+    return Ok(try int(value))
+}
+
+fn Convert_float_uint(value: float) Result[uint, ConversionError] {
+    return Ok(try uint(value))
+}
+
+fn Convert_float_int8(value: float) Result[int8, ConversionError] {
+    return Ok(try int8(value))
+}
+
+fn Convert_float_int16(value: float) Result[int16, ConversionError] {
+    return Ok(try int16(value))
+}
+
+fn Convert_float_int32(value: float) Result[int32, ConversionError] {
+    return Ok(try int32(value))
+}
+
+fn Convert_float_int64(value: float) Result[int64, ConversionError] {
+    return Ok(try int64(value))
+}
+
+fn Convert_float_int128(value: float) Result[int128, ConversionError] {
+    return Ok(try int128(value))
+}
+
+fn Convert_float_int256(value: float) Result[int256, ConversionError] {
+    return Ok(try int256(value))
+}
+
+fn Convert_float_uint8(value: float) Result[uint8, ConversionError] {
+    return Ok(try uint8(value))
+}
+
+fn Convert_float_uint16(value: float) Result[uint16, ConversionError] {
+    return Ok(try uint16(value))
+}
+
+fn Convert_float_uint32(value: float) Result[uint32, ConversionError] {
+    return Ok(try uint32(value))
+}
+
+fn Convert_float_uint64(value: float) Result[uint64, ConversionError] {
+    return Ok(try uint64(value))
+}
+
+fn Convert_float_uint128(value: float) Result[uint128, ConversionError] {
+    return Ok(try uint128(value))
+}
+
+fn Convert_float_uint256(value: float) Result[uint256, ConversionError] {
+    return Ok(try uint256(value))
+}
+
+fn Convert_float_bool(value: float) bool {
+    return bool(value)
+}
+
+fn Convert_float32_float(value: float32) float {
+    return float(value)
+}
+
+fn Convert_float32_float32(value: float32) float32 {
+    return float32(value)
+}
+
+fn Convert_float32_float64(value: float32) float64 {
+    return float64(value)
+}
+
+fn Convert_float32_int(value: float32) Result[int, ConversionError] {
+    return Ok(try int(value))
+}
+
+fn Convert_float32_uint(value: float32) Result[uint, ConversionError] {
+    return Ok(try uint(value))
+}
+
+fn Convert_float32_int8(value: float32) Result[int8, ConversionError] {
+    return Ok(try int8(value))
+}
+
+fn Convert_float32_int16(value: float32) Result[int16, ConversionError] {
+    return Ok(try int16(value))
+}
+
+fn Convert_float32_int32(value: float32) Result[int32, ConversionError] {
+    return Ok(try int32(value))
+}
+
+fn Convert_float32_int64(value: float32) Result[int64, ConversionError] {
+    return Ok(try int64(value))
+}
+
+fn Convert_float32_int128(value: float32) Result[int128, ConversionError] {
+    return Ok(try int128(value))
+}
+
+fn Convert_float32_int256(value: float32) Result[int256, ConversionError] {
+    return Ok(try int256(value))
+}
+
+fn Convert_float32_uint8(value: float32) Result[uint8, ConversionError] {
+    return Ok(try uint8(value))
+}
+
+fn Convert_float32_uint16(value: float32) Result[uint16, ConversionError] {
+    return Ok(try uint16(value))
+}
+
+fn Convert_float32_uint32(value: float32) Result[uint32, ConversionError] {
+    return Ok(try uint32(value))
+}
+
+fn Convert_float32_uint64(value: float32) Result[uint64, ConversionError] {
+    return Ok(try uint64(value))
+}
+
+fn Convert_float32_uint128(value: float32) Result[uint128, ConversionError] {
+    return Ok(try uint128(value))
+}
+
+fn Convert_float32_uint256(value: float32) Result[uint256, ConversionError] {
+    return Ok(try uint256(value))
+}
+
+fn Convert_float32_bool(value: float32) bool {
+    return bool(value)
+}
+
+fn Convert_float64_float(value: float64) Result[float, ConversionError] {
+    return Ok(try float(value))
+}
+
+fn Convert_float64_float32(value: float64) Result[float32, ConversionError] {
+    return Ok(try float32(value))
+}
+
+fn Convert_float64_float64(value: float64) float64 {
+    return float64(value)
+}
+
+fn Convert_float64_int(value: float64) Result[int, ConversionError] {
+    return Ok(try int(value))
+}
+
+fn Convert_float64_uint(value: float64) Result[uint, ConversionError] {
+    return Ok(try uint(value))
+}
+
+fn Convert_float64_int8(value: float64) Result[int8, ConversionError] {
+    return Ok(try int8(value))
+}
+
+fn Convert_float64_int16(value: float64) Result[int16, ConversionError] {
+    return Ok(try int16(value))
+}
+
+fn Convert_float64_int32(value: float64) Result[int32, ConversionError] {
+    return Ok(try int32(value))
+}
+
+fn Convert_float64_int64(value: float64) Result[int64, ConversionError] {
+    return Ok(try int64(value))
+}
+
+fn Convert_float64_int128(value: float64) Result[int128, ConversionError] {
+    return Ok(try int128(value))
+}
+
+fn Convert_float64_int256(value: float64) Result[int256, ConversionError] {
+    return Ok(try int256(value))
+}
+
+fn Convert_float64_uint8(value: float64) Result[uint8, ConversionError] {
+    return Ok(try uint8(value))
+}
+
+fn Convert_float64_uint16(value: float64) Result[uint16, ConversionError] {
+    return Ok(try uint16(value))
+}
+
+fn Convert_float64_uint32(value: float64) Result[uint32, ConversionError] {
+    return Ok(try uint32(value))
+}
+
+fn Convert_float64_uint64(value: float64) Result[uint64, ConversionError] {
+    return Ok(try uint64(value))
+}
+
+fn Convert_float64_uint128(value: float64) Result[uint128, ConversionError] {
+    return Ok(try uint128(value))
+}
+
+fn Convert_float64_uint256(value: float64) Result[uint256, ConversionError] {
+    return Ok(try uint256(value))
+}
+
+fn Convert_float64_bool(value: float64) bool {
+    return bool(value)
+}
+
+fn Convert_int_float(value: int) Result[float, ConversionError] {
+    return Ok(try float(value))
+}
+
+fn Convert_int_float32(value: int) Result[float32, ConversionError] {
+    return Ok(try float32(value))
+}
+
+fn Convert_int_float64(value: int) Result[float64, ConversionError] {
+    return Ok(try float64(value))
+}
+
+fn Convert_uint_float(value: uint) Result[float, ConversionError] {
+    return Ok(try float(value))
+}
+
+fn Convert_uint_float32(value: uint) Result[float32, ConversionError] {
+    return Ok(try float32(value))
+}
+
+fn Convert_uint_float64(value: uint) Result[float64, ConversionError] {
+    return Ok(try float64(value))
+}
+
+fn Convert_int8_float(value: int8) float {
+    return float(value)
+}
+
+fn Convert_int8_float32(value: int8) float32 {
+    return float32(value)
+}
+
+fn Convert_int8_float64(value: int8) float64 {
+    return float64(value)
+}
+
+fn Convert_int16_float(value: int16) float {
+    return float(value)
+}
+
+fn Convert_int16_float32(value: int16) float32 {
+    return float32(value)
+}
+
+fn Convert_int16_float64(value: int16) float64 {
+    return float64(value)
+}
+
+fn Convert_int32_float(value: int32) Result[float, ConversionError] {
+    return Ok(try float(value))
+}
+
+fn Convert_int32_float32(value: int32) Result[float32, ConversionError] {
+    return Ok(try float32(value))
+}
+
+fn Convert_int32_float64(value: int32) float64 {
+    return float64(value)
+}
+
+fn Convert_int64_float(value: int64) Result[float, ConversionError] {
+    return Ok(try float(value))
+}
+
+fn Convert_int64_float32(value: int64) Result[float32, ConversionError] {
+    return Ok(try float32(value))
+}
+
+fn Convert_int64_float64(value: int64) Result[float64, ConversionError] {
+    return Ok(try float64(value))
+}
+
+fn Convert_int128_float(value: int128) Result[float, ConversionError] {
+    return Ok(try float(value))
+}
+
+fn Convert_int128_float32(value: int128) Result[float32, ConversionError] {
+    return Ok(try float32(value))
+}
+
+fn Convert_int128_float64(value: int128) Result[float64, ConversionError] {
+    return Ok(try float64(value))
+}
+
+fn Convert_int256_float(value: int256) Result[float, ConversionError] {
+    return Ok(try float(value))
+}
+
+fn Convert_int256_float32(value: int256) Result[float32, ConversionError] {
+    return Ok(try float32(value))
+}
+
+fn Convert_int256_float64(value: int256) Result[float64, ConversionError] {
+    return Ok(try float64(value))
+}
+
+fn Convert_uint8_float(value: uint8) float {
+    return float(value)
+}
+
+fn Convert_uint8_float32(value: uint8) float32 {
+    return float32(value)
+}
+
+fn Convert_uint8_float64(value: uint8) float64 {
+    return float64(value)
+}
+
+fn Convert_uint16_float(value: uint16) float {
+    return float(value)
+}
+
+fn Convert_uint16_float32(value: uint16) float32 {
+    return float32(value)
+}
+
+fn Convert_uint16_float64(value: uint16) float64 {
+    return float64(value)
+}
+
+fn Convert_uint32_float(value: uint32) Result[float, ConversionError] {
+    return Ok(try float(value))
+}
+
+fn Convert_uint32_float32(value: uint32) Result[float32, ConversionError] {
+    return Ok(try float32(value))
+}
+
+fn Convert_uint32_float64(value: uint32) float64 {
+    return float64(value)
+}
+
+fn Convert_uint64_float(value: uint64) Result[float, ConversionError] {
+    return Ok(try float(value))
+}
+
+fn Convert_uint64_float32(value: uint64) Result[float32, ConversionError] {
+    return Ok(try float32(value))
+}
+
+fn Convert_uint64_float64(value: uint64) Result[float64, ConversionError] {
+    return Ok(try float64(value))
+}
+
+fn Convert_uint128_float(value: uint128) Result[float, ConversionError] {
+    return Ok(try float(value))
+}
+
+fn Convert_uint128_float32(value: uint128) Result[float32, ConversionError] {
+    return Ok(try float32(value))
+}
+
+fn Convert_uint128_float64(value: uint128) Result[float64, ConversionError] {
+    return Ok(try float64(value))
+}
+
+fn Convert_uint256_float(value: uint256) Result[float, ConversionError] {
+    return Ok(try float(value))
+}
+
+fn Convert_uint256_float32(value: uint256) Result[float32, ConversionError] {
+    return Ok(try float32(value))
+}
+
+fn Convert_uint256_float64(value: uint256) Result[float64, ConversionError] {
+    return Ok(try float64(value))
+}
+
+fn ConstantProof() float32 {
+    let half: float64 := 0.5
+    return float32(half)
+}
+
+fn IntervalProof(value: int256) float32 {
+    if value >= 0 && value <= 100 {
+        return float32(value)
+    }
+    return 0.0
+}
+
+fn LiteralShaping() float32 {
+    return float32(0.1)
+}
+
+fn DecimalBoundary(value: decimal) Result[float64, ConversionError] {
+    return Ok(try float64(value))
+}

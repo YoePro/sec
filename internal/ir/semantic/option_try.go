@@ -53,7 +53,7 @@ func (fb *functionBuilder) buildOptionTry(expr *ast.TryExpression, resolved sema
 	fb.emit(Operation{Kind: OpCondBranch, Operands: []ValueID{isSome.id}, Successors: []BranchTarget{{Block: successBlock.ID}, {Block: noneBlock.ID}}, Location: location(expr.Token)})
 	fb.current = successBlock
 	payload := fb.result(Operation{Kind: OpUnionUnwrapPayload, Operands: []ValueID{option.id}, UnionVariant: some, PayloadActions: []UnionPayloadAction{action}, Location: location(expr.Token)}, payloadType)
-	if optionType, known := fb.owner.analyzer.ResolvedTypeOf(expr.Expression); known && action == UnionPayloadMove && !sema.TriviallyDestructible(optionType) {
+	if optionType, known := fb.owner.analyzer.ResolvedTypeOf(expr.Expression); known && action == UnionPayloadMove && !fb.owner.triviallyDestructible(optionType) {
 		fb.current = noneBlock
 		if err := fb.destroyFreshSubject(option, optionType, expr.Token); err != nil {
 			return builtValue{}, err

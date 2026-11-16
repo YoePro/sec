@@ -116,9 +116,11 @@ func isOwnershipOperation(kind OpKind) bool {
 }
 
 // consumesOwnership reports whether the operation consumes operand index.
+// Rules: rules/mlir/packages/sec-mlir-dialect_package19.md — §§89,95–96;
+// rules/mlir/packages/sec-mlir-dialect_package17.md — §§48–58.
 func consumesOwnership(op Operation, index int) bool {
 	switch op.Kind {
-	case OpOwnMove, OpOwnDiscard, OpOwnDestroyValue:
+	case OpOwnMove, OpOwnDiscard, OpOwnDestroyValue, OpArenaCreateBorrowed, OpArenaRelease, OpArenaDestroy:
 		return index == 0
 	case OpOwnInitializePlace, OpOwnReplacePlace:
 		return index == 1
@@ -127,7 +129,8 @@ func consumesOwnership(op Operation, index int) bool {
 }
 
 // ownedCopyClass classifies a Semantic IR type for copying: "trivial",
-// "semantic" or "move-only".
+// "semantic" or "move-only". Arena remains a move-only owner independent of backing.
+// Rules: rules/mlir/packages/sec-mlir-dialect_package19.md — §§6,84.
 func ownedCopyClass(module *Module, id TypeID) string {
 	typ, ok := module.Types.Lookup(id)
 	if !ok {
@@ -136,7 +139,7 @@ func ownedCopyClass(module *Module, id TypeID) string {
 	switch typ.Kind {
 	case TypeNamed:
 		return ownedCopyClass(module, typ.Base)
-	case TypeMutableSlice, TypeDynamicArray:
+	case TypeArena, TypeMutableSlice, TypeDynamicArray:
 		// `T[]` is move-only for every element type (P18 § 5).
 		return "move-only"
 	case TypeReference:

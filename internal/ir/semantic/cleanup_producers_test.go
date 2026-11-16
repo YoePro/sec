@@ -684,8 +684,7 @@ fn main() int {
 // A defer captures a proven reference holder without copying the reference:
 // the holder is dereferenced once where the defer registers and the body
 // reads and writes the referent through that Place, by field or as `*r`.
-// Passing the holder itself on from the body stays a named boundary.
-// The holder is captured for field projections and `*r`, which Sema records.
+// Passing the holder itself on reborrows the captured referent Place.
 // Rules: rules/control-flow/defer.md — §§ 9–11; rules/mlir/packages/sec-mlir-dialect_package17.md — §§ 41–44.
 func TestDeferCapturesReferenceHolders(t *testing.T) {
 	module, err := analyzedModule(t, ownedLocalSource+`
@@ -739,11 +738,17 @@ fn main() int {
 			t.Errorf("%s must dereference its holder once, before registering:\n%s", function, body)
 		}
 	}
-	_, err = analyzedModule(t, ownedLocalSource+"type Acc struct {\n    v: int,\n}\n\nfn Touch(acc: ref mut Acc) void {\n}\n\nfn Use(acc: ref mut Acc) void {\n    defer {\n        Touch(acc)\n    }\n}\n\nfn main() int {\n    return 0\n}\n", 17)
-	// Passing the holder itself on would copy a `ref mut` into the region;
-	// it stays a named boundary.
-	if err == nil || !strings.Contains(err.Error(), "not a resolved capture") {
-		t.Errorf("passing a holder on from a defer body: %v", err)
+	// Passing the holder itself on never copies a `ref mut` into the region:
+	// the body reborrows the referent Place it captured (P17-41).
+	passed, err := analyzedModule(t, ownedLocalSource+"type Acc struct {\n    v: int,\n}\n\nfn Touch(acc: ref mut Acc) void {\n}\n\nfn Use(acc: ref mut Acc) void {\n    defer {\n        Touch(acc)\n    }\n}\n\nfn main() int {\n    return 0\n}\n", 17)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Verify(passed); err != nil {
+		t.Fatal(err)
+	}
+	if text := Format(passed); !strings.Contains(text, "ref.reborrow-mut") || strings.Contains(text, "ref.copy-shared") {
+		t.Errorf("passing a holder on from a defer body must reborrow its referent:\n%s", text)
 	}
 }
 

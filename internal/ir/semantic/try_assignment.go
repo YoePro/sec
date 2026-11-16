@@ -28,6 +28,9 @@ func (fb *functionBuilder) buildTryAssignment(stmt *ast.TryAssignmentStatement) 
 		// errorhandling.md §41: the test invocation has no Semantic IR boundary.
 		return fb.unsupported("try assignment propagation to a test boundary", stmt.Token)
 	}
+	if handled, err := fb.lowerFallibleProperty(stmt, fact); handled {
+		return err
+	}
 	edge := "propagating to " + sema.TypeDisplayName(fact.EnclosingResultType)
 	if fact.Kind == sema.ResolvedTryAssignmentHandled {
 		edge = "with local handlers"

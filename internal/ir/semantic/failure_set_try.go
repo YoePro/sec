@@ -118,7 +118,7 @@ func (fb *functionBuilder) buildFailureSetTry(expr *ast.TryExpression, resolved 
 				// Err and passes its Ok value on as the next receiver
 				// (errorhandling.md § 11). An owned success value would also need
 				// its temporary cleanup.
-				if successType, ok := fb.owner.analyzer.ResolvedTypeOf(point.Expression); !ok || !sema.TriviallyDestructible(successType) {
+				if successType, ok := fb.owner.analyzer.ResolvedTypeOf(point.Expression); !ok || !fb.owner.triviallyDestructible(successType) {
 					return builtValue{}, fb.unsupported("failure-set try over an intermediate Result receiver that needs destruction", point.Token)
 				}
 				router.points[point.Expression] = point

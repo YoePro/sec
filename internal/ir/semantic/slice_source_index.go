@@ -104,7 +104,7 @@ func (fb *functionBuilder) lowerSliceIndexRead(expr *ast.IndexExpression, plan s
 // rules/compiler/semantic_ir.md — §126.19–20;
 // rules/mlir/packages/sec-mlir-dialect_package16.md — §§50–58.
 func (fb *functionBuilder) lowerSliceIndexWrite(stmt *ast.AssignmentStatement, index *ast.IndexExpression, plan sema.ResolvedSliceIndexPlan) error {
-	if plan.UseKind != sema.ArrayIndexWrite || plan.Action != sema.ArrayTransferConstructDirect || !plan.Mutable || !sema.TriviallyDestructible(plan.ElementType) || sema.CopyClassificationOf(plan.ElementType) != sema.CopyTrivial {
+	if plan.UseKind != sema.ArrayIndexWrite || plan.Action != sema.ArrayTransferConstructDirect || !plan.Mutable || !fb.owner.triviallyDestructible(plan.ElementType) || fb.owner.copyClassificationOf(plan.ElementType) != sema.CopyTrivial {
 		return fb.unsupported("non-trivial slice element replacement (P17)", stmt.Token)
 	}
 	place, err := fb.lowerSliceElementPlace(index, plan)

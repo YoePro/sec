@@ -1,0 +1,16 @@
+module main
+
+interface Named { fn Name() string }
+type Label struct {}
+impl Label implements Named { fn Name() string { return "label" } }
+
+type Box[T] struct { Value: T }
+impl Box[T] {
+    fn Choose[U](value: U) U { return value }
+    fn Check[U: Named](value: ref U) string { return value.Name() }
+    static fn Make[U](value: U) U { return value }
+}
+fn Explicit(box: Box[int]) bool { return box.Choose[bool](true) }
+fn Inferred(box: Box[bool]) int { return box.Choose(1) }
+fn Static() bool { return Box[int].Make[bool](true) }
+fn Constrained(box: Box[int], label: ref Label) string { return box.Check(label) }

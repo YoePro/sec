@@ -188,13 +188,16 @@ integrations:
       - represent resulting storage origin/domain, lifetime/generation dependency, ownership/borrow mode and destruction responsibility
       - keep allocation, initialization, destruction and reclamation distinct
       - verify contradictory or incomplete allocation facts before lowering
-      - "SEC-MLIR-P19 Arena and allocation-context Semantic IR/schema-15 representation: implementation plan in package19-todo.md (created 2026-10-16, P19-01..P19-44); nothing implemented yet; the existing Arena/allocation frontend facts are the basis for the P19 Sema plans; gated on P15-P18 and on MD-034, MD-053, MD-065 (MD-074 decided 2026-10-17: len is uint); the owning dynamic-array part is package18-todo.md"
+      - SEC-MLIR-P19 integration is owned by lowering.sec-mlir-package19 and tracked in package19-todo.md. Sema operation/default/effect/context facts and Semantic IR Arena/context representation are partial as of 2026-11-16. Source Arena producers, complete preserving plans, schema-15 emission and native lowering remain open; allocation readiness stays closed. Owning dynamic-array work is tracked by Package 18. MD-034 and unresolved provider/layout requirements remain constraints.
     required_tests:
       - explicit allocation op
       - context/domain preserved
       - count/size/alignment/fallibility preserved
       - storage origin and generation dependency preserved
       - invalid allocation IR rejected
+    verification:
+      - command: go run ./cmd/yamlstatus -paths -id lowering.sec-mlir-package19
+        result: "Passed on 2026-11-16: 56 references checked, none missing. Replaced obsolete P19 nothing-implemented planning note with the actual partial Sema and Semantic IR status and a link to its owning integration; no remaining point removed."
 
   - id: lowering.allocation
     area: allocation-lowering-backends

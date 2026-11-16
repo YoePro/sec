@@ -32,7 +32,7 @@ func (fb *functionBuilder) lowerSliceHolderTransfer(holder *ast.Identifier) (bui
 	if err != nil {
 		return builtValue{}, true, err
 	}
-	if use, used := fb.owner.analyzer.ResolvedReferenceUseOf(holder); planned && plan.Site == sema.TransferSiteReturn || used && use.Kind == sema.ReferenceUseReturn {
+	if use, used := fb.owner.referenceUseOf(holder); planned && plan.Site == sema.TransferSiteReturn || used && use.Kind == sema.ReferenceUseReturn {
 		// Returning a holder hands over its own bounded reference value: a
 		// shared slice is copyable and a mutable one is moved out by the
 		// return (package16 § 66; package15 §§ 60-61). The function's

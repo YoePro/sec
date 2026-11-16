@@ -207,7 +207,7 @@ func (fb *functionBuilder) buildBorrowedMatchSubject(expr *ast.MatchExpression, 
 			facts = PlaceMetadata{RootKind: PlaceRootDeref, AddressSpace: metadata.AddressSpace}
 		}
 	case throughReference:
-		use, ok := fb.owner.analyzer.ResolvedReferenceUseOf(expr.Subject)
+		use, ok := fb.owner.referenceUseOf(expr.Subject)
 		if !ok {
 			return builtValue{}, nil, true, fb.unsupported("borrowed payload through a reference holder without a resolved reference use", expr.Token)
 		}

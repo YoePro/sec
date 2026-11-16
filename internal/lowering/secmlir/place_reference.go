@@ -253,6 +253,14 @@ func (e *emitter) emitPlaceReference(function *semantic.Function, operation sema
 		if err := e.emitResult(operation); err != nil {
 			return err
 		}
+		if operation.PlaceReadMode == semantic.PlaceReadHolder {
+			// The holder's facts at this read (P17 holder in mutable storage).
+			if operation.Reference == nil {
+				return fmt.Errorf("holder read without reference facts")
+			}
+			fmt.Fprintf(&e.out, "\"sec.place.read\"(%s) <{action = %s}> {%s} ", valueName(operation.Operands[0]), mlirString(operation.PlaceReadMode), referenceDictionary(operation.Reference))
+			return e.finishTypedOperation(operation, values)
+		}
 		if operation.PlaceReadMode != "" {
 			fmt.Fprintf(&e.out, "\"sec.place.read\"(%s) <{action = %s}> ", valueName(operation.Operands[0]), mlirString(operation.PlaceReadMode))
 			return e.finishTypedOperation(operation, values)

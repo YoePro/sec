@@ -1,0 +1,7 @@
+module malformed_method_calls
+
+fn Broken() void {
+    Box[int].(1)
+}
+
+fn Following() void {}

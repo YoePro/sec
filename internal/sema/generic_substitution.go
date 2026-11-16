@@ -22,6 +22,23 @@ func substituteGenericType(typ Type, substitution map[string]Type) Type {
 		for _, arg := range typ.TypeArgs {
 			out.TypeArgs = append(out.TypeArgs, substituteGenericType(arg, substitution))
 		}
+		// An interface's finite requirements belong to the substituted instance
+		// too: Reader[T] carried by Host[int] must require Read(int), not Read(T).
+		// Rules: rules/declarations/generics.md — §§14,22;
+		// rules/declarations/interfaces.md — §§6,9.
+		out.InterfaceMethods = append([]Function(nil), typ.InterfaceMethods...)
+		for index := range out.InterfaceMethods {
+			method := &out.InterfaceMethods[index]
+			method.Parameters = append([]FunctionParameter(nil), method.Parameters...)
+			for parameter := range method.Parameters {
+				method.Parameters[parameter].Type = substituteGenericType(method.Parameters[parameter].Type, substitution)
+			}
+			method.ReturnType = substituteGenericType(method.ReturnType, substitution)
+		}
+		out.Implements = append([]Type(nil), typ.Implements...)
+		for index := range out.Implements {
+			out.Implements[index] = substituteGenericType(out.Implements[index], substitution)
+		}
 		// Fields belong to the resolved instance, not to its old template
 		// arguments. Copy the slice so one specialization cannot mutate another.
 		out.Fields = append([]StructField(nil), typ.Fields...)

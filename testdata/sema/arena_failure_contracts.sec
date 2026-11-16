@@ -1,0 +1,19 @@
+module arena_failure_contracts
+
+fn EmptyCapacities() Result[void, AllocationError] {
+    let mut fixed := try Arena.WithCapacity(0u)
+    fixed.Release()
+    let mut growing := try Arena.Growable(0u)
+    growing.Release()
+    return Ok()
+}
+
+fn Counts(arena: ref mut Arena, count: uint) Result[void, AllocationError] {
+    let one := try arena.New[byte]()
+    discard one
+    let empty := try arena.Alloc[byte](0u)
+    discard empty
+    let dynamic := try arena.Alloc[byte](count)
+    discard dynamic
+    return Ok()
+}

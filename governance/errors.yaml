@@ -605,6 +605,7 @@ integrations:
     remaining:
       - integrate invalid-reference generation into the canonical panic-effect model (assertion proof, contracts, and foreign abort are now integrated)
       - complete transitive @noPanic verification for generic specializations (template calls through constraints are conservatively unknown), compiler helpers, destruction, and cleanup; closed function-value target sets, unknown targets, interface and constraint dispatch, FFI, and defer bodies are covered
+      - "complete the remaining MayPanic sources and the @noPanic attribute diagnostics for full transitive verification (moved from lowering.sec-mlir-typed-arithmetic-failure on 2026-11-16, owner decision; unknown and foreign contracts and cleanup effects are covered by the items above)"
       - version and validate separate-compilation panic summaries
       - distinguish child-domain contained panic from synchronous parent panic effect according to concurrency rules
       - feed canonical panic facts into ISR analysis, target-profile validation, LSP, and call hierarchy

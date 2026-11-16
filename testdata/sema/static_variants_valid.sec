@@ -1,0 +1,47 @@
+module static_variants_valid
+
+type Point struct { X: int, Flag: bool }
+type AppError enum error { Bad }
+type Choice union {
+    Empty
+    Number(int)
+    Record { Point: Point, Code: int }
+    Text(string)
+    Bytes(byte[2])
+}
+
+fn MakePoint() Point { return Point { X: 42, Flag: true } }
+fn MakeNested() Result[Option[Point], AppError] { return Ok(Some(MakePoint())) }
+fn MakeError() Result[Option[Point], AppError] { return Err(AppError.Bad) }
+fn MakeRecord() Choice { return Choice.Record { Point: MakePoint(), Code: 7 } }
+fn MakeNumber() Choice { return Choice.Number(9) }
+fn MakeText() Choice { return Choice.Text("Sec") }
+fn MakeNone() Option[Point] { return None }
+fn MakeVoid() Result[void, AppError] { return Ok() }
+
+let Nested: Result[Option[Point], AppError] := MakeNested()
+let Failure: Result[Option[Point], AppError] := MakeError()
+let Record: Choice := MakeRecord()
+let NumericValue: Choice := MakeNumber()
+let Text: Choice := MakeText()
+let Empty: Choice := Choice.Empty
+let Absent: Option[Point] := MakeNone()
+let VoidSuccess: Result[void, AppError] := MakeVoid()
+let Copy: Choice := NumericValue
+let InlineSome: Option[int] := Some(3)
+let InlineNone: Option[int] := None
+let InlineOk: Result[int, AppError] := Ok(4)
+let InlineErr: Result[int, AppError] := Err(AppError.Bad)
+let InlineNumber: Choice := Choice.Number(9)
+let InlineRecord: Choice := Choice.Record { Point: Point { X: 42, Flag: true }, Code: 7 }
+
+fn MakeBytes() Choice {
+    let bytes: byte[2] := [1u, 2u]
+    return Choice.Bytes(bytes)
+}
+let BytesValue: Choice := MakeBytes()
+
+fn Local() int {
+    static let Value: Choice := MakeNumber()
+    return 0
+}

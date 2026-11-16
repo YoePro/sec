@@ -200,6 +200,12 @@ func (p *Parser) parseExpression(currentPrecedence precedence) ast.Expression {
 	}
 
 	for p.peekToken.Type != lexer.EOF && currentPrecedence < p.peekPrecedence() {
+		if left == nil {
+			// A failed postfix form (such as `a[]`) yields no expression; a
+			// following `.member` must not build on a missing receiver
+			// (rules/compiler/parser_recovery.md — "Postfix expression").
+			return nil
+		}
 		if p.stopBeforeBrace && p.peekToken.Type == lexer.LBRACE {
 			return left
 		}
@@ -1046,6 +1052,7 @@ func (p *Parser) parseConversionExpression(left ast.Expression) ast.Expression {
 //
 // Rules:
 //   - rules/declarations/generics.md — "Generic arguments"
+//   - rules/declarations/generics.md — §§9,18,20 (owner and method argument lists)
 //   - rules/declarations/generics.md — "Generic enums"
 //   - rules/compiler/parser_recovery.md — "Generic argument recovery"
 func (p *Parser) parseExplicitGenericCallExpression(left ast.Expression) ast.Expression {
@@ -1123,16 +1130,20 @@ func (p *Parser) parseExplicitGenericCallExpression(left ast.Expression) ast.Exp
 		}
 		p.nextToken()
 		argumentsOpen := p.curToken
+		// The bracket list before the dot belongs to the owner; a later
+		// Method[U] list belongs to the method (generics.md §§9,18,20).
+		if selected, ok := member.(*ast.MemberExpression); ok {
+			selected.OwnerGenericArguments = typeArgs
+		}
 		args, ok := p.parseCallArguments()
 		if !ok {
 			return nil
 		}
 		return &ast.CallExpression{
-			ArgumentsOpen:    argumentsOpen,
-			Token:            expressionToken(member),
-			Callee:           member,
-			GenericArguments: typeArgs,
-			Arguments:        args,
+			ArgumentsOpen: argumentsOpen,
+			Token:         expressionToken(member),
+			Callee:        member,
+			Arguments:     args,
 		}
 	}
 
@@ -1900,6 +1911,9 @@ func typeReferenceFromExpression(expr ast.Expression) (*ast.TypeReference, bool)
 //   - rules/compiler/parser_recovery.md — "Postfix expression"
 //   - rules/compiler/parser_recovery.md — "Invalid expression"
 func (p *Parser) parseMemberExpression(left ast.Expression) ast.Expression {
+	if left == nil {
+		return nil
+	}
 	expr := &ast.MemberExpression{
 		Token:  p.curToken,
 		Object: left,

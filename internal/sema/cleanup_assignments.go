@@ -59,6 +59,10 @@ type ResolvedOwnedCleanupAssignment struct {
 	// some paths.
 	Moved            [][]string
 	MovedConditional bool
+	// EmptyDeclaration is the never-registered action of an owned union
+	// declared empty: the inherited incarnation of an assignment where no
+	// earlier one may be live (default_values.md § 33(5); MD-125).
+	EmptyDeclaration CleanupActionID
 }
 
 // prepareOwnedCleanupAssignment snapshots accepted destination facts after RHS
@@ -78,7 +82,7 @@ func (a *Analyzer) prepareOwnedCleanupAssignment(stmt *ast.AssignmentStatement, 
 		return nil
 	}
 	place, ok := a.rootPlace(target.Value)
-	if !ok || TriviallyDestructible(place.Type) {
+	if !ok || !mayRequireDestruction(place.Type) {
 		return nil
 	}
 	binding := a.bindingIDs[sourceTokenLocation(place.RootToken)]
@@ -101,10 +105,17 @@ func (a *Analyzer) prepareOwnedCleanupAssignment(stmt *ast.AssignmentStatement, 
 			previous = CleanupPreviousUnavailable
 		}
 	}
+	// A union declared empty may hold a value on some paths only; a value
+	// registers where none is live and replaces one where it is.
+	emptyDeclaration := CleanupActionID(0)
+	if declared, empty := a.ownedCleanupEmptyDeclarations[binding]; empty && !a.assigned[target.Value] {
+		previous = CleanupPreviousConditional
+		emptyDeclaration = declared.Action
+	}
 	initial.Action = a.cleanupIdentities.owned(binding, stmt.Token)
 	initial.Place = cloneSlicePlanPlace(place)
 	initial.Activation = CleanupAfterInitialization
-	plan := &ResolvedOwnedCleanupAssignment{Previous: previous, Registration: initial, Executor: a.currentCallable, ExecutionScope: a.currentCleanupScope}
+	plan := &ResolvedOwnedCleanupAssignment{Previous: previous, Registration: initial, Executor: a.currentCallable, ExecutionScope: a.currentCleanupScope, EmptyDeclaration: emptyDeclaration}
 	// Partial moves retain the enclosing owner's obligation; completing its
 	// replacement must not relocate the cleanup of that root either.
 	if previous != CleanupPreviousUnavailable {
@@ -206,7 +217,7 @@ func (a *Analyzer) recordOwnedFieldAssignment(stmt *ast.AssignmentStatement, pla
 		}
 	}
 	root, ok := a.rootPlace(place.Root)
-	if !ok || TriviallyDestructible(root.Type) {
+	if !ok || !mayRequireDestruction(root.Type) {
 		return
 	}
 	if _, owned := a.ownedCleanupRegistrationForBinding(a.bindingIDs[sourceTokenLocation(root.RootToken)]); !owned {

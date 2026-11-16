@@ -355,6 +355,8 @@ const (
 	UnsafeOperationRequiresContext = "S1241"
 	UnsafeUnnecessary              = "S1242"
 	UnsafeRedundant                = "S1243"
+	// InterruptEntryNotCallable enforces interrupts.md §4 for ordinary calls.
+	InterruptEntryNotCallable = "S1245"
 
 	// ThreadTerminationNotPortable rejects a fabricated portable hard-kill
 	// capability on the compiler-owned Thread/ThreadObserver identities.
@@ -647,6 +649,7 @@ var registry = map[string]Definition{
 	CheckedConversionRequiresTry:          {ID: CheckedConversionRequiresTry, Name: "types.checked-conversion-requires-try", Family: "types", DefaultSeverity: SeverityError, Mandatory: true},
 	TypeNameUsedAsValue:                   {ID: TypeNameUsedAsValue, Name: "types.type-name-used-as-value", Family: "types", DefaultSeverity: SeverityError, Mandatory: true},
 	UnsafeFunctionValueMismatch:           {ID: UnsafeFunctionValueMismatch, Name: "unsafe.function-value-mismatch", Family: "unsafe", DefaultSeverity: SeverityError, Mandatory: true},
+	InterruptEntryNotCallable:             {ID: InterruptEntryNotCallable, Name: "interrupt.entry-not-callable", Family: "interrupt", DefaultSeverity: SeverityError, Mandatory: true},
 	RawPointerNullDereference:             {ID: RawPointerNullDereference, Name: "unsafe.raw-pointer-null", Family: "unsafe", DefaultSeverity: SeverityError, Mandatory: true},
 	RawPointerUnsafeRequired:              {ID: RawPointerUnsafeRequired, Name: "unsafe.raw-pointer-context", Family: "unsafe", DefaultSeverity: SeverityError, Mandatory: true},
 	RawPointerInvalidOperation:            {ID: RawPointerInvalidOperation, Name: "unsafe.raw-pointer-operation", Family: "unsafe", DefaultSeverity: SeverityError, Mandatory: true},

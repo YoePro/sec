@@ -1,0 +1,31 @@
+module main
+
+type Box[T] struct { Value: T }
+impl Box[T] {
+    fn Pick[U](value: U) U { return value }
+    fn Forward[U](value: U) U { return self.Pick[U](<-value) }
+    static fn Static[U](value: U) U { return value }
+    fn Update[U](->value: T, ignored: U) void { self.Value = Transfer(<-value) }
+    fn Unused[U](value: U) U { return value }
+}
+type Plain struct {}
+impl Plain {
+    fn Pick[U](value: U) U { return value }
+    static fn Static[U](value: U) U { return value }
+}
+
+fn FromInteger(box: Box[int]) int { return box.Pick[int](7) }
+fn Repeat(box: Box[int]) int { return box.Pick(8) }
+fn FromBoolean(box: Box[bool]) int { return box.Pick[int](9) }
+fn Forward(box: Box[int]) int { return box.Forward(10) }
+fn StaticInteger() int { return Box[int].Static[int](11) }
+fn StaticBoolean() int { return Box[bool].Static[int](12) }
+fn PlainInstance(value: Plain) int { return value.Pick(13) }
+fn PlainStatic() int { return Plain.Static[int](14) }
+fn Mutate(box: ref mut Box[int]) int {
+    let value := 15
+    box.Update[bool](<-value, true)
+    return box.Value
+}
+
+fn Transfer[V](value: V) V { return value }

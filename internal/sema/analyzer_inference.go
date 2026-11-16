@@ -1939,6 +1939,10 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 	a.bindDefinitions(callCalleeDefinitionToken(expr), functionDeclarationTokens(functions))
+	functions, ok = a.prepareMethodGenericCandidates(expr, functions, methodReceiver, isMethodCall)
+	if !ok {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
 	if a.callExpandsDeclaredPack(expr) {
 		return a.inferTypePackForward(expr, functions, methodReceiver, isMethodCall)
 	}
@@ -1973,7 +1977,7 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 
-	partialPackSelection := !isMethodCall && typePackOverloadSet(functions)
+	partialGenericSelection := (!isMethodCall && typePackOverloadSet(functions)) || methodGenericOverloadSet(functions)
 	partialTemplates := map[sourceTokenKey]Function{}
 	matches := []overloadMatch{}
 	var receiverError string
@@ -1990,7 +1994,7 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 		if isMethodCall && function.GenericTypePack != "" {
 			function = a.instantiateGenericImplMethod(function, methodReceiver)
 		}
-		if partialPackSelection && len(function.GenericParameters) > 0 {
+		if partialGenericSelection && len(function.GenericParameters) > 0 {
 			template := function
 			hadGenericArityMatch = true
 			if hadExplicitGenericCall {
@@ -2001,7 +2005,8 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 			if a.hasDeferredContextualArgument(sourceArgs) {
 				inferenceTypes = a.contextualInferenceArgumentTypes(sourceArgs, sourceArgTypes)
 			}
-			partial, ok := a.partialPackOverload(function, expr.GenericArguments, inferenceTypes)
+			inferenceTypes = a.callArgumentTypesForFunction(function, inferenceTypes, methodReceiver, isMethodCall)
+			partial, ok := a.partialGenericOverload(function, expr.GenericArguments, inferenceTypes)
 			if !ok {
 				hadExplicitGenericInferenceFailure = hadExplicitGenericInferenceFailure || hadExplicitGenericCall
 				continue
@@ -2025,7 +2030,11 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 				hadExplicitGenericArityMatch = true
 			}
 			argTypes := a.callArgumentTypesForFunction(function, sourceArgTypes, methodReceiver, isMethodCall)
-			instantiated, inferenceFailed, ok := a.explicitGenericFunctionInstance(function, expr.GenericArguments, argTypes, Type{})
+			expected := Type{}
+			if function.ImplTarget != "" {
+				expected = a.expectedExpressionTypes[expr]
+			}
+			instantiated, inferenceFailed, ok := a.explicitGenericFunctionInstance(function, expr.GenericArguments, argTypes, expected)
 			if !ok {
 				hadExplicitGenericInferenceFailure = hadExplicitGenericInferenceFailure || inferenceFailed
 				continue
@@ -2049,6 +2058,9 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 			}
 			argTypes := a.callArgumentTypesForFunction(function, inferenceTypes, methodReceiver, isMethodCall)
 			instantiated, ok := a.inferGenericFunctionInstance(function, argTypes)
+			if !ok && function.ImplTarget != "" {
+				instantiated, ok = a.inferGenericFunctionInstanceWithExpected(function, argTypes, a.expectedExpressionTypes[expr])
+			}
 			if !ok {
 				continue
 			}
@@ -2118,7 +2130,7 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 	best := bestOverloadMatches(matches)
 	if len(best) == 1 {
 		if template, partial := partialTemplates[sourceTokenLocation(best[0].Function.Token)]; partial {
-			completed, known := a.completePackOverload(template, best[0].Function.GenericSubstitution, a.expectedExpressionTypes[expr])
+			completed, known := a.completeGenericOverload(template, best[0].Function.GenericSubstitution, a.expectedExpressionTypes[expr])
 			if !known {
 				a.addErrorAtToken(expr.Token, "cannot infer generic arguments for %s", name)
 				return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
@@ -2698,6 +2710,16 @@ func (a *Analyzer) inferCallExpressionWithExpected(expr *ast.CallExpression, exp
 	if len(functions) == 0 {
 		return Type{}, expressionValue{}, false
 	}
+	// Method argument preparation and receiver binding belong to the ordinary
+	// call path; its expected-expression fact supplies result inference too.
+	// Rules: rules/declarations/generics.md — §§9,18,20.
+	if _, member := expr.Callee.(*ast.MemberExpression); member {
+		for _, function := range functions {
+			if function.ImplTarget != "" && (len(function.GenericParameters) > 0 || len(expr.Callee.(*ast.MemberExpression).OwnerGenericArguments) > 0) {
+				return Type{}, expressionValue{}, false
+			}
+		}
+	}
 	for _, function := range functions {
 		if function.GenericTypePack != "" && functionUsesReceiver(function) {
 			return Type{}, expressionValue{}, false
@@ -2845,6 +2867,9 @@ func anyNonGenericFunction(functions []Function) bool {
 	return false
 }
 
+// inferGenericFunctionInstance infers unresolved callable parameters from
+// arguments while retaining the owner's already fixed generic environment.
+// Rules: rules/declarations/generics.md — §§9,18,20.
 func (a *Analyzer) inferGenericFunctionInstance(function Function, argTypes []Type) (Function, bool) {
 	if function.GenericTypePack != "" {
 		return a.inferTypePackCall(function, nil, argTypes, Type{})
@@ -2853,7 +2878,7 @@ func (a *Analyzer) inferGenericFunctionInstance(function Function, argTypes []Ty
 		return Function{}, false
 	}
 
-	substitution := map[string]Type{}
+	substitution := genericInferenceBindings(function)
 	for i, argType := range argTypes {
 		parameter, parameterOK := functionParameterForArgument(function, i)
 		if !parameterOK {
@@ -2876,6 +2901,9 @@ func (a *Analyzer) inferGenericFunctionInstance(function Function, argTypes []Ty
 	return a.instantiateGenericFunction(function, substitution), true
 }
 
+// inferGenericFunctionInstanceWithExpected supplements argument inference with
+// permitted expected-result context without replacing owner bindings.
+// Rules: rules/declarations/generics.md — §§9,18,20.
 func (a *Analyzer) inferGenericFunctionInstanceWithExpected(function Function, argTypes []Type, expected Type) (Function, bool) {
 	if function.GenericTypePack != "" {
 		return a.inferTypePackCall(function, nil, argTypes, expected)
@@ -2884,7 +2912,7 @@ func (a *Analyzer) inferGenericFunctionInstanceWithExpected(function Function, a
 		return Function{}, false
 	}
 
-	substitution := map[string]Type{}
+	substitution := genericInferenceBindings(function)
 	for i, argType := range argTypes {
 		parameter, parameterOK := functionParameterForArgument(function, i)
 		if !parameterOK || !inferGenericArgumentSubstitution(parameter.Type, a.conformingViewArgument(parameter.Type, argType, substitution), substitution) {
@@ -3050,6 +3078,12 @@ func (a *Analyzer) inferCallAsConversion(expr *ast.CallExpression) (Type, expres
 	if result, numeric := a.numericStringConversionType(expr, targetType, valueType); numeric {
 		return result, expressionValue{Display: expr.String()}
 	}
+	if !a.validatePrimitiveNumericConversion(targetType, valueType, expr.Arguments[0]) {
+		delete(a.resolvedNumericConversionPlans, expr)
+		delete(a.checkedConversions, expr)
+		delete(a.fallibleConversionRelations, expr)
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
 	if !a.validateConstantIntegerConversion(targetType, valueType, expr.Arguments[0]) {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
@@ -3065,6 +3099,7 @@ func (a *Analyzer) inferCallAsConversion(expr *ast.CallExpression) (Type, expres
 	a.recordIntegerConversion(expr, targetType, valueType)
 	a.recordNamedConversion(expr, targetType, valueType)
 	a.recordCheckedConversion(expr, targetType, valueType)
+	a.recordNumericConversionPlan(expr, targetType, valueType)
 
 	return targetType, expressionValue{Display: expr.String()}
 }

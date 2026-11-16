@@ -69,7 +69,7 @@ func (fb *functionBuilder) buildResultProjection(call *ast.CallExpression, membe
 	fb.current = droppedBlock
 	if dropped.Kind != sema.VoidType {
 		inactive := fb.result(Operation{Kind: droppedKind, Operands: []ValueID{result.id}, Location: loc}, droppedID)
-		if !sema.TriviallyDestructible(dropped) {
+		if !fb.owner.triviallyDestructible(dropped) {
 			planID, err := fb.owner.importDestructionPlans(sema.ResolveDestructionPlans(dropped), dropped)
 			if err != nil {
 				return builtValue{}, err

@@ -18,7 +18,7 @@ func (fb *functionBuilder) buildArrayLiteral(expr *ast.ArrayLiteral, resultType 
 	if !ok || plan.Length == nil {
 		return builtValue{}, fb.unsupported("unresolved array literal", expr.Token)
 	}
-	nontrivial := sema.CopyClassificationOf(plan.ElementType) != sema.CopyTrivial || !sema.TriviallyDestructible(plan.ElementType)
+	nontrivial := fb.owner.copyClassificationOf(plan.ElementType) != sema.CopyTrivial || !fb.owner.triviallyDestructible(plan.ElementType)
 	if nontrivial && fb.owner.maxPackage < ownershipLoweringPackage {
 		return builtValue{}, fb.unsupported("non-trivial array literal element", expr.Token)
 	}

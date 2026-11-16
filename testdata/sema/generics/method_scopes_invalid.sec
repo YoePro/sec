@@ -1,0 +1,13 @@
+module method_scopes_invalid
+
+type Box[T] struct { Value: T }
+
+impl Box[T] {
+    fn Shadow[T]() void {}
+    static fn ShadowStatic[T]() void {}
+    fn Duplicate[U, U]() void {}
+    fn Own[U](value: U) U { return value }
+    fn Leak(value: U) void {}
+}
+
+fn Outside(value: U) void {}

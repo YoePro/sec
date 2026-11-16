@@ -1,0 +1,8 @@
+module interrupt_testing
+
+@isr
+fn Entry() void {}
+
+test "ordinary tests cannot invoke interrupt entries" {
+    Entry()
+}

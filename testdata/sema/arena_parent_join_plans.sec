@@ -1,0 +1,16 @@
+module arena_parent_join_plans
+
+fn JoinedParents(flag: bool) Result[void, AllocationError] {
+    let mut left := try Arena.WithCapacity(32u)
+    let mut right := try Arena.WithCapacity(32u)
+    let mut buffer := try left.Alloc[byte](16u)
+    if flag {
+        buffer = try right.Alloc[byte](16u)
+    }
+    let mut child := Arena.FromBuffer(buffer)
+    child.Reset()
+    child.Release()
+    left.Reset()
+    right.Reset()
+    return Ok()
+}

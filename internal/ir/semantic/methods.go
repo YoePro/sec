@@ -10,8 +10,8 @@ import (
 // Methods declared in impl blocks retain their resolved qualified identity.
 // Static methods have no receiver; from P15 ordinary instance methods take an
 // explicit shared/mutable reference receiver. Ordinary methods never consume
-// whole self (functions.md §22); generic implementations remain unsupported
-// until concrete specialization identities and body facts exist in Semantic IR.
+// whole self (functions.md §22). Generic owners and method-local parameters
+// register templates built under each demanded concrete substitution.
 //
 // Rules:
 //   - rules/declarations/impl.md — § 8 "self", § 11 "Methods", § 13 "Static members", § 25
@@ -30,6 +30,12 @@ func (b *builder) buildStaticMethods(impl *ast.ImplStatement) error {
 	// The methods of a generic implementation are templates; each selected
 	// call on a concrete instance demands one specialization
 	// (generic_specialization.go; monomorphization.md § 9.3).
+	// Property accessors are built on demand by the operations that call them.
+	for _, member := range impl.Members {
+		if property, ok := member.(*ast.PropertyDeclaration); ok {
+			b.registerPropertyAccessors(impl.Target.Name, property)
+		}
+	}
 	if len(impl.Target.TypeArgs) != 0 {
 		for _, member := range impl.Members {
 			decl, ok := member.(*ast.FunctionDeclaration)

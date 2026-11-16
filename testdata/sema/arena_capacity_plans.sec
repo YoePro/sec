@@ -1,0 +1,55 @@
+module arena_capacity_plans
+
+fn Fixed() Result[void, AllocationError] {
+    let mut buffer: byte[32]
+    let mut arena := Arena.FromBuffer(ref mut buffer)
+    let values := try arena.Alloc[byte](2u)
+    discard values
+    arena.Reset()
+    arena.Release()
+    return Ok()
+}
+
+fn Empty() void {
+    let mut buffer: byte[0]
+    let mut arena := Arena.FromBuffer(ref mut buffer)
+    arena.Reset()
+    arena.Release()
+}
+
+fn Sliced() void {
+    let mut buffer: byte[32]
+    let backing := ref mut buffer[4..<12]
+    let mut arena := Arena.FromBuffer(backing)
+    arena.Reset()
+    arena.Release()
+}
+
+fn Runtime(buffer: ref mut byte[]) void {
+    let mut arena := Arena.FromBuffer(buffer)
+    arena.Reset()
+    arena.Release()
+}
+
+fn Owned() Result[void, AllocationError] {
+    let mut arena := try Arena.WithCapacity(64u)
+    let mut owner :<- arena
+    let values := try owner.Alloc[uint256](2u)
+    discard values
+    owner.Reset()
+    owner.Release()
+    return Ok()
+}
+
+fn Growing(capacity: uint) Result[void, AllocationError] {
+    let mut arena := try Arena.Growable(capacity)
+    let values := try arena.Alloc[byte](0u)
+    discard values
+    arena.Reset()
+    arena.Release()
+    return Ok()
+}
+
+fn Parameter(arena: ref mut Arena) void {
+    arena.Reset()
+}

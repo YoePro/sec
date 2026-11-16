@@ -140,6 +140,10 @@ func isPlaceReferenceOperation(kind OpKind) bool {
 // rules/mlir/packages/sec-mlir-dialect_package16.md — §42.
 func placeConsumer(kind OpKind) bool {
 	switch kind {
+	case OpArenaNew, OpArenaAlloc, OpArenaReset, OpAllocationContextFromArena:
+		// rules/mlir/packages/sec-mlir-dialect_package19.md — §§59,87,118:
+		// mutation borrows writable owner control through a Place.
+		return true
 	case OpSliceBorrowShared, OpSliceBorrowMutable, OpSliceElementPlace, OpStringRuneLength, OpStringViewBorrow, OpPlaceField, OpPlaceArrayIndexInBounds, OpPlaceArrayElement, OpPlaceUnionPayload, OpPlaceRead,
 		OpPlaceWrite, OpReferenceBorrowShared, OpReferenceBorrowMutable,
 		// A reborrow may derive from a dereferenced sub-Place (§ 78);
@@ -417,8 +421,14 @@ func verifyPlaceReferenceOperation(module *Module, op Operation, values map[Valu
 		if len(op.Operands) != 1 || !placeOK || len(op.Results) != 1 || op.Results[0].Type != place.Element {
 			return fmt.Errorf("invalid place.read")
 		}
-		if op.PlaceReadMode != "" && op.PlaceReadMode != PlaceReadObserve && op.PlaceReadMode != PlaceReadCandidate {
+		if op.PlaceReadMode != "" && op.PlaceReadMode != PlaceReadObserve && op.PlaceReadMode != PlaceReadCandidate && op.PlaceReadMode != PlaceReadHolder {
 			return fmt.Errorf("place.read has unknown mode %q", op.PlaceReadMode)
+		}
+		if op.PlaceReadMode == PlaceReadHolder {
+			if !typeHasKind(types, place.Element, TypeReference, TypeSharedSlice, TypeMutableSlice, TypeStringView) || op.Reference == nil {
+				return fmt.Errorf("place.read holder reads only a reference, slice or view holder with its facts")
+			}
+			return verifyReferenceMetadata(op)
 		}
 		if op.PlaceReadMode == "" && !package14TrivialValue(module, place.Element) {
 			return fmt.Errorf("place.read supports copy-trivial referents only; move-only and semantic-copy reads are unsupported")
@@ -612,7 +622,7 @@ func verifyPlaceReferenceFunction(module *Module, fn *Function, blocks map[Block
 				}
 			}
 			if (op.Kind == OpReferenceReborrowShared || op.Kind == OpReferenceReborrowMutable) && len(op.Operands) == 1 && isPlace(op.Operands[0]) {
-				if err := verifySubplaceReborrowSource(op, definitions, sources); err != nil {
+				if err := verifySubplaceReborrowSource(op, definitions, sources, fn.deferCaptureBorrows); err != nil {
 					return err
 				}
 			} else if !placeConsumer(op.Kind) {
@@ -683,11 +693,15 @@ func verifyPlaceReferenceFunction(module *Module, fn *Function, blocks map[Block
 // be reached from ref.deref-place of the reference its SourceBorrow names,
 // through Place projections only; a Place over owned storage is a borrow,
 // not a reborrow.
-func verifySubplaceReborrowSource(op Operation, definitions map[ValueID]Operation, sources map[ValueID]*ReferenceMetadata) error {
+func verifySubplaceReborrowSource(op Operation, definitions map[ValueID]Operation, sources map[ValueID]*ReferenceMetadata, captured map[ValueID]uint32) error {
 	id := op.Operands[0]
 	for {
 		definition, ok := definitions[id]
 		if !ok {
+			// A defer body's capture of a dereferenced holder (P17-41).
+			if borrow, isCapture := captured[id]; isCapture && op.Reference != nil && borrow == op.Reference.SourceBorrow {
+				return nil
+			}
 			return fmt.Errorf("%s of Place %%%d is not derived from a dereferenced reference", op.Kind, op.Operands[0])
 		}
 		switch definition.Kind {

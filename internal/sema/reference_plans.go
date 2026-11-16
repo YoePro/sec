@@ -41,6 +41,10 @@ const (
 	ReferenceProvenanceArena     ReferenceProvenanceKind = "arena"
 	ReferenceProvenanceDerived   ReferenceProvenanceKind = "derived"
 	ReferenceProvenanceUnknown   ReferenceProvenanceKind = "unknown"
+	// ReferenceProvenanceJoined is a holder whose finite, proven alternatives
+	// have different provenance kinds; OriginPlaces keep every alternative
+	// (package15 § 20: a known finite origin set retains its alternatives).
+	ReferenceProvenanceJoined ReferenceProvenanceKind = "joined"
 )
 
 // ReferenceFacts is the complete immutable fact set of one direct reference
@@ -173,14 +177,26 @@ func referenceProvenance(place Place) ReferenceProvenanceKind {
 //   - rules/compiler/semantic_ir.md — §§ 45(5)-(13), 46(6)
 //   - rules/memory/reference_model.md — §§ 33-34, 45
 func (a *Analyzer) referenceFactsForPlace(place Place, mutable bool, site lexer.Token) ReferenceFacts {
+	facts := a.referenceFactsWithoutIdentity(place, mutable, site)
+	key := referenceSiteKey(site)
+	facts.Borrow = a.placeIdentities.borrow("borrow:" + key)
+	facts.Lifetime = a.placeIdentities.lifetime("lifetime:" + key)
+	return facts
+}
+
+func referenceSiteKey(site lexer.Token) string {
 	location := sourceTokenLocation(site)
-	key := fmt.Sprintf("%s:%d:%d", location.File, location.Line, location.Column)
+	return fmt.Sprintf("%s:%d:%d", location.File, location.Line, location.Column)
+}
+
+// referenceFactsWithoutIdentity derives the same facts with no borrow or
+// lifetime identity yet; a holder or contained read takes them after
+// analysis (allocateHolderReadIdentities).
+func (a *Analyzer) referenceFactsWithoutIdentity(place Place, mutable bool, site lexer.Token) ReferenceFacts {
 	facts := ReferenceFacts{
 		Kind:             ReferenceSharedDirect,
 		Referent:         semanticSnapshotType(place.Type),
 		MutableAuthority: mutable,
-		Borrow:           a.placeIdentities.borrow("borrow:" + key),
-		Lifetime:         a.placeIdentities.lifetime("lifetime:" + key),
 		AddressSpace:     place.AddressSpace,
 		AddressStability: AddressStabilityStable,
 		Provenance:       referenceProvenance(place),
@@ -211,14 +227,20 @@ func (a *Analyzer) referenceFactsForPlace(place Place, mutable bool, site lexer.
 		facts.AddressStability = AddressStabilityUnknown
 		return facts
 	}
-	// A joined holder cannot be represented by the current single-domain
-	// ReferenceFacts ABI. Preserve uncertainty rather than validating only
-	// its legacy representative (package 15 §§25–31).
+	// A joined holder is represented when every alternative has the same
+	// provenance and none is Arena-backed: the facts name every origin
+	// storage and Semantic IR checks them against each reference reaching the
+	// read. Mixed provenance or an Arena alternative (several epochs) has no
+	// single-domain representation, so uncertainty is preserved (package 15
+	// §§25–31; lifetime_analysis.md § 11).
 	for _, root := range []string{place.ReferenceHolder, place.Root} {
-		if symbol, ok := a.symbols.lookup(root); ok && len(symbol.Type.ReferenceOriginAlternatives) > 1 {
-			facts.Provenance = ReferenceProvenanceUnknown
-			facts.AddressStability = AddressStabilityUnknown
-			return facts
+		if symbol, ok := a.symbols.lookup(root); ok && len(symbol.Type.ReferenceOriginAlternatives) > 1 && !a.uniformReferenceJoin(symbol.Type, origins) {
+			if !a.provenReferenceJoin(symbol.Type, origins) {
+				facts.Provenance = ReferenceProvenanceUnknown
+				facts.AddressStability = AddressStabilityUnknown
+				return facts
+			}
+			facts.Provenance = ReferenceProvenanceJoined
 		}
 	}
 	if domain, generation, arena := a.arenaOriginOfPlace(place); arena {
@@ -236,6 +258,8 @@ func (a *Analyzer) referenceFactsForPlace(place Place, mutable bool, site lexer.
 		facts.ProofProvenance = "caller-owned-borrow"
 	case ReferenceProvenanceDerived:
 		facts.ProofProvenance = "reborrow-of-valid-reference"
+	case ReferenceProvenanceJoined:
+		facts.ProofProvenance = "joined-proven-origins"
 	default:
 		facts.ProofProvenance = "lexical-borrow"
 	}
@@ -349,6 +373,14 @@ func (a *Analyzer) recordReferenceReadUse(expr ast.Expression, typ Type) {
 	if !ok {
 		place, ok = a.resolvePlace(expr)
 	}
+	// A reference, slice or view stored in an aggregate is read out with the
+	// contained origins of its aggregate path (package15 § 101).
+	if ok && !dereference && typeCarriesReferenceOrigin(typ) && !a.placeReachedThroughReference(place) {
+		switch expr.(type) {
+		case *ast.MemberExpression, *ast.IndexExpression:
+			a.recordContainedRead(expr, place, typ)
+		}
+	}
 	// MD-063: `*r` is by definition a use through its holder's reference.
 	if !ok || !dereference && !a.placeReachedThroughReference(place) {
 		return
@@ -359,15 +391,59 @@ func (a *Analyzer) recordReferenceReadUse(expr ast.Expression, typ Type) {
 	if identifier, ok := expr.(*ast.Identifier); ok {
 		// Naming a reference holder reads the holder, not the referent.
 		if symbol, found := a.symbols.lookup(identifier.Value); found && typeCarriesReferenceOrigin(symbol.Type) && typeCarriesReferenceOrigin(typ) {
+			a.recordHolderRead(identifier, symbol)
 			return
 		}
 	}
 	a.recordReferenceUse(expr, ReferenceUseRead, place, false, expressionToken(expr))
 }
 
+// recordHolderRead publishes, for a direct reference holder kept in a mutable
+// binding, the facts of the reference it holds at this read: the holder may
+// have been rebound (references.md § 3.4(5)), so its referent Place carries
+// every origin that can reach this point (lifetime_analysis.md § 11).
+func (a *Analyzer) recordHolderRead(identifier *ast.Identifier, symbol Symbol) {
+	if a.summaryPass || !symbol.Local || symbol.Type.Kind != ReferenceType && symbol.Type.Kind != StringViewType || symbol.Type.Kind == ReferenceType && symbol.Type.Element == nil {
+		return
+	}
+	// The held reference's referent: the holder's origin Place with every
+	// alternative a rebinding or join can bring here, else `*r`.
+	place, ok := a.referencePlaceOrigin(identifier)
+	if ok && symbol.Type.Kind == ReferenceType {
+		place.Type = *symbol.Type.Element
+		for index := range place.AlternativeOrigins {
+			place.AlternativeOrigins[index].Type = *symbol.Type.Element
+		}
+	}
+	if !ok {
+		place, ok = a.resolvePlace(&ast.PrefixExpression{Token: identifier.Token, Operator: "*", Right: identifier})
+	}
+	if !ok {
+		return
+	}
+	a.resolvedHolderReads[identifier] = a.referenceFactsWithoutIdentity(place, symbol.Type.ReferenceMutable, identifier.Token)
+}
+
+// ResolvedHolderReadOf returns the facts of one read of a reference holder
+// kept in a mutable binding.
+func (a *Analyzer) ResolvedHolderReadOf(identifier *ast.Identifier) (ReferenceFacts, bool) {
+	if a == nil || identifier == nil {
+		return ReferenceFacts{}, false
+	}
+	facts, ok := a.resolvedHolderReads[identifier]
+	return cloneReferenceFacts(facts), ok
+}
+
 // recordReferenceWriteUse marks an assignment target reached through a
 // mutable reference as a write use.
 func (a *Analyzer) recordReferenceWriteUse(target ast.Expression) {
+	// Without `*`, assigning to a holder rebinds the holder and writes nothing
+	// through it (references.md § 3.4(5); borrowing.md § 8.2).
+	if identifier, plain := target.(*ast.Identifier); plain {
+		if symbol, found := a.symbols.lookup(identifier.Value); found && typeCarriesReferenceOrigin(symbol.Type) {
+			return
+		}
+	}
 	place, ok := a.resolvePlace(target)
 	_, dereference := dereferenceExpression(target)
 	if !ok || !dereference && !a.placeReachedThroughReference(place) {
@@ -623,4 +699,112 @@ func (a *Analyzer) recordReferenceValidationEffect(use ResolvedReferenceUse) {
 		return
 	}
 	a.callGraph.addEffect(a.currentCallable, EffectSite{Kind: EffectMayPanicInvalidReference, Source: use.Source, PanicReasonIDs: []diagnostics.PanicReasonID{diagnostics.PanicReasonInvalidReferenceGeneration}})
+}
+
+// uniformReferenceJoin reports a joined holder whose alternatives share one
+// provenance and include no Arena-backed origin, so its facts stay checkable.
+func (a *Analyzer) uniformReferenceJoin(typ Type, origins []Place) bool {
+	for _, alternative := range typ.ReferenceOriginAlternatives {
+		if alternative.Storage == StorageOriginArena {
+			return false
+		}
+	}
+	if len(origins) < 2 {
+		return false
+	}
+	provenance := referenceProvenance(origins[0])
+	for _, origin := range origins[1:] {
+		if referenceProvenance(origin) != provenance || provenance == ReferenceProvenanceUnknown {
+			return false
+		}
+	}
+	return true
+}
+
+// provenReferenceJoin reports a joined holder whose alternatives are all
+// known, non-Arena origins (each proven by its own provenance), so the join
+// keeps every alternative instead of degrading to unknown (package15 § 20).
+func (a *Analyzer) provenReferenceJoin(typ Type, origins []Place) bool {
+	for _, alternative := range typ.ReferenceOriginAlternatives {
+		if alternative.Storage == StorageOriginArena {
+			return false
+		}
+	}
+	if len(origins) < 2 {
+		return false
+	}
+	for _, origin := range origins {
+		switch referenceProvenance(origin) {
+		case ReferenceProvenanceUnknown, ReferenceProvenanceArena:
+			return false
+		}
+		if origin.AmbiguousProvenance {
+			return false
+		}
+	}
+	return true
+}
+
+// recordContainedRead publishes the facts of a reference, slice or view read
+// out of an aggregate by a field or element path: the contained origin Sema
+// tracked for that path, or, for an aggregate parameter or receiver, the
+// caller's borrow (package15 § 101; lifetime_analysis.md § 11).
+func (a *Analyzer) recordContainedRead(expr ast.Expression, place Place, typ Type) {
+	if a.summaryPass {
+		return
+	}
+	origin, ok := a.referencePlaceOrigin(expr)
+	if ok && typ.Kind == ReferenceType && typ.Element != nil && typ.Element.Kind != SliceType {
+		origin.Type = *typ.Element
+		for index := range origin.AlternativeOrigins {
+			origin.AlternativeOrigins[index].Type = *typ.Element
+		}
+	}
+	if !ok {
+		if place.RootKind != PlaceRootParameter && place.RootKind != PlaceRootReceiver {
+			return
+		}
+		origin = place
+	}
+	if a.resolvedContainedReads == nil {
+		a.resolvedContainedReads = map[ast.Expression]ReferenceFacts{}
+	}
+	a.resolvedContainedReads[expr] = a.referenceFactsWithoutIdentity(origin, typ.ReferenceMutable, expressionToken(expr))
+}
+
+// ResolvedContainedReadOf returns the facts of a reference, slice or view
+// read out of an aggregate path.
+func (a *Analyzer) ResolvedContainedReadOf(expr ast.Expression) (ReferenceFacts, bool) {
+	if a == nil || expr == nil {
+		return ReferenceFacts{}, false
+	}
+	facts, ok := a.resolvedContainedReads[expr]
+	return cloneReferenceFacts(facts), ok
+}
+
+// allocateHolderReadIdentities gives each holder and contained read its borrow
+// and lifetime identity after analysis, in source order, so these reads never
+// renumber the identities of other facts.
+func (a *Analyzer) allocateHolderReadIdentities() {
+	type site struct {
+		token lexer.Token
+		set   func(ReferenceFacts)
+		facts ReferenceFacts
+	}
+	var sites []site
+	for identifier, facts := range a.resolvedHolderReads {
+		identifier := identifier
+		sites = append(sites, site{identifier.Token, func(f ReferenceFacts) { a.resolvedHolderReads[identifier] = f }, facts})
+	}
+	for expr, facts := range a.resolvedContainedReads {
+		expr := expr
+		sites = append(sites, site{expressionToken(expr), func(f ReferenceFacts) { a.resolvedContainedReads[expr] = f }, facts})
+	}
+	sort.SliceStable(sites, func(i, j int) bool { return tokenBefore(sites[i].token, sites[j].token) })
+	for _, entry := range sites {
+		key := referenceSiteKey(entry.token)
+		entry.facts.Borrow = a.placeIdentities.borrow("borrow:" + key)
+		entry.facts.Lifetime = a.placeIdentities.lifetime("lifetime:" + key)
+		entry.set(entry.facts)
+	}
 }

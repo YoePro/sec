@@ -9,8 +9,9 @@ import (
 // value position. The subject is evaluated once, its active variant is tested,
 // and the two edges carry the constant results to a merge. A Result tests Err;
 // both of its edges unwrap the projected payload first, as the Result guard
-// verifier requires. Only trivially copyable subjects are read this way; the
-// empty state needs a runtime initialization flag Semantic IR does not have.
+// verifier requires. Only trivially copyable subjects are read this way; a
+// binding that may still be empty is tested with storage.is-empty first
+// (union_empty_state.go).
 //
 // Rules:
 //   - rules/declarations/unions.md — state tests; MD-006 (`is not`)
@@ -21,9 +22,14 @@ func (fb *functionBuilder) buildStateTest(expr *ast.StateTestExpression) (builtV
 		return builtValue{}, fb.unsupported("unresolved state test", expr.Token)
 	}
 	if fact.Empty || fact.MaybeEmpty {
-		return builtValue{}, fb.unsupported("empty-state test (needs a runtime initialization flag)", expr.Token)
+		return fb.buildEmptyStateTest(expr, fact)
 	}
-	if sema.CopyClassificationOf(fact.SubjectType) != sema.CopyTrivial {
+	return fb.buildValueStateTest(expr, fact)
+}
+
+// buildValueStateTest tests the active variant of a subject holding a value.
+func (fb *functionBuilder) buildValueStateTest(expr *ast.StateTestExpression, fact sema.ResolvedStateTest) (builtValue, error) {
+	if fb.owner.copyClassificationOf(fact.SubjectType) != sema.CopyTrivial {
 		return builtValue{}, fb.unsupported("state test of a subject that needs ownership", expr.Token)
 	}
 	boolType, err := fb.boolType()

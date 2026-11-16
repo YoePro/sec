@@ -181,7 +181,7 @@ func (fb *functionBuilder) leaveOnReturn(op Operation) {
 // prepareOperand records an evaluated construction operand that needs
 // destruction until its construction takes it (destruction.md § 7; P17-16).
 func (fb *functionBuilder) prepareOperand(value builtValue, typ sema.Type, token lexer.Token) {
-	if sema.TriviallyDestructible(typ) || fb.owner.maxPackage < ownershipLoweringPackage {
+	if fb.owner.triviallyDestructible(typ) || fb.owner.maxPackage < ownershipLoweringPackage {
 		return
 	}
 	fb.prepared = append(fb.prepared, pendingTemporary{value: value, typ: typ, token: token, loops: len(fb.loops), block: fb.current.ID})

@@ -1,0 +1,96 @@
+module main
+
+// SVV-3: reading, testing and matching static union, Option and Result values,
+// including borrowed payload Places of the static's own storage.
+
+type Point struct { X: int, Flag: bool }
+type Failure enum error { Bad }
+type Choice union {
+    Empty
+    Number(int)
+    Record { Point: Point, Code: int }
+    Text(string)
+}
+
+let Num: Choice := Choice.Number(9)
+let Rec: Choice := Choice.Record { Point: Point { X: 42, Flag: true }, Code: 7 }
+let Words: Choice := Choice.Text("Sec")
+let Maybe: Option[Point] := Some(Point { X: 1, Flag: false })
+let Res: Result[Point, Failure] := Ok(Point { X: 2, Flag: true })
+let mut State: Choice := Choice.Number(1)
+let mut Slot: Option[int] := None
+
+fn Copy() Choice {
+    return Num
+}
+
+fn Tested() bool {
+    return Rec is Number
+}
+
+fn Copied() int {
+    match Rec {
+        Record { Point: p, Code: c } => return p.X + c
+        Number(n) => return n
+        Text(t) => return 0
+        Empty => return 0
+    }
+}
+
+fn FieldBorrow() int {
+    match Rec {
+        Record { Point: ref p, Code: ref c } => return p.X + *c
+        Number(n) => return n
+        Text(t) => return 0
+        Empty => return 0
+    }
+}
+
+fn OptionBorrow() int {
+    match Maybe {
+        Some(ref p) => return p.X
+        None => return 0
+    }
+}
+
+fn ResultBorrow() int {
+    match Res {
+        Ok(ref p) => return p.X
+        Err(e) => return 0
+    }
+}
+
+fn TextPayload() uint {
+    match Words {
+        Text(t) => return 1u
+        Number(n) => return 0u
+        Record { Point: p, Code: c } => return 0u
+        Empty => return 0u
+    }
+}
+
+fn Update(v: int) void {
+    State = Choice.Number(v)
+    Slot = Some(v)
+}
+
+fn ReadState() int {
+    if State is Number {
+        return 1
+    }
+    match State {
+        Number(n) => return n
+        Record { Point: p, Code: c } => return c
+        Text(t) => return 0
+        Empty => return 0
+    }
+}
+
+fn SlotFilled() bool {
+    return Slot is Some
+}
+
+fn main() int {
+    Update(3)
+    return ReadState() + Copied() + FieldBorrow() + OptionBorrow() + ResultBorrow()
+}

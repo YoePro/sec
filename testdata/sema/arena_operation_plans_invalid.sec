@@ -1,0 +1,26 @@
+module main
+
+fn NonTrivial() Result[void, AllocationError] {
+    let mut arena := try Arena.WithCapacity(32u)
+    let invalid := try arena.New[Arena]()
+    return Ok()
+}
+
+fn UnknownCount() Result[void, AllocationError] {
+    let mut arena := try Arena.WithCapacity(32u)
+    let invalid := try arena.Alloc[byte](missing)
+    return Ok()
+}
+
+fn Shared(arena: ref Arena) Result[void, AllocationError] {
+    let invalid := try arena.New[byte]()
+    return Ok()
+}
+
+fn LiveDependency() Result[void, AllocationError] {
+    let mut arena := try Arena.WithCapacity(32u)
+    let value := try arena.New[byte]()
+    defer { discard value }
+    arena.Reset()
+    return Ok()
+}

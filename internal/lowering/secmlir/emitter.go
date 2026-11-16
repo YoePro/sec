@@ -354,6 +354,10 @@ func (e *emitter) emitOperation(function *semantic.Function, operation semantic.
 		if storage.AddressTaken {
 			e.out.WriteString(", sec.address_taken = true")
 		}
+		if storage.DeferInstance {
+			// Each declaration is an instance a loop defer keeps (defer.md § 13).
+			e.out.WriteString(", sec.defer_instance = true")
+		}
 		if storage.Name == "" {
 			// A compiler-materialized storage (MD-076 temporary) has no
 			// source binding; its name is never fabricated (MD-084 § 5(4)).
@@ -374,6 +378,28 @@ func (e *emitter) emitOperation(function *semantic.Function, operation semantic.
 			name = "sec.storage.store"
 		}
 		fmt.Fprintf(&e.out, "\"%s\"(%s, %s) : (!sec.storage<%s>, %s) -> ()", name, storageName(storage.ID), valueName(operation.Operands[0]), elementType, elementType)
+	case semantic.OpStorageInitEmpty, semantic.OpStorageIsEmpty:
+		// The compiler-known empty union state exists from schema 13
+		// (default_values.md § 33(4)–(5)).
+		if e.schemaVersion < 13 {
+			return &UnsupportedLoweringError{Feature: "empty union state requires schema 13"}
+		}
+		storage, ok := storages[operation.Storage]
+		if !ok {
+			return fmt.Errorf("missing storage %d", operation.Storage)
+		}
+		elementType, err := e.typeText(storage.Type)
+		if err != nil {
+			return err
+		}
+		if operation.Kind == semantic.OpStorageInitEmpty {
+			fmt.Fprintf(&e.out, "\"sec.storage.init_empty\"(%s) : (!sec.storage<%s>) -> ()", storageName(storage.ID), elementType)
+			break
+		}
+		if err := e.emitResult(operation); err != nil {
+			return err
+		}
+		fmt.Fprintf(&e.out, "\"sec.storage.is_empty\"(%s) : (!sec.storage<%s>) -> i1", storageName(storage.ID), elementType)
 	case semantic.OpStorageLoad:
 		storage, ok := storages[operation.Storage]
 		if !ok {
@@ -416,6 +442,10 @@ func (e *emitter) emitOperation(function *semantic.Function, operation semantic.
 		e.out.WriteByte(']')
 		if action := e.sensitiveAction(operation.Results); action != "" {
 			fmt.Fprintf(&e.out, ", sec.result_action = %s", mlirString(action))
+		}
+		if property := operation.Property; property != nil {
+			// semantic_ir.md § 26: the accessor call keeps its property operation.
+			fmt.Fprintf(&e.out, ", sec.property = {kind = %s, name = %s, owner = %s, static = %t}", mlirString(string(property.Kind)), mlirString(property.Name), mlirString(property.Owner), property.Static)
 		}
 		if operation.Reference != nil {
 			if err := validateReferenceFacts(operation.Reference, function.ID); err != nil {
@@ -1300,9 +1330,13 @@ func (e *emitter) typeText(id semantic.TypeID) (string, error) {
 	case semantic.TypeCoreError:
 		text = fmt.Sprintf("!sec.core_error<%s>", mlirString(typeValue.Identity))
 	case semantic.TypeResult:
-		success, err := e.typeText(typeValue.Success)
-		if err != nil {
-			return "", err
+		// Dialect v5 § 6: the void-success convention spells void as `none`.
+		success := "none"
+		if successType, ok := e.module.Types.Lookup(typeValue.Success); !ok || successType.Kind != semantic.TypeVoid {
+			var err error
+			if success, err = e.typeText(typeValue.Success); err != nil {
+				return "", err
+			}
 		}
 		failure, err := e.typeText(typeValue.Error)
 		if err != nil {
@@ -1664,11 +1698,22 @@ func (e *emitter) emitStaticGlobal(static semantic.Static) error {
 		return err
 	}
 	var initial string
+	components := ""
 	switch {
+	case static.Initializer.Aggregate:
+		// A struct's fields or a fixed array's elements, recursively
+		// (compile_time_evaluation.md § 32).
+		initial = "aggregate"
+		components = "sec.static_initializer = " + staticComponentsText(static.Initializer) + ", "
 	case static.Initializer.Integer != nil:
 		initial = static.Initializer.Integer.String()
 	case static.Initializer.Bool != nil:
 		initial = fmt.Sprintf("%t", *static.Initializer.Bool)
+	case static.Initializer.Variant != nil || static.Initializer.Enum != nil || static.Initializer.String != nil:
+		// A tagged value, enum case or string keeps its typed tree
+		// (compile_time_evaluation.md § 32(3); SVV-2).
+		initial = staticInitialKind(static.Initializer)
+		components = "sec.static_initializer = " + staticComponentsText(static.Initializer) + ", "
 	default:
 		return &UnsupportedLoweringError{Feature: "static storage without a scalar constant initializer"}
 	}
@@ -1676,9 +1721,49 @@ func (e *emitter) emitStaticGlobal(static semantic.Static) error {
 	if static.AddressTaken {
 		addressTaken = "sec.address_taken = true, "
 	}
-	fmt.Fprintf(&e.out, "  \"sec.static.global\"() <{initial = %s, is_mutable = %t, sym_name = %s, type = %s}> {%ssec.source_name = %s, sec.static_id = %d : i32} : () -> ()\n",
-		mlirString(initial), static.Mutable, mlirString(staticSymbol(static.ID)), typ, addressTaken, mlirString(static.Name), static.ID)
+	fmt.Fprintf(&e.out, "  \"sec.static.global\"() <{initial = %s, is_mutable = %t, sym_name = %s, type = %s}> {%s%ssec.source_name = %s, sec.static_id = %d : i32} : () -> ()\n",
+		mlirString(initial), static.Mutable, mlirString(staticSymbol(static.ID)), typ, addressTaken, components, mlirString(static.Name), static.ID)
 	return nil
+}
+
+// staticComponentsText prints a static aggregate initializer as a nested
+// array of decimal/bool leaves in declaration or index order.
+func staticComponentsText(initializer semantic.StaticInitializer) string {
+	switch {
+	case initializer.Aggregate:
+		parts := make([]string, len(initializer.Components))
+		for index, component := range initializer.Components {
+			parts[index] = staticComponentsText(component)
+		}
+		return "[" + strings.Join(parts, ", ") + "]"
+	case initializer.Integer != nil:
+		return mlirString(initializer.Integer.String())
+	case initializer.Bool != nil:
+		return mlirString(fmt.Sprintf("%t", *initializer.Bool))
+	case initializer.Variant != nil:
+		if initializer.Variant.Payload == nil {
+			return "{variant = " + mlirString(initializer.Variant.Name) + "}"
+		}
+		return "{payload = " + staticComponentsText(*initializer.Variant.Payload) + ", variant = " + mlirString(initializer.Variant.Name) + "}"
+	case initializer.Enum != nil:
+		return "{enum = " + mlirString(*initializer.Enum) + "}"
+	case initializer.String != nil:
+		return "{string = " + mlirString(*initializer.String) + "}"
+	}
+	return mlirString("")
+}
+
+// staticInitialKind names a static's tree initializer kind in `initial`.
+func staticInitialKind(initializer semantic.StaticInitializer) string {
+	switch {
+	case initializer.Variant != nil:
+		return "variant"
+	case initializer.Enum != nil:
+		return "enum"
+	case initializer.String != nil:
+		return "string"
+	}
+	return "aggregate"
 }
 
 // emitHardwareBinding writes one register.hw.bind root as a module-level

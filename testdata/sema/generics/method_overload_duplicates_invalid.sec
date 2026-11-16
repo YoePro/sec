@@ -1,0 +1,9 @@
+module method_overload_duplicates
+
+type Host[T] struct { Value: T }
+impl Host[T] {
+    fn Same[U](value: U) int { return 1 }
+    fn Same[V](value: V) bool { return true }
+    static fn SameStatic[U](value: fn(U) T) int { return 1 }
+    static fn SameStatic[V](value: fn(V) T) bool { return true }
+}

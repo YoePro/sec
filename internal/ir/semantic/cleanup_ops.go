@@ -52,6 +52,11 @@ type CleanupFacts struct {
 	// paths inherits that live registration there and registers anew on the
 	// others (MD-125; destruction.md § 13.3(5)).
 	UnlessActive []uint32
+	// PerExecution makes each execution of a track-owned register a new
+	// instance instead of re-registering one action: an owner of a loop body
+	// that a defer reads lives until its own registration's defer has run
+	// (defer.md §§ 8, 13; P17-41).
+	PerExecution bool
 	// DestructionPlan is the plan a tracked owned value is destroyed with.
 	DestructionPlan string
 	// Reason explains a cancel.
@@ -225,6 +230,20 @@ func verifyDeferRegion(module *Module, fn *Function, op Operation, functions map
 			return fmt.Errorf("defer region parameter %%%d does not match capture %%%d", parameter.ID, op.Operands[index])
 		}
 	}
+	// A dynamic-epoch holder is validated when the body runs, never when the
+	// defer registers: its referent Place is not a capture (P17-41).
+	for _, block := range fn.Blocks {
+		for _, operation := range block.Operations {
+			if operation.Kind != OpReferenceDerefPlace || len(operation.Results) != 1 || operation.Reference == nil || operation.Reference.Validity != ReferenceDynamicEpoch {
+				continue
+			}
+			for _, capture := range op.Operands {
+				if capture == operation.Results[0].ID {
+					return fmt.Errorf("defer captures the referent of dynamic-epoch reference %%%d, validated at registration instead of when the body runs", operation.Operands[0])
+				}
+			}
+		}
+	}
 	for _, block := range region.Blocks {
 		if len(block.Operations) == 0 {
 			return fmt.Errorf("defer region block ^%d has no terminator", block.ID)
@@ -238,6 +257,24 @@ func verifyDeferRegion(module *Module, fn *Function, op Operation, functions map
 	}
 	// The isolated body: entry parameters become the body's inputs.
 	body := &Function{ID: fn.ID + "#defer", Name: fn.Name, ReturnType: fn.ReturnType, Entry: region.Entry, Location: fn.Location, Storages: fn.Storages, Loops: region.Loops}
+	// A capture of a dereferenced holder keeps the holder's borrow, so the
+	// body may reborrow from it (P17-41).
+	derefs := map[ValueID]uint32{}
+	for _, block := range fn.Blocks {
+		for _, operation := range block.Operations {
+			if operation.Kind == OpReferenceDerefPlace && len(operation.Results) == 1 && operation.Reference != nil {
+				derefs[operation.Results[0].ID] = operation.Reference.Borrow
+			}
+		}
+	}
+	for index, parameter := range entry.Parameters {
+		if borrow, ok := derefs[op.Operands[index]]; ok {
+			if body.deferCaptureBorrows == nil {
+				body.deferCaptureBorrows = map[ValueID]uint32{}
+			}
+			body.deferCaptureBorrows[parameter.ID] = borrow
+		}
+	}
 	for _, block := range region.Blocks {
 		copied := *block
 		if block.ID == region.Entry {
@@ -282,6 +319,9 @@ func formatCleanupOperation(out *strings.Builder, op Operation, indent string) {
 	}
 	if facts.Reason != "" {
 		fmt.Fprintf(out, " reason=%s", facts.Reason)
+	}
+	if facts.PerExecution {
+		out.WriteString(" per-execution")
 	}
 	if facts.IfActive {
 		out.WriteString(" if-active")

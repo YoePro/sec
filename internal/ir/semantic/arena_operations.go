@@ -1,0 +1,287 @@
+package semantic
+
+import (
+	"fmt"
+	"strings"
+
+	"sec/internal/sema"
+)
+
+// Arena operations preserve logical storage transitions without choosing an ABI.
+// Rules: rules/mlir/packages/sec-mlir-dialect_package19.md — §§86–96.
+const (
+	OpArenaCreateBorrowed   OpKind = "arena.create-borrowed"
+	OpArenaCreateOwnedFixed OpKind = "arena.create-owned-fixed"
+	OpArenaCreateGrowable   OpKind = "arena.create-growable"
+	OpArenaNew              OpKind = "arena.new"
+	OpArenaAlloc            OpKind = "arena.alloc"
+	OpArenaReset            OpKind = "arena.reset"
+	OpArenaRelease          OpKind = "arena.release"
+	OpArenaDestroy          OpKind = "arena.destroy"
+)
+
+// ArenaOperationFacts retains already resolved plan facts. State versions order
+// mutations; epochs validate references. Neither is a physical cursor. Domain,
+// origin, backing relation, authority and transition reuse BackingMetadata and
+// the canonical storage vocabulary; these records allocate no new identities.
+// Rules: rules/mlir/packages/sec-mlir-dialect_package19.md — §§70–75,86–96;
+// rules/mlir/semantic-ir/sec_semantic_ir_arena_v19.md — §§4–13,23,27.
+type ArenaOperationFacts struct {
+	// Parent retains nested borrowed backing; only borrowed creation sets it.
+	Parent                     *ArenaParentDependency
+	StateBefore, StateAfter    uint32
+	EpochBefore, EpochAfter    uint32
+	BackingKind, GrowthKind    string
+	ProviderPlan, CapacityPlan string
+	LayoutPlan, DefaultPlan    string
+	DependencyProof            string
+	RetainedBorrow             uint32
+	FailureAtomic              bool
+}
+
+// isArenaOperation recognizes only the eight owner operations, not context
+// production or source readiness. Rules: rules/mlir/packages/sec-mlir-dialect_package19.md — §§86–96.
+func isArenaOperation(kind OpKind) bool {
+	switch kind {
+	case OpArenaCreateBorrowed, OpArenaCreateOwnedFixed, OpArenaCreateGrowable,
+		OpArenaNew, OpArenaAlloc, OpArenaReset, OpArenaRelease, OpArenaDestroy:
+		return true
+	}
+	return false
+}
+
+// arenaCheckedOperation identifies candidate/failed/AllocationError operations.
+// Rules: rules/mlir/packages/sec-mlir-dialect_package19.md — §§90–93.
+func arenaCheckedOperation(kind OpKind) bool {
+	return kind == OpArenaCreateOwnedFixed || kind == OpArenaCreateGrowable || kind == OpArenaNew || kind == OpArenaAlloc
+}
+
+// verifyArenaOperation enforces the typed, Place-based contracts and explicit
+// state/epoch effects. It consumes resolved proof/plan references, never infers
+// layout, provider, dependency legality or source initialization decisions.
+// Rules: rules/mlir/packages/sec-mlir-dialect_package19.md — §§86–96;
+// rules/mlir/semantic-ir/sec_semantic_ir_arena_v19.md — §§6–13,23–24.
+func verifyArenaOperation(module *Module, op Operation, values map[ValueID]Value) error {
+	f, b := op.Arena, op.Backing
+	if f == nil || b == nil || b.Domain == 0 || len(op.Successors) != 0 {
+		return fmt.Errorf("%s requires Arena facts, a canonical domain and no successors", op.Kind)
+	}
+	types := module.Types
+	create := op.Kind == OpArenaCreateBorrowed || op.Kind == OpArenaCreateOwnedFixed || op.Kind == OpArenaCreateGrowable
+	terminal := op.Kind == OpArenaRelease || op.Kind == OpArenaDestroy
+	if f.StateAfter == 0 || create && f.StateBefore != 0 || !create && (f.StateBefore == 0 || f.StateAfter == f.StateBefore) {
+		return fmt.Errorf("%s requires its resolved state-version transition", op.Kind)
+	}
+	if f.BackingKind != "borrowed" && f.BackingKind != "owned" || f.GrowthKind != "fixed" && f.GrowthKind != "growable-nonrelocating" {
+		return fmt.Errorf("%s requires resolved backing and growth policies", op.Kind)
+	}
+	if f.BackingKind == "borrowed" && (f.GrowthKind != "fixed" || b.Relation != string(sema.BackingRelationBorrowed) || f.RetainedBorrow == 0) ||
+		f.BackingKind == "owned" && (b.Relation != string(sema.BackingRelationOwned) || f.ProviderPlan == "") {
+		return fmt.Errorf("%s requires its backing borrow or resolved provider plan", op.Kind)
+	}
+	if b.Origin == "" || b.Authority == "" || b.Stability == "" || b.Space == "" {
+		return fmt.Errorf("%s requires canonical storage classification", op.Kind)
+	}
+	transition := string(sema.BackingTransitionNone)
+	switch {
+	case create:
+		transition = string(sema.BackingTransitionEstablishDomain)
+		if f.EpochBefore != 0 || f.EpochAfter == 0 {
+			return fmt.Errorf("%s establishes an initial epoch", op.Kind)
+		}
+	case terminal:
+		transition = string(sema.BackingTransitionEndDomain)
+		if f.EpochBefore == 0 || f.EpochAfter != 0 {
+			return fmt.Errorf("%s ends its domain without publishing another epoch", op.Kind)
+		}
+	case op.Kind == OpArenaReset:
+		transition = string(sema.BackingTransitionAdvanceEpoch)
+		if f.EpochBefore == 0 || f.EpochAfter == 0 || f.EpochAfter == f.EpochBefore {
+			return fmt.Errorf("arena.reset advances the validity epoch")
+		}
+	default:
+		if f.EpochBefore == 0 || f.EpochBefore != f.EpochAfter {
+			return fmt.Errorf("%s preserves the validity epoch", op.Kind)
+		}
+	}
+	if b.Transition != transition {
+		return fmt.Errorf("%s requires canonical storage transition %s", op.Kind, transition)
+	}
+	if arenaCheckedOperation(op.Kind) {
+		if len(op.Results) != 3 || !typeHasKind(types, op.Results[1].Type, TypeBool) || !isAllocationErrorType(types, op.Results[2].Type) || !f.FailureAtomic {
+			return fmt.Errorf("%s produces candidate, failed and core AllocationError with atomic failure", op.Kind)
+		}
+	} else if create {
+		if len(op.Results) != 1 {
+			return fmt.Errorf("arena.create-borrowed produces one owned Arena")
+		}
+	} else if len(op.Results) != 0 {
+		return fmt.Errorf("%s has no result", op.Kind)
+	}
+	if create {
+		if !typeHasKind(types, op.Results[0].Type, TypeArena) || op.Results[0].Ownership != OwnershipOwned || len(op.Operands) != 1 {
+			return fmt.Errorf("%s produces an owned Arena from one capacity/backing operand", op.Kind)
+		}
+		if op.Kind == OpArenaCreateBorrowed {
+			slice, ok := types.Lookup(values[op.Operands[0]].Type)
+			if !ok || slice.Kind != TypeMutableSlice || !typeHasKind(types, slice.Element, TypeByte) || values[op.Operands[0]].Ownership != OwnershipMutableReference || f.BackingKind != "borrowed" {
+				return fmt.Errorf("arena.create-borrowed transfers one mutable byte-slice borrow")
+			}
+		} else {
+			if !arenaUintOperand(types, values[op.Operands[0]].Type) || f.BackingKind != "owned" || f.CapacityPlan == "" {
+				return fmt.Errorf("%s requires uint byte capacity and a resolved capacity plan", op.Kind)
+			}
+			growable := op.Kind == OpArenaCreateGrowable
+			if growable != (f.GrowthKind == "growable-nonrelocating") {
+				return fmt.Errorf("%s has inconsistent growth policy", op.Kind)
+			}
+		}
+		return nil
+	}
+	if terminal {
+		if len(op.Operands) != 1 || !typeHasKind(types, values[op.Operands[0]].Type, TypeArena) || values[op.Operands[0]].Ownership != OwnershipOwned || f.DependencyProof == "" {
+			return fmt.Errorf("%s consumes one owned Arena with resolved dependency legality", op.Kind)
+		}
+		if op.Kind == OpArenaDestroy {
+			if op.Ownership == nil || !oneOf(op.Ownership.Cause, ownDestroyCauses) {
+				return fmt.Errorf("arena.destroy requires its P17 destruction cause and plan")
+			}
+			plan, err := destructionPlan(module, op.Ownership.DestructionPlan, values[op.Operands[0]].Type)
+			if err != nil {
+				return err
+			}
+			if plan.Kind != "compiler-known-resource" || plan.Resource != "Arena" {
+				return fmt.Errorf("arena.destroy requires the Arena resource destruction plan")
+			}
+		}
+		return nil
+	}
+	wantOperands := 1
+	if op.Kind == OpArenaAlloc {
+		wantOperands = 2
+	}
+	if len(op.Operands) != wantOperands {
+		return fmt.Errorf("%s has invalid operand count", op.Kind)
+	}
+	place, ok := placeType(types, values[op.Operands[0]].Type)
+	if !ok || !place.Mutable || !typeHasKind(types, place.Element, TypeArena) {
+		return fmt.Errorf("%s requires a writable Place of Arena", op.Kind)
+	}
+	if op.Kind == OpArenaReset {
+		if f.DependencyProof == "" {
+			return fmt.Errorf("arena.reset requires resolved dependency legality")
+		}
+		return nil
+	}
+	if op.Kind == OpArenaAlloc && !arenaUintOperand(types, values[op.Operands[1]].Type) {
+		return fmt.Errorf("arena.alloc count must be uint elements")
+	}
+	result, ok := types.Lookup(op.Results[0].Type)
+	wantKind := TypeReference
+	if op.Kind == OpArenaAlloc {
+		wantKind = TypeMutableSlice
+	}
+	if !ok || result.Kind != wantKind || op.Kind == OpArenaNew && !result.Mutable || op.Results[0].Ownership != OwnershipMutableReference {
+		return fmt.Errorf("%s produces a mutable direct reference/slice candidate", op.Kind)
+	}
+	// DefaultPlan is the resolved defaultability/initialization decision, not
+	// an implicit scalar zero; aggregate defaults remain owned by that plan.
+	if !trivialDestruction(module, result.Element) || f.LayoutPlan == "" || f.DefaultPlan == "" || f.CapacityPlan == "" {
+		return fmt.Errorf("%s requires safe defaultable trivially-destructible T and layout/default/capacity plans", op.Kind)
+	}
+	if err := verifyReferenceMetadata(op); err != nil {
+		return err
+	}
+	if op.Reference.Validity != ReferenceDynamicEpoch || op.Reference.InvalidationDomain != b.Domain || op.Reference.EpochDependency != f.EpochAfter || op.Reference.Provenance != "arena" {
+		return fmt.Errorf("%s candidate must retain its Arena domain and current epoch", op.Kind)
+	}
+	return nil
+}
+
+// verifyArenaCandidates prevents publishing a failed candidate. The operation
+// immediately branches on failed; all candidate uses must be dominated by the
+// success edge, which has one predecessor. No allocation state is committed on
+// the failure edge. Source builders supply these branches in P19-20.
+// Rules: rules/mlir/packages/sec-mlir-dialect_package19.md — §§35,90–93.
+func verifyArenaCandidates(fn *Function, blocks map[BlockID]*Block, dom map[BlockID]map[BlockID]bool) error {
+	preds := map[BlockID]int{}
+	for _, block := range fn.Blocks {
+		for _, op := range block.Operations {
+			for _, target := range op.Successors {
+				preds[target.Block]++
+			}
+		}
+	}
+	for _, block := range fn.Blocks {
+		for index, op := range block.Operations {
+			if !arenaCheckedOperation(op.Kind) {
+				continue
+			}
+			if index+2 != len(block.Operations) {
+				return fmt.Errorf("%s must immediately branch on failed", op.Kind)
+			}
+			branch := block.Operations[index+1]
+			if branch.Kind != OpCondBranch || len(branch.Operands) != 1 || branch.Operands[0] != op.Results[1].ID || len(branch.Successors) != 2 {
+				return fmt.Errorf("%s must immediately branch on failed", op.Kind)
+			}
+			success := branch.Successors[1].Block
+			if success == block.ID || blocks[success] == nil || preds[success] != 1 {
+				return fmt.Errorf("%s requires a distinct success edge", op.Kind)
+			}
+			candidate := op.Results[0].ID
+			for _, argument := range branch.Successors[0].Arguments {
+				if argument == candidate {
+					return fmt.Errorf("%s candidate escapes on its failure edge", op.Kind)
+				}
+			}
+			for _, useBlock := range fn.Blocks {
+				for useIndex, use := range useBlock.Operations {
+					// Transferring the candidate as a success block argument is legal.
+					if useBlock.ID == block.ID && useIndex == index+1 {
+						continue
+					}
+					for _, operand := range operationOperands(use) {
+						if operand == candidate && !dom[useBlock.ID][success] {
+							return fmt.Errorf("%s candidate used outside its success region", op.Kind)
+						}
+					}
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// formatArenaOperation prints semantic plan references and separate state/epoch
+// transitions deterministically, without physical pointers or layout guesses.
+// Rules: rules/mlir/semantic-ir/sec_semantic_ir_arena_v19.md — §27.
+func formatArenaOperation(out *strings.Builder, op Operation) {
+	for i, operand := range op.Operands {
+		if i > 0 {
+			out.WriteByte(',')
+		}
+		fmt.Fprintf(out, " %%%d", operand)
+	}
+	f := op.Arena
+	if f == nil {
+		return
+	}
+	formatBackingMetadata(out, op.Backing)
+	formatArenaParent(out, f.Parent)
+	fmt.Fprintf(out, " {state=#%d->#%d epoch=#%d->#%d backing=%s growth=%s atomic=%t", f.StateBefore, f.StateAfter, f.EpochBefore, f.EpochAfter, f.BackingKind, f.GrowthKind, f.FailureAtomic)
+	fmt.Fprintf(out, " provider=%q capacity=%q layout=%q default=%q dependency=%q retained-borrow=#%d}", f.ProviderPlan, f.CapacityPlan, f.LayoutPlan, f.DefaultPlan, f.DependencyProof, f.RetainedBorrow)
+	if op.Reference != nil {
+		formatReferenceMetadata(out, op.Reference)
+	}
+	if op.Ownership != nil {
+		fmt.Fprintf(out, " destruction=%q cause=%s", op.Ownership.DestructionPlan, op.Ownership.Cause)
+	}
+}
+
+// arenaUintOperand requires source uint, not another unsigned carrier with a
+// coincidentally equal width. Count is elements; capacity is bytes.
+// Rules: rules/mlir/packages/sec-mlir-dialect_package19.md — §§90–93.
+func arenaUintOperand(types *TypeTable, id TypeID) bool {
+	t, ok := types.Lookup(id)
+	return ok && t.Kind == TypeUint && t.TargetSize
+}

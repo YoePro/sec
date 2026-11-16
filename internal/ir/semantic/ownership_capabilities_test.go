@@ -48,9 +48,8 @@ func TestPackage17CapabilityRejectsMissingOwnershipIR(t *testing.T) {
 		{"sema/cleanup_initializations.sec", "main", "dynamic array type"},
 		{"semantic_ir/package17_boundary_transfer.sec", "main", "dynamic array type"},
 		{"semantic_ir/package17_boundary_discard.sec", "main", "dynamic array type"},
-		// Option and Result lower since P17-37; these forms keep named boundaries.
-		{"semantic_ir/package17_variants/defer_reads_loop_owner.sec", "main", "defer in a loop reading an owned value of the loop body"},
-		{"semantic_ir/package17_variants/defer_reads_loop_storage.sec", "main", "defer reading mutable storage declared in its loop"},
+		// Option and Result lower since P17-37; defers in loops reading loop
+		// owners or loop storage lower since P17-41 (TestPackage17DeferLoopFixturesLower).
 	} {
 		t.Run(test.feature, func(t *testing.T) {
 			program, a := sliceBoundaryInput(t, "semantic_ir/package17_boundary_plain.sec", test.fixture)
@@ -88,6 +87,28 @@ func TestPackage17CapabilityModuleAndPredecessorBoundaries(t *testing.T) {
 		var unsupported *UnsupportedFeatureError
 		if module != nil || !errors.As(err, &unsupported) || unsupported.Package != pkg || strings.Contains(unsupported.Feature, "P17") {
 			t.Fatalf("P17 relabelled predecessor %d: %v", pkg, err)
+		}
+	}
+}
+
+// P17-41: the former defer-in-loop boundary fixtures lower: a loop owner a
+// defer reads registers per execution and loop storage a defer reads becomes
+// a per-declaration defer instance (defer.md §§ 8, 13).
+func TestPackage17DeferLoopFixturesLower(t *testing.T) {
+	for fixture, want := range map[string]string{
+		"semantic_ir/package17_variants/defer_reads_loop_owner.sec":   "per-execution",
+		"semantic_ir/package17_variants/defer_reads_loop_storage.sec": "defer-instance",
+	} {
+		program, a := sliceBoundaryInput(t, "semantic_ir/package17_boundary_plain.sec", fixture)
+		module, err := Build(program, a, BuildOptions{RequestedModule: "main", MaxPackage: 17})
+		if err != nil {
+			t.Fatalf("%s: %v", fixture, err)
+		}
+		if err := Verify(module); err != nil {
+			t.Fatalf("%s: %v", fixture, err)
+		}
+		if text := Format(module); !strings.Contains(text, want) {
+			t.Errorf("%s lacks %q:\n%s", fixture, want, text)
 		}
 	}
 }

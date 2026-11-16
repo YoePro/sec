@@ -67,7 +67,8 @@ func closestInterfaceCandidate(methods []Function, required Function) Function {
 // an implementation and a requirement whose `Self` is already substituted.
 //
 // Rules:
-//   - rules/declarations/interfaces.md — 6 "Conformance requirements", 12 "Diagnostics"
+//   - rules/declarations/interfaces.md — §§6,9,12
+//   - rules/declarations/generics.md — §§9–10
 func interfaceMethodMismatch(method Function, required Function) string {
 	membership := func(static bool) string {
 		if static {
@@ -77,6 +78,9 @@ func interfaceMethodMismatch(method Function, required Function) string {
 	}
 	if method.Static != required.Static {
 		return fmt.Sprintf("the interface requires %s method, but it is declared as %s method", membership(required.Static), membership(method.Static))
+	}
+	if len(method.GenericParameters) != 0 || method.GenericTypePack != "" {
+		return "the method declares method-level generic parameters, but the interface requires a finite signature without them"
 	}
 	if method.ReceiverMutable && !required.ReceiverMutable {
 		return "the method requires a mutable receiver, but the interface promises a shared receiver"

@@ -1,0 +1,8 @@
+module method_generic_calls
+
+fn Shapes() void {
+    Box[int].PickStatic[bool](1, true)
+    Box[int].PickStatic(1, true)
+    value.Pick[bool](1, true)
+    values[index].Pick[bool](1, true)
+}

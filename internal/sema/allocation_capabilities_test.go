@@ -54,6 +54,11 @@ func TestAllocationCapabilitiesDriveMaterialization(t *testing.T) {
 				}
 				sites := 0
 				for _, fact := range a.AllocationContextFacts() {
+					// This test counts runtime string materializations. P19 now
+					// also publishes known explicit Arena/constructor contexts.
+					if fact.SelectedDomain != "" || fact.CreatedDomain != "" {
+						continue
+					}
 					if !fact.ContextKnown {
 						continue
 					}

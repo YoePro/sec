@@ -43,7 +43,10 @@ func TestExplicitScalarMatrix(t *testing.T) {
 		}
 		switch target.family {
 		case "integer":
-			return source.family == "decimal" || source.family == "char" || source.family == "rune"
+			// Float to integer is a checked relation (finite, in range and
+			// integral; ConversionError.NonFinite/OutOfRange/PrecisionLoss,
+			// types.md § 25(4)-(11)), like decimal to integer.
+			return source.family == "decimal" || source.family == "float" || source.family == "char" || source.family == "rune"
 		case "char":
 			return source.family == "integer" || source.family == "rune"
 		case "rune":

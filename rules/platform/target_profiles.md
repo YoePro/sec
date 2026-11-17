@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-24
-- **Last updated:** 2026-09-24
+- **Last updated:** 2026-11-17 (§ 7 MD-034 freestanding allocation policy); 2026-09-24
 - **Document revision:** 1
 - **Sec language version:** 0.1
 - **Repository baseline reviewed:** `45e5cd4`
@@ -153,6 +153,22 @@ static storage.
 Hosted enables supported heap allocation by default.
 RTOS and BareMetal disable it by default, but a concrete profile may enable it
 when a compatible allocator is provided.
+
+MD-034 (owner decision 2026-11-17;
+`rules/corrections/applied/MD-034-freestanding-allocation-principle-20261117-20261117.md`):
+freestanding is not synonymous with `noalloc`. A freestanding/BareMetal
+configuration has dynamic heap allocation disabled by default, as in the § 6
+baseline. A resolved profile may explicitly enable a compatible allocation
+capability only when the target/platform facts positively support it and the
+provider's obligations are met (§ 3). `Availability.Unsupported`,
+`Availability.Unknown` and `Activation.Disabled` remain distinct: an `Unknown`
+provider never proves an allocator exists, and no host-runtime or global-heap
+fallback is implied. The selected profile, platform facts and legal overrides
+resolve into one frozen `ResolvedTargetProfile` (§§ 23–38); a target field
+spelled `freestanding` is not by itself a resolved allocation policy.
+Allocation-free code remains legal on every profile, and a freestanding program
+must remain able to run without a mandatory general Sec runtime or heap
+allocator.
 
 ## 8. Tasks, threads, scheduler, and detached execution
 

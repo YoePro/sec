@@ -31,10 +31,10 @@ integrations:
       - Sema rejects proven same-execution reacquisition by Lock or TryLock using canonical synchronization-resource identity, with both acquisitions in CLI/LSP diagnostics; local guard moves, replacement, lexical lifetime and successful Option/Result extraction preserve held-resource evidence, while released or consumed guards, disjoint resources and unresolved aliases do not produce false self-lock proofs; mutable writes and calls conservatively invalidate stale resource provenance
       - Execution-bound guard escape checks reject task/thread spawn arguments, receivers, known closure environments (including nested captured callables), child results, channel sends and static/thread-local stores that carry MutexGuard capabilities; canonical type/Place/capture facts preserve references, named types, aggregates and acquisition provenance, while ordinary same-execution calls/returns and local closures remain valid; opaque callable/aggregate and unresolved generic dependencies require positive guard-freedom evidence and report S1125 Unproven when that evidence is unavailable, preventing capture erasure from permitting transfer; rejected spawn transfers restore source ownership/borrows, canonical escape facts retain known and unknown boundaries, CLI/LSP share the proof classification and navigable guard origins, and a spawned call returning a function keeps the complete callable result type
       - Standalone task and thread joins apply the shared live-MutexGuard boundary check after join-operand/lifecycle validation, with a related guard declaration. Consumed, discarded and scope-ended guards do not diagnose; moved bindings and multiple live guards do. Selected join branches commit a ready capability without a duplicate join-wait diagnostic; the enclosing select remains the suspension boundary. Source-backed Sema/CLI/LSP tests verify parity and prevent invalid IR artifacts; guard diagnostics are ordered by binding name (2026-11-10).
+      - "Verified and closed on 2026-11-17: complete protected-T consumption is already prohibited by the shared ordinary receiver/ownership rules (mutex.md sections 33(4), 36(1-2); functions.md section 22; ownership.md section 9). Ordinary methods cannot consume complete self by argument transfer, return or discard, and constructed/recovered consuming-receiver declarations cannot publish that contract. MutexGuard[T] remains nominally distinct from T: moving a guard cannot initialize, return or constructor-convert it to an owned protected T. New source regressions verify six invalid operations and preserve same-execution guard moves, ordinary owned-T transfers and copies of protected scalar fields at all three analysis depths on 32/64-bit plans. Added mutex rule traceability to the existing shared receiver checks. This closes an already-satisfied older requirement through verification; it adds no forwarding or runtime behavior. Complete accessible member forwarding/lifetime support and guard release lowering remain separate remaining items."
+      - "Ordinary source-declared protected fields, properties and non-consuming methods now share the normal member/Place/overload pipeline through MutexGuard[T], ref MutexGuard[T] and ref mut MutexGuard[T]. Forwarding retains the nominal guard expression and protected declaring-owner facts; field/property writes and mutating methods/getters require mutable guard access, private visibility and fallible-setter try requirements remain active, and owner/method generic arguments and overloads resolve normally. Direct field and reference-valued property access retain guard-root lifetime/borrow facts, including computed getters: escaping a local protected reference and releasing a still-borrowed guard are rejected with source provenance. Protected partial moves require a separate restoration/release proof and do not inherit ordinary local-owner permission. Source regressions cover valid operations, 15 authority/visibility/try/lifetime failures and four cross-module access failures at all analysis depths on 32/64-bit plans. The broad forwarding requirement remains open for compiler-known protected member dispatch; this frontend slice does not implement guard release or mutex IR/runtime support."
     remaining:
       - Implement deterministic guard destruction/release lowering.
-      - Complete direct forwarding for fields/properties/methods and lifetime-aware references.
-      - Reject consuming complete-T forwarded operations.
       - Integrate acquire/release synchronization with memory-model facts.
       - Integrate target/platform lock capability through CompilationPlan.
     required_tests:
@@ -65,6 +65,12 @@ integrations:
     corrections_applied:
       - rules/corrections/applied/mutex-v2-cross-rulebook-correction-20260907.md
     verification:
+      - command: go run ./cmd/yamlstatus move -write concurrency.mutex-v2 remaining 2 partial
+        result: "Per explicit user instruction on 2026-11-17, reclassified the started broad forwarding requirement as partial. No implementation completion claimed: this ID remaining 4 -> 3, partial 0 -> 1; concurrency_mutex.yaml remaining 11 -> 10. Existing ordinary member forwarding evidence remains under implemented; compiler-known protected dispatch and restoration/release proof still require work."
+      - command: GOTMPDIR=$HOME/.cache/sec-gotmp go test -p 4 ./internal/sema -count=1
+        result: "Passed on 2026-11-17 (30.706s). Full Semantic IR suite passed (9.055s); full internal/lowering/secmlir suite passed with SEC_MLIR_BIN=$PWD/build/sec-mlir/bin (18.993s); Sema vet and focused mutex/property tests passed. Source matrix covers ordinary member forwarding, owner/method generics, overloads, setter try requirements, visibility, mutable authority and protected reference escape/borrow lifetime on 32/64-bit plans at all three depths. One broad requirement advanced, zero remaining requirements removed: concurrency.mutex-v2 4 -> 4, concurrency_mutex.yaml 11 -> 11. Compiler-known protected member dispatch and restoration/release proof remain open; no sec/, manual/, runtime or C++ edits."
+      - command: GOTMPDIR=$HOME/.cache/sec-gotmp go test -p 4 ./internal/sema -run "TestMutexProtectedOwnerConsumption|TestOrdinaryReceiver|TestOrdinaryMethodCannotConsumeWholeSelf|TestMutexReacquisition|TestMutexGuardExecutionEscape|TestMutexGuardOpaqueEscape" -count=1
+        result: "Passed on 2026-11-17 (0.239s); go vet -p 4 ./internal/sema passed. New source matrix passes at Interactive/Standard/Deep depth on 32/64-bit plans, with six prohibited operations and valid guard moves/protected scalar copies. Existing constructed-AST receiver checks, guard reacquisition and escape regressions pass. One verified whole requirement closed: concurrency.mutex-v2 remaining 5 -> 4; concurrency_mutex.yaml remaining 12 -> 11. No semantic behavior, sec/, manual/, IR, runtime or threading implementation changes."
       - command: go vet -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp
         result: passed on 2026-11-10 after join guard boundary changes
       - command: go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run "TestMutexJoinBoundary|TestAwaitRejectsLiveMutexGuard|TestAwaitAllowsConsumedMutexGuard|TestThreadJoinStatement|TestSelectJoinBranch" -count=1
@@ -105,7 +111,7 @@ integrations:
         result: passed on 2026-10-16; canonical naming, shared-reference calls, retained Lock/TryLock result types and blocking distinction, guard suspension regressions, and LSP hover/completion/navigation
       - command: go test ./internal/sema -run 'Test(AwaitRejectsLiveMutexGuard|AwaitAllowsConsumedMutexGuard|SelectRejectsLiveMutexGuard|SelectAllowsMovedMutexGuard)' -count=1
         result: passed on 2026-09-22
-    revised: "2026-11-10"
+    revised: "2026-11-17"
     code:
       - internal/sema/analyzer_mutex_calls.go
       - internal/sema/mutex_members.go
@@ -131,6 +137,10 @@ integrations:
       - internal/sema/mutex_guard_callable_escape.go
       - internal/sema/mutex_guard_boundaries.go
       - internal/sema/thread_join.go
+      - internal/sema/ordinary_receiver_contract.go
+      - internal/sema/mutex_guard_forwarding.go
+      - internal/sema/property_receivers.go
+      - internal/sema/reference_place_origins.go
     tests:
       - internal/sema/mutex_naming_test.go
       - internal/sema/concurrency_test.go
@@ -168,6 +178,20 @@ integrations:
       - cmd/lsp/mutex_join_test.go
       - testdata/sema/mutex_join_valid.sec
       - testdata/sema/mutex_join_invalid.sec
+      - internal/sema/mutex_protected_consumption_test.go
+      - testdata/sema/mutex_protected_consumption_valid.sec
+      - testdata/sema/mutex_protected_consumption_invalid.sec
+      - internal/sema/mutex_guard_forwarding_test.go
+      - testdata/sema/mutex_forwarding_valid.sec
+      - testdata/sema/mutex_forwarding_invalid.sec
+      - testdata/sema/mutex_forwarding_owner.sec
+      - testdata/sema/mutex_forwarding_client_invalid.sec
+    rules:
+      - rules/declarations/functions.md
+      - rules/memory/ownership.md
+      - rules/memory/copy_move.md
+    partial:
+      - Complete direct forwarding for fields/properties/methods and lifetime-aware references.
 
   - id: semantic-ir.mutex-v2
     area: semantic-ir-mutex-context-facts

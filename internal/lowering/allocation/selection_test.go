@@ -17,8 +17,10 @@ import (
 
 // TestAllocationSelectionBoundary proves that every analyzed output route
 // retains exact semantic domain/context facts or rejects without an artifact.
-// Creating an Arena domain does not resolve its backing allocator.
-// Rules: rules/memory/allocation.md — §§25(2),(5),26(1)–(3),30(6).
+// A known semantic backing context neither selects the newly created domain
+// as its own backing nor proves a physical provider/lowering is available.
+// Rules: rules/memory/allocation.md — §§25(2),(5),26(1)–(3),30(6);
+// rules/mlir/packages/sec-mlir-dialect_package19.md — §§52–54,72–76.
 func TestAllocationSelectionBoundary(t *testing.T) {
 	for _, triple := range []string{"x86_64-pc-linux-gnu", "armv7-unknown-linux-gnueabihf"} {
 		for _, name := range []string{"domain", "backing", "context", "growth"} {
@@ -34,7 +36,10 @@ func TestAllocationSelectionBoundary(t *testing.T) {
 						t.Fatal(baseline)
 					}
 				case "backing":
-					if baseline[0].CreatedDomain == "" || baseline[0].SelectedDomain != "" || baseline[0].ContextKnown {
+					if baseline[0].CreatedDomain == "" || baseline[0].SelectedDomain != "" ||
+						!baseline[0].ContextKnown || !baseline[0].Context.Available ||
+						baseline[0].Context.Profile != "hosted" || baseline[0].Context.Origin != sema.StorageOriginArena ||
+						baseline[0].SelectedDomainOrigin.Line != 0 || baseline[0].CreatedDomainOrigin.Line == 0 {
 						t.Fatal(baseline)
 					}
 				case "context":

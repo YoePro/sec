@@ -1,0 +1,11 @@
+module client
+
+fn Public(guard: ref mut MutexGuard[Vault]) int {
+    guard.Public = 1
+    guard.Number = 2
+    return guard.Public + guard.Read() + guard.Number
+}
+fn HiddenField(guard: ref MutexGuard[Vault]) int { return guard._Secret }
+fn HiddenMethod(guard: ref MutexGuard[Vault]) int { return guard._Hidden() }
+fn HiddenGetter(guard: ref MutexGuard[Vault]) int { return guard._Internal }
+fn HiddenSetter(guard: ref mut MutexGuard[Vault]) void { guard._Internal = 3 }

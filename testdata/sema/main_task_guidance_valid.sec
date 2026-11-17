@@ -1,0 +1,10 @@
+module main
+
+fn Work() void {
+    Task.Yield()
+}
+
+fn main() void {
+    let work := try spawn Work() { Err(_) => { return } }
+    await work
+}

@@ -35,6 +35,7 @@ func isSelfMemberProjection(expression ast.Expression) bool {
 //   - rules/memory/ownership.md — §9 "Methods and self"
 //   - rules/memory/copy_move.md — §18 "Methods and self"
 //   - rules/declarations/functions.md — §22 "Instance methods"
+//   - rules/concurrency/mutex.md — §§33(4),36(1–2): protected methods cannot consume complete T
 func (a *Analyzer) rejectOrdinaryMethodWholeSelfConsumption(place Place, token lexer.Token) bool {
 	if a.rejectFreeWholeSelfConsumption(place, token) {
 		return true

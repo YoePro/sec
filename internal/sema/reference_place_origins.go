@@ -71,6 +71,16 @@ func (a *Analyzer) referencePlaceOrigin(expr ast.Expression) (Place, bool) {
 		place.AlternativeOrigins = append(place.AlternativeOrigins, places[1:]...)
 		return place, true
 	case *ast.MemberExpression:
+		// A computed forwarded getter can carry an explicit guard-bounded
+		// origin without denoting an addressable property Place.
+		// Rules: rules/concurrency/mutex.md — §35;
+		// rules/memory/borrowing.md — §5.2(7).
+		if origin, tracked := a.expressionReferenceOrigins[expr]; tracked {
+			if origin.Unknown {
+				return Place{}, false
+			}
+			return placeFromReferenceOrigin(origin, "")
+		}
 		origin, ok := a.containedOriginForAccess(expr)
 		if !ok || origin.Unknown {
 			return Place{}, false

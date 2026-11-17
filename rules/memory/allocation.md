@@ -2,7 +2,7 @@
 
 - Status: Normative
 - Created: 2026-08-30
-- Last updated: 2026-11-01 (§§ 10(6), 17(6), 17(8) string `+` and `+=`, MD-039); 2026-10-12 (MD-058 collection capacity reservation)
+- Last updated: 2026-11-17 (§ 22(7)–(9), MD-034 freestanding allocation policy); 2026-11-01 (§§ 10(6), 17(6), 17(8) string `+` and `+=`, MD-039); 2026-10-12 (MD-058 collection capacity reservation)
 - Document revision: 2.0
 - Sec language version: 0.1
 - Canonical path: `rules/memory/allocation.md`
@@ -473,6 +473,12 @@ noalloc
 § 22(5) A profile allowing only statically bounded allocation may require capacity proof.
 
 § 22(6) Runtime-free bare-metal Sec must remain possible.
+
+§ 22(7) MD-034 (owner decision 2026-11-17; `rules/corrections/applied/MD-034-freestanding-allocation-principle-20261117-20261117.md`). `hosted`, `embedded-arena` and `noalloc` are allocation-policy configurations, not aliases for an operating system or an execution-environment identity. A freestanding environment is not evidence that dynamic allocation is physically impossible, and it does not by itself provide an allocator.
+
+§ 22(8) An allocation policy distinguishes at least no dynamic allocation (a disabled allocation capability and no active allocation context, which does not assert that the hardware cannot allocate) from a supplied or preallocated Arena or another compatible explicit provider, under which allocation operations are permitted only with the resolved capability, context, lifetime, capacity and applicable interrupt restrictions. Availability, activation and the context provider are separate facts: `Unknown` availability never proves an allocator exists, a disabled capability never becomes available because an operation needs allocation, and selecting a profile never authorizes an implicit host-runtime or global-heap fallback.
+
+§ 22(9) The selected profile, the target/platform capability facts and legal explicit overrides resolve into one frozen `ResolvedTargetProfile` and `CompilationPlan` (`rules/platform/target_profiles.md` §§ 23–38) that Sema, lowering, linking and LSP consume alike. A target registry field spelled `freestanding` is not by itself a resolved allocation policy. The active-context and allocation-effect requirements of §§ 5–6 are unchanged, and allocation-capable operations on a no-allocation target are accepted only under the allocation-elimination rules of §§ 26–27.
 
 ---
 

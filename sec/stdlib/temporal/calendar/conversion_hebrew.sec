@@ -1,0 +1,238 @@
+module calendar
+
+/*
+ * Sec Standard Library — temporal/calendar
+ * File: calendar/conversion_hebrew.sec
+ * Purpose: Fixed Hebrew calendar calculations.
+ * Revision: 0.1
+ * Updated: 2026-11-17
+ *
+ * Uses the modern calculated Hebrew calendar.
+ * No observational, sunset or historical adoption rules.
+ */
+
+/**
+ * Calculates elapsed days to the provisional Hebrew new year.
+ *
+ * Parameters:
+ * - year: Positive Hebrew AM year.
+ *
+ * Returns:
+ * Day count before final new-year corrections.
+ *
+ * Ownership:
+ * Pure calculation without allocation.
+ */
+fn _hebrewElapsedDays(year: int64) int64 {
+    // Number of lunar months preceding Tishri.
+    let months := (235 * year - 234) / 19
+
+    // Mean lunar conjunction in traditional parts.
+    let parts := 12084 + 13753 * months
+    let days  := 29 * months + parts / 25920
+
+    // First weekday postponement.
+    if (3 * (days + 1)) % 7 < 3 {
+        return days + 1
+    }
+
+    return days
+}
+
+/**
+ * Returns the adjusted beginning of a Hebrew year.
+ *
+ * Parameters:
+ * - year: Positive Hebrew AM year.
+ *
+ * Returns:
+ * Corrected day count for Tishri 1.
+ *
+ * Ownership:
+ * Pure calculation without allocation.
+ */
+fn _hebrewNewYear(year: int64) int64 {
+    let current := _hebrewElapsedDays(year)
+    let next    := _hebrewElapsedDays(year + 1)
+
+    // Prevent an invalid 356-day year.
+    if next - current == 356 {
+        return current + 2
+    }
+
+    // Prevent an invalid 382-day year.
+    if year > 1 {
+        let previous := _hebrewElapsedDays(year - 1)
+
+        if current - previous == 382 {
+            return current + 1
+        }
+    }
+
+    return current
+}
+
+/**
+ * Returns the absolute beginning of a Hebrew year.
+ *
+ * Parameters:
+ * - year: Positive Hebrew AM year.
+ *
+ * Returns:
+ * Unix epoch day for Tishri 1.
+ *
+ * Ownership:
+ * Pure calculation without allocation.
+ */
+fn _hebrewYearStartEpochDays(year: int64) int64 {
+    return -2_092_590 + _hebrewNewYear(year)
+}
+
+/**
+ * Finds the Hebrew year containing an absolute day.
+ *
+ * Description:
+ * Uses binary search over positive Hebrew years.
+ * Years before AM 1 are not supported.
+ *
+ * Parameters:
+ * - epochDays: Absolute day number.
+ *
+ * Returns:
+ * Hebrew calendar year.
+ *
+ * Errors:
+ * - CalendarError.OutOfRange: Outside supported era.
+ *
+ * Ownership:
+ * Pure calculation without allocation.
+ */
+fn _hebrewYearForEpochDay(epochDays: int64) Result[int, CalendarError] {
+    if epochDays < _hebrewYearStartEpochDays(1) {
+        return Err(CalendarError.OutOfRange)
+    }
+
+    let mut lower := 1
+    let mut upper := 10_000_000
+
+    // Find the greatest year beginning no later than epochDays.
+    while lower <= upper {
+        let middle   := lower + (upper - lower) / 2
+        let firstDay := _hebrewYearStartEpochDays(int64(middle))
+
+        if firstDay <= epochDays {
+            lower = middle + 1
+        } else {
+            upper = middle - 1
+        }
+    }
+
+    return Ok(upper)
+}
+
+/**
+ * Converts validated Hebrew coordinates into core date.
+ *
+ * Description:
+ * Month order starts with Tishri. Leap months retain
+ * their stable CalendarMonth identities.
+ *
+ * Parameters:
+ * - fields: Valid Hebrew coordinates.
+ * - monthOrdinal: Valid one-based month position.
+ *
+ * Returns:
+ * Corresponding absolute core date.
+ *
+ * Errors:
+ * - CalendarError.OutOfRange: Unrepresentable day.
+ *
+ * Ownership:
+ * Pure calculation without allocation.
+ */
+fn _toHebrewDate(
+    fields:       CalendarFields,
+    monthOrdinal: int,
+) Result[date, CalendarError] {
+    let mut epochDays := _hebrewYearStartEpochDays(int64(fields.Year))
+    let mut ordinal   := 1
+
+    // Add all complete months preceding the requested month.
+    while ordinal < monthOrdinal {
+        let month := try MonthAt(
+            fields.Year,
+            ordinal,
+            CalendarSystem.Hebrew,
+        )
+
+        let days := try DaysInMonth(
+            fields.Year,
+            month,
+            CalendarSystem.Hebrew,
+        )
+
+        epochDays += int64(days)
+        ordinal += 1
+    }
+
+    epochDays += int64(fields.Day) - 1
+
+    let checkedDays := try int32(epochDays) {
+        Err(_) => return Err(CalendarError.OutOfRange)
+    }
+
+    return Ok(new date(checkedDays))
+}
+
+/**
+ * Converts an absolute day into Hebrew calendar coordinates.
+ *
+ * Parameters:
+ * - value: Absolute core date.
+ *
+ * Returns:
+ * Hebrew year, stable month identity and day.
+ *
+ * Errors:
+ * - CalendarError.OutOfRange: Outside supported era.
+ *
+ * Ownership:
+ * Pure calculation without allocation.
+ */
+fn _fromHebrewDate(value: date) Result[CalendarFields, CalendarError] {
+    let epochDays := int64(value.EpochDays)
+    let year      := try _hebrewYearForEpochDay(epochDays)
+
+    let mut remaining :=
+    epochDays - _hebrewYearStartEpochDays(int64(year))
+
+    let monthCount  := try MonthsInYear(year, CalendarSystem.Hebrew)
+    let mut ordinal := 1
+
+    while ordinal <= monthCount {
+        let month := try MonthAt(
+            year,
+            ordinal,
+            CalendarSystem.Hebrew,
+        )
+
+        let days := try DaysInMonth(
+            year,
+            month,
+            CalendarSystem.Hebrew,
+        )
+
+        if remaining < int64(days) {
+            return Ok(CalendarFields {
+                Year: year,
+                Month: month,
+                Day: int(remaining) + 1,
+            })
+        }
+
+        remaining -= int64(days)
+        ordinal += 1
+    }
+
+    return Err(CalendarError.OutOfRange)
+}

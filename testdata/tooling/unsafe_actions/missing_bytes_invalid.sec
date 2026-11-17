@@ -1,0 +1,5 @@
+module main
+
+fn Offset(pointer: RawPtr[byte]) RawPtr[byte] {
+    return pointer.AddBytes(1)
+}

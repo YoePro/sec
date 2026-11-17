@@ -33,7 +33,10 @@ func (b *builder) buildCustomFree(impl *ast.ImplStatement, free *ast.FreeDeclara
 		return fmt.Errorf("missing resolved custom free of %s", impl.Target.Name)
 	}
 	declaration := &ast.FunctionDeclaration{
-		Token:      free.Token,
+		Token: free.Token,
+		// The body's own attributes carry its verified contract (MD-030
+		// § 9(5)): @noPanic on `free` reaches the destruction function.
+		Attributes: free.Attributes,
 		Name:       &ast.Identifier{Token: free.Token, Value: "free"},
 		ReturnType: &ast.TypeReference{Token: free.Token, Name: "void"},
 		Body:       free.Body,

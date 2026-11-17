@@ -1,0 +1,5 @@
+module main
+
+fn Write(pointer: RawPtr[int], value: int) void {
+    pointer.VolatileWrite(value)
+}

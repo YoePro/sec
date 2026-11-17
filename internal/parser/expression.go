@@ -827,11 +827,19 @@ func (p *Parser) parseMatchPatternBinding() *ast.MatchPatternBinding {
 			p.nextToken()
 			binding.Mode = ast.MatchBindingMutableRef
 		}
+		if p.peekToken.Type == lexer.NEW {
+			p.reportNewKeywordName(p.peekToken, "a match binding name")
+			return nil
+		}
 		if p.peekToken.Type != lexer.IDENT {
 			p.addError("match payload reference must bind an identifier at %d:%d", p.peekToken.Line, p.peekToken.Column)
 			return nil
 		}
 		p.nextToken()
+	}
+	if p.curToken.Type == lexer.NEW {
+		p.reportNewKeywordName(p.curToken, "a match binding name")
+		return nil
 	}
 	if p.curToken.Type != lexer.IDENT && p.curToken.Type != lexer.UNDERSCORE {
 		p.addError("match payload must bind an identifier, ref identifier, ref mut identifier, or _ at %d:%d", p.curToken.Line, p.curToken.Column)

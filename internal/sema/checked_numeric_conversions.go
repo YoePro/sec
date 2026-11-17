@@ -179,7 +179,8 @@ func (a *Analyzer) numericConversionMayFail(target, source Type, argument ast.Ex
 // constantNumericConversionExact reports that the argument is a compile-time
 // known floating or decimal value the target represents exactly, so the
 // conversion needs no runtime check. A known value the target cannot
-// represent is not proved here and keeps its try requirement.
+// represent is not proved here; validatePrimitiveNumericConversion diagnoses
+// known intrinsic failures before runtime checked-conversion publication.
 //
 // Rules:
 //   - rules/types/types.md — § 25(7) "Explicit conversions"
@@ -188,7 +189,8 @@ func (a *Analyzer) constantNumericConversionExact(target, source Type, argument 
 	switch source.Kind {
 	case IntType, UintType:
 		low, high, known := a.scalarValueInterval(argument, source)
-		if !known || low.Cmp(high) != 0 || target.Kind != FloatType || (target.FloatBits != 32 && target.FloatBits != 64) {
+		if !known || low.Cmp(high) != 0 || target.Kind != FloatType && target.Kind != DecimalType ||
+			target.Kind == FloatType && target.FloatBits != 32 && target.FloatBits != 64 {
 			return false
 		}
 		return finiteNumericConversionFailure(target, new(big.Rat).SetInt(low)) == ""

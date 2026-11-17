@@ -1,0 +1,30 @@
+module main
+
+interface VolatileReadable {}
+
+fn Read[T](pointer: RawPtr[T]) void {
+    unsafe { discard pointer.VolatileRead() }
+}
+
+fn Write[T](pointer: RawPtr[T], value: T) void {
+    unsafe { pointer.VolatileWrite(value) }
+}
+
+fn ConstrainedRead[T: VolatileReadable](pointer: RawPtr[T]) void {
+    unsafe { discard pointer.VolatileRead() }
+}
+
+fn ConstrainedWrite[T: VolatileReadable](pointer: RawPtr[T], value: T) void {
+    unsafe { pointer.VolatileWrite(value) }
+}
+
+type Accessor[T] struct {}
+
+impl Accessor[T] {
+    static fn Read(pointer: RawPtr[T]) void {
+        unsafe { discard pointer.VolatileRead() }
+    }
+    static fn Write(pointer: RawPtr[T], value: T) void {
+        unsafe { pointer.VolatileWrite(value) }
+    }
+}

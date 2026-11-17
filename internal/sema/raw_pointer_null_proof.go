@@ -102,17 +102,43 @@ func conditionProvesNull(condition ast.Expression, subject string, truth bool) b
 	return false
 }
 
-// negatedNullTest flips a null test on a binding, which is pure, so its
-// false edge can be recorded as a path fact.
+// negatedNullTest preserves the false edge of a pure null-test condition,
+// including logical composition. Calls and other effectful operands are
+// excluded so a remembered test cannot overlook a change during evaluation.
+// Rules: rules/memory/raw_pointers.md §§7(6–8),34(2–4);
+// rules/foundations/operators.md §§13,15.3.
 func negatedNullTest(condition ast.Expression) (ast.Expression, bool) {
 	test, ok := condition.(*ast.NullTestExpression)
-	if !ok || test == nil {
+	if ok && test != nil {
+		if _, ok := test.Subject.(*ast.Identifier); !ok {
+			return nil, false
+		}
+		negated := *test
+		negated.Negated = !test.Negated
+		return &negated, true
+	}
+	if !pureNullTestCondition(condition) {
 		return nil, false
 	}
-	if _, ok := test.Subject.(*ast.Identifier); !ok {
-		return nil, false
+	return &ast.PrefixExpression{Token: expressionToken(condition), Operator: "!", Right: condition}, true
+}
+
+// pureNullTestCondition restricts retained compound null conditions to reads
+// of bindings and boolean literals combined with !, && and ||. This does not
+// prove pointer stability; provenNullRawPointerBinding checks that separately.
+// Rules: rules/memory/raw_pointers.md §§7(8–9a),32(2),34(2–4);
+// rules/foundations/operators.md §§13,15.3.
+func pureNullTestCondition(condition ast.Expression) bool {
+	switch expr := condition.(type) {
+	case *ast.NullTestExpression:
+		_, ok := expr.Subject.(*ast.Identifier)
+		return ok
+	case *ast.BooleanLiteral:
+		return true
+	case *ast.PrefixExpression:
+		return expr.Operator == "!" && pureNullTestCondition(expr.Right)
+	case *ast.InfixExpression:
+		return (expr.Operator == "&&" || expr.Operator == "||") && pureNullTestCondition(expr.Left) && pureNullTestCondition(expr.Right)
 	}
-	negated := *test
-	negated.Negated = !test.Negated
-	return &negated, true
+	return false
 }

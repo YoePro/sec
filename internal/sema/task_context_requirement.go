@@ -182,6 +182,9 @@ func (a *Analyzer) reportExecutionRequirementsFrom(root CallRoot, forbidden map[
 	}
 }
 
+// executionRequirementNoun names the distinct logical-task and cancellable
+// execution requirements without treating a physical thread as a task.
+// Rules: rules/concurrency/cancellation.md — §§19–24.
 func executionRequirementNoun(kind executionRequirementKind) string {
 	if kind == requiresLogicalTask {
 		return "logical task context"
@@ -189,9 +192,14 @@ func executionRequirementNoun(kind executionRequirementKind) string {
 	return "cancellable task or thread execution context"
 }
 
+// executionRequirementHelp supplies a valid source repair for a missing task
+// context. Spawn is fallible; ordinary main must handle creation failure before
+// awaiting the actual Task owner and never acquires an implicit root task.
+// Rules: rules/concurrency/tasks.md — §4(1–7);
+// rules/concurrency/scheduling.md — §22; rules/concurrency/cancellation.md — §§19–23.
 func (a *Analyzer) executionRequirementHelp(kind executionRequirementKind) string {
 	if kind == requiresLogicalTask {
-		return "Run the work as a task, for example `let work := spawn Work()` followed by `await work`; main, test bodies and spawned threads have no TaskContext."
+		return "Run the work as a task, for example `let work := try spawn Work() { Err(_) => { return } }` followed by `await work`; main, test bodies and spawned threads have no TaskContext."
 	}
 	return "cancel ends the current task or explicit thread; run the work with `spawn` instead of calling it directly from main or a test."
 }

@@ -27,11 +27,9 @@ func (a *Analyzer) validatePropertyReadReceiver(expr ast.Expression, property Pr
 	if placed && place.Type.Kind == ReferenceType && place.Type.Element != nil {
 		place = a.canonicalDereferencePlace(receiver, place, place.Type)
 	}
-	// MutexGuard's protected payload has the guard's exclusive authority;
-	// its existing ownership/liveness validation still controls guard access.
-	// Rules: rules/concurrency/mutex.md — §§28,42–43.
-	guard := placed && isMutexGuardType(dereferenceType(place.Type))
-	if mutable && !(placed && (place.Mutable || guard)) && !a.freshTemporaryBorrowSource(receiver) {
+	// rules/concurrency/mutex.md §34: acquisition exclusivity does not
+	// grant mutable authority to an immutable guard or shared guard borrow.
+	if mutable && !(placed && place.Mutable) && !a.freshTemporaryBorrowSource(receiver) {
 		a.addErrorAtTokenWithMetadataAndPrevious(expressionToken(expr), property.Token, diagnostics.PropertyReceiverMutable,
 			"This getter mutates or mutably borrows its receiver. Use writable storage or ref mut access; a shared reference cannot grant mutable authority.",
 			"property getter %s requires a mutable receiver", property.Name)

@@ -64,6 +64,7 @@ integrations:
         Initial task-handle must-use and unresolved-lifecycle checks exist, as
         documented by concurrency_task.yaml.
       - Grammar section 89 expression/block alternatives and default/task/thread/process contextual spellings are preserved through parser and formatter, including ordinary identifiers with those spellings; missing operands preserve surrounding syntax and produce one canonical parser diagnostic in CLI/LSP, while valid spawned blocks report their separate unimplemented semantic capability rather than deprecated syntax (2026-11-09)
+      - "2026-11-17 (governance sync, verified): current-execution facts propagate per execution root without inventing a task parent or TaskContext (cancellation.md §§ 14, 19-23; scheduling.md § 22): Task.Current/Task.Yield record a logical-task requirement and cancel a cancellable-execution requirement that propagate through synchronous and deferred calls; a spawned task satisfies both, a spawned thread is cancellable but not a logical task, ordinary program entry and test bodies are neither (no implicit root task), spawn edges start new roots and are not followed, and process spawn stays rejected; S1213 names the operation, the root kind and the introducing site (internal/sema/task_context_requirement.go; TestExecutionContextRequirements, TestExecutionContextRequirementsInTests, TestMainTaskContext)."
     remaining:
       - >-
         Unify spawn typing with canonical fallible Result[Task[T],
@@ -75,9 +76,6 @@ integrations:
       - >-
         Preserve eager task/process creation and default eager / explicit
         deferred thread creation, including callable start boundaries.
-      - >-
-        Propagate correct task, thread, and process current-execution facts
-        without inventing a task parent or TaskContext where none exists.
       - >-
         Validate boundary-specific owned, borrowed, mutable, capture, callable,
         and method-receiver transferability and lifetime proofs.

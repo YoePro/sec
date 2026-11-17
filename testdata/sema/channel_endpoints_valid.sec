@@ -12,7 +12,7 @@ fn BorrowFields(channel: ref mut Channel[int]) void {
     discard receiver
 }
 fn Construct() void {
-    let channel := Channel[int](0)
+    let channel := try Channel[int](0) { Err(_) => { return } }
     let sender :<- channel.Tx
     let receiver :<- channel.Rx
     discard sender

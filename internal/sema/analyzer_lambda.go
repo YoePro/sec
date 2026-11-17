@@ -3,6 +3,7 @@ package sema
 import (
 	"math/big"
 	"sec/internal/ast"
+	"sec/internal/diagnostics"
 	"sec/internal/lexer"
 )
 
@@ -24,8 +25,10 @@ func (a *Analyzer) inferLambdaExpression(expr *ast.LambdaExpression) (Type, expr
 	params := make([]Type, 0, len(expr.Parameters))
 	seenParams := map[string]lexer.Token{}
 	for _, param := range expr.Parameters {
-		if _, exists := seenParams[param.Name.Value]; exists {
-			a.addErrorAtToken(param.Name.Token, "duplicate parameter %q", param.Name.Value)
+		if previous, exists := seenParams[param.Name.Value]; exists {
+			a.addErrorAtTokenWithMetadataAndPrevious(param.Name.Token, previous, diagnostics.DuplicateLocalVariable,
+				"Give each parameter a distinct name; a parameter list declares every name once (names_scopes_visibility.md).",
+				"duplicate parameter %q", param.Name.Value)
 			continue
 		}
 		a.checkConfusableInDomains(param.Name.Value, param.Name.Token, seenParams)

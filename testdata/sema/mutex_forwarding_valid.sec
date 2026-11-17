@@ -1,0 +1,74 @@
+module main
+
+type Protected struct { Count: int }
+impl Protected {
+    fn Read() int { return self.Count }
+    fn Change() void { self.Count += 1 }
+    fn Identity[T](value: T) T { return value }
+    fn Borrow() ref int { return ref self.Count }
+    property View: ref int { get { return ref self.Count } }
+    property Number: int {
+        get { return self.Count }
+        set value { self.Count = value }
+    }
+    property Bump: int {
+        get { self.Count += 1
+            return self.Count }
+    }
+}
+fn Read(guard: ref MutexGuard[Protected]) int {
+    return guard.Count + guard.Number + guard.Read() + guard.Identity(2)
+}
+fn Change(guard: ref mut MutexGuard[Protected]) void {
+    guard.Count = 1
+    guard.Count += 1
+    guard.Number = 3
+    guard.Change()
+    discard guard.Bump
+}
+fn Local(lock: ref Mutex[Protected]) void {
+    let mut guard := lock.Lock()
+    guard.Count = 1
+    guard.Change()
+    let field := ref guard.Count
+    discard field
+    let method := guard.Borrow()
+    discard method
+}
+fn ForwardField(guard: ref MutexGuard[Protected]) ref int { return ref guard.Count }
+fn ForwardMethod(guard: ref MutexGuard[Protected]) ref int { return guard.Borrow() }
+
+fn ForwardProperty(guard: ref MutexGuard[Protected]) ref int { return guard.View }
+
+type Box[T] struct { Item: T }
+impl Box[T] {
+    fn Read() T { return self.Item }
+    fn Choose(value: T) T { return <-value }
+    fn Choose(value: string) string { return value }
+    fn Pair[U](value: U) U { return value }
+    property Value: T {
+        get { return self.Item }
+    }
+}
+fn Generic(guard: ref mut MutexGuard[Box[int]]) int {
+    guard.Item = 3
+    discard guard.Choose("text")
+    discard guard.Pair[bool](true)
+    return guard.Read() + guard.Choose(2) + guard.Pair(3) + guard.Value
+}
+
+enum SettingError error { Invalid }
+type Setting struct { Value: int }
+impl Setting {
+    property Checked: int {
+        get { return self.Value }
+        try set value SettingError {
+            if value < 0 { return Err(SettingError.Invalid) }
+            self.Value = value
+        }
+    }
+}
+fn CheckedWrite(guard: ref mut MutexGuard[Setting]) Result[void, SettingError] {
+    try guard.Checked = 1
+    return Ok()
+}

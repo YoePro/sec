@@ -107,6 +107,7 @@ func (p *Parser) parseAttributedStatement() ast.Statement {
 			return p.fileLevelTarget(target, attributes)
 		}
 	}
+	p.skipStrayAttributeCloser()
 	p.nextToken()
 	start := p.curToken
 	statement := p.parseStatement()
@@ -301,10 +302,14 @@ func (p *Parser) parseAttribute() (*ast.Attribute, bool) {
 		}
 		p.nextToken()
 		arguments, ok := p.parseAttributeArguments()
-		if !ok {
+		// The successfully parsed and the malformed arguments stay on the
+		// attribute (parser_recovery.md § 27(2)).
+		attribute.Arguments = arguments
+		if !ok || hasMalformedAttributeArgument(arguments) {
+			// The malformed argument's own diagnostic explains the list; the
+			// form check would only add dependent errors (§ 82.2).
 			return attribute, true
 		}
-		attribute.Arguments = arguments
 	}
 	p.validateAttributeArguments(attribute, spec)
 	return attribute, true
@@ -323,10 +328,35 @@ func (p *Parser) parseAttributeArguments() ([]*ast.AttributeArgument, bool) {
 			p.nextToken()
 		}
 		p.nextToken()
+		before := len(p.diagnostics)
 		argument.Value = p.parseExpression(LOWEST)
-		if argument.Value == nil {
-			p.recoverAttributeArguments()
-			return nil, false
+		if _, invalid := argument.Value.(*ast.InvalidExpression); argument.Value == nil || invalid {
+			// parser_recovery.md § 27(2): a malformed argument keeps its
+			// position, and later arguments of the list are still parsed; the
+			// expression parser's own diagnostic is the only one for it.
+			if len(p.diagnostics) == before {
+				p.addDiagnostic(compilerdiagnostics.AttributeInvalidArgument, argument.Token, nil, &argument.Token,
+					"malformed attribute argument at %d:%d", argument.Token.Line, argument.Token.Column)
+			}
+			if argument.Value == nil {
+				argument.Value = &ast.InvalidExpression{Token: argument.Token}
+			}
+			arguments = append(arguments, argument)
+			// An empty argument leaves the boundary itself as the current
+			// token: the comma starts the next argument, `)` ends the list.
+			if p.curToken.Type == lexer.COMMA {
+				continue
+			}
+			if p.curToken.Type == lexer.RPAREN {
+				return arguments, true
+			}
+			if !p.skipToAttributeArgumentBoundary() {
+				return arguments, false
+			}
+			if p.peekToken.Type == lexer.COMMA {
+				p.nextToken()
+			}
+			continue
 		}
 		arguments = append(arguments, argument)
 		if p.peekToken.Type == lexer.COMMA {
@@ -623,6 +653,12 @@ const (
 	AttributeTargetExtern   AttributeTarget = "extern"
 	AttributeTargetType     AttributeTarget = "type"
 	AttributeTargetLet      AttributeTarget = "let"
+	// The MD-030 callable-body targets: init, free, a property get/set/try
+	// set accessor, and a let that directly initializes a lambda.
+	AttributeTargetInit      AttributeTarget = "init"
+	AttributeTargetFree      AttributeTarget = "free"
+	AttributeTargetAccessor  AttributeTarget = "accessor"
+	AttributeTargetLambdaLet AttributeTarget = "lambda-let"
 )
 
 // AttributeInfo is the tooling view of one compiler-known attribute,
@@ -653,6 +689,16 @@ func (info AttributeInfo) AllowedOn(target AttributeTarget) bool {
 		return info.spec.targets&attributeOnNominalType != 0
 	case AttributeTargetLet:
 		return info.spec.targets&attributeOnLet != 0
+	case AttributeTargetInit:
+		return info.spec.targets&attributeOnInit != 0
+	case AttributeTargetFree:
+		return info.spec.targets&attributeOnFree != 0
+	case AttributeTargetAccessor:
+		return info.spec.targets&attributeOnAccessor != 0
+	case AttributeTargetLambdaLet:
+		// Only the lambda's callable-body attributes; a top-level let also
+		// keeps its own let attributes (MD-030 § 4).
+		return info.spec.targets&attributeOnLambdaLet != 0
 	}
 	return false
 }
@@ -736,4 +782,52 @@ func (p *Parser) fileLevelTarget(target *ast.Attribute, attributes []*ast.Attrib
 	}
 	p.fileTarget = directive
 	return directive
+}
+
+func hasMalformedAttributeArgument(arguments []*ast.AttributeArgument) bool {
+	for _, argument := range arguments {
+		if _, invalid := argument.Value.(*ast.InvalidExpression); invalid {
+			return true
+		}
+	}
+	return false
+}
+
+// skipToAttributeArgumentBoundary skips a malformed argument to the next comma
+// or closing `)` at the list's own depth, leaving it as the peek token. It
+// reports false when a later declaration or a foreign closing delimiter shows
+// the list cannot own the following tokens; the caller then stops the list
+// (parser_recovery.md §§ 27(1)-(3)).
+func (p *Parser) skipToAttributeArgumentBoundary() bool {
+	scan := p.beginRecoveryScan(false)
+	defer scan.finish()
+	delimiters := newDelimiterStack(lexer.RPAREN)
+	for p.peekToken.Type != lexer.EOF {
+		if delimiters.depth() == 1 && (p.peekToken.Type == lexer.COMMA || p.peekToken.Type == lexer.RPAREN) {
+			return true
+		}
+		if !delimiters.canConsume(p.peekToken.Type) {
+			return false
+		}
+		if delimiters.depth() == 1 && p.peekToken.Line > p.curToken.Line && (isDeclarationStart(p.peekToken.Type) || p.peekToken.Type == lexer.AT) {
+			return false
+		}
+		scan.advance()
+		delimiters.consume(p.curToken.Type)
+	}
+	return false
+}
+
+// skipStrayAttributeCloser reports and skips a stray closing delimiter right
+// after a complete attribute set, so the set still attaches to the declaration
+// that follows it (parser_recovery.md § 27(3)).
+func (p *Parser) skipStrayAttributeCloser() {
+	for p.peekToken.Type == lexer.RPAREN || p.peekToken.Type == lexer.RBRACKET {
+		unexpected := p.peekToken
+		p.addDiagnostic(compilerdiagnostics.ParserUnexpectedToken, unexpected, nil, &unexpected,
+			"unexpected token %q after an attribute at %d:%d", unexpected.Lexeme, unexpected.Line, unexpected.Column)
+		scan := p.beginRecoveryScan(false)
+		scan.advance()
+		scan.finish()
+	}
 }

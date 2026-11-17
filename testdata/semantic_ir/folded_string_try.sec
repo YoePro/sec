@@ -1,0 +1,21 @@
+module main
+
+fn Plain() string {
+    return "A" + "B"
+}
+
+fn Tried() Result[string, StringError] {
+    let s := try "A" + "B"
+    return Ok(s)
+}
+
+fn main() int {
+    return 0
+}
+
+fn Handled() string {
+    let s := try "C" + "D" {
+        Err(e) => "fallback"
+    }
+    return s
+}

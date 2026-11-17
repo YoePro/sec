@@ -303,7 +303,9 @@ func buildAnalyseReport(analyzer *sema.Analyzer, selected map[string]bool, targe
 		report.addIterators(analyzer, inSelection)
 		report.addSchedulingPoints(analyzer, inSelection)
 		report.addRawPointers(analyzer, inSelection)
+		report.addOwnership(analyzer, inSelection)
 		report.addEffects(graph, nodes, names)
+		report.addTrustProvenance(analyzer, graph, nodes, names)
 		report.addAllocationFacts(analyzer, nodes, names)
 		report.addEscape(analyzer.EscapeAnalysis(), inSelection)
 	}
@@ -407,6 +409,13 @@ func (r *analyseReport) addEffects(graph *sema.CallGraph, nodes []sema.CallableN
 			section.add("%s: may panic via %s", names[node.ID], analysePath(effects.PanicPath, names))
 		}
 		addPanicCauseReport(section, effects.PanicCauses, names[node.ID], names)
+		// Non-panic effect cause chains, shared with LSP hover
+		// (semantic_ir.md § 109(1)–(3)).
+		for _, cause := range graph.EffectCauses(node.ID) {
+			if len(cause.Path) > 1 {
+				section.add("%s: %s via %s (introduced at %s)", names[node.ID], cause.Kind, analysePath(cause.Path, names), analysePosition(cause.Source))
+			}
+		}
 		arena := graph.ArenaSummary(node.ID)
 		for _, effect := range arena.DirectEffects {
 			section.add("%s: arena %s %s at %s", names[node.ID], effect.Kind, effect.Arena, analysePosition(effect.Source))

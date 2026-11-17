@@ -1,0 +1,45 @@
+module main
+
+// Compiler-known Iterator[T] loops over reusable iterator storage lower from
+// Sema's ResolvedForIteration plan: a borrow of the storage, the resolved
+// Next call, a Some test, the yielded value and the body; None exits.
+
+type Counter struct {
+    current: int,
+    limit: int,
+}
+
+impl Counter implements Iterator[int] {
+    fn Next() Option[int] {
+        if self.current >= self.limit {
+            return None
+        }
+        self.current = self.current + 1
+        return Some(self.current)
+    }
+}
+
+fn Sum() int {
+    let mut counter := Counter { current: 0, limit: 3 }
+    let mut total := 0
+    for value in counter {
+        total += value
+    }
+    return total
+}
+
+fn Count() int {
+    let mut counter := Counter { current: 0, limit: 4 }
+    let mut seen := 0
+    for _ in counter {
+        seen += 1
+        if seen == 2 {
+            break
+        }
+    }
+    return seen
+}
+
+fn main() int {
+    return Sum() + Count()
+}

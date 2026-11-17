@@ -46,9 +46,13 @@ func attributeCompletionItems(text string, offset int) ([]completionItem, bool) 
 	line := text[lineStart:offset]
 	if match := attributeNamePrefix.FindStringSubmatch(line); match != nil {
 		target, known := attributeTargetAfter(text, offset)
+		// A top-level let that initializes a lambda keeps its own let
+		// attributes beside the lambda's body attributes; a local one has
+		// only the body attributes (MD-030 § 4).
+		topLevelLambdaLet := target == parser.AttributeTargetLambdaLet && braceDepth(text[:offset]) == 0
 		items := []completionItem{}
 		for _, info := range parser.CompilerKnownAttributes() {
-			if known && !info.AllowedOn(target) {
+			if known && !info.AllowedOn(target) && !(topLevelLambdaLet && info.AllowedOn(parser.AttributeTargetLet)) {
 				continue
 			}
 			if !completionLabelMatches(info.Name, match[1]) {
@@ -144,6 +148,9 @@ func attributeTargetAfter(text string, offset int) (parser.AttributeTarget, bool
 		if word == "unsafe" && len(fields) > 1 {
 			word = fields[1]
 		}
+		if cut := strings.IndexAny(word, "({"); cut > 0 {
+			word = word[:cut] // init(value: int), free{
+		}
 		switch word {
 		case "fn":
 			if braceDepth(text[:offset]) > 0 {
@@ -155,11 +162,36 @@ func attributeTargetAfter(text string, offset int) (parser.AttributeTarget, bool
 		case "type", "enum":
 			return parser.AttributeTargetType, true
 		case "let":
+			if initializesLambda(trimmed) {
+				return parser.AttributeTargetLambdaLet, true
+			}
 			return parser.AttributeTargetLet, true
+		case "init":
+			return parser.AttributeTargetInit, true
+		case "free":
+			return parser.AttributeTargetFree, true
+		case "get", "set":
+			return parser.AttributeTargetAccessor, true
+		case "try":
+			if len(fields) > 1 && strings.HasPrefix(fields[1], "set") {
+				return parser.AttributeTargetAccessor, true
+			}
 		}
 		return "", false
 	}
 	return "", false
+}
+
+// initializesLambda reports whether a let line directly initializes a
+// lambda: the initializer after `:=` starts with `fn(` or with a capture
+// list `capture(...)` (lambda-functions.md; MD-030 § 4).
+func initializesLambda(line string) bool {
+	assign := strings.Index(line, ":=")
+	if assign < 0 {
+		return false
+	}
+	initializer := strings.TrimSpace(line[assign+2:])
+	return strings.HasPrefix(initializer, "fn(") || strings.HasPrefix(initializer, "capture(")
 }
 
 func braceDepth(text string) int {
@@ -186,6 +218,14 @@ func braceDepth(text string) int {
 //   - rules/tooling/lsp.md — "Hover"
 func attributeHover(text string, program *ast.Program, analyzer *sema.Analyzer, token lexer.Token) (hoverResult, bool) {
 	attribute, attributes, function := writtenAttributeAt(program, token)
+	var body sema.CallableBodyAttributeSet
+	bodyFound := false
+	if attribute == nil && analyzer != nil {
+		// MD-030 callable bodies (init, free, accessors, lambdas) carry
+		// their guarantee on the callable, not on a let/property/impl.
+		attribute, body, bodyFound = analyzer.CallableBodyAttributeAt(token.File, token.Line, token.Column)
+		attributes = body.Attributes
+	}
 	if attribute == nil {
 		return hoverResult{}, false
 	}
@@ -215,6 +255,10 @@ func attributeHover(text string, program *ast.Program, analyzer *sema.Analyzer, 
 			parts = append(parts, part)
 		}
 		lines = append(lines, "Effective guarantees: "+strings.Join(parts, ", "))
+	}
+	if bodyFound {
+		lines = append(lines, "Attached to: "+body.Kind+" `"+body.Name+"` (the callable body, not its binding, property or impl)")
+		lines = append(lines, guaranteeCauseLines(analyzer.CallGraph(), body.Callable, attributes)...)
 	}
 	if function != nil && !function.Extern && function.Name != nil && analyzer != nil {
 		graph := analyzer.CallGraph()

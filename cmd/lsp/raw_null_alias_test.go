@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// The editor consumes Sema's copied-null proof and canonical source links;
+// The editor consumes Sema's copied/continuation null proofs and source links;
 // it does not maintain its own pointer alias classifier.
 // Rules: rules/memory/raw_pointers.md §§34–35.
 func TestRawNullAliasLSPDiagnostics(t *testing.T) {
@@ -16,6 +16,7 @@ func TestRawNullAliasLSPDiagnostics(t *testing.T) {
 		count int
 	}{
 		{"raw_null_alias_invalid.sec", 8}, {"raw_null_alias_valid.sec", 0},
+		{"raw_null_continuation_invalid.sec", 6}, {"raw_null_continuation_valid.sec", 0},
 	} {
 		data, err := os.ReadFile("../../testdata/sema/" + tc.name)
 		if err != nil {

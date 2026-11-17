@@ -16,6 +16,7 @@ func TestRawOriginAliasLSPDiagnostics(t *testing.T) {
 		errors int
 	}{
 		{"raw_origin_alias_invalid.sec", 4}, {"raw_origin_alias_valid.sec", 0},
+		{"raw_origin_access_invalid.sec", 7}, {"raw_origin_access_valid.sec", 0},
 	} {
 		data, err := os.ReadFile("../../testdata/sema/" + tc.name)
 		if err != nil {
@@ -37,7 +38,7 @@ func TestRawOriginAliasLSPDiagnostics(t *testing.T) {
 		if total != tc.errors {
 			t.Fatal(tc.name, total, counts)
 		}
-		if total > 0 && (counts[diagnostics.RawPointerDanglingOrigin] != 2 || counts[diagnostics.BorrowOwnerReadConflict] != 1 || counts[diagnostics.BorrowMutationConflict] != 1) {
+		if total > 0 && (counts[diagnostics.RawPointerDanglingOrigin] != tc.errors-2 || counts[diagnostics.BorrowOwnerReadConflict] != 1 || counts[diagnostics.BorrowMutationConflict] != 1) {
 			t.Fatal(counts)
 		}
 	}

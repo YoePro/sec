@@ -10,6 +10,7 @@ import (
 // effects remain mutable receiver authority; callable-value consumption is separate.
 // Rules: rules/memory/ownership.md — §9;
 // rules/declarations/functions.md — §§22,24–25;
+// rules/concurrency/mutex.md — §§33(4),36(1–2) (no consuming protected receiver);
 // rules/corrections/applied/correction-arena-release-lifecycle-20260902.md — ordinary methods.
 func (a *Analyzer) validateOrdinaryReceiverContract(fn *ast.FunctionDeclaration) bool {
 	if fn.ReceiverCapability != ast.ReceiverConsuming {

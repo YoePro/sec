@@ -549,7 +549,8 @@ func (b *builder) internTypeOnce(t sema.Type) (TypeID, error) {
 		width = b.module.PointerWidthBits
 	}
 	base := Type{Kind: kind, Name: t.Name, Signed: signed, BitWidth: width, TargetSize: target}
-	if t.Named || t.Declared {
+	// The compiler-known opaque UnitDimension has no source base (MD-062 § 7(1)).
+	if (t.Named || t.Declared) && kind != TypeUnitDimension {
 		return b.internNamedScalar(t)
 	}
 	return b.module.Types.Intern(base), nil
@@ -792,6 +793,8 @@ func builtinType(t sema.Type) (TypeKind, bool, uint16, bool, bool) {
 		return TypeRune, false, 32, false, true
 	case sema.StringType:
 		return TypeString, false, 0, false, true
+	case sema.UnitDimensionType:
+		return TypeUnitDimension, false, 0, false, true
 	case sema.DecimalType:
 		if name == "decimal128" {
 			return TypeDecimal128, true, 128, false, true
@@ -4413,6 +4416,11 @@ func ownershipForParameter(p sema.FunctionParameter, maxPackage uint8) (Ownershi
 		// A detached register value is a trivially copyable bit layout
 		// (MD-077 § 5).
 		if maxPackage >= registerLoweringPackage {
+			return OwnershipImmediate, nil
+		}
+	case sema.UnitDimensionType:
+		// A copyable immutable value with no owned resource (MD-062 § 7(5)).
+		if maxPackage >= ownershipLoweringPackage {
 			return OwnershipImmediate, nil
 		}
 	case sema.ArrayType:

@@ -173,7 +173,7 @@ func (fb *functionBuilder) loopExit(loop *activeLoop) *Block {
 func verifyLoopRecords(fn *Function, blocks map[BlockID]*Block) error {
 	records := map[LoopID]LoopRecord{}
 	for index, loop := range fn.Loops {
-		if loop.ID != LoopID(index+1) || loop.Kind != LoopWhile && loop.Kind != LoopForInfinite && loop.Kind != LoopForRange && loop.Kind != LoopForPack && loop.Kind != LoopForStringView {
+		if loop.ID != LoopID(index+1) || loop.Kind != LoopWhile && loop.Kind != LoopForInfinite && loop.Kind != LoopForRange && loop.Kind != LoopForPack && loop.Kind != LoopForStringView && loop.Kind != LoopForIterator {
 			return fmt.Errorf("invalid loop record @%d", loop.ID)
 		}
 		if blocks[loop.ConditionBlock] == nil {

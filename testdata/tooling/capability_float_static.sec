@@ -1,0 +1,11 @@
+module main
+
+// A static whose compile-time value Semantic IR cannot represent yet (exact
+// float static leaves are tracked in lowering.sec-mlir-package20) fails with a
+// compiler-capability diagnostic, not a source error.
+
+static let Ratio: float64 := 1.5
+
+fn Read() float64 {
+    return Ratio
+}

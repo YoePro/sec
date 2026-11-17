@@ -29,11 +29,20 @@ func TestMatchTerminationLSP(t *testing.T) {
 			}
 			continue
 		}
+		// NestedUnsafe deliberately wraps a match in an unsafe block, which also
+		// earns the S1242 "no unsafe operation" information; only errors count.
+		reported := errors[:0:0]
+		for _, d := range errors {
+			if d.Severity == 1 {
+				reported = append(reported, d)
+			}
+		}
+		errors = reported
 		if len(errors) != 6 {
 			t.Fatal(name, errors)
 		}
 		for _, d := range errors {
-			if d.Severity != 1 || d.Range.Start.Line == 0 {
+			if d.Range.Start.Line == 0 {
 				t.Fatal(d)
 			}
 			if name == "unreachable_invalid" && (d.Code != diagnostics.UnreachableStatement || !strings.Contains(d.Message, "help:")) {

@@ -64,7 +64,9 @@ func TestCapabilityDiagnosticBoundaries(t *testing.T) {
 // stopping before external tools or publishing output. Ordinary check succeeds.
 // Rules: rules/compiler/compiler_pipeline.md — §32(2–4), §56(1–3), §59.
 func TestCapabilitySecMLIRCLI(t *testing.T) {
-	file := "../../testdata/tooling/capability_aggregate_static.sec"
+	// Aggregate statics lower since P17; a float static is still a Semantic IR
+	// capability boundary (lowering.sec-mlir-package20).
+	file := "../../testdata/tooling/capability_float_static.sec"
 	_, stderr, code := runCLIForDiagnostics(t, "check", file)
 	if code != 0 {
 		t.Fatal(code, stderr)
@@ -76,7 +78,7 @@ func TestCapabilitySecMLIRCLI(t *testing.T) {
 		t.Fatal(code, stderr)
 	}
 	item := doc.Occurrences[0]
-	if item.Arguments["diagnostic_class"] != "compiler-capability" || !strings.HasPrefix(item.Arguments["feature"], "static Origin") || item.Arguments["proof_state"] != "" || !strings.HasPrefix(item.Arguments["boundary"], "semantic IR package ") {
+	if item.Arguments["diagnostic_class"] != "compiler-capability" || !strings.HasPrefix(item.Arguments["feature"], "static Ratio") || item.Arguments["proof_state"] != "" || !strings.HasPrefix(item.Arguments["boundary"], "semantic IR package ") {
 		t.Fatal(item)
 	}
 	if _, err := os.Stat(output); !os.IsNotExist(err) {

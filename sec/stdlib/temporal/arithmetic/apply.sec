@@ -17,37 +17,296 @@ module arithmetic
 import "temporal/calendar"
 
 /**
- * Adds months in a specified calendar using an explicit missing-day policy.
- * Description: Stateless; preserving end-of-month INTENT across repeated
- *   recurrences is a separate recurrence-rule concern.
+ * Converts calendar errors to temporal arithmetic errors.
+ *
  * Parameters:
- *   - value: Absolute day used as the starting calendar date.
- *   - months: Signed count of calendar month transitions.
- *   - system: Explicit calendar algorithm, not historical civil profile.
- *   - policy: Month-end resolution policy.
- * Returns: Absolute day reached by applying the calendar operation.
- * Errors: TemporalArithmeticError.NotImplemented, InvalidTarget, OutOfRange,
- *         UnsupportedSystem.
- * Ownership: No allocation or I/O.
+ * - cause: Error returned by the calendar module.
+ *
+ * Returns:
+ * Corresponding temporal arithmetic error.
+ *
+ * Ownership:
+ * Pure conversion without allocation.
+ */
+fn _calendarArithmeticError(cause: calendar.CalendarError) TemporalArithmeticError {
+    match cause {
+        calendar.CalendarError.OutOfRange => return TemporalArithmeticError.OutOfRange
+        calendar.CalendarError.NotImplemented => return TemporalArithmeticError.UnsupportedSystem
+        calendar.CalendarError.UnsupportedSystem => return TemporalArithmeticError.UnsupportedSystem
+        _ => return TemporalArithmeticError.InvalidTarget
+    }
+}
+
+/**
+ * Returns the mathematical floor of integer division.
+ *
+ * Description:
+ * Sec integer division truncates toward zero. Calendar
+ * month indexing requires floor division for negative years.
+ *
+ * Parameters:
+ * - value: Signed dividend.
+ * - divisor: Strictly positive divisor.
+ *
+ * Returns:
+ * Floor of value divided by divisor.
+ *
+ * Ownership:
+ * Pure calculation without allocation.
+ */
+fn _floorDivMonthIndex(value: int64, divisor: int64) int64 {
+    let mut quotient := value / divisor
+
+    if value % divisor < 0 {
+        quotient -= 1
+    }
+
+    return quotient
+}
+
+/**
+ * Finds the calendar month at a signed month offset.
+ *
+ * Description:
+ * Gregorian and Julian calendars use twelve months per year.
+ * The Islamic tabular calendar also uses twelve months,
+ * starting at AH 1.
+ *
+ * Hebrew calendar uses a 235-month Metonic cycle containing
+ * nineteen years. Leap-month identities are resolved through
+ * calendar.MonthAt.
+ *
+ * The original day number is preserved without validation
+ * against the target month. AddMonths resolves that afterward.
+ *
+ * Parameters:
+ * - source: Valid source calendar coordinates.
+ * - months: Signed month displacement.
+ * - system: Selected calendar system.
+ *
+ * Returns:
+ * Target year, month identity and original day number.
+ *
+ * Errors:
+ * - TemporalArithmeticError.OutOfRange: Target outside range.
+ * - TemporalArithmeticError.UnsupportedSystem: Missing rules.
+ *
+ * Ownership:
+ * Pure calculation without allocation or I/O.
+ */
+fn _monthAtOffset(source: calendar.CalendarFields, months: int, system: calendar.CalendarSystem) Result[calendar.CalendarFields, TemporalArithmeticError] {
+    // All currently supported months have at least 28 days.
+    // No valid displacement across the entire int32 date
+    // domain can require 160 million month transitions.
+    if months < -160_000_000 || months > 160_000_000 {
+        return Err(TemporalArithmeticError.OutOfRange)
+    }
+
+    let ordinal := try calendar.MonthOrdinal(source.Year, source.Month, system) {
+        Err(e) => return Err(_calendarArithmeticError(e))
+    }
+
+    let mut targetYear: int64 := 0
+    let mut targetOrdinal := 0
+
+    if system == calendar.CalendarSystem.Hebrew {
+        // Months preceding Hebrew AM year Y.
+        let y         := int64(source.Year)
+        let preceding := (235 * y - 234) / 19
+        let index     := preceding + int64(ordinal - 1) + int64(months)
+
+        if index < 0 {
+            return Err(TemporalArithmeticError.OutOfRange)
+        }
+
+        // Jump directly to the relevant 19-year cycle.
+        let cycles := index / 235
+        targetYear = cycles * 19 + 1
+
+        let mut remaining := index % 235
+
+        // At most nineteen years need examination.
+        while true {
+            let year := try int(targetYear) {
+                Err(_) => return Err(TemporalArithmeticError.OutOfRange)
+            }
+
+            let count := try calendar.MonthsInYear(year, system) {
+                Err(e) => return Err(_calendarArithmeticError(e))
+            }
+
+            if remaining < int64(count) {
+                targetOrdinal = int(remaining) + 1
+                break
+            }
+
+            remaining -= int64(count)
+            targetYear += 1
+        }
+    } else {
+        // Uniform twelve-month calendars.
+        let mut yearIndex := int64(source.Year)
+
+        if system == calendar.CalendarSystem.IslamicTabular {
+            // Islamic years start at AH 1, not year zero.
+            yearIndex -= 1
+        }
+
+        let index := yearIndex * 12 + int64(ordinal - 1) + int64(months)
+
+        if system == calendar.CalendarSystem.IslamicTabular && index < 0 {
+            return Err(TemporalArithmeticError.OutOfRange)
+        }
+
+        let targetYearIndex := _floorDivMonthIndex(index, 12)
+
+        targetYear = targetYearIndex
+
+        if system == calendar.CalendarSystem.IslamicTabular {
+            targetYear += 1
+        }
+
+        targetOrdinal = int(index - targetYearIndex * 12) + 1
+    }
+
+    let year := try int(targetYear) {
+        Err(_) => return Err(TemporalArithmeticError.OutOfRange)
+    }
+
+    let month := try calendar.MonthAt(year, targetOrdinal, system) {
+        Err(e) => return Err(_calendarArithmeticError(e))
+    }
+
+    return Ok(calendar.CalendarFields {
+        Year: year,
+        Month: month,
+        Day: source.Day,
+    })
+}
+
+/**
+ * Adds calendar months to an absolute date.
+ *
+ * Description:
+ * Converts the date to the selected calendar, moves
+ * to the target month and resolves the original day
+ * according to MonthEndPolicy.
+ *
+ * Month-end resolution is performed once, at the final
+ * target month. Intermediate months are not evaluated.
+ *
+ * Zero months returns the original date after validating
+ * that the calendar supports its representation.
+ *
+ * Parameters:
+ * - value: Starting absolute date.
+ * - months: Signed number of calendar-month transitions.
+ * - system: Calendar system used for month arithmetic.
+ * - policy: Resolution of missing target day numbers.
+ *
+ * Returns:
+ * Absolute date after the requested month displacement.
+ *
+ * Errors:
+ * - TemporalArithmeticError.InvalidTarget:
+ * Target day does not exist and policy is Reject.
+ * - TemporalArithmeticError.OutOfRange:
+ * Result exceeds core date or calendar era limits.
+ * - TemporalArithmeticError.UnsupportedSystem:
+ * Selected calendar conversion is unavailable.
+ *
+ * Ownership:
+ * Pure calculation without allocation or I/O.
  */
 fn AddMonths(value: date, months: int, system: calendar.CalendarSystem, policy: MonthEndPolicy) Result[date, TemporalArithmeticError] {
-    return Err(TemporalArithmeticError.NotImplemented)
+    let source := try calendar.FromDate(value, system) {
+        Err(e) => return Err(_calendarArithmeticError(e))
+    }
+
+    if months == 0 {
+        return Ok(value)
+    }
+
+    let target := try _monthAtOffset(source, months, system)
+
+    let maxDay := try calendar.DaysInMonth(
+        target.Year,
+        target.Month,
+        system,
+    ) {
+        Err(e) => return Err(_calendarArithmeticError(e))
+    }
+
+    // Original day exists in the target month.
+    if target.Day <= maxDay {
+        let rv := try calendar.ToDate(target, system) {
+            Err(e) => return Err(_calendarArithmeticError(e))
+        }
+        return Ok(rv)
+    }
+
+    match policy {
+        MonthEndPolicy.Reject => {
+            return Err(TemporalArithmeticError.InvalidTarget)
+        }
+
+        MonthEndPolicy.Clamp => {
+            let adjusted := calendar.CalendarFields {
+                Year: target.Year,
+                Month: target.Month,
+                Day: maxDay,
+            }
+            let rv := try calendar.ToDate(adjusted, system) {
+                Err(e) => return Err(_calendarArithmeticError(e))
+            }
+            return Ok(rv)
+        }
+
+        MonthEndPolicy.RollForward => {
+            // Move past the end of the target month.
+            let finalDay := calendar.CalendarFields {
+                Year: target.Year,
+                Month: target.Month,
+                Day: maxDay,
+            }
+
+            let absolute := try calendar.ToDate(finalDay, system) {
+                Err(e) => return Err(_calendarArithmeticError(e))
+            }
+
+            let epochDays :=
+                  int64(absolute.EpochDays)
+                + int64(target.Day - maxDay)
+
+            let checkedDays := try int32(epochDays) {
+                Err(_) => return Err(TemporalArithmeticError.OutOfRange)
+            }
+
+            return Ok(new date(checkedDays))
+        }
+    }
 }
 
 /**
  * Applies a calendar-relative period using an explicitly chosen order.
  * Description: Weeks/days are calendar steps, not duration nanoseconds.
  * Parameters:
- *   - value: Starting absolute day.
- *   - period: Signed calendar components.
- *   - system: Calendar algorithm.
- *   - policy: Policy for invalid target dates after month/year changes.
- *   - order: Order of evaluating the components.
+ * - value: Starting absolute day.
+ * - period: Signed calendar components.
+ * - system: Calendar algorithm.
+ * - policy: Policy for invalid target dates after month/year changes.
+ * - order: Order of evaluating the components.
  * Returns: Resulting absolute day.
  * Errors: TemporalArithmeticError.NotImplemented, InvalidTarget, OutOfRange,
  *         UnsupportedSystem.
  * Ownership: Pure, no I/O or allocation.
  */
-fn AddPeriod(value: date, period: CalendarPeriod, system: calendar.CalendarSystem, policy: MonthEndPolicy, order: PeriodOrder) Result[date, TemporalArithmeticError] {
+fn AddPeriod(
+    value:  date,
+    period: CalendarPeriod,
+    system: calendar.CalendarSystem,
+    policy: MonthEndPolicy,
+    order:  PeriodOrder,
+) Result[date, TemporalArithmeticError] {
     return Err(TemporalArithmeticError.NotImplemented)
 }

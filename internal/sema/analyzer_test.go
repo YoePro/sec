@@ -3931,7 +3931,7 @@ type Bad struct {
 	errors := analyzeSource(t, input)
 
 	expected := []string{
-		`duplicate field "x" in struct Bad at 4:2`,
+		`duplicate field "x" in struct Bad at 4:2, previous declaration at 3:2`,
 	}
 
 	assertSemaErrors(t, errors, expected)
@@ -6546,7 +6546,7 @@ fn bad(a: int, a: int) int {
 	errors := analyzeSource(t, input)
 
 	expected := []string{
-		`duplicate parameter "a" at 2:16`,
+		`duplicate parameter "a" at 2:16, previous declaration at 2:8`,
 	}
 
 	assertSemaErrors(t, errors, expected)
@@ -10295,7 +10295,7 @@ impl Button {
 	}
 }
 
-fn OnButtonPressed(data: ButtonPressData) void {
+fn OnButtonPressed(data: ref ButtonPressData) void {
 	discard data
 }
 
@@ -10389,7 +10389,7 @@ type Message struct {
 }
 
 fn Use() void {
-	let channel := Channel[Message](32)
+	let channel := try Channel[Message](32) { Err(_) => { return } }
 	let tx :<- channel.Tx
 	let rx :<- channel.Rx
 	let received := rx.Receive()
@@ -10431,7 +10431,7 @@ type Message struct {
 }
 
 fn Use() void {
-	let channel := Channel[Message](1)
+	let channel := try Channel[Message](1) { Err(_) => { return } }
 	let tx :<- channel.Tx
 	let sent := tx.Send(Message{ value: 1 })
 	let ticket := tx.SendRevocable(Message{ value: 2 })
@@ -10467,7 +10467,7 @@ type Message struct {
 }
 
 fn Use() void {
-	let channel := Channel[Message](1)
+	let channel := try Channel[Message](1) { Err(_) => { return } }
 	let tx :<- channel.Tx
 	let rx :<- channel.Rx
 	let outbound := Message{ value: 1 }
@@ -10513,7 +10513,7 @@ type Message struct {
 }
 
 fn Use() void {
-	let channel := Channel[Message](1)
+	let channel := try Channel[Message](1) { Err(_) => { return } }
 	let tx :<- channel.Tx
 	let moved :<- tx
 	let again := tx
@@ -10537,7 +10537,7 @@ type Message struct {
 }
 
 fn Use() void {
-	let channel := Channel[Message](1)
+	let channel := try Channel[Message](1) { Err(_) => { return } }
 	let tx :<- channel.Tx
 	let mut value := 1
 	let message := Message{ view: ref mut value }
@@ -10563,7 +10563,7 @@ type Message struct {
 }
 
 fn Use() void {
-	let channel := Channel[Message](1)
+	let channel := try Channel[Message](1) { Err(_) => { return } }
 	let tx :<- channel.Tx
 	let sent := tx.Send(1)
 }
@@ -10585,7 +10585,7 @@ type Message struct {
 }
 
 fn Use(work: Task[int]) void {
-	let channel := Channel[Message](1)
+	let channel := try Channel[Message](1) { Err(_) => { return } }
 	let tx :<- channel.Tx
 	let rx :<- channel.Rx
 	let outbound := Message{ value: 1 }
@@ -10735,7 +10735,7 @@ type Message struct {
 }
 
 fn Use() void {
-	let channel := Channel[Message](1)
+	let channel := try Channel[Message](1) { Err(_) => { return } }
 	let tx :<- channel.Tx
 	let mut value := 1
 	let message := Message{ view: ref mut value }
@@ -10765,9 +10765,9 @@ type Message struct {
 }
 
 fn Use() void {
-	let channel := Channel[Message](1)
+	let channel := try Channel[Message](1) { Err(_) => { return } }
 	let tx :<- channel.Tx
-	let second := tx.Share()
+	let second := try tx.Share() { None => { return } }
 	let mut value := 1
 	let message := Message{ view: ref mut value }
 	select {

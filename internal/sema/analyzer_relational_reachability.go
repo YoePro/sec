@@ -150,8 +150,8 @@ func (a *Analyzer) recordPathConditionFact(condition ast.Expression, holds bool)
 		return
 	}
 	if !holds {
-		// Only a pure integer condition or a variant test on a binding has
-		// a sound negation.
+		// Retain only pure integer, variant or null-test conditions whose
+		// negation cannot overlook effects during condition evaluation.
 		if negated, ok := negatedVariantStateTest(condition); ok {
 			condition = negated
 		} else if negated, ok := negatedNullTest(condition); ok {

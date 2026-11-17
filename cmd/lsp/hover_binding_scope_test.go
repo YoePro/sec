@@ -33,12 +33,18 @@ func TestHoverPresentsTheBindingAtThePositionNotASameNamedSibling(t *testing.T) 
 	}{
 		{"Count(value", len("Count("), "value: string"},
 		{"in value", len("in "), "value: string"},
-		{"for character", len("for "), "character: rune"},
+		// A loop binding is presented with its validated binding mode
+		// (flowcontrol_for.md §§ 4–10).
+		{"for character", len("for "), "Loop binding `character`: `rune`; binding mode: `value`"},
 	}
 	for _, test := range cases {
 		offset := strings.Index(source, test.needle) + test.delta
 		hover, ok := hoverForSource("file://"+path, source, offsetPosition(source, offset))
-		if !ok || !strings.Contains(hover.Contents.Value, "```sec\n"+test.want+"\n```") {
+		want := "```sec\n" + test.want + "\n```"
+		if strings.HasPrefix(test.want, "Loop binding") {
+			want = test.want
+		}
+		if !ok || !strings.Contains(hover.Contents.Value, want) {
 			t.Errorf("hover at %q = %v %q, want %q", test.needle, ok, hover.Contents.Value, test.want)
 		}
 	}

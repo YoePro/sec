@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io"
 	"reflect"
+	"slices"
 	"sort"
 	"sync"
 
@@ -275,9 +276,9 @@ func sortGraphScopes(scopes []CallGraphScope) {
 	})
 }
 
-// Version 5 preserves validated allocation summaries and coverage uncertainty;
-// older payloads cannot establish allocation freedom from empty effect lists.
-const callGraphCheckpointVersion = 5
+// Version 6 preserves atomic fence ordering events; older producers omitted
+// them. Version 5 introduced validated allocation summaries and uncertainty.
+const callGraphCheckpointVersion = 6
 
 type graphCheckpoint struct {
 	Format  string
@@ -573,6 +574,12 @@ func validWorkspaceGraph(graph *CallGraph, deps []CallGraphDependency) bool {
 		}
 		for _, effect := range effects {
 			if effect.Kind == "" || !source(effect.Source) {
+				return false
+			}
+			// Restored fences must retain one canonical established order.
+			// Rules: rules/concurrency/atomics.md — §§26,40;
+			// rules/compiler/incremental_compilation.md — §§31–33.
+			if effect.Kind == EffectAtomicFence && !slices.Contains(atomicOrderNames("Fence", false), effect.AtomicOrder) {
 				return false
 			}
 		}

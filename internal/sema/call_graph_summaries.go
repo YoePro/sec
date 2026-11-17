@@ -174,7 +174,10 @@ func (g *CallGraph) directDomainCauses(id CallableID) []EffectDomainCause {
 		// but alone proves none of the may-domains (in particular volatile,
 		// I/O or nondeterministic input). Storage-domain facts add those
 		// independently. Rules: raw_pointers.md §31; effect_analysis.md §§35–37.
-		if effect.Kind == EffectMemoryRead {
+		// A fence likewise has a precise ordering event, without implying any
+		// of these may-domains or proving a synchronizes-with relationship.
+		// Rules: rules/concurrency/atomics.md — §40(3–6).
+		if effect.Kind == EffectMemoryRead || effect.Kind == EffectAtomicFence {
 			continue
 		}
 		if domain, known := summaryDomainForEffect(effect.Kind); known {

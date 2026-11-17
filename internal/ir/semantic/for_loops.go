@@ -40,6 +40,9 @@ func (fb *functionBuilder) buildFor(stmt *ast.ForStatement) error {
 	if handled, err := fb.buildPackFor(stmt); handled {
 		return err
 	}
+	if handled, err := fb.buildIteratorFor(stmt); handled {
+		return err
+	}
 	rangeExpr, ok := stmt.Iterable.(*ast.RangeExpression)
 	if !ok {
 		if typ, resolved := fb.owner.analyzer.TypeOf(stmt.Iterable); resolved && typ.Kind == sema.StringViewType {

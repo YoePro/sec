@@ -21,7 +21,7 @@ integrations:
       - "atomic.Fence(order: MemoryOrder) exists in v0.1, has no default, and rejects Relaxed."
       - Explicit MemoryOrder arguments are SemanticCompileTimeRequiredContext values; runtime-dependent orders are rejected, while omitted ordinary operation orders remain SeqCst.
     remaining:
-      - Implement atomic.Fence lowering below Semantic IR (Sec MLIR has no fence operation yet; name resolution, Sema and the Semantic IR atomic.fence operation exist since 2026-10-17); record the fence as an ordering effect in call-graph/effect summaries.
+      - Implement atomic.Fence lowering below Semantic IR after a Sec MLIR package specifies it, as explicitly required by atomics.md § 40(7). Name resolution, order validation, Semantic IR and direct call-graph ordering effects are implemented; the native emission gate remains mandatory.
       - "Add target diagnostics for unsupported concrete operation/order combinations, including Sema's resolved execution-context requirement production and integration with plan-side nonblocking/ISR validation (blocked on MD-095: requirement key conventions)."
     required_tests:
       - id: memory-order-core-enum
@@ -61,7 +61,8 @@ integrations:
       - "documentation and tooling synchronized (2026-10-17): `atomic.` completes the core namespace function Fence (a local value named atomic keeps member completion), MemoryOrder completion inside atomic.Fence(...) offers only Acquire, Release, AcqRel and SeqCst, fence hover and synthetic navigation present the canonical surface, and the formatter is idempotent on every atomic fixture, keeps CamelCase operations, explicit orders and fence calls and never inserts an omitted SeqCst (TestAtomicFenceCompletion, TestAtomicFenceHoverAndNavigation, TestAtomicSourceFormatting); the rulebook status row names the implemented surface"
       - "atomic.Fence (2026-10-17): calls of atomic.Fence resolve in the core atomic namespace (a local value named atomic keeps ordinary method lookup); exactly one explicit MemoryOrder argument is required (no default), established as a compile-time AtomicMemoryOrderArgument through the shared order evaluation, and checked against the shared Fence row Acquire/Release/AcqRel/SeqCst; Relaxed, a missing order, a runtime-dependent order and a non-MemoryOrder argument are rejected (S1171/S1170) with the canonical message `MemoryOrder.Relaxed is not valid for atomic.Fence`; the call is void and Sema retains its order (AtomicFenceOrderOf) for later IR (internal/sema/atomic_fence.go; TestAtomicFenceSurface)"
       - The canonical generic CompareExchangeResult[T] enum is a real trusted core declaration with exactly Exchanged and NotExchanged(T), preserving nominal core identity and source provenance. Parser/AST retain its one associated payload without extending ordinary enum syntax; Sema validates the exact declaration, one type argument, normal non-error status, exact nominal payload construction/binding and exhaustive matching. Atomic calls and member metadata return this same closed enum rather than a struct stub. Existing tagged-value Semantic IR preserves both construction variants and payload extraction; legacy LLVM retains its explicit unsupported-sum-representation diagnostic. Exchanged is the enum default. Formatter round trips retain the source shape; LSP exposes enum/variant documentation, concrete payload hover, closed completion, canonical type/variant navigation and correct local payload-binding navigation.
-    revised: "2026-10-17"
+      - Atomic fences now publish a distinct ordered direct EffectAtomicFence event with the established MemoryOrder and canonical source position after successful reachable validation. Repeated equal-order fences remain separate; ordinary memory reads/writes retain their position around the fence. These events do not imply object access, volatile access, allocation, blocking, I/O, panic or a synchronizes-with proof. Effect summaries expose detached direct facts without inventing unrelated may-domains; invalid, shadowed and unreachable calls publish no fence event. Workspace checkpoint version 6 preserves ordering facts and validates cached orders against the canonical Fence order row.
+    revised: "2026-11-17"
     code:
       - sec/core/atomic.sec
       - internal/sema/atomic_types.go
@@ -89,6 +90,10 @@ integrations:
       - cmd/lsp/compare_exchange_result_hover.go
       - internal/sema/match_arm_bindings.go
       - internal/sema/union_payload_diagnostics.go
+      - internal/sema/atomic_fence.go
+      - internal/sema/call_graph.go
+      - internal/sema/call_graph_summaries.go
+      - internal/sema/call_graph_workspace.go
     tests:
       - cmd/compiler/atomic_formatter_test.go
       - cmd/lsp/atomic_fence_completion_test.go
@@ -134,7 +139,12 @@ integrations:
       - testdata/sema/atomics/compare_exchange_result/lowering_valid.sec
       - internal/sema/analyzer_test.go
       - internal/sema/copy_move_test.go
+      - internal/sema/atomic_fence_effects_test.go
+      - testdata/sema/atomic_fence_effects.sec
+      - testdata/sema/atomic_fence_effects_unreachable_invalid.sec
     verification:
+      - command: GOTMPDIR="$HOME/.cache/sec-gotmp" go test -p 4 ./internal/sema -count=1 -timeout=120s; GOTMPDIR="$HOME/.cache/sec-gotmp" go test -p 4 ./internal/sema -run "TestAtomicFence|TestCallGraphWorkspaceIndex" -count=1; GOTMPDIR="$HOME/.cache/sec-gotmp" go test -p 4 ./internal/ir/semantic ./cmd/compiler ./cmd/lsp -run "TestAtomicFence|TestAtomicMemoryOrder" -count=1 -timeout=120s; GOTMPDIR="$HOME/.cache/sec-gotmp" go vet ./internal/sema
+        result: "Passed 2026-11-17: final full Sema 26.981s; focused fence/workspace Sema 0.031s; existing Semantic IR/CLI/LSP fence subsets 0.006s/7.517s/3.118s; vet passed. New tests verify all four orders, repeated SeqCst occurrences, source order around ordinary memory accesses, detached effect queries, no invented may-domains, invalid/shadowed/unreachable exclusion, checkpoint round-trip and rejection of invalid cached orders. Native emission still fails closed as required by atomics.md § 40(7). Mixed fence item narrowed and explicitly partial; zero whole requirements closed by this task."
       - command: go vet ./internal/parser ./internal/formatter ./internal/sema ./cmd/compiler ./cmd/lsp
         result: passed on 2026-10-17
       - command: go test ./internal/parser ./internal/formatter ./internal/sema ./cmd/compiler ./cmd/lsp -race -run 'CompareExchangeResult|Atomic|StaticLetAndCompilerKnownConcurrencyTypes|TestMatchPatternBindingCannotShadowOuterVariable|TestSharedUnionPayloadPatternBorrowBlocksVariantMutation|TestNestedUnionPayloadPatternBorrowUsesNestedPlace' -count=1
@@ -169,6 +179,8 @@ integrations:
         result: passed on 2026-10-16
       - command: go test ./internal/sema ./cmd/compiler ./cmd/lsp -race -run 'TestAtomic|TestStaticLetAndCompilerKnownConcurrencyTypes' -count=1
         result: passed on 2026-10-16; canonical core MemoryOrder identity and source navigation, closed variant hover/completion, CamelCase calls and completion with lowercase rejection, and target-independent scalar eligibility on 32-bit and 64-bit plans
+    partial:
+      - "atomic.Fence integration is partial: source validation, Semantic IR and direct ordering effects are implemented; below-IR lowering remains blocked by the explicit package-specification gate in atomics.md § 40(7), and no native fence support is claimed."
 
   - id: frontend.atomics-v2
     area: parser-sema-atomic-surface

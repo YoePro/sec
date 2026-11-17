@@ -1,17 +1,16 @@
 # Events
 
-- **Status:** Normative — synchronization required
+- **Status:** Normative
 - **Created:** 2026-07-29
-- **Last updated:** 2026-11-13 (independent modernization clauses applied; handler/payload synchronization awaits MD-134)
-- **Document revision:** 1
+- **Last updated:** 2026-11-13
+- **Document revision:** 2.0
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/concurrency/events.md`
 - **Repository baseline reviewed:** `ee75e5d036d6611519a1b34d570bb6778002acfd`
 - **Related rulebooks:** `rules/concurrency/channels.md`, `rules/concurrency/select.md`, `rules/concurrency/tasks.md`, `rules/concurrency/threads.md`, `rules/concurrency/cancellation.md`, `rules/concurrency/concurrency_memory_model.md`, `rules/platform/interrupts.md`, `rules/memory/ownership.md`, `rules/memory/borrowing.md`, `rules/memory/layout.md`, `rules/compiler/semantic_ir.md`, `rules/foundations/grammar.md`, `rules/declarations/lambda-functions.md`, `rules/concurrency/concurrency.md`, `rules/memory/transferability.md`, `rules/memory/destruction.md`, `rules/platform/target_profiles.md`
 
 - **Implementation governance:** `governance/concurrency_events.yaml` (`concurrency.events-v2`)
-- **Partially applied correction:** `rules/corrections/events-normative-fix-20261113.md`
-- **Open synchronization decision:** MD-134 in `missing-decisions.yaml`; §§ 10–11 remain unchanged pending the owner's separate correction. Revision 2.0 is not yet fully synchronized.
+- **Applied correction:** `rules/corrections/applied/events-normative-fix-20261113-decisions-20261117.md` (revision 1.1; MD-134 resolved by the owner on 2026-11-13: borrowed `ref T` payload and callbacks, external callable storage), superseding the partial application of `rules/corrections/applied/events-normative-fix-20261113-20261117.md`
 
 ---
 
@@ -59,7 +58,7 @@ implicit concurrent thread safety: none
 ordinary ISR publication: not permitted
 ```
 
-These are language-visible guarantees, not permission for a backend to silently select an allocating, asynchronous or thread-safe substitute. The payload argument and handler-parameter ownership model remain subject to MD-134.
+These are language-visible guarantees, not permission for a backend to silently select an allocating, asynchronous or thread-safe substitute. Payload delivery is borrowed (`ref T`), according to §§ 10–11.
 
 **§ 3(2)** The default capacity is four concurrent subscriptions.
 
@@ -119,11 +118,15 @@ let subscription := button.ButtonPressed.Subscribe(OnButtonPressed)
 
 **§ 6(3)** Ordinary deterministic destruction of a still-owned `Subscription` performs the same unregistration and resource cleanup as `Close()`. A moved subscription is cleaned up only by its current owner. No subscription registration or captured handler resource may be destroyed twice.
 
-**§ 6(4)** A registered handler environment must not retain captures or references whose lifetime, provenance, ownership authority or execution affinity expires before its last possible invocation. Handler storage and captures are subject to the canonical callable-value, borrowing, transferability and destruction rules; registering a closure does not extend an invalid borrow or silently clone move-only captures.
+**§ 6(4)** A registered capturing handler is held through a retained borrow of the **externally owned, address-stable callable storage**. The event retains no owned copy of the callable or capture environment and performs no hidden allocation of it. The callable and all borrowed captures must remain valid through the last in-flight invocation, including an invocation whose subscription has just been logically closed. Registration may retain `ref callable` for shared reusable callable capability or `ref mut callable` for an exclusive mutable callable capability, subject to the closure and borrow rules. Registering a callable does not implicitly extend its lifetime, move it into event storage, clone its captures, or confer cross-thread safety.
 
-**§ 6(5)** A live subscription may not refer to event backing storage that has been destroyed, invalidated or relocated in a way forbidden by the selected event-storage contract. Destruction, replacement and movement of the event owner must account for every remaining subscription. Compiler analysis may accept an operation only when the required lifetime and storage-stability proof is established; a missing proof is not permission to leave a dangling subscription.
+**§ 6(5)** A live `Subscription` retains compiler-verified lifetime and location dependencies on the **event owner and, for a capturing handler, its external callable storage**. The event owner and retained callable storage must not move, be destroyed, replaced, or otherwise invalidated until all registrations and in-flight callback dependencies on them have ended. This is an invariant of the default Sec 0.1 inline event model, not a backend choice to permit relocation. The non-generic source spelling `Subscription` does not erase its compiler-tracked origins or release its borrow obligations.
 
-**§ 6(6)** Removing a subscription during its own currently executing synchronous callback is legal under § 14. Unregistration prevents subsequent invocations but must not destroy callable/capture state still required by the active invocation. Destruction of that state occurs after its final required use.
+**§ 6(6)** Removing a subscription during its own currently executing synchronous callback is legal under § 14. Unregistration immediately prevents later invocation turns, including in nested publication, but must not destroy the callable environment while an invocation still uses it. Retained lifetime/borrow obligations end only after the last active invocation and registration dependency have both ended.
+
+**§ 6(7)** An externally stored capturing callable is subscribed using an explicit retained reference, for example `Subscribe(ref handler)` or `Subscribe(ref mut handler)` when its inferred callable capability requires exclusive access. A named non-capturing function may continue to be passed as a function value (`Subscribe(OnPressed)`) because no external capture environment is retained. A temporary callable with no provably sufficient storage lifetime cannot be subscribed by an escaping retained borrow. The ordinary call-only implicit borrowing rule does **not** extend the lifetime of a callback retained by `Subscribe`.
+
+**§ 6(8)** A live `Subscription` imposes a *retained storage-validity and non-relocation dependency* on its owning event instance. This dependency is **not an ordinary shared borrow of the whole publisher value** and does not by itself prohibit safe mutation of unrelated publisher fields or owner-authorized synchronous `Publish` calls. Existing ordinary borrows, receiver authority, alias analysis and data-race rules continue to apply independently. Only compiler-known event operations may access the event's internal registration state through their defined synchronization/interior-mutation contract; subscription does not confer arbitrary mutation through `ref` to other fields. This separation is essential: otherwise a successful subscription would make ordinary event-producing publisher methods unusable while subscribed.
 
 ## § 7 Capacity
 
@@ -142,7 +145,9 @@ match button.ButtonPressed.Subscribe(handler) {
 }
 ```
 
-**§ 7(5)** The exact returned source-visible type is `EventSubscribeResult`, whose only variants are `Subscribed(Subscription)` and `Full` (see § 29). A caller must handle or explicitly dispose of this result according to ordinary result/ownership rules; discarded `Subscribed` payloads are never silently leaked. Argument transfer and cleanup when `Full` is returned follow ordinary call/capture rules until a more specific accepted event rule states otherwise.
+**§ 7(5)** The exact returned source-visible type is `EventSubscribeResult`, whose only variants are `Subscribed(Subscription)` and `Full` (see § 29). A caller must handle or explicitly dispose of this result according to ordinary result/ownership rules; discarded `Subscribed` payloads are never silently leaked. When `Full` is returned, no registration or retained callback/event borrow is established; the caller retains the ordinary ownership of its external callable.
+
+**§ 7(6)** A logically closed registration whose callback is still executing continues to reserve its physical slot. The slot becomes reusable only after no in-flight invocation requires the callable, slot generation, or retained storage. Consequently `Subscribe` may return `Full` although fewer than `N` registrations remain logically active. No additional slot is allocated to bypass this bound.
 
 ## § 8 Explicit capacity
 **§ 8(1)** A different fixed capacity may be selected:
@@ -178,24 +183,31 @@ ButtonPressed.Publish(data)
 
 ## § 10 Handler type
 
-**§ 10(1)** Version 0.1 handlers conceptually have the form:
+**§ 10(1)** Every Sec 0.1 event handler receives its published payload by **shared borrow**, never by an implicit owned value. A named handler is declared as:
 
 ```sec
-fn Handler(data: T) void
+fn OnPressed(data: ref ButtonPressData) void {
+    Observe(data)
+}
 ```
 
-**§ 10(2)** Handlers return `void`.
+The corresponding reusable callable type is `fn(ref T) void`. A capturing lambda is written using ordinary `capture(...) fn(data: ref T) void { ... }` syntax; no `mut fn` **implementation** syntax is introduced.
 
-**§ 10(3)** Business errors must be handled by the handler or represented through explicit
-program state.
+**§ 10(2)** Event callbacks return exactly `void` and must be **reusable**. Non-consuming callable capability `fn(ref T) void` is accepted through shared callable access; an environment-mutating callable of inferred `mut fn(ref T) void` capability is accepted only through a valid exclusive `ref mut` to its external storage. In Sec, `mut fn` here is a **callable type/capability**, not a legal function or lambda implementation introducer. Consuming `-> fn` callback capability is incompatible with an event that may publish repeatedly.
+
+**§ 10(3)** Business errors are handled by the handler or represented through explicit program state. The event does not turn such errors into a `Publish` result. Unhandled panic and an illegal dynamic exclusive-callable reentrancy conflict follow § 12 and § 13, respectively.
+
+**§ 10(4)** `Subscribe` retains a named function value or a non-capturing lambda as a stateless callable value without requiring user-owned capture storage; for a capturing callable, it retains only a proven-live shared or exclusive reference to externally owned callable storage under § 6. A `ref T` payload parameter does not by itself imply that the callback's captured environment is immutable: the inferred callable/environment capability is a separate axis from payload mutability.
 
 ## § 11 Payload ownership
 
-**§ 11(1)** Default publication borrows the payload during synchronous dispatch.
+**§ 11(1)** `Publish(payload)` borrows a single caller-owned `T` for the complete synchronous publication, including nested calls that retain a valid dependent borrow. This follows the normal call-site borrow rule for a parameter of type `ref T`; an owned addressable value or compatible owned temporary may be passed without moving it. The compiler must preserve the payload's required lifetime through all handler invocations in the publication.
 
-**§ 11(2)** Handlers do not take ownership unless a future policy explicitly defines that.
+**§ 11(2)** Each invoked handler receives `ref T` to the **same published value**. Neither event dispatch nor a handler parameter transfers ownership of that referent; no handler obtains `ref mut T` from the publication, and a handler may not retain the reference beyond its legal lifetime. A handler can separately request an explicit owned copy using the ordinary copy rules when `T` is copyable.
 
-**§ 11(3)** Move-only payloads must not be implicitly cloned for multiple subscribers.
+**§ 11(3)** There is no implicit payload clone, copy, move, or per-handler allocation, even when several handlers are registered and `T` is move-only. Event delivery and channel ownership transfer have distinct contracts (§ 26).
+
+**§ 11(4)** The source-visible conceptual publication parameter contract is `Publish(data: ref T) void`. Owner-only publication rights remain unchanged. Compiler-known `Publish` typing, normal call-site borrow materialization, LSP and tests must implement this same parameter ownership contract rather than accepting a by-value argument through a hidden move.
 
 ## § 12 Panic
 **§ 12(1)** An unhandled handler panic follows the general panic rules.
@@ -216,6 +228,10 @@ forbids it.
 
 **§ 13(4)** In Sec 0.1 there is no source-visible policy-block switch to disable reentrancy. Valid nested publication must obey the same access, ordering, borrow and storage-lifetime contracts as an independent publication. Reentrancy never permits concurrent unsynchronized publication merely by virtue of being synchronous within one caller.
 
+**§ 13(5)** A reusable mutable capturing handler requires **exclusive** callable-environment access throughout its invocation, as required by its inferred callable capability. A statically provable overlapping reentrant or concurrent invocation is a compile-time error; a dynamically encountered exclusive-callable conflict **panics** rather than returning an event failure, silently skipping the handler, or violating exclusivity. Shared reusable callbacks can be recursively invoked when their own borrowing and effect requirements permit it.
+
+**§ 13(6)** A runtime exclusive-handler-invocation guard is released on ordinary callback return and along any supported panic cleanup path. Its potential panic must be reflected by canonical effect analysis, including `@noPanic` when applicable. No `mut fn` implementation spelling, special cancellation outcome or `Publish` error result is introduced.
+
 ## § 14 Mutation during dispatch
 **§ 14(1)** A handler may close its own subscription or another subscription it owns.
 
@@ -226,7 +242,9 @@ publication.
 
 **§ 14(4)** Every publication must maintain a stable distinction between registrations eligible for that invocation and registrations added after its start. A newly added registration may participate in a subsequent, including nested, publication started after registration, but not retroactively in the already-running publication.
 
-**§ 14(5)** Unregistration must not invalidate an in-flight invocation's still-live callable environment. The runtime must preserve storage and handler lifetime until the active call has finished, while making that registration unavailable to later dispatch turns. Physical representations may differ if the observable contract is preserved.
+**§ 14(5)** Logical unregistration takes effect immediately, even during the handler's own callback, and excludes the registration from future invocation turns. A currently executing callback completes normally; its callable/capture storage and borrow guards remain valid until all in-flight calls finish. Physical slot reclamation and generation reuse are deferred to that last use, including under nested publication.
+
+**§ 14(6)** Each `Publish` fixes a **logical eligibility set** of registrations active at its start, in subscription order. Registrations added afterward cannot be invoked by that publication; they may be invoked by a nested publication started after their addition. A registration removed before its turn is skipped. An already-running invocation is not interrupted. The runtime may implement eligibility using slot generations/epoch records rather than copying closure objects or allocating a snapshot.
 
 ## § 15 Full storage form
 **§ 15(1)** Programs requiring explicit storage control may declare:
@@ -345,7 +363,7 @@ interface PressSource {
 
 **§ 20(2)** Copying an event-owning type must not duplicate active subscriptions.
 
-**§ 20(3)** An event-owning value may move only when the compiler proves the selected representation preserves event storage identity, active subscription validity, callback/capture storage, ownership and address/provenance constraints. In particular, moving an owner **before** any subscription may be valid; moving one with live subscriptions is not implicitly valid and must be rejected if safety cannot be proved.
+**§ 20(3)** In the default Sec 0.1 inline event model, an event-owning value **must not move while any subscription to its event storage is live**. This includes relocation as a field/element of a moved aggregate, collection reallocation, replacement or other storage-identity-invalidating operation. After the last subscription and in-flight invocation have ended, ordinary move rules apply; implicit copying of event storage remains forbidden. The compiler must reject movement when it cannot prove the absence of live dependencies.
 
 **§ 20(4)** The compiler may require stable address or reject moves after subscription.
 
@@ -359,7 +377,7 @@ representation or require explicit stable storage.
 
 **§ 21(3)** The selected strategy must be visible to ownership and escape analysis.
 
-**§ 21(4)** The compiler must account for any subscription handle that retains a reference, location, generation or storage identity dependent on the owner. It may use a proven stable representation or reject relocation while subscriptions remain live; no implicit heap-promotion or hidden pinned allocation is introduced to make otherwise-invalid movement legal.
+**§ 21(4)** Every live subscription pins the identity and location of its owning inline event storage under the Sec 0.1 source contract. The compiler must reject relocation of the event owner until every registration and callback dependency has ended; it may not silently enable relocation by heap-promoting, copying or redirecting the event storage. This pinning is a lifetime/ownership constraint, not an implicit persistent physical memory lock or a new public pin keyword.
 
 ## § 22 Allocation
 
@@ -440,7 +458,7 @@ although adapters may expose them as events.
 
 **§ 29(2)** It must understand owner-only publication and external subscription capabilities.
 
-**§ 29(3)** `Subscribe(handler)` returns the source-visible closed `EventSubscribeResult`; `Publish(payload)` returns `void`; `Subscription.Close()` consumes its owning receiver and returns `void`. These identities are source API contracts even on a target/backend whose event runtime or lowering is not yet implemented. The exact handler type and payload delivery contract are governed by §§ 10–11.
+**§ 29(3)** `Subscribe` accepts a reusable `fn(ref T) void` callable or an exclusively borrowed reusable mutating callable of inferred `mut fn(ref T) void` capability, under § 10 and § 6. It returns the source-visible closed `EventSubscribeResult`; `Publish(data: ref T)` returns `void`; `Subscription.Close()` consumes its owning receiver and returns `void`. These source contracts apply even on a target/backend whose event runtime or lowering is not yet implemented. Named stateless function values and externally borrowed capturing handlers have different storage obligations but the same borrowed payload contract.
 
 **§ 29(4)** The exact Sec 0.1 `EventSubscribeResult` union is:
 
@@ -480,14 +498,14 @@ The union has no implicit additional variants, error payload, `Result` wrapper o
 - move/copy restrictions;
 - target support.
 
-**§ 30(2)** Semantic analysis must bind an event member to its exact declaring owner and existing/generated backing storage, retain the compile-time capacity and visibility/publication authority, validate the exact handler signature defined by §§ 10–11, and record the returned `EventSubscribeResult` lifecycle obligations. Subscription lifetime, closure captures and active-callback uses remain subject to ordinary borrowing/escape/ownership rules. Unsupported storage/policy configurations are errors, not silent backend fallbacks.
+**§ 30(2)** Semantic analysis must bind an event member to its exact declaring owner and existing/generated backing storage, retain the compile-time capacity and visibility/publication authority, validate borrowed `ref T` payload/callback signatures and reusable callable capabilities, and record the returned `EventSubscribeResult` lifecycle obligations. Each successful `Subscription` carries compiler-known lifetime and location dependencies on its owner event and any retained external callable storage even though the public handle is non-generic. The compiler must reject invalid implicit call-only borrows, move/relocation while live, overlapping exclusive callable borrows and unsupported configurations; failed `Full` registrations retain no such dependency.
 
 **§ 30(3)** Semantic analysis must not mistake synchronous handler invocation for a detached task, implicit thread, channel delivery or proof of thread safety. Publication is an ordinary synchronous call/effect edge for effect analysis. Concurrency, ISR safety, reentrancy, relocation and unsubscribe-during-dispatch facts must be preserved for runtime lowering or rejected when the selected capability cannot be proved.
 
 ## § 31 Semantic IR
 **§ 31(1)** Semantic IR must preserve typed event creation and storage identity, exposure, exact member/owner authority, subscription registration and lifecycle, publication and synchronous handler invocation, unregistration, dispatch ordering, fixed capacity, and lifetime/provenance/synchronization effects. These are **semantic facts**; this rulebook does not establish fixed IR opcode spellings such as `EventDispatchBegin` as a public or permanently stable IR vocabulary. Concrete instruction names and verification rules belong to `rules/compiler/semantic_ir.md`.
 
-**§ 31(2)** The IR must preserve resolved payload and capacity, owner and backing storage identity, source provenance, handler callable/capture representation, subscription ownership, active-invocation lifetime, dispatch order, nested publication and unregister-before-turn semantics, and any target/affinity limitations. Neither a source-valid event operation nor an implementation gap licenses emission of an incorrect backend stub.
+**§ 31(2)** The IR must preserve resolved borrowed payload and capacity, owner and backing storage identity, source provenance, externally retained handler callable/capture reference and its shared/exclusive capability, subscription ownership and retained lifetime dependencies, active-invocation guard, synchronous dispatch ordering and per-invocation eligibility, slot reclamation, nested publication, dynamic reentrant exclusive-conflict panic, and unregister-before-turn semantics, plus any target/affinity limitations. Neither a source-valid event operation nor an implementation gap licenses emission of an incorrect backend stub.
 
 **§ 31(3)** A backend without conforming event subscriber storage, dispatch, cleanup or memory-safe callback lifetime machinery must diagnose unsupported lowering and produce no invalid executable artifact. Normative source semantics and backend implementation status are distinct; the latter is tracked in governance.
 
@@ -553,7 +571,7 @@ concurrency and target-profile rules.
 - pretend to be a channel, completion or interrupt;
 - hide synchronization cost.
 
-**§ 34(2)** Sec 0.1 additionally forbids an `impl event` policy block, inferred external publish authority, implicit task/thread dispatch, hidden subscriber-capacity growth, invalid active-subscription relocation, implicit cloning of move-only captures or subscription handles, unsafe lifetime extension, and assuming that an ordinary event is ISR-safe or thread-safe. A backend must preserve the canonical handler and payload ownership contract once §§ 10–11 are synchronized; it must not silently change the handler ABI.
+**§ 34(2)** Sec 0.1 additionally forbids an `impl event` policy block, inferred external publish authority, implicit task/thread dispatch, hidden subscriber-capacity growth, movement of any event owner with live subscriptions, implicit copying of move-only payloads or captures, hidden ownership of capturing callback environments, invalid retained callable references, one-shot handlers, unsafe lifetime extension, and assuming that an ordinary event is ISR-safe or thread-safe. A backend must preserve the approved borrowed `ref T` payload/callback ABI.
 
 ## § 35 Future extensions
 **§ 35(1)** Possible future additions include dynamic/arena-backed subscriber storage, selectable thread-safe policies, asynchronous dispatch adapters, weak subscriptions, filters, priority ordering, event-to-channel adapters, external publication capabilities and type-level/static event forms. This list is **non-normative**; none of these source features is enabled by Sec 0.1 without its own approved rulebook/grammar/API revision.

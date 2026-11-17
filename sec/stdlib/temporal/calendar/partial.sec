@@ -39,100 +39,41 @@ type PartialDate struct {
  * Validates that a partial date can describe at least one day.
  *
  * Description:
+ * Supports Gregorian, Julian, fixed Hebrew and civil
+ * tabular Islamic calendars.
+ *
  * Missing components remain unspecified.
- * Gregorian, Julian and fixed Hebrew calendars are supported.
- * Validation requires at least one representable core date.
+ * At least one matching day must fit core date.
  *
  * Parameters:
  * - value: Partial calendar coordinates.
- * - system: Calendar system used for validation.
+ * - system: Calendar system for interpretation.
  *
  * Returns:
- * Ok() if at least one matching date exists.
+ * Ok() when at least one matching date exists.
  *
  * Errors:
- * - CalendarError.InvalidYear: Invalid calendar year.
+ * - CalendarError.InvalidYear: Invalid year.
  * - CalendarError.InvalidMonth: Invalid month identity.
- * - CalendarError.InvalidDay: Invalid day of month.
+ * - CalendarError.InvalidDay: Invalid day.
  * - CalendarError.OutOfRange: No representable date.
- * - CalendarError.NotImplemented: Unsupported conversion.
+ * - CalendarError.NotImplemented: Unsupported calendar.
  *
  * Ownership:
  * Pure calculation without allocation or I/O.
  */
 fn ValidatePartial(value: PartialDate, system: CalendarSystem) Result[void, CalendarError] {
-    // Hebrew partial dates require lunisolar month rules.
-    if system == CalendarSystem.Hebrew {
-        return _validateHebrewPartial(value)
-    }
-
-    // Other calendar systems await their conversion support.
-    if system not in [CalendarSystem.Gregorian, CalendarSystem.Julian] {
+    // Future calendar systems require their own witness rules.
+    if system not in [
+        CalendarSystem.Gregorian,
+        CalendarSystem.Julian,
+        CalendarSystem.Hebrew,
+        CalendarSystem.IslamicTabular,
+    ] {
         return Err(CalendarError.NotImplemented)
     }
 
-    // The year 2000 permits leap-day validation.
-    // This witness year is never inserted into the value.
-    let mut year := 2000
-
-    if value.Year is Some(knownYear) {
-        year = knownYear
-    }
-
-    let mut firstMonth := CalendarMonth {
-        Number: 1,
-        IsLeap: false,
-    }
-
-    let mut lastMonth := CalendarMonth {
-        Number: 12,
-        IsLeap: false,
-    }
-
-    if value.Month is Some(knownMonth) {
-        firstMonth = knownMonth
-        lastMonth = knownMonth
-    }
-
-    let firstLength := try DaysInMonth(year, firstMonth, system)
-    let lastLength  := try DaysInMonth(year, lastMonth, system)
-
-    let mut firstDay := 1
-    let mut lastDay  := lastLength
-
-    if value.Day is Some(knownDay) {
-        if knownDay not in 1..firstLength ||
-            knownDay not in 1..lastLength {
-            return Err(CalendarError.InvalidDay)
-        }
-
-        firstDay = knownDay
-        lastDay = knownDay
-    }
-
-    let first := CalendarFields {
-        Year: year,
-        Month: firstMonth,
-        Day: firstDay,
-    }
-
-    let last := CalendarFields {
-        Year: year,
-        Month: lastMonth,
-        Day: lastDay,
-    }
-
-    match ToDate(first, system) {
-        Ok(_) => return Ok()
-        Err(CalendarError.OutOfRange) => {
-        }
-        Err(e) => return Err(e)
-    }
-
-    match ToDate(last, system) {
-        Ok(_) => return Ok()
-        Err(e) => return Err(e)
-    }
+    return _validatePartialCalendar(value, system)
 }
 
 /**

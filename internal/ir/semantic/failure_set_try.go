@@ -129,6 +129,14 @@ func (fb *functionBuilder) buildFailureSetTry(expr *ast.TryExpression, resolved 
 				continue
 			}
 			carrier = &resolved.Failures[index]
+		case sema.TryFailureAllocation:
+			// A try over a fully compile-time folded concatenation is legal and
+			// its failure path is unreachable: the plan is static string data
+			// with no allocation (operators.md § 29.5(2); MD-039 § 2(5)).
+			if plan, known := fb.owner.analyzer.StringConcatPlanOf(point.Expression); known && !plan.Runtime {
+				continue
+			}
+			return builtValue{}, fb.unsupported("failure-set try over a runtime string materialization (P23 string allocation)", point.Token)
 		default:
 			return builtValue{}, fb.unsupported("failure-set try over a "+string(point.Kind)+" failure", point.Token)
 		}
@@ -158,6 +166,11 @@ func (fb *functionBuilder) buildFailureSetTry(expr *ast.TryExpression, resolved 
 		return builtValue{}, fb.unsupported("failure-set try without a success continuation", expr.Token)
 	}
 
+	if resolved.Kind == sema.ResolvedTryHandledFailureSet && len(router.targets) == 0 && len(router.points) == 0 && carrier == nil {
+		// Every protected failure is statically unreachable (a fully folded
+		// concatenation), so no handler can run (operators.md § 29.5(2)).
+		return success, nil
+	}
 	if resolved.Kind == sema.ResolvedTryHandledFailureSet {
 		if len(router.targets) != 1 {
 			return builtValue{}, fb.unsupported("handlers over a heterogeneous failure set (error widening)", expr.Token)

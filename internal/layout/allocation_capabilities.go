@@ -57,8 +57,12 @@ type AllocationCapabilities struct {
 // ResolveAllocationCapabilities resolves only canonical allocation profiles.
 // Hosted supplies the compiler-managed context; embedded-arena supplies the
 // fixed/program/platform Arena context; noalloc disables dynamic allocation.
-// An absent/derived/unmapped profile stays unknown, including freestanding
-// until MD-034 is resolved. No OS/family spelling can enable allocation.
+// An absent/derived/unmapped profile stays unknown. Freestanding stays
+// unresolved as a conservative interim boundary: MD-034 (decided 2026-11-17)
+// disables its heap allocation by default and lets a resolved profile enable a
+// positively supported provider, but that mapping waits for the canonical
+// profile selection and resolution (correction § 3(4)). No OS/family
+// spelling can enable allocation.
 // Rules: rules/memory/allocation.md — §22(1)-(6);
 // rules/platform/target_profiles.md — §§3,7,24,29,31; missing-decisions.yaml — MD-034.
 func ResolveAllocationCapabilities(profile string) AllocationCapabilities {

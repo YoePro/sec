@@ -4,8 +4,9 @@ import "sec/internal/ast"
 
 // inferAtomicCall checks the canonical public method spelling, arity and
 // value and order arguments on atomic storage, including shared receivers.
-// Rules: rules/concurrency/atomics.md — §§12–25,27–30,43–45.
-func (a *Analyzer) inferAtomicCall(expr *ast.CallExpression) (Type, expressionValue, bool) {
+// Rules: rules/concurrency/atomics.md — §§12–25,27–30,43–45;
+// rules/concurrency/concurrency_memory_model.md — §§16–17,52.
+func (a *Analyzer) inferAtomicCall(expr *ast.CallExpression) (result Type, value expressionValue, handled bool) {
 	member, ok := expr.Callee.(*ast.MemberExpression)
 	if !ok || member.Property == nil {
 		return Type{}, expressionValue{}, false
@@ -21,6 +22,19 @@ func (a *Analyzer) inferAtomicCall(expr *ast.CallExpression) (Type, expressionVa
 	if !isAtomicType(receiverType) {
 		return Type{}, expressionValue{}, false
 	}
+	// concurrency_memory_model.md §§16–17,52: facts are produced only after successful
+	// operation validation; rejected calls cannot acquire ordering contracts.
+	if !a.summaryPass {
+		delete(a.resolvedAtomicMemoryOperations, expr)
+		delete(a.resolvedCompareExchanges, expr)
+	}
+	errorsBefore := len(a.errors)
+	validatedOrder := ""
+	defer func() {
+		if handled && result.Kind != InvalidType && len(a.errors) == errorsBefore {
+			a.recordAtomicMemoryOperation(expr, member, validatedOrder)
+		}
+	}()
 	element := receiverType.TypeArgs[0]
 	supported, known := atomicOperationApplicability(member.Property.Value, element)
 	if !known {
@@ -39,7 +53,9 @@ func (a *Analyzer) inferAtomicCall(expr *ast.CallExpression) (Type, expressionVa
 		if !a.checkCompilerKnownCallArity(expr, "Atomic.Load", 0, 1) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
-		if !a.checkAtomicOrderArgument(expr, "Load", 0, false) {
+		order, valid := a.resolveAtomicOrderArgument(expr, "Load", 0, false)
+		validatedOrder = order
+		if !valid {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		return element, expressionValue{Display: expr.String()}, true
@@ -47,8 +63,12 @@ func (a *Analyzer) inferAtomicCall(expr *ast.CallExpression) (Type, expressionVa
 		if !a.checkCompilerKnownCallArity(expr, "Atomic.Store", 1, 2) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
-		a.checkAtomicValueArgument(expr, element, 0)
-		if !a.checkAtomicOrderArgument(expr, "Store", 1, false) {
+		if !a.checkAtomicValueArgument(expr, element, 0) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		order, valid := a.resolveAtomicOrderArgument(expr, "Store", 1, false)
+		validatedOrder = order
+		if !valid {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		return Type{Name: "void", Kind: VoidType}, expressionValue{Display: expr.String()}, true
@@ -56,8 +76,12 @@ func (a *Analyzer) inferAtomicCall(expr *ast.CallExpression) (Type, expressionVa
 		if !a.checkCompilerKnownCallArity(expr, "Atomic.Swap", 1, 2) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
-		a.checkAtomicValueArgument(expr, element, 0)
-		if !a.checkAtomicOrderArgument(expr, "Swap", 1, false) {
+		if !a.checkAtomicValueArgument(expr, element, 0) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		order, valid := a.resolveAtomicOrderArgument(expr, "Swap", 1, false)
+		validatedOrder = order
+		if !valid {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		return element, expressionValue{Display: expr.String()}, true
@@ -65,8 +89,12 @@ func (a *Analyzer) inferAtomicCall(expr *ast.CallExpression) (Type, expressionVa
 		if !a.checkCompilerKnownCallArity(expr, "Atomic."+member.Property.Value, 1, 2) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
-		a.checkAtomicValueArgument(expr, element, 0)
-		if !a.checkAtomicOrderArgument(expr, member.Property.Value, 1, false) {
+		if !a.checkAtomicValueArgument(expr, element, 0) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		order, valid := a.resolveAtomicOrderArgument(expr, member.Property.Value, 1, false)
+		validatedOrder = order
+		if !valid {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		return element, expressionValue{Display: expr.String()}, true
@@ -82,13 +110,11 @@ func (a *Analyzer) inferAtomicCall(expr *ast.CallExpression) (Type, expressionVa
 		desiredValid := a.checkAtomicValueArgument(expr, element, 1)
 		successOrder, successValid := a.resolveAtomicOrderArgument(expr, "CompareExchange", 2, false)
 		failureOrder, failureValid := a.resolveAtomicOrderArgument(expr, "CompareExchange", 3, true)
-		if !successValid || !failureValid {
+		if !expectedValid || !desiredValid || !successValid || !failureValid {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
-		result := a.intrinsicGenericType("CompareExchangeResult", element)
-		if expectedValid && desiredValid {
-			a.recordCompareExchange(expr, member.Object, element, result, successOrder, failureOrder)
-		}
+		result = a.intrinsicGenericType("CompareExchangeResult", element)
+		a.recordCompareExchange(expr, member.Object, element, result, successOrder, failureOrder)
 		return result, expressionValue{Display: expr.String()}, true
 	default:
 		return Type{}, expressionValue{}, false

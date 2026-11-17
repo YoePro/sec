@@ -39,6 +39,13 @@ def Sec_StringType : Sec_SingletonType<"String", "string"> {
   let summary = "Sec high-level string type";
 }
 
+// MD-062 § 7: the opaque compiler-known UnitDimension value. It is copyable
+// and immutable, carries no owned resource and has no public data layout or
+// foreign ABI; its values are canonical normalized axis mappings.
+def Sec_UnitDimensionType : Sec_SingletonType<"UnitDimension", "unit_dimension"> {
+  let summary = "Sec opaque normalized unit dimension";
+}
+
 // MD-126: shared, non-owning bounded view over valid UTF-8 string backing in
 // rune coordinates. It has no element type and is never a rune slice; its
 // holders reuse the shared bounded-view slice operations (len/copy/reborrow).

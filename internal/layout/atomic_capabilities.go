@@ -122,8 +122,7 @@ func (p ResolvedScalarPlan) WithAtomicCapabilities(facts []AtomicCapability) (Re
 	if p.Profile == "" {
 		return ResolvedScalarPlan{}, fmt.Errorf("atomic capabilities require a resolved target profile")
 	}
-	base := p
-	base.Atomics = AtomicCapabilities{}
+	base := capabilityPlanBase(p)
 	snapshot := &atomicCapabilitySnapshot{plan: base, facts: make(map[AtomicRequirement]AtomicCapability, len(facts))}
 	for _, fact := range facts {
 		if err := fact.validate(); err != nil {
@@ -147,8 +146,7 @@ func (c AtomicCapabilities) validateFor(p ResolvedScalarPlan) error {
 	if c.snapshot == nil {
 		return nil
 	}
-	p.Atomics = AtomicCapabilities{}
-	if !reflect.DeepEqual(p, c.snapshot.plan) {
+	if !reflect.DeepEqual(capabilityPlanBase(p), c.snapshot.plan) {
 		return fmt.Errorf("atomic capability snapshot belongs to a different resolved target/profile plan")
 	}
 	return nil

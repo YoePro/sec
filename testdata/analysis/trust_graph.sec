@@ -1,0 +1,43 @@
+module main
+
+extern "C" fn foreign_value() int32
+
+unsafe fn Leaf(pointer: RawPtr[byte]) byte {
+    unsafe { return pointer.Read() }
+}
+
+fn Wrapper(pointer: RawPtr[byte]) byte {
+    unsafe { return Leaf(pointer) }
+}
+
+fn Open(callback: fn() void) void { callback() }
+
+fn OuterOpen(callback: fn() void) void { Open(callback) }
+
+fn RecursiveOpen(callback: fn() void, again: bool) void {
+    if again { RecursiveOpen(callback, false) } else { Open(callback) }
+}
+
+fn DeferredOpen(callback: fn() void) void {
+    defer { Open(callback) }
+}
+
+fn Mixed(pointer: RawPtr[byte], callback: fn() void) void {
+    discard Wrapper(pointer)
+    OuterOpen(callback)
+}
+
+fn Foreign() int32 { unsafe { return foreign_value() } }
+
+fn Plain() void {}
+
+fn Closed() void {
+    let callback := Plain
+    callback()
+}
+
+fn CycleA(pointer: RawPtr[byte], again: bool) void {
+    if again { CycleB(pointer) } else { discard Wrapper(pointer) }
+}
+
+fn CycleB(pointer: RawPtr[byte]) void { CycleA(pointer, false) }

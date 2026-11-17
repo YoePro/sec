@@ -196,7 +196,16 @@ func singleResourcePlaceRelationship(left, right Place) SynchronizationResourceR
 			}
 		}
 	}
-	if left.RootID != right.RootID && (left.RootKind == PlaceRootDeref || right.RootKind == PlaceRootDeref) {
+	// Canonical reference-parameter origins can retain their symbolic
+	// parameter root instead of a deref root. Different formal references
+	// still may designate the same object; a holder on a known local/static
+	// root, however, does not erase that known owner identity.
+	// Rules: rules/analysis/deadlock_analysis.md — canonical resource identity;
+	// rules/concurrency/concurrency_memory_model.md — §§16(1–3),52(2).
+	symbolicReference := func(place Place) bool {
+		return place.ReferenceHolder != "" && (place.RootKind == PlaceRootParameter || place.RootKind == PlaceRootReceiver)
+	}
+	if left.RootID != right.RootID && (left.RootKind == PlaceRootDeref || right.RootKind == PlaceRootDeref || symbolicReference(left) || symbolicReference(right)) {
 		return ResourceMayAlias
 	}
 	if left.RootID == right.RootID && left.RootKind != right.RootKind {

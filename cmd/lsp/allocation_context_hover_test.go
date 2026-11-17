@@ -13,7 +13,8 @@ import (
 
 // TestAllocationContextHover checks real callable hovers, all transitive sites,
 // domain roles and absence of ambient context on folded and spawned execution.
-// Rules: rules/memory/allocation.md — §§5,6,17,29(1),(3); rules/tooling/lsp.md — "Allocation and escape analysis".
+// Rules: rules/memory/allocation.md — §§5,6,17,29(1),(3); rules/tooling/lsp.md — "Allocation and escape analysis";
+// rules/mlir/packages/sec-mlir-dialect_package19.md — §§52–54,72–76.
 func TestAllocationContextHover(t *testing.T) {
 	file := "../../testdata/sema/allocation_context_facts_valid.sec"
 	data, err := os.ReadFile(file)
@@ -26,7 +27,7 @@ func TestAllocationContextHover(t *testing.T) {
 		"Interpolate": {"implicit allocation context: available; profile hosted"},
 		"Allocate":    {"explicit Arena allocation domain:", "(receiver mem)", "(receiver moved)"},
 		"OtherDomain": {"explicit Arena allocation domain:", "(receiver mem)"},
-		"Created":     {"created Arena domain:", "backing allocation context unresolved"},
+		"Created":     {"created Arena domain:", "backing allocation context: available; profile hosted; origin Arena"},
 		"Forward":     {"implicit allocation context:", "via `Forward` -> `Render`"},
 		"Combined":    {"implicit allocation context:", "explicit Arena allocation domain:", "allocation context/domain unresolved"},
 		"Recursive":   {"implicit allocation context:", "via `Recursive` -> `Render`"},

@@ -1613,7 +1613,11 @@ func (p *Parser) parseForStatement() ast.Statement {
 		return stmt
 	}
 	if !ok {
-		p.addError("for loop requires an iterable expression at %d:%d", p.curToken.Line, p.curToken.Column)
+		if p.curToken.Type == lexer.NEW {
+			p.reportNewKeywordName(p.curToken, "a loop binding name")
+		} else {
+			p.addError("for loop requires an iterable expression at %d:%d", p.curToken.Line, p.curToken.Column)
+		}
 		p.skipMalformedForHeader(stmt)
 		return stmt
 	}
@@ -1629,6 +1633,11 @@ func (p *Parser) parseForStatement() ast.Statement {
 			return stmt
 		}
 		if !ok {
+			if p.curToken.Type == lexer.NEW {
+				p.reportNewKeywordName(p.curToken, "a loop binding name")
+				p.skipMalformedForHeader(stmt)
+				return stmt
+			}
 			p.addError("expected loop binding after ',' at %d:%d", p.curToken.Line, p.curToken.Column)
 			p.skipMalformedForHeader(stmt)
 			return stmt
@@ -3400,7 +3409,11 @@ func (p *Parser) parseEnumBody(enum *ast.EnumDeclaration) *ast.EnumDeclaration {
 		}
 		if p.curToken.Type != lexer.IDENT {
 			diagnosticStart := len(p.diagnostics)
-			p.addError("expected enum value name, got %q at %d:%d", p.curToken.Lexeme, p.curToken.Line, p.curToken.Column)
+			if p.curToken.Type == lexer.NEW {
+				p.reportNewKeywordName(p.curToken, "an enum value name")
+			} else {
+				p.addError("expected enum value name, got %q at %d:%d", p.curToken.Lexeme, p.curToken.Line, p.curToken.Column)
+			}
 			recovery := p.recoverInvalidEnumValue(p.curToken)
 			enum.Values = append(enum.Values, p.invalidEnumValue(p.curToken, diagnosticStart, recovery))
 			seenValue = true
@@ -3826,6 +3839,10 @@ func (p *Parser) parseParameters(allowVariadic bool) []*ast.Parameter {
 			mutableRef = true
 		}
 
+		if p.peekToken.Type == lexer.NEW {
+			p.reportNewKeywordName(p.peekToken, "a parameter name")
+			return nil
+		}
 		if p.peekToken.Type != lexer.IDENT && p.peekToken.Type != lexer.SELF {
 			p.addError("expected next token to be %q, got %q at %d:%d", lexer.IDENT, p.peekToken.Type, p.peekToken.Line, p.peekToken.Column)
 			return nil
@@ -4500,6 +4517,10 @@ func (p *Parser) parseStructFields() []*ast.StructField {
 			}
 		}
 
+		if p.curToken.Type == lexer.NEW {
+			p.reportNewKeywordName(p.curToken, "a field name")
+			return fields
+		}
 		if p.curToken.Type != lexer.IDENT {
 			p.addError("expected struct field name, got %q", p.curToken.Lexeme)
 			return fields
@@ -5106,7 +5127,11 @@ func (p *Parser) parsePropertyDeclaration() *ast.PropertyDeclaration {
 
 	if p.peekToken.Type != lexer.IDENT {
 		p.nextToken()
-		p.addError("property declaration missing name at %d:%d", p.curToken.Line, p.curToken.Column)
+		if p.curToken.Type == lexer.NEW {
+			p.reportNewKeywordName(p.curToken, "a property name")
+		} else {
+			p.addError("property declaration missing name at %d:%d", p.curToken.Line, p.curToken.Column)
+		}
 		if p.curToken.Type == lexer.LBRACE {
 			p.skipCurrentBlock()
 		}
@@ -6416,6 +6441,10 @@ func (p *Parser) expectPeek(t lexer.TokenType) bool {
 	}
 
 	unexpected := p.peekToken
+	if t == lexer.IDENT && unexpected.Type == lexer.NEW {
+		p.reportNewKeywordName(unexpected, "a name")
+		return false
+	}
 	p.addDiagnostic(
 		compilerdiagnostics.ParserMissingToken,
 		unexpected,
@@ -7766,6 +7795,19 @@ func (p *Parser) skipPeekOrdinaryComments() {
 	for p.peekToken.Type == lexer.COMMENT && !strings.HasPrefix(p.peekToken.Lexeme, "/**") {
 		p.nextToken()
 	}
+}
+
+// reportNewKeywordName is the targeted migration diagnostic for source that
+// still uses `new` as a name: `new` became a hard keyword with lifecycle
+// construction and cannot name a declaration, parameter, field, property,
+// module, alias, generic parameter or binding in any context.
+//
+// Rules:
+//   - rules/foundations/lexical_structure.md — § 7.2 (`new` is a hard keyword in every context)
+//   - rules/declarations/impl.md — revision 2.0 source-compatibility change
+func (p *Parser) reportNewKeywordName(token lexer.Token, role string) {
+	p.addDiagnostic(compilerdiagnostics.ParserMisplacedKeyword, token, []lexer.TokenType{lexer.IDENT}, &token,
+		"`new` is a hard keyword since lifecycle construction (`new Type(...)`) and cannot be used as %s; rename it at %d:%d", role, token.Line, token.Column)
 }
 
 // isKeywordSpelling reports a token spelled like an identifier that the lexer

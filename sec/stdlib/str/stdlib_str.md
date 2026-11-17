@@ -1480,7 +1480,8 @@ package may also own byte-to-string decoding APIs.
 
 ## 11.1 Focus
 
-`edit.sec` owns **position-based immutable editing**.
+`edit.sec` owns **position-based immutable editing**. Edit positions are
+zero-based **rune indexes** (MD-090), the same unit as `string.IndexOf`.
 
 This is deliberately separate from `replace.sec`.
 
@@ -1494,42 +1495,36 @@ replace.sec:
 
 ## 11.2 Position unit
 
-Revision 0.1 uses **UTF-8 byte offsets** for structural edit boundaries.
+Edit positions are **zero-based Unicode scalar (`rune`) indexes**, not UTF-8
+byte offsets (MD-090, owner decision 2026-11-16). This is the unit of the core
+string search and range members (MD-071, `rules/library/core-library.md`
+§ 5.7) and of the applied MD-126 borrowed string ranges, so a result of
+`string.IndexOf` is directly an edit position. Because every rune index lies
+on a rune boundary, no position can split an encoded rune.
 
-Reasons:
-
-1. UTF-8 storage is byte-addressed;
-2. the implementation can reject boundaries inside a multi-byte rune.
-
-Since 2026-10-17 (MD-071) the core string search, slicing and rune-access
-members use **rune indexes** (`rules/library/core-library.md` § 5.7), so a
-result of `string.IndexOf` is not directly an edit boundary: edit
-implementations translate validated byte boundaries to rune indexes before
-calling `string.Slice`. Whether the edit API should move to rune indexes so
-that search results feed edits directly is open (MD-090).
-
-Every public parameter name should make the unit visible, e.g.:
+Every public parameter name makes the unit visible:
 
 ```text
-byteIndex
-startByte
-endByte
+runeIndex
+startRune
+endRune
 ```
 
-The range is half-open:
+The range is half-open, and the end position `value.Len` is legal:
 
 ```text
-[startByte, endByte)
+[startRune, endRune)
 ```
+
+Byte-level APIs, the UTF-8 representation, Unicode normalization and
+grapheme-cluster semantics are unchanged.
 
 ## 11.3 Error type
-
-Recommended:
 
 ```sec
 type EditError union error {
     /**
-     * A byte position or range lies outside the source string.
+     * A rune index lies outside the source string.
      */
     OutOfBounds(uint),
 
@@ -1539,88 +1534,65 @@ type EditError union error {
     StartAfterEnd,
 
     /**
-     * A byte position lies inside a UTF-8 encoded rune.
-     */
-    NotRuneBoundary(uint),
-
-    /**
      * Result storage could not be allocated.
      */
     Allocation(CollectionError),
 }
 ```
 
-Exact payload syntax may change to match the canonical error-union rules.
+`OutOfBounds(position)` reports the invalid **rune index**. The range
+operations test `StartAfterEnd` before validating the individual bounds.
 
 ## 11.4 Required public surface
 
 ```sec
-fn Insert(
-    value: string,
-    byteIndex: uint,
-    insertion: string
-) Result[string, EditError]
-
-fn RemoveRange(
-    value: string,
-    startByte: uint,
-    endByte: uint
-) Result[string, EditError]
-
-fn ReplaceRange(
-    value: string,
-    startByte: uint,
-    endByte: uint,
-    replacement: string
-) Result[string, EditError]
+fn Insert(value: string, runeIndex: uint, insertion: string) Result[string, EditError]
+fn Insert(value: string, runeIndex: uint, insertion: rune) Result[string, EditError]
+fn RemoveRange(value: string, startRune: uint, endRune: uint) Result[string, EditError]
+fn ReplaceRange(value: string, startRune: uint, endRune: uint, replacement: string) Result[string, EditError]
 ```
 
-A rune overload for `Insert` may be added:
-
-```sec
-fn Insert(
-    value: string,
-    byteIndex: uint,
-    insertion: rune
-) Result[string, EditError]
-```
-
-It is convenience, not a separate semantic operation.
+Both `Insert` overloads use rune indexes; the `rune` overload changes the
+type of the inserted value, not the positional unit. It inserts the rune's
+UTF-8 encoding and is convenience, not a separate semantic operation.
 
 ## 11.5 `Insert`
 
 Rules:
 
-- `byteIndex` may equal the string byte length;
-- the index must be a rune boundary;
-- insertion before byte 0 prepends;
-- insertion at end appends;
-- inserting an empty string is a semantic no-op;
-- no-op may return/reuse the original string safely;
+- `runeIndex` may equal `value.Len`;
+- a `runeIndex` greater than `value.Len` is `OutOfBounds(runeIndex)`;
+- insertion at rune 0 prepends;
+- insertion at `value.Len` appends;
+- inserting an empty string is a semantic no-op after the index is validated;
+- a no-op returns the original immutable value without materialization;
 - changed output is valid UTF-8.
 
 ## 11.6 `RemoveRange`
 
 Rules:
 
-- `startByte <= endByte`;
-- both boundaries may equal end of string as appropriate;
-- both must be rune boundaries;
-- `[x, x)` removes nothing;
-- `[0, SizeOf)` produces empty string;
-- the output concatenates the prefix before `startByte` and suffix after
-  `endByte`.
+- `startRune <= endRune`, tested before the bounds (`StartAfterEnd`);
+- both positions may equal `value.Len`;
+- a position greater than `value.Len` is `OutOfBounds(position)`;
+- `[x, x)` removes nothing, after both positions are validated;
+- `[0, value.Len)` produces the empty string;
+- the output concatenates the prefix before `startRune` and the suffix from
+  `endRune`.
 
 No separate `Remove(start, count)` API is required in revision 0.1. The
-half-open range form avoids byte-count/end ambiguity and aligns with slicing.
+half-open range form avoids count/end ambiguity and aligns with string ranges.
 
 ## 11.7 `ReplaceRange`
 
-Equivalent in result semantics to removing the selected range and inserting
-`replacement` at the same position, but implemented in one allocation/growth
-plan.
+Equivalent in result semantics to removing the selected rune range and
+inserting `replacement` at the same position, with the same validation as
+`RemoveRange`, but implemented in one allocation/growth plan.
 
-It must not materialize an unnecessary intermediate string.
+It must not materialize an unnecessary intermediate string. The prefix and
+suffix are borrowed `StringView` ranges of the source (`value[0..<startRune]`,
+`value[endRune..<value.Len]`, MD-126) appended to the result builder; no
+borrowed view escapes, and the result is an owned `string`.
 
 ## 11.8 No mutable string editing
 
@@ -1631,16 +1603,20 @@ building a chain of temporary immutable strings.
 
 ## 11.9 Required tests
 
-- insertion at start/end/middle;
-- range removal at start/end/full;
-- zero-length range;
+- insertion at start (`0`), end (`value.Len`) and middle;
+- range removal at start/end/full (`[0, value.Len)`);
+- zero-length range and other no-op edits;
+- empty source strings;
 - replacement with shorter/equal/longer text;
-- multi-byte rune boundaries;
-- rejection of byte offset inside 2/3/4-byte rune;
-- out-of-bounds;
-- start-after-end;
+- replacement and removal of 2-, 3- and 4-byte runes by rune index;
+- combining runes, edited without normalization;
+- insertion at an index returned by `IndexOf`;
+- rune index greater than `value.Len` (`OutOfBounds`);
+- reversed range (`StartAfterEnd`);
 - allocation failure;
 - source unchanged on failure.
+
+`Len` (runes) and `SizeOf` (bytes) are never conflated.
 
 ---
 

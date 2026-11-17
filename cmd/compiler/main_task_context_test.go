@@ -20,7 +20,7 @@ func TestMainTaskContextCLI(t *testing.T) {
 	if code != 3 || decodeOccurrenceDocument(t, output).Summary.Errors != 6 || strings.Count(output, `"id": "S1213"`) != 6 {
 		t.Fatal(code, output)
 	}
-	for _, want := range []string{"Task.Current()", "Task.Yield()", "ordinary program entry is not a logical task", "current-execution requirement introduced here"} {
+	for _, want := range []string{"Task.Current()", "Task.Yield()", "ordinary program entry is not a logical task", "current-execution requirement introduced here", "try spawn Work()"} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("missing %q: %s", want, output)
 		}

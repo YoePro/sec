@@ -1,6 +1,6 @@
 # Parser Recovery revision 2.0 — Post-Merge Conformance Review and Focused Correction
 
-- **Status:** Proposed normative correction; reviewed, not applied to canonical repository
+- **Status:** Applied 2026-11-17 as `rules/compiler/parser_recovery.md` revision 2.2 (§ 27 reconciled with revision 2.1: existing § 27(4) kept, this correction's § 27(4)–(6) added as § 27(5)–(7)); governance `frontend.parser-long-term` synchronized
 - **Created:** 2026-11-02
 - **Last updated:** 2026-11-02
 - **Document revision:** 1.0

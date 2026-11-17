@@ -1,0 +1,64 @@
+module main
+
+fn DeadRead() void {
+    let value := 1
+    unsafe {
+        let pointer := value.Ptr
+        let alias := pointer
+        discard value
+        discard alias.Read()
+    }
+}
+fn DeadWrite() void {
+    let mut value := 1
+    unsafe {
+        let pointer := value.Ptr
+        discard value
+        pointer.Write(2)
+    }
+}
+fn DeadVolatileRead() void {
+    let value := 1
+    unsafe {
+        let pointer := value.Ptr
+        discard value
+        discard pointer.VolatileRead()
+    }
+}
+fn DeadVolatileWrite() void {
+    let mut value := 1
+    unsafe {
+        let pointer := value.Ptr
+        discard value
+        pointer.VolatileWrite(2)
+    }
+}
+@noCopy
+type Owner struct { Value: int }
+
+fn MovedFieldRead() void {
+    let owner := Owner { Value: 1 }
+    unsafe {
+        let pointer := owner.Value.Ptr
+        let moved :<- owner
+        discard pointer.Read()
+    }
+}
+fn BorrowedRead() int {
+    let mut value := 1
+    unsafe {
+        let pointer := value.Ptr
+        let grant := ref mut value
+        discard pointer.Read()
+        return *grant
+    }
+}
+fn BorrowedWrite() int {
+    let mut value := 1
+    unsafe {
+        let pointer := value.Ptr
+        let grant := ref value
+        pointer.Write(2)
+        return *grant
+    }
+}

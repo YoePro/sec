@@ -448,6 +448,12 @@ func (a *Analyzer) inferForIterableBindingTypes(stmt *ast.ForStatement) ([]Type,
 				}
 				plan.Source = ForIteratorReusableStorage
 				plan.SourcePlace = place
+				// Each iteration calls Next through an implicit borrow of
+				// the iterator storage (mutable when Next mutates self); the borrow facts are
+				// published like a method receiver's so Semantic IR consumes
+				// them instead of fabricating an identity (flowcontrol_for.md
+				// § 37; package15.md §§ 47-48).
+				a.recordReferencePlan(iterable, place, next.ReceiverMutable, true, expressionToken(iterable))
 			} else {
 				plan.DestroysTemporary = !TriviallyDestructible(dereferenceType(iterableType))
 			}

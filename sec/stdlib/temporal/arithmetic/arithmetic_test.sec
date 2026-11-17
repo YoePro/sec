@@ -1,0 +1,75 @@
+module arithmetic
+
+import "temporal/calendar"
+
+fn _testGregorianDate(year: int, month: int, day: int) Result[date, calendar.CalendarError] {
+    return calendar.ToDate(calendar.CalendarFields {
+        Year: year,
+        Month: calendar.CalendarMonth {
+            Number: month,
+            IsLeap: false,
+        },
+        Day: day,
+    })
+}
+
+test "AddMonths clamps January 31 to February 28" {
+    let original := try _testGregorianDate(2025, 1, 31)
+
+    let result := try AddMonths(
+        original,
+        1,
+        calendar.CalendarSystem.Gregorian,
+        MonthEndPolicy.Clamp,
+    )
+
+    let expected := try _testGregorianDate(2025, 2, 28)
+
+    testing.ExpectEqual(expected.EpochDays, result.EpochDays)
+}
+
+test "AddMonths rolls January 31 into March" {
+    let original := try _testGregorianDate(2025, 1, 31)
+
+    let result := try AddMonths(
+        original,
+        1,
+        calendar.CalendarSystem.Gregorian,
+        MonthEndPolicy.RollForward,
+    )
+
+    let expected := try _testGregorianDate(2025, 3, 3)
+
+    testing.ExpectEqual(expected.EpochDays, result.EpochDays)
+}
+
+test "AddMonths rejects invalid target day" {
+    let original := try _testGregorianDate(2025, 1, 31)
+
+    match AddMonths(
+        original,
+        1,
+        calendar.CalendarSystem.Gregorian,
+        MonthEndPolicy.Reject,
+    ) {
+        Ok(_) => testing.Fail("Expected InvalidTarget")
+        Err(TemporalArithmeticError.InvalidTarget) => {
+        }
+        Err(_) => testing.Fail("Unexpected arithmetic error")
+    }
+}
+
+test "AddMonths supports negative month movement" {
+    let original := try _testGregorianDate(2025, 1, 15)
+
+    let result := try AddMonths(
+        original,
+        -1,
+        calendar.CalendarSystem.Gregorian,
+        MonthEndPolicy.Reject,
+    )
+
+    let expected := try _testGregorianDate(2024, 12, 15)
+
+    testing.ExpectEqual(expected.EpochDays, result.EpochDays)
+}

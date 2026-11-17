@@ -1,0 +1,5 @@
+module main
+
+fn Difference(pointer: RawPtr[int], other: RawPtr[int]) int {
+    return pointer.Difference(other)
+}

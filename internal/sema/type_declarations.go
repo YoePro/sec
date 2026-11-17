@@ -400,7 +400,9 @@ func (a *Analyzer) typeFromEnumDeclaration(name string, enum *ast.EnumDeclaratio
 		i := semanticIndex
 		semanticIndex++
 		if previousToken, exists := seen[value.Name.Value]; exists {
-			a.addErrorAtTokenWithPrevious(value.Token, previousToken, "duplicate enum value %q in enum %s", value.Name.Value, name)
+			a.addErrorAtTokenWithMetadataAndPrevious(value.Token, previousToken, diagnostics.DuplicateDeclaration,
+				"Remove or rename one of the values; an enum declares each value name once.",
+				"duplicate enum value %q in enum %s", value.Name.Value, name)
 			continue
 		}
 		a.checkConfusableInDomains(value.Name.Value, value.Name.Token, seen)

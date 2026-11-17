@@ -1,0 +1,5 @@
+module main
+
+fn Read(pointers: RawPtr[int][2]) int {
+    return pointers[0].Read()
+}

@@ -1,0 +1,7 @@
+module main
+
+fn Unreachable() void {
+    if false {
+        atomic.Fence(MemoryOrder.Acquire)
+    }
+}

@@ -1,0 +1,28 @@
+module main
+
+fn Ordered(enabled: bool) void {
+    let mut mem: Arena := Arena {}
+    mem.Reset()
+    defer {
+        mem.Reset()
+        if enabled { mem.Reset() }
+        mem.Release()
+    }
+    mem.Reset()
+}
+
+fn ImmediateOnly() void {
+    let mut mem: Arena := Arena {}
+    mem.Reset()
+    defer {}
+    mem.Release()
+}
+
+fn NestedCallable() void {
+    defer {
+        let worker := fn() void {
+            let mut local: Arena := Arena {}
+            local.Reset()
+        }
+    }
+}

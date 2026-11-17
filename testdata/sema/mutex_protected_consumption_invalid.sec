@@ -1,0 +1,12 @@
+module main
+
+type State struct { Count: int }
+fn TakeState(-> value: State) void {}
+impl State {
+    fn TakeWhole() void { TakeState(<-self) }
+    fn ReturnWhole() State { return <-self }
+    fn DiscardWhole() void { discard self }
+}
+fn PassGuardAsState(guard: MutexGuard[State]) void { TakeState(<-guard) }
+fn ReturnGuardAsState(guard: MutexGuard[State]) State { return <-guard }
+fn CastGuardAsState(guard: MutexGuard[State]) State { return State(guard) }

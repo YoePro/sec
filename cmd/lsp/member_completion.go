@@ -27,6 +27,9 @@ func memberCompletionItems(exprType sema.Type, analyzer *sema.Analyzer, prefix s
 	// introduce an implicit whole-value read of its referent.
 	// rules/declarations/struct.md — §11;
 	// rules/memory/references.md — §3.4(6).
+	// The receiver view keeps its authority for interface requirements: a
+	// shared view never offers a mutable requirement (interfaces.md §§ 3, 7.1).
+	receiverView := exprType
 	if !static && exprType.Kind == sema.ReferenceType && exprType.Element != nil {
 		exprType = *exprType.Element
 	}
@@ -72,12 +75,23 @@ func memberCompletionItems(exprType sema.Type, analyzer *sema.Analyzer, prefix s
 		seen[item.Label] = true
 		items = append(items, item)
 	}
-	for _, member := range sema.CompilerKnownMembersForType(exprType, static) {
+	// Compiler-known members follow Sema's lookup on the receiver's own type:
+	// a `ref mut T[]` view is a mutable slice with Fill and Reverse
+	// (rules/compiler/compiler_known_members.md — "Lookup order").
+	knownReceiver := exprType
+	if !static && receiverView.Kind == sema.ReferenceType {
+		knownReceiver = receiverView
+	}
+	for _, member := range sema.CompilerKnownMembersForType(knownReceiver, static) {
 		if item, ok := compilerKnownCompletionItem(member); ok {
 			addTyped(item, member.Result)
 		}
 	}
-	for _, method := range interfaceCompletionMethods(exprType, static) {
+	interfaceReceiver := exprType
+	if receiverView.Kind == sema.ReferenceType && receiverView.Element != nil && receiverView.Element.Name == exprType.Name {
+		interfaceReceiver = receiverView
+	}
+	for _, method := range interfaceCompletionMethods(interfaceReceiver, static) {
 		label, _ := interfaceMethodLabel(method)
 		// Inherited requirements name their declaring interface
 		// (interfaces.md § 5); the label carries the receiver capability.
@@ -152,7 +166,13 @@ func memberCompletionItems(exprType sema.Type, analyzer *sema.Analyzer, prefix s
 			methodName := strings.TrimPrefix(name, methodPrefix)
 			matching := make([]sema.Function, 0, len(overloads))
 			returnTypes := make([]sema.Type, 0, len(overloads))
+			sharedView := receiverView.Kind == sema.ReferenceType && !receiverView.ReferenceMutable
 			for _, overload := range overloads {
+				// A shared view cannot call a mutating method (impl.md § 8;
+				// interfaces.md §§ 3, 7.1).
+				if !static && sharedView && overload.ReceiverMutable {
+					continue
+				}
 				if overload.Static == static {
 					matching = append(matching, overload)
 					returnTypes = append(returnTypes, overload.ReturnType)

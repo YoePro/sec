@@ -1,0 +1,47 @@
+module main
+
+fn FalseConjunction(raw: RawPtr[int], other: RawPtr[int]) void {
+    unsafe {
+        if raw is not null && other is not null { return }
+        discard raw.Read()
+    }
+}
+
+fn TrueDisjunction(raw: RawPtr[int], other: RawPtr[int]) void {
+    unsafe {
+        if !(raw is null || other is null) { return }
+        discard raw.Read()
+    }
+}
+
+fn Reassigned(raw: RawPtr[int], other: RawPtr[int]) void {
+    unsafe {
+        if !(raw is null) { return }
+        raw = other
+        discard raw.Read()
+    }
+}
+
+fn NonNullContinuation(raw: RawPtr[int]) void {
+    unsafe {
+        if raw is null { return }
+        discard raw.Read()
+    }
+}
+
+fn OnlyCopies(raw: RawPtr[int]) RawPtr[int] {
+    unsafe {
+        if !(raw is null) { return raw }
+        let copy := raw
+        return copy
+    }
+}
+
+fn Probe() bool { return false }
+
+fn EffectfulCondition(raw: RawPtr[int]) void {
+    unsafe {
+        if raw is not null || Probe() { return }
+        discard raw.Read()
+    }
+}

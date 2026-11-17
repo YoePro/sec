@@ -37,6 +37,9 @@ type Definition struct {
 	// An unspecified table leaves concrete capability unknown.
 	// Rules: rules/concurrency/atomics.md — §37(1–5).
 	Atomics layout.AtomicCapabilities
+	// IPC is explicit target/profile evidence; absence never derives host support.
+	// Rules: rules/concurrency/ipc.md §§118–124.
+	IPC layout.IPCCapabilities
 	// AddressDomains are the hardware address domains this target supplies
 	// (MD-111 §§ 1(6)-1(7)); see AddressDomains for the defaults.
 	AddressDomains []layout.AddressDomain
@@ -538,10 +541,10 @@ func Find(target Target) (Definition, bool) {
 	return Definition{}, false
 }
 
-// ScalarPlan projects canonical representation and frozen atomic capability
+// ScalarPlan projects canonical representation and frozen atomic/IPC capability
 // facts without reconstructing support from host or architecture spellings.
 // Rules: rules/platform/platform_model.md — §9 "Architecture capability";
-// rules/concurrency/atomics.md — §37(1–5).
+// rules/concurrency/atomics.md — §37(1–5); rules/concurrency/ipc.md — §§118–124.
 func (definition Definition) ScalarPlan() (layout.ResolvedScalarPlan, error) {
 	plan := layout.ResolvedScalarPlan{
 		TargetOS:         definition.OS,
@@ -553,6 +556,7 @@ func (definition Definition) ScalarPlan() (layout.ResolvedScalarPlan, error) {
 		Endianness:       definition.Endianness,
 		CABI:             definition.CABI,
 		Atomics:          definition.Atomics,
+		IPC:              definition.IPC,
 		AddressDomains:   definition.addressDomains(),
 	}
 	if err := plan.Validate(); err != nil {

@@ -1,0 +1,12 @@
+module main
+
+type State struct { Count: int }
+impl State {
+    fn Read() int { return self.Count }
+    fn Change() void { self.Count += 1 }
+}
+fn TakeGuard(-> guard: MutexGuard[State]) void {}
+fn MoveGuard(value: MutexGuard[State]) void { TakeGuard(<-value) }
+fn CopyField(value: MutexGuard[State]) int { return value.Count }
+fn TakeState(-> value: State) void {}
+fn MoveState(value: State) void { TakeState(<-value) }

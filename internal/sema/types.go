@@ -1314,7 +1314,7 @@ func newBuiltinTypes() map[string]Type {
 		"Sender":         {Name: "Sender", Kind: StructType, GenericParameters: []string{"T"}},
 		"Receiver":       {Name: "Receiver", Kind: StructType, GenericParameters: []string{"T"}},
 		"MessageTicket":  {Name: "MessageTicket", Kind: StructType, GenericParameters: []string{"T"}},
-		"ChannelOptions": {Name: "ChannelOptions", Kind: StructType},
+		"ChannelOptions": channelOptionsType(),
 		"SenderID":       {Name: "SenderID", Kind: StructType},
 		"ChannelSendResult": {
 			Name:              "ChannelSendResult",
@@ -1617,7 +1617,9 @@ func triviallyDestructible(typ Type, visiting map[string]bool) bool {
 		ReferenceType,
 		FunctionType,
 		InterfaceType,
-		RegisterType:
+		RegisterType,
+		// MD-062 § 7(5): a UnitDimension has no destructor or owned resource.
+		UnitDimensionType:
 		return true
 	case HardwareInstanceType:
 		// MD-077 §§ 8(2), 16(6): ending a hardware instance never writes back

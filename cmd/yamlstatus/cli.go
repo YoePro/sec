@@ -34,9 +34,11 @@ func runCLI(args []string, out, errOut io.Writer) error {
 	verbose := flags.Bool("verbose", false, "Show all data otherwise just the most relevant.")
 	html := flags.Bool("html", false, "Return the output as HTML.")
 	itemOnly := flags.Bool("itemonly", false, "Only show the status for items")
+	listFiles := flags.Bool("listfiles", false, "List YAML files with Implemented, Remaining and Partial counts and per-file percentages")
 	flags.Usage = func() {
 		fmt.Fprintln(errOut, "Usage: yamlstatus [options] [directory]\nWithout selection options, prints implementation statistics.\nWith -file or -id, selects the first matching remaining point; -random randomizes selection.\nWith -uses PATH, lists integrations referencing a file in code/tests/rules.\nWith -paths, checks listed paths for existence; -go restricts to internal/ and cmd/ Go files.")
 		fmt.Fprintln(errOut, "With -snapshot FILE, saves portable counts; -diff FILE|HEAD compares counts by fragment and ID.")
+		fmt.Fprintln(errOut, "With --listfiles, lists per-file checklist counts and percentages (supports -dir or a directory argument).")
 		flags.PrintDefaults()
 		fmt.Fprintln(errOut, "\n"+editUsage)
 	}
@@ -51,6 +53,22 @@ func runCLI(args []string, out, errOut io.Writer) error {
 	}
 	if flags.NArg() == 1 {
 		*dir = flags.Arg(0)
+	}
+	if *listFiles {
+		var incompatible string
+		flags.Visit(func(option *flag.Flag) {
+			if option.Name != "dir" && option.Name != "listfiles" && incompatible == "" {
+				incompatible = option.Name
+			}
+		})
+		if incompatible != "" {
+			return fmt.Errorf("--listfiles cannot be combined with -%s; use only -dir or a directory argument", incompatible)
+		}
+		stats, err := collectStats(*dir)
+		if err != nil {
+			return err
+		}
+		return printFileChecklists(out, stats.FileChecklists)
 	}
 	snapshotMode, diffMode, invalidCountOption := false, false, false
 	flags.Visit(func(option *flag.Flag) {

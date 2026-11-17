@@ -14,7 +14,8 @@ import (
 
 // TestAnalyseAllocationContexts checks shared context rendering, transitive site
 // ownership and unavailable profiles without changing report classification.
-// Rules: rules/memory/allocation.md — §§5,6,17,29(1),(3).
+// Rules: rules/memory/allocation.md — §§5,6,17,29(1),(3);
+// rules/mlir/packages/sec-mlir-dialect_package19.md — §§52–54,72–76.
 func TestAnalyseAllocationContexts(t *testing.T) {
 	file := "../../testdata/sema/allocation_context_facts_valid.sec"
 	data, err := os.ReadFile(file)
@@ -39,7 +40,11 @@ func TestAnalyseAllocationContexts(t *testing.T) {
 					t.Fatal(want, output.String())
 				}
 			}
-			for _, want := range []string{"implicit allocation context:", "profile " + profile, "explicit Arena allocation domain:", "(receiver moved)", "created Arena domain:", "backing allocation context unresolved", "allocation context/domain unresolved"} {
+			backing := "backing allocation context: unavailable; profile " + profile + "; origin Unknown"
+			if profile == "hosted" || profile == "embedded-arena" {
+				backing = "backing allocation context: available; profile " + profile + "; origin Arena"
+			}
+			for _, want := range []string{"implicit allocation context:", "profile " + profile, "explicit Arena allocation domain:", "(receiver moved)", "created Arena domain:", backing, "allocation context/domain unresolved"} {
 				if !strings.Contains(output.String(), want) {
 					t.Fatal(want, output.String())
 				}

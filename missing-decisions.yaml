@@ -1,6 +1,6 @@
 schema_version: 1
-updated: "2026-11-16"
-last_id: MD-136
+updated: "2026-11-17"
+last_id: MD-138
 purpose: >-
   Tracks normative decisions that are missing or insufficiently precise and
   therefore constrain implementation. Remove an entry only after the owning
@@ -176,8 +176,16 @@ decisions:
       unresolved; S1098 reports this missing positive context without claiming
       the target physically lacks an allocator. Full profile-family resolution
       remains owned by platform.target-profiles.
+      Decided by the owner on 2026-11-17
+      (rules/corrections/applied/MD-034-freestanding-allocation-principle-20261117-20261117.md):
+      freestanding is not synonymous with noalloc; heap allocation is disabled
+      by default, and a resolved profile may explicitly enable a compatible,
+      positively supported provider, with no host fallback. Normatively
+      synchronized 2026-11-17 (allocation.md § 22(7)-(9), target_profiles.md
+      § 7). Implementation is pending under platform.target-profiles, which
+      also records the missing Target/Variant profile-selection syntax.
     classification: constraining
-    status: open
+    status: decided-implementation-pending
 
 
   - id: MD-039
@@ -501,8 +509,16 @@ decisions:
       validated byte boundaries to rune indexes internally. Decide whether
       the str edit API stays byte-offset based (and how callers obtain byte
       boundaries) or moves to rune indexes (removing NotRuneBoundary).
+      Decided by the owner on 2026-11-16
+      (rules/corrections/applied/MD-090-stdlib-str-rune-edit-positions-20261116-20261117.md):
+      edit positions are zero-based rune indexes and NotRuneBoundary is
+      removed. Synchronized 2026-11-17: stdlib_str.md §§ 11.1-11.9, edit.sec
+      (borrowed StringView ranges into the new view-capable Builder.Append)
+      and edit_test.sec (56 tests) analyze without new diagnostics. The tests
+      cannot execute until native string materialization (P23); remove this
+      entry when they have run.
     classification: localized
-    status: open
+    status: decided-implementation-pending
   - id: MD-095
     area: atomic-capability-requirement-keys
     rulebooks:
@@ -1233,33 +1249,6 @@ decisions:
     classification: localized
     status: open
 
-  - id: MD-134
-    area: event-handler-payload-ownership
-    rulebooks:
-      - rules/concurrency/events.md
-      - rules/declarations/functions.md
-      - rules/declarations/lambda-functions.md
-      - rules/memory/ownership.md
-      - rules/memory/borrowing.md
-    description: >-
-      Raised by rules/corrections/events-normative-fix-20261113.md, sections
-      0(3) and 10-11. events.md section 10(1) declares an owning by-value
-      fn(data: T) void handler, while sections 11(1)-(3) require borrowed
-      synchronous delivery without taking ownership or implicitly cloning
-      move-only payloads. Multiple independent subscribers cannot all receive
-      ownership of the same move-only T under the ordinary function rules.
-      Decide the exact Publish argument and Subscribe callback signature,
-      payload lifetime, capture/borrow constraints and behavior for copyable
-      and move-only T. A borrowed fn(ref T) callback and a constrained
-      by-value/copy delivery model are distinct alternatives, not approved
-      conventions. The owner confirmed on 2026-11-13 that MD-134 will be
-      supplied as a separate correction file. Preserve sections 10-11 until
-      then; current frontend fn(T) checking is evidence, not a normative
-      decision. Independent event modernization and governance extraction
-      may proceed, but full revision 2.0 synchronization and payload-mode
-      conformance remain blocked. Governance owner: concurrency.events-v2.
-    classification: constraining
-    status: open
   - id: MD-135
     area: dynamic-array-append-failure-element-ownership
     rulebooks:
@@ -1305,4 +1294,54 @@ decisions:
       example, not the defined constructors or their Sema plans. Governance
       owner: lowering.sec-mlir-package19.
     classification: localized
+    status: open
+
+  - id: MD-137
+    area: channel-capability-set-literal
+    rulebooks:
+      - rules/concurrency/channels.md
+      - rules/foundations/grammar.md
+      - rules/collections/collections.md
+    description: >-
+      channels.md section 20(2) constructs ChannelOptions with
+      `Capabilities: { ChannelCapability.Revocation ChannelCapability.Expiration }`,
+      a brace set literal, but grammar.md section 3(2) states that map and set
+      literal syntax is not finalized, and the parser accepts no set literal
+      in a value position. So no source can supply a non-empty
+      `set[ChannelCapability]`: Capabilities can only be omitted, defaulting
+      to the empty set. Decide the set literal syntax (or a channel-specific
+      compile-time capability form) and the rule that makes a
+      Capabilities value compile-time-known (section 6(3)). This blocks
+      selecting any optional capability and validating unsupported capability
+      combinations (sections 6(5), 56(4)). It does not block fallible
+      construction or the MaxSenders checks, which are implemented
+      (2026-11-17). Governance owner: concurrency.channels-v2.
+    classification: constraining
+    status: open
+
+  - id: MD-138
+    area: cancellation-requirement-function-types
+    rulebooks:
+      - rules/concurrency/cancellation.md
+      - rules/declarations/lambda-functions.md
+      - rules/types/types.md
+    description: >-
+      cancellation.md section 21 says storing a cancellation- or
+      task-dependent function in a callable value preserves the requirement
+      and that callable compatibility includes it (21(3)-(4)). There is no
+      source syntax for a function type that carries the requirement. Calls
+      through a value with a closed target set already propagate it
+      (`let callback := Inner; callback()` and `let typed: fn() void := Inner`
+      are checked, 2026-11-17). A value reaching an open target set is not:
+      `fn Run(callback: fn() void) { callback() }` called as `Run(Inner)`
+      accepts a Task.Current()-dependent Inner from ordinary program entry,
+      because the parameter's declared fn type erases the requirement.
+      Decide the meaning of a declared function type. Option (a): it is
+      context-free, and converting a requirement-bearing callable to it is
+      rejected; requirement-bearing callables then live only in inferred
+      bindings. Option (b): it is effect-polymorphic or carries an implicit
+      requirement, and calls through open targets are checked conservatively.
+      Option (c): new syntax lets a function type declare the requirement.
+      Governance owner: frontend.cancellation-effect-v1.
+    classification: constraining
     status: open

@@ -1,0 +1,26 @@
+module main
+
+@noPanic
+@noAlloc
+@noBlock
+fn Orders() void {
+    atomic.Fence(MemoryOrder.Acquire)
+    atomic.Fence(MemoryOrder.Release)
+    atomic.Fence(MemoryOrder.AcqRel)
+    atomic.Fence(MemoryOrder.SeqCst)
+    atomic.Fence(MemoryOrder.SeqCst)
+}
+
+fn Caller() void {
+    Orders()
+}
+
+fn Mixed(pointer: RawPtr[int]) void {
+    unsafe {
+        pointer.Write(1)
+    }
+    atomic.Fence(MemoryOrder.Release)
+    unsafe {
+        discard pointer.Read()
+    }
+}

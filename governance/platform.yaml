@@ -142,6 +142,8 @@ integrations:
       - internal/sema/analyzer.go
       - internal/sema/call_graph.go
       - cmd/lsp/main.go
+      - internal/sema/raw_pointer_operations.go
+      - internal/sema/raw_pointer_volatile.go
     implemented:
       - accepted @address bindings retain Addressed and Volatile metadata while binding mutability remains separate
       - ordinary RawPtr Read, Write, Offset, AddBytes and Difference remain distinct compiler-known operations
@@ -152,9 +154,11 @@ integrations:
       - successful volatile calls publish ordered volatile-read or volatile-write effect sites
       - LSP completion, semantic classification and hover consume the same compiler-known registry entries
       - LSP completion marks the operations unsafe and effectful while hover exposes their stable identity and effect
+      - Direct VolatileRead/VolatileWrite on a generic pointee T is rejected without a proven physical eligibility contract, including inside generic impl methods and with ordinary interface constraints. The shared Sema guard preserves RawPtr[void] diagnostics and ordinary generic Read/Write, publishes no successful volatile effect for rejected operations, and is shared by CLI and LSP. Concrete pointees still require the separately tracked CompilationPlan-sensitive physical access plan before lowering.
+      - VolatileRead/VolatileWrite on struct, array, union and Result aggregate pointees now requires an explicit physical layout and access contract; the current frontend supplies no verified aggregate access contract and rejects such operations before publishing successful volatile effects or IR. Regressions cover empty and ordinary structs, named struct/array wrappers, fixed and dynamic arrays, generic struct instantiations, unions, Option and Result. Ordinary raw-pointer aggregate Read/Write, user methods with volatile-like names and concrete scalar volatile sites retain their separate checks. Physical contract production, aggregate realization and target-sensitive eligibility remain open.
     incorrect_or_partial:
       - current accepted @address Symbol.Volatile metadata is not end-to-end volatile support
-      - volatile frontend eligibility is currently limited to concrete non-void pointee and assignment compatibility
+      - frontend eligibility excludes void, unproven generic pointees and aggregates without physical access contracts; complete representation validity and CompilationPlan-sensitive eligibility remain incomplete
       - physical VolatileReadable and VolatileWritable eligibility is not CompilationPlan-sensitive yet
       - the effect sites do not yet carry resolved physical-access contracts or occurrence identities into Semantic IR
     remaining:
@@ -178,8 +182,6 @@ integrations:
       - allow read-modify-write only when the complete owning contract defines a semantics-preserving operation
       - introduce CompilationPlan-sensitive volatile readable and writable eligibility
       - reject physical materialization that bypasses value domains, ownership, validity, destruction, or runtime invariants
-      - require explicit physical layout/access contracts for aggregate volatile access
-      - prevent unconstrained generic T from implicitly satisfying volatile eligibility
       - ensure @address declarations themselves perform no physical access or implicit initialization
       - carry external-storage/volatile effects and resolved contracts through Semantic IR and Sec MLIR
       - make target lowering reject impossible physical materialization rather than approximate semantics
@@ -207,6 +209,21 @@ integrations:
       - atomic memory-order semantics
       - target/device knowledge-pack format
       - general C-style volatile types or @volatile source syntax
+    tests:
+      - internal/sema/volatile_generic_test.go
+      - cmd/compiler/volatile_generic_test.go
+      - cmd/lsp/volatile_generic_test.go
+      - testdata/sema/volatile_generic_invalid.sec
+      - testdata/sema/volatile_generic_valid.sec
+      - internal/sema/volatile_aggregate_test.go
+      - testdata/sema/volatile_aggregate_invalid.sec
+      - testdata/sema/volatile_aggregate_valid.sec
+    revised: "2026-11-17"
+    verification:
+      - command: GOTMPDIR="$HOME/.cache/sec-gotmp" go test -p 4 ./internal/sema -count=1 -timeout=120s; GOTMPDIR="$HOME/.cache/sec-gotmp" go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run "TestVolatile(Aggregate|Generic)Eligibility|TestCompilerKnownRawPointerVolatile|TestVolatilePhysicalPlanBoundary" -count=1 -timeout=120s; GOTMPDIR="$HOME/.cache/sec-gotmp" go test -p 4 ./internal/ir/semantic -run TestVolatile -count=1 -timeout=120s; GOTMPDIR="$HOME/.cache/sec-gotmp" go vet ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: "Passed 2026-11-17: full Sema 27.199s; focused Sema/CLI/LSP 0.076s/0.132s/3.887s; volatile Semantic IR tests 0.151s; vet passed. All 20 aggregate invalid accesses were accepted before the fix. Regressions cover ten aggregate type forms, both read and write, rejection without volatile effects or IR artifacts, exact LSP call lines, unchanged ordinary aggregate pointer access, user-defined methods and concrete scalar volatile snapshots. This completes the explicit-contract frontend guard; producing verified physical contracts and aggregate target realization remain open."
+      - command: GOTMPDIR="$HOME/.cache/sec-gotmp" go test -p 4 ./internal/sema -count=1 -timeout=120s; GOTMPDIR="$HOME/.cache/sec-gotmp" go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run "TestVolatileGenericEligibility|TestCompilerKnownRawPointerVolatile|TestVolatilePhysicalPlanBoundary" -count=1 -timeout=120s; GOTMPDIR="$HOME/.cache/sec-gotmp" go vet ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: "Passed 2026-11-17: full Sema 27.104s; final focused Sema/CLI/LSP 0.040s/0.074s/1.866s; vet passed. Before the fix all six invalid generic read/write sites were accepted. Regressions cover unconstrained parameters, ordinary-interface constraints, generic impl methods, exact diagnostic lines, rejection without successful volatile effects or partial IR artifacts, valid ordinary generic pointer operations and concrete volatile access inside generic declarations. CompilationPlan-sensitive physical eligibility and target lowering remain open."
 
   - id: platform.interrupts-v1
     area: platform-interrupts
@@ -541,6 +558,8 @@ integrations:
       - rules/analysis/isr_analysis.md
       - rules/projects/projects.md
     remaining:
+      - "MD-034 configuration gap (2026-11-17; correction § 3(3)): no project/target declaration can select a target-profile family, explicitly enable a compatible allocation capability or name its provider (supplied/preallocated Arena or another explicit provider) for a Target/Variant. projects.md § 19(7) only lists a Variant `profile` field owned by these rules, and `[profile.*]` holds compiler options. The selection syntax must be specified before allocation-capable freestanding profiles can be implemented; no manifest key or target name is invented here."
+      - "MD-034 implementation (correction §§ 2(5), 3(4)-(5)): once the selection exists, resolve freestanding/BareMetal into the frozen ResolvedTargetProfile with heap allocation disabled by default and an explicitly enabled, positively supported provider. Then replace the interim unresolved `freestanding` mapping in internal/layout/allocation_capabilities.go and cover the conformance families: disabled allocation, enabled supplied context, unknown/unsupported provider without host fallback, illegal overrides, allocation-free freestanding source, CLI/LSP/IR agreement, ISR restrictions and fingerprints."
       - introduce canonical TargetProfile and immutable ResolvedTargetProfile models distinct from platform, runtime, execution environment, device, architecture, and BuildProfile
       - implement Hosted, RTOS, and BareMetal compiler-known profile families
       - implement Required, EnabledIfSupported, Disabled, and TargetDefined family dispositions and resolve them completely before CompilationPlan freeze

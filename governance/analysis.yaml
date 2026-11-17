@@ -1066,7 +1066,7 @@ integrations:
     remaining:
       - prove that no validity-preserving dependency crosses Arena.Reset or Arena.Release
       - allocation-context propagation and complete allocation-effect inference through function bodies
-      - "statically impossible alignment (explicit alignment syntax decided by MD-019 on 2026-11-05: `minAlign(N)`, layout.md \u00a7 28(5); waits on its Sema validation), count-overflow, and allocation diagnostics (arena.md \u00a7 17(5), \u00a7 89) once the shared canonical layout-resolution service (frontend.layout) supplies byte size and alignment; runtime checked count/offset arithmetic and dynamic alignment failure belong to lowering"
+      - "statically impossible alignment (explicit alignment syntax decided by MD-019 on 2026-11-05: `minAlign(N)`, layout.md § 28(5); waits on its Sema validation), count-overflow, and allocation diagnostics (arena.md § 17(5), § 89) once the shared canonical layout-resolution service (frontend.layout) supplies byte size and alignment; runtime checked count/offset arithmetic and dynamic alignment failure belong to lowering"
       - allocation failure handling beyond ordinary Result syntax
       - complete ownership, move-state, and storage-origin propagation through references, slices, and Semantic IR
       - explicit arena allocation operations in Semantic IR and lowering through MLIR and LLVM
@@ -1234,7 +1234,7 @@ integrations:
         result: passed on 2026-10-11 with stale holder uses after if, if/else, switch, while, for, break and loop-backedge joins, and valid terminating-branch, reset-then-allocate and use-before-reset programs
       - command: go test ./... -count=1
         result: passed on 2026-10-11 except the unrelated stale generated unicode.sec check; `sec sema sec` reports the same 59 library errors as HEAD
-    bug_reference:
+    bug_reference: null
     governance_reconciliation:
       - Narrow "semantic validation of mutable Arena.Reset calls" to syntax, receiver mutability, and generation mutation until dependency-crossing legality is implemented.
       - Keep stale-generation rejection as implemented in its represented subset; it is not the same as Reset legality proof.
@@ -1311,21 +1311,24 @@ integrations:
 
   - id: analysis.unsafe
     status: partial
-    revised: "2026-10-15"
+    revised: "2026-11-17"
     rules:
       - rules/memory/unsafe.md
       - rules/platform/inline_assembly.md
+      - rules/memory/raw_pointers.md
+      - rules/foundations/operators.md
+      - rules/analysis/call_graph.md
     remaining:
-      - build trust-provenance graph
       - propagate unsafe callable compatibility through interfaces/generics/dynamic dispatch (MD-059 decided 2026-10-16 that Sec 0.1 has no unsafe function type, so no unsafe function values exists (MD-059); named function values are covered, and interface requirements and impl methods have no unsafe form yet
-      - integrate canonical effects beyond the verified @noPanic/@noAlloc/@noBlock contracts (MayIO, MayAccessVolatile and the other § 15(2) effects have no unsafe-specific facts yet)
-      - "reject compiler-known false caller obligations even inside unsafe beyond the proven-null raw-pointer dereference slice: alignment, lifetime/dangling, range, alias and representation obligations, null facts carried through copies, fields and calls, and proven-null raw-to-safe conversion (raw_pointers.md § 18(5), unsafe.md § 21(3)-(5), § 22(4))"
+      - "reject compiler-known false caller obligations even inside unsafe beyond represented null and known-origin proofs: alignment, lifetime/dangling, range, alias and representation obligations, null facts carried through fields and calls, and remaining raw-to-safe validity obligations (raw_pointers.md § 18(5), unsafe.md § 21(3)-(5), § 22(4)); immutable null copies and pure compound/negated null-test continuations are covered"
     implemented:
       - "MD-059 integrated (2026-10-16, rules/corrections/applied/md059-ffi-unsafe-callables-correction-20261016.md): Sec 0.1 has no unsafe function type (grammar.md FunctionType note, unsafe.md §§ 39(6)-(7), 40(6), 41(5), ffi.md §§ 25, 42); the parser rejects `unsafe fn(...)` in let, parameter, return and field type positions with an explanatory ParserInvalidTypeReference diagnostic instead of a generic missing-type error; S1141 help explains declaration vs native fn type vs foreign c::fn (TestMD059NoUnsafeFunctionType). Known hole (verified 2026-10-16): `c::callback` and `c::fn` are still parser-level unsupported foreign forms, so MD-059 § 9(2)-(5) callback cases cannot be tested; the callback trusted-fact encoding is MD-078"
       - "unsafe function values (2026-10-10, unsafe.md § 39(1)-(2), § 50(2)): FunctionType has no unsafe form (MD-059), so a named unsafe function or unsafe extern function used as a function value, whether inferred, typed by an expected function type, or passed as a callback argument, is mandatory S1141 unsafe.function-value-mismatch, also inside unsafe contexts; direct unsafe calls and safe wrapper functions used as values stay valid (§ 39(3))"
       - "proven null raw-pointer dereference (2026-10-10, raw_pointers.md § 7(6)-(8), § 34; unsafe.md § 8(6), § 21(2)): RawPtr Read, Write, VolatileRead and VolatileWrite through an immutable binding initialized with null, or through a stable binding (never assigned, mutably borrowed or captured) that a dominating `is null` test or the failed edge of `is not null` (else branch, code after an early exit, through !, true && and false ||) fixes as null, is mandatory S1142 unsafe.raw-pointer-null even inside unsafe; unproven, non-null, reassigned and mutable cases stay accepted"
       - "effects remain active through unsafe (2026-10-10, unsafe.md § 15-18): unsafe blocks and unsafe fn wrappers never suppress effect verification; @noPanic (S1092), @noAlloc (S1108) and @noBlock (S1116) stay violated through either form"
       - "unsafe fn bodies obey unsafe.md §7(1–5) and §4(6–7) as written: caller obligations do not grant lexical unsafe permission, each body starts outside unsafe context and explicit operation/block markers remain required. MD-060 is resolved without an asm exception or output escaping: Linux syscall/process/io sources use explicit blocks, with named asm outputs returned inside their defining block. Sema and LSP reject unmarked raw-pointer operations, unsafe calls and asm; every CLI frontend/emission gate rejects them before output, while explicit named-output asm still emits LLVM. The obsolete LLVM test relying on implicit body permission is migrated to a source fixture and a focused backend regression."
+      - "Trust-provenance graph (2026-11-17, unsafe.md §§3.4,13–14): Analyzer.TrustProvenance consumes the canonical call graph and unsafe operation sites across represented execution edges, retaining caller-facing safety, introducing operations and obligations, direct foreign dependencies and deterministic shortest transitive witnesses. Open-target implementation uncertainty has a separate direct/transitive witness, including recursive and deferred paths, and cannot erase known trust or become a trust-freedom claim. Extern declarations themselves remain trusted foreign implementations. Queries detach obligation slices and path/foreign lists. CLI verbose reports and LSP hover consume the shared facts; no parallel graph or callable-type guarantee is introduced."
+      - "Canonical unsafe effect integration (2026-11-17, unsafe.md §§13(3–6),15(1–5)): TrustProvenance.Effects consumes the existing CallableDomainSummary for all nine canonical may-effect domains, independently of caller-facing safety and implementation trust. Safe wrappers and recursive same-stack paths retain known effects; foreign/open-target uncertainty remains separate and never becomes effect freedom. Unsafe status alone invents no effects. Canonical domain causes, source sites, paths and unknown domains remain detached snapshots. Optional CLI trust reports and LSP provenance hover show known and unknown effects separately. Source-backed volatile/wrapper/recursive/open/foreign tests plus canonical producer facts cover all nine domains; no parallel graph, new effect contract, producer inference or safety guarantee was introduced."
     code:
       - internal/sema/unsafe_callable_values.go
       - internal/sema/raw_pointer_null_proof.go
@@ -1341,6 +1344,9 @@ integrations:
       - sec/platform/linux/armv7/raw_syscall.sec
       - sec/platform/linux/process.sec
       - sec/stdlib/io/write.linux.amd64.sec
+      - internal/sema/trust_provenance.go
+      - cmd/compiler/analyse_trust.go
+      - cmd/lsp/unsafe_actions.go
     tests:
       - internal/sema/unsafe_callable_values_test.go
       - internal/sema/raw_pointer_null_proof_test.go
@@ -1354,7 +1360,36 @@ integrations:
       - testdata/tooling/unsafe_callable_body_invalid.sec
       - testdata/tooling/unsafe_callable_body_valid.sec
       - testdata/tooling/raw_pointer_unsafe_body_invalid.sec
+      - internal/sema/raw_null_continuation_test.go
+      - cmd/compiler/raw_null_alias_test.go
+      - cmd/lsp/raw_null_alias_test.go
+      - testdata/sema/raw_null_continuation_invalid.sec
+      - testdata/sema/raw_null_continuation_valid.sec
+      - internal/sema/trust_provenance_test.go
+      - cmd/compiler/analyse_trust_test.go
+      - cmd/lsp/trust_provenance_hover_test.go
+      - testdata/analysis/trust_graph.sec
+      - internal/sema/unsafe_effect_summary_test.go
+      - cmd/compiler/unsafe_effect_summary_test.go
+      - cmd/lsp/unsafe_effect_summary_test.go
+      - testdata/analysis/unsafe_effects.sec
     verification:
+      - command: go vet ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-11-17
+      - command: go test -p 4 ./cmd/compiler ./cmd/lsp -run 'TestAnalyseUnsafeCanonicalEffects|TestUnsafeCanonicalEffectsHover|TestTrustProvenance|TestAnalyseTrustProvenance' -count=1 -timeout=120s
+        result: "passed on 2026-11-17 (compiler 18.795s, LSP 23.849s): known volatile effects survive safe wrappers and recursion; open/foreign uncertainty remains distinct; optional report selection and existing trust provenance behavior retained"
+      - command: go test -p 4 ./internal/sema -count=1 -timeout=120s
+        result: "passed on 2026-11-17 (26.646s): full Sema suite including canonical unsafe effect integration; all nine effect domains, safety separation, source causes and detached queries"
+      - command: GOTMPDIR="$HOME/.cache/sec-gotmp" go vet ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-11-17
+      - command: GOTMPDIR="$HOME/.cache/sec-gotmp" go test -p 4 ./cmd/compiler ./cmd/lsp -run "^TestAnalyseTrustProvenance|^TestTrustProvenance|^TestAtomicSourceFormatting$" -count=1 -timeout=120s
+        result: passed on 2026-11-17 (compiler 20.781s, LSP 21.686s); optional reports and hover preserve direct/transitive implementation uncertainty and safe wrapper boundaries; the two corrected atomic fence fixtures pass canonical formatting
+      - command: GOTMPDIR="$HOME/.cache/sec-gotmp" go test -p 4 ./internal/sema -count=1 -timeout=120s
+        result: passed on 2026-11-17 (36.532s); trust graph covers direct/foreign/closed/open/recursive/deferred targets, independently retains known and unknown witnesses, preserves public safety and detaches all queried slices
+      - command: GOTMPDIR="$HOME/.cache/sec-gotmp" go test -p 4 ./cmd/compiler ./cmd/lsp -run "^TestRawNullAlias" -count=1 -timeout=120s
+        result: passed on 2026-11-17 (compiler 8.910s, LSP 5.795s); canonical null error, declaration links and help survive both transports; rejected source emits no IR artifact; conservative valid cases remain accepted
+      - command: GOTMPDIR="$HOME/.cache/sec-gotmp" go test -p 4 ./internal/sema -count=1 -timeout=120s
+        result: passed on 2026-11-17 (28.159s); six composite null-continuation errors reproduced as absent before the fix; all Sema tests pass after preserving pure false-edge facts
       - command: GOCACHE=/tmp/sec-go-cache go test ./internal/sema ./internal/codegen/llvm ./cmd/compiler ./cmd/lsp -count=1
         result: passed on 2026-10-15 across all four complete packages; Sema 14.430s, LLVM 0.038s, compiler 73.755s and LSP 284.768s; explicit unsafe contexts and named asm output codegen regressions are integrated
       - command: GOCACHE=/tmp/sec-go-cache go vet ./internal/sema ./internal/codegen/llvm ./cmd/compiler ./cmd/lsp
@@ -1371,6 +1406,8 @@ integrations:
         result: passed on 2026-10-10 with S1142 for null-initialized, then-branch, early-exit, else-edge and negated-conjunction proofs and acceptance of unproven, non-null, disjunctive, reassigned-parameter and mutable cases; S1141 for typed, inferred, callback-argument, in-unsafe and unsafe-extern function values, valid direct unsafe calls and safe wrapper values, and @noPanic/@noAlloc/@noBlock violations through unsafe blocks and unsafe fn wrappers
       - command: go test ./... -count=1
         result: passed across all packages on 2026-10-10; `sec sema sec` reports no S1141 or S1142 in the library sources
+    partial:
+      - "Known-invalid pointer obligations: pure negated and compound null tests now retain false-edge facts in else branches and after early exits. Read, Write, VolatileRead, VolatileWrite, AsRef and AsRefMut reject a proven-null continuation, including immutable copies. Ambiguous logical alternatives, reassigned pointers and effectful conditions do not acquire a new null proof. General field/call propagation and other pointer obligations remain incomplete."
 
   - id: analysis.reference-model
     area: reference-validity-epoch-relocation-analysis
@@ -1546,14 +1583,13 @@ integrations:
 
   - id: analysis.iterator
     area: iterator-conformance-analysis
-    status: partial
+    status: implemented
     repository_baseline: 998d8d1
     updated: "2026-10-07"
     rules:
       - rules/control-flow/flowcontrol_for.md
       - rules/compiler/compiler_analysis.md
-    remaining:
-      - consume ResolvedForIteration in Semantic IR instead of AST rediscovery (LSP already shares it through the call graph)
+    remaining: []
     implemented:
       - ForIterationDependenciesOf publishes detached canonical source storage and iterator lifetime facts for protocol and built-in loops, distinguishing reusable storage from fresh temporary loop state and its destruction at every loop exit; source storage and recorded backing-reference carriers retain live-storage and structural-stability requirements without rediscovering Next
       - canonical live-borrow facts are observed at loop entry, during body checking before lexical holder cleanup, at the backedge and at exit; facts distinguish reference loop bindings, source-dependent body borrows, independent owned yielded-value borrows, loop-carried borrows and holders surviving loop exit, with each nested loop retaining its own canonical storage relationships
@@ -1563,6 +1599,7 @@ integrations:
       - compiler-known Iterator[T] is an ordinary generic InterfaceType whose conformance comes only from explicit implements Iterator[T]; Next is never discovered by name
       - ResolvedForIteration is one immutable plan carrying the concrete Iterator[T] conformance, yielded T, resolved Next target and its call-graph CallableID, reusable-storage versus fresh-temporary source state with the source Place, owned-value versus discard binding, and DestroysTemporary cleanup for a non-trivially destructible fresh iterator
       - every Iterator[T] loop records a static-method call edge to the concrete Next, so Next effects, panic and allocation cause paths, @noPanic verification, reachability, and LSP call hierarchy consume the same compiler-owned resolution
+      - "2026-11-17: Semantic IR consumes ResolvedForIteration instead of rediscovering iteration: a compiler-known Iterator[T] loop over reusable iterator storage is built from the plan (buildIteratorFor; loop kind for-iterator) as a borrow of the storage with the receiver reference plan Sema now publishes for the iterable (mutable when the resolved Next mutates self), a direct call of the plan's concrete Next, a Some test, a copy-trivial bound or discarded yielded value and the body; None and break leave the loop. Fresh temporary iterators, borrowed ref mut Iterator[T] views, generic Next and non-copy-trivial elements stop at named boundaries (internal/ir/semantic/iterator_loops.go, internal/sema/analyzer_for.go; testdata/semantic_ir/iterator_loops.sec; TestSchema13IteratorLoops)."
     code:
       - internal/sema/iterator_dependencies.go
       - internal/sema/analyzer.go

@@ -1,0 +1,33 @@
+module main
+
+extern "C" fn external_effect() int32
+
+unsafe fn VolatileLeaf(pointer: RawPtr[byte]) byte {
+    unsafe {
+        return pointer.VolatileRead()
+    }
+}
+
+fn SafeWrapper(pointer: RawPtr[byte]) byte {
+    return unsafe VolatileLeaf(pointer)
+}
+
+fn MixedEffects(pointer: RawPtr[byte], callback: fn() void) void {
+    discard SafeWrapper(pointer)
+    callback()
+}
+
+fn ForeignWrapper() int32 {
+    return unsafe external_effect()
+}
+
+fn RecursiveEffects(pointer: RawPtr[byte], again: bool) byte {
+    if again {
+        return RecursiveEffects(pointer, false)
+    }
+    return SafeWrapper(pointer)
+}
+
+unsafe fn PlainUnsafe() void {}
+
+fn PlainSafe() void {}

@@ -90,8 +90,9 @@ func (a *Analyzer) recordRawPointerOriginBinding(name string, value ast.Expressi
 // pointer's origin: forming `ref mut T` while any live borrow overlaps the
 // origin, or `ref T` while a mutable one does, is a proven authority
 // conflict, and an origin whose owner no longer holds a value is a proven
-// dangling address. Both are errors even inside unsafe.
-// Rules: rules/memory/raw_pointers.md — §§17(3–5),18(5),34;
+// dangling address. Raw reads/writes obey the same availability and live-borrow
+// obligations, without forming a safe reference or extending storage lifetime.
+// Rules: rules/memory/raw_pointers.md — §§11–13,17(3–5),18(5),23(4),24(7),34;
 // rules/corrections/applied/md070-rawptr-safe-reference-conversions-correction-20261021.md — §5(3).
 func (a *Analyzer) rejectKnownRawOriginConflict(member *ast.MemberExpression, mutable bool) bool {
 	ident, ok := member.Object.(*ast.Identifier)
@@ -104,14 +105,27 @@ func (a *Analyzer) rejectKnownRawOriginConflict(member *ast.MemberExpression, mu
 	}
 	origin := *symbol.RawPointerOrigin
 	if invalidatedAt, _, _, unavailable := a.unavailablePlace(origin); unavailable {
+		access := "form a reference to"
+		switch member.Property.Value {
+		case "Read", "VolatileRead":
+			access = "read from"
+		case "Write", "VolatileWrite":
+			access = "write to"
+		}
 		a.reportRawPointerProvenInvalid(member.Property.Token, invalidatedAt, diagnostics.RawPointerDanglingOrigin, "originating value became unavailable here",
-			"Keep the originating storage live and owned for the complete reference lifetime, or obtain a new pointer from valid storage. Adding unsafe cannot restore a moved or destroyed value, and a raw pointer does not retain its owner.",
-			"RawPtr.%s through %s would form a reference to %s, which no longer holds a value; unsafe does not make a known dangling address valid", member.Property.Value, ident.Value, origin.String())
+			"Keep the originating storage live and owned for the complete access or reference lifetime, or obtain a new pointer from valid storage. Adding unsafe cannot restore a moved or destroyed value, and a raw pointer does not retain its owner.",
+			"RawPtr.%s through %s would %s %s, which no longer holds a value; unsafe does not make a known dangling address valid", member.Property.Value, ident.Value, access, origin.String())
 		return true
 	}
 	action := "form a shared reference through RawPtr.AsRef to"
+	if member.Property.Value == "Read" || member.Property.Value == "VolatileRead" {
+		action = "read through RawPtr." + member.Property.Value + " from"
+	}
 	if mutable {
 		action = "form a mutable reference through RawPtr.AsRefMut to"
+		if member.Property.Value == "Write" || member.Property.Value == "VolatileWrite" {
+			action = "write through RawPtr." + member.Property.Value + " to"
+		}
 		return a.checkBorrowedMutationPlaceForAction(origin, member.Property.Token, action)
 	}
 	return a.checkBorrowedReadPlaceForAction(origin, member.Property.Token, action)

@@ -1,0 +1,216 @@
+module calendar
+
+/*
+ * Sec Standard Library — temporal/calendar
+ * File: calendar/partial_validation.sec
+ * Purpose: Shared partial-date validation.
+ * Revision: 0.1
+ * Updated: 2026-11-17
+ *
+ * No missing date components are invented.
+ * Witness years are used only for existence checks.
+ */
+
+/**
+ * Selects a valid witness year for an unspecified year.
+ *
+ * Description:
+ * Gregorian and Julian use leap year 2000.
+ * Hebrew uses 5784 or complete year 5785.
+ * Islamic tabular uses leap year 1447.
+ *
+ * The witness is never stored in the partial date.
+ *
+ * Parameters:
+ * - value: Partial calendar coordinates.
+ * - system: Calendar used for validation.
+ *
+ * Returns:
+ * Known year or a suitable witness year.
+ *
+ * Ownership:
+ * Pure calculation without allocation.
+ */
+fn _partialWitnessYear(value: PartialDate, system: CalendarSystem) int {
+    if value.Year is Some(year) {
+        return year
+    }
+
+    match system {
+        CalendarSystem.Gregorian => return 2000
+        CalendarSystem.Julian => return 2000
+
+        CalendarSystem.Hebrew => {
+            // A complete Hebrew year is required when
+            // Heshvan or Kislev must have thirty days.
+            if value.Month is Some(month) {
+                if month.Number in [2, 3] {
+                    if value.Day is Some(day) {
+                        if day == 30 {
+                            return 5785
+                        }
+                    }
+                }
+            }
+
+            // Leap year 5784 includes Adar I.
+            return 5784
+        }
+
+        CalendarSystem.IslamicTabular => {
+            // AH 1447 includes day 30 of Dhu al-Hijjah.
+            return 1447
+        }
+    }
+}
+
+/**
+ * Checks whether a calendar-month interval fits core date.
+ *
+ * Description:
+ * Both endpoints are checked. The dates between them
+ * form one consecutive interval of absolute days.
+ *
+ * Parameters:
+ * - year: Calendar-native year.
+ * - month: Valid month identity.
+ * - firstDay: First possible day of month.
+ * - lastDay: Last possible day of month.
+ * - system: Calendar system.
+ *
+ * Returns:
+ * True when at least one candidate is representable.
+ *
+ * Errors:
+ * - CalendarError: Unexpected conversion failure.
+ *
+ * Ownership:
+ * Pure calculation without allocation.
+ */
+fn _partialMonthIntersectsCore(year: int, month: CalendarMonth, firstDay: int, lastDay: int, system: CalendarSystem) Result[bool, CalendarError] {
+    let first := CalendarFields {
+        Year: year,
+        Month: month,
+        Day: firstDay,
+    }
+
+    match ToDate(first, system) {
+        Ok(_) => return Ok(true)
+        Err(CalendarError.OutOfRange) => {
+        }
+        Err(e) => return Err(e)
+    }
+
+    if firstDay == lastDay {
+        return Ok(false)
+    }
+
+    let last := CalendarFields {
+        Year: year,
+        Month: month,
+        Day: lastDay,
+    }
+
+    match ToDate(last, system) {
+        Ok(_) => return Ok(true)
+        Err(CalendarError.OutOfRange) => return Ok(false)
+        Err(e) => return Err(e)
+    }
+}
+
+/**
+ * Validates partial calendar coordinates.
+ *
+ * Description:
+ * Searches the months of a known or witness year.
+ * Missing components are constraints left open.
+ * At least one matching date must fit core date.
+ *
+ * Parameters:
+ * - value: Partial date to validate.
+ * - system: Calendar system.
+ *
+ * Returns:
+ * Ok() when at least one date satisfies the input.
+ *
+ * Errors:
+ * - CalendarError.InvalidYear: Invalid calendar year.
+ * - CalendarError.InvalidMonth: No matching month.
+ * - CalendarError.InvalidDay: No matching day.
+ * - CalendarError.OutOfRange: Dates outside core range.
+ *
+ * Ownership:
+ * Pure calculation without allocation or I/O.
+ */
+fn _validatePartialCalendar(value: PartialDate, system: CalendarSystem) Result[void, CalendarError] {
+    let year       := _partialWitnessYear(value, system)
+    let monthCount := try MonthsInYear(year, system)
+
+    // No supported calendar has days numbered above 31.
+    if value.Day is Some(day) {
+        if day not in 1..31 {
+            return Err(CalendarError.InvalidDay)
+        }
+    }
+
+    let mut foundMonth := false
+    let mut foundDay   := false
+    let mut ordinal    := 1
+
+    while ordinal <= monthCount {
+        let month := try MonthAt(year, ordinal, system)
+
+        let mut matchesMonth := true
+
+        if value.Month is Some(requested) {
+            matchesMonth = requested.Number == month.Number && requested.IsLeap == month.IsLeap
+        }
+
+        if matchesMonth {
+            foundMonth = true
+
+            let maxDay := try DaysInMonth(year, month, system)
+
+            let mut firstDay := 1
+            let mut lastDay  := maxDay
+            let mut validDay := true
+
+            if value.Day is Some(day) {
+                if day > maxDay {
+                    validDay = false
+                } else {
+                    firstDay = day
+                    lastDay = day
+                }
+            }
+
+            if validDay {
+                foundDay = true
+
+                let representable := try _partialMonthIntersectsCore(
+                    year,
+                    month,
+                    firstDay,
+                    lastDay,
+                    system,
+                )
+
+                if representable {
+                    return Ok()
+                }
+            }
+        }
+
+        ordinal += 1
+    }
+
+    if !foundMonth {
+        return Err(CalendarError.InvalidMonth)
+    }
+
+    if !foundDay {
+        return Err(CalendarError.InvalidDay)
+    }
+
+    return Err(CalendarError.OutOfRange)
+}

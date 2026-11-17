@@ -23,7 +23,8 @@ enum CalendarSystem {
     Julian,
     // Algorithmic Hebrew lunisolar calendar; exact era rules require a child revision.
     Hebrew,
-    // Tabular Islamic calendar; never denotes observational or Umm al-Qura rules.
+    // Civil Islamic tabular calendar: Type II leap cycle,
+    // Friday epoch; excludes observation and Umm al-Qura.
     IslamicTabular,
 }
 

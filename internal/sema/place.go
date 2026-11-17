@@ -533,6 +533,14 @@ func (a *Analyzer) resolvePlacePath(expr ast.Expression) (Place, bool) {
 			base = a.canonicalDereferencePlace(expr.Object, base, objectType)
 			objectType = *objectType.Element
 		}
+		// The guard owns an acquisition, not independently movable T storage.
+		// Partial extraction needs a restoration/release proof; ordinary local
+		// ownership alone does not establish that proof.
+		// Rules: rules/concurrency/mutex.md — §§30(5),36(4–5).
+		if isMutexGuardType(objectType) {
+			base.PartialMoveSafe = false
+		}
+		objectType = mutexGuardMemberOwner(objectType)
 		if property, ok := lookupProperty(objectType, expr.Property.Value); ok {
 			base = appendPlaceProjection(base, PlaceProjection{Kind: PlaceProperty, Name: expr.Property.Value, Token: expr.Property.Token})
 			base.Type = property.Type

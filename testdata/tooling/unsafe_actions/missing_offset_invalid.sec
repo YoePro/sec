@@ -1,0 +1,5 @@
+module main
+
+fn Offset(pointer: RawPtr[int]) RawPtr[int] {
+    return pointer.Offset(1)
+}

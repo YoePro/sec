@@ -2,8 +2,8 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-07
-- **Last updated:** 2026-11-07 (revision 2.1: syntax freshness audit of §§ 22–66 against grammar.md and the construct owners — §§ 23, 27, 42–44, 47 and 58 corrected; no renumbering); 2026-10-28 (revision 2.0: first numbered revision; implementation status, fixtures and the implementation plan moved to governance; MD-003, MD-029, MD-042 and MD-102 synchronization; `rules/corrections/applied/sec-compiler-rulebooks-modernization-pass1-20261028-20261107.md`)
-- **Document revision:** 2.1
+- **Last updated:** 2026-11-17 (revision 2.2: normative/implementation separation of §§ 14.1, 27, 74, 81 and 82 from `rules/corrections/applied/parser_recovery-revision2-review-and-correction-20261102-20261117.md`; § 27 reconciled with revision 2.1 by keeping § 27(4) and adding §§ 27(5)–(7); no renumbering); 2026-11-07 (revision 2.1: syntax freshness audit of §§ 22–66 against grammar.md and the construct owners — §§ 23, 27, 42–44, 47 and 58 corrected; no renumbering); 2026-10-28 (revision 2.0: first numbered revision; implementation status, fixtures and the implementation plan moved to governance; MD-003, MD-029, MD-042 and MD-102 synchronization; `rules/corrections/applied/sec-compiler-rulebooks-modernization-pass1-20261028-20261107.md`)
+- **Document revision:** 2.2
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/compiler/parser_recovery.md`
 - **Repository baseline reviewed:** `7be8777`
@@ -566,7 +566,9 @@ inside an enum is invalid legacy syntax diagnosed with `P2028`
 
 ### § 14.1 Required node families
 
-§ 14.1(1) Add:
+§ 14.1(1) The recovery model must distinguish at least these invalid-node
+categories when malformed source is committed to the corresponding syntactic
+construct:
 
 ```text
 InvalidDeclaration
@@ -576,6 +578,10 @@ InvalidTypeReference
 InvalidPattern
 InvalidMember
 ```
+
+These categories describe the retained source structure, not successful
+semantic analysis. A parser may use any internal representation that preserves
+the corresponding observable recovery information.
 
 ### § 14.2 Common recovery metadata
 
@@ -1016,27 +1022,43 @@ zero.
 
 ## § 27 Compiler-directive recovery
 
-§ 27(1) Inside the argument list of a `@target(...)` or `@when(...)` attribute,
-or of the legacy compatibility directive `#target(...)` (`compiler.md` § 15),
-synchronize at:
+§ 27(1) Recovery of malformed canonical compiler-known attributes uses the
+attribute grammar in `rules/foundations/attributes.md`. In an `@target(...)` or
+`@when(...)` argument list, recovery respects nested delimiters and synchronizes
+at a reliable comma, the attribute's own closing `)`, the next attribute of the
+same declaration, an unambiguous following declaration, or EOF. A foreign
+delimiter is not consumed to complete the malformed attribute.
 
-```text
-,
-)
-next top-level declaration
-EOF
-```
+§ 27(2) The parser retains the attribute's name, source range, successfully
+parsed arguments, malformed argument positions and recovery events. An unknown or
+malformed argument name does not cause loss of later arguments or the
+declaration to which the attribute is attached.
 
-§ 27(2) Unknown argument names remain part of one invalid directive node.
-
-§ 27(3) Do not interpret malformed directive tokens as ordinary code inside the
-directive.
+§ 27(3) Parsing a malformed attribute must not reinterpret its remaining tokens
+as ordinary expressions or as declarations inside the attribute. Recovery must
+preserve independent adjacent attributes, the owning declaration and later
+sibling declarations whenever a reliable boundary exists.
 
 § 27(4) The same rule applies to the argument list of every other attribute
 `@name(...)`: recovery skips to the `)` that closes the list, records the
 skipped range, leaves foreign closing delimiters unconsumed, and stops before a
 declaration start on a later line at the list's own depth, so the following
 declaration still parses.
+
+§ 27(5) Legacy `#target(...)` is recognized only under the compatibility contract
+of `rules/compiler/compiler.md` § 15. For this legacy form the parser recovers at
+its own comma, closing `)`, a reliable next top-level declaration or EOF, and it
+retains the focused legacy/compatibility diagnostic required by the canonical
+owner.
+
+§ 27(6) Target or configuration inclusion is not decided by parser recovery.
+Malformed source remains invalid even when its declaration would otherwise be
+excluded by a compilation-plan selector. The selected attribute rulebook owns
+whether, when and how target selection is evaluated.
+
+§ 27(7) The parser must not duplicate the canonical attribute inventory or
+target-selector semantics. New valid compiler-known attributes automatically use
+the same recovery invariants through the recognized attribute grammar.
 
 ---
 
@@ -2474,13 +2496,11 @@ skipped tokens
 virtual tokens
 ```
 
-§ 74(2) This may be implemented through:
-
-```text
-token buffer
-lossless syntax tree
-AST plus recovery ranges and original source
-```
+§ 74(2) The retained source and recovery facts must be sufficient to
+reconstruct the original spelling and relative positions of real tokens and
+trivia, to distinguish skipped tokens from consumed tokens and virtual tokens,
+and to apply source-range-safe tooling edits. The contract does not require a
+particular token-buffer, CST or AST storage representation.
 
 § 74(3) A fully lossless CST is not mandated for Sec 0.1.
 
@@ -2730,150 +2750,95 @@ node.
 
 ## § 81 Recovery algorithm
 
-§ 81(1) Sec 0.1 may use deterministic recursive-descent recovery.
+§ 81(1) Parser recovery must guarantee progress or an explicit exit from the
+current parse context after a failed syntax expectation. It must not repeatedly
+reconsider the same source token in the same context without advancing,
+creating one permitted virtual repair, or terminating that recovery episode.
 
-§ 81(2) Recommended order at a failed expectation:
+§ 81(2) Recovery preserves any enclosing delimiter it does not own, selects only
+grammar-supported safe insertion or skipping behavior, and retains all source and
+diagnostic facts required by §§ 11–17 and 73–79. The handling of malformed input
+remains deterministic under the same language version and compilation context.
 
-```text
-1. If expected token is present, consume it.
-2. If one safe structural insertion is uniquely justified, create a virtual
-   token and continue.
-3. If current token is one isolated unexpected separator, preserve and skip it.
-4. If a synchronization token is already present, return without consuming an
-   outer boundary.
-5. Otherwise skip tokens with delimiter-depth tracking until a context-specific
-   synchronization point.
-6. Create or complete an invalid node.
-7. Guarantee progress before re-entering the same parse loop.
-```
-
-§ 81(3) A global minimum-cost parser repair algorithm is not required.
+§ 81(3) No specific parser architecture, repair search algorithm or ordering of
+internal recovery helpers is mandated. Compilers must satisfy the observable
+invariants in this rulebook regardless of their chosen algorithm.
 
 ---
 
 ## § 82 Conformance requirements
 
-§ 82(1) A conforming parser satisfies the following observable requirements. The
-concrete tests, fixtures, fuzz campaigns and their status are tracked by the
-governance entries named in the header.
+§ 82(1) A conforming Sec parser satisfies the recovery, preservation, diagnostic
+and progress contracts of this rulebook across valid, incomplete and malformed
+source. Specific test files, fixtures, fuzz campaigns, verification commands and
+implementation status belong in the existing parser governance entries.
 
-### § 82.1 General invariants
+### § 82.1 Recovery invariants
 
-§ 82.1(1) Recovery behavior is verified for:
+§ 82.1(1) After a recoverable error, the parse result provides bounded
+structured diagnostics, the primary diagnostic location and recovery action, a
+valid partial representation where possible, preserved later siblings and source
+ranges, and deterministic termination without a parser panic.
 
-```text
-diagnostic count
-diagnostic ID
-primary range
-recovery action
-later sibling preservation
-later statement preservation
-later top-level declaration preservation
-no panic
-parser reaches EOF
-stable AST shape
-```
+### § 82.2 Causal diagnostic isolation
 
-### § 82.2 One-error tests
+§ 82.2(1) One local malformed token or missing delimiter should normally result
+in one causal primary parser diagnostic when one safe recovery explains the
+source; dependent parser errors from the same cause are suppressed as defined in
+§§ 16–17.
 
-§ 82.2(1) For one local error, prefer exactly one primary parser diagnostic.
+§ 82.2(2) This obligation applies equally to malformed field, parameter, case,
+match-arm and delimiter boundaries; these are examples, not exhaustive special
+cases.
 
-§ 82.2(2) Examples:
+### § 82.3 Cascade suppression
 
-```text
-missing struct field colon
-missing parameter comma
-missing case colon
-missing match arrow
-missing closing parenthesis
-```
+§ 82.3(1) A local recovery must not emit unrelated secondary diagnostics solely
+because the following field, parameter, statement, case, arm or declaration was
+incorrectly swallowed or reinterpreted.
 
-### § 82.3 Cascade tests
+### § 82.4 Progress and termination
 
-§ 82.3(1) Verify that one missing token does not produce unrelated errors on:
+§ 82.4(1) Finite malformed input, including long runs of repeated delimiters,
+operators and reserved tokens, must not cause nonterminating parser recovery.
 
-```text
-next field
-next parameter
-next statement
-next case
-next arm
-next declaration
-```
+§ 82.4(2) When parsing cannot continue safely, recovery must terminate through
+the explicit fatal-result contract rather than loop indefinitely or return an
+apparently valid tree.
 
-### § 82.4 Progress tests
+### § 82.5 Truncated-source behavior
 
-§ 82.4(1) Feed repeated malformed tokens:
+§ 82.5(1) An arbitrary prefix of otherwise valid source, ending at any token
+boundary, is an admissible malformed input to the parser.
 
-```text
-}}}}}
-,,,,,
-?????
-++++
-```
+§ 82.5(2) Such inputs must terminate without parser panic, obey the diagnostic
+budget and return a semantically nonpublishable but internally coherent partial
+result where recovery is possible.
 
-§ 82.4(2) The parser must terminate.
+### § 82.6 Malformed-source robustness
 
-### § 82.5 Truncation tests
+§ 82.6(1) A deletion, duplication, substitution or displacement of source tokens
+must not invalidate progress, source-range, recovery-episode or
+enclosing-boundary guarantees.
 
-§ 82.5(1) Truncate valid files after every token.
+§ 82.6(2) A parse result must not silently become a different well-formed
+program as a consequence of such malformed source.
 
-§ 82.5(2) For every prefix:
+### § 82.7 Lexer and nesting robustness
 
-- parser must not panic;
-- parser must terminate;
-- diagnostics must remain bounded;
-- partial AST must remain internally valid.
+§ 82.7(1) The same requirements apply to malformed lexer output, nested
+delimiters, long malformed lists or expressions, Unicode identifiers, and
+unterminated text or comments, subject to the fatal conditions in § 19.
 
-### § 82.6 Mutation tests
+### § 82.8 Tooling continuity
 
-§ 82.6(1) From valid fixtures:
+§ 82.8(1) During incomplete source editing, tooling may recover valid local
+semantic and syntactic facts without asserting that the incomplete source is
+compilable.
 
-```text
-delete one token
-duplicate one token
-replace one delimiter
-move one closing brace
-insert one keyword
-```
-
-§ 82.6(2) Verify bounded diagnostics and later-node preservation.
-
-### § 82.7 Robustness inputs
-
-§ 82.7(1) The progress and termination requirements also hold for:
-
-```text
-lexer input
-parser token streams
-nested delimiters
-long malformed lists
-long malformed expressions
-Unicode identifiers
-unterminated comments and strings
-```
-
-### § 82.8 Tooling tests
-
-§ 82.8(1) Verify completion and symbols in incomplete source.
-
-§ 82.8(2) Examples:
-
-```sec
-fn Test(value: |
-```
-
-```sec
-type Point struct {
-    x: |
-}
-```
-
-```sec
-match value {
-    Some(value) |
-}
-```
+§ 82.8(2) Completion, document symbols, hovers and code actions must preserve
+invalid-source boundaries and may suggest only corrections whose safety can be
+justified by §§ 76–79.
 
 ---
 

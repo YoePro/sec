@@ -62,6 +62,7 @@ func (a *Analyzer) reportNoPanicViolation(attributes []*ast.Attribute, id Callab
 	if !ok || id == "" {
 		return
 	}
+	a.bodyAttributeSets = append(a.bodyAttributeSets, CallableBodyAttributeSet{Attributes: attributes, Callable: id, Kind: kindLabel, Name: name})
 	attribute := guarantee.Source
 	summary := a.callGraph.EffectSummary(id)
 	if !summary.MayPanic || len(summary.PanicPath) == 0 {

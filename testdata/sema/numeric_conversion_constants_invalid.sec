@@ -1,0 +1,51 @@
+module main
+
+fn DecimalFraction() Result[int32, ConversionError] {
+    let value: decimal := 0.5m
+    return Ok(try int32(value))
+}
+fn DecimalUnsigned() Result[uint8, ConversionError] {
+    let value: decimal := -0.5m
+    return Ok(try uint8(value))
+}
+fn DecimalRange() Result[int8, ConversionError] {
+    let value: decimal := 128m
+    return Ok(try int8(value))
+}
+fn DecimalBinaryPrecision() Result[float64, ConversionError] {
+    let value: decimal := 0.1m
+    return Ok(try float64(value))
+}
+fn DecimalBinaryRange() Result[float32, ConversionError] {
+    let value: decimal := 1e50m
+    return Ok(try float32(value))
+}
+fn DecimalNarrow() Result[decimal, ConversionError] {
+    let value: decimal128 := 9223372036854775808m
+    return Ok(try decimal(value))
+}
+fn FloatDecimalPrecision() Result[decimal, ConversionError] {
+    let value: float64 := 0.1
+    return Ok(try decimal(value))
+}
+fn FloatDecimalNaN() Result[decimal128, ConversionError] {
+    let value := float64.NaN
+    return Ok(try decimal128(value))
+}
+fn IntegerDecimalPrecision() Result[decimal, ConversionError] {
+    let value: uint64 := 9223372036854775808
+    return Ok(try decimal(value))
+}
+fn FloatFractionAlias() Result[int32, ConversionError] {
+    let original: float64 := 0.5
+    let alias := original
+    return Ok(try int32(alias))
+}
+fn BareDecimalFraction() int32 {
+    let value: decimal := 0.5m
+    return int32(value)
+}
+fn HandledDecimalFraction() int32 {
+    let value: decimal := 0.5m
+    return try int32(value) { Err(_) => 0 }
+}

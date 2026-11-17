@@ -23,7 +23,7 @@ impl Button {
     }
 }
 
-fn HandleButtonPress(data: ButtonPressData) void {
+fn HandleButtonPress(data: ref ButtonPressData) void {
     let id := data.buttonID
 }
 
@@ -122,8 +122,8 @@ fn InvalidWrongPayload(button: ref mut Button) void {
 }
 
 fn InvalidHandlerReturnType(button: ref Button) void {
-    // ERROR: Event handlers must have type fn(ButtonPressData) void.
-    let result := button.ButtonPressed.Subscribe(fn(data: ButtonPressData) int {
+    // ERROR: Event handlers must have type fn(ref ButtonPressData) void.
+    let result := button.ButtonPressed.Subscribe(fn(data: ref ButtonPressData) int {
         return data.buttonID
     })
 

@@ -1,0 +1,23 @@
+module main
+
+fn OrdinaryRead[T](pointer: RawPtr[T]) T {
+    unsafe { return pointer.Read() }
+}
+
+fn OrdinaryWrite[T](pointer: RawPtr[T], value: T) void {
+    unsafe { pointer.Write(value) }
+}
+
+fn ConcreteInsideGeneric[T](pointer: RawPtr[int], value: int, unused: T) int {
+    unsafe {
+        pointer.VolatileWrite(value)
+        return pointer.VolatileRead()
+    }
+}
+
+fn Concrete(pointer: RawPtr[int], value: int) int {
+    unsafe {
+        pointer.VolatileWrite(value)
+        return pointer.VolatileRead()
+    }
+}

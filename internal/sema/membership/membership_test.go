@@ -80,7 +80,13 @@ func TestNominalMembershipRejectsInvalidValues(t *testing.T) {
 			t.Fatal("unknown variant classified as getter execution", err)
 		}
 	}
-	for _, id := range []string{diagnostics.DuplicateContractMembershipValue, diagnostics.IncompatibleMembershipValue, diagnostics.InvalidContractArgument, diagnostics.EmptyContractMembership, diagnostics.DefaultViolatesContract, diagnostics.InvalidMembershipValue, diagnostics.ValueViolatesContract, diagnostics.InapplicableContract, diagnostics.SemanticCompileTimeExecutionUnavailable} {
+	// `RequiresExecutor State in [Getter()]` is a compile-time-required
+	// context the semantic CTE executor runs (compile_time_evaluation.md
+	// § 8(5)), so it reports nothing.
+	if byID[diagnostics.SemanticCompileTimeExecutionUnavailable] != 0 {
+		t.Errorf("executable membership call reported unavailable: %+v", errors)
+	}
+	for _, id := range []string{diagnostics.DuplicateContractMembershipValue, diagnostics.IncompatibleMembershipValue, diagnostics.InvalidContractArgument, diagnostics.EmptyContractMembership, diagnostics.DefaultViolatesContract, diagnostics.InvalidMembershipValue, diagnostics.ValueViolatesContract, diagnostics.InapplicableContract} {
 		if byID[id] == 0 {
 			t.Errorf("missing %s: %+v", id, errors)
 		}

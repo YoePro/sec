@@ -2,7 +2,7 @@
 
 - **Date:** 2026-11-09
 - **Revision:** 1.0
-- **Status:** Approved implementation direction; verification pending
+- **Status:** Applied and verified 2026-11-17 (P17-49 closed 2026-11-15; wrapper-mediated transfer verified by TestSchema13FFIWrapperOwnership)
 - **Sec version:** 0.1
 - **Repository baseline:** `YoePro/sec` main `dce854ecb317eb62923c638c23a1baaac354be02`
 - **Governance owner:** `lowering.sec-mlir-package17`

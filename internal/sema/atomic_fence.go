@@ -98,6 +98,7 @@ func (a *Analyzer) inferAtomicFence(expr *ast.CallExpression) (Type, expressionV
 		if order == candidate {
 			a.atomicFenceOrders[expr] = order
 			a.recordAtomicFenceSymbol(expr, order)
+			a.recordAtomicFenceEffect(expr, order)
 			return void, result, true
 		}
 	}
@@ -105,6 +106,21 @@ func (a *Analyzer) inferAtomicFence(expr *ast.CallExpression) (Type, expressionV
 		"Choose one of the allowed fence orders: "+strings.Join(allowed, ", ")+". A Relaxed fence orders nothing.",
 		"MemoryOrder.%s is not valid for atomic.Fence; allowed orders: %s", order, strings.Join(allowed, ", "))
 	return Type{Kind: InvalidType}, result, true
+}
+
+// recordAtomicFenceEffect retains each reachable validated fence as an ordered
+// direct event, including its established order and source. Registration neither
+// proves synchronization nor invents an Atomic object access; speculative summary
+// passes and rejected calls publish no fence effects.
+// Rules: rules/concurrency/atomics.md — §§26,40(3–6),46(5);
+// rules/analysis/effect_analysis.md — §15 "Direct effects".
+func (a *Analyzer) recordAtomicFenceEffect(call *ast.CallExpression, order string) {
+	if a.summaryPass || !a.callGraphPathReachable {
+		return
+	}
+	a.callGraph.addEffect(a.currentCallable, EffectSite{
+		Kind: EffectAtomicFence, Source: callCalleeDefinitionToken(call), AtomicOrder: order,
+	})
 }
 
 // AtomicFenceOrderOf returns the compile-time-established order of a valid

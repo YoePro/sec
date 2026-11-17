@@ -23,7 +23,8 @@ type PlanFingerprints struct {
 }
 
 // Fingerprints computes the plan's domain fingerprints.
-// Rules: rules/platform/platform_model.md — §§ 20(13), 23, 27.
+// Rules: rules/platform/platform_model.md — §§ 20(13), 23, 27;
+// rules/concurrency/ipc.md — §118 (selected IPC capability meaning).
 func (p ResolvedScalarPlan) Fingerprints() PlanFingerprints {
 	digest := func(domain string, facts ...any) string {
 		encoded, _ := json.Marshal(append([]any{"sec.plan-fingerprint/1", domain}, facts...))
@@ -33,9 +34,9 @@ func (p ResolvedScalarPlan) Fingerprints() PlanFingerprints {
 	fingerprints := PlanFingerprints{
 		Architecture: digest("architecture", p.TargetArch, p.PointerWidthBits, p.Endianness, p.Atomics),
 		Layout:       digest("layout", p.PointerWidthBits, p.Endianness, p.CABI, p.References),
-		Memory:       digest("memory", p.Profile, p.AddressDomains, p.References, p.PointerWidthBits),
-		Runtime:      digest("runtime", p.TargetOS, p.Profile),
-		Execution:    digest("execution", p.TargetOS, p.TargetArch, p.Profile),
+		Memory:       digest("memory", p.Profile, p.AddressDomains, p.References, p.PointerWidthBits, p.IPC.semanticFacts()),
+		Runtime:      digest("runtime", p.TargetOS, p.Profile, p.IPC.semanticFacts()),
+		Execution:    digest("execution", p.TargetOS, p.TargetArch, p.Profile, p.IPC.semanticFacts()),
 		ABI:          digest("abi", p.TargetOS, p.TargetArch, p.ABI, p.CABI),
 		Link:         digest("link", p.TargetOS, p.TargetArch, p.LLVMTriple, p.ABI),
 	}

@@ -1,0 +1,17 @@
+module main
+
+fn LocalDomains() void {
+    let first: Atomic[int] := Atomic(0)
+    let second: Atomic[int] := Atomic(0)
+    let alias: ref Atomic[int] := ref first
+    discard first.Load(MemoryOrder.Relaxed)
+    first.Store(1, MemoryOrder.Release)
+    second.Store(2, MemoryOrder.Release)
+    alias.Store(3, MemoryOrder.Relaxed)
+}
+
+fn IndexedDomains(values: ref Atomic[int][2], index: int) void {
+    discard values[0].Load(MemoryOrder.Relaxed)
+    discard values[1].Load(MemoryOrder.Relaxed)
+    discard values[index + 0].Load(MemoryOrder.Relaxed)
+}

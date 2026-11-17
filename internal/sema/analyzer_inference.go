@@ -981,6 +981,14 @@ func (a *Analyzer) inferMemberExpression(expr *ast.MemberExpression) (Type, bool
 		return Type{Kind: InvalidType}, false
 	}
 
+	// rules/concurrency/mutex.md §§30–32: reuse ordinary protected-member
+	// validation and metadata without changing the guard expression's type.
+	if isMutexGuardType(objectType) {
+		objectType = mutexGuardMemberOwner(objectType)
+		if definition, exists := memberDefinitionToken(objectType, expr.Property.Value); exists {
+			a.bindDefinition(expr.Property.Token, definition)
+		}
+	}
 	if fieldType, ok := lookupStructField(objectType, expr.Property.Value); ok {
 		if !a.canAccessStructField(objectType, expr.Property.Value) {
 			a.addErrorAtToken(expr.Property.Token, "field %s on %s is not accessible from module %s", expr.Property.Value, typeDisplayName(objectType), moduleDisplayName(a.currentModule))
@@ -1000,29 +1008,10 @@ func (a *Analyzer) inferMemberExpression(expr *ast.MemberExpression) (Type, bool
 		if fieldType.Kind == ReferenceType {
 			fieldType = a.referenceTypeWithOriginFromExpression(fieldType, expr.Object)
 		}
-		return fieldType, true
+		return a.mutexGuardMemberReference(expr, fieldType), true
 	}
 	if event, ok := lookupEvent(objectType, expr.Property.Value); ok {
 		return event.Type, true
-	}
-	if isMutexGuardType(objectType) {
-		protected := objectType.TypeArgs[0]
-		if fieldType, ok := lookupStructField(protected, expr.Property.Value); ok {
-			if definition, exists := memberDefinitionToken(protected, expr.Property.Value); exists {
-				a.bindDefinition(expr.Property.Token, definition)
-			}
-			return fieldType, true
-		}
-		if _, ok := a.lookupResolvedProperty(protected, expr.Property.Value); ok {
-			returnProperty, readable := a.resolveReadableProperty(protected, expr.Property.Value, expr.Property.Token)
-			if !readable {
-				return Type{Kind: InvalidType}, false
-			}
-			if !a.recordResolvedPropertyRead(expr, protected, returnProperty) {
-				return Type{Kind: InvalidType}, false
-			}
-			return returnProperty.Type, true
-		}
 	}
 	if field, ok := lookupRegisterFieldInfo(objectType, expr.Property.Value); ok {
 		if field.Access == RegisterWriteOnly {
@@ -1052,7 +1041,7 @@ func (a *Analyzer) inferMemberExpression(expr *ast.MemberExpression) (Type, bool
 		if !a.recordResolvedPropertyRead(expr, objectType, property) {
 			return Type{Kind: InvalidType}, false
 		}
-		return property.Type, true
+		return a.mutexGuardMemberReference(expr, property.Type), true
 	}
 
 	// A legacy lowercase spelling of a CamelCase compiler-known member, such as
@@ -2370,20 +2359,7 @@ func (a *Analyzer) inferCompilerKnownConstructor(expr *ast.CallExpression) (Type
 			a.addErrorAtToken(expr.Token, "Channel requires exactly 1 message type, got %d", len(expr.GenericArguments))
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
-		if len(expr.Arguments) != 1 {
-			a.addErrorAtToken(expr.Token, "Channel expects 1 capacity argument, got %d", len(expr.Arguments))
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		messageType, ok := a.resolveType(expr.GenericArguments[0])
-		if !ok {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		capacityType, _ := a.inferExpression(expr.Arguments[0])
-		if capacityType.Kind != InvalidType && !isIntegerType(capacityType) {
-			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "Channel capacity must be integer, got %s", typeDisplayName(capacityType))
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		return channelType(messageType), expressionValue{Display: expr.String()}, true
+		return a.inferChannelConstructor(expr)
 	}
 	if name == "Atomic" {
 		return a.inferAtomicConstructor(expr)
@@ -2438,9 +2414,15 @@ func (a *Analyzer) inferEventCall(expr *ast.CallExpression) (Type, expressionVal
 			a.addErrorAtToken(member.Property.Token, "event %s may only be published by %s", receiver.Name, owner)
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
+		// Publish(data: ref T) borrows one caller-owned payload for the whole
+		// synchronous publication: an owned value or temporary is borrowed,
+		// never moved, and a `ref T` holder is passed (events.md §§ 11(1), 11(4)).
 		argType, _ := a.inferExpressionWithExpected(expr.Arguments[0], payload)
+		if argType.Kind == ReferenceType && argType.Element != nil && a.canInitialize(payload, *argType.Element, expr.Arguments[0]) {
+			return Type{Name: "void", Kind: VoidType}, expressionValue{Display: expr.String()}, true
+		}
 		if argType.Kind != InvalidType && !a.canInitialize(payload, argType, expr.Arguments[0]) {
-			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "Event.Publish payload must be %s, got %s", typeDisplayName(payload), typeDisplayName(argType))
+			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "Event.Publish payload must be %s or ref %s, got %s", typeDisplayName(payload), typeDisplayName(payload), typeDisplayName(argType))
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		return Type{Name: "void", Kind: VoidType}, expressionValue{Display: expr.String()}, true
@@ -2448,10 +2430,7 @@ func (a *Analyzer) inferEventCall(expr *ast.CallExpression) (Type, expressionVal
 		if !a.checkCompilerKnownCallArity(expr, "Event.Subscribe", 1, 1) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
-		handlerType, _ := a.inferExpression(expr.Arguments[0])
-		expected := eventHandlerType(payload)
-		if handlerType.Kind != InvalidType && !sameFunctionType(handlerType, expected) {
-			a.addErrorAtToken(expressionToken(expr.Arguments[0]), "Event.Subscribe handler must be %s, got %s", typeDisplayName(expected), typeDisplayName(handlerType))
+		if !a.checkEventHandlerArgument(expr.Arguments[0], payload) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		return a.types["EventSubscribeResult"], expressionValue{Display: expr.String()}, true
@@ -2522,7 +2501,9 @@ func (a *Analyzer) inferSenderCall(expr *ast.CallExpression, member *ast.MemberE
 		if !a.checkCompilerKnownCallArity(expr, "Sender.Share", 0, 0) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
-		return senderType(messageType), expressionValue{Display: expr.String()}, true
+		// channels.md § 24(2)-(5): Some is a new sender capability; None
+		// means MaxSenders is reached. Share never consumes the original.
+		return compilerKnownOption(senderType(messageType)), expressionValue{Display: expr.String()}, true
 	case "Send":
 		if !a.checkCompilerKnownCallArity(expr, "Sender.Send", 1, 2) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true

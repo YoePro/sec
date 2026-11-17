@@ -53,18 +53,20 @@ func TestClockRestrictionFollowsImmutableBindings(t *testing.T) {
 	}
 }
 
-// TestUserGetterNamesRemainLegalSemanticCTE preserves the separate missing
-// executor outcome for deterministic user properties named Now or Today.
+// TestUserGetterNamesRemainLegalSemanticCTE keeps deterministic user
+// properties named Now or Today ordinary user getters: the semantic CTE
+// executor runs them (and an ordinary call) in explicit type defaults, and they
+// are never classified as the forbidden clock intrinsics.
 // Rules: rules/types/temporal.md — §3 (canonical intrinsic identities);
 // rules/compiler/compile_time_evaluation.md — §§4(4),8(5).
 func TestUserGetterNamesRemainLegalSemanticCTE(t *testing.T) {
 	errors := analyzeSourceRaw(t, fixture(t, "deterministic_getters.sec"))
-	if len(errors) != 3 {
-		t.Fatalf("errors = %v, want three unavailable execution errors", errors)
-	}
 	for _, err := range errors {
-		if err.ID != diagnostics.SemanticCompileTimeExecutionUnavailable {
+		if err.ID == diagnostics.SemanticCompileTimeExecutionUnavailable || strings.Contains(err.Message, "wall-clock") {
 			t.Errorf("user getter misclassified: %+v", err)
 		}
+	}
+	if len(errors) != 0 {
+		t.Fatalf("errors = %v, want the user getters and call executed", errors)
 	}
 }

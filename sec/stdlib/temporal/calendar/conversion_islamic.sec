@@ -1,0 +1,173 @@
+module calendar
+
+/*
+ * Sec Standard Library — temporal/calendar
+ * File: calendar/conversion_islamic.sec
+ * Purpose: Civil tabular Islamic calendar calculations.
+ * Revision: 0.1
+ * Updated: 2026-11-17
+ *
+ * Algorithm: Type II, 30-year arithmetic cycle.
+ * Epoch: Friday 16 July 622 Julian, -492148 Unix days.
+ * No observational, astronomical or Umm al-Qura rules.
+ */
+
+/**
+ * Reports whether an Islamic tabular year is a leap year.
+ *
+ * Parameters:
+ * - year: Positive AH year.
+ *
+ * Returns:
+ * True for one of the eleven leap years in the cycle.
+ *
+ * Ownership:
+ * Pure calculation without allocation.
+ */
+fn _islamicTabularLeapYear(year: int) bool {
+    let cycleYear := year % 30
+
+    return cycleYear in [2, 5, 7, 10, 13, 16, 18, 21, 24, 26, 29]
+}
+
+/**
+ * Returns the absolute first day of an Islamic tabular year.
+ *
+ * Parameters:
+ * - year: Positive AH year.
+ *
+ * Returns:
+ * Unix epoch-day number for 1 Muharram.
+ *
+ * Ownership:
+ * Pure integer calculation without allocation.
+ */
+fn _islamicYearStartEpochDays(year: int) int64 {
+    let y := int64(year)
+
+    // Each ordinary year contains 354 days.
+    // The quotient counts preceding leap days.
+    let elapsed := 354 * (y - 1) + (3 + 11 * y) / 30
+
+    return -492_148 + elapsed
+}
+
+/**
+ * Returns elapsed days before an Islamic calendar month.
+ *
+ * Parameters:
+ * - month: One-based month ordinal in 1..12.
+ *
+ * Returns:
+ * Number of days from Muharram 1 to the start of month.
+ *
+ * Ownership:
+ * Pure calculation without allocation.
+ */
+fn _islamicDaysBeforeMonth(month: int) int64 {
+    let m := int64(month)
+
+    // Months alternate 30 and 29 days, starting with 30.
+    return 29 * (m - 1) + m / 2
+}
+
+/**
+ * Converts validated Islamic tabular fields into core date.
+ *
+ * Description:
+ * The caller validates year, month and day before entry.
+ *
+ * Parameters:
+ * - fields: Valid Islamic tabular date coordinates.
+ * - ordinal: Valid one-based month ordinal.
+ *
+ * Returns:
+ * Corresponding absolute core date.
+ *
+ * Errors:
+ * - CalendarError.OutOfRange: Unrepresentable date.
+ *
+ * Ownership:
+ * Pure calculation without allocation.
+ */
+fn _toIslamicTabularDate(fields: CalendarFields, ordinal: int) Result[date, CalendarError] {
+    // Bound the year before calculating intermediate values.
+    if fields.Year > 10_000_000 {
+        return Err(CalendarError.OutOfRange)
+    }
+
+    let epochDays :=
+    _islamicYearStartEpochDays(fields.Year) +
+    _islamicDaysBeforeMonth(ordinal) +
+    int64(fields.Day) - 1
+
+    let checkedDays := try int32(epochDays) {
+        Err(_) => return Err(CalendarError.OutOfRange)
+    }
+
+    return Ok(new date(checkedDays))
+}
+
+/**
+ * Converts an absolute core date to Islamic tabular fields.
+ *
+ * Description:
+ * Uses the civil Type II epoch and leap-year cycle.
+ * Dates before AH 1 are outside the supported calendar era.
+ *
+ * Parameters:
+ * - value: Absolute core date.
+ *
+ * Returns:
+ * Islamic year, month and day.
+ *
+ * Errors:
+ * - CalendarError.OutOfRange: Before the Islamic epoch.
+ *
+ * Ownership:
+ * Pure calculation without allocation.
+ */
+fn _fromIslamicTabularDate(value: date) Result[CalendarFields, CalendarError] {
+    let absolute := int64(value.EpochDays)
+
+    if absolute < -492_148 {
+        return Err(CalendarError.OutOfRange)
+    }
+
+    // Days since the start of AH 1.
+    let elapsed := absolute + 492_148
+
+    // Recover the year from the 10,631-day, 30-year cycle.
+    let year := int((30 * elapsed + 10_646) / 10_631)
+
+    let mut remaining := absolute - _islamicYearStartEpochDays(year)
+    let mut ordinal   := 1
+
+    while ordinal <= 12 {
+        let month := try MonthAt(
+            year,
+            ordinal,
+            CalendarSystem.IslamicTabular,
+        )
+
+        let days := try DaysInMonth(
+            year,
+            month,
+            CalendarSystem.IslamicTabular,
+        )
+
+        if remaining < int64(days) {
+            return Ok(CalendarFields {
+                Year: year,
+                Month: month,
+                Day: int(remaining) + 1,
+            })
+        }
+
+        remaining -= int64(days)
+        ordinal += 1
+    }
+
+    // A valid absolute day must belong to one of the months.
+    return Err(CalendarError.OutOfRange)
+}

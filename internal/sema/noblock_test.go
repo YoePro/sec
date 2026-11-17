@@ -47,7 +47,7 @@ fn Wait(rx: Receiver[Message]) void {
 }
 
 fn Helper() void {
-	let channel := Channel[Message](1)
+	let channel := try Channel[Message](1) { Err(_) => { return } }
 	let tx :<- channel.Tx
 	discard tx.Send(Message{ value: 2 })
 }

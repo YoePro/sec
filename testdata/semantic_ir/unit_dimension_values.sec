@@ -1,0 +1,59 @@
+module main
+
+unit m physical
+impl <m> {
+    Dimension: [length^1]
+}
+
+unit km physical
+impl <km> {
+    Dimension: [length^1]
+    Scale: 1000
+}
+
+unit mps physical
+impl <mps> {
+    Dimension: [length^1, time^-1]
+}
+
+unit ratio other
+
+fn SameDimension(left: UnitDimension, right: UnitDimension) bool {
+    return left == right
+}
+
+fn Different(left: UnitDimension, right: UnitDimension) bool {
+    return left != right
+}
+
+fn Count(d: UnitDimension) uint {
+    return d.AxisCount
+}
+
+fn Plain(d: UnitDimension) bool {
+    return d.IsDimensionless
+}
+
+fn Use() bool {
+    let length := <m>.Dimension
+    let same := SameDimension(length, <km>.Dimension)
+    let speed := Count(<mps>.Dimension)
+    return same && Plain(<ratio>.Dimension)
+}
+
+fn main() int {
+    return 0
+}
+
+type Measure struct {
+    dimension: UnitDimension,
+    count: int,
+}
+
+fn SameMeasure(a: Measure, b: Measure) bool {
+    return a.dimension == b.dimension && a.dimension.AxisCount == 1u
+}
+
+fn MakeMeasure() Measure {
+    return Measure { dimension: <mps>.Dimension, count: 1 }
+}

@@ -855,6 +855,8 @@ type Operation struct {
 	// UnitMetadata is the provenance of a constant folded from a unit
 	// metadata read (MD-062 § 12(7); unit_metadata.go).
 	UnitMetadata *UnitMetadataFacts
+	// UnitDimension is the canonical dimension of unit-dimension.constant.
+	UnitDimension *UnitDimensionFacts
 	// FloatBinary is the kind of float.binary.
 	FloatBinary FloatBinaryKind
 	// FloatCore is the kind of float.classify, float.round or float.property

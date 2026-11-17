@@ -1,0 +1,47 @@
+module main
+
+fn NegatedExit(raw: RawPtr[int]) void {
+    unsafe {
+        if !(raw is null) { return }
+        discard raw.Read()
+    }
+}
+
+fn DisjunctionExit(raw: RawPtr[int], other: RawPtr[int]) void {
+    unsafe {
+        if raw is not null || other is not null { return }
+        raw.Write(1)
+    }
+}
+
+fn DeMorganExit(raw: RawPtr[int], other: RawPtr[int]) void {
+    unsafe {
+        if !(raw is null && other is null) { return }
+        discard raw.VolatileRead()
+    }
+}
+
+fn CompoundElse(raw: RawPtr[int], other: RawPtr[int]) void {
+    unsafe {
+        if raw is not null || other is not null {
+            return
+        } else {
+            raw.VolatileWrite(1)
+        }
+    }
+}
+
+fn CopiedContinuation(raw: RawPtr[int]) void {
+    unsafe {
+        if !(raw is null) { return }
+        let copy := raw
+        let view := copy.AsRef
+    }
+}
+
+fn MutableReferenceContinuation(raw: RawPtr[int], other: RawPtr[int]) void {
+    unsafe {
+        if raw is not null || other is not null { return }
+        let view := raw.AsRefMut
+    }
+}

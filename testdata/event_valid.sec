@@ -59,12 +59,12 @@ interface PressSource {
     event ButtonPressed[ButtonPressData]
 }
 
-fn HandleButtonPress(data: ButtonPressData) void {
+fn HandleButtonPress(data: ref ButtonPressData) void {
     let id := data.buttonID
     let force := data.pressure
 }
 
-fn HandleTemperatureChange(data: TemperatureChanged) void {
+fn HandleTemperatureChange(data: ref TemperatureChanged) void {
     let from := data.oldValue
     let to := data.newValue
 }
@@ -80,14 +80,17 @@ fn SubscribeAndClose(button: ref Button) void {
     }
 }
 
+// A capturing handler stays in its own storage; the event retains a reference
+// to it (events.md §§ 6(4), 6(7), 10(4)).
 fn SubscribeWithLambda(button: ref Button) void {
     let threshold := 20
-
-    match button.ButtonPressed.Subscribe(capture(threshold) fn(data: ButtonPressData) void {
+    let handler := capture(threshold) fn(data: ref ButtonPressData) void {
         if data.pressure > threshold {
             let strongPress := data.buttonID
         }
-    }) {
+    }
+
+    match button.ButtonPressed.Subscribe(ref handler) {
         Subscribed(subscription) => {
             subscription.Close()
         }
@@ -183,5 +186,28 @@ fn SequentialSubscriptions(button: ref Button) void {
 
         Full => {
         }
+    }
+}
+
+// A capture-free lambda is stateless and may be passed directly (§ 10(4)).
+fn SubscribeStatelessLambda(button: ref Button) void {
+    match button.ButtonPressed.Subscribe(fn(data: ref ButtonPressData) void {
+        let id := data.buttonID
+    }) {
+        Subscribed(subscription) => subscription.Close()
+        Full => {}
+    }
+}
+
+// Publication borrows the payload; a ref T holder is passed as it is (§ 11).
+impl extends Button {
+    fn Republish(data: ref ButtonPressData) void {
+        ButtonPressed.Publish(data)
+    }
+
+    fn PublishLocal() void {
+        let data := ButtonPressData { buttonID: 3, pressure: 9 }
+        ButtonPressed.Publish(data)
+        let again := data.buttonID
     }
 }

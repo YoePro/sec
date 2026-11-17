@@ -1,0 +1,28 @@
+module main
+
+fn ExactValues() void {
+    let integerDecimal: decimal := 127m
+    let small := int8(integerDecimal)
+    let fraction: decimal := 0.5m
+    let binary := float64(fraction)
+    let original: float64 := 0.5
+    let decimalValue := decimal(original)
+    let wide: decimal128 := 92233720368547758070m
+    let rescaled := decimal(wide)
+    let widened := decimal128(rescaled)
+    let bigInteger: uint128 := 100000000000000000000
+    let negativeScale := decimal(bigInteger)
+    let minimum: decimal128 := -9223372036854775808m
+    let asymmetric := decimal(minimum)
+}
+fn RuntimeDecimal(value: decimal) Result[int32, ConversionError] {
+    return Ok(try int32(value))
+}
+fn MutableDecimal() Result[float64, ConversionError] {
+    let mut value: decimal := 0.1m
+    return Ok(try float64(value))
+}
+fn MutableInteger() Result[decimal, ConversionError] {
+    let mut value: uint64 := 9223372036854775808
+    return Ok(try decimal(value))
+}

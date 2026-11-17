@@ -36,7 +36,9 @@ Ordinary years contain Adar (M06) without M05L.
 **§ 3(6)** This revision limits Hebrew AM and Islamic AH year numbers to positive integers. Gregorian and Julian year numbering is
 astronomical, including year zero.
 
-**§ 3(7)** The precise Islamic tabular leap-year variant and epoch are not yet selected.
+**§ 3(7)** `IslamicTabular` denotes the civil arithmetic Islamic calendar using the Type II 30-year leap cycle and Friday epoch.
+The calendar does not represent observational Islamic dates, Umm al-Qura, or the astronomical Thursday epoch.
+This definition remains a candidate until accepted by the language owner.
 
 ## § 4. Month identity and ordinal conversion
 
@@ -76,6 +78,26 @@ MonthOrdinal(year, MonthAt(year, ordinal, system), system) equals ordinal, after
 
 **§ 5(8)** Islamic tabular calendars alternate 30- and 29-day months. The twelfth month gains one additional day in leap years.
 
-**§ 5(9)** The Islamic tabular leap-year variant remains unresolved. Month 12 must not assume a particular variant before that decision is made.
+**§ 5(9)** The `IslamicTabular` leap-year positions are 2, 5, 7, 10, 13, 16, 18, 21, 24, 26 and 29 within each 30-year cycle.
+Dhu al-Hijjah contains 30 days in these years and 29 days in all other years.
 
 **§ 5(10)** All calculations must use exact integer arithmetic and must not silently overflow.
+
+## § 6. Calendar epochs and supported eras
+
+**§ 6(1)** All calendar conversion algorithms map their dates to Sec's neutral `date` representation.
+
+**§ 6(2)** The calculated Hebrew calendar uses AM year numbering beginning at AM 1. Its epoch is Unix epoch day
+-2092590, corresponding to Rata Die -1373427.
+
+**§ 6(3)** `IslamicTabular` uses the civil Friday epoch, 16 July 622 Julian, corresponding to 19 July 622
+proleptic Gregorian and Unix epoch day -492148.
+
+**§ 6(4)** Islamic years begin at AH 1. Year zero and negative Islamic year numbers are invalid.
+
+**§ 6(5)** The Hebrew and Islamic algorithms do not infer religious sunset boundaries, geographic locations,
+historical adoption rules, or astronomical observations.
+
+**§ 6(6)** Calendar conversion uses exact integer arithmetic and must reject values outside core date's supported range.
+
+**§ 6(7)** A successful FromDate followed by ToDate using the same calendar must preserve the absolute date.

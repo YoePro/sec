@@ -217,20 +217,21 @@ type Analyzer struct {
 
 	resolvedNumericConversionPlans map[*ast.CallExpression]ResolvedNumericConversionPlan
 
-	resolvedIntegerConversions map[*ast.CallExpression]ResolvedIntegerConversion
-	resolvedNamedConversions   map[*ast.CallExpression]ResolvedNamedConversion
-	resolvedForRangeSteps      map[*ast.ForStatement]*big.Int
-	resolvedAssertions         map[*ast.AssertStatement]ResolvedAssertion
-	resolvedExplicitPanics     map[*ast.PanicStatement]ResolvedExplicitPanic
-	resolvedConditionFacts     map[ast.Expression]ResolvedConditionFact
-	resolvedTries              map[*ast.TryExpression]ResolvedTry
-	resolvedTryPlans           map[*ast.TryExpression]ResolvedTryPlan
-	resolvedTryAssignments     map[*ast.TryAssignmentStatement]ResolvedTryAssignment
-	resolvedMatchPlans         map[*ast.MatchExpression]ResolvedMatchPlan
-	resolvedCallReferences     map[*ast.CallExpression]ReferenceFacts
-	resolvedCompareExchanges   map[*ast.CallExpression]ResolvedCompareExchange
-	staticBindings             map[sourceTokenKey]ResolvedStatic
-	receiverReborrows          map[ast.Expression]ReferenceFacts
+	resolvedIntegerConversions     map[*ast.CallExpression]ResolvedIntegerConversion
+	resolvedNamedConversions       map[*ast.CallExpression]ResolvedNamedConversion
+	resolvedForRangeSteps          map[*ast.ForStatement]*big.Int
+	resolvedAssertions             map[*ast.AssertStatement]ResolvedAssertion
+	resolvedExplicitPanics         map[*ast.PanicStatement]ResolvedExplicitPanic
+	resolvedConditionFacts         map[ast.Expression]ResolvedConditionFact
+	resolvedTries                  map[*ast.TryExpression]ResolvedTry
+	resolvedTryPlans               map[*ast.TryExpression]ResolvedTryPlan
+	resolvedTryAssignments         map[*ast.TryAssignmentStatement]ResolvedTryAssignment
+	resolvedMatchPlans             map[*ast.MatchExpression]ResolvedMatchPlan
+	resolvedCallReferences         map[*ast.CallExpression]ReferenceFacts
+	resolvedCompareExchanges       map[*ast.CallExpression]ResolvedCompareExchange
+	resolvedAtomicMemoryOperations map[*ast.CallExpression]ResolvedAtomicMemoryOperation
+	staticBindings                 map[sourceTokenKey]ResolvedStatic
+	receiverReborrows              map[ast.Expression]ReferenceFacts
 	// compoundGetterReborrows: the getter reborrow of a compound property
 	// update's single receiver (property_receiver_lowering.go).
 	compoundGetterReborrows   map[ast.Expression]ReferenceFacts
@@ -335,8 +336,11 @@ type Analyzer struct {
 	// noPanicAccessors and noPanicLambdas are the MD-030 callable bodies with
 	// attribute-declared guarantees that are verified after the call graph
 	// is complete (validateNoPanicGuarantees).
-	noPanicAccessors  []noPanicAccessor
-	noPanicLambdas    []*ast.LambdaExpression
+	noPanicAccessors []noPanicAccessor
+	noPanicLambdas   []*ast.LambdaExpression
+	// bodyAttributeSets are the verified-guarantee attachment sets of MD-030
+	// callable bodies with the callable each belongs to, for tooling.
+	bodyAttributeSets []CallableBodyAttributeSet
 	noPanicLambdaSeen map[*ast.LambdaExpression]bool
 	// atomicFenceOrders retains the established order of each valid
 	// atomic.Fence call (atomics.md § 26).
@@ -933,6 +937,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.matchSubjectPlaces = nil
 	a.resolvedCallReferences = map[*ast.CallExpression]ReferenceFacts{}
 	a.resolvedCompareExchanges = map[*ast.CallExpression]ResolvedCompareExchange{}
+	a.resolvedAtomicMemoryOperations = map[*ast.CallExpression]ResolvedAtomicMemoryOperation{}
 	a.staticBindings = map[sourceTokenKey]ResolvedStatic{}
 	a.receiverReborrows = map[ast.Expression]ReferenceFacts{}
 	a.matchTerminationPlans = map[*ast.MatchExpression]ResolvedMatchPlan{}
@@ -1005,6 +1010,7 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	a.customFreeDeclarations = map[string]lexer.Token{}
 	a.noPanicAccessors = nil
 	a.noPanicLambdas = nil
+	a.bodyAttributeSets = nil
 	a.noPanicLambdaSeen = map[*ast.LambdaExpression]bool{}
 	a.atomicFenceOrders = map[*ast.CallExpression]string{}
 	a.schedulingPoints = map[*ast.CallExpression]ResolvedSchedulingPoint{}
@@ -3586,8 +3592,10 @@ func (a *Analyzer) registerFunctionDeclarationBody(fn *ast.FunctionDeclaration, 
 		if a.currentImplTarget != "" && param.Name != nil && param.Name.Value == "self" {
 			continue
 		}
-		if _, exists := seenParams[param.Name.Value]; exists {
-			a.addErrorAtToken(param.Name.Token, "duplicate parameter %q", param.Name.Value)
+		if previous, exists := seenParams[param.Name.Value]; exists {
+			a.addErrorAtTokenWithMetadataAndPrevious(param.Name.Token, previous, diagnostics.DuplicateLocalVariable,
+				"Give each parameter a distinct name; a parameter list declares every name once (names_scopes_visibility.md).",
+				"duplicate parameter %q", param.Name.Value)
 			continue
 		}
 		a.checkConfusableInDomains(param.Name.Value, param.Name.Token, seenParams)
@@ -4346,6 +4354,18 @@ func statementHasReachableBreakToCurrentLoop(stmt ast.Statement) bool {
 		return false
 	case *ast.UnsafeStatement:
 		return blockHasReachableBreakToCurrentLoop(stmt.Body)
+	case *ast.MatchStatement:
+		// match is not a break target; a break in an arm leaves the
+		// enclosing loop (flowcontrol_match.md § 34(1)–(2)).
+		if stmt.Match == nil {
+			return false
+		}
+		for _, arm := range stmt.Match.Arms {
+			if arm != nil && blockHasReachableBreakToCurrentLoop(arm.BlockBody) {
+				return true
+			}
+		}
+		return false
 	default:
 		return false
 	}
@@ -5907,7 +5927,9 @@ func (a *Analyzer) analyzeInterfaceDeclarationBody(stmt *ast.InterfaceDeclaratio
 				continue
 			}
 			if sameInterfaceRequirementSignature(previous, requirement) && sameConcreteType(previous.ReturnType, requirement.ReturnType) {
-				a.addErrorAtTokenWithPrevious(method.Name.Token, previous.Token, "duplicate interface method requirement %q in %s", method.Name.Value, stmt.Name.Value)
+				a.addErrorAtTokenWithMetadataAndPrevious(method.Name.Token, previous.Token, diagnostics.DuplicateDeclaration,
+					"Remove the repeated requirement or give it a distinct signature.",
+					"duplicate interface method requirement %q in %s", method.Name.Value, stmt.Name.Value)
 			} else {
 				a.addErrorAtTokenWithPrevious(method.Name.Token, previous.Token, "interface method requirement %s has incompatible callable contract in %s", method.Name.Value, stmt.Name.Value)
 			}
@@ -6390,8 +6412,9 @@ func (a *Analyzer) typeFromStructDeclarationWithName(name string, stmt *ast.Type
 	seen := map[string]lexer.Token{}
 	for _, field := range stmt.StructType.Fields {
 		if previous, exists := seen[field.Name.Value]; exists {
-			_ = previous
-			a.addErrorAtToken(field.Name.Token, "duplicate field %q in struct %s", field.Name.Value, name)
+			a.addErrorAtTokenWithMetadataAndPrevious(field.Name.Token, previous, diagnostics.DuplicateDeclaration,
+				"Remove or rename one of the fields; a struct declares each field name once.",
+				"duplicate field %q in struct %s", field.Name.Value, name)
 			continue
 		}
 		a.checkConfusableInDomains(field.Name.Value, field.Name.Token, seen)
@@ -6984,8 +7007,10 @@ func (a *Analyzer) registerImplStatement(stmt *ast.ImplStatement) {
 		if a.rejectReservedRegisterMember(target, property.Name.Value, property.Name.Token) {
 			continue
 		}
-		if _, exists := fields[property.Name.Value]; exists {
-			a.addErrorAtTokenWithID(property.Name.Token, diagnostics.DuplicateDeclaration, "property %s conflicts with field %s in %s", property.Name.Value, property.Name.Value, stmt.Target.Name)
+		if field, exists := fields[property.Name.Value]; exists {
+			a.addErrorAtTokenWithMetadataAndPrevious(property.Name.Token, field, diagnostics.DuplicateDeclaration,
+				"Rename the property or the field; a field and a property of one type cannot share a name.",
+				"property %s conflicts with field %s in %s", property.Name.Value, property.Name.Value, stmt.Target.Name)
 			continue
 		}
 		if previous, exists := properties[property.Name.Value]; exists {
@@ -9611,11 +9636,15 @@ func (a *Analyzer) eventReceiverInfo(expr ast.Expression) (eventReceiverInfo, bo
 	return info, true
 }
 
+// eventHandlerType is the reusable callback type of an Event[T] subscription:
+// the handler borrows the published payload, fn(ref T) void (events.md
+// §§ 10(1)-(2), 11(2); MD-134 owner decision 2026-11-13).
 func eventHandlerType(payload Type) Type {
+	borrowed := Type{Name: referenceTypeName(payload, false), Kind: ReferenceType, Element: &payload}
 	return Type{
-		Name:                   functionTypeName([]Type{payload}, Type{Name: "void", Kind: VoidType}, CallableShared),
+		Name:                   functionTypeName([]Type{borrowed}, Type{Name: "void", Kind: VoidType}, CallableShared),
 		Kind:                   FunctionType,
-		FunctionParameterTypes: []Type{payload},
+		FunctionParameterTypes: []Type{borrowed},
 		FunctionReturnType:     &Type{Name: "void", Kind: VoidType},
 		FunctionCapability:     CallableShared,
 	}
@@ -9745,22 +9774,6 @@ func (a *Analyzer) callArgumentTypes(args []ast.Expression, allowVariadicSpread 
 	return types, expressions, preparedSpreadValues, runtimeSpreadValues, true
 }
 
-func (a *Analyzer) methodCallName(expr *ast.CallExpression) (string, bool) {
-	member, ok := expr.Callee.(*ast.MemberExpression)
-	if !ok {
-		return "", false
-	}
-	if a.expressionNamesType(member.Object) {
-		return "", false
-	}
-	objectType, _ := a.inferExpression(member.Object)
-	if objectType.Kind == InvalidType || objectType.Name == "" {
-		return "", false
-	}
-	objectType = dereferenceType(objectType)
-	return objectType.Name + "." + member.Property.Value, true
-}
-
 // inheritedCoreMethodCallName resolves an ordinary privileged-core method
 // through a named receiver's underlying-type chain without converting the
 // receiver or erasing its nominal identity.
@@ -9826,22 +9839,6 @@ func functionUsesReceiver(function Function) bool {
 	// rules/declarations/static.md, receiver semantics; correction15.md keeps an
 	// owning type for qualification without inventing a receiver for static fn.
 	return function.ImplTarget != "" && !function.Static
-}
-
-func (a *Analyzer) methodCallReceiver(expr *ast.CallExpression) (methodReceiverInfo, bool) {
-	member, ok := expr.Callee.(*ast.MemberExpression)
-	if !ok {
-		return methodReceiverInfo{}, false
-	}
-	if a.expressionNamesType(member.Object) {
-		return methodReceiverInfo{}, false
-	}
-	receiverType, _ := a.inferExpression(member.Object)
-	info := methodReceiverInfo{Type: receiverType, Expr: member.Object}
-	if symbol, ok := a.symbolForMemberObject(member.Object); ok {
-		info.Symbol = &symbol
-	}
-	return info, receiverType.Kind != InvalidType
 }
 
 // expressionNamesType distinguishes type-qualified access from an indexed

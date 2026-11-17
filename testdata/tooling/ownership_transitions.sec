@@ -1,0 +1,34 @@
+module main
+
+// Ownership transitions and Place provenance reported by sec analyse from the
+// same Sema facts as the LSP ownership and place-use hovers.
+
+type Token struct {
+    id: int,
+}
+
+impl Token {
+    free {
+    }
+}
+
+type Pair struct {
+    left: Token,
+    right: Token,
+}
+
+fn Consume(token: Token) void {
+    discard token
+}
+
+fn Split(pair: Pair) int {
+    Consume(<-pair.left)
+    let right :<- pair.right
+    Consume(<-right)
+    return 0
+}
+
+fn Keep(token: Token) Token {
+    let moved :<- token
+    return moved
+}

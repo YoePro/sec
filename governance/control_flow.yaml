@@ -10,7 +10,7 @@ integrations:
     document_revision: "2.0"
     document_created: "2026-08-16"
     document_last_updated: "2026-08-16"
-    summary: Defer registration analysis now isolates Arena generations and current resource-close state along with symbols, assignment, move, borrow, and reference state. Cleanup-time effects still require explicit Semantic IR representation and application on cleanup edges.
+    summary: Defer registration isolates current flow state and publishes future direct Arena invalidation sites in detached resolved Sema plans. General resource effects, Semantic IR propagation and cleanup-edge execution remain incomplete.
     rules:
       - rules/control-flow/defer.md
       - rules/memory/ownership.md
@@ -24,6 +24,8 @@ integrations:
       - internal/sema/semantic_facts.go
       - internal/sema/analyzer_defer.go
       - internal/sema/analyzer_arena.go
+      - internal/sema/defer_plans.go
+      - internal/sema/defer_arena_effects.go
     tests:
       - internal/sema/analyzer_test.go
       - internal/sema/copy_move_test.go
@@ -36,6 +38,8 @@ integrations:
       - testdata/control_flow/defer_arena_continuation/valid.sec
       - testdata/control_flow/defer_arena_continuation/immediate_invalid.sec
       - testdata/control_flow/defer_arena_continuation/body_invalid.sec
+      - internal/sema/defer_arena_effects_test.go
+      - testdata/sema/defer_arena_effects.sec
     implemented:
       - defer body is analyzed in copied symbol state
       - defer body is analyzed in copied definite-assignment state
@@ -46,10 +50,10 @@ integrations:
       - captured outer uses are converted to pending deferred-use borrow records after defer-body analysis
       - immediate Arena.Reset and Arena.Release increment arena generation so older arena-derived references become stale
       - "Deferred Arena continuation regressions completed 2026-10-30: seven valid source cases preserve pre-existing reference use, Arena ownership and allocation after registering deferred Reset/Release, including repeated invalidation, conditional registration and a conditional deferred body. Three immediate Reset/Release cases retain stale-use diagnostics, including an immediate Reset after a registered deferred Reset. Sema, CLI JSON and unsaved-source LSP agree on acceptance and primary/allocation-source locations. A temporary Go overlay that disabled the existing copied generation state made the valid fixture fail with stale-reference errors, confirming regression sensitivity without modifying repository implementation. The duplicate remaining claim that Arena generation isolation was absent is removed: analyzer_defer.go already copies and restores it. Future cleanup-effect representation, ordering and cleanup-edge execution remain open."
+      - Validated ResolvedDeferPlan now publishes future direct Arena.Reset/Release sites with canonical receiver Places, source locations and body effect indices under the existing defer registration/action identity. Sites are deterministically ordered and detached on query; enclosing calls and nested lambda bodies are excluded. These sites preserve conditional/loop execution through the body rather than asserting unconditional invalidation, and do not commit registration-time epoch transitions to ordinary continuation. Cleanup-edge execution, transitive resource effects and Semantic IR propagation remain open.
     partial:
-      - deferred cleanup effects are not yet represented independently for later cleanup-edge consumers
+      - Direct deferred Arena invalidation sites are explicit in resolved Sema plans; general resource and transitive callee effects, Semantic IR propagation and cleanup-edge execution remain incomplete.
     remaining:
-      - represent deferred Arena.Reset/Release invalidation as a future cleanup effect rather than mutating the ordinary continuation
       - audit every mutable Sema flow domain touched by defer-body analysis for registration-time versus cleanup-time semantics
       - separate current resource lifecycle state from registered future cleanup where the present closedResources model conflates them
       - preserve deferred cleanup effects explicitly in resolved Sema/Semantic IR facts with registration point and canonical cleanup order
@@ -66,8 +70,10 @@ integrations:
       - multiple deferred arena invalidations do not mutate current generation at registration
       - conditional deferred arena invalidation does not leak into ordinary continuation
       - cleanup-time arena invalidation retains canonical LIFO ordering
-    revised: "2026-10-30"
+    revised: "2026-11-17"
     verification:
+      - command: GOTMPDIR="$HOME/.cache/sec-gotmp" go test -p 4 ./internal/sema -count=1 -timeout=120s; GOTMPDIR="$HOME/.cache/sec-gotmp" go test -p 4 ./internal/ir/semantic ./cmd/compiler ./cmd/lsp -run "Test.*Defer" -count=1 -timeout=120s; GOTMPDIR="$HOME/.cache/sec-gotmp" go vet ./internal/sema
+        result: "Passed 2026-11-17: full Sema 36.875s; defer-focused Semantic IR 0.067s, CLI 3.118s and LSP 9.666s; vet passed. New tests cover direct body order, conditional invalidation, exclusion of immediate calls and nested lambda effects, detached queries, deterministic reanalysis, eight continuation-safe defer registrations and rejection without a consumable plan. One future-direct-invalidation representation point completed; cleanup-edge execution and Semantic IR propagation remain open."
       - command: go test -race ./internal/sema -run "TestDeferredArena(Continuation|BodyStillValidates)" -count=1 -timeout=90s
         result: "Passed 2026-10-30: deferred-body Reset still rejects the stale use inside that body, while generation state is restored even after that diagnostic so the later ordinary return adds no stale-use error. This guards against implementing isolation by disabling deferred-body validation."
       - command: go test ./internal/sema -count=1 -timeout=120s; go test -race ./cmd/compiler ./cmd/lsp -run 'TestDeferredArenaContinuation|TestMatchTermination' -count=1 -timeout=150s; go vet ./internal/sema ./cmd/compiler ./cmd/lsp
@@ -1316,17 +1322,18 @@ integrations:
       - "MD-117 implicit indexed pack borrows (2026-11-09; functions.md sections 38A(4)(3),38A(5), borrowing.md section 15): Touch(values[k]) with a selected ref parameter borrows an owned pack position, including move-only concrete elements. Indexed copy requirements are delayed until parameter selection and checked per referenced position; an unrelated copyable position does not require the borrowed position to be copyable. Actual by-value calls, local copies, by-value loops, illegal mutable authority, out-of-range indexes and element extraction retain their checks. Shared fixtures cover repeated implicit/explicit borrows, independent specializations and mixed move-only/copyable positions through Sema, CLI JSON and unsaved LSP buffers. Physical reference lowering remains owned by its existing P24 work."
       - For-header ref/ref mut keywords and multi-binding commas receive parser-owned CST spacing roles, completing ordinary intra-line for/in/range/step spacing without changing comments, line breaks or binding authority. Sema publishes detached, source-ordered ForBindingModes only after a header validates, with explicit value/ref/ref mut/discard mode and resolved binding type; reset and invalid-header tests prevent stale or positive invalid facts. LSP hover at for, binding names and ref keywords consumes these facts and retains existing Iterator/Next and map information. Shared CLI/LSP formatting goldens and typed source tests cover all modes (2026-11-10).
       - "Dedicated iterator binding presentation completed 2026-11-10: Sema snapshots now retain each yielded BindingID and explicitly classify borrowed interface-view requirements alongside concrete and generic-constraint resolutions. LSP ordinary and expected-return completion preserve the yielded value type and show the canonical Iterator[T], element type and selected Next description; hover on uses of the loop binding resolves the same fact by binding identity. Equal spellings in disjoint loops or ordinary locals cannot inherit another resolution. Valid ref mut Iterator[T] views publish their runtime interface requirement without inventing a concrete target; generic templates continue to defer selection to specialization. Invalid conformance, duck typing and shared views supply no Next promise. This is tooling over existing loop semantics; iterator runtime/lowering and cleanup remain separate remaining work."
+      - "2026-11-17: compiler-known Iterator[T] loops over reusable iterator storage lower through Semantic IR and Sec MLIR schema 13 as repeated statically resolved Next calls with Some/None control flow: condition block borrows the storage, calls Next and tests Some; the body binds the copy-trivial payload or discards it; None and break exit; every sec-mlir-opt verifier passes (internal/ir/semantic/iterator_loops.go; TestSchema13IteratorLoops)."
     remaining:
       - carry Arena generation through the shared loop-header and backedge fixed-point analysis, including continue edges and replay
       - complete float and decimal range lowering with resolved-type arithmetic and stable source-visible endpoint behavior
       - lower dynamic arrays, lists, slices, strings, maps, sets, and vectors through Semantic IR and the compilation track
       - extend structural-stability checking to user-defined operations and calls that receive mutable authority over the iterated collection (requires interprocedural structural-mutation summaries) and to collections reached through Iterator[T] sources
-      - lower compiler-known Iterator[T] loops through Semantic IR and the compilation track as repeated statically resolved Next calls with Some/None control flow and cleanup
       - complete iterator ownership and cleanup validation for move-only yielded T, break, continue, return, and error exits
       - represent yielded component modes, iteration state, source authority, structural stability, and cleanup edges explicitly in Semantic IR
       - complete the revision-2.0 parser, Sema, ownership, borrowing, flow, cleanup, formatter, diagnostics, LSP, Semantic IR, and backend regression matrix
       - "MD-057 borrowed iterator views (flowcontrol_for.md § 37.1). Sema implemented 2026-10-18: `for value in values` over `values: ref mut Iterator[T]` yields T with a ResolvedForIteration whose Source is borrowed-interface-view, records the Next call as an interface graph call, and rejects a shared ref Iterator[T] source. Known hole (verified 2026-10-18): Semantic IR/lowering of runtime Next dispatch is not implemented; readiness reports it as Unproven with the reason naming the missing view representation (MD-108)"
       - "MD-117 heterogeneous iteration step 4 (end to end, remainder): 32-bit plan execution and execution of reference-pack loops once P24 lowers references"
+      - lower the remaining compiler-known Iterator[T] loop forms through Semantic IR (fresh temporary iterator as loop-owned storage destroyed at every exit, generic/specialized Next, non-copy-trivial yielded values with per-iteration cleanup) and the reusable-storage form below the schema-13 boundary through the native track; reusable-storage loops reach Semantic IR and schema 13 (2026-11-17)
     excluded:
       - condition-only and C-style for loops
       - consuming for bindings or move-source iteration in Sec 0.1
@@ -1690,6 +1697,7 @@ integrations:
       - statement termination consumes ResolvedMatchPlan.Exhaustive and resolved arm flow
       - nested analyzed match statements participate in analyzer-aware block fallthrough and return queries
       - "Focused match termination matrix completed 2026-10-30: shared source fixtures cover exhaustive union and Option matches, integer enum aliases, complete open-bit enum domains, nested matches, unsafe block wrappers, guarded fallbacks and panic arms. Valid functions require no synthetic final return; six continuing-arm counterexamples retain missing-return errors and six post-termination statements retain S3001. Reproduced and fixed an analyzer gap where an unsafe wrapper fell back to syntax-only return analysis, falsely rejecting NestedUnsafe and missing its unreachable successor. The wrapper now recurses through analyzer-owned statement flow while preserving the existing asm-return rule. Cohesive analyzer-aware return/continuation queries are extracted from analyzer.go into analyzer_statement_flow.go. CLI JSON/LSP agree with Sema, and Semantic IR verifies exact return counts and the non-returning panic arm. Broader replacement of package-level structural helpers and cleanup-flow unification remain open."
+      - "2026-11-17: a break inside a match arm leaves the enclosing loop for reachability (match is not a break target, flowcontrol_match.md § 34(1)-(2)): both current-loop break detectors now walk match arm bodies, so code after an infinite for or while true whose only break is in a match arm is no longer reported unreachable (S3001) (internal/sema/analyzer.go, internal/sema/analyzer_while_flow.go; TestBreakInMatchArmLeavesLoop)."
     remaining:
       - replace package-level structural flow reconstruction with compiler-owned resolved statement-flow facts
       - ensure function return, unreachable-code, cleanup, Semantic IR, and lowering consume one canonical match flow result

@@ -1,0 +1,34 @@
+module main
+
+type Handle struct {
+    token: int32,
+}
+
+impl Handle {
+    free {
+    }
+}
+
+unsafe extern "C" fn foreign_adopt(token: int32) int32
+
+// The Sec wrapper implements the foreign transfer protocol: when the foreign
+// API rejects the resource, the owner is handed back to the caller.
+fn Give(-> handle: Handle) Option[Handle] {
+    let status := unsafe foreign_adopt(handle.token)
+    if status != 0 {
+        return Some(<-handle)
+    }
+    return None
+}
+
+fn Use() int {
+    let handle := Handle { token: 7 }
+    match Give(<-handle) {
+        Some(back) => return 1
+        None => return 0
+    }
+}
+
+fn main() int {
+    return Use()
+}

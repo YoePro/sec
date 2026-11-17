@@ -1435,6 +1435,51 @@ static LogicalResult verifyStaticComponent(Operation *op, Type type, Attribute v
   return success();
 }
 
+// MD-062 § 7: a constant is the canonical mapping, one {axis, exponent}
+// entry per non-zero axis in strictly ascending axis-identity order.
+LogicalResult UnitDimensionConstantOp::verify() {
+  if (!isa<UnitDimensionType>(getResult().getType()))
+    return emitOpError("result must be !sec.unit_dimension");
+  StringRef previous;
+  bool first = true;
+  for (Attribute entry : getAxes()) {
+    auto axis = dyn_cast<DictionaryAttr>(entry);
+    auto name = axis ? axis.getAs<StringAttr>("axis") : StringAttr{};
+    auto exponent = axis ? axis.getAs<IntegerAttr>("exponent") : IntegerAttr{};
+    if (!axis || axis.size() != 2 || !name || !exponent || name.getValue().empty())
+      return emitOpError("each axis is exactly {axis, exponent}");
+    if (exponent.getValue().isZero())
+      return emitOpError() << "axis " << name.getValue() << " has a zero exponent";
+    if (!first && previous >= name.getValue())
+      return emitOpError("axes must be sorted and unique by axis identity");
+    previous = name.getValue();
+    first = false;
+  }
+  return success();
+}
+
+LogicalResult UnitDimensionCompareOp::verify() {
+  if (!isa<UnitDimensionType>(getLeft().getType()) || !isa<UnitDimensionType>(getRight().getType()))
+    return emitOpError("operands must be !sec.unit_dimension");
+  if (getPredicate() != "eq" && getPredicate() != "ne")
+    return emitOpError("predicate must be eq or ne");
+  return success();
+}
+
+LogicalResult UnitDimensionAxisCountOp::verify() {
+  if (!isa<UnitDimensionType>(getValue().getType()))
+    return emitOpError("operand must be !sec.unit_dimension");
+  if (!isa<UIntType>(getResult().getType()))
+    return emitOpError("AxisCount result must be !sec.uint");
+  return success();
+}
+
+LogicalResult UnitDimensionIsDimensionlessOp::verify() {
+  if (!isa<UnitDimensionType>(getValue().getType()))
+    return emitOpError("operand must be !sec.unit_dimension");
+  return success();
+}
+
 LogicalResult StaticGlobalOp::verify() {
   Type type = getType();
   StringRef treeKind = isa<StructType, ArrayType>(type)      ? "aggregate"

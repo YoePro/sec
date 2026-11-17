@@ -171,11 +171,17 @@ const (
 	EffectMemoryWrite   EffectKind = "memory-write"
 	EffectVolatileRead  EffectKind = "volatile-read"
 	EffectVolatileWrite EffectKind = "volatile-write"
+	// A fence orders atomic communication without reading or writing an object.
+	// Rules: rules/concurrency/atomics.md — §40(3–6).
+	EffectAtomicFence EffectKind = "atomic-fence"
 )
 
 type EffectSite struct {
-	Kind           EffectKind
-	Source         lexer.Token
+	Kind   EffectKind
+	Source lexer.Token
+	// AtomicOrder retains the established order of an EffectAtomicFence site.
+	// Rules: rules/concurrency/atomics.md — §§24,26,40.
+	AtomicOrder    string
 	PanicReasonIDs []diagnostics.PanicReasonID
 	Message        string
 	HasMessage     bool
@@ -201,6 +207,9 @@ type CallableNode struct {
 	// Rules: rules/tooling/cli.md — §5.3; rules/analysis/call_graph.md — Callable node.
 	DeclarationEnd lexer.Token
 	Extern         bool
+	// Unsafe marks an unsafe fn/method: its caller-facing safety is unsafe
+	// (rules/memory/unsafe.md — §§ 3.3, 14(2)).
+	Unsafe bool
 }
 
 type CallSite struct {
@@ -327,6 +336,7 @@ func (g *CallGraph) addCallable(function Function) CallableID {
 			Declaration:    function.Token,
 			DeclarationEnd: function.DeclarationEnd,
 			Extern:         function.Extern,
+			Unsafe:         function.Unsafe,
 		}
 		g.nodeOrder = append(g.nodeOrder, id)
 	}

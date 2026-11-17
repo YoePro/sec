@@ -1,0 +1,6 @@
+module main
+
+fn Invalid() int {
+    let pointer: RawPtr[int] := null
+    return pointer.Read()
+}

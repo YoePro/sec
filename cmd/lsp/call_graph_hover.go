@@ -95,7 +95,9 @@ func callGraphHoverSuffix(analyzer *sema.Analyzer, uri string, text string, pos 
 	}
 	lines = append(lines, allocationHoverLines(analyzer, graph, node.ID)...)
 	lines = append(lines, returnedReferenceHoverLines(analyzer, node.ID)...)
+	lines = append(lines, trustProvenanceHoverLines(analyzer, graph, node.ID)...)
 	lines = append(lines, panicHoverLines(graph, node.ID)...)
+	lines = append(lines, effectCauseHoverLines(graph, node.ID)...)
 	lines = append(lines, tryAssignmentFlowHoverLines(analyzer, node.ID)...)
 	lines = append(lines, blockingHoverLine(graph, node.ID))
 	return "\n\n" + strings.Join(lines, "\n\n")
@@ -119,4 +121,28 @@ func returnedReferenceHoverLines(analyzer *sema.Analyzer, id sema.CallableID) []
 		line += " (other origins not established)"
 	}
 	return []string{line}
+}
+
+// effectCauseHoverLines presents each non-panic effect a callable can reach
+// (memory, volatile, atomic fence, nondeterministic input) with its canonical
+// cause chain: introduced here at a source position, or via the shortest call
+// path to the callable that introduces it.
+// Rules: rules/compiler/semantic_ir.md — § 109(1)–(3); rules/tooling/lsp.md — § 24.4(2).
+func effectCauseHoverLines(graph *sema.CallGraph, id sema.CallableID) []string {
+	lines := []string{}
+	for _, cause := range graph.EffectCauses(id) {
+		at := fmt.Sprintf("%d:%d", cause.Source.Line, cause.Source.Column)
+		if len(cause.Path) <= 1 {
+			lines = append(lines, fmt.Sprintf("Effect `%s`: here at %s", cause.Kind, at))
+			continue
+		}
+		names := make([]string, 0, len(cause.Path))
+		for _, step := range cause.Path {
+			if node, ok := graph.Node(step); ok {
+				names = append(names, node.Name)
+			}
+		}
+		lines = append(lines, fmt.Sprintf("Effect `%s` via `%s` (introduced at %s:%s)", cause.Kind, strings.Join(names, "` -> `"), cause.Source.File, at))
+	}
+	return lines
 }

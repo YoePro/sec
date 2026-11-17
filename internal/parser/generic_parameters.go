@@ -38,7 +38,11 @@ func (p *Parser) parseGenericParameters(allowPack bool) []*ast.GenericParameter 
 			p.addError("generic type pack must be last at %d:%d", p.peekToken.Line, p.peekToken.Column)
 		}
 		if p.peekToken.Type != lexer.IDENT {
-			p.addError("expected generic parameter name at %d:%d", p.peekToken.Line, p.peekToken.Column)
+			if p.peekToken.Type == lexer.NEW {
+				p.reportNewKeywordName(p.peekToken, "a generic parameter name")
+			} else {
+				p.addError("expected generic parameter name at %d:%d", p.peekToken.Line, p.peekToken.Column)
+			}
 			before := p.curToken
 			p.skipGenericParameterList()
 			// A separator followed by EOF or a foreign closer leaves nothing to

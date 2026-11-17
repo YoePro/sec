@@ -1,0 +1,55 @@
+module main
+
+fn Live() void {
+    let mut value := 1
+    unsafe {
+        let pointer := value.Ptr
+        pointer.Write(2)
+        discard pointer.Read()
+        pointer.VolatileWrite(3)
+        discard pointer.VolatileRead()
+    }
+}
+fn Reinitialized() void {
+    let mut value := 1
+    unsafe {
+        let pointer := value.Ptr
+        discard value
+        value = 2
+        discard pointer.Read()
+    }
+}
+fn StoreDeadAddress() RawPtr[int] {
+    let value := 1
+    unsafe {
+        let pointer := value.Ptr
+        discard value
+        return pointer
+    }
+}
+fn Unknown(pointer: RawPtr[int]) void {
+    unsafe { discard pointer.Read() }
+}
+
+type Pair struct { Left: int, Right: int }
+
+fn DisjointField() int {
+    let mut pair := Pair { Left: 1, Right: 2 }
+    unsafe {
+        let pointer := pair.Right.Ptr
+        let grant := ref mut pair.Left
+        pointer.Write(3)
+        discard pointer.Read()
+        return *grant
+    }
+}
+
+fn SharedRead() int {
+    let value := 1
+    unsafe {
+        let pointer := value.Ptr
+        let grant := ref value
+        discard pointer.Read()
+        return *grant
+    }
+}

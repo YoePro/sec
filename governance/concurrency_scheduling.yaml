@@ -73,10 +73,10 @@ integrations:
       - "Separate scheduling/cancellation operation facts completed 2026-11-11 (scheduling.md sections 7-15,50,55-56): successful canonical yield signature resolution publishes ResolvedSchedulingPoint with independent TaskSchedulingPoint, CurrentCancellationPoint and PhysicalSchedulerHint properties, stable compiler-known member ID and source token. Task.Yield has the two logical-task properties; Thread.Yield only the physical scheduler hint. Detached per-call and deterministically source-ordered snapshot queries expose facts without a second syntax/name classifier; repeated inference deduplicates and Analyzer reuse clears obsolete facts. Signature-invalid and instance calls get no facts; facts retained for a signature-valid call in an invalid execution context are not context/profile safety proof. sec analyse --verbose consumes these same facts with exact function focus and no default-output noise. Runtime first-commit races, target realization, migration proof and other wait operations remain with their separately tracked owning requirements."
       - "Stale portable ThreadSchedulingError identity conformance verified 2026-11-11 (scheduling.md sections 34(1-3),56(3)): builtin/error registration already removed by the threads-v2 implementation; source-backed Sema and CLI reject undeclared use while accepting ordinary project-owned declarations and canonical ThreadAttachError. LSP exposes no stale completion, hover, definition or type-definition; navigation regression added. This closes the stale scheduling checklist duplicate without claiming new runtime scheduling behavior."
       - "Ordinary-main Task.Current/Task.Yield rejection completed and verified 2026-11-11 (scheduling.md sections 21-22,50,57): the existing shared execution-requirement validator rejects both operations directly and through synchronous helpers, function values and deferred calls with S1213, source spans, spawn guidance and transitive operation witnesses. Dedicated source-backed regression coverage verifies six independent forbidden root calls on 32/64-bit scalar plans, accepted real task roots, and ordinary main/physical-thread Thread.Current and Thread.Yield controls. Compiler JSON and LSP share the diagnostics; invalid main cannot publish a Semantic IR artifact. No new runtime scheduling implementation or target realization is claimed."
+      - Target-independent ordinary-main task identity verified and stale duplicate closed (2026-11-17; scheduling.md section 22(1-5), applied scheduling correction sections 4-5). The existing shared execution-requirement validator already rejects direct and transitive Task.Current/Task.Yield calls in main independently of target/profile; no new runtime context semantics were required. New source-backed regression matrix verifies six forbidden root paths and a valid explicit task repair for every registered target identity at Interactive/Standard/Deep depth, preserving unresolved scalar facts rather than using the host. The diagnostic repair now correctly handles fallible task creation with try spawn before await; CLI regression checks that guidance, and existing CLI/LSP coverage preserves related operation locations and invalid IR artifact suppression. Removed the duplicate remaining entry and resolved legacy implicit-main-task finding. This is verification closure plus a diagnostic repair, not new scheduler/runtime lowering or target capability support.
+      - "2026-11-17 (governance sync, verified): Thread.Yield does not observe or commit cancellation (scheduling.md §§ 11-13): the signature-resolved fact for CKM-THREAD-YIELD is only PhysicalSchedulerHint, never TaskSchedulingPoint or CurrentCancellationPoint; it records no logical-task requirement; its compiler-known documentation says it is not a cancellation point; sec analyse reports it as a scheduler hint only. Preserving this through lowering is part of the Yield lowering item (internal/sema/scheduling_points.go, execution_context_members.go; TestResolvedSchedulingPoints in internal/sema/scheduling_points_test.go)."
     remaining:
       - implement Task.Yield cancellation-point first-commit behavior
-      - ensure Thread.Yield does not observe/commit cancellation implicitly
-      - remove target-dependent implicit root-task semantics from main/program entry
       - model task migration permission/restriction explicitly
       - preserve execution-affine/TLS physical-thread provenance through scheduler lowering
       - prevent backend preemption/migration from violating validated thread-bound borrow facts
@@ -85,7 +85,7 @@ integrations:
       - complete physical worker blocking versus logical task suspension analysis
       - complete starvation/cooperative-progress diagnostics
       - complete scheduling Semantic IR facts without treating legacy opcode names as normative
-      - complete target-specific Task.Yield/Thread.Yield lowering
+      - complete target-specific Task.Yield/Thread.Yield lowering; lowering must keep Thread.Yield a physical scheduler hint that never observes or commits cancellation (its source facts are complete)
       - update LSP hover/completion/navigation and execution-context diagnostics
     required_tests:
       - Task.Yield exact signature
@@ -126,9 +126,6 @@ integrations:
       - concrete Semantic IR vocabulary remains owned by rules/compiler/semantic_ir.md
       - implementation status belongs in this split governance fragment rather than root implementation-status.yaml
     identified_bugs:
-      - id: concurrency.scheduling-v2.implicit-main-task
-        severity: high
-        description: Legacy scheduling.md allows program entry to have or not have TaskContext depending on target profile, making Task.Current/Task.Yield source validity target-dependent.
       - id: concurrency.scheduling-v2.task-yield-cancellation-unspecified
         severity: high
         description: Legacy scheduling.md describes Task.Yield but does not define whether pending current-task cancellation may commit there.
@@ -140,7 +137,7 @@ integrations:
         description: Legacy scheduling.md gives a concrete opcode list as if owned by the scheduling book rather than semantic_ir.md.
     corrections_applied:
       - rules/corrections/applied/scheduling-v2-cross-rulebook-correction-20260927.md
-    revised: "2026-11-11"
+    revised: "2026-11-17"
     code:
       - internal/sema/execution_context.go
       - internal/sema/execution_context_members.go
@@ -179,7 +176,11 @@ integrations:
       - cmd/lsp/main_task_context_test.go
       - testdata/sema/main_task_context_valid.sec
       - testdata/sema/main_task_context_invalid.sec
+      - internal/sema/main_task_targets_test.go
+      - testdata/sema/main_task_guidance_valid.sec
     verification:
+      - command: GOTMPDIR=$HOME/.cache/sec-gotmp go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run "TestMainTask|TestExecutionContextRequirements|TestTaskYield" -count=1
+        result: "Passed on 2026-11-17: Sema 0.340s, CLI 7.067s, LSP 5.051s; Sema vet passed. New registry-wide three-depth source matrix verifies target-independent ordinary-main rejection and valid explicit fallible-spawn guidance, including unresolved scalar placeholders with no host fallback. Existing source spans, transitive witnesses and invalid-IR artifact checks remain green. One already-implemented stale duplicate closed after verification and one diagnostic repair made: remaining 13 -> 12. No sec/, runtime, C++ or excluded blocking/runtime-model/events thread implementation edits."
       - command: go vet -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp
         result: passed 2026-11-11 after ordinary-main task-context integration coverage.
       - command: go test -race -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run '^TestMainTaskContext' -count=1 -timeout=120s

@@ -1,0 +1,46 @@
+module main
+
+// MD-030 § 9(6): @noPanic init and free bodies with early returns whose
+// every path, including the generated field cleanup after free, is
+// panic-free.
+
+type Inner struct {
+    _value: int,
+}
+
+impl Inner {
+    @noPanic
+    free {
+        if self._value == 0 {
+            return
+        }
+    }
+}
+
+type Outer struct {
+    _inner: Inner,
+    _count: int,
+}
+
+impl Outer {
+    @noPanic
+    init(value: int) {
+        self._inner = Inner { _value: 1 }
+        if value < 0 {
+            self._count = 0
+            return
+        }
+        self._count = value
+    }
+
+    @noPanic
+    free {
+        if self._count == 0 {
+            return
+        }
+    }
+}
+
+fn main() int {
+    return 0
+}

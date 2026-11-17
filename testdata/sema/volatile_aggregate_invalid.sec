@@ -1,0 +1,70 @@
+module main
+
+type Empty struct {}
+type Pair struct { first: uint32, second: uint32 }
+type Wrapped Pair
+type Words uint32[2]
+type Packet[T] struct { value: T }
+type Choice union { None, Some(uint32) }
+type Failure enum error { Bad }
+
+fn EmptyAccess(pointer: RawPtr[Empty], value: Empty) void {
+    unsafe {
+        discard pointer.VolatileRead()
+        pointer.VolatileWrite(value)
+    }
+}
+fn StructAccess(pointer: RawPtr[Pair], value: Pair) void {
+    unsafe {
+        discard pointer.VolatileRead()
+        pointer.VolatileWrite(value)
+    }
+}
+fn WrappedAccess(pointer: RawPtr[Wrapped], value: Wrapped) void {
+    unsafe {
+        discard pointer.VolatileRead()
+        pointer.VolatileWrite(value)
+    }
+}
+fn FixedArrayAccess(pointer: RawPtr[uint32[2]], value: uint32[2]) void {
+    unsafe {
+        discard pointer.VolatileRead()
+        pointer.VolatileWrite(value)
+    }
+}
+fn DynamicArrayAccess(pointer: RawPtr[uint32[]], value: uint32[]) void {
+    unsafe {
+        discard pointer.VolatileRead()
+        pointer.VolatileWrite(value)
+    }
+}
+fn NamedArrayAccess(pointer: RawPtr[Words], value: Words) void {
+    unsafe {
+        discard pointer.VolatileRead()
+        pointer.VolatileWrite(value)
+    }
+}
+fn UnionAccess(pointer: RawPtr[Choice], value: Choice) void {
+    unsafe {
+        discard pointer.VolatileRead()
+        pointer.VolatileWrite(value)
+    }
+}
+fn ResultAccess(pointer: RawPtr[Result[uint32, Failure]], value: Result[uint32, Failure]) void {
+    unsafe {
+        discard pointer.VolatileRead()
+        pointer.VolatileWrite(value)
+    }
+}
+fn OptionAccess(pointer: RawPtr[Option[uint32]], value: Option[uint32]) void {
+    unsafe {
+        discard pointer.VolatileRead()
+        pointer.VolatileWrite(value)
+    }
+}
+fn GenericStructAccess(pointer: RawPtr[Packet[uint32]], value: Packet[uint32]) void {
+    unsafe {
+        discard pointer.VolatileRead()
+        pointer.VolatileWrite(value)
+    }
+}

@@ -131,6 +131,7 @@ integrations:
       - Sema registers the error marker on enum and union type headers, so interface requirements analyzed before type bodies accept declared error types in Result channels
       - "P15-75 source-check repair (2026-10-30): transfer helpers and legacy file Copy form ordinary checked slices before the IO try; Directory.Next forms its byte view before string materialization, so its handler binds only StringError. The ordinary bounds panic path stays distinct from IOError/IOErrorLegacy, no new error mapping or concrete-interface dispatch is introduced, and CopyN discards its mutable slice holder before reading the buffer. Both target-aware IO import/API checks pass; MD-026 and runtime materialization dependencies remain open."
     remaining:
+      - "Compiler tests that load the io library fail on its current source (found in the full go test run 2026-11-17): TestCompilerLoadsIOReadFileIntoAPI and TestCompilerLoadsIOWriteSeekAndDirectoryAPIs (cmd/compiler/main_test.go) report S1091 at sec/stdlib/io/transfer.sec:81 (a try binding Err(error) over IndexError and CollectionError with no common channel) and an undefined STDOUT at sec/stdlib/io/write.linux.amd64.sec:24. The library source must be brought in line with the current Sema."
       - merge IOErrorLegacy into IOError, or define the concrete-resource error family the file API keeps (std-io.md § 27), and make File and Directory implement the root interfaces
       - decide and implement conversion of borrowed concrete references to borrowed interface references so the transfer helpers can be called with concrete readers and writers (MD-026)
       - write the io sub-books and packages listed in std-io.md § 29 (reader, writer, seek, buffer, buffered, text, memory, pipe, limit, multi, section, tee, stdio)
@@ -228,6 +229,7 @@ integrations:
       - command: go test ./cmd/compiler -run TestTemporalArithmeticErrorKeepsCoreIdentity -count=1
         result: passed on 2026-10-18
     remaining:
+      - "TestTemporalArithmeticErrorKeepsCoreIdentity (cmd/compiler/temporal_arithmetic_error_test.go) fails on the current temporal calendar source (found 2026-11-17): undefined CalendarError at sec/stdlib/temporal/calendar/partial.sec:127 and partial_hebrew.sec:88/105, plus a missing return in calendar._hebrewPartialWithinCore. The calendar sources must declare or import CalendarError consistently."
       - extend the variant set only through revision of the temporal rulebooks as temporal arithmetic is implemented (the success paths are still NotImplemented)
 
   - id: stdlib.fmt
@@ -248,6 +250,7 @@ integrations:
       - sec/stdlib/fmt/fmt.sec
     implemented: []
     remaining:
+      - "cmd/lsp TestAnalyzeLoadsFmtPackageAndTransitiveImports and TestAnalyzeGroupedPackageImportsAndShortNames fail since fmt.Println returns Result[uint, fmt.WriteFormatError] (found 2026-11-17): their sample source calls fmt.Println as a statement without handling the result. Either the samples handle it (try/discard) or the fmt API decision is revisited; the owner decides which."
       - "MD-120 handoff (§ 9): sec/core/format.sec and sec/stdlib/fmt/print.linux.amd64.sec still declare interface FormatSink[E] and use bare FormatSink; they must become [E: error] with complete uses, and the fmt error contract must keep formatter, materialization, output-count and destination failures separate (MD-118; owner draft, not touched by compiler work)"
       - Specify and implement the public fmt surface after MD-118 settles format grammar/validation, builtin and user participation, text materialization versus output, allocation and StringError/IO errors; the existing Println(string) stub does not define Printf or the unresolved API.
       - Integrate the implemented MD-117 native type-pack facility for mixed concrete arguments without fmt-specific compiler rules, implicit any/boxing or C-vararg adaptation; language owners are frontend.generics-v2, frontend.functions-v2 and frontend.spread, with ownership/control-flow, Semantic IR, specialization and P25 ABI work in their existing owners. Pack-carried references use ordinary reference access syntax (references.md § 3.4(10), MD-119 applied 2026-10-30).

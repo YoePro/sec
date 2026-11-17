@@ -1204,6 +1204,13 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
   consumption has no producer (TestForeignSignaturesRejectOwnedSecValues).
   The C++ dialect now rejects `move` on `sec.call.foreign`
   (invalid-schema13-foreign-consumption.mlir); direct calls keep `move`.
+  Verified 2026-11-17 against correction § 2(2): TestSchema13FFIWrapperOwnership
+  (testdata/semantic_ir/ffi_wrapper_ownership.sec, 32/64-bit, schema-13
+  ownership and cleanup verifiers) covers a wrapper-mediated foreign transfer.
+  The foreign call takes only copyable values. A rejected resource is handed
+  back as `Some(owner)`. The caller's consuming argument makes the source
+  unavailable, and every path destroys the owner exactly once. Direct-FFI
+  ownership metadata is out of scope, not unfinished P17 work.
 - [x] P17-50 — Emit the exact resolved ownership/cleanup plans, regions and source
   provenance. Earlier scalar/trivial lowering must preserve address-taken and
   non-trivial storage and must not erase identities/actions before verification.
@@ -1361,6 +1368,18 @@ fixtures under `testdata/`; no unrelated core/stdlib/manual rewrite belongs here
   enum-hover text); check-sec-mlir 208/208 with all three P17 verifiers; no private
   paths in changed files; `git diff --check` clean; yamlstatus 0 problems. The
   § 136 row "go test ./... passes" therefore stays Not met.
+
+  Rerun 2026-11-17, owner-authorized, for P17 closure. The full
+  `go test -p 4 ./...` ran on HEAD 78aa3f6a plus the fixes of the same day; lit
+  passed 231/231. The run was preceded by fixing every older compiler/LSP failure
+  that does not come from the stdlib. Nine tests fail, none of them P17:
+  - Five fail on the owner's draft `sec/stdlib` (io, temporal calendar,
+    fmt.Println), which is excluded from compiler acceptance by owner decision.
+  - Four allocation-context tests belong to the P19 Arena work in progress:
+    `TestAllocationSelectionBoundary`, `TestAllocationContextOriginsCLI`,
+    `TestAnalyseAllocationContexts` and `TestAllocationContextHover`.
+
+  Every P17 and predecessor test passes.
 - [x] P17-62 — Synchronize the package entry and linked memory/control-flow/
   predecessor governance according to actual scope. Mark P17 implemented only
   after every applicable criterion has evidence and authority conflicts are
@@ -1416,7 +1435,7 @@ Partial or Not met (P17-62).
 | # | § 136 criterion | Status | Evidence / remaining |
 |---|---|---|---|
 | 1 | baseline documents repo 152c772 + local P13–P16 or newer equivalent | Met | P17-01: HEAD `cfff1b4b` plus the dirty tree recorded 2026-11-03 (section below); LLVM 24.0.0git, lit 24.0.0dev, Go 1.26. |
-| 2 | previous package regressions remain green | Partial | TestPackage17KeepsPackage16Programs (package-16 fixtures still build at 17); full `go test ./...` result in P17-61. The two `cmd/lsp` fmt-package tests fail on the owner's draft `sec/stdlib`, outside P17. |
+| 2 | previous package regressions remain green | Met | TestPackage17KeepsPackage16Programs (package-16 fixtures still build at 17). In the full `go test ./...` of 2026-11-17 (P17-61) every predecessor and P17 test passes; the only failures are on the owner's draft `sec/stdlib` and in P19 work in progress. |
 | 3 | ownership/destruction/defer/discard synchronization applied | Met | P17-03 done 2026-11-05: audit recorded, B/C/E merged, MD-125 (option B) applied to destruction.md, semantic_ir.md and defer.md with the P17 sync texts reconciled. Owner decisions 2026-11-03 in destruction.md § 8(8)–(9). Inherited-registration implementation is tracked separately. |
 | 4 | Semantic IR ownership amendment applied | Met | P17-04; `ownership_ops.go`, `cleanup_ops.go`, `ownership_state.go`. |
 | 5 | schema-v13 dialect rulebook installed | Met | `sec_mlir_dialect_v13.md` implemented; P17-05 synchronization recorded 2026-11-06 (spelling, MD-031/MD-061 intersections, backed by emitted-and-verified code). |
@@ -1458,7 +1477,7 @@ Partial or Not met (P17-62).
 | 41 | no physical cleanup representation selected | Met | if_owned/if_active and run-scope stay abstract (destruction.md § 11.2). |
 | 42 | no LLVM ownership/destruction decision deferred | Met | Native routes stop at a named boundary before LLVM (TestOwnershipProgramsReachOnlyTheInspectionBoundaries). |
 | 43 | check-sec-mlir passes | Met | 208/208 on 2026-11-03 (P17-61). |
-| 44 | go test ./... passes | Not met | See P17-61: the two `cmd/lsp` fmt-package tests fail on the owner's draft stdlib. |
+| 44 | go test ./... passes | Met | Full run 2026-11-17 (P17-61, owner decision on closure). All compiler and LSP tests owned by P17 and its predecessors pass. The remaining nine failures are five on the owner's draft `sec/stdlib`, which is excluded from compiler acceptance, and four allocation-context tests of the P19 Arena work in progress. |
 | 45 | legacy paths remain operational | Met | Native routes stay at package 14 and schema-11/12 emission is unchanged; TestPackage17KeepsPackage16Programs. |
 
 ### P17-01 execution baseline — 2026-11-03

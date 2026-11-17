@@ -37,53 +37,12 @@ fn FromDate(value: date, system: CalendarSystem) Result[CalendarFields, Calendar
     let mut z := int64(value.EpochDays)
 
     if system == CalendarSystem.Hebrew {
-        // Hebrew years are numbered from AM 1.
-        if z < _hebrewYearStartEpochDays(1) {
-            return Err(CalendarError.OutOfRange)
-        }
+        return _fromHebrewDate(value)
+    }
 
-        // Find the greatest year whose first day is not
-        // later than the requested absolute date.
-        let mut lower := 1
-        let mut upper := 10_000_000
-
-        while lower <= upper {
-            let middle   := lower + (upper - lower) / 2
-            let firstDay := _hebrewYearStartEpochDays(int64(middle))
-
-            if firstDay <= z {
-                lower = middle + 1
-            } else {
-                upper = middle - 1
-            }
-        }
-
-        let year          := upper
-        let mut remaining := z - _hebrewYearStartEpochDays(int64(year))
-
-        // Locate the month within the selected Hebrew year.
-        let monthCount  := try MonthsInYear(year, system)
-        let mut ordinal := 1
-
-        while ordinal <= monthCount {
-            let month := try MonthAt(year, ordinal, system)
-            let days  := try DaysInMonth(year, month, system)
-
-            if remaining < int64(days) {
-                return Ok(CalendarFields {
-                    Year: year,
-                    Month: month,
-                    Day: int(remaining) + 1,
-                })
-            }
-
-            remaining -= int64(days)
-            ordinal += 1
-        }
-
-        // A valid Hebrew year must contain every date
-        // before the beginning of the following year.
-        return Err(CalendarError.OutOfRange)
+    // Delegate Islamic calendar arithmetic to its own module helper.
+    if system == CalendarSystem.IslamicTabular {
+        return _fromIslamicTabularDate(value)
     }
 
     let mut year:      int64 := 0
@@ -195,7 +154,13 @@ fn FromDate(value: date) Result[CalendarFields, CalendarError] {
  * Pure calculation without allocation or I/O.
  */
 fn ToDate(fields: CalendarFields, system: CalendarSystem) Result[date, CalendarError] {
-    if system not in [CalendarSystem.Gregorian, CalendarSystem.Julian, CalendarSystem.Hebrew] {
+    // Conversion is available for the four initial calendars.
+    if system not in [
+        CalendarSystem.Gregorian,
+        CalendarSystem.Julian,
+        CalendarSystem.Hebrew,
+        CalendarSystem.IslamicTabular,
+    ] {
         return Err(CalendarError.NotImplemented)
     }
 
@@ -210,25 +175,12 @@ fn ToDate(fields: CalendarFields, system: CalendarSystem) Result[date, CalendarE
     // Hebrew years begin on Tishri 1. Accumulate the lengths
     // of preceding months using the stable month model.
     if system == CalendarSystem.Hebrew {
-        let year          := int64(fields.Year)
-        let mut epochDays := _hebrewYearStartEpochDays(year)
-        let mut ordinal   := 1
+        return _toHebrewDate(fields, month)
+    }
 
-        while ordinal < month {
-            let currentMonth := try MonthAt(fields.Year, ordinal, system)
-            let days         := try DaysInMonth(fields.Year, currentMonth, system)
-
-            epochDays += int64(days)
-            ordinal += 1
-        }
-
-        epochDays += int64(fields.Day) - 1
-
-        let checkedDays := try int32(epochDays) {
-            Err(_) => return Err(CalendarError.OutOfRange)
-        }
-
-        return Ok(new date(checkedDays))
+    // Year, month and day have already been validated.
+    if system == CalendarSystem.IslamicTabular {
+        return _toIslamicTabularDate(fields, month)
     }
 
     let mut year := int64(fields.Year)
@@ -525,18 +477,18 @@ fn DaysInMonth(year: int, month: CalendarMonth, system: CalendarSystem) Result[i
         }
 
         CalendarSystem.IslamicTabular => {
-            // Month 12 depends on the selected leap-year scheme.
-            // Do not silently choose one before it is specified.
-            if ordinal == 12 {
-                return Err(CalendarError.NotImplemented)
+            // The final month gains one day in leap years.
+            if ordinal == 12 && _islamicTabularLeapYear(year) {
+                return Ok(30)
             }
 
-            // Odd months have 30 days; even months have 29.
-            if ordinal % 2 == 0 {
-                return Ok(29)
+            // Odd months contain 30 days.
+            if ordinal % 2 != 0 {
+                return Ok(30)
             }
 
-            return Ok(30)
+            // Even months contain 29 days.
+            return Ok(29)
         }
 
         _ => {
@@ -692,99 +644,6 @@ fn MonthOrdinal(year: int, month: CalendarMonth, system: CalendarSystem) Result[
  */
 fn MonthOrdinal(year: int, month: CalendarMonth) Result[int, CalendarError] {
     return MonthOrdinal(year, month, CalendarSystem.Gregorian)
-}
-
-/**
- * Calculates elapsed days to the provisional Hebrew new year.
- *
- * Description:
- * Uses the fixed Hebrew calendar's 19-year Metonic cycle
- * and mean lunar conjunction calculation.
- * Applies the weekday postponement rule.
- *
- * Parameters:
- * - year: Positive Hebrew AM year.
- *
- * Returns:
- * Elapsed day count before final new-year corrections.
- *
- * Ownership:
- * Pure integer arithmetic without allocation or I/O.
- */
-fn _hebrewElapsedDays(year: int64) int64 {
-    // Number of lunar months preceding Tishri of this year.
-    let months := (235 * year - 234) / 19
-
-    // Compute elapsed days and fractional day parts.
-    // Each day contains 25,920 traditional parts.
-    let parts := 12084 + 13753 * months
-    let days  := 29 * months + parts / 25920
-
-    // Apply the first weekday postponement.
-    if (3 * (days + 1)) % 7 < 3 {
-        return days + 1
-    }
-
-    return days
-}
-
-/**
- * Calculates the adjusted beginning of a Hebrew year.
- *
- * Description:
- * Applies the additional postponement rules that
- * prevent invalid Hebrew calendar year lengths.
- *
- * Parameters:
- * - year: Positive Hebrew AM year.
- *
- * Returns:
- * Adjusted elapsed day count for Tishri 1.
- *
- * Ownership:
- * Pure calculation without allocation or I/O.
- */
-fn _hebrewNewYear(year: int64) int64 {
-    let current := _hebrewElapsedDays(year)
-    let next    := _hebrewElapsedDays(year + 1)
-
-    // Prevent a year of 356 days.
-    if next - current == 356 {
-        return current + 2
-    }
-
-    // Prevent a year of 382 days.
-    // The preceding year is only needed after AM year 1.
-    if year > 1 {
-        let previous := _hebrewElapsedDays(year - 1)
-
-        if current - previous == 382 {
-            return current + 1
-        }
-    }
-
-    return current
-}
-
-/**
- * Returns the absolute beginning of a Hebrew calendar year.
- *
- * Description:
- * Anchors the fixed Hebrew calendar to Sec's epoch-day
- * representation. Hebrew year 1 begins at epoch day
- * -2092590, corresponding to 1 Tishri AM 1.
- *
- * Parameters:
- * - year: Valid positive Hebrew calendar year.
- *
- * Returns:
- * Number of days since Gregorian 1970-01-01.
- *
- * Ownership:
- * Pure calculation without allocation or I/O.
- */
-fn _hebrewYearStartEpochDays(year: int64) int64 {
-    return -2_092_590 + _hebrewNewYear(year)
 }
 
 /**

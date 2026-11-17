@@ -218,6 +218,10 @@ func formatOperation(out *strings.Builder, op Operation) {
 	}
 	out.WriteString(string(op.Kind))
 	switch op.Kind {
+	case OpUnitDimensionCompare:
+		fmt.Fprintf(out, " %%%d %s %%%d", op.Operands[0], op.Operator, op.Operands[1])
+	case OpUnitDimensionAxisCount, OpUnitDimensionIsDimensionless:
+		fmt.Fprintf(out, " %%%d", op.Operands[0])
 	case OpSliceBorrowShared, OpSliceBorrowMutable, OpSliceReborrowShared, OpSliceReborrowMutable, OpStringViewBorrow:
 		fmt.Fprintf(out, " %%%d, %%%d, %%%d", op.Operands[0], op.Operands[1], op.Operands[2])
 		if op.ReferenceGuard != 0 {
@@ -507,6 +511,7 @@ func formatOperation(out *strings.Builder, op Operation) {
 	}
 	formatAllocationContext(out, op.AllocationContext)
 	out.WriteString(formatUnitMetadata(op.UnitMetadata))
+	out.WriteString(formatUnitDimension(op.UnitDimension))
 	if len(op.Results) > 0 {
 		out.WriteString(" : ")
 		for index, result := range op.Results {

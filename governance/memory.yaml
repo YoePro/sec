@@ -839,10 +839,48 @@ integrations:
     implemented:
       - "2026-11-12: safe unsafe code actions: an unsafe call missing its context gets the exact quick fix `unsafe Call(...)`, an unnecessary or redundant call-form `unsafe` gets a remove fix, and every edit is reparsed and reanalyzed before it is offered; the wrap is withheld when the call would still be an error, so tooling never implies that unsafe repairs a proven-invalid operation. Unsafe blocks are not unwrapped, because Sec has no bare block statement to keep (cmd/lsp/unsafe_actions.go; TestUnsafeHoverAndCodeActions)."
       - "2026-11-12: unsafe mentor diagnostics distinguish missing context from proven invalidity: a missing context names the operation, the caller obligations the context would accept, how to authorize it (call-form or block), a safe alternative and that unsafe never makes a proven-invalid operation valid; proven-invalid raw-pointer operations keep their own identities (S1205 raw-pointer-operation, S1142 raw-pointer-null) whose help says adding unsafe cannot repair them; unnecessary and redundant unsafe contexts are S1242 unsafe.unnecessary and S1243 unsafe.redundant Information advisories published by the CLI and LSP alike (TestUnsafeOperationRegistry, TestUnsafeHoverAndCodeActions)."
+      - "2026-11-17: caller obligations and trust provenance in the LSP. An unsafe operation hover shows the obligations its context accepts (shared registry); a callable hover shows **Trust provenance** from Analyzer.TrustProvenance: caller-facing safety (safe, or unsafe for an unsafe fn/method), the unsafe operations in its own body by registry kind, the trusted foreign (extern) declarations it calls, and the shortest call path through which a safe wrapper still depends on unsafe code, over every represented execution edge. Sites carry their owning callable and call-graph nodes their unsafe marker; provenance stays analysis metadata, not part of the callable type (unsafe.md §§ 3.4, 14(1)–(4), 52(1); internal/sema/trust_provenance.go, cmd/lsp/unsafe_actions.go; TestTrustProvenanceHover)."
+      - Optional whole-program trust reports are available in sec analyse --verbose through the shared Analyzer.TrustProvenance and canonical call graph. The report distinguishes caller-facing safety from internal operation obligations, lists authorized unsafe operations and trusted foreign declarations with source locations, preserves safe-wrapper transitive trust witnesses, and explicitly retains open-target uncertainty without claiming trust freedom. Canonical selected-source and reachable-function scope filtering apply; default, --info and JSON presentations gain no trust-detail dump or new diagnostics. CLI help describes the report.
+      - "Raw-call authorization actions (2026-11-17, unsafe.md §§47,50,52): LSP offers the exact unsafe call prefix for registry-admitted RawPtr Read/Write, VolatileRead/VolatileWrite, Offset/AddBytes/Difference, including indexed receivers. It resolves the current canonical unsafe site and CallForm fact, then reparses/reanalyzes the proposed edit before offering it. Invalid null, arity, byte-pointer type and property-call cases gain no fix; AsRef remains a block-authorized property. Stale missing-context diagnostics cannot add a second prefix, and unnecessary/redundant prefix removal requires the exact advisory to still hold in the current document, preventing stale Information diagnostics from removing required authorization. Protocol coverage uses an unsaved document snapshot. This completes the concrete raw-call quick-fix slice, not the broad remaining unsafe-aware formatter/LSP audit."
     remaining:
       - complete unsafe-aware formatter/LSP
-      - show caller obligations/trust provenance
-      - provide optional whole-program trust reports
+    revised: "2026-11-17"
+    code:
+      - cmd/compiler/analyse_trust.go
+      - cmd/compiler/analyse.go
+      - cmd/compiler/analyse_cli.go
+      - internal/sema/trust_provenance.go
+      - cmd/lsp/unsafe_actions.go
+    tests:
+      - cmd/compiler/analyse_trust_test.go
+      - testdata/analysis/trust_report.sec
+      - cmd/lsp/raw_unsafe_actions_test.go
+      - testdata/tooling/unsafe_actions/missing_bytes_invalid.sec
+      - testdata/tooling/unsafe_actions/missing_difference_invalid.sec
+      - testdata/tooling/unsafe_actions/missing_index_read_invalid.sec
+      - testdata/tooling/unsafe_actions/missing_offset_invalid.sec
+      - testdata/tooling/unsafe_actions/missing_read_invalid.sec
+      - testdata/tooling/unsafe_actions/missing_volatile_read_invalid.sec
+      - testdata/tooling/unsafe_actions/missing_volatile_write_invalid.sec
+      - testdata/tooling/unsafe_actions/missing_write_invalid.sec
+      - testdata/tooling/unsafe_actions/null_read_invalid.sec
+      - testdata/tooling/unsafe_actions/property_call_invalid.sec
+      - testdata/tooling/unsafe_actions/property_invalid.sec
+      - testdata/tooling/unsafe_actions/redundant_valid.sec
+      - testdata/tooling/unsafe_actions/wrong_arity_invalid.sec
+      - testdata/tooling/unsafe_actions/wrong_bytes_invalid.sec
+    rules:
+      - rules/memory/unsafe.md
+      - rules/tooling/cli.md
+    verification:
+      - command: go test ./cmd/lsp -run "^TestUnsafeRedundantActionPreservesBlock$" -count=1 -timeout=120s
+        result: "passed on 2026-11-17 (3.914s): redundant call prefix removal preserves the enclosing unsafe block and its authorization"
+      - command: go vet ./cmd/lsp
+        result: passed on 2026-11-17
+      - command: go test ./cmd/lsp -run '^TestRawUnsafeAuthorization|^TestUnsafe(RemoveRejectsStaleAdvisory|HoverAndCodeActions)$' -count=1 -timeout=180s
+        result: "passed on 2026-11-17 (52.786s): seven raw-call kinds plus indexed receiver, missing/invalid/proven-null/property cases, stale diagnostics and unsaved-document protocol route; existing direct-call and removal actions retained"
+      - command: GOTMPDIR="$HOME/.cache/sec-gotmp" go test -p 4 ./cmd/compiler -run "^TestAnalyseTrustProvenance" -count=1 -timeout=120s; GOTMPDIR="$HOME/.cache/sec-gotmp" go test -p 4 ./cmd/compiler -run "^TestAnalyse(FocusGraphForms|PresentationModes|FunctionFocus)$" -count=1 -timeout=120s; GOTMPDIR="$HOME/.cache/sec-gotmp" go vet ./cmd/compiler
+        result: "Passed 2026-11-17: final trust-report tests 16.490s; existing presentation/function-focus/graph-focus regressions 38.521s; vet passed. Covers direct unsafe operations and obligations, safe wrapper provenance, foreign declarations, open targets, deterministic output, exact reachable focus, verbose-only detail, single-analysis isolation and help. A broader TestAnalyse/TestHelp selection exceeded its aggregate 150-second timeout while FocusGraphForms was running; that test subsequently passed in the isolated regression run. No full compiler-suite success is claimed."
 
   - id: semantic-ir.references
     area: semantic-ir-reference-facts
@@ -1183,7 +1221,7 @@ integrations:
       - "Immutable raw-pointer origin aliases (2026-11-09; raw_pointers.md §§4(4),5.1,23(5-7),24(3-7),32(3),34, MD-070 §4(2),§5(3)): a copied/chained immutable RawPtr now retains a detached clone of its known .Ptr origin Place. Existing AsRef/AsRefMut validation therefore rejects the same known dangling owner and overlapping live-borrow contradictions through aliases as through the original pointer. Canonical S1206/S1161/S1162 diagnostics and move/borrow source locations are shared by Sema, CLI and LSP; rejected source produces no IR. Live and unknown origins remain accepted under their existing unsafe obligations; mutable/reassigned pointer sources or destinations receive no stale origin proof, and merely storing/returning a dangling raw address remains permitted without granting safe-reference authority or retaining its owner. Shared valid/invalid source fixtures cover direct copies, chains, moved owners and mutable/shared conflicts. No new syntax, ownership guarantee or parallel editor provenance model."
     remaining:
       - retain optional known raw origin, range, alignment, nullability and lifetime facts without pretending the bare RawPtr type guarantees them
-      - complete compile-time rejection of other known raw-pointer contradictions even inside unsafe, including represented origin/range/alignment/lifetime facts; proven-null direct accesses and immutable pointer-copy aliases (including stable null-path copies) now reject all four access operations and AsRef/AsRefMut through the canonical S1142 diagnostic; immutable copied/chained .Ptr origin aliases also preserve the existing availability and live-borrow rejection for AsRef/AsRefMut; general raw access, other origins and mapping/FFI facts still require integration
+      - complete compile-time rejection of other known raw-pointer contradictions even inside unsafe, including range, alignment, initialization, lifetime, other origins and mapping/FFI facts; represented null proofs reject all four accesses and AsRef/AsRefMut, while immutable .Ptr origins and copy chains now share canonical availability and live-borrow checks across Read/Write/VolatileRead/VolatileWrite and AsRef/AsRefMut
       - integrate raw-pointer effects into noPanic, noAlloc, noBlock, ISR and call-graph analyses
       - connect FFI retention, ownership and extent contracts to raw-pointer facts
       - connect runtime mapping lifetime and address-space contracts to raw-pointer facts
@@ -1217,14 +1255,25 @@ integrations:
       - cmd/lsp/raw_origin_alias_test.go
       - testdata/sema/raw_origin_alias_valid.sec
       - testdata/sema/raw_origin_alias_invalid.sec
-    revised: "2026-11-09"
+      - internal/sema/raw_origin_access_test.go
+      - testdata/sema/raw_origin_access_invalid.sec
+      - testdata/sema/raw_origin_access_valid.sec
+    revised: "2026-11-17"
     verification:
+      - command: GOTMPDIR="$HOME/.cache/sec-gotmp" go vet ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-11-17
+      - command: GOTMPDIR="$HOME/.cache/sec-gotmp" go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run "^TestRawOrigin" -count=1 -timeout=120s
+        result: passed on 2026-11-17 (Sema 0.033s, compiler 6.756s, LSP 4.322s) with seven raw-access contradictions, all four access operations after discard, a moved owner field, two live-borrow conflicts, disjoint/shared reads, reinitialized/live storage, unknown origin and permitted dead-address storage; invalid access publishes no successful access effect or IR artifact; registered diagnostics retain help and earlier related source links
+      - command: GOTMPDIR="$HOME/.cache/sec-gotmp" go test -p 4 ./internal/sema -count=1 -timeout=120s
+        result: passed on 2026-11-17 (31.792s) after sharing known-origin validation between raw access and safe-reference conversion
       - command: go test -p 4 ./internal/sema -count=1; go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run "TestRawOriginAlias|TestRawPointerReferenceConversions|TestRawNullAlias|TestRawPointerMentor" -count=1; go vet -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp
         result: "Passed 2026-11-09: complete Sema 18.640s; focused Sema/CLI/LSP 0.079s / 16.497s / 6.288s; vet passed. Four copied-origin contradictions preserve canonical IDs/help and earlier move/borrow locations, with no IR artifact. Valid live/unknown/reassigned origins and pointer storage after owner move remain accepted. 1 implemented point added, 1 remaining narrowed, 0 closed; analysis.raw-pointers remaining 5 to 5."
       - command: go test -p 4 ./internal/sema -count=1; go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run "TestRawNullAlias|TestProvenNullRawPointer|TestRawPointerMentor" -count=1; go vet -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp
         result: "Passed 2026-11-09: complete Sema 17.287s; targeted Sema 0.166s, CLI 11.271s and LSP 3.611s; vet passes. Final alias-only checks, including permitted copy/return of null without access, pass 0.012s / 3.017s / 1.951s. Eight source-invalid alias accesses retain canonical S1142/source/help, publish no successful effects and emit no artifact. Unknown, reassigned and non-null path cases remain accepted. 1 implemented point added, 1 remaining narrowed, 0 closed; analysis.raw-pointers remaining 5 to 5."
       - command: go test -p 4 ./internal/sema -count=1; go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run 'TestRawMemory|TestRejectedRawMemory|TestRawPointerRegistrySurface|TestCompilerKnownRawPointerVolatileAccess' -count=1; go vet -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp
         result: "Passed on 2026-11-09: complete Sema suite (16.273s); focused Sema/CLI/LSP tests (0.046s/1.270s/3.851s); vet clean. Checks ordinary versus volatile identities, no access from mere possession, conservative transitive external-write provenance, no invented I/O/nondeterminism domains, rejected-operation silence, verbose analysis output and source-resolved LSP hover."
+    partial:
+      - "Known-origin raw access (2026-11-17; raw_pointers.md §§11–13,23(4),24(7),34): Read, Write, VolatileRead and VolatileWrite consume the existing immutable .Ptr-origin Place and copy-chain provenance. Canonical unavailable-value state rejects access after discard or owner move, including field pointers; live shared/mutable borrow conflicts use the same authority checks as safe-reference conversion. Rejected operations publish no successful access effects and emit no IR. Live and reinitialized storage, disjoint fields, shared reads, unknown origins and storing an unavailable owner's raw address without dereferencing remain accepted. Sema, CLI and LSP share registered categories, help and earlier invalidation/borrow source locations. Mutable pointer-origin tracking, range/alignment, mapping and foreign contracts remain open."
 
   - id: semantic-ir.raw-pointers
     area: semantic-ir-raw-pointer-facts

@@ -318,6 +318,17 @@ func (a *Analyzer) statementHasReachableBreakToCurrentLoop(statement ast.Stateme
 		return false
 	case *ast.UnsafeStatement:
 		return a.blockHasReachableBreakToCurrentLoop(statement.Body)
+	case *ast.MatchStatement:
+		// match is not a break target (flowcontrol_match.md § 34(1)–(2)).
+		if statement.Match == nil {
+			return false
+		}
+		for _, arm := range statement.Match.Arms {
+			if arm != nil && a.blockHasReachableBreakToCurrentLoop(arm.BlockBody) {
+				return true
+			}
+		}
+		return false
 	default:
 		return false
 	}

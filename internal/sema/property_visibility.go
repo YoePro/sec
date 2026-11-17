@@ -76,11 +76,13 @@ func (a *Analyzer) propertyDeclaringOwner(receiver Type, property Property) Type
 // getter, preserving write-only properties and enforcing property visibility.
 // Rules: rules/declarations/properties.md — §§4–5;
 // rules/foundations/names_scopes_visibility.md — §§12.1–12.3.
+// rules/concurrency/mutex.md — §§30–32: forwarded properties retain the protected owner.
 func (a *Analyzer) lookupPropertyOnMember(expr *ast.MemberExpression) (Property, bool) {
 	objectType, _ := a.inferPlaceBase(expr.Object)
 	if objectType.Kind == InvalidType {
 		return Property{}, false
 	}
+	objectType = mutexGuardMemberOwner(dereferenceType(objectType))
 	property, ok := a.lookupResolvedProperty(objectType, expr.Property.Value)
 	if ok && !property.Static && !a.checkPropertyVisibility(objectType, property, expr.Property.Token) {
 		property.Type = Type{Kind: InvalidType}

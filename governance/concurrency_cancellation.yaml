@@ -71,7 +71,7 @@ integrations:
       - "requirements propagate through synchronous and deferred call-graph edges, recursion included, and are checked from every root: ordinary program entry rejects both (scheduling.md § 22), a spawned thread rejects only the logical-task requirement, a spawned task satisfies both; spawn edges start new roots; the diagnostic lands on main's first call on the path naming the requiring callable and operation, or on the operation itself (TestExecutionContextRequirements)"
       - "test bodies run like ordinary program entry (owner decision 2026-11-09, testing.md § 9.7): every test body node is checked as an entry, so Task.Current()/Task.Yield()/cancel reached from a test without spawning are rejected (TestExecutionContextRequirementsInTests)"
     remaining:
-      - Carry the requirement in callable values and function types so assignment/conversion cannot erase it (§ 21(3)-(4)); calls through function values with unknown target sets are not checked yet.
+      - "MD-138 (open): carry or reject the cancellation/task requirement at conversions into declared function types so open target sets (function-typed parameters) cannot erase it (cancellation.md § 21(3)-(4)); calls through values with closed target sets, including declared-type bindings, are checked (verified 2026-11-17)"
       - Preserve the effect into Semantic IR indirect-call metadata.
     required_tests:
       - id: direct-cancel-effect

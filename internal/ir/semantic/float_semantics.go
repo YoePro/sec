@@ -38,7 +38,7 @@ func floatSemanticOperation(kind OpKind) bool {
 // environment. This helper does not infer source types or choose a host format.
 // Rules: rules/mlir/packages/sec-mlir-dialect_package20.md §§20–27,34,64–69.
 func resolvedFloatSemantics(types *TypeTable, source TypeID, op Operation) FloatSemantics {
-	typ, _ := types.Lookup(source)
+	typ, _ := floatScalarType(types, source)
 	facts := FloatSemantics{SourceType: source, FormatBits: typ.BitWidth, Rounding: "nearest-even", FastMath: "none", Contraction: "off", Subnormals: "preserve"}
 	if op.Kind == OpFloatCompare {
 		if op.IntegerCompare == IntegerCompareNE {
@@ -69,7 +69,7 @@ func verifyFloatSemantics(module *Module, op Operation, values map[ValueID]Value
 	} else if len(op.Operands) > 0 {
 		source = values[op.Operands[0]].Type
 	}
-	typ, ok := module.Types.Lookup(source)
+	typ, ok := floatScalarType(module.Types, source)
 	if !ok || typ.Kind != TypeFloat || (typ.BitWidth != 32 && typ.BitWidth != 64 && !(typ.BitWidth == 0 && typ.TargetSize)) {
 		return fmt.Errorf("%s has invalid float scalar provenance", op.Kind)
 	}
@@ -98,4 +98,15 @@ func formatFloatSemantics(out *strings.Builder, facts FloatSemantics) {
 		fmt.Fprintf(out, " remainder=%s", facts.RemainderKind)
 	}
 	out.WriteString("}")
+}
+
+// floatScalarType is the binary floating-point scalar a float value carries:
+// the type itself, or the float base of a named type such as `type Native
+// float` (types.md § 11; package20 § 18). The source type keeps its identity.
+func floatScalarType(types *TypeTable, id TypeID) (Type, bool) {
+	typ, ok := types.Lookup(id)
+	for ok && typ.Kind == TypeNamed {
+		typ, ok = types.Lookup(typ.Base)
+	}
+	return typ, ok
 }

@@ -916,3 +916,15 @@ integrations:
         result: passed 2026-10-28 for the complete shared-display-facts point; full suites 17.7s/3.6s/1.6s and focused LSP 12.8s. Additional fallback/nominal/unsafe tests passed on targeted rerun. Remaining 3 to 2 under this ID and 29 to 28 in tooling_lsp.yaml, with no replacement remaining item. Editor-facing renderer/title migration is not claimed.
       - command: go run ./cmd/yamlstatus check
         result: planned work recorded on 2026-10-28 after source inspection confirmed raw member.ID in compilerKnownMemberHover, ID-based synthetic URI basenames and IDs in existing synthetic-definition expectations; no implementation claim
+
+  - id: tooling.lsp-analysis-selection
+    status: planned
+    summary: >-
+      User-selectable LSP analyses: the user chooses which analyses run and
+      which facts the LSP presents, so editor information is not more than
+      needed (owner decision 2026-11-17: Sec 0.3).
+    rules:
+      - rules/tooling/lsp.md
+    implemented: []
+    remaining:
+      - "Deferred to Sec 0.3 (owner decision 2026-11-17): make the analyses the LSP runs and presents user-selectable (which analyses run, and NeedToKnow versus OptionalInsight presentation per analysis); mandatory compiler diagnostics stay on. Related per-analysis configuration items in analysis.yaml (closure, stack, ISR, data-race, deadlock NeedToKnow/OptionalInsight presentation) belong to this vertical. Not to be scheduled before 0.3."

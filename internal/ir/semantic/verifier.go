@@ -1239,6 +1239,10 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 		if err := verifyDynamicArrayOperation(module.Types, op, values); err != nil {
 			return err
 		}
+	case OpUnitDimensionConstant, OpUnitDimensionCompare, OpUnitDimensionAxisCount, OpUnitDimensionIsDimensionless:
+		if err := verifyUnitDimensionOperation(module, op, values); err != nil {
+			return err
+		}
 	default:
 		return fmt.Errorf("unknown operation %q", op.Kind)
 	}
@@ -1451,7 +1455,7 @@ func package14TrivialValue(module *Module, id TypeID) bool {
 		return package14TrivialValue(module, typ.Base)
 	}
 	switch typ.Kind {
-	case TypeBool, TypeByte, TypeChar, TypeRune, TypeDecimal128, TypeInt, TypeUint, TypeFloat, TypeEnum, TypeRawPointer:
+	case TypeBool, TypeByte, TypeChar, TypeRune, TypeDecimal128, TypeInt, TypeUint, TypeFloat, TypeEnum, TypeRawPointer, TypeUnitDimension:
 		return true
 	case TypeRegister:
 		// A detached register value is a pure bit-layout value (MD-077 § 5).

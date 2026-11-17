@@ -55,6 +55,10 @@ func (fb *functionBuilder) buildUnitMetadataMember(expr *ast.MemberExpression, t
 			facts.Exact, facts.Projected = read.Exact.RatString(), read.Projected
 			return fb.result(Operation{Kind: OpConstDecimal, Decimal: &decimal, UnitMetadata: facts, Location: loc}, typeID), true, nil
 		}
+		if read.Member == "Dimension" && fb.owner.maxPackage >= ownershipLoweringPackage {
+			value, err := fb.buildUnitDimensionValue(expr, typeID)
+			return value, true, err
+		}
 		return builtValue{}, true, fb.unsupported("UnitDimension value", expr.Property.Token)
 	}
 	if expr.Property == nil {
@@ -67,6 +71,10 @@ func (fb *functionBuilder) buildUnitMetadataMember(expr *ast.MemberExpression, t
 	}
 	dimension, constant := fb.owner.analyzer.ResolvedUnitDimensionOf(expr.Object)
 	if !constant {
+		if fb.owner.maxPackage >= ownershipLoweringPackage {
+			value, err := fb.buildRuntimeUnitDimensionProperty(expr, member.ID == "CKM-UNITDIMENSION-AXISCOUNT", typeID)
+			return value, true, err
+		}
 		return builtValue{}, true, fb.unsupported("runtime UnitDimension property", site)
 	}
 	facts := fb.unitDimensionFacts(expr.Object, "Dimension."+expr.Property.Value)
@@ -94,6 +102,10 @@ func (fb *functionBuilder) buildUnitDimensionEquality(expr ast.Expression, typeI
 	left, leftConstant := fb.owner.analyzer.ResolvedUnitDimensionOf(infix.Left)
 	right, rightConstant := fb.owner.analyzer.ResolvedUnitDimensionOf(infix.Right)
 	if !leftConstant || !rightConstant {
+		if fb.owner.maxPackage >= ownershipLoweringPackage {
+			value, err := fb.buildRuntimeUnitDimensionEquality(infix, typeID)
+			return value, true, err
+		}
 		return builtValue{}, true, fb.unsupported("runtime UnitDimension equality", infix.Token)
 	}
 	value := left.Equal(right) == (infix.Operator == "==")
@@ -132,7 +144,7 @@ func verifyUnitMetadataOperation(op Operation) error {
 		return nil
 	}
 	switch op.Kind {
-	case OpConstString, OpConstBool, OpConstInt, OpEnumConstant:
+	case OpConstString, OpConstBool, OpConstInt, OpEnumConstant, OpUnitDimensionConstant:
 		if facts.Exact != "" || facts.Projected {
 			return fmt.Errorf("%s unit metadata <%s>.%s has no decimal provenance", op.Kind, facts.Unit, facts.Member)
 		}

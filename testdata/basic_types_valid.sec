@@ -438,16 +438,20 @@ fn ConvertDecimalToDecimal128(value: decimal) decimal128 {
     return decimal128(value)
 }
 
-fn ConvertDecimal128ToDecimal(value: decimal128) decimal {
-    return decimal(value)
+// Narrowing decimal128 to decimal may lose precision, so it is a checked
+// conversion that requires try (types.md § 25(5), § 25(11)).
+fn ConvertDecimal128ToDecimal(value: decimal128) Result[decimal, ConversionError] {
+    return Ok(try decimal(value))
 }
 
-fn ConvertInt256ToDecimal128(value: int256) decimal128 {
-    return decimal128(value)
+// An int256 may exceed decimal128's precision and a float64 may be non-finite
+// or inexact, so both are checked conversions.
+fn ConvertInt256ToDecimal128(value: int256) Result[decimal128, ConversionError] {
+    return Ok(try decimal128(value))
 }
 
-fn ConvertFloat64ToDecimal128(value: float64) decimal128 {
-    return decimal128(value)
+fn ConvertFloat64ToDecimal128(value: float64) Result[decimal128, ConversionError] {
+    return Ok(try decimal128(value))
 }
 
 fn TestDecimalCompoundAssignment() decimal128 {

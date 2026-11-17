@@ -1,0 +1,46 @@
+module main
+
+type Pair struct {
+    left: Atomic[int],
+    right: Atomic[int],
+}
+
+fn Operations(value: ref Atomic[int]) void {
+    discard value.Load(MemoryOrder.Acquire)
+    value.Store(1, MemoryOrder.Release)
+    discard value.Swap(2, MemoryOrder.Relaxed)
+    discard value.FetchAdd(1, MemoryOrder.Relaxed)
+    discard value.FetchSub(1, MemoryOrder.AcqRel)
+    discard value.FetchAnd(1, MemoryOrder.Acquire)
+    discard value.FetchOr(1, MemoryOrder.Release)
+    discard value.FetchXor(1, MemoryOrder.SeqCst)
+    discard value.CompareExchange(1, 2, MemoryOrder.AcqRel, MemoryOrder.Acquire)
+    discard value.CompareExchange(1, 2)
+    atomic.Fence(MemoryOrder.SeqCst)
+}
+
+fn Identities(first: ref Atomic[int], second: ref Atomic[int]) void {
+    discard first.Load(MemoryOrder.Relaxed)
+    discard second.Load(MemoryOrder.Relaxed)
+    discard first.Load(MemoryOrder.Relaxed)
+}
+
+fn Fields(pair: ref Pair) void {
+    discard pair.left.Load(MemoryOrder.Relaxed)
+    pair.right.Store(1, MemoryOrder.Relaxed)
+    pair.left.Store(2, MemoryOrder.Relaxed)
+}
+
+fn Aliases(value: ref Atomic[int]) void {
+    let alias: ref Atomic[int] := value
+    discard value.Load(MemoryOrder.Relaxed)
+    alias.Store(1, MemoryOrder.Relaxed)
+    let order := MemoryOrder.Release
+    alias.Store(2, order)
+}
+
+fn Defaults(value: ref Atomic[int]) void {
+    discard value.Load()
+    value.Store(1)
+    discard value.Swap(1)
+}

@@ -44,13 +44,17 @@ type ResolvedDeferPlan struct {
 	Invocation CallableID
 	Body       CallableID
 	Captures   []ResolvedDeferCapture
+	// ArenaInvalidations are future direct body sites, not effects applied at
+	// registration. Their body CFG still determines whether/how often they run.
+	ArenaInvalidations []DeferredArenaInvalidation
 }
 
-// recordResolvedDeferPlan publishes the captures already resolved by the defer
-// body checker, without inferring types, copying owned values or resolving names
-// again. The borrow checker retains these same dependencies until invocation exit.
+// recordResolvedDeferPlan publishes captures and future direct Arena invalidation
+// sites already resolved by the body checker, without inferring types, copying
+// owned values or resolving names again. The borrow checker retains these same
+// dependencies until invocation exit; future sites do not invalidate continuation.
 // Rules: rules/mlir/packages/sec-mlir-dialect_package17.md — §§42–43,79;
-// rules/control-flow/defer.md — §§9–11,29.
+// rules/control-flow/defer.md — §§9–11,29; rules/memory/arena.md — §52.
 func (a *Analyzer) recordResolvedDeferPlan(stmt *ast.DeferStatement, identity ResolvedDeferIdentity, invocation, body CallableID) {
 	keys := make([]string, 0, len(a.deferCaptures))
 	for key := range a.deferCaptures {
@@ -58,6 +62,7 @@ func (a *Analyzer) recordResolvedDeferPlan(stmt *ast.DeferStatement, identity Re
 	}
 	sort.Strings(keys)
 	plan := ResolvedDeferPlan{Identity: identity, Invocation: invocation, Body: body}
+	plan.ArenaInvalidations = a.deferredArenaInvalidations(body)
 	for _, key := range keys {
 		capture := a.deferCaptures[key]
 		kind := DeferCaptureValueUse
@@ -80,6 +85,12 @@ func (a *Analyzer) recordResolvedDeferPlan(stmt *ast.DeferStatement, identity Re
 // the semantic identities needed by cleanup consumers.
 // Rules: rules/mlir/packages/sec-mlir-dialect_package17.md — §§42–43,79.
 func cloneResolvedDeferPlan(plan ResolvedDeferPlan) ResolvedDeferPlan {
+	if plan.ArenaInvalidations != nil {
+		plan.ArenaInvalidations = append([]DeferredArenaInvalidation(nil), plan.ArenaInvalidations...)
+		for index := range plan.ArenaInvalidations {
+			plan.ArenaInvalidations[index].Receiver = cloneSlicePlanPlace(plan.ArenaInvalidations[index].Receiver)
+		}
+	}
 	if plan.Captures != nil {
 		captures := make([]ResolvedDeferCapture, len(plan.Captures))
 		copy(captures, plan.Captures)
@@ -91,9 +102,11 @@ func cloneResolvedDeferPlan(plan ResolvedDeferPlan) ResolvedDeferPlan {
 	return plan
 }
 
-// ResolvedDeferPlanOf returns detached validated captures and their required
-// invocation lifetime without inference, identity allocation or flow mutation.
+// ResolvedDeferPlanOf returns detached validated captures, their required
+// invocation lifetime and future direct Arena sites without inference, identity
+// allocation or flow mutation.
 // Rules: rules/mlir/packages/sec-mlir-dialect_package17.md — §§42–43,79.
+// rules/memory/arena.md — §52.
 func (a *Analyzer) ResolvedDeferPlanOf(stmt *ast.DeferStatement) (ResolvedDeferPlan, bool) {
 	if a == nil || stmt == nil {
 		return ResolvedDeferPlan{}, false

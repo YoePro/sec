@@ -192,6 +192,54 @@ impl Builder {
     }
 
     /**
+     * Appends a borrowed string range to the Builder.
+     *
+     * Description:
+     * Copies the UTF-8 bytes of a StringView (MD-126) into the owned
+     * storage without materializing an intermediate string. The view
+     * is only read during the call. An empty view leaves the Builder
+     * unchanged. If appending fails, all bytes added by this call are
+     * removed.
+     *
+     * Parameters:
+     * - value: The borrowed UTF-8 range to append.
+     *
+     * Returns:
+     * Ok() when the complete range has been appended.
+     *
+     * Errors:
+     * - CollectionError: Propagates a storage growth failure.
+     *     The original byte content is preserved on failure.
+     *
+     * Allocation:
+     * May allocate when the existing capacity is insufficient.
+     */
+    fn Append(value: StringView) Result[void, CollectionError] {
+        let originalLength := storage.Len
+        let mut index: uint := 0
+
+        while index < value.SizeOf {
+            // The index is below SizeOf, so the read cannot fail.
+            let current := value.ByteAt(index)
+
+            try storage.Append(current) {
+                Err(error) => {
+                    // Restore the original logical content.
+                    while storage.Len > originalLength {
+                        storage.RemoveAt(storage.Len - 1)
+                    }
+
+                    return Err(error)
+                }
+            }
+
+            index += 1
+        }
+
+        return Ok()
+    }
+
+    /**
      * Appends a Unicode scalar value encoded as UTF-8.
      *
      * Description:

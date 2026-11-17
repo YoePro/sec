@@ -1,0 +1,82 @@
+module main
+
+type Protected struct { Count: int, __Secret: int }
+impl Protected {
+    fn Change() void { self.Count += 1 }
+    fn Borrow() ref int { return ref self.Count }
+    property View: ref int { get { return ref self.Count } }
+    fn __Private() int { return self.Count }
+    property Number: int {
+        get { return self.Count }
+        set value { self.Count = value }
+    }
+    property Bump: int {
+        get { self.Count += 1
+            return self.Count }
+    }
+    property __Hidden: int { get { return self.Count } }
+}
+fn ImmutableField(lock: ref Mutex[Protected]) void {
+    let guard := lock.Lock()
+    guard.Count = 1
+}
+fn ImmutableMethod(lock: ref Mutex[Protected]) void {
+    let guard := lock.Lock()
+    guard.Change()
+}
+fn ImmutableProperty(lock: ref Mutex[Protected]) void {
+    let guard := lock.Lock()
+    guard.Number = 1
+}
+fn ImmutableGetter(lock: ref Mutex[Protected]) int {
+    let guard := lock.Lock()
+    return guard.Bump
+}
+fn SharedField(guard: ref MutexGuard[Protected]) void { guard.Count = 1 }
+fn SharedMethod(guard: ref MutexGuard[Protected]) void { guard.Change() }
+fn SharedGetter(guard: ref MutexGuard[Protected]) int { return guard.Bump }
+fn PrivateProperty(guard: ref MutexGuard[Protected]) int { return guard.__Hidden }
+fn EscapeField(lock: ref Mutex[Protected]) ref int {
+    let guard := lock.Lock()
+    return ref guard.Count
+}
+fn EscapeMethod(lock: ref Mutex[Protected]) ref int {
+    let guard := lock.Lock()
+    return guard.Borrow()
+}
+fn BorrowThenRelease(lock: ref Mutex[Protected]) int {
+    let guard := lock.Lock()
+    let field := ref guard.Count
+    discard guard
+    return *field
+}
+fn MethodThenRelease(lock: ref Mutex[Protected]) int {
+    let guard := lock.Lock()
+    let field := guard.Borrow()
+    discard guard
+    return *field
+}
+
+fn EscapeProperty(lock: ref Mutex[Protected]) ref int {
+    let guard := lock.Lock()
+    return guard.View
+}
+fn PropertyThenRelease(lock: ref Mutex[Protected]) int {
+    let guard := lock.Lock()
+    let field := guard.View
+    discard guard
+    return *field
+}
+
+enum SettingError error { Invalid }
+type Setting struct { Value: int }
+impl Setting {
+    property Checked: int {
+        get { return self.Value }
+        try set value SettingError {
+            if value < 0 { return Err(SettingError.Invalid) }
+            self.Value = value
+        }
+    }
+}
+fn MissingTry(guard: ref mut MutexGuard[Setting]) void { guard.Checked = 1 }

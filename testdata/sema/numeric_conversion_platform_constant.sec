@@ -1,0 +1,10 @@
+module main
+
+fn WidthDependent() Result[int, ConversionError] {
+    let value: decimal := 4294967296m
+    return Ok(try int(value))
+}
+fn EveryWidthFails() Result[int, ConversionError] {
+    let value: decimal := 4294967296.5m
+    return Ok(try int(value))
+}

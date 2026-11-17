@@ -1,0 +1,15 @@
+module owner
+
+type Vault struct { Public: int, _Secret: int }
+impl Vault {
+    fn Read() int { return self.Public }
+    fn _Hidden() int { return self._Secret }
+    property Number: int {
+        get { return self.Public }
+        set value { self.Public = value }
+    }
+    property _Internal: int {
+        get { return self._Secret }
+        set value { self._Secret = value }
+    }
+}

@@ -12,6 +12,7 @@ import "sec/internal/ast"
 //   - rules/memory/raw_pointers.md — §12 "Raw-pointer write"
 //   - rules/memory/raw_pointers.md — §13 "Volatile raw-pointer access"
 //   - rules/memory/raw_pointers.md — §14 "Pointer arithmetic"
+//   - rules/platform/volatile.md — §§33–34,38 "Physical type eligibility", "Generics"
 func (a *Analyzer) inferRawPointerCall(expr *ast.CallExpression) (Type, expressionValue, bool) {
 	member, ok := expr.Callee.(*ast.MemberExpression)
 	if !ok {
@@ -36,7 +37,7 @@ func (a *Analyzer) inferRawPointerCall(expr *ast.CallExpression) (Type, expressi
 			a.reportRawPointerUnsafe(member.Property.Token, receiverType, "Read", "RawPtr.Read requires unsafe because it reads through a raw pointer")
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
-		if a.rejectProvenNullDereference(member, "Read") {
+		if a.rejectProvenNullDereference(member, "Read") || a.rejectKnownRawOriginConflict(member, false) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		if !a.checkRawPointerCallArity(expr, "RawPtr.Read", 0, 0) {
@@ -56,7 +57,7 @@ func (a *Analyzer) inferRawPointerCall(expr *ast.CallExpression) (Type, expressi
 			a.reportRawPointerUnsafe(member.Property.Token, receiverType, "Write", "RawPtr.Write requires unsafe because it writes through a raw pointer")
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
-		if a.rejectProvenNullDereference(member, "Write") {
+		if a.rejectProvenNullDereference(member, "Write") || a.rejectKnownRawOriginConflict(member, true) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		if !a.checkRawPointerCallArity(expr, "RawPtr.Write", 1, 1) {
@@ -81,15 +82,14 @@ func (a *Analyzer) inferRawPointerCall(expr *ast.CallExpression) (Type, expressi
 			a.reportRawPointerUnsafe(member.Property.Token, receiverType, "VolatileRead", "RawPtr.VolatileRead requires unsafe because it performs observable physical-storage access")
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
-		if a.rejectProvenNullDereference(member, "VolatileRead") {
+		if a.rejectProvenNullDereference(member, "VolatileRead") || a.rejectKnownRawOriginConflict(member, false) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		if !a.checkRawPointerCallArity(expr, "RawPtr.VolatileRead", 0, 0) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		element := compilerKnownRawPointerElement(receiverType)
-		if element.Kind == InvalidType || element.Kind == VoidType {
-			a.reportInvalidRawPointerOperation(member.Property.Token, rawPointerTypedHelp, "RawPtr[void].VolatileRead cannot materialize a value; select a concrete physical pointee type")
+		if !a.checkRawPointerVolatilePointee(element, "VolatileRead", member.Property.Token) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		if known {
@@ -101,15 +101,14 @@ func (a *Analyzer) inferRawPointerCall(expr *ast.CallExpression) (Type, expressi
 			a.reportRawPointerUnsafe(member.Property.Token, receiverType, "VolatileWrite", "RawPtr.VolatileWrite requires unsafe because it performs observable physical-storage access")
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
-		if a.rejectProvenNullDereference(member, "VolatileWrite") {
+		if a.rejectProvenNullDereference(member, "VolatileWrite") || a.rejectKnownRawOriginConflict(member, true) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		if !a.checkRawPointerCallArity(expr, "RawPtr.VolatileWrite", 1, 1) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		element := compilerKnownRawPointerElement(receiverType)
-		if element.Kind == InvalidType || element.Kind == VoidType {
-			a.reportInvalidRawPointerOperation(member.Property.Token, rawPointerTypedHelp, "RawPtr[void].VolatileWrite cannot consume a value; select a concrete physical pointee type")
+		if !a.checkRawPointerVolatilePointee(element, "VolatileWrite", member.Property.Token) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		valueType, _ := a.inferExpressionWithExpected(expr.Arguments[0], element)

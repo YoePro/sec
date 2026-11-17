@@ -25,6 +25,7 @@ func (a *Analyzer) runSemanticAnalysisPipeline(program *ast.Program) {
 			run: once(func() {
 				a.analyzeFunctionBodies(program)
 				a.analyzeImplBodies(program)
+				a.linkGeneratedFieldCleanup()
 				a.analyzeTestBodies(program)
 				a.validateLengthIndexBounds(program)
 			})},

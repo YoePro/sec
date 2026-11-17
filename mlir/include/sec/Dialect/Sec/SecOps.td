@@ -319,6 +319,38 @@ def Sec_CoreErrorIsVariantOp : Sec_Op<"core_error.is_variant", [Pure]> {
   let hasVerifier = 1;
 }
 
+// MD-062 §§ 7(2), 7(12), 12(8): UnitDimension values that escape
+// compile-time evaluation. A constant is the canonical sorted axis mapping;
+// comparison is exact structural equality of two mappings, never a hash or a
+// pointer identity, and needs no allocation or registry.
+def Sec_UnitDimensionConstantOp : Sec_Op<"unit_dimension.constant", [Pure]> {
+  let summary = "Canonical normalized unit dimension constant";
+  let arguments = (ins ArrayAttr:$axes);
+  let results = (outs AnyType:$result);
+  let hasVerifier = 1;
+}
+
+def Sec_UnitDimensionCompareOp : Sec_Op<"unit_dimension.compare", [Pure]> {
+  let summary = "Exact normalized-dimension equality or inequality";
+  let arguments = (ins AnyType:$left, AnyType:$right, StrAttr:$predicate);
+  let results = (outs I1:$result);
+  let hasVerifier = 1;
+}
+
+def Sec_UnitDimensionAxisCountOp : Sec_Op<"unit_dimension.axis_count", [Pure]> {
+  let summary = "Number of non-zero axes of a unit dimension";
+  let arguments = (ins AnyType:$value);
+  let results = (outs AnyType:$result);
+  let hasVerifier = 1;
+}
+
+def Sec_UnitDimensionIsDimensionlessOp : Sec_Op<"unit_dimension.is_dimensionless", [Pure]> {
+  let summary = "Whether a unit dimension has no axes";
+  let arguments = (ins AnyType:$value);
+  let results = (outs I1:$result);
+  let hasVerifier = 1;
+}
+
 def Sec_EnumConstantOp : Sec_Op<"enum.constant", [Pure]> {
   let summary = "Construct one declared Sec enum case";
   let arguments = (ins I32Attr:$caseOrdinal);

@@ -1,0 +1,21 @@
+module main
+
+fn Invalid(value: ref Atomic[int]) void {
+    value.Store(true, MemoryOrder.Release)
+    discard value.Load(MemoryOrder.Release)
+    discard value.Swap(true, MemoryOrder.Relaxed)
+    discard value.FetchAdd(true, MemoryOrder.Relaxed)
+    discard value.CompareExchange(true, 1, MemoryOrder.SeqCst, MemoryOrder.Acquire)
+}
+
+type Lookalike struct {}
+
+impl Lookalike {
+    fn Load(order: MemoryOrder) int {
+        return 0
+    }
+}
+
+fn Ordinary(value: Lookalike) void {
+    discard value.Load(MemoryOrder.Relaxed)
+}

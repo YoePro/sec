@@ -1,6 +1,6 @@
 # Sec Standard Library — `temporal/calendar`
 
-- **Status:** Draft API candidate — declarations only; not implemented, not compiler-verified
+- **Status:** Draft API candidate — implementation candidate; not compiler-verified.
 - **Created:** 2026-10-16
 - **Last updated:** 2026-11-15
 - **Document revision:** 0.3
@@ -21,7 +21,7 @@ identities, validation, absolute-day conversion and partial-date compatibility.
 It does not own historic local adoption, locale, timezone, clock acquisition,
 uncertain interpretation, ecclesiastical expressions or date parsing.
 
-**§ 1(2)** All public declarations in the three `.sec` files below are
+**§ 1(2)** All public declarations in the six + one `.sec` files below are
 provisional. The code blocks in § 2 are the exhaustive source declaration
 contract, including their temporary stub bodies. There are no implied
 members, constructors, properties or variants beyond the code shown.
@@ -403,9 +403,6 @@ intercalary instance. Both fields are interpreted only with an explicit
 **§ 3(2)** `MonthAt(year, ordinal, system)` and
 `MonthOrdinal(year, month, system)` are inverse for valid months. Ordinal
 values are one-based. An invalid code or ordinal returns `InvalidMonth`.
-The exact Hebrew civil/scriptural ordering and tabular-Islamic algorithm/epoch
-are **not yet locked**; the systems child book must specify them before
-conversion implementation is permitted.
 
 **§ 3(3)** `CalendarFields` holds full coordinates without asserting validity.
 All conversion operations use the core `date` identity as the neutral absolute
@@ -430,10 +427,7 @@ against one fully known day. `MayDescribeSameDate` expresses existence of at
 least one day satisfying **both** descriptions. It does **not** establish that
 recorded events are identical.
 
-**§ 4(4)** `ToDateIfComplete` returns `Ok(None)` only for a **valid but
-incomplete** partial value; when all components are present and valid it
-returns `Ok(Some(date))`. Invalid fields must produce a typed error. Stub
-implementations return `Err(CalendarError.NotImplemented)` until implemented.
+**§ 4(4)** No longer valid.
 
 **§ 4(5)** All these operations interpret one explicit `CalendarSystem`.
 Cross-system comparisons must first have an independently resolved absolute

@@ -1,0 +1,23 @@
+module main
+
+extern "C" fn foreign_add(left: int32, right: int32) int32
+
+unsafe fn Leaf(pointer: RawPtr[byte]) byte {
+    unsafe { return pointer.Read() }
+}
+
+fn Wrapper(pointer: RawPtr[byte]) byte {
+    unsafe { return Leaf(pointer) }
+}
+
+fn Outer(pointer: RawPtr[byte]) byte {
+    return Wrapper(pointer)
+}
+
+fn Foreign() int32 {
+    unsafe { return foreign_add(1, 2) }
+}
+
+fn Plain(value: int) int { return value }
+
+fn Open(callback: fn() void) void { callback() }

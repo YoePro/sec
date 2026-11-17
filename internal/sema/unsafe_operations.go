@@ -87,6 +87,9 @@ type UnsafeOperationSite struct {
 	Token       lexer.Token
 	Authorized  bool
 	Obligations []string
+	// Callable is the callable whose body contains the site; it is the
+	// introducing fact of that callable's trust provenance (unsafe.md § 14).
+	Callable CallableID
 }
 
 // unsafeContext is one active `unsafe { }` block.
@@ -116,7 +119,7 @@ func (a *Analyzer) authorizeUnsafe(kind UnsafeOperationKind, operation string, t
 	if a.unsafeSiteIndex == nil {
 		a.unsafeSiteIndex = map[sourceTokenKey]int{}
 	}
-	site := UnsafeOperationSite{Kind: kind, Operation: operation, Token: token, Authorized: authorized, Obligations: append([]string(nil), obligations...)}
+	site := UnsafeOperationSite{Kind: kind, Operation: operation, Token: token, Authorized: authorized, Obligations: append([]string(nil), obligations...), Callable: a.currentCallable}
 	if index, seen := a.unsafeSiteIndex[key]; seen {
 		a.unsafeSites[index] = site
 	} else {

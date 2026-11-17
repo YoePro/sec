@@ -118,8 +118,9 @@ Options:
                         turns an unproven result into a proven one.
   --info                Add a short summary: analyses run, scope, depth, counts
                         and limitations.
-  --verbose             Add every fact, call path and piece of evidence (includes
-                        --info).
+  --verbose             Add every fact, call path and piece of evidence,
+                        including unsafe/foreign trust provenance and caller
+                        obligations (includes --info).
   --json                Print one versioned machine-readable report
                         (sec.analysis-report) instead of the human layout.
   --target OS-ARCH      Analyse for another target.

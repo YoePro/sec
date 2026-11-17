@@ -1,0 +1,22 @@
+module main
+
+// Non-panic effect cause chains: Leaf writes through a raw pointer, Wrapper
+// and Outer reach that write through calls, and Plain has no such effect.
+
+fn Leaf(pointer: RawPtr[int], value: int) void {
+    unsafe {
+        pointer.Write(value)
+    }
+}
+
+fn Wrapper(pointer: RawPtr[int], value: int) void {
+    Leaf(pointer, value)
+}
+
+fn Outer(pointer: RawPtr[int]) void {
+    Wrapper(pointer, 1)
+}
+
+fn Plain(value: int) int {
+    return value
+}

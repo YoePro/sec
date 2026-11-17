@@ -32,6 +32,7 @@ type Stats struct {
 	TotalPartial     int
 	StatusCounts     map[string]int
 	FieldCounts      map[string]int
+	FileChecklists   []fileChecklistCounts
 	// LibraryObjects and LibraryFiles count integrations in fragments the
 	// index marks implementation_scope: library. They remain selectable but
 	// are not compiler implementation, so no other total includes them.
@@ -68,12 +69,25 @@ func collectStats(dir string) (Stats, error) {
 			stats.Entries = append(stats.Entries, library.Entries...)
 			stats.LibraryObjects += library.TotalObjects
 			stats.LibraryFiles = append(stats.LibraryFiles, relativeFragment(dir, path))
+			stats.FileChecklists = append(stats.FileChecklists, fileChecklistCounts{
+				File: relativeFragment(dir, path), Implemented: library.TotalImplemented,
+				Remaining: library.TotalRemaining, Partial: library.TotalPartial, Library: true,
+			})
 			return nil
 		}
+		implemented, remaining, partial := stats.TotalImplemented, stats.TotalRemaining, stats.TotalPartial
 		if err := processYAMLFile(path, &stats); err != nil {
 			return fmt.Errorf("%s: %w", path, err)
 		}
 		stats.Files++
+		name := relativeFragment(dir, path)
+		if name == "." {
+			name = filepath.Base(path)
+		}
+		stats.FileChecklists = append(stats.FileChecklists, fileChecklistCounts{
+			File: name, Implemented: stats.TotalImplemented - implemented,
+			Remaining: stats.TotalRemaining - remaining, Partial: stats.TotalPartial - partial,
+		})
 		return nil
 	})
 	return stats, err

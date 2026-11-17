@@ -74,6 +74,8 @@ func (a *Analyzer) recordResolvedPropertyAccess(expr ast.Expression, owner Type,
 //
 // Rules:
 //   - rules/declarations/properties.md — §§8–9 "Instance receiver" and "Static properties"
+//
+// rules/concurrency/mutex.md — §§30–32: forwarded properties retain the protected owner.
 func (a *Analyzer) propertyOwnerForMember(expr *ast.MemberExpression, static bool) Type {
 	if static {
 		if path, ok := typePathFromExpression(expr.Object); ok {
@@ -84,5 +86,5 @@ func (a *Analyzer) propertyOwnerForMember(expr *ast.MemberExpression, static boo
 		return Type{}
 	}
 	owner, _ := a.inferPlaceBase(expr.Object)
-	return dereferenceType(owner)
+	return mutexGuardMemberOwner(dereferenceType(owner))
 }

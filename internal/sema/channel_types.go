@@ -1,6 +1,8 @@
 package sema
 
-import "sec/internal/ast"
+import (
+	"sec/internal/ast"
+)
 
 // inferChannelMessage preserves contextual message typing while admitting an
 // explicit move at the message argument boundary. No ownership is committed
@@ -63,5 +65,96 @@ func (a *Analyzer) rejectLegacyChannelEndpoint(expr *ast.MemberExpression, owner
 	a.addErrorAtTokenWithMetadata(expr.Property.Token, "",
 		"Use the canonical stored field `"+canonical+"`; extract its owning endpoint with an explicit move, for example `let endpoint :<- channel."+canonical+"`.",
 		"unknown member %s on %s; use %s", expr.Property.Value, typeDisplayName(owner), canonical)
+	return true
+}
+
+// channelOptionsType is the exact public ChannelOptions configuration type.
+// Rules: rules/concurrency/channels.md — § 6(1).
+func channelOptionsType() Type {
+	uintType := Type{Name: "uint", Kind: UintType}
+	capabilities := Type{Name: "set", Kind: StructType, TypeArgs: []Type{builtinChannelCapabilityType()}}
+	return Type{Name: "ChannelOptions", Module: "core", Kind: StructType, Fields: []StructField{
+		{Name: "Capacity", Type: uintType},
+		{Name: "MaxSenders", Type: uintType},
+		{Name: "Capabilities", Type: capabilities},
+	}}
+}
+
+// inferChannelConstructor types `Channel[T](capacity)` and
+// `Channel[T](ChannelOptions { ... })`. Construction is fallible only for
+// allocation, so both forms yield Result[Channel[T], AllocationError]; there
+// is no ChannelCreateError. Invalid compile-time-known options are
+// compile-time diagnostics: MaxSenders must be compile-time-known and at
+// least 1 (an omitted field defaults to 0 and is rejected the same way).
+//
+// Rules:
+//   - rules/concurrency/channels.md — § 6(2)–(6) options, § 19(1)–(4) fallibility, § 20 construction syntax
+func (a *Analyzer) inferChannelConstructor(expr *ast.CallExpression) (Type, expressionValue, bool) {
+	invalid := func() (Type, expressionValue, bool) {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+	}
+	if len(expr.Arguments) != 1 {
+		a.addErrorAtToken(expr.Token, "Channel expects 1 capacity or ChannelOptions argument, got %d", len(expr.Arguments))
+		return invalid()
+	}
+	messageType, ok := a.resolveType(expr.GenericArguments[0])
+	if !ok {
+		return invalid()
+	}
+	argument := expr.Arguments[0]
+	argumentType, _ := a.inferExpression(argument)
+	switch {
+	case argumentType.Kind == InvalidType:
+		return invalid()
+	case isIntegerType(argumentType):
+	case argumentType.Name == "ChannelOptions" && argumentType.Kind == StructType:
+		if !a.checkChannelOptions(argument) {
+			return invalid()
+		}
+	default:
+		a.addErrorAtToken(expressionToken(argument), "Channel capacity must be an integer or ChannelOptions, got %s", typeDisplayName(argumentType))
+		return invalid()
+	}
+	return compilerKnownResult(channelType(messageType), a.types["AllocationError"]), expressionValue{Display: expr.String()}, true
+}
+
+// checkChannelOptions validates the compile-time-known parts of a
+// ChannelOptions argument: the options must be written as a literal at the
+// construction so MaxSenders and Capabilities are compile-time-known, and
+// MaxSenders must be at least 1. Capacity may be runtime-known.
+// Rules: rules/concurrency/channels.md — § 6(2)–(4), (6); § 19(4).
+func (a *Analyzer) checkChannelOptions(argument ast.Expression) bool {
+	literal, ok := argument.(*ast.StructLiteral)
+	if !ok {
+		a.addErrorAtTokenWithMetadata(expressionToken(argument), "",
+			"Write the ChannelOptions literal at the Channel construction so MaxSenders and Capabilities are compile-time-known.",
+			"ChannelOptions.MaxSenders and Capabilities must be compile-time-known at channel construction")
+		return false
+	}
+	maxSenders := ast.Expression(nil)
+	for _, field := range literal.Fields {
+		if field != nil && field.Name != nil && field.Name.Value == "MaxSenders" {
+			maxSenders = field.Value
+		}
+	}
+	if maxSenders == nil {
+		a.addErrorAtTokenWithMetadata(literal.Token, "",
+			"Set MaxSenders to the maximum number of simultaneously live senders; the initial Tx counts as one.",
+			"ChannelOptions.MaxSenders must be at least 1; an omitted MaxSenders is 0")
+		return false
+	}
+	value, known := a.integerConstantValue(maxSenders)
+	if !known {
+		a.addErrorAtTokenWithMetadata(expressionToken(maxSenders), "",
+			"Use a compile-time constant for MaxSenders; endpoint identity layout is fixed before lowering.",
+			"ChannelOptions.MaxSenders must be compile-time-known at channel construction")
+		return false
+	}
+	if value.Sign() <= 0 {
+		a.addErrorAtTokenWithMetadata(expressionToken(maxSenders), "",
+			"Set MaxSenders to at least 1; the initial Tx counts toward it.",
+			"ChannelOptions.MaxSenders must be at least 1, got %s", value.String())
+		return false
+	}
 	return true
 }

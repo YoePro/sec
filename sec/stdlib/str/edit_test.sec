@@ -1,22 +1,25 @@
 module str
 
 /*
- * Sec Standard Library - str - Immutable byte-range editing tests
+ * Sec Standard Library - str - Immutable rune-range editing tests
  *
  * File:        stdlib/str/edit_test.sec
  * Module:      str
- * Revision:    1
- * Updated:     2026-10-11
+ * Revision:    2
+ * Updated:     2026-11-17
  *
  * Purpose:
- * Tests immutable insertion, deletion, and replacement at UTF-8 rune
- * boundaries, including error variants, byte offsets, and empty ranges.
+ * Tests immutable insertion, deletion, and replacement at rune indexes
+ * (MD-090), including multibyte runes, combining runes, empty ranges,
+ * error variants and their precedence. Rune Len and byte SizeOf are never
+ * conflated.
  *
  * Rulebook:
- * stdlib/str/stdlib_str.md
+ * stdlib/str/stdlib_str.md § 11
  */
 
-// Insert(string): beginning, middle, end, empty input, and UTF-8 boundaries.
+
+// Insert(string): beginning, middle, end, empty input and multibyte runes.
 
 test "Insert string at beginning" {
     let result := try Insert("abc", 0, "X")
@@ -48,66 +51,67 @@ test "Insert empty string at end leaves content unchanged" {
     testing.ExpectEqual("abc", result)
 }
 
-test "Insert string before multibyte rune" {
+test "Insert before multibyte rune using rune index" {
     let result := try Insert("AåB", 1, "!")
     testing.ExpectEqual("A!åB", result)
 }
 
-test "Insert string after multibyte rune" {
-    let result := try Insert("AåB", 3, "!")
+test "Insert after multibyte rune using rune index" {
+    let result := try Insert("AåB", 2, "!")
     testing.ExpectEqual("Aå!B", result)
 }
 
-test "Insert string at combining rune boundary" {
+test "Insert at end of multibyte text uses rune Len" {
+    let result := try Insert("AåB", 3, "!")
+    testing.ExpectEqual("AåB!", result)
+}
+
+test "Insert between emoji and suffix" {
+    let result := try Insert("A🦊B", 2, ":")
+    testing.ExpectEqual("A🦊:B", result)
+}
+
+test "Insert between base and combining rune without normalization" {
     let result := try Insert("é", 1, "X")
     testing.ExpectEqual("eX́", result)
 }
 
-test "Insert string between emoji and suffix" {
-    let result := try Insert("A🦊B", 5, ":")
-    testing.ExpectEqual("A🦊:B", result)
-}
-
-test "Insert string rejects index inside two-byte rune" {
-    try Insert("AåB", 2, "!") {
-        Err(EditError.NotRuneBoundary(position)) => {
-            testing.ExpectEqual(2, position)
-            testing.Pass()
-        }
-        Err(_) => {
-            testing.Fail("Unkown Error")
-        }
+test "Insert at an IndexOf result" {
+    let text := "AåB"
+    let position := match text.IndexOf("B") {
+        Some(index) => index
+        None => 0
     }
-
-    testing.Fail("expected EditError.NotRuneBoundary")
+    let result := try Insert(text, position, "!")
+    testing.ExpectEqual("Aå!B", result)
 }
 
-test "Insert string rejects index inside four-byte rune" {
-    try Insert("A🦊B", 3, "!") {
-        Err(EditError.NotRuneBoundary(position)) => {
-            testing.ExpectEqual(3, position)
+test "Insert string rejects rune index beyond Len" {
+    try Insert("AåB", 4, "!") {
+        Err(EditError.OutOfBounds(position)) => {
+            testing.ExpectEqual(4, position)
             testing.Pass()
         }
     }
 
-    testing.Fail("expected EditError.NotRuneBoundary")
+    testing.Fail("expected EditError.OutOfBounds")
+}
+
+test "Insert string does not accept a byte SizeOf as an index" {
+    try Insert("A🦊B", 6, "!") {
+        Err(EditError.OutOfBounds(position)) => {
+            testing.ExpectEqual(6, position)
+            testing.Pass()
+        }
+    }
+
+    testing.Fail("expected EditError.OutOfBounds")
 }
 
 test "Insert string rejects invalid index even if insertion empty" {
-    try Insert("AåB", 2, "") {
-        Err(EditError.NotRuneBoundary(position)) => {
-            testing.ExpectEqual(2, position)
-            testing.Pass()
-        }
-    }
-
-    testing.Fail("expected EditError.NotRuneBoundary")
-}
-
-test "Insert string rejects index beyond length" {
-    try Insert("AåB", 5, "!") {
+    try Insert("AåB", 4, "") {
         Err(EditError.OutOfBounds(position)) => {
-            testing.ExpectEqual(5, position)
+            testing.ExpectEqual(4, position)
             testing.Pass()
         }
     }
@@ -126,7 +130,8 @@ test "Insert string rejects nonzero index into empty input" {
     testing.Fail("expected EditError.OutOfBounds")
 }
 
-// Insert(rune): direct rune encoding and the same byte-boundary validation.
+
+// Insert(rune): direct rune encoding at rune indexes.
 
 test "Insert ASCII rune at beginning" {
     let result := try Insert("abc", 0, 88r)
@@ -159,34 +164,12 @@ test "Insert rune at end" {
 }
 
 test "Insert rune after two-byte rune" {
-    let result := try Insert("AåB", 3, 88r)
+    let result := try Insert("AåB", 2, 88r)
     testing.ExpectEqual("AåXB", result)
 }
 
-test "Insert rune rejects index inside two-byte rune" {
-    try Insert("AåB", 2, 88r) {
-        Err(EditError.NotRuneBoundary(position)) => {
-            testing.ExpectEqual(2, position)
-            testing.Pass()
-        }
-    }
-
-    testing.Fail("expected EditError.NotRuneBoundary")
-}
-
-test "Insert rune rejects index inside four-byte rune" {
+test "Insert rune rejects rune index beyond Len" {
     try Insert("A🦊B", 4, 88r) {
-        Err(EditError.NotRuneBoundary(position)) => {
-            testing.ExpectEqual(4, position)
-            testing.Pass()
-        }
-    }
-
-    testing.Fail("expected EditError.NotRuneBoundary")
-}
-
-test "Insert rune rejects index beyond length" {
-    try Insert("abc", 4, 88r) {
         Err(EditError.OutOfBounds(position)) => {
             testing.ExpectEqual(4, position)
             testing.Pass()
@@ -196,9 +179,10 @@ test "Insert rune rejects index beyond length" {
     testing.Fail("expected EditError.OutOfBounds")
 }
 
-// RemoveRange: [startByte, endByte) is a half-open byte range.
 
-test "RemoveRange removes middle bytes" {
+// RemoveRange: rune ranges, multibyte runes, empty ranges and errors.
+
+test "RemoveRange removes middle runes" {
     let result := try RemoveRange("abcdef", 2, 4)
     testing.ExpectEqual("abef", result)
 }
@@ -218,6 +202,11 @@ test "RemoveRange removes complete content" {
     testing.ExpectEqual("", result)
 }
 
+test "RemoveRange removes complete multibyte content by rune Len" {
+    let result := try RemoveRange("A🦊B", 0, 3)
+    testing.ExpectEqual("", result)
+}
+
 test "RemoveRange leaves an empty middle interval unchanged" {
     let result := try RemoveRange("abc", 1, 1)
     testing.ExpectEqual("abc", result)
@@ -228,60 +217,32 @@ test "RemoveRange leaves an empty interval at end unchanged" {
     testing.ExpectEqual("abc", result)
 }
 
-test "RemoveRange accepts empty input and empty range" {
+test "RemoveRange leaves an empty source unchanged" {
     let result := try RemoveRange("", 0, 0)
     testing.ExpectEqual("", result)
 }
 
-test "RemoveRange removes entire two-byte rune" {
-    let result := try RemoveRange("AåB", 1, 3)
+test "Remove full two-byte rune using rune indexes" {
+    let result := try RemoveRange("AåB", 1, 2)
     testing.ExpectEqual("AB", result)
 }
 
-test "RemoveRange removes entire four-byte rune" {
-    let result := try RemoveRange("A🦊B", 1, 5)
+test "Remove full three-byte rune using rune indexes" {
+    let result := try RemoveRange("A€B", 1, 2)
     testing.ExpectEqual("AB", result)
 }
 
-test "RemoveRange can remove combining rune independently" {
-    let result := try RemoveRange("é", 1, 3)
+test "Remove full multibyte rune using rune indexes" {
+    let result := try RemoveRange("A🦊B", 1, 2)
+    testing.ExpectEqual("AB", result)
+}
+
+test "RemoveRange removes a combining rune without normalization" {
+    let result := try RemoveRange("é", 1, 2)
     testing.ExpectEqual("e", result)
 }
 
-test "RemoveRange rejects start inside rune" {
-    try RemoveRange("AåB", 2, 3) {
-        Err(EditError.NotRuneBoundary(position)) => {
-            testing.ExpectEqual(2, position)
-            testing.Pass()
-        }
-    }
-
-    testing.Fail("expected EditError.NotRuneBoundary")
-}
-
-test "RemoveRange rejects end inside rune" {
-    try RemoveRange("AåB", 1, 2) {
-        Err(EditError.NotRuneBoundary(position)) => {
-            testing.ExpectEqual(2, position)
-            testing.Pass()
-        }
-    }
-
-    testing.Fail("expected EditError.NotRuneBoundary")
-}
-
-test "RemoveRange rejects end beyond length" {
-    try RemoveRange("abc", 3, 4) {
-        Err(EditError.OutOfBounds(position)) => {
-            testing.ExpectEqual(4, position)
-            testing.Pass()
-        }
-    }
-
-    testing.Fail("expected EditError.OutOfBounds")
-}
-
-test "RemoveRange rejects start greater than end" {
+test "RemoveRange rejects reversed range" {
     try RemoveRange("abc", 2, 1) {
         Err(EditError.StartAfterEnd) => {
             testing.Pass()
@@ -292,7 +253,7 @@ test "RemoveRange rejects start greater than end" {
 }
 
 test "RemoveRange prioritizes reversed range over out of bounds" {
-    try RemoveRange("abc", 5, 4) {
+    try RemoveRange("abc", 9, 8) {
         Err(EditError.StartAfterEnd) => {
             testing.Pass()
         }
@@ -301,7 +262,18 @@ test "RemoveRange prioritizes reversed range over out of bounds" {
     testing.Fail("expected EditError.StartAfterEnd")
 }
 
-test "RemoveRange rejects empty interval beyond length" {
+test "RemoveRange rejects end beyond rune Len" {
+    try RemoveRange("AåB", 1, 4) {
+        Err(EditError.OutOfBounds(position)) => {
+            testing.ExpectEqual(4, position)
+            testing.Pass()
+        }
+    }
+
+    testing.Fail("expected EditError.OutOfBounds")
+}
+
+test "RemoveRange validates an empty range beyond rune Len" {
     try RemoveRange("abc", 4, 4) {
         Err(EditError.OutOfBounds(position)) => {
             testing.ExpectEqual(4, position)
@@ -312,115 +284,57 @@ test "RemoveRange rejects empty interval beyond length" {
     testing.Fail("expected EditError.OutOfBounds")
 }
 
-test "RemoveRange rejects empty interval inside rune" {
-    try RemoveRange("AåB", 2, 2) {
-        Err(EditError.NotRuneBoundary(position)) => {
-            testing.ExpectEqual(2, position)
-            testing.Pass()
-        }
-    }
 
-    testing.Fail("expected EditError.NotRuneBoundary")
+// ReplaceRange: shorter, equal and longer replacements at rune ranges.
+
+test "ReplaceRange with shorter text" {
+    let result := try ReplaceRange("abcdef", 1, 5, "X")
+    testing.ExpectEqual("aXf", result)
 }
 
-// ReplaceRange: substitution, insertion, deletion, and error precedence.
-
-test "ReplaceRange replaces middle interval" {
-    let result := try ReplaceRange("abcdef", 2, 4, "XY")
-    testing.ExpectEqual("abXYef", result)
+test "ReplaceRange with equal-length text" {
+    let result := try ReplaceRange("abcdef", 1, 3, "XY")
+    testing.ExpectEqual("aXYdef", result)
 }
 
-test "ReplaceRange replaces prefix" {
-    let result := try ReplaceRange("abc", 0, 1, "X")
-    testing.ExpectEqual("Xbc", result)
+test "ReplaceRange with longer text" {
+    let result := try ReplaceRange("abc", 1, 2, "XYZ")
+    testing.ExpectEqual("aXYZc", result)
 }
 
-test "ReplaceRange replaces suffix" {
-    let result := try ReplaceRange("abc", 2, 3, "!")
-    testing.ExpectEqual("ab!", result)
-}
-
-test "ReplaceRange replaces complete content" {
-    let result := try ReplaceRange("abc", 0, 3, "XYZ")
-    testing.ExpectEqual("XYZ", result)
-}
-
-test "ReplaceRange inserts at empty interval" {
+test "ReplaceRange inserts with an empty range" {
     let result := try ReplaceRange("abc", 1, 1, "X")
     testing.ExpectEqual("aXbc", result)
 }
 
-test "ReplaceRange appends at empty interval" {
-    let result := try ReplaceRange("abc", 3, 3, "X")
-    testing.ExpectEqual("abcX", result)
-}
-
-test "ReplaceRange removes with empty replacement" {
+test "ReplaceRange removes with an empty replacement" {
     let result := try ReplaceRange("abc", 1, 2, "")
     testing.ExpectEqual("ac", result)
 }
 
-test "ReplaceRange removes all with empty replacement" {
-    let result := try ReplaceRange("abc", 0, 3, "")
-    testing.ExpectEqual("", result)
-}
-
-test "ReplaceRange leaves empty edit unchanged" {
+test "ReplaceRange leaves an empty edit unchanged" {
     let result := try ReplaceRange("abc", 1, 1, "")
     testing.ExpectEqual("abc", result)
 }
 
-test "ReplaceRange inserts into empty input" {
-    let result := try ReplaceRange("", 0, 0, "X")
-    testing.ExpectEqual("X", result)
+test "ReplaceRange replaces a two-byte rune by rune index" {
+    let result := try ReplaceRange("AåB", 1, 2, "a")
+    testing.ExpectEqual("AaB", result)
 }
 
-test "ReplaceRange replaces two-byte rune with emoji" {
-    let result := try ReplaceRange("AåB", 1, 3, "🦊")
-    testing.ExpectEqual("A🦊B", result)
+test "ReplaceRange replaces a three-byte rune by rune index" {
+    let result := try ReplaceRange("A€B", 1, 2, "E")
+    testing.ExpectEqual("AEB", result)
 }
 
-test "ReplaceRange replaces emoji with two-byte rune" {
-    let result := try ReplaceRange("A🦊B", 1, 5, "å")
-    testing.ExpectEqual("AåB", result)
+test "ReplaceRange replaces a four-byte rune by rune index" {
+    let result := try ReplaceRange("A🦊B", 1, 2, "fox")
+    testing.ExpectEqual("AfoxB", result)
 }
 
-test "ReplaceRange removes combining rune without normalization" {
-    let result := try ReplaceRange("é", 1, 3, "")
-    testing.ExpectEqual("e", result)
-}
-
-test "ReplaceRange rejects start inside rune" {
-    try ReplaceRange("AåB", 2, 3, "X") {
-        Err(EditError.NotRuneBoundary(position)) => {
-            testing.ExpectEqual(2, position)
-            testing.Pass()
-        }
-    }
-
-    testing.Fail("expected EditError.NotRuneBoundary")
-}
-
-test "ReplaceRange rejects end inside rune" {
-    try ReplaceRange("AåB", 1, 2, "X") {
-        Err(EditError.NotRuneBoundary(position)) => {
-            testing.ExpectEqual(2, position)
-            testing.Pass()
-        }
-    }
-
-    testing.Fail("expected EditError.NotRuneBoundary")
-}
-
-test "ReplaceRange rejects out of bounds end" {
-    try ReplaceRange("abc", 1, 5, "X") {
-        Err(EditError.OutOfBounds(position)) => {
-            testing.ExpectEqual(5, position)
-            testing.Pass()
-        }
-    }
-
-    testing.Fail("expected EditError.OutOfBounds")
+test "ReplaceRange replaces complete multibyte content" {
+    let result := try ReplaceRange("A🦊B", 0, 3, "x")
+    testing.ExpectEqual("x", result)
 }
 
 test "ReplaceRange rejects reversed range" {
@@ -443,7 +357,29 @@ test "ReplaceRange prioritizes reversed range over out of bounds" {
     testing.Fail("expected EditError.StartAfterEnd")
 }
 
-test "ReplaceRange validates empty edit beyond length" {
+test "ReplaceRange rejects out of bounds end" {
+    try ReplaceRange("abc", 1, 5, "X") {
+        Err(EditError.OutOfBounds(position)) => {
+            testing.ExpectEqual(5, position)
+            testing.Pass()
+        }
+    }
+
+    testing.Fail("expected EditError.OutOfBounds")
+}
+
+test "ReplaceRange rejects a byte SizeOf end on multibyte text" {
+    try ReplaceRange("AåB", 1, 4, "X") {
+        Err(EditError.OutOfBounds(position)) => {
+            testing.ExpectEqual(4, position)
+            testing.Pass()
+        }
+    }
+
+    testing.Fail("expected EditError.OutOfBounds")
+}
+
+test "ReplaceRange validates empty edit beyond rune Len" {
     try ReplaceRange("abc", 4, 4, "") {
         Err(EditError.OutOfBounds(position)) => {
             testing.ExpectEqual(4, position)
@@ -454,13 +390,19 @@ test "ReplaceRange validates empty edit beyond length" {
     testing.Fail("expected EditError.OutOfBounds")
 }
 
-test "ReplaceRange validates empty edit inside rune" {
-    try ReplaceRange("AåB", 2, 2, "") {
-        Err(EditError.NotRuneBoundary(position)) => {
-            testing.ExpectEqual(2, position)
+
+// The source is unchanged by a failed or a successful edit.
+test "Edits leave the source unchanged" {
+    let source := "AåB"
+    let edited := try ReplaceRange(source, 0, 3, "x")
+    testing.ExpectEqual("x", edited)
+    testing.ExpectEqual("AåB", source)
+    try RemoveRange(source, 2, 1) {
+        Err(EditError.StartAfterEnd) => {
+            testing.ExpectEqual("AåB", source)
             testing.Pass()
         }
     }
 
-    testing.Fail("expected EditError.NotRuneBoundary")
+    testing.Fail("expected EditError.StartAfterEnd")
 }

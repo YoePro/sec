@@ -14,44 +14,143 @@ module arithmetic
  *       behavior is claimed by this file.
  */
 
-// Calendar-relative components are NOT Sec durations and are not fixed seconds.
+/**
+ * Represents a calendar-relative period.
+ *
+ * Description:
+ * Components are evaluated in an explicitly selected order
+ * and calendar system. They are not normalized automatically.
+ *
+ * A calendar period is not an elapsed duration.
+ * Months and years may have different lengths.
+ *
+ * Ownership:
+ * Copyable value without allocation.
+ */
 type CalendarPeriod struct {
-    // Calendar years; may have different day counts.
+    // Signed number of calendar-year transitions.
     Years: int,
-    // Calendar months; includes any leap-month semantics of the calendar.
+
+    // Signed number of consecutive calendar-month transitions.
+    // A Hebrew leap year may contain thirteen months.
     Months: int,
-    // Calendar week steps, not a fixed elapsed duration at local times.
+
+    // Signed number of seven-calendar-day steps.
     Weeks: int,
-    // Calendar day steps, not an elapsed duration.
+
+    // Signed number of calendar-day steps.
     Days: int,
 }
 
-// Policy for a target day missing from the target month.
+/**
+ * Defines how calendar arithmetic handles an invalid
+ * day number in the target month.
+ *
+ * Description:
+ * Applies to missing days, not missing leap months.
+ * The policy is applied independently at each operation.
+ *
+ * It does not preserve month-end intent across repeated
+ * calculations; recurrence owns that behavior.
+ */
 enum MonthEndPolicy {
-    // Reject the date transformation instead of modifying the target.
+    // Reject the operation if the target day does not exist.
     Reject,
-    // Use the last valid date in the target month.
+
+    // Select the final valid day of the target month.
     Clamp,
-    // Advance excess day numbers into the following month.
+
+    // Continue counting surplus days into the following month.
     RollForward,
 }
 
-// Explicit evaluation order for mixed calendar-period components.
+/**
+ * Defines the evaluation order of calendar-period components.
+ *
+ * Description:
+ * Calendar arithmetic is not generally commutative.
+ * Applying years before days can produce a different
+ * result than applying days before years.
+ *
+ * Each nonzero component is applied as a separate step.
+ * The result of one step becomes the input of the next.
+ *
+ * The selected MonthEndPolicy applies to each year or
+ * month step that produces an invalid target day.
+ *
+ * Zero-valued components have no effect.
+ *
+ * Ownership:
+ * Copyable enum value without allocation or I/O.
+ */
 enum PeriodOrder {
-    // Apply years, then months, then weeks, then days.
+    // Apply calendar years, then months, then weeks, then days.
+    //
+    // Invalid target dates are resolved at each step before
+    // the next component is applied. This order is useful
+    // when calendar components represent the primary intent.
     YearsMonthsWeeksDays,
-    // Apply days, then weeks, then months, then years.
+
+    // Apply calendar days, then weeks, then months, then years.
+    //
+    // Day and week adjustments occur before calendar month
+    // and year transitions. This may produce a different
+    // result than YearsMonthsWeeksDays.
     DaysWeeksMonthsYears,
 }
 
-// Failures in calendar-relative computations.
+/**
+ * Represents failures in calendar-relative arithmetic.
+ *
+ * Description:
+ * These errors arise when applying calendar periods,
+ * changing calendar months or resolving target dates.
+ *
+ * Invalid calendar targets are distinguished from
+ * numeric or representational limits and unsupported
+ * calendar algorithms.
+ *
+ * This type is specific to temporal/arithmetic and
+ * does not replace the compiler-known ArithmeticError.
+ *
+ * Ownership:
+ * Copyable error value without allocation or I/O.
+ */
 enum TemporalArithmeticError error {
-    // No implementation exists yet.
+    // The requested operation has a declared API but has
+    // not yet been implemented.
+    //
+    // Temporary implementation status. Successful calendar
+    // arithmetic must not return this error merely because
+    // a particular target date is invalid.
     NotImplemented,
-    // A target calendar date is not valid under the requested policy.
+
+    // The requested operation produces calendar coordinates
+    // that cannot be resolved under the selected policy.
+    //
+    // Examples:
+    // - Adding one month to January 31 with MonthEndPolicy.Reject.
+    // - Moving a Hebrew leap-month date into a year where
+    // that month does not exist.
+    //
+    // The error indicates a calendar-semantic failure,
+    // not integer overflow or an unavailable algorithm.
     InvalidTarget,
-    // A result cannot be represented as a core date.
+
+    // The calculated result exceeds the supported range
+    // of the core date representation or an intermediate
+    // calculation cannot be represented safely.
+    //
+    // No wrapping, truncation, clamping or saturation
+    // is permitted as an implicit fallback.
     OutOfRange,
-    // An operation cannot be performed in the selected calendar variant.
+
+    // The selected calendar system does not support the
+    // requested arithmetic operation or its required
+    // algorithm is unavailable.
+    //
+    // This does not indicate that the input date is invalid.
+    // Unsupported systems must not silently fall back
+    // to Gregorian arithmetic.
     UnsupportedSystem,
 }

@@ -302,6 +302,8 @@ func (e *emitter) emitOperation(function *semantic.Function, operation semantic.
 		}
 		fmt.Fprintf(&e.out, "\"sec.const.int\"() <{value = %s}> : () -> ", mlirString(operation.Integer.String()))
 		return e.finishResultOperation(operation)
+	case semantic.OpUnitDimensionConstant, semantic.OpUnitDimensionCompare, semantic.OpUnitDimensionAxisCount, semantic.OpUnitDimensionIsDimensionless:
+		return e.emitUnitDimensionOperation(operation, values)
 	case semantic.OpConstBool:
 		if err := e.emitResult(operation); err != nil {
 			return err
@@ -1286,6 +1288,8 @@ func (e *emitter) typeText(id semantic.TypeID) (string, error) {
 		text = "!sec.rune"
 	case semantic.TypeString:
 		text = "!sec.string"
+	case semantic.TypeUnitDimension:
+		text = "!sec.unit_dimension"
 	case semantic.TypeStringView:
 		if e.schemaVersion < 12 {
 			return "", &UnsupportedLoweringError{Feature: "StringView types require schema 12"}

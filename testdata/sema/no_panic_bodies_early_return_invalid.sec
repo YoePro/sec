@@ -1,0 +1,58 @@
+module main
+
+// MD-030 § 9(6): an early return cannot evade @noPanic. Outer.init and
+// Plain.init reach checked arithmetic after or before their early return,
+// and Outer.free's generated cleanup of _inner runs Inner.free's assertion.
+
+type Inner struct {
+    _value: int,
+}
+
+impl Inner {
+    free {
+        assert self._value > 0, "positive"
+    }
+}
+
+type Outer struct {
+    _inner: Inner,
+    _count: int,
+}
+
+impl Outer {
+    @noPanic
+    init(value: int) {
+        self._inner = Inner { _value: 1 }
+        if value < 0 {
+            self._count = 0
+            return
+        }
+        self._count = value * 2
+    }
+
+    @noPanic
+    free {
+        if self._count == 0 {
+            return
+        }
+    }
+}
+
+type Plain struct {
+    _count: int,
+}
+
+impl Plain {
+    @noPanic
+    init(value: int) {
+        if value > 100 {
+            self._count = value * 2
+            return
+        }
+        self._count = 0
+    }
+}
+
+fn main() int {
+    return 0
+}

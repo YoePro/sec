@@ -23,7 +23,9 @@ func TestTypePackLoopsCLI(t *testing.T) {
 	if code != 0 {
 		t.Fatal(code, output)
 	}
-	for _, want := range []string{"for-pack", `"main::Size[T=int](ref T)"`, `"main::Size[T=bool](ref T)"`} {
+	// A specialization's identity names its concrete signature
+	// (monomorphization.md §§ 8.1–8.3).
+	for _, want := range []string{"for-pack", `"main::Size[T=int](ref int)"`, `"main::Size[T=bool](ref bool)"`} {
 		if !strings.Contains(stdout, want) {
 			t.Fatalf("missing %q:\n%s", want, stdout)
 		}

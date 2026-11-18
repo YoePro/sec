@@ -96,12 +96,36 @@ runtime (§§ 143–148, 162–163).
 
 ## A. Establish the execution baseline and synchronized authority
 
-- [ ] P19-01 — Record the exact execution snapshot and predecessor matrix
+- [x] P19-01 — Record the exact execution snapshot and predecessor matrix
   (P13–P18 actual state) (§§ 2, 164).
-- [ ] P19-02 — Audit `sec_arena_allocation_sync_v1.md` paragraph by
+
+  Done 2026-11-18 (Claude): HEAD `c907b00c` plus the shared working tree;
+  Go 1.26.8 linux/amd64; LLVM/MLIR 24.0.0git at llvm-project `252f31a6893b`.
+  Predecessors: P13–P16 closed, P17 closed 2026-11-17, P18 44/47 (P18-17
+  MD-135, P18-18 MD-072 and P18-22 blocked; schema 14 with dynamic arrays and
+  storage transitions implemented, report
+  `sec-mlir-dialect_package18-implementation-report.md`). Emission schemas
+  11–14, C++ accepts 1–14; schema 15 does not exist. Lit 238/238. The
+  allocation readiness gate preserves only P18 Append growth, so Arena
+  New/Alloc/WithCapacity/Growable from source still stop at "allocation
+  lowering is unsupported".
+- [x] P19-02 — Audit `sec_arena_allocation_sync_v1.md` paragraph by
   paragraph against `arena.md`, `allocation.md`, `storage.md`,
   `reference_model.md` and effect analysis; merge missing amendments without
   renumbering; record conflicts as MD entries (§ 1).
+
+  Done 2026-11-18 (Claude): sync §§ 1–17 are present in `arena.md` (single
+  builtin type, § 7 move-only, FromBuffer/WithCapacity/Growable, the safe
+  typed restriction, Result contracts, § 22 zero-element allocation, atomicity,
+  epoch preservation, Reset/Release, implicit destruction, nesting); §§ 18–25
+  in `arena.md` §§ 67–76 (MayAllocate vs RequiresAllocationContext, § 71
+  selection order, § 70 no lexical candidates, hidden context, § 75 foreign
+  ABI guard, spawn boundary) and `allocation.md` §§ 5–6, 22; § 26 is
+  `arena.md` § 76; §§ 27–29 (demand summary, panic boundary, storage reuse via
+  `reference_model.md`/`storage.md`) are present; `AllocationError` is
+  `core-library.md`. § 30 lists implementation work tracked by P19 items.
+  No missing amendment and no conflict; no new MD. Editorial only: the sync
+  status names `rules/memory/allocation.txt` for `allocation.md`.
 - [x] P19-03 — Confirm against current Sema: Arena is a semantic builtin,
   lowercase `arena` is not a keyword, move-only ownership, ArenaDomain
   identity and the owner-state versus validity-epoch distinction (§§ 4–8).
@@ -312,6 +336,15 @@ runtime (§§ 143–148, 162–163).
   plans; anything unplanned is a package-19 unsupported error with no
   partial module; the allocation readiness gate is narrowed per operation as
   it lowers.
+
+  Update 2026-11-18 (Claude): dependencies found. `New`/`Alloc` need the
+  CompilationPlan resolved layout of `T` (P19 § 20 forbids inventing it), and
+  no layout service exists before P24-10..16, not even for scalars
+  (`ResolvedScalarPlan` has no size/alignment facts). `WithCapacity`/
+  `Growable` need a provider/reclamation contract, the MD-034 configuration
+  gap. Lowerable without them: `FromBuffer` creation, Reset (once Sema
+  publishes the state-version and epoch-exhaustion plans) and Release/implicit
+  destruction of borrowed Arenas.
 - [ ] P19-21 — P17 cleanup and defer interaction; task/thread boundary
   scope; FFI retention boundary (§§ 139–142).
 

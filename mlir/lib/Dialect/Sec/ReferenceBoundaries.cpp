@@ -28,8 +28,18 @@ LogicalResult FailBoundsOp::verify() {
   auto operation = (*this)->getAttrOfType<StringAttr>("operation");
   if (!operation || (operation.getValue() != "fixed-array-index" &&
                      operation.getValue() != "slice-index" &&
-                     operation.getValue() != "slice-range"))
-    return emitOpError("operation must be fixed-array-index, slice-index or slice-range");
+                     operation.getValue() != "slice-range" &&
+                     operation.getValue() != "dynamic-array-index"))
+    return emitOpError("operation must be fixed-array-index, slice-index, slice-range or dynamic-array-index");
+  if (operation.getValue() == "dynamic-array-index") {
+    // P18 sections 40-41, 75: an owning dynamic-array index failure is the
+    // same panic.bounds endpoint, admitted with schema-14 dynamic arrays.
+    auto module = getOperation()->getParentOfType<ModuleOp>();
+    auto version = module ? module->getAttrOfType<IntegerAttr>("sec.dialect_version") : IntegerAttr();
+    if (!version || version.getInt() < 14)
+      return emitOpError("dynamic-array bounds provenance requires schema 14");
+    return success();
+  }
   if (operation.getValue() != "fixed-array-index" && !supportsSliceValues(*this))
     return emitOpError("slice bounds provenance requires schema 12");
   return success();

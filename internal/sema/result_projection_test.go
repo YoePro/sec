@@ -95,8 +95,8 @@ fn Project(result: Result[Task[int], Failure]) Option[Failure] {
 	return result.Err()
 }
 `)
-	if len(errors) != 1 || errors[0].ID != diagnostics.NonDiscardableValue ||
-		!strings.Contains(errors[0].Message, "alternate Task[int] payload") {
+	if len(errors) != 2 || errors[0].ID != diagnostics.NonDiscardableValue ||
+		!strings.Contains(errors[0].Message, "alternate Task[int] payload") || errors[1].ID != diagnostics.UnresolvedCreationLifecycle {
 		t.Fatalf("non-discardable alternate Result payload errors = %v", errors)
 	}
 }

@@ -1,0 +1,24 @@
+module main
+
+fn Sequence(value: ref Atomic[int]) void {
+    value.Store(1, MemoryOrder.Release)
+    discard value.FetchAdd(1, MemoryOrder.Relaxed)
+    discard value.CompareExchange(2, 3, MemoryOrder.Relaxed, MemoryOrder.SeqCst)
+    discard value.Swap(4, MemoryOrder.AcqRel)
+    discard value.FetchSub(1, MemoryOrder.Acquire)
+    value.Store(100, MemoryOrder.Relaxed)
+    discard value.FetchOr(1, MemoryOrder.Release)
+    discard value.Load(MemoryOrder.SeqCst)
+    value.Store(7)
+    discard value.CompareExchange(7, 8)
+}
+
+fn OtherExecution(value: ref Atomic[int]) void {
+    discard value.FetchAnd(1, MemoryOrder.Relaxed)
+    discard value.FetchXor(1, MemoryOrder.SeqCst)
+}
+
+fn SeparateObjects(first: ref Atomic[int], second: ref Atomic[int]) void {
+    first.Store(1, MemoryOrder.Release)
+    discard second.FetchAdd(1, MemoryOrder.Relaxed)
+}

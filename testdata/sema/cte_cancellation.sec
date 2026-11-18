@@ -1,0 +1,40 @@
+module main
+
+fn Count(n: int) int {
+    let mut result := 0
+    while result < n {
+        result += 1
+    }
+    return result
+}
+
+fn Recurse(n: int) int {
+    if n == 0 {
+        return 0
+    }
+    return Recurse(n - 1) + 1
+}
+
+type Limited int range 0..Count(100)
+type Recursive int range 0..Recurse(20)
+
+enum CountError error {
+    Unavailable,
+}
+
+fn TryCount() Result[int, CountError] {
+    return Ok(Count(100))
+}
+
+fn HandledCount() int {
+    return try TryCount() {
+        Err(_) => 7
+    }
+}
+
+static let Answer: int := Count(100)
+static let Handled: int := HandledCount()
+
+fn Main() int {
+    return Answer
+}

@@ -19,7 +19,7 @@ fn Borrowed(worker: ref Thread[void]) void {
 
 fn Work() void {}
 fn Inferred() void {
-    let worker := spawn thread Work()
+    let worker := try spawn thread Work() { Err(_) => { return } }
     worker.platform.Terminate()
     worker.Terminate()
     join worker

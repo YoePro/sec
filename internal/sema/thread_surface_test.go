@@ -19,7 +19,7 @@ fn Work() void {
 }
 
 fn Run() void {
-    let worker := spawn thread Work()
+    let worker := try spawn thread Work() { Err(_) => { return } }
     let id: ThreadID := worker.ID
     let name: string := worker.Name
     let status: ThreadStatus := worker.Status
@@ -48,7 +48,7 @@ fn Work() void {
 }
 
 fn Run() void {
-    let worker := spawn thread Work()
+    let worker := try spawn thread Work() { Err(_) => { return } }
     let observer := worker.Observe()
     let legacy := worker.status
     let started := observer.Start()

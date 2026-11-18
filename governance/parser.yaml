@@ -29,82 +29,6 @@ integrations:
       - cmd/compiler/main.go
       - cmd/compiler/diagnostic_catalog.go
       - cmd/lsp/main.go
-    implemented:
-      - complete ordinary function signatures without bodies retain nil-body AST declarations and emit P2019 parser.unimplemented-function on the name; later functions and impl methods survive
-      - parser diagnostics carry structured Help exposed in CLI, diagnostic catalog, and LSP; function-stub help suggests an empty body for void, a temporary return for plain builtin values, and a valid declared-type value for other returns
-      - legal extern declarations and interface requirements remain exempt from unimplemented-function diagnostics
-      - ParseResult containing Program, Diagnostics, Warnings, Recovery, HasErrors, and Fatal
-      - compatibility retention of ParseProgram, Errors, Warnings, and Diagnostics
-      - structured recovery events for virtual missing-token insertion
-      - structured recovery events for skipped statement token ranges
-      - InvalidStatement nodes retained at top level and in ordinary statement blocks
-      - unterminated ordinary statement blocks retain parsed statements and enclosing function/control-flow nodes at EOF while parser errors still block code generation
-      - unterminated switch bodies retain their subject, ordered case/default clauses and clause bodies, including empty switches, while parser errors still block code generation
-      - unterminated select bodies retain ordered operation, timeout and default branches, bindings and partial branch bodies at EOF while preserving parser errors
-      - unterminated match and try-handler blocks retain their subject/protected expression plus ordered completed or recovered arms/handlers at EOF; enclosing returns, functions, and declarations survive while the EOF diagnostic remains recoverable and blocks code generation
-      - select branch parsing consumes and records a skipped token when a malformed header would otherwise retry the same token indefinitely
-      - InvalidExpression nodes for missing Pratt prefix parsers
-      - invalid TypeReference marking with recovery metadata on parenthesized, reference, function, prefix sequence, qualified-name, unit-only, unit-annotated, and postfix bracket paths; malformed qualified/unit forms retain parsed source facts, while fixed arrays, collection/shaped constructors, Event/EventStorage arguments, and ordinary generic arguments retain the enclosing invalid type plus completed arguments and preserve following declarations
-      - expression-owned explicit generic calls retain invalid argument positions, resume at top-level commas or closing brackets without consuming outer delimiters, preserve later valid type arguments, and keep the call plus following statements and declarations
-      - lifecycle new expressions retain their committed NewExpression, invalid target TypeReference with recovery metadata, parsed arguments, and following siblings when a recoverable target-type error occurs
-      - composite function and prefix-sequence types propagate invalid retained parameter, return, and element references to their outer type; malformed fixed-array length and collection/shaped constant expressions preserve the diagnosed outer shape, completed children, and following declarations
-      - InvalidDeclaration nodes for failed declaration-shaped top-level statements
-      - InvalidMember nodes and skipped ranges for disallowed impl members
-      - InvalidPattern nodes for malformed match arms and try handlers
-      - ordinary line and block comments are consumed as trivia at every match-arm boundary, including before the first arm, between arms, after short arm bodies, and before the closing brace
-      - delimiter-aware later-line sibling recovery for match arms and try handlers
-      - skipped-range recovery events for impl members, match arms, and try handlers
-      - semantic ErrorType propagation for invalid expressions and type references
-      - speculative parser rollback removes associated recovery events
-      - recovery contexts and numbered episodes on structured diagnostics and recovery events
-      - diagnostic deduplication by ID, primary token, and recovery context
-      - same-location secondary diagnostic suppression within active recovery episodes
-      - speculative rollback reconstruction of deduplication and episode state
-      - shared delimiter stack preserving mismatched outer closers
-      - delimiter-aware recovery for struct fields, switch/select entries, directives, generic parameters, declaration tails, malformed for headers, attributes, properties, and balanced blocks
-      - struct fields with empty or malformed type positions retain their names and invalid TypeReference metadata, synchronize at the field comma or body close, and preserve later fields plus following declarations
-      - a struct field followed directly by an unambiguous type start retains its name and parsed type through one P2002 virtual-colon repair; later fields and declarations remain available
-      - adjacent struct fields on separate lines receive one P2002 virtual-comma repair only when the next tokens prove an Identifier-colon field start; same-line adjacency remains invalid and is not reinterpreted
-      - "missing list separators (2026-10-03): a struct field followed by a comment and a later-line `name:` field, a later-line parameter (`name:`, `ref`, or `->`), a later-line call argument, and a later-line array literal element each receive one P2002 virtual-comma repair with help instead of an error cascade; the recovery event's After token locates the comma after the previous item and drives the formatter Language Correction and the LSP quick fix. A struct field followed by a comment and a same-line field is now an error instead of being silently accepted. Tests: internal/parser/separator_recovery_test.go"
-      - malformed generic parameter entries recover at top-level commas, list closers, callable/body/implements/default/contract boundaries, retaining completed and later comma-separated parameters plus the enclosing declaration
-      - recovery robustness harness checks termination under a watchdog, panic freedom, lexer progress and range sanity, bounded diagnostics, deterministic diagnostics, and nil-free partial ASTs over repeated malformed tokens, deep and long malformed input, token-boundary truncation of every accepted fixture, the five rulebook mutation families, replayed regression seeds, and a native Go fuzz target
-      - switch clause loops and default clauses without a colon always consume at least one token, generic parameter lists stop when a separator is followed by EOF or a foreign closer, and failed switch-clause statements are retained as invalid statements instead of nil nodes
-      - committed function and lambda parameters with an empty type position retain an invalid TypeReference with recovery metadata, resume at comma or closing parenthesis, and preserve later parameters, bodies, enclosing expressions, statements, and declarations
-      - ordinary functions and shared interface/extern signature parsing retain an invalid return TypeReference when the mandatory return type is missing; ordinary bodies and later member/declaration siblings remain attached without inferring void
-      - interface property requirements retain missing or malformed declared types as invalid TypeReference nodes, recover to a reliable body brace without consuming outer/member boundaries, and preserve accessors plus later interface and top-level siblings
-      - impl properties with an empty declared-type position retain the property, invalid TypeReference metadata, parsed accessors, later impl members, and following declarations instead of discarding the committed member
-      - an impl-property setter missing its mandatory parameter name is retained as an invalid setter with recovery metadata and its parsed body; later getters and impl members survive, and Sema skips dependent analysis beneath the invalid setter
-      - interface event requirements retain empty or malformed payload positions as invalid TypeReference nodes, consume a reliable owned closing bracket, and preserve later interface members and top-level declarations
-      - union variants with empty or malformed single-payload type positions retain the committed variant and an invalid TypeReference; missing payload closers preserve the parsed inner type as invalid, and recovery stops before later variants or the union-body close
-      - committed interface and impl implements lists retain invalid conformance type positions, recover at top-level commas without consuming declaration bodies or contract/default tails, and preserve later valid interface references plus owning declarations
-      - enum headers with a missing or malformed explicit underlying representation retain an invalid TypeReference, recover to a reliable body brace, and preserve enum values plus following declarations
-      - malformed enum member positions retain source-ordered invalid EnumValue nodes with recovery metadata and synchronize at commas, later-line identifiers, the body close, or EOF without losing later members and declarations
-      - register declarations with an empty width retain an InvalidExpression at the width position, consume the owned closing bracket, and preserve register fields plus following declarations
-      - register bit fields with an empty width retain the field and an InvalidExpression at the width position, consume the owned closing bracket, and preserve later fields and declarations
-      - skipped-range events from each migrated delimiter-aware recovery helper
-      - unsupported if expressions in initializer position retain one InvalidExpression and consume their complete if, else-if, and else bodies without losing following statements or impl members
-      - LSP diagnostics continue semantic declaration analysis after non-fatal parser recovery and suppress semantic diagnostics whose primary location belongs to a parser recovery range
-      - duplicate function and method signatures remain visible after a recovered error in an earlier function body
-      - semantic diagnostic occurrences carry explicit primary end line and exclusive end column fields, and LSP ranges use them instead of hardcoded one-character highlights
-      - fixed-arity calls with excess arguments focus the first excess argument and retain the complete expression range
-      - try handler-brace disambiguation is scoped to the outer try operand in both expression and statement parser paths, so typed struct literals remain valid inside nested call arguments and a following handler block is not misread as a struct literal on the completed call
-      - deterministic 100-diagnostic parser cap with one terminal P2015 diagnostic
-      - central CLI and LSP parse paths consume ParseResult
-      - P2011 mentor diagnostics recognize reversed type declaration order such as type struct Name, type union Name, and type register Name and show the canonical type Name kind form
-      - fix-enabled formatting safely rewrites reversed struct and union declarations and register declarations with a proving Name[width] shape while ordinary formatting leaves invalid source unchanged
-      - ordinary statement-terminator semicolons emit focused P2012 parser.reserved-syntax diagnostics, retain exact InvalidStatement recovery nodes, and preserve following same-line top-level and block statements; C-style for headers retain their specialized diagnostic
-      - typed struct literals that reach EOF without a closing brace retain completed fields plus their enclosing return/function AST, emit a virtual missing-'}' recovery event, and remain parser errors that block code generation
-      - array literals that reach EOF without a closing bracket retain completed elements plus their enclosing return/function AST, emit a virtual missing-']' recovery event, and remain parser errors that block code generation
-      - comma-delimited empty call arguments are retained as position-preserving InvalidExpression nodes while later arguments, the enclosing call, and following declarations survive
-      - grouped expressions that reach EOF without a closing parenthesis retain their completed inner expression plus the enclosing return/function AST and record a virtual missing-')' recovery event
-      - call argument lists that reach EOF without a closing parenthesis retain the call, every completed argument, and the enclosing return/function AST, including EOF directly after the opener or a separator, while recording a virtual missing-')' recovery event
-      - index and slice postfix expressions that reach EOF without a closing bracket retain their base and completed index or bounds plus the enclosing return/function AST; an empty index position is retained as InvalidExpression and every path records a virtual missing-']' recovery event
-      - malformed member access retains its valid receiver and dot in an InvalidExpression with recovery metadata; a missing name at EOF preserves the enclosing return/function, while repeated dots stop without inventing or nesting a member access and later declarations survive
-      - missing prefix and infix operands before reliable delimiters retain their operator and any valid left operand with an explicit InvalidExpression child; the enclosing brace or comma remains unconsumed so later block declarations and list elements survive
-      - ordinary and try assignments with a missing source expression retain their target, exact operator and InvalidExpression value; closing block braces remain unconsumed and following functions survive across all assignment parser paths
-      - if and else-if statements with a missing condition retain a brace-anchored InvalidExpression plus their parsed consequence and alternative branches; later statements and declarations survive without nil condition nodes
-      - while statements with a missing condition retain a brace-anchored InvalidExpression and their parsed body; later statements and declarations survive without nil condition nodes
-      - an incomplete match expression cannot escape the Pratt dispatcher as a typed-nil semantic node; Sema also treats nil match expressions or subjects as InvalidType, so completion inside an unfinished try match remains available instead of terminating the LSP process
     tests:
       - internal/parser/select_recovery_test.go
       - testdata/parser/unterminated_select_invalid.sec
@@ -188,6 +112,83 @@ integrations:
       - internal/parser/if_condition_recovery_test.go
       - internal/parser/while_condition_recovery_test.go
       - cmd/lsp/incomplete_match_test.go
+    implemented:
+      - complete ordinary function signatures without bodies retain nil-body AST declarations and emit P2019 parser.unimplemented-function on the name; later functions and impl methods survive
+      - parser diagnostics carry structured Help exposed in CLI, diagnostic catalog, and LSP; function-stub help suggests an empty body for void, a temporary return for plain builtin values, and a valid declared-type value for other returns
+      - legal extern declarations and interface requirements remain exempt from unimplemented-function diagnostics
+      - ParseResult containing Program, Diagnostics, Warnings, Recovery, HasErrors, and Fatal
+      - compatibility retention of ParseProgram, Errors, Warnings, and Diagnostics
+      - structured recovery events for virtual missing-token insertion
+      - structured recovery events for skipped statement token ranges
+      - InvalidStatement nodes retained at top level and in ordinary statement blocks
+      - unterminated ordinary statement blocks retain parsed statements and enclosing function/control-flow nodes at EOF while parser errors still block code generation
+      - unterminated switch bodies retain their subject, ordered case/default clauses and clause bodies, including empty switches, while parser errors still block code generation
+      - unterminated select bodies retain ordered operation, timeout and default branches, bindings and partial branch bodies at EOF while preserving parser errors
+      - unterminated match and try-handler blocks retain their subject/protected expression plus ordered completed or recovered arms/handlers at EOF; enclosing returns, functions, and declarations survive while the EOF diagnostic remains recoverable and blocks code generation
+      - select branch parsing consumes and records a skipped token when a malformed header would otherwise retry the same token indefinitely
+      - InvalidExpression nodes for missing Pratt prefix parsers
+      - invalid TypeReference marking with recovery metadata on parenthesized, reference, function, prefix sequence, qualified-name, unit-only, unit-annotated, and postfix bracket paths; malformed qualified/unit forms retain parsed source facts, while fixed arrays, collection/shaped constructors, Event/EventStorage arguments, and ordinary generic arguments retain the enclosing invalid type plus completed arguments and preserve following declarations
+      - expression-owned explicit generic calls retain invalid argument positions, resume at top-level commas or closing brackets without consuming outer delimiters, preserve later valid type arguments, and keep the call plus following statements and declarations
+      - lifecycle new expressions retain their committed NewExpression, invalid target TypeReference with recovery metadata, parsed arguments, and following siblings when a recoverable target-type error occurs
+      - composite function and prefix-sequence types propagate invalid retained parameter, return, and element references to their outer type; malformed fixed-array length and collection/shaped constant expressions preserve the diagnosed outer shape, completed children, and following declarations
+      - InvalidDeclaration nodes for failed declaration-shaped top-level statements
+      - InvalidMember nodes and skipped ranges for disallowed impl members
+      - InvalidPattern nodes for malformed match arms and try handlers
+      - ordinary line and block comments are consumed as trivia at every match-arm boundary, including before the first arm, between arms, after short arm bodies, and before the closing brace
+      - delimiter-aware later-line sibling recovery for match arms and try handlers
+      - skipped-range recovery events for impl members, match arms, and try handlers
+      - semantic ErrorType propagation for invalid expressions and type references
+      - speculative parser rollback removes associated recovery events
+      - recovery contexts and numbered episodes on structured diagnostics and recovery events
+      - diagnostic deduplication by ID, primary token, and recovery context
+      - same-location secondary diagnostic suppression within active recovery episodes
+      - speculative rollback reconstruction of deduplication and episode state
+      - shared delimiter stack preserving mismatched outer closers
+      - delimiter-aware recovery for struct fields, switch/select entries, directives, generic parameters, declaration tails, malformed for headers, attributes, properties, and balanced blocks
+      - struct fields with empty or malformed type positions retain their names and invalid TypeReference metadata, synchronize at the field comma or body close, and preserve later fields plus following declarations
+      - a struct field followed directly by an unambiguous type start retains its name and parsed type through one P2002 virtual-colon repair; later fields and declarations remain available
+      - adjacent struct fields on separate lines receive one P2002 virtual-comma repair only when the next tokens prove an Identifier-colon field start; same-line adjacency remains invalid and is not reinterpreted
+      - "missing list separators (2026-10-03): a struct field followed by a comment and a later-line `name:` field, a later-line parameter (`name:`, `ref`, or `->`), a later-line call argument, and a later-line array literal element each receive one P2002 virtual-comma repair with help instead of an error cascade; the recovery event's After token locates the comma after the previous item and drives the formatter Language Correction and the LSP quick fix. A struct field followed by a comment and a same-line field is now an error instead of being silently accepted. Tests: internal/parser/separator_recovery_test.go"
+      - malformed generic parameter entries recover at top-level commas, list closers, callable/body/implements/default/contract boundaries, retaining completed and later comma-separated parameters plus the enclosing declaration
+      - recovery robustness harness checks termination under a watchdog, panic freedom, lexer progress and range sanity, bounded diagnostics, deterministic diagnostics, and nil-free partial ASTs over repeated malformed tokens, deep and long malformed input, token-boundary truncation of every accepted fixture, the five rulebook mutation families, replayed regression seeds, and a native Go fuzz target
+      - switch clause loops and default clauses without a colon always consume at least one token, generic parameter lists stop when a separator is followed by EOF or a foreign closer, and failed switch-clause statements are retained as invalid statements instead of nil nodes
+      - committed function and lambda parameters with an empty type position retain an invalid TypeReference with recovery metadata, resume at comma or closing parenthesis, and preserve later parameters, bodies, enclosing expressions, statements, and declarations
+      - ordinary functions and shared interface/extern signature parsing retain an invalid return TypeReference when the mandatory return type is missing; ordinary bodies and later member/declaration siblings remain attached without inferring void
+      - interface property requirements retain missing or malformed declared types as invalid TypeReference nodes, recover to a reliable body brace without consuming outer/member boundaries, and preserve accessors plus later interface and top-level siblings
+      - impl properties with an empty declared-type position retain the property, invalid TypeReference metadata, parsed accessors, later impl members, and following declarations instead of discarding the committed member
+      - an impl-property setter missing its mandatory parameter name is retained as an invalid setter with recovery metadata and its parsed body; later getters and impl members survive, and Sema skips dependent analysis beneath the invalid setter
+      - interface event requirements retain empty or malformed payload positions as invalid TypeReference nodes, consume a reliable owned closing bracket, and preserve later interface members and top-level declarations
+      - union variants with empty or malformed single-payload type positions retain the committed variant and an invalid TypeReference; missing payload closers preserve the parsed inner type as invalid, and recovery stops before later variants or the union-body close
+      - committed interface and impl implements lists retain invalid conformance type positions, recover at top-level commas without consuming declaration bodies or contract/default tails, and preserve later valid interface references plus owning declarations
+      - enum headers with a missing or malformed explicit underlying representation retain an invalid TypeReference, recover to a reliable body brace, and preserve enum values plus following declarations
+      - malformed enum member positions retain source-ordered invalid EnumValue nodes with recovery metadata and synchronize at commas, later-line identifiers, the body close, or EOF without losing later members and declarations
+      - register declarations with an empty width retain an InvalidExpression at the width position, consume the owned closing bracket, and preserve register fields plus following declarations
+      - register bit fields with an empty width retain the field and an InvalidExpression at the width position, consume the owned closing bracket, and preserve later fields and declarations
+      - skipped-range events from each migrated delimiter-aware recovery helper
+      - unsupported if expressions in initializer position retain one InvalidExpression and consume their complete if, else-if, and else bodies without losing following statements or impl members
+      - LSP diagnostics continue semantic declaration analysis after non-fatal parser recovery and suppress semantic diagnostics whose primary location belongs to a parser recovery range
+      - duplicate function and method signatures remain visible after a recovered error in an earlier function body
+      - semantic diagnostic occurrences carry explicit primary end line and exclusive end column fields, and LSP ranges use them instead of hardcoded one-character highlights
+      - fixed-arity calls with excess arguments focus the first excess argument and retain the complete expression range
+      - try handler-brace disambiguation is scoped to the outer try operand in both expression and statement parser paths, so typed struct literals remain valid inside nested call arguments and a following handler block is not misread as a struct literal on the completed call
+      - deterministic 100-diagnostic parser cap with one terminal P2015 diagnostic
+      - central CLI and LSP parse paths consume ParseResult
+      - P2011 mentor diagnostics recognize reversed type declaration order such as type struct Name, type union Name, and type register Name and show the canonical type Name kind form
+      - fix-enabled formatting safely rewrites reversed struct and union declarations and register declarations with a proving Name[width] shape while ordinary formatting leaves invalid source unchanged
+      - ordinary statement-terminator semicolons emit focused P2012 parser.reserved-syntax diagnostics, retain exact InvalidStatement recovery nodes, and preserve following same-line top-level and block statements; C-style for headers retain their specialized diagnostic
+      - typed struct literals that reach EOF without a closing brace retain completed fields plus their enclosing return/function AST, emit a virtual missing-'}' recovery event, and remain parser errors that block code generation
+      - array literals that reach EOF without a closing bracket retain completed elements plus their enclosing return/function AST, emit a virtual missing-']' recovery event, and remain parser errors that block code generation
+      - comma-delimited empty call arguments are retained as position-preserving InvalidExpression nodes while later arguments, the enclosing call, and following declarations survive
+      - grouped expressions that reach EOF without a closing parenthesis retain their completed inner expression plus the enclosing return/function AST and record a virtual missing-')' recovery event
+      - call argument lists that reach EOF without a closing parenthesis retain the call, every completed argument, and the enclosing return/function AST, including EOF directly after the opener or a separator, while recording a virtual missing-')' recovery event
+      - index and slice postfix expressions that reach EOF without a closing bracket retain their base and completed index or bounds plus the enclosing return/function AST; an empty index position is retained as InvalidExpression and every path records a virtual missing-']' recovery event
+      - malformed member access retains its valid receiver and dot in an InvalidExpression with recovery metadata; a missing name at EOF preserves the enclosing return/function, while repeated dots stop without inventing or nesting a member access and later declarations survive
+      - missing prefix and infix operands before reliable delimiters retain their operator and any valid left operand with an explicit InvalidExpression child; the enclosing brace or comma remains unconsumed so later block declarations and list elements survive
+      - ordinary and try assignments with a missing source expression retain their target, exact operator and InvalidExpression value; closing block braces remain unconsumed and following functions survive across all assignment parser paths
+      - if and else-if statements with a missing condition retain a brace-anchored InvalidExpression plus their parsed consequence and alternative branches; later statements and declarations survive without nil condition nodes
+      - while statements with a missing condition retain a brace-anchored InvalidExpression and their parsed body; later statements and declarations survive without nil condition nodes
+      - an incomplete match expression cannot escape the Pratt dispatcher as a typed-nil semantic node; Sema also treats nil match expressions or subjects as InvalidType, so completion inside an unfinished try match remains available instead of terminating the LSP process
+    remaining: []
     verification:
       - command: go test ./cmd/lsp -run TestCompletionSurvivesIncompleteMatchInsideTry -count=1
         result: passed on 2026-09-30 without panic during completion analysis of a missing match subject inside try
@@ -307,7 +308,6 @@ integrations:
         result: passed on 2026-10-04; skipStatement keeps an owned boundary (closing brace, statement start, or top-level declaration) current even when it is the last token of the file, so a failed final statement of the final block no longer consumes the block's closing brace and reports an unterminated body; a reserved keyword used as a binding name (`let new := 1`) reports P2011 "`new` is a reserved keyword and cannot name a binding" instead of the generic expected-IDENT error
       - command: go test ./internal/parser -run TestRecoveryRetainsOpenCallsAndBrokenFunctionTypes -count=1
         result: passed on 2026-10-04; an argument list left open before the enclosing block's `}` or before a statement keyword on a later line closes behind a virtual parenthesis with P2004 "missing ')' to close the call opened at L:C", keeping the completed arguments, the binding, the block's brace, and later declarations (previously the whole call was dropped, the brace consumed, and the next function lost); a function type with a missing parameter type at `,`/`)` or a missing return type keeps an invalid type there instead of abandoning the parameter list and the enclosing function
-    remaining: []
 
   - id: frontend.increment-decrement-aliases
     area: frontend-and-tooling
@@ -354,30 +354,22 @@ integrations:
       - existing compound-assignment mutability, typing, contract, ownership, and overflow checks without a parallel semantic path
       - parser-confirmed alias tokens project onto exact CST roles and the shared CST formatter pass performs the existing canonical compound-assignment rewrite without touching invalid expression-position uses
     remaining: []
-    verification_notes:
-      - parser-confirmed canonical formatter normalization that preserves invalid expression uses
-      - LSP semantic operator tokens and TextMate operator recognition
-      - no dedicated Semantic IR or lowering operation; canonical compound assignment remains the downstream representation
     verification:
       - command: go test ./internal/lexer ./internal/parser ./internal/sema ./internal/formatter ./cmd/lsp -run 'Increment|Decrement' -count=1
         result: passed
       - command: go run ./cmd/compiler parse ../bootstrap/internal/lexer/lexer.sec
         result: passed
+    verification_notes:
+      - parser-confirmed canonical formatter normalization that preserves invalid expression uses
+      - LSP semantic operator tokens and TextMate operator recognition
+      - no dedicated Semantic IR or lowering operation; canonical compound assignment remains the downstream representation
 
   - id: frontend.grammar-conformance
     area: frontend-parser-ast-sema-and-recovery
     status: implemented
-    revised: "2026-10-05"
     audited: "2026-08-19"
+    revised: "2026-10-05"
     document_revision: inferred 1.x / pre-v2 consolidated grammar; no explicit revision metadata
-    document_baseline:
-      review_date: "2026-08-01"
-      note: >-
-        The review date is retained as historical context only. The retired
-        implementation-status sections were removed on 2026-10-05; current
-        implementation status belongs in owning governance fragments. grammar.md
-        is the consolidated syntax contract and must remain synchronized with
-        specialized rulebooks that own feature semantics.
     repository_baseline: c515862
     summary: >-
       Tracks cross-cutting grammar conformance and legacy compatibility/recovery
@@ -418,9 +410,17 @@ integrations:
       - "parser conformance fixes found by the migration (2026-10-05): a block after `event Name using storage` is rejected instead of silently skipped (TestEventDeclarationBodyIsRejected); `let r := 0..<10` reports a focused P2007 'a range is not a value in Sec 0.1'; `if a = b` now shares the while condition's focused P2013 recovery and retains an InvalidExpression condition so Sema adds no cascade; Event/EventStorage capacity is a compile-time expression evaluated by Sema's shared constant evaluation instead of an integer-literal-only parser path"
       - "recovery tests stay distinct from canonical tests: the grammar fixture suite keeps valid and invalid fixtures in separate files and rejects any diagnostic in a valid fixture"
       - "the fixtures confirm that lexical_structure.md § 7 governs reserved spellings: require (§ 7.1), task/thread/process (§ 7.2), and the contract words (§ 7.3) are rejected as declaration names although grammar.md \"Contextual spellings\" still lists several of them as contextual"
+    remaining: []
+    document_baseline:
+      review_date: "2026-08-01"
+      note: >-
+        The review date is retained as historical context only. The retired
+        implementation-status sections were removed on 2026-10-05; current
+        implementation status belongs in owning governance fragments. grammar.md
+        is the consolidated syntax contract and must remain synchronized with
+        specialized rulebooks that own feature semantics.
     decisions:
       - "MD-002 and MD-003 are decided by rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md §§ 3-4 and recorded in grammar.md, types.md, contracts.md, and formatter.md: Sec 0.1 accepts only canonical syntax; `type Name TypeReference` has exactly one underlying type; legacy `type Name = ...` forms, inline field/variable contracts, the enum `Value: 1` initializer, and explicit `ref self` are invalid with focused migration diagnostics; standalone `struct Name` is Sec 0.2 syntax and prefix `[N]T`/`[]T` was never normative, so both are invalid Sec 0.1 syntax; default formatting never rewrites them"
-    remaining: []
     required_fixtures:
       - grammar_valid.sec
       - grammar_invalid.sec
@@ -441,35 +441,11 @@ integrations:
   - id: frontend.parser-long-term
     area: frontend-parser-long-term
     status: partial
-    revised: "2026-11-17"
-    summary: Long-term parser robustness and maintainability work. Shared grammar metadata and specialized skip-range/delimiter-stack migration are implemented; invalid-node retention, specialized recovery contexts, causal suppression, Sema traversal and newline-policy migration remain open. Long-running fuzz campaigns are deferred by user decision on 2026-10-15.
+    revised: "2026-11-18"
+    summary: Long-term parser robustness and maintainability work. Shared grammar metadata, specialized skip-range/delimiter-stack migration and scoped syntax-owner recovery contexts are implemented; invalid-node retention, causal suppression, Sema traversal and newline-policy migration remain open. Long-running fuzz campaigns are deferred by user decision on 2026-10-15.
     rules:
       - rules/compiler/parser_recovery.md
       - rules/foundations/grammar.md
-    remaining:
-      - "rulebook synchronization for MD-132: parser_recovery.md § 24 still covers only a missing `}`; the owner text for layout-evidenced stray closing-brace recovery is pending"
-      - invalid type retention in remaining specialized failure paths beyond explicit generic calls, lifecycle new expressions, union variant payloads, struct field type positions, empty impl-property type positions, bare and `name:` parameters, and function-type parameter and return positions
-      - recovery contexts for remaining specialized parsers
-      - cross-location causal recovery-episode suppression
-      - partial unterminated-construct retention beyond ordinary statement blocks, switch/select bodies, match arms, try handlers, typed struct/array literals, grouped expressions, call argument lists (at EOF, before the enclosing block's closing brace, and before a later statement), and index/slice postfix expressions at EOF
-      - recovery-aware Sema traversal policy for every invalid subtree
-      - long-running fuzz campaigns and corpus minimization beyond the in-tree fuzz target and deterministic mutation sweep
-      - audit the parser error paths that still drop a construct instead of retaining an invalid node with a recovery event (84 sites in 46 functions on 2026-10-05) and retain or justify each
-      - centralize newline-sensitive parsing so line layout is accepted only where the grammar defines it
-    governance_reconciliation:
-      - "parser_recovery.md revision 2.0 (2026-10-28) removed the August 2026 implementation-status sections, status matrix, fixture list and Appendix A plan. They were reconciled against this entry and frontend.parser-recovery-result: every still-open item is already tracked here (invalid-type retention, specialized contexts, causal suppression, unterminated constructs, Sema traversal, fuzzing, dropped-construct audit) or was implemented since (missing tokens, skipped ranges, ErrorType, shared grammar metadata, statement-only ++/--); no new implementation item was created from the removed text. Code citations of removed headings now point at the normative headings (Invalid AST nodes, Block recovery, Nil use, Token and trivia retention, Parser error episodes, Conformance requirements, Robustness inputs, Grammar-derived start sets)."
-    implemented:
-      - "parser_recovery.md revision 2.2 (2026-11-17; rules/corrections/applied/parser_recovery-revision2-review-and-correction-20261102-20261117.md): §§ 14.1(1), 74(2), 81(1)-(3) and 82 restated as observable contracts, without implementation steps or test recipes. § 82.1-82.8 were retitled as invariant categories. § 27(1)-(3) is the canonical @target/@when attribute-recovery contract. Revision 2.1's § 27(4), which covers every other attribute, was kept, and the correction's legacy #target, selection-boundary and no-duplication clauses were added as §§ 27(5)-(7). No ID was renumbered; 458 IDs are unique. The § 82 test recipes (repeated tokens, prefix truncation, mutation sweeps, fuzz) remain this item's existing records and verification."
-      - "Attribute argument recovery per § 27(2)-(3) (2026-11-17, discrepancies found while applying the correction). A malformed @target/@when argument is kept as an InvalidExpression at its position. Recovery skips to the next comma or `)` at the list depth, so later arguments, adjacent attributes, the declaration and its siblings are kept with one causal diagnostic; before, `arch: ,` or `???` produced a second 'expected , or )' error and dropped the rest of the list. A stray `)` or `]` right after a complete attribute set is reported once and skipped, and the set still attaches (before, `@target(...))` detached it from the function). Code: internal/parser/attributes.go. Test: TestAttributeRecoveryContract."
-      - "2026-11-12: stray closing-brace recovery (MD-132, owner decision). strayClosingBrace (internal/parser/stray_brace_recovery.go) treats a `}` as extra when it is the first token on its line and indented deeper than the line that opened the construct, and the next token is on a later line, also deeper than that opener line, and cannot follow the closed construct: `case`/`default` after a switch body, or a statement-only token after a function body. The brace is reported once (P2003 naming the construct, its opener and the continuing token), recorded as a skip-tokens recovery event and skipped; the construct stays open. The parser records each line's first-token column for this evidence only, so valid programs with unusual indentation parse unchanged (TestStrayClosingBraceRecovery)."
-      - "2026-11-12: if/while condition followed by stray tokens before the body brace on the same line (for example `if ch == 'a'r {`, where `r` is a separate identifier) no longer drops the body. recoverConditionBodyBrace (internal/parser/condition_recovery.go) scans the rest of the condition line with lexer snapshot/restore; when the real `{` follows at the same delimiter depth (parser_recovery.md § 51.2(1), § 53.3) it reports one P2003 diagnostic, records one skip-tokens recovery event, replaces the condition with an InvalidExpression spanning condition and stray tokens, and parses the body as the body. Without a brace on that line nothing is consumed and § 51.2(2) synchronization applies unchanged. Previously the unconsumed body was reparsed in the enclosing block and its `}` closed the enclosing function, so every later impl member became a module function and Sema/LSP reported cascades (observed in sec/compiler/inside/lexer/lexer.sec: 18 of 20 Lexer methods left the impl). LSP now reports only the two syntax errors for such a file (TestConditionStrayTokensKeepBodyAndEnclosingStructure)."
-      - "parser_recovery.md revision 2.1 (2026-11-07; modernization pass 1 § 5(2), § 9(5)): line-by-line syntax freshness audit of the specialized recovery §§ 22-66 against grammar.md and each construct owner. Corrected: § 23 statement synchronization adds the active `assert`/`panic` (§ 6(6)); § 27 covers `@target`/`@when` argument lists with `#target` as the compiler.md § 15 legacy form, and new § 27(4) states the existing attribute-argument recovery (recoverAttributeArguments); § 42 adds `mut fn`, `-> fn`, `static fn` and `try set`; § 43 adds attribute, `init`, `let`, nested `impl` and unit-metadata starts, and § 43(3) now treats impl `let` as the valid InstanceLetDeclaration; § 44 adds attribute-led accessors; § 47 drops the non-existent extern body form (an extern body is invalid) and adds `@link_name`, `unsafe` and foreign types; § 58 makes the block the only defer form. Union `,` separators in § 39 were correct (grammar.md UnionBody admits optional commas); the earlier follow-up example was wrong. No parser behavior changed; all claims match parser start sets and probes. grammar.md Target directive gained the @target synchronization note. Every parser_recovery.md citation in Go comments was repathed to an existing heading (14 stale names left by revision 2.0)."
-      - "Shared grammar metadata (2026-10-15): statement/expression/type/declaration/interface/impl starts, contextual spellings, assignment operators and contract starts live in internal/parser/grammar_metadata.go. Normal parsing and recovery consume the same definitions; contract/type-name inventories remain lexer-owned and precedence remains operators-owned. Missing expression starts for explicit moves and qualified unit references and reliable recovery starts for assert/panic/ref, contextual init/event/unit metadata and attributes are covered by fixture-based consistency and sibling-retention tests. Expected-assignment diagnostics use the same operator inventory."
-      - "Specialized recovery helpers (2026-10-15): forbidden test parameters, malformed test headers, rejected condition and match payloads, statement-line tails, body-opener search and malformed attribute arguments now record source-token skip ranges and use delimiterStack. A focused recoveryScan accounts for real consumed tokens without including lookahead or EOF. Foreign closers and later declarations remain unconsumed; body search distinguishes nested literal braces from the owning body. Remaining raw depth counters are speculative unit-suffix lookahead and interpolation scanning, not recovery skips. Match-entry tail ranges no longer include an already-consumed payload. The helpers are extracted into focused sibling files."
-      - "Declaration-recovery regression fixed during full compiler verification (2026-10-15): LET, UNSAFE and AT are valid declaration candidates but cannot be treated as strong outer boundaries inside a malformed function body. Shared grammar metadata now distinguishes these ambiguous prefixes from reliable outer declaration boundaries, preserving the following function without lifting a nested let into module scope or emitting a stray closing-brace cascade."
-    verification_notes:
-      - "2026-10-15: user deferred long-running fuzz campaigns and corpus minimization. The remaining fuzz item stays explicitly open; no fuzz campaign was run or claimed complete."
-      - "Closure audit 2026-10-15: seven implementation items remain in addition to deferred fuzzing. Examples include committed capture/lambda and asm parse failures returning nil and properties losing parsed accessors on malformed members. The existing invalid-node/Sema policy and specialized context/newline migrations must be completed before this integration can be marked implemented; no new normative decision blocker was identified in the completed work."
     code:
       - internal/parser/stray_brace_recovery.go
       - internal/parser/comments.go
@@ -481,6 +457,18 @@ integrations:
       - internal/parser/parser.go
       - internal/parser/expression.go
       - internal/parser/attributes.go
+      - internal/parser/recovery_context.go
+      - internal/parser/asm.go
+      - internal/parser/generic_constraints.go
+      - internal/parser/generic_parameters.go
+      - internal/parser/hardware.go
+      - internal/parser/interface_receivers.go
+      - internal/parser/interpolation.go
+      - internal/parser/register_header.go
+      - internal/parser/return_statement.go
+      - internal/parser/spawn_configuration.go
+      - internal/parser/switch_case.go
+      - internal/parser/union_recovery.go
     tests:
       - internal/parser/stray_brace_recovery_test.go
       - internal/parser/condition_recovery_test.go
@@ -495,7 +483,34 @@ integrations:
       - cmd/compiler/parser_specialized_recovery_test.go
       - cmd/lsp/parser_specialized_recovery_test.go
       - testdata/parser/malformed_signature_nested_declaration_invalid.sec
+      - internal/parser/recovery_context_test.go
+      - internal/cst/recovery_test.go
+    implemented:
+      - "parser_recovery.md revision 2.2 (2026-11-17; rules/corrections/applied/parser_recovery-revision2-review-and-correction-20261102-20261117.md): §§ 14.1(1), 74(2), 81(1)-(3) and 82 restated as observable contracts, without implementation steps or test recipes. § 82.1-82.8 were retitled as invariant categories. § 27(1)-(3) is the canonical @target/@when attribute-recovery contract. Revision 2.1's § 27(4), which covers every other attribute, was kept, and the correction's legacy #target, selection-boundary and no-duplication clauses were added as §§ 27(5)-(7). No ID was renumbered; 458 IDs are unique. The § 82 test recipes (repeated tokens, prefix truncation, mutation sweeps, fuzz) remain this item's existing records and verification."
+      - "Attribute argument recovery per § 27(2)-(3) (2026-11-17, discrepancies found while applying the correction). A malformed @target/@when argument is kept as an InvalidExpression at its position. Recovery skips to the next comma or `)` at the list depth, so later arguments, adjacent attributes, the declaration and its siblings are kept with one causal diagnostic; before, `arch: ,` or `???` produced a second 'expected , or )' error and dropped the rest of the list. A stray `)` or `]` right after a complete attribute set is reported once and skipped, and the set still attaches (before, `@target(...))` detached it from the function). Code: internal/parser/attributes.go. Test: TestAttributeRecoveryContract."
+      - "2026-11-12: stray closing-brace recovery (MD-132, owner decision). strayClosingBrace (internal/parser/stray_brace_recovery.go) treats a `}` as extra when it is the first token on its line and indented deeper than the line that opened the construct, and the next token is on a later line, also deeper than that opener line, and cannot follow the closed construct: `case`/`default` after a switch body, or a statement-only token after a function body. The brace is reported once (P2003 naming the construct, its opener and the continuing token), recorded as a skip-tokens recovery event and skipped; the construct stays open. The parser records each line's first-token column for this evidence only, so valid programs with unusual indentation parse unchanged (TestStrayClosingBraceRecovery)."
+      - "2026-11-12: if/while condition followed by stray tokens before the body brace on the same line (for example `if ch == 'a'r {`, where `r` is a separate identifier) no longer drops the body. recoverConditionBodyBrace (internal/parser/condition_recovery.go) scans the rest of the condition line with lexer snapshot/restore; when the real `{` follows at the same delimiter depth (parser_recovery.md § 51.2(1), § 53.3) it reports one P2003 diagnostic, records one skip-tokens recovery event, replaces the condition with an InvalidExpression spanning condition and stray tokens, and parses the body as the body. Without a brace on that line nothing is consumed and § 51.2(2) synchronization applies unchanged. Previously the unconsumed body was reparsed in the enclosing block and its `}` closed the enclosing function, so every later impl member became a module function and Sema/LSP reported cascades (observed in sec/compiler/inside/lexer/lexer.sec: 18 of 20 Lexer methods left the impl). LSP now reports only the two syntax errors for such a file (TestConditionStrayTokensKeepBodyAndEnclosingStructure)."
+      - "parser_recovery.md revision 2.1 (2026-11-07; modernization pass 1 § 5(2), § 9(5)): line-by-line syntax freshness audit of the specialized recovery §§ 22-66 against grammar.md and each construct owner. Corrected: § 23 statement synchronization adds the active `assert`/`panic` (§ 6(6)); § 27 covers `@target`/`@when` argument lists with `#target` as the compiler.md § 15 legacy form, and new § 27(4) states the existing attribute-argument recovery (recoverAttributeArguments); § 42 adds `mut fn`, `-> fn`, `static fn` and `try set`; § 43 adds attribute, `init`, `let`, nested `impl` and unit-metadata starts, and § 43(3) now treats impl `let` as the valid InstanceLetDeclaration; § 44 adds attribute-led accessors; § 47 drops the non-existent extern body form (an extern body is invalid) and adds `@link_name`, `unsafe` and foreign types; § 58 makes the block the only defer form. Union `,` separators in § 39 were correct (grammar.md UnionBody admits optional commas); the earlier follow-up example was wrong. No parser behavior changed; all claims match parser start sets and probes. grammar.md Target directive gained the @target synchronization note. Every parser_recovery.md citation in Go comments was repathed to an existing heading (14 stale names left by revision 2.0)."
+      - "Shared grammar metadata (2026-10-15): statement/expression/type/declaration/interface/impl starts, contextual spellings, assignment operators and contract starts live in internal/parser/grammar_metadata.go. Normal parsing and recovery consume the same definitions; contract/type-name inventories remain lexer-owned and precedence remains operators-owned. Missing expression starts for explicit moves and qualified unit references and reliable recovery starts for assert/panic/ref, contextual init/event/unit metadata and attributes are covered by fixture-based consistency and sibling-retention tests. Expected-assignment diagnostics use the same operator inventory."
+      - "Specialized recovery helpers (2026-10-15): forbidden test parameters, malformed test headers, rejected condition and match payloads, statement-line tails, body-opener search and malformed attribute arguments now record source-token skip ranges and use delimiterStack. A focused recoveryScan accounts for real consumed tokens without including lookahead or EOF. Foreign closers and later declarations remain unconsumed; body search distinguishes nested literal braces from the owning body. Remaining raw depth counters are speculative unit-suffix lookahead and interpolation scanning, not recovery skips. Match-entry tail ranges no longer include an already-consumed payload. The helpers are extracted into focused sibling files."
+      - "Declaration-recovery regression fixed during full compiler verification (2026-10-15): LET, UNSAFE and AT are valid declaration candidates but cannot be treated as strong outer boundaries inside a malformed function body. Shared grammar metadata now distinguishes these ambiguous prefixes from reliable outer declaration boundaries, preserving the following function without lifting a nested let into module scope or emitting a stray closing-brace cascade."
+      - "2026-11-18: MD-132 synchronization complete. parser_recovery.md revision 2.3 section 24.2 records the owner decision of 2026-11-12 for layout-evidenced stray closing braces without changing valid-program parsing. All required line/column evidence and switch/function continuation sets are explicit; a stray brace has one diagnostic and one real-token skip event while the construct remains open. Existing implementation now cites section 24.2 precisely; regressions verify evidence boundaries, valid unusual indentation, retained clauses/members and diagnostic/recovery provenance. MD-132 is removed from the open-decision ledger after rulebook/governance synchronization."
+      - "2026-11-18: Specialized recovery contexts are scoped at current grammar-owning parser entry points (imports/directives, generics, parameters, types/contracts, declarations/members, attributes, literals/calls/indexing, control flow, patterns/handlers, asm/register/hardware, lambda/spawn/await and thread configuration). A focused recovery_context.go helper restores nested and speculative caller contexts on all returns; diagnostic scope is separate from the existing dispatch/member scope. Diagnostics, context-sensitive deduplication and missing-token events share the same lookup. Caller-recorded skips retain the originating diagnostic context, and re-lexed interpolation diagnostics preserve nested syntax ownership without duplicating already reported lexer errors. Existing synchronization and episode boundaries remain unchanged; cross-location causal suppression stays separate remaining work. Fifty-three malformed-source cases, restoration/rollback tests, existing recovery suites and CST provenance assertions verify the complete current context surface."
+    remaining:
+      - invalid type retention in remaining specialized failure paths beyond explicit generic calls, lifecycle new expressions, union variant payloads, struct field type positions, empty impl-property type positions, bare and `name:` parameters, and function-type parameter and return positions
+      - cross-location causal recovery-episode suppression
+      - partial unterminated-construct retention beyond ordinary statement blocks, switch/select bodies, match arms, try handlers, typed struct/array literals, grouped expressions, call argument lists (at EOF, before the enclosing block's closing brace, and before a later statement), and index/slice postfix expressions at EOF
+      - recovery-aware Sema traversal policy for every invalid subtree
+      - long-running fuzz campaigns and corpus minimization beyond the in-tree fuzz target and deterministic mutation sweep
+      - audit the parser error paths that still drop a construct instead of retaining an invalid node with a recovery event (84 sites in 46 functions on 2026-10-05) and retain or justify each
+      - centralize newline-sensitive parsing so line layout is accepted only where the grammar defines it
     verification:
+      - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./cmd/compiler -run "TestBuildCLI(MultipleVariantsAndExplicitNumber|FailurePreservesCounterAndReleasesLock|NativeFileAndProjectScope|FilterAndConcurrentEdit|ParallelProcesses)$" -count=1
+        result: "2026-11-18: all five targeted native build tests passed (0.598s) with the existing MLIR toolchain path configured. The initial extra full compiler/LSP run reached the default 10-minute limits, so neither whole suite is claimed passed. That compiler run also failed these five tests because sec-mlir-opt was not configured; the targeted rerun resolves those observed failures. Final full parser/CST/formatter and final targeted race/compiler/LSP verification are recorded separately above."
+      - command: go test ./internal/parser ./internal/cst ./internal/formatter -count=1; go test -race ./internal/parser ./cmd/compiler ./cmd/lsp -run "SpecializedRecoveryContexts|RecoveryContextRestoration|ParserPreservesEscapeDiagnostics|Interpolation|SpecializedParser|ParseAndLexEmitStructuredOccurrences" -count=1; go vet ./internal/parser ./internal/cst ./internal/formatter ./cmd/compiler ./cmd/lsp
+        result: "2026-11-18: final complete parser (174.092s), CST (0.010s) and formatter (2.373s) suites passed. Focused final race suites passed for parser (1.092s), compiler (1.277s) and LSP (33.381s); vet passed. Initial full parser run exposed a duplicate re-lexed interpolation escape diagnostic across syntax contexts; fixed and verified by the existing escape-diagnostic regression plus interpolation/context tests before the successful final full run. Tests include 53 malformed-source cases, context restoration, rollback, context-sensitive deduplication, caller-recorded repair provenance and lossless CST ownership. Remaining 8 to 7 in parser.yaml and frontend.parser-long-term, no partial moves. Broader CLI/LSP runs are recorded separately in handoff."
+      - command: go test ./internal/parser ./internal/cst ./internal/formatter -count=1; go test -race ./internal/parser -run "StrayClosingBrace|ConditionStrayTokens" -count=1; go vet ./internal/parser
+        result: "2026-11-18: complete parser (131.567s), CST (0.007s) and formatter (1.649s) suites passed; focused race suite passed (1.029s); parser vet passed. MD-132 section 24.2 synchronization preserves the owner-approved scope and valid-program parsing. Regression coverage includes opener-line indentation versus brace column, first-token and later-line evidence, continuation boundaries, retained switch/function/impl structure, recoverable error status and single-token diagnostic/episode provenance. Governance check reports 0 problems in 47 fragments; all 163 parser evidence paths exist. Remaining 9 to 8 in parser.yaml and frontend.parser-long-term. Fuzz campaigns remain deferred and open."
       - command: go test ./cmd/lsp -count=1
         result: passed on 2026-10-15 after the outer-declaration recovery fix; complete LSP regression suite
       - command: go test ./internal/parser ./internal/cst ./internal/formatter ./internal/sema ./cmd/compiler -count=1
@@ -512,3 +527,9 @@ integrations:
         result: passed on 2026-10-15; metadata consistency, sibling retention, exact real-token skip ranges and foreign-boundary safety. Both specialized fixtures remain errors at all seven CLI gates with no output, and LSP retains the following function symbol and parser error.
       - command: go test ./internal/parser ./internal/cst ./internal/formatter ./internal/sema ./cmd/compiler ./cmd/lsp -count=1
         result: passed on 2026-10-15; complete parser, CST, formatter, Sema, compiler and LSP suites. Final metadata additions additionally receive the focused consistency and compilation-gate regression run.
+    governance_reconciliation:
+      - "parser_recovery.md revision 2.0 (2026-10-28) removed the August 2026 implementation-status sections, status matrix, fixture list and Appendix A plan. They were reconciled against this entry and frontend.parser-recovery-result: every still-open item is already tracked here (invalid-type retention, specialized contexts, causal suppression, unterminated constructs, Sema traversal, fuzzing, dropped-construct audit) or was implemented since (missing tokens, skipped ranges, ErrorType, shared grammar metadata, statement-only ++/--); no new implementation item was created from the removed text. Code citations of removed headings now point at the normative headings (Invalid AST nodes, Block recovery, Nil use, Token and trivia retention, Parser error episodes, Conformance requirements, Robustness inputs, Grammar-derived start sets)."
+    verification_notes:
+      - "2026-10-15: user deferred long-running fuzz campaigns and corpus minimization. The remaining fuzz item stays explicitly open; no fuzz campaign was run or claimed complete."
+      - "Closure audit 2026-10-15: seven implementation items remain in addition to deferred fuzzing. Examples include committed capture/lambda and asm parse failures returning nil and properties losing parsed accessors on malformed members. The existing invalid-node/Sema policy and specialized context/newline migrations must be completed before this integration can be marked implemented; no new normative decision blocker was identified in the completed work."
+      - "2026-11-18 context audit also observed impl X { ? } retaining an InvalidMember and skip event without a primary parser diagnostic. This is not a context-scoping fix: review it with the existing invalid/dropped-construct audit and Sema traversal work; no acceptance or diagnostic-completeness claim is made for that source."

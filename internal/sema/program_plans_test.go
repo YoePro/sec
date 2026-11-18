@@ -108,14 +108,14 @@ fn Alloc() Result[void, AllocationError] {
 }
 
 fn Unused() void {
-    let worker := spawn thread Work()
+    let worker := try spawn thread Work() { Err(_) => { return } }
     detach worker
 }
 
 fn main() int {
     let job := try spawn task Work() { Err(_) => { return 1 } }
     await job
-    let worker := spawn thread Work()
+    let worker := try spawn thread Work() { Err(_) => { return 1 } }
     detach worker
     match Alloc() {
         Ok(_) => return 0
@@ -244,7 +244,7 @@ fn Work() void {
 }
 
 test "threads are joined or detached" {
-    let worker := spawn thread Work()
+    let worker := try spawn thread Work() { Err(_) => { return } }
     detach worker
 }
 `, "plans_test.sec"))
@@ -330,7 +330,7 @@ func TestProgramPlansAreDeterministic(t *testing.T) {
 		"let Zeta: int := 26\n",
 		"let Alpha: int := 1\n",
 		"let mut Middle: bool\n",
-		"fn main() int {\n    let worker := spawn thread Work()\n    detach worker\n    let job := try spawn task Work() { Err(_) => { return 1 } }\n    await job\n    match Alloc() {\n        Ok(_) => return 0\n        Err(error) => return 1\n    }\n}\n",
+		"fn main() int {\n    let worker := try spawn thread Work() { Err(_) => { return 1 } }\n    detach worker\n    let job := try spawn task Work() { Err(_) => { return 1 } }\n    await job\n    match Alloc() {\n        Ok(_) => return 0\n        Err(error) => return 1\n    }\n}\n",
 	}
 	render := func(order []int) string {
 		var source strings.Builder

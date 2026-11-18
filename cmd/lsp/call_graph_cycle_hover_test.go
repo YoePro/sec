@@ -27,18 +27,18 @@ fn TaskB() void {
 }
 
 fn ThreadA() void {
-	let child := spawn thread ThreadB()
+	let child := try spawn thread ThreadB() { Err(_) => { return } }
 	detach child
 }
 
 fn ThreadB() void {
-	let child := spawn thread ThreadA()
+	let child := try spawn thread ThreadA() { Err(_) => { return } }
 	detach child
 }
 
 fn main() void {
 	let taskChild := try spawn task TaskA() { Err(_) => { return } }
-	let threadChild := spawn thread ThreadA()
+	let threadChild := try spawn thread ThreadA() { Err(_) => { return } }
 	detach taskChild
 	detach threadChild
 }

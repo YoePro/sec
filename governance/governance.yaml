@@ -5,10 +5,19 @@ integrations:
   - id: governance.source-rulebook-traceability
     area: compiler-implementation-governance
     status: implemented
-    introduced_by: correction25.md
     audited: "2026-08-20"
     repository_baseline: c515862
     summary: Establish a general Sec implementation traceability rule. Where applicable, every source file and every function that implements, validates, analyzes, or lowers normative Sec behavior must identify in comments the canonical rulebook(s) and the specific rule/section(s) it implements. Narrow functions should cite precise rules; broad cross-cutting functions may cite several books or higher-level sections. Pure non-normative infrastructure may use a documented exception.
+    implemented:
+      - canonical implementation traceability policy is defined in rules/README.md
+      - preferred Go and Sec source-reference forms are documented
+      - touched semantic functions for corrections 23 through 29 carry rulebook-oriented comments where applicable
+    remaining:
+      - decide whether lint/CI should verify traceability on new or modified semantic functions
+      - migrate high-value semantic files incrementally
+      - prioritize parser, Sema, Semantic IR, lowering, ABI/FFI, ownership, and diagnostics code
+      - add correction references to focused regression tests where useful
+    introduced_by: correction25.md
     canonical_destination:
       - rules/README.md
     required_policy:
@@ -22,15 +31,6 @@ integrations:
       - comments are traceability metadata and never override normative rulebooks
       - genuinely non-normative infrastructure may be exempt where no useful rule mapping exists
       - focused semantic regression tests should cite their rule and correction where practical
-    implemented:
-      - canonical implementation traceability policy is defined in rules/README.md
-      - preferred Go and Sec source-reference forms are documented
-      - touched semantic functions for corrections 23 through 29 carry rulebook-oriented comments where applicable
-    remaining:
-      - decide whether lint/CI should verify traceability on new or modified semantic functions
-      - migrate high-value semantic files incrementally
-      - prioritize parser, Sema, Semantic IR, lowering, ABI/FFI, ownership, and diagnostics code
-      - add correction references to focused regression tests where useful
     audit_targets:
       - source: correction28.md
         functions:
@@ -68,35 +68,16 @@ integrations:
     status_note: Normalized from audit supplement status correction-needed; canonical governance uses planned.
 
   - id: governance.yamlstatus-tooling
-    status: partial
-    summary: >-
-      cmd/yamlstatus reports governance statistics, selects remaining points,
-      edits fragments through the YAML node tree with canonical formatting, and
-      validates the whole ledger structurally with check. Ideas not yet
-      implemented are tracked in cmd/yamlstatus/IDEAS.md.
+    area: governance
+    status: implemented
+    integrated: "2026-10-09"
+    revised: "2026-11-18"
+    summary: cmd/yamlstatus provides governance statistics, selection, search, snapshots, HTML reporting, reference and decision/correction/diagnostic audits, canonical formatting and validated editing. All tracked yamlstatus-tooling requirements are implemented, including canonical integration field order shared by every writer.
     rules:
       - codex.md
       - cmd/yamlstatus/IDEAS.md
       - governance/README.md
-    implemented:
-      - statistics and remaining-point selection (-file, -id, -point, -random, -exclude, -json)
-      - fmt harmonizes fragments into one canonical layout without changing any decoded value, and reports type hazards that only fmt -fix-types rewrites
-      - set, add, remove, move, verify, repath and new edit exact integrations, print a unified diff, write only with -write, and fail closed on unknown, ambiguous or out-of-range targets
-      - check validates the ledger (loading, fragment header, index.yaml fragment list, unique IDs, id/status, status vocabulary, verification items, checklist item shapes, merged list items) with file, line and integration ID, and edit commands refuse changes that add a problem; its first run found and fixed 24 problems
-      - "library scope (2026-10-10): index.yaml fragments with implementation_scope: library (stdlib.yaml) are not compiler implementation; yamlstatus statistics exclude their integrations and checklist items, report them on a separate Not counted line, and keep their points selectable"
-      - "HTML reporting (-html): a complete escaped document using the sec-lang.com manual layout, shared stylesheet/logo, navigation/sidebar/breadcrumb/footer, compiler-only overview and progress, separate integration/checklist/metadata tables and explicit library exclusion. Embedded html/template keeps markup separate from Go; no plain-text prefix or printf interpretation of generated percentages. Source-backed CLI tests cover report output, escaping, empty states, stable metadata ordering and unchanged library scope; text-statistics regression uses nonempty input and current labels."
-      - "-uses PATH (2026-11-01): read-only reverse references in code/tests/rules with exact YAML scalar file/line, integration ID, status and field; includes completed and library integrations without requiring remaining points or source-file existence. Exact normalized repository-relative/native absolute paths, stable human/JSON output, -dir/-file/-id filters, empty reports and malformed/incompatible/ambiguous-request rejection are covered. Structured rule requirements and prose are not path references; source files and YAML stay unchanged (IDEAS.md §3)."
-      - "-paths (2026-11-04): read-only existence checks for code/tests/rules, including evidence and nested plan lists, completed and library integrations, with exact YAML file/line, owner, status, field and original path. Normalized repository-relative and native absolute paths, symlink handling, deterministic human/JSON output, -dir/-file/-id scope and optional -go filter for internal/cmd Go paths are supported. Structured rule requirements and paragraph references are not filenames. Findings return a full report and nonzero status; other filesystem errors fail without false missing findings. No source or YAML edits; IDEAS.md section 2 complete."
-      - "-grep TEXT (2026-11-04): read-only literal case-insensitive search of all top-level remaining checklist items, including library owners, decoded Unicode/multiline strings and structured item ID/description/expectation values. Reports retain original point, exact YAML file/line, owner/status and 1-based checklist index/count in deterministic human/JSON output. -dir/positional-directory/-file/-id filters, successful empty reports, unknown/ambiguous IDs and incompatible/empty-request rejection are covered. Metadata, mapping keys, implemented/partial and nested plan notes are excluded. Selection shares its existing item-location lookup with search. No source/YAML changes during queries; IDEAS.md section 9 complete."
-      - Versioned -snapshot FILE creates portable per-integration checklist-count baselines without overwriting files. -diff FILE or HEAD reports deterministic before/after/delta remaining, implemented and partial counts per fragment and integration, with separate compiler/library totals and explicit added/removed IDs, file moves and status/scope changes; -json emits the versioned report. HEAD reads committed YAML without checkout/index changes. Invalid schemas, duplicate IDs, negative counts, nonportable paths and conflicting flags fail explicitly. Equal-count text rewrites are outside count comparison (2026-11-10; IDEAS.md section 7).
-      - "--listfiles: list every YAML input file in the selected governance directory in filename order, with the filename followed by three columns named Implemented, Remaining and Partial. Each column shows a checklist-item count and its percentage of the per-file total (implemented + remaining + partial). Include files with zero checklist items (0 and 0.0%) and library-scope files while preserving their exclusion from compiler totals. Use the existing canonical counting rules in a read-only report."
-    remaining:
-      - canonical key order per integration, which needs an agreed order first (IDEAS.md section 4.1)
-      - "-md: missing-decision cross-references and stale references to closed decisions (IDEAS.md section 5)"
-      - "-corrections: applied-correction bookkeeping (IDEAS.md section 6)"
-      - "-diagnostics: diagnostic registry versus governance and next free ID (IDEAS.md section 8)"
-    area: governance
-    integrated: "2026-10-09"
+      - rules/tooling/diagnostics.md
     code:
       - cmd/yamlstatus/main.go
       - cmd/yamlstatus/cli.go
@@ -115,6 +96,13 @@ integrations:
       - cmd/yamlstatus/count_diff.go
       - cmd/yamlstatus/count_git.go
       - cmd/yamlstatus/listfiles.go
+      - cmd/yamlstatus/md_references.go
+      - cmd/yamlstatus/corrections.go
+      - cmd/yamlstatus/diagnostic_audit.go
+      - cmd/yamlstatus/text_ids.go
+      - cmd/yamlstatus/audit_query.go
+      - internal/diagnostics/diagnostics.go
+      - cmd/yamlstatus/key_order.go
     tests:
       - cmd/yamlstatus/main_test.go
       - cmd/yamlstatus/selection_test.go
@@ -127,7 +115,56 @@ integrations:
       - cmd/yamlstatus/grep_test.go
       - cmd/yamlstatus/count_diff_test.go
       - cmd/yamlstatus/listfiles_test.go
+      - cmd/yamlstatus/md_references_test.go
+      - cmd/yamlstatus/corrections_test.go
+      - cmd/yamlstatus/diagnostic_audit_test.go
+      - cmd/yamlstatus/key_order_test.go
+    implemented:
+      - statistics and remaining-point selection (-file, -id, -point, -random, -exclude, -json)
+      - fmt harmonizes fragments into one canonical layout without changing any decoded value, and reports type hazards that only fmt -fix-types rewrites
+      - set, add, remove, move, verify, repath and new edit exact integrations, print a unified diff, write only with -write, and fail closed on unknown, ambiguous or out-of-range targets
+      - check validates the ledger (loading, fragment header, index.yaml fragment list, unique IDs, id/status, status vocabulary, verification items, checklist item shapes, merged list items) with file, line and integration ID, and edit commands refuse changes that add a problem; its first run found and fixed 24 problems
+      - "library scope (2026-10-10): index.yaml fragments with implementation_scope: library (stdlib.yaml) are not compiler implementation; yamlstatus statistics exclude their integrations and checklist items, report them on a separate Not counted line, and keep their points selectable"
+      - "HTML reporting (-html): a complete escaped document using the sec-lang.com manual layout, shared stylesheet/logo, navigation/sidebar/breadcrumb/footer, compiler-only overview and progress, separate integration/checklist/metadata tables and explicit library exclusion. Embedded html/template keeps markup separate from Go; no plain-text prefix or printf interpretation of generated percentages. Source-backed CLI tests cover report output, escaping, empty states, stable metadata ordering and unchanged library scope; text-statistics regression uses nonempty input and current labels."
+      - "-uses PATH (2026-11-01): read-only reverse references in code/tests/rules with exact YAML scalar file/line, integration ID, status and field; includes completed and library integrations without requiring remaining points or source-file existence. Exact normalized repository-relative/native absolute paths, stable human/JSON output, -dir/-file/-id filters, empty reports and malformed/incompatible/ambiguous-request rejection are covered. Structured rule requirements and prose are not path references; source files and YAML stay unchanged (IDEAS.md §3)."
+      - "-paths (2026-11-04): read-only existence checks for code/tests/rules, including evidence and nested plan lists, completed and library integrations, with exact YAML file/line, owner, status, field and original path. Normalized repository-relative and native absolute paths, symlink handling, deterministic human/JSON output, -dir/-file/-id scope and optional -go filter for internal/cmd Go paths are supported. Structured rule requirements and paragraph references are not filenames. Findings return a full report and nonzero status; other filesystem errors fail without false missing findings. No source or YAML edits; IDEAS.md section 2 complete."
+      - "-grep TEXT (2026-11-04): read-only literal case-insensitive search of all top-level remaining checklist items, including library owners, decoded Unicode/multiline strings and structured item ID/description/expectation values. Reports retain original point, exact YAML file/line, owner/status and 1-based checklist index/count in deterministic human/JSON output. -dir/positional-directory/-file/-id filters, successful empty reports, unknown/ambiguous IDs and incompatible/empty-request rejection are covered. Metadata, mapping keys, implemented/partial and nested plan notes are excluded. Selection shares its existing item-location lookup with search. No source/YAML changes during queries; IDEAS.md section 9 complete."
+      - Versioned -snapshot FILE creates portable per-integration checklist-count baselines without overwriting files. -diff FILE or HEAD reports deterministic before/after/delta remaining, implemented and partial counts per fragment and integration, with separate compiler/library totals and explicit added/removed IDs, file moves and status/scope changes; -json emits the versioned report. HEAD reads committed YAML without checkout/index changes. Invalid schemas, duplicate IDs, negative counts, nonportable paths and conflicting flags fail explicitly. Equal-count text rewrites are outside count comparison (2026-11-10; IDEAS.md section 7).
+      - "--listfiles: list every YAML input file in the selected governance directory in filename order, with the filename followed by three columns named Implemented, Remaining and Partial. Each column shows a checklist-item count and its percentage of the per-file total (implemented + remaining + partial). Include files with zero checklist items (0 and 0.0%) and library-scope files while preserving their exclusion from compiler totals. Use the existing canonical counting rules in a read-only report."
+      - "2026-11-18: -md MD-NNN lists every exact-ID text occurrence grouped by repository-relative file, with Unicode line/column positions, across the selected governance directory, rules, language-rulebook-status.md and Go/Sec sources. -md closed audits adjacent explicit blocker wording for IDs absent from missing-decisions.yaml, including wrapped lines, while keeping present implementation-pending decisions tracked and excluding neutral historical mentions and negated blockers. Results are possible stale wording for review, not authoritative decision closure or implementation status. Plain/JSON output is deterministic and read-only; malformed/duplicate ledger IDs and incompatible flags fail explicitly. Symlinks, binary data and build/dependency directories are excluded; source locations are portable."
+      - "2026-11-18: -corrections audits every corrections_applied link against regular files under rules/corrections/applied/, preserving owning integration and YAML source locations. Archive entries require a canonical integration/rulebook path mention or a local rulebook-relative Markdown link; self-references in archived corrections and prefixed filenames do not establish provenance. Pending corrections under rules/corrections/ and root candidates with correction filename/heading evidence retain explicit document statuses; applied candidates outside the archive are reported separately. Normative application is never equated with runtime implementation completion. Plain and JSON reports are deterministic/read-only with portable paths; duplicate valid links remain valid, symlinks are not followed, and malformed lists, filesystem errors and incompatible flags fail before output. Findings are review data, not automatic file moves or status changes (IDEAS.md §6)."
+      - "2026-11-18: -diagnostics compares diagnostics.All/Validate, including retired definitions, with exact textual diagnostic-ID mentions across selected governance and Markdown/YAML rulebooks. Reports retain portable file/line/Unicode-column locations for unregistered mentions and symbolic name/topic-family/retired metadata for registered IDs lacking governance references. New-ID candidates are reported per canonical namespace L/P/S/A/B/F, independently of topic families or semantic numeric subranges: append above the highest registered number, skip all active/retired and documentary reservations, never recycle gaps, and explicitly report exhausted append space. Empty namespaces begin at 0000; suggestions are not allocations or reservations. Deterministic plain/JSON output is read-only; malformed registry IDs, duplicate IDs, invalid document text, filesystem errors and conflicting flags fail before output. Shared audit option validation and textual source-position extraction also serve -md/-corrections instead of introducing parallel implementations (IDEAS.md §8; diagnostics.md §§3,5–6)."
+      - "2026-11-18: Canonical integration field order is shared by fmt and every editing command (IDEAS.md section 4.1). Known metadata, references and checklist fields use an explicit order; unknown extension fields retain relative order after them. Wrapped integrations, standalone mappings and top-level integration lists are supported without reordering headers, registry metadata, nested mappings or list entries. Source nodes remain unmodified; decoded values/types are checked before writing. Preview/check/write and subsequent edits are covered, including stable extension fields, typed scalars and idempotence. Existing fragments adopt the order explicitly through fmt; no mass rewrite is required."
+    remaining: []
     verification:
+      - command: go test ./cmd/yamlstatus -count=1; go test -race ./cmd/yamlstatus -count=1; go vet ./cmd/yamlstatus
+        result: "2026-11-18: full suite passed (0.047s), race suite passed (1.211s), vet passed. Canonical field ordering covers all three integration shapes, stable unknown fields, unchanged header/registry/nested/list order, source-tree immutability, typed scalar/value preservation, idempotence, read-only preview/check and subsequent edits. Real governance formatting changed zero decoded values and zero checklist counts before the explicit closure. ID remaining 1 to 0 and status implemented; governance.yaml remaining 15 to 14."
+      - command: go run ./cmd/yamlstatus -diagnostics -json
+        result: "passed 2026-11-18 on the real ledger: 321 registered definitions, 35 unregistered textual mentions and 24 registered IDs without an exact governance mention; six namespace candidate rows. These are documentation/registry review findings, not automatic source errors or ID allocations."
+      - command: go vet ./cmd/yamlstatus
+        result: passed 2026-11-18 after diagnostic audit and shared audit/source-position helpers
+      - command: go test -race ./cmd/yamlstatus -count=1
+        result: "passed 2026-11-18: complete final suite, 1.192s; diagnostic audit plus existing MD/correction modes, exact/retired/prose IDs, namespace versus topic-family metadata, source positions, stable output, no mutation, candidate reservation/exhaustion, default/positional directories and invalid/conflicting input"
+      - command: go test ./cmd/yamlstatus -count=1
+        result: "passed 2026-11-18: complete suite after diagnostic-audit implementation, 0.040s; final shared-helper refactoring verified by the complete race suite"
+      - command: go test -race ./cmd/yamlstatus -count=1
+        result: "passed 2026-11-18: complete final suite, 1.173s, including YAML document/front-matter status; listed/prose/rulebook references, repeated links, missing/outside paths, symlink boundaries, self-reference exclusion, pending/root candidates, relative Markdown links, exact filenames, portable deterministic output, unchanged inputs and CLI conflicts"
+      - command: go run ./cmd/yamlstatus -corrections -json
+        result: "passed 2026-11-18 against the real ledger: 57 application links and 126 archived files inspected; reports 22 broken/outside links, 33 archive entries lacking a canonical integration/rulebook reference and five pending candidates. These are existing audit findings for review, not automatically reclassified implementations."
+      - command: go vet ./cmd/yamlstatus
+        result: passed 2026-11-18 after final correction-audit integration
+      - command: go test -race ./cmd/yamlstatus -count=1
+        result: "passed 2026-11-18: complete final suite, 1.172s; listed/prose/rulebook references, duplicate links, missing/outside paths, symlink boundaries, archive self-reference exclusion, pending statuses, root candidate discovery, relative Markdown links with escaped spaces/fragments, exact filename matching, portable deterministic reports, unchanged input and CLI conflicts"
+      - command: go test ./cmd/yamlstatus -count=1
+        result: "passed 2026-11-18: complete suite after correction-audit CLI/default-relative-directory integration; final relative-Markdown-link and status changes verified by the complete race suite"
+      - command: go run ./cmd/yamlstatus -md MD-133 -json; go run ./cmd/yamlstatus -md closed -json
+        result: "passed 2026-11-18 against the real working tree: exact MD-133 references and advisory stale-blocker candidates grouped by portable paths; no source or governance modifications"
+      - command: go vet ./cmd/yamlstatus
+        result: passed 2026-11-18
+      - command: go test -race ./cmd/yamlstatus -count=1
+        result: "passed 2026-11-18: complete suite, 1.180s"
+      - command: go test ./cmd/yamlstatus -count=1
+        result: "passed 2026-11-18: complete yamlstatus suite, 0.037s; exact versus longer IDs, all documented file families, repeated references, wrapped/negated blockers, Unicode columns, ledger validation, empty results, conflicting flags, deterministic JSON and unchanged inputs"
       - command: GOTMPDIR="$HOME/.cache/sec-gotmp" go test -p 4 ./cmd/yamlstatus -count=1; GOTMPDIR="$HOME/.cache/sec-gotmp" go test -race -p 4 ./cmd/yamlstatus -count=1; GOTMPDIR="$HOME/.cache/sec-gotmp" go vet ./cmd/yamlstatus; go run ./cmd/yamlstatus --listfiles
         result: "Passed 2026-11-17: complete yamlstatus tests and race tests, vet and the real 47-file governance report. Regressions verify exact counts/percentages/order, metadata and empty files, nested .YML paths, multi-document and structured checklist entries, unchanged library exclusion and input contents, both directory forms and flag spellings, invalid/conflicting requests without partial reports, and output failures. Per-file counts reuse the existing single-pass YAML collection; codex.md usage is synchronized."
       - command: go run ./cmd/yamlstatus -snapshot "$COUNT_BASELINE"; go run ./cmd/yamlstatus -diff "$COUNT_BASELINE"; go run ./cmd/yamlstatus -diff HEAD -json
@@ -150,7 +187,6 @@ integrations:
         result: 0 problems in 47 fragments on 2026-10-09 after fixing the 24 problems found by the first run
       - command: go test ./cmd/yamlstatus -count=1
         result: passed on 2026-10-09 with well-formed and broken ledgers covering every check category, refused problem-introducing edits, and unblocked edits of fragments with pre-existing problems
-    revised: "2026-11-17"
 
   - id: governance.allocation-storage-origin-taxonomy
     area: rulebook-consistency
@@ -210,11 +246,27 @@ integrations:
 
   - id: governance.compiler-analysis
     area: compiler-analysis-rulebook-governance
-    status: planned
+    status: implemented
+    revised: "2026-11-18"
     repository_baseline: 998d8d1
-    remaining:
-      - map existing implementation-status entries for individual analysis rulebooks under the common coordination model without duplicating them
-      - keep P1-P14 documents as implementation history rather than treating them as competing current analysis semantics
+    summary: Maps all ten specialized analysis rulebooks to existing fact/status owners, separates coordination and consumer responsibilities, and indexes P1-P14 as historical vertical milestones without copying checklists or changing their acceptance claims.
+    rules:
+      - rules/compiler/compiler_analysis.md
+      - rules/compiler/compiler_pipeline.md
+      - rules/corrections/applied/sec-compiler-rulebooks-modernization-pass1-20261028-20261107.md
+    code:
+      - governance/analysis-ownership.md
+      - governance/README.md
+      - internal/sema/analysis-scheduling.md
+    tests:
+      - internal/sema/analysis_schedule_test.go
+    implemented:
+      - All ten specialized analysis books named by compiler_analysis.md section 1(3) map to existing unique integration IDs and their fact families in governance/analysis-ownership.md; the effect family points to separate existing panic/allocation/blocking verticals and attribute/call-graph subscopes. Coordination, local memory and interprocedural facts, Semantic IR and CLI/tooling consumers keep their existing owners and live checklists. No analysis implementation status is promoted by this mapping.
+      - P1-P14 are indexed as historical vertical milestones under compiler_analysis.md sections 67 and 75(10), preserving their original sync/acceptance/completion records and linking current representation/lowering work to existing owners. Current rulebooks and applied corrections retain authority; historical legacy backend descriptions cannot authorize a second compilation track.
+    remaining: []
+    verification:
+      - command: go test ./internal/sema -run 'TestAnalysisSchedule|TestAnalysisFixedPoint|TestAnalyzerPublishesDependencyAndFixedPointSchedule' -count=1 -timeout=120s
+        result: Passed on 2026-11-18 (0.039s). Existing tests verify unique producers, dependency validation before execution, deterministic scheduling, conservative publication and detached execution provenance. Static map audit also verified 56 local links, all ten specialized books, P1-P14, 38 unique existing tracker references and all 11 current scheduled producer descriptions. This closes governance navigation/history work, not the remaining analysis.compiler-analysis implementation requirements.
 
   - id: governance.compiler-core
     area: compiler-rulebook-governance-migration
@@ -232,3 +284,35 @@ integrations:
     remaining:
       - map P1-P14 package records to the new pipeline boundaries without changing their historical completion claims
       - add remaining work when newer canonical rules such as Iterator[T] extend a previously implemented package assumption
+
+  - id: governance.yamlstatus-rulebook-publication
+    area: governance-documentation-publication
+    status: planned
+    created: "2026-11-18"
+    summary: >-
+      Publish the canonical Sec rulebooks as a static HTML site generated by
+      cmd/yamlstatus from repository sources. Planning only: implementation has
+      not started. Keep publication separate from the existing governance
+      statistics -html report; generated pages do not establish compiler
+      implementation status.
+    rules:
+      - rules/README.md
+      - language-rulebook-status.md
+      - governance/README.md
+      - cmd/yamlstatus/IDEAS.md
+    implemented: []
+    remaining:
+      - "Publication command and source inventory: add a dedicated yamlstatus command with documented source root, output directory and optional deployment base path/URL. Derive book selection and categories from rules/README.md and language-rulebook-status.md with explicit handling of written, living, planned, deferred and repository-sync-pending documents. Publish current canonical books; classify or exclude historical snapshots, package plans, proposals and corrections explicitly rather than publishing every Markdown file indiscriminately. Report inventory/source inconsistencies and unavailable books without inventing content or implementation claims."
+      - "Markdown renderer: select and pin a maintained Go Markdown-to-HTML package after evaluating its license, supported syntax and security controls. Render the actual rulebook dialect, including tables, fenced code with language labels, nested lists, blockquotes, inline code, links, images, Unicode and existing raw HTML conventions. Inventory .txt rulebooks and give them an explicit readable publication format or documented exclusion. Keep parsing/rendering in specialized files with templates separate from Go; do not grow the governance-report renderer into a second unrelated subsystem."
+      - "Book structure and navigation: extract titles, revisions and available documentation-status metadata without changing source books. Generate a site index, category navigation, breadcrumbs, per-book table of contents and stable heading anchors, including duplicate headings, Unicode and explicit source anchors. Keep documentation revision/status distinct from governance implementation progress; preserve source section numbering and make links shareable across rebuilds."
+      - "Links and resources: resolve local Markdown and HTML links using parsed document structure, rewrite published book destinations to HTML and preserve fragments. Copy permitted local images/resources while preserving relative resolution under nested books and deployment subpaths. Define explicit behavior for references to excluded or unavailable documents, repository-source links and external URLs. Diagnose broken local targets, missing fragments and output-path collisions with source context; do not rewrite examples or code-block text as links."
+      - "HTML presentation: provide embedded templates and locally packaged styles/assets consistent with the existing Sec manual layout. Make book text, wide tables and code examples readable on desktop and mobile, with accessible semantic headings, keyboard navigation and useful page titles. Generated pages must work without a running Go server or mandatory remote asset requests; reuse shared presentation assets where practical while preserving the existing statistics -html output."
+      - "Safe rendering and filesystem boundaries: escape code and metadata, define and enforce a policy for raw HTML and URL schemes, and prevent executable markup or unsafe links from bypassing that policy. Confine source/resource reads and output paths, including symlinks and encoded traversal, to their configured roots; reject source/output overlap and source overwrites. Generation must not fetch remote content, execute examples or upload/deploy the site."
+      - "Reproducible static output: produce deterministic portable page/asset paths and ordering, with an explicit reproducible policy for timestamps and source revision. Stage and validate the complete site before replacing generated output; failures must not leave a partially replaced site. Track generator-owned files so rebuilding removes stale generated pages without deleting unrelated files, and leave rulebook sources unchanged."
+      - "Build validation and diagnostics: provide a validation-only workflow that checks the selected inventory, rendering, links, anchors, resources and destination collisions without publishing output. Emit deterministic actionable diagnostics with repository-relative source paths and locations where available, distinguish intentionally unavailable inventory entries from broken links, and return a nonzero exit status for errors. Successful generation must run the same validation rather than silently emit broken pages."
+      - "End-to-end delivery and documentation: add CLI help and repository usage instructions for local preview, full rulebook generation, deployment under a URL subpath and a reproducible CI artifact/check workflow. Verify the real selected rulebook corpus and document any explicit exclusions. Deliver a static directory ready for separately authorized hosting; preserve all existing yamlstatus commands and the governance HTML report. Close this ID only when the complete publication workflow and required regression coverage pass."
+    required_tests:
+      - Renderer fixtures cover the actual rulebook dialect, Unicode, tables, nested lists, fenced Sec examples, raw HTML policy, escaped metadata and unsafe URL schemes.
+      - Link/navigation fixtures cover duplicate and Unicode headings, explicit anchors, relative Markdown/HTML links, fragments, images, excluded/missing documents, .txt policy, output collisions and root versus nested deployment paths.
+      - Filesystem/output fixtures cover traversal and symlink escapes, overlapping source/output roots, unchanged sources, deterministic rebuilds, stale generated files, preserved unrelated files and failed-build output preservation.
+      - CLI and full-corpus checks cover validation-only mode, actionable diagnostics and exit status, portable offline assets, complete canonical inventory selection and unchanged existing statistics -html behavior.

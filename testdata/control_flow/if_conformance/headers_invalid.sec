@@ -1,0 +1,21 @@
+module main
+
+enum Failure error { Failed }
+
+fn Assignment(value: bool) void {
+    if value = true { }
+}
+
+fn Declaration(value: bool) void {
+    if item := value { }
+}
+
+fn Comparison(value: int) void {
+    if 0 < value < 10 { }
+}
+
+fn Payload(value: Result[int, Failure]) void {
+    if value is Ok(number) { }
+}
+
+fn Following() void { }

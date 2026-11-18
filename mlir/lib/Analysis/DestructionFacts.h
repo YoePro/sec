@@ -52,6 +52,10 @@ public:
     auto kind = entry ? entry.getAs<mlir::StringAttr>("kind") : mlir::StringAttr();
     if (kind && kind.getValue() != "trivial") {
       result = true;
+    } else if (mlir::isa<DynamicArrayType>(type)) {
+      // P18 section 82: an owning dynamic array always needs destruction
+      // (its backing domain ends and is reclaimed even when empty).
+      result = true;
     } else if (stripNominal(type) != type) {
       result = needsDestruction(stripNominal(type));
     } else if (auto array = mlir::dyn_cast<ArrayType>(type)) {

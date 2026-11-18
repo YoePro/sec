@@ -21,7 +21,7 @@ func TestTaskSpawnResultCLI(t *testing.T) {
 		t.Fatal(code, output)
 	}
 	doc := decodeOccurrenceDocument(t, output)
-	if doc.Summary.Errors != 5 || !strings.Contains(output, "Result[Task[int], TaskSpawnError]") || !strings.Contains(output, "await requires an owning Task[T]") {
+	if doc.Summary.Errors != 7 || !strings.Contains(output, "Result[Task[int], TaskSpawnError]") || !strings.Contains(output, "await requires an owning Task[T]") {
 		t.Fatal(output)
 	}
 	if _, err := os.Stat(artifact); !os.IsNotExist(err) {

@@ -1,0 +1,19 @@
+module main
+
+enum State { Ready }
+enum Failure error { Failed }
+type Record struct { value: int }
+
+fn Reject(number: int, text: string, items: int[2], state: State, record: Record,
+    option: Option[int], result: Result[int, Failure], reference: ref int,
+    pointer: RawPtr[int]) void {
+    if number { }
+    if text { }
+    if items { }
+    if state { }
+    if record { }
+    if option { }
+    if result { }
+    if reference { }
+    if pointer { }
+}

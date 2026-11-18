@@ -1,0 +1,11 @@
+module main
+
+fn Work() void { }
+
+fn LostTaskCreation() void {
+    let creation := spawn Work()
+}
+
+fn LostThreadCreation() void {
+    let creation := spawn thread Work()
+}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"sec/internal/ast"
 	"sec/internal/diagnostics"
 	"sec/internal/lexer"
 	"sec/internal/parser"
@@ -71,10 +72,27 @@ func ownershipCodeActions(uri string, text string, reported []diagnostic, overla
 // Rules: rules/memory/copy_move.md — §29(4);
 // rules/tooling/lsp.md — "Safe fixes", "Document snapshots", "Unknown facts".
 func ownershipActionErrors(uri, text string, overlay sourceOverlay) (errors []sema.Error, complete bool) {
+	snapshot := ownershipActionAnalysis(uri, text, overlay)
+	return snapshot.errors, snapshot.complete
+}
+
+// ownershipActionSnapshot retains the canonical syntax and compiler facts used
+// to prove a source edit; it is private to one code-action request.
+type ownershipActionSnapshot struct {
+	program  *ast.Program
+	analyzer *sema.Analyzer
+	errors   []sema.Error
+	complete bool
+}
+
+// ownershipActionAnalysis shares the parse/import/target/overlay proof boundary
+// between move and borrow actions. An incomplete or panicking analysis publishes
+// no usable snapshot. Rules: rules/tooling/lsp.md §§5.3,9.4;
+// rules/memory/borrowing.md §§22,32–33.
+func ownershipActionAnalysis(uri, text string, overlay sourceOverlay) (snapshot ownershipActionSnapshot) {
 	defer func() {
 		if recover() != nil {
-			errors = nil
-			complete = false
+			snapshot = ownershipActionSnapshot{}
 		}
 	}()
 	path := pathFromURI(uri)
@@ -87,13 +105,16 @@ func ownershipActionErrors(uri, text string, overlay sourceOverlay) (errors []se
 	}
 	parsed := parser.New(lexer.NewWithFile(text, path)).Parse()
 	if parsed.Fatal || len(parsed.Diagnostics) != 0 {
-		return nil, false
+		return snapshot
 	}
 	if errors := prepareProgramForLSP(parsed.Program, path, updated); len(errors) != 0 {
-		return errors, false
+		snapshot.errors = errors
+		return snapshot
 	}
 	analyzer := newLSPAnalyzerWithOverlay(uri, parsed.Program, updated)
-	return analyzer.Analyze(parsed.Program), true
+	snapshot.errors = analyzer.Analyze(parsed.Program)
+	snapshot.program, snapshot.analyzer, snapshot.complete = parsed.Program, analyzer, true
+	return snapshot
 }
 
 // ownershipMoveSyntaxEdit turns only the operator belonging to a verified

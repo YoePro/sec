@@ -122,4 +122,32 @@ def SecVerifyFloatSemantics : Pass<"sec-verify-float-semantics", "mlir::ModuleOp
   let dependentDialects = ["mlir::arith::ArithDialect", "mlir::cf::ControlFlowDialect"];
 }
 
+// Rules: rules/mlir/packages/sec-mlir-dialect_package18.md — §§ 37, 63–67, 128–130.
+def SecVerifyDynamicArrays : Pass<"sec-verify-dynamic-arrays", "mlir::func::FuncOp"> {
+  let summary = "Verify the dynamic-array growth and storage-transition protocol";
+  let description = [{
+    A grow_backing or allocate is immediately tested on failed; an allocate
+    candidate never reaches its failure edge; the matching establish_domain or
+    advance_epoch opens the success edge of its grow_backing, which follows the
+    failed has_backing (establish) or has_capacity (advance) test of the same
+    owner Place; append_prepared opens a block entered only after capacity is
+    ensured for the same owner Place.
+  }];
+  let dependentDialects = ["mlir::cf::ControlFlowDialect"];
+}
+
+// Rules: rules/mlir/packages/sec-mlir-dialect_package18.md — §§ 30–31, 37, 58–67, 129–130.
+def SecVerifyStorageTransitions : Pass<"sec-verify-storage-transitions", "mlir::func::FuncOp"> {
+  let summary = "Verify storage-domain lifecycle and dynamic-array growth invariants";
+  let description = [{
+    Within a function, one owner names one backing domain; nothing depends on
+    an owner after its storage.end_domain; storage.reclaim directly follows the
+    end_domain or advance_epoch of the same owner and domain; advance_epoch
+    grows only an owner proven to have backing; no element Place or slice of
+    the owner lives across its grow_backing; a failed growth applies no
+    transition; and establishment facts of one domain agree.
+  }];
+  let dependentDialects = ["mlir::cf::ControlFlowDialect"];
+}
+
 #endif // SEC_ANALYSIS_PASSES_TD

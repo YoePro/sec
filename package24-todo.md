@@ -193,17 +193,30 @@ packing syntax, MMIO/volatile access strategy, raw serialization, implicit
 
 ## C. Build the canonical layout resolver
 
-- [ ] P24-10 — Introduce immutable `LayoutRequirement`, `LayoutContract`,
+- [x] P24-10 — Introduce immutable `LayoutRequirement`, `LayoutContract`,
   `CompilationPlanLayoutKey`, stable snapshot-scoped `LayoutID`,
   `ResolvedLayout` and `ResolvedFieldLayout` records. Include concrete semantic
   TypeID/generic substitution, plan key, exact size/align, kind, fields, array,
   variant, descriptor, validity, stability and provenance without using display
   names or pointer addresses as identity.
-- [ ] P24-11 — Converge `ResolvedScalarPlan`, target data-layout facts,
+
+  Implemented 2026-11-18 (`internal/layout/resolved_layout.go`, `resolver.go`, `layout_cache.go`; tests in `resolved_layout_test.go`; `go test -race ./internal/layout` and vet pass). Records carry semantic type identity (with
+  generic substitution spelled by the caller), plan key, contract, kind, scalar
+  provenance, exact `big.Int` size/alignment, validity predicate, field, array,
+  variant and descriptor slots, stability and the named missing facts. IDs are
+  resolver-snapshot ordinals and every read returns a detached copy. Mapping
+  Sema types to requirements is not wired yet (see P24-16).
+- [x] P24-11 — Converge `ResolvedScalarPlan`, target data-layout facts,
   alignment/address-space capabilities, representation policy, explicit
   validated constraints and compiler layout revision into a complete immutable
   layout key. An incompatible cache entry must be a miss/recompute, never a
   fallback or authority.
+
+  Implemented 2026-11-18: `LayoutKeyOf` validates the plan and folds in
+  target OS/arch/triple, ABI and C ABI model, profile, pointer width,
+  endianness, logical epoch width, address domains, power-of-two scalar
+  alignment facts and `LayoutRevision`. Explicit contracts are part of the
+  requirement identity. A key mismatch is a cache miss, never a fallback.
 - [x] P24-12 — Implement checked arbitrary-precision nonnegative arithmetic:
   `CheckedAdd`, `CheckedMul`, `AlignUp`, `StrideOf` and array-size calculation.
   Delay APInt/index/host-size casts until target representability is proven;
@@ -226,17 +239,31 @@ packing syntax, MMIO/volatile access strategy, raw serialization, implicit
   complete ResolvedLayout/plan identity or schema-20/physical reference lowering;
   P24-10/11/13 onward retain those integration responsibilities. P24 checklist
   remaining 57 → 56; existing governance resolver points stay open.
-- [ ] P24-13 — Establish resolver states for complete, incomplete, invalid and
+- [x] P24-13 — Establish resolver states for complete, incomplete, invalid and
   unsupported layouts. Target-independent requirements may remain incomplete;
   no layout-sensitive materialization/lowering may proceed from one.
-- [ ] P24-14 — Add deterministic worklist/memoization and an `in-progress`
+
+  Implemented 2026-11-18: complete/incomplete/invalid/unsupported with the
+  missing fact and its owner named (MD-141, MD-019, P24-17, P24-19). Only
+  `Complete()` layouts may be materialized; nothing is guessed.
+- [x] P24-14 — Add deterministic worklist/memoization and an `in-progress`
   containment stack for concrete generic resolution. Reuse existing source
   recursion diagnostics where applicable, but report concrete substituted
   layout paths and keep valid indirect cycles distinct.
-- [ ] P24-15 — Add cold-versus-warm cache tests and diagnostics for width,
+
+  Implemented 2026-11-18: memoization by identity and contract, an in-progress
+  stack that reports a by-value cycle as invalid with its concrete path
+  (`main::A -> main::B -> main::A`), descriptor/reference fields that do not
+  recurse (indirect cycles stay valid), and IDs that are stable across runs.
+- [x] P24-15 — Add cold-versus-warm cache tests and diagnostics for width,
   endian, alignment, address space, reference/descriptor policy, explicit
   contract and generic-substitution changes. Reject malformed/stale cache
   entries fail-closed and ensure stable IDs/printer ordering across runs.
+
+  Implemented 2026-11-18: `LayoutCache` warm hits only on the exact plan key,
+  identity and contract. Pointer width, endianness, alignment facts, address
+  domains, reference policy, explicit contract and generic substitution each
+  miss; a stale or malformed entry is dropped and counted in `Rejected`.
 
 ## D. Resolve scalar and aggregate storage layouts
 
@@ -244,6 +271,14 @@ packing syntax, MMIO/volatile access strategy, raw serialization, implicit
   integers, target-sized integers, fixed floats and plain target-width float.
   Preserve source scalar kind/provenance and separately record valid bit-pattern
   requirements; do not lower semantic sign/type identity to raw bits early.
+
+  Partial 2026-11-18: `resolveScalar` resolves byte/char, signed/unsigned
+  8–256 bits, int/uint/float at plan width and float32/float64. It keeps the
+  scalar kind and a validity predicate. Two gaps keep the item open:
+  - Alignment comes only from plan alignment facts, which no target supplies.
+  - bool and rune storage sizes are undefined.
+  Both are MD-141, so those layouts are incomplete. Mapping Sema types to
+  requirements in `internal/sema` remains.
 - [ ] P24-17 — Resolve decimal/decimal128 carrier layouts as `{i64,i32}` and
   `{i128,i32}` under the same plan, including field offsets, aggregate alignment
   and tail padding. Distinguish public decimal scale from its physical i32

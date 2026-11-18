@@ -87,7 +87,7 @@ func TestTaskSpawnResultRejections(t *testing.T) {
 			t.Errorf("missing %q at line %d in %v", want, line, errors)
 		}
 	}
-	if len(errors) != 5 {
-		t.Fatalf("expected five source boundary errors, got %v", errors)
+	if len(errors) != 7 {
+		t.Fatalf("expected seven source boundary errors, got %v", errors)
 	}
 }

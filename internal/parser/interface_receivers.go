@@ -13,6 +13,7 @@ import (
 // rules/memory/ownership.md — Whole-self consumption;
 // rules/compiler/parser_recovery.md — Invalid AST nodes.
 func (p *Parser) parseConsumingInterfaceReceiver() *ast.InvalidMember {
+	defer p.withRecoveryContext(RecoveryContextInterface)()
 	start := p.curToken
 	message := "interface methods cannot consume the complete receiver; use fn or mut fn, with -> on ordinary parameters when needed"
 	p.addDiagnostic(diagnostics.ParserConsumingInterfaceReceiver, start, nil, nil, "%s", message)

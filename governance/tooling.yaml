@@ -6,46 +6,18 @@ integrations:
     area: command-line-interface-help-and-analyse
     status: partial
     integrated: "2026-10-17"
-    document_revision: "1.1"
     revised: "2026-11-11"
+    document_revision: "1.1"
     rules:
       - rules/tooling/cli.md
       - rules/compiler/compiler_analysis.md
       - rules/corrections/applied/md017-sec-analyse-cli-and-help-correction-20261017.md
-    evidence:
-      code:
-        - cmd/compiler/cli_help.go
-        - cmd/compiler/analyse_cli.go
-        - cmd/compiler/analyse_diagnostics.go
-        - cmd/compiler/analyse_scope_source.go
-        - internal/ast/ast.go
-        - internal/parser/parser.go
-        - internal/sema/types.go
-        - internal/sema/analyzer.go
-        - internal/sema/analyzer_no_panic.go
-        - internal/sema/call_graph.go
-        - internal/sema/call_graph_source_ranges.go
-        - cmd/compiler/analyse.go
-        - cmd/compiler/analyse_closures.go
-        - internal/sema/closure_snapshots.go
-        - cmd/compiler/diagnostic_output.go
-        - cmd/compiler/analysis_pipeline.go
-        - cmd/compiler/main.go
-      tests:
-        - cmd/compiler/analyse_cli_test.go
-        - cmd/compiler/analyse_individual_families_test.go
-        - testdata/tooling/analyse_cli/mixed_families.sec
-        - cmd/compiler/analyse_scope_source_test.go
-        - testdata/tooling/analyse_cli/focus_ranges.sec
-        - testdata/tooling/analyse_cli/focus_graph.sec
-        - testdata/tooling/analyse_cli/focus_foreign_invalid.sec
-        - cmd/compiler/analyse_closures_test.go
-        - internal/sema/analyzer_closure_snapshot_test.go
-        - testdata/tooling/analyse_cli/closures.sec
-        - cmd/compiler/analyse_test.go
-        - testdata/tooling/analyse_cli/clean.sec
-        - testdata/tooling/analyse_cli/advisory.sec
-        - testdata/tooling/analyse_cli/rejected.sec
+    code:
+      - cmd/compiler/analyse_isr.go
+    tests:
+      - cmd/compiler/analyse_consistency_test.go
+      - cmd/compiler/analyse_isr_test.go
+      - testdata/tooling/analyse_cli/isr_prerequisites.sec
     implemented:
       - "BUG-000020 fixed 2026-11-03: successful JSON analysis now emits already family/focus-filtered Sema advisories through the same canonical reporter as human output. A2001 recommendations retain diagnostic IDs, severity, repair information and source positions instead of appearing only in summary counts. Mixed-family acceptance verifies pitfalls-only and parameter-usage-only output, focused occurrences, silent clean input and mandatory rejection; the schema/version and Sema inference stay unchanged."
       - "2026-10-26: completed the individually selectable closure-analysis registration: `closures` is the single canonical name in cli.md revision 1.1 and the shared parser/help/human/JSON registry. `sec analyse closures` uses existing Sema creation/capture/callable-target facts via a detached, deterministically ordered snapshot query, and --verbose exposes creation sites, environment presence, capture mode/transfer/source and closed/open/unknown indirect-target precision. Default output remains silent for clean input; --all includes the family; function focus, --json, rejection of the singular alias and mandatory language errors use the existing command contracts. This closes the CLI registration item without claiming completion of the broader closure-analysis semantic backlog."
@@ -90,48 +62,65 @@ integrations:
         result: reached the 180-second suite limit during TestAnalyseCapacityExpressions without an assertion failure; the bounded final focus/presentation/JSON/help race suites above passed instead; no full CLI-race-suite completion is claimed
       - command: go test ./cmd/compiler ./internal/sema -run "TestAnalyse|TestCLIHelpForms|TestClosureSnapshotsDetachPlaceTypes" -count=1
         result: passed on 2026-10-26 with GOCACHE set; complete closures selector through parser/help/human/JSON, default silence, focused facts, deterministic repeated output, family isolation, alias rejection, mandatory error preservation and detached capture snapshots; tooling.yaml remaining 43 to 42 and tooling.cli 4 to 3
-    tests:
-      - cmd/compiler/analyse_consistency_test.go
-      - cmd/compiler/analyse_isr_test.go
-      - testdata/tooling/analyse_cli/isr_prerequisites.sec
-    code:
-      - cmd/compiler/analyse_isr.go
+    evidence:
+      code:
+        - cmd/compiler/cli_help.go
+        - cmd/compiler/analyse_cli.go
+        - cmd/compiler/analyse_diagnostics.go
+        - cmd/compiler/analyse_scope_source.go
+        - internal/ast/ast.go
+        - internal/parser/parser.go
+        - internal/sema/types.go
+        - internal/sema/analyzer.go
+        - internal/sema/analyzer_no_panic.go
+        - internal/sema/call_graph.go
+        - internal/sema/call_graph_source_ranges.go
+        - cmd/compiler/analyse.go
+        - cmd/compiler/analyse_closures.go
+        - internal/sema/closure_snapshots.go
+        - cmd/compiler/diagnostic_output.go
+        - cmd/compiler/analysis_pipeline.go
+        - cmd/compiler/main.go
+      tests:
+        - cmd/compiler/analyse_cli_test.go
+        - cmd/compiler/analyse_individual_families_test.go
+        - testdata/tooling/analyse_cli/mixed_families.sec
+        - cmd/compiler/analyse_scope_source_test.go
+        - testdata/tooling/analyse_cli/focus_ranges.sec
+        - testdata/tooling/analyse_cli/focus_graph.sec
+        - testdata/tooling/analyse_cli/focus_foreign_invalid.sec
+        - cmd/compiler/analyse_closures_test.go
+        - internal/sema/analyzer_closure_snapshot_test.go
+        - testdata/tooling/analyse_cli/closures.sec
+        - cmd/compiler/analyse_test.go
+        - testdata/tooling/analyse_cli/clean.sec
+        - testdata/tooling/analyse_cli/advisory.sec
+        - testdata/tooling/analyse_cli/rejected.sec
 
   - id: tooling.borrowing
     area: diagnostics-lsp-formatter-traceability-borrowing
-    status: partial
-    evidence:
-      code:
-        - cmd/lsp/borrow_hover.go
-        - internal/sema/borrow_facts_at.go
-        - internal/sema/analyzer_borrow_access.go
-        - internal/sema/analyzer_lifetime.go
-        - internal/sema/analyzer_arena.go
-        - internal/sema/borrow_overlap_diagnostics.go
-        - internal/sema/analyzer_defer.go
-      tests:
-        - cmd/lsp/borrow_hover_test.go
-        - internal/sema/borrow_authority_diagnostics_test.go
-        - cmd/compiler/borrow_authority_diagnostics_test.go
-        - cmd/lsp/borrow_authority_diagnostics_test.go
-        - testdata/tooling/borrow_authority_invalid.sec
-        - testdata/tooling/borrow_authority_valid.sec
-        - internal/sema/borrow_navigation_test.go
-        - cmd/compiler/ownership_navigation_test.go
-        - cmd/lsp/ownership_navigation_test.go
-        - testdata/tooling/borrow_holder_transfer_invalid.sec
-        - internal/sema/ownership_mentor_test.go
-        - cmd/compiler/ownership_mentor_test.go
-        - cmd/lsp/ownership_mentor_test.go
-        - testdata/tooling/borrow_overlap_mentor_invalid.sec
+    status: implemented
     integrated: "2026-08-28"
+    revised: "2026-11-18"
     document_revision: "2.0"
     repository_baseline: 069c111
+    summary: Borrowing tooling presents canonical compiler-owned borrow authority, overlap, origin/holder and lifetime facts through registered diagnostics, source navigation and hover. Explicit reference-lifetime restructuring is admitted only after current-source and whole-program Sema validation, uses the shared formatter, and does not silently change API or ownership semantics.
     rules:
       - rules/memory/borrowing.md
       - rules/tooling/diagnostics.md
       - rules/tooling/lsp.md
       - rules/tooling/formatter.md
+    code:
+      - internal/sema/borrow_conflict_diagnostics.go
+      - internal/diagnostics/diagnostics.go
+      - cmd/lsp/borrow_actions.go
+      - cmd/lsp/ownership_actions.go
+      - cmd/lsp/main.go
+    tests:
+      - internal/sema/borrow_diagnostic_ids_test.go
+      - testdata/tooling/borrow_additional_ids_invalid.sec
+      - cmd/lsp/borrow_actions_test.go
+      - cmd/lsp/ownership_actions_test.go
     implemented:
       - "Source traceability to rules/memory/borrowing.md verified (2026-11-10): compiler sources carry 100 § citations in 52 files (internal/, cmd/), and every cited section number exists in the current rulebook headings"
       - Current frontend already emits several borrow-conflict diagnostics with a previous/source location and exposes foundational semantic facts to LSP/formatter infrastructure.
@@ -143,8 +132,8 @@ integrations:
       - Stable mandatory semantic IDs S1159–S1167 identify shared/mutable borrow creation conflicts, owner-read conflicts, mutation/replacement conflicts, ownership-ending move/discard/destruction conflicts, loop-carried conflicts, invalid mutable authority, unknown borrow provenance and escaping borrowed Arena carriers (2026-10-15). Semantic producers select explicit categories; loop-carried facts select their dedicated ID without parsing message text. Existing origin/holder/overlap mentor explanations and ordinary reference/closure escape IDs remain intact. CLI human/JSON and LSP preserve the same identities, help and source links, including call reservations, defer retention, Arena backing access and mutable authority. Unknown-provenance classification is tested at the canonical Place producer without fabricating a referent origin. Conflict rendering is extracted into a focused sibling file.
       - "borrow syntax under formatting (2026-11-08/09): capture(ref ...)/capture(ref mut ...), ref/ref mut pattern bindings (payload and named-field), borrow expressions and parameter borrows are preserved and normalized to single spaces, comments between the words are kept, and formatting is idempotent (TestFormatBorrowCaptureSpacing, TestFormatBorrowExpressionAndPatternSpacing)"
       - "2026-11-11: borrow hover (borrowing.md §§ 11, 15). ResolvedBorrowsAt (internal/sema/borrow_facts_at.go) joins the published reference plan at a creation site with the holder registerBorrow bound it to and that holder's resolved ReferenceLifetimeEnds; hover over the ref expression, an implicit call-site borrow or the holder's declaration shows a **Borrow** section (cmd/lsp/borrow_hover.go): shared/mutable kind with implicit or temporary marking, referent Place and alternative origins, provenance, reborrow parent holder, read-only/exclusive authority, holder, the live-range end (last required use before a statement, scope exit/rebinding, or end of call) and validity (proven with proof provenance, or dynamic epoch dependency and invalidation domain, address stability, pin). No edit is offered (TestBorrowHover, TestBorrowHoverReportsOneLiveRangeEnd)."
-    remaining:
-      - offer only safe code actions such as narrowing/reordering use, changing an explicitly compatible API to ref/ref mut when user edits declaration, or restructuring scope; do not silently change ownership semantics
+      - "2026-11-18: Safe borrowing code actions complete. An explicit refactor.rewrite moves an existing standalone discard of a direct local reference holder before a conflicting access in the same AST block. It consumes current registered Sema conflict IDs and ResolvedBorrowsAt holder/origin facts, never rendered diagnostic prose or an LSP borrow model. Current ID/range, exact declaration identity, unambiguous single-line siblings and parser-owned comment attachments gate candidates. The complete module/import/target/unsaved-overlay snapshot must have exactly the current borrow error, and the canonical compiler must accept the entire formatted replacement with no errors. Later/deferred holder use, unrelated errors, stale/forged diagnostics, different scopes, unknown or temporary holders and ambiguous/comment-bearing edits withhold the action. No API, copy/move operator or owned-value destruction is inserted or changed. Only an existing reference-ending operation moves; the title states that operation explicitly. LSP context.only prevents offering it for quickfix or source.fixAll/save requests. Shared formatter/project settings produce the edit; Unicode/CRLF and protocol/overlay behavior are tested."
+    remaining: []
     required_tests:
       - borrow conflict diagnostic includes related borrow origin
       - loop-carried diagnostic explains previous iteration
@@ -152,8 +141,9 @@ integrations:
       - LSP hover shows shared versus mutable borrow and canonical referent Place
       - LSP handles finite alternative origins conservatively without presenting one false definitive origin
       - formatter round-trips ref/ref mut function, match, and capture syntax
-    revised: "2026-10-15"
     verification:
+      - command: go test ./cmd/lsp -run "^(TestBorrowCodeActions|TestOwnershipCodeActions)" -count=1; go test -race ./cmd/lsp -run "^(TestBorrowCodeActions|TestOwnershipCodeActionsProtocolOverlay|TestOwnershipCodeActionsSelectedTarget|TestLSPFormattingUsesProjectFormatConfiguration)" -count=1; go vet ./cmd/lsp
+        result: "2026-11-18: complete selected borrowing and existing ownership-action regression groups passed (132.829s). Final race run passed (483.754s), including real protocol kind filtering, unsaved sibling rejection, selected-target ownership validation and shared formatting configuration. Final active-source-only edit-locator positive cases passed normally (18.944s); vet passed. Shared/mutable references, Unicode and CRLF, single exact existing discard, later/deferred use, no eligible discard, unrelated errors, comments, inline siblings, nested scopes, stale/forged/duplicate diagnostics and incomplete snapshots are covered. Canonical CLI check reproduces S1162 with exit 3 before the same reference-discard reorder and accepts the reordered program with exit 0 and no diagnostics. Governance check reports 0 problems in 47 fragments, canonical tooling.yaml without type hazards, and 34 borrowing evidence paths with none missing. tooling.borrowing remaining 1 to 0/status implemented; tooling.yaml 20 to 19. No new remaining or partial move."
       - command: go test ./cmd/lsp -count=1
         result: passed on 2026-10-15; full language-server regression suite
       - command: go vet ./internal/sema ./internal/diagnostics ./cmd/compiler ./cmd/lsp
@@ -190,60 +180,36 @@ integrations:
         result: completed on 2026-10-12; all packages except cmd/unicodegen passed. TestGeneratedUnicodeSourceIsCurrent reports the pre-existing generated sec/stdlib/unicode/unicode.sec as stale; this unrelated library artifact was left untouched.
       - command: go test ./internal/sema ./cmd/lsp ./cmd/compiler -run 'BorrowAuthorityDiagnostics|BorrowedArenaRetains' -count=1
         result: passed on 2026-10-12; seven invalid fixtures/actions distinguish true ownership availability from borrow authority, including Arena backing, and shared owner reads and writes after borrow release remain valid; human/JSON diagnostics at all six frontend gates and LSP retain help and borrow origin; remaining 8 to 7 for this ID and 59 to 58 in tooling.yaml
-    code:
-      - internal/sema/borrow_conflict_diagnostics.go
-      - internal/diagnostics/diagnostics.go
-    tests:
-      - internal/sema/borrow_diagnostic_ids_test.go
-      - testdata/tooling/borrow_additional_ids_invalid.sec
+    evidence:
+      code:
+        - cmd/lsp/borrow_hover.go
+        - internal/sema/borrow_facts_at.go
+        - internal/sema/analyzer_borrow_access.go
+        - internal/sema/analyzer_lifetime.go
+        - internal/sema/analyzer_arena.go
+        - internal/sema/borrow_overlap_diagnostics.go
+        - internal/sema/analyzer_defer.go
+      tests:
+        - cmd/lsp/borrow_hover_test.go
+        - internal/sema/borrow_authority_diagnostics_test.go
+        - cmd/compiler/borrow_authority_diagnostics_test.go
+        - cmd/lsp/borrow_authority_diagnostics_test.go
+        - testdata/tooling/borrow_authority_invalid.sec
+        - testdata/tooling/borrow_authority_valid.sec
+        - internal/sema/borrow_navigation_test.go
+        - cmd/compiler/ownership_navigation_test.go
+        - cmd/lsp/ownership_navigation_test.go
+        - testdata/tooling/borrow_holder_transfer_invalid.sec
+        - internal/sema/ownership_mentor_test.go
+        - cmd/compiler/ownership_mentor_test.go
+        - cmd/lsp/ownership_mentor_test.go
+        - testdata/tooling/borrow_overlap_mentor_invalid.sec
 
   - id: tooling.copy-move
     area: formatter-lsp-diagnostics-analysis
     status: implemented
-    revised: "2026-11-11"
-    evidence:
-      code:
-        - cmd/lsp/ownership_operation_hover.go
-        - cmd/lsp/place_use_hover.go
-        - internal/sema/place_use_facts.go
-        - internal/sema/ownership_transfer_context.go
-        - cmd/lsp/ownership_actions.go
-        - cmd/lsp/main.go
-        - internal/cst/ownership_roles.go
-        - internal/formatter/token_spacing.go
-        - internal/sema/ownership_use_diagnostics.go
-        - internal/sema/availability_diagnostics.go
-        - internal/sema/analyzer_result_projection.go
-        - internal/sema/place.go
-        - internal/sema/analyzer_lifetime.go
-        - internal/sema/call_ownership.go
-        - internal/sema/owning_construction.go
-        - internal/sema/analyzer_let_bindings.go
-        - internal/sema/analyzer_inference.go
-      tests:
-        - cmd/lsp/ownership_operation_hover_test.go
-        - cmd/lsp/place_use_hover_test.go
-        - cmd/lsp/ownership_actions_test.go
-        - cmd/lsp/main_test.go
-        - testdata/tooling/move_actions
-        - internal/formatter/ownership_markers_test.go
-        - cmd/compiler/fmt_ownership_test.go
-        - cmd/lsp/format_ownership_test.go
-        - testdata/formatter/ownership_markers.sec
-        - testdata/formatter/ownership_markers.expected.sec
-        - internal/sema/ownership_use_diagnostics_test.go
-        - cmd/compiler/ownership_use_diagnostics_test.go
-        - cmd/lsp/ownership_use_diagnostics_test.go
-        - testdata/tooling/ownership_use_origin_invalid.sec
-        - testdata/tooling/ownership_use_origin_valid.sec
-        - internal/sema/ownership_mentor_test.go
-        - internal/sema/copy_move_test.go
-        - internal/sema/analyzer_lifetime_test.go
-        - cmd/compiler/ownership_mentor_test.go
-        - cmd/lsp/ownership_mentor_test.go
-        - testdata/tooling/ownership_call_mentor_invalid.sec
-        - testdata/tooling/ownership_call_mentor_valid.sec
     integrated: "2026-08-28"
+    revised: "2026-11-11"
     document_revision: "2.0"
     repository_baseline: 069c111
     rules:
@@ -252,6 +218,16 @@ integrations:
       - rules/tooling/lsp.md
       - rules/tooling/diagnostics.md
       - rules/analysis/escape_analysis.md
+    code:
+      - internal/sema/parameter_usage_recommendations.go
+      - internal/sema/parameter_copy_advice.go
+      - cmd/lsp/parameter_insight.go
+    tests:
+      - internal/sema/large_copy_advice_test.go
+      - internal/sema/parameter_usage_contracts_test.go
+      - cmd/compiler/large_copy_advice_test.go
+      - cmd/lsp/large_copy_advice_test.go
+      - testdata/tooling/large_copy_advice.sec
     implemented:
       - "2026-10-28: completed consuming-syntax formatting through the shared formatter, CLI and LSP. Parser-owned roles attach capture(...) to its keyword, separate the following fn and its return type, and retain consuming parameters, call/union/Option/Result/struct/array payload markers, projected operands, mixed copy/move captures and optional return <-value. Formatting never infers a move for an ordinary call, fresh temporary, copy capture or unmarked return. Golden and AST ownership snapshots cover 2/4/6-space indentation, LF/CRLF, ordinary/fix modes, comments/literals, malformed-region preservation and idempotence; actual CLI check/write/check and applied LSP edits produce the same golden bytes. This closes the formatting item; richer ownership inspection and proven-safe fixes remain separate items below."
       - Formatter preserves established :<- and <- move operators.
@@ -301,53 +277,54 @@ integrations:
         result: passed on 2026-10-12; all six complete suites passed for the shared call/construction ownership validation, valid transfer paths and source/API mentorship through CLI/LSP; cohesive call ownership and construction validation extracted from analyzer.go and analyzer_lifetime.go
       - command: go test -race ./internal/sema ./cmd/compiler ./cmd/lsp -run 'Mentor|CallArguments|Call.*Borrow|ConsumingParameter|Construction|Result.*Initializer|TerminalReturn' -count=1
         result: passed on 2026-10-12; ten missing-transfer/copy-contract diagnoses and five overlap diagnoses retain source/API/borrow links through all six frontend gates and LSP; valid fresh, copied, borrowed, explicit transfer and terminal forwarding cases pass; invalid constructions leave reusable sources owned; remaining 7 to 5 for this ID
-    code:
-      - internal/sema/parameter_usage_recommendations.go
-      - internal/sema/parameter_copy_advice.go
-      - cmd/lsp/parameter_insight.go
-    tests:
-      - internal/sema/large_copy_advice_test.go
-      - internal/sema/parameter_usage_contracts_test.go
-      - cmd/compiler/large_copy_advice_test.go
-      - cmd/lsp/large_copy_advice_test.go
-      - testdata/tooling/large_copy_advice.sec
-
-  - id: tooling.destruction
-    area: diagnostics-lsp-formatter-traceability-destruction
-    status: partial
-    revised: "2026-10-16"
     evidence:
       code:
-        - cmd/lsp/destruction_hover.go
-        - internal/sema/destruction_facts_at.go
-        - internal/sema/analyzer_defer.go
+        - cmd/lsp/ownership_operation_hover.go
+        - cmd/lsp/place_use_hover.go
+        - internal/sema/place_use_facts.go
+        - internal/sema/ownership_transfer_context.go
+        - cmd/lsp/ownership_actions.go
+        - cmd/lsp/main.go
+        - internal/cst/ownership_roles.go
+        - internal/formatter/token_spacing.go
         - internal/sema/ownership_use_diagnostics.go
         - internal/sema/availability_diagnostics.go
         - internal/sema/analyzer_result_projection.go
         - internal/sema/place.go
         - internal/sema/analyzer_lifetime.go
-        - internal/sema/custom_free.go
-        - internal/cst/ownership_roles.go
-        - internal/cst/roles.go
-        - internal/formatter/token_spacing.go
+        - internal/sema/call_ownership.go
+        - internal/sema/owning_construction.go
+        - internal/sema/analyzer_let_bindings.go
+        - internal/sema/analyzer_inference.go
       tests:
-        - internal/sema/lifetime_mentor_test.go
-        - cmd/lsp/destruction_hover_test.go
+        - cmd/lsp/ownership_operation_hover_test.go
+        - cmd/lsp/place_use_hover_test.go
+        - cmd/lsp/ownership_actions_test.go
+        - cmd/lsp/main_test.go
+        - testdata/tooling/move_actions
+        - internal/formatter/ownership_markers_test.go
+        - cmd/compiler/fmt_ownership_test.go
+        - cmd/lsp/format_ownership_test.go
+        - testdata/formatter/ownership_markers.sec
+        - testdata/formatter/ownership_markers.expected.sec
         - internal/sema/ownership_use_diagnostics_test.go
         - cmd/compiler/ownership_use_diagnostics_test.go
         - cmd/lsp/ownership_use_diagnostics_test.go
         - testdata/tooling/ownership_use_origin_invalid.sec
         - testdata/tooling/ownership_use_origin_valid.sec
-        - internal/sema/custom_free_test.go
-        - internal/formatter/destruction_syntax_test.go
-        - cmd/compiler/ownership_navigation_test.go
-        - cmd/lsp/ownership_navigation_test.go
-        - cmd/compiler/header_spacing_test.go
-        - cmd/lsp/header_spacing_test.go
-        - testdata/tooling/custom_free_partial_move_invalid.sec
-        - testdata/formatter/destruction_syntax.sec
-        - testdata/formatter/destruction_syntax.expected.sec
+        - internal/sema/ownership_mentor_test.go
+        - internal/sema/copy_move_test.go
+        - internal/sema/analyzer_lifetime_test.go
+        - cmd/compiler/ownership_mentor_test.go
+        - cmd/lsp/ownership_mentor_test.go
+        - testdata/tooling/ownership_call_mentor_invalid.sec
+        - testdata/tooling/ownership_call_mentor_valid.sec
+
+  - id: tooling.destruction
+    area: diagnostics-lsp-formatter-traceability-destruction
+    status: partial
     integrated: "2026-09-04"
+    revised: "2026-10-16"
     document_revision: "2.0"
     repository_baseline: 069c111
     rules:
@@ -356,6 +333,19 @@ integrations:
       - rules/tooling/lsp.md
       - rules/tooling/formatter.md
       - rules/control-flow/discard.md
+    code:
+      - internal/sema/discard_advisory.go
+      - internal/sema/analyzer_discard.go
+      - internal/diagnostics/diagnostics.go
+      - internal/sema/analyzer.go
+    tests:
+      - internal/sema/discard_advisory_test.go
+      - cmd/compiler/discard_advisory_test.go
+      - cmd/lsp/discard_advisory_test.go
+      - testdata/tooling/redundant_discard_valid.sec
+      - testdata/tooling/redundant_discard_invalid.sec
+      - cmd/lsp/main_test.go
+      - testdata/formatter/destruction_syntax.compact.expected.sec
     implemented:
       - "Source traceability to rules/memory/destruction.md verified (2026-11-10): compiler sources carry 50 § citations in 30 files (internal/, cmd/), and every cited section number exists in the current rulebook headings"
       - Current frontend already emits selected move/resource/defer diagnostics with related source locations.
@@ -400,19 +390,37 @@ integrations:
         result: passed on 2026-10-12; targeted Sema, formatter, CLI and LSP tests cover custom-free mentorship, all six compiler frontend gates and cleanup/move formatting; CST had no tests matching this filter and its full suite was verified separately
       - command: go test ./internal/sema ./internal/formatter ./internal/cst -count=1
         result: passed on 2026-10-12; custom-free diagnostics retain S1085 and identify the complete-self invariant and free declaration; cleanup/move syntax is preserved in both vertical styles with attached consuming parameter and capture markers; remaining 9 to 7 for this ID
-    code:
-      - internal/sema/discard_advisory.go
-      - internal/sema/analyzer_discard.go
-      - internal/diagnostics/diagnostics.go
-      - internal/sema/analyzer.go
-    tests:
-      - internal/sema/discard_advisory_test.go
-      - cmd/compiler/discard_advisory_test.go
-      - cmd/lsp/discard_advisory_test.go
-      - testdata/tooling/redundant_discard_valid.sec
-      - testdata/tooling/redundant_discard_invalid.sec
-      - cmd/lsp/main_test.go
-      - testdata/formatter/destruction_syntax.compact.expected.sec
+    evidence:
+      code:
+        - cmd/lsp/destruction_hover.go
+        - internal/sema/destruction_facts_at.go
+        - internal/sema/analyzer_defer.go
+        - internal/sema/ownership_use_diagnostics.go
+        - internal/sema/availability_diagnostics.go
+        - internal/sema/analyzer_result_projection.go
+        - internal/sema/place.go
+        - internal/sema/analyzer_lifetime.go
+        - internal/sema/custom_free.go
+        - internal/cst/ownership_roles.go
+        - internal/cst/roles.go
+        - internal/formatter/token_spacing.go
+      tests:
+        - internal/sema/lifetime_mentor_test.go
+        - cmd/lsp/destruction_hover_test.go
+        - internal/sema/ownership_use_diagnostics_test.go
+        - cmd/compiler/ownership_use_diagnostics_test.go
+        - cmd/lsp/ownership_use_diagnostics_test.go
+        - testdata/tooling/ownership_use_origin_invalid.sec
+        - testdata/tooling/ownership_use_origin_valid.sec
+        - internal/sema/custom_free_test.go
+        - internal/formatter/destruction_syntax_test.go
+        - cmd/compiler/ownership_navigation_test.go
+        - cmd/lsp/ownership_navigation_test.go
+        - cmd/compiler/header_spacing_test.go
+        - cmd/lsp/header_spacing_test.go
+        - testdata/tooling/custom_free_partial_move_invalid.sec
+        - testdata/formatter/destruction_syntax.sec
+        - testdata/formatter/destruction_syntax.expected.sec
 
   - id: tooling.lifetime-analysis
     area: diagnostics-lsp-analysis-tooling
@@ -421,22 +429,6 @@ integrations:
     revised: "2026-11-11"
     document_revision: "2.0"
     repository_baseline: fafd8cb
-    evidence:
-      code:
-        - internal/sema/lifetime_facts_at.go
-        - internal/sema/analyzer_let_bindings.go
-        - internal/sema/analyzer_arena.go
-        - internal/diagnostics/diagnostics.go
-        - cmd/lsp/lifetime_hover.go
-        - cmd/lsp/hover.go
-      tests:
-        - internal/sema/lifetime_mentor_test.go
-        - internal/sema/lifetime_test.go
-        - cmd/lsp/lifetime_hover_test.go
-        - cmd/compiler/arena_multi_origin_test.go
-        - cmd/compiler/defer_arena_continuation_test.go
-        - cmd/lsp/arena_multi_origin_test.go
-        - cmd/lsp/defer_arena_continuation_test.go
     rules:
       - rules/memory/lifetime_analysis.md
       - rules/tooling/lsp.md
@@ -454,11 +446,42 @@ integrations:
       - mapping/view diagnostic identifies mapping owner
       - defer diagnostic identifies delayed use
       - LSP and compiler report the same lifetime cause chain
+    evidence:
+      code:
+        - internal/sema/lifetime_facts_at.go
+        - internal/sema/analyzer_let_bindings.go
+        - internal/sema/analyzer_arena.go
+        - internal/diagnostics/diagnostics.go
+        - cmd/lsp/lifetime_hover.go
+        - cmd/lsp/hover.go
+      tests:
+        - internal/sema/lifetime_mentor_test.go
+        - internal/sema/lifetime_test.go
+        - cmd/lsp/lifetime_hover_test.go
+        - cmd/compiler/arena_multi_origin_test.go
+        - cmd/compiler/defer_arena_continuation_test.go
+        - cmd/lsp/arena_multi_origin_test.go
+        - cmd/lsp/defer_arena_continuation_test.go
 
   - id: tooling.semantic-ir-v2
     area: semantic-ir-debugging-lsp-diagnostics
     status: partial
+    revised: "2026-11-04"
     repository_baseline: 998d8d1
+    rules:
+      - rules/compiler/semantic_ir.md
+      - rules/compiler/compiler_pipeline.md
+      - rules/tooling/cli.md
+    code:
+      - internal/ir/semantic/serialization.go
+      - internal/ir/semantic/static_place_identities.go
+      - cmd/compiler/emit_ir.go
+      - cmd/compiler/main.go
+      - cmd/compiler/cli_help.go
+    tests:
+      - internal/ir/semantic/serialization_test.go
+      - cmd/compiler/emit_ir_json_test.go
+      - cmd/compiler/emit_ir_test.go
     implemented:
       - textual Semantic IR printer exists
       - existing compiler/LSP paths consume several shared compiler-known and semantic facts
@@ -479,7 +502,6 @@ integrations:
       - stale cached Semantic IR rejected
       - source locations survive lowering
       - collection hover consumes deterministic detached Sema metadata for dynamic and bounded list/set/map and reference receivers, including logical capacity units, runtime length, iteration order and exact registry reservation/result/mutation facts
-    revised: "2026-11-04"
     verification:
       - command: GOCACHE=/tmp/sec-go-cache go test -race ./internal/ir/semantic ./cmd/compiler -run 'TestSemanticIRSerialization|TestSemanticIRJSON|TestEmitIRJSON|TestParseEmitIR|TestFrontendRetainsAnalyzerForSemanticIR|TestCLIHelpForms' -count=1 -timeout=180s
         result: passed on 2026-11-04; serialization and CLI round trips, null-block regression, text/JSON parity, stdout/file equality, diagnostic stream separation, failure publication, target-width retention, existing Sec MLIR lowering and CLI help (3.271s and 28.327s).
@@ -533,30 +555,65 @@ integrations:
         - internal/sema/collection_tooling_test.go
         - cmd/lsp/collection_hover_test.go
         - testdata/tooling/collection_metadata.sec
-    code:
-      - internal/ir/semantic/serialization.go
-      - internal/ir/semantic/static_place_identities.go
-      - cmd/compiler/emit_ir.go
-      - cmd/compiler/main.go
-      - cmd/compiler/cli_help.go
-    tests:
-      - internal/ir/semantic/serialization_test.go
-      - cmd/compiler/emit_ir_json_test.go
-      - cmd/compiler/emit_ir_test.go
-    rules:
-      - rules/compiler/semantic_ir.md
-      - rules/compiler/compiler_pipeline.md
-      - rules/tooling/cli.md
 
   - id: tooling.compiler-analysis
     area: analysis-diagnostics-lsp-reports
     status: implemented
+    revised: "2026-10-13"
+    repository_baseline: 998d8d1
     rules:
       - rules/compiler/compiler.md
       - rules/compiler/compiler_analysis.md
       - rules/analysis/closure_analysis.md
       - rules/projects/projects.md
       - rules/tooling/lsp.md
+    implemented:
+      - show Iterator[T] conformance/Next target from the shared analysis engine
+      - LSP uses project-selected interactive/standard/deep Sema budgets from the nearest manifest snapshot, including unsaved overlays and all valid TOML string/table/dotted-key forms. The effective depth is fixed for each analysis and cache identity includes it, so changed budgets cannot reuse incompatible facts. Existing configuration/watch notifications invalidate jobs and refresh diagnostics/actions; reduced budgets preserve mandatory safety proofs. Manifest-depth parsing was extracted into cmd/lsp/analysis_depth.go.
+      - Invalid and Unproven are distinct in compiler human/JSON diagnostics and LSP text plus structured data.proof_state. LSP transports the exact Sema-owned ProofState independently of mandatory severity, never infers it from message/ID/severity and omits data when no proof metadata exists. Cross-target grouping preserves different proof outcomes and their separate applicability. Diagnostic protocol types were extracted from cmd/lsp/main.go to a focused sibling file.
+      - Pitfall findings carry the exact Sema primary diagnostic identity and source span, including causes inside outer presentation expressions. LSP owner-backed code actions reuse the complete canonical occurrence (range, severity, proof data, help and related links) rather than fabricating one from pitfall text; missing or stale owners withhold actions. Optional policy cannot demote a normative owner. Suppressed findings remain explanation-only in sec analyse and produce no LSP diagnostic/action or duplicate diagnostic count.
+      - "sec analyse projects compiler-owned call graph, effect/panic/allocation causes, iterator, escape, parameter-usage and pitfall facts without a second analysis model. Reports record the actual analyzer snapshot depth instead of claiming Deep unconditionally, and diagnostic counts follow canonical owner severity/proof and mandatory registry policy: information is advisory, not warning. Source-qualified filtering and deterministic, read-only report projection are verified, including agreement with CLI JSON occurrence counts."
+      - "All represented analysis diagnostic provenance is exposed through a detached Sema DiagnosticProvenance view: canonical related ownership/lifetime/bounds/stack locations and ordered escape/allocation cause notes with source points, domain-specific arguments, unknown behavior and explicit incomplete-chain markers. CLI human/JSON and LSP consume that same view without rebuilding cause semantics; missing source points remain text-only and primary/related navigation is deduplicated. Incomplete cause markers now survive JSON as well as human/LSP output. Four duplicated transport renderers were replaced by two common renderers."
+    remaining: []
+    required_tests:
+      - LSP honors TOML and unsaved-overlay analysis depth; compatible snapshots reuse cache, budget changes replace it, configuration reload refreshes findings, and mandatory borrow/allocation proof diagnostics remain consistent across depths
+      - owner proof states survive JSON LSP transport independently of severity, absent proof metadata is omitted, real stack/bounds producers preserve Invalid versus Unproven, and cross-target grouping never merges different proof states
+      - pitfall owner-backed actions exactly match the primary occurrence under off/info/warning/error, preserve inner-cause spans and mentor links, reject stale owner identity and keep suppressed findings out of diagnostics/actions/counts
+      - analysis report depth and diagnostic classes/counts agree with the producing Sema snapshot and CLI occurrences, report projection is deterministic/read-only, and unselected source diagnostics do not enter counts
+      - mixed-domain cause chains retain ordered notes/metadata and incomplete markers in CLI human/JSON and LSP, remain detached/deterministic, preserve owner proof/identity and existing links, deduplicate shared sources and map unsaved astral Unicode positions correctly
+    verification:
+      - command: go test ./internal/sema ./cmd/compiler ./cmd/lsp -count=1
+        result: passed on 2026-10-13; complete Sema/compiler/LSP suites pass after consolidating diagnostic provenance and replacing four domain-specific transport renderers with common CLI/LSP renderers
+      - command: go vet ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-10-13
+      - command: go test -race ./internal/sema ./cmd/compiler ./cmd/lsp -run 'DiagnosticProvenance|EscapeCause|AllocationCause|StackBudgetDiagnosticTransport|ProofDiagnostic|OwnershipNavigation|Pitfall.*Ownership' -count=1
+        result: passed on 2026-10-13; shared detached deterministic provenance, mixed escape/allocation chains and domain arguments, JSON/human/LSP incomplete markers, preserved owner proof/identity, duplicate source suppression, absent-source handling and astral Unicode overlay positions verified alongside real cause/ownership/stack/bounds producer regressions; remaining 1 to 0 and this ID is implemented, tooling.yaml 44 to 43
+      - command: go vet ./cmd/compiler
+        result: passed on 2026-10-13
+      - command: go test -race ./cmd/compiler -run 'Analyse' -count=1
+        result: passed on 2026-10-13; all analysis report tests verify canonical allocation, panic/iterator, parameter usage, pitfall suppression and incomplete-budget facts, actual snapshot depth at all three modes, information versus warning/required-proof classification, deterministic read-only report projection, source filtering and agreement with real CLI JSON occurrence counts; remaining 2 to 1 for this ID and 45 to 44 in tooling.yaml
+      - command: go test ./cmd/compiler -count=1
+        result: passed on 2026-10-13; complete compiler suite passes with actual Sema snapshot depth and owner-derived diagnostic report counts
+      - command: go test ./internal/sema ./cmd/compiler ./cmd/lsp -count=1
+        result: passed on 2026-10-13; complete Sema, compiler and LSP suites pass with exact primary diagnostic ownership retained in pitfall code actions and suppression preserved across analysis reports and editor policy
+      - command: go vet ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-10-13
+      - command: go test -race ./internal/sema ./cmd/compiler ./cmd/lsp -run 'Pitfall.*Ownership|PitfallActionsRetain|PitfallActionRejects|SuppressedPitfall|IndexBoundsDiagnostics|PitfallLSPConfiguration' -count=1
+        result: passed on 2026-10-13; exact primary occurrence/span preservation across Sema, CLI and LSP actions, all advisory policy levels, outer-expression/inner-cause identity, stale or missing owner rejection, suppressed findings with no diagnostics/actions/counts, mentor evidence/help and normative diagnostic severity verified; remaining 3 to 2 for this ID and 46 to 45 in tooling.yaml
+      - command: go test ./cmd/lsp ./cmd/compiler -count=1
+        result: passed on 2026-10-13; complete LSP and compiler suites pass with structured owner proof states, proof-aware cross-target grouping and extracted diagnostic protocol types
+      - command: go vet ./cmd/lsp ./cmd/compiler
+        result: passed on 2026-10-13
+      - command: go test -race ./cmd/lsp ./cmd/compiler -run 'ProofDiagnostic|CrossTarget|StackBudgetDiagnosticTransport|IndexBoundsDiagnosticsLSP|PipelineProof|PipelineJoined' -count=1
+        result: passed on 2026-10-13; owner-supplied Valid/Invalid/Unproven and absent metadata survive LSP JSON independently of severity and message/ID, real stack and bounds diagnostics retain proof states, cross-target applicability never merges different proof outcomes, and existing CLI human/JSON pipeline proof parity is preserved; remaining 4 to 3 for this ID and 47 to 46 in tooling.yaml
+      - command: go vet ./cmd/lsp
+        result: passed on 2026-10-13
+      - command: go test -race ./cmd/lsp ./internal/sema -run 'AnalysisDepth|AnalysisCacheShares|PitfallLSPProjectReload|Allocation.*Parity' -count=1
+        result: passed on 2026-10-13; TOML string/table/dotted-key forms and absent/invalid settings, unsaved manifest precedence, compatible cache reuse and replacement after budget changes, watched configuration refresh, invariant mandatory borrow checks and CLI/LSP allocation parity at all three depths verified; remaining 5 to 4 for this ID and 48 to 47 in tooling.yaml
+      - command: go test ./cmd/lsp -count=1
+        result: passed on 2026-10-13; complete LSP suite passes with project and unsaved-snapshot TOML budget selection and depth-aware cache replacement
+      - command: go test ./cmd/compiler -run 'AnalyseIterator' -count=1
+        result: passed on 2026-10-10; actual sec analyse command and report renderer expose canonical iterator facts, preserve source order and omit unselected core/stdlib loops
     evidence:
       code:
         - cmd/lsp/analysis_depth.go
@@ -596,60 +653,19 @@ integrations:
         - internal/sema/diagnostic_provenance_test.go
         - cmd/compiler/diagnostic_provenance_test.go
         - cmd/lsp/diagnostic_provenance_test.go
-    repository_baseline: 998d8d1
-    remaining: []
-    implemented:
-      - show Iterator[T] conformance/Next target from the shared analysis engine
-      - LSP uses project-selected interactive/standard/deep Sema budgets from the nearest manifest snapshot, including unsaved overlays and all valid TOML string/table/dotted-key forms. The effective depth is fixed for each analysis and cache identity includes it, so changed budgets cannot reuse incompatible facts. Existing configuration/watch notifications invalidate jobs and refresh diagnostics/actions; reduced budgets preserve mandatory safety proofs. Manifest-depth parsing was extracted into cmd/lsp/analysis_depth.go.
-      - Invalid and Unproven are distinct in compiler human/JSON diagnostics and LSP text plus structured data.proof_state. LSP transports the exact Sema-owned ProofState independently of mandatory severity, never infers it from message/ID/severity and omits data when no proof metadata exists. Cross-target grouping preserves different proof outcomes and their separate applicability. Diagnostic protocol types were extracted from cmd/lsp/main.go to a focused sibling file.
-      - Pitfall findings carry the exact Sema primary diagnostic identity and source span, including causes inside outer presentation expressions. LSP owner-backed code actions reuse the complete canonical occurrence (range, severity, proof data, help and related links) rather than fabricating one from pitfall text; missing or stale owners withhold actions. Optional policy cannot demote a normative owner. Suppressed findings remain explanation-only in sec analyse and produce no LSP diagnostic/action or duplicate diagnostic count.
-      - "sec analyse projects compiler-owned call graph, effect/panic/allocation causes, iterator, escape, parameter-usage and pitfall facts without a second analysis model. Reports record the actual analyzer snapshot depth instead of claiming Deep unconditionally, and diagnostic counts follow canonical owner severity/proof and mandatory registry policy: information is advisory, not warning. Source-qualified filtering and deterministic, read-only report projection are verified, including agreement with CLI JSON occurrence counts."
-      - "All represented analysis diagnostic provenance is exposed through a detached Sema DiagnosticProvenance view: canonical related ownership/lifetime/bounds/stack locations and ordered escape/allocation cause notes with source points, domain-specific arguments, unknown behavior and explicit incomplete-chain markers. CLI human/JSON and LSP consume that same view without rebuilding cause semantics; missing source points remain text-only and primary/related navigation is deduplicated. Incomplete cause markers now survive JSON as well as human/LSP output. Four duplicated transport renderers were replaced by two common renderers."
-    revised: "2026-10-13"
-    verification:
-      - command: go test ./internal/sema ./cmd/compiler ./cmd/lsp -count=1
-        result: passed on 2026-10-13; complete Sema/compiler/LSP suites pass after consolidating diagnostic provenance and replacing four domain-specific transport renderers with common CLI/LSP renderers
-      - command: go vet ./internal/sema ./cmd/compiler ./cmd/lsp
-        result: passed on 2026-10-13
-      - command: go test -race ./internal/sema ./cmd/compiler ./cmd/lsp -run 'DiagnosticProvenance|EscapeCause|AllocationCause|StackBudgetDiagnosticTransport|ProofDiagnostic|OwnershipNavigation|Pitfall.*Ownership' -count=1
-        result: passed on 2026-10-13; shared detached deterministic provenance, mixed escape/allocation chains and domain arguments, JSON/human/LSP incomplete markers, preserved owner proof/identity, duplicate source suppression, absent-source handling and astral Unicode overlay positions verified alongside real cause/ownership/stack/bounds producer regressions; remaining 1 to 0 and this ID is implemented, tooling.yaml 44 to 43
-      - command: go vet ./cmd/compiler
-        result: passed on 2026-10-13
-      - command: go test -race ./cmd/compiler -run 'Analyse' -count=1
-        result: passed on 2026-10-13; all analysis report tests verify canonical allocation, panic/iterator, parameter usage, pitfall suppression and incomplete-budget facts, actual snapshot depth at all three modes, information versus warning/required-proof classification, deterministic read-only report projection, source filtering and agreement with real CLI JSON occurrence counts; remaining 2 to 1 for this ID and 45 to 44 in tooling.yaml
-      - command: go test ./cmd/compiler -count=1
-        result: passed on 2026-10-13; complete compiler suite passes with actual Sema snapshot depth and owner-derived diagnostic report counts
-      - command: go test ./internal/sema ./cmd/compiler ./cmd/lsp -count=1
-        result: passed on 2026-10-13; complete Sema, compiler and LSP suites pass with exact primary diagnostic ownership retained in pitfall code actions and suppression preserved across analysis reports and editor policy
-      - command: go vet ./internal/sema ./cmd/compiler ./cmd/lsp
-        result: passed on 2026-10-13
-      - command: go test -race ./internal/sema ./cmd/compiler ./cmd/lsp -run 'Pitfall.*Ownership|PitfallActionsRetain|PitfallActionRejects|SuppressedPitfall|IndexBoundsDiagnostics|PitfallLSPConfiguration' -count=1
-        result: passed on 2026-10-13; exact primary occurrence/span preservation across Sema, CLI and LSP actions, all advisory policy levels, outer-expression/inner-cause identity, stale or missing owner rejection, suppressed findings with no diagnostics/actions/counts, mentor evidence/help and normative diagnostic severity verified; remaining 3 to 2 for this ID and 46 to 45 in tooling.yaml
-      - command: go test ./cmd/lsp ./cmd/compiler -count=1
-        result: passed on 2026-10-13; complete LSP and compiler suites pass with structured owner proof states, proof-aware cross-target grouping and extracted diagnostic protocol types
-      - command: go vet ./cmd/lsp ./cmd/compiler
-        result: passed on 2026-10-13
-      - command: go test -race ./cmd/lsp ./cmd/compiler -run 'ProofDiagnostic|CrossTarget|StackBudgetDiagnosticTransport|IndexBoundsDiagnosticsLSP|PipelineProof|PipelineJoined' -count=1
-        result: passed on 2026-10-13; owner-supplied Valid/Invalid/Unproven and absent metadata survive LSP JSON independently of severity and message/ID, real stack and bounds diagnostics retain proof states, cross-target applicability never merges different proof outcomes, and existing CLI human/JSON pipeline proof parity is preserved; remaining 4 to 3 for this ID and 47 to 46 in tooling.yaml
-      - command: go vet ./cmd/lsp
-        result: passed on 2026-10-13
-      - command: go test -race ./cmd/lsp ./internal/sema -run 'AnalysisDepth|AnalysisCacheShares|PitfallLSPProjectReload|Allocation.*Parity' -count=1
-        result: passed on 2026-10-13; TOML string/table/dotted-key forms and absent/invalid settings, unsaved manifest precedence, compatible cache reuse and replacement after budget changes, watched configuration refresh, invariant mandatory borrow checks and CLI/LSP allocation parity at all three depths verified; remaining 5 to 4 for this ID and 48 to 47 in tooling.yaml
-      - command: go test ./cmd/lsp -count=1
-        result: passed on 2026-10-13; complete LSP suite passes with project and unsaved-snapshot TOML budget selection and depth-aware cache replacement
-      - command: go test ./cmd/compiler -run 'AnalyseIterator' -count=1
-        result: passed on 2026-10-10; actual sec analyse command and report renderer expose canonical iterator facts, preserve source order and omit unselected core/stdlib loops
-    required_tests:
-      - LSP honors TOML and unsaved-overlay analysis depth; compatible snapshots reuse cache, budget changes replace it, configuration reload refreshes findings, and mandatory borrow/allocation proof diagnostics remain consistent across depths
-      - owner proof states survive JSON LSP transport independently of severity, absent proof metadata is omitted, real stack/bounds producers preserve Invalid versus Unproven, and cross-target grouping never merges different proof states
-      - pitfall owner-backed actions exactly match the primary occurrence under off/info/warning/error, preserve inner-cause spans and mentor links, reject stale owner identity and keep suppressed findings out of diagnostics/actions/counts
-      - analysis report depth and diagnostic classes/counts agree with the producing Sema snapshot and CLI occurrences, report projection is deterministic/read-only, and unselected source diagnostics do not enter counts
-      - mixed-domain cause chains retain ordered notes/metadata and incomplete markers in CLI human/JSON and LSP, remain detached/deterministic, preserve owner proof/identity and existing links, deduplicate shared sources and map unsaved astral Unicode positions correctly
 
   - id: tooling.compiler-core
     area: compiler-cli-lsp-target-info-and-diagnostics
     status: partial
+    revised: "2026-11-04"
     repository_baseline: 998d8d1
+    rules:
+      - rules/compiler/compiler.md
+      - rules/tooling/cli.md
+    code:
+      - cmd/compiler/cli_help.go
+    tests:
+      - cmd/compiler/analyse_cli_test.go
     implemented:
       - developer lex/token/parse/ast/sema/diagnostics/emit/build commands exist in partial form
       - LSP shares several target-aware bootstrap/frontend services
@@ -661,64 +677,32 @@ integrations:
       - distinguish configuration/source/target/compiler-capability/toolchain/link/ICE diagnostics
       - support @target/@when/config completion/hover/diagnostics from canonical compiler services
       - invalidate plan-dependent LSP facts on project/registry/config changes
-    rules:
-      - rules/compiler/compiler.md
-      - rules/tooling/cli.md
-    code:
-      - cmd/compiler/cli_help.go
-    tests:
-      - cmd/compiler/analyse_cli_test.go
-    governance_reconciliation:
-      - CLI implementation and invocation/help facts remain with tooling.cli and tooling.compiler-core in governance/tooling.yaml; target/CompilationPlan support stays with compiler.platform-model in governance/platform.yaml.
-      - Source/bootstrap selection remains with frontend.compiler-source-selection and frontend.compiler-pipeline; backend implementation and retirement remain with compiler.backend-architecture in governance/compiler.yaml. No temporary hypothetical inventory is promoted to a verified implementation claim.
-    revised: "2026-11-04"
     verification:
       - command: Python audit of compiler.md numbered paragraphs and active ledger references against HEAD
         result: passed on 2026-11-04; all 437 paragraph IDs retained in exact order, temporary implementation catalogue removed, and the only remaining implementation-status.yaml mention is explicitly historical/retired.
       - command: GOCACHE=/tmp/sec-go-cache go test ./cmd/compiler -run '^TestCLIHelpForms$' -count=1 -timeout=120s
         result: passed on 2026-11-04 (0.010s); existing shared CLI help forms remain unchanged.
+    governance_reconciliation:
+      - CLI implementation and invocation/help facts remain with tooling.cli and tooling.compiler-core in governance/tooling.yaml; target/CompilationPlan support stays with compiler.platform-model in governance/platform.yaml.
+      - Source/bootstrap selection remains with frontend.compiler-source-selection and frontend.compiler-pipeline; backend implementation and retirement remain with compiler.backend-architecture in governance/compiler.yaml. No temporary hypothetical inventory is promoted to a verified implementation claim.
 
   - id: tooling.compiler-pipeline
     area: cli-lsp-inspection-test-pipeline
     status: partial
+    revised: "2026-10-13"
     repository_baseline: 998d8d1
-    evidence:
-      code:
-        - cmd/compiler/emit_mlir.go
-        - cmd/compiler/main.go
-        - cmd/compiler/check_command.go
-        - internal/diagnostics/capability.go
-        - internal/ir/semantic/errors.go
-        - internal/lowering/secmlir/errors.go
-        - cmd/compiler/pipeline_diagnostics.go
-        - internal/sema/test_selection.go
-        - internal/sema/semantic_facts.go
-        - cmd/compiler/test_command.go
-        - cmd/lsp/test_discovery.go
-        - README.md
-      tests:
-        - cmd/compiler/emission_boundary_test.go
-        - testdata/tooling/emission_boundary.sec
-        - cmd/compiler/check_command_test.go
-        - cmd/compiler/project_version_diagnostics_test.go
-        - testdata/tooling/check_target_width.sec
-        - testdata/tooling/check_parse_invalid.sec
-        - cmd/compiler/capability_diagnostics_test.go
-        - cmd/compiler/pipeline_diagnostics_test.go
-        - testdata/tooling/capability_float_static.sec
-        - internal/sema/test_selection_test.go
-        - cmd/lsp/test_discovery_test.go
-        - testdata/tooling/identity_selection_valid_test.sec
-        - testdata/tooling/identity_selection_invalid_test.sec
-    remaining:
-      - share CompilationPlan/workspace/source/module/test facts between CLI and LSP
-      - preserve deterministic source/provenance metadata across emitted artifacts
     implemented:
       - "Inspection boundaries are documented in README and command help: emit-mlir always emits LLVM dialect MLIR, while emit-sec-mlir emits the Sec dialect with its schema attribute. Both file and stdout output identify boundary and selected target in parser-compatible MLIR comments. Requested legacy verification now runs against temporary output before publication, preserving existing destinations and suppressing stdout on verifier failure."
       - sec check now dispatches explicit file/directory/glob inputs and a selected or host target through the shared parser, project/version/module/import resolution and mandatory Sema analysis. It stops before lowering readiness, IR/code generation, backend tool discovery, verification and linking; no artifacts or source edits are produced. Human/JSON diagnostics preserve the shared frontend results, and CLI help/README document this boundary.
       - Semantic IR and Sec MLIR unsupported boundaries publish a shared typed ImplementationCapability fact with feature, exact package/schema boundary, available callable identity and optional source position. CLI human/JSON transport recognizes these facts through wrapped/joined failures, retaining the unsupported-lowering category while exposing diagnostic_class=compiler-capability and domain metadata. Source proof outcomes and target/tool/verification failures are never reclassified from text. Valid guarded try source passes check and fails explicitly at the current Sec MLIR schema boundary before external tools or artifact publication.
       - Sema SelectTests owns the existing --run name-selection semantics over detached ResolvedTestMetadata with structured module/path TestIdentity. sec test and the documented LSP sec/tests request consume that selector; the editor request exposes the active file current/unsaved validated test view, names and compiler-supplied source spans mapped to UTF-16, without a second test parser/model or runner. Slash/Unicode/regex characters remain literal identity path components. Metadata registration was extracted from analyzer.go into test_selection.go.
-    revised: "2026-10-13"
+    remaining:
+      - share CompilationPlan/workspace/source/module/test facts between CLI and LSP
+      - preserve deterministic source/provenance metadata across emitted artifacts
+    required_tests:
+      - sec check succeeds with no backend executables available, validates selected target width, preserves parser/ownership/borrow diagnostics and invalid manifest errors, accepts file/directory/glob inputs and creates no artifacts
+      - typed Semantic IR/Sec MLIR capabilities retain boundary/feature/callable/source metadata through wraps and joins, never fabricate source proof states, stay distinct from source/target/tool errors, and publish no artifact for unsupported valid source
+      - real CLI and LSP test discovery/regex selection return identical structured identities, detached deterministic paths and UTF-16 ranges, handle no matches and invalid filters, reflect unsaved edits and withhold invalid-source metadata
     verification:
       - command: go test -race ./cmd/lsp -run 'LSPTestSelectionMatchesCLI' -count=1
         result: passed on 2026-10-13 after final invalid-test fixture integration; actual CLI and LSP agree on identities and filters, unsaved snapshots and UTF-16 ranges, and semantically invalid test bodies expose no valid test selection
@@ -750,28 +734,40 @@ integrations:
         result: passed on 2026-10-10 after MLIR command extraction, explicit boundary labels and verification-before-publication ordering
       - command: go test ./cmd/compiler -run 'MLIREmissionBoundaries|LabeledLLVMMLIR|MLIRUsage' -count=1 -v
         result: passed on 2026-10-10; file/stdout boundary and target labels verified for both MLIR commands on amd64/armv7, failure preserves existing output and emits no stdout, and real LLVM MLIR tools verify and translate labeled output on both targets; remaining 6 to 5 for this ID and 60 to 59 in tooling.yaml
-    required_tests:
-      - sec check succeeds with no backend executables available, validates selected target width, preserves parser/ownership/borrow diagnostics and invalid manifest errors, accepts file/directory/glob inputs and creates no artifacts
-      - typed Semantic IR/Sec MLIR capabilities retain boundary/feature/callable/source metadata through wraps and joins, never fabricate source proof states, stay distinct from source/target/tool errors, and publish no artifact for unsupported valid source
-      - real CLI and LSP test discovery/regex selection return identical structured identities, detached deterministic paths and UTF-16 ranges, handle no matches and invalid filters, reflect unsaved edits and withhold invalid-source metadata
+    evidence:
+      code:
+        - cmd/compiler/emit_mlir.go
+        - cmd/compiler/main.go
+        - cmd/compiler/check_command.go
+        - internal/diagnostics/capability.go
+        - internal/ir/semantic/errors.go
+        - internal/lowering/secmlir/errors.go
+        - cmd/compiler/pipeline_diagnostics.go
+        - internal/sema/test_selection.go
+        - internal/sema/semantic_facts.go
+        - cmd/compiler/test_command.go
+        - cmd/lsp/test_discovery.go
+        - README.md
+      tests:
+        - cmd/compiler/emission_boundary_test.go
+        - testdata/tooling/emission_boundary.sec
+        - cmd/compiler/check_command_test.go
+        - cmd/compiler/project_version_diagnostics_test.go
+        - testdata/tooling/check_target_width.sec
+        - testdata/tooling/check_parse_invalid.sec
+        - cmd/compiler/capability_diagnostics_test.go
+        - cmd/compiler/pipeline_diagnostics_test.go
+        - testdata/tooling/capability_float_static.sec
+        - internal/sema/test_selection_test.go
+        - cmd/lsp/test_discovery_test.go
+        - testdata/tooling/identity_selection_valid_test.sec
+        - testdata/tooling/identity_selection_invalid_test.sec
 
   - id: tooling.arena
     area: arena-diagnostics-lsp-reports
     status: partial
-    repository_baseline: 814a584
-    implemented:
-      - LSP completion for represented Arena compiler-known members
-      - LSP hover for direct Arena effects and propagated allocation cause paths
-      - "2026-11-11: completed allocation-context origin presentation. AllocationContextFact preserves selected and created domain source tokens from the canonical GeneratedIdentities registry without decoding IDs or resolving receiver names. Shared descriptions used by sec analyse and operation/callable LSP hover show the lexical context origin across owner moves and synchronous transitive calls. Distinct same-spelled Arena owners retain distinct origins. Created-domain provenance remains separate from unresolved backing; implicit contexts retain actual profile/availability/storage-origin facts without an invented source location. Missing provenance stays explicitly unresolved. Source/CLI/LSP tests verify detached facts, stable domain identity with refreshed source positions on reanalysis, unsaved edits and unchanged safety semantics; no physical allocation, capacity proof or runtime routing is claimed."
-      - "2026-11-11: completed Reset/Release blocker cause-chain presentation for canonical represented dependencies. The existing legality predicate is extracted into deterministic borrow/defer/reference-carrier witnesses, preserving exactly the prior admission rules and one mandatory Invalid diagnostic per rejected operation. S1126/S1127 retain the live dependency as their first link and add source-spanned retention or nested-child backing witnesses. CLI human/JSON output and LSP relatedInformation share the ordered chain. A detached source-qualified ArenaInvalidationBlockersAt projection feeds operation hover with the same proof, source links and practical repair help; it reuses finalized Sema diagnostics without an editor lifetime engine. Missing blockers are not a positive NLL, capacity or unrepresented dependency proof. Tests cover deferred uses, retained borrows, moved owners, nested Arenas, same-domain alternatives, stable witness order, detached/reset facts, unsaved source changes, valid controls and call-precondition failures."
-      - "2026-11-11: Arena hover (arena.md §§ 4.2, 10-12, 44, 77). noteArenaCreation records each domain's constructor, capacity argument with its constant value and FromBuffer backing Place; noteArenaUse records the domain and represented epoch at the declaration and at every Arena operation receiver. ResolvedArenaAt (internal/sema/arena_facts_at.go) feeds the **Arena** hover (cmd/lsp/arena_hover.go): domain, creating constructor and site, owned/growable/borrowed backing, provider (selected target/profile provider, none for borrowed backing), requested capacity, epoch at that point (Reset count on the analyzed path) and allocation profile. An Arena parameter's domain is shown as caller-created without an invented backing (TestArenaHover)."
-    remaining:
-      - show task/thread/foreign dependencies
-      - show byte-accurate capacity-demand reports
-      - show physical planning/proof-based check elimination in analysis mode
-      - provide mentor diagnostics for lifecycle, impossible allocation, alignment, provider and cleanup-order failures
-      - ensure compiler/LSP/sec analyse parity and incremental invalidation
     revised: "2026-11-11"
+    repository_baseline: 814a584
     rules:
       - rules/memory/allocation.md
       - rules/memory/arena.md
@@ -806,6 +802,18 @@ integrations:
       - testdata/sema/arena_invalidation_diagnostics_valid.sec
       - testdata/sema/arena_nested_invalid.sec
       - testdata/sema/arena_nested_valid.sec
+    implemented:
+      - LSP completion for represented Arena compiler-known members
+      - LSP hover for direct Arena effects and propagated allocation cause paths
+      - "2026-11-11: completed allocation-context origin presentation. AllocationContextFact preserves selected and created domain source tokens from the canonical GeneratedIdentities registry without decoding IDs or resolving receiver names. Shared descriptions used by sec analyse and operation/callable LSP hover show the lexical context origin across owner moves and synchronous transitive calls. Distinct same-spelled Arena owners retain distinct origins. Created-domain provenance remains separate from unresolved backing; implicit contexts retain actual profile/availability/storage-origin facts without an invented source location. Missing provenance stays explicitly unresolved. Source/CLI/LSP tests verify detached facts, stable domain identity with refreshed source positions on reanalysis, unsaved edits and unchanged safety semantics; no physical allocation, capacity proof or runtime routing is claimed."
+      - "2026-11-11: completed Reset/Release blocker cause-chain presentation for canonical represented dependencies. The existing legality predicate is extracted into deterministic borrow/defer/reference-carrier witnesses, preserving exactly the prior admission rules and one mandatory Invalid diagnostic per rejected operation. S1126/S1127 retain the live dependency as their first link and add source-spanned retention or nested-child backing witnesses. CLI human/JSON output and LSP relatedInformation share the ordered chain. A detached source-qualified ArenaInvalidationBlockersAt projection feeds operation hover with the same proof, source links and practical repair help; it reuses finalized Sema diagnostics without an editor lifetime engine. Missing blockers are not a positive NLL, capacity or unrepresented dependency proof. Tests cover deferred uses, retained borrows, moved owners, nested Arenas, same-domain alternatives, stable witness order, detached/reset facts, unsaved source changes, valid controls and call-precondition failures."
+      - "2026-11-11: Arena hover (arena.md §§ 4.2, 10-12, 44, 77). noteArenaCreation records each domain's constructor, capacity argument with its constant value and FromBuffer backing Place; noteArenaUse records the domain and represented epoch at the declaration and at every Arena operation receiver. ResolvedArenaAt (internal/sema/arena_facts_at.go) feeds the **Arena** hover (cmd/lsp/arena_hover.go): domain, creating constructor and site, owned/growable/borrowed backing, provider (selected target/profile provider, none for borrowed backing), requested capacity, epoch at that point (Reset count on the analyzed path) and allocation profile. An Arena parameter's domain is shown as caller-created without an invented backing (TestArenaHover)."
+    remaining:
+      - show task/thread/foreign dependencies
+      - show byte-accurate capacity-demand reports
+      - show physical planning/proof-based check elimination in analysis mode
+      - provide mentor diagnostics for lifecycle, impossible allocation, alignment, provider and cleanup-order failures
+      - ensure compiler/LSP/sec analyse parity and incremental invalidation
     verification:
       - command: go test -p 4 ./internal/sema ./internal/ir/semantic -count=1 -timeout=120s; go test -p 4 ./cmd/compiler ./cmd/lsp -run 'ArenaInvalidation|NestedArena|ArenaMultiOrigin' -count=1 -timeout=120s; go test -p 4 -race ./internal/sema ./cmd/lsp -run 'ArenaInvalidationBlocker' -count=1 -timeout=120s; go vet -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp
         result: "Passed 2026-11-11: full Sema/Semantic IR 24.847s/9.397s; CLI/LSP dependency suites 22.983s/10.670s; blocker race Sema/LSP 1.166s/24.373s; vet passed. More precise nested CLI/LSP source-link count assertions were rerun after tightening. Existing Invalid identities and primary dependency links remain intact while causal retention links, source-qualified hover, detached copies and valid controls are verified."

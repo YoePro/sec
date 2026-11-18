@@ -28,6 +28,6 @@ fn main() void {
     Thread.Yield()
     let work := try spawn TaskWork() { Err(_) => { return } }
     await work
-    let worker := spawn thread ThreadWork()
+    let worker := try spawn thread ThreadWork() { Err(_) => { return } }
     join worker
 }

@@ -955,9 +955,17 @@ func compilerKnownToStringID(typ Type) string {
 	}
 }
 
+// compilerKnownOption is the concrete Option[value] of a compiler-known
+// result, with its Some payload substituted like any instantiated Option so
+// lowering sees concrete storage instead of the template parameter.
+// Rules: rules/declarations/generics.md — §17 Substitution.
 func compilerKnownOption(value Type) Type {
 	typ := builtinType("Option")
 	typ.TypeArgs = []Type{value}
+	if len(typ.GenericParameters) == 1 {
+		typ = substituteGenericType(typ, map[string]Type{typ.GenericParameters[0]: value})
+		typ.GenericParameters = nil
+	}
 	return typ
 }
 

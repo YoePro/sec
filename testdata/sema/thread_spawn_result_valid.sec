@@ -1,0 +1,50 @@
+module main
+
+enum AppError error { Bad }
+fn Work() int { return 42 }
+fn Nothing() void { }
+fn Load() Result[int, AppError] { return Err(AppError.Bad) }
+fn Identity[T](value: T) T { return value }
+
+
+type Worker struct { }
+impl Worker { static fn Run() int { return 7 } }
+
+fn Raw() Result[Thread[int], ThreadSpawnError] { return spawn thread Work() }
+fn Empty() Result[Thread[void], ThreadSpawnError] { return spawn thread Nothing() }
+fn Nested() Result[Thread[Result[int, AppError]], ThreadSpawnError] { return spawn thread Load() }
+fn Generic() Result[Thread[int], ThreadSpawnError] { return spawn thread Identity[int](1) }
+fn Method() Result[Thread[int], ThreadSpawnError] { return spawn thread Worker.Run() }
+fn Lambda() Result[Thread[int], ThreadSpawnError] { return spawn thread fn() int { return 2 } }
+
+fn Callable() Result[Thread[int], ThreadSpawnError] {
+    let operation := fn() int { return 4 }
+    return spawn thread operation()
+}
+
+fn Propagate() Result[int, ThreadSpawnError] {
+    let worker := try spawn thread Work()
+    join worker
+    return Ok(0)
+}
+
+fn HandleLocally() void {
+    let worker := try spawn thread Work() { Err(failure) => { discard failure
+        return } }
+    join worker
+}
+
+fn HandleMatch() void {
+    match spawn thread Work() {
+        Ok(worker) => { join worker }
+        Err(failure) => { discard failure }
+    }
+}
+
+fn Main() void {
+    let creation := spawn thread Work()
+    match creation {
+        Ok(worker) => { join worker }
+        Err(failure) => { discard failure }
+    }
+}

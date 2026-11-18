@@ -440,7 +440,7 @@ fn ThreadWork() void {}
 
 fn main() void {
 	let taskHandle := try spawn task TaskWork(Build()) { Err(_) => { return } }
-	let threadHandle := spawn thread ThreadWork()
+	let threadHandle := try spawn thread ThreadWork() { Err(_) => { return } }
 	detach taskHandle
 	detach threadHandle
 }

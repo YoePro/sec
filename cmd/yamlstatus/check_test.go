@@ -13,11 +13,11 @@ const checkedFragment = "schema_version: 1\narea: core\npurpose: Core.\nintegrat
 	"      - plain item\n" +
 	"      - id: keyed\n" +
 	"        description: keyed item\n" +
+	"    remaining:\n" +
+	"      - first\n" +
 	"    required_tests:\n" +
 	"      - id: keyed-test\n" +
 	"        expectation: rejects x\n" +
-	"    remaining:\n" +
-	"      - first\n" +
 	"    verification:\n" +
 	"      - command: go test ./...\n" +
 	"        result: passed\n"

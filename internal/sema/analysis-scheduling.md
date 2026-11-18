@@ -3,6 +3,11 @@
 This document describes implementation, not language semantics. The governing
 rules are `rules/compiler/compiler_analysis.md` §§9–10 and §§14–15.
 
+The [analysis ownership map](../../governance/analysis-ownership.md) links
+specialized rulebooks, existing governance owners and historical P1–P14
+milestones. This schedule describes coordination; domain analyses retain
+ownership of their facts (compiler_analysis.md §6).
+
 Declaration registration, type resolution, layout-cycle checking and interface
 conformance establish the `declaration-facts` phase boundary in `Analyze`.
 `runSemanticAnalysisPipeline` then declares producers and their dependencies.
@@ -25,6 +30,7 @@ The current scheduled producers are:
 | callable-bodies | module-bodies, reference-summaries |
 | string-materializations | callable-bodies |
 | no-panic, no-alloc, no-block | callable-bodies, string-materializations |
+| execution-context | callable-bodies |
 | parameter-demand | callable-bodies and the three guarantee validators |
 | parameter-advice | parameter-demand |
 | pitfalls | callable-bodies, guarantee validators, parameter-demand, parameter-advice |

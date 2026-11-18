@@ -1,0 +1,56 @@
+module main
+
+fn Work() void { }
+fn LostThread() void {
+    let lostThread := spawn thread Work()
+}
+fn LostTask() void {
+    let lostTask := spawn Work()
+}
+fn LostOnReturn(flag: bool) void {
+    let lostEarly := spawn thread Work()
+    if flag { return }
+    match lostEarly {
+        Ok(worker) => { join worker }
+        Err(_) => { }
+    }
+}
+fn LostOnOnePath(flag: bool) void {
+    let lostConditional := spawn thread Work()
+    if flag {
+        match lostConditional {
+            Ok(worker) => { join worker }
+            Err(_) => { }
+        }
+    }
+}
+fn Reinitialized() void {
+    let mut lostReplacement: Result[Thread[void], ThreadSpawnError] := Err(ThreadSpawnError.NativeFailure)
+    if lostReplacement is Err { }
+    lostReplacement = spawn thread Work()
+}
+fn ExtractWithoutJoin() void {
+    let creation := spawn thread Work()
+    match creation {
+        Ok(unresolvedWorker) => { }
+        Err(_) => { }
+    }
+}
+fn Fallible() Result[int, ThreadSpawnError] { return Err(ThreadSpawnError.NativeFailure) }
+fn LostOnPropagation() Result[int, ThreadSpawnError] {
+    let lostPropagation := spawn thread Work()
+    let value := try Fallible()
+    match lostPropagation {
+        Ok(worker) => { join worker }
+        Err(_) => { }
+    }
+    return Ok(value)
+}
+fn LostParameter(lostParameter: Result[Thread[void], ThreadSpawnError]) void { }
+fn LostThroughAlias() void {
+    let mut lostAlias: Result[Thread[void], ThreadSpawnError] := Err(ThreadSpawnError.NativeFailure)
+    if lostAlias is Err {
+        let holder := ref mut lostAlias
+        if true { *holder = spawn thread Work() }
+    }
+}

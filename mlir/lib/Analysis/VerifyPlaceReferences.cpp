@@ -53,7 +53,15 @@ bool isPlaceConsumer(Operation *operation) {
              sec::PlaceReadOp, sec::PlaceWriteOp, sec::RefBorrowSharedOp,
              sec::RefBorrowMutOp, sec::RefReborrowSharedOp,
              sec::RefReborrowMutOp, sec::SliceBorrowSharedOp,
-             sec::SliceBorrowMutOp, sec::StringViewBorrowOp, sec::StringRuneLenOp>(operation);
+             sec::SliceBorrowMutOp, sec::StringViewBorrowOp, sec::StringRuneLenOp>(operation) ||
+         // P18 sections 74-77, 85-96: the owning dynamic array is observed and
+         // changed only through its owner Place.
+         isa<sec::DynamicArrayLenOp, sec::DynamicArrayLenIntOp, sec::DynamicArrayCapacityInternalOp,
+             sec::DynamicArrayHasBackingOp, sec::DynamicArrayHasCapacityOp,
+             sec::DynamicArrayIndexInBoundsOp, sec::DynamicArrayElementPlaceOp,
+             sec::DynamicArrayAppendPreparedOp, sec::DynamicArrayGrowBackingOp,
+             sec::StorageEstablishDomainOp, sec::StorageAdvanceEpochOp,
+             sec::StorageEndDomainOp, sec::StorageReclaimOp>(operation);
 }
 
 // A canonical Place chain: the root (an SSA value, a storage value or a
@@ -206,7 +214,7 @@ Value derivationSource(Value source) {
     if (auto element = dyn_cast<sec::SliceElementPlaceOp>(definition))
       return element.getSource();
     if (!isa<sec::PlaceFieldOp, sec::PlaceArrayElementOp,
-             sec::PlaceUnionPayloadOp>(definition))
+             sec::PlaceUnionPayloadOp, sec::DynamicArrayElementPlaceOp>(definition))
       break;
     place = definition->getOperand(0);
   }
@@ -261,6 +269,21 @@ LogicalResult sec::verifyPlaces(func::FuncOp function) {
       if (!guarded)
         return operation->emitOpError(
                    "runtime-check element Place requires a dominating true edge of sec.place.array_index_in_bounds on the same base and index"),
+               WalkResult::interrupt();
+    }
+    if (auto element = dyn_cast<sec::DynamicArrayElementPlaceOp>(operation)) {
+      // P18 sections 75-76: the guarded element Place is formed only on the
+      // true edge of the total bounds predicate of the same owner and index.
+      bool guarded = false;
+      for (Operation *user : element.getOwner().getUsers()) {
+        auto predicate = dyn_cast<sec::DynamicArrayIndexInBoundsOp>(user);
+        if (predicate && predicate.getIndex() == element.getIndex() &&
+            guardedBy(dominance, predicate.getResult(), true, operation))
+          guarded = true;
+      }
+      if (!guarded)
+        return operation->emitOpError(
+                   "dynamic-array element Place requires a dominating true edge of sec.dynamic_array.index_in_bounds on the same owner and index"),
                WalkResult::interrupt();
     }
     if (auto payload = dyn_cast<sec::PlaceUnionPayloadOp>(operation)) {

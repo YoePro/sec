@@ -24,8 +24,9 @@ const lineWidth = 80
 //     their original spelling, so formatting never changes a value's type;
 //   - one blank line between the entries of the integrations list.
 //
-// Mapping key order is never changed.
+// Integration fields follow IDEAS.md §4.1; all other mapping order is retained.
 func render(root *yaml.Node) ([]byte, error) {
+	root = orderedIntegrationRoot(root)
 	var lines []string
 	var err error
 	switch root.Kind {

@@ -49,7 +49,7 @@ func TestPortableThreadTerminationBoundary(t *testing.T) {
 			ast.Visit(program, func(node any) bool {
 				if spawn, ok := node.(*ast.SpawnExpression); ok {
 					typ, resolved := a.ResolvedTypeOf(spawn)
-					if !resolved || typ.Name != "Thread" || !typ.Intrinsic {
+					if !resolved || typ.Kind != ResultType || len(typ.TypeArgs) != 2 || !isThreadType(typ.TypeArgs[0]) || !typ.TypeArgs[0].Intrinsic || typ.TypeArgs[1].Name != "ThreadSpawnError" {
 						t.Fatal("spawn lost canonical thread identity", typ, resolved)
 					}
 				}

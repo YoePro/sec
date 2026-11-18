@@ -713,6 +713,11 @@ func (e *emitter) emitOperation(function *semantic.Function, operation semantic.
 		semantic.OpCleanupTrackOwned, semantic.OpCleanupCancel, semantic.OpCleanupDeferRegister,
 		semantic.OpCleanupDeferYield, semantic.OpCleanupRunScope, semantic.OpCleanupRunFunction:
 		return e.emitOwnership(function, operation, values, storages)
+	case semantic.OpDynamicArrayEmpty, semantic.OpDynamicArrayAllocate, semantic.OpDynamicArrayLength,
+		semantic.OpDynamicArrayHasBacking, semantic.OpDynamicArrayHasCapacity, semantic.OpDynamicArrayIndexInBounds,
+		semantic.OpDynamicArrayElementPlace, semantic.OpDynamicArrayAppendPrepared, semantic.OpDynamicArrayGrowBacking,
+		semantic.OpStorageEstablishDomain, semantic.OpStorageAdvanceEpoch, semantic.OpStorageEndDomain, semantic.OpStorageReclaim:
+		return e.emitDynamicArray(function, operation, values)
 	default:
 		return &UnsupportedLoweringError{Feature: string(operation.Kind), Function: function.ID}
 	}
@@ -1290,6 +1295,15 @@ func (e *emitter) typeText(id semantic.TypeID) (string, error) {
 		text = "!sec.string"
 	case semantic.TypeUnitDimension:
 		text = "!sec.unit_dimension"
+	case semantic.TypeDynamicArray:
+		if e.schemaVersion < 14 {
+			return "", &UnsupportedLoweringError{Feature: "dynamic-array types require schema 14"}
+		}
+		element, err := e.typeText(typeValue.Element)
+		if err != nil {
+			return "", err
+		}
+		text = "!sec.dynamic_array<" + element + ">"
 	case semantic.TypeStringView:
 		if e.schemaVersion < 12 {
 			return "", &UnsupportedLoweringError{Feature: "StringView types require schema 12"}

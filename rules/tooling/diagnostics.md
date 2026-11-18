@@ -2,8 +2,8 @@
 
 - **Status:** Normative
 - **Created:** Legacy rulebook; exact original creation date not established
-- **Last updated:** 2026-11-01 (§ 24(4h) pack forwarding boundaries; § 24(4j) MD-120); 2026-10-30 (§ 24(4i) MD-111 hardware metadata diagnostics; § 24(4h) recognized type-pack expansion capability boundary); 2026-10-29 (§ 24(4g) optional empty-union catch-all warning); 2026-10-28 (§§ 24(4e)–24(4f) inactive-arm and omitted-payload advisories, `None()` under S1157, MD-029/MD-042/MD-102); 2026-10-18
-- **Document revision:** 2.2
+- **Last updated:** 2026-11-18 (MD-131: A2011 and retired S1069); 2026-11-01 (§ 24(4h) pack forwarding boundaries; § 24(4j) MD-120); 2026-10-30 (§ 24(4i) MD-111 hardware metadata diagnostics; § 24(4h) recognized type-pack expansion capability boundary); 2026-10-29 (§ 24(4g) optional empty-union catch-all warning); 2026-10-28 (§§ 24(4e)–24(4f) inactive-arm and omitted-payload advisories, `None()` under S1157, MD-029/MD-042/MD-102); 2026-10-18
+- **Document revision:** 2.3
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/tooling/diagnostics.md`
 - **Replaces:** `rules/tooling/diagnostics.txt`
@@ -1048,6 +1048,17 @@ Equivalent proof occurrences are grouped or deduplicated as this rulebook prescr
 `A2010` / `hardware.region-overlap` is a configurable default `Warning` for overlapping compatible regions. It does not prove shared resource identity and cannot be silenced by a binding alias acknowledgement. Errors and warnings retain the offending property/declaration span, expected metadata type where applicable, actionable help and a related source location for duplicates, visibility, containment and overlaps where available. No invalid metadata fact set is published. Project override selectors/property-change warnings and binding alias checks retain their later owning stages; these identities do not claim those stages are implemented.
 
 § 24(4j) MD-120 reuses the existing generic constraint-failure identities where they apply. New identities are allocated only for genuinely distinct cases when they are implemented: an unconstrained parameter used as a `Result` error type, a variant pattern on an unknown `E`, and a bare generic interface view.
+
+§ 24(4k) MD-131 defines `A2011` / `contracts.unchecked-contract-may-panic`
+(family `types`, configurable default `Information`) for a runtime contract
+check outside `try`, including conversion and compound update of a local,
+field, property or referent. Ordinary assignment and compound assignment to
+constrained named values are valid; a failed runtime contract check panics
+with `ContractFailure`. The `try` form handles or propagates failure through
+the canonical error channel. `@noPanic` still requires the mandatory panic
+proof. `S1069` / `types.constrained-assignment-requires-try` is retired, stays
+reserved in the registry and must not be emitted for new source. See
+`rules/types/contracts.md` § 12(2)–(3) and `rules/errors/panic.md` § 21.
 
 § 24(5) Retired IDs remain reserved. Known published retired entries include the existing registry definitions for retired diagnostics such as `S1020` / `operator.string-runtime-concat` and any other retired entry already present in the registry.
 

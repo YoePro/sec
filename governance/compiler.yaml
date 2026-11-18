@@ -732,6 +732,7 @@ integrations:
       - "2026-11-12: evaluator-local references use deterministic semantic identity independent of host addresses: `ref`/`ref mut` arguments and `let r := ref x` bindings, and copies or moves of such bindings, denote the referenced Place (binding plus field path) and read and write it; a reference-valued binding with no Place identity fails closed. Raw pointers have no CTE representation: their operations are S1224 target-memory effects and nothing in the executor creates one (TestSemanticCTEReferenceIdentityNeverEscapes, TestSemanticCTETemporariesAndLocalReferences, TestSemanticCTEReferenceParametersAndDefer)."
       - "2026-11-12: transient identities never escape materialization: evaluator values hold no addresses or generations, a function or getter returning a reference fails closed instead of returning a copy that would lose writes through it (previously `Pick(ref mut acc)` silently yielded a copy), and the custom-free ownership identities are stripped from every established value before static materialization or later requests read it (prepareCTEMaterialization; TestSemanticCTEReferenceIdentityNeverEscapes)."
       - "Recursive materialization graph validation completed 2026-11-12 (compile_time_evaluation.md sections 28-37,48-49,54,56-59): prepareCTEMaterialization validates the complete represented typed value graph before recursive ownership accounting or storage handoff. It checks canonical struct fields and active Result/Option/union payloads including field payloads and void, preserves nominal/concrete type identity, removes evaluator ownership IDs from a fresh copy, accepts acyclic sharing, and rejects cyclic graphs or reference/pointer/view values without validated program storage identity as ResultNotMaterializable. Unknown array/function/generic representations fail as ImplementationGap; malformed compiler graphs are CompilerInvariantFailure and traversal has deterministic resource limits. Mandatory S1244 compile-time.result-not-materializable distinguishes successful computation from storage failure and names the stored-value path; failed graphs expose no established value. The unguarded withoutOwnerIdentities walk is replaced by this guarded boundary. Source-backed tests cover nine typed roots, compiler check and LSP hover; compiler-service fault injection verifies unsafe/cyclic graphs, hidden/missing payloads, immutable sanitation, bounded traversal and diagnostic identity without inventing unsupported source programs. Physical layout, static reference relocation (MD-081), dynamic-owner execution and physical lowering/materialization retain their separate remaining requirements."
+      - "2026-11-18: cancellable semantic CTE produces the compiler-owned Cancelled outcome at execution checkpoints and before result publication. AnalyzeContext carries the same context through required-value probes and deferred static evaluation, returning context.Canceled or DeadlineExceeded separately from source diagnostics. Cancelled analysis discards request-local CTE results, pending roots, memoized successes and diagnostics; callers must discard its other analysis facts. OptionalCompileTimeValueContext preserves cancellation as an error rather than an ordinary failed-fold result. Cancellation cannot become a ResourceLimit, a catchable Sec error or a cached semantic impossibility; existing context-free APIs remain compatible. Deterministic mid-execution, recursive/loop/handled source, deadline, budget-precedence and fresh-retry tests verify this service requirement. Active LSP request scheduling and general compiler-pass cancellation remain separately owned by tooling.lsp-module-diagnostic-scheduling."
     remaining:
       - "static reference materialization (MD-081 applied; compile_time_evaluation.md §§ 28(6), 36(5)): represent a `ref S` static initializer as a typed symbolic reference target (never an evaluator address or a read of a mutable static), and materialize it through a target symbol/relocation selected by the CompilationPlan with a fail-closed materialization diagnostic when the target cannot represent it; Sema validation is implemented; Semantic IR rejects such statics explicitly until P15-42 static-held borrows and P24 reference lowering exist"
       - implement a canonical typed Semantic IR CTE execution service rather than relying only on AST/literal-specific constant evaluation
@@ -739,7 +740,6 @@ integrations:
       - allow dynamic owning collections transiently in CTE while rejecting static escape when the concrete type lacks defined materialization
       - implement cross-module CTE body availability from separately compiled canonical semantic artifacts (functions of imported source modules in the same build execute since 2026-11-12, TestCLICompileTimeEvaluationAcrossModules)
       - request generic concrete instances through the monomorphization/generic-lowering contracts once the executor runs on Semantic IR (the concrete instance Sema selects for a call, with its substitution, executes since 2026-11-12, TestSemanticCTEGenericInstances)
-      - produce the Cancelled outcome for cancellable analysis requests; ResultNotMaterializable classification and diagnostics are implemented at the recursive value-graph boundary, while transient reference/dynamic-collection execution remains under its separate requirements
       - integrate CTE as a semantic service around typed Sema/Semantic IR and the Sec MLIR -> MLIR -> LLVM -> artifact pipeline
       - allow MLIR infrastructure reuse internally only when canonical Sec and target-plan semantics are preserved
       - audit every compiler-known Sec declaration for complete canonical declaration and owning module (rulebook A/B choices are MD-016)
@@ -810,6 +810,14 @@ integrations:
       - rules/corrections/applied/compile-time-evaluation-cross-rulebook-correction-20260907.md
       - rules/corrections/applied/compiler-known-fundamentals-cross-rulebook-correction-20260907.md
     verification:
+      - command: go vet ./internal/sema
+        result: passed 2026-11-18
+      - command: go test -p 4 ./cmd/compiler ./cmd/lsp -run 'TestCompileTimeValueHover|TestCTEMaterialization|TestCTETransient' -count=1 -timeout=120s
+        result: "passed 2026-11-18: focused compiler 8.213s and LSP 28.250s; existing materialization, transient evaluation and value-hover behavior retained"
+      - command: go test -race ./internal/sema -run 'TestCTECancellation|TestOptionalCompileTimeValue|TestSemanticCTE' -count=1 -timeout=120s
+        result: "passed 2026-11-18: existing semantic/optional CTE regressions and new cancellation tests, 13.480s; final cancellation tests including a source try handler passed separately with -race, 1.193s"
+      - command: go test -p 4 ./internal/sema ./internal/ir/semantic -count=1 -timeout=120s
+        result: "passed 2026-11-18: complete Sema 38.166s and Semantic IR 10.471s after cancellable CTE integration"
       - command: go vet -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp ./internal/diagnostics
         result: passed 2026-11-12 for the graph materialization boundary and diagnostic registration.
       - command: go test -p 4 ./internal/sema -run ^TestCTEMaterialization -count=1
@@ -861,6 +869,8 @@ integrations:
       - cmd/compiler/cte_materialization_test.go
       - cmd/lsp/cte_materialization_test.go
       - testdata/sema/cte_materialization_graph_valid.sec
+      - internal/sema/cte_cancellation_test.go
+      - testdata/sema/cte_cancellation.sec
     code:
       - internal/sema/cte_aggregates.go
       - internal/sema/cte_variants.go
@@ -885,4 +895,5 @@ integrations:
       - internal/sema/cte_storage.go
       - internal/sema/cte_try.go
       - internal/sema/cte_materialization.go
-    revised: "2026-11-12"
+      - internal/sema/cte_cancellation.go
+    revised: "2026-11-18"

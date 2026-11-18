@@ -307,6 +307,16 @@ func allocationCleanupCovered(typ Type) bool {
 	if typ.Kind == RawPtrType {
 		return TriviallyDestructible(typ)
 	}
+	// An owning T[] is destroyed by destroying its elements, ending its
+	// backing domain and reclaiming the backing by plan; ending and
+	// reclaiming deallocate and never allocate, so its cleanup is
+	// allocation-free exactly when its element's cleanup is. The empty
+	// default therefore stays valid in a no-allocation profile.
+	// Rules: rules/mlir/packages/sec-mlir-dialect_package18.md — §§ 18, 30–32, 54, 120;
+	// rules/memory/allocation.md — § 24.
+	if typ.Kind == ArrayType && arrayShapeOf(typ) == ArrayShapeDynamic && typ.Element != nil {
+		return allocationCleanupCovered(*typ.Element)
+	}
 	return typ.Kind != GenericType && typ.Kind != InterfaceType && len(typ.GenericParameters) == 0 && TriviallyDestructible(typ)
 }
 

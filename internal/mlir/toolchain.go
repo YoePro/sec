@@ -75,6 +75,9 @@ var secReferenceVerificationPasses = []string{
 	"--sec-verify-cleanups",
 	"--sec-verify-destruction-plans",
 	"--sec-verify-ownership",
+	// P18 §§ 37, 63–67, 128–130: the dynamic-array growth protocol.
+	"--sec-verify-dynamic-arrays",
+	"--sec-verify-storage-transitions",
 }
 
 // secVerificationPasses are the Sec dialect proof checks every emission and

@@ -121,6 +121,13 @@ func (a *Analyzer) recordResultConstruction(stmt *ast.LetStatement) {
 		}
 	}
 	a.symbols.set(stmt.Name.Value, symbol)
+	if _, creation := creationOwnerType(symbol.Type); creation && a.constructedVariantOf(stmt.Value, symbol.Type) == "Err" {
+		// A failed creation owns no child, including in mutable storage.
+		// Reinitialization and mutable borrowing invalidate this lifecycle fact.
+		// Rules: rules/concurrency/tasks.md §4(5); threads.md §2;
+		// rules/memory/ownership.md §§20–21.
+		a.closedResources[stmt.Name.Value] = symbol.Token
+	}
 }
 
 // recordResultStateFact activates a proven Result state for an immutable

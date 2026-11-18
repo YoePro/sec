@@ -29,22 +29,8 @@ integrations:
       - rules/memory/raw_pointers.md
       - rules/compiler/semantic_ir.md
       - rules/mlir/sec_mlir.md
-    confirmed_existing_foundations:
-      - register[N] is already canonical as a nominal fixed-width bit-layout type independent of MMIO
-      - register field permissions already include read-write default, read-only, and write-only in the v2 rulebook
-      - register frontend already recognizes W1C, W0C, and destructive-read semantics in the current design/implementation work
-      - "@address already implies hardware-facing volatile access and canonical region validation"
-      - volatile.md already separates compiler ordering from hardware ordering and delegates stronger register/device transaction semantics
-      - Sec ownership/destruction already forbids hidden runtime ownership tracking and implicit hardware access at register-view destruction
-      - canonical read-clear source spelling is represented through parser, AST, Sema diagnostics, and formatter; legacy clear-on-read is rejected with a focused migration diagnostic
-      - canonical read-set source spelling is represented through parser, AST, Sema compound-read diagnostics, and compiler-fact-driven LSP hover
-      - the complete write-one/write-zero clear/set/toggle modifier family is represented through parser, AST, Sema direct-write and compound-read diagnostics, and compiler-fact-driven LSP hover
-      - "shadow/noshadow register-level and field-level modifiers (2026-10-23): parser (duplicate, contradictory and order diagnostics), AST, Sema effective policy with field > register > global noshadow inheritance (RegisterField.Shadow), formatter round trip, LSP hover and the Semantic IR register-definition table (register_shadow_test.go, TestRegisterShadowPolicyInheritance, TestHoverShowsEffectiveRegisterShadowPolicy)"
-      - "logical hardware requests (2026-10-23, register_requests.go): every leaf field step on a hardware instance or impl receiver resolves to observe, destructive-observe (read-clear/read-set), write-value or a clear/set/toggle action with its shadow policy (ResolvedRegisterHardwareRequestOf); the safe implicit read rule rejects an observation whose register holds another read-clear/read-set field (no selective capability is known); compound updates of specialized fields and non-trigger special writes (MD-112) are rejected on hardware; inside impl T they make the member software-only, and such members are rejected where used on a hardware instance (register_receivers.go, TestMD077HardwareRequests). Implicit field writes in a register impl now use the field rules (TestImplicitRegisterFieldWritesUseFieldRules)."
-      - "MD-112 per-bit specialized writes (2026-10-30, rules/corrections/applied/MD-112-specialized-register-write-non-trigger-and-multibit-correction-20261030.md; registers.md § 11.3 amendment): the blanket Sema rejection of non-trigger constants, runtime values and multibit fields on hardware is retired. A write-one/write-zero field request carries the width-N logical action mask (v, or the width-N complement for write-zero-*) as ResolvedRegisterHardwareRequest.ActionMask, a constant all-neutral assignment resolves to the no-op request kind (no pending intent, no I/O), and a runtime value is a ValueDependent action; range, compound-assignment and impl-access rejections are kept, detached registers stay ordinary bits and read-write fields stay write-value requests. LSP hover shows the mask or its value dependence (TestMD112SpecializedWriteActionMasks, TestMD077HardwareRequests, hardware_instance_test.go)."
-      - "MD-113 registry, selector and reservation (2026-10-30, internal/sema/register_operations.go; registers.md § 11.7, compiler_known_members.md \"Register hardware operations\"): CompilerKnownRegisterOperations registers CKM-REGISTER-READ/-WRITE/-WRITE-VALUE/-IS-SHADOW-KNOWN and drives reservation, resolved operation IDs and LSP completion/hover; self.IsShadowKnown(T.Field[.Nested...]) resolves to a bool query whose static selector is resolved as a type rooted in the receiver's register (no evaluation), walks nested registers, links each step to its field for go-to-definition, accepts write-only shadow fields and rejects a missing root, self/value roots, runtime expressions, unknown steps, non-register intermediates, reserved _, another register root, noshadow leaves, detached receivers and use outside the owning impl; IsShadowKnown is reserved with Read/Write for methods, properties and events in register impl surfaces while ordinary types keep the names (TestMD113ShadowKnownSelectorsAndReservation, TestRegisterShadowKnownLSP, TestMD077RegisterReadWriteOperations)."
-      - "MD-111 hardware declarations, parser and formatter (2026-10-30; grammar.md HardwareDeclaration, lexical_structure.md contextual hardware; internal/ast/hardware.go, internal/parser/hardware.go, internal/formatter/hardware_declarations.go): contextual `hardware region|resource|endpoint Name { member: value, ... }` at module scope only, with restricted values (integer, string and boolean literals, dotted paths for qualified enum cases and hardware symbols, bracketed integer lists with trailing commas); `hardware` stays an ordinary identifier elsewhere; malformed headers, members, values, separators and lists report focused P2036 parser.invalid-hardware-declaration diagnostics and recovery continues with later members and declarations; Sema accepts the declarations as module metadata (schema validation is the next item); the formatter writes them canonically (one `name: value,` member per line, exact value spelling, `[a, b]` lists), idempotently at every indentation width, and leaves a declaration with comments to token formatting (TestParseHardwareDeclarations, TestHardwareDeclarationRecovery, TestFormatHardwareDeclarations)."
-      - "MD-113 shadow knowledge analysis and summaries (2026-10-30; internal/sema/shadow_knowledge.go; hardware-register-access.md § 9.8 amendment): every hardware instance (`self` in a register impl member, or a hardware binding) starts with all shadow fields unknown; a shadow field read needs a known value; Read() establishes every observable shadow field, an ordinary write the written field, a specialized MD-112 action nothing; Write() forgets action fields and Write(value) every shadow field; the true branch of IsShadowKnown(T.F) knows F; if/else, switch and match merge by intersection and loops are analyzed twice. Register impl members and accessors publish ShadowKnowledgeSummary (Requires, Ensures, EnsuresWhenTrue, Invalidates) computed to a fixed point, so recursion is conservative; a requirement on self becomes the member's own, and an unproven requirement at a use on a hardware binding is an error naming the field, instance and requiring member, with no hidden hardware read. LSP hover shows a member's contract at its declaration and call names as static information (TestShadowKnowledgeAnalysis, TestShadowContractHover)."
+    implemented:
+      - "MD-111 step 3 source metadata schema and Sema HardwareFacts (2026-10-30; correction §§ 2-8, 10(6), 12, 13(2), source-stage 13(4)-(5); internal/hardware/schema.go, model.go, normalize.go; internal/sema/hardware_metadata.go): one shared closed member/type/requiredness and enum/encoding table, literal-only exact decimal/hex integers, domain-sized addresses and extents independent of CPU uint (tested through 256-bit domains, full-cardinality boundaries and source addresses above uint64), region/domain containment and alignment, target/Device region constraints, directional requiredness/absence and bit-width checks, explicit unsupported non-linear/endpoint-kind schemas, canonical source module/category/name identities and distinct domain/region/resource/endpoint/binding/operation/plan identity types, import-visible references with module-internal/file-private checks, per-property and original-list provenance, deterministic isolated snapshots, mandatory S1178-S1187 and configurable A2010 region overlap warnings. Analyzer.ResolveHardwareDeclarations is the declaration-only producer; Analyze publishes cloned HardwareFacts. HardwareModuleContext must be supplied by the canonical resolver and fails closed when absent; final CLI/LSP plan assembly, independent B definitions/overrides/applicability, binding alias checks and verified physical plan producers/tests remain with their existing separate MD-111 owners. Tested by internal/hardware/normalize_test.go, internal/sema/hardware_metadata_test.go and internal/diagnostics/hardware_test.go; declarations create no runtime types, values, I/O or physical-operation proof."
     remaining:
       - "Deferred to Sec 0.5 (owner decision 2026-10-31): all remaining hardware register work moved out of P15 (P15-42/42a/47): verified MD-111 operation plans replacing plan=unverified, the instance-yielding sec.hw.bind @binding, addressed/hardware Place roots and addressed return paths, MD-121 ordinary addressed storage, nested hardware field paths, compound assignments and properties on hardware instances. Not to be scheduled before 0.5."
       - "MD-112 Semantic IR (correction § 7(3)-(4), § 8(2)5): when register.hw.request_write/shadow_intent/commit are built (MD-077 steps 3-4), carry the Sema action mask, emit no request or intent for a no-op request, keep a ValueDependent request conditional on a nonzero runtime mask (explicit control flow or a verified equivalent), record pending intent as the logical action mask rather than the written pattern, and verify that a no-op is never a physical write and that explicit Write(value) and read-write field writes are not reclassified as neutral (semantic_ir.md § 21(8))."
@@ -78,6 +64,29 @@ integrations:
       - preserve special operations, shadow effects, footprints, context, ordering, completion, and fault facts through Semantic IR and Sec MLIR
       - reject any target lowering that cannot materialize the required hardware semantics exactly
       - "add LSP hover/diagnostics for resource, endpoint, shadow, access widths, implicit-read safety, aliases, and context requirements (partial 2026-10-23: field hover shows the shadow policy and the logical hardware request, Read()/Write() hover, self.Read/Write completion, and Sema diagnostics for implicit-read safety; resource, endpoint, widths, aliases and context need MD-111)"
+    verification:
+      - command: go test ./internal/hardware ./internal/diagnostics ./internal/sema -count=1
+        result: "passed 2026-10-30 final rerun: hardware 0.014s, diagnostics 0.003s, full Sema 13.500s; includes real-source wide-domain, qualifier-conflict and warning-policy tests"
+      - command: go test -race ./internal/hardware -count=1; go vet ./internal/hardware ./internal/diagnostics ./internal/sema
+        result: "passed 2026-10-30: hardware snapshot/parallel determinism race checks and vet"
+      - command: go test ./internal/hardware ./internal/diagnostics ./internal/sema -count=1
+        result: "passed 2026-10-30: shared hardware and diagnostics suites, full Sema 16.080s; additional focused TestHardwareMetadata source/warning-policy tests passed"
+    confirmed_existing_foundations:
+      - register[N] is already canonical as a nominal fixed-width bit-layout type independent of MMIO
+      - register field permissions already include read-write default, read-only, and write-only in the v2 rulebook
+      - register frontend already recognizes W1C, W0C, and destructive-read semantics in the current design/implementation work
+      - "@address already implies hardware-facing volatile access and canonical region validation"
+      - volatile.md already separates compiler ordering from hardware ordering and delegates stronger register/device transaction semantics
+      - Sec ownership/destruction already forbids hidden runtime ownership tracking and implicit hardware access at register-view destruction
+      - canonical read-clear source spelling is represented through parser, AST, Sema diagnostics, and formatter; legacy clear-on-read is rejected with a focused migration diagnostic
+      - canonical read-set source spelling is represented through parser, AST, Sema compound-read diagnostics, and compiler-fact-driven LSP hover
+      - the complete write-one/write-zero clear/set/toggle modifier family is represented through parser, AST, Sema direct-write and compound-read diagnostics, and compiler-fact-driven LSP hover
+      - "shadow/noshadow register-level and field-level modifiers (2026-10-23): parser (duplicate, contradictory and order diagnostics), AST, Sema effective policy with field > register > global noshadow inheritance (RegisterField.Shadow), formatter round trip, LSP hover and the Semantic IR register-definition table (register_shadow_test.go, TestRegisterShadowPolicyInheritance, TestHoverShowsEffectiveRegisterShadowPolicy)"
+      - "logical hardware requests (2026-10-23, register_requests.go): every leaf field step on a hardware instance or impl receiver resolves to observe, destructive-observe (read-clear/read-set), write-value or a clear/set/toggle action with its shadow policy (ResolvedRegisterHardwareRequestOf); the safe implicit read rule rejects an observation whose register holds another read-clear/read-set field (no selective capability is known); compound updates of specialized fields and non-trigger special writes (MD-112) are rejected on hardware; inside impl T they make the member software-only, and such members are rejected where used on a hardware instance (register_receivers.go, TestMD077HardwareRequests). Implicit field writes in a register impl now use the field rules (TestImplicitRegisterFieldWritesUseFieldRules)."
+      - "MD-112 per-bit specialized writes (2026-10-30, rules/corrections/applied/MD-112-specialized-register-write-non-trigger-and-multibit-correction-20261030.md; registers.md § 11.3 amendment): the blanket Sema rejection of non-trigger constants, runtime values and multibit fields on hardware is retired. A write-one/write-zero field request carries the width-N logical action mask (v, or the width-N complement for write-zero-*) as ResolvedRegisterHardwareRequest.ActionMask, a constant all-neutral assignment resolves to the no-op request kind (no pending intent, no I/O), and a runtime value is a ValueDependent action; range, compound-assignment and impl-access rejections are kept, detached registers stay ordinary bits and read-write fields stay write-value requests. LSP hover shows the mask or its value dependence (TestMD112SpecializedWriteActionMasks, TestMD077HardwareRequests, hardware_instance_test.go)."
+      - "MD-113 registry, selector and reservation (2026-10-30, internal/sema/register_operations.go; registers.md § 11.7, compiler_known_members.md \"Register hardware operations\"): CompilerKnownRegisterOperations registers CKM-REGISTER-READ/-WRITE/-WRITE-VALUE/-IS-SHADOW-KNOWN and drives reservation, resolved operation IDs and LSP completion/hover; self.IsShadowKnown(T.Field[.Nested...]) resolves to a bool query whose static selector is resolved as a type rooted in the receiver's register (no evaluation), walks nested registers, links each step to its field for go-to-definition, accepts write-only shadow fields and rejects a missing root, self/value roots, runtime expressions, unknown steps, non-register intermediates, reserved _, another register root, noshadow leaves, detached receivers and use outside the owning impl; IsShadowKnown is reserved with Read/Write for methods, properties and events in register impl surfaces while ordinary types keep the names (TestMD113ShadowKnownSelectorsAndReservation, TestRegisterShadowKnownLSP, TestMD077RegisterReadWriteOperations)."
+      - "MD-111 hardware declarations, parser and formatter (2026-10-30; grammar.md HardwareDeclaration, lexical_structure.md contextual hardware; internal/ast/hardware.go, internal/parser/hardware.go, internal/formatter/hardware_declarations.go): contextual `hardware region|resource|endpoint Name { member: value, ... }` at module scope only, with restricted values (integer, string and boolean literals, dotted paths for qualified enum cases and hardware symbols, bracketed integer lists with trailing commas); `hardware` stays an ordinary identifier elsewhere; malformed headers, members, values, separators and lists report focused P2036 parser.invalid-hardware-declaration diagnostics and recovery continues with later members and declarations; Sema accepts the declarations as module metadata (schema validation is the next item); the formatter writes them canonically (one `name: value,` member per line, exact value spelling, `[a, b]` lists), idempotently at every indentation width, and leaves a declaration with comments to token formatting (TestParseHardwareDeclarations, TestHardwareDeclarationRecovery, TestFormatHardwareDeclarations)."
+      - "MD-113 shadow knowledge analysis and summaries (2026-10-30; internal/sema/shadow_knowledge.go; hardware-register-access.md § 9.8 amendment): every hardware instance (`self` in a register impl member, or a hardware binding) starts with all shadow fields unknown; a shadow field read needs a known value; Read() establishes every observable shadow field, an ordinary write the written field, a specialized MD-112 action nothing; Write() forgets action fields and Write(value) every shadow field; the true branch of IsShadowKnown(T.F) knows F; if/else, switch and match merge by intersection and loops are analyzed twice. Register impl members and accessors publish ShadowKnowledgeSummary (Requires, Ensures, EnsuresWhenTrue, Invalidates) computed to a fixed point, so recursion is conservative; a requirement on self becomes the member's own, and an unproven requirement at a use on a hardware binding is an error naming the field, instance and requiring member, with no hidden hardware read. LSP hover shows a member's contract at its declaration and call names as static information (TestShadowKnowledgeAnalysis, TestShadowContractHover)."
     required_test_families:
       - field permissions and specialized read/write semantics
       - safe implicit field observation and destructive collateral rejection
@@ -93,8 +102,6 @@ integrations:
     corrections_applied:
       - rules/corrections/applied/hardware-register-access-cross-rulebook-correction-20260828.md
       - rules/corrections/applied/stdlib-hw-correction-20260828.md
-    implemented:
-      - "MD-111 step 3 source metadata schema and Sema HardwareFacts (2026-10-30; correction §§ 2-8, 10(6), 12, 13(2), source-stage 13(4)-(5); internal/hardware/schema.go, model.go, normalize.go; internal/sema/hardware_metadata.go): one shared closed member/type/requiredness and enum/encoding table, literal-only exact decimal/hex integers, domain-sized addresses and extents independent of CPU uint (tested through 256-bit domains, full-cardinality boundaries and source addresses above uint64), region/domain containment and alignment, target/Device region constraints, directional requiredness/absence and bit-width checks, explicit unsupported non-linear/endpoint-kind schemas, canonical source module/category/name identities and distinct domain/region/resource/endpoint/binding/operation/plan identity types, import-visible references with module-internal/file-private checks, per-property and original-list provenance, deterministic isolated snapshots, mandatory S1178-S1187 and configurable A2010 region overlap warnings. Analyzer.ResolveHardwareDeclarations is the declaration-only producer; Analyze publishes cloned HardwareFacts. HardwareModuleContext must be supplied by the canonical resolver and fails closed when absent; final CLI/LSP plan assembly, independent B definitions/overrides/applicability, binding alias checks and verified physical plan producers/tests remain with their existing separate MD-111 owners. Tested by internal/hardware/normalize_test.go, internal/sema/hardware_metadata_test.go and internal/diagnostics/hardware_test.go; declarations create no runtime types, values, I/O or physical-operation proof."
     evidence:
       - internal/hardware/schema.go
       - internal/hardware/model.go
@@ -103,18 +110,12 @@ integrations:
       - internal/sema/hardware_metadata.go
       - internal/sema/hardware_metadata_test.go
       - internal/diagnostics/hardware_test.go
-    verification:
-      - command: go test ./internal/hardware ./internal/diagnostics ./internal/sema -count=1
-        result: "passed 2026-10-30 final rerun: hardware 0.014s, diagnostics 0.003s, full Sema 13.500s; includes real-source wide-domain, qualifier-conflict and warning-policy tests"
-      - command: go test -race ./internal/hardware -count=1; go vet ./internal/hardware ./internal/diagnostics ./internal/sema
-        result: "passed 2026-10-30: hardware snapshot/parallel determinism race checks and vet"
-      - command: go test ./internal/hardware ./internal/diagnostics ./internal/sema -count=1
-        result: "passed 2026-10-30: shared hardware and diagnostics suites, full Sema 16.080s; additional focused TestHardwareMetadata source/warning-policy tests passed"
 
   - id: platform.volatile
     area: platform-memory-and-volatile-access
     status: partial
     integrated: "2026-08-27"
+    revised: "2026-11-17"
     document_revision: "1"
     repository_baseline: fc8d632
     summary: >-
@@ -144,6 +145,15 @@ integrations:
       - cmd/lsp/main.go
       - internal/sema/raw_pointer_operations.go
       - internal/sema/raw_pointer_volatile.go
+    tests:
+      - internal/sema/volatile_generic_test.go
+      - cmd/compiler/volatile_generic_test.go
+      - cmd/lsp/volatile_generic_test.go
+      - testdata/sema/volatile_generic_invalid.sec
+      - testdata/sema/volatile_generic_valid.sec
+      - internal/sema/volatile_aggregate_test.go
+      - testdata/sema/volatile_aggregate_invalid.sec
+      - testdata/sema/volatile_aggregate_valid.sec
     implemented:
       - accepted @address bindings retain Addressed and Volatile metadata while binding mutability remains separate
       - ordinary RawPtr Read, Write, Offset, AddBytes and Difference remain distinct compiler-known operations
@@ -156,11 +166,6 @@ integrations:
       - LSP completion marks the operations unsafe and effectful while hover exposes their stable identity and effect
       - Direct VolatileRead/VolatileWrite on a generic pointee T is rejected without a proven physical eligibility contract, including inside generic impl methods and with ordinary interface constraints. The shared Sema guard preserves RawPtr[void] diagnostics and ordinary generic Read/Write, publishes no successful volatile effect for rejected operations, and is shared by CLI and LSP. Concrete pointees still require the separately tracked CompilationPlan-sensitive physical access plan before lowering.
       - VolatileRead/VolatileWrite on struct, array, union and Result aggregate pointees now requires an explicit physical layout and access contract; the current frontend supplies no verified aggregate access contract and rejects such operations before publishing successful volatile effects or IR. Regressions cover empty and ordinary structs, named struct/array wrappers, fixed and dynamic arrays, generic struct instantiations, unions, Option and Result. Ordinary raw-pointer aggregate Read/Write, user methods with volatile-like names and concrete scalar volatile sites retain their separate checks. Physical contract production, aggregate realization and target-sensitive eligibility remain open.
-    incorrect_or_partial:
-      - current accepted @address Symbol.Volatile metadata is not end-to-end volatile support
-      - frontend eligibility excludes void, unproven generic pointees and aggregates without physical access contracts; complete representation validity and CompilationPlan-sensitive eligibility remain incomplete
-      - physical VolatileReadable and VolatileWritable eligibility is not CompilationPlan-sensitive yet
-      - the effect sites do not yet carry resolved physical-access contracts or occurrence identities into Semantic IR
     remaining:
       - introduce canonical volatile/external-storage access semantics distinct from type qualification
       - keep ordinary RawPtr Read/Write distinct from explicit volatile access
@@ -191,6 +196,16 @@ integrations:
       - add diagnostics for region, space, permission, width, alignment, representation, unsafe, ordering, and lowering failures
       - add the complete volatile, @address, RawPtr, representation, physical-access, ordering, device, IR, Hosted, and cross-target regression matrix
       - update verification commands after the first end-to-end volatile vertical slice is implemented
+    verification:
+      - command: GOTMPDIR="$HOME/.cache/sec-gotmp" go test -p 4 ./internal/sema -count=1 -timeout=120s; GOTMPDIR="$HOME/.cache/sec-gotmp" go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run "TestVolatile(Aggregate|Generic)Eligibility|TestCompilerKnownRawPointerVolatile|TestVolatilePhysicalPlanBoundary" -count=1 -timeout=120s; GOTMPDIR="$HOME/.cache/sec-gotmp" go test -p 4 ./internal/ir/semantic -run TestVolatile -count=1 -timeout=120s; GOTMPDIR="$HOME/.cache/sec-gotmp" go vet ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: "Passed 2026-11-17: full Sema 27.199s; focused Sema/CLI/LSP 0.076s/0.132s/3.887s; volatile Semantic IR tests 0.151s; vet passed. All 20 aggregate invalid accesses were accepted before the fix. Regressions cover ten aggregate type forms, both read and write, rejection without volatile effects or IR artifacts, exact LSP call lines, unchanged ordinary aggregate pointer access, user-defined methods and concrete scalar volatile snapshots. This completes the explicit-contract frontend guard; producing verified physical contracts and aggregate target realization remain open."
+      - command: GOTMPDIR="$HOME/.cache/sec-gotmp" go test -p 4 ./internal/sema -count=1 -timeout=120s; GOTMPDIR="$HOME/.cache/sec-gotmp" go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run "TestVolatileGenericEligibility|TestCompilerKnownRawPointerVolatile|TestVolatilePhysicalPlanBoundary" -count=1 -timeout=120s; GOTMPDIR="$HOME/.cache/sec-gotmp" go vet ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: "Passed 2026-11-17: full Sema 27.104s; final focused Sema/CLI/LSP 0.040s/0.074s/1.866s; vet passed. Before the fix all six invalid generic read/write sites were accepted. Regressions cover unconstrained parameters, ordinary-interface constraints, generic impl methods, exact diagnostic lines, rejection without successful volatile effects or partial IR artifacts, valid ordinary generic pointer operations and concrete volatile access inside generic declarations. CompilationPlan-sensitive physical eligibility and target lowering remain open."
+    incorrect_or_partial:
+      - current accepted @address Symbol.Volatile metadata is not end-to-end volatile support
+      - frontend eligibility excludes void, unproven generic pointees and aggregates without physical access contracts; complete representation validity and CompilationPlan-sensitive eligibility remain incomplete
+      - physical VolatileReadable and VolatileWritable eligibility is not CompilationPlan-sensitive yet
+      - the effect sites do not yet carry resolved physical-access contracts or occurrence identities into Semantic IR
     corrections_applied:
       - rules/corrections/applied/foundations-correction-20260827.md
       - rules/corrections/applied/platform-correction-20260827.md
@@ -209,26 +224,12 @@ integrations:
       - atomic memory-order semantics
       - target/device knowledge-pack format
       - general C-style volatile types or @volatile source syntax
-    tests:
-      - internal/sema/volatile_generic_test.go
-      - cmd/compiler/volatile_generic_test.go
-      - cmd/lsp/volatile_generic_test.go
-      - testdata/sema/volatile_generic_invalid.sec
-      - testdata/sema/volatile_generic_valid.sec
-      - internal/sema/volatile_aggregate_test.go
-      - testdata/sema/volatile_aggregate_invalid.sec
-      - testdata/sema/volatile_aggregate_valid.sec
-    revised: "2026-11-17"
-    verification:
-      - command: GOTMPDIR="$HOME/.cache/sec-gotmp" go test -p 4 ./internal/sema -count=1 -timeout=120s; GOTMPDIR="$HOME/.cache/sec-gotmp" go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run "TestVolatile(Aggregate|Generic)Eligibility|TestCompilerKnownRawPointerVolatile|TestVolatilePhysicalPlanBoundary" -count=1 -timeout=120s; GOTMPDIR="$HOME/.cache/sec-gotmp" go test -p 4 ./internal/ir/semantic -run TestVolatile -count=1 -timeout=120s; GOTMPDIR="$HOME/.cache/sec-gotmp" go vet ./internal/sema ./cmd/compiler ./cmd/lsp
-        result: "Passed 2026-11-17: full Sema 27.199s; focused Sema/CLI/LSP 0.076s/0.132s/3.887s; volatile Semantic IR tests 0.151s; vet passed. All 20 aggregate invalid accesses were accepted before the fix. Regressions cover ten aggregate type forms, both read and write, rejection without volatile effects or IR artifacts, exact LSP call lines, unchanged ordinary aggregate pointer access, user-defined methods and concrete scalar volatile snapshots. This completes the explicit-contract frontend guard; producing verified physical contracts and aggregate target realization remain open."
-      - command: GOTMPDIR="$HOME/.cache/sec-gotmp" go test -p 4 ./internal/sema -count=1 -timeout=120s; GOTMPDIR="$HOME/.cache/sec-gotmp" go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run "TestVolatileGenericEligibility|TestCompilerKnownRawPointerVolatile|TestVolatilePhysicalPlanBoundary" -count=1 -timeout=120s; GOTMPDIR="$HOME/.cache/sec-gotmp" go vet ./internal/sema ./cmd/compiler ./cmd/lsp
-        result: "Passed 2026-11-17: full Sema 27.104s; final focused Sema/CLI/LSP 0.040s/0.074s/1.866s; vet passed. Before the fix all six invalid generic read/write sites were accepted. Regressions cover unconstrained parameters, ordinary-interface constraints, generic impl methods, exact diagnostic lines, rejection without successful volatile effects or partial IR artifacts, valid ordinary generic pointer operations and concrete volatile access inside generic declarations. CompilationPlan-sensitive physical eligibility and target lowering remain open."
 
   - id: platform.interrupts-v1
     area: platform-interrupts
     status: partial
     integrated: "2026-08-29"
+    revised: "2026-11-16"
     document_revision: "1.0"
     repository_baseline: fafd8cb
     summary: >-
@@ -250,6 +251,15 @@ integrations:
       - rules/compiler/linking.md
       - rules/analysis/isr_analysis.md
       - rules/analysis/stack_analysis.md
+    code:
+      - internal/sema/interrupt_entry_calls.go
+      - internal/sema/analyzer.go
+      - internal/diagnostics/diagnostics.go
+    tests:
+      - internal/sema/interrupt_entry_calls_test.go
+      - testdata/sema/interrupt_entry_calls_invalid.sec
+      - testdata/sema/interrupt_entry_helpers.sec
+      - testdata/sema/interrupt_entry_testing_invalid_test.sec
     implemented:
       - "Ordinary ISR entry calls (2026-11-16; interrupts.md sections 2-4, 25): Sema rejects calls whose selected declaration or canonical callable target is annotated @isr or @interrupt, with mandatory S1245 interrupt.entry-not-callable, the call and declaration locations, and helper-extraction guidance. Selected overloads, direct calls in unreachable branches, function-value aliases, merged target sets, defer, unsafe and ordinary test bodies use the same restriction. Ordinary helpers, @interruptSafe helpers, same-named non-entry overloads and unknown callbacks are not classified by spelling. Attribute capability/binding/effect verification remains independent and incomplete; this source restriction does not enable native ISR support."
     remaining:
@@ -296,21 +306,6 @@ integrations:
       - integrate interrupt resolution and ISR results consistently across compiler builds, sec analyse, LSP, separate-compilation summaries, and incremental recomputation
       - produce provenance-rich diagnostics that identify logical interrupt roots and distinguish Invalid, Unproven, and tooling Pending
       - add complete semantic, analysis, target-integration, startup/linking, cross-compilation, incremental, false-positive, and determinism regression coverage
-    excluded:
-      - platform registry file syntax for interrupt metadata
-      - logical hardware-register transaction semantics
-      - hardware-register access width, ordering, completion mechanism, and fault semantics
-      - a separate interrupt-specific memory model
-      - atomic memory-order definitions
-      - race-analysis algorithm definitions
-      - deadlock-analysis algorithm definitions
-      - stack-analysis algorithm definitions
-      - a universal WCET algorithm
-      - one universal numeric priority convention
-      - one universal interrupt-controller model
-      - one universal InterruptContext source type
-      - general source-level weak linkage
-      - hidden interrupt activation caused solely by handler declaration
     required_tests:
       - named interrupt identity resolves through CompilationPlan
       - raw numeric interrupt resolves through canonical platform metadata
@@ -364,19 +359,24 @@ integrations:
       - relevant platform edits invalidate dependent ISR work while unrelated edits preserve unrelated caches
       - stale separate-compilation summaries cannot serve as positive ISR-safety proofs
       - interrupt analysis and generated artifact identities are deterministic
-    revised: "2026-11-16"
-    code:
-      - internal/sema/interrupt_entry_calls.go
-      - internal/sema/analyzer.go
-      - internal/diagnostics/diagnostics.go
-    tests:
-      - internal/sema/interrupt_entry_calls_test.go
-      - testdata/sema/interrupt_entry_calls_invalid.sec
-      - testdata/sema/interrupt_entry_helpers.sec
-      - testdata/sema/interrupt_entry_testing_invalid_test.sec
     verification:
       - command: GOTMPDIR=$HOME/.cache/sec-gotmp go test -p 4 ./internal/sema ./internal/diagnostics -count=1
         result: "Passed on 2026-11-16 (28.557s / 0.002s). Focused TestInterruptEntryCalls and registry validation also passed after adding the ordinary-test fixture: three source fixtures at all three analysis depths and 32/64-bit plans, including positive helper/overload/unknown-callback cases. go vet -p 4 ./internal/sema ./internal/diagnostics passed. One whole remaining point closed, 44 -> 43. No sec/, IR/property or GOS-5 changes."
+    excluded:
+      - platform registry file syntax for interrupt metadata
+      - logical hardware-register transaction semantics
+      - hardware-register access width, ordering, completion mechanism, and fault semantics
+      - a separate interrupt-specific memory model
+      - atomic memory-order definitions
+      - race-analysis algorithm definitions
+      - deadlock-analysis algorithm definitions
+      - stack-analysis algorithm definitions
+      - a universal WCET algorithm
+      - one universal numeric priority convention
+      - one universal interrupt-controller model
+      - one universal InterruptContext source type
+      - general source-level weak linkage
+      - hidden interrupt activation caused solely by handler declaration
 
   - id: frontend.fixed-address-bindings
     area: frontend-analysis-and-lowering
@@ -473,9 +473,6 @@ integrations:
       - rules/tooling/lsp.md
       - rules/tooling/diagnostics.md
       - rules/corrections/applied/temporal-now-correction-20260928.md
-    governance_reconciliation:
-      - Selected immutable CompilationPlan facts are the sole target and runtime capability source for concurrency validation and lowering.
-      - semantic Atomic[T] eligibility is distinct from concrete layout, operation, order, native/emulated, blocking and interrupt-safety capability in the selected CompilationPlan
     implemented:
       - "MD-111 target address domains (2026-10-30; internal/layout/address_domains.go, internal/platform/target): ResolvedScalarPlan.AddressDomains carries the target-supplied domains with identity, address width, addressable unit and linearity, validated (unique, positive widths) and bound into the atomic-capability plan identity by deep equality; every CPU target supplies the linear byte-addressed cpu-physical domain with the CPU address width and WebAssembly supplies none; Sema reads them through Analyzer.AddressDomain (TestTargetsSupplyAddressDomains, TestScalarPlanRejectsInvalidAddressDomains)."
       - "target registry (decision 2026-10-04): linux-riscv64 (riscv64-unknown-linux-gnu, ABI lp64d, C model riscv-lp64d with unsigned char and binary128 long double) and freebsd-armv7 (armv7-unknown-freebsd-gnueabihf, C model aapcs-freebsd-gnueabihf) are registered hosted targets with status planned (parse and check, no LLVM, link, or run yet); further less common hosted architectures may be added the same way. stdlib/os has platform files for every registered hosted target with a file system, including zephyr and rtems. Tests: internal/platform/target/target_test.go, internal/layout/c_abi_test.go"
@@ -533,6 +530,9 @@ integrations:
       - reserve separately resolved accelerator devices without implementing GPU execution or memory semantics as part of the Sec 0.1 platform-model milestone
       - expose an inspectable read-only resolved-plan view for diagnostics, tests, LSP, and future target-info tooling
       - update implementation-status verification commands when the first conforming platform-model vertical slice is integrated
+    governance_reconciliation:
+      - Selected immutable CompilationPlan facts are the sole target and runtime capability source for concurrency validation and lowering.
+      - semantic Atomic[T] eligibility is distinct from concrete layout, operation, order, native/emulated, blocking and interrupt-safety capability in the selected CompilationPlan
 
   - id: platform.target-profiles
     area: platform-and-target-profiles
@@ -558,7 +558,7 @@ integrations:
       - rules/analysis/isr_analysis.md
       - rules/projects/projects.md
     remaining:
-      - "MD-034 configuration gap (2026-11-17; correction § 3(3)): no project/target declaration can select a target-profile family, explicitly enable a compatible allocation capability or name its provider (supplied/preallocated Arena or another explicit provider) for a Target/Variant. projects.md § 19(7) only lists a Variant `profile` field owned by these rules, and `[profile.*]` holds compiler options. The selection syntax must be specified before allocation-capable freestanding profiles can be implemented; no manifest key or target name is invented here."
+      - "MD-139 (open, 2026-11-18) / MD-034 configuration gap (2026-11-17; correction § 3(3)): no project/target declaration can select a target-profile family, explicitly enable a compatible allocation capability or name its provider (supplied/preallocated Arena or another explicit provider) for a Target/Variant. projects.md § 19(7) only lists a Variant `profile` field owned by these rules, and `[profile.*]` holds compiler options. The selection syntax must be specified before allocation-capable freestanding profiles can be implemented; no manifest key or target name is invented here."
       - "MD-034 implementation (correction §§ 2(5), 3(4)-(5)): once the selection exists, resolve freestanding/BareMetal into the frozen ResolvedTargetProfile with heap allocation disabled by default and an explicitly enabled, positively supported provider. Then replace the interim unresolved `freestanding` mapping in internal/layout/allocation_capabilities.go and cover the conformance families: disabled allocation, enabled supplied context, unknown/unsupported provider without host fallback, illegal overrides, allocation-free freestanding source, CLI/LSP/IR agreement, ISR restrictions and fingerprints."
       - introduce canonical TargetProfile and immutable ResolvedTargetProfile models distinct from platform, runtime, execution environment, device, architecture, and BuildProfile
       - implement Hosted, RTOS, and BareMetal compiler-known profile families
@@ -611,6 +611,7 @@ integrations:
     area: platform-inline-assembly
     status: partial
     reviewed: "2026-09-03"
+    revised: "2026-11-10"
     document_revision: "1.0"
     repository_baseline: 998d8d1
     summary: Tracks Sec 0.1 source-level inline assembly as an explicit unsafe, target-specific machine-operation boundary with typed fixed-width operands, RawPtr address operands, explicit clobbers/effects, observable-by-default execution, structured control-flow and stack boundaries, compiler-visible symbol dependencies, target/privilege validation, syscall and execution-environment transition contracts, Semantic IR/Sec MLIR preservation, LLVM/backend materialization, and compiler/LSP diagnostics.
@@ -665,20 +666,6 @@ integrations:
       - unsafe governance already identifies inline assembly as an unsafe trust boundary and requires effect/target analyses to remain active
       - Direct register inputs and inferred outputs reject high-level, nominal, constrained, enum, aggregate, reference, resource-owning, collection, shaped and callable types with registered mandatory S1207 asm.invalid-register-operand-type and explicit representation-extraction guidance. Primitive integer/float and RawPtr carriers retain their existing behavior; width, target operand-class and ABI validation remain separately tracked. Source-backed tests cover eighteen invalid input types, two invalid output types, explicit primitive conversion and invalid-IR suppression (2026-11-09)
       - C-style asm volatile, volatile asm and @volatile asm forms are rejected with canonical P2012 parser.reserved-syntax and guidance to ordinary asm in explicit unsafe context. Invalid AST nodes retain diagnosed recovery and preserve following declarations without dependent Sema errors; ordinary volatile identifiers and existing asm forms remain valid. Parser, CLI and LSP share the rejection, and invalid forms cannot emit IR artifacts (2026-11-10).
-    incorrect_or_partial:
-      - current LLVM asm block lowering supports exactly one output and hardcodes the result type to i64
-      - current LLVM lowering coerces every asm input to i64, including implicit integer extension/truncation, contrary to the exact-width rule
-      - current LLVM lowering permits pointer-to-i64 coercion rather than preserving RawPtr as a target-aware raw-address operand contract
-      - current LLVM lowering supplies rcx and r11 as implicit default clobbers when none are declared; canonical inline asm has no architecture-specific hidden default clobber set
-      - current Sema requires at least one output for structured asm blocks, while canonical instruction-only/side-effect asm must be legal without artificial outputs
-      - current Sema derives asm output type from the enclosing function return or defaults to int64 instead of resolving an explicit low-level output type contract
-      - current source platform syscall functions use target-sized int/uint at the asm boundary and require migration to explicit fixed-width machine ABI values
-      - current platform syscall source places asm directly in unsafe fn bodies and must be synchronized with unsafe.md's rule that unsafe fn bodies are not implicitly unsafe contexts
-      - current frontend does not yet model register width/class compatibility, target register identity, target feature requirements, privilege, or assembler dialect through CompilationPlan
-      - current lowering goes from AST-level asm directly toward LLVM constraint strings rather than preserving a first-class complete Semantic IR/Sec MLIR asm contract
-      - current model does not yet distinguish precise memory effects, unknown memory, external effects, machine-state effects, atomic/order/completion contracts, or stack effects
-      - current model does not yet carry compiler-visible global symbol dependencies/relocations for asm
-      - current model does not yet enforce object-model directive restrictions or general control-flow/stack boundary requirements
     remaining:
       - synchronize grammar, unsafe, effects, platform, FFI, ISR, stack, linking, Semantic IR, MLIR, diagnostics, formatter, and LSP references
       - retain target applicability scope in its owning target rulebook; asm must only consume the already resolved CompilationPlan
@@ -790,22 +777,6 @@ integrations:
       - LSP and compiler resolve identical asm target/register/feature facts
       - Pending target-assembly validation is not presented as completed Valid
       - identical source, CompilationPlan, contracts, and toolchain semantics yield deterministic resolved asm semantics
-    excluded:
-      - direct Sec MLIR source injection
-      - direct LLVM IR source injection
-      - LLVM constraint syntax as Sec source syntax
-      - a general volatile keyword, @volatile attribute, asm volatile, or volatile asm form
-      - direct high-level string/aggregate/user-defined/shaped asm operands in Sec 0.1
-      - implicit integer width conversion at the asm boundary
-      - implicit ownership transfer through register operands
-      - general asm goto across Sec CFG boundaries
-      - ordinary inline-asm naked functions
-      - ordinary inline-asm permanent stack switching
-      - a parallel global symbol/section/object-file/link model inside asm
-      - automatic inference of atomicity, interrupt masking, ordering, completion, blocking, or other correctness-critical semantics from instruction mnemonics
-      - a specific future GPU/SIMD machine-vector operand design
-      - "target applicability scope syntax such as the exact ownership of #target versus @target"
-    revised: "2026-11-10"
     verification:
       - command: go vet -p 4 ./internal/parser ./cmd/compiler ./cmd/lsp
         result: passed on 2026-11-10 after volatile asm rejection and parser extraction
@@ -823,3 +794,32 @@ integrations:
         result: passed on 2026-11-09 (2.510s); final CLI regression also asserts that invalid emit-ir produces no artifact
       - command: go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run "^TestAsmOperandTypes" -count=1
         result: passed on 2026-11-09; Sema 0.006s, CLI 2.480s, LSP 1.611s; twenty high-level input/output operand errors have canonical S1207, while primitive carriers, RawPtr and explicit conversion remain valid
+    incorrect_or_partial:
+      - current LLVM asm block lowering supports exactly one output and hardcodes the result type to i64
+      - current LLVM lowering coerces every asm input to i64, including implicit integer extension/truncation, contrary to the exact-width rule
+      - current LLVM lowering permits pointer-to-i64 coercion rather than preserving RawPtr as a target-aware raw-address operand contract
+      - current LLVM lowering supplies rcx and r11 as implicit default clobbers when none are declared; canonical inline asm has no architecture-specific hidden default clobber set
+      - current Sema requires at least one output for structured asm blocks, while canonical instruction-only/side-effect asm must be legal without artificial outputs
+      - current Sema derives asm output type from the enclosing function return or defaults to int64 instead of resolving an explicit low-level output type contract
+      - current source platform syscall functions use target-sized int/uint at the asm boundary and require migration to explicit fixed-width machine ABI values
+      - current platform syscall source places asm directly in unsafe fn bodies and must be synchronized with unsafe.md's rule that unsafe fn bodies are not implicitly unsafe contexts
+      - current frontend does not yet model register width/class compatibility, target register identity, target feature requirements, privilege, or assembler dialect through CompilationPlan
+      - current lowering goes from AST-level asm directly toward LLVM constraint strings rather than preserving a first-class complete Semantic IR/Sec MLIR asm contract
+      - current model does not yet distinguish precise memory effects, unknown memory, external effects, machine-state effects, atomic/order/completion contracts, or stack effects
+      - current model does not yet carry compiler-visible global symbol dependencies/relocations for asm
+      - current model does not yet enforce object-model directive restrictions or general control-flow/stack boundary requirements
+    excluded:
+      - direct Sec MLIR source injection
+      - direct LLVM IR source injection
+      - LLVM constraint syntax as Sec source syntax
+      - a general volatile keyword, @volatile attribute, asm volatile, or volatile asm form
+      - direct high-level string/aggregate/user-defined/shaped asm operands in Sec 0.1
+      - implicit integer width conversion at the asm boundary
+      - implicit ownership transfer through register operands
+      - general asm goto across Sec CFG boundaries
+      - ordinary inline-asm naked functions
+      - ordinary inline-asm permanent stack switching
+      - a parallel global symbol/section/object-file/link model inside asm
+      - automatic inference of atomicity, interrupt masking, ordering, completion, blocking, or other correctness-critical semantics from instruction mnemonics
+      - a specific future GPU/SIMD machine-vector operand design
+      - "target applicability scope syntax such as the exact ownership of #target versus @target"

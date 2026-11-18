@@ -241,9 +241,9 @@ func TestEditCommandsChangeOnlyTheNamedData(t *testing.T) {
 		"  - id: core.two\n" +
 		"    status: planned\n" +
 		"    document_revision: \"2.0\"\n" +
-		"    remaining: []\n" +
 		"    tests:\n" +
-		"      - internal/old_test.go\n"
+		"      - internal/old_test.go\n" +
+		"    remaining: []\n"
 	if got := readFile(t, path); got != want {
 		t.Fatalf("after edits:\n%s\nwant:\n%s", got, want)
 	}

@@ -115,6 +115,8 @@ func TestKnownDiagnosticSeverities(t *testing.T) {
 		ToStringSignature:                             SeverityError,
 		SemanticCompileTimeExecutionUnavailable:       SeverityError,
 		AssertConditionNotBool:                        SeverityError,
+		IfConditionNotBool:                            SeverityError,
+		UnresolvedCreationLifecycle:                   SeverityError,
 		ExplicitSelfParameter:                         SeverityError,
 		UseAfterDiscard:                               SeverityError,
 		UnreachableStatement:                          SeverityError,

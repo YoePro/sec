@@ -20,6 +20,7 @@ type AtomicMemoryPath struct {
 	ReadModifyWrite                       bool
 	ParticipatesInModificationOrder       bool
 	ReadsImmediatelyPrecedingModification bool
+	ReleaseSequence                       AtomicReleaseSequenceEffect
 }
 
 // ResolvedAtomicMemoryOperation preserves one validated operation and its
@@ -43,7 +44,7 @@ type ResolvedAtomicMemoryOperation struct {
 // recordAtomicMemoryOperation publishes only the already-validated atomic
 // receiver and orders. Canonical referent resolution preserves alias origins;
 // no method spelling on an ordinary user type establishes an atomic object.
-// Rules: rules/concurrency/concurrency_memory_model.md §§16–17,52;
+// Rules: rules/concurrency/concurrency_memory_model.md §§16–17,25–28,52;
 // rules/concurrency/atomics.md §§12–25,45–46.
 func (a *Analyzer) recordAtomicMemoryOperation(call *ast.CallExpression, member *ast.MemberExpression, order string) {
 	if a.summaryPass || !a.callGraphPathReachable {
@@ -82,6 +83,9 @@ func (a *Analyzer) recordAtomicMemoryOperation(call *ast.CallExpression, member 
 		}
 		writes := plan.Operation != "Load"
 		plan.Paths = []AtomicMemoryPath{{Order: order, ReadsStorage: plan.Operation != "Store", ModifiesStorage: writes, ReadModifyWrite: rmw, ParticipatesInModificationOrder: writes, ReadsImmediatelyPrecedingModification: rmw}}
+	}
+	for i := range plan.Paths {
+		plan.Paths[i].ReleaseSequence = atomicReleaseSequenceEffect(plan.Paths[i])
 	}
 	if a.resolvedAtomicMemoryOperations == nil {
 		a.resolvedAtomicMemoryOperations = map[*ast.CallExpression]ResolvedAtomicMemoryOperation{}

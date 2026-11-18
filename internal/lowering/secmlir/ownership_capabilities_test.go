@@ -20,8 +20,8 @@ func TestPackage17SchemaCapabilityBoundary(t *testing.T) {
 		if err != nil || !bytes.Contains(output, []byte("sec.dialect_version = 13 : i32")) {
 			t.Fatalf("schema 13 was not honored: %q %v", output, err)
 		}
-		if output, err := EmitWithOptions(module, testPlan(width), EmitOptions{DialectVersion: 14}); output != nil || err == nil {
-			t.Fatalf("schema 14 was accepted: %q", output)
+		if output, err := EmitWithOptions(module, testPlan(width), EmitOptions{DialectVersion: 15}); output != nil || err == nil {
+			t.Fatalf("schema 15 was accepted: %q", output)
 		}
 		after, err := Emit(module, testPlan(width))
 		if err != nil || !bytes.Equal(before, after) {

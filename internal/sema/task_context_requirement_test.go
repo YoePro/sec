@@ -46,7 +46,7 @@ fn ThreadWork() int {
 fn main() void {
     let work := try spawn TaskWork() { Err(_) => { return } }
     await work
-    let worker := spawn thread ThreadWork()
+    let worker := try spawn thread ThreadWork() { Err(_) => { return } }
     join worker
     let direct := Task.Current()
     let viaWrapper := Wrapper()

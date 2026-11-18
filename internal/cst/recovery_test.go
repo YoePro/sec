@@ -34,7 +34,7 @@ func TestRecoveryAttachesProvenMissingSeparatorAfterItsAnchor(t *testing.T) {
 	if element := document.Elements[node.First]; element.Text != "int" || element.Span.End != anchor {
 		t.Fatalf("anchor element = %+v", element)
 	}
-	if node.DiagnosticID == "" || node.Confidence != parser.RecoveryUnambiguous {
+	if node.DiagnosticID == "" || node.Confidence != parser.RecoveryUnambiguous || node.Context != parser.RecoveryContextStruct {
 		t.Fatalf("diagnostic identity = %+v", node)
 	}
 }
@@ -50,7 +50,7 @@ func TestRecoveryKeepsUnprovenMissingTokenAnchorsInexact(t *testing.T) {
 	node := document.Recovery[0]
 	closer := len(source) - len("}\n")
 	if node.Kind != MissingToken || node.AnchorExact || !node.Located || node.Span != (Span{closer, closer}) ||
-		document.Elements[node.First].Text != "}" || node.Expected[0] != lexer.RPAREN {
+		document.Elements[node.First].Text != "}" || node.Expected[0] != lexer.RPAREN || node.Context != parser.RecoveryContextGroupedExpression {
 		t.Fatalf("missing ')' = %+v", node)
 	}
 }

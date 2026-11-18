@@ -28,7 +28,7 @@ fn ImplicitTaskSpawn() void {
 }
 
 fn ThreadSpawn() void {
-    let worker := spawn thread Work()
+    let worker := try spawn thread Work() { Err(_) => { return } }
     detach worker
 }
 
@@ -37,7 +37,7 @@ fn SpawnReturningValue() void {
     await implicitTask
     let explicitTask := try spawn task Calculate() { Err(_) => { return } }
     await explicitTask
-    let workerThread := spawn thread Calculate()
+    let workerThread := try spawn thread Calculate() { Err(_) => { return } }
     join workerThread
 }
 
@@ -46,7 +46,7 @@ fn SpawnWithArguments() void {
     await implicitTask
     let explicitTask := try spawn task Add(30, 40) { Err(_) => { return } }
     await explicitTask
-    let workerThread := spawn thread Add(50, 60)
+    let workerThread := try spawn thread Add(50, 60) { Err(_) => { return } }
     join workerThread
 }
 
@@ -71,7 +71,7 @@ fn SpawnExplicitTaskMethodCall() void {
 }
 
 fn SpawnThreadMethodCall() void {
-    let worker := spawn thread Worker.Run()
+    let worker := try spawn thread Worker.Run() { Err(_) => { return } }
     detach worker
 }
 
@@ -91,14 +91,14 @@ impl Worker {
 fn SpawnInstanceMethod(worker: ref Worker) void {
     let taskHandle := try spawn worker.Process() { Err(_) => { return } }
     await taskHandle
-    let threadHandle := spawn thread worker.Process()
+    let threadHandle := try spawn thread worker.Process() { Err(_) => { return } }
     join threadHandle
 }
 
 fn SpawnGenericFunction() void {
     let taskHandle := try spawn Identity[int](10) { Err(_) => { return } }
     await taskHandle
-    let threadHandle := spawn thread Identity[int](20)
+    let threadHandle := try spawn thread Identity[int](20) { Err(_) => { return } }
     join threadHandle
 }
 
@@ -109,7 +109,7 @@ fn Identity[T](value: T) T {
 fn SpawnQualifiedFunction() void {
     let taskHandle := try spawn Run() { Err(_) => { return } }
     await taskHandle
-    let threadHandle := spawn thread Run()
+    let threadHandle := try spawn thread Run() { Err(_) => { return } }
     detach threadHandle
 }
 
@@ -121,7 +121,7 @@ fn MultipleSpawnStatements() void {
     await first
     let second := try spawn task Work() { Err(_) => { return } }
     await second
-    let third := spawn thread Work()
+    let third := try spawn thread Work() { Err(_) => { return } }
     detach third
 }
 
@@ -130,7 +130,7 @@ fn SpawnInIf(condition: bool) void {
         let worker := try spawn Work() { Err(_) => { return } }
         await worker
     } else {
-        let worker := spawn thread Work()
+        let worker := try spawn thread Work() { Err(_) => { return } }
         detach worker
     }
 }

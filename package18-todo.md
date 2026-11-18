@@ -258,63 +258,198 @@ hidden allocation, mandatory runtime, physical descriptor or allocator choice
 
 ## D. Connect source lowering through resolved plans only
 
-- [ ] P18-23 — Builder lowers `T[]` declarations, defaults, moves,
+- [x] P18-23 — Builder lowers `T[]` declarations, defaults, moves,
   producers, `.Len`, indexing, element writes and borrows solely from the P18
   plans; anything unplanned is a package-18 unsupported error with no partial
-  module.
-- [ ] P18-24 — Integration with P13 nesting, P14, union/Result/Option
-  nesting, function parameters and results (§§ 102–105).
-- [ ] P18-25 — Boundaries: FFI, raw pointers, iterators, equality and
-  membership stay rejected or explicit (§§ 106–110).
-- [ ] P18-26 — Zero-sized element handling (§ 112).
+  module. Done 2026-11-18: every T[] form lowers from its P18 plan (dynamic-array, index, allocation, owner Places incl. stored field paths) and every unplanned form is a package-18 unsupported error with no partial module: owners through references and call results, element paths, SizeOf, Ptr, Clear, RemoveAt, ToString, core producers, for and membership (TestPackage18SourceEndToEnd, TestPackage18NestingAndBoundaries). Range and non-trivial Append stay with P18-17/MD-135.
+- [x] P18-24 — Integration with P13 nesting, P14, union/Result/Option
+  nesting, function parameters and results (§§ 102–105). Done 2026-11-18: struct fields (the struct plan steps to the dynamic-array plan), union/Result/Option payloads and by-value parameters and results through P17 moves; T[N] and T[] stay distinct (TestPackage18NestingAndBoundaries, TestPackage18SourceEndToEnd, TestPackage18SemaTypeMatrix).
+- [x] P18-25 — Boundaries: FFI, raw pointers, iterators, equality and
+  membership stay rejected or explicit (§§ 106–110). Done 2026-11-18: FFI parameters (S1079) and equality (S1019) are rejected in Sema; raw-pointer Ptr, for iteration and membership stop at named boundaries with no lowering introduced (TestPackage18BoundarySurface, TestPackage18NestingAndBoundaries).
+- [x] P18-26 — Zero-sized element handling (§ 112). Done 2026-11-18: zero-sized elements keep append, length and destruction semantics through schema 14 and every verifier (TestPackage18NestingAndBoundaries).
 
 ## E. Schema 14 and the verifiers
 
-- [ ] P18-27 — Schema 14 version gates (after schemas 11–13), ODS/C++
-  registration, parser/printer (§ 81).
-- [ ] P18-28 — `!sec.dynamic_array<T>` and the operations
+- [x] P18-27 — Schema 14 version gates (after schemas 11–13), ODS/C++
+  registration, parser/printer (§ 81). Done 2026-11-18: schema 14 is
+  accepted, every P18 operation and `!sec.dynamic_array<T>` (also nested in
+  type attributes, signatures and block parameters) require it, and
+  `sec.fail.bounds {operation = "dynamic-array-index"}` is schema-14 only;
+  ODS in SecDynamicArrayOps.td, verifiers in DynamicArrayOps.cpp.
+- [x] P18-28 — `!sec.dynamic_array<T>` and the operations
   `sec.dynamic_array.empty`, `.allocate`, `.len`, `.len_int`,
   `.capacity_internal`, `.index_in_bounds`, `.element_place`,
-  `.append_prepared`, `.grow_backing` (§§ 82–91).
-- [ ] P18-29 — Backing transition representation and
+  `.append_prepared`, `.grow_backing` (§§ 82–91). Done 2026-11-18, plus
+  `.has_backing` and `.has_capacity` for the Semantic IR growth tests. Owner
+  operands are Places (writable for changes); element_place carries
+  bounds_kind/bounds_proof and backing_domain; counts are canonical decimals;
+  own.copy rejects a dynamic array (move-only).
+- [x] P18-29 — Backing transition representation and
   `sec.storage.establish_domain`, `.advance_epoch`, `.end_domain`,
-  `.reclaim` (§§ 92–96).
-- [ ] P18-30 — P17 destruction-plan, cleanup and replacement extensions;
-  P15 reference and P16 slice integration (§§ 97–101).
-- [ ] P18-31 — Dynamic-array verifier and storage-transition verifier;
-  required extensions of existing verifiers (§§ 128–130).
-- [ ] P18-32 — Go emitter from verified Semantic IR to schema 14.
+  `.reclaim` (§§ 92–96). Done 2026-11-18: resolved backing facts are typed
+  properties (domain, transition, allocation, allocation_context, origin,
+  relation, authority, reclamation, stability, space); establishment checks
+  owned relation, known authority and the owning-value reclamation pairing;
+  reclaim requires an owning-value plan.
+- [x] P18-30 — P17 destruction-plan, cleanup and replacement extensions;
+  P15 reference and P16 slice integration (§§ 97–101). Done 2026-11-18:
+  `kind = "dynamic-array"` plans with the element plan and
+  `backing = ["end-domain", "reclaim-per-allocation-plan"]` (verified; a
+  dynamic array always needs destruction); owned T[] locals are tracked by
+  cleanup, a move (`:<-`, consuming argument) cancels the source cleanup, a
+  returned owner travels in Result, and replacement is the transactional
+  own.replace_place under the dynamic-array plan; element Places carry the
+  backing domain; slice borrows accept a dynamic-array owner Place with the
+  runtime-length extent (TestSchema14DynamicArrayOwnership,
+  TestSchema14DynamicArrays).
+- [x] P18-31 — Dynamic-array verifier and storage-transition verifier;
+  required extensions of existing verifiers (§§ 128–130). Done 2026-11-18:
+  --sec-verify-dynamic-arrays (growth protocol: allocate/grow_backing tested
+  on failed, candidate never on its failure edge, transitions on the success
+  edge after the failed state test, append_prepared after ensured capacity)
+  and --sec-verify-storage-transitions (one backing domain per owner, nothing
+  after end_domain, reclaim directly after end_domain/advance_epoch of the
+  same owner and domain, advance only after a true has_backing, no element
+  Place or slice across grow_backing, no transition on a failed growth,
+  agreeing establishment facts); --sec-verify-places, slice guards,
+  destruction plans and own.copy/semantic_copy are extended; the CLI runs both
+  passes. The length/capacity relation has no visible static form (the
+  descriptor is never exposed), and capacity_internal has no source producer.
+- [x] P18-32 — Go emitter from verified Semantic IR to schema 14. Done
+  2026-11-18 (internal/lowering/secmlir/dynamic_array_emit.go): every P18
+  Semantic IR operation, the type text, destruction-plan backing steps and
+  `EmitOptions{DialectVersion: 14}`; schema 13 rejects dynamic arrays by name.
+  emit-ir/emit-sec-mlir inspect at package 18 / schema 14
+  (TestSchema14DynamicArrays, TestDynamicArraysReachTheInspectionBoundaries).
 
 ## F. Lowering without physical choices
 
-- [ ] P18-33 — No mandatory heap/runtime, no physical descriptor lowering,
+- [x] P18-33 — No mandatory heap/runtime, no physical descriptor lowering,
   no physical allocator lowering; capability diagnostics on targets without
-  an allocation context (MD-034) (§§ 116–118).
+  an allocation context (MD-034; selection syntax MD-139) (§§ 116–118).
 
-## G. Tests (package-required matrices)
-
-- [ ] P18-34 — Sema/type tests (§ 119).
-- [ ] P18-35 — Allocation-plan tests (§ 120).
-- [ ] P18-36 — Dynamic-array invariant tests (§ 121).
-- [ ] P18-37 — Indexing tests (§ 122).
-- [ ] P18-38 — Slice integration tests (§ 123; needs P16).
-- [ ] P18-39 — Storage transition tests (§ 124).
-- [ ] P18-40 — Destruction tests (§ 125; needs P17).
-- [ ] P18-41 — Growth tests (§ 126).
-- [ ] P18-42 — MLIR dialect tests (§ 127).
-- [ ] P18-43 — End-to-end source tests on 32- and 64-bit plans (§ 131).
-- [ ] P18-44 — Unsupported/new-surface tests and core materialization
-  integration tests (§§ 132–133).
+## G. Tests (package-required matrices) Done 2026-11-18: the schema-14 module names no heap, registry, LLVM struct, memref or allocator call; --sec-lower-to-llvm rejects !sec.dynamic_array as [unsupported-lowering]; a reachable allocation under noalloc is a compile-time diagnostic while the empty default stays valid (dynamic-array cleanup is allocation-free when the element cleanup is). The unresolved freestanding profile is the MD-034 configuration gap (platform.target-profiles) (TestPackage18NoPhysicalLowering, TestPackage18AllocationPlanMatrix).
+- [x] P18-34 — Sema/type tests (§ 119). Done 2026-11-18: TestPackage18SemaTypeMatrix covers every § 119 row.
+- [x] P18-35 — Allocation-plan tests (§ 120). Done 2026-11-18: TestPackage18AllocationPlanMatrix: explicit plan, noalloc error, empty default in noalloc, AllocationError identity with InvalidSize, CollectionError mapping without panic, Arena context and reclamation pairing; no allocator selection is P18-33. Boundaries: no allocator-backed (individually reclaimable) context is selected (MD-034; selection syntax MD-139), and element alignment is a P24 layout fact.
+- [x] P18-36 — Dynamic-array invariant tests (§ 121). Done 2026-11-18: TestPackage18Matrices §121 rows; the nonzero-capacity empty state and construction failure are boundaries of P18-18/P18-22 (no source producer).
+- [x] P18-37 — Indexing tests (§ 122). Done 2026-11-18: TestPackage18Matrices §122 rows plus TestPackage18BorrowAndElementMatrix (move-only read rejected); guard dominance by --sec-verify-places and the invalid-schema14 lit tests.
+- [x] P18-38 — Slice integration tests (§ 123; needs P16). Done 2026-11-18: TestPackage18Matrices §123 rows plus TestPackage18BorrowAndElementMatrix (slice blocks growth, growth after the slice ends, replacement through a mutable slice).
+- [x] P18-39 — Storage transition tests (§ 124). Done 2026-11-18: TestPackage18Matrices §124 rows; logical backing replacement (replace-domain) is never selected, so growth advances the epoch conservatively.
+- [x] P18-40 — Destruction tests (§ 125; needs P17). Done 2026-11-18: TestPackage18Matrices §125 rows (reverse element destruction exactly for non-trivial elements, Arena owners never reclaim individually, move and replacement from dynamic_array_ownership.sec); the allocator-backed owner is the MD-034 boundary.
+- [x] P18-41 — Growth tests (§ 126). Done 2026-11-18: TestPackage18Matrices §126 rows plus the Sema borrow rows; in-place growth is not distinguished from relocation and non-relocatable elements (§ 69) have no source type, both under P18-17.
+- [x] P18-42 — MLIR dialect tests (§ 127). Done 2026-11-18:
+  schema14-dynamic-array.mlir (every operation, the plan and all verifiers),
+  schema14-dynamic-array-types.mlir (round-trip with wide, struct and nested
+  dynamic-array elements), invalid-schema14-dynamic-array.mlir and
+  -protocol.mlir (local and protocol rejections),
+  invalid-schema13-dynamic-array-type.mlir (schema-13 regression).
+- [x] P18-43 — End-to-end source tests on 32- and 64-bit plans (§ 131). Done 2026-11-18: testdata/semantic_ir/dynamic_array_source.sec lowers to verified schema 14 on 32- and 64-bit plans: byte[] owner, move, consuming parameter, Result/Option return, union payload, struct field owner (new field-path owner Places), Len, IsEmpty (new: length == 0), len, index read and replacement, ref [..], ref mut [..] and Append; SizeOf (P24 stride), unsafe Ptr (P18-25), Clear and RemoveAt (no length-reducing schema-14 operation) and ToString (P23) stop at named boundaries (TestPackage18SourceEndToEnd).
+- [x] P18-44 — Unsupported/new-surface tests and core materialization
+  integration tests (§§ 132–133). Done 2026-11-18: § 132 invented surface (Push, Reserve, Capacity(), capacity, Clone(), element literals, implicit fixed/slice-to-owning conversions) is rejected (TestPackage18UnsupportedSurface; Append is normative in collections.md § 6.4); § 133 string.ToByteArray/ToRuneArray stop at the named MD-072/P23 boundary and the substrate is not claimed (TestPackage18CoreMaterializationBoundary). compilerKnownOption now substitutes its payload so Option results such as RemoveAt intern.
 
 ## H. Final acceptance, governance and handoff
 
-- [ ] P18-45 — Architecture rules check (§ 134) and acceptance criteria
-  matrix (§ 135).
-- [ ] P18-46 — Governance: reuse existing collection/allocation/lowering
+- [x] P18-45 — Architecture rules check (§ 134) and acceptance criteria
+  matrix (§ 135). Done 2026-11-18: see "P18-45 architecture and acceptance evidence" below: every § 134 rule and § 135 criterion with evidence; 40 met, 4 partial, 1 open, 1 not run; Package 18 stays partial.
+- [x] P18-46 — Governance: reuse existing collection/allocation/lowering
   entries; record implemented/partial/remaining and known holes; keep MD
-  links (MD-074, MD-034, MD-072, MD-050).
-- [ ] P18-47 — Implementation report (§ 136) and the Package 19 boundary
-  (§ 137).
+  links (MD-074, MD-034, MD-072, MD-050). Done 2026-11-18: lowering.sec-mlir-package18 stays partial with every open item and named boundary as a remaining item; Sync § 22 closed by semantic_ir.md § 127; MD-034, MD-072, MD-074 and MD-135 links kept; report linked.
+- [x] P18-47 — Implementation report (§ 136) and the Package 19 boundary
+  (§ 137). Done 2026-11-18: rules/mlir/packages/sec-mlir-dialect_package18-implementation-report.md, all 46 topics in order, with the Package 19 recommendations of § 137.
+
+## P18-45 architecture and acceptance evidence — 2026-11-18
+
+Snapshot: HEAD `c907b00c` plus the uncommitted working tree (P18 sections C–G
+on top of P13–P17 closed). Evidence names a test, verifier or file; `Partial`
+and `Open` name the owner of what remains. Nothing here declares Package 18
+complete.
+
+### § 134 architecture rules
+
+| Rule | Status | Evidence |
+|---|---|---|
+| T[] is an owning runtime-sized descriptor | Holds | `!sec.dynamic_array<T>` (no descriptor parameters); TestPackage18SemaTypeMatrix |
+| MoveOnly regardless of element | Holds | TestPackage18SemaTypeMatrix; own.copy/semantic_copy reject (invalid-schema14-dynamic-array.mlir) |
+| Implicit copy forbidden | Holds | S1007 rows in TestPackage18SemaTypeMatrix |
+| Deep duplication may not hide allocation/failure | Holds | no Clone surface (TestPackage18UnsupportedSurface) |
+| Empty default allocates nothing | Holds | dynamic-array.empty; noalloc row (TestPackage18AllocationPlanMatrix) |
+| Immutable bindings require an initializer | Holds | S1047 row |
+| Length is runtime state, not identity | Holds | identity row; type has only the element |
+| Capacity internal, no source member | Holds | Capacity/capacity rejected; capacity_internal has no source producer |
+| Every live element is initialized | Holds | append_prepared after ensured capacity (--sec-verify-dynamic-arrays) |
+| Capacity beyond length holds no live T | Holds | element Places guarded by the length (TestPackage18Matrices §121) |
+| Allocation explicit in Semantic IR | Holds | dynamic-array.grow-backing / allocate with allocation identities |
+| AllocationError, not panic/null | Holds | grow_backing failed + core::AllocationError → CollectionError |
+| No-allocation profiles support empty T[] | Holds | fixed 2026-11-18 (allocationCleanupCovered) |
+| Value ownership vs reclamation authority separate | Holds | authority/reclamation facts on backing; storage-transition verifier |
+| Arena-backed T[] never reclaims Arena bytes | Holds | Arena rows (§125); reclaim requires OwningValue |
+| Allocator-backed T[] records its reclamation plan | Partial | verifiers enforce the pairing; no allocator-backed context is selected (MD-034; selection syntax MD-139) |
+| Move does not imply relocation | Holds | own.move/move_from_place carry no storage transition (dynamic_array_ownership.sec) |
+| Element replacement does not invalidate backing | Holds | in-place mutation row (§124) |
+| Relocating growth emits an explicit transition | Holds | storage.advance_epoch on growth; protocol verifier |
+| References/slices never cross invalidating mutation | Holds | S1162 rows; --sec-verify-storage-transitions borrow-exclusion |
+| Slice borrowing reuses P15/P16 facts | Holds | slice.borrow_* over the owner Place, runtime-length extent |
+| Element indexing produces a P15 Place | Holds | dynamic-array.element-place |
+| Move-only indexed move-out deferred; RemoveAt explicit | Partial | move-out rejected (S1007); RemoveAt stops at a named boundary (no schema-14 removal op) |
+| Destruction reverse order, then domain end/reclaim | Holds | plan backing steps; destruction-plan verifier |
+| No invented Push/Reserve/Resize/Capacity/AsSlice API | Holds | TestPackage18UnsupportedSurface |
+| No physical descriptor layout | Holds | TestPackage18NoPhysicalLowering |
+| No physical allocator ABI | Holds | TestPackage18NoPhysicalLowering |
+| No mandatory heap/GC/refcount/registry | Holds | TestPackage18NoPhysicalLowering |
+| No LLVM dialect generated | Holds | --sec-lower-to-llvm rejects dynamic arrays as unsupported |
+
+### § 135 acceptance criteria
+
+| Criterion | Status | Evidence / owner |
+|---|---|---|
+| baseline documented | Met | P18-01; this snapshot |
+| previous package regressions green | Met | sema, ir/semantic, lowering/secmlir full; lit 238/238 (schemas 1–13 inputs) |
+| dynamic-array/default/copy sync applied | Met | P18-02 |
+| Semantic IR dynamic-array amendment applied | Met | semantic_ir.md § 127 (2026-11-18) |
+| schema-v14 dialect rulebook installed | Met | rules/mlir/dialect-versions/sec_mlir_dialect_v14.md |
+| lowering-v14 rulebook installed | Met | rules/mlir/lowering-versions/sec_mlir_lowering_v14.md |
+| T[] separate from fixed arrays/slices/lists | Met | identity rows |
+| T[] MoveOnly | Met | TestPackage18SemaTypeMatrix |
+| non-trivial destruction plan | Met | kind dynamic-array plans |
+| empty non-allocating default | Met | dynamic-array.empty; noalloc |
+| immutable no-initializer example corrected | Met | P18-03 (S1047) |
+| .Len, .IsEmpty, unsafe .Ptr, payload .SizeOf | Partial | Len and IsEmpty lowered; Ptr (P18-25) and SizeOf (P24 stride) are named boundaries |
+| len(T[]) no-truncation guard | Met | MD-074; len and .Len are the same uint |
+| internal capacity represented | Met | has_capacity / capacity_internal |
+| no public capacity member | Met | Capacity rows |
+| allocation context plan | Met | TestPackage18AllocationPlanMatrix |
+| AllocationError flow | Met | grow_backing failure CFG |
+| noalloc rejects only allocating operations | Met | noalloc rows |
+| allocation/reclamation pairing | Met | establishment verifiers |
+| ownership/reclamation authority separated | Met | backing facts |
+| DynamicArrayAllocateOp | Partial | IR + schema-14 op and verifiers; no source producer (P18-18, MD-072) |
+| internal append-prepared | Met | Append lowering |
+| internal grow-backing | Met | Append lowering |
+| initialized-prefix invariant verified | Met | --sec-verify-dynamic-arrays |
+| P17 partial construction cleanup | Open | P18-22 (no partial-construction producer) |
+| P17 move/replacement/cleanup | Met | P18-30 |
+| runtime index/place lowering | Met | element-place rows |
+| move-only indexed extraction rejected | Met | S1007 row |
+| Append, Clear, RemoveAt, ToString public surface | Partial | Append lowered (trivial elements; MD-135 for others); Clear/RemoveAt (no schema-14 op) and ToString (P23) are named boundaries |
+| P15 element reference integration | Met | element Places with backing domain; borrows |
+| P16 slice borrowing from T[] | Met | slice rows |
+| storage establish/advance/end/reclaim ops | Met | schema-14 ops |
+| relocating growth explicit transition | Met | advance_epoch |
+| direct borrow blocks invalidating growth | Met | S1162; storage-transition verifier |
+| Arena destruction/reclamation distinction | Met | Arena rows |
+| individually reclaimable backing works | Partial | verified in MLIR fixtures; never selected from source (MD-034; selection syntax MD-139) |
+| --sec-verify-dynamic-arrays registered | Met | pass + lit |
+| --sec-verify-storage-transitions registered | Met | pass + lit |
+| existing verifiers extended | Met | places, slice guards, destruction plans, copy |
+| no invented public growth API | Met | TestPackage18UnsupportedSurface |
+| no physical descriptor | Met | TestPackage18NoPhysicalLowering |
+| no allocator ABI | Met | TestPackage18NoPhysicalLowering |
+| no mandatory runtime | Met | TestPackage18NoPhysicalLowering |
+| check-sec-mlir passes | Met | lit 238/238 |
+| go test ./... passes | Not run | full suite needs owner authorization; package suites green |
+| legacy paths operational | Met | schema 11–13 emission and lit regressions |
+
+Result: 40 Met, 4 Partial, 1 Open, 1 Not run. Package 18 stays partial. (P18-23..26 closed later on 2026-11-18; the open criterion is P18-22 partial construction.)
 
 ## Recommended execution order
 

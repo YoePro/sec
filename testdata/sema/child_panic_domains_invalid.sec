@@ -1,0 +1,7 @@
+module main
+fn Crash() int { panic "synchronous panic" }
+fn Work(value: int) int { return value }
+@noPanic
+fn ParentArgument() Result[Task[int], TaskSpawnError] { return spawn Work(Crash()) }
+@noPanic
+fn Direct() int { return Crash() }

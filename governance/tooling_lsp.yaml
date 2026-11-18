@@ -357,8 +357,6 @@ integrations:
       - try handler/failure-set presentation and assertion hover have focused sibling files; hover reuses compiler-owned facts and contains no second error-handling engine
       - "remaining panic effect (2026-10-26): Sema publishes ResolvedTryRemainingPanicsOf, the call-graph panic effects and panicking call sites the protected expression introduced that the try does not convert (handler bodies excluded, converted failures filtered against the final graph); try hover lists them with callee, line and canonical panic reason names and stays silent when none remain"
     remaining: []
-    reconciliation:
-      - the migrated legacy statement that Option cannot propagate with try was superseded by errorhandling revision 2; rules/errors/errorhandling.md §§ 9 and 12.2 permit Option try
     verification:
       - command: go test ./internal/sema ./cmd/lsp ./internal/lsp/...
         result: passed on 2026-10-26 with TestResolvedTryRemainingPanics and TestTryHoverShowsRemainingPanicEffect
@@ -378,6 +376,8 @@ integrations:
         result: passed on 2026-10-03; declaration/use hover and member completion retain the exact fallible setter contract
       - command: go test ./cmd/lsp -count=1
         result: passed
+    reconciliation:
+      - the migrated legacy statement that Option cannot propagate with try was superseded by errorhandling revision 2; rules/errors/errorhandling.md §§ 9 and 12.2 permit Option try
 
   - id: tooling.lsp-responsiveness
     area: tooling-lsp
@@ -458,6 +458,7 @@ integrations:
     area: tooling-lsp
     status: partial
     integrated: "2026-10-03"
+    revised: "2026-11-04"
     summary: >-
       Implement workspace/symbol (VS Code "Go to Symbol in Workspace", Ctrl+T)
       as a projection of Sema-resolved declarations across the workspace,
@@ -521,7 +522,6 @@ integrations:
         result: passed on 2026-10-14; capability negotiation, older-client compatibility, lazy resolve and repeated resolve, exact overload/member ranges, UTF-16, core containers, content changes, source deletion, malformed payloads, workspace removal, visibility and open-only sources
       - command: go test ./cmd/lsp -run 'TestWorkspaceSymbols|TestWorkspaceRoots|TestDocumentSymbols' -count=1
         result: passed on 2026-10-03 for open and unopened files with testdata excluded and cache refresh on change, case-insensitive ranked ordering, module-internal and private visibility from open documents, core marking, and workspace-folder changes
-    revised: "2026-11-04"
 
   - id: tooling.lsp-missing-comma-quick-fix
     area: tooling-lsp
@@ -556,6 +556,7 @@ integrations:
     area: tooling-lsp
     status: implemented
     integrated: "2026-10-03"
+    revised: "2026-10-26"
     summary: >-
       Member completion written directly as a returned value offers only members
       whose value type matches the expected return type, including property
@@ -592,8 +593,6 @@ integrations:
       - "expected value positions (2026-10-26): a selector written directly as the value of a typed let (binding type), an assignment (target binding type), a call argument (parameter type of the resolved call or the only overload of that arity; ref and variadic parameters excluded), a struct literal field (declared field type) or a match arm value (Sema's match type or the agreeing other arm types) completes only members of that type; untyped lets and selectors nested in larger expressions stay unfiltered"
       - "assignability (2026-10-26): every expected-type filter asks Sema's ValueAssignable (canInitialize for typed values) instead of comparing type names, so the one-way concrete-error-to-error widening, references, unit quantities and Sema's contextual conversions follow the compiler exactly"
     remaining: []
-    reconciliation:
-      - "the former remaining item named widening, Option/Result wrapping, generic instantiation and interface satisfaction; Sec has no implicit typed scalar widening (types.md typed scalar identity, typecompatibility matrix) and no implicit Some/Ok wrapping (Sema rejects `let x: Option[int] := y`), so the LSP offers exactly what Sema's assignability accepts and invents no further relation"
     verification:
       - command: go test ./cmd/lsp ./internal/sema ./internal/lsp/...
         result: passed on 2026-10-26 with TestMemberCompletionUsesExpectedValueTypes and TestExpectedTypeCompletionFollowsSemaAssignability; TestCompletionKeepsNamedStringOptionFlowAndEnumMembers now targets its intended untyped `let n := value.` site (the first `value.` is a typed uint let, which correctly filters)
@@ -609,12 +608,14 @@ integrations:
         result: passed on 2026-10-03 for a FileMode getter offering only FileMode fields and methods without the getter's own property, an unfiltered non-return selector, and a string method return
       - command: go test ./cmd/lsp -run 'Comparison|SwitchCaseCompletion|MatchArmCompletion|BlankLineOutside' -count=1
         result: passed on 2026-10-03 for == and != self. operands, an uncovered switch case, union, Option, and Result match arms, and unchanged global completion on a blank line outside match
-    revised: "2026-10-26"
+    reconciliation:
+      - "the former remaining item named widening, Option/Result wrapping, generic instantiation and interface satisfaction; Sec has no implicit typed scalar widening (types.md typed scalar identity, typecompatibility matrix) and no implicit Some/Ok wrapping (Sema rejects `let x: Option[int] := y`), so the LSP offers exactly what Sema's assignability accepts and invents no further relation"
 
   - id: tooling.lsp-inlay-hints
     area: tooling-lsp
     status: partial
     integrated: "2026-10-04"
+    revised: "2026-11-04"
     summary: >-
       Implements textDocument/inlayHint from Sema facts with individually
       configurable inferred-type and parameter-name categories, the first slice
@@ -706,12 +707,12 @@ integrations:
         result: passed on 2026-10-04 for inferred let types, omitted hints for struct literals, declared types, single-argument calls, and same-named arguments, range restriction, and per-category settings
       - command: go test ./cmd/lsp -run 'InlayHints' -count=1
         result: passed on 2026-10-04 for moves-if-selected on a move-only union payload binding without a hint on a trivially copied binding, implicit ref and ref mut call-site borrows, no hint for explicit ref or existing references, and the ownership setting
-    revised: "2026-11-04"
 
   - id: tooling.lsp-interface-conformance-lens
     area: tooling-lsp
     status: implemented
     integrated: "2026-10-04"
+    revised: "2026-11-05"
     summary: Interface and implementing-type lenses and whole-program sec analyse consume compiler-owned conformance facts across module platform sources and configured project variants. CLI verbose and JSON reports retain exact module/declaration identities, missing implementations, proof states and registered member diagnostics; explicit target and analysis/function scopes remain respected.
     rules:
       - rules/tooling/lsp.md
@@ -795,16 +796,13 @@ integrations:
         result: passed on 2026-10-10 with compiler-owned conformance snapshots instead of LSP inference from Implements or diagnostic text; same-name-prefix and unresolved-requirement regressions covered
       - command: go test ./cmd/lsp -run InterfaceConformanceLens -count=1
         result: passed on 2026-10-04 for a module with linux and windows implementations, conforming on both and failing on windows only with the failing location
-    revised: "2026-11-05"
 
   - id: tooling.lsp-multi-target-diagnostics
     area: tooling-lsp
     status: partial
     integrated: "2026-10-04"
-    summary: >-
-      Publishes diagnostics of a target-independent document for every target
-      its project variants or module's platform files select, recording each
-      diagnostic's applicability as the rulebook requires.
+    revised: "2026-11-18"
+    summary: Publishes target-qualified diagnostics and exposes existing per-target results through a read-only current-snapshot status request and the VS Code SEC Target Comparison tree. Logical target/variant identities remain distinct even on the same platform; missing, incomplete and stale comparisons remain unavailable. Existing open/save/project-switch comparison scheduling is preserved; incremental while-typing recomputation remains open.
     rules:
       - rules/tooling/lsp.md
       - rules/platform/platform_model.md
@@ -814,12 +812,21 @@ integrations:
       - cmd/lsp/main.go
       - cmd/lsp/target_analysis.go
       - cmd/lsp/interface_conformance_lens.go
+      - cmd/lsp/target_status.go
+      - cmd/lsp/request_queue.go
+      - vscode/src/targetStatus.ts
+      - vscode/src/targets.ts
+      - vscode/src/extension.ts
+      - vscode/package.json
+      - vscode/README.md
     tests:
       - cmd/lsp/target_selection_test.go
       - testdata/lsp/target_selection/
       - cmd/lsp/cross_target_diagnostics_test.go
       - cmd/lsp/target_analysis_test.go
       - testdata/lsp/shared_target_analysis
+      - cmd/lsp/target_status_test.go
+      - vscode/test/targetStatus.test.cjs
     implemented:
       - "project variants and active selection (2026-10-08): diagnostics retain logical-target/output-variant identity for distinct scalar plans and duplicate platforms; target switches and watched project changes invalidate and recompute background comparisons; the canonical target selection implementation is owned by frontend.target-sized-integer-semantics in governance/types.yaml"
       - on didOpen and didSave a document without its own
@@ -827,18 +834,23 @@ integrations:
       - publication merges them with the active diagnostics; every-target diagnostics are unchanged, some-target diagnostics state "applies to N of M targets", and diagnostics absent on the active target are added prefixed with their targets
       - stdlib/os file.sec analyzes on 18 targets in about 1.9 s off the request path
       - "Shared per-target Sema snapshots (2026-11-04): background diagnostics and interface/type conformance lenses use analysisForTarget for one computation per matching prepared active-document/source/import closure and effective target. Snapshots retain detached errors, warnings and compiler conformance facts; no mutable Analyzer is shared. Immutable serialized snapshots are bounded to 32 entries and 8 MiB; concurrent matching requests coalesce, failures release waiters and are never cached as successful empty results. Fingerprints include prepared AST/token locations, import errors, scalar plan, manifest snapshot, explicit selection and server epoch. The lens presentation key follows the same fingerprint, including imported source and configuration changes. Existing source preparation and open/save scheduling remain; incremental parsing and while-typing comparison stay separately owned."
+      - "Dedicated VS Code target status/comparison view (2026-11-18; lsp.md sections 23.1-23.2): SEC Target Comparison in Explorer shows each compiler-provided logical target/output variant, platform/width tooltip, active comparison target, error/warning counts and expandable source-navigable diagnostics. Existing target selection and refresh actions are exposed in the view. New read-only sec/targetStatus projects stored compiler comparisons and canonical target options without running another analysis or selecting a target; standard document parameters enable queued-change/close supersession and formatting priority. Absent, partial, edited or closed snapshots and changed target sets cannot become successful zero-error rows. The client immediately clears obsolete rows and rejects late responses by generation, document URI and version. A current empty diagnostic list is distinguished from unavailable; no positive all-analysis or lowering proof is inferred. Headless client, real compiler-backed protocol, snapshot and race regressions cover these behaviors; manual VS Code GUI inspection was not performed."
     remaining:
       - recompute while typing once incremental per-target analysis exists
-      - dedicated target status panel and target comparison views beyond the implemented VS Code selector/status-bar indicator
     verification:
+      - command: cd vscode && npm run test:target-status
+        result: Passed on 2026-11-18 (headless Node test, 585ms final run). Test compiles TypeScript into a temporary directory, then checks current target/error counts, canonical platform tooltip, source navigation, multiline explanation, immediate dirty-state clearing, unavailable versus clean rows, out-of-order replies and departed editors. TypeScript noEmit compilation also passed. No generated artifacts retained and no manual extension-host/GUI test claimed.
+      - command: go test ./cmd/lsp -run '^TestTargetStatus' -count=1 -timeout=120s; go test -race ./cmd/lsp -run 'TargetStatus|TargetSelection|CrossTarget|FormattingOvertakesOnlyQueuedAnalysisRequests|RequestQueue|Superseded' -count=1 -timeout=180s; go vet ./cmd/lsp
+        result: "Passed on 2026-11-18: new normal suite 2.221s; final race selection 78.437s; vet clean. Tests project real per-target Sema diagnostics, preserve duplicate-platform variant identities and selected target state, distinguish missing/current-clean/incomplete/dirty/closed snapshots, detach presentation slices/options, reject obsolete target sets and invalid URIs, and retain request supersession/formatting priority. Existing comparison invalidation and target selection tests remain passing."
       - command: go test -p 4 -race ./cmd/lsp -run 'SharedTargetAnalysis|TargetSnapshotCache|CrossTarget|InterfaceConformance|InterfaceLens|TypeConformanceLens|CodeLensResolve|TargetSelection|TargetPlan' -count=1 -timeout=180s; go test -p 4 -race ./cmd/lsp -run 'SharedTargetAnalysis|TargetSnapshot' -count=1 -timeout=120s; go vet -p 4 ./cmd/lsp
         result: "Passed 2026-11-04 using disk GOCACHE/GOTMPDIR: broad target/conformance/lazy-resolve race suite 66.008s; final new snapshot/selection/budget/failure race suite 25.478s; normal new suite 4.606s; vet clean. Real consumers run Sema exactly once per target in either request order and concurrently. Coverage includes width-dependent diagnostics, detached nested facts, import and platform source edits on disk/in overlays, manifest and explicit selection/epoch changes, presentation invalidation, coalescing, entry/byte/oversize limits, panic/error waiter release and retry. Remaining 3 to 2 for this ID, tooling_lsp.yaml 21 to 20; no replacement remaining or MD."
       - command: go test ./cmd/lsp -run CrossTargetDiagnostics -count=1
         result: passed on 2026-10-04 for a shared file calling a method that only the linux platform file provides, reported as windows-only with applicability, and no cross-target pass for a
-    revised: "2026-11-04"
 
   - id: tooling.lsp-binding-name-collisions
+    area: tooling
     status: implemented
+    integrated: "2026-10-09"
     summary: >-
       Hover and completion present locals and parameters from the binding Sema
       resolved or declared at the exact position instead of the module-wide name
@@ -847,18 +859,16 @@ integrations:
     rules:
       - rules/tooling/lsp.md
       - rules/foundations/names_scopes_visibility.md
-    implemented:
-      - "hover on a parameter or local, at its declaration or a use, presents the binding from Sema's ResolvedBindingAt or the new ResolvedBindingDeclaredAt; Fields(value: string) in sec/stdlib/str/split.sec was hovered as value: rune because the overloaded method AppendRepeat(value: rune, ...) in builder.sec was the last binding named value analyzed in the module"
-      - identifier and expected-type completion select, per name, the binding of the completed file declared closest before the cursor in the enclosing function through the new ResolvedBindingDeclarations, and skip name-table locals from other files; the current parameter value was previously not offered at all in a module whose sibling file declared another value
-    remaining: []
-    area: tooling
-    integrated: "2026-10-09"
     code:
       - cmd/lsp/hover.go
       - cmd/lsp/main.go
       - internal/sema/semantic_facts.go
     tests:
       - cmd/lsp/hover_binding_scope_test.go
+    implemented:
+      - "hover on a parameter or local, at its declaration or a use, presents the binding from Sema's ResolvedBindingAt or the new ResolvedBindingDeclaredAt; Fields(value: string) in sec/stdlib/str/split.sec was hovered as value: rune because the overloaded method AppendRepeat(value: rune, ...) in builder.sec was the last binding named value analyzed in the module"
+      - identifier and expected-type completion select, per name, the binding of the completed file declared closest before the cursor in the enclosing function through the new ResolvedBindingDeclarations, and skip name-table locals from other files; the current parameter value was previously not offered at all in a module whose sibling file declared another value
+    remaining: []
     verification:
       - command: go test ./cmd/lsp ./internal/sema -count=1
         result: passed on 2026-10-09; both regression tests fail without the fix

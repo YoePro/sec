@@ -1,0 +1,41 @@
+module main
+
+fn Crash() int { panic "child panic" }
+fn Prep(value: int) int { return 10 / value }
+fn Work(value: int) int { return value }
+
+@noPanic
+fn SpawnTask() Result[Task[int], TaskSpawnError] { return spawn Crash() }
+@noPanic
+fn SpawnThread() Result[Thread[int], ThreadSpawnError] { return spawn thread Crash() }
+@noPanic
+fn SpawnLambda() Result[Task[int], TaskSpawnError] {
+    return spawn fn() int { panic "lambda child" }
+}
+@noPanic
+fn SpawnThreadLambda() Result[Thread[int], ThreadSpawnError] {
+    return spawn thread fn() int { panic "thread lambda child" }
+}
+@noPanic
+fn SpawnValue() Result[Task[int], TaskSpawnError] {
+    let operation := fn() int { panic "callable child" }
+    return spawn operation()
+}
+fn ParentArgument(value: int) Result[Task[int], TaskSpawnError] {
+    return spawn Work(Prep(value))
+}
+fn Middle() Result[Task[int], TaskSpawnError] { return SpawnTask() }
+fn Top() Result[Task[int], TaskSpawnError] { return Middle() }
+fn Synchronous() int { return Crash() }
+extern "C" fn Foreign() int
+@noPanic
+fn SpawnForeign() Result[Thread[int], ThreadSpawnError] { return spawn thread Foreign() }
+@noPanic
+fn SpawnCaptured(value: int) Result[Task[int], TaskSpawnError] {
+    let operation := capture(value) fn() int { assert value == 0, "captured child"
+        return value }
+    return spawn operation()
+}
+fn CrashGeneric[T](value: T) int { panic "generic child" }
+@noPanic
+fn SpawnGeneric() Result[Task[int], TaskSpawnError] { return spawn CrashGeneric[int](1) }

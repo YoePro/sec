@@ -3,6 +3,7 @@ import * as vscode from "vscode";
 import { LanguageClient, LanguageClientOptions, ServerOptions } from "vscode-languageclient/node";
 
 import { registerTargetSelection } from "./targets";
+import { registerTargetStatus } from "./targetStatus";
 
 let client: LanguageClient | undefined;
 let output: vscode.OutputChannel | undefined;
@@ -56,6 +57,7 @@ export function activate(context: vscode.ExtensionContext) {
   registerCompilerKnownDefinitions(context);
   registerShowLocations(context);
   registerTargetSelection(context, () => client);
+  registerTargetStatus(context, () => client);
   client.start().catch((error) => {
     const message = error instanceof Error ? error.message : String(error);
     output?.appendLine(`Failed to start SEC language server: ${message}`);

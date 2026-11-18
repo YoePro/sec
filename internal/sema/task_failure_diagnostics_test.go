@@ -29,11 +29,17 @@ func TestTaskFailureDomainDiagnostics(t *testing.T) {
 		a := NewAnalyzer()
 		errors := a.Analyze(program)
 		if mode == "invalid" {
-			if len(errors) != 21 {
+			if len(errors) != 22 {
 				t.Fatalf("%d errors: %v", len(errors), errors)
 			}
 			missing := 0
 			for _, err := range errors {
+				if err.ID == diagnostics.UnresolvedCreationLifecycle {
+					if !strings.Contains(err.Message, "creation result creation") || err.Help == "" {
+						t.Fatal(err)
+					}
+					continue
+				}
 				if err.ID == diagnostics.UnionVariantPayloadRequired {
 					missing++
 				} else if err.ID != diagnostics.TaskFailureDomainMismatch {

@@ -16,6 +16,7 @@ import (
 //   - rules/compiler/parser_recovery.md — "Register recovery"
 //   - rules/tooling/formatter.md — §5(2,4–5),§22(1)
 func (p *Parser) parseRegisterType() *ast.RegisterType {
+	defer p.withRecoveryContext(RecoveryContextRegister)()
 	registerType := &ast.RegisterType{
 		Token:           p.curToken,
 		AllocationOrder: "lsb-first",
@@ -96,6 +97,7 @@ func (p *Parser) parseRegisterType() *ast.RegisterType {
 // byte-order modifier spellings, leaving semantic values on RegisterType.
 // Rules: rules/declarations/registers.md — §7 "Field allocation order",§8 "Byte order".
 func (p *Parser) parseRegisterTypeModifier() (string, bool) {
+	defer p.withRecoveryContext(RecoveryContextRegister)()
 	prefix := p.curToken.Lexeme
 	if prefix != "lsb" && prefix != "msb" && prefix != "little" && prefix != "big" {
 		return "", false

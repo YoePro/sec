@@ -32,8 +32,19 @@ func (a *Analyzer) analyzeBlockStatementsWithRecovery(block *ast.BlockStatement,
 		symbolsBefore[name] = true
 	}
 	a.scopeDepth++
+	// Preserve a proven failure's lack of child ownership before calls in
+	// this block invalidate transient comparison facts.
+	// Rules: rules/concurrency/tasks.md §4(5); ownership.md §§20–21.
+	a.recordResolvedCreationLifecycles()
 	refinementCount := len(a.activeConditionFacts)
 	defer func() {
+		a.recordResolvedCreationLifecycles()
+		if a.currentCleanupScope != 0 && a.cleanupFlow.roots[a.currentCallable] == a.currentCleanupScope && a.blockCanFallThrough(block) {
+			// Parameters predate the block's local-name snapshot but their
+			// owned creation Results also leave the invocation here.
+			// Rules: rules/memory/ownership.md §§14,17.
+			a.checkCreationLifecyclesAtReturn()
+		}
 		a.recordBlockExitKnownVariants(block)
 		if _, wanted := a.blockExitConstInts[block]; wanted {
 			a.blockExitConstInts[block] = copyConstInts(a.constInts)

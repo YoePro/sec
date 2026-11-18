@@ -1,0 +1,65 @@
+module main
+
+let mut trace: int := 0
+
+fn Probe(tag: int, answer: bool) bool {
+    trace = trace * 10 + tag
+    return answer
+}
+
+fn Choose(a: bool, b: bool, c: bool) int {
+    if Probe(1, a) && Probe(2, b) {
+        trace = trace * 10 + 7
+        return 7
+    } else if Probe(3, c) || Probe(4, a) {
+        trace = trace * 10 + 8
+        return 8
+    } else {
+        trace = trace * 10 + 9
+        return 9
+    }
+}
+
+fn Check(a: bool, b: bool, c: bool, expected: int, expectedTrace: int) bool {
+    trace = 0
+    let chosen := Choose(a, b, c)
+    return chosen == expected && trace == expectedTrace
+}
+
+fn Grouped(a: bool, b: bool, c: bool) int {
+    if !(Probe(1, a) || Probe(2, b)) && Probe(3, c) {
+        return 1
+    }
+    return 0
+}
+
+fn CheckGrouped(a: bool, b: bool, c: bool, expected: int, expectedTrace: int) bool {
+    trace = 0
+    let chosen := Grouped(a, b, c)
+    return chosen == expected && trace == expectedTrace
+}
+
+fn Join(ready: bool) int {
+    let mut value := 0
+    if ready {
+        value = 1
+    }
+    return value
+}
+
+fn main() int {
+    if !Check(true, true, true, 7, 127) { return 1 }
+    if !Check(true, true, false, 7, 127) { return 2 }
+    if !Check(true, false, true, 8, 1238) { return 3 }
+    if !Check(true, false, false, 8, 12348) { return 4 }
+    if !Check(false, true, true, 8, 138) { return 5 }
+    if !Check(false, false, true, 8, 138) { return 6 }
+    if !Check(false, true, false, 9, 1349) { return 7 }
+    if !Check(false, false, false, 9, 1349) { return 8 }
+    if !CheckGrouped(true, false, true, 0, 1) { return 9 }
+    if !CheckGrouped(false, true, true, 0, 12) { return 10 }
+    if !CheckGrouped(false, false, true, 1, 123) { return 11 }
+    if !CheckGrouped(false, false, false, 0, 123) { return 12 }
+    if Join(true) != 1 || Join(false) != 0 { return 13 }
+    return 0
+}

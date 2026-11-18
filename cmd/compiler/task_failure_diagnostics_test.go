@@ -27,11 +27,11 @@ func TestTaskFailureDomainDiagnosticsCLI(t *testing.T) {
 		t.Fatal(code, output)
 	}
 	doc := decodeOccurrenceDocument(t, output)
-	if doc.Summary.Errors != 21 || len(doc.Occurrences) != 21 {
+	if doc.Summary.Errors != 22 || len(doc.Occurrences) != 22 {
 		t.Fatal(output)
 	}
 	for _, occurrence := range doc.Occurrences {
-		if occurrence.ID == nil || (*occurrence.ID != "S1234" && *occurrence.ID != "S1151") || len(occurrence.Help) == 0 {
+		if occurrence.ID == nil || (*occurrence.ID != "S1234" && *occurrence.ID != "S1151" && *occurrence.ID != "S1247") || len(occurrence.Help) == 0 {
 			t.Fatal(occurrence)
 		}
 	}

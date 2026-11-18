@@ -4,6 +4,7 @@ import (
 	"os"
 	"sec/internal/ast"
 	"sec/internal/ast/walk"
+	"sec/internal/diagnostics"
 	"sec/internal/lexer"
 	"sec/internal/parser"
 	"strings"
@@ -56,6 +57,9 @@ func TestIfTryConditionsRequireBooleanSuccess(t *testing.T) {
 			}
 			for i, want := range []string{"int", "string", "Configuration", "int"} {
 				diagnostic := errors[i]
+				if diagnostic.ID != diagnostics.IfConditionNotBool || diagnostic.Help == "" {
+					t.Fatalf("missing shared bool-condition identity/help: %+v", diagnostic)
+				}
 				prefix := "try expression in if condition must produce bool, got "
 				if i == 3 {
 					prefix = "if condition must be bool, got "

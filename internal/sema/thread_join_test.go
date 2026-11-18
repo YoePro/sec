@@ -11,7 +11,7 @@ import (
 func TestThreadJoinStatement(t *testing.T) {
 	prelude := "module main\n\nfn Calculate() int {\n    return 42\n}\n\n"
 	valid := analyzeSourceRaw(t, prelude+`fn Joined() uint {
-    let worker := spawn thread Calculate()
+    let worker := try spawn thread Calculate() { Err(_) => { return 1 } }
     join worker
     let id := worker.ID
     return 0
@@ -23,7 +23,7 @@ fn TaskJoined() void {
 }
 
 fn Branches(flag: bool) void {
-    let worker := spawn thread Calculate()
+    let worker := try spawn thread Calculate() { Err(_) => { return } }
     if flag {
         join worker
     } else {
@@ -37,8 +37,8 @@ fn Branches(flag: bool) void {
 		}
 	}
 	cases := map[string]struct{ body, want string }{
-		"second join":  {"fn F() void {\n    let worker := spawn thread Calculate()\n    join worker\n    join worker\n}", "thread worker was already joined"},
-		"one path":     {"fn F(flag: bool) void {\n    let worker := spawn thread Calculate()\n    if flag {\n        join worker\n    }\n}", "owned thread worker is unresolved at scope exit"},
+		"second join":  {"fn F() void {\n    let worker := try spawn thread Calculate() { Err(_) => { return } }\n    join worker\n    join worker\n}", "thread worker was already joined"},
+		"one path":     {"fn F(flag: bool) void {\n    let worker := try spawn thread Calculate() { Err(_) => { return } }\n    if flag {\n        join worker\n    }\n}", "owned thread worker is unresolved at scope exit"},
 		"task twice":   {"fn F() void {\n    let work := try spawn Calculate() { Err(_) => { return } }\n    join work\n    join work\n}", "task work was already joined"},
 		"not a handle": {"fn F(value: int) void {\n    join value\n}", "join requires Task[T] or Thread[T], got int"},
 	}
@@ -67,7 +67,7 @@ fn Calculate() int {
 }
 
 fn Selected() void {
-    let worker := spawn thread Calculate()
+    let worker := try spawn thread Calculate() { Err(_) => { return } }
     let work := try spawn Calculate() { Err(_) => { return } }
     select {
         join worker => {
@@ -80,7 +80,7 @@ fn Selected() void {
 }
 
 fn Twice() void {
-    let worker := spawn thread Calculate()
+    let worker := try spawn thread Calculate() { Err(_) => { return } }
     select {
         join worker => {
         }
@@ -101,7 +101,7 @@ fn JoinAndAwait() void {
 }
 
 fn Unresolved() void {
-    let worker := spawn thread Calculate()
+    let worker := try spawn thread Calculate() { Err(_) => { return } }
     select {
         join worker => {
         }

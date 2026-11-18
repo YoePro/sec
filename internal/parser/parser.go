@@ -111,6 +111,7 @@ type Parser struct {
 	limitReached      bool
 	diagnosticKeys    map[diagnosticKey]struct{}
 	recoveryContext   RecoveryContext
+	diagnosticContext RecoveryContext
 	activeEpisode     int
 	nextEpisode       int
 	episodePrimary    diagnosticLocation
@@ -687,6 +688,7 @@ func (p *Parser) knownAttributeSetEndsAtEOF() bool {
 //   - rules/foundations/attributes.md — "Comments and whitespace"
 //   - rules/foundations/attributes.md — "Diagnostics", attribute.unattached
 func (p *Parser) parseUnattachedAttributeSet() ast.Statement {
+	defer p.withRecoveryContext(RecoveryContextAttribute)()
 	start := p.curToken
 	name := p.peekToken
 	skipped := 1
@@ -730,6 +732,7 @@ func (p *Parser) parseUnattachedAttributeSet() ast.Statement {
 //   - rules/foundations/attributes.md — "Attribute attachment"
 //   - rules/foundations/attributes.md — "Diagnostics", attribute.unknown
 func (p *Parser) parseUnknownAttribute() ast.Statement {
+	defer p.withRecoveryContext(RecoveryContextAttribute)()
 	attributeToken := p.curToken
 	if !p.expectPeek(lexer.IDENT) {
 		return nil
@@ -772,6 +775,7 @@ func (p *Parser) parseUnknownAttribute() ast.Statement {
 //   - rules/tooling/testing.md — §5.1 "Canonical form"
 //   - rules/tooling/testing.md — §42.1 "Parser"
 func (p *Parser) parseTestDeclaration() *ast.TestDeclaration {
+	defer p.withRecoveryContext(RecoveryContextTest)()
 	declaration := &ast.TestDeclaration{Token: p.curToken}
 	if p.peekToken.Type != lexer.STRING {
 		unexpected := p.peekToken
@@ -844,6 +848,7 @@ func (p *Parser) parseTestDeclaration() *ast.TestDeclaration {
 //   - rules/tooling/testing.md — §5.3 "Top-level only"
 //   - rules/compiler/parser_recovery.md — "Recovery goals"
 func (p *Parser) parseNestedTestDeclaration() ast.Statement {
+	defer p.withRecoveryContext(RecoveryContextTest)()
 	start := p.curToken
 	p.addDiagnostic(
 		compilerdiagnostics.ParserMisplacedKeyword,
@@ -1059,6 +1064,7 @@ func (p *Parser) looksLikeTypedVariableGroupAfterParsedType() bool {
 }
 
 func (p *Parser) parseDiscardStatement() ast.Statement {
+	defer p.withRecoveryContext(RecoveryContextDiscard)()
 	stmt := &ast.DiscardStatement{Token: p.curToken}
 	if p.peekToken.Type == lexer.RBRACE || p.peekToken.Type == lexer.EOF {
 		p.addError("discard requires expression at %d:%d", p.peekToken.Line, p.peekToken.Column)
@@ -1252,6 +1258,7 @@ func (p *Parser) parseJoinStatement() ast.Statement {
 }
 
 func (p *Parser) parseDeferStatement() ast.Statement {
+	defer p.withRecoveryContext(RecoveryContextDefer)()
 	stmt := &ast.DeferStatement{Token: p.curToken}
 	if p.peekToken.Type != lexer.LBRACE {
 		p.addError("defer requires a block at %d:%d", p.peekToken.Line, p.peekToken.Column)
@@ -1263,6 +1270,7 @@ func (p *Parser) parseDeferStatement() ast.Statement {
 }
 
 func (p *Parser) parseCompilerDirective() ast.Statement {
+	defer p.withRecoveryContext(RecoveryContextDirective)()
 	if p.peekToken.Type != lexer.IDENT {
 		p.addError("expected compiler directive name after '#' at %d:%d", p.curToken.Line, p.curToken.Column)
 		return nil
@@ -1309,6 +1317,7 @@ func (p *Parser) currentTokenClosesGroup(open lexer.Token) bool {
 }
 
 func (p *Parser) parseIfStatement() ast.Statement {
+	defer p.withRecoveryContext(RecoveryContextIf)()
 	stmt := &ast.IfStatement{Token: p.curToken}
 
 	if p.peekToken.Type == lexer.LBRACE {
@@ -1593,6 +1602,7 @@ func (p *Parser) finishOptionAbsenceIfCondition(subject ast.Expression, isToken 
 }
 
 func (p *Parser) parseForStatement() ast.Statement {
+	defer p.withRecoveryContext(RecoveryContextFor)()
 	stmt := &ast.ForStatement{Token: p.curToken}
 
 	if p.peekToken.Type == lexer.LBRACE {
@@ -1718,6 +1728,7 @@ func (p *Parser) parseForStatement() ast.Statement {
 //   - rules/control-flow/flowcontrol_while.md — §8 "`is` state tests", §9 "No declarations in the header", §27 "Parser requirements"
 //   - rules/compiler/parser_recovery.md — "While recovery", "Missing condition"
 func (p *Parser) parseWhileStatement() ast.Statement {
+	defer p.withRecoveryContext(RecoveryContextWhile)()
 	stmt := &ast.WhileStatement{Token: p.curToken}
 
 	if p.peekToken.Type == lexer.LBRACE {
@@ -1825,6 +1836,7 @@ func (p *Parser) parseWhileStatement() ast.Statement {
 // Rules:
 //   - rules/control-flow/flowcontrol_for.md — §4 "Loop bindings", §6 "Shared element iteration", §7 "Mutable element iteration", §9 "Discard bindings"
 func (p *Parser) parseForBinding() (ast.ForBinding, bool) {
+	defer p.withRecoveryContext(RecoveryContextFor)()
 	switch p.curToken.Type {
 	case lexer.IDENT:
 		return ast.ForBinding{Token: p.curToken, Name: p.curToken.Lexeme}, true
@@ -1904,6 +1916,7 @@ func (p *Parser) skipMalformedForHeader(stmt *ast.ForStatement) {
 // Rules: rules/control-flow/flowcontrol_switch.md — switch statements;
 // rules/compiler/parser_recovery.md — "Recovery goals", "Error blocks code generation".
 func (p *Parser) parseSwitchStatement() ast.Statement {
+	defer p.withRecoveryContext(RecoveryContextSwitch)()
 	stmt := &ast.SwitchStatement{Token: p.curToken}
 
 	if p.peekToken.Type != lexer.LBRACE {
@@ -2016,6 +2029,7 @@ func (p *Parser) parseStatementInExpressionPosition() ast.Expression {
 // Rules: rules/concurrency/select.md — "Core syntax";
 // rules/compiler/parser_recovery.md — "Block recovery", "Compiler result".
 func (p *Parser) parseSelectStatement() ast.Statement {
+	defer p.withRecoveryContext(RecoveryContextSelect)()
 	stmt := &ast.SelectStatement{Token: p.curToken}
 	if !p.expectPeek(lexer.LBRACE) {
 		return stmt
@@ -2072,6 +2086,7 @@ func hasSelectDefault(stmt *ast.SelectStatement) bool {
 }
 
 func (p *Parser) parseSelectBranch() *ast.SelectBranch {
+	defer p.withRecoveryContext(RecoveryContextSelect)()
 	branch := &ast.SelectBranch{Token: p.curToken, Kind: ast.SelectOperationBranch}
 
 	switch p.curToken.Type {
@@ -2149,6 +2164,7 @@ func (p *Parser) skipSelectBranch() RecoveryEvent {
 }
 
 func (p *Parser) parseSwitchCaseClause(isDefault bool, subjectless bool) *ast.SwitchCase {
+	defer p.withRecoveryContext(RecoveryContextSwitch)()
 	clause := &ast.SwitchCase{Token: p.curToken, Default: isDefault}
 
 	if isDefault {
@@ -2244,6 +2260,7 @@ func (p *Parser) recoverSwitchCaseGuard(clause *ast.SwitchCase) *ast.SwitchCase 
 //   - rules/control-flow/flowcontrol_switch.md — switch case clauses
 //   - rules/compiler/parser_recovery.md — "Recovery invariants", "Block recovery"
 func (p *Parser) parseSwitchCaseBody() *ast.BlockStatement {
+	defer p.withRecoveryContext(RecoveryContextSwitch)()
 	block := &ast.BlockStatement{Token: p.curToken}
 	for p.curToken.Type != lexer.RBRACE && p.curToken.Type != lexer.EOF && p.curToken.Type != lexer.CASE && p.curToken.Type != lexer.DEFAULT {
 		var documentation []lexer.Token
@@ -2298,6 +2315,7 @@ func (p *Parser) skipSwitchClause() RecoveryEvent {
 }
 
 func (p *Parser) parseUnsafeStatement() ast.Statement {
+	defer p.withRecoveryContext(RecoveryContextUnsafe)()
 	stmt := &ast.UnsafeStatement{Token: p.curToken}
 
 	if !p.expectPeek(lexer.LBRACE) {
@@ -2395,6 +2413,7 @@ func (p *Parser) parseUnexpectedElseStatement() ast.Statement {
 }
 
 func (p *Parser) parseModuleStatement() ast.Statement {
+	defer p.withRecoveryContext(RecoveryContextModule)()
 	stmt := &ast.ModuleStatement{
 		Token: p.curToken,
 	}
@@ -2416,6 +2435,7 @@ func (p *Parser) parseModuleStatement() ast.Statement {
 }
 
 func (p *Parser) parseTargetDirective(hashToken lexer.Token) ast.Statement {
+	defer p.withRecoveryContext(RecoveryContextDirective)()
 	stmt := &ast.TargetDirective{Token: hashToken}
 
 	if !p.expectPeek(lexer.LPAREN) {
@@ -2504,6 +2524,7 @@ func (p *Parser) skipCompilerDirective() RecoveryEvent {
 }
 
 func (p *Parser) parseImportStatement() ast.Statement {
+	defer p.withRecoveryContext(RecoveryContextImport)()
 	stmt := &ast.ImportStatement{
 		Token: p.curToken,
 	}
@@ -2526,6 +2547,7 @@ func (p *Parser) parseImportStatement() ast.Statement {
 }
 
 func (p *Parser) parseImportGroup() []ast.Statement {
+	defer p.withRecoveryContext(RecoveryContextImport)()
 	importToken := p.curToken
 	p.nextToken()
 	imports := []ast.Statement{}
@@ -2575,6 +2597,7 @@ func (p *Parser) parseCommentStatement() ast.Statement {
 }
 
 func (p *Parser) parseTypeDeclStatement() ast.Statement {
+	defer p.withRecoveryContext(RecoveryContextTypeDeclaration)()
 	stmt := &ast.TypeDeclStatement{
 		Token: p.curToken,
 	}
@@ -2792,6 +2815,7 @@ func (p *Parser) reversedTypeDeclarationKind() bool {
 }
 
 func (p *Parser) parseUnitDeclStatement() ast.Statement {
+	defer p.withRecoveryContext(RecoveryContextUnit)()
 	stmt := &ast.UnitDeclStatement{Token: p.curToken}
 
 	if !p.expectPeek(lexer.IDENT) {
@@ -2839,6 +2863,7 @@ func isUnitCategoryName(name string) bool {
 }
 
 func (p *Parser) parseInterfaceDeclaration() ast.Statement {
+	defer p.withRecoveryContext(RecoveryContextInterface)()
 	stmt := &ast.InterfaceDeclaration{Token: p.curToken}
 
 	if !p.expectPeek(lexer.IDENT) {
@@ -2984,6 +3009,7 @@ func (p *Parser) parseInterfaceDeclaration() ast.Statement {
 //   - rules/compiler/parser_recovery.md — "Interface recovery"
 //   - rules/compiler/parser_recovery.md — "Invalid AST nodes"
 func (p *Parser) parseInterfaceEvent() *ast.InterfaceEvent {
+	defer p.withRecoveryContext(RecoveryContextInterface)()
 	event := &ast.InterfaceEvent{Token: p.curToken}
 	if p.peekToken.Type != lexer.IDENT {
 		p.nextToken()
@@ -3106,6 +3132,7 @@ func (p *Parser) recoverImplementsTypeReference() bool {
 //   - rules/declarations/properties.md — "Interface property requirements"
 //   - rules/compiler/parser_recovery.md — "Interface recovery", "Property recovery"
 func (p *Parser) parseInterfaceProperty() *ast.InterfaceProperty {
+	defer p.withRecoveryContext(RecoveryContextInterface)()
 	property := &ast.InterfaceProperty{Token: p.curToken}
 	if !p.expectPeek(lexer.IDENT) {
 		return nil
@@ -3217,6 +3244,7 @@ func (p *Parser) recoverInterfacePropertyBodyStart() bool {
 }
 
 func (p *Parser) parseInterfacePropertySetter(property *ast.InterfaceProperty, fallible bool) bool {
+	defer p.withRecoveryContext(RecoveryContextInterface)()
 	if property.RequiresSet {
 		p.addError("duplicate set in interface property %q", property.Name.Value)
 		if p.peekToken.Type == lexer.IDENT {
@@ -3253,6 +3281,7 @@ func (p *Parser) parseInterfacePropertySetter(property *ast.InterfaceProperty, f
 //   - rules/declarations/generics.md — "Generic enums"
 //   - rules/foundations/grammar.md — "Generic enums"
 func (p *Parser) parseEnumDeclaration() *ast.EnumDeclaration {
+	defer p.withRecoveryContext(RecoveryContextEnum)()
 	enum := &ast.EnumDeclaration{Token: p.curToken}
 
 	if !p.expectPeek(lexer.IDENT) {
@@ -3283,6 +3312,7 @@ func (p *Parser) parseEnumDeclaration() *ast.EnumDeclaration {
 //   - rules/foundations/grammar.md — "Enum declaration"
 //   - rules/compiler/parser_recovery.md — "Declaration-header recovery"
 func (p *Parser) parseEnumUnderlying(enum *ast.EnumDeclaration) bool {
+	defer p.withRecoveryContext(RecoveryContextEnum)()
 	hadColon := false
 	if p.peekToken.Type == lexer.COLON {
 		p.nextToken()
@@ -3372,6 +3402,7 @@ func (p *Parser) recoverEnumBodyStart() bool {
 // marker from rules/declarations/enums.md. `error` is a marker here, not an
 // integer representation type.
 func (p *Parser) parseOptionalEnumErrorMarker(enum *ast.EnumDeclaration) {
+	defer p.withRecoveryContext(RecoveryContextEnum)()
 	if p.peekToken.Type != lexer.IDENT || p.peekToken.Lexeme != contextualError {
 		return
 	}
@@ -3389,6 +3420,7 @@ func (p *Parser) parseOptionalEnumErrorMarker(enum *ast.EnumDeclaration) {
 //   - rules/concurrency/atomics.md — §6(1–4), canonical associated-value core enum
 //   - rules/compiler/parser_recovery.md — "Enum recovery", "Missing value name"
 func (p *Parser) parseEnumBody(enum *ast.EnumDeclaration) *ast.EnumDeclaration {
+	defer p.withRecoveryContext(RecoveryContextEnum)()
 	if !p.expectPeek(lexer.LBRACE) {
 		return nil
 	}
@@ -3553,6 +3585,7 @@ func (p *Parser) invalidEnumValue(start lexer.Token, diagnosticStart int, recove
 }
 
 func (p *Parser) parseFunctionDeclaration() *ast.FunctionDeclaration {
+	defer p.withRecoveryContext(RecoveryContextFunction)()
 	fn := &ast.FunctionDeclaration{Token: p.curToken}
 	// Retain the actual endpoint, including nested bodies and same-line declarations.
 	// Rules: rules/tooling/cli.md — §5.3; rules/analysis/call_graph.md — Callable node.
@@ -3615,6 +3648,7 @@ func (p *Parser) reportUnimplementedFunction(fn *ast.FunctionDeclaration) {
 }
 
 func (p *Parser) parseExternFunctionDeclaration() *ast.FunctionDeclaration {
+	defer p.withRecoveryContext(RecoveryContextFunction)()
 	externToken := p.curToken
 	if !p.expectPeek(lexer.STRING) {
 		p.addError("extern declaration requires ABI string at %d:%d", p.peekToken.Line, p.peekToken.Column)
@@ -3643,6 +3677,7 @@ func (p *Parser) parseExternFunctionDeclaration() *ast.FunctionDeclaration {
 }
 
 func (p *Parser) parseFunctionSignature(allowVariadic bool) *ast.FunctionDeclaration {
+	defer p.withRecoveryContext(RecoveryContextFunction)()
 	fn := &ast.FunctionDeclaration{Token: p.curToken}
 	// Retain the actual endpoint, including nested bodies and same-line declarations.
 	// Rules: rules/tooling/cli.md — §5.3; rules/analysis/call_graph.md — Callable node.
@@ -3684,6 +3719,7 @@ func (p *Parser) parseFunctionSignature(allowVariadic bool) *ast.FunctionDeclara
 //   - rules/foundations/grammar.md — "Function declaration"
 //   - rules/compiler/parser_recovery.md — "Function recovery", "Missing return type"
 func (p *Parser) parseRequiredFunctionReturnType(fn *ast.FunctionDeclaration) {
+	defer p.withRecoveryContext(RecoveryContextType)()
 	if p.isMissingFunctionReturnTypeBoundary() {
 		unexpected := p.peekToken
 		p.addDiagnostic(
@@ -3782,6 +3818,7 @@ func (p *Parser) skipGenericParameterList() RecoveryEvent {
 }
 
 func (p *Parser) parseUnsafeFunctionDeclaration() *ast.FunctionDeclaration {
+	defer p.withRecoveryContext(RecoveryContextFunction)()
 	unsafeToken := p.curToken
 	p.nextToken()
 
@@ -3808,6 +3845,7 @@ func (p *Parser) parseUnsafeFunctionDeclaration() *ast.FunctionDeclaration {
 // rules/declarations/functions.md sections 28, 36, and 41; initializers and
 // lambdas intentionally pass false until their own rulebooks permit them.
 func (p *Parser) parseParameters(allowVariadic bool) []*ast.Parameter {
+	defer p.withRecoveryContext(RecoveryContextParameters)()
 	parameters := []*ast.Parameter{}
 
 	// Comments between parameters are trivia owned by the lossless CST and
@@ -4024,6 +4062,7 @@ func (p *Parser) parseFunctionBlockStatement() *ast.BlockStatement {
 // Rules:
 //   - rules/compiler/parser_recovery.md — "Recovery goals", "Error blocks code generation"
 func (p *Parser) parseStatementBlock(name string) *ast.BlockStatement {
+	defer p.withRecoveryContext(RecoveryContextBlock)()
 	block := &ast.BlockStatement{Token: p.curToken}
 	// Source provenance for synthesized callable wrappers uses the same parser endpoint.
 	// Rules: rules/analysis/call_graph.md — Callable node; rules/tooling/cli.md — §5.3.
@@ -4147,6 +4186,7 @@ func (p *Parser) isReturnTerminatorToken(token lexer.Token) bool {
 }
 
 func (p *Parser) parseStructStatement() ast.Statement {
+	defer p.withRecoveryContext(RecoveryContextStruct)()
 	stmt := &ast.StructStatement{
 		Token: p.curToken,
 	}
@@ -4175,6 +4215,7 @@ func (p *Parser) parseStructStatement() ast.Statement {
 }
 
 func (p *Parser) parseStructType() *ast.StructType {
+	defer p.withRecoveryContext(RecoveryContextStruct)()
 	structType := &ast.StructType{Token: p.curToken}
 
 	if !p.expectPeek(lexer.LBRACE) {
@@ -4199,6 +4240,7 @@ func (p *Parser) parseStructType() *ast.StructType {
 //   - rules/foundations/grammar.md — "Register declaration", RegisterField production
 //   - rules/compiler/parser_recovery.md — "Register recovery"
 func (p *Parser) parseRegisterFields() []*ast.RegisterField {
+	defer p.withRecoveryContext(RecoveryContextRegister)()
 	fields := []*ast.RegisterField{}
 	if p.peekToken.Type == lexer.RBRACE {
 		return fields
@@ -4329,6 +4371,7 @@ func isRegisterFieldAccessPrefix(token lexer.Token) bool {
 //   - rules/declarations/registers.md — § 11.4 "Specialized read semantics"
 //   - rules/corrections/applied/hardware-register-access-cross-rulebook-correction-20260828.md — § 1.1 "Canonical destructive-read spelling"
 func (p *Parser) parseRegisterFieldAccessModifier() ast.RegisterFieldAccess {
+	defer p.withRecoveryContext(RecoveryContextRegister)()
 	p.nextToken()
 	prefix := p.curToken
 	if !p.expectPeek(lexer.MINUS) || !p.expectPeek(lexer.IDENT) {
@@ -4366,6 +4409,7 @@ func (p *Parser) parseRegisterFieldAccessModifier() ast.RegisterFieldAccess {
 }
 
 func (p *Parser) parseRegisterWidth(kind string) (int64, bool) {
+	defer p.withRecoveryContext(RecoveryContextRegister)()
 	if p.peekToken.Type == lexer.MINUS {
 		p.nextToken()
 		minus := p.curToken
@@ -4400,6 +4444,7 @@ func (p *Parser) parseRegisterWidth(kind string) (int64, bool) {
 //   - rules/declarations/registers.md — "Width", "Register field types"
 //   - rules/compiler/parser_recovery.md — "Register recovery"
 func (p *Parser) parseRegisterWidthExpression(kind string) (ast.Expression, int64, bool) {
+	defer p.withRecoveryContext(RecoveryContextRegister)()
 	if p.peekToken.Type == lexer.RBRACKET || p.peekToken.Type == lexer.EOF {
 		unexpected := p.peekToken
 		message := fmt.Sprintf("missing %s at %d:%d", kind, unexpected.Line, unexpected.Column)
@@ -4442,6 +4487,7 @@ func parserRegisterLiteralWidth(expression ast.Expression) (int64, bool) {
 }
 
 func (p *Parser) parseUnionType() []*ast.UnionVariant {
+	defer p.withRecoveryContext(RecoveryContextUnion)()
 	variants := []*ast.UnionVariant{}
 
 	for p.peekToken.Type != lexer.RBRACE && p.peekToken.Type != lexer.EOF {
@@ -4497,6 +4543,7 @@ func (p *Parser) parseUnionType() []*ast.UnionVariant {
 }
 
 func (p *Parser) parseStructFields() []*ast.StructField {
+	defer p.withRecoveryContext(RecoveryContextStruct)()
 	fields := []*ast.StructField{}
 
 	if p.peekToken.Type == lexer.RBRACE {
@@ -4681,6 +4728,7 @@ func (p *Parser) skipMalformedStructField() bool {
 // rules/declarations/struct.md. correction16.md requires separators to be
 // recognized only outside quoted values and malformed quote structure to fail.
 func (p *Parser) parseStructTag(token lexer.Token) ([]ast.StructTag, bool) {
+	defer p.withRecoveryContext(RecoveryContextStruct)()
 	if len(token.Lexeme) < 2 || token.Lexeme[0] != '`' || token.Lexeme[len(token.Lexeme)-1] != '`' {
 		p.addError("invalid struct field tag")
 		return nil, false
@@ -4752,6 +4800,7 @@ func (p *Parser) parseStructTag(token lexer.Token) ([]ast.StructTag, bool) {
 }
 
 func (p *Parser) parseImplStatement() ast.Statement {
+	defer p.withRecoveryContext(RecoveryContextImpl)()
 	stmt := &ast.ImplStatement{Token: p.curToken}
 
 	if p.peekToken.Type == lexer.EXTENDS {
@@ -5006,6 +5055,7 @@ func (p *Parser) appendImplMember(stmt *ast.ImplStatement, documentation []lexer
 }
 
 func (p *Parser) parseInitDeclaration() *ast.InitDeclaration {
+	defer p.withRecoveryContext(RecoveryContextFunction)()
 	initializer := &ast.InitDeclaration{Token: p.curToken}
 	// curToken is contextual identifier `init`, peekToken is `(`.
 	p.nextToken()
@@ -5026,6 +5076,7 @@ func (p *Parser) parseInitDeclaration() *ast.InitDeclaration {
 }
 
 func (p *Parser) parseUnitMetadataDeclaration() *ast.UnitMetadataDeclaration {
+	defer p.withRecoveryContext(RecoveryContextUnit)()
 	metadata := &ast.UnitMetadataDeclaration{
 		Token: p.curToken,
 		Name:  p.curToken.Lexeme,
@@ -5086,6 +5137,7 @@ func (p *Parser) skipCurrentBlockRecovery(start lexer.Token) RecoveryEvent {
 }
 
 func (p *Parser) parseEventDeclaration() *ast.EventDeclaration {
+	defer p.withRecoveryContext(RecoveryContextEvent)()
 	event := &ast.EventDeclaration{Token: p.curToken}
 	if p.peekToken.Type != lexer.IDENT {
 		p.nextToken()
@@ -5123,6 +5175,7 @@ func (p *Parser) parseEventDeclaration() *ast.EventDeclaration {
 }
 
 func (p *Parser) parsePropertyDeclaration() *ast.PropertyDeclaration {
+	defer p.withRecoveryContext(RecoveryContextProperty)()
 	property := &ast.PropertyDeclaration{Token: p.curToken}
 
 	if p.peekToken.Type != lexer.IDENT {
@@ -5301,6 +5354,7 @@ func (p *Parser) parsePropertyDeclaration() *ast.PropertyDeclaration {
 }
 
 func (p *Parser) parsePropertySetter(propertyName string, fallible bool) *ast.PropertySetter {
+	defer p.withRecoveryContext(RecoveryContextProperty)()
 	setter := &ast.PropertySetter{Token: p.curToken, Fallible: fallible}
 
 	if p.peekToken.Type != lexer.IDENT {
@@ -5416,6 +5470,7 @@ func (p *Parser) skipPropertyRemainder() RecoveryEvent {
 //   - rules/compiler/parser_recovery.md — "Invalid AST nodes"
 //   - rules/foundations/grammar.md — "Type-reference grammar", "Unit annotation"
 func (p *Parser) parseTypeReference() *ast.TypeReference {
+	defer p.withRecoveryContext(RecoveryContextType)()
 	if p.curToken.Type == lexer.REF {
 		return p.parseReferenceTypeReference()
 	}
@@ -5944,6 +5999,7 @@ func (p *Parser) parsePrefixSequenceTypeReference() *ast.TypeReference {
 }
 
 func (p *Parser) parseUnit() (string, *ast.UnitExpression) {
+	defer p.withRecoveryContext(RecoveryContextUnit)()
 	if p.curToken.Type != lexer.LT {
 		p.addError("expected unit to start with '<', got %q", p.curToken.Lexeme)
 		return "", nil
@@ -6093,6 +6149,7 @@ func (p *unitSyntaxParser) parseAtom() (*ast.UnitExpression, error) {
 //   - rules/foundations/grammar.md — "Generic type arguments"
 //   - rules/compiler/parser_recovery.md — "Generic argument recovery"
 func (p *Parser) parseTypeArgs() []*ast.TypeReference {
+	defer p.withRecoveryContext(RecoveryContextGenericArguments)()
 	typeArgs := []*ast.TypeReference{}
 
 	for p.peekToken.Type != lexer.EOF {
@@ -6161,6 +6218,7 @@ func (p *Parser) recoverGenericTypeArgument() bool {
 }
 
 func (p *Parser) parseContractSequence() ast.Contract {
+	defer p.withRecoveryContext(RecoveryContextContract)()
 	contracts := []ast.Contract{}
 	var firstToken lexer.Token
 	for p.isContractStart(p.peekToken) {
@@ -6184,6 +6242,7 @@ func (p *Parser) parseContractSequence() ast.Contract {
 }
 
 func (p *Parser) parseCurrentContract() ast.Contract {
+	defer p.withRecoveryContext(RecoveryContextContract)()
 	switch {
 	case p.curToken.Type == lexer.RANGE_KW:
 		return p.parseRangeContract()
@@ -6218,6 +6277,7 @@ func (p *Parser) parseCurrentContract() ast.Contract {
 //
 // Recovery: rules/compiler/parser_recovery.md — "Type-contract recovery", "Bounded damage"
 func (p *Parser) parseRegexContract() ast.Contract {
+	defer p.withRecoveryContext(RecoveryContextContract)()
 	contract := &ast.RegexContract{Token: p.curToken}
 	if p.isAtTypeDeclEnd() || p.peekToken.Line > p.curToken.Line || p.isContractStart(p.peekToken) || !p.isExpressionStart(p.peekToken.Type) {
 		unexpected := p.peekToken
@@ -6243,6 +6303,7 @@ func (p *Parser) parseRegexContract() ast.Contract {
 //   - rules/types/contracts.md — "Ordered membership"
 //   - rules/types/default_values.md — "Empty in [...] list"
 func (p *Parser) parseMembershipContract() ast.Contract {
+	defer p.withRecoveryContext(RecoveryContextContract)()
 	contract := &ast.MembershipContract{Token: p.curToken}
 	if !p.expectPeek(lexer.LBRACKET) {
 		return nil
@@ -6268,6 +6329,7 @@ func (p *Parser) parseMembershipContract() ast.Contract {
 }
 
 func (p *Parser) parseValueContract(name string) ast.Contract {
+	defer p.withRecoveryContext(RecoveryContextContract)()
 	contract := &ast.MarkerContract{Token: p.curToken, Name: name}
 	if !p.expectPeekExpressionStart() {
 		return nil
@@ -6311,6 +6373,7 @@ func (p *Parser) expectPeekExpressionStart() bool {
 //   - rules/foundations/grammar.md — "Type contracts", RangeContract
 //   - rules/compiler/parser_recovery.md — "Type-contract recovery", "Range contract"
 func (p *Parser) parseRangeContract() ast.Contract {
+	defer p.withRecoveryContext(RecoveryContextContract)()
 	contract := &ast.RangeContract{
 		Token: p.curToken,
 	}
@@ -6575,11 +6638,20 @@ func (p *Parser) addDiagnostic(id string, primary lexer.Token, expected []lexer.
 	if p.limitReached {
 		return
 	}
-	key := diagnosticKey{id: id, file: primary.File, line: primary.Line, column: primary.Column, context: p.recoveryContext}
+	// Interpolation re-lexes source already seen by the outer lexer. The
+	// same lexical error stays one occurrence even if its syntax owner differs.
+	// Rules: rules/compiler/parser_recovery.md §§14,17 (lexer errors).
+	if definition, known := compilerdiagnostics.Lookup(id); known && definition.Family == "lexer" {
+		if existing, found := p.lexerDiagnosticForToken(primary); found && existing.ID == id {
+			return
+		}
+	}
+	context := p.currentRecoveryContext()
+	key := diagnosticKey{id: id, file: primary.File, line: primary.Line, column: primary.Column, context: context}
 	if _, duplicate := p.diagnosticKeys[key]; duplicate {
 		return
 	}
-	location := diagnosticLocation{file: primary.File, line: primary.Line, column: primary.Column, context: p.recoveryContext}
+	location := diagnosticLocation{file: primary.File, line: primary.Line, column: primary.Column, context: context}
 	if p.activeEpisode != 0 && p.hasEpisodePrimary && p.episodePrimary == location {
 		return
 	}
@@ -6606,7 +6678,7 @@ func (p *Parser) addDiagnostic(id string, primary lexer.Token, expected []lexer.
 		Primary:    primary,
 		Expected:   append([]lexer.TokenType(nil), expected...),
 		Unexpected: unexpected,
-		Context:    p.recoveryContext,
+		Context:    context,
 		Episode:    episode,
 	})
 	p.diagnosticKeys[key] = struct{}{}
@@ -6619,7 +6691,7 @@ func (p *Parser) addDiagnostic(id string, primary lexer.Token, expected []lexer.
 			Start:           primary,
 			End:             primary,
 			Expected:        append([]lexer.TokenType(nil), expected...),
-			Context:         p.recoveryContext,
+			Context:         context,
 			Episode:         episode,
 		})
 	}
@@ -6850,7 +6922,7 @@ func (p *Parser) recordSkippedRecovery(start, end lexer.Token, skipped int, conf
 		Start:           start,
 		End:             end,
 		Skipped:         skipped,
-		Context:         p.recoveryContext,
+		Context:         p.currentRecoveryContext(),
 		Episode:         p.activeEpisode,
 		diagnosticIndex: -1,
 	}
@@ -6859,6 +6931,7 @@ func (p *Parser) recordSkippedRecovery(start, end lexer.Token, skipped int, conf
 		diagnostic := p.diagnostics[diagnosticIndex]
 		if diagnostic.Episode == p.activeEpisode {
 			event.DiagnosticID = diagnostic.ID
+			event.Context = diagnostic.Context
 			event.diagnosticIndex = diagnosticIndex
 		}
 	}
@@ -6920,6 +6993,7 @@ func (p *Parser) isAtTypeDeclEnd() bool {
 }
 
 func (p *Parser) parseAssignmentStatement() ast.Statement {
+	defer p.withRecoveryContext(RecoveryContextAssignment)()
 	stmt := &ast.AssignmentStatement{Token: p.curToken, Ownership: ast.OwnershipCopy}
 
 	stmt.Target = p.parseExpression(LOWEST)
@@ -6951,6 +7025,7 @@ func (p *Parser) parseAssignmentStatement() ast.Statement {
 //   - rules/foundations/grammar.md — TryAssignmentStatement
 //   - rules/errors/errorhandling.md — §23 "Fallible assignment"
 func (p *Parser) parseTryAssignmentStatement() ast.Statement {
+	defer p.withRecoveryContext(RecoveryContextTry)()
 	stmt := &ast.TryAssignmentStatement{Token: p.curToken}
 
 	p.nextToken()
@@ -7007,6 +7082,7 @@ func (p *Parser) parseTryAssignmentStatement() ast.Statement {
 }
 
 func (p *Parser) parseExpressionOrAssignmentStatement() ast.Statement {
+	defer p.withRecoveryContext(RecoveryContextExpression)()
 	token := p.curToken
 	expr := p.parseExpression(LOWEST)
 	if expr == nil {
@@ -7049,6 +7125,7 @@ func (p *Parser) parseExpressionOrAssignmentStatement() ast.Statement {
 //   - rules/compiler/parser_recovery.md — "Missing right expression"
 //   - rules/compiler/parser_recovery.md — "Expression recovery"
 func (p *Parser) parseAssignmentValue(operator lexer.Token, stopBeforeBrace bool) ast.Expression {
+	defer p.withRecoveryContext(RecoveryContextAssignment)()
 	if isMissingOperandBoundary(p.peekToken.Type) {
 		return p.missingOperandExpression(operator, p.peekToken)
 	}
@@ -7172,6 +7249,7 @@ func (p *Parser) expectPeekAssignmentOperator() bool {
 //	       [ ":" TypeReference ]
 //	       [ ":=" Expression | ":<-" Expression | "<-" Expression ]
 func (p *Parser) parseLetStatement() ast.Statement {
+	defer p.withRecoveryContext(RecoveryContextBinding)()
 	token := p.curToken
 	mutable := false
 
@@ -7244,6 +7322,7 @@ func (p *Parser) letDeclaratorMayOmitInitializer(stmt *ast.LetStatement) bool {
 }
 
 func (p *Parser) parseTypedVariableDeclaration() ast.Statement {
+	defer p.withRecoveryContext(RecoveryContextBinding)()
 	token := p.curToken
 	typ := p.parseTypeReference()
 	var contract ast.Contract
@@ -7314,6 +7393,7 @@ func (p *Parser) parseTypedVariableDeclaration() ast.Statement {
 }
 
 func (p *Parser) parseTypedVariableGroupDeclaration(token lexer.Token, typ *ast.TypeReference, contract ast.Contract) ast.Statement {
+	defer p.withRecoveryContext(RecoveryContextBinding)()
 	if !p.expectPeek(lexer.LPAREN) {
 		return nil
 	}
@@ -7477,6 +7557,7 @@ func (p *Parser) recoverMissingLetInitializer(stmt *ast.LetStatement) bool {
 }
 
 func (p *Parser) parseLetDeclarator(token lexer.Token, mutable bool, inheritedType *ast.TypeReference, inheritedContract ast.Contract) *ast.LetStatement {
+	defer p.withRecoveryContext(RecoveryContextBinding)()
 	if p.peekToken.Type != lexer.IDENT && isKeywordSpelling(p.peekToken) {
 		// rules/foundations/lexical_structure.md § 7: a keyword is never a
 		// declaration name. Statement recovery skips the rest of the

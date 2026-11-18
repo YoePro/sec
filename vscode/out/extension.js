@@ -39,6 +39,7 @@ const path = __importStar(require("path"));
 const vscode = __importStar(require("vscode"));
 const node_1 = require("vscode-languageclient/node");
 const targets_1 = require("./targets");
+const targetStatus_1 = require("./targetStatus");
 let client;
 let output;
 function activate(context) {
@@ -80,6 +81,7 @@ function activate(context) {
     registerCompilerKnownDefinitions(context);
     registerShowLocations(context);
     (0, targets_1.registerTargetSelection)(context, () => client);
+    (0, targetStatus_1.registerTargetStatus)(context, () => client);
     client.start().catch((error) => {
         const message = error instanceof Error ? error.message : String(error);
         output?.appendLine(`Failed to start SEC language server: ${message}`);

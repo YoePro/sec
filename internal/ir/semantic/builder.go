@@ -988,6 +988,9 @@ func (fb *functionBuilder) buildStatements(statements []ast.Statement) error {
 					}
 					continue
 				}
+				if boundary, named := fb.dynamicArrayMemberBoundary(call); named {
+					return boundary
+				}
 				return fb.unsupported("unresolved function call", call.Token)
 			}
 			if resolved.Function.ReturnType.Kind != sema.VoidType {
@@ -2108,6 +2111,16 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 			member, resolved := fb.owner.analyzer.CompilerKnownMemberAt(e.Property.Token.File, e.Property.Token.Line, e.Property.Token.Column)
 			if resolved && member.ID == "CKM-LEN-ARRAY" {
 				return fb.buildFixedArrayLength(e, typeID)
+			}
+			if resolved && fb.owner.maxPackage >= dynamicArrayLoweringPackage && fb.receiverIsDynamicArray(e.Object) {
+				switch member.ID {
+				case "CKM-ISEMPTY-ARRAY":
+					return fb.buildDynamicArrayIsEmpty(e)
+				case "CKM-SIZEOF-VALUE":
+					return builtValue{}, fb.unsupported("dynamic-array SizeOf (Len * element layout stride needs the resolved layout of P24)", e.Property.Token)
+				case "CKM-PTR-VALUE":
+					return builtValue{}, fb.unsupported("raw pointer to dynamic-array backing (P18-25 raw-pointer boundary)", e.Property.Token)
+				}
 			}
 			if resolved && (member.ID == "CKM-STRINGVIEW-LEN" || member.ID == "CKM-STRINGVIEW-SIZEOF") && fb.owner.maxPackage >= sliceLoweringPackage {
 				return fb.buildStringViewLength(e, member.ID == "CKM-STRINGVIEW-SIZEOF")
@@ -4113,6 +4126,12 @@ func operatorSpelling(expr ast.Expression) string {
 // Rules: rules/compiler/semantic_ir.md — resolved call facts;
 // rules/declarations/interfaces.md — §6; compiler_pipeline.md — lowering prerequisites.
 func (fb *functionBuilder) buildCall(call *ast.CallExpression) (builtValue, error) {
+	if boundary, ok := fb.dynamicArrayMemberBoundary(call); ok {
+		return builtValue{}, boundary
+	}
+	if boundary, ok := fb.coreArrayMaterializationBoundary(call); ok {
+		return builtValue{}, boundary
+	}
 	if _, rounded := fb.owner.analyzer.RoundedConversionOf(call); rounded {
 		// MD-047: Semantic IR has no rounding-conversion operation yet.
 		return builtValue{}, fb.unsupported("explicit rounded conversion (RoundingMode)", call.Token)

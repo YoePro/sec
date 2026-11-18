@@ -9,13 +9,13 @@ fn Missing(config: ThreadConfig) void {
 }
 
 fn Reuse(config: ThreadConfig) void {
-    let worker := spawn thread <-config Work()
+    let worker := try spawn thread <-config Work() { Err(_) => { return } }
     join worker
     Accept(config)
 }
 
 fn Twice(config: ThreadConfig) void {
-    let worker := spawn thread <-config Work()
+    let worker := try spawn thread <-config Work() { Err(_) => { return } }
     join worker
     discard spawn thread <-config Work()
 }
@@ -30,13 +30,13 @@ fn Borrowed(config: ref ThreadConfig) void {
 
 fn Conflict(config: ThreadConfig) void {
     discard spawn thread <-config Accept(<-config)
-    let worker := spawn thread <-config Work()
+    let worker := try spawn thread <-config Work() { Err(_) => { return } }
     join worker
 }
 
 fn Rollback(config: ThreadConfig, source: ContextSource) void {
     discard spawn thread config AcceptSource(<-source)
-    let worker := spawn thread <-config Work()
+    let worker := try spawn thread <-config Work() { Err(_) => { return } }
     join worker
     AcceptSource(<-source)
 }

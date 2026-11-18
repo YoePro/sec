@@ -9,6 +9,7 @@ import (
 // parseAsmStatement parses the existing string and structured assembly statement forms.
 // Rules: rules/platform/inline_assembly.md — §§15,17–18,30,35–37.
 func (p *Parser) parseAsmStatement() ast.Statement {
+	defer p.withRecoveryContext(RecoveryContextAsm)()
 	stmt := &ast.AsmStatement{Token: p.curToken}
 
 	switch p.peekToken.Type {
@@ -43,6 +44,7 @@ func (p *Parser) parseAsmStatement() ast.Statement {
 // parseAsmBlock retains the template and explicit operand/clobber sections.
 // Rules: rules/platform/inline_assembly.md — §§15,17–18,30,35–37.
 func (p *Parser) parseAsmBlock() *ast.AsmBlock {
+	defer p.withRecoveryContext(RecoveryContextAsm)()
 	block := &ast.AsmBlock{Token: p.curToken}
 
 	p.nextToken()
@@ -97,6 +99,7 @@ func (p *Parser) parseAsmBlock() *ast.AsmBlock {
 // parseAsmInputs parses register-bound Sec input expressions.
 // Rules: rules/platform/inline_assembly.md — §§15,17–18,30,35–37.
 func (p *Parser) parseAsmInputs() ([]ast.AsmOperand, bool) {
+	defer p.withRecoveryContext(RecoveryContextAsm)()
 	if !p.expectPeek(lexer.COLON) {
 		return nil, false
 	}
@@ -136,6 +139,7 @@ func (p *Parser) parseAsmInputs() ([]ast.AsmOperand, bool) {
 // parseAsmOutputs retains register outputs and optional source bindings.
 // Rules: rules/platform/inline_assembly.md — §§15,17–18,30,35–37.
 func (p *Parser) parseAsmOutputs() ([]ast.AsmOutput, bool) {
+	defer p.withRecoveryContext(RecoveryContextAsm)()
 	if !p.expectPeek(lexer.COLON) {
 		return nil, false
 	}
@@ -176,6 +180,7 @@ func (p *Parser) parseAsmOutputs() ([]ast.AsmOutput, bool) {
 // parseAsmClobbers retains explicitly declared destroyed machine resources.
 // Rules: rules/platform/inline_assembly.md — §§15,17–18,30,35–37.
 func (p *Parser) parseAsmClobbers() ([]string, bool) {
+	defer p.withRecoveryContext(RecoveryContextAsm)()
 	if !p.expectPeek(lexer.COLON) {
 		return nil, false
 	}
@@ -206,6 +211,7 @@ func (p *Parser) parseAsmClobbers() ([]string, bool) {
 // Rules: rules/platform/inline_assembly.md — §46;
 // rules/compiler/parser_recovery.md — Invalid AST nodes, Diagnostic deduplication.
 func (p *Parser) parseUnsupportedVolatileAsm() (ast.Statement, bool) {
+	defer p.withRecoveryContext(RecoveryContextAsm)()
 	start := p.curToken
 	postfix := start.Type == lexer.ASM && p.peekToken.Type == lexer.IDENT && p.peekToken.Lexeme == "volatile"
 	prefix := start.Type == lexer.IDENT && start.Lexeme == "volatile" && p.peekToken.Type == lexer.ASM

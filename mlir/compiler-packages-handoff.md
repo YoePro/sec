@@ -1041,3 +1041,1013 @@ No sec/, manual/, rulebook, runtime or P17-P20 edits; no new MD; no commit.
 Unrelated allocation_capabilities.go working-tree changes were already present
 and are not part of this task. Read latest handoff before this release; no newer
 Claude reservation overlaps this working set. Working set released.
+
+### Claude — 2026-11-18 working set: P18 section E (schema 14 dynamic arrays)
+
+Claiming P18-27..P18-32: schema-14 version gate, !sec.dynamic_array<T>, the
+sec.dynamic_array.* and sec.storage.* operations with verifiers, and the Go
+emitter from Semantic IR to schema 14. Files:
+- mlir/include/sec/Dialect/Sec/ (new SecDynamicArrayOps.td, SecTypes.td)
+- mlir/lib/Dialect/Sec/ (op verifiers, version gate)
+- internal/lowering/secmlir/ (new dynamic-array emitter file, emitter_options.go)
+- mlir/test/Dialect/Sec/schema14-*
+- package18-todo.md, governance/lowering.yaml (lowering.sec-mlir-package18)
+No Semantic IR or Sema semantic changes are planned.
+
+### Codex — 2026-11-18 working set: cancellable semantic CTE (reserved)
+
+Taking compiler.compile-time-evaluation's whole Cancelled-outcome requirement
+(compile_time_evaluation.md §§53,57). Working set: focused CTE cancellation
+API/helper + tests, cte_executor.go, cte_requests.go, cte_configuration.go,
+Analyzer context storage/entrypoint delegation, and governance/compiler.yaml.
+Cancellable compiler analysis and optional evaluation must return work
+cancellation separately from source diagnostics, stop evaluator execution and
+not cache cancellation or publish partial values. Existing context-free callers
+retain their API. No sec/, runtime, P18/P19 or request-queue changes reserved.
+
+### Codex — 2026-11-18 results: cancellable semantic CTE (released)
+
+Closed compiler.compile-time-evaluation's whole Cancelled-outcome point:
+ID remaining 10 -> 9; compiler.yaml 126 -> 125. Added AnalyzeContext and
+OptionalCompileTimeValueContext in internal/sema/cte_cancellation.go; explicit
+Cancelled executor outcome and polling before budget checks/publication;
+cte_requests.go passes the request context through required-value probes and
+suppresses cancellation diagnostics. analyzer.go only stores context and
+moves the existing implementation behind the public compatibility wrapper.
+Cancelled analysis returns the original context error, drops request-local
+CTE outcomes/memos/pending roots and diagnostics; consumers must discard its
+other facts, not admit it as a successful analysis. Existing Analyze remains
+context-free. This is the CTE service API, not active LSP request cancellation;
+that broader requirement stays in tooling.lsp-module-diagnostic-scheduling.
+
+New tests: internal/sema/cte_cancellation_test.go and
+ testdata/sema/cte_cancellation.sec. Deterministic checkpoint cancellation,
+pre-cancelled/deadline requests, loop and recursive required evaluations,
+source try not catching compiler cancellation, optional folds, cancellation
+precedence over budget exhaustion, empty results and successful fresh retries.
+
+Verification 2026-11-18:
+- Complete Sema and Semantic IR suites: PASS (38.166s / 10.471s).
+- Race semantic/optional CTE and cancellation tests: PASS (13.480s).
+- Final cancellation race rerun with source try handler: PASS (1.193s).
+- Focused materialization/transient/value-hover CLI and LSP: PASS (8.213s /
+  28.250s). Sema vet: PASS.
+- yamlstatus check: 0 problems in 47 fragments; compiler.yaml canonical;
+  68 evidence paths checked, none missing. fmt also reports its three existing
+  integrated:null date hazards; no dates were invented. git diff --check clean.
+No sec/, manual/, native runtime, request queue, P18/P19 or rulebook edits;
+no new MD or commit. Read Claude's P18 section E reservation; no overlap.
+Working set released.
+
+### Codex — 2026-11-18 working set: yamlstatus MD references (reserved)
+
+Taking governance.yamlstatus-tooling's whole -md cross-reference requirement,
+cmd/yamlstatus/IDEAS.md §5. Working set: cmd/yamlstatus/cli.go, new focused
+missing-decision reference query/tests, governance/governance.yaml and handoff.
+Read-only exact-ID references across governance/rules/status/Go/Sec source;
+closed mode reports possible stale blocker wording for absent ledger IDs.
+No compiler/lowering/stdlib source edits; no overlap with Claude's P18 work.
+
+### Codex — 2026-11-18 results: yamlstatus MD references (released)
+
+Closed governance.yamlstatus-tooling's whole -md requirement (IDEAS.md §5):
+ID remaining 4 -> 3; governance.yaml 18 -> 17. New
+cmd/yamlstatus/md_references.go and md_references_test.go; cli.go registers
+-md MD-NNN and -md closed, with optional JSON and directory selection.
+All exact textual occurrences are grouped by portable file with line/Unicode
+column across selected governance, rules, rulebook status and Go/Sec sources.
+Closed mode checks explicit adjacent/wrapped blocker wording against absent
+ledger IDs. It is an advisory wording audit: neutral history and negated
+blockers are excluded, while present decided-implementation-pending IDs stay
+tracked. It never decides closure or edits references automatically. Symlinks,
+binary data and generated build/dependency directories are not scanned.
+Malformed/duplicate decision IDs and conflicting options fail explicitly.
+
+Verification 2026-11-18: complete yamlstatus tests PASS (0.037s), complete
+race tests PASS (1.180s), vet PASS. Live exact MD-133 and closed JSON queries
+passed; file order and serialized output deterministic, no input writes.
+Tests cover repeated/exact/longer IDs, every specified source family, Unicode,
+wrapped/negated/neutral wording, empty queries/results, malformed ledgers and
+CLI option conflicts. yamlstatus check: 0 problems in 47 fragments; owning
+fragment canonical, 33 evidence paths checked, none missing. git diff --check
+clean. Latest handoff read before release; Claude's P18 section E stays separate.
+
+Combined Codex batch: compiler.yaml remaining 126 -> 125 and governance.yaml
+18 -> 17; exactly two complete requirements closed, no partial moves. CTE ID
+10 -> 9; yamlstatus ID 4 -> 3. No sec/ or manual/ edits, no new MD, no commit.
+Working set released.
+
+### Codex — 2026-11-18 working set: release-sequence representation (released; results below)
+
+Taking concurrency.memory-model-v2's whole representation point for release
+heads and RMW chains (§§25–28). Working set: new focused Sema release-sequence
+facts/tests, atomic_memory_model.go integration, source fixtures and
+concurrency_memory_model.yaml. Outcome facts must preserve overlapping release
+heads, relaxed/acquire RMW continuation, plain Store breaks and transparent
+non-modifying outcomes. These are symbolic per-object modification-order
+constraints, never source-ordered membership or a synchronization proof.
+No P18 emitter/dialect, runtime, sec/, fence or race-solver edits.
+
+### Codex — 2026-11-18 results: release-sequence representation (released)
+
+Closed the whole head/RMW-chain representation requirement in
+concurrency.memory-model-v2; ID and concurrency_memory_model.yaml remaining
+6 -> 5, implemented 1 -> 2 (28.6% implemented); no partial moves.
+
+New internal/sema/atomic_release_sequences.go defines per-outcome symbolic
+transfer constraints, integrated in recordAtomicMemoryOperation in
+atomic_memory_model.go. Release/AcqRel/SeqCst modifications start heads;
+RMW outcomes continue every predecessor head, including Relaxed/Acquire and
+successful CAS. A release RMW both retains inherited heads and adds its own;
+plain Store always breaks prior heads, even when starting a new release head.
+Load and failed CAS neither extend nor break chains. Relations explicitly
+require the same live atomic object and a contiguous RMW modification path;
+execution context equality is not required. Existing canonical storage/source/
+callable/outcome facts remain authoritative. No source-order membership,
+read-from edge, publication guarantee or synchronization proof is fabricated.
+
+New tests and fixture: internal/sema/atomic_release_sequences_test.go and
+ testdata/sema/atomic_release_sequences.sec. Covers all nine operation kinds,
+independent CAS orders, defaults, overlapping heads, relaxed RMW continuation,
+Store breaks, read transparency, identity uncertainty, independent callables,
+query mutation isolation and reset, on 32/64-bit plans at all three depths.
+A transfer-algebra regression tests the emitted constraints on a hypothetical
+proven modification path; source locations never choose such a path.
+
+Verification 2026-11-18:
+- Complete Sema: PASS (39.688s).
+- AtomicReleaseSequence/AtomicMemoryModel/AtomicMemoryDomains race subset:
+  PASS (1.974s).
+- Atomic/CompareExchange compiler and LSP subset, including source formatting:
+  PASS (31.134s / 95.783s).
+- Sema vet: PASS. yamlstatus check: 0 problems in 47 fragments; owning file
+  canonical, 12 evidence paths checked, none missing; git diff --check clean.
+
+Representation is complete. Actual release-sequence synchronization/race
+solving and physical IR/lowering remain separate pending requirements, as do
+fence patterns and SeqCst/completion integration. No sec/, manual/, native
+runtime, P18/P19 or rulebook changes; no new MD or commit. Read latest handoff
+before release; Claude's P18 section E files are untouched. Working set released.
+
+### Claude — 2026-11-18 results: P18 section E (schema 14 dynamic arrays) (released)
+
+- Done: P18-27, -28, -29, -32 and -42.
+- Schema 14 adds !sec.dynamic_array<T> and sec.dynamic_array.{empty, allocate,
+  len, len_int, capacity_internal, has_backing, has_capacity, index_in_bounds,
+  element_place, append_prepared, grow_backing}, plus sec.storage.{establish_domain,
+  advance_epoch, end_domain, reclaim}.
+  - Files: SecDynamicArrayOps.td and DynamicArrayOps.cpp.
+- New pass --sec-verify-dynamic-arrays checks the growth protocol; it is also
+  in the CLI verification list.
+- Extended to accept dynamic arrays:
+  - --sec-verify-places (consumer, element guard);
+  - slice borrow and slice guards (dynamic-array source, runtime-length extent);
+  - destruction plans (kind dynamic-array with backing steps);
+  - fail.bounds dynamic-array-index;
+  - own.copy now rejects a dynamic array.
+- Go: dynamic_array_emit.go, schema 14 in emitter_options.go.
+  - emit-ir/emit-sec-mlir now inspect at package 18 / schema 14
+    (inspectionMaxPackage 18, inspectionSchemaVersion 14).
+  - Tests that used 14 as the "unknown" schema now use 15.
+  - The CLI "beyond-package" boundary case is now an Arena Alloc (P19).
+- Codex: if your P19/P20 tests assert `sec.dialect_version = 13` from
+  emit-sec-mlir, they now see 14.
+- Open in P18: -30 (owner move/replacement), -31 (--sec-verify-storage-transitions,
+  § 129 invariants), sections D, F, G, H.
+- Tests: lit 237/237; internal/lowering/secmlir and internal/ir/semantic pass
+  in full; CLI emit/inspection subsets pass.
+
+### Codex — 2026-11-18 working set: yamlstatus correction audit (released; results below)
+
+Taking governance.yamlstatus-tooling's whole -corrections requirement
+(IDEAS.md §6). Working set: cli.go, focused correction-audit code/tests,
+governance/governance.yaml and handoff. Read-only audit of corrections_applied
+links, unreferenced archive files and pending root/corrections candidates.
+Archive location means normative sync, never complete runtime implementation.
+Read Claude's P18 schema-14 release and respect the newer inspection boundary;
+no compiler, runtime, sec/, package or rulebook edits reserved.
+
+### Codex — 2026-11-18 results: correction audit (released)
+
+Closed the whole IDEAS.md §6 -corrections requirement under
+governance.yamlstatus-tooling: remaining 3 -> 2; governance.yaml 17 -> 16;
+implemented +1, no partial moves.
+
+Added cmd/yamlstatus/corrections.go and corrections_test.go, wired the CLI
+and documented operation in IDEAS.md. -corrections [-json] checks every
+corrections_applied path for a regular file under the applied archive and
+retains integration/YAML source location. Archive entries need an exact
+integration/rulebook reference or local rulebook-relative Markdown link;
+encoded spaces and fragments are supported. Archive self-references and
+prefixed filenames do not establish linkage. Pending files under corrections/
+and root candidates with correction filename/heading evidence retain raw
+metadata; applied-but-unarchived candidates are separate. Normative archival
+never claims runtime completion. Queries are deterministic and read-only,
+with portable output, no symlink traversal or automatic migrations. Malformed
+lists, filesystem failures and incompatible flags are command errors; audit
+findings themselves are report data with successful status.
+
+Verification 2026-11-18:
+- Complete yamlstatus suite PASS; final complete race suite PASS (1.173s),
+  including default relative directory, duplicate links, self/prefix/remote
+  reference negatives, symlinks, pending/root classification, Markdown and
+  YAML/front-matter status, local links, option conflicts and input immutability.
+- yamlstatus vet PASS.
+- Real read-only report inspects 57 links and 126 archived files; finds 22
+  broken/outside application paths, 33 archive entries without canonical
+  integration/rulebook linkage, five pending candidates and no applied files
+  awaiting archive. These are pre-existing findings for review, not new MDs
+  or automatic claims that any language implementation is complete.
+- yamlstatus check: 0 problems in 47 fragments; governance.yaml canonical;
+  35 evidence paths checked, none missing; git diff --check clean.
+
+Read Claude's latest P18 schema-14 release before finishing; its work is
+untouched. No sec/, manual/, compiler semantic, native runtime, package or
+rulebook changes; no new MD or commit. Working set released.
+
+### Codex — 2026-11-18 working set: yamlstatus diagnostic audit (released; results below)
+
+Taking governance.yamlstatus-tooling's whole -diagnostics requirement
+(IDEAS.md §8). Working set: cli.go, focused diagnostic audit/tests and shared
+text-ID source positions (reuse with -md if needed), IDEAS.md and owning
+governance. Use diagnostics.All/Validate, retaining retired reservations;
+compare exact references across selected governance and rules and show next
+unused candidate per canonical ID namespace. Registry topic families are not
+ID namespaces (diagnostics.md §§3,5–6). Read-only suggestions never allocate
+or reuse IDs. No registry, compiler/lowering, sec/ or P18/P19 semantic edits.
+
+### Codex — 2026-11-18 results: diagnostic audit (released)
+
+Closed IDEAS.md §8 -diagnostics under governance.yamlstatus-tooling:
+ID remaining 2 -> 1; governance.yaml 16 -> 15; implemented +1, no partial moves.
+The only remaining yamlstatus-tooling point is the previously recorded canonical
+key order, which explicitly awaits an agreed order; this task invents none.
+
+Added diagnostic_audit.go and diagnostic_audit_test.go; the CLI consumes the
+canonical diagnostics.All/Validate registry, including retired definitions.
+Exact ID references across selected governance and Markdown/YAML rulebooks
+retain portable file, line and Unicode column. Unregistered prose mentions and
+registered IDs without governance references are separate review findings.
+Symbolic name, real topic-family metadata and retired status remain visible.
+Candidates append after the highest registered number per canonical namespace
+L/P/S/A/B/F, skipping active/retired and documentary reservations without
+recycling gaps; empty namespaces start at 0000, exhausted append space is
+explicit. Topic families/numeric subranges never invent ID semantics.
+Suggestions do not allocate or reserve IDs, and examples can intentionally
+mention unregistered IDs. No diagnostic definitions were changed.
+
+Shared helpers: audit_query.go validates audit mode options/root consistently
+for diagnostics, corrections and MD; text_ids.go provides one position scanner
+reused by -md and diagnostic references. Existing -md output/wording behavior
+is preserved and covered by its unchanged integration tests. IDEAS.md usage,
+CLI help and owning governance evidence synchronized.
+
+Verification 2026-11-18:
+- Complete yamlstatus suite PASS (0.040s); complete final race suite after
+  shared-helper extraction PASS (1.192s), including existing MD/corrections.
+- yamlstatus vet PASS. Live -diagnostics JSON query: 321 registered entries,
+  35 unregistered documentary mentions and 24 registered IDs lacking an exact
+  governance mention; six namespace rows. Findings are not source errors.
+- Tests cover retired IDs, documentary reservation, namespace/topic separation,
+  exact/longer IDs, Unicode/CRLF positions, stable order with shuffled registry,
+  no writes, symlink exclusion, exhaustion, malformed registry/document input,
+  default/positional/explicit directories and conflicting options.
+- yamlstatus check: 0 problems in 47 fragments; governance.yaml canonical;
+  41 evidence paths checked, none missing; git diff --check clean.
+
+Read latest handoff before release; Claude's P18 files and registry definitions
+are untouched. No compiler semantic, runtime, sec/, manual/, package or rulebook
+changes; no new MD or commit. Working set released.
+
+### Claude — 2026-11-18 results: P18-30 and P18-31 (released) — P18 section E complete
+
+- P18-30: T[] move, consuming argument, Result return and transactional
+  replace verify in schema 14. Fixture testdata/semantic_ir/dynamic_array_ownership.sec;
+  test TestSchema14DynamicArrayOwnership.
+- P18-31: new pass --sec-verify-storage-transitions
+  (mlir/lib/Analysis/VerifyStorageTransitions.cpp); the CLI now runs it too.
+  own.semantic_copy rejects dynamic arrays.
+- Tests: lit 238/238; internal/lowering/secmlir passes in full; CLI
+  inspection tests pass.
+
+### Codex — 2026-11-18 working set: close yamlstatus tooling (released; results below)
+
+The user authorizes closing the final canonical integration-key-order point.
+Implement IDEAS.md section 4.1's order in the shared renderer, retaining nested
+mapping/list order and stable unknown fields; test all document shapes and
+value preservation. Working set: cmd/yamlstatus key ordering, tests, IDEAS.md,
+governance/governance.yaml and this handoff. Other governance files will not
+be rewritten merely to adopt the new optional fmt output. Claude's latest
+P18 section E release read; no compiler/MLIR/package overlap.
+
+### Codex — 2026-11-18 results: yamlstatus-tooling closed (released)
+
+Closed the final whole canonical-key-order requirement. ID
+`governance.yamlstatus-tooling`: remaining 1 -> 0, implemented 14 -> 15,
+status partial -> implemented. Owning governance.yaml remaining 15 -> 14.
+Snapshot comparison shows exactly one changed integration, no partial moves.
+
+Added cmd/yamlstatus/key_order.go and key_order_test.go; emit.go invokes the
+shared order for all writers. Order is documented in IDEAS.md section 4.1:
+id/area/feature/status, dates, revision/baseline/summary, rules/code/tests,
+implemented/partial/remaining/unimplemented/required_tests/verification.
+Unknown fields retain their relative order after known fields. Source nodes
+stay intact; root integration mapping/list and wrapped integration list are
+supported. Headers, registry metadata, nested mappings and list order remain
+unchanged. Adjusted edit_test.go/check_test.go canonical expectations.
+The existing renderer does not emit comments; IDEAS now states that accurately.
+
+Formatted only governance/governance.yaml through fmt -write: its decoded
+values and count snapshot were unchanged before explicit closure edits.
+Other fragments are intentionally not mass-rewritten: before editing them,
+run fmt -diff and fmt -write on that owning fragment to adopt the new order.
+Type hazards are still reported rather than silently fixed.
+
+Verification: full yamlstatus tests PASS (0.047s), race PASS (1.211s), vet
+PASS; check reports 0 problems in 47 fragments; owning fragment fmt -check
+clean, zero type hazards; 43 evidence paths checked, none missing;
+git diff --check clean. Regression coverage includes typed scalar equality,
+source-node immutability, stable unknown/nested/registry/header/list order,
+all document shapes, idempotence, no-write preview/check and subsequent edits.
+
+Latest Claude handoff (P18-30/31 released, section E complete) read before
+release. No Claude/P18/P19, compiler, runtime, sec/ or manual/ edits. No commit.
+
+### Codex — 2026-11-18 working set: parser MD-132 synchronization (released; results below)
+
+Taking the whole parser-long-term rulebook synchronization requirement for
+MD-132. Owner decision already specifies layout-evidenced stray closing-brace
+recovery, implemented 2026-11-12. Sync parser_recovery.md section 24 with that
+exact decision, verify parser evidence and update missing-decisions.yaml and
+governance/parser.yaml. Lexer/bootstrap and deferred fuzz work excluded.
+No compiler/MLIR/P18/P19 overlap. Latest Claude release read.
+
+### Codex — 2026-11-18 results: parser MD-132 synchronization closed (released)
+
+Closed the whole rulebook synchronization point under frontend.parser-long-term:
+remaining 9 -> 8 for both that ID and parser.yaml; implemented +1, no partial
+moves or replacement remaining. This is completion of the previously approved
+rulebook synchronization, not a claim of new parser behavior or full parser
+closure. Runtime recovery was already implemented on 2026-11-12.
+
+parser_recovery.md revision 2.3 adds section 24.2 with the existing owner-approved
+MD-132 criteria: first-token deeper-indented brace, later deeper continuation,
+exact switch/function continuation sets, valid-program invariance, one diagnostic
+and one real-token skip event with the construct retained. Existing numbering
+and revision 2.1/2.2 corrections preserved. language-rulebook-status.md row now
+reports revision 2.3. Removed MD-132 from missing-decisions.yaml only after
+rulebook/governance synchronization, following that ledger's removal policy;
+last_id is unchanged. Updated parser helper references to precise paragraphs.
+
+Extended stray_brace_recovery_test.go with evidence-boundary cases and retained
+error/event/episode provenance assertions; existing sibling/valid indentation
+regressions pass. Full parser PASS (131.567s), CST PASS (0.007s), formatter PASS
+(1.649s); focused parser race PASS (1.029s); parser vet PASS. Governance check:
+0 problems in 47 fragments; parser.yaml canonical with no type hazards;
+all 163 parser evidence paths exist; missing-decision IDs remain unique;
+git diff --check clean. Adopted canonical key ordering only for parser.yaml;
+formatter verified decoded equality and snapshot counts unchanged before edits.
+
+Eight remaining parser points stay open, including owner-deferred long-running
+fuzz campaigns. Lexer/bootstrap untouched. Latest shared handoff read before
+release; no Claude/P18/P19 overlap, no sec/ or manual/ edits and no commit.
+
+### Codex — 2026-11-18 working set: specialized parser recovery contexts (released; results below)
+
+Taking parser-long-term's whole specialized recovery-context requirement.
+Add scoped syntax contexts for grammar-owning parser entry points, separate
+from the coarse context used for dispatch/member rules. Share context lookup
+between diagnostics/deduplication and repair events; preserve the originating
+diagnostic's context when a caller records a skip. Audit current specialized
+families and exercise malformed source, nested restoration, rollback and
+CLI/LSP/CST consumers. No new accepted grammar, bootstrap, deferred fuzz,
+compiler lowering or Claude package work. Owning ledger: governance/parser.yaml.
+
+### Claude — 2026-11-18 results: P18-33 and test matrices P18-34..41 (released)
+
+- P18-33 test: TestPackage18NoPhysicalLowering.
+- Sema fix in internal/sema/allocation_facts.go allocationCleanupCovered:
+  owning T[] cleanup is allocation-free when its element cleanup is, so the
+  empty default is valid under noalloc (§ 18). Before this, noalloc rejected
+  it as "Unproven".
+- C++ fix in VerifyDestructionPlans.cpp: a dynamic-array plan starts with
+  destroy-elements-reverse exactly when its element needs destruction (the
+  Handle[] plan used to be rejected).
+- Matrices:
+  - internal/sema/package18_matrix_test.go (§§ 119, 120, Sema rows of 122/123/126);
+  - internal/lowering/secmlir/package18_matrix_test.go (§§ 121-126), fixture
+    testdata/semantic_ir/package18_matrix.sec.
+- Tests: sema, ir/semantic and lowering/secmlir pass in full; lit 238/238;
+  CLI allocation subsets pass.
+
+### Codex — 2026-11-18 results: specialized parser recovery contexts closed (released)
+
+Closed the whole remaining specialized-context requirement. parser.yaml:
+remaining 8 -> 7, implemented 106 -> 107. frontend.parser-long-term:
+remaining 8 -> 7, implemented 9 -> 10. No partial moves/replacement remaining.
+The shared snapshot also observes +9 implemented in lowering.sec-mlir-package18
+from the separate P18 work; those are not parser changes.
+
+Added internal/parser/recovery_context.go: syntax-owner scopes and one shared
+context lookup. A diagnosticContext field is separate from recoveryContext,
+which continues to control top-level/member/statement dispatch. Entry points
+scope current grammar families; shared leaf helpers inherit their caller's
+owner. Deferred restoration handles nested/early/speculative returns without
+changing synchronization or episode boundaries. Diagnostic keys/locations,
+occurrences and missing-token events share the lookup. A caller-recorded skip
+retains its originating diagnostic's context. Nested interpolation diagnostics
+retain the child syntax owner (or interpolation for bare expression failures).
+
+Scoped files: parser.go, expression.go, attributes.go, asm.go,
+generic_parameters.go, generic_constraints.go, hardware.go,
+interface_receivers.go, interpolation.go, register_header.go,
+return_statement.go, spawn_configuration.go, switch_case.go, union_recovery.go.
+New recovery_context_test.go exercises 53 malformed source cases, scope
+restoration/rollback and caller-recorded repair provenance. Updated the existing
+virtual struct-brace test to expect its new precise struct context; CST recovery
+tests assert struct/grouped-expression context survives lossless attachment.
+
+Verification:
+- First full parser run exposed a duplicate L1006 inside an interpolation,
+  because outer lexer and re-lexed child now had different syntax owners.
+  Fixed addDiagnostic by retaining an already reported identical lexer
+  occurrence regardless of the new syntax scope (source file/line/column and
+  lexeme, same registered lexer ID). No lexer source or accepted grammar edit.
+- Final full parser PASS (174.092s), CST PASS (0.010s), formatter PASS (2.373s).
+  Existing escape-diagnostic and interpolation regressions pass; full parser
+  includes the existing deterministic mutation/truncation robustness sweeps.
+- Final targeted race parser PASS (1.092s), compiler PASS (1.277s), LSP PASS
+  (33.381s): context/rollback/interpolation/escape and existing structured
+  occurrences, CLI parser error gates and LSP recovery consumers. Vet PASS for
+  parser/CST/formatter/compiler/LSP.
+- The extra initial full CLI/LSP suites timed out at their default 10-minute
+  limits; neither whole suite is claimed passed. Initial CLI native build tests
+  also lacked SEC_MLIR_BIN. All five observed native build failures were rerun
+  with SEC_MLIR_BIN=$PWD/build/sec-mlir/bin and PASS (0.598s). This does not
+  replace or claim completion of either timed-out full suite.
+- Governance check: 0 problems in 47 fragments; parser.yaml canonical, zero
+  hazards; all 177 parser evidence paths exist; git diff --check clean.
+
+The audit also observed `impl X { ? }` retaining an InvalidMember without a
+primary parser diagnostic. Recorded in verification_notes for the existing
+invalid-node/drop/traversal audit, not claimed fixed by context metadata.
+Cross-location causal suppression and the other seven parser requirements
+remain separate; long-running fuzz campaigns are still owner-deferred.
+
+Latest Claude P18-33/P18-34..41 release read before finishing; no overlap with
+that sema/lowering work. Lexer/bootstrap, sec/, manual/, compiler/lowering and
+package files untouched by this change. No new MD or commit. Working set released.
+
+### Codex — 2026-11-18 working set: close borrowing tooling (released; results below)
+
+Taking tooling.borrowing's final safe-code-action requirement. Implement an
+explicit, conservative reference-lifetime restructuring action using canonical
+Sema borrow/holder facts and whole-program revalidation, not diagnostic prose
+or an independent borrow model. Restrict syntax and withhold stale, ambiguous,
+unsafe and incompletely analyzed candidates. Work: cmd/lsp borrow actions,
+shared existing ownership-action analysis helper, tests/fixtures and owning
+governance/tooling.yaml. No semantic borrowing-rule, compiler lowering or P18
+changes. Latest Claude P18 release read.
+
+### Claude — 2026-11-18 results: P18-43 and P18-44 (released)
+
+- Semantic IR (internal/ir/semantic/dynamic_array_ops.go, builder.go):
+  - dynamic-array owners through stored field paths (`bag.items`);
+  - IsEmpty lowered as `length == 0`;
+  - named boundaries instead of "unresolved function call" for SizeOf (P24),
+    unsafe Ptr (P18-25), Clear/RemoveAt (no length-reducing schema-14 op) and
+    string.ToByteArray/ToRuneArray (MD-072/P23).
+- Sema: compilerKnownOption now substitutes the Some payload and clears
+  GenericParameters (compiler-known Option results intern in IR).
+- Tests:
+  - TestPackage18SourceEndToEnd (fixture testdata/semantic_ir/dynamic_array_source.sec);
+  - TestPackage18CoreMaterializationBoundary;
+  - TestPackage18UnsupportedSurface.
+- Regression: sema, ir/semantic and lowering/secmlir pass in full; the cmd/compiler
+  and cmd/lsp Option/collection/hover subsets pass.
+
+### Codex — 2026-11-18 results: tooling.borrowing ID closed (released)
+
+Closed the last whole safe-code-action point. tooling.borrowing status
+partial -> implemented; remaining 1 -> 0, implemented 10 -> 11.
+tooling.yaml remaining 20 -> 19, implemented 72 -> 73; no replacement remaining
+or partial moves. Whole ID now has zero remaining. The shared count comparison
+also observes +2 implemented in lowering.sec-mlir-package18 from separate
+P18 work; those are not this change.
+
+Added cmd/lsp/borrow_actions.go and borrow_actions_test.go. The explicit
+refactor.rewrite moves an existing standalone `discard holder` before a
+conflicting sibling statement, only when holder is a direct local reference
+binding in the same AST block and Sema publishes its exact borrow/holder
+identity. Canonical registered conflict IDs and current source ranges are
+authority, not client prose/related labels. The baseline must have only that
+current conflict, and the entire formatted replacement must be accepted by
+canonical parser/import/selected-target/overlay Sema with no errors.
+
+Safety boundaries are intentionally conservative, not promises to synthesize
+an arbitrary borrow fix: no API declaration, implicit move/copy, owned-value
+destruction, invented discard or unrelated statement is changed. Later and
+deferred holder uses, different scopes, ambiguous same-line syntax, attached
+or trailing comments, missing/temporary/reborrow holders, unknown/loop-carried
+findings and stale/incomplete snapshots withhold the action. The title says
+that the existing reference discard moves; ending the reference does not
+destroy its referent (borrowing.md §22.2(2)). It is never advertised as a
+quickfix/fixAll/save action: the protocol honors context.only for this new
+refactoring. Shared canonical formatter/project settings produce minimal
+UTF-16 edits; source lookup visits only active-file AST declarations, not core
+or imported bodies.
+
+Modified cmd/lsp/ownership_actions.go to expose one private per-request
+analysis snapshot; the existing ownershipActionErrors wrapper still projects
+the same errors/completeness for move actions. No second parser/module/borrow
+or target-validation model. cmd/lsp/main.go wires the provider and reads the
+standard context.only field. Existing action families keep their behavior.
+
+Verification 2026-11-18:
+- All selected new borrow and existing ownership-action groups PASS normally
+  (132.829s); final positive cases after active-source lookup refinement PASS
+  (18.944s).
+- Final race selection PASS (483.754s): new proof/stale/overlay/protocol tests,
+  existing ownership protocol and selected-target tests, and shared project
+  formatting configuration tests. Vet ./cmd/lsp PASS.
+- Tests cover shared/mutable references, Unicode/CRLF, unchanged count of
+  explicit discards, later/deferred use, missing eligible discard, unrelated
+  errors, comments, inline siblings, nested scopes, forged/stale/duplicate
+  client diagnostics, parser/import/sibling incompleteness, protocol Only
+  filtering and unsaved source snapshots. Canonical formatter output is
+  idempotent and every offered replacement is rechecked with Sema.
+- Live canonical CLI check: before reorder, exit 3 with only S1162; after
+  reorder, exit 0 and no diagnostics. Temporary compiler built with -trimpath.
+- Governance check: 0 problems in 47 fragments; tooling.yaml canonical with
+  zero type hazards; all 34 borrowing evidence paths exist; git diff --check
+  clean. Initial fmt -write of tooling.yaml preserved decoded values and all
+  counts before explicit closure edits. Other fragments were not formatted.
+
+Latest Claude P18-43/P18-44 release read before finishing. No overlap with
+Claude's semantic-IR/Sema/lowering work; no sec/, manual/, compiler/lowering,
+rulebook, missing-decision or package edits. No commit. Working set released.
+
+### Claude — 2026-11-18 results: P18-45..47 (released)
+
+- semantic_ir.md now has § 127 (P18 Semantic IR amendment, sync § 22);
+  language-rulebook-status.md is updated.
+- Acceptance matrix in package18-todo.md: 40 met, 4 partial, 1 open, 1 not run
+  (full go test ./... needs owner authorization). P18 stays partial.
+- Report: rules/mlir/packages/sec-mlir-dialect_package18-implementation-report.md
+  (46 topics, P19 recommendations).
+- P18 open items: P18-17 (MD-135), -18 (MD-072), -22 (depends on -18) and
+  -23..26 (source lowering; not blocked).
+
+### Claude — 2026-11-18 results: P18-23..26 (released)
+
+- Membership over T[] stops at a named boundary (internal/ir/semantic/boolean.go).
+- New tests:
+  - TestPackage18NestingAndBoundaries (lowering/secmlir): nesting,
+    for/membership/Ptr boundaries, zero-sized elements;
+  - TestPackage18BoundarySurface (sema): FFI and equality rejection.
+- P18 is now 44/47. Open: P18-17 (MD-135), -18 (MD-072) and -22 (depends on
+  -18). Next: P19.
+
+### Claude — 2026-11-18 working set: P19-01/02, then P19-20 (Arena source lowering)
+
+Claiming:
+- P19-01 baseline and P19-02 sync audit (package19-todo.md,
+  rules/mlir/normative-sync/sec_arena_allocation_sync_v1.md against the
+  memory rulebooks);
+- then P19-20: builder lowering of Arena creation, New, Alloc, Reset and
+  Release from source, plus the allocation-readiness preservation for Arena
+  facts.
+
+Files: internal/ir/semantic (new arena source-lowering file, builder hooks),
+internal/sema/allocation_lowering_readiness.go (preservation only),
+package19-todo.md, governance/lowering.yaml (lowering.sec-mlir-package19).
+Codex: tell me here if you are inside internal/ir/semantic/arena_*.go.
+
+### Claude — 2026-11-18 results: P19-01/02; P19-20 dependency finding (released)
+
+- P19-01 baseline recorded. P19-02 audit: the sync doc is fully reflected in
+  the rulebooks; no MD needed.
+- P19-20 depends on two missing pieces:
+  - Arena New/Alloc need T's resolved layout from the CompilationPlan
+    (P19 § 20), which only P24-10..16 can provide;
+  - WithCapacity/Growable need a provider contract (MD-034).
+- Without them, only FromBuffer creation, Reset and borrowed-Arena
+  Release/destruction can lower. No code changed in this step; the working set
+  is released.
+
+### Codex — 2026-11-18 working set: analysis governance ownership
+
+Claiming governance.compiler-analysis (both remaining items): map the ten
+specialized analysis books to existing fact/status owners and document P1–P14
+as historical milestones under compiler_analysis.md §§1,6,67,75.
+Files: governance/analysis-ownership.md (new), governance/README.md,
+governance/governance.yaml, internal/sema/analysis-scheduling.md (navigation
+and execution-context schedule row only). No compiler semantics, package
+records, analysis checklists, Arena source builder or Claude P19 files.
+
+### Codex — 2026-11-18 results: governance.compiler-analysis (released)
+
+Closed the complete governance ID: planned -> implemented, remaining 2 -> 0.
+governance.yaml remaining 14 -> 12, implemented 22 -> 24.
+
+- New governance/analysis-ownership.md maps all ten specialized analysis books
+  to existing fact/status owners, including the independent effect verticals,
+  coordination, local memory/interprocedural facts, Semantic IR and tooling
+  consumers. No copied checklists or promotion of analysis implementation status.
+- P1-P14 indexed as historical vertical milestones with their existing current
+  ledger owners; original package records and acceptance claims preserved.
+- governance/README.md links the map; internal/sema/analysis-scheduling.md links
+  it and now documents the already registered execution-context producer.
+- Static audit PASS: 56 local links, ten books, fourteen packages, 38 unique
+  existing tracker references, eleven documented scheduled producer IDs.
+- Existing AnalysisSchedule/AnalysisFixedPoint/AnalyzerPublishesDependency tests
+  PASS (0.039s). yamlstatus check: 0 problems in 47 fragments; owning fragment
+  fmt clean, zero hazards; all seven evidence paths exist; diff --check clean.
+
+Read latest Claude P19-01/02 release and P19-20 dependency finding before
+finishing. No overlap, no compiler behavior changed, no package/core/manual/MD
+changes, no commit. Existing analysis.compiler-analysis implementation gaps
+remain with their owner. Working set released.
+
+### Claude — 2026-11-18 note: new MD-139 and MD-140
+
+- MD-139 (blocking): the manifest syntax that selects a profile family and
+  an allocation provider per Target/Variant (the MD-034 configuration gap).
+  It blocks owned Arenas (WithCapacity/Growable) and allocator-backed T[].
+- MD-140 (constraining): the Arena epoch-exhaustion strategy per profile
+  (arena.md § 39, P19 § 42).
+- Governance is linked in platform.target-profiles and lowering.sec-mlir-package19.
+
+### Claude — 2026-11-18 working set: P24-10..16 (canonical layout resolver)
+
+Claiming:
+- new internal/layout/resolved_layout*.go: records, plan key, states,
+  memoization and cache;
+- the scalar requirement mapping in a new internal/sema/layout_requirements.go;
+- package24-todo.md and the governance layout entries.
+
+No existing layout files are rewritten (size_arithmetic.go is reused).
+New MD-141: bool/rune storage size and per-target scalar alignment are
+undefined, so scalar layouts stay incomplete until it is decided.
+
+### Claude — 2026-11-18 result: P24-10..15 done, P24-16 partial
+
+- Done: P24-10, -11, -13, -14 and -15. P24-16 is partial.
+- New files in internal/layout: resolved_layout.go, resolver.go,
+  layout_cache.go and resolved_layout_test.go.
+- `go test -race ./internal/layout` and vet pass.
+- package24-todo.md: 56 → 51 unchecked.
+- frontend.layout: five implemented entries; two remaining points:
+  - wire the resolver into Sema, LSP and IR consumers;
+  - MD-141 scalar completion.
+- The claimed internal/sema/layout_requirements.go was NOT created. The Sema
+  mapping stays open and the claim is released.
+- No other existing files were touched.
+
+### Codex — 2026-11-18 working set: if-statement conformance matrix
+
+Claiming frontend.if-statements-v2 remaining regression matrix. Add focused
+formatter and CLI/LSP bool-condition parity tests and native lazy-branch
+execution; audit existing parser/Sema/flow/IR/state/try/null evidence.
+Files: new if_conformance_test.go in internal/formatter, cmd/compiler and
+cmd/lsp; testdata/control_flow/if_conformance; governance/control_flow.yaml.
+No Arena/P19, shared pipeline implementation or package records. Close the ID
+only if the matrix passes; retain named domain lowering boundaries honestly.
+
+Codex if-matrix update: the new CLI/LSP truthiness matrix reproduced missing
+identity/help on non-bool if conditions. Claiming S1246
+(control-flow.if-condition-not-bool) in internal/diagnostics/diagnostics.go
+and its existing Sema if producer. Ordinary/try conditions share this ID.
+Additional files: internal/sema/analyzer_if_statement.go, new parser/Sema
+if_conformance tests, existing if_try_conditions_test.go metadata assertion.
+
+### Codex — 2026-11-18 results: frontend.if-statements-v2 (released)
+
+Closed the complete if regression-matrix point and ID: partial -> implemented,
+remaining 1 -> 0; control_flow.yaml remaining 49 -> 48. Matrix README maps
+37 current test functions across parser, Sema/flow, formatter, diagnostics,
+LSP, Semantic IR and native execution. Domain-owned representation boundaries
+remain explicitly documented/tested, including unsupported Result payloads.
+
+Actual bug fixed: ordinary and try non-bool if conditions had no registered
+identity/help. internal/sema/analyzer_if_statement.go now emits mandatory
+S1246 control-flow.if-condition-not-bool with an explicit-boolean-test/try
+help message. Registered in internal/diagnostics/diagnostics.go and severity
+test; condition validity, existing messages and source tokens are preserved.
+
+New files: if_conformance_test.go in internal/parser, internal/sema,
+internal/formatter, cmd/compiler and cmd/lsp; fixtures and matrix README in
+testdata/control_flow/if_conformance. Existing if_try_conditions_test.go in
+Sema/CLI/LSP now checks ID/help. Owning control_flow.yaml canonicalized and
+synchronized; stale short-circuit partial wording replaced with verified
+resolved-flow/state/effect evidence. No package/MD/rulebook/core/manual edits.
+
+Verification 2026-11-18:
+- Main If/Logical/state/recovery matrix selection passed in all seven packages:
+  parser 0.011s, Sema 0.130s, IR 0.046s, formatter 0.061s, diagnostics
+  0.002s, CLI 11.596s, LSP 6.348s. Three additional matrix functions outside
+  that selector passed in Sema 0.028s and IR 0.021s.
+- Focused race: Sema 1.371s, CLI 61.834s, LSP 27.339s. Diagnostics had no
+  matching race tests; its complete normal suite passed.
+- Complete formatter/diagnostics normal suites passed (1.755s/0.002s); vet
+  for parser/Sema/formatter/registry/compiler/LSP passed.
+- Native state_tests passed (1.868s). Explicit verbose IfConformanceNative
+  passed without skipping (1.895s); eight chain combinations, four grouped
+  cases and two no-else edges check result and exact observable call trace.
+- New invalid truthiness fixture produces nine S1246 errors consistently
+  through check/sema/emit-ir/emit-mlir/emit-llvm and unsaved LSP snapshots.
+- Initial tests reproduced missing diagnostic IDs, fixed above. Three test
+  assumptions corrected to existing rules: typed initializer :=, formatter
+  LF output, comparison chains rejected by Sema rather than the parser.
+- All 37 documented names resolve; yamlstatus check 0 problems/47 fragments,
+  owning fmt clean/0 hazards, all 60 evidence paths exist, diff --check clean.
+
+Latest Claude P24-10..15/partial-16 result read before release. No overlap.
+Snapshot also contains Claude frontend.layout changes in memory.yaml; these
+are separate from this closure, so global remaining is unchanged despite
+control_flow.yaml decreasing by one. No commit. Working set released.
+
+### Codex — 2026-11-18 working set: target status/comparison view
+
+Claiming tooling.lsp-multi-target-diagnostics remaining point 2 (dedicated
+status/comparison UI). Add a read-only sec/targetStatus snapshot projection
+and a focused VS Code tree view, using existing canonical target options
+and per-target diagnostics only. Missing/stale results remain unavailable,
+not zero-error proof. No new analysis, while-typing comparisons or P24 work.
+Files: new cmd/lsp/target_status.go/tests, target request/queue wiring, new
+vscode/src/targetStatus.ts, extension/target-selector/package wiring and
+governance/tooling_lsp.yaml. No package/layout/core/MD edits.
+
+### Codex — 2026-11-18 results: target status/comparison view (released)
+
+Closed the whole tooling.lsp-multi-target-diagnostics UI point, remaining
+2 -> 1; tooling_lsp.yaml remaining 18 -> 17, implemented 153 -> 154.
+The ID stays partial: while-typing incremental comparison remains open.
+
+- sec/targetStatus uses standard textDocument params and projects existing
+  canonical target options/per-target diagnostics for the current open text.
+  No new analysis, target selection or immutable Analyzer cache. Current
+  empty [] differs from unavailable null; stale/closed/partial/changed-target
+  snapshots cannot appear as successful clean results.
+- VS Code Explorer SEC Target Comparison shows logical target/variant rows,
+  active analysis target, platform/width tooltip, error/warning counts and
+  expandable diagnostics linked to source ranges. Existing selection and
+  refresh actions are available; delayed/dirty/departed-document replies
+  are rejected by generation/URI/version. Compiler counts are not validity
+  or full-lowering proof. Existing open/save/config/switch scheduling retained.
+- Files: new cmd/lsp/target_status.go and target_status_test.go;
+  cmd/lsp/main.go and request_queue.go wiring; new vscode/src/targetStatus.ts
+  and vscode/test/targetStatus.test.cjs; vscode/src/extension.ts, targets.ts,
+  package.json and README.md; owning governance/tooling_lsp.yaml.
+
+Verification 2026-11-18:
+- New normal Go tests pass (2.221s), real compiler-backed framed JSON-RPC
+  results preserve all three fixture variants (including duplicate platforms).
+- Final target/status/comparison/selection/queue race selection passes
+  (78.437s); go vet ./cmd/lsp passes.
+- TypeScript noEmit passes; final npm run test:target-status passes (585ms).
+  Headless test compiles to a temporary directory and tests counts, tooltip,
+  navigation, explanations, stale/dirty responses and editor changes. No
+  manual VS Code GUI/extension-host inspection claimed. No build artifacts.
+- yamlstatus check 0 problems/47 fragments; owning fmt clean/zero hazards;
+  all 21 evidence paths exist; diff --check clean. Count snapshot shows only
+  this integration changed during this work.
+
+Latest handoff read before release; no new overlapping Claude claim. No
+package/layout/MD/rulebook/core/manual edits, no commit. Working set released.
+
+### Codex — 2026-11-18 working set: raw thread spawn Result typing
+
+Claiming concurrency.thread-v2 raw spawn Result typing: callable/explicitly
+typed lambda thread creation must return Result[Thread[T], ThreadSpawnError],
+matching threads.md §2 and spawn.md §3. Existing block capability gate/MD-133
+remains unchanged, as do runtime/ownership-commit MD-128 dependencies.
+Files: internal/sema/spawn_inference.go; new thread_spawn_result tests/fixtures
+for Sema/CLI/LSP; existing thread/config/lifecycle tests updated to explicitly
+handle the newly correct creation layer where necessary; owning
+governance/concurrency_thread.yaml. No P24/layout/MLIR/rulebook/core edits.
+
+### Codex — 2026-11-18 results: raw thread creation Result (released)
+
+Closed the whole defined callable/explicit-lambda raw typing point:
+concurrency.thread-v2 and concurrency_thread.yaml remaining 19 -> 18,
+implemented 19 -> 20. No other checklist count changed.
+
+Production:
+- internal/sema/spawn_inference.go now returns canonical
+  Result[Thread[T], ThreadSpawnError], preserving complete child T (including
+  Result and void); configuration move/rollback and spawned execution facts
+  keep their existing semantics. Ordinary try/match extracts Thread[T].
+- checkUnresolvedTaskAtScopeExit extracted unchanged from analyzer.go into
+  focused lifecycle_scope.go, with rule traceability. It still checks direct
+  owners only; the aggregate-carrier issue below was not silently waived.
+
+New tests/fixtures:
+- internal/sema/thread_spawn_result_test.go, cmd/compiler/
+  thread_spawn_result_test.go and cmd/lsp/thread_spawn_result_test.go;
+- testdata/sema/thread_spawn_result_{valid,invalid}.sec.
+- Positive direct/generic/static-method/lambda/callable-value, nested error
+  and void typing, propagation/local recovery/match, canonical intrinsic
+  identity/noncopyability; five negative creation/owner boundary cases;
+  raw/extracted hover; named native Thread lowering boundary preserves output.
+
+Migration of existing test inputs only (preserve line counts and lifecycle
+assertions, add explicit local creation-error handling before owner use):
+- internal/sema/{analyzer_test,call_graph_test,concurrency_test,
+  program_plan_verification_test,program_plans_test,
+  task_context_requirement_test,thread_surface_test,thread_join_test}.go;
+- thread_spawn_configuration_test.go and thread_termination_boundary_test.go
+  now assert raw Result -> canonical Thread success identity;
+- cmd/lsp/main_test.go and call_graph_cycle_hover_test.go;
+- testdata/spawn_valid.sec and testdata/sema/{main_task_context_valid,
+  task_yield_context_invalid,thread_config_valid,thread_named_config_valid,
+  thread_named_config_invalid,thread_termination_boundary_invalid}.sec.
+
+Independent verified defect: BUG-000029, open in bug-reports/index.yaml and
+open/BUG-000029-raw-spawn-result-scope.md. A raw creation Result can be left
+unused in a local binding (task and thread); check accepts the new
+testdata/sema/raw_spawn_result_scope_bug.sec with exit 0. The existing
+frontend.ownership-v2 ownership-errorhandling-sync item now records this
+known hole; no duplicate/new checklist item or MD was created. A naive
+whole-carrier check was discarded because it rejects valid exhaustive
+match extraction; canonical variant/payload availability must be reused.
+Direct extracted handles and explicit discard checks still work. Block
+forms retain the existing capability gate/MD-133. Runtime/target and MD-128
+creation-commit policy remain separate; no native thread execution claimed.
+
+Verification 2026-11-18:
+- Complete Sema 40.581s and Semantic IR 11.770s PASS.
+- Relevant broad LSP selection PASS 116.423s; focused CLI thread/spawn/
+  context selection PASS 55.028s. Direct spawn_valid.sec CLI check PASS.
+- Race Sema 1.429s, CLI 45.974s, LSP 93.489s PASS for new result, named
+  config, join/select and portable-termination cases. Final additional
+  lowering-output preservation race PASS 7.113s; vet PASS.
+- Broader CLI selection hit 180s while TestValidFixturesPassCheck traversed
+  unrelated valid fixtures; no whole CLI or all-fixtures pass claimed.
+- Governance check 0 problems/47 fragments; both edited fragments canonical
+  with zero hazards; all 129 thread evidence paths exist; bug ledger IDs
+  unique/report paths exist; git diff --check clean.
+
+Latest handoff read before release; no overlapping new Claude claim. No
+P24/layout/MLIR/rulebook/core/manual changes, no commit. Working set released.
+
+## Codex claim — BUG-000029 raw creation Result lifecycle (2026-11-18)
+
+Working on Sema lifecycle_scope.go, block/return flow hooks, Result lifecycle
+regressions and their CLI/LSP diagnostics; owning frontend.ownership-v2 evidence,
+bug report/index and diagnostic registration. Reuse existing variant, Place
+availability and continuing-path lifecycle snapshots; no MLIR/layout/P24 work.
+
+## Codex release — ownership/error handling, BUG-000029 (2026-11-18)
+
+Closed frontend.ownership-v2's existing ownership-errorhandling-sync remaining
+point for named raw creation Results; BUG-000029 moved to fixed/. No MD or new
+remaining item was needed. Counts: lifetime.yaml remaining 69 -> 68;
+frontend.ownership-v2 remaining 19 -> 18; compiler total 2088 -> 2087.
+
+A named Result[Task[T], E] / Result[Thread[T], E] cannot silently abandon a
+potential success owner at lexical scope exit, parameter fallthrough, explicit
+return or implicit try/error-propagation exit. S1247 is registered as
+ownership.unresolved-creation-result, with source range and mentor help shared
+by compiler human/JSON and LSP. The original two-owner repro now exits 3.
+
+Result match payloads now commit canonical Place moves, as union payloads
+already did. Existing continuing-path lifecycle snapshots intersect discharged
+obligations; no synthetic move of an Err-only carrier is invented. Conditional
+moves do not discharge all paths. Reinitialization, new mutable borrowing and
+mutation through an alias invalidate prior discharge facts. Match payload
+owners are checked before their arm-local bindings disappear. Failure facts
+are retained at arm/block entry before a handler call ends transient proofs.
+
+Positive controls include forwarding, try extraction, exhaustive task/thread
+matches, mutable and immutable failure-only Results, owning parameters,
+parameterless local lambdas, calls in failure handlers, known-success try and
+loop failure breaks. Negatives cover unresolved locals/parameters, early
+return, propagation, one-sided handling, replacement/alias reinitialization
+and unresolved extracted owners. Existing negative projection/failure-domain
+fixtures now expect the additional owning lifecycle diagnostics or canonical
+partial-move diagnosis; their original checks remain asserted.
+
+Production changed in this turn:
+- internal/sema/lifecycle_scope.go;
+- internal/sema/{analyzer,analyzer_blocks,analyzer_inference,analyzer_lifetime,
+  analyzer_borrow_access,return_ownership,result_state_proof,match_arm_bindings,
+  cleanup_exits,place}.go;
+- internal/diagnostics/diagnostics.go (S1247 registry).
+
+Tests/evidence changed in this turn:
+- internal/sema/creation_lifecycle_test.go and
+  testdata/sema/creation_lifecycle_{valid,invalid}.sec (new);
+- cmd/{compiler,lsp}/creation_lifecycle_test.go (new);
+- internal/diagnostics/diagnostics_test.go;
+- internal/sema/{task_spawn,thread_spawn_result,result_projection,
+  result_direct_match_proof,pitfall_state_correlation,
+  task_failure_diagnostics}_test.go;
+- cmd/{compiler,lsp}/{task_spawn_result,thread_spawn_result,
+  task_failure_diagnostics}_test.go;
+- governance/lifetime.yaml, bug-reports/index.yaml, and
+  bug-reports/fixed/BUG-000029-raw-spawn-result-scope.md (moved from open/).
+
+Final verification:
+- Complete go test ./internal/sema ./internal/ir/semantic
+  ./internal/diagnostics -count=1 -timeout=180s PASS: 36.549s/10.259s/0.002s.
+- Final creation lifecycle race selection across Sema/compiler/LSP PASS:
+  1.102s/13.734s/12.493s, including the alias replacement regression.
+- Earlier broader creation Result/failure-domain race selection across
+  Sema/compiler/LSP PASS: 1.256s/63.916s/115.875s. The broader projection/match
+  race selection also passed (compiler 68.843s/LSP 126.011s).
+- go vet ./internal/sema ./internal/ir/semantic ./internal/diagnostics
+  ./cmd/compiler ./cmd/lsp PASS.
+- Original repro checked with a freshly built -trimpath compiler: exit 3,
+  two registered S1247 diagnostics and mentor help; no emitted artifact.
+- Governance check 0 problems/47 fragments; owner canonical with no type
+  hazards; all 65 evidence paths exist; bug IDs unique and fixed report
+  path valid; git diff --check clean.
+
+Latest shared handoff read before release: no newer overlapping Claude claim.
+No MLIR/layout/P24/rulebook/core/manual changes, no full-repository suite and
+no commit. Native spawn representation/runtime, MD-128, MD-133 and general
+recursive availability remain separately tracked. Working set released.
+
+## Codex claim — child panic domains and MD-131 rulebook sync (2026-11-18)
+
+Taking analysis.panic remaining 5 (child-domain panic versus synchronous parent
+panic) in canonical call-graph facts, spawn-lambda edge recording and their
+CLI/LSP presentation/tests. Also frontend.type-contracts-v2 remaining 1:
+synchronize the approved MD-131 decision into contracts/diagnostics rulebooks,
+status index and governance, verifying the existing compiler behavior. No
+MLIR/layout/P24 or sec/ changes. Files reserved: focused Sema call-graph/spawn
+files, cmd/compiler/analyse_panic.go and cmd/lsp/panic_hover.go, their tests,
+rules/types/contracts.md, rules/tooling/diagnostics.md, language-rulebook-status.md,
+missing-decisions.yaml, governance/{errors,types,errors_diagnostics}.yaml.
+
+## Codex release — two remaining points closed (2026-11-18)
+
+1. analysis.panic: distinguish child execution panic from the synchronous
+   parent's panic effect (remaining 6 -> 5; errors.yaml 40 -> 39).
+2. frontend.type-contracts-v2: complete MD-131 rulebook synchronization
+   (remaining 10 -> 9; types.yaml 42 -> 41).
+Compiler total remaining 2087 -> 2085; implemented 4160 -> 4162. No new
+remaining item, new MD or partial checklist item was added.
+
+Panic behavior:
+- Directly spawned typed lambdas now publish their canonical target-set
+  spawn edge; named functions, closed callable values/captures and generic
+  child specializations retain their execution relation.
+- Foreign abort and unknown interface/constraint panic belong to the parent
+  only on a same-stack invocation. A child constraint stays an explicit open
+  child target, including an unresolved specialized invocation, instead of an
+  empty abstract body or parent panic. Ordinary argument/receiver/config
+  preparation keeps its synchronous effects.
+- Shared ChildPanicDomains provides detached spawn boundary, shortest parent
+  path, child causes/reasons/messages and explicit uncertainty. CLI verbose
+  effects and LSP hover use the same ChildPanicDescriptions. Actual selected
+  containment/cleanup policy is deliberately not inferred by this query.
+- Process boundary traversal is tested with canonical producer facts; source
+  process spawning and physical containment remain separate open verticals.
+- The resolved named-call graph/effect publication block and execution helper
+  moved from the large inference/analyzer files into call_graph_invocations.go.
+
+MD-131:
+- contracts.md revision 2.2 §§12(2–3),14 permits ordinary checked mutation
+  (ContractFailure panic), the canonical try error path, and Information A2011.
+- diagnostics.md revision 2.3 §24(4k) records A2011 and retired/reserved S1069;
+  noPanic remains mandatory. The status index and owning document metadata
+  agree. The stale mandatory-S1069 governance claim was corrected in place.
+- Approved MD-131 was removed from missing-decisions.yaml after both the
+  normative text and governance were synchronized. This does not close the
+  separately tracked contract runtime representation/lowering work.
+
+Files changed by this work:
+- internal/sema/child_panic_domains.go (new shared fact/query/rendering);
+- internal/sema/call_graph_invocations.go (new focused extraction);
+- internal/sema/{analyzer,analyzer_inference,analyzer_for,spawn_inference,
+  call_graph_specializations}.go;
+- cmd/compiler/analyse.go; cmd/lsp/panic_hover.go;
+- internal/sema/child_panic_domains_test.go (new);
+- cmd/{compiler,lsp}/{child_panic_domains,md131_assignment}_test.go (new);
+- testdata/sema/{child_panic_domains,md131_assignment}_{valid,invalid}.sec (new);
+- rules/types/contracts.md; rules/tooling/diagnostics.md;
+- language-rulebook-status.md; missing-decisions.yaml;
+- governance/{errors,types,errors_diagnostics}.yaml; this handoff.
+
+Final verification:
+- Complete Sema/Semantic IR/diagnostics suites PASS: 37.392s/10.237s/0.002s.
+- Focused Sema race tests PASS 1.209s: child domains, generic/interface
+  noPanic checks and existing MD-131 local/member/referent update cases.
+- Final compiler/LSP race selection PASS 108.034s/103.745s: CLI exact focus,
+  canonical child causes, source replacement, mandatory parent panic errors,
+  A2011 Information, handled try mutation and retired S1069 suppression.
+- Workspace checkpoint round-trip and stale source-dependency rejection PASS;
+  an initial test used a fictitious dependency path, corrected to the actual
+  source identity required by the workspace index, then verified under race.
+- go vet for Sema, Semantic IR, diagnostics, compiler and LSP PASS.
+- Governance check 0 problems/47 fragments; all three edited fragments
+  canonical; analysis.panic 30 evidence paths and type-contracts 129 exist;
+  git diff --check clean. Two pre-existing type hazards remain in
+  errors_diagnostics.yaml: errors.diagnostics integrated: true and audited:
+  true, both confirmed unchanged from HEAD. No historical date was invented.
+
+Latest shared handoff read before release: no newer overlapping Claude claim.
+No MLIR/layout/P24/sec/manual changes, no full-repository suite, no commit.
+Working set released.

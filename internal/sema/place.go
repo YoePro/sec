@@ -935,8 +935,16 @@ func (a *Analyzer) markPlaceAvailable(place Place) {
 	}
 }
 
+// clearRootPlaceState clears consumed masks on reinitialization and invalidates
+// any discharged creation obligation belonging to the previous stored value.
+// Rules: rules/memory/ownership.md §§5–6,20–21.
 func (a *Analyzer) clearRootPlaceState(root string) {
 	clearRootPlaceStateMaps(a.moved, a.availabilityStates, root)
+	if symbol, exists := a.symbols.lookup(root); exists {
+		if _, creation := creationOwnerType(symbol.Type); creation {
+			delete(a.closedResources, root)
+		}
+	}
 }
 
 func clearRootPlaceStateMaps(moved map[string]lexer.Token, availabilityStates placeAvailabilityStates, root string) {

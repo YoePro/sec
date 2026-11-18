@@ -85,6 +85,7 @@ function registerTargetSelection(context, getClient) {
             }
             await client.sendRequest("sec/selectTarget", { uri, logicalTarget: choice.option?.logicalTarget ?? "", variant: choice.option?.variant ?? "" });
             await refresh();
+            await vscode.commands.executeCommand("sec.refreshTargetStatus");
         }
         catch (error) {
             vscode.window.showErrorMessage(`SEC target selection failed: ${error instanceof Error ? error.message : String(error)}`);

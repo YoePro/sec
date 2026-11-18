@@ -7,21 +7,21 @@ fn Defaults() void {
     Take(<-config)
     let literal := ThreadConfig {}
     Take(<-literal)
-    let worker := spawn thread {} Work()
+    let worker := try spawn thread {} Work() { Err(_) => { return } }
     join worker
 }
 fn Inline() void {
-    let worker := spawn thread {
+    let worker := try spawn thread {
         Name: Preferred("worker")
         Stack: Required(65536)
         Affinity: Preferred(CpuSet { 2, 3 })
         Priority: Required(ThreadPriority.High)
         Start: ThreadStartMode.Deferred
-    } Work()
+    } Work() { Err(_) => { return } }
     join worker
 }
 fn Partial() void {
-    let worker := spawn thread { Name: Default } Work()
+    let worker := try spawn thread { Name: Default } Work() { Err(_) => { return } }
     join worker
 }
 fn Storage() void {

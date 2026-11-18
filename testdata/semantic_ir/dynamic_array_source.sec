@@ -1,0 +1,55 @@
+module main
+
+// SEC-MLIR-P18 § 131: the owning dynamic-array source surface that exists in
+// Sec 0.1, end to end through Semantic IR and schema 14.
+
+type Bag struct {
+    items: byte[],
+}
+
+type Holder union {
+    Values(byte[]),
+    Nothing,
+}
+
+fn Consume(-> values: byte[]) uint {
+    return values.Len
+}
+
+fn Produce() Result[byte[], CollectionError] {
+    let mut values: byte[]
+    try values.Append(1)
+    return Ok(<-values)
+}
+
+fn Maybe() Option[byte[]] {
+    let mut values: byte[]
+    return Some(<-values)
+}
+
+fn Wrap() Holder {
+    let mut values: byte[]
+    return Holder.Values(<-values)
+}
+
+fn FieldLen(-> bag: Bag) uint {
+    return bag.items.Len
+}
+
+fn Surface(index: uint) Result[uint, CollectionError] {
+    let mut values: byte[]
+    try values.Append(7)
+    try values.Append(8)
+    let empty := values.IsEmpty
+    let count := len(values)
+    values[index] = 9
+    let first := values[0]
+    let whole := ref values[..]
+    discard whole.Len
+    let exclusive := ref mut values[..]
+    discard exclusive.Len
+    discard empty
+    discard first
+    let moved :<- values
+    return Ok(count + Consume(<-moved))
+}

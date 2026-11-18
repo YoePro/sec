@@ -7,18 +7,18 @@ type Holder struct {
 fn Work() void {}
 
 fn Named(config: ThreadConfig) void {
-    let worker := spawn thread <-config Work()
+    let worker := try spawn thread <-config Work() { Err(_) => { return } }
     join worker
 }
 
 fn Projected(holder: Holder) void {
-    let worker := spawn thread <-holder.Config Work()
+    let worker := try spawn thread <-holder.Config Work() { Err(_) => { return } }
     join worker
 }
 
 fn Conditional(config: ThreadConfig, start: bool) void {
     if start {
-        let worker := spawn thread <-config Work()
+        let worker := try spawn thread <-config Work() { Err(_) => { return } }
         join worker
     } else {
         discard config
@@ -26,7 +26,7 @@ fn Conditional(config: ThreadConfig, start: bool) void {
 }
 
 fn Ordinary() void {
-    let worker := spawn thread Work()
+    let worker := try spawn thread Work() { Err(_) => { return } }
     join worker
     let work := try spawn task Work() { Err(_) => { return } }
     await work

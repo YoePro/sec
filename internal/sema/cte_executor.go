@@ -16,6 +16,8 @@ import (
 type cteFailureKind string
 
 const (
+	// cteCancelled abandons compiler work, not the source computation (§57).
+	cteCancelled cteFailureKind = "Cancelled"
 	// cteResultNotMaterializable: execution succeeded, but the complete
 	// returned graph has no legal static representation (§§30,36,54).
 	cteResultNotMaterializable cteFailureKind = "ResultNotMaterializable"
@@ -205,7 +207,14 @@ func (x *cteExecutor) fail(kind cteFailureKind, at lexer.Token, format string, a
 	x.failure = &cteFailure{Kind: kind, Reason: fmt.Sprintf(format, args...), At: at, CallStack: append([]cteCallSite(nil), x.calls...)}
 }
 
+// step polls work cancellation before charging an execution budget; cancelling
+// an obsolete request must never be diagnosed as resource exhaustion.
+// Rules: rules/compiler/compile_time_evaluation.md §§48–49,53(6),57(1–3).
 func (x *cteExecutor) step(at lexer.Token) bool {
+	if err := x.a.compileTimeCancellation(); err != nil {
+		x.failure = &cteFailure{Kind: cteCancelled, Reason: err.Error(), At: at}
+		return false
+	}
 	x.steps++
 	if x.steps > cteMaxExecutionSteps {
 		x.fail(cteResourceLimit, at, "the ExecutionSteps budget of %d steps was reached", cteMaxExecutionSteps)
@@ -235,6 +244,13 @@ func (x *cteExecutor) evaluateStatic(name string, declaration sourceTokenKey, ro
 
 // evaluate executes a root expression in a fresh top-level frame.
 func (x *cteExecutor) evaluate(root ast.Expression) (result cteResult) {
+	// Cancellation also wins at publication after a computation completed.
+	// Rules: rules/compiler/compile_time_evaluation.md §§53(6),57(1–3).
+	defer func() {
+		if err := x.a.compileTimeCancellation(); err != nil {
+			result = cteResult{Failure: &cteFailure{Kind: cteCancelled, Reason: err.Error(), At: expressionToken(root)}}
+		}
+	}()
 	// An evaluator fault is a compiler invariant failure, reported as such
 	// and never as a property of the source (§ 57).
 	defer func() {

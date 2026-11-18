@@ -13,11 +13,15 @@ type genericConstraintCall struct {
 	method    string
 	arguments int
 	token     lexer.Token
+	execution CallExecutionRelation
+	contract  *OpenCallableContract
 }
 
 // recordGenericConstraintCall retains a constraint-resolved call of the
-// generic template currently being analyzed.
-func (a *Analyzer) recordGenericConstraintCall(receiver Type, method Function, token lexer.Token) {
+// generic template currently being analyzed, preserving its execution domain.
+// Rules: rules/analysis/call_graph.md — "Spawn effect transfer";
+// rules/errors/panic.md §§6–9,21.
+func (a *Analyzer) recordGenericConstraintCall(receiver Type, method Function, token lexer.Token, execution CallExecutionRelation) {
 	receiver = dereferenceType(receiver)
 	if a.summaryPass || receiver.Kind != GenericType || !validDefinitionToken(a.currentFunctionMetadata.Token) {
 		return
@@ -29,7 +33,8 @@ func (a *Analyzer) recordGenericConstraintCall(receiver Type, method Function, t
 		}
 	}
 	a.genericConstraintCalls[key] = append(a.genericConstraintCalls[key], genericConstraintCall{
-		parameter: receiver.Name, method: method.Name, arguments: len(method.Parameters), token: token,
+		parameter: receiver.Name, method: method.Name, arguments: len(method.Parameters), token: token, execution: execution,
+		contract: functionTypeGraphContract(functionTypeFromFunction(method)),
 	})
 }
 
@@ -107,12 +112,19 @@ func (a *Analyzer) linkGenericSpecializations() {
 				continue
 			}
 			if method, found := a.concreteConstraintMethod(concrete, call); found {
-				graph.addCall(specID, method, call.token, CallDispatchStaticMethod, CallExecutionSynchronous)
+				graph.addCall(specID, method, call.token, CallDispatchStaticMethod, call.execution)
 			} else {
-				// No unique concrete target: keep the specialization unknown.
-				graph.addEffect(specID, EffectSite{Kind: EffectMayPanicUnknownCallee, Source: call.token})
-				graph.addArenaEffect(specID, ArenaEffectSite{Kind: ArenaEffectUnknownCallee, Source: call.token, UnknownAllocation: true})
-				graph.addBlockEffect(specID, BlockEffectSite{Kind: BlockEffectUnknownCallee, Source: call.token})
+				// Preserve an unresolved child boundary as unknown rather than
+				// losing it or attributing its effects to the spawner's stack.
+				if call.contract != nil {
+					contract := cloneOpenCallableContract(call.contract)
+					graph.addTargetSetCall(specID, CallableTargetSet{HasOpenContract: true, OpenContract: contract.ID, Contract: contract}, call.token, CallDispatchInterface, call.execution)
+				}
+				if sameStackExecution(call.execution) {
+					graph.addEffect(specID, EffectSite{Kind: EffectMayPanicUnknownCallee, Source: call.token})
+					graph.addArenaEffect(specID, ArenaEffectSite{Kind: ArenaEffectUnknownCallee, Source: call.token, UnknownAllocation: true})
+					graph.addBlockEffect(specID, BlockEffectSite{Kind: BlockEffectUnknownCallee, Source: call.token})
+				}
 			}
 		}
 	}

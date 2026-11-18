@@ -2,8 +2,8 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-07
-- **Last updated:** 2026-11-17 (revision 2.2: normative/implementation separation of §§ 14.1, 27, 74, 81 and 82 from `rules/corrections/applied/parser_recovery-revision2-review-and-correction-20261102-20261117.md`; § 27 reconciled with revision 2.1 by keeping § 27(4) and adding §§ 27(5)–(7); no renumbering); 2026-11-07 (revision 2.1: syntax freshness audit of §§ 22–66 against grammar.md and the construct owners — §§ 23, 27, 42–44, 47 and 58 corrected; no renumbering); 2026-10-28 (revision 2.0: first numbered revision; implementation status, fixtures and the implementation plan moved to governance; MD-003, MD-029, MD-042 and MD-102 synchronization; `rules/corrections/applied/sec-compiler-rulebooks-modernization-pass1-20261028-20261107.md`)
-- **Document revision:** 2.2
+- **Last updated:** 2026-11-18 (revision 2.3: MD-132 owner decision of 2026-11-12 synchronized in § 24.2; existing sections retain their numbering); 2026-11-17 (revision 2.2: normative/implementation separation of §§ 14.1, 27, 74, 81 and 82 from `rules/corrections/applied/parser_recovery-revision2-review-and-correction-20261102-20261117.md`; § 27 reconciled with revision 2.1 by keeping § 27(4) and adding §§ 27(5)–(7); no renumbering); 2026-11-07 (revision 2.1: syntax freshness audit of §§ 22–66 against grammar.md and the construct owners — §§ 23, 27, 42–44, 47 and 58 corrected; no renumbering); 2026-10-28 (revision 2.0: first numbered revision; implementation status, fixtures and the implementation plan moved to governance; MD-003, MD-029, MD-042 and MD-102 synchronization; `rules/corrections/applied/sec-compiler-rulebooks-modernization-pass1-20261028-20261107.md`)
+- **Document revision:** 2.3
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/compiler/parser_recovery.md`
 - **Repository baseline reviewed:** `7be8777`
@@ -947,6 +947,42 @@ a truncated function block virtually.
 
 § 24.1(2) This heuristic is permitted only when the parser can prove it is no longer
 inside a nested delimiter.
+
+### § 24.2 Layout evidence for a stray closing brace (MD-132)
+
+§ 24.2(1) Sec is not indentation-sensitive. Layout must not change the parse
+of a valid program. It may only identify an extra `}` when closing the current
+construct at that brace would otherwise produce a syntax error.
+
+§ 24.2(2) A closing brace may be treated as stray only when all these facts
+are established:
+
+- the brace is the first token on its line;
+- its column is greater than the first-token column of the line containing
+  the construct's opening brace;
+- the following token is on a later line and its column is also greater than
+  that opening line's first-token column;
+- that following token cannot legally follow the closed construct, as
+  specified in § 24.2(3).
+
+§ 24.2(3) This recovery applies to these construct/continuation pairs:
+
+- a switch body followed by `case` or `default`;
+- a function body followed by `return`, `if`, `while`, `for`, `switch`,
+  `match`, `break`, `continue`, `defer`, `discard`, `case` or `default`.
+
+It does not reinterpret a correctly closed switch followed by an ordinary
+statement or a correctly closed function followed by another declaration,
+regardless of unusual indentation.
+
+§ 24.2(4) Report the stray brace once, identifying the construct, its opener
+and the continuing token. Retain a skipped-token recovery event for the real
+brace and keep parsing the current construct. Do not close it virtually or
+move its later statements, clauses or members into an enclosing scope.
+
+§ 24.2(5) If the required source-line evidence or continuation evidence is
+absent, this heuristic must not discard the brace. Ordinary delimiter and
+context-specific recovery rules still apply.
 
 ---
 

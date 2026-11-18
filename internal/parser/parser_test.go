@@ -5140,7 +5140,7 @@ func TestParseResultRecordsVirtualMissingToken(t *testing.T) {
 			if event.Confidence != RecoveryUnambiguous {
 				t.Fatalf("missing-token confidence=%s", event.Confidence)
 			}
-			if event.Context != RecoveryContextTopLevel || event.Episode == 0 {
+			if event.Context != RecoveryContextStruct || event.Episode == 0 {
 				t.Fatalf("missing-token recovery lacks context or episode: %+v", event)
 			}
 			matchedDiagnostic := false

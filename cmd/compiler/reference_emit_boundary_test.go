@@ -44,7 +44,7 @@ func TestReferenceProgramsReachOnlyTheInspectionBoundaries(t *testing.T) {
 			if code != 0 {
 				t.Fatal(target, code, stderr)
 			}
-			for _, want := range []string{"sec.dialect_version = 13 : i32", `"sec.ref.borrow_shared"(`, `sec.argument_actions = ["shared-reference"]`, `"sec.place.deref"(`} {
+			for _, want := range []string{"sec.dialect_version = 14 : i32", `"sec.ref.borrow_shared"(`, `sec.argument_actions = ["shared-reference"]`, `"sec.place.deref"(`} {
 				if !strings.Contains(stdout, want) {
 					t.Fatalf("%s emit-sec-mlir lacks %q:\n%s", target, want, stdout)
 				}
@@ -99,7 +99,7 @@ func TestReferenceInspectionRoutesCoverThePackage15Matrix(t *testing.T) {
 		if first != again {
 			t.Fatalf("%s emit-sec-mlir is not deterministic", target)
 		}
-		for _, want := range []string{"sec.dialect_version = 13 : i32", `"sec.ref.reborrow_shared"(`, `"sec.ref.compare"(`, `sec.return_origins = ["param#0.field#1"]`, `sec.argument_actions = ["mutable-reference"]`, "sec.synthesized = true", `"sec.place.write"(`} {
+		for _, want := range []string{"sec.dialect_version = 14 : i32", `"sec.ref.reborrow_shared"(`, `"sec.ref.compare"(`, `sec.return_origins = ["param#0.field#1"]`, `sec.argument_actions = ["mutable-reference"]`, "sec.synthesized = true", `"sec.place.write"(`} {
 			if !strings.Contains(first, want) {
 				t.Fatalf("%s emit-sec-mlir lacks %q:\n%s", target, want, first)
 			}
@@ -129,12 +129,14 @@ fn main() int {
     return 0
 }
 `, "cannot return reference to local variable local"},
-		// Contained slice reads and recovery joins of slice holders lower
-		// since P17; an owning dynamic array still stops at the inspection
-		// package's named boundary (P18).
-		"beyond-package-16": {`module main
-fn Read(values: int[]) uint {
-    return values.Len
+		// Owning dynamic arrays lower since P18 (schema 14); Arena allocation
+		// still stops at the inspection package's named boundary (P19).
+		"beyond-package-18": {`module main
+fn Use() Result[void, AllocationError] {
+    let mut arena: Arena := Arena {}
+    let first := try arena.Alloc[byte](1u)
+    discard first
+    return Ok()
 }
 `, "unsupported-lowering"},
 	} {
@@ -182,7 +184,7 @@ func TestSliceProgramsReachOnlyTheInspectionBoundaries(t *testing.T) {
 		if code != 0 {
 			t.Fatal(target, code, stderr)
 		}
-		for _, want := range []string{"sec.dialect_version = 13 : i32", `"sec.slice.reborrow_mut"(`, "sec.ref.end_borrow"} {
+		for _, want := range []string{"sec.dialect_version = 14 : i32", `"sec.slice.reborrow_mut"(`, "sec.ref.end_borrow"} {
 			if !strings.Contains(stdout, want) {
 				t.Fatalf("%s emit-sec-mlir lacks %q:\n%s", target, want, stdout)
 			}
@@ -213,7 +215,7 @@ func TestOwnershipProgramsReachOnlyTheInspectionBoundaries(t *testing.T) {
 		if code != 0 {
 			t.Fatal(target, code, stderr)
 		}
-		for _, want := range []string{"sec.dialect_version = 13 : i32", "sec.destruction_plans = [", `"sec.own.move"(`, `"sec.cleanup.run_function"(`, `"sec.cleanup.defer_register"(`} {
+		for _, want := range []string{"sec.dialect_version = 14 : i32", "sec.destruction_plans = [", `"sec.own.move"(`, `"sec.cleanup.run_function"(`, `"sec.cleanup.defer_register"(`} {
 			if !strings.Contains(stdout, want) {
 				t.Fatalf("%s emit-sec-mlir lacks %q:\n%s", target, want, stdout)
 			}

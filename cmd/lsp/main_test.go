@@ -2070,7 +2070,7 @@ fn Work() void {}
 
 fn Use() void {
     let a := spawn task Work()
-    let b := spawn thread Work()
+    let b := try spawn thread Work() { Err(_) => { return } }
     let c := spawn process Work()
     match a {
         _ => {}
@@ -3223,7 +3223,7 @@ fn ThreadWork() void {}
 
 fn main() void {
 	let taskHandle := try spawn task TaskWork() { Err(_) => { return } }
-	let threadHandle := spawn thread ThreadWork()
+	let threadHandle := try spawn thread ThreadWork() { Err(_) => { return } }
 	detach taskHandle
 	detach threadHandle
 }
@@ -4862,7 +4862,7 @@ func TestHoverPresentsShapedFactsForBindings(t *testing.T) {
 //   - rules/concurrency/threads.md — § 26, § 40
 //   - rules/tooling/lsp.md — compiler-known member registry
 func TestThreadV2SurfaceInCompletionAndHover(t *testing.T) {
-	prefix := "fn Work() void {\n}\n\nfn Run() void {\n    let worker := spawn thread Work()\n    let observer := worker.Observe()\n    let status := worker.Status\n    "
+	prefix := "fn Work() void {\n}\n\nfn Run() void {\n    let worker := try spawn thread Work() { Err(_) => { return } }\n    let observer := worker.Observe()\n    let status := worker.Status\n    "
 	labels := func(text string) map[string]bool {
 		found := map[string]bool{}
 		for _, item := range completeSource("file:///thread.sec", text, len(text), sourceOverlay{}) {

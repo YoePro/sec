@@ -23,7 +23,7 @@ let Limit: int := 7
 let mut Ready: bool
 
 fn main() int {
-    let worker := spawn thread Work()
+    let worker := try spawn thread Work() { Err(_) => { return 1 } }
     detach worker
     let job := try spawn task Work() { Err(_) => { return 1 } }
     await job
@@ -236,14 +236,14 @@ func TestEntryCannotCompleteOwningChildExecution(t *testing.T) {
 	prefix := "module main\n\nfn Work() void {\n}\n\nfn main() int {\n"
 	for name, body := range map[string]string{
 		"task":   "    let job := try spawn task Work() { Err(_) => { return 1 } }\n    return 0\n}\n",
-		"thread": "    let worker := spawn thread Work()\n    return 0\n}\n",
+		"thread": "    let worker := try spawn thread Work() { Err(_) => { return 1 } }\n    return 0\n}\n",
 	} {
 		errors := analyzeSourceRaw(t, prefix+body)
 		if len(errors) != 1 || !strings.Contains(errors[0].Message, "is unresolved at scope exit") {
 			t.Errorf("%s: errors = %v", name, errors)
 		}
 	}
-	initialization, shutdown := resolvedPlans(t, prefix+"    let job := try spawn task Work() { Err(_) => { return 1 } }\n    await job\n    let worker := spawn thread Work()\n    detach worker\n    return 0\n}\n")
+	initialization, shutdown := resolvedPlans(t, prefix+"    let job := try spawn task Work() { Err(_) => { return 1 } }\n    await job\n    let worker := try spawn thread Work() { Err(_) => { return 1 } }\n    detach worker\n    return 0\n}\n")
 	detached := false
 	for _, requirement := range initialization.Runtime {
 		detached = detached || requirement.Facility == RuntimeDetachedExecution

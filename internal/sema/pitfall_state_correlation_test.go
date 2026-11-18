@@ -41,8 +41,8 @@ func TestPitfallStateCorrelation(t *testing.T) {
 			if valid && len(errors) != 0 {
 				t.Fatal(errors)
 			}
-			if !valid && len(errors) != 18 {
-				t.Fatalf("errors = %v (%d), want 18", errors, len(errors))
+			if !valid && len(errors) != 20 {
+				t.Fatalf("errors = %v (%d), want 20", errors, len(errors))
 			}
 			want := map[string]PitfallAnalysisState{}
 			if valid {
@@ -105,7 +105,7 @@ func TestPitfallStateCorrelation(t *testing.T) {
 			}
 			if !valid {
 				for _, e := range errors {
-					if e.ID != diagnostics.NonDiscardableValue {
+					if e.ID != diagnostics.NonDiscardableValue && e.ID != diagnostics.UnresolvedCreationLifecycle {
 						t.Fatal(e)
 					}
 				}
@@ -113,7 +113,7 @@ func TestPitfallStateCorrelation(t *testing.T) {
 					t.Fatal(err)
 				}
 				errors = a.Analyze(program)
-				if len(errors) != 18 {
+				if len(errors) != 20 {
 					t.Fatal("advisory budget disabled state errors", errors)
 				}
 				for _, e := range errors {

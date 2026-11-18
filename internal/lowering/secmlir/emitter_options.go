@@ -26,8 +26,8 @@ func emissionSchema(version uint32) (uint32, error) {
 	if version == 0 {
 		return dialectSchemaVersion, nil
 	}
-	if version != 11 && version != 12 && version != 13 {
-		return 0, fmt.Errorf("unsupported Sec MLIR emission schema version %d; supported output schemas are 11, 12 and 13", version)
+	if version < 11 || version > 14 {
+		return 0, fmt.Errorf("unsupported Sec MLIR emission schema version %d; supported output schemas are 11, 12, 13 and 14", version)
 	}
 	return version, nil
 }

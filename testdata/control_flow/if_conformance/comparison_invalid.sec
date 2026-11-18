@@ -1,0 +1,5 @@
+module main
+
+fn Comparison(value: int) void {
+    if 0 < value < 10 { }
+}

@@ -14,6 +14,7 @@ import (
 //   - rules/control-flow/flowcontrol_switch.md — §7 "Case expressions", §8 "Range cases", §10 "Relational cases"
 //   - rules/control-flow/flowcontrol_switch.md — §28 "No pattern matching", §35 "Parser requirements"
 func (p *Parser) parseSwitchCaseItem(subjectless bool) ast.SwitchCaseItem {
+	defer p.withRecoveryContext(RecoveryContextSwitch)()
 	previousStart := p.switchCaseStart
 	p.switchCaseStart = p.curToken
 	defer func() { p.switchCaseStart = previousStart }()

@@ -7,6 +7,7 @@
 package sema
 
 import (
+	"context"
 	"fmt"
 	"math/big"
 	"path/filepath"
@@ -22,6 +23,9 @@ import (
 )
 
 type Analyzer struct {
+	// cteContext belongs to one cancellable compiler-work request, never Sec state.
+	// Rules: rules/compiler/compile_time_evaluation.md §§53(6),57(1–3).
+	cteContext                  context.Context
 	hardwareContext             HardwareModuleContext
 	hardwareFacts               hardware.Facts
 	hardwareFactsValid          bool
@@ -693,7 +697,12 @@ func (f loopBreakFrame) breakArenaGenerations() []map[string]int {
 	return out
 }
 
+// captureLoopEdgeState snapshots ownership, borrows and lifecycle obligations
+// for a loop edge, retaining resolved creation obligations before facts expire.
+// Rules: rules/memory/ownership.md §§20–21; rules/concurrency/tasks.md §§4–5;
+// rules/control-flow/flowcontrol_while.md §§28–29.
 func (a *Analyzer) captureLoopEdgeState() loopEdgeState {
+	a.recordResolvedCreationLifecycles()
 	return loopEdgeState{
 		assigned:           copyAssigned(a.assigned),
 		moved:              copyMoved(a.moved),
@@ -771,17 +780,20 @@ func (a *Analyzer) AnalysisDepth() AnalysisDepth { return a.analysisDepth }
 
 func (a *Analyzer) AnalysisBudget() AnalysisBudget { return a.analysisBudget }
 
-// Analyze completes declaration and body producers for one program snapshot,
+// analyzeProgram completes declaration and body producers for one program snapshot,
 // then publishes the iterator-specific lowering prerequisite for that snapshot.
 // Rules: rules/compiler/compiler_analysis.md — §§9–10,14;
 // rules/compiler/compiler_pipeline.md — §§23(3), 27, 33(1).
-func (a *Analyzer) Analyze(program *ast.Program) []Error {
+func (a *Analyzer) analyzeProgram(program *ast.Program) []Error {
 	// attributes.md § 13: source selection precedes ordinary Sema; excluded
 	// declarations stay parsed but never enter this analysis.
 	a.classifyCompileTimeContexts(program)
 	program, selectionErrors := a.selectActiveSource(program)
 	a.activeProgram = program
 	a.prepareCompileTimeEvaluation(program)
+	if a.compileTimeCancellation() != nil {
+		return nil
+	}
 	a.ctePending = nil
 	a.deferredStatics = nil
 	a.cteMemo = nil
@@ -2706,25 +2718,6 @@ func expressionStatementDisplayName(expr ast.Expression) string {
 		}
 	}
 	return expr.String()
-}
-
-func (a *Analyzer) checkUnresolvedTaskAtScopeExit(name string) {
-	symbol, ok := a.symbols.lookup(name)
-	if !ok || (!isTaskType(symbol.Type) && !isThreadType(symbol.Type)) {
-		return
-	}
-	if _, moved := a.moved[name]; moved {
-		return
-	}
-	if _, joined := a.closedResources[name]; joined {
-		// threads.md § 34, tasks.md § 17: a joined handle's lifecycle is resolved.
-		return
-	}
-	kind := "task"
-	if isThreadType(symbol.Type) {
-		kind = "thread"
-	}
-	a.addErrorAtToken(symbol.Token, "owned %s %s is unresolved at scope exit", kind, name)
 }
 
 func (a *Analyzer) checkUnclosedResourceAtScopeExit(name string) {
@@ -9505,16 +9498,6 @@ func (a *Analyzer) validateTestingEquality(expected, actual ast.Expression, expe
 	return false
 }
 
-func (a *Analyzer) callGraphExecutionForCall(expr *ast.CallExpression) (CallExecutionRelation, bool) {
-	if expr == a.spawnCallExpression {
-		if a.spawnCallExecution == "" {
-			return "", false
-		}
-		return a.spawnCallExecution, true
-	}
-	return CallExecutionSynchronous, true
-}
-
 func callCalleeDefinitionToken(expr *ast.CallExpression) lexer.Token {
 	if expr == nil {
 		return lexer.Token{}
@@ -10934,7 +10917,7 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 				a.addErrorAtToken(info.PayloadToken, "cannot borrow union payload from temporary match subject")
 				info.BindingType = Type{Kind: InvalidType}
 			}
-			if subjectType.Kind == UnionType && !info.PayloadBorrow {
+			if (subjectType.Kind == UnionType || subjectType.Kind == ResultType) && !info.PayloadBorrow {
 				info.PayloadMoves = requiresOwnershipTransfer(info.BindingType)
 			}
 			// A fresh subject has no Place, but its custom free still needs the
@@ -11009,6 +10992,10 @@ func (a *Analyzer) analyzeMatch(expr *ast.MatchExpression, valueContext bool) Ty
 			a.recordResultStateFact(binding, state, arm.Pattern.Token)
 		} else if binding, state, known := a.directResultArmState(expr.Subject, arm); known {
 			a.recordResultStateFact(binding, state, arm.Pattern.Token)
+			// Retain the canonical variant fact for mutable carriers too;
+			// version tracking invalidates it if the arm writes the subject.
+			// Rules: ownership.md §§20–21; flowcontrol_match.md §§5,13.
+			a.assertKnownVariants(knownVariantSet{binding: state})
 		}
 		info.BorrowedSubject = borrowedSubject
 		armConstants.enter(a)
@@ -11374,8 +11361,18 @@ func (a *Analyzer) analyzeUnionPayloadMatchPattern(pattern *ast.CallExpression, 
 	return a.analyzeUnionPayloadPattern(variantName, pattern.Arguments, pattern.Token, subjectType)
 }
 
+// finalizeMatchBranch checks payload-owner exits and removes arm-local bindings
+// from the continuing branch snapshot while retaining carrier lifecycle facts.
+// Rules: rules/control-flow/flowcontrol_match.md §13;
+// rules/concurrency/tasks.md §30; rules/concurrency/threads.md §34.
 func (a *Analyzer) finalizeMatchBranch(info matchPatternInfo, branch branchAnalysis) branchAnalysis {
+	a.recordResolvedCreationLifecycles()
+	branch.closedResources = copyMoved(a.closedResources)
 	for _, name := range info.matchBindingNames() {
+		// Payload bindings are established before the arm block opens, so
+		// its ordinary local-scope check cannot see their ownership exit.
+		// Rules: flowcontrol_match.md §13; tasks.md §30; threads.md §34.
+		a.checkUnresolvedTaskAtScopeExit(name)
 		delete(branch.assigned, name)
 		delete(branch.closedResources, name)
 		for place := range branch.moved {

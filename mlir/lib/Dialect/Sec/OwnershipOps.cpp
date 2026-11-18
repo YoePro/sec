@@ -62,6 +62,8 @@ LogicalResult OwnCopyOp::verify() {
   auto type = getSource().getType();
   if (isa<RefMutType, SliceMutType>(type))
     return emitOpError("a mutable reference is never copied");
+  if (isa<DynamicArrayType>(type))
+    return emitOpError("an owning dynamic array is move-only and never copied");
   return success();
 }
 
@@ -72,6 +74,8 @@ LogicalResult OwnSemanticCopyOp::verify() {
     return emitOpError("copy preserves the value type");
   if (isBorrowType(getSource().getType()))
     return emitOpError("a reference has no semantic copy");
+  if (isa<DynamicArrayType>(getSource().getType()))
+    return emitOpError("an owning dynamic array is move-only and has no semantic copy");
   if (getSemanticCopyPlan().empty())
     return emitOpError("requires a resolved semantic-copy plan");
   return success();

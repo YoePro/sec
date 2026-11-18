@@ -159,6 +159,14 @@ LogicalResult verifyConstruction(Operation *op, DominanceInfo &dominance) {
     return success();
   }
   auto place = source ? dyn_cast<PlaceType>(source.getType()) : PlaceType{};
+  if (place && isa<DynamicArrayType>(place.getElementType())) {
+    // P18 section 101: the range extent is the runtime length of the same
+    // owner Place, observed before the range is normalized.
+    auto len = extent ? extent.getDefiningOp<DynamicArrayLenOp>() : DynamicArrayLenOp{};
+    if (!len || sourceValue(len.getOwner()) != source)
+      return op->emitOpError("dynamic-array range must use the same owner's runtime length");
+    return success();
+  }
   auto array = place ? dyn_cast<ArrayType>(place.getElementType()) : ArrayType{};
   auto constant = extent ? extent.getDefiningOp<ConstIntOp>() : ConstIntOp{};
   if (!array || !constant || constant.getValue() != array.getLength())

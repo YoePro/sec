@@ -25,6 +25,7 @@ func interpolationLexer(source string, token lexer.Token, offset int) *lexer.Lex
 // Rules: rules/foundations/lexical_structure.md — "14.3 Interpolated strings", "15. Escapes";
 // rules/compiler/parser_recovery.md — "Recovery goals", "Invalid AST nodes".
 func (p *Parser) parseInterpolatedStringLiteral() ast.Expression {
+	defer p.withRecoveryContext(RecoveryContextInterpolation)()
 	token := p.curToken
 	literal := &ast.InterpolatedStringLiteral{Token: token, Value: token.Lexeme}
 	source := []rune(token.Lexeme)
@@ -94,6 +95,7 @@ func (p *Parser) parseInterpolatedStringLiteral() ast.Expression {
 		end := i + 1 + scanner.Snapshot().Pos
 		child := newParser(interpolationLexer(string(source[i+1:end-1]), token, i+1), true)
 		child.recoveryContext = p.recoveryContext
+		child.diagnosticContext = RecoveryContextInterpolation
 		expression := child.parseExpression(LOWEST)
 		if child.peekToken.Type != lexer.EOF {
 			child.addDiagnostic(diagnostics.ParserUnexpectedToken, child.peekToken, nil, nil, "expected end of interpolation expression, got %q", child.peekToken.Lexeme)
@@ -109,7 +111,16 @@ func (p *Parser) parseInterpolatedStringLiteral() ast.Expression {
 		}
 		for _, diagnostic := range child.diagnostics {
 			p.endRecoveryEpisode()
+			// Retain a nested grammar owner's context when importing child
+			// diagnostics; a bare expression belongs to the interpolation.
+			// Rules: rules/compiler/parser_recovery.md §§11,17,63.
+			context := diagnostic.Context
+			if context == RecoveryContextTopLevel {
+				context = RecoveryContextInterpolation
+			}
+			restore := p.withRecoveryContext(context)
 			p.addDiagnostic(diagnostic.ID, diagnostic.Primary, diagnostic.Expected, diagnostic.Unexpected, "%s", diagnostic.Message)
+			restore()
 		}
 		p.warnings = append(p.warnings, child.warnings...)
 		opening := position(start)

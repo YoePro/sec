@@ -12,12 +12,13 @@ import (
 // registered reasons, and the cause path to the introducing callable.
 //
 // Rules:
-//   - rules/errors/panic.md — § 21 "@noPanic", registered panic reasons
+//   - rules/errors/panic.md — §§6–9,21,28(7): domains, @noPanic, reasons and provenance
 //   - rules/tooling/lsp.md — "Hover": effect and panic paths
 func panicHoverLines(graph *sema.CallGraph, id sema.CallableID) []string {
 	summary := graph.EffectSummary(id)
+	children := graph.ChildPanicDescriptions(id)
 	if !summary.MayPanic {
-		return []string{"May panic: `no` (no reachable panic source in the current analysis)"}
+		return append([]string{"May panic: `no` (no reachable synchronous panic source in the current analysis)"}, children...)
 	}
 	lines := []string{"May panic: `yes`"}
 	for _, effect := range summary.DirectEffects {
@@ -68,5 +69,5 @@ func panicHoverLines(graph *sema.CallGraph, id sema.CallableID) []string {
 		}
 		lines = append(lines, "Panic path: `"+strings.Join(path, "` -> `")+"`")
 	}
-	return lines
+	return append(lines, children...)
 }

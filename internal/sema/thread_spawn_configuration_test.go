@@ -50,7 +50,7 @@ func TestNamedThreadConfiguration(t *testing.T) {
 			if plan.Partial {
 				partial++
 			}
-			if typ, ok := a.ResolvedTypeOf(spawn); !ok || typ.Name != "Thread" {
+			if typ, ok := a.ResolvedTypeOf(spawn); !ok || typ.Kind != ResultType || len(typ.TypeArgs) != 2 || typ.TypeArgs[0].Name != "Thread" || typ.TypeArgs[1].Name != "ThreadSpawnError" {
 				t.Fatal(typ, ok)
 			}
 			return true

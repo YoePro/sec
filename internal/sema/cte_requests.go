@@ -39,7 +39,13 @@ func (a *Analyzer) prepareCompileTimeEvaluation(program *ast.Program) {
 	probe.cteProbe = true
 	// The probe must not change the AST this analysis reads.
 	probe.legacyDefaultAST = false
-	probe.Analyze(program)
+	_, err := probe.AnalyzeContext(a.cteContext, program)
+	if err != nil {
+		return
+	}
+	// AnalyzeContext restores its caller's context. Pending requests still
+	// belong to the same work request, including on-demand type facts.
+	probe.cteContext = a.cteContext
 	a.cteResults = probe.executePendingCompileTimeRequests(program)
 }
 
@@ -120,7 +126,7 @@ func (a *Analyzer) reportCompileTimeExecutionFailure(expr ast.Expression, positi
 		return false
 	}
 	failure := result.Failure
-	if failure.Kind == cteSuppressed {
+	if failure.Kind == cteSuppressed || failure.Kind == cteCancelled {
 		return true
 	}
 	id, help := diagnostics.SemanticCompileTimeExecutionUnavailable, "Use a literal or an immutable compile-time binding, or restructure the evaluated code into forms the compile-time evaluator executes."
@@ -498,6 +504,9 @@ func (a *Analyzer) OptionalCompileTimeValue(program *ast.Program, expr ast.Expre
 	result := newCTEExecutor(a, program).evaluate(expr)
 	a.errors = a.errors[:errorsBefore]
 	if result.Failure != nil {
+		if result.Failure.Kind == cteCancelled {
+			return DefaultConstant{}, false, a.compileTimeCancellation()
+		}
 		if result.Failure.Kind == cteCompilerInvariantFailure {
 			return DefaultConstant{}, false, fmt.Errorf("%s", result.Failure.Reason)
 		}

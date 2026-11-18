@@ -2,8 +2,8 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-13
-- **Last updated:** 2026-11-08 (stable chapter, subsection, and paragraph numbering); 2026-10-09
-- **Document revision:** 2.1
+- **Last updated:** 2026-11-18 (MD-131: panicking and fallible assignment forms); 2026-11-08 (stable chapter, subsection, and paragraph numbering); 2026-10-09
+- **Document revision:** 2.2
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/types/contracts.md`
 - **Repository baseline reviewed:** `50655d3bc5d2e2596935dc5609cb1db1387e0cec`
@@ -342,8 +342,16 @@ analyzed:
 let mut percentage: Percentage := 50
 ```
 
-**§ 12(2)** Runtime conversion into a constrained named type is fallible. Mutation of a
-constrained named value therefore uses the canonical `try` assignment form:
+**§ 12(2)** Runtime conversion into a constrained named type checks the named
+type's contracts. Both ordinary and `try` assignment are valid. Without `try`,
+a failed runtime contract check panics with `ContractFailure`:
+
+```sec
+percentage = Percentage(value)
+```
+
+The canonical `try` assignment form handles or propagates the contract failure
+through the error channel defined by § 13:
 
 ```sec
 try percentage = Percentage(value) {
@@ -353,8 +361,16 @@ try percentage = Percentage(value) {
 }
 ```
 
-**§ 12(3)** Compound assignment follows the same rule. There is no hidden variable-level
-contract setter; the invariant belongs to the named type.
+**§ 12(3)** Compound assignment follows the same choice: `percentage += amount`
+checks the resulting value and panics with `ContractFailure` on violation;
+`try percentage += amount` handles or propagates the failure. This rule applies
+to locals, fields, properties and referents. There is no hidden variable-level
+contract setter; the invariant belongs to the named type. A runtime contract
+check outside `try`, including a conversion, produces the configurable default
+`Information` advisory `A2011` / `contracts.unchecked-contract-may-panic`.
+`@noPanic` still requires proof that no panic is reachable. The former mandatory
+`S1069` / `types.constrained-assignment-requires-try` is retired and must not be
+emitted for either ordinary assignment form (MD-131, owner decision 2026-11-11).
 
 ## § 13 Conversion failure layers
 
@@ -460,7 +476,8 @@ pattern syntax remain governed by the union and match rulebooks.
 - membership values violating another contract;
 - invalid, unrepresentable, or runtime-dependent explicit defaults;
 - ambiguous or unavailable implicit defaults;
-- fallible constrained assignment outside `try`.
+- runtime contract checks outside `try`, with the configurable default
+  `Information` advisory `A2011` defined by § 12(3).
 
 **§ 14(2)** Diagnostics should point to both the offending value/default and the relevant
 contract declaration when practical.

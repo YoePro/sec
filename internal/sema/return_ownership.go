@@ -18,6 +18,7 @@ import (
 //   - rules/memory/copy_move.md — §9 "Return boundaries"
 //   - rules/declarations/functions.md — §§14 "Return ownership", 32 "Variadic pack cannot escape"
 func (a *Analyzer) analyzeReturnStatement(functionName string, returnType Type, stmt *ast.ReturnStatement) {
+	defer a.checkCreationLifecyclesAtReturn()
 	// A return is terminal even when reached through a match/try arm. Keeping
 	// this as analyzer context lets aggregate and union inference apply the same
 	// rule recursively without teaching each constructor about ReturnStatement.

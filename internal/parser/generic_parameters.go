@@ -14,6 +14,7 @@ import (
 //   - rules/corrections/md117-heterogeneous-variadic-type-packs-correction.md — §2(1–6)
 //   - rules/compiler/parser_recovery.md — "Generic parameter recovery"
 func (p *Parser) parseGenericParameters(allowPack bool) []*ast.GenericParameter {
+	defer p.withRecoveryContext(RecoveryContextGenericParameters)()
 	var packSeen bool
 	params := []*ast.GenericParameter{}
 

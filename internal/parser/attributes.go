@@ -148,6 +148,7 @@ func (p *Parser) parseAttributedStatement() ast.Statement {
 // Rules:
 //   - rules/foundations/attributes.md — "General syntax", "Comments and whitespace", "Duplicate attributes"
 func (p *Parser) parseAttributeSet() ([]*ast.Attribute, bool) {
+	defer p.withRecoveryContext(RecoveryContextAttribute)()
 	attributes := []*ast.Attribute{}
 	first := map[string]*ast.Attribute{}
 	for {
@@ -277,6 +278,7 @@ func (p *Parser) parseAttributedImplMember() ast.ImplMember {
 // current token on `@`. It reports unknown names and returns whether the name
 // is compiler-known; arguments are validated against the attribute's form.
 func (p *Parser) parseAttribute() (*ast.Attribute, bool) {
+	defer p.withRecoveryContext(RecoveryContextAttribute)()
 	attributeToken := p.curToken
 	if !p.expectPeek(lexer.IDENT) {
 		return nil, false
@@ -319,6 +321,7 @@ func (p *Parser) parseAttribute() (*ast.Attribute, bool) {
 // `(`. An argument is `name: expression` or an expression; a trailing comma is
 // allowed.
 func (p *Parser) parseAttributeArguments() ([]*ast.AttributeArgument, bool) {
+	defer p.withRecoveryContext(RecoveryContextAttribute)()
 	arguments := []*ast.AttributeArgument{}
 	for p.peekToken.Type != lexer.RPAREN {
 		argument := &ast.AttributeArgument{Token: p.peekToken}
@@ -447,6 +450,7 @@ func (p *Parser) validateAttributeArguments(attribute *ast.Attribute, spec attri
 // Rules:
 //   - rules/foundations/attributes.md — "Attribute attachment", "Allowed targets for verified effects", "Parser representation"
 func (p *Parser) attachAttributes(statement ast.Statement, attributes []*ast.Attribute, member bool, declaration lexer.Token) {
+	defer p.withRecoveryContext(RecoveryContextAttribute)()
 	if len(attributes) == 0 {
 		return
 	}

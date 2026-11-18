@@ -39,6 +39,6 @@ fn main() void {
     Deferred()
     let valid := try spawn Pause() { Err(_) => { return } }
     await valid
-    let worker := spawn thread ThreadEntry()
+    let worker := try spawn thread ThreadEntry() { Err(_) => { return } }
     join worker
 }

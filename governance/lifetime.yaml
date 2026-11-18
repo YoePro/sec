@@ -4,9 +4,9 @@ purpose: Lifetime, reference validity, borrowing, copy/move, and destruction.
 integrations:
   - id: frontend.lifetime-analysis
     area: frontend-lifetime-provenance-dataflow
-    revised: "2026-10-28"
     status: partial
     integrated: "2026-08-29"
+    revised: "2026-10-28"
     document_revision: "2.0"
     repository_baseline: fafd8cb
     rules:
@@ -79,10 +79,9 @@ integrations:
     area: frontend-ownership-control-flow-and-lowering
     status: partial
     integrated: "2026-08-26"
+    revised: "2026-11-18"
     document_revision: "2.0"
-    revised: "2026-11-05"
     repository_baseline: b3315f6
-    replaces: pre-v2 rules/memory/ownership.md
     summary: Tracks ownership revision 2.0. Structured Place identity, explicit moves and provenance, selected field-sensitive partial availability, borrow checks, recursive copy/destruction classification and delayed outer-call transfer commit are integrated. Unavailable Place snapshots now carry typed definite/conditional Availability independently of diagnostic Reasons; existing assigned/projection facts retain other availability states. Complete recursive/dynamic refinement, pending call reservations, lifecycle policies and the remaining source/tooling cases stay tracked in the remaining list.
     rules:
       - rules/memory/ownership.md
@@ -103,12 +102,6 @@ integrations:
       - rules/tooling/diagnostics.md
       - rules/tooling/formatter.md
       - rules/corrections/applied/return-context-ownership-forwarding-correction-20260903.md
-    related_integrations:
-      - frontend.copy-move
-      - sema.place-analysis
-      - frontend.match-v2
-      - frontend.discard-v2
-      - frontend.defer-v2
     code:
       - internal/ast/ast.go
       - internal/parser/expression.go
@@ -123,6 +116,15 @@ integrations:
       - internal/sema/availability_diagnostics.go
       - internal/sema/cleanup_assignments.go
       - internal/sema/ownership_use_diagnostics.go
+      - internal/sema/lifecycle_scope.go
+      - internal/sema/analyzer_blocks.go
+      - internal/sema/analyzer_inference.go
+      - internal/sema/return_ownership.go
+      - internal/sema/result_state_proof.go
+      - internal/sema/cleanup_exits.go
+      - internal/diagnostics/diagnostics.go
+      - internal/sema/match_arm_bindings.go
+      - internal/sema/analyzer_borrow_access.go
     tests:
       - internal/parser/parser_test.go
       - internal/cst/roles_test.go
@@ -130,6 +132,25 @@ integrations:
       - internal/sema/analyzer_lifetime_test.go
       - internal/sema/copy_move_test.go
       - internal/sema/place_availability_state_test.go
+      - testdata/sema/raw_spawn_result_scope_bug.sec
+      - internal/sema/creation_lifecycle_test.go
+      - internal/sema/result_direct_match_proof_test.go
+      - internal/sema/result_projection_test.go
+      - internal/sema/task_spawn_test.go
+      - internal/sema/thread_spawn_result_test.go
+      - internal/sema/task_failure_diagnostics_test.go
+      - internal/sema/pitfall_state_correlation_test.go
+      - internal/diagnostics/diagnostics_test.go
+      - cmd/compiler/creation_lifecycle_test.go
+      - cmd/compiler/task_spawn_result_test.go
+      - cmd/compiler/thread_spawn_result_test.go
+      - cmd/compiler/task_failure_diagnostics_test.go
+      - cmd/lsp/creation_lifecycle_test.go
+      - cmd/lsp/task_spawn_result_test.go
+      - cmd/lsp/thread_spawn_result_test.go
+      - cmd/lsp/task_failure_diagnostics_test.go
+      - testdata/sema/creation_lifecycle_valid.sec
+      - testdata/sema/creation_lifecycle_invalid.sec
     implemented:
       - canonical Place identity for roots, fields, selected indexes and slices, references, and union payload projections
       - direct unavailable tracking with moved, discarded, and detached source provenance
@@ -159,6 +180,7 @@ integrations:
       - "custom-free types forbid partial moves (ownership.md § 19): every ownership transfer out of a field of a custom-free value is rejected with S1085 before availability changes, while whole-value moves remain valid; implementation detail is owned by frontend.destruction"
       - "ownership facts reach Semantic IR (verified 2026-11-04): discard convergence (if_owned/no-op), conditional replacement (replacement where owned, reinitialization elsewhere), conditional scope-exit cleanup (if_active cancels per incarnation, path-sensitive --sec-verify-cleanups), partial destruction through skipped sub-Places, and the schema-13 own.*/cleanup.* operation set. P17 Semantic IR ownership and cleanup (package17; destruction.md §§ 6, 10–13, 16; tests ownership_variants.sec, cleanup_producers_test.go, lit schema13-*/invalid-schema13-*)."
       - "Availability/reason separation completed (2026-11-05; ownership.md 5-6,20-21): sparse unavailable-Place entries now carry a typed Availability dimension and independent Reasons provenance instead of conditional reason-string prefixes. Branch, loop, match, try, function/defer snapshots, refinement, cleanup classification, reads, borrows and diagnostics share the same value records. Continuing-path joins preserve nested uncertainty and deterministic mixed reasons; missing reason text cannot erase conditional state and prefix-like provenance cannot create it. Negative refinement changes certainty while retaining causes and child masks; positive refinement repairs only related conditional masks. Snapshot copies stay detached. Cohesive join/query/refinement/snapshot functions moved out of analyzer.go into place_availability_state.go; the existing assigned/projection model and broader dynamic/recursive availability work remain scoped separately."
+      - "ownership-errorhandling-sync for named creation Results (BUG-000029, 2026-11-18): Result[Task[T], E] and Result[Thread[T], E] retain their potential child obligation at lexical scope exit, explicit return, parameter fallthrough and implicit try propagation. Result match payloads use canonical ownership moves; Err-only carriers and transferred success payloads resolve the obligation through the existing continuing-path lifecycle snapshots. Conditional moves cannot hide live success owners; reinitialization and mutable borrowing invalidate discharged carrier facts. Extracted match owners still require resolution. S1247/ownership.unresolved-creation-result carries source range and mentor help through compiler JSON and LSP. Forwarding, try extraction, exhaustive match, failure-only mutable/immutable carriers and loop break controls are covered; native spawn representation/runtime and general recursive availability remain separately tracked."
     remaining:
       - closure-capture-reference-modes-and-lifetimes
       - partial-availability-v2
@@ -175,54 +197,9 @@ integrations:
       - guarded-match-try-ownership-fact-reuse
       - fixed-address-register-volatile-foreign-transfer-policy
       - destruction-classification-boundary
-      - ownership-errorhandling-sync
       - ownership-lsp-v2
       - "ownership-mentor-diagnostics: registered ID and mentor help for the static-ownership target policy (§ 33.4) once that policy is enforced (missing move markers, move while borrowed and invalid overlap are verified with IDs and help since 2026-11-10)"
       - ownership-formatter-v2
-    semantic_ir_remaining:
-      - represent copy versus consume explicitly
-      - represent move source Place and destination ownership
-      - represent Availability plus recursive partial and conditional masks where lowering needs them
-      - preserve UnavailableReason and source provenance for tooling
-      - represent pending and committed call-transfer facts or an equivalent resolved ownership plan
-      - distinguish replacement from reinitialization
-      - represent conditional destruction and cleanup responsibility
-      - represent return forwarding explicitly
-      - verify ownership operations instead of inferring moves from unused SSA values
-      - retain source Place and rule provenance for diagnostics and LSP
-    lowering_remaining:
-      - lower static ownership state without unnecessary runtime flags
-      - lower genuinely dynamic conditional ownership through local SSA or drop-state when policy permits
-      - eliminate runtime ownership state when static proof is sufficient
-      - conditionally destroy exactly once for discard, replacement, and scope exit
-      - commit call transfers atomically at the callee-entry boundary
-      - retain caller ownership when failure occurs before outer-call commit
-      - preserve completed nested argument-expression effects
-      - verify Sec MLIR and LLVM ownership and cleanup behavior
-      - keep local ownership bookkeeping out of public ABI unless an ABI rule requires it
-    tooling_remaining:
-      - stable ownership diagnostic IDs
-      - mentor diagnostics with Place, earlier operation, reason, and practical correction
-      - missing call-site move quick fix only for compiler-proven consuming intent
-      - hover for availability state, unavailability provenance, and copied versus consumed arguments
-      - expose pending versus committed transfer where useful
-      - expose static versus runtime-dependent availability and target-policy rejection
-      - preserve every ownership marker without formatter insertion or removal
-    corrections_applied:
-      - functions-ownership-v2-correction
-      - interfaces-ownership-v2-correction
-      - unions-ownership-v2-correction
-      - lambda-functions-ownership-v2-correction
-      - closure-analysis-ownership-v2-correction
-      - grammar-ownership-v2-correction
-      - copy-move-ownership-v2-correction
-      - discard-ownership-v2-correction
-      - destruction-ownership-v2-correction
-      - semantic-ir-ownership-v2-correction
-      - lsp-ownership-v2-correction
-      - diagnostics-ownership-v2-correction
-      - formatter-ownership-v2-correction
-      - correction30
     required_tests:
       - ordinary copy of copyable reusable source preserves source availability
       - ordinary value syntax never silently moves a reusable @noCopy/move-only source
@@ -277,11 +254,13 @@ integrations:
       - try/match guarded move ownership commits only on selected guard success
       - formatter preserves ownership markers and LSP reports canonical compiler facts
       - mentor diagnostics show source operation, ownership consequence, and practical correction
-    traceability:
-      availability_and_refinement: rules/memory/ownership.md sections 5, 18, and 20-25
-      call_transfer: rules/memory/ownership.md sections 13-14 and 18
-      runtime_state_and_policy: rules/memory/ownership.md sections 21-25 and 31-32
     verification:
+      - command: go test -race ./internal/sema ./cmd/compiler ./cmd/lsp -run '^TestCreationLifecycle' -count=1 -timeout=120s
+        result: "Passed 2026-11-18 on the final alias-mutation regression: Sema 1.102s, compiler 13.734s, LSP 12.493s. Final complete Sema/Semantic IR/diagnostic suites also pass (36.549s/10.259s/0.002s), as does go vet for these packages and compiler/LSP. Earlier broader raw task/thread Result and failure-domain race coverage passed in Sema 1.256s, compiler 63.916s and LSP 115.875s. Governance check: 0 problems in 47 fragments, canonical owner, all 65 evidence paths exist."
+      - command: go test ./internal/sema ./internal/ir/semantic ./internal/diagnostics -count=1 -timeout=180s
+        result: "Passed 2026-11-18: complete suites, Sema 34.925s, Semantic IR 12.022s, diagnostic registry 0.002s. Raw creation Result lifecycle checks cover locals, parameters, early return, implicit propagation, conditional moves, reinitialization, mutable failure-only carriers, exhaustive match extraction, failure-handler calls and loop breaks. BUG-000029 original reproduction now yields two registered S1247 errors; no native spawn runtime execution is claimed."
+      - command: sec check testdata/sema/raw_spawn_result_scope_bug.sec
+        result: "Reproduced on 2026-11-18 with a temporary compiler built using go build -trimpath: exit 0 and zero errors/warnings for both unused task and thread creation Result bindings. BUG-000029 remains open under the existing ownership-errorhandling-sync item; explicit discards are still rejected, direct extracted owners still require lifecycle resolution, and naive whole-carrier checking incorrectly rejects valid exhaustive matches."
       - command: go test -race -p 4 ./internal/sema -run 'PlaceAvailability|Availability|Cleanup|OwnershipUse|MoveInOneBranch|PlaceBranchMerge|BorrowCreationRejectsUnavailable' -count=1 -timeout=180s
         result: Passed 2026-11-05 (1.650s); certainty independent of provenance, nested/mixed/dead-path joins, missing reasons, positive/negative refinement, related partial masks and detached snapshots. go vet ./internal/sema ./internal/ir/semantic ./cmd/compiler ./cmd/lsp also passed.
       - command: go test -p 4 ./cmd/compiler ./cmd/lsp -run 'Availability|OwnershipUse|Cleanup|Conditional|Partial|MoveInOneBranch|MoveOnly|Discard' -count=1 -timeout=180s
@@ -310,6 +289,61 @@ integrations:
         result: passed on 2026-09-22 with capture-mode AST preservation, legacy syntax rejection, copy-only plain capture, explicit outer-source consumption, and independent environment availability
       - command: go test ./internal/sema -run 'UnavailablePlaceDiagnostics|AvailabilityReasonsDoNotBlock|BorrowCreationRejectsUnavailable|PlaceBranchMerge|MoveInOneBranch' -count=1
         result: passed on 2026-10-02 with conditional, nested-conditional, mixed-reason, definite, partial, and conditionally partial reads and borrows plus refinement, discard convergence, reinitialization, and repair after joins
+    replaces: pre-v2 rules/memory/ownership.md
+    related_integrations:
+      - frontend.copy-move
+      - sema.place-analysis
+      - frontend.match-v2
+      - frontend.discard-v2
+      - frontend.defer-v2
+    semantic_ir_remaining:
+      - represent copy versus consume explicitly
+      - represent move source Place and destination ownership
+      - represent Availability plus recursive partial and conditional masks where lowering needs them
+      - preserve UnavailableReason and source provenance for tooling
+      - represent pending and committed call-transfer facts or an equivalent resolved ownership plan
+      - distinguish replacement from reinitialization
+      - represent conditional destruction and cleanup responsibility
+      - represent return forwarding explicitly
+      - verify ownership operations instead of inferring moves from unused SSA values
+      - retain source Place and rule provenance for diagnostics and LSP
+    lowering_remaining:
+      - lower static ownership state without unnecessary runtime flags
+      - lower genuinely dynamic conditional ownership through local SSA or drop-state when policy permits
+      - eliminate runtime ownership state when static proof is sufficient
+      - conditionally destroy exactly once for discard, replacement, and scope exit
+      - commit call transfers atomically at the callee-entry boundary
+      - retain caller ownership when failure occurs before outer-call commit
+      - preserve completed nested argument-expression effects
+      - verify Sec MLIR and LLVM ownership and cleanup behavior
+      - keep local ownership bookkeeping out of public ABI unless an ABI rule requires it
+    tooling_remaining:
+      - stable ownership diagnostic IDs
+      - mentor diagnostics with Place, earlier operation, reason, and practical correction
+      - missing call-site move quick fix only for compiler-proven consuming intent
+      - hover for availability state, unavailability provenance, and copied versus consumed arguments
+      - expose pending versus committed transfer where useful
+      - expose static versus runtime-dependent availability and target-policy rejection
+      - preserve every ownership marker without formatter insertion or removal
+    corrections_applied:
+      - functions-ownership-v2-correction
+      - interfaces-ownership-v2-correction
+      - unions-ownership-v2-correction
+      - lambda-functions-ownership-v2-correction
+      - closure-analysis-ownership-v2-correction
+      - grammar-ownership-v2-correction
+      - copy-move-ownership-v2-correction
+      - discard-ownership-v2-correction
+      - destruction-ownership-v2-correction
+      - semantic-ir-ownership-v2-correction
+      - lsp-ownership-v2-correction
+      - diagnostics-ownership-v2-correction
+      - formatter-ownership-v2-correction
+      - correction30
+    traceability:
+      availability_and_refinement: rules/memory/ownership.md sections 5, 18, and 20-25
+      call_transfer: rules/memory/ownership.md sections 13-14 and 18
+      runtime_state_and_policy: rules/memory/ownership.md sections 21-25 and 31-32
     governance_reconciliation:
       - The historical rules/corrections/applied/correction30-20260828.md source is absent from the current checkout. Preserve correction30 in corrections_applied as historical provenance; current rule authority for availability and positive/negative refinement is rules/memory/ownership.md sections 5-6 and 20-21. Repairing the missing path does not close the separately listed recursive/dynamic refinement work.
 
@@ -317,8 +351,8 @@ integrations:
     area: frontend-copy-move
     status: partial
     integrated: "2026-08-28"
-    document_revision: "2.0"
     revised: "2026-10-28"
+    document_revision: "2.0"
     repository_baseline: 069c111
     rules:
       - rules/corrections/md117-heterogeneous-variadic-type-packs-correction.md
@@ -367,8 +401,6 @@ integrations:
       - Explicit ownership moves reject addressed volatile/MMIO roots and their projections, while an ordinary read into local inline storage produces a snapshot that follows normal copy/move rules.
       - "Result.Ok()/Err() consuming projections in Semantic IR (P17, verified 2026-11-04): the selected payload moves out of the Result, the alternate is destroyed exactly once by the Result's plan, and the consumed receiver cancels its registration. Tests: ownership_variants.sec projection functions, TestSchema13EmitsOwnedVariants."
       - "non-consuming Result.OkRef/ErrRef (2026-11-04; errorhandling.md § 6.2): the projections return Option[ref T]/Option[ref E] borrowing from the still-owned addressable Result with receiver provenance, so mutation conflicts and escapes are rejected; payload bindings (`if result.OkRef is Some(v)`, match arms) receive the substituted shared reference (BUG-000024). Tests: TestResultBorrowedProjectionsReturnReferenceOptionsWithoutConsuming, TestResultBorrowedProjectionPayloadBindingsAreSubstituted, TestResultBorrowedProjectionCannotEscapeLocalReceiver, TestResultBorrowedProjectionPreventsConflictingReceiverMutation."
-    governance_reconciliation:
-      - "Deduplicated 2026-11-11: the Result projection state proof is implemented for constructed immutable bindings, branches, early exits, Some bindings, borrowed-projection and direct Ok/Err match arms; its remaining mutable-Result and separate-compilation work is tracked only as errors.yaml frontend.errorhandling-v2 result-projection-discardability."
     remaining:
       - "MD-117 owned-pack transfer/cleanup: commit whole-pack consumption only after successful preparation of all arguments, invalidate the source pack once, roll back failed preparation, and destroy each remaining owned element exactly once on every exit; never destroy borrowed referents or allow individual element move-out (copy_move.md §8.3(5); correction §§6,7)."
       - complete Place availability integration including nested/indexed/sliced/opaque alias cases and the ownership-v2 Availability/UnavailableReason model
@@ -410,13 +442,15 @@ integrations:
         result: passed on 2026-09-24 after the Result projection increment
       - command: go vet ./...
         result: passed on 2026-09-24 after the Result projection increment
+    governance_reconciliation:
+      - "Deduplicated 2026-11-11: the Result projection state proof is implemented for constructed immutable bindings, branches, early exits, Some bindings, borrowed-projection and direct Ok/Err match arms; its remaining mutable-Result and separate-compilation work is tracked only as errors.yaml frontend.errorhandling-v2 result-projection-discardability."
 
   - id: frontend.destruction
     area: frontend-destruction-and-cleanup-analysis
     status: partial
     integrated: "2026-09-04"
-    document_revision: "2.0"
     revised: "2026-11-05"
+    document_revision: "2.0"
     repository_baseline: 069c111
     rules:
       - rules/memory/destruction.md
@@ -627,13 +661,6 @@ integrations:
       - symbolic parameter, receiver, projection, multi-source, and aggregate return paths
       - transitive call-site origin instantiation and returned granting-borrow retention
       - "Semantic IR copy, move, replacement and destruction operations exist (verified 2026-11-04): own.copy/semantic-copy/move, own.copy-from-place/move-from-place, own.initialize-place/replace-place, own.discard and own.destroy-value/destroy-place consume Sema's Place facts. P17 Semantic IR ownership and cleanup (package17; destruction.md §§ 6, 10–13, 16; tests ownership_variants.sec, cleanup_producers_test.go, lit schema13-*/invalid-schema13-*)."
-    verification:
-      - command: go test ./...
-        result: passed
-      - command: emit-mlir --verify over testdata/ir
-        result: passed
-      - command: validate implementation-status.yaml
-        result: passed
     remaining:
       - indexed, sliced, and aliased move availability beyond roots, nested fields, and owned union payloads
       - recursive aggregate availability masks
@@ -641,6 +668,13 @@ integrations:
       - multi-field active-variant borrowed payload destructuring
       - general destruction responsibility and conditional cleanup-state lattices beyond close-tracked resources
       - persisted summary metadata, function-value calls, recursive summary cycles, and all generic reference calls
+    verification:
+      - command: go test ./...
+        result: passed
+      - command: emit-mlir --verify over testdata/ir
+        result: passed
+      - command: validate implementation-status.yaml
+        result: passed
 
   - id: sema.resource-cleanup-state
     area: frontend-analysis
@@ -670,6 +704,10 @@ integrations:
       - removal of iteration-local resource state from recorded loop edges
       - next-condition and next-iteration verification when loop close state changes
       - "explicit cleanup and terminal ownership actions in Semantic IR (verified 2026-11-04): cleanup.track-owned, cleanup.cancel (with if_active), cleanup.defer-register with its body region, cleanup.run-scope and cleanup.run-function, plus own.discard/own.destroy-* as terminal actions. P17 Semantic IR ownership and cleanup (package17; destruction.md §§ 6, 10–13, 16; tests ownership_variants.sec, cleanup_producers_test.go, lit schema13-*/invalid-schema13-*)."
+    remaining:
+      - general non-trivial destruction responsibility beyond File and Directory
+      - conditional and partial aggregate cleanup state
+      - destruction and cleanup lowering before LLVM translation
     verification:
       - command: go test ./...
         result: passed
@@ -677,17 +715,13 @@ integrations:
         result: passed
       - command: validate implementation-status.yaml
         result: passed
-    remaining:
-      - general non-trivial destruction responsibility beyond File and Directory
-      - conditional and partial aggregate cleanup state
-      - destruction and cleanup lowering before LLVM translation
 
   - id: frontend.borrowing
     area: frontend-borrowing-place-liveness
     status: partial
     integrated: "2026-08-28"
-    document_revision: "2.0"
     revised: "2026-11-05"
+    document_revision: "2.0"
     repository_baseline: 069c111
     rules:
       - rules/corrections/md117-heterogeneous-variadic-type-packs-correction.md
@@ -760,21 +794,6 @@ integrations:
       - "concurrency-integration: reuse Place/provenance/borrow facts in send/share/data-race analysis without treating borrow exclusivity as sufficient synchronization"
       - "mentor-diagnostic-completeness: consistently report both borrow origin/holder and conflicting access/move/discard/destruction with path/loop explanation and safe restructuring help"
       - MD-126 complete the general StringView returned-origin, alias/join/contained-reference and temporary-retention conformance matrix, including all applicable Arena validity dependencies. Direct/nested and caller-sourced views, independent copy-holder edges, mutation conflicts and local/owned-parameter escape rejection are implemented and tested (2026-11-05); fresh non-addressable string sources still fail closed until their for-lifetime retention is modeled.
-    verification:
-      - command: go vet -p 4 ./internal/sema ./internal/ir/semantic ./internal/diagnostics ./internal/formatter ./cmd/compiler ./cmd/lsp
-        result: passed on 2026-11-05
-      - command: go test -p 4 ./cmd/lsp -run 'StringRange|ForBinding|Iterator|CompilerKnown|Slice|Borrow|Escape' -count=1 -timeout=180s
-        result: passed on 2026-11-05 (17.917s)
-      - command: go test -race -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run TestStringRange -count=1 -timeout=180s
-        result: "passed on 2026-11-05: Sema 1.082s, compiler CLI 2.131s, LSP diagnostics/hover 3.404s; source acceptance, registered help and explicit P23/no-output gate"
-      - command: go test -p 4 ./internal/sema ./internal/ir/semantic ./internal/diagnostics ./internal/formatter -count=1 -timeout=180s
-        result: "passed on 2026-11-05: full Sema 20.277s, Semantic IR 9.664s, diagnostic registry 0.002s and formatter 1.715s"
-      - command: go test ./internal/sema -run 'TestBorrowCreationRejectsUnavailableOwnershipStates|TestAvailabilityRefinementAllowsBorrowWithoutBypassingBorrowConflict' -count=1
-        result: passed on 2026-09-29 with uninitialized, moved, partial, conditional, refined-available, disjoint-sibling, and active-borrow separation coverage
-      - command: go test ./internal/sema -run 'TestDeferDependenciesPreserveDisjointStructPlaces|TestDeferRetainsReferenceHolderWithoutFreezingOrdinaryValues' -count=1
-        result: passed on 2026-09-30 with Place-sensitive overlap, disjoint sibling, retained reference-holder move/rebind, and ordinary late-value assignment coverage
-      - command: go test ./internal/sema -run 'TestCallBoundedArgumentBorrow' -count=1
-        result: passed on 2026-09-30 with mutable/mutable, mutable/shared, mutable/direct-read, existing lexical borrow, shared/shared, disjoint-field, and post-call release coverage
     required_tests:
       - multiple shared borrows of overlapping Place accepted
       - shared plus overlapping mutable borrow rejected
@@ -808,3 +827,18 @@ integrations:
       - defer future use blocks earlier invalidating move/discard/destruction
       - extern ref/ref mut call-bounded borrow cannot be retained absent explicit retention contract
       - generation/epoch validity check does not permit otherwise conflicting borrow
+    verification:
+      - command: go vet -p 4 ./internal/sema ./internal/ir/semantic ./internal/diagnostics ./internal/formatter ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-11-05
+      - command: go test -p 4 ./cmd/lsp -run 'StringRange|ForBinding|Iterator|CompilerKnown|Slice|Borrow|Escape' -count=1 -timeout=180s
+        result: passed on 2026-11-05 (17.917s)
+      - command: go test -race -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run TestStringRange -count=1 -timeout=180s
+        result: "passed on 2026-11-05: Sema 1.082s, compiler CLI 2.131s, LSP diagnostics/hover 3.404s; source acceptance, registered help and explicit P23/no-output gate"
+      - command: go test -p 4 ./internal/sema ./internal/ir/semantic ./internal/diagnostics ./internal/formatter -count=1 -timeout=180s
+        result: "passed on 2026-11-05: full Sema 20.277s, Semantic IR 9.664s, diagnostic registry 0.002s and formatter 1.715s"
+      - command: go test ./internal/sema -run 'TestBorrowCreationRejectsUnavailableOwnershipStates|TestAvailabilityRefinementAllowsBorrowWithoutBypassingBorrowConflict' -count=1
+        result: passed on 2026-09-29 with uninitialized, moved, partial, conditional, refined-available, disjoint-sibling, and active-borrow separation coverage
+      - command: go test ./internal/sema -run 'TestDeferDependenciesPreserveDisjointStructPlaces|TestDeferRetainsReferenceHolderWithoutFreezingOrdinaryValues' -count=1
+        result: passed on 2026-09-30 with Place-sensitive overlap, disjoint sibling, retained reference-holder move/rebind, and ordinary late-value assignment coverage
+      - command: go test ./internal/sema -run 'TestCallBoundedArgumentBorrow' -count=1
+        result: passed on 2026-09-30 with mutable/mutable, mutable/shared, mutable/direct-read, existing lexical borrow, shared/shared, disjoint-field, and post-call release coverage

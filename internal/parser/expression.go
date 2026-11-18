@@ -339,6 +339,7 @@ func (p *Parser) skipUnsupportedConditionalExpression() RecoveryEvent {
 //   - rules/foundations/grammar.md — "Impl declaration", NewExpression production
 //   - rules/compiler/parser_recovery.md — "Invalid AST nodes", "Nil use"
 func (p *Parser) parseNewExpression() ast.Expression {
+	defer p.withRecoveryContext(RecoveryContextNew)()
 	expr := &ast.NewExpression{Token: p.curToken}
 	if !p.expectPeekTypeStart() {
 		expr.Type = p.invalidTypeReference(p.peekToken, "")
@@ -393,6 +394,7 @@ func numericSuffixMigrationMessage(token lexer.Token) (string, bool) {
 //   - rules/foundations/grammar.md — "CaptureEntry"
 //   - rules/corrections/applied/grammar-ownership-v2-correction-20260826.md — "Capture syntax"
 func (p *Parser) parseCaptureLambdaExpression() ast.Expression {
+	defer p.withRecoveryContext(RecoveryContextLambda)()
 	captures := []ast.LambdaCapture{}
 
 	if !p.expectPeek(lexer.LPAREN) {
@@ -480,6 +482,7 @@ func (p *Parser) parseCaptureLambdaExpression() ast.Expression {
 }
 
 func (p *Parser) parseLambdaExpression(captures []ast.LambdaCapture, captureOpen lexer.Token) ast.Expression {
+	defer p.withRecoveryContext(RecoveryContextLambda)()
 	expr := &ast.LambdaExpression{Token: p.curToken, CaptureOpen: captureOpen, Captures: captures}
 
 	if p.peekToken.Type == lexer.LBRACKET {
@@ -530,6 +533,7 @@ func (p *Parser) parseLambdaExpression(captures []ast.LambdaCapture, captureOpen
 }
 
 func (p *Parser) parseMatchExpression() *ast.MatchExpression {
+	defer p.withRecoveryContext(RecoveryContextMatch)()
 	expr := &ast.MatchExpression{Token: p.curToken}
 	previousArmsProduceValue := p.matchArmsProduceValue
 	p.matchArmsProduceValue = !p.nextMatchIsStatement
@@ -567,6 +571,7 @@ func (p *Parser) parseMatchExpression() *ast.MatchExpression {
 //   - rules/compiler/parser_recovery.md — "Nil use"
 //   - rules/foundations/grammar.md — "Match expression"
 func (p *Parser) parseMatchArmBlock() []*ast.MatchArm {
+	defer p.withRecoveryContext(RecoveryContextBlock)()
 	arms := []*ast.MatchArm{}
 	previousContext := p.recoveryContext
 	p.recoveryContext = RecoveryContextMatchArm
@@ -603,6 +608,7 @@ func (p *Parser) parseMatchArmBlock() []*ast.MatchArm {
 }
 
 func (p *Parser) parseMatchArm() *ast.MatchArm {
+	defer p.withRecoveryContext(RecoveryContextMatchArm)()
 	arm := &ast.MatchArm{Token: p.curToken}
 	arm.Pattern = p.parseMatchPattern()
 	if arm.Pattern == nil {
@@ -913,6 +919,7 @@ func (p *Parser) skipMatchArm(start lexer.Token) RecoveryEvent {
 //   - rules/foundations/grammar.md — §89
 //   - rules/foundations/lexical_structure.md — §8 contextual reserved words
 func (p *Parser) parseSpawnExpression() ast.Expression {
+	defer p.withRecoveryContext(RecoveryContextSpawn)()
 	expr := &ast.SpawnExpression{Token: p.curToken, Kind: contextualTask}
 	if p.peekToken.Type == lexer.IDENT && isSpawnKindModifier(p.peekToken.Lexeme) {
 		p.nextToken()
@@ -958,6 +965,7 @@ func isSpawnKindModifier(value string) bool {
 }
 
 func (p *Parser) parseAwaitExpression() ast.Expression {
+	defer p.withRecoveryContext(RecoveryContextAwait)()
 	expr := &ast.AwaitExpression{Token: p.curToken}
 	p.nextToken()
 	expr.Value = p.parseExpression(PREFIX)
@@ -976,6 +984,7 @@ func (p *Parser) parseAwaitExpression() ast.Expression {
 //   - rules/foundations/grammar.md — UnsafeCallExpression (MD-079)
 //   - rules/memory/unsafe.md — § 4 single-operation syntax
 func (p *Parser) parseUnsafeCallExpression() ast.Expression {
+	defer p.withRecoveryContext(RecoveryContextUnsafe)()
 	marker := p.curToken
 	if p.peekToken.Type == lexer.EOF || p.peekToken.Type == lexer.SEMICOLON || p.peekToken.Type == lexer.RBRACE || p.peekToken.Line != marker.Line {
 		message := "`unsafe` must be followed by a block or by the single call it authorizes"
@@ -998,6 +1007,7 @@ func (p *Parser) parseUnsafeCallExpression() ast.Expression {
 }
 
 func (p *Parser) parseConversionExpression(left ast.Expression) ast.Expression {
+	defer p.withRecoveryContext(RecoveryContextExpression)()
 	ident, ok := left.(*ast.Identifier)
 	if !ok {
 		member, memberOK := left.(*ast.MemberExpression)
@@ -1064,6 +1074,7 @@ func (p *Parser) parseConversionExpression(left ast.Expression) ast.Expression {
 //   - rules/declarations/generics.md — "Generic enums"
 //   - rules/compiler/parser_recovery.md — "Generic argument recovery"
 func (p *Parser) parseExplicitGenericCallExpression(left ast.Expression) ast.Expression {
+	defer p.withRecoveryContext(RecoveryContextGenericArguments)()
 	bracketToken := p.curToken
 	if identifier, ok := left.(*ast.Identifier); ok && identifier.Value == "list" {
 		return p.parseListCollectionLiteral(identifier, bracketToken)
@@ -1200,6 +1211,7 @@ func (p *Parser) parseExplicitGenericCallExpression(left ast.Expression) ast.Exp
 }
 
 func (p *Parser) parseBracketExpression(left ast.Expression) ast.Expression {
+	defer p.withRecoveryContext(RecoveryContextIndexSlice)()
 	curToken := p.curToken
 	peekToken := p.peekToken
 	lexerState := p.l.Snapshot()
@@ -1241,6 +1253,7 @@ func (p *Parser) parseBracketExpression(left ast.Expression) ast.Expression {
 //   - rules/compiler/parser_recovery.md — "Array-literal recovery"
 //   - rules/compiler/parser_recovery.md — "Recovery goals"
 func (p *Parser) parseArrayLiteral() ast.Expression {
+	defer p.withRecoveryContext(RecoveryContextArrayLiteral)()
 	lit := &ast.ArrayLiteral{Token: p.curToken}
 
 	p.skipPeekComments()
@@ -1303,6 +1316,7 @@ func (p *Parser) parseArrayLiteral() ast.Expression {
 //   - rules/compiler/parser_recovery.md — "Postfix expression"
 //   - rules/compiler/parser_recovery.md — "Recovery goals"
 func (p *Parser) parseIndexOrSliceExpression(left ast.Expression) ast.Expression {
+	defer p.withRecoveryContext(RecoveryContextIndexSlice)()
 	token := p.curToken
 
 	if p.peekToken.Type == lexer.RANGE || p.peekToken.Type == lexer.RANGE_EXCLUSIVE {
@@ -1356,6 +1370,7 @@ func (p *Parser) parseIndexOrSliceExpression(left ast.Expression) ast.Expression
 //   - rules/compiler/parser_recovery.md — "Postfix expression"
 //   - rules/compiler/parser_recovery.md — "Recovery goals"
 func (p *Parser) parseSliceExpressionAfterRange(left ast.Expression, token lexer.Token, start ast.Expression) ast.Expression {
+	defer p.withRecoveryContext(RecoveryContextIndexSlice)()
 	expr := &ast.SliceExpression{
 		Token:      token,
 		Left:       left,
@@ -1380,6 +1395,7 @@ func (p *Parser) parseSliceExpressionAfterRange(left ast.Expression, token lexer
 // Rules: rules/foundations/grammar.md — "Runtime or compiler call expression";
 // rules/tooling/lsp.md — "Signature help".
 func (p *Parser) parseRuntimeCallExpression() ast.Expression {
+	defer p.withRecoveryContext(RecoveryContextCall)()
 	expr := &ast.RuntimeCallExpression{Token: p.curToken}
 
 	if !p.expectPeek(lexer.IDENT) {
@@ -1419,6 +1435,7 @@ func (p *Parser) parseRuntimeCallExpression() ast.Expression {
 //   - rules/compiler/parser_recovery.md — "Argument-list recovery"
 //   - rules/compiler/parser_recovery.md — "Progress"
 func (p *Parser) parseCallArguments() ([]ast.Expression, bool) {
+	defer p.withRecoveryContext(RecoveryContextCall)()
 	args := []ast.Expression{}
 	open := p.curToken
 
@@ -1531,6 +1548,7 @@ func (p *Parser) callArgumentsEndWithoutParen(open lexer.Token) bool {
 }
 
 func (p *Parser) parseTryExpression() ast.Expression {
+	defer p.withRecoveryContext(RecoveryContextTry)()
 	expr := &ast.TryExpression{Token: p.curToken}
 	p.nextToken()
 
@@ -1569,6 +1587,7 @@ func (p *Parser) parseTryExpression() ast.Expression {
 //   - rules/foundations/grammar.md — "TryHandler"
 //   - rules/errors/errorhandling.md — §15.2 "No nested match wrapper syntax"
 func (p *Parser) parseTryHandlerBlock() []*ast.TryHandler {
+	defer p.withRecoveryContext(RecoveryContextTry)()
 	handlers := []*ast.TryHandler{}
 	previousContext := p.recoveryContext
 	p.recoveryContext = RecoveryContextTryHandler
@@ -1659,6 +1678,7 @@ func (p *Parser) isTryHandlerBlockRecoveryStart(t lexer.TokenType) bool {
 }
 
 func (p *Parser) parseTryHandler() *ast.TryHandler {
+	defer p.withRecoveryContext(RecoveryContextTryHandler)()
 	handler := &ast.TryHandler{Token: p.curToken}
 	if p.looksLikeStructuredErrPattern() {
 		// MD-029: payload, field and contextual `.Variant` error patterns use
@@ -1753,6 +1773,7 @@ func (p *Parser) skipPatternEntry(start lexer.Token) RecoveryEvent {
 }
 
 func (p *Parser) parseStructLiteralExpression(left ast.Expression) ast.Expression {
+	defer p.withRecoveryContext(RecoveryContextStructLiteral)()
 	ref, ok := typeReferenceFromExpression(left)
 	if !ok {
 		p.addError("expected struct literal type before '{' at %d:%d", p.curToken.Line, p.curToken.Column)
@@ -1778,6 +1799,7 @@ func (p *Parser) parseStructLiteralExpression(left ast.Expression) ast.Expressio
 //   - rules/compiler/parser_recovery.md — "Struct literal recovery"
 //   - rules/compiler/parser_recovery.md — "Missing closing brace"
 func (p *Parser) parseStructLiteralWithType(ref *ast.TypeReference) ast.Expression {
+	defer p.withRecoveryContext(RecoveryContextStructLiteral)()
 	switchCase := ref.Token == p.switchCaseStart && ref.Token.Type != ""
 	lit := &ast.StructLiteral{
 		Token: ref.Token,
@@ -1919,6 +1941,7 @@ func typeReferenceFromExpression(expr ast.Expression) (*ast.TypeReference, bool)
 //   - rules/compiler/parser_recovery.md — "Postfix expression"
 //   - rules/compiler/parser_recovery.md — "Invalid expression"
 func (p *Parser) parseMemberExpression(left ast.Expression) ast.Expression {
+	defer p.withRecoveryContext(RecoveryContextMemberAccess)()
 	if left == nil {
 		return nil
 	}
@@ -1948,6 +1971,7 @@ func (p *Parser) parseMemberExpression(left ast.Expression) ast.Expression {
 }
 
 func (p *Parser) parseRefExpression() ast.Expression {
+	defer p.withRecoveryContext(RecoveryContextExpression)()
 	expr := &ast.RefExpression{Token: p.curToken}
 	if p.peekToken.Type == lexer.MUT {
 		p.nextToken()
@@ -2158,6 +2182,7 @@ func (p *Parser) parseBooleanLiteral() ast.Expression {
 //   - rules/compiler/parser_recovery.md — "Missing prefix operand"
 //   - rules/compiler/parser_recovery.md — "Expression recovery"
 func (p *Parser) parsePrefixExpression() ast.Expression {
+	defer p.withRecoveryContext(RecoveryContextExpression)()
 	expr := &ast.PrefixExpression{
 		Token:    p.curToken,
 		Operator: p.curToken.Lexeme,
@@ -2187,6 +2212,7 @@ func (p *Parser) parsePrefixExpression() ast.Expression {
 //   - rules/compiler/parser_recovery.md — "Grouped expression"
 //   - rules/compiler/parser_recovery.md — "Recovery goals"
 func (p *Parser) parseGroupedExpression() ast.Expression {
+	defer p.withRecoveryContext(RecoveryContextGroupedExpression)()
 	open := p.curToken
 	p.nextToken()
 
@@ -2228,6 +2254,7 @@ func (p *Parser) parseGroupedExpression() ast.Expression {
 //   - rules/compiler/parser_recovery.md — "Missing infix right operand"
 //   - rules/compiler/parser_recovery.md — "Expression recovery"
 func (p *Parser) parseInfixExpression(left ast.Expression) ast.Expression {
+	defer p.withRecoveryContext(RecoveryContextExpression)()
 	if p.curToken.Type == lexer.LT {
 		if conversion := p.parseUnitConversionExpression(left); conversion != nil {
 			return conversion
@@ -2299,6 +2326,7 @@ func isMissingOperandBoundary(tokenType lexer.TokenType) bool {
 // Rules: rules/foundations/grammar.md — "Unit conversion expression";
 // rules/tooling/lsp.md — "Signature help".
 func (p *Parser) parseUnitConversionExpression(left ast.Expression) ast.Expression {
+	defer p.withRecoveryContext(RecoveryContextUnit)()
 	ident, ok := left.(*ast.Identifier)
 	if !ok {
 		return nil
@@ -2393,6 +2421,7 @@ func (p *Parser) parseNotInExpression(left ast.Expression) ast.Expression {
 //   - rules/collections/collections.md — § 5.6a "Range segments in array literals", § 6.7 "Append"
 //   - rules/foundations/grammar.md — "Range expression in contextual positions"
 func (p *Parser) parseRangeSegment(lower ast.Expression) ast.Expression {
+	defer p.withRecoveryContext(RecoveryContextRange)()
 	p.nextToken()
 	segment := &ast.RangeExpression{Token: p.curToken, Start: lower, Exclusive: p.curToken.Type == lexer.RANGE_EXCLUSIVE}
 	if !p.isExpressionStart(p.peekToken.Type) {
@@ -2620,6 +2649,7 @@ func contextualOperatorPrecedence(spelling string) precedence {
 //   - rules/foundations/grammar.md — "Collection and shaped types"
 //   - rules/compiler/parser_recovery.md — "Bounded damage"
 func (p *Parser) parseListCollectionLiteral(identifier *ast.Identifier, bracketToken lexer.Token) ast.Expression {
+	defer p.withRecoveryContext(RecoveryContextArrayLiteral)()
 	ref := &ast.TypeReference{Token: identifier.Token, Name: identifier.Value}
 	ref = p.parseCollectionShapedTypeReferenceArgs(ref, bracketToken)
 	if ref == nil || ref.Invalid || p.curToken.Type != lexer.RBRACKET || p.peekToken.Type != lexer.LBRACE {
@@ -2670,6 +2700,7 @@ func (p *Parser) parseListCollectionLiteral(identifier *ast.Identifier, bracketT
 //   - rules/foundations/grammar.md — BitExtractionExpression
 //   - rules/corrections/applied/md046-md056-bit-extraction-correction-20261012.md — § 8
 func (p *Parser) parseBitExtractionExpression(identifier *ast.Identifier) ast.Expression {
+	defer p.withRecoveryContext(RecoveryContextIndexSlice)()
 	if p.curToken.Type != lexer.LBRACKET || p.peekToken.Type == lexer.RBRACKET {
 		return nil
 	}

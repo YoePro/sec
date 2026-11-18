@@ -16,6 +16,7 @@ import (
 //   - rules/declarations/generics.md — §12 "Multiple constraints"
 //   - rules/declarations/generics.md — §32 "Parser requirements"
 func (p *Parser) parseGenericConstraintList(parameter *ast.GenericParameter) []*ast.TypeReference {
+	defer p.withRecoveryContext(RecoveryContextGenericParameters)()
 	constraints := []*ast.TypeReference{}
 	after := ":"
 	for {

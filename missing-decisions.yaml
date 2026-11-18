@@ -1,6 +1,6 @@
 schema_version: 1
-updated: "2026-11-17"
-last_id: MD-138
+updated: "2026-11-18"
+last_id: MD-141
 purpose: >-
   Tracks normative decisions that are missing or insufficiently precise and
   therefore constrain implementation. Remove an entry only after the owning
@@ -1164,52 +1164,6 @@ decisions:
     classification: constraining
     status: open
 
-  - id: MD-131
-    area: constrained-assignment-without-try
-    rulebooks:
-      - rules/types/contracts.md
-      - rules/errors/panic.md
-      - rules/tooling/diagnostics.md
-    description: >-
-      contracts.md § 12(2)-(3) required the try assignment form for every
-      mutation of a constrained named value, and the compiler reported the
-      mandatory error S1069 types.constrained-assignment-requires-try.
-      Decided by the owner 2026-11-11: Sec offers both a panicking and a
-      non-panicking form. `p = Percent(x)` / `p += n` without try is valid,
-      checks the contracts at run time and panics with ContractFailure on
-      violation; `try p = Percent(x)` / `try p += n` makes the violation a
-      handled ContractError. Every run-time contract check outside try
-      (conversion, compound update of a local, field, property or referent)
-      reports the Information advisory A2011
-      contracts.unchecked-contract-may-panic; @noPanic still rejects it. S1069
-      is retired. Implemented 2026-11-11; contracts.md § 12(2)-(3) and the
-      diagnostics.md registry text still need the owner's rulebook update.
-    classification: constraining
-    status: decided-implementation-pending
-  - id: MD-132
-    area: parser-recovery-stray-closing-brace
-    rulebooks:
-      - rules/compiler/parser_recovery.md
-    description: >-
-      parser_recovery.md § 24 covers a missing `}` but not an extra one. An
-      extra `}` after a switch case body (observed 2026-11-11 in
-      sec/compiler/inside/lexer/lexer.sec) closed the switch early and turned
-      every later case into misplaced code. Decided by the owner 2026-11-12:
-      layout (indentation) may be used as recovery evidence for a stray
-      closing brace. Because Sec is not indentation-sensitive, layout never
-      changes the parse of a valid program; it only selects which brace is
-      stray when the brace-only parse would be an error anyway. A `}` is
-      treated as stray (reported, skipped, construct kept open) when it is the
-      first token on its line, is indented deeper than the first token of the
-      line that opened the construct, and is followed on a later line by a
-      token also indented deeper than that opener line which cannot legally
-      follow the closed construct: `case`/`default` after a switch body, or a
-      statement-only token (return, if, while, for, switch, match, break,
-      continue, defer, discard, case, default) after a function body.
-      Implemented 2026-11-12; parser_recovery.md § 24 needs the owner's text.
-    classification: localized
-    status: decided-implementation-pending
-
   - id: MD-133
     area: task-spawn-block-return-type
     rulebooks:
@@ -1344,4 +1298,87 @@ decisions:
       Option (c): new syntax lets a function type declare the requirement.
       Governance owner: frontend.cancellation-effect-v1.
     classification: constraining
+    status: open
+
+  - id: MD-139
+    area: allocation-provider-selection-syntax
+    rulebooks:
+      - rules/platform/target_profiles.md
+      - rules/memory/allocation.md
+      - rules/projects/projects.md
+      - rules/memory/arena.md
+    description: >-
+      MD-034 (decided) says a resolved profile may enable an allocation provider
+      that the platform proves it supports. allocation.md § 22(7)-(9) and
+      target_profiles.md § 7 say the same, but no rule defines how a Target or
+      Variant selects a profile family or enables a provider.
+      projects.md § 19(7) only names a Variant `profile` field, and
+      `[profile.*]` holds compiler options. Without a selection syntax and its
+      CompilationPlan fact:
+      no source context is allocator-backed, so the owning-value
+      reclamation authority of P18 (individually reclaimable T[] backing) is
+      never selected; owned Arena constructors (Arena.WithCapacity,
+      Arena.Growable) have no provider/reclamation contract (P19-20); and the
+      freestanding profile stays unresolved. Decide the manifest keys and
+      values for the profile family and the allocation provider per Target or
+      Variant, their validation diagnostics, and the resolved fact Sema
+      consumes (provider identity, reclamation authority, and individual
+      reclamation or not). Governance owners: platform.target-profiles and
+      lowering.sec-mlir-package19.
+    classification: blocking
+    status: open
+
+  - id: MD-140
+    area: arena-epoch-exhaustion-strategy
+    rulebooks:
+      - rules/memory/arena.md
+      - rules/memory/reference_model.md
+      - rules/mlir/packages/sec-mlir-dialect_package19.md
+    description: >-
+      arena.md § 39(1) requires one canonical safe strategy at Arena epoch
+      exhaustion and lists three acceptable ones: a fresh distinguishable
+      ArenaDomain identity (rekey), explicit fallible behavior if the Arena
+      API or profile defines it, or a deterministic panic/target trap when
+      recovery is unavailable. P19 § 42 says the resolved profile strategy
+      chooses. No rule says which strategy each profile resolves to.
+      Nor does any rule say whether the default 64-bit logical epoch
+      (reference_model.md § 34) needs a runtime exhaustion check at every
+      Reset or may treat exhaustion as statically unreachable. If a trap is
+      used, the panic reason or trap identity is also open. Reset lowering
+      (P19-07, P19-20) records an exhaustion plan and cannot choose one
+      without inventing semantics. Decide the strategy per profile, the check
+      obligation for the default width and the failure identity. Governance
+      owner: lowering.sec-mlir-package19.
+    classification: constraining
+    status: open
+
+  - id: MD-141
+    area: scalar-storage-size-and-alignment
+    rulebooks:
+      - rules/memory/layout.md
+      - rules/types/types.md
+      - rules/platform/target_profiles.md
+      - rules/mlir/packages/sec-mlir-dialect_package24.md
+    description: >-
+      layout.md § 3(2) makes "supported scalar alignments" a CompilationPlan
+      fact. § 8(4) says alignment is not automatically size, and § 18(4) says
+      bool, rune and other scalars follow their canonical type representation
+      rules. Those rules are never stated. types.md fixes byte and char at 8
+      bits, the fixed integer and float widths and the plan width of
+      int/uint/float. It does not define the storage size of `bool` or `rune`,
+      nor where per-target scalar alignments come from or what they are,
+      including int128/int256/uint128/uint256 and decimal carriers. No target
+      definition or ResolvedScalarPlan carries alignments.
+      P24-16 can therefore resolve scalar sizes but not alignments, so every
+      scalar layout stays incomplete. That blocks Arena New/Alloc (P19 § 20),
+      dynamic-array SizeOf/stride (P18) and all aggregate layouts.
+      Decide:
+      - the storage size of bool and rune;
+      - the source of scalar alignment per target (target data layout facts
+        in the target registry, natural alignment capped by a target maximum,
+        or another rule);
+      - the values for each registered target, including the 128/256-bit
+        integers.
+      Governance owners: frontend.layout and lowering.sec-mlir-package24.
+    classification: blocking
     status: open

@@ -2194,28 +2194,7 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 		a.recordResolvedCall(expr, best[0].Function, dispatch, contractReceiver)
 		a.recordGenericInstantiation(best[0].Function, callCalleeDefinitionToken(expr))
 		a.recordForeignBufferExtents(expr, a.resolvedCalls[expr])
-		execution, recordCall := a.callGraphExecutionForCall(expr)
-		if !a.summaryPass && a.callGraphPathReachable && recordCall {
-			if dispatch == CallDispatchInterface {
-				a.recordInterfaceGraphCall(contractReceiver, best[0].Function, callCalleeDefinitionToken(expr), execution)
-			} else {
-				a.callGraph.addCall(a.currentCallable, best[0].Function, callCalleeDefinitionToken(expr), dispatch, execution)
-			}
-			a.recordForeignAbortEffect(best[0].Function, callCalleeDefinitionToken(expr))
-			a.recordForeignAllocationEffect(best[0].Function, callCalleeDefinitionToken(expr))
-			a.recordForeignBlockingEffect(best[0].Function, callCalleeDefinitionToken(expr))
-			// rules/errors/panic.md § 21(3)–(4): a method called through an
-			// interface reference or a constrained generic parameter has no
-			// concrete body here, so its panic behavior is unknown.
-			if isMethodCall && dereferenceType(methodReceiver.Type).Kind == GenericType {
-				a.recordGenericConstraintCall(methodReceiver.Type, best[0].Function, callCalleeDefinitionToken(expr))
-			}
-			if dispatch == CallDispatchInterface || (isMethodCall && dereferenceType(methodReceiver.Type).Kind == GenericType) {
-				a.callGraph.addEffect(a.currentCallable, EffectSite{Kind: EffectMayPanicUnknownCallee, Source: callCalleeDefinitionToken(expr)})
-				a.callGraph.addArenaEffect(a.currentCallable, ArenaEffectSite{Kind: ArenaEffectUnknownCallee, Source: callCalleeDefinitionToken(expr), UnknownAllocation: true})
-				a.recordUnknownBlockingCallee(callCalleeDefinitionToken(expr))
-			}
-		}
+		a.recordResolvedCallGraph(expr, best[0].Function, dispatch, methodReceiver.Type, isMethodCall, contractReceiver)
 		a.setCallReferenceOrigin(expr, best[0].Function, sourceArgs, isMethodCall)
 		a.markMovedCallArguments(best[0].Function, sourceArgs, preparedSpreadValues, isMethodCall)
 		a.markConsumedPackSpreads(expr)
@@ -3085,7 +3064,21 @@ func (a *Analyzer) inferCallAsConversion(expr *ast.CallExpression) (Type, expres
 	return targetType, expressionValue{Display: expr.String()}
 }
 
+// inferTryExpression resolves protected failures and handlers, transfers owned
+// carriers and rejects child obligations abandoned by a propagation edge.
+// Rules: rules/errors/errorhandling.md §§11–12,16,29;
+// rules/memory/ownership.md §17; rules/concurrency/tasks.md §30.
 func (a *Analyzer) inferTryExpression(expr *ast.TryExpression) (Type, expressionValue) {
+	var pending []Symbol
+	defer func() {
+		resolved, exists := a.resolvedTries[expr]
+		plan := a.resolvedTryPlans[expr]
+		if exists && (tryPropagates(resolved.Kind) || plan.ResidualPropagates) {
+			for _, symbol := range pending {
+				a.reportUnresolvedCreation(symbol)
+			}
+		}
+	}()
 	var valueType Type
 	start, tracked := a.beginTryProtection()
 	if construction, ok := expr.Expression.(*ast.NewExpression); ok {
@@ -3121,6 +3114,9 @@ func (a *Analyzer) inferTryExpression(expr *ast.TryExpression) (Type, expression
 		if rootIsResult || isOption {
 			a.markMoveSource(expr.Expression)
 		}
+	}
+	if !a.provesResultProjectionSafe(expr.Expression, "Ok") {
+		pending = a.pendingCreationLifecycles()
 	}
 	points := a.collectTryFailurePoints(expr.Expression)
 	if isOption && len(points) > 0 {

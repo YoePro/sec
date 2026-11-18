@@ -1,0 +1,50 @@
+module main
+
+// SEC-MLIR-P18 test matrices (§§ 121–126): one program whose Semantic IR and
+// schema-14 module carry every dynamic-array row the source surface reaches.
+
+type Handle struct {
+    id: int,
+}
+
+impl Handle {
+    free {
+    }
+}
+
+fn Matrix(count: uint) Result[int, CollectionError] {
+    let mut values: int[]
+    try values.Append(1)
+    try values.Append(2)
+    values[0] = 3
+    let signed := values[0]
+    let unsigned := values[count]
+    let shared := ref values[1]
+    let read := *shared
+    let whole := ref values[..]
+    let part := ref values[0..1]
+    discard whole.Len
+    discard part.Len
+    let exclusive := ref mut values[..]
+    discard exclusive.Len
+    try values.Append(5)
+    return Ok(signed + unsigned + read)
+}
+
+fn Checked(index: int) Result[int, IndexError] {
+    let mut values: int[]
+    return Ok(try values[index])
+}
+
+fn Handles() uint {
+    let mut handles: Handle[]
+    return handles.Len
+}
+
+fn Two() Result[uint, CollectionError] {
+    let mut first: int[]
+    try first.Append(1)
+    let mut second: int[]
+    try second.Append(2)
+    return Ok(first.Len + second.Len)
+}

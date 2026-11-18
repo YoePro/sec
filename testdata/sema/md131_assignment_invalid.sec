@@ -1,0 +1,7 @@
+module main
+
+type Percent int range 0..100
+let mut percentage: Percent := 50
+
+@noPanic
+fn Forbidden() void { percentage += 1 }

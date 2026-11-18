@@ -136,3 +136,30 @@ receive options containing `logicalTarget`, `variant`, `os`, `arch`,
 the chosen `logicalTarget` and `variant`; empty strings for both restore automatic
 resolution. Invalid choices return JSON-RPC `-32602` and preserve the selection.
 The initialize response advertises `experimental.targetSelection`.
+
+### Target status and comparison
+
+The Explorer's **SEC Target Comparison** view shows the active SEC document's
+stored comparison, with one row per logical target/output variant. Rows show
+the active analysis target, error/warning counts and expandable diagnostics;
+click a diagnostic to open its source range. Target rows also show platform
+and pointer-width details. Use the view's target-selection and refresh actions
+to switch targets or reread the current results.
+
+An unavailable comparison is shown explicitly, never as zero errors. Results
+refresh through the existing open/save, target-switch and project-change
+analysis. Editing invalidates the view immediately; comparisons while typing
+remain separate work. A clean row means the stored diagnostics contain no
+errors, not that every possible target safety proof or lowering is complete.
+
+Other clients can request `sec/targetStatus` with
+`{ "textDocument": { "uri": "file:///…/main.sec" } }`.
+The response has `uri`, document `version`, `state` (`current` or `unavailable`),
+`active`, canonical target `options`, and `targets`. Each target row contains
+its compiler-provided `name`, `active`, `current`, optional canonical `option`
+and `diagnostics`. An unavailable row has `current: false` and
+`diagnostics: null`; a completed clean row has `current: true` and
+`diagnostics: []`. The read-only request neither starts analysis nor selects
+a target. Initialize advertises `experimental.targetStatus`.
+
+Run `npm run test:target-status` for the headless client-state regression.

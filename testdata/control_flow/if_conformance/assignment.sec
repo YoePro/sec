@@ -1,0 +1,25 @@
+module main
+
+type State union { Idle, Running }
+
+fn Consume(state: State) void { }
+
+fn Both(ready: bool) void {
+    let mut state: State
+    if ready {
+        state = State.Idle
+    } else {
+        state = State.Running
+    }
+    Consume(state)
+}
+
+fn Continuing(ready: bool) void {
+    let mut state: State
+    if ready {
+        state = State.Idle
+    } else {
+        return
+    }
+    Consume(state)
+}

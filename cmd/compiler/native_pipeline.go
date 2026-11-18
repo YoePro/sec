@@ -32,15 +32,17 @@ const nativeTrackMaxPackage = 14
 
 // inspectionMaxPackage is the Semantic IR package level of the high-level
 // inspection routes emit-ir and emit-sec-mlir, which stop at verified
-// Semantic IR and verified schema-13 Sec MLIR (MD-086; P17).
+// Semantic IR and verified schema-14 Sec MLIR (MD-086; P17, P18 owning
+// dynamic arrays).
 //
-// Rules: rules/compiler/compiler_pipeline.md — § 59(4)–(7) (MD-086).
-const inspectionMaxPackage = 17
+// Rules: rules/compiler/compiler_pipeline.md — § 59(4)–(7) (MD-086);
+// rules/mlir/packages/sec-mlir-dialect_package18.md — § 81.
+const inspectionMaxPackage = 18
 
 // inspectionSchemaVersion is the Sec MLIR schema those routes emit. The native
 // track stays at its default schema until slices and ownership cleanup have a
 // physical representation.
-const inspectionSchemaVersion = 13
+const inspectionSchemaVersion = 14
 
 // emitSecDialect builds verified-ready Sec dialect MLIR text for one analyzed
 // source file and reports the Sec function identity of its command entry, or

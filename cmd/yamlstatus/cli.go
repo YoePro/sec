@@ -6,6 +6,8 @@ import (
 	"io"
 	"path/filepath"
 	"strings"
+
+	"sec/internal/diagnostics"
 )
 
 func runCLI(args []string, out, errOut io.Writer) error {
@@ -26,6 +28,9 @@ func runCLI(args []string, out, errOut io.Writer) error {
 	exclude := flags.String("exclude", "", "Exclude points containing this text (case insensitive)")
 	jsonOutput := flags.Bool("json", false, "Print selection, search, path or count-diff reports as JSON")
 	grep := flags.String("grep", "", "Find all remaining points containing literal text (case insensitive; supports -file, -id and -json)")
+	md := flags.String("md", "", "List exact MD-NNN references, or possible stale blockers with -md closed (supports -json)")
+	corrections := flags.Bool("corrections", false, "Audit applied correction links, disconnected archive files and pending corrections (supports -json)")
+	diagnosticAudit := flags.Bool("diagnostics", false, "Compare registered diagnostic IDs with governance/rules and suggest unused IDs by namespace (supports -json)")
 	uses := flags.String("uses", "", "List code/tests/rules references to a repository path (supports -file, -id and -json)")
 	paths := flags.Bool("paths", false, "Report missing code/tests/rules paths (supports -file, -id and -json)")
 	goPaths := flags.Bool("go", false, "With -paths, check only .go paths under internal/ and cmd/")
@@ -53,6 +58,48 @@ func runCLI(args []string, out, errOut io.Writer) error {
 	}
 	if flags.NArg() == 1 {
 		*dir = flags.Arg(0)
+	}
+	if *diagnosticAudit {
+		root, err := auditQueryRoot(flags, "diagnostics", *dir)
+		if err != nil {
+			return err
+		}
+		if err := diagnostics.Validate(); err != nil {
+			return err
+		}
+		report, err := auditDiagnosticRegistry(root, *dir, diagnostics.All())
+		if err != nil {
+			return err
+		}
+		return printDiagnosticAudit(out, report, *jsonOutput)
+	}
+	if *corrections {
+		root, err := auditQueryRoot(flags, "corrections", *dir)
+		if err != nil {
+			return err
+		}
+		report, err := auditCorrections(root, *dir)
+		if err != nil {
+			return err
+		}
+		return printCorrectionAudit(out, report, *jsonOutput)
+	}
+	mdMode := false
+	flags.Visit(func(option *flag.Flag) {
+		if option.Name == "md" {
+			mdMode = true
+		}
+	})
+	if mdMode {
+		root, err := auditQueryRoot(flags, "md", *dir)
+		if err != nil {
+			return err
+		}
+		report, err := findDecisionReferences(root, *dir, *md)
+		if err != nil {
+			return err
+		}
+		return printDecisionReferences(out, report, *jsonOutput)
 	}
 	if *listFiles {
 		var incompatible string

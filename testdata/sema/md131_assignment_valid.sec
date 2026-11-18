@@ -1,0 +1,9 @@
+module main
+
+type Percent int range 0..100
+let mut percentage: Percent := 50
+
+fn Ordinary() void { percentage += 1 }
+fn Handled() void {
+    try percentage += 1 { Err(error) => { discard error } }
+}

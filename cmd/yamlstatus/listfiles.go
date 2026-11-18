@@ -27,8 +27,15 @@ func printFileChecklists(out io.Writer, files []fileChecklistCounts) error {
 	ordered := append([]fileChecklistCounts(nil), files...)
 	sort.Slice(ordered, func(i, j int) bool { return ordered[i].File < ordered[j].File })
 	table := tabwriter.NewWriter(out, 0, 4, 2, ' ', 0)
-	if _, err := fmt.Fprintln(table, "File\tImplemented\tRemaining\tPartial"); err != nil {
+
+	written, err := fmt.Fprintln(table, "File\tImplemented\t Remaining\t  Partial")
+	if err != nil {
 		return err
+	}
+	if written > 0 {
+		if _, err := fmt.Fprintln(table, "----\t-----------\t-----------\t----------"); err != nil {
+			return err
+		}
 	}
 	hasLibrary := false
 	for _, file := range ordered {
@@ -44,7 +51,7 @@ func printFileChecklists(out io.Writer, files []fileChecklistCounts) error {
 			}
 			return float64(count) / float64(total) * 100
 		}
-		if _, err := fmt.Fprintf(table, "%s\t%d (%.1f%%)\t%d (%.1f%%)\t%d (%.1f%%)\n",
+		if _, err := fmt.Fprintf(table, "%s\t%3d (%.1f%%)\t%3d (%.1f%%)\t%3d (%.1f%%)\n",
 			name, file.Implemented, percent(file.Implemented),
 			file.Remaining, percent(file.Remaining), file.Partial, percent(file.Partial)); err != nil {
 			return err

@@ -15,6 +15,7 @@ import (
 //   - rules/declarations/functions.md — §14 "Return ownership"
 //   - rules/memory/copy_move.md — §9 "Return boundaries"
 func (p *Parser) parseReturnStatement() ast.Statement {
+	defer p.withRecoveryContext(RecoveryContextReturn)()
 	stmt := &ast.ReturnStatement{Token: p.curToken}
 
 	if p.peekToken.Type == lexer.RBRACE || p.peekToken.Type == lexer.EOF || isSwitchClauseStart(p.peekToken) {

@@ -3,6 +3,7 @@ package sema
 import (
 	"math/big"
 	"sec/internal/ast"
+	"sec/internal/diagnostics"
 )
 
 // analyzeIfStatement applies canonical condition, Option binding, availability
@@ -23,7 +24,11 @@ func (a *Analyzer) analyzeIfStatement(stmt *ast.IfStatement) {
 	} else if stmt.Condition != nil {
 		conditionType, _ := a.inferExpression(stmt.Condition)
 		if conditionType.Kind != InvalidType && conditionType.Kind != BoolType {
-			a.addErrorAtToken(expressionToken(stmt.Condition), "%s", nonBoolConditionMessage(stmt.Condition, "if", conditionType))
+			// flowcontrol_if.md §§3,11,28; diagnostics.md §§2–3,7:
+			// ordinary and try conditions share the mandatory bool contract.
+			a.addErrorAtTokenWithMetadata(expressionToken(stmt.Condition), diagnostics.IfConditionNotBool,
+				"Use an explicit comparison, membership or state test that produces bool. A try condition must have bool as its successful result type; Sec has no implicit truthiness conversion.",
+				"%s", nonBoolConditionMessage(stmt.Condition, "if", conditionType))
 		}
 		if conditionType.Kind == BoolType {
 			constantCondition, constantConditionKnown = a.constantBooleanValue(stmt.Condition)

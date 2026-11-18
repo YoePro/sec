@@ -1,0 +1,20 @@
+module main
+
+type State union { Idle, Running }
+
+fn Consume(state: State) void { }
+
+fn Missing(ready: bool) void {
+    let mut state: State
+    if ready {
+        state = State.Idle
+    }
+    Consume(state)
+}
+
+fn Scope(ready: bool) int {
+    if ready {
+        let branchOnly := 1
+    }
+    return branchOnly
+}

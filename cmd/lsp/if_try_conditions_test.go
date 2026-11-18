@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"sec/internal/diagnostics"
 )
 
 // TestIfTryConditionsLSP checks unsaved-source diagnostics at each try token
@@ -27,7 +29,7 @@ func TestIfTryConditionsLSP(t *testing.T) {
 			t.Fatal(name, items)
 		}
 		for i, item := range items {
-			if item.Severity != 1 || item.Range.Start.Line != 8+i || item.Range.End.Character-item.Range.Start.Character != 3 || !strings.Contains(item.Message, "if condition") || !strings.Contains(item.Message, "bool") {
+			if item.Code != diagnostics.IfConditionNotBool || item.Severity != 1 || item.Range.Start.Line != 8+i || item.Range.End.Character-item.Range.Start.Character != 3 || !strings.Contains(item.Message, "if condition") || !strings.Contains(item.Message, "bool") || !strings.Contains(item.Message, "explicit comparison") {
 				t.Fatal(item)
 			}
 		}

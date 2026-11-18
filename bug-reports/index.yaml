@@ -638,3 +638,28 @@ reports:
       loading diagnostics.rules through lspDiagnosticRules from disk rather
       than the request's source overlay. The current working tree retains that
       disk-only read. No unsaved-manifest reproduction was run for this report.
+
+  - id: BUG-000029
+    title: Raw spawn Result hides an unresolved child at scope exit
+    status: fixed
+    severity: high
+    kind: ownership-lifecycle-validation-bug
+    reported: "2026-11-18"
+    report: fixed/BUG-000029-raw-spawn-result-scope.md
+    area: ownership-errorhandling
+    rulebooks:
+      - rules/concurrency/tasks.md
+      - rules/concurrency/threads.md
+      - rules/control-flow/discard.md
+      - rules/memory/ownership.md
+    governance:
+      - frontend.ownership-v2
+    evidence: >-
+      Fixed and verified on 2026-11-18: the original raw task/thread Result
+      scope fixture now exits 3 with two registered S1247 diagnostics and
+      mentor help. Canonical Result payload moves and continuing-path
+      lifecycle facts preserve exhaustive match, forwarding, try extraction,
+      Err-only carriers and loop breaks while rejecting unresolved scope,
+      return, parameter and propagation exits. Complete Sema/Semantic IR/
+      diagnostic suites and focused compiler/LSP race tests pass. Native
+      task/thread execution remains outside this validation fix.

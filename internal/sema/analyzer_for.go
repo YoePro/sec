@@ -464,7 +464,7 @@ func (a *Analyzer) inferForIterableBindingTypes(stmt *ast.ForStatement) ([]Type,
 				// The template's Next comes from the Iterator[T] constraint:
 				// unknown at template level, a static edge per specialization
 				// (linkGenericSpecializations).
-				a.recordGenericConstraintCall(iterableType, next, stmt.Token)
+				a.recordGenericConstraintCall(iterableType, next, stmt.Token, CallExecutionSynchronous)
 				a.callGraph.addEffect(a.currentCallable, EffectSite{Kind: EffectMayPanicUnknownCallee, Source: stmt.Token})
 				a.callGraph.addArenaEffect(a.currentCallable, ArenaEffectSite{Kind: ArenaEffectUnknownCallee, Source: stmt.Token, UnknownAllocation: true})
 				a.recordUnknownBlockingCallee(stmt.Token)

@@ -2,7 +2,7 @@
 
 - Status: Normative
 - Created: 2026-09-03
-- Last updated: 2026-11-01 (§ 27A(7)–(9) pack forwarding, generic owners and returned references, MD-117; § 25 generic error channels, MD-120); 2026-10-31 (§ 27A(5) pack loops; § 21(11) hardware binding roots; § 21(12) hardware variants and operations); 2026-10-30 (§ 21(9) MD-113 shadow knowledge; § 21(8) MD-112 specialized hardware write requests); 2026-10-28 (§ 71(6) error-pattern plans, reachable-state proofs and Some construction, MD-029/MD-042/MD-102; §§ 58(6)–58(7) decimal plans and ArithmeticError, MD-066/MD-067); 2026-10-27 (§ 27A MD-117 heterogeneous variadic type packs; §§ 10(12), 28(6), 45(12a), 126.22(1) MD-115/MD-116 static roots and returned range origins; § 21(7) MD-114 register serialization); 2026-10-19 (§ 126 slice semantic values and § 106(5) version distinction; P16-05)
+- Last updated: 2026-11-18 (§ 127 owning dynamic arrays, P18 sync § 22); 2026-11-01 (§ 27A(7)–(9) pack forwarding, generic owners and returned references, MD-117; § 25 generic error channels, MD-120); 2026-10-31 (§ 27A(5) pack loops; § 21(11) hardware binding roots; § 21(12) hardware variants and operations); 2026-10-30 (§ 21(9) MD-113 shadow knowledge; § 21(8) MD-112 specialized hardware write requests); 2026-10-28 (§ 71(6) error-pattern plans, reachable-state proofs and Some construction, MD-029/MD-042/MD-102; §§ 58(6)–58(7) decimal plans and ArithmeticError, MD-066/MD-067); 2026-10-27 (§ 27A MD-117 heterogeneous variadic type packs; §§ 10(12), 28(6), 45(12a), 126.22(1) MD-115/MD-116 static roots and returned range origins; § 21(7) MD-114 register serialization); 2026-10-19 (§ 126 slice semantic values and § 106(5) version distinction; P16-05)
 - Document revision: 2.0
 - Sec language version: 0.1
 - Canonical path: `rules/compiler/semantic_ir.md`
@@ -3507,3 +3507,297 @@ dynamic SliceRangeID
 ```
 
 Do not print physical address assumptions.
+
+---
+
+## § 127 Owning dynamic arrays (SEC-MLIR-P18)
+
+Installed 2026-11-18 from all 22 sections of
+`rules/mlir/semantic-ir/sec_semantic_ir_dynamic_array_v1.md` (P18 sync § 22).
+This is a normative representation contract, not a claim of complete
+implementation. §§ 45–48 continue to own Place/reference semantics and § 126
+borrowed slices; owning `T[]` stays a separate semantic category.
+
+The implemented Semantic IR spells the operations `dynamic-array.empty`,
+`dynamic-array.allocate`, `dynamic-array.length`, `dynamic-array.has-backing`,
+`dynamic-array.has-capacity`, `dynamic-array.index-in-bounds`,
+`dynamic-array.element-place`, `dynamic-array.append-prepared`,
+`dynamic-array.grow-backing` and `storage.establish-domain`,
+`storage.advance-epoch`, `storage.end-domain`, `storage.reclaim`; schema 14
+carries them as the `sec.dynamic_array.*` and `sec.storage.*` operations
+(`rules/mlir/dialect-versions/sec_mlir_dialect_v14.md`).
+
+### § 127.1 Dynamic-array type
+
+Semantic IR adds:
+
+```text
+DynamicArrayType(Element TypeID)
+```
+
+Source spelling:
+
+```text
+T[]
+```
+
+Length/capacity/backing facts are value state, not type identity.
+
+---
+
+### § 127.2 Ownership
+
+Every `T[]` is MoveOnly.
+
+No ordinary copy operation is valid.
+
+Whole-value transfer uses P17 move semantics.
+
+---
+
+### § 127.3 Default
+
+Semantic IR provides a non-allocating empty owning value:
+
+```text
+length 0
+capacity 0
+backing none
+```
+
+No element default is required.
+
+---
+
+### § 127.4 Value invariant
+
+Every readable dynamic array satisfies:
+
+```text
+0 <= length <= capacity
+live initialized elements = [0,length)
+capacity-only slots are not live T objects
+```
+
+---
+
+### § 127.5 Backing facts
+
+A backed array retains/reference facts equivalent to:
+
+```text
+storage identity
+allocation identity/context
+backing relation
+reclamation authority
+reclamation plan
+invalidation domain
+epoch
+address stability
+(relocation class withdrawn; address stability above, MD-084)
+memory space
+```
+
+---
+
+### § 127.6 Allocation
+
+Allocation is explicit Semantic IR.
+
+Potentially failing allocation produces:
+
+```text
+failed
+AllocationError
+```
+
+and establishes backing only on success.
+
+---
+
+### § 127.7 Partial construction
+
+A partially constructed array remains safe by exposing only the initialized
+prefix as logical length.
+
+Cleanup destroys only that prefix.
+
+---
+
+### § 127.8 Internal append
+
+A prepared element may be appended only when capacity is available.
+
+Ownership transfers into the array after successful element initialization.
+
+The logical length increments last.
+
+---
+
+### § 127.9 Growth
+
+Backing growth is explicit and transactional.
+
+Failure preserves the original owner.
+
+Success identifies whether backing invalidation is:
+
+```text
+none
+epoch advance
+domain replacement
+```
+
+---
+
+### § 127.10 Storage transitions
+
+Semantic IR explicitly represents:
+
+```text
+EstablishDomain
+AdvanceEpoch
+EndDomain
+ReclaimStorage
+```
+
+Destruction and reclamation remain separate.
+
+---
+
+### § 127.11 Relocation
+
+Physical backing relocation is not source-level value move.
+
+Element ownership remains with the owning dynamic array.
+
+Relocation invalidates direct dependencies according to the storage domain.
+
+---
+
+### § 127.12 Destruction
+
+Dynamic-array destruction:
+
+```text
+destroys initialized elements in reverse logical index order
+ends backing domain
+reclaims backing only through resolved reclamation authority/plan
+```
+
+---
+
+### § 127.13 Arena-backed owner
+
+Arena-backed dynamic arrays still own element object lifetimes.
+
+Array destruction destroys elements.
+
+Arena policy owns raw backing reclamation.
+
+---
+
+### § 127.14 Indexing
+
+Dynamic-array indexing produces a P15 Place.
+
+Bounds use runtime length.
+
+P17/P15 then handle read, replacement and borrowing.
+
+---
+
+### § 127.15 Indexed move boundary
+
+Runtime-index move-out of move-only elements remains unsupported.
+
+No per-index partial ownership mask is introduced.
+
+---
+
+### § 127.16 Slice borrowing
+
+P16 slice borrow may consume a dynamic-array owner Place as contiguous source.
+
+The resulting slice depends on the current backing incarnation.
+
+---
+
+### § 127.17 Length
+
+Semantic IR distinguishes:
+
+```text
+DynamicArrayLength -> uint
+DynamicArrayLengthInt -> int
+```
+
+No implicit narrowing between them.
+
+---
+
+### § 127.18 Internal capacity
+
+Capacity exists as compiler/internal semantic state.
+
+It is not source member semantics.
+
+---
+
+### § 127.19 Effects
+
+Dynamic-array operations may explicitly contribute:
+
+```text
+AllocateStorage
+RelocateStorage
+ReclaimStorage
+EstablishDomain
+AdvanceEpoch
+EndDomain
+```
+
+---
+
+### § 127.20 Verifier
+
+Semantic IR verification checks:
+
+```text
+MoveOnly classification
+length/capacity invariant
+initialized-prefix invariant
+allocation success/failure use
+allocation/reclamation pairing
+growth transactional behavior
+storage transitions
+index guard
+element Place backing dependency
+slice origin
+borrow exclusion for invalidating growth
+destruction/reclamation order
+```
+
+---
+
+### § 127.21 Physical separation
+
+Semantic IR does not define descriptor field order, pointer shape, allocator ABI,
+or physical capacity policy.
+
+---
+
+### § 127.22 Deterministic printer
+
+Print high-level dynamic-array state/provenance deterministically:
+
+```text
+element type
+logical length identity/value
+capacity identity/value where internal
+storage/invalidation IDs
+allocation/reclamation plan IDs
+transition kinds
+```
+
+Do not print assumed physical pointer layout.

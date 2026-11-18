@@ -46,11 +46,6 @@ integrations:
       - CLI prints the stable code and help; LSP publishes the same Sema code and help
       - the canonical sec diagnostics S3001 detail command exposes S3001 identity, family, default severity, mandatory/configurable state, and active status from the central registry
       - "Extended explanation and machine-readable output (2026-11-11; diagnostics.md §§ 13(4)-(6), 14): `sec diagnostics S3001` renders the registry-owned description, extended explanation of the proof basis, common causes, valid alternatives, example, related IDs (S1045, A2008) and language version from internal/diagnostics/explanations.go, and `sec diagnostics --json` carries the same optional explanation per definition. Emitted S3001 occurrences were already machine-readable through `--diagnostic-format json` (diagnostics.emitted-occurrence-json). TestDiagnosticCatalogDetailIncludesExtendedExplanation, TestExplanationsReferenceRegisteredDiagnostics"
-    governance_reconciliation:
-      - structured localization of S3001 (message/help keys, locale catalogs, English fallback) is the general errors.diagnostics unimplemented item diagnostics.localized-catalogs, not S3001-specific work
-      - extended explanations for the other registered diagnostics are tracked as errors.diagnostics unimplemented item diagnostics.extended-explanations
-    corrections_applied:
-      - rules/corrections/applied/compiler-testing-cross-rulebook-correction-20260926.md
     verification:
       - command: go test ./internal/sema ./internal/diagnostics ./cmd/compiler -run 'Test(UnreachableStatementsInsideWhileBody|SwitchCaseReportsUnreachableAfterReturn|InfiniteForWithContinueMakesFollowingReturnUnreachable|CancelOutsideCancellableContext|AssertFalseRejectsFollowingCodeButUnprovenAssertFallsThrough|PrintSemaErrorIncludesStableIDAndDescription|RegistryIsValid|KnownDiagnosticSeverities)' -count=1
         result: passed
@@ -70,19 +65,20 @@ integrations:
         result: printed S3001 with source position and help; exited with the expected fixture error plus four unrelated try errors in sec/core/string.sec
       - command: go test ./...
         result: all packages passed except cmd/compiler on 2026-09-27, which fails on thirteen unrelated missing StringError.InvalidUtf8 payload errors in sec/core/utf8.sec
+    governance_reconciliation:
+      - structured localization of S3001 (message/help keys, locale catalogs, English fallback) is the general errors.diagnostics unimplemented item diagnostics.localized-catalogs, not S3001-specific work
+      - extended explanations for the other registered diagnostics are tracked as errors.diagnostics unimplemented item diagnostics.extended-explanations
+    corrections_applied:
+      - rules/corrections/applied/compiler-testing-cross-rulebook-correction-20260926.md
 
   - id: errors.diagnostics
     area: errors-diagnostics
     status: partial
     integrated: true
     audited: true
-    revised: "2026-11-02"
-    document_revision: "2.0"
+    revised: "2026-11-18"
+    document_revision: "2.3"
     repository_baseline: main-reviewed-2026-09-30
-    replaces:
-      - rules/tooling/diagnostics.txt
-    canonical_rulebook:
-      - rules/tooling/diagnostics.md
     summary: >-
       Revision 2.0 separates stable ID namespace from topic-family metadata,
       preserves every published and retired ID, adopts the published L lexer
@@ -455,9 +451,9 @@ integrations:
           types.incompatible-in-contract-value, S1068
           types.value-violates-contract, and S1069
           types.constrained-assignment-requires-try (retired 2026-11-11 by
-          MD-131; replaced by the A2011 Information advisory). Names S1059-S1063 come from
-          rules/types/default_values.md "Diagnostics"; status detail is owned by
-          frontend.default-values and frontend.type-contracts-v2.
+          MD-131; replaced by the A2011 Information advisory). Names S1059-S1063
+          come from rules/types/default_values.md "Diagnostics"; status detail
+          is owned by frontend.default-values and frontend.type-contracts-v2.
       - id: diagnostics.s1070-authoritative-member-replacement
         description: >-
           A user impl member that would replace an authoritative compiler-known
@@ -608,6 +604,7 @@ integrations:
         description: >-
           A2001 exists, but richer evidence-driven mentor analysis remains
           incomplete.
+    remaining: []
     unimplemented:
       - id: diagnostics.extended-explanations
         description: >-
@@ -639,16 +636,6 @@ integrations:
         description: >-
           Canonical Automatic/ExplicitSafe/Suggestion fixes with ordered
           TextEdit payloads are not implemented end-to-end.
-    not_planned_for_sec_0_1:
-      - id: diagnostics.source-suppression
-        description: >-
-          Revision 2.0 defines no source-level diagnostic suppression syntax.
-          Implementations must not invent one from the old rulebook.
-      - id: diagnostics.sec-explain
-        description: >-
-          `sec explain` is obsolete; detailed lookup belongs to `sec diagnostics
-          <ID>`.
-    identified_bugs: []
     required_tests:
       - Registry rejects duplicate active IDs.
       - Registry preserves and rejects reuse of retired IDs.
@@ -678,6 +665,8 @@ integrations:
       - Attempts to disable or demote mandatory diagnostics are rejected.
       - No Sec 0.1 source syntax suppresses advisory or mandatory diagnostics.
     verification:
+      - command: go test -race ./cmd/compiler ./cmd/lsp -run 'Test(ChildPanic|AnalyseChildPanic|MD131Assignment)' -count=1 -timeout=180s
+        result: "Passed 2026-11-18 for MD-131 default severity and retired-ID source conformance; diagnostics.md revision 2.3 §24(4k) agrees with A2011 and retired S1069 in the registry. Existing integrated: true and audited: true type hazards predate this work (verified against HEAD); their unknown historical dates were preserved."
       - command: GOCACHE=/tmp/sec-go-cache go test ./internal/sema ./internal/diagnostics -count=1
         result: passed on 2026-11-02; complete Sema and registry suites, MD-120 diagnostic identities and legal counterparts
       - command: GOCACHE=/tmp/sec-go-cache go test ./cmd/compiler ./cmd/lsp -run 'TestGenericErrorDiagnostic|TestCompilerInterfaceRequirementUsesSharedIdentity|TestGenericErrorInterface' -count=1
@@ -720,10 +709,24 @@ integrations:
         result: passed on 2026-09-30 with registered mandatory S1052 identity, explanatory payload-Place message, actionable ownership/borrow help, and catalog exposure
       - command: go test ./internal/diagnostics ./internal/sema -run 'Test(RegistryIsValid|KnownDiagnosticSeverities|RecursiveStructLayoutDiagnosticIsRegistered|StructLayoutCyclesAreRejectedWithPath|StructLayoutIndirectionBreaksRecursion)' -count=1
         result: passed on 2026-09-30 with registered mandatory S1055 identity, concrete cycle-path messages, actionable indirection help, and valid recursion boundaries
-    remaining: []
+    replaces:
+      - rules/tooling/diagnostics.txt
+    canonical_rulebook:
+      - rules/tooling/diagnostics.md
+    not_planned_for_sec_0_1:
+      - id: diagnostics.source-suppression
+        description: >-
+          Revision 2.0 defines no source-level diagnostic suppression syntax.
+          Implementations must not invent one from the old rulebook.
+      - id: diagnostics.sec-explain
+        description: >-
+          `sec explain` is obsolete; detailed lookup belongs to `sec diagnostics
+          <ID>`.
+    identified_bugs: []
 
   - id: diagnostics.move-into-borrowed-parameter
     status: implemented
+    revised: "2026-10-28"
     summary: >-
       Explicit moves into selected ref/ref mut parameters produce mandatory
       S1176 with resolved value/parameter names, borrow type, marker/source
@@ -735,21 +738,20 @@ integrations:
       - rules/memory/borrowing.md
       - rules/memory/copy_move.md
       - rules/tooling/diagnostics.md
-    implemented:
-      - S1176 ownership.move-into-borrowed-parameter rejects explicit <- at selected borrowed parameters with source/parameter names, resolved ref/ref mut type, source range, error severity, explanation and marker-free call advice. Real parameter declarations are linked, including trusted core string.FromByteArray/FromRuneArray when loaded; builtin-only analysis fabricates no source location. Suggestion uses a detached call AST and preserves other arguments/transfer markers; signature changes remain advice only. Tests cover ordinary, instance method, inferred generic, selected overload, compiler-known borrowed materializers and no partial commit after an earlier owning argument. Rejected calls retain source availability for following legal borrows/discards; valid borrowing and owning transfers remain accepted. Sema, CLI JSON and LSP fixtures verify IDs, help, source ranges, parameter links and recovery.
-    remaining: []
     code:
       - internal/sema/call_ownership.go
       - internal/sema/string_materialization_calls.go
       - internal/sema/borrowed_parameter_diagnostic.go
       - internal/diagnostics/diagnostics.go
-    revised: "2026-10-28"
     tests:
       - internal/sema/move_borrowed_diagnostic_test.go
       - cmd/compiler/move_borrowed_diagnostic_test.go
       - cmd/lsp/move_borrowed_diagnostic_test.go
       - testdata/sema/move_borrowed/calls_valid.sec
       - testdata/sema/move_borrowed/calls_invalid.sec
+    implemented:
+      - S1176 ownership.move-into-borrowed-parameter rejects explicit <- at selected borrowed parameters with source/parameter names, resolved ref/ref mut type, source range, error severity, explanation and marker-free call advice. Real parameter declarations are linked, including trusted core string.FromByteArray/FromRuneArray when loaded; builtin-only analysis fabricates no source location. Suggestion uses a detached call AST and preserves other arguments/transfer markers; signature changes remain advice only. Tests cover ordinary, instance method, inferred generic, selected overload, compiler-known borrowed materializers and no partial commit after an earlier owning argument. Rejected calls retain source availability for following legal borrows/discards; valid borrowing and owning transfers remain accepted. Sema, CLI JSON and LSP fixtures verify IDs, help, source ranges, parameter links and recovery.
+    remaining: []
     verification:
       - command: go test ./internal/sema ./internal/diagnostics ./internal/ir/semantic ./internal/lowering/secmlir -count=1; go test ./cmd/compiler ./cmd/lsp -run TestMoveIntoBorrowedParameter -count=1; go vet ./internal/sema ./internal/diagnostics ./cmd/compiler ./cmd/lsp
         result: passed 2026-10-28; whole diagnostic integration complete, remaining 1 to 0, errors_diagnostics.yaml 3 to 2. Eight invalid calls get only S1176 without secondary moved-state errors; legal borrowing and explicit owning transfers pass. CLI and LSP retain actual core string parameter links. Final trusted-core provenance guard verified by targeted rerun; no API rewrite or backend change.

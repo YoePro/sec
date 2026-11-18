@@ -218,4 +218,14 @@ def Sec_SliceMutType : Sec_Type<"SliceMut", "slice_mut"> {
   let genVerifyDecl = 1;
 }
 
+// P18 section 82: the high-level owning dynamic array `T[]`: owned,
+// move-only, runtime length, internal capacity, non-trivial destruction and
+// possibly separate backing. No physical descriptor field is a parameter.
+def Sec_DynamicArrayType : Sec_Type<"DynamicArray", "dynamic_array"> {
+  let summary = "Sec high-level owning dynamic array";
+  let parameters = (ins "::mlir::Type":$elementType);
+  let assemblyFormat = "`<` $elementType `>`";
+  let genVerifyDecl = 1;
+}
+
 #endif // SEC_DIALECT_SEC_TYPES_TD

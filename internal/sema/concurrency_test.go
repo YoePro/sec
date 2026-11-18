@@ -64,7 +64,7 @@ fn Calculate() int {
 
 fn Run() void {
     let taskHandle := try spawn task Calculate() { Err(_) => { return } }
-    let threadHandle := spawn thread Calculate()
+    let threadHandle := try spawn thread Calculate() { Err(_) => { return } }
     let outcome := await taskHandle
 }
 `
@@ -120,7 +120,7 @@ fn Work() void {
 
 fn Run() void {
     let taskHandle := try spawn Work() { Err(_) => { return } }
-    let threadHandle := spawn thread Work()
+    let threadHandle := try spawn thread Work() { Err(_) => { return } }
     detach taskHandle
     detach threadHandle
 }
@@ -140,7 +140,7 @@ fn Calculate() int {
 
 fn Invalid() void {
     let taskHandle := try spawn Calculate() { Err(_) => { return } }
-    let threadHandle := spawn thread Calculate()
+    let threadHandle := try spawn thread Calculate() { Err(_) => { return } }
     detach taskHandle
     detach threadHandle
 }
@@ -165,7 +165,7 @@ fn Calculate() int {
 
 fn Run() void {
     let taskHandle := try spawn Calculate() { Err(_) => { return } }
-    let threadHandle := spawn thread Calculate()
+    let threadHandle := try spawn thread Calculate() { Err(_) => { return } }
     detach taskHandle discard
     detach threadHandle discard
 }

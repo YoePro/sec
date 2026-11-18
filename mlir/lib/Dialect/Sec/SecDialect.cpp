@@ -177,7 +177,8 @@ LogicalResult SecDialect::verifyOperationAttribute(Operation *operation,
     int64_t number = version.getInt();
     if (number != 1 && number != 2 && number != 3 && number != 4 &&
         number != 5 && number != 6 && number != 7 && number != 8 &&
-        number != 9 && number != 10 && number != 11 && number != 12 && number != 13)
+        number != 9 && number != 10 && number != 11 && number != 12 && number != 13 &&
+        number != 14)
       return operation->emitError("unsupported Sec dialect schema version");
     // Reject MD-077 identities recursively, including type attributes and
     // signatures, before schema 11. No default schema change is implied.
@@ -216,6 +217,20 @@ LogicalResult SecDialect::verifyOperationAttribute(Operation *operation,
       if (hasSlice)
         return operation->emitError()
                << "slice types require schema 12, module declares schema "
+               << number;
+    }
+    // Owning dynamic arrays belong to schema 14 (P18 sections 81-82),
+    // including nested type attributes, signatures and block parameters.
+    if (number < 14) {
+      bool hasDynamicArray = false;
+      module.walk([&](Operation *nested) {
+        hasDynamicArray |= bool(findOperationType(nested, [](Type type) {
+          return isa<DynamicArrayType>(type);
+        }));
+      });
+      if (hasDynamicArray)
+        return operation->emitError()
+               << "dynamic-array types require schema 14, module declares schema "
                << number;
     }
     // Places and direct references exist from schema 11 (SEC-MLIR-P15).

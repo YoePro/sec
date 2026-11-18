@@ -163,9 +163,18 @@ LogicalResult verifyBorrow(Op op, bool mutableResult, bool reborrow) {
   } else {
     auto place = dyn_cast<PlaceType>(op.getSource().getType());
     auto array = place ? dyn_cast<ArrayType>(place.getElementType()) : ArrayType{};
-    if (!array)
-      return op.emitOpError("slice borrow source must be a fixed-array Place");
-    element = array.getElementType();
+    // P18 section 101: an owning dynamic-array Place is a contiguous source
+    // from schema 14; its range length is the runtime length.
+    auto dynamic = place ? dyn_cast<DynamicArrayType>(place.getElementType()) : DynamicArrayType{};
+    if (dynamic) {
+      auto module = op->template getParentOfType<ModuleOp>();
+      auto version = module ? module->template getAttrOfType<IntegerAttr>("sec.dialect_version") : IntegerAttr{};
+      if (!version || version.getInt() < 14)
+        return op.emitOpError("a dynamic-array slice source requires schema 14");
+    }
+    if (!array && !dynamic)
+      return op.emitOpError("slice borrow source must be a fixed-array or dynamic-array Place");
+    element = array ? array.getElementType() : dynamic.getElementType();
     writable = place.getAuthority().getValue() == "rw";
     // A fixed-array Place may itself be rooted in a P15 reference. Preserve
     // that granting borrow rather than dropping it at the slice boundary.

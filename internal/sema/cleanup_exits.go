@@ -153,7 +153,16 @@ func (a *Analyzer) recordCleanupTrySite(expr *ast.TryExpression) {
 	a.cleanupFlow.trySites[expr] = cleanupTrySite{Scope: a.currentCleanupScope, Invocation: a.currentCallable}
 }
 
+// recordCleanupExit records the exact exited scopes and protected value, checking
+// creation obligations on an implicit fallible-assignment return.
+// Rules: rules/memory/destruction.md §6.2; rules/errors/errorhandling.md §23;
+// rules/memory/ownership.md §17.
 func (a *Analyzer) recordCleanupExit(kind CleanupExitKind, token lexer.Token, scope CleanupScopeID, exited []CleanupScopeID, functionExit bool, protected ast.Expression, protectedKind string) {
+	if kind == CleanupExitErrorPropagation {
+		// Fallible assignments can exit without an explicit return too.
+		// Rules: rules/errors/errorhandling.md §23; ownership.md §17.
+		a.checkCreationLifecyclesAtReturn()
+	}
 	if a.summaryPass || scope == 0 || !validDefinitionToken(token) {
 		return
 	}

@@ -23,13 +23,19 @@ func TestTaskFailureDomainDiagnosticsLSP(t *testing.T) {
 				continue
 			}
 			count++
+			if d.Code == "S1247" {
+				if !strings.Contains(d.Message, "creation result creation") || !strings.Contains(d.Message, "Creation failure produces no child") {
+					t.Fatal(d)
+				}
+				continue
+			}
 			if d.Code != "S1234" && d.Code != "S1151" || !strings.Contains(d.Message, "Completed(Err(E))") || !strings.Contains(d.Message, "TaskSpawnError") || !strings.Contains(d.Message, "Panicked(PanicInfo)") {
 				t.Fatal(d)
 			}
 		}
 		want := 0
 		if mode == "invalid" {
-			want = 21
+			want = 22
 		}
 		if count != want {
 			t.Fatal(mode, count)

@@ -146,6 +146,14 @@ LogicalResult SliceMutType::verify(function_ref<InFlightDiagnostic()> emitError,
   return verifySliceElementType(emitError, "sec.slice_mut", elementType);
 }
 
+// DynamicArrayType::verify keeps the owning array's identity by element type
+// alone; capacity, backing and descriptor layout are never type parameters.
+// Rules: rules/mlir/packages/sec-mlir-dialect_package18.md section 82.
+LogicalResult DynamicArrayType::verify(function_ref<InFlightDiagnostic()> emitError,
+                                       Type elementType) {
+  return verifySliceElementType(emitError, "sec.dynamic_array", elementType);
+}
+
 LogicalResult CoreErrorType::verify(
     function_ref<InFlightDiagnostic()> emitError, StringAttr identity) {
   if (!identity || identity.getValue().empty())

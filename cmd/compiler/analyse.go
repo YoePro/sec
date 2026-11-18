@@ -398,6 +398,7 @@ func (r *analyseReport) addCallGraph(graph *sema.CallGraph, nodes []sema.Callabl
 // addEffects reports direct effects and the canonical shortest panic and
 // allocation cause paths.
 // Rule: rules/analysis/effect_analysis.md — effect summaries and cause paths.
+// Rules: rules/errors/panic.md §§6–9,28(7) — separate child execution domains.
 func (r *analyseReport) addEffects(graph *sema.CallGraph, nodes []sema.CallableNode, names map[sema.CallableID]string) {
 	section := r.section("effects")
 	for _, node := range nodes {
@@ -409,6 +410,9 @@ func (r *analyseReport) addEffects(graph *sema.CallGraph, nodes []sema.CallableN
 			section.add("%s: may panic via %s", names[node.ID], analysePath(effects.PanicPath, names))
 		}
 		addPanicCauseReport(section, effects.PanicCauses, names[node.ID], names)
+		for _, child := range graph.ChildPanicDescriptions(node.ID) {
+			section.add("%s: %s", names[node.ID], child)
+		}
 		// Non-panic effect cause chains, shared with LSP hover
 		// (semantic_ir.md § 109(1)–(3)).
 		for _, cause := range graph.EffectCauses(node.ID) {

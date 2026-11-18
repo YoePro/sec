@@ -2,6 +2,7 @@ package semantic
 
 import (
 	"fmt"
+	"math/big"
 
 	"sec/internal/ast"
 	"sec/internal/lexer"
@@ -122,10 +123,72 @@ func (fb *functionBuilder) buildDynamicArrayLength(source ast.Expression, token 
 // binding: its owned storage, a defer capture, or the read-only root of an
 // SSA value. Other owners are a named boundary.
 func (fb *functionBuilder) dynamicArrayOwnerPlace(source ast.Expression) (builtValue, error) {
+	if member, ok := source.(*ast.MemberExpression); ok {
+		return fb.dynamicArrayFieldOwnerPlace(member)
+	}
 	identifier, ok := source.(*ast.Identifier)
 	if !ok {
 		return builtValue{}, fb.unsupported("dynamic-array observation of a non-binding owner (P18-23)", expressionToken(source))
 	}
+	place, err := fb.dynamicArrayBindingPlace(identifier)
+	if err != nil {
+		return builtValue{}, err
+	}
+	if typ, _ := fb.owner.module.Types.Lookup(place.typ); typ.Kind != TypePlace {
+		return builtValue{}, fmt.Errorf("binding root of %s is not a Place", identifier.Value)
+	} else if element, _ := fb.owner.module.Types.Lookup(typ.Element); element.Kind != TypeDynamicArray {
+		return builtValue{}, fb.unsupported("dynamic-array owner reached through a reference (P18-23)", identifier.Token)
+	}
+	return place, nil
+}
+
+// dynamicArrayFieldOwnerPlace is the Place of a dynamic-array owner stored in
+// a field path below a binding (`bag.items`, `outer.inner.items`): the
+// binding's root Place projected through the resolved stored fields with the
+// root's authority. Other paths remain named boundaries.
+// Rules: rules/mlir/packages/sec-mlir-dialect_package18.md — §§ 74, 103, 131.
+func (fb *functionBuilder) dynamicArrayFieldOwnerPlace(member *ast.MemberExpression) (builtValue, error) {
+	steps := []ast.Expression{}
+	var current ast.Expression = member
+	for {
+		step, ok := current.(*ast.MemberExpression)
+		if !ok {
+			break
+		}
+		steps = append([]ast.Expression{step}, steps...)
+		current = step.Object
+	}
+	root, ok := current.(*ast.Identifier)
+	if !ok {
+		return builtValue{}, fb.unsupported("dynamic-array owner below a non-binding root (P18-23)", member.Token)
+	}
+	resolved, ok := fb.owner.analyzer.ResolvedPlaceOf(member)
+	if !ok || len(resolved.Projections) != len(steps) {
+		return builtValue{}, fb.unsupported("dynamic-array field owner without a resolved Place (P18-23)", member.Token)
+	}
+	place, err := fb.dynamicArrayBindingPlace(root)
+	if err != nil {
+		return builtValue{}, err
+	}
+	rootType, _ := fb.owner.module.Types.Lookup(place.typ)
+	if rootType.Kind != TypePlace {
+		return builtValue{}, fmt.Errorf("binding root of %s is not a Place", root.Value)
+	}
+	facts := placeMetadataOf(resolved)
+	place, err = fb.projectPlace(steps, resolved.Projections, place, rootType.Mutable, facts)
+	if err != nil {
+		return builtValue{}, err
+	}
+	owner, _ := fb.owner.module.Types.Lookup(place.typ)
+	if element, _ := fb.owner.module.Types.Lookup(owner.Element); element.Kind != TypeDynamicArray {
+		return builtValue{}, fb.unsupported("field path that is not a dynamic-array owner (P18-23)", member.Token)
+	}
+	return place, nil
+}
+
+// dynamicArrayBindingPlace is the Place of a binding's value: its owned storage, a
+// defer capture, mutable storage, or the read-only root of an SSA value.
+func (fb *functionBuilder) dynamicArrayBindingPlace(identifier *ast.Identifier) (builtValue, error) {
 	fact, ok := fb.owner.analyzer.ResolvedBindingOf(identifier)
 	if !ok {
 		return builtValue{}, fmt.Errorf("missing resolved binding for %s", identifier.Value)
@@ -134,7 +197,7 @@ func (fb *functionBuilder) dynamicArrayOwnerPlace(source ast.Expression) (builtV
 	if !ok {
 		return builtValue{}, fmt.Errorf("binding %d has no IR value", fact.ID)
 	}
-	if typ, _ := fb.owner.module.Types.Lookup(bound.typ); typ.Kind != TypeDynamicArray {
+	if typ, _ := fb.owner.module.Types.Lookup(bound.typ); typ.Kind == TypeReference {
 		return builtValue{}, fb.unsupported("dynamic-array owner reached through a reference (P18-23)", identifier.Token)
 	}
 	loc := location(identifier.Token)
@@ -313,4 +376,80 @@ func (fb *functionBuilder) dynamicArrayElementBorrowPlace(reference *ast.RefExpr
 		return builtValue{}, fb.unsupported("mutable borrow of a read-only Place", reference.Token)
 	}
 	return place, nil
+}
+
+// receiverIsDynamicArray reports whether a member receiver is an owning T[].
+func (fb *functionBuilder) receiverIsDynamicArray(receiver ast.Expression) bool {
+	typ, ok := fb.owner.analyzer.ResolvedTypeOf(receiver)
+	if !ok {
+		return false
+	}
+	_, dynamic := sema.ResolveDynamicArrayPlan(typ)
+	return dynamic
+}
+
+// buildDynamicArrayIsEmpty lowers `values.IsEmpty` for an owning T[] as
+// `length == 0`, observing the owner through its Place without moving it.
+// Rules: rules/collections/collections.md — § 3.2 "IsEmpty";
+// rules/mlir/packages/sec-mlir-dialect_package18.md — §§ 49, 85, 131.
+func (fb *functionBuilder) buildDynamicArrayIsEmpty(expr *ast.MemberExpression) (builtValue, error) {
+	length, err := fb.buildDynamicArrayLength(expr.Object, expr.Property.Token)
+	if err != nil {
+		return builtValue{}, err
+	}
+	loc := location(expr.Property.Token)
+	zero := fb.result(Operation{Kind: OpConstInt, Integer: big.NewInt(0), Location: loc}, length.typ)
+	boolType, err := fb.boolType()
+	if err != nil {
+		return builtValue{}, err
+	}
+	return fb.result(Operation{Kind: OpIntCompare, IntegerCompare: IntegerCompareEQ, Operands: []ValueID{length.id, zero.id}, Location: loc}, boolType), nil
+}
+
+// dynamicArrayMemberBoundary names the owning-array members schema 14 cannot
+// represent: every method other than Append (planned growth) that has no
+// resolved user target, such as Clear and RemoveAt, which remove elements or
+// shrink the length; ToString keeps its P23 string boundary. No schema-14 operation does either (P18 § 81), so the
+// call stops at a named boundary instead of an unresolved call.
+// Rules: rules/mlir/packages/sec-mlir-dialect_package18.md — §§ 81, 131–132.
+func (fb *functionBuilder) dynamicArrayMemberBoundary(call *ast.CallExpression) (error, bool) {
+	member, ok := call.Callee.(*ast.MemberExpression)
+	if !ok || member.Property == nil || fb.owner.maxPackage < dynamicArrayLoweringPackage || !fb.receiverIsDynamicArray(member.Object) {
+		return nil, false
+	}
+	if member.Property.Value == "ToString" {
+		// String materialization keeps its own P23 boundary.
+		return nil, false
+	}
+	if _, planned := fb.owner.analyzer.ResolvedAllocationPlanOf(call); planned {
+		return nil, false
+	}
+	if _, resolved := fb.owner.analyzer.ResolvedCallTarget(call); resolved {
+		return nil, false
+	}
+	return fb.unsupported("dynamic-array "+member.Property.Value+" (no schema-14 operation removes elements or shrinks the length)", member.Property.Token), true
+}
+
+// coreArrayMaterializationBoundary names the core byte[]/rune[] producers:
+// string.ToByteArray and string.ToRuneArray build an owning array, but their
+// source signatures wait for MD-072 and the string payload for P23, so the
+// substrate is not claimed (P18 §§ 72–73, 133).
+// Rules: rules/mlir/packages/sec-mlir-dialect_package18.md — §§ 72–73, 133.
+func (fb *functionBuilder) coreArrayMaterializationBoundary(call *ast.CallExpression) (error, bool) {
+	member, ok := call.Callee.(*ast.MemberExpression)
+	if !ok || member.Property == nil || (member.Property.Value != "ToByteArray" && member.Property.Value != "ToRuneArray") {
+		return nil, false
+	}
+	receiver, ok := fb.owner.analyzer.ResolvedTypeOf(member.Object)
+	if !ok || dereferenceSemaType(receiver).Kind != sema.StringType {
+		return nil, false
+	}
+	return fb.unsupported("string."+member.Property.Value+" materialization (byte[]/rune[] substrate waits for MD-072 signatures and P23 string lowering)", member.Property.Token), true
+}
+
+func dereferenceSemaType(typ sema.Type) sema.Type {
+	for typ.Kind == sema.ReferenceType && typ.Element != nil {
+		typ = *typ.Element
+	}
+	return typ
 }

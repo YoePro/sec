@@ -60,3 +60,11 @@ example, a raw-pointer integration that reaches Semantic IR and lowering still
 lives in `memory.yaml`; a backend-only Sec MLIR package lives in
 `lowering.yaml`.  Use `governance.yaml` only for governance/traceability work,
 not as an overflow file.
+
+## Analysis ownership
+
+[analysis-ownership.md](analysis-ownership.md) maps the specialized analysis
+rulebooks to their existing fact and implementation-status owners, separates
+coordination from consumers, and indexes P1–P14 as implementation history.
+Follow its links to the live owning integration; the map contains no duplicate
+analysis checklists.

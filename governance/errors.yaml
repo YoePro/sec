@@ -9,8 +9,6 @@ integrations:
     revised: "2026-11-06"
     document_revision: "2.1"
     repository_baseline: b3315f6
-    semantic_source_parent: 45e5cd4
-    replaces: rules/errors/errorhandling.txt
     summary: >-
       Migrates error handling to the revision-2 compiler-known error model,
       typed Result and Option short-circuiting, partial guarded try handlers,
@@ -360,6 +358,8 @@ integrations:
         result: passed on 2026-10-01; partial handlers, guards, guard consumption, block recovery values, explicit setter contracts, the setter success model, and explicit Semantic IR rejection are covered
       - command: go test ./internal/parser ./internal/sema ./internal/ir/semantic -run 'Test(OptionTryHandlersAndOpenErrorNarrowing|OptionTryAndNarrowingDiagnostics|ParseMatchErrorVariantNarrowing|OpenErrorNarrowingIsRejected)' -count=1
         result: passed on 2026-10-02; Option try handlers, open error narrowing in try and match, carrier-family diagnostics, and explicit Semantic IR rejection are covered
+    semantic_source_parent: 45e5cd4
+    replaces: rules/errors/errorhandling.txt
 
   - id: frontend.bodyless-try-assignment
     area: frontend-analysis
@@ -382,9 +382,6 @@ integrations:
       - rules/memory/ownership.md
       - rules/tooling/lsp.md
       - rules/analysis/call_graph.md
-    related_integrations:
-      - frontend.errorhandling-v2
-      - frontend.properties
     code:
       - internal/ast/ast.go
       - internal/parser/parser.go
@@ -440,12 +437,16 @@ integrations:
         result: passed; parser, compatible propagation, concrete-to-open error widening, invalid channels, local handlers, and immutable fact queries are covered
       - command: go test ./... -count=1
         result: passed across all packages on 2026-09-24 after the register-driven pitfall suppression-test fix
+    related_integrations:
+      - frontend.errorhandling-v2
+      - frontend.properties
 
   - id: frontend.panic
     area: panic-assert-unreachable-frontend
     status: partial
-    document_revision: "2.3"
     reviewed: "2026-09-28"
+    revised: "2026-10-12"
+    document_revision: "2.3"
     repository_baseline: 814a584
     rules:
       - rules/errors/panic.md
@@ -453,46 +454,6 @@ integrations:
       - rules/foundations/attributes.md
       - rules/foundations/grammar.md
       - rules/foundations/operators.md
-    corrections_applied:
-      - rules/corrections/applied/correction_panic-20260927.md
-    evidence:
-      - internal/ast/ast.go
-      - internal/parser/parser.go
-      - internal/sema/analyzer.go
-      - internal/sema/call_graph.go
-      - internal/sema/analyzer_panic_effects.go
-      - internal/sema/types.go
-      - internal/sema/semantic_facts.go
-      - internal/diagnostics/panic_reasons.go
-      - internal/sema/panic_info_test.go
-      - internal/sema/assertion_facts_test.go
-      - internal/sema/panic_reason_effect_test.go
-      - internal/sema/explicit_panic_facts_test.go
-      - internal/diagnostics/panic_reasons_test.go
-      - internal/sema/semantic_facts_test.go
-      - internal/ir/semantic/builder.go
-      - cmd/lsp/main_test.go
-      - internal/parser/unreachable_statement_test.go
-      - internal/parser/panic_statement_test.go
-      - internal/sema/unreachable_effect_test.go
-      - internal/sema/panic_test.go
-      - internal/formatter/formatter_test.go
-      - testdata/parser/checked_unreachable_valid.sec
-      - testdata/parser/panic_statements_valid.sec
-      - testdata/parser/panic_statements_invalid.sec
-      - testdata/sema/checked_unreachable_valid.sec
-      - testdata/sema/checked_unreachable_invalid.sec
-      - testdata/sema/panic_info_valid.sec
-      - testdata/sema/assertion_facts_valid.sec
-      - testdata/semantic_ir/fixed_array_refinement_proofs.sec
-      - internal/sema/assertion_relations.go
-      - internal/sema/assertion_intervals.go
-      - internal/sema/condition_proof_versions.go
-      - internal/sema/assertion_extended_proof_test.go
-      - testdata/sema/assertion_extended_proofs_valid.sec
-      - internal/ir/semantic/panic.go
-      - internal/ir/semantic/assertion_condition_effects_test.go
-      - testdata/semantic_ir/assertion_condition_effects.sec
     implemented:
       - canonical assert statement AST and parsing support both Sec 0.1 forms, including optional comma plus string-literal metadata
       - parser emits focused diagnostics for missing message comma, dynamic message forms, and non-canonical function-like spelling
@@ -575,19 +536,87 @@ integrations:
         result: passed on 2026-09-27; bare and message-bearing panic parse and format canonically, both terminate control flow, both retain ExplicitPanic effect identity, and invalid call-like or dynamic-message forms remain rejected
       - command: go test ./internal/sema -run 'TestResolvedExplicitPanicFactsPreserveCanonicalMetadata|TestExplicitPanicTerminatesAndRecordsEffect' -count=1
         result: passed on 2026-09-28 with stable reason identity, optional-message distinction, exact source/function provenance, immutable lookup, and unchanged reachable effect behavior
-    revised: "2026-10-12"
+    corrections_applied:
+      - rules/corrections/applied/correction_panic-20260927.md
+    evidence:
+      - internal/ast/ast.go
+      - internal/parser/parser.go
+      - internal/sema/analyzer.go
+      - internal/sema/call_graph.go
+      - internal/sema/analyzer_panic_effects.go
+      - internal/sema/types.go
+      - internal/sema/semantic_facts.go
+      - internal/diagnostics/panic_reasons.go
+      - internal/sema/panic_info_test.go
+      - internal/sema/assertion_facts_test.go
+      - internal/sema/panic_reason_effect_test.go
+      - internal/sema/explicit_panic_facts_test.go
+      - internal/diagnostics/panic_reasons_test.go
+      - internal/sema/semantic_facts_test.go
+      - internal/ir/semantic/builder.go
+      - cmd/lsp/main_test.go
+      - internal/parser/unreachable_statement_test.go
+      - internal/parser/panic_statement_test.go
+      - internal/sema/unreachable_effect_test.go
+      - internal/sema/panic_test.go
+      - internal/formatter/formatter_test.go
+      - testdata/parser/checked_unreachable_valid.sec
+      - testdata/parser/panic_statements_valid.sec
+      - testdata/parser/panic_statements_invalid.sec
+      - testdata/sema/checked_unreachable_valid.sec
+      - testdata/sema/checked_unreachable_invalid.sec
+      - testdata/sema/panic_info_valid.sec
+      - testdata/sema/assertion_facts_valid.sec
+      - testdata/semantic_ir/fixed_array_refinement_proofs.sec
+      - internal/sema/assertion_relations.go
+      - internal/sema/assertion_intervals.go
+      - internal/sema/condition_proof_versions.go
+      - internal/sema/assertion_extended_proof_test.go
+      - testdata/sema/assertion_extended_proofs_valid.sec
+      - internal/ir/semantic/panic.go
+      - internal/ir/semantic/assertion_condition_effects_test.go
+      - testdata/semantic_ir/assertion_condition_effects.sec
 
   - id: analysis.panic
     area: panic-effects-and-no-panic-proof
     status: partial
-    document_revision: "2.3"
     reviewed: "2026-09-27"
+    revised: "2026-11-18"
+    document_revision: "2.3"
     repository_baseline: 814a584
     rules:
       - rules/errors/panic.md
       - rules/analysis/effect_analysis.md
       - rules/platform/interrupts.md
       - rules/compiler/incremental_compilation.md
+    code:
+      - internal/sema/call_graph_panic.go
+      - internal/sema/call_graph_summaries.go
+      - internal/sema/analyzer_no_panic.go
+      - internal/sema/analyzer_panic_effects.go
+      - internal/sema/call_graph_workspace.go
+      - cmd/lsp/panic_hover.go
+      - cmd/compiler/analyse_panic.go
+      - internal/sema/child_panic_domains.go
+      - internal/sema/spawn_inference.go
+      - internal/sema/call_graph_specializations.go
+      - internal/sema/analyzer_inference.go
+      - internal/sema/analyzer_for.go
+      - cmd/compiler/analyse.go
+      - internal/sema/call_graph_invocations.go
+      - internal/sema/analyzer.go
+    tests:
+      - internal/sema/panic_causes_test.go
+      - cmd/lsp/panic_causes_test.go
+      - cmd/compiler/analyse_panic_test.go
+      - testdata/sema/panic_causes_valid.sec
+      - testdata/sema/panic_cause_diagnostic_invalid.sec
+      - testdata/sema/panic_causes
+      - internal/sema/child_panic_domains_test.go
+      - cmd/compiler/child_panic_domains_test.go
+      - cmd/lsp/child_panic_domains_test.go
+      - testdata/sema/child_panic_domains_valid.sec
+      - testdata/sema/child_panic_domains_invalid.sec
     implemented:
       - "unknown callees are never positive @noPanic proof (panic.md § 21(3)–(4)): calls through a function value without a known target set, through an interface reference, or through a constrained generic parameter record may-panic-unknown-callee, while function values with a closed known target set are checked through those targets; defer bodies count toward the enclosing function"
       - extern calls without a trusted @noPanic foreign contract record may-panic-foreign (ForeignAbort); contract conversions and dynamic-array/slice indexing record their own panic effects
@@ -605,12 +634,12 @@ integrations:
       - "foreign abort (panic.md § 19(3), ffi.md § 42): every call to an extern function without a trusted foreign contract records may-panic-foreign with the ForeignAbort reason; the parser accepts @noPanic on extern declarations, Sema records it as Function.TrustedNoPanic provenance rather than a verified guarantee, and hover shows the trusted contract"
       - contract conversions and dynamic-array/slice bounds participate in transitive @noPanic verification; violations use S1092 panic.no-panic-violation with the panic source as related location and mentor help per effect kind, naming the called function when the panic is transitive
       - "Detailed panic provenance: CallableEffectSummary retains every registered direct/transitive panic cause from the canonical domain propagation, with exact introducing callable/source, registered reason sets, static assertion/explicit-panic messages, and detached shortest call-site witnesses including dispatch and execution metadata. Recursive graphs converge and ordering is deterministic; try-converted and proven assertion effects remain absent. noPanic diagnostics select a panic cause rather than an unrelated first effect. LSP hover and sec analyse present all causes; workspace checkpoint version 4 retains the new metadata and rejects older payloads."
+      - "Child execution panic domains (2026-11-18; panic.md §§6–9,21,28(7)): canonical ChildPanicDomains queries retain detached spawn boundary, shortest same-stack parent path, child panic causes/reasons/messages and explicit uncertainty. Spawn bodies never become synchronous parent panic merely through task/thread/process relations; arguments and receiver/config preparation keep their ordinary parent effects. Bare spawned lambdas now have canonical target-set spawn edges; foreign/interface/template calls add parent panic only for same-stack execution, and constraint specializations preserve execution relation, including unresolved child contracts. CLI verbose effects and LSP hover share ChildPanicDescriptions and explicitly leave containment to target policy. Repeated analysis, recursive graphs, source refresh and workspace checkpoint round-trips are verified; no native containment runtime or selected target policy is claimed."
     remaining:
       - integrate invalid-reference generation into the canonical panic-effect model (assertion proof, contracts, and foreign abort are now integrated)
       - complete transitive @noPanic verification for generic specializations (template calls through constraints are conservatively unknown), compiler helpers, destruction, and cleanup; closed function-value target sets, unknown targets, interface and constraint dispatch, FFI, and defer bodies are covered
       - complete the remaining MayPanic sources and the @noPanic attribute diagnostics for full transitive verification (moved from lowering.sec-mlir-typed-arithmetic-failure on 2026-11-16, owner decision; unknown and foreign contracts and cleanup effects are covered by the items above)
       - version and validate separate-compilation panic summaries
-      - distinguish child-domain contained panic from synchronous parent panic effect according to concurrency rules
       - feed canonical panic facts into ISR analysis, target-profile validation, LSP, and call hierarchy
     required_tests:
       - direct assertion MayPanic
@@ -621,6 +650,10 @@ integrations:
       - unknown indirect or foreign behavior is conservative
       - ISR root reports transitive panic path
     verification:
+      - command: go test -race ./cmd/compiler ./cmd/lsp -run 'Test(ChildPanic|AnalyseChildPanic|MD131Assignment)' -count=1 -timeout=180s
+        result: "Passed 2026-11-18: compiler 108.034s and LSP 103.745s. Verbose CLI exact-function focus and hover use the shared child-domain descriptions; noPanic permits child panic and rejects synchronous argument/direct panic, foreign child uncertainty stays explicit, and replacing the source removes stale child causes. Containment/runtime/profile lowering remains separate."
+      - command: go test ./internal/sema ./internal/ir/semantic ./internal/diagnostics -count=1 -timeout=180s
+        result: "Passed 2026-11-18: complete Sema 37.392s, Semantic IR 10.237s, registry 0.002s. Source fixtures distinguish child task/thread panic, direct/indirect and captured lambda bodies, generic children and foreign uncertainty from synchronous parent argument effects. Detached facts, recursive traversal and versioned workspace checkpoint/source invalidation are covered. Focused Sema race tests also passed (1.209s); go vet passed."
       - command: go vet ./...
         result: passed on 2026-10-12
       - command: go test -race ./internal/sema -run 'PanicCauses|NoPanicSelects' -count=1
@@ -637,28 +670,12 @@ integrations:
         result: passed on 2026-09-24; implemented panic effects preserve stable reason IDs without changing existing noPanic reachability
       - command: go test ./internal/sema -run 'CheckedIntegerEffectsCarryCanonicalPanicReasonSets|ArithmeticEffects' -count=1
         result: passed on 2026-09-24; unary, add, signed and unsigned divide/remainder, and shift effects retain canonical reason sets
-    revised: "2026-10-12"
-    code:
-      - internal/sema/call_graph_panic.go
-      - internal/sema/call_graph_summaries.go
-      - internal/sema/analyzer_no_panic.go
-      - internal/sema/analyzer_panic_effects.go
-      - internal/sema/call_graph_workspace.go
-      - cmd/lsp/panic_hover.go
-      - cmd/compiler/analyse_panic.go
-    tests:
-      - internal/sema/panic_causes_test.go
-      - cmd/lsp/panic_causes_test.go
-      - cmd/compiler/analyse_panic_test.go
-      - testdata/sema/panic_causes_valid.sec
-      - testdata/sema/panic_cause_diagnostic_invalid.sec
-      - testdata/sema/panic_causes
 
   - id: semantic-ir.panic
     area: semantic-ir-panic
     status: partial
-    document_revision: "2.0"
     reviewed: "2026-09-01"
+    document_revision: "2.0"
     repository_baseline: 814a584
     rules:
       - rules/errors/panic.md
@@ -681,8 +698,8 @@ integrations:
   - id: lowering.panic
     area: panic-lowering-runtime-free-endpoints
     status: partial
-    document_revision: "2.0"
     reviewed: "2026-09-01"
+    document_revision: "2.0"
     repository_baseline: 814a584
     rules:
       - rules/errors/panic.md
@@ -708,12 +725,21 @@ integrations:
   - id: platform.panic
     area: panic-target-isr-policy
     status: partial
-    document_revision: "2.0"
     reviewed: "2026-09-01"
+    revised: "2026-10-12"
+    document_revision: "2.0"
     repository_baseline: 814a584
     rules:
       - rules/errors/panic.md
       - rules/platform/interrupts.md
+    code:
+      - internal/sema/analyzer_no_panic.go
+      - internal/sema/panic_interrupt_context.go
+    tests:
+      - internal/sema/isr_panic_test.go
+      - cmd/compiler/isr_panic_test.go
+      - cmd/lsp/isr_panic_test.go
+      - testdata/sema/isr_panic_paths_invalid.sec
     implemented:
       - interrupts.md normatively requires noPanic/noAlloc/noBlock for @isr and @interruptSafe
       - root governance tracks ISR analysis requirements including transitive panic rejection
@@ -729,15 +755,6 @@ integrations:
       - ISR unsafe does not waive noPanic
       - target root trap endpoint selected correctly
       - profile declaring no root cleanup does not emit cleanup assumptions
-    revised: "2026-10-12"
-    code:
-      - internal/sema/analyzer_no_panic.go
-      - internal/sema/panic_interrupt_context.go
-    tests:
-      - internal/sema/isr_panic_test.go
-      - cmd/compiler/isr_panic_test.go
-      - cmd/lsp/isr_panic_test.go
-      - testdata/sema/isr_panic_paths_invalid.sec
     verification:
       - command: go test ./internal/sema ./cmd/compiler ./cmd/lsp -count=1
         result: Sema and LSP suites passed on 2026-10-12. The first compiler run failed only the new CLI test because emit commands require -o; that test was corrected and the complete compiler rerun passed, recorded separately.
@@ -751,8 +768,9 @@ integrations:
   - id: tooling.panic
     area: panic-diagnostics-lsp-formatter
     status: implemented
-    document_revision: "2.0"
     reviewed: "2026-09-17"
+    revised: "2026-11-06"
+    document_revision: "2.0"
     repository_baseline: 814a584
     rules:
       - rules/errors/panic.md
@@ -764,25 +782,6 @@ integrations:
       - rules/errors/errorhandling.md
       - rules/memory/destruction.md
       - rules/platform/interrupts.md
-    implemented:
-      - assert hover shows the resolved proof state (proven with no runtime check, or not proven with the registered AssertionFailed reason), the static message, and the refinement the assertion provides to following code
-      - call hierarchy prepare, incoming, and outgoing items mark callables whose compiler-owned effect summary may panic, making transitive panic-capable paths visible
-      - formatter preserves both assertion forms and canonicalizes one space after the optional message comma without confusing nested or quoted commas
-      - formatter assertion coverage verifies canonical output and idempotence
-      - formatter preserves canonical payload-free checked unreachable with ordinary statement indentation and idempotent output
-      - LSP member completion projects the five canonical PanicInfo fields directly from the compiler-known Sema type
-      - "function and method hover presents the compiler-owned panic summary: May panic no/yes, each direct panic source with its registered reason names, and the synchronous panic path to a transitive source"
-      - "assertion mentor diagnostics (2026-10-03): function-like assert(...) P2030 parser.function-like-assert, a non-literal message P2031 parser.assert-message-not-literal, a missing comma P2032 parser.assert-message-separator, and a missing condition P2033 parser.assert-missing-condition carry help naming the canonical form; a non-bool condition is S1102 panic.assert-condition-not-bool with type-specific help (`!= 0`, `.Len != 0`, `is not None`, Result state test), since Sec has no truthiness"
-      - "Incremental panic facts use the shared compiler source-closure invalidation and generation checks: edits to imported bodies, generic bodies, defer cleanup, FFI contracts and assertion proofs refresh dependent diagnostics; new module siblings invalidate the declaration set, including unsaved files, while removed imports cease to invalidate the former consumer. Watched source/manifest changes refresh active and retained cross-target facts; hover and call hierarchy recompute canonical Sema summaries from the current snapshot."
-      - "Panic mentor diagnostics complete (2026-11-06; panic.md §28, defer.md §§14–18,31): canonical ISR and foreign panic paths retain root/cause navigation and practical proof alternatives in CLI JSON and LSP. Cleanup paths name defer/free, use source-level Resource.free names, and recommend exhaustive local recovery rather than removing noPanic or propagating into an invocation already exiting. Invalid deferred return/break/continue/fallthrough/cancel/await/nested defer carry mandatory S1203 with repair help; bodyless and residual Result/Option try preserve S1093/S1094 with cleanup-specific advice. Independently invoked lambdas created in defer/free get their own cleanup scope; return, local try propagation and their own defer remain valid, and outer cleanup restrictions are restored afterward. This closes tooling over diagnosed canonical facts; execution-policy selection and additional panic-effect coverage remain with their existing analysis/platform owners."
-    remaining: []
-    required_tests:
-      - formatter round-trip for both assertion forms
-      - LSP and compiler agree on MayPanic
-      - noPanic diagnostic identifies transitive root cause
-      - ISR diagnostic identifies interrupt root and panic cause
-      - missing assert comma receives focused diagnostic
-    revised: "2026-11-06"
     code:
       - cmd/lsp/analysis_dependencies.go
       - cmd/lsp/import_sources.go
@@ -809,6 +808,24 @@ integrations:
       - testdata/sema/panic_mentor_valid.sec
       - testdata/sema/panic_mentor_invalid.sec
       - testdata/sema/isr_panic_paths_invalid.sec
+    implemented:
+      - assert hover shows the resolved proof state (proven with no runtime check, or not proven with the registered AssertionFailed reason), the static message, and the refinement the assertion provides to following code
+      - call hierarchy prepare, incoming, and outgoing items mark callables whose compiler-owned effect summary may panic, making transitive panic-capable paths visible
+      - formatter preserves both assertion forms and canonicalizes one space after the optional message comma without confusing nested or quoted commas
+      - formatter assertion coverage verifies canonical output and idempotence
+      - formatter preserves canonical payload-free checked unreachable with ordinary statement indentation and idempotent output
+      - LSP member completion projects the five canonical PanicInfo fields directly from the compiler-known Sema type
+      - "function and method hover presents the compiler-owned panic summary: May panic no/yes, each direct panic source with its registered reason names, and the synchronous panic path to a transitive source"
+      - "assertion mentor diagnostics (2026-10-03): function-like assert(...) P2030 parser.function-like-assert, a non-literal message P2031 parser.assert-message-not-literal, a missing comma P2032 parser.assert-message-separator, and a missing condition P2033 parser.assert-missing-condition carry help naming the canonical form; a non-bool condition is S1102 panic.assert-condition-not-bool with type-specific help (`!= 0`, `.Len != 0`, `is not None`, Result state test), since Sec has no truthiness"
+      - "Incremental panic facts use the shared compiler source-closure invalidation and generation checks: edits to imported bodies, generic bodies, defer cleanup, FFI contracts and assertion proofs refresh dependent diagnostics; new module siblings invalidate the declaration set, including unsaved files, while removed imports cease to invalidate the former consumer. Watched source/manifest changes refresh active and retained cross-target facts; hover and call hierarchy recompute canonical Sema summaries from the current snapshot."
+      - "Panic mentor diagnostics complete (2026-11-06; panic.md §28, defer.md §§14–18,31): canonical ISR and foreign panic paths retain root/cause navigation and practical proof alternatives in CLI JSON and LSP. Cleanup paths name defer/free, use source-level Resource.free names, and recommend exhaustive local recovery rather than removing noPanic or propagating into an invocation already exiting. Invalid deferred return/break/continue/fallthrough/cancel/await/nested defer carry mandatory S1203 with repair help; bodyless and residual Result/Option try preserve S1093/S1094 with cleanup-specific advice. Independently invoked lambdas created in defer/free get their own cleanup scope; return, local try propagation and their own defer remain valid, and outer cleanup restrictions are restored afterward. This closes tooling over diagnosed canonical facts; execution-policy selection and additional panic-effect coverage remain with their existing analysis/platform owners."
+    remaining: []
+    required_tests:
+      - formatter round-trip for both assertion forms
+      - LSP and compiler agree on MayPanic
+      - noPanic diagnostic identifies transitive root cause
+      - ISR diagnostic identifies interrupt root and panic cause
+      - missing assert comma receives focused diagnostic
     verification:
       - command: go vet -p 4 ./internal/sema/... ./internal/diagnostics ./cmd/compiler ./cmd/lsp
         result: Passed 2026-11-06.

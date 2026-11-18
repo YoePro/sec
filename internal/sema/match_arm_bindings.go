@@ -27,6 +27,10 @@ func (a *Analyzer) analyzeMatchArmBody(arm *ast.MatchArm, info matchPatternInfo)
 	a.moved = copyMoved(previousMoved)
 	a.availabilityStates = copyAvailabilityStates(previousMoveReasons)
 	a.closedResources = copyMoved(previousClosedResources)
+	// The arm's proven Err state discharges only this branch's carrier
+	// obligation, even if its body later calls code that ends state proofs.
+	// Rules: rules/concurrency/tasks.md §4(5); ownership.md §§20–21.
+	a.recordResolvedCreationLifecycles()
 	a.borrows = copyBorrows(previousBorrows)
 	a.localRefContainers = copyLocalRefContainers(previousLocalRefContainers)
 	a.arenaGenerations = copyArenaGenerations(previousArenaGenerations)

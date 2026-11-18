@@ -1,0 +1,28 @@
+module main
+
+fn Work() int { return 42 }
+enum AppError error { Bad }
+
+fn DirectOwner() Thread[int] {
+    return spawn thread Work()
+}
+
+fn JoinBeforeHandlingCreation() void {
+    let creation := spawn thread Work()
+    join creation
+}
+
+fn WrongPropagation() Result[int, AppError] {
+    let worker := try spawn thread Work()
+    join worker
+    return Ok(0)
+}
+
+fn DiscardCreation() void {
+    discard spawn thread Work()
+}
+
+fn DiscardBinding() void {
+    let creation := spawn thread Work()
+    discard creation
+}

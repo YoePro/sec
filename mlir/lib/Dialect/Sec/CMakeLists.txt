@@ -7,6 +7,7 @@ add_mlir_dialect_library(SecMLIRDialect
   ReferenceBoundaries.cpp
   SliceOps.cpp
   OwnershipOps.cpp
+  DynamicArrayOps.cpp
   StructOps.cpp
   ConversionProof.cpp
   RegisterContracts.cpp

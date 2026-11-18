@@ -236,6 +236,7 @@ func (a *Analyzer) checkBorrowCreation(expr ast.Expression, mutable bool, token 
 //   - rules/memory/borrowing.md — §6 "Availability and borrowing are separate"
 //   - rules/memory/borrowing.md — §7 "Mutability authority"
 //   - rules/memory/ownership.md — §5 "Availability model"
+//   - rules/memory/ownership.md — §§20–21 lifecycle facts end with new mutation authority
 func (a *Analyzer) checkBorrowCreationPlace(place Place, mutable bool, token lexer.Token) bool {
 	if place.AmbiguousProvenance {
 		a.addErrorAtTokenWithMetadata(token, diagnostics.BorrowProvenanceUnknown, "The compiler cannot prove which storage this reference borrows on the current control-flow paths. Restructure the branches so the referent is known before creating another borrow.", "cannot borrow through reference with unknown control-flow provenance")
@@ -293,6 +294,17 @@ func (a *Analyzer) checkBorrowCreationPlace(place Place, mutable bool, token lex
 			}
 			a.addBorrowAuthorityConflict(place, token, record, diagnostics.BorrowSharedConflict, "cannot create shared reference to %s while it is mutably borrowed", place.String())
 			return true
+		}
+	}
+	if mutable {
+		for _, alternative := range placeOriginAlternatives(place) {
+			if symbol, exists := a.symbols.lookup(alternative.Root); exists {
+				if _, creation := creationOwnerType(symbol.Type); creation {
+					// New mutation authority may install a new successful owner.
+					// Rules: ownership.md §§20–21; borrowing.md §6.
+					delete(a.closedResources, alternative.Root)
+				}
+			}
 		}
 	}
 	return false

@@ -1,0 +1,35 @@
+module main
+
+// SEC-MLIR-P18 §§ 97-99: an owning dynamic array moves into another owner,
+// is consumed by a by-value parameter, returns its ownership inside Result,
+// and is replaced transactionally with its old value destroyed by plan.
+
+fn Consume(values: int[]) uint {
+    return values.Len
+}
+
+fn Make() Result[int[], CollectionError] {
+    let mut values: int[]
+    try values.Append(1)
+    return Ok(values)
+}
+
+fn Move() uint {
+    let mut first: int[]
+    let second :<- first
+    return Consume(<-second)
+}
+
+fn Empty() int[] {
+    let mut values: int[]
+    return values
+}
+
+fn Replace() uint {
+    let mut values: int[]
+    values = Empty()
+    let moved :<- values
+    values = Empty()
+    discard moved
+    return values.Len
+}

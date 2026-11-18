@@ -239,6 +239,7 @@ type codeActionParams struct {
 
 type codeActionContext struct {
 	Diagnostics []diagnostic `json:"diagnostics"`
+	Only        []string     `json:"only,omitempty"`
 }
 
 type textEdit struct {
@@ -417,7 +418,7 @@ func (s *server) handle(message rpcMessage) error {
 						"includeText": false,
 					},
 				},
-				"experimental":                    map[string]any{"targetSelection": true},
+				"experimental":                    map[string]any{"targetSelection": true, "targetStatus": true},
 				"documentFormattingProvider":      true,
 				"documentRangeFormattingProvider": true,
 				"documentOnTypeFormattingProvider": map[string]any{
@@ -470,6 +471,8 @@ func (s *server) handle(message rpcMessage) error {
 		})
 	case "sec/targets", "sec/selectTarget":
 		return s.handleTargetRequest(message)
+	case "sec/targetStatus":
+		return s.handleTargetStatusRequest(message)
 	case "initialized":
 		return nil
 	case "workspace/didChangeWorkspaceFolders":
@@ -636,6 +639,9 @@ func (s *server) handle(message rpcMessage) error {
 			return s.respond(message.ID, []codeAction{})
 		}
 		actions := ownershipCodeActions(params.TextDocument.URI, snapshot.Text, params.Context.Diagnostics, s.sourceOverlay())
+		if borrowRefactoringRequested(params.Context.Only) {
+			actions = append(actions, borrowCodeActions(params.TextDocument.URI, snapshot.Text, params.Context.Diagnostics, s.sourceOverlay())...)
+		}
 		actions = append(actions, defaultCodeActions(params.TextDocument.URI, snapshot.Text, params.Range, s.sourceOverlay())...)
 		actions = append(actions, unitConversionCodeActions(params.TextDocument.URI, snapshot.Text, params.Context.Diagnostics, s.sourceOverlay())...)
 		actions = append(actions, attributeCodeActions(params.TextDocument.URI, snapshot.Text, params.Context.Diagnostics)...)

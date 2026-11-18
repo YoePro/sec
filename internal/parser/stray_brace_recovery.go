@@ -13,7 +13,7 @@ import (
 // line, and the next token must be on a later line, also indented deeper than
 // the opener line, and of a kind that cannot legally follow the closed
 // construct. A stray brace is reported once and skipped by the caller.
-// Rules: rules/compiler/parser_recovery.md — § 24 (MD-132), "Recovery invariants".
+// Rules: rules/compiler/parser_recovery.md — § 24.2(1)–(5) (MD-132), "Recovery invariants".
 func (p *Parser) strayClosingBrace(opener lexer.Token, construct string, continues func(lexer.TokenType) bool) bool {
 	brace, next := p.curToken, p.peekToken
 	if brace.Type != lexer.RBRACE || brace.Line == 0 || opener.Line == 0 {
@@ -36,12 +36,14 @@ func (p *Parser) strayClosingBrace(opener lexer.Token, construct string, continu
 
 // switchContinuesWith: only another case clause can follow inside a switch,
 // and no statement can start with `case` or `default`.
+// Rules: rules/compiler/parser_recovery.md — § 24.2(3).
 func switchContinuesWith(next lexer.TokenType) bool {
 	return next == lexer.CASE || next == lexer.DEFAULT
 }
 
 // functionBodyContinuesWith lists tokens that can only start a statement,
 // never a module or impl member after a closed function.
+// Rules: rules/compiler/parser_recovery.md — § 24.2(3).
 func functionBodyContinuesWith(next lexer.TokenType) bool {
 	switch next {
 	case lexer.RETURN, lexer.IF, lexer.WHILE, lexer.FOR, lexer.SWITCH, lexer.MATCH,

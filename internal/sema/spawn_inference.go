@@ -78,7 +78,7 @@ func (a *Analyzer) inferSpawnExpression(expr *ast.SpawnExpression) (Type, expres
 		configurationCommitted = true
 		// rules/concurrency/threads.md §§3,26,53: inferred owners retain
 		// the same canonical identity as declared Thread[T] parameters.
-		return a.intrinsicGenericType("Thread", returnType), expressionValue{Display: expr.String()}
+		return a.threadSpawnResultType(returnType), expressionValue{Display: expr.String()}
 	case "process":
 		a.reportCapabilityUnavailable(expr.Token, "Processes are launched through the process library facility until spawn process is implemented.", "spawn process is not implemented yet")
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
@@ -94,7 +94,17 @@ func (a *Analyzer) inferSpawnExpression(expr *ast.SpawnExpression) (Type, expres
 func (a *Analyzer) inferSpawnValue(expr ast.Expression, execution CallExecutionRelation, graphSpawn bool) (Type, expressionValue) {
 	call, isCall := expr.(*ast.CallExpression)
 	if !isCall {
-		return a.inferExpressionInCancellableContext(expr)
+		typ, value := a.inferExpressionInCancellableContext(expr)
+		if graphSpawn && typ.Kind != InvalidType && !a.summaryPass && a.callGraphPathReachable {
+			if identity, known := a.callableIdentityForExpression(expr); known {
+				dispatch := CallDispatchFunctionValue
+				if identity.HasEnvironment {
+					dispatch = CallDispatchClosure
+				}
+				a.callGraph.addTargetSetCall(a.currentCallable, identity.Targets, expressionToken(expr), dispatch, execution)
+			}
+		}
+		return typ, value
 	}
 	previousCall := a.spawnCallExpression
 	previousExecution := a.spawnCallExecution
@@ -119,4 +129,13 @@ func (a *Analyzer) inferSpawnValue(expr ast.Expression, execution CallExecutionR
 func (a *Analyzer) taskSpawnResultType(result Type) Type {
 	owner := a.intrinsicGenericType("Task", result)
 	return a.intrinsicGenericType("Result", owner, a.types["TaskSpawnError"])
+}
+
+// threadSpawnResultType preserves the independent creation-failure layer
+// around the complete child result, including an application Result payload.
+// Rules: rules/concurrency/threads.md — §2(1–6), §19;
+// rules/concurrency/spawn.md — §3(1–10).
+func (a *Analyzer) threadSpawnResultType(result Type) Type {
+	owner := a.intrinsicGenericType("Thread", result)
+	return a.intrinsicGenericType("Result", owner, a.types["ThreadSpawnError"])
 }

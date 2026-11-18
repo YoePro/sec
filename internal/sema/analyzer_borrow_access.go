@@ -84,6 +84,15 @@ func (a *Analyzer) checkBorrowedMutationPlaceForAction(place Place, token lexer.
 			return true
 		}
 	}
+	for _, candidate := range placeOriginAlternatives(place) {
+		if symbol, exists := a.symbols.lookup(candidate.Root); exists {
+			if _, creation := creationOwnerType(symbol.Type); creation {
+				// A write through an alias can replace an Err-only carrier.
+				// Rules: rules/memory/ownership.md §§20–21.
+				delete(a.closedResources, candidate.Root)
+			}
+		}
+	}
 	return false
 }
 

@@ -15,7 +15,7 @@ func TestTaskSpawnResultLSP(t *testing.T) {
 	for _, tc := range []struct {
 		mode  string
 		count int
-	}{{"valid", 0}, {"invalid", 5}} {
+	}{{"valid", 0}, {"invalid", 7}} {
 		source, err := os.ReadFile("../../testdata/sema/task_spawn_result_" + tc.mode + ".sec")
 		if err != nil {
 			t.Fatal(err)

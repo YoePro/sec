@@ -20,6 +20,7 @@
   "categories": ["Programming Languages"],
   "scripts": {
     "compile": "tsc -p ./",
+    "test:target-status": "node --test test/targetStatus.test.cjs",
     "watch": "tsc -watch -p ./"
   },
   "dependencies": {
@@ -31,7 +32,15 @@
     "typescript": "^5.0.0"
   },
   "contributes": {
-    "commands": [{ "command": "sec.selectTarget", "title": "SEC: Select Project Target" }],
+    "commands": [
+      { "command": "sec.selectTarget", "title": "SEC: Select Project Target" },
+      { "command": "sec.refreshTargetStatus", "title": "SEC: Refresh Target Comparison", "icon": "$(refresh)" }
+    ],
+    "views": { "explorer": [{ "id": "sec.targetStatus", "name": "SEC Target Comparison", "when": "resourceLangId == sec" }] },
+    "menus": { "view/title": [
+      { "command": "sec.selectTarget", "when": "view == sec.targetStatus", "group": "navigation" },
+      { "command": "sec.refreshTargetStatus", "when": "view == sec.targetStatus", "group": "navigation" }
+    ] },
     "languages": [
       {
         "id": "sec",

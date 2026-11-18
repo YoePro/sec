@@ -98,13 +98,15 @@ go run ./cmd/yamlstatus -uses cmd/yamlstatus/cli.go -id governance.yamlstatus-to
 **Implemented (2026-10-09):** `fmt` (with `-check`, `-diff`, `-fix-types`,
 `-write`), type-hazard reporting, and `set`, `add`, `remove`, `move`,
 `verify`, `repath` and `new`; see `codex.md`, "Editing governance with
-yamlstatus". Canonical key order is not implemented: reordering keys would
-rewrite almost every integration and needs an agreed order first.
+yamlstatus". Canonical integration key order is implemented (2026-11-18).
+Existing fragments can adopt it explicitly with `fmt -diff` and `fmt -write`;
+edit commands require the owning fragment to be canonical first.
 
 A single editing layer that all writing commands share, built on the
 `gopkg.in/yaml.v3` node API that the module already depends on. Working on
-`yaml.Node` rather than decoding into structs keeps comments, key order and
-untouched values intact, so an edit changes only what it names.
+`yaml.Node` rather than decoding into structs preserves untouched values and
+their types. Integration fields use the canonical order below; other mappings
+keep their key order. The renderer does not emit YAML comments.
 
 Every writing command shows a unified diff and changes nothing until `-write`
 is given. After writing it reruns the format and `-check` validation, so a
@@ -124,11 +126,24 @@ Observed variation that this would remove:
 - `document_revision` appears as `"2.0"`, `'2.0'`, `2.0`, `2`, and free text;
 - long strings switch between plain, quoted and folded `>-` scalars.
 
-A canonical style could be: one fixed indentation for nested lists, double
+The canonical style is: one fixed indentation for nested lists, double
 quotes only where YAML requires quoting, folded `>-` for prose longer than the
-line width, and a canonical key order per integration (`id`, `area`, `status`,
-dates, `document_revision`, `summary`, `rules`, `code`, `tests`, `implemented`,
-`partial`, `remaining`, `required_tests`, `verification`, ...).
+line width, and this key order per integration:
+
+```text
+id, area, feature, status,
+integrated, audited, reviewed, revised, updated, created,
+document_revision, repository_baseline, summary,
+rules, code, tests, implemented, partial, remaining, unimplemented,
+required_tests, verification
+```
+
+Unknown extension keys follow in their original relative order. This applies
+to entries under `integrations`, standalone integration mappings and top-level
+integration lists. Fragment headers, registry metadata, nested mappings and
+list item order remain unchanged. Every writer shares this order; formatting
+checks decoded value equality before writing and is idempotent. Adopting the
+order does not fix type hazards or invent dates.
 
 ### 4.2 Type hazards are reported, not silently fixed
 
@@ -186,6 +201,18 @@ always requires finding and rewording these.
 - Correction files left in the repository root or in
   `rules/corrections/` with a non-applied status are listed as pending.
 
+**Implemented (2026-11-18).** `-corrections` audits the ledger selected by
+`-dir` (or the positional directory), with optional `-json`. Reports include
+source-located broken application links, archive files without a canonical
+integration/rulebook reference, pending candidates and applied candidates still
+outside the archive. Exact path mentions and local rulebook-relative Markdown
+links count; archived corrections cannot establish their own linkage. Root
+candidates require a correction filename or first heading; README files are
+excluded from pending discovery. Explicit document statuses are preserved;
+archive placement never means runtime implementation is complete. Symlinks
+are not followed. Findings are review data, with a successful exit status;
+malformed input, incompatible flags and filesystem failures are command errors.
+
 ## 7. `-diff BASELINE`: remaining-count changes
 
 `codex.md` asks for the remaining count before and after an implementation.
@@ -226,6 +253,24 @@ mentioned in `governance/errors_diagnostics.yaml` and the rulebooks: IDs used
 in prose but not registered, registered IDs never mentioned in governance, and
 the next free ID per family (for example `S1139`). Picking a new ID currently
 means grepping the whole repository to be sure a number is unused.
+
+**Implemented (2026-11-18).** `-diagnostics [-json]` reads the canonical
+`diagnostics.All()` registry, including retired definitions, and compares exact
+ID mentions in the selected governance directory and Markdown/YAML rulebooks.
+Unregistered mentions retain file, line and Unicode column; registered IDs
+without a governance mention retain their symbolic name, topic family and
+retirement status. Examples and historical references are audit findings,
+not automatic source errors.
+
+Candidates are reported per canonical ID namespace, not per topic family
+(`diagnostics.md` §§ 3, 5–6). The tool suggests the first unmentioned ID above
+the highest registered number, reserving active/retired IDs and documentary
+mentions; it does not recycle gaps. An unused namespace starts at `0000`.
+Exhausted append space is explicit and does not imply that every numeric slot
+is occupied. This local suggestion does not reserve or allocate an ID.
+Reports are deterministic and read-only; invalid input, filesystem failures
+and incompatible flags are command errors. Only `-dir` (or a positional
+directory) and `-json` may accompany the audit.
 
 ## 9. `-grep TEXT` limited to remaining work
 

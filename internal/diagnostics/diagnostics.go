@@ -185,6 +185,8 @@ const (
 	ToStringSignature                             = "S1100"
 	SemanticCompileTimeExecutionUnavailable       = "S1101"
 	AssertConditionNotBool                        = "S1102"
+	IfConditionNotBool                            = "S1246"
+	UnresolvedCreationLifecycle                   = "S1247"
 	ExplicitSelfParameter                         = "S1103"
 	ParameterShadowsDeclaration                   = "S1104"
 	GenericParameterShadowsDeclaration            = "S1105"
@@ -745,6 +747,8 @@ var registry = map[string]Definition{
 	GenericTypePackExpansionUnavailable:           {ID: GenericTypePackExpansionUnavailable, Name: "compiler.type-pack-expansion-unavailable", Family: "compiler-capability", DefaultSeverity: SeverityError, Mandatory: true},
 	SemanticCompileTimeExecutionUnavailable:       {ID: SemanticCompileTimeExecutionUnavailable, Name: "compile-time.execution-unavailable", Family: "compile-time", DefaultSeverity: SeverityError, Mandatory: true},
 	AssertConditionNotBool:                        {ID: AssertConditionNotBool, Name: "panic.assert-condition-not-bool", Family: "panic", DefaultSeverity: SeverityError, Mandatory: true},
+	IfConditionNotBool:                            {ID: IfConditionNotBool, Name: "control-flow.if-condition-not-bool", Family: "control-flow", DefaultSeverity: SeverityError, Mandatory: true},
+	UnresolvedCreationLifecycle:                   {ID: UnresolvedCreationLifecycle, Name: "ownership.unresolved-creation-result", Family: "ownership", DefaultSeverity: SeverityError, Mandatory: true},
 	ExplicitSelfParameter:                         {ID: ExplicitSelfParameter, Name: "declarations.explicit-self-parameter", Family: "declarations", DefaultSeverity: SeverityError, Mandatory: true},
 	ParameterShadowsDeclaration:                   {ID: ParameterShadowsDeclaration, Name: "names.parameter-shadows-declaration", Family: "names", DefaultSeverity: SeverityError, Mandatory: true},
 	GenericParameterShadowsDeclaration:            {ID: GenericParameterShadowsDeclaration, Name: "names.generic-parameter-shadows-declaration", Family: "names", DefaultSeverity: SeverityError, Mandatory: true},

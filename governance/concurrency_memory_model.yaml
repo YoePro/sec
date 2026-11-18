@@ -22,7 +22,6 @@ integrations:
       - Task/thread completion synchronization publishes valid prior effects.
       - Ordinary unsynchronized data races are invalid Sec behavior.
     remaining:
-      - Represent release-sequence head and RMW-chain semantics.
       - Implement fence/atomic, atomic/fence and fence/fence synchronization patterns.
       - Preserve SeqCst total-order constraints through optimization/lowering.
       - Preserve spawn and task/thread completion publication.
@@ -57,19 +56,31 @@ integrations:
       - rules/corrections/applied/atomics-memory-model-v2-cross-rulebook-correction-20260907.md
     implemented:
       - "Per-atomic modification-order and RMW coherence representation (2026-11-17, §§16–17,52): validated canonical atomic calls publish detached ResolvedAtomicMemoryOperation analysis facts carrying source/callable, storage/referent provenance, established orders and separate outcome paths. Per-object total order and happens-before coherence are explicit semantic requirements, not an invented global order or runtime schedule. Store and successful RMW/CAS participate; Load and failed CAS are read-only and do not enter modification order. Only RMW success requires reading the immediately preceding modification. Independent CAS success/failure and default/immutable-alias orders are retained without rerunning order CTE. Canonical resource/Place relationships retain Same, Disjoint, MayAlias and Unknown; relationship proofs require an explicitly caller-qualified common ownership/execution state, and cross-analysis facts cannot alias by reused root numbers. Queries detach paths, nested types and projection data and reset with analysis. Invalid operations and ordinary same-named methods publish no facts; Fence has no atomic-object modification. This closes the analysis-fact representation point; release-sequence/fence/SeqCst/completion/race/FFI integration and physical atomic IR/lowering remain independently pending."
-    revised: "2026-11-17"
+      - "Release-sequence head and RMW-chain representation (2026-11-18, §§18–20,25–28,52): every validated AtomicMemoryPath publishes an immutable AtomicReleaseSequenceEffect from its established order and modification/RMW facts. Release/AcqRel/SeqCst modifications start heads; every RMW continues all heads carried by its exact predecessor, including Relaxed/Acquire RMWs and successful CAS. Release RMWs both retain predecessor heads and start their own, preserving overlapping release sequences. Every plain Store breaks preceding heads, including a release Store that starts anew; Load and failed CAS are non-modifying and neither extend nor break chains, independently of their acquire/SeqCst read order. Continuation explicitly requires the same canonical live atomic object and a contiguous RMW path in modification order, without a same-execution restriction. Head source/callable/outcome provenance remains on the owning operation/path. These symbolic transfer constraints never infer runtime membership, a read-from edge or publication from source order, alias uncertainty or equal values. Source-backed tests cover every operation family on 32/64-bit plans and all analysis depths, independent CAS orders, overlapping heads, Store breaks, qualified identity, query mutation isolation and reset. This completes representation only; fence synchronization, runtime/lowering realization and the race solver remain separately pending."
+    revised: "2026-11-18"
     code:
       - internal/sema/atomic_memory_model.go
       - internal/sema/atomic_calls.go
       - internal/sema/compare_exchange_paths.go
       - internal/sema/analyzer.go
       - internal/sema/synchronization_resources.go
+      - internal/sema/atomic_release_sequences.go
     tests:
       - internal/sema/atomic_memory_model_test.go
       - testdata/sema/atomic_memory_model_valid.sec
       - testdata/sema/atomic_memory_domains_valid.sec
       - testdata/sema/atomic_memory_model_invalid.sec
+      - internal/sema/atomic_release_sequences_test.go
+      - testdata/sema/atomic_release_sequences.sec
     verification:
+      - command: go test -p 4 ./cmd/compiler ./cmd/lsp -run Atomic\|CompareExchange -count=1 -timeout=150s
+        result: "passed on 2026-11-18: focused atomic/CAS/compiler-source-formatting regressions, compiler 31.134s and LSP 95.783s"
+      - command: go vet ./internal/sema
+        result: passed on 2026-11-18 after release-sequence representation integration
+      - command: go test -race ./internal/sema -run 'AtomicReleaseSequence|AtomicMemoryModel|AtomicMemoryDomains' -count=1 -timeout=120s
+        result: "passed on 2026-11-18: source-backed release/chain, per-object and CAS fact tests with race checks, 1.974s"
+      - command: go test -p 4 ./internal/sema -count=1 -timeout=120s
+        result: "passed on 2026-11-18: complete Sema suite including release-sequence representation, 39.688s"
       - command: go vet ./internal/sema
         result: passed on 2026-11-17
       - command: go test -p 4 ./cmd/compiler ./cmd/lsp -run '^TestCompareExchangeResult(CLI|LSP|SemanticIR)$' -count=1 -timeout=120s

@@ -1,0 +1,93 @@
+module main
+
+fn Work() void { }
+fn Forward() Result[Thread[void], ThreadSpawnError] {
+    let creation := spawn thread Work()
+    return creation
+}
+fn ForwardTask() Result[Task[void], TaskSpawnError] {
+    let creation := spawn Work()
+    return creation
+}
+fn MatchThread() void {
+    let creation := spawn thread Work()
+    match creation {
+        Ok(worker) => { join worker }
+        Err(_) => { }
+    }
+}
+fn MatchTask() void {
+    let creation := spawn Work()
+    match creation {
+        Ok(worker) => { join worker }
+        Err(_) => { }
+    }
+}
+fn Extract() void {
+    let creation := spawn thread Work()
+    let worker := try creation { Err(_) => { return } }
+    join worker
+}
+fn FailureOnly() void {
+    let creation: Result[Thread[void], ThreadSpawnError] := Err(ThreadSpawnError.NativeFailure)
+}
+fn ReturnFailure() void {
+    let creation := spawn thread Work()
+    match creation {
+        Ok(worker) => { join worker }
+        Err(_) => { return }
+    }
+}
+fn MatchMutable() void {
+    let mut creation := spawn thread Work()
+    match creation {
+        Ok(worker) => { join worker }
+        Err(_) => { }
+    }
+}
+fn LocalLambda() void {
+    let creation := spawn thread Work()
+    let operation := fn() void { return }
+    operation()
+    match creation {
+        Ok(worker) => { join worker }
+        Err(_) => { }
+    }
+}
+fn ProvenSuccess() Result[int, ThreadSpawnError] {
+    let creation := spawn thread Work()
+    let known: Result[int, ThreadSpawnError] := Ok(1)
+    let value := try known
+    match creation {
+        Ok(worker) => { join worker }
+        Err(_) => { }
+    }
+    return Ok(value)
+}
+fn BreakFailure() void {
+    let creation := spawn thread Work()
+    while true {
+        match creation {
+            Ok(worker) => { join worker }
+            Err(_) => { break }
+        }
+        break
+    }
+}
+fn MutableFailureOnly() void {
+    let mut creation: Result[Thread[void], ThreadSpawnError] := Err(ThreadSpawnError.NativeFailure)
+}
+fn HandleParameter(creation: Result[Thread[void], ThreadSpawnError]) void {
+    match creation {
+        Ok(worker) => { join worker }
+        Err(_) => { }
+    }
+}
+fn LogFailure() void { }
+fn FailureHandlerCall() void {
+    let creation := spawn thread Work()
+    match creation {
+        Ok(worker) => { join worker }
+        Err(_) => { LogFailure() }
+    }
+}

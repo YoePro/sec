@@ -119,7 +119,9 @@ private:
   LogicalResult checkPlan(const Plan &plan) {
     DictionaryAttr entry = plan.entry;
     if ((plan.kind != "struct" && entry.contains("fields")) ||
-        (plan.kind != "fixed-array" && (entry.contains("element") || entry.contains("element_count"))) ||
+        (plan.kind != "fixed-array" && plan.kind != "dynamic-array" && entry.contains("element")) ||
+        (plan.kind != "fixed-array" && entry.contains("element_count")) ||
+        (plan.kind != "dynamic-array" && entry.contains("backing")) ||
         (plan.kind != "active-variant" && entry.contains("variants")) ||
         (plan.kind != "compiler-known-resource" && entry.contains("resource")))
       return error(plan) << "carries steps of another kind";
@@ -135,6 +137,8 @@ private:
       return checkStruct(plan);
     if (plan.kind == "fixed-array")
       return checkArray(plan);
+    if (plan.kind == "dynamic-array")
+      return checkDynamicArray(plan);
     if (plan.kind == "active-variant")
       return checkVariants(plan);
     if (plan.kind == "compiler-known-resource") {
@@ -226,6 +230,37 @@ private:
     auto count = plan.entry.getAs<StringAttr>("element_count");
     if (!array || !count || count != array.getLength())
       return error(plan) << "needs a fixed-array type and its exact element count";
+    return checkStep(plan, plan.entry.getAs<StringAttr>("element"), array.getElementType());
+  }
+
+  // A dynamic array destroys its initialized elements in reverse index order
+  // with one element plan, then ends its backing domain and reclaims it per
+  // its allocation plan, in that order (P18 sections 30-32, 54, 61-62, 97).
+  LogicalResult checkDynamicArray(const Plan &plan) {
+    auto array = dyn_cast<sec::DynamicArrayType>(plan.type);
+    auto backing = plan.entry.getAs<ArrayAttr>("backing");
+    if (!array || !backing)
+      return error(plan) << "needs a dynamic-array type and its backing work";
+    SmallVector<StringRef> steps;
+    for (Attribute attribute : backing) {
+      auto step = dyn_cast<StringAttr>(attribute);
+      if (!step)
+        return error(plan) << "has a non-string backing step";
+      steps.push_back(step.getValue());
+    }
+    // Non-trivial elements are destroyed in reverse runtime order first,
+    // exactly when the element needs destruction (P18 section 125).
+    size_t next = 0;
+    bool destroysElements = !steps.empty() && steps.front() == "destroy-elements-reverse";
+    if (destroysElements)
+      ++next;
+    if (destroysElements != needsDestruction(array.getElementType()))
+      return error(plan) << "destroys its elements in reverse order exactly when the element needs destruction";
+    bool ordered = next < steps.size() && steps[next] == "end-domain" &&
+                   (steps.size() == next + 1 ||
+                    (steps.size() == next + 2 && steps[next + 1] == "reclaim-per-allocation-plan"));
+    if (!ordered)
+      return error(plan) << "must end its backing domain, then optionally reclaim per its allocation plan";
     return checkStep(plan, plan.entry.getAs<StringAttr>("element"), array.getElementType());
   }
 

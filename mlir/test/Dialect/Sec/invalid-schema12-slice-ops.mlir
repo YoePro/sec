@@ -115,7 +115,7 @@ module attributes {sec.dialect_version = 12 : i32, sec.semantic_ir_version = 1 :
 // array value is not a Place
 module attributes {sec.dialect_version = 12 : i32, sec.semantic_ir_version = 1 : i32, sec.module_id = "invalid-slice-op", sec.source_files = [], sec.target_os = "linux", sec.target_arch = "amd64", sec.target_triple = "x86_64-pc-linux-gnu", sec.target_abi = "gnu", sec.target_profile = "hosted", sec.target_endianness = "little", dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 64>>} {
   func.func @bad(%source: !sec.array<si128, "4">, %n: !sec.uint) {
-    // expected-error@+1 {{fixed-array Place}}
+    // expected-error@+1 {{fixed-array or dynamic-array Place}}
     %s = "sec.slice.borrow_shared"(%source, %n, %n) <{borrow_id = 1 : i32, lifetime_id = 1 : i32, validity_policy = "proven", validity_proof = "caller-owned-borrow", address_stability = "Stable", provenance = "parameter"}>  : (!sec.array<si128, "4">, !sec.uint, !sec.uint) -> !sec.slice<si128>
     return
   }

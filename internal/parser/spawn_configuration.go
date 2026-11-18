@@ -13,6 +13,7 @@ import (
 // Rules: rules/concurrency/spawn.md — §4(1),(10);
 // rules/concurrency/threads.md — §10(3).
 func (p *Parser) parseNamedThreadConfiguration(expr *ast.SpawnExpression) {
+	defer p.withRecoveryContext(RecoveryContextThreadConfiguration)()
 	if expr.Kind != contextualThread {
 		return
 	}
@@ -39,6 +40,7 @@ func (p *Parser) parseNamedThreadConfiguration(expr *ast.SpawnExpression) {
 // Rules: rules/concurrency/spawn.md — §4(1),(10);
 // rules/compiler/parser_recovery.md — expression recovery.
 func (p *Parser) parseThreadConfigurationCallable(expr *ast.SpawnExpression) {
+	defer p.withRecoveryContext(RecoveryContextThreadConfiguration)()
 	switch p.peekToken.Type {
 	case lexer.EOF, lexer.SEMICOLON, lexer.RBRACE, lexer.COMMA, lexer.RPAREN, lexer.RBRACKET, lexer.LET, lexer.RETURN:
 		message := "spawn thread configuration must be followed by a callable expression"
@@ -86,6 +88,7 @@ func (p *Parser) inlineThreadConfigurationAhead() bool {
 // No ownership marker is synthesized for this fresh value.
 // Rules: rules/concurrency/threads.md — §§10(4),11(1–5).
 func (p *Parser) parseInlineThreadConfiguration(expr *ast.SpawnExpression) {
+	defer p.withRecoveryContext(RecoveryContextThreadConfiguration)()
 	p.nextToken()
 	expr.InlineConfiguration = true
 	expr.Configuration = p.parseStructLiteralWithType(&ast.TypeReference{Token: p.curToken, Name: "ThreadConfig"})

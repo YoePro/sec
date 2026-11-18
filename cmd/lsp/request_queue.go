@@ -206,6 +206,7 @@ func isDeferrableAnalysisRequest(method string) bool {
 		"textDocument/codeLens",
 		"codeLens/resolve",
 		"sec/compilerKnownDefinition",
+		"sec/targetStatus",
 		"textDocument/signatureHelp",
 		"textDocument/codeAction",
 		"textDocument/prepareCallHierarchy",

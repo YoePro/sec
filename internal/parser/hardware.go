@@ -28,6 +28,7 @@ func isHardwareCategory(token lexer.Token) bool {
 //   - rules/foundations/lexical_structure.md — contextual `hardware` (Amendment MD-111)
 //   - rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md — §§ 3(5), 8(1)
 func (p *Parser) parseHardwareDeclaration() *ast.HardwareDeclaration {
+	defer p.withRecoveryContext(RecoveryContextHardware)()
 	declaration := &ast.HardwareDeclaration{Token: p.curToken}
 	p.nextToken()
 	declaration.KindToken = p.curToken
@@ -77,6 +78,7 @@ func (p *Parser) parseHardwareDeclaration() *ast.HardwareDeclaration {
 // parseHardwareMember parses `name: value`, leaving the value's last token
 // current.
 func (p *Parser) parseHardwareMember(declaration *ast.HardwareDeclaration) (*ast.HardwareMember, bool) {
+	defer p.withRecoveryContext(RecoveryContextHardware)()
 	if p.peekToken.Type != lexer.IDENT {
 		p.hardwareSyntaxError(declaration, p.peekToken, []lexer.TokenType{lexer.IDENT}, "hardware member requires a name")
 		return nil, false
@@ -99,6 +101,7 @@ func (p *Parser) parseHardwareMember(declaration *ast.HardwareDeclaration) (*ast
 // parseHardwareValue parses one restricted metadata value. Lists hold only
 // integer literals.
 func (p *Parser) parseHardwareValue(declaration *ast.HardwareDeclaration, allowList bool) (*ast.HardwareValue, bool) {
+	defer p.withRecoveryContext(RecoveryContextHardware)()
 	start := p.peekToken
 	switch start.Type {
 	case lexer.INT:

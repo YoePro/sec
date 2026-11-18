@@ -196,7 +196,19 @@ func (e *emitter) emitDestructionPlanTable() error {
 			parts = append(parts, "fields = ["+strings.Join(fields, ", ")+"]")
 		}
 		if plan.Element != "" {
-			parts = append(parts, "element = "+mlirString(plan.Element), "element_count = "+mlirString(plan.ElementCount))
+			parts = append(parts, "element = "+mlirString(plan.Element))
+			if plan.ElementCount != "" {
+				parts = append(parts, "element_count = "+mlirString(plan.ElementCount))
+			}
+		}
+		if len(plan.BackingTransitions) != 0 {
+			// A dynamic array ends its backing domain, then reclaims per its
+			// allocation plan (P18 §§ 30–32, 54, 97).
+			steps := make([]string, len(plan.BackingTransitions))
+			for index, step := range plan.BackingTransitions {
+				steps[index] = mlirString(step)
+			}
+			parts = append(parts, "backing = ["+strings.Join(steps, ", ")+"]")
 		}
 		if len(plan.Variants) != 0 {
 			variants := make([]string, len(plan.Variants))

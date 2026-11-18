@@ -7,6 +7,8 @@ import (
 	"sec/internal/testsupport"
 	"strings"
 	"testing"
+
+	"sec/internal/diagnostics"
 )
 
 // TestIfTryConditionDiagnosticsCLI checks that failure propagation does not
@@ -19,7 +21,7 @@ func TestIfTryConditionDiagnosticsCLI(t *testing.T) {
 		t.Fatal(code, stderr)
 	}
 	for _, occurrence := range doc.Occurrences {
-		if occurrence.Primary == nil || !strings.Contains(occurrence.Message.Text, "bool") || !strings.Contains(occurrence.Message.Text, "if condition") {
+		if occurrence.ID == nil || *occurrence.ID != diagnostics.IfConditionNotBool || len(occurrence.Help) == 0 || occurrence.Primary == nil || !strings.Contains(occurrence.Message.Text, "bool") || !strings.Contains(occurrence.Message.Text, "if condition") {
 			t.Fatal(occurrence)
 		}
 	}

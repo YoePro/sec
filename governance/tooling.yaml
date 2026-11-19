@@ -6,8 +6,8 @@ integrations:
     area: command-line-interface-help-and-analyse
     status: partial
     integrated: "2026-10-17"
-    revised: "2026-11-11"
-    document_revision: "1.1"
+    revised: "2026-11-19"
+    document_revision: "1.3"
     rules:
       - rules/tooling/cli.md
       - rules/compiler/compiler_analysis.md
@@ -689,21 +689,23 @@ integrations:
   - id: tooling.compiler-pipeline
     area: cli-lsp-inspection-test-pipeline
     status: partial
-    revised: "2026-10-13"
+    revised: "2026-11-19"
     repository_baseline: 998d8d1
     implemented:
       - "Inspection boundaries are documented in README and command help: emit-mlir always emits LLVM dialect MLIR, while emit-sec-mlir emits the Sec dialect with its schema attribute. Both file and stdout output identify boundary and selected target in parser-compatible MLIR comments. Requested legacy verification now runs against temporary output before publication, preserving existing destinations and suppressing stdout on verifier failure."
       - sec check now dispatches explicit file/directory/glob inputs and a selected or host target through the shared parser, project/version/module/import resolution and mandatory Sema analysis. It stops before lowering readiness, IR/code generation, backend tool discovery, verification and linking; no artifacts or source edits are produced. Human/JSON diagnostics preserve the shared frontend results, and CLI help/README document this boundary.
       - Semantic IR and Sec MLIR unsupported boundaries publish a shared typed ImplementationCapability fact with feature, exact package/schema boundary, available callable identity and optional source position. CLI human/JSON transport recognizes these facts through wrapped/joined failures, retaining the unsupported-lowering category while exposing diagnostic_class=compiler-capability and domain metadata. Source proof outcomes and target/tool/verification failures are never reclassified from text. Valid guarded try source passes check and fails explicitly at the current Sec MLIR schema boundary before external tools or artifact publication.
       - Sema SelectTests owns the existing --run name-selection semantics over detached ResolvedTestMetadata with structured module/path TestIdentity. sec test and the documented LSP sec/tests request consume that selector; the editor request exposes the active file current/unsaved validated test view, names and compiler-supplied source spans mapped to UTF-16, without a second test parser/model or runner. Slash/Unicode/regex characters remain literal identity path components. Metadata registration was extracted from analyzer.go into test_selection.go.
+      - "Deterministic source and provenance metadata across emitted artifacts (2026-11-19, compiler_pipeline.md § 86, projects.md § 34): Semantic IR and Sec MLIR carry root-relative source identities in their source lists and every location (tooling.project-discovery-and-boundary); SecFinalizeForLLVM names the LLVM dialect module after sec.module_id and TranslateToLLVMIR writes it as the LLVM IR ModuleID and source_filename (mlir-translate otherwise writes LLVMDialectModule for every object), so each object of a multi-module program names its Sec module; imported module objects are built in canonical identity order. A multi-module program emits byte-identical Semantic IR, Sec MLIR and LLVM IR across runs and Project locations, and links byte-identical executables."
     remaining:
       - share CompilationPlan/workspace/source/module/test facts between CLI and LSP
-      - preserve deterministic source/provenance metadata across emitted artifacts
     required_tests:
       - sec check succeeds with no backend executables available, validates selected target width, preserves parser/ownership/borrow diagnostics and invalid manifest errors, accepts file/directory/glob inputs and creates no artifacts
       - typed Semantic IR/Sec MLIR capabilities retain boundary/feature/callable/source metadata through wraps and joins, never fabricate source proof states, stay distinct from source/target/tool errors, and publish no artifact for unsupported valid source
       - real CLI and LSP test discovery/regex selection return identical structured identities, detached deterministic paths and UTF-16 ranges, handle no matches and invalid filters, reflect unsaved edits and withhold invalid-source metadata
     verification:
+      - command: go test ./internal/mlir -count=1; SEC_MLIR_BIN=build/sec-mlir/bin go test ./cmd/compiler -run 'TestCrossModule|TestNativeTrack|TestProjectMove|EmitLLVM|EmitMLIR|EmitSecMLIR|BuildCLI|Capability|MLIREmission|LabeledLLVM|Package1[0-8]|StaticInitialization|FloatClamp|Checked' -count=1; llvm-lit build/sec-mlir/test
+        result: "Passed 2026-11-19: TestCrossModuleArtifactsAreDeterministic (identical IR, Sec MLIR, LLVM IR and executables across runs and locations; LLVM ModuleID and source_filename name the Sec module), TestNameLLVMModule, lit 241/241 with pipeline-command expecting module @main. Remaining 2 to 1."
       - command: go test -race ./cmd/lsp -run 'LSPTestSelectionMatchesCLI' -count=1
         result: passed on 2026-10-13 after final invalid-test fixture integration; actual CLI and LSP agree on identities and filters, unsaved snapshots and UTF-16 ranges, and semantically invalid test bodies expose no valid test selection
       - command: go test ./internal/sema ./cmd/compiler ./cmd/lsp -count=1

@@ -28,6 +28,18 @@ ledger: `implemented`, `partial`, and `planned`.
 An integration has one canonical owner.  Related work is referenced through
 rulebook paths or integration IDs; it is never copied into a second fragment.
 
+## Semantic IR schema ownership
+
+`governance.semantic-ir-v2` owns the executable-schema maintenance policy in
+[internal/ir/semantic/SCHEMA.md](../internal/ir/semantic/SCHEMA.md). It identifies
+the single version authority, compatibility boundaries and coordinated change
+procedure. Semantic IR schema numbers, rulebook revisions and Sec MLIR dialect
+schemas are independent; package completion does not change them automatically.
+
+[semantic-ir-amendments.md](semantic-ir-amendments.md) maps every retained
+package amendment and report to canonical responsibilities and live status
+owners, and defines the maintenance workflow for future packages.
+
 ## Known holes
 
 A verified soundness hole (an invalid program the compiler currently

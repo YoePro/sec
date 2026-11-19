@@ -663,3 +663,25 @@ reports:
       return, parameter and propagation exits. Complete Sema/Semantic IR/
       diagnostic suites and focused compiler/LSP race tests pass. Native
       task/thread execution remains outside this validation fix.
+
+  - id: BUG-000030
+    title: Try-handler lists drift after inline thread configuration
+    status: fixed
+    severity: medium
+    kind: formatter-layout-bug
+    reported: "2026-11-19"
+    report: fixed/BUG-000030-try-handler-block-indentation.md
+    area: tooling-formatter
+    rulebooks:
+      - rules/tooling/formatter.md
+      - rules/concurrency/threads.md
+    governance:
+      - tooling.formatter-v2
+    evidence: >-
+      Fixed and verified 2026-11-19: parser-owned handler-list open tokens
+      project ordinary executable-block CST roles for expression and assignment
+      try forms. Shared block formatting now expands the outer list before its
+      nested arms. Complete CST/formatter race suites and focused parser, Sema,
+      Semantic IR, CLI and LSP regressions pass; configured 2/4/6-space and
+      structured/compact golden output, 80/120/200 widths, token preservation
+      and repeated formatting cover the original second-pass drift.

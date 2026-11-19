@@ -1,0 +1,21 @@
+module main
+
+fn StackLeaf() int {
+    return 1
+}
+
+fn StackRoot() int {
+    return StackLeaf()
+}
+
+fn StackOther() int {
+    return 2
+}
+
+fn StackRecur() int {
+    return StackRecur()
+}
+
+fn StackOpaque(callback: fn() int) int {
+    return callback()
+}

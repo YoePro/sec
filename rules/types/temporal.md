@@ -2,7 +2,7 @@
 
 - **Status:** Normative, phase 1 representation and wall-clock contract
 - **Created:** 2026-09-28
-- **Last updated:** 2026-11-08
+- **Last updated:** 2026-11-19 (§ 5.4(3) MD-048 cross-reference); 2026-11-08
 - **Document revision:** 1.3
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/types/temporal.md`
@@ -241,7 +241,8 @@ change. Positive and negative quantities follow the same rules.
 **§ 5.4(3)** An incompatible dimension, a point (rather than difference)
 role, an unresolved or runtime-supplied scale, or a non-linear transform is
 never accepted as `duration`; it is an ordinary unit/conversion error.
-Specialized affine and logarithmic conversions belong to MD-048.
+Affine and logarithmic conversions are defined by `rules/types/units.md`
+§§ 21.1 and 22.1–22.5 (MD-048); they are not accepted as `duration`.
 
 ### 5.5 Explicit and contextual forms
 

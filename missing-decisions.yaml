@@ -1,6 +1,6 @@
 schema_version: 1
-updated: "2026-11-18"
-last_id: MD-141
+updated: "2026-11-19"
+last_id: MD-144
 purpose: >-
   Tracks normative decisions that are missing or insufficiently precise and
   therefore constrain implementation. Remove an entry only after the owning
@@ -273,7 +273,17 @@ decisions:
       - rules/foundations/grammar.md
       - rules/compiler/semantic_ir.md
     description: >-
-      Blocks the complete frontend.units-v2 remaining item "validate affine
+      Decided 2026-11-19
+      (rules/corrections/applied/MD-048-units-normative-correction-2026-11-19-20261119.md):
+      units.md revision 2.3 now defines the exact affine mapping and signed
+      non-zero affine Scale (§ 21.1), the logarithmic forward/inverse
+      equations with and without Reference, the typed compile-time Reference
+      and its dimension/Kind domain, explicit conversion paths, plan
+      invariants and the exactness, rounding, bounded-error, FastMath and
+      failure rules (§§ 22.1-22.5); grammar.md § 26(5), semantic_ir.md
+      § 20(5)-(6) and the core ConversionError.InvalidDomain variant are
+      synchronized. Implementation is pending under frontend.units-v2. The
+      original gap follows for provenance. Blocked the complete frontend.units-v2 remaining item "validate affine
       and logarithmic Reference compatibility and implement their specialized
       explicit conversion plans". units.md "Affine transform" defines
       canonical = value * Scale + Offset, but "Logarithmic transform" only
@@ -294,8 +304,8 @@ decisions:
       Reference as source text and rejects conversions between distinct
       logarithmic units with "requires a specialized conversion operation".
       No partial affine-only implementation was made for this combined item.
-    classification: blocking
-    status: open
+    classification: constraining
+    status: decided-implementation-pending
 
   - id: MD-049
     area: decimal-range-default-scale
@@ -1381,4 +1391,104 @@ decisions:
         integers.
       Governance owners: frontend.layout and lowering.sec-mlir-package24.
     classification: blocking
+    status: open
+  - id: MD-142
+    area: native-aggregate-alignment-and-placement
+    rulebooks:
+      - rules/memory/layout.md
+      - rules/mlir/packages/sec-mlir-dialect_package24.md
+    description: >-
+      layout.md § 8(3) says aggregate alignment "is derived from Sec layout
+      rules and target capabilities", and § 3(2) lists "supported aggregate
+      alignments" as a plan fact. Neither the derivation nor the fact is
+      stated. § 9(2) requires a fixed-array stride that "satisfies element
+      size/alignment and target layout rules" without giving the stride.
+      § 19(3) leaves the placement inside the decimal carriers {i64,i32} and
+      {i128,i32} to the same undefined rule.
+      P24-17 (decimal carriers), P24-19 (struct placement) and P24-20 (fixed
+      arrays) can resolve every field and element layout, but cannot compute
+      offsets, aggregate alignment, tail padding, stride or total size.
+      Those layouts therefore stay incomplete.
+      Decided on 2026-11-19 and recorded in layout.md: an empty struct has
+      size 0 and alignment 1 (§ 24(6)), and the maximum byte extent is
+      2^(pointer width − 1) − 1 (§ 7(7)).
+      Decide:
+      - the native struct rule, for example alignment = the largest field
+        alignment, each field at the next offset aligned to its alignment,
+        and size rounded up to the aggregate alignment (C/LLVM natural
+        layout), or another rule;
+      - whether a target caps or raises aggregate alignment (the "supported
+        aggregate alignments" plan fact) and where that fact comes from;
+      - fixed-array alignment and stride, for example element alignment and
+        stride = element size rounded up to element alignment, with stride 0
+        for zero-sized elements (§ 24(4));
+      - whether the decimal carriers use the same rule as a struct with the
+        fields coefficient and scale.
+      Governance owners: frontend.layout and lowering.sec-mlir-package24.
+    classification: blocking
+    status: open
+  - id: MD-143
+    area: build-metadata-api
+    rulebooks:
+      - rules/projects/projects.md
+      - rules/library/core-library.md
+      - rules/compiler/compiler_known_members.md
+    description: >-
+      projects.md § 32(1) says the toolchain should expose typed compile-time
+      build metadata "through the separately defined compiler-known/core
+      build-metadata API", and § 32(4) leaves the Sec source declarations to
+      "the rulebook that defines the build-metadata API". No rulebook defines
+      it, and core-library.md has no build-metadata section. § 32(2) lists the
+      conceptual facts (ProjectUUID, ProjectName, TargetName, VariantName, the
+      version components, VersionRendered, OperatingSystem, Architecture,
+      Profile, SourceRevision and DirtySourceStatus when available). § 32(3)
+      requires structured values, not macro text. § 32(6)–(7) and § 33(4)
+      exclude ambient time and make the source facts conditional.
+      The compiler already resolves every project, version, Target and
+      Variant fact, and renders the final build component (§ 31), but no
+      source program can read them.
+      Decide:
+      - the Sec declarations: type names, module (for example a `sec/core`
+        build module or a compiler-known type), and field types, including
+        whether VersionNumber fields are uint64 and identities are strings or
+        dedicated types;
+      - the access form: a compile-time constant, a compiler-known function
+        or member, and in which contexts it is allowed (compile-time
+        evaluation, runtime constants, both);
+      - how "when available" facts appear (Option[T], an absent field or an
+        empty value) and when SourceRevision and DirtySourceStatus are
+        requested (§ 33(4));
+      - what analysis without a build (LSP, `sec check`) sees for the build
+        component and VersionRendered: the stored value, the next candidate or
+        an unknown value;
+      - whether reading build metadata makes a build non-reproducible across
+        build numbers, and how caches key on it (§ 33, § 34).
+      Governance owner: tooling.project-version-model.
+    classification: blocking
+    status: open
+
+  - id: MD-144
+    area: numeric-strategy-syntax-and-execution-environment
+    rulebooks:
+      - rules/types/units.md
+      - rules/platform/target_profiles.md
+    description: >-
+      Raised 2026-11-19 by the MD-048 correction (units.md § 22.5(8)-(10),
+      side note MD-048-side-note-numeric-environment-0.1x-2026-11-19.md at
+      the repository root). Units.md fixes only the semantics a unit conversion
+      consumes from a numeric strategy: Strict (default), BoundedApproximation
+      (Absolute+Relative and ULP bounds on the delivered result) and opt-in
+      FastMath, with block > function > project > Strict precedence, separate
+      FTZ and DAZ opt-ins, and Allow/Demand target preferences. Undecided:
+      (1) the source spelling for strategy selection, error-bound limits,
+      FTZ/DAZ and target preferences (no spelling such as @math(...) or
+      absolute: is ratified) and the common numeric-policy rulebook that owns
+      it; (2) the catalog and syntax of explicitly target-gated intrinsics;
+      (3) whether and how the language guarantees isolation of mutable
+      processor floating-point state (FTZ/DAZ) across function and block
+      boundaries, optimizer motion and inlining, exceptional exits, tasks,
+      threads and FFI. The user deferred this to Sec 0.1.1 or later; it must
+      not block MD-048 or frontend.units-v2 work. Governance owner:
+      frontend.units-v2 (consumer) until a numeric-execution owner exists.
+    classification: localized
     status: open

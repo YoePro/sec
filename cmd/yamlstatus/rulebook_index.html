@@ -1,0 +1,7 @@
+<p>The current Sec language and compiler rulebooks, grouped by subject. Documentation status does not establish compiler implementation status.</p>
+{{range .Groups}}<section><h2>{{.Title}}</h2><p>{{.Description}}</p><ul>
+{{range .Links}}<li><a href="{{.Href}}">{{.Title}}</a></li>{{end}}
+</ul></section>{{end}}
+{{if .Unavailable}}<section><h2>Other inventory entries</h2><p>These documents are not published as current rulebooks.</p><ul>
+{{range $name,$status := .Unavailable}}<li><code>{{$name}}</code> — {{$status}}</li>{{end}}
+</ul></section>{{end}}

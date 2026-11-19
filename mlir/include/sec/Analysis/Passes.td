@@ -117,6 +117,12 @@ def SecVerifyBorrowSemantics : Pass<"sec-verify-borrow-semantics", "mlir::func::
 }
 
 // Rules: rules/mlir/packages/sec-mlir-dialect_package20.md — §§6–9, 81.
+// Rules: rules/mlir/packages/sec-mlir-dialect_package20.md — §§ 41, 44-56, 70-72, 79, 81.
+def SecVerifyNumericConversions : Pass<"sec-verify-numeric-conversions", "mlir::ModuleOp"> {
+  let summary = "Verify exact-versus-checked classification, success-only candidates and ordered ConversionError reasons";
+  let dependentDialects = ["mlir::cf::ControlFlowDialect"];
+}
+
 def SecVerifyFloatSemantics : Pass<"sec-verify-float-semantics", "mlir::ModuleOp"> {
   let summary = "Verify strict Sec binary floating semantics and Clamp guards";
   let dependentDialects = ["mlir::arith::ArithDialect", "mlir::cf::ControlFlowDialect"];

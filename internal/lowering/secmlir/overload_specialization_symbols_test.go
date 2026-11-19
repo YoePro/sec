@@ -56,7 +56,7 @@ func TestOverloadSpecializationSymbols(t *testing.T) {
 				t.Fatal(err)
 			}
 			id := semantic.FunctionID("main::Pick[T=int8](int8)")
-			symbols, err := resolvedFunctionSymbols(module)
+			symbols, err := resolvedFunctionSymbols(module, false)
 			if err != nil || symbols[id] == "" {
 				t.Fatal(symbols, err)
 			}
@@ -79,7 +79,7 @@ func TestOverloadSpecializationSymbols(t *testing.T) {
 			for i, j := 0, len(module.Functions)-1; i < j; i, j = i+1, j-1 {
 				module.Functions[i], module.Functions[j] = module.Functions[j], module.Functions[i]
 			}
-			reordered, err := resolvedFunctionSymbols(module)
+			reordered, err := resolvedFunctionSymbols(module, false)
 			if err != nil || reordered[id] != baseline {
 				t.Fatal("IR order changed specialization symbol", reordered, baseline, err)
 			}
@@ -90,7 +90,7 @@ func TestOverloadSpecializationSymbols(t *testing.T) {
 					other := *fn
 					other.ID = "other::Pick[T=int8](int8)"
 					module.Functions = append(module.Functions, &other)
-					both, err := resolvedFunctionSymbols(module)
+					both, err := resolvedFunctionSymbols(module, false)
 					if err != nil || both[id] != baseline || both[other.ID] == baseline {
 						t.Fatal("module identity lost", both, err)
 					}

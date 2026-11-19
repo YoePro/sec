@@ -2,7 +2,7 @@
 
 - Status: Normative
 - Created: 2026-09-03
-- Last updated: 2026-11-18 (§ 127 owning dynamic arrays, P18 sync § 22); 2026-11-01 (§ 27A(7)–(9) pack forwarding, generic owners and returned references, MD-117; § 25 generic error channels, MD-120); 2026-10-31 (§ 27A(5) pack loops; § 21(11) hardware binding roots; § 21(12) hardware variants and operations); 2026-10-30 (§ 21(9) MD-113 shadow knowledge; § 21(8) MD-112 specialized hardware write requests); 2026-10-28 (§ 71(6) error-pattern plans, reachable-state proofs and Some construction, MD-029/MD-042/MD-102; §§ 58(6)–58(7) decimal plans and ArithmeticError, MD-066/MD-067); 2026-10-27 (§ 27A MD-117 heterogeneous variadic type packs; §§ 10(12), 28(6), 45(12a), 126.22(1) MD-115/MD-116 static roots and returned range origins; § 21(7) MD-114 register serialization); 2026-10-19 (§ 126 slice semantic values and § 106(5) version distinction; P16-05)
+- Last updated: 2026-11-19 (§ 20(5)–(6) affine and logarithmic conversion plans, MD-048); 2026-11-18 (§ 127 owning dynamic arrays, P18 sync § 22); 2026-11-01 (§ 27A(7)–(9) pack forwarding, generic owners and returned references, MD-117; § 25 generic error channels, MD-120); 2026-10-31 (§ 27A(5) pack loops; § 21(11) hardware binding roots; § 21(12) hardware variants and operations); 2026-10-30 (§ 21(9) MD-113 shadow knowledge; § 21(8) MD-112 specialized hardware write requests); 2026-10-28 (§ 71(6) error-pattern plans, reachable-state proofs and Some construction, MD-029/MD-042/MD-102; §§ 58(6)–58(7) decimal plans and ArithmeticError, MD-066/MD-067); 2026-10-27 (§ 27A MD-117 heterogeneous variadic type packs; §§ 10(12), 28(6), 45(12a), 126.22(1) MD-115/MD-116 static roots and returned range origins; § 21(7) MD-114 register serialization); 2026-10-19 (§ 126 slice semantic values and § 106(5) version distinction; P16-05)
 - Document revision: 2.0
 - Sec language version: 0.1
 - Canonical path: `rules/compiler/semantic_ir.md`
@@ -592,6 +592,10 @@ exactness
 § 20(3) Named and structurally equivalent units may remain semantically distinct.
 
 § 20(4) Unit erasure is permitted only after all unit-dependent semantics are explicit/proven.
+
+§ 20(5) An affine or logarithmic unit conversion is an explicit conversion plan and never a scale-only operation. The plan carries the facts of `rules/types/units.md` § 22.4(1): source and target unit identity and role, transform kinds, canonical dimension and Kind, origin compatibility, exact Scale and Offset, source and destination base and factor, `Reference` presence and reference domain, normalized exact reference values, source and target numeric carriers, the effective numeric strategy, any explicit rounding mode, the known domain and representability proofs, and the compile-time or runtime error classification. Exact normalized mathematical constants are semantic values; a public `decimal` projection or a source-text string never serves as plan identity.
+
+§ 20(6) The plan keeps its failure and effect information (`ConversionError.OutOfRange`, `PrecisionLoss`, `NonFinite` and `InvalidDomain` where the conversion remains runtime-fallible) and its source positions. Lowering consumes the validated plan: it may fold and compose conversions but performs one final rounding, never two independently rounded intermediates, and it cannot bypass a required check. A plan with an unresolved or invalid logarithmic relationship is rejected before lowering and is never turned into a scale-only plan.
 
 ---
 

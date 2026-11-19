@@ -174,6 +174,7 @@ type Analyzer struct {
 	// analyzer has no target plan or the target defines no C ABI.
 	cABIModel                   layout.CABIModel
 	resolvedConstructions       map[*ast.NewExpression]ResolvedConstruction
+	constructionSignatures      map[*ast.NewExpression][]ConstructionSignature
 	resolvedOperators           map[ast.Expression]ResolvedOperator
 	resolvedShapedMultiplies    map[*ast.InfixExpression]ResolvedShapedMultiply
 	resolvedLogicalFlows        map[*ast.InfixExpression]ResolvedLogicalFlow
@@ -912,6 +913,7 @@ func (a *Analyzer) analyzeProgram(program *ast.Program) []Error {
 	a.activeIterationDependencies = nil
 	a.iterationDependencyProbe = false
 	a.resolvedConstructions = map[*ast.NewExpression]ResolvedConstruction{}
+	a.constructionSignatures = map[*ast.NewExpression][]ConstructionSignature{}
 	a.resolvedOperators = map[ast.Expression]ResolvedOperator{}
 	a.resolvedShapedMultiplies = map[*ast.InfixExpression]ResolvedShapedMultiply{}
 	a.resolvedLogicalFlows = map[*ast.InfixExpression]ResolvedLogicalFlow{}

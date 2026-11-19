@@ -11,6 +11,7 @@ namespace sec {
 #include "sec/Analysis/Passes.h.inc"
 
 std::unique_ptr<mlir::Pass> createSecVerifyFloatSemanticsPass();
+std::unique_ptr<mlir::Pass> createSecVerifyNumericConversionsPass();
 mlir::LogicalResult verifyFloatSemantics(mlir::ModuleOp module);
 std::unique_ptr<mlir::Pass> createSecVerifyCheckedIntegerGuardsPass();
 mlir::LogicalResult verifyCheckedIntegerGuards(mlir::func::FuncOp function);

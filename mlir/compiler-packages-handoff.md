@@ -1704,6 +1704,22 @@ undefined, so scalar layouts stay incomplete until it is decided.
   mapping stays open and the claim is released.
 - No other existing files were touched.
 
+### Claude — 2026-11-19 result: P24-18 done; P24-16/17/19/20 partial
+
+- Owner decisions, recorded in rules/memory/layout.md:
+  - § 7(7): the maximum extent is 2^(W−1) − 1;
+  - § 24(6): an empty struct has size 0 and alignment 1.
+- New MD-142 (native aggregate alignment and placement), `last_id` MD-142.
+- internal/layout resolver:
+  - structs, decimal carriers and fixed arrays resolve every part but stay
+    incomplete pending MD-142;
+  - named types over carriers (P24-18);
+  - extent check against § 7(7).
+- New internal/sema/layout_requirements.go (+ test): `LayoutRequirementOf`.
+- package24-todo.md: 51 → 50 unchecked.
+- frontend.layout updated; language-rulebook-status.md layout row updated.
+- Tests: layout race suite; sema `-run` subset; `go build ./...`.
+
 ### Codex — 2026-11-18 working set: if-statement conformance matrix
 
 Claiming frontend.if-statements-v2 remaining regression matrix. Add focused
@@ -2051,3 +2067,703 @@ Final verification:
 Latest shared handoff read before release: no newer overlapping Claude claim.
 No MLIR/layout/P24/sec/manual changes, no full-repository suite, no commit.
 Working set released.
+
+## Codex claim — rulebook HTML renderer (2026-11-19)
+
+Taking the complete Markdown renderer remaining point of
+`governance.yamlstatus-rulebook-publication`: pinned Go rendering/sanitization
+packages, isolated body renderer, Markdown/.txt format policy and regression
+coverage. Reserving go.mod/go.sum, new cmd/yamlstatus/rulebook_render* files,
+cmd/yamlstatus/RULEBOOK_PUBLICATION.md and governance/governance.yaml.
+No MLIR/compiler/lowering/Sema changes. CLI, inventory selection, navigation
+and site publication remain separate open points. No commit.
+
+## Codex release — rulebook renderer complete (2026-11-19)
+
+Closed the complete Markdown renderer point of
+`governance.yamlstatus-rulebook-publication`: remaining 9 -> 8;
+`governance/governance.yaml` remaining 21 -> 20. Compiler total remaining
+2094 -> 2093. No replacement remaining or partial checklist item added.
+
+New files: cmd/yamlstatus/rulebook_render.go, rulebook_render_test.go and
+RULEBOOK_PUBLICATION.md. Markdown uses pinned Goldmark v1.8.7 (MIT) with
+GFM, followed by pinned bluemonday v1.0.27 (BSD-3-Clause) sanitization.
+The renderer accepts bytes only, preserves escaped code examples, safe
+raw markup/anchors and Unicode, and rejects invalid UTF-8/extensions.
+Both existing .txt MLIR books render as escaped preformatted text. No
+CLI, inventory selection, navigation or site publication is claimed.
+
+Other changed files: go.mod/go.sum, governance/governance.yaml, this handoff
+and cmd/yamlstatus/listfiles_test.go. The latter expected no separator row
+although the existing unchanged implementation prints one; its expectation
+now includes that row. x/net v0.56.0 replaces the sanitizer's old v0.26.0
+transitive selection, also selecting x/text v0.38.0; the Go 1.25 baseline
+is unchanged and the direct x/text consumer (lexer) was verified.
+
+Validation: complete yamlstatus and lexer tests PASS (0.056s/0.005s),
+complete race suites PASS (1.296s/1.021s), vet PASS, go mod verify PASS.
+Renderer coverage includes six real repository books, harmful HTML/URLs,
+raw HTML details/anchors, Unicode, code/table/list fidelity, .txt, invalid
+inputs, deterministic repeat rendering and unchanged source buffers.
+Governance: 0 problems/47 fragments, canonical format, 0 missing paths
+among 9 publication evidence references; git diff --check clean.
+
+Latest handoff read before release: no newer overlapping Claude claim.
+No MLIR/lowering/compiler/Sema/core/manual changes, no full-repository
+suite, no deployment and no commit. Working set released.
+
+## Codex claim — rulebook HTML presentation (2026-11-19)
+
+Taking the complete HTML presentation remaining point of
+`governance.yamlstatus-rulebook-publication`. Reserving new
+cmd/yamlstatus/rulebook_page* template/style/Go/test files,
+cmd/yamlstatus/RULEBOOK_PUBLICATION.md and governance/governance.yaml.
+Page rendering consumes caller-provided metadata/navigation and the sanitized
+body renderer; it does not claim automatic inventory/navigation generation,
+link rewriting, output publication or a CLI. No existing report/codegen files
+reserved. No commit.
+
+## Codex release — rulebook HTML presentation complete (2026-11-19)
+
+Closed the whole HTML presentation point of
+`governance.yamlstatus-rulebook-publication`: remaining 8 -> 7;
+governance/governance.yaml 20 -> 19; compiler total 2093 -> 2092.
+No replacement remaining or partial checklist item added.
+
+New files: cmd/yamlstatus/rulebook_page.go, rulebook_page.html,
+rulebook_page.css and rulebook_page_test.go. Updated
+cmd/yamlstatus/RULEBOOK_PUBLICATION.md, governance/governance.yaml,
+go.mod (x/net now directly imported by parsed-HTML tests) and this handoff.
+No dependency version changed in this task.
+
+renderRulebookPage takes source bytes plus supplied metadata/navigation and
+produces a complete deterministic HTML page. html/template escapes metadata;
+only the embedded CSS and the sanitized body renderer enter trusted template
+types. Invalid title/navigation URL/body input returns no partial page.
+The local Sec manual-style layout includes header/sidebar/breadcrumbs,
+optional contents and metadata, current-page markers, skip link, focus
+indicators, bounded responsive navigation and scrollable wide code/tables.
+No page-chrome network resources or JavaScript. Source-book image handling
+still belongs to the open resource/link policy.
+
+Complete yamlstatus suite PASS (final 0.060s), complete race suite PASS
+(1.326s), vet PASS. Parsed-HTML tests cover landmarks, viewport, title,
+local styling, navigation, empty/optional metadata, escaped malicious
+metadata, sanitized body, .txt, relative deployment URLs, deterministic
+rendering and invalid input. Existing governance -html regressions pass.
+Headless Firefox screenshots visually reviewed at 1440x1200 and 390x1300;
+final mobile capture reviewed after bounding the navigation height.
+Temporary browser preview/profile files are outside the repository.
+Governance: 0 problems/47 fragments, canonical format, 0 missing paths
+among 13 publication evidence references; git diff --check clean.
+
+Latest shared handoff read before release: no newer overlapping Claude claim.
+Automatic inventory/navigation/anchors, link rewriting, safe site output,
+validation command and publication CLI remain open. No generated production
+site, MLIR/compiler/Sema/core/manual changes, full-repository tests,
+deployment or commit. Working set released.
+
+## Codex claim — rulebook filesystem boundaries (2026-11-19)
+
+Taking the complete safe-rendering/filesystem-boundaries point of
+`governance.yamlstatus-rulebook-publication`. Reserving new
+cmd/yamlstatus/rulebook_workspace.go and rulebook_workspace_test.go,
+cmd/yamlstatus/RULEBOOK_PUBLICATION.md and governance/governance.yaml.
+Integrating root-confined source reads, page rendering and create-only
+artifact writes, with overlap/traversal/symlink regressions. Existing HTML
+sanitization remains shared. No compiler/MLIR/layout/core changes or commit.
+
+## Codex release — rulebook filesystem boundaries complete (2026-11-19)
+
+Closed the whole safe-rendering/filesystem-boundaries point of
+`governance.yamlstatus-rulebook-publication`: remaining 7 -> 6;
+governance/governance.yaml 19 -> 18. This task's snapshot reports compiler
+remaining 2091 -> 2090. No replacement remaining or partial item added.
+
+Changed files for this task: new cmd/yamlstatus/rulebook_workspace.go and
+rulebook_workspace_test.go; cmd/yamlstatus/RULEBOOK_PUBLICATION.md;
+governance/governance.yaml; this handoff. No dependency changes.
+
+The workspace opens existing, disjoint source/output roots via os.Root,
+rejecting overlapping roots and symlink aliases. IO accepts decoded portable
+relative paths, with encoded traversal/URLs/absolute/drive/control/backslash
+paths rejected. Regular-file source reads and RenderPage use the same confined
+root and the existing metadata escaping/body sanitizer. WriteArtifact uses
+exclusive create, never truncating existing artifacts, unrelated files or
+source-linked files; a failed write removes its own partial artifact.
+Fresh staging root creation, whole-site validation and site replacement
+remain separate open work. This is not a publication command.
+
+Complete yamlstatus tests PASS 0.070s; complete race suite PASS 1.298s;
+vet PASS. Regressions verify unchanged sources/unrelated files, regular
+resources, overlap/aliases, safe and escaping symlinks, leaf symlink and
+hard-link overwrite rejection, invalid path/encoding variants and no partial
+page on render errors. HTTP observation and a source shell example verify
+no generator network requests or example execution.
+Governance: 0 problems/47 fragments; canonical format; 0 missing evidence
+paths among 15 references; git diff --check clean.
+
+Latest handoff read before release: no newer overlapping Claude claim.
+No compiler/MLIR/layout/core/manual changes, full-repository suite,
+deployment or commit. Working set released.
+
+### Claude — 2026-11-19 result: governance items (lexer, projects)
+
+- frontend.lexical-structure:
+  - the bootstrap lexer (../bootstrap/internal/lexer/lexer.sec) now has
+    L1021 recovery, the DOUBLE_COLON token and the null keyword;
+  - remaining items 4 → 2;
+  - verified by `sec parse` only.
+- tooling.project-discovery-and-boundary: the Project-move item is closed
+  (remaining 3 → 2):
+  - new `project.SourceModuleResolver.SourceIdentity`;
+  - new `semantic.CanonicalizeSourceFiles`, wired into emit-ir and
+    emitSecDialect (cmd/compiler/source_identity.go);
+  - pipeline errors map identities back to the user's path
+    (pipeline_diagnostics.go, diagnostic_output.go).
+- tooling.project-version-model: the § 32 item is reworded; it is blocked on
+  the new MD-143 (build-metadata API).
+- New remaining item in semantic-ir.core-v2: cross-module calls fail in
+  emit-ir (`unknown callee "util::util.Twice(int)"`).
+
+### Claude — 2026-11-19 working set: cross-module calls in Semantic IR
+
+Claiming the semantic-ir.core-v2 cross-module call item:
+- internal/ir/semantic builder: function selection and callee identity;
+- new tests;
+- governance/lowering.yaml.
+
+## Codex claim — complete rulebook publication command (2026-11-19)
+
+Implementing `yamlstatus books --indir ROOT --outdir DIR`: canonical inventory,
+metadata/heading/navigation model, index/category pages, local book links and
+resources, deterministic staged output, diagnostics/check mode and cron usage.
+Reserving cmd/yamlstatus/rulebook_* files, new books*.go publication files,
+CLI subcommand registration/help, publication docs and governance/governance.yaml.
+No compiler/MLIR/Sema/layout/core files, no deployment or commit. Existing
+statistics/edit arguments remain unchanged. No overlap with Claude's latest
+lexer/projects claims.
+
+Publication command follow-up: rebuilding bin/yamlstatus from the current
+shared cmd/yamlstatus sources with -trimpath so the checked-in tool includes
+`books`. Claude's current Semantic IR cross-module working set is untouched.
+
+## Codex release — rulebook publication ID closed (2026-11-19)
+
+`governance.yamlstatus-rulebook-publication` is implemented: all six remaining
+points closed (6 -> 0; nine implemented in total). governance/governance.yaml
+remaining 18 -> 12. This task's snapshot reports compiler remaining
+2090 -> 2084; no replacement remaining or partial item was added.
+
+The user-requested command is now available in the rebuilt trimpath binary:
+`yamlstatus books --indir CHECKOUT --outdir DIRECTORY`.
+`--indir` defaults to the current directory; for cron, specify absolute binary,
+checkout and destination paths. `--check` validates/renders without output;
+`--base-url` supports explicit deployment URL/path prefixes. Existing flags
+and the statistics -html report are preserved. Output must be outside the
+source checkout. No crontab or hosting configuration was modified.
+
+The canonical inventory selects unique Written/Living Markdown/text books,
+with directory-map categories and explicit unavailable entries/exclusions.
+Root/category indexes, page metadata, breadcrumbs/contents and stable
+Unicode/numbered/duplicate/explicit anchors are generated. The first source
+H1 appears once with its anchor; .txt bodies stay literal. Markdown/raw-HTML
+book links and unambiguous prose/inline-code references point to generated
+HTML, including fragments/queries. Examples remain literal. Permitted local
+raster assets are confined/copied; excluded repository references are labelled
+text. The same final HTML target/anchor validation runs for check and generation,
+with portable diagnostics and unique-reference source lines when available.
+
+Output is staged as complete files in a private sibling directory and tracked
+with a versioned SHA-256 ownership manifest. Rebuilds remove stale owned files
+and preserve unrelated regular files, file permissions/mtime and directory
+permissions. Modified generated files, invalid manifests, unsafe paths,
+symlinks and output collisions fail closed. A destination lock rejects
+concurrent publishers; installation errors roll back the directory swap.
+The directory path is not promised uninterrupted during the portable swap.
+No timestamps, random staging names or private source paths enter site bytes.
+
+New files:
+- cmd/yamlstatus/books.go, books_inventory.go, books_headings.go;
+- cmd/yamlstatus/books_content.go, books_site.go, books_validate.go;
+- cmd/yamlstatus/books_output.go, books_test.go, books_output_test.go;
+- cmd/yamlstatus/rulebook_index.html.
+Changed existing files:
+- cmd/yamlstatus/{cli,edit,rulebook_page}.go and rulebook_page.html;
+- cmd/yamlstatus/RULEBOOK_PUBLICATION.md; codex.md; bin/yamlstatus;
+- governance/governance.yaml; this handoff. No dependency versions changed.
+
+Verification:
+- Complete yamlstatus suite PASS 1.255s; complete race suite PASS 13.896s;
+  vet PASS; final trimpath binary built and private-path scan passed.
+- Fixtures cover selection/statuses/duplicates/missing sources/categories,
+  output collisions, links/queries/raw HTML/prose/code, Unicode and explicit
+  anchors, .txt titles, assets, subpath/absolute URL deployments, empty/invalid
+  CLI input and read-only/failed-build destination preservation.
+- Output regressions cover deterministic reruns, stale owned-file removal,
+  unrelated-file/permission/mtime retention, manifest/modified-file/symlink/path
+  failures, cron lock rejection and injected installation-failure rollback.
+- Real corpus: 115 books -> 131 static files plus ownership manifest. Final
+  binary published twice from another working directory; all generated bytes
+  were identical and an unrelated private-mode file was preserved. Full-corpus
+  relative, /books/ and absolute-URL validation passed.
+- Headless Firefox root index and real contracts book inspected at desktop
+  width; real contracts page also inspected at 390px mobile width.
+- Governance check: 0 problems/47 fragments, canonical, 0 missing paths among
+  29 publication references; git diff --check clean.
+
+Latest shared handoff rechecked before release: Claude's Semantic IR
+cross-module working set is separate and untouched. No compiler/MLIR/Sema/
+layout/core/manual changes, full-repository suite, deployment or commit.
+Publication working set released.
+
+### Claude — 2026-11-19 result: cross-module calls (released)
+
+The owner chose one Semantic IR per module.
+- Semantic IR:
+  - `functionID` drops the assembled module qualifier: util::Twice(int);
+  - `Function.Imported` / `DefiningModule` declarations; verifier rules.
+- Sec MLIR:
+  - new `sec.imported` func attribute, checked in SecDialect.cpp;
+  - symbols `sec_sym_<sha256(FunctionID)>` for imported declarations and
+    `EmitOptions.ExportSymbols` units.
+- `sec build` (cmd/compiler/module_objects.go): one object per transitively
+  called module, all linked together.
+- Fix in import_sources.go: nested imports outside a Project resolve against
+  the entry directory, not the working directory.
+- Tests:
+  - cross_module_calls_test.go, imported_declarations_test.go;
+  - lit 240/240.
+- Remaining boundary: methods of imported types.
+
+## Codex claim — stack analysis CLI integration (2026-11-19)
+
+Taking sema.stack-analysis remaining 19: integrate canonical stack summary
+composition into default/all and explicit stack-only sec analyse reporting.
+The existing selector is registered, but the report has no stack producer.
+Reserving new cmd/compiler/analyse_stack.go and analyse_stack_test.go,
+cmd/compiler/{analyse,analyse_cli}.go, focused testdata/tooling/analyse_cli
+fixtures and governance/analysis.yaml. No frame-size inference, ABI/budget
+policy, native lowering or Claude cross-module files are changed. Missing
+semantic frames remain Unknown and machine measurements are not invented.
+No commit.
+
+Stack-report schema synchronization also touches rules/tooling/cli.md
+(revision 1.3, optional additive stack inspection field), its inventory row
+and tooling.cli document_revision metadata in governance/tooling.yaml.
+This does not alter stack semantics or the remaining mandatory ISR proof work.
+
+## Codex release — stack CLI analysis point complete (2026-11-19)
+
+Closed sema.stack-analysis's whole default/all/stack-only CLI integration
+point: remaining 22 -> 21; analysis.yaml 340 -> 339; compiler total
+2084 -> 2083. No replacement remaining or partial checklist item added.
+
+The existing stack selector now has a report producer consuming shared
+ComposeSemanticStackSummaries, with the same selected/focused callables in
+JSON and verbose output. Bounds retain Exact/UpperBound/Unknown/Unbounded
+and arbitrary-precision byte strings; missing frames never become zero.
+Cause paths are retained. JSON exposes finite_semantic_proof and
+machine_available=false, and an execution note distinguishes completion of
+inspection from a machine-stack/budget proof. Default clean output stays
+silent; other analysis selections and mandatory rejection retain their scope.
+No source-frame sizes are inferred. Own-frame derivation, ABI/machine frames,
+physical stack domains and budget producers remain their separately tracked
+requirements. No target identity or layout/alignment policy was invented.
+
+New files: cmd/compiler/analyse_stack.go, analyse_stack_test.go and
+ testdata/tooling/analyse_cli/stack_inspection.sec.
+Changed existing files: cmd/compiler/analyse.go, analyse_cli.go;
+rules/tooling/cli.md (revision 1.3), language-rulebook-status.md;
+governance/analysis.yaml, governance/tooling.yaml and this handoff.
+The analysis fragment needed canonicalization first: existing decoded values
+were preserved by yamlstatus fmt; the broader field-order diff is formatting,
+not additional claimed implementation. tooling.cli metadata now matches 1.3.
+
+Verification:
+- Selected CLI/help/family/focus/stack regressions PASS 69.604s.
+- Focused stack CLI and supplied-frame race suite PASS 54.339s.
+- Sema stack component tests PASS 0.159s; stackbound tests PASS 0.005s.
+- go vet ./cmd/compiler PASS; final help/canonical-frame check PASS 0.018s.
+- Tests cover default versus --all and stack-only JSON parity, focus, unknown
+  ordinary/recursive/opaque frames, exact values beyond 64-bit range,
+  cross-plan evidence rejection, detached facts, verbosity/default silence
+  and mandatory rejected-source diagnostics with no successful stack payload.
+- A missing module declaration initially prevented the raw Sema fixture query;
+  fixture corrected to canonical module main before the passing checks.
+- Governance check: 0 problems/47 fragments; edited fragments canonical;
+  all 64 stack evidence paths exist; git diff --check clean. Changed rulebook
+  also passes the full 115-book HTML validation. New files contain no private
+  machine paths. No full compiler or full-repository suite claimed.
+
+Latest handoff read before release: no newer overlapping Claude claim.
+No Semantic IR/MLIR/layout/core/manual changes, binary rebuild, deployment
+or commit. Working set released.
+
+### Claude — 2026-11-19 working set: imported impl methods in Semantic IR
+
+Claiming the semantic-ir.core-v2 "imported impl methods" item:
+- internal/ir/semantic builder (declareImportedCallee, imported impl
+  members);
+- cmd/compiler/cross_module_calls_test.go;
+- governance/lowering.yaml.
+
+### Codex — 2026-11-19 working set: Semantic IR schema ownership
+
+Claiming only governance.semantic-ir-v2 remaining point 2 (canonical internal
+schema/version ownership). Document the existing owner, compatibility/change
+procedure and distinct version domains; verify rejection at Semantic IR and
+all supported Sec MLIR emission boundaries. New documentation/test files only
+under internal/ir/semantic and internal/lowering/secmlir, plus the owning
+fragment and governance README. Existing schema value and language semantics
+stay unchanged. Claude's imported-impl methods/builder/cross-module/lowering
+fragment work remains reserved and untouched.
+
+### Codex — 2026-11-19 complete: Semantic IR schema ownership
+
+Closed the whole governance.semantic-ir-v2 schema/version-ownership point.
+This was a governance/documentation contract, not a missing language operation:
+existing Version=1 and runtime verification behavior were retained.
+
+New files:
+- internal/ir/semantic/SCHEMA.md: single executable authority, independent
+  document/dialect/package versions, compatibility gates, incompatible-change
+  procedure, future cache dependency requirements and explicit absence of a
+  serialized Semantic IR reader.
+- internal/ir/semantic/schema_version_test.go: current version acceptance and
+  fail-closed version checks before malformed module contents are inspected.
+- internal/lowering/secmlir/semantic_schema_version_test.go: canonical emitted
+  metadata and rejection without output for incompatible versions, through
+  default and explicit dialect schemas 11/12/13/14 on 32/64-bit plans.
+Changed governance/README.md and governance/governance.yaml; no existing
+compiler/IR/lowering production source was changed.
+
+Verification: focused TestSemanticSchema suites PASS (0.002s/0.003s);
+go vet ./internal/ir/semantic ./internal/lowering/secmlir PASS;
+governance check 0 problems/47 fragments, owner canonical, all 6 evidence
+paths present, git diff --check clean. No full package/repository suite claimed.
+Counts: owner remaining 3 -> 2 (status partial); governance.yaml 12 -> 11;
+compiler remaining 2083 -> 2082. Other two owner points remain open.
+
+Latest handoff checked before release: Claude still owns imported impl methods
+and their builder/cross-module/lowering integration; no overlap with this work.
+Working set released. No binary rebuild, deployment or commit.
+
+### Codex — 2026-11-19 working set: incomplete initializer signature help
+
+Claiming frontend.impl-lifecycle-construction remaining point 5 in
+ governance/declarations.yaml: compiler-owned initializer candidates and LSP
+signature help/overload previews while new Type(...) is incomplete or has no
+selected construction. Working set: focused new Sema candidate facts/helpers,
+initializer inference publication, cmd/lsp/signature_help.go and focused sibling
+tests, declarations governance. No Semantic IR/lowering/builder or imported
+method changes; Claude's imported impl work remains reserved.
+
+### Codex — 2026-11-19 complete: incomplete initializer signature help
+
+Closed the whole existing frontend.impl-lifecycle-construction remaining point
+5, not a newly split checklist slice. Sema publishes read-only declaration
+previews before argument validation; LSP does not resolve overloads itself.
+Completed constructions retain selected signatures; unresolved/recovered new
+expressions show explicitly labelled candidates with parameter authority and
+construction errors. Implicit zero-argument preview respects explicit init()
+precedence. Shared call-boundary selection prevents outer signature leakage
+into nested calls or following statements. Unsaved sibling changes use the
+existing analysis snapshot/cache identity.
+
+Changed existing source files:
+- internal/ast/ast.go, internal/parser/expression.go: parser-owned closing
+  delimiter metadata distinguishes completed construction from recovery.
+- internal/sema/analyzer.go: candidate map lifecycle.
+- internal/sema/analyzer_inference.go: construction inference extracted into
+  the cohesive construction_inference.go; source semantics retained.
+- cmd/lsp/signature_help.go: dispatch selected NewExpression through the
+  shared call selector; presentation extracted into initializer_signature.go.
+New source: internal/sema/construction_signatures.go,
+internal/sema/construction_inference.go, cmd/lsp/initializer_signature.go.
+New tests: internal/parser/new_signature_recovery_test.go,
+internal/sema/construction_signatures_test.go,
+cmd/lsp/initializer_signature_test.go,
+testdata/lsp/initializer_signatures.sec.
+Governance: declarations.yaml canonicalized first (decoded values preserved),
+then one complete point moved and evidence synchronized. Owner remaining
+6 -> 5, fragment 130 -> 129, compiler remaining 2082 -> 2081.
+
+Verification:
+- Full parser PASS 163.516s; full Sema PASS 39.018s.
+- Focused parser/Sema/LSP PASS 0.028s/0.242s/3.445s.
+- Focused Sema/LSP race suites PASS 1.326s/48.955s, covering candidate
+  immutability, repeat/stale analysis, incomplete syntax, selected versus
+  preview/default, ref/error metadata, nested calls/constructors, comments,
+  Unicode coordinates, active argument bounds and unsaved cached sibling edits.
+- go vet ./internal/ast ./internal/parser ./internal/sema ./cmd/lsp PASS.
+- Governance check 0 problems/47 fragments; owner canonical; all 32 evidence
+  paths exist; git diff --check clean; new focused files contain no private paths.
+
+Verification boundaries/findings for Claude:
+- Full formatter fails TestFormatInlineThreadConfiguration. Reproduced the
+  identical failure using a temporary Go overlay restoring HEAD AST/parser
+  sources; therefore this is independent of the initializer changes. Focused
+  TestFormatInitAndNewLifecycleSyntax passes 0.003s. No formatter fix made.
+- Broader LSP race selection timed out after 180s while running
+  TestGenericErrorInterfaceReceiverCapabilities, in ordinary array-literal
+  analysis of imported/core sources. No full/broad LSP pass claimed; the
+  relevant initializer/cache race selection above completed successfully.
+- No new normative blocker or missing decision. Generic initializer
+  specialization, construction cleanup/IR and other lifecycle points stay open.
+
+Latest handoff read before release: Claude still reserves imported impl methods,
+Semantic IR builder/cross-module tests and governance/lowering.yaml; untouched
+by this work. No production IR/MLIR/layout/core/manual changes, binary rebuild,
+deployment or commit. Working set released.
+
+### Claude — 2026-11-19 result: imported methods, properties, generics (released)
+
+- Semantic IR:
+  - declarations for static and instance methods of imported types;
+  - accessors of imported non-generic types are declared, and
+    `BuildOptions.Exported` units define all their own accessors;
+  - generic templates of other modules specialize in the demanding module;
+  - `declarationName` removes the doubled module qualifier from type,
+    function and accessor identities.
+- secmlir: in exported units, specializations keep `sec_overload_*` and are
+  private.
+- SecToLLVM.cpp (FinalizeForLLVM): every private definition gets internal
+  linkage; new lit test module-linkage.mlir (241/241).
+- Tests: seven TestCrossModule tests in cmd/compiler.
+- Pre-existing failure, not ours: TestTemporalArithmeticErrorKeepsCoreIdentity
+  (Sema errors in sec/stdlib/temporal/calendar).
+- Sema rejects `util.Limit` (reading a module-level let of another module);
+  this was not touched.
+
+### Codex — 2026-11-19 working set: formatter try-handler handoff bug
+
+Taking the reproduced TestFormatInlineThreadConfiguration failure reported in
+my previous handoff. Scope: preserve parser-owned try-handler-list delimiters,
+project their executable-block CST role and fix formatting through the shared
+engine, with focused CST/formatter/CLI/LSP regressions and bug/governance evidence.
+No IR/lowering changes. This closes the concrete bug, not the broad remaining
+formatter/CST migration point; remaining counts will not be reduced artificially.
+Claude's imported method work is released in the latest handoff.
+
+### Claude — 2026-11-19 result: deterministic artifact provenance (released)
+
+- tooling.compiler-pipeline item closed.
+- SecToLLVM.cpp: FinalizeForLLVM sets the module sym_name from
+  sec.module_id.
+- internal/mlir/toolchain.go: TranslateToLLVMIR writes it as ModuleID and
+  source_filename.
+- lit pipeline-command.mlir now expects `module @main`.
+- New test TestCrossModuleArtifactsAreDeterministic; IR, MLIR, LLVM and the
+  executables are byte-identical across runs and locations.
+- frontend.modules: the imported module-level `let` leak is recorded
+  (S1004 collision; `util.Limit` unresolved). It is not fixed: it needs
+  module-scoped lookup in Sema.
+
+### Codex — 2026-11-19 complete: BUG-000030 formatter try-handler lists
+
+Fixed the independently reproduced TestFormatInlineThreadConfiguration failure.
+The handler-list brace was absent from parser-owned block provenance, so only
+inner arm blocks expanded; mixed config-close/handler-open lines then accumulated
+indentation on repeat formatting. HandlersOpen now retains the actual brace for
+TryExpression and TryAssignmentStatement, including the statement-expression
+parser route. ApplyProgramRoles marks its matched CST pair as an ordinary
+executable block. The existing block formatter expands the containing list
+before nested arms. No thread-specific line scanner or new formatting policy.
+
+Changed production files:
+- internal/ast/ast.go;
+- internal/parser/expression.go, parser.go;
+- internal/cst/roles.go;
+- internal/formatter/executable_blocks.go (traceability comment only).
+Tests/fixtures:
+- internal/cst/try_handler_roles_test.go;
+- internal/formatter/try_handler_blocks_test.go;
+- internal/formatter/control_condition_parentheses_test.go (full parenthesized
+  try condition retained, expectation accepts canonical multiline handler list);
+- cmd/compiler/fmt_try_handler_test.go, cmd/lsp/format_try_handler_test.go;
+- testdata/formatter/try_handler_blocks.sec and explicit expected source.
+Tracking: BUG-000030 is fixed in bug-reports/index.yaml; report resides in
+bug-reports/fixed/BUG-000030-try-handler-block-indentation.md. Canonicalized
+formatting.yaml with decoded values preserved, then added scoped implementation
+and verification evidence. No normative rulebook or format-version change.
+
+Verification PASS:
+- Complete CST/formatter race suites 1.042s/15.135s, including the original
+  failing thread test and existing malformed/literal/comment/spacing regressions.
+- Strengthened exact CST block-role exclusion race check 1.010s.
+- Focused parser/Sema/Semantic IR try suites 0.007s/0.263s/0.273s.
+- Focused CLI/LSP formatting suites 0.244s/0.117s (configured golden output,
+  check mode, repeated requests, authored spacing and function/comment boundaries).
+- go vet AST/parser/CST/formatter/compiler/LSP packages.
+- Golden matrix: both styles, 2/4/6-space indents, 80/120/200 preferred widths;
+  parse-format-parse, unchanged token streams, bodyless try, fallible assignment,
+  operand/configuration/pattern-brace exclusion and second-pass idempotence.
+- Governance check 0 problems/47 fragments; canonical owner; all 77 evidence
+  paths exist; bug ledger unique IDs/fixed-file lifecycle valid; diff hygiene
+  and private-path checks clean.
+
+Counts: formatting.yaml remaining stays 12; tooling.formatter-v2 stays 7.
+This closes the concrete defect, not any whole broad CST migration/conformance
+item. Implemented evidence increases 149 -> 150, compiler remaining stays 2080.
+No full repository, full Sema or full LSP run claimed for this fix.
+
+Latest handoff checked before release: Claude's imported method/property/generic
+work is released. No overlapping new claim. No production Sema/IR/MLIR/layout,
+core/manual, binary rebuild, deployment or commit. Working set released.
+
+### Codex — 2026-11-19 working set: close Semantic IR governance ownership
+
+Taking the two remaining governance.semantic-ir-v2 documentation points:
+map all package-local Semantic IR amendments to canonical sections while
+preserving historical reports, and establish the package maintenance workflow
+that records implementation status without adding package-specific semantics to
+the canonical book. Scope: governance crosswalk/workflow documentation, owning
+fragment, bootstrap/schema documentation and a package-area README. No compiler,
+IR, MLIR, library or normative semantic changes; no package acceptance promoted.
+
+### Codex — 2026-11-19 complete: governance.semantic-ir-v2 closed
+
+Closed both existing remaining governance points and the complete owner ID.
+This is governance/navigation/maintenance completion, not compiler or runtime
+feature acceptance.
+
+New governance/semantic-ir-amendments.md maps all 17 retained package-local
+Semantic IR amendments and every one of their 314 numbered local sections to
+canonical semantic responsibilities and existing live implementation owners.
+It distinguishes proposed specifications, normative installations, independent
+schema versions and executable acceptance; no open representation/provider/ABI
+question is decided by the map. P16/P18 installation mappings explicitly target
+canonical sections 126/127 without rewriting prior amendment bodies.
+
+All eight existing package implementation reports/acceptance matrices now have
+additive direct canonical-section navigation. Their original dated evidence,
+paths, paragraph numbering and completion/blocked claims are unchanged. This
+was verified against saved pre-edit fingerprints after removing the inserted
+navigation notes. No report or amendment was deleted or reclassified.
+
+Maintenance workflow is linked from codex.md, governance/README.md and
+internal/ir/semantic/SCHEMA.md. Package progress/inventories/gates/test results
+belong in the owning ledger/report; genuine semantic changes follow corrections
+in responsible canonical sections. One central workflow is linked from the
+bootstrap instead of creating a redundant package-area README.
+
+Changed files:
+- governance/semantic-ir-amendments.md (new), governance/README.md;
+- codex.md, internal/ir/semantic/SCHEMA.md;
+- governance/governance.yaml;
+- rules/mlir/packages/sec-mlir-dialect_package13-implementation-report.md;
+- rules/mlir/packages/sec-mlir-dialect_package14-acceptance-matrix.md;
+- rules/mlir/packages/sec-mlir-dialect_package14-implementation-report.md;
+- rules/mlir/packages/sec-mlir-dialect_package15-acceptance.md;
+- rules/mlir/packages/sec-mlir-dialect_package15-implementation-report.md;
+- rules/mlir/packages/sec-mlir-dialect_package16-implementation-report.md;
+- rules/mlir/packages/sec-mlir-dialect_package17-implementation-report.md;
+- rules/mlir/packages/sec-mlir-dialect_package18-implementation-report.md.
+
+Validation PASS:
+- Complete 17-file amendment inventory, all 314 numbered local sections mapped;
+  all eight current report/matrix paths represented once.
+- 118 existing local links/valid heading anchors and existing live owner IDs.
+- Original historical report bodies preserved byte-for-byte; private paths absent
+  from the new shareable crosswalk.
+- Existing TestSemanticSchema boundary regressions PASS 0.002s/0.002s.
+- books --check: 115 canonical rulebooks, 131 static files; no output written.
+- Governance check 0 problems/47 fragments; canonical owner and all 17 evidence
+  paths present; git diff --check clean.
+
+Counts: governance.semantic-ir-v2 remaining 2 -> 0, status implemented;
+governance.yaml 11 -> 9; compiler remaining 2079 -> 2077. No other ID promoted.
+Latest handoff read before completion: no overlapping new claim. No production
+compiler/IR/MLIR/library or normative semantics changed, no executable schema or
+document-revision bump, binary rebuild, deployment or commit. Working set released.
+
+### Claude — 2026-11-19 result: P20 float conversions (released)
+
+- Closed: P20-16, -18, -26, -32. Partial: -15 (rune InvalidScalar), -21
+  (schema 16), -33 (wrong-error and no-hidden-union tests).
+- P20 TODO: 23 → 19 open.
+- Semantic IR:
+  - new numeric_conversion.go: float.to-bool;
+  - convert-exact for floats with plan proofs;
+  - checked form with ordered `ConversionFailures` and reason flags;
+  - verifier fix: candidate dominance was skipped for checked ops with more
+    than two results.
+- Sec MLIR:
+  - sec.float.to_bool;
+  - convert_exact admits floats;
+  - convert_checked has an optional `failure` / `failures` attribute and
+    Variadic `reasons`;
+  - proof bases identity and value-interval.
+- Lowering: guards in SecIntegerToArith.cpp; float.to_bool in Floats.cpp.
+- Lit 244/244. check-float-lowering-support.mlir was updated (cases that
+  existed only because floats were not yet admitted).
+- Native fixtures: testdata/build/native/float_conversion_{exact,checked}.sec.
+
+### Claude — 2026-11-19 result: P20-15 and P20-33 (released)
+
+- internal/sema/integer_conversion.go:
+  - integer plans now also cover char and rune (`isIntegerFamilyConversion`);
+  - rune-target proofs exclude surrogates.
+- IR: checked integer-to-rune uses failure InvalidScalar.
+- MLIR:
+  - `isIntegerFamilyConversionType` (OperationContracts.h);
+  - the convert_checked verifier allows InvalidScalar for a rune or ui32
+    carrier;
+  - the lowering guards against surrogates.
+- Native rune_conversion_checked.sec; TestFloatConversionErrorChannel (S1093
+  for a wrong error type and for a mixed error family).
+- P20 TODO: 19 → 17 open. Full Sema suite and LSP conversion subset pass.
+
+### Claude — 2026-11-19 result: P20-23 numeric-conversion verifier (released)
+
+- New pass `--sec-verify-numeric-conversions`
+  (mlir/lib/Analysis/VerifyNumericConversions.cpp).
+- It is added to `secVerificationPasses` in internal/mlir/toolchain.go, so
+  all emit and native routes run it.
+- Lit: Analysis/numeric-conversions.mlir and invalid-numeric-conversions.mlir
+  (246/246).
+- P20 TODO: 17 → 16 open.
+
+### Codex — 2026-11-19 working set: complete shared LSP analysis caching
+
+Claiming tooling.lsp-module-diagnostic-scheduling remaining point 2: shared
+immutable analysis caching across completion, hover, navigation and semantic
+-token requests. Wire ordinary and subject completion to the existing cache,
+retain distinct recovery-text identities and shared AST node identities, and
+verify cross-feature reuse/invalidation/read-only behavior. Scope cmd/lsp
+completion driver/helpers/tests and governance/tooling_lsp.yaml. No P20/MLIR,
+compiler semantic rules or currently-running cancellation implementation.
+
+### Codex — 2026-11-19 result: shared LSP analysis caching (released)
+
+Closed the existing whole remaining point for shared immutable analysis caching
+in tooling.lsp-module-diagnostic-scheduling. Ordinary, expected-value and subject
+completion now reuse the same compiler snapshots as hover, navigation and
+semantic tokens. Active-source roots retain analyzed node identities without
+imported roots at coincident coordinates. Recovery text has a distinct cache
+identity. Completion uses recorded ResolvedTypeOf facts rather than TypeOf's
+potentially mutating fallback inference. Subject completion acquires its own
+lease before the general completion driver to avoid nested cache locks.
+
+Changed: cmd/lsp/analysis_cache.go, new completion.go (driver extracted from
+main.go), subject_completion.go, expected_value_completion.go, new
+completion_cache_test.go, testdata/lsp/shared_analysis_cache/{main,types}.sec,
+and governance/tooling_lsp.yaml. Other existing worktree changes are outside
+this working set.
+
+Validation:
+- Full completion selection plus analysis-depth cache replacement: passed
+  (60.473s).
+- Focused race tests for cross-feature reuse, synthetic recovery identity,
+  dependency epoch, depth/overlay replacement and concurrent readers: passed
+  (111.200s).
+- go vet ./cmd/lsp: passed.
+- Governance check: 0 problems/47 fragments; owner canonical; 15 evidence paths
+  present; git diff --check clean.
+
+Counts: tooling_lsp.yaml remaining 17 -> 16; owning ID 3 -> 2; compiler remaining
+2077 -> 2076. Still open: cooperative cancellation during running analysis and
+complete CompilationPlan-aware dependency invalidation/scheduling. No P20,
+MLIR, Sema semantics, executable schema or binaries changed. Latest handoff
+read before release; no overlapping new claim. Working set released.

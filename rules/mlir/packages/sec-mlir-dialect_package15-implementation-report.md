@@ -1,5 +1,10 @@
 # Package 15 implementation report — 2026-10-25
 
+> Navigation added 2026-11-19; historical evidence below is unchanged.
+> Current canonical Semantic IR responsibilities: [§ 10 Places](../../compiler/semantic_ir.md#10-places-and-semantic-locations), [§§ 45–48 references](../../compiler/semantic_ir.md#45-references).
+> See the [amendment crosswalk and maintenance workflow](../../../governance/semantic-ir-amendments.md)
+> and [live implementation ledger](../../../governance/lowering.yaml).
+
 P15-74 report in the exact section-156 topic order. **P15 remains partial.**
 Completed mapping and execution tasks do not turn failed acceptance criteria
 into passes. See [the 56-row acceptance matrix](sec-mlir-dialect_package15-acceptance.md).

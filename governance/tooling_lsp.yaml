@@ -247,6 +247,7 @@ integrations:
     area: tooling
     status: partial
     integrated: "2026-09-08"
+    revised: "2026-11-19"
     summary: >-
       Coalesces open-document diagnostics by directory module and analyzes each
       represented module once, avoiding repeated whole-module Sema work for
@@ -258,11 +259,18 @@ integrations:
     code:
       - cmd/lsp/main.go
       - cmd/lsp/diagnostics_batch.go
+      - cmd/lsp/analysis_cache.go
+      - cmd/lsp/completion.go
+      - cmd/lsp/subject_completion.go
+      - cmd/lsp/expected_value_completion.go
     tests:
       - cmd/lsp/main_test.go
       - cmd/lsp/diagnostics_batch_test.go
       - cmd/lsp/diagnostics_batch_target_test.go
       - testdata/module_siblings/completion_types.sec
+      - cmd/lsp/completion_cache_test.go
+      - testdata/lsp/shared_analysis_cache/main.sec
+      - testdata/lsp/shared_analysis_cache/types.sec
     implemented:
       - open, change, save, close and configuration refresh use a debounced module job without blocking the protocol loop on diagnostic analysis
       - one Sema pass per directory/module routes errors and warnings to all open source documents while keeping parser recovery suppression source-local
@@ -271,11 +279,17 @@ integrations:
       - shutdown and transport EOF stop pending jobs and prevent later diagnostic publication
       - foreign modules remain separate and unsaved overlays remain authoritative
       - "per-target batching (2026-10-04): the batch key is directory, module, and the document's effective target (its `#target` or the manifest/host target), so open platform files of one module for different targets get separate Sema runs; previously the module was assembled for the first document's target and every other platform file in the group silently received no semantic diagnostics (for example `let mode := ...` followed by `mode = ...` in file.linux.any.sec while file.freebsd.any.sec was open) (TestDiagnosticBatchAnalyzesEachPlatformFileForItsTarget)"
+      - Shared immutable compiler snapshots now serve ordinary, expected-value and subject completion alongside hover, navigation and semantic tokens; active-document roots retain analyzed AST identities, recovery text has a separate content identity, and completion reads recorded types without fallback inference. Cache tests verify cross-feature reuse, dependency-epoch invalidation and concurrent read leases.
     remaining:
       - cooperative cancellation inside an already-running compiler analysis
-      - shared immutable analysis caching across completion, hover, navigation and semantic-token requests
       - complete CompilationPlan-aware dependency invalidation and scheduling
     verification:
+      - command: go vet ./cmd/lsp
+        result: passed
+      - command: go test -race ./cmd/lsp -run '^TestCompletion(SharesCompilerSnapshot|RecoveryCacheIdentity|ConcurrentSnapshotReaders)$|^TestAnalysisDepthSnapshotCacheReplacement$|^TestInitializerSignatureOverlayAndExplicitDefault$' -count=1 -timeout=180s
+        result: passed (111.200s); cross-feature reuse, recovery identity, watched-file epoch, depth, overlays and concurrent readers
+      - command: go test ./cmd/lsp -run 'Test.*Completion|TestAnalysisDepthSnapshotCacheReplacement' -count=1 -timeout=180s
+        result: passed (60.473s), including existing completion coverage and shared-snapshot regression tests
       - command: go test ./cmd/lsp -run 'TestDiagnosticBatch|TestModuleDiagnostics' -bench BenchmarkModuleDiagnostics -benchtime=1x -count=1
         result: passed; 16-document fixture measured 1042 ms for individual analyses versus 65 ms for the batch in one local run
       - command: temporary TestHTTPDiagnosticsProbe against current sec/stdlib/net/http sources

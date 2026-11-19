@@ -7,7 +7,7 @@ integrations:
     status: partial
     integrated: "2026-08-18"
     audited: "2026-08-27"
-    revised: "2026-10-28"
+    revised: "2026-11-19"
     document_revision: "2.0"
     repository_baseline: 20b3606
     summary: >-
@@ -180,14 +180,21 @@ integrations:
       - "MD-062 formatter migration completed (2026-10-28): parser-owned CST metadata roles now normalize Key: value, exact numeric arithmetic/unary signs, qualified enum members, compact dimension powers and Reference unit suffixes, including named unit impls without same-file declarations. The documented preservation policy in formatter.md §§22(11–13) keeps legacy bare enum values in ordinary and --fix modes, normalizes accepted metadata key case to PascalCase/BaseUnit, and never evaluates a fraction, changes a custom enum identity or fuses unary signs into ++/--. Golden/token-preservation tests cover all metadata keys, typed/custom/legacy values, 2/4/6 indentation, LF/CRLF, comments/literals, malformed delimiters and second-pass stability. Actual CLI check/write/check and applied LSP edits produce identical golden bytes. No remaining formatter migration work for MD-062 is hidden in another list."
       - "Core time Kind completeness (2026-10-28): added explicit Kind: UnitKind.Time to all 14 previously missing core declarations (min/h/day/week, ps/fs/as/zs/ys, mo/yr/decade/century/millennia). The complete actual 18-unit core time catalog now resolves the same nominal Time kind. Compiler regressions consume canonical core source and verify direct exact integer conversions in both directions against seconds, including sub-second denominators through 10^24 and the existing declared month/year scales. Regressions retain rejection of fractional loss, uint8 overflow and a user time-dimension unit whose Kind remains Unknown. Scales, duration/calendar rules and compiler inference algorithms were not changed; executable quantity lowering remains separately tracked."
       - "MD-062 metadata tooling completed (2026-10-28): Sema retains accepted metadata key tokens and declaration-derived/default navigation provenance. LSP definition covers all 16 fields, references link explicit keys to their reads, and type-definition follows the concrete custom enum. Imported aliases, same-spelled caller enums and changed unsaved module snapshots retain the correct originating declaration/type; Name stays the declared short name. Parser-retained final unit identifier tokens avoid binding the '<' delimiter or module alias as the unit symbol. Fixed metadata keys/reads reject rename, while unit-name rename preserves default property names. UnitDimension properties navigate through existing compiler-known definitions; signature-help tests cover their property-only surface and reject fabricated signatures even for invalid property-call syntax. Hover/completion continue to consume Sema facts, including imported concrete enum types. This completes the metadata LSP item without claiming runtime UnitDimension or separate-compilation serialization."
+      - "ConversionError.InvalidDomain (2026-11-19, MD-048, units.md § 22.5(12)): the public core union in sec/core/error.sec and the core-less Sema builtin gain the seventh variant InvalidDomain, appended after Contract so existing variant order is unchanged; TestEnumConversionErrorCoreDeclaration checks both inventories, and checked-conversion, try-failure and float-conversion native tests still pass. No Sema or lowering path produces InvalidDomain yet; that is the logarithmic conversion plan item in remaining."
+      - "MD-048 normative integration (2026-11-19, rules/corrections/applied/MD-048-units-normative-correction-2026-11-19-20261119.md): units.md revision 2.3 defines exact affine conversion (§ 21.1), logarithmic parameters, typed Reference, explicit conversion paths, plan invariants and exactness/strategy/failure semantics (§§ 22.1-22.5) and reconciles §§ 17.7, 18, 22, 30, 37, 40, 41 and 44; grammar.md § 26(5), semantic_ir.md § 20(5)-(6), types.md § 25(11), contracts.md and temporal.md are synchronized. Rulebook text only: no Sema, Semantic IR or lowering behavior changed except InvalidDomain."
     remaining:
-      - validate affine and logarithmic Reference compatibility and implement their specialized explicit conversion plans; blocked on MD-048 (logarithmic forward/inverse formulas, dimensional Reference semantics, carrier precision and failure policy), with MD-047 and MD-012 dependencies
       - "explicit rounding to decimal and binary floating target carriers: MD-047 rounding is implemented for integer targets; a RoundingMode with a decimal or floating target is rejected as not implemented yet"
       - Semantic IR and lowering of rounded conversions (Semantic IR rejects them as 'explicit rounded conversion (RoundingMode)'; the legacy LLVM path rejects the second argument)
       - the stdlib/math rulebook and math.Round overload family consuming the core RoundingMode (MD-047 § 5.7; there is no stdlib/math rulebook yet)
       - preserve carrier, identity, factors, category provenance, Kind, transform, point role, and conversion plan in Semantic IR
       - "complete Semantic IR, MLIR, runtime, standard-library, and end-to-end unit coverage: MD-062 metadata reads fold to verified constants and UnitDimension values reach schema 13 (implemented entry 2026-11-17); remaining are the LLVM/native lowering of !sec.unit_dimension (a static descriptor with structural equality, MD-062 § 7(12)), decimal<V> Reference (needs a quantity representation), and native decimal/string execution behind its physical lowering gates."
       - "MD-062 module-axis identity: complete separate-compilation, incremental/cache and serialized/runtime equality coverage across imports and aliases; Sema module-aware axis resolution is implemented but is not proof of those later stages"
+      - "MD-048 Reference (units.md §§ 22.1-22.2, grammar.md § 26(5)): resolve Reference as a compile-time typed quantity (0.001<W>, decimal128<W>(0.001)), normalize it in the linear canonical domain, retain presence versus omission, validate positivity, dimension and Kind, keep the exact value separate from the public decimal projection and diagnose an unrepresentable public read; reject Reference[T]: and make the reference-free logarithmic ratio valid (conformance L03-L08)"
+      - "MD-048 affine conversion plans (units.md § 21.1): admit a signed non-zero affine Scale (the current rejection in internal/sema/unit_metadata.go is obsolete), establish point-origin compatibility instead of inferring it from dimension and scale, and build the exact affine point and difference plans with one final rounding (conformance A01-A05)"
+      - "MD-048 logarithmic conversion plans (units.md §§ 22.1-22.3): plan linear/affine to logarithmic, logarithmic to linear, referenced level to level (direct composition without a mandatory overflowing linear intermediate) and reference-free ratio to ratio with domain checks (q > 0), replacing the generic 'requires a specialized conversion operation' rejection; compile-time proven and runtime-checked failures use OutOfRange, PrecisionLoss, NonFinite and InvalidDomain (conformance L01-L14)"
+      - "MD-048 exactness and strategy semantics (units.md § 22.5): Strict exact result with one final rounding and no approximate log/exp, bounded Absolute+Relative and ULP delivered-result checks in the destination format, FastMath without implied NaN/Inf, FTZ or DAZ, and Allow/Demand target preference diagnostics (conformance P01-P09, T01-T02); the source spelling of strategy selection and error bounds stays with the future common numeric-policy rulebook (MD-144)"
+      - "MD-048 Semantic IR and lowering (semantic_ir.md § 20(5)-(6), units.md § 22.4, § 41(6)): carry the full affine/logarithmic conversion plan with exact normalized constants and failure classification, verify it, and lower exact affine composition and logarithmic transforms without premature float intermediates or a second final rounding"
+      - "MD-048 diagnostics and LSP (units.md § 37(6)): name source and destination unit, failing condition, Reference dimension and Kind, demanded target feature, compile-time-known status and a viable correction for affine and logarithmic conversion failures"
     required_tests:
       - one named unit works with decimal, float, signed integer, and unsigned integer carriers where numeric rules permit
       - compound unit-only expressions default to decimal and explicit carriers remain explicit
@@ -205,7 +212,39 @@ integrations:
       - implicit fixed conversion never hides precision loss
       - Semantic IR and LSP retain the complete compiler-resolved unit facts
       - formatter preserves named identity, structural identity, grouping, and source factor order
+      - "MD-048 A01: Affine point a, S=1, O=273.15 converted to compatible linear canonical point -> Mathematically a + 273.15, one final carrier rounding"
+      - "MD-048 A02: Affine point with negative Scale; round-trip points -> Invertible, direction reversal and bounds correct"
+      - "MD-048 A03: Difference associated with an affine unit -> Scale applied; offset never applied"
+      - "MD-048 A04: Two incompatible declared point origins -> Reject before lowering"
+      - "MD-048 A05: Affine Scale: 0 -> Declaration error"
+      - "MD-048 L01: B=10, F=10, Reference: 0.001<W>; l=30 -> Underlying canonical power is 1<W>"
+      - "MD-048 L02: Above level converted to B=10, F=10, Reference: 1<W> -> Destination log coordinate exactly 0"
+      - "MD-048 L03: Reference-free ratio B=10, F=10, l=20 -> Linear ratio 100; no reference metadata fabricated"
+      - "MD-048 L04: Ratio with omitted Reference, reading <U>.Reference -> Compile-time metadata read error"
+      - "MD-048 L05: Reference: decimal128<W>(0.001) -> Accepted typed compile-time initializer; conversion result carrier independent"
+      - "MD-048 L06: Reference[T]: ... -> Reject unsupported metadata syntax"
+      - "MD-048 L07: Referenced power level to unrelated time/length reference -> Reject dimension/Kind incompatibility"
+      - "MD-048 L08: B=1, B<=0, F=0, R<=0 -> Declaration errors"
+      - "MD-048 L09: B=0.5 and/or F<0 -> Valid; correct monotonic sign and inverse"
+      - "MD-048 L10: Negative finite logarithmic coordinate -> Valid, maps to positive linear quantity"
+      - "MD-048 L11: Inverse log with source q=0 or q<0 -> InvalidDomain (static diagnostic or runtime checked failure)"
+      - "MD-048 L12: Two referenced log levels with differing references -> Direct composed path; no overflowing mandatory linear intermediate"
+      - "MD-048 L13: Referenced log level mixed with reference-free ratio -> Reject absent independently validated explicit relationship"
+      - "MD-048 L14: Negative linear amplitude passed to logarithm -> Reject domain; do not apply abs"
+      - "MD-048 P01: Strict log/exp path with exact result representable -> Exact target result, no premature rounding"
+      - "MD-048 P02: Strict path with explicit rounding -> Exactly once to requested final target carrier"
+      - "MD-048 P03: Strict path requiring inexact result with no permission -> PrecisionLoss or compile-time error"
+      - "MD-048 P04: Bounded Absolute+Relative -> Enforce |y-x| <= max(A, R*|x|) in target coordinates"
+      - "MD-048 P05: Bounded ULP for binary formats -> Uses target format including subnormals and exponent boundaries"
+      - "MD-048 P06: float16/bfloat16 integration once supported -> Same format-parametric tests; no premature implementation claim"
+      - "MD-048 P07: Bounded allowed error smaller than unavoidable representational error -> Reject known impossibility or checked PrecisionLoss"
+      - "MD-048 P08: FastMath alone -> Does not inject nnan/ninf, FTZ or DAZ; unit/domain checks remain"
+      - "MD-048 P09: Project FastMath + explicit function/block Strict -> Local Strict wins; callee does not inherit caller mode"
+      - "MD-048 T01: Explicit Allow unavailable on declared target -> Conforming alternative + informative diagnostic"
+      - "MD-048 T02: Explicit hardware Demand AVX2 on non-AVX2 target -> Compile-time error with alternatives, never silent fallback"
     verification:
+      - command: go run ./cmd/yamlstatus check; go test ./internal/sema -run 'Conversion|Try|Exhaust|ErrorPattern|Unit'; go test ./internal/ir/semantic -run 'Conversion|Checked'; go test ./cmd/compiler -run FloatConversion
+        result: passed on 2026-11-19 after MD-048 rulebook integration and the ConversionError.InvalidDomain declaration; targeted subsets only, no full suites
       - command: go test ./internal/parser -count=1
         result: passed on 2026-10-28 after retaining final named-unit identifier tokens; complete parser suite
       - command: go test ./cmd/lsp -run 'UnitMetadata|UnitDimension|Rename|TypeDefinition|DefinitionOfCompilerKnown' -count=1

@@ -11,9 +11,37 @@ import (
 )
 
 func runCLI(args []string, out, errOut io.Writer) error {
+	// Resolve help before command execution or filesystem access.
+	if len(args) > 0 && args[0] == "help" {
+		switch len(args) {
+		case 1:
+			return runCLI([]string{"--help"}, out, errOut)
+		case 2:
+			if _, ok := subcommands[args[1]]; !ok {
+				return fmt.Errorf("unknown help topic %q", args[1])
+			}
+			return runCLI([]string{args[1], "--help"}, out, errOut)
+		default:
+			return fmt.Errorf("usage: yamlstatus help [command]")
+		}
+	}
+	// Keep the conventional question-mark alias consistent for all commands.
+	args = append([]string(nil), args...)
+	for i, arg := range args {
+		if arg == "--" {
+			break
+		}
+		if arg == "-?" {
+			args[i] = "--help"
+		}
+	}
 	if len(args) > 0 {
 		if command, ok := subcommands[args[0]]; ok {
-			return command(args[1:], out, errOut)
+			err := command(args[1:], out, errOut)
+			if err == flag.ErrHelp {
+				return nil
+			}
+			return err
 		}
 	}
 
@@ -41,9 +69,11 @@ func runCLI(args []string, out, errOut io.Writer) error {
 	itemOnly := flags.Bool("itemonly", false, "Only show the status for items")
 	listFiles := flags.Bool("listfiles", false, "List YAML files with Implemented, Remaining and Partial counts and per-file percentages")
 	flags.Usage = func() {
+		fmt.Fprintln(errOut, "Help: yamlstatus -? | yamlstatus help [command] | yamlstatus COMMAND --help")
 		fmt.Fprintln(errOut, "Usage: yamlstatus [options] [directory]\nWithout selection options, prints implementation statistics.\nWith -file or -id, selects the first matching remaining point; -random randomizes selection.\nWith -uses PATH, lists integrations referencing a file in code/tests/rules.\nWith -paths, checks listed paths for existence; -go restricts to internal/ and cmd/ Go files.")
 		fmt.Fprintln(errOut, "With -snapshot FILE, saves portable counts; -diff FILE|HEAD compares counts by fragment and ID.")
 		fmt.Fprintln(errOut, "With --listfiles, lists per-file checklist counts and percentages (supports -dir or a directory argument).")
+		fmt.Fprintln(errOut, "Use books --indir CHECKOUT --outdir DIRECTORY to generate linked HTML rulebooks; books --help lists publication options.")
 		flags.PrintDefaults()
 		fmt.Fprintln(errOut, "\n"+editUsage)
 	}

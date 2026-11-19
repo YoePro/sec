@@ -155,6 +155,10 @@ func formatFunction(out *strings.Builder, fn *Function) {
 	if fn.TypePack != nil {
 		out.WriteString(formatTypePackFacts(fn.TypePack))
 	}
+	if fn.Imported {
+		fmt.Fprintf(out, " imported module=%q %s\n", fn.DefiningModule, formatLocation(fn.Location))
+		return
+	}
 	fmt.Fprintf(out, " %s {\n", formatLocation(fn.Location))
 	if len(fn.Storages) > 0 {
 		out.WriteString("    storage {\n")
@@ -305,7 +309,11 @@ func formatOperation(out *strings.Builder, op Operation) {
 	case OpFloatClampChecked:
 		fmt.Fprintf(out, " %%%d, min=%%%d, max=%%%d", op.Operands[0], op.Operands[1], op.Operands[2])
 	case OpNumericConvertChecked:
-		fmt.Fprintf(out, " %%%d failure=%s", op.Operands[0], op.ConversionFailure)
+		if len(op.ConversionFailures) != 0 {
+			fmt.Fprintf(out, " %%%d failures=%s", op.Operands[0], strings.Join(op.ConversionFailures, ","))
+		} else {
+			fmt.Fprintf(out, " %%%d failure=%s", op.Operands[0], op.ConversionFailure)
+		}
 	case OpFloatAbs, OpFloatMinimum, OpFloatMaximum, OpFloatClassify, OpFloatRound, OpFloatProperty:
 		if op.FloatCore != "" {
 			fmt.Fprintf(out, " %s", op.FloatCore)
@@ -377,7 +385,7 @@ func formatOperation(out *strings.Builder, op Operation) {
 	case OpNumericConvertExact:
 		fmt.Fprintf(out, " %%%d", op.Operands[0])
 		formatConversionProof(out, op.ConversionProof)
-	case OpIntUnaryPlus, OpIntNegChecked, OpIntBitNot, OpBoolNot, OpNamedConvert:
+	case OpIntUnaryPlus, OpIntNegChecked, OpIntBitNot, OpBoolNot, OpNamedConvert, OpFloatToBool:
 		fmt.Fprintf(out, " %%%d", op.Operands[0])
 	case OpIntBinaryChecked:
 		fmt.Fprintf(out, " %s %%%d, %%%d", op.IntegerBinary, op.Operands[0], op.Operands[1])

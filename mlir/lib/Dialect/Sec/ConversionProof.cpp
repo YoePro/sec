@@ -20,7 +20,8 @@ LogicalResult sec::verifyConversionProof(Operation *operation,
   auto basis = proof.getAs<StringAttr>("basis");
   if (!basis || !llvm::StringSwitch<bool>(basis.getValue())
                          .Cases({"constant", "source-domain", "closed-enum-domain",
-                                 "open-enum-domain", "compiler-widening"}, true)
+                                 "open-enum-domain", "compiler-widening",
+                                 "identity", "value-interval"}, true)
                          .Default(false))
     return operation->emitOpError("unknown exactness proof basis");
   auto width = proof.getAs<IntegerAttr>("plan_pointer_width");

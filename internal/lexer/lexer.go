@@ -963,8 +963,8 @@ func (l *Lexer) readPrefixedString(typ TokenType) Token {
 			// 2026-10-03: MD-005 — an unmatched single `}` in interpolated text
 			// reports L1021 on exactly that brace and scanning stays in text
 			// mode, so later interpolations and the closing quote are still
-			// recognized; the candidate is retained as one token. Not mirrored
-			// in the bootstrap lexer.
+			// recognized; the candidate is retained as one token. Mirrored in
+			// the bootstrap lexer since 2026-11-19.
 			braceLine, braceColumn := l.line, l.column
 			l.advance()
 			if l.peek() != '}' {

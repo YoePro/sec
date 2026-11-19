@@ -374,7 +374,13 @@ func verifyFunction(module *Module, fn *Function, functions map[FunctionID]*Func
 	if _, ok := module.Types.Lookup(fn.ReturnType); !ok {
 		return fmt.Errorf("invalid return type !%d", fn.ReturnType)
 	}
-	if fn.Extern {
+	if fn.Extern && fn.Imported {
+		return fmt.Errorf("function is both extern and an imported Sec declaration")
+	}
+	if fn.Imported != (fn.DefiningModule != "") || fn.Imported && fn.DefiningModule == module.Identity {
+		return fmt.Errorf("imported declaration %s must name another defining module", fn.ID)
+	}
+	if fn.Extern || fn.Imported {
 		values := map[ValueID]Value{}
 		for _, p := range fn.Parameters {
 			if err := addValue(module.Types, values, p.Value); err != nil {
@@ -385,6 +391,9 @@ func verifyFunction(module *Module, fn *Function, functions map[FunctionID]*Func
 			}
 		}
 		if len(fn.Blocks) != 0 {
+			if fn.Imported {
+				return fmt.Errorf("imported declaration has body")
+			}
 			return fmt.Errorf("extern has body")
 		}
 		return nil
@@ -918,11 +927,15 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 			}
 		}
 	case OpNumericConvertExact:
-		if len(op.Operands) != 1 || len(op.Results) != 1 || !isBuiltinIntegerType(module.Types, values[op.Operands[0]].Type) || !isBuiltinIntegerType(module.Types, op.Results[0].Type) {
+		if len(op.Operands) != 1 || len(op.Results) != 1 || !isNumericConversionType(module.Types, values[op.Operands[0]].Type) || !isNumericConversionType(module.Types, op.Results[0].Type) {
 			return fmt.Errorf("invalid numeric.convert-exact")
 		}
 		if err := validConversionProof(module, op.ConversionProof); err != nil {
 			return fmt.Errorf("invalid numeric.convert-exact: %w", err)
+		}
+	case OpFloatToBool:
+		if len(op.Operands) != 1 || len(op.Results) != 1 || !typeHasKind(module.Types, values[op.Operands[0]].Type, TypeFloat) || !typeHasKind(module.Types, op.Results[0].Type, TypeBool) {
+			return fmt.Errorf("invalid float.to-bool")
 		}
 	case OpNamedConvert:
 		if len(op.Operands) != 1 || len(op.Results) != 1 || !isIntegerCarrierType(module.Types, values[op.Operands[0]].Type) ||
@@ -1575,6 +1588,12 @@ func integerCarrierOf(types *TypeTable, id TypeID) TypeID {
 // isIntegerCarrierType admits a built-in integer or a named type over one.
 func isIntegerCarrierType(types *TypeTable, id TypeID) bool {
 	return isBuiltinIntegerType(types, integerCarrierOf(types, id))
+}
+
+// isNumericConversionType admits the operand and result types of
+// numeric.convert-exact: built-in integers and, since P20, binary floats.
+func isNumericConversionType(types *TypeTable, id TypeID) bool {
+	return isBuiltinIntegerType(types, id) || typeHasKind(types, id, TypeFloat) || typeHasKind(types, id, TypeChar) || typeHasKind(types, id, TypeRune)
 }
 
 func isBuiltinIntegerType(types *TypeTable, id TypeID) bool {

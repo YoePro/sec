@@ -1,0 +1,9 @@
+module sample
+
+fn Read(item: Item) int {
+    return item.Value
+}
+
+fn Choose(mode: Mode) bool {
+    return mode == Mode.First
+}

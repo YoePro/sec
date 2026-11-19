@@ -137,7 +137,7 @@ func TestEnumConversionErrorCoreDeclaration(t *testing.T) {
 	}
 	standalone := NewAnalyzer().Types()["ConversionError"]
 	loaded := a.Types()["ConversionError"]
-	if !sameConcreteType(standalone, loaded) || loaded.Kind != UnionType || !loaded.ErrorAssignable || len(loaded.UnionVariants) != 6 || len(standalone.UnionVariants) != 6 {
+	if !sameConcreteType(standalone, loaded) || loaded.Kind != UnionType || !loaded.ErrorAssignable || len(loaded.UnionVariants) != 7 || len(standalone.UnionVariants) != 7 {
 		t.Fatalf("core identity/shape diverged: %+v / %+v", standalone, loaded)
 	}
 	for i, variant := range loaded.UnionVariants {

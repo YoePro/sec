@@ -14,6 +14,7 @@
 #include "sec/Dialect/Sec/SecOps.h"
 #include "sec/Dialect/Sec/SecTypes.h"
 #include "sec/Conversion/SecToCore/Passes.h"
+#include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/STLExtras.h"
 
@@ -480,6 +481,45 @@ public:
   LogicalResult
   matchAndRewrite(sec::NumericConvertExactOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
+    // A proven-exact P20 float conversion (package20.md §§ 44–55, 70): the
+    // frontend proved the value representable, so the single standard
+    // conversion is exact and no guard is needed.
+    Type sourceSemantic = op.getValue().getType();
+    Type targetSemantic = op.getResult().getType();
+    if (isa<FloatType>(sourceSemantic) || isa<FloatType>(targetSemantic)) {
+      Value value = adaptor.getValue();
+      Type target = getTypeConverter()->convertType(targetSemantic);
+      Location location = op.getLoc();
+      auto sourceInteger = dyn_cast<IntegerType>(sourceSemantic);
+      auto targetInteger = dyn_cast<IntegerType>(targetSemantic);
+      auto sourceFloat = dyn_cast<FloatType>(sourceSemantic);
+      auto targetFloat = dyn_cast_or_null<FloatType>(target);
+      Value result;
+      if (sourceFloat && targetFloat) {
+        if (targetFloat.getWidth() > sourceFloat.getWidth())
+          result = arith::ExtFOp::create(rewriter, location, targetFloat, value);
+        else if (targetFloat.getWidth() < sourceFloat.getWidth())
+          result = arith::TruncFOp::create(rewriter, location, targetFloat, value);
+        else
+          result = value;
+      } else if (sourceInteger && targetFloat &&
+                 (sourceInteger.isSigned() || sourceInteger.isUnsigned())) {
+        result = sourceInteger.isSigned()
+                     ? arith::SIToFPOp::create(rewriter, location, targetFloat, value).getResult()
+                     : arith::UIToFPOp::create(rewriter, location, targetFloat, value).getResult();
+      } else if (sourceFloat && targetInteger && target &&
+                 (targetInteger.isSigned() || targetInteger.isUnsigned())) {
+        result = targetInteger.isSigned()
+                     ? arith::FPToSIOp::create(rewriter, location, target, value).getResult()
+                     : arith::FPToUIOp::create(rewriter, location, target, value).getResult();
+      } else {
+        return op.emitOpError(
+            "requires resolved binary32/binary64 floats and signed or unsigned "
+            "builtin integers");
+      }
+      rewriter.replaceOp(op, result);
+      return success();
+    }
     auto sourceType = dyn_cast<IntegerType>(op.getValue().getType());
     auto value = adaptor.getValue();
     auto from = dyn_cast<IntegerType>(value.getType());
@@ -516,6 +556,8 @@ public:
   LogicalResult
   matchAndRewrite(sec::NumericConvertCheckedOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
+    if (op.getFailures())
+      return lowerFloatForm(op, adaptor, rewriter);
     auto sourceType = dyn_cast<IntegerType>(op.getValue().getType());
     auto targetType = dyn_cast<IntegerType>(op.getCandidate().getType());
     Value value = adaptor.getValue();
@@ -545,10 +587,173 @@ public:
     Value above = arith::CmpIOp::create(
         rewriter, location, arith::CmpIPredicate::sgt, extended,
         integerConstant(rewriter, location, wide, maximum));
+    if (op.getFailure() == "InvalidScalar") {
+      // A rune target (resolved to its carrier): only the Unicode scalar
+      // values 0..0x10FFFF without the surrogates 0xD800..0xDFFF.
+      below = arith::CmpIOp::create(
+          rewriter, location, arith::CmpIPredicate::slt, extended,
+          integerConstant(rewriter, location, wide, APInt::getZero(width)));
+      above = arith::CmpIOp::create(
+          rewriter, location, arith::CmpIPredicate::sgt, extended,
+          integerConstant(rewriter, location, wide, APInt(width, 0x10FFFF)));
+      Value surrogate = arith::AndIOp::create(
+          rewriter, location,
+          arith::CmpIOp::create(rewriter, location, arith::CmpIPredicate::sge, extended,
+                                integerConstant(rewriter, location, wide, APInt(width, 0xD800))),
+          arith::CmpIOp::create(rewriter, location, arith::CmpIPredicate::sle, extended,
+                                integerConstant(rewriter, location, wide, APInt(width, 0xDFFF))));
+      above = combineOr(rewriter, location, above, surrogate);
+    }
     Value failed = combineOr(rewriter, location, below, above);
     Value candidate = extendInteger(rewriter, location, value, to,
                                     sourceType.isSigned());
     rewriter.replaceOp(op, ValueRange{candidate, failed});
+    return success();
+  }
+
+private:
+  // The P20 binary-float form as a total guard sequence
+  // (sec-mlir-dialect_package20.md §§ 41, 47-55, 79): every reason is
+  // computed from the source alone, in priority order and mutually
+  // exclusive, and the final conversion only ever sees a sanitized operand,
+  // so no invalid fptosi/fptoui executes.
+  LogicalResult lowerFloatForm(sec::NumericConvertCheckedOp op,
+                               OpAdaptor adaptor,
+                               ConversionPatternRewriter &rewriter) const {
+    Location loc = op.getLoc();
+    Type sourceSemantic = op.getValue().getType();
+    Type targetSemantic = op.getCandidate().getType();
+    Value value = adaptor.getValue();
+    Type target = getTypeConverter()->convertType(targetSemantic);
+    auto sourceFloat = dyn_cast<FloatType>(sourceSemantic);
+    auto targetFloat = dyn_cast<FloatType>(targetSemantic);
+    auto sourceInteger = dyn_cast<IntegerType>(sourceSemantic);
+    auto targetInteger = dyn_cast<IntegerType>(targetSemantic);
+    auto i1 = rewriter.getI1Type();
+    auto falseValue = [&]() -> Value {
+      return arith::ConstantOp::create(rewriter, loc, i1, rewriter.getBoolAttr(false));
+    };
+    auto fconst = [&](FloatType type, const APFloat &number) -> Value {
+      return arith::ConstantOp::create(rewriter, loc, type,
+                                       rewriter.getFloatAttr(type, number));
+    };
+    auto cmpf = [&](arith::CmpFPredicate predicate, Value left, Value right) -> Value {
+      return arith::CmpFOp::create(rewriter, loc, predicate, left, right);
+    };
+    auto andNot = [&](Value value, Value excluded) -> Value {
+      Value notExcluded = arith::XOrIOp::create(
+          rewriter, loc, excluded,
+          arith::ConstantOp::create(rewriter, loc, i1, rewriter.getBoolAttr(true)));
+      return arith::AndIOp::create(rewriter, loc, value, notExcluded);
+    };
+    auto isInfinite = [&](Value number) -> Value {
+      auto type = cast<FloatType>(number.getType());
+      const llvm::fltSemantics &semantics = type.getFloatSemantics();
+      return combineOr(rewriter, loc,
+                       cmpf(arith::CmpFPredicate::OEQ, number,
+                            fconst(type, APFloat::getInf(semantics))),
+                       cmpf(arith::CmpFPredicate::OEQ, number,
+                            fconst(type, APFloat::getInf(semantics, true))));
+    };
+    // 2^exponent in a binary format; beyond its range it is infinity, which
+    // makes the bound vacuous for every finite value (§ 53).
+    auto power = [&](FloatType type, int exponent, bool negative) -> Value {
+      APFloat number = scalbn(APFloat(type.getFloatSemantics(), 1), exponent,
+                              APFloat::rmNearestTiesToEven);
+      if (negative)
+        number.changeSign();
+      return fconst(type, number);
+    };
+    Value nonFinite = falseValue(), outOfRange = falseValue(),
+          precisionLoss = falseValue(), candidate;
+    if (sourceFloat && targetFloat) {
+      // Narrowing (§§ 47-48): NaN and infinities succeed unchanged.
+      if (targetFloat.getWidth() >= sourceFloat.getWidth())
+        return op.emitOpError("checked float conversion must narrow");
+      candidate = arith::TruncFOp::create(rewriter, loc, targetFloat, value);
+      Value finite = andNot(cmpf(arith::CmpFPredicate::ORD, value, value),
+                            isInfinite(value));
+      outOfRange = arith::AndIOp::create(rewriter, loc, finite, isInfinite(candidate));
+      Value widened = arith::ExtFOp::create(rewriter, loc, sourceFloat, candidate);
+      precisionLoss = andNot(
+          arith::AndIOp::create(rewriter, loc, finite,
+                                cmpf(arith::CmpFPredicate::ONE, widened, value)),
+          outOfRange);
+    } else if (sourceInteger && targetFloat &&
+               (sourceInteger.isSigned() || sourceInteger.isUnsigned())) {
+      // Integer to float (§§ 49-50): exact iff the rounded value converts
+      // back to the same integer; one extra bit holds every rounded result.
+      bool isSigned = sourceInteger.isSigned();
+      candidate = isSigned
+                      ? arith::SIToFPOp::create(rewriter, loc, targetFloat, value).getResult()
+                      : arith::UIToFPOp::create(rewriter, loc, targetFloat, value).getResult();
+      outOfRange = isInfinite(candidate);
+      auto wide = IntegerType::get(rewriter.getContext(), sourceInteger.getWidth() + 1);
+      Value safe = arith::SelectOp::create(
+          rewriter, loc, outOfRange,
+          fconst(targetFloat, APFloat::getZero(targetFloat.getFloatSemantics())),
+          candidate);
+      Value back = isSigned
+                       ? arith::FPToSIOp::create(rewriter, loc, wide, safe).getResult()
+                       : arith::FPToUIOp::create(rewriter, loc, wide, safe).getResult();
+      Value original = extendInteger(rewriter, loc, value, wide, isSigned);
+      precisionLoss = andNot(arith::CmpIOp::create(rewriter, loc, arith::CmpIPredicate::ne,
+                                                   back, original),
+                             outOfRange);
+    } else if (sourceFloat && targetInteger && target &&
+               (targetInteger.isSigned() || targetInteger.isUnsigned())) {
+      // Float to integer (§§ 51-54): finite, then exact power-of-two range,
+      // then integral; the cast sees only a value that passed all three.
+      bool isSigned = targetInteger.isSigned();
+      unsigned bits = targetInteger.getWidth();
+      nonFinite = combineOr(rewriter, loc,
+                            cmpf(arith::CmpFPredicate::UNO, value, value),
+                            isInfinite(value));
+      Value lower = isSigned ? power(sourceFloat, bits - 1, true)
+                             : fconst(sourceFloat, APFloat::getZero(sourceFloat.getFloatSemantics()));
+      Value upper = power(sourceFloat, isSigned ? bits - 1 : bits, false);
+      outOfRange = andNot(combineOr(rewriter, loc,
+                                    cmpf(arith::CmpFPredicate::OLT, value, lower),
+                                    cmpf(arith::CmpFPredicate::OGE, value, upper)),
+                          nonFinite);
+      // Only |x| < 2^p can have a fraction; such a value fits i64 exactly.
+      int precision = sourceFloat.getWidth() == 32 ? 24 : 53;
+      Value small = arith::AndIOp::create(
+          rewriter, loc,
+          cmpf(arith::CmpFPredicate::OLT, value, power(sourceFloat, precision, false)),
+          cmpf(arith::CmpFPredicate::OGT, value, power(sourceFloat, precision, true)));
+      Value zero = fconst(sourceFloat, APFloat::getZero(sourceFloat.getFloatSemantics()));
+      Value probe = arith::SelectOp::create(rewriter, loc, small, value, zero);
+      Value truncated = arith::SIToFPOp::create(
+          rewriter, loc, sourceFloat,
+          arith::FPToSIOp::create(rewriter, loc, rewriter.getI64Type(), probe));
+      Value fractional = arith::AndIOp::create(
+          rewriter, loc, small, cmpf(arith::CmpFPredicate::ONE, truncated, value));
+      precisionLoss = andNot(andNot(fractional, nonFinite), outOfRange);
+      Value invalid = combineOr(rewriter, loc,
+                                combineOr(rewriter, loc, nonFinite, outOfRange),
+                                precisionLoss);
+      Value safe = arith::SelectOp::create(rewriter, loc, invalid, zero, value);
+      candidate = isSigned
+                      ? arith::FPToSIOp::create(rewriter, loc, target, safe).getResult()
+                      : arith::FPToUIOp::create(rewriter, loc, target, safe).getResult();
+    } else {
+      return op.emitOpError(
+          "requires resolved binary32/binary64 floats and signed or unsigned "
+          "builtin integers");
+    }
+    SmallVector<Value> results{candidate, falseValue()};
+    Value failed = results[1];
+    for (Attribute attribute : *op.getFailures()) {
+      StringRef failure = cast<StringAttr>(attribute).getValue();
+      Value reason = failure == "NonFinite"    ? nonFinite
+                     : failure == "OutOfRange" ? outOfRange
+                                               : precisionLoss;
+      results.push_back(reason);
+      failed = combineOr(rewriter, loc, failed, reason);
+    }
+    results[1] = failed;
+    rewriter.replaceOp(op, results);
     return success();
   }
 };

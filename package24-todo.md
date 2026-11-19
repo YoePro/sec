@@ -277,23 +277,55 @@ packing syntax, MMIO/volatile access strategy, raw serialization, implicit
   scalar kind and a validity predicate. Two gaps keep the item open:
   - Alignment comes only from plan alignment facts, which no target supplies.
   - bool and rune storage sizes are undefined.
-  Both are MD-141, so those layouts are incomplete. Mapping Sema types to
-  requirements in `internal/sema` remains.
+  Both are MD-141, so those layouts are incomplete. Since 2026-11-19,
+  `sema.LayoutRequirementOf` (`internal/sema/layout_requirements.go`) maps
+  every Sema scalar to its requirement with canonical identity, scalar kind and
+  width; target-sized int/uint/float take the plan width. Each size is checked
+  against the § 7(7) maximum extent.
 - [ ] P24-17 — Resolve decimal/decimal128 carrier layouts as `{i64,i32}` and
   `{i128,i32}` under the same plan, including field offsets, aggregate alignment
   and tail padding. Distinguish public decimal scale from its physical i32
   field and reject obsolete/truncating generator shapes.
-- [ ] P24-18 — Resolve named and constrained types as carrier layout plus exact
+
+  Partial 2026-11-19: `resolveDecimal` resolves decimal and decimal128 as a
+  `coefficient` field (int64/int128) and a separate `scale-storage` int32
+  field. Any other carrier width is invalid. Offsets, aggregate alignment and
+  tail padding wait on the native aggregate rule (MD-142), so both stay
+  incomplete.
+- [x] P24-18 — Resolve named and constrained types as carrier layout plus exact
   nominal/contract validity provenance. Representation reuse cannot bypass P22
   validation or erase nominal identity/debug facts.
+
+  Implemented 2026-11-19: `LayoutNamed` with a `Carrier` requirement.
+  `resolveNamed` copies the carrier's size, alignment, state and fields. It
+  keeps the type's own canonical identity and layout ID and records
+  `Carrier` and `named over <carrier>` provenance. The carrier's validity
+  predicate is combined with the type's contracts, never replaced. The Sema
+  mapping produces it from `NamedBase` and `Contracts`. Layout performs no
+  value validation, so P22 validation is untouched.
+  Tests: `TestNamedLayouts` and `TestLayoutRequirementOf`.
 - [ ] P24-19 — Resolve structs in declared stored-field order: recursively
   resolve field layout, align each offset, record padding, calculate aggregate
   alignment/final size and preserve `FieldIdentity` independently of offset.
   Exclude methods/properties/static/nested declarations and never reorder.
+
+  Partial 2026-11-19: every stored field from `Type.Fields` is resolved in
+  declaration order, which excludes methods, properties, statics and nested
+  declarations. Each field keeps its index, name and layout, with no offset.
+  Invalid or unsupported fields propagate with their path, and by-value
+  cycles report their full path. An empty struct is complete with size 0 and
+  alignment 1 (layout.md § 24(6)). Offsets, padding, aggregate alignment and
+  size wait on MD-142.
 - [ ] P24-20 — Resolve `T[N]` as exactly N inline slots using checked canonical
   stride/count arithmetic. Support zero-length and zero-sized-element layouts
   without manufacturing addresses; avoid N-way construction/destruction
   expansion for huge counts.
+
+  Partial 2026-11-19: `resolveArray` records the element layout and the exact
+  `big.Int` count, never expanding it. An array whose unpadded extent
+  (element size × count) already exceeds the § 7(7) maximum is invalid with
+  the requested extent and the target maximum. Stride, alignment and total
+  size wait on MD-142, including the stride of zero-sized elements.
 - [ ] P24-21 — Resolve fieldless/bit-backed/string-backed enum representation
   from canonical definitions and record discriminant validity. Do not hardcode
   i32, truncate values or treat zero-filled storage as automatically valid.

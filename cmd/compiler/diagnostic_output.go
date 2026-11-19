@@ -113,6 +113,9 @@ type diagnosticReporter struct {
 	// command owns one combined machine-readable report (`sec analyse
 	// --json`, rules/tooling/cli.md § 6); it also runs on early failure.
 	documentWriter func(occurrences []emittedOccurrence, summary diagnosticSummary)
+	// sourcePaths maps Semantic IR source identities back to the paths the
+	// user wrote, for failures quoted by later pipeline stages.
+	sourcePaths map[string]string
 }
 
 var cliDiagnostics = &diagnosticReporter{format: diagnosticFormatHuman, output: os.Stderr}

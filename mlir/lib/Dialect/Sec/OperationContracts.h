@@ -168,6 +168,12 @@ inline bool isBuiltinIntegerSemanticType(Type type) {
   }
 }
 
+// The integer family of explicit conversions: builtin integers, char and
+// rune (types.md § 9.4(8); sec-mlir-dialect_package20.md § 56).
+inline bool isIntegerFamilyConversionType(Type type) {
+  return isBuiltinIntegerSemanticType(type) || isa<CharType, RuneType>(type);
+}
+
 // Retain the original signedness of a builtin semantic integer.
 // Rules: rules/mlir/packages/sec-mlir-dialect_package16.md — sections 35,102.
 inline bool isSignedIntegerSemanticType(Type type) {

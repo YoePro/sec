@@ -96,7 +96,8 @@ func runBuildVariant(options buildCommandOptions, invocation *project.BuildInvoc
 			exitCLI(1)
 		}
 	}
-	secMLIR, entry := emitSecDialect(analyzed, options.InputFile, options.Target, nativeTrackMaxPackage)
+	secMLIR, entryModule := emitSecDialectUnit(analyzed, options.InputFile, options.Target, nativeTrackMaxPackage, "", false)
+	entry := commandEntryIdentity(entryModule, analyzed, options.InputFile)
 	if entry == "" {
 		reportToolError("build", "the entry module of %s defines no `fn main() int`", options.InputFile)
 		exitCLI(3)
@@ -152,7 +153,13 @@ func runBuildVariant(options buildCommandOptions, invocation *project.BuildInvoc
 		exitCLI(1)
 	}
 
-	clangArgs := []string{"-target", targetDefinition.LLVMTriple, objectPath, "-o", options.OutputFile}
+	// Every imported module the program calls is compiled into its own object
+	// (one Semantic IR per module; linking.md § 15).
+	moduleObjects, removeModuleObjects := importedModuleObjects(analyzed, options.InputFile, options.Target, entryModule, options.MLIRBin, targetDefinition.LLVMTriple)
+	defer removeModuleObjects()
+
+	clangArgs := append([]string{"-target", targetDefinition.LLVMTriple, objectPath}, moduleObjects...)
+	clangArgs = append(clangArgs, "-o", options.OutputFile)
 	cmd := exec.Command(clangPath, clangArgs...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

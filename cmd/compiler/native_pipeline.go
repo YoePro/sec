@@ -49,9 +49,22 @@ const inspectionSchemaVersion = 14
 // "" when the module defines none. maxPackage is the route's Semantic IR
 // package ceiling.
 func emitSecDialect(analyzed analyzedProgram, inputFile string, target CompilerTarget, maxPackage uint8) ([]byte, string) {
-	module, err := semantic.Build(analyzed.Program, analyzed.Analyzer, semantic.BuildOptions{SourceFiles: []string{inputFile}, MaxPackage: maxPackage})
+	text, module := emitSecDialectUnit(analyzed, inputFile, target, maxPackage, "", false)
+	return text, commandEntryIdentity(module, analyzed, inputFile)
+}
+
+// emitSecDialectUnit builds and emits one module of the assembled program:
+// the input file's module when requested is empty, otherwise the named
+// module. export gives its definitions their module-independent symbols, as
+// an imported module's object needs (linking.md §§ 9, 15).
+func emitSecDialectUnit(analyzed analyzedProgram, inputFile string, target CompilerTarget, maxPackage uint8, requested string, export bool) ([]byte, *semantic.Module) {
+	module, err := semantic.Build(analyzed.Program, analyzed.Analyzer, semantic.BuildOptions{RequestedModule: requested, SourceFiles: []string{inputFile}, MaxPackage: maxPackage, Exported: export})
 	if err != nil {
 		reportPipelineError("semantic IR", physicalReferenceBoundary(analyzed, inputFile, maxPackage, err))
+		exitCLI(4)
+	}
+	if err := canonicalizeIRSources(module, inputFile); err != nil {
+		reportPipelineError("semantic IR", err)
 		exitCLI(4)
 	}
 	targetDefinition, ok := findTargetDefinition(target)
@@ -64,7 +77,7 @@ func emitSecDialect(analyzed analyzedProgram, inputFile string, target CompilerT
 		reportToolError("target", "%v", err)
 		exitCLI(1)
 	}
-	options := secmlirlowering.EmitOptions{}
+	options := secmlirlowering.EmitOptions{ExportSymbols: export}
 	if maxPackage >= inspectionMaxPackage {
 		options.DialectVersion = inspectionSchemaVersion
 	}
@@ -73,7 +86,7 @@ func emitSecDialect(analyzed analyzedProgram, inputFile string, target CompilerT
 		reportPipelineError("Sec MLIR lowering", err)
 		exitCLI(4)
 	}
-	return append([]byte(mlirEmissionHeader("Sec dialect MLIR", target)), mlirText...), commandEntryIdentity(module, analyzed, inputFile)
+	return append([]byte(mlirEmissionHeader("Sec dialect MLIR", target)), mlirText...), module
 }
 
 // commandEntryIdentity is the Sec function identity of `main` in the input

@@ -22,7 +22,7 @@ module attributes {sec.dialect_version = 11 : i32, sec.semantic_ir_version = 1 :
   }
 }
 
-// CHECK: module attributes
+// CHECK: module @main attributes
 // CHECK-SAME: llvm.target_triple = "x86_64-pc-linux-gnu"
 // CHECK-NOT: sec.
 // CHECK: llvm.func @sec_fn_0(%{{.*}}: i64, %{{.*}}: i64) -> i64

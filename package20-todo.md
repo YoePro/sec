@@ -237,7 +237,7 @@ longer type silently as invalid. CTE parity is not audited yet.
   underflow/overflow, wide exact/inexact integers, nonfinite and chained
   constants, all three plan settings and mutation isolation. P20-26 still
   owns the physical guards/casts; P20-19 owns full CTE/runtime parity.
-- [ ] P20-15 — Integrate plans with existing `try`, local handlers and failure
+- [x] P20-15 — Integrate plans with existing `try`, local handlers and failure
   sets using `ConversionError`; retain success-only values and do not create a
   hidden union or a second public conversion-error family (§§56–59).
 
@@ -253,7 +253,22 @@ longer type silently as invalid. CTE parity is not audited yet.
   edge of its own failed flag (`internal/ir/semantic/integer_conversion.go`,
   `checked_conversion_test.go`). Remaining: rune `InvalidScalar`, float
   conversions and their reason mapping (§ 72).
-- [ ] P20-16 — Extend the early float subset with explicit operations and
+  Float progress 2026-11-19 (Claude): checked float conversions under `try`
+  route NonFinite, OutOfRange and PrecisionLoss to the matching core
+  `ConversionError` variant through the existing failure-set router, for naked
+  propagation and local and catch-all handlers alike; no hidden union or second
+  error family. Remaining: rune `InvalidScalar`.
+  Completed 2026-11-19 (Claude): integer-family conversions to or from
+  char and rune now get Sema integer plans. A rune-target proof also
+  excludes the surrogates. Checked integer-to-rune conversions use
+  `numeric.convert-checked` with `failure = "InvalidScalar"`; rune-to-char
+  and other integer targets use OutOfRange. The MLIR verifier ties
+  InvalidScalar to a rune or resolved ui32 rune carrier. The lowering admits
+  only 0..0x10FFFF without 0xD800..0xDFFF.
+  `testdata/build/native/rune_conversion_checked.sec` exercises every
+  boundary through native execution, including Err(InvalidScalar) and
+  Err(OutOfRange) handlers.
+- [x] P20-16 — Extend the early float subset with explicit operations and
   verifier rules for Abs, NaN-propagating Min/Max, checked Clamp,
   classification, rounding, properties, exact conversion, checked conversion,
   reason mapping and float-to-bool (§§63–72).
@@ -264,6 +279,12 @@ longer type silently as invalid. CTE parity is not audited yet.
   build exact `const.int`. Clamp (2026-10-26) is `float.clamp-checked`
   (value, failed) building Err(RangeError.InvalidRange) or Ok; the value is
   consumed only on success. Remaining: conversions, float-to-bool.
+  Completed 2026-11-19 (Claude): `buildNumericConversion` lowers every Sema
+  plan. Float-to-bool is the new total `float.to-bool`. Exact plans (widening,
+  same format, constant, proven integer interval) are `numeric.convert-exact`
+  with the plan's proof (new bases `identity`, `value-interval`). Runtime
+  checked plans are `numeric.convert-checked` (P20-18). The IR verifier admits
+  float operands for both and checks the reason flags. Evidence: `internal/ir/semantic/numeric_conversion{,_test}.go`; native fixtures `testdata/build/native/float_conversion_{exact,checked}.sec` (exit 42) via `TestFloatConversionsBuildAndRun`; lit `float-conversions.mlir` (Dialect and SecToLLVM) and `invalid-float-conversions.mlir`.
 - [x] P20-17 — Make float-operation metadata explicit and verified: resolved
   binary format, nearest-even policy, no fast-math, no contraction, preserved
   subnormals, comparison predicate, truncation remainder and source scalar
@@ -286,10 +307,20 @@ longer type silently as invalid. CTE parity is not audited yet.
   scalar plans, 224/224 lit tests, five float source native fixtures and
   existing native core/Clamp/remainder differential tests. CTE/conversions
   and target capability acceptance retain their independent open points.
-- [ ] P20-18 — Model checked conversion candidate/failed/reason results with
+- [x] P20-18 — Model checked conversion candidate/failed/reason results with
   `ConversionError` mapping and prove candidate consumption is success-only.
   Preserve guard order: non-finite, range, then precision/integrality (§§41,
   48–54, 70–72).
+  Completed 2026-11-19 (Claude): the float form of `numeric.convert-checked`
+  yields candidate, failed and one reason flag per plan failure. The failures
+  come in priority order (NonFinite, OutOfRange, PrecisionLoss; the verifier
+  rejects any other order, repeats and unknown names). The flags are mutually
+  exclusive and `failed` holds exactly when one does (§ 56). The failure edge
+  dispatches the flags in that order to static `ConversionError` variants. The
+  candidate-dominance verifier now also covers this form; it previously
+  skipped any checked op with more than two results. This one-hot encoding
+  stands in for `!sec.numeric_conversion_reason`/`from_reason` until schema
+  16 (P20-20). Evidence: `internal/ir/semantic/numeric_conversion{,_test}.go`; native fixtures `testdata/build/native/float_conversion_{exact,checked}.sec` (exit 42) via `TestFloatConversionsBuildAndRun`; lit `float-conversions.mlir` (Dialect and SecToLLVM) and `invalid-float-conversions.mlir`.
 - [ ] P20-19 — Make compile-time folding use the same exact literal rounding,
   arithmetic, comparison, core-method and conversion semantics as runtime;
   add NaN, signed-zero, subnormal, infinity and wide-integer parity tests
@@ -308,6 +339,11 @@ longer type silently as invalid. CTE parity is not audited yet.
   classify/round/property`; ODS ops and verifiers in SecOps.td/SecOps.cpp,
   admitted early in schema 11 like the arithmetic subset; Clamp emits
   `sec.float.clamp_checked`. Remaining: conversions, schema-16 gating.
+  Conversions 2026-11-19 (Claude): the emitter writes
+  `sec.numeric.convert_exact` with float types and its proof,
+  `sec.float.to_bool`, and `sec.numeric.convert_checked` with
+  `failures = [...]` and reason flags. ODS/C++ admit and verify all of them.
+  Remaining: schema-16 gating.
 - [x] P20-22 — Add `--sec-verify-float-semantics` to reject invalid formats,
   payloads, non-nearest-even policy, fast-math, contraction/denormal weakening,
   invalid predicates/remainder/method properties and malformed Clamp (§81).
@@ -317,10 +353,27 @@ longer type silently as invalid. CTE parity is not audited yet.
   cases cover positive/negative operation, policy and CFG cases. Legacy dialect
   round-tripping remains available without claiming schema-16 acceptance.
 
-- [ ] P20-23 — Add `--sec-verify-numeric-conversions` to validate supported
+- [x] P20-23 — Add `--sec-verify-numeric-conversions` to validate supported
   domains, exact-versus-checked classification, canonical error mapping,
   reason invariants, candidate dominance, guard ordering and try compatibility
   (§§79, 81).
+
+  Completed 2026-11-19 (Claude): `mlir/lib/Analysis/VerifyNumericConversions.cpp`
+  registers `--sec-verify-numeric-conversions`, which is part of the
+  toolchain's verification passes on every emit and native route. It checks:
+  - Exact-versus-checked classification: a source-domain or identity proof
+    never makes a narrowing, float-to-integer or significand-exceeding
+    integer-to-float conversion exact. Supported domains stay with the
+    operation verifiers.
+  - An immediate branch on `failed`; the candidate only on the success edge
+    and reason flags only on the failure edge (reason invariant).
+  - Reasons tested in priority order on the failure edge (guard ordering).
+  - Each reason constructs its own variant of ConversionError and of no
+    other union (canonical mapping, try compatibility).
+
+  Lit: `Analysis/numeric-conversions.mlir` and eight negative cases in
+  `Analysis/invalid-numeric-conversions.mlir` (246/246).
+
 
 ## F. Lower through the single native track
 
@@ -356,7 +409,7 @@ longer type silently as invalid. CTE parity is not audited yet.
   bounds, signed zeros and infinities). The native harness links no math
   library; public Result/union materialization is not claimed. Target
   capability checks belong to P20-27 and remain open there.
-- [ ] P20-26 — Lower checked numeric conversion plans to total guarded CFG.
+- [x] P20-26 — Lower checked numeric conversion plans to total guarded CFG.
   No `fptosi`, `fptoui`, narrowing or integer-to-float cast may execute before
   its required proof/guards. Map failure deterministically to `ConversionError`
   and existing try control flow (§§48–54, 79).
@@ -368,6 +421,23 @@ longer type silently as invalid. CTE parity is not audited yet.
   `convert-checked.mlir`, verifier negatives in `invalid-conversion-proof.mlir`,
   `cmd/compiler` emit-sec-mlir test over the core `ConversionError`. Native
   execution waits for union/Result lowering (ConversionError is a union).
+  Completed 2026-11-19 (Claude) for the float forms, in
+  `sec-lower-checked-integers`:
+  - Narrowing computes `truncf` and checks overflow to infinity and
+    `extf` round trip; NaN and infinities succeed.
+  - Integer-to-float computes `sitofp`/`uitofp` and checks infinity and an
+    exact round trip through an integer one bit wider.
+  - Float-to-integer checks unordered/infinite, then exact power-of-two
+    bounds (vacuous beyond the format), then integrality through i64 for
+    |x| < 2^p.
+  - `fptosi`/`fptoui` only ever sees a value selected after all three
+    guards. Narrowing and integer-to-float conversions are total and form
+    the candidate as § 48 prescribes.
+  - Proven-exact float conversions lower to single `extf`/`truncf`/
+    `sitofp`/`uitofp`/`fptosi`/`fptoui` operations, and `float.to_bool` to
+    `cmpf une` with +0.0.
+  - Native execution passes for all three checked directions, with failures
+    reaching the right `ConversionError` variant. Evidence: `internal/ir/semantic/numeric_conversion{,_test}.go`; native fixtures `testdata/build/native/float_conversion_{exact,checked}.sec` (exit 42) via `TestFloatConversionsBuildAndRun`; lit `float-conversions.mlir` (Dialect and SecToLLVM) and `invalid-float-conversions.mlir`.
 - [ ] P20-27 — Add target capability checks for binary32/binary64,
   nearest-even, preserved subnormals, required comparison/remainder semantics
   and signed zero. Unsupported targets reject the operation/profile rather
@@ -439,12 +509,38 @@ longer type silently as invalid. CTE parity is not audited yet.
   target coverage here is source/IR/emission, not native process execution.
   P20-19 CTE parity, schema 16, conversions, target capabilities and full
   package acceptance remain separate open points.
-- [ ] P20-32 — Test conversions at 2^24/2^53 boundaries; signed/unsigned
+- [x] P20-32 — Test conversions at 2^24/2^53 boundaries; signed/unsigned
   bounds; 128/256-bit values; widening/narrowing; NaN/infinity/subnormals;
   bool conversion; constant failures; and success-only IR values (§88).
-- [ ] P20-33 — Test naked propagation, local/catch-all handlers, wrong error
+  Completed 2026-11-19 (Claude): native cases in
+  `float_conversion_checked.sec` and `float_conversion_exact.sec` cover:
+  - integer-to-float at 2^24 and 2^24+1 (int32 to float32) and at 2^53 and
+    2^53+1 (int64 to float64); int128 max to float32 (PrecisionLoss);
+    2^126 int128 (exact); uint256 max to float32 (OutOfRange); 2^200 int256
+    to float64 (exact);
+  - float64 ±2^127 to int128 (OutOfRange and exact); int32 signed bounds,
+    -2^31-0.5, fractional, NaN and infinity; negative to uint8;
+  - narrowing exact, PrecisionLoss (0.1), overflow, NaN, infinity, the
+    smallest binary32 subnormal (exact) and 1e-40 (PrecisionLoss); 5e-324
+    to int32 (PrecisionLoss);
+  - widening, same-format, float-to-bool (±0 false, values true).
+  Constant known failures are compile-time diagnostics (P20-14). Success-only
+  IR values are covered by `TestNumericConversionVerifierRejects`.
+- [x] P20-33 — Test naked propagation, local/catch-all handlers, wrong error
   compatibility, canonical `ConversionError` identity and no hidden error
   union (§89).
+  Partial 2026-11-19 (Claude): native naked propagation, specific
+  (`Err(ConversionError.NonFinite)`, `OutOfRange`) and catch-all handlers
+  pass in `float_conversion_checked.sec`. ConversionError identity is the
+  core union. Remaining: explicit tests rejecting a wrong enclosing error
+  type and proving no hidden error union for float conversions.
+  Completed 2026-11-19 (Claude): native naked propagation, specific and
+  catch-all handlers (`float_conversion_checked.sec`). ConversionError is the
+  core union. `TestFloatConversionErrorChannel` checks that a bodyless try of
+  `float32(x)` in a function returning Result[float32, ArithmeticError] is
+  S1093. Mixing an ArithmeticError try with a ConversionError channel is also
+  S1093, so no hidden error union forms. Constant known failures are
+  compile-time diagnostics (P20-14).
 - [ ] P20-34 — Add schema/verifier negative tests and standard-MLIR/native
   output tests for the required Arith/Math/CF operations (§§90, 93).
 - [ ] P20-35 — Run focused Go tests, `go vet`, Sec MLIR verification, relevant

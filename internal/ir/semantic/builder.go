@@ -16,6 +16,11 @@ type BuildOptions struct {
 	RequestedModule string
 	SourceFiles     []string
 	MaxPackage      uint8
+	// Exported builds the module as a unit other modules link against: the
+	// accessors of its non-generic types are defined even when the module
+	// itself never calls them, because importing modules declare them
+	// (semantic_ir.md § 5(1); linking.md § 15).
+	Exported bool
 }
 
 // Build consumes resolved semantics for the requested module, requiring its
@@ -96,6 +101,47 @@ func Build(program *ast.Program, analyzer *sema.Analyzer, options BuildOptions) 
 		}
 	}
 	currentModule := ""
+	b.importedDeclarations, b.importedBuilt, b.importedAccessors = map[lexer.Token]*ast.FunctionDeclaration{}, map[FunctionID]bool{}, map[string]*ast.FunctionDeclaration{}
+	for _, statement := range program.Statements {
+		if declaration, ok := statement.(*ast.ModuleStatement); ok {
+			currentModule = declaration.Path
+			continue
+		}
+		if currentModule != identity {
+			if fn, ok := statement.(*ast.FunctionDeclaration); ok && fn != nil && fn.Name != nil {
+				b.importedDeclarations[fn.Name.Token] = fn
+				// Another module's generic function specializes here, in
+				// the demanding module (monomorphization.md §§ 4, 9).
+				if resolved, ok := analyzer.ResolvedFunctionForDeclaration(fn); ok && (len(resolved.GenericParameters) != 0 || resolved.GenericTypePack != "") {
+					b.registerGenericTemplate(fn, resolved)
+				}
+			}
+			// Static and instance methods of another module's types.
+			if impl, ok := statement.(*ast.ImplStatement); ok && impl != nil {
+				for _, member := range impl.Members {
+					if fn, ok := member.(*ast.FunctionDeclaration); ok && fn != nil && fn.Name != nil {
+						b.importedDeclarations[fn.Name.Token] = fn
+						// Methods of a generic owner and method-owned
+						// generics are templates the demanding module
+						// specializes.
+						if impl.Target != nil {
+							if resolved, ok := analyzer.ResolvedMethodForDeclaration(impl.Target.Name, fn); ok && (len(impl.Target.TypeArgs) != 0 || len(resolved.GenericParameters) != 0) {
+								b.registerGenericTemplate(fn, resolved)
+							}
+						}
+					}
+					if property, ok := member.(*ast.PropertyDeclaration); ok && impl.Target != nil {
+						if len(impl.Target.TypeArgs) == 0 {
+							b.registerImportedAccessors(impl.Target.Name, property)
+						} else {
+							b.registerPropertyAccessors(impl.Target.Name, property)
+						}
+					}
+				}
+			}
+		}
+	}
+	currentModule = ""
 	for _, statement := range program.Statements {
 		if declaration, ok := statement.(*ast.ModuleStatement); ok {
 			currentModule = declaration.Path
@@ -117,6 +163,9 @@ func Build(program *ast.Program, analyzer *sema.Analyzer, options BuildOptions) 
 		if err := b.buildFunction(fn); err != nil {
 			return nil, err
 		}
+	}
+	if options.Exported {
+		b.demandOwnAccessors()
 	}
 	if err := b.buildSpecializations(); err != nil {
 		return nil, err
@@ -166,6 +215,14 @@ type builder struct {
 	borrowEnds map[string][]sema.ReferenceLifetimeEnd
 	// customFrees maps a type to its built custom `free` (P17).
 	customFrees map[string]FunctionID
+	// importedDeclarations are the function declarations of other modules in
+	// the assembled program, by their name token; importedBuilt records the
+	// imported callees already declared in this module.
+	importedDeclarations map[lexer.Token]*ast.FunctionDeclaration
+	importedBuilt        map[FunctionID]bool
+	// importedAccessors are the accessor declarations of properties of
+	// another module's non-generic types, by accessor template key.
+	importedAccessors map[string]*ast.FunctionDeclaration
 }
 type functionBuilder struct {
 	// unsafeScopes retains lexical authorization provenance for physical effects.
@@ -330,6 +387,11 @@ func (b *builder) buildConcreteFunction(decl *ast.FunctionDeclaration, resolved 
 		return locateUnsupportedType(err, token)
 	}
 	fn := &Function{ID: functionID(resolved, b.module.Types), Name: resolved.Name, LinkName: resolved.LinkName, ReturnType: returnType, Unsafe: decl.Unsafe, Extern: resolved.Extern, ABI: resolved.ABI, Location: location(decl.Token)}
+	// A function of another module is declared here, never defined.
+	fn.Imported = spec == nil && resolved.Module != b.module.Identity
+	if fn.Imported {
+		fn.DefiningModule = resolved.Module
+	}
 	fn.NoPanic, fn.NoPanicSource = functionNoPanic(decl)
 	if spec != nil {
 		fn.ID, fn.TypePack, fn.Specialization = spec.id, spec.facts, spec.generic
@@ -390,7 +452,7 @@ func (b *builder) buildConcreteFunction(decl *ast.FunctionDeclaration, resolved 
 		}
 		fn.ReturnOrigins = origins
 	}
-	if resolved.Extern {
+	if resolved.Extern || fn.Imported {
 		return nil
 	}
 	entry := fb.newBlock()
@@ -2215,6 +2277,9 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 		}
 		if conversion, resolved := fb.owner.analyzer.ResolvedNamedConversionOf(e); resolved {
 			return fb.buildNamedConversion(e, conversion)
+		}
+		if plan, resolved := fb.owner.analyzer.ResolvedNumericConversionPlanOf(e); resolved && len(e.Arguments) == 1 {
+			return fb.buildNumericConversion(e, plan)
 		}
 
 		if value, handled, err := fb.buildVolatileCall(e); handled {
@@ -4179,6 +4244,11 @@ func (fb *functionBuilder) buildCall(call *ast.CallExpression) (builtValue, erro
 	}
 	callee := functionID(resolved.Function, fb.owner.module.Types)
 	parameters := resolved.Function.Parameters
+	if !isGenericInstance(resolved.Function) {
+		if err := fb.owner.declareImportedCallee(resolved.Function, call.Token); err != nil {
+			return builtValue{}, err
+		}
+	}
 	if isGenericInstance(resolved.Function) && resolved.Kind != sema.ResolvedInterfaceMethodCall {
 		spec, err := fb.owner.demandSpecialization(call, resolved.Function)
 		if err != nil {
@@ -4602,3 +4672,29 @@ func statementToken(s ast.Statement) lexer.Token {
 	return lexer.Token{}
 }
 func statementLocation(s ast.Statement) Location { return location(statementToken(s)) }
+
+// declareImportedCallee adds, once, the signature-only declaration of a
+// called function that another module of the assembled program defines
+// (semantic_ir.md § 5(1)). Functions of this module, generic
+// specializations and compiler-known callables need none. Free functions and
+// the static and instance methods of imported types are declared from their
+// declaration in the assembled program; a callable without one (such as a
+// property accessor) stays an explicit boundary.
+func (b *builder) declareImportedCallee(function sema.Function, site lexer.Token) error {
+	if function.Module == b.module.Identity || function.Module == "" || function.CompilerKnownID != "" {
+		return nil
+	}
+	id := functionID(function, b.module.Types)
+	if b.importedBuilt[id] {
+		return nil
+	}
+	decl := b.importedDeclarations[function.Token]
+	if decl == nil {
+		return &UnsupportedFeatureError{Feature: "call to imported callable " + string(id) + " without a module-level declaration", Package: b.maxPackage, Location: location(site)}
+	}
+	b.importedBuilt[id] = true
+	substitution := b.substitution
+	b.substitution = nil
+	defer func() { b.substitution = substitution }()
+	return b.buildConcreteFunction(decl, function, nil)
+}

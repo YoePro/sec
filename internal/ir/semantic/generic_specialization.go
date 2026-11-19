@@ -40,6 +40,9 @@ type specializationState struct {
 	functions map[string]sema.Function
 	demanded  map[FunctionID]*specialization
 	pending   []*specialization
+	// accessors are the registered accessors of non-generic owners, by
+	// template key; an exported unit defines them all.
+	accessors map[string]sema.Function
 }
 
 // maxSpecializations bounds demand so that polymorphic recursion such as
@@ -425,8 +428,9 @@ func verifyTypePackFacts(module *Module, fn *Function) error {
 // carry it already (`Box.Get`), a property accessor (`Count.get`) gets its
 // owner prefixed, so equal property names of different owners stay distinct.
 func qualifiedCallableName(function sema.Function) string {
+	name := function.Name
 	if function.ImplTarget != "" && !strings.HasPrefix(function.Name, function.ImplTarget+".") {
-		return function.ImplTarget + "." + function.Name
+		name = function.ImplTarget + "." + function.Name
 	}
-	return function.Name
+	return declarationName(function.Module, name)
 }

@@ -40,7 +40,7 @@ func expectedValueTypeAt(program *ast.Program, analyzer *sema.Analyzer, text str
 					return usableExpectedType(binding.Type)
 				}
 			}
-			if target, ok := analyzer.TypeOf(parent.Target); ok {
+			if target, ok := analyzer.ResolvedTypeOf(parent.Target); ok {
 				return usableExpectedType(target)
 			}
 			return sema.Type{}, false
@@ -54,7 +54,7 @@ func expectedValueTypeAt(program *ast.Program, analyzer *sema.Analyzer, text str
 			if !ok {
 				return sema.Type{}, false
 			}
-			owner, ok := analyzer.TypeOf(literal)
+			owner, ok := analyzer.ResolvedTypeOf(literal)
 			if !ok {
 				return sema.Type{}, false
 			}
@@ -119,7 +119,7 @@ func expectedArgumentType(analyzer *sema.Analyzer, call *ast.CallExpression, val
 // expectedMatchArmType is the value type of a match whose arms produce
 // values: Sema's type of the match, or the agreeing type of its other arms.
 func expectedMatchArmType(analyzer *sema.Analyzer, match *ast.MatchExpression, arm *ast.MatchArm) (sema.Type, bool) {
-	if typ, ok := analyzer.TypeOf(match); ok {
+	if typ, ok := analyzer.ResolvedTypeOf(match); ok {
 		if expected, usable := usableExpectedType(typ); usable {
 			return expected, true
 		}
@@ -129,7 +129,7 @@ func expectedMatchArmType(analyzer *sema.Analyzer, match *ast.MatchExpression, a
 		if other == nil || other == arm || other.Body == nil {
 			continue
 		}
-		typ, ok := analyzer.TypeOf(other.Body)
+		typ, ok := analyzer.ResolvedTypeOf(other.Body)
 		if !ok {
 			continue
 		}

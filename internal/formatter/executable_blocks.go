@@ -8,7 +8,8 @@ import (
 	"sec/internal/parser"
 )
 
-// formatExecutableBlocks expands parser-confirmed one-line executable blocks.
+// formatExecutableBlocks expands parser-confirmed one-line executable blocks,
+// including local try handler lists identified by their own real delimiters.
 // It rewrites the outermost remaining block on each pass so a nested one-line
 // block first acquires its correct surrounding indentation. Aggregate literals
 // and structural declaration braces have no executable-block role and remain

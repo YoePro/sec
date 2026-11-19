@@ -60,10 +60,11 @@ func (p IntegerConversionProof) Proven() bool {
 	return p.Basis != IntegerConversionUnproven
 }
 
-// recordIntegerConversion publishes the plan of a built-in integer to
-// built-in integer conversion call.
+// recordIntegerConversion publishes the plan of an integer-family conversion
+// call: between built-in integers, and since P20 also to or from char and
+// rune, whose numeric domains are 0..255 and the Unicode scalar values.
 func (a *Analyzer) recordIntegerConversion(call *ast.CallExpression, target, source Type) {
-	if call == nil || len(call.Arguments) != 1 || !isBuiltinConversionInteger(target) || !isBuiltinConversionInteger(source) {
+	if call == nil || len(call.Arguments) != 1 || !isIntegerFamilyConversion(target, source) {
 		return
 	}
 	var constant *big.Int
@@ -109,6 +110,11 @@ func (a *Analyzer) integerConversionProof(target, source Type, constant *big.Int
 		}
 		sourceMin, sourceMax, ok := a.conversionSourceDomain(source, constant, width)
 		if !ok || sourceMin.Cmp(targetMin) < 0 || sourceMax.Cmp(targetMax) > 0 {
+			return IntegerConversionProof{}
+		}
+		// A rune also excludes the surrogates inside its numeric range,
+		// unless the source is itself a char or rune.
+		if target.Kind == RuneType && source.Kind != RuneType && source.Kind != CharType && intervalIntersectsSurrogates(sourceMin, sourceMax) {
 			return IntegerConversionProof{}
 		}
 		proof.SourceMin, proof.SourceMax, proof.TargetMin, proof.TargetMax = sourceMin, sourceMax, targetMin, targetMax
@@ -162,6 +168,22 @@ func (a *Analyzer) ResolvedIntegerConversionOf(call *ast.CallExpression) (Resolv
 // conversion rules.
 func isBuiltinConversionInteger(typ Type) bool {
 	return (typ.Kind == IntType || typ.Kind == UintType) && !typ.Named && len(typ.Contracts) == 0 && !hasUnitSemantics(typ)
+}
+
+// isCharacterConversionScalar admits the primitive char and rune types.
+func isCharacterConversionScalar(typ Type) bool {
+	return (typ.Kind == CharType || typ.Kind == RuneType) && !typ.Named && len(typ.Contracts) == 0
+}
+
+// isIntegerFamilyConversion admits a conversion between built-in integers, or
+// between a char or rune and a built-in integer, char or rune (types.md
+// § 9.4(8); package20.md §§ 44, 56; the rune InvalidScalar of P20-15).
+func isIntegerFamilyConversion(target, source Type) bool {
+	if isBuiltinConversionInteger(target) && isBuiltinConversionInteger(source) {
+		return true
+	}
+	family := func(typ Type) bool { return isBuiltinConversionInteger(typ) || isCharacterConversionScalar(typ) }
+	return family(target) && family(source) && (isCharacterConversionScalar(target) || isCharacterConversionScalar(source)) && !sameConcreteType(target, source)
 }
 
 // recordForRangeStep publishes the compile-time value of an explicit range

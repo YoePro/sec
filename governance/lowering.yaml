@@ -35,11 +35,26 @@ integrations:
   - id: semantic-ir.core-v2
     area: canonical-semantic-ir-model-and-verifier
     status: partial
-    revised: "2026-10-31"
+    revised: "2026-11-19"
     repository_baseline: 998d8d1
     code:
+      - internal/ir/semantic/builder.go
+      - internal/ir/semantic/verifier.go
+      - internal/lowering/secmlir/function_symbols.go
+      - mlir/lib/Dialect/Sec/SecDialect.cpp
+      - cmd/compiler/module_objects.go
+      - cmd/compiler/import_sources.go
+      - internal/ir/semantic/property_lowering.go
+      - internal/ir/semantic/type_identity.go
+      - internal/lowering/secmlir/emitter.go
+      - mlir/lib/Conversion/SecToLLVM/SecToLLVM.cpp
       - internal/sema/type_pack_references.go
     tests:
+      - internal/ir/semantic/imported_declarations_test.go
+      - cmd/compiler/cross_module_calls_test.go
+      - mlir/test/Dialect/Sec/imported-declaration.mlir
+      - mlir/test/Dialect/Sec/invalid-imported-declaration.mlir
+      - mlir/test/Conversion/SecToLLVM/module-linkage.mlir
       - internal/ir/semantic/type_pack_static_methods_test.go
       - cmd/compiler/type_pack_static_methods_test.go
       - internal/ir/semantic/type_pack_instance_methods_test.go
@@ -62,6 +77,8 @@ integrations:
       - "MD-117 trivial owned-pack specialization (2026-10-31; functions.md §38A(3),(6),(9), monomorphization.md §11.2,11.4, semantic_ir.md §27A): unused/Len-only ...Types free functions and concrete static methods accept supported concrete by-value parameters when Sema proves both trivial copying and trivial destruction. TypePackOwned preserves element identity and ordinary immediate/raw-pointer parameter ownership; the verifier rejects reference grants, borrowed ownership and mismatching or nontrivial element types. No per-element cleanup is omitted without a concrete no-op proof. Empty/ordered packs, fixed prefixes, repeat specialization reuse, named source reuse and once-only argument calls are source-tested. A scalar-only fixture builds and executes through Semantic IR, Sec MLIR, LLVM and clang. Ownership-sensitive elements keep a named boundary; explicit scalar move arguments reach the inspection routes since package 17 (2026-11-02) and keep a native boundary, and element bodies/spread/full owned cleanup remain open. No sec/ or Sema changes."
       - "canonical Place identity and state records (P15–P17, verified 2026-11-04; semantic_ir.md §§ 30–33, 45): place.storage-root, place.value-root, place.field, place.element, place.union-payload and place.deref carry root identity, storage identity, projection path, address space and validity facts; ownership state per Place and sub-Place is tracked by the P17 producers. Tests: place_borrow_integration_test.go, payload_reference_test.go, ownership_variants.sec."
       - "panic, assertion and check records (verified 2026-11-04; semantic_ir.md §§ 54–57): explicit panic operations with registered reasons, assertion lowering and checked unreachable endpoints, and checked arithmetic/bounds failure edges. Tests: TestPanicAssertionAndUnreachableLowerToExplicitPanic, TestVerifierRejectsInvalidPanicFacts, TestProvenAssertionPreservesConditionEffects."
+      - "cross-module direct calls (2026-11-19; semantic_ir.md §§ 5(1), 6; linking.md §§ 9, 15, 18-19; owner choice: one Semantic IR per module): functionID drops the assembled module qualifier, so util.Twice is util::Twice(int) in every module. A call into another module adds a signature-only declaration (Function.Imported with DefiningModule; verified as bodiless, non-extern and naming another module). Sec MLIR emits it as func.func private with the new sec.imported = true attribute (C++ verifier: no body, never extern), and imported declarations plus every definition of an imported module's unit use the module-independent symbol sec_sym_<sha256 of FunctionID>. `sec build` compiles each transitively called module into its own object and links them. Nested imports outside a Project now resolve against the entry directory (the anonymous root of modules.md § 2.2) instead of the working directory."
+      - "imported methods, properties and generics (2026-11-19; semantic_ir.md §§ 5(1), 6, 26; monomorphization.md §§ 4, 9; linking.md §§ 15, 23-24): static and instance methods of imported types are declared like imported free functions; type and callable identities drop the assembled module qualifier everywhere (util::Counter, util::Counter.Make(int), not util::util.*). Property operations on an imported non-generic type call a declared accessor under the defining module's accessor identity, and BuildOptions.Exported makes a module unit define every accessor of its non-generic types. Generic functions, method-owned generics and members of generic types from other modules register as templates and specialize in the demanding module; in an exported unit a specialization keeps its local symbol and private visibility, and SecFinalizeForLLVM gives every private definition internal linkage, so equal specializations in several objects link without collision. Tests build and run a static imported method and a specialization instantiated by both the entry and the imported module (exit 42)."
     remaining:
       - "MD-117 Semantic IR: the shared/exclusive borrowed-pack and trivial owned-value specialization above covers ordered types, length, value modes and source positions for pack-only free functions and concrete-owner static/instance pack methods whose bodies use no element or use it through for-pack loops in every binding mode and constant indexing (2026-11-01). Scalar generic prefixes ([T, ...Types]) specialize since 2026-10-31 through compiler.monomorphization. Remaining: arguments that are not trivially copyable and destructible, imported templates, generic/interface-owner pack methods and method-owned scalar generic parameters, ownership-sensitive owned positions and explicit source moves of non-trivial values into owned pack arguments, spread origins, call-transfer commit, whole-pack invalidation, non-escape/returned-reference facts with per-position origins (borrow/lifetime identities are now distinct per position; origin storage remains conservative), other per-position control-flow expansion and copy/move/borrow/destruction obligations before physical lowering (semantic_ir.md §27A; correction §9(3)). Scalar-only trivial owned packs build and execute through the package-14 native track; borrowed-pack native execution still waits on physical reference lowering."
       - add explicit ArenaDomain/state/epoch operations
@@ -82,6 +99,10 @@ integrations:
       - invalid transfer/concurrency state rejected
       - invalid target operation rejected
     verification:
+      - command: go test ./internal/ir/semantic ./internal/lowering/secmlir -count=1; SEC_MLIR_BIN=build/sec-mlir/bin go test ./cmd/compiler -run 'TestCrossModule|TestNativeTrack|TestProjectMove|TestEmitIR|EmitSecMLIR|EmitLLVM|EmitMLIR|Package1[0-8]|Capability|BuildCLI|ProgramPlans|MultiModule|Import|Module|Method|Generic|Specializ|Property|Impl|Accessor|Stdlib|Core|Diagnostic|StaticInitialization' -count=1; llvm-lit build/sec-mlir/test
+        result: "2026-11-19: seven TestCrossModule tests, the Semantic IR and secmlir suites and lit (241/241) pass. In the compiler subset only TestTemporalArithmeticErrorKeepsCoreIdentity fails, with Sema errors in sec/stdlib/temporal/calendar; it fails identically with this session's import change reverted, so it is the current stdlib state, not this change."
+      - command: go test ./internal/ir/semantic ./internal/lowering/secmlir -count=1; SEC_MLIR_BIN=build/sec-mlir/bin go test ./cmd/compiler -run 'TestCrossModule|TestNativeTrack|TestProjectMove|TestEmitIR|EmitSecMLIR|EmitLLVM|EmitMLIR|Package1[0-8]|Capability|BuildCLI|ProgramPlans|Diagnostic|AllocationLoweringSelectionCLI|StaticInitialization|MultiModule|Import|Module|Project|Stdlib|Source|Platform|Visibility|Internal|EntrySiblings|RootModule|Hardware' -count=1; llvm-lit build/sec-mlir/test; go build ./...
+        result: "Passed 2026-11-19: a main -> util -> mathx Project program builds three linked objects and exits 42; emit-ir names util::Twice(int) and an imported declaration, emit-sec-mlir a private sec.imported symbol; the same program without a Project resolves its nested import from another working directory; verifier and lit (240/240) reject imported declarations with a body or extern; full Semantic IR and secmlir suites pass."
       - command: go test ./internal/ir/semantic/... -count=1; go test ./internal/ir/semantic -run "TestTypePack|TestGeneric" -count=1; SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./cmd/compiler -run "Test.*TypePack|TestGeneric.*Specializ" -count=1; go vet ./internal/ir/semantic ./cmd/compiler
         result: "2026-10-31: focused pack/generic IR tests pass; configured CLI 0.690s passes, including verified Sec MLIR and native scalar-owned-pack build/execution; vet passes. Full IR 3.217s has one concurrent hardware failure, TestRegisterValueBoundariesFailClosed/read, because the former read boundary now lowers; reported to Claude without changing his test. Nominal 0.095s passes. Ownership-sensitive and explicit-move boundaries emit no artifact. 1 implemented added, 1 remaining narrowed, 0 closed; remaining 13 to 13."
       - command: go test ./internal/sema ./internal/ir/semantic/... -count=1; SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./cmd/compiler ./cmd/lsp -run "Test.*TypePack|TestGeneric.*Specializ" -count=1; go vet ./internal/sema ./internal/ir/semantic ./cmd/compiler
@@ -2769,7 +2790,7 @@ integrations:
     area: semantic-ir-sec-mlir-and-lowering
     status: partial
     integrated: "2026-10-18"
-    revised: "2026-11-16"
+    revised: "2026-11-19"
     summary: Early P20 binary-float operators, core properties/methods and the dedicated P20-22 float-semantics verifier are integrated on the one native track. Constants use canonical bits; arithmetic preserves nearest-even rounding, NaNs, signed zero, truncation remainder and subnormals. The verifier runs explicitly and before float lowering, rejecting weakening policies and malformed Clamp control flow. Schema 16, float conversions (ConversionError), numeric-conversion verification and target capability checks remain open; the compiler still emits schema 11.
     rules:
       - rules/mlir/packages/sec-mlir-dialect_package20.md
@@ -2777,6 +2798,14 @@ integrations:
       - rules/foundations/operators.md
       - rules/compiler/semantic_ir.md
     code:
+      - internal/ir/semantic/numeric_conversion.go
+      - internal/sema/integer_conversion.go
+      - mlir/lib/Dialect/Sec/OperationContracts.h
+      - internal/lowering/secmlir/emitter.go
+      - mlir/lib/Conversion/SecIntegerToArith/SecIntegerToArith.cpp
+      - mlir/lib/Conversion/SecToLLVM/Floats.cpp
+      - mlir/lib/Analysis/VerifyNumericConversions.cpp
+      - internal/mlir/toolchain.go
       - internal/sema/semantic_facts.go
       - internal/sema/analyzer_inference.go
       - internal/sema/float_core.go
@@ -2812,6 +2841,16 @@ integrations:
       - internal/sema/checked_numeric_conversions.go
       - internal/sema/numeric_conversion_validation.go
     tests:
+      - internal/ir/semantic/numeric_conversion_test.go
+      - cmd/compiler/float_conversion_native_test.go
+      - testdata/build/native/float_conversion_exact.sec
+      - testdata/build/native/float_conversion_checked.sec
+      - testdata/build/native/rune_conversion_checked.sec
+      - mlir/test/Dialect/Sec/float-conversions.mlir
+      - mlir/test/Dialect/Sec/invalid-float-conversions.mlir
+      - mlir/test/Conversion/SecToLLVM/float-conversions.mlir
+      - mlir/test/Analysis/numeric-conversions.mlir
+      - mlir/test/Analysis/invalid-numeric-conversions.mlir
       - internal/sema/float_operators_test.go
       - internal/ir/semantic/float_ops_test.go
       - mlir/test/Conversion/SecToLLVM/floats.mlir
@@ -2880,11 +2919,24 @@ integrations:
       - "P20-17 (2026-11-15): all eleven represented float families carry value-only FloatSemantics facts with source scalar TypeID, selected binary format, nearest-even arithmetic, fast-math none, contraction off, preserved subnormals, NaN-aware comparison predicate and truncation remainder. Primitive plain float takes width from the selected plan, retaining unknown width without one. Both ordinary and membership comparisons preserve source provenance despite producing bool. IR verification rejects missing/contradictory facts and canonical payload format mismatches. IR dumps and Sec MLIR emission retain the facts; MLIR verification rejects inconsistent explicit format/source/predicate facts and misplaced remainder metadata. Negative mutation tests cover every family on both scalar plans; older schema-11 omitted attributes retain strict defaults. No schema-16, CTE/conversion or target-capability completion claim."
       - "P20-13 (2026-11-16): detached read-only ResolvedNumericConversionPlan snapshots cover primitive float pairs, signed/unsigned integers through 256 bits and float-to-bool. Successful conversion resolution reuses the checked-conversion classifier; plans retain source/target identities, selected widths (zero when unresolved), exactness basis with argument bounds or exact constant, runtime-check classification and ordered canonical ConversionError causes. Query results detach types, domains, proofs and failure lists; queries cannot infer or create facts, and reanalysis clears stale plans. Source-backed 96-pair matrix covers both scalar plans, planless analysis and all three depths, plus constant/path proofs, mutation isolation, invalid casts and literal/decimal boundaries. Corrected binary32 finite-range classification for uint128. Checked conversion lowering, CTE parity and schema 16 remain open."
       - "P20-14 (2026-11-16, Sema): typed primitive numeric conversions use exact finite-range and representability checks, including half-open power-of-two integer bounds and exact wide-integer singleton proofs through 256 bits. Immutable IEEE categories survive bindings, signs and proven conversion chains; NaN/infinity map through float narrowing, fail integer conversion as canonical NonFinite and remain total for bool. Known invalid typed constants are compile-time errors even under try; mutable values and unresolved platform facts remain conservative. Detached plans publish ordered semantic checks, exact integer bounds and the unordered bool predicate. Source regressions and independent arithmetic oracles cover precision/range priority, signed/unsigned boundaries, underflow/overflow, wide integers, nonfinite values and conversion chains. Physical guard/cast lowering remains P20-26 and full CTE parity remains P20-19."
+      - "P20-16 (2026-11-19): buildNumericConversion lowers every Sema numeric conversion plan: float-to-bool is the total float.to-bool (cmpf une +0.0), exact plans are numeric.convert-exact with the plan's proof (new bases identity and value-interval, admitted by the IR verifier and ConversionProof.cpp), runtime-checked plans are the checked form."
+      - "P20-18 (2026-11-19): the float form of numeric.convert-checked yields candidate, failed and one mutually exclusive reason flag per plan failure listed in priority order (NonFinite, OutOfRange, PrecisionLoss); the failure edge dispatches the flags to static ConversionError variants, and the candidate-dominance verifier now covers checked ops with reason flags. The one-hot flags stand in for the schema-16 reason type (P20-20)."
+      - "P20-26 (2026-11-19): sec-lower-checked-integers lowers the float forms to total guard sequences (narrowing overflow/round-trip, integer-to-float infinity and widened round-trip, float-to-integer non-finite, exact power-of-two range and i64 integrality probe) so fptosi/fptoui only sees a value that passed every guard; exact float conversions lower to single extf/truncf/sitofp/uitofp/fptosi/fptoui and float.to_bool to cmpf une."
+      - "P20-32 (2026-11-19): native fixtures float_conversion_exact.sec and float_conversion_checked.sec exercise 2^24/2^53 boundaries, int128/uint256/int256 to float, ±2^127 to int128, signed/unsigned bounds, NaN, infinity, subnormals, widening/narrowing, float-to-bool and local/catch-all handlers; all cases return the expected ConversionError variant (exit 42)."
+      - "P20-15 (2026-11-19): char and rune integer-family conversions get Sema integer plans (rune proofs exclude surrogates); checked integer-to-rune is numeric.convert-checked with InvalidScalar, lowered to the 0..0x10FFFF-without-surrogates guard, and rune-to-char uses OutOfRange; native rune_conversion_checked.sec passes every boundary."
+      - "P20-33 (2026-11-19): native naked propagation and specific/catch-all handlers for checked float conversions; TestFloatConversionErrorChannel shows a wrong enclosing error type and an ArithmeticError mixed into a ConversionError channel are both S1093, so no hidden error union forms."
+      - "P20-23 (2026-11-19): --sec-verify-numeric-conversions (VerifyNumericConversions.cpp, in the toolchain verification passes) rejects structurally proven narrowing, float-to-integer and significand-exceeding integer-to-float exact conversions, candidates off the success edge, reason flags off the failure edge, reasons tested out of priority order, reasons mapped to the wrong variant, and failure edges constructing a union other than ConversionError."
     remaining:
       - "Static float, decimal and unit-quantity values (2026-11-16, found while closing SVV-2): Sema publishes their exact CTE scalars, also as variant payloads, but Semantic IR StaticInitializer and schema-13 sec.static.global have no float, decimal or unit leaf yet. These statics stay a named 'static ... has no resolved compile-time value' boundary until exact P20 float and decimal constants exist."
-      - checked numeric conversion IR integration and physical lowering int<->float and float32<->float64 with ConversionError and try, float-to-bool lowering and folding parity; Sema plans and typed validation completed by P20-13/P20-14
-      - schema 16 gating, --sec-verify-numeric-conversions, target capability checks
+      - "compile-time folding parity for numeric conversions and float operations (P20-19); conversions through Semantic IR, Sec MLIR, guarded lowering and native execution are implemented (P20-15/16/18/26/32/33, 2026-11-19)"
+      - schema 16 gating and target capability checks
     verification:
+      - command: llvm-lit build/sec-mlir/test; SEC_MLIR_BIN=build/sec-mlir/bin go test ./cmd/compiler -run 'Conversion|Rune|Checked|Float|Enum|TestNativeTrack|EmitSecMLIR|Capability|Package1[0-8]|TestCrossModule' -count=1
+        result: "Passed 2026-11-19: lit 246/246 with the numeric-conversion verifier cases; every compiler emit and native route now runs --sec-verify-numeric-conversions without regressions. P20 TODO 17 to 16 open; package20 remaining 3 to 3 (verifier removed from the schema-16 item)."
+      - command: go test ./internal/ir/semantic ./internal/lowering/secmlir ./internal/sema -count=1; go test ./cmd/lsp -run 'Conversion|Rune|Char|Checked' -count=1; SEC_MLIR_BIN=build/sec-mlir/bin go test ./cmd/compiler -run 'Conversion|Rune|Char|Enum|Checked|Float|TestNativeTrack|Capability|EmitSecMLIR|Package1[0-8]' -count=1; llvm-lit build/sec-mlir/test
+        result: "Passed 2026-11-19: full Semantic IR, secmlir and Sema suites, LSP conversion subset, compiler subsets with rune_conversion_checked and TestFloatConversionErrorChannel, lit 244/244 with the InvalidScalar verifier cases. P20 TODO 19 to 17 open."
+      - command: go test ./internal/ir/semantic ./internal/lowering/secmlir ./internal/mlir -count=1; go test ./internal/sema -run 'NumericConversion|CheckedConversion|Float|Conversion' -count=1; SEC_MLIR_BIN=build/sec-mlir/bin go test ./cmd/compiler -run 'Float|Conversion|Checked|TestNativeTrack|EmitSecMLIR|EmitLLVM|EmitMLIR|Capability|Package1[0-8]|TestCrossModule' -count=1; llvm-lit build/sec-mlir/test
+        result: "Passed 2026-11-19: float conversion IR, verifier mutations (priority order, repeats, unknown, missing flags, mixed forms, success-only dominance), native exact and checked fixtures (exit 42), Sec MLIR emission, lit 244/244 (check-float-lowering-support.mlir updated: exact float conversions are now admitted, float-to-bool through convert_exact still rejected). P20 TODO 23 to 19 open."
       - command: go test -p 4 ./internal/sema ./internal/ir/semantic -count=1
         result: "passed on 2026-11-16: complete suites after P20-13/P20-14; primitive conversion matrix, exact 256-bit integer proofs, IEEE categories and conversion chains, compile-time rejection even under try, canonical guard ordering and detached half-open integer bounds"
       - command: go vet -p 4 ./internal/sema

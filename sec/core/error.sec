@@ -125,7 +125,8 @@ type ContractError union error {
 }
 // Describes a failure of an otherwise valid checked type conversion.
 // Rulebook: types/types.md "Explicit conversions" and types/contracts.md
-// "Public conversion and contract errors" (MD-012).
+// "Public conversion and contract errors" (MD-012) and types/units.md
+// § 22.5(12) (MD-048, InvalidDomain).
 type ConversionError union error {
     // The value is outside the destination scalar's representable range.
     OutOfRange,
@@ -145,6 +146,11 @@ type ConversionError union error {
 
     // A declared named-type contract rejected an otherwise representable value.
     Contract(ContractError),
+
+    // A finite real input lies outside the mathematical domain of the
+    // conversion, such as the logarithm of a nonpositive linear quantity
+    // (types/units.md § 22.5(11)-(12), MD-048).
+    InvalidDomain,
 }
 // The one failure family of text: every ToString and every runtime string
 // concatenation or interpolation fails with StringError.

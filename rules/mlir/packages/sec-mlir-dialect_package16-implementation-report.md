@@ -1,5 +1,10 @@
 # SEC MLIR Package 16 implementation report
 
+> Navigation added 2026-11-19; historical evidence below is unchanged.
+> Current canonical Semantic IR responsibilities: [§ 126 slices](../../compiler/semantic_ir.md#126-slice-semantic-values-sec-mlir-p16).
+> See the [amendment crosswalk and maintenance workflow](../../../governance/semantic-ir-amendments.md)
+> and [live implementation ledger](../../../governance/lowering.yaml).
+
 Audit date: 2026-10-21; closure 2026-11-02. Reporting contract: P16 §145, all 43 topics in order.
 
 **P16 is implemented (closure 2026-11-02).** Sections 1–41 are the audit of

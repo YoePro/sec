@@ -101,6 +101,29 @@ func (resolver *SourceModuleResolver) ModuleIdentity(file string) (modules.Modul
 	return identityFor(AnonymousImportRoot, relative)
 }
 
+// SourceIdentity returns the location-independent identity of a source file:
+// its path relative to its import root. Project and anonymous sources use
+// the root-relative path ("drivers/gpio/gpio.sec"); compiler-provided
+// sources are qualified by their root ("core:string.sec"). It is derived from
+// ModuleIdentity, so moving a Project directory, or invoking the compiler
+// through another path, keeps every source identity, and it fails closed for
+// a file outside every root.
+// Rules: rules/projects/projects.md — §§ 34, 50(1); rules/compiler/semantic_ir.md — § 5(1).
+func (resolver *SourceModuleResolver) SourceIdentity(file string) (string, bool) {
+	module, ok := resolver.ModuleIdentity(file)
+	if !ok {
+		return "", false
+	}
+	path := filepath.Base(file)
+	if module.CanonicalImportPath != "" {
+		path = module.CanonicalImportPath + "/" + path
+	}
+	if module.ImportRootIdentity == AnonymousImportRoot || strings.HasPrefix(module.ImportRootIdentity, projectRootPrefix) {
+		return path, true
+	}
+	return module.ImportRootIdentity + ":" + path, true
+}
+
 // project finds and caches the nearest Project manifest above dir. Only its
 // [project] identity is needed; a manifest whose identity section is invalid
 // yields no Project root (and the source no other root), while its

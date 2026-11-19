@@ -16,6 +16,8 @@ const dialectSchemaVersion = 11
 
 type emitter struct {
 	schemaVersion uint32
+	// exportSymbols marks a unit other modules link against (EmitOptions).
+	exportSymbols bool
 	// extraAttributes are dialect ownership attributes the next attribute
 	// dictionary carries (dialect v13 §§ 26–27).
 	extraAttributes []string
@@ -171,7 +173,7 @@ func (e *emitter) emitModule() error {
 func (e *emitter) emitFunction(function *semantic.Function) error {
 	symbol := e.functions[function.ID]
 	e.out.WriteString("  func.func ")
-	if function.Extern {
+	if function.Extern || function.Imported || e.exportSymbols && (function.Specialization != nil || function.TypePack != nil) {
 		e.out.WriteString("private ")
 	}
 	fmt.Fprintf(&e.out, "@%s(", symbol)
@@ -216,6 +218,9 @@ func (e *emitter) emitFunction(function *semantic.Function) error {
 	if function.ABI != "" {
 		fmt.Fprintf(&e.out, ", sec.abi = %s", mlirString(function.ABI))
 	}
+	if function.Imported {
+		e.out.WriteString(", sec.imported = true")
+	}
 	if len(function.Parameters) > 0 {
 		e.out.WriteString(", sec.parameter_names = [")
 		for index, parameter := range function.Parameters {
@@ -230,7 +235,7 @@ func (e *emitter) emitFunction(function *semantic.Function) error {
 		fmt.Fprintf(&e.out, ", sec.return_origins = %s", returnOriginsText(function.ReturnOrigins))
 	}
 	e.out.WriteByte('}')
-	if function.Extern {
+	if function.Extern || function.Imported {
 		e.emitLocation(function.Location)
 		e.out.WriteByte('\n')
 		return nil
@@ -586,6 +591,8 @@ func (e *emitter) emitOperation(function *semantic.Function, operation semantic.
 		return e.emitSemanticIntegerOperation(operation, "sec.numeric.convert_exact", "", "", values)
 	case semantic.OpNamedConvert:
 		return e.emitSemanticIntegerOperation(operation, "sec.named.convert", "", "", values)
+	case semantic.OpFloatToBool:
+		return e.emitSemanticIntegerOperation(operation, "sec.float.to_bool", "", "", values)
 	case semantic.OpIntBinaryChecked:
 		return e.emitSemanticIntegerOperation(operation, "sec.int.binary_checked", "kind", string(operation.IntegerBinary), values)
 	case semantic.OpIntBitwise:
@@ -603,6 +610,9 @@ func (e *emitter) emitOperation(function *semantic.Function, operation semantic.
 	case semantic.OpFloatClampChecked:
 		return e.emitSemanticIntegerOperation(operation, "sec.float.clamp_checked", "", "", values)
 	case semantic.OpNumericConvertChecked:
+		if len(operation.ConversionFailures) != 0 {
+			return e.emitCheckedNumericConversion(operation, values)
+		}
 		return e.emitSemanticIntegerOperation(operation, "sec.numeric.convert_checked", "failure", operation.ConversionFailure, values)
 	case semantic.OpFloatAbs:
 		return e.emitSemanticIntegerOperation(operation, "sec.float.abs", "", "", values)
@@ -1821,5 +1831,29 @@ func (e *emitter) emitHardwareBinding(binding semantic.HardwareBinding) error {
 	fmt.Fprintf(&e.out, "  \"sec.hw.binding\"() <{address = %s, alias = %t, alignment = %s, domain = %s, endpoint_id = %s, endpoint_kind = %s, hardware_binding_id = %d : i32, hardware_resource_id = %s, instance_type = %s, is_mutable = %t, read_widths = %s, region_id = %s, size = %s, sym_name = %s, write_widths = %s}> : () -> ()\n",
 		mlirString(binding.Address.String()), binding.Alias, mlirString(alignment), mlirString(binding.Domain), mlirString(binding.Endpoint), mlirString(binding.EndpointKind), binding.ID,
 		mlirString(binding.Resource), instance, binding.Mutable, reads, mlirString(binding.Region), mlirString(binding.Size.String()), mlirString(binding.Symbol), writes)
+	return nil
+}
+
+// emitCheckedNumericConversion writes the float form of
+// sec.numeric.convert_checked: candidate, failed and one reason flag per
+// failure named, in priority order, by the failures attribute.
+func (e *emitter) emitCheckedNumericConversion(operation semantic.Operation, values map[semantic.ValueID]semantic.Value) error {
+	if err := e.emitResults(operation); err != nil {
+		return err
+	}
+	names := make([]string, len(operation.ConversionFailures))
+	for index, failure := range operation.ConversionFailures {
+		names[index] = mlirString(failure)
+	}
+	fmt.Fprintf(&e.out, "\"sec.numeric.convert_checked\"(%s) <{failures = [%s]}> : (", valueName(operation.Operands[0]), strings.Join(names, ", "))
+	if err := e.emitOperandTypes(operation.Operands, values); err != nil {
+		return err
+	}
+	e.out.WriteString(") -> ")
+	if err := e.emitResultTypes(operation.Results); err != nil {
+		return err
+	}
+	e.emitLocation(operation.Location)
+	e.out.WriteByte('\n')
 	return nil
 }

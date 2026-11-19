@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-02
-- **Last updated:** 2026-11-09 (§ 61A join statement, § 63 SelectJoinBranch); 2026-11-07 (stable chapter, subsection, and paragraph numbering)
+- **Last updated:** 2026-11-19 (§ 26(5) typed `Reference:` expression, MD-048); 2026-11-09 (§ 61A join statement, § 63 SelectJoinBranch); 2026-11-07 (stable chapter, subsection, and paragraph numbering)
 - **Document revision:** 1
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/foundations/grammar.md`
@@ -1162,6 +1162,14 @@ qualified members (`Kind: UnitKind.Length`); legacy bare names stay accepted
 in this context only (MD-062, `rules/types/units.md`, "Unit metadata value
 types" (5)). Metadata reads use the existing qualified unit member access
 `<U>.Member`; the grammar is otherwise unchanged.
+
+**§ 26(5)** The value of `Reference:` is a complete ordinary typed compile-time expression
+(for example `0.001<W>` or `decimal128<W>(0.001)`), validated by semantic
+analysis under the normal expression, type and quantity rules
+(`rules/types/units.md` § 22.2). `TokensUntilLineEnd` remains a parser
+integration detail and never substitutes for that validation. There is no
+`Reference[T]:` form; it is rejected as unsupported metadata syntax, and the
+metadata names and declaration spellings of § 26(1) are unchanged (MD-048).
 
 ---
 

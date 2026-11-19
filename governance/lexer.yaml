@@ -6,7 +6,7 @@ integrations:
     area: frontend-and-tooling
     status: partial
     integrated: "2026-08-09"
-    revised: "2026-10-10"
+    revised: "2026-11-19"
     summary: >-
       Records the current lexer, parser, formatter, diagnostic, and LSP
       implementation baseline for the normative lexical structure rules.
@@ -221,12 +221,14 @@ integrations:
       - "MD-020 and MD-024 lexing (2026-10-10, internal/lexer/lexer.go with dated change comments): :: is one DOUBLE_COLON token with longest-match precedence over : after :<- and :=, separated colons stay separate COLON tokens, and null is the hard keyword NULL so no binding can shadow the sentinel; TestDoubleColonAndNullTokens and TestHardKeywordLookupMatchesRulebook cover both"
     partial:
       - bootstrap L1001 invalid-byte equivalence awaits a byte-preserving string decode API; ToRuneArray currently discards the original invalid byte before lexical inspection
+      - "Bootstrap L1021 port (2026-11-19): ../bootstrap/internal/lexer/lexer.sec reports L1021 on exactly an unmatched single `}` in interpolated-string text and keeps scanning in text mode, so later interpolations and the closing quote are still recognized; a new unterminatedExplained helper makes all three L1019 sites ignore L1021, so an L1021 never suppresses the unterminated-string diagnostic, as in the Go lexer (MD-005)."
+      - "Bootstrap DOUBLE_COLON and null port (2026-11-19): the bootstrap lexer declares DOUBLE_COLON and NULL, lexes `::` as one token after the `:<-` and `:=` checks with longest-match precedence over `:` (MD-020, lexical_structure.md § 16.6), and maps `null` to the hard keyword NULL (MD-024)."
     remaining:
       - port Go identifier NFC validation and combining-mark recovery to the bootstrap lexer once a Sec Unicode normalization API exists; the translated source records this dependency explicitly
-      - port L1021 unmatched-closing-brace recovery to the bootstrap lexer
       - port interpolation AST parts and expression parsing to the bootstrap parser; blocked on the bootstrap AST and ordinary expression-parser infrastructure, which do not yet exist
-      - port the DOUBLE_COLON token and the reserved null keyword (MD-020, MD-024) to the bootstrap lexer
     verification:
+      - command: bin/sec parse ../bootstrap/internal/lexer/lexer.sec; go test ./internal/lexer -count=1
+        result: "Passed 2026-11-19: the bootstrap lexer with the L1021, DOUBLE_COLON and NULL ports is parser-valid (0 errors); runtime parity is not verified because bootstrap execution is unavailable. Remaining 4 to 2."
       - command: go test ./internal/lexer ./internal/parser -count=1
         result: passed on 2026-10-10 with the DOUBLE_COLON and NULL tokens; remaining reduced from 5 to 3 (the three bootstrap ports)
       - command: go test ./internal/lexer ./internal/formatter ./cmd/lsp ./cmd/compiler -count=1

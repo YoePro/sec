@@ -14,9 +14,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// subcommands lists the editing commands; everything else keeps the original
+// subcommands lists explicit tool commands; everything else keeps the original
 // statistics/selection behavior of runCLI.
 var subcommands = map[string]func(args []string, out, errOut io.Writer) error{
+	"books":  runBooks,
 	"check":  runCheck,
 	"fmt":    runFmt,
 	"set":    runSet,

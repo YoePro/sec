@@ -1,0 +1,10 @@
+module sample
+
+type Item struct {
+    Value: int,
+}
+
+enum Mode {
+    First,
+    Second,
+}

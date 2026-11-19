@@ -22,7 +22,7 @@ func (b *builder) semanticIdentity(t sema.Type) (string, string) {
 			module = b.module.Identity
 		}
 	}
-	identity := module + "::" + t.Name
+	identity := module + "::" + declarationName(module, t.Name)
 	if len(t.TypeArgs) != 0 && !t.FixedNamedArguments {
 		parts := make([]string, len(t.TypeArgs))
 		for index, argument := range t.TypeArgs {
@@ -89,7 +89,7 @@ func canonicalSemaType(t sema.Type) string {
 	}
 	name := t.Name
 	if t.Module != "" && (t.Named || t.Declared) {
-		name = t.Module + "::" + name
+		name = t.Module + "::" + declarationName(t.Module, name)
 	}
 	if t.FixedNamedArguments {
 		return name
@@ -137,5 +137,22 @@ func functionID(f sema.Function, types *TypeTable) FunctionID {
 			parts[i] = "..." + parts[i]
 		}
 	}
-	return FunctionID(f.Module + "::" + f.Name + "(" + strings.Join(parts, ",") + ")")
+	// Imported module sources are assembled with module-qualified
+	// declaration names (`util.Twice`); the canonical identity is the same
+	// one the declaring module's own Semantic IR uses (`util::Twice(int)`).
+	// Rules: rules/compiler/semantic_ir.md — §§ 5(1), 6.
+	return FunctionID(f.Module + "::" + declarationName(f.Module, f.Name) + "(" + strings.Join(parts, ",") + ")")
+}
+
+// declarationName is a declaration's own name within its module. Imported
+// module sources are assembled with module-qualified names (`util.Twice`,
+// `util.Counter`); the canonical identity is the one the declaring module's
+// own Semantic IR uses (`util::Twice`, `util::Counter`), never a doubled
+// qualifier.
+// Rules: rules/compiler/semantic_ir.md — §§ 5(1), 6.
+func declarationName(module, name string) string {
+	if module == "" {
+		return name
+	}
+	return strings.TrimPrefix(name, module+".")
 }

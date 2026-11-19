@@ -19,7 +19,7 @@ func TestControlConditionCorrectionNeedsOneEnclosingPair(t *testing.T) {
 		{"member call", "if (a).Ok() {", ""},
 		{"called group", "if (a)(b) {", ""},
 		{"negated group", "if !(a) {", ""},
-		{"try handler group", "if (try F() { Err(_) => false }) {", ""},
+		{"try handler group", "if (try F() { Err(_) => false }) {", "if (try F() {\n        Err(_) => false\n    }) {"},
 		{"struct literal group", "if (p == P { X: 1 }) {", ""},
 		{"lambda group", "if (fn() bool { return true })() {", "if (fn() bool {"},
 		{"whole name", "if (a) {", "if a {"},

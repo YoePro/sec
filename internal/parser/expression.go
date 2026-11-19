@@ -359,6 +359,7 @@ func (p *Parser) parseNewExpression() ast.Expression {
 		return expr
 	}
 	expr.Arguments = arguments
+	expr.ArgumentsClose = p.curToken
 	return expr
 }
 
@@ -1547,6 +1548,10 @@ func (p *Parser) callArgumentsEndWithoutParen(open lexer.Token) bool {
 	return true
 }
 
+// parseTryExpression retains the operand and the real optional handler-list
+// opener without confusing an enclosing control header's body with handlers.
+// Rules: rules/errors/errorhandling.md — §15;
+// rules/tooling/formatter.md — §§5,19(2–6).
 func (p *Parser) parseTryExpression() ast.Expression {
 	defer p.withRecoveryContext(RecoveryContextTry)()
 	expr := &ast.TryExpression{Token: p.curToken}
@@ -1569,6 +1574,7 @@ func (p *Parser) parseTryExpression() ast.Expression {
 	// expressions remain available inside nested calls.
 	if p.peekToken.Type == lexer.LBRACE && !previousStopBeforeBrace {
 		p.nextToken()
+		expr.HandlersOpen = p.curToken
 		expr.Handlers = p.parseTryHandlerBlock()
 		if expr.Handlers == nil {
 			return nil

@@ -110,15 +110,14 @@ func subjectCompletionItems(uri string, text string, offset int, context complet
 	if result.Program == nil || result.Fatal {
 		return nil, false
 	}
-	prepareProgramForLSP(result.Program, pathFromURI(uri), overlay)
-	analyzer := newLSPAnalyzerWithOverlay(uri, result.Program, overlay)
-	analyzer.Analyze(result.Program)
+	program, analyzer, release := cachedLSPSourceAnalysis(uri, parseText, result.Program, overlay)
+	defer release()
 
 	var expected sema.Type
 	covered := map[string]bool{}
 	switch kind {
 	case subjectCompletionCase:
-		statement := innermostSwitchAt(result.Program, parseText, offset)
+		statement := innermostSwitchAt(program, parseText, offset)
 		if statement == nil || statement.Subject == nil {
 			return nil, false
 		}
@@ -135,7 +134,7 @@ func subjectCompletionItems(uri string, text string, offset int, context complet
 			}
 		}
 	case subjectCompletionMatchArm:
-		match := innermostMatchArmPositionAt(result.Program, parseText, offset)
+		match := innermostMatchArmPositionAt(program, parseText, offset)
 		if match == nil || match.Subject == nil {
 			return nil, false
 		}
@@ -150,7 +149,7 @@ func subjectCompletionItems(uri string, text string, offset int, context complet
 			}
 		}
 	case subjectCompletionComparison:
-		left := comparisonLeftOperandAt(result.Program, parseText, prefixStart)
+		left := comparisonLeftOperandAt(program, parseText, prefixStart)
 		if left == nil {
 			return nil, false
 		}
@@ -367,11 +366,11 @@ func walkLSPNodes(root any, visit func(node any)) {
 	walk(reflect.ValueOf(root))
 }
 
-// subjectExpressionType is the Sema type of a subject or operand, falling back
+// subjectExpressionType reads the recorded Sema type of a subject or operand, falling back
 // to the resolved binding of a plain identifier, whose expression type is not
 // retained outside its analyzed scope.
 func subjectExpressionType(analyzer *sema.Analyzer, expr ast.Expression) (sema.Type, bool) {
-	if typ, ok := analyzer.TypeOf(expr); ok {
+	if typ, ok := analyzer.ResolvedTypeOf(expr); ok {
 		return typ, true
 	}
 	if identifier, ok := expr.(*ast.Identifier); ok && identifier != nil {

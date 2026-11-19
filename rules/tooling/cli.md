@@ -2,7 +2,7 @@
 
 ## Status
 
-Normative tooling rulebook, revision 1.2 (2026-11-05).
+Normative tooling rulebook, revision 1.3 (2026-11-19).
 
 Created by the MD-017 correction
 (`rules/corrections/applied/md017-sec-analyse-cli-and-help-correction-20261017.md`),
@@ -228,6 +228,9 @@ focus         null | { selector, callable (canonical ID), name, reachable [IDs] 
 diagnostics   [canonical emitted occurrences, rules/tooling/diagnostics.md § 14]
 findings      [{ analysis, class, rule, location { file, start, end },
                  message, callable?, path?, actions [] }]
+stack?        [{ callable, name, semantic_own_frame { kind, bytes? },
+                 semantic_maximum { kind, bytes? }, finite_semantic_proof,
+                 machine_available, cause [{ callable, location, detail }] }]
 limitations   [text]
 summary       { errors, unproven, warnings, advisory, information }
 ```
@@ -243,6 +246,22 @@ preserved. Findings and diagnostics are ordered deterministically.
 
 § 6(5) A later version must change `version`; producers never silently
 reinterpret published fields.
+
+§ 6(6) The optional `stack` inspection field is present for default/all and
+stack-only analysis when selected callable facts exist. Semantic bound kinds
+are `Exact`, `UpperBound`, `Unknown` and `Unbounded`; only finite bounds carry
+`bytes`, as a decimal string. Missing evidence is never numeric zero.
+`finite_semantic_proof` applies to the represented callable's semantic frame
+and composed maximum, not a physical stack domain or a machine budget.
+`machine_available: false` records that no applicable machine measurement is
+available. Machine measurements must never be inferred from semantic bounds.
+
+§ 6(7) Stack inspection is optional insight, shown in human output with
+`--verbose` and structurally with `--json`. Completion of the inspection run
+does not establish a finite stack proof; the stack analysis entry explains
+this distinction and each callable retains its proof state. Unknown optional
+frame facts alone do not create a budget diagnostic or default-output noise.
+Required budget failures and mandatory compiler diagnostics remain unaffected.
 
 # § 7. Required tests
 

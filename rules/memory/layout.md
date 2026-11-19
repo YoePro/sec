@@ -2,7 +2,7 @@
 
 - Status: Normative
 - Created: 2026-09-02
-- Last updated: 2026-09-02
+- Last updated: 2026-11-19
 - Document revision: 2.0
 - Sec language version: 0.1
 - Canonical path: `rules/memory/layout.md`
@@ -170,6 +170,8 @@ selected descriptor representation
 § 7(5) A size that cannot be represented by the target/compiler layout model is a compile-time error.
 
 § 7(6) Size of a descriptor is the descriptor size, not the total storage reachable through it.
+
+§ 7(7) The maximum byte extent of a materialized value under a plan is 2^(W−1) − 1 bytes, where W is the plan pointer width in bits. A size, offset or stride above it is the compile-time error of § 7(5). (Decided by the owner 2026-11-19.)
 
 ---
 
@@ -432,6 +434,8 @@ decimal128:
 § 24(4) Arrays of zero-sized elements retain their semantic element count.
 
 § 24(5) Pointer/reference arithmetic over zero-sized element types requires a dedicated canonical rule and must not be inferred from division by zero or arbitrary address changes.
+
+§ 24(6) A struct without stored fields has size 0 and alignment 1 under native layout. (Decided by the owner 2026-11-19.)
 
 ---
 

@@ -36,6 +36,7 @@ func TestListFilesCLI(t *testing.T) {
 	}
 	want := []string{
 		"File Implemented Remaining Partial",
+		"---- ----------- ----------- ----------",
 		"a.yaml 2 (50.0%) 1 (25.0%) 1 (25.0%)",
 		"empty.yaml 0 (0.0%) 0 (0.0%) 0 (0.0%)",
 		"index.yaml 0 (0.0%) 0 (0.0%) 0 (0.0%)",

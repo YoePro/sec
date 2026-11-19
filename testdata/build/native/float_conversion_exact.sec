@@ -1,0 +1,36 @@
+module main
+
+fn Widen(x: float32) float64 {
+    return float64(x)
+}
+
+fn Truth(x: float64) bool {
+    return bool(x)
+}
+
+fn Small(x: int16) float32 {
+    return float32(x)
+}
+
+fn Same(x: float) float64 {
+    return float64(x)
+}
+
+fn main() int {
+    let half: float32 := 1.5
+    let small: int16 := -7
+    let expected: float32 := -7.0
+    if Truth(0.0) {
+        return 1
+    }
+    if !Truth(Widen(half)) {
+        return 2
+    }
+    if Small(small) != expected {
+        return 3
+    }
+    if Same(2.5) != 2.5 {
+        return 4
+    }
+    return 42
+}

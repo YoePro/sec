@@ -1,5 +1,10 @@
 # SEC MLIR Package 14 acceptance matrix
 
+> Navigation added 2026-11-19; historical evidence below is unchanged.
+> Current canonical Semantic IR responsibilities: [§ 16 arrays](../../compiler/semantic_ir.md#16-arrays-slices-and-ranges), [§ 104 layout boundary](../../compiler/semantic_ir.md#104-layout-boundary).
+> See the [amendment crosswalk and maintenance workflow](../../../governance/semantic-ir-amendments.md)
+> and [live implementation ledger](../../../governance/lowering.yaml).
+
 This matrix maps every acceptance criterion in
 `sec-mlir-dialect_package14.md` section 107 to focused executable evidence or
 an exact implementation/rule location. It was audited on 2026-09-02 against

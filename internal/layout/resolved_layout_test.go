@@ -1,6 +1,7 @@
 package layout
 
 import (
+	"fmt"
 	"math/big"
 	"strings"
 	"testing"
@@ -124,8 +125,9 @@ func TestLayoutResolverStates(t *testing.T) {
 		"incomplete (MD-141)": {unresolved, scalar("int64", ScalarSigned, 64, false), LayoutIncomplete, "alignment of a 8-byte scalar"},
 		"invalid width":       {complete, scalar("int7", ScalarSigned, 7, false), LayoutInvalid, "not a whole number of bytes"},
 		"invalid identity":    {complete, LayoutRequirement{Kind: LayoutScalar, Scalar: ScalarSigned, WidthBits: 8}, LayoutInvalid, "semantic type identity"},
-		"unsupported decimal": {complete, scalar("decimal", ScalarDecimal, 0, false), LayoutUnsupported, "P24-17"},
-		"unsupported struct":  {complete, LayoutRequirement{TypeIdentity: "main::Pair", Kind: LayoutStruct}, LayoutUnsupported, "P24-19"},
+		"invalid decimal":     {complete, scalar("decimal", ScalarDecimal, 32, false), LayoutInvalid, "canonical i64 or i128"},
+		"incomplete struct":   {complete, LayoutRequirement{TypeIdentity: "main::Pair", Kind: LayoutStruct, Fields: []FieldRequirement{{Name: "x", Requirement: scalar("int32", ScalarSigned, 32, false)}}}, LayoutIncomplete, "MD-142"},
+		"unsupported field":   {complete, LayoutRequirement{TypeIdentity: "main::View", Kind: LayoutStruct, Fields: []FieldRequirement{{Name: "s", Requirement: LayoutRequirement{TypeIdentity: "slice:byte", Kind: LayoutDescriptor}}}}, LayoutUnsupported, "s: layout kind"},
 		"explicit contract":   {complete, LayoutRequirement{TypeIdentity: "main::Packed", Kind: LayoutStruct, Contract: "pack(1)"}, LayoutUnsupported, "MD-019"},
 	} {
 		layout := check.resolver.Resolve(check.requirement)
@@ -274,5 +276,99 @@ func TestScalarLayouts(t *testing.T) {
 	unresolved, _ := NewResolver(layoutTestPlan(64), nil)
 	if layout := unresolved.Resolve(scalar("int32", ScalarSigned, 32, false)); layout.Complete() || layout.AlignBytes != nil {
 		t.Errorf("a scalar alignment was guessed without plan facts: %+v", layout)
+	}
+}
+
+// layout.md § 7(7): the maximum byte extent is 2^(W-1) - 1, and an array
+// whose unpadded extent already exceeds it is invalid before placement.
+func TestMaximumExtent(t *testing.T) {
+	if got := MaximumExtent(layoutTestPlan(32)); got.Cmp(big.NewInt(1<<31-1)) != 0 {
+		t.Fatalf("32-bit maximum = %s", got)
+	}
+	if got := MaximumExtent(layoutTestPlan(64)); got.Cmp(new(big.Int).SetUint64(1<<63-1)) != 0 {
+		t.Fatalf("64-bit maximum = %s", got)
+	}
+	resolver, _ := NewResolver(layoutTestPlan(32), testAlignments())
+	element := scalar("int64", ScalarSigned, 64, false)
+	huge := resolver.Resolve(LayoutRequirement{TypeIdentity: "array:fixed:268435456:int64", Kind: LayoutArray, Element: &element, Count: big.NewInt(1 << 28)})
+	if huge.Completeness != LayoutInvalid || !strings.Contains(strings.Join(huge.Missing, ""), "2147483647") {
+		t.Fatalf("an over-extent array = %s %v", huge.Completeness, huge.Missing)
+	}
+	fits := resolver.Resolve(LayoutRequirement{TypeIdentity: "array:fixed:4:int64", Kind: LayoutArray, Element: &element, Count: big.NewInt(4)})
+	if fits.Completeness != LayoutIncomplete || fits.Count.Int64() != 4 || fits.Element == 0 || !strings.Contains(strings.Join(fits.Missing, ""), "MD-142") {
+		t.Fatalf("a fitting array = %+v", fits)
+	}
+}
+
+// P24-19 / layout.md § 24(6): an empty struct is complete with size 0 and
+// alignment 1; a nonempty struct records its fields in declaration order
+// with identities and layouts but no guessed offsets, pending MD-142.
+func TestStructLayouts(t *testing.T) {
+	resolver, _ := NewResolver(layoutTestPlan(64), testAlignments())
+	empty := resolver.Resolve(LayoutRequirement{TypeIdentity: "main::Unit", Kind: LayoutStruct})
+	if !empty.Complete() || empty.SizeBytes.Sign() != 0 || empty.AlignBytes.Int64() != 1 {
+		t.Fatalf("empty struct = %+v", empty)
+	}
+	pair := resolver.Resolve(LayoutRequirement{TypeIdentity: "main::Pair", Kind: LayoutStruct, Fields: []FieldRequirement{
+		{Name: "b", Requirement: scalar("byte", ScalarByte, 8, false)},
+		{Name: "n", Requirement: scalar("int64", ScalarSigned, 64, false)},
+		{Name: "flag", Requirement: scalar("bool", ScalarBool, 0, false)},
+	}})
+	if pair.Completeness != LayoutIncomplete || pair.SizeBytes != nil || pair.AlignBytes != nil || len(pair.Fields) != 3 {
+		t.Fatalf("pair = %+v", pair)
+	}
+	for index, name := range []string{"b", "n", "flag"} {
+		if field := pair.Fields[index]; field.Index != index || field.Name != name || field.Offset != nil || field.Layout == 0 {
+			t.Errorf("field %d = %+v", index, field)
+		}
+	}
+	missing := strings.Join(pair.Missing, ";")
+	if !strings.Contains(missing, "storage size of bool (MD-141)") || !strings.Contains(missing, "MD-142") {
+		t.Errorf("pair missing facts = %v", pair.Missing)
+	}
+}
+
+// P24-17: decimal and decimal128 resolve their {i64,i32} and {i128,i32}
+// carriers as a coefficient plus a physical scale-storage field; placement
+// waits on MD-142.
+func TestDecimalCarriers(t *testing.T) {
+	resolver, _ := NewResolver(layoutTestPlan(64), testAlignments())
+	for _, check := range []struct {
+		width       uint16
+		coefficient string
+	}{{64, "int64"}, {128, "int128"}} {
+		layout := resolver.Resolve(scalar(fmt.Sprintf("decimal%d", check.width), ScalarDecimal, check.width, false))
+		if layout.Completeness != LayoutIncomplete || layout.Scalar != ScalarDecimal || len(layout.Fields) != 2 ||
+			layout.Fields[0].Name != "coefficient" || layout.Fields[1].Name != "scale-storage" || !strings.Contains(strings.Join(layout.Missing, ""), "MD-142") {
+			t.Fatalf("decimal%d = %+v", check.width, layout)
+		}
+		coefficient, _ := resolver.Layout(layout.Fields[0].Layout)
+		scaleStorage, _ := resolver.Layout(layout.Fields[1].Layout)
+		if coefficient.TypeIdentity != check.coefficient || scaleStorage.TypeIdentity != "int32" || !coefficient.Complete() || !scaleStorage.Complete() {
+			t.Errorf("decimal%d carrier fields = %s/%s", check.width, coefficient.TypeIdentity, scaleStorage.TypeIdentity)
+		}
+	}
+}
+
+// P24-18: a named or constrained type reuses its carrier's layout while
+// keeping its own nominal identity and combining validity predicates.
+func TestNamedLayouts(t *testing.T) {
+	resolver, _ := NewResolver(layoutTestPlan(64), testAlignments())
+	carrier := scalar("int32", ScalarSigned, 32, false)
+	named := resolver.Resolve(LayoutRequirement{TypeIdentity: "main::Percent", Kind: LayoutNamed, Carrier: &carrier, Validity: "main::Percent contract: 0 <= value <= 100"})
+	base, _ := resolver.Layout(named.Carrier)
+	if !named.Complete() || named.TypeIdentity != "main::Percent" || base.TypeIdentity != "int32" || named.SizeBytes.Int64() != 4 ||
+		named.Scalar != ScalarSigned || named.ValidBitPattern != "all 32-bit patterns; main::Percent contract: 0 <= value <= 100" || named.Provenance != "named over int32" {
+		t.Fatalf("named = %+v", named)
+	}
+	if named.ID == base.ID {
+		t.Fatal("a named type was merged into its carrier's identity")
+	}
+	flag := scalar("bool", ScalarBool, 0, false)
+	if layout := resolver.Resolve(LayoutRequirement{TypeIdentity: "main::Flag", Kind: LayoutNamed, Carrier: &flag}); layout.Completeness != LayoutIncomplete {
+		t.Errorf("a named type over an incomplete carrier = %s", layout.Completeness)
+	}
+	if layout := resolver.Resolve(LayoutRequirement{TypeIdentity: "main::Orphan", Kind: LayoutNamed}); layout.Completeness != LayoutInvalid {
+		t.Errorf("a named type without a carrier = %s", layout.Completeness)
 	}
 }

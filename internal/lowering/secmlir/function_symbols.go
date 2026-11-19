@@ -18,7 +18,13 @@ import (
 // rules/compiler/semantic_ir.md — "Functions and calls";
 // rules/mlir/sec_mlir_lowering.md — semantic identity preservation;
 // rules/compiler/monomorphization.md — §§4.1,15.3.
-func resolvedFunctionSymbols(module *semantic.Module) (map[semantic.FunctionID]string, error) {
+//
+// An imported declaration, and with export every defined Sec function, uses
+// the binary symbol identity of its canonical FunctionID instead, so one
+// module's object defines exactly the symbol another module's declaration
+// references. It is derived from the identity alone, never from an import
+// alias, file order or host (linking.md §§ 9, 15, 19).
+func resolvedFunctionSymbols(module *semantic.Module, export bool) (map[semantic.FunctionID]string, error) {
 	counts := map[string]int{}
 	for _, function := range module.Functions {
 		counts[function.Name]++
@@ -30,6 +36,12 @@ func resolvedFunctionSymbols(module *semantic.Module) (map[semantic.FunctionID]s
 		if counts[function.Name] > 1 || function.Specialization != nil || function.TypePack != nil {
 			symbol = fmt.Sprintf("sec_overload_%x", sha256.Sum256([]byte(function.ID)))
 		}
+		// A specialization is instantiated by every module that demands
+		// it, so it keeps its local symbol and, in an exported unit, private
+		// linkage instead of a shared one (linking.md § 24).
+		if function.Imported || export && !function.Extern && function.Specialization == nil && function.TypePack == nil {
+			symbol = BinarySymbol(function.ID)
+		}
 		if previous, exists := used[symbol]; exists && previous != function.ID {
 			return nil, fmt.Errorf("backend symbol collision for %s and %s", previous, function.ID)
 		}
@@ -37,4 +49,10 @@ func resolvedFunctionSymbols(module *semantic.Module) (map[semantic.FunctionID]s
 		symbols[function.ID] = symbol
 	}
 	return symbols, nil
+}
+
+// BinarySymbol is the module-independent native symbol of a Sec function:
+// a collision-resistant encoding of its canonical FunctionID.
+func BinarySymbol(id semantic.FunctionID) string {
+	return fmt.Sprintf("sec_sym_%x", sha256.Sum256([]byte(id)))
 }

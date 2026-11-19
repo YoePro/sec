@@ -1,0 +1,28 @@
+module main
+
+fn Work() void {}
+
+fn Run() void {
+let worker := try spawn thread {
+Name: Preferred("worker")
+Stack: Required(65536)
+} Work() { Err(_) => { return } }
+join worker
+}
+
+fn Assignment() void {
+let mut result: int := 0
+try result = Read() { Err(_) => { return } }
+try Read() { Err(_) => { return } }
+try result = Read()
+}
+
+fn Patterns() void {
+let item := try Read(Node { Value: 1 }) {
+Err(E.Bad { Code: code }) => { discard code }
+Err(_) => { return }
+}
+discard item
+}
+
+fn After() void {}

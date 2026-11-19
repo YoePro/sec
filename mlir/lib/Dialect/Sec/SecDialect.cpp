@@ -390,6 +390,22 @@ LogicalResult SecDialect::verifyOperationAttribute(Operation *operation,
   if (name == "sec.operator" || name == "sec.try_handler_kind" ||
       name == "sec.try_handler_variant")
     return requireString();
+  // A declaration of a Sec function that another module defines and its
+  // object exports: never a foreign function, never a body here.
+  if (name == "sec.imported") {
+    auto function = dyn_cast<func::FuncOp>(operation);
+    if (!function)
+      return operation->emitError("sec.imported is only valid on func.func");
+    if (failed(requireBool()))
+      return failure();
+    if (!cast<BoolAttr>(value).getValue())
+      return success();
+    auto foreign = function->getAttrOfType<BoolAttr>("sec.extern");
+    if (!function.isExternal() || (foreign && foreign.getValue()))
+      return operation->emitError(
+          "an imported Sec declaration has no body and is not extern");
+    return success();
+  }
   if (name == "sec.extern" || name == "sec.unsafe" ||
       name == "sec.mutable" || name == "sec.synthesized" ||
       name == "sec.try_handler_exhaustive" ||

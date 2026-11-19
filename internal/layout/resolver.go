@@ -24,6 +24,14 @@ type Resolver struct {
 	memo       map[string]LayoutID
 	layouts    []ResolvedLayout
 	inProgress []string
+	arithmetic *SizeArithmetic
+}
+
+// MaximumExtent is the largest byte extent of a materialized value under a
+// plan: 2^(W-1) - 1 for pointer width W (layout.md § 7(7)).
+func MaximumExtent(plan ResolvedScalarPlan) *big.Int {
+	limit := new(big.Int).Lsh(big.NewInt(1), uint(plan.PointerWidthBits-1))
+	return limit.Sub(limit, big.NewInt(1))
 }
 
 // NewResolver binds a resolver to one validated plan and its scalar
@@ -40,7 +48,15 @@ func NewResolver(plan ResolvedScalarPlan, alignments ScalarAlignments) (*Resolve
 			copied[size] = alignment
 		}
 	}
-	return &Resolver{plan: plan, key: key, alignments: copied, memo: map[string]LayoutID{}}, nil
+	supported := []*big.Int{big.NewInt(1)}
+	for _, alignment := range copied {
+		supported = append(supported, new(big.Int).SetUint64(alignment))
+	}
+	arithmetic, err := NewSizeArithmetic(key.Triple+"/"+key.TargetArch, MaximumExtent(plan), supported)
+	if err != nil {
+		return nil, err
+	}
+	return &Resolver{plan: plan, key: key, alignments: copied, memo: map[string]LayoutID{}, arithmetic: arithmetic}, nil
 }
 
 // Key is the plan key every layout of this resolver carries.
@@ -115,27 +131,16 @@ func (r *Resolver) resolve(requirement LayoutRequirement) LayoutID {
 	}
 	switch requirement.Kind {
 	case LayoutScalar:
+		if requirement.Scalar == ScalarDecimal {
+			return r.resolveDecimal(base, key, requirement)
+		}
 		return r.publish(r.resolveScalar(base, requirement), key)
 	case LayoutStruct:
-		r.inProgress = append(r.inProgress, key)
-		cycle := ""
-		for _, field := range requirement.Fields {
-			child := r.layouts[r.resolve(field.Requirement)-1]
-			if child.Completeness == LayoutInvalid && strings.HasPrefix(strings.Join(child.Missing, ""), "by-value layout cycle") {
-				cycle = child.Missing[0]
-			}
-		}
-		r.inProgress = r.inProgress[:len(r.inProgress)-1]
-		if id, done := r.memo[key]; done {
-			// A cycle through this struct already published it as invalid.
-			return id
-		}
-		if cycle != "" {
-			base.Completeness, base.Missing = LayoutInvalid, []string{cycle}
-			return r.publish(base, key)
-		}
-		base.Completeness, base.Missing = LayoutUnsupported, []string{"struct field placement (P24-19)"}
-		return r.publish(base, key)
+		return r.resolveAggregate(base, key, requirement.Fields, "struct field placement and aggregate alignment (MD-142)")
+	case LayoutNamed:
+		return r.resolveNamed(base, key, requirement)
+	case LayoutArray:
+		return r.resolveArray(base, key, requirement)
 	default:
 		base.Completeness, base.Missing = LayoutUnsupported, []string{fmt.Sprintf("layout kind %q (later P24 stage)", requirement.Kind)}
 		return r.publish(base, key)
@@ -176,15 +181,17 @@ func (r *Resolver) resolveScalar(layout ResolvedLayout, requirement LayoutRequir
 	case ScalarRune:
 		layout.ValidBitPattern = "Unicode scalar values only (U+0000..U+10FFFF without surrogates)"
 		layout.Missing = append(layout.Missing, "storage size of rune (MD-141)")
-	case ScalarDecimal:
-		layout.Completeness, layout.Missing = LayoutUnsupported, []string{"decimal carrier layout (P24-17)"}
-		return layout
 	default:
 		layout.Completeness, layout.Missing = LayoutInvalid, []string{fmt.Sprintf("unknown scalar kind %q", requirement.Scalar)}
 		return layout
 	}
 	if len(layout.Missing) == 0 {
 		layout.SizeBytes = new(big.Int).SetUint64(width / 8)
+		if _, err := r.arithmetic.CheckedAdd(layout.TypeIdentity, layout.SizeBytes, new(big.Int)); err != nil {
+			layout.SizeBytes = nil
+			layout.Completeness, layout.Missing = LayoutInvalid, []string{err.Error()}
+			return layout
+		}
 		alignment, known := r.alignments[width/8]
 		if !known {
 			layout.Missing = append(layout.Missing, fmt.Sprintf("alignment of a %d-byte scalar on %s (MD-141)", width/8, r.key.Triple))
@@ -198,4 +205,174 @@ func (r *Resolver) resolveScalar(layout ResolvedLayout, requirement LayoutRequir
 	}
 	layout.Completeness = LayoutComplete
 	return layout
+}
+
+// child resolves a contained by-value requirement with key on the
+// in-progress stack and reports whether that produced a by-value cycle.
+func (r *Resolver) child(key string, requirement LayoutRequirement) ResolvedLayout {
+	r.inProgress = append(r.inProgress, key)
+	child := r.layouts[r.resolve(requirement)-1]
+	r.inProgress = r.inProgress[:len(r.inProgress)-1]
+	return child
+}
+
+func isCycle(layout ResolvedLayout) bool {
+	return layout.Completeness == LayoutInvalid && len(layout.Missing) > 0 && strings.HasPrefix(layout.Missing[0], "by-value layout cycle")
+}
+
+// propagate folds a contained layout's state into its container: an invalid
+// part makes the container invalid, an unsupported part unsupported, and an
+// incomplete part contributes its missing facts.
+func propagate(container *ResolvedLayout, part ResolvedLayout, path string) {
+	switch part.Completeness {
+	case LayoutInvalid:
+		if container.Completeness != LayoutInvalid {
+			container.Completeness, container.Missing = LayoutInvalid, nil
+		}
+		for _, missing := range part.Missing {
+			if strings.HasPrefix(missing, "by-value layout cycle") {
+				container.Missing = append(container.Missing, missing)
+			} else {
+				container.Missing = append(container.Missing, path+": "+missing)
+			}
+		}
+	case LayoutUnsupported:
+		if container.Completeness != LayoutInvalid {
+			if container.Completeness != LayoutUnsupported {
+				container.Completeness, container.Missing = LayoutUnsupported, nil
+			}
+			for _, missing := range part.Missing {
+				container.Missing = append(container.Missing, path+": "+missing)
+			}
+		}
+	case LayoutIncomplete:
+		if container.Completeness == "" || container.Completeness == LayoutIncomplete {
+			container.Completeness = LayoutIncomplete
+			for _, missing := range part.Missing {
+				container.Missing = appendOnce(container.Missing, missing)
+			}
+		}
+	}
+}
+
+func appendOnce(list []string, value string) []string {
+	for _, existing := range list {
+		if existing == value {
+			return list
+		}
+	}
+	return append(list, value)
+}
+
+// resolveAggregate resolves every stored field in declaration order and keeps
+// field identity separate from offset (P24-19). An empty struct has size 0
+// and alignment 1 (layout.md § 24(6)). Placement of a nonempty aggregate
+// needs the native aggregate rule (MD-142), so it stays incomplete with its
+// field layouts recorded and no offset, alignment or size guessed.
+// Rules: rules/memory/layout.md — §§ 11, 13, 24(6), 25.
+func (r *Resolver) resolveAggregate(base ResolvedLayout, key string, fields []FieldRequirement, placement string) LayoutID {
+	if len(fields) == 0 {
+		base.Completeness, base.SizeBytes, base.AlignBytes = LayoutComplete, new(big.Int), big.NewInt(1)
+		base.Provenance = "empty struct"
+		return r.publish(base, key)
+	}
+	state := ResolvedLayout{}
+	for index, field := range fields {
+		child := r.child(key, field.Requirement)
+		base.Fields = append(base.Fields, ResolvedFieldLayout{Index: index, Name: field.Name, Layout: child.ID})
+		propagate(&state, child, field.Name)
+	}
+	if id, done := r.memo[key]; done {
+		// A cycle through this aggregate already published it as invalid.
+		return id
+	}
+	if state.Completeness == LayoutInvalid || state.Completeness == LayoutUnsupported {
+		base.Completeness, base.Missing = state.Completeness, state.Missing
+		return r.publish(base, key)
+	}
+	base.Completeness = LayoutIncomplete
+	base.Missing = append(state.Missing, placement)
+	return r.publish(base, key)
+}
+
+// resolveDecimal resolves the canonical decimal carriers {i64,i32} and
+// {i128,i32} (layout.md § 19) as a coefficient and a physical scale field.
+// The public decimal scale is a language value, the i32 field only its
+// storage. Any other width is an obsolete or truncating shape and invalid.
+// Placement waits on MD-142 like any other aggregate (P24-17).
+func (r *Resolver) resolveDecimal(base ResolvedLayout, key string, requirement LayoutRequirement) LayoutID {
+	base.Provenance = "scalar:decimal"
+	base.ValidBitPattern = "any coefficient; scale within the decimal scale range"
+	if requirement.WidthBits != 64 && requirement.WidthBits != 128 {
+		base.Completeness = LayoutInvalid
+		base.Missing = []string{fmt.Sprintf("decimal carrier width %d is not the canonical i64 or i128 coefficient", requirement.WidthBits)}
+		return r.publish(base, key)
+	}
+	coefficient := LayoutRequirement{TypeIdentity: fmt.Sprintf("int%d", requirement.WidthBits), Kind: LayoutScalar, Scalar: ScalarSigned, WidthBits: requirement.WidthBits}
+	scale := LayoutRequirement{TypeIdentity: "int32", Kind: LayoutScalar, Scalar: ScalarSigned, WidthBits: 32}
+	return r.resolveAggregate(base, key, []FieldRequirement{{Name: "coefficient", Requirement: coefficient}, {Name: "scale-storage", Requirement: scale}},
+		fmt.Sprintf("decimal carrier {i%d,i32} placement (MD-142)", requirement.WidthBits))
+}
+
+// resolveNamed resolves a named or constrained type as its carrier layout
+// plus its own nominal identity and validity provenance (P24-18). Reusing
+// the carrier representation neither erases the nominal identity nor
+// replaces the carrier's validity: the predicates are combined.
+// Rules: rules/memory/layout.md — §§ 4, 31; rules/types/types.md — Named types.
+func (r *Resolver) resolveNamed(base ResolvedLayout, key string, requirement LayoutRequirement) LayoutID {
+	if requirement.Carrier == nil {
+		base.Completeness, base.Missing = LayoutInvalid, []string{"named type without a resolved carrier"}
+		return r.publish(base, key)
+	}
+	carrier := r.child(key, *requirement.Carrier)
+	if id, done := r.memo[key]; done {
+		return id
+	}
+	base.Carrier = carrier.ID
+	base.Scalar = carrier.Scalar
+	base.Completeness, base.Missing = carrier.Completeness, append([]string(nil), carrier.Missing...)
+	if carrier.SizeBytes != nil {
+		base.SizeBytes = new(big.Int).Set(carrier.SizeBytes)
+	}
+	if carrier.AlignBytes != nil {
+		base.AlignBytes = new(big.Int).Set(carrier.AlignBytes)
+	}
+	base.Fields = carrier.clone().Fields
+	base.ValidBitPattern = carrier.ValidBitPattern
+	if requirement.Validity != "" {
+		base.ValidBitPattern = strings.TrimPrefix(base.ValidBitPattern+"; ", "; ") + requirement.Validity
+	}
+	base.Provenance = "named over " + carrier.TypeIdentity
+	return r.publish(base, key)
+}
+
+// resolveArray resolves T[N] as exactly N inline element slots (P24-20). The
+// count is kept exactly and never expanded. Even before placement an array
+// whose unpadded extent exceeds the maximum byte extent is invalid; stride,
+// alignment and size wait on MD-142.
+// Rules: rules/memory/layout.md — §§ 7(7), 9, 12, 24(4).
+func (r *Resolver) resolveArray(base ResolvedLayout, key string, requirement LayoutRequirement) LayoutID {
+	if requirement.Element == nil || requirement.Count == nil || requirement.Count.Sign() < 0 {
+		base.Completeness, base.Missing = LayoutInvalid, []string{"fixed array without an element type or a nonnegative count"}
+		return r.publish(base, key)
+	}
+	element := r.child(key, *requirement.Element)
+	if id, done := r.memo[key]; done {
+		return id
+	}
+	base.Element, base.Count = element.ID, new(big.Int).Set(requirement.Count)
+	state := ResolvedLayout{}
+	propagate(&state, element, "element")
+	if state.Completeness != LayoutInvalid && element.SizeBytes != nil {
+		if _, err := r.arithmetic.CheckedMul(base.TypeIdentity, element.SizeBytes, requirement.Count); err != nil {
+			state.Completeness, state.Missing = LayoutInvalid, []string{err.Error()}
+		}
+	}
+	if state.Completeness == LayoutInvalid || state.Completeness == LayoutUnsupported {
+		base.Completeness, base.Missing = state.Completeness, state.Missing
+		return r.publish(base, key)
+	}
+	base.Completeness = LayoutIncomplete
+	base.Missing = append(state.Missing, "fixed-array stride and alignment (MD-142)")
+	return r.publish(base, key)
 }

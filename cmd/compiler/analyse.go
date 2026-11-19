@@ -242,6 +242,7 @@ type analyseReport struct {
 	limitations  []string
 	completed    bool
 	conformances []analysisConformance
+	stack        []analysisStackCallable
 }
 
 type analyseSection struct {
@@ -295,6 +296,11 @@ func buildAnalyseReport(analyzer *sema.Analyzer, selected map[string]bool, targe
 		}
 	}
 	report.addFocusOpenTargetLimitations(graph)
+	if family == "" || family == "stack" {
+		// No source-frame/ABI producer is available yet. The canonical composer
+		// retains missing frame facts as Unknown rather than fabricating bytes.
+		report.addStack(graph, nodes, nil, "")
+	}
 	if family == "isr" {
 		report.addISRPrerequisites(graph, nodes, names)
 	}
@@ -733,6 +739,9 @@ func (r analyseReport) document(command analyseCommand, occurrences []emittedOcc
 			continue
 		case family.Availability == analysisAvailable:
 			entry.Status, entry.Complete = "executed", true
+			if family.Name == "stack" {
+				entry.Note = "Execution completed; inspect per-callable semantic proof states. This does not establish a machine-stack or budget proof."
+			}
 		case family.Availability == analysisIncomplete && r.family == family.Name:
 			entry.Status, entry.Note = "executed", family.Limitation
 		default:
@@ -768,6 +777,7 @@ func (r analyseReport) document(command analyseCommand, occurrences []emittedOcc
 	}
 	document.Diagnostics = selectedDiagnostics
 	document.Conformances = append([]analysisConformance{}, r.conformances...)
+	document.Stack = append([]analysisStackCallable(nil), r.stack...)
 	for _, finding := range r.findings {
 		entry := analysisReportFinding{
 			Analysis: finding.Family, Class: string(finding.Class), Rule: finding.Rule, Message: finding.Message,

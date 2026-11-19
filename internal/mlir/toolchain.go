@@ -38,8 +38,44 @@ func NewToolchain(binDir string) Toolchain {
 
 func (t Toolchain) TranslateToLLVMIR(mlirPath string, llvmPath string) error {
 	args := []string{"--mlir-to-llvmir", mlirPath, "-o", llvmPath}
-	return t.run("mlir-translate", args...)
+	if err := t.run("mlir-translate", args...); err != nil {
+		return err
+	}
+	return nameLLVMModule(mlirPath, llvmPath)
 }
+
+// nameLLVMModule gives translated LLVM IR the Sec module identity that the
+// lowering left as the LLVM dialect module's symbol name: mlir-translate
+// always writes the fixed `LLVMDialectModule`, so every object of a
+// multi-module program would otherwise carry the same ModuleID and
+// source_filename (compiler_pipeline.md § 86). A module without a plain
+// symbol name keeps the translator's spelling.
+func nameLLVMModule(mlirPath string, llvmPath string) error {
+	mlirText, err := os.ReadFile(mlirPath)
+	if err != nil {
+		return err
+	}
+	match := llvmDialectModuleName.FindSubmatch(mlirText)
+	if match == nil {
+		return nil
+	}
+	name := string(match[1])
+	if len(match[2]) != 0 {
+		name = string(match[2])
+	}
+	if strings.ContainsAny(name, "\"\\'\n") {
+		return nil
+	}
+	llvmText, err := os.ReadFile(llvmPath)
+	if err != nil {
+		return err
+	}
+	text := strings.Replace(string(llvmText), "; ModuleID = 'LLVMDialectModule'", "; ModuleID = '"+name+"'", 1)
+	text = strings.Replace(text, `source_filename = "LLVMDialectModule"`, `source_filename = "`+name+`"`, 1)
+	return os.WriteFile(llvmPath, []byte(text), 0o644)
+}
+
+var llvmDialectModuleName = regexp.MustCompile(`(?m)^module @(?:([A-Za-z_][A-Za-z0-9_.$:/-]*)|"([^"\\]*)")`)
 
 // CompileObject compiles LLVM IR to a target object with the llc of the same
 // LLVM build as mlir-translate. Textual LLVM IR is version-specific, so it
@@ -88,6 +124,9 @@ var secVerificationPasses = []string{
 	"--sec-verify-try-handlers",
 	"--sec-verify-union-guards",
 	"--sec-verify-match-cfg",
+	// P20 §§ 41, 44–56, 81: exact classification, success-only candidates
+	// and ordered ConversionError reasons.
+	"--sec-verify-numeric-conversions",
 }
 
 // LowerSecToLLVM verifies Sec-dialect MLIR and lowers it through standard

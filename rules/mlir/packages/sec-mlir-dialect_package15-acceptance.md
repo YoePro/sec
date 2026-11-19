@@ -1,5 +1,10 @@
 # Package 15 acceptance matrix — updated 2026-11-01
 
+> Navigation added 2026-11-19; historical evidence below is unchanged.
+> Current canonical Semantic IR responsibilities: [§ 10 Places](../../compiler/semantic_ir.md#10-places-and-semantic-locations), [§§ 45–48 references](../../compiler/semantic_ir.md#45-references).
+> See the [amendment crosswalk and maintenance workflow](../../../governance/semantic-ir-amendments.md)
+> and [live implementation ledger](../../../governance/lowering.yaml).
+
 This is the completed P15-69 mapping of all 56 section-155 criteria, not a claim
 that all criteria pass. Each criterion has a focused test or exact implementation
 location. Blocked criteria remain blocked regardless of aggregate test results.

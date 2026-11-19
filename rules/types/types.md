@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-12
-- **Last updated:** 2026-11-08 (stable chapter, subsection, and paragraph numbering); 2026-10-28 ("Contextual and self-inferred `Some(value)`", MD-102); 2026-10-28 ("Decimal scale", MD-066/MD-067/MD-068)
+- **Last updated:** 2026-11-19 (§ 25(11) `ConversionError.InvalidDomain`, MD-048); 2026-11-08 (stable chapter, subsection, and paragraph numbering); 2026-10-28 ("Contextual and self-inferred `Some(value)`", MD-102); 2026-10-28 ("Decimal scale", MD-066/MD-067/MD-068)
 - **Document revision:** 2.6
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/types/types.md`
@@ -1595,8 +1595,8 @@ invalid value is diagnosed at compile time.
 
 **§ 25(11)** A runtime-dependent checked conversion that can fail exposes the core error
 type `ConversionError` (declared in `sec/core/error.sec`). Intrinsic failures use
-its `OutOfRange`, `InvalidScalar`, `PrecisionLoss`, `ScaleOverflow`, or
-`NonFinite` variants; a declared contract failure uses
+its `OutOfRange`, `InvalidScalar`, `PrecisionLoss`, `ScaleOverflow`,
+`NonFinite`, or `InvalidDomain` variants; a declared contract failure uses
 `ConversionError.Contract(ContractError.Violation { ... })` as defined in
 `rules/types/contracts.md`, "Public conversion and contract errors". Defining
 this channel never demotes a proven compile-time error into a runtime result

@@ -1,3 +1,4 @@
+#include "llvm/ADT/StringSwitch.h"
 #include "sec/Dialect/Sec/SecOps.h"
 #include "OperationContracts.h"
 
@@ -284,6 +285,12 @@ LogicalResult FloatCmpOp::verify() {
   return success();
 }
 
+LogicalResult FloatToBoolOp::verify() {
+  if (!isSecFloatSemanticType(getValue().getType()))
+    return emitOpError("operand must be a Sec float type");
+  return success();
+}
+
 LogicalResult FloatAbsOp::verify() {
   if (!isSecFloatSemanticType(getValue().getType()) ||
       getValue().getType() != getResult().getType())
@@ -432,10 +439,15 @@ LogicalResult IntBinaryCheckedOp::verify() {
 }
 
 LogicalResult NumericConvertExactOp::verify() {
-  if (!isBuiltinIntegerSemanticType(getValue().getType()) ||
-      !isBuiltinIntegerSemanticType(getResult().getType()))
+  // P20 extends the early integer form to the binary float family: any pair
+  // of builtin integer and Sec float types the frontend proved exact
+  // (sec-mlir-dialect_package20.md §§ 44–55, 70).
+  auto numeric = [](Type type) {
+    return isIntegerFamilyConversionType(type) || isSecFloatSemanticType(type);
+  };
+  if (!numeric(getValue().getType()) || !numeric(getResult().getType()))
     return emitOpError(
-        "schema 11 admits only builtin Sec integer operand and result types");
+        "admits only builtin Sec integer and float operand and result types");
   return verifyConversionProof(*this);
 }
 
@@ -451,10 +463,50 @@ LogicalResult NamedConvertOp::verify() {
 }
 
 LogicalResult NumericConvertCheckedOp::verify() {
-  if (getFailure() != "OutOfRange")
-    return emitOpError("failure must be OutOfRange for integer targets");
-  if (!isBuiltinIntegerSemanticType(getValue().getType()) ||
-      !isBuiltinIntegerSemanticType(getCandidate().getType()))
+  if (std::optional<ArrayAttr> failures = getFailures()) {
+    // The P20 binary-float form (sec-mlir-dialect_package20.md §§ 41, 47–56).
+    if (getFailure())
+      return emitOpError("has either failure or failures, not both");
+    auto numeric = [](Type type) {
+      return isBuiltinIntegerSemanticType(type) || isSecFloatSemanticType(type);
+    };
+    Type source = getValue().getType(), candidate = getCandidate().getType();
+    if (!numeric(source) || !numeric(candidate) ||
+        (!isSecFloatSemanticType(source) && !isSecFloatSemanticType(candidate)))
+      return emitOpError("float form needs numeric operand and candidate types, one of them a Sec float");
+    if (failures->empty() || failures->size() != getReasons().size())
+      return emitOpError("needs one reason flag per listed failure");
+    int previous = -1;
+    for (Attribute attribute : *failures) {
+      int priority = llvm::StringSwitch<int>(cast<StringAttr>(attribute).getValue())
+                         .Case("NonFinite", 0)
+                         .Case("OutOfRange", 1)
+                         .Case("PrecisionLoss", 2)
+                         .Default(-1);
+      if (priority <= previous)
+        return emitOpError("failures must be distinct NonFinite, OutOfRange, "
+                           "PrecisionLoss in priority order");
+      previous = priority;
+    }
+    return success();
+  }
+  if (!getReasons().empty())
+    return emitOpError("the integer form has no reason flags");
+  // A rune candidate fails as InvalidScalar; every other integer-family
+  // candidate as OutOfRange.
+  // After scalar layout a rune is its ui32 carrier, which keeps the
+  // InvalidScalar failure that names its Unicode scalar domain.
+  Type candidate = getCandidate().getType();
+  bool rune = isa<RuneType>(candidate);
+  auto carrier = dyn_cast<IntegerType>(candidate);
+  bool runeCarrier = carrier && carrier.isUnsigned() && carrier.getWidth() == 32;
+  if (rune ? getFailure() != "InvalidScalar"
+           : getFailure() != "OutOfRange" &&
+                 !(runeCarrier && getFailure() == "InvalidScalar"))
+    return emitOpError("failure must be OutOfRange for integer targets and "
+                       "InvalidScalar for rune targets");
+  if (!isIntegerFamilyConversionType(getValue().getType()) ||
+      !isIntegerFamilyConversionType(getCandidate().getType()))
     return emitOpError(
         "admits only builtin Sec integer operand and candidate types");
   return success();

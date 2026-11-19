@@ -302,12 +302,20 @@ type Function struct {
 	ReturnType TypeID
 	Unsafe     bool
 	Extern     bool
-	ABI        string
-	Entry      BlockID
-	Blocks     []*Block
-	Storages   []Storage
-	Matches    []MatchRecord
-	Loops      []LoopRecord
+	// Imported marks a declaration of a Sec function defined in another
+	// module: it carries the signature and identity the call needs and no
+	// body; the defining module's own Semantic IR holds the definition
+	// (semantic_ir.md § 5(1); linking.md § 15).
+	Imported bool
+	// DefiningModule is the module identity whose Semantic IR defines an
+	// imported declaration; empty otherwise.
+	DefiningModule string
+	ABI            string
+	Entry          BlockID
+	Blocks         []*Block
+	Storages       []Storage
+	Matches        []MatchRecord
+	Loops          []LoopRecord
 	// NoPanic records Sema's verified @noPanic guarantee (written or implied)
 	// so later stages need not re-derive it; NoPanicSource names its origin.
 	NoPanic       bool
@@ -594,6 +602,9 @@ const (
 	// OpNumericConvertExact is P20's NumericConvertExactOp, admitted early for
 	// built-in integer conversions Sema proved exact (MD-104).
 	OpNumericConvertExact OpKind = "numeric.convert-exact"
+	// OpFloatToBool is P20's FloatToBoolOp: the explicit, infallible
+	// float-to-bool conversion, false only for ±0 (package20.md § 55).
+	OpFloatToBool OpKind = "float.to-bool"
 	// OpNamedConvert changes only the nominal identity of an integer value
 	// between a named type and its carrier or another named type over the same
 	// carrier (semantic_ir.md §§ 7(4), 59(2)); it needs no runtime check.
@@ -874,6 +885,12 @@ type Operation struct {
 	// ConversionFailure is the ConversionError variant of a
 	// numeric.convert-checked failure edge (package20.md § 72).
 	ConversionFailure string
+	// ConversionFailures are, for a checked P20 float conversion, the
+	// possible ConversionError variants in priority order (NonFinite,
+	// OutOfRange, PrecisionLoss); results 2.. are their mutually exclusive
+	// reason flags, so failed holds exactly when one reason does
+	// (package20.md §§ 41, 56, 71).
+	ConversionFailures []string
 	// SliceRange retains original endpoint types and range proof provenance.
 	// Rules: rules/mlir/packages/sec-mlir-dialect_package16.md — §§35,78–79.
 	SliceRange *SliceRangeMetadata

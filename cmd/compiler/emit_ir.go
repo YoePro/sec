@@ -24,6 +24,9 @@ func runEmitIRCommand(args []string) {
 	}
 	analyzed := parseAndAnalyzeSourceForTargetWithAnalyzerMode(string(input), inputFile, target, false)
 	module, err := semantic.Build(analyzed.Program, analyzed.Analyzer, semantic.BuildOptions{SourceFiles: []string{inputFile}, MaxPackage: inspectionMaxPackage})
+	if err == nil {
+		err = canonicalizeIRSources(module, inputFile)
+	}
 	if err != nil {
 		reportPipelineError("semantic IR", err)
 		exitCLI(4)

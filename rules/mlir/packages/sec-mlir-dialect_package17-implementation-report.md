@@ -1,5 +1,10 @@
 # SEC MLIR Package 17 implementation report
 
+> Navigation added 2026-11-19; historical evidence below is unchanged.
+> Current canonical Semantic IR responsibilities: [§§ 32–44 ownership and cleanup](../../compiler/semantic_ir.md#32-ownership-classification).
+> See the [amendment crosswalk and maintenance workflow](../../../governance/semantic-ir-amendments.md)
+> and [live implementation ledger](../../../governance/lowering.yaml).
+
 Report date: 2026-11-03. Reporting contract: P17 § 137, all 45 topics in order.
 
 **P17 is partial.** Thirty of the 45 § 136 criteria are met, one is superseded

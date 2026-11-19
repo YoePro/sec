@@ -196,7 +196,8 @@ struct LowerFloatsPass : sec::impl::SecLowerFloatsBase<LowerFloatsPass> {
       if (isa<sec::ConstFloatOp, sec::FloatNegOp, sec::FloatBinaryOp,
               sec::FloatCmpOp, sec::FloatAbsOp, sec::FloatMinimumOp,
               sec::FloatMaximumOp, sec::FloatClassifyOp, sec::FloatRoundOp,
-              sec::FloatPropertyOp, sec::FloatClampCheckedOp>(operation))
+              sec::FloatPropertyOp, sec::FloatClampCheckedOp,
+              sec::FloatToBoolOp>(operation))
         operations.push_back(operation);
     });
     IRRewriter rewriter(module.getContext());
@@ -304,6 +305,16 @@ struct LowerFloatsPass : sec::impl::SecLowerFloatsBase<LowerFloatsPass> {
             arith::MinimumFOp::create(rewriter, loc, clamp.getValue(), maximum);
         Value clamped = arith::MaximumFOp::create(rewriter, loc, upper, minimum);
         rewriter.replaceOp(clamp, ValueRange{clamped, failedFlag});
+        continue;
+      }
+      if (auto toBool = dyn_cast<sec::FloatToBoolOp>(operation)) {
+        // Unordered not-equal to +0.0: ±0 is false, NaN and every other
+        // value true (P20 § 55).
+        auto type = cast<FloatType>(toBool.getValue().getType());
+        Value zero = floatConstant(rewriter, loc, type,
+                                   APFloat::getZero(type.getFloatSemantics()));
+        rewriter.replaceOpWithNewOp<arith::CmpFOp>(
+            toBool, arith::CmpFPredicate::UNE, toBool.getValue(), zero);
         continue;
       }
       if (auto property = dyn_cast<sec::FloatPropertyOp>(operation)) {

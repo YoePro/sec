@@ -233,16 +233,43 @@ integrations:
 
   - id: governance.semantic-ir-v2
     area: semantic-ir-governance-and-versioning
-    status: planned
+    status: implemented
+    revised: "2026-11-19"
     repository_baseline: 998d8d1
-    remaining:
-      - map package-local Semantic IR amendments to the canonical v2 sections without deleting implementation-history reports
-      - define canonical internal Semantic IR schema/version ownership
-      - ensure future SEC-MLIR packages amend implementation status rather than append normative semantic fragments to the canonical book
+    rules:
+      - rules/compiler/semantic_ir.md
+    code:
+      - internal/ir/semantic/SCHEMA.md
+      - internal/ir/semantic/model.go
+      - internal/ir/semantic/verifier.go
+      - governance/semantic-ir-amendments.md
+      - governance/README.md
+      - codex.md
+      - rules/mlir/packages/sec-mlir-dialect_package13-implementation-report.md
+      - rules/mlir/packages/sec-mlir-dialect_package14-acceptance-matrix.md
+      - rules/mlir/packages/sec-mlir-dialect_package14-implementation-report.md
+      - rules/mlir/packages/sec-mlir-dialect_package15-acceptance.md
+      - rules/mlir/packages/sec-mlir-dialect_package15-implementation-report.md
+      - rules/mlir/packages/sec-mlir-dialect_package16-implementation-report.md
+      - rules/mlir/packages/sec-mlir-dialect_package17-implementation-report.md
+      - rules/mlir/packages/sec-mlir-dialect_package18-implementation-report.md
+    tests:
+      - internal/ir/semantic/schema_version_test.go
+      - internal/lowering/secmlir/semantic_schema_version_test.go
+    implemented:
+      - "2026-11-19: Canonical internal Semantic IR schema ownership is defined in internal/ir/semantic/SCHEMA.md and linked from governance/README.md. semantic.Version in model.go is the single executable authority; module verification and emission use that authority independently of document revision, work-package number and selected dialect output schema. The policy specifies incompatible-change version bumps, coordinated producer/verifier/consumer updates, dependency validation and governance synchronization; diagnostic printing is not claimed as a serialized loader. Regression tests verify current metadata and reject unspecified/previous/future versions before content inspection, with no emitted output across supported dialect selections and 32/64-bit plans. No schema bump or language change was required."
+      - "2026-11-19: Complete package-local Semantic IR crosswalk in governance/semantic-ir-amendments.md covers all 17 installed amendment files and all 314 numbered local sections, mapping their responsibilities to canonical Semantic IR v2 sections and existing live implementation owners. All eight retained implementation reports/acceptance matrices now link directly to canonical responsibilities and the live ledger. Their original dated content is byte-for-byte preserved after removal of the additive navigation note. Proposed statuses, historical completion claims and current implementation/decision boundaries are retained; the map does not promote any package or physical lowering."
+      - "2026-11-19: Future package maintenance now follows the canonical crosswalk/workflow linked from codex.md, governance/README.md and internal/ir/semantic/SCHEMA.md. Implementation inventories, gates, test results and progress update the owning fragmented ledger and dated package reports; semantic changes follow the correction workflow in responsible canonical sections. Package-specific status fragments must not be appended to the normative book. The workflow requires amendment/report navigation, one live status owner, preserved historical evidence, independent executable/dialect version review and bounded validation before completion claims."
+    remaining: []
     required_tests:
       - governance has one canonical Semantic IR rulebook path
       - package reports link to canonical semantic sections
       - schema changes update version metadata deterministically
+    verification:
+      - command: go test ./internal/ir/semantic ./internal/lowering/secmlir -run 'TestSemanticSchema' -count=1 -timeout=120s; bin/yamlstatus books --check
+        result: "Passed 2026-11-19: focused schema compatibility tests 0.002s/0.002s; all 115 canonical rulebooks and 131 static publication files validate. Read-only crosswalk audit confirms all 17 amendment files exactly once, complete local-section coverage (314 numbered sections), all eight existing reports/matrices, 118 existing local links and valid heading anchors, and existing live-owner IDs. Saved pre-edit fingerprints confirm original report bodies are byte-identical after removing only the additive navigation notes. Both remaining governance points closed: ID 2 to 0, status implemented; governance.yaml 11 to 9. This is documentation/maintenance closure, not new compiler, package or runtime implementation acceptance."
+      - command: go test ./internal/ir/semantic ./internal/lowering/secmlir -run 'TestSemanticSchema' -count=1 -timeout=120s; go vet ./internal/ir/semantic ./internal/lowering/secmlir
+        result: "Passed 2026-11-19: focused schema boundary tests (0.002s / 0.003s) and vet. Current schema accepted and emitted metadata preserves the canonical version; unspecified, previous, future and maximal versions rejected with no output under default and explicit dialect schemas 11 through 14 on 32/64-bit plans. This verifies schema ownership boundaries, not a serialized-module reader or the full package suites. ID remaining 3 to 2; governance.yaml remaining 12 to 11."
 
   - id: governance.compiler-analysis
     area: compiler-analysis-rulebook-governance
@@ -287,32 +314,64 @@ integrations:
 
   - id: governance.yamlstatus-rulebook-publication
     area: governance-documentation-publication
-    status: planned
+    status: implemented
+    revised: "2026-11-19"
     created: "2026-11-18"
-    summary: >-
-      Publish the canonical Sec rulebooks as a static HTML site generated by
-      cmd/yamlstatus from repository sources. Planning only: implementation has
-      not started. Keep publication separate from the existing governance
-      statistics -html report; generated pages do not establish compiler
-      implementation status.
+    summary: cmd/yamlstatus books publishes canonical rulebooks as a deterministic linked static HTML site with configurable checkout/output roots and deployment prefix, root/category indexes, Unicode heading anchors, book/resource links, safe rendering and confined IO, read-only validation, staged manifest-based regeneration and cron-safe destination locking. All tracked requirements are implemented and verified. The governance statistics -html report remains unchanged; documentation status does not establish compiler implementation progress.
     rules:
       - rules/README.md
       - language-rulebook-status.md
       - governance/README.md
       - cmd/yamlstatus/IDEAS.md
-    implemented: []
-    remaining:
-      - "Publication command and source inventory: add a dedicated yamlstatus command with documented source root, output directory and optional deployment base path/URL. Derive book selection and categories from rules/README.md and language-rulebook-status.md with explicit handling of written, living, planned, deferred and repository-sync-pending documents. Publish current canonical books; classify or exclude historical snapshots, package plans, proposals and corrections explicitly rather than publishing every Markdown file indiscriminately. Report inventory/source inconsistencies and unavailable books without inventing content or implementation claims."
-      - "Markdown renderer: select and pin a maintained Go Markdown-to-HTML package after evaluating its license, supported syntax and security controls. Render the actual rulebook dialect, including tables, fenced code with language labels, nested lists, blockquotes, inline code, links, images, Unicode and existing raw HTML conventions. Inventory .txt rulebooks and give them an explicit readable publication format or documented exclusion. Keep parsing/rendering in specialized files with templates separate from Go; do not grow the governance-report renderer into a second unrelated subsystem."
-      - "Book structure and navigation: extract titles, revisions and available documentation-status metadata without changing source books. Generate a site index, category navigation, breadcrumbs, per-book table of contents and stable heading anchors, including duplicate headings, Unicode and explicit source anchors. Keep documentation revision/status distinct from governance implementation progress; preserve source section numbering and make links shareable across rebuilds."
-      - "Links and resources: resolve local Markdown and HTML links using parsed document structure, rewrite published book destinations to HTML and preserve fragments. Copy permitted local images/resources while preserving relative resolution under nested books and deployment subpaths. Define explicit behavior for references to excluded or unavailable documents, repository-source links and external URLs. Diagnose broken local targets, missing fragments and output-path collisions with source context; do not rewrite examples or code-block text as links."
-      - "HTML presentation: provide embedded templates and locally packaged styles/assets consistent with the existing Sec manual layout. Make book text, wide tables and code examples readable on desktop and mobile, with accessible semantic headings, keyboard navigation and useful page titles. Generated pages must work without a running Go server or mandatory remote asset requests; reuse shared presentation assets where practical while preserving the existing statistics -html output."
-      - "Safe rendering and filesystem boundaries: escape code and metadata, define and enforce a policy for raw HTML and URL schemes, and prevent executable markup or unsafe links from bypassing that policy. Confine source/resource reads and output paths, including symlinks and encoded traversal, to their configured roots; reject source/output overlap and source overwrites. Generation must not fetch remote content, execute examples or upload/deploy the site."
-      - "Reproducible static output: produce deterministic portable page/asset paths and ordering, with an explicit reproducible policy for timestamps and source revision. Stage and validate the complete site before replacing generated output; failures must not leave a partially replaced site. Track generator-owned files so rebuilding removes stale generated pages without deleting unrelated files, and leave rulebook sources unchanged."
-      - "Build validation and diagnostics: provide a validation-only workflow that checks the selected inventory, rendering, links, anchors, resources and destination collisions without publishing output. Emit deterministic actionable diagnostics with repository-relative source paths and locations where available, distinguish intentionally unavailable inventory entries from broken links, and return a nonzero exit status for errors. Successful generation must run the same validation rather than silently emit broken pages."
-      - "End-to-end delivery and documentation: add CLI help and repository usage instructions for local preview, full rulebook generation, deployment under a URL subpath and a reproducible CI artifact/check workflow. Verify the real selected rulebook corpus and document any explicit exclusions. Deliver a static directory ready for separately authorized hosting; preserve all existing yamlstatus commands and the governance HTML report. Close this ID only when the complete publication workflow and required regression coverage pass."
+      - codex.md
+    code:
+      - cmd/yamlstatus/rulebook_render.go
+      - cmd/yamlstatus/RULEBOOK_PUBLICATION.md
+      - go.mod
+      - go.sum
+      - cmd/yamlstatus/rulebook_page.go
+      - cmd/yamlstatus/rulebook_page.html
+      - cmd/yamlstatus/rulebook_page.css
+      - cmd/yamlstatus/rulebook_workspace.go
+      - cmd/yamlstatus/books.go
+      - cmd/yamlstatus/books_inventory.go
+      - cmd/yamlstatus/books_headings.go
+      - cmd/yamlstatus/books_content.go
+      - cmd/yamlstatus/books_site.go
+      - cmd/yamlstatus/books_validate.go
+      - cmd/yamlstatus/books_output.go
+      - cmd/yamlstatus/rulebook_index.html
+      - cmd/yamlstatus/cli.go
+      - cmd/yamlstatus/edit.go
+      - bin/yamlstatus
+    tests:
+      - cmd/yamlstatus/rulebook_render_test.go
+      - cmd/yamlstatus/rulebook_page_test.go
+      - cmd/yamlstatus/rulebook_workspace_test.go
+      - cmd/yamlstatus/books_test.go
+      - cmd/yamlstatus/books_output_test.go
+    implemented:
+      - "Markdown body renderer (2026-11-19): Goldmark v1.8.7 (MIT) with GFM and final-output bluemonday v1.0.27 (BSD-3-Clause) sanitization. Dedicated rulebook_render.go accepts UTF-8 .md/.txt bytes without filesystem/network access. Tables, nested lists, Unicode, blockquotes, escaped fenced Sec examples/language labels, links/images and safe raw HTML anchors/details/line breaks are covered; executable markup/URLs are removed. Both current .txt MLIR books render as escaped preformatted text. Format/package/security policy is documented in cmd/yamlstatus/RULEBOOK_PUBLICATION.md; representative real books render successfully. Site selection, navigation, links, templates, filesystem output and CLI remain separately open."
+      - "HTML presentation (2026-11-19): renderRulebookPage produces a complete deterministic HTML document from source bytes and caller-supplied metadata/navigation, using the sanitized body renderer and escaped html/template fields. Embedded rulebook_page.html and rulebook_page.css provide Sec manual-style header/sidebar/breadcrumb/content/footer, local system-font styling, responsive bounded navigation, scrollable wide code/tables, visible keyboard focus, skip link, current-page markers and optional contents/revision/documentation-status/source fields. Page chrome requires no network resources or JavaScript. Invalid title/navigation URL/body input yields no partial page. Automatic navigation generation, inventory selection, link resolution and site publication remain separately tracked."
+      - "Safe rendering and filesystem boundaries (2026-11-19): rulebookWorkspace connects source reads and page rendering to disjoint existing source/output roots pinned with os.Root. Root symlink aliases and nesting in either direction are rejected; decoded portable relative paths reject absolute/URL/drive/backslash/control/percent-escaped traversal forms. Regular-file source reads and root-confined symlinks cannot escape the source tree. Create-only artifact writes beneath the output root reject existing files, leaf symlinks and hard links, preserving sources and unrelated output; failed writes remove their newly created partial artifact. Rendering retains the shared raw-HTML/URL sanitization and metadata escaping, without network fetching, example execution or deployment. Rebuild staging/replacement remains the separate reproducible-output point."
+      - "Publication command and canonical inventory (2026-11-19): yamlstatus books accepts --outdir, --indir (checkout root; default current directory), --base-url and read-only --check without changing existing statistics/edit flags. GFM inventory tables select unique Written/Living .md/.txt books and directory-map categories from rules/README.md. Planned/Covered/Deferred/Candidate/repository-sync-pending entries remain explicitly unavailable; artifacts, directories, corrections, package plans and historical/amendment trees are excluded. Missing selected sources, unsafe paths, unknown categories and output collisions fail explicitly."
+      - "Book structure/navigation (2026-11-19): source headings and revision metadata produce titles, documentation-status labels, breadcrumbs, per-book contents, a root index and category indexes. Unicode/numbered heading anchors are deterministic, duplicate headings receive suffixes and explicit IDs/named anchors are preserved with collision diagnostics. The first source H1 is represented once in the page header with its anchor; .txt books retain literal bodies with a source-derived title. No compiler-completion claim is derived from documentation metadata."
+      - "Book links/resources (2026-11-19): DOM-based rewriting resolves Markdown and raw-HTML book links against source-relative/canonical paths and unambiguous basenames, including HTML destination names, preserving fragments and queries. Unambiguous prose/inline-code book references become links; fenced examples/plain-text bodies remain literal. Missing local books/anchors fail validation; inactive/history/repository-only references become labelled text. Permitted local raster images are read within the source root, copied to collision-checked assets paths and rewritten for relative or explicit deployment prefixes. No external resources are fetched."
+      - "Reproducible staged static output (2026-11-19): all sorted artifacts and a versioned SHA-256 ownership manifest are staged in a private sibling directory before whole-directory installation with rollback on installation error. The manifest identifies stale generated files for removal; unrelated regular files and directory permissions are preserved, including file permissions/modification times. Modified generated files, invalid manifests, symlinks and unrelated destination collisions fail without changing the installed site. Per-destination locking rejects overlapping cron publishers. Generated bytes contain no build timestamp or private source-root path; directory-swap availability limits are documented."
+      - "Validation workflow and diagnostics (2026-11-19): books --check parses the selected inventory, renders every page in memory and checks final navigation/book/resource targets, Unicode/explicit anchors and collisions without creating output/locks/staging. Generation runs the same validation before publication. Deterministic actionable diagnostics identify portable source/generated paths and unique source-reference line numbers when available; errors return nonzero without replacing the destination. Intentionally unavailable inventory entries are displayed without false missing-source errors."
+      - "End-to-end delivery (2026-11-19): CLI/global help, codex.md and RULEBOOK_PUBLICATION.md document local browsing, absolute cron invocation, URL subpaths, check mode, CI artifact generation and manifest-based regeneration. bin/yamlstatus is rebuilt with -trimpath. The real selected corpus publishes 115 books as 131 static files plus the ownership manifest; repeated final-binary runs from another working directory are byte-identical and preserve unrelated files. Complete yamlstatus/race/vet suites and desktop/mobile Firefox inspection pass. No hosting upload, server or crontab installation is performed."
+    remaining: []
     required_tests:
       - Renderer fixtures cover the actual rulebook dialect, Unicode, tables, nested lists, fenced Sec examples, raw HTML policy, escaped metadata and unsafe URL schemes.
       - Link/navigation fixtures cover duplicate and Unicode headings, explicit anchors, relative Markdown/HTML links, fragments, images, excluded/missing documents, .txt policy, output collisions and root versus nested deployment paths.
       - Filesystem/output fixtures cover traversal and symlink escapes, overlapping source/output roots, unchanged sources, deterministic rebuilds, stale generated files, preserved unrelated files and failed-build output preservation.
       - CLI and full-corpus checks cover validation-only mode, actionable diagnostics and exit status, portable offline assets, complete canonical inventory selection and unchanged existing statistics -html behavior.
+    verification:
+      - command: go test ./cmd/yamlstatus -count=1; go test -race ./cmd/yamlstatus -count=1; go vet ./cmd/yamlstatus; go build -trimpath -o bin/yamlstatus ./cmd/yamlstatus; bin/yamlstatus books --check
+        result: "Passed 2026-11-19: final complete normal/race suites 1.255s/13.896s, vet and trimpath build. Fixtures cover canonical selection/statuses/duplicates/missing sources/categories, indexes and metadata, Unicode/duplicate/explicit anchors, Markdown/raw-HTML/query/prose/code references, image resources, deployment prefixes, read-only/invalid requests and unchanged destination on validation failure. Output tests cover deterministic rebuild/stale cleanup, preserved unrelated bytes/modes/mtime, modified-file/manifest/path/symlink rejection, concurrent locks and injected installation-failure rollback. Final binary publishes the real 115-book corpus to 131 static files plus manifest from a different working directory; repeated full-corpus output is byte-identical, with unrelated files preserved. Full-corpus /books/ and absolute-URL check modes pass; Firefox index/book desktop and book mobile screenshots visually reviewed. Binary scan finds no private home/checkout path. No full-repository suite or deployment claimed."
+      - command: go test ./cmd/yamlstatus -count=1; go test -race ./cmd/yamlstatus -count=1; go vet ./cmd/yamlstatus
+        result: "Passed 2026-11-19: complete yamlstatus suite (0.070s), complete race suite (1.298s) and vet. Workspace regressions cover integrated sanitized rendering, unchanged sources/unrelated output, create-only artifacts, regular resources, invalid/encoded/URL paths, root overlap and aliases, safe versus escaping source symlinks, escaping output parents, leaf symlinks/hard links and failed-render no-output behavior. A local HTTP observer verifies generation makes no requests; a source shell example remains unexecuted. Site staging/replacement and publication CLI remain separately open."
+      - command: go test ./cmd/yamlstatus -count=1; go test -race ./cmd/yamlstatus -count=1; go vet ./cmd/yamlstatus
+        result: "Passed 2026-11-19: complete yamlstatus suite including existing governance HTML report, race suite (1.326s) and vet. Parsed HTML tests verify accessible landmarks, skip target, active-page navigation, local embedded styling, metadata escaping, final-body sanitization, relative deployment URLs, optional/empty metadata, deterministic pages, .txt and contextual invalid-input errors without partial output. Headless Firefox desktop/mobile layout inspection recorded separately in the shared handoff. No publication command or generated site claimed."
+      - command: go test ./cmd/yamlstatus ./internal/lexer -count=1; go test -race ./cmd/yamlstatus ./internal/lexer -count=1; go vet ./cmd/yamlstatus ./internal/lexer; go mod verify
+        result: "Passed 2026-11-19: complete yamlstatus and lexer suites, race suites (1.296s/1.021s), vet and module checksums. Renderer fixtures cover Markdown/Unicode/code fidelity, safe raw markup, malicious HTML/URLs, plain text, invalid encodings/extensions, determinism and unchanged input; six representative repository books include both .txt books. Existing listfiles expectation synchronized with its unchanged separator row. Lexer checked because the sanitizer dependency upgrades x/text through x/net; no full repository suite or site publication claimed."

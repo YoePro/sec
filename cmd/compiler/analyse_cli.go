@@ -57,7 +57,7 @@ func analysisFamilies() []analysisFamily {
 			Availability: analysisAvailable, DiagnosticFamilies: []string{"suspicious"}},
 		{Name: "parameter-usage", Title: "parameter usage analysis", Description: "how each parameter is used and where a narrower parameter form (ref, ref mut) is recommended",
 			Availability: analysisAvailable, DiagnosticIDs: []string{diagnostics.LargeValueParameter}},
-		{Name: "stack", Title: "stack analysis", Description: "stack budget proofs for entry points, interrupts and tasks",
+		{Name: "stack", Title: "stack analysis", Description: "semantic stack requirements, unknown causes and available stack-budget diagnostics",
 			Availability: analysisAvailable, DiagnosticFamilies: []string{"stack"}},
 		{Name: "closures", Title: "closure analysis", Description: "closure creation, capture transfer and callable target facts (details with --verbose)",
 			Availability: analysisAvailable},
@@ -325,6 +325,7 @@ type analysisReportDocument struct {
 	Diagnostics  []emittedOccurrence      `json:"diagnostics"`
 	Findings     []analysisReportFinding  `json:"findings"`
 	Conformances []analysisConformance    `json:"conformances,omitempty"`
+	Stack        []analysisStackCallable  `json:"stack,omitempty"`
 	Limitations  []string                 `json:"limitations"`
 	Summary      analysisReportSummary    `json:"summary"`
 }

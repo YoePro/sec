@@ -2,6 +2,7 @@ package semantic
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"sec/internal/ast"
@@ -47,11 +48,21 @@ func (b *builder) registerPropertyAccessors(owner string, property *ast.Property
 	if !ok {
 		return
 	}
+	if b.specializations.accessors == nil {
+		b.specializations.accessors = map[string]sema.Function{}
+	}
+	concrete := len(b.analyzer.GenericTypeParameters(owner)) == 0
 	if getter != nil && property.Getter != nil {
 		b.registerGenericTemplate(accessorDeclaration(property, true), *getter)
+		if concrete {
+			b.specializations.accessors[genericTemplateKey(*getter)] = *getter
+		}
 	}
 	if setter != nil && property.Setter != nil && !property.Setter.Invalid && property.Setter.Body != nil {
 		b.registerGenericTemplate(accessorDeclaration(property, false), *setter)
+		if concrete {
+			b.specializations.accessors[genericTemplateKey(*setter)] = *setter
+		}
 	}
 }
 
@@ -61,6 +72,9 @@ func (b *builder) registerPropertyAccessors(owner string, property *ast.Property
 func (fb *functionBuilder) demandAccessor(accessor sema.Function, owner sema.Type, token lexer.Token) (FunctionID, sema.Function, error) {
 	b := fb.owner
 	key := genericTemplateKey(accessor)
+	if decl := b.importedAccessors[key]; decl != nil {
+		return b.declareImportedAccessor(decl, accessor)
+	}
 	if b.specializations.templates[key] == nil {
 		return "", accessor, fb.unsupported("property accessor without a source body", token)
 	}
@@ -170,7 +184,11 @@ func (fb *functionBuilder) propertyAccess(expr ast.Expression) (sema.ResolvedPro
 		return access, nil, nil, false
 	}
 	built := func(accessor *sema.Function) bool {
-		return accessor != nil && fb.owner.specializations.templates[genericTemplateKey(*accessor)] != nil
+		if accessor == nil {
+			return false
+		}
+		key := genericTemplateKey(*accessor)
+		return fb.owner.specializations.templates[key] != nil || fb.owner.importedAccessors[key] != nil
 	}
 	if !built(getter) && !built(setter) {
 		// A compiler-known or register property keeps its own producer.
@@ -501,4 +519,70 @@ func (fb *functionBuilder) completeFallibleSetter(decl *ast.FunctionDeclaration,
 	fb.emit(Operation{Kind: OpReturn, Operands: []ValueID{ok.id}, Location: loc})
 	fb.current = nil
 	return nil
+}
+
+// registerImportedAccessors records the accessor declarations of one property
+// of another module's non-generic type; an operation on it declares the
+// accessor it calls instead of building its body (semantic_ir.md § 5(1)).
+func (b *builder) registerImportedAccessors(owner string, property *ast.PropertyDeclaration) {
+	if property == nil || property.Name == nil {
+		return
+	}
+	getter, setter, ok := b.analyzer.PropertyAccessorsOf(sema.Type{Name: owner}, property.Name.Value)
+	if !ok {
+		return
+	}
+	if getter != nil && property.Getter != nil {
+		b.importedAccessors[genericTemplateKey(*getter)] = accessorDeclaration(property, true)
+	}
+	if setter != nil && property.Setter != nil && !property.Setter.Invalid && property.Setter.Body != nil {
+		b.importedAccessors[genericTemplateKey(*setter)] = accessorDeclaration(property, false)
+	}
+}
+
+// declareImportedAccessor adds, once, the signature-only declaration of an
+// accessor of an imported type under the identity its defining module gives
+// the accessor, and returns that identity.
+func (b *builder) declareImportedAccessor(decl *ast.FunctionDeclaration, accessor sema.Function) (FunctionID, sema.Function, error) {
+	id := FunctionID(accessor.Module + "::" + qualifiedCallableName(accessor) + "(" + accessorSignature(accessor) + ")")
+	if b.importedBuilt[id] {
+		return id, accessor, nil
+	}
+	b.importedBuilt[id] = true
+	substitution := b.substitution
+	b.substitution = nil
+	defer func() { b.substitution = substitution }()
+	if err := b.buildConcreteFunction(decl, accessor, nil); err != nil {
+		return "", accessor, err
+	}
+	// The declaration carries the accessor identity, not its plain name.
+	b.module.Functions[len(b.module.Functions)-1].ID = id
+	return id, accessor, nil
+}
+
+// demandOwnAccessors demands every registered accessor of this module's
+// non-generic types, in source order, under the identity property
+// operations use, so an exported unit defines what importers declare.
+func (b *builder) demandOwnAccessors() {
+	keys := make([]string, 0, len(b.specializations.templates))
+	for key := range b.specializations.templates {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		accessor, ok := b.specializations.accessors[key]
+		if !ok {
+			continue
+		}
+		id := FunctionID(accessor.Module + "::" + qualifiedCallableName(accessor) + "(" + accessorSignature(accessor) + ")")
+		if _, seen := b.specializations.demanded[id]; seen {
+			continue
+		}
+		spec := &specialization{id: id, function: accessor, token: accessor.Token}
+		if b.specializations.demanded == nil {
+			b.specializations.demanded = map[FunctionID]*specialization{}
+		}
+		b.specializations.demanded[id] = spec
+		b.specializations.pending = append(b.specializations.pending, spec)
+	}
 }

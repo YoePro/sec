@@ -1,5 +1,10 @@
 # SEC-MLIR-P18 Implementation Report — Owning Dynamic Arrays
 
+> Navigation added 2026-11-19; historical evidence below is unchanged.
+> Current canonical Semantic IR responsibilities: [§ 127 owning arrays](../../compiler/semantic_ir.md#127-owning-dynamic-arrays-sec-mlir-p18).
+> See the [amendment crosswalk and maintenance workflow](../../../governance/semantic-ir-amendments.md)
+> and [live implementation ledger](../../../governance/lowering.yaml).
+
 - Status: report for package 18 (§ 136), written 2026-11-18 (P18-47)
 - Package specification: `rules/mlir/packages/sec-mlir-dialect_package18.md`
 - Work list and acceptance evidence: `package18-todo.md` (P18-45 matrix)

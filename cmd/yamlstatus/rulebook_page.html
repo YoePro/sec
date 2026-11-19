@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{.Title}} — Sec Rulebooks</title>
+    <style>{{.Style}}</style>
+</head>
+<body>
+<a class="skip-link" href="#rulebook-content">Skip to rulebook</a>
+<header class="site-header">
+    <div class="header-inner">
+        <a class="site-logo" href="{{.IndexURL}}" aria-label="Sec rulebooks home"><span class="logo-mark" aria-hidden="true">S</span>Sec</a>
+        <span class="site-section">Language rulebooks</span>
+        <a class="index-link" href="{{.IndexURL}}">All rulebooks <span aria-hidden="true">↗</span></a>
+    </div>
+</header>
+<div class="layout">
+    <nav class="sidebar" aria-label="Rulebook navigation">
+        <h2 class="sidebar-title">Rulebooks</h2>
+        {{range .Navigation}}
+        <section class="nav-group">
+            <h3>{{.Title}}</h3>
+            <ul>{{range .Links}}<li><a href="{{.Href}}"{{if .Current}} class="active" aria-current="page"{{end}}>{{.Title}}</a></li>{{end}}</ul>
+        </section>
+        {{else}}<a href="{{.IndexURL}}">Browse all rulebooks</a>{{end}}
+    </nav>
+    <main id="rulebook-content" class="content" tabindex="-1">
+        <nav class="breadcrumb" aria-label="Breadcrumb">
+            <ol><li><a href="{{.IndexURL}}">Rulebooks</a></li>{{range .Breadcrumbs}}<li><a href="{{.Href}}">{{.Title}}</a></li>{{end}}<li aria-current="page">{{.Title}}</li></ol>
+        </nav>
+        <header class="book-header">
+            {{if .Category}}<p class="eyebrow">{{.Category}}</p>{{end}}
+            <h1{{if .TitleID}} id="{{.TitleID}}"{{end}}>{{.Title}}</h1>
+            {{if or .Revision .DocumentationStatus}}<dl class="book-metadata">
+                {{if .Revision}}<div><dt>Rulebook revision</dt><dd>{{.Revision}}</dd></div>{{end}}
+                {{if .DocumentationStatus}}<div><dt>Documentation status</dt><dd>{{.DocumentationStatus}}</dd></div>{{end}}
+            </dl>{{end}}
+        </header>
+        {{if .Contents}}<nav class="table-of-contents" aria-label="On this page">
+            <h2>On this page</h2>
+            <ul>{{range .Contents}}<li><a href="{{.Href}}">{{.Title}}</a></li>{{end}}</ul>
+        </nav>{{end}}
+        <article class="book-body" aria-label="Rulebook text">{{.Body}}</article>
+        <footer class="book-footer">
+            {{if .SourcePath}}<p>Source: <code>{{.SourcePath}}</code></p>{{end}}
+            <p>Documentation status describes the rulebook, not compiler implementation progress.</p>
+        </footer>
+    </main>
+</div>
+<footer class="site-footer">Sec · Language reference</footer>
+</body>
+</html>

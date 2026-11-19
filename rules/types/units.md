@@ -2,12 +2,12 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-18
-- **Last updated:** 2026-11-08 (stable chapter, subsection, and paragraph numbering); 2026-10-27 (MD-062 unit metadata value types)
-- **Document revision:** 2.2
+- **Last updated:** 2026-11-19 (MD-048 affine and logarithmic conversion semantics: §§ 21.1, 22.1–22.5); 2026-11-08 (stable chapter, subsection, and paragraph numbering); 2026-10-27 (MD-062 unit metadata value types)
+- **Document revision:** 2.3
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/types/units.md`
 - **Replaces:** `rules/types/units.txt`
-- **Repository baseline reviewed:** `50655d3bc5d2e2596935dc5609cb1db1387e0cec`
+- **Repository baseline reviewed:** `cc987fc3bbab8229f45227e3e2be47839d67e282`
 - **Implementation governance:** `governance/types.yaml`
 
 ---
@@ -881,7 +881,7 @@ expression; positive and negative values are valid (MD-062, superseding the
 former strictly-positive rule). A negative scale reverses coordinate
 direction: conversion ratios, value intervals and range proofs must handle the
 sign, including swapping interval endpoints. A zero scale is invalid because
-it is not invertible. Negative scales on affine units remain under MD-048.
+it is not invertible. A negative affine `Scale` is valid as well and follows § 21.1(2) (MD-048).
 Exact rational forms are preferred where practical; the compiler keeps the
 exact rational for unit algebra.
 
@@ -946,7 +946,7 @@ or the standard library. `Unknown`, `Unspecified` and `None` are absence
 markers: they never establish compatibility between units, and they are not
 collapsed into `Other`. `UnitOrigin.Zero` and `UnitOrigin.One` are declared
 coordinate conventions, not proof of a shared physical datum; origin
-compatibility stays with point semantics and MD-048. Extending `UnitKind` or
+compatibility stays with point semantics and § 21.1(3). Extending `UnitKind` or
 `UnitSystem` is a deliberate change to the core declaration, never an open
 enum.
 
@@ -1063,9 +1063,15 @@ source-positioned error. A declared `Dimension: []` (or an omitted one on a
 identity is kept. Omitted `Scale` of a linear unit is exactly `1` and omitted
 `Offset` of a linear unit is `0`; an affine point unit must still declare
 `Scale`, `Offset` and `Origin`, and reading a logarithmic unit's missing
-`Scale` or `Offset` never fabricates linear semantics. There is no universal
-`Reference > 0` rule: the admissible domain, including zero as a divisor and
-negative references, belongs to MD-048.
+`Scale` or `Offset` never fabricates linear semantics. The public
+`Reference` read is a *projection*: the declared initializer may use a wider
+typed carrier (for example `decimal128<W>(0.001)`), the exact normalized
+reference is kept internally for conversion and is never replaced by the
+projection, and a read whose accepted initializer the projection cannot
+represent is diagnosed (§ 22.2(6)). A declared reference is a positive finite
+linear quantity (§ 22.1(1)); a unit without `Reference` has no public value,
+and reading it is a compile-time error. This does not add a member or change
+the 16-member surface.
 
 **§ 18(14)** The `decimal` read of `Scale` projects the exact rational to the nearest
 representable `decimal`, breaking exact ties with `RoundingMode.NearestEven`.
@@ -1083,9 +1089,11 @@ source-positioned diagnostic; the declaration is not altered.
 **§ 18(15)** **(10) Defaults and diagnostics.** Defaults are typed immutable constants, not
 optional, deferred or runtime-fetched values. Missing `LongName` or `Symbol`
 is an error only on read; declarations without them stay valid. `LogBase`,
-`LogFactor` and `Reference` have no defaults, and a logarithmic declaration
-missing any of them is a declaration error even when nothing reads it; the
-two errors are reported independently. `UnitOrigin.None` never satisfies a
+`LogFactor` and `Reference` have no defaults. A logarithmic declaration
+missing `LogBase` or `LogFactor` is a declaration error even when nothing reads
+it, and the two errors are reported independently; `Reference` may be omitted
+only for a reference-free logarithmic ratio (§ 22.1(3)), and reading an absent
+`Reference` is a compile-time error. `UnitOrigin.None` never satisfies a
 required origin. Explicit malformed, mistyped, duplicate, unknown or
 non-constant metadata is always diagnosed and never replaced by a default.
 Metadata reads cannot be assigned, mutably addressed or set.
@@ -1182,6 +1190,33 @@ canonical = value * Scale + Offset
 
 **§ 21(5)** The compiler must preserve the difference between point values and differences.
 
+### § 21.1 Exact affine conversion
+
+**§ 21.1(1)** *Exact affine mapping.* For source affine coordinate `a`, source metadata `S_s`, `O_s`, destination metadata `S_t`, `O_t`, and a common canonical point coordinate `c`:
+
+```text
+c = a * S_s + O_s
+b = (c - O_t) / S_t
+  = (a * S_s + O_s - O_t) / S_t
+```
+
+A source or destination with `UnitTransform.Linear` uses its linear formula (`O = 0` for coordinate mapping), **only** when point/difference roles and origin compatibility permit it. Intermediate arithmetic above denotes one exact mathematical expression, not mandatory physical storage operations.
+
+**§ 21.1(2)** *Nonzero and signed Scale.* Affine `Scale` is any finite, nonzero compile-time real scale accepted by the unit metadata numeric contract. Negative values are valid and reverse coordinate direction; zero is invalid at declaration time. The implementation must correctly reverse interval endpoints and comparison/range proof ordering when `Scale < 0`. This extends § 17.7 without weakening point algebra.
+
+**§ 21.1(3)** *Origin and point identity.* Matching dimensions and numerical scales alone do not establish that two point origins are compatible. `Origin` is a semantic datum and `Offset` a coordinate displacement; one must not be inferred from the other. A conversion that cannot establish compatible point origins at compile time is rejected unless a separately declared and validated explicit relationship supplies it. `UnitOrigin.None` is not evidence of compatibility.
+
+**§ 21.1(4)** *Difference path.* The difference corresponding to an affine point uses the scale but **not** the point offset:
+
+```text
+difference_canonical = difference_source * S_s
+difference_target = difference_canonical / S_t
+```
+
+A difference shall never gain or lose a point offset merely because it is represented using the same unit spelling as a point. The point algebra in § 23 remains unchanged. Two compatible points may be subtracted; two points may not be added.
+
+**§ 21.1(5)** *Result errors.* A known invalid scale, inconsistent origin, or invalid unit relationship is a compile-time diagnostic. A mathematically valid conversion whose target carrier cannot represent the result follows §§ 29–30 and § 22.5 below; it is not silently clamped, wrapped, or rounded twice.
+
 ---
 
 ## § 22 Logarithmic transform
@@ -1198,14 +1233,24 @@ LogFactor
 Reference
 ```
 
-**§ 22(3)** Conceptually, a logarithmic value maps to a compatible linear quantity through
-its declared base, factor, and reference quantity.
+`LogBase` and `LogFactor` are always required. `Reference` is read as
+*when present*: it is required for a referenced level and may be omitted only
+for a reference-free logarithmic ratio, whose semantics are defined without a
+fabricated default (§ 22.1(3)).
 
-**§ 22(4)** `Reference` must resolve to a compile-time reference compatible with the target
-linear quantity domain.
+**§ 22(3)** Conceptually, a logarithmic value maps to a compatible positive linear quantity
+(with `Reference`) or to a positive dimensionless ratio (without it) through
+its declared base and factor. `LogFactor` multiplies the logarithm,
+`l = LogFactor * log_LogBase(q / Reference)`; the equations are fixed in
+§ 22.1(2) and § 22.1(3).
+
+**§ 22(4)** A declared `Reference` must resolve to a compile-time linear quantity compatible
+with the target linear quantity domain; its typing, dimension and Kind rules
+are defined in § 22.2.
 
 **§ 22(5)** For a dimensionless logarithmic ratio, a dimensionless reference such as `1`
-may be valid.
+is valid. Omitting `Reference` declares a reference-free ratio, which is not the
+same declaration as `Reference: 1` (§ 22.1(3)).
 
 **§ 22(6)** Example shape:
 
@@ -1225,12 +1270,172 @@ impl <dB> {
 }
 ```
 
+A reference-free logarithmic ratio omits `Reference`:
+
+```sec
+unit bel ratio
+
+impl <bel> {
+    LongName: "Bel"
+    Symbol: "B"
+    Dimension: []
+    Kind: UnitKind.Ratio
+    Transform: UnitTransform.Logarithmic
+    LogBase: 10
+    LogFactor: 1
+    System: UnitSystem.Other
+}
+```
+
 **§ 22(7)** Ordinary linear arithmetic must not be silently applied to logarithmic unit
 values.
 
 **§ 22(8)** Unless a specialized rule explicitly permits an operation, arithmetic on
 logarithmic values must use explicit conversion to a compatible linear quantity
 or an explicitly defined logarithmic operation.
+
+**§ 22(9)** The affine and logarithmic conversion semantics of §§ 21.1 and 22.1–22.5 were
+decided by MD-048 (2026-11-19,
+`rules/corrections/applied/MD-048-units-normative-correction-2026-11-19-20261119.md`).
+The source spelling of numeric-strategy selection, error-bound limits and target
+preferences, processor floating-point state, tasks, threads and FFI are outside
+this rulebook; §§ 22.5(8)–(10) fix only the semantics a unit conversion
+consumes from them.
+
+### § 22.1 Parameters and mappings
+
+**§ 22.1(1)** *Parameters.* For a logarithmic unit define: source logarithmic coordinate `l`; logarithm base `B` (`LogBase`); logarithmic factor `F` (`LogFactor`); optional explicitly declared linear reference quantity `R` (`Reference`). `B` must be a positive finite real other than 1; `F` must be finite and nonzero; a declared `R` must be a positive finite compatible *linear* quantity. Invalid constant metadata is a declaration error.
+
+**§ 22.1(2)** *Level with Reference.* If `Reference` is present, the corresponding linear quantity `q` is:
+
+```text
+q = R * B^(l / F)
+l = F * log_B(q / R)
+```
+
+The inverse is defined for finite real `q > 0`, within compatible source/destination quantity domains. `q == 0` and `q < 0` have **no finite real inverse** under this model. A negative logarithmic coordinate `l` is entirely valid; it does not imply a negative `q`.
+
+**§ 22.1(3)** *Ratio without Reference.* Without `Reference`, the unit denotes a *logarithmic ratio coordinate* and maps to a positive, dimensionless linear ratio `r`:
+
+```text
+r = B^(l / F)
+l = F * log_B(r)
+```
+
+This is a *mathematical ratio mapping*, **not** an implicit metadata initializer `Reference: 1`. Omitted `Reference` and explicit `Reference: 1` remain distinguishable metadata and semantic declarations. The compiler may not invent a unit-dependent physical reference.
+
+**§ 22.1(4)** *Base and factor signs.* `0 < B < 1` is permitted. A negative `F` is permitted. Both preserve invertibility of the logarithmic mapping; monotonic direction depends on `ln(B) / F`. Division by zero in `F`, base 1, nonpositive base, and nonpositive reference are declaration errors. No accidental `abs(q)` transformation is allowed for a negative underlying input.
+
+**§ 22.1(5)** *Natural logarithm.* The semantics use the mathematical constant `B`, not a host approximation to it. An expression for `LogBase` must be supported by the existing compile-time constant rules. This correction introduces **no new literal, built-in `e`, symbolic irrational constant expression, or implicit approximation** solely to spell a natural base. When existing expression facilities cannot supply an exact intended base, the unit declaration cannot claim that exact base by writing a rounded substitute.
+
+### § 22.2 Typed Reference and underlying quantity domain
+
+**§ 22.2(1)** `Reference:` accepts an ordinary typed compile-time numeric quantity expression, including a carrier-qualified constructor. Sec introduces **no** `Reference[T]:` syntax.
+
+```sec
+unit dBm ratio
+
+impl <dBm> {
+    Dimension: []
+    Kind: UnitKind.Ratio
+    Transform: UnitTransform.Logarithmic
+    LogBase: 10
+    LogFactor: 10
+    Reference: decimal128<W>(0.001)
+}
+```
+
+**§ 22.2(2)** `Reference: 0.001<W>` is also valid; the ordinary default numeric carrier for a quantity literal is `decimal` where the unit has not specified another carrier. Explicit `decimal128<W>` selects the initializer's carrier, **not** the later result's carrier. Typed reference initializer expressions are not metadata-specific grammar; they use the normal Sec expression/type rules and must be evaluable at compile time.
+
+**§ 22.2(3)** Analyze and retain separately: (a) the *logarithmic coordinate unit* (`dBm` may have `Dimension: []`, `Kind: UnitKind.Ratio`), and (b) the *linear reference domain* (`W` has its own physical dimension and Kind). The coordinate unit's dimensionless representation must not erase the referenced physical dimension. Two referenced logarithmic levels can convert via a fixed relationship only when their resolved linear reference domains are compatible; a log ratio without a reference does not thereby become a physical power level.
+
+**§ 22.2(4)** Compatibility of references requires resolved unit identity/dimensional compatibility, compatible known physical Kind, compatible role (ordinary positive linear quantity, not an affine point), and a known exact canonical relationship. Different known Kinds may not be bridged by a guessed scale or a mere equality of dimensions. Explicit declared conversion functions and their existing authority remain available as specified in § 31.
+
+**§ 22.2(5)** The compiler retains the reference's normalized mathematical value, source type, carrier, original unit identity, resolved dimension, Kind, and positive-domain proof. The metadata initializer **may be typed differently** from both the logarithmic coordinate and conversion result. Conversion arithmetic must not use an inexact public metadata projection in place of these semantic facts.
+
+**§ 22.2(6)** *Public metadata reconciliation.* § 18 exposes `<U>.Reference` through its existing public projection (`decimal` or `decimal<V>`), whereas the declaration can have a wider initializer carrier (e.g. `decimal128<W>`). The public read is **not** the exact internal reference value. If the existing projection cannot represent an accepted initializer under § 18's numeric-read contract, the public read is diagnosed, rather than invalidating the unit declaration or silently changing conversion semantics. An absent `Reference` is a compile-time error **when read**, not a fabricated `1`; for a valid reference-free logarithmic ratio, omission alone is **not** a declaration error.
+
+### § 22.3 Explicit conversion paths
+
+**§ 22.3(1)** *Linear/affine to logarithmic.* Normalize the source's compatible physical *linear quantity* (or dimensionless ratio) to canonical value `q`, then evaluate the destination's inverse logarithmic mapping. A point cannot be silently used as a free quantity. Require `q > 0` before taking the logarithm; reject a conversion with an unsatisfied domain. The destination metadata determines the reference domain and logarithmic coordinate.
+
+**§ 22.3(2)** *Logarithmic to linear/affine.* Apply the source forward mapping to the compatible positive canonical quantity or ratio, then convert to the destination linear representation. A conversion into a destination point still requires an independently valid point-origin relationship and must not be inferred from a physical matching dimension.
+
+**§ 22.3(3)** *Logarithmic to logarithmic.* For two referenced *levels* with source `(B_s,F_s,R_s)` and destination `(B_t,F_t,R_t)`, assuming `R_s` and `R_t` are expressed in the **same exact canonical linear quantity**, the mathematical target coordinate is:
+
+```text
+l_t = F_t * [ ln(R_s / R_t) + (l_s / F_s) * ln(B_s) ] / ln(B_t)
+```
+
+This is exactly equivalent to `q = R_s * B_s^(l_s/F_s)` followed by `l_t = F_t * log_(B_t)(q/R_t)` for all finite real in-domain values. The implementation should compose the expression directly or use an equivalent stable method; it must **not** require materialization of a `q` which can overflow an intermediate carrier when the final `l_t` is finite and representable.
+
+**§ 22.3(4)** *Ratio-to-ratio.* For two *reference-free* logarithmic ratios sharing a compatible underlying ratio domain:
+
+```text
+l_t = (F_t / F_s) * (ln(B_s) / ln(B_t)) * l_s
+```
+
+This simplification must preserve exact mathematical meaning and the chosen numerical policy. The compiler shall not mix referenced levels and reference-free ratios as if `Reference: 1` had been declared, unless an independently valid explicit conversion supplies the missing physical reference/domain relationship.
+
+**§ 22.3(5)** *Example.* With `dBm` reference `0.001<W>` and `dBW` reference `1<W>`, both base 10 and factor 10, an in-domain source coordinate of `30 dBm` converts to `0 dBW` (exact mathematical result). A log-level conversion may be representable exactly even when a naive intermediate `pow()` is not; final representability decides success, not an incidental evaluation order.
+
+**§ 22.3(6)** *Conversion resolution.* Constructor-style explicit conversion and carrier-qualified conversion follow §§ 30–32. Do not add an implicit log conversion merely because a numerical transform exists. The explicit destination conversion function remains authoritative when called (§ 31(6)). No ordinary addition/multiplication of logarithmic coordinates is introduced here; § 22(7)–(8) remains in force.
+
+### § 22.4 Conversion-plan and proof invariants
+
+**§ 22.4(1)** Analysis must construct a specialized transform plan preserving: source/target unit IDs and role; transform kinds; canonical dimension and Kind; origin compatibility; exact Scale/Offset facts; source/destination base/factor; reference presence and reference physical domains; normalized reference values; source/target numeric carriers; effective strategy; explicit rounding mode, if present; known domain and representability proofs; and compile-time/runtime error classification.
+
+**§ 22.4(2)** A plan is rejected before lowering if source/target relationship or compile-time metadata is invalid. Do not silently turn an invalid or unresolved logarithmic plan into a scale-only plan; do not retain only source text for `Reference` as if it were a validated semantic constant.
+
+**§ 22.4(3)** Lowering may algebraically fold and compose conversions and may use target-specific optimized operations, but cannot alter their unit semantics, cause multiple independently rounded intermediate conversions, or bypass errors/required checks. Source expression evaluation order and the rights of an explicitly called conversion function remain governed by the original rulebooks.
+
+### § 22.5 Exactness, rounding, strategies and failure
+
+**§ 22.5(1)** *Mathematical reference.* The mathematical result `x` is the real-number result of the *entire* valid unit transform expressed in the destination's coordinate system, before target-carrier rounding. Exact intermediate rational arithmetic is retained where applicable. Transcendental log/exp steps are specified by the exact mathematical functions; a host or target libm is not implicitly an exact oracle.
+
+**§ 22.5(2)** *Strict.* `Strict` is the default. An implicit conversion requires exact representability and all usual implicit-unit conditions. An explicit conversion without rounding/approximation permission also requires exact representability. When a conversion is permitted an explicit `RoundingMode`, the returned representable result must be the mathematical value rounded **once at the final destination carrier** in the requested direction; all intermediate operations must be sufficiently accurate to prove that final result. A compiler may use arbitrary precision, algebraic proofs, or certified routines; it may not substitute a merely approximate `log()`/`exp()` and claim correctly rounded Strict semantics. If an implementation cannot establish the required result for a particular target/path, it may take a different conforming implementation or diagnose the unsupported guarantee; it may not silently weaken it.
+
+**§ 22.5(3)** *One rounding.* In accord with MD-047, `RoundingMode` never means “round the source, round a linear intermediate, then round the destination.” Mathematical cancellations and exact conversions must remain eligible for exact final results (e.g. `30 dBm` to `0 dBW`). Any internal rounding is implementation detail whose combined effect must not change the externally required final result.
+
+**§ 22.5(4)** *BoundedApproximation.* An explicitly selected bounded strategy admits an implementation only if its **delivered** finite numeric result `y` satisfies its stated bound against exact final target-coordinate `x`, inclusive of every internal approximation and the final carrier representation. It does not authorize unit or domain violations, NaN/infinity substitution, or undisclosed target-range failures. If the guarantee cannot be established, fall back to a conforming implementation; reject a proven-impossible constant requirement; otherwise report a checked precision failure on paths for which the implementation cannot establish the promise. The bounded strategy does not itself grant an arbitrary extra rounding at the conversion boundary.
+
+**§ 22.5(5)** *Absolute/relative metric.* For nonnegative absolute error allowance `A` in the destination *difference* coordinate and nonnegative dimensionless relative allowance `R`, the combined rule is:
+
+```text
+x = exact mathematical destination coordinate
+y = delivered destination coordinate
+absolute_error = |y - x|
+allowed_error = max(A, R * |x|)
+accept iff absolute_error <= allowed_error
+```
+
+With an affine point, `A` is a difference (no offset); with a logarithmic level or ratio, `A` is an interval in the destination's **logarithmic coordinate**, not a physical linear power error. For standalone relative tolerance at `x = 0`, only exact zero is accepted unless an explicit absolute allowance is also present; no divide-by-zero evaluation is necessary. `A = 0` or `R = 0` demands the corresponding exact target-coordinate result.
+
+**§ 22.5(6)** *ULP metric.* For a finite real exact coordinate `x`, ULP refers to the resolved **destination binary floating format** (not intermediate format and not metadata initializer carrier). For a finite nonrepresentable `x`, local ULP is the gap between its consecutive representable neighbors; for an exactly representable `x`, use the *smaller positive gap* to adjacent distinct finite values. At zero/subnormal magnitudes use the smallest positive subnormal step. Signed zero has zero numerical distance to zero but other signed-zero rules remain independent. NaN, infinity, and out-of-finite-range values do not satisfy a finite ULP bound. The format-parametric rule covers binary32/binary64 and future float16/bfloat16 **once supported**, including their actual exponent and significand parameters. This is a conservative precise boundary convention; the source syntax for ULP limits belongs to the common numeric-policy interface.
+
+**§ 22.5(7)** *Multiple bounds.* The combined Absolute+Relative envelope in § 22.5(5) is normative. A ULP allowance independently specifies an eligible bound; when more than one independently specified metric is active for the same result, **each supplied independent metric must be satisfied** unless the common numeric-policy interface expressly defines a single combined form. This is not permission to silently sum separate error budgets.
+
+**§ 22.5(8)** *FastMath.* `FastMath` is an explicit opt-in without a universal numerical error guarantee. It may select faster approximation strategies for eligible binary float unit conversions, but never silently bypasses transform/domain/Kind/range/named-type checks or changes the meanings of a separately supplied `RoundingMode`. Selecting `FastMath` alone does **not** assert absence of NaN/infinity and does **not** enable FTZ or DAZ. `nnan`, `ninf`, blanket LLVM `fast`, FTZ, and DAZ require their separate approved permissions or compiler proof. Do not silently reinterpret `decimal`, `decimal128`, or future exact `rational` using binary fast-math.
+
+**§ 22.5(9)** *Active strategy.* For a unit conversion, the active policy is the nearest explicitly selected lexical-block policy, otherwise the function policy, otherwise the project default, otherwise `Strict`. Callees do not inherit strategy dynamically. A local `Strict` selection overrides a broader `FastMath` default. These are required semantic precedence rules. This rulebook ratifies **no source spelling** for strategy selection or error-bound limits: no parser may accept `@math(...)`, `absolute:`, `math = ...` or similar forms on the strength of this paragraph. The common numeric-policy rulebook owns that grammar and must specify it without changing the unit conversion contract.
+
+**§ 22.5(10)** *Target selection.* The compiler normally selects a conforming conversion implementation automatically. An explicit `Allow` target preference may fall back to another conforming implementation, but must report unavailability and the chosen route with actionable advice. An unsatisfied explicit `Demand` is a compile-time diagnostic; a named target-feature demand (e.g. AVX2) requires that feature in the declared compilation target, not a runtime fallback. A named capability is not a demand to emit a particular instruction; exact instruction choice belongs to explicitly target-gated intrinsics, specified outside this unit rulebook. FTZ and DAZ are independent explicit preferences; neither is implicit in `FastMath` and neither bypasses a bounded-error promise.
+
+**§ 22.5(11)** *Failure categories.* The compiler distinguishes:
+
+| Situation | Constant/proven-invalid at compilation | Runtime-dependent checked conversion |
+| --- | --- | --- |
+| Invalid unit/Kind/origin relationship or invalid metadata | Compile-time error | Not dynamically repairable; compile-time error |
+| Logarithm of nonpositive linear input / invalid logarithmic domain | Compile-time error | `ConversionError.InvalidDomain` (§ 22.5(12)) |
+| Otherwise valid result outside destination carrier range | Compile-time error | `ConversionError.OutOfRange` |
+| Result not exactly representable without a permitted rounding/approximation, or certified bound cannot be met | Compile-time error when provable | `ConversionError.PrecisionLoss` |
+| Nonfinite floating input incompatible with conversion domain | Compile-time error when provable | Existing `ConversionError.NonFinite` where applicable; `InvalidDomain` for a finite but logarithmically invalid real input |
+
+A conversion's required `try` behavior continues to follow § 46 and existing effect/failure analysis: a provably total conversion does not become fallible merely because a mode was specified.
+
+**§ 22.5(12)** *Core error synchronization.* The public `ConversionError` union declared in `sec/core/error.sec` (`rules/types/types.md` § 25(11), `rules/types/contracts.md` "Public conversion and contract errors") contains the intrinsic variants `OutOfRange`, `InvalidScalar`, `PrecisionLoss`, `ScaleOverflow` and `NonFinite`, the contract variant `Contract(ContractError)`, and the variant `InvalidDomain`: a finite real input lies outside the mathematical domain of the conversion (for example, a logarithm of a nonpositive linear quantity). `InvalidDomain` extends that one union; no second conversion error family exists. `MathError.DomainError` remains the math-library error and is never substituted for the checked *conversion* error.
+
+**§ 22.5(13)** *Precision versus measurement.* A sensor's measurement uncertainty is **not** the same as a conversion's approximation error tolerance. MD-048 measures only numeric conversion error in destination coordinates. The compiler shall not infer an allowable bound from the physical accuracy of a sensor or measurement.
 
 ---
 
@@ -1579,7 +1784,10 @@ declared conversion.
 **§ 30(4)** Rounding happens exactly once, after the exact mathematical unit transform
 (scale and, where defined, offset), to a value representable in the target
 carrier. No intermediate value is rounded and then transformed again.
-Logarithmic and affine details remain with MD-048.
+Affine and logarithmic transforms follow § 21.1 and § 22.5: the complete
+transform, including any `pow` or `log` step, is one exact mathematical
+expression rounded once at the final destination carrier; no intermediate
+`pow`/`log` result is rounded.
 
 | Mode | 1.6 | -1.6 | Halfway 2.5 | Halfway -2.5 |
 |---|---:|---:|---:|---:|
@@ -1791,6 +1999,15 @@ help: use an explicit unit conversion
 **§ 37(5)** In particular, `<EUR/s>` and `<SEK/EUR>` are valid expressions and must not be
 rejected merely because currency participates in structural algebra.
 
+**§ 37(6)** A diagnostic for an affine or logarithmic conversion identifies the source and
+destination units, the failing condition, the relevant `Reference` dimension and
+Kind, any demanded target feature, whether the invalid value was known at compile
+time, and a viable correction: provide an explicit reference, use a compatible
+unit, choose a representable carrier, supply a valid rounding mode, or relax a
+nonessential explicit hardware preference. A compatible, supported logarithmic
+relationship is never reported with the generic text "requires a specialized
+conversion operation".
+
 ---
 
 ## § 38 LSP requirements
@@ -1894,6 +2111,12 @@ vector.
 
 **§ 40(3)** Doing so would lose distinctions such as energy versus torque and Hz versus rpm.
 
+**§ 40(4)** An affine or logarithmic conversion plan retains the facts enumerated in
+§ 22.4(1), including `Reference` presence versus omission, its normalized exact
+value, source type, carrier, unit identity, dimension and Kind, and the effective
+numeric strategy. The public `decimal` projection and source text never serve as
+plan identity.
+
 ---
 
 ## § 41 Semantic IR and lowering
@@ -1920,6 +2143,13 @@ values and both equality predicates when they escape compile-time evaluation,
 with a finite static representation and no heap allocation or mutable global
 registry. A path that cannot lower them fails with
 `[unsupported-lowering]`, never by discarding metadata.
+
+**§ 41(6)** Affine and logarithmic conversion plans lower under § 22.4(3) and § 22.5: exact
+affine composition and logarithmic transforms are not forced through premature
+floating intermediates and never produce two final roundings. A target may use
+platform-specific instructions or certified numerical libraries only within the
+Strict contract, any bounded-result guarantee and the explicit `FastMath`
+permissions of the selected strategy.
 
 ---
 
@@ -2025,10 +2255,15 @@ no Offset on a linear unit
 - Dimension exponents are non-zero compile-time integers;
 - duplicate Dimension axes are rejected;
 - `Transform` is one of the compiler-known transform modes;
-- affine point units provide required offset/origin information;
-- logarithmic units provide valid base, factor, and reference metadata;
+- affine point units provide required offset/origin information and a finite
+  non-zero `Scale` (negative is valid; § 21.1(2));
+- logarithmic units provide `LogBase` (positive, finite, not 1) and `LogFactor`
+  (finite, non-zero); a declared `Reference` is a positive finite linear
+  compile-time quantity, required for a referenced level and omitted only for a
+  reference-free ratio (§ 22.1);
 - metadata expressions are compile-time values where the field requires that;
-- `Reference` is compatible with the logarithmic quantity domain;
+- a declared `Reference` is compatible with the logarithmic quantity domain
+  (§ 22.2);
 - `BaseUnit` declarations do not create contradictory canonical units within one
   catalog domain;
 - unit identifiers do not collide with compiler-known reserved names;

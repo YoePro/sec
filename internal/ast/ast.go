@@ -1061,6 +1061,8 @@ type TryAssignmentStatement struct {
 	Token      lexer.Token
 	Assignment *AssignmentStatement
 	Handlers   []*TryHandler
+	// HandlersOpen is the real handler-list brace; bodyless try has none.
+	HandlersOpen lexer.Token
 }
 
 func (tas *TryAssignmentStatement) statementNode() {}
@@ -2082,6 +2084,9 @@ type NewExpression struct {
 	// ArgumentsOpen is the real opening parenthesis of the argument list,
 	// used by formatter roles for multiline trailing commas.
 	ArgumentsOpen lexer.Token
+	// ArgumentsClose is the parser-owned closing delimiter. A zero token
+	// keeps recovery syntax distinct from a completed empty construction.
+	ArgumentsClose lexer.Token
 }
 
 func (ne *NewExpression) expressionNode() {}
@@ -2248,6 +2253,9 @@ type TryExpression struct {
 	Token      lexer.Token
 	Expression Expression
 	Handlers   []*TryHandler
+	// HandlersOpen distinguishes the handler list from operand value literals
+	// and handler-pattern braces for parser-owned formatter roles (§19).
+	HandlersOpen lexer.Token
 }
 
 func (te *TryExpression) expressionNode() {}

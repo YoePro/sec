@@ -94,3 +94,36 @@ func TestSourceModuleResolverIgnoresProjectDisplayName(t *testing.T) {
 		t.Fatalf("rename changed module identity: %v -> %v", before, after)
 	}
 }
+
+// SourceIdentity is root-relative: a Project source keeps its identity when
+// the Project directory moves, nested modules are Project-relative, anonymous
+// sources are entry-relative, compiler-provided sources are root-qualified,
+// and a file outside every root fails closed.
+// Rules: rules/projects/projects.md — §§ 34, 50(1); rules/compiler/semantic_ir.md — § 5(1).
+func TestSourceModuleResolverSourceIdentity(t *testing.T) {
+	base := t.TempDir()
+	manifest := "[project]\nname = \"app\"\nuuid = \"e3856637-43bf-4166-bf83-07edd6e03c5d\"\n"
+	first := filepath.Join(base, "first", "app")
+	moved := filepath.Join(base, "elsewhere", "deeper", "app")
+	writeIdentityFile(t, filepath.Join(first, ".sec", "sec.toml"), manifest)
+	writeIdentityFile(t, filepath.Join(moved, ".sec", "sec.toml"), manifest)
+	compiler := filepath.Join(base, "compiler")
+	loose := filepath.Join(base, "loose")
+	for _, check := range []struct{ file, want string }{
+		{filepath.Join(first, "main.sec"), "main.sec"},
+		{filepath.Join(moved, "main.sec"), "main.sec"},
+		{filepath.Join(first, "drivers", "gpio", "gpio.sec"), "drivers/gpio/gpio.sec"},
+		{filepath.Join(moved, "drivers", "gpio", "gpio.sec"), "drivers/gpio/gpio.sec"},
+		{filepath.Join(loose, "board", "pins.sec"), "board/pins.sec"},
+		{filepath.Join(compiler, "sec", "core", "string.sec"), "core:string.sec"},
+		{filepath.Join(compiler, "sec", "stdlib", "net", "http", "client.sec"), "std:net/http/client.sec"},
+	} {
+		got, ok := NewSourceModuleResolver(compiler, loose).SourceIdentity(check.file)
+		if !ok || got != check.want {
+			t.Errorf("%s = %q (%v), want %q", check.file, got, ok, check.want)
+		}
+	}
+	if got, ok := NewSourceModuleResolver(compiler, loose).SourceIdentity(filepath.Join(base, "outside", "x.sec")); ok {
+		t.Fatalf("a source outside every root has identity %q", got)
+	}
+}

@@ -12,8 +12,8 @@ import (
 )
 
 // analysisCache shares one complete document analysis between the read-only
-// requests an editor sends for the same document state (semantic tokens,
-// inlay hints, code lenses, highlights, hover, ...), so a burst after one edit
+// requests an editor sends for the same document state (completion, semantic
+// tokens, inlay hints, highlights, hover, ...), so a burst after one edit
 // costs one analysis instead of one per request.
 //
 // Validity is content based: an entry is reused while its identity is
@@ -25,8 +25,10 @@ import (
 // on disk and settings cannot go stale. Diagnostics of a module group with a
 // single open document share the same entry, so one document state is
 // analyzed once for diagnostics and requests together.
+// Completion recovery text uses a separate content identity. Active-source
+// roots retain the analyzed node identities while excluding imported roots.
 // The cache is enabled only while the server loop runs;
-// direct calls (tests, tooling) always analyze afresh.
+// direct calls analyze afresh unless a test explicitly enables the cache.
 //
 // Concurrency: read-only requests run on worker goroutines. Each entry has its
 // own lock, held from the start of its analysis until the caller releases it,
@@ -52,7 +54,10 @@ type cachedAnalysis struct {
 	overlayKey string
 	depth      sema.AnalysisDepth
 	program    *ast.Program
-	analyzer   *sema.Analyzer
+	// sourceProgram retains active-source roots whose nodes belong to the
+	// same analyzed tree, excluding imported statements at matching positions.
+	sourceProgram *ast.Program
+	analyzer      *sema.Analyzer
 	// importErrors are the module assembly/import errors and semanticErrors
 	// what Analyze returned, retained for the diagnostics that share the
 	// entry (rules/tooling/lsp.md — "Snapshots").
@@ -63,6 +68,7 @@ type cachedAnalysis struct {
 // analysisResult is one shared, read-only analysis of a document state.
 type analysisResult struct {
 	program        *ast.Program
+	sourceProgram  *ast.Program
 	analyzer       *sema.Analyzer
 	importErrors   []sema.Error
 	semanticErrors []sema.Error
@@ -132,6 +138,16 @@ func cachedLSPAnalysis(uri string, text string, parsed *ast.Program, overlay sou
 	return result.program, result.analyzer, release
 }
 
+// cachedLSPSourceAnalysis projects active-document roots from the same cached
+// compiler analysis. Cursor queries must use these original analyzed nodes,
+// never a freshly parsed lookalike or an imported node at the same coordinates.
+// Recovery text has its own content identity and cannot stand in for raw source.
+// Rules: rules/tooling/lsp.md — "Snapshots", "Completion", "Recovery nodes".
+func cachedLSPSourceAnalysis(uri, text string, parsed *ast.Program, overlay sourceOverlay) (*ast.Program, *sema.Analyzer, func()) {
+	result, release := cachedLSPAnalysisResult(uri, text, parsed, overlay)
+	return result.sourceProgram, result.analyzer, release
+}
+
 // cachedLSPAnalysisResult is cachedLSPAnalysis with the analysis errors, for
 // diagnostics that share the entry.
 func cachedLSPAnalysisResult(uri string, text string, parsed *ast.Program, overlay sourceOverlay) (analysisResult, func()) {
@@ -166,6 +182,7 @@ func cachedLSPAnalysisResult(uri string, text string, parsed *ast.Program, overl
 		}()
 		result := analyzeLSPDocumentResult(uri, parsed, overlay, depth)
 		entry.program, entry.analyzer = result.program, result.analyzer
+		entry.sourceProgram = result.sourceProgram
 		entry.importErrors, entry.semanticErrors = result.importErrors, result.semanticErrors
 		entry.ready = true
 		completed = true
@@ -178,7 +195,7 @@ func cachedLSPAnalysisResult(uri string, text string, parsed *ast.Program, overl
 		entry.mu.Unlock()
 		return analyzeLSPDocumentResult(uri, parsed, overlay, depth), func() {}
 	}
-	return analysisResult{program: entry.program, analyzer: entry.analyzer, importErrors: entry.importErrors, semanticErrors: entry.semanticErrors}, entry.mu.Unlock
+	return analysisResult{program: entry.program, sourceProgram: entry.sourceProgram, analyzer: entry.analyzer, importErrors: entry.importErrors, semanticErrors: entry.semanticErrors}, entry.mu.Unlock
 }
 
 // forgetCachedAnalysis drops a closed document's entry.
@@ -210,11 +227,19 @@ func analyzeLSPDocumentAtDepth(uri string, parsed *ast.Program, overlay sourceOv
 // single-document diagnostics batch does, keeping both error sets.
 // Rules: rules/tooling/lsp.md — "Snapshots"; rules/analysis/pitfall_analysis.md — "Analysis states".
 func analyzeLSPDocumentResult(uri string, parsed *ast.Program, overlay sourceOverlay, depth sema.AnalysisDepth) analysisResult {
+	var sourceProgram *ast.Program
+	if parsed != nil {
+		// Keep only a detached root slice: children deliberately retain their
+		// identities in the assembled, analyzed AST. Readers never modify it.
+		source := *parsed
+		source.Statements = append([]ast.Statement(nil), parsed.Statements...)
+		sourceProgram = &source
+	}
 	importErrors := prepareProgramForLSP(parsed, pathFromURI(uri), overlay)
 	analyzer := newLSPAnalyzerForInputsAtDepth(uri, parsed, overlay, depth)
 	analyzer.SetPitfallSourcePriority([]string{pathFromURI(uri)})
 	semanticErrors := analyzer.Analyze(parsed)
-	return analysisResult{program: parsed, analyzer: analyzer, importErrors: importErrors, semanticErrors: semanticErrors}
+	return analysisResult{program: parsed, sourceProgram: sourceProgram, analyzer: analyzer, importErrors: importErrors, semanticErrors: semanticErrors}
 }
 
 // analysisInputsChangeOutsideIdentity reports a message that may change an

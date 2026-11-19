@@ -172,6 +172,16 @@ def Sec_FloatAbsOp : Sec_Op<"float.abs", [Pure]> {
   let hasVerifier = 1;
 }
 
+// P20 FloatToBoolOp (sec-mlir-dialect_package20.md §§ 55, 63, 73): the
+// explicit, infallible numeric-to-bool conversion; only ±0 is false, so NaN
+// and infinities are true.
+def Sec_FloatToBoolOp : Sec_Op<"float.to_bool", [Pure]> {
+  let summary = "Sec float-to-bool conversion (value != +0.0, unordered)";
+  let arguments = (ins AnyType:$value);
+  let results = (outs I1:$result);
+  let hasVerifier = 1;
+}
+
 def Sec_FloatMinimumOp : Sec_Op<"float.minimum", [Pure]> {
   let summary = "Sec NaN-propagating minimum (Min(-0, +0) is -0)";
   let arguments = (ins AnyType:$left, AnyType:$right);
@@ -241,10 +251,17 @@ def Sec_NamedConvertOp : Sec_Op<"named.convert", [Pure]> {
 // admitted early for built-in integer targets: a target-typed candidate and a
 // failed flag; the candidate is consumed only on the success edge and the
 // static failure names the ConversionError variant of the failure edge.
+//
+// The P20 binary-float form names its possible failures, in priority order
+// (NonFinite, OutOfRange, PrecisionLoss), in `failures` and adds one mutually
+// exclusive reason flag per failure: failed holds exactly when one reason
+// does (§§ 41, 56). This is the representation until schema 16 installs the
+// dedicated reason type (P20-20).
 def Sec_NumericConvertCheckedOp : Sec_Op<"numeric.convert_checked", [Pure]> {
-  let summary = "Checked numeric conversion with a candidate and a failed flag";
-  let arguments = (ins StrAttr:$failure, AnyType:$value);
-  let results = (outs AnyType:$candidate, I1:$failed);
+  let summary = "Checked numeric conversion with a candidate, a failed flag and reason flags";
+  let arguments = (ins OptionalAttr<StrAttr>:$failure,
+                       OptionalAttr<StrArrayAttr>:$failures, AnyType:$value);
+  let results = (outs AnyType:$candidate, I1:$failed, Variadic<I1>:$reasons);
   let hasVerifier = 1;
 }
 

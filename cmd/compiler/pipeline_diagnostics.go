@@ -51,7 +51,8 @@ func (r *diagnosticReporter) pipelineError(stage string, err error) {
 		return
 	case diagnostics.CapabilityFailure:
 		fact := failure.ImplementationCapability()
-		occurrence := newOccurrence("", diagnostics.SeverityError, stage, failure.Error())
+		message := r.userSourcePaths(failure.Error())
+		occurrence := newOccurrence("", diagnostics.SeverityError, stage, message)
 		for key, value := range map[string]string{"category": "unsupported-lowering", "diagnostic_class": "compiler-capability", "feature": fact.Feature, "boundary": fact.Boundary, "callable": fact.Callable} {
 			if value != "" {
 				occurrence.Arguments[key] = value
@@ -61,9 +62,9 @@ func (r *diagnosticReporter) pipelineError(stage string, err error) {
 		occurrence.addHelp("The selected compiler path cannot lower this construct yet. This is an implementation capability limitation, not a proven source violation or a missing language-validity proof.")
 		if fact.File != "" && fact.Line > 0 && fact.Column > 0 {
 			position := occurrencePosition{Line: fact.Line, Column: fact.Column}
-			occurrence.Primary = &occurrenceLocation{Span: occurrenceSpan{File: fact.File, Start: position, End: position}}
+			occurrence.Primary = &occurrenceLocation{Span: occurrenceSpan{File: r.userSourceFile(fact.File), Start: position, End: position}}
 		}
-		r.record(occurrence, fmt.Sprintf("%s error [unsupported-lowering]: %s\n  help: %s\n", stage, failure, occurrence.Help[0].Text))
+		r.record(occurrence, fmt.Sprintf("%s error [unsupported-lowering]: %s\n  help: %s\n", stage, message, occurrence.Help[0].Text))
 		return
 	case interface{ Unwrap() []error }:
 		causes := failure.Unwrap()
@@ -79,16 +80,17 @@ func (r *diagnosticReporter) pipelineError(stage string, err error) {
 			r.pipelineError(stage, cause)
 			for index := before; index < len(r.occurrences); index++ {
 				r.occurrences[index].Notes = append(r.occurrences[index].Notes,
-					occurrenceMessage{Key: "pipeline.context", Arguments: map[string]string{}, Text: err.Error()})
+					occurrenceMessage{Key: "pipeline.context", Arguments: map[string]string{}, Text: r.userSourcePaths(err.Error())})
 			}
 			if r.format == diagnosticFormatHuman {
-				fmt.Fprintf(r.output, "  context: %s\n", err)
+				fmt.Fprintf(r.output, "  context: %s\n", r.userSourcePaths(err.Error()))
 			}
 			return
 		}
 	}
-	occurrence := newOccurrence("", diagnostics.SeverityError, stage, err.Error())
-	r.record(occurrence, fmt.Sprintf("%s error: %s\n", stage, err))
+	message := r.userSourcePaths(err.Error())
+	occurrence := newOccurrence("", diagnostics.SeverityError, stage, message)
+	r.record(occurrence, fmt.Sprintf("%s error: %s\n", stage, message))
 }
 
 // pipelineSemanticDiagnostic renders the same mandatory/advisory occurrence

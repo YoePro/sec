@@ -111,7 +111,8 @@ const (
 	// which is not an executable BlockStatement.
 	ControlBodyOpen Role = "control-body-open"
 	// ExecutableBlockOpen marks the real opening brace of a parser-confirmed
-	// executable block, excluding aggregate literals and structural declarations.
+	// executable or try handler-list block, excluding aggregate literals and
+	// structural declarations.
 	ExecutableBlockOpen Role = "executable-block-open"
 	// ExecutableBlockClose marks its matching real closing brace.
 	ExecutableBlockClose Role = "executable-block-close"
@@ -920,6 +921,17 @@ func (d *Document) ApplyProgramRoles(program *ast.Program) {
 				mark(node.GuardToken, MatchGuardKeyword)
 			}
 			mark(node.ArrowToken, HandlerArrow)
+		case *ast.TryExpression:
+			// Formatter §19(2–4): handler lists use ordinary block layout.
+			// The parser owns this brace, independently of the operand or
+			// any field-pattern brace inside an arm.
+			if node.HandlersOpen.Type == lexer.LBRACE {
+				markGroupPair(node.HandlersOpen, ExecutableBlockOpen, ExecutableBlockClose)
+			}
+		case *ast.TryAssignmentStatement:
+			if node.HandlersOpen.Type == lexer.LBRACE {
+				markGroupPair(node.HandlersOpen, ExecutableBlockOpen, ExecutableBlockClose)
+			}
 		case *ast.CallExpression:
 			// rules/tooling/formatter.md — §11(2), §17(2) multiline argument lists.
 			if node.ArgumentsOpen.Type == lexer.LPAREN {

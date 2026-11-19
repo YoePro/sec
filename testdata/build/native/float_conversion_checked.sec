@@ -1,0 +1,187 @@
+module main
+
+fn Narrow(x: float64) Result[float32, ConversionError] {
+    let y := try float32(x)
+    return Ok(y)
+}
+
+fn ToInt(x: float64) Result[int32, ConversionError] {
+    let y := try int32(x)
+    return Ok(y)
+}
+
+fn ToByte(x: float32) Result[uint8, ConversionError] {
+    let y := try uint8(x)
+    return Ok(y)
+}
+
+fn FromInt(x: int64) Result[float64, ConversionError] {
+    let y := try float64(x)
+    return Ok(y)
+}
+
+fn Reason(error: ConversionError) int {
+    match error {
+        ConversionError.NonFinite => return 1
+        ConversionError.OutOfRange => return 2
+        ConversionError.PrecisionLoss => return 3
+        _ => return 9
+    }
+}
+
+fn NarrowCode(x: float64) int {
+    match Narrow(x) {
+        Ok(_) => return 0
+        Err(error) => return Reason(error)
+    }
+}
+
+fn IntCode(x: float64) int {
+    match ToInt(x) {
+        Ok(value) => {
+            if value == -7 {
+                return 0
+            }
+            return 8
+        }
+        Err(error) => return Reason(error)
+    }
+}
+
+fn ByteCode(x: float32) int {
+    match ToByte(x) {
+        Ok(_) => return 0
+        Err(error) => return Reason(error)
+    }
+}
+
+fn FromCode(x: int64) int {
+    match FromInt(x) {
+        Ok(_) => return 0
+        Err(error) => return Reason(error)
+    }
+}
+
+fn F32FromI32(x: int32) int {
+    match Wrap32(x) {
+        Ok(_) => return 0
+        Err(error) => return Reason(error)
+    }
+}
+
+fn Wrap32(x: int32) Result[float32, ConversionError] {
+    let y := try float32(x)
+    return Ok(y)
+}
+
+fn F32FromI128(x: int128) int {
+    match Wrap128(x) {
+        Ok(_) => return 0
+        Err(error) => return Reason(error)
+    }
+}
+
+fn Wrap128(x: int128) Result[float32, ConversionError] {
+    let y := try float32(x)
+    return Ok(y)
+}
+
+fn F32FromU256(x: uint256) int {
+    match WrapU256(x) {
+        Ok(_) => return 0
+        Err(error) => return Reason(error)
+    }
+}
+
+fn WrapU256(x: uint256) Result[float32, ConversionError] {
+    let y := try float32(x)
+    return Ok(y)
+}
+
+fn F64FromI256(x: int256) int {
+    match Wrap256(x) {
+        Ok(_) => return 0
+        Err(error) => return Reason(error)
+    }
+}
+
+fn Wrap256(x: int256) Result[float64, ConversionError] {
+    let y := try float64(x)
+    return Ok(y)
+}
+
+fn I128FromF64(x: float64) int {
+    match ToI128(x) {
+        Ok(_) => return 0
+        Err(error) => return Reason(error)
+    }
+}
+
+fn ToI128(x: float64) Result[int128, ConversionError] {
+    let y := try int128(x)
+    return Ok(y)
+}
+
+fn Handled(x: float64) int32 {
+    let y := try int32(x) {
+        Err(ConversionError.NonFinite) => -1
+        Err(ConversionError.OutOfRange) => -2
+        Err(e) => -3
+    }
+    return y
+}
+
+fn CatchAll(x: float64) float32 {
+    let y := try float32(x) {
+        Err(e) => 0.25
+    }
+    return y
+}
+
+fn main() int {
+    let nan := float64.NaN
+    let inf := float64.Infinity
+    let exact: float32 := 255.0
+    let fraction: float32 := 0.5
+    let negative: float32 := -1.0
+    if NarrowCode(1.5) != 0 { return 10 }
+    if NarrowCode(0.1) != 3 { return 11 }
+    if NarrowCode(1.0e300) != 2 { return 12 }
+    if NarrowCode(nan) != 0 { return 13 }
+    if NarrowCode(inf) != 0 { return 14 }
+    if IntCode(-7.0) != 0 { return 20 }
+    if IntCode(nan) != 1 { return 21 }
+    if IntCode(inf) != 1 { return 22 }
+    if IntCode(2147483648.0) != 2 { return 23 }
+    if IntCode(-2147483648.5) != 2 { return 24 }
+    if IntCode(2.5) != 3 { return 25 }
+    if ByteCode(exact) != 0 { return 30 }
+    if ByteCode(fraction) != 3 { return 31 }
+    if ByteCode(negative) != 2 { return 32 }
+    if FromCode(9007199254740992) != 0 { return 40 }
+    if FromCode(9007199254740993) != 3 { return 41 }
+    let below24: int32 := 16777216
+    let above24: int32 := 16777217
+    if F32FromI32(below24) != 0 { return 50 }
+    if F32FromI32(above24) != 3 { return 51 }
+    let wide128: int128 := 170141183460469231731687303715884105727
+    let power128: int128 := 85070591730234615865843651857942052864
+    if F32FromI128(wide128) != 3 { return 52 }
+    if F32FromI128(power128) != 0 { return 53 }
+    let huge: uint256 := 115792089237316195423570985008687907853269984665640564039457584007913129639935
+    if F32FromU256(huge) != 2 { return 54 }
+    let power200: int256 := 1606938044258990275541962092341162602522202993782792835301376
+    if F64FromI256(power200) != 0 { return 55 }
+    if I128FromF64(170141183460469231731687303715884105728.0) != 2 { return 56 }
+    if I128FromF64(-170141183460469231731687303715884105728.0) != 0 { return 57 }
+    if NarrowCode(1.401298464324817e-45) != 0 { return 60 }
+    if NarrowCode(1.0e-40) != 3 { return 61 }
+    if IntCode(5.0e-324) != 3 { return 62 }
+    if Handled(float64.NaN) != -1 { return 70 }
+    if Handled(1.0e10) != -2 { return 71 }
+    if Handled(0.5) != -3 { return 72 }
+    if Handled(12.0) != 12 { return 73 }
+    let quarter: float32 := 0.25
+    if CatchAll(0.1) != quarter { return 74 }
+    return 42
+}

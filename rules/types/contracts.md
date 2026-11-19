@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-13
-- **Last updated:** 2026-11-18 (MD-131: panicking and fallible assignment forms); 2026-11-08 (stable chapter, subsection, and paragraph numbering); 2026-10-09
+- **Last updated:** 2026-11-19 (`ConversionError.InvalidDomain`, MD-048); 2026-11-18 (MD-131: panicking and fallible assignment forms); 2026-11-08 (stable chapter, subsection, and paragraph numbering); 2026-10-09
 - **Document revision:** 2.2
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/types/contracts.md`
@@ -430,7 +430,7 @@ restate them as a competing source of truth.
 
 - An intrinsic target-domain failure produces the corresponding
   `ConversionError` variant (`OutOfRange`, `InvalidScalar`, `PrecisionLoss`,
-  `ScaleOverflow`, or `NonFinite`) and takes precedence over declared
+  `ScaleOverflow`, `NonFinite`, or `InvalidDomain`) and takes precedence over declared
   contracts.
 - After intrinsic validation succeeds, declared contracts are checked in source
   order. The first violated contract yields

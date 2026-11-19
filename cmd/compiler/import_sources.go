@@ -82,7 +82,11 @@ func resolveStdlibImportsInto(program *ast.Program, target CompilerTarget, seen 
 			continue
 		}
 
-		resolveStdlibImportsInto(imported, target, seen, sourcePaths)
+		// The imported module's own files come first; the importing sources
+		// keep the entry directory (the anonymous root of a source outside a
+		// Project, modules.md § 2.2) available to nested imports, independent
+		// of the working directory.
+		resolveStdlibImportsInto(imported, target, seen, append(append([]string{}, sourcePaths...), sourceFiles...))
 		if module == "" {
 			module = programModulePath(imported)
 		}

@@ -38,7 +38,7 @@ func TestOverloadNominalIdentity(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		symbols, err := resolvedFunctionSymbols(module)
+		symbols, err := resolvedFunctionSymbols(module, false)
 		if err != nil {
 			t.Fatal(err)
 		}

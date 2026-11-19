@@ -48,45 +48,9 @@ func signatureHelpForSource(uri string, text string, pos position, overlays ...s
 				}
 			}
 		}
-		if _, constructor := call.expression.(*ast.NewExpression); !constructor {
-			return signatureHelp{}, false
+		if construction, ok := call.expression.(*ast.NewExpression); ok {
+			return initializerSignatureHelp(analyzer, construction, text, call.open, offset)
 		}
 	}
-	return initializerSignatureHelp(program, analyzer, path, text, offset)
-}
-
-// initializerSignatureHelp preserves canonical new/init parameter presentation.
-// Rules: rules/tooling/lsp.md — "Lifecycle init and new", "Signature help".
-func initializerSignatureHelp(program *ast.Program, analyzer *sema.Analyzer, path, text string, offset int) (signatureHelp, bool) {
-	construction, openOffset, closeOffset, found := constructionAtOffset(program, path, text, offset)
-	if !found || offset <= openOffset || offset > closeOffset {
-		return signatureHelp{}, false
-	}
-	resolved, ok := analyzer.ResolvedConstructionOf(construction)
-	if !ok {
-		return signatureHelp{}, false
-	}
-	parameters := resolved.Initializer.Parameters
-	labels := make([]string, 0, len(parameters))
-	information := make([]parameterInformation, 0, len(parameters))
-	for _, parameter := range parameters {
-		label := initializerParameterLabel(parameter)
-		labels = append(labels, label)
-		information = append(information, parameterInformation{Label: label})
-	}
-	activeParameter := activeConstructionParameter(text, openOffset, offset)
-	if len(parameters) == 0 {
-		activeParameter = 0
-	} else if activeParameter >= len(parameters) {
-		activeParameter = len(parameters) - 1
-	}
-	documentation := initializerConstructionDetails(resolved)
-	return signatureHelp{
-		Signatures: []signatureInformation{{
-			Label:         "init(" + strings.Join(labels, ", ") + ")",
-			Documentation: markupContent{Kind: "markdown", Value: documentation},
-			Parameters:    information,
-		}},
-		ActiveParameter: activeParameter,
-	}, true
+	return signatureHelp{}, false
 }

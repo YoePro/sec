@@ -1,0 +1,39 @@
+module sample
+
+type Widget struct {
+    value: int,
+}
+
+enum InitError error {
+    Failed,
+}
+
+impl Widget {
+    init(value: int) {
+        self.value = value
+    }
+
+    init(value: ref int) {
+        self.value = 0
+    }
+}
+
+impl extends Widget {
+    init(first: int, label: string) InitError {
+        self.value = first
+    }
+}
+
+type Other struct {}
+
+impl Other {
+    init(flag: bool) {}
+}
+
+fn Call(first: int, second: int) int {
+    return first
+}
+
+fn Make() Widget {
+    return new Widget(1)
+}

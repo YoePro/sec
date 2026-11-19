@@ -1,5 +1,10 @@
 # SEC MLIR Package 13 implementation report
 
+> Navigation added 2026-11-19; historical evidence below is unchanged.
+> Current canonical Semantic IR responsibilities: [§§ 13–15 struct facts](../../compiler/semantic_ir.md#13-struct-definitions), [§ 29 defaults](../../compiler/semantic_ir.md#29-default-initialization-provenance).
+> See the [amendment crosswalk and maintenance workflow](../../../governance/semantic-ir-amendments.md)
+> and [live implementation ledger](../../../governance/lowering.yaml).
+
 This report closes the mandatory reporting contract in
 `sec-mlir-dialect_package13.md` section 91. It describes the implementation
 audited on 2026-08-28.

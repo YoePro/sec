@@ -7024,6 +7024,7 @@ func (p *Parser) parseAssignmentStatement() ast.Statement {
 // Rules:
 //   - rules/foundations/grammar.md — TryAssignmentStatement
 //   - rules/errors/errorhandling.md — §23 "Fallible assignment"
+//   - rules/tooling/formatter.md — §§5,19(2–6) real handler-list provenance
 func (p *Parser) parseTryAssignmentStatement() ast.Statement {
 	defer p.withRecoveryContext(RecoveryContextTry)()
 	stmt := &ast.TryAssignmentStatement{Token: p.curToken}
@@ -7045,6 +7046,7 @@ func (p *Parser) parseTryAssignmentStatement() ast.Statement {
 		tryExpr := &ast.TryExpression{Token: stmt.Token, Expression: target}
 		if p.peekToken.Type == lexer.LBRACE {
 			p.nextToken()
+			tryExpr.HandlersOpen = p.curToken
 			tryExpr.Handlers = p.parseTryHandlerBlock()
 			if tryExpr.Handlers == nil {
 				return nil
@@ -7073,6 +7075,7 @@ func (p *Parser) parseTryAssignmentStatement() ast.Statement {
 	stmt.Assignment = assignment
 	if p.peekToken.Type == lexer.LBRACE {
 		p.nextToken()
+		stmt.HandlersOpen = p.curToken
 		stmt.Handlers = p.parseTryHandlerBlock()
 		if stmt.Handlers == nil {
 			return nil

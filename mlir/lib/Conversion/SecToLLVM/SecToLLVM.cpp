@@ -83,7 +83,8 @@ bool isLoweredSecFloatOperation(Operation *operation) {
   return isa<sec::ConstFloatOp, sec::FloatNegOp, sec::FloatBinaryOp,
              sec::FloatCmpOp, sec::FloatAbsOp, sec::FloatMinimumOp,
              sec::FloatMaximumOp, sec::FloatClassifyOp, sec::FloatRoundOp,
-             sec::FloatPropertyOp, sec::FloatClampCheckedOp>(operation);
+             sec::FloatPropertyOp, sec::FloatClampCheckedOp,
+             sec::FloatToBoolOp>(operation);
 }
 
 // A Result or union this track represents natively: every payload position
@@ -453,6 +454,12 @@ struct FinalizeForLLVMPass
     MLIRContext *context = module.getContext();
     if (auto triple = module->getAttrOfType<StringAttr>("sec.target_triple"))
       module->setAttr(LLVM::LLVMDialect::getTargetTripleAttrName(), triple);
+    // The LLVM module keeps the Sec module identity as its ModuleID and
+    // source_filename, so each object of a multi-module program names the
+    // module it was compiled from (compiler_pipeline.md § 86).
+    if (auto identity = module->getAttrOfType<StringAttr>("sec.module_id"))
+      if (!module.getSymName())
+        module.setSymName(identity.getValue());
     auto stripped = [](Operation *operation) {
       SmallVector<StringAttr> names;
       for (NamedAttribute attribute : operation->getDiscardableAttrs())
@@ -471,6 +478,14 @@ struct FinalizeForLLVMPass
     module.walk([&](Operation *operation) {
       stripped(operation);
       if (auto function = dyn_cast<func::FuncOp>(operation)) {
+        // A private definition is local to this module's object, such as a
+        // specialization every demanding module instantiates; internal
+        // linkage keeps equal copies in different objects from colliding
+        // (linking.md §§ 15, 23-24).
+        if (function.isPrivate() && !function.isExternal())
+          function->setAttr("llvm.linkage",
+                            LLVM::LinkageAttr::get(context,
+                                                   LLVM::Linkage::Internal));
         for (unsigned index = 0; index < function.getNumArguments(); ++index)
           if (DictionaryAttr attributes = function.getArgAttrDict(index))
             function.setArgAttrs(index, strippedDictionary(attributes));

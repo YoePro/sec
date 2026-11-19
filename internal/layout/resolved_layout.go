@@ -41,6 +41,8 @@ const (
 	LayoutStruct LayoutKind = "struct"
 	// The families below have record slots now; their resolution belongs to
 	// later P24 stages and is reported as unsupported until then.
+	// LayoutNamed is a named or constrained type over its carrier (P24-18).
+	LayoutNamed      LayoutKind = "named"
 	LayoutArray      LayoutKind = "array"
 	LayoutVariant    LayoutKind = "variant"
 	LayoutDescriptor LayoutKind = "descriptor"
@@ -99,6 +101,13 @@ type LayoutRequirement struct {
 	// Fields are the stored-field requirements of an aggregate, in
 	// declaration order.
 	Fields []FieldRequirement
+	// Carrier is the representation a named or constrained type reuses, and
+	// Validity its nominal/contract validity predicate (P24-18).
+	Carrier  *LayoutRequirement
+	Validity string
+	// Element and Count describe a fixed array T[N] (P24-20).
+	Element *LayoutRequirement
+	Count   *big.Int
 }
 
 // FieldRequirement is one stored field of an aggregate requirement.
@@ -132,8 +141,10 @@ type ResolvedLayout struct {
 	Fields          []ResolvedFieldLayout
 	// Element and Count describe a fixed array; Variants an enum/union;
 	// Descriptor names the descriptor family (slice, string, reference).
-	Element    LayoutID
-	Count      *big.Int
+	Element LayoutID
+	Count   *big.Int
+	// Carrier is the layout a named or constrained type reuses.
+	Carrier    LayoutID
 	Variants   []ResolvedVariantLayout
 	Descriptor string
 	Stability  LayoutStability

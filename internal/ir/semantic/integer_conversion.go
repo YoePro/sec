@@ -90,7 +90,7 @@ func validConversionProof(module *Module, proof *ConversionProof) error {
 	switch proof.Basis {
 	case string(sema.IntegerConversionConstant), string(sema.IntegerConversionSourceDomain),
 		string(sema.IntegerConversionClosedEnumDomain), string(sema.IntegerConversionOpenEnumDomain), compilerWideningProof.Basis,
-		registerFieldIntervalProof.Basis:
+		registerFieldIntervalProof.Basis, numericIdentityProof, numericValueIntervalProof:
 	default:
 		return fmt.Errorf("unknown exactness proof basis %q", proof.Basis)
 	}
@@ -125,7 +125,10 @@ func (fb *functionBuilder) buildCheckedIntegerConversionOperand(call *ast.CallEx
 	if !checked {
 		failure = sema.ConversionFailureOutOfRange
 	}
-	if failure != sema.ConversionFailureOutOfRange {
+	// A rune target fails with InvalidScalar (outside the Unicode scalar
+	// values or a surrogate); every other integer-family target with
+	// OutOfRange (types.md § 9.4(8); package20.md § 56).
+	if failure != sema.ConversionFailureOutOfRange && !(failure == sema.ConversionFailureInvalidScalar && conversion.TargetType.Kind == sema.RuneType) {
 		return builtValue{}, fb.unsupported("checked conversion with "+string(failure)+" failure", call.Token)
 	}
 	sourceType, err := fb.owner.internType(conversion.SourceType)
@@ -179,15 +182,20 @@ func (fb *functionBuilder) buildCheckedIntegerConversionOperand(call *ast.CallEx
 	return builtValue{id: candidate.ID, typ: targetType}, nil
 }
 
-// checkedConversionInteger reports whether id is a built-in signed or
-// unsigned integer (or byte) a checked conversion supports.
+// checkedConversionInteger reports whether id is an integer-family type a
+// checked conversion supports: a built-in signed or unsigned integer, byte,
+// char or rune.
 func checkedConversionInteger(module *Module, id TypeID) bool {
 	typ, ok := module.Types.Lookup(id)
-	return ok && (typ.Kind == TypeInt || typ.Kind == TypeUint || typ.Kind == TypeByte)
+	return ok && (typ.Kind == TypeInt || typ.Kind == TypeUint || typ.Kind == TypeByte || typ.Kind == TypeChar || typ.Kind == TypeRune)
 }
 
 func verifyCheckedConversionOperation(module *Module, op Operation, values map[ValueID]Value) error {
-	if len(op.Operands) != 1 || len(op.Results) != 2 || op.ConversionFailure != string(sema.ConversionFailureOutOfRange) ||
+	if len(op.ConversionFailures) != 0 {
+		return verifyCheckedNumericConversionOperation(module, op, values)
+	}
+	invalidScalar := op.ConversionFailure == string(sema.ConversionFailureInvalidScalar) && len(op.Results) == 2 && typeHasKind(module.Types, op.Results[0].Type, TypeRune)
+	if len(op.Operands) != 1 || len(op.Results) != 2 || op.ConversionFailure != string(sema.ConversionFailureOutOfRange) && !invalidScalar ||
 		!checkedConversionInteger(module, values[op.Operands[0]].Type) || !checkedConversionInteger(module, op.Results[0].Type) ||
 		!typeHasKind(module.Types, op.Results[1].Type, TypeBool) {
 		return fmt.Errorf("invalid numeric.convert-checked")
@@ -205,7 +213,8 @@ func verifyCheckedConversionCandidates(fn *Function, dom map[BlockID]map[BlockID
 	predecessors := map[BlockID]int{}
 	for _, block := range fn.Blocks {
 		for _, op := range block.Operations {
-			if (op.Kind == OpNumericConvertChecked || op.Kind == OpFloatClampChecked) && len(op.Results) == 2 {
+			// The float form adds reason flags after the failed flag.
+			if (op.Kind == OpNumericConvertChecked && len(op.Results) >= 2) || (op.Kind == OpFloatClampChecked && len(op.Results) == 2) {
 				candidates[op.Results[0].ID] = op.Results[1].ID
 			}
 			for _, successor := range op.Successors {

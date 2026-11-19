@@ -1,0 +1,46 @@
+module main
+
+fn ToRune(x: uint32) Result[rune, ConversionError] {
+    let r := try rune(x)
+    return Ok(r)
+}
+
+fn ToChar(r: rune) Result[char, ConversionError] {
+    let c := try char(r)
+    return Ok(c)
+}
+
+fn Code(x: uint32) int {
+    match ToRune(x) {
+        Ok(r) => {
+            let back := uint32(r)
+            if back != x {
+                return 8
+            }
+            return 0
+        }
+        Err(ConversionError.InvalidScalar) => return 1
+        Err(_) => return 9
+    }
+}
+
+fn CharCode(r: rune) int {
+    match ToChar(r) {
+        Ok(_) => return 0
+        Err(ConversionError.OutOfRange) => return 2
+        Err(_) => return 9
+    }
+}
+
+fn main() int {
+    if Code(65) != 0 { return 10 }
+    if Code(55295) != 0 { return 11 }
+    if Code(55296) != 1 { return 12 }
+    if Code(57343) != 1 { return 13 }
+    if Code(57344) != 0 { return 14 }
+    if Code(1114111) != 0 { return 15 }
+    if Code(1114112) != 1 { return 16 }
+    if CharCode('A') != 0 { return 20 }
+    if CharCode('\u{100}') != 2 { return 21 }
+    return 42
+}

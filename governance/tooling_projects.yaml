@@ -24,9 +24,16 @@ integrations:
       - cmd/compiler/import_sources.go
       - cmd/lsp/project_root_modules.go
       - cmd/lsp/import_sources.go
+      - internal/project/module_identity.go
+      - internal/ir/semantic/source_identity.go
+      - cmd/compiler/source_identity.go
+      - cmd/compiler/pipeline_diagnostics.go
       - internal/diagnostics/diagnostics.go
     tests:
       - cmd/compiler/main_test.go
+      - cmd/compiler/project_move_identity_test.go
+      - internal/project/module_identity_test.go
+      - internal/ir/semantic/source_identity_test.go
       - cmd/compiler/init_dry_run_test.go
       - internal/project/source_layout_test.go
       - internal/sema/project_source_layout_test.go
@@ -44,12 +51,14 @@ integrations:
       - Shared project SourceLocation and ProjectImportAccess enforce root-only cmd/bin/.sec roles and internal access markers alongside the existing root ModuleName contract. Represented source files directly in cmd or any internal marker and source modules below root bin/.sec are rejected; ordinary nested bin/cmd directories remain ordinary. Imports from reserved storage and inaccessible internal subtrees are rejected before imported declaration visibility; nested internal markers all apply, root internal is project-wide, and component-aware prefix checks avoid granting similarly named siblings access.
       - CLI and LSP consume one shared Sema validator with registered mandatory S1149 on the exact module-name or import-path token. CLI checks selected and sibling sources and recursively loaded project imports; root cmd child entry modules assemble their module main helpers. LSP discovers ancestor disk or unsaved-overlay manifests and validates before recursive import loading, with UTF-16 protocol spans. Root naming, minimal entries and ordinary/internal children remain supported, trusted compiler library provenance is excluded, and validation never deletes output/user files. Complete whole-project discovery/schema validation remains a separate remaining point.
       - ordinary discovered-project nested-manifest validation in CLI/LSP is complete and owned by tooling.project-nested-manifest-discovery; init creation checks and the remaining schema constraints retain their separate ownership
+      - "Project-move-stable identities (2026-11-19, § 34, § 50(1)): ModuleIdentity was already Project UUID plus Project-relative path; the new SourceModuleResolver.SourceIdentity gives every source a root-relative identity (Project and anonymous sources relative to their root, compiler sources root-qualified such as core:string.sec). semantic.CanonicalizeSourceFiles rewrites Module.SourceFiles and every Location of a built module to those identities and rejects two paths sharing one, and emit-ir and the Sec dialect route apply it, so Semantic IR text/JSON, Sec MLIR (sec.source_files and loc) and LLVM IR are byte-identical after a Project directory move or under absolute invocation paths. Later pipeline failures (MLIR capability errors and tool output) map identities back to the path the user wrote. No build cache exists yet; caches keyed on module identity or emitted output therefore survive a move."
     remaining:
       - complete remaining project validation of § 48 with registered diagnostics for manifest/schema constraints; discovered nested-manifest validation is implemented and owned by tooling.project-nested-manifest-discovery
       - standard library and platform roots (§ 16) resolved through the project model instead of repository-relative lookup
-      - stable cache and module identity under Project directory moves (§ 34, § 50(1))
-    revised: "2026-10-14"
+    revised: "2026-11-19"
     verification:
+      - command: go test ./internal/project -run SourceModuleResolver; go test ./internal/ir/semantic -run TestCanonicalizeSourceFiles; SEC_MLIR_BIN=build/sec-mlir/bin go test ./cmd/compiler -run 'TestNativeTrack|TestProjectMoveKeepsEmittedOutput|TestEmitIR|AllocationLoweringSelectionCLI|Diagnostic|UnsafeDirectCall|BuildCLI|EmitSecMLIR|EmitLLVM|EmitMLIR|Package1[0-8]|Capability' -count=1; go vet ./cmd/compiler ./internal/ir/semantic ./internal/project
+        result: "Passed 2026-11-19: a Project moved to a deeper directory and compiled through absolute paths emits identical Semantic IR (text and JSON), Sec MLIR and LLVM IR with no directory of either location; source identities stay root-relative and fail closed outside every root; colliding identities are rejected; MLIR capability errors still name the user's path. Remaining 3 to 2."
       - command: go vet ./...
         result: passed on 2026-10-13
       - command: go test ./cmd/compiler -run 'EntrySiblings|ProjectSource|RootModule' -count=1
@@ -183,7 +192,7 @@ integrations:
       - Shared version-snapshot validation emits registered mandatory S1150 (projects.invalid-version) with deterministic ordering and Unicode-scalar source spans in sec.toml. Required fields, duplicate/malformed TOML, numeric bounds, placeholder errors and Target inheritance are diagnosed independently of unrelated identity errors; reader-capability errors remain explicit. CLI sema/analyse/emission/build, named builds, init and test validate governing manifests before semantic compilation or writes, deduplicating manifests across sources. The analysis pipeline was extracted from main.go into a cohesive sibling file.
       - LSP distinguishes manifest TOML from Sec source, diagnoses open or discovered ancestor manifests on their own URI and consumes unsaved overlays. Manifest dependencies invalidate source batches on document/configuration changes, obsolete jobs are discarded and stale errors clear on correction, overlay close or deletion. Protocol spans use the same shared compiler renderer; cross-target Sec parsing is skipped for manifest documents. Allocation consumer-parity fixtures now declare the required version table so they retain their intended analysis coverage.
     remaining:
-      - rendered version during a build (§ 31) and build metadata (§ 32)
+      - "source-level build metadata (§ 32): blocked on MD-143, which must define the build-metadata API declarations, access form and availability rules; the § 31 rendered build version is already implemented through tooling.project-build-numbering"
     verification:
       - command: go vet ./...
         result: passed on 2026-10-13

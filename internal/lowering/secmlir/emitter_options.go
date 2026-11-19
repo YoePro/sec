@@ -15,6 +15,11 @@ import (
 // rules/mlir/dialect-versions/sec_mlir_dialect_v12.md — §1.
 type EmitOptions struct {
 	DialectVersion uint32
+	// ExportSymbols gives every defined Sec function the module-independent
+	// symbol of its FunctionID, as an imported module's object needs so that
+	// other objects' imported declarations resolve to it (linking.md §§ 9,
+	// 15, 19). The entry module keeps its local symbols.
+	ExportSymbols bool
 }
 
 // emissionSchema admits the current emitter and explicit P16 schema only.
@@ -64,6 +69,7 @@ func EmitWithOptions(module *semantic.Module, plan layout.ResolvedScalarPlan, op
 	e := &emitter{
 		schemaVersion: schema, module: module, types: map[semantic.TypeID]string{},
 		visiting: map[semantic.TypeID]bool{}, functions: map[semantic.FunctionID]string{}, plan: plan,
+		exportSymbols: options.ExportSymbols,
 	}
 	if err := e.validatePackage14ArrayBoundaries(); err != nil {
 		return nil, err
@@ -76,7 +82,7 @@ func EmitWithOptions(module *semantic.Module, plan layout.ResolvedScalarPlan, op
 	if err := e.validateSliceBoundaries(); err != nil {
 		return nil, err
 	}
-	e.functions, err = resolvedFunctionSymbols(module)
+	e.functions, err = resolvedFunctionSymbols(module, options.ExportSymbols)
 	if err != nil {
 		return nil, err
 	}

@@ -277,3 +277,15 @@ agreeing; and mentor suggestions for unknown commands and topics.
 recursion and generic specialization under focus, open indirect targets,
 cold/incremental/parallel agreement and optimized builds — are tracked by the
 owning governance entry until implemented.
+
+# § 8. `sec platform c-bindings` (MD-021)
+
+Integrated 2026-11-20 from `rules/corrections/MD-021-c-binding-environment-complete-proposal-20261120.md` (owner accepted 2026-11-20). The correction holds the full normative text; this section is its owning summary.
+
+**§ 8(1)** The command family `sec platform c-bindings` creates, reads, validates, resolves and edits `.sec/platform/c-bindings.toml`: `init`, `show`, `package set`, `validate [--variant]`, `resolve --variant`, `environment add|set|remove`, `module add|remove (--common | --environment NAME)`, each with `--file` and `--json`; mutations accept `--if-match SHA256`. It is registered in the command registry and documented by `sec help`.
+
+**§ 8(2)** `show --json` returns the complete model and `file_sha256`. A mutation with `--if-match` rechecks the file hash immediately before an atomic replacement and rejects a mismatch without writing; a missing file never matches. Edits are syntax-aware and minimal and preserve comments; failures leave the file unchanged.
+
+**§ 8(3)** Identical repeated `module add` and `environment add` are no-ops (`changed: false`); a differing existing environment needs `environment set`; removing an absent element reports `changed: false`. A `--json` command prints exactly one JSON document (`format` `sec.c-bindings-cli` or `sec.c-bindings-resolution`, `version` 1) with stable diagnostics.
+
+**§ 8(4)** `validate` without `--variant` is structural (`scope: "structural"`; a zero-environment draft is `resolvable: false`); with `--variant` it runs full resolution (`scope: "variant"`). `show`, `validate` and `resolve` never write. The CLI never invents alias targets, reads host headers or generates foreign signatures.

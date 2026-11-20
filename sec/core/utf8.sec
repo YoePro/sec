@@ -1,10 +1,44 @@
 module core
 
+// Rulebook: library/core-library.md § 5.4 (bytes and runes) and the UTF-8
+// well-formedness table of Unicode § 3.9 (table 3-7).
+
+/**
+ * One Unicode scalar value decoded from UTF-8 bytes.
+ */
 type Utf8DecodedRune struct {
+    /** The decoded Unicode scalar value. */
     Value: rune,
+    /** The number of bytes consumed, 1 to 4. */
     Width: uint,
 }
 
+/**
+ * Decodes the UTF-8 sequence that starts at index.
+ *
+ * Description:
+ * Accepts only well-formed sequences: no overlong encodings, no
+ * surrogates (U+D800-U+DFFF) and nothing above U+10FFFF. A sequence
+ * truncated by the end of value is invalid. Continue decoding at
+ * index + Width.
+ *
+ * Parameters:
+ * - value: The bytes to read; they are borrowed and not changed.
+ * - index: The byte offset of the first byte of the sequence.
+ *
+ * Returns:
+ * The scalar value and the number of bytes it used.
+ *
+ * Errors:
+ * - StringError.OutOfBounds: index is at or past value.Len.
+ * - StringError.InvalidUtf8(index): The bytes at index are not a
+ * well-formed sequence; the payload is the start index.
+ * - StringError.InvalidCodePoint: Kept as a defensive path; the byte
+ * checks already exclude every value it could report.
+ *
+ * Allocation:
+ * None.
+ */
 fn DecodeUtf8(value: ref byte[], index: uint) Result[Utf8DecodedRune, StringError] {
     if index >= value.Len {
         return Err(StringError.OutOfBounds)

@@ -112,6 +112,10 @@ func (fb *functionBuilder) buildFailureSetTry(expr *ast.TryExpression, resolved 
 		switch point.Kind {
 		case sema.TryFailureArithmetic, sema.TryFailureBounds, sema.TryFailureSliceRange, sema.TryFailureConversion:
 			router.points[point.Expression] = point
+		case sema.TryFailureContract:
+			// A checked conversion into a constrained named type routes its
+			// ConversionError.Contract failures (named_contract_conversion.go).
+			router.points[point.Expression] = point
 		case sema.TryFailureCarrier:
 			if point.Expression != expr.Expression {
 				// An intermediate Result receiver of a protected chain routes its

@@ -60,7 +60,7 @@ fn Use(values: ref int[], index: uint) Result[int, IndexError] {
     return Ok(try values[index])
 }`},
 		{name: "constrained conversion", body: `
-fn Use(raw: int) Result[Percent, ContractError] {
+fn Use(raw: int) Result[Percent, ConversionError] {
     return Ok(try Percent(raw))
 }`},
 		{name: "argument of protected call", body: `

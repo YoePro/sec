@@ -23,7 +23,11 @@ func (a *Analyzer) recordNamedConversion(call *ast.CallExpression, target, sourc
 	if call == nil || len(call.Arguments) != 1 || !target.Named && !source.Named {
 		return
 	}
-	if !namedConversionEndpoint(target) || !namedConversionEndpoint(source) {
+	// Leaving a constrained named type can never violate a contract, so a
+	// constrained source shares the identity-only conversion; a constrained
+	// target needs the checked conversion (named_contract_conversion.go).
+	// Rules: rules/types/contracts.md — §§ 12, 13.
+	if !namedConversionEndpoint(target) || !namedConversionSource(source) {
 		return
 	}
 	targetCarrier, ok := a.namedScalarCarrier(target)
@@ -47,7 +51,14 @@ func (a *Analyzer) recordNamedConversion(call *ast.CallExpression, target, sourc
 
 // namedConversionEndpoint admits an integer type without units or contracts.
 func namedConversionEndpoint(typ Type) bool {
-	return isIntegerType(typ) && typ.Unit == "" && typ.Dimension.IsZero() && len(typ.Contracts) == 0
+	return (isIntegerType(typ) || typ.Kind == FloatType) && typ.Unit == "" && typ.Dimension.IsZero() && len(typ.Contracts) == 0
+}
+
+// namedConversionSource admits the source of an identity-only conversion:
+// an endpoint, or a constrained named integer whose contracts are left behind.
+// Rules: rules/types/contracts.md — §§ 12, 13; rules/types/types.md — Named types.
+func namedConversionSource(typ Type) bool {
+	return (isIntegerType(typ) || typ.Kind == FloatType) && typ.Unit == "" && typ.Dimension.IsZero()
 }
 
 // namedScalarCarrier follows a named type's declared base chain to the

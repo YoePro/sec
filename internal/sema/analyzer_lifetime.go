@@ -447,15 +447,50 @@ func explicitMoveSource(expr ast.Expression) ast.Expression {
 //   - rules/memory/borrowing.md — §15.3 "Reborrowed arguments"
 //   - rules/memory/borrowing.md — §15.4(1–5) argument order and overlap
 //   - rules/declarations/functions.md — §38A(4)(3),(5) pack-position call borrows
-func (a *Analyzer) validateCallArgumentBorrows(function Function, sourceArgs []ast.Expression, preparedSpreadValues []bool) bool {
+func (a *Analyzer) validateCallArgumentBorrows(function Function, sourceArgs []ast.Expression, preparedSpreadValues []bool, calls ...*ast.CallExpression) bool {
 	reservations := []borrowRecord{}
 	valid := true
+	var prepared *ResolvedCallArgumentPlan
+	if len(calls) != 0 && calls[0] != nil {
+		prepared = a.resolvedSpreadArguments(calls[0], function)
+	}
+	readPrepared := map[int]bool{}
+	blockedPrepared := map[int]bool{}
+	// Empty spreads have no parameter slot, but their source evaluation still
+	// takes place between the surrounding arguments in original source order.
+	emptySources := map[int]bool{}
+	if prepared != nil {
+		for i, source := range prepared.Sources {
+			emptySources[i] = source.Spread
+		}
+		for _, slot := range prepared.Expanded {
+			delete(emptySources, slot.Source)
+		}
+	}
+	checkEmptyBefore := func(limit int) {
+		for i := 0; i < limit; i++ {
+			if !emptySources[i] || readPrepared[i] {
+				continue
+			}
+			readPrepared[i] = true
+			source := prepared.Sources[i].Expression
+			if !a.validatePreparedSpreadSourceRead(source, reservations, expressionToken(source)) {
+				valid = false
+			}
+		}
+	}
 	for sourceIndex, arg := range sourceArgs {
+		if prepared != nil && sourceIndex < len(prepared.Expanded) {
+			checkEmptyBefore(prepared.Expanded[sourceIndex].Source)
+		}
 		parameter, ok := functionParameterForArgument(function, sourceIndex)
 		if !ok {
 			return false
 		}
 		if sourceIndex < len(preparedSpreadValues) && preparedSpreadValues[sourceIndex] {
+			if !a.validatePreparedSpreadBorrow(prepared, sourceIndex, parameter, reservations, readPrepared, blockedPrepared, expressionToken(arg)) {
+				valid = false
+			}
 			continue
 		}
 
@@ -520,6 +555,9 @@ func (a *Analyzer) validateCallArgumentBorrows(function Function, sourceArgs []a
 				Kind: kind, Token: expressionToken(arg),
 			})
 		}
+	}
+	if prepared != nil {
+		checkEmptyBefore(len(prepared.Sources))
 	}
 	return valid
 }

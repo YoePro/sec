@@ -2692,3 +2692,11 @@ guarantees.
 
 **§ 94(23)** The attribute set may grow after each new attribute receives complete syntax,
 target, semantic, diagnostic, formatter, and conformance rules.
+
+## § 95 `@cAlias` (MD-021)
+
+Integrated 2026-11-20 from `rules/corrections/MD-021-c-binding-environment-complete-proposal-20261120.md` (owner accepted 2026-11-20). The correction holds the full normative text; this section is its owning summary.
+
+**§ 95(1)** `@cAlias` is compiler-known and valid only as a standalone module-scope declaration in a compiler-authorized C binding module. `name` is a compile-time qualified `c::...` spelling; `target` is a TypeReference (`rules/foundations/grammar.md` § 126).
+
+**§ 95(2)** It introduces no `alias` keyword and does not change nominal `type` semantics. `@target` keeps its canonical syntax and need not encode C-runtime choices; module membership comes from the selected binding environment.

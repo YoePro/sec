@@ -1,13 +1,50 @@
 module core
 
+// Rulebook: library/core-library.md § 8 (unsigned integers and byte).
+// ToString(fmt) and ByteStringFormat are part of the required byte surface;
+// § 8 does not list them yet. The radix digits are ASCII, so every result
+// is valid UTF-8.
+
 impl byte {
+    /**
+     * Selects the radix used by byte.ToString(fmt).
+     *
+     * Description:
+     * Decimal writes 1-3 digits without padding. Hexadecimal, Octal and
+     * Binary write a fixed width of 2, 3 and 8 digits with leading zeros,
+     * so every byte value has the same text length in those formats.
+     */
     enum ByteStringFormat {
+        /** Base 10, no padding: "0" through "255". */
         Decimal,
+        /** Base 16, two upper-case digits: "00" through "FF". */
         Hexadecimal,
+        /** Base 8, three digits: "000" through "377". */
         Octal,
+        /** Base 2, eight digits, most significant bit first. */
         Binary,
     }
 
+    /**
+     * Returns the text of this byte in the selected radix.
+     *
+     * Description:
+     * Writes ASCII digits only, without sign, prefix ("0x", "0o", "0b")
+     * or grouping. Hexadecimal uses the upper-case digits A-F.
+     *
+     * Parameters:
+     * - fmt: The radix and width rule, see ByteStringFormat.
+     *
+     * Returns:
+     * The formatted text, for example 171 gives "171", "AB", "253" or
+     * "10101011".
+     *
+     * Errors:
+     * - StringError: String storage could not be materialized.
+     *
+     * Allocation:
+     * Allocates the result string through the permitted allocation context.
+     */
     fn ToString(fmt: byte.ByteStringFormat) Result[string, StringError] {
         match fmt {
             ByteStringFormat.Decimal => {
@@ -25,6 +62,13 @@ impl byte {
         }
     }
 
+    /**
+     * Returns the ASCII digit for a value in 0..15.
+     *
+     * Description:
+     * 0-9 map to '0'-'9' (48-57) and 10-15 map to 'A'-'F' (65-70).
+     * The caller masks the value first; larger inputs give non-digits.
+     */
     fn _ByteDigit(value: byte) byte {
         if value < 10 {
             return value + 48
@@ -33,6 +77,7 @@ impl byte {
         return value + 55
     }
 
+    /** Base-10 text with 1-3 digits and no leading zeros. */
     property _ToDecimal: Result[string, StringError] {
         get {
             if self >= 100 {
@@ -62,6 +107,7 @@ impl byte {
         }
     }
 
+    /** Base-16 text: high nibble then low nibble, upper case. */
     property _ToHexadecimal: Result[string, StringError] {
         get {
             let high := self._ByteDigit((self >> 4) & 0x0F)
@@ -72,6 +118,7 @@ impl byte {
         }
     }
 
+    /** Base-8 text: three digits taken from bits 7-6, 5-3 and 2-0. */
     property _ToOctal: Result[string, StringError] {
         get {
             let bytes: byte[3] := [
@@ -84,6 +131,7 @@ impl byte {
         }
     }
 
+    /** Base-2 text: eight digits from bit 7 down to bit 0. */
     property _ToBinary: Result[string, StringError] {
         get {
             let bytes: byte[8] := [

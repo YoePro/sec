@@ -6,7 +6,7 @@ integrations:
     area: frontend-allocation-semantics
     status: partial
     repository_baseline: 57cd774
-    revised: "2026-10-14"
+    revised: "2026-11-20"
     rules:
       - rules/memory/allocation.md
       - rules/memory/arena.md
@@ -77,11 +77,12 @@ integrations:
       - "MD-039 Sema (2026-11-01; correction MD-004-MD-039 §§ 1–5, 7(1–2)): StringConcatPlan.Failure and ResolvedStringAppendOf record the source-selected mode. Ordinary runtime + and += are accepted with EffectMayPanicStringMaterialization and the registered reason StringMaterializationFailure; a protecting try gives StringError with no panic effect. try s += x is a fallible assignment with handlers or propagation, protects a Result[string, StringError] operand and the plans of its right operand; an inner try leaves the outer operation in panic mode. An unhandled Result operand stays S1097 or S1022, and interpolation including a concatenation holding one keeps S1097 (§ 1(4)). try on a folded plan is legal; @noPanic rejects unprotected forms, @noAlloc rejects both modes, and a missing context is S1098 in both."
       - "S1098 demand (2026-11-01): a string materialization in a core body reports a missing allocation context only when a program module reaches it; its effects stay published, so a bare-metal build is not failed by a text helper it never calls."
       - "MD-039 normative sync (2026-11-01; correction MD-004-MD-039 §§ 6(1)–(4), 8(3)): operators.md string + and += without renumbering, allocation.md §§ 10(6),17, errorhandling.md § 23, runtime_checks.md, panic.md §§ 3.1(2),13(1), grammar.md, core-library.md § 15.1, semantic_ir.md § 17(6). Interpolation stays under MD-004; the reason is named StringMaterializationFailure with its number only in the registry."
+    partial:
+      - "Started (moved to partial 2026-11-20; the text records the done part and what remains): @noAlloc coverage of destructors reached from the function and compiler-generated operations; defer bodies and (since 2026-10-10) concrete generic specializations are covered. A local whose type has an allocating free is still accepted in a @noAlloc function (no destruction edges; needs destruction-point facts). Template-level constraint calls stay unknown; constraint-carried effect contracts await MD-053"
     remaining:
       - "MD-039 step 3, Semantic IR and backend failure paths (§§ 2(3), 4, 5(5), 7(3)): source-selected try/panic paths through Semantic IR, MLIR and LLVM, the StringMaterializationFailure endpoint on the allocation-free panic path, transactional += commit, and allocation facts for append sites; waits on the runtime string allocation of P18/P19/P23."
       - "MD-039 step 4, conformance (§ 7, § 8(4)): positive, negative and failing-allocator tests, then archive the correction and remove MD-039."
       - classify every remaining Sec 0.1 allocation-capable operation in the same effect model (collection growth and WithCapacity, closure environments where canonically allocation-capable, spawn control storage, shaped types, allocating core and stdlib contracts)
-      - "@noAlloc coverage of destructors reached from the function and compiler-generated operations; defer bodies and (since 2026-10-10) concrete generic specializations are covered. A local whose type has an allocating free is still accepted in a @noAlloc function (no destruction edges; needs destruction-point facts). Template-level constraint calls stay unknown; constraint-carried effect contracts await MD-053"
       - complete context propagation through functions, methods, lambdas, properties, init, interfaces, generics and indirect calls
       - overflow and alignment checks for safe manual allocation, including over-aligned `minAlign(N)` types (blocked on the layout service; MD-019 syntax decided 2026-11-05, allocation.md § 9(7a))
       - integrate ownership-v2, borrowing-v2, lifetime-analysis-v2, references-v2 and destruction-v2 facts canonically
@@ -182,14 +183,16 @@ integrations:
   - id: semantic-ir.allocation
     area: semantic-ir-allocation
     status: planned
+    revised: "2026-11-20"
     repository_baseline: 57cd774
+    partial:
+      - "Started (moved to partial 2026-11-20; the text records the done part and what remains): SEC-MLIR-P19 integration is owned by lowering.sec-mlir-package19 and tracked in package19-todo.md. Sema operation/default/effect/context facts and Semantic IR Arena/context representation are partial as of 2026-11-16. Source Arena producers, complete preserving plans, schema-15 emission and native lowering remain open; allocation readiness stays closed. Owning dynamic-array work is tracked by Package 18. MD-034 and unresolved provider/layout requirements remain constraints."
     remaining:
       - represent surviving dynamic allocations explicitly
       - represent allocation context/domain, type/count/size, alignment and fallibility
       - represent resulting storage origin/domain, lifetime/generation dependency, ownership/borrow mode and destruction responsibility
       - keep allocation, initialization, destruction and reclamation distinct
       - verify contradictory or incomplete allocation facts before lowering
-      - SEC-MLIR-P19 integration is owned by lowering.sec-mlir-package19 and tracked in package19-todo.md. Sema operation/default/effect/context facts and Semantic IR Arena/context representation are partial as of 2026-11-16. Source Arena producers, complete preserving plans, schema-15 emission and native lowering remain open; allocation readiness stays closed. Owning dynamic-array work is tracked by Package 18. MD-034 and unresolved provider/layout requirements remain constraints.
     required_tests:
       - explicit allocation op
       - context/domain preserved

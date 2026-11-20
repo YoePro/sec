@@ -57,6 +57,10 @@ func runCLI() {
 		return
 	}
 
+	if command == "platform" {
+		exitCLI(runPlatformCommand(flag.Args()[1:], os.Stdout, os.Stderr))
+	}
+
 	if command == "init" {
 		runInitCommand(flag.Args()[1:])
 		return

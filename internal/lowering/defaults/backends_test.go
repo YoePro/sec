@@ -59,8 +59,10 @@ func TestDefaultBackendConformance(t *testing.T) {
 				}
 				t.Run("sec-mlir", func(t *testing.T) {
 					module, err := semantic.Build(parsed.Program, analyzer, semantic.BuildOptions{RequestedModule: "main"})
-					if fixture == "owning" || fixture == "list" || fixture == "contracts" || fixture == "string" {
-						want := map[string]string{"owning": "dynamic", "list": "list", "contracts": "contracts", "string": "non-trivial"}[fixture]
+					// Named contract types build since the P22 scalar contract
+					// conversions (2026-11-20); their defaults lower natively.
+					if fixture == "owning" || fixture == "list" || fixture == "string" {
+						want := map[string]string{"owning": "dynamic", "list": "list", "string": "non-trivial"}[fixture]
 						if err == nil || module != nil || !strings.Contains(err.Error(), want) {
 							t.Fatalf("unsupported default built module: %v", err)
 						}

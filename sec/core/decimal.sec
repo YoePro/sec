@@ -3,24 +3,232 @@ module core
 // Rulebook: library/core-library.md §§ 10.1-10.7 (MD-066, MD-068). Scale, the
 // value predicates, the scale/rounding methods and the ToInt*/ToFloat*
 // conversions are compiler-known members (compiler_known_members.md "Decimal
-// types"); the ToString overloads are declared here.
+// types"); the ToString overloads are declared here. ToString() relies on the
+// exact result scale of foundations/operators.md § 27.1.
 
 impl decimal {
-    // Formats the invariant, scale-preserving round-trip representation.
+    /**
+     * Formats the invariant, scale-preserving round-trip representation.
+     *
+     * Description:
+     * Writes every coefficient digit, so the text keeps the value and its
+     * Scale: 1234.456 at Scale 4 is "1234.4560". Plain notation is used when
+     * Scale >= 0 and the adjusted exponent (digit count - 1 - Scale) is at
+     * least -6; otherwise the text is <digit>[.<digits>]E<sign><exponent>,
+     * for example "1E-7" or "1.2E+3" (12 at Scale -2). A negative value
+     * starts with "-". No grouping, no locale and no "+" on the value.
+     * This is the same text for format code R.
+     *
+     * Errors:
+     * - StringError: String storage could not be materialized.
+     *
+     * Allocation:
+     * Allocates the result string through the permitted allocation context.
+     */
     fn ToString() Result[string, StringError] {
-        // TODO: Implement decimal.ToString()
-        return Ok("")
+        // coefficient = self × 10^Scale; exact, and it fits the i64 domain.
+        let scale      := self.Scale
+        let mut scaled := self
+        if scale >= 0 {
+            scaled = self * _decimalPowerOfTen(int64(scale))
+        } else {
+            scaled = self / _decimalPowerOfTen(0 - int64(scale))
+        }
+        let coefficient := try scaled.ToInt128() {
+            Err(_) => {
+                panic "decimal.ToString: coefficient outside int128"
+            }
+        }
+        return _decimalCanonicalText(coefficient, scale)
     }
 
-    // Formats using an explicit invariant format code (R, G, F<n>, N<n>, E<n>).
+    /**
+     * Formats using an explicit invariant format code.
+     *
+     * Description:
+     * Not implemented yet: the body is a placeholder that returns "".
+     *
+     * Parameters:
+     * - format: One of R, G, F<n>, N<n> or E<n>.
+     *
+     * Errors:
+     * - StringError: Invalid format code or storage failure.
+     *
+     * Allocation:
+     * Allocates the result string through the permitted allocation context.
+     */
     fn ToString(format: string) Result[string, StringError] {
         // TODO: Implement decimal.ToString(format)
         return Ok("")
     }
 
-    // Formats using explicit decimal and grouping separators.
+    /**
+     * Formats using explicit decimal and grouping separators.
+     *
+     * Description:
+     * Not implemented yet: the body is a placeholder that returns "".
+     *
+     * Parameters:
+     * - format: One of R, G, F<n>, N<n> or E<n>.
+     * - decimalSeparator: Text written between the integer and fraction digits.
+     * - groupSeparator: Text written between digit groups (N<n> only).
+     *
+     * Errors:
+     * - StringError: Invalid format code or storage failure.
+     *
+     * Allocation:
+     * Allocates the result string through the permitted allocation context.
+     */
     fn ToString(format: string, decimalSeparator: string, groupSeparator: string) Result[string, StringError] {
         // TODO: Implement decimal.ToString(format, decimalSeparator, groupSeparator)
         return Ok("")
     }
+}
+
+// Shared R-format helpers for decimal and decimal128. The `_` prefix makes
+// them module-internal (projects/modules.md § 6), so decimal128.sec uses
+// them too. A decimal coefficient (i64) always fits the int128 domain.
+
+/**
+ * Returns 10^exponent as an exact decimal.
+ *
+ * Description:
+ * Uses squaring, so even exponent 2^31 needs at most 32 products. Each
+ * product is exact; § 27.1 picks a scale where the coefficient fits.
+ */
+fn _decimalPowerOfTen(exponent: int64) decimal {
+    let mut result: decimal := 1m
+    let mut base:   decimal := 10m
+    let mut remaining := exponent
+    while remaining > 0 {
+        if remaining % 2 == 1 {
+            result = result * base
+        }
+        remaining = remaining / 2
+        if remaining > 0 {
+            base = base * base
+        }
+    }
+    return result
+}
+
+/**
+ * Returns 10^exponent for 0 <= exponent <= 38, the int128 range.
+ */
+fn _int128PowerOfTen(exponent: int64) int128 {
+    let mut result: int128 := 1
+    let mut index:  int64  := 0
+    while index < exponent {
+        result = result * 10
+        index = index + 1
+    }
+    return result
+}
+
+/**
+ * Returns the number of decimal digits of a non-positive value; 0 has 1.
+ *
+ * Description:
+ * Works on the non-positive side so int128.Min needs no negation.
+ */
+fn _decimalDigitCount(nonPositive: int128) int64 {
+    let mut count: int64 := 1
+    let mut rest := nonPositive / 10
+    while rest != 0 {
+        count = count + 1
+        rest = rest / 10
+    }
+    return count
+}
+
+/**
+ * Returns digit index (0 = most significant) of a non-positive value with
+ * count digits, as an ASCII character.
+ */
+fn _decimalDigitAt(nonPositive: int128, count: int64, index: int64) char {
+    let shifted := nonPositive / _int128PowerOfTen(count - 1 - index)
+    let digit   := 0 - shifted % 10
+    return try char(48 + digit) {
+        Err(_) => 48t
+    }
+}
+
+/**
+ * Writes the canonical R text of coefficient × 10^(-scale).
+ *
+ * Description:
+ * Java BigDecimal.toString threshold (owner decision 2026-11-20): plain
+ * notation when scale >= 0 and the adjusted exponent is >= -6, otherwise
+ * scientific notation with an explicit exponent sign.
+ */
+fn _decimalCanonicalText(coefficient: int128, scale: int32) Result[string, StringError] {
+    let mut magnitude := coefficient
+    if coefficient > 0 {
+        magnitude = 0 - coefficient
+    }
+    let count      := _decimalDigitCount(magnitude)
+    let digitCount := count
+    let scale64    := int64(scale)
+    let adjusted   := digitCount - 1 - scale64
+
+    let mut text := ""
+    if coefficient < 0 {
+        text = try text + "-"
+    }
+
+    if scale64 >= 0 && adjusted >= -6 {
+        if digitCount > scale64 {
+            // Whole digits, then the point, then exactly scale digits.
+            let wholeCount := digitCount - scale64
+            let mut index: int64 := 0
+            while index < count {
+                if scale64 > 0 && index == wholeCount {
+                    text = try text + "."
+                }
+                text = try text + _decimalDigitAt(magnitude, count, index)
+                index = index + 1
+            }
+            return Ok(text)
+        }
+
+        // |value| < 1: "0." then leading zeros, then all digits.
+        text = try text + "0."
+        let mut zeros := scale64 - digitCount
+        while zeros > 0 {
+            text = try text + "0"
+            zeros = zeros - 1
+        }
+        let mut index: int64 := 0
+        while index < count {
+            text = try text + _decimalDigitAt(magnitude, count, index)
+            index = index + 1
+        }
+        return Ok(text)
+    }
+
+    // Scientific notation: d[.ddd]E<sign><adjusted>.
+    text = try text + _decimalDigitAt(magnitude, count, 0)
+    if count > 1 {
+        text = try text + "."
+        let mut index: int64 := 1
+        while index < count {
+            text = try text + _decimalDigitAt(magnitude, count, index)
+            index = index + 1
+        }
+    }
+    text = try text + "E"
+    let mut exponent := int128(adjusted)
+    if adjusted >= 0 {
+        text = try text + "+"
+        exponent = 0 - exponent
+    } else {
+        text = try text + "-"
+    }
+    let exponentCount := _decimalDigitCount(exponent)
+    let mut index: int64 := 0
+    while index < exponentCount {
+        text = try text + _decimalDigitAt(exponent, exponentCount, index)
+        index = index + 1
+    }
+    return Ok(text)
 }

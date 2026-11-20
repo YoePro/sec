@@ -405,7 +405,7 @@ integrations:
     area: frontend-analysis
     status: partial
     integrated: "2026-08-13"
-    revised: "2026-11-10"
+    revised: "2026-11-20"
     summary: >-
       Parses, registers, and semantically checks impl properties, including
       ordinary, static, and fallible accessors, without claiming property
@@ -492,10 +492,11 @@ integrations:
       - Source property getters, setters and fallible setters have distinct canonical callable identities even without attributes. Validated reads and stores publish synchronous generated accessor edges in the shared call graph; compound updates retain separate getter and setter sites. Ordinary effect, foreign uncertainty, nested property and deferred-cleanup propagation reaches callers and @noPanic verification without treating member syntax as pure. Accessor allocation coverage inspects real bodies and setter parameter cleanup, preserving allocation-free proofs and conservative unknowns. Compiler-semantic members retain their owning intrinsic effect producers; property operation lowering remains separately tracked (2026-11-10).
       - Instance getter receiver mutability is inferred together with ordinary methods to a fixed point, including direct writes, mutable borrows, self-qualified and implicit property reads, and method/property dependency chains. Local, parameter and match-binding shadowing does not fabricate receiver mutation. Mutating getter access requires writable storage, ref mut or a fresh owned temporary; S1219 properties.mutable-receiver-required carries declaration provenance and help. Reads use canonical receiver-wide shared/mutable borrow conflict checks and publish receiver reference plans/facts. Property setter Places preserve the authority of their receiver instead of gaining mutability merely from setter availability. Broader receiver/returned-reference closure remains explicit in remaining (2026-11-10).
       - "Fallible compound assignment completed (2026-11-11; properties.md § 7, contracts.md § 12(2)-(3), errorhandling.md § 23, MD-131): a compound update of a field or infallible property whose type is a constrained named type is a run-time contract check. `try target op= value` uses the ContractError channel with local handlers or Result propagation (previously rejected with S1096), qualified, through self and as an unqualified impl property; without try the update is valid, panics with ContractFailure and reports A2011 like a constrained local (previously accepted silently with no check effect). A fallible `try set` property of constrained type rejects compound updates that would merge ContractError with the setter error instead of dropping one channel. Plain fallible setters keep their declared error. TestConstrainedMemberCompoundAssignment"
+    partial:
+      - "Started (moved to partial 2026-11-20; the text records the done part and what remains): Complete accessor receiver/borrow propagation through all control-flow and indirect/nested receiver paths, and retained or returned reference dependency summaries. Direct method/getter fixed-point inference, receiver authority, conservative receiver-wide live-borrow checks and callee reference facts are implemented (2026-11-10); do not treat a reference-valued property as independent stored backing."
     remaining:
       - explicit property read/write operation implementation in Semantic IR and lowering through MLIR and LLVM
       - property overriding semantics and complete interface receiver/static-category conformance
-      - Complete accessor receiver/borrow propagation through all control-flow and indirect/nested receiver paths, and retained or returned reference dependency summaries. Direct method/getter fixed-point inference, receiver authority, conservative receiver-wide live-borrow checks and callee reference facts are implemented (2026-11-10); do not treat a reference-valued property as independent stored backing.
     verification:
       - command: go vet -p 4 ./internal/sema ./internal/diagnostics ./cmd/compiler ./cmd/lsp
         result: passed on 2026-11-10 after property receiver authority and mutability inference
@@ -1322,7 +1323,7 @@ integrations:
     area: frontend-projects-and-resolution
     status: partial
     integrated: "2026-08-14"
-    revised: "2026-10-14"
+    revised: "2026-11-20"
     summary: >-
       Establishes the canonical Sec module model shared by compiler and tooling.
       The first integrated slice provides host-independent logical import-path
@@ -1396,11 +1397,12 @@ integrations:
       - partial project, std, and platform source import discovery with deterministic source-file ordering
       - mandatory S1051 modules.unresolved-import diagnostics preserve the unresolved canonical spelling and exact import-path source range in individual and batched LSP analysis
       - Canonical standard-library source discovery is shared by CLI and LSP before project fallback, including arbitrary nested paths such as net/ip and all production siblings rather than only bootstrap fmt/io/unicode (2026-10-14). Selected target directives are respected and production discovery excludes _test.sec; LSP production import assembly removes test-only siblings. Directory imports with conflicting ModuleName headers fail with registered S1158 modules.inconsistent-source-module on the import-path span and the offending declaration as a related location. Failed imports use shared S1051 metadata and stop misleading dependent lookup diagnostics. Missing function/type call targets use mandatory S1157 names.unknown-call-target with lookup guidance. Regression fixtures verify imported associated Parse calls, missing modules, missing methods, inactive target files, and inconsistent headers in both CLI and LSP. Flattened AST inclusion and complete module binding/surface identity remain tracked below.
+    partial:
+      - "Started (moved to partial 2026-11-20; the text records the done part and what remains): complete source-file ownership for private types and module variables while exposing module-internal declarations across sibling files; ordinary free-function access is implemented under frontend.names-scopes-visibility (2026-10-09)"
     remaining:
       - publish register impl members' MD-113 shadow-knowledge summaries (Requires, Ensures, EnsuresWhenTrue, Invalidates) in the ModuleSurface when separate compilation exists, with surface compatibility and incremental invalidation on summary changes (modules.md § 2.4 amendment; rules/corrections/applied/MD-113-shadow-knowledge-across-calls-decision-20261030.md § 7(4)); today the whole analyzed program, imports included, is summarized together
       - enforce one source directory per module and validate every selected source file's ModuleName against its directory or project-root rule
       - assemble every CompilationPlan module namespace before body analysis in the command-line compiler, independent of filesystem and source-file order
-      - complete source-file ownership for private types and module variables while exposing module-internal declarations across sibling files; ordinary free-function access is implemented under frontend.names-scopes-visibility (2026-10-09)
       - replace flattened imported AST inclusion with source-file-local import binding tables and module-wide dependency-edge union
       - resolve canonical project, std, and platform ImportRootIdentity values without reserved-root fallback into project sources
       - validate every resolved import destination's module declaration, source membership, and active-plan selection
@@ -1829,7 +1831,7 @@ integrations:
     area: frontend-analysis-and-lowering
     status: partial
     integrated: "2026-08-14"
-    revised: "2026-11-02"
+    revised: "2026-11-20"
     document_revision: "2.2"
     summary: >-
       Explicit static impl bindings are type-owned; non-static impl bindings are
@@ -1946,13 +1948,14 @@ integrations:
       - only explicit static impl bindings enter type-qualified completion and the static initializer dependency graph
       - testdata/associated_values_valid.sec uses explicit static for every type-owned binding
       - "MD-081 function-local holders and referent validity (2026-10-30; rules/corrections/applied/MD-081-static-reference-initializers-approved-20261030.md §§ 6(3), 7, 10(3)): every function-local `static let` initialized with a reference is collected before any callable body is analyzed and its borrow is live in every callable, including its own function before the declaration, so conflicting access to the same static anywhere is rejected (S1159-S1162); a borrowed static cannot be replaced or moved (S1162, S1163); a computed reference target keeps the stable non-addressable identity S1168 as its only diagnostic (TestFunctionLocalStaticReferenceHolders, TestStaticReferenceReferentStaysValid)."
+    partial:
+      - "Started (moved to partial 2026-11-20; the text records the done part and what remains): complete every remaining static storage edge case (targeted instance-qualified access diagnostics for static fn and static let are implemented, S1210)"
     remaining:
       - "static reference initializers beyond Sema (rules/corrections/applied/MD-081-static-reference-initializers-approved-20261030.md §§ 4(3), 9, 12(3)): cross-module static roots with module-qualified identity once module statics are accessible across modules (today `cfg.Limit` from an importer is an undefined variable, so such references are rejected); thread-local and non-address-stable backing negative tests once a module-level ThreadLocal or dynamic collection static can be constructed; static-held borrow materialization is tracked under lowering.sec-mlir-package15 P15-42"
       - implement per-instance impl let and let mut storage, construction-time initialization, self/instance lookup, ownership, destruction, layout and lowering before accepting those declarations
       - represent associated immutable values unambiguously in Semantic IR and retain one representation with explicit static identity
       - lower compile-time associated values and addressable immutable associated storage consistently through Sec MLIR and every backend
       - complete focused nested-impl and generic-specialization identity tests for associated immutable values
-      - complete every remaining static storage edge case (targeted instance-qualified access diagnostics for static fn and static let are implemented, S1210)
       - lower static properties through Semantic IR, Sec MLIR, and the backend
       - materialize function-local static declarations as one persistent storage location in Semantic IR and backend lowering
       - extend static compile-time evaluation from known runtime-call and local-capture rejection to the complete compiler-known evaluator contract
@@ -2326,9 +2329,10 @@ integrations:
     area: frontend-spread-analysis
     status: partial
     audited: "2026-08-19"
+    revised: "2026-11-20"
     document_revision: "2.0"
     repository_baseline: c515862
-    summary: Struct spread contributes omitted fields only after full type and copyability validation. Fixed-array call spread prepares non-consuming copied argument slots, including for consuming destinations, so ownership bookkeeping never consumes the source array. Explicit indexed Semantic IR projection facts remain pending.
+    summary: "Struct spread validates omitted fields and copyability. Sema publishes indexed prepared-argument facts consumed by Semantic IR for fixed-array values and represented heterogeneous packs. The borrow/provenance audit is complete: overlapping prepared-source reads diagnose S1161; unavailable per-element reference or source-access effects diagnose S1239 before call facts are published. Additional spread representations and native array lowering remain partial."
     rules:
       - rules/declarations/spread.md
       - rules/declarations/functions.md
@@ -2336,10 +2340,37 @@ integrations:
       - rules/memory/copy_move.md
       - rules/memory/ownership.md
       - rules/compiler/semantic_ir.md
+      - rules/memory/borrowing.md
+      - rules/memory/lifetime_analysis.md
+      - rules/compiler/compiler_pipeline.md
     code:
       - internal/sema/analyzer.go
+      - internal/sema/resolved_calls.go
+      - internal/sema/spread_argument_facts.go
+      - internal/sema/type_pack_spreads.go
+      - internal/ir/semantic/builder.go
+      - internal/ir/semantic/call_construction.go
+      - internal/ir/semantic/call_arguments.go
+      - internal/ir/semantic/pack_loops.go
+      - internal/sema/analyzer_lifetime.go
+      - internal/sema/analyzer_inference.go
+      - internal/sema/spread_borrow_validation.go
     tests:
       - internal/sema/analyzer_test.go
+      - internal/sema/spread_argument_facts_test.go
+      - testdata/sema/spread_argument_facts_valid.sec
+      - testdata/sema/spread_invalid.sec
+      - internal/sema/type_pack_spreads_test.go
+      - internal/ir/semantic/call_spread_test.go
+      - internal/ir/semantic/pack_forward_test.go
+      - cmd/compiler/call_spread_pipeline_test.go
+      - testdata/semantic_ir/spread_call_arguments.sec
+      - testdata/semantic_ir/spread_call_shapes.sec
+      - internal/sema/spread_borrow_audit_test.go
+      - cmd/compiler/spread_borrow_audit_test.go
+      - cmd/lsp/spread_borrow_audit_test.go
+      - testdata/sema/spread_borrow_audit_invalid.sec
+      - testdata/sema/spread_borrow_audit_valid.sec
     implemented:
       - postfix spread source type analysis
       - fixed-array compile-time expansion counts for calls
@@ -2351,13 +2382,13 @@ integrations:
       - invalid same-type move-only struct spreads contribute no fields to omitted-field/default resolution
       - fixed-array expanded arguments are marked as prepared copied values for ownership analysis
       - consuming destination parameters do not consume a valid fixed-array spread source
+      - "ResolvedCallTarget now exposes a detached spread argument plan after successful overload, ownership and borrow checking: original source identity, static element index or explicit runtime segment, prepared value type, selected destination parameter/index, source preparation operation and destination transfer mode. Fixed-array projections copy even for consuming parameters; whole-pack consumption stays one logical source transfer. ResolvedTypePackForwardOf supplies the same plan for concrete heterogeneous specializations. Zero-element sources remain represented, invalid calls publish no plan, and reanalysis discards stale facts."
+      - "Semantic IR call construction now consumes the resolved source/slot plans rather than expanding source AST expressions: fixed-array values are evaluated once per source occurrence, including zero-element sources, and normalized to constant-proven increasing-index copies before the next source. Selected parameters, source preparation operations and destination modes gate admission. Existing heterogeneous pack forwarding consumes the same prepared plans while retaining pack positions, borrow identities and whole-pack transfer metadata. No semantic copy, borrowed-array projection or runtime-segment behavior is guessed; unavailable cases retain named capability boundaries."
+      - Completed the indexed spread borrow/return-provenance audit (governance/spread-borrow-audit.md, BUG-000031). Prepared source reads check canonical referent Places against earlier exclusive argument reservations, including field and runtime-slice sources (S1161 with related borrow origin). Missing per-slot borrowed/stored-reference/callable provenance or computed-source access effects stop at S1239 without resolved call/return facts. Expected-type generic calls use prepared-copy flags consistently for ownership, borrow, escape, reference and move bookkeeping. CLI/LSP retain diagnostic identity, help and source links.
     partial:
-      - expanded slots retain the source expression plus a prepared-value marker rather than a canonical indexed Semantic IR projection fact
-    remaining:
-      - introduce resolved per-expanded-argument facts carrying source, index, prepared value, destination parameter, and ownership operation
-      - preserve one source evaluation and increasing-index expansion order
-      - feed resolved spread facts into Semantic IR rather than reconstructing source semantics from repeated AST expressions
-      - audit return-reference/provenance and borrow bookkeeping for spread arguments once indexed expanded-argument facts exist
+      - Semantic IR consumes indexed prepared-value plans for fixed-array values and represented heterogeneous packs. Runtime homogeneous packs, borrowed-array projections and semantic-copy normalization remain unavailable; native array construct/extract lowering still stops with unsupported-lowering. Per-slot reference/capture provenance and computed-source access-effect plans remain unavailable behind S1239; the audit itself is complete.
+      - "Started (moved to partial 2026-11-20): complete source-evaluation and increasing-index call-expansion preservation for runtime homogeneous packs, borrowed-array projections and semantic-copy lowering when their representation is available; fixed-array value normalization and represented heterogeneous forwarding are complete in Semantic IR."
+    remaining: []
     required_tests:
       - move-only same-type struct spread does not suppress missing field errors
       - wrong-type struct spread does not suppress missing field errors
@@ -2368,14 +2399,43 @@ integrations:
       - move-only element spread remains rejected
       - spread source analyzed exactly once
       - expanded call slots preserve increasing indices
+    verification:
+      - command: go vet -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: Passed 2026-11-20 after final empty-source checks; traceability also passed without baseline additions.
+      - command: go test -p 4 ./internal/sema ./internal/ir/semantic -count=1 -timeout=180s
+        result: Passed 2026-11-20 after final empty-source checks (42.188s/12.047s). Earlier concurrent named-contract and traceability failures were resolved; complete Sema and Semantic IR suites pass.
+      - command: go test -race -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run '^TestSpreadBorrowAudit' -count=1 -timeout=120s
+        result: "Passed 2026-11-20 after the final empty-source audit fix (1.644s/20.851s/14.408s): eight rejection cases and valid controls, including empty computed spreads before/after earlier borrows, all Sema depths and both pointer widths; CLI check/IR and unsaved LSP diagnostic parity."
+      - command: go test ./internal/traceability -count=1
+        result: Passed 2026-11-20; no baseline additions.
+      - command: go vet -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: Passed 2026-11-20 after final audit changes.
+      - command: go test -p 4 ./internal/sema ./internal/ir/semantic -run 'Spread|CallArgument|Borrow|Reference|ReturnOrigin|TypePack|ExpectedGeneric' -count=1 -timeout=180s
+        result: Passed 2026-11-20 (1.810s/0.845s), including existing heterogeneous-pack and ordinary reference regressions.
+      - command: go test -race -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run '^TestSpreadBorrowAudit' -count=1 -timeout=120s
+        result: Passed 2026-11-20 (1.471s/21.221s/13.315s). Seven rejection cases and valid controls; Sema checks 32/64-bit plans at Interactive, Standard and Deep depth. CLI check/IR JSON and unsaved LSP preserve diagnostics; invalid calls publish no prepared facts.
+      - command: go test -race ./internal/ir/semantic -run 'TestCallSpread|TestTypePack' -count=1 -timeout=120s
+        result: Passed 2026-11-20 (1.624s), rerun after adding instance-method spread coverage on both 32/64-bit plans; prepared-source, specialization, reference/owned pack and malformed-fact regressions.
+      - command: go vet -p 4 ./internal/ir/semantic ./internal/lowering/secmlir ./cmd/compiler
+        result: Passed 2026-11-20.
+      - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./cmd/compiler -run 'TestCallSpreadSemanticIRPipeline|TestTypePackSpreadsNative|TestTypePackForwardTargets|TestTypePackForwardReturnsMLIR' -count=1 -timeout=120s
+        result: "Passed 2026-11-20 (5.814s): real CLI emits verified spread Semantic IR and Sec MLIR; native array emission retains named unsupported-lowering diagnostics and creates no executable. Existing owned-pack native programs and reference-pack MLIR regressions pass. An exploratory native array execution attempt hit this existing backend boundary; no native fixed-array spread execution is claimed."
+      - command: go test -p 4 ./internal/ir/semantic ./internal/lowering/secmlir -count=1 -timeout=180s
+        result: "Passed 2026-11-20 (7.360s/1.664s): complete IR/emitter suites. New source fixtures verify exactly-once source order including zero-element spreads, constant increasing-index copy projections, consuming destinations, overloads and generics; 32/64-bit aggregate/nested-array/float cases verify, and malformed plans are rejected. The old fixed-array boundary assertion was updated to retain the borrowed-array boundary."
+      - command: go vet -p 4 ./internal/sema ./internal/ir/semantic
+        result: Passed 2026-11-20.
+      - command: go test -race ./internal/sema -run 'TestResolvedSpreadArguments|TestInvalidSpreadHasNoArgumentPlan|TestSpreadCanonicalFixtures|TestCallSpreadIntoConsumingParametersKeepsArrayAvailable' -count=1 -timeout=120s
+        result: Passed 2026-11-20 (1.408s); new immutable prepared-value facts and canonical spread/consuming-source regressions.
+      - command: go test -p 4 ./internal/sema ./internal/ir/semantic -count=1 -timeout=180s
+        result: "Passed 2026-11-20: complete Sema (37.657s) and Semantic IR (10.994s) suites. Source tests cover fixed, empty, mixed, runtime, consuming, generic, method and interface spreads; exact scalar formats; concrete owned/shared/mutable heterogeneous packs; detached queries, invalid-source omission and reanalysis replacement. No backend spread lowering closure is claimed."
     document_created: "2026-08-13"
     document_last_updated: "2026-08-14"
     bug_reference:
       - correction14.md
+      - BUG-000031
     governance_reconciliation:
-      - Narrow frontend.spread's implemented statement that invalid spreads are unable to suppress missing NonDefaultable-field diagnostics; the same-type non-copyable case currently violates it.
-      - Keep fixed-array call spread type/arity/copyability analysis as implemented within that scope, but record post-resolution ownership as partial because consuming destination parameters can currently consume the whole source array.
-      - The existing remaining Semantic-IR spread-provenance item does not by itself document these frontend Sema defects.
+      - "Historical correction14 source-availability defects remain fixed. Sema argument plans and fixed-array/represented-pack Semantic IR consumers were completed on 2026-11-20. Earlier wording that fixed-array call IR reconstructed arguments was imprecise: it previously rejected them explicitly. The subsequent borrow/provenance audit is documented separately; native array lowering belongs to its backend owners."
+      - The indexed borrow/provenance audit is complete; see governance/spread-borrow-audit.md and BUG-000031. Missing per-slot reference and source-access provenance remain explicit implementation capabilities. The already-started representation/execution-order item moved from remaining to partial under the owner hygiene rule; this move is not an additional implementation closure.
 
   - id: frontend.static-context-receiver-storage
     area: frontend-static-analysis
@@ -2402,6 +2462,7 @@ integrations:
       - internal/sema/analyzer_test.go
       - internal/sema/concurrency_test.go
     implemented:
+      - "Implemented 2026-11-20 (BUG-000033, internal/sema/static_receiver.go): a static method may construct its own type with `new T(args)`; constructors stay candidates in static context because `new` creates the receiver. Regression StaticFactoryPoint in testdata/sema/static_receiver/receiver_valid.sec; full Sema suite passes."
       - static keyword tokenization
       - AST Static classification for static fn
       - AST Static classification for static let and static let mut
@@ -2523,9 +2584,10 @@ integrations:
     area: frontend-union-construction
     status: partial
     audited: "2026-08-19"
+    revised: "2026-11-20"
     document_revision: "2"
     repository_baseline: c515862
-    summary: Union constructor payloads apply ordinary compatibility and integer representability validation. Resolved unnamed constructors transfer move-only payload ownership into the aggregate without treating ordinary function calls as constructors. Canonical Semantic IR payload-preparation facts remain pending.
+    summary: Union constructors apply compatibility and integer representability checks and publish frozen typed payload preparation after ownership commits. Semantic IR consumes the saved operands, semantic defaults and copy/move/direct-construction actions in evaluation order, assembles declaration-order payloads and carries them through existing Sec MLIR/native lowering. Complete cross-form ownership validation and reference-origin work remain pending.
     rules:
       - rules/declarations/unions.md
       - rules/declarations/struct.md
@@ -2540,6 +2602,13 @@ integrations:
       - internal/sema/semantic_facts.go
       - internal/ir/semantic
       - internal/lowering/secmlir
+      - internal/ast/ast.go
+      - internal/sema/union_construction_facts.go
+      - internal/sema/union_construction_inference.go
+      - internal/sema/union_member_inference.go
+      - internal/sema/owning_construction.go
+      - internal/sema/analyzer_inference.go
+      - internal/ir/semantic/union_construction.go
     tests:
       - internal/sema/analyzer_test.go
       - internal/sema/copy_move_test.go
@@ -2547,6 +2616,14 @@ integrations:
       - testdata/union_valid.sec
       - testdata/union_invalid.sec
       - testdata/semantic_ir/enum_union_values.sec
+      - internal/sema/union_construction_facts_test.go
+      - testdata/sema/union_preparation_facts_valid.sec
+      - testdata/sema/union_preparation_facts_invalid.sec
+      - internal/ir/semantic/transfer_plan_consumers_test.go
+      - internal/ir/semantic/union_construction_test.go
+      - internal/lowering/secmlir/union_preparation_test.go
+      - cmd/compiler/union_preparation_pipeline_test.go
+      - testdata/semantic_ir/union_preparation_consumers.sec
     implemented:
       - payload-less union construction arity checking
       - single unnamed payload arity checking
@@ -2562,14 +2639,14 @@ integrations:
       - integer representability validation for expected, qualified, generic-substituted, and named-field payloads
       - resolved unnamed union constructors transfer ownership from move-only payload sources
       - ordinary function calls remain governed by ordinary call-argument ownership
+      - Explicit resolved union-constructor payload preparation facts are recorded only after constructor selection and successful payload validation, then frozen after terminal-return ownership commits. Each operand retains its compiler-owned source identity, exact substituted destination type, declaration field index/name, source evaluation order and synthesized-default origin. Empty, unnamed, named-field, qualified/contextual and generic constructions use the saved registry; ordinary calls are never classified by variant-like spelling. ResolvedUnionConstructionOf returns detached type, field, action and Place data without re-inferring syntax; reanalysis replaces old facts.
+      - Payload preparation distinguishes validated trivial/semantic copies, ownership moves and fresh direct construction, with a detached canonical transfer plan when a reusable source has one. Explicit moves and terminal-return moves retain their accepted action; rejected move-only transfers publish no constructor preparation. Synthesized defaults retain their origin across repeated analysis of the same AST. PayloadActions remains a compatibility view; Semantic IR now consumes the typed operand plan directly.
+      - Semantic IR union construction consumes the saved typed PayloadPreparation operands, actions, declaration positions and evaluation order directly, then assembles canonical declaration-order operands for the existing Sec MLIR/native lowering. It no longer reads constructor argument/field AST lists or parallel legacy action/name slices. Admission rejects missing, duplicate, wrong-type, wrong-identity and unavailable transfer/default facts before evaluating operands. Omitted fields carry detached semantic default decisions from Sema and use resolved-default materialization. Both scalar plans, owned/moved/fresh constructor MLIR regressions, AST-shape independence and the native scalar union/default/generic pipeline are verified; unrelated representation/semantic-copy capability boundaries remain explicit.
     partial:
-      - union constructor payload preparation is not yet represented as one explicit resolved value/ownership fact independent of AST shape
+      - Sema freezes explicit typed payload preparation and ownership facts, consumed directly by Semantic IR and preserved through existing lowering. Named and unnamed ownership validation still follows separate construction paths; cross-form ownership unification and the reference-origin audit remain listed separately. Unavailable payload representations and semantic-copy lowering retain explicit capability boundaries.
     remaining:
-      - introduce explicit resolved union-constructor payload preparation facts
-      - distinguish payload copy preparation from ownership transfer
       - make unnamed and struct-like payload ownership semantics independent of AST representation
       - audit reference-origin/contained-origin propagation through both union constructor forms
-      - feed resolved constructor preparation into Semantic IR and lowering without reconstructing copy/move semantics from syntax
     required_tests:
       - unnamed uint8 payload accepts 255
       - unnamed uint8 payload rejects 256
@@ -2583,6 +2660,36 @@ integrations:
       - unnamed and struct-like payload ownership semantics agree
       - temporary move-only payload constructor remains valid
       - resolved constructor fact records payload ownership preparation
+      - saved constructor operands remain authoritative when AST argument/field lists are removed after Sema
+      - missing or inconsistent payload/default plans are rejected before operand evaluation
+      - semantic union field defaults and generic payloads reach verified MLIR on 32/64-bit plans and native execution
+    verification:
+      - command: go test ./internal/traceability -run TestRulebookTraceability -update
+        result: Passed 2026-11-20 (0.210s) after the concurrent layout reference was supplied. Moved/touched union builder functions have rule references; baseline exemptions shrink only, none added.
+      - command: go vet -p 4 ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir ./cmd/compiler
+        result: Passed 2026-11-20 after final consumer changes.
+      - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test -p 4 ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir ./internal/traceability -count=1 -timeout=180s
+        result: "2026-11-20: complete Sema (32.111s), Semantic IR (10.191s) and Sec MLIR emitter (23.222s) suites passed. Traceability failed only on concurrent layout StorageRepresentation.String documentation; its owner supplied the reference and the separate final traceability run passed. Earlier transient layout build error was also resolved without edits from this working set."
+      - command: go test -race -p 4 ./internal/sema ./internal/ir/semantic -run 'TestUnionPreparationFacts|TestInvalidUnionPreparationFacts|TestUnionConstruction' -count=1 -timeout=120s
+        result: "Passed 2026-11-20 (1.424s/1.124s): frozen semantic defaults are detached, concrete operand types and ownership facts preserved; all three Sema depths on both scalar plans."
+      - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test -race -p 4 ./internal/ir/semantic ./internal/lowering/secmlir -run 'TestUnionConstruction|TestUnionPreparationEmitter|TestSchema13ConstructorActions|TestBuilderConsumesResolvedTransferPlans' -count=1 -timeout=120s
+        result: "Passed 2026-11-20 (1.159s/1.205s): final plan admission cases, source-order evaluation/declaration-order assembly, AST-operand removal after Sema, both scalar plans and owned/moved/fresh constructor actions through schema-13 verifiers."
+      - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./cmd/compiler -run '^TestUnionPreparationPipeline$' -count=1 -timeout=90s
+        result: "Passed 2026-11-20 (4.795s): real source -> Semantic IR -> verified Sec MLIR -> native build and execution, exit 42; field ordering, omitted defaults, generic union payload and single-payload construction."
+      - command: go test ./cmd/lsp -run '^(TestGenericErrorDiagnosticIDsLSP|TestGenericErrorInterfaceHoverAndSignatures|TestGenericErrorWholeChannelCompletion|TestGenericErrorInterfaceReceiverCapabilities|TestGenericErrorInterfaceDiagnostics|TestGenericErrorOwnershipLSP|TestGenericErrorParameterHover|TestCompletionReturnsEnumMembersAndUnionVariantsAfterTypeDot)$' -count=1 -timeout=120s
+        result: Passed 2026-11-20 (40.524s), focused LSP regressions after the broad ownership-code-action run timed out.
+      - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./cmd/compiler -run '^(TestPackage11SourceEmitsAndVerifiesEnumUnionValues|TestGenericErrorDiagnosticIDsCLI|TestGenericErrorOwnershipCLI)$' -count=1 -timeout=90s
+        result: "Passed 2026-11-20 (0.083s) after final changes: source enum/union MLIR emission and verification plus generic-error CLI diagnostics/ownership."
+      - command: go test -p 4 ./cmd/compiler ./cmd/lsp -run 'Union|GenericError|Transfer|Ownership' -count=1 -timeout=120s
+        result: "Bounded extra run 2026-11-20: compiler subset passed (45.248s); LSP subset timed out at 120s in TestOwnershipCodeActionsSelectedTarget while parsing core sources. This is not a passing broad LSP result; complete Sema/IR/emitter suites and focused fact races pass separately."
+      - command: go test ./internal/traceability -run TestRulebookTraceability -update
+        result: Passed 2026-11-20 after documenting the touched constructor resolvers and query; obsolete exemptions were removed, none added.
+      - command: go vet -p 4 ./internal/ast/... ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir
+        result: Passed 2026-11-20.
+      - command: go test -p 4 ./internal/ast/... ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir ./internal/traceability -count=1 -timeout=180s
+        result: "Passed 2026-11-20 after synthesized-default provenance support: AST/walk 0.006s/0.005s, complete Sema 34.898s, Semantic IR 9.428s, Sec MLIR emitter 2.108s and traceability 0.296s. Existing union payload transfer consumers remain compatible."
+      - command: go test -race ./internal/sema -run 'TestUnionPreparationFacts|TestInvalidUnionPreparationFacts' -count=1 -timeout=90s
+        result: "Passed 2026-11-20 (1.401s): all three analysis depths and 32/64-bit plans cover empty, contextual/qualified/generic, copied/moved/fresh payloads, reordered/default fields, exact scalar types, detached nested data, AST spelling independence, ordinary-function exclusion, invalid-source omission and reanalysis of both reused and replacement ASTs."
     document_created: "2026-08-13"
     document_last_updated: "2026-08-13"
     bug_reference:

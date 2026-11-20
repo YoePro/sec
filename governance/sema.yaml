@@ -99,7 +99,7 @@ integrations:
     area: frontend-semantic-ir-lowering-and-tooling
     status: partial
     audited: "2026-08-19"
-    revised: "2026-11-01"
+    revised: "2026-11-20"
     repository_baseline: c515862
     document_revision: inferred 2.x
     document_revision_note: rules/foundations/operators.md has no explicit document-revision metadata. Repository history shows substantial updates during the revision-2 period, including 2026-08-13, 2026-08-14, and 2026-08-18. Later specialized rulebooks and newer governance entries take precedence on conflicts.
@@ -126,6 +126,7 @@ integrations:
       - rules/mlir/packages/sec-mlir-dialect_package21.md
       - rules/compiler/linking.md
     code:
+      - internal/ir/semantic/boolean.go
       - internal/lexer/lexer.go
       - internal/operators/precedence.go
       - internal/parser/expression.go
@@ -144,6 +145,8 @@ integrations:
       - internal/lsp
       - cmd/compiler/build_command.go
     tests:
+      - cmd/compiler/range_membership_native_test.go
+      - testdata/build/native/range_membership_scalars.sec
       - internal/sema/membership_origins_test.go
       - testdata/sema/membership_origins
       - internal/ir/semantic/sequence_membership_test.go
@@ -206,6 +209,7 @@ integrations:
       - "compile-time string concatenation materialization (2026-10-05): a fully constant maximal StringConcatPlan retains its exact lexer-decoded FoldedText; Semantic IR consumes the plan as exactly one const.string with no child evaluation, intermediate string, allocation context, failure edge, or try requirement, and the existing Sec-MLIR path emits one sec.const.string (TestCompileTimeStringConcatBuildsOneFoldedConstant; testdata/ir/test_folded_string_concat.sec)"
       - reserved question marks in statement and expression positions produce focused P2012 diagnostics with the canonical Sec 0.1 message, structured unexpected-token metadata, and retained invalid syntax for recovery and tooling
       - "legacy floating operator chain (2026-10-14): float32 and float64 use oeq/une/olt/ole/ogt/oge, preserve signed zero with fneg, and lower % and %= to truncation-based llvm.frem without fast-math; native build materializes libm for Linux/FreeBSD, validates imported struct layouts on consumption, and executable source matrices verify NaN on either side, infinities, divisor signs, signed zero and exact-once left-to-right operands"
+      - "P20 floating operators complete for 0.1 lowering (verified 2026-11-20): Semantic IR carries FloatSemantics with the unordered != predicate and truncation remainder (P20-17), --sec-verify-float-semantics checks them on every emit/native route (P20-22), and Arith lowering runs natively (native float fixtures and range_membership_scalars.sec). The only open part, schema-16 gating, is owned by lowering.sec-mlir-package20 (P20-20) and is not tracked twice."
     partial:
       - contextual matrix x has parser and fixed-shape Sema support but incomplete Semantic IR, lowering, and tooling integration
       - "fixed-array and slice membership (2026-11-01): Semantic IR and schema-12 Sec MLIR represent builtin integer, byte, bool, char, rune, enum and floating element searches with exact-once needle-then-source evaluation, first-match exit and no allocation. Large arrays use bounded-size CFG; slices preserve temporal/spatial guards and named holders, and release direct temporary borrows. Resolver-confirmed membership bool results no longer falsely retain local or match-arm reference origins. String, decimal, named-wrapper and aggregate equality plus physical array/slice lowering remain blocked; the broad membership point is not complete."
@@ -222,11 +226,11 @@ integrations:
       - "constant tracking precision (2026-11-08, TestFirstIterationOverflowAndBranchConstantJoin): a first-iteration domain keeps the pre-loop values of loop-assigned bindings for S1023 only, so an overflow certain on the first iteration warns with that qualifier; it is used only when the loop condition can hold with those values (a condition false on entry, or unknown over a loop-assigned binding, disables it) and follows top-level writes exactly; if/else joins keep a constant both continuing branches end with"
       - "match arms and switch clauses join constants and variant proofs like if/else (2026-11-08, TestMatchAndSwitchJoinConstantsAndVariants): a value every continuing arm or clause ends with survives; a non-exhaustive match or switch keeps the pre-join value on its no-match path; any fallthrough disables the switch merge"
       - "sibling branches start from the pre-join constants (2026-11-08, TestSiblingBranchesStartFromPreJoinConstants, constantBranches): else branches, later match arms and later switch clauses no longer lose a value an earlier sibling changed; a clause entered by fallthrough keeps the changed state"
+      - "Range membership over char, rune, binary floats and named integers (2026-11-20, operators.md §§ 63, 65; MD-105; P20 §§ 24-26): Semantic IR compares char, rune and named/constrained integers through int.compare on their carrier (char and rune unsigned) and binary floats through ordered float.compare with full P20 float semantics, so a NaN value or bound is never contained; not in negates. The native fixture range_membership_scalars.sec covers inclusive and exclusive ends, open ranges, astral runes, NaN, -0.0, infinity and Meters bounds (exit 42)."
+      - "Range membership partial (2026-11-20): built-in and named integers, char, rune and binary floats are lowered (ordered float predicates, so NaN is never contained; range_membership_scalars.sec runs natively). Remaining: decimal values (with P21 decimal comparison) and named or constrained floating values."
+      - "Started (moved to partial 2026-11-20; the text records the done part and what remains): finish fixed-array and slice membership for string, decimal, named-wrapper and aggregate equality, and physical array/slice lowering; represented scalar search is partial above, verified through schema 12 with explicit P16 slice gating, while native sec.array.extract and slice representation remain unsupported"
     remaining:
-      - "P20 floating operators: complete NaN comparison and truncation-remainder facts in Semantic IR, schema-16 Sec MLIR verification and Arith lowering after the corrected P18/P19 predecessor chain; the current emitter and dialect support schema 10"
       - complete decimal arithmetic/remainder/comparison lowering under the owning decimal rules (planned as SEC-MLIR-P21, `lowering.sec-mlir-package21`; operator scale, core ArithmeticError mapping and decimal128 members are normatively decided by MD-066/067/068 on 2026-10-28; actual implementation and predecessor gates remain, following correction §13(3) numbered steps)
-      - finish fixed-array and slice membership for string, decimal, named-wrapper and aggregate equality, and physical array/slice lowering; represented scalar search is partial above, verified through schema 12 with explicit P16 slice gating, while native sec.array.extract and slice representation remain unsupported
-      - lower range membership over char, rune, float, decimal, and nominal ordered values (Semantic IR covers built-in integers)
       - implement exact string-content equality and Unicode-scalar lexicographic ordering through Semantic IR and every maintained backend
       - "MD-004 lowering: represent StringConcatPlan with its resolved allocation context, StringError channel, ownership, and lifetime facts in Semantic IR and maintained backends; refine the context lifetime for results that escape a local allocation lifetime, and prove allocation elimination under profiles without dynamic allocation"
       - integrate interpolation formatting contracts and string.Concat with the same concat plan
@@ -266,6 +270,8 @@ integrations:
       - reserved ? receives focused Sec 0.1 diagnostic
       - backend parity or explicit unsupported-lowering diagnostics
     verification:
+      - command: go test ./internal/ir/semantic -count=1; SEC_MLIR_BIN=build/sec-mlir/bin go test ./cmd/compiler -run 'RangeMembership|Membership|Range|Compare|Operator|TestNativeTrack' -count=1
+        result: "Passed 2026-11-20: TestRangeMembershipScalarsIR/Run with char, rune, float and named-integer ranges on the native track; existing membership, comparison and operator suites unchanged."
       - command: GOTMPDIR=$HOME/.cache/sec-gotmp go test -p 4 ./internal/sema ./internal/ir/... ./internal/lowering/... -count=1; cmd/compiler -run 'Overflow|Diagnostic|Enum|Constant|Compound|Integer|Unreachable|Pitfall|Loop|While'; cmd/lsp -run 'Overflow|Constant|Compound|Integer|Unreachable|Pitfall|Enum'
         result: passed on 2026-11-07 with compound constant overflow as S1023 and path-exact constant invalidation
       - command: GOCACHE=/tmp/sec-go-cache SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir -count=1

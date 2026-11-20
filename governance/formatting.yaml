@@ -483,7 +483,7 @@ integrations:
     area: tooling
     status: partial
     integrated: "2026-09-23"
-    revised: "2026-11-19"
+    revised: "2026-11-20"
     document_revision: "2.1"
     repository_baseline: main-reviewed-2026-09-23
     summary: Tracks conformance of the shared Sec formatter to formatter revision 2.1. The repository has a usable but primarily bespoke, line-oriented CLI/LSP formatter plus a lexical CST foundation that is not yet its primary engine. The formatter must migrate to a CST-driven architecture while preserving existing behavior, then complete the configured, grammar-aware formatting and correction contract.
@@ -771,6 +771,8 @@ integrations:
       - "2026-10-26: formatter-imports-and-file-layout is complete (the milestone below was already implemented); removed the stale remaining entry after auditing § 13–§ 14 against import_region.go and the import-region/group-heading tests. Gathering, path sorting within explicit groups, attached comments, duplicate preservation, conservative handling of ambiguous comments, configured indentation and ordinary declaration order are covered. MD-033 forbids import-origin classification; that obsolete wording is not an outstanding requirement. Top-level vertical spacing continues to use the existing rules; broader canonical spacing remains owned by formatter-canonical-layout."
       - "Formatter project configuration complete (2026-11-04; formatter.md §4): format_version 1, structured/compact style, 2/4/6 indentation and alignment limits retain shared validation and precedence; fixed/adaptive preferred width now affects layout through immutable Settings.EffectiveOptions. Fixed mode ignores presentation context; adaptive mode clamps observed columns or fallback to the project range. CLI and LSP use the same options, and clients without reliable viewport data use the fallback. Parameter lists consume the preference after canonical indentation, preserve intentional multiline/comments, and count Unicode columns. Optional LSP options.secPresentationWidth is documented in cmd/lsp/formatting.md; malformed context returns InvalidParams. Complete configuration support is distinct from the separately open full language-layout and range/on-type work."
       - "2026-11-19 BUG-000030: Parser-owned HandlersOpen metadata distinguishes real expression/statement/assignment try handler lists from operand literals, contextual thread configuration and field-pattern braces. Their matched CST pairs receive ordinary executable-block roles; the existing shared block formatter expands containing lists before nested arms. This fixes second-pass indentation drift after multiline inline thread configuration without adding a thread-specific line scanner or changing tokens, parentheses, ownership markers or language semantics. Full CST/formatter race suites and focused parser/Sema/Semantic IR/CLI/LSP checks pass. Explicit golden coverage spans indentation widths 2/4/6, structured/compact styles, widths 80/120/200, continuation and following declarations, round-trip parseability and idempotence. The broad remaining formatter/CST migration points remain open."
+    partial:
+      - "Started (moved to partial 2026-11-20; the text records the done part and what remains): formatter-cli-lsp-unification: Complete project configuration, effective width, format-on-save, and exact-output equivalence behavior required by § 28. Range/on-type support is implemented under tooling.formatter-declaration-comment-alignment (2026-11-11); broader language-layout and configuration conformance remain here."
     remaining:
       - >-
         formatter-cst-engine-migration: Replace the current bespoke,
@@ -794,7 +796,6 @@ integrations:
         behavior from ordinary formatting, replace the remaining line-oriented
         recognizers with a grammar-aware correction engine, expose canonical
         project configuration, and complete the § 26–§ 27 catalogue.
-      - "formatter-cli-lsp-unification: Complete project configuration, effective width, format-on-save, and exact-output equivalence behavior required by § 28. Range/on-type support is implemented under tooling.formatter-declaration-comment-alignment (2026-11-11); broader language-layout and configuration conformance remain here."
       - >-
         formatter-invariants-and-tests: Enforce every § 29 and § 31 invariant
         and complete the § 30 golden, second-pass, round-trip, malformed-source,

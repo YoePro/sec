@@ -2892,10 +2892,13 @@ func (cl *CollectionLiteral) String() string {
 }
 
 type StructLiteralField struct {
-	Token  lexer.Token
-	Name   *Identifier
-	Value  Expression
-	Spread bool
+	// SynthesizedDefault distinguishes an omitted field materialized by Sema
+	// from source syntax across reanalysis. Rules: rules/declarations/unions.md §5.4.
+	SynthesizedDefault bool
+	Token              lexer.Token
+	Name               *Identifier
+	Value              Expression
+	Spread             bool
 	// Positional marks a shaped metadata or CpuSet literal component. Value
 	// is source-owned; Name is a synthetic private component key, not a field.
 	// Rules: rules/collections/shaped-types.md §§4.1,6.0,15.3 (MD-016);

@@ -242,7 +242,11 @@ func (fb *functionBuilder) buildPackForward(call *ast.CallExpression) (builtValu
 		}
 		callee, parameters, returnType = target.id, target.function.Parameters, target.function.ReturnType
 	}
-	if len(parameters) != len(resolved.Expanded) {
+	plan := resolved.Arguments
+	if plan == nil {
+		return builtValue{}, fb.unsupported("pack forwarding without resolved prepared arguments", call.Token)
+	}
+	if len(parameters) != len(plan.Expanded) {
 		return builtValue{}, fb.unsupported("pack forwarding into a homogeneous variadic parameter", call.Token)
 	}
 	facts := &PackForwardFacts{Parameter: spec.facts.Parameter, Consuming: resolved.Consuming}
@@ -261,20 +265,27 @@ func (fb *functionBuilder) buildPackForward(call *ast.CallExpression) (builtValu
 	} else if resolved.Function.ImplTarget != "" && !staticMethodLowerable(resolved.Function) {
 		return builtValue{}, fb.unsupported("static method of a generic implementation", call.Token)
 	}
-	for index, argument := range resolved.Expanded {
+	for index, argument := range plan.Expanded {
+		if argument.Source < 0 || argument.Source >= len(plan.Sources) || argument.RuntimeSpread {
+			return builtValue{}, fb.unsupported("invalid prepared pack argument source", call.Token)
+		}
 		expected, err := fb.owner.internType(parameters[index].Type)
 		if err != nil {
 			return builtValue{}, err
 		}
 		action, isReference := fb.referenceArgumentAction(expected)
+		if !supportedPreparedPackOperation(argument, isReference) {
+			return builtValue{}, fb.unsupported("pack forwarding ownership operation "+string(argument.Operation), call.Token)
+		}
 		var value builtValue
-		if argument.Position < 0 {
-			value, err = fb.buildExpr(call.Arguments[argument.Source], expected)
+		if argument.ElementIndex < 0 {
+			source := plan.Sources[argument.Source].Expression
+			value, err = fb.buildExpr(source, expected)
 			if err == nil && !isReference && !fb.storageAllowed(value.typ) {
-				err = fb.unsupported("non-trivial call argument", expressionToken(call.Arguments[argument.Source]))
+				err = fb.unsupported("non-trivial call argument", expressionToken(source))
 			}
 		} else {
-			value, err = fb.packForwardOperand(call, resolved, index, argument.Position, isReference)
+			value, err = fb.packForwardOperand(call, resolved, index, int(argument.ElementIndex), isReference)
 		}
 		if err != nil {
 			return builtValue{}, err
@@ -287,7 +298,7 @@ func (fb *functionBuilder) buildPackForward(call *ast.CallExpression) (builtValu
 		}
 		operands = append(operands, value.id)
 		actions = append(actions, action)
-		facts.Positions = append(facts.Positions, argument.Position)
+		facts.Positions = append(facts.Positions, int(argument.ElementIndex))
 	}
 	ret, err := fb.owner.internSignatureType(returnType)
 	if err != nil {
@@ -320,6 +331,31 @@ func (fb *functionBuilder) buildPackForward(call *ast.CallExpression) (builtValu
 		return builtValue{id: value.ID, typ: ret}, nil
 	}
 	return fb.result(op, ret), nil
+}
+
+// supportedPreparedPackOperation keeps the resolved source operation distinct
+// from its destination mode. Trivial whole-pack moves normalize to ordinary
+// operands; semantic copies and unrepresented owned payloads never do.
+// Rules: rules/compiler/semantic_ir.md §27A(7); spread.md §4.4.
+func supportedPreparedPackOperation(argument sema.ResolvedExpandedCallArgument, reference bool) bool {
+	if reference {
+		if argument.Delivery != sema.ArgumentBorrowShared && argument.Delivery != sema.ArgumentBorrowMutable {
+			return false
+		}
+		switch argument.Operation {
+		case sema.ArgumentBorrowShared, sema.ArgumentBorrowMutable, sema.ArgumentWholePackTransfer:
+			return true
+		}
+		return false
+	}
+	if argument.Delivery != sema.ArgumentMove {
+		return false
+	}
+	switch argument.Operation {
+	case sema.ArgumentCopyTrivial, sema.ArgumentWholePackTransfer, sema.ArgumentMove, sema.ArgumentValue:
+		return true
+	}
+	return false
 }
 
 // packForwardOperand yields position k of the enclosing pack for one expanded
@@ -356,7 +392,7 @@ func (fb *functionBuilder) packForwardOperand(call *ast.CallExpression, resolved
 	if !ok || sourceType.Kind != TypeReference {
 		return builtValue{}, fmt.Errorf("pack position %d does not hold a reference", k)
 	}
-	parameterType := resolved.Expanded[index].Parameter.Type
+	parameterType := resolved.Arguments.Expanded[index].Parameter.Type
 	derived := *parameter.Reference
 	derived.Borrow, derived.Lifetime = uint32(borrow), uint32(lifetime)
 	return fb.passReference(source, sourceType, parameter.Reference, &derived, parameterType.ReferenceMutable, call.Token)

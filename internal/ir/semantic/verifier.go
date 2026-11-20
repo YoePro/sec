@@ -938,7 +938,8 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 			return fmt.Errorf("invalid float.to-bool")
 		}
 	case OpNamedConvert:
-		if len(op.Operands) != 1 || len(op.Results) != 1 || !isIntegerCarrierType(module.Types, values[op.Operands[0]].Type) ||
+		// The carrier is a built-in integer or, since P22, a binary float.
+		if len(op.Operands) != 1 || len(op.Results) != 1 || !isIntegerCarrierType(module.Types, values[op.Operands[0]].Type) && !typeHasKind(module.Types, integerCarrierOf(module.Types, values[op.Operands[0]].Type), TypeFloat) ||
 			integerCarrierOf(module.Types, values[op.Operands[0]].Type) != integerCarrierOf(module.Types, op.Results[0].Type) ||
 			values[op.Operands[0]].Type == op.Results[0].Type {
 			return fmt.Errorf("invalid named.convert")

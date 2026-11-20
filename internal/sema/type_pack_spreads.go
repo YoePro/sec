@@ -56,6 +56,9 @@ type ResolvedTypePackForward struct {
 	Mode      string // "owned", "shared" or "mutable": how the template holds its pack.
 	Borrow    ResolvedReferencePlan
 	Expanded  []ResolvedTypePackForwardArgument
+	// Arguments shares the canonical prepared argument representation used by
+	// ordinary fixed-array and homogeneous variadic spread calls.
+	Arguments *ResolvedCallArgumentPlan
 }
 
 // ResolvedTypePackForwardArgument is one expanded argument of a forwarding call.
@@ -889,6 +892,7 @@ func (a *Analyzer) ResolvedTypePackForwardOf(call *ast.CallExpression, outer map
 	if !known {
 		return ResolvedTypePackForward{}, "pack forwarding call with an unresolved element"
 	}
+	resolved.Arguments = a.resolvedTypePackArgumentPlan(forward, resolved, outer)
 	for index := range resolved.Expanded {
 		resolved.Expanded[index].Parameter.Type = semanticSnapshotType(resolved.Expanded[index].Parameter.Type)
 	}

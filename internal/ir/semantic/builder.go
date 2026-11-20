@@ -1013,11 +1013,23 @@ func (fb *functionBuilder) buildStatements(statements []ast.Statement) error {
 				return err
 			}
 		case *ast.ExpressionStatement:
-			if try, isTry := stmt.Expression.(*ast.TryExpression); isTry && fb.owner.maxPackage >= dynamicArrayLoweringPackage {
+			// Statement try needs only Result try control flow (P10); a
+			// dynamic-array Append keeps its own P18 gate in its operation.
+			if try, isTry := stmt.Expression.(*ast.TryExpression); isTry && fb.owner.maxPackage >= 10 {
 				// `try values.Append(x)`: a statement try whose success is
-				// void yields no value to consume (errorhandling.md § 8).
-				if typ, typed := fb.owner.analyzer.TypeOf(try); !typed || typ.Kind != sema.VoidType {
-					return fb.unsupported("statement try with a non-void success value", stmt.Token)
+				// void yields no value to consume (errorhandling.md § 8). A
+				// non-void success value is implicitly discarded like an
+				// unused call result: a trivial value is dropped, an owned
+				// one destroyed once by its plan (discard.md §§ 5, 7).
+				typ, typed := fb.owner.analyzer.TypeOf(try)
+				if !typed {
+					return fb.unsupported("statement try without a resolved success type", stmt.Token)
+				}
+				if typ.Kind != sema.VoidType {
+					if err := fb.discardExpression(try, DiscardImplicitCallResult, stmt.Token); err != nil {
+						return err
+					}
+					continue
 				}
 				if _, err := fb.buildExpr(try, 0); err != nil {
 					return err
@@ -2272,6 +2284,9 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 				return fb.buildRegisterConversion(e, conversion)
 			}
 		}
+		if plan, resolved := fb.owner.analyzer.ResolvedNamedContractConversionOf(e); resolved {
+			return fb.buildNamedContractConversion(e, plan)
+		}
 		if conversion, resolved := fb.owner.analyzer.ResolvedIntegerConversionOf(e); resolved {
 			return fb.buildIntegerConversion(e, conversion)
 		}
@@ -2622,113 +2637,6 @@ func semanticStructAction(action sema.ResolvedStructFieldAction) (StructFieldAct
 	default:
 		return "", false
 	}
-}
-
-func (fb *functionBuilder) buildUnionConstruction(expr ast.Expression, plan sema.ResolvedUnionConstruction, resultType TypeID) (builtValue, error) {
-	depth := len(fb.prepared)
-	defer fb.takePrepared(depth)
-	definition, ok := fb.owner.unionDefinition(resultType)
-	if !ok || int(plan.VariantIndex) >= len(definition.Variants) {
-		return builtValue{}, fb.unsupported("union construction without definition", expressionToken(expr))
-	}
-	variant := definition.Variants[plan.VariantIndex]
-	op := Operation{Kind: OpUnionConstruct, UnionVariant: UnionVariantIndex(plan.VariantIndex), Location: locationFromExpression(expr)}
-	switch plan.Kind {
-	case sema.ResolvedUnionVariantEmpty:
-		if variant.Kind != UnionVariantEmpty {
-			return builtValue{}, fmt.Errorf("resolved empty union variant disagrees with definition")
-		}
-	case sema.ResolvedUnionVariantSingle:
-		call, ok := expr.(*ast.CallExpression)
-		if !ok || len(call.Arguments) != 1 || variant.Kind != UnionVariantSingle {
-			return builtValue{}, fb.unsupported("single-payload union construction", expressionToken(expr))
-		}
-		semaVariant := plan.UnionType.UnionVariants[plan.VariantIndex]
-		if semaVariant.Payload == nil || len(plan.PayloadActions) != 1 {
-			return builtValue{}, fb.unsupported("unresolved union payload transfer", expressionToken(call.Arguments[0]))
-		}
-		action, err := fb.unionPayloadAction(plan.PayloadActions[0], call.Arguments[0], *semaVariant.Payload)
-		if err != nil {
-			return builtValue{}, err
-		}
-		payload, err := fb.buildExpr(call.Arguments[0], variant.Payload)
-		if err != nil {
-			return builtValue{}, err
-		}
-		op.Operands = []ValueID{payload.id}
-		op.PayloadActions = []UnionPayloadAction{action}
-	case sema.ResolvedUnionVariantFields:
-		literal, ok := expr.(*ast.StructLiteral)
-		if !ok || variant.Kind != UnionVariantFields {
-			return builtValue{}, fb.unsupported("field-payload union construction", expressionToken(expr))
-		}
-		values := map[string]builtValue{}
-		fieldActions := map[string]UnionPayloadAction{}
-		fieldTypes := map[string]TypeID{}
-		for _, field := range variant.PayloadFields {
-			fieldTypes[field.Name] = field.Type
-		}
-		semaVariant := plan.UnionType.UnionVariants[plan.VariantIndex]
-		semaFields := map[string]sema.Type{}
-		for _, field := range semaVariant.PayloadFields {
-			semaFields[field.Name] = field.Type
-		}
-		// Evaluate in source order before canonical declaration-order assembly.
-		if len(plan.PayloadActions) != len(plan.SourceFieldOrder) {
-			return builtValue{}, fb.unsupported("unresolved union field transfer", expressionToken(expr))
-		}
-		ordinal := 0
-		for _, sourceField := range literal.Fields {
-			if sourceField == nil || sourceField.Name == nil || sourceField.Spread {
-				continue
-			}
-			name := sourceField.Name.Value
-			fieldAction, err := fb.unionPayloadAction(plan.PayloadActions[ordinal], sourceField.Value, semaFields[name])
-			if err != nil {
-				return builtValue{}, err
-			}
-			ordinal++
-			fieldActions[name] = fieldAction
-			value, err := fb.buildExpr(sourceField.Value, fieldTypes[name])
-			if err != nil {
-				return builtValue{}, err
-			}
-			fb.prepareOperand(value, semaFields[name], sourceField.Token)
-			values[name] = value
-		}
-		for _, field := range variant.PayloadFields {
-			value, exists := values[field.Name]
-			if !exists {
-				return builtValue{}, fmt.Errorf("union field %s was not evaluated", field.Name)
-			}
-			op.Operands = append(op.Operands, value.id)
-			op.UnionFields = append(op.UnionFields, field.Name)
-			op.PayloadActions = append(op.PayloadActions, fieldActions[field.Name])
-		}
-	default:
-		return builtValue{}, fb.unsupported("union variant kind", expressionToken(expr))
-	}
-	return fb.result(op, resultType), nil
-}
-
-// unionPayloadAction lowers the payload transfer Sema resolved for a union
-// construction operand (P17-35). A moved owner or fresh value is taken
-// directly once its producer lowers; a specialization may make a generic
-// operand trivially copyable, as for struct fields.
-func (fb *functionBuilder) unionPayloadAction(resolved sema.ResolvedStructFieldAction, operand ast.Expression, payload sema.Type) (UnionPayloadAction, error) {
-	switch resolved {
-	case sema.StructFieldCopyTrivial:
-		return UnionPayloadCopyTrivial, nil
-	case sema.StructFieldMove, sema.StructFieldConstructDirect:
-		if len(fb.owner.substitution) != 0 && fb.owner.concreteTriviallyCopyable(payload) {
-			return UnionPayloadCopyTrivial, nil
-		}
-		if !fb.ownedArgumentLowerable(operand) {
-			return "", fb.unsupported("non-trivial union payload transfer", expressionToken(operand))
-		}
-		return UnionPayloadConstructDirect, nil
-	}
-	return "", fb.unsupported("union payload transfer "+string(resolved), expressionToken(operand))
 }
 
 func (b *builder) unionDefinition(typeID TypeID) (UnionDefinition, bool) {
@@ -3947,6 +3855,12 @@ func (fb *functionBuilder) buildResolvedOperatorWithFailure(expr ast.Expression,
 		}
 		return builtValue{}, fb.unsupported("unresolved or unsupported operator", expressionToken(expr))
 	}
+	// A value of a constrained named type is created only through a checked
+	// conversion; an operator result in that type would need its own contract
+	// check (contracts.md § 12(3)) and stays a named boundary until then.
+	if len(resolved.ResultType.Contracts) > 0 && resolved.ResultType.Kind != sema.BoolType {
+		return builtValue{}, fb.unsupported("operator result of constrained type "+resolved.ResultType.Name+" without a contract check", expressionToken(expr))
+	}
 	leftType, err := fb.owner.internType(resolved.LeftType)
 	if err != nil {
 		return builtValue{}, err
@@ -4184,222 +4098,6 @@ func operatorSpelling(expr ast.Expression) string {
 	default:
 		return ""
 	}
-}
-
-// buildCall consumes the selected Sema target and rejects unavailable method
-// dispatch before attempting any direct-call lowering.
-// Rules: rules/compiler/semantic_ir.md — resolved call facts;
-// rules/declarations/interfaces.md — §6; compiler_pipeline.md — lowering prerequisites.
-func (fb *functionBuilder) buildCall(call *ast.CallExpression) (builtValue, error) {
-	if boundary, ok := fb.dynamicArrayMemberBoundary(call); ok {
-		return builtValue{}, boundary
-	}
-	if boundary, ok := fb.coreArrayMaterializationBoundary(call); ok {
-		return builtValue{}, boundary
-	}
-	if _, rounded := fb.owner.analyzer.RoundedConversionOf(call); rounded {
-		// MD-047: Semantic IR has no rounding-conversion operation yet.
-		return builtValue{}, fb.unsupported("explicit rounded conversion (RoundingMode)", call.Token)
-	}
-	if fb.owner.analyzer.IsTypePackForward(call) {
-		return fb.buildPackForward(call)
-	}
-	if fb.owner.analyzer.IsDynamicArrayLengthCall(call) && fb.owner.maxPackage >= dynamicArrayLoweringPackage && len(call.Arguments) == 1 {
-		return fb.buildDynamicArrayLength(call.Arguments[0], call.Token)
-	}
-	if plan, allocating := fb.owner.analyzer.ResolvedAllocationPlanOf(call); allocating && fb.owner.maxPackage >= dynamicArrayLoweringPackage {
-		if member, ok := call.Callee.(*ast.MemberExpression); ok && member.Property != nil {
-			return fb.buildDynamicArrayAppend(call, member, plan)
-		}
-	}
-	resolved, ok := fb.owner.analyzer.ResolvedCallTarget(call)
-	if !ok {
-		// Public lookup is implemented, but checked materialization needs
-		// P23 and its P18/P19 allocation/string-storage prerequisites.
-		// Rules: rules/corrections/md109-core-string-materialization-correction.md
-		// — §§5.2,9.3,10.3; rules/mlir/packages/sec-mlir-dialect_package23.md — §§35–37.
-		if member, ok := call.Callee.(*ast.MemberExpression); ok && member.Property != nil {
-			site := member.Property.Token
-			if known, ok := fb.owner.analyzer.CompilerKnownMemberAt(site.File, site.Line, site.Column); ok && (known.ID == "CKM-RESULT-OK" || known.ID == "CKM-RESULT-ERR") {
-				return fb.buildResultProjection(call, member, known.ID == "CKM-RESULT-OK")
-			}
-			if known, ok := fb.owner.analyzer.CompilerKnownMemberAt(site.File, site.Line, site.Column); ok && (known.ID == "CKM-STRING-FROMBYTEARRAY" || known.ID == "CKM-STRING-FROMRUNEARRAY") {
-				return builtValue{}, fb.unsupported("string."+known.Name+" materialization requires P23 allocation/string lowering", site)
-			} else if ok && strings.HasPrefix(known.ID, "CKM-TOSTRING") {
-				return builtValue{}, fb.unsupported("ToString() needs P23 allocation/string lowering and per-specialization selection of a user ToString", site)
-			}
-		}
-		if operation, register := fb.owner.analyzer.ResolvedRegisterOperationOf(call); register {
-			return fb.buildHardwareRegisterOperation(call, operation)
-		}
-		if result, typed := fb.owner.analyzer.TypeOf(call); typed && result.Kind == sema.RegisterType {
-			// MD-110 conversions are built before buildCall; reaching here
-			// means Sema recorded no conversion for the operand.
-			return builtValue{}, fb.unsupported("integer-to-register conversion "+result.Name+"(...) without a resolved MD-110 conversion", call.Token)
-		}
-		return builtValue{}, fb.unsupported("unresolved function call", call.Token)
-	}
-	if resolved.Kind == sema.ResolvedInterfaceMethodCall {
-		return builtValue{}, fb.unsupported("interface method dispatch", call.Token)
-	}
-	callee := functionID(resolved.Function, fb.owner.module.Types)
-	parameters := resolved.Function.Parameters
-	if !isGenericInstance(resolved.Function) {
-		if err := fb.owner.declareImportedCallee(resolved.Function, call.Token); err != nil {
-			return builtValue{}, err
-		}
-	}
-	if isGenericInstance(resolved.Function) && resolved.Kind != sema.ResolvedInterfaceMethodCall {
-		spec, err := fb.owner.demandSpecialization(call, resolved.Function)
-		if err != nil {
-			return builtValue{}, err
-		}
-		callee, parameters = spec.id, spec.function.Parameters
-	}
-	instanceMethod := !resolved.Function.Static && resolved.Function.ImplTarget != "" && resolved.Kind != sema.ResolvedInterfaceMethodCall
-	if instanceMethod && !fb.owner.instanceMethodLowerable(resolved.Function) {
-		return builtValue{}, fb.unsupported("instance method call", call.Token)
-	}
-	if resolved.Kind == sema.ResolvedStaticMethodCall {
-		if resolved.Function.Static && !staticMethodLowerable(resolved.Function) {
-			return builtValue{}, fb.unsupported("static method of a generic implementation", call.Token)
-		}
-	}
-	args := make([]ValueID, 0, len(call.Arguments)+1)
-	actions := make([]ArgumentAction, 0, len(call.Arguments)+1)
-	if instance, hardware := fb.hardwareReceiverArgument(call); instanceMethod && hardware {
-		// MD-077 § 12(2): a member called on a hardware instance runs its
-		// hardware variant with the lent instance authority.
-		variant, err := fb.owner.demandHardwareVariant(resolved.Function, call.Token)
-		if err != nil {
-			return builtValue{}, err
-		}
-		callee = variant
-		args = append(args, instance.id)
-		actions = append(actions, ArgumentHardwareInstance)
-	} else if instanceMethod {
-		receiver, action, err := fb.buildReceiverArgument(call, resolved.Function)
-		if err != nil {
-			return builtValue{}, err
-		}
-		args = append(args, receiver.id)
-		actions = append(actions, action)
-	}
-	// Argument moves cancel their source cleanup only when the call commits,
-	// after every argument was prepared (destruction.md § 9.2(3)).
-	pendingCancels := len(fb.pendingArgumentCancels)
-	// Fresh owned arguments stay prepared until the call takes them (P17-16).
-	preparedDepth := len(fb.prepared)
-	defer fb.takePrepared(preparedDepth)
-	for index, arg := range call.Arguments {
-		if _, spread := explicitMoveFree(arg).(*ast.SpreadExpression); spread {
-			return builtValue{}, fb.unsupported("spread call argument", expressionToken(arg))
-		}
-		expected := TypeID(0)
-		if index < len(parameters) {
-			parameter := parameters[index]
-			if fb.owner.maxPackage >= sliceLoweringPackage && (sourceSliceType(parameter.Type) || parameter.Type.Kind == sema.StringViewType) {
-				var sliceType TypeID
-				mutable := false
-				var err error
-				if parameter.Type.Kind == sema.StringViewType {
-					sliceType = fb.owner.module.Types.stringViewType()
-				} else {
-					sliceType, mutable, err = fb.owner.internSourceSliceType(parameter.Type)
-				}
-				if err != nil {
-					return builtValue{}, err
-				}
-				v, err := fb.lowerSliceArgument(arg, sliceType)
-				if err != nil {
-					return builtValue{}, err
-				}
-				action := ArgumentSharedReference
-				if mutable {
-					action = ArgumentMutableReference
-				}
-				args = append(args, v.id)
-				actions = append(actions, action)
-				continue
-			}
-			expected, _ = fb.owner.internType(parameter.Type)
-		}
-		if action, isReference := fb.referenceArgumentAction(expected); isReference {
-			// package 15 §§ 59-60: the argument is the reference value its
-			// resolved implicit borrow, explicit borrow or pass produces.
-			v, err := fb.buildExpr(arg, expected)
-			if err != nil {
-				return builtValue{}, err
-			}
-			if v.typ != expected {
-				return builtValue{}, fb.unsupported("reference argument whose type differs from its parameter", expressionToken(arg))
-			}
-			args = append(args, v.id)
-			actions = append(actions, action)
-			continue
-		}
-		if _, isReference := arg.(*ast.RefExpression); isReference {
-			return builtValue{}, fb.unsupported("reference argument call", expressionToken(arg))
-		}
-		v, err := fb.buildExpr(arg, expected)
-		if err != nil {
-			return builtValue{}, err
-		}
-		action := ArgumentCopyTrivial
-		if !fb.storageAllowed(v.typ) || !trivialDestruction(fb.owner.module, v.typ) {
-			if !fb.ownedArgumentLowerable(arg) {
-				return builtValue{}, fb.unsupported("non-trivial call argument", expressionToken(arg))
-			}
-			action = ArgumentMove
-			if fb.freshArgument(arg) && index < len(parameters) {
-				fb.prepareOperand(v, parameters[index].Type, expressionToken(arg))
-			}
-		}
-		args = append(args, v.id)
-		actions = append(actions, action)
-	}
-	ret, err := fb.owner.internSignatureType(resolved.Function.ReturnType)
-	if err != nil {
-		return builtValue{}, err
-	}
-	kind := OpDirectCall
-	if resolved.Kind == sema.ResolvedForeignCall {
-		kind = OpForeignCall
-	}
-	for _, cancel := range fb.pendingArgumentCancels[pendingCancels:] {
-		fb.emit(cancel)
-	}
-	fb.pendingArgumentCancels = fb.pendingArgumentCancels[:pendingCancels]
-	op := Operation{Kind: kind, Callee: callee, Operands: args, ArgumentActions: actions, Location: location(call.Token)}
-	if call.HasUnsafePrefix() {
-		marker := location(call.Unsafe)
-		op.UnsafeAuthorization = &marker
-	}
-	if resolved.Function.ReturnType.Kind == sema.VoidType {
-		fb.emit(op)
-		return builtValue{typ: ret}, nil
-	}
-	if resolved.Function.ReturnType.Kind == sema.ReferenceType || resolved.Function.ReturnType.Kind == sema.StringViewType && fb.owner.maxPackage >= sliceLoweringPackage {
-		// The returned reference carries the caller-side facts Sema
-		// instantiated from the callee's returned-origin summary
-		// (package15.md §§ 61-62).
-		facts, ok := fb.owner.analyzer.ResolvedCallReferenceOf(call)
-		if !ok || !facts.Checkable() {
-			return builtValue{}, fb.unsupported("call returning a reference without an instantiated origin", call.Token)
-		}
-		ownership := OwnershipSharedReference
-		if resolved.Function.ReturnType.ReferenceMutable {
-			ownership = OwnershipMutableReference
-		}
-		metadata := referenceMetadataOf(facts)
-		value := fb.newValue(ret, ownership, op.Location)
-		op.Results = []Value{value}
-		op.Reference = metadata
-		fb.emit(op)
-		fb.recordReference(value.ID, metadata)
-		return builtValue{id: value.ID, typ: ret}, nil
-	}
-	return fb.result(op, ret), nil
 }
 
 func (fb *functionBuilder) result(op Operation, typ TypeID) builtValue {

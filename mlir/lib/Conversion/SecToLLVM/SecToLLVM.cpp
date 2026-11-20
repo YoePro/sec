@@ -111,6 +111,9 @@ bool isScalarTaggedType(Type type) {
 }
 
 bool isScalarTaggedPayload(Type type) {
+  // A named scalar is carried by its base (layout.md § 18).
+  while (auto named = dyn_cast<sec::NamedType>(type))
+    type = named.getBase();
   if (auto enumType = dyn_cast<sec::EnumType>(type))
     return enumType.getRepresentation() == "integer" &&
            isa<IntegerType, sec::IntType, sec::UIntType>(enumType.getUnderlying());

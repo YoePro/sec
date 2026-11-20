@@ -1,0 +1,30 @@
+module main
+
+fn Read(owner: ref int[2], first: int, second: int) int { return first + second }
+fn Last(first: int, second: int, owner: ref mut int[2]) int { return first + second }
+fn Exclusive(owner: ref mut int[2], first: int, second: int) int { return first + second }
+fn Shared(values: ref int[2]) int { return Read(values, values...) }
+fn PreparedBeforeBorrow(values: ref mut int[2]) int { return Last(values..., values) }
+fn Separate(values: ref mut int[2], other: int[2]) int { return Exclusive(values, other...) }
+type Buffers struct { Values: int[2], Other: int[2], }
+fn DisjointFields(buffer: ref mut Buffers) int { return Exclusive(buffer.Values, buffer.Other...) }
+fn Snapshot(values: ref int[2]) int[2] { return [values[0], values[1]] }
+fn FactoryBeforeBorrow(values: ref mut int[2]) int {
+    let copied := Snapshot(values)
+    return Exclusive(values, copied...)
+}
+fn Duplicate(values: int[2]) int { return Sum(values..., values...) }
+fn Sum(values: ...int) int { return 0 }
+fn Runtime(values: ...int) int { return Sum(values...) }
+fn Transfer(values: ...int) int { return Sum(<-values...) }
+fn Generic[T](-> first: T, -> second: T) T { return first }
+fn Expected(values: int[2]) int {
+    let result: int := Generic(values...)
+    return result + values[0]
+}
+
+fn SnapshotEmpty(values: ref int[2]) int[0] { return [] }
+fn EmptyBeforeBorrow(values: ref mut int[2]) void {
+    ExclusiveOnly(SnapshotEmpty(values)..., values)
+}
+fn ExclusiveOnly(owner: ref mut int[2]) void {}

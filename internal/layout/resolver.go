@@ -17,6 +17,7 @@ import (
 // Rules:
 //   - rules/memory/layout.md — §§ 3, 5, 7–9, 18, 25, 39
 //   - rules/mlir/packages/sec-mlir-dialect_package24.md — §§ 7–11, 16
+//   - rules/corrections/MD-141-MD-142-scalar-and-aggregate-layout-normative-correction-2026-11-20.md — §§ 2–7
 type Resolver struct {
 	plan       ResolvedScalarPlan
 	key        CompilationPlanLayoutKey
@@ -34,8 +35,8 @@ func MaximumExtent(plan ResolvedScalarPlan) *big.Int {
 	return limit.Sub(limit, big.NewInt(1))
 }
 
-// NewResolver binds a resolver to one validated plan and its scalar
-// alignment facts (nil until MD-141 is decided).
+// NewResolver binds a resolver to one validated plan and its typed scalar
+// alignment facts (MD-141 § 3); nil leaves every scalar alignment unresolved.
 func NewResolver(plan ResolvedScalarPlan, alignments ScalarAlignments) (*Resolver, error) {
 	key, err := LayoutKeyOf(plan, alignments)
 	if err != nil {
@@ -44,8 +45,8 @@ func NewResolver(plan ResolvedScalarPlan, alignments ScalarAlignments) (*Resolve
 	copied := ScalarAlignments(nil)
 	if alignments != nil {
 		copied = ScalarAlignments{}
-		for size, alignment := range alignments {
-			copied[size] = alignment
+		for representation, alignment := range alignments {
+			copied[representation] = alignment
 		}
 	}
 	supported := []*big.Int{big.NewInt(1)}
@@ -147,22 +148,31 @@ func (r *Resolver) resolve(requirement LayoutRequirement) LayoutID {
 	}
 }
 
-// resolveScalar selects the representation of one scalar (P24-16): sizes
-// from the semantic widths, the plan width for int/uint/float, and the
-// alignment from the plan's scalar alignment facts. bool and rune storage
-// sizes and every scalar alignment are undecided (MD-141), so those layouts
-// stay incomplete instead of guessed; decimals are P24-17.
-// Rules: rules/memory/layout.md — §§ 18, 18(4a), 18(5); rules/types/types.md — §§ 9.2–9.4.
+// resolveScalar selects the representation of one scalar (P24-16, MD-141):
+// sizes from the semantic widths, the plan width for int/uint/float, bool as
+// 1 byte and rune as 4 bytes, and the alignment from the plan's typed fact
+// for the storage representation (bool/byte/char IntegerStorage(8), rune
+// IntegerStorage(32)). A missing fact leaves the layout incomplete; the
+// alignment is never derived from the byte width.
+// Rules: rules/memory/layout.md — §§ 18, 18(4a), 18(5); rules/types/types.md — §§ 9.2–9.4;
+// MD-141 correction §§ 2–3.
 func (r *Resolver) resolveScalar(layout ResolvedLayout, requirement LayoutRequirement) ResolvedLayout {
 	width := uint64(requirement.WidthBits)
 	if requirement.TargetSized {
 		width = uint64(r.plan.PointerWidthBits)
 	}
 	layout.Provenance = "scalar:" + string(requirement.Scalar)
+	class := IntegerStorage
 	switch requirement.Scalar {
 	case ScalarByte, ScalarChar:
 		width = 8
 		layout.ValidBitPattern = "all 8-bit patterns"
+	case ScalarBool:
+		width = 8
+		layout.ValidBitPattern = "0x00 (false) or 0x01 (true) only"
+	case ScalarRune:
+		width = 32
+		layout.ValidBitPattern = "Unicode scalar values only (U+0000..U+10FFFF without surrogates)"
 	case ScalarSigned, ScalarUnsigned:
 		if width == 0 || width%8 != 0 {
 			layout.Completeness, layout.Missing = LayoutInvalid, []string{fmt.Sprintf("integer width %d bits is not a whole number of bytes", width)}
@@ -174,35 +184,30 @@ func (r *Resolver) resolveScalar(layout ResolvedLayout, requirement LayoutRequir
 			layout.Completeness, layout.Missing = LayoutInvalid, []string{fmt.Sprintf("float width %d is not binary32 or binary64", width)}
 			return layout
 		}
+		class = BinaryFloatStorage
 		layout.ValidBitPattern = fmt.Sprintf("IEEE binary%d", width)
-	case ScalarBool:
-		layout.ValidBitPattern = "false or true only"
-		layout.Missing = append(layout.Missing, "storage size of bool (MD-141)")
-	case ScalarRune:
-		layout.ValidBitPattern = "Unicode scalar values only (U+0000..U+10FFFF without surrogates)"
-		layout.Missing = append(layout.Missing, "storage size of rune (MD-141)")
 	default:
 		layout.Completeness, layout.Missing = LayoutInvalid, []string{fmt.Sprintf("unknown scalar kind %q", requirement.Scalar)}
 		return layout
 	}
-	if len(layout.Missing) == 0 {
-		layout.SizeBytes = new(big.Int).SetUint64(width / 8)
-		if _, err := r.arithmetic.CheckedAdd(layout.TypeIdentity, layout.SizeBytes, new(big.Int)); err != nil {
-			layout.SizeBytes = nil
-			layout.Completeness, layout.Missing = LayoutInvalid, []string{err.Error()}
-			return layout
-		}
-		alignment, known := r.alignments[width/8]
-		if !known {
-			layout.Missing = append(layout.Missing, fmt.Sprintf("alignment of a %d-byte scalar on %s (MD-141)", width/8, r.key.Triple))
-		} else {
-			layout.AlignBytes = new(big.Int).SetUint64(alignment)
-		}
-	}
-	if len(layout.Missing) != 0 {
-		layout.Completeness = LayoutIncomplete
+	representation := StorageRepresentation{Class: class, WidthBits: uint16(width)}
+	if !validStorageRepresentation(representation) {
+		layout.Completeness, layout.Missing = LayoutUnsupported, []string{fmt.Sprintf("scalar storage representation %s (MD-141 § 3(2))", representation)}
 		return layout
 	}
+	layout.SizeBytes = new(big.Int).SetUint64(width / 8)
+	if _, err := r.arithmetic.CheckedAdd(layout.TypeIdentity, layout.SizeBytes, new(big.Int)); err != nil {
+		layout.SizeBytes = nil
+		layout.Completeness, layout.Missing = LayoutInvalid, []string{err.Error()}
+		return layout
+	}
+	alignment, known := r.alignments[representation]
+	if !known {
+		layout.Completeness = LayoutIncomplete
+		layout.Missing = []string{fmt.Sprintf("alignment of %s storage on %s (MD-141 § 3)", representation, r.key.Triple)}
+		return layout
+	}
+	layout.AlignBytes = new(big.Int).SetUint64(alignment)
 	layout.Completeness = LayoutComplete
 	return layout
 }
@@ -264,12 +269,16 @@ func appendOnce(list []string, value string) []string {
 	return append(list, value)
 }
 
-// resolveAggregate resolves every stored field in declaration order and keeps
-// field identity separate from offset (P24-19). An empty struct has size 0
-// and alignment 1 (layout.md § 24(6)). Placement of a nonempty aggregate
-// needs the native aggregate rule (MD-142), so it stays incomplete with its
-// field layouts recorded and no offset, alignment or size guessed.
-// Rules: rules/memory/layout.md — §§ 11, 13, 24(6), 25.
+// resolveAggregate resolves every stored field in declaration order and
+// places them with the canonical native algorithm (MD-142 § 6): cursor C=0,
+// alignment A=1; for each field Offset = AlignUp(C, Ai), C = Offset + Size,
+// A = max(A, Ai); then Size = AlignUp(C, A). Field identity stays separate
+// from its offset, a zero-sized field occupies no bytes, and an empty struct
+// has size 0 and alignment 1 (layout.md § 24(6)). Every step is checked
+// against the plan's maximum byte extent. Explicit pack/minAlign/byteOffset
+// contracts (MD-019) and target aggregate constraints are not modeled by the
+// native contract and never reach this path.
+// Rules: rules/memory/layout.md — §§ 7(7), 11, 13, 24(6), 25; MD-142 correction §§ 5–6.
 func (r *Resolver) resolveAggregate(base ResolvedLayout, key string, fields []FieldRequirement, placement string) LayoutID {
 	if len(fields) == 0 {
 		base.Completeness, base.SizeBytes, base.AlignBytes = LayoutComplete, new(big.Int), big.NewInt(1)
@@ -277,8 +286,10 @@ func (r *Resolver) resolveAggregate(base ResolvedLayout, key string, fields []Fi
 		return r.publish(base, key)
 	}
 	state := ResolvedLayout{}
+	children := make([]ResolvedLayout, len(fields))
 	for index, field := range fields {
 		child := r.child(key, field.Requirement)
+		children[index] = child
 		base.Fields = append(base.Fields, ResolvedFieldLayout{Index: index, Name: field.Name, Layout: child.ID})
 		propagate(&state, child, field.Name)
 	}
@@ -286,12 +297,38 @@ func (r *Resolver) resolveAggregate(base ResolvedLayout, key string, fields []Fi
 		// A cycle through this aggregate already published it as invalid.
 		return id
 	}
-	if state.Completeness == LayoutInvalid || state.Completeness == LayoutUnsupported {
+	if state.Completeness != "" {
 		base.Completeness, base.Missing = state.Completeness, state.Missing
+		if state.Completeness == LayoutIncomplete {
+			base.Missing = append(base.Missing, placement)
+		}
 		return r.publish(base, key)
 	}
-	base.Completeness = LayoutIncomplete
-	base.Missing = append(state.Missing, placement)
+	cursor, alignment := new(big.Int), big.NewInt(1)
+	for index, child := range children {
+		path := base.TypeIdentity + "." + fields[index].Name
+		offset, err := r.arithmetic.AlignUp(path, cursor, child.AlignBytes)
+		if err == nil {
+			cursor, err = r.arithmetic.CheckedAdd(path, offset, child.SizeBytes)
+		}
+		if err != nil {
+			base.Completeness, base.Missing = LayoutInvalid, []string{err.Error()}
+			return r.publish(base, key)
+		}
+		base.Fields[index].Offset = offset
+		if child.AlignBytes.Cmp(alignment) > 0 {
+			alignment = new(big.Int).Set(child.AlignBytes)
+		}
+	}
+	size, err := r.arithmetic.AlignUp(base.TypeIdentity, cursor, alignment)
+	if err != nil {
+		base.Completeness, base.Missing = LayoutInvalid, []string{err.Error()}
+		return r.publish(base, key)
+	}
+	base.SizeBytes, base.AlignBytes, base.Completeness = size, alignment, LayoutComplete
+	if base.Provenance == "" {
+		base.Provenance = "native struct placement (MD-142 § 6)"
+	}
 	return r.publish(base, key)
 }
 
@@ -299,7 +336,8 @@ func (r *Resolver) resolveAggregate(base ResolvedLayout, key string, fields []Fi
 // {i128,i32} (layout.md § 19) as a coefficient and a physical scale field.
 // The public decimal scale is a language value, the i32 field only its
 // storage. Any other width is an obsolete or truncating shape and invalid.
-// Placement waits on MD-142 like any other aggregate (P24-17).
+// Placement uses the ordinary native field algorithm with the fields in the
+// fixed order coefficient, scale (MD-142 § 7(4)); no packed 12/20-byte size.
 func (r *Resolver) resolveDecimal(base ResolvedLayout, key string, requirement LayoutRequirement) LayoutID {
 	base.Provenance = "scalar:decimal"
 	base.ValidBitPattern = "any coefficient; scale within the decimal scale range"
@@ -346,11 +384,12 @@ func (r *Resolver) resolveNamed(base ResolvedLayout, key string, requirement Lay
 	return r.publish(base, key)
 }
 
-// resolveArray resolves T[N] as exactly N inline element slots (P24-20). The
-// count is kept exactly and never expanded. Even before placement an array
-// whose unpadded extent exceeds the maximum byte extent is invalid; stride,
-// alignment and size wait on MD-142.
-// Rules: rules/memory/layout.md — §§ 7(7), 9, 12, 24(4).
+// resolveArray resolves T[N] as exactly N inline element slots (P24-20,
+// MD-142 § 7(1)). The count is kept exactly and never expanded. The array
+// alignment is the element alignment, the stride AlignUp(Size(T), Align(T))
+// (zero for a zero-sized element) and the size N × stride; N == 0 gives
+// size zero. Every step is checked against the maximum byte extent.
+// Rules: rules/memory/layout.md — §§ 7(7), 9, 12, 24(4); MD-142 correction §§ 5(4), 7(1–3).
 func (r *Resolver) resolveArray(base ResolvedLayout, key string, requirement LayoutRequirement) LayoutID {
 	if requirement.Element == nil || requirement.Count == nil || requirement.Count.Sign() < 0 {
 		base.Completeness, base.Missing = LayoutInvalid, []string{"fixed array without an element type or a nonnegative count"}
@@ -368,11 +407,23 @@ func (r *Resolver) resolveArray(base ResolvedLayout, key string, requirement Lay
 			state.Completeness, state.Missing = LayoutInvalid, []string{err.Error()}
 		}
 	}
-	if state.Completeness == LayoutInvalid || state.Completeness == LayoutUnsupported {
+	if state.Completeness != "" {
 		base.Completeness, base.Missing = state.Completeness, state.Missing
+		if state.Completeness == LayoutIncomplete {
+			base.Missing = append(base.Missing, "fixed-array stride and alignment (MD-142)")
+		}
 		return r.publish(base, key)
 	}
-	base.Completeness = LayoutIncomplete
-	base.Missing = append(state.Missing, "fixed-array stride and alignment (MD-142)")
+	stride, err := r.arithmetic.StrideOf(base.TypeIdentity, element.SizeBytes, element.AlignBytes, new(big.Int))
+	var size *big.Int
+	if err == nil {
+		size, err = r.arithmetic.ArraySize(base.TypeIdentity, stride, requirement.Count)
+	}
+	if err != nil {
+		base.Completeness, base.Missing = LayoutInvalid, []string{err.Error()}
+		return r.publish(base, key)
+	}
+	base.SizeBytes, base.AlignBytes, base.Completeness = size, new(big.Int).Set(element.AlignBytes), LayoutComplete
+	base.Provenance = "native fixed array (MD-142 § 7(1))"
 	return r.publish(base, key)
 }

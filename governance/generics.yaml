@@ -6,7 +6,7 @@ integrations:
     area: frontend-analysis-and-lowering
     status: partial
     integrated: "2026-08-14"
-    revised: "2026-11-02"
+    revised: "2026-11-20"
     document_revision: "2.2"
     summary: >-
       Tracks revision-2.2 compile-time type generics and demand-driven
@@ -154,12 +154,14 @@ integrations:
       - "S1177 editor presentation (2026-10-30, user decision; diagnostics.md §24(4h)): recognized type-pack implementation limitations appear as Information in LSP instead of a source-code Error. CLI checking/emission retains the mandatory error and compilation stop. Other mandatory diagnostics are unchanged. TestTypePackDeclarationTooling and TestTypePackCapabilityPresentationOnly verify the editor severity, stable identity/help and unchanged ownership Error; TestTypePackDeclarationCLI retains CLI exit and no-artifact checks. No pack expansion is claimed."
       - "MD-117 resolved-call signature help (2026-10-30): LSP projects ResolvedTypePackCallOf into an expanded concrete receiving signature and ordered pack documentation, with per-source-argument active-parameter selection. Empty packs omit the trailing parameter; scalar generic prefixes and shared/reborrow modes retain concrete types. Ordinary fixed overloads are not replaced by pack candidates. Presentation shares the concrete reference renderer with hover and performs no inference. Unresolved/incomplete pack calls, other modes and executable expansion remain outside this increment (TestTypePackSignatureHelp, TestTypePackSignatureHelpDoesNotReplaceFixedOverload)."
       - "MD-122 universal ToString() in Sema (2026-11-01, owner decision A): value.ToString() type-checks on unconstrained and constrained generic parameters, E: error, opaque pack elements in every loop mode and through values[k], and interface values, returning Result[string, StringError]; a constraint's requirement takes precedence. In a template the call is an unknown callee, so @noPanic and @noAlloc are rejected there. No other member or formatting interface is granted; interpolation holes keep their own contract rule."
+    partial:
+      - "Cross-module symbol identities partial (2026-11-19): imported functions, static/instance methods and property accessors use the defining module's canonical FunctionID (util::Counter.Make(int)) and the deterministic BinarySymbol sec_sym_<sha256>. Specializations of imported generics are instantiated per module with private/internal linkage; type identities drop the doubled module qualifier. Remaining: static storage across modules (blocked on cross-module module-level bindings, frontend.modules) and concrete type symbols where a backend needs them."
+      - "Started (moved to partial 2026-11-20; the text records the done part and what remains): complete generic named-type contracts, implementation-member composition, Semantic IR, deterministic symbols, ABI, and lowering beyond the implemented concrete frontend identity, carrier substitution, and ordinary explicit conversions"
     remaining:
       - "MD-122 lowering (generics.md § 15; compiler_known_members.md Generic lookup): in a specialization select an exact user ToString or the concrete fallback; the call stops at a named boundary until P23 string lowering. Interface values need dispatch of ToString, which needs a view-table entry for every interface. A per-specialization @noPanic and @noAlloc proof through the selected ToString replaces today's conservative unknown callee."
       - "MD-117 call-site tooling (correction § 10(3)): Complete call-site tooling beyond the supported shared-pack subset, including unresolved/incomplete calls and future pack modes. Hover and signature help already project selected ordered types and concrete pointwise receiving signatures for successfully resolved shared-pack calls, the formatter round-trips ...Types, ...ref Types, ...ref mut Types and <-values... idempotently, and the syntax reference documents the forms; diagnostics name the template location plus the concrete instantiation and argument position (§ 10(1)-(2))."
       - "MD-117 conformance and acceptance (correction § 14): one regression matrix covering § 14(1) positive syntax/inference, § 14(2) negative checks, § 14(3) iteration, § 14(4) ownership/spread, § 14(5) lifetimes and § 14(6) lowering/tooling; MD-117 may be marked implemented and the correction archived only when every owner item passes (§ 14(7)). The matrix also carries the MD-119 conformance cases (applied correction § 8; references.md § 3.4(10)): carried holders keep ref T/ref mut T, explicit *value/projection/reborrow, no implicit deref, no ref ref T, no copied or moved-out ref mut element, origin-preserving returned reborrows, each case distinguishing Sema from Semantic IR/Sec MLIR/executable support. MD-118 (fmt API) stays open separately and is not counted here."
       - show concrete specialization arguments at instantiated uses in generic-parameter hover
-      - complete generic named-type contracts, implementation-member composition, Semantic IR, deterministic symbols, ABI, and lowering beyond the implemented concrete frontend identity, carrier substitution, and ordinary explicit conversions
       - complete generic interface inheritance validation across modules and canonical cross-module specialization identity beyond the implemented local concrete requirement substitution
       - extend explicit-conformance checks to generic impl scopes; concrete struct, named-type, union, enum, and interface substitutions are now checked
       - extend constraint-guaranteed generic-body operations beyond implemented instance method calls to interface properties, events, static requirements, operators, ownership capabilities, defaultability, and copyability
@@ -168,7 +170,6 @@ integrations:
       - complete generic-union layout, match, ownership, destruction, Semantic IR, and backend lowering after substitution
       - complete generic-enum representation-dependent substitution, match and switch provenance, Semantic IR identity, deterministic symbols, Sec MLIR, ABI, FFI, and backend lowering
       - implement the canonical InstantiationGraph termination model, distinguishing finite canonical cycles, recursive by-value layout, proven distinct-key non-convergence, and compiler resource limits; current recursive-storage diagnostics cover only represented subsets
-      - assign deterministic cross-module symbol identities to concrete types, functions, methods, and static storage
       - represent generic templates and canonical concrete instances explicitly in Semantic IR with declaration identity, ordered arguments, resolved constraints, substitution, and source provenance
       - prevent unresolved generic parameters or constraints from reaching ABI, FFI, Sec MLIR, LLVM, or any representation-dependent lowering
       - add the complete revision-2.0 parser, Sema, formatter, LSP, interface, ownership, recursion, Semantic IR, ABI, and backend regression matrix
@@ -243,7 +244,7 @@ integrations:
 
   - id: compiler.generics-lowering
     area: compiler-semantic-ir-and-mlir
-    revised: "2026-10-28"
+    revised: "2026-11-20"
     status: partial
     integrated: "2026-09-04"
     document_revision: "1.1"
@@ -284,11 +285,12 @@ integrations:
       - current Sec MLIR !sec.struct and !sec.union forms retain nominal identity plus concrete type arguments
       - current union lowering explicitly rejects unresolved generic union template values
       - canonical rulebooks now cross-reference the concrete generic-lowering boundary without claiming complete implementation
+    partial:
+      - "Started (moved to partial 2026-11-20; the text records the done part and what remains): implement canonical Sec 0.1 generic enum Semantic IR, Sec MLIR, lowering, diagnostics, and backend tests beyond the implemented parser and Sema subset"
     remaining:
       - "MD-117 concrete lowering: consume verified ordered pack specializations and expanded concrete callable signatures without redoing inference or adding erased pack ABIs, boxing, hidden heap allocation or runtime dictionaries; preserve effects, source evaluation and cleanup supplied by the semantic owners (correction §§9,14(6); generics_lowering.md §§3,7)."
       - consume canonical InstantiationIdentity and concrete specialization facts from compiler.monomorphization without recreating demand, identity, or substitution semantics
       - complete generic named-type lowering and preserve nominal identity independently of physical representation
-      - implement canonical Sec 0.1 generic enum Semantic IR, Sec MLIR, lowering, diagnostics, and backend tests beyond the implemented parser and Sema subset
       - ensure generic constraint lowering never introduces hidden runtime dictionaries, type descriptors, type erasure, implicit boxing, or runtime reflection
       - lower concrete generic impl properties, methods, nested declarations, associated immutable values, and static storage while preserving canonical owner identity
       - complete generic union ownership, destruction, match, layout-readiness, Semantic IR, and backend paths
@@ -378,10 +380,11 @@ integrations:
       - unresolved generic extern declarations are rejected before callable registration and every semantic CLI/backend entry; diagnostics retain Invalid proof state, declaration links and all unresolved parameters, while generic Sec wrappers may call concrete extern providers
       - "Semantic IR monomorphization of generic free functions (2026-10-31; internal/ir/semantic/generic_specialization.go): a generic template builds nothing; each selected call demands one concrete function identified by its ordered arguments (main::Pair[A=bool,B=int](bool,int), main::Select[T=int,...Types<bool>](int,ref bool)), deduplicated across call sites and nesting. The typed template is built under the call's substitution without cloning the AST (§ 8.3); forwarded arguments inside a specialization are made concrete through the enclosing substitution, so Twice[T=int] reuses Id[T=int] and Down[T=int] recurses into itself. Function.Specialization carries template and arguments and is verified. Generic structs and Option payloads specialize (Box<int>, Wrap[T=int]); a template move of an unknown parameter becomes a trivial copy for a trivially copyable argument (§ 11.2). Demand stops with a resource-limit failure after 4096 specializations (§ 18.7). Sema substituteGenericType now also substitutes union variant payloads, which fixed `match Wrap(3) { Some(v) => ... }` reporting payload type T. Tests: internal/ir/semantic/generic_specialization_test.go, type_pack_boundary_test.go, TestSharedTypePackSpecializationCLI."
       - "polymorphic self-recursion terminates (2026-11-04; monomorphization.md § 18.5; BUG-000023): a generic template calling itself with a parameter replaced by a type properly containing it (`Grow[T]` -> `Grow[Box[T]]`) is reported as S1198 generics.non-converging-specialization at the call and is not recorded, so Sema and the call graph never follow the infinite chain; unchanged, permuted and finite mutually recursive arguments stay valid. Test: TestGenericSelfRecursionWithGrowingArgumentIsRejected."
+    partial:
+      - "Started (moved to partial 2026-11-20; the text records the done part and what remains): MD-117 specialization (function identity and empty arity done for shared packs in Semantic IR, lowering.yaml 2026-10-30): make the ordered concrete pack sequence, nominal/reference/mode identities and empty arity part of canonical specialization/cache identity; demand-check concrete element operations and preserve template plus instantiation/position diagnostics, cross-module and target compatibility (correction §§4(6),9,10; monomorphization.md §9.1)."
     remaining:
       - "MD-120 backend gates (§ 11(5)): specializations with E = error need a Semantic IR representation of the open error root, and owning error payloads need per-specialization ownership and destruction plans; both are explicit unsupported boundaries today"
       - "Semantic IR specialization of generic impl members, imported templates, and constraint-mediated calls inside a specialization (static resolution per § 10.2; Measure[T: Sized] calling value.Size() still stops at instance method call without receiver facts)"
-      - "MD-117 specialization (function identity and empty arity done for shared packs in Semantic IR, lowering.yaml 2026-10-30): make the ordered concrete pack sequence, nominal/reference/mode identities and empty arity part of canonical specialization/cache identity; demand-check concrete element operations and preserve template plus instantiation/position diagnostics, cross-module and target compatibility (correction §§4(6),9,10; monomorphization.md §9.1)."
       - make InstantiationIdentity and InstantiationKey canonical across all generic declaration families and modules
       - separate generic resolution and inference ownership from canonical specialization application
       - implement one canonical demand/provenance graph for nested concrete specialization requests
@@ -429,7 +432,7 @@ integrations:
       - unresolved generic extern declarations are rejected and concrete generic FFI compatibility is checked independently
       - size and performance policies may select different physical sharing without changing semantic instantiation identity
       - cold and warm cache plus parallel and sequential compilation produce equivalent canonical generic results
-    revised: "2026-10-28"
+    revised: "2026-11-20"
     code:
       - internal/sema/ffi.go
     tests:

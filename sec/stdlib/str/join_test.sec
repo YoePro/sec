@@ -6,7 +6,7 @@ test "Join inserts separators" {
     try values.Append("World")
     try values.Append("Sec")
 
-    let result := try Join(values, ", ")
+    let result := try Join(ref values, ", ")
 
     testing.ExpectEqual("Hello, World, Sec", result)
 }
@@ -14,7 +14,7 @@ test "Join inserts separators" {
 test "Join handles empty collection" {
     let mut values: string[]
 
-    let result := try Join(values, ",")
+    let result := try Join(ref values, ",")
 
     testing.ExpectEqual("", result)
 }
@@ -23,7 +23,7 @@ test "Join handles single element" {
     let mut values: string[]
     try values.Append("Hello")
 
-    let result := try Join(values, ",")
+    let result := try Join(ref values, ",")
 
     testing.ExpectEqual("Hello", result)
 }
@@ -34,7 +34,7 @@ test "Join preserves empty elements" {
     try values.Append("")
     try values.Append("b")
 
-    let result := try Join(values, ",")
+    let result := try Join(ref values, ",")
 
     testing.ExpectEqual("a,,b", result)
 }
@@ -45,7 +45,7 @@ test "Join preserves Unicode" {
     try values.Append("världen")
     try values.Append("🦊")
 
-    let result := try Join(values, " → ")
+    let result := try Join(ref values, " → ")
 
     testing.ExpectEqual("Hej → världen → 🦊", result)
 }

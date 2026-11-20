@@ -761,7 +761,7 @@ integrations:
     area: frontend-control-flow
     status: partial
     integrated: "2026-08-16"
-    revised: "2026-11-09"
+    revised: "2026-11-20"
     document_revision: "2.0"
     repository_baseline: 56be75d
     summary: Tracks revision-2.0 subject and subjectless switch statements. Parser and Sema support ordered value, range, relational, and comma-separated alternatives, default and explicit fallthrough validation, independent case scopes, continuing-path assignment merges, termination analysis, compiler-owned ResolvedSwitchFlow coverage facts, and substantial compile-time duplicate and coverage diagnostics. Semantic IR and the compilation track lower integer, integer-enum, bool and eligible named-integer subject switches and subjectless switches, with lazy alternatives and explicit fallthrough. String subjects, generalized named-type coverage, cleanup edges and the complete regression matrix remain.
@@ -855,9 +855,10 @@ integrations:
       - "named integer switch subjects (2026-11-04; semantic_ir.md § 7(4)): a named integer subject without units or contracts compares through its carrier's int.compare and keeps its identity, for value, comma, relational and range alternatives; testdata/build/native/named_scalars.sec runs natively."
       - "Canonical covered-case diagnostics (2026-11-09; flowcontrol_switch.md sections 20-23/34, diagnostics.md section 21): all established constant-value, normalized-range and relational full-coverage proofs publish mandatory S3001 with the earlier covering item, exact token range, actionable help and navigable related source location; duplicate bool/integer/string/enum value classes retain the published mandatory S1015 identity and get the same provenance quality. Comma alternatives and singleton ranges use the same policy. Partial range overlap stays a separate source-validity check; mere finite-range overlap no longer falsely proves an unbounded relational case unreachable. Dynamic bounds remain conservative. Expanded reasoning beyond existing normalized coverage facts remains in the other switch coverage/CFG items. Tests preserve both mandatory identities against suppression and carry proofs through CLI JSON/LSP; native execution verifies first-match behavior and reachable values outside a finite earlier range."
       - "enum switch subjects (2026-10-18): Semantic IR tests each enum case alternative with same-enum equality (enum.compare eq); a Sema-proven exhaustive enum switch without default ends in a synthesized unreachable; built and executed with integer enums (TestNativeTrackBuildsAndRuns/enums)"
+    partial:
+      - "Started (moved to partial 2026-11-20; the text records the done part and what remains): lower string switch subjects through Semantic IR and the compilation track (blocked on P23 string values); bool and named-integer subjects lower and run natively (bool_switch.sec, named_scalars.sec)"
     remaining:
       - make ownership, destruction, cleanup, Semantic IR, lowering, and interprocedural analyses consume the resolved switch flow and future canonical switch plan
-      - lower string switch subjects through Semantic IR and the compilation track (blocked on P23 string values); bool and named-integer subjects lower and run natively (bool_switch.sec, named_scalars.sec)
       - complete code generation for every Sema-supported switch subject and case family
       - complete the revision-2.0 parser, Sema, CFG, formatter, diagnostics, LSP, Semantic IR, ownership, and backend regression matrix
     required_tests:
@@ -930,7 +931,7 @@ integrations:
     status: partial
     integrated: "2026-08-17"
     audited: "2026-08-18"
-    revised: "2026-11-09"
+    revised: "2026-11-20"
     document_revision: "2.0"
     repository_baseline: 56be75d
     summary: >-
@@ -1091,8 +1092,9 @@ integrations:
       - "Canonical statement-match continuation completed and verified (2026-11-09; flowcontrol_match.md sections 5, 23-24): ResolvedMatchPlan.CanContinue is the single conservative decision consumed by Sema return/reachability analysis and Semantic IR statement-match continuation creation, replacing separate classifiers. Coverage and arm flow remain compiler-owned normalized facts for Option, Result, unions, enum aliases, full open-bit domains, guards and nested/unsafe blocks. Missing coverage, absent arms or unknown/future arm flow cannot prove termination. Shared source matrices check continuing versus terminating plans and corresponding IR merge-block presence; CLI/LSP preserve missing-return and S3001 diagnostics. Broader structural statement-flow and cleanup unification remains owned by frontend.match-termination-consistency."
       - "Owned statement-match continuation (2026-11-09; flowcontrol_match.md section 19(2)-(6), discard.md sections 9-10, P17 sections 63/103/111): fresh ordinary call and try-success arm results use the shared terminal discard producer, emitting own.discard with the type-level destruction plan before full-expression temporaries end, arm-scope cleanup runs and control branches to the merge. Removed the statement-match-specific non-trivial result boundary. Guarded payload moves retain transfer/cancellation and guard-false ownership, body locals clean up separately, and borrowed argument temporaries end through destroy_value or destroy_place. A focused sibling builder replaces the extracted monolithic builder section. Source-to-IR ordering/count checks and deterministic 32/64-bit schema13 output pass all place, borrow, cleanup, destruction, ownership, match-CFG and union-guard verifiers. Physical cleanup/destruction lowering remains outside P17 under its section 103/134 gates."
       - "Move-only match arm results precede both cleanup scopes (2026-11-09; flowcontrol_match.md section 21.2(1)-(3), destruction.md section 6.2, P17 sections 38/40/55/63/111): expression and value-producing block arms share finishMatchExpressionArm. Building the result commits Sema-resolved moves and cancels the source registration before region temporaries, body-local cleanup, the distinct owning payload-binding scope cleanup and the merge branch. Fixed the missing payload-scope fallthrough cleanup that rejected a returned owned payload from a block arm with the P17 cleanup-aware-block boundary. Regression coverage checks source move/cancellation before cleanup and merge for local, explicit expression-arm, payload, guarded and fresh results; schema13 ownership/cleanup/match verification passes on 32/64-bit plans."
+    partial:
+      - "Started (verified 2026-11-20): Semantic IR lowers the empty union state and the `empty` pattern (storage.init-empty, storage.is-empty; union_empty_state.go), and emit-sec-mlir carries them. Remaining: the runtime initialization flag below Sec MLIR so the native track runs it (today a package-14 boundary 'mutable local declaration without initializer (empty union state)'), and empty-state facts in the LSP."
     remaining:
-      - lower the compiler-known empty union pattern and reachable empty state through Semantic IR and MLIR with a runtime initialization flag, and expose empty-state facts through LSP
       - complete ownership, destruction, Semantic IR, lowering, and LSP facts for discarded Err payloads beyond the represented frontend subset
       - retain precise Moved, PartiallyAvailable, and ConditionallyAvailable states and provenance across every continuing arm
       - expose compiler-resolved binding action, prospective guarded move, commit location, post-match availability, and coverage through LSP hover, diagnostics, hints, completion, and refactoring
@@ -1195,7 +1197,7 @@ integrations:
     area: frontend-control-flow-ownership-and-lowering
     status: partial
     integrated: "2026-09-03"
-    revised: "2026-11-10"
+    revised: "2026-11-20"
     document_revision: "2.1"
     repository_baseline: 998d8d1
     summary: >-
@@ -1338,6 +1340,8 @@ integrations:
       - For-header ref/ref mut keywords and multi-binding commas receive parser-owned CST spacing roles, completing ordinary intra-line for/in/range/step spacing without changing comments, line breaks or binding authority. Sema publishes detached, source-ordered ForBindingModes only after a header validates, with explicit value/ref/ref mut/discard mode and resolved binding type; reset and invalid-header tests prevent stale or positive invalid facts. LSP hover at for, binding names and ref keywords consumes these facts and retains existing Iterator/Next and map information. Shared CLI/LSP formatting goldens and typed source tests cover all modes (2026-11-10).
       - "Dedicated iterator binding presentation completed 2026-11-10: Sema snapshots now retain each yielded BindingID and explicitly classify borrowed interface-view requirements alongside concrete and generic-constraint resolutions. LSP ordinary and expected-return completion preserve the yielded value type and show the canonical Iterator[T], element type and selected Next description; hover on uses of the loop binding resolves the same fact by binding identity. Equal spellings in disjoint loops or ordinary locals cannot inherit another resolution. Valid ref mut Iterator[T] views publish their runtime interface requirement without inventing a concrete target; generic templates continue to defer selection to specialization. Invalid conformance, duck typing and shared views supply no Next promise. This is tooling over existing loop semantics; iterator runtime/lowering and cleanup remain separate remaining work."
       - "2026-11-17: compiler-known Iterator[T] loops over reusable iterator storage lower through Semantic IR and Sec MLIR schema 13 as repeated statically resolved Next calls with Some/None control flow: condition block borrows the storage, calls Next and tests Some; the body binds the copy-trivial payload or discards it; None and break exit; every sec-mlir-opt verifier passes (internal/ir/semantic/iterator_loops.go; TestSchema13IteratorLoops)."
+    partial:
+      - "Started (moved to partial 2026-11-20; the text records the done part and what remains): MD-057 borrowed iterator views (flowcontrol_for.md § 37.1). Sema implemented 2026-10-18: `for value in values` over `values: ref mut Iterator[T]` yields T with a ResolvedForIteration whose Source is borrowed-interface-view, records the Next call as an interface graph call, and rejects a shared ref Iterator[T] source. Known hole (verified 2026-10-18): Semantic IR/lowering of runtime Next dispatch is not implemented; readiness reports it as Unproven with the reason naming the missing view representation (MD-108)"
     remaining:
       - carry Arena generation through the shared loop-header and backedge fixed-point analysis, including continue edges and replay
       - complete float and decimal range lowering with resolved-type arithmetic and stable source-visible endpoint behavior
@@ -1346,7 +1350,6 @@ integrations:
       - complete iterator ownership and cleanup validation for move-only yielded T, break, continue, return, and error exits
       - represent yielded component modes, iteration state, source authority, structural stability, and cleanup edges explicitly in Semantic IR
       - complete the revision-2.0 parser, Sema, ownership, borrowing, flow, cleanup, formatter, diagnostics, LSP, Semantic IR, and backend regression matrix
-      - "MD-057 borrowed iterator views (flowcontrol_for.md § 37.1). Sema implemented 2026-10-18: `for value in values` over `values: ref mut Iterator[T]` yields T with a ResolvedForIteration whose Source is borrowed-interface-view, records the Next call as an interface graph call, and rejects a shared ref Iterator[T] source. Known hole (verified 2026-10-18): Semantic IR/lowering of runtime Next dispatch is not implemented; readiness reports it as Unproven with the reason naming the missing view representation (MD-108)"
       - "MD-117 heterogeneous iteration step 4 (end to end, remainder): 32-bit plan execution and execution of reference-pack loops once P24 lowers references"
       - lower the remaining compiler-known Iterator[T] loop forms through Semantic IR (fresh temporary iterator as loop-owned storage destroyed at every exit, generic/specialized Next, non-copy-trivial yielded values with per-iteration cleanup) and the reusable-storage form below the schema-13 boundary through the native track; reusable-storage loops reach Semantic IR and schema 13 (2026-11-17)
     required_tests:

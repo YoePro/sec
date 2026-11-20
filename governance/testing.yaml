@@ -6,7 +6,7 @@ integrations:
     area: language-testing-and-tooling
     status: partial
     repository_baseline: 814a584
-    revised: "2026-11-11"
+    revised: "2026-11-20"
     summary: >-
       Implements the canonical Sec 0.1 source testing model: *_test.sec source
       selection, top-level test declarations, compiler-known testing operations,
@@ -84,11 +84,13 @@ integrations:
       - "test-only dependency direction (2026-10-11, testing.md §§ 25, 26.2, 40.1): every resolved name from production source to a declaration in *_test.sec source is mandatory S1145 testing.production-dependency-on-test with the test declaration as related location, reported once per use (members of a test-only type are covered by the type) while Test -> Production and Test -> Test stay valid; sec test validates the production graph of the tested directory module on its own (its production files and their own imports, no test source) before the TestCompilationPlan, so neither a test-only helper nor a test-only import can make production source compile (§ 25.3); imports are still flattened program-wide, so source-file-local import bindings remain frontend.modules work"
       - "testing namespace completion (2026-10-11, testing.md § 11.4): inside a test body, LSP completion after `testing.` lists exactly the Sema-owned implemented testing surface (sema.TestingNamespaceMembers: Pass, Fail, Skip, Log, Expect, Require, ExpectEqual, RequireEqual, one item per overload with its signature) filtered by the typed prefix and nothing else; outside a test body testing members are not offered; Run and TestResult appear once Sema implements them (cmd/lsp/testing_completion.go, TestTestingNamespaceCompletionListsOnlyTestingMembers)"
       - "Scoped test dependency isolation (2026-11-11): automatic recursive imports and implicit core loading exclude *_test.sec before identity validation, parsing and analysis; direct/transitive project, standard-library and platform dependencies contribute production sources only. Explicit file selections retain dependency tests and their parser/Sema failures; test-only imports remain unresolved with S1051. CLI JSON listing and name filters retain only explicitly selected tests (rules/tooling/testing.md sections 4.3-4.4, 25, 28.4)."
+    partial:
+      - "Started (moved to partial 2026-11-20; the text records the done part and what remains): require TestCompilationPlan context in addition to the implemented *_test.sec filename check, complete remaining declaration diagnostics, and callable-effect facts"
+      - "Started (moved to partial 2026-11-20; the text records the done part and what remains): complete the compiler-known test-context namespace with Run and TestResult, plus execution/control-flow semantics for the implemented Pass, Fail, Skip, Expect, Require, ExpectEqual, and RequireEqual frontend surface"
     remaining:
-      - require TestCompilationPlan context in addition to the implemented *_test.sec filename check, complete remaining declaration diagnostics, and callable-effect facts
+      - "BUG-000034 (2026-11-20): a `_` helper declared in sec/core/types_test.sec is reported as not accessible from module core, although modules.md § 6 makes it module-internal and testing.md § 4 puts the test file in the same module; ordinary modules are unaffected"
       - add TestCompilationPlan as an explicit compilation mode and keep production validity independent from test-only declarations
       - select same-directory *_test.sec only in test compilation and add the project-root tests/ test-only source universe
-      - complete the compiler-known test-context namespace with Run and TestResult, plus execution/control-flow semantics for the implemented Pass, Fail, Skip, Expect, Require, ExpectEqual, and RequireEqual frontend surface
       - lower test-boundary try propagation so an unexpected Err terminates the current invocation as a structured Failed outcome reporting the error after ordinary cleanup; Sema accepts and resolves it (ResolvedTry.TestBoundary), Semantic IR rejects it explicitly until the test harness outcome exists
       - implement monotonic failure state and controlled cleanup for Pass, Fail, Skip, Require failures, bare return, and unexpected Err
       - implement synchronous hierarchical subtests, runtime sibling-name validation, child result attribution, and child-failure propagation to the parent

@@ -1,0 +1,149 @@
+module str
+
+// Tests for transform.sec: Map, MapIndexed, Filter, FilterIndexed, Collect,
+// CollectIndexed, Repeat and Reverse. Indexes are rune positions (MD-071).
+
+test "Map transforms every rune" {
+    let shift := fn(character: rune) rune {
+        if character == 97r {
+            return 98r
+        }
+        return character
+    }
+
+    let result := try Map("banana", shift)
+
+    testing.ExpectEqual("bbnbnb", result)
+}
+
+test "Map keeps the rune count when the UTF-8 size changes" {
+    // a (1 byte) becomes å (2 bytes).
+    let widen := fn(character: rune) rune {
+        if character == 97r {
+            return 0xE5r
+        }
+        return character
+    }
+
+    let result := try Map("abc", widen)
+
+    testing.ExpectEqual("åbc", result)
+    testing.ExpectEqual(uint(3), result.Len)
+    testing.ExpectEqual(uint(4), result.SizeOf)
+}
+
+test "Map handles an empty string" {
+    let identity := fn(character: rune) rune {
+        return character
+    }
+
+    let result := try Map("", identity)
+
+    testing.ExpectEqual("", result)
+}
+
+test "MapIndexed passes rune positions, not byte offsets" {
+    // The fox emoji is four bytes but one rune, so 'x' is at rune index 2.
+    let markThird := fn(index: uint, character: rune) rune {
+        if index == 2 {
+            return 33r
+        }
+        return character
+    }
+
+    let result := try MapIndexed("a🦊xb", markThird)
+
+    testing.ExpectEqual("a🦊!b", result)
+}
+
+test "Filter keeps runes that satisfy the predicate" {
+    let isNotSpace := fn(character: rune) bool {
+        return character != 32r
+    }
+
+    let result := try Filter(" a b  c ", isNotSpace)
+
+    testing.ExpectEqual("abc", result)
+}
+
+test "Filter can remove every rune" {
+    let never := fn(character: rune) bool {
+        return false
+    }
+
+    let result := try Filter("Hej 🦊", never)
+
+    testing.ExpectEqual("", result)
+}
+
+test "FilterIndexed keeps even rune positions" {
+    let isEven := fn(index: uint, character: rune) bool {
+        return index % 2 == 0
+    }
+
+    let result := try FilterIndexed("å🦊bcd", isEven)
+
+    testing.ExpectEqual("åbd", result)
+}
+
+test "Collect appends the text returned for every rune" {
+    let doubled := fn(character: rune) Result[string, CollectionError] {
+        return Repeat(try character.ToString() {
+            Err(_) => {
+                return Err(CollectionError.AllocationFailed)
+            }
+        }, 2)
+    }
+
+    let result := try Collect("ab🦊", doubled)
+
+    testing.ExpectEqual("aabb🦊🦊", result)
+}
+
+test "Collect propagates a callback error" {
+    let failing := fn(character: rune) Result[string, CollectionError] {
+        return Err(CollectionError.AllocationFailed)
+    }
+
+    match Collect("abc", failing) {
+        Ok(_) => {
+            testing.Fail("expected the callback error")
+        }
+
+        Err(_) => {
+        }
+    }
+}
+
+test "CollectIndexed passes rune positions" {
+    let numbered := fn(index: uint, character: rune) Result[string, CollectionError] {
+        if index == 1 {
+            return Ok("-")
+        }
+        return Ok("")
+    }
+
+    let result := try CollectIndexed("🦊🦊🦊", numbered)
+
+    testing.ExpectEqual("-", result)
+}
+
+test "Repeat concatenates count copies" {
+    testing.ExpectEqual("abab", try Repeat("ab", 2))
+    testing.ExpectEqual("🦊🦊🦊", try Repeat("🦊", 3))
+}
+
+test "Repeat with zero count or empty value is empty" {
+    testing.ExpectEqual("", try Repeat("abc", 0))
+    testing.ExpectEqual("", try Repeat("", 5))
+}
+
+test "Reverse reverses runes, not bytes" {
+    testing.ExpectEqual("cba", try Reverse("abc"))
+    testing.ExpectEqual("b🦊åa", try Reverse("aå🦊b"))
+}
+
+test "Reverse handles empty and single-rune strings" {
+    testing.ExpectEqual("", try Reverse(""))
+    testing.ExpectEqual("🦊", try Reverse("🦊"))
+}

@@ -1622,3 +1622,17 @@ Other rulebooks own:
 - effect lattice and guarantee verification: analysis/attribute rules;
 - package/build native dependency syntax: build/package rules;
 - general Sec-to-C exported symbols: outside Sec 0.1.
+
+## 56. Target C binding environments (MD-021)
+
+Integrated 2026-11-20 from `rules/corrections/MD-021-c-binding-environment-complete-proposal-20261120.md` (owner accepted 2026-11-20). The correction holds the full normative text; this section is its owning summary.
+
+**§ 56(1)** TOML metadata (`.sec/platform/c-bindings.toml`) states binding-package identity, environment compatibility and module membership; Sec source states foreign declarations and transparent C aliases. TOML is never a type-declaration language.
+
+**§ 56(2)** A selected, verified binding environment supplies additional canonical `c::...` names without a source import. Compiler-owned fundamental C types and pre-existing canonical `c::` definitions cannot be redefined by any package or project. Third-party C libraries stay ordinary imported Sec modules and never extend the platform environment.
+
+**§ 56(3)** `@cAlias(name: "c::...", target: TypeReference)` declares a transparent alias in an authorized binding module (`rules/foundations/attributes.md` § 95). Alias chains must be acyclic and end in a legal FFI-representable type under the selected plan; an alias never bypasses ABI legality checks and introduces no nominal identity.
+
+**§ 56(4)** Common and environment modules are two semantic layers: for `@cAlias` only, one environment-layer definition replaces one common-layer definition of the same name; duplicates on one layer are errors. Other declarations keep their ordinary duplicate and FFI rules.
+
+**§ 56(5)** Binding declarations are collected in a declaration-only pre-freeze phase that runs no user code and cannot change target identity; ordinary Sema consumes the frozen binding surface.

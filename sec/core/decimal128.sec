@@ -6,21 +6,99 @@ module core
 // types"); the ToString overloads are declared here.
 
 impl decimal128 {
-    // Formats the invariant, scale-preserving round-trip representation.
+    /**
+     * Formats the invariant, scale-preserving round-trip representation.
+     *
+     * Description:
+     * Writes every coefficient digit, so the text keeps the value and its
+     * Scale: 1234.456 at Scale 4 is "1234.4560". Plain notation is used when
+     * Scale >= 0 and the adjusted exponent (digit count - 1 - Scale) is at
+     * least -6; otherwise the text is <digit>[.<digits>]E<sign><exponent>,
+     * for example "1E-7" or "1.2E+3" (12 at Scale -2). A negative value
+     * starts with "-". No grouping, no locale and no "+" on the value.
+     * This is the same text for format code R.
+     *
+     * Errors:
+     * - StringError: String storage could not be materialized.
+     *
+     * Allocation:
+     * Allocates the result string through the permitted allocation context.
+     */
     fn ToString() Result[string, StringError] {
-        // TODO: Implement decimal128.ToString()
-        return Ok("")
+        // coefficient = self × 10^Scale; exact, and it fits the i128 domain.
+        let scale      := self.Scale
+        let mut scaled := self
+        if scale >= 0 {
+            scaled = self * _decimal128PowerOfTen(int64(scale))
+        } else {
+            scaled = self / _decimal128PowerOfTen(0 - int64(scale))
+        }
+        let coefficient := try scaled.ToInt128() {
+            Err(_) => {
+                panic "decimal128.ToString: coefficient outside int128"
+            }
+        }
+        return _decimalCanonicalText(coefficient, scale)
     }
 
-    // Formats using an explicit invariant format code (R, G, F<n>, N<n>, E<n>).
+    /**
+     * Formats using an explicit invariant format code.
+     *
+     * Description:
+     * Not implemented yet: the body is a placeholder that returns "".
+     *
+     * Parameters:
+     * - format: One of R, G, F<n>, N<n> or E<n>.
+     *
+     * Errors:
+     * - StringError: Invalid format code or storage failure.
+     *
+     * Allocation:
+     * Allocates the result string through the permitted allocation context.
+     */
     fn ToString(format: string) Result[string, StringError] {
         // TODO: Implement decimal128.ToString(format)
         return Ok("")
     }
 
-    // Formats using explicit decimal and grouping separators.
+    /**
+     * Formats using explicit decimal and grouping separators.
+     *
+     * Description:
+     * Not implemented yet: the body is a placeholder that returns "".
+     *
+     * Parameters:
+     * - format: One of R, G, F<n>, N<n> or E<n>.
+     * - decimalSeparator: Text written between the integer and fraction digits.
+     * - groupSeparator: Text written between digit groups (N<n> only).
+     *
+     * Errors:
+     * - StringError: Invalid format code or storage failure.
+     *
+     * Allocation:
+     * Allocates the result string through the permitted allocation context.
+     */
     fn ToString(format: string, decimalSeparator: string, groupSeparator: string) Result[string, StringError] {
         // TODO: Implement decimal128.ToString(format, decimalSeparator, groupSeparator)
         return Ok("")
     }
+}
+
+/**
+ * Returns 10^exponent as an exact decimal128; see _decimalPowerOfTen.
+ */
+fn _decimal128PowerOfTen(exponent: int64) decimal128 {
+    let mut result: decimal128 := 1m
+    let mut base:   decimal128 := 10m
+    let mut remaining := exponent
+    while remaining > 0 {
+        if remaining % 2 == 1 {
+            result = result * base
+        }
+        remaining = remaining / 2
+        if remaining > 0 {
+            base = base * base
+        }
+    }
+    return result
 }

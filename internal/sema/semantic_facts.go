@@ -788,26 +788,6 @@ type ResolvedEnumConversion struct {
 	Proof IntegerConversionProof
 }
 
-type ResolvedUnionVariantKind string
-
-const (
-	ResolvedUnionVariantEmpty  ResolvedUnionVariantKind = "empty"
-	ResolvedUnionVariantSingle ResolvedUnionVariantKind = "single"
-	ResolvedUnionVariantFields ResolvedUnionVariantKind = "fields"
-)
-
-type ResolvedUnionConstruction struct {
-	UnionType        Type
-	VariantName      string
-	VariantIndex     uint32
-	Kind             ResolvedUnionVariantKind
-	CanonicalFields  []string
-	SourceFieldOrder []string
-	// PayloadActions are the resolved transfers of the payload operands: one
-	// for a single payload, else one per SourceFieldOrder entry (P17-35).
-	PayloadActions []ResolvedStructFieldAction
-}
-
 // ResolvedArrayLiteralEntryKind identifies one source entry in the compact
 // fixed-array construction plan required by SEC-MLIR Package 14 sections 14-15.
 // A spread remains one entry regardless of its conceptual element count.
@@ -1116,77 +1096,6 @@ func (a *Analyzer) ResolvedCallableCapabilityOf(expr ast.Expression) (CallableCa
 		return CallableCapabilityFact{}, false
 	}
 	return CallableCapabilityFactOf(typ)
-}
-
-// ResolvedUnionConstructionOf exposes the concrete union and stable variant
-// selected by Sema, including source and canonical field order.
-func (a *Analyzer) ResolvedUnionConstructionOf(expr ast.Expression) (ResolvedUnionConstruction, bool) {
-	if a == nil || expr == nil {
-		return ResolvedUnionConstruction{}, false
-	}
-	typ, ok := a.ResolvedTypeOf(expr)
-	if !ok || typ.Kind != UnionType || len(typ.GenericParameters) != 0 {
-		return ResolvedUnionConstruction{}, false
-	}
-	name := ""
-	sourceFields := []string{}
-	switch value := expr.(type) {
-	case *ast.MemberExpression:
-		if value.Property != nil {
-			name = value.Property.Value
-		}
-	case *ast.Identifier:
-		name = value.Value
-	case *ast.CallExpression:
-		if member, memberOK := value.Callee.(*ast.MemberExpression); memberOK && member.Property != nil {
-			name = member.Property.Value
-		} else {
-			name = callExpressionName(value)
-		}
-	case *ast.StructLiteral:
-		_, name, ok = splitUnionVariantTypeName(value.Type.Name)
-		if !ok {
-			return ResolvedUnionConstruction{}, false
-		}
-		for _, field := range value.Fields {
-			if field != nil && field.Name != nil && !field.Spread {
-				sourceFields = append(sourceFields, field.Name.Value)
-			}
-		}
-	default:
-		return ResolvedUnionConstruction{}, false
-	}
-	for index, variant := range typ.UnionVariants {
-		if variant.Name != name {
-			continue
-		}
-		resolved := ResolvedUnionConstruction{UnionType: typ, VariantName: name, VariantIndex: uint32(index), SourceFieldOrder: sourceFields}
-		switch {
-		case variant.Payload != nil:
-			resolved.Kind = ResolvedUnionVariantSingle
-			if call, ok := expr.(*ast.CallExpression); ok && len(call.Arguments) == 1 {
-				resolved.PayloadActions = []ResolvedStructFieldAction{a.constructionOperandAction(call.Arguments[0], *variant.Payload)}
-			}
-		case len(variant.PayloadFields) != 0:
-			resolved.Kind = ResolvedUnionVariantFields
-			for _, field := range variant.PayloadFields {
-				resolved.CanonicalFields = append(resolved.CanonicalFields, field.Name)
-			}
-			if literal, ok := expr.(*ast.StructLiteral); ok {
-				for _, field := range literal.Fields {
-					if field == nil || field.Name == nil || field.Spread {
-						continue
-					}
-					fieldType, _ := unionPayloadFieldType(variant, field.Name.Value)
-					resolved.PayloadActions = append(resolved.PayloadActions, a.constructionOperandAction(field.Value, fieldType))
-				}
-			}
-		default:
-			resolved.Kind = ResolvedUnionVariantEmpty
-		}
-		return resolved, true
-	}
-	return ResolvedUnionConstruction{}, false
 }
 
 // ResolvedStructLiteralPlanOf returns the immutable construction decision

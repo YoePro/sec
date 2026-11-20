@@ -1,0 +1,48 @@
+module main
+
+fn Pair(a: int, b: int) int { return a + b }
+fn Consume(-> first: int, -> second: int) void {}
+fn Mixed(head: int, values: ...int) int { return head }
+fn Sum(values: ...int) int { return 0 }
+fn Empty() int { return 0 }
+fn Generic[T](first: T, second: T) T { return first }
+fn Source() int[2] { return [1, 2] }
+fn Floats(first: float32, second: float32) float32 { return first + second }
+fn Scalars(values: float32[2]) float32 { return Floats(values...) }
+
+interface Reader {
+    fn Read(first: int, second: int) int
+}
+fn ViaInterface(reader: ref Reader, values: int[2]) int {
+    return reader.Read(values...)
+}
+
+type Worker struct {}
+impl Worker {
+    fn Run(first: int, second: int) int { return first + second }
+}
+
+fn Fixed(worker: Worker) int {
+    let pair: int[2] := [1, 2]
+    let empty: int[0] := []
+    let first := Pair(pair...)
+    Consume(pair...)
+    let mixed := Mixed(0, pair..., 3, pair...)
+    let once := Pair(Source()...)
+    let zero := Empty(empty...)
+    let generic := Generic[int](pair...)
+    let method := worker.Run(pair...)
+    return first + mixed + once + zero + generic + method + pair[0]
+}
+
+fn Runtime(values: ...int) int { return Sum(values...) }
+fn Transfer(values: ...int) int { return Sum(<-values...) }
+fn RuntimeSlice(values: ref int[]) int { return Sum(values...) }
+fn RuntimeArray(values: int[]) int { return Sum(values...) }
+fn Pack[...T](values: ...T) uint { return values.Len }
+fn Forward[...T](values: ...T) uint { return Pack(1, values..., true) }
+fn MoveForward[...T](values: ...T) uint { return Pack(<-values...) }
+fn Read[...T](values: ...ref T) uint { return values.Len }
+fn LendForward[...T](values: ...ref T) uint { return Read(values...) }
+fn Write[...T](values: ...ref mut T) uint { return values.Len }
+fn MutForward[...T](values: ...ref mut T) uint { return Write(values...) }

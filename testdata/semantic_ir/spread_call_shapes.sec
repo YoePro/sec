@@ -1,0 +1,23 @@
+module main
+
+type Point struct { X: int, }
+type Worker struct { Base: int, }
+impl Worker {
+    fn Read(first: int, second: int) int { return self.Base + first + second }
+}
+fn Points(first: Point, second: Point) int { return first.X + second.X }
+fn Nested(first: int[2], second: int[2]) int { return first[0] + second[1] }
+fn Floats(first: float32, second: float32) float32 { return first + second }
+fn Generic[T](first: T, second: T) T { return first }
+fn Expand[T](marker: T, values: int[2]) int { return Generic[int](values...) }
+
+fn Use(points: Point[2], nested: int[2][2], floats: float32[2], worker: Worker) int {
+    let a := Points(points...)
+    let b := Nested(nested...)
+    let c := Floats(floats...)
+    let values: int[2] := [1, 2]
+    let d := Expand[bool](true, values)
+    let e := worker.Read(values...)
+    discard c
+    return a + b + d + e
+}

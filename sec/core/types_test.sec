@@ -1,0 +1,391 @@
+module core
+
+// White-box tests for the scalar core types: bool, byte and the UTF-8
+// decoder. Rulebook: library/core-library.md §§ 5.4, 6 and 8;
+// tooling/testing.md § 4 (same-module *_test.sec files).
+// decimal ToString(format) overloads are placeholders and are not tested yet.
+
+// ---------------------------------------------------------------------------
+// bool
+// ---------------------------------------------------------------------------
+
+test "bool.ToString writes true" {
+    let value: bool := true
+    let text := try value.ToString()
+
+    testing.ExpectEqual("true", text)
+}
+
+test "bool.ToString writes false" {
+    let value: bool := false
+    let text := try value.ToString()
+
+    testing.ExpectEqual("false", text)
+}
+
+// ---------------------------------------------------------------------------
+// byte.ToString(fmt)
+// ---------------------------------------------------------------------------
+
+test "byte.ToString formats zero in every radix" {
+    let value: byte := 0
+
+    testing.ExpectEqual("0", try value.ToString(byte.ByteStringFormat.Decimal))
+    testing.ExpectEqual("00", try value.ToString(byte.ByteStringFormat.Hexadecimal))
+    testing.ExpectEqual("000", try value.ToString(byte.ByteStringFormat.Octal))
+    testing.ExpectEqual("00000000", try value.ToString(byte.ByteStringFormat.Binary))
+}
+
+test "byte.ToString formats the maximum value in every radix" {
+    let value: byte := 255
+
+    testing.ExpectEqual("255", try value.ToString(byte.ByteStringFormat.Decimal))
+    testing.ExpectEqual("FF", try value.ToString(byte.ByteStringFormat.Hexadecimal))
+    testing.ExpectEqual("377", try value.ToString(byte.ByteStringFormat.Octal))
+    testing.ExpectEqual("11111111", try value.ToString(byte.ByteStringFormat.Binary))
+}
+
+test "byte.ToString decimal has no leading zeros at digit boundaries" {
+    let nine:       byte := 9
+    let ten:        byte := 10
+    let ninetyNine: byte := 99
+    let hundred:    byte := 100
+
+    testing.ExpectEqual("9", try nine.ToString(byte.ByteStringFormat.Decimal))
+    testing.ExpectEqual("10", try ten.ToString(byte.ByteStringFormat.Decimal))
+    testing.ExpectEqual("99", try ninetyNine.ToString(byte.ByteStringFormat.Decimal))
+    testing.ExpectEqual("100", try hundred.ToString(byte.ByteStringFormat.Decimal))
+}
+
+test "byte.ToString hexadecimal pads and uses upper-case digits" {
+    let nine:    byte := 9
+    let ten:     byte := 10
+    let sixteen: byte := 16
+    let mixed:   byte := 0xAB
+
+    testing.ExpectEqual("09", try nine.ToString(byte.ByteStringFormat.Hexadecimal))
+    testing.ExpectEqual("0A", try ten.ToString(byte.ByteStringFormat.Hexadecimal))
+    testing.ExpectEqual("10", try sixteen.ToString(byte.ByteStringFormat.Hexadecimal))
+    testing.ExpectEqual("AB", try mixed.ToString(byte.ByteStringFormat.Hexadecimal))
+}
+
+test "byte.ToString octal always writes three digits" {
+    let seven:     byte := 7
+    let eight:     byte := 8
+    let sixtyFour: byte := 64
+
+    testing.ExpectEqual("007", try seven.ToString(byte.ByteStringFormat.Octal))
+    testing.ExpectEqual("010", try eight.ToString(byte.ByteStringFormat.Octal))
+    testing.ExpectEqual("100", try sixtyFour.ToString(byte.ByteStringFormat.Octal))
+}
+
+test "byte.ToString binary writes the most significant bit first" {
+    let one:   byte := 1
+    let high:  byte := 0x80
+    let mixed: byte := 0xAB
+
+    testing.ExpectEqual("00000001", try one.ToString(byte.ByteStringFormat.Binary))
+    testing.ExpectEqual("10000000", try high.ToString(byte.ByteStringFormat.Binary))
+    testing.ExpectEqual("10101011", try mixed.ToString(byte.ByteStringFormat.Binary))
+}
+
+// ---------------------------------------------------------------------------
+// DecodeUtf8
+// ---------------------------------------------------------------------------
+
+// Reports whether result is Ok with the given scalar value and width.
+fn typesTestDecodes(result: Result[Utf8DecodedRune, StringError], scalar: uint, width: uint) bool {
+    match result {
+        Ok(decoded) => {
+            return uint(decoded.Value) == scalar && decoded.Width == width
+        }
+
+        Err(_) => {
+            return false
+        }
+    }
+}
+
+// Reports whether result is Err(StringError.InvalidUtf8(position)).
+fn typesTestInvalidUtf8At(result: Result[Utf8DecodedRune, StringError], position: uint) bool {
+    match result {
+        Ok(_) => {
+            return false
+        }
+
+        Err(error) => {
+            match error {
+                StringError.InvalidUtf8(at) => {
+                    return at == position
+                }
+
+                StringError.Allocation(_) => {
+                    return false
+                }
+
+                StringError.Format(_) => {
+                    return false
+                }
+
+                StringError.InvalidCodePoint => {
+                    return false
+                }
+
+                StringError.OutOfBounds => {
+                    return false
+                }
+            }
+        }
+    }
+}
+
+test "DecodeUtf8 decodes a one-byte ASCII sequence" {
+    let mut bytes: byte[]
+    try bytes.Append(0x41)
+
+    testing.Expect(typesTestDecodes(DecodeUtf8(ref bytes, 0), 0x41, 1))
+}
+
+test "DecodeUtf8 decodes a two-byte sequence" {
+    // U+00E5 LATIN SMALL LETTER A WITH RING ABOVE
+    let mut bytes: byte[]
+    try bytes.Append(0xC3)
+    try bytes.Append(0xA5)
+
+    testing.Expect(typesTestDecodes(DecodeUtf8(ref bytes, 0), 0xE5, 2))
+}
+
+test "DecodeUtf8 decodes a three-byte sequence" {
+    // U+20AC EURO SIGN
+    let mut bytes: byte[]
+    try bytes.Append(0xE2)
+    try bytes.Append(0x82)
+    try bytes.Append(0xAC)
+
+    testing.Expect(typesTestDecodes(DecodeUtf8(ref bytes, 0), 0x20AC, 3))
+}
+
+test "DecodeUtf8 decodes a four-byte sequence" {
+    // U+1F98A FOX FACE
+    let mut bytes: byte[]
+    try bytes.Append(0xF0)
+    try bytes.Append(0x9F)
+    try bytes.Append(0xA6)
+    try bytes.Append(0x8A)
+
+    testing.Expect(typesTestDecodes(DecodeUtf8(ref bytes, 0), 0x1F98A, 4))
+}
+
+test "DecodeUtf8 decodes the boundary scalars" {
+    // U+007F, U+0080, U+FFFF and U+10FFFF are the last or first value of
+    // each sequence length.
+    let mut bytes: byte[]
+    try bytes.Append(0x7F)
+    try bytes.Append(0xC2)
+    try bytes.Append(0x80)
+    try bytes.Append(0xEF)
+    try bytes.Append(0xBF)
+    try bytes.Append(0xBF)
+    try bytes.Append(0xF4)
+    try bytes.Append(0x8F)
+    try bytes.Append(0xBF)
+    try bytes.Append(0xBF)
+
+    testing.Expect(typesTestDecodes(DecodeUtf8(ref bytes, 0), 0x7F, 1))
+    testing.Expect(typesTestDecodes(DecodeUtf8(ref bytes, 1), 0x80, 2))
+    testing.Expect(typesTestDecodes(DecodeUtf8(ref bytes, 3), 0xFFFF, 3))
+    testing.Expect(typesTestDecodes(DecodeUtf8(ref bytes, 6), 0x10FFFF, 4))
+}
+
+test "DecodeUtf8 decodes at a nonzero index" {
+    let mut bytes: byte[]
+    try bytes.Append(0x41)
+    try bytes.Append(0xC3)
+    try bytes.Append(0xA5)
+
+    testing.Expect(typesTestDecodes(DecodeUtf8(ref bytes, 1), 0xE5, 2))
+}
+
+test "DecodeUtf8 rejects an index at the end" {
+    let mut bytes: byte[]
+    try bytes.Append(0x41)
+
+    match DecodeUtf8(ref bytes, 1) {
+        Ok(_) => {
+            testing.Fail("expected StringError.OutOfBounds")
+        }
+
+        Err(error) where error == StringError.OutOfBounds => {
+        }
+
+        Err(_) => {
+            testing.Fail("expected StringError.OutOfBounds")
+        }
+    }
+}
+
+test "DecodeUtf8 rejects an empty buffer" {
+    let mut bytes: byte[]
+
+    match DecodeUtf8(ref bytes, 0) {
+        Ok(_) => {
+            testing.Fail("expected StringError.OutOfBounds")
+        }
+
+        Err(error) where error == StringError.OutOfBounds => {
+        }
+
+        Err(_) => {
+            testing.Fail("expected StringError.OutOfBounds")
+        }
+    }
+}
+
+test "DecodeUtf8 rejects a lone continuation byte" {
+    let mut bytes: byte[]
+    try bytes.Append(0x80)
+
+    testing.Expect(typesTestInvalidUtf8At(DecodeUtf8(ref bytes, 0), 0))
+}
+
+test "DecodeUtf8 rejects bytes that never start a sequence" {
+    let mut bytes: byte[]
+    try bytes.Append(0xC0)
+    try bytes.Append(0xC1)
+    try bytes.Append(0xF5)
+    try bytes.Append(0xFF)
+
+    testing.Expect(typesTestInvalidUtf8At(DecodeUtf8(ref bytes, 0), 0))
+    testing.Expect(typesTestInvalidUtf8At(DecodeUtf8(ref bytes, 1), 1))
+    testing.Expect(typesTestInvalidUtf8At(DecodeUtf8(ref bytes, 2), 2))
+    testing.Expect(typesTestInvalidUtf8At(DecodeUtf8(ref bytes, 3), 3))
+}
+
+test "DecodeUtf8 rejects overlong three- and four-byte sequences" {
+    // E0 80 80 would encode U+0000; F0 80 80 80 would encode U+0000.
+    let mut bytes: byte[]
+    try bytes.Append(0xE0)
+    try bytes.Append(0x80)
+    try bytes.Append(0x80)
+    try bytes.Append(0xF0)
+    try bytes.Append(0x80)
+    try bytes.Append(0x80)
+    try bytes.Append(0x80)
+
+    testing.Expect(typesTestInvalidUtf8At(DecodeUtf8(ref bytes, 0), 0))
+    testing.Expect(typesTestInvalidUtf8At(DecodeUtf8(ref bytes, 3), 3))
+}
+
+test "DecodeUtf8 rejects UTF-16 surrogates" {
+    // ED A0 80 would encode U+D800.
+    let mut bytes: byte[]
+    try bytes.Append(0xED)
+    try bytes.Append(0xA0)
+    try bytes.Append(0x80)
+
+    testing.Expect(typesTestInvalidUtf8At(DecodeUtf8(ref bytes, 0), 0))
+}
+
+test "DecodeUtf8 rejects values above U+10FFFF" {
+    // F4 90 80 80 would encode U+110000.
+    let mut bytes: byte[]
+    try bytes.Append(0xF4)
+    try bytes.Append(0x90)
+    try bytes.Append(0x80)
+    try bytes.Append(0x80)
+
+    testing.Expect(typesTestInvalidUtf8At(DecodeUtf8(ref bytes, 0), 0))
+}
+
+test "DecodeUtf8 rejects a truncated sequence" {
+    // The euro sign without its last byte.
+    let mut bytes: byte[]
+    try bytes.Append(0x41)
+    try bytes.Append(0xE2)
+    try bytes.Append(0x82)
+
+    testing.Expect(typesTestInvalidUtf8At(DecodeUtf8(ref bytes, 1), 1))
+}
+
+test "DecodeUtf8 rejects a bad continuation byte" {
+    // C3 followed by ASCII 'A' instead of 80..BF.
+    let mut bytes: byte[]
+    try bytes.Append(0xC3)
+    try bytes.Append(0x41)
+
+    testing.Expect(typesTestInvalidUtf8At(DecodeUtf8(ref bytes, 0), 0))
+}
+
+// ---------------------------------------------------------------------------
+// decimal.ToString() and decimal128.ToString() (format R)
+// ---------------------------------------------------------------------------
+
+test "decimal.ToString keeps the written digits" {
+    let value: decimal := 1234.456m
+
+    testing.ExpectEqual("1234.456", try value.ToString())
+}
+
+test "decimal.ToString pads the fraction to Scale" {
+    let mut value: decimal := 1234.456m
+    try value.Scale = 4
+
+    testing.ExpectEqual("1234.4560", try value.ToString())
+}
+
+test "decimal.ToString writes integers without a point" {
+    let zero:  decimal := 0m
+    let whole: decimal := 42m
+
+    testing.ExpectEqual("0", try zero.ToString())
+    testing.ExpectEqual("42", try whole.ToString())
+}
+
+test "decimal.ToString writes the sign and keeps trailing zeros" {
+    let mut value: decimal := -5m
+    try value.Scale = 2
+    let half: decimal := -0.5m
+
+    testing.ExpectEqual("-5.00", try value.ToString())
+    testing.ExpectEqual("-0.5", try half.ToString())
+}
+
+test "decimal.ToString writes a leading zero below one" {
+    let cents: decimal := 0.05m
+    let micro: decimal := 0.000001m
+
+    testing.ExpectEqual("0.05", try cents.ToString())
+    testing.ExpectEqual("0.000001", try micro.ToString())
+}
+
+test "decimal.ToString stays plain at adjusted exponent -6 whatever the Scale" {
+    let mut value: decimal := 0.0000012m
+    try value.Scale = 8
+
+    testing.ExpectEqual("0.00000120", try value.ToString())
+}
+
+test "decimal.ToString switches to an exponent below adjusted exponent -6" {
+    let value:      decimal := 0.0000001m
+    let mut scaled: decimal := 0.00000012m
+    try scaled.Scale = 9
+
+    testing.ExpectEqual("1E-7", try value.ToString())
+    testing.ExpectEqual("1.20E-7", try scaled.ToString())
+}
+
+test "decimal.ToString uses an exponent for a negative Scale" {
+    let mut value: decimal := 1200m
+    try value.Scale = -2
+
+    testing.ExpectEqual("1.2E+3", try value.ToString())
+}
+
+test "decimal128.ToString matches decimal" {
+    let mut value: decimal128 := 1234.456m
+    try value.Scale = 4
+    let negative: decimal128 := -0.05m
+
+    testing.ExpectEqual("1234.4560", try value.ToString())
+    testing.ExpectEqual("-0.05", try negative.ToString())
+}

@@ -426,7 +426,7 @@ integrations:
     area: diagnostics-lsp-analysis-tooling
     status: partial
     integrated: "2026-08-29"
-    revised: "2026-11-11"
+    revised: "2026-11-20"
     document_revision: "2.0"
     repository_baseline: fafd8cb
     rules:
@@ -436,8 +436,9 @@ integrations:
     implemented:
       - "2026-11-11: shared lifetime facts (no second LSP engine). recordLifetimeBinding retains, for every accepted `let` reference holder, its origin and storage, the call whose returned-reference summary was instantiated over the actual arguments (ResolvedCallReferenceOf) with the resulting origin Places, and the Arena domain/epoch it depends on; recordArenaEffect retains each domain's Reset/Release sites. ResolvedLifetimeAt (internal/sema/lifetime_facts_at.go) joins them with the holder's resolved ReferenceLifetimeEnds. The LSP **Lifetime** hover (cmd/lsp/lifetime_hover.go) shows returned-reference source, origin, Arena generation, the later invalidating Reset/Release sites and the retained-borrow end, from these facts only (TestLifetimeHover)."
       - "2026-11-11: lifetime mentor diagnostics. The stale Arena reference use was an unregistered raw error naming only the allocation; it is now S1222 arena.use-after-invalidation (ProofInvalid) with the rejected use as primary span, the allocation origin labelled with its epoch, the Reset/Release that ended the epoch on the analyzed path as a related location (or help stating that a callee invalidated it, never an invented site), and restructurings: read/copy before the operation, allocate after it, or keep an owned value. Returned-local references (S1128) already name the local origin, the formation site and the returned dependency with owned/caller-backed alternatives; defer retention diagnostics name the delayed use. CLI JSON and LSP carry the second related location (TestArenaUseAfterInvalidationMentor, TestArenaMultiOriginCLI, TestDeferredArenaContinuationCLI and their LSP counterparts)."
+    partial:
+      - "Started (moved to partial 2026-11-20; the text records the done part and what remains): hover/navigation of the mapping owner of a reference into runtime-mapped storage: mapping views are Sec 0.5 hardware (platform rulebooks); returned-reference source, generation/epoch and retained-borrow dependency hover are implemented"
     remaining:
-      - "hover/navigation of the mapping owner of a reference into runtime-mapped storage: mapping views are Sec 0.5 hardware (platform rulebooks); returned-reference source, generation/epoch and retained-borrow dependency hover are implemented"
       - code actions are offered only when semantically proven and never invent hidden allocation or weaken hardware/volatile behavior
       - integrate lifetime findings with existing Interactive/Standard/Deep analysis surfaces while mandatory safety proof always runs
     required_tests:

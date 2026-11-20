@@ -589,7 +589,13 @@ func (a *Analyzer) inferAwaitExpression(expr *ast.AwaitExpression) (Type, expres
 	return a.intrinsicGenericType("TaskOutcome", valueType.TypeArgs[0]), expressionValue{Display: expr.String()}
 }
 
+// inferExpectedUnionVariantExpression resolves contextual constructors against
+// their expected concrete union and records only accepted payload preparation.
+// Rules: rules/declarations/unions.md §§4–5,7.8;
+// rules/compiler/semantic_ir.md §23.
 func (a *Analyzer) inferExpectedUnionVariantExpression(expr ast.Expression, expected Type) (Type, expressionValue, bool) {
+	delete(a.resolvedUnionConstructions, expr)
+	errorsBefore := len(a.errors)
 	if expected.Kind != UnionType {
 		return Type{}, expressionValue{}, false
 	}
@@ -602,6 +608,9 @@ func (a *Analyzer) inferExpectedUnionVariantExpression(expr ast.Expression, expe
 		if variant.Payload != nil || len(variant.PayloadFields) > 0 {
 			a.reportUnionVariantPayloadRequired(expr.Token, expected, variant)
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		if len(a.errors) == errorsBefore {
+			a.recordUnionConstruction(expr, expected, variant)
 		}
 		return expected, expressionValue{Display: expr.String()}, true
 	case *ast.MemberExpression:
@@ -622,6 +631,9 @@ func (a *Analyzer) inferExpectedUnionVariantExpression(expr ast.Expression, expe
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		a.bindDefinition(expr.Property.Token, variant.Token)
+		if len(a.errors) == errorsBefore {
+			a.recordUnionConstruction(expr, expected, variant)
+		}
 		return expected, expressionValue{Display: expr.String()}, true
 	case *ast.CallExpression:
 		name := callExpressionName(expr)
@@ -641,6 +653,9 @@ func (a *Analyzer) inferExpectedUnionVariantExpression(expr ast.Expression, expe
 				a.addTaskCategoryError(expr.Token, expected, "union variant %s.%s expects 0 arguments, got %d", typeDisplayName(expected), variant.Name, len(expr.Arguments))
 				return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 			}
+			if len(a.errors) == errorsBefore {
+				a.recordUnionConstruction(expr, expected, variant)
+			}
 			return expected, expressionValue{Display: expr.String()}, true
 		}
 		if len(expr.Arguments) != 1 {
@@ -658,6 +673,9 @@ func (a *Analyzer) inferExpectedUnionVariantExpression(expr ast.Expression, expe
 		}
 		if valueType.Kind != InvalidType && !a.validateOwningConstructionSource(expr.Arguments[0], TransferSiteConstruction) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		if valueType.Kind != InvalidType && len(a.errors) == errorsBefore {
+			a.recordUnionConstruction(expr, expected, variant)
 		}
 		return expected, expressionValue{Display: expr.String()}, true
 	default:
@@ -877,7 +895,13 @@ func (a *Analyzer) inferOwningConstructionValue(expr ast.Expression, expected Ty
 	return a.inferExpressionWithExpected(expr, expected)
 }
 
+// inferStructLiteralAsUnionVariant validates named payload fields and defaults
+// before recording their declaration positions and source-order preparations.
+// Rules: rules/declarations/unions.md §§5.3–5.4,7.8;
+// rules/compiler/semantic_ir.md §23.
 func (a *Analyzer) inferStructLiteralAsUnionVariant(expr *ast.StructLiteral) (Type, expressionValue, bool) {
+	delete(a.resolvedUnionConstructions, expr)
+	errorsBefore := len(a.errors)
 	if expr.Type == nil || !strings.Contains(expr.Type.Name, ".") {
 		return Type{}, expressionValue{}, false
 	}
@@ -907,6 +931,9 @@ func (a *Analyzer) inferStructLiteralAsUnionVariant(expr *ast.StructLiteral) (Ty
 
 	if !a.checkUnionPayloadFields(unionType, variant, expr, expr.Token) {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+	}
+	if len(a.errors) == errorsBefore {
+		a.recordUnionConstruction(expr, unionType, variant)
 	}
 	return unionType, expressionValue{Display: expr.String()}, true
 }
@@ -2092,7 +2119,7 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 		if !a.validateCallArgumentOwnership(best[0].Function, sourceArgs, preparedSpreadValues, expr) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
-		if !a.validateCallArgumentBorrows(best[0].Function, sourceArgs, preparedSpreadValues) {
+		if !a.validateCallArgumentBorrows(best[0].Function, sourceArgs, preparedSpreadValues, expr) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
 		a.recordCallBoundaryEscapeFacts(best[0].Function, sourceArgs, preparedSpreadValues)
@@ -2700,11 +2727,11 @@ func (a *Analyzer) inferCallExpressionWithExpected(expr *ast.CallExpression, exp
 		if a.checkCompileTimeCallArgumentContracts(function, args) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
-		if !a.validateCallArgumentOwnership(function, args, runtimeSpreadValues, expr) || !a.validateCallArgumentBorrows(function, args, runtimeSpreadValues) {
+		if !a.validateCallArgumentOwnership(function, args, preparedSpreadValues, expr) || !a.validateCallArgumentBorrows(function, args, preparedSpreadValues, expr) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
-		a.recordCallBoundaryEscapeFacts(function, args, runtimeSpreadValues)
-		a.recordCallReferencePlans(function, args, runtimeSpreadValues)
+		a.recordCallBoundaryEscapeFacts(function, args, preparedSpreadValues)
+		a.recordCallReferencePlans(function, args, preparedSpreadValues)
 		if !a.applyCalleeArenaParameterResets(function, args, runtimeSpreadValues) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
@@ -2720,7 +2747,7 @@ func (a *Analyzer) inferCallExpressionWithExpected(expr *ast.CallExpression, exp
 			a.callGraph.addCall(a.currentCallable, function, callCalleeDefinitionToken(expr), dispatch, execution)
 		}
 		a.setCallReferenceOrigin(expr, function, args, false)
-		a.markMovedCallArguments(function, args, runtimeSpreadValues, false)
+		a.markMovedCallArguments(function, args, preparedSpreadValues, false)
 		a.markConsumedPackSpreads(expr)
 		return function.ReturnType, expressionValue{Display: expr.String()}, true
 	}
@@ -2991,6 +3018,7 @@ func (a *Analyzer) inferCallAsConversion(expr *ast.CallExpression) (Type, expres
 	a.recordNamedConversion(expr, targetType, valueType)
 	a.recordCheckedConversion(expr, targetType, valueType)
 	a.recordNumericConversionPlan(expr, targetType, valueType)
+	a.recordNamedContractConversion(expr, targetType, valueType)
 
 	return targetType, expressionValue{Display: expr.String()}
 }

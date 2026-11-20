@@ -1,6 +1,6 @@
 schema_version: 1
-updated: "2026-11-19"
-last_id: MD-144
+updated: "2026-11-20"
+last_id: MD-147
 purpose: >-
   Tracks normative decisions that are missing or insufficiently precise and
   therefore constrain implementation. Remove an entry only after the owning
@@ -123,8 +123,9 @@ decisions:
       ffi.unresolved-c-binding-type for every c:: name. Decisions needed:
       the binding environment's form, ownership, per-target contents, and
       selection mechanism.
+      Accepted by the owner 2026-11-20 (complete proposal rev 1.1, rules/corrections/MD-021-c-binding-environment-complete-proposal-20261120.md) and integrated: ffi.md § 56, platform_model.md § 31, abi.md § 46, grammar.md § 126, attributes.md § 95, modules.md § 27, cli.md § 8, projects.md § 19(16), target_profiles.md § 42. Closed as a design decision; implementation tracked in frontend.ffi-v2 (governance/ffi.yaml).
     classification: blocking
-    status: open
+    status: decided-implementation-pending
   - id: MD-026
     area: stdlib-io-root
     rulebooks:
@@ -1335,8 +1336,9 @@ decisions:
       consumes (provider identity, reclamation authority, and individual
       reclamation or not). Governance owners: platform.target-profiles and
       lowering.sec-mlir-package19.
+      Accepted by the owner 2026-11-20 and integrated (projects.md § 19(11)-(15), target_profiles.md § 41, allocation.md § 28A) from rules/corrections/MD-139-allocation-profile-provider-selection-proposed-correction-2026-11-20.md. Implementation tracked in platform.target-profiles.
     classification: blocking
-    status: open
+    status: decided-implementation-pending
 
   - id: MD-140
     area: arena-epoch-exhaustion-strategy
@@ -1390,8 +1392,9 @@ decisions:
       - the values for each registered target, including the 128/256-bit
         integers.
       Governance owners: frontend.layout and lowering.sec-mlir-package24.
+      Integrated 2026-11-20 (layout.md § 47.1–47.2, types.md §§ 9.1(7), 9.4(9), target_profiles.md § 40): bool 1 byte (0x00/0x01), rune 4 bytes, alignment as typed per-representation plan facts. internal/layout implements it (typed ScalarAlignments, bool/rune sizes). The per-target producer exists (internal/platform/target/data_layout.go, clang 21.1.8 data layouts, verified per triple). sec build checks the code generator's applied data layout against those facts and fails closed (cmd/compiler/backend_data_layout.go). Remaining: verified layouts for planned bare-metal/RTOS targets and P24 lowering checks.
     classification: blocking
-    status: open
+    status: decided-implementation-pending
   - id: MD-142
     area: native-aggregate-alignment-and-placement
     rulebooks:
@@ -1425,8 +1428,9 @@ decisions:
       - whether the decimal carriers use the same rule as a struct with the
         fields coefficient and scale.
       Governance owners: frontend.layout and lowering.sec-mlir-package24.
+      Integrated 2026-11-20 (layout.md §§ 47.3–47.5): native field placement, fixed-array stride/size and decimal carriers by the ordinary algorithm. internal/layout implements placement, arrays and decimals with checked arithmetic. Remaining: pack/minAlign/byteOffset (MD-019) and target aggregate constraints in the resolver, P24/P18/P19 consumers.
     classification: blocking
-    status: open
+    status: decided-implementation-pending
   - id: MD-143
     area: build-metadata-api
     rulebooks:
@@ -1491,4 +1495,79 @@ decisions:
       not block MD-048 or frontend.units-v2 work. Governance owner:
       frontend.units-v2 (consumer) until a numeric-execution owner exists.
     classification: localized
+    status: open
+
+  - id: MD-145
+    area: tooling-documentation-symbol-links
+    rulebooks:
+      - rules/tooling/lsp.md
+      - rules/foundations/lexical_structure.md
+    description: >-
+      LSP §15(2) requires rename to update documentation links where supported,
+      but lexical_structure.md §5.4 leaves supported documentation tags to
+      tooling, and no tooling rule defines a symbol-link syntax or resolution
+      contract. Decide which forms denote symbol references rather than prose,
+      Markdown URLs or code examples; the scope of attached documentation;
+      qualification, overload/member/parameter and imported-symbol resolution;
+      behavior for ambiguous/unresolved references; and whether rename updates
+      link destinations, labels, or both. Plain equal spellings must remain
+      untouched. This blocks only documentation-link rename, not ordinary
+      semantic source rename. Governance owner: tooling.lsp-rename.
+    classification: localized
+    status: open
+
+  - id: MD-146
+    area: decimal-r-format-exponent-threshold
+    rulebooks:
+      - rules/library/core-library.md
+    description: >-
+      core-library.md § 10.7 says format R (and the default decimal/decimal128
+      ToString()) is exact and scale-preserving and uses "exponent notation
+      when needed to avoid pathological size", without a threshold. Owner
+      decision 2026-11-20: use the Java BigDecimal.toString rule. With
+      adjusted = digitCount(coefficient) - 1 - Scale, plain notation is used
+      when Scale >= 0 and adjusted >= -6 (every coefficient digit written, a
+      point before the last Scale digits, "0." plus zeros below one);
+      otherwise d[.ddd]E<+|-><adjusted>. Examples: 1234.456 at Scale 4 is
+      "1234.4560", 0.000001 is "0.000001", 1 at Scale 7 is "1E-7", 12 at
+      Scale -2 is "1.2E+3". Implemented in sec/core/decimal.sec and
+      decimal128.sec (_decimalCanonicalText); tests in sec/core/types_test.sec
+      compile but await the static test harness and native decimal lowering.
+      Remaining: write the rule into core-library.md § 10.7 and define R text
+      parsing so the round trip restores Scale.
+    classification: localized
+    status: decided-implementation-pending
+
+  - id: MD-147
+    area: numeric-format-language
+    rulebooks:
+      - rules/library/core-library.md
+      - rules/compiler/compiler_known_members.md
+      - sec/stdlib/fmt/sec-fmt-v1.md
+    description: >-
+      Owner request 2026-11-20: one format language shared by int, uint,
+      float and decimal ToString(format) and by future fmt fields
+      ({0:...}, sec-fmt-v1 § 8(5), FMT-V1-02). Today only decimal has codes
+      (core-library.md § 10.7: R, G, F<n>, N<n>, E<n> plus explicit decimal
+      and group separators); § 15 says "the exact format grammar is defined
+      in a separate formatting rule" that does not exist; core.FormatSpec
+      (fill, alignment, sign, alternate, zero pad, width, precision,
+      presentation) exists in sec/core/format.sec without a parser or
+      numeric semantics; the integer/float ToString(format) overloads have
+      no grammar. Decide: (1) the grammar and its mapping to FormatSpec,
+      shared by all numeric families, including which codes apply to which
+      family (D, X/x, B, O for integers; F, N, E, G, R for float/decimal);
+      (2) separator and regional options: decimal separator, group
+      separator, group sizes (for example 3 or 3;2), sign and minus
+      characters, digit set — explicit strings or a value type (for example
+      NumberFormat) passed in, never host locale in core (§ 55(4) leaves
+      locale data to a higher library); (3) display precision for float and
+      decimal as a digit count separate from the stored value/Scale, rounded
+      once with a RoundingMode (core-library.md § 10.3), default
+      NearestEven per § 10.7, never mutating the value; how float display
+      rounds from the exact binary value; (4) errors (existing FormatError
+      variants), compile-time validation of literal formats, and the
+      relation to MD-118 (fmt surface). Governance owner:
+      core.numeric-formatting (to be created with the decision).
+    classification: constraining
     status: open

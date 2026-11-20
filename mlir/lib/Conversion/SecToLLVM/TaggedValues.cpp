@@ -90,6 +90,10 @@ std::optional<TaggedLayout> taggedLayout(Type type) {
 }
 
 Type physicalType(Type type) {
+  // A named scalar (including a constrained one) is represented by its
+  // carrier; nominal identity and contracts have no physical bits.
+  while (auto named = dyn_cast<sec::NamedType>(type))
+    type = named.getBase();
   if (auto integer = dyn_cast<IntegerType>(type))
     return IntegerType::get(type.getContext(), integer.getWidth());
   if (isa<Float32Type, Float64Type>(type))
@@ -454,6 +458,29 @@ struct LowerTaggedValuesPass
     populateBranchOpInterfaceTypeConversionPattern(patterns, converter);
     if (failed(applyPartialConversion(getOperation(), target, std::move(patterns))))
       signalPassFailure();
+    // Payload slots carry a named scalar as its carrier, while the integer
+    // pass already bridged named values to their signless carrier. Fold the
+    // resulting carrier -> !sec.named -> carrier casts so no named value
+    // reaches the LLVM finalizer (layout.md § 18).
+    SmallVector<UnrealizedConversionCastOp> casts;
+    getOperation()->walk([&](UnrealizedConversionCastOp cast) {
+      if (cast->getNumResults() == 1 && cast->getNumOperands() == 1 &&
+          isa<sec::NamedType>(cast.getResult(0).getType()))
+        casts.push_back(cast);
+    });
+    for (UnrealizedConversionCastOp cast : casts) {
+      Value input = cast.getOperand(0);
+      for (OpOperand &use : llvm::make_early_inc_range(cast.getResult(0).getUses())) {
+        auto next = dyn_cast<UnrealizedConversionCastOp>(use.getOwner());
+        if (!next || next->getNumResults() != 1 ||
+            next.getResult(0).getType() != input.getType())
+          continue;
+        next.getResult(0).replaceAllUsesWith(input);
+        next.erase();
+      }
+      if (cast.getResult(0).use_empty())
+        cast.erase();
+    }
   }
 };
 } // namespace

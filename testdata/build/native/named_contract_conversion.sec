@@ -1,0 +1,137 @@
+module main
+
+// Runtime conversions into constrained named integer types (contracts.md
+// §§ 12, 13.1): the intrinsic carrier conversion first, then every declared
+// contract in source order; the first violation is
+// ConversionError.Contract(ContractError.Violation { Kind, DeclarationIndex }).
+// main returns 42 only when every case holds.
+
+type Percent int range 0..100
+type Small int8 range 1..<10 odd
+type Choice int in [2, 4, 8]
+type Aligned int multipleOf 4
+type Even int even
+
+// Reason encodes the failure: 1000 for an intrinsic OutOfRange, otherwise
+// the ContractKind ordinal times 10 plus the DeclarationIndex.
+fn Reason(error: ConversionError) int {
+    match error {
+        ConversionError.OutOfRange => return 1000
+        ConversionError.Contract(contract) => return Violation(contract)
+        _ => return 9999
+    }
+}
+
+fn Violation(contract: ContractError) int {
+    match contract {
+        ContractError.Violation { Kind: kind, DeclarationIndex: index } => {
+            let mut offset := 0
+            if index == 1 {
+                offset = 1
+            }
+            return Ordinal(kind) * 10 + offset
+        }
+    }
+}
+
+fn Ordinal(kind: ContractKind) int {
+    match kind {
+        ContractKind.Range => return 1
+        ContractKind.In => return 2
+        ContractKind.Odd => return 3
+        ContractKind.Even => return 4
+        ContractKind.MultipleOf => return 5
+        _ => return 9
+    }
+}
+
+fn ToPercent(x: int) Result[Percent, ConversionError] {
+    let p := try Percent(x)
+    return Ok(p)
+}
+
+fn ToSmall(x: int) Result[Small, ConversionError] {
+    let s := try Small(x)
+    return Ok(s)
+}
+
+fn ToChoice(x: int) Result[Choice, ConversionError] {
+    let c := try Choice(x)
+    return Ok(c)
+}
+
+fn ToAligned(x: int) Result[Aligned, ConversionError] {
+    let a := try Aligned(x)
+    return Ok(a)
+}
+
+fn ToEven(x: int) Result[Even, ConversionError] {
+    let e := try Even(x)
+    return Ok(e)
+}
+
+fn PercentCode(x: int) int {
+    match ToPercent(x) {
+        Ok(p) => {
+            if int(p) != x { return 7777 }
+            return 0
+        }
+        Err(error) => return Reason(error)
+    }
+}
+
+fn SmallCode(x: int) int {
+    match ToSmall(x) {
+        Ok(_) => return 0
+        Err(error) => return Reason(error)
+    }
+}
+
+fn ChoiceCode(x: int) int {
+    match ToChoice(x) {
+        Ok(_) => return 0
+        Err(error) => return Reason(error)
+    }
+}
+
+fn AlignedCode(x: int) int {
+    match ToAligned(x) {
+        Ok(_) => return 0
+        Err(error) => return Reason(error)
+    }
+}
+
+fn EvenCode(x: int) int {
+    match ToEven(x) {
+        Ok(_) => return 0
+        Err(error) => return Reason(error)
+    }
+}
+
+fn Clamp(x: int) int {
+    let p := try Percent(x) {
+        Err(_) => Percent(0)
+    }
+    return int(p)
+}
+
+fn main() int {
+    if PercentCode(0) != 0 { return 10 }
+    if PercentCode(100) != 0 { return 11 }
+    if PercentCode(-1) != 10 { return 12 }
+    if PercentCode(101) != 10 { return 13 }
+    if SmallCode(3) != 0 { return 20 }
+    if SmallCode(500) != 1000 { return 21 }
+    if SmallCode(0) != 10 { return 22 }
+    if SmallCode(10) != 10 { return 23 }
+    if SmallCode(4) != 31 { return 24 }
+    if ChoiceCode(4) != 0 { return 30 }
+    if ChoiceCode(5) != 20 { return 31 }
+    if AlignedCode(-12) != 0 { return 40 }
+    if AlignedCode(6) != 50 { return 41 }
+    if EvenCode(-6) != 0 { return 50 }
+    if EvenCode(7) != 40 { return 51 }
+    if Clamp(55) != 55 { return 60 }
+    if Clamp(300) != 0 { return 61 }
+    return 42
+}

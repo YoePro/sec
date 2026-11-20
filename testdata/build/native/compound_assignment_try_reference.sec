@@ -1,0 +1,29 @@
+module main
+
+// `*target op= try e` through a mutable reference: the referent is read
+// before the try source and written only on success (operators.md §§ 84(3),
+// 87(3)). The native track does not lower references yet, so this fixture
+// is checked through Semantic IR only.
+
+fn Parse(x: int) Result[int, ConversionError] {
+    let y := try int8(x)
+    return Ok(int(y))
+}
+
+fn AddThrough(target: ref mut int, b: int) Result[void, ConversionError] {
+    *target += try Parse(b)
+    return Ok()
+}
+
+fn ThroughRef(a: int, b: int) int {
+    let mut value := a
+    match AddThrough(ref mut value, b) {
+        Ok(_) => {}
+        Err(_) => {}
+    }
+    return value
+}
+
+fn main() int {
+    return ThroughRef(40, 2)
+}

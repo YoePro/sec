@@ -1,0 +1,40 @@
+module main
+
+fn Exclusive(owner: ref mut int[2], first: int, second: int) void {}
+fn Overlap(values: ref mut int[2]) void {
+    Exclusive(values, values...)
+}
+
+fn ReturnFirst(first: ref int, second: ref int) ref int { return first }
+fn PreparedReference(values: int[2]) ref int {
+    return ReturnFirst(values...)
+}
+
+type Holder struct { Value: ref int, }
+fn TakeHolders(first: Holder, second: Holder) void {}
+fn Contained(values: Holder[2]) void { TakeHolders(values...) }
+
+type CallbackHolder struct { Callback: fn() int, }
+fn TakeCallbacks(first: CallbackHolder, second: CallbackHolder) void {}
+fn Captured(values: CallbackHolder[2]) void { TakeCallbacks(values...) }
+
+type Buffers struct { Values: int[2], Other: int[2], }
+fn FieldOverlap(buffer: ref mut Buffers) void {
+    Exclusive(buffer.Values, buffer.Values...)
+}
+
+fn BorrowThenSpread(owner: ref mut int[], values: ...int) void {}
+fn RuntimeOverlap(values: ref mut int[]) void {
+    BorrowThenSpread(values, values...)
+}
+
+fn Snapshot(values: ref int[2]) int[2] { return [values[0], values[1]] }
+fn OpaqueSource(values: ref mut int[2]) void {
+    Exclusive(values, Snapshot(values)...)
+}
+
+fn SnapshotEmpty(values: ref int[2]) int[0] { return [] }
+fn ExclusiveOnly(owner: ref mut int[2]) void {}
+fn EmptyOpaqueSource(values: ref mut int[2]) void {
+    ExclusiveOnly(values, SnapshotEmpty(values)...)
+}

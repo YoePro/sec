@@ -184,7 +184,7 @@ integrations:
     area: frontend-and-lowering
     status: partial
     integrated: "2026-08-11"
-    revised: "2026-10-05"
+    revised: "2026-11-20"
     summary: >-
       Tracks vector, matrix, tensor, tensor_view, Shape, Strides, TensorLayout,
       and MemorySpace independently from ordinary collections. The canonical
@@ -216,9 +216,11 @@ integrations:
       - canonical dense owning vector, matrix, and tensor values expose instance IsContiguous as a compiler-known bool fact fixed to true; Sema and LSP consume the shared registry entry and no type-level property is invented
       - parser and Sema recognize owning runtime-shaped tensor[T, Shape[Rank]] as a distinct tensor identity, retain its compile-time rank, reject mixed runtime/static extent forms, and do not conflate it with tensor_view or invent a static element count
       - "MD-016 part 1 frontend (2026-10-18; shaped-types.md §§ 4.1, 6.0, 7.1, 15.3, 29.3): positional literals Shape[N] { ... }, Strides[N] { ... }, Axes[N] { ... }, AxisList[N] { ... } parse (synthetic never-public component names) and check arity, exact component types (uint; int for Strides) and the static Axes permutation / AxisList uniqueness invariant with S1173 collections.shaped-metadata-literal; get-only .Rank/.Count; read-only uint-indexed reads with constant bounds checks and S1173 on writes; infallible new Shape/Strides and ShapeError-fallible new Axes/AxisList requiring try; TensorLayout[Rank] is a rank-specific enum with exactly DenseRowMajor/DenseColumnMajor/Strided and exhaustive switch coverage; ShapeError is the core error enum in sec/core/error.sec (user decisions 2026-10-18: error marker, core owner). Test: TestShapedMetadataSurface with testdata/sema/shaped_metadata_{valid,invalid}.sec"
+    partial:
+      - "Started (moved to partial 2026-11-20; the text records the done part and what remains): MD-016 part 1 remaining (verified 2026-10-18): Semantic IR has no representation of shaped metadata (emit-ir stops at 'type Shape'), so §10.2 facts and lowering are open; LSP hover/signature help/go-to-definition do not yet show the exact declarations, structured comments or the Axes/AxisList construction error (§§10.3–10.4); Permute/Contract consumption checks (§§11.4–11.5), runtime ShapeError behavior (§11.7) and differential tests (§11.8) are not implemented; the formatter keeps but does not insert the space in `Shape[3]{ ... }`"
+      - "Started (moved to partial 2026-11-20; the text records the done part and what remains): complete contextual x scalar product/result algebra, accumulation proof, Semantic IR, lowering, and runtime ShapeError checking; static matrix/matrix and matrix/vector Sema already exists partially"
     remaining:
       - "MD-016 shaped closure (applied 2026-10-21): implement ShapedStorageRequest[Rank] and MemorySpace.Ordinary, the vector/matrix/tensor init overload families selected by new (default and consuming T[] algorithms, Arena borrowed, ShapeError.InitError for storage failure), static consuming ToShape, Materialize/TransferTo/Relayout with StorageError and a duplication requirement, physical IsContiguous, rank-zero value rejection, reverse-logical destruction and empty-reduction identities. Done: core StorageError enum, ShapeError error union with InitError(StorageError) and InvalidStep removed, core StorageRequest (TestShapedClosureErrorAndRequestDeclarations)."
-      - "MD-016 part 1 remaining (verified 2026-10-18): Semantic IR has no representation of shaped metadata (emit-ir stops at 'type Shape'), so §10.2 facts and lowering are open; LSP hover/signature help/go-to-definition do not yet show the exact declarations, structured comments or the Axes/AxisList construction error (§§10.3–10.4); Permute/Contract consumption checks (§§11.4–11.5), runtime ShapeError behavior (§11.7) and differential tests (§11.8) are not implemented; the formatter keeps but does not insert the space in `Shape[3]{ ... }`"
       - implement runtime Shape, Len, Strides, and IsContiguous where required, plus Layout, MemorySpace, Ptr, and shaped instance SizeOf member semantics
       - implement ShapedStorageRequest composition with StorageRequest and explicit Create request validation
       - implement Reshape as borrowed zero-copy view formation with runtime ShapeError checking where required
@@ -231,7 +233,6 @@ integrations:
       - implement step on shaped range selectors including negative step reversal and zero-step rejection
       - implement right-aligned explicit BroadcastTo with zero-stride aliasing and shared-only expanded views
       - implement elementwise shaped + - * / with no implicit shaped broadcasting
-      - complete contextual x scalar product/result algebra, accumulation proof, Semantic IR, lowering, and runtime ShapeError checking; static matrix/matrix and matrix/vector Sema already exists partially
       - implement Dot, Outer, Magnitude, Normalize Option semantics, and extent-three Cross
       - implement explicit Contract with AxisList pairs and canonical result-axis ordering
       - preserve no-allocation semantics for logical shaped arithmetic and view transformations
@@ -256,7 +257,7 @@ integrations:
     status: partial
     integrated: "2026-08-07"
     audited: "2026-08-18"
-    revised: "2026-11-05"
+    revised: "2026-11-20"
     summary: >-
       Tracks fixed arrays, owning dynamic arrays, slices, list, map, and set
       against the unified collections rulebook. Parser/type recognition and
@@ -330,6 +331,8 @@ integrations:
       - Nonempty literals targeting owning T[] are rejected with mandatory S1155 (collections.dynamic-array-literal-invalid), a source location and guidance to use an empty mutable owner plus Append or fixed T[N]. Range segments retain S1119. Contextual [] remains valid under the later MD-027 correction, including declarations, assignments, returns, fields and calls. Rejected literals publish no literal plan; CLI stops before lowering and preserves existing output; LSP carries the same diagnostic. Older fixtures use fixed backing, typed owner inputs or empty defaults according to their original test purpose.
       - Owning-array frontend identity is verified across copyability, destruction, equality, initialization and transfer (2026-10-16, correction26). T[] remains MoveOnly and non-trivially destructible independently of element copyability, including named owners and containing fixed arrays/structs; fixed arrays retain element-derived traits. Fixed/owning families cannot initialize each other or gain owner content equality, explicit moves preserve the owner type and consume the source, and explicit shared/mutable slices remain valid. Fixed-array equality now requires the complete canonical type identity instead of checking only shape and recursively comparing elements, rejecting distinct nominal wrappers and nested nominal mismatches with S1019. Equality resolution is extracted into type_equality.go. All-depth/reanalysis, CLI output-preservation and unsaved LSP checks pass; executable dynamic owner layout and operations remain in the separate P18/lowering work.
       - "MD-126 live-storage source frontend implemented (2026-11-05; collections.md 7.10): string/ref string/StringView bracket ranges infer a shared non-owning StringView without ref and retain detached source/endpoint evaluation order, normalized rune intervals, RangeError precedence, source provenance, borrow/lifetime facts and runtime BoundsFailure effects. Nested and caller-returned views retain source backing. Immutable UTF-8 scalar counts prove A-pi-emoji-b has four rune positions rather than eight bytes; inclusive end at Len rejects and exclusive empty at Len accepts. try propagation/local handlers return success StringView with RangeError and remove only the spatial panic effect; noPanic/noAlloc source coverage passes. Compiler/LSP share mandatory S1200 invalid-range-source and S1201 invalid-slice-range with help; valid loop syntax, hover and formatter idempotence are covered. IR producers and executable byte-boundary translation remain P23 and fail closed without output."
+    partial:
+      - "Started (moved to partial 2026-11-20; the text records the done part and what remains): MD-126 remaining range-source/validation work: support the enclosing for temporary-retention model for non-addressable fresh string sources (currently rejected with S1200 rather than extending their lifetime); finish target-width endpoint representability checks and the complete Unicode/overflow/failure-precedence conformance matrix. Live storage/ref string and nested/caller-returned StringView source plans, ordinary rune ranges, try RangeError and compiler/LSP diagnostics are implemented above; executable guard/byte translation remains owned by frontend.semantic-ir-v2/P23."
     remaining:
       - "MD-058 runtime behaviour: lower Reserve and WithCapacity with the guaranteed Capacity >= Len + n, the no-op path, transactional failure including map/set rehash, allocation-context use and CollectionError classification; verify borrow conflicts, relocation invalidation and fault-injected rollback (collections.md §§ 13.12, 14.8, 15.5); Semantic IR and both legacy backends have no list/map/set operations today"
       - complete parser, AST, and Sema coverage for the canonical fixed-array and slice syntax contract
@@ -338,7 +341,6 @@ integrations:
       - compiler-defined layout, overflow, alignment, and length validation
       - explicit array, slice, and list operations in Semantic IR and lowering through MLIR and LLVM
       - focused valid, invalid, recovery, analysis, and backend test coverage
-      - "MD-126 remaining range-source/validation work: support the enclosing for temporary-retention model for non-addressable fresh string sources (currently rejected with S1200 rather than extending their lifetime); finish target-width endpoint representability checks and the complete Unicode/overflow/failure-precedence conformance matrix. Live storage/ref string and nested/caller-returned StringView source plans, ordinary rune ranges, try RangeError and compiler/LSP diagnostics are implemented above; executable guard/byte translation remains owned by frontend.semantic-ir-v2/P23."
     verification:
       - command: go vet -p 4 ./internal/sema ./internal/ir/semantic ./internal/diagnostics ./internal/formatter ./cmd/compiler ./cmd/lsp
         result: passed on 2026-11-05
@@ -444,8 +446,8 @@ integrations:
       - "Append accepts a range segment (2026-10-05, collections.md § 6.7): `try values.Append(0r..127r)` resolves the segment with the § 5.6a rules for the element type, records a ResolvedRangeAppend fact, and returns Result[void, CollectionError]; list[T].Append and Fill reject a range with S1119"
       - "Omitted mutable T[] initialization resolves to the distinct EmptyDynamicArrayDefault fact: an initialized allocation-free empty owner with zero length and internal capacity, no backing storage and no live elements; element defaults are never required. Recursive aggregate defaults, presentation and LSP source edits consume the same fact; immutable owners and safe slices still require initialization."
       - Structural dynamic-array methods consume the canonical member mutation contract and Place/liveness borrow model before publishing successful calls or growth effects (2026-10-16). Append, Clear and RemoveAt reject overlapping live element/slice loans, including field paths, parameter-derived aliases, branch-merged origins and defer-retained uses; granting-reference access, ended loans and disjoint fields/elements remain valid. Rejected range Append publishes neither its range plan nor a growth request. Canonical reference-holder provenance now preserves parameter-derived referents across intermediate alias last uses. Existing iteration and mutable-borrow read checks remain authoritative; this is static rejection, with no runtime borrow checker or claim of executable owner lowering.
+      - "P18 owning dynamic-array representation implemented (2026-11-14..18; superseded the 'nothing implemented yet' note): Semantic IR represents T[] with Len/Capacity/IsEmpty/indexing/Append growth/Clear/RemoveAt, field-path owners and destruction plans, schema-14 !sec.dynamic_array with --sec-verify-dynamic-arrays and --sec-verify-storage-transitions (package18-todo.md 44/47, rules/mlir/packages/sec-mlir-dialect_package18-implementation-report.md). The three blocked remainders (P18-17/18/22) are tracked in lowering.sec-mlir-package18."
     remaining:
-      - "SEC-MLIR-P18 owning dynamic-array Semantic IR/schema-14 representation: implementation plan in package18-todo.md (created 2026-10-16, P18-01..P18-47); nothing implemented yet; Semantic IR still rejects `T[]`; gated on P15-P17 and on MD-034 (MD-074 len is uint since 2026-10-17; MD-072 and MD-050 decided 2026-10-17)"
       - lower range-segment Append as one all-or-nothing growth on the P18 substrate
       - implement transactional Append on the P18 growth substrate
       - make Clear reverse-destroy live elements while retaining backing
@@ -476,7 +478,7 @@ integrations:
         result: "passed on 2026-10-16: distinct empty-owner default, recursive aggregate synthesis, all analysis depths, reanalysis, no allocation-context request and LSP source rendering"
       - command: go test ./internal/sema -run TestCompilerKnownAppendAcceptsTypedStructLiteralUnderTry -v
         result: passed
-    revised: "2026-10-16"
+    revised: "2026-11-20"
     code:
       - internal/sema/defaults.go
       - internal/sema/types.go

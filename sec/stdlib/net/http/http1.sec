@@ -21,3 +21,752 @@ module http
  * Rulebook:
  * stdlib/net/http/std-net-http.md
  */
+
+// First increment (2026-11-20): complete-buffer parsing of the message head,
+// RFC 9112 § 6.3 message-length selection and chunked decoding. Every
+// declaration is private (std-net-http.md § 28). Incremental parser state,
+// generation, persistence and Upgrade are later increments.
+//
+// Strictness: framing is never repaired. Bare CR or LF, whitespace around
+// the start line or before a field colon, obs-fold, conflicting lengths and
+// Transfer-Encoding together with Content-Length are all rejected, so this
+// codec cannot disagree with another compliant intermediary about where a
+// message ends.
+//
+// Open design points (implementation-status-std-net-http.yaml remaining):
+// the status line requires the SP after the code even with an empty
+// reason, and the trailer check forbids only Content-Length,
+// Transfer-Encoding, Host and Trailer.
+//
+// Comparisons such as `last > index` and `199 >= code` are written with the
+// larger side first on purpose: `a < b { ... c > (x) }` is mis-parsed as a
+// unit/type-argument list (BUG-000032). Restore the natural order once the
+// parser is fixed.
+
+/**
+ * Failure of the private HTTP/1 codec.
+ *
+ * Description:
+ * Message carries syntax and framing failures, Header carries field-store
+ * failures and Allocation the storage error of a materialized string or
+ * body. Client and server code map it into ClientError/ServerError.
+ */
+type _Http1Error union error {
+    Message(MessageError),
+    Header(HeaderError),
+    Allocation(error),
+}
+
+/**
+ * Bounds applied while parsing one message (std-net-http.md § 28).
+ */
+type _Http1Limits struct {
+    /** Maximum bytes of one start, field or chunk-size line, without CRLF. */
+    MaxLineBytes: uint,
+    /** Maximum number of field lines in a header or trailer section. */
+    MaxFieldCount: uint,
+    /** Maximum decoded body bytes. */
+    MaxBodyBytes: uint64,
+}
+
+/**
+ * One CRLF-terminated line: bytes Start..<End, next line at Next.
+ */
+type _Http1Line struct {
+    Start: uint,
+    End:   uint,
+    Next:  uint,
+}
+
+/** A parsed request-line (RFC 9112 § 3). */
+type _Http1RequestLine struct {
+    Method: Method,
+    /** Raw request-target; form selection happens against RequestTarget. */
+    Target:  string,
+    Version: Version,
+}
+
+/** A parsed status-line (RFC 9112 § 4); the reason phrase is ignored. */
+type _Http1StatusLine struct {
+    Version: Version,
+    Status:  Status,
+}
+
+/** One field line with OWS removed around the value. */
+type _Http1Field struct {
+    Name:  string,
+    Value: string,
+}
+
+/** A header or trailer section and the offset just after its empty line. */
+type _Http1Fields struct {
+    Header: Header,
+    Next:   uint,
+}
+
+/**
+ * Message body length selected by RFC 9112 § 6.3.
+ */
+type _Http1BodyLength union {
+    /** The message has no content. */
+    NoBody,
+    /** Exactly this many content bytes follow. */
+    Fixed(uint64),
+    /** Chunked transfer coding delimits the content. */
+    Chunked,
+    /** A response body ends when the connection closes. */
+    UntilClose,
+}
+
+/** A decoded chunked body, its trailer section and the next offset. */
+type _Http1ChunkedBody struct {
+    Body: byte[],
+    Trailer: Header,
+    Next:    uint,
+}
+
+// ---------------------------------------------------------------------------
+// Byte classes
+// ---------------------------------------------------------------------------
+
+// tchar = "!" / "#" / "$" / "%" / "&" / "'" / "*" / "+" / "-" / "." / "^" /
+// "_" / "`" / "|" / "~" / DIGIT / ALPHA (RFC 9110 § 5.6.2).
+fn _Http1IsTchar(value: byte) bool {
+    if value in 0x30..0x39 || value in 0x41..0x5A || value in 0x61..0x7A {
+        return true
+    }
+    return value == 0x21 || value == 0x23 || value == 0x24 || value == 0x25 ||
+        value == 0x26 || value == 0x27 || value == 0x2A || value == 0x2B ||
+        value == 0x2D || value == 0x2E || value == 0x5E || value == 0x5F ||
+        value == 0x60 || value == 0x7C || value == 0x7E
+}
+
+// field-vchar, SP, HTAB or obs-text (RFC 9110 § 5.5); never CR, LF, NUL,
+// another control or DEL.
+fn _Http1IsFieldValueByte(value: byte) bool {
+    return value == 0x09 || value == 0x20 || value in 0x21..0x7E || value >= 0x80
+}
+
+fn _Http1IsWhitespace(value: byte) bool {
+    return value == 0x20 || value == 0x09
+}
+
+// The value of a HEXDIG, or 16 when value is not one.
+fn _Http1HexValue(value: byte) uint64 {
+    if value in 0x30..0x39 {
+        return uint64(value - 0x30)
+    }
+    if value in 0x41..0x46 {
+        return uint64(value - 0x37)
+    }
+    if value in 0x61..0x66 {
+        return uint64(value - 0x57)
+    }
+    return 16
+}
+
+/**
+ * Materializes data[start..<end] with one scalar per octet.
+ *
+ * Description:
+ * Uses the octet-preserving HeaderValue representation (std-net-http.md
+ * § 11.2): octet n becomes U+00nn, so obs-text survives unchanged.
+ */
+fn _Http1Text(data: ref byte[], start: uint, end: uint) Result[string, StringError] {
+    let mut text  := ""
+    let mut index := start
+    while end > index {
+        let octet  := data[index]
+        let scalar := rune(uint(octet))
+        text = try text + scalar
+        index += 1
+    }
+    return Ok(text)
+}
+
+// ---------------------------------------------------------------------------
+// Lines
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns the CRLF-terminated line that starts at start.
+ *
+ * Errors:
+ * - MessageError.MalformedMessage: bare CR or LF, or no CRLF before the end
+ * of data. RFC 9112 § 2.2 lets a recipient accept bare LF; Sec does not.
+ * - MessageError.HeaderTooLarge: the line exceeds maxLineBytes.
+ */
+fn _Http1NextLine(data: ref byte[], start: uint, maxLineBytes: uint) Result[_Http1Line, _Http1Error] {
+    let mut index := start
+    while index < data.Len {
+        if index - start > maxLineBytes {
+            return Err(_Http1Error.Message(MessageError.HeaderTooLarge))
+        }
+        let current := data[index]
+        if current == 0x0A {
+            return Err(_Http1Error.Message(MessageError.MalformedMessage))
+        }
+        if current == 0x0D {
+            if index + 1 < data.Len && data[index + 1] == 0x0A {
+                return Ok(_Http1Line {
+                    Start: start,
+                    End: index,
+                    Next: index + 2,
+                })
+            }
+            return Err(_Http1Error.Message(MessageError.MalformedMessage))
+        }
+        index += 1
+    }
+    return Err(_Http1Error.Message(MessageError.MalformedMessage))
+}
+
+// ---------------------------------------------------------------------------
+// Start lines
+// ---------------------------------------------------------------------------
+
+/**
+ * Parses HTTP-version = "HTTP/" DIGIT "." DIGIT (RFC 9112 § 2.3).
+ *
+ * Description:
+ * The name is case-sensitive. HTTP/1.0 is Http10; a higher 1.x minor is
+ * treated as Http11, the highest supported minor (RFC 9110 § 6.2).
+ *
+ * Errors:
+ * - MessageError.InvalidVersion: not the HTTP-version grammar.
+ * - MessageError.UnsupportedProtocol: a major version other than 1.
+ */
+fn _Http1ParseVersion(data: ref byte[], start: uint, end: uint) Result[Version, _Http1Error] {
+    if end - start != 8 || data[start] != 0x48 || data[start + 1] != 0x54 ||
+        data[start + 2] != 0x54 || data[start + 3] != 0x50 ||
+        data[start + 4] != 0x2F || data[start + 6] != 0x2E {
+        return Err(_Http1Error.Message(MessageError.InvalidVersion))
+    }
+    let major := data[start + 5]
+    let minor := data[start + 7]
+    if major not in 0x30..0x39 || minor not in 0x30..0x39 {
+        return Err(_Http1Error.Message(MessageError.InvalidVersion))
+    }
+    if major != 0x31 {
+        return Err(_Http1Error.Message(MessageError.UnsupportedProtocol))
+    }
+    if minor == 0x30 {
+        return Ok(Version.Http10)
+    }
+    return Ok(Version.Http11)
+}
+
+/**
+ * Parses request-line = method SP request-target SP HTTP-version.
+ *
+ * Description:
+ * Exactly one SP separates the parts; leading or trailing whitespace is
+ * rejected (RFC 9112 § 3). The target is visible ASCII without SP.
+ *
+ * Errors:
+ * - MessageError.InvalidMethod, InvalidTarget, InvalidVersion or
+ * UnsupportedProtocol for the failing part.
+ * - Allocation: the method or target text could not be materialized.
+ */
+fn _Http1ParseRequestLine(data: ref byte[], line: _Http1Line) Result[_Http1RequestLine, _Http1Error] {
+    let mut index := line.Start
+    while index < line.End && _Http1IsTchar(data[index]) {
+        index += 1
+    }
+    if index == line.Start || index >= line.End || data[index] != 0x20 {
+        return Err(_Http1Error.Message(MessageError.InvalidMethod))
+    }
+    let methodEnd   := index
+    let targetStart := index + 1
+    index = targetStart
+    while index < line.End && data[index] in 0x21..0x7E {
+        index += 1
+    }
+    if index == targetStart || index >= line.End || data[index] != 0x20 {
+        return Err(_Http1Error.Message(MessageError.InvalidTarget))
+    }
+    let targetEnd    := index
+    let versionStart := targetEnd + 1
+    let version      := try _Http1ParseVersion(data, versionStart, line.End)
+
+    let method := try _Http1Text(data, line.Start, methodEnd) {
+        Err(error) => {
+            return Err(_Http1Error.Allocation(error))
+        }
+    }
+    let target := try _Http1Text(data, targetStart, targetEnd) {
+        Err(error) => {
+            return Err(_Http1Error.Allocation(error))
+        }
+    }
+    return Ok(_Http1RequestLine {
+        Method: Method(method),
+        Target: target,
+        Version: version,
+    })
+}
+
+/**
+ * Parses status-line = HTTP-version SP 3DIGIT SP [reason-phrase].
+ *
+ * Description:
+ * The SP after the code is required even when the reason is empty
+ * (RFC 9112 § 4). The reason phrase is validated and then ignored.
+ *
+ * Errors:
+ * - MessageError.InvalidVersion or UnsupportedProtocol: bad version.
+ * - MessageError.InvalidStatus: the code is not three digits in 100..999.
+ * - MessageError.MalformedMessage: separators or reason bytes are invalid.
+ */
+fn _Http1ParseStatusLine(data: ref byte[], line: _Http1Line) Result[_Http1StatusLine, _Http1Error] {
+    if line.End - line.Start < 13 {
+        return Err(_Http1Error.Message(MessageError.MalformedMessage))
+    }
+    let start      := line.Start
+    let versionEnd := start + 8
+    let version    := try _Http1ParseVersion(data, start, versionEnd)
+    if data[start + 8] != 0x20 || data[start + 12] != 0x20 {
+        return Err(_Http1Error.Message(MessageError.MalformedMessage))
+    }
+    let hundreds := data[start + 9]
+    let tens     := data[start + 10]
+    let ones     := data[start + 11]
+    if hundreds not in 0x30..0x39 || tens not in 0x30..0x39 || ones not in 0x30..0x39 {
+        return Err(_Http1Error.Message(MessageError.InvalidStatus))
+    }
+    let mut index := start + 13
+    while index < line.End {
+        if !_Http1IsFieldValueByte(data[index]) {
+            return Err(_Http1Error.Message(MessageError.MalformedMessage))
+        }
+        index += 1
+    }
+    let code := int(hundreds - 0x30) * 100 + int(tens - 0x30) * 10 + int(ones - 0x30)
+    let status := try Status(code) {
+        Err(_) => {
+            return Err(_Http1Error.Message(MessageError.InvalidStatus))
+        }
+    }
+    return Ok(_Http1StatusLine {
+        Version: version,
+        Status: status,
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Field lines
+// ---------------------------------------------------------------------------
+
+/**
+ * Parses field-line = field-name ":" OWS field-value OWS (RFC 9112 § 5).
+ *
+ * Description:
+ * Whitespace between the name and the colon is rejected (§ 5.1), and so is
+ * obs-fold, a line that starts with SP or HTAB (§ 5.2): both appear as an
+ * invalid name. OWS around the value is removed.
+ *
+ * Errors:
+ * - HeaderError.InvalidName: empty name, non-token byte or missing colon.
+ * - HeaderError.InvalidValue: a control byte, DEL or NUL in the value.
+ * - Allocation: the name or value could not be materialized.
+ */
+fn _Http1ParseFieldLine(data: ref byte[], line: _Http1Line) Result[_Http1Field, _Http1Error] {
+    let mut index := line.Start
+    while index < line.End && _Http1IsTchar(data[index]) {
+        index += 1
+    }
+    if index == line.Start || index >= line.End || data[index] != 0x3A {
+        return Err(_Http1Error.Header(HeaderError.InvalidName))
+    }
+    let nameEnd        := index
+    let mut valueStart := index + 1
+    while valueStart < line.End && _Http1IsWhitespace(data[valueStart]) {
+        valueStart += 1
+    }
+    let mut valueEnd := line.End
+    while valueEnd > valueStart && _Http1IsWhitespace(data[valueEnd - 1]) {
+        valueEnd -= 1
+    }
+    index = valueStart
+    while index < valueEnd {
+        if !_Http1IsFieldValueByte(data[index]) {
+            return Err(_Http1Error.Header(HeaderError.InvalidValue))
+        }
+        index += 1
+    }
+
+    let name := try _Http1Text(data, line.Start, nameEnd) {
+        Err(error) => {
+            return Err(_Http1Error.Allocation(error))
+        }
+    }
+    let value := try _Http1Text(data, valueStart, valueEnd) {
+        Err(error) => {
+            return Err(_Http1Error.Allocation(error))
+        }
+    }
+    return Ok(_Http1Field {
+        Name: name,
+        Value: value,
+    })
+}
+
+/**
+ * Parses field lines from start up to and including the empty line.
+ *
+ * Errors:
+ * - HeaderError.TooManyFields: more than limits.MaxFieldCount lines.
+ * - Every error of _Http1NextLine, _Http1ParseFieldLine and Header.Add.
+ */
+fn _Http1ParseFields(data: ref byte[], start: uint, limits: _Http1Limits) Result[_Http1Fields, _Http1Error] {
+    let mut header: Header
+    let mut index := start
+    let mut count: uint := 0
+    while true {
+        let line := try _Http1NextLine(data, index, limits.MaxLineBytes)
+        if line.End == line.Start {
+            return Ok(_Http1Fields {
+                Header: <-header,
+                Next: line.Next,
+            })
+        }
+        count += 1
+        if count > limits.MaxFieldCount {
+            return Err(_Http1Error.Header(HeaderError.TooManyFields))
+        }
+        let field := try _Http1ParseFieldLine(data, line)
+        try header.Add(field.Name, field.Value) {
+            Err(error) => {
+                return Err(_Http1Error.Header(error))
+            }
+        }
+        index = line.Next
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Message length (RFC 9112 § 6)
+// ---------------------------------------------------------------------------
+
+// Reports whether value[start..<end] is "chunked", ignoring ASCII case.
+fn _Http1IsChunkedToken(value: string, start: uint, end: uint) bool {
+    let expected := "chunked"
+    if end - start != expected.SizeOf {
+        return false
+    }
+    let mut index: uint := 0
+    while index < expected.SizeOf {
+        let mut current := value.ByteAt(start + index)
+        if current in 0x41..0x5A {
+            current = current + 0x20
+        }
+        if current != expected.ByteAt(index) {
+            return false
+        }
+        index += 1
+    }
+    return true
+}
+
+/**
+ * Reports whether chunked is the final transfer coding.
+ *
+ * Description:
+ * Reads every list member of every Transfer-Encoding line in order; empty
+ * members are ignored (RFC 9110 § 5.6.1). chunked must not be followed by
+ * another coding and must not be applied twice (RFC 9112 § 6.1).
+ *
+ * Errors:
+ * - MessageError.InvalidTransferEncoding: no coding, or a coding after
+ * chunked.
+ */
+fn _Http1ChunkedIsFinal(codings: ref string[]) Result[bool, _Http1Error] {
+    let mut sawCoding     := false
+    let mut lastIsChunked := false
+    let mut fieldLine: uint := 0
+    while fieldLine < codings.Len {
+        let value := codings[fieldLine]
+        let mut start: uint := 0
+        while start <= value.SizeOf {
+            let mut end := start
+            while end < value.SizeOf && value.ByteAt(end) != 0x2C {
+                end += 1
+            }
+            let mut first := start
+            while end > first && _Http1IsWhitespace(value.ByteAt(first)) {
+                first += 1
+            }
+            let mut last := end
+            while last > first && _Http1IsWhitespace(value.ByteAt(last - 1)) {
+                last -= 1
+            }
+            if last > first {
+                if lastIsChunked {
+                    return Err(_Http1Error.Message(MessageError.InvalidTransferEncoding))
+                }
+                sawCoding = true
+                lastIsChunked = _Http1IsChunkedToken(value, first, last)
+            }
+            start = end + 1
+        }
+        fieldLine += 1
+    }
+    if !sawCoding {
+        return Err(_Http1Error.Message(MessageError.InvalidTransferEncoding))
+    }
+    return Ok(lastIsChunked)
+}
+
+/**
+ * Returns the single Content-Length value.
+ *
+ * Description:
+ * Every member of every Content-Length line must be the same 1*DIGIT
+ * value; a repeated identical value is accepted (RFC 9110 § 8.6,
+ * RFC 9112 § 6.3(5)).
+ *
+ * Errors:
+ * - MessageError.InvalidContentLength: an empty or non-digit member, or a
+ * value above uint64.Max.
+ * - MessageError.ConflictingContentLength: two different values.
+ */
+fn _Http1ContentLength(lengths: ref string[]) Result[uint64, _Http1Error] {
+    let mut found := false
+    let mut result:    uint64 := 0
+    let mut fieldLine: uint   := 0
+    while fieldLine < lengths.Len {
+        let value := lengths[fieldLine]
+        let mut start: uint := 0
+        while start <= value.SizeOf {
+            let mut end := start
+            while end < value.SizeOf && value.ByteAt(end) != 0x2C {
+                end += 1
+            }
+            let mut first := start
+            while end > first && _Http1IsWhitespace(value.ByteAt(first)) {
+                first += 1
+            }
+            let mut last := end
+            while last > first && _Http1IsWhitespace(value.ByteAt(last - 1)) {
+                last -= 1
+            }
+            if first == last {
+                return Err(_Http1Error.Message(MessageError.InvalidContentLength))
+            }
+            let mut number: uint64 := 0
+            let mut index := first
+            while last > index {
+                let digit := value.ByteAt(index)
+                if digit not in 0x30..0x39 {
+                    return Err(_Http1Error.Message(MessageError.InvalidContentLength))
+                }
+                let addend := uint64(digit - 0x30)
+                if number > (uint64.Max - addend) / 10 {
+                    return Err(_Http1Error.Message(MessageError.InvalidContentLength))
+                }
+                number = number * 10 + addend
+                index += 1
+            }
+            if found && number != result {
+                return Err(_Http1Error.Message(MessageError.ConflictingContentLength))
+            }
+            found = true
+            result = number
+            start = end + 1
+        }
+        fieldLine += 1
+    }
+    if !found {
+        return Err(_Http1Error.Message(MessageError.InvalidContentLength))
+    }
+    return Ok(result)
+}
+
+/**
+ * Applies RFC 9112 § 6.3 steps 3-8 to a header section.
+ *
+ * Description:
+ * Transfer-Encoding wins only when it is alone: together with
+ * Content-Length it is rejected as a smuggling ambiguity, and in an
+ * HTTP/1.0 message it is faulty framing (§ 6.1). A final chunked coding
+ * selects Chunked; another final coding is an error for a request and
+ * means UntilClose for a response. Otherwise Content-Length selects
+ * Fixed; without either field a request has no body and a response is
+ * read until close.
+ *
+ * Errors:
+ * - MessageError.InvalidFraming: both Transfer-Encoding and Content-Length.
+ * - MessageError.InvalidTransferEncoding: Transfer-Encoding in HTTP/1.0,
+ * or a request whose final coding is not chunked.
+ * - Every error of _Http1ChunkedIsFinal and _Http1ContentLength.
+ */
+fn _Http1FramedLength(header: ref Header, version: Version, isRequest: bool) Result[_Http1BodyLength, _Http1Error] {
+    let codings := try header.GetAllToArray("transfer-encoding") {
+        Err(error) => {
+            return Err(_Http1Error.Header(error))
+        }
+    }
+    let lengths := try header.GetAllToArray("content-length") {
+        Err(error) => {
+            return Err(_Http1Error.Header(error))
+        }
+    }
+    if codings.Len > 0 {
+        if version == Version.Http10 {
+            return Err(_Http1Error.Message(MessageError.InvalidTransferEncoding))
+        }
+        if lengths.Len > 0 {
+            return Err(_Http1Error.Message(MessageError.InvalidFraming))
+        }
+        if try _Http1ChunkedIsFinal(ref codings) {
+            return Ok(_Http1BodyLength.Chunked)
+        }
+        if isRequest {
+            return Err(_Http1Error.Message(MessageError.InvalidTransferEncoding))
+        }
+        return Ok(_Http1BodyLength.UntilClose)
+    }
+    if lengths.Len > 0 {
+        let length := try _Http1ContentLength(ref lengths)
+        return Ok(_Http1BodyLength.Fixed(length))
+    }
+    if isRequest {
+        return Ok(_Http1BodyLength.NoBody)
+    }
+    return Ok(_Http1BodyLength.UntilClose)
+}
+
+/**
+ * Selects the body length of a request (RFC 9112 § 6.3).
+ */
+fn _Http1RequestBodyLength(header: ref Header, version: Version) Result[_Http1BodyLength, _Http1Error] {
+    return _Http1FramedLength(header, version, true)
+}
+
+/**
+ * Selects the body length of a response (RFC 9112 § 6.3 steps 1-2 first).
+ *
+ * Description:
+ * A response to HEAD, a 1xx, 204 or 304 response, and a 2xx response to
+ * CONNECT (which switches to a tunnel) have no body, whatever their
+ * fields say. Otherwise the shared framing rules apply.
+ */
+fn _Http1ResponseBodyLength(requestMethod: Method, status: Status, header: ref Header, version: Version) Result[_Http1BodyLength, _Http1Error] {
+    let code := int(status)
+    if requestMethod == Method.HEAD || 199 >= code || code == 204 || code == 304 {
+        return Ok(_Http1BodyLength.NoBody)
+    }
+    if requestMethod == Method.CONNECT && 299 >= code {
+        return Ok(_Http1BodyLength.NoBody)
+    }
+    return _Http1FramedLength(header, version, false)
+}
+
+// ---------------------------------------------------------------------------
+// Chunked transfer coding (RFC 9112 § 7.1)
+// ---------------------------------------------------------------------------
+
+/**
+ * Rejects trailer fields that would change framing or routing.
+ *
+ * Description:
+ * Content-Length, Transfer-Encoding, Host and Trailer may not be sent in a
+ * trailer section (RFC 9110 § 6.5.1, RFC 9112 § 7.1.2).
+ *
+ * Errors:
+ * - MessageError.InvalidTrailer: a forbidden field is present.
+ */
+fn _Http1CheckTrailer(trailer: ref Header) Result[void, _Http1Error] {
+    if trailer.Contains("content-length") || trailer.Contains("transfer-encoding") ||
+        trailer.Contains("host") || trailer.Contains("trailer") {
+        return Err(_Http1Error.Message(MessageError.InvalidTrailer))
+    }
+    return Ok()
+}
+
+/**
+ * Decodes a complete chunked body starting at start.
+ *
+ * Description:
+ * chunk = chunk-size [chunk-ext] CRLF chunk-data CRLF, ended by a zero-size
+ * last-chunk and a trailer section. Chunk extensions are validated as
+ * field-value bytes after an optional BWS and ";" and are otherwise
+ * ignored. The decoded size is checked against limits.MaxBodyBytes before
+ * any chunk data is copied.
+ *
+ * Errors:
+ * - MessageError.InvalidFraming: a missing or overflowing chunk size, bad
+ * extension syntax or no CRLF after chunk data.
+ * - MessageError.BodyTooLarge: the decoded body exceeds MaxBodyBytes.
+ * - MessageError.MalformedMessage: data ends inside a chunk.
+ * - MessageError.InvalidTrailer: a forbidden trailer field.
+ * - Allocation: the body could not grow.
+ */
+fn _Http1DecodeChunked(data: ref byte[], start: uint, limits: _Http1Limits) Result[_Http1ChunkedBody, _Http1Error] {
+    let mut body:  byte[]
+    let mut total: uint64 := 0
+    let mut index := start
+    while true {
+        let line       := try _Http1NextLine(data, index, limits.MaxLineBytes)
+        let mut cursor := line.Start
+        let mut size: uint64 := 0
+        while cursor < line.End && 16 > _Http1HexValue(data[cursor]) {
+            if size > (uint64.Max >> 4) {
+                return Err(_Http1Error.Message(MessageError.InvalidFraming))
+            }
+            size = (size << 4) | _Http1HexValue(data[cursor])
+            cursor += 1
+        }
+        if cursor == line.Start {
+            return Err(_Http1Error.Message(MessageError.InvalidFraming))
+        }
+        if cursor < line.End {
+            while cursor < line.End && _Http1IsWhitespace(data[cursor]) {
+                cursor += 1
+            }
+            if cursor >= line.End || data[cursor] != 0x3B {
+                return Err(_Http1Error.Message(MessageError.InvalidFraming))
+            }
+            while cursor < line.End {
+                if !_Http1IsFieldValueByte(data[cursor]) {
+                    return Err(_Http1Error.Message(MessageError.InvalidFraming))
+                }
+                cursor += 1
+            }
+        }
+        index = line.Next
+
+        if size == 0 {
+            let trailer := try _Http1ParseFields(data, index, limits)
+            try _Http1CheckTrailer(ref trailer.Header)
+            return Ok(_Http1ChunkedBody {
+                Body: <-body,
+                Trailer: <-trailer.Header,
+                Next: trailer.Next,
+            })
+        }
+
+        if size > limits.MaxBodyBytes - total {
+            return Err(_Http1Error.Message(MessageError.BodyTooLarge))
+        }
+        let available := uint64(data.Len - index)
+        if size > available || available - size < 2 {
+            return Err(_Http1Error.Message(MessageError.MalformedMessage))
+        }
+        let end := index + uint(size)
+        while end > index {
+            let octet := data[index]
+            try body.Append(octet) {
+                Err(error) => {
+                    return Err(_Http1Error.Allocation(error))
+                }
+            }
+            index += 1
+        }
+        if data[index] != 0x0D || data[index + 1] != 0x0A {
+            return Err(_Http1Error.Message(MessageError.InvalidFraming))
+        }
+        index += 2
+        total += size
+    }
+}

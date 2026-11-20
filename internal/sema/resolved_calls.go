@@ -21,6 +21,9 @@ const (
 type ResolvedCall struct {
 	Function Function
 	Kind     ResolvedCallKind
+	// Arguments is the accepted spread expansion, including prepared element
+	// values and their destinations. Ordinary calls without spreads omit it.
+	Arguments *ResolvedCallArgumentPlan
 	// InterfaceContract is the selected invocation requirement, never a concrete body.
 	InterfaceContract *OpenCallableContract
 }
@@ -34,6 +37,9 @@ type ResolvedCall struct {
 // rules/analysis/call_graph.md — Interfaces, Open callable contract.
 func (a *Analyzer) recordResolvedCall(call *ast.CallExpression, function Function, dispatch CallDispatchKind, receiver Type) {
 	fact := ResolvedCall{Function: function, Kind: resolvedCallKind(dispatch)}
+	if !a.callExpandsDeclaredPack(call) {
+		fact.Arguments = a.resolvedSpreadArguments(call, function)
+	}
 	if dispatch == CallDispatchInterface {
 		fact.InterfaceContract = interfaceInvocationContract(receiver, function)
 	}
@@ -64,6 +70,7 @@ func (a *Analyzer) ResolvedCallTarget(call *ast.CallExpression) (ResolvedCall, b
 		fact.Function.GenericSubstitution = substitution
 	}
 	fact.InterfaceContract = cloneOpenCallableContract(fact.InterfaceContract)
+	fact.Arguments = cloneResolvedCallArgumentPlan(fact.Arguments)
 	return fact, ok
 }
 

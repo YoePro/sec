@@ -456,9 +456,11 @@ LogicalResult NamedConvertOp::verify() {
   Type result = getResult().getType();
   if (source == result || (!isa<NamedType>(source) && !isa<NamedType>(result)))
     return emitOpError("must change the nominal identity of its operand");
-  if (!isBuiltinIntegerSemanticType(namedIntegerCarrier(source)) ||
-      namedIntegerCarrier(source) != namedIntegerCarrier(result))
-    return emitOpError("operand and result must share one builtin Sec integer carrier");
+  // The carrier is a builtin integer or, since P22, a binary float.
+  Type carrier = namedIntegerCarrier(source);
+  if (!(isBuiltinIntegerSemanticType(carrier) || isSecFloatSemanticType(carrier)) ||
+      carrier != namedIntegerCarrier(result))
+    return emitOpError("operand and result must share one builtin Sec integer or float carrier");
   return success();
 }
 

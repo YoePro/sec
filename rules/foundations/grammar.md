@@ -4266,3 +4266,9 @@ not part of Sec 0.1.
 **§ 125(24)** Sema assigns meaning.
 
 **§ 125(25)** No implementation shortcut may redefine the canonical grammar.
+
+## § 126 Standalone `@cAlias` declaration (MD-021)
+
+Integrated 2026-11-20 from `rules/corrections/MD-021-c-binding-environment-complete-proposal-20261120.md` (owner accepted 2026-11-20). The correction holds the full normative text; this section is its owning summary.
+
+**§ 126(1)** `@cAlias(name: StringLiteral, target: TypeReference)` is a standalone module-scope declaration. It attaches to no following declaration. Its `target` argument is parsed as a TypeReference, an exception to the general attribute-argument expression model; parser, formatter, Sema and LSP recognize it.

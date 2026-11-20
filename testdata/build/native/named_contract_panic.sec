@@ -1,0 +1,17 @@
+module main
+
+// Without try a violated contract is the ContractFailure panic (contracts.md
+// § 12(2)); the advisory A2011 announces it. As written the value fits and
+// main returns 42; TestNamedContractConversionPanics also builds a copy that
+// converts 420 and must trap.
+
+type Percent int range 0..100
+
+fn Convert(x: int) int {
+    let p := Percent(x)
+    return int(p)
+}
+
+fn main() int {
+    return Convert(42)
+}

@@ -23,13 +23,15 @@ func TestPitfallStateCorrelationLSP(t *testing.T) {
 	}
 	program := parser.New(lexer.NewWithFile(string(data), file)).ParseProgram()
 	errors := sema.NewAnalyzer().Analyze(program)
-	if len(errors) != 18 {
+	// 18 discardability owners plus the two S1247 unresolved Task creation
+	// Results of WrongErr (BUG-000029, 2026-11-18).
+	if len(errors) != 20 {
 		t.Fatal(errors)
 	}
 	correlated := 0
 	for _, e := range errors {
 		d := semaDiagnostic(e, 3, string(data))
-		if d.Severity != 1 || d.Code != diagnostics.NonDiscardableValue {
+		if d.Severity != 1 || (d.Code != diagnostics.NonDiscardableValue && d.Code != diagnostics.UnresolvedCreationLifecycle) {
 			t.Fatal(d)
 		}
 		if strings.Contains(d.Message, "pitfall.state.wrong-checked-subject") {

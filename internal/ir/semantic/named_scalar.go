@@ -9,7 +9,11 @@ import "sec/internal/sema"
 // rules/compiler/semantic_ir.md — nominal type identity;
 // rules/memory/layout.md — §18(1–3).
 func (b *builder) internNamedScalar(t sema.Type) (TypeID, error) {
-	if len(t.Contracts) > 0 || t.Unit != "" || !t.Dimension.IsZero() {
+	// A constrained named type is represented by its nominal identity; its
+	// values are created only by checked conversions (named_contract_conversion.go)
+	// or compile-time proven constants, and operators producing it stay a
+	// boundary (contracts.md §§ 12, 13.1). Units still have no representation.
+	if t.Unit != "" || !t.Dimension.IsZero() {
 		return 0, &UnsupportedFeatureError{Feature: "named type contracts or units", Package: b.maxPackage}
 	}
 	underlying, found := b.analyzer.Types()[t.Underlying]

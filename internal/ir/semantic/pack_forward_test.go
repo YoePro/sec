@@ -97,11 +97,12 @@ func TestPackForwardFactsVerification(t *testing.T) {
 	}
 }
 
-// Ordinary array and homogeneous spreads have no IR form yet and report a clean
-// boundary, never an internal missing-type error.
+// Borrowed array projections and homogeneous runtime spreads retain named
+// boundaries. Fixed-array value spreads now normalize through prepared facts.
+// Rules: rules/declarations/spread.md §§3,4; semantic-ir spread correction.
 func TestSpreadCallArgumentBoundaries(t *testing.T) {
 	for _, source := range []string{
-		"module main\nfn Two(a: int, b: int) int { return a }\nfn A(values: int[2]) int { return Two(values...) }\n",
+		"module main\nfn Two(a: int, b: int) int { return a }\nfn A(values: ref int[2]) int { return Two(values...) }\n",
 		"module main\nfn Sum(values: ...int) int { return 0 }\nfn A(values: ...int) int { return Sum(values...) }\n",
 		"module main\nfn Sum(values: ...int) int { return 0 }\nfn A(values: ...int) int { return Sum(<-values...) }\n",
 		"module main\nfn Sum(values: ...int) int { return 0 }\nfn A[...T](values: ...T) int { return Sum(values...) }\nfn M() int { return A(1, 2) }\n",

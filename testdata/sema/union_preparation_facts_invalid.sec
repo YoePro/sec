@@ -1,0 +1,14 @@
+module main
+
+type U union { One(uint8) Fields { value: uint8, } }
+fn Overflow() U { return U.One(256) }
+fn FieldOverflow() U { return U.Fields { value: 256 } }
+fn WrongType() U { return U.One(false) }
+fn Missing() U { return U.One() }
+fn Unresolved() U { return U.One(unknown) }
+fn Duplicate() U { return U.Fields { value: 1, value: 2 } }
+type Handle struct { id: int, }
+impl Handle { free {} }
+type Slot union { Full(Handle) }
+fn Implicit(value: Handle) void { let box := Slot.Full(value) }
+fn Borrowed(value: ref Handle) Slot { return Slot.Full(value) }

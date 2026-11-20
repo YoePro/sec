@@ -685,3 +685,87 @@ reports:
       Semantic IR, CLI and LSP regressions pass; configured 2/4/6-space and
       structured/compact golden output, 80/120/200 widths, token preservation
       and repeated formatting cover the original second-pass drift.
+
+  - id: BUG-000031
+    title: Prepared spreads bypass call borrow checks
+    status: fixed
+    severity: high
+    kind: semantic-validation-bug
+    reported: "2026-11-20"
+    report: fixed/BUG-000031-spread-call-borrow-bypass.md
+    area: frontend-spread-borrow-provenance
+    rulebooks:
+      - rules/declarations/spread.md
+      - rules/memory/borrowing.md
+      - rules/memory/lifetime_analysis.md
+      - rules/compiler/compiler_pipeline.md
+    governance:
+      - frontend.spread-validity-and-ownership
+    evidence: >-
+      Pre-fix source probe accepted Exclusive(values, values...) with an
+      exclusive earlier argument and published the invalid call. Prepared
+      reference arguments also reused whole-array return origins. The fix
+      checks each source read against prior reservations and explicitly
+      gates missing per-element reference and computed-source access-effect
+      provenance. Race-enabled Sema/CLI/LSP and focused spread/borrow
+      regressions passed 2026-11-20.
+
+  - id: BUG-000032
+    title: Less-than comparison read as unit arguments when a later "> (" follows
+    status: open
+    severity: medium
+    kind: parser-bug
+    reported: "2026-11-20"
+    report: open/BUG-000032-less-than-read-as-unit-arguments.md
+    area: frontend-parser-expressions
+    rulebooks:
+      - rules/foundations/grammar.md
+      - rules/foundations/operators.md
+      - rules/types/units.md
+    governance:
+      - frontend.grammar-conformance
+    evidence: >-
+      Reproduced 2026-11-20 with a three-line function: `if a < b { return
+      c > (a) }` fails with "invalid unit expression"; `if b > a` parses.
+      The speculative unit/type-argument scan crosses the block brace.
+      Found in sec/stdlib/net/http/http1.sec, which uses reversed
+      comparisons as a workaround.
+
+  - id: BUG-000033
+    title: new T(args) rejected inside a static method of T
+    status: fixed
+    severity: medium
+    kind: semantic-validation-bug
+    reported: "2026-11-20"
+    report: fixed/BUG-000033-static-factory-new-rejected.md
+    area: frontend-static-receiver
+    rulebooks:
+      - rules/declarations/static.md
+    governance:
+      - frontend.static-context-receiver-storage
+    evidence: >-
+      Fixed and verified 2026-11-20: constructors (@init:) remain candidates
+      in static context because `new` creates the receiver. Regression case
+      in testdata/sema/static_receiver/receiver_valid.sec; full Sema suite
+      and compiler StaticReceiver tests pass; net/http Request factories
+      check cleanly.
+
+  - id: BUG-000034
+    title: Module-internal helpers unreachable from a trusted-core test file
+    status: open
+    severity: low
+    kind: semantic-validation-bug
+    reported: "2026-11-20"
+    report: open/BUG-000034-core-test-file-module-internal-access.md
+    area: frontend-core-test-loading
+    rulebooks:
+      - rules/projects/modules.md
+      - rules/tooling/testing.md
+    governance:
+      - tooling.language-testing
+    evidence: >-
+      Observed 2026-11-20 in sec/core/types_test.sec: calls to a `_` helper
+      declared in the same test file reported "not accessible from module
+      core". The same pattern checks cleanly in an ordinary module, also one
+      named core outside the trusted path. Cause not isolated; the test file
+      uses public-spelled helpers as a workaround.

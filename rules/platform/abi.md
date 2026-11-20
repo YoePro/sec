@@ -1285,3 +1285,11 @@ This rulebook does not require:
 - a second ABI implementation inside LLVM lowering;
 - linker export policy or symbol mangling rules;
 - a universal aggregate-size threshold shared by all targets.
+
+## 46. C binding environments and ABI facts (MD-021)
+
+Integrated 2026-11-20 from `rules/corrections/MD-021-c-binding-environment-complete-proposal-20261120.md` (owner accepted 2026-11-20). The correction holds the full normative text; this section is its owning summary.
+
+**§ 46(1)** A binding environment filters on the plan's ABI and C-runtime facts; it never changes the plan's ABI, triple or C runtime to make itself fit. An explicit incompatible selection is an error.
+
+**§ 46(2)** `c_runtime_version` is the target's verified C-runtime API/ABI baseline, never the host's installed runtime. An environment with `c_runtime_versions` requires a verified version; an unknown version does not satisfy a bounded range.

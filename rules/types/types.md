@@ -366,6 +366,8 @@ non-zero   -> true
 
 **§ 9.1(6)** This conversion is explicit and infallible.
 
+**§ 9.1(7)** (MD-141, 2026-11-20) A separately addressable `bool` occupies 1 byte. Its only valid stored representations are `0x00` for `false` and `0x01` for `true`; every other byte value is an invalid stored `bool`. The explicit conversion of § 9.1(4)–(6) is not a validity rule for raw memory, and a physical load may not create an invalid `bool`. Alignment and placement follow `rules/memory/layout.md` § 47.
+
 ### § 9.2 `byte`
 
 **§ 9.2(1)** `byte` is the compiler-known byte scalar type.
@@ -474,6 +476,8 @@ let omega: rune := 'Ω'
 **§ 9.4(7)** `char` and `rune` remain distinct types.
 
 **§ 9.4(8)** Conversions between them follow explicit conversion and representability rules. A runtime `rune`-to-`char` conversion requires a range check when it cannot be proven statically; a compiler-known out-of-range constant is rejected at compile time.
+
+**§ 9.4(9)** (MD-141, 2026-11-20) A separately addressable `rune` occupies 4 bytes holding the 32-bit unsigned code-point number in the target's byte order. Only the § 9.4(1) domain is valid; every other 32-bit pattern is invalid for a safe typed `rune`. `rune` storage is neither UTF-8 nor an unrestricted `uint32`. Alignment and placement follow `rules/memory/layout.md` § 47.
 
 ### § 9.5 `string`
 

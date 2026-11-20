@@ -727,6 +727,44 @@ realization, blocking behavior, and interrupt safety. A semantically valid
 without becoming an invalid Sec type. Compiler-host capabilities and target word
 size never define language eligibility.
 
+## 40. Native layout facts (MD-141, MD-142)
+
+Integrated 2026-11-20 from `rules/corrections/MD-141-MD-142-scalar-and-aggregate-layout-normative-correction-2026-11-20.md` § 11(3).
+
+**§ 40(1)** A `CompilationPlan` that claims layout-sensitive lowering carries one immutable, normalized native-layout fact set: the target layout identity and its provenance (toolchain/provider and version, or the validated maintained description), the ABI identity, the required alignment of every scalar storage representation it supports (`IntegerStorage(8..256)`, `BinaryFloatStorage(32, 64)`; `rules/memory/layout.md` § 47.2), any verified native aggregate or array constraints and the address-space distinctions that affect them.
+
+**§ 40(2)** The facts are keyed by representation class and width, are positive powers of two, and are validated against the representation the backend will emit. Absence of an explicit data-layout entry is not permission to guess: the producer applies the toolchain's documented default and verifies it, or leaves the fact unresolved.
+
+**§ 40(3)** A plan whose facts are incomplete may still analyse and type-check, but it is analysis-only for the affected layouts: dependent layouts are incomplete with the missing representation named, an unsupported representation is unsupported, and contradictory facts are invalid. A CPU or ABI variant never inherits another variant's facts because the architecture spelling matches.
+
+**§ 40(4)** The fact set and the compiler layout revision are part of the layout cache key; plans with different facts never share a completed layout.
+
+## 41. Target profile and allocation-provider selection (MD-139)
+
+Integrated 2026-11-20 from `rules/corrections/MD-139-allocation-profile-provider-selection-proposed-correction-2026-11-20.md` (owner accepted the manifest spelling 2026-11-20). MD-034 stays decided and independent.
+
+**§ 41(1)** The target-profile family (`hosted`, `rtos`, `baremetal`) is selected by the Variant/Target `profile` field (`rules/projects/projects.md` § 19(11)); without it the registry's explicit per-target default applies, never a heuristic from OS or architecture names. Transitional registry labels are mapped per target: `hosted` → Hosted, `rtos` → RTOS, `freestanding` → BareMetal. A missing or contradictory mapping fails closed.
+
+**§ 41(2)** A derived target profile resolves to exactly one lineage (§ 24). An unknown or ambiguous profile, or a reclassification that changes the target's OS, CPU, ABI or mandatory device capabilities, is a configuration error even when the program allocates nothing.
+
+**§ 41(3)** The allocation `mode` (`hosted`, `embedded-arena`, `noalloc`) is independent of the family. When `mode` is omitted the family baseline applies: Hosted enables allocation only if supported, RTOS and BareMetal start disabled (§§ 5–7). Availability and activation are reported separately.
+
+**§ 41(4)** A `provider` names a canonical identity in the target/platform provider catalog with positive provenance, availability, context and reclamation behavior and an implementation binding. A provider not in the selected target's catalog, or one declared for another target or ABI, is a configuration error. `provider` with `noalloc` is contradictory. A provider without `mode` never enables an allocation the baseline disables.
+
+**§ 41(5)** When a mode needs a provider and none is named, a unique explicitly declared verified default for the target is used; zero or several eligible defaults are unresolved or ambiguous and diagnosed. Selection never depends on catalog order, registration order or the compiler host.
+
+**§ 41(6)** Resolution order for one Target–Variant plan: target facts; profile family and lineage; family baseline, then target/platform defaults and mandatory constraints; Variant, Target, then Target-specific Variant allocation properties (and a defined CLI override last); provider identity and capability validation; freeze. No override turns Unsupported or Unknown into Supported or invents a provider.
+
+**§ 41(7)** The frozen plan carries at least: TargetProfileIdentity, BaseProfileFamily, AllocationPolicy, AllocationAvailability, AllocationActivation, AllocationContextKind (CompilerManaged, SuppliedArena, None), ProviderIdentity (or Absent), ProviderProvenance, operation-specific ProviderCapabilities, ProviderReclamation, ProviderAlignment, ProviderCapacity, ProviderFailureContract, ProviderContextLimits, ProviderLifetimeContract and ProviderImplementationBinding. Missing evidence stays unresolved and cannot yield a valid allocation plan; a `noalloc` plan is complete with ProviderIdentity Absent.
+
+**§ 41(8)** Provider capabilities are operation-sensitive: individually reclaimable dynamic-array backing (P18) needs a reclaiming provider, and `Arena.Growable` needs a permitted nonrelocating growth strategy; `Arena.FromBuffer` keeps its own caller-supplied backing contract in every mode.
+
+**§ 41(9)** Configuration errors before freeze (unknown family, provider not found, incompatible provider, contradictory keys, ambiguous default) are distinct from program errors against a valid plan. An allocating operation without an available context gets a compile-time diagnostic naming Target, Variant, operation, policy and capability state; provider exhaustion at run time stays an `AllocationError`. Build profiles, `@noAlloc` and `unsafe` never change these facts.
+
+## 42. C binding requirement (MD-021)
+
+**§ 42(1)** Whether a plan needs a C binding environment follows from the selected target/profile and its actual C-binding/FFI requirements. A bare-metal or other target without C bindings is never forced to select a hosted C environment; a plan that needs bindings and has no resolvable environment fails closed (`rules/platform/platform_model.md` § 31).
+
 ## Debug-information target capabilities
 
 Resolved target information represents debug support with granular semantic

@@ -157,7 +157,7 @@ fragment:
         - Remove Status default 199 and Status.Uninitialized.
         - Recheck temporary Status 104 after current IANA registration period.
         - Harden Header with typed/validated HeaderName/HeaderValue and allocation-explicit GetAllToArray.
-        - Replace Request Major/Minor Version struct with semantic Version and RequestTarget.
+        - Replace Request Major/Minor Version struct with semantic Version and RequestTarget. (done 2026-11-20)
         - Expand Response/ResponseWriter.
         - Replace global client void stubs with @noCopy Client.
         - Remove NotImplemented scaffolding variants from stable cookie error APIs as implementations land.
@@ -172,14 +172,14 @@ fragment:
         - Harden Header.
         - Implement RFC 9651 Structured Fields.
         - Implement streaming Body.
-        - Redesign Request.
+        - "Redesign Request (started 2026-11-20): the § 14.2 struct, init, Get/Head/Post/Put/Patch/Delete/Query factories, SetBody, Validate (method token, reserved methods, RFC 9112 § 3.2 target-form/method fit), Url, HasBody and free are implemented and check cleanly; OriginTarget has its own impl. Remaining: AuthorityTarget.Parse (§ 14.1) and the message-level field/framing checks of Validate."
         - Implement Response/ResponseWriter.
         - Complete RFC 10025 Cookie/SetCookie parser/serializer.
         - Complete CookieJar including public-suffix and SameSite context.
         - Implement auth/digest/priority helpers.
         - Implement redirects.
         - Implement bounded RFC 9111 cache.
-        - Implement HTTP/1.1 parser/transport.
+        - "Implement HTTP/1.1 parser/transport (started 2026-11-20): http1.sec has private complete-buffer parsing of request/status lines, strict field lines (no bare CR/LF, no whitespace before colon, no obs-fold), RFC 9112 § 6.3 body-length selection (CL list/conflict/overflow, TE+CL rejection, chunked-final rule, HTTP/1.0 TE, HEAD/1xx/204/304/CONNECT) and bounded chunked decoding with forbidden-trailer checks; 22 tests in http1_test.sec check cleanly. Remaining: incremental parser state, message generation, persistence/Connection, Host validation, Upgrade, transport."
         - Implement reusable client/server.
         - Implement minimal Router.
         - Implement HPACK and HTTP/2.
@@ -189,6 +189,9 @@ fragment:
         - Resolve TLS package path.
         - Resolve HeaderValue opaque-byte representation.
         - Resolve URL type naming and request-target integration.
+        - "Decide (2026-11-20, http1.sec): whether a status line without the SP after the code (\"HTTP/1.1 200\") is rejected as RFC 9112 § 4 requires (current) or tolerated for compatibility."
+        - "Decide (2026-11-20, http1.sec): the forbidden trailer-field set; the codec rejects Content-Length, Transfer-Encoding, Host and Trailer, while RFC 9110 § 6.5.1 also names authentication, request-modifier, response-control and content-representation fields."
+        - "Decide (2026-11-20, redirect.sec): what RedirectPolicy.Validate checks; § 19 names no invariant, and the stub always returns BodyNotReplayable, so every policy is rejected."
         - Resolve Body integration with common io.Reader/io.Writer.
         - Resolve Public Suffix List update strategy.
 

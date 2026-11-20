@@ -139,6 +139,14 @@ func runBuildVariant(options buildCommandOptions, invocation *project.BuildInvoc
 	if removeObject {
 		defer os.Remove(objectPath)
 	}
+	// MD-141 § 4(3)-(4): the code generator must apply exactly the data
+	// layout whose alignments the layout facts were resolved from; a
+	// different backend layout fails closed instead of emitting objects
+	// whose physical layout disagrees with Sema/LSP (layout.md § 47.5).
+	if err := verifyBackendDataLayout(mlirtoolchain.NewToolchain(options.MLIRBin), targetDefinition.Definition); err != nil {
+		reportPipelineError("object code generation", err)
+		exitCLI(4)
+	}
 	if err := mlirtoolchain.NewToolchain(options.MLIRBin).CompileObject(llvmPath, objectPath, targetDefinition.LLVMTriple); err != nil {
 		reportPipelineError("object code generation", err)
 		exitCLI(4)

@@ -73,7 +73,12 @@ type Pair struct {
 		t.Errorf("string field = %+v, want a descriptor", pair.Fields[4].Requirement)
 	}
 
-	alignments := layout.ScalarAlignments{1: 1, 2: 2, 4: 4, 8: 8, 16: 16, 32: 32}
+	alignments := layout.ScalarAlignments{
+		{Class: layout.IntegerStorage, WidthBits: 8}: 1, {Class: layout.IntegerStorage, WidthBits: 16}: 2,
+		{Class: layout.IntegerStorage, WidthBits: 32}: 4, {Class: layout.IntegerStorage, WidthBits: 64}: 8,
+		{Class: layout.IntegerStorage, WidthBits: 128}: 16, {Class: layout.IntegerStorage, WidthBits: 256}: 32,
+		{Class: layout.BinaryFloatStorage, WidthBits: 32}: 4, {Class: layout.BinaryFloatStorage, WidthBits: 64}: 8,
+	}
 	resolver, err := layout.NewResolver(layout.ResolvedScalarPlan{TargetOS: "linux", TargetArch: "test", PointerWidthBits: 64, Endianness: layout.LittleEndian}, alignments)
 	if err != nil {
 		t.Fatal(err)

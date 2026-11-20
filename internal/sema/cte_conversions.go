@@ -102,8 +102,8 @@ func (x *cteExecutor) conversionTarget(expr ast.Expression) (*ast.CallExpression
 // checkedConversion executes a checked conversion with the runtime order of
 // checks (contracts.md § 13.1): the target's intrinsic domain first
 // (ConversionError.OutOfRange), then each declared contract in source order
-// (ContractError.Violation { Kind, DeclarationIndex }, the channel Sema
-// types for numeric contract conversions). A contract bound established by semantic CTE is
+// (ConversionError.Contract(ContractError.Violation { Kind, DeclarationIndex })).
+// A contract bound established by semantic CTE is
 // read from its fact, establishing it on demand. It returns the converted
 // value or the ConversionError value.
 // Rules: rules/types/contracts.md — §§ 13, 13.1; rules/compiler/compile_time_evaluation.md — §§ 38, 41.
@@ -177,11 +177,12 @@ func (x *cteExecutor) checkConversion(call *ast.CallExpression, target Type, val
 			return DefaultConstant{}, nil, false
 		}
 		if violated {
-			// Sema types a numeric contract conversion's failure as the
-			// ContractError channel (try_failure_set.go, pending MD-012
-			// runtime integration); string contracts use ConversionError.
+			// The one public channel of a checked conversion is
+			// ConversionError; the violated contract is its Contract payload
+			// (contracts.md § 13.1, MD-012), exactly as at run time.
 			violation := x.contractViolation(kind, index)
-			return DefaultConstant{}, &violation, true
+			failure := x.conversionError("Contract", &violation)
+			return DefaultConstant{}, &failure, true
 		}
 	}
 	converted := value

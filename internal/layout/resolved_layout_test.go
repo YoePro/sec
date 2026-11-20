@@ -14,7 +14,12 @@ func layoutTestPlan(width uint16) ResolvedScalarPlan {
 // testAlignments is a test-only alignment table; real targets supply none
 // until MD-141 is decided.
 func testAlignments() ScalarAlignments {
-	return ScalarAlignments{1: 1, 2: 2, 4: 4, 8: 8, 16: 16, 32: 32}
+	return ScalarAlignments{
+		{Class: IntegerStorage, WidthBits: 8}: 1, {Class: IntegerStorage, WidthBits: 16}: 2,
+		{Class: IntegerStorage, WidthBits: 32}: 4, {Class: IntegerStorage, WidthBits: 64}: 8,
+		{Class: IntegerStorage, WidthBits: 128}: 16, {Class: IntegerStorage, WidthBits: 256}: 32,
+		{Class: BinaryFloatStorage, WidthBits: 32}: 4, {Class: BinaryFloatStorage, WidthBits: 64}: 8,
+	}
 }
 
 func testAddressDomain() AddressDomain {
@@ -81,7 +86,7 @@ func TestCompilationPlanLayoutKey(t *testing.T) {
 			p.References.LogicalEpochBits = 32
 			p.References.ShortWidthProof = "proof"
 		},
-		"alignment": func(_ *ResolvedScalarPlan, a *ScalarAlignments) { (*a)[8] = 4 },
+		"alignment": func(_ *ResolvedScalarPlan, a *ScalarAlignments) { (*a)[StorageRepresentation{IntegerStorage, 64}] = 4 },
 		"address": func(p *ResolvedScalarPlan, _ *ScalarAlignments) {
 			p.AddressDomains = []AddressDomain{testAddressDomain()}
 		},
@@ -104,7 +109,7 @@ func TestCompilationPlanLayoutKey(t *testing.T) {
 	if _, err := LayoutKeyOf(ResolvedScalarPlan{}, nil); err == nil {
 		t.Error("an invalid plan produced a layout key")
 	}
-	if _, err := LayoutKeyOf(layoutTestPlan(64), ScalarAlignments{4: 3}); err == nil {
+	if _, err := LayoutKeyOf(layoutTestPlan(64), ScalarAlignments{{Class: IntegerStorage, WidthBits: 32}: 3}); err == nil {
 		t.Error("a non-power-of-two alignment produced a layout key")
 	}
 }
@@ -122,11 +127,11 @@ func TestLayoutResolverStates(t *testing.T) {
 		missing     string
 	}{
 		"complete":            {complete, scalar("int64", ScalarSigned, 64, false), LayoutComplete, ""},
-		"incomplete (MD-141)": {unresolved, scalar("int64", ScalarSigned, 64, false), LayoutIncomplete, "alignment of a 8-byte scalar"},
+		"incomplete (MD-141)": {unresolved, scalar("int64", ScalarSigned, 64, false), LayoutIncomplete, "alignment of int64 storage"},
 		"invalid width":       {complete, scalar("int7", ScalarSigned, 7, false), LayoutInvalid, "not a whole number of bytes"},
 		"invalid identity":    {complete, LayoutRequirement{Kind: LayoutScalar, Scalar: ScalarSigned, WidthBits: 8}, LayoutInvalid, "semantic type identity"},
 		"invalid decimal":     {complete, scalar("decimal", ScalarDecimal, 32, false), LayoutInvalid, "canonical i64 or i128"},
-		"incomplete struct":   {complete, LayoutRequirement{TypeIdentity: "main::Pair", Kind: LayoutStruct, Fields: []FieldRequirement{{Name: "x", Requirement: scalar("int32", ScalarSigned, 32, false)}}}, LayoutIncomplete, "MD-142"},
+		"incomplete struct":   {unresolved, LayoutRequirement{TypeIdentity: "main::Pair", Kind: LayoutStruct, Fields: []FieldRequirement{{Name: "x", Requirement: scalar("int32", ScalarSigned, 32, false)}}}, LayoutIncomplete, "MD-142"},
 		"unsupported field":   {complete, LayoutRequirement{TypeIdentity: "main::View", Kind: LayoutStruct, Fields: []FieldRequirement{{Name: "s", Requirement: LayoutRequirement{TypeIdentity: "slice:byte", Kind: LayoutDescriptor}}}}, LayoutUnsupported, "s: layout kind"},
 		"explicit contract":   {complete, LayoutRequirement{TypeIdentity: "main::Packed", Kind: LayoutStruct, Contract: "pack(1)"}, LayoutUnsupported, "MD-019"},
 	} {
@@ -208,7 +213,7 @@ func TestLayoutCacheSafety(t *testing.T) {
 		t.Error("a changed reference policy reused a cached layout")
 	}
 	aligned := testAlignments()
-	aligned[8] = 4
+	aligned[StorageRepresentation{IntegerStorage, 64}] = 4
 	rAligned, _ := NewResolver(layoutTestPlan(64), aligned)
 	if _, hit := cache.Lookup(rAligned.Key(), "int", ""); hit {
 		t.Error("a changed alignment fact reused a cached layout")
@@ -233,49 +238,74 @@ func TestLayoutCacheSafety(t *testing.T) {
 	}
 }
 
-// P24-16: scalar layouts keep their source kind; fixed widths, byte/char,
-// target-sized int/uint and plain float (plan width) and fixed floats are
-// resolved, bool and rune stay incomplete until MD-141 decides their storage
-// size, and every alignment comes from the plan's alignment facts.
-// Rules: rules/memory/layout.md — §§ 18, 18(4a), 18(5); rules/types/types.md — §§ 9.2–9.4.
+// P24-16 and MD-141: scalar layouts keep their source kind; fixed widths,
+// byte/char, target-sized int/uint and plain float (plan width), fixed
+// floats, bool (1 byte) and rune (4 bytes) resolve, and every alignment comes
+// from the plan's typed fact for the storage representation.
+// Rules: rules/memory/layout.md — §§ 18, 18(4a), 18(5); rules/types/types.md — §§ 9.2–9.4;
+// MD-141 correction §§ 2–3.
 func TestScalarLayouts(t *testing.T) {
+	integer := func(width uint16) StorageRepresentation { return StorageRepresentation{IntegerStorage, width} }
+	binary := func(width uint16) StorageRepresentation { return StorageRepresentation{BinaryFloatStorage, width} }
 	for _, width := range []uint16{32, 64} {
 		resolver, _ := NewResolver(layoutTestPlan(width), testAlignments())
 		word := uint64(width / 8)
 		for _, check := range []struct {
-			requirement LayoutRequirement
-			size        uint64
+			requirement    LayoutRequirement
+			size           uint64
+			representation StorageRepresentation
 		}{
-			{scalar("int8", ScalarSigned, 8, false), 1}, {scalar("int16", ScalarSigned, 16, false), 2},
-			{scalar("int32", ScalarSigned, 32, false), 4}, {scalar("int64", ScalarSigned, 64, false), 8},
-			{scalar("int128", ScalarSigned, 128, false), 16}, {scalar("int256", ScalarSigned, 256, false), 32},
-			{scalar("uint8", ScalarUnsigned, 8, false), 1}, {scalar("uint256", ScalarUnsigned, 256, false), 32},
-			{scalar("byte", ScalarByte, 8, false), 1}, {scalar("char", ScalarChar, 8, false), 1},
-			{scalar("int", ScalarSigned, 0, true), word}, {scalar("uint", ScalarUnsigned, 0, true), word},
-			{scalar("float", ScalarFloat, 0, true), word}, {scalar("float32", ScalarFloat, 32, false), 4},
-			{scalar("float64", ScalarFloat, 64, false), 8},
+			{scalar("int8", ScalarSigned, 8, false), 1, integer(8)}, {scalar("int16", ScalarSigned, 16, false), 2, integer(16)},
+			{scalar("int32", ScalarSigned, 32, false), 4, integer(32)}, {scalar("int64", ScalarSigned, 64, false), 8, integer(64)},
+			{scalar("int128", ScalarSigned, 128, false), 16, integer(128)}, {scalar("int256", ScalarSigned, 256, false), 32, integer(256)},
+			{scalar("uint8", ScalarUnsigned, 8, false), 1, integer(8)}, {scalar("uint256", ScalarUnsigned, 256, false), 32, integer(256)},
+			{scalar("byte", ScalarByte, 8, false), 1, integer(8)}, {scalar("char", ScalarChar, 8, false), 1, integer(8)},
+			{scalar("bool", ScalarBool, 0, false), 1, integer(8)}, {scalar("rune", ScalarRune, 0, false), 4, integer(32)},
+			{scalar("int", ScalarSigned, 0, true), word, integer(width)}, {scalar("uint", ScalarUnsigned, 0, true), word, integer(width)},
+			{scalar("float", ScalarFloat, 0, true), word, binary(width)}, {scalar("float32", ScalarFloat, 32, false), 4, binary(32)},
+			{scalar("float64", ScalarFloat, 64, false), 8, binary(64)},
 		} {
 			layout := resolver.Resolve(check.requirement)
-			if !layout.Complete() || layout.SizeBytes.Uint64() != check.size || layout.AlignBytes.Uint64() != testAlignments()[check.size] || layout.Scalar != check.requirement.Scalar {
+			if !layout.Complete() || layout.SizeBytes.Uint64() != check.size || layout.AlignBytes.Uint64() != testAlignments()[check.representation] || layout.Scalar != check.requirement.Scalar {
 				t.Errorf("%d-bit %s = %s size=%v align=%v %v", width, check.requirement.TypeIdentity, layout.Completeness, layout.SizeBytes, layout.AlignBytes, layout.Missing)
 			}
 		}
-		for _, check := range []struct {
-			requirement LayoutRequirement
-			validity    string
-		}{
-			{scalar("bool", ScalarBool, 0, false), "false or true only"},
-			{scalar("rune", ScalarRune, 0, false), "Unicode scalar values only"},
-		} {
-			layout := resolver.Resolve(check.requirement)
-			if layout.Completeness != LayoutIncomplete || layout.SizeBytes != nil || !strings.Contains(strings.Join(layout.Missing, ""), "MD-141") || !strings.Contains(layout.ValidBitPattern, check.validity) {
-				t.Errorf("%s = %+v, want incomplete pending MD-141 with its validity predicate", check.requirement.TypeIdentity, layout)
-			}
-		}
+	}
+	resolver, _ := NewResolver(layoutTestPlan(64), testAlignments())
+	if layout := resolver.Resolve(scalar("bool", ScalarBool, 0, false)); !strings.Contains(layout.ValidBitPattern, "0x00 (false) or 0x01 (true) only") {
+		t.Errorf("bool validity = %q", layout.ValidBitPattern)
+	}
+	if layout := resolver.Resolve(scalar("rune", ScalarRune, 0, false)); !strings.Contains(layout.ValidBitPattern, "without surrogates") {
+		t.Errorf("rune validity = %q", layout.ValidBitPattern)
 	}
 	unresolved, _ := NewResolver(layoutTestPlan(64), nil)
-	if layout := unresolved.Resolve(scalar("int32", ScalarSigned, 32, false)); layout.Complete() || layout.AlignBytes != nil {
+	if layout := unresolved.Resolve(scalar("int32", ScalarSigned, 32, false)); layout.Complete() || layout.AlignBytes != nil || !strings.Contains(strings.Join(layout.Missing, ""), "int32") {
 		t.Errorf("a scalar alignment was guessed without plan facts: %+v", layout)
+	}
+}
+
+// MD-141 § 3(9), § 10(3): integer and float storage of equal size are
+// distinct facts. A synthetic plan gives float32 alignment 2 and int32
+// alignment 4; each scalar uses its own fact and the plan keys differ.
+func TestScalarAlignmentIsKeyedByRepresentation(t *testing.T) {
+	split := testAlignments()
+	split[StorageRepresentation{BinaryFloatStorage, 32}] = 2
+	resolver, err := NewResolver(layoutTestPlan(64), split)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := resolver.Resolve(scalar("float32", ScalarFloat, 32, false)).AlignBytes; got.Uint64() != 2 {
+		t.Fatalf("float32 alignment = %v, want 2", got)
+	}
+	if got := resolver.Resolve(scalar("int32", ScalarSigned, 32, false)).AlignBytes; got.Uint64() != 4 {
+		t.Fatalf("int32 alignment = %v, want 4", got)
+	}
+	plain, _ := NewResolver(layoutTestPlan(64), testAlignments())
+	if plain.Key() == resolver.Key() {
+		t.Fatal("plans with different float32 alignment share a layout key")
+	}
+	if _, err := LayoutKeyOf(layoutTestPlan(64), ScalarAlignments{{IntegerStorage, 24}: 4}); err == nil {
+		t.Fatal("an unknown storage representation was accepted")
 	}
 }
 
@@ -295,58 +325,145 @@ func TestMaximumExtent(t *testing.T) {
 		t.Fatalf("an over-extent array = %s %v", huge.Completeness, huge.Missing)
 	}
 	fits := resolver.Resolve(LayoutRequirement{TypeIdentity: "array:fixed:4:int64", Kind: LayoutArray, Element: &element, Count: big.NewInt(4)})
-	if fits.Completeness != LayoutIncomplete || fits.Count.Int64() != 4 || fits.Element == 0 || !strings.Contains(strings.Join(fits.Missing, ""), "MD-142") {
+	if !fits.Complete() || fits.Count.Int64() != 4 || fits.Element == 0 || fits.SizeBytes.Int64() != 32 || fits.AlignBytes.Int64() != 8 {
 		t.Fatalf("a fitting array = %+v", fits)
 	}
 }
 
-// P24-19 / layout.md § 24(6): an empty struct is complete with size 0 and
-// alignment 1; a nonempty struct records its fields in declaration order
-// with identities and layouts but no guessed offsets, pending MD-142.
+// fieldOffsets lists the resolved field offsets of a layout.
+func fieldOffsets(layout ResolvedLayout) []int64 {
+	offsets := make([]int64, len(layout.Fields))
+	for index, field := range layout.Fields {
+		offsets[index] = -1
+		if field.Offset != nil {
+			offsets[index] = field.Offset.Int64()
+		}
+	}
+	return offsets
+}
+
+// P24-19 / MD-142 § 6 / layout.md § 24(6): an empty struct has size 0 and
+// alignment 1; a nonempty struct places its fields in declaration order with
+// interior and tail padding, and zero-sized fields occupy no bytes.
 func TestStructLayouts(t *testing.T) {
 	resolver, _ := NewResolver(layoutTestPlan(64), testAlignments())
-	empty := resolver.Resolve(LayoutRequirement{TypeIdentity: "main::Unit", Kind: LayoutStruct})
+	unit := LayoutRequirement{TypeIdentity: "main::Unit", Kind: LayoutStruct}
+	empty := resolver.Resolve(unit)
 	if !empty.Complete() || empty.SizeBytes.Sign() != 0 || empty.AlignBytes.Int64() != 1 {
 		t.Fatalf("empty struct = %+v", empty)
 	}
-	pair := resolver.Resolve(LayoutRequirement{TypeIdentity: "main::Pair", Kind: LayoutStruct, Fields: []FieldRequirement{
-		{Name: "b", Requirement: scalar("byte", ScalarByte, 8, false)},
-		{Name: "n", Requirement: scalar("int64", ScalarSigned, 64, false)},
-		{Name: "flag", Requirement: scalar("bool", ScalarBool, 0, false)},
-	}})
-	if pair.Completeness != LayoutIncomplete || pair.SizeBytes != nil || pair.AlignBytes != nil || len(pair.Fields) != 3 {
-		t.Fatalf("pair = %+v", pair)
-	}
-	for index, name := range []string{"b", "n", "flag"} {
-		if field := pair.Fields[index]; field.Index != index || field.Name != name || field.Offset != nil || field.Layout == 0 {
-			t.Errorf("field %d = %+v", index, field)
+	for _, check := range []struct {
+		name        string
+		fields      []FieldRequirement
+		offsets     []int64
+		size, align int64
+	}{
+		// byte at 0, 7 bytes interior padding, int64 at 8, bool at 16, 7 bytes tail padding.
+		{"main::Pair", []FieldRequirement{
+			{Name: "b", Requirement: scalar("byte", ScalarByte, 8, false)},
+			{Name: "n", Requirement: scalar("int64", ScalarSigned, 64, false)},
+			{Name: "flag", Requirement: scalar("bool", ScalarBool, 0, false)},
+		}, []int64{0, 8, 16}, 24, 8},
+		// Declaration order is kept: int16 after the rune needs no padding.
+		{"main::Glyph", []FieldRequirement{
+			{Name: "r", Requirement: scalar("rune", ScalarRune, 0, false)},
+			{Name: "w", Requirement: scalar("int16", ScalarSigned, 16, false)},
+		}, []int64{0, 4}, 8, 4},
+		// A zero-sized field takes no bytes and shares the next offset.
+		{"main::Gap", []FieldRequirement{
+			{Name: "a", Requirement: scalar("int8", ScalarSigned, 8, false)},
+			{Name: "u", Requirement: unit},
+			{Name: "b", Requirement: scalar("int16", ScalarSigned, 16, false)},
+		}, []int64{0, 1, 2}, 4, 2},
+		// Only zero-sized fields: size 0, alignment 1, separate identities.
+		{"main::Units", []FieldRequirement{{Name: "u", Requirement: unit}, {Name: "v", Requirement: unit}}, []int64{0, 0}, 0, 1},
+	} {
+		layout := resolver.Resolve(LayoutRequirement{TypeIdentity: check.name, Kind: LayoutStruct, Fields: check.fields})
+		offsets := fieldOffsets(layout)
+		if !layout.Complete() || layout.SizeBytes.Int64() != check.size || layout.AlignBytes.Int64() != check.align || fmt.Sprint(offsets) != fmt.Sprint(check.offsets) {
+			t.Errorf("%s = %s size=%v align=%v offsets=%v %v", check.name, layout.Completeness, layout.SizeBytes, layout.AlignBytes, offsets, layout.Missing)
+			continue
+		}
+		for index, field := range check.fields {
+			if layout.Fields[index].Name != field.Name || layout.Fields[index].Index != index || layout.Fields[index].Layout == 0 {
+				t.Errorf("%s field %d = %+v", check.name, index, layout.Fields[index])
+			}
 		}
 	}
-	missing := strings.Join(pair.Missing, ";")
-	if !strings.Contains(missing, "storage size of bool (MD-141)") || !strings.Contains(missing, "MD-142") {
-		t.Errorf("pair missing facts = %v", pair.Missing)
+	outer := resolver.Resolve(LayoutRequirement{TypeIdentity: "main::Outer", Kind: LayoutStruct, Fields: []FieldRequirement{
+		{Name: "tag", Requirement: scalar("byte", ScalarByte, 8, false)},
+		{Name: "glyph", Requirement: LayoutRequirement{TypeIdentity: "main::Glyph", Kind: LayoutStruct}},
+	}})
+	if !outer.Complete() || fmt.Sprint(fieldOffsets(outer)) != "[0 4]" || outer.SizeBytes.Int64() != 12 || outer.AlignBytes.Int64() != 4 {
+		t.Errorf("nested struct = %s offsets=%v size=%v align=%v", outer.Completeness, fieldOffsets(outer), outer.SizeBytes, outer.AlignBytes)
 	}
 }
 
-// P24-17: decimal and decimal128 resolve their {i64,i32} and {i128,i32}
-// carriers as a coefficient plus a physical scale-storage field; placement
-// waits on MD-142.
+// MD-142 § 7(1-3): T[N] uses the element alignment, stride
+// AlignUp(Size, Align) and size N × stride; T[0] and zero-sized elements
+// have size zero while the logical count is kept.
+func TestArrayLayouts(t *testing.T) {
+	resolver, _ := NewResolver(layoutTestPlan(64), testAlignments())
+	padded := LayoutRequirement{TypeIdentity: "main::Padded", Kind: LayoutStruct, Fields: []FieldRequirement{
+		{Name: "n", Requirement: scalar("int32", ScalarSigned, 32, false)},
+		{Name: "b", Requirement: scalar("byte", ScalarByte, 8, false)},
+	}}
+	unit := LayoutRequirement{TypeIdentity: "main::Unit", Kind: LayoutStruct}
+	for _, check := range []struct {
+		name        string
+		element     LayoutRequirement
+		count       int64
+		size, align int64
+	}{
+		{"array:fixed:0:Padded", padded, 0, 0, 4},
+		{"array:fixed:1:Padded", padded, 1, 8, 4},
+		{"array:fixed:3:Padded", padded, 3, 24, 4},
+		{"array:fixed:3:Unit", unit, 3, 0, 1},
+		{"array:fixed:5:bool", scalar("bool", ScalarBool, 0, false), 5, 5, 1},
+	} {
+		element := check.element
+		layout := resolver.Resolve(LayoutRequirement{TypeIdentity: check.name, Kind: LayoutArray, Element: &element, Count: big.NewInt(check.count)})
+		if !layout.Complete() || layout.SizeBytes.Int64() != check.size || layout.AlignBytes.Int64() != check.align || layout.Count.Int64() != check.count {
+			t.Errorf("%s = %s size=%v align=%v count=%v %v", check.name, layout.Completeness, layout.SizeBytes, layout.AlignBytes, layout.Count, layout.Missing)
+		}
+	}
+	inner := scalar("int16", ScalarSigned, 16, false)
+	row := LayoutRequirement{TypeIdentity: "array:fixed:3:int16", Kind: LayoutArray, Element: &inner, Count: big.NewInt(3)}
+	grid := resolver.Resolve(LayoutRequirement{TypeIdentity: "array:fixed:2:array:fixed:3:int16", Kind: LayoutArray, Element: &row, Count: big.NewInt(2)})
+	if !grid.Complete() || grid.SizeBytes.Int64() != 12 || grid.AlignBytes.Int64() != 2 {
+		t.Errorf("embedded array = %s size=%v align=%v", grid.Completeness, grid.SizeBytes, grid.AlignBytes)
+	}
+}
+
+// P24-17 / MD-142 § 7(4-6): decimal and decimal128 place coefficient then
+// scale with the ordinary field algorithm, never as a packed 12/20-byte
+// record; a plan with a different i128 alignment changes the result.
 func TestDecimalCarriers(t *testing.T) {
 	resolver, _ := NewResolver(layoutTestPlan(64), testAlignments())
 	for _, check := range []struct {
 		width       uint16
 		coefficient string
-	}{{64, "int64"}, {128, "int128"}} {
+		offsets     string
+		size, align int64
+	}{{64, "int64", "[0 8]", 16, 8}, {128, "int128", "[0 16]", 32, 16}} {
 		layout := resolver.Resolve(scalar(fmt.Sprintf("decimal%d", check.width), ScalarDecimal, check.width, false))
-		if layout.Completeness != LayoutIncomplete || layout.Scalar != ScalarDecimal || len(layout.Fields) != 2 ||
-			layout.Fields[0].Name != "coefficient" || layout.Fields[1].Name != "scale-storage" || !strings.Contains(strings.Join(layout.Missing, ""), "MD-142") {
-			t.Fatalf("decimal%d = %+v", check.width, layout)
+		if !layout.Complete() || layout.Scalar != ScalarDecimal || len(layout.Fields) != 2 ||
+			layout.Fields[0].Name != "coefficient" || layout.Fields[1].Name != "scale-storage" ||
+			fmt.Sprint(fieldOffsets(layout)) != check.offsets || layout.SizeBytes.Int64() != check.size || layout.AlignBytes.Int64() != check.align {
+			t.Fatalf("decimal%d = %s offsets=%v size=%v align=%v %v", check.width, layout.Completeness, fieldOffsets(layout), layout.SizeBytes, layout.AlignBytes, layout.Missing)
 		}
 		coefficient, _ := resolver.Layout(layout.Fields[0].Layout)
 		scaleStorage, _ := resolver.Layout(layout.Fields[1].Layout)
 		if coefficient.TypeIdentity != check.coefficient || scaleStorage.TypeIdentity != "int32" || !coefficient.Complete() || !scaleStorage.Complete() {
 			t.Errorf("decimal%d carrier fields = %s/%s", check.width, coefficient.TypeIdentity, scaleStorage.TypeIdentity)
 		}
+	}
+	narrow := testAlignments()
+	narrow[StorageRepresentation{IntegerStorage, 128}] = 8
+	other, _ := NewResolver(layoutTestPlan(64), narrow)
+	layout := other.Resolve(scalar("decimal128", ScalarDecimal, 128, false))
+	if !layout.Complete() || fmt.Sprint(fieldOffsets(layout)) != "[0 16]" || layout.SizeBytes.Int64() != 24 || layout.AlignBytes.Int64() != 8 {
+		t.Fatalf("decimal128 with 8-byte i128 alignment = %s offsets=%v size=%v align=%v", layout.Completeness, fieldOffsets(layout), layout.SizeBytes, layout.AlignBytes)
 	}
 }
 
@@ -365,7 +482,8 @@ func TestNamedLayouts(t *testing.T) {
 		t.Fatal("a named type was merged into its carrier's identity")
 	}
 	flag := scalar("bool", ScalarBool, 0, false)
-	if layout := resolver.Resolve(LayoutRequirement{TypeIdentity: "main::Flag", Kind: LayoutNamed, Carrier: &flag}); layout.Completeness != LayoutIncomplete {
+	unresolved, _ := NewResolver(layoutTestPlan(64), nil)
+	if layout := unresolved.Resolve(LayoutRequirement{TypeIdentity: "main::Flag", Kind: LayoutNamed, Carrier: &flag}); layout.Completeness != LayoutIncomplete {
 		t.Errorf("a named type over an incomplete carrier = %s", layout.Completeness)
 	}
 	if layout := resolver.Resolve(LayoutRequirement{TypeIdentity: "main::Orphan", Kind: LayoutNamed}); layout.Completeness != LayoutInvalid {

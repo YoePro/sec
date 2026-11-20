@@ -138,15 +138,20 @@ runtime, or any new public error/source syntax.
 
 ## C. Publish immutable resolved contract plans
 
-- [ ] P22-11 — Add a detached read-only
+- [x] P22-11 — Add a detached read-only
   `ResolvedNamedContractConversionPlan` query keyed by conversion identity:
   nominal/underlying/source type IDs, intrinsic conversion plan, effective
   ordered contracts, origin TypeID, declaration-local index, CTE operands,
   equality/length plan, proof class, source location and ConversionError ID
   (§§9–13).
-- [ ] P22-12 — Record an immutable `ContractPredicatePlan` per runtime check;
+  Done 2026-11-20: `ResolvedNamedContractConversionOf` (detached, read-only)
+  carries source/carrier/target types, intrinsic plan, ordered predicates with
+  declaration index and the ConversionError type.
+- [x] P22-12 — Record an immutable `ContractPredicatePlan` per runtime check;
   reuse current CTE/equality/length analysis and never re-evaluate source AST,
   overload resolution or borrowing in builder/lowering (§§10, 14–17).
+  Done 2026-11-20: `ResolvedContractPredicate` per runtime check in
+  internal/sema/named_contract_conversion.go; the builder reads only the plan.
 - [ ] P22-13 — Classify each predicate as proven true, proven false, runtime
   check or unavailable dependency. Permit proof elimination only where it
   cannot alter observable first-failure kind/index (§§12, 17).
@@ -154,9 +159,12 @@ runtime, or any new public error/source syntax.
   divisibility/finite/membership first; strings and fixed arrays only with their
   canonical plans; slices, dynamic arrays and unsupported equality/iteration
   families remain explicit capability boundaries (§§14–16).
-- [ ] P22-15 — Preserve intrinsic target-domain conversion failure before every
+- [x] P22-15 — Preserve intrinsic target-domain conversion failure before every
   declared contract and construct the exact nested core payload only for the
   first failed declared check (§§11–13, 19).
+  Done 2026-11-20: intrinsic `numeric.convert-exact`/checked integer
+  conversion runs before any predicate; only the first failed check builds
+  `ConversionError.Contract(ContractError.Violation{Kind, DeclarationIndex})`.
 
 ## D. Semantic IR and control-flow representation
 
@@ -166,10 +174,15 @@ runtime, or any new public error/source syntax.
 - [ ] P22-17 — Add `ContractCheckOp` from a resolved typed predicate and
   `ConstructNamedValidatedOp` only on an all-success-dominated edge; reject
   unchecked nominal construction for P22 paths (§§18, 23).
-- [ ] P22-18 — Build intrinsic conversion CFG first, then ordered contract
+  Note 2026-11-20: scalar checks are built from ordinary ops in the builder;
+  no `ContractCheckOp` yet.
+- [x] P22-18 — Build intrinsic conversion CFG first, then ordered contract
   checks, canonical `ContractError.Violation`/`ConversionError.Contract`
   payloads and existing Result/try handler flow. Candidate nominal values must
   never be consumed on failure (§§18–19).
+  Done 2026-11-20: internal/ir/semantic/named_contract_conversion.go builds
+  intrinsic CFG, ordered predicate branches, the nested payload and Result/try
+  routing; the candidate value is only constructed on the success edge.
 - [ ] P22-19 — Add `CheckedNamedAssignmentCommitPlan` that delegates actual
   copy/move/replacement/destruction to P15/P17 facts after total RHS success;
   reject unsupported paths rather than store-first lowering (§20).
@@ -199,6 +212,9 @@ runtime, or any new public error/source syntax.
 - [ ] P22-25 — Add `--sec-lower-named-contract-predicates` to lower scalar
   range, parity, multipleOf, finite and resolved membership through exact
   Arith/CF after all Sema proofs are present (§25).
+  Partial 2026-11-20: scalar range, parity, multipleOf, finite and integer
+  membership lower through the existing integer/float ops without a dedicated
+  pass; float `in` is reported unavailable; the named pass is not added.
 - [ ] P22-26 — Lower string rune-count and byte-count predicates from the
   shared string-contract plan once P23 string lowering exists (MD-050 is
   settled: strings are always valid UTF-8). Preserve ordered
@@ -207,9 +223,12 @@ runtime, or any new public error/source syntax.
 - [ ] P22-27 — Lower fixed-array/collection length and `unique` only when
   canonical iteration, equality, ownership and representation support is
   available; otherwise return structured unsupported-lowering (§16, 25).
-- [ ] P22-28 — Preserve first-failure CFG and nominal validation through
+- [x] P22-28 — Preserve first-failure CFG and nominal validation through
   lowering, with no hidden allocation, panic, contract runtime table, ABI
   choice or physical error-layout inference (§§18–19, 22, 25).
+  Done 2026-11-20: first-failure CFG survives the native track (ordinary
+  compares/branches, no runtime table); native fixtures
+  testdata/build/native/named_contract_{conversion,float,panic}.sec run.
 - [ ] P22-29 — Check target/noalloc capability for each required predicate and
   maintain explicit unsupported boundaries for P15–P18/P21 dependencies.
 
@@ -221,6 +240,8 @@ runtime, or any new public error/source syntax.
 - [ ] P22-31 — Test scalar range, membership, parity, multipleOf and finite
   predicates across target-sized and 8–256-bit integers plus selected floats/
   decimals, without host-width truncation (§14, 29).
+  Partial 2026-11-20: native runs cover integer and f64 carriers; the
+  8–256-bit/target-width sweep and decimals remain.
 - [ ] P22-32 — Test string logical scalar and UTF-8 byte lengths, embedded NUL,
   non-BMP, ordered byte/scalar failures and the P23 lowering boundary
   (§§14–15, 30).
@@ -230,6 +251,9 @@ runtime, or any new public error/source syntax.
 - [ ] P22-34 — Test Result/naked try/local handlers, exact nested error
   payloads, candidate failure isolation and transactional assignment once P15/
   P17 prerequisites are present (§§18–20, 31).
+  Partial 2026-11-20: Result, local handler and panic paths with exact nested
+  payloads are tested (cmd/compiler/named_contract_conversion_test.go);
+  transactional assignment waits for P22-19.
 - [ ] P22-35 — Add Semantic IR/MLIR negative tests, deterministic print/parse,
   target 32/64/noalloc checks and differential native-track controls (§§32–33).
 - [ ] P22-36 — Run focused Go/vet/dialect/lowering/lit suites and full

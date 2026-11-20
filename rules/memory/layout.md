@@ -2,8 +2,8 @@
 
 - Status: Normative
 - Created: 2026-09-02
-- Last updated: 2026-11-19
-- Document revision: 2.0
+- Last updated: 2026-11-20
+- Document revision: 2.1
 - Sec language version: 0.1
 - Canonical path: `rules/memory/layout.md`
 - Implementation governance: `governance/memory.yaml`
@@ -800,6 +800,50 @@ stability/contract provenance
 § 46(9) Representation validity is separate from size/alignment.
 
 § 46(10) Sema/plan resolution establishes canonical layout; Semantic IR preserves it; MLIR/LLVM/backends implement it without becoming a competing source of language semantics.
+
+## § 47 Canonical scalar storage and native placement (MD-141, MD-142)
+
+Integrated 2026-11-20 from `rules/corrections/MD-141-MD-142-scalar-and-aggregate-layout-normative-correction-2026-11-20.md`. §§ 7(7), 24(6) and the MD-019 rules of §§ 27–29 are unchanged.
+
+### § 47.1 Scalar storage representations (MD-141)
+
+§ 47.1(1) `bool` occupies 1 byte with valid stored values `0x00` (false) and `0x01` (true) only (`types.md` § 9.1(7)). `rune` occupies 4 bytes holding a Unicode scalar value in the target byte order (`types.md` § 9.4(9)). `byte` and `char` occupy 1 byte with all patterns valid. A fixed integer of N bits occupies N/8 bytes; `int`, `uint` and plain `float` use the plan width; `float32`/`float64` occupy 4/8 bytes.
+
+§ 47.1(2) The scalar storage representations are `IntegerStorage(8, 16, 32, 64, 128, 256)` and `BinaryFloatStorage(32, 64)`. `bool`, `byte` and `char` use `IntegerStorage(8)`; `rune` uses `IntegerStorage(32)`; signed and unsigned integers of one width share a representation. Sharing a representation never merges the Sec types.
+
+§ 47.1(3) Addressable native scalar storage is never silently bit-packed. A physical load or materialization may not create an invalid `bool`, `rune`, named scalar or enum.
+
+### § 47.2 Target-derived scalar alignment (MD-141)
+
+§ 47.2(1) The required alignment of each storage representation is a typed plan fact keyed by representation class and width, not by byte size: integer and binary-float storage of equal size are distinct facts. Every value is a positive power of two.
+
+§ 47.2(2) The facts come from the selected target's verified data layout/ABI description or a validated compiler-maintained target description, with provenance. They are never derived from the compiler host, the byte width, the pointer width or an architecture-name heuristic.
+
+§ 47.2(3) A missing fact makes every dependent layout incomplete with the target and representation named; a target known not to support a representation yields unsupported; contradictory facts are invalid. No fallback table is substituted.
+
+§ 47.2(4) Each registered target is verified independently; equal pointer widths do not authorize sharing alignments. The facts, the target layout identity and the compiler layout revision are part of the layout cache key.
+
+### § 47.3 Native aggregate alignment and field placement (MD-142)
+
+§ 47.3(1) An ordinary nonempty struct has alignment `max(1, A[0], ..., A[n−1])` of its fields' effective placement alignments. A verified target minimum or a type-level `minAlign` may raise it; a target maximum is a capability check and never lowers it.
+
+§ 47.3(2) Fields are placed in declaration order: with `C = 0` and `A = 1`, for each field `Offset[i] = AlignUp(C, A[i])`, `C = Offset[i] + Size[i]`, `A = max(A, A[i])`; the size is `AlignUp(C, A)`. Bytes between fields are interior padding and bytes after the last field are tail padding; padding is not semantic data.
+
+§ 47.3(3) A zero-sized field occupies no bytes and may share an offset with other fields; it keeps its field identity and proves no aliasing. A struct whose fields are all zero-sized follows § 47.3(2); the fieldless struct keeps § 24(6).
+
+§ 47.3(4) For each field the effective placement alignment is the field type's alignment, capped by the enclosing `pack(N)` for its natural part, raised by field- and type-level `minAlign` and by verified target requirements; a cap never lowers an explicit or target-mandated minimum. `byteOffset(N)` overrides the computed offset under MD-019; the cursor then continues from the largest extent placed so far.
+
+§ 47.3(5) All arithmetic is exact and checked against the maximum byte extent of § 7(7).
+
+### § 47.4 Fixed arrays and decimal carriers (MD-142)
+
+§ 47.4(1) `T[N]` has the element alignment, stride `AlignUp(Size(T), Align(T))` (zero when `Size(T) == 0`) and size `N × stride`, raised to a positively established array minimum when one exists; `N == 0` has size zero. A zero stride authorizes no pointer arithmetic or address-identity claim.
+
+§ 47.4(2) `decimal` and `decimal128` place their fields `coefficient: i64|i128` then `scale: i32` with § 47.3(2); size, padding and alignment come from the target's integer storage facts, never from a packed 12- or 20-byte record. The fields are a layout fact, not a public struct or a C ABI equivalence.
+
+### § 47.5 One layout authority
+
+§ 47.5(1) Sema, Semantic IR, LSP and MLIR lowering consume the same canonical layout service. Only a complete layout satisfies layout-sensitive emission; an unresolved scalar keeps every dependent layout incomplete. Lowering preserves every recorded offset, alignment and stride.
 
 ## Debug-information integration
 

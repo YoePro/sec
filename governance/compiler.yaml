@@ -39,6 +39,7 @@ integrations:
       - implement explicit lowering-readiness/implementation-capability classification
 
   - id: compiler.platform-resolution
+    summary: "Compiler-side Target/Variant/CompilationPlan resolution slices and their evidence. The canonical implementation plan for Target/Variant/CompilationPlan resolution is compiler.platform-model (governance/platform.yaml); this entry does not duplicate its items."
     area: target-variant-platform-compilation-plan
     status: planned
     repository_baseline: 998d8d1
@@ -56,6 +57,7 @@ integrations:
   - id: compiler.backend-architecture
     area: semantic-ir-sec-mlir-backend-orchestration
     status: partial
+    revised: "2026-11-20"
     repository_baseline: 998d8d1
     implemented:
       - Semantic IR and dedicated verifier exist
@@ -73,10 +75,11 @@ integrations:
       - "Capability diagnostic regression fixed (2026-10-26): internal/mlir recognizes both historical and categorized unsupported-lowering messages from the native gates, retaining typed LoweringCapabilityError feature and source coordinates. Tests cover both spellings, multiple limits, colon-containing paths and unrelated errors/notes; TestNativeTrackNamesUnloweredConstructs again verifies the source file:line:column suffix."
       - "native Result/union/Option with scalar payloads (2026-10-30; lowering v11.33; mlir/lib/Conversion/SecToLLVM/TaggedValues.cpp): sec-lower-tagged-values selects an internal LLVM struct (discriminator plus non-overlapping payload slots, no ABI promise) across construction, tests, guarded projections, calls, returns, merge arguments and entry-block storage; sec-lower-integer-enums resolves enums nested in payloads; other payloads stop by name at sec-check-lowering-support. Executed: testdata/build/native/tagged_values.sec, error_variant_patterns.sec, control_flow/if_try/valid.sec, sema/atomics/compare_exchange_result/lowering_valid.sec. Lit: Conversion/SecToLLVM/tagged-values.mlir, tagged-values-unsupported.mlir (194/194). Boundaries: Result[void, E] (dialect requires non-void), statement-position try, struct/string/array/reference payloads, place-based borrowed payload projection."
       - "2026-11-12: implementation-capability diagnostics are centralized and distinct from source and target errors: pipeline boundaries (Semantic IR, Sec MLIR emission, MLIR toolchain gates, allocation lowering readiness) implement diagnostics.CapabilityFailure with a typed ImplementationCapability, and every Sema implementation limit now carries a compiler-capability identity, either its dedicated one (S1177 type packs, hardware schema/context, S1101 compile-time execution) or the new S1239 compiler.capability-unavailable through Analyzer.reportCapabilityUnavailable (unimplemented attributes, impl instance storage, method-level generic parameters, escaping captured lambdas, rounded conversion to non-integer carriers, spawned block bodies, spawn process, ThreadLocal factories); diagnostics.IsImplementationCapability and sema.Error.IsImplementationCapability classify them, and a source-scan guard rejects any new Sema producer that reports an implementation limit without such an identity (internal/sema/capability.go; TestSemaCapabilityLimitsUseCapabilityIdentity, TestCapabilityBoundaryDiagnostic)."
+      - "MD-104 checked conversions lowered (2026-11-19/20): integer, enum, char/rune (InvalidScalar) and binary-float checked conversions under try lower through Semantic IR numeric.convert-checked, Sec MLIR guards and the native track. Their ConversionError failures run end to end: testdata/build/native/float_conversion_checked.sec, rune_conversion_checked.sec and TestCheckedIntegerConversionEmitsVerifiedSecMLIR, with --sec-verify-numeric-conversions on every route. A foreign/C enum ABI-domain case needs an FFI enum surface, which Sec 0.1 does not define, so there is nothing further to exercise."
+    partial:
+      - "Started (re-verified 2026-11-20): float conversions (exact, checked, float-to-bool) and range membership over char/rune/float now lower and run natively (float_conversion_*.sec, range_membership_scalars.sec), as do bool and named-integer switch subjects (bool_switch.sec, named_scalars.sec) and the P20 float core members. Remaining from the original hole: runtime for steps, collection/iterator for loops and string switch subjects on the native track."
     remaining:
       - make the Semantic IR -> Sec MLIR path cover all maintained Sec 0.1 features
-      - "widen the single track (Known hole, verified 2026-10-18): Semantic IR P14 rejects runtime for steps, collection/iterator for loops, string/named switch subjects, floating core methods/properties and float conversions (the P20 operator subset is lowered, lowering.sec-mlir-package20), checked integer conversions needing try, extern calls, inline asm and discard of values that need destruction; the LLVM track rejects structs, arrays, enum.from_integer and bit-backed enums, Result/union/Option values whose payloads are not scalars (scalar payloads are lowered since 2026-10-30, sec-lower-tagged-values, lowering v11.33), references, strings, physical lowering of address-taken statics and interface dispatch (MD-116 high-level roots and identity verification are implemented under lowering.sec-mlir-package15). Lowered since 2026-10-17: for (implicit and constant steps), integer/subjectless/enum/bool switch, exact int(x) and enum-to-integer conversions, char/rune comparison, integer enums, explicit/implicit discard of trivial values, explicit panic and failed assert (sec.fail.panic -> trap), module constants and mutable statics (LLVM globals). Each widening adds lowering plus its operations to sec-check-lowering-support"
-      - "MD-104 follow-up: checked conversions (ConversionError, try) remain unlowered; no foreign/C enum surface exists to exercise the ABI-domain rule. Semantic IR proof transport and consumption by the enum pass are implemented (lowering.integer-enum-representation)."
       - "panic reporting: the minimal endpoint traps without a message (MD-101); a hosted panic policy with bounded reporting is not lowered"
       - preserve verified target/profile/reference/ownership/effect facts through object/link generation
       - preserve, transform, or explicitly invalidate canonical debug provenance through final emission under compiler.debug-information-v1
@@ -425,6 +428,7 @@ integrations:
   - id: compiler.linking
     area: compiler-linking-and-artifacts
     status: partial
+    revised: "2026-11-20"
     integrated: "2026-08-24"
     document_revision: "1"
     repository_baseline: c515862
@@ -472,6 +476,8 @@ integrations:
       - link inputs, dependencies, roots and symbols are not typed provenance-bearing canonical facts
       - output-affecting host environment is not modeled as canonical link state
       - successful external process exit is accepted without canonical artifact verification
+    partial:
+      - "Object-unit strategy partial (2026-11-19): one object per Sec module is implemented. sec build compiles every transitively called imported module into its own object with module-independent sec_sym_<sha256(FunctionID)> symbols, private specializations get internal linkage, and the objects link. ModuleIdentity stays separate from object identity, and ModuleID/source_filename name the Sec module. Remaining: whole-program and LTO unit strategies and their selection."
     remaining:
       - introduce one canonical LinkPlan for every concrete CompilationPlan that requires binary linkage
       - make CompilationPlan.LinkEnvironment authoritative for object format, symbol model, entry convention, relocation model, platform linkage requirements, and linker capabilities
@@ -481,7 +487,6 @@ integrations:
       - introduce deterministic collision-resistant BinarySymbolIdentity distinct from SemanticDeclarationIdentity, ABISignature/ABIFingerprint, and EncodedLinkSymbol
       - separate Sec-native mangling from target object-format symbol encoding and keep import aliases, traversal order, host state, and worker scheduling out of native binary identity
       - define explicit binary linkage categories for private, native, foreign, generated-entry, generated-runtime, generated-callback, and platform-required symbols
-      - keep object-unit identity separate from Sec module/declaration identity and support module, multi-object, whole-program, and LTO unit strategies
       - consume ProgramInitializationPlan and ProgramShutdownPlan requirements for startup objects, entry adapters, runtime/shutdown components, sections, and termination integration
       - represent symbol definitions and references using canonical native BinarySymbolIdentity or foreign linkage identity rather than source spelling
       - implement output-kind-specific symbol-resolution policy for executables, static libraries, shared libraries, and object outputs
@@ -733,13 +738,14 @@ integrations:
       - "2026-11-12: transient identities never escape materialization: evaluator values hold no addresses or generations, a function or getter returning a reference fails closed instead of returning a copy that would lose writes through it (previously `Pick(ref mut acc)` silently yielded a copy), and the custom-free ownership identities are stripped from every established value before static materialization or later requests read it (prepareCTEMaterialization; TestSemanticCTEReferenceIdentityNeverEscapes)."
       - "Recursive materialization graph validation completed 2026-11-12 (compile_time_evaluation.md sections 28-37,48-49,54,56-59): prepareCTEMaterialization validates the complete represented typed value graph before recursive ownership accounting or storage handoff. It checks canonical struct fields and active Result/Option/union payloads including field payloads and void, preserves nominal/concrete type identity, removes evaluator ownership IDs from a fresh copy, accepts acyclic sharing, and rejects cyclic graphs or reference/pointer/view values without validated program storage identity as ResultNotMaterializable. Unknown array/function/generic representations fail as ImplementationGap; malformed compiler graphs are CompilerInvariantFailure and traversal has deterministic resource limits. Mandatory S1244 compile-time.result-not-materializable distinguishes successful computation from storage failure and names the stored-value path; failed graphs expose no established value. The unguarded withoutOwnerIdentities walk is replaced by this guarded boundary. Source-backed tests cover nine typed roots, compiler check and LSP hover; compiler-service fault injection verifies unsafe/cyclic graphs, hidden/missing payloads, immutable sanitation, bounded traversal and diagnostic identity without inventing unsupported source programs. Physical layout, static reference relocation (MD-081), dynamic-owner execution and physical lowering/materialization retain their separate remaining requirements."
       - "2026-11-18: cancellable semantic CTE produces the compiler-owned Cancelled outcome at execution checkpoints and before result publication. AnalyzeContext carries the same context through required-value probes and deferred static evaluation, returning context.Canceled or DeadlineExceeded separately from source diagnostics. Cancelled analysis discards request-local CTE results, pending roots, memoized successes and diagnostics; callers must discard its other analysis facts. OptionalCompileTimeValueContext preserves cancellation as an error rather than an ordinary failed-fold result. Cancellation cannot become a ResourceLimit, a catchable Sec error or a cached semantic impossibility; existing context-free APIs remain compatible. Deterministic mid-execution, recursive/loop/handled source, deadline, budget-precedence and fresh-retry tests verify this service requirement. Active LSP request scheduling and general compiler-pass cancellation remain separately owned by tooling.lsp-module-diagnostic-scheduling."
+    partial:
+      - "Started (moved to partial 2026-11-20; the text records the done part and what remains): implement cross-module CTE body availability from separately compiled canonical semantic artifacts (functions of imported source modules in the same build execute since 2026-11-12, TestCLICompileTimeEvaluationAcrossModules)"
+      - "Started (moved to partial 2026-11-20; the text records the done part and what remains): request generic concrete instances through the monomorphization/generic-lowering contracts once the executor runs on Semantic IR (the concrete instance Sema selects for a call, with its substitution, executes since 2026-11-12, TestSemanticCTEGenericInstances)"
     remaining:
       - "static reference materialization (MD-081 applied; compile_time_evaluation.md §§ 28(6), 36(5)): represent a `ref S` static initializer as a typed symbolic reference target (never an evaluator address or a read of a mutable static), and materialize it through a target symbol/relocation selected by the CompilationPlan with a fail-closed materialization diagnostic when the target cannot represent it; Sema validation is implemented; Semantic IR rejects such statics explicitly until P15-42 static-held borrows and P24 reference lowering exist"
       - implement a canonical typed Semantic IR CTE execution service rather than relying only on AST/literal-specific constant evaluation
       - materialize supported scalar, fixed aggregate, enum/union/Option/Result, and immutable string values through ordinary target storage/layout lowering
       - allow dynamic owning collections transiently in CTE while rejecting static escape when the concrete type lacks defined materialization
-      - implement cross-module CTE body availability from separately compiled canonical semantic artifacts (functions of imported source modules in the same build execute since 2026-11-12, TestCLICompileTimeEvaluationAcrossModules)
-      - request generic concrete instances through the monomorphization/generic-lowering contracts once the executor runs on Semantic IR (the concrete instance Sema selects for a call, with its substitution, executes since 2026-11-12, TestSemanticCTEGenericInstances)
       - integrate CTE as a semantic service around typed Sema/Semantic IR and the Sec MLIR -> MLIR -> LLVM -> artifact pipeline
       - allow MLIR infrastructure reuse internally only when canonical Sec and target-plan semantics are preserved
       - audit every compiler-known Sec declaration for complete canonical declaration and owning module (rulebook A/B choices are MD-016)
@@ -896,4 +902,4 @@ integrations:
       - internal/sema/cte_try.go
       - internal/sema/cte_materialization.go
       - internal/sema/cte_cancellation.go
-    revised: "2026-11-18"
+    revised: "2026-11-20"

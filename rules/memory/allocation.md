@@ -588,6 +588,14 @@ help: use a preallocated buffer or select a build profile that permits allocatio
 
 ---
 
+## § 28A Allocation policy and provider selection (MD-139)
+
+§ 28A(1) (MD-139, accepted 2026-11-20) The allocation policies `hosted`, `embedded-arena` and `noalloc` are selected per Target–Variant by the manifest `[*.allocation]` tables (`rules/projects/projects.md` § 19(12)–(14)) and are independent of the target-profile family and of build profiles.
+
+§ 28A(2) The provider identity and its capabilities are resolved and checked against the selected target before any allocation is materialized (`rules/platform/target_profiles.md` § 41). A named provider is selection, not implementation or trust.
+
+§ 28A(3) `Arena.FromBuffer`, implicit contexts, failure, escape and destruction rules of this rulebook are unchanged.
+
 ## § 29 LSP and analysis tooling
 
 § 29(1) LSP and `sec analyse` must consume the same canonical allocation-effect/context facts as compilation.

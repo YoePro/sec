@@ -6,7 +6,7 @@ integrations:
     area: frontend-selection-target-binding-effects-and-tooling
     status: partial
     audited: "2026-08-19"
-    revised: "2026-10-05"
+    revised: "2026-11-20"
     document_revision: "1.1"
     repository_baseline: c515862
     summary: "Tracks the canonical Sec 0.1 compiler-known attribute system. Individual verticals exist for #target compatibility, @address, @noCopy, and @link_name, but the general attribute parser, attachment-set model, declaration selection, verified-effect attributes, interrupt attributes, generic diagnostics, formatter integration, and LSP support are not yet unified. This fragment is the sole owner of implementation status for the normative rules/foundations/attributes.md rulebook while preserving the more detailed owning governance entries for fixed-address bindings, FFI, copy/move, target/platform resolution, and ISR analysis."
@@ -64,6 +64,7 @@ integrations:
       - fixed-address behavior is implemented only for the currently specified addressed-register subset and still lacks complete target validation and lowering
       - "'@noPanic' and '@noAlloc' form one consecutive attribute set in any order (each at most once, argument-free, comments allowed between them) on functions, methods, and extern declarations, and Sema verifies both transitively; on extern declarations they are trusted foreign contracts (2026-10-04, TestParseEffectGuaranteeAttributeSets); since 2026-10-05 they share the general attribute parser"
       - target/platform concepts exist, but canonical '@target' selection is not generally implemented
+      - "Started (2026-11-20): unimplemented attributes already report through the shared implementation-capability diagnostic (internal/sema/attributes.go reportCapabilityUnavailable: 'attribute @%s is not implemented yet'). Remaining: registered diagnostic families for target, config, address, interrupt, isr and interrupt-safe once those attributes are implemented."
     remaining:
       - represent file-level attributes on the compilation unit (only the '#target' compatibility directive is file-level today)
       - implement canonical '@target' file and statement forms with os, arch, cpu, device, and board selectors
@@ -75,7 +76,6 @@ integrations:
         implement @interrupt(vector: ...) together with @isr and @interruptSafe
         parsing, implication, target-profile validation, call-graph
         restrictions, vector uniqueness, and lowering
-      - register the remaining attribute diagnostic families (target, config, address, interrupt, isr, and interrupt-safe families) and give 'not implemented yet' an implementation-capability diagnostic identity
       - classify join, sleep, timer waits, process/IPC waits, and Context-based Lock as blocking once Sema represents them, and treat a Sender or Receiver reached through a reference (`ref Sender[T]`) as the same compiler-known operation
       - implement general attribute-aware formatter behavior beyond the existing '@noCopy' vertical
       - "LSP for selection and target binding once they exist: excluded-source display with target and configuration exclusion reasons and the active compilation plan (needs @target/@when selection), config.<name> completion (needs compile-time parameters), cpu, device, and board selector values and interrupt-vector and peripheral-address completion and hover (need target knowledge packs)"

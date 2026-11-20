@@ -397,9 +397,8 @@ func (fb *functionBuilder) lowerReferenceCompoundWrite(stmt *ast.AssignmentState
 	if !ok || !use.TrivialReplacement {
 		return fb.unsupported("compound assignment "+stmt.Operator+" through a reference", stmt.Token)
 	}
-	if _, ok := stmt.Value.(*ast.TryExpression); ok {
-		return fb.unsupported("try arithmetic", expressionToken(stmt.Value))
-	}
+	// A try source is evaluated after the referent read; its failure edge
+	// leaves before the write (operators.md §§ 84(3), 87(3)).
 	place, mutable, err := fb.derefUsePlace(stmt.Target, use)
 	if err != nil {
 		return err

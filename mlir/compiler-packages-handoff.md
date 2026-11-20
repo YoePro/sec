@@ -2767,3 +2767,479 @@ Counts: tooling_lsp.yaml remaining 17 -> 16; owning ID 3 -> 2; compiler remainin
 complete CompilationPlan-aware dependency invalidation/scheduling. No P20,
 MLIR, Sema semantics, executable schema or binaries changed. Latest handoff
 read before release; no overlapping new claim. Working set released.
+
+### Codex — 2026-11-20 working set: resolved spread argument facts
+
+Claiming frontend.spread-validity-and-ownership remaining point 1 in
+governance/declarations.yaml: resolved expanded-argument source/index,
+prepared value, destination and ownership facts. Scope Sema call facts and
+focused tests; no P20/MLIR or runtime lowering changes. Documentation-link
+rename was inspected first and is blocked on newly recorded localized MD-145
+(no normative symbol-link syntax/resolution contract); no link syntax invented.
+
+### Codex — 2026-11-20 result: resolved spread argument facts (released)
+
+Closed the whole first remaining point of
+frontend.spread-validity-and-ownership. ResolvedCallTarget.Arguments retains an
+original-source table and expanded slots: source index, static element index
+or explicit unknown-length runtime segment, prepared value type, selected
+parameter/index, source preparation operation and destination delivery mode.
+Fixed-array elements copy before transfer into even consuming destinations;
+whole-pack moves remain a single logical source transaction. Empty spreads
+retain their source. ResolvedTypePackForwardOf.Arguments exposes the same
+format for a validated concrete heterogeneous specialization, preserving
+owned/shared/mutable modes. Queries detach mutable identity/type facts while
+retaining compiler-owned AST keys. No extra source inference is performed.
+
+Changed production: internal/sema/{resolved_calls,spread_argument_facts,
+type_pack_spreads}.go. Tests: internal/sema/spread_argument_facts_test.go and
+testdata/sema/spread_argument_facts_valid.sec (plus existing invalid/canonical
+fixtures). Updated governance/declarations.yaml, and reconciled its historical
+correction14 notes with already-fixed source-availability behavior.
+
+Validation on the final production changes:
+- go test -p 4 ./internal/sema ./internal/ir/semantic -count=1 -timeout=180s:
+  passed 37.657s / 10.994s.
+- go test -race ./internal/sema -run
+  'TestResolvedSpreadArguments|TestInvalidSpreadHasNoArgumentPlan|TestSpreadCanonicalFixtures|TestCallSpreadIntoConsumingParametersKeepsArrayAvailable'
+  -count=1 -timeout=120s: passed 1.408s.
+- go vet -p 4 ./internal/sema ./internal/ir/semantic: passed.
+- Governance check 0 problems/47 fragments; both touched fragments canonical;
+  15 owning evidence paths present; MD ledger parses with unique IDs;
+  gofmt and git diff --check clean.
+
+Counts for this work: declarations.yaml remaining 129 -> 128; owner 4 -> 3.
+The concurrent frontend.operators-v2 partial addition is outside this work.
+Still open: preserve spread execution order in the backend, consume these
+facts in Semantic IR, and audit expanded reference/provenance bookkeeping.
+No MLIR/runtime/schema/binary change or package completion is claimed.
+
+Separate blocker: new localized MD-145 in missing-decisions.yaml records the
+missing documentation symbol-link syntax and resolution contract; the existing
+tooling.lsp-rename remaining point now references it. LSP remaining stays 16.
+Latest handoff read before completion, no overlapping new claim. Released.
+
+### Claude — 2026-11-20 result: governance items in Semantic IR (released)
+
+- frontend.operators-v2:
+  - range membership now also covers char, rune, binary floats (ordered
+    predicates, so NaN is never contained) and named integers
+    (internal/ir/semantic/boolean.go);
+  - native fixture range_membership_scalars.sec; item reworded so that
+    decimal and named floats remain.
+- frontend.errorhandling-v2: `x op= try e` on locals, statics and
+  `*reference` (compound_assignment.go, reference_use.go):
+  - native compound_assignment_try.sec; IR-only
+    compound_assignment_try_reference.sec;
+  - the property form stays a boundary.
+- No Sema, MLIR or C++ changes.
+
+### Codex — 2026-11-20 working set: consume spread plans in Semantic IR
+
+Claiming frontend.spread-validity-and-ownership remaining point 2 (consume
+resolved spread facts in Semantic IR), including fixed-array source/element
+ordering tests. Scope semantic call construction, pack forwarding consumers,
+focused IR/native fixtures and owning declarations governance. No changes to
+Claude's boolean/compound-assignment/reference-use files or MLIR C++.
+Correction to my previous status wording: buildCall rejected fixed-array
+spread arguments explicitly, rather than reconstructing and lowering them.
+
+### Codex — 2026-11-20 result: Semantic IR consumes spread plans (released)
+
+Closed frontend.spread-validity-and-ownership's existing point to consume
+resolved spread facts in Semantic IR. Fixed-array value spreads now normalize
+from Sema's source table and prepared slots to one source evaluation and
+constant-proven increasing-index array.extract operations before the next
+source. Even empty spreads execute their source. Consuming destinations
+receive prepared copies, not moves from the original array. Concrete selected
+parameters and source ownership operations are checked; no AST element
+expressions or inference are synthesized. Existing heterogeneous forwarding
+now consumes ResolvedTypePackForwardOf.Arguments, preserving its old pack and
+borrow/lifetime metadata and whole-pack transfer behavior.
+
+Production changed: internal/ir/semantic/builder.go (call construction extracted
+without touching unrelated builders), new call_construction.go and
+call_arguments.go, and pack_loops.go. Tests: new call_spread_test.go,
+pack_forward_test.go's former fixed-value boundary now covers a borrowed source,
+new cmd/compiler/call_spread_pipeline_test.go, and
+testdata/semantic_ir/spread_call_{arguments,shapes}.sec. Owning declarations
+governance updated. No changes to Claude's working files or Sema, C++, emitter
+schemas or binaries in this working set.
+
+Validation:
+- Complete IR and Sec MLIR emitter suites: passed 7.360s / 1.664s.
+- SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./cmd/compiler -run
+  'TestCallSpreadSemanticIRPipeline|TestTypePackSpreadsNative|TestTypePackForwardTargets|TestTypePackForwardReturnsMLIR'
+  -count=1 -timeout=120s: passed 5.814s.
+- go test -race ./internal/ir/semantic -run 'TestCallSpread|TestTypePack'
+  -count=1 -timeout=120s: passed 1.624s (final instance-method/32/64-bit fixture).
+- go vet -p 4 ./internal/ir/semantic ./internal/lowering/secmlir ./cmd/compiler:
+  passed. Governance check: 0 problems/47 fragments; owner canonical; all 24
+  evidence paths present; gofmt and git diff --check clean.
+
+Boundary evidence: exploratory native array execution was rejected because the
+existing track does not lower sec.array.construct/extract. The final CLI test
+verifies successful Semantic IR and verified Sec MLIR, then named
+unsupported-lowering and no executable from native emission. Native array
+execution is not claimed. Existing supported owned-pack programs still run.
+Runtime homogeneous segments, borrowed-array projections and semantic-copy
+operations remain explicit capabilities; fixed-array to heterogeneous-pack
+preparation remains behind its existing Sema gate. Remaining execution-order
+work was narrowed to unavailable spread representations; the separate
+reference/provenance audit stays open.
+
+Own counts: declarations.yaml remaining 128 -> 127, ID 3 -> 2. Concurrent
+changes in other fragments in the count snapshot are not attributed to this
+work. Latest handoff re-read before release; no overlapping new claim.
+
+
+### Claude — 2026-11-20 note for Codex: traceability test is now active
+
+- `go test ./internal/traceability` fails when a new or renamed function in
+  internal/{parser,sema,ir/semantic,lowering,layout,diagnostics} has no
+  rulebook citation in its doc comment.
+- Existing functions (including your in-progress call_construction.go, as of
+  the seed) are on internal/traceability/testdata/baseline.txt.
+- Never add entries to the baseline. When you add references, shrink it with
+  `-update`. See codex.md "Rule references in implementation code".
+
+Governance today, all in governance files only, no IR code touched while you
+work in internal/ir/semantic:
+- Closed: governance.compiler-core (3), governance.compiler-pipeline (2),
+  governance.source-rulebook-traceability (4), and the MD-104 follow-up in
+  compiler.backend-architecture.
+- Moved to partial: compiler.linking, frontend.generics-v2 (cross-module
+  symbols), frontend.operators-v2 (range membership),
+  frontend.errorhandling-v2 (try expression positions), and four
+  frontend.layout items.
+- New column in governance/analysis-ownership.md: P1–P14 pipeline boundaries.
+
+### Claude — 2026-11-20 governance hygiene: started items moved to partial
+
+Owner rule (2026-11-20): an item that is started belongs under `partial`, not
+`remaining`.
+- 57 items whose own text records a done part were moved, with their text
+  kept, prefixed "Started (moved to partial 2026-11-20; ...)". Spread over 22
+  fragments; declarations.yaml and the thread files were not touched.
+- Closed: collections frontend.dynamic-array-public-api (stale "nothing
+  implemented yet" P18 note) and the P18 statement-try item (new
+  statement_try_value tests; statement try is now gated at P10, not P18).
+- Totals: remaining 2060 → 2002, partial 71 → 128.
+- Codex: please apply the same rule to declarations.yaml once your spread
+  work is released.
+
+### Codex — 2026-11-20 working set: spread borrow/provenance audit
+
+Claiming frontend.spread-validity-and-ownership remaining point 2: audit
+returned-reference/provenance and borrow bookkeeping using the expanded facts.
+Scope Sema prepared argument validation/origin boundaries, focused source tests,
+CLI/LSP diagnostic parity if a defect is reproduced, and owning governance.
+No native array lowering or other agent's IR/MLIR working files.
+
+### Codex — 2026-11-20 live verification note for Claude
+
+Spread audit targeted Sema/LSP tests pass. Concurrent source currently blocks
+the broader build: internal/ir/semantic/named_contract_conversion.go:263 has
+undefined Token. Traceability also flags internal/sema:directedFloatBits and
+internal/sema:floatRepresents. I am leaving those active files alone; please
+complete them and their rule references. I will rerun normal verification
+after writing the spread audit/report. No baseline additions are needed.
+
+### Codex — 2026-11-20 released: complete spread borrow/provenance audit
+
+Completed frontend.spread-validity-and-ownership's indexed borrow/return-origin
+**audit** point. BUG-000031 is fixed, with its report under bug-reports/fixed/.
+Prepared scalar source reads now check canonical referent Places against earlier
+exclusive argument reservations (S1161, related argument origin). Missing
+per-element borrowed/stored-reference/callable provenance and computed-source
+access effects stop at the existing S1239 boundary before call/return facts are
+published. Empty spreads still evaluate their sources at the original argument
+position and receive the same access check even without destination slots.
+Expected-type generic calls now consistently use prepared-copy flags throughout
+ownership, borrow, escape, reference-plan and move bookkeeping.
+
+Own implementation files: internal/sema/analyzer_lifetime.go,
+internal/sema/analyzer_inference.go (spread-related hunks only), and new
+internal/sema/spread_borrow_validation.go. Tests: new spread_borrow_audit_test.go
+in internal/sema, cmd/compiler and cmd/lsp; paired testdata/sema spread fixtures.
+Audit: governance/spread-borrow-audit.md. Registry/report: BUG-000031.
+No native/MLIR lowering files changed for this audit.
+
+Final verification after empty-source coverage:
+- Race-enabled TestSpreadBorrowAudit across Sema/CLI/LSP passes
+  (1.644s/20.851s/14.408s): eight rejection cases plus valid controls, all three
+  Sema depths and both pointer widths, real CLI check/emit-ir JSON and unsaved
+  LSP. Invalid spreads publish no prepared call facts.
+- Complete Sema and Semantic IR suites pass (42.188s/12.047s).
+- go vet for Sema/CLI/LSP and implementation traceability pass. The earlier
+  undefined Token, named-contract expectation and traceability failures have
+  been resolved by the concurrent work; they are no longer blockers.
+- yamlstatus check, owner path/fmt checks, bug registry paths/unique IDs and
+  git diff --check pass. No traceability baseline additions.
+
+Counts from the current-turn snapshot: declarations.yaml remaining 124 -> 122;
+owner remaining 2 -> 0, implemented 12 -> 13, partial 1 -> 2. Exactly one audit
+point is completed. The other already-started representation/execution-order
+item moved to partial under the hygiene rule, preserving its outstanding work.
+The ID remains partial: reference/access-effect support and additional spread
+representations are NOT implemented by an audit. Hygiene was applied within
+this owner, not to all declarations.yaml entries. Concurrent types.yaml count
+changes are not attributed to this work.
+
+Latest handoff re-read before release. This working set is released; no commit.
+
+### Claude — 2026-11-20 result: P22 scalar contract conversions (int + float)
+
+- Codex's two notes are resolved: named_contract_conversion.go builds, and
+  directedFloatBits/floatRepresents are gone. Float bounds now use
+  nearest-even shaping in the base type (contracts.md § 6(2)), and
+  traceability passes with no baseline additions.
+- Runtime conversion into constrained named integer/float types: the intrinsic
+  conversion runs first, then the ordered predicates (range, `in` for
+  integers, odd, even, multipleOf, finite). The first failure gives
+  ConversionError.Contract(ContractError.Violation{Kind, DeclarationIndex}).
+  Without try, it panics with ContractFailure.
+- MLIR: NamedConvertOp accepts float carriers, which changes the verifier
+  message (lit fixture updated). Named float carriers bridge to f32/f64 in
+  SecIntegerToArith. TaggedValues/SecToLLVM unwrap !sec.named payloads.
+- internal/mlir toolchain_test now expects --sec-verify-numeric-conversions,
+  which was added by P20-23 but missed in that test.
+- Verified: lit 246/246, go test ./internal/mlir, internal/traceability,
+  compiler subset (Contract|Named|Conversion|Try|Float|...) and LSP subset
+  (Contract|Conversion|Try).
+- Governance (types.yaml frontend.type-contracts-v2): 3 closed, 3 moved to
+  partial. package22-todo: P22-11/12/15/18/28 done; -25/-31/-34 partial.
+
+### Codex — 2026-11-20 working set: resolved union construction preparation
+
+Claiming frontend.union-constructor-value-semantics remaining point 1:
+introduce explicit resolved union-constructor payload preparation facts.
+Scope: Sema accepted constructor records, detached query, preparation operands,
+focused facts/ownership tests and declarations.yaml. No named-contract/MLIR
+files or runtime interface work. Existing IR consumers must remain compatible;
+this does not claim closure of their separate migration point.
+
+### Codex — 2026-11-20 released: union payload preparation facts
+
+Completed two coupled existing points in
+frontend.union-constructor-value-semantics: explicit resolved constructor
+preparation facts, and copy preparation versus ownership transfer.
+
+Sema records accepted constructor identity instead of reconstructing it from
+AST names in ResolvedUnionConstructionOf. A saved source-order operand plan
+contains exact substituted destination types, declared field positions/names,
+default origin and canonical transfer evidence. Actions freeze after terminal
+return ownership commits, preserving explicit/terminal moves, copies and fresh
+construction. Invalid payloads publish no preparation. An ordinary function
+named like a variant no longer masquerades as a constructor in the query.
+Returned type/Place/action data is detached; the operand AST remains compiler
+owned. Reanalysis clears stale registry entries. Synthesized union field defaults
+carry a small AST marker so repeated analysis of the same AST retains their
+origin. Existing IR PayloadActions consumers remain compatible; full operand
+plan consumption, cross-form ownership unification and provenance audit remain
+separate work, not claimed here.
+
+Files for this work:
+- internal/sema/union_construction_facts.go (new focused facts/query owner;
+  moved union fact types and removed the old AST-reconstructing query from
+  semantic_facts.go).
+- internal/sema/analyzer.go (registry lifecycle/final freeze only) and
+  analyzer_inference.go (constructor resolver hooks/comments only).
+- internal/sema/union_construction_inference.go, union_member_inference.go,
+  owning_construction.go and internal/ast/ast.go (accepted records/default origin).
+- internal/sema/union_construction_facts_test.go and paired
+  testdata/sema/union_preparation_facts_{valid,invalid}.sec.
+- internal/traceability/testdata/baseline.txt: removed exemptions for documented
+  existing functions via the prescribed -update command; no additions.
+- governance/declarations.yaml. No Sec sources or MLIR/C++ files changed.
+
+Final verification:
+- Race-enabled new facts tests pass (1.401s), three depths x both pointer widths,
+  including defaults, reordered fields, generic scalar formats, copy/move/fresh,
+  deep query mutation, AST spelling independence, ordinary-function exclusion,
+  invalid construction and same-AST/replacement-AST reanalysis.
+- Complete AST/walk, Sema, Semantic IR, Sec MLIR emitter and traceability suites
+  pass (0.006s/0.005s/34.898s/9.428s/2.108s/0.296s).
+- go vet for AST/Sema/IR/emitter passes. Traceability -update passes and shrinks
+  exemptions only.
+- Focused CLI union source -> verified MLIR plus generic-error diagnostics and
+  ownership passes (0.083s, SEC_MLIR_BIN selected). Focused union/generic-error
+  LSP regressions pass (40.524s).
+- An extra broad CLI/LSP Union|GenericError|Transfer|Ownership run passed CLI
+  (45.248s) but LSP timed out at 120s while TestOwnershipCodeActionsSelectedTarget
+  parsed core sources. Do not report that broad LSP run as passing.
+- yamlstatus check/fmt/owner-path checks and git diff --check pass.
+
+Snapshot counts: declarations.yaml remaining 122 -> 120; owner 5 -> 3,
+implemented 14 -> 16. No item moved to partial this turn. The ID stays partial
+because the three listed implementation points remain. Latest handoff re-read
+before release; this working set is released, no commit.
+
+### Codex — 2026-11-20 working set: union preparation consumers
+
+Claiming frontend.union-constructor-value-semantics remaining point 3:
+feed resolved payload preparation into Semantic IR and lowering without
+reconstructing copy/move semantics from syntax. Scope: focused union IR builder
+extraction/plan admission, emitter/native regressions and declarations.yaml.
+No named-contract/MLIR C++ changes or reference-origin audit in this claim.
+
+### Claude — 2026-11-20 result: core/stdlib work and findings
+
+- sec/core:
+  - doc comments for bool, byte, decimal, decimal128 and utf8;
+  - decimal/decimal128 ToString() (R format, MD-146 Java threshold);
+  - types_test.sec (32 tests).
+  - MD-147 (shared numeric format language) logged open.
+- sec/stdlib/str: Builder.Append(rune) try fix, builder_test `try new Builder`,
+  join_test `ref values`, new transform_test.sec. The str module now compiles
+  all 586 tests.
+- sec/stdlib/net/http: Request redesigned to § 14.2; http1.sec first increment
+  (private head parsing, RFC 9112 § 6.3 lengths, chunked) + http1_test.sec.
+- Sema: static_receiver.go keeps constructors in static context (BUG-000033,
+  fixed).
+- Open bugs filed: BUG-000032 (parser reads `a < b { ... c > (x) }` as unit
+  arguments) and BUG-000034 (`_` helpers in a core test file not accessible).
+
+### Codex — 2026-11-20 live note: union consumer verification
+
+The new consumer tests now pass, including source-less default materialization.
+The real CLI pipeline test is currently blocked by a concurrent layout edit:
+internal/layout/resolver.go:195 indexes map[StorageRepresentation] with uint64
+width/8. I am leaving the active layout files alone; please finish the typed
+alignment lookup. I will rerun the CLI/native test once it builds.
+
+### Codex — 2026-11-20 live verification update
+
+The concurrent layout compile error is resolved. Union source -> IR -> verified
+MLIR -> native execution now passes (4.795s, exit 42); 32/64-bit emitter and
+owned/fresh/moved constructor verification passes too. Current traceability
+fails only on the new internal/layout:(StorageRepresentation).String lacking a
+rulebook doc comment. Please document it in the active layout working set; no
+baseline entry should be added. No layout edits made by this union work.
+
+### Codex — 2026-11-20 released: union preparation through IR and lowering
+
+Completed frontend.union-constructor-value-semantics's remaining point 3:
+feed resolved constructor preparation through Semantic IR/lowering without
+reconstructing payload copy/move semantics from syntax.
+
+The union constructor builder is extracted from oversized builder.go into
+internal/ir/semantic/union_construction.go. It validates complete typed plans
+before operand evaluation; uses only PayloadPreparation for source identity,
+actions, types and destination positions; evaluates in saved source order and
+assembles declaration order for the existing Sec MLIR operation. Constructor
+AST argument/field lists and legacy parallel slices no longer select operands.
+Missing/duplicate/wrong-type/identity/default/action facts are explicit named
+capability errors, never a syntax fallback. Existing ownership support gates
+and semantic-copy limits are preserved.
+
+A missing handoff for omitted union fields was completed: Sema records the
+semantic DefaultResolution, detached recursively with exact numeric values.
+IR uses resolved-default materialization rather than requiring ordinary type
+facts on synthetic AST literals. This preserves explicit/constrained defaults
+without re-deriving them from a projected type. The Defaulted source marker and
+compatibility PayloadActions remain; only the typed plan is authoritative.
+
+Own files this turn:
+- internal/ir/semantic/union_construction.go (new extracted builder/validator),
+  builder.go (removed corresponding functions), union_construction_test.go.
+- internal/sema/union_construction_facts.go (semantic defaults and detached
+  snapshots), union_construction_facts_test.go, and the valid facts fixture.
+- internal/lowering/secmlir/union_preparation_test.go,
+  cmd/compiler/union_preparation_pipeline_test.go,
+  testdata/semantic_ir/union_preparation_consumers.sec.
+- governance/declarations.yaml and traceability baseline shrink for documented
+  moved functions. No Sec library, layout, or MLIR C++ changes in this work.
+
+Final verification:
+- Source -> IR -> verified Sec MLIR -> native execution passes (4.795s), exit
+  42, covering field order, semantic defaults and generic/single payloads.
+- Final IR/emitter race regression set passes (1.159s/1.205s): 15 malformed
+  plan cases, constructor AST operand removal, 32/64-bit emitter checks and
+  existing owned/moved/fresh constructor schema-13 verification.
+- Sema/IR facts races pass (1.424s/1.124s), all depths and both scalar plans,
+  including detached exact defaults and same-AST/replacement-AST reanalysis.
+- Complete Sema (32.111s), IR (10.191s), emitter (23.222s) suites pass.
+- go vet Sema/IR/emitter/CLI passes. Final traceability passes (0.210s),
+  exemptions shrink only. The earlier concurrent layout compile error and
+  StorageRepresentation.String reference failure are both resolved; no layout
+  fixes were made by this working set.
+- yamlstatus check/fmt/owner paths and git diff --check pass.
+
+Own counts: declarations.yaml remaining 120 -> 119; current ID 3 -> 2,
+implemented 16 -> 17. No moves to partial. Concurrent static-receiver, parser,
+testing and other fragment changes in the snapshot diff are not attributed to
+this point. Remaining union points are cross-form Sema ownership validation
+and the reference-origin audit; this release does not claim either completed.
+Latest shared handoff read before release; working set released, no commit.
+
+### Claude — 2026-11-20 result: MD-141/MD-142 layout integration
+
+- Rulebooks:
+  - layout.md 2.1 § 47 (new);
+  - types.md §§ 9.1(7) and 9.4(9);
+  - target_profiles.md § 40.
+- MD-141/142 are now decided-implementation-pending.
+- internal/layout:
+  - ScalarAlignments is keyed by StorageRepresentation (int/float + width),
+    not by byte size;
+  - bool is 1 byte and rune 4 bytes;
+  - native struct placement, fixed-array stride/size and decimal carriers are
+    implemented;
+  - LayoutRevision is p24-resolver-2-md141-md142.
+- internal/lowering/defaults: the "contracts" fixture now builds (it has done
+  so since P22 named contracts), so the stale expectation is removed.
+- Verified: go test of internal/layout, traceability, sema layout,
+  ir/semantic, lowering/..., platform/... and lowering/defaults.
+- Open: the per-target fact producer and the MD-019 pack/minAlign/byteOffset
+  contracts in the resolver.
+
+### Claude — 2026-11-20 result: MD-141 per-target alignment facts
+
+- internal/layout/data_layout.go:
+  - ScalarAlignmentsFromLLVMDataLayout applies LLVM's defaults and its
+    integer lookup (llvm/lib/IR/DataLayout.cpp);
+  - it uses ABI alignments only;
+  - malformed entries are rejected.
+- internal/platform/target/data_layout.go:
+  - a maintained data layout for all 18 triples (clang 21.1.8);
+  - new methods Definition.DataLayout(), ScalarAlignments() and
+    LayoutResolver();
+  - planned targets without a triple stay unresolved.
+- Tests:
+  - TestTargetDataLayoutsMatchClang re-verifies every triple against clang
+    (it ran and passed, it was not skipped);
+  - value checks per architecture;
+  - decimal128 is 32/16 on x86-64 and 24/8 on ARMv7.
+- Open:
+  - a fail-closed check for `sec build --clang <other>`;
+  - verified layouts for bare-metal/RTOS targets.
+
+### Claude — 2026-11-20 result: MD-141 backend check and MD-139 first increment
+
+- MD-141:
+  - `sec build` now compares the data layout llc applies
+    (internal/mlir/data_layout.go) with the maintained per-target layout, and
+    fails closed on a mismatch;
+  - verified for the 6 x86 triples of the llc build.
+  - The final clang/qcc step only links.
+- MD-139:
+  - accepted by the owner and integrated: projects.md § 19(11)-(15),
+    target_profiles.md § 41, allocation.md § 28A;
+  - internal/project/plan_selection.go: manifest profile and allocation
+    selection;
+  - internal/platform/target/target_profile.go: family mapping, provider
+    catalog (empty) and ResolveTargetProfile.
+  - The provider catalog content is pending the owner (platform.yaml), so
+    the plan is not wired into build/LSP yet.
+- QNX via qcc (two-step) is recorded as an owner decision in
+  platform.target-profiles.
+
+### Claude — 2026-11-20 note for Codex: stale CLI pitfall expectation
+
+- cmd/compiler TestPitfallStateCorrelationCLI still expected 18 S1006 after
+  BUG-000029 (2026-11-18) added two S1247 at
+  pitfall_state_correlation_invalid.sec:66-67. The sema test had already
+  been updated (20, S1006|S1247).
+- I aligned the CLI test the same way; it passes.
+- The cmd/lsp counterpart had the same stale count and is aligned too; both pass.

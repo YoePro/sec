@@ -10,8 +10,12 @@ import (
 // buildCompoundAssignment lowers `local op= value` for an integer mutable
 // local: the destination is read once, the source evaluated once, the
 // Sema-resolved underlying operator applied with its checks, and the result
-// written once only after the checks pass. Other targets remain an explicit
-// boundary.
+// written once only after the checks pass. A `try` source (`x += try e`) is
+// evaluated after the destination read (operators.md § 84(3)); its failure
+// edge leaves through the try's propagation or handler before the operator
+// and the write, so no mutation commits (§ 87(3)). The compound operator's
+// own arithmetic failure follows the underlying operator (§ 87(1)). Other
+// targets remain an explicit boundary.
 //
 // Rules:
 //   - rules/foundations/operators.md — "Compound assignment", "Compound arithmetic failure", "Increment and decrement aliases"
@@ -21,12 +25,12 @@ func (fb *functionBuilder) buildCompoundAssignment(stmt *ast.AssignmentStatement
 	if !ok || fb.owner.maxPackage < 13 {
 		return fb.unsupported("compound assignment "+stmt.Operator, stmt.Token)
 	}
+	if len(resolved.LeftType.Contracts) > 0 {
+		return fb.unsupported("compound assignment to constrained type "+resolved.LeftType.Name+" without a contract check", stmt.Token)
+	}
 	id, ok := stmt.Target.(*ast.Identifier)
 	if !ok {
 		return fb.unsupported("compound assignment to a non-local place", stmt.Token)
-	}
-	if _, ok := stmt.Value.(*ast.TryExpression); ok {
-		return fb.unsupported("try arithmetic", expressionToken(stmt.Value))
 	}
 	if static, isStatic, err := fb.staticOfIdentifier(id); isStatic {
 		if err != nil {

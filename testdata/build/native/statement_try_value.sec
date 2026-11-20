@@ -1,0 +1,33 @@
+module main
+
+// A statement `try e` whose success value is not void discards that value
+// (errorhandling.md § 8; discard.md §§ 5, 7): on success execution continues,
+// on failure the error propagates before the following statements run.
+// main returns 42 only when every case holds.
+
+static let mut Seen: int := 0
+
+fn Get(x: int) Result[int, ConversionError] {
+    let y := try int8(x)
+    return Ok(int(y))
+}
+
+fn Check(x: int) Result[int, ConversionError] {
+    try Get(x)
+    Seen += 1
+    return Ok(Seen)
+}
+
+fn main() int {
+    match Check(5) {
+        Ok(_) => {}
+        Err(_) => return 10
+    }
+    if Seen != 1 { return 11 }
+    match Check(300) {
+        Ok(_) => return 12
+        Err(_) => {}
+    }
+    if Seen != 1 { return 13 }
+    return 42
+}

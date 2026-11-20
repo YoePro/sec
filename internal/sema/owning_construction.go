@@ -85,7 +85,7 @@ func (a *Analyzer) checkUnionPayloadFields(unionType Type, variant UnionVariant,
 			valid = false
 			continue
 		}
-		expr.Fields = append(expr.Fields, &ast.StructLiteralField{Token: token, Name: &ast.Identifier{Token: field.Token, Value: field.Name}, Value: value})
+		expr.Fields = append(expr.Fields, &ast.StructLiteralField{Token: token, Name: &ast.Identifier{Token: field.Token, Value: field.Name}, Value: value, SynthesizedDefault: true})
 	}
 	return valid
 }

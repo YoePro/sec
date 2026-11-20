@@ -411,6 +411,7 @@ integrations:
   - id: semantic-ir.borrowing
     area: semantic-ir-borrowing-reference-authority
     status: partial
+    revised: "2026-11-20"
     integrated: "2026-08-28"
     document_revision: "2.0"
     repository_baseline: 069c111
@@ -422,8 +423,9 @@ integrations:
     implemented:
       - Current Semantic IR carries selected reference/call/match facts, but root governance does not yet establish one complete explicit borrowing/reference-authority model for downstream ownership verification.
       - "P15/P16 Semantic IR borrowing (verified 2026-11-04; borrowing.md; semantic_ir.md §§ 45–46): ref.borrow-shared, ref.borrow-mut, ref.reborrow-shared, ref.reborrow-mut, ref.copy-shared, ref.move and ref.end-borrow at Sema's path-exact last required use (MD-065), with BorrowID/LifetimeID, Place/provenance, holder and mutable authority; shared/mutable-reference argument actions distinct from copy/move; ref mut call reborrow without consuming the caller's holder; match-arm payload borrows with guard-false ends; generation/epoch/address-space/bounds facts kept apart from borrow compatibility; explicit unsupported boundaries. Tests: borrow_ends_test.go (TestBorrowEndsFollowLastRequiredUse), receiver_reborrow_test.go, payload_reference_test.go, reference_parameters_test.go, returned_reference_test.go, slice_*_test.go."
-    remaining:
-      - preserve closure/callback capture retention dependencies; defer captures, returned-reference origins and storage invalidation dependencies are implemented
+    partial:
+      - "Started (moved to partial 2026-11-20; the text records the done part and what remains): preserve closure/callback capture retention dependencies; defer captures, returned-reference origins and storage invalidation dependencies are implemented"
+    remaining: []
     required_tests:
       - Semantic IR distinguishes shared borrow, mutable borrow, copy, and move
       - Semantic IR preserves ref mut reborrow parent holder
@@ -465,6 +467,7 @@ integrations:
   - id: semantic-ir.destruction
     area: semantic-ir-destruction
     status: partial
+    revised: "2026-11-20"
     integrated: "2026-08-28"
     document_revision: "2.0"
     repository_baseline: 069c111
@@ -476,11 +479,12 @@ integrations:
     implemented:
       - Current Semantic IR/lowering pipeline carries selected ownership-adjacent call/control-flow facts, but root governance still defers explicit general destruction operations and cleanup-state representation.
       - "P17 Semantic IR destruction (verified 2026-11-04; destruction.md §§ 6, 10–13, 16, 30; package17): own.destroy-value and own.destroy-place (skipped sub-Places, if_owned for conditional availability), active-variant destruction plans in the sec.destruction_plans table (also for custom-free unions), own.replace-place versus own.initialize-place with the old destination's plan, cleanup.track-owned/cancel/defer-register/run-scope/run-function in one source-ordered registration order, return and error propagation established before cleanup.run-function, and named unsupported boundaries for every unrepresented form. Tests: ownership_variants.sec (TestPackage17OwnershipVariants*, TestSchema13EmitsOwnedVariants), cleanup_producers_test.go, lit schema13-* and invalid-schema13-*."
+    partial:
+      - "Started (moved to partial 2026-11-20; the text records the done part and what remains): represent allocator-aware DeallocateOwnedStorage for owning dynamic storage (P18); InvokeFree, cleanup registration/order and defer regions are implemented"
+      - "Started (moved to partial 2026-11-20; the text records the done part and what remains): preserve allocator/release authority, concrete interface destruction and target-policy requirements; custom free identity and active-variant plans are implemented"
     remaining:
-      - represent allocator-aware DeallocateOwnedStorage for owning dynamic storage (P18); InvokeFree, cleanup registration/order and defer regions are implemented
       - preserve cancellation of cleanup after FFI transfer (needs declared FFI ownership contracts, P17-49); move, discard, return, consuming-argument and aggregate transfer cancel since P17
       - represent construction-failure cleanup without manufacturing a completed outer value/free call
-      - preserve allocator/release authority, concrete interface destruction and target-policy requirements; custom free identity and active-variant plans are implemented
     required_tests:
       - Semantic IR has one terminal ownership action for every represented non-trivial owned value on each reachable path
       - moved/discarded sub-Place has no remaining former-owner destroy action
@@ -563,6 +567,7 @@ integrations:
   - id: semantic-ir.lifetime-analysis
     area: semantic-ir-lifetime-facts
     status: partial
+    revised: "2026-11-20"
     integrated: "2026-08-29"
     document_revision: "2.0"
     repository_baseline: fafd8cb
@@ -574,11 +579,12 @@ integrations:
       - rules/memory/destruction.md
     implemented:
       - "Semantic IR lifetime facts (verified 2026-11-04): Place roots carry storage origin/domain identity and references their provenance sets (P15); borrow live ranges end with ref.end-borrow at Sema's last required use (MD-065); --sec-verify-borrow-semantics and --sec-verify-places reject contradictory lifetime state before lowering. Tests: borrow_ends_test.go, returned_reference_test.go, lit invalid-schema12-*/invalid-schema13-*."
+    partial:
+      - "Started (moved to partial 2026-11-20; the text records the done part and what remains): represent deallocation lifetime effects of owning dynamic storage (P18); ownership invalidation, replacement/reinitialization and destruction effects are implemented (P17)"
+      - "Started (moved to partial 2026-11-20; the text records the done part and what remains): represent closure/callback capture lifetime obligations; defer-delayed dependencies are implemented (defer capture Places, --sec-verify-cleanups)"
     remaining:
-      - represent deallocation lifetime effects of owning dynamic storage (P18); ownership invalidation, replacement/reinitialization and destruction effects are implemented (P17)
       - represent returned-reference source relations and callable retention summaries
       - represent arena generation/epoch and runtime mapping/register-view lifetime dependencies
-      - represent closure/callback capture lifetime obligations; defer-delayed dependencies are implemented (defer capture Places, --sec-verify-cleanups)
       - erase high-level facts only after equivalent lowering constraints/plans exist
     required_tests:
       - reference origin retained in Semantic IR
@@ -885,6 +891,7 @@ integrations:
   - id: semantic-ir.references
     area: semantic-ir-reference-facts
     status: partial
+    revised: "2026-11-20"
     integrated: "2026-08-29"
     document_revision: "2.0"
     repository_baseline: fafd8cb
@@ -895,8 +902,9 @@ integrations:
       - rules/memory/borrowing.md
     implemented:
       - "P15/P16 Semantic IR references (verified 2026-11-04; reference_model.md; semantic_ir.md §§ 45, 48, 126): reference kind and mutability, canonical Place provenance, storage identity, address space, validity policy and epoch dependency, slice bounds/view facts, borrow/reborrow/end facts, and verifier rejection of contradictory reference facts (Go verifier, --sec-verify-places, --sec-verify-reference-guards, --sec-verify-borrow-semantics). Tests: reference_*_test.go, slice_*_test.go, payload_reference_test.go."
+    partial:
+      - "Started (moved to partial 2026-11-20; the text records the done part and what remains): represent callable retention relations of references captured by closures and callbacks; returned-reference origin sets are implemented (TestPackage15LowersReturnedReferences)"
     remaining:
-      - represent callable retention relations of references captured by closures and callbacks; returned-reference origin sets are implemented (TestPackage15LowersReturnedReferences)
       - represent runtime mapping/register-view dependencies
     required_tests:
       - reference provenance retained in Semantic IR
@@ -1285,9 +1293,10 @@ integrations:
       - rules/memory/raw_pointers.md
       - rules/compiler/semantic_ir.md
       - rules/platform/volatile.md
+    partial:
+      - "Started (moved to partial 2026-11-20; the text records the done part and what remains): represent raw Read, Write, Offset, AddBytes and Difference operation identity; volatile read/write ownership boundaries are implemented under semantic-ir.copy-move"
     remaining:
       - represent pointee type and target address space
-      - represent raw Read, Write, Offset, AddBytes and Difference operation identity; volatile read/write ownership boundaries are implemented under semantic-ir.copy-move
       - preserve unsafe and trust provenance plus known null, range, alignment and origin facts where needed
       - preserve target and platform access contracts and effects
       - represent raw-to-safe conversion as explicit establishment of safe-reference facts (MD-070 AsRef/AsRefMut stop at an explicit Semantic IR capability boundary; the operation's spelling awaits MD-084)
@@ -1302,7 +1311,7 @@ integrations:
       - represent RawPtr distinctly from safe references
       - RawPtr has a distinct Semantic IR type and raw-pointer value classification through parameters, copies, calls, returns, storage and aggregate extraction, including void pointees, nested pointers and nominal identities; no safe-reference facts are created, invalid raw ownership/reference classifications are rejected, and unsupported Sec MLIR lowering fails explicitly.
       - Volatile raw operation identity, snapshot/ownership separation, unsafe authorization provenance and contradiction checks are represented by semantic-ir.copy-move (2026-11-05). Physical plans remain unverified and fail closed before Sec MLIR output; ordinary raw operations and the remaining raw provenance/access contract work stay open here.
-    revised: "2026-11-05"
+    revised: "2026-11-20"
     code:
       - internal/ir/semantic/raw_pointer.go
       - internal/ir/semantic/builder.go
@@ -1521,17 +1530,21 @@ integrations:
 
   - id: frontend.layout
     status: partial
+    partial:
+      - "SEC-MLIR-P24 partial: P24-10..15 and P24-18 are implemented (internal/layout records, plan key, states, memoization, cache, named layouts); P24-16/17/19/20 are partial; the rest of package24-todo.md (schema 20, Semantic IR projection, physical lowering) remains. MD-019 still gates explicit source layout spelling and MD-109/P23 the remaining runtime string materialization path."
+      - "Resolver wiring partial (2026-11-19): sema.LayoutRequirementOf maps scalars, named/constrained types, structs, fixed arrays and descriptors to resolver requirements. Remaining: compiler/LSP SizeOf/AlignOf/StrideOf queries, the Semantic IR projection and a per-target resolver from the CompilationPlan; enum/union/descriptor resolution is P24-21 onward."
     remaining:
-      - "SEC-MLIR-P24 (physical value representation and layout lowering, schema/lowering v20): complete the single immutable plan-keyed ResolvedLayout service, Semantic IR physical projection and v20 dialect/lowering (package24-todo.md and the existing package/sync/v20 rulebooks). P24-12 exact checked arithmetic is implemented 2026-10-30 in internal/layout; the full resolver, selected layouts and their consumers remain unavailable. No new language decision is needed to start those foundations. MD-019 still gates explicit source layout spelling and MD-109/P23 the remaining runtime string materialization path. MD-050/MD-071/MD-072 are decided by the applied 2026-10-17 correction and MD-066/MD-067/MD-068 by the owner-approved 2026-10-28 correction; they are not open decision blockers, while dependent decimal/string representation and runtime work remains unimplemented. Physical reference lowering belongs to P26 and additionally depends on P25 CallABIPlan and relevant P17-P19 storage transitions."
-      - "wire the internal/layout Resolver into its consumers: sema.LayoutRequirementOf exists (2026-11-19), but compiler/LSP SizeOf/AlignOf/StrideOf queries, the Semantic IR projection and the CompilationPlan that selects a resolver per target are not connected; enum/union/descriptor resolution is P24-21 onward"
-      - "MD-142 native aggregate rule: struct offsets, padding, aggregate alignment and size (P24-19), decimal carrier placement (P24-17) and fixed-array stride/alignment (P24-20) stay incomplete until the rule is decided; field/element resolution, cycle paths and the § 7(7) extent check are implemented"
-      - "P24-16 scalar completion waits on MD-141: per-target scalar alignment facts in the CompilationPlan and the storage sizes of bool and rune; until then those scalar layouts are reported incomplete, never guessed"
+      - "MD-141 planned targets: bare-metal Cortex-M/riscv32 and RTOS targets have no triple and no verified data layout, so their layouts stay unresolved; give them triples and layouts verified against the code generator before they claim layout-sensitive lowering"
+      - "MD-019 explicit layout contracts in the resolver: pack(N), minAlign(N) and byteOffset(N) with the MD-142 precedence (layout.md § 47.3(4)) and verified target aggregate/array constraints; the resolver still reports explicit contracts as unsupported"
       - complete int/uint target-width consistency
       - complete enum/union/descriptor/reference resolved representations
       - complete representation-validity analysis
       - "resolve the MD-019 explicit layout contracts (syntax decided 2026-11-05: `pack(N)`, `minAlign(N)`, `byteOffset(N)`; struct.md § 15A, layout.md §§ 27–30): ResolvedLayout computes field alignments, exact offsets, aggregate alignment, size, padding and stride from the written requirements under the § 28(6) precedence on Linux and Windows hosted plans, with the MD-019 § 11 conformance matrix"
-    revised: "2026-11-19"
+    revised: "2026-11-20"
     implemented:
+      - "Implemented 2026-11-20 (MD-141 § 4(3)-(4), internal/mlir/data_layout.go, cmd/compiler/backend_data_layout.go): sec build asks the native-track code generator (llc today; the LLVM library after bootstrap) which data layout it applies for the triple and fails closed when it differs from the maintained layout the alignment facts come from, or when the triple has no verified layout. TestTargetDataLayoutMatchesMaintainedFacts verifies the 6 x86 triples the llc build supports; the other 12 report that llc has no backend for them. The final clang/qcc step only links."
+      - "Implemented 2026-11-20 (MD-141, internal/layout/data_layout.go, internal/platform/target/data_layout.go): scalar layouts are complete per registered target. bool is 1 byte and rune 4 bytes; typed alignment facts for IntegerStorage(8..256) and BinaryFloatStorage(32, 64) are normalized from a maintained LLVM data-layout string per triple with LLVM's default and integer-lookup rules (i128 on ARMv7 uses the i64 entry). Provenance: clang 21.1.8; TestTargetDataLayoutsMatchClang re-verifies all 18 triples against clang. Planned bare-metal/RTOS targets without a triple stay unresolved. Definition.LayoutResolver() gives one resolver per target plan."
+      - "Implemented 2026-11-20 (MD-142, internal/layout/resolver.go, layout.md §§ 47.3-47.4): native struct placement in declaration order with interior/tail padding and aggregate alignment, zero-sized fields, fixed-array stride/alignment/size including T[0] and zero-sized elements, and decimal/decimal128 carriers placed as coefficient then scale; all arithmetic checked against the § 7(7) extent. TestStructLayouts, TestArrayLayouts, TestDecimalCarriers and TestScalarAlignmentIsKeyedByRepresentation pass; LayoutRevision p24-resolver-2-md141-md142."
       - "P24-12 arithmetic foundation (2026-10-30): internal/layout.SizeArithmetic snapshots explicitly resolved maximum byte extent and supported alignments and implements CheckedAdd, CheckedMul, AlignUp, StrideOf and ArraySize with exact nonnegative big.Int values. No host integer, pointer-width or C ABI fallback supplies a bound, alignment or descriptor. StrideOf consumes the selected placement minimum, preserving target-specific zero-sized policies; ArraySize preserves arbitrary-precision logical counts and rejects an invalid element stride even for count zero. Failures return no result and retain exact requested extent, target bound, operation and caller-supplied field/count/instantiation path. Supported nonbinary alignment, 32/64-bit extent limits, successful and overflowing calculations beyond 256 bits, malformed/missing facts, detached inputs/results, target isolation and concurrent readers are tested. P24-12 is complete in package24-todo.md (unchecked 57 to 56). ResolvedLayout IDs/complete plan keys, actual type SizeOf/AlignOf/StrideOf queries, compiler diagnostic publication, schema 20 and physical reference/LLVM lowering remain separate unimplemented consumers; frontend.layout retains all six broader remaining points."
       - "P24-10 resolved-layout records (2026-11-18): internal/layout.ResolvedLayout/LayoutRequirement/ResolvedFieldLayout/ResolvedVariantLayout carry semantic type identity, plan key, layout contract, kind, scalar provenance, exact big.Int size/alignment, validity predicate, field/array/variant/descriptor slots, stability and named missing facts; LayoutIDs are resolver-snapshot ordinals and every read returns a detached clone."
       - "P24-11 plan layout key (2026-11-18): LayoutKeyOf validates the ResolvedScalarPlan and folds target OS/arch/triple, ABI, C ABI model, profile, pointer width, endianness, logical epoch width, address domains, power-of-two scalar alignment facts and LayoutRevision into CompilationPlanLayoutKey; explicit contracts belong to the requirement identity."
@@ -1564,8 +1577,10 @@ integrations:
 
   - id: semantic-ir.layout
     status: planned
+    revised: "2026-11-20"
+    partial:
+      - "Started (moved to partial 2026-11-20; the text records the done part and what remains): SEC-MLIR-P24 (physical value representation and layout lowering, schema/lowering v20): complete the single immutable plan-keyed ResolvedLayout service, Semantic IR physical projection and v20 dialect/lowering (package24-todo.md and the existing package/sync/v20 rulebooks). P24-12 exact checked arithmetic is implemented 2026-10-30 in internal/layout; the full resolver, selected layouts and their consumers remain unavailable. No new language decision is needed to start those foundations. MD-019 still gates explicit source layout spelling and MD-109/P23 the remaining runtime string materialization path. MD-050/MD-071/MD-072 are decided by the applied 2026-10-17 correction and MD-066/MD-067/MD-068 by the owner-approved 2026-10-28 correction; they are not open decision blockers, while dependent decimal/string representation and runtime work remains unimplemented. Physical reference lowering belongs to P26 and additionally depends on P25 CallABIPlan and relevant P17-P19 storage transitions."
     remaining:
-      - "SEC-MLIR-P24 (physical value representation and layout lowering, schema/lowering v20): complete the single immutable plan-keyed ResolvedLayout service, Semantic IR physical projection and v20 dialect/lowering (package24-todo.md and the existing package/sync/v20 rulebooks). P24-12 exact checked arithmetic is implemented 2026-10-30 in internal/layout; the full resolver, selected layouts and their consumers remain unavailable. No new language decision is needed to start those foundations. MD-019 still gates explicit source layout spelling and MD-109/P23 the remaining runtime string materialization path. MD-050/MD-071/MD-072 are decided by the applied 2026-10-17 correction and MD-066/MD-067/MD-068 by the owner-approved 2026-10-28 correction; they are not open decision blockers, while dependent decimal/string representation and runtime work remains unimplemented. Physical reference lowering belongs to P26 and additionally depends on P25 CallABIPlan and relevant P17-P19 storage transitions."
       - introduce canonical ResolvedLayout/ResolvedFieldLayout or equivalent
       - retain size/alignment/offset/stride/padding/union/representation-validity facts
       - attach target-resolved layout before layout-sensitive lowering
@@ -1573,8 +1588,10 @@ integrations:
 
   - id: lowering.layout
     status: partial
+    revised: "2026-11-20"
+    partial:
+      - "Started (moved to partial 2026-11-20; the text records the done part and what remains): SEC-MLIR-P24 (physical value representation and layout lowering, schema/lowering v20): complete the single immutable plan-keyed ResolvedLayout service, Semantic IR physical projection and v20 dialect/lowering (package24-todo.md and the existing package/sync/v20 rulebooks). P24-12 exact checked arithmetic is implemented 2026-10-30 in internal/layout; the full resolver, selected layouts and their consumers remain unavailable. No new language decision is needed to start those foundations. MD-019 still gates explicit source layout spelling and MD-109/P23 the remaining runtime string materialization path. MD-050/MD-071/MD-072 are decided by the applied 2026-10-17 correction and MD-066/MD-067/MD-068 by the owner-approved 2026-10-28 correction; they are not open decision blockers, while dependent decimal/string representation and runtime work remains unimplemented. Physical reference lowering belongs to P26 and additionally depends on P25 CallABIPlan and relevant P17-P19 storage transitions."
     remaining:
-      - "SEC-MLIR-P24 (physical value representation and layout lowering, schema/lowering v20): complete the single immutable plan-keyed ResolvedLayout service, Semantic IR physical projection and v20 dialect/lowering (package24-todo.md and the existing package/sync/v20 rulebooks). P24-12 exact checked arithmetic is implemented 2026-10-30 in internal/layout; the full resolver, selected layouts and their consumers remain unavailable. No new language decision is needed to start those foundations. MD-019 still gates explicit source layout spelling and MD-109/P23 the remaining runtime string materialization path. MD-050/MD-071/MD-072 are decided by the applied 2026-10-17 correction and MD-066/MD-067/MD-068 by the owner-approved 2026-10-28 correction; they are not open decision blockers, while dependent decimal/string representation and runtime work remains unimplemented. Physical reference lowering belongs to P26 and additionally depends on P25 CallABIPlan and relevant P17-P19 storage transitions."
       - make maintained MLIR/LLVM paths consume Sec-resolved layout
       - remove legacy hardcoded enum/int/decimal layout differences
       - support validated unaligned/packed lowering
@@ -1582,8 +1599,10 @@ integrations:
 
   - id: platform.layout
     status: partial
+    revised: "2026-11-20"
+    partial:
+      - "Started (moved to partial 2026-11-20; the text records the done part and what remains): SEC-MLIR-P24 (physical value representation and layout lowering, schema/lowering v20): complete the single immutable plan-keyed ResolvedLayout service, Semantic IR physical projection and v20 dialect/lowering (package24-todo.md and the existing package/sync/v20 rulebooks). P24-12 exact checked arithmetic is implemented 2026-10-30 in internal/layout; the full resolver, selected layouts and their consumers remain unavailable. No new language decision is needed to start those foundations. MD-019 still gates explicit source layout spelling and MD-109/P23 the remaining runtime string materialization path. MD-050/MD-071/MD-072 are decided by the applied 2026-10-17 correction and MD-066/MD-067/MD-068 by the owner-approved 2026-10-28 correction; they are not open decision blockers, while dependent decimal/string representation and runtime work remains unimplemented. Physical reference lowering belongs to P26 and additionally depends on P25 CallABIPlan and relevant P17-P19 storage transitions."
     remaining:
-      - "SEC-MLIR-P24 (physical value representation and layout lowering, schema/lowering v20): complete the single immutable plan-keyed ResolvedLayout service, Semantic IR physical projection and v20 dialect/lowering (package24-todo.md and the existing package/sync/v20 rulebooks). P24-12 exact checked arithmetic is implemented 2026-10-30 in internal/layout; the full resolver, selected layouts and their consumers remain unavailable. No new language decision is needed to start those foundations. MD-019 still gates explicit source layout spelling and MD-109/P23 the remaining runtime string materialization path. MD-050/MD-071/MD-072 are decided by the applied 2026-10-17 correction and MD-066/MD-067/MD-068 by the owner-approved 2026-10-28 correction; they are not open decision blockers, while dependent decimal/string representation and runtime work remains unimplemented. Physical reference lowering belongs to P26 and additionally depends on P25 CallABIPlan and relevant P17-P19 storage transitions."
       - complete FFI layout compatibility
       - complete register access-unit/alignment validation
       - complete target-specific memory/address-space representation integration
@@ -1591,8 +1610,10 @@ integrations:
 
   - id: tooling.layout
     status: planned
+    revised: "2026-11-20"
+    partial:
+      - "Started (moved to partial 2026-11-20; the text records the done part and what remains): SEC-MLIR-P24 (physical value representation and layout lowering, schema/lowering v20): complete the single immutable plan-keyed ResolvedLayout service, Semantic IR physical projection and v20 dialect/lowering (package24-todo.md and the existing package/sync/v20 rulebooks). P24-12 exact checked arithmetic is implemented 2026-10-30 in internal/layout; the full resolver, selected layouts and their consumers remain unavailable. No new language decision is needed to start those foundations. MD-019 still gates explicit source layout spelling and MD-109/P23 the remaining runtime string materialization path. MD-050/MD-071/MD-072 are decided by the applied 2026-10-17 correction and MD-066/MD-067/MD-068 by the owner-approved 2026-10-28 correction; they are not open decision blockers, while dependent decimal/string representation and runtime work remains unimplemented. Physical reference lowering belongs to P26 and additionally depends on P25 CallABIPlan and relevant P17-P19 storage transitions."
     remaining:
-      - "SEC-MLIR-P24 (physical value representation and layout lowering, schema/lowering v20): complete the single immutable plan-keyed ResolvedLayout service, Semantic IR physical projection and v20 dialect/lowering (package24-todo.md and the existing package/sync/v20 rulebooks). P24-12 exact checked arithmetic is implemented 2026-10-30 in internal/layout; the full resolver, selected layouts and their consumers remain unavailable. No new language decision is needed to start those foundations. MD-019 still gates explicit source layout spelling and MD-109/P23 the remaining runtime string materialization path. MD-050/MD-071/MD-072 are decided by the applied 2026-10-17 correction and MD-066/MD-067/MD-068 by the owner-approved 2026-10-28 correction; they are not open decision blockers, while dependent decimal/string representation and runtime work remains unimplemented. Physical reference lowering belongs to P26 and additionally depends on P25 CallABIPlan and relevant P17-P19 storage transitions."
       - expose canonical SizeOf/AlignOf/StrideOf/FieldOffset from shared layout facts
       - show target dependence and stability
       - provide recursive/explicit-layout mentor diagnostics

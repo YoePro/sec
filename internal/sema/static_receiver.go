@@ -4,6 +4,7 @@ import (
 	"sec/internal/ast"
 	"sec/internal/diagnostics"
 	"sec/internal/lexer"
+	"strings"
 )
 
 // inferImplicitImplProperty resolves an unqualified property only when the
@@ -50,7 +51,10 @@ func (a *Analyzer) staticReceiverlessCandidates(call *ast.CallExpression, functi
 	}
 	allowed := make([]Function, 0, len(functions))
 	for _, function := range functions {
-		if !functionUsesReceiver(function) {
+		// A constructor is reached through `new T(...)`, which creates its own
+		// receiver, so a static factory may construct its type
+		// (rules/declarations/static.md § 9; std-net-http.md § 14.2 factories).
+		if !functionUsesReceiver(function) || strings.HasPrefix(function.Name, "@init:") {
 			allowed = append(allowed, function)
 		}
 	}

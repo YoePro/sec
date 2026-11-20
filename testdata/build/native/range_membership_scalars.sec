@@ -1,0 +1,61 @@
+module main
+
+// Range membership over char, rune and binary floats (operators.md § 65):
+// char and rune compare unsigned, floats with ordered predicates so NaN is
+// never contained. main returns 42 only when every case holds.
+
+fn RuneIn(r: rune) bool {
+    return r in 'a'..'z'
+}
+
+fn CharIn(c: char) bool {
+    return c in 'a'..<'z'
+}
+
+fn FloatIn(x: float64) bool {
+    return x in 0.0..1.0
+}
+
+fn FloatOpen(x: float32) bool {
+    return x in ..<0.5
+}
+
+fn RuneNotIn(r: rune) bool {
+    return r not in 'a'..'z'
+}
+
+type Meters int
+
+fn Near(d: Meters) bool {
+    let low: Meters := 1
+    let high: Meters := 10
+    return d in low..high
+}
+
+fn main() int {
+    if !RuneIn('a') { return 10 }
+    if !RuneIn('z') { return 11 }
+    if RuneIn('A') { return 12 }
+    if RuneIn('\u{1F600}') { return 13 }
+    if !CharIn('a') { return 20 }
+    if CharIn('z') { return 21 }
+    if !CharIn('y') { return 22 }
+    if !FloatIn(0.0) { return 30 }
+    if !FloatIn(1.0) { return 31 }
+    if FloatIn(1.5) { return 32 }
+    if FloatIn(float64.NaN) { return 33 }
+    if !FloatIn(-0.0) { return 34 }
+    let below: float32 := 0.25
+    let edge: float32 := 0.5
+    if !FloatOpen(below) { return 40 }
+    if FloatOpen(edge) { return 41 }
+    if FloatOpen(float32.NaN) { return 42 }
+    if !FloatOpen(float32.NegativeInfinity) { return 43 }
+    if !RuneNotIn('Q') { return 50 }
+    if RuneNotIn('q') { return 51 }
+    let inside: Meters := 10
+    let outside: Meters := 11
+    if !Near(inside) { return 60 }
+    if Near(outside) { return 61 }
+    return 42
+}

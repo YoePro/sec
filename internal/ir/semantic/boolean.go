@@ -128,8 +128,22 @@ func (fb *functionBuilder) buildRangeMembership(expr *ast.InfixExpression, plan 
 	if err != nil {
 		return builtValue{}, err
 	}
-	if !isBuiltinIntegerType(fb.owner.module.Types, valueType) {
+	// Built-in integers, named integers, char and rune compare as integers
+	// (char and rune unsigned, MD-105); binary floats with the ordered P20 predicates, so a
+	// NaN value or bound is never contained (operators.md § 65(5)).
+	floating := typeHasKind(fb.owner.module.Types, valueType, TypeFloat)
+	// A named or constrained integer compares through its carrier, as its
+	// ordinary ordered comparisons do.
+	if !isComparableScalarType(fb.owner.module.Types, integerCarrierOf(fb.owner.module.Types, valueType)) && !floating {
 		return builtValue{}, fb.unsupported("range membership over "+plan.ValueType.Name, expr.Token)
+	}
+	compare := func(predicate IntegerComparePredicate, left, right ValueID, loc Location) Operation {
+		op := Operation{Kind: OpIntCompare, IntegerCompare: predicate, Operands: []ValueID{left, right}, Operator: expr.Operator, Location: loc}
+		if floating {
+			op.Kind = OpFloatCompare
+			op.FloatSemantics = resolvedFloatSemantics(fb.owner.module.Types, valueType, op)
+		}
+		return op
 	}
 	boolType, err := fb.boolType()
 	if err != nil {
@@ -160,14 +174,14 @@ func (fb *functionBuilder) buildRangeMembership(expr *ast.InfixExpression, plan 
 	}
 	var lower, upper builtValue
 	if plan.HasStart {
-		lower = fb.result(Operation{Kind: OpIntCompare, IntegerCompare: IntegerCompareGE, Operands: []ValueID{value.id, start.id}, Operator: expr.Operator, Location: loc}, boolType)
+		lower = fb.result(compare(IntegerCompareGE, value.id, start.id, loc), boolType)
 	}
 	if plan.HasEnd {
 		predicate := IntegerCompareLE
 		if plan.Exclusive {
 			predicate = IntegerCompareLT
 		}
-		upper = fb.result(Operation{Kind: OpIntCompare, IntegerCompare: predicate, Operands: []ValueID{value.id, end.id}, Operator: expr.Operator, Location: loc}, boolType)
+		upper = fb.result(compare(predicate, value.id, end.id, loc), boolType)
 	}
 	result := lower
 	switch {

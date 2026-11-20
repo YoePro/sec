@@ -1039,3 +1039,9 @@ origin declaration identities and scope: an already-resolved private or
 sourcefile-only helper may run as part of its origin body, but importers gain no
 new source visibility. Imported semantic artifacts must pass compatibility and
 fingerprint validation under `rules/compiler/compile_time_evaluation.md`.
+
+## 27. C binding module selection (MD-021)
+
+Integrated 2026-11-20 from `rules/corrections/MD-021-c-binding-environment-complete-proposal-20261120.md` (owner accepted 2026-11-20). The correction holds the full normative text; this section is its owning summary.
+
+**§ 27(1)** Module paths in `.sec/platform/c-bindings.toml` name Sec source module directories relative to `bindings.source_root` under the binding package root. `..`, absolute paths, symlink escapes and colliding module identities are rejected; module lists and filesystem order confer no precedence.

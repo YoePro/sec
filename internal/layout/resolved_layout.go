@@ -187,32 +187,59 @@ func (l ResolvedLayout) clone() ResolvedLayout {
 // Complete reports whether the layout may be materialized.
 func (l ResolvedLayout) Complete() bool { return l.Completeness == LayoutComplete }
 
-// ScalarAlignments maps a scalar storage size in bytes to its alignment in
-// bytes for one target. It is the "supported scalar alignments" plan fact of
-// layout.md § 3(2); no target supplies it until MD-141 is decided, and a nil
-// table leaves every scalar alignment unresolved.
-type ScalarAlignments map[uint64]uint64
+// StorageClass is the physical representation class of a scalar storage
+// fact: integer storage or IEEE binary floating-point storage. Integer and
+// float storage of equal size are distinct facts (MD-141 § 3(2), § 3(9)).
+type StorageClass string
+
+const (
+	IntegerStorage     StorageClass = "int"
+	BinaryFloatStorage StorageClass = "float"
+)
+
+// StorageRepresentation identifies one scalar storage representation:
+// IntegerStorage(8..256) or BinaryFloatStorage(32, 64). bool, byte and char
+// use IntegerStorage(8); rune uses IntegerStorage(32) (MD-141 § 3(2)).
+type StorageRepresentation struct {
+	Class     StorageClass
+	WidthBits uint16
+}
+
+// String spells the representation, for example "int32" or "float64", as
+// the canonical plan-key spelling (MD-141 § 3(8)).
+func (r StorageRepresentation) String() string { return fmt.Sprintf("%s%d", r.Class, r.WidthBits) }
+
+// ScalarAlignments maps each scalar storage representation to its required
+// ABI alignment in bytes for one target: the typed scalar alignment facts of
+// layout.md § 3(2) and MD-141 § 3. A nil table, or a missing entry, leaves
+// the alignment unresolved; nothing is derived from the byte width.
+type ScalarAlignments map[StorageRepresentation]uint64
 
 // canonical spells the table deterministically for the plan key.
 func (a ScalarAlignments) canonical() string {
 	if a == nil {
 		return "unresolved"
 	}
-	sizes := make([]uint64, 0, len(a))
-	for size := range a {
-		sizes = append(sizes, size)
+	keys := make([]StorageRepresentation, 0, len(a))
+	for key := range a {
+		keys = append(keys, key)
 	}
-	sort.Slice(sizes, func(i, j int) bool { return sizes[i] < sizes[j] })
-	parts := make([]string, len(sizes))
-	for index, size := range sizes {
-		parts[index] = fmt.Sprintf("%d:%d", size, a[size])
+	sort.Slice(keys, func(i, j int) bool {
+		if keys[i].Class != keys[j].Class {
+			return keys[i].Class < keys[j].Class
+		}
+		return keys[i].WidthBits < keys[j].WidthBits
+	})
+	parts := make([]string, len(keys))
+	for index, key := range keys {
+		parts[index] = fmt.Sprintf("%s:%d", key, a[key])
 	}
 	return strings.Join(parts, ",")
 }
 
 // LayoutRevision is the compiler layout-rule revision folded into every plan
 // key, so a rule change can never reuse an older cached result.
-const LayoutRevision = "p24-resolver-1"
+const LayoutRevision = "p24-resolver-2-md141-md142"
 
 // CompilationPlanLayoutKey converges every plan fact that can change a layout
 // result (P24-11): target identity, pointer width, endianness, ABI and C ABI
@@ -242,9 +269,12 @@ func LayoutKeyOf(plan ResolvedScalarPlan, alignments ScalarAlignments) (Compilat
 	if err := plan.Validate(); err != nil {
 		return CompilationPlanLayoutKey{}, fmt.Errorf("layout key requires a valid plan: %w", err)
 	}
-	for size, alignment := range alignments {
-		if size == 0 || alignment == 0 || alignment&(alignment-1) != 0 {
-			return CompilationPlanLayoutKey{}, fmt.Errorf("scalar alignment %d for size %d is not a positive power of two", alignment, size)
+	for representation, alignment := range alignments {
+		if !validStorageRepresentation(representation) {
+			return CompilationPlanLayoutKey{}, fmt.Errorf("scalar alignment fact for unknown storage representation %s", representation)
+		}
+		if alignment == 0 || alignment&(alignment-1) != 0 {
+			return CompilationPlanLayoutKey{}, fmt.Errorf("scalar alignment %d for %s is not a positive power of two", alignment, representation)
 		}
 	}
 	return CompilationPlanLayoutKey{
@@ -253,4 +283,19 @@ func LayoutKeyOf(plan ResolvedScalarPlan, alignments ScalarAlignments) (Compilat
 		CABI: fmt.Sprintf("%+v", plan.CABI), AddressDomains: fmt.Sprintf("%+v", plan.AddressDomains),
 		ScalarAlignments: alignments.canonical(), Revision: LayoutRevision,
 	}, nil
+}
+
+// validStorageRepresentation accepts exactly IntegerStorage(8, 16, 32, 64,
+// 128, 256) and BinaryFloatStorage(32, 64) (MD-141 § 3(2)).
+func validStorageRepresentation(r StorageRepresentation) bool {
+	switch r.Class {
+	case IntegerStorage:
+		switch r.WidthBits {
+		case 8, 16, 32, 64, 128, 256:
+			return true
+		}
+	case BinaryFloatStorage:
+		return r.WidthBits == 32 || r.WidthBits == 64
+	}
+	return false
 }

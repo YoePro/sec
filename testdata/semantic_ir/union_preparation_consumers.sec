@@ -1,0 +1,35 @@
+module main
+
+type Value union {
+    Empty
+    Single(int)
+    Pair { left: int, right: int, }
+}
+type Box[T] union { Some(T) None }
+fn First() int { return 20 }
+fn Second() int { return 22 }
+fn Ordered() Value { return Value.Pair { right: Second(), left: First() } }
+fn Defaulted() Value { return Value.Pair { left: First() } }
+fn Single(value: int) Value { return Value.Single(value) }
+fn Wrap[T](value: T) Box[T] { return Box.Some(value) }
+fn main() int {
+    let value := Ordered()
+    let total := match value {
+        Pair { left, right } => left + right
+        Single(v) => v
+        Empty => 1
+    }
+    let defaults := match Defaulted() {
+        Pair { left, right } => left + right
+        Single(v) => v
+        Empty => 2
+    }
+    let boxed := match Wrap(total) { Some(v) => v None => 3 }
+    let single := match Single(boxed) {
+        Single(v) => v
+        Pair {} => 4
+        Empty => 5
+    }
+    if defaults != 20 { return 6 }
+    return single
+}

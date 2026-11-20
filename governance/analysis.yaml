@@ -802,7 +802,7 @@ integrations:
     area: frontend-analysis-and-tooling
     status: partial
     integrated: "2026-08-07"
-    revised: "2026-10-07"
+    revised: "2026-11-20"
     summary: >-
       Retains closed joined targets and open function-value/interface invocation
       contracts, with known implementation alternatives and conservative absent
@@ -928,8 +928,9 @@ integrations:
       - function-value calls inside lambdas are attributed to the lambda callable rather than the enclosing declaration
       - unknown function-value parameters retain a validated open contract with no invented concrete targets or closed-set proof
       - "executable generic specialization nodes (2026-10-10, internal/sema/call_graph_specializations.go): every concrete specialization reached from a concrete call gets the template's effects, allocation and blocking sites and call sites; constraint calls (method calls on template parameters and Iterator[T] Next in for loops over generic parameters) are unknown at template level and become static edges to the concrete method per specialization; forwarded generic calls inside templates become edges to their composed concrete specializations (with a recursion guard). @noAlloc, @noPanic and @noBlock callers of GenericCall[Loud] are therefore rejected when Loud.Name allocates or panics, and accepted for Quiet"
+    partial:
+      - "Started (moved to partial 2026-11-20; the text records the done part and what remains): destructor and compiler-generated callable nodes (generic specializations are linked since 2026-10-10); specializations reached only through exported or separately compiled templates still need imported template summaries"
     remaining:
-      - destructor and compiler-generated callable nodes (generic specializations are linked since 2026-10-10); specializations reached only through exported or separately compiled templates still need imported template summaries
       - target, initialization, benchmark, interrupt, foreign-export, generated, and open-world roots
       - complete semantic path pruning beyond literal branches and the current folded integer/boolean if/while subset
       - process, interrupt, callback, await, join, and destruction execution relations

@@ -16,12 +16,14 @@ func TestPitfallStateCorrelationCLI(t *testing.T) {
 	for _, command := range []string{"sema", "analyse"} {
 		_, output, code := runCLIForDiagnostics(t, command, file, "--diagnostic-format=json")
 		doc := decodeOccurrenceDocument(t, output)
-		if code != 3 || doc.Summary.Errors != 18 || len(doc.Occurrences) != 18 {
+		// 18 discardability owners plus the two S1247 unresolved Task
+		// creation Results of WrongErr (BUG-000029, 2026-11-18).
+		if code != 3 || doc.Summary.Errors != 20 || len(doc.Occurrences) != 20 {
 			t.Fatal(code, output)
 		}
 		correlated := 0
 		for _, e := range doc.Occurrences {
-			if e.ID == nil || *e.ID != diagnostics.NonDiscardableValue || e.Unregistered || len(e.Fixes) != 0 {
+			if e.ID == nil || (*e.ID != diagnostics.NonDiscardableValue && *e.ID != diagnostics.UnresolvedCreationLifecycle) || e.Unregistered || len(e.Fixes) != 0 {
 				t.Fatal(e)
 			}
 			for _, help := range e.Help {

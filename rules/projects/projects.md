@@ -1027,6 +1027,30 @@ profile
 
 § 19(10) Variant-specific project settings do not create a different ProjectUUID or Target identity.
 
+§ 19(11) (MD-139, accepted 2026-11-20) The `profile` field of `[variant.<name>]` selects the **target profile**, not a build profile: `hosted`, `rtos`, `baremetal`, or a registered derived target profile with exactly one base family (`rules/platform/target_profiles.md` § 41). `[target.<name>].profile` and `[target.<name>.variant.<variant-name>].profile` select it for a Target and a Target-specific Variant. When every scope omits it, the target registry's explicit default for the concrete target applies.
+
+§ 19(12) Allocation policy is selected by an optional table with the same keys in each scope:
+
+```toml
+[variant.board-m4.allocation]
+mode = "embedded-arena"
+provider = "board-primary-arena"
+
+[target.firmware.allocation]
+mode = "noalloc"
+
+[target.app.variant.linux-amd64.allocation]
+mode = "hosted"
+```
+
+§ 19(13) `mode` is `hosted`, `embedded-arena` or `noalloc`. `provider` names a provider identity in the selected target's verified provider catalog; naming it creates no provider. `provider` together with `mode = "noalloc"` is contradictory. Unknown keys, invalid modes and empty provider names are configuration errors.
+
+§ 19(14) The target profile and allocation table follow the scope order of § 25(2) items 4–6: reusable Variant, then Target, then Target-specific Variant. A higher scope replaces a lower one only where the target property's mutability class permits it.
+
+§ 19(15) `[build].profile`, `[profile.<name>]` and `sec build --profile` keep selecting build-option profiles (§ 22). They never alias or override the target profile, and a build profile cannot enable allocation.
+
+§ 19(16) (MD-021, accepted 2026-11-20) A Variant may select C-binding facts: `c_runtime` (target C-runtime family), `c_runtime_version` (the target's verified API/ABI baseline, `MAJOR.MINOR[.PATCH]`; unknown when absent, never taken from the host) and `c_bindings = { id = "...", version = "...", environment = "..." }` where `id` is required, `version` is an exact (`=1.0.0`) or comparator-conjunction constraint and `environment` names a key in that package. Unknown fields and invalid constraints are configuration errors (`rules/platform/platform_model.md` § 31).
+
 ---
 
 ## § 20. Build command behavior

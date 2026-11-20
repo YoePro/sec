@@ -40,7 +40,7 @@ fn TryElement(values: int[], index: uint) Result[int, IndexError] {
     return Ok(try values[index])
 }
 
-fn TryConvert(raw: int) Result[Percent, ContractError] {
+fn TryConvert(raw: int) Result[Percent, ConversionError] {
     return Ok(try Percent(raw))
 }
 

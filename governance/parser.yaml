@@ -366,9 +366,9 @@ integrations:
 
   - id: frontend.grammar-conformance
     area: frontend-parser-ast-sema-and-recovery
-    status: implemented
+    status: partial
     audited: "2026-08-19"
-    revised: "2026-10-05"
+    revised: "2026-11-20"
     document_revision: inferred 1.x / pre-v2 consolidated grammar; no explicit revision metadata
     repository_baseline: c515862
     summary: >-
@@ -410,7 +410,8 @@ integrations:
       - "parser conformance fixes found by the migration (2026-10-05): a block after `event Name using storage` is rejected instead of silently skipped (TestEventDeclarationBodyIsRejected); `let r := 0..<10` reports a focused P2007 'a range is not a value in Sec 0.1'; `if a = b` now shares the while condition's focused P2013 recovery and retains an InvalidExpression condition so Sema adds no cascade; Event/EventStorage capacity is a compile-time expression evaluated by Sema's shared constant evaluation instead of an integer-literal-only parser path"
       - "recovery tests stay distinct from canonical tests: the grammar fixture suite keeps valid and invalid fixtures in separate files and rejects any diagnostic in a valid fixture"
       - "the fixtures confirm that lexical_structure.md § 7 governs reserved spellings: require (§ 7.1), task/thread/process (§ 7.2), and the contract words (§ 7.3) are rejected as declaration names although grammar.md \"Contextual spellings\" still lists several of them as contextual"
-    remaining: []
+    remaining:
+      - "BUG-000032 (2026-11-20): `a < b { ... c > (x) ... }` is mis-parsed as a unit/type-argument list; the speculative scan must stop at a block brace or statement boundary and fall back to an ordinary comparison. sec/stdlib/net/http/http1.sec uses reversed comparisons until this is fixed."
     document_baseline:
       review_date: "2026-08-01"
       note: >-
@@ -441,7 +442,7 @@ integrations:
   - id: frontend.parser-long-term
     area: frontend-parser-long-term
     status: partial
-    revised: "2026-11-18"
+    revised: "2026-11-20"
     summary: Long-term parser robustness and maintainability work. Shared grammar metadata, specialized skip-range/delimiter-stack migration and scoped syntax-owner recovery contexts are implemented; invalid-node retention, causal suppression, Sema traversal and newline-policy migration remain open. Long-running fuzz campaigns are deferred by user decision on 2026-10-15.
     rules:
       - rules/compiler/parser_recovery.md
@@ -496,10 +497,11 @@ integrations:
       - "Declaration-recovery regression fixed during full compiler verification (2026-10-15): LET, UNSAFE and AT are valid declaration candidates but cannot be treated as strong outer boundaries inside a malformed function body. Shared grammar metadata now distinguishes these ambiguous prefixes from reliable outer declaration boundaries, preserving the following function without lifting a nested let into module scope or emitting a stray closing-brace cascade."
       - "2026-11-18: MD-132 synchronization complete. parser_recovery.md revision 2.3 section 24.2 records the owner decision of 2026-11-12 for layout-evidenced stray closing braces without changing valid-program parsing. All required line/column evidence and switch/function continuation sets are explicit; a stray brace has one diagnostic and one real-token skip event while the construct remains open. Existing implementation now cites section 24.2 precisely; regressions verify evidence boundaries, valid unusual indentation, retained clauses/members and diagnostic/recovery provenance. MD-132 is removed from the open-decision ledger after rulebook/governance synchronization."
       - "2026-11-18: Specialized recovery contexts are scoped at current grammar-owning parser entry points (imports/directives, generics, parameters, types/contracts, declarations/members, attributes, literals/calls/indexing, control flow, patterns/handlers, asm/register/hardware, lambda/spawn/await and thread configuration). A focused recovery_context.go helper restores nested and speculative caller contexts on all returns; diagnostic scope is separate from the existing dispatch/member scope. Diagnostics, context-sensitive deduplication and missing-token events share the same lookup. Caller-recorded skips retain the originating diagnostic context, and re-lexed interpolation diagnostics preserve nested syntax ownership without duplicating already reported lexer errors. Existing synchronization and episode boundaries remain unchanged; cross-location causal suppression stays separate remaining work. Fifty-three malformed-source cases, restoration/rollback tests, existing recovery suites and CST provenance assertions verify the complete current context surface."
+    partial:
+      - "Started (moved to partial 2026-11-20; the text records the done part and what remains): partial unterminated-construct retention beyond ordinary statement blocks, switch/select bodies, match arms, try handlers, typed struct/array literals, grouped expressions, call argument lists (at EOF, before the enclosing block's closing brace, and before a later statement), and index/slice postfix expressions at EOF"
     remaining:
       - invalid type retention in remaining specialized failure paths beyond explicit generic calls, lifecycle new expressions, union variant payloads, struct field type positions, empty impl-property type positions, bare and `name:` parameters, and function-type parameter and return positions
       - cross-location causal recovery-episode suppression
-      - partial unterminated-construct retention beyond ordinary statement blocks, switch/select bodies, match arms, try handlers, typed struct/array literals, grouped expressions, call argument lists (at EOF, before the enclosing block's closing brace, and before a later statement), and index/slice postfix expressions at EOF
       - recovery-aware Sema traversal policy for every invalid subtree
       - long-running fuzz campaigns and corpus minimization beyond the in-tree fuzz target and deterministic mutation sweep
       - audit the parser error paths that still drop a construct instead of retaining an invalid node with a recovery event (84 sites in 46 functions on 2026-10-05) and retain or justify each

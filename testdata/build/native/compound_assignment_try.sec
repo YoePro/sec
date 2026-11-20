@@ -1,0 +1,78 @@
+module main
+
+// `x op= try e` (operators.md §§ 84(3), 87(3)): the destination is read
+// first, the try source evaluated once, and a failure leaves through the try
+// before the operator and the write, so the destination never changes.
+// main returns 42 only when every case holds.
+
+fn Parse(x: int) Result[int, ConversionError] {
+    let y := try int8(x)
+    return Ok(int(y))
+}
+
+fn Sum(a: int, b: int) Result[int, ConversionError] {
+    let mut total := a
+    total += try Parse(b)
+    return Ok(total)
+}
+
+fn Kept(a: int, b: int) int {
+    let mut total := a
+    total *= try Parse(b) {
+        Err(_) => 1
+    }
+    return total
+}
+
+fn Unchanged(a: int, b: int) int {
+    let mut total := a
+    match Step(total, b) {
+        Ok(next) => {
+            total = next
+        }
+        Err(_) => {}
+    }
+    return total
+}
+
+fn Step(current: int, b: int) Result[int, ConversionError] {
+    let mut value := current
+    value -= try Parse(b)
+    return Ok(value)
+}
+
+static let mut Counter: int := 40
+
+fn Bump(b: int) Result[int, ConversionError] {
+    Counter += try Parse(b)
+    return Ok(Counter)
+}
+
+fn main() int {
+    match Sum(40, 2) {
+        Ok(value) => {
+            if value != 42 { return 10 }
+        }
+        Err(_) => return 11
+    }
+    match Sum(40, 300) {
+        Ok(_) => return 12
+        Err(_) => {}
+    }
+    if Kept(6, 7) != 42 { return 20 }
+    if Kept(42, 1000) != 42 { return 21 }
+    if Unchanged(50, 8) != 42 { return 30 }
+    if Unchanged(42, 999) != 42 { return 31 }
+    match Bump(2) {
+        Ok(value) => {
+            if value != 42 { return 40 }
+        }
+        Err(_) => return 41
+    }
+    match Bump(500) {
+        Ok(_) => return 42
+        Err(_) => {}
+    }
+    if Counter != 42 { return 43 }
+    return 42
+}

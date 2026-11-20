@@ -8,6 +8,7 @@ import "sec/internal/ast"
 // Rules: rules/declarations/unions.md — Construction; rules/declarations/generics.md — Generic unions;
 // rules/concurrency/atomics.md — §§6(1–4),43–45.
 func (a *Analyzer) inferUnionVariantExpression(expr *ast.MemberExpression) (Type, bool) {
+	delete(a.resolvedUnionConstructions, expr)
 	owner := expr.Object
 	if len(expr.OwnerGenericArguments) > 0 {
 		if indexed, ok := owner.(*ast.IndexExpression); ok {
@@ -51,6 +52,9 @@ func (a *Analyzer) inferUnionVariantExpression(expr *ast.MemberExpression) (Type
 			return Type{Kind: InvalidType}, true
 		}
 		a.bindDefinition(expr.Property.Token, variant.Token)
+		if len(variant.PayloadFields) == 0 {
+			a.recordUnionConstruction(expr, typ, variant)
+		}
 		return typ, true
 	}
 	a.addErrorAtToken(expr.Property.Token, "unknown %s variant %s.%s", sumSourceKind(typ), typ.Name, expr.Property.Value)

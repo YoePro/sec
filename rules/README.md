@@ -60,3 +60,15 @@ formatter behavior. Generic infrastructure and self-explanatory mechanics do
 not need artificial rule citations. Tests should carry the same traceability
 where it clarifies the contract being protected. Rulebook moves require code
 references to be updated in the same change.
+
+The rule was introduced after much of the compiler existed. `go test
+./internal/traceability` checks the semantic packages (parser, Sema, Semantic
+IR, lowering, layout/ABI and diagnostics): a new or renamed function there must
+cite a rulebook in its doc comment (a rulebook path, a `Rules:` block, a §
+reference or an MD ID). Functions written before the rule are listed in
+`internal/traceability/testdata/baseline.txt`. References are added to them
+over time where the governing rule can be derived; code is never removed
+because a reference is missing. After adding references, shrink the baseline
+with `go test ./internal/traceability -run TestRulebookTraceability -update`,
+which only ever removes entries. Infrastructure without a governing rule may
+stay on the baseline.

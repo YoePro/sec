@@ -30,3 +30,21 @@ fn Use(counter: ref Counter, box: ref Box[int]) int {
     let made := Counter.Create(3)
     return Counter.From(counter) + Counter.From(made) + Counter.Extended(counter)
 }
+
+// A static factory may construct its own type through a parameterized init:
+// `new` creates the receiver, so no implicit self is needed.
+type StaticFactoryPoint struct {
+    X: int,
+    Y: int,
+}
+
+impl StaticFactoryPoint {
+    init(x: int, y: int) {
+        self.X = x
+        self.Y = y
+    }
+
+    static fn Origin() StaticFactoryPoint {
+        return new StaticFactoryPoint(0, 0)
+    }
+}

@@ -73,25 +73,34 @@ set of current compiler passes.
 The following index connects each historical package to the current ledger
 without copying its checklist:
 
-| Historical package | Scope at that milestone | Current status owner in [lowering.yaml](lowering.yaml) |
-| --- | --- | --- |
-| [P1](../rules/mlir/packages/sec-mlir-dialect_package1.md) | Dialect foundation | Foundation evidence remains in the original package record; current representation work is `frontend.semantic-ir-v2` and `semantic-ir.core-v2` |
-| [P2](../rules/mlir/packages/sec-mlir-dialect_package2.md) | Semantic IR core foundation | `semantic-ir.core-v2`; historical acceptance remains in the original package record |
-| [P3](../rules/mlir/packages/sec-mlir-dialect_package3.md) | Semantic IR executable core | `frontend.semantic-ir-v2`, `semantic-ir.core-v2`; historical acceptance remains in the original package record |
-| [P4](../rules/mlir/packages/sec-mlir-dialect_package4.md) | First Semantic IR to Sec MLIR bridge | `lowering.sec-mlir-schema-2` |
-| [P5](../rules/mlir/packages/sec-mlir-dialect_package5.md) | Trivial core lowering | `lowering.sec-mlir-trivial-core` |
-| [P6](../rules/mlir/packages/sec-mlir-dialect_package6.md) | Scalar coverage and plan-aware resolution | `lowering.sec-mlir-scalar-layout` |
-| [P7](../rules/mlir/packages/sec-mlir-dialect_package7.md) | Checked integer semantic operations | `lowering.sec-mlir-checked-integers` |
-| [P8](../rules/mlir/packages/sec-mlir-dialect_package8.md) | Checked integer Arith lowering | `lowering.sec-mlir-checked-integer-arith` |
-| [P9](../rules/mlir/packages/sec-mlir-dialect_package9.md) | Typed arithmetic failure flow | `lowering.sec-mlir-typed-arithmetic-failure` |
-| [P10](../rules/mlir/packages/sec-mlir-dialect_package10.md) | Local try handlers and Result branching | `lowering.sec-mlir-local-try-handlers` |
-| [P11](../rules/mlir/packages/sec-mlir-dialect_package11.md) | Enum and union semantic values | `lowering.sec-mlir-enum-union-values` |
-| [P12](../rules/mlir/packages/sec-mlir-dialect_package12.md) | Enum/union/Result/Option match CFG | `lowering.sec-mlir-match-cfg` |
-| [P13](../rules/mlir/packages/sec-mlir-dialect_package13.md) | Struct semantic values | `lowering.sec-mlir-package13` |
-| [P14](../rules/mlir/packages/sec-mlir-dialect_package14.md) | Fixed-array semantic values | `lowering.sec-mlir-package14` |
+| Historical package | Scope at that milestone | Pipeline boundaries ([compiler_pipeline.md § 45](../rules/compiler/compiler_pipeline.md)) | Current status owner in [lowering.yaml](lowering.yaml) |
+| --- | --- | --- | --- |
+| [P1](../rules/mlir/packages/sec-mlir-dialect_package1.md) | Dialect foundation | Sec MLIR dialect and its verifier | Foundation evidence remains in the original package record; current representation work is `frontend.semantic-ir-v2` and `semantic-ir.core-v2` |
+| [P2](../rules/mlir/packages/sec-mlir-dialect_package2.md) | Semantic IR core foundation | Semantic IR model, verifier and printer | `semantic-ir.core-v2`; historical acceptance remains in the original package record |
+| [P3](../rules/mlir/packages/sec-mlir-dialect_package3.md) | Semantic IR executable core | Sema facts → Semantic IR (executable core) | `frontend.semantic-ir-v2`, `semantic-ir.core-v2`; historical acceptance remains in the original package record |
+| [P4](../rules/mlir/packages/sec-mlir-dialect_package4.md) | First Semantic IR to Sec MLIR bridge | Semantic IR → Sec MLIR emission | `lowering.sec-mlir-schema-2` |
+| [P5](../rules/mlir/packages/sec-mlir-dialect_package5.md) | Trivial core lowering | Sec MLIR → standard MLIR lowering | `lowering.sec-mlir-trivial-core` |
+| [P6](../rules/mlir/packages/sec-mlir-dialect_package6.md) | Scalar coverage and plan-aware resolution | CompilationPlan scalar facts → Sec MLIR layout resolution → lowering | `lowering.sec-mlir-scalar-layout` |
+| [P7](../rules/mlir/packages/sec-mlir-dialect_package7.md) | Checked integer semantic operations | Sema operator facts → Semantic IR → Sec MLIR checked operations | `lowering.sec-mlir-checked-integers` |
+| [P8](../rules/mlir/packages/sec-mlir-dialect_package8.md) | Checked integer Arith lowering | Sec MLIR → Arith/CF lowering | `lowering.sec-mlir-checked-integer-arith` |
+| [P9](../rules/mlir/packages/sec-mlir-dialect_package9.md) | Typed arithmetic failure flow | Semantic IR → Sec MLIR failure flow → lowering to failure endpoints | `lowering.sec-mlir-typed-arithmetic-failure` |
+| [P10](../rules/mlir/packages/sec-mlir-dialect_package10.md) | Local try handlers and Result branching | Sema try facts → Semantic IR CFG → Sec MLIR | `lowering.sec-mlir-local-try-handlers` |
+| [P11](../rules/mlir/packages/sec-mlir-dialect_package11.md) | Enum and union semantic values | Semantic IR values → Sec MLIR types/operations → tagged-value lowering | `lowering.sec-mlir-enum-union-values` |
+| [P12](../rules/mlir/packages/sec-mlir-dialect_package12.md) | Enum/union/Result/Option match CFG | Sema match facts → Semantic IR CFG → Sec MLIR control flow | `lowering.sec-mlir-match-cfg` |
+| [P13](../rules/mlir/packages/sec-mlir-dialect_package13.md) | Struct semantic values | Semantic IR values → Sec MLIR operations | `lowering.sec-mlir-package13` |
+| [P14](../rules/mlir/packages/sec-mlir-dialect_package14.md) | Fixed-array semantic values | Semantic IR values → Sec MLIR operations | `lowering.sec-mlir-package14` |
+
+The pipeline column names the boundaries of today's single track (Sema →
+Semantic IR → Sec MLIR → standard MLIR → LLVM dialect → LLVM IR) that each
+milestone first implemented; it does not change any historical completion
+claim.
 
 When a current rule or correction extends an older package assumption, record
-the remaining implementation in its existing domain owner. Preserve the older
+the remaining implementation in its existing domain owner. Current examples:
+`Iterator[T]` in `semantic-ir.core-v2` and `frontend.semantic-ir-v2`;
+`@target`/`@when` in `frontend.attributes-v2` and `tooling.compiler-core`;
+Target/Variant/CompilationPlan resolution in `compiler.platform-model` (the
+canonical plan) with its compiler-side slices in `compiler.platform-resolution`. Preserve the older
 acceptance boundary. Historical references to a legacy compilation path cannot
 authorize another backend: current builds follow the single track defined by
 [compiler_pipeline.md](../rules/compiler/compiler_pipeline.md) and MD-101.

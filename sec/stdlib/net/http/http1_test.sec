@@ -1,0 +1,550 @@
+module http
+
+// White-box tests for the first http1.sec increment: start lines, field
+// lines, RFC 9112 § 6.3 message length and chunked decoding
+// (std-net-http.md § 45).
+
+fn http1TestLimits() _Http1Limits {
+    return _Http1Limits {
+        MaxLineBytes: 8192,
+        MaxFieldCount: 100,
+        MaxBodyBytes: 1048576,
+    }
+}
+
+// Reports whether error is _Http1Error.Message(expected).
+fn http1TestIsMessage(error: ref _Http1Error, expected: MessageError) bool {
+    match error {
+        _Http1Error.Message(actual) => {
+            return actual == expected
+        }
+
+        _Http1Error.Header(_) => {
+            return false
+        }
+
+        _Http1Error.Allocation(_) => {
+            return false
+        }
+    }
+}
+
+// Reports whether error is _Http1Error.Header(expected).
+fn http1TestIsHeader(error: ref _Http1Error, expected: HeaderError) bool {
+    match error {
+        _Http1Error.Header(actual) => {
+            return actual == expected
+        }
+
+        _Http1Error.Message(_) => {
+            return false
+        }
+
+        _Http1Error.Allocation(_) => {
+            return false
+        }
+    }
+}
+
+// Parses the head "fields\r\n\r\n" of text into a Header.
+fn http1TestHeader(text: string) Result[Header, _Http1Error] {
+    let bytes := try text.ToByteArray() {
+        Err(_) => {
+            return Err(_Http1Error.Message(MessageError.MalformedMessage))
+        }
+    }
+    let fields := try _Http1ParseFields(ref bytes, 0, http1TestLimits())
+    return Ok(fields.Header)
+}
+
+// ---------------------------------------------------------------------------
+// Lines and start lines
+// ---------------------------------------------------------------------------
+
+test "HTTP/1 request line parses method, target and version" {
+    let bytes   := try "GET /search?q=sec HTTP/1.1\r\n".ToByteArray()
+    let line    := try _Http1NextLine(ref bytes, 0, 8192)
+    let request := try _Http1ParseRequestLine(ref bytes, line)
+
+    testing.Expect(request.Method == Method.GET)
+    testing.ExpectEqual("/search?q=sec", request.Target)
+    testing.Expect(request.Version == Version.Http11)
+    testing.ExpectEqual(bytes.Len, line.Next)
+}
+
+test "HTTP/1 request line rejects doubled and leading whitespace" {
+    let doubled := try "GET  / HTTP/1.1\r\n".ToByteArray()
+    let leading := try " GET / HTTP/1.1\r\n".ToByteArray()
+    let first   := try _Http1NextLine(ref doubled, 0, 8192)
+    let second  := try _Http1NextLine(ref leading, 0, 8192)
+
+    match _Http1ParseRequestLine(ref doubled, first) {
+        Ok(_) => {
+            testing.Fail("expected InvalidTarget")
+        }
+
+        Err(error) => {
+            testing.Expect(http1TestIsMessage(ref error, MessageError.InvalidTarget))
+        }
+    }
+    match _Http1ParseRequestLine(ref leading, second) {
+        Ok(_) => {
+            testing.Fail("expected InvalidMethod")
+        }
+
+        Err(error) => {
+            testing.Expect(http1TestIsMessage(ref error, MessageError.InvalidMethod))
+        }
+    }
+}
+
+test "HTTP/1 version grammar is strict" {
+    let lower := try "http/1.1".ToByteArray()
+    let major := try "HTTP/2.0".ToByteArray()
+    let older := try "HTTP/1.0".ToByteArray()
+    let newer := try "HTTP/1.9".ToByteArray()
+
+    match _Http1ParseVersion(ref lower, 0, lower.Len) {
+        Ok(_) => {
+            testing.Fail("expected InvalidVersion")
+        }
+
+        Err(error) => {
+            testing.Expect(http1TestIsMessage(ref error, MessageError.InvalidVersion))
+        }
+    }
+    match _Http1ParseVersion(ref major, 0, major.Len) {
+        Ok(_) => {
+            testing.Fail("expected UnsupportedProtocol")
+        }
+
+        Err(error) => {
+            testing.Expect(http1TestIsMessage(ref error, MessageError.UnsupportedProtocol))
+        }
+    }
+    let parsedOlder := try _Http1ParseVersion(ref older, 0, older.Len)
+    let parsedNewer := try _Http1ParseVersion(ref newer, 0, newer.Len)
+    testing.Expect(parsedOlder == Version.Http10)
+    testing.Expect(parsedNewer == Version.Http11)
+}
+
+test "HTTP/1 rejects bare LF and bare CR" {
+    let bareLf := try "GET / HTTP/1.1\n".ToByteArray()
+    let bareCr := try "GET / HTTP/1.1\rX\r\n".ToByteArray()
+
+    match _Http1NextLine(ref bareLf, 0, 8192) {
+        Ok(_) => {
+            testing.Fail("expected MalformedMessage for bare LF")
+        }
+
+        Err(error) => {
+            testing.Expect(http1TestIsMessage(ref error, MessageError.MalformedMessage))
+        }
+    }
+    match _Http1NextLine(ref bareCr, 0, 8192) {
+        Ok(_) => {
+            testing.Fail("expected MalformedMessage for bare CR")
+        }
+
+        Err(error) => {
+            testing.Expect(http1TestIsMessage(ref error, MessageError.MalformedMessage))
+        }
+    }
+}
+
+test "HTTP/1 line limit is enforced" {
+    let bytes := try "GET /very/long HTTP/1.1\r\n".ToByteArray()
+
+    match _Http1NextLine(ref bytes, 0, 8) {
+        Ok(_) => {
+            testing.Fail("expected HeaderTooLarge")
+        }
+
+        Err(error) => {
+            testing.Expect(http1TestIsMessage(ref error, MessageError.HeaderTooLarge))
+        }
+    }
+}
+
+test "HTTP/1 status line parses the code and ignores the reason" {
+    let bytes  := try "HTTP/1.1 404 Not Found\r\n".ToByteArray()
+    let empty  := try "HTTP/1.0 204 \r\n".ToByteArray()
+    let line   := try _Http1NextLine(ref bytes, 0, 8192)
+    let second := try _Http1NextLine(ref empty, 0, 8192)
+    let status := try _Http1ParseStatusLine(ref bytes, line)
+    let other  := try _Http1ParseStatusLine(ref empty, second)
+
+    testing.Expect(status.Status == Status.NotFound)
+    testing.Expect(status.Version == Version.Http11)
+    testing.Expect(other.Status == Status.NoContent)
+    testing.Expect(other.Version == Version.Http10)
+}
+
+test "HTTP/1 status line requires the space after the code" {
+    let bytes := try "HTTP/1.1 200\r\n".ToByteArray()
+    let line  := try _Http1NextLine(ref bytes, 0, 8192)
+
+    match _Http1ParseStatusLine(ref bytes, line) {
+        Ok(_) => {
+            testing.Fail("expected MalformedMessage")
+        }
+
+        Err(error) => {
+            testing.Expect(http1TestIsMessage(ref error, MessageError.MalformedMessage))
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Field lines
+// ---------------------------------------------------------------------------
+
+test "HTTP/1 field line trims OWS around the value" {
+    let bytes := try "Content-Type: \t text/plain \r\n".ToByteArray()
+    let line  := try _Http1NextLine(ref bytes, 0, 8192)
+    let field := try _Http1ParseFieldLine(ref bytes, line)
+
+    testing.ExpectEqual("Content-Type", field.Name)
+    testing.ExpectEqual("text/plain", field.Value)
+}
+
+test "HTTP/1 field line rejects whitespace before the colon and obs-fold" {
+    let spaced := try "Host : example.com\r\n".ToByteArray()
+    let folded := try " continued\r\n".ToByteArray()
+    let first  := try _Http1NextLine(ref spaced, 0, 8192)
+    let second := try _Http1NextLine(ref folded, 0, 8192)
+
+    match _Http1ParseFieldLine(ref spaced, first) {
+        Ok(_) => {
+            testing.Fail("expected InvalidName for whitespace before colon")
+        }
+
+        Err(error) => {
+            testing.Expect(http1TestIsHeader(ref error, HeaderError.InvalidName))
+        }
+    }
+    match _Http1ParseFieldLine(ref folded, second) {
+        Ok(_) => {
+            testing.Fail("expected InvalidName for obs-fold")
+        }
+
+        Err(error) => {
+            testing.Expect(http1TestIsHeader(ref error, HeaderError.InvalidName))
+        }
+    }
+}
+
+test "HTTP/1 field section stops at the empty line and counts fields" {
+    let bytes  := try "Host: a\r\nAccept: */*\r\n\r\nBODY".ToByteArray()
+    let fields := try _Http1ParseFields(ref bytes, 0, http1TestLimits())
+
+    testing.Expect(fields.Header.Contains("host"))
+    testing.Expect(fields.Header.Contains("accept"))
+    testing.ExpectEqual(bytes.Len - 4, fields.Next)
+
+    let limits := _Http1Limits {
+        MaxLineBytes: 8192,
+        MaxFieldCount: 1,
+        MaxBodyBytes: 0,
+    }
+    match _Http1ParseFields(ref bytes, 0, limits) {
+        Ok(_) => {
+            testing.Fail("expected TooManyFields")
+        }
+
+        Err(error) => {
+            testing.Expect(http1TestIsHeader(ref error, HeaderError.TooManyFields))
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Message length (RFC 9112 § 6.3)
+// ---------------------------------------------------------------------------
+
+test "HTTP/1 request without framing fields has no body" {
+    let header := try http1TestHeader("Host: a\r\n\r\n")
+
+    match try _Http1RequestBodyLength(ref header, Version.Http11) {
+        _Http1BodyLength.NoBody => {
+        }
+
+        _Http1BodyLength.Fixed(_) => {
+            testing.Fail("expected NoBody")
+        }
+
+        _Http1BodyLength.Chunked => {
+            testing.Fail("expected NoBody")
+        }
+
+        _Http1BodyLength.UntilClose => {
+            testing.Fail("expected NoBody")
+        }
+    }
+}
+
+test "HTTP/1 repeated identical Content-Length is one length" {
+    let header := try http1TestHeader("Content-Length: 42, 42\r\nContent-Length: 42\r\n\r\n")
+
+    match try _Http1RequestBodyLength(ref header, Version.Http11) {
+        _Http1BodyLength.Fixed(length) => {
+            testing.ExpectEqual(uint64(42), length)
+        }
+
+        _Http1BodyLength.NoBody => {
+            testing.Fail("expected Fixed(42)")
+        }
+
+        _Http1BodyLength.Chunked => {
+            testing.Fail("expected Fixed(42)")
+        }
+
+        _Http1BodyLength.UntilClose => {
+            testing.Fail("expected Fixed(42)")
+        }
+    }
+}
+
+test "HTTP/1 conflicting or invalid Content-Length is rejected" {
+    let conflicting := try http1TestHeader("Content-Length: 42\r\nContent-Length: 43\r\n\r\n")
+    let signed      := try http1TestHeader("Content-Length: +42\r\n\r\n")
+    let huge        := try http1TestHeader("Content-Length: 18446744073709551616\r\n\r\n")
+
+    match _Http1RequestBodyLength(ref conflicting, Version.Http11) {
+        Ok(_) => {
+            testing.Fail("expected ConflictingContentLength")
+        }
+
+        Err(error) => {
+            testing.Expect(http1TestIsMessage(ref error, MessageError.ConflictingContentLength))
+        }
+    }
+    match _Http1RequestBodyLength(ref signed, Version.Http11) {
+        Ok(_) => {
+            testing.Fail("expected InvalidContentLength for a sign")
+        }
+
+        Err(error) => {
+            testing.Expect(http1TestIsMessage(ref error, MessageError.InvalidContentLength))
+        }
+    }
+    match _Http1RequestBodyLength(ref huge, Version.Http11) {
+        Ok(_) => {
+            testing.Fail("expected InvalidContentLength for overflow")
+        }
+
+        Err(error) => {
+            testing.Expect(http1TestIsMessage(ref error, MessageError.InvalidContentLength))
+        }
+    }
+}
+
+test "HTTP/1 Transfer-Encoding with Content-Length is a smuggling ambiguity" {
+    let header := try http1TestHeader("Transfer-Encoding: chunked\r\nContent-Length: 5\r\n\r\n")
+
+    match _Http1RequestBodyLength(ref header, Version.Http11) {
+        Ok(_) => {
+            testing.Fail("expected InvalidFraming")
+        }
+
+        Err(error) => {
+            testing.Expect(http1TestIsMessage(ref error, MessageError.InvalidFraming))
+        }
+    }
+}
+
+test "HTTP/1 chunked must be the final coding of a request" {
+    let final := try http1TestHeader("Transfer-Encoding: gzip\r\nTransfer-Encoding: CHUNKED\r\n\r\n")
+    let inner := try http1TestHeader("Transfer-Encoding: chunked, gzip\r\n\r\n")
+    let twice := try http1TestHeader("Transfer-Encoding: chunked, chunked\r\n\r\n")
+
+    match try _Http1RequestBodyLength(ref final, Version.Http11) {
+        _Http1BodyLength.Chunked => {
+        }
+
+        _Http1BodyLength.NoBody => {
+            testing.Fail("expected Chunked")
+        }
+
+        _Http1BodyLength.Fixed(_) => {
+            testing.Fail("expected Chunked")
+        }
+
+        _Http1BodyLength.UntilClose => {
+            testing.Fail("expected Chunked")
+        }
+    }
+    match _Http1RequestBodyLength(ref inner, Version.Http11) {
+        Ok(_) => {
+            testing.Fail("expected InvalidTransferEncoding for chunked, gzip")
+        }
+
+        Err(error) => {
+            testing.Expect(http1TestIsMessage(ref error, MessageError.InvalidTransferEncoding))
+        }
+    }
+    match _Http1RequestBodyLength(ref twice, Version.Http11) {
+        Ok(_) => {
+            testing.Fail("expected InvalidTransferEncoding for chunked twice")
+        }
+
+        Err(error) => {
+            testing.Expect(http1TestIsMessage(ref error, MessageError.InvalidTransferEncoding))
+        }
+    }
+}
+
+test "HTTP/1.0 message with Transfer-Encoding is faulty framing" {
+    let header := try http1TestHeader("Transfer-Encoding: chunked\r\n\r\n")
+
+    match _Http1RequestBodyLength(ref header, Version.Http10) {
+        Ok(_) => {
+            testing.Fail("expected InvalidTransferEncoding")
+        }
+
+        Err(error) => {
+            testing.Expect(http1TestIsMessage(ref error, MessageError.InvalidTransferEncoding))
+        }
+    }
+}
+
+test "HTTP/1 response length follows method and status first" {
+    let header := try http1TestHeader("Content-Length: 10\r\n\r\n")
+    let empty  := try http1TestHeader("\r\n")
+
+    match try _Http1ResponseBodyLength(Method.HEAD, Status.Ok, ref header, Version.Http11) {
+        _Http1BodyLength.NoBody => {
+        }
+
+        _Http1BodyLength.Fixed(_) => {
+            testing.Fail("HEAD response has no body")
+        }
+
+        _Http1BodyLength.Chunked => {
+            testing.Fail("HEAD response has no body")
+        }
+
+        _Http1BodyLength.UntilClose => {
+            testing.Fail("HEAD response has no body")
+        }
+    }
+    match try _Http1ResponseBodyLength(Method.GET, Status.NotModified, ref header, Version.Http11) {
+        _Http1BodyLength.NoBody => {
+        }
+
+        _Http1BodyLength.Fixed(_) => {
+            testing.Fail("304 response has no body")
+        }
+
+        _Http1BodyLength.Chunked => {
+            testing.Fail("304 response has no body")
+        }
+
+        _Http1BodyLength.UntilClose => {
+            testing.Fail("304 response has no body")
+        }
+    }
+    match try _Http1ResponseBodyLength(Method.GET, Status.Ok, ref empty, Version.Http11) {
+        _Http1BodyLength.UntilClose => {
+        }
+
+        _Http1BodyLength.NoBody => {
+            testing.Fail("expected UntilClose")
+        }
+
+        _Http1BodyLength.Fixed(_) => {
+            testing.Fail("expected UntilClose")
+        }
+
+        _Http1BodyLength.Chunked => {
+            testing.Fail("expected UntilClose")
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Chunked transfer coding
+// ---------------------------------------------------------------------------
+
+test "HTTP/1 chunked body decodes data, extensions and trailers" {
+    let bytes   := try "4\r\nWiki\r\n5 ;name=value\r\npedia\r\n0\r\nX-Checksum: 1\r\n\r\nNEXT".ToByteArray()
+    let decoded := try _Http1DecodeChunked(ref bytes, 0, http1TestLimits())
+
+    testing.ExpectEqual(uint(9), decoded.Body.Len)
+    testing.Expect(decoded.Body[0] == 0x57)
+    testing.Expect(decoded.Body[8] == 0x61)
+    testing.Expect(decoded.Trailer.Contains("x-checksum"))
+    testing.ExpectEqual(bytes.Len - 4, decoded.Next)
+}
+
+test "HTTP/1 chunked body rejects bad sizes and missing CRLF" {
+    let noSize   := try "\r\n".ToByteArray()
+    let badHex   := try "4G\r\nWiki\r\n0\r\n\r\n".ToByteArray()
+    let noCrlf   := try "4\r\nWikiX\r\n0\r\n\r\n".ToByteArray()
+    let overflow := try "10000000000000000\r\n".ToByteArray()
+
+    match _Http1DecodeChunked(ref noSize, 0, http1TestLimits()) {
+        Ok(_) => {
+            testing.Fail("expected InvalidFraming for a missing size")
+        }
+
+        Err(error) => {
+            testing.Expect(http1TestIsMessage(ref error, MessageError.InvalidFraming))
+        }
+    }
+    match _Http1DecodeChunked(ref badHex, 0, http1TestLimits()) {
+        Ok(_) => {
+            testing.Fail("expected InvalidFraming for a non-hex size")
+        }
+
+        Err(error) => {
+            testing.Expect(http1TestIsMessage(ref error, MessageError.InvalidFraming))
+        }
+    }
+    match _Http1DecodeChunked(ref noCrlf, 0, http1TestLimits()) {
+        Ok(_) => {
+            testing.Fail("expected InvalidFraming after chunk data")
+        }
+
+        Err(error) => {
+            testing.Expect(http1TestIsMessage(ref error, MessageError.InvalidFraming))
+        }
+    }
+    match _Http1DecodeChunked(ref overflow, 0, http1TestLimits()) {
+        Ok(_) => {
+            testing.Fail("expected InvalidFraming for an overflowing size")
+        }
+
+        Err(error) => {
+            testing.Expect(http1TestIsMessage(ref error, MessageError.InvalidFraming))
+        }
+    }
+}
+
+test "HTTP/1 chunked body enforces the body limit before copying" {
+    let bytes := try "FFFFFF\r\n".ToByteArray()
+
+    match _Http1DecodeChunked(ref bytes, 0, http1TestLimits()) {
+        Ok(_) => {
+            testing.Fail("expected BodyTooLarge")
+        }
+
+        Err(error) => {
+            testing.Expect(http1TestIsMessage(ref error, MessageError.BodyTooLarge))
+        }
+    }
+}
+
+test "HTTP/1 chunked trailer may not carry framing fields" {
+    let bytes := try "0\r\nContent-Length: 5\r\n\r\n".ToByteArray()
+
+    match _Http1DecodeChunked(ref bytes, 0, http1TestLimits()) {
+        Ok(_) => {
+            testing.Fail("expected InvalidTrailer")
+        }
+
+        Err(error) => {
+            testing.Expect(http1TestIsMessage(ref error, MessageError.InvalidTrailer))
+        }
+    }
+}

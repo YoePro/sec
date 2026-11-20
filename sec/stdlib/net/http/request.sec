@@ -25,169 +25,225 @@ import (
     "net/ip"
 )
 
-// HTTP request.
+// HTTP request (std-net-http.md § 14.2).
 //
-// Request represents the protocol-level HTTP message.
-//
-// Transport-specific information such as the remote network endpoint,
-// TLS connection state, cancellation and server context does not belong
-// directly in this type and will be modeled separately.
+// Request represents the protocol-level HTTP message. Transport metadata
+// such as endpoints and TLS state belongs to ServerRequest/ConnectionInfo.
+// The request is move-only through its owned Body.
 type Request struct {
     // HTTP method, including extension methods.
     Method: Method,
 
-    // Raw request-target as it appeared on the wire.
-    //
-    // Examples:
-    // /
-    // /users/42
-    // /search?q=sec
-    // *
-    //
-    // Parsing into path/query components will be provided by Request
-    // behavior and/or the future URL support.
-    Target: string,
+    // The request-target in exactly one of its four forms.
+    Target: RequestTarget,
 
-    // HTTP protocol version.
-    Version: VersionNumber,
+    // Request header fields.
+    Header: Header,
 
-    // Request headers.
-    //
-    // Header will become a dedicated HTTP type because field names are
-    // case-insensitive and one field may contain multiple values.
-    Headers: Header,
+    // Request trailer fields.
+    Trailer: Header,
 
-    // Request trailers.
-    Trailers: Header,
-
-    // Effective host/authority for the request.
-    Host: string,
-
-    // Message body.
-    //
-    // byte[] is a temporary groundwork representation.
-    // The final API should support streamed bodies without requiring the
-    // complete request body to be allocated in memory.
-    Body: byte[],
-
-    // Declared content length.
-    //
-    // None means that no Content-Length is known or declared.
-    ContentLength: Option[uint64],
+    // Owned message body; empty unless set.
+    Body: Body,
 }
 
 impl Request {
-    // -------------------------------------------------------------------------
-    // Target helpers
-    // -------------------------------------------------------------------------
+    /**
+     * Creates a request with an empty header, trailer and body.
+     */
+    init(method: Method, target: RequestTarget) {
+        self.Method = method
+        self.Target = target
+    }
 
-    property Path: string {
+    /** Creates a GET request for an absolute-form target. */
+    static fn Get(url: url.URL) Request {
+        return new Request(Method.GET, RequestTarget.Absolute(url))
+    }
+
+    /** Creates a HEAD request for an absolute-form target. */
+    static fn Head(url: url.URL) Request {
+        return new Request(Method.HEAD, RequestTarget.Absolute(url))
+    }
+
+    /** Creates a POST request for an absolute-form target that owns body. */
+    static fn Post(url: url.URL, ->body: Body) Request {
+        let mut request := new Request(Method.POST, RequestTarget.Absolute(url))
+        request.SetBody(<-body)
+        return request
+    }
+
+    /** Creates a PUT request for an absolute-form target that owns body. */
+    static fn Put(url: url.URL, ->body: Body) Request {
+        let mut request := new Request(Method.PUT, RequestTarget.Absolute(url))
+        request.SetBody(<-body)
+        return request
+    }
+
+    /** Creates a PATCH request for an absolute-form target that owns body. */
+    static fn Patch(url: url.URL, ->body: Body) Request {
+        let mut request := new Request(Method.PATCH, RequestTarget.Absolute(url))
+        request.SetBody(<-body)
+        return request
+    }
+
+    /** Creates a DELETE request for an absolute-form target. */
+    static fn Delete(url: url.URL) Request {
+        return new Request(Method.DELETE, RequestTarget.Absolute(url))
+    }
+
+    /**
+     * Creates a QUERY request (RFC 10008) for an absolute-form target that
+     * owns body.
+     */
+    static fn Query(url: url.URL, ->body: Body) Request {
+        let mut request := new Request(Method.QUERY, RequestTarget.Absolute(url))
+        request.SetBody(<-body)
+        return request
+    }
+
+    /**
+     * Replaces the body, closing the previous one first.
+     *
+     * Description:
+     * A close failure of the previous body is not reported: the body is
+     * being discarded and is released by its destructor either way.
+     */
+    fn SetBody(->body: Body) void {
+        discard self.Body.Close()
+        self.Body <- body
+    }
+
+    /**
+     * Validates the request before transport selection.
+     *
+     * Description:
+     * Checks that the method is a non-empty RFC 9110 token, that it is not
+     * a reserved method (PRI, *), and that the target form matches the
+     * method (RFC 9112 § 3.2): authority-form only and always for CONNECT,
+     * asterisk-form only for OPTIONS, origin- or absolute-form otherwise.
+     *
+     * Errors:
+     * - MessageError.InvalidMethod: The method is empty or not a token.
+     * - MessageError.ReservedMethod: The method is PRI or "*".
+     * - MessageError.InvalidTarget: The target form does not fit the method.
+     *
+     * Standards:
+     * - RFC 9110 § 5.6.2 and § 9.1
+     * - RFC 9112 § 3.2
+     */
+    fn Validate() Result[void, MessageError] {
+        if self.Method.IsReserved {
+            return Err(MessageError.ReservedMethod)
+        }
+        if !_IsMethodToken(string(self.Method)) {
+            return Err(MessageError.InvalidMethod)
+        }
+
+        let isConnect := self.Method == Method.CONNECT
+        match self.Target {
+            RequestTarget.Authority(_) => {
+                if !isConnect {
+                    return Err(MessageError.InvalidTarget)
+                }
+            }
+
+            RequestTarget.Asterisk => {
+                if self.Method != Method.OPTIONS {
+                    return Err(MessageError.InvalidTarget)
+                }
+            }
+
+            RequestTarget.Origin(_) => {
+                if isConnect {
+                    return Err(MessageError.InvalidTarget)
+                }
+            }
+
+            RequestTarget.Absolute(_) => {
+                if isConnect {
+                    return Err(MessageError.InvalidTarget)
+                }
+            }
+        }
+
+        return Ok()
+    }
+
+    /**
+     * Returns the URL of an absolute-form target, otherwise None.
+     */
+    property Url: Option[url.URL] {
         get {
-            // TODO:
-            // Parse and return the path portion of Target.
-            return self.Target
+            match self.Target {
+                RequestTarget.Absolute(value) => {
+                    return Some(value)
+                }
+
+                RequestTarget.Origin(_) => {
+                    return None
+                }
+
+                RequestTarget.Authority(_) => {
+                    return None
+                }
+
+                RequestTarget.Asterisk => {
+                    return None
+                }
+            }
         }
     }
 
-    property Query: string {
-        get {
-            // TODO:
-            // Return the query component without the leading '?'.
-            return ""
-        }
-    }
-
-    // -------------------------------------------------------------------------
-    // Body helpers
-    // -------------------------------------------------------------------------
-
+    /**
+     * Reports whether the body may carry content.
+     *
+     * Description:
+     * False only when the body is known to be empty (known length zero);
+     * it does not infer absence from the method name.
+     */
     property HasBody: bool {
         get {
-            // TODO:
-            // This must be revisited when Body becomes stream-capable.
-            return !self.Body.IsEmpty
+            match self.Body.Length {
+                Some(length) => {
+                    return length != 0
+                }
+
+                None => {
+                    return true
+                }
+            }
         }
     }
 
-    // -------------------------------------------------------------------------
-    // Header helpers
-    // -------------------------------------------------------------------------
-
-    fn HeaderValue(Name: string) Option[string] {
-        // TODO:
-        // Header lookup is case-insensitive.
-        //
-        // Define how multiple field values are treated by this helper.
-        discard Name
-        return None
+    /**
+     * Releases the owned body.
+     */
+    free {
+        discard self.Body.Close()
     }
+}
 
-    fn HeaderValues(Name: string) string[] {
-        // TODO:
-        // Return all values for the requested field name.
-        discard Name
-
-        let mut values: string[]
-        return values
+// Reports whether value is a non-empty RFC 9110 token:
+// 1*tchar, tchar = ALPHA / DIGIT / "!#$%&'*+-.^_`|~".
+fn _IsMethodToken(value: string) bool {
+    if value.SizeOf == 0 {
+        return false
     }
-
-    fn SetHeader(
-        Name:  string,
-        Value: string,
-    ) void {
-        // TODO:
-        // Replace existing values for Name.
-        discard Name
-        discard Value
-    }
-
-    fn AddHeader(Name: string, Value: string) void {
-        // TODO: Implement request.AddHeader
-        // Append another field value without replacing existing values.
-        discard Name
-        discard Value
-    }
-
-    fn RemoveHeader(Name: string) void {
-        // TODO: Implement request.RemoveHeaders
-        discard Name
-    }
-
-    // -------------------------------------------------------------------------
-    // Common HTTP conveniences
-    // -------------------------------------------------------------------------
-
-    property UserAgent: string {
-        get {
-            // TODO: Implement request.UserAgent
-            return ""
+    for current in value {
+        let isTchar := (current.IsAscii && current.IsLetterOrDigit) || current in [
+            '!', '#', '$', '%', '&', '\'', '*', '+', '-', '.', '^', '_', '`', '|', '~',
+        ]
+        if !isTchar {
+            return false
         }
     }
+    return true
+}
 
-    property Referer: string {
-        get {
-            // TODO: Implement request.Referer
-            return ""
-        }
-    }
+type OriginTarget string
 
-    property ContentType: string {
-        get {
-            // TODO:
-            return ""
-        }
-    }
-
-    // -------------------------------------------------------------------------
-    // Authentication helpers
-    // -------------------------------------------------------------------------
-
-    fn BasicAuth() Option[BasicAuthentication] {
-        // TODO:
-        // Decode Authorization: Basic ...
-        return None
-    }
-
+impl OriginTarget {
     /**
      * Parses and validates an HTTP origin-form request target.
      *
@@ -236,7 +292,7 @@ impl Request {
                 }
 
                 let high := value.CharAt(index + 1)
-                let low := value.CharAt(index + 2)
+                let low  := value.CharAt(index + 2)
 
                 if !high.IsHexDigit || !low.IsHexDigit {
                     return Err(MessageError.InvalidTarget)
@@ -269,37 +325,21 @@ impl Request {
 
     static fn _IsRequestTargetChar(value: char) bool {
         return value.IsLetterOrDigit ||
-        value in [
-            '-', '.', '_', '~',
-            '!', '$', '&', '\'', '(', ')',
-            '*', '+', ',', ';', '=',
-            ':', '@',
-        ]
+            rune(value) in [
+                '-', '.', '_', '~',
+                '!', '$', '&', '\'', '(', ')',
+                '*', '+', ',', ';', '=',
+                ':', '@',
+            ]
     }
-
-    // -------------------------------------------------------------------------
-    // Serialization
-    // -------------------------------------------------------------------------
 
     /**
      * Returns the validated origin-form request target.
      */
-    fn ToString() string {
-        // TODO: Implement http.Request.ToString()
-        // return string(self)
-        return ""
+    fn ToString() Result[string, StringError] {
+        return Ok(string(self))
     }
 }
-
-// Parsed HTTP Basic authentication credentials.
-//
-// This is intentionally a struct instead of returning two unrelated strings.
-type BasicAuthentication struct {
-    Username: string,
-    Password: string,
-}
-
-type OriginTarget string
 
 type AuthorityTarget string
 

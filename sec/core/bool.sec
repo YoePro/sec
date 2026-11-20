@@ -1,11 +1,26 @@
 module core
 
+// Rulebook: library/core-library.md § 6 (Boolean).
+
 impl bool {
+    /**
+     * Returns "true" or "false".
+     *
+     * Description:
+     * The text is the source literal spelling, lower case and not
+     * localized.
+     *
+     * Errors:
+     * - StringError: Kept for the uniform ToString signature; the two
+     * results are string literals and need no allocation.
+     *
+     * Allocation:
+     * None.
+     */
     fn ToString() Result[string, StringError] {
         if self {
             return Ok("true")
         }
         return Ok("false")
     }
-
 }

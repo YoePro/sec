@@ -1,0 +1,31 @@
+module main
+
+type Handle struct { id: int, }
+impl Handle { free {} }
+type Slot union {
+    Empty
+    Full(Handle)
+    Pair { count: int, owner: Handle, }
+}
+type Box[T] union { Some(T) None }
+type Numbers union { Single(uint8) Fields { left: uint8, right: float32, } }
+fn Make() Handle { return Handle { id: 1 } }
+fn Empty() Slot { return Slot.Empty }
+fn EmptyContext() Slot { return Empty }
+fn Copy(value: int[2]) Box[int[2]] { return Box.Some(value) }
+fn GenericContext(value: uint8) Box[uint8] { return Some(value) }
+fn ExplicitMove(value: Handle) Slot { return Slot.Full(<-value) }
+fn TerminalMove(value: Handle) Slot { return Slot.Full(value) }
+fn Temporary() Slot { return Slot.Full(Make()) }
+fn Reordered(value: Handle, count: int) Slot {
+    return Slot.Pair { owner: <-value, count: count }
+}
+fn Defaults(value: uint8) Numbers { return Numbers.Fields { left: value } }
+fn Float(value: float32) Box[float32] { return Box.Some(value) }
+fn Full() Slot { return Slot.Empty }
+fn Ordinary() Slot {
+    let value := Full()
+    return <-value
+}
+
+fn DefaultsInt() Numbers { return Numbers.Fields { right: 1.0 } }

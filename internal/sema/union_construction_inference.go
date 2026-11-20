@@ -16,6 +16,8 @@ func sumSourceKind(typ Type) string {
 // Rules: rules/declarations/unions.md — Construction; rules/declarations/generics.md — Generic unions;
 // rules/concurrency/atomics.md — §§6(1–8),17(3–5).
 func (a *Analyzer) inferCallAsUnionVariantConstructor(expr *ast.CallExpression, expected *Type) (Type, expressionValue, bool) {
+	delete(a.resolvedUnionConstructions, expr)
+	errorsBefore := len(a.errors)
 	member, ok := expr.Callee.(*ast.MemberExpression)
 	if !ok {
 		return Type{}, expressionValue{}, false
@@ -91,6 +93,7 @@ func (a *Analyzer) inferCallAsUnionVariantConstructor(expr *ast.CallExpression, 
 			a.addTaskCategoryError(expr.Token, unionType, "%s variant %s.%s expects 0 arguments, got %d", sumSourceKind(unionType), typeDisplayName(unionType), concreteVariant.Name, len(expr.Arguments))
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
+		a.recordUnionConstruction(expr, unionType, concreteVariant)
 		return unionType, expressionValue{Display: expr.String()}, true
 	}
 
@@ -112,5 +115,8 @@ func (a *Analyzer) inferCallAsUnionVariantConstructor(expr *ast.CallExpression, 
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 	}
 
+	if valueType.Kind != InvalidType && len(a.errors) == errorsBefore {
+		a.recordUnionConstruction(expr, unionType, concreteVariant)
+	}
 	return unionType, expressionValue{Display: expr.String()}, true
 }

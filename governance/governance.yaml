@@ -5,18 +5,24 @@ integrations:
   - id: governance.source-rulebook-traceability
     area: compiler-implementation-governance
     status: implemented
+    revised: "2026-11-20"
     audited: "2026-08-20"
     repository_baseline: c515862
     summary: Establish a general Sec implementation traceability rule. Where applicable, every source file and every function that implements, validates, analyzes, or lowers normative Sec behavior must identify in comments the canonical rulebook(s) and the specific rule/section(s) it implements. Narrow functions should cite precise rules; broad cross-cutting functions may cite several books or higher-level sections. Pure non-normative infrastructure may use a documented exception.
+    code:
+      - internal/traceability/doc.go
+    tests:
+      - internal/traceability/traceability_test.go
+      - internal/traceability/testdata/baseline.txt
     implemented:
       - canonical implementation traceability policy is defined in rules/README.md
       - preferred Go and Sec source-reference forms are documented
       - touched semantic functions for corrections 23 through 29 carry rulebook-oriented comments where applicable
-    remaining:
-      - decide whether lint/CI should verify traceability on new or modified semantic functions
-      - migrate high-value semantic files incrementally
-      - prioritize parser, Sema, Semantic IR, lowering, ABI/FFI, ownership, and diagnostics code
-      - add correction references to focused regression tests where useful
+      - "Owner decision 2026-11-20: references are added over time where the governing rule can be derived, and existing code is never removed because one is missing. Implemented as go test ./internal/traceability: a new or renamed function in the semantic packages must cite a rulebook in its doc comment, and functions written before the rule are an only-shrinking baseline (internal/traceability/testdata/baseline.txt, 2,353 entries at creation; -update only removes entries). Documented in rules/README.md 'Implementation traceability'."
+      - "Incremental migration (2026-11-20): every baseline entry is a function still without a reference. Adding the reference and running -update removes it, so migration progress is the shrinking baseline. New code cannot add to the debt because the test rejects any unreferenced function outside the baseline."
+      - "Priority areas enforced (2026-11-20): the check covers exactly internal/parser, internal/sema, internal/ir/semantic, internal/lowering, internal/layout (ABI/FFI and layout) and internal/diagnostics. Ownership and borrow analysis live in sema, ir/semantic and lowering."
+      - "Test traceability (2026-11-20): rules/README.md states that tests carry rule and correction citations where they clarify the protected contract. Focused regression tests added under this governance period cite their rules (for example cross_module_calls_test.go, float_conversion_native_test.go, range_membership_native_test.go, numeric_conversion_test.go). Tests are deliberately outside the enforced check, because a citation there is useful only where it clarifies the contract."
+    remaining: []
     introduced_by: correction25.md
     canonical_destination:
       - rules/README.md
@@ -297,20 +303,24 @@ integrations:
 
   - id: governance.compiler-core
     area: compiler-rulebook-governance-migration
-    status: planned
+    status: implemented
+    revised: "2026-11-20"
     repository_baseline: 998d8d1
-    remaining:
-      - migrate still-relevant target registry statuses, CLI implementation details, bootstrap import state, direct-LLVM divergence and toolchain-path notes into implementation-status.yaml rather than the normative book
-      - keep P1-P14 historical completion records while adding remaining synchronization work caused by newer canonical Target/Variant, @target/@when, Iterator[T] and compiler architecture rules
-      - ensure compiler.platform-model governance remains the canonical implementation plan for Target/Variant/CompilationPlan resolution
+    implemented:
+      - "Normative compiler book carries no status snapshots (verified 2026-11-20): compiler.md §§ 1(12), 82(2) and 93(5) forbid them and §§ 31-34 contain only rules. The legacy direct-LLVM path is retired (compiler_pipeline.md § 45(6), MD-101; single track in compiler.backend-architecture). The live owners are: CLI implementation in tooling.cli; target registry, plan and capability state in compiler.platform-model and compiler.platform-resolution; platform-path and bootstrap import state in frontend.modules and tooling.project-discovery-and-boundary; the toolchain path and tool lookup (internal/mlir/toolchain.go) in compiler.backend-architecture."
+      - "P1-P14 history and newer-rule synchronization (2026-11-20): governance/analysis-ownership.md 'P1-P14 are implementation history' keeps the original package records and completion claims. It maps each package to its live owner and now to its pipeline boundaries. It names where newer rules extend old assumptions: Iterator[T] in semantic-ir.core-v2/frontend.semantic-ir-v2, @target/@when in frontend.attributes-v2/tooling.compiler-core, and Target/Variant/CompilationPlan in compiler.platform-model with compiler-side slices in compiler.platform-resolution."
+      - "compiler.platform-model is the canonical Target/Variant/CompilationPlan implementation plan (2026-11-20). compiler.platform-resolution now states in its summary that it records compiler-side resolution slices and evidence under that plan, and analysis-ownership.md names the same split."
+    remaining: []
 
   - id: governance.compiler-pipeline
     area: pipeline-rulebook-and-package-sync
-    status: planned
+    status: implemented
+    revised: "2026-11-20"
     repository_baseline: 998d8d1
-    remaining:
-      - map P1-P14 package records to the new pipeline boundaries without changing their historical completion claims
-      - add remaining work when newer canonical rules such as Iterator[T] extend a previously implemented package assumption
+    implemented:
+      - "P1-P14 mapped to the single-track pipeline boundaries (2026-11-20): the P1-P14 table in governance/analysis-ownership.md has a pipeline-boundaries column (Sema, Semantic IR, Sec MLIR, standard MLIR, LLVM; compiler_pipeline.md § 45). It names, for example, P4 as Semantic IR to Sec MLIR emission and P8 as Sec MLIR to Arith/CF lowering. Historical completion claims are unchanged."
+      - "Newer-rule extensions are recorded in their domain owners (verified 2026-11-20): Iterator[T] in semantic-ir.core-v2 ('add Iterator[T] resolved-iteration records/operations') and frontend.semantic-ir-v2; @target/@when in frontend.attributes-v2; Target/Variant in compiler.platform-resolution/compiler.platform-model. The single track (MD-101) supersedes direct-LLVM assumptions. The rule for future extensions is written in analysis-ownership.md."
+    remaining: []
 
   - id: governance.yamlstatus-rulebook-publication
     area: governance-documentation-publication

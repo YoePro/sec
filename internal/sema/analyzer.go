@@ -221,6 +221,9 @@ type Analyzer struct {
 	enumConversionCalls map[*ast.CallExpression]bool
 
 	resolvedNumericConversionPlans map[*ast.CallExpression]ResolvedNumericConversionPlan
+	// resolvedNamedContractConversions are the runtime-checked conversions
+	// into constrained named types (named_contract_conversion.go).
+	resolvedNamedContractConversions map[*ast.CallExpression]ResolvedNamedContractConversion
 
 	resolvedIntegerConversions     map[*ast.CallExpression]ResolvedIntegerConversion
 	resolvedNamedConversions       map[*ast.CallExpression]ResolvedNamedConversion
@@ -291,6 +294,7 @@ type Analyzer struct {
 	loopWrittenNames            map[string]bool
 	currentStableBindings       map[string]bool // parameters and locals the current function never changes
 	arrayIndexMutationEpoch     uint64
+	resolvedUnionConstructions  map[ast.Expression]ResolvedUnionConstruction
 	resolvedStructLiteralPlans  map[*ast.StructLiteral]ResolvedStructLiteralPlan
 	resolvedStructMemberPlans   map[*ast.MemberExpression]ResolvedStructMemberPlan
 	resolvedRegisterFields      map[*ast.MemberExpression]ResolvedRegisterFieldPlan
@@ -933,6 +937,7 @@ func (a *Analyzer) analyzeProgram(program *ast.Program) []Error {
 	a.resolvedEnumConversions = map[ast.Expression]ResolvedEnumConversion{}
 	a.enumConversionCalls = nil
 	a.resolvedNumericConversionPlans = map[*ast.CallExpression]ResolvedNumericConversionPlan{}
+	a.resolvedNamedContractConversions = map[*ast.CallExpression]ResolvedNamedContractConversion{}
 	a.resolvedIntegerConversions = map[*ast.CallExpression]ResolvedIntegerConversion{}
 	a.resolvedNamedConversions = map[*ast.CallExpression]ResolvedNamedConversion{}
 	a.resolvedTransferPlans = map[ast.Expression]ResolvedTransferPlan{}
@@ -985,6 +990,7 @@ func (a *Analyzer) analyzeProgram(program *ast.Program) []Error {
 	a.conditionBindingVersions = map[string]uint64{}
 	a.conditionProofBarrier = 0
 	a.arrayIndexMutationEpoch = 0
+	a.resolvedUnionConstructions = map[ast.Expression]ResolvedUnionConstruction{}
 	a.resolvedStructLiteralPlans = map[*ast.StructLiteral]ResolvedStructLiteralPlan{}
 	a.resolvedStructMemberPlans = map[*ast.MemberExpression]ResolvedStructMemberPlan{}
 	a.resolvedRegisterFields = map[*ast.MemberExpression]ResolvedRegisterFieldPlan{}
@@ -1131,6 +1137,7 @@ func (a *Analyzer) analyzeProgram(program *ast.Program) []Error {
 	// Holder and contained reads take their borrow identities after every
 	// other identity, so they never renumber existing facts.
 	a.allocateHolderReadIdentities()
+	a.freezeUnionConstructionPreparations()
 
 	return cloneSemanticErrors(a.errors)
 }

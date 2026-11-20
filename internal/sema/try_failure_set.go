@@ -114,12 +114,11 @@ func (a *Analyzer) collectTryFailurePoints(expr ast.Expression) []TryFailurePoin
 				points = a.appendTryChainCarrierPoint(points, argument)
 			}
 			if a.runtimeContractConversion(node) {
-				errorType := a.types["ContractError"]
-				if target, ok := a.expressionTypes[node]; ok && target.Kind == StringType {
-					if conversionError, found := a.types["ConversionError"]; found {
-						errorType = conversionError
-					}
-				}
+				// A runtime-checked conversion into a constrained named type
+				// fails through the one public channel ConversionError; the
+				// violated contract is its Contract payload (contracts.md
+				// § 13.1, MD-012).
+				errorType := a.types["ConversionError"]
 				points = append(points, TryFailurePoint{Kind: TryFailureContract, ErrorType: errorType, Expression: node, Token: node.Token})
 			}
 			points = a.appendCheckedConversionPoint(points, node, ast.Expression(node) == root)

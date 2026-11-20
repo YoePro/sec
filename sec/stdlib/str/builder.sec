@@ -57,13 +57,15 @@ impl Builder {
      * Constructs a mutable UTF-8 Builder with an initial byte capacity.
      *
      * Description:
-     * Creates an empty Builder. initialCapacity is a best-effort
-     * preallocation hint in bytes, not a guarantee: when the storage cannot
-     * be reserved the Builder is still a valid empty Builder. Use Reserve
-     * for a guaranteed capacity. A hint of zero does not allocate.
+     * Creates an empty Builder with at least initialCapacity bytes of
+     * storage reserved. A capacity of zero does not allocate and cannot fail.
      *
      * Parameters:
-     * - initialCapacity: Preferred initial storage capacity in bytes.
+     * - initialCapacity: Initial storage capacity in bytes.
+     *
+     * Errors:
+     * - CollectionError: The requested storage could not be reserved; no
+     * Builder is constructed.
      *
      * Allocation:
      * May allocate through the active allocation context when
@@ -290,7 +292,11 @@ impl Builder {
         let mut index: uint := 0
 
         while index < count {
-            try storage.Append(encoded[index]) {
+            // index < count <= 4, so the fixed-array read stays in bounds;
+            // reading it outside the try keeps CollectionError the only
+            // failure of the append below.
+            let next := encoded[index]
+            try storage.Append(next) {
                 Err(error) => {
                     // Remove any incomplete UTF-8 sequence.
                     while storage.Len > originalLength {

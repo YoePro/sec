@@ -9,15 +9,15 @@ import (
 
 // A checked conversion executes with the runtime order of checks: the
 // intrinsic domain (ConversionError.OutOfRange) first, then declared
-// contracts in source order (ContractError.Violation { Kind,
-// DeclarationIndex }, the channel Sema types for numeric contracts); try and
+// contracts in source order (ConversionError.Contract(ContractError.Violation
+// { Kind, DeclarationIndex })); try and
 // match handle the error like any other. A bound established by CTE is read in dependency order, even when
 // its type is declared after the code that needs it.
 // Rules: rules/types/contracts.md — §§ 13, 13.1; rules/compiler/compile_time_evaluation.md — § 38.
 func TestSemanticCTECheckedConversions(t *testing.T) {
 	source := `module main
 
-fn ToPercent(n: int) Result[Percent, ContractError] {
+fn ToPercent(n: int) Result[Percent, ConversionError] {
     let p := try Percent(n)
     return Ok(p)
 }

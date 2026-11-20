@@ -1403,3 +1403,15 @@ Sec 0.1 does not require a complete catalog of processors, MCUs, or accelerators
 it does not require GPU execution semantics. The model must, however, remain capable
 of representing concrete Devices and future separately resolved accelerators without
 breaking the primary processor model.
+
+## 31. C binding environment resolution (MD-021)
+
+Integrated 2026-11-20 from `rules/corrections/MD-021-c-binding-environment-complete-proposal-20261120.md` (owner accepted 2026-11-20). The correction holds the full normative text; this section is its owning summary.
+
+**§ 31(1)** C bindings resolve independently per Target Variant into that Variant's immutable `CompilationPlan`. Compiler-host OS, libc, SDK and headers never substitute for target facts.
+
+**§ 31(2)** Candidates are compiler-distributed trusted packages and the project's optional `.sec/platform/c-bindings.toml`; others only through an explicit package mechanism. Package identity is `(bindings.id, bindings.version)`; equal identity with different content is a conflict, and project packages never silently override compiler packages.
+
+**§ 31(3)** Resolution filters by explicit package id and version constraint, then by exact canonical `os`, `arch`, `abi`, `c_runtime` and runtime-version constraints, then by an explicit environment key, and requires exactly one surviving (package, version, environment). Zero is missing/incompatible, several is ambiguous with all candidates listed; no highest-version, first-registered or local-first choice exists.
+
+**§ 31(4)** The plan records package id, exact version, environment key, schema version, target OS/architecture/ABI, C-runtime family and verified version contract, selected modules, resolved alias surface, provenance and a semantic fingerprint that ignores comments, table order, module-array order and timestamps. Resolution never rewrites metadata.

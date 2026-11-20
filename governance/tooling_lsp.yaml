@@ -440,6 +440,7 @@ integrations:
     area: tooling-lsp
     status: partial
     integrated: "2026-10-03"
+    revised: "2026-11-20"
     summary: >-
       Implements semantic textDocument/prepareRename and textDocument/rename
       over the Sema-resolved reference model used by find-references, with
@@ -460,7 +461,7 @@ integrations:
       - the new name must be exactly one identifier, not reserved by the language, and keep the visibility prefix (leading underscores) of the old name
       - the renamed program is re-analyzed and the rename is rejected when it would introduce an error such as a collision, forbidden shadowing, or a confusable name
     remaining:
-      - update documentation-comment links where supported
+      - update documentation-comment links where supported; blocked on MD-145 defining symbol-link syntax and resolution (lsp.md §15(2), lexical_structure.md §5.4)
       - honor generated and dependency read-only sources once the shared workspace index exposes them
       - rename module and import aliases and file operations
       - share the complete canonical name resolver with compilation (declarations.yaml)

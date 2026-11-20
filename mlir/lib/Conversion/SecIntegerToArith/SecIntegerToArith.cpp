@@ -788,6 +788,12 @@ public:
   matchAndRewrite(Operation *operation, ArrayRef<Value> operands,
                   ConversionPatternRewriter &rewriter) const override {
     Location location = operation->getLoc();
+    // A named float conversion changes only nominal identity.
+    if (isa<sec::NamedConvertOp>(operation) &&
+        isa<FloatType>(namedCarrier(operation->getOperand(0).getType()))) {
+      rewriter.replaceOp(operation, operands[0]);
+      return success();
+    }
     // A named integer applies its carrier's semantics (semantic_ir.md § 7(4)).
     auto originalValueType = dyn_cast<IntegerType>(namedCarrier(operation->getOperand(0).getType()));
     if (!originalValueType ||
@@ -1148,6 +1154,9 @@ public:
     // Nominal identity is erased here, in physical lowering (semantic_ir.md
     // § 7(5)): a named integer becomes its carrier's signless integer.
     typeConverter.addConversion([&](sec::NamedType type) -> std::optional<Type> {
+      // A named binary float is its resolved f32/f64 carrier.
+      if (auto floating = dyn_cast<FloatType>(namedCarrier(type)))
+        return Type(floating);
       auto integer = dyn_cast<IntegerType>(namedCarrier(type));
       if (!integer || (!integer.isSigned() && !integer.isUnsigned()))
         return std::nullopt;
@@ -1171,6 +1180,12 @@ public:
                      Location location) -> Value {
       if (inputs.size() != 1)
         return Value();
+      // A named float and its f32/f64 carrier bridge the same way (P22).
+      Type fromFloat = namedCarrier(inputs.front().getType());
+      if (isa<FloatType>(fromFloat) && fromFloat == namedCarrier(resultType))
+        return builder
+            .create<UnrealizedConversionCastOp>(location, resultType, inputs)
+            .getResult(0);
       auto from = dyn_cast<IntegerType>(namedCarrier(inputs.front().getType()));
       auto to = dyn_cast<IntegerType>(namedCarrier(resultType));
       if (!from || !to || from.getWidth() != to.getWidth())
@@ -1263,6 +1278,16 @@ public:
     // high-level storage boundary; anything else is a lowering defect
     // (MD-087 §§ 4(6), 5(4)).
     WalkResult bridges = module.walk([&](UnrealizedConversionCastOp cast) {
+      // A named float and its own f32/f64 carrier differ only in nominal
+      // identity; the tagged-value pass and reconciliation fold the pair.
+      if (cast->getNumOperands() == 1 && cast->getNumResults() == 1) {
+        Type fromType = cast->getOperand(0).getType();
+        Type toType = cast->getResult(0).getType();
+        if ((isa<sec::NamedType>(fromType) || isa<sec::NamedType>(toType)) &&
+            isa<FloatType>(namedCarrier(fromType)) &&
+            namedCarrier(fromType) == namedCarrier(toType))
+          return WalkResult::advance();
+      }
       // A named integer storage boundary bridges like its carrier.
       auto from = cast->getNumOperands() == 1
                       ? dyn_cast<IntegerType>(namedCarrier(cast->getOperand(0).getType()))

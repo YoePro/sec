@@ -99,7 +99,7 @@ var unitMetadataEnumFields = map[string]string{
 // (the form Sec 0.1 catalogs use), and `temperature` for
 // UnitKind.ThermodynamicTemperature. Any other bare token has no mapping.
 // Rules: rules/types/units.md — "Unit metadata value types" (5);
-// rules/corrections/md062-unit-metadata-value-types-correction-20261027.md — § 5(2)–5(3).
+// rules/corrections/applied/md062-unit-metadata-value-types-correction-20261027-20261121.md — § 5(2)–5(3).
 func unitMetadataLegacyMember(key, value string) (string, bool) {
 	enum := unitMetadataEnumFields[key]
 	if enum == "" {

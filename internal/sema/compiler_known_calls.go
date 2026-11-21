@@ -13,7 +13,7 @@ import (
 // rules/collections/collections.md — §§6.7,13.10,13.12,14.5,14.8,15.5;
 // rules/concurrency/threads.md — §43(1–4), observer wait prohibition;
 // rules/concurrency/channels.md — §§18,30, consuming ticket-owned revocation;
-// rules/corrections/md109-core-string-materialization-correction.md — §§2.1–2.2,9.3.
+// rules/corrections/applied/md109-core-string-materialization-correction-20261121.md — §§2.1–2.2,9.3.
 func (a *Analyzer) inferValidatedCompilerKnownMemberCall(expr *ast.CallExpression) (Type, expressionValue, bool) {
 	memberExpr, ok := expr.Callee.(*ast.MemberExpression)
 	if !ok || memberExpr == nil || memberExpr.Property == nil {

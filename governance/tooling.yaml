@@ -822,3 +822,35 @@ integrations:
         result: "Passed 2026-11-11: full Sema/Semantic IR 24.847s/9.397s; CLI/LSP dependency suites 22.983s/10.670s; blocker race Sema/LSP 1.166s/24.373s; vet passed. More precise nested CLI/LSP source-link count assertions were rerun after tightening. Existing Invalid identities and primary dependency links remain intact while causal retention links, source-qualified hover, detached copies and valid controls are verified."
       - command: go test -p 4 ./internal/sema ./internal/ir/semantic -count=1 -timeout=120s; go test -p 4 ./cmd/compiler ./cmd/lsp -run 'AllocationContext|AllocationOperationHover|AnalyseAllocation|AllocationHoverCanonicalParity' -count=1 -timeout=120s; go test -p 4 -race ./internal/sema ./cmd/compiler ./cmd/lsp -run '^TestAllocationContextOrigins' -count=1 -timeout=120s; go vet -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp
         result: "Passed 2026-11-11: full Sema/Semantic IR 21.147s/8.163s; broad allocation CLI/LSP 1.563s/47.820s; focused origin race tests 1.108s/10.271s/70.076s; vet passed. Earlier broad allocation race run passed compiler 10.062s but LSP reached its 180s timeout during TestAllocationHoverCanonicalParity; that broad race run is not claimed passing. Canonical source origins, moves, distinct receivers, created-versus-backing separation, transitive paths, missing metadata and refreshed immutable snapshots are verified."
+  - id: tooling.workspace-harness
+    area: tooling-workspace-harness
+    status: partial
+    integrated: "2026-11-21"
+    summary: >-
+      Optional deterministic, project-aware tooling harness for inspection,
+      validation, change planning and transactional configuration edits, shared
+      by the sec CLI and a separate MCP adapter (working name sec-mcp). It adds
+      no AI model, prompt runtime or MCP dependency to the language, compiler
+      semantics or ordinary build path, and installing or building Sec never
+      requires an AI account, MCP client or network access. Tentative Sec
+      0.1.100 planning milestone, not a release commitment; it does not change
+      MD-021 or MD-139.
+    rules:
+      - rules/corrections/applied/sec-harness-design-notes-0.1.100-2026-11-20-20261121.md
+      - rules/tooling/cli.md
+    code:
+      - internal/platform/cbindings/edit.go
+      - internal/platform/cbindings/toml_text.go
+      - internal/platform/cbindingplan/plan.go
+    implemented:
+      - "Implemented 2026-11-21 (harness notes § 6(1) steps 1-2 for MD-021): the C-binding configuration is a shared typed service: cbindings.Operation requests with deterministic results (Apply), the read-only resolution view (cbindingplan.Resolve, sec platform c-bindings resolve --json) and the CLI commands of notes § 4(1), all on the owning schema/validation code without a second TOML parser or editor; CLI and LSP resolve bindings through the same package."
+    remaining:
+      - "Transactional plan/diff/apply (notes §§ 5(2)-(4)): Inspect -> PlanChange -> ShowDiff -> Approve -> Apply -> Validate, where a plan states the target file, typed operation, expected input SHA-256, validation consequences and a patch preview, and Apply fails instead of overwriting when the input hash changed; built on the owning edit engine"
+      - "Separate sec-mcp adapter over local stdio (notes §§ 2(1)-(4), 4(2), 6(1) step 4): maps the shared typed operations to discoverable tools, read-only tools first, then authorized mutations; no divergent parser, validator or file editor and no silent shell-out to sec"
+      - "Harness safety model (notes §§ 5(1), 5(5)-(7)): tool metadata truthfully separates read-only from mutating operations; authorization comes only from the user or an explicitly trusted caller, never from model text; edits stay inside an explicitly selected project root and named files; no shell, network or unrestricted write tools; planning never reclassifies an unavailable target capability as supported"
+      - "MD-139 profile/allocation configuration through the same service and safety rules (notes § 6(1) step 5)"
+      - "Harness acceptance (notes § 7): CLI and MCP give the same semantic result for equivalent requests; negative tests for unknown project, path traversal, stale SHA-256, invalid TOML, unknown keys, duplicate names, invalid ABI/module selection, unsupported provider activation, no permission, interrupted write and double application; comment preservation, deterministic JSON, unchanged files on validation failure, full target/variant provenance and consistent CLI/LSP/CompilationPlan validation"
+      - "Open scoping (notes § 8, decided when implementation starts): the final product/executable name, whether harness configuration belongs in .sec/sec.toml, a dedicated .sec/tooling.toml or nowhere, and whether a longer-running local server beyond stdio is needed"
+    excluded:
+      - model hosting, automatic code generation, autonomous background agents, remote write access, generalized source rewriting or prompt-driven changes to compiler truth (notes § 6(2))
+      - remote HTTP transport and multi-user authorization in the first release (notes § 6(3))

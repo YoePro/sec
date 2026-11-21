@@ -1,0 +1,28 @@
+module main
+
+type Box[T] struct {
+    value: T,
+}
+
+impl Box[T] {
+    static fn Make(value: T) Box[T] {
+        return Box[T] { value: value }
+    }
+
+    static fn Count[...Types](values: ...ref Types) uint {
+        return values.Len
+    }
+
+    static fn Take[...Types](values: ...Types) uint {
+        return values.Len
+    }
+}
+
+fn Use() uint {
+    let box := Box[int].Make(3)
+    discard box
+    let shared := Box[int].Count(1, true)
+    let owned := Box[bool].Take(1, 2u)
+    let empty := Box[int].Count()
+    return shared + owned + empty
+}

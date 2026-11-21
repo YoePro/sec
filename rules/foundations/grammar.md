@@ -315,7 +315,7 @@ parameters or source return type, may not be nested, and is governed by
 must share one contextual treatment of `test` rather than reserving or inferring
 it independently.
 
-**§ 10(5)** **Amendment MD-111 (2026-10-30, `rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md` §§ 4(5), 8(1)).** Module scope
+**§ 10(5)** **Amendment MD-111 (2026-10-30, `rules/corrections/applied/MD-111-hardware-facts-approved-decision-20261030-20261121.md` §§ 4(5), 8(1)).** Module scope
 also admits the contextual hardware fact declarations:
 
 ```text
@@ -380,7 +380,7 @@ GenericConstraintClause
 ```
 
 **§ 12(1)** MD-117 amendment (2026-10-30; `rules/declarations/generics.md` § 17A and
-`rules/corrections/md117-heterogeneous-variadic-type-packs-correction.md` § 2):
+`rules/corrections/applied/md117-heterogeneous-variadic-type-packs-correction-20261121.md` § 2):
 only a function or method generic declaration may use the `...` prefix, at most
 once and on its final generic parameter. It declares one compile-time ordered
 sequence of zero or more concrete types, distinct from an ordinary single type.
@@ -4269,6 +4269,6 @@ not part of Sec 0.1.
 
 ## § 126 Standalone `@cAlias` declaration (MD-021)
 
-Integrated 2026-11-20 from `rules/corrections/MD-021-c-binding-environment-complete-proposal-20261120.md` (owner accepted 2026-11-20). The correction holds the full normative text; this section is its owning summary.
+Integrated 2026-11-20 from `rules/corrections/applied/MD-021-c-binding-environment-complete-proposal-20261120-20261121.md` (owner accepted 2026-11-20). The correction holds the full normative text; this section is its owning summary.
 
 **§ 126(1)** `@cAlias(name: StringLiteral, target: TypeReference)` is a standalone module-scope declaration. It attaches to no following declaration. Its `target` argument is parsed as a TypeReference, an exception to the general attribute-argument expression model; parser, formatter, Sema and LSP recognize it.

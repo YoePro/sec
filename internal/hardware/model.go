@@ -128,7 +128,7 @@ type Issue struct {
 
 // Clone snapshots all mutable fact payloads, including arbitrary-precision
 // integers and per-property provenance. Rules: MD-111 §§2,12; incremental_compilation.md §15.
-// Rules: rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md — §§2–8,13(2).
+// Rules: rules/corrections/applied/MD-111-hardware-facts-approved-decision-20261030-20261121.md — §§2–8,13(2).
 func (f Facts) Clone() Facts {
 	out := Facts{UintBits: f.UintBits, Domains: append([]layout.AddressDomain(nil), f.Domains...)}
 	for _, r := range f.Regions {
@@ -152,7 +152,7 @@ func (f Facts) Clone() Facts {
 }
 
 // cloneRecord isolates normalized per-property values (MD-111 §§2–3).
-// Rules: rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md — §§2–8,13(2).
+// Rules: rules/corrections/applied/MD-111-hardware-facts-approved-decision-20261030-20261121.md — §§2–8,13(2).
 func cloneRecord(r Record) Record {
 	props := make(map[string]ResolvedValue, len(r.Properties))
 	for k, v := range r.Properties {
@@ -170,7 +170,7 @@ func cloneRecord(r Record) Record {
 }
 
 // copyInt preserves exact domain values without sharing mutable integers (§3).
-// Rules: rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md — §§2–8,13(2).
+// Rules: rules/corrections/applied/MD-111-hardware-facts-approved-decision-20261030-20261121.md — §§2–8,13(2).
 func copyInt(v *big.Int) *big.Int {
 	if v == nil {
 		return nil
@@ -179,7 +179,7 @@ func copyInt(v *big.Int) *big.Int {
 }
 
 // cloneValue retains original metadata spelling and element provenance (§3(6)).
-// Rules: rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md — §§2–8,13(2).
+// Rules: rules/corrections/applied/MD-111-hardware-facts-approved-decision-20261030-20261121.md — §§2–8,13(2).
 func cloneValue(v Value) Value {
 	v.Path = append([]string(nil), v.Path...)
 	elements := make([]Value, len(v.Elements))

@@ -9,6 +9,13 @@ import (
 	"sec/internal/sema"
 )
 
+// unitDimensionLoweringPackage is the first package whose schema (13)
+// represents UnitDimension values. A dimension is an immutable copyable
+// value without owned resources (MD-062 § 7(5)), so it needs no ownership
+// cleanup package.
+// Rules: rules/corrections/applied/md062-unit-metadata-value-types-correction-20261027-20261121.md — §§ 7(5), 7(12), 12(8).
+const unitDimensionLoweringPackage = 13
+
 // UnitDimension values that escape compile-time evaluation (MD-062 §§ 7(12),
 // 11(5), 12(8)): a function parameter, a local, an aggregate field or a call
 // result. A value is the canonical finite mapping from semantic axis identity
@@ -18,7 +25,7 @@ import (
 //
 // Rules:
 //   - rules/types/units.md — "Unit metadata value types", "Semantic IR and lowering"
-//   - rules/corrections/md062-unit-metadata-value-types-correction-20261027.md — §§ 7(2)–(13), 12(7)–(8)
+//   - rules/corrections/applied/md062-unit-metadata-value-types-correction-20261027-20261121.md — §§ 7(2)–(13), 12(7)–(8)
 
 // TypeUnitDimension is the opaque compiler-known UnitDimension value type.
 const TypeUnitDimension TypeKind = "unit-dimension"

@@ -34,7 +34,7 @@ impl <third> {
 // Rules:
 //   - rules/tooling/lsp.md — "Hover"
 //   - rules/types/units.md — "Unit metadata value types" (1), (7), (10)
-//   - rules/corrections/md062-unit-metadata-value-types-correction-20261027.md — §§ 12(9), 13(8)
+//   - rules/corrections/applied/md062-unit-metadata-value-types-correction-20261027-20261121.md — §§ 12(9), 13(8)
 func TestUnitMetadataHover(t *testing.T) {
 	source := unitMetadataLSPUnits + `fn Read() void {
     let custom := <flow>.Kind
@@ -61,7 +61,7 @@ func TestUnitMetadataHover(t *testing.T) {
 // `<U>.` completes exactly the metadata members readable on that unit, with
 // their Sema types; members whose read is an error are not offered.
 // Rules: rules/tooling/lsp.md — completions;
-// rules/corrections/md062-unit-metadata-value-types-correction-20261027.md — § 12(9).
+// rules/corrections/applied/md062-unit-metadata-value-types-correction-20261027-20261121.md — § 12(9).
 func TestUnitMetadataCompletion(t *testing.T) {
 	got := completionLabelsAt(t, unitMetadataLSPUnits+"fn Read() void {\n    let value := <m>.|\n}\n", "|")
 	want := []string{"BaseUnit", "Category", "Dimension", "Kind", "LongName", "Name", "Offset", "Origin", "Scale", "Status", "System", "Transform"}

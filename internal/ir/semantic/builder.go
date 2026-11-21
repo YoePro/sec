@@ -595,6 +595,14 @@ func (b *builder) internTypeOnce(t sema.Type) (TypeID, error) {
 		}
 		return b.internUnionType(t)
 	}
+	// atomics.md §§ 4, 7: the compiler-owned Atomic[T] object type.
+	if element, atomic := sema.AtomicElementType(t); atomic {
+		id, err := b.internType(element)
+		if err != nil {
+			return 0, err
+		}
+		return b.module.Types.Intern(Type{Kind: TypeAtomic, Name: "Atomic", Identity: "core::Atomic", Element: id}), nil
+	}
 	if t.Kind == sema.StructType && !t.Intrinsic {
 		if b.maxPackage < 13 {
 			return 0, &UnsupportedFeatureError{Feature: "struct type " + t.Name, Package: b.maxPackage}
@@ -1051,6 +1059,13 @@ func (fb *functionBuilder) buildStatements(statements []ast.Statement) error {
 			// order to one atomic.fence operation; it has no call target.
 			if order, fence := fb.owner.analyzer.AtomicFenceOrderOf(call); fence {
 				fb.emit(Operation{Kind: OpAtomicFence, AtomicOrder: order, Location: location(call.Token)})
+				continue
+			}
+			// An unused atomic result still performs its operation.
+			if _, handled, err := fb.buildAtomicObjectCall(call); handled {
+				if err != nil {
+					return err
+				}
 				continue
 			}
 			resolved, ok := fb.owner.analyzer.ResolvedCallTarget(call)
@@ -4206,8 +4221,10 @@ func ownershipForParameter(p sema.FunctionParameter, maxPackage uint8) (Ownershi
 			return OwnershipImmediate, nil
 		}
 	case sema.UnitDimensionType:
-		// A copyable immutable value with no owned resource (MD-062 § 7(5)).
-		if maxPackage >= ownershipLoweringPackage {
+		// A copyable immutable value with no owned resource (MD-062 § 7(5));
+		// it needs no cleanup, so it is immediate from the schema-13 package
+		// that introduced UnitDimension values on.
+		if maxPackage >= unitDimensionLoweringPackage {
 			return OwnershipImmediate, nil
 		}
 	case sema.ArrayType:

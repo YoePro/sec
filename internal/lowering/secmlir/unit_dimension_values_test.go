@@ -26,7 +26,7 @@ import (
 // default axis. Schema 13 carries !sec.unit_dimension and the four
 // operations through every verifier on 32- and 64-bit targets.
 // Rules: rules/types/units.md — "Unit metadata value types";
-// rules/corrections/md062-unit-metadata-value-types-correction-20261027.md — §§ 7(2)–(13), 12(7)–(8).
+// rules/corrections/applied/md062-unit-metadata-value-types-correction-20261027-20261121.md — §§ 7(2)–(13), 12(7)–(8).
 func TestSchema13UnitDimensionValues(t *testing.T) {
 	tool := testsupport.RequireSecMLIROptPath(t)
 	source, err := os.ReadFile("../../../testdata/semantic_ir/unit_dimension_values.sec")

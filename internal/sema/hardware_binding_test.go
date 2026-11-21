@@ -106,7 +106,7 @@ hardware endpoint ControlPort {
 // register; numeric, arithmetic, call and variable forms, non-endpoint
 // hardware symbols, unknown names and Project exports are rejected with
 // their own identities rather than treated as raw addresses.
-// Rules: rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md — §§1(4),10(1),10(7),13(4)–(5).
+// Rules: rules/corrections/applied/MD-111-hardware-facts-approved-decision-20261030-20261121.md — §§1(4),10(1),10(7),13(4)–(5).
 func TestAddressBindsNamedEndpoint(t *testing.T) {
 	for _, binding := range []string{"@address(ControlPort)", "@address(ControlPort, alias)"} {
 		source := "module main\n" + addressBindingEndpoints + binding + "\nlet mut control: Control\nfn F() void { control.Enable() }\n"

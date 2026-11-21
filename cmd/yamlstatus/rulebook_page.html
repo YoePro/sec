@@ -10,7 +10,7 @@
 <a class="skip-link" href="#rulebook-content">Skip to rulebook</a>
 <header class="site-header">
     <div class="header-inner">
-        <a class="site-logo" href="{{.IndexURL}}" aria-label="Sec rulebooks home"><span class="logo-mark" aria-hidden="true">S</span>Sec</a>
+        <a class="site-logo" href="https://sec-lang.com/" aria-label="Sec home"><span class="logo-mark" aria-hidden="true">S</span>Sec</a>
         <span class="site-section">Language rulebooks</span>
         <a class="index-link" href="{{.IndexURL}}">All rulebooks <span aria-hidden="true">↗</span></a>
     </div>
@@ -48,6 +48,6 @@
         </footer>
     </main>
 </div>
-<footer class="site-footer">Sec · Language reference</footer>
+<footer class="site-footer">Sec · Language reference{{if .PublishedISO}} · Published <time datetime="{{.PublishedISO}}">{{.PublishedDisplay}}</time>{{end}}</footer>
 </body>
 </html>

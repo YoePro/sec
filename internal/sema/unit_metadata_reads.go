@@ -36,7 +36,7 @@ type UnitMetadataRead struct {
 // ResolvedUnitMetadataReadOf returns the metadata value read by a named-unit
 // member expression `<U>.Member` that Sema accepted.
 // Rules: rules/types/units.md — "Unit metadata value types";
-// rules/corrections/md062-unit-metadata-value-types-correction-20261027.md — §§ 11(4)–11(5), 12(7).
+// rules/corrections/applied/md062-unit-metadata-value-types-correction-20261027-20261121.md — §§ 11(4)–11(5), 12(7).
 func (a *Analyzer) ResolvedUnitMetadataReadOf(expr *ast.MemberExpression) (UnitMetadataRead, bool) {
 	if a == nil || expr == nil {
 		return UnitMetadataRead{}, false
@@ -48,7 +48,7 @@ func (a *Analyzer) ResolvedUnitMetadataReadOf(expr *ast.MemberExpression) (UnitM
 // ResolvedUnitDimensionOf returns the canonical dimension of expr when it is
 // a direct `<U>.Dimension` read, whose value is known at compile time.
 // Rules: rules/types/units.md — "Unit metadata value types" (8);
-// rules/corrections/md062-unit-metadata-value-types-correction-20261027.md — § 7(12).
+// rules/corrections/applied/md062-unit-metadata-value-types-correction-20261027-20261121.md — § 7(12).
 func (a *Analyzer) ResolvedUnitDimensionOf(expr ast.Expression) (Dimension, bool) {
 	member, ok := expr.(*ast.MemberExpression)
 	if !ok {
@@ -68,7 +68,7 @@ func (a *Analyzer) ResolvedUnitDimensionOf(expr ast.Expression) (Dimension, bool
 //
 // Rules:
 //   - rules/types/units.md — "Unit metadata value types" (1), (4), (7), (10)
-//   - rules/corrections/md062-unit-metadata-value-types-correction-20261027.md — §§ 2, 9(7)–9(8), 10(1), 10(3), 11(4)
+//   - rules/corrections/applied/md062-unit-metadata-value-types-correction-20261027-20261121.md — §§ 2, 9(7)–9(8), 10(1), 10(3), 11(4)
 func (a *Analyzer) recordUnitMetadataRead(expr *ast.MemberExpression, reference *ast.UnitReferenceExpression, unit UnitDefinition, typ Type) (Type, bool) {
 	read := UnitMetadataRead{Unit: reference.Unit, Module: unit.Module, Member: expr.Property.Value, Type: typ}
 	if key, declarable := unitMetadataKeys[strings.ToLower(read.Member)]; declarable && key == read.Member {
@@ -191,7 +191,7 @@ var unitMetadataMemberNames = []string{
 // UnitMetadataMembers lists the metadata members of the named unit with the
 // same types and read errors that Sema applies to `<U>.Member`.
 // Rules: rules/tooling/lsp.md — completions; rules/types/units.md — "Unit metadata value types" (1), (11);
-// rules/corrections/md062-unit-metadata-value-types-correction-20261027.md — § 12(9).
+// rules/corrections/applied/md062-unit-metadata-value-types-correction-20261027-20261121.md — § 12(9).
 func (a *Analyzer) UnitMetadataMembers(unit string) ([]UnitMetadataMember, bool) {
 	if a == nil {
 		return nil, false

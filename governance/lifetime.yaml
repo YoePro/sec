@@ -10,7 +10,7 @@ integrations:
     document_revision: "2.0"
     repository_baseline: fafd8cb
     rules:
-      - rules/corrections/md117-heterogeneous-variadic-type-packs-correction.md
+      - rules/corrections/applied/md117-heterogeneous-variadic-type-packs-correction-20261121.md
       - rules/memory/lifetime_analysis.md
       - rules/memory/ownership.md
       - rules/memory/borrowing.md
@@ -355,7 +355,7 @@ integrations:
     document_revision: "2.0"
     repository_baseline: 069c111
     rules:
-      - rules/corrections/md117-heterogeneous-variadic-type-packs-correction.md
+      - rules/corrections/applied/md117-heterogeneous-variadic-type-packs-correction-20261121.md
       - rules/memory/copy_move.md
       - rules/memory/ownership.md
       - rules/platform/volatile.md
@@ -724,7 +724,7 @@ integrations:
     document_revision: "2.0"
     repository_baseline: 069c111
     rules:
-      - rules/corrections/md117-heterogeneous-variadic-type-packs-correction.md
+      - rules/corrections/applied/md117-heterogeneous-variadic-type-packs-correction-20261121.md
       - rules/memory/borrowing.md
       - rules/memory/ownership.md
       - rules/memory/copy_move.md

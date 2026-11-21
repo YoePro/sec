@@ -1,0 +1,18 @@
+module main
+
+enum ReadError error { Unavailable }
+fn Work() int { return 42 }
+fn ReadValue() Result[int, ReadError] { return Err(ReadError.Unavailable) }
+
+fn InfallibleCreation() Task[int] {
+    return spawn Work()
+}
+fn AwaitCreation() void {
+    let outcome := await spawn Work()
+}
+fn UnwrappedOutcome(worker: Task[int]) int {
+    return await worker
+}
+fn FlattenedCreation() Result[Task[int], TaskSpawnError] {
+    return spawn ReadValue()
+}

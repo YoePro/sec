@@ -729,7 +729,7 @@ size never define language eligibility.
 
 ## 40. Native layout facts (MD-141, MD-142)
 
-Integrated 2026-11-20 from `rules/corrections/MD-141-MD-142-scalar-and-aggregate-layout-normative-correction-2026-11-20.md` § 11(3).
+Integrated 2026-11-20 from `rules/corrections/applied/MD-141-MD-142-scalar-and-aggregate-layout-normative-correction-2026-11-20-20261121.md` § 11(3).
 
 **§ 40(1)** A `CompilationPlan` that claims layout-sensitive lowering carries one immutable, normalized native-layout fact set: the target layout identity and its provenance (toolchain/provider and version, or the validated maintained description), the ABI identity, the required alignment of every scalar storage representation it supports (`IntegerStorage(8..256)`, `BinaryFloatStorage(32, 64)`; `rules/memory/layout.md` § 47.2), any verified native aggregate or array constraints and the address-space distinctions that affect them.
 
@@ -741,7 +741,7 @@ Integrated 2026-11-20 from `rules/corrections/MD-141-MD-142-scalar-and-aggregate
 
 ## 41. Target profile and allocation-provider selection (MD-139)
 
-Integrated 2026-11-20 from `rules/corrections/MD-139-allocation-profile-provider-selection-proposed-correction-2026-11-20.md` (owner accepted the manifest spelling 2026-11-20). MD-034 stays decided and independent.
+Integrated 2026-11-20 from `rules/corrections/applied/MD-139-allocation-profile-provider-selection-proposed-correction-2026-11-20-20261121.md` (owner accepted the manifest spelling 2026-11-20). MD-034 stays decided and independent.
 
 **§ 41(1)** The target-profile family (`hosted`, `rtos`, `baremetal`) is selected by the Variant/Target `profile` field (`rules/projects/projects.md` § 19(11)); without it the registry's explicit per-target default applies, never a heuristic from OS or architecture names. Transitional registry labels are mapped per target: `hosted` → Hosted, `rtos` → RTOS, `freestanding` → BareMetal. A missing or contradictory mapping fails closed.
 

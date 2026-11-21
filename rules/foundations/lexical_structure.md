@@ -1,5 +1,15 @@
 # Lexical Structure
 
+- **Status:** Normative
+- **Created:** 2026-07-27
+- **Last updated:** 2026-11-21 (metadata header; last substantive update 2026-11-07)
+- **Document revision:** 1.0
+- **Sec language version:** 0.1
+- **Canonical path:** `rules/foundations/lexical_structure.md`
+- **Implementation governance:** `governance/lexer.yaml` (`frontend.lexical-structure`)
+- **Related rulebooks:** `rules/foundations/grammar.md`, `rules/foundations/operators.md`, `rules/foundations/names_scopes_visibility.md`, `rules/foundations/attributes.md`, `rules/types/types.md`, `rules/compiler/compiler_known_members.md`, `rules/compiler/parser_recovery.md`, `rules/tooling/formatter.md`, `rules/tooling/diagnostics.md`, `rules/tooling/lsp.md`
+
+---
 ## Purpose
 
 This rulebook defines how Sec source text is converted into lexical tokens.
@@ -937,7 +947,7 @@ The formatter and syntax highlighter determine presentation from syntactic conte
 
 ---
 
-**Amendment MD-111 (2026-10-30, `rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md` §§ 8(1), 10(1)).** `hardware`
+**Amendment MD-111 (2026-10-30, `rules/corrections/applied/MD-111-hardware-facts-approved-decision-20261030-20261121.md` §§ 8(1), 10(1)).** `hardware`
 is a contextual word, not a reserved keyword: it starts a hardware fact
 declaration only at a module-scope declaration boundary when followed by
 `region`, `resource` or `endpoint`, and stays an ordinary identifier elsewhere.

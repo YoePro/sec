@@ -470,6 +470,9 @@ func (p *Parser) parseStatement() ast.Statement {
 		return nil
 
 	case lexer.AT:
+		if p.peekIsCAlias() {
+			return p.parseCAliasDeclaration()
+		}
 		if p.recoveryContext == RecoveryContextTopLevel && p.knownAttributeSetEndsAtEOF() {
 			return p.parseUnattachedAttributeSet()
 		}
@@ -673,7 +676,8 @@ func (p *Parser) knownAttributeSetEndsAtEOF() bool {
 			return false
 		}
 		name := p.l.NextToken()
-		if name.Type != lexer.IDENT || !compilerKnownAttributeName(name.Lexeme) {
+		// A following @cAlias is a declaration the set can reach.
+		if name.Type != lexer.IDENT || !compilerKnownAttributeName(name.Lexeme) || name.Lexeme == cAliasAttribute {
 			return false
 		}
 		next = p.l.NextToken()

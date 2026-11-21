@@ -8,7 +8,7 @@ import (
 
 // Public materializers borrow named arrays and slices, preserve caller use,
 // validate element/arity contracts and reject consuming argument markers.
-// Rules: rules/corrections/md109-core-string-materialization-correction.md
+// Rules: rules/corrections/applied/md109-core-string-materialization-correction-20261121.md
 // — §§1.2–1.4,2.1–2.6,10.2; rules/memory/borrowing.md — §15.2.
 func TestStringMaterializationStaticCalls(t *testing.T) {
 	valid, err := os.ReadFile("../../testdata/sema/string_materialization_static_valid.sec")

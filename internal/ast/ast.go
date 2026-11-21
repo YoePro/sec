@@ -951,6 +951,28 @@ func (ms *ModuleStatement) TokenLiteral() string {
 	return ms.Token.Lexeme
 }
 
+// CAliasDeclaration is the standalone module-scope declaration
+// `@cAlias(name: "c::...", target: TypeReference)` of MD-021. It attaches to
+// no following declaration; Target is parsed as a TypeReference, not as an
+// attribute-argument expression. Name is nil and Target invalid when the
+// source was malformed.
+// Rules: rules/foundations/grammar.md — § 126; rules/foundations/attributes.md — § 95;
+// rules/platform/ffi.md — § 56(3).
+type CAliasDeclaration struct {
+	Token       lexer.Token // '@'
+	Keyword     lexer.Token // cAlias
+	NameLabel   lexer.Token
+	Name        *StringLiteral
+	TargetLabel lexer.Token
+	Target      *TypeReference
+	Close       lexer.Token // ')'
+	Invalid     bool
+}
+
+func (d *CAliasDeclaration) statementNode() {}
+
+func (d *CAliasDeclaration) TokenLiteral() string { return d.Token.Lexeme }
+
 type ImportStatement struct {
 	Token lexer.Token
 	// Attributes are the source-selection attributes (@target, @when)

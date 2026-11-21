@@ -22,7 +22,7 @@ import (
 // A try over a runtime concatenation still stops at the named P23 string
 // allocation boundary.
 // Rules: rules/foundations/operators.md — §§ 29.5, 29.6;
-// rules/corrections/MD-004-MD-039-string-concatenation-try-or-panic-correction-20261031.md — § 2(5).
+// rules/corrections/applied/MD-004-MD-039-string-concatenation-try-or-panic-correction-20261031-20261121.md — § 2(5).
 func TestSchema13FoldedStringTry(t *testing.T) {
 	tool := testsupport.RequireSecMLIROptPath(t)
 	source, err := os.ReadFile("../../../testdata/semantic_ir/folded_string_try.sec")

@@ -24,7 +24,7 @@ type HardwareModuleContext struct {
 
 // SetHardwareModuleContext snapshots module and target/Device provenance before
 // declaration collection. It does not select source files (MD-111 §§4(2),12).
-// Rules: rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md — §§2–8,13(2).
+// Rules: rules/corrections/applied/MD-111-hardware-facts-approved-decision-20261030-20261121.md — §§2–8,13(2).
 func (a *Analyzer) SetHardwareModuleContext(context HardwareModuleContext) {
 	a.recordConfiguration(func(b *Analyzer) { b.SetHardwareModuleContext(context) })
 	clone := HardwareModuleContext{ModuleNames: map[modules.ModuleIdentity]modules.ModuleName{}, Files: map[string]modules.ModuleIdentity{}, Imports: map[string]map[string][]modules.ModuleIdentity{}}
@@ -97,7 +97,7 @@ func HardwareModuleContextFor(program *ast.Program, identify func(file string) (
 // HardwareFacts returns an isolated, validated declaration snapshot. False means
 // no successful hardware pass, never permission to fall back to guessed facts.
 // Rules: MD-111 §§2,4(3),6,12; incremental_compilation.md §15.
-// Rules: rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md — §§2–8,13(2).
+// Rules: rules/corrections/applied/MD-111-hardware-facts-approved-decision-20261030-20261121.md — §§2–8,13(2).
 func (a *Analyzer) HardwareFacts() (hardware.Facts, bool) {
 	return a.hardwareFacts.Clone(), a.hardwareFactsValid
 }
@@ -107,7 +107,7 @@ func (a *Analyzer) HardwareFacts() (hardware.Facts, bool) {
 // identities and shares its schema/normalizer with later project consumers.
 // It neither performs general CTE nor issues hardware operations.
 // Rules: MD-111 §§2–8,12(1)3–4,13(2).
-// Rules: rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md — §§2–8,13(2).
+// Rules: rules/corrections/applied/MD-111-hardware-facts-approved-decision-20261030-20261121.md — §§2–8,13(2).
 func (a *Analyzer) ResolveHardwareDeclarations(program *ast.Program) (hardware.Facts, []Error) {
 	if program == nil {
 		return hardware.Facts{}, nil
@@ -223,7 +223,7 @@ func (a *Analyzer) ResolveHardwareDeclarations(program *ast.Program) (hardware.F
 
 // hardwareMetadataValue retains restricted AST values without runtime symbol
 // lookup or evaluation. Rules: MD-111 §§3(3)–(6),8(1).
-// Rules: rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md — §§2–8,13(2).
+// Rules: rules/corrections/applied/MD-111-hardware-facts-approved-decision-20261030-20261121.md — §§2–8,13(2).
 func hardwareMetadataValue(v *ast.HardwareValue) hardware.Value {
 	if v == nil {
 		return hardware.Value{}
@@ -240,7 +240,7 @@ func hardwareMetadataValue(v *ast.HardwareValue) hardware.Value {
 
 // analyzeHardwareDeclarations publishes only a successful source-stage snapshot
 // and forwards mandatory errors/configurable warnings (MD-111 §§12,13(2)).
-// Rules: rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md — §§2–8,13(2).
+// Rules: rules/corrections/applied/MD-111-hardware-facts-approved-decision-20261030-20261121.md — §§2–8,13(2).
 func (a *Analyzer) analyzeHardwareDeclarations(program *ast.Program) {
 	facts, errors := a.ResolveHardwareDeclarations(program)
 	valid := true
@@ -258,7 +258,7 @@ func (a *Analyzer) analyzeHardwareDeclarations(program *ast.Program) {
 
 // hardwareDiagnostic gives each schema failure a stable identity and preserves
 // source/related spans. Rules: MD-111 §13(2); diagnostics.md §24(4i).
-// Rules: rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md — §§2–8,13(2).
+// Rules: rules/corrections/applied/MD-111-hardware-facts-approved-decision-20261030-20261121.md — §§2–8,13(2).
 func hardwareDiagnostic(issue hardware.Issue) Error {
 	ids := map[string]string{"type": diagnostics.HardwareMemberType, "member": diagnostics.HardwareMemberSchema, "enum": diagnostics.HardwareEnumCase, "domain": diagnostics.HardwareUnknownDomain, "range": diagnostics.HardwareAddressExtent, "symbol": diagnostics.HardwareSymbolResolution, "capability": diagnostics.HardwareRequiredCapability, "conflict": diagnostics.HardwareRegionConflict, "unsupported": diagnostics.HardwareSchemaUnavailable, "context": diagnostics.HardwareContextUnavailable, "overlap": diagnostics.HardwareRegionOverlap, "reserved": diagnostics.ReservedDeclarationName}
 	id := ids[issue.Code]
@@ -275,7 +275,7 @@ func hardwareDiagnostic(issue hardware.Issue) Error {
 // cover the address; `Project.<name>` needs the manifest export tables, which
 // are not available yet (S1187). Invalid metadata already reported its own
 // errors and publishes no facts, so no binding is resolved against it.
-// Rules: rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md — §§1(4),10(1),10(7);
+// Rules: rules/corrections/applied/MD-111-hardware-facts-approved-decision-20261030-20261121.md — §§1(4),10(1),10(7);
 // rules/platform/fixed-address-bindings.md.
 func (a *Analyzer) resolveAddressEndpoint(stmt *ast.LetStatement) (hardware.Endpoint, bool) {
 	token := expressionToken(stmt.Address)

@@ -1,6 +1,6 @@
 schema_version: 1
-updated: "2026-11-20"
-last_id: MD-147
+updated: "2026-11-21"
+last_id: MD-148
 purpose: >-
   Tracks normative decisions that are missing or insufficiently precise and
   therefore constrain implementation. Remove an entry only after the owning
@@ -123,7 +123,7 @@ decisions:
       ffi.unresolved-c-binding-type for every c:: name. Decisions needed:
       the binding environment's form, ownership, per-target contents, and
       selection mechanism.
-      Accepted by the owner 2026-11-20 (complete proposal rev 1.1, rules/corrections/MD-021-c-binding-environment-complete-proposal-20261120.md) and integrated: ffi.md § 56, platform_model.md § 31, abi.md § 46, grammar.md § 126, attributes.md § 95, modules.md § 27, cli.md § 8, projects.md § 19(16), target_profiles.md § 42. Closed as a design decision; implementation tracked in frontend.ffi-v2 (governance/ffi.yaml).
+      Accepted by the owner 2026-11-20 (complete proposal rev 1.1, rules/corrections/applied/MD-021-c-binding-environment-complete-proposal-20261120-20261121.md) and integrated: ffi.md § 56, platform_model.md § 31, abi.md § 46, grammar.md § 126, attributes.md § 95, modules.md § 27, cli.md § 8, projects.md § 19(16), target_profiles.md § 42. Closed as a design decision; implementation tracked in frontend.ffi-v2 (governance/ffi.yaml).
     classification: blocking
     status: decided-implementation-pending
   - id: MD-026
@@ -208,7 +208,7 @@ decisions:
       Result[string, StringError] operand of `+=` with S1022 pointing to
       `s += try value.ToString()`.
       Approved by the owner, dated 2026-10-31
-      (rules/corrections/MD-004-MD-039-string-concatenation-try-or-panic-correction-20261031.md):
+      (rules/corrections/applied/MD-004-MD-039-string-concatenation-try-or-panic-correction-20261031-20261121.md):
       `string +` and `+=` take explicit try for recoverable StringError, and
       without try panic on materialization failure. It narrowly amends MD-004
       for `+` and `+=` only; interpolation is not changed. Rulebooks
@@ -736,7 +736,7 @@ decisions:
       - rules/library/core-library.md
       - rules/compiler/compiler_known_members.md
       - sec/stdlib/str/stdlib_str.md
-      - rules/corrections/md109-core-string-materialization-correction.md
+      - rules/corrections/applied/md109-core-string-materialization-correction-20261121.md
     description: >-
       Open for complete application. Owner supplied the core-owned string
       materialization correction on 2026-10-25: public static
@@ -762,7 +762,7 @@ decisions:
       those required implementation and verification gates pass. No new
       language decision is requested for the already chosen public route.
     classification: architectural
-    status: open
+    status: decided-implementation-pending
   - id: MD-111
     area: hardware-endpoint-fact-source
     rulebooks:
@@ -799,7 +799,7 @@ decisions:
       (HardwareInstance[T]) depends on the region's memory kind. Until
       decided, Sema types every @address binding as a hardware register, and
       the ordinary-addressed-storage branch of P15-42/42a is unreachable.
-      Decided 2026-10-30 (owner; rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md): typed compile-time hardware facts from source declarations (`hardware region|resource|endpoint`) and project `[hardware.*]` tables in .sec/sec.toml normalize to one plan-scoped HardwareFacts model with separate canonical identities; project overrides select one source declaration explicitly and warn on changed properties; target-supplied address domains with domain-sized addresses; closed metadata enums and member schemas; Sec 0.1 static bindings use only named endpoints, `@address(Endpoint[, alias])`, and numeric @address is a compile-time error; alias warnings and acknowledgement; a conservative first executable plan subset (whole-register MemoryMapped read or replacement write). Synchronized 2026-10-30: platform_model.md §§ 10, 20; hardware-register-access.md §§ 11.7, 13.5; fixed-address-bindings.md §§ 2, 8, 10; registers.md § 11.7; projects.md § 6(13)-6(17); modules.md § 2.4; grammar.md top-level declarations; lexical_structure.md (contextual hardware/alias); attributes.md target-binding; semantic_ir.md § 21(10); incremental_compilation.md § 15; lsp.md; sec_mlir_dialect.md v11.41.1 (identity note). Implementation progress 2026-10-30: steps 1-2 target address domains, restricted declaration parser/AST and formatter are implemented. Step 3 source schema and Sema HardwareFacts are implemented in internal/hardware and internal/sema/hardware_metadata.go: shared closed member/enum tables, exact domain arithmetic, region/endpoint validation, canonical resolver-owned source identities and import visibility, per-property provenance, isolated snapshots, S1178-S1187 and A2010 diagnostics. The declaration-only ResolveHardwareDeclarations API requires explicit canonical HardwareModuleContext; missing resolver/target facts fail closed instead of deriving identities from filenames or short module names. Manifest B definitions/overrides/applicability and their tests, final CLI/LSP plan assembly/fingerprinting, named-endpoint bindings/aliases, verified physical operation plans and IR remain pending with their separate governance owners. MD-111 remains decided-implementation-pending until the complete closure gates pass; tracked in governance frontend.fixed-address-bindings, platform.hardware-register-access, compiler.platform-model and tooling.project-targets-and-configuration (MD-111 items).
+      Decided 2026-10-30 (owner; rules/corrections/applied/MD-111-hardware-facts-approved-decision-20261030-20261121.md): typed compile-time hardware facts from source declarations (`hardware region|resource|endpoint`) and project `[hardware.*]` tables in .sec/sec.toml normalize to one plan-scoped HardwareFacts model with separate canonical identities; project overrides select one source declaration explicitly and warn on changed properties; target-supplied address domains with domain-sized addresses; closed metadata enums and member schemas; Sec 0.1 static bindings use only named endpoints, `@address(Endpoint[, alias])`, and numeric @address is a compile-time error; alias warnings and acknowledgement; a conservative first executable plan subset (whole-register MemoryMapped read or replacement write). Synchronized 2026-10-30: platform_model.md §§ 10, 20; hardware-register-access.md §§ 11.7, 13.5; fixed-address-bindings.md §§ 2, 8, 10; registers.md § 11.7; projects.md § 6(13)-6(17); modules.md § 2.4; grammar.md top-level declarations; lexical_structure.md (contextual hardware/alias); attributes.md target-binding; semantic_ir.md § 21(10); incremental_compilation.md § 15; lsp.md; sec_mlir_dialect.md v11.41.1 (identity note). Implementation progress 2026-10-30: steps 1-2 target address domains, restricted declaration parser/AST and formatter are implemented. Step 3 source schema and Sema HardwareFacts are implemented in internal/hardware and internal/sema/hardware_metadata.go: shared closed member/enum tables, exact domain arithmetic, region/endpoint validation, canonical resolver-owned source identities and import visibility, per-property provenance, isolated snapshots, S1178-S1187 and A2010 diagnostics. The declaration-only ResolveHardwareDeclarations API requires explicit canonical HardwareModuleContext; missing resolver/target facts fail closed instead of deriving identities from filenames or short module names. Manifest B definitions/overrides/applicability and their tests, final CLI/LSP plan assembly/fingerprinting, named-endpoint bindings/aliases, verified physical operation plans and IR remain pending with their separate governance owners. MD-111 remains decided-implementation-pending until the complete closure gates pass; tracked in governance frontend.fixed-address-bindings, platform.hardware-register-access, compiler.platform-model and tooling.project-targets-and-configuration (MD-111 items).
     classification: blocking
     status: decided-implementation-pending
   - id: MD-117
@@ -849,7 +849,7 @@ decisions:
       through the chosen design rather than as duplicate owners.
 
       Language mechanism decided 2026-10-26
-      (rules/corrections/md117-heterogeneous-variadic-type-packs-correction.md):
+      (rules/corrections/applied/md117-heterogeneous-variadic-type-packs-correction-20261121.md):
       heterogeneous native variadic type packs `[...Types]` with
       `...Types` / `...ref Types` / `...ref mut Types`, statically known
       heterogeneous arity, ordinary `for` iteration with unchanged binding
@@ -990,7 +990,7 @@ decisions:
     area: ordinary-addressed-storage-bindings
     rulebooks:
       - rules/platform/fixed-address-bindings.md
-      - rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md
+      - rules/corrections/applied/MD-111-hardware-facts-approved-decision-20261030-20261121.md
       - rules/memory/references.md
       - rules/mlir/packages/sec-mlir-dialect_package15.md
     description: >-
@@ -1336,7 +1336,7 @@ decisions:
       consumes (provider identity, reclamation authority, and individual
       reclamation or not). Governance owners: platform.target-profiles and
       lowering.sec-mlir-package19.
-      Accepted by the owner 2026-11-20 and integrated (projects.md § 19(11)-(15), target_profiles.md § 41, allocation.md § 28A) from rules/corrections/MD-139-allocation-profile-provider-selection-proposed-correction-2026-11-20.md. Implementation tracked in platform.target-profiles.
+      Accepted by the owner 2026-11-20 and integrated (projects.md § 19(11)-(15), target_profiles.md § 41, allocation.md § 28A) from rules/corrections/applied/MD-139-allocation-profile-provider-selection-proposed-correction-2026-11-20-20261121.md. Implementation tracked in platform.target-profiles.
     classification: blocking
     status: decided-implementation-pending
 

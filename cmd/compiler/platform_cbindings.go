@@ -19,7 +19,13 @@ import (
 const cBindingsUsage = `usage: sec platform c-bindings init --id ID --version VERSION --source-root DIR [--file FILE] [--json]
        sec platform c-bindings show [--file FILE] [--json]
        sec platform c-bindings validate [--file FILE] [--variant NAME] [--json]
-       sec platform c-bindings resolve --variant NAME [--file FILE] [--json]`
+       sec platform c-bindings resolve --variant NAME [--file FILE] [--json]
+       sec platform c-bindings package set [--id ID] [--version VERSION] [--source-root DIR] [--file FILE] [--if-match SHA256] [--json]
+       sec platform c-bindings environment add NAME --os OS --arch ARCH --abi ABI --c-runtime RUNTIME [--c-runtime-versions RANGE] [--file FILE] [--if-match SHA256] [--json]
+       sec platform c-bindings environment set NAME [--os OS] [--arch ARCH] [--abi ABI] [--c-runtime RUNTIME] [--c-runtime-versions RANGE | --clear-c-runtime-versions] [--file FILE] [--if-match SHA256] [--json]
+       sec platform c-bindings environment remove NAME [--file FILE] [--if-match SHA256] [--json]
+       sec platform c-bindings module add PATH (--common | --environment NAME) [--file FILE] [--if-match SHA256] [--json]
+       sec platform c-bindings module remove PATH (--common | --environment NAME) [--file FILE] [--if-match SHA256] [--json]`
 
 // cBindingsResult is the sec.c-bindings-cli JSON document (cli.md § 8(3)).
 type cBindingsResult struct {
@@ -28,6 +34,7 @@ type cBindingsResult struct {
 	Operation   string                 `json:"operation"`
 	Status      string                 `json:"status"`
 	Changed     bool                   `json:"changed"`
+	Reason      string                 `json:"reason,omitempty"`
 	File        string                 `json:"file"`
 	BeforeSHA   *string                `json:"before_sha256,omitempty"`
 	AfterSHA    *string                `json:"after_sha256,omitempty"`
@@ -79,7 +86,23 @@ func runPlatformCommand(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	operation := args[1]
-	options, err := parseCBindingsOptions(args[2:])
+	rest := args[2:]
+	if operation == "package" || operation == "environment" || operation == "module" {
+		if len(rest) == 0 {
+			fmt.Fprintf(stderr, "sec platform c-bindings %s: missing subcommand\n%s\n", operation, cBindingsUsage)
+			return 1
+		}
+		operation, rest = operation+"."+rest[0], rest[1:]
+	}
+	var positional string
+	if operation != "package.set" && strings.Contains(operation, ".") {
+		if len(rest) == 0 || strings.HasPrefix(rest[0], "--") {
+			fmt.Fprintf(stderr, "sec platform c-bindings %s: missing NAME or PATH\n%s\n", strings.ReplaceAll(operation, ".", " "), cBindingsUsage)
+			return 1
+		}
+		positional, rest = rest[0], rest[1:]
+	}
+	options, err := parseCBindingsOptions(rest)
 	if err != nil {
 		fmt.Fprintf(stderr, "sec platform c-bindings %s: %v\n%s\n", operation, err, cBindingsUsage)
 		return 1
@@ -93,31 +116,49 @@ func runPlatformCommand(args []string, stdout, stderr io.Writer) int {
 		return runCBindingsValidate(options, stdout, stderr)
 	case "resolve":
 		return runCBindingsResolve(options, stdout, stderr)
+	case "package.set", "environment.add", "environment.set", "environment.remove", "module.add", "module.remove":
+		op, err := cBindingsOperation(operation, positional, options)
+		if err != nil {
+			fmt.Fprintf(stderr, "sec platform c-bindings %s: %v\n%s\n", strings.ReplaceAll(operation, ".", " "), err, cBindingsUsage)
+			return 1
+		}
+		return runCBindingsMutation(op, options, stdout, stderr)
 	}
 	fmt.Fprintf(stderr, "unknown c-bindings command %q\n%s\n", operation, cBindingsUsage)
 	return 1
 }
 
 type cBindingsOptions struct {
-	file, id, version, sourceRoot, variant string
-	json                                   bool
+	file, id, version, sourceRoot, variant    string
+	os, arch, abi, cRuntime, cRuntimeVersions string
+	environment, ifMatch                      string
+	json, common, clearCRuntimeVersions       bool
+	given                                     map[string]bool
 }
 
 // parseCBindingsOptions reads the flags shared by the read-only commands.
 // Rules: rules/tooling/cli.md — § 8(1).
 func parseCBindingsOptions(args []string) (cBindingsOptions, error) {
-	options := cBindingsOptions{file: cbindings.DefaultFile}
+	options := cBindingsOptions{file: cbindings.DefaultFile, given: map[string]bool{}}
 	for index := 0; index < len(args); index++ {
 		flag := args[index]
-		if flag == "--json" {
-			options.json = true
+		if switches := map[string]*bool{"--json": &options.json, "--common": &options.common,
+			"--clear-c-runtime-versions": &options.clearCRuntimeVersions}[flag]; switches != nil {
+			*switches = true
+			options.given[flag] = true
 			continue
 		}
 		target := map[string]*string{"--file": &options.file, "--id": &options.id, "--version": &options.version,
-			"--source-root": &options.sourceRoot, "--variant": &options.variant}[flag]
+			"--source-root": &options.sourceRoot, "--variant": &options.variant, "--os": &options.os, "--arch": &options.arch,
+			"--abi": &options.abi, "--c-runtime": &options.cRuntime, "--c-runtime-versions": &options.cRuntimeVersions,
+			"--environment": &options.environment, "--if-match": &options.ifMatch}[flag]
 		if target == nil {
 			return options, fmt.Errorf("unknown argument %q", flag)
 		}
+		if options.given[flag] {
+			return options, fmt.Errorf("%s given more than once", flag)
+		}
+		options.given[flag] = true
 		if index+1 >= len(args) {
 			return options, fmt.Errorf("%s needs a value", flag)
 		}
@@ -208,8 +249,24 @@ func runCBindingsInit(options cBindingsOptions, stdout, stderr io.Writer) int {
 // and renames it into place, so a failure never leaves a partial file.
 // Rules: MD-021 correction § 5(3).
 func writeFileAtomically(file string, data []byte) error {
+	return replaceFileAtomically(file, data, nil)
+}
+
+// errStaleFile reports that the file changed after it was read.
+var errStaleFile = errors.New("the file changed after it was read")
+
+// replaceFileAtomically writes through a temporary file in the same
+// directory, re-hashes the current file immediately before the rename when
+// expected is set (nil requires the file to be absent), and keeps the
+// existing permission bits; new files get 0644.
+// Rules: MD-021 correction §§ 5(2)-(3).
+func replaceFileAtomically(file string, data []byte, expected *string) error {
 	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
 		return err
+	}
+	mode := os.FileMode(0o644)
+	if info, err := os.Stat(file); err == nil {
+		mode = info.Mode().Perm()
 	}
 	temporary, err := os.CreateTemp(filepath.Dir(file), ".c-bindings-*.toml")
 	if err != nil {
@@ -223,6 +280,15 @@ func writeFileAtomically(file string, data []byte) error {
 	}
 	if err := temporary.Close(); err != nil {
 		return err
+	}
+	if err := os.Chmod(name, mode); err != nil {
+		return err
+	}
+	if expected != nil {
+		current, err := os.ReadFile(file)
+		if err != nil || *fileSHA256(current, true) != *expected {
+			return errStaleFile
+		}
 	}
 	return os.Rename(name, file)
 }
@@ -368,5 +434,124 @@ func runCBindingsResolve(options cBindingsOptions, stdout, stderr io.Writer) int
 	if report.Status != "complete" {
 		return 2
 	}
+	return 0
+}
+
+// cBindingsOperation builds the typed request of one mutating command and
+// rejects flags that do not belong to it.
+// Rules: MD-021 correction §§ 4(3)-(5); rules/tooling/cli.md — § 8.
+func cBindingsOperation(operation, positional string, options cBindingsOptions) (cbindings.Operation, error) {
+	allowed := map[string][]string{
+		"package.set":        {"--id", "--version", "--source-root"},
+		"environment.add":    {"--os", "--arch", "--abi", "--c-runtime", "--c-runtime-versions"},
+		"environment.set":    {"--os", "--arch", "--abi", "--c-runtime", "--c-runtime-versions", "--clear-c-runtime-versions"},
+		"environment.remove": {},
+		"module.add":         {"--common", "--environment"},
+		"module.remove":      {"--common", "--environment"},
+	}[operation]
+	for flag := range options.given {
+		if flag == "--file" || flag == "--json" || flag == "--if-match" || indexString(allowed, flag) >= 0 {
+			continue
+		}
+		return cbindings.Operation{}, fmt.Errorf("%s does not apply to this command", flag)
+	}
+	value := func(flag string, text string) *string {
+		if !options.given[flag] {
+			return nil
+		}
+		return &text
+	}
+	op := cbindings.Operation{Kind: cbindings.OperationKind(operation), Environment: positional,
+		ID: value("--id", options.id), Version: value("--version", options.version), SourceRoot: value("--source-root", options.sourceRoot),
+		OS: value("--os", options.os), Arch: value("--arch", options.arch), ABI: value("--abi", options.abi),
+		CRuntime: value("--c-runtime", options.cRuntime), CRuntimeVersions: value("--c-runtime-versions", options.cRuntimeVersions),
+		ClearCRuntimeVersions: options.clearCRuntimeVersions}
+	switch operation {
+	case "package.set":
+		if op.ID == nil && op.Version == nil && op.SourceRoot == nil {
+			return op, fmt.Errorf("give at least one of --id, --version, --source-root")
+		}
+	case "environment.add":
+		for _, flag := range []string{"--os", "--arch", "--abi", "--c-runtime"} {
+			if !options.given[flag] {
+				return op, fmt.Errorf("%s is required", flag)
+			}
+		}
+	case "environment.set":
+		if op.CRuntimeVersions != nil && op.ClearCRuntimeVersions {
+			return op, fmt.Errorf("--c-runtime-versions and --clear-c-runtime-versions exclude each other")
+		}
+		if len(options.given) == countGiven(options, "--file", "--json", "--if-match") {
+			return op, fmt.Errorf("give at least one field to change")
+		}
+	case "module.add", "module.remove":
+		if options.common == options.given["--environment"] {
+			return op, fmt.Errorf("give exactly one of --common or --environment NAME")
+		}
+		op.Module, op.Common, op.Environment = positional, options.common, options.environment
+	}
+	return op, nil
+}
+
+func indexString(values []string, value string) int {
+	for index, candidate := range values {
+		if candidate == value {
+			return index
+		}
+	}
+	return -1
+}
+
+func countGiven(options cBindingsOptions, flags ...string) int {
+	count := 0
+	for _, flag := range flags {
+		if options.given[flag] {
+			count++
+		}
+	}
+	return count
+}
+
+// runCBindingsMutation reads the file, checks --if-match, applies the typed
+// edit and replaces the file atomically only after the edited text
+// validated; any failure leaves the previous bytes in place.
+// Rules: MD-021 correction §§ 5(2)-(6); rules/tooling/cli.md — § 8(3).
+func runCBindingsMutation(op cbindings.Operation, options cBindingsOptions, stdout, stderr io.Writer) int {
+	result := cBindingsResult{Format: "sec.c-bindings-cli", Version: 1, Operation: string(op.Kind), File: options.file}
+	command := strings.ReplaceAll(string(op.Kind), ".", " ")
+	reject := func(diagnostics ...cbindings.Diagnostic) int {
+		result.Status, result.Changed, result.Diagnostics = "rejected", false, diagnostics
+		result.AfterSHA = result.BeforeSHA
+		emitCBindings(result, options.json, stdout, command+" rejected")
+		return 2
+	}
+	data, err := os.ReadFile(options.file)
+	if errors.Is(err, os.ErrNotExist) {
+		return reject(cbindings.Diagnostic{ID: "c-bindings.no-file", Message: fmt.Sprintf("%s does not exist; create it with c-bindings init", options.file)})
+	} else if err != nil {
+		fmt.Fprintf(stderr, "sec platform c-bindings %s: %v\n", command, err)
+		return 1
+	}
+	result.BeforeSHA = fileSHA256(data, true)
+	if options.ifMatch != "" && !strings.EqualFold(options.ifMatch, *result.BeforeSHA) {
+		return reject(cbindings.Diagnostic{ID: "c-bindings.stale-file", Message: fmt.Sprintf("%s has SHA-256 %s, not the expected %s; re-read it with show --json", options.file, *result.BeforeSHA, options.ifMatch)})
+	}
+	edit := cbindings.Apply(string(data), op)
+	if edit.Rejected {
+		return reject(edit.Diagnostics...)
+	}
+	if !edit.Changed {
+		result.Status, result.Reason, result.AfterSHA = "complete", edit.Reason, result.BeforeSHA
+		emitCBindings(result, options.json, stdout, fmt.Sprintf("%s: unchanged (%s)", command, edit.Reason))
+		return 0
+	}
+	if err := replaceFileAtomically(options.file, []byte(edit.Text), result.BeforeSHA); errors.Is(err, errStaleFile) {
+		return reject(cbindings.Diagnostic{ID: "c-bindings.stale-file", Message: fmt.Sprintf("%s changed while the edit was prepared; nothing was written", options.file)})
+	} else if err != nil {
+		fmt.Fprintf(stderr, "sec platform c-bindings %s: %v\n", command, err)
+		return 1
+	}
+	result.Status, result.Changed, result.AfterSHA = "complete", true, fileSHA256([]byte(edit.Text), true)
+	emitCBindings(result, options.json, stdout, fmt.Sprintf("%s: updated %s", command, options.file))
 	return 0
 }

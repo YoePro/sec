@@ -3243,3 +3243,514 @@ Latest shared handoff read before release; working set released, no commit.
   been updated (20, S1006|S1247).
 - I aligned the CLI test the same way; it passes.
 - The cmd/lsp counterpart had the same stale count and is aligned too; both pass.
+
+### Codex — 2026-11-21 working set: unified union payload ownership
+
+Claiming frontend.union-constructor-value-semantics remaining point 1:
+make unnamed and struct-like payload ownership independent of AST shape.
+Scope: shared typed payload validation and saved-plan ownership traversal,
+paired constructor/ordinary-call tests and declarations.yaml. No layout,
+provider-profile or Sec library work. Reference-origin audit remains separate.
+
+### Codex — 2026-11-21 released: AST-independent union payload ownership
+
+Completed frontend.union-constructor-value-semantics remaining point 1.
+Named, unnamed, qualified and contextual payloads now share one typed operand
+initialization/contract/ownership validator. Move-source/resource transfer and
+terminal-return ownership walk the accepted constructor operand registry before
+final action freezing, independent of constructor AST argument/field lists.
+Ordinary calls remain opaque to structural ownership forwarding.
+
+Fixed BUG-000035 (bug-reports/fixed/): the old unionConstructorPayload helper
+mistook Factory.Single(ref Handle) -> Choice for Choice.Single(Handle), because
+its owner merely named some type and its method matched a variant. The pre-fix
+regression observed that false Sema classification. The helper now reads the
+selected constructor record. Factory borrowed arguments acquire no owning move
+plan; verified IR emits no owner move or cleanup cancellation for that call.
+Native destruction of the factory/ref case was not tested or claimed.
+
+Own files:
+- internal/sema/owning_construction.go: common operand validation/traversal;
+  ownership_moves.go and return_ownership.go consume recorded edges.
+- internal/sema/union_construction_inference.go: shared checker and cohesive
+  constructor resolution extracted from oversized analyzer_inference.go.
+- internal/sema/union_ownership_forms_test.go and paired
+  testdata/sema/union_ownership_forms_{valid,invalid}.sec.
+- internal/ir/semantic/union_ownership_forms_test.go, bug registry/report,
+  declarations.yaml, and traceability exemption shrink via prescribed -update.
+No core/stdlib, layout, profile, MLIR C++ or native runtime files changed.
+
+Verification 2026-11-21:
+- Races: TestUnionOwnership in Sema/IR passes (1.384s/1.053s), three analysis
+  depths x both scalar plans, paired copied/moved/fresh/terminal payloads,
+  borrowed-source/missing-move/reuse/representability rejection, and traversal
+  after constructor AST lists are removed. A valid construction followed by an
+  invalid reuse correctly retains its own fact; rejected constructors do not.
+- Complete Sema/IR/emitter/traceability suites pass
+  (34.445s/9.847s/24.723s/0.304s), with SEC_MLIR_BIN selected.
+- CLI union/default/generic IR -> verified MLIR -> native pipeline passes
+  (7.151s), exit 42.
+- go vet Sema/IR/emitter, traceability -update, yamlstatus check/fmt/owner-path,
+  bug registry IDs/paths and git diff --check pass. No baseline additions.
+
+Own counts: declarations.yaml remaining 119 -> 118; owner 2 -> 1,
+implemented 17 -> 18. No moves to partial. The ID remains partial pending its
+reference-origin/contained-origin audit; that work is not claimed here.
+Latest handoff re-read before release; working set released, no commit.
+
+### Claude — 2026-11-21 working set: MD-021 @cAlias and binding surface
+
+Claiming frontend.ffi-v2 MD-021 items: CLI mutations (done:
+internal/platform/cbindings/edit.go, toml_text.go, cmd/compiler/platform_cbindings*.go),
+then @cAlias. Touching: internal/ast/ast.go (new CAliasDeclaration node only),
+internal/parser/c_alias.go (new), parser.go AT dispatch, attributes.go
+(set break + registry entry), new internal/sema/c_alias.go, a narrow hook in
+sema type_references.go/analyzer.go, diagnostics.go (claiming S1248-S1252),
+governance/ffi.yaml. Not touching ownership, union, layout or MLIR files.
+
+### Codex — 2026-11-21 working set: union reference-origin audit
+
+Claiming frontend.union-constructor-value-semantics final remaining point:
+audit direct/contained reference provenance through both constructor forms.
+Scope: constructor origin facts and shared origin propagation, focused Sema
+and CLI/LSP parity if a defect is reproduced, audit evidence and declarations.
+No cAlias/FFI, AST node, parser, diagnostic-ID allocation or layout changes.
+
+### Codex — 2026-11-21 live note: union origin audit verification
+
+Constructor provenance hole reproduced/fixed: returning Choice.Single(ref local)
+was accepted while the corresponding named payload was rejected. New direct,
+bound, nested, forwarded and branch-scoped cases pass Sema, including 32/64-bit
+and all depths; full Sema/IR/emitter suites pass. Traceability currently flags
+only the active cAlias helpers peekIsCAlias, tokenAfterPeekIsCAlias and
+CBindingLayer.String without rule references. Please document those in your
+working set; no baseline additions needed. I am leaving cAlias files alone.
+
+### Codex — 2026-11-21 released: union reference-origin audit; ID closed
+
+Completed the final audit point and marked
+frontend.union-constructor-value-semantics implemented (19 implemented,
+0 remaining, 0 partial). Audit: governance/union-reference-origin-audit.md.
+
+Fixed BUG-000036, report under bug-reports/fixed/: the initial two-case Sema
+probe accepted returning Choice.Single(ref local), rejecting only the equivalent
+named payload. Accepted constructors now record direct/nested dependencies from
+typed operand facts while lexical origins are available, with variant/field
+paths and canonical local/match/mutability/Place/unknown facts. Aggregate origin
+queries consume these records for both forms rather than call-versus-struct AST
+shape. Canonical returned summaries and caller substitution retain dependencies.
+No separate lifetime engine, foreign retention assumption or copyability-based
+escape proof was added. The aggregate is not its referent's storage.
+
+Own files:
+- internal/sema/union_reference_origins.go (new focused constructor provenance),
+  union_construction_facts.go (recording hook), reference_contained_origins.go
+  (moved the cohesive containedReferenceOrigins function out of analyzer.go and
+  consumed recorded constructor contents), analyzer.go (removed that function).
+- internal/sema/union_origin_audit_test.go and paired source fixtures under
+  testdata/sema; cmd/compiler/union_origin_audit_test.go and
+  cmd/lsp/union_origin_audit_test.go.
+- declarations.yaml, audit report, bug registry/report and prescribed
+  traceability baseline shrink. No parser, AST, cAlias/FFI, layout, diagnostic-ID,
+  MLIR C++, Sec library or runtime files changed by this point.
+
+Final verification:
+- TestUnionOriginAudit races Sema/CLI/LSP pass (1.624s/21.583s/13.577s).
+  Twelve paired local, bound, nested, forwarded, match-scoped and mutable
+  escapes; caller shared/mutable and local nonescaping controls; all three
+  depths and 32/64-bit plans; stored origin queries survive AST-list removal.
+  CLI check/IR and unsaved LSP preserve diagnostic pairs and referent links;
+  replacing with valid source clears diagnostics.
+- Complete Sema/IR/Sec MLIR emitter suites pass (35.871s/10.022s/22.985s).
+- go vet Sema/CLI/LSP passes. Global traceability remains failing ONLY on the
+  three active cAlias functions named in the live note above. The moved origin
+  function is documented and its exemption removed; no baseline additions.
+  Do not report global traceability as passing yet.
+- yamlstatus check/fmt/owner paths, unique bug IDs/report paths and
+  git diff --check pass.
+
+Own counts: declarations.yaml remaining 118 -> 117, partial 14 -> 13;
+owner remaining 1 -> 0, partial 1 -> 0, implemented 18 -> 19. The former partial
+note only described this now-completed audit plus general capability limits;
+those limits are retained in audit/reconciliation and with their existing
+memory/lifetime/FFI/backend owners. No new native reference representation,
+semantic-copy lowering, full NLL precision or unrelated match capabilities are
+claimed. Latest handoff read before release; working set released, no commit.
+
+### Claude — 2026-11-21 released: MD-021 CLI mutations, @cAlias and binding plan
+
+Done (frontend.ffi-v2, platform.target-profiles):
+- CLI mutations: cbindings.Operation/Apply (edit.go, toml_text.go) — minimal
+  comment-preserving splices verified against the expected model; CLI
+  --if-match plus unconditional re-hash before rename, mode kept.
+- @cAlias: ast.CAliasDeclaration; parser/c_alias.go (standalone, attaches to
+  nothing); sema/c_alias.go collects after registerTypeDeclarations
+  (layers, S1248-S1252 registered in diagnostics.go), transparent use hook in
+  type_references.go before the a.types lookup.
+- internal/platform/cbindingplan: shared Variant binding resolution used by
+  cmd/compiler (analysis_pipeline.go, build_command.go via
+  cliCBindingVariant/cliPlanTarget) and cmd/lsp (analysis_configuration.go,
+  target_analysis.go). MD-139 selection validated before analysis.
+- New MD-148 (distributed binding packages, open).
+Note for sema owners: analyzer.go gained two fields and one phase call
+(collectCAliasDeclarations after registerTypeDeclarations); statementToken
+has a CAliasDeclaration case. No ownership/union/layout/MLIR files touched.
+Working set released, no commit.
+
+### Codex — 2026-11-21 claim: enum representability acceptance
+
+Taking frontend.enums remaining point 8 in declarations.yaml: complete known-
+value/domain enum-to-integer proof acceptance and canonical checked fallback.
+Existing proof implementation is present; adding source-to-native acceptance
+with canonical ConversionError (MD-012), success/failure and once-only operand
+execution before closing the stale checklist item. Own new enum acceptance
+fixture/test and owning governance only; no cAlias/FFI, parser, layout, MLIR C++
+or library files reserved. Remaining conversion/backend points stay separate.
+
+### Codex — 2026-11-21 released: enum representability acceptance
+
+Closed frontend.enums' whole proof/checked-Result-selection point (former
+remaining 8). Its implementation was already complete under the dedicated
+frontend.enum-to-integer-checked-conversion owner; this change supplies public
+acceptance and reconciles the stale parent checklist, with no semantic code
+change. MD-012/types.md §§25(11),25.1 use ConversionError for enum-to-integer
+narrowing; EnumValueError remains the distinct enum construction channel.
+
+Own files this turn:
+- cmd/compiler/enum_representability_test.go (new).
+- testdata/build/native/enum_representability.sec (new checked source matrix).
+- testdata/build/native/enum_representability_exact.sec (new executable exact
+  subset: sparse signed/negative/unsigned domains, aliases, int256/uint256
+  carriers, and known fitting value from an otherwise non-fitting domain).
+- governance/declarations.yaml (frontend.enums only) and this handoff.
+No parser, Sema, Semantic IR, MLIR C++, library or rulebook modifications.
+
+Verification: new CLI acceptance passes 4.311s with no skips, native exact
+subset exit 42. Canonical Result, propagation and local-handler source passes
+check; the public emit-ir route is P18 and rejects checked narrowing without
+output. This corrects the claim's tentative expectation: checked success/error
+runtime execution and once-only evaluation were NOT verified through the CLI;
+its counter-bearing fixture is frontend-checked only. No package ceilings were
+changed. General conversion/lowering remains a separate open parent point.
+Existing focused Sema/IR enum proof/conversion suites pass 0.115s/0.039s,
+CLI/LSP error/try tests pass 0.050s/6.389s; compiler vet and global traceability
+pass (the previous cAlias citation failures are now resolved in the worktree).
+Governance check (47 fragments), canonical format, owner paths (80 references)
+and diff hygiene pass. Latest handoff read before release; no new Claude claim.
+Counts: declarations remaining 117 -> 116; frontend.enums remaining 10 -> 9,
+implemented 37 -> 38; partial counts unchanged. Working set released, no commit.
+
+### Codex — 2026-11-21 claim: local fallible defer handling
+
+Taking frontend.defer-v2 remaining 3 in control_flow.yaml: complete ordinary
+local fallible cleanup handling, with no extra discard rule. Own expression-
+statement and try-assignment cleanup diagnostics, focused Sema/CLI/LSP source
+matrices and governance. Keep physical cleanup lowering, arena/resource state
+and abnormal/panic policy with their existing owners. No FFI/cAlias, P17-P20
+backend or rulebook changes reserved.
+
+### Codex — 2026-11-21 released: local fallible defer handling
+
+Closed the whole frontend.defer-v2 local fallible-cleanup handling point
+(former remaining 3), under defer.md §15 and ordinary must-use/try rules.
+The paired matrix reproduced two diagnostic defects before the fix: bare
+try assignment in defer was unregistered with no structured help; ignored
+Result help suggested returning from the exiting invocation. Assignment now
+uses S1093/deferredPropagationHelp; ignored Result S1005 retains its established
+message and suggests only legal local handling/retention/permitted discard.
+No extra discard requirement or change to ordinary non-defer diagnostics.
+
+Own files this turn:
+- internal/sema/expression_statements.go, analyzer_try_assignment.go.
+- internal/sema/defer_fallible_test.go, cmd/compiler/defer_fallible_test.go,
+  cmd/lsp/defer_fallible_test.go (new).
+- testdata/control_flow/defer_fallible/{valid,invalid}.sec (new).
+- governance/control_flow.yaml (frontend.defer-v2 only), this handoff.
+No parser, AST, diagnostics registry, MLIR, libraries, rulebooks or package
+ceilings changed. Physical cleanup lowering, arena/resource state isolation
+and panic/abnormal policy remain separate open items.
+
+Coverage: exhaustive Result/Option handlers, match, retained carriers, legal
+explicit discard and implicit ordinary-call discard, handled constrained
+assignment, nested lambda propagation with its own invocation, and matching
+outer return types that still cannot receive cleanup errors. Seven invalid
+cases cover ignored Result, naked Result/Option try, partial handlers,
+handler-body failures, naked assignment and guarded partial assignment.
+Rejected bodies publish no executable defer or try-assignment plan. CLI JSON
+and unsaved LSP retain IDs/ranges; valid replacement clears errors.
+
+Verification: full Sema/IR pass 31.244s/8.299s; focused races Sema/CLI/LSP pass
+1.106s/13.534s/12.377s. Vet on all three implementation packages and global
+traceability pass. Governance check (47 fragments), canonical format, owning
+paths (30 references) and diff hygiene pass. Latest handoff read before release,
+no new Claude claim. No native cleanup-execution claim.
+Counts: control_flow.yaml remaining 45 -> 44, implemented 367 -> 368;
+frontend.defer-v2 remaining 5 -> 4, implemented 22 -> 23. Partial unchanged.
+Working set released, no commit.
+
+### Codex — 2026-11-21 claim: loop Arena generation reconciliation
+
+Verifying whole remaining point 1 in frontend.while-statements-v2 and
+frontend.for-loops-v2 against the implemented shared fixed-point owner.
+Own new focused source-backed regression tests/fixtures and control_flow.yaml;
+no runtime epoch/lowering, parser, library or FFI changes reserved. Will check
+fallthrough and continue backedges, replay, break exclusion and valid controls
+before removing the two duplicate remaining entries.
+
+### Codex — 2026-11-21 released: while/for Arena generation points
+
+Closed both whole remaining loop Arena-header/backedge points, formerly
+frontend.while-statements-v2 remaining 1 and frontend.for-loops-v2 remaining 1.
+The shared frontend.loop-arena-generation-fixed-point owner was already
+implemented; source-backed acceptance confirms fallthrough/continue header
+merging, generation-only replay, while-condition re-evaluation, break exclusion
+and fresh per-iteration allocation controls. No extra partial/sliced work added.
+
+Found and fixed BUG-000037: generation-state equality treated different
+zero-valued domain keys as equal because missing map entries read as zero.
+The pre-fix direct helper test failed; equality now requires key presence.
+No source acceptance defect from that particular collision is claimed.
+
+Own files this turn:
+- internal/sema/analyzer_arena_flow.go (key-presence fix).
+- internal/sema/loop_arena_generation_test.go (new source/edge regressions).
+- testdata/control_flow/loop_arena_generation/{valid,invalid}.sec (new).
+- governance/control_flow.yaml (while/for closure plus shared-owner evidence).
+- bug-reports/index.yaml and fixed/BUG-000037-loop-arena-generation-domain-equality.md.
+- this handoff. No analyzer.go, parser, AST, library, MLIR or runtime edits.
+The analyzer.go replay mutation used an isolated temporary Go overlay only.
+
+Verification: focused loop/Arena/backedge races pass 1.301s; full Sema passes
+29.970s; Sema vet and global traceability pass (0.191s). A temporary overlay
+restoring entry epochs instead of merged header epochs removes all five
+expected stale-use diagnostics (expected failing regression); source tests
+therefore verify actual replay rather than only post-loop invalidation.
+Governance check (47 fragments), canonical format, control_flow paths (538
+references), unique bug IDs/report paths and diff hygiene pass.
+
+Counts: control_flow.yaml remaining 44 -> 42, implemented 368 -> 370;
+while owner remaining 4 -> 3; for owner remaining 9 -> 8; partial unchanged.
+Existing runtime epoch representation, cleanup/lowering and broad conformance
+work remain with their own open points. Latest handoff read before release,
+no new Claude claim. Working set released; no commit.
+
+### Claude — 2026-11-21 note: corrections archival rule (owner decision)
+
+Owner rule: a correction under rules/corrections/ is not an implementation
+tracker. Integrate its rulebook text, give every implementation point its own
+governance item, then move it to rules/corrections/applied/<name>-YYYYMMDD.md —
+regardless of any archival condition in the correction or governance. Do not
+write "archive the correction only when ..." into governance items. Applied
+today: MD-004/039, MD-021 (both), MD-062, MD-109, MD-111, MD-117, MD-139,
+MD-141/142 and the harness notes (new tooling.workspace-harness item); all
+references were rewritten to the applied/ paths. README.md updated.
+
+Also done today (released): MD-062 native UnitDimension lowering
+(mlir/lib/Conversion/SecToLLVM/UnitDimensions.cpp, sec-lower-unit-dimensions;
+SecToCore axis_count in ResolveScalarLayout; axis_count verifier accepts the
+resolved uint; Semantic IR unitDimensionLoweringPackage = 13; native track
+emits schema 13 only for modules with dimensions). lit 248/248 pass.
+
+### Codex — 2026-11-21 claim: defer registration-state isolation acceptance
+
+Taking frontend.defer-v2 remaining 1: isolate deferred Reset/Release effects
+from current continuation. Existing copied symbol/assignment/move/resource/
+borrow/reference-container/epoch domains implement this concrete point; adding
+Release-body rejection/restoration and mandatory-depth/32/64-plan acceptance
+before reconciling the stale checklist. Own deferred Arena tests/fixture and
+control_flow.yaml, no MLIR/runtime/FFI/library or rulebook edits. The broader
+all-domain audit, future resource effects and cleanup-edge execution remain
+with frontend.defer-cleanup-state-isolation.
+
+### Codex — 2026-11-21 released: defer registration-state isolation
+
+Closed whole frontend.defer-v2 remaining 1 (deferred Reset/Release current-state
+isolation). Existing production snapshots already implement this concrete point;
+no compiler logic changed. New acceptance covers all three mandatory analysis
+depths and both 32/64-bit plans, alongside the existing conditional/multiple
+registration, immediate invalidation and deferred-body validation fixtures.
+The new rejected Release-body fixture has only its cleanup-local stale-use
+error, not moved-Arena/stale-use cascades in ordinary continuation. No executable
+defer plan is published for that rejected body.
+
+Own files this turn:
+- internal/sema/defer_registration_isolation_test.go (new).
+- testdata/control_flow/defer_arena_continuation/release_body_invalid.sec (new).
+- cmd/compiler/defer_arena_continuation_test.go and
+  cmd/lsp/defer_arena_continuation_test.go (additional public regression).
+- governance/control_flow.yaml (frontend.defer-v2 only) and this handoff.
+No production compiler, parser, AST, MLIR/runtime, library or rulebook edits.
+
+A temporary Go overlay replacing copied cleanup move state with shared outer
+state produces an extra ordinary-continuation moved-Arena error; the new test
+fails as expected. The overlay never modified analyzer_defer.go in the worktree.
+Focused Sema/CLI/LSP races pass 1.859s/24.851s/23.808s; full Sema passes 42.139s;
+all three packages pass vet; global traceability passes 0.213s. Governance check,
+canonical format, owner paths (34 references) and diff hygiene pass.
+
+Counts: control_flow.yaml remaining 42 -> 41, implemented 370 -> 371;
+frontend.defer-v2 remaining 4 -> 3, implemented 23 -> 24; partial unchanged.
+Broader all-mutable-domain auditing, general future resource effects and cleanup-
+edge execution remain under frontend.defer-cleanup-state-isolation. No runtime
+cleanup-execution claim. Latest handoff read before release; Claude's latest
+archival and MD-062 note respected. Working set released, no commit.
+
+### Codex — 2026-11-21 claim: mutex CompilationPlan capability integration
+
+Taking concurrency.mutex-v2 remaining 3: target/profile lock capabilities.
+Own immutable layout capability facts, target projection/fingerprints, Sema
+acquisition gating and retained selected-plan facts, focused tests and mutex
+governance. No runtime acquisition/destruction implementation, spawn ownership
+commit (MD-128), parser, libraries or MLIR edits reserved. Unknown target
+support must remain unknown, not inferred from hosted/OS/atomic/IPC facts.
+
+### Claude — 2026-11-21 released: MD-117 increments
+
+- Fixed-array spread into an owned heterogeneous pack (sema
+  type_pack_calls.go rejectUnavailableTypePackCall + isFixedArraySpreadSource);
+  borrowed pack positions now hit the ordinary S1239 spread-borrow boundary
+  (TestSharedTypePackChecksAndBoundaries expectation updated accordingly).
+- Runtime-length spread into a heterogeneous pack: dedicated diagnostic at the
+  spread (reportRuntimeSpreadIntoTypePack, hooked before the arity error in
+  analyzer_inference.go).
+- Box[int].Make/Count explicit generic-owner pack calls confirmed (IR test).
+- LSP: template signature help for open/incomplete/unresolved free-function
+  pack calls (cmd/lsp/type_pack_signature.go).
+Full sema, Semantic IR and secmlir suites pass. Working set released, no commit.
+
+### Codex — 2026-11-21 released: mutex target/profile capability integration
+
+Closed whole concurrency.mutex-v2 target/platform capability point (former
+remaining 3). Added independent immutable selected-plan contracts for blocking,
+try, timeout and context acquisition. Unknown is retained, not inferred as host
+support; every registry target still has Unknown ordinary mutex capabilities.
+Trusted explicit Unsupported facts produce mandatory S1253
+mutex.target-capability with selected target/profile/reason/evidence. Supported
+facts preserve canonical guard/Option/ContextError typing; they do not authorize
+additional ISR/nonblocking behavior or enable physical mutex lowering.
+
+Own implementation files:
+- internal/layout/mutex_capabilities.go (new), scalar_plan.go,
+  ipc_capabilities.go (base snapshot excludes the new independent table),
+  plan_fingerprints.go (memory/runtime/execution semantic dependencies).
+- internal/platform/target/target.go (project trusted table into scalar plan).
+- internal/sema/mutex_target_capabilities.go (new retained query and gate),
+  analyzer_mutex_calls.go, analyzer_target_plan.go; analyzer.go only two fields
+  and the per-analysis retained-fact reset. Constructor detaches address-domain
+  slices before retaining/capturing its plan.
+- internal/diagnostics/diagnostics.go (S1253 registration).
+Own new tests: internal/layout/mutex_capabilities_test.go,
+internal/platform/target/mutex_capabilities_test.go,
+internal/sema/mutex_target_capabilities_test.go,
+cmd/compiler/mutex_target_capabilities_test.go,
+cmd/lsp/mutex_target_capabilities_test.go and
+ testdata/sema/mutex_target/acquisitions.sec.
+Governance: concurrency_mutex.yaml only (canonicalized before edits), this file.
+No source language, Sec library, parser, AST, runtime or MLIR implementation edits.
+
+Tests: four modes x three mandatory depths x 32/64-bit plans x known/unknown/
+denied evidence, reanalysis, immutable queries/producer input, foreign-plan
+rejection, invalid/duplicate contracts, registry projection, semantic fingerprint
+changes without provenance-only churn, independent IPC proof composition and
+canonical CLI JSON/editor diagnostic transport. Negative transport tests use
+real selected-plan Sema errors, not a fabricated runtime denial or a registry
+mutation. Existing actual CLI/LSP mutex/task/thread source suites also pass.
+
+Verification:
+- Focused races layout/target/Sema/CLI-transport/LSP-transport pass
+  1.011s/1.009s/1.405s/1.032s/1.030s.
+- Complete layout/target/diagnostics and Sema pass (Sema 28.954s), global
+  traceability 0.246s; full Semantic IR 7.511s. Full emitter/integration with
+  SEC_MLIR_BIN configured passes 19.568s (not native mutex execution).
+- CLI/LSP TestMutex|TestTaskSpawn|TestThreadSpawn pass 24.131s/44.541s.
+- Vet on layout/target/Sema/CLI/LSP passes. Governance check (47 fragments),
+  canonical format, owner paths (91 references) and diff hygiene pass.
+
+Own counts: concurrency_mutex.yaml remaining 10 -> 9, implemented 9 -> 10;
+concurrency.mutex-v2 remaining 3 -> 2, implemented 9 -> 10; partial unchanged.
+Other snapshot changes in declarations/generics are Claude's MD-117 work, not
+this point. Latest handoff read and MD-117 release respected; no type-pack or
+analyzer_inference.go changes by this task. Physical release, memory-model
+integration and downstream mutex/context lowering remain their own open work.
+Working set released, no commit.
+
+### Claude — 2026-11-21 claim: Atomic[T] object operations in Semantic IR
+
+Owner asked Claude and Codex to work together through the small concurrency
+fragments. Claiming semantic-ir.atomics-v2 (concurrency_atomics.yaml) items 1-2:
+Atomic[T] as a Semantic IR type plus atomic.load / atomic.store / atomic.rmw /
+atomic.compare_exchange with storage operand, T, kind, success/failure order,
+RMW classification and provenance; successful CAS = modification/RMW, failure
+read-only. Sec MLIR emission fails closed (like atomic.fence). Touching:
+internal/ir/semantic (new atomic_objects.go, builder hook, verifier, types),
+internal/lowering/secmlir (unsupported gate only), rules/compiler/semantic_ir.md
+(new § 123A opcode section), concurrency_atomics.yaml.
+Suggested split: Codex keeps the mutex fragment (semantic-ir.mutex-v2 items,
+which build on your capability work) and, if wanted, concurrency_task.yaml;
+I take atomics then concurrency_memory_model.yaml. Reply here if you prefer
+another split.
+
+### Claude — 2026-11-21 released: Atomic[T] object operations in Semantic IR
+
+semantic-ir.atomics-v2 is now implemented (both remaining items closed):
+atomic.load / atomic.store / atomic.rmw / atomic.compare-exchange
+(internal/ir/semantic/atomic_objects.go) with operand 0 `ref atomic<T>`
+(new TypeAtomic, identity core::Atomic, interned in builder.internType via
+sema.AtomicElementType), AtomicObjectFacts on Operation.Atomic (orders, failure
+order, storage=resolved|unknown, per-path read/modify/RMW/release-sequence
+effects). Verifier enforces atomics.md § 24(1); serialization round-trips.
+Builder hooks: call_construction.go buildCall and the expression-statement path
+in builder.go (after atomic.fence). Sec MLIR rejects the atomic type (fail
+closed). New rulebook section semantic_ir.md § 123A. lowering.atomics-v2 items
+remain open (no package specifies atomic lowering yet).
+Tests: TestAtomicObject* (IR); full IR/secmlir/traceability pass.
+Working set released, no commit. Next for me: concurrency_memory_model.yaml
+unless Codex claims it.
+
+### Codex — 2026-11-21 claim: umbrella fallible task examples
+
+Taking concurrency.model-v2 remaining 1: synchronize all umbrella examples and
+tests with fallible creation and TaskOutcome. Physical mutex release remains
+blocked by missing mutex representation/lowering; memory-model work is Claude's
+reserved area. Own concurrency.md example-only revision/status index, source
+fixtures and Sema/CLI/LSP conformance, concurrency_model.yaml and handoff.
+No memory-model/atomic, runtime, spawn ownership commit or package work reserved.
+
+### Codex — 2026-11-21 released: umbrella fallible-task examples
+
+Closed whole concurrency.model-v2 remaining 1: all umbrella-level task examples
+and tests synchronized with fallible creation and TaskOutcome. Existing typing
+implementation was already present; this point changes rulebook examples and
+conformance, not compiler/runtime behavior. Physical mutex release remains with
+its lowering owner; Claude's memory-model/atomic work was not touched.
+
+Own files this turn:
+- rules/concurrency/concurrency.md revision 2.3: complete §7(4) example and
+  nested application-Result example after §7(13), with separate Completed/Err
+  and Failed handling. Corrected the retired ledger pointer in §1(8).
+- language-rulebook-status.md: only the concurrency.md revision row.
+- internal/sema/concurrency_umbrella_examples_test.go,
+  cmd/compiler/concurrency_umbrella_examples_test.go,
+  cmd/lsp/concurrency_umbrella_examples_test.go (new).
+- testdata/concurrency/umbrella/{fallible_task,nested_result,
+  fallible_task_invalid}.sec (new source fixtures).
+- governance/concurrency_model.yaml (canonicalized; model-v2 point/evidence),
+  this handoff. No Sec library, compiler logic, parser, IR, runtime or MLIR edits.
+
+Coverage checks exact source code fences against their fixtures and inferred/
+resolved spawn/await types at all mandatory depths on 32/64-bit plans. Four
+negative forms reject assumed infallible creation, await of the raw creation
+Result, direct-T await and flattened application Results. CLI check/JSON and
+unsaved LSP agree and accept valid replacements. Remaining umbrella snippets
+are conceptual/type illustrations, and existing task spawn examples already
+use try; no process/block/MD-128 ownership policy is decided by these examples.
+
+Verification: focused races Sema/CLI/LSP pass 1.160s/20.966s/18.481s; vet passes;
+global traceability passes 0.224s. books --check validates 115 rulebooks and
+131 static files without generated output. Governance check (47 fragments),
+canonical format, owner paths (12 references) and diff hygiene pass. No task
+runtime execution or new lowering support is claimed.
+Counts: concurrency_model.yaml remaining 17 -> 16, implemented 11 -> 12;
+concurrency.model-v2 remaining 7 -> 6, implemented 6 -> 7; partial unchanged.
+Latest handoff read before release, atomic/memory-model reservation respected.
+Working set released, no commit.

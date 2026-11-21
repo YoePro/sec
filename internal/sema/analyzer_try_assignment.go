@@ -14,6 +14,7 @@ import (
 //   - rules/errors/errorhandling.md — §8 "try and error compatibility"
 //   - rules/errors/errorhandling.md — §23 "Fallible assignment"
 //   - rules/foundations/grammar.md — TryAssignmentStatement
+//   - rules/control-flow/defer.md — §15 local handling, no cleanup propagation
 func (a *Analyzer) analyzeTryAssignmentStatement(stmt *ast.TryAssignmentStatement) {
 	if stmt == nil || stmt.Assignment == nil {
 		return
@@ -71,7 +72,7 @@ func (a *Analyzer) analyzeTryAssignmentStatement(stmt *ast.TryAssignmentStatemen
 	}
 
 	if a.inDeferBlock {
-		a.addErrorAtToken(stmt.Token, "naked try assignment cannot propagate from inside defer; add a local try handler")
+		a.addErrorAtTokenWithMetadata(stmt.Token, diagnostics.TryPropagationIncompatible, deferredPropagationHelp(), "naked try assignment cannot propagate from inside defer; add a local try handler")
 		return
 	}
 	if !a.inFunctionBody {

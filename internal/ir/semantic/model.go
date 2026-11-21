@@ -958,7 +958,10 @@ type Operation struct {
 	PlaceReadMode  string
 	ArrayOperation string
 	// AtomicOrder is the established MemoryOrder of an atomic.fence.
-	AtomicOrder          string
+	AtomicOrder string
+	// Atomic carries the facts of an Atomic[T] object operation
+	// (atomic_objects.go; semantic_ir.md § 123A).
+	Atomic               *AtomicObjectFacts
 	TryHandlerKind       TryHandlerKind
 	TryHandlerIndex      int
 	TryHandlerExhaustive bool

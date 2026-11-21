@@ -33,7 +33,7 @@ impl <half> {
 //
 // Rules:
 //   - rules/types/units.md — "Unit metadata" `Scale`, "Validation of metadata"
-//   - rules/corrections/md062-unit-metadata-value-types-correction-20261027.md — §§ 9(2), 13(4), 14(4)
+//   - rules/corrections/applied/md062-unit-metadata-value-types-correction-20261027-20261121.md — §§ 9(2), 13(4), 14(4)
 func TestUnitScaleIsNonZero(t *testing.T) {
 	analyzer, errors := analyzeSourceWithAnalyzer(t, negativeScaleUnits+"fn Use() void {\n    let scale: decimal := <down>.Scale\n}\n")
 	assertSemaErrors(t, errors, nil)
@@ -59,7 +59,7 @@ func TestUnitScaleIsNonZero(t *testing.T) {
 //
 // Rules:
 //   - rules/types/units.md — "Exact fixed conversions", "No hidden precision loss", "Unit metadata" `Scale`
-//   - rules/corrections/md062-unit-metadata-value-types-correction-20261027.md — §§ 9(2), 12(5), 13(4), 14(4)
+//   - rules/corrections/applied/md062-unit-metadata-value-types-correction-20261027-20261121.md — §§ 9(2), 12(5), 13(4), 14(4)
 func TestNegativeScaleConversionIntervals(t *testing.T) {
 	for _, tc := range []struct {
 		name, body string
@@ -88,7 +88,7 @@ func TestNegativeScaleConversionIntervals(t *testing.T) {
 //
 // Rules:
 //   - rules/types/units.md — "Exact fixed conversions", "No hidden precision loss"
-//   - rules/corrections/md062-unit-metadata-value-types-correction-20261027.md — § 12(5)
+//   - rules/corrections/applied/md062-unit-metadata-value-types-correction-20261027-20261121.md — § 12(5)
 func TestFloatAffineIntervalExactWithNegativeFactor(t *testing.T) {
 	r := func(n, d int64) *big.Rat { return big.NewRat(n, d) }
 	for _, tc := range []struct {
@@ -115,7 +115,7 @@ func TestFloatAffineIntervalExactWithNegativeFactor(t *testing.T) {
 //
 // Rules:
 //   - rules/types/temporal.md — § 5.6; rules/types/units.md — "Unit metadata" `Scale`
-//   - rules/corrections/md062-unit-metadata-value-types-correction-20261027.md — §§ 9(2), 12(5)
+//   - rules/corrections/applied/md062-unit-metadata-value-types-correction-20261027-20261121.md — §§ 9(2), 12(5)
 func TestNegativeScaleDurationConversion(t *testing.T) {
 	analyzer, errors := analyzeSourceWithAnalyzer(t, `module main
 unit back physical

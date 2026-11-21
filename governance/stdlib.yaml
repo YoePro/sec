@@ -232,6 +232,33 @@ integrations:
       - "TestTemporalArithmeticErrorKeepsCoreIdentity (cmd/compiler/temporal_arithmetic_error_test.go) fails on the current temporal calendar source (found 2026-11-17): undefined CalendarError at sec/stdlib/temporal/calendar/partial.sec:127 and partial_hebrew.sec:88/105, plus a missing return in calendar._hebrewPartialWithinCore. The calendar sources must declare or import CalendarError consistently."
       - extend the variant set only through revision of the temporal rulebooks as temporal arithmetic is implemented (the success paths are still NotImplemented)
 
+  - id: stdlib.temporal
+    area: standard-library
+    status: planned
+    integrated: "2026-11-21"
+    summary: >-
+      Temporal library semantics above the compiler-known date, time, datetime
+      and duration identities and their phase-1 core representation and UTC
+      wall-clock properties: calendars, time zones, arithmetic, literals,
+      formatting, parsing and serialization. Owned by the standard library
+      (sec/stdlib/temporal, being written by the owner), not by the compiler;
+      moved here from frontend.temporal-builtin-types on 2026-11-21. The
+      compiler keeps clock capabilities, the _now Semantic IR operation and
+      the Instant identity.
+    rules:
+      - sec/stdlib/temporal/std-temporal.md
+      - rules/types/temporal.md
+    code:
+      - sec/stdlib/temporal/
+    remaining:
+      - define calendar semantics (sec/stdlib/temporal/calendar) beyond the phase-1 representation
+      - define time-zone semantics (sec/stdlib/temporal/timezone)
+      - define temporal arithmetic semantics (sec/stdlib/temporal/arithmetic; error type in stdlib.temporal-arithmetic-error)
+      - define temporal literal forms
+      - define temporal formatting (sec/stdlib/temporal/format)
+      - define temporal parsing (sec/stdlib/temporal/parse)
+      - define temporal serialization
+
   - id: stdlib.fmt
     area: native-formatting-library-dependency
     status: planned
@@ -245,7 +272,7 @@ integrations:
     rules:
       - rules/library/stdlib.md
       - rules/library/core-library.md
-      - rules/corrections/md117-heterogeneous-variadic-type-packs-correction.md
+      - rules/corrections/applied/md117-heterogeneous-variadic-type-packs-correction-20261121.md
     code:
       - sec/stdlib/fmt/fmt.sec
     implemented: []

@@ -1523,8 +1523,16 @@ LogicalResult UnitDimensionCompareOp::verify() {
 LogicalResult UnitDimensionAxisCountOp::verify() {
   if (!isa<UnitDimensionType>(getValue().getType()))
     return emitOpError("operand must be !sec.unit_dimension");
-  if (!isa<UIntType>(getResult().getType()))
-    return emitOpError("AxisCount result must be !sec.uint");
+  // Like array.len, scalar layout resolution may select the plan's unsigned
+  // pointer-width integer (MD-062 § 7(2)).
+  Type result = getResult().getType();
+  if (isa<UIntType>(result))
+    return success();
+  auto integer = dyn_cast<IntegerType>(result);
+  if (!integer || !integer.isUnsigned() ||
+      (integer.getWidth() != 32 && integer.getWidth() != 64))
+    return emitOpError(
+        "AxisCount result must be !sec.uint or resolved unsigned pointer-width integer");
   return success();
 }
 

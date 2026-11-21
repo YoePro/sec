@@ -15,7 +15,7 @@ import (
 // the source acknowledged an alias. It is a resource/authority root, never an
 // ordinary memory Place (MD-077 §§ 3(4), 12(2)).
 // Rules: rules/corrections/applied/md077-register-semantic-ir-final-decision-20261022.md — §§ 3(4), 12, 19(5);
-// rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md — §§ 2, 10(1).
+// rules/corrections/applied/MD-111-hardware-facts-approved-decision-20261030-20261121.md — §§ 2, 10(1).
 type ResolvedHardwareBinding struct {
 	Name     string
 	Token    lexer.Token

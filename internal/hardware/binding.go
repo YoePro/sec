@@ -8,7 +8,7 @@ import "strings"
 // `qualifier.Name` through exactly one actual import candidate. A failure is
 // returned as a "symbol" issue; it never falls back to a numeric address or
 // a display-name search.
-// Rules: rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md — §§2,8(3),10(1).
+// Rules: rules/corrections/applied/MD-111-hardware-facts-approved-decision-20261030-20261121.md — §§2,8(3),10(1).
 func (f Facts) LookupEndpoint(scope Scope, path []string, origin Origin) (Endpoint, *Issue) {
 	failure := func(related Origin, message string) (Endpoint, *Issue) {
 		return Endpoint{}, &Issue{Code: "symbol", Origin: origin, Related: related, Message: message, Help: "Bind to a declared `hardware endpoint` of this module or an actual import qualifier."}

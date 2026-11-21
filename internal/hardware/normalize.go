@@ -15,7 +15,7 @@ var integerLiteral = regexp.MustCompile(`^(?:0[xX][0-9a-fA-F](?:_?[0-9a-fA-F])*|
 
 // ParseInteger decodes only exact unsigned decimal/hex metadata literals. It
 // never interprets a leading zero as octal or narrows via host int (MD-111 §3(3)).
-// Rules: rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md — §§2–8,13(2).
+// Rules: rules/corrections/applied/MD-111-hardware-facts-approved-decision-20261030-20261121.md — §§2–8,13(2).
 func ParseInteger(text string) (*big.Int, bool) {
 	if !integerLiteral.MatchString(text) {
 		return nil, false
@@ -44,7 +44,7 @@ type normalizer struct {
 // Sec expressions or performing hardware I/O. Any invalid declaration prevents
 // publication of a usable fact set. Warnings retain valid facts.
 // Rules: MD-111 §§2–8,10(6),12(2)3–4,13(2),(4)–(5).
-// Rules: rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md — §§2–8,13(2).
+// Rules: rules/corrections/applied/MD-111-hardware-facts-approved-decision-20261030-20261121.md — §§2–8,13(2).
 func Normalize(target TargetFacts, declarations []Declaration) (Facts, []Issue) {
 	n := normalizer{target: target, decls: declarations, symbols: map[modules.ModuleIdentity]map[string][]int{}, records: map[int]Record{}, regions: map[Identity]Region{}, resources: map[Identity]Resource{}}
 	// Validate trusted input too: never accept unresolved or duplicate domains as
@@ -143,7 +143,7 @@ func Normalize(target TargetFacts, declarations []Declaration) (Facts, []Issue) 
 
 // identityLess gives deterministic canonical identity order, independent of
 // hash iteration, addresses or display names (MD-111 §§2,12).
-// Rules: rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md — §§2–8,13(2).
+// Rules: rules/corrections/applied/MD-111-hardware-facts-approved-decision-20261030-20261121.md — §§2–8,13(2).
 func identityLess(a, b Identity) bool {
 	if a.Module.ImportRootIdentity != b.Module.ImportRootIdentity {
 		return a.Module.ImportRootIdentity < b.Module.ImportRootIdentity
@@ -158,7 +158,7 @@ func identityLess(a, b Identity) bool {
 }
 
 // issue preserves the failed property's location and related declaration (§13(2)).
-// Rules: rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md — §§2–8,13(2).
+// Rules: rules/corrections/applied/MD-111-hardware-facts-approved-decision-20261030-20261121.md — §§2–8,13(2).
 func (n *normalizer) issue(code string, at, related Origin, format string, args ...any) {
 	help := map[string]string{
 		"reserved":    "Choose a non-reserved identifier for this hardware declaration.",
@@ -178,7 +178,7 @@ func (n *normalizer) issue(code string, at, related Origin, format string, args 
 
 // checkSchema enforces closed member names/types and directional requiredness.
 // Rules: MD-111 §§3–7,13(2).
-// Rules: rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md — §§2–8,13(2).
+// Rules: rules/corrections/applied/MD-111-hardware-facts-approved-decision-20261030-20261121.md — §§2–8,13(2).
 func (n *normalizer) checkSchema(d Declaration) (Record, bool) {
 	start := len(n.issues)
 	table := Schema(d.Identity.Category)
@@ -238,7 +238,7 @@ func (n *normalizer) checkSchema(d Declaration) (Record, bool) {
 
 // value resolves only the member's metadata type; ordinary runtime declarations
 // cannot shadow schema enums or coerce literal kinds. Rules: MD-111 §§3,7–8.
-// Rules: rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md — §§2–8,13(2).
+// Rules: rules/corrections/applied/MD-111-hardware-facts-approved-decision-20261030-20261121.md — §§2–8,13(2).
 func (n *normalizer) value(typ string, v Value) (ResolvedValue, bool) {
 	result := ResolvedValue{Type: typ, Origin: v.Origin, Source: cloneValue(v)}
 	wrong := func() (ResolvedValue, bool) {
@@ -319,7 +319,7 @@ func (n *normalizer) value(typ string, v Value) (ResolvedValue, bool) {
 
 // region validates exact half-open domain ranges and known target/Device
 // restrictions. RAM/ROM facts do not create Places (MD-111 §§3(4),4).
-// Rules: rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md — §§2–8,13(2).
+// Rules: rules/corrections/applied/MD-111-hardware-facts-approved-decision-20261030-20261121.md — §§2–8,13(2).
 func (n *normalizer) region(r Record) {
 	p := r.Properties
 	domainName := p["domain"].Text
@@ -363,7 +363,7 @@ func (n *normalizer) region(r Record) {
 }
 
 // rangeInDomain never wraps or narrows a domain address/extent (MD-111 §3(4)).
-// Rules: rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md — §§2–8,13(2).
+// Rules: rules/corrections/applied/MD-111-hardware-facts-approved-decision-20261030-20261121.md — §§2–8,13(2).
 func (n *normalizer) rangeInDomain(base, size, limit *big.Int, at Origin) bool {
 	if base == nil || size == nil || base.Sign() < 0 || base.Cmp(limit) >= 0 || size.Sign() <= 0 || new(big.Int).Add(base, size).Cmp(limit) > 0 {
 		n.issue("range", at, Origin{}, "invalid hardware address extent: nonempty [base, base + size) must fit the selected domain")
@@ -373,7 +373,7 @@ func (n *normalizer) rangeInDomain(base, size, limit *big.Int, at Origin) bool {
 }
 
 // resource represents logical bits independently of location (MD-111 §5).
-// Rules: rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md — §§2–8,13(2).
+// Rules: rules/corrections/applied/MD-111-hardware-facts-approved-decision-20261030-20261121.md — §§2–8,13(2).
 func (n *normalizer) resource(r Record) {
 	width := r.Properties["width"].Integer
 	if width.Sign() <= 0 {
@@ -386,7 +386,7 @@ func (n *normalizer) resource(r Record) {
 // resolve selects exactly one local/imported canonical module and checks the
 // hardware category and ordinary underscore visibility, never runtime values.
 // Rules: MD-111 §§2,8(3); names_scopes_visibility.md §12.
-// Rules: rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md — §§2–8,13(2).
+// Rules: rules/corrections/applied/MD-111-hardware-facts-approved-decision-20261030-20261121.md — §§2–8,13(2).
 func (n *normalizer) resolve(d Declaration, v ResolvedValue, category Category) (Identity, bool) {
 	parts := strings.Split(v.Text, ".")
 	module := d.Scope.Module
@@ -418,7 +418,7 @@ func (n *normalizer) resolve(d Declaration, v ResolvedValue, category Category) 
 
 // endpoint validates MMIO declarations, exact region/domain containment and
 // declared direction permissions without inventing a physical plan (§6).
-// Rules: rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md — §§2–8,13(2).
+// Rules: rules/corrections/applied/MD-111-hardware-facts-approved-decision-20261030-20261121.md — §§2–8,13(2).
 func (n *normalizer) endpoint(d Declaration, r Record) (Endpoint, bool) {
 	start := len(n.issues)
 	p := r.Properties
@@ -471,7 +471,7 @@ func (n *normalizer) endpoint(d Declaration, r Record) (Endpoint, bool) {
 }
 
 // rangesOverlap uses mathematical half-open extents, not host addresses (§4).
-// Rules: rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md — §§2–8,13(2).
+// Rules: rules/corrections/applied/MD-111-hardware-facts-approved-decision-20261030-20261121.md — §§2–8,13(2).
 func rangesOverlap(a, as, b, bs *big.Int) bool {
 	return a != nil && as != nil && b != nil && bs != nil && a.Cmp(new(big.Int).Add(b, bs)) < 0 && b.Cmp(new(big.Int).Add(a, as)) < 0
 }
@@ -479,7 +479,7 @@ func rangesOverlap(a, as, b, bs *big.Int) bool {
 // overlaps distinguishes incompatible region contracts from compatible views;
 // it never claims common resource identity or acknowledges binding aliases.
 // Rules: MD-111 §§4(2),10(6),13(2).
-// Rules: rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md — §§2–8,13(2).
+// Rules: rules/corrections/applied/MD-111-hardware-facts-approved-decision-20261030-20261121.md — §§2–8,13(2).
 func (n *normalizer) overlaps() {
 	regions := make([]Region, 0, len(n.regions))
 	for _, r := range n.regions {

@@ -27,6 +27,26 @@ def SecLowerIntegerEnums : Pass<"sec-lower-integer-enums", "mlir::ModuleOp"> {
   ];
 }
 
+def SecLowerUnitDimensions : Pass<"sec-lower-unit-dimensions", "mlir::ModuleOp"> {
+  let summary = "Select the native representation of UnitDimension values";
+  let description = [{
+    After checked-integer lowering, replace !sec.unit_dimension values with
+    the literal struct {ptr descriptor, i64 descriptor-bytes, i64 axis-count}.
+    A constant addresses an internal constant descriptor holding its
+    canonical sorted axis mapping in a collision-free length-prefixed
+    encoding (null and zero bytes when dimensionless); equality compares
+    lengths and then bytes through an internal helper, never a hash or a
+    pointer identity (MD-062 § 7(12)). AxisCount reads the count slot and
+    IsDimensionless tests it for zero. Calls, returns, branches and
+    signatures are rewritten together; any other consumer of a dimension,
+    such as storage or an aggregate, is rejected.
+  }];
+  let dependentDialects = [
+    "mlir::LLVM::LLVMDialect",
+    "mlir::func::FuncDialect"
+  ];
+}
+
 def SecLowerTaggedValues : Pass<"sec-lower-tagged-values", "mlir::ModuleOp"> {
   let summary = "Select the native struct representation of scalar-payload Result and union values";
   let description = [{

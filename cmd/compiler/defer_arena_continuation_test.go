@@ -25,4 +25,13 @@ func TestDeferredArenaContinuationCLI(t *testing.T) {
 			t.Fatal(d)
 		}
 	}
+	_, output, code = runCLIForDiagnostics(t, "check", "../../testdata/control_flow/defer_arena_continuation/release_body_invalid.sec", "--diagnostic-format=json")
+	doc = decodeOccurrenceDocument(t, output)
+	if code != 3 || doc.Summary.Errors != 1 || len(doc.Occurrences) != 1 {
+		t.Fatal(code, output)
+	}
+	d := doc.Occurrences[0]
+	if d.Primary == nil || d.Primary.Span.Start.Line != 8 || !strings.Contains(d.Message.Text, "cannot use values after arena mem was reset") {
+		t.Fatalf("deferred Release leaked into ordinary continuation: %+v", d)
+	}
 }

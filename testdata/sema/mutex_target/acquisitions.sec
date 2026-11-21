@@ -1,0 +1,6 @@
+module main
+
+fn Blocking(m: ref Mutex[int]) MutexGuard[int] { return m.Lock() }
+fn Probe(m: ref Mutex[int]) Option[MutexGuard[int]] { return m.TryLock() }
+fn Timed(m: ref Mutex[int], d: duration) Option[MutexGuard[int]] { return m.Lock(d) }
+fn Contextual(m: ref Mutex[int], ctx: ref Context) Result[MutexGuard[int], ContextError] { return m.Lock(ctx) }

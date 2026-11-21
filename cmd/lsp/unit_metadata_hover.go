@@ -16,7 +16,7 @@ import (
 // Rules:
 //   - rules/tooling/lsp.md — "Hover"
 //   - rules/types/units.md — "Unit metadata value types" (1), (7), (10)
-//   - rules/corrections/md062-unit-metadata-value-types-correction-20261027.md — § 12(9)
+//   - rules/corrections/applied/md062-unit-metadata-value-types-correction-20261027-20261121.md — § 12(9)
 func unitMetadataHover(sourceRange lspRange, read sema.UnitMetadataRead) hoverResult {
 	lines := []string{fmt.Sprintf("```sec\nunit metadata <%s>.%s: %s\n```", read.Unit, read.Member, lspTypeName(read.Type))}
 	value := ""

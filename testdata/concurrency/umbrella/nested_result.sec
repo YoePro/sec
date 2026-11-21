@@ -1,0 +1,28 @@
+module main
+
+enum ReadError error { Unavailable }
+
+fn ReadValue() Result[int, ReadError] {
+    return Err(ReadError.Unavailable)
+}
+
+fn ReadOutcome() Result[TaskOutcome[Result[int, ReadError]], TaskSpawnError] {
+    let creation: Result[Task[Result[int, ReadError]], TaskSpawnError] := spawn task ReadValue()
+    let worker := try creation
+    let outcome: TaskOutcome[Result[int, ReadError]] := await worker
+    return Ok(outcome)
+}
+
+fn Classify(outcome: TaskOutcome[Result[int, ReadError]]) int {
+    match outcome {
+        Completed(result) => {
+            match result {
+                Ok(_) => return 1
+                Err(_) => return 2
+            }
+        }
+        Failed(_) => return 3
+        Cancelled => return 4
+        Panicked(_) => return 5
+    }
+}

@@ -24,6 +24,9 @@ func (fb *functionBuilder) buildCall(call *ast.CallExpression) (builtValue, erro
 	if fb.owner.analyzer.IsTypePackForward(call) {
 		return fb.buildPackForward(call)
 	}
+	if value, handled, err := fb.buildAtomicObjectCall(call); handled {
+		return value, err
+	}
 	if fb.owner.analyzer.IsDynamicArrayLengthCall(call) && fb.owner.maxPackage >= dynamicArrayLoweringPackage && len(call.Arguments) == 1 {
 		return fb.buildDynamicArrayLength(call.Arguments[0], call.Token)
 	}
@@ -36,7 +39,7 @@ func (fb *functionBuilder) buildCall(call *ast.CallExpression) (builtValue, erro
 	if !ok {
 		// Public lookup is implemented, but checked materialization needs
 		// P23 and its P18/P19 allocation/string-storage prerequisites.
-		// Rules: rules/corrections/md109-core-string-materialization-correction.md
+		// Rules: rules/corrections/applied/md109-core-string-materialization-correction-20261121.md
 		// — §§5.2,9.3,10.3; rules/mlir/packages/sec-mlir-dialect_package23.md — §§35–37.
 		if member, ok := call.Callee.(*ast.MemberExpression); ok && member.Property != nil {
 			site := member.Property.Token

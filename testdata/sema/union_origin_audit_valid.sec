@@ -1,0 +1,27 @@
+module main
+
+type Choice union { Empty Single(ref int) Named { value: ref int, } }
+fn ForwardSingle(value: ref int) Choice { return Choice.Single(value) }
+fn ForwardNamed(value: ref int) Choice { return Choice.Named { value: value } }
+fn SingleCall(value: ref int) Choice { return ForwardSingle(value) }
+fn NamedCall(value: ref int) Choice { return ForwardNamed(value) }
+type View struct { value: ref int, }
+type Nested union { Single(View) Named { value: View, } }
+fn SingleNested(value: ref int) Nested { return Nested.Single(View { value: value }) }
+fn NamedNested(value: ref int) Nested { return Nested.Named { value: View { value: value } } }
+fn SingleBound(value: ref int) Choice { let result := Choice.Single(value)
+    return result }
+fn NamedBound(value: ref int) Choice { let result := Choice.Named { value: value }
+    return result }
+type Factory struct { unused: int, }
+impl Factory { static fn Single(value: ref int) Choice { return Choice.Empty } }
+fn DropBorrow() Choice { let local := 1
+    return Factory.Single(ref local) }
+fn UseLocal() void {
+    let local := 1
+    let first := Choice.Single(ref local)
+    let second := Choice.Named { value: ref local }
+}
+type MutChoice union { Single(ref mut int) Named { value: ref mut int, } }
+fn SingleMutable(value: ref mut int) MutChoice { return MutChoice.Single(value) }
+fn NamedMutable(value: ref mut int) MutChoice { return MutChoice.Named { value: value } }

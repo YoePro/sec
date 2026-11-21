@@ -1,0 +1,33 @@
+module main
+
+enum CleanupError error { First, Second }
+type Percent int range 0..100
+let mut percentage: Percent := 50
+fn Work() Result[int, CleanupError] { return Ok(1) }
+fn Maybe() Option[int] { return Some(1) }
+
+fn Ignored() void {
+    defer { Work() }
+}
+fn Naked() Result[int, CleanupError] {
+    defer { let value := try Work() }
+    return Ok(0)
+}
+fn Partial() Result[int, CleanupError] {
+    defer { let value := try Work() { Err(CleanupError.First) => 0 } }
+    return Ok(0)
+}
+fn NestedHandler() Result[int, CleanupError] {
+    defer { let value := try Work() { Err(_) => try Work() } }
+    return Ok(0)
+}
+fn NakedOption() Option[int] {
+    defer { let value := try Maybe() }
+    return Some(0)
+}
+fn NakedAssignment() void {
+    defer { try percentage += 1 }
+}
+fn PartialAssignment() void {
+    defer { try percentage += 1 { Err(_) where false => {} } }
+}

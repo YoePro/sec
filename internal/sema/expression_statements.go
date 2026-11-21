@@ -11,6 +11,7 @@ import (
 // without treating their result as an owning branch-value transfer.
 // Rules: rules/control-flow/discard.md — §§10–13,37–38;
 // rules/errors/errorhandling.md — must-use Result handling;
+// rules/control-flow/defer.md — §15 local handling without a mandatory discard;
 // rules/control-flow/flowcontrol_match.md — §19(2)-(6).
 func (a *Analyzer) analyzeExpressionStatement(stmt *ast.ExpressionStatement) Type {
 	if tryExpr, ok := stmt.Expression.(*ast.TryExpression); ok {
@@ -45,7 +46,7 @@ func (a *Analyzer) analyzeExpressionStatement(stmt *ast.ExpressionStatement) Typ
 		a.addErrorAtTokenWithMetadata(
 			expressionToken(stmt.Expression),
 			diagnostics.UnhandledMustUseResult,
-			"use try, match, binding, return, or explicit discard",
+			"Handle the Result locally with exhaustive try handlers or match, retain it in a binding, or explicitly discard it when its type permits discard. Cleanup cannot return or propagate into the exiting invocation.",
 			"unhandled Result inside defer; handle it or discard it explicitly",
 		)
 		return exprType

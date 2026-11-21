@@ -10,7 +10,7 @@ import (
 // MD-109 restores static core materializers, while MD-091 byte ToString
 // remains a summary. Instance calls, casts, implicit decoding and direct access
 // to the private materializer stay rejected, including spoofed module names.
-// Rules: rules/corrections/md109-core-string-materialization-correction.md
+// Rules: rules/corrections/applied/md109-core-string-materialization-correction-20261121.md
 // — §§1–2,8,10.2,11.3.4; core-library.md — §5.2.
 func TestStringMaterializationAuthority(t *testing.T) {
 	_, stderr, code := runCLIForDiagnostics(t, "check", "../../testdata/sema/byte_string_decoding_invalid.sec")

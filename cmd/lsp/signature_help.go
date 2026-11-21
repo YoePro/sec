@@ -28,6 +28,9 @@ func signatureHelpForSource(uri string, text string, pos position, overlays ...s
 			if help, ok := typePackSignatureHelp(analyzer, expression, activeConstructionParameter(text, call.open, offset)); ok {
 				return help, true
 			}
+			if help, ok := typePackTemplateSignatureHelp(analyzer, expression, activeConstructionParameter(text, call.open, offset), path); ok {
+				return help, true
+			}
 			if help, ok := interfaceSignatureHelp(analyzer, expression, activeConstructionParameter(text, call.open, offset)); ok {
 				return help, true
 			}

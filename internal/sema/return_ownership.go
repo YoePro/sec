@@ -175,6 +175,10 @@ func (a *Analyzer) validateTerminalReturnConstruction(expr ast.Expression) bool 
 	if expr == nil {
 		return false
 	}
+	if invalid, known := a.visitUnionOwnershipOperands(expr, a.validateTerminalReturnConstruction); known {
+		return invalid
+	}
+
 	switch expr := expr.(type) {
 	case *ast.StructLiteral:
 		invalid := false
@@ -207,10 +211,7 @@ func (a *Analyzer) validateTerminalReturnConstruction(expr ast.Expression) bool 
 			return false // inferPrefixExpression already validated the explicit move.
 		}
 	case *ast.CallExpression:
-		if _, structural := a.unionConstructorPayload(expr); structural {
-			return a.validateTerminalReturnConstruction(expr.Arguments[0])
-		}
-		return false
+		return false // Ordinary calls are not structural ownership edges.
 	case *ast.MatchExpression:
 		// Match arms are checked in their branch-local ownership state. Doing
 		// so again after the merge would lose the relevant Place context.

@@ -1,5 +1,16 @@
 # Sec Standard Library
 
+- **Status:** Normative
+- **Created:** 2026-07-29
+- **Last updated:** 2026-11-21 (metadata header; last substantive update 2026-11-06)
+- **Document revision:** 1.0
+- **Sec language version:** 0.1
+- **Canonical path:** `rules/library/stdlib.md`
+- **Implementation governance:** `governance/stdlib.yaml` (package-specific implementation status may belong to other governance fragments)
+- **Related rulebooks:** `rules/library/core-library.md`, `rules/compiler/compiler_known_members.md`, `rules/types/types.md`, `rules/collections/collections.md`, `rules/memory/allocation.md`, `rules/memory/ownership.md`, `rules/platform/platform_model.md`, `rules/platform/target_profiles.md`, `rules/projects/modules.md`, `rules/compiler/semantic_ir.md`
+
+---
+
 ## Implementation governance
 
 Hardware-bus implementation status is tracked by

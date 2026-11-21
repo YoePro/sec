@@ -585,7 +585,7 @@ func compilerKnownStaticMembers(typ Type) []CompilerKnownMember {
 	}
 	if typ.Kind == StringType {
 		// MD-109 restores strict byte decoding as a public static core API.
-		// Rules: rules/corrections/md109-core-string-materialization-correction.md
+		// Rules: rules/corrections/applied/md109-core-string-materialization-correction-20261121.md
 		// — §§1.2–1.7,2.1–2.6; both inputs are borrowed and results fallible.
 		members = append(members,
 			CompilerKnownMember{ID: "CKM-STRING-FROMBYTEARRAY", Name: "FromByteArray", Kind: CompilerKnownAssociatedFunction, Result: toStringResultType()},

@@ -1,0 +1,20 @@
+module main
+
+type Handle struct { id: int, }
+impl Handle { free {} }
+type Choice union { Empty Single(Handle) Named { value: Handle, } }
+type Factory struct { unused: int, }
+impl Factory {
+    static fn Single(value: ref Handle) Choice { return Choice.Empty }
+}
+fn Ordinary(value: Handle) Choice { return Factory.Single(value) }
+fn Make() Handle { return Handle { id: 1 } }
+fn SingleExplicit(value: Handle) Choice { return Choice.Single(<-value) }
+fn NamedExplicit(value: Handle) Choice { return Choice.Named { value: <-value } }
+fn SingleTerminal(value: Handle) Choice { return Choice.Single(value) }
+fn NamedTerminal(value: Handle) Choice { return Choice.Named { value: value } }
+fn SingleFresh() Choice { return Choice.Single(Make()) }
+fn NamedFresh() Choice { return Choice.Named { value: Make() } }
+type Numbers union { Single(uint8) Named { value: uint8, } }
+fn SingleCopy(value: uint8) Numbers { return Numbers.Single(value) }
+fn NamedCopy(value: uint8) Numbers { return Numbers.Named { value: value } }

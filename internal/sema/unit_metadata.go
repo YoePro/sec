@@ -44,7 +44,7 @@ var unitMetadataKeys = map[string]string{
 //
 // Rules:
 //   - rules/types/units.md — "Unit metadata", "Unit metadata value types" (4), (5), (10), "Validation of metadata"
-//   - rules/corrections/md062-unit-metadata-value-types-correction-20261027.md — §§ 4, 5(5)–5(6), 10(5)
+//   - rules/corrections/applied/md062-unit-metadata-value-types-correction-20261027-20261121.md — §§ 4, 5(5)–5(6), 10(5)
 func (a *Analyzer) analyzeUnitMetadata(program *ast.Program) {
 	declared := map[string]map[string]lexer.Token{}
 	var order []string
@@ -251,7 +251,7 @@ func (a *Analyzer) applyUnitMetadata(name string, unit *UnitDefinition, key stri
 //
 // Rules:
 //   - rules/types/units.md — "Unit metadata value types" (3)–(5)
-//   - rules/corrections/md062-unit-metadata-value-types-correction-20261027.md — §§ 4(1)–4(6), 5(1)–5(4)
+//   - rules/corrections/applied/md062-unit-metadata-value-types-correction-20261027-20261121.md — §§ 4(1)–4(6), 5(1)–5(4)
 func (a *Analyzer) resolveUnitMetadataEnum(name, key string, token lexer.Token, value []lexer.Token, scope unitAxisScope) (UnitMetadataEnum, bool) {
 	standard := unitMetadataEnumFields[key]
 	field := unitMetadataKeys[key]
@@ -344,7 +344,7 @@ func (a *Analyzer) parseUnitMetadataReference(tokens []lexer.Token) (*big.Rat, s
 //
 // Rules:
 //   - rules/types/units.md — "Unit metadata value types" (1), (2), (6), (9), (10), (11)
-//   - rules/corrections/md062-unit-metadata-value-types-correction-20261027.md — §§ 2, 6, 9, 10
+//   - rules/corrections/applied/md062-unit-metadata-value-types-correction-20261027-20261121.md — §§ 2, 6, 9, 10
 func (a *Analyzer) unitMetadataMemberType(reference *ast.UnitReferenceExpression, unit UnitDefinition, property *ast.Identifier) (Type, bool) {
 	typ, problem, metadata := a.unitMetadataMemberFact(reference.String(), unit, property.Value, property.Token)
 	if problem.message != "" {
@@ -513,7 +513,7 @@ func parseUnitMetadataBool(tokens []lexer.Token) (bool, bool) {
 // whether or not it is read. A negative Scale is defined only for linear
 // units; its affine domain is undecided (MD-048), so it is rejected there.
 // Rules: rules/types/units.md — "Validation of metadata", "Unit metadata
-// value types" (10); rules/corrections/md062-unit-metadata-value-types-correction-20261027.md — § 9(2).
+// value types" (10); rules/corrections/applied/md062-unit-metadata-value-types-correction-20261027-20261121.md — § 9(2).
 func (a *Analyzer) validateUnitTransformMetadata(name string, token lexer.Token, unit UnitDefinition) {
 	switch unit.Transform {
 	case AffineUnitTransform:
@@ -717,7 +717,7 @@ func (a *Analyzer) collectUnitAxes(program *ast.Program) unitAxisScope {
 // (or the module named Q) and must exist there; two spellings of one resolved
 // axis are a duplicate.
 // Rules: rules/types/units.md — "Unit metadata value types" (7);
-// rules/corrections/md062-unit-metadata-value-types-correction-20261027.md — §§ 7(9)–7(11), 14(4).
+// rules/corrections/applied/md062-unit-metadata-value-types-correction-20261027-20261121.md — §§ 7(9)–7(11), 14(4).
 func (a *Analyzer) canonicalUnitDimension(name string, token lexer.Token, spelled Dimension, scope unitAxisScope) (Dimension, bool) {
 	axes := make([]string, 0, len(spelled.Base))
 	for axis := range spelled.Base {

@@ -11,7 +11,7 @@ import (
 //
 // Rules:
 //   - rules/declarations/generics.md — "Generic parameter syntax", §16A
-//   - rules/corrections/md117-heterogeneous-variadic-type-packs-correction.md — §2(1–6)
+//   - rules/corrections/applied/md117-heterogeneous-variadic-type-packs-correction-20261121.md — §2(1–6)
 //   - rules/compiler/parser_recovery.md — "Generic parameter recovery"
 func (p *Parser) parseGenericParameters(allowPack bool) []*ast.GenericParameter {
 	defer p.withRecoveryContext(RecoveryContextGenericParameters)()

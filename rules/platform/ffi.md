@@ -1625,7 +1625,7 @@ Other rulebooks own:
 
 ## 56. Target C binding environments (MD-021)
 
-Integrated 2026-11-20 from `rules/corrections/MD-021-c-binding-environment-complete-proposal-20261120.md` (owner accepted 2026-11-20). The correction holds the full normative text; this section is its owning summary.
+Integrated 2026-11-20 from `rules/corrections/applied/MD-021-c-binding-environment-complete-proposal-20261120-20261121.md` (owner accepted 2026-11-20). The correction holds the full normative text; this section is its owning summary.
 
 **§ 56(1)** TOML metadata (`.sec/platform/c-bindings.toml`) states binding-package identity, environment compatibility and module membership; Sec source states foreign declarations and transparent C aliases. TOML is never a type-declaration language.
 
@@ -1636,3 +1636,5 @@ Integrated 2026-11-20 from `rules/corrections/MD-021-c-binding-environment-compl
 **§ 56(4)** Common and environment modules are two semantic layers: for `@cAlias` only, one environment-layer definition replaces one common-layer definition of the same name; duplicates on one layer are errors. Other declarations keep their ordinary duplicate and FFI rules.
 
 **§ 56(5)** Binding declarations are collected in a declaration-only pre-freeze phase that runs no user code and cannot change target identity; ordinary Sema consumes the frozen binding surface.
+
+**§ 56(6)** Diagnostics: an `@cAlias` outside a file of the selected binding surface is S1248 `ffi.c-alias-outside-binding-module`; a name that is not `c::` followed by at least two identifier segments is S1249 `ffi.c-alias-invalid-name`; two definitions of one name on one layer are S1250 `ffi.c-alias-duplicate`; a circular chain is S1251 `ffi.c-alias-cycle`; a target that cannot cross a C ABI boundary in any foreign position is S1252 `ffi.c-alias-illegal-target`. A use of an alias that failed reports no further error; a `c::namespace::name` no selected alias defines remains S1078.

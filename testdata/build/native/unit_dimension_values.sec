@@ -1,0 +1,78 @@
+module main
+
+// MD-062 §§ 7(5)-(7), 7(12): UnitDimension values compare by their
+// canonical mapping at run time, whatever unit or constant produced them.
+// Exit 42 means every check passed; another status names the failing check.
+
+unit dimLength physical
+impl <dimLength> {
+    Dimension: [length^1]
+}
+
+unit dimKilometre physical
+impl <dimKilometre> {
+    Dimension: [length^1]
+    Scale: 1000
+}
+
+unit dimSpeed physical
+impl <dimSpeed> {
+    Dimension: [length^1, time^-1]
+}
+
+unit dimRatio physical
+impl <dimRatio> {
+    Dimension: []
+}
+
+fn Same(left: UnitDimension, right: UnitDimension) bool {
+    return left == right
+}
+
+fn Differ(left: UnitDimension, right: UnitDimension) bool {
+    return left != right
+}
+
+fn Count(dimension: UnitDimension) uint {
+    return dimension.AxisCount
+}
+
+fn Plain(dimension: UnitDimension) bool {
+    return dimension.IsDimensionless
+}
+
+fn Pick(first: bool, left: UnitDimension, right: UnitDimension) UnitDimension {
+    if first {
+        return left
+    }
+    return right
+}
+
+fn main() int {
+    let length := <dimLength>.Dimension
+    if !Same(length, <dimKilometre>.Dimension) {
+        return 1
+    }
+    if Same(length, <dimSpeed>.Dimension) {
+        return 2
+    }
+    if !Differ(<dimSpeed>.Dimension, <dimKilometre>.Dimension) {
+        return 3
+    }
+    if Count(<dimSpeed>.Dimension) != 2u {
+        return 4
+    }
+    if Count(<dimRatio>.Dimension) != 0u {
+        return 5
+    }
+    if !Plain(<dimRatio>.Dimension) || Plain(length) {
+        return 6
+    }
+    if !Same(Pick(false, length, <dimSpeed>.Dimension), <dimSpeed>.Dimension) {
+        return 7
+    }
+    if Same(<dimRatio>.Dimension, length) {
+        return 8
+    }
+    return 42
+}

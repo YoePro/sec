@@ -155,7 +155,7 @@ side effects). Importers check calls against the same summaries a local call
 uses, and a change to a summary changes surface compatibility and incremental
 invalidation.
 
-**Amendment MD-111 (2026-10-30, `rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md` §§ 2(2), 8(3), 9(3), 12(3)).**
+**Amendment MD-111 (2026-10-30, `rules/corrections/applied/MD-111-hardware-facts-approved-decision-20261030-20261121.md` §§ 2(2), 8(3), 9(3), 12(3)).**
 `hardware region`, `hardware resource` and `hardware endpoint` declarations are
 module members identified by canonical `ModuleIdentity`, category and name.
 They follow ordinary import qualification and visibility; there is no implicit
@@ -1042,6 +1042,6 @@ fingerprint validation under `rules/compiler/compile_time_evaluation.md`.
 
 ## 27. C binding module selection (MD-021)
 
-Integrated 2026-11-20 from `rules/corrections/MD-021-c-binding-environment-complete-proposal-20261120.md` (owner accepted 2026-11-20). The correction holds the full normative text; this section is its owning summary.
+Integrated 2026-11-20 from `rules/corrections/applied/MD-021-c-binding-environment-complete-proposal-20261120-20261121.md` (owner accepted 2026-11-20). The correction holds the full normative text; this section is its owning summary.
 
 **§ 27(1)** Module paths in `.sec/platform/c-bindings.toml` name Sec source module directories relative to `bindings.source_root` under the binding package root. `..`, absolute paths, symlink escapes and colliding module identities are rejected; module lists and filesystem order confer no precedence.

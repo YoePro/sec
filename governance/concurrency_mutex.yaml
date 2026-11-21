@@ -4,25 +4,103 @@ purpose: Mutexes, locking, and mutual-exclusion semantics.
 integrations:
   - id: concurrency.mutex-v2
     area: mutex-language-surface
-    rulebook: rules/concurrency/mutex.md
     status: partial
     reviewed: "2026-09-22"
-    normative:
-      - Mutex[T] and MutexGuard[T] are @noCopy compiler-known/source-visible generic types.
-      - Mutex[T] owns exactly one protected T and one synchronization identity.
-      - MutexGuard[T] represents exactly one exclusive acquisition and releases on deterministic destruction.
-      - Public acquisition surface is Lock(), TryLock(), Lock(duration), Lock(ref Context).
-      - Lock() returns MutexGuard[T].
-      - TryLock() returns Option[MutexGuard[T]].
-      - Lock(duration) returns Option[MutexGuard[T]].
-      - Lock(ref Context) returns Result[MutexGuard[T], ContextError].
-      - There is no portable LockError and no Lock(timeout, context) overload in v0.1.
-      - MutexGuard[T] forwards accessible members to protected T.
-      - Guard-specific lookup precedes protected-T lookup.
-      - The complete protected T cannot be moved out.
-      - No public Unlock/Value/Get guard API exists.
-      - Mutex is non-reentrant.
-      - Live guards cannot cross spawn/await/suspending join/select.
+    revised: "2026-11-21"
+    rules:
+      - rules/declarations/functions.md
+      - rules/memory/ownership.md
+      - rules/memory/copy_move.md
+      - rules/platform/platform_model.md
+      - rules/platform/target_profiles.md
+    code:
+      - internal/sema/analyzer_mutex_calls.go
+      - internal/sema/mutex_members.go
+      - internal/sema/compiler_known_members.go
+      - internal/sema/analyzer_noblock.go
+      - sec/core/mutex.sec
+      - internal/sema/mutex_types.go
+      - internal/sema/types.go
+      - internal/sema/type_declarations.go
+      - internal/sema/analyzer.go
+      - internal/sema/analyzer_inference.go
+      - internal/parser/parser.go
+      - cmd/lsp/mutex_hover.go
+      - cmd/lsp/hover.go
+      - sec/core/context.sec
+      - internal/sema/context_types.go
+      - cmd/lsp/enum_hover.go
+      - internal/sema/mutex_reacquisition.go
+      - internal/sema/analyzer_lifetime.go
+      - internal/sema/mutex_guard_escape.go
+      - internal/sema/channel_types.go
+      - internal/sema/escape_storage_domain.go
+      - internal/sema/mutex_guard_callable_escape.go
+      - internal/sema/mutex_guard_boundaries.go
+      - internal/sema/thread_join.go
+      - internal/sema/ordinary_receiver_contract.go
+      - internal/sema/mutex_guard_forwarding.go
+      - internal/sema/property_receivers.go
+      - internal/sema/reference_place_origins.go
+      - internal/layout/mutex_capabilities.go
+      - internal/layout/scalar_plan.go
+      - internal/layout/ipc_capabilities.go
+      - internal/layout/plan_fingerprints.go
+      - internal/platform/target/target.go
+      - internal/sema/mutex_target_capabilities.go
+      - internal/sema/analyzer_target_plan.go
+      - internal/diagnostics/diagnostics.go
+    tests:
+      - internal/sema/mutex_naming_test.go
+      - internal/sema/concurrency_test.go
+      - internal/sema/analyzer_test.go
+      - internal/sema/noblock_test.go
+      - cmd/compiler/mutex_naming_test.go
+      - cmd/lsp/mutex_naming_test.go
+      - testdata/sema/mutex_naming_valid.sec
+      - testdata/sema/mutex_naming_invalid.sec
+      - internal/sema/mutex_types_test.go
+      - internal/sema/copy_move_test.go
+      - cmd/compiler/mutex_nocopy_test.go
+      - cmd/lsp/mutex_nocopy_test.go
+      - internal/formatter/mutex_declarations_test.go
+      - testdata/sema/mutex_nocopy_valid.sec
+      - testdata/sema/mutex_nocopy_invalid.sec
+      - internal/sema/mutex_overloads_test.go
+      - cmd/compiler/mutex_overloads_test.go
+      - cmd/lsp/mutex_overloads_test.go
+      - testdata/sema/mutex_overloads_valid.sec
+      - testdata/sema/mutex_overloads_invalid.sec
+      - internal/sema/mutex_reacquisition_test.go
+      - cmd/compiler/mutex_reacquisition_test.go
+      - cmd/lsp/mutex_reacquisition_test.go
+      - testdata/sema/mutex_reacquisition_valid.sec
+      - testdata/sema/mutex_reacquisition_invalid.sec
+      - internal/sema/mutex_guard_escape_test.go
+      - cmd/compiler/mutex_guard_escape_test.go
+      - cmd/lsp/mutex_guard_escape_test.go
+      - testdata/sema/mutex_guard_escape_valid.sec
+      - testdata/sema/mutex_guard_escape_invalid.sec
+      - testdata/sema/mutex_guard_escape_unproven_invalid.sec
+      - internal/sema/mutex_join_test.go
+      - cmd/compiler/mutex_join_test.go
+      - cmd/lsp/mutex_join_test.go
+      - testdata/sema/mutex_join_valid.sec
+      - testdata/sema/mutex_join_invalid.sec
+      - internal/sema/mutex_protected_consumption_test.go
+      - testdata/sema/mutex_protected_consumption_valid.sec
+      - testdata/sema/mutex_protected_consumption_invalid.sec
+      - internal/sema/mutex_guard_forwarding_test.go
+      - testdata/sema/mutex_forwarding_valid.sec
+      - testdata/sema/mutex_forwarding_invalid.sec
+      - testdata/sema/mutex_forwarding_owner.sec
+      - testdata/sema/mutex_forwarding_client_invalid.sec
+      - internal/layout/mutex_capabilities_test.go
+      - internal/platform/target/mutex_capabilities_test.go
+      - internal/sema/mutex_target_capabilities_test.go
+      - cmd/compiler/mutex_target_capabilities_test.go
+      - cmd/lsp/mutex_target_capabilities_test.go
+      - testdata/sema/mutex_target/acquisitions.sec
     implemented:
       - Sema rejects a live MutexGuard[T] across await and select while accepting a guard explicitly consumed before the boundary.
       - basic acquisition uses the canonical Lock and TryLock names across Sema, blocking diagnostics, existing call sites and tests; shared compiler member facts provide the matching result types, signatures, completion, hover and synthetic navigation, and lowercase aliases are rejected
@@ -33,10 +111,12 @@ integrations:
       - Standalone task and thread joins apply the shared live-MutexGuard boundary check after join-operand/lifecycle validation, with a related guard declaration. Consumed, discarded and scope-ended guards do not diagnose; moved bindings and multiple live guards do. Selected join branches commit a ready capability without a duplicate join-wait diagnostic; the enclosing select remains the suspension boundary. Source-backed Sema/CLI/LSP tests verify parity and prevent invalid IR artifacts; guard diagnostics are ordered by binding name (2026-11-10).
       - "Verified and closed on 2026-11-17: complete protected-T consumption is already prohibited by the shared ordinary receiver/ownership rules (mutex.md sections 33(4), 36(1-2); functions.md section 22; ownership.md section 9). Ordinary methods cannot consume complete self by argument transfer, return or discard, and constructed/recovered consuming-receiver declarations cannot publish that contract. MutexGuard[T] remains nominally distinct from T: moving a guard cannot initialize, return or constructor-convert it to an owned protected T. New source regressions verify six invalid operations and preserve same-execution guard moves, ordinary owned-T transfers and copies of protected scalar fields at all three analysis depths on 32/64-bit plans. Added mutex rule traceability to the existing shared receiver checks. This closes an already-satisfied older requirement through verification; it adds no forwarding or runtime behavior. Complete accessible member forwarding/lifetime support and guard release lowering remain separate remaining items."
       - "Ordinary source-declared protected fields, properties and non-consuming methods now share the normal member/Place/overload pipeline through MutexGuard[T], ref MutexGuard[T] and ref mut MutexGuard[T]. Forwarding retains the nominal guard expression and protected declaring-owner facts; field/property writes and mutating methods/getters require mutable guard access, private visibility and fallible-setter try requirements remain active, and owner/method generic arguments and overloads resolve normally. Direct field and reference-valued property access retain guard-root lifetime/borrow facts, including computed getters: escaping a local protected reference and releasing a still-borrowed guard are rejected with source provenance. Protected partial moves require a separate restoration/release proof and do not inherit ordinary local-owner permission. Source regressions cover valid operations, 15 authority/visibility/try/lifetime failures and four cross-module access failures at all analysis depths on 32/64-bit plans. The broad forwarding requirement remains open for compiler-known protected member dispatch; this frontend slice does not implement guard release or mutex IR/runtime support."
+      - Target/profile mutex contracts are frozen in CompilationPlan scalar facts independently for blocking, try, timeout and context acquisition. Trusted producer evidence is validated, detached, target/profile-bound, deterministically inspectable and included by semantic meaning in memory/runtime/execution reuse fingerprints. Target definitions project the same facts into existing compiler/LSP analyzer construction. Sema rejects explicit Unsupported contracts with mandatory S1253 mutex.target-capability naming the selected profile, reason and evidence; accepted overloads retain detached selected-plan evidence and the canonical guard/Option/ContextError result type. Missing facts remain Unknown, including on every registered hosted target, and neither ordinary atomics nor IPCMutex support implies ordinary Mutex support. Supported acquisition contracts grant no extra ISR/nonblocking permission or physical lowering capability. Runtime acquisition, guard release, winner/cancellation handling and lowering consumption remain with their separate owners (verified 2026-11-21).
+    partial:
+      - Complete direct forwarding for fields/properties/methods and lifetime-aware references.
     remaining:
       - Implement deterministic guard destruction/release lowering.
       - Integrate acquire/release synchronization with memory-model facts.
-      - Integrate target/platform lock capability through CompilationPlan.
     required_tests:
       - id: mutex-camelcase-api
         expectation: Lock and TryLock are canonical; legacy lowercase public spellings are not offered as the public source API.
@@ -62,9 +142,15 @@ integrations:
         expectation: Move/borrow/capture of live guard across spawn is rejected.
       - id: mutex-nonreentrant
         expectation: Statically provable same-execution reacquisition while guard is live is rejected.
-    corrections_applied:
-      - rules/corrections/applied/mutex-v2-cross-rulebook-correction-20260907.md
     verification:
+      - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./internal/lowering/secmlir -count=1 -timeout=120s
+        result: "Passed 2026-11-21: full emitter/integration suite 19.568s with the real Sec MLIR tool configured. This verifies neighboring lowering regressions, not executable mutex lowering."
+      - command: go test ./cmd/compiler ./cmd/lsp -run 'TestMutex|TestTaskSpawn|TestThreadSpawn' -count=1 -timeout=120s
+        result: "Passed 2026-11-21: compiler 24.131s and LSP 44.541s; existing source-backed mutex and neighboring task/thread spawn integration remains green with Unknown target facts. Selected-plan negative evidence is separately covered through real Sema and canonical CLI JSON/LSP diagnostic transports."
+      - command: go test ./internal/layout ./internal/platform/target ./internal/diagnostics ./internal/sema ./internal/traceability -count=1 -timeout=120s
+        result: "Passed 2026-11-21: complete layout/target/diagnostics suites, Sema 28.954s and traceability 0.246s. Vet on layout, target, Sema, CLI and LSP passes. Full Semantic IR passes 7.511s."
+      - command: go test -race ./internal/layout ./internal/platform/target ./internal/sema ./cmd/compiler ./cmd/lsp -run 'TestMutex(Capabilit|Target)' -count=1 -timeout=120s
+        result: "Passed 2026-11-21: layout 1.011s, target projection 1.009s, Sema 1.405s, CLI JSON transport 1.032s and LSP diagnostic transport 1.030s. All four modes, three analysis depths and 32/64-bit plans distinguish Unknown/Supported/Unsupported; reanalysis and detached queries preserve selected evidence. Fingerprints track semantic changes without evidence-text churn; malformed/duplicate facts and foreign target/profile reuse are rejected. No registry target claims mutex support and no runtime mutex execution is claimed."
       - command: go run ./cmd/yamlstatus move -write concurrency.mutex-v2 remaining 2 partial
         result: "Per explicit user instruction on 2026-11-17, reclassified the started broad forwarding requirement as partial. No implementation completion claimed: this ID remaining 4 -> 3, partial 0 -> 1; concurrency_mutex.yaml remaining 11 -> 10. Existing ordinary member forwarding evidence remains under implemented; compiler-known protected dispatch and restoration/release proof still require work."
       - command: GOTMPDIR=$HOME/.cache/sec-gotmp go test -p 4 ./internal/sema -count=1
@@ -111,87 +197,25 @@ integrations:
         result: passed on 2026-10-16; canonical naming, shared-reference calls, retained Lock/TryLock result types and blocking distinction, guard suspension regressions, and LSP hover/completion/navigation
       - command: go test ./internal/sema -run 'Test(AwaitRejectsLiveMutexGuard|AwaitAllowsConsumedMutexGuard|SelectRejectsLiveMutexGuard|SelectAllowsMovedMutexGuard)' -count=1
         result: passed on 2026-09-22
-    revised: "2026-11-17"
-    code:
-      - internal/sema/analyzer_mutex_calls.go
-      - internal/sema/mutex_members.go
-      - internal/sema/compiler_known_members.go
-      - internal/sema/analyzer_noblock.go
-      - sec/core/mutex.sec
-      - internal/sema/mutex_types.go
-      - internal/sema/types.go
-      - internal/sema/type_declarations.go
-      - internal/sema/analyzer.go
-      - internal/sema/analyzer_inference.go
-      - internal/parser/parser.go
-      - cmd/lsp/mutex_hover.go
-      - cmd/lsp/hover.go
-      - sec/core/context.sec
-      - internal/sema/context_types.go
-      - cmd/lsp/enum_hover.go
-      - internal/sema/mutex_reacquisition.go
-      - internal/sema/analyzer_lifetime.go
-      - internal/sema/mutex_guard_escape.go
-      - internal/sema/channel_types.go
-      - internal/sema/escape_storage_domain.go
-      - internal/sema/mutex_guard_callable_escape.go
-      - internal/sema/mutex_guard_boundaries.go
-      - internal/sema/thread_join.go
-      - internal/sema/ordinary_receiver_contract.go
-      - internal/sema/mutex_guard_forwarding.go
-      - internal/sema/property_receivers.go
-      - internal/sema/reference_place_origins.go
-    tests:
-      - internal/sema/mutex_naming_test.go
-      - internal/sema/concurrency_test.go
-      - internal/sema/analyzer_test.go
-      - internal/sema/noblock_test.go
-      - cmd/compiler/mutex_naming_test.go
-      - cmd/lsp/mutex_naming_test.go
-      - testdata/sema/mutex_naming_valid.sec
-      - testdata/sema/mutex_naming_invalid.sec
-      - internal/sema/mutex_types_test.go
-      - internal/sema/copy_move_test.go
-      - cmd/compiler/mutex_nocopy_test.go
-      - cmd/lsp/mutex_nocopy_test.go
-      - internal/formatter/mutex_declarations_test.go
-      - testdata/sema/mutex_nocopy_valid.sec
-      - testdata/sema/mutex_nocopy_invalid.sec
-      - internal/sema/mutex_overloads_test.go
-      - cmd/compiler/mutex_overloads_test.go
-      - cmd/lsp/mutex_overloads_test.go
-      - testdata/sema/mutex_overloads_valid.sec
-      - testdata/sema/mutex_overloads_invalid.sec
-      - internal/sema/mutex_reacquisition_test.go
-      - cmd/compiler/mutex_reacquisition_test.go
-      - cmd/lsp/mutex_reacquisition_test.go
-      - testdata/sema/mutex_reacquisition_valid.sec
-      - testdata/sema/mutex_reacquisition_invalid.sec
-      - internal/sema/mutex_guard_escape_test.go
-      - cmd/compiler/mutex_guard_escape_test.go
-      - cmd/lsp/mutex_guard_escape_test.go
-      - testdata/sema/mutex_guard_escape_valid.sec
-      - testdata/sema/mutex_guard_escape_invalid.sec
-      - testdata/sema/mutex_guard_escape_unproven_invalid.sec
-      - internal/sema/mutex_join_test.go
-      - cmd/compiler/mutex_join_test.go
-      - cmd/lsp/mutex_join_test.go
-      - testdata/sema/mutex_join_valid.sec
-      - testdata/sema/mutex_join_invalid.sec
-      - internal/sema/mutex_protected_consumption_test.go
-      - testdata/sema/mutex_protected_consumption_valid.sec
-      - testdata/sema/mutex_protected_consumption_invalid.sec
-      - internal/sema/mutex_guard_forwarding_test.go
-      - testdata/sema/mutex_forwarding_valid.sec
-      - testdata/sema/mutex_forwarding_invalid.sec
-      - testdata/sema/mutex_forwarding_owner.sec
-      - testdata/sema/mutex_forwarding_client_invalid.sec
-    rules:
-      - rules/declarations/functions.md
-      - rules/memory/ownership.md
-      - rules/memory/copy_move.md
-    partial:
-      - Complete direct forwarding for fields/properties/methods and lifetime-aware references.
+    rulebook: rules/concurrency/mutex.md
+    normative:
+      - Mutex[T] and MutexGuard[T] are @noCopy compiler-known/source-visible generic types.
+      - Mutex[T] owns exactly one protected T and one synchronization identity.
+      - MutexGuard[T] represents exactly one exclusive acquisition and releases on deterministic destruction.
+      - Public acquisition surface is Lock(), TryLock(), Lock(duration), Lock(ref Context).
+      - Lock() returns MutexGuard[T].
+      - TryLock() returns Option[MutexGuard[T]].
+      - Lock(duration) returns Option[MutexGuard[T]].
+      - Lock(ref Context) returns Result[MutexGuard[T], ContextError].
+      - There is no portable LockError and no Lock(timeout, context) overload in v0.1.
+      - MutexGuard[T] forwards accessible members to protected T.
+      - Guard-specific lookup precedes protected-T lookup.
+      - The complete protected T cannot be moved out.
+      - No public Unlock/Value/Get guard API exists.
+      - Mutex is non-reentrant.
+      - Live guards cannot cross spawn/await/suspending join/select.
+    corrections_applied:
+      - rules/corrections/applied/mutex-v2-cross-rulebook-correction-20260907.md
 
   - id: semantic-ir.mutex-v2
     area: semantic-ir-mutex-context-facts

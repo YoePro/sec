@@ -86,6 +86,28 @@ func analyzeProgramWithSourcesForReport(program *ast.Program, target CompilerTar
 		exitCLI(1)
 	}
 	analyzer := sema.NewAnalyzerWithScalarPlanAndDepth(scalarPlan, depth)
+	// MD-021 § 8.6(5): the Variant's C binding environment is resolved and
+	// frozen before declaration collection.
+	// MD-139: profile and allocation selections are validated before analysis.
+	selectionProblems := validateCLIPlanSelection(sourceFiles, target, targetDefinition.Definition)
+	for _, problem := range selectionProblems {
+		reportToolError("manifest", "%s", problem)
+		summary.Errors++
+	}
+	if len(selectionProblems) > 0 {
+		printDiagnosticSummary(summary)
+		exitCLI(3)
+	}
+	bindingPlan, bindingProblems := resolveCLICBindingPlan(sourceFiles, target)
+	for _, problem := range bindingProblems {
+		reportToolError("c-bindings", "%s", problem)
+		summary.Errors++
+	}
+	if len(bindingProblems) > 0 {
+		printDiagnosticSummary(summary)
+		exitCLI(3)
+	}
+	applyCLICBindingPlan(bindingPlan, program, analyzer)
 	analyzer.SetHardwareModuleContext(cliHardwareModuleContext(program, target, sourceFiles))
 	analyzer.SetDiagnosticRules(projectDiagnosticRules(sourceFiles))
 	// Requested sources receive optional analysis before imported core bodies.

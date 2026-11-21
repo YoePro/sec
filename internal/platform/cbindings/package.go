@@ -3,7 +3,7 @@
 //
 // Rules: rules/platform/ffi.md — § 56; rules/platform/platform_model.md — § 31;
 // rules/projects/modules.md — § 27; rules/tooling/cli.md — § 8;
-// rules/corrections/MD-021-c-binding-environment-complete-proposal-20261120.md.
+// rules/corrections/applied/MD-021-c-binding-environment-complete-proposal-20261120-20261121.md.
 package cbindings
 
 import (
@@ -142,6 +142,12 @@ func (pkg *Package) Validate() []Diagnostic {
 				diagnostics = append(diagnostics, diagnostic("c-bindings.missing-field", "%s.%s is required", scope, field))
 			}
 		}
+		if environment.OS != "" && !registered(environment.OS, func(d target.Definition) string { return d.OS }) && target.NormalizeOS(environment.OS) == environment.OS {
+			diagnostics = append(diagnostics, diagnostic("c-bindings.unknown-target", "%s.os %q is not a registered target operating system", scope, environment.OS))
+		}
+		if environment.Arch != "" && !registered(environment.Arch, func(d target.Definition) string { return d.Arch }) && target.NormalizeArch(environment.Arch) == environment.Arch {
+			diagnostics = append(diagnostics, diagnostic("c-bindings.unknown-target", "%s.arch %q is not a registered target architecture", scope, environment.Arch))
+		}
 		if environment.OS != "" && target.NormalizeOS(environment.OS) != environment.OS {
 			diagnostics = append(diagnostics, diagnostic("c-bindings.noncanonical-target", "%s.os %q is not canonical; write %q", scope, environment.OS, target.NormalizeOS(environment.OS)))
 		}
@@ -159,6 +165,18 @@ func (pkg *Package) Validate() []Diagnostic {
 		diagnostics = append(diagnostics, checkModules(scope+".modules", environment.Modules)...)
 	}
 	return diagnostics
+}
+
+// registered reports whether a canonical spelling names a field of some
+// registered target definition; an unregistered name is never canonical.
+// Rules: MD-021 correction §§ 5(7), 8.5(4); rules/platform/platform_model.md — target registry.
+func registered(value string, field func(target.Definition) string) bool {
+	for _, definition := range target.Definitions() {
+		if field(definition) == value {
+			return true
+		}
+	}
+	return false
 }
 
 // Resolvable reports whether the package can be selected by a plan: a

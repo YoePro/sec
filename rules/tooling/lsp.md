@@ -2441,7 +2441,7 @@ state.
 
 ### Hardware fact declarations (MD-111)
 
-**§ 20.5(10)** Amendment 2026-10-30 (`rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md` § 13(3)). Completion and hover for
+**§ 20.5(10)** Amendment 2026-10-30 (`rules/corrections/applied/MD-111-hardware-facts-approved-decision-20261030-20261121.md` § 13(3)). Completion and hover for
 `hardware region`, `hardware resource` and `hardware endpoint` members come from
 the compiler's metadata schema: allowed members, exact types, requiredness,
 enum cases and their meaning, with no separate LSP or formatter copy. Navigation

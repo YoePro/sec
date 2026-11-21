@@ -2,8 +2,8 @@
 
 - **Status:** Normative
 - **Created:** 2026-09-04
-- **Last updated:** 2026-09-15
-- **Document revision:** 2.2
+- **Last updated:** 2026-11-21 (complete fallible task examples in § 7)
+- **Document revision:** 2.3
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/concurrency/concurrency.md`
 - **Implementation governance:** `governance/concurrency_model.yaml`
@@ -31,7 +31,7 @@
 
 § 1(7) Mutable implementation status, current backend coverage, current test coverage, and temporary implementation limitations do not belong in this normative rulebook.
 
-§ 1(8) Mutable implementation status is tracked through `implementation-status.yaml`.
+§ 1(8) Mutable implementation status is tracked through `governance/concurrency_model.yaml` and the specialist fragments registered in `governance/index.yaml`.
 
 ---
 
@@ -179,10 +179,18 @@
 Result[Task[T], TaskSpawnError]
 ```
 
-§ 7(4) Typical propagation therefore uses:
+§ 7(4) Typical propagation handles creation failure before consuming the owning task:
 
 ```sec
-let worker := try spawn Work()
+fn Work() int {
+    return 42
+}
+
+fn Run() Result[TaskOutcome[int], TaskSpawnError] {
+    let worker := try spawn Work()
+    let outcome := await worker
+    return Ok(outcome)
+}
 ```
 
 § 7(5) `Task[T]` is move-only regardless of the copy classification of `T`.
@@ -225,6 +233,38 @@ TaskOutcome[Result[Image, IOError]]
 ```
 
 § 7(13) `Completed(Err(error))` is normal task execution completion and must not be reclassified as `Failed(TaskError)`.
+
+For example, creation failure, execution outcome, and the application result
+remain separate in both the declared types and the handling flow:
+
+```sec
+enum ReadError error { Unavailable }
+
+fn ReadValue() Result[int, ReadError] {
+    return Err(ReadError.Unavailable)
+}
+
+fn ReadOutcome() Result[TaskOutcome[Result[int, ReadError]], TaskSpawnError] {
+    let creation: Result[Task[Result[int, ReadError]], TaskSpawnError] := spawn task ReadValue()
+    let worker := try creation
+    let outcome: TaskOutcome[Result[int, ReadError]] := await worker
+    return Ok(outcome)
+}
+
+fn Classify(outcome: TaskOutcome[Result[int, ReadError]]) int {
+    match outcome {
+        Completed(result) => {
+            match result {
+                Ok(_) => return 1
+                Err(_) => return 2
+            }
+        }
+        Failed(_) => return 3
+        Cancelled => return 4
+        Panicked(_) => return 5
+    }
+}
+```
 
 § 7(14) Detailed task lifecycle, observer, join, detach, task-error, and outcome semantics are owned by `tasks.md`.
 

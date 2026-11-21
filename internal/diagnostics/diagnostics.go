@@ -187,6 +187,11 @@ const (
 	AssertConditionNotBool                        = "S1102"
 	IfConditionNotBool                            = "S1246"
 	UnresolvedCreationLifecycle                   = "S1247"
+	CAliasOutsideBindingModule                    = "S1248"
+	CAliasInvalidName                             = "S1249"
+	CAliasDuplicate                               = "S1250"
+	CAliasCycle                                   = "S1251"
+	CAliasIllegalTarget                           = "S1252"
 	ExplicitSelfParameter                         = "S1103"
 	ParameterShadowsDeclaration                   = "S1104"
 	GenericParameterShadowsDeclaration            = "S1105"
@@ -349,6 +354,8 @@ const (
 	// compiler implementation does not support yet, distinct from source
 	// and target errors (compiler_pipeline.md § 32).
 	CompilerCapabilityUnavailable = "S1239"
+	// MutexTargetCapability reports a selected target/profile lock contract failure.
+	MutexTargetCapability = "S1253"
 	// Unsafe context diagnostics from the canonical unsafe-operation
 	// registry (unsafe.md §§ 5, 47, 50): a call or operation that needs an
 	// unsafe context, and an unsafe context that authorizes nothing or is
@@ -597,6 +604,7 @@ var registry = map[string]Definition{
 	UnknownConfigParameter:                {ID: UnknownConfigParameter, Name: "attribute.unknown-config-parameter", Family: "attribute", DefaultSeverity: SeverityError, Mandatory: true},
 	NoActiveVariant:                       {ID: NoActiveVariant, Name: "attribute.no-active-variant", Family: "attribute", DefaultSeverity: SeverityError, Mandatory: true},
 	CompilerCapabilityUnavailable:         {ID: CompilerCapabilityUnavailable, Name: "compiler.capability-unavailable", Family: "compiler-capability", DefaultSeverity: SeverityError, Mandatory: true},
+	MutexTargetCapability:                 {ID: MutexTargetCapability, Name: "mutex.target-capability", Family: "concurrency", DefaultSeverity: SeverityError, Mandatory: true},
 	UnsafeCallRequiresContext:             {ID: UnsafeCallRequiresContext, Name: "unsafe.call-requires-context", Family: "unsafe", DefaultSeverity: SeverityError, Mandatory: true},
 	UnsafeOperationRequiresContext:        {ID: UnsafeOperationRequiresContext, Name: "unsafe.operation-requires-context", Family: "unsafe", DefaultSeverity: SeverityError, Mandatory: true},
 	UnsafeUnnecessary:                     {ID: UnsafeUnnecessary, Name: "unsafe.unnecessary", Family: "unsafe", DefaultSeverity: SeverityInformation},
@@ -749,6 +757,11 @@ var registry = map[string]Definition{
 	AssertConditionNotBool:                        {ID: AssertConditionNotBool, Name: "panic.assert-condition-not-bool", Family: "panic", DefaultSeverity: SeverityError, Mandatory: true},
 	IfConditionNotBool:                            {ID: IfConditionNotBool, Name: "control-flow.if-condition-not-bool", Family: "control-flow", DefaultSeverity: SeverityError, Mandatory: true},
 	UnresolvedCreationLifecycle:                   {ID: UnresolvedCreationLifecycle, Name: "ownership.unresolved-creation-result", Family: "ownership", DefaultSeverity: SeverityError, Mandatory: true},
+	CAliasOutsideBindingModule:                    {ID: CAliasOutsideBindingModule, Name: "ffi.c-alias-outside-binding-module", Family: "ffi", DefaultSeverity: SeverityError, Mandatory: true},
+	CAliasInvalidName:                             {ID: CAliasInvalidName, Name: "ffi.c-alias-invalid-name", Family: "ffi", DefaultSeverity: SeverityError, Mandatory: true},
+	CAliasDuplicate:                               {ID: CAliasDuplicate, Name: "ffi.c-alias-duplicate", Family: "ffi", DefaultSeverity: SeverityError, Mandatory: true},
+	CAliasCycle:                                   {ID: CAliasCycle, Name: "ffi.c-alias-cycle", Family: "ffi", DefaultSeverity: SeverityError, Mandatory: true},
+	CAliasIllegalTarget:                           {ID: CAliasIllegalTarget, Name: "ffi.c-alias-illegal-target", Family: "ffi", DefaultSeverity: SeverityError, Mandatory: true},
 	ExplicitSelfParameter:                         {ID: ExplicitSelfParameter, Name: "declarations.explicit-self-parameter", Family: "declarations", DefaultSeverity: SeverityError, Mandatory: true},
 	ParameterShadowsDeclaration:                   {ID: ParameterShadowsDeclaration, Name: "names.parameter-shadows-declaration", Family: "names", DefaultSeverity: SeverityError, Mandatory: true},
 	GenericParameterShadowsDeclaration:            {ID: GenericParameterShadowsDeclaration, Name: "names.generic-parameter-shadows-declaration", Family: "names", DefaultSeverity: SeverityError, Mandatory: true},

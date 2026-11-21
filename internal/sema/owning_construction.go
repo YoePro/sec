@@ -43,26 +43,8 @@ func (a *Analyzer) checkUnionPayloadFields(unionType Type, variant UnionVariant,
 			continue
 		}
 
-		valueType, _ := a.inferOwningConstructionValue(field.Value, expectedField.Type)
-		if valueType.Kind != InvalidType && !a.canInitialize(expectedField.Type, valueType, field.Value) {
-			a.addTaskTypeMismatchError(expressionToken(field.Value), expectedField.Type, valueType, "payload field %s for %s.%s must be %s, got %s", name, typeDisplayName(unionType), variant.Name, typeDisplayName(expectedField.Type), typeDisplayName(valueType))
+		if !a.checkUnionPayloadOperand(unionType, variant, name, field.Value, expectedField.Type) {
 			valid = false
-			continue
-		}
-		if valueType.Kind == InvalidType {
-			valid = false
-		}
-		if valueType.Kind != InvalidType {
-			// rules/declarations/unions.md; correction17.md: union payload
-			// fields use the ordinary destination representability check.
-			if a.checkCompileTimeContractExpression(expectedField.Type, field.Value) {
-				valid = false
-			}
-		}
-		if valueType.Kind != InvalidType {
-			if !a.validateOwningConstructionSource(field.Value, TransferSiteConstruction) {
-				valid = false
-			}
 		}
 	}
 
@@ -128,4 +110,50 @@ func (a *Analyzer) resolveResultValueInitializer(resultType Type, expr ast.Expre
 		return Type{Kind: InvalidType}, true
 	}
 	return resultType, true
+}
+
+// checkUnionPayloadOperand applies one typed-initialization and ownership rule
+// to named and unnamed payloads. The AST container selects operands only; it
+// cannot change copying, explicit moves, terminal returns or source validity.
+// Rules: rules/declarations/unions.md §§5.2–5.4,7.8;
+// rules/memory/copy_move.md §§9–10; rules/memory/ownership.md §17.
+func (a *Analyzer) checkUnionPayloadOperand(owner Type, variant UnionVariant, field string, value ast.Expression, expected Type) bool {
+	before := len(a.errors)
+	actual, _ := a.inferOwningConstructionValue(value, expected)
+	if actual.Kind == InvalidType || len(a.errors) != before {
+		return false
+	}
+	if !a.canInitialize(expected, actual, value) {
+		if field == "" {
+			a.addTaskCategoryError(expressionToken(value), owner, "%s variant %s.%s payload must be %s, got %s", sumSourceKind(owner), typeDisplayName(owner), variant.Name, typeDisplayName(expected), typeDisplayName(actual))
+		} else {
+			a.addTaskTypeMismatchError(expressionToken(value), expected, actual, "payload field %s for %s.%s must be %s, got %s", field, typeDisplayName(owner), variant.Name, typeDisplayName(expected), typeDisplayName(actual))
+		}
+		return false
+	}
+	if a.checkCompileTimeContractExpression(expected, value) {
+		return false
+	}
+	return a.validateOwningConstructionSource(value, TransferSiteConstruction)
+}
+
+// visitUnionOwnershipOperands follows the selected constructor's typed source
+// edges, shared by move/resource transfer and terminal-return validation. It
+// uses the accepted registry before final action freezing, never call spelling
+// or constructor AST shape; ordinary calls are opaque to this traversal.
+// Rules: rules/declarations/unions.md §§5,7.8;
+// rules/memory/ownership.md §17;
+// rules/corrections/applied/return-context-ownership-forwarding-correction-20260903.md §1.
+func (a *Analyzer) visitUnionOwnershipOperands(expr ast.Expression, visit func(ast.Expression) bool) (bool, bool) {
+	plan, known := a.resolvedUnionConstructions[expr]
+	if !known {
+		return false, false
+	}
+	changed := false
+	for _, operand := range plan.PayloadPreparation {
+		if !operand.Defaulted && visit(operand.Source) {
+			changed = true
+		}
+	}
+	return changed, true
 }

@@ -146,6 +146,10 @@ func (a *Analyzer) resolveTypeReference(ref *ast.TypeReference) (Type, bool) {
 		constArgs = append(constArgs, value.Int64())
 	}
 
+	if typ, ok, alias := a.resolveCAliasUse(ref); alias {
+		return typ, ok
+	}
+
 	name := a.resolveTypeName(ref.Name)
 
 	typ, ok := a.types[name]

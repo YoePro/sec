@@ -12,7 +12,7 @@ import (
 //
 // Rules:
 //   - rules/foundations/grammar.md — HardwareDeclaration (Amendment MD-111)
-//   - rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md — §§ 3(5), 8(1)
+//   - rules/corrections/applied/MD-111-hardware-facts-approved-decision-20261030-20261121.md — §§ 3(5), 8(1)
 type HardwareDeclaration struct {
 	Token     lexer.Token // the contextual `hardware`
 	KindToken lexer.Token // `region`, `resource` or `endpoint`

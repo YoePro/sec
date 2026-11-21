@@ -3151,7 +3151,7 @@ integrations:
       fingerprints, and separate-compilation compatibility without duplicating
       FFI legality or source ownership semantics.
     rules:
-      - rules/corrections/md117-heterogeneous-variadic-type-packs-correction.md
+      - rules/corrections/applied/md117-heterogeneous-variadic-type-packs-correction-20261121.md
       - rules/mlir/packages/sec-mlir-dialect_package25.md
       - rules/mlir/packages/sec-mlir-dialect_package25.yaml
       - rules/mlir/packages/sec-mlir-dialect_package25_decision-index.md

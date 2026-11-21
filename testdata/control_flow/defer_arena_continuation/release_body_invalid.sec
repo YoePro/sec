@@ -1,0 +1,12 @@
+module main
+
+fn DeferredReleaseBody() Result[uint, AllocationError] {
+    let mut mem: Arena := Arena {}
+    let values := try mem.Alloc[byte](4u)
+    defer {
+        mem.Release()
+        discard values.Len
+    }
+    let more := try mem.Alloc[byte](4u)
+    return Ok(values.Len + more.Len)
+}

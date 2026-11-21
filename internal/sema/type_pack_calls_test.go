@@ -161,6 +161,14 @@ func TestSharedTypePackChecksAndBoundaries(t *testing.T) {
 				t.Fatalf("shared pack committed a move: %v", errors)
 			}
 		}
+		// A fixed-array spread into a shared pack is the ordinary per-element
+		// borrow boundary of spread arguments (S1239), as for ref parameters.
+		if name == "shared_fixed_spread_boundary.sec" {
+			if len(errors) != 1 || errors[0].ID != diagnostics.CompilerCapabilityUnavailable {
+				t.Fatalf("wrong capability boundary: %s %v", name, errors)
+			}
+			continue
+		}
 		if strings.Contains(name, "boundary") {
 			if len(errors) != 1 || errors[0].ID != diagnostics.GenericTypePackExpansionUnavailable {
 				t.Fatalf("wrong capability boundary: %s %v", name, errors)

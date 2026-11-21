@@ -7,6 +7,7 @@ import (
 	"html/template"
 	"sort"
 	"strings"
+	"time"
 )
 
 //go:embed rulebook_index.html
@@ -18,7 +19,9 @@ type bookIndexGroup struct {
 	Links              []rulebookPageLink
 }
 
-func buildBookSite(source *rulebookWorkspace, baseURL string) (*bookCatalog, error) {
+// buildBookSite renders the site. A non-zero published time is shown in the
+// title page footer; the output is deterministic for a given time.
+func buildBookSite(source *rulebookWorkspace, baseURL string, published time.Time) (*bookCatalog, error) {
 	catalog, err := loadBookCatalog(source)
 	if err != nil {
 		return nil, err
@@ -62,7 +65,7 @@ func buildBookSite(source *rulebookWorkspace, baseURL string) (*bookCatalog, err
 			return nil, err
 		}
 	}
-	makeIndex := func(output, title string, categories []*bookCategory, unavailable map[string]string) error {
+	makeIndex := func(output, title string, categories []*bookCategory, unavailable map[string]string, titlePage bool) error {
 		var indexGroups []bookIndexGroup
 		for _, category := range categories {
 			if len(category.Books) == 0 {
@@ -82,18 +85,23 @@ func buildBookSite(source *rulebookWorkspace, baseURL string) (*bookCatalog, err
 		if err := bookIndexTemplate.Execute(&body, data); err != nil {
 			return err
 		}
-		page, err := renderRulebookHTMLPage(rulebookPageOptions{Title: title, IndexURL: links.href(output, "index.html", ""), Navigation: groups(output, nil)}, "index.md", body.Bytes())
+		options := rulebookPageOptions{Title: title, IndexURL: links.href(output, "index.html", ""), Navigation: groups(output, nil)}
+		if titlePage && !published.IsZero() {
+			utc := published.UTC()
+			options.PublishedISO, options.PublishedDisplay = utc.Format(time.RFC3339), utc.Format("2006-01-02 15:04 UTC")
+		}
+		page, err := renderRulebookHTMLPage(options, "index.md", body.Bytes())
 		if err != nil {
 			return err
 		}
 		return put(output, page)
 	}
-	if err := makeIndex("index.html", "Sec rulebooks", catalog.Categories, catalog.Unavailable); err != nil {
+	if err := makeIndex("index.html", "Sec rulebooks", catalog.Categories, catalog.Unavailable, true); err != nil {
 		return nil, err
 	}
 	for _, category := range catalog.Categories {
 		if len(category.Books) > 0 {
-			if err := makeIndex(category.Key+"/index.html", category.Title, []*bookCategory{category}, nil); err != nil {
+			if err := makeIndex(category.Key+"/index.html", category.Title, []*bookCategory{category}, nil, false); err != nil {
 				return nil, err
 			}
 		}

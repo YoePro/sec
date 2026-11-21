@@ -3,9 +3,13 @@
 This directory contains pending normative corrections to canonical Sec
 rulebooks.
 
-A correction remains in this directory until every required change has been
-merged into its target rulebook. Once applied, move it to `applied/` and append
-the application date to the basename using `-YYYYMMDD.md`.
+A correction is not an implementation tracker. Integrate its normative text into
+the target rulebooks and give every one of its implementation points its own
+item in the owning `governance/*.yaml` fragment. As soon as every point is there,
+move the correction to `applied/` and append the application date to the basename
+using `-YYYYMMDD.md` — whatever archival condition the correction itself or a
+governance entry states (owner rule, 2026-11-21). Unfinished implementation never
+keeps a correction in this directory; it stays tracked in governance.
 
 Example:
 

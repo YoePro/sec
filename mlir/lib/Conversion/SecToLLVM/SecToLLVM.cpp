@@ -156,6 +156,11 @@ bool isLoweredSecOperation(Operation *operation) {
     if (isa<sec::ResultType, sec::UnionType>(element))
       return isScalarTaggedType(element);
   }
+  // UnitDimension values (MD-062 § 7(12); sec-lower-unit-dimensions).
+  if (isa<sec::UnitDimensionConstantOp, sec::UnitDimensionCompareOp,
+          sec::UnitDimensionAxisCountOp, sec::UnitDimensionIsDimensionlessOp>(
+          operation))
+    return true;
   return isLoweredSecFloatOperation(operation) ||
          isa<sec::ConstIntOp, sec::ConstBoolOp, sec::StorageDeclareOp,
              sec::StorageInitOp, sec::StorageLoadOp, sec::StorageStoreOp,
@@ -525,6 +530,7 @@ void sec::registerSecToLLVMPipelines() {
         manager.addPass(sec::createSecLowerFloats());
         manager.addPass(sec::createSecLowerTrivialCorePass());
         manager.addPass(sec::createSecLowerCheckedIntegersPass());
+        manager.addPass(sec::createSecLowerUnitDimensions());
         manager.addPass(sec::createSecLowerStaticStorage());
         manager.addPass(sec::createSecLowerFailureEndpoints());
         if (!options.entry.getValue().empty())

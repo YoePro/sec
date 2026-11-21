@@ -25,8 +25,11 @@ type rulebookPageOptions struct {
 	Title, Category, Revision, DocumentationStatus, SourcePath string
 	TitleID                                                    string
 	IndexURL                                                   string
-	Breadcrumbs, Contents                                      []rulebookPageLink
-	Navigation                                                 []rulebookPageGroup
+	// PublishedISO and PublishedDisplay give the title page's publication
+	// time; empty on every other page and for in-memory checks.
+	PublishedISO, PublishedDisplay string
+	Breadcrumbs, Contents          []rulebookPageLink
+	Navigation                     []rulebookPageGroup
 }
 
 //go:embed rulebook_page.html

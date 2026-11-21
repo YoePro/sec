@@ -769,3 +769,68 @@ reports:
       core". The same pattern checks cleanly in an ordinary module, also one
       named core outside the trusted path. Cause not isolated; the test file
       uses public-spelled helpers as a workaround.
+
+  - id: BUG-000035
+    title: Static factory mistaken for a union ownership constructor
+    status: fixed
+    severity: high
+    kind: ownership-analysis-bug
+    reported: "2026-11-21"
+    report: fixed/BUG-000035-union-factory-ownership-classification.md
+    area: frontend-union-construction
+    rulebooks:
+      - rules/declarations/unions.md
+      - rules/memory/ownership.md
+      - rules/memory/copy_move.md
+      - rules/corrections/applied/return-context-ownership-forwarding-correction-20260903.md
+    governance:
+      - frontend.union-constructor-value-semantics
+    evidence: >-
+      Pre-fix Sema regression classified the ordinary Factory.Single borrowed
+      call as a Choice.Single payload constructor. Replaced spelling-based
+      ownership edges with accepted constructor records. Paired Sema/IR races,
+      complete Sema/IR/emitter suites and the native union regression passed
+      2026-11-21. The borrowed factory IR retains its owner without a move or
+      cleanup cancellation.
+
+  - id: BUG-000036
+    title: Unnamed union payload loses carried reference origin
+    status: fixed
+    severity: high
+    kind: lifetime-analysis-bug
+    reported: "2026-11-21"
+    report: fixed/BUG-000036-union-payload-reference-origin-loss.md
+    area: frontend-union-construction
+    rulebooks:
+      - rules/declarations/unions.md
+      - rules/memory/lifetime_analysis.md
+      - rules/memory/borrowing.md
+    governance:
+      - frontend.union-constructor-value-semantics
+    evidence: >-
+      The pre-fix paired Sema probe accepted a returned Single(ref local)
+      while rejecting the equivalent named payload. Constructor operand
+      origins now feed canonical contained and returned-origin propagation;
+      paired Sema/CLI/LSP races and complete Sema/IR/emitter suites passed
+      2026-11-21.
+
+  - id: BUG-000037
+    title: Loop Arena generation equality ignores zero-valued domain identity
+    status: fixed
+    severity: medium
+    kind: flow-analysis-bug
+    reported: "2026-11-21"
+    report: fixed/BUG-000037-loop-arena-generation-domain-equality.md
+    area: frontend-loop-arena-generation
+    rulebooks:
+      - rules/memory/arena.md
+      - rules/control-flow/flowcontrol_while.md
+      - rules/control-flow/flowcontrol_for.md
+    governance:
+      - frontend.loop-arena-generation-fixed-point
+    evidence: >-
+      The pre-fix TestLoopArenaGenerationEdges compares different zero-valued
+      ArenaDomain keys equal. Explicit key-presence checking fixes the helper;
+      focused race tests pass. No source acceptance defect from this particular
+      key collision is claimed. Replay mutation testing separately confirms
+      the five source-backed next-iteration stale-use regressions are sensitive.

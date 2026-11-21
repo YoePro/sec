@@ -1,0 +1,48 @@
+module main
+
+enum Sparse int16 { Low = -128, Alias = -128, High = 127 }
+enum Wide int16 { Low = -129, Zero = 0, Limit = 255, High = 256 }
+let mut Evaluations: int := 0
+
+fn Exact(value: Sparse) int8 { return int8(value) }
+fn Known() uint8 { return uint8(Wide.Limit) }
+fn Produce(value: Wide) Wide {
+    Evaluations += 1
+    return value
+}
+fn Checked(value: Wide) Result[uint8, ConversionError] {
+    return uint8(Produce(value))
+}
+fn Propagate(value: Wide) Result[uint8, ConversionError] {
+    return Ok(try uint8(Produce(value)))
+}
+fn Decode(value: Result[uint8, ConversionError]) int {
+    match value {
+        Ok(raw) => return int(raw)
+        Err(error) => {
+            match error {
+                ConversionError.OutOfRange => return -1
+                _ => return -2
+            }
+        }
+    }
+}
+fn Local(value: Wide) int {
+    return int(try uint8(Produce(value)) {
+        Err(ConversionError.OutOfRange) => 17
+        Err(_) => 19
+    })
+}
+fn main() int {
+    if Exact(Sparse.Low) != -128 || Exact(Sparse.Alias) != -128 || Exact(Sparse.High) != 127 { return 1 }
+    if Known() != 255 { return 2 }
+    if Decode(Checked(Wide.Zero)) != 0 { return 3 }
+    if Decode(Checked(Wide.Limit)) != 255 { return 4 }
+    if Decode(Checked(Wide.Low)) != -1 { return 5 }
+    if Decode(Checked(Wide.High)) != -1 { return 6 }
+    if Decode(Propagate(Wide.Limit)) != 255 { return 7 }
+    if Decode(Propagate(Wide.High)) != -1 { return 8 }
+    if Local(Wide.Zero) != 0 || Local(Wide.High) != 17 { return 9 }
+    if Evaluations != 8 { return 10 }
+    return 42
+}

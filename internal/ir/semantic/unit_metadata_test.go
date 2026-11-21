@@ -68,7 +68,7 @@ impl <celsius> {
 //
 // Rules:
 //   - rules/types/units.md — "Unit metadata value types", "Semantic IR and lowering"
-//   - rules/corrections/md062-unit-metadata-value-types-correction-20261027.md — §§ 7(12), 9(7), 11(5), 12(7)
+//   - rules/corrections/applied/md062-unit-metadata-value-types-correction-20261027-20261121.md — §§ 7(12), 9(7), 11(5), 12(7)
 func TestUnitMetadataReadsFoldToConstants(t *testing.T) {
 	for _, tc := range []struct{ body, want string }{
 		{"fn Read() string {\n    return <m>.LongName\n}\n", `const.string "Metre" unit-metadata=<m>.LongName`},
@@ -103,12 +103,13 @@ func TestUnitMetadataReadsFoldToConstants(t *testing.T) {
 	}
 }
 
-// A UnitDimension value that escapes compile-time folding, and a reference
-// quantity read, have no Semantic IR representation yet and fail closed.
+// A UnitDimension value that escapes compile-time folding has no Semantic IR
+// representation below the schema-13 package that introduced it, so it fails
+// closed there; from package 13 on it is an immediate value (P13 and up build).
 //
 // Rules:
 //   - rules/types/units.md — "Semantic IR and lowering" (MD-062)
-//   - rules/corrections/md062-unit-metadata-value-types-correction-20261027.md — §§ 12(8), 15(4)
+//   - rules/corrections/applied/md062-unit-metadata-value-types-correction-20261027-20261121.md — §§ 12(8), 15(4)
 func TestUnitDimensionValuesFailClosed(t *testing.T) {
 	for _, body := range []string{
 		"fn Read() UnitDimension {\n    return <m>.Dimension\n}\n",
@@ -117,10 +118,13 @@ func TestUnitDimensionValuesFailClosed(t *testing.T) {
 		"fn Same(left: UnitDimension) bool {\n    return left == <m>.Dimension\n}\n",
 	} {
 		t.Run(body, func(t *testing.T) {
-			_, err := analyzedModule(t, unitMetadataIRUnits+body, 15)
+			_, err := analyzedModule(t, unitMetadataIRUnits+body, 12)
 			var unsupported *UnsupportedFeatureError
 			if !errors.As(err, &unsupported) {
 				t.Fatalf("want an unsupported-feature error, got %v", err)
+			}
+			if _, err := analyzedModule(t, unitMetadataIRUnits+body, unitDimensionLoweringPackage); err != nil {
+				t.Fatalf("package %d: %v", unitDimensionLoweringPackage, err)
 			}
 		})
 	}
@@ -128,7 +132,7 @@ func TestUnitDimensionValuesFailClosed(t *testing.T) {
 
 // Provenance is verified: it annotates only constants, and a decimal is
 // projected only for Scale and only when it differs from the exact value.
-// Rules: rules/corrections/md062-unit-metadata-value-types-correction-20261027.md — §§ 9(7)–9(8), 12(7).
+// Rules: rules/corrections/applied/md062-unit-metadata-value-types-correction-20261027-20261121.md — §§ 9(7)–9(8), 12(7).
 func TestUnitMetadataProvenanceVerification(t *testing.T) {
 	decimal, err := parseDecimal("0.5")
 	if err != nil {

@@ -8,7 +8,7 @@ import (
 
 // Materializers are static associated functions in completion/hover, with
 // borrowed source parameters and no instance receiver.
-// Rules: rules/corrections/md109-core-string-materialization-correction.md
+// Rules: rules/corrections/applied/md109-core-string-materialization-correction-20261121.md
 // — §§2–3,6,9.3,10.2.
 func TestStringMaterializationStaticTooling(t *testing.T) {
 	data, err := os.ReadFile("../../testdata/sema/string_materialization_static_valid.sec")

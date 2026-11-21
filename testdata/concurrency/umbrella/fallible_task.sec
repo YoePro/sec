@@ -1,0 +1,11 @@
+module main
+
+fn Work() int {
+    return 42
+}
+
+fn Run() Result[TaskOutcome[int], TaskSpawnError] {
+    let worker := try spawn Work()
+    let outcome := await worker
+    return Ok(outcome)
+}

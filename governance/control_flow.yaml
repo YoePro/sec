@@ -83,7 +83,7 @@ integrations:
     area: frontend-control-flow-and-reference-validity
     status: implemented
     audited: "2026-08-20"
-    revised: "2026-10-10"
+    revised: "2026-11-21"
     repository_baseline: c515862
     summary: Loop fixed-point analysis carries ArenaDomain generations with move state, resources, borrows, and local reference origins. Fallthrough and continue backedges merge generations into the loop header, generation changes participate in convergence, and replay uses the merged header state for both while and for loops.
     code:
@@ -93,6 +93,9 @@ integrations:
       - internal/sema/analyzer_arena_flow.go
     tests:
       - internal/sema/loop_edge_state_test.go
+      - internal/sema/loop_arena_generation_test.go
+      - testdata/control_flow/loop_arena_generation/valid.sec
+      - testdata/control_flow/loop_arena_generation/invalid.sec
     implemented:
       - arena reset/release advance current Sema arena generation
       - stale arena-reference checks compare reference generation to current arena generation
@@ -118,6 +121,8 @@ integrations:
       - break-only arena generation affects exit but not nonexistent backedge
       - nested loops preserve generation on the correct loop edge
     verification:
+      - command: go test -race ./internal/sema -run 'TestLoopArenaGeneration|TestLoopEdgesCarryEveryDomain|TestArenaReset.*Loop|TestPlace.*LoopBackedge' -count=1 -timeout=90s
+        result: "Passed 2026-11-21 (1.301s): five source-backed later-iteration/condition stale-use errors, four valid controls, detached continue/fallthrough joins, break exclusion and exact domain-key equality. BUG-000037 reproduced before the key-presence fix. A temporary Go overlay replacing merged replay epochs with entry epochs removes all five source diagnostics as expected. Full Sema passes 29.970s; vet and global traceability (0.191s) pass. No native epoch/lowering claim."
       - command: go test ./... -count=1
         result: passed on 2026-10-10 after the loopEdgeState refactor with unchanged loop, arena-generation, move, resource, borrow and reference-origin behavior; TestLoopEdgesCarryEveryDomain guards that every edge records every domain; remaining reduced from 1 to 0
     primary_document: rules/control-flow/flowcontrol_while.md
@@ -299,7 +304,7 @@ integrations:
     area: frontend-control-flow-ownership-and-lowering
     status: partial
     integrated: "2026-08-16"
-    revised: "2026-11-04"
+    revised: "2026-11-21"
     document_revision: "2.0"
     repository_baseline: 56be75d
     summary: >-
@@ -330,6 +335,8 @@ integrations:
       - internal/sema/analyzer_defer.go
       - internal/sema/semantic_facts.go
       - internal/formatter/formatter.go
+      - internal/sema/expression_statements.go
+      - internal/sema/analyzer_try_assignment.go
     tests:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
@@ -338,6 +345,15 @@ integrations:
       - internal/sema/destruction_test.go
       - testdata/defer_valid.sec
       - testdata/defer_invalid.sec
+      - internal/sema/defer_fallible_test.go
+      - cmd/compiler/defer_fallible_test.go
+      - cmd/lsp/defer_fallible_test.go
+      - testdata/control_flow/defer_fallible/valid.sec
+      - testdata/control_flow/defer_fallible/invalid.sec
+      - internal/sema/defer_registration_isolation_test.go
+      - cmd/compiler/defer_arena_continuation_test.go
+      - cmd/lsp/defer_arena_continuation_test.go
+      - testdata/control_flow/defer_arena_continuation/release_body_invalid.sec
     implemented:
       - block-form defer syntax and dedicated AST statement
       - registration represented when execution reaches the defer statement
@@ -361,10 +377,10 @@ integrations:
       - "Semantic IR representation (P17): cleanup.defer-register carries registration ordinal, cleanup scope, defer id, capture Places and source location; the body is an isolated region (lowering v13 §§ 13–14)."
       - "return value isolation (defer.md § 14): the return operand is established before cleanup.run-function, so a defer that assigns the returned local cannot change the result; return, break and continue inside a defer are rejected by Sema."
       - "verified 2026-11-07 (TestDeferIsPermittedInEveryCallableBody): defer is valid in ordinary and static functions and methods, lambdas, property accessors and init; rejection inside free is frontend.destruction"
+      - "Local fallible cleanup handling completed 2026-11-21 (defer.md §15, errorhandling.md §§7,12,15–16,22,32): ordinary Result/Option recovery with exhaustive local handlers, match, retained bindings and legal explicit discard works without a cleanup-specific discard requirement. Discardable ordinary call results remain legal implicitly. Bare Result/Option try, partial and guarded handlers, failures raised inside handlers, and naked or partially handled fallible assignment cannot escape cleanup even when the enclosing return channel matches. Nested lambda invocation keeps its own propagation boundary. Naked try assignment now reports registered S1093 with cleanup-local repair text; S1005 ignored-result help no longer suggests the forbidden enclosing return. Paired source matrices verify seven mandatory errors and valid replacement in Sema, CLI JSON and unsaved LSP; rejected bodies publish no executable defer/assignment plan. Physical cleanup lowering and panic policy remain separate points."
+      - "Deferred Reset/Release registration-state isolation closed by verification 2026-11-21 (defer.md §§2–3,9,29; arena.md §§35–38,43–44): existing child symbols and copied assignment, ownership/move reasons, resource-close, borrow, reference-container and epoch state validate cleanup separately and restore ordinary continuation, including on deferred-body errors. The new Release-body rejection fixture keeps only its cleanup-local stale-use error while subsequent Arena allocation and reference use remain valid. Paired existing Reset/Release, conditional/multiple registrations and immediate invalidations pass at all three mandatory analysis depths on 32/64-bit plans; CLI JSON and unsaved LSP preserve the single cleanup error without continuation cascades. Broader mutable-domain auditing, future resource effects and cleanup-edge execution remain under frontend.defer-cleanup-state-isolation; no runtime cleanup lowering is claimed."
     remaining:
-      - isolate cleanup-time state mutations such as deferred Arena.Reset or Arena.Release from ordinary post-registration flow state
       - lower cleanup.defer-register, cleanup.run-scope and cleanup.run-function physically through the Sec MLIR to LLVM track, including one runtime instance per loop registration and owners of a loop body that a defer reads (the native track stops at 'physical representation of ... ownership cleanup' today)
-      - complete local fallible-cleanup handling without imposing any defer-specific discard rule beyond canonical must-use policy
       - define and lower defer behavior only on panic or abnormal paths where the canonical panic/unwind policy requires cleanup
       - complete the revision-2.0 parser, Sema, ownership, borrow, destruction, formatter, diagnostics, LSP, Semantic IR, and backend regression matrix
     required_tests:
@@ -393,6 +409,14 @@ integrations:
       - defer does not impose a mandatory discard keyword
       - uninitialized value referenced by registered defer rejected
     verification:
+      - command: go test ./internal/sema -count=1 -timeout=120s; go test ./internal/traceability -count=1; go vet ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: "Passed 2026-11-21: complete Sema 42.139s, global traceability 0.213s and vet for all three packages. Governance check, canonical formatting, owner path validation and diff hygiene also pass."
+      - command: go test -race ./internal/sema ./cmd/compiler ./cmd/lsp -run 'TestDeferRegistrationIsolation|TestDeferredArena(Continuation|BodyStillValidates|Invalidation)' -count=1 -timeout=90s
+        result: "Passed 2026-11-21: Sema 1.859s, CLI 24.851s and LSP 23.808s. The four-fixture matrix covers all mandatory depths on 32/64-bit plans, including rejected deferred Release restoration. A temporary Go overlay sharing cleanup move state adds an ordinary-continuation moved-Arena error, confirming regression sensitivity. No production logic or runtime cleanup lowering changed."
+      - command: go test -race ./internal/sema ./cmd/compiler ./cmd/lsp -run '^TestDeferFallibleHandling' -count=1 -timeout=90s
+        result: "Passed 2026-11-21: Sema 1.106s, CLI 13.534s and LSP 12.377s; seven invalid cleanup errors retain registered identities and source spans, valid local handling and nested invocation pass, invalid bodies publish no executable plans."
+      - command: go test ./internal/sema ./internal/ir/semantic -count=1 -timeout=120s
+        result: "Passed 2026-11-21: full Sema 31.244s and Semantic IR 8.299s. New valid/invalid local cleanup and no-plan-on-rejection regressions pass; compiler/LSP focused tests pass 3.263s/3.144s. Compiler/Sema/LSP vet and global rulebook traceability pass. The pre-fix source matrix reproduced missing try-assignment identity/help and invalid return advice for ignored cleanup Results."
       - command: go test ./internal/parser -run Defer -count=1
         result: passed
       - command: go test ./internal/sema -run Defer -count=1
@@ -609,7 +633,7 @@ integrations:
     status: partial
     integrated: "2026-08-16"
     reviewed: "2026-09-22"
-    revised: "2026-10-29"
+    revised: "2026-11-21"
     document_revision: "2.0"
     repository_baseline: 56be75d
     summary: >-
@@ -644,6 +668,7 @@ integrations:
       - internal/ir/semantic/model.go
       - internal/ir/semantic/printer.go
       - internal/ir/semantic/verifier.go
+      - internal/sema/analyzer_arena_flow.go
     tests:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
@@ -663,6 +688,9 @@ integrations:
       - internal/ir/semantic/switch_loop_control_test.go
       - cmd/compiler/native_track_test.go
       - testdata/build/native/switch_loop_control.sec
+      - internal/sema/loop_arena_generation_test.go
+      - testdata/control_flow/loop_arena_generation/valid.sec
+      - testdata/control_flow/loop_arena_generation/invalid.sec
     implemented:
       - "Path-fact while entry (2026-11-11; flowcontrol_while.md §§ 19–20, 28): a pure while condition decided at entry by dominating path facts (per-binding versioned facts, stored fields) is routed through the canonical unreachable-code policy: proven false, the body reports S3001 and the loop is a zero-iteration loop; proven true (or true from first-entry constants) with a body that never reaches the next test and has no reachable break, ResolvedWhileFlow.ContinuesAfterLoop is false, so following code reports S3001 and return analysis is satisfied. TestWhileEntryDecidedByPathFacts"
       - "post-loop definite assignment (2026-11-10; flowcontrol_while.md § 23, § 28): a while loop intersects the assigned state of every reachable exit — the zero-iteration condition-false exit (omitted when the first test is proven true from pre-loop constants), the condition-false exit after an iteration (body fall-through and continue edges), and every reachable break; the while-true break special case and the `is empty` refinement are instances of the same merge. for loops keep the zero-iteration path (flowcontrol_for.md § 33). analyzer_while_flow.go intersectExitAssigned, TestWhileExitDefiniteAssignment"
@@ -700,8 +728,8 @@ integrations:
       - "while conditions refine definite assignment from union state tests: the body of while value is Variant sees an initialized binding, and a while value is empty loop without a reachable break leaves the binding initialized; loop backedge re-analysis never weakens the published possibly-empty state-test fact"
       - "While/switch loop-target verification completed 2026-10-29 using the focused source/IR/native evidence owned by frontend.switch-statements-v2: nested switch break targets the surrounding while exit, continue targets its condition, and fallthrough does not create a loop target. Explicit CFG successor and loop identity checks plus executed expected-result checks cover skipped case/body tails. Nontrivial loop cleanup and other while coverage remain separately tracked; no new lowering capability is claimed."
       - "union/Option/Result variant proofs cross loop exits (2026-11-08, TestVariantProofsCrossJoins): a variant proven on every reachable break edge and on the condition-false exit (unless the condition is always true) holds after the loop"
+      - "Arena generation loop-header/backedge point closed by verification 2026-11-21: the shared frontend.loop-arena-generation-fixed-point implementation carries canonical domain generations through fallthrough and continue edges, excludes break-only paths from the next iteration, detects generation-only changes and replays with the merged header snapshot. New source regressions cover while/for fallthrough and continue plus while-condition re-evaluation; break-only and fresh-per-iteration controls pass. A temporary Go overlay dropping merged header epochs suppresses all five expected stale-use diagnostics, confirming replay sensitivity. Fixed domain-key presence in generation-state equality (BUG-000037); different zero-valued domains cannot compare equal. Runtime epoch representation and cleanup/lowering remain separate."
     remaining:
-      - carry Arena generation through loop-header and backedge fixed points, continue edges, change detection, and replay
       - complete focused short-circuit, condition-frequency, try-condition, nesting, formatter, diagnostics, LSP, Semantic IR, and backend coverage
       - "Semantic IR: explicit loop cleanup edges for loops whose bodies own non-trivially destructible storage or defer (§ 66(1)), loop-carried ownership/availability state (§ 66(2)–(3)), and while loops nested in for/switch once those constructs reach Semantic IR"
       - "Sec MLIR: loop records are admitted from Semantic IR package gate 13; emit-sec-mlir (P12) and the dialect do not yet carry them"
@@ -730,6 +758,8 @@ integrations:
       - while-else rejected
       - labeled loop control rejected
     verification:
+      - command: go test -race ./internal/sema -run 'TestLoopArenaGeneration|TestLoopEdgesCarryEveryDomain|TestArenaReset.*Loop|TestPlace.*LoopBackedge' -count=1 -timeout=90s
+        result: "Passed 2026-11-21 (1.301s): five source-backed later-iteration/condition stale-use errors, four valid controls, detached continue/fallthrough joins, break exclusion and exact domain-key equality. BUG-000037 reproduced before the key-presence fix. A temporary Go overlay replacing merged replay epochs with entry epochs removes all five source diagnostics as expected. Full Sema passes 29.970s; vet and global traceability (0.191s) pass. No native epoch/lowering claim."
       - command: go test ./internal/ir/semantic -count=1; SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./cmd/compiler -run TestNativeTrackBuildsAndRuns -count=1 -timeout=120s; go vet ./internal/ir/semantic ./cmd/compiler
         result: "passed on 2026-10-29: complete Semantic IR suite 3.6s, native build/run matrix including nested switch loop-control 15.1s, vet passed. One whole switch test point and its existing while-specific verification counterpart are closed with shared evidence."
       - command: go test ./internal/parser -run While -count=1
@@ -1197,7 +1227,7 @@ integrations:
     area: frontend-control-flow-ownership-and-lowering
     status: partial
     integrated: "2026-09-03"
-    revised: "2026-11-20"
+    revised: "2026-11-21"
     document_revision: "2.1"
     repository_baseline: 998d8d1
     summary: >-
@@ -1213,7 +1243,7 @@ integrations:
       ascending default steps, structural iteration borrows, and broad
       collection lowering remain incomplete.
     rules:
-      - rules/corrections/md117-heterogeneous-variadic-type-packs-correction.md
+      - rules/corrections/applied/md117-heterogeneous-variadic-type-packs-correction-20261121.md
       - rules/control-flow/flowcontrol_for.md
       - rules/declarations/interfaces.md
       - rules/types/types.md
@@ -1252,6 +1282,7 @@ integrations:
       - internal/sema/iterator_tooling.go
       - cmd/lsp/iterator_completion.go
       - cmd/lsp/main.go
+      - internal/sema/analyzer_arena_flow.go
     tests:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
@@ -1290,6 +1321,9 @@ integrations:
       - cmd/lsp/iterator_binding_presentation_test.go
       - testdata/tooling/iterator_binding_presentation.sec
       - testdata/tooling/iterator_binding_presentation_invalid.sec
+      - internal/sema/loop_arena_generation_test.go
+      - testdata/control_flow/loop_arena_generation/valid.sec
+      - testdata/control_flow/loop_arena_generation/invalid.sec
     implemented:
       - "MD-117 pack loop modes and constant indexing (2026-11-01; functions.md §38A(5)(2),(4)-(6), semantic_ir.md §27A(5)-(6)): for ref mut reborrows each ref mut parameter per use; for ref over an owned position borrows through a read-only value root with Sema's loop borrow; values[k] requires a non-negative compile-time constant index (never a flow-known let mut), has the opaque element Types[k] so different positions do not unify, is checked per selected call for existence and for copyability of an owned by-value read, and lowers to the expanded parameter as a holder pass, reborrow, copy or value-root borrow; moving an element or a ref mut holder out of the pack and mutable borrows through shared or owned positions are rejected (TestPackLoopBindingModes, TestPackIndexSelectsPosition, TestTypePackIndexing)"
       - "MD-117 pack loop backfill (2026-11-01; functions.md §38A(5)(7), flowcontrol_for.md §13A(3)): each loop has its own opaque element Types[binding], so nested loops over one pack do not unify their elements; by-value diagnostics follow source order; nested loops, switch, continue, break, try, panic and return in the body and empty-pack iteration are verified in Semantic IR; the LSP reports the same rules (TestTypePackIterationTemplate, TestTypePackByValueDiagnosticsAreOrdered, TestPackLoopBodyControlFlow, TestPackLoopLSP)"
@@ -1340,10 +1374,10 @@ integrations:
       - For-header ref/ref mut keywords and multi-binding commas receive parser-owned CST spacing roles, completing ordinary intra-line for/in/range/step spacing without changing comments, line breaks or binding authority. Sema publishes detached, source-ordered ForBindingModes only after a header validates, with explicit value/ref/ref mut/discard mode and resolved binding type; reset and invalid-header tests prevent stale or positive invalid facts. LSP hover at for, binding names and ref keywords consumes these facts and retains existing Iterator/Next and map information. Shared CLI/LSP formatting goldens and typed source tests cover all modes (2026-11-10).
       - "Dedicated iterator binding presentation completed 2026-11-10: Sema snapshots now retain each yielded BindingID and explicitly classify borrowed interface-view requirements alongside concrete and generic-constraint resolutions. LSP ordinary and expected-return completion preserve the yielded value type and show the canonical Iterator[T], element type and selected Next description; hover on uses of the loop binding resolves the same fact by binding identity. Equal spellings in disjoint loops or ordinary locals cannot inherit another resolution. Valid ref mut Iterator[T] views publish their runtime interface requirement without inventing a concrete target; generic templates continue to defer selection to specialization. Invalid conformance, duck typing and shared views supply no Next promise. This is tooling over existing loop semantics; iterator runtime/lowering and cleanup remain separate remaining work."
       - "2026-11-17: compiler-known Iterator[T] loops over reusable iterator storage lower through Semantic IR and Sec MLIR schema 13 as repeated statically resolved Next calls with Some/None control flow: condition block borrows the storage, calls Next and tests Some; the body binds the copy-trivial payload or discards it; None and break exit; every sec-mlir-opt verifier passes (internal/ir/semantic/iterator_loops.go; TestSchema13IteratorLoops)."
+      - "Arena generation loop-header/backedge point closed by verification 2026-11-21: the shared frontend.loop-arena-generation-fixed-point implementation carries canonical domain generations through fallthrough and continue edges, excludes break-only paths from the next iteration, detects generation-only changes and replays with the merged header snapshot. New source regressions cover while/for fallthrough and continue plus while-condition re-evaluation; break-only and fresh-per-iteration controls pass. A temporary Go overlay dropping merged header epochs suppresses all five expected stale-use diagnostics, confirming replay sensitivity. Fixed domain-key presence in generation-state equality (BUG-000037); different zero-valued domains cannot compare equal. Runtime epoch representation and cleanup/lowering remain separate."
     partial:
       - "Started (moved to partial 2026-11-20; the text records the done part and what remains): MD-057 borrowed iterator views (flowcontrol_for.md § 37.1). Sema implemented 2026-10-18: `for value in values` over `values: ref mut Iterator[T]` yields T with a ResolvedForIteration whose Source is borrowed-interface-view, records the Next call as an interface graph call, and rejects a shared ref Iterator[T] source. Known hole (verified 2026-10-18): Semantic IR/lowering of runtime Next dispatch is not implemented; readiness reports it as Unproven with the reason naming the missing view representation (MD-108)"
     remaining:
-      - carry Arena generation through the shared loop-header and backedge fixed-point analysis, including continue edges and replay
       - complete float and decimal range lowering with resolved-type arithmetic and stable source-visible endpoint behavior
       - lower dynamic arrays, lists, slices, strings, maps, sets, and vectors through Semantic IR and the compilation track
       - extend structural-stability checking to user-defined operations and calls that receive mutable authority over the iterated collection (requires interprocedural structural-mutation summaries) and to collections reached through Iterator[T] sources
@@ -1396,6 +1430,8 @@ integrations:
       - reachable break restores a continuing post-loop path
       - break and continue execute required cleanup edges
     verification:
+      - command: go test -race ./internal/sema -run 'TestLoopArenaGeneration|TestLoopEdgesCarryEveryDomain|TestArenaReset.*Loop|TestPlace.*LoopBackedge' -count=1 -timeout=90s
+        result: "Passed 2026-11-21 (1.301s): five source-backed later-iteration/condition stale-use errors, four valid controls, detached continue/fallthrough joins, break exclusion and exact domain-key equality. BUG-000037 reproduced before the key-presence fix. A temporary Go overlay replacing merged replay epochs with entry epochs removes all five source diagnostics as expected. Full Sema passes 29.970s; vet and global traceability (0.191s) pass. No native epoch/lowering claim."
       - command: go test ./cmd/compiler -run "Iterator" -count=1
         result: passed on 2026-11-10; existing compiler iterator tests 1.258s after shared snapshot presentation changes.
       - command: go vet -p 4 ./internal/sema ./cmd/lsp

@@ -1,0 +1,41 @@
+module main
+
+fn WhileBreak(condition: bool) Result[void, AllocationError] {
+    let mut mem: Arena := Arena {}
+    let storage := try mem.Alloc[byte](1u)
+    while condition {
+        discard storage.Len
+        mem.Reset()
+        break
+    }
+    return Ok()
+}
+fn ForBreak() Result[void, AllocationError] {
+    let mut mem: Arena := Arena {}
+    let storage := try mem.Alloc[byte](1u)
+    for index in 0..4 {
+        discard storage.Len
+        mem.Reset()
+        break
+    }
+    return Ok()
+}
+fn WhileFresh(condition: bool) Result[void, AllocationError] {
+    let mut mem: Arena := Arena {}
+    while condition {
+        let storage := try mem.Alloc[byte](1u)
+        discard storage.Len
+        mem.Reset()
+        continue
+    }
+    return Ok()
+}
+fn ForFresh() Result[void, AllocationError] {
+    let mut mem: Arena := Arena {}
+    for index in 0..4 {
+        let storage := try mem.Alloc[byte](1u)
+        discard storage.Len
+        mem.Reset()
+    }
+    return Ok()
+}

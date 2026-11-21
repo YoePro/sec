@@ -1,0 +1,18 @@
+module main
+
+enum Sparse int16 { Low = -128, Alias = -128, High = 127 }
+enum Wide int16 { Low = -129, Limit = 255, High = 256 }
+enum Negative int256 { Low = -128, Alias = -128, High = -1 }
+enum Byte uint256 { Low = 0, High = 255, Alias = 255 }
+
+fn Exact(value: Sparse) int8 { return int8(value) }
+fn ExactNegative(value: Negative) int8 { return int8(value) }
+fn ExactByte(value: Byte) uint8 { return uint8(value) }
+fn Known() uint8 { return uint8(Wide.Limit) }
+fn main() int {
+    if Exact(Sparse.Low) != -128 || Exact(Sparse.Alias) != -128 || Exact(Sparse.High) != 127 { return 1 }
+    if Known() != 255 { return 2 }
+    if ExactNegative(Negative.Low) != -128 || ExactNegative(Negative.High) != -1 { return 3 }
+    if ExactByte(Byte.Low) != 0 || ExactByte(Byte.High) != 255 || ExactByte(Byte.Alias) != 255 { return 4 }
+    return 42
+}

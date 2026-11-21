@@ -1,0 +1,20 @@
+module main
+
+type Handle struct { id: int, }
+impl Handle { free {} }
+type Choice union { Single(Handle) Named { value: Handle, } }
+fn SingleImplicit(value: Handle) void { let box := Choice.Single(value) }
+fn NamedImplicit(value: Handle) void { let box := Choice.Named { value: value } }
+fn SingleBorrowed(value: ref Handle) Choice { return Choice.Single(<-value) }
+fn NamedBorrowed(value: ref Handle) Choice { return Choice.Named { value: <-value } }
+fn SingleReuse(value: Handle) int {
+    let box := Choice.Single(<-value)
+    return value.id
+}
+fn NamedReuse(value: Handle) int {
+    let box := Choice.Named { value: <-value }
+    return value.id
+}
+type Numbers union { Single(uint8) Named { value: uint8, } }
+fn SingleOverflow() Numbers { return Numbers.Single(256) }
+fn NamedOverflow() Numbers { return Numbers.Named { value: 256 } }

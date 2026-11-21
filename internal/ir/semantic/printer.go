@@ -75,6 +75,9 @@ func formatType(t Type) string {
 	if t.Kind == TypeRawPointer {
 		return fmt.Sprintf("rawptr<!%d>", t.Element)
 	}
+	if t.Kind == TypeAtomic {
+		return fmt.Sprintf("atomic<!%d>", t.Element)
+	}
 	if t.Kind == TypeNamed {
 		return fmt.Sprintf("named %q base !%d", t.Identity, t.Base)
 	}
@@ -492,6 +495,28 @@ func formatOperation(out *strings.Builder, op Operation) {
 		}
 	case OpAtomicFence:
 		fmt.Fprintf(out, " order=%s", op.AtomicOrder)
+	case OpAtomicLoad, OpAtomicStore, OpAtomicReadModifyWrite, OpAtomicCompareExchange:
+		for _, operand := range op.Operands {
+			fmt.Fprintf(out, " %%%d", operand)
+		}
+		if facts := op.Atomic; facts != nil {
+			fmt.Fprintf(out, " operation=%s element=!%d order=%s", facts.Operation, facts.Element, facts.Order)
+			if facts.FailureOrder != "" {
+				fmt.Fprintf(out, " failure-order=%s", facts.FailureOrder)
+			}
+			storage := "unknown"
+			if facts.StorageResolved {
+				storage = "resolved"
+			}
+			fmt.Fprintf(out, " storage=%s", storage)
+			for _, path := range facts.Paths {
+				name := path.Variant
+				if name == "" {
+					name = "normal"
+				}
+				fmt.Fprintf(out, " path(%s order=%s read=%t modify=%t rmw=%t release-head=%t continues=%t breaks=%t)", name, path.Order, path.ReadsStorage, path.ModifiesStorage, path.ReadModifyWrite, path.StartsReleaseHead, path.ContinuesReleaseSequence, path.BreaksReleaseSequence)
+			}
+		}
 	default:
 		if isPlaceReferenceOperation(op.Kind) {
 			formatPlaceReferenceOperation(out, op)

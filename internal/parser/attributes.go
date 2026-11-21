@@ -70,6 +70,7 @@ var compilerKnownAttributes = map[string]attributeSpec{
 	"noAlloc":        {targets: attributeOnFunction | attributeOnMethod | attributeOnExtern, targetText: "a function or method", shape: attributeNoArguments, summary: "Compiler-verified guarantee that no reachable path allocates; a trusted foreign contract on an extern declaration."},
 	"noPanic":        {targets: attributeOnFunction | attributeOnMethod | attributeOnExtern | attributeOnInit | attributeOnFree | attributeOnAccessor | attributeOnLambdaLet, targetText: noPanicTargetText, shape: attributeNoArguments, summary: "Compiler-verified guarantee that no reachable path panics; a trusted foreign contract on an extern declaration."},
 	"noBlock":        {targets: attributeOnFunction | attributeOnMethod | attributeOnExtern, targetText: "a function or method", shape: attributeNoArguments, summary: "Compiler-verified guarantee that no reachable path waits or parks the current execution; a trusted foreign contract on an extern declaration."},
+	cAliasAttribute:  {targetText: "a standalone module-scope declaration in a C binding module", shape: attributeNamedArguments, named: []string{"name", "target"}, required: []string{"name", "target"}, summary: "Declares a transparent c:: alias of a TypeReference in a compiler-authorized C binding module (MD-021)."},
 	"link_name":      {targets: attributeOnExtern, targetText: "an extern declaration", shape: attributeOneStringLiteral, summary: "Sets the foreign link symbol of an extern declaration without changing its Sec name, ABI, or effects."},
 }
 
@@ -171,7 +172,8 @@ func (p *Parser) parseAttributeSet() ([]*ast.Attribute, bool) {
 			}
 		}
 		p.skipPeekComments()
-		if p.peekToken.Type != lexer.AT || p.tokenAfterPeek() != lexer.IDENT {
+		// A standalone @cAlias is its own declaration, never a set member.
+		if p.peekToken.Type != lexer.AT || p.tokenAfterPeek() != lexer.IDENT || p.tokenAfterPeekIsCAlias() {
 			break
 		}
 		p.nextToken()
@@ -285,6 +287,14 @@ func (p *Parser) parseAttribute() (*ast.Attribute, bool) {
 	}
 	nameToken := p.curToken
 	attribute := &ast.Attribute{Token: attributeToken, Name: &ast.Identifier{Token: nameToken, Value: nameToken.Lexeme}}
+	if nameToken.Lexeme == cAliasAttribute {
+		p.addDiagnostic(compilerdiagnostics.AttributeNotAllowedOnTarget, attributeToken, nil, nil,
+			"@cAlias is a standalone module-scope declaration and cannot appear here at %d:%d", attributeToken.Line, attributeToken.Column)
+		if p.peekToken.Type == lexer.LPAREN {
+			p.consumeAttributeArguments()
+		}
+		return nil, false
+	}
 	spec, known := compilerKnownAttributes[nameToken.Lexeme]
 	if !known {
 		p.addDiagnostic(compilerdiagnostics.UnknownAttribute, attributeToken, nil, &nameToken,
@@ -501,6 +511,13 @@ func (p *Parser) attachAttributes(statement ast.Statement, attributes []*ast.Att
 		statement.Attributes = append(statement.Attributes, accepted...)
 	case *ast.HardwareDeclaration:
 		statement.Attributes = append(statement.Attributes, accepted...)
+	case *ast.CAliasDeclaration:
+		// attributes.md § 95(1): @cAlias attaches to nothing and nothing
+		// attaches to it; binding-module membership selects it instead.
+		for _, attribute := range accepted {
+			p.addDiagnostic(compilerdiagnostics.AttributeNotAllowedOnTarget, attribute.Token, nil, nil,
+				"@%s cannot annotate a standalone @cAlias declaration; the selected C binding environment chooses its module at %d:%d", attribute.Name.Value, attribute.Token.Line, attribute.Token.Column)
+		}
 	case *ast.ModuleStatement:
 		// attributes.md § 16(4): @target does not attach to a module
 		// declaration; a file-level @target precedes it instead.

@@ -1,6 +1,9 @@
 package sema
 
-import "sec/internal/ast"
+import (
+	"sec/internal/ast"
+	"sec/internal/layout"
+)
 
 // inferMutexCall resolves the exact canonical acquisition overloads, preserving
 // duration conversion and Context borrowing without retaining the Context.
@@ -41,6 +44,17 @@ func (a *Analyzer) inferMutexCall(expr *ast.CallExpression) (Type, expressionVal
 				return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 			}
 		}
+		mode := layout.MutexBlocking
+		if len(expr.Arguments) == 1 {
+			if result.Kind == ResultType {
+				mode = layout.MutexContext
+			} else {
+				mode = layout.MutexTimeout
+			}
+		}
+		if !a.resolveMutexTargetCapability(expr, mode) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
 		// rules/concurrency/blocking.md — "Mutex acquisition": waiting for the
 		// lock may block; TryLock never waits.
 		a.recordBlockingOperation("Mutex.Lock", member.Property.Token)
@@ -54,6 +68,9 @@ func (a *Analyzer) inferMutexCall(expr *ast.CallExpression) (Type, expressionVal
 		}
 		if len(expr.Arguments) != 0 {
 			a.addErrorAtToken(expr.Token, "Mutex.TryLock expects 0 arguments, got %d", len(expr.Arguments))
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+		}
+		if !a.resolveMutexTargetCapability(expr, layout.MutexTry) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
 		guard := mutexGuardType(receiverType.TypeArgs[0])

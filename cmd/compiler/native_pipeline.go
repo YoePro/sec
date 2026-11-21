@@ -44,6 +44,24 @@ const inspectionMaxPackage = 18
 // physical representation.
 const inspectionSchemaVersion = 14
 
+// unitDimensionSchemaVersion is the first Sec MLIR schema with UnitDimension
+// values. The native track selects it only for a module that carries one,
+// because sec-lower-unit-dimensions lowers them while the other schema-13
+// constructs stay rejected at its entry.
+const unitDimensionSchemaVersion = 13
+
+// usesUnitDimensionValues reports whether a module's type table holds the
+// UnitDimension value type.
+// Rules: rules/corrections/applied/md062-unit-metadata-value-types-correction-20261027-20261121.md — §§ 7(12), 12(8).
+func usesUnitDimensionValues(module *semantic.Module) bool {
+	for _, typ := range module.Types.All() {
+		if typ.Kind == semantic.TypeUnitDimension {
+			return true
+		}
+	}
+	return false
+}
+
 // emitSecDialect builds verified-ready Sec dialect MLIR text for one analyzed
 // source file and reports the Sec function identity of its command entry, or
 // "" when the module defines none. maxPackage is the route's Semantic IR
@@ -80,6 +98,8 @@ func emitSecDialectUnit(analyzed analyzedProgram, inputFile string, target Compi
 	options := secmlirlowering.EmitOptions{ExportSymbols: export}
 	if maxPackage >= inspectionMaxPackage {
 		options.DialectVersion = inspectionSchemaVersion
+	} else if usesUnitDimensionValues(module) {
+		options.DialectVersion = unitDimensionSchemaVersion
 	}
 	mlirText, err := secmlirlowering.EmitWithOptions(module, scalarPlan, options)
 	if err != nil {

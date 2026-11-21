@@ -82,7 +82,7 @@ unit Item uint other
 //
 // Rules:
 //   - rules/types/units.md — "Unit metadata value types" (1)–(6), (9)–(11)
-//   - rules/corrections/md062-unit-metadata-value-types-correction-20261027.md — §§ 2, 4, 5, 6, 9, 10, 13(1)–13(3), 13(5)
+//   - rules/corrections/applied/md062-unit-metadata-value-types-correction-20261027-20261121.md — §§ 2, 4, 5, 6, 9, 10, 13(1)–13(3), 13(5)
 func TestUnitMetadataReadsHaveExactTypes(t *testing.T) {
 	source := unitMetadataReadsSource + `
 fn Use() void {
@@ -133,7 +133,7 @@ fn Use() void {
 //
 // Rules:
 //   - rules/types/units.md — "Unit metadata value types" (4), (11)
-//   - rules/corrections/md062-unit-metadata-value-types-correction-20261027.md — §§ 4(2), 4(6), 14(3)
+//   - rules/corrections/applied/md062-unit-metadata-value-types-correction-20261027-20261121.md — §§ 4(2), 4(6), 14(3)
 func TestUnitMetadataCustomEnumsStayNominal(t *testing.T) {
 	for _, tc := range []struct{ name, body, want string }{
 		{"standard type", "let kind: UnitKind := <Flux>.Kind", "LaboratoryKind"},
@@ -171,7 +171,7 @@ func TestUnitMetadataCustomEnumsStayNominal(t *testing.T) {
 //
 // Rules:
 //   - rules/types/units.md — "Unit metadata value types" (2), (7), (9), (10)
-//   - rules/corrections/md062-unit-metadata-value-types-correction-20261027.md — §§ 10(2), 10(4), 14(1), 14(5)
+//   - rules/corrections/applied/md062-unit-metadata-value-types-correction-20261027-20261121.md — §§ 10(2), 10(4), 14(1), 14(5)
 func TestUnitMetadataReadDiagnostics(t *testing.T) {
 	for _, tc := range []struct{ expression, want string }{
 		{"<Item>.LongName", "unit <Item> declares no LongName metadata"},
@@ -209,7 +209,7 @@ func TestUnitMetadataReadDiagnostics(t *testing.T) {
 //
 // Rules:
 //   - rules/types/units.md — "Unit metadata", "Unit metadata value types" (6)
-//   - rules/corrections/md062-unit-metadata-value-types-correction-20261027.md — §§ 5(5)–5(6), 6(3)–6(4), 14(2)
+//   - rules/corrections/applied/md062-unit-metadata-value-types-correction-20261027-20261121.md — §§ 5(5)–5(6), 6(3)–6(4), 14(2)
 func TestUnitMetadataDeclarationsAreUnique(t *testing.T) {
 	errors := analyzeSource(t, `module main
 unit u other
@@ -254,7 +254,7 @@ impl extends <u> {
 //
 // Rules:
 //   - rules/types/units.md — "Unit metadata value types" (5)
-//   - rules/corrections/md062-unit-metadata-value-types-correction-20261027.md — §§ 5(2)–5(3), 13(8)
+//   - rules/corrections/applied/md062-unit-metadata-value-types-correction-20261027-20261121.md — §§ 5(2)–5(3), 13(8)
 func TestUnitMetadataLegacyMigrationTable(t *testing.T) {
 	for key, enum := range unitMetadataEnumFields {
 		for _, member := range unitMetadataEnumVariants(enum) {

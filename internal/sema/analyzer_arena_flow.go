@@ -64,7 +64,8 @@ func arenaGenerationStatesEqual(left, right map[string]int) bool {
 		return false
 	}
 	for name, generation := range left {
-		if right[name] != generation {
+		other, exists := right[name]
+		if !exists || other != generation {
 			return false
 		}
 	}

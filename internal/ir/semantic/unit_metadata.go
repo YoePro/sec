@@ -15,7 +15,7 @@ import (
 // member its exact declared rational and whether the public decimal is a
 // projection of it (MD-062 § 9(7)). A folded UnitDimension observation names
 // the member it observes, such as "Dimension.AxisCount".
-// Rules: rules/corrections/md062-unit-metadata-value-types-correction-20261027.md — § 12(7).
+// Rules: rules/corrections/applied/md062-unit-metadata-value-types-correction-20261027-20261121.md — § 12(7).
 type UnitMetadataFacts struct {
 	Unit      string
 	Member    string
@@ -31,7 +31,7 @@ type UnitMetadataFacts struct {
 //
 // Rules:
 //   - rules/types/units.md — "Unit metadata value types", "Semantic IR and lowering"
-//   - rules/corrections/md062-unit-metadata-value-types-correction-20261027.md — §§ 7(12), 11(5), 12(7)–12(8)
+//   - rules/corrections/applied/md062-unit-metadata-value-types-correction-20261027-20261121.md — §§ 7(12), 11(5), 12(7)–12(8)
 func (fb *functionBuilder) buildUnitMetadataMember(expr *ast.MemberExpression, typeID TypeID) (builtValue, bool, error) {
 	loc := locationFromExpression(expr)
 	if read, ok := fb.owner.analyzer.ResolvedUnitMetadataReadOf(expr); ok {
@@ -55,7 +55,7 @@ func (fb *functionBuilder) buildUnitMetadataMember(expr *ast.MemberExpression, t
 			facts.Exact, facts.Projected = read.Exact.RatString(), read.Projected
 			return fb.result(Operation{Kind: OpConstDecimal, Decimal: &decimal, UnitMetadata: facts, Location: loc}, typeID), true, nil
 		}
-		if read.Member == "Dimension" && fb.owner.maxPackage >= ownershipLoweringPackage {
+		if read.Member == "Dimension" && fb.owner.maxPackage >= unitDimensionLoweringPackage {
 			value, err := fb.buildUnitDimensionValue(expr, typeID)
 			return value, true, err
 		}
@@ -71,7 +71,7 @@ func (fb *functionBuilder) buildUnitMetadataMember(expr *ast.MemberExpression, t
 	}
 	dimension, constant := fb.owner.analyzer.ResolvedUnitDimensionOf(expr.Object)
 	if !constant {
-		if fb.owner.maxPackage >= ownershipLoweringPackage {
+		if fb.owner.maxPackage >= unitDimensionLoweringPackage {
 			value, err := fb.buildRuntimeUnitDimensionProperty(expr, member.ID == "CKM-UNITDIMENSION-AXISCOUNT", typeID)
 			return value, true, err
 		}
@@ -90,7 +90,7 @@ func (fb *functionBuilder) buildUnitMetadataMember(expr *ast.MemberExpression, t
 // between UnitDimension runtime values fails closed until Sec MLIR has a
 // representation for them.
 // Rules: rules/foundations/operators.md — "Unit dimension equality";
-// rules/corrections/md062-unit-metadata-value-types-correction-20261027.md — §§ 7(7), 7(12), 12(8).
+// rules/corrections/applied/md062-unit-metadata-value-types-correction-20261027-20261121.md — §§ 7(7), 7(12), 12(8).
 func (fb *functionBuilder) buildUnitDimensionEquality(expr ast.Expression, typeID TypeID) (builtValue, bool, error) {
 	infix, ok := expr.(*ast.InfixExpression)
 	if !ok || infix.Operator != "==" && infix.Operator != "!=" {
@@ -102,7 +102,7 @@ func (fb *functionBuilder) buildUnitDimensionEquality(expr ast.Expression, typeI
 	left, leftConstant := fb.owner.analyzer.ResolvedUnitDimensionOf(infix.Left)
 	right, rightConstant := fb.owner.analyzer.ResolvedUnitDimensionOf(infix.Right)
 	if !leftConstant || !rightConstant {
-		if fb.owner.maxPackage >= ownershipLoweringPackage {
+		if fb.owner.maxPackage >= unitDimensionLoweringPackage {
 			value, err := fb.buildRuntimeUnitDimensionEquality(infix, typeID)
 			return value, true, err
 		}
@@ -137,7 +137,7 @@ func formatUnitMetadata(facts *UnitMetadataFacts) string {
 
 // verifyUnitMetadataOperation checks that metadata provenance annotates only
 // a constant, and that an unprojected decimal equals its exact value.
-// Rules: rules/corrections/md062-unit-metadata-value-types-correction-20261027.md — §§ 9(7)–9(8), 12(7).
+// Rules: rules/corrections/applied/md062-unit-metadata-value-types-correction-20261027-20261121.md — §§ 9(7)–9(8), 12(7).
 func verifyUnitMetadataOperation(op Operation) error {
 	facts := op.UnitMetadata
 	if facts == nil {

@@ -104,7 +104,7 @@ func (a *Analyzer) reportUnresolvedForeignType(name string, token lexer.Token) b
 		return true
 	}
 	a.addErrorAtTokenWithMetadata(token, diagnostics.ForeignUnresolvedCBindingType,
-		"c:: binding types are supplied by the selected target/library binding environment, which is not available yet.",
+		"c:: binding names come from the Variant's selected C binding environment (.sec/platform/c-bindings.toml and @cAlias in its modules); check the selection with `sec platform c-bindings resolve --variant NAME`.",
 		"%s cannot be resolved: no C binding environment defines it for the active target", name)
 	return true
 }

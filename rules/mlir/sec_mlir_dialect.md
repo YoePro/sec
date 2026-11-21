@@ -1,5 +1,16 @@
 # Sec MLIR Dialect
 
+- **Status:** Normative
+- **Created:** 2026-08-08
+- **Last updated:** 2026-11-21 (metadata header; last substantive update 2026-11-06)
+- **Document revision:** 1.0
+- **Sec language version:** 0.1
+- **Canonical path:** `rules/mlir/sec_mlir_dialect.md`
+- **Implementation governance:** `governance/lowering.yaml`
+- **Related rulebooks:** `rules/mlir/sec_mlir.md`, `rules/mlir/sec_mlir_lowering.md`, `rules/compiler/semantic_ir.md`, `rules/compiler/compiler_pipeline.md`, `rules/types/types.md`, `rules/memory/ownership.md`, `rules/memory/borrowing.md`, `rules/platform/platform_model.md`
+
+---
+
 ## Status
 
 Normative detailed representation specification.
@@ -2163,7 +2174,7 @@ Neither is equivalent to the other or to an integer. The quoted name must resolv
 
 These may reference immutable module-scoped plan records, which must exist and satisfy every constraint. Free-form descriptive strings never substitute for canonical IDs or typed lists. Definition tables, identities and plan records are module-scoped, unique, deterministically ordered and resolved during verification.
 
-**Amendment MD-111 (2026-10-30, `rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md` §§ 2, 11, 13(1)).** `sec.hardware_resource_id`, `sec.endpoint_id`, `sec.hardware_binding_id` and `sec.verified_plan_id` carry the canonical `HardwareResourceIdentity`, `HardwareEndpointIdentity`, `HardwareBindingIdentity` and `VerifiedOperationPlanIdentity` of the frozen `CompilationPlan`'s hardware facts, never a raw address, register name or binding spelling. The typed module-scoped plan-record spelling for the first executable subset (one whole-register `MemoryMapped` non-destructive read or replacement write) is specified together with its implementation; until then every `sec.hw.*` physical lowering fails closed.
+**Amendment MD-111 (2026-10-30, `rules/corrections/applied/MD-111-hardware-facts-approved-decision-20261030-20261121.md` §§ 2, 11, 13(1)).** `sec.hardware_resource_id`, `sec.endpoint_id`, `sec.hardware_binding_id` and `sec.verified_plan_id` carry the canonical `HardwareResourceIdentity`, `HardwareEndpointIdentity`, `HardwareBindingIdentity` and `VerifiedOperationPlanIdentity` of the frozen `CompilationPlan`'s hardware facts, never a raw address, register name or binding spelling. The typed module-scoped plan-record spelling for the first executable subset (one whole-register `MemoryMapped` non-destructive read or replacement write) is specified together with its implementation; until then every `sec.hw.*` physical lowering fails closed.
 
 **References.**
 - `!sec.ref<!sec.hw_instance<T>>` and `!sec.ref_mut<!sec.hw_instance<T>>` are ordinary reference categories over a referable software instance Place.

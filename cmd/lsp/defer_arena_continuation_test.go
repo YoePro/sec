@@ -13,7 +13,7 @@ import (
 // rules/tooling/lsp.md — "Shared diagnostic model".
 func TestDeferredArenaContinuationLSP(t *testing.T) {
 	uri := uriFromPath(filepath.Join(t.TempDir(), "main.sec"))
-	for _, name := range []string{"valid", "immediate_invalid"} {
+	for _, name := range []string{"valid", "immediate_invalid", "release_body_invalid"} {
 		data, err := os.ReadFile("../../testdata/control_flow/defer_arena_continuation/" + name + ".sec")
 		if err != nil {
 			t.Fatal(err)
@@ -24,6 +24,12 @@ func TestDeferredArenaContinuationLSP(t *testing.T) {
 				if d.Severity == 1 {
 					t.Fatal(d)
 				}
+			}
+			continue
+		}
+		if name == "release_body_invalid" {
+			if len(errors) != 1 || errors[0].Severity != 1 || errors[0].Range.Start.Line != 7 || !strings.Contains(errors[0].Message, "cannot use values after arena mem was reset") {
+				t.Fatalf("deferred Release leaked into ordinary continuation: %+v", errors)
 			}
 			continue
 		}

@@ -682,7 +682,8 @@ public:
         sec::ArrayConstructOp, sec::ArrayDefaultOp, sec::ArrayLenOp,
         sec::ArrayIndexInBoundsOp, sec::ArrayExtractOp, sec::ArrayReplaceOp,
         sec::ArithmeticErrorFromReasonOp, sec::ResultOkOp, sec::ResultErrOp,
-        sec::ResultIsErrOp, sec::ResultUnwrapOkOp, sec::ResultUnwrapErrOp>(
+        sec::ResultIsErrOp, sec::ResultUnwrapOkOp, sec::ResultUnwrapErrOp,
+        sec::UnitDimensionAxisCountOp>(
         [&](Operation *op) { return typeConverter.isLegal(op); });
 
     RewritePatternSet patterns(context);
@@ -751,6 +752,8 @@ public:
              sec::ResultIsErrOp::getOperationName(),
              sec::ResultUnwrapOkOp::getOperationName(),
              sec::ResultUnwrapErrOp::getOperationName(),
+             // MD-062 § 7(2): AxisCount yields the plan's uint.
+             sec::UnitDimensionAxisCountOp::getOperationName(),
              // SEC-MLIR Package 15 section 32: Place and reference operations
              // take part in scalar resolution unchanged apart from types.
              sec::PlaceValueOp::getOperationName(),

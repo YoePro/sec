@@ -615,7 +615,7 @@ variadics; a heterogeneous type pack `[...Types]` is the distinct model of
 
 ### 16A. Heterogeneous type packs (MD-117)
 
-Decided 2026-10-26 (`rules/corrections/md117-heterogeneous-variadic-type-packs-correction.md`; normative call, ownership and lifetime rules in `rules/declarations/functions.md` § 38A).
+Decided 2026-10-26 (`rules/corrections/applied/md117-heterogeneous-variadic-type-packs-correction-20261121.md`; normative call, ownership and lifetime rules in `rules/declarations/functions.md` § 38A).
 
 (1) A generic parameter written `[...Types]` is a type pack: an ordered sequence of zero or more concrete types inferred from ordinary concrete call arguments and statically known pack spreads. `Types` is an ordinary identifier, not a keyword.
 

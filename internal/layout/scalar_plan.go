@@ -34,6 +34,9 @@ type ResolvedScalarPlan struct {
 	// IPC holds granular complete-family facts; zero means Unknown.
 	// Rules: rules/concurrency/ipc.md §§118–124.
 	IPC IPCCapabilities
+	// Mutex carries independent ordinary lock contracts, never IPC support.
+	// Rules: rules/concurrency/mutex.md §§27,60.
+	Mutex MutexCapabilities
 	// AddressDomains are the target-supplied hardware address domains, in
 	// canonical order (MD-111 §§ 1(6)-1(7); address_domains.go).
 	AddressDomains []AddressDomain
@@ -44,6 +47,7 @@ type ResolvedScalarPlan struct {
 // Rules: rules/memory/layout.md — §5; rules/platform/abi.md — §19;
 // rules/memory/reference_model.md — §§33–34;
 // rules/concurrency/atomics.md — §37(1–5); rules/concurrency/ipc.md — §§118–124.
+// rules/concurrency/mutex.md — §§27,60 (target/profile lock contracts).
 func (p ResolvedScalarPlan) Validate() error {
 	if p.TargetOS == "" || p.TargetArch == "" {
 		return fmt.Errorf("scalar plan requires target OS and architecture")
@@ -67,6 +71,9 @@ func (p ResolvedScalarPlan) Validate() error {
 		return err
 	}
 	if err := p.IPC.validateFor(p); err != nil {
+		return err
+	}
+	if err := p.Mutex.validateFor(p); err != nil {
 		return err
 	}
 	return validateAddressDomains(p.AddressDomains)

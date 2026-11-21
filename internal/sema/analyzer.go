@@ -76,7 +76,9 @@ type Analyzer struct {
 	// scalarPlanWidthBits is the selected CompilationPlan's pointer width,
 	// or zero when no plan was supplied; plan-specific exactness proofs use
 	// only a resolved width (MD-104 Option A).
-	scalarPlanWidthBits uint16
+	scalarPlanWidthBits             uint16
+	mutexTargetPlan                 layout.ResolvedScalarPlan
+	resolvedMutexTargetCapabilities map[*ast.CallExpression]ResolvedMutexTargetCapability
 	// shadowSummaries are the MD-113 shadow-knowledge summaries of register
 	// impl members, keyed "T.M", "T.P.get" or "T.P.set".
 	shadowSummaries map[string]*shadowSummary
@@ -172,7 +174,11 @@ type Analyzer struct {
 	iterationDependencyProbe     bool
 	// cABIModel is the active target's C ABI data model; empty when the
 	// analyzer has no target plan or the target defines no C ABI.
-	cABIModel                   layout.CABIModel
+	cABIModel layout.CABIModel
+	// cBindingSurface and cAliases are the MD-021 binding surface: the
+	// selected binding files and the specialized @cAlias definitions.
+	cBindingSurface             CBindingSurface
+	cAliases                    map[string]*cAliasDefinition
 	resolvedConstructions       map[*ast.NewExpression]ResolvedConstruction
 	constructionSignatures      map[*ast.NewExpression][]ConstructionSignature
 	resolvedOperators           map[ast.Expression]ResolvedOperator
@@ -957,6 +963,7 @@ func (a *Analyzer) analyzeProgram(program *ast.Program) []Error {
 	a.resolvedCallReferences = map[*ast.CallExpression]ReferenceFacts{}
 	a.resolvedCompareExchanges = map[*ast.CallExpression]ResolvedCompareExchange{}
 	a.resolvedAtomicMemoryOperations = map[*ast.CallExpression]ResolvedAtomicMemoryOperation{}
+	a.resolvedMutexTargetCapabilities = map[*ast.CallExpression]ResolvedMutexTargetCapability{}
 	a.staticBindings = map[sourceTokenKey]ResolvedStatic{}
 	a.receiverReborrows = map[ast.Expression]ReferenceFacts{}
 	a.matchTerminationPlans = map[*ast.MatchExpression]ResolvedMatchPlan{}
@@ -1094,6 +1101,7 @@ func (a *Analyzer) analyzeProgram(program *ast.Program) []Error {
 	a.validateTestDeclarations(program)
 	a.validateAttributeSemantics(program)
 	a.registerTypeDeclarations(program)
+	a.collectCAliasDeclarations(program)
 	a.registerCustomFreeDeclarations(program)
 	a.collectCompileTimeIntegerBindings(program)
 	a.registerImplTypeDeclarations(program)
@@ -4562,74 +4570,6 @@ func prefixContainedOrigins(prefix string, origins map[string]localReferenceOrig
 	for path, origin := range origins {
 		out[prefix+path] = cloneLocalReferenceOrigin(origin)
 	}
-}
-
-func (a *Analyzer) containedReferenceOrigins(expr ast.Expression) map[string]localReferenceOrigin {
-	out := map[string]localReferenceOrigin{}
-	switch expr := expr.(type) {
-	case *ast.Identifier:
-		if origin, ok := a.localRefContainers[expr.Value]; ok {
-			prefixContainedOrigins("", origin.Contained, out)
-		}
-	case *ast.CallExpression:
-		if origin, ok := a.expressionReferenceOrigins[expr]; ok {
-			prefixContainedOrigins("", origin.Contained, out)
-		}
-	case *ast.MemberExpression:
-		if origin, ok := a.expressionReferenceOrigins[expr]; ok {
-			prefixContainedOrigins("", origin.Contained, out)
-		}
-	case *ast.StructLiteral:
-		for _, field := range expr.Fields {
-			if field == nil || field.Value == nil {
-				continue
-			}
-			if field.Spread {
-				prefixContainedOrigins("", a.containedReferenceOrigins(field.Value), out)
-				continue
-			}
-			path := "." + field.Name.Value
-			if origin, ok := a.directReferenceOrigin(field.Value); ok {
-				out[path] = origin
-			}
-			prefixContainedOrigins(path, a.containedReferenceOrigins(field.Value), out)
-		}
-	case *ast.ArrayLiteral:
-		for index, element := range expr.Elements {
-			if spread, ok := element.(*ast.SpreadExpression); ok {
-				for childPath, child := range a.containedReferenceOrigins(spread.Value) {
-					if close := strings.IndexByte(childPath, ']'); strings.HasPrefix(childPath, "[") && close >= 0 {
-						out["[*]"+childPath[close+1:]] = cloneLocalReferenceOrigin(child)
-					}
-				}
-				continue
-			}
-			if _, isRange := element.(*ast.RangeExpression); isRange {
-				// A range segment has constant bounds and carries no reference.
-				continue
-			}
-			path := "[" + strconv.Itoa(index) + "]"
-			if origin, ok := a.directReferenceOrigin(element); ok {
-				out[path] = origin
-			}
-			prefixContainedOrigins(path, a.containedReferenceOrigins(element), out)
-		}
-	case *ast.SpreadExpression:
-		return a.containedReferenceOrigins(expr.Value)
-	case *ast.BitExtractionExpression:
-		return a.containedReferenceOrigins(expr.Value)
-	case *ast.ConversionExpression:
-		return a.containedReferenceOrigins(expr.Value)
-	case *ast.OkExpression:
-		if expr.Value != nil {
-			return a.containedReferenceOrigins(expr.Value)
-		}
-	case *ast.ErrExpression:
-		if expr.Value != nil {
-			return a.containedReferenceOrigins(expr.Value)
-		}
-	}
-	return out
 }
 
 func (a *Analyzer) directReferenceOrigin(expr ast.Expression) (localReferenceOrigin, bool) {
@@ -12710,6 +12650,11 @@ func normalizedCallableCapability(capability CallableCapability) CallableCapabil
 
 func statementToken(stmt ast.Statement) lexer.Token {
 	switch stmt := stmt.(type) {
+	case *ast.CAliasDeclaration:
+		if stmt == nil {
+			return lexer.Token{}
+		}
+		return stmt.Token
 	case *ast.HardwareDeclaration:
 		if stmt == nil {
 			return lexer.Token{}

@@ -77,7 +77,7 @@ func (a *Analyzer) analyzeModuleBodies(program *ast.Program) {
 	a.expressionReferenceOrigins = map[ast.Expression]localReferenceOrigin{}
 	a.withProgramModules(program, func(stmt ast.Statement) {
 		switch stmt.(type) {
-		case *ast.TargetDirective, *ast.TypeDeclStatement, *ast.UnitDeclStatement, *ast.EnumDeclaration, *ast.InterfaceDeclaration, *ast.ImplStatement, *ast.FunctionDeclaration, *ast.TestDeclaration, *ast.HardwareDeclaration:
+		case *ast.CAliasDeclaration, *ast.TargetDirective, *ast.TypeDeclStatement, *ast.UnitDeclStatement, *ast.EnumDeclaration, *ast.InterfaceDeclaration, *ast.ImplStatement, *ast.FunctionDeclaration, *ast.TestDeclaration, *ast.HardwareDeclaration:
 			// Hardware fact declarations are metadata, validated with the
 			// hardware facts (MD-111 § 8(4)); they never execute.
 			return

@@ -8,7 +8,7 @@ import "testing"
 //
 // Rules:
 //   - rules/types/units.md — "Formatter requirements"
-//   - rules/corrections/md062-unit-metadata-value-types-correction-20261027.md — §§ 5(4), 12(10), 13(8)
+//   - rules/corrections/applied/md062-unit-metadata-value-types-correction-20261027-20261121.md — §§ 5(4), 12(10), 13(8)
 func TestFormatKeepsUnitMetadataValues(t *testing.T) {
 	source := "module main\n\nunit J physical\n\nimpl <J> {\n    LongName: \"joule\"\n    Dimension: [mass^1, length^2, time^-2]\n" +
 		"    Kind: UnitKind.Energy\n    System: UnitSystem.SI\n    BaseUnit: false\n    Status: UnitStatus.Active\n}\n\n" +

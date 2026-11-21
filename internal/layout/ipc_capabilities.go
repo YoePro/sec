@@ -114,9 +114,11 @@ func (f IPCCapability) validate() error {
 // establishes the other. Address-domain slices are detached at the boundary.
 // Rules: rules/concurrency/ipc.md §118; rules/concurrency/atomics.md §37;
 // rules/platform/target_profiles.md §§29–31.
+// rules/concurrency/mutex.md §60 (independent ordinary lock contracts).
 func capabilityPlanBase(p ResolvedScalarPlan) ResolvedScalarPlan {
 	p.Atomics = AtomicCapabilities{}
 	p.IPC = IPCCapabilities{}
+	p.Mutex = MutexCapabilities{}
 	p.AddressDomains = append([]AddressDomain(nil), p.AddressDomains...)
 	return p
 }

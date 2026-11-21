@@ -13,7 +13,7 @@ import (
 //
 // Rules:
 //   - rules/types/units.md — "Unit metadata value types", "Semantic IR and lowering"
-//   - rules/corrections/md062-unit-metadata-value-types-correction-20261027.md — §§ 7(12), 12(7)–12(8), 13(8)
+//   - rules/corrections/applied/md062-unit-metadata-value-types-correction-20261027-20261121.md — §§ 7(12), 12(7)–12(8), 13(8)
 func TestUnitMetadataReadsEmitSchema11(t *testing.T) {
 	source := `module main
 

@@ -1028,7 +1028,6 @@ internal/sema:(*Analyzer).conditionBounds
 internal/sema:(*Analyzer).confusableSkeleton
 internal/sema:(*Analyzer).constructedVariantOf
 internal/sema:(*Analyzer).constructionOperandAction
-internal/sema:(*Analyzer).containedReferenceOrigins
 internal/sema:(*Analyzer).contextualArgumentAccepts
 internal/sema:(*Analyzer).contextualArgumentFamily
 internal/sema:(*Analyzer).contextualArgumentPayloadRank

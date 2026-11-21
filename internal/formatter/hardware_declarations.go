@@ -19,7 +19,7 @@ import (
 //
 // Rules:
 //   - rules/foundations/grammar.md — HardwareDeclaration (Amendment MD-111)
-//   - rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md — §§ 3(6), 13(3)
+//   - rules/corrections/applied/MD-111-hardware-facts-approved-decision-20261030-20261121.md — §§ 3(6), 13(3)
 func formatHardwareDeclarations(text string) string {
 	program := parser.New(lexer.New(text)).ParseProgram()
 	var comments []int

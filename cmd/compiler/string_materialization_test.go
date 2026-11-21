@@ -9,7 +9,7 @@ import (
 
 // Frontend API support never substitutes for the P23 materializer: supported
 // source checks, but absent allocation/string lowering must leave no artifact.
-// Rules: rules/corrections/md109-core-string-materialization-correction.md
+// Rules: rules/corrections/applied/md109-core-string-materialization-correction-20261121.md
 // — §§5.2,10.3,12.1–12.6; rules/mlir/packages/sec-mlir-dialect_package23.md — §§35–37.
 func TestStringMaterializationLoweringBoundary(t *testing.T) {
 	for _, file := range []string{"string_materialization_bytes.sec", "string_materialization_runes.sec"} {

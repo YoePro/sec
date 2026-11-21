@@ -1,5 +1,16 @@
 # Names, Scopes, and Visibility
 
+- **Status:** Normative
+- **Created:** 2026-07-29
+- **Last updated:** 2026-11-21 (metadata header; last substantive update 2026-10-14)
+- **Document revision:** 1.0
+- **Sec language version:** 0.1
+- **Canonical path:** `rules/foundations/names_scopes_visibility.md`
+- **Implementation governance:** `governance/declarations.yaml` (`frontend.names-scopes-visibility`)
+- **Related rulebooks:** `rules/foundations/lexical_structure.md`, `rules/foundations/grammar.md`, `rules/foundations/operators.md`, `rules/foundations/attributes.md`, `rules/types/types.md`, `rules/declarations/functions.md`, `rules/declarations/impl.md`, `rules/declarations/interfaces.md`, `rules/projects/modules.md`, `rules/tooling/diagnostics.md`, `rules/tooling/lsp.md`
+
+---
+
 ## Purpose
 
 This rulebook defines:

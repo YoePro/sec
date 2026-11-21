@@ -17,7 +17,7 @@ import (
 // Rules:
 //   - rules/memory/layout.md — §§ 3, 5, 7–9, 18, 25, 39
 //   - rules/mlir/packages/sec-mlir-dialect_package24.md — §§ 7–11, 16
-//   - rules/corrections/MD-141-MD-142-scalar-and-aggregate-layout-normative-correction-2026-11-20.md — §§ 2–7
+//   - rules/corrections/applied/MD-141-MD-142-scalar-and-aggregate-layout-normative-correction-2026-11-20-20261121.md — §§ 2–7
 type Resolver struct {
 	plan       ResolvedScalarPlan
 	key        CompilationPlanLayoutKey

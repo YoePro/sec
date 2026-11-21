@@ -1,0 +1,45 @@
+module main
+
+enum CleanupError error { First, Second }
+type Percent int range 0..100
+let mut percentage: Percent := 50
+fn Work() Result[int, CleanupError] { return Ok(1) }
+fn Maybe() Option[int] { return Some(1) }
+fn Value() int { return 7 }
+fn Use(value: int) void {}
+
+fn LocalHandlers() void {
+    defer {
+        try Work() { Err(_) => 0 }
+        try Work() { Err(CleanupError.First) => 0
+            Err(CleanupError.Second) => 1 }
+        let recovered := try Work() { Err(_) => 0 }
+        Use(recovered)
+        let optional := try Maybe() { None => 0 }
+        Use(optional)
+        try percentage += 1 { Err(error) => { discard error } }
+    }
+}
+fn MatchAndDiscard() void {
+    defer {
+        match Work() { Ok(value) => { Use(value) }
+            Err(error) => { discard error } }
+        let result := Work()
+        match result { Ok(value) => { Use(value) }
+            Err(error) => { discard error } }
+        discard Work()
+        Value()
+    }
+}
+fn LambdaInvocation() void {
+    defer {
+        let cleanup := fn() Result[int, CleanupError] {
+            return Ok(try Work())
+        }
+        discard cleanup()
+    }
+}
+fn ResultInvocation() Result[int, CleanupError] {
+    defer { try Work() { Err(_) => 0 } }
+    return Work()
+}

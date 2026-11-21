@@ -26,6 +26,17 @@ func documentSymbolsForSource(uri string, text string) []documentSymbol {
 // Rules: rules/tooling/lsp.md — "Document symbols"; rules/declarations/static.md — §§6,9.
 func documentSymbolForStatement(text string, stmt ast.Statement) (documentSymbol, bool) {
 	switch stmt := stmt.(type) {
+	case *ast.CAliasDeclaration:
+		// MD-021 § 3: a standalone transparent C alias; kind 26 (TypeParameter)
+		// is the LSP kind for a type alias.
+		if stmt == nil || stmt.Name == nil {
+			return documentSymbol{}, false
+		}
+		symbol := namedDocumentSymbol(text, stmt.Name.Value, "C alias of "+typeReferenceName(stmt.Target), 26, stmt.Token, stmt.Name.Token)
+		if stmt.Close.Line > 0 {
+			symbol.Range = rangeContaining(symbol.Range, tokenRange(text, stmt.Close))
+		}
+		return symbol, true
 	case *ast.ModuleStatement:
 		if stmt == nil {
 			return documentSymbol{}, false

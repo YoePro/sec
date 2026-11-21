@@ -11,7 +11,6 @@ import (
 	"sec/internal/ast"
 	"sec/internal/diagnostics"
 	"sec/internal/lexer"
-	"strings"
 )
 
 // Move all infer functions to this file to rerduce the size of analyzer.go
@@ -589,100 +588,6 @@ func (a *Analyzer) inferAwaitExpression(expr *ast.AwaitExpression) (Type, expres
 	return a.intrinsicGenericType("TaskOutcome", valueType.TypeArgs[0]), expressionValue{Display: expr.String()}
 }
 
-// inferExpectedUnionVariantExpression resolves contextual constructors against
-// their expected concrete union and records only accepted payload preparation.
-// Rules: rules/declarations/unions.md §§4–5,7.8;
-// rules/compiler/semantic_ir.md §23.
-func (a *Analyzer) inferExpectedUnionVariantExpression(expr ast.Expression, expected Type) (Type, expressionValue, bool) {
-	delete(a.resolvedUnionConstructions, expr)
-	errorsBefore := len(a.errors)
-	if expected.Kind != UnionType {
-		return Type{}, expressionValue{}, false
-	}
-	switch expr := expr.(type) {
-	case *ast.Identifier:
-		variant, ok := lookupUnionVariant(expected, expr.Value)
-		if !ok {
-			return Type{}, expressionValue{}, false
-		}
-		if variant.Payload != nil || len(variant.PayloadFields) > 0 {
-			a.reportUnionVariantPayloadRequired(expr.Token, expected, variant)
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		if len(a.errors) == errorsBefore {
-			a.recordUnionConstruction(expr, expected, variant)
-		}
-		return expected, expressionValue{Display: expr.String()}, true
-	case *ast.MemberExpression:
-		// rules/declarations/unions.md and rules/types/types.md: an expected
-		// generic union type supplies the missing type arguments for a
-		// qualified payload-less constructor such as Option.None. Resolve the
-		// qualifier here instead of first producing the open Option type.
-		owner, ok := typePathFromExpression(expr.Object)
-		if !ok || a.resolveTypeName(owner) != expected.Name {
-			return Type{}, expressionValue{}, false
-		}
-		variant, ok := lookupUnionVariant(expected, expr.Property.Value)
-		if !ok {
-			return Type{}, expressionValue{}, false
-		}
-		if variant.Payload != nil || len(variant.PayloadFields) > 0 {
-			a.reportUnionVariantPayloadRequired(expr.Property.Token, expected, variant)
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		a.bindDefinition(expr.Property.Token, variant.Token)
-		if len(a.errors) == errorsBefore {
-			a.recordUnionConstruction(expr, expected, variant)
-		}
-		return expected, expressionValue{Display: expr.String()}, true
-	case *ast.CallExpression:
-		name := callExpressionName(expr)
-		if name == "" {
-			return Type{}, expressionValue{}, false
-		}
-		variant, ok := lookupUnionVariant(expected, name)
-		if !ok {
-			return Type{}, expressionValue{}, false
-		}
-		if len(variant.PayloadFields) > 0 {
-			a.addTaskCategoryError(expr.Token, expected, "union variant %s.%s requires named payload fields", typeDisplayName(expected), variant.Name)
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		if variant.Payload == nil {
-			if len(expr.Arguments) != 0 {
-				a.addTaskCategoryError(expr.Token, expected, "union variant %s.%s expects 0 arguments, got %d", typeDisplayName(expected), variant.Name, len(expr.Arguments))
-				return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-			}
-			if len(a.errors) == errorsBefore {
-				a.recordUnionConstruction(expr, expected, variant)
-			}
-			return expected, expressionValue{Display: expr.String()}, true
-		}
-		if len(expr.Arguments) != 1 {
-			a.addTaskCategoryError(expr.Token, expected, "union variant %s.%s expects 1 argument, got %d", typeDisplayName(expected), variant.Name, len(expr.Arguments))
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		payloadType := *variant.Payload
-		valueType, _ := a.inferOwningConstructionValue(expr.Arguments[0], payloadType)
-		if valueType.Kind != InvalidType && !a.canInitialize(payloadType, valueType, expr.Arguments[0]) {
-			a.addTaskCategoryError(expressionToken(expr.Arguments[0]), expected, "union variant %s.%s payload must be %s, got %s", typeDisplayName(expected), variant.Name, typeDisplayName(payloadType), typeDisplayName(valueType))
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		if valueType.Kind != InvalidType && a.checkCompileTimeContractExpression(payloadType, expr.Arguments[0]) {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		if valueType.Kind != InvalidType && !a.validateOwningConstructionSource(expr.Arguments[0], TransferSiteConstruction) {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-		}
-		if valueType.Kind != InvalidType && len(a.errors) == errorsBefore {
-			a.recordUnionConstruction(expr, expected, variant)
-		}
-		return expected, expressionValue{Display: expr.String()}, true
-	default:
-		return Type{}, expressionValue{}, false
-	}
-}
-
 // inferStructLiteral resolves compiler-owned literals before ordinary aggregate
 // and union construction, preserving each family's own component contracts.
 // Rules: rules/declarations/struct.md — struct literals;
@@ -893,49 +798,6 @@ func (a *Analyzer) inferOwningConstructionValue(expr ast.Expression, expected Ty
 	a.constructionOwnershipDepth++
 	defer func() { a.constructionOwnershipDepth-- }()
 	return a.inferExpressionWithExpected(expr, expected)
-}
-
-// inferStructLiteralAsUnionVariant validates named payload fields and defaults
-// before recording their declaration positions and source-order preparations.
-// Rules: rules/declarations/unions.md §§5.3–5.4,7.8;
-// rules/compiler/semantic_ir.md §23.
-func (a *Analyzer) inferStructLiteralAsUnionVariant(expr *ast.StructLiteral) (Type, expressionValue, bool) {
-	delete(a.resolvedUnionConstructions, expr)
-	errorsBefore := len(a.errors)
-	if expr.Type == nil || !strings.Contains(expr.Type.Name, ".") {
-		return Type{}, expressionValue{}, false
-	}
-
-	unionName, variantName, ok := splitUnionVariantTypeName(expr.Type.Name)
-	if !ok {
-		return Type{}, expressionValue{}, false
-	}
-	unionName = a.resolveTypeName(unionName)
-	unionType, ok := a.synthesizedStructTypes[expr]
-	if !ok {
-		unionType, ok = a.types[unionName]
-	}
-	if !ok || unionType.Kind != UnionType {
-		return Type{}, expressionValue{}, false
-	}
-
-	variant, ok := lookupUnionVariant(unionType, variantName)
-	if !ok {
-		a.addErrorAtToken(expr.Token, "unknown union variant %s.%s", unionType.Name, variantName)
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-	}
-	if len(variant.PayloadFields) == 0 {
-		a.addErrorAtToken(expr.Token, "union variant %s.%s requires unnamed payload construction", typeDisplayName(unionType), variant.Name)
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-	}
-
-	if !a.checkUnionPayloadFields(unionType, variant, expr, expr.Token) {
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
-	}
-	if len(a.errors) == errorsBefore {
-		a.recordUnionConstruction(expr, unionType, variant)
-	}
-	return unionType, expressionValue{Display: expr.String()}, true
 }
 
 func (a *Analyzer) inferMemberExpression(expr *ast.MemberExpression) (Type, bool) {
@@ -1912,6 +1774,9 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 	}
 
 	if len(arityMatches) == 0 {
+		if a.reportRuntimeSpreadIntoTypePack(functions, expr, runtimeSpreadValues) {
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
 		maximumArity := 0
 		for _, function := range functions {
 			maximumArity = max(maximumArity, len(function.Parameters))

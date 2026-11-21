@@ -67,7 +67,7 @@ fn SameDimension(left: UnitDimension, right: UnitDimension) bool {
 //   - rules/types/units.md — "Unit metadata value types" (7), (8)
 //   - rules/library/core-library.md — § 27.5
 //   - rules/foundations/operators.md — "Unit dimension equality"
-//   - rules/corrections/md062-unit-metadata-value-types-correction-20261027.md — §§ 7(2)–7(7), 8(3), 13(6)
+//   - rules/corrections/applied/md062-unit-metadata-value-types-correction-20261027-20261121.md — §§ 7(2)–7(7), 8(3), 13(6)
 func TestUnitDimensionValues(t *testing.T) {
 	analyzer, errors := analyzeSourceWithAnalyzer(t, unitDimensionSource+`
 fn Use() void {
@@ -108,7 +108,7 @@ fn Use() void {
 //
 // Rules:
 //   - rules/types/units.md — "Unit metadata value types" (7)
-//   - rules/corrections/md062-unit-metadata-value-types-correction-20261027.md — §§ 7(3)–7(5), 14(6)
+//   - rules/corrections/applied/md062-unit-metadata-value-types-correction-20261027-20261121.md — §§ 7(3)–7(5), 14(6)
 func TestUnitDimensionRejectsUnsupportedOperations(t *testing.T) {
 	for _, body := range []string{
 		"let less := <m>.Dimension < <km>.Dimension",
@@ -139,7 +139,7 @@ func TestUnitDimensionRejectsUnsupportedOperations(t *testing.T) {
 //
 // Rules:
 //   - rules/types/units.md — "Unit metadata value types" (7)
-//   - rules/corrections/md062-unit-metadata-value-types-correction-20261027.md — §§ 7(9)–7(11), 13(7), 14(4)
+//   - rules/corrections/applied/md062-unit-metadata-value-types-correction-20261027-20261121.md — §§ 7(9)–7(11), 13(7), 14(4)
 func TestUnitDimensionAxesAreModuleScoped(t *testing.T) {
 	first := `module alpha
 unit Flow physical

@@ -1288,7 +1288,7 @@ This rulebook does not require:
 
 ## 46. C binding environments and ABI facts (MD-021)
 
-Integrated 2026-11-20 from `rules/corrections/MD-021-c-binding-environment-complete-proposal-20261120.md` (owner accepted 2026-11-20). The correction holds the full normative text; this section is its owning summary.
+Integrated 2026-11-20 from `rules/corrections/applied/MD-021-c-binding-environment-complete-proposal-20261120-20261121.md` (owner accepted 2026-11-20). The correction holds the full normative text; this section is its owning summary.
 
 **§ 46(1)** A binding environment filters on the plan's ABI and C-runtime facts; it never changes the plan's ABI, triple or C runtime to make itself fit. An explicit incompatible selection is an error.
 

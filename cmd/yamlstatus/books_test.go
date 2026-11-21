@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func bookCheckoutFixture(t *testing.T) string {
@@ -142,13 +143,13 @@ func TestBooksResourcesAndHeadingCollisions(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer root.Close()
-	catalog, err := buildBookSite(&rulebookWorkspace{source: root}, "")
+	catalog, err := buildBookSite(&rulebookWorkspace{source: root}, "", time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Replace the incoming link to a now-absent heading before checking this fixture.
 	writeFixture(t, source, "rules/memory/two.md", "# Two\n")
-	catalog, err = buildBookSite(&rulebookWorkspace{source: root}, "")
+	catalog, err = buildBookSite(&rulebookWorkspace{source: root}, "", time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,7 +165,7 @@ func TestBooksResourcesAndHeadingCollisions(t *testing.T) {
 		t.Fatal("resource/explicit-anchor collision handling failed")
 	}
 	writeFixture(t, source, "rules/types/one.md", "# One\n\n<a id=\"twice\"></a><a id=\"twice\"></a>\n")
-	if _, err := buildBookSite(&rulebookWorkspace{source: root}, ""); err == nil {
+	if _, err := buildBookSite(&rulebookWorkspace{source: root}, "", time.Time{}); err == nil {
 		t.Fatal("duplicate explicit anchors accepted")
 	}
 }

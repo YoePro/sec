@@ -142,6 +142,10 @@ func verifyTypes(table *TypeTable) error {
 			if err := verifyDynamicArrayType(table, id, t); err != nil {
 				return err
 			}
+		case TypeAtomic:
+			if _, ok := table.Lookup(t.Element); !ok || t.Identity != "core::Atomic" {
+				return fmt.Errorf("atomic !%d has an invalid element type or identity", id)
+			}
 		case TypeArray:
 			if _, ok := table.Lookup(t.Element); !ok {
 				return fmt.Errorf("array !%d has invalid element type !%d", id, t.Element)
@@ -691,6 +695,9 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 	if op.Arena != nil && !isArenaOperation(op.Kind) {
 		return fmt.Errorf("Arena facts on non-Arena operation %s", op.Kind)
 	}
+	if op.Atomic != nil && !isAtomicObjectOperation(op.Kind) {
+		return fmt.Errorf("%s carries atomic object facts", op.Kind)
+	}
 	if op.Volatile != nil && op.Kind != OpVolatileRead && op.Kind != OpVolatileWrite {
 		return fmt.Errorf("volatile access facts on non-volatile operation")
 	}
@@ -1201,6 +1208,10 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 		}
 	case OpAtomicFence:
 		if err := verifyAtomicFence(op); err != nil {
+			return err
+		}
+	case OpAtomicLoad, OpAtomicStore, OpAtomicReadModifyWrite, OpAtomicCompareExchange:
+		if err := verifyAtomicObjectOperation(module, op, values); err != nil {
 			return err
 		}
 	case OpPlaceValueRoot, OpPlaceStorageRoot, OpPlaceField, OpPlaceArrayIndexInBounds, OpPlaceArrayElement,

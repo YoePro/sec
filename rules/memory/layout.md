@@ -803,7 +803,7 @@ stability/contract provenance
 
 ## § 47 Canonical scalar storage and native placement (MD-141, MD-142)
 
-Integrated 2026-11-20 from `rules/corrections/MD-141-MD-142-scalar-and-aggregate-layout-normative-correction-2026-11-20.md`. §§ 7(7), 24(6) and the MD-019 rules of §§ 27–29 are unchanged.
+Integrated 2026-11-20 from `rules/corrections/applied/MD-141-MD-142-scalar-and-aggregate-layout-normative-correction-2026-11-20-20261121.md`. §§ 7(7), 24(6) and the MD-019 rules of §§ 27–29 are unchanged.
 
 ### § 47.1 Scalar storage representations (MD-141)
 

@@ -12,7 +12,7 @@ import (
 //
 // Rules:
 //   - rules/platform/platform_model.md — § 10 (Amendment MD-111)
-//   - rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md — §§ 1(6)-1(7), 3(2), 4(1)
+//   - rules/corrections/applied/MD-111-hardware-facts-approved-decision-20261030-20261121.md — §§ 1(6)-1(7), 3(2), 4(1)
 type AddressDomain struct {
 	Identity    string
 	AddressBits uint16

@@ -65,3 +65,13 @@ func atomicOperationApplicability(operation string, element Type) (supported, kn
 		return false, false
 	}
 }
+
+// AtomicElementType returns T of a closed Atomic[T] instance, for consumers
+// such as Semantic IR that must not re-derive the compiler-owned identity.
+// Rules: rules/concurrency/atomics.md — §§ 4, 7.
+func AtomicElementType(typ Type) (Type, bool) {
+	if !isAtomicType(typ) {
+		return Type{}, false
+	}
+	return typ.TypeArgs[0], true
+}

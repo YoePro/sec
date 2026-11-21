@@ -1864,7 +1864,7 @@ operands.
 materialization that produces one resulting `string`; the language requires no
 observable intermediate `string` value for an individual concatenation step.
 
-**§ 29.6(2)** Decided 2026-10-31 (MD-039; `rules/corrections/MD-004-MD-039-string-concatenation-try-or-panic-correction-20261031.md`).
+**§ 29.6(2)** Decided 2026-10-31 (MD-039; `rules/corrections/applied/MD-004-MD-039-string-concatenation-try-or-panic-correction-20261031-20261121.md`).
 Runtime `+` and `+=` have two failure modes selected by source syntax, never by
 function return type, build mode, optimization, target or expected type:
 

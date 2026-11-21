@@ -14,7 +14,7 @@ import (
 // The scale is a signed int32 (MD-066): a large value takes a negative scale
 // instead of failing, and the coefficient domain is the asymmetric signed one.
 // Rules: rules/types/units.md — "Unit metadata value types" (7);
-// rules/corrections/md062-unit-metadata-value-types-correction-20261027.md — § 9(7);
+// rules/corrections/applied/md062-unit-metadata-value-types-correction-20261027-20261121.md — § 9(7);
 // rules/corrections/applied/md066-md067-md068-decimal-correction-20261028.md — §§ 2(2), 3(5).
 func TestNearestDecimalProjection(t *testing.T) {
 	rat := func(text string) *big.Rat {
@@ -58,7 +58,7 @@ func TestNearestDecimalProjection(t *testing.T) {
 //
 // Rules:
 //   - rules/types/units.md — "Unit metadata value types" (1), (7), (10)
-//   - rules/corrections/md062-unit-metadata-value-types-correction-20261027.md — §§ 9(7)–9(8), 10(1), 10(3)
+//   - rules/corrections/applied/md062-unit-metadata-value-types-correction-20261027-20261121.md — §§ 9(7)–9(8), 10(1), 10(3)
 func TestUnitMetadataReadValues(t *testing.T) {
 	analyzer, errors := analyzeSourceWithAnalyzer(t, `module main
 unit plain
@@ -112,7 +112,7 @@ fn Read() decimal {
 
 // `<U>.Kind` stays a metadata read when the unit's custom Kind enum has a
 // member spelled Kind: it is never resolved as that enum constant.
-// Rules: rules/corrections/md062-unit-metadata-value-types-correction-20261027.md — § 11(2).
+// Rules: rules/corrections/applied/md062-unit-metadata-value-types-correction-20261027-20261121.md — § 11(2).
 func TestUnitMetadataReadIsNotEnumCase(t *testing.T) {
 	analyzer, errors := analyzeSourceWithAnalyzer(t, `module main
 enum Domain {

@@ -292,13 +292,38 @@ func (a *Analyzer) rejectUnavailableTypePackCall(function Function, call *ast.Ca
 		}
 	}
 
+	// A fixed-array spread has a static count and element type, so its
+	// indexed copies infer pack positions exactly like separate arguments
+	// (spread.md §§ 4.1-4.3; functions.md § 38A(4)(2)); the ordinary prepared
+	// spread ownership and borrow checks then apply, including S1239 for a
+	// borrowed pack position. Other prepared spreads remain unavailable here.
+	hasSpread := false
 	for _, spread := range prepared {
-		if spread {
+		hasSpread = hasSpread || spread
+	}
+	if hasSpread {
+		for _, arg := range call.Arguments {
+			spread, isSpread := arg.(*ast.SpreadExpression)
+			if !isSpread || a.isFixedArraySpreadSource(spread.Value) {
+				continue
+			}
 			a.addErrorAtTokenWithMetadata(call.Token, diagnostics.GenericTypePackExpansionUnavailable, "Pass concrete arguments separately until typed heterogeneous spread preparation is implemented.", "compiler capability unavailable: heterogeneous type-pack spread argument preparation")
 			return true
 		}
 	}
 	return false
+}
+
+// isFixedArraySpreadSource reports whether a spread source is a fixed-size
+// array (through references), whose expansion count is a compile-time fact.
+// Rules: rules/declarations/spread.md — §§ 4, 4.1.
+func (a *Analyzer) isFixedArraySpreadSource(source ast.Expression) bool {
+	typ, known := a.ResolvedTypeOf(source)
+	if !known {
+		return false
+	}
+	typ = dereferenceType(typ)
+	return typ.Kind == ArrayType && typ.Element != nil && arrayShapeOf(typ) != ArrayShapeDynamic
 }
 
 // TypePackElementName is the template name of a pack loop's per-position
@@ -328,4 +353,42 @@ func typePackElementType(typ Type, binding string) (Type, bool) {
 		return result, true
 	}
 	return typ, false
+}
+
+// reportRuntimeSpreadIntoTypePack explains a call that no candidate accepts
+// only because a runtime-length source (a slice, dynamic array or homogeneous
+// pack) is spread into a heterogeneous type pack, which needs a statically
+// known count and type per position. It reports at the spread instead of a
+// misleading arity mismatch.
+// Rules: rules/declarations/functions.md — § 38A(4)(2)-(3), (10)(1); rules/declarations/spread.md — § 4.4(4).
+func (a *Analyzer) reportRuntimeSpreadIntoTypePack(functions []Function, call *ast.CallExpression, runtimeSpreadValues []bool) bool {
+	hasRuntime := false
+	for _, runtime := range runtimeSpreadValues {
+		hasRuntime = hasRuntime || runtime
+	}
+	if !hasRuntime {
+		return false
+	}
+	pack := ""
+	for _, function := range functions {
+		if function.GenericTypePack != "" {
+			pack = function.GenericTypePack
+			break
+		}
+	}
+	if pack == "" {
+		return false
+	}
+	for _, arg := range call.Arguments {
+		spread, ok := arg.(*ast.SpreadExpression)
+		if !ok || a.isFixedArraySpreadSource(spread.Value) {
+			continue
+		}
+		typ, _ := a.ResolvedTypeOf(spread.Value)
+		a.addErrorAtTokenWithMetadata(spread.Token, "",
+			"Spread a fixed-size array, whose length is a compile-time fact, or pass the values as separate arguments.",
+			"a runtime-length %s cannot be spread into the heterogeneous type pack %s, which needs a statically known count and type for every position", typeDisplayName(typ), pack)
+		return true
+	}
+	return false
 }

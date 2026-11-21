@@ -6,7 +6,7 @@ integrations:
     area: frontend-analysis-and-tooling
     status: partial
     integrated: "2026-08-13"
-    revised: "2026-11-03"
+    revised: "2026-11-21"
     document_revision: "2.1"
     summary: >-
       Tracks the canonical closed ordinary and open bit-backed enum model,
@@ -31,6 +31,8 @@ integrations:
       - rules/tooling/formatter.md
       - rules/tooling/lsp.md
       - rules/compiler/compile_time_evaluation.md
+      - rules/types/types.md
+      - rules/corrections/applied/md012-md022-conversion-errors-ffi-literals-correction-20261008.md
     code:
       - internal/sema/analyzer_inference.go
       - internal/ast/ast.go
@@ -55,6 +57,8 @@ integrations:
       - internal/sema/enum_string_initializers.go
       - internal/cst/roles.go
       - cmd/lsp/enum_document_symbols.go
+      - internal/sema/enum_integer_conversion.go
+      - internal/sema/integer_conversion.go
     tests:
       - testdata/sema/atomic_orders_valid.sec
       - cmd/lsp/atomic_orders_test.go
@@ -95,6 +99,9 @@ integrations:
       - cmd/compiler/string_enum_surfaces_test.go
       - testdata/tooling/string_enum_surfaces/valid.sec
       - testdata/tooling/string_enum_surfaces/duplicate_invalid.sec
+      - cmd/compiler/enum_representability_test.go
+      - testdata/build/native/enum_representability.sec
+      - testdata/build/native/enum_representability_exact.sec
     implemented:
       - "BUG-000021 fixed 2026-11-03: enum-conversion presentation requires an explicit accepted conversion-call identity retained by the Sema conversion producer and reset per analysis. An enum argument plus integer result, or absence of an ordinary selected-call fact, cannot classify an intrinsic/user method as a cast. Atomic Load hover retains its operation-specific memory-order documentation. Existing twelve positive enum conversions and detached snapshots remain covered; no conversion or atomic acceptance semantics changed."
       - MD-120 generic error enums with phantom parameters (2026-11-01; enums.md § 16.1) are accepted (rules/corrections/applied/MD-120-generic-error-parameters-approved-20261031-20261101.md; TestGenericErrorParameters, TestGenericErrorChannelSpecializations, TestGenericErrorUnionInstance, TestErrorCategoryConstraintSyntax, TestGenericErrorParameterHover)
@@ -133,6 +140,7 @@ integrations:
       - "Enum default formatter conformance completed 2026-10-30: parser-owned CST marks a valid member default token as requiring one preceding space, fixing irregular member/default spacing before enum value-column alignment. Integer/string/implicit-default source goldens preserve member order, marker identity, alias values and exact escape spellings, are idempotent at indentation widths 2/4/6, and agree exactly through CLI stdin and LSP formatting. A legacy colon initializer on a default member retains its registered parser diagnostic, default flag, initializer, later members and following declaration after ordinary formatting; the rejected initializer spelling is not silently rewritten."
       - "String enum frontend/tooling conformance completed 2026-10-30: one shared source fixture verifies precise type/member definitions, alias-specific references with and without declarations, enum/enumMember semantic tokens, complete hierarchical document-symbol ranges including default markers and UTF-16 string initializer endpoints, explicit and implicit semantic defaults, alias-normalized exhaustive switch flow and duplicate-alias errors, plus exact idempotent formatter output. Fixed two reproduced tooling gaps: Sema enum type facts now select the enum token class, and parser-retained real enum body/member endpoints supply outline ranges that contain every child instead of ending at the enum name. Enum symbol projection is extracted into a focused LSP file. CLI JSON preserves the duplicate-case identity and earlier-case source link. Runtime string enum representation and lowering remain separately tracked."
       - "Enum domain and conversion tooling (2026-11-03): type/member hover exposes the compiler-owned underlying representation and closed/open domain, with unnamed hardware encodings explicitly valid. Conversion-callee hover presents accepted source/target/result types, checked EnumValueError versus ConversionError channels, and retained numeric exactness evidence in readable terms, including constant, closed-domain and full-bit-domain bounds and plan width when present. Selected user/indirect calls and rejected constant conversions cannot masquerade as accepted casts. Detached Sema presentation queries reuse resolved types and retained proofs without new inference, caches or language semantics. LSP regression fixtures verify the existing canonical closed/open match diagnostics, fallback guidance, alias-normalized exhaustive coverage and complete named bit-domain coverage. Runtime/lowering support remains separately tracked."
+      - "Enum-to-integer representability acceptance completed 2026-11-21 (enums.md §12.1, types.md §§25(11),25.1, MD-012/MD-104): the existing retained proof uses the exact known value, complete closed value-class domain or full open bit domain under the selected CompilationPlan. Unproven narrowing produces Result[target, ConversionError]; known overflow stays a compile-time error. Dedicated frontend.enum-to-integer-checked-conversion tests cover 32/64-bit and unresolved plans, aliases, sparse/negative domains, invalid inventories, open widths through 256 bits, try and CLI/LSP parity. New public acceptance checks the canonical Result/propagation/local-handler source, preserves the P18 checked IR rejection with no output, and executes exact sparse/alias/known-value conversions with int256/uint256 carriers natively. This closes the proof/Result-selection point; the separate general conversion/lowering item remains open."
     remaining:
       - preserve concrete generic enum owner and member provenance through Semantic IR, Sec MLIR, deterministic symbol formation, ABI, FFI, and executable backend lowering
       - revalidate concrete-dependent enum representation and generic constraints before representation-dependent lowering
@@ -141,7 +149,6 @@ integrations:
       - add Sec MLIR types, attributes, operations, or canonical lowering needed to preserve nominal string-enum identity and checked construction
       - lower string-enum constants, comparisons, switches, matches, conversions, and failure flow through supported backends
       - preserve unnamed bit-backed enum register encodings through register extraction and insertion lowering
-      - prove enum-to-integer representability over the known value or complete enum domain and use the canonical checked Result path when narrowing may fail
       - synchronize Semantic IR and Sec MLIR conversion operations with checked EnumValueError control flow and runtime validation
       - add complete valid, invalid, recovery, LSP, Semantic IR, and end-to-end enum coverage
     required_tests:
@@ -164,6 +171,12 @@ integrations:
       - Semantic IR verification and deterministic Sec MLIR emission
       - end-to-end backend execution for constants, conversion success and failure, equality, switch, and match
     verification:
+      - command: go test ./cmd/lsp ./cmd/compiler -run 'TestEnumConversion(ErrorChannel|OrdinaryTry)|TestEnumCheckedAnalysis' -count=1 -timeout=90s
+        result: "Passed 2026-11-21: LSP 6.389s and CLI 0.050s; canonical ConversionError propagation/handling and invalid-source diagnostics. go vet ./cmd/compiler and go test ./internal/traceability also pass."
+      - command: go test ./internal/sema ./internal/ir/semantic -run 'Test(Enum.*(Conversion|Proof|Domain|Integer)|ClosedEnumConversion|OpenEnum|CheckedEnum)' -count=1 -timeout=90s
+        result: "Passed 2026-11-21: Sema 0.115s and Semantic IR 0.039s; known values, complete closed/open domains, malformed inventory rejection, retained proofs and target-plan decisions."
+      - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./cmd/compiler -run '^TestEnumRepresentabilityAcceptance$' -count=1 -v -timeout=90s
+        result: "Passed 2026-11-21 (4.311s), no skips: canonical checked source passes check; emit-ir rejects the P18 checked-conversion boundary without output; the exact sparse/alias/known-value subset, including int256/uint256 carriers, builds and executes with exit 42. Checked native execution is not claimed."
       - command: go test -race ./internal/sema ./cmd/lsp -run 'EnumConversionTooling|EnumDomain|StringEnumHover|AtomicOrderMatrixLSP|AtomicSurface' -count=1 -timeout=120s
         result: passed on 2026-11-03 (1.327s / 20.233s); BUG-000021 reproduced as Atomic.Load hover displaying an enum-to-int conversion, then fixed using retained conversion identity; seven atomic Loads and all fixture calls remain intrinsic calls, while twelve accepted enum conversions preserve their presentation
       - command: go test ./internal/sema -count=1 -timeout=180s
@@ -748,7 +761,7 @@ integrations:
       slices, while complete callable/backend ownership metadata remains major
       work.
     rules:
-      - rules/corrections/md117-heterogeneous-variadic-type-packs-correction.md
+      - rules/corrections/applied/md117-heterogeneous-variadic-type-packs-correction-20261121.md
       - rules/declarations/functions.md
       - rules/declarations/generics.md
       - rules/declarations/interfaces.md
@@ -811,6 +824,8 @@ integrations:
       - testdata/sema/ordinary_receiver_contract_invalid.sec
       - internal/ir/semantic/receiver_value_copy_test.go
     implemented:
+      - "Implemented 2026-11-21 (MD-117 static pack methods of an explicit generic owner): Box[int].Make(...) and Box[int].Count(...) already resolve, so the recorded `Box.Make is not generic` gap no longer exists; the owner arguments are fixed before the method's own parameters and the ordered pack joins the specialization identity (Box.Count[T=int,...Types<int,bool>], Box.Take[T=bool,...Types<int,uint>], empty pack). Native execution of the struct-returning form waits for struct lowering (P24). TestTypePackStaticMethodsOfExplicitGenericOwner (testdata/generics/type_pack_declarations/generic_owner_explicit_args.sec)."
+      - "Implemented 2026-11-21 (MD-117 pack methods on interface owners): confirmed against interfaces.md § 9 and functions.md § 38A(1),(9)(2): a type pack is a method-level generic parameter, which an interface requirement may not introduce because dispatch must stay finite and there is no runtime generic or pack dispatch. The ordinary interface rule already rejects shared, exclusive and owned pack requirements (not S1177), and the parser rejects interface- and type-level packs; TestInterfaceRequirementRejectsTypePack covers the requirement forms."
       - "Legacy `ref name: Type` parameter spelling removed (2026-11-09; grammar.md §33): parseParameters reports a focused diagnostic naming the canonical `name: ref Type` / `name: ref mut Type` replacement and recovers into the canonical borrowed TypeReference, so AST and signature identity have one form. `ref self` receivers are unchanged. Fixtures (crc32_valid and four testdata/sema escape/closure files) and Go test snippets were migrated; TestParseRejectsLegacyRefParameterSpelling covers both modes and the receiver form."
       - ordinary named fn declarations with mandatory explicit return types and bodies
       - parameter parsing including canonical name colon ref Type and name colon ref mut Type, trailing commas, duplicate diagnostics, resolved parameter and result types, and function-local scopes
@@ -862,10 +877,9 @@ integrations:
       - "MD-117 staged partial overload inference (2026-10-31; generics.md §§14,18,20,29, functions.md §38A(4)(5),(6)(1-2),(9)): pack overload sets prepare arguments once and rank uncached partial signatures using argument-derived or explicit substitutions. Known constraints may eliminate candidates; dependent constraints wait until a unique winner receives missing scalar types from expected result context. Deductions already supplied by arguments/explicit types remain fixed, and full constraints are checked before publishing the selected call or committing outer moves. The partial-inference S1177 gate is removed: ambiguous results, missing context and failed constraints receive ordinary semantic errors with no emitted artifact or incomplete instance-cache entries. Source-backed 32/64 tests cover independent Option[int]/Option[bool] instances, explicit prefixes, deferred Option None, nested consuming arguments, ambiguity, missing context with a prepared move, constraints and preservation of argument-bound types. Supported cases reach IR/Sec MLIR and LSP concrete signatures through existing consumers; no IR or public-fact shape changes."
       - "MD-117 concrete-owner pack-only methods (2026-10-31; functions.md §§21-24,38A): instance and static methods with [...Types] and unused/Len-only bodies support owned non-reference, shared and exclusive pack arguments, including empty tails and implicit self. Ordinary receiver authority and receiver/argument loan or move conflicts are checked before call-entry commit. Returned references retain canonical receiver provenance; local receivers pass and temporary receiver escapes fail. Generic-instance cache hits refresh late-bound reference/reset summaries without changing specialization identities, extracted into internal/sema/generic_function_instances.go. Source-backed 32/64-bit Sema, CLI and LSP tests cover the subset. Generic/interface owners, additional scalar method generics, element bodies and method IR specialization remain explicit boundaries; no executable method-pack support is claimed."
       - Resolved ordinary Function and open interface-call contracts no longer carry a consuming-receiver mode; obsolete receiver-consuming overload checks, call-site moves, callable projection, pack-forwarding gates and Semantic IR exclusions are removed. Constructed ordinary declarations using the legacy receiver marker fail with S1212 functions.consuming-receiver before registration; interface declarations retain their independent S1211/P2039 rejection. Shared receiver copies and mutable/exclusive member transfers remain valid, and consuming callable types, ordinary consuming parameters and compiler-owned terminal lifecycle operations keep their separate ownership models (2026-11-10).
+    partial:
+      - "Started (moved to partial 2026-11-21; the text records the done part and what remains): MD-117 call/Sema completion. Done: a runtime-length source (slice, dynamic array, homogeneous pack) spread into a heterogeneous pack is reported at the spread with that reason instead of a misleading arity mismatch (functions.md § 38A(4)(3), (10)(1); TestTypePackFixedArraySpreadRejections). Remaining: complete contextual literal rules, once-only argument preparation and concrete position/type diagnostics for the remaining forms; runtime-length heterogeneous inference stays rejected. Forwarding targets are tracked under frontend.spread (functions.md §38A; correction §§3,4,10)."
     remaining:
-      - "MD-117 call/Sema completion: complete contextual literal rules, once-only argument preparation and concrete position/type diagnostics for the remaining forms; runtime-length heterogeneous inference stays rejected. Forwarding targets are tracked under frontend.spread (functions.md §38A; correction §§3,4,10)."
-      - "MD-117 pack methods on interface owners: an interface requirement has no static expansion and reports S1177; whether such a requirement is valid at all, given no runtime dispatch of packs, needs confirming against functions.md §38A(1),(9) and interfaces.md."
-      - "MD-117 static pack methods of a generic owner called as Box[int].Make(...): reports the error of ordinary static generic-owner methods (`Box.Make is not generic`), so it follows that gap rather than being pack-specific (monomorphization.md §§8.2,9.3)."
       - "MD-117 reference-holder positions in Semantic IR: an owned pack with a reference element, and for ref or ref values[k] over it which must reborrow instead of forming ref ref T (references.md §3.4(10); correction MD-119 §6(2)), stop at the named boundary shared with ordinary T = ref int; both need reference-typed generic arguments under compiler.monomorphization."
       - preserve forced-consuming parameter modes in first-class callable types, Semantic IR parameter ownership, call ArgumentActions, Sec MLIR, and LLVM lowering
       - implement per-element copy or move transfer for direct variadic arguments and destruction of remaining owned pack elements
@@ -2117,7 +2131,7 @@ integrations:
       literal, and same-type struct spread semantics without hidden moves or
       allocation.
     rules:
-      - rules/corrections/md117-heterogeneous-variadic-type-packs-correction.md
+      - rules/corrections/applied/md117-heterogeneous-variadic-type-packs-correction-20261121.md
       - rules/declarations/spread.md
       - rules/declarations/struct.md
       - rules/collections/collections.md
@@ -2154,6 +2168,7 @@ integrations:
       - testdata/generics/type_pack_declarations/spread_forward_owned.sec
       - testdata/generics/type_pack_declarations/spread_forward_references.sec
     implemented:
+      - "Implemented 2026-11-21 (MD-117 fixed-array spread into a heterogeneous pack; internal/sema/type_pack_calls.go): a fixed-size array spread has a compile-time count and element type, so its indexed copies infer owned pack positions like separate arguments, mixed with ordinary arguments, other fixed-array spreads and a fixed prefix (spread.md §§ 4-4.3; functions.md § 38A(4)(2)). Each source, including a call, is evaluated once and read by constant proven-safe array.extract in Semantic IR. A borrowed pack position reports S1239 exactly like a fixed-array spread into ordinary ref parameters; move-only elements stay rejected. Forwarding an enclosing pack together with an array spread is still the separate forwarding-target item. Native execution waits for array lowering (P24). Tests: TestTypePackAcceptsFixedArraySpread, TestTypePackFixedArraySpreadRejections, TestTypePackFixedArraySpreadSpecializes; TestSharedTypePackChecksAndBoundaries now expects S1239 for shared_fixed_spread_boundary.sec."
       - postfix expression... syntax in call arguments, fixed-array literals, and struct literal entries
       - fixed-array expansion counts for calls and array literals
       - compact, checked fixed-array literal length accounting without materializing one analysis entry per expanded element
@@ -2169,7 +2184,7 @@ integrations:
       - "Canonical spread fixtures (2026-11-01): testdata/sema/spread_valid.sec and spread_invalid.sec cover every Sema-reachable family of spread.md §14; parser families have their own fixtures. Ordinary call spreads now reach a named Semantic IR boundary instead of an internal missing-type error."
       - "Spread parser recovery (2026-10-29): permanent prefix, repeated, missing-source and out-of-context fixtures verify progress, explicit invalid nodes, preserved sibling statements and following functions. Repeated postfix markers now produce one focused P2007 invalid postfix node retaining the already parsed spread and its real source; further repeated markers record exact skipped-token recovery without consuming the list closer. Complete standalone spread remains in the AST for Sema, which rejects both let and return uses rather than accepting an expansion as a value."
     remaining:
-      - "MD-117 forwarding targets not yet represented, each reporting S1177 instead of ordinary generic semantics (functions.md §38A(4)(5),(7)): interface dispatch; a method consuming its receiver; overloads with different result types, receiver modes or modes for an ordinary argument; an ordinary argument after a pack spread that must move or borrow into a non-variadic target; an array or slice spread in the same call as a pack spread; a fixed-array spread into a pack parameter; a callee returning a value that contains a reference; a result type depending on the pack."
+      - "MD-117 forwarding targets not yet represented, each reporting S1177 instead of ordinary generic semantics (functions.md §38A(4)(5),(7)): interface dispatch; a method consuming its receiver; overloads with different result types, receiver modes or modes for an ordinary argument; an ordinary argument after a pack spread that must move or borrow into a non-variadic target; an array or slice spread in the same call as a pack spread; a callee returning a value that contains a reference; a result type depending on the pack."
       - "MD-117 forward specialization proofs through generic calls: Sema proves forwards reached by direct concrete calls and forward chains. A chain entered from a template body through a call with generic or per-position arguments, such as Inner(value) inside a pack loop or Forward(x) in a [T] body, is proved by Semantic IR when it becomes concrete, as an unsupported-lowering error rather than a source diagnostic at check time (functions.md §38A(4)(6),(10)(2))."
       - "Semantic IR for ordinary call spreads: fixed-array and homogeneous pack call spreads, including <-values... of a homogeneous pack and forwarding a heterogeneous pack into a homogeneous parameter, are checked by Sema and stop at a named unsupported-lowering boundary; exactly-once evaluation and indexed copies still need their operation (spread.md §12; semantic_ir.md §27A(1))."
       - "Executable reference pack forwarding: ref and ref mut forwarding reach verified Sec MLIR; native execution waits for P24 references, as all references do."
@@ -2582,12 +2597,12 @@ integrations:
 
   - id: frontend.union-constructor-value-semantics
     area: frontend-union-construction
-    status: partial
+    status: implemented
     audited: "2026-08-19"
-    revised: "2026-11-20"
+    revised: "2026-11-21"
     document_revision: "2"
     repository_baseline: c515862
-    summary: Union constructors apply compatibility and integer representability checks and publish frozen typed payload preparation after ownership commits. Semantic IR consumes the saved operands, semantic defaults and copy/move/direct-construction actions in evaluation order, assembles declaration-order payloads and carries them through existing Sec MLIR/native lowering. Complete cross-form ownership validation and reference-origin work remain pending.
+    summary: Union payload initialization, ownership preparation and direct/contained reference propagation use accepted constructor records for both source forms. Frozen operands drive Semantic IR and existing lowering; local and match-scoped references cannot escape through payload construction. The constructor audit and its verified origin omission are closed. General representation, semantic-copy and lifetime-precision capabilities remain with their separate owners.
     rules:
       - rules/declarations/unions.md
       - rules/declarations/struct.md
@@ -2596,6 +2611,9 @@ integrations:
       - rules/memory/ownership.md
       - rules/compiler/semantic_ir.md
       - rules/mlir/packages/sec-mlir-dialect_package11.md
+      - rules/corrections/applied/return-context-ownership-forwarding-correction-20260903.md
+      - rules/memory/lifetime_analysis.md
+      - rules/memory/borrowing.md
     code:
       - internal/sema/analyzer.go
       - internal/sema/types.go
@@ -2609,6 +2627,10 @@ integrations:
       - internal/sema/owning_construction.go
       - internal/sema/analyzer_inference.go
       - internal/ir/semantic/union_construction.go
+      - internal/sema/ownership_moves.go
+      - internal/sema/return_ownership.go
+      - internal/sema/union_reference_origins.go
+      - internal/sema/reference_contained_origins.go
     tests:
       - internal/sema/analyzer_test.go
       - internal/sema/copy_move_test.go
@@ -2624,6 +2646,15 @@ integrations:
       - internal/lowering/secmlir/union_preparation_test.go
       - cmd/compiler/union_preparation_pipeline_test.go
       - testdata/semantic_ir/union_preparation_consumers.sec
+      - internal/sema/union_ownership_forms_test.go
+      - internal/ir/semantic/union_ownership_forms_test.go
+      - testdata/sema/union_ownership_forms_valid.sec
+      - testdata/sema/union_ownership_forms_invalid.sec
+      - internal/sema/union_origin_audit_test.go
+      - cmd/compiler/union_origin_audit_test.go
+      - cmd/lsp/union_origin_audit_test.go
+      - testdata/sema/union_origin_audit_invalid.sec
+      - testdata/sema/union_origin_audit_valid.sec
     implemented:
       - payload-less union construction arity checking
       - single unnamed payload arity checking
@@ -2642,11 +2673,10 @@ integrations:
       - Explicit resolved union-constructor payload preparation facts are recorded only after constructor selection and successful payload validation, then frozen after terminal-return ownership commits. Each operand retains its compiler-owned source identity, exact substituted destination type, declaration field index/name, source evaluation order and synthesized-default origin. Empty, unnamed, named-field, qualified/contextual and generic constructions use the saved registry; ordinary calls are never classified by variant-like spelling. ResolvedUnionConstructionOf returns detached type, field, action and Place data without re-inferring syntax; reanalysis replaces old facts.
       - Payload preparation distinguishes validated trivial/semantic copies, ownership moves and fresh direct construction, with a detached canonical transfer plan when a reusable source has one. Explicit moves and terminal-return moves retain their accepted action; rejected move-only transfers publish no constructor preparation. Synthesized defaults retain their origin across repeated analysis of the same AST. PayloadActions remains a compatibility view; Semantic IR now consumes the typed operand plan directly.
       - Semantic IR union construction consumes the saved typed PayloadPreparation operands, actions, declaration positions and evaluation order directly, then assembles canonical declaration-order operands for the existing Sec MLIR/native lowering. It no longer reads constructor argument/field AST lists or parallel legacy action/name slices. Admission rejects missing, duplicate, wrong-type, wrong-identity and unavailable transfer/default facts before evaluating operands. Omitted fields carry detached semantic default decisions from Sema and use resolved-default materialization. Both scalar plans, owned/moved/fresh constructor MLIR regressions, AST-shape independence and the native scalar union/default/generic pipeline are verified; unrelated representation/semantic-copy capability boundaries remain explicit.
-    partial:
-      - Sema freezes explicit typed payload preparation and ownership facts, consumed directly by Semantic IR and preserved through existing lowering. Named and unnamed ownership validation still follows separate construction paths; cross-form ownership unification and the reference-origin audit remain listed separately. Unavailable payload representations and semantic-copy lowering retain explicit capability boundaries.
-    remaining:
-      - make unnamed and struct-like payload ownership semantics independent of AST representation
-      - audit reference-origin/contained-origin propagation through both union constructor forms
+      - Named, unnamed, qualified and contextual union payloads now share one typed initialization/contract/ownership validator. Move-source, resource-transfer and terminal-return traversal consume accepted constructor operand records before final action freezing, rather than special-casing call versus struct-literal AST lists. Both forms preserve copies, explicit moves, terminal forwarding and fresh construction, reject invalid source ownership/representability consistently, and remain independent of constructor AST operand lists. Ordinary static factories with variant-like names remain ordinary calls governed by parameter modes (BUG-000035); no structural owning edge is inferred from spelling.
+      - "Completed the direct/contained reference-origin audit for both constructor forms (governance/union-reference-origin-audit.md), fixing BUG-000036: accepted constructors record direct and nested payload dependencies from typed operand plans while lexical origins are available. Variant/field paths retain local, match-scoped, mutable, unknown and Place facts through bindings and canonical returned-origin substitution. Both forms reject shared/mutable local, nested, bound, forwarded and branch-scoped escapes; caller-origin and nonescaping controls remain valid. Queries consume recorded contents without rescanning AST operands. CLI check/IR and unsaved LSP retain paired diagnostics and referent links."
+    partial: []
+    remaining: []
     required_tests:
       - unnamed uint8 payload accepts 255
       - unnamed uint8 payload rejects 256
@@ -2664,6 +2694,24 @@ integrations:
       - missing or inconsistent payload/default plans are rejected before operand evaluation
       - semantic union field defaults and generic payloads reach verified MLIR on 32/64-bit plans and native execution
     verification:
+      - command: go test ./internal/traceability -run TestRulebookTraceability -update
+        result: "Bounded result 2026-11-21: the touched contained-origin function is documented and its exemption removed; no baseline additions. Global check still fails only on concurrent cAlias helpers internal/parser peekIsCAlias/tokenAfterPeekIsCAlias and internal/sema CBindingLayer.String lacking rule references. Exact functions reported in the shared handoff; those active files are not part of this work."
+      - command: go vet -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: Passed 2026-11-21.
+      - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test -p 4 ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir -count=1 -timeout=180s
+        result: "Passed 2026-11-21: complete Sema 35.871s, Semantic IR 10.022s, Sec MLIR emitter 22.985s after the final shared/mutable origin matrix."
+      - command: go test -race -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run '^TestUnionOriginAudit' -count=1 -timeout=120s
+        result: "Passed 2026-11-21 (1.624s/21.583s/13.577s): twelve paired local, nested, bound, forwarded, mutable and match-scoped escapes; valid caller-origin controls; every Sema depth on 32/64-bit plans. Stored provenance survives AST operand-list removal and detached queries. CLI check/IR and unsaved LSP preserve diagnostic pairs and referent links."
+      - command: go test ./internal/traceability -run TestRulebookTraceability -update
+        result: Passed 2026-11-21 (0.716s). New shared helpers cite normative rules; exemptions shrink only, no additions.
+      - command: go vet -p 4 ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir
+        result: Passed 2026-11-21 after shared validator/traversal changes.
+      - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./cmd/compiler -run '^TestUnionPreparationPipeline$' -count=1 -timeout=90s
+        result: "Passed 2026-11-21 (7.151s): real source -> IR -> verified Sec MLIR -> native union/default/generic pipeline, exit 42."
+      - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test -p 4 ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir ./internal/traceability -count=1 -timeout=180s
+        result: "Passed 2026-11-21: complete Sema 34.445s, Semantic IR 9.847s, Sec MLIR emitter 24.723s, traceability 0.304s."
+      - command: go test -race -p 4 ./internal/sema ./internal/ir/semantic -run '^TestUnionOwnership' -count=1 -timeout=90s
+        result: "Passed 2026-11-21 (1.384s/1.053s): paired explicit/terminal moves, copying, fresh construction, source re-use and borrow/representability rejection, all Sema depths and both scalar plans. Saved ownership edges survive removal of constructor AST lists. Ordinary static factories remain opaque and their borrowed owners have no IR move or cleanup cancellation (BUG-000035)."
       - command: go test ./internal/traceability -run TestRulebookTraceability -update
         result: Passed 2026-11-20 (0.210s) after the concurrent layout reference was supplied. Moved/touched union builder functions have rule references; baseline exemptions shrink only, none added.
       - command: go vet -p 4 ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir ./cmd/compiler
@@ -2694,8 +2742,11 @@ integrations:
     document_last_updated: "2026-08-13"
     bug_reference:
       - correction17.md
+      - BUG-000035
+      - BUG-000036
     governance_reconciliation:
       - "Narrow frontend.unions implemented wording \"payload construction arity and type checking\": arity and broad type compatibility are implemented, but complete typed initialization/representability checking is partial."
       - Keep implemented match payload Place ownership and copyability classification. Add union-constructor payload ownership transfer as a separate partial frontend area.
       - Keep Package 11 implemented within its documented dependency-bounded scope; this correction concerns the frontend preparation/proof supplied to later IR.
       - Generic-union recursive storage remains governed by correction8.md and should not be duplicated here.
+      - The remaining constructor-origin audit is complete; see governance/union-reference-origin-audit.md. No audit work remains under this ID. Native reference/union representation, semantic-copy lowering, full NLL precision and opaque foreign retention remain the responsibility of their existing memory/lifetime/FFI/backend owners and are not claimed complete here.

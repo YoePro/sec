@@ -1,0 +1,25 @@
+module main
+
+fn Take[...Types](values: ...Types) uint {
+    return values.Len
+}
+
+fn Tagged[...Types](tag: uint, values: ...Types) uint {
+    return tag + values.Len
+}
+
+fn Make() int[2] {
+    return [4, 5]
+}
+
+fn Use() uint {
+    let numbers: int[3] := [1, 2, 3]
+    let flags: bool[2] := [true, false]
+    let a := Take(numbers...)
+    let b := Take(true, numbers..., 7u, flags...)
+    let c := Tagged(10u, numbers...)
+    let d := Take(Make()..., true)
+    let empty: int[0] := []
+    let e := Take(empty...)
+    return a + b + c + d + e
+}

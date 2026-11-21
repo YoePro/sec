@@ -493,7 +493,7 @@ invalid address widths, illegal overlap where overlap is forbidden, conflicting
 properties, and duplicate identities. Legitimate aliases or overlapping views must
 be declared through canonical metadata rather than inferred accidentally.
 
-**Amendment MD-111 (2026-10-30, `rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md` §§ 1–3, 12).**
+**Amendment MD-111 (2026-10-30, `rules/corrections/applied/MD-111-hardware-facts-approved-decision-20261030-20261121.md` §§ 1–3, 12).**
 Address domains are target-owned: each selected target/platform supplies its
 address-domain identities (for example `"cpu-physical"`), their addressable unit
 and their address width. A hardware declaration may name such a domain but never
@@ -937,7 +937,7 @@ CPU/Device or ABI/architecture combination valid.
 
 ---
 
-**Amendment MD-111 (2026-10-30, `rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md` § 12).** Hardware facts are
+**Amendment MD-111 (2026-10-30, `rules/corrections/applied/MD-111-hardware-facts-approved-decision-20261030-20261121.md` § 12).** Hardware facts are
 assembled in a restricted two-stage order: resolve Target/Variant and baseline
 platform facts; select source modules without depending on hardware
 declarations; collect the selected A declarations in a declaration-only
@@ -1406,7 +1406,7 @@ breaking the primary processor model.
 
 ## 31. C binding environment resolution (MD-021)
 
-Integrated 2026-11-20 from `rules/corrections/MD-021-c-binding-environment-complete-proposal-20261120.md` (owner accepted 2026-11-20). The correction holds the full normative text; this section is its owning summary.
+Integrated 2026-11-20 from `rules/corrections/applied/MD-021-c-binding-environment-complete-proposal-20261120-20261121.md` (owner accepted 2026-11-20). The correction holds the full normative text; this section is its owning summary.
 
 **§ 31(1)** C bindings resolve independently per Target Variant into that Variant's immutable `CompilationPlan`. Compiler-host OS, libc, SDK and headers never substitute for target facts.
 

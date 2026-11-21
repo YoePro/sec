@@ -1,6 +1,6 @@
 // Package hardware owns the shared compile-time hardware metadata schema. It
 // does not execute device operations or turn declarations into reference Places.
-// Rules: rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md §§2–8.
+// Rules: rules/corrections/applied/MD-111-hardware-facts-approved-decision-20261030-20261121.md §§2–8.
 package hardware
 
 // Category separates declaration identities even when addresses coincide (§2).
@@ -42,9 +42,9 @@ var enums = map[string][]EnumCase{
 }
 
 // Schema returns an isolated copy of the authoritative member table (§§4–6).
-// Rules: rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md — §§2–8,13(2).
+// Rules: rules/corrections/applied/MD-111-hardware-facts-approved-decision-20261030-20261121.md — §§2–8,13(2).
 func Schema(category Category) []Member { return append([]Member(nil), schemas[category]...) }
 
 // Enum returns an isolated copy of the closed metadata enum (§§4A,7).
-// Rules: rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md — §§2–8,13(2).
+// Rules: rules/corrections/applied/MD-111-hardware-facts-approved-decision-20261030-20261121.md — §§2–8,13(2).
 func Enum(name string) []EnumCase { return append([]EnumCase(nil), enums[name]...) }

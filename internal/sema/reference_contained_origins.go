@@ -3,6 +3,7 @@ package sema
 import (
 	"sec/internal/ast"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -102,4 +103,83 @@ func (a *Analyzer) referenceContentsForBinding(expr ast.Expression) map[string]l
 		}
 	}
 	return result
+}
+
+// containedReferenceOrigins preserves each stored reference dependency through
+// aggregate construction and value wrappers. Selected union constructors use
+// recorded origins, never a call/struct-literal spelling distinction.
+// Rules: rules/memory/lifetime_analysis.md §§14,28;
+// rules/memory/borrowing.md §§12–14; rules/declarations/unions.md §5.
+func (a *Analyzer) containedReferenceOrigins(expr ast.Expression) map[string]localReferenceOrigin {
+	out := map[string]localReferenceOrigin{}
+	if _, constructor := a.resolvedUnionConstructions[expr]; constructor {
+		if origin, known := a.expressionReferenceOrigins[expr]; known {
+			prefixContainedOrigins("", origin.Contained, out)
+		}
+		return out
+	}
+	switch expr := expr.(type) {
+	case *ast.Identifier:
+		if origin, ok := a.localRefContainers[expr.Value]; ok {
+			prefixContainedOrigins("", origin.Contained, out)
+		}
+	case *ast.CallExpression:
+		if origin, ok := a.expressionReferenceOrigins[expr]; ok {
+			prefixContainedOrigins("", origin.Contained, out)
+		}
+	case *ast.MemberExpression:
+		if origin, ok := a.expressionReferenceOrigins[expr]; ok {
+			prefixContainedOrigins("", origin.Contained, out)
+		}
+	case *ast.StructLiteral:
+		for _, field := range expr.Fields {
+			if field == nil || field.Value == nil {
+				continue
+			}
+			if field.Spread {
+				prefixContainedOrigins("", a.containedReferenceOrigins(field.Value), out)
+				continue
+			}
+			path := "." + field.Name.Value
+			if origin, ok := a.directReferenceOrigin(field.Value); ok {
+				out[path] = origin
+			}
+			prefixContainedOrigins(path, a.containedReferenceOrigins(field.Value), out)
+		}
+	case *ast.ArrayLiteral:
+		for index, element := range expr.Elements {
+			if spread, ok := element.(*ast.SpreadExpression); ok {
+				for childPath, child := range a.containedReferenceOrigins(spread.Value) {
+					if close := strings.IndexByte(childPath, ']'); strings.HasPrefix(childPath, "[") && close >= 0 {
+						out["[*]"+childPath[close+1:]] = cloneLocalReferenceOrigin(child)
+					}
+				}
+				continue
+			}
+			if _, isRange := element.(*ast.RangeExpression); isRange {
+				// A range segment has constant bounds and carries no reference.
+				continue
+			}
+			path := "[" + strconv.Itoa(index) + "]"
+			if origin, ok := a.directReferenceOrigin(element); ok {
+				out[path] = origin
+			}
+			prefixContainedOrigins(path, a.containedReferenceOrigins(element), out)
+		}
+	case *ast.SpreadExpression:
+		return a.containedReferenceOrigins(expr.Value)
+	case *ast.BitExtractionExpression:
+		return a.containedReferenceOrigins(expr.Value)
+	case *ast.ConversionExpression:
+		return a.containedReferenceOrigins(expr.Value)
+	case *ast.OkExpression:
+		if expr.Value != nil {
+			return a.containedReferenceOrigins(expr.Value)
+		}
+	case *ast.ErrExpression:
+		if expr.Value != nil {
+			return a.containedReferenceOrigins(expr.Value)
+		}
+	}
+	return out
 }

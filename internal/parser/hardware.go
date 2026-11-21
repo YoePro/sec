@@ -26,7 +26,7 @@ func isHardwareCategory(token lexer.Token) bool {
 // Rules:
 //   - rules/foundations/grammar.md — HardwareDeclaration (Amendment MD-111)
 //   - rules/foundations/lexical_structure.md — contextual `hardware` (Amendment MD-111)
-//   - rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md — §§ 3(5), 8(1)
+//   - rules/corrections/applied/MD-111-hardware-facts-approved-decision-20261030-20261121.md — §§ 3(5), 8(1)
 func (p *Parser) parseHardwareDeclaration() *ast.HardwareDeclaration {
 	defer p.withRecoveryContext(RecoveryContextHardware)()
 	declaration := &ast.HardwareDeclaration{Token: p.curToken}

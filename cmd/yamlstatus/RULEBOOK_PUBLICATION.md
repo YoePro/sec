@@ -91,8 +91,15 @@ not replaced if validation fails.
 All pages/resources are prepared before installation, then written into a fresh
 private sibling staging directory. The `.sec-rulebooks.json` ownership manifest
 records generated paths and SHA-256 checksums. Pages and manifest bytes are
-deterministic: no build time, random value or machine-specific source path is
-embedded. The manifest must remain with the site.
+deterministic for a given publication time: no random value or machine-specific
+source path is embedded, and the only time is the publication time in the title
+page (`index.html`) footer. It defaults to the current UTC time when generating;
+`--published-at 2026-11-21T03:15:00Z` (RFC 3339, shown in UTC) fixes it for a
+reproducible build, and `--check` shows none. The manifest must remain with the
+site.
+
+Every page's logo links to `https://sec-lang.com/`; the "All rulebooks" link and
+breadcrumbs stay relative to the generated site.
 
 On regeneration, unchanged previously generated files are replaced and stale
 generated files are removed. Unrelated regular files/directories are preserved,

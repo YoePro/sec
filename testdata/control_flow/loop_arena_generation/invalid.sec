@@ -1,0 +1,49 @@
+module main
+
+fn WhileFallthrough(condition: bool) Result[void, AllocationError] {
+    let mut mem: Arena := Arena {}
+    let storage := try mem.Alloc[byte](1u)
+    while condition {
+        discard storage.Len
+        mem.Reset()
+    }
+    return Ok()
+}
+fn WhileContinue(condition: bool) Result[void, AllocationError] {
+    let mut mem: Arena := Arena {}
+    let storage := try mem.Alloc[byte](1u)
+    while condition {
+        discard storage.Len
+        mem.Reset()
+        continue
+    }
+    return Ok()
+}
+fn ForFallthrough() Result[void, AllocationError] {
+    let mut mem: Arena := Arena {}
+    let storage := try mem.Alloc[byte](1u)
+    for index in 0..4 {
+        discard storage.Len
+        mem.Reset()
+    }
+    return Ok()
+}
+fn ForContinue() Result[void, AllocationError] {
+    let mut mem: Arena := Arena {}
+    let storage := try mem.Alloc[byte](1u)
+    for index in 0..4 {
+        discard storage.Len
+        mem.Reset()
+        continue
+    }
+    return Ok()
+}
+fn WhileCondition() Result[void, AllocationError] {
+    let mut mem: Arena := Arena {}
+    let storage := try mem.Alloc[byte](1u)
+    while storage.Len > 0u {
+        mem.Reset()
+        continue
+    }
+    return Ok()
+}

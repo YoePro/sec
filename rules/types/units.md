@@ -899,7 +899,7 @@ defined below.
 ## § 18 Unit metadata value types
 
 **§ 18(1)** This section integrates MD-062
-(`rules/corrections/md062-unit-metadata-value-types-correction-20261027.md`,
+(`rules/corrections/applied/md062-unit-metadata-value-types-correction-20261027-20261121.md`,
 §§ 1–16). Paragraph numbers are stable.
 
 **§ 18(2)** **(1) Observation surface.** A named unit `<U>` exposes exactly 16 read-only

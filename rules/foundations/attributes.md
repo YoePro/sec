@@ -176,7 +176,7 @@ compilation plan.
 
 **§ 5.2(1)** These bind a declaration to target-specific storage or interrupt machinery.
 
-**§ 5.2(2)** **Amendment MD-111 (2026-10-30, `rules/corrections/MD-111-hardware-facts-approved-decision-20261030.md` § 11).** `@address` takes exactly
+**§ 5.2(2)** **Amendment MD-111 (2026-10-30, `rules/corrections/applied/MD-111-hardware-facts-approved-decision-20261030-20261121.md` § 11).** `@address` takes exactly
 one statically resolved endpoint path and an optional second contextual marker
 `alias`: `@address(Endpoint)` or `@address(Endpoint, alias)`. A numeric,
 computed or runtime argument, a third argument, an unknown second marker and a
@@ -2695,7 +2695,7 @@ target, semantic, diagnostic, formatter, and conformance rules.
 
 ## § 95 `@cAlias` (MD-021)
 
-Integrated 2026-11-20 from `rules/corrections/MD-021-c-binding-environment-complete-proposal-20261120.md` (owner accepted 2026-11-20). The correction holds the full normative text; this section is its owning summary.
+Integrated 2026-11-20 from `rules/corrections/applied/MD-021-c-binding-environment-complete-proposal-20261120-20261121.md` (owner accepted 2026-11-20). The correction holds the full normative text; this section is its owning summary.
 
 **§ 95(1)** `@cAlias` is compiler-known and valid only as a standalone module-scope declaration in a compiler-authorized C binding module. `name` is a compile-time qualified `c::...` spelling; `target` is a TypeReference (`rules/foundations/grammar.md` § 126).
 

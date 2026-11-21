@@ -1,5 +1,16 @@
 # Sec Core Library
 
+- **Status:** Normative
+- **Created:** 2026-07-27
+- **Last updated:** 2026-11-21 (metadata header; last substantive update 2026-11-06)
+- **Document revision:** 1.0
+- **Sec language version:** 0.1
+- **Canonical path:** `rules/library/core-library.md`
+- **Implementation governance:** `governance/core.yaml`
+- **Related rulebooks:** `rules/library/stdlib.md`, `rules/compiler/compiler_known_members.md`, `rules/types/types.md`, `rules/types/contracts.md`, `rules/collections/collections.md`, `rules/memory/allocation.md`, `rules/memory/ownership.md`, `rules/foundations/names_scopes_visibility.md`, `rules/foundations/operators.md`, `rules/errors/errorhandling.md`, `rules/compiler/semantic_ir.md`, `rules/platform/platform_model.md`
+
+---
+
 Compiler-known Sec declarations backed by `core` remain real source-visible
 declarations and must be specified in complete canonical syntax. Their
 compiler-known identity and core declaration resolve to one semantic symbol.
@@ -2585,7 +2596,7 @@ semantics remain governed by their canonical rulebooks.
 
 The value types of unit metadata reads (`rules/types/units.md`, "Unit
 metadata value types") are public `sec/core` declarations
-(`rules/corrections/md062-unit-metadata-value-types-correction-20261027.md`
+(`rules/corrections/applied/md062-unit-metadata-value-types-correction-20261027-20261121.md`
 §§ 3, 7, 12(1)–12(2)). They resolve as ordinary nominal types with ordinary
 enum equality, `match` and constant evaluation; the compiler registers exactly
 these identities and creates no parallel synthetic symbols for them. Each

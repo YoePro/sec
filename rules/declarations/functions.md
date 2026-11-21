@@ -1142,7 +1142,7 @@ and consuming callables are rejected in Sec 0.1.
 
 ## 38A. Heterogeneous variadic type packs (MD-117)
 
-Decided 2026-10-26 (`rules/corrections/md117-heterogeneous-variadic-type-packs-correction.md`). This section supplements §§ 28–38; homogeneous `name: ...T` keeps every rule above unchanged (§ 38A(1)(4)).
+Decided 2026-10-26 (`rules/corrections/applied/md117-heterogeneous-variadic-type-packs-correction-20261121.md`). This section supplements §§ 28–38; homogeneous `name: ...T` keeps every rule above unchanged (§ 38A(1)(4)).
 
 **§ 38A(1) Purpose.** (1) Sec 0.1 supports heterogeneous native variadic arguments in ordinary statically typed functions and methods: a call may supply zero or more values of different concrete types without implicit `any`, type erasure, boxing, dynamic reflection or C varargs. (2) It is a general language feature equally available to user code, stdlib and core; no formatter name, `fmt.Printf` declaration or other stdlib API receives privileged call semantics. (3) Callers write the natural call; the compiler establishes the static type, ownership, lifetime and control-flow guarantees itself, without redundant caller boilerplate. (4) Homogeneous `name: ...T`, where `T` is one concrete type, remains valid and is not reinterpreted as heterogeneous. (5) The public `fmt` API, its formatting grammar, validation/error contracts, output and materialization are a separate stdlib specification (MD-118) and add no `fmt`-specific language behavior.
 

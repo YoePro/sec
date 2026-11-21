@@ -108,6 +108,7 @@ func (a *Analyzer) recordUnionConstruction(expr ast.Expression, typ Type, varian
 		a.resolvedUnionConstructions = map[ast.Expression]ResolvedUnionConstruction{}
 	}
 	a.resolvedUnionConstructions[expr] = cloneUnionConstruction(plan)
+	a.recordUnionReferenceOrigins(expr, plan)
 }
 
 // freezeUnionConstructionPreparations consumes accepted ownership transfers

@@ -5,7 +5,7 @@ import "sec/internal/ast"
 // inferCompilerKnownStringConstructor validates the borrowed byte/rune
 // sequence of a static string materializer and retains Result[StringError].
 // No input ownership is transferred and no byte ToString decoder is implied.
-// Rules: rules/corrections/md109-core-string-materialization-correction.md
+// Rules: rules/corrections/applied/md109-core-string-materialization-correction-20261121.md
 // — §§1.2–1.7,2.1–2.6,8.1–8.4; rules/memory/borrowing.md — §15.2.
 func (a *Analyzer) inferCompilerKnownStringConstructor(expr *ast.CallExpression, member CompilerKnownMember) (Type, expressionValue, bool) {
 	if !a.checkCompilerKnownCallArity(expr, "string."+member.Name, 1, 1) {

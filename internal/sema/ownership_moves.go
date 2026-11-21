@@ -7,6 +7,9 @@ import "sec/internal/ast"
 // Rules: rules/memory/copy_move.md — §§9–10;
 // rules/memory/destruction.md — §6.1(3), §9.
 func (a *Analyzer) markMoveSource(expr ast.Expression) bool {
+	if moved, known := a.visitUnionOwnershipOperands(expr, a.markMoveSource); known {
+		return moved
+	}
 	switch expr := expr.(type) {
 	case *ast.Identifier:
 		symbol, ok := a.symbols.lookup(expr.Value)
@@ -65,14 +68,7 @@ func (a *Analyzer) markMoveSource(expr ast.Expression) bool {
 		return a.markMoveSource(expr.Value)
 	case *ast.ConversionExpression:
 		return a.markMoveSource(expr.Value)
-	case *ast.CallExpression:
-		// rules/declarations/unions.md; correction17.md: constructing an
-		// unnamed union payload transfers ownership into the aggregate. Keep
-		// this specific to resolved union constructors; ordinary calls apply
-		// their ownership rules through markMovedCallArguments instead.
-		if payload, ok := a.unionConstructorPayload(expr); ok && requiresOwnershipTransfer(payload) {
-			return a.markMoveSource(expr.Arguments[0])
-		}
+
 	}
 	return false
 }
@@ -82,32 +78,11 @@ func (a *Analyzer) markMoveSource(expr ast.Expression) bool {
 // Rules: rules/declarations/unions.md — §5.2 "Single-payload variants";
 // rules/memory/copy_move.md — §10.
 func (a *Analyzer) unionConstructorPayload(expr *ast.CallExpression) (Type, bool) {
-	if expr == nil || len(expr.Arguments) != 1 {
+	plan, known := a.resolvedUnionConstructions[expr]
+	if !known || plan.Kind != ResolvedUnionVariantSingle || len(plan.PayloadPreparation) != 1 {
 		return Type{}, false
 	}
-	unionType, ok := a.expressionTypes[expr]
-	if !ok || unionType.Kind != UnionType {
-		return Type{}, false
-	}
-	variantName := ""
-	switch callee := expr.Callee.(type) {
-	case *ast.Identifier:
-		// Contextual constructors such as Some(value) are resolved from the
-		// expected union type before ownership forwarding reaches this point.
-		variantName = callee.Value
-	case *ast.MemberExpression:
-		if callee.Property == nil || !a.expressionNamesType(callee.Object) {
-			return Type{}, false
-		}
-		variantName = callee.Property.Value
-	default:
-		return Type{}, false
-	}
-	variant, ok := lookupUnionVariant(unionType, variantName)
-	if !ok || variant.Payload == nil || len(variant.PayloadFields) != 0 {
-		return Type{}, false
-	}
-	return *variant.Payload, true
+	return plan.PayloadPreparation[0].Type, true
 }
 
 // markResourceTransfer commits return transfer of close-tracked resources and
@@ -115,6 +90,9 @@ func (a *Analyzer) unionConstructorPayload(expr *ast.CallExpression) (Type, bool
 // Rules: rules/memory/copy_move.md — §9;
 // rules/memory/destruction.md — §6.1(3), §9.3.
 func (a *Analyzer) markResourceTransfer(expr ast.Expression) bool {
+	if moved, known := a.visitUnionOwnershipOperands(expr, a.markResourceTransfer); known {
+		return moved
+	}
 	switch expr := expr.(type) {
 	case *ast.Identifier:
 		symbol, ok := a.symbols.lookup(expr.Value)
@@ -159,10 +137,7 @@ func (a *Analyzer) markResourceTransfer(expr ast.Expression) bool {
 		if expr.Operator == "<-" {
 			return a.markResourceTransfer(expr.Right)
 		}
-	case *ast.CallExpression:
-		if _, structural := a.unionConstructorPayload(expr); structural {
-			return a.markResourceTransfer(expr.Arguments[0])
-		}
+
 	case *ast.BitExtractionExpression:
 		return a.markResourceTransfer(expr.Value)
 	case *ast.ConversionExpression:

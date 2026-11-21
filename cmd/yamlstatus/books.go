@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 )
 
 func runBooks(args []string, out, errOut io.Writer) error {
@@ -16,6 +17,7 @@ func runBooks(args []string, out, errOut io.Writer) error {
 	output := flags.String("outdir", "", "Static HTML destination outside the source checkout (required unless --check)")
 	base := flags.String("base-url", "", "Optional deployment URL/path prefix; default uses portable relative links")
 	check := flags.Bool("check", false, "Validate and render in memory without modifying the destination")
+	publishedAt := flags.String("published-at", "", "Publication time shown in the title page footer (RFC 3339; default: the current UTC time when generating, none for --check)")
 	flags.Usage = func() {
 		fmt.Fprintln(errOut, "Usage: yamlstatus books --indir CHECKOUT --outdir DIRECTORY [--base-url /books/]\n       yamlstatus books --indir CHECKOUT --check\nGenerates a static index, category pages, linked rulebooks and permitted local images.\nUses a manifest to preserve unrelated files and safely replace generated files.\nFor cron, use absolute --indir and --outdir paths; no server or deployment is started.")
 		flags.PrintDefaults()
@@ -55,7 +57,16 @@ func runBooks(args []string, out, errOut io.Writer) error {
 		return err
 	}
 	defer root.Close()
-	catalog, err := buildBookSite(&rulebookWorkspace{source: root}, *base)
+	var published time.Time
+	switch {
+	case *publishedAt != "":
+		if published, err = time.Parse(time.RFC3339, *publishedAt); err != nil {
+			return fmt.Errorf("invalid --published-at: %v", err)
+		}
+	case !*check:
+		published = time.Now().UTC()
+	}
+	catalog, err := buildBookSite(&rulebookWorkspace{source: root}, *base, published)
 	if err != nil {
 		return err
 	}

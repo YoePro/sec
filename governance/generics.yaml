@@ -20,7 +20,7 @@ integrations:
       method-level generics, complete specialization identity, and concrete-only
       backend lowering remain incomplete.
     rules:
-      - rules/corrections/md117-heterogeneous-variadic-type-packs-correction.md
+      - rules/corrections/applied/md117-heterogeneous-variadic-type-packs-correction-20261121.md
       - rules/declarations/generics.md
       - rules/declarations/enums.md
       - rules/declarations/impl.md
@@ -155,12 +155,12 @@ integrations:
       - "MD-117 resolved-call signature help (2026-10-30): LSP projects ResolvedTypePackCallOf into an expanded concrete receiving signature and ordered pack documentation, with per-source-argument active-parameter selection. Empty packs omit the trailing parameter; scalar generic prefixes and shared/reborrow modes retain concrete types. Ordinary fixed overloads are not replaced by pack candidates. Presentation shares the concrete reference renderer with hover and performs no inference. Unresolved/incomplete pack calls, other modes and executable expansion remain outside this increment (TestTypePackSignatureHelp, TestTypePackSignatureHelpDoesNotReplaceFixedOverload)."
       - "MD-122 universal ToString() in Sema (2026-11-01, owner decision A): value.ToString() type-checks on unconstrained and constrained generic parameters, E: error, opaque pack elements in every loop mode and through values[k], and interface values, returning Result[string, StringError]; a constraint's requirement takes precedence. In a template the call is an unknown callee, so @noPanic and @noAlloc are rejected there. No other member or formatting interface is granted; interpolation holes keep their own contract rule."
     partial:
+      - "Started (moved to partial 2026-11-21; the text records the done part and what remains): MD-117 call-site tooling (correction § 10(3)). Hover and signature help project selected ordered types and concrete pointwise receiving signatures for resolved shared-pack calls; the formatter round-trips ...Types, ...ref Types, ...ref mut Types and <-values... idempotently; the syntax reference documents the forms; diagnostics name the template location plus the concrete instantiation and argument position (§ 10(1)-(2)). Since 2026-11-21 signature help shows the declared template `fn F[...Types](...)` with the pack parameter active while a free-function pack call is open, incomplete, unresolved or the cursor is past the selected positions, never for a call resolved to an ordinary overload or an overload set with ordinary candidates (cmd/lsp/type_pack_signature.go; TestTypePackTemplateSignatureHelp). Remaining: the same template fallback for pack methods (instance and static calls) and hover on unresolved pack calls."
       - "Cross-module symbol identities partial (2026-11-19): imported functions, static/instance methods and property accessors use the defining module's canonical FunctionID (util::Counter.Make(int)) and the deterministic BinarySymbol sec_sym_<sha256>. Specializations of imported generics are instantiated per module with private/internal linkage; type identities drop the doubled module qualifier. Remaining: static storage across modules (blocked on cross-module module-level bindings, frontend.modules) and concrete type symbols where a backend needs them."
       - "Started (moved to partial 2026-11-20; the text records the done part and what remains): complete generic named-type contracts, implementation-member composition, Semantic IR, deterministic symbols, ABI, and lowering beyond the implemented concrete frontend identity, carrier substitution, and ordinary explicit conversions"
     remaining:
       - "MD-122 lowering (generics.md § 15; compiler_known_members.md Generic lookup): in a specialization select an exact user ToString or the concrete fallback; the call stops at a named boundary until P23 string lowering. Interface values need dispatch of ToString, which needs a view-table entry for every interface. A per-specialization @noPanic and @noAlloc proof through the selected ToString replaces today's conservative unknown callee."
-      - "MD-117 call-site tooling (correction § 10(3)): Complete call-site tooling beyond the supported shared-pack subset, including unresolved/incomplete calls and future pack modes. Hover and signature help already project selected ordered types and concrete pointwise receiving signatures for successfully resolved shared-pack calls, the formatter round-trips ...Types, ...ref Types, ...ref mut Types and <-values... idempotently, and the syntax reference documents the forms; diagnostics name the template location plus the concrete instantiation and argument position (§ 10(1)-(2))."
-      - "MD-117 conformance and acceptance (correction § 14): one regression matrix covering § 14(1) positive syntax/inference, § 14(2) negative checks, § 14(3) iteration, § 14(4) ownership/spread, § 14(5) lifetimes and § 14(6) lowering/tooling; MD-117 may be marked implemented and the correction archived only when every owner item passes (§ 14(7)). The matrix also carries the MD-119 conformance cases (applied correction § 8; references.md § 3.4(10)): carried holders keep ref T/ref mut T, explicit *value/projection/reborrow, no implicit deref, no ref ref T, no copied or moved-out ref mut element, origin-preserving returned reborrows, each case distinguishing Sema from Semantic IR/Sec MLIR/executable support. MD-118 (fmt API) stays open separately and is not counted here."
+      - "MD-117 conformance and acceptance (correction § 14): one regression matrix covering § 14(1) positive syntax/inference, § 14(2) negative checks, § 14(3) iteration, § 14(4) ownership/spread, § 14(5) lifetimes and § 14(6) lowering/tooling; MD-117 may be marked implemented only when every owner item passes (§ 14(7)); the correction itself was archived 2026-11-21 once every point had its own governance item (owner rule: corrections do not track implementation). The matrix also carries the MD-119 conformance cases (applied correction § 8; references.md § 3.4(10)): carried holders keep ref T/ref mut T, explicit *value/projection/reborrow, no implicit deref, no ref ref T, no copied or moved-out ref mut element, origin-preserving returned reborrows, each case distinguishing Sema from Semantic IR/Sec MLIR/executable support. MD-118 (fmt API) stays open separately and is not counted here."
       - show concrete specialization arguments at instantiated uses in generic-parameter hover
       - complete generic interface inheritance validation across modules and canonical cross-module specialization identity beyond the implemented local concrete requirement substitution
       - extend explicit-conformance checks to generic impl scopes; concrete struct, named-type, union, enum, and interface substitutions are now checked
@@ -257,7 +257,7 @@ integrations:
       generic enum, method, named-type, ownership/destruction, ABI, and
       generic-concreteness verification remain incomplete.
     rules:
-      - rules/corrections/md117-heterogeneous-variadic-type-packs-correction.md
+      - rules/corrections/applied/md117-heterogeneous-variadic-type-packs-correction-20261121.md
       - rules/compiler/generics_lowering.md
       - rules/compiler/monomorphization.md
       - rules/declarations/generics.md
@@ -354,7 +354,7 @@ integrations:
       diagnostics provide a partial foundation; the complete cross-module
       specialization and realization model remains incomplete.
     rules:
-      - rules/corrections/md117-heterogeneous-variadic-type-packs-correction.md
+      - rules/corrections/applied/md117-heterogeneous-variadic-type-packs-correction-20261121.md
       - rules/compiler/monomorphization.md
       - rules/declarations/generics.md
       - rules/compiler/generics_lowering.md

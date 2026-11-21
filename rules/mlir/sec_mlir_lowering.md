@@ -1,5 +1,16 @@
 # Sec MLIR Lowering
 
+- **Status:** Normative
+- **Created:** 2026-08-09
+- **Last updated:** 2026-11-21 (metadata header; last substantive update 2026-10-30)
+- **Document revision:** 1.0
+- **Sec language version:** 0.1
+- **Canonical path:** `rules/mlir/sec_mlir_lowering.md`
+- **Implementation governance:** `governance/lowering.yaml`
+- **Related rulebooks:** `rules/mlir/sec_mlir.md`, `rules/mlir/sec_mlir_dialect.md`, `rules/compiler/semantic_ir.md`, `rules/compiler/compiler_pipeline.md`, `rules/compiler/compiler.md`, `rules/types/types.md`, `rules/memory/ownership.md`, `rules/memory/borrowing.md`, `rules/platform/platform_model.md`
+
+---
+
 ## Status
 
 Normative lowering specification.

@@ -932,7 +932,7 @@ fn Plain(runes: ref rune[]) string {
 
 // Static materializers retain distinct stable IDs and borrowed signatures,
 // while private materialization stays core-only and bytes.ToString is a summary.
-// Rules: rules/corrections/md109-core-string-materialization-correction.md
+// Rules: rules/corrections/applied/md109-core-string-materialization-correction-20261121.md
 // — §§1–2,8,10.2; compiler_known_members.md — Internal core string materialization.
 func TestRegistryStringMaterializers(t *testing.T) {
 	for _, constructor := range []struct{ name, id, element string }{

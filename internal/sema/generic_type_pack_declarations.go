@@ -22,7 +22,7 @@ func genericTypePackName(parameters []*ast.GenericParameter) string {
 // be checked; unsupported elements and bodies retain the concrete expansion gate.
 // A type sequence must never silently acquire the meaning of one generic T.
 // Rules: rules/declarations/generics.md — §16A(1–5);
-// rules/corrections/md117-heterogeneous-variadic-type-packs-correction.md — §§2,9–10.
+// rules/corrections/applied/md117-heterogeneous-variadic-type-packs-correction-20261121.md — §§2,9–10.
 func (a *Analyzer) rejectUnavailableTypePackExpansion(fn *ast.FunctionDeclaration) bool {
 	if a.supportedTypePackBody(fn) {
 		return false

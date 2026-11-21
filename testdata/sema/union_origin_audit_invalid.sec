@@ -1,0 +1,60 @@
+module main
+
+type Choice union { Empty Single(ref int) Named { value: ref int, } }
+fn SingleLocal() Choice {
+    let local := 1
+    return Choice.Single(ref local)
+}
+fn NamedLocal() Choice {
+    let local := 1
+    return Choice.Named { value: ref local }
+}
+fn SingleBound() Choice {
+    let local := 1
+    let value := Choice.Single(ref local)
+    return value
+}
+fn NamedBound() Choice {
+    let local := 1
+    let value := Choice.Named { value: ref local }
+    return value
+}
+type View struct { value: ref int, }
+type Nested union { Single(View) Named { value: View, } }
+fn SingleNested() Nested {
+    let local := 1
+    return Nested.Single(View { value: ref local })
+}
+fn NamedNested() Nested {
+    let local := 1
+    return Nested.Named { value: View { value: ref local } }
+}
+fn ForwardSingle(value: ref int) Choice { return Choice.Single(value) }
+fn ForwardNamed(value: ref int) Choice { return Choice.Named { value: value } }
+fn SingleCall() Choice { let local := 1
+    return ForwardSingle(ref local) }
+fn NamedCall() Choice { let local := 1
+    return ForwardNamed(ref local) }
+
+type Data union { Some(int) Empty }
+fn SingleMatch(value: Data) Choice {
+    match value {
+        Some(ref item) => { return Choice.Single(item) }
+        Empty => { return Choice.Empty }
+    }
+}
+fn NamedMatch(value: Data) Choice {
+    match value {
+        Some(ref item) => { return Choice.Named { value: item } }
+        Empty => { return Choice.Empty }
+    }
+}
+type MutChoice union { Single(ref mut int) Named { value: ref mut int, } }
+fn SingleMutableLocal() MutChoice {
+    let mut local := 1
+    return MutChoice.Single(ref mut local)
+}
+fn NamedMutableLocal() MutChoice {
+    let mut local := 1
+    return MutChoice.Named { value: ref mut local }
+}

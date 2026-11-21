@@ -52,9 +52,22 @@ func runBuildCommand(args []string) {
 		}
 		selection = refreshed
 	}
+	// A source-file build names its job after the platform, not a Variant;
+	// only a named Target build has declared Variant jobs.
+	info, statErr := os.Stat(options.InputFile)
+	namedTarget := statErr != nil || info.IsDir()
 	for _, job := range selection.jobs {
+		// MD-021 § 8.7(3): each Variant resolves its own binding environment.
+		cliCBindingVariant, cliPlanTarget = "", ""
+		if selection.manifest != "" {
+			cliPlanTarget = selection.target
+			if namedTarget {
+				cliCBindingVariant = job.name
+			}
+		}
 		runBuildVariant(job.options, invocation, job.name)
 	}
+	cliCBindingVariant, cliPlanTarget = "", ""
 	if invocation != nil {
 		if err := invocation.Commit(); err != nil {
 			reportToolError("build commit", "%v", err)

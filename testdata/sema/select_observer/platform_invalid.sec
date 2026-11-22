@@ -1,0 +1,5 @@
+module main
+
+fn Platform(observer: ProcessObserver) void {
+    discard observer.Platform
+}

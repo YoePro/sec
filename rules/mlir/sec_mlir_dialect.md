@@ -2987,3 +2987,13 @@ natural    := "0" | nonzero_digit digit*   // arbitrary precision
 - Unsupported CFG relations, unvalidated callee summaries and unrepresentable projections fail closed. A local-array slice is rejected whatever its annotation.
 
 Reference validity, lifetime, storage identity, address stability, epoch, pin and address space stay in `sec.reference` and slice metadata, and are not duplicated in the range suffix. Range checks, `RangeError`, `try` and evaluation order are unchanged; the metadata performs no check of its own. Emitting a returned sub-range requires schema 12 through explicit schema selection, or the emission is rejected. The schema is never upgraded silently, and schema-12 suffixes are never embedded in schema 11.
+
+---
+
+# 44. Signed decimal scale precedence (MD-049)
+
+Integrated 2026-11-22 from `rules/corrections/applied/MD-049-decimal-range-scale-inference-capacity-correction-rev1-2-2026-11-21-20261122.md` (MD-049, owner-locked 2026-11-21). The correction holds the full normative text and test vectors T01–T65; this section is its owning summary.
+
+**44(1)** `!sec.decimal` and `!sec.decimal128` keep a signed coefficient and a signed `int32` scale; `sec.const.decimal` carries `coefficient`, signed `scale` and `lexeme`, and the lexeme never replaces the typed pair. The historical non-negative scale of schema v2 (`dialect-versions/sec_mlir_dialect_v2.md` § 21) is schema-local: it may still govern reading legacy v2 input but never overrides the current source language or forces a current module into v2.
+
+**44(2)** A fixed-scale nominal value keeps its nominal identity and contract obligation through the existing named-type and contract metadata. Verifiers reject a value whose coefficient/scale violates its resolved contract and contract checks with missing or mismatched provenance, width or reason. A schema or lowering path that cannot verify this fails closed; no standalone fixed-decimal primitive or unchecked nominal cast is introduced.

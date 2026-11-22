@@ -1,0 +1,302 @@
+module business
+
+/*
+ * Sec Standard Library — temporal/business
+ * File: business/dataset_arithmetic.sec
+ * Purpose: Business-day arithmetic over explicit datasets.
+ * Status: Implementation candidate, not execution-verified
+ * Revision: 0.1
+ * Updated: 2026-11-22
+ *
+ * Governing rulebook:
+ * stdlib/temporal/business/std-temporal-business.md
+ *
+ * Dependencies:
+ * business/dataset.sec
+ * business/weekday.sec
+ * business/rules.sec
+ *
+ * No allocation, I/O or implicit dataset loading.
+ */
+
+/**
+ * Counts business days before an exclusive epoch-day limit.
+ *
+ * Description:
+ * Counts working days in the half-open interval
+ * [data.FirstDay, endExclusive).
+ *
+ * The weekly pattern supplies the ordinary count.
+ * Each exception before the limit adjusts that count
+ * by at most one day.
+ *
+ * The caller must have validated the dataset and must
+ * ensure that endExclusive lies between FirstDay and
+ * LastDay + 1, inclusive.
+ *
+ * At most six individual weekdays are examined.
+ * Each exception is examined once.
+ *
+ * Parameters:
+ * - data: Borrowed, previously validated calendar dataset.
+ * - endExclusive: Exclusive absolute day boundary.
+ *
+ * Returns:
+ * Number of working days preceding the boundary.
+ *
+ * Ownership:
+ * Pure calculation without allocation or ownership transfer.
+ */
+fn _countBusinessDaysBefore(data: ref BusinessCalendarData, endExclusive: int64) int64 {
+    let first := int64(data.FirstDay.EpochDays)
+    let span  := endExclusive - first
+
+    if span == 0 {
+        return 0
+    }
+
+    // Number of ordinary working days in a complete week.
+    let mut weeklyCount: int64 := 0
+    let mut weekday := 0
+
+    while weekday < 7 {
+        if _workingWeekday(weekday, data.Week) {
+            weeklyCount += 1
+        }
+
+        weekday += 1
+    }
+
+    let fullWeeks     := span / 7
+    let mut remaining := span % 7
+
+    let mut result := fullWeeks * weeklyCount
+
+    // Count the partial week, beginning at FirstDay.
+    weekday = _weekdayMondayIndex(data.FirstDay)
+
+    while remaining > 0 {
+        if _workingWeekday(weekday, data.Week) {
+            result += 1
+        }
+
+        weekday = (weekday + 1) % 7
+        remaining -= 1
+    }
+
+    // Correct the result for explicit date exceptions.
+    for entry in data.Exceptions {
+        let day := int64(entry.Day.EpochDays)
+
+        if day >= endExclusive {
+            break
+        }
+
+        let ordinary := _workingWeekday(
+            _weekdayMondayIndex(entry.Day),
+            data.Week,
+        )
+
+        if entry.Working && !ordinary {
+            result += 1
+        }
+
+        if !entry.Working && ordinary {
+            result -= 1
+        }
+    }
+
+    return result
+}
+
+/**
+ * Counts business days in a half-open date interval.
+ *
+ * Description:
+ * Includes start and excludes endExclusive.
+ *
+ * Reversed intervals return the negative count
+ * of the corresponding forward interval.
+ *
+ * Both boundaries must describe an interval entirely
+ * within the dataset's coverage. The exclusive upper
+ * boundary may be one day after LastDay.
+ *
+ * The dataset is validated once. Complete weeks are
+ * counted directly and exceptions adjust the result.
+ *
+ * Parameters:
+ * - start: Inclusive absolute date boundary.
+ * - endExclusive: Exclusive absolute date boundary.
+ * - data: Borrowed versioned business-calendar dataset.
+ *
+ * Returns:
+ * Signed number of working days in the interval.
+ *
+ * Errors:
+ * - BusinessError.InvalidCalendarData: Malformed dataset.
+ * - BusinessError.OutsideCoverage: Interval lacks coverage.
+ * - BusinessError.OutOfRange: Count cannot fit in int.
+ *
+ * Ownership:
+ * Borrows the dataset without ownership transfer.
+ * No allocation or I/O.
+ */
+fn CountBusinessDays(start: date, endExclusive: date, data: ref BusinessCalendarData) Result[int, BusinessError] {
+    try ValidateBusinessCalendarData(data)
+
+    let startDay := int64(start.EpochDays)
+    let endDay   := int64(endExclusive.EpochDays)
+
+    let mut first   := startDay
+    let mut last    := endDay
+    let mut reverse := false
+
+    if first > last {
+        first = endDay
+        last = startDay
+        reverse = true
+    }
+
+    let coverageFirst := int64(data.FirstDay.EpochDays)
+    let coverageEnd   := int64(data.LastDay.EpochDays) + 1
+
+    if first < coverageFirst || last > coverageEnd {
+        return Err(BusinessError.OutsideCoverage)
+    }
+
+    let beforeFirst := _countBusinessDaysBefore(data, first)
+    let beforeLast  := _countBusinessDaysBefore(data, last)
+
+    let mut count := beforeLast - beforeFirst
+
+    if reverse {
+        count = 0 - count
+    }
+
+    let checkedCount := try int(count) {
+        Err(_) => return Err(BusinessError.OutOfRange)
+    }
+
+    return Ok(checkedCount)
+}
+
+/**
+ * Moves an absolute date by a signed number of business days.
+ *
+ * Description:
+ * The starting date is excluded when count is nonzero.
+ * A positive count moves forward; a negative count
+ * moves backward.
+ *
+ * If the starting date is not a business day, movement
+ * begins at the first working day in the requested
+ * direction.
+ *
+ * Zero returns the original date after validation.
+ *
+ * The function uses cumulative business-day counts and
+ * binary search over the covered absolute-day interval.
+ * It never iterates through every day in a large period.
+ *
+ * Calendar exceptions and alternative weekly patterns
+ * are applied through _countBusinessDaysBefore.
+ *
+ * Parameters:
+ * - value: Starting absolute date.
+ * - count: Signed number of business days to move.
+ * - data: Borrowed versioned business-calendar dataset.
+ *
+ * Returns:
+ * Absolute date reached after the requested movement.
+ *
+ * Errors:
+ * - BusinessError.InvalidCalendarData: Malformed dataset.
+ * - BusinessError.OutsideCoverage: No covered target date.
+ * - BusinessError.OutOfRange: Unrepresentable resulting date.
+ *
+ * Ownership:
+ * Borrows the dataset without ownership transfer.
+ * No allocation or I/O.
+ */
+fn AddBusinessDays(value: date, count: int, data: ref BusinessCalendarData) Result[date, BusinessError] {
+    try ValidateBusinessCalendarData(data)
+
+    let first  := int64(data.FirstDay.EpochDays)
+    let last   := int64(data.LastDay.EpochDays)
+    let origin := int64(value.EpochDays)
+
+    if origin < first || origin > last {
+        return Err(BusinessError.OutsideCoverage)
+    }
+
+    if count == 0 {
+        return Ok(value)
+    }
+
+    let requested := int64(count)
+
+    // An absolute date has fewer than 2^32 distinct
+    // neighboring dates in either direction.
+    if requested < -4_294_967_295 ||
+        requested > 4_294_967_295 {
+        return Err(BusinessError.OutOfRange)
+    }
+
+    let mut lower := first
+    let mut upper := last
+    let mut targetOrdinal: int64 := 0
+
+    if requested > 0 {
+        // Count working days through the starting date.
+        // The next qualifying date has the next ordinal.
+        let seen := _countBusinessDaysBefore(
+            data, origin + 1,
+        )
+
+        let total := _countBusinessDaysBefore(
+            data, last + 1,
+        )
+
+        if requested > total - seen {
+            return Err(BusinessError.OutsideCoverage)
+        }
+
+        targetOrdinal = seen + requested
+        lower = origin + 1
+    } else {
+        // Count working days strictly before the start.
+        let seen := _countBusinessDaysBefore(data, origin)
+
+        let backwards := 0 - requested
+
+        if backwards > seen {
+            return Err(BusinessError.OutsideCoverage)
+        }
+
+        targetOrdinal = seen - backwards + 1
+        upper = origin - 1
+    }
+
+    // Find the first date whose inclusive cumulative count
+    // reaches the requested business-day ordinal.
+    while lower < upper {
+        let middle := lower + (upper - lower) / 2
+
+        let cumulative := _countBusinessDaysBefore(
+            data, middle + 1,
+        )
+
+        if cumulative >= targetOrdinal {
+            upper = middle
+        } else {
+            lower = middle + 1
+        }
+    }
+
+    let checkedDays := try int32(lower) {
+        Err(_) => return Err(BusinessError.OutOfRange)
+    }
+
+    return Ok(new date(checkedDays))
+}

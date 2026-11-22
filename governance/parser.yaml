@@ -410,8 +410,8 @@ integrations:
       - "parser conformance fixes found by the migration (2026-10-05): a block after `event Name using storage` is rejected instead of silently skipped (TestEventDeclarationBodyIsRejected); `let r := 0..<10` reports a focused P2007 'a range is not a value in Sec 0.1'; `if a = b` now shares the while condition's focused P2013 recovery and retains an InvalidExpression condition so Sema adds no cascade; Event/EventStorage capacity is a compile-time expression evaluated by Sema's shared constant evaluation instead of an integer-literal-only parser path"
       - "recovery tests stay distinct from canonical tests: the grammar fixture suite keeps valid and invalid fixtures in separate files and rejects any diagnostic in a valid fixture"
       - "the fixtures confirm that lexical_structure.md § 7 governs reserved spellings: require (§ 7.1), task/thread/process (§ 7.2), and the contract words (§ 7.3) are rejected as declaration names although grammar.md \"Contextual spellings\" still lists several of them as contextual"
-    remaining:
-      - "BUG-000032 (2026-11-20): `a < b { ... c > (x) ... }` is mis-parsed as a unit/type-argument list; the speculative scan must stop at a block brace or statement boundary and fall back to an ordinary comparison. sec/stdlib/net/http/http1.sec uses reversed comparisons until this is fixed."
+      - "BUG-000032 fixed (2026-11-22): the speculative unit scan in parseUnit stops at block/statement/list delimiters, comparison and logical operators and a line change, so `a < b { ... c > (x) }` is a comparison followed by a block and real unit conversions such as `float<km>(x)` still parse. Test: internal/parser/unit_scan_boundary_test.go"
+    remaining: []
     document_baseline:
       review_date: "2026-08-01"
       note: >-

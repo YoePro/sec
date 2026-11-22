@@ -20,7 +20,8 @@ func projectVersionDiagnostics(uri, text string) []diagnostic {
 	for _, issue := range sema.ValidateProjectVersion(pathFromURI(uri), text) {
 		result = append(result, semaDiagnosticWithSources(issue, 1, uri, text, sourceOverlay{}))
 	}
-	return result
+	// MD-139: the profile/allocation selections the CLI validates before analysis.
+	return append(result, planSelectionDiagnostics(text)...)
 }
 
 // collectProjectVersionDiagnostics includes governing manifests even when only

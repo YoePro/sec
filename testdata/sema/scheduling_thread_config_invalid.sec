@@ -1,0 +1,26 @@
+module main
+
+fn PlainPriority() void {
+    discard ThreadConfig { Priority: ThreadPriority.High }
+}
+fn PlainAffinity() void {
+    discard ThreadConfig { Affinity: CpuSet { 0 } }
+}
+fn SetAffinity(cpus: set[uint]) void {
+    discard ThreadConfig { Affinity: Required(cpus) }
+}
+fn NumericPriority() void {
+    discard ThreadConfig { Priority: Preferred(1) }
+}
+fn CrossedSetting() void {
+    discard ThreadConfig { Priority: Required(CpuSet { 0 }) }
+}
+fn NativePriority() void {
+    discard ThreadPriority.Realtime
+}
+fn MutatePriority(worker: ref Thread[void]) void {
+    worker.SetPriority(ThreadPriority.High)
+}
+fn MutateAffinity(worker: ref Thread[void]) void {
+    worker.SetAffinity(CpuSet { 0 })
+}

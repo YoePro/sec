@@ -49,6 +49,10 @@ func (a *Analyzer) inferValidatedCompilerKnownMemberCall(expr *ast.CallExpressio
 				return a.inferCompilerKnownStringConstructor(expr, member)
 			case "FromBuffer", "WithCapacity", "Growable":
 				return a.inferArenaConstructorCall(expr, member)
+			case "Current":
+				if member.ID == "CKM-BUILDINFO-CURRENT" {
+					return a.inferBuildInfoCurrent(expr, member)
+				}
 			}
 			return Type{}, expressionValue{}, false
 		}
@@ -115,6 +119,9 @@ func (a *Analyzer) inferValidatedCompilerKnownMemberCall(expr *ast.CallExpressio
 		}
 	}
 	a.compilerKnownMemberFacts[sourceTokenLocation(memberExpr.Property.Token)] = member
+	if isProcessObserverType(lookupType) && member.Name == "Wait" {
+		return a.inferProcessObserverWait(expr, memberExpr)
+	}
 	if isCancellationContextType(lookupType) {
 		return a.inferCancellationContextCall(expr, member)
 	}

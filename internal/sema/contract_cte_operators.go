@@ -30,6 +30,8 @@ func compileTimeOperatorExpression(expr ast.Expression) bool {
 func (a *Analyzer) prepareCompileTimeConstant(value DefaultConstant, context Type) (DefaultConstant, compileTimeOutcome) {
 	if value.Integer != nil && (context.Kind == FloatType || context.Kind == DecimalType) {
 		value.Exact = new(big.Rat).SetInt(value.Integer)
+		// MD-049 § 3(4): an integer in decimal context has scale 0.
+		value.Decimal = &DecimalValue{Coefficient: new(big.Int).Set(value.Integer)}
 		value.Integer = nil
 	}
 	if value.Exact == nil {
@@ -172,6 +174,11 @@ func (a *Analyzer) compileTimeBinary(op string, left, right DefaultConstant) (De
 	if left.FloatBits != 0 && right.FloatBits != 0 && left.FloatBits != right.FloatBits {
 		return DefaultConstant{}, compileTimeNotConstant
 	}
+	if bits == 0 {
+		if value, handled := compileTimeDecimalArithmetic(op, left, right); handled {
+			return a.prepareCompileTimeConstant(value, Type{})
+		}
+	}
 	result, ok := constant.Numeric(op, x, y, bits)
 	if !ok {
 		return DefaultConstant{}, compileTimeNotConstant
@@ -204,4 +211,59 @@ func (a *Analyzer) compileTimeDecimalWidth(typ Type) int {
 		typ = next
 	}
 	return 64
+}
+
+// compileTimeDecimalOperand is the scale-bearing pair of a decimal or integer
+// constant: an integer has scale 0 (MD-049 § 3(4)).
+func compileTimeDecimalOperand(value DefaultConstant) (DecimalValue, bool) {
+	switch {
+	case value.Decimal != nil && value.Decimal.Coefficient != nil:
+		return *value.Decimal, true
+	case value.Integer != nil:
+		return DecimalValue{Coefficient: new(big.Int).Set(value.Integer)}, true
+	}
+	return DecimalValue{}, false
+}
+
+// compileTimeDecimalArithmetic evaluates decimal + - * / % with the runtime
+// coefficient/scale policy (constant.EvaluateDecimal, including the MD-049
+// exact zero-product scale) whenever both operands carry scale-bearing facts
+// and at least one is a decimal. It reports handled=false when that fact is
+// missing or the operation is outside the bounded evaluation domain, so the
+// caller keeps its rational evaluation and attaches no invented scale.
+// Rules: rules/foundations/operators.md — §§ 27.1, 27.1(5a); rules/compiler/semantic_ir.md — § 128(1);
+// rules/corrections/applied/MD-049-decimal-range-scale-inference-capacity-correction-rev1-2-2026-11-21-20261122.md — § 13(1)-(2).
+func compileTimeDecimalArithmetic(op string, left, right DefaultConstant) (DefaultConstant, bool) {
+	if left.Kind != DecimalType && right.Kind != DecimalType {
+		return DefaultConstant{}, false
+	}
+	switch op {
+	case "+", "-", "*", "/", "%":
+	default:
+		return DefaultConstant{}, false
+	}
+	a, ok := compileTimeDecimalOperand(left)
+	if !ok {
+		return DefaultConstant{}, false
+	}
+	b, ok := compileTimeDecimalOperand(right)
+	if !ok {
+		return DefaultConstant{}, false
+	}
+	bits := max(left.DecimalBits, right.DecimalBits)
+	if bits == 0 {
+		bits = 64
+	}
+	coefficient, scale, failure, evaluated := constant.EvaluateDecimal(op, a.Coefficient, int64(a.Scale), b.Coefficient, int64(b.Scale), bits)
+	if !evaluated || failure != "" {
+		return DefaultConstant{}, false
+	}
+	decimal := DecimalValue{Coefficient: coefficient, Scale: int32(scale)}
+	exact := new(big.Rat).SetInt(coefficient)
+	if scale > 0 {
+		exact.Quo(exact, new(big.Rat).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(scale), nil)))
+	} else if scale < 0 {
+		exact.Mul(exact, new(big.Rat).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(-scale), nil)))
+	}
+	return DefaultConstant{Kind: DecimalType, Exact: exact, Decimal: &decimal, DecimalBits: bits}, true
 }

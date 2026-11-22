@@ -1505,8 +1505,10 @@ func TestRegexIsReservedPatternContractWord(t *testing.T) {
 	if tokenType := lookupIdent("regex"); tokenType != IDENT {
 		t.Fatalf("lookupIdent(regex) = %s, want IDENT (no dedicated hard keyword)", tokenType)
 	}
-	if got := ContractStartWords(); !reflect.DeepEqual(got, ContractWords()) {
-		t.Fatalf("ContractStartWords() = %v, want the reserved inventory", got)
+	// MD-049: the unreserved contextual `scale` starts a contract without
+	// joining the reserved inventory (lexical_structure.md § 7.3.1).
+	if got := ContractStartWords(); !reflect.DeepEqual(got, append(ContractWords(), "scale")) || IsContractWord("scale") {
+		t.Fatalf("ContractStartWords() = %v, want the reserved inventory plus the unreserved scale", got)
 	}
 }
 

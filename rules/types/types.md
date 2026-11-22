@@ -2353,6 +2353,18 @@ literal suffix 'f' was replaced by 'g' for binary float
 
 ---
 
+## § 45A Fixed-scale named decimal types (MD-049)
+
+**§ 45A(1)** Integrated 2026-11-22 from `rules/corrections/applied/MD-049-decimal-range-scale-inference-capacity-correction-rev1-2-2026-11-21-20261122.md` (MD-049, owner-locked 2026-11-21). The correction holds the full normative text and test vectors T01–T65; this section is its owning summary. `type T decimal scale N` (or `decimal128`) is a nominal decimal type whose every value has scale exactly `N`, a coefficient within the carrier's signed width and a value satisfying every inherited and local contract. `N` may be negative. Plain `decimal` and `decimal128` stay variable-scale.
+
+**§ 45A(2)** Scale resolution order: a fixed scale inherited from a named base (explicit or inferred), else a local `scale N` (which must equal any inherited scale), else a scale inferred from the `range` bounds (`rules/types/contracts.md` § 16), else variable scale. A fixed scale is never silently replaced or reduced, and inheritance is transitive across named generations and generic specialization.
+
+**§ 45A(3)** There is no implicit conversion between `T` and its carrier. A checked conversion into `T` validates the carrier and exact placement at `N` first, then the contracts in source order: an inexact value is `ConversionError.PrecisionLoss`, an exact but out-of-width coefficient `ConversionError.OutOfRange`, an out-of-`int32` scale `ConversionError.ScaleOverflow`, and a contract failure `ConversionError.Contract(...)`. Under MD-131 the untried named-contract conversion is valid and may panic on contract failure; § 25(5)'s general rule that a fallible numeric conversion needs `try` is unchanged for other conversions.
+
+**§ 45A(4)** Arithmetic on two values of the same `T` yields `T` with exact, checked results (`rules/foundations/operators.md` § 27.5). `T.Scale` is read-only and returns `N`; `Normalize`, `Rescale` and `RoundTo` return the plain carrier (`rules/library/core-library.md` § 10A).
+
+---
+
 ## § 46 Related rulebooks
 
 **§ 46(1)** Detailed rules are owned by the corresponding canonical rulebooks.

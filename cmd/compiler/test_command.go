@@ -108,6 +108,9 @@ func runTestCommand(args []string, out io.Writer) int {
 		reportToolError("usage", "%v", err)
 		return 1
 	}
+	// § 26.1: sec test builds a TestCompilationPlan, not a production build.
+	cliCompilationMode = sema.CompilationTest
+	defer func() { cliCompilationMode = sema.CompilationProduction }()
 	groups, err := selectTestSourceGroups(command.inputs)
 	if err != nil {
 		reportToolError("test", "%v", err)
@@ -371,6 +374,7 @@ func analyzeTestProgram(program *ast.Program, target CompilerTarget, sourceFiles
 		return nil, 1
 	}
 	analyzer := sema.NewAnalyzerWithScalarPlanAndDepth(plan, sema.AnalysisStandard)
+	analyzer.SetCompilationMode(sema.CompilationTest)
 	analyzer.SetHardwareModuleContext(cliHardwareModuleContext(program, target, sourceFiles))
 	analyzer.SetProgramTargetKind(sema.ProgramTargetTest)
 	errors := analyzer.Analyze(program)
@@ -407,6 +411,11 @@ func validateProductionGraph(testProgram *ast.Program, target CompilerTarget) in
 	if module == nil {
 		return 0
 	}
+	// § 26.2: the production graph resolves as a production plan, so a
+	// production import of a tests/ module fails here as in sec build.
+	mode := cliCompilationMode
+	cliCompilationMode = sema.CompilationProduction
+	defer func() { cliCompilationMode = mode }()
 	production := &ast.Program{Statements: []ast.Statement{module}}
 	siblings := assembleCLIModuleSources(production, target)
 	if siblings.Errors > 0 {

@@ -1,0 +1,9 @@
+module main
+
+fn Minimum32() int32 { return -2147483648 }
+fn Minimum64() int64 { return -9223372036854775808 }
+fn NegativeZero() int { return -0 }
+
+fn RuntimeNegation(value: int) Result[int, ArithmeticError] {
+    return Ok(try -value)
+}

@@ -4,27 +4,35 @@ purpose: Cancellation model, requests, and propagation.
 integrations:
   - id: concurrency.cancellation-v2
     area: cooperative-execution-cancellation
-    rulebook: rules/concurrency/cancellation.md
     status: partial
-    revised: "2026-09-21"
-    normative:
-      - Task[T] and Thread[T] owning handles expose fn RequestCancel() void.
-      - RequestCancel is idempotent, non-consuming, and has no effect after terminal completion.
-      - Task.Current().CancelRequested observes logical task cancellation.
-      - Thread.Current().CancelRequested observes physical thread cancellation.
-      - Task and Thread cancellation identities remain distinct.
-      - bare cancel is a terminating statement and runs deterministic cleanup.
-      - bare cancel targets the current logical Task when one exists, otherwise an explicit cancellable Thread.
-      - cancel is invalid outside cancellable execution and inside defer.
-      - cancellation points preserve exactly-one operation/cancellation commit.
-      - current-execution cancellation is terminal control flow rather than a generic runtime error.
+    revised: "2026-11-22"
+    rules:
+      - rules/platform/platform_model.md
+      - rules/platform/target_profiles.md
+    code:
+      - internal/layout/physical_thread_capability.go
+      - internal/layout/scalar_plan.go
+      - internal/layout/capability_plan.go
+      - internal/layout/plan_fingerprints.go
+      - internal/platform/target/target.go
+      - internal/sema/execution_context_target.go
+      - internal/sema/execution_context.go
+      - internal/sema/analyzer_target_plan.go
+      - internal/diagnostics/diagnostics.go
+    tests:
+      - internal/layout/physical_thread_capability_test.go
+      - internal/platform/target/physical_thread_capability_test.go
+      - internal/sema/execution_context_target_test.go
+      - cmd/compiler/thread_current_target_test.go
+      - cmd/lsp/thread_current_target_test.go
+      - testdata/sema/physical_thread/current.sec
     implemented:
       - Task[T] and Thread[T] expose the shared compiler-known fn RequestCancel() void member through Sema and LSP.
       - RequestCancel calls enforce the exact zero-argument signature, return void, and do not consume or resolve the owning handle lifecycle obligation.
       - LSP completion and hover project the canonical member identity, exact signature, and cooperative idempotent non-consuming semantics from Sema's registry.
       - "current-execution surface (2026-11-09, execution_context.go, TestExecutionContextSurface): Task.Current() TaskContext and Thread.Current() ThreadContext with the bool CancelRequested property in CamelCase (lowercase spellings get the canonical-name help), Task.Yield()/Thread.Yield() void, exact zero-argument signatures; CancelRequested is never selectable"
+      - "Thread.Current target capability completed 2026-11-22 (cancellation.md §§11,24): immutable physical-thread identity evidence is bound to the selected CompilationPlan and projected through target definitions into shared compiler/LSP Sema construction. Explicit Unsupported facts produce mandatory S1254 thread.physical-capability with target/profile, reason, source and repair instead of a TaskContext/host fallback. Successful calls retain ThreadContext and detached selected-plan facts; missing evidence remains Unknown and never grants runtime lowering permission. Profile/target changes reject stale snapshots, including explicit Unknown producers; semantic fingerprints include physical-thread meaning without evidence-text churn. Three analysis depths, 32/64-bit plans, repeat analysis, logical-task independence, canonical JSON/editor transport and registry non-inference are covered. Runtime current-thread access, thread creation/scheduling and cancellation lowering remain separate work."
     remaining:
-      - Reject Thread.Current() on a target/profile without the physical-thread capability (cancellation.md § 24); the logical-task requirement is enforced by frontend.cancellation-effect-v1.
       - Implement runtime request/observation state and wakeup integration.
       - Implement cancellation-point registration and commit races.
       - Integrate deterministic cleanup and terminal outcome publication.
@@ -44,22 +52,35 @@ integrations:
         expectation: cancel inside defer is rejected specifically.
       - id: cancellation-point-single-winner
         expectation: operation commit and current-execution cancellation cannot both win or lose ownership state.
-    corrections_applied:
-      - rules/corrections/applied/cancellation-v2-cross-rulebook-correction-20260907.md
     verification:
+      - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./internal/ir/semantic ./internal/lowering/secmlir -count=1 -timeout=120s
+        result: "Passed 2026-11-22: complete Semantic IR 10.175s and emitter/integration 21.793s with real Sec MLIR configured. No physical Thread.Current runtime/lowering implementation is claimed."
+      - command: go test ./cmd/compiler ./cmd/lsp -run 'TestExecutionContext|TestExecutionContextRequirements|TestMainTaskContext|TestMutexTarget|TestTask.*Context|TestThreadCurrent' -count=1 -timeout=120s
+        result: "Passed 2026-11-22: CLI 8.568s and LSP 6.341s; existing execution-root, task-context and mutex capability integration remains valid. Selected-plan denial transport is tested with real Sema errors without mutating target registry or adding a fake supported target."
+      - command: go test ./internal/layout ./internal/platform/target ./internal/diagnostics ./internal/sema ./internal/traceability -count=1 -timeout=120s
+        result: "Passed 2026-11-22: complete layout/target/diagnostics, Sema 34.190s and traceability 0.248s. Final added stale-Unknown snapshot regression passes separately; final traceability passes 0.191s. Vet passes on layout/target/Sema/CLI/LSP."
+      - command: go test -race ./internal/layout ./internal/platform/target ./internal/sema ./cmd/compiler ./cmd/lsp -run 'TestPhysicalThread|TestThreadCurrent|TestMutexTarget' -count=1 -timeout=120s
+        result: "Passed 2026-11-22: layout 1.011s, target 1.009s, Sema 1.676s, CLI JSON transport 1.061s and LSP transport 1.069s. Three depths and 32/64-bit plans preserve ThreadContext/logical-task separation, selected-plan evidence, reanalysis and query isolation. Explicit Unsupported produces S1254 with target/profile/reason; stale snapshots are rejected even for explicit Unknown. Every registry target remains Unknown without trusted producer evidence."
       - command: go test ./internal/sema ./cmd/lsp -run 'RequestCancel|CancellationRequest' -count=1
         result: passed with Task and Thread registration, exact call arity, non-consuming lifecycle use, completion, and semantic hover coverage
+    rulebook: rules/concurrency/cancellation.md
+    normative:
+      - Task[T] and Thread[T] owning handles expose fn RequestCancel() void.
+      - RequestCancel is idempotent, non-consuming, and has no effect after terminal completion.
+      - Task.Current().CancelRequested observes logical task cancellation.
+      - Thread.Current().CancelRequested observes physical thread cancellation.
+      - Task and Thread cancellation identities remain distinct.
+      - bare cancel is a terminating statement and runs deterministic cleanup.
+      - bare cancel targets the current logical Task when one exists, otherwise an explicit cancellable Thread.
+      - cancel is invalid outside cancellable execution and inside defer.
+      - cancellation points preserve exactly-one operation/cancellation commit.
+      - current-execution cancellation is terminal control flow rather than a generic runtime error.
+    corrections_applied:
+      - rules/corrections/applied/cancellation-v2-cross-rulebook-correction-20260907.md
 
   - id: frontend.cancellation-effect-v1
     area: inferred-cancellable-execution-effect
     status: partial
-    normative:
-      - Functions containing cancel require current cancellable execution.
-      - The requirement propagates transitively through calls.
-      - The requirement is compiler-inferred with no @cancellable source annotation in v0.1.
-      - Callable/function values preserve the requirement and cannot erase it.
-      - Task.Current carries a specific current-logical-task requirement.
-      - Thread.Current carries a physical-thread capability requirement.
     code:
       - internal/sema/task_context_requirement.go
       - internal/sema/execution_context.go
@@ -82,38 +103,17 @@ integrations:
         expectation: Storing a cancellation-dependent function in a callable does not erase the requirement.
       - id: task-current-specific-effect
         expectation: Task.Current cannot be satisfied merely by a physical Thread context.
+    normative:
+      - Functions containing cancel require current cancellable execution.
+      - The requirement propagates transitively through calls.
+      - The requirement is compiler-inferred with no @cancellable source annotation in v0.1.
+      - Callable/function values preserve the requirement and cannot erase it.
+      - Task.Current carries a specific current-logical-task requirement.
+      - Thread.Current carries a physical-thread capability requirement.
 
   - id: concurrency.context-v1
     area: context-cancellation-surface
     status: partial
-    normative:
-      - Context and ContextSource are @noCopy.
-      - Context does not expose Cancel().
-      - ContextSource owns one child Context, cancellation authority and registrations.
-      - ContextSource.Context is ref Context and cannot outlive the source.
-      - ContextSource.Cancel() is idempotent and leaves Context/source alive.
-      - Context.Error is Option[ContextError].
-      - ContextError is exactly Cancelled | DeadlineExceeded.
-      - Context terminal cause is first-wins and immutable.
-      - Parent cancellation propagates downward; child cancellation does not propagate upward.
-      - ContextSource destruction is not itself a cancellation event.
-    remaining:
-      - Implement ownership/borrow/lifetime checks.
-      - Implement first-wins terminal state and coherent IsCancelled/Error observation.
-      - Implement parent-child cancellation propagation and deadline registration.
-    required_tests:
-      - id: context-first-terminal-cause
-        expectation: Whichever of cancellation/deadline commits first remains Context.Error permanently.
-      - id: context-error-coherence
-        expectation: After terminal commit, IsCancelled is true and Error is the committed Some(ContextError).
-      - id: context-no-cancel-method
-        expectation: Context has no Cancel completion/member; ContextSource does.
-      - id: contextsource-destruction-not-cancel
-        expectation: Destroying ContextSource ends child lifetime without synthesizing ContextError.Cancelled.
-    implemented:
-      - canonical opaque @noCopy Context and the closed ContextError error enum Cancelled and DeadlineExceeded have source-visible core declarations and matching reserved compiler identities, sufficient for the mutex Context overload; ContextSource, Context operations, runtime cancellation state and propagation are not implemented by this declaration slice
-      - "Context/ContextSource source surface completed 2026-11-11 (cancellation.md sections 35-38,43): canonical trusted opaque @noCopy ContextSource declaration, reserved nominal core identity, move-only classification and destruction requirement; malformed trusted declarations, untrusted replacement, representation fabrication and implicit copies are rejected. Shared registry provides Context.Background, WithCancel, WithTimeout(duration), WithDeadline(Instant), IsCancelled: bool, Error: Option[ContextError], Deadline: Option[Instant], and ContextSource.Context: ref Context plus non-consuming Cancel() void callable on immutable bindings/shared references. Exact type/value arity, temporal distinctions and read-only property syntax are enforced; the borrowed Context retains source origin for ordinary local-reference escape checking. Shared LSP completion, hover and warm/cold member navigation cover all nine members. Ordinary functions named Context retain normal overload resolution. Runtime helper effects remain conservatively unknown, and emit-ir still fails closed at unsupported type Context; runtime state, parent/child lifetime dependencies, deadlines and lowering remain separately tracked."
-      - "Context/ContextSource LSP hover/completion/navigation completed 2026-11-11: all nine public members project exact signatures, temporal and borrowed result types, cancellation-authority separation, stable identities and rule references from the shared Sema registry; instance/type-qualified completion excludes opposite-scope operations and Context has no Cancel. Warm source navigation and cold member-ID navigation share registry metadata. Borrowed Context and ContextSource receiver hover and typeDefinition reach their real opaque core declarations. Sema type navigation now unwraps unnamed references when no declaration exists for the wrapper, preserving named alias declarations and withholding targets for unresolved/generic/builtin-without-source types. This closes source presentation; runtime state and parent-child lifetime proofs remain separate."
     revised: "2026-11-11"
     rules:
       - rules/concurrency/mutex.md
@@ -143,6 +143,23 @@ integrations:
       - testdata/sema/context_surface_invalid.sec
       - testdata/sema/context_borrow_escape_invalid.sec
       - cmd/lsp/type_definition_test.go
+    implemented:
+      - canonical opaque @noCopy Context and the closed ContextError error enum Cancelled and DeadlineExceeded have source-visible core declarations and matching reserved compiler identities, sufficient for the mutex Context overload; ContextSource, Context operations, runtime cancellation state and propagation are not implemented by this declaration slice
+      - "Context/ContextSource source surface completed 2026-11-11 (cancellation.md sections 35-38,43): canonical trusted opaque @noCopy ContextSource declaration, reserved nominal core identity, move-only classification and destruction requirement; malformed trusted declarations, untrusted replacement, representation fabrication and implicit copies are rejected. Shared registry provides Context.Background, WithCancel, WithTimeout(duration), WithDeadline(Instant), IsCancelled: bool, Error: Option[ContextError], Deadline: Option[Instant], and ContextSource.Context: ref Context plus non-consuming Cancel() void callable on immutable bindings/shared references. Exact type/value arity, temporal distinctions and read-only property syntax are enforced; the borrowed Context retains source origin for ordinary local-reference escape checking. Shared LSP completion, hover and warm/cold member navigation cover all nine members. Ordinary functions named Context retain normal overload resolution. Runtime helper effects remain conservatively unknown, and emit-ir still fails closed at unsupported type Context; runtime state, parent/child lifetime dependencies, deadlines and lowering remain separately tracked."
+      - "Context/ContextSource LSP hover/completion/navigation completed 2026-11-11: all nine public members project exact signatures, temporal and borrowed result types, cancellation-authority separation, stable identities and rule references from the shared Sema registry; instance/type-qualified completion excludes opposite-scope operations and Context has no Cancel. Warm source navigation and cold member-ID navigation share registry metadata. Borrowed Context and ContextSource receiver hover and typeDefinition reach their real opaque core declarations. Sema type navigation now unwraps unnamed references when no declaration exists for the wrapper, preserving named alias declarations and withholding targets for unresolved/generic/builtin-without-source types. This closes source presentation; runtime state and parent-child lifetime proofs remain separate."
+    remaining:
+      - Implement ownership/borrow/lifetime checks.
+      - Implement first-wins terminal state and coherent IsCancelled/Error observation.
+      - Implement parent-child cancellation propagation and deadline registration.
+    required_tests:
+      - id: context-first-terminal-cause
+        expectation: Whichever of cancellation/deadline commits first remains Context.Error permanently.
+      - id: context-error-coherence
+        expectation: After terminal commit, IsCancelled is true and Error is the committed Some(ContextError).
+      - id: context-no-cancel-method
+        expectation: Context has no Cancel completion/member; ContextSource does.
+      - id: contextsource-destruction-not-cancel
+        expectation: Destroying ContextSource ends child lifetime without synthesizing ContextError.Cancelled.
     verification:
       - command: go test -p 4 ./cmd/lsp -run '^TestTypeDefinition' -count=1 -timeout=120s
         result: "passed 2026-11-11 after final reference-wrapper query fix: complete typeDefinition suite 23.300s."
@@ -166,6 +183,17 @@ integrations:
         result: passed on 2026-10-16; selected result facts, time-literal conversion, typed-quantity rejection, Context borrowing and non-retention, invalid arity/types, blocking effects, exact core error family, hover/navigation/completion and formatting
       - command: go test ./internal/parser ./internal/sema ./internal/ir/... ./cmd/compiler -count=1
         result: passed on 2026-10-16 after exact mutex duration/Context overload resolution and canonical Context/ContextError core registration
+    normative:
+      - Context and ContextSource are @noCopy.
+      - Context does not expose Cancel().
+      - ContextSource owns one child Context, cancellation authority and registrations.
+      - ContextSource.Context is ref Context and cannot outlive the source.
+      - ContextSource.Cancel() is idempotent and leaves Context/source alive.
+      - Context.Error is Option[ContextError].
+      - ContextError is exactly Cancelled | DeadlineExceeded.
+      - Context terminal cause is first-wins and immutable.
+      - Parent cancellation propagates downward; child cancellation does not propagate upward.
+      - ContextSource destruction is not itself a cancellation event.
 
   - id: semantic-ir.cancellation-v2
     area: semantic-ir-cancellation-facts

@@ -25,14 +25,15 @@ const maxDecimalEvaluationExponent = 400
 // coefficient × 10^(-scale) values with a signed coefficient of the given
 // width (64 for decimal, 128 for decimal128). Exact operations select the
 // legal scale closest to the preferred scale (max of the operand scales, or
-// their sum for `*`); `%` is the truncating remainder; an inexact quotient
+// their sum for a nonzero `*` product; an exact zero product keeps the max);
+// `%` is the truncating remainder; an inexact quotient
 // rounds once with nearest-even at the finest scale that keeps the whole
 // number part. A failure reports the most specific ArithmeticError variant.
 // ok is false when the operation is outside the bounded evaluation domain
 // (the result is then left to runtime) or op is not arithmetic.
 //
 // Rules:
-//   - rules/foundations/operators.md — "Decimal arithmetic", "Decimal result scale", "Decimal division"
+//   - rules/foundations/operators.md — "Decimal arithmetic", "Decimal result scale", "Decimal division", § 27.1(5a)
 //   - rules/corrections/applied/md066-md067-md068-decimal-correction-20261028.md — §§ 3–5, 7
 func EvaluateDecimal(op string, aCoefficient *big.Int, aScale int64, bCoefficient *big.Int, bScale int64, bits int) (coefficient *big.Int, scale int64, failure DecimalFailure, ok bool) {
 	if aCoefficient == nil || bCoefficient == nil || outOfEvaluationRange(aScale) || outOfEvaluationRange(bScale) {
@@ -49,7 +50,12 @@ func EvaluateDecimal(op string, aCoefficient *big.Int, aScale int64, bCoefficien
 		value = new(big.Rat).Sub(a, b)
 	case "*":
 		value = new(big.Rat).Mul(a, b)
-		preferred = aScale + bScale
+		// operators.md § 27.1(5a) (MD-049 § 12(8)): an exact zero product
+		// keeps the greater operand scale, never the scale sum, so repeated
+		// zero multiplication cannot grow its scale.
+		if value.Sign() != 0 {
+			preferred = aScale + bScale
+		}
 	case "/", "%":
 		if b.Sign() == 0 {
 			return nil, 0, DecimalDivisionByZero, true

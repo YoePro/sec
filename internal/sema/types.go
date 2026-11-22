@@ -807,7 +807,12 @@ type RangeContract struct {
 	ExactMax  *big.Rat
 	MinLexeme string
 	MaxLexeme string
-	Exclusive bool
+	// MinDecimal and MaxDecimal keep each present bound of a decimal-based
+	// range as its own scale-bearing value (MD-049 § 13(4)); the exact
+	// rationals above still decide every numeric comparison.
+	MinDecimal *DecimalValue
+	MaxDecimal *DecimalValue
+	Exclusive  bool
 }
 
 func (RangeContract) contractNode() {}
@@ -832,8 +837,13 @@ type DefaultConstant struct {
 	Lexeme      string
 	Integer     *big.Int
 	Exact       *big.Rat
-	String      string
-	Bool        bool
+	// Decimal is the scale-bearing value of a decimal constant (MD-049
+	// § 13(1)): its coefficient and represented scale. Exact is the same
+	// mathematical value and serves comparisons only; equal rationals may
+	// carry different scales. Nil when no scale-bearing fact exists.
+	Decimal *DecimalValue
+	String  string
+	Bool    bool
 }
 
 type DefaultKind string
@@ -881,6 +891,30 @@ type MultipleOfContract struct {
 }
 
 func (MultipleOfContract) contractNode() {}
+
+// ScaleContract is the fixed decimal scale of a named decimal/decimal128 type
+// (MD-049): every value of the type has exactly this signed int32 scale.
+// Rules: rules/types/contracts.md — § 16; rules/types/types.md — § 45A.
+type ScaleContract struct {
+	Token lexer.Token
+	Value int32
+	// Inferred marks a scale derived from range bounds (contracts.md
+	// § 16(2)-(3)); Preferred is the greatest bound scale P, Reduced whether
+	// coefficient capacity lowered it and Limit the limiting bound's text.
+	Inferred  bool
+	Preferred int32
+	Reduced   bool
+	Limit     string
+	// Width is the carrier coefficient width, 64 or 128 bits.
+	Width int
+	// Owner names the declaration that established the scale; a derived
+	// type with another Owner inherited it.
+	Owner string
+}
+
+// contractNode marks ScaleContract as a semantic type contract.
+// Rules: rules/types/contracts.md — § 16.
+func (ScaleContract) contractNode() {}
 
 // LengthContract is the exact, nonnegative length bound retained for a named
 // string or collection type. Value is arbitrary precision so contract parsing
@@ -1268,10 +1302,13 @@ func newBuiltinTypes() map[string]Type {
 		// PanicID and PanicInfo are exact compiler-known/core identities. Their
 		// source-visible representation is owned by panic.md § 13; runtime and
 		// lowering layers must consume this shape rather than inventing one.
-		"PanicID":               panicIDType(),
-		"PanicInfo":             {Name: "PanicInfo", Module: "core", Kind: StructType, Named: true},
+		"PanicID":   panicIDType(),
+		"PanicInfo": {Name: "PanicInfo", Module: "core", Kind: StructType, Named: true},
+		// MD-143: core.BuildInfo, the compiler-known build metadata snapshot.
+		"BuildInfo":             {Name: "BuildInfo", Module: "core", Kind: StructType, Named: true},
 		"ProcessID":             processIDType(64),
 		"ProcessStatus":         processStatusType(),
+		"ProcessObserver":       builtinProcessObserverType(),
 		"Thread":                {Name: "Thread", Kind: StructType, GenericParameters: []string{"T"}},
 		"ThreadObserver":        {Name: "ThreadObserver", Kind: StructType, GenericParameters: []string{"T"}},
 		"ThreadLocal":           {Name: "ThreadLocal", Kind: StructType, GenericParameters: []string{"T"}},
@@ -1421,6 +1458,7 @@ func newBuiltinTypes() map[string]Type {
 		types[name] = typ
 	}
 	installCompilerKnownPanicInfo(types)
+	installCompilerKnownBuildInfo(types)
 	installCompilerKnownTaskErrorPayload(types)
 	installCompilerKnownStringErrorPayloads(types)
 	types["ThreadConfig"] = builtinThreadConfigType(types)

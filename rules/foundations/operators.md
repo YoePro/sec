@@ -1622,6 +1622,8 @@ coefficients.
 because an intermediate preferred scale, such as a product's scale sum, is out
 of range.
 
+**§ 27.1(5a)** Exact zero product (MD-049 § 12(8)). Integrated 2026-11-22 from `rules/corrections/applied/MD-049-decimal-range-scale-inference-capacity-correction-rev1-2-2026-11-21-20261122.md` (MD-049, owner-locked 2026-11-21). The correction holds the full normative text and test vectors T01–T65; this section is its owning summary. When a multiplication of ordinary variable-scale decimals has an exactly zero product, the result is coefficient `0` with scale `max(a.Scale, b.Scale)`, not `a.Scale + b.Scale`. The rule is symmetric and applies to every multiplication, in constants, CTE and at run time, including repeated loop iterations and negative scales, so a zero multiplied repeatedly never grows its scale beyond the greatest input scale. Other exact zero results keep § 27.1(5); nonzero products keep the scale sum of § 27.1(2). An exact zero product of a fixed-scale named type `T` takes `T`'s scale (§ 27.5). Examples: `0.00m * 0.000m`, `0.000m * 0.00m`, `0.000m * 0.000m` and `0.00m * 1.234m` are `(0, 3)`; `1.20m * 2.0m` stays `(2400, 3)`.
+
 **§ 27.1(6)** When no exact representable coefficient/scale pair exists, `+`, `-`, `*`,
 `%` and unary minus fail as described in "Decimal arithmetic failures".
 
@@ -1632,6 +1634,7 @@ floating point.
 **§ 27.1(8)** Compound assignments use the same numerical policy as the corresponding
 binary operator, with exactly-once operand evaluation and the owning
 assignment rules for transactional updates.
+
 
 ### § 27.2 Decimal division
 
@@ -1720,6 +1723,12 @@ way. A nonterminating quotient is never `PrecisionExhausted` or
 detected before any quotient or remainder is attempted.
 
 ---
+
+### § 27.5 Fixed-scale named decimal arithmetic (MD-049)
+
+**§ 27.5(1)** Integrated 2026-11-22 from `rules/corrections/applied/MD-049-decimal-range-scale-inference-capacity-correction-rev1-2-2026-11-21-20261122.md` (MD-049, owner-locked 2026-11-21). The correction holds the full normative text and test vectors T01–T65; this section is its owning summary. When the existing operator rules permit `+`, `-`, `*`, `/`, `%`, unary minus or a compound assignment on two values of the same fixed-scale named decimal type `T`, the result type is `T`. The operands are evaluated once in order, the mathematical result and its intrinsic errors come first, then the result must be exactly representable at `T`'s scale `S` within the carrier coefficient width, then every inherited and local contract is checked in source order, and only then is the value published.
+
+**§ 27.5(2)** An inexact result is never rounded to fit `T`; the division rounding permission of § 27.2 does not apply to `T / T`. Division by zero is `ArithmeticError.DivisionByZero`, a result that cannot be placed at `S` without rounding is `ArithmeticError.PrecisionExhausted`, and a representable result violating a contract uses the existing contract failure (typed through `try`, `ContractFailure` panic without it). A failed compound assignment leaves the stored value unchanged. Plain variable-scale decimal arithmetic is unchanged.
 
 ## § 28 Decimal remainder
 

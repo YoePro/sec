@@ -1,0 +1,9 @@
+module demo
+
+fn _sharedTest() bool { return true }
+fn __privateTest() bool { return true }
+
+test "same file helpers in editor" {
+    testing.Expect(_sharedTest())
+    testing.Expect(__privateTest())
+}

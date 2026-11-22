@@ -79,6 +79,9 @@ func formatType(t Type) string {
 		return fmt.Sprintf("atomic<!%d>", t.Element)
 	}
 	if t.Kind == TypeNamed {
+		if facts := t.FixedScale; facts != nil {
+			return fmt.Sprintf("named %q base !%d fixed-scale=%d origin=%s", t.Identity, t.Base, facts.Scale, facts.Origin)
+		}
 		return fmt.Sprintf("named %q base !%d", t.Identity, t.Base)
 	}
 	if t.Kind == TypeCoreError {

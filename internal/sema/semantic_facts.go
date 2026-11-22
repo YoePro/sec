@@ -344,6 +344,10 @@ type ResolvedOperator struct {
 	// effect. Semantic IR has only a checked shift operation, so lowering
 	// keeps that form and its failure edge is dead.
 	ShiftCountProven bool
+	// NegatedIntegerConstant is the exact representable value of a signed
+	// integer literal negation. An immutable decimal spelling carries the
+	// static proof to IR without exposing a mutable big.Int or a runtime check.
+	NegatedIntegerConstant string
 	// Decimal publishes the immutable MD-066 operator plan of a decimal
 	// operator; nil for every other family.
 	Decimal *ResolvedDecimalOperation
@@ -1779,6 +1783,9 @@ func (a *Analyzer) recordResolvedOperator(expr ast.Expression, result Type) {
 		return
 	}
 	if resolved.Kind != "" {
+		if prefix, ok := expr.(*ast.PrefixExpression); ok {
+			resolved = a.proveIntegerLiteralNegation(resolved, prefix)
+		}
 		if infix, ok := expr.(*ast.InfixExpression); ok {
 			resolved = a.proveShiftCount(resolved, infix.Left, infix.Right)
 		}

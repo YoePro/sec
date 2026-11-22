@@ -1,0 +1,32 @@
+module main
+
+type TaskObserver struct {}
+impl TaskObserver { fn Wait() ProcessStatus { return ProcessStatus.Completed } }
+type Other struct {}
+impl Other { fn Wait() ProcessStatus { return ProcessStatus.Completed } }
+
+fn InvalidThread(observer: ThreadObserver[int]) void {
+    select { observed := observer.Wait() => {} }
+}
+fn InvalidTask(observer: TaskObserver) void {
+    select { observed := observer.Wait() => {} }
+}
+fn InvalidOther(observer: Other) void {
+    select { observed := observer.Wait() => {} }
+}
+fn WrongArguments(observer: ProcessObserver) void {
+    select { observed := observer.Wait(1) => {} }
+}
+fn NotAWait(observer: ProcessObserver) void {
+    select { observed := observer.Status => {} }
+}
+fn NoOwnerAuthority(observer: ProcessObserver) void {
+    join observer
+    detach observer
+}
+fn NoFabrication() void {
+    let value := ProcessObserver {}
+}
+fn NoConstructor() void {
+    let value := ProcessObserver()
+}

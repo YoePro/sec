@@ -356,6 +356,20 @@ const (
 	CompilerCapabilityUnavailable = "S1239"
 	// MutexTargetCapability reports a selected target/profile lock contract failure.
 	MutexTargetCapability = "S1253"
+	// PhysicalThreadCapability reports a selected physical-thread identity denial.
+	PhysicalThreadCapability = "S1254"
+	// ObserverWaitUnavailable rejects synthetic task/thread observer wait APIs.
+	ObserverWaitUnavailable = "S1255"
+	// SelectOperationNotSelectable rejects ordinary operations as select primitives.
+	SelectOperationNotSelectable = "S1256"
+	// ProcessObserverInvalidOperation enforces the opaque observer call/construction surface.
+	ProcessObserverInvalidOperation = "S1257"
+	// BuildInfoUnavailable rejects BuildInfo.Current() without a resolved
+	// Target and Variant (MD-143).
+	// Rules: rules/compiler/compiler_known_members.md — § 113B(3).
+	BuildInfoUnavailable = "S1258"
+	// OperatorIncompatibleOperands identifies an unsupported binary operand pair.
+	OperatorIncompatibleOperands = "S1259"
 	// Unsafe context diagnostics from the canonical unsafe-operation
 	// registry (unsafe.md §§ 5, 47, 50): a call or operation that needs an
 	// unsafe context, and an unsafe context that authorizes nothing or is
@@ -544,6 +558,10 @@ const (
 	// ContractError.
 	// Rules: rules/types/contracts.md — § 12; rules/errors/panic.md — ContractFailure.
 	UncheckedContractMayPanic = "A2011"
+	// InferredDecimalScale reports the fixed scale a named decimal type
+	// inferred from its range bounds (MD-049).
+	// Rules: rules/tooling/diagnostics.md — § 31A; rules/types/contracts.md — § 16.
+	InferredDecimalScale = "A2012"
 	// ImplicitDiscardedResult explains a legal ordinary call-result discard.
 	// Rules: rules/control-flow/discard.md — §§12,37–38.
 	ImplicitDiscardedResult = "A3001"
@@ -574,6 +592,7 @@ var registry = map[string]Definition{
 	InactiveMatchArm:                      {ID: InactiveMatchArm, Name: "control-flow.inactive-match-arm", Family: "control-flow", DefaultSeverity: SeverityInformation, Mandatory: false},
 	ImplicitEmptyCatchAll:                 {ID: ImplicitEmptyCatchAll, Name: "union.implicit-empty-catch-all", Family: "union", DefaultSeverity: SeverityWarning, Mandatory: false},
 	UncheckedContractMayPanic:             {ID: UncheckedContractMayPanic, Name: "contracts.unchecked-contract-may-panic", Family: "types", DefaultSeverity: SeverityInformation, Mandatory: false},
+	InferredDecimalScale:                  {ID: InferredDecimalScale, Name: "types.inferred-decimal-scale", Family: "types", DefaultSeverity: SeverityInformation, Mandatory: false},
 	DurationConversionInvalid:             {ID: DurationConversionInvalid, Name: "temporal.invalid-duration-conversion", Family: "temporal", DefaultSeverity: SeverityError, Mandatory: true},
 	UnionVariantPayloadRequired:           {ID: UnionVariantPayloadRequired, Name: "union.variant-payload-required", Family: "union", DefaultSeverity: SeverityError, Mandatory: true},
 	UnionPatternPayloadBindingRequired:    {ID: UnionPatternPayloadBindingRequired, Name: "union.pattern-payload-binding-required", Family: "union", DefaultSeverity: SeverityError, Mandatory: true, Retired: true},
@@ -605,6 +624,11 @@ var registry = map[string]Definition{
 	NoActiveVariant:                       {ID: NoActiveVariant, Name: "attribute.no-active-variant", Family: "attribute", DefaultSeverity: SeverityError, Mandatory: true},
 	CompilerCapabilityUnavailable:         {ID: CompilerCapabilityUnavailable, Name: "compiler.capability-unavailable", Family: "compiler-capability", DefaultSeverity: SeverityError, Mandatory: true},
 	MutexTargetCapability:                 {ID: MutexTargetCapability, Name: "mutex.target-capability", Family: "concurrency", DefaultSeverity: SeverityError, Mandatory: true},
+	PhysicalThreadCapability:              {ID: PhysicalThreadCapability, Name: "thread.physical-capability", Family: "concurrency", DefaultSeverity: SeverityError, Mandatory: true},
+	ObserverWaitUnavailable:               {ID: ObserverWaitUnavailable, Name: "observer.wait-unavailable", Family: "concurrency", DefaultSeverity: SeverityError, Mandatory: true},
+	SelectOperationNotSelectable:          {ID: SelectOperationNotSelectable, Name: "select.operation-not-selectable", Family: "concurrency", DefaultSeverity: SeverityError, Mandatory: true},
+	ProcessObserverInvalidOperation:       {ID: ProcessObserverInvalidOperation, Name: "process.observer-invalid-operation", Family: "concurrency", DefaultSeverity: SeverityError, Mandatory: true},
+	BuildInfoUnavailable:                  {ID: BuildInfoUnavailable, Name: "build-info.unresolved-plan", Family: "types", DefaultSeverity: SeverityError, Mandatory: true},
 	UnsafeCallRequiresContext:             {ID: UnsafeCallRequiresContext, Name: "unsafe.call-requires-context", Family: "unsafe", DefaultSeverity: SeverityError, Mandatory: true},
 	UnsafeOperationRequiresContext:        {ID: UnsafeOperationRequiresContext, Name: "unsafe.operation-requires-context", Family: "unsafe", DefaultSeverity: SeverityError, Mandatory: true},
 	UnsafeUnnecessary:                     {ID: UnsafeUnnecessary, Name: "unsafe.unnecessary", Family: "unsafe", DefaultSeverity: SeverityInformation},
@@ -943,6 +967,9 @@ var registry = map[string]Definition{
 	},
 	OperatorNonOrderable: {
 		ID: OperatorNonOrderable, Name: "operator.non-orderable-operands", Family: "operators", DefaultSeverity: SeverityError, Mandatory: true,
+	},
+	OperatorIncompatibleOperands: {
+		ID: OperatorIncompatibleOperands, Name: "operator.incompatible-operand-types", Family: "operators", DefaultSeverity: SeverityError, Mandatory: true,
 	},
 	OperatorInvalidShiftCount: {
 		ID: OperatorInvalidShiftCount, Name: "operator.invalid-shift-count", Family: "operators", DefaultSeverity: SeverityError, Mandatory: true,

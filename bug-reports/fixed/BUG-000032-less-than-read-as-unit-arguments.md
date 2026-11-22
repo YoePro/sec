@@ -1,6 +1,6 @@
 # BUG-000032 — `<` comparison read as unit/type arguments when a later `> (` follows
 
-- **Status:** open
+- **Status:** fixed (2026-11-22)
 - **Reported:** 2026-11-20 (found while writing `sec/stdlib/net/http/http1.sec`)
 - **Area:** parser — expressions versus unit/type-argument lists
 - **Code:** `internal/parser/parser.go` (unit-expression scanning near the
@@ -46,3 +46,14 @@ parse error: unexpected '}' ...
 `a < b` is an ordinary comparison. Unit/type-argument scanning must not cross
 a `{`, `}` or statement boundary, and an invalid speculative list must fall
 back to expression parsing instead of reporting an error.
+
+## Resolution (2026-11-22)
+
+`parseUnit` (`internal/parser/parser.go`) stops its scan at `{`, `}`, `;`,
+`,`, `=`, `->`, `return`, at `==`, `!=`, `<`, `<=`, `>=`, `&&`, `||`, `!`
+and at a line change. None of these occur in a structural unit expression, so
+a speculative unit conversion ends as an unterminated unit and rolls back to
+an ordinary comparison. Regression: `internal/parser/unit_scan_boundary_test.go`
+(the reproduction, a `||` chain, a following line, and a real
+`float<km>(x)` conversion). Parser, Sema, IR, formatter and CST suites and
+the unit/conversion CLI and LSP subsets pass.

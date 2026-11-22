@@ -117,6 +117,7 @@ func analysisForTarget(uri, text string, overlay sourceOverlay, target platformt
 			analyzer = sema.NewAnalyzerWithScalarPlanAndDepth(plan, sema.AnalysisInteractive)
 			analyzer.SetSourceSelection(lspSourceSelection(analyzer, path, overlay))
 			applyLSPCBindingPlan(analyzer, program, path)
+			applyLSPBuildInfo(analyzer, path, overlay)
 		}
 	}
 	analysisCache.Lock()

@@ -1,0 +1,28 @@
+module main
+
+/**
+ * Verifies that int.Parse converts a decimal string correctly.
+ *
+ * Description:
+ * Returns zero on success, one for an incorrect value,
+ * and two if parsing returns an error.
+ *
+ * Returns:
+ * Process exit status identifying the test result.
+ *
+ * Allocation:
+ * Does not explicitly allocate.
+ */
+fn main() int {
+    match int.Parse("123") {
+        Ok(value) => {
+            if value == 123 {
+                return 0
+            }
+            return 1
+        }
+        Err(_) => {
+            return 2
+        }
+    }
+}

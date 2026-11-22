@@ -82,6 +82,20 @@ type Type struct {
 	TargetSize bool
 	// Mutable is the authority of a place (rw) or reference (ref mut) type.
 	Mutable bool
+	// FixedScale is the frozen scale of a fixed-scale named decimal type
+	// (MD-049; semantic_ir.md § 128(2)); nil for every other type.
+	FixedScale *DecimalScaleFacts `json:",omitempty"`
+}
+
+// DecimalScaleFacts records a named decimal type's fixed scale and where it
+// comes from: "explicit" (its own scale clause), "inherited" (a named base)
+// or "inferred" (range bounds, with the preferred scale and limiting bound).
+// Rules: rules/compiler/semantic_ir.md — § 128(2); rules/types/contracts.md — § 16.
+type DecimalScaleFacts struct {
+	Scale     int32
+	Origin    string
+	Preferred int32  `json:",omitempty"`
+	Limit     string `json:",omitempty"`
 }
 
 type EnumRepresentationKind string

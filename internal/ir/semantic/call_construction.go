@@ -24,8 +24,26 @@ func (fb *functionBuilder) buildCall(call *ast.CallExpression) (builtValue, erro
 	if fb.owner.analyzer.IsTypePackForward(call) {
 		return fb.buildPackForward(call)
 	}
+	if snapshot, current := fb.owner.analyzer.BuildInfoCurrentOf(call); current {
+		return fb.buildBuildInfoCurrent(call, snapshot)
+	}
 	if value, handled, err := fb.buildAtomicObjectCall(call); handled {
 		return value, err
+	}
+	// MD-049: a proven constant conversion into a named decimal type is a
+	// const.decimal on the target's grid.
+	if pair, constant := fb.owner.analyzer.ResolvedDecimalConstantConversionOf(call); constant {
+		if target, typed := fb.owner.analyzer.ResolvedTypeOf(call); typed {
+			typeID, err := fb.owner.internType(target)
+			if err != nil {
+				return builtValue{}, err
+			}
+			decimal, err := fb.decimalFromSemaConstant(sema.DefaultConstant{Decimal: &pair, Lexeme: call.String()}, typeID)
+			if err != nil {
+				return builtValue{}, err
+			}
+			return fb.result(Operation{Kind: OpConstDecimal, Decimal: &decimal, Location: location(call.Token)}, typeID), nil
+		}
 	}
 	if fb.owner.analyzer.IsDynamicArrayLengthCall(call) && fb.owner.maxPackage >= dynamicArrayLoweringPackage && len(call.Arguments) == 1 {
 		return fb.buildDynamicArrayLength(call.Arguments[0], call.Token)

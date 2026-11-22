@@ -13,6 +13,26 @@ fn _testGregorianDate(year: int, month: int, day: int) Result[date, calendar.Cal
     })
 }
 
+fn _testCalendarDate(year: int, month: int, leap: bool, day: int, system: calendar.CalendarSystem) Result[date, calendar.CalendarError] {
+    return calendar.ToDate(calendar.CalendarFields {
+        Year: year,
+        Month: calendar.CalendarMonth {
+            Number: month,
+            IsLeap: leap,
+        },
+        Day: day,
+    }, system)
+}
+
+fn _testPeriod(years: int, months: int, weeks: int, days: int) CalendarPeriod {
+    return CalendarPeriod {
+        Years: years,
+        Months: months,
+        Weeks: weeks,
+        Days: days,
+    }
+}
+
 test "AddMonths clamps January 31 to February 28" {
     let original := try _testGregorianDate(2025, 1, 31)
 
@@ -72,4 +92,357 @@ test "AddMonths supports negative month movement" {
     let expected := try _testGregorianDate(2024, 12, 15)
 
     testing.ExpectEqual(expected.EpochDays, result.EpochDays)
+}
+
+test "AddMonths enters Hebrew Adar I" {
+    let system := calendar.CalendarSystem.Hebrew
+
+    // Shevat 30 followed by Adar I in leap year 5784.
+    let original := try _testCalendarDate(5784, 5, false, 30, system)
+    let expected := try _testCalendarDate(5784, 5, true, 30, system)
+
+    let result := try AddMonths(original, 1, system, MonthEndPolicy.Reject)
+
+    testing.ExpectEqual(expected.EpochDays, result.EpochDays)
+}
+
+test "AddMonths clamps Hebrew Adar I to Adar II" {
+    let system := calendar.CalendarSystem.Hebrew
+
+    // Adar I has 30 days; Adar II has 29.
+    let original := try _testCalendarDate(5784, 5, true, 30, system)
+    let expected := try _testCalendarDate(5784, 6, false, 29, system)
+
+    let result := try AddMonths(original, 1, system, MonthEndPolicy.Clamp)
+
+    testing.ExpectEqual(expected.EpochDays, result.EpochDays)
+}
+
+test "AddMonths crosses Hebrew leap-year boundary" {
+    let system := calendar.CalendarSystem.Hebrew
+
+    let original := try _testCalendarDate(5784, 12, false, 29, system)
+    let expected := try _testCalendarDate(5785, 1, false, 29, system)
+
+    let result := try AddMonths(original, 1, system, MonthEndPolicy.Reject)
+
+    testing.ExpectEqual(expected.EpochDays, result.EpochDays)
+}
+
+test "AddMonths resolves Islamic ordinary year month end" {
+    let system := calendar.CalendarSystem.IslamicTabular
+
+    // Dhu al-Qadah 30 to Dhu al-Hijjah in ordinary AH 1446.
+    let original := try _testCalendarDate(1446, 11, false, 30, system)
+
+    let clamped := try AddMonths(original, 1, system, MonthEndPolicy.Clamp)
+    let rolled  := try AddMonths(original, 1, system, MonthEndPolicy.RollForward)
+
+    let expectedClamp := try _testCalendarDate(1446, 12, false, 29, system)
+    let expectedRoll  := try _testCalendarDate(1447, 1, false, 1, system)
+
+    testing.ExpectEqual(expectedClamp.EpochDays, clamped.EpochDays)
+    testing.ExpectEqual(expectedRoll.EpochDays, rolled.EpochDays)
+}
+
+test "AddMonths preserves Islamic leap-month final day" {
+    let system := calendar.CalendarSystem.IslamicTabular
+
+    let original := try _testCalendarDate(1447, 11, false, 30, system)
+    let expected := try _testCalendarDate(1447, 12, false, 30, system)
+
+    let result := try AddMonths(original, 1, system, MonthEndPolicy.Reject)
+
+    testing.ExpectEqual(expected.EpochDays, result.EpochDays)
+}
+
+test "AddMonths rejects month before Islamic epoch" {
+    let system   := calendar.CalendarSystem.IslamicTabular
+    let original := try _testCalendarDate(1, 1, false, 1, system)
+
+    match AddMonths(original, -1, system, MonthEndPolicy.Reject) {
+        Ok(_) => testing.Fail("Expected OutOfRange")
+        Err(TemporalArithmeticError.OutOfRange) => {
+        }
+        Err(_) => testing.Fail("Unexpected arithmetic error")
+    }
+}
+
+test "AddMonths crosses Gregorian year zero backwards" {
+    let system := calendar.CalendarSystem.Gregorian
+
+    let original := try _testCalendarDate(0, 1, false, 15, system)
+    let expected := try _testCalendarDate(-1, 12, false, 15, system)
+
+    let result := try AddMonths(original, -1, system, MonthEndPolicy.Reject)
+
+    testing.ExpectEqual(expected.EpochDays, result.EpochDays)
+}
+
+test "AddPeriod evaluation order changes the result" {
+    let original := try _testGregorianDate(2025, 1, 30)
+
+    let period := CalendarPeriod {
+        Years: 0,
+        Months: 1,
+        Weeks: 0,
+        Days: 1,
+    }
+
+    let monthsFirst := try AddPeriod(
+        original,
+        period,
+        calendar.CalendarSystem.Gregorian,
+        MonthEndPolicy.Clamp,
+        PeriodOrder.YearsMonthsWeeksDays,
+    )
+
+    let daysFirst := try AddPeriod(
+        original,
+        period,
+        calendar.CalendarSystem.Gregorian,
+        MonthEndPolicy.Clamp,
+        PeriodOrder.DaysWeeksMonthsYears,
+    )
+
+    let expectedMonthsFirst := try _testGregorianDate(2025, 3, 1)
+    let expectedDaysFirst   := try _testGregorianDate(2025, 2, 28)
+
+    testing.ExpectEqual(expectedMonthsFirst.EpochDays, monthsFirst.EpochDays)
+    testing.ExpectEqual(expectedDaysFirst.EpochDays, daysFirst.EpochDays)
+}
+
+test "AddPeriod clamps Gregorian leap day after one year" {
+    let original := try _testGregorianDate(2024, 2, 29)
+
+    let period := CalendarPeriod {
+        Years: 1,
+        Months: 0,
+        Weeks: 0,
+        Days: 0,
+    }
+
+    let result := try AddPeriod(
+        original,
+        period,
+        calendar.CalendarSystem.Gregorian,
+        MonthEndPolicy.Clamp,
+        PeriodOrder.YearsMonthsWeeksDays,
+    )
+
+    let expected := try _testGregorianDate(2025, 2, 28)
+
+    testing.ExpectEqual(expected.EpochDays, result.EpochDays)
+}
+
+test "AddPeriod preserves Hebrew year rather than twelve months" {
+    let system   := calendar.CalendarSystem.Hebrew
+    let original := try _testCalendarDate(5784, 1, false, 1, system)
+
+    let oneYear := CalendarPeriod {
+        Years: 1,
+        Months: 0,
+        Weeks: 0,
+        Days: 0,
+    }
+
+    let result := try AddPeriod(
+        original,
+        oneYear,
+        system,
+        MonthEndPolicy.Reject,
+        PeriodOrder.YearsMonthsWeeksDays,
+    )
+
+    let expected := try _testCalendarDate(5785, 1, false, 1, system)
+
+    testing.ExpectEqual(expected.EpochDays, result.EpochDays)
+
+    // AM 5784 contains thirteen months.
+    let twelveMonths := try AddMonths(
+        original, 12, system, MonthEndPolicy.Reject,
+    )
+
+    testing.Expect(result.EpochDays != twelveMonths.EpochDays)
+}
+
+test "AddPeriod rejects Hebrew leap month absent in target year" {
+    let system   := calendar.CalendarSystem.Hebrew
+    let original := try _testCalendarDate(5784, 5, true, 1, system)
+
+    let period := CalendarPeriod {
+        Years: 1,
+        Months: 0,
+        Weeks: 0,
+        Days: 0,
+    }
+
+    match AddPeriod(
+        original,
+        period,
+        system,
+        MonthEndPolicy.Clamp,
+        PeriodOrder.YearsMonthsWeeksDays,
+    ) {
+        Ok(_) => testing.Fail("Adar I is absent in AM 5785")
+        Err(TemporalArithmeticError.InvalidTarget) => {
+        }
+        Err(_) => testing.Fail("Expected InvalidTarget")
+    }
+}
+
+test "AddPeriod rejects day before Islamic epoch" {
+    let system   := calendar.CalendarSystem.IslamicTabular
+    let original := try _testCalendarDate(1, 1, false, 1, system)
+
+    let period := CalendarPeriod {
+        Years: 0,
+        Months: 0,
+        Weeks: 0,
+        Days: -1,
+    }
+
+    match AddPeriod(original, period, system, MonthEndPolicy.Reject, PeriodOrder.YearsMonthsWeeksDays) {
+        Ok(_) => testing.Fail("Date precedes AH 1")
+        Err(TemporalArithmeticError.OutOfRange) => {
+            testing.Pass()
+        }
+        Err(_) => testing.Fail("Expected OutOfRange")
+    }
+}
+
+test "Two months differ from two clamped one-month steps" {
+    let system   := calendar.CalendarSystem.Gregorian
+    let original := try _testGregorianDate(2025, 1, 31)
+
+    let direct := try AddMonths(
+        original, 2, system, MonthEndPolicy.Clamp,
+    )
+
+    let first := try AddMonths(
+        original, 1, system, MonthEndPolicy.Clamp,
+    )
+
+    let repeated := try AddMonths(
+        first, 1, system, MonthEndPolicy.Clamp,
+    )
+
+    let march31 := try _testGregorianDate(2025, 3, 31)
+    let march28 := try _testGregorianDate(2025, 3, 28)
+
+    testing.ExpectEqual(march31.EpochDays, direct.EpochDays)
+    testing.ExpectEqual(march28.EpochDays, repeated.EpochDays)
+}
+
+test "AddPeriod rejects crossing upper core date boundary" {
+    let maximum := new date(int32(2_147_483_647))
+
+    match AddPeriod(
+        maximum,
+        _testPeriod(0, 0, 0, 1),
+        calendar.CalendarSystem.Gregorian,
+        MonthEndPolicy.Reject,
+        PeriodOrder.YearsMonthsWeeksDays,
+    ) {
+        Ok(_) => testing.Fail("Expected OutOfRange")
+        Err(TemporalArithmeticError.OutOfRange) => {
+        }
+        Err(_) => testing.Fail("Unexpected error")
+    }
+}
+
+test "AddPeriod rejects crossing lower core date boundary" {
+    let minimum := new date(int32(-2_147_483_648))
+
+    match AddPeriod(
+        minimum,
+        _testPeriod(0, 0, 0, -1),
+        calendar.CalendarSystem.Gregorian,
+        MonthEndPolicy.Reject,
+        PeriodOrder.DaysWeeksMonthsYears,
+    ) {
+        Ok(_) => testing.Fail("Expected OutOfRange")
+        Err(TemporalArithmeticError.OutOfRange) => {
+        }
+        Err(_) => testing.Fail("Unexpected error")
+    }
+}
+
+test "AddPeriod zero components preserve date" {
+    let original := try _testGregorianDate(2026, 11, 22)
+
+    let result := try AddPeriod(
+        original,
+        _testPeriod(0, 0, 0, 0),
+        calendar.CalendarSystem.Gregorian,
+        MonthEndPolicy.Reject,
+        PeriodOrder.YearsMonthsWeeksDays,
+    )
+
+    testing.ExpectEqual(original.EpochDays, result.EpochDays)
+}
+
+test "AddPeriod crosses Gregorian astronomical year zero" {
+    let original := try _testGregorianDate(0, 3, 15)
+
+    let result := try AddPeriod(
+        original,
+        _testPeriod(-1, 0, 0, 0),
+        calendar.CalendarSystem.Gregorian,
+        MonthEndPolicy.Reject,
+        PeriodOrder.YearsMonthsWeeksDays,
+    )
+
+    let expected := try _testGregorianDate(-1, 3, 15)
+
+    testing.ExpectEqual(expected.EpochDays, result.EpochDays)
+}
+
+test "AddPeriod resolves Islamic leap day across years" {
+    let system := calendar.CalendarSystem.IslamicTabular
+    let original := try _testCalendarDate(
+        1447, 12, false, 30, system,
+    )
+
+    let period := _testPeriod(1, 0, 0, 0)
+
+    match AddPeriod(
+        original,
+        period,
+        system,
+        MonthEndPolicy.Reject,
+        PeriodOrder.YearsMonthsWeeksDays,
+    ) {
+        Ok(_) => testing.Fail("Expected InvalidTarget")
+        Err(TemporalArithmeticError.InvalidTarget) => {
+        }
+        Err(_) => testing.Fail("Unexpected error")
+    }
+
+    let clamped := try AddPeriod(
+        original,
+        period,
+        system,
+        MonthEndPolicy.Clamp,
+        PeriodOrder.YearsMonthsWeeksDays,
+    )
+
+    let rolled := try AddPeriod(
+        original,
+        period,
+        system,
+        MonthEndPolicy.RollForward,
+        PeriodOrder.YearsMonthsWeeksDays,
+    )
+
+    let expectedClamp := try _testCalendarDate(
+        1448, 12, false, 29, system,
+    )
+
+    let expectedRoll := try _testCalendarDate(
+        1449, 1, false, 1, system,
+    )
+
+    testing.ExpectEqual(expectedClamp.EpochDays, clamped.EpochDays)
+    testing.ExpectEqual(expectedRoll.EpochDays, rolled.EpochDays)
 }

@@ -3754,3 +3754,545 @@ Counts: concurrency_model.yaml remaining 17 -> 16, implemented 11 -> 12;
 concurrency.model-v2 remaining 7 -> 6, implemented 6 -> 7; partial unchanged.
 Latest handoff read before release, atomic/memory-model reservation respected.
 Working set released, no commit.
+
+### Claude — 2026-11-22 claim: MD-021 module identities, MD-139 LSP errors, MD-117 method signature help
+
+Taking three remaining items added 2026-11-21: frontend.ffi-v2 "MD-021 module
+identities" (internal/platform/cbindingplan, cmd/compiler/c_bindings_plan.go,
+cmd/lsp/c_bindings_plan.go), platform.target-profiles plan-wiring LSP part
+(cmd/lsp only, new file), and frontend.generics-v2 template signature help for
+pack methods (cmd/lsp/type_pack_signature.go). No sema/IR core files.
+
+### Claude — 2026-11-22 released: MD-021 module identities, MD-139 LSP errors, MD-117 method signature help
+
+- cbindingplan.ModuleIdentityProblems / ModuleName: c-bindings.module-collision
+  for two selected directories declaring one module or a binding module named
+  like a program module; applyCLICBindingPlan now returns problems (pipeline
+  exits 3), LSP leaves the surface empty.
+- cmd/lsp/plan_selection_diagnostics.go: manifest diagnostics
+  manifest.plan-selection (ResolvePlanSelection + ResolveTargetProfile) hooked
+  into projectVersionDiagnostics.
+- cmd/lsp/type_pack_signature.go: template help for static/instance pack
+  methods; cursor past an empty resolved pack shows the template.
+Tests: TestModuleIdentityProblems, TestPlanSelectionDiagnosticsOnManifest,
+TestTypePackMethodTemplateSignatureHelp; cmd/lsp TypePack|Signature and
+cmd/compiler CBinding subsets pass. Working set released, no commit.
+
+### Codex — 2026-11-22 claim: Thread.Current target capability
+
+Taking concurrency.cancellation-v2 remaining 1: reject Thread.Current() for an
+explicitly unsupported physical-thread target/profile. Own immutable selected-
+plan physical-thread evidence/projection/fingerprints, the existing execution-
+context call checker, focused layout/target/Sema/diagnostic transport tests and
+cancellation governance. No task/spawn ownership-commit, MD-138, scheduler,
+current-thread runtime, atomic/memory-model or MLIR changes reserved.
+
+### Codex — 2026-11-22 released: Thread.Current selected-target capability
+
+Closed whole concurrency.cancellation-v2 remaining 1. Explicit Unsupported
+physical-thread identity contracts now reject canonical Thread.Current() with
+mandatory S1254 thread.physical-capability, naming target/profile/reason and
+producer evidence. Accepted calls retain ThreadContext and immutable selected-
+plan evidence. Logical Task.Current requirements remain independent; missing
+physical facts stay Unknown and never authorize runtime lowering. No host/task
+fallback or physical Current implementation was added. Registry targets still
+all have Unknown physical-thread evidence until trusted producers supply it.
+
+Own implementation files:
+- internal/layout/physical_thread_capability.go (new private frozen single
+  identity contract); scalar_plan.go, plan_fingerprints.go.
+- internal/layout/capability_plan.go (new focused home for existing shared
+  capabilityPlanBase, extracted from ipc_capabilities.go); clear all independent
+  tables before binding snapshots, preserving mutex/atomic/IPC composition.
+- internal/platform/target/target.go (project physical evidence).
+- internal/sema/execution_context_target.go (new gate/query), execution_context.go;
+  analyzer.go (generic targetCapabilityPlan rename, retained map/reset),
+  analyzer_target_plan.go and mutex_target_capabilities.go (share that plan field).
+- internal/diagnostics/diagnostics.go (S1254 registration).
+Own new tests: internal/layout/physical_thread_capability_test.go,
+internal/platform/target/physical_thread_capability_test.go,
+internal/sema/execution_context_target_test.go,
+cmd/compiler/thread_current_target_test.go, cmd/lsp/thread_current_target_test.go,
+testdata/sema/physical_thread/current.sec.
+Governance: concurrency_cancellation.yaml (canonicalized before editing) and
+this handoff. No source API, Sec library, parser, AST, runtime or MLIR edits.
+
+Coverage: Unknown/Supported/Unsupported at three mandatory depths on 32/64-bit
+plans, repeated analysis, exact ThreadContext result, logical-task independence,
+immutable evidence, foreign-target/profile rejection including explicit Unknown,
+semantic fingerprint changes without provenance churn, registry non-inference,
+independent mutex composition and canonical CLI JSON/editor diagnostic transport.
+The transport regressions use real selected-plan Sema denials; no target registry
+is mutated and no false supported target is advertised.
+
+Verification:
+- Final focused races layout/target/Sema/CLI-transport/LSP-transport pass
+  1.011s/1.009s/1.676s/1.061s/1.069s, including stale-Unknown regression.
+- Full layout/target/diagnostics and Sema pass (34.190s); traceability 0.248s,
+  final doc/edge-case traceability 0.191s. Vet on all five packages passes.
+- Existing CLI/LSP execution-context/task/mutex subsets pass 8.568s/6.341s.
+- Full IR/emitter suites with real SEC_MLIR_BIN pass 10.175s/21.793s.
+- Governance check (47 fragments), canonical format, owner paths (17 references)
+  and diff hygiene pass. No native Thread.Current execution claim.
+
+Own counts: concurrency_cancellation.yaml remaining 17 -> 16, implemented
+10 -> 11; concurrency.cancellation-v2 remaining 5 -> 4, implemented 4 -> 5;
+partial unchanged. Other compiler.yaml snapshot changes are not this task.
+Latest handoff read before release; Claude's released cbinding/LSP/pack work
+preserved. Working set released, no commit.
+
+### Codex — 2026-11-22 claim: select observer operation boundary
+
+Taking concurrency.select-v2 remaining 2: ProcessObserver.Wait selectable,
+no hidden TaskObserver/ThreadObserver wait. Own focused ProcessObserver frontend
+identity/Wait member and exact selection/type checks, source/CLI/LSP tests,
+select governance. ProcessStatus/ProcessID already exist. No process spawning,
+owner/join lifecycle, target ProcessPlatform declaration, wait-set runtime,
+atomic/memory-model or MLIR changes reserved. Intrinsic opaque types must keep
+the existing unsupported IR boundary; this point does not implement waiting.
+
+### Codex — 2026-11-22 released: ProcessObserver.Wait select boundary
+
+Closed whole concurrency.select-v2 former remaining 2. Canonical intrinsic
+ProcessObserver.Wait() now resolves to ProcessStatus, including select branch
+bindings, reference receivers, observer copies and repeated waits. It creates
+no owner join/detach authority, reaping or result-extraction permission. Ordinary
+same-named methods (including a source TaskObserver lookalike) stay ordinary
+and non-selectable; canonical ThreadObserver still cannot Wait/select.
+No public TaskObserver wait/type API or general selectable protocol was invented.
+
+Own implementation files:
+- internal/sema/process_observer.go (new implicit opaque compiler-known identity,
+  read-only ID/Name/Status, exact Wait and constructor/platform boundaries).
+- internal/sema/select_operations.go (cohesive existing selectableOperationType
+  extracted from analyzer.go, with canonical process-wait recognition).
+- internal/sema/compiler_known_members.go, compiler_known_calls.go, types.go
+  (only the ProcessObserver builtin row), analyzer_inference.go (small hooks),
+  analyzer.go (removed select helper and structured non-selectable diagnostic),
+  thread_observer_wait.go (registered identity).
+- internal/diagnostics/diagnostics.go: S1255 observer.wait-unavailable,
+  S1256 select.operation-not-selectable, S1257 process.observer-invalid-operation.
+Own new tests: internal/sema/select_observer_test.go,
+cmd/compiler/select_observer_test.go, cmd/lsp/select_observer_test.go;
+testdata/sema/select_observer/{valid,invalid,platform_invalid,replacement_invalid}.sec.
+Governance: concurrency_select.yaml (canonicalized before edit), this handoff.
+No parser, source/core declaration, Sec library, runtime, IR/MLIR implementation,
+atomic/memory-model or rulebook edits. The full Process/core API and selected
+ProcessPlatform declarations remain with their process owners, not completed
+by this implicit frontend identity. No bodyless source declaration syntax added.
+
+Coverage: exact ProcessStatus, repeated copies/shared references at all three
+depths on 32/64-bit plans; ordinary Wait blocking versus select preparation;
+waiting select has its one select boundary and default select stays nonblocking;
+nine rejected source boundaries include user/task lookalike waits, ThreadObserver,
+metadata, wrong arguments, owner join/detach and fabricated observers. Platform
+access explicitly names its unsupported selected-target declaration. Compiler
+JSON identities and LSP diagnostics/hover/completion/synthetic navigation share
+the registry. CLI emit-ir rejects unsupported ProcessObserver type without an
+artifact, so no empty native representation or fake waiting implementation is
+published. Additional source extension cannot substitute an int wait result.
+
+Verification:
+- Full Sema 32.844s, diagnostics 0.002s, traceability 0.221s; final traceability
+  after the additional replacement probe 0.192s. Vet passes Sema/CLI/LSP.
+- Focused races Sema/CLI/LSP pass 1.435s/45.284s/68.660s, including neighboring
+  ThreadObserver and select-join cases. Replacement probe passes separately.
+- Full IR/emitter with SEC_MLIR_BIN passes 9.719s/24.554s. No native process
+  waiting/readiness or lifecycle implementation is claimed.
+- Governance check (47 fragments), canonical format, owner paths (31 references)
+  and diff hygiene pass.
+Own counts: concurrency_select.yaml and concurrency.select-v2 remaining
+10 -> 9, implemented 12 -> 13; partial unchanged. Other types.yaml snapshot
+changes are not this task. Latest handoff read before release; other ongoing
+CTE/core work preserved. Working set released, no commit.
+
+## Codex claim — scheduling configuration synchronization (2026-11-22)
+
+Taking concurrency.scheduling-v2 remaining item 5 in
+governance/concurrency_scheduling.yaml: synchronize ThreadPriority/CpuSet/
+ThreadConfig with threads-v2. Existing source implementation is present; verify
+the complete shared source contract with cross-book fixtures and Sema/CLI/LSP
+regressions, then close the stale synchronization checklist entry. Working set:
+new scheduling_thread_config tests/fixtures, existing thread_config CLI/LSP tests,
+the scheduling fragment and this handoff. No runtime/IR, decimal/CTE, atomics or
+memory-model edits; target realization remains separately tracked.
+
+## Codex release — scheduling configuration synchronization (2026-11-22)
+
+Closed the whole concurrency.scheduling-v2 ThreadPriority/CpuSet/ThreadConfig
+synchronization item. Canonical scheduling/threads rulebooks and shared frontend
+already agree; this is verification closure of a stale synchronization item,
+not newly implemented scheduler behavior. No rulebook semantics changed.
+
+Changed: new internal/sema/scheduling_thread_config_test.go and
+testdata/sema/scheduling_thread_config_{valid,invalid}.sec; extended
+cmd/compiler/thread_config_test.go and cmd/lsp/thread_config_test.go; owning
+governance/concurrency_scheduling.yaml (canonicalized first) and this handoff.
+
+Coverage: all five portable priority intents; Default/Preferred/Required;
+CpuSet affinity; named moved and fresh inline configurations. Eight negative
+forms each diagnose on their own source line, including implicit preference,
+set[uint] affinity, crossed payload types, native priority and runtime mutation.
+Sema matrix covers Interactive/Standard/Deep and 32/64-bit plans. CLI checks
+acceptance and invalid artifact suppression; editor shares both fixtures.
+
+Focused configuration suites pass: Sema 0.079s, CLI 16.060s, LSP 24.517s.
+Full traceability passes 0.226s. Governance check passes (47 fragments),
+canonical format, 70 owner path references and diff hygiene pass.
+Own file/ID remaining 11 -> 10; implemented 15 -> 16; partial unchanged.
+No production compiler, Sec, runtime/IR or target scheduling capability changes.
+Target priority/affinity realization, migration and scheduler runtime remain
+separately tracked. Latest handoff read before release; no overlapping Claude
+claim found. Working set released, no commit.
+
+## Codex claim — source-test visibility BUG-000034 (2026-11-22)
+
+Taking the whole tooling.language-testing remaining BUG-000034: core test
+bodies must retain source-file identity for ordinary module/file privacy and
+trusted-core checks. Working set: Sema statement token projection/test fixtures,
+focused CLI/LSP visibility regressions, testing.yaml, bug report/index, and this
+handoff. No test execution provider, harness/IR/runtime implementation or
+Claude decimal/CTE work. First reproduce the same-source core helper rejection;
+retain cross-file __ privacy and untrusted core exclusion.
+
+## Codex release — source-test visibility BUG-000034 (2026-11-22)
+
+Closed the complete tooling.language-testing BUG-000034 remaining item. The
+reproduction isolated Sema, not the loader/module spelling: statementToken
+omitted ast.TestDeclaration, so withProgramModules cleared currentSourceFile
+for test invocations. Trusted _ helpers and ordinary same-file __ helpers then
+failed the existing authority/privacy checks. Added the test-token projection;
+no access checks were relaxed. Extracted the existing cohesive projection from
+analyzer.go into internal/sema/statement_tokens.go, documenting its rules and
+removing exactly its old traceability exemption with the prescribed updater.
+
+Own changed files: internal/sema/{analyzer.go,statement_tokens.go,
+test_source_visibility_test.go}; cmd/{compiler,lsp}/test_source_visibility_test.go;
+testdata/core/test_visibility/{helpers.sec,helpers_test.sec,sibling_test.sec,
+visibility_invalid_test.sec}; testdata/lsp/test_source_visibility_test.sec;
+internal/traceability/testdata/baseline.txt; governance/testing.yaml;
+bug-reports/index.yaml and report moved from open/ to
+fixed/BUG-000034-core-test-file-module-internal-access.md; this handoff.
+No source Sec library, test runtime/harness/IR or Claude CTE/decimal changes.
+
+Validation: new regression failed before the fix (four legitimate trusted-core
+helper calls rejected). Afterward, three Sema depths x 32/64-bit plans verify
+valid helpers, retained cross-file __ privacy and untrusted core exclusion.
+Full Sema 50.797s and traceability 0.234s pass. Focused CLI test-command and LSP
+privacy/editor suites pass 29.756s/5.450s. The isolated real core loader lists
+two tests; a run remains execution-unavailable rather than falsely passed.
+
+Governance check passes (47 fragments); owning format is canonical, 55 paths
+exist and diff hygiene passes. The fragment has a pre-existing integrated:null
+on testing.compiler-verification-v1, reported as a formatting type warning; no
+integration date was invented. Counts: testing.yaml remaining 14 -> 13,
+implemented 26 -> 27, partial 7 unchanged. tooling.language-testing remaining
+14 -> 13, implemented 19 -> 20, partial 2 unchanged.
+Latest handoff read before release; no overlapping claim found. No new MD: the
+ordinary visibility rules fully define this fix. Static harness, controlled
+outcomes, test-boundary lowering and execution provider remain open; listing
+is not execution. Working set released; no commit.
+
+## Codex claim — test execution-provider contract (2026-11-22)
+
+Taking the whole tooling.language-testing execution-provider interface item
+(current remaining 10): transport-neutral contract for native/simulator/
+emulator/probe/farm launchers, explicit selected artifact/plan and identities,
+structured completed outcomes versus execution faults/reset/timeouts, and
+runner cancellation/deadline policy. Working set: new internal/testexec package
+and tests, owning testing.yaml and this handoff. No native provider/harness,
+source-language semantics, Sema/IR or concurrent decimal/CTE changes.
+
+## Claude claim + release — MD-143 BuildInfo (2026-11-22)
+
+(Claim posted late, together with the release; no overlap with the Codex
+test execution-provider claim above.) Working set: internal/sema
+build_info.go (+test), types.go/type_declarations.go/compiler_known_*.go/
+contract_cte.go/analyzer.go hooks, new internal/platform/buildinfo,
+cmd/compiler build_info.go (+test) with analysis_pipeline.go and
+build_command.go hooks, cmd/lsp build_info.go (+test) with
+analysis_configuration.go/target_analysis.go hooks, internal/ir/semantic
+build_info.go (+test) with builder.go (core.BuildInfo struct interning) and
+call_construction.go, diagnostics S1258 build-info.unresolved-plan, owning
+governance/tooling_projects.yaml.
+
+Result: core.BuildInfo with the 16 canonical fields and BuildInfo.Current()
+(CKM-BUILDINFO-CURRENT). CLI and LSP share one resolver (Target from the name
+or owning source, Variant named or unique, Target version, target OS/arch,
+[build].profile, MD-139 target profile); `sec build` exposes its invocation's
+number, check/LSP the stored one. Unresolved plan -> S1258. String/uint64
+fields evaluate in semantic CTE; Semantic IR materializes runtime Current()
+as a constant struct.construct with None/Some for Option fields; the module
+verifies. Native: SecToLLVM does not yet lower sec.struct.extract for structs
+with string/Option fields (probe), recorded as a remaining item.
+
+Validation: sema 33.5s, IR 8.3s, traceability, diagnostics, platform pass;
+targeted cmd/compiler and cmd/lsp subsets (BuildInfo|PlanSelection|CBinding|
+...) pass; `sec check` probes: S1258 outside a project, OK inside. Governance
+check passes (47 fragments). tooling.project-version-model: implemented
++5, remaining 6 -> 6 (five MD-143 items closed or narrowed; five narrower
+follow-ups: plan-time exclusion, Option CTE, native lowering, cache identity,
+hover/completion; explicit source facts unchanged). No new MD. Working set
+released; no commit.
+
+## Codex release — test execution-provider contract (2026-11-22)
+
+Closed the whole tooling.language-testing transport-neutral execution-provider
+interface item. New internal/testexec/{provider.go,run.go,provider_test.go,README.md}
+and testdata/testing/provider/selection_test.sec; updated testing.yaml and this
+handoff. No existing compiler/Sema/IR/CLI implementation or Sec source edits.
+
+API: Provider.Probe(ctx, Artifact) (Capabilities,error),
+Provider.Execute(ctx, Request) (Report,error), optional
+Controller.Control(ctx, Request, Action) error. Run and Control coordinate the
+boundary. Artifact retains the separate test-image path, exact PlanID/Variant,
+resolved scalar/target plan and canonical Sema test identities/source metadata.
+Request supplies RunID, optional runner timeout and fail-fast policy. Controls
+are capability-gated reset/interrupt/debug; deployment/start/result collection
+remain the provider's transport-owned Execute responsibility. No source wire
+protocol, implicit UART, host substitution or automatic retry was invented.
+
+Run distinguishes completed execution from ordinary passed/failed/skipped
+invocations, unavailable provider and execution failure. Fault categories cover
+processor fault, panic/crash, reset, provider loss, timeout/cancellation and
+protocol/infrastructure failure, with optional known active-test attribution
+and explicit recovery requirements. Returned partial observations remain raw
+evidence after errors; consumers must check Status before publishing outcomes.
+Request snapshots isolate probing/execution from caller-owned identity/domain
+slices. Providers cooperate with context cancellation and transfer ownership
+of returned reports; no detached timeout goroutines are introduced.
+
+Validation rejects foreign run/plan/test identities, duplicate/missing results,
+unknown states/recovery, pass/skip hiding observed assertions, failed children
+with successful parents and unexplained omissions. Fail-fast omissions remain
+explicit. Tests use real source-backed Sema metadata on 32/64-bit non-host scalar
+plans and injected providers, not an interpreter or native source execution.
+Race suite passes 1.106s; vet passes; full traceability passes 0.268s.
+
+Counts: testing.yaml remaining 13 -> 12, implemented 27 -> 28, partial 7
+unchanged; tooling.language-testing remaining 13 -> 12, implemented 20 -> 21,
+partial 2 unchanged. Snapshot also sees Claude's independent BuildInfo governance
++5 implemented under tooling.project-version-model; those are not this task.
+Latest handoff read: Claude's MD-143 BuildInfo batch is released, no overlap.
+Existing testing.compiler-verification-v1 integrated:null format warning remains
+unchanged. Harness generation, test-body/outcome lowering, native provider and
+CLI execution wiring remain separate open items; sec test is not executable yet.
+No missing normative decision found for this provider abstraction. Working set
+released; no commit.
+
+## Claude claim — struct projection folding for BuildInfo (2026-11-22)
+
+Taking the MD-143 native-lowering remaining item: a SecToLLVM-track pass
+that folds sec.struct.extract of a sec.struct.construct into the field
+operand and erases the dead, trivially copyable construct/constant tree
+(no struct or string layout is chosen). Working set: new
+mlir/lib/Conversion/SecToLLVM/StructProjections.cpp, Passes.td,
+CMakeLists.txt, SecToLLVM.cpp pipeline, a lit test, a native Go test, owning
+governance/tooling_projects.yaml and this handoff.
+
+## Codex claim — safe negative literal in protected call arguments (2026-11-22)
+
+Investigating reported temporal/business/calculate.sec try _findBusinessDay(...,
+-1): Sema records the literal negation as a possible ArithmeticError despite a
+representable constant result. Working set: focused integer literal-negation
+proof/immutable operator fact, canonical IR consumption, source-backed
+Sema/CLI/LSP/IR tests, bug ledger and errors governance. No decimal/operator
+scale changes, native MLIR or Claude struct-projection work. Keep dynamic/minimum
+negation checked; check duplicate reporting with a minimal fixture.
+
+## Claude release — struct projection folding for BuildInfo (2026-11-22)
+
+New pass sec-fold-struct-projections (StructProjections.cpp, Passes.td,
+CMake), first in the sec-lower-to-llvm pipeline before
+sec-check-lowering-support. It folds a copy-trivial sec.struct.extract of a
+sec.struct.construct into the field operand and erases only the
+construction tree that became dead (constants, copy-trivial struct/union
+constructions). Owner-moving constructions (construct-direct) and every
+other struct/string/union value still reach the entry gate unchanged, so no
+representation is chosen silently. BuildInfo.Current() integer fields now
+run natively.
+
+Validation: ninja -j 4 sec-mlir-opt; SecToLLVM lit 26/26 including the new
+struct-projections.mlir; go test ./cmd/compiler -run 'Runs$|Run$|Native'
+passes (124s); TestBuildInfoFieldsRunNatively exits 42 and leaves the
+manifest unchanged. Governance check passes. tooling.project-version-model:
+implemented +1, remaining unchanged (the native item narrowed to string,
+Option and whole-value BuildInfo uses, which need the track's string/struct/
+Option<string> representations). No new MD. Working set released; no commit.
+
+## Codex release — BUG-000039 safe negative literal try provenance (2026-11-22)
+
+Fixed the reported temporal/business/calculate.sec failure at
+try _findBusinessDay(value, rules, -1). The call's BusinessError channel is
+correct; the protected argument (-1) was spuriously included as ArithmeticError.
+Shared Sema proof now discharges only representable builtin integer literal
+negation, using the selected canonical builtin bounds (the untyped literal's
+type shell has no bounds). Immutable NegatedIntegerConstant carries the exact
+value; RuntimeCheck and arithmetic failure/panic facts disappear for that
+literal. Dynamic negation, contracts and decimal behavior remain unchanged.
+
+Canonical IR consumes the proof as const.int before operand materialization;
+it does not emit an invalid single-result checked negation or a dead panic
+edge. Extracted buildResolvedOperatorWithFailure from the oversized builder
+into operator_lowering.go with rulebook traceability, removing only its own
+old exemption with the prescribed updater.
+
+Own files: internal/sema/{integer_literal_negation.go,semantic_facts.go,
+try_negative_literal_test.go}; internal/ir/semantic/{builder.go,
+operator_lowering.go,negative_literal_test.go}; cmd/{compiler,lsp}/
+try_negative_literal_test.go; testdata/sema/{try_negative_literal_valid.sec,
+try_negative_literal_invalid.sec,negative_literal_boundaries.sec}; traceability
+baseline; governance/errors.yaml; bug-reports/index.yaml and
+fixed/BUG-000039-safe-negative-literal-try-failure.md; this handoff.
+No Sec library, native/MLIR, decimal or Claude BuildInfo projection edits.
+
+Before-fix source regression reproduces S1093 from (-1). After fix: three
+Sema depths x 32/64-bit plans accept it; dynamic argument -direction retains
+exactly one S1093 in Sema/CLI/LSP. Verified IR tests cover -1, signed minima,
+negative zero and dynamic checked negation. Full Sema 31.353s, full IR 8.478s,
+traceability 0.249s pass. Focused CLI/LSP/IR 3.038s/2.918s/0.018s pass.
+The actual calculate.sec probe has no ArithmeticError from (-1); three
+unrelated errors remain in calendar/partial_validation.sec (missing return
+and two undefined CalendarError uses). A clean library compilation is not
+claimed. The minimal pre-fix error appeared once; no separate editor-display
+duplication was established or blanket deduplication added.
+
+Governance check passes (47 fragments), canonical errors.yaml format, all 133
+owner paths and diff hygiene pass. frontend.errorhandling-v2 implemented
+92 -> 93, remaining 8 unchanged; errors.yaml implemented 170 -> 171, remaining
+32 unchanged. This is a reported bug fix, not completion of an unrelated
+remaining item. Claude's snapshot +1 BuildInfo implementation is independent.
+Latest handoff read: Claude's struct-projection batch released, no overlap.
+No normative decision missing. Working set released; no commit.
+
+## Claude claim + release — MD-143 Option fields in CTE (2026-11-22)
+
+Small Sema-only batch (claim posted with the release; no overlap with open
+Codex claims). Working set: internal/sema build_info.go (+test),
+cte_executor.go and contract_cte.go hooks, internal/ir/semantic
+build_info_test.go, owning governance/tooling_projects.yaml.
+
+BuildInfo.Current() is now a CTE struct value (buildInfoAggregate) with
+Some/None variants for VersionUserDefined, SourceRevision and
+DirtySourceStatus, used by both the semantic evaluator and the CTE executor:
+match, `is`, guards and module constants of the whole value work; an Option
+field module constant materializes as a Some/None static. A module static of
+the whole BuildInfo stays a boundary because staticMaterializable excludes
+structs with string fields (general limit, recorded as a remaining item).
+
+Validation: sema 34.6s, IR 8.4s, traceability pass; cmd/compiler and cmd/lsp
+-run 'BuildInfo|CTE|CompileTime' pass. Governance check passes.
+tooling.project-version-model: implemented +1, remaining unchanged (Option
+CTE item closed, whole-value static item added). No new MD. Working set
+released; no commit.
+
+## Codex claim — registered binary operator operand mismatch (2026-11-22)
+
+Taking the reported unregistered "cannot apply operator - to uint and int"
+diagnostic. Reserve S1259 operator.incompatible-operand-types in the operators
+family. Working set: shared Sema reporting helper and existing identical binary
+operator reports, cohesive plain-arithmetic inference extraction, diagnostic
+registry, focused source/CLI/LSP/catalog tests, owning diagnostic governance and
+this handoff. No numeric compatibility, implicit conversions, decimal semantics,
+Sec user code or Claude BuildInfo work changes.
+
+Codex synchronization note (S1259 task): traceability currently detects the
+concurrent internal/sema/compilation_mode.go belowTestRoot helper without a rule
+reference. That file is outside this operator task; please add its rulebook
+comment in the compilation-mode batch. My changes stay in the claimed operator
+files/registry. No compilation-mode behavior or test migrations touched.
+
+## Codex release — S1259 operator operand diagnostics (2026-11-22)
+
+Completed the reported missing registry diagnostic without changing numeric
+compatibility. S1259 / operator.incompatible-operand-types is mandatory Error
+in family operators. The shared addOperatorOperandTypeError keeps the owning
+message and operator token span and adds explicit type/conversion guidance,
+with no automatic cast or source fix. All four identical cannot-apply-operator
+reporting sites now use it; the differently worded numeric-carrier mismatch
+and other raw operator errors remain separate work.
+
+Own files: internal/diagnostics/diagnostics.go; internal/sema/
+{analyzer_inference.go,arithmetic_inference.go,operator_diagnostics.go,
+operator_diagnostics_test.go}; cmd/{compiler,lsp}/operator_diagnostics_test.go;
+testdata/sema/operator_operand_types_{valid,invalid}.sec; traceability baseline;
+governance/errors_diagnostics.yaml; bug-reports/index.yaml and
+fixed/BUG-000040-operator-operand-mismatch-diagnostic.md; this handoff.
+The existing plain-arithmetic inference function was extracted from the
+oversized analyzer with rulebook traceability; updater removed only its old
+exemption in this batch. No Sec library, IR/runtime, numeric rules or decimal
+semantics changed.
+
+Source-backed tests verify three depths x 32/64-bit plans, uint/int subtraction,
+integer/bitwise widths, float/decimal rejection, accepted same-type/literal
+cases, exact spans/help and stable registered identity. Focused Sema/CLI/LSP
+pass 0.036s/1.973s/3.713s; broader Sema operator/arithmetic/numeric/bitwise/
+unit-conversion selection 0.894s; registry 0.002s; full traceability 0.223s;
+CLI catalog/operator selection 1.271s. CLI JSON marks all four occurrences
+registered S1259 and sec diagnostics S1259 resolves the entry.
+
+Synchronization: concurrent compilation_mode.go belowTestRoot initially lacked
+a traceability reference, as flagged above. Added ONLY its two-line explanatory
+rulebook comment so the shared traceability gate passes; no compilation-mode
+behavior/test migration edits. This small documentation fix belongs with that
+other batch. Latest handoff read before release; no new overlapping claim.
+Governance check passes (47 fragments), owner paths (32), canonical layout and
+diff hygiene pass. Existing boolean date warnings integrated/audited on
+errors.diagnostics were preserved, without inventing dates. BUG-000040 closed;
+no remaining checklist item was claimed complete by this diagnostic bug fix.
+Working set released, no commit.
+
+## Claude claim + release — TestCompilationPlan mode and tests/ universe (2026-11-22)
+
+(Claim posted with the release; no open Codex testing claim.) Working set:
+new internal/sema/compilation_mode.go (+test), analyzer.go field,
+cmd/compiler import_sources.go and test_command.go, cmd/lsp
+import_sources.go, new CLI/LSP tests, governance/testing.yaml.
+
+sema.CompilationMode (production default, test) is set by sec test;
+validateProductionGraph now resolves the tested module's production files
+explicitly in production mode. IsTestOnlySource covers *_test.sec and all
+source below <project>/tests; TestOnlyImportIssues rejects a tests/ import
+with S1145 in production plans and from production source in test plans,
+allows it from test-only source (CLI and LSP test view of test-only files).
+`sec check` of a tests/ file that imports another tests/ module is therefore
+rejected (tests/ participates only in a TestCompilationPlan, § 8.1).
+
+Validation: sema, traceability, testexec pass; cmd/compiler test/import
+subsets pass; new LSP test passes. Two LSP fmt-package import tests fail on
+the unhandled fmt.Println Result in stdlib, unrelated (stdlib not a compile
+target). tooling.language-testing: remaining 12 -> 11, implemented +2 (one
+narrower follow-up: reject a production Target source below tests/). No new
+MD. Working set released; no commit.
+
+## Claude claim + release — BUG-000032 and MD-049 formatter tests (2026-11-22)
+
+(Claim posted with the release; no overlapping claim.) Working set:
+internal/parser/parser.go (parseUnit, isUnitScanBoundary) with
+unit_scan_boundary_test.go, internal/formatter/decimal_scale_test.go,
+bug-reports (BUG-000032 open -> fixed), governance/parser.yaml and
+formatting.yaml.
+
+BUG-000032: the speculative unit scan stops at block/statement/list
+delimiters, comparison/logical operators and a line change, so `a < b {
+... c > (x) }` is a comparison; `float<km>(x)` still parses. Parser,
+Sema, IR, formatter, CST suites and unit/conversion CLI (38s) and LSP
+(298s) subsets pass. MD-049 formatter: behavior was already correct; the
+new test locks literal spelling, clause order, parse equivalence and
+idempotence. parser.yaml remaining 7 -> 6, formatting.yaml 12 -> 11,
+implemented +1 each. No new MD. Working set released; no commit.
+
+## Claude claim + release — explicit slice help and MD-149 (2026-11-22)
+
+(Claim posted with the release.) Working set: new
+internal/sema/explicit_slice_help.go (+test), mentor_try.go hook,
+missing-decisions.yaml (MD-149, last_id), governance/collections.yaml.
+
+A ref T[] / ref mut T[] mismatch with a T[N], T[] or reference-to-array
+argument of the same element type keeps the type error and now helps with
+`ref values[..]` (or `ref mut values[..]`) and a subrange. No semantic
+change. MD-149 (localized, open) records the owner's ergonomics question:
+implicit ref T[N] -> ref T[] coercion, scope, positions and borrow facts.
+Validation: sema, traceability, cmd/compiler and cmd/lsp
+-run 'Slice|Diagnostic|Mismatch' pass. frontend.collections: implemented +1,
+remaining +1 (MD-149). Working set released; no commit.

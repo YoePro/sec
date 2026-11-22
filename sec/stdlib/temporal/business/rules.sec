@@ -24,6 +24,57 @@ type MonthlyDateRule union {
     DaysBeforeNextMonth(int),
 }
 
+/**
+ * Defines how a monthly due date is selected.
+ *
+ * Description:
+ * Civil uses an existing calendar-date rule, such as
+ * the twenty-seventh day of the month or a day relative
+ * to a month boundary.
+ *
+ * BusinessOrdinal selects a working day within the
+ * requested Gregorian month using an explicit
+ * BusinessCalendarData dataset.
+ *
+ * Positive business ordinals count from month start.
+ * Negative business ordinals count backward from
+ * month end. Zero is invalid.
+ *
+ * Business-day ordinals are resolved before applying
+ * any optional business-day adjustment.
+ *
+ * Ownership:
+ * Value without allocation or I/O.
+ */
+type MonthlyDueDateRule union {
+    // Select a nominal civil date using MonthlyDateRule.
+    // Business-day adjustment may subsequently change it.
+    Civil(MonthlyDateRule),
+
+    // Select a business day by its position in the month.
+    // Examples:
+    // 1 = first business day
+    // 3 = third business day
+    // -1 = last business day
+    // -3 = third-to-last business day
+    BusinessOrdinal(int),
+
+    // Select a weekday by its occurrence in the month.
+    //
+    // Position 1 selects the first occurrence,
+    // position 2 the second, and so forth.
+    //
+    // Negative positions count backward from month end.
+    // Position -1 selects the final occurrence.
+    //
+    // The nominal date may subsequently be adjusted
+    // according to BusinessDayAdjustment.
+    WeekdayOrdinal {
+        Weekday:  date.Weekdays,
+        Position: int,
+    }
+}
+
 // Adjustments for a target date that is not a business day.
 enum BusinessDayAdjustment {
     // Keep the computed civil date without checking bank/working-day rules.
@@ -46,6 +97,124 @@ type BusinessCalendar struct {
     Revision: string,
 }
 
+/**
+ * Defines the ordinary working days of a seven-day week.
+ *
+ * Description:
+ * Each weekday is explicitly classified as working
+ * or non-working. No particular weekend is assumed.
+ *
+ * Exceptional dates are handled separately by
+ * BusinessDayException.
+ *
+ * Ownership:
+ * Copyable value without allocation or I/O.
+ */
+type BusinessWeekPattern struct {
+    // Monday is ordinarily a working day.
+    Monday: bool,
+
+    // Tuesday is ordinarily a working day.
+    Tuesday: bool,
+
+    // Wednesday is ordinarily a working day.
+    Wednesday: bool,
+
+    // Thursday is ordinarily a working day.
+    Thursday: bool,
+
+    // Friday is ordinarily a working day.
+    Friday: bool,
+
+    // Saturday is ordinarily a working day.
+    Saturday: bool,
+
+    // Sunday is ordinarily a working day.
+    Sunday: bool,
+}
+
+/**
+ * Overrides the ordinary working-day classification.
+ *
+ * Description:
+ * Working=false explicitly closes the given date.
+ * Working=true explicitly opens the given date.
+ *
+ * Exceptions take precedence over the weekly pattern.
+ *
+ * Ownership:
+ * Copyable value without allocation.
+ */
+type BusinessDayException struct {
+    // Absolute date affected by the exception.
+    Day: date,
+
+    // True when working, false when non-working.
+    Working: bool,
+}
+
+/**
+ * Describes an explicitly supplied business-calendar dataset.
+ *
+ * Description:
+ * Contains a pinned calendar identity, coverage interval,
+ * ordinary weekday rules and borrowed date exceptions.
+ *
+ * Coverage boundaries are inclusive.
+ *
+ * Exceptions must be sorted by ascending EpochDays,
+ * contain no duplicate dates and remain within coverage.
+ *
+ * The borrowed exceptions must outlive this descriptor.
+ * No ownership of the exception storage is transferred.
+ *
+ * No I/O, timezone lookup or host-calendar access occurs.
+ *
+ * Ownership:
+ * Owns the calendar descriptor and weekday pattern.
+ * Borrows the exception sequence.
+ */
+type BusinessCalendarData struct {
+    // Stable calendar identity and immutable revision.
+    Calendar: BusinessCalendar,
+
+    // First absolute day covered by the dataset.
+    FirstDay: date,
+
+    // Last absolute day covered by the dataset.
+    LastDay: date,
+
+    // Ordinary weekday classification.
+    Week: BusinessWeekPattern,
+
+    // Sorted, unique date-specific overrides.
+    Exceptions: ref BusinessDayException[],
+}
+
+/**
+ * Defines how multiple business calendars are combined.
+ *
+ * Description:
+ * All requires every calendar to classify the date
+ * as a business day.
+ *
+ * Any requires at least one calendar to classify
+ * the date as a business day.
+ *
+ * Every calendar must cover the requested date.
+ * Missing coverage is an error, never a false result.
+ *
+ * Ownership:
+ * Copyable enum without allocation.
+ */
+enum BusinessCalendarCombination {
+    // Every supplied calendar must be open.
+    All,
+
+    // At least one supplied calendar must be open.
+    Any,
+}
+
 // Failures in monthly rules and business-day adjustment.
 enum BusinessError error {
     // Implementation is not available yet.
@@ -60,4 +229,13 @@ enum BusinessError error {
     OutsideCoverage,
     // Day or month exceeds representable bounds.
     OutOfRange,
+
+    // The supplied business-calendar dataset is malformed.
+    //
+    // Examples:
+    // - Coverage starts after its final date.
+    // - Calendar identity or revision is empty.
+    // - Exceptions are unsorted or duplicated.
+    // - An exception lies outside dataset coverage.
+    InvalidCalendarData,
 }

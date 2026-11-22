@@ -406,6 +406,10 @@ func (x *cteExecutor) expression(expr ast.Expression) (DefaultConstant, compileT
 		}
 		return value, compileTimeEvaluated, true
 	case *ast.CallExpression:
+		// MD-143 § 113B(2): BuildInfo.Current() is the plan snapshot.
+		if value, outcome, handled := x.a.buildInfoCurrentConstant(expr); handled {
+			return value, outcome, true
+		}
 		value, ok := x.call(expr)
 		if !ok {
 			return DefaultConstant{}, compileTimeNotConstant, true

@@ -1,0 +1,10 @@
+module core
+
+fn _sharedTest() bool { return true }
+fn __privateTest() bool { return true }
+
+test "core helpers retain ordinary visibility" {
+    testing.Expect(_sharedProduction())
+    testing.Expect(_sharedTest())
+    testing.Expect(__privateTest())
+}

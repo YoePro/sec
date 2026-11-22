@@ -6,7 +6,6 @@ let Zero: decimal := 0m
 let Prefix: string := "sec"
 let mut Runtime: decimal := 1m
 
-type Inexact decimal default One / Three
 type DivideByZero decimal default One / Zero
 type InvalidText string default Prefix + One
 type NotConstant decimal default Runtime + One

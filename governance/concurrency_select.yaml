@@ -7,6 +7,7 @@ integrations:
     feature: select-readiness-commit
     status: partial
     reviewed: "2026-09-24"
+    revised: "2026-11-22"
     document_revision: "2.0"
     repository_baseline: main-reviewed-2026-09-23
     summary: >-
@@ -31,85 +32,110 @@ integrations:
       - rules/platform/target_profiles.md
       - rules/tooling/lsp.md
       - language-rulebook-status.md
-    normative:
-      - "select chooses at most one compiler-recognized concurrent operation per execution."
-      - "When multiple branches are ready at one selection point, the first ready source branch wins."
-      - "Selectable operations have explicit prepare, readiness, and commit semantics; only the selected branch commits."
-      - "Readiness inspection is non-destructive and may not perform source-visible operation effects."
-      - "Prepared move-only values remain conditionally owned until selected commit, another branch commits, or cancellation cleanup."
-      - "Selected branch bindings have exactly the ordinary operation return type."
-      - "Sender[T].Send, Sender[T].SendRevocable, and Receiver[T].Receive are selectable."
-      - "Sender[T].TrySend and Receiver[T].TryReceive are not selectable in Sec 0.1."
-      - "MessageTicket[T].Revoke, Share, Discard, Statistics, and endpoint Close are not selectable."
-      - "await Task[T] is selectable and consumes the Task[T] handle only when its branch commits."
-      - "join Task[T], join Thread[T], join Process[T], and join Command are selectable."
-      - "A selected join consumes the one-shot join capability and preserves the handle value according to the owning execution-kind rulebook."
-      - "A non-selected join consumes no join capability and performs no lifecycle resolution."
-      - "ProcessObserver.Wait() is selectable; task/thread observer select remains unavailable until an exact public wait operation is defined."
-      - "PipeReader.Read and PipeWriter.Write are selectable; ReadExact and WriteAll are not primitive selectable operations."
-      - "IPCSender[T].Send, IPCReceiver[T].Receive, IPCMutex.Lock, and IPCSemaphore.Acquire are selectable."
-      - "IPCMutex.TryLock and IPCSemaphore.TryAcquire are not selectable."
-      - "Task.Current().CancelRequested and Thread.Current().CancelRequested are bool observations and are not selectable."
-      - "A waiting select is a current-execution cancellation point; cancellation winning before branch commit commits no branch."
-      - "after uses canonical duration and monotonic time; default is unique and final."
-      - "select itself adds no generic synchronization edge; the selected operation contributes its ordinary synchronization."
-      - "Sec 0.1 defines no user-implementable Selectable interface."
+    code:
+      - internal/sema/process_observer.go
+      - internal/sema/select_operations.go
+      - internal/sema/compiler_known_calls.go
+      - internal/sema/compiler_known_members.go
+      - internal/sema/thread_observer_wait.go
+      - internal/sema/analyzer.go
+      - internal/sema/analyzer_inference.go
+      - internal/sema/types.go
+      - internal/diagnostics/diagnostics.go
+    tests:
+      - internal/sema/select_observer_test.go
+      - cmd/compiler/select_observer_test.go
+      - cmd/lsp/select_observer_test.go
+      - testdata/sema/select_observer/valid.sec
+      - testdata/sema/select_observer/invalid.sec
+      - testdata/sema/select_observer/platform_invalid.sec
+      - testdata/sema/select_observer/replacement_invalid.sec
     implemented:
-      - "TrySend/TryReceive are not recognized as selectable operations (select.md § 54(3); TestSelectRejectsNonWaitingOperations) (2026-11-09)"
+      - TrySend/TryReceive are not recognized as selectable operations (select.md § 54(3); TestSelectRejectsNonWaitingOperations) (2026-11-09)
       - "MessageTicket.Revoke and other non-waiting channel methods are rejected as selectable: only Receive, Send and SendRevocable on compiler-known Receiver/Sender, await and join are recognized (2026-11-09)"
-      - "CancelRequested is an observation, never recognized as a selectable operation (select.md § 36) (2026-11-09)"
+      - CancelRequested is an observation, never recognized as a selectable operation (select.md § 36) (2026-11-09)
       - "selectable `join task` branch (grammar.md § 63 SelectJoinBranch): the selected branch commits the ordinary join (one-shot capability, preserved Task[T] handle), a non-selected one changes nothing, and one handle may be used by one branch only (TestSelectJoinBranch) (2026-11-09)"
-      - "selectable `join thread` branch with the same frontend semantics for Thread[T] (threads.md § 35) (2026-11-09)"
+      - selectable `join thread` branch with the same frontend semantics for Thread[T] (threads.md § 35) (2026-11-09)
       - "a select without default continues only through a committed branch: the former no-branch continuation path is removed, since cancellation that wins first terminates the current execution (select.md §§ 4(4), 35; cancellation.md §§ 14, 26) (2026-11-09)"
-      - "parser/frontend recognize select syntax, operation branches, after, and default"
-      - "frontend has initial channel receive/send and await branch recognition"
-      - "process join and ProcessObserver.Wait select semantics are already defined by processes.md"
-      - "IPC rulebook already defines primitive selectable pipe, typed IPC, IPCMutex.Lock, and IPCSemaphore.Acquire operations"
-      - "legacy select source-order priority and non-selected no-effect model are documented"
-      - "select revision 2.0 and its channel, await, task, thread, cancellation, Semantic IR, target-profile, and LSP cross-rulebook corrections are synchronized"
+      - parser/frontend recognize select syntax, operation branches, after, and default
+      - frontend has initial channel receive/send and await branch recognition
+      - process join and ProcessObserver.Wait select semantics are already defined by processes.md
+      - IPC rulebook already defines primitive selectable pipe, typed IPC, IPCMutex.Lock, and IPCSemaphore.Acquire operations
+      - legacy select source-order priority and non-selected no-effect model are documented
+      - select revision 2.0 and its channel, await, task, thread, cancellation, Semantic IR, target-profile, and LSP cross-rulebook corrections are synchronized
+      - "Observer select boundary completed 2026-11-22 (select.md §§25–26,51,54; processes.md §§5.14,21): the intrinsic copyable non-owning ProcessObserver has exact Wait() ProcessStatus resolution, repeated ordinary/selected waits and shared-reference access. Selected branch bindings retain ProcessStatus without a lifecycle-owner or generic select wrapper; copies and non-selected candidates do not consume join/detach authority. Same-spelled user/task observer methods and metadata remain non-selectable, and canonical ThreadObserver still has no Wait or hidden selectable completion operation. S1255/S1256/S1257 provide registered observer-wait, non-selectable-operation and invalid observer-call/construction diagnostics. Ordinary Wait contributes a blocking effect; candidate preparation does not, and a default select remains nonblocking. Shared compiler member facts drive Wait hover/completion/synthetic navigation. ProcessObserver stays opaque/nondefaultable; fabrication is rejected, ProcessPlatform access names its missing selected-target declaration, and CLI emit-ir preserves the existing unsupported type boundary without output. Full process/core declarations, physical waiting/readiness and owner runtime/lowering remain with their own open points."
     remaining:
-      - "ensure process/Command join remains aligned with process lifecycle semantics"
-      - "keep ProcessObserver.Wait selectable and prevent hidden TaskObserver/ThreadObserver wait synthesis"
-      - "implement exact one-time branch preparation and conditional ownership representation"
-      - "implement source-order ready selection independently of native notification order"
-      - "implement atomic cancellation-versus-branch-commit race"
-      - "implement non-selected withdrawal/rollback without operation side effects"
-      - "complete Semantic IR facts for source order, preparation, readiness, conditional ownership, commit, rollback, timeout, default, and cancellation"
-      - "complete lowering/runtime wait-set integration across supported mixed operation kinds"
-      - "validate no hidden unbounded allocation in target select registration"
-      - "update LSP hover/completion/navigation to exact selectable set"
+      - ensure process/Command join remains aligned with process lifecycle semantics
+      - implement exact one-time branch preparation and conditional ownership representation
+      - implement source-order ready selection independently of native notification order
+      - implement atomic cancellation-versus-branch-commit race
+      - implement non-selected withdrawal/rollback without operation side effects
+      - complete Semantic IR facts for source order, preparation, readiness, conditional ownership, commit, rollback, timeout, default, and cancellation
+      - complete lowering/runtime wait-set integration across supported mixed operation kinds
+      - validate no hidden unbounded allocation in target select registration
+      - update LSP hover/completion/navigation to exact selectable set
     required_tests:
-      - "source-order selects the first ready branch"
-      - "a continuously ready earlier branch may starve a later branch"
-      - "exactly one branch commits"
-      - "non-selected operations have no source-visible effect"
-      - "branch preparation evaluates operands exactly once"
-      - "TrySend is rejected as selectable"
-      - "TryReceive is rejected as selectable"
-      - "CancelRequested is rejected as selectable"
-      - "selected channel Send yields ChannelSendResult[T]"
-      - "selected revocable send creates a ticket only on Accepted commit"
-      - "selected await consumes Task[T] and yields TaskOutcome[T]"
-      - "non-selected await preserves Task[T]"
-      - "task join is selectable and preserves handle while consuming join capability"
-      - "thread join is selectable and preserves handle while consuming join capability"
-      - "process and Command join remain selectable"
-      - "ProcessObserver.Wait is selectable"
-      - "task/thread observer selection is rejected without an exact wait operation"
-      - "Pipe Read/Write selectable; ReadExact/WriteAll rejected as primitive selectable"
-      - "IPCMutex.Lock/IPCSemaphore.Acquire selectable; Try variants rejected"
-      - "zero-duration after is immediately ready but obeys source order"
-      - "default is unique and last"
-      - "current-execution cancellation winning pre-commit commits no branch"
-      - "conditional move ownership returns on a non-selected normal continuation"
-      - "conflicting duplicate exclusive candidates are rejected"
-      - "live guard across waiting select is rejected"
-      - "native notification order cannot override source-order priority"
-      - "LSP completion excludes non-selectable Try*/CancelRequested"
+      - source-order selects the first ready branch
+      - a continuously ready earlier branch may starve a later branch
+      - exactly one branch commits
+      - non-selected operations have no source-visible effect
+      - branch preparation evaluates operands exactly once
+      - TrySend is rejected as selectable
+      - TryReceive is rejected as selectable
+      - CancelRequested is rejected as selectable
+      - selected channel Send yields ChannelSendResult[T]
+      - selected revocable send creates a ticket only on Accepted commit
+      - selected await consumes Task[T] and yields TaskOutcome[T]
+      - non-selected await preserves Task[T]
+      - task join is selectable and preserves handle while consuming join capability
+      - thread join is selectable and preserves handle while consuming join capability
+      - process and Command join remain selectable
+      - ProcessObserver.Wait is selectable
+      - task/thread observer selection is rejected without an exact wait operation
+      - Pipe Read/Write selectable; ReadExact/WriteAll rejected as primitive selectable
+      - IPCMutex.Lock/IPCSemaphore.Acquire selectable; Try variants rejected
+      - zero-duration after is immediately ready but obeys source order
+      - default is unique and last
+      - current-execution cancellation winning pre-commit commits no branch
+      - conditional move ownership returns on a non-selected normal continuation
+      - conflicting duplicate exclusive candidates are rejected
+      - live guard across waiting select is rejected
+      - native notification order cannot override source-order priority
+      - LSP completion excludes non-selectable Try*/CancelRequested
+    verification:
+      - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./internal/ir/semantic ./internal/lowering/secmlir -count=1 -timeout=120s
+        result: "Passed 2026-11-22: full Semantic IR 9.719s and Sec MLIR emitter/integration 24.554s. Existing intrinsic unsupported-type behavior keeps ProcessObserver physical lowering unavailable; source recognition does not create an empty native representation."
+      - command: go test -race ./internal/sema ./cmd/compiler ./cmd/lsp -run 'TestSelect(ProcessObserver|Observer)|TestProcessObserverBoundaries|TestThreadMetadataBoundaries|TestSelectJoinBranch' -count=1 -timeout=120s
+        result: "Passed 2026-11-22: Sema 1.435s, compiler 45.284s and LSP 68.660s. Repeatable copies/refs and exact ProcessStatus branch results pass at all depths on 32/64-bit plans; blocking-vs-preparation effects, nine invalid boundaries, opaque/platform limitations, JSON IDs, Wait hover/completion/navigation and no IR output at unsupported ProcessObserver representation are covered. No process runtime waiting or owner API completion is claimed."
+      - command: go test ./internal/sema ./internal/diagnostics ./internal/traceability -count=1 -timeout=120s; go vet ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: "Passed 2026-11-22: full Sema 32.844s, diagnostics 0.002s, traceability 0.221s and vet. Later source-extension replacement probe also passes independently; canonical Wait cannot be used with a substituted int result."
+    normative:
+      - select chooses at most one compiler-recognized concurrent operation per execution.
+      - When multiple branches are ready at one selection point, the first ready source branch wins.
+      - Selectable operations have explicit prepare, readiness, and commit semantics; only the selected branch commits.
+      - Readiness inspection is non-destructive and may not perform source-visible operation effects.
+      - Prepared move-only values remain conditionally owned until selected commit, another branch commits, or cancellation cleanup.
+      - Selected branch bindings have exactly the ordinary operation return type.
+      - Sender[T].Send, Sender[T].SendRevocable, and Receiver[T].Receive are selectable.
+      - Sender[T].TrySend and Receiver[T].TryReceive are not selectable in Sec 0.1.
+      - MessageTicket[T].Revoke, Share, Discard, Statistics, and endpoint Close are not selectable.
+      - await Task[T] is selectable and consumes the Task[T] handle only when its branch commits.
+      - join Task[T], join Thread[T], join Process[T], and join Command are selectable.
+      - A selected join consumes the one-shot join capability and preserves the handle value according to the owning execution-kind rulebook.
+      - A non-selected join consumes no join capability and performs no lifecycle resolution.
+      - ProcessObserver.Wait() is selectable; task/thread observer select remains unavailable until an exact public wait operation is defined.
+      - PipeReader.Read and PipeWriter.Write are selectable; ReadExact and WriteAll are not primitive selectable operations.
+      - IPCSender[T].Send, IPCReceiver[T].Receive, IPCMutex.Lock, and IPCSemaphore.Acquire are selectable.
+      - IPCMutex.TryLock and IPCSemaphore.TryAcquire are not selectable.
+      - Task.Current().CancelRequested and Thread.Current().CancelRequested are bool observations and are not selectable.
+      - A waiting select is a current-execution cancellation point; cancellation winning before branch commit commits no branch.
+      - after uses canonical duration and monotonic time; default is unique and final.
+      - select itself adds no generic synchronization edge; the selected operation contributes its ordinary synchronization.
+      - Sec 0.1 defines no user-implementable Selectable interface.
     governance_reconciliation:
-      - "concurrency_select.yaml owns select syntax, branch preparation/readiness/commit, source-order priority, timeout/default, and select-specific cancellation/ownership semantics"
-      - "channel/task/thread/process/IPC fragments remain owners of their operations' exact result/lifecycle/synchronization contracts"
-      - "concrete Semantic IR vocabulary remains owned by rules/compiler/semantic_ir.md"
-      - "implementation status belongs in split governance fragments rather than root implementation-status.yaml"
+      - concurrency_select.yaml owns select syntax, branch preparation/readiness/commit, source-order priority, timeout/default, and select-specific cancellation/ownership semantics
+      - channel/task/thread/process/IPC fragments remain owners of their operations' exact result/lifecycle/synchronization contracts
+      - concrete Semantic IR vocabulary remains owned by rules/compiler/semantic_ir.md
+      - implementation status belongs in split governance fragments rather than root implementation-status.yaml
     corrections_applied:
       - rules/corrections/applied/select-v2-cross-rulebook-correction-20260924.md

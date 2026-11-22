@@ -2,6 +2,7 @@ package sema
 
 import (
 	"fmt"
+	"math"
 	"math/big"
 
 	"sec/internal/ast"
@@ -72,7 +73,13 @@ func (a *Analyzer) applyContracts(typ Type, contractNode ast.Contract) Type {
 	}
 	start := len(a.errors)
 	defer func() { a.relateErrorsSince(start, typ.DeclarationToken, "type declaration") }()
+	inheritedScale, hasInheritedScale := FixedDecimalScaleOf(typ)
+	localScale := false
 	for _, contract := range flattenASTContracts(contractNode) {
+		if marker, ok := contract.(*ast.MarkerContract); ok && marker.Name == "scale" {
+			typ = a.applyScaleContract(typ, marker, &localScale, inheritedScale, hasInheritedScale)
+			continue
+		}
 		typ = a.applyContract(typ, contract)
 	}
 	a.checkContractSetConsistency(typ, contractNode)
@@ -367,15 +374,28 @@ func (a *Analyzer) applyRangeContract(typ Type, contract *ast.RangeContract) Typ
 		}
 		return value, nil, "", true
 	}
+	// MD-049 § 13(4): a decimal-based range keeps each bound's represented
+	// scale for scale inference, separately from its exact comparison value.
+	decimalBound := func(expr ast.Expression) *DecimalValue {
+		if typ.Kind != DecimalType || expr == nil {
+			return nil
+		}
+		if value, ok := a.semanticCompileTimeDecimal(expr); ok {
+			return &value
+		}
+		return nil
+	}
 	if min, exact, lexeme, ok := bound(contract.Min, "lower"); ok {
 		rangeContract.Min = min
 		rangeContract.ExactMin = exact
 		rangeContract.MinLexeme = lexeme
+		rangeContract.MinDecimal = decimalBound(contract.Min)
 	}
 	if max, exact, lexeme, ok := bound(contract.Max, "upper"); ok {
 		rangeContract.Max = max
 		rangeContract.ExactMax = exact
 		rangeContract.MaxLexeme = lexeme
+		rangeContract.MaxDecimal = decimalBound(contract.Max)
 	}
 
 	typ.Contracts = append(typ.Contracts, rangeContract)
@@ -814,4 +834,64 @@ func formatRangeContract(typ Type) string {
 	}
 
 	return ""
+}
+
+// FixedDecimalScaleOf returns the fixed scale of a named decimal type, whether
+// declared locally or inherited from a named base (MD-049).
+// Rules: rules/types/types.md — § 45A(2); rules/types/contracts.md — § 16.
+func FixedDecimalScaleOf(typ Type) (int32, bool) {
+	for _, contract := range typ.Contracts {
+		if scale, ok := contract.(ScaleContract); ok {
+			return scale.Value, true
+		}
+	}
+	return 0, false
+}
+
+// applyScaleContract validates `scale N`: only on named decimal/decimal128
+// types (S1064), with one compile-time integer argument in the signed int32
+// domain (S1066), at most once per declaration, and equal to an inherited
+// fixed scale, which it then only restates (S1065 otherwise).
+// Rules: rules/types/contracts.md — § 16(1); rules/foundations/grammar.md — § 17(10);
+// rules/corrections/applied/MD-049-decimal-range-scale-inference-capacity-correction-rev1-2-2026-11-21-20261122.md — §§ 10(2), 14(3)-(5), 15(2).
+func (a *Analyzer) applyScaleContract(typ Type, contract *ast.MarkerContract, localScale *bool, inherited int32, hasInherited bool) Type {
+	a.analyzedContractNodes[contract] = true
+	start := len(a.errors)
+	defer func() { a.relateErrorsSince(start, contract.Token, "contract declaration") }()
+	if typ.Kind != DecimalType {
+		a.addErrorAtTokenWithMetadata(contract.Token, diagnostics.InapplicableContract, "use scale only on a named decimal or decimal128 type", "scale contract does not apply to %s", contractApplicabilityTypeName(typ))
+		return typ
+	}
+	if contract.Value == nil {
+		return typ
+	}
+	value, outcome := a.semanticCompileTimeInteger(contract.Value)
+	if outcome == compileTimeRequiresExecution || outcome == compileTimeForbiddenClock || outcome == compileTimeExecutionFailed {
+		a.reportCompileTimeRequirement(contract.Value, outcome, "scale value", diagnostics.InvalidContractArgument, "")
+		return typ
+	}
+	if outcome != compileTimeEvaluated {
+		if outcome != compileTimeAlreadyInvalid {
+			a.addErrorAtTokenWithMetadata(expressionToken(contract.Value), diagnostics.InvalidContractArgument, "use a compile-time integer such as scale 2; a decimal or float value is not converted implicitly", "scale contract argument must be a compile-time integer")
+		}
+		return typ
+	}
+	if !value.IsInt64() || value.Int64() < math.MinInt32 || value.Int64() > math.MaxInt32 {
+		a.addErrorAtTokenWithMetadata(expressionToken(contract.Value), diagnostics.InvalidContractArgument, "use a scale in the signed int32 range", "scale %s is outside the signed int32 range", value.String())
+		return typ
+	}
+	scale := int32(value.Int64())
+	if *localScale {
+		a.addErrorAtTokenWithMetadata(contract.Token, diagnostics.UnsatisfiableContractSet, "keep one scale contract", "%s declares more than one scale contract", typeDisplayName(typ))
+		return typ
+	}
+	*localScale = true
+	if hasInherited {
+		if scale != inherited {
+			a.addErrorAtTokenWithMetadata(contract.Token, diagnostics.UnsatisfiableContractSet, "a derived type keeps its base type's fixed scale; remove the clause or restate the inherited scale", "scale %d conflicts with the inherited fixed scale %d of %s", scale, inherited, typeDisplayName(typ))
+		}
+		return typ // an identical restatement adds nothing
+	}
+	typ.Contracts = append(typ.Contracts, ScaleContract{Token: contract.Token, Value: scale, Width: a.compileTimeDecimalWidth(typ), Owner: typ.Name})
+	return typ
 }

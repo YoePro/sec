@@ -185,35 +185,92 @@ fn _monthAtOffset(source: calendar.CalendarFields, months: int, system: calendar
 }
 
 /**
+ * Resolves a target calendar date under a month-end policy.
+ *
+ * Description:
+ * The target month must exist. If its requested day does
+ * not exist, Reject fails, Clamp selects its last day,
+ * and RollForward carries surplus days forward.
+ *
+ * Missing leap months are not resolved by this policy.
+ *
+ * Parameters:
+ * - target: Target calendar coordinates.
+ * - system: Calendar used to interpret the coordinates.
+ * - policy: Resolution policy for a missing day number.
+ *
+ * Returns:
+ * Absolute date after applying the policy.
+ *
+ * Errors:
+ * - TemporalArithmeticError.InvalidTarget: Invalid target.
+ * - TemporalArithmeticError.OutOfRange: Unrepresentable day.
+ * - TemporalArithmeticError.UnsupportedSystem: Missing rules.
+ *
+ * Ownership:
+ * Pure calculation without allocation or I/O.
+ */
+fn _resolveCalendarTarget(target: calendar.CalendarFields, system: calendar.CalendarSystem, policy: MonthEndPolicy) Result[date, TemporalArithmeticError] {
+    let maxDay := try calendar.DaysInMonth(target.Year, target.Month, system) {
+        Err(e) => return Err(_calendarArithmeticError(e))
+    }
+
+    if target.Day <= maxDay {
+        let resolved := try calendar.ToDate(target, system) {
+            Err(e) => return Err(_calendarArithmeticError(e))
+        }
+
+        return Ok(resolved)
+    }
+
+    if policy == MonthEndPolicy.Reject {
+        return Err(TemporalArithmeticError.InvalidTarget)
+    }
+
+    let adjusted := calendar.CalendarFields { Year: target.Year, Month: target.Month, Day: maxDay, }
+
+    let finalDay := try calendar.ToDate(adjusted, system) {
+        Err(e) => return Err(_calendarArithmeticError(e))
+    }
+
+    if policy == MonthEndPolicy.Clamp {
+        return Ok(finalDay)
+    }
+
+    // RollForward continues beyond the target month's end.
+    let surplus   := int64(target.Day) - int64(maxDay)
+    let epochDays := int64(finalDay.EpochDays) + surplus
+
+    let checkedDays := try int32(epochDays) {
+        Err(_) => return Err(TemporalArithmeticError.OutOfRange)
+    }
+
+    return Ok(new date(checkedDays))
+}
+
+/**
  * Adds calendar months to an absolute date.
  *
  * Description:
- * Converts the date to the selected calendar, moves
- * to the target month and resolves the original day
- * according to MonthEndPolicy.
+ * Moves directly to the requested month in the selected
+ * calendar. Applies MonthEndPolicy once at the target.
  *
- * Month-end resolution is performed once, at the final
- * target month. Intermediate months are not evaluated.
- *
- * Zero months returns the original date after validating
- * that the calendar supports its representation.
+ * Hebrew leap months are counted as individual months.
+ * Zero months preserves the date after calendar validation.
  *
  * Parameters:
  * - value: Starting absolute date.
- * - months: Signed number of calendar-month transitions.
- * - system: Calendar system used for month arithmetic.
- * - policy: Resolution of missing target day numbers.
+ * - months: Signed number of month transitions.
+ * - system: Calendar used for the operation.
+ * - policy: Policy for an invalid target day.
  *
  * Returns:
- * Absolute date after the requested month displacement.
+ * Absolute date after the month displacement.
  *
  * Errors:
- * - TemporalArithmeticError.InvalidTarget:
- * Target day does not exist and policy is Reject.
- * - TemporalArithmeticError.OutOfRange:
- * Result exceeds core date or calendar era limits.
- * - TemporalArithmeticError.UnsupportedSystem:
- * Selected calendar conversion is unavailable.
+ * - TemporalArithmeticError.InvalidTarget: Invalid target.
+ * - TemporalArithmeticError.OutOfRange: Outside supported range.
+ * - TemporalArithmeticError.UnsupportedSystem: Missing rules.
  *
  * Ownership:
  * Pure calculation without allocation or I/O.
@@ -229,77 +286,40 @@ fn AddMonths(value: date, months: int, system: calendar.CalendarSystem, policy: 
 
     let target := try _monthAtOffset(source, months, system)
 
-    let maxDay := try calendar.DaysInMonth(
-        target.Year,
-        target.Month,
-        system,
-    ) {
-        Err(e) => return Err(_calendarArithmeticError(e))
-    }
-
-    // Original day exists in the target month.
-    if target.Day <= maxDay {
-        let rv := try calendar.ToDate(target, system) {
-            Err(e) => return Err(_calendarArithmeticError(e))
-        }
-        return Ok(rv)
-    }
-
-    match policy {
-        MonthEndPolicy.Reject => {
-            return Err(TemporalArithmeticError.InvalidTarget)
-        }
-
-        MonthEndPolicy.Clamp => {
-            let adjusted := calendar.CalendarFields {
-                Year: target.Year,
-                Month: target.Month,
-                Day: maxDay,
-            }
-            let rv := try calendar.ToDate(adjusted, system) {
-                Err(e) => return Err(_calendarArithmeticError(e))
-            }
-            return Ok(rv)
-        }
-
-        MonthEndPolicy.RollForward => {
-            // Move past the end of the target month.
-            let finalDay := calendar.CalendarFields {
-                Year: target.Year,
-                Month: target.Month,
-                Day: maxDay,
-            }
-
-            let absolute := try calendar.ToDate(finalDay, system) {
-                Err(e) => return Err(_calendarArithmeticError(e))
-            }
-
-            let epochDays :=
-                  int64(absolute.EpochDays)
-                + int64(target.Day - maxDay)
-
-            let checkedDays := try int32(epochDays) {
-                Err(_) => return Err(TemporalArithmeticError.OutOfRange)
-            }
-
-            return Ok(new date(checkedDays))
-        }
-    }
+    return _resolveCalendarTarget(target, system, policy)
 }
 
 /**
- * Applies a calendar-relative period using an explicitly chosen order.
- * Description: Weeks/days are calendar steps, not duration nanoseconds.
+ * Applies a calendar-relative period to an absolute date.
+ *
+ * Description:
+ * Applies years, months, weeks and days as separate
+ * operations in the order selected by PeriodOrder.
+ *
+ * Each step uses the result of the preceding step.
+ * Invalid intermediate dates are not silently skipped.
+ *
+ * Year movement preserves the calendar month identity.
+ * Month movement counts actual months, including leap
+ * months. Week and day movement uses the absolute day axis.
+ *
  * Parameters:
- * - value: Starting absolute day.
- * - period: Signed calendar components.
- * - system: Calendar algorithm.
- * - policy: Policy for invalid target dates after month/year changes.
- * - order: Order of evaluating the components.
- * Returns: Resulting absolute day.
- * Errors: TemporalArithmeticError.NotImplemented, InvalidTarget, OutOfRange,
- *         UnsupportedSystem.
- * Ownership: Pure, no I/O or allocation.
+ * - value: Starting absolute date.
+ * - period: Signed calendar-period components.
+ * - system: Calendar system for all operations.
+ * - policy: Invalid-day resolution for year/month steps.
+ * - order: Explicit component evaluation order.
+ *
+ * Returns:
+ * Resulting absolute date after all components are applied.
+ *
+ * Errors:
+ * - TemporalArithmeticError.InvalidTarget: Invalid target.
+ * - TemporalArithmeticError.OutOfRange: Outside supported range.
+ * - TemporalArithmeticError.UnsupportedSystem: Missing rules.
+ *
+ * Ownership:
+ * Pure calculation without allocation or I/O.
  */
 fn AddPeriod(
     value:  date,
@@ -308,5 +328,201 @@ fn AddPeriod(
     policy: MonthEndPolicy,
     order:  PeriodOrder,
 ) Result[date, TemporalArithmeticError] {
-    return Err(TemporalArithmeticError.NotImplemented)
+    // Validate the calendar even for an entirely zero period.
+    let mut current := try AddMonths(value, 0, system, policy)
+
+    match order {
+        PeriodOrder.YearsMonthsWeeksDays => {
+            if period.Years != 0 {
+                current = try _addCalendarYears(current, period.Years, system, policy)
+            }
+
+            if period.Months != 0 {
+                current = try AddMonths(current, period.Months, system, policy)
+            }
+
+            if period.Weeks != 0 {
+                current = try _addCalendarWeeks(current, period.Weeks, system)
+            }
+
+            if period.Days != 0 {
+                current = try _addCalendarDays(current, int64(period.Days), system)
+            }
+        }
+
+        PeriodOrder.DaysWeeksMonthsYears => {
+            if period.Days != 0 {
+                current = try _addCalendarDays(current, int64(period.Days), system)
+            }
+
+            if period.Weeks != 0 {
+                current = try _addCalendarWeeks(current, period.Weeks, system)
+            }
+
+            if period.Months != 0 {
+                current = try AddMonths(current, period.Months, system, policy)
+            }
+
+            if period.Years != 0 {
+                current = try _addCalendarYears(current, period.Years, system, policy)
+            }
+        }
+    }
+
+    return Ok(current)
+}
+
+/**
+ * Adds calendar years while preserving month identity.
+ *
+ * Description:
+ * Keeps the source month code and requested day number.
+ * A Hebrew leap month missing from the target year causes
+ * InvalidTarget regardless of MonthEndPolicy.
+ *
+ * Year arithmetic does not mean twelve month transitions.
+ *
+ * Parameters:
+ * - value: Starting absolute date.
+ * - years: Signed number of calendar years.
+ * - system: Selected calendar system.
+ * - policy: Policy for an invalid target day.
+ *
+ * Returns:
+ * Absolute date after the year displacement.
+ *
+ * Errors:
+ * - TemporalArithmeticError.InvalidTarget: Missing month/day.
+ * - TemporalArithmeticError.OutOfRange: Unsupported target year.
+ * - TemporalArithmeticError.UnsupportedSystem: Missing rules.
+ *
+ * Ownership:
+ * Pure calculation without allocation or I/O.
+ */
+fn _addCalendarYears(value: date, years: int, system: calendar.CalendarSystem, policy: MonthEndPolicy) Result[date, TemporalArithmeticError] {
+    if years == 0 {
+        return Ok(value)
+    }
+
+    let source := try calendar.FromDate(value, system) {
+        Err(e) => return Err(_calendarArithmeticError(e))
+    }
+
+    let sourceYear := int64(source.Year)
+    let delta      := int64(years)
+
+    // Bound the target year before performing the addition.
+    let mut minYear: int64 := -6_000_000
+    let maxYear:     int64 := 10_000_000
+
+    if system in [
+        calendar.CalendarSystem.Hebrew,
+        calendar.CalendarSystem.IslamicTabular,
+    ] {
+        minYear = 1
+    }
+
+    if delta < minYear - sourceYear ||
+        delta > maxYear - sourceYear {
+        return Err(TemporalArithmeticError.OutOfRange)
+    }
+
+    let targetYear := try int(sourceYear + delta) {
+        Err(_) => return Err(TemporalArithmeticError.OutOfRange)
+    }
+
+    // The month code remains unchanged, even when its
+    // ordinal position differs between calendar years.
+    let target := calendar.CalendarFields {
+        Year: targetYear,
+        Month: source.Month,
+        Day: source.Day,
+    }
+
+    return _resolveCalendarTarget(target, system, policy)
+}
+
+/**
+ * Adds calendar days to an absolute date.
+ *
+ * Description:
+ * Uses the consecutive absolute-day representation.
+ * Validates that the result is supported by the selected
+ * calendar, including its permitted year numbering.
+ *
+ * Parameters:
+ * - value: Starting absolute date.
+ * - days: Signed number of calendar days.
+ * - system: Selected calendar system.
+ *
+ * Returns:
+ * Resulting absolute date.
+ *
+ * Errors:
+ * - TemporalArithmeticError.OutOfRange: Unrepresentable day.
+ * - TemporalArithmeticError.UnsupportedSystem: Missing rules.
+ *
+ * Ownership:
+ * Pure calculation without allocation.
+ */
+fn _addCalendarDays(
+    value:  date,
+    days:   int64,
+    system: calendar.CalendarSystem,
+) Result[date, TemporalArithmeticError] {
+    if days == 0 {
+        return Ok(value)
+    }
+
+    let origin := int64(value.EpochDays)
+
+    // Check before adding to avoid intermediate overflow.
+    if days < -2_147_483_648 - origin ||
+        days > 2_147_483_647 - origin {
+        return Err(TemporalArithmeticError.OutOfRange)
+    }
+
+    let checkedDays := try int32(origin + days) {
+        Err(_) => return Err(TemporalArithmeticError.OutOfRange)
+    }
+
+    let result := new date(checkedDays)
+
+    // The result must remain inside the selected calendar era.
+    match calendar.FromDate(result, system) {
+        Ok(_) => return Ok(result)
+        Err(e) => return Err(_calendarArithmeticError(e))
+    }
+}
+
+/**
+ * Adds calendar weeks to an absolute date.
+ *
+ * Description:
+ * One calendar week consists of seven consecutive
+ * calendar days. No timezone or elapsed-time duration
+ * is introduced.
+ *
+ * Parameters:
+ * - value: Starting absolute date.
+ * - weeks: Signed number of calendar weeks.
+ * - system: Selected calendar system.
+ *
+ * Returns:
+ * Resulting absolute date.
+ *
+ * Errors:
+ * - TemporalArithmeticError.OutOfRange: Unrepresentable day.
+ * - TemporalArithmeticError.UnsupportedSystem: Missing rules.
+ *
+ * Ownership:
+ * Pure calculation without allocation.
+ */
+fn _addCalendarWeeks(value: date, weeks: int, system: calendar.CalendarSystem) Result[date, TemporalArithmeticError] {
+    // A core date cannot span more than 614 million weeks.
+    if weeks < -614_000_000 || weeks > 614_000_000 {
+        return Err(TemporalArithmeticError.OutOfRange)
+    }
+
+    return _addCalendarDays(value, int64(weeks) * 7, system)
 }

@@ -18,10 +18,11 @@ func NewAnalyzerWithScalarPlan(plan layout.ResolvedScalarPlan) *Analyzer {
 //   - rules/compiler/compiler_analysis.md — § 62 analysis modes
 //   - rules/memory/allocation.md — §22; rules/platform/target_profiles.md — §31
 //   - rules/concurrency/mutex.md — §§27,60 selected target/profile lock contracts
+//   - rules/concurrency/cancellation.md — §24 selected physical-thread contract
 func NewAnalyzerWithScalarPlanAndDepth(plan layout.ResolvedScalarPlan, depth AnalysisDepth) *Analyzer {
 	plan.AddressDomains = append([]layout.AddressDomain(nil), plan.AddressDomains...)
 	analyzer := NewAnalyzerWithDepth(depth)
-	analyzer.mutexTargetPlan = plan
+	analyzer.targetCapabilityPlan = plan
 	analyzer.rebuildBase = func() *Analyzer { return NewAnalyzerWithScalarPlanAndDepth(plan, depth) }
 	analyzer.SetAllocationProfile(plan.Profile)
 	analyzer.planTargetOS, analyzer.planTargetArch = plan.TargetOS, plan.TargetArch

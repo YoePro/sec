@@ -53,8 +53,11 @@ func TestContractNamedOperators(t *testing.T) {
 	}
 }
 
-// TestContractNamedOperatorsRejectUnestablishedValues preserves failures rather
-// than rounding exact decimals or evaluating runtime bindings.
+// TestContractNamedOperatorsRejectUnestablishedValues preserves failures such
+// as division by zero and runtime or mixed operands. An inexact decimal
+// quotient is no longer one of them: CTE rounds it exactly like the runtime
+// operator (compile_time_evaluation.md § 2(3); operators.md § 27.2; MD-049
+// § 13(2)), which TestCompileTimeDecimalQuotientRoundsLikeRuntime covers.
 // Rules: rules/compiler/compile_time_evaluation.md — §§2(3),47(4); rules/types/contracts.md — Diagnostics.
 func TestContractNamedOperatorsRejectUnestablishedValues(t *testing.T) {
 	data, err := os.ReadFile("../../testdata/sema/contract_named_operators_invalid.sec")
@@ -62,7 +65,7 @@ func TestContractNamedOperatorsRejectUnestablishedValues(t *testing.T) {
 		t.Fatal(err)
 	}
 	errors := analyzeSourceRaw(t, string(data))
-	if len(errors) != 6 {
+	if len(errors) != 5 {
 		t.Fatal(errors)
 	}
 	for _, e := range errors {

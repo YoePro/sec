@@ -438,6 +438,7 @@ func compilerKnownValueMembers(typ Type) []CompilerKnownMember {
 	members = append(members, compilerKnownCollectionOutcomeMembers(sequence)...)
 	members = append(members, compilerKnownCancellationMembers(sequence)...)
 	members = append(members, compilerKnownThreadMembers(sequence)...)
+	members = append(members, processObserverMembers(sequence)...)
 	return members
 }
 
@@ -594,6 +595,10 @@ func compilerKnownStaticMembers(typ Type) []CompilerKnownMember {
 	}
 	if dynamicCollection(typ) && ((typ.Name == "list" || typ.Name == "set") && len(typ.TypeArgs) == 1 || typ.Name == "map" && len(typ.TypeArgs) == 2) {
 		members = append(members, CompilerKnownMember{ID: "CKM-" + strings.ToUpper(typ.Name) + "-WITHCAPACITY", Name: "WithCapacity", Kind: CompilerKnownAssociatedFunction, Result: compilerKnownResult(typ, builtinType("CollectionError"))})
+	}
+	if typ.Name == "BuildInfo" && typ.Module == "core" {
+		// MD-143: the build metadata snapshot of the selected plan.
+		members = append(members, CompilerKnownMember{ID: "CKM-BUILDINFO-CURRENT", Name: "Current", Kind: CompilerKnownAssociatedFunction, Result: typ})
 	}
 	if typ.Name == "Arena" {
 		members = append(members,

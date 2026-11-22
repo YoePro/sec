@@ -64,6 +64,20 @@ func resolveSourceImportsForTarget(program *ast.Program, seen map[string]bool, s
 			issues = append(issues, identityIssues...)
 			continue
 		}
+		// testing.md §§ 8.1, 25.2: the editor shows a test-only file in its
+		// test view and every other file in the production view.
+		importer := importStmt.Token.File
+		if importer == "" {
+			importer = sourceFile
+		}
+		mode := sema.CompilationProduction
+		if sema.IsTestOnlySource(importer) {
+			mode = sema.CompilationTest
+		}
+		if testIssues := sema.TestOnlyImportIssues(importStmt, sourceFile, sourcePaths, mode); len(testIssues) != 0 {
+			issues = append(issues, testIssues...)
+			continue
+		}
 		importedStatements := []ast.Statement{}
 		module := ""
 		resolved := false

@@ -1,0 +1,12 @@
+module main
+
+enum BusinessError error { Invalid }
+
+fn _findBusinessDay(direction: int) Result[int, BusinessError] {
+    return Ok(direction)
+}
+
+fn Adjust(direction: int) Result[int, BusinessError] {
+    let preceding := try _findBusinessDay(-direction)
+    return Ok(preceding)
+}

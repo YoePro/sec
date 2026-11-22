@@ -205,3 +205,57 @@ func MissingFiles(program *ast.Program, plan *Plan) []ModuleFile {
 	}
 	return missing
 }
+
+// ModuleName returns the module a parsed source declares, or "".
+// Rules: rules/projects/modules.md — § 27.
+func ModuleName(program *ast.Program) string {
+	if program != nil {
+		for _, statement := range program.Statements {
+			if module, ok := statement.(*ast.ModuleStatement); ok && module != nil {
+				return module.Path
+			}
+		}
+	}
+	return ""
+}
+
+// ModuleIdentityProblems rejects selected binding modules whose module
+// identity collides: two selected module directories declaring the same
+// module, or a binding module named like a module of the program from
+// another directory. bindingModules maps each plan file to the module its
+// source declares. Binding modules join the program by name, so a collision
+// would merge unrelated declarations.
+// Rules: MD-021 correction § 8.6(1); rules/projects/modules.md — § 27.
+func ModuleIdentityProblems(plan *Plan, bindingModules map[string]string, program *ast.Program) []string {
+	directories := map[string]string{}
+	bindingFiles := map[string]bool{}
+	var problems []string
+	for _, file := range plan.Files {
+		bindingFiles[filepath.Clean(file.Path)] = true
+		name, directory := bindingModules[file.Path], filepath.Dir(file.Path)
+		if name == "" {
+			continue
+		}
+		if previous, seen := directories[name]; seen && previous != directory {
+			problems = append(problems, fmt.Sprintf("c-bindings.module-collision: module %q is declared by selected binding directories %s and %s", name, previous, directory))
+			continue
+		}
+		directories[name] = directory
+	}
+	if program != nil {
+		reported := map[string]bool{}
+		for _, statement := range program.Statements {
+			module, ok := statement.(*ast.ModuleStatement)
+			if !ok || module == nil || bindingFiles[filepath.Clean(module.Token.File)] {
+				continue
+			}
+			directory, binding := directories[module.Path]
+			if binding && filepath.Dir(module.Token.File) != directory && !reported[module.Path] {
+				reported[module.Path] = true
+				problems = append(problems, fmt.Sprintf("c-bindings.module-collision: binding module %q (%s) has the same identity as the program module declared in %s", module.Path, directory, module.Token.File))
+			}
+		}
+	}
+	sort.Strings(problems)
+	return problems
+}

@@ -1,0 +1,41 @@
+module main
+
+fn Ordinary(observer: ProcessObserver) ProcessStatus {
+    let copied := observer
+    let status: ProcessStatus := copied.Wait()
+    let again: ProcessStatus := observer.Wait()
+    discard again
+    return status
+}
+
+fn Selected(observer: ref ProcessObserver, enabled: bool) ProcessStatus {
+    let mut status := ProcessStatus.Running
+    select {
+        observed := observer.Wait() => { status = observed }
+        default => { status = observer.Status }
+    }
+    let again: ProcessStatus := observer.Wait()
+    discard again
+    if enabled { return status }
+    return observer.Status
+}
+
+fn Waiting(observer: ProcessObserver) void {
+    select {
+        observed := observer.Wait() => { discard observed }
+    }
+}
+
+fn Metadata(observer: ProcessObserver) uint {
+    let id: ProcessID := observer.ID
+    let name: string := observer.Name
+    discard name
+    return uint(id)
+}
+
+fn NonBlockingSelect(observer: ProcessObserver) void {
+    select {
+        observed := observer.Wait() => { discard observed }
+        default => {}
+    }
+}

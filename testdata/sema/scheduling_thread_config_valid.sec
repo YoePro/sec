@@ -1,0 +1,25 @@
+module main
+
+fn Work() void {}
+
+fn Configure() void {
+    discard ThreadConfig { Priority: Preferred(ThreadPriority.Lowest) }
+    discard ThreadConfig { Priority: Required(ThreadPriority.Low) }
+    discard ThreadConfig { Priority: Preferred(ThreadPriority.Normal) }
+    discard ThreadConfig { Priority: Required(ThreadPriority.High) }
+    discard ThreadConfig { Priority: Preferred(ThreadPriority.Highest) }
+    discard ThreadConfig { Priority: Default, Affinity: Default }
+    discard ThreadConfig { Affinity: Preferred(CpuSet { 0, 1 }) }
+    let config := ThreadConfig {
+        Priority: Required(ThreadPriority.High)
+        Affinity: Required(CpuSet { 2, 3 })
+        Start: ThreadStartMode.Deferred
+    }
+    let worker := try spawn thread <-config Work() { Err(_) => { return } }
+    join worker
+    let inline := try spawn thread {
+        Priority: Preferred(ThreadPriority.Normal)
+        Affinity: Preferred(CpuSet { 0 })
+    } Work() { Err(_) => { return } }
+    join inline
+}

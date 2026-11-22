@@ -16,7 +16,14 @@ const (
 	// a reserved contract spelling (§7.3) lexed as an identifier and resolved
 	// contextually in contract position (MD-009).
 	PatternContractWord
+	// ScaleContractWord is the decimal `scale N` contract of MD-049. Unlike
+	// the §7.3 words it is not reserved: `scale` stays an ordinary identifier
+	// outside a contract head (lexical_structure.md § 7.3.1).
+	ScaleContractWord
 )
+
+// scaleContractWord is the contextual decimal scale contract spelling.
+const scaleContractWord = "scale"
 
 // regexContractWord is the contract spelling defined by rules/types/contracts.md
 // "Applicability" and "String and collection contracts".
@@ -65,6 +72,8 @@ func ContractWordRoleOf(spelling string) ContractWordRole {
 		return MarkerContractWord
 	case regexContractWord:
 		return PatternContractWord
+	case scaleContractWord:
+		return ScaleContractWord
 	default:
 		return NotContractWord
 	}
@@ -78,6 +87,8 @@ func ContractWordRoleOf(spelling string) ContractWordRole {
 //   - rules/foundations/lexical_structure.md — §7.3 "Contract words"
 //   - rules/corrections/applied/missing-decisions-md001-md009-correction-20261003.md — §§ 10.1–10.5, 10.16
 func IsContractWord(spelling string) bool {
+	// The contextual `scale` contract is deliberately not reserved
+	// (lexical_structure.md § 7.3.1).
 	switch ContractWordRoleOf(spelling) {
 	case ValueContractWord, MarkerContractWord, PatternContractWord:
 		return true
@@ -105,5 +116,5 @@ func IsContractStartWord(spelling string) bool {
 //   - rules/foundations/grammar.md — "Type contracts"
 //   - rules/types/contracts.md — "Applicability"
 func ContractStartWords() []string {
-	return ContractWords()
+	return append(ContractWords(), scaleContractWord)
 }

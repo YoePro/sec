@@ -5,6 +5,7 @@ add_mlir_conversion_library(SecMLIRSecToLLVM
   FloatRemainder.cpp
   TaggedValues.cpp
   UnitDimensions.cpp
+  StructProjections.cpp
 
   ADDITIONAL_HEADER_DIRS
   ${SEC_MLIR_SOURCE_DIR}/include/sec/Conversion/SecToLLVM

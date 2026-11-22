@@ -17,6 +17,8 @@ func TestThreadConfigLSP(t *testing.T) {
 	}{
 		{"../../testdata/sema/thread_config_valid.sec", 0},
 		{"../../testdata/sema/thread_config_invalid.sec", 10},
+		{"../../testdata/sema/scheduling_thread_config_valid.sec", 0},
+		{"../../testdata/sema/scheduling_thread_config_invalid.sec", 8},
 		{"../../testdata/parser/thread_inline_config_recovery.sec", 1},
 	} {
 		data, err := os.ReadFile(tc.file)

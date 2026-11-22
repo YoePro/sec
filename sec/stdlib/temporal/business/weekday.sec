@@ -1,0 +1,43 @@
+module business
+
+/*
+ * Sec Standard Library — temporal/business
+ * File: business/weekday.sec
+ * Purpose: Pure weekday calculations.
+ * Status: Implementation candidate
+ * Revision: 0.1
+ * Updated: 2026-11-22
+ *
+ * Governing rulebook:
+ * stdlib/temporal/business/std-temporal-business.md
+ */
+
+/**
+ * Returns the weekday of an absolute date.
+ *
+ * Description:
+ * Uses ISO weekday numbering with Monday as zero
+ * and Sunday as six.
+ *
+ * Unix epoch day zero is Thursday, index three.
+ * Negative epoch days use mathematical modulo so
+ * dates before 1970 are handled correctly.
+ *
+ * Parameters:
+ * - value: Absolute calendar date.
+ *
+ * Returns:
+ * Weekday index in the range 0..6.
+ *
+ * Ownership:
+ * Pure calculation without allocation or I/O.
+ */
+fn _weekdayMondayIndex(value: date) int {
+    let mut weekday := (int64(value.EpochDays) + 3) % 7
+
+    if weekday < 0 {
+        weekday += 7
+    }
+
+    return int(weekday)
+}

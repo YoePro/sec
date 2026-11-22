@@ -22,7 +22,7 @@ type ResolvedMutexTargetCapability struct {
 // Rules: rules/concurrency/mutex.md §§20–24,27(6),60,63;
 // rules/platform/platform_model.md §§9,23.
 func (a *Analyzer) resolveMutexTargetCapability(call *ast.CallExpression, mode layout.MutexAcquisition) bool {
-	plan := a.mutexTargetPlan
+	plan := a.targetCapabilityPlan
 	fact := layout.MutexCapability{Acquisition: mode, Availability: layout.MutexUnknown}
 	if len(plan.Mutex.Facts()) != 0 {
 		var err error

@@ -3914,6 +3914,26 @@ definition.
 
 ---
 
+## § 113A Fixed-scale named decimal members (MD-049)
+
+**§ 113A(1)** Integrated 2026-11-22 from `rules/corrections/applied/MD-049-decimal-range-scale-inference-capacity-correction-rev1-2-2026-11-21-20261122.md` (MD-049, owner-locked 2026-11-21). The correction holds the full normative text and test vectors T01–T65; this section is its owning summary. For a fixed-scale named decimal receiver, `Scale` resolves to the getter only; the setter registered in §§ 10 and 14 is suppressed, and no implicit carrier conversion makes it available.
+
+**§ 113A(2)** The receiver-type result substitution of § 10(5) does not apply to `Normalize`, `Rescale` and `RoundTo` on such receivers: they keep their carrier results (`rules/library/core-library.md` § 10A). Other members substituted to `T` are checked constructions of `T`. Resolution, hover, completion, interfaces, Semantic IR and runtime agree on the same member set and result types.
+
+---
+
+## § 113B `BuildInfo.Current()` (MD-143)
+
+**§ 113B(1)** Integrated 2026-11-22 from `rules/corrections/applied/MD-143-fix-20261122.md` (MD-143, owner-approved 2026-11-22); this section owns the normative text. `BuildInfo.Current()` (`rules/library/core-library.md` § 28) is a pure compiler-known static member. It returns the resolved build metadata of the selected `CompilationPlan`: the project, Target and Variant, the version, the target OS, architecture and profiles, and the explicitly supplied source facts. Values describe the selected target, never the compiler host; no host OS, architecture, profile, time or environment value is substituted.
+
+**§ 113B(2)** It is available in ordinary code and in semantic compile-time evaluation. Runtime use is a statically materialized constant: no runtime environment inspection and no implicit runtime allocation. It is not available to plan-time evaluation that determines source selection or the `CompilationPlan` it depends on; such a circular dependency is invalid.
+
+**§ 113B(3)** A concrete Target and Variant are required; when either cannot be resolved the call is diagnosed instead of returning invented defaults. CTE and `Current()` never inspect Git or the filesystem themselves.
+
+**§ 113B(4)** During `sec build`, `VersionBuild` and `VersionRendered` reflect that invocation's resolved build number, including an automatic candidate before its persistence. During `sec check` and LSP analysis without a build invocation they reflect the stored build number and the version rendered from it; analysis neither reserves nor increments it. The result is reproducible for one complete `CompilationPlan` and its explicit metadata inputs; observable build metadata is part of the semantic and code-generation cache identity (`rules/projects/projects.md` §§ 33–34).
+
+---
+
 ## § 114 Final canonical summary
 
 **§ 114(1)** Compiler-known means that the compiler owns the semantic existence and identity

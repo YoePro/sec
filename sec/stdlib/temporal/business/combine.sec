@@ -1,0 +1,276 @@
+module business
+
+/*
+ * Sec Standard Library — temporal/business
+ * File: business/combine.sec
+ * Purpose: Combine multiple working-day calendars.
+ * Status: Implementation candidate, not execution-verified
+ * Revision: 0.1
+ * Updated: 2026-11-22
+ *
+ * Governing rulebook:
+ * stdlib/temporal/business/std-temporal-business.md
+ *
+ * No allocation, I/O or implicit dataset loading.
+ */
+
+/**
+ * Determines whether a date satisfies combined calendars.
+ *
+ * Description:
+ * All requires every dataset to classify the date
+ * as working. Any requires at least one.
+ *
+ * All supplied calendars are evaluated, even when
+ * the combined boolean result is already known.
+ * This ensures missing coverage or invalid data
+ * cannot be hidden by short-circuit evaluation.
+ *
+ * An empty collection is invalid.
+ *
+ * Parameters:
+ * - value: Absolute date to classify.
+ * - calendars: Borrowed sequence of calendar datasets.
+ * - combination: All or Any classification rule.
+ *
+ * Returns:
+ * Combined business-day classification.
+ *
+ * Errors:
+ * - BusinessError.InvalidCalendarData: Invalid or empty data.
+ * - BusinessError.OutsideCoverage: Missing date coverage.
+ *
+ * Ownership:
+ * Borrows every dataset without ownership transfer.
+ * No allocation or I/O.
+ */
+fn IsBusinessDay(value: date, calendars: ref BusinessCalendarData[], combination: BusinessCalendarCombination) Result[bool, BusinessError] {
+    if calendars.Len == 0u {
+        return Err(BusinessError.InvalidCalendarData)
+    }
+
+    let mut allWorking := true
+    let mut anyWorking := false
+
+    for ref selected in calendars {
+        let working := try IsBusinessDay(value, selected)
+
+        if !working {
+            allWorking = false
+        }
+
+        if working {
+            anyWorking = true
+        }
+    }
+
+    match combination {
+        BusinessCalendarCombination.All => {
+            return Ok(allWorking)
+        }
+
+        BusinessCalendarCombination.Any => {
+            return Ok(anyWorking)
+        }
+    }
+}
+
+/**
+ * Finds a business day satisfying combined calendars.
+ *
+ * Description:
+ * The starting date is included when it qualifies.
+ *
+ * The search is restricted to the intersection
+ * of all dataset coverage intervals.
+ *
+ * Search stops with OutsideCoverage if no qualifying
+ * date exists within that intersection.
+ *
+ * Parameters:
+ * - value: Starting absolute date.
+ * - calendars: Borrowed calendar datasets.
+ * - combination: Required calendar combination.
+ * - direction: +1 for following, -1 for preceding.
+ *
+ * Returns:
+ * First qualifying date in the selected direction.
+ *
+ * Errors:
+ * - BusinessError.InvalidCalendarData: Invalid datasets.
+ * - BusinessError.OutsideCoverage: No covered result.
+ *
+ * Ownership:
+ * Borrows calendar data without ownership transfer.
+ */
+fn _findCombinedBusinessDay(
+    value:       date,
+    calendars:   ref BusinessCalendarData[],
+    combination: BusinessCalendarCombination,
+    direction:   int,
+) Result[date, BusinessError] {
+    if calendars.Len == 0u {
+        return Err(BusinessError.InvalidCalendarData)
+    }
+
+    let mut initialized := false
+    let mut coverageFirst: int64 := 0
+    let mut coverageLast:  int64 := 0
+
+    // Determine the common covered interval.
+    for ref selected in calendars {
+        try ValidateBusinessCalendarData(selected)
+
+        let first := int64(selected.FirstDay.EpochDays)
+        let last  := int64(selected.LastDay.EpochDays)
+
+        if !initialized {
+            coverageFirst = first
+            coverageLast = last
+            initialized = true
+        } else {
+            if first > coverageFirst {
+                coverageFirst = first
+            }
+
+            if last < coverageLast {
+                coverageLast = last
+            }
+        }
+    }
+
+    if coverageFirst > coverageLast {
+        return Err(BusinessError.OutsideCoverage)
+    }
+
+    let mut current    := value
+    let mut currentDay := int64(value.EpochDays)
+
+    if currentDay < coverageFirst ||
+        currentDay > coverageLast {
+        return Err(BusinessError.OutsideCoverage)
+    }
+
+    // Search within the intersection of the datasets.
+    while true {
+        let working := try IsBusinessDay(current, calendars, combination)
+
+        if working {
+            return Ok(current)
+        }
+
+        if direction > 0 {
+            if currentDay >= coverageLast {
+                return Err(BusinessError.OutsideCoverage)
+            }
+
+            currentDay += 1
+        } else {
+            if currentDay <= coverageFirst {
+                return Err(BusinessError.OutsideCoverage)
+            }
+
+            currentDay -= 1
+        }
+
+        let checkedDay := try int32(currentDay) {
+            Err(_) => return Err(BusinessError.OutOfRange)
+        }
+
+        current = new date(checkedDay)
+    }
+}
+
+/**
+ * Adjusts a date using combined business calendars.
+ *
+ * Description:
+ * None returns the original date without inspecting
+ * calendar datasets.
+ *
+ * Following and Preceding search for a qualifying
+ * business day in the requested direction.
+ *
+ * ModifiedFollowing and ModifiedPreceding reverse
+ * direction when the initial result changes the
+ * Gregorian month.
+ *
+ * Every required date must be covered by all datasets.
+ *
+ * Parameters:
+ * - value: Unadjusted absolute date.
+ * - calendars: Borrowed calendar datasets.
+ * - combination: All or Any working-day requirement.
+ * - policy: Business-day adjustment convention.
+ *
+ * Returns:
+ * Adjusted absolute date.
+ *
+ * Errors:
+ * - BusinessError.InvalidCalendarData: Invalid datasets.
+ * - BusinessError.OutsideCoverage: Missing covered result.
+ * - BusinessError.OutOfRange: Unrepresentable result.
+ *
+ * Ownership:
+ * Borrows the datasets without ownership transfer.
+ * No allocation or I/O.
+ */
+fn AdjustBusinessDay(
+    value:       date,
+    calendars:   ref BusinessCalendarData[],
+    combination: BusinessCalendarCombination,
+    policy:      BusinessDayAdjustment,
+) Result[date, BusinessError] {
+    if policy == BusinessDayAdjustment.None {
+        return Ok(value)
+    }
+
+    let backward: int := -1
+    let forward:  int := 1
+
+    match policy {
+        BusinessDayAdjustment.None => {
+            return Ok(value)
+        }
+
+        BusinessDayAdjustment.Following => {
+            return _findCombinedBusinessDay(
+                value, calendars, combination, forward,
+            )
+        }
+
+        BusinessDayAdjustment.Preceding => {
+            return _findCombinedBusinessDay(
+                value, calendars, combination, backward,
+            )
+        }
+
+        BusinessDayAdjustment.ModifiedFollowing => {
+            let following := try _findCombinedBusinessDay(
+                value, calendars, combination, forward,
+            )
+
+            if try _sameGregorianMonth(value, following) {
+                return Ok(following)
+            }
+
+            return _findCombinedBusinessDay(
+                value, calendars, combination, backward,
+            )
+        }
+
+        BusinessDayAdjustment.ModifiedPreceding => {
+            let preceding := try _findCombinedBusinessDay(
+                value, calendars, combination, backward,
+            )
+
+            if try _sameGregorianMonth(value, preceding) {
+                return Ok(preceding)
+            }
+
+            return _findCombinedBusinessDay(
+                value, calendars, combination, forward,
+            )
+        }
+    }
+}

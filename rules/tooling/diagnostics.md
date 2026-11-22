@@ -1265,6 +1265,12 @@ weakens discardability or changes availability/destruction semantics.
 
 ---
 
+## § 31A. `A2012` inferred decimal scale (MD-049)
+
+**§ 31A(1)** Integrated 2026-11-22 from `rules/corrections/applied/MD-049-decimal-range-scale-inference-capacity-correction-rev1-2-2026-11-21-20261122.md` (MD-049, owner-locked 2026-11-21). The correction holds the full normative text and test vectors T01–T65; this section is its owning summary. `A2012` / `types.inferred-decimal-scale` is a configurable, non-mandatory information diagnostic in family `types`, never a warning or error by default. It is emitted once at a named decimal declaration that actually infers its scale from `range` bounds, with the type, carrier width, preferred and selected scale, whether coefficient capacity reduced it and the limiting bound. Its help suggests inserting `scale <selected>`; the quick fix inserts the clause before the first `range` and is withheld when the insertion would change any semantic property. Errors reuse `S1059`, `S1060`, `S1061`, `S1064`, `S1065` and `S1066` (`rules/types/contracts.md` § 16).
+
+---
+
 ## § 32. Governance boundary
 
 **Governance tags:** `errors.diagnostics`

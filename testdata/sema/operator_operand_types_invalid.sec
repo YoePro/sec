@@ -1,0 +1,6 @@
+module main
+
+fn SignedUnsigned(count: uint, offset: int) void { discard count - offset }
+fn IntegerWidths(left: int16, right: int32) void { discard left * right }
+fn BitwiseWidths(left: uint8, right: uint) void { discard left & right }
+fn NumericFamilies(left: float64, right: decimal) void { discard left + right }

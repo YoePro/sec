@@ -68,12 +68,20 @@ func cBindingSurface(plan *cbindingplan.Plan) sema.CBindingSurface {
 	return surface
 }
 
-// applyCLICBindingPlan adds the binding sources to the program and hands
-// the frozen surface to Sema.
-// Rules: MD-021 correction § 8.6(5).
-func applyCLICBindingPlan(plan *cliCBindingPlan, program *ast.Program, analyzer *sema.Analyzer) {
+// applyCLICBindingPlan checks binding module identities against the
+// program, then adds the binding sources to it and hands the frozen surface
+// to Sema. On a collision nothing is added and the problems are returned.
+// Rules: MD-021 correction §§ 8.6(1), 8.6(5).
+func applyCLICBindingPlan(plan *cliCBindingPlan, program *ast.Program, analyzer *sema.Analyzer) []string {
 	if plan == nil {
-		return
+		return nil
+	}
+	modules := map[string]string{}
+	for index, source := range plan.programs {
+		modules[plan.plan.Files[index].Path] = cbindingplan.ModuleName(source)
+	}
+	if problems := cbindingplan.ModuleIdentityProblems(plan.plan, modules, program); len(problems) != 0 {
+		return problems
 	}
 	missing := map[string]bool{}
 	for _, file := range cbindingplan.MissingFiles(program, plan.plan) {
@@ -85,6 +93,7 @@ func applyCLICBindingPlan(plan *cliCBindingPlan, program *ast.Program, analyzer 
 		}
 	}
 	analyzer.SetCBindingSurface(plan.surface)
+	return nil
 }
 
 // cliPlanTarget names the Project Target of the plan being built; empty for

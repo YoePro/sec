@@ -38,5 +38,17 @@ func (b *builder) internNamedScalar(t sema.Type) (TypeID, error) {
 			args = append(args, id)
 		}
 	}
-	return b.module.Types.Intern(Type{Kind: TypeNamed, Name: t.Name, Module: module, Identity: identity, Base: baseID, TypeArgs: args}), nil
+	named := Type{Kind: TypeNamed, Name: t.Name, Module: module, Identity: identity, Base: baseID, TypeArgs: args}
+	// MD-049: the frozen fixed scale travels with the nominal type.
+	if scale, fixed := sema.FixedDecimalScaleContractOf(t); fixed {
+		facts := &DecimalScaleFacts{Scale: scale.Value, Origin: "explicit"}
+		switch {
+		case scale.Owner != "" && scale.Owner != t.Name:
+			facts.Origin = "inherited"
+		case scale.Inferred:
+			facts.Origin, facts.Preferred, facts.Limit = "inferred", scale.Preferred, scale.Limit
+		}
+		named.FixedScale = facts
+	}
+	return b.module.Types.Intern(named), nil
 }

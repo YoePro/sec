@@ -107,7 +107,18 @@ func analyzeProgramWithSourcesForReport(program *ast.Program, target CompilerTar
 		printDiagnosticSummary(summary)
 		exitCLI(3)
 	}
-	applyCLICBindingPlan(bindingPlan, program, analyzer)
+	if problems := applyCLICBindingPlan(bindingPlan, program, analyzer); len(problems) > 0 {
+		for _, problem := range problems {
+			reportToolError("c-bindings", "%s", problem)
+			summary.Errors++
+		}
+		printDiagnosticSummary(summary)
+		exitCLI(3)
+	}
+	// MD-143 § 113B: BuildInfo.Current() reads the plan's frozen metadata.
+	if snapshot := cliBuildInfo(sourceFiles, target); snapshot != nil {
+		analyzer.SetBuildInfo(*snapshot)
+	}
 	analyzer.SetHardwareModuleContext(cliHardwareModuleContext(program, target, sourceFiles))
 	analyzer.SetDiagnosticRules(projectDiagnosticRules(sourceFiles))
 	// Requested sources receive optional analysis before imported core bodies.

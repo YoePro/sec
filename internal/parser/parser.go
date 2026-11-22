@@ -6015,7 +6015,12 @@ func (p *Parser) parseUnit() (string, *ast.UnitExpression) {
 	var spelling strings.Builder
 	tokens := []lexer.Token{}
 
-	for p.curToken.Type != lexer.GT && p.curToken.Type != lexer.EOF {
+	// A unit expression never contains a block or statement delimiter, so
+	// the scan stops there instead of reaching a later `>` (BUG-000032): a
+	// speculative unit conversion then falls back to a comparison. A unit
+	// expression is written on one line, so a line change ends it as well.
+	line := p.curToken.Line
+	for p.curToken.Type != lexer.GT && p.curToken.Type != lexer.EOF && !isUnitScanBoundary(p.curToken.Type) && p.curToken.Line == line {
 		spelling.WriteString(p.curToken.Lexeme)
 		tokens = append(tokens, p.curToken)
 		p.nextToken()
@@ -6034,6 +6039,19 @@ func (p *Parser) parseUnit() (string, *ast.UnitExpression) {
 	}
 	expression.Source = unit
 	return unit, expression
+}
+
+// isUnitScanBoundary reports tokens that end a statement, block, arm or
+// list, or are comparison/logical operators, and therefore cannot occur
+// inside a unit expression.
+// Rules: rules/types/units.md — "Structural unit expressions"; rules/foundations/grammar.md — "Unit conversion expression".
+func isUnitScanBoundary(tokenType lexer.TokenType) bool {
+	switch tokenType {
+	case lexer.LBRACE, lexer.RBRACE, lexer.SEMICOLON, lexer.COMMA, lexer.ASSIGN, lexer.ARROW, lexer.RETURN,
+		lexer.EQ, lexer.NEQ, lexer.LT, lexer.LTE, lexer.GTE, lexer.AND, lexer.OR, lexer.NOT:
+		return true
+	}
+	return false
 }
 
 // unitSyntaxParser implements the structural grammar in
@@ -6260,6 +6278,8 @@ func (p *Parser) parseCurrentContract() ast.Contract {
 			return &ast.MarkerContract{Token: p.curToken, Name: p.curToken.Lexeme}
 		case lexer.PatternContractWord:
 			return p.parseRegexContract()
+		case lexer.ScaleContractWord:
+			return p.parseScaleContract()
 		}
 	}
 	p.addError("unknown contract %q at %d:%d", p.curToken.Lexeme, p.curToken.Line, p.curToken.Column)
@@ -6327,6 +6347,32 @@ func (p *Parser) parseMembershipContract() ast.Contract {
 		}
 	}
 	if !p.expectPeek(lexer.RBRACKET) {
+		return nil
+	}
+	return contract
+}
+
+// parseScaleContract parses `scale Expression` (MD-049). A missing argument
+// is kept as an invalid expression without consuming a following `range`,
+// `default` or other contract, so the declaration survives recovery.
+//
+// Rules:
+//   - rules/foundations/grammar.md — § 17(10)
+//   - rules/foundations/lexical_structure.md — § 7.3.1
+func (p *Parser) parseScaleContract() ast.Contract {
+	defer p.withRecoveryContext(RecoveryContextContract)()
+	contract := &ast.MarkerContract{Token: p.curToken, Name: p.curToken.Lexeme}
+	if p.isAtTypeDeclEnd() || p.peekToken.Line > p.curToken.Line || p.peekToken.Type == lexer.DEFAULT ||
+		p.peekToken.Type == lexer.RANGE_KW || p.isContractStart(p.peekToken) || !p.isExpressionStart(p.peekToken.Type) {
+		unexpected := p.peekToken
+		message := fmt.Sprintf("missing scale contract argument at %d:%d", unexpected.Line, unexpected.Column)
+		p.addDiagnostic(compilerdiagnostics.ParserInvalidExpression, unexpected, nil, &unexpected, "%s", message)
+		contract.Value = p.invalidExpression(unexpected, message, compilerdiagnostics.ParserInvalidExpression)
+		return contract
+	}
+	p.nextToken()
+	contract.Value = p.parseExpression(LOWEST)
+	if contract.Value == nil {
 		return nil
 	}
 	return contract
@@ -6419,6 +6465,12 @@ func (p *Parser) parseRangeContract() ast.Contract {
 // isRangeContractBoundStart reports whether token starts a range bound
 // expression rather than the range operator, `default`, or another contract.
 func (p *Parser) isRangeContractBoundStart(token lexer.Token) bool {
+	// MD-049 § 14(4): an identifier spelled `scale` that can be a bound
+	// expression is one (`range 0..scale`); write `scale N range 0..` for an
+	// open bound with a scale contract.
+	if token.Type == lexer.IDENT && lexer.ContractWordRoleOf(token.Lexeme) == lexer.ScaleContractWord {
+		return true
+	}
 	if token.Type == lexer.RANGE || token.Type == lexer.RANGE_EXCLUSIVE || token.Type == lexer.DEFAULT || p.isContractStart(token) {
 		return false
 	}

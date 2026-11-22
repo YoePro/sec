@@ -41,6 +41,7 @@ func newLSPAnalyzerForInputs(uri string, program *ast.Program, overlay sourceOve
 func newLSPAnalyzerForInputsAtDepth(uri string, program *ast.Program, overlay sourceOverlay, depth sema.AnalysisDepth) *sema.Analyzer {
 	analyzer := newTargetLSPAnalyzer(uri, program, overlay, depth)
 	applyLSPCBindingPlan(analyzer, program, pathFromURI(uri))
+	applyLSPBuildInfo(analyzer, pathFromURI(uri), overlay)
 	analyzer.SetHardwareModuleContext(lspHardwareModuleContext(program, pathFromURI(uri)))
 	analyzer.SetDiagnosticRules(lspDiagnosticRules(pathFromURI(uri)))
 	if kind, ok := lspSourceTargetKind(pathFromURI(uri), overlay); ok {

@@ -284,6 +284,7 @@ integrations:
       - internal/sema/slice_creation_plans.go
       - internal/sema/compiler_known_calls.go
       - internal/ir/semantic/for_loops.go
+      - internal/sema/explicit_slice_help.go
     tests:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
@@ -315,6 +316,7 @@ integrations:
       - testdata/sema/string_ranges/range_invalid.sec
       - testdata/sema/string_ranges/lifetime_invalid.sec
       - testdata/sema/string_ranges/member_invalid.sec
+      - internal/sema/explicit_slice_help_test.go
     implemented:
       - parser and AST support for canonical fixed-array, dynamic-array, slice, list, map, and set type forms
       - Sema recognition and arity validation for compiler-known collection families
@@ -333,7 +335,9 @@ integrations:
       - "MD-126 live-storage source frontend implemented (2026-11-05; collections.md 7.10): string/ref string/StringView bracket ranges infer a shared non-owning StringView without ref and retain detached source/endpoint evaluation order, normalized rune intervals, RangeError precedence, source provenance, borrow/lifetime facts and runtime BoundsFailure effects. Nested and caller-returned views retain source backing. Immutable UTF-8 scalar counts prove A-pi-emoji-b has four rune positions rather than eight bytes; inclusive end at Len rejects and exclusive empty at Len accepts. try propagation/local handlers return success StringView with RangeError and remove only the spatial panic effect; noPanic/noAlloc source coverage passes. Compiler/LSP share mandatory S1200 invalid-range-source and S1201 invalid-slice-range with help; valid loop syntax, hover and formatter idempotence are covered. IR producers and executable byte-boundary translation remain P23 and fail closed without output."
     partial:
       - "Started (moved to partial 2026-11-20; the text records the done part and what remains): MD-126 remaining range-source/validation work: support the enclosing for temporary-retention model for non-addressable fresh string sources (currently rejected with S1200 rather than extending their lifetime); finish target-width endpoint representability checks and the complete Unicode/overflow/failure-precedence conformance matrix. Live storage/ref string and nested/caller-returned StringView source plans, ordinary rune ranges, try RangeError and compiler/LSP diagnostics are implemented above; executable guard/byte translation remains owned by frontend.semantic-ir-v2/P23."
+      - "explicit slice borrow help (2026-11-22; collections.md §§ 7.1-7.3): passing T[N], T[] or a reference to one where ref T[] / ref mut T[] of the same element type is expected stays a type error, whose help now names `ref values[..]` / `ref mut values[..]` and a subrange; other mismatches get no slice suggestion. Test: internal/sema/explicit_slice_help_test.go"
     remaining:
+      - "MD-149 (open, owner ergonomics decision): whether ref T[N] / ref mut T[N] (and possibly borrowed T[] / list[T]) coerce implicitly to a slice, in which positions, and with which inference/overload and borrow-fact rules; today only the explicit ref values[..] borrow is valid"
       - "MD-058 runtime behaviour: lower Reserve and WithCapacity with the guaranteed Capacity >= Len + n, the no-op path, transactional failure including map/set rehash, allocation-context use and CollectionError classification; verify borrow conflicts, relocation invalidation and fault-injected rollback (collections.md §§ 13.12, 14.8, 15.5); Semantic IR and both legacy backends have no list/map/set operations today"
       - complete parser, AST, and Sema coverage for the canonical fixed-array and slice syntax contract
       - array literal inference, bounds, indexing, slicing, assignment, equality, and ownership validation

@@ -482,6 +482,22 @@ pattern syntax remain governed by the union and match rulebooks.
 **§ 14(2)** Diagnostics should point to both the offending value/default and the relevant
 contract declaration when practical.
 
+## § 16 Decimal scale contracts and range-inferred scale (MD-049)
+
+**§ 16(1)** Integrated 2026-11-22 from `rules/corrections/applied/MD-049-decimal-range-scale-inference-capacity-correction-rev1-2-2026-11-21-20261122.md` (MD-049, owner-locked 2026-11-21). The correction holds the full normative text and test vectors T01–T65; this section is its owning summary. `scale N` is a contract only on named `decimal`/`decimal128` types; on other bases, storage sites, fields or parameters it is `S1064` (or the more specific existing diagnostic). A non-integer, out-of-`int32`, missing or non-CTE argument is `S1066`. Two local `scale` clauses, a local scale differing from an inherited fixed scale, an empty contract intersection, a range with no grid member, or a finite bound outside the fixed-scale coefficient domain is `S1065`.
+
+**§ 16(2)** Without an inherited or explicit scale, the preferred scale `P` is the greatest represented scale of all present resolved bounds of the full conjunction of inherited and local `range` contracts, including numerically redundant bounds; an integer bound has scale 0 and omitted bounds contribute nothing. If no bound carries a scale the type stays variable-scale.
+
+**§ 16(3)** Coefficient capacity has priority: the inferred scale `S` is the greatest signed-`int32` `S <= P` such that every nonzero bound `b` satisfies `ceil(|b| × 10^S) <= Cmax` (positive) or `<= -Cmin` (negative), with `Cmin = -2^(W-1)`, `Cmax = 2^(W-1)-1`, `W` 64 or 128. `S` may be 0 or negative. It is computed by digit-count/exponent comparison or bounded exact integers, never by materializing huge powers, scanning scales or using binary floats. No legal `S`, or no grid point satisfying the bounds, makes the declaration invalid. An explicit or inherited scale is authoritative and never reduced.
+
+**§ 16(4)** Range bounds stay exact mathematical limits, independent of `S`: they need not lie on the grid, and the type's members are exactly the grid points satisfying every range. Multiple ranges are a logical AND kept as source-ordered contracts for diagnostics and `ContractError.DeclarationIndex`. A child of a fixed-scale base never re-infers its scale from more precise bounds.
+
+**§ 16(5)** A declaration that infers a scale reports the information diagnostic `A2012` (`rules/tooling/diagnostics.md` § 31A); an inherited scale reports nothing.
+
+**§ 16(6)** A `range` contract without any bound (`range ..` or `range ..<`) is invalid, as `rules/compiler/parser_recovery.md` § 34.1(2) already requires: it constrains nothing, and like an unreachable branch a contract that can never have an effect is an error in itself. Owner decision 2026-11-22; it supersedes MD-049 correction § 17 test vector T11 and the sentence of § 10(7) treating `range ..` as a valid variable-scale declaration. A decimal type with no scale-bearing bound and no explicit or inherited scale is still variable-scale.
+
+---
+
 ## § 15 Related rulebooks
 
 - `default_values.md` defines default selection and defaultability.

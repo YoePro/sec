@@ -1,0 +1,14 @@
+module main
+
+impl extends ProcessObserver {
+    fn Wait() int { return 7 }
+}
+
+fn Wrong(observer: ProcessObserver) int {
+    let mut value := 0
+    select {
+        result := observer.Wait() => { value = result }
+        default => {}
+    }
+    return value
+}

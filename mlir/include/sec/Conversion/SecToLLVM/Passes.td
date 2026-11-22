@@ -13,6 +13,19 @@ def SecCheckLoweringSupport : Pass<"sec-check-lowering-support", "mlir::ModuleOp
   }];
 }
 
+def SecFoldStructProjections : Pass<"sec-fold-struct-projections", "mlir::ModuleOp"> {
+  let summary = "Fold copy-trivial field projections of struct constructions";
+  let description = [{
+    Before the entry gate, replace a copy-trivial sec.struct.extract whose
+    source is a sec.struct.construct with the constructed field operand.
+    A construction left without uses, all of whose fields were copied
+    trivially, is erased together with the operand producers that become
+    dead and are copy-trivial constants or constructions. No struct, string
+    or union layout is chosen; every other struct, string or union value
+    still reaches the entry gate unchanged (MD-143 BuildInfo.Current()).
+  }];
+}
+
 def SecLowerIntegerEnums : Pass<"sec-lower-integer-enums", "mlir::ModuleOp"> {
   let summary = "Discharge ordinary integer enum constants and equality into their resolved representation";
   let description = [{

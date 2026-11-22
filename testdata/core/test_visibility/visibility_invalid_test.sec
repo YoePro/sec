@@ -1,0 +1,6 @@
+module core
+
+test "source private helpers remain private" {
+    testing.Expect(__privateProduction())
+    testing.Expect(__privateTest())
+}

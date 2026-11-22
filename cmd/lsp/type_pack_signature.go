@@ -14,7 +14,9 @@ import (
 // rules/tooling/lsp.md — "Signature help", "Unknown facts".
 func typePackSignatureHelp(analyzer *sema.Analyzer, call *ast.CallExpression, active int) (signatureHelp, bool) {
 	fact, ok := analyzer.ResolvedTypePackCallOf(call)
-	if !ok || len(fact.Parameters) > 0 && active >= len(fact.Parameters) {
+	// The cursor past every selected position, including in an open call
+	// that so far resolves to the empty pack, gets the declared template.
+	if !ok || active >= len(fact.Parameters) {
 		return signatureHelp{}, false
 	}
 	target, ok := analyzer.ResolvedCallTarget(call)
@@ -74,8 +76,8 @@ func typePackReceivingTypeName(typ sema.Type) string {
 // Sema's declared templates and invents no LSP-owned inference.
 // Rules: rules/declarations/functions.md — § 38A(10)(3); rules/tooling/lsp.md — "Signature help", "Unknown facts".
 func typePackTemplateSignatureHelp(analyzer *sema.Analyzer, call *ast.CallExpression, active int, sourcePath string) (signatureHelp, bool) {
-	callee, ok := call.Callee.(*ast.Identifier)
-	if !ok || callee == nil {
+	key, owner, ok := typePackTemplateCallee(analyzer, call)
+	if !ok {
 		return signatureHelp{}, false
 	}
 	// A call Sema resolved to an ordinary function keeps that selection, and
@@ -85,8 +87,8 @@ func typePackTemplateSignatureHelp(analyzer *sema.Analyzer, call *ast.CallExpres
 		return signatureHelp{}, false
 	}
 	var templates []sema.Function
-	for _, function := range analyzer.Functions()[callee.Value] {
-		if function.ImplTarget != "" || !analyzer.FunctionVisibleFromSource(function, sourcePath) {
+	for _, function := range analyzer.Functions()[key] {
+		if function.ImplTarget != owner || !analyzer.FunctionVisibleFromSource(function, sourcePath) {
 			continue
 		}
 		if function.GenericTypePack == "" {
@@ -110,7 +112,7 @@ func typePackTemplateSignatureHelp(analyzer *sema.Analyzer, call *ast.CallExpres
 			parameters[i] = parameterInformation{Label: labels[i]}
 		}
 		help.Signatures = append(help.Signatures, signatureInformation{
-			Label:         "fn " + function.Name + "[..." + function.GenericTypePack + "](" + strings.Join(labels, ", ") + ") " + lspTypeName(function.ReturnType),
+			Label:         "fn " + qualifiedTemplateName(owner, function.Name) + "[..." + function.GenericTypePack + "](" + strings.Join(labels, ", ") + ") " + lspTypeName(function.ReturnType),
 			Parameters:    parameters,
 			Documentation: markupContent{Kind: "markdown", Value: "Type pack `" + function.GenericTypePack + "` is inferred from the trailing arguments once the call is complete."},
 		})
@@ -146,4 +148,48 @@ func typePackTemplateParameterType(parameter sema.FunctionParameter) string {
 		typ = *typ.Element
 	}
 	return "..." + mode + typ.Name
+}
+
+// typePackTemplateCallee names the declared callables a call may select: a
+// free function by its name, a static method by its owner type (Box[int].Make
+// uses the owner Box) and an instance method by its receiver's resolved type.
+// Rules: rules/declarations/functions.md — §§ 22-24, 38A(10)(3); rules/tooling/lsp.md — "Signature help".
+func typePackTemplateCallee(analyzer *sema.Analyzer, call *ast.CallExpression) (key, owner string, ok bool) {
+	switch callee := call.Callee.(type) {
+	case *ast.Identifier:
+		if callee == nil {
+			return "", "", false
+		}
+		return callee.Value, "", true
+	case *ast.MemberExpression:
+		if callee == nil || callee.Property == nil {
+			return "", "", false
+		}
+		object := callee.Object
+		if indexed, generic := object.(*ast.IndexExpression); generic {
+			object = indexed.Left
+		}
+		if typ, typed := analyzer.ResolvedTypeOf(callee.Object); typed {
+			for typ.Kind == sema.ReferenceType && typ.Element != nil {
+				typ = *typ.Element
+			}
+			// A closed generic owner such as Box[int] declares its methods on Box.
+			if name, _, _ := strings.Cut(typ.Name, "["); name != "" {
+				return name + "." + callee.Property.Value, name, true
+			}
+		}
+		if name, isName := object.(*ast.Identifier); isName && name != nil {
+			return name.Value + "." + callee.Property.Value, name.Value, true
+		}
+	}
+	return "", "", false
+}
+
+// qualifiedTemplateName prefixes a method with its owner unless Sema's
+// function name already carries it (static methods are named Owner.Method).
+func qualifiedTemplateName(owner, name string) string {
+	if owner == "" || strings.HasPrefix(name, owner+".") {
+		return name
+	}
+	return owner + "." + name
 }

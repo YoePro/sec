@@ -54,6 +54,11 @@ func (a *Analyzer) addTypeMismatchError(token lexer.Token, expected Type, actual
 		a.addErrorAtTokenWithMetadata(token, diagnostics.TaskFailureDomainMismatch, help, format, args...)
 		return
 	}
+	// collections.md § 7.3: a slice is borrowed explicitly.
+	if help := explicitSliceHelp(expected, actual, expr); help != "" {
+		a.addErrorAtTokenWithMetadata(token, "", help, format, args...)
+		return
+	}
 	if reason := a.durationConversionRejection(expected, actual, expr); reason != "" {
 		a.addErrorAtTokenWithMetadata(token, diagnostics.DurationConversionInvalid, durationConversionHelp, "%s: %s", fmt.Sprintf(format, args...), reason)
 		return

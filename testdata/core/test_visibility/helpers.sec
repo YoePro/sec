@@ -1,0 +1,4 @@
+module core
+
+fn _sharedProduction() bool { return true }
+fn __privateProduction() bool { return true }

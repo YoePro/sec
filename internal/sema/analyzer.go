@@ -76,9 +76,10 @@ type Analyzer struct {
 	// scalarPlanWidthBits is the selected CompilationPlan's pointer width,
 	// or zero when no plan was supplied; plan-specific exactness proofs use
 	// only a resolved width (MD-104 Option A).
-	scalarPlanWidthBits             uint16
-	mutexTargetPlan                 layout.ResolvedScalarPlan
-	resolvedMutexTargetCapabilities map[*ast.CallExpression]ResolvedMutexTargetCapability
+	scalarPlanWidthBits               uint16
+	targetCapabilityPlan              layout.ResolvedScalarPlan
+	resolvedThreadCurrentCapabilities map[*ast.CallExpression]ResolvedThreadCurrentCapability
+	resolvedMutexTargetCapabilities   map[*ast.CallExpression]ResolvedMutexTargetCapability
 	// shadowSummaries are the MD-113 shadow-knowledge summaries of register
 	// impl members, keyed "T.M", "T.P.get" or "T.P.set".
 	shadowSummaries map[string]*shadowSummary
@@ -177,7 +178,18 @@ type Analyzer struct {
 	cABIModel layout.CABIModel
 	// cBindingSurface and cAliases are the MD-021 binding surface: the
 	// selected binding files and the specialized @cAlias definitions.
-	cBindingSurface             CBindingSurface
+	cBindingSurface CBindingSurface
+	// buildInfo is the MD-143 snapshot of the selected plan, nil when no
+	// Target and Variant were resolved.
+	buildInfo *BuildInfoSnapshot
+	// compilationMode is the plan's mode (testing.md § 3.1); empty is production.
+	compilationMode CompilationMode
+	// decimalConstantConversions are proven compile-time conversions into
+	// named decimal types (MD-049 § 15(3)).
+	decimalConstantConversions map[*ast.CallExpression]DecimalValue
+	// buildInfoCalls are the BuildInfo.Current() calls Semantic IR
+	// materializes from the snapshot (MD-143 § 113B(2)).
+	buildInfoCalls              map[*ast.CallExpression]bool
 	cAliases                    map[string]*cAliasDefinition
 	resolvedConstructions       map[*ast.NewExpression]ResolvedConstruction
 	constructionSignatures      map[*ast.NewExpression][]ConstructionSignature
@@ -944,6 +956,8 @@ func (a *Analyzer) analyzeProgram(program *ast.Program) []Error {
 	a.enumConversionCalls = nil
 	a.resolvedNumericConversionPlans = map[*ast.CallExpression]ResolvedNumericConversionPlan{}
 	a.resolvedNamedContractConversions = map[*ast.CallExpression]ResolvedNamedContractConversion{}
+	a.decimalConstantConversions = nil
+	a.buildInfoCalls = nil
 	a.resolvedIntegerConversions = map[*ast.CallExpression]ResolvedIntegerConversion{}
 	a.resolvedNamedConversions = map[*ast.CallExpression]ResolvedNamedConversion{}
 	a.resolvedTransferPlans = map[ast.Expression]ResolvedTransferPlan{}
@@ -964,6 +978,7 @@ func (a *Analyzer) analyzeProgram(program *ast.Program) []Error {
 	a.resolvedCompareExchanges = map[*ast.CallExpression]ResolvedCompareExchange{}
 	a.resolvedAtomicMemoryOperations = map[*ast.CallExpression]ResolvedAtomicMemoryOperation{}
 	a.resolvedMutexTargetCapabilities = map[*ast.CallExpression]ResolvedMutexTargetCapability{}
+	a.resolvedThreadCurrentCapabilities = map[*ast.CallExpression]ResolvedThreadCurrentCapability{}
 	a.staticBindings = map[sourceTokenKey]ResolvedStatic{}
 	a.receiverReborrows = map[ast.Expression]ReferenceFacts{}
 	a.matchTerminationPlans = map[*ast.MatchExpression]ResolvedMatchPlan{}
@@ -3255,59 +3270,6 @@ func (a *Analyzer) selectBranchResultType(branch *ast.SelectBranch) (Type, bool)
 	}
 }
 
-// selectableOperationType resolves eligible wait operations and preserves the
-// explicit prohibition on synthesizing observer completion waits.
-// Rules: rules/concurrency/select.md — selectable operations;
-// rules/concurrency/threads.md — §43(1–4).
-func (a *Analyzer) selectableOperationType(expr ast.Expression) (Type, bool) {
-	switch expr := expr.(type) {
-	case *ast.AwaitExpression:
-		typ, _ := a.inferAwaitExpression(expr)
-		return typ, true
-	case *ast.CallExpression:
-		member, ok := expr.Callee.(*ast.MemberExpression)
-		if !ok || member.Property == nil {
-			a.inferExpression(expr)
-			return Type{Kind: InvalidType}, false
-		}
-		receiverType, ok := a.compilerKnownReceiverType(member.Object)
-		receiverType = dereferenceType(receiverType)
-		if !ok {
-			a.inferExpression(expr)
-			return Type{Kind: InvalidType}, false
-		}
-		if isThreadObserverType(receiverType) {
-			a.reportThreadObserverWait(member.Property.Token)
-			return Type{Kind: InvalidType}, true
-		}
-		// select.md § 54(3): TrySend/TryReceive never wait, so they are
-		// ordinary calls, not selectable operations.
-		if isReceiverType(receiverType) {
-			switch member.Property.Value {
-			case "Receive":
-				typ, _ := a.inferExpression(expr)
-				return typ, true
-			}
-		}
-		if isSenderType(receiverType) {
-			switch member.Property.Value {
-			case "Send", "SendRevocable":
-				typ, _ := a.inferExpression(expr)
-				return typ, true
-			}
-		}
-		a.inferExpression(expr)
-		return Type{Kind: InvalidType}, false
-	default:
-		typ, _ := a.inferExpression(expr)
-		if isThreadObserverType(typ) {
-			a.reportThreadObserverWait(expressionToken(expr))
-			return Type{Kind: InvalidType}, true
-		}
-		return Type{Kind: InvalidType}, false
-	}
-}
-
 type selectResource struct {
 	Root  string
 	Kind  string
@@ -3429,7 +3391,7 @@ func (a *Analyzer) analyzeSelectBranchBody(branch *ast.SelectBranch) branchAnaly
 	resultType, selectable := a.selectBranchResultType(branch)
 	a.inSelectOperation = previousSelectOperation
 	if branch.Kind != ast.SelectDefaultBranch && !selectable {
-		a.addErrorAtToken(branch.Token, "operation is not selectable")
+		a.addErrorAtTokenWithMetadata(branch.Token, diagnostics.SelectOperationNotSelectable, "Use a compiler-defined waiting operation: ProcessObserver.Wait(), an eligible channel operation, await or join. Ordinary methods, metadata properties and Try operations do not define select readiness.", "operation is not selectable")
 	}
 	if branch.Binding != nil && resultType.Kind != InvalidType && resultType.Kind != VoidType {
 		if a.defineSymbol(branch.Binding.Value, resultType, false, branch.Binding.Token) {
@@ -12645,198 +12607,6 @@ func normalizedCallableCapability(capability CallableCapability) CallableCapabil
 		return capability
 	default:
 		return CallableShared
-	}
-}
-
-func statementToken(stmt ast.Statement) lexer.Token {
-	switch stmt := stmt.(type) {
-	case *ast.CAliasDeclaration:
-		if stmt == nil {
-			return lexer.Token{}
-		}
-		return stmt.Token
-	case *ast.HardwareDeclaration:
-		if stmt == nil {
-			return lexer.Token{}
-		}
-		return stmt.Token
-	case *ast.ModuleStatement:
-		if stmt == nil {
-			return lexer.Token{}
-		}
-		return stmt.Token
-	case *ast.ImportStatement:
-		if stmt == nil {
-			return lexer.Token{}
-		}
-		return stmt.Token
-	case *ast.TypeDeclStatement:
-		if stmt == nil {
-			return lexer.Token{}
-		}
-		return stmt.Token
-	case *ast.EnumDeclaration:
-		if stmt == nil {
-			return lexer.Token{}
-		}
-		return stmt.Token
-	case *ast.ImplStatement:
-		if stmt == nil {
-			return lexer.Token{}
-		}
-		return stmt.Token
-	case *ast.FunctionDeclaration:
-		if stmt == nil {
-			return lexer.Token{}
-		}
-		return stmt.Token
-	case *ast.StructStatement:
-		if stmt == nil {
-			return lexer.Token{}
-		}
-		return stmt.Token
-	case *ast.LetStatement:
-		if stmt == nil {
-			return lexer.Token{}
-		}
-		return stmt.Token
-	case *ast.LetGroupStatement:
-		if stmt == nil {
-			return lexer.Token{}
-		}
-		return stmt.Token
-	case *ast.AssignmentStatement:
-		if stmt == nil {
-			return lexer.Token{}
-		}
-		return stmt.Token
-	case *ast.TryAssignmentStatement:
-		if stmt == nil {
-			return lexer.Token{}
-		}
-		return stmt.Token
-	case *ast.DeferStatement:
-		if stmt == nil {
-			return lexer.Token{}
-		}
-		return stmt.Token
-	case *ast.DiscardStatement:
-		if stmt == nil {
-			return lexer.Token{}
-		}
-		return stmt.Token
-	case *ast.AssertStatement:
-		if stmt == nil {
-			return lexer.Token{}
-		}
-		return stmt.Token
-	case *ast.PanicStatement:
-		if stmt == nil {
-			return lexer.Token{}
-		}
-		return stmt.Token
-	case *ast.UnreachableStatement:
-		if stmt == nil {
-			return lexer.Token{}
-		}
-		return stmt.Token
-	case *ast.JoinStatement:
-		if stmt == nil {
-			return lexer.Token{}
-		}
-		return stmt.Token
-	case *ast.DetachStatement:
-		if stmt == nil {
-			return lexer.Token{}
-		}
-		return stmt.Token
-	case *ast.CancelStatement:
-		if stmt == nil {
-			return lexer.Token{}
-		}
-		return stmt.Token
-	case *ast.ExpressionStatement:
-		if stmt == nil {
-			return lexer.Token{}
-		}
-		return stmt.Token
-	case *ast.ReturnStatement:
-		if stmt == nil {
-			return lexer.Token{}
-		}
-		return stmt.Token
-	case *ast.IfStatement:
-		if stmt == nil {
-			return lexer.Token{}
-		}
-		return stmt.Token
-	case *ast.ForStatement:
-		if stmt == nil {
-			return lexer.Token{}
-		}
-		return stmt.Token
-	case *ast.WhileStatement:
-		if stmt == nil {
-			return lexer.Token{}
-		}
-		return stmt.Token
-	case *ast.SwitchStatement:
-		if stmt == nil {
-			return lexer.Token{}
-		}
-		return stmt.Token
-	case *ast.SelectStatement:
-		if stmt == nil {
-			return lexer.Token{}
-		}
-		return stmt.Token
-	case *ast.FallthroughStatement:
-		if stmt == nil {
-			return lexer.Token{}
-		}
-		return stmt.Token
-	case *ast.BreakStatement:
-		if stmt == nil {
-			return lexer.Token{}
-		}
-		return stmt.Token
-	case *ast.ContinueStatement:
-		if stmt == nil {
-			return lexer.Token{}
-		}
-		return stmt.Token
-	case *ast.UnsafeStatement:
-		if stmt == nil {
-			return lexer.Token{}
-		}
-		return stmt.Token
-	case *ast.AsmStatement:
-		if stmt == nil {
-			return lexer.Token{}
-		}
-		return stmt.Token
-	case *ast.MatchStatement:
-		if stmt == nil {
-			return lexer.Token{}
-		}
-		return stmt.Token
-	case *ast.CommentStatement:
-		if stmt == nil {
-			return lexer.Token{}
-		}
-		return stmt.Token
-	case *ast.InvalidStatement:
-		if stmt == nil {
-			return lexer.Token{}
-		}
-		return stmt.Token
-	case *ast.InvalidDeclaration:
-		if stmt == nil {
-			return lexer.Token{}
-		}
-		return stmt.Token
-	default:
-		return lexer.Token{}
 	}
 }
 

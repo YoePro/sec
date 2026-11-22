@@ -7,7 +7,7 @@ integrations:
     feature: scheduling-and-yield
     status: partial
     reviewed: "2026-09-27"
-    synchronized: "2026-09-27"
+    revised: "2026-11-22"
     document_revision: "2.0"
     repository_baseline: main-reviewed-2026-09-27
     summary: >-
@@ -38,27 +38,60 @@ integrations:
       - rules/platform/target_profiles.md
       - rules/tooling/lsp.md
       - language-rulebook-status.md
-    normative:
-      - Task and Thread are distinct execution kinds even when one backend representation resembles the other.
-      - Task.Yield() has exact surface static fn Yield() void and is valid only in a real logical task context.
-      - Task.Yield() is both a task scheduling point and a current-task cancellation point.
-      - If cancellation commits before Task.Yield normal commit, the operation does not return to the following source statement.
-      - Thread.Yield() has exact surface static fn Yield() void, is a physical scheduler hint, and is not a cancellation point.
-      - Neither yield operation creates a memory synchronization edge.
-      - A task may migrate across scheduling points when no live semantic restriction forbids migration.
-      - Native/backend preemption is not automatically a source-level task migration point.
-      - A backend must preserve physical-thread identity while a live execution-affine value requires it.
-      - ThreadLocal borrows may not cross migratable Task.Yield by default.
-      - Program entry/main always has an attached physical ThreadContext.
-      - Program entry/main does not implicitly have TaskContext.
-      - Task.Current() and Task.Yield() are invalid in ordinary main unless execution has explicitly entered a real task context.
-      - Backend use of task-runtime machinery to implement main is not source-visible task identity.
-      - Sec 0.1 provides no portable task affinity or task priority API.
-      - Portable ThreadPriority and CpuSet are owned by threads.md and remain creation-time ThreadConfig concerns.
-      - Sec 0.1 defines no portable runtime Thread.SetPriority/SetAffinity and no portable ThreadSchedulingError.
-      - Scheduler fairness is not guaranteed unless the selected target/profile declares a stronger guarantee.
-      - Scheduler policy must not override source-order select priority.
-      - Concrete Semantic IR opcode names remain owned by semantic_ir.md.
+    code:
+      - internal/sema/execution_context.go
+      - internal/sema/execution_context_members.go
+      - internal/sema/compiler_known_members.go
+      - internal/sema/compiler_known_interfaces.go
+      - internal/sema/task_context_requirement.go
+      - internal/diagnostics/diagnostics.go
+      - internal/sema/scheduling_points.go
+      - internal/sema/analyzer.go
+      - cmd/compiler/analyse_scheduling.go
+      - cmd/compiler/analyse.go
+      - internal/sema/types.go
+      - internal/sema/thread_configuration_enums.go
+      - internal/sema/cpu_set.go
+      - internal/sema/thread_setting.go
+      - internal/sema/thread_config.go
+    tests:
+      - internal/sema/yield_surface_test.go
+      - cmd/compiler/yield_surface_test.go
+      - cmd/lsp/yield_surface_test.go
+      - testdata/sema/yield_surface_valid.sec
+      - testdata/sema/yield_surface_invalid.sec
+      - internal/sema/task_yield_context_diagnostics_test.go
+      - cmd/compiler/task_yield_context_test.go
+      - cmd/lsp/task_yield_context_test.go
+      - testdata/sema/task_yield_context_valid.sec
+      - testdata/sema/task_yield_context_invalid.sec
+      - testdata/sema/task_yield_context_invalid_test.sec
+      - internal/sema/scheduling_points_test.go
+      - cmd/compiler/analyse_scheduling_test.go
+      - testdata/sema/scheduling_point_facts_valid.sec
+      - internal/sema/thread_legacy_errors_test.go
+      - cmd/compiler/thread_legacy_errors_test.go
+      - cmd/lsp/thread_legacy_errors_test.go
+      - testdata/sema/thread_legacy_errors_valid.sec
+      - testdata/sema/thread_legacy_errors_invalid.sec
+      - testdata/sema/thread_legacy_errors_local.sec
+      - internal/sema/main_task_context_test.go
+      - cmd/compiler/main_task_context_test.go
+      - cmd/lsp/main_task_context_test.go
+      - testdata/sema/main_task_context_valid.sec
+      - testdata/sema/main_task_context_invalid.sec
+      - internal/sema/main_task_targets_test.go
+      - testdata/sema/main_task_guidance_valid.sec
+      - internal/sema/scheduling_thread_config_test.go
+      - internal/sema/thread_config_test.go
+      - internal/sema/cpu_set_test.go
+      - internal/sema/thread_setting_test.go
+      - internal/sema/thread_configuration_enums_test.go
+      - cmd/compiler/thread_config_test.go
+      - cmd/lsp/thread_config_test.go
+      - cmd/lsp/thread_configuration_enums_test.go
+      - testdata/sema/scheduling_thread_config_valid.sec
+      - testdata/sema/scheduling_thread_config_invalid.sec
     implemented:
       - legacy scheduling.md already distinguishes logical tasks from physical threads
       - legacy frontend has compiler-known ThreadPriority identity
@@ -75,12 +108,12 @@ integrations:
       - "Ordinary-main Task.Current/Task.Yield rejection completed and verified 2026-11-11 (scheduling.md sections 21-22,50,57): the existing shared execution-requirement validator rejects both operations directly and through synchronous helpers, function values and deferred calls with S1213, source spans, spawn guidance and transitive operation witnesses. Dedicated source-backed regression coverage verifies six independent forbidden root calls on 32/64-bit scalar plans, accepted real task roots, and ordinary main/physical-thread Thread.Current and Thread.Yield controls. Compiler JSON and LSP share the diagnostics; invalid main cannot publish a Semantic IR artifact. No new runtime scheduling implementation or target realization is claimed."
       - Target-independent ordinary-main task identity verified and stale duplicate closed (2026-11-17; scheduling.md section 22(1-5), applied scheduling correction sections 4-5). The existing shared execution-requirement validator already rejects direct and transitive Task.Current/Task.Yield calls in main independently of target/profile; no new runtime context semantics were required. New source-backed regression matrix verifies six forbidden root paths and a valid explicit task repair for every registered target identity at Interactive/Standard/Deep depth, preserving unresolved scalar facts rather than using the host. The diagnostic repair now correctly handles fallible task creation with try spawn before await; CLI regression checks that guidance, and existing CLI/LSP coverage preserves related operation locations and invalid IR artifact suppression. Removed the duplicate remaining entry and resolved legacy implicit-main-task finding. This is verification closure plus a diagnostic repair, not new scheduler/runtime lowering or target capability support.
       - "2026-11-17 (governance sync, verified): Thread.Yield does not observe or commit cancellation (scheduling.md §§ 11-13): the signature-resolved fact for CKM-THREAD-YIELD is only PhysicalSchedulerHint, never TaskSchedulingPoint or CurrentCancellationPoint; it records no logical-task requirement; its compiler-known documentation says it is not a cancellation point; sec analyse reports it as a scheduler hint only. Preserving this through lowering is part of the Yield lowering item (internal/sema/scheduling_points.go, execution_context_members.go; TestResolvedSchedulingPoints in internal/sema/scheduling_points_test.go)."
+      - ThreadPriority/CpuSet/ThreadConfig synchronization with threads-v2 completed and verified (2026-11-22; scheduling.md sections 32-36, threads.md sections 4,6-7,10-11). Both books already agree and use the canonical thread-owned source types; no competing scheduling declarations or new coercions were needed. Source-backed Sema coverage at Interactive/Standard/Deep on 32/64-bit plans verifies all five portable priorities, explicit Default/Preferred/Required wrappers, nominal CpuSet affinity, named moved configurations and fresh inline configurations. Eight independently located negative controls reject bare priority/affinity, set[uint] affinity, numeric and crossed payloads, native priority variants and portable runtime SetPriority/SetAffinity mutation. CLI checks the shared fixtures and suppresses invalid IR artifacts; LSP diagnostics share those fixtures, with existing canonical enum and typed-field hover/completion coverage retained. This closes the whole source/rule synchronization item; target capability validation, runtime application and lowering remain in their existing separate items.
     remaining:
       - implement Task.Yield cancellation-point first-commit behavior
       - model task migration permission/restriction explicitly
       - preserve execution-affine/TLS physical-thread provenance through scheduler lowering
       - prevent backend preemption/migration from violating validated thread-bound borrow facts
-      - synchronize ThreadPriority/CpuSet/ThreadConfig rules with threads-v2
       - complete CompilationPlan scheduling capability declarations
       - complete physical worker blocking versus logical task suspension analysis
       - complete starvation/cooperative-progress diagnostics
@@ -116,69 +149,9 @@ integrations:
       - cooperative no-scheduling-point loop diagnostic on applicable profile
       - Semantic IR distinguishes logical Task.Yield from physical Thread.Yield
       - LSP documents cancellation distinction
-    governance_reconciliation:
-      - concurrency_scheduling.yaml owns general scheduling-point, migration, yield, fairness and target scheduler integration semantics
-      - concurrency_task.yaml owns Task[T]/TaskContext lifecycle and task result semantics
-      - concurrency_thread.yaml owns Thread[T]/ThreadContext, ThreadPriority, CpuSet and thread configuration
-      - concurrency_thread_local.yaml owns physical-thread-bound TLS provenance
-      - concurrency_cancellation.yaml owns general cancellation request/commit semantics
-      - concurrency_select.yaml owns source-order select readiness/commit
-      - concrete Semantic IR vocabulary remains owned by rules/compiler/semantic_ir.md
-      - implementation status belongs in this split governance fragment rather than root implementation-status.yaml
-    identified_bugs:
-      - id: concurrency.scheduling-v2.task-yield-cancellation-unspecified
-        severity: high
-        description: Legacy scheduling.md describes Task.Yield but does not define whether pending current-task cancellation may commit there.
-      - id: concurrency.scheduling-v2.yield-cancellation-conflation
-        severity: medium
-        description: Legacy text does not precisely distinguish logical Task.Yield cancellation semantics from physical Thread.Yield.
-      - id: concurrency.scheduling-v2.legacy-ir-opcode-list
-        severity: medium
-        description: Legacy scheduling.md gives a concrete opcode list as if owned by the scheduling book rather than semantic_ir.md.
-    corrections_applied:
-      - rules/corrections/applied/scheduling-v2-cross-rulebook-correction-20260927.md
-    revised: "2026-11-17"
-    code:
-      - internal/sema/execution_context.go
-      - internal/sema/execution_context_members.go
-      - internal/sema/compiler_known_members.go
-      - internal/sema/compiler_known_interfaces.go
-      - internal/sema/task_context_requirement.go
-      - internal/diagnostics/diagnostics.go
-      - internal/sema/scheduling_points.go
-      - internal/sema/analyzer.go
-      - cmd/compiler/analyse_scheduling.go
-      - cmd/compiler/analyse.go
-      - internal/sema/types.go
-    tests:
-      - internal/sema/yield_surface_test.go
-      - cmd/compiler/yield_surface_test.go
-      - cmd/lsp/yield_surface_test.go
-      - testdata/sema/yield_surface_valid.sec
-      - testdata/sema/yield_surface_invalid.sec
-      - internal/sema/task_yield_context_diagnostics_test.go
-      - cmd/compiler/task_yield_context_test.go
-      - cmd/lsp/task_yield_context_test.go
-      - testdata/sema/task_yield_context_valid.sec
-      - testdata/sema/task_yield_context_invalid.sec
-      - testdata/sema/task_yield_context_invalid_test.sec
-      - internal/sema/scheduling_points_test.go
-      - cmd/compiler/analyse_scheduling_test.go
-      - testdata/sema/scheduling_point_facts_valid.sec
-      - internal/sema/thread_legacy_errors_test.go
-      - cmd/compiler/thread_legacy_errors_test.go
-      - cmd/lsp/thread_legacy_errors_test.go
-      - testdata/sema/thread_legacy_errors_valid.sec
-      - testdata/sema/thread_legacy_errors_invalid.sec
-      - testdata/sema/thread_legacy_errors_local.sec
-      - internal/sema/main_task_context_test.go
-      - cmd/compiler/main_task_context_test.go
-      - cmd/lsp/main_task_context_test.go
-      - testdata/sema/main_task_context_valid.sec
-      - testdata/sema/main_task_context_invalid.sec
-      - internal/sema/main_task_targets_test.go
-      - testdata/sema/main_task_guidance_valid.sec
     verification:
+      - command: go test ./internal/sema ./cmd/compiler ./cmd/lsp -run 'Test(SchedulingThreadConfiguration|ThreadConfig|ThreadSetting|ThreadConfigurationEnums|CpuSet)' -count=1
+        result: "Passed 2026-11-22: focused source-configuration tests, Sema 0.079s, CLI 16.060s, LSP 24.517s. Separate unfiltered go test ./internal/traceability -count=1 passed 0.226s. No runtime application or target scheduling capability proof claimed."
       - command: GOTMPDIR=$HOME/.cache/sec-gotmp go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run "TestMainTask|TestExecutionContextRequirements|TestTaskYield" -count=1
         result: "Passed on 2026-11-17: Sema 0.340s, CLI 7.067s, LSP 5.051s; Sema vet passed. New registry-wide three-depth source matrix verifies target-independent ordinary-main rejection and valid explicit fallible-spawn guidance, including unresolved scalar placeholders with no host fallback. Existing source spans, transitive witnesses and invalid-IR artifact checks remain green. One already-implemented stale duplicate closed after verification and one diagnostic repair made: remaining 13 -> 12. No sec/, runtime, C++ or excluded blocking/runtime-model/events thread implementation edits."
       - command: go vet -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp
@@ -209,3 +182,46 @@ integrations:
         result: passed on 2026-11-10; Sema 0.061s, CLI 1.809s, LSP 7.501s; exact static signatures and identities, seven invalid calls/context errors, completion, hover, warm/cold synthetic definitions and execution-context regressions
       - command: go test -p 4 ./internal/sema ./internal/diagnostics -count=1
         result: passed on 2026-11-10; complete Sema 16.456s and diagnostics 0.002s after canonical yield source surfaces
+    synchronized: "2026-09-27"
+    normative:
+      - Task and Thread are distinct execution kinds even when one backend representation resembles the other.
+      - Task.Yield() has exact surface static fn Yield() void and is valid only in a real logical task context.
+      - Task.Yield() is both a task scheduling point and a current-task cancellation point.
+      - If cancellation commits before Task.Yield normal commit, the operation does not return to the following source statement.
+      - Thread.Yield() has exact surface static fn Yield() void, is a physical scheduler hint, and is not a cancellation point.
+      - Neither yield operation creates a memory synchronization edge.
+      - A task may migrate across scheduling points when no live semantic restriction forbids migration.
+      - Native/backend preemption is not automatically a source-level task migration point.
+      - A backend must preserve physical-thread identity while a live execution-affine value requires it.
+      - ThreadLocal borrows may not cross migratable Task.Yield by default.
+      - Program entry/main always has an attached physical ThreadContext.
+      - Program entry/main does not implicitly have TaskContext.
+      - Task.Current() and Task.Yield() are invalid in ordinary main unless execution has explicitly entered a real task context.
+      - Backend use of task-runtime machinery to implement main is not source-visible task identity.
+      - Sec 0.1 provides no portable task affinity or task priority API.
+      - Portable ThreadPriority and CpuSet are owned by threads.md and remain creation-time ThreadConfig concerns.
+      - Sec 0.1 defines no portable runtime Thread.SetPriority/SetAffinity and no portable ThreadSchedulingError.
+      - Scheduler fairness is not guaranteed unless the selected target/profile declares a stronger guarantee.
+      - Scheduler policy must not override source-order select priority.
+      - Concrete Semantic IR opcode names remain owned by semantic_ir.md.
+    governance_reconciliation:
+      - concurrency_scheduling.yaml owns general scheduling-point, migration, yield, fairness and target scheduler integration semantics
+      - concurrency_task.yaml owns Task[T]/TaskContext lifecycle and task result semantics
+      - concurrency_thread.yaml owns Thread[T]/ThreadContext, ThreadPriority, CpuSet and thread configuration
+      - concurrency_thread_local.yaml owns physical-thread-bound TLS provenance
+      - concurrency_cancellation.yaml owns general cancellation request/commit semantics
+      - concurrency_select.yaml owns source-order select readiness/commit
+      - concrete Semantic IR vocabulary remains owned by rules/compiler/semantic_ir.md
+      - implementation status belongs in this split governance fragment rather than root implementation-status.yaml
+    identified_bugs:
+      - id: concurrency.scheduling-v2.task-yield-cancellation-unspecified
+        severity: high
+        description: Legacy scheduling.md describes Task.Yield but does not define whether pending current-task cancellation may commit there.
+      - id: concurrency.scheduling-v2.yield-cancellation-conflation
+        severity: medium
+        description: Legacy text does not precisely distinguish logical Task.Yield cancellation semantics from physical Thread.Yield.
+      - id: concurrency.scheduling-v2.legacy-ir-opcode-list
+        severity: medium
+        description: Legacy scheduling.md gives a concrete opcode list as if owned by the scheduling book rather than semantic_ir.md.
+    corrections_applied:
+      - rules/corrections/applied/scheduling-v2-cross-rulebook-correction-20260927.md

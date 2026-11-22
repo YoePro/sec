@@ -301,6 +301,12 @@ func integerDefault(typ Type) (*big.Int, DefaultKind, bool) {
 }
 
 func decimalDefault(typ Type) DefaultResolution {
+	// MD-049 default_values.md § 65A: a fixed-scale type defaults on its grid.
+	if scale, fixed := fixedDecimalScaleContract(typ); fixed {
+		if resolution, ok := fixedScaleDecimalDefault(typ, scale); ok {
+			return resolution
+		}
+	}
 	zero := DefaultConstant{Kind: DecimalType, Lexeme: "0.0", Exact: new(big.Rat)}
 	if defaultConstantSatisfies(typ, zero) {
 		return scalarDefault(typ, zero)
@@ -571,7 +577,12 @@ func defaultConstantFromExpression(expr ast.Expression) (DefaultConstant, bool) 
 		if !ok {
 			return DefaultConstant{}, false
 		}
-		return DefaultConstant{Kind: DecimalType, Lexeme: lexeme, Exact: exact}, true
+		constant := DefaultConstant{Kind: DecimalType, Lexeme: lexeme, Exact: exact}
+		// MD-049 § 13(2): the literal's spelled scale is the represented scale.
+		if decimal, ok := decimalLiteralValue(value); ok {
+			constant.Decimal = &decimal
+		}
+		return constant, true
 	case *ast.CharLiteral:
 		return DefaultConstant{Kind: CharType, Lexeme: value.Token.Lexeme, String: value.Value}, true
 	case *ast.BooleanLiteral:

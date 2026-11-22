@@ -523,6 +523,8 @@ void sec::registerSecToLLVMPipelines() {
       "sec-lower-to-llvm",
       "Lower verified Sec MLIR through standard MLIR to the LLVM dialect",
       [](OpPassManager &manager, const LowerToLLVMOptions &options) {
+        // MD-143: constant BuildInfo projections fold before the entry gate.
+        manager.addPass(sec::createSecFoldStructProjections());
         manager.addPass(sec::createSecCheckLoweringSupport());
         manager.addPass(sec::createSecLowerTrivialCorePass());
         manager.addPass(sec::createSecResolveScalarLayoutPass());

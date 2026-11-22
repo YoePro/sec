@@ -2811,3 +2811,59 @@ representation is not published as source, and no illustrative constructor
 bodies are declared. Equality semantics, axis identity and runtime
 requirements are defined in `rules/types/units.md`, "Unit metadata value
 types" (7).
+
+---
+
+## 10A Fixed-scale named decimal receivers (MD-049)
+
+Integrated 2026-11-22 from `rules/corrections/applied/MD-049-decimal-range-scale-inference-capacity-correction-rev1-2-2026-11-21-20261122.md` (MD-049, owner-locked 2026-11-21). The correction holds the full normative text and test vectors T01–T65; this section is its owning summary.
+
+**10A(1)** On a fixed-scale named type `T` (`rules/types/types.md` § 45A), the inherited `Scale` getter returns the type-level scale; the `try set` setter of plain `decimal`/`decimal128` (§ 10.1) is not available, and assigning `Scale` is a compile-time non-writable-member error even for the same value.
+
+**10A(2)** `Normalize()` returns the plain carrier; `Rescale(scale)` and `RoundTo(scale[, mode])` keep `Result[decimal, PrecisionError]` (or the `decimal128` form). None of them mutates or creates a `T`; a checked `T(result)` conversion is needed to obtain `T` again.
+
+**10A(3)** Other inherited methods whose result resolves to `T` (`Floor`, `Ceiling`, `Truncate`, `Round`, `Abs`, `Min`, `Max`, `Clamp`) perform the same exact-grid and contract validation as any construction of `T`; a method that cannot satisfy its declared error contract for that check is not inheritable until its owner specifies a checked path. Read-only observations (`IsZero`, `Sign`, `ToString`) are unchanged.
+
+---
+
+## 28 `BuildInfo` build metadata (MD-143)
+
+Integrated 2026-11-22 from `rules/corrections/applied/MD-143-fix-20261122.md` (MD-143, owner-approved 2026-11-22); this section owns the normative text.
+
+**28(1)** `core` declares one compiler-known build-metadata type:
+
+```sec
+module core
+
+type BuildInfo struct {
+    ProjectUUID: string,
+    ProjectName: string,
+    TargetName: string,
+    VariantName: string,
+
+    VersionMajor: uint64,
+    VersionMinor: uint64,
+    VersionRevision: uint64,
+    VersionBuild: uint64,
+    VersionUserDefined: Option[string],
+    VersionRendered: string,
+
+    OperatingSystem: string,
+    Architecture: string,
+    BuildProfile: string,
+    TargetProfile: string,
+
+    SourceRevision: Option[string],
+    DirtySourceStatus: Option[bool],
+}
+
+impl BuildInfo {
+    static fn Current() BuildInfo
+}
+```
+
+**28(2)** Version components are `uint64`, which covers the `VersionNumber` range `0..9223372036854775807` (`rules/projects/projects.md` § 29). `BuildProfile` (the `[build].profile` compiler-option profile) and `TargetProfile` (the target-profile family of `rules/platform/target_profiles.md` § 41) are distinct; there is no single `Profile` field.
+
+**28(3)** `VersionUserDefined`, `SourceRevision` and `DirtySourceStatus` are `Option` values: `None` means absent, never an empty string or `false`. The two source facts are `None` unless their collection was explicitly requested and the fact is available; they are resolved before evaluation and supplied as explicit compiler inputs (`projects.md` § 33(4)). No metadata configuration syntax is introduced.
+
+**28(4)** `BuildInfo.Current()` is a pure compiler-known operation returning one internally consistent snapshot of the selected `CompilationPlan` (`rules/compiler/compiler_known_members.md` § 113B).

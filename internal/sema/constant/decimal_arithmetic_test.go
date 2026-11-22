@@ -36,6 +36,17 @@ func TestEvaluateDecimal(t *testing.T) {
 		{"exact digits exhausted", "+", operand{"9223372036854775807", 0}, operand{"1", 0}, "", 0, DecimalPrecisionExhausted, 64},
 		{"decimal128 holds the sum", "+", operand{"9223372036854775807", 0}, operand{"1", 0}, "9223372036854775808", 0, "", 128},
 		{"whole part too large", "/", operand{"92233720368547758070", -1}, operand{"3", 0}, "", 0, DecimalPrecisionExhausted, 64},
+		// MD-049 § 12(8), operators.md § 27.1(5a): an exact zero product keeps
+		// the greater operand scale (T31-T36), symmetrically; a nonzero product
+		// keeps the scale sum.
+		{"T32 zero product keeps max scale", "*", operand{"0", 2}, operand{"0", 3}, "0", 3, "", 64},
+		{"T33 zero product is symmetric", "*", operand{"0", 3}, operand{"0", 2}, "0", 3, "", 64},
+		{"T34 equal zero scales do not add", "*", operand{"0", 3}, operand{"0", 3}, "0", 3, "", 64},
+		{"T35 zero times nonzero", "*", operand{"0", 2}, operand{"1234", 3}, "0", 3, "", 64},
+		{"T31 nonzero product keeps scale sum", "*", operand{"120", 2}, operand{"20", 1}, "2400", 3, "", 64},
+		{"T36 zero sum keeps max scale", "+", operand{"0", 2}, operand{"0", 3}, "0", 3, "", 64},
+		{"zero product with negative scale", "*", operand{"0", -2}, operand{"5", 1}, "0", 1, "", 64},
+		{"decimal128 zero product", "*", operand{"0", 4}, operand{"0", 6}, "0", 6, "", 128},
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
@@ -55,5 +66,19 @@ func TestEvaluateDecimal(t *testing.T) {
 				t.Fatalf("got %s scale %d, want %s scale %d", coefficient, scale, test.want, test.wantScale)
 			}
 		})
+	}
+}
+
+// MD-049 § 12(9), test T50: multiplying a zero repeatedly by 0.000 never grows
+// its scale past the greatest input scale.
+func TestRepeatedZeroProductScaleStaysBounded(t *testing.T) {
+	coefficient, scale := big.NewInt(0), int64(2)
+	for iteration := 0; iteration < 10; iteration++ {
+		var failure DecimalFailure
+		var ok bool
+		coefficient, scale, failure, ok = EvaluateDecimal("*", coefficient, scale, big.NewInt(0), 3, 64)
+		if !ok || failure != "" || coefficient.Sign() != 0 || scale != 3 {
+			t.Fatalf("iteration %d: %s scale %d (%q, %v)", iteration, coefficient, scale, failure, ok)
+		}
 	}
 }

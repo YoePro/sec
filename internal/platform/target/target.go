@@ -43,6 +43,9 @@ type Definition struct {
 	// Mutex is explicit ordinary lock evidence, independent of IPC/atomics.
 	// Rules: rules/concurrency/mutex.md §§27,60.
 	Mutex layout.MutexCapabilities
+	// PhysicalThreads is explicit identity support, not host or task inference.
+	// Rules: rules/concurrency/cancellation.md §24.
+	PhysicalThreads layout.PhysicalThreadCapabilities
 	// AddressDomains are the hardware address domains this target supplies
 	// (MD-111 §§ 1(6)-1(7)); see AddressDomains for the defaults.
 	AddressDomains []layout.AddressDomain
@@ -549,6 +552,7 @@ func Find(target Target) (Definition, bool) {
 // Rules: rules/platform/platform_model.md — §9 "Architecture capability";
 // rules/concurrency/atomics.md — §37(1–5); rules/concurrency/ipc.md — §§118–124.
 // rules/concurrency/mutex.md — §§27,60 (explicit lock producer evidence).
+// rules/concurrency/cancellation.md — §24 (explicit physical-thread identity evidence).
 func (definition Definition) ScalarPlan() (layout.ResolvedScalarPlan, error) {
 	plan := layout.ResolvedScalarPlan{
 		TargetOS:         definition.OS,
@@ -562,6 +566,7 @@ func (definition Definition) ScalarPlan() (layout.ResolvedScalarPlan, error) {
 		Atomics:          definition.Atomics,
 		IPC:              definition.IPC,
 		Mutex:            definition.Mutex,
+		PhysicalThreads:  definition.PhysicalThreads,
 		AddressDomains:   definition.addressDomains(),
 	}
 	if err := plan.Validate(); err != nil {

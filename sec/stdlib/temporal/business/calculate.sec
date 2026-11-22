@@ -13,64 +13,313 @@ module business
  * NOTE: Stub results are explicit NotImplemented failures. No successful
  *       behavior is claimed by this file.
  */
+import "temporal/calendar"
 
 /**
- * Computes a monthly civil target date without business-day adjustment.
- * Description: Uses proleptic Gregorian month/year for this first API draft.
+ * Resolves a monthly civil-date rule.
+ *
+ * Description:
+ * Calculates a date using the proleptic Gregorian
+ * calendar, without applying working-day adjustments.
+ *
+ * DayOfMonth selects an exact day.
+ * DaysBeforeMonthEnd counts backward from month end.
+ * DaysBeforeNextMonth counts backward from the next
+ * month's first day.
+ *
+ * The function does not require business-calendar data,
+ * timezone information or access to the system clock.
+ *
  * Parameters:
- *   - year: Gregorian year.
- *   - month: Gregorian month number 1..12.
- *   - rule: Explicit day-of-month or boundary-relative rule.
- * Returns: Date in that month (or boundary-relative result where documented).
- * Errors: BusinessError.NotImplemented, InvalidDateRule, OutOfRange.
- * Ownership: Pure arithmetic, no external data or I/O.
+ * - year: Gregorian calendar year.
+ * - month: Gregorian month in the range 1..12.
+ * - rule: Requested monthly date rule.
+ *
+ * Returns:
+ * Absolute core date selected by the rule.
+ *
+ * Errors:
+ * - BusinessError.InvalidDateRule: Invalid rule or month.
+ * - BusinessError.OutOfRange: Date outside core range.
+ * - BusinessError.NotImplemented: Missing calendar support.
+ *
+ * Ownership:
+ * Pure calculation without allocation or I/O.
  */
 fn ResolveMonthlyDate(year: int, month: int, rule: MonthlyDateRule) Result[date, BusinessError] {
-    return Err(BusinessError.NotImplemented)
+    return _resolveGregorianMonthlyDate(year, month, rule)
 }
 
 /**
- * Checks a civil date against an explicit pinned working-day calendar.
+ * Determines whether a date is a business day.
+ *
+ * Description:
+ * Evaluates the explicitly selected working-day
+ * calendar and its pinned revision.
+ *
+ * The built-in calendar "builtin:mon-fri", revision "1",
+ * treats Monday through Friday as business days.
+ * Saturday and Sunday are non-business days.
+ *
+ * This calendar deliberately has no public holidays,
+ * exceptional closures or jurisdiction-specific rules.
+ *
+ * Unknown calendar identifiers are rejected.
+ * Unknown revisions of a recognized calendar are
+ * rejected rather than silently substituted.
+ *
  * Parameters:
- *   - value: Gregorian civil date.
- *   - rules: Borrowed working-day ruleset reference.
- * Returns: True only if the selected calendar classifies the date as working.
- * Errors: BusinessError.NotImplemented, UnknownCalendar,
- *         DatasetUnavailable, OutsideCoverage.
- * Ownership: Borrows rules descriptor; no hidden current-date query.
+ * - value: Absolute date to classify.
+ * - rules: Borrowed calendar identity and revision.
+ *
+ * Returns:
+ * True if the date is a business day in the selected
+ * calendar, otherwise false.
+ *
+ * Errors:
+ * - BusinessError.UnknownCalendar:
+ * Calendar identifier is not recognized.
+ * - BusinessError.DatasetUnavailable:
+ * Requested calendar revision is unavailable.
+ *
+ * Ownership:
+ * Borrows the calendar descriptor without transfer.
+ * Does not allocate or perform I/O.
  */
 fn IsBusinessDay(value: date, rules: ref BusinessCalendar) Result[bool, BusinessError] {
-    return Err(BusinessError.NotImplemented)
+    if rules.Identifier != "builtin:mon-fri" {
+        return Err(BusinessError.UnknownCalendar)
+    }
+
+    if rules.Revision != "1" {
+        return Err(BusinessError.DatasetUnavailable)
+    }
+
+    let weekday := _weekdayMondayIndex(value)
+
+    // Monday = 0, Friday = 4.
+    // Saturday = 5, Sunday = 6.
+    return Ok(weekday < 5)
 }
 
 /**
- * Adjusts a civil date to a business day using explicit convention.
+ * Moves an absolute date one day in either direction.
+ *
  * Parameters:
- *   - value: Unadjusted Gregorian civil date.
- *   - rules: Borrowed, versioned working-day ruleset.
- *   - policy: None, Following, Preceding or modified alternative.
- * Returns: Explicitly adjusted civil date.
- * Errors: BusinessError.NotImplemented, UnknownCalendar,
- *         DatasetUnavailable, OutsideCoverage, OutOfRange.
- * Ownership: No transfer of calendar ownership.
+ * - value: Starting absolute date.
+ * - direction: Either -1 or +1.
+ *
+ * Returns:
+ * Adjacent absolute date.
+ *
+ * Errors:
+ * - BusinessError.OutOfRange: Core date boundary exceeded.
+ *
+ * Ownership:
+ * Pure calculation without allocation.
+ */
+fn _stepBusinessDate(value: date, direction: int) Result[date, BusinessError] {
+    let epochDays := int64(value.EpochDays) + int64(direction)
+
+    let checkedDays := try int32(epochDays) {
+        Err(_) => return Err(BusinessError.OutOfRange)
+    }
+
+    return Ok(new date(checkedDays))
+}
+
+/**
+ * Finds the nearest business day in a direction.
+ *
+ * Description:
+ * Checks the starting date first. If it is already
+ * a business day, returns it unchanged.
+ *
+ * Otherwise advances one calendar day at a time.
+ * The business calendar determines which days qualify.
+ *
+ * Parameters:
+ * - value: Starting date.
+ * - rules: Borrowed business-calendar descriptor.
+ * - direction: +1 for following, -1 for preceding.
+ *
+ * Returns:
+ * First qualifying business day.
+ *
+ * Errors:
+ * - BusinessError.UnknownCalendar: Unknown calendar.
+ * - BusinessError.DatasetUnavailable: Missing revision.
+ * - BusinessError.OutsideCoverage: Missing date coverage.
+ * - BusinessError.OutOfRange: Date boundary exceeded.
+ *
+ * Ownership:
+ * Pure calculation without ownership transfer.
+ */
+fn _findBusinessDay(value: date, rules: ref BusinessCalendar, direction: int) Result[date, BusinessError] {
+    let mut current := value
+
+    while true {
+        let working := try IsBusinessDay(current, rules)
+
+        if working {
+            return Ok(current)
+        }
+
+        current = try _stepBusinessDate(current, direction)
+    }
+}
+
+/**
+ * Determines whether two dates belong to the same
+ * Gregorian calendar month and year.
+ *
+ * Parameters:
+ * - left: First absolute date.
+ * - right: Second absolute date.
+ *
+ * Returns:
+ * True when both dates have identical Gregorian
+ * year and month coordinates.
+ *
+ * Errors:
+ * - BusinessError.OutOfRange: Unrepresentable date.
+ * - BusinessError.NotImplemented: Missing conversion.
+ *
+ * Ownership:
+ * Pure calculation without allocation.
+ */
+fn _sameGregorianMonth(left: date, right: date) Result[bool, BusinessError] {
+    let first := try calendar.FromDate(left, calendar.CalendarSystem.Gregorian) {
+        Err(e) => return Err(_monthlyCalendarError(e))
+    }
+
+    let second := try calendar.FromDate(right, calendar.CalendarSystem.Gregorian) {
+        Err(e) => return Err(_monthlyCalendarError(e))
+    }
+
+    return Ok(
+        first.Year == second.Year &&
+        first.Month.Number == second.Month.Number,
+    )
+}
+
+/**
+ * Adjusts a date using a business-day convention.
+ *
+ * Description:
+ * None preserves the original date without consulting
+ * the selected business-calendar rules.
+ *
+ * Following and Preceding find the nearest business day
+ * in the requested direction.
+ *
+ * ModifiedFollowing searches forward, but searches
+ * backward instead if the forward result changes
+ * Gregorian month.
+ *
+ * ModifiedPreceding applies the opposite rule.
+ *
+ * Parameters:
+ * - value: Unadjusted absolute date.
+ * - rules: Borrowed versioned business calendar.
+ * - policy: Requested adjustment convention.
+ *
+ * Returns:
+ * Adjusted absolute date.
+ *
+ * Errors:
+ * - BusinessError.UnknownCalendar: Unknown calendar.
+ * - BusinessError.DatasetUnavailable: Missing revision.
+ * - BusinessError.OutsideCoverage: Missing date coverage.
+ * - BusinessError.OutOfRange: Date boundary exceeded.
+ *
+ * Ownership:
+ * Borrows the calendar descriptor.
+ * No allocation or implicit I/O.
  */
 fn AdjustBusinessDay(value: date, rules: ref BusinessCalendar, policy: BusinessDayAdjustment) Result[date, BusinessError] {
-    return Err(BusinessError.NotImplemented)
+    match policy {
+        BusinessDayAdjustment.None => {
+            return Ok(value)
+        }
+
+        BusinessDayAdjustment.Following => {
+            return _findBusinessDay(value, rules, 1)
+        }
+
+        BusinessDayAdjustment.Preceding => {
+            return _findBusinessDay(value, rules, -1)
+        }
+
+        BusinessDayAdjustment.ModifiedFollowing => {
+            let following := try _findBusinessDay(
+                value, rules, 1,
+            )
+
+            if try _sameGregorianMonth(value, following) {
+                return Ok(following)
+            }
+
+            return _findBusinessDay(value, rules, -1)
+        }
+
+        BusinessDayAdjustment.ModifiedPreceding => {
+            let preceding := try _findBusinessDay(value, rules, -1)
+
+            if try _sameGregorianMonth(value, preceding) {
+                return Ok(preceding)
+            }
+
+            return _findBusinessDay(value, rules, 1)
+        }
+    }
 }
 
 /**
- * Resolves a monthly due date and then applies a business-day convention.
+ * Calculates a monthly due date with business-day adjustment.
+ *
+ * Description:
+ * First resolves the monthly Gregorian date rule.
+ * The resulting date is then adjusted according to
+ * the explicitly selected BusinessDayAdjustment.
+ *
+ * None returns the unadjusted date without accessing
+ * the business-calendar dataset.
+ *
+ * A failed monthly calculation is returned immediately.
+ * No adjustment can make an invalid monthly rule valid.
+ *
  * Parameters:
- *   - year: Target Gregorian year.
- *   - month: Target Gregorian month 1..12.
- *   - rule: Monthly date calculation, e.g. DayOfMonth(27).
- *   - rules: Borrowed pinned working-day calendar.
- *   - policy: Explicit adjustment convention.
- * Returns: Adjusted due date; never silently picks Friday or Monday.
- * Errors: BusinessError.NotImplemented, InvalidDateRule,
- *         UnknownCalendar, DatasetUnavailable, OutsideCoverage, OutOfRange.
- * Ownership: No transfer of ruleset ownership.
+ * - year: Gregorian year.
+ * - month: Gregorian month in 1..12.
+ * - rule: Monthly date calculation.
+ * - rules: Borrowed versioned business-calendar descriptor.
+ * - policy: Requested business-day adjustment.
+ *
+ * Returns:
+ * Calculated and optionally adjusted due date.
+ *
+ * Errors:
+ * - BusinessError.InvalidDateRule: Invalid monthly rule.
+ * - BusinessError.UnknownCalendar: Unknown business calendar.
+ * - BusinessError.DatasetUnavailable: Missing dataset.
+ * - BusinessError.OutsideCoverage: Unsupported date.
+ * - BusinessError.OutOfRange: Date outside core range.
+ * - BusinessError.NotImplemented: Adjustment not implemented.
+ *
+ * Ownership:
+ * Borrows the calendar descriptor. Does not transfer
+ * ownership or perform implicit I/O.
  */
 fn DueDate(year: int, month: int, rule: MonthlyDateRule, rules: ref BusinessCalendar, policy: BusinessDayAdjustment) Result[date, BusinessError] {
-    return Err(BusinessError.NotImplemented)
+    // Resolve the nominal due date first.
+    let nominal := try ResolveMonthlyDate(year, month, rule)
+
+    // No working-day data is needed for an unadjusted date.
+    if policy == BusinessDayAdjustment.None {
+        return Ok(nominal)
+    }
+
+    // Apply the explicitly requested working-day convention.
+    return AdjustBusinessDay(nominal, rules, policy)
 }

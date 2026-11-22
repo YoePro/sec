@@ -782,6 +782,9 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 			(!typeHasKind(module.Types, resultType, TypeDecimal) && !typeHasKind(module.Types, resultType, TypeDecimal128)) {
 			return fmt.Errorf("invalid const.decimal")
 		}
+		if err := verifyFixedScaleDecimalConstant(module, op); err != nil {
+			return err
+		}
 	case OpConstFloat:
 		if len(op.Results) != 1 || op.FloatLexeme == "" || !typeHasKind(module.Types, resultType, TypeFloat) {
 			return fmt.Errorf("invalid const.float")

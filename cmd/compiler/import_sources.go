@@ -13,6 +13,11 @@ import (
 	"sec/internal/sourceimports"
 )
 
+// cliCompilationMode is the mode of the plan being compiled: production for
+// every command except the TestCompilationPlan of `sec test`.
+// Rules: rules/tooling/testing.md — §§ 3.1, 26.1.
+var cliCompilationMode = sema.CompilationProduction
+
 // resolveStdlibImportsWithSources loads the source closure for one target.
 // Rules: rules/projects/modules.md — §§3,8–9,13.
 func resolveStdlibImportsWithSources(program *ast.Program, target CompilerTarget, sourceFiles []string) {
@@ -55,6 +60,15 @@ func resolveStdlibImportsInto(program *ast.Program, target CompilerTarget, seen 
 			exitCLI(3)
 		}
 		if issues := sema.ImportIdentityIssues(importStmt, "", "", sourcePaths, identities); len(issues) != 0 {
+			for _, issue := range issues {
+				printSemaError(os.Stderr, issue)
+			}
+			printDiagnosticSummary(diagnosticSummary{Errors: len(issues)})
+			exitCLI(3)
+		}
+		// testing.md §§ 8.1, 25.2: tests/ modules only in a test plan, never
+		// as a dependency of production source.
+		if issues := sema.TestOnlyImportIssues(importStmt, "", sourcePaths, cliCompilationMode); len(issues) != 0 {
 			for _, issue := range issues {
 				printSemaError(os.Stderr, issue)
 			}

@@ -41,3 +41,36 @@ func TestTypePackTemplateSignatureHelp(t *testing.T) {
 		t.Fatalf("resolved help = %+v", help)
 	}
 }
+
+// The template fallback also covers pack methods: static calls through the
+// owner type, including explicit generic owner arguments, and instance calls
+// through the receiver's type.
+func TestTypePackMethodTemplateSignatureHelp(t *testing.T) {
+	declaration := `module main
+
+type Box[T] struct {
+    value: T,
+}
+
+impl Box[T] {
+    static fn Count[...Types](values: ...ref Types) uint {
+        return values.Len
+    }
+
+    fn Trace[...Types](prefix: string, values: ...Types) void {}
+}
+
+fn Use(box: Box[int]) void {
+`
+	cases := []struct{ call, label string }{
+		{"    discard Box[int].Count(", "fn Box.Count[...Types](values: ...ref Types) uint"},
+		{"    box.Trace(\"a\", 1, ", "fn Box.Trace[...Types](prefix: string, values: ...Types) void"},
+	}
+	for _, test := range cases {
+		source := declaration + test.call + "\n}\n"
+		help, ok := signatureHelpForSource("file:///tmp/methods.sec", source, position{Line: 15, Character: len(test.call)})
+		if !ok || len(help.Signatures) != 1 || help.Signatures[0].Label != test.label {
+			t.Fatalf("%s: help = %+v, %v", test.call, help, ok)
+		}
+	}
+}

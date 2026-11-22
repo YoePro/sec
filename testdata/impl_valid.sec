@@ -4,7 +4,7 @@ module impl_examples
 // Shared named types
 // -----------------------------------------------------------------------------
 
-type Speed int
+type Speed   int
 type Counter int
 
 // -----------------------------------------------------------------------------
@@ -34,9 +34,9 @@ impl extends EmptyTarget {
 // -----------------------------------------------------------------------------
 
 type Vehicle struct {
-    speed: Speed,
+    speed:  Speed,
     engine: Vehicle.Engine,
-    state: Vehicle.State,
+    state:  Vehicle.State,
 }
 
 impl Vehicle {
@@ -67,11 +67,11 @@ impl Vehicle {
     // Read/write property.
     property CurrentSpeed: Speed {
         get {
-            return speed
+            return self.speed
         }
 
         set value {
-            speed = value
+            self.speed = value
         }
     }
 
@@ -179,7 +179,7 @@ impl Scalar {
 type StatusRegister register[8] {
     Ready: bit
     Error: bit
-    _: bit[6]
+    _:     bit[6]
 }
 
 impl StatusRegister {
@@ -212,7 +212,7 @@ type Box[T] struct {
 
 impl Box[T] {
     type Pair struct {
-        first: T,
+        first:  T,
         second: T,
     }
 

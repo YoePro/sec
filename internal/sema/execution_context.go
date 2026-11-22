@@ -10,7 +10,7 @@ import "sec/internal/ast"
 // Thread.Current is a target-profile check (cancellation.md § 24).
 //
 // Rules:
-//   - rules/concurrency/cancellation.md — §§ 8–11
+//   - rules/concurrency/cancellation.md — §§ 8–11,24
 //   - rules/concurrency/scheduling.md — Task.Yield and Thread.Yield
 func (a *Analyzer) inferExecutionContextCall(expr *ast.CallExpression) (Type, expressionValue, bool) {
 	member, ok := expr.Callee.(*ast.MemberExpression)
@@ -32,6 +32,9 @@ func (a *Analyzer) inferExecutionContextCall(expr *ast.CallExpression) (Type, ex
 		return Type{}, expressionValue{}, false
 	}
 	if !a.checkCompilerKnownCallArity(expr, name, 0, 0) {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+	}
+	if owner.Value == "Thread" && member.Property.Value == "Current" && !a.resolveThreadCurrentCapability(expr) {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 	}
 	if member.Property.Value == "Yield" {

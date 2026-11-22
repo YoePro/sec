@@ -76,7 +76,7 @@ integrations:
     status: partial
     integrated: true
     audited: true
-    revised: "2026-11-18"
+    revised: "2026-11-22"
     document_revision: "2.3"
     repository_baseline: main-reviewed-2026-09-30
     summary: >-
@@ -212,6 +212,14 @@ integrations:
       - cmd/compiler/main.go
       - cmd/compiler/module_sources.go
       - testdata/diagnostics/emitted_occurrences_invalid.sec
+      - internal/sema/operator_diagnostics.go
+      - internal/sema/arithmetic_inference.go
+    tests:
+      - internal/sema/operator_diagnostics_test.go
+      - cmd/compiler/operator_diagnostics_test.go
+      - cmd/lsp/operator_diagnostics_test.go
+      - testdata/sema/operator_operand_types_valid.sec
+      - testdata/sema/operator_operand_types_invalid.sec
     implemented:
       - "MD-039 diagnostics and tooling (2026-11-01; correction MD-004-MD-039 § 6(5–6)): S1097 only for an unhandled Result operand or interpolation, S1096 accepts try string +=, S1022 accepts the protected operand, S1098 kept. LSP hover on + and += states panic mode, try mode, the protected operand and the invalid unhandled operand from Sema's plan. Quick fixes for S1097 and S1022 and refactors from panic to try are verified by re-analysis of the edited source, so a callable that cannot carry StringError gets none. The formatter keeps the source-selected try (cmd/lsp/string_operator_tooling.go)."
       - "2026-10-26: after active/retired ID checks, allocated S1174 types.conversion-unavailable as the general mandatory error for an unavailable explicit conversion relation, distinct from S1139 checked-conversion protection and S1093 error-channel compatibility. Both explicit conversion inference paths publish it; numeric-to-named-string rejection includes the explicit ToString/try repair (MD-093). CLI human/JSON and LSP conformance are tested by the types-core owner; source positions and mandatory error severity are retained."
@@ -580,7 +588,9 @@ integrations:
           Proven statement-after-terminator diagnostics use mandatory S3001 with
           explanatory help in CLI and LSP.
       - "MD-120 diagnostics completed (2026-11-02; correction §10(7), diagnostics.md §§2(6–10),14–15): mandatory S1191 errors.invalid-result-error-channel identifies Result error-channel ineligibility (including unconstrained E), S1192 errors.variant-requires-concrete-channel identifies unknown-channel variant selection across contextual/qualified match and try forms with or without payload patterns, and S1193 interfaces.generic-argument-count identifies omitted or wrong interface type-argument counts. Each is a distinct source rule with no suitable existing registered ID; existing constraint-failure, handler-shape and non-discardability diagnostics keep their identities. Generic and explicit-open error channels receive different repairs; no E variant, default error argument, generic variance or implicit discard is inferred. The qualified try form now reports the unavailable variant knowledge instead of undefined variable E. Thirteen invalid source cases retain registered identity, error severity, nonempty ranges and help through Sema, CLI JSON and LSP; legal generic/concrete/root views and whole-channel handlers remain accepted."
+      - "BUG-000040 fixed (2026-11-22; diagnostics.md sections 5-9,12,15): registered mandatory S1259 operator.incompatible-operand-types in the operators family for the existing cannot-apply-operator diagnostic, including uint minus int. A shared Sema reporter supplies the unchanged primary message, exact operator-token span and guidance for compatible types and explicit fallible conversions across all four identical reporting sites. Arithmetic acceptance and literal/conversion rules are unchanged; numeric-carrier-specific and other differently worded diagnostics are outside this fix. The existing plain-arithmetic inference function was extracted from analyzer_inference.go into arithmetic_inference.go with rulebook traceability. Source-backed three-depth 32/64-bit tests, CLI JSON/detailed registry lookup and LSP span/help checks pass."
     partial:
+      - "Started (moved to partial 2026-11-22; the text records the done part and what remains): MD-049 A2012 types.inferred-decimal-scale (correction §§ 7, 15(1), 15(6); diagnostics.md § 31A). Done: registered as a configurable information diagnostic in family types and emitted once at the declaration that infers a scale, naming the selected scale and, when capacity reduced it, the preferred scale, limiting bound and carrier, with help suggesting `scale S`; absent for explicit and inherited scales (TestDecimalScaleInferenceAndDefaults). Remaining: structured diagnostic arguments, the LSP quick fix inserting `scale S` before the first range, and quick-fix fidelity tests."
       - id: diagnostics.registry-definition-v2
         description: >-
           Current Definition contains ID, Name, Family, DefaultSeverity,
@@ -665,6 +675,8 @@ integrations:
       - Attempts to disable or demote mandatory diagnostics are rejected.
       - No Sec 0.1 source syntax suppresses advisory or mandatory diagnostics.
     verification:
+      - command: go test ./internal/sema -run 'Operator|Arithmetic|Numeric|Bitwise|UnitConversion' -count=1
+        result: Passed 2026-11-22 (0.894s). Focused Sema/CLI/LSP diagnostic tests also passed (0.036s/1.973s/3.713s); registry and full traceability passed (0.002s/0.223s); CLI catalog/operator tests passed (1.271s). No numeric compatibility semantics changed.
       - command: go test -race ./cmd/compiler ./cmd/lsp -run 'Test(ChildPanic|AnalyseChildPanic|MD131Assignment)' -count=1 -timeout=180s
         result: "Passed 2026-11-18 for MD-131 default severity and retired-ID source conformance; diagnostics.md revision 2.3 §24(4k) agrees with A2011 and retired S1069 in the registry. Existing integrated: true and audited: true type hazards predate this work (verified against HEAD); their unknown historical dates were preserved."
       - command: GOCACHE=/tmp/sec-go-cache go test ./internal/sema ./internal/diagnostics -count=1

@@ -55,6 +55,12 @@ func (a *Analyzer) typeFromDeclarationWithName(name string, stmt *ast.TypeDeclSt
 	}
 
 	typ = a.applyContracts(typ, stmt.Contract)
+	// MD-049: infer or validate the fixed scale of a named decimal type.
+	scaleToken := typ.DeclarationToken
+	if stmt.Name != nil {
+		scaleToken = stmt.Name.Token
+	}
+	typ = a.resolveFixedDecimalScale(typ, scaleToken)
 	if stmt.Default != nil {
 		typ.ExplicitDefaultToken = expressionToken(stmt.Default)
 		start := len(a.errors)
@@ -84,6 +90,11 @@ func (a *Analyzer) typeFromDeclarationWithName(name string, stmt *ast.TypeDeclSt
 			// "Diagnostics": representability is checked before contracts.
 			typ.InvalidExplicitDefault = true
 			a.addErrorAtTokenWithMetadata(expressionToken(stmt.Default), diagnostics.DefaultNotRepresentable, "choose a value representable by "+contractApplicabilityTypeName(typ), "default value %s is not representable by %s", stmt.Default.String(), name)
+		} else if scale, fixed := fixedDecimalScaleContract(typ); fixed && !rescaleConstant(&constant, scale) {
+			// MD-049 default_values.md § 65A(3): an explicit default is
+			// placed exactly on the fixed grid or rejected.
+			typ.InvalidExplicitDefault = true
+			a.addErrorAtTokenWithMetadata(expressionToken(stmt.Default), diagnostics.DefaultNotRepresentable, fmt.Sprintf("choose a value with at most scale %d", scale.Value), "default value %s is not representable by %s at scale %d", stmt.Default.String(), name, scale.Value)
 		} else if violated, ok := firstViolatedContract(typ, constant); ok {
 			// rules/types/contracts.md, "Explicit defaults" and "Diagnostics":
 			// name the first violated contract in source order.
@@ -120,7 +131,7 @@ func isCoreBuiltinDeclaration(name string) bool {
 	}
 	switch name {
 	case "ArithmeticError", "IndexError", "RangeError", "PrecisionError", "FormatError", "StringError", "ContractError", "TaskOutcome", "TaskSpawnError", "TaskError", "PanicID", "PanicInfo",
-		"date", "time", "datetime", "duration", "Instant", "MemoryOrder", "CompareExchangeResult", "ChannelCapability", "Mutex", "MutexGuard", "Context", "ContextError", "ThreadAttachError", "ThreadSpawnError", "ThreadStartError", "ThreadPriority", "ThreadStartMode", "ThreadSetting", "CpuSet", "ThreadStorage", "ThreadConfig", "ThreadTerminationKind", "ThreadTermination", "ChannelRevokeResult", "MessageDisposition":
+		"date", "time", "datetime", "duration", "Instant", "BuildInfo", "MemoryOrder", "CompareExchangeResult", "ChannelCapability", "Mutex", "MutexGuard", "Context", "ContextError", "ThreadAttachError", "ThreadSpawnError", "ThreadStartError", "ThreadPriority", "ThreadStartMode", "ThreadSetting", "CpuSet", "ThreadStorage", "ThreadConfig", "ThreadTerminationKind", "ThreadTermination", "ChannelRevokeResult", "MessageDisposition":
 		return true
 	default:
 		return false

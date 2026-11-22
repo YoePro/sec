@@ -90,7 +90,6 @@ internal/ir/semantic:(*functionBuilder).buildRegisterFieldAssignment
 internal/ir/semantic:(*functionBuilder).buildRegisterFieldRead
 internal/ir/semantic:(*functionBuilder).buildRegisterFieldValue
 internal/ir/semantic:(*functionBuilder).buildResolvedMatch
-internal/ir/semantic:(*functionBuilder).buildResolvedOperatorWithFailure
 internal/ir/semantic:(*functionBuilder).buildResultConstructor
 internal/ir/semantic:(*functionBuilder).buildResultPropagation
 internal/ir/semantic:(*functionBuilder).buildReturn
@@ -1122,7 +1121,6 @@ internal/sema:(*Analyzer).inferMemberExpression
 internal/sema:(*Analyzer).inferNumericUnitInfixExpression
 internal/sema:(*Analyzer).inferOwningConstructionValue
 internal/sema:(*Analyzer).inferPlaceBase
-internal/sema:(*Analyzer).inferPlainArithmeticExpression
 internal/sema:(*Analyzer).inferPrefixExpression
 internal/sema:(*Analyzer).inferRangeMembershipExpression
 internal/sema:(*Analyzer).inferReceiverCall
@@ -2262,7 +2260,6 @@ internal/sema:stateTestVariants
 internal/sema:statementHasReachableBreakToCurrentLoop
 internal/sema:statementMutablyBorrowsReceiver
 internal/sema:statementReturnsErr
-internal/sema:statementToken
 internal/sema:staticUnitConversionPlan
 internal/sema:strongerAccess
 internal/sema:strongerIdentity

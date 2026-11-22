@@ -712,11 +712,12 @@ reports:
 
   - id: BUG-000032
     title: Less-than comparison read as unit arguments when a later "> (" follows
-    status: open
+    status: fixed
     severity: medium
     kind: parser-bug
     reported: "2026-11-20"
-    report: open/BUG-000032-less-than-read-as-unit-arguments.md
+    fixed: "2026-11-22"
+    report: fixed/BUG-000032-less-than-read-as-unit-arguments.md
     area: frontend-parser-expressions
     rulebooks:
       - rules/foundations/grammar.md
@@ -730,6 +731,17 @@ reports:
       The speculative unit/type-argument scan crosses the block brace.
       Found in sec/stdlib/net/http/http1.sec, which uses reversed
       comparisons as a workaround.
+    resolution: >-
+      parseUnit's speculative scan now stops at block, statement and list
+      delimiters, at comparison and logical operators and at a line change,
+      none of which can occur in a structural unit expression. A speculative
+      unit conversion then reports an unterminated unit and rolls back to an
+      ordinary comparison, so `a < b { ... c > (x) }`, `a < b || c > (b)` and
+      `let x := a < b` followed by a later `(b) > (a)` parse; `float<km>(x)`
+      still parses as a unit conversion. http1.sec's reversed comparisons
+      are no longer required (stdlib is owner-maintained and unchanged).
+    regression_tests:
+      - internal/parser/unit_scan_boundary_test.go
 
   - id: BUG-000033
     title: new T(args) rejected inside a static method of T
@@ -752,11 +764,11 @@ reports:
 
   - id: BUG-000034
     title: Module-internal helpers unreachable from a trusted-core test file
-    status: open
+    status: fixed
     severity: low
     kind: semantic-validation-bug
     reported: "2026-11-20"
-    report: open/BUG-000034-core-test-file-module-internal-access.md
+    report: fixed/BUG-000034-core-test-file-module-internal-access.md
     area: frontend-core-test-loading
     rulebooks:
       - rules/projects/modules.md
@@ -767,8 +779,23 @@ reports:
       Observed 2026-11-20 in sec/core/types_test.sec: calls to a `_` helper
       declared in the same test file reported "not accessible from module
       core". The same pattern checks cleanly in an ordinary module, also one
-      named core outside the trusted path. Cause not isolated; the test file
-      uses public-spelled helpers as a workaround.
+      named core outside the trusted path. The initial report did not isolate the cause;
+      the test file used public-spelled helpers as a workaround.
+    fixed: "2026-11-22"
+    resolution: >-
+      Sema statementToken did not handle ast.TestDeclaration. withProgramModules
+      therefore set currentSourceFile to empty while analyzing test bodies,
+      losing loader-proven core authority and ordinary same-file private access.
+      Added the missing projection and extracted the helper into statement_tokens.go.
+      No access check was relaxed. The source-backed regression fails before the
+      fix and passes after it, preserving cross-file private and untrusted-core
+      rejection. Sema depth/width matrix, real sec test loader/listing and editor
+      diagnostics/definition navigation are covered. Runtime test execution is
+      still separately unavailable, never reported as a passed invocation.
+    regression_tests:
+      - internal/sema/test_source_visibility_test.go
+      - cmd/compiler/test_source_visibility_test.go
+      - cmd/lsp/test_source_visibility_test.go
 
   - id: BUG-000035
     title: Static factory mistaken for a union ownership constructor
@@ -834,3 +861,94 @@ reports:
       focused race tests pass. No source acceptance defect from this particular
       key collision is claimed. Replay mutation testing separately confirms
       the five source-backed next-iteration stale-use regressions are sensitive.
+
+  - id: BUG-000038
+    title: Returning a named-decimal local fails Semantic IR verification
+    status: open
+    severity: medium
+    kind: semantic-ir-bug
+    reported: "2026-11-22"
+    report: open/BUG-000038-named-decimal-let-return-type-mismatch.md
+    area: semantic-ir-named-decimal
+    rulebooks:
+      - rules/compiler/semantic_ir.md
+      - rules/types/types.md
+    governance:
+      - semantic-ir.core-v2
+    evidence: >-
+      `let value: Money := 1.5` followed by `return value` in a function
+      returning the named decimal Money fails emit-ir with "return type
+      mismatch", with or without an MD-049 scale contract; struct-field
+      defaults and literals of the same type verify.
+
+  - id: BUG-000039
+    title: Safe negative integer literal contributes spurious ArithmeticError to try
+    status: fixed
+    severity: medium
+    kind: semantic-validation-bug
+    reported: "2026-11-22"
+    fixed: "2026-11-22"
+    report: fixed/BUG-000039-safe-negative-literal-try-failure.md
+    area: frontend-try-failure-provenance
+    rulebooks:
+      - rules/errors/runtime_checks.md
+      - rules/errors/errorhandling.md
+      - rules/foundations/operators.md
+      - rules/compiler/semantic_ir.md
+    governance:
+      - frontend.errorhandling-v2
+    evidence: >-
+      Reproduced S1093 for try _findBusinessDay(-1) returning
+      Result[int, BusinessError], matching the reported date-returning call in
+      temporal/business/calculate.sec. The error incorrectly attributed an
+      ArithmeticError to the representable literal negation. Minimal CLI/LSP
+      regression also verifies one diagnostic for genuinely dynamic negation.
+    resolution: >-
+      Shared Sema operator resolution now proves representable builtin signed
+      integer literal negation against the selected canonical integer bounds,
+      retaining an immutable exact constant and removing the impossible check,
+      panic effect and try failure point. IR consumes the proof as const.int,
+      rather than rebuilding an invalid unchecked-negation shape or dead panic
+      edge. Dynamic/named-contract/decimal operations keep their existing rules.
+      Source-backed Sema, CLI, LSP and verified IR regressions cover both widths,
+      all analysis depths, signed minima, zero and dynamic negation. The actual
+      calculate.sec probe no longer reports ArithmeticError from (-1); three
+      unrelated dependency diagnostics remain in calendar/partial_validation.sec.
+    regression_tests:
+      - internal/sema/try_negative_literal_test.go
+      - internal/ir/semantic/negative_literal_test.go
+      - cmd/compiler/try_negative_literal_test.go
+      - cmd/lsp/try_negative_literal_test.go
+
+  - id: BUG-000040
+    title: Binary operator operand mismatch emits an unregistered diagnostic
+    status: fixed
+    severity: medium
+    kind: diagnostic-bug
+    reported: "2026-11-22"
+    fixed: "2026-11-22"
+    report: fixed/BUG-000040-operator-operand-mismatch-diagnostic.md
+    area: frontend-operator-diagnostics
+    rulebooks:
+      - rules/tooling/diagnostics.md
+      - rules/foundations/operators.md
+      - rules/types/types.md
+    governance:
+      - errors.diagnostics
+    evidence: >-
+      Static inspection found four identical cannot-apply-operator reporting
+      sites using addErrorAtToken without an ID, including uint minus int in
+      ordinary arithmetic. The numeric-carrier-specific diagnostic is a
+      different message and remains outside this fix.
+    resolution: >-
+      Registered mandatory S1259 operator.incompatible-operand-types in the
+      operators family. The shared reporter retains the existing message and
+      operator span, adds explicit type/conversion guidance and is consumed
+      by all four identical reporting sites. Numeric acceptance, literal
+      shaping and conversion rules are unchanged. Source-backed Sema tests
+      cover both widths/all analysis depths and exact spans; compiler JSON,
+      detailed diagnostic lookup and LSP regression tests pass.
+    regression_tests:
+      - internal/sema/operator_diagnostics_test.go
+      - cmd/compiler/operator_diagnostics_test.go
+      - cmd/lsp/operator_diagnostics_test.go

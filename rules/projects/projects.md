@@ -1529,6 +1529,8 @@ DirtySourceStatus when available
 
 § 32(7) Build timestamps require explicit separately defined behavior because ambient time reduces reproducibility.
 
+§ 32(8) The build-metadata API is `core.BuildInfo` with `BuildInfo.Current()` (MD-143; `rules/library/core-library.md` § 28, `rules/compiler/compiler_known_members.md` § 113B). Its `BuildProfile` and `TargetProfile` fields together replace the conceptual `Profile` of § 32(2); optional facts are `Option` values; §§ 33–34 govern its reproducibility and cache identity.
+
 ---
 
 ## § 33. Reproducible builds

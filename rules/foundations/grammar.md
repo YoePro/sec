@@ -553,6 +553,7 @@ interface Vehicle implements Startable, Stoppable {
 ```text
 TypeContract
     ::= RangeContract
+      | ScaleContract
       | MembershipContract
       | MultipleOfContract
       | LengthContract
@@ -565,6 +566,9 @@ RangeContract
 RangeOperator
     ::= ".."
       | "..<"
+
+ScaleContract
+    ::= Contextual("scale") Expression
 
 MembershipContract
     ::= "in" "[" Expression { "," Expression } [ "," ] "]"
@@ -646,6 +650,8 @@ type Tags string[] notEmpty unique
 **§ 17(9)** They are not canonical on individual variables or struct fields.
 
 ---
+
+**§ 17(10)** `ScaleContract` (MD-049). Integrated 2026-11-22 from `rules/corrections/applied/MD-049-decimal-range-scale-inference-capacity-correction-rev1-2-2026-11-21-20261122.md` (MD-049, owner-locked 2026-11-21). The correction holds the full normative text and test vectors T01–T65; this section is its owning summary. `scale N` applies only to named types whose carrier is `decimal` or `decimal128`; `N` is one `Expression` in a `SemanticCompileTimeRequiredContext` whose result is an integer in the signed `int32` domain. It may appear before or after other contracts and before `default`. A `range` bound is an ordinary expression up to its established boundary: an identifier spelled `scale` that can continue a legal bound expression belongs to that expression (`range 0..scale` names a constant), and a `ScaleContract` starts only at the next confirmed contract head, so `scale 2 range 0..` writes an open upper bound together with a scale. Recovery keeps a malformed or missing argument as a contract node without consuming a following `range` or `default`. At most one local `scale` is allowed; repeating an inherited value is an assertion (`rules/types/contracts.md` § 16).
 
 ## § 18 Default clause
 

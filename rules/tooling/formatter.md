@@ -2031,6 +2031,12 @@ compare equivalent syntax/AST meaning modulo trivia and source positions
 
 ---
 
+## § 31A. Decimal literal spelling and `scale` contracts (MD-049)
+
+**§ 31A(1)** Integrated 2026-11-22 from `rules/corrections/applied/MD-049-decimal-range-scale-inference-capacity-correction-rev1-2-2026-11-21-20261122.md` (MD-049, owner-locked 2026-11-21). The correction holds the full normative text and test vectors T01–T65; this section is its owning summary. The formatter preserves every numeric literal spelling, including significant decimal trailing zeros (`1.200m` stays `1.200m`), because a literal's represented scale can determine an inferred fixed scale. It never moves a `scale` clause relative to a `range` in a way that changes the parse (`rules/foundations/grammar.md` § 17(10)), and formatting stays idempotent.
+
+---
+
 ## § 32. Summary of the Sec 0.1 formatting contract
 
 **Governance tags:** `tooling.formatter-v2`

@@ -2007,6 +2007,16 @@ no safe slice is fabricated without a valid origin
 
 ---
 
+## § 65A Defaults of fixed-scale decimal types (MD-049)
+
+**§ 65A(1)** Integrated 2026-11-22 from `rules/corrections/applied/MD-049-decimal-range-scale-inference-capacity-correction-rev1-2-2026-11-21-20261122.md` (MD-049, owner-locked 2026-11-21). The correction holds the full normative text and test vectors T01–T65; this section is its owning summary. This section resolves the earlier open "Floating and decimal ranges" scale question (Appendix A.5) for decimal types: the search runs over the type's resolved fixed scale `S` (`rules/types/contracts.md` § 16), never over every carrier scale. A variable-scale decimal keeps the existing rules.
+
+**§ 65A(2)** Candidates are exactly the grid values `c × 10^(-S)` with `Cmin <= c <= Cmax` satisfying every contract. Zero is tested first, then the unique member nearest to zero; an equal-distance tie needs an explicit default (`S1061`) and an empty set is an invalid type (`S1065`). For an exclusive upper bound of zero the nearest negative member is `-1 × 10^(-S)`, computed as the compact pair `(-1, S)`.
+
+**§ 65A(3)** Every default carries scale `S`: zero is `(0, S)`, and an explicit default is rescaled exactly to `S` or rejected as `S1060` when it cannot be, or `S1059` when it violates a contract. A child's implicit default is resolved from its own full contract set, never copied from its parent.
+
+---
+
 ## § 66 Required synchronization
 
 **§ 66(1)** This rulebook must remain synchronized with:

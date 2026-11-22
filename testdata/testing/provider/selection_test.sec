@@ -1,0 +1,4 @@
+module provider_fixture
+
+test "first / case" { testing.Expect(true) }
+test "second case" { testing.ExpectEqual(2, 2) }

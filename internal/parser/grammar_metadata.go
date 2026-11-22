@@ -101,6 +101,11 @@ func (p *Parser) isContractStart(token lexer.Token) bool {
 	if token.Type != lexer.IDENT {
 		return false
 	}
+	// MD-049: the unreserved `scale` begins a contract only at a contract
+	// head on the declaration's line (grammar.md § 17(10)).
+	if lexer.ContractWordRoleOf(token.Lexeme) == lexer.ScaleContractWord {
+		return token.Line == p.curToken.Line
+	}
 	// `regex` is a reserved contract spelling like the other contract words
 	// and follows ordinary whitespace and continuation rules; it has no
 	// same-line requirement (MD-009).

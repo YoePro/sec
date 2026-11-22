@@ -40,6 +40,19 @@ func applyLSPCBindingPlan(analyzer *sema.Analyzer, program *ast.Program, sourceP
 		surface.Files[file.Path] = layer
 	}
 	var statements []ast.Statement
+	modules := map[string]string{}
+	for _, file := range plan.Files {
+		data, err := os.ReadFile(file.Path)
+		if err != nil {
+			return
+		}
+		p := parser.New(lexer.NewWithFile(string(data), file.Path))
+		modules[file.Path] = cbindingplan.ModuleName(p.Parse().Program)
+	}
+	// A module-identity collision leaves the surface empty, as the CLI rejects it.
+	if len(cbindingplan.ModuleIdentityProblems(plan, modules, program)) != 0 {
+		return
+	}
 	for _, file := range cbindingplan.MissingFiles(program, plan) {
 		data, err := os.ReadFile(file.Path)
 		if err != nil {

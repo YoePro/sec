@@ -3826,3 +3826,13 @@ transition kinds
 ```
 
 Do not print assumed physical pointer layout.
+
+---
+
+## § 128 Scale-bearing decimal constants and fixed-scale facts (MD-049)
+
+§ 128(1) Integrated 2026-11-22 from `rules/corrections/applied/MD-049-decimal-range-scale-inference-capacity-correction-rev1-2-2026-11-21-20261122.md` (MD-049, owner-locked 2026-11-21). The correction holds the full normative text and test vectors T01–T65; this section is its owning summary. A known decimal constant is a pair `(coefficient, scale)` with carrier width, nominal identity, provenance and, where available, the source lexeme. A cached exact rational may accompany it but never replaces the scale; equal rationals may carry different scales, and the lexeme is never the authority for a computed value.
+
+§ 128(2) Semantic IR builds decimal constants, range bounds and defaults only from immutable Sema-resolved coefficient/scale facts and the frozen type-level fixed scale (origin `explicit`, `inherited` or `inferred`, with preferred scale and limiting bound for inferred scales). It never re-parses a default lexeme or re-infers a scale from the AST.
+
+§ 128(3) Construction of a fixed-scale nominal value is checked (exact placement at the scale, coefficient width, contracts in source order). A schema or lowering path that cannot carry the required guard rejects the program explicitly; no optimization may change an observable `.Scale` or turn a nominal value into a plain carrier.

@@ -1,0 +1,173 @@
+module business
+
+/*
+ * Sec Standard Library — temporal/business
+ * File: business/monthly.sec
+ * Purpose: Pure Gregorian monthly-date calculations.
+ * Status: Implementation candidate
+ * Revision: 0.1
+ * Updated: 2026-11-22
+ *
+ * Governing rulebook:
+ * stdlib/temporal/business/std-temporal-business.md
+ *
+ * No allocation, clock access, locale or external datasets.
+ */
+
+import "temporal/calendar"
+
+/**
+ * Calculates a day offset from the first day of a month.
+ *
+ * Description:
+ * DayOfMonth selects a specific day in the target month.
+ *
+ * DaysBeforeMonthEnd counts backward from the last day
+ * of that month. Zero selects the last day itself.
+ *
+ * DaysBeforeNextMonth counts backward from the first
+ * day of the following month. Zero selects that first
+ * day; one selects the last day of the target month.
+ *
+ * Offsets are limited to the target month, except for
+ * DaysBeforeNextMonth(0), which selects the next month.
+ *
+ * Parameters:
+ * - rule: Requested monthly date calculation.
+ * - monthLength: Number of days in the Gregorian month.
+ *
+ * Returns:
+ * Zero-based day offset from the first day of the month.
+ *
+ * Errors:
+ * - BusinessError.InvalidDateRule: Invalid day or offset.
+ *
+ * Ownership:
+ * Pure calculation without allocation.
+ */
+fn _monthlyRuleOffset(rule: MonthlyDateRule, monthLength: int) Result[int, BusinessError] {
+    match rule {
+        MonthlyDateRule.DayOfMonth(day) => {
+            if day not in 1..monthLength {
+                return Err(BusinessError.InvalidDateRule)
+            }
+
+            return Ok(day - 1)
+        }
+
+        MonthlyDateRule.DaysBeforeMonthEnd(days) => {
+            if days < 0 || days >= monthLength {
+                return Err(BusinessError.InvalidDateRule)
+            }
+
+            return Ok(monthLength - 1 - days)
+        }
+
+        MonthlyDateRule.DaysBeforeNextMonth(days) => {
+            if days < 0 || days > monthLength {
+                return Err(BusinessError.InvalidDateRule)
+            }
+
+            return Ok(monthLength - days)
+        }
+    }
+}
+
+/**
+ * Maps Gregorian calendar failures to business errors.
+ *
+ * Parameters:
+ * - cause: Error returned by temporal/calendar.
+ *
+ * Returns:
+ * Corresponding BusinessError.
+ *
+ * Ownership:
+ * Pure calculation without allocation.
+ */
+fn _monthlyCalendarError(cause: calendar.CalendarError) BusinessError {
+    match cause {
+        calendar.CalendarError.OutOfRange => {
+            return BusinessError.OutOfRange
+        }
+
+        calendar.CalendarError.InvalidYear => {
+            return BusinessError.InvalidDateRule
+        }
+
+        calendar.CalendarError.InvalidMonth => {
+            return BusinessError.InvalidDateRule
+        }
+
+        calendar.CalendarError.InvalidDay => {
+            return BusinessError.InvalidDateRule
+        }
+
+        _ => {
+            return BusinessError.NotImplemented
+        }
+    }
+}
+
+/**
+ * Resolves a monthly date rule in the Gregorian calendar.
+ *
+ * Description:
+ * Uses Gregorian calendar month lengths and an absolute
+ * day offset. Leap years are handled by temporal/calendar.
+ *
+ * A valid result can be the first day of the following
+ * month when DaysBeforeNextMonth(0) is requested.
+ *
+ * Parameters:
+ * - year: Gregorian year, including astronomical year zero.
+ * - month: Gregorian month numbered 1 through 12.
+ * - rule: Monthly date calculation.
+ *
+ * Returns:
+ * Absolute core date satisfying the requested rule.
+ *
+ * Errors:
+ * - BusinessError.InvalidDateRule: Invalid month or rule.
+ * - BusinessError.OutOfRange: Unrepresentable absolute day.
+ * - BusinessError.NotImplemented: Missing calendar support.
+ *
+ * Ownership:
+ * Pure calculation without allocation or I/O.
+ */
+fn _resolveGregorianMonthlyDate(year: int, month: int, rule: MonthlyDateRule) Result[date, BusinessError] {
+    if month not in 1..12 {
+        return Err(BusinessError.InvalidDateRule)
+    }
+
+    let monthIdentity := calendar.CalendarMonth {
+        Number: month,
+        IsLeap: false,
+    }
+
+    let monthLength := try calendar.DaysInMonth(year, monthIdentity, calendar.CalendarSystem.Gregorian) {
+        Err(e) => return Err(_monthlyCalendarError(e))
+    }
+
+    let offset := try _monthlyRuleOffset(rule, monthLength)
+
+    let firstDay := calendar.CalendarFields {
+        Year: year,
+        Month: monthIdentity,
+        Day: 1,
+    }
+
+    let absolute := try calendar.ToDate(firstDay, calendar.CalendarSystem.Gregorian) {
+        Err(e) => return Err(_monthlyCalendarError(e))
+    }
+
+    // The offset is between zero and the month length.
+    // Use int64 to avoid overflowing the core date carrier.
+    let epochDays := int64(absolute.EpochDays) + int64(offset)
+
+    let checkedDays := try int32(epochDays) {
+        Err(_) => return Err(BusinessError.OutOfRange)
+    }
+
+    return Ok(new date(checkedDays))
+}

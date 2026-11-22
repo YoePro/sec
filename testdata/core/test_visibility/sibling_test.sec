@@ -1,0 +1,5 @@
+module core
+
+test "module internal test helpers cross files" {
+    testing.Expect(_sharedTest())
+}

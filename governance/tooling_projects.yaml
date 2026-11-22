@@ -143,7 +143,7 @@ integrations:
     area: tooling-projects
     status: partial
     integrated: "2026-10-04"
-    revised: "2026-10-13"
+    revised: "2026-11-22"
     summary: >-
       Revision 2.0 structured project version: `[version]` with major, minor,
       revision, build, optional userdefined, and format; rendering through the
@@ -168,6 +168,14 @@ integrations:
       - cmd/lsp/project_version_diagnostics.go
       - cmd/lsp/diagnostics_batch.go
       - cmd/lsp/analysis_dependencies.go
+      - internal/sema/build_info.go
+      - internal/platform/buildinfo/buildinfo.go
+      - cmd/compiler/build_info.go
+      - cmd/lsp/build_info.go
+      - internal/ir/semantic/build_info.go
+      - mlir/lib/Conversion/SecToLLVM/StructProjections.cpp
+      - mlir/include/sec/Conversion/SecToLLVM/Passes.td
+      - mlir/lib/Conversion/SecToLLVM/SecToLLVM.cpp
     tests:
       - internal/project/version_test.go
       - internal/project/version_forms_test.go
@@ -178,6 +186,12 @@ integrations:
       - cmd/compiler/project_version_diagnostics_test.go
       - cmd/lsp/project_version_diagnostics_test.go
       - cmd/lsp/allocation_parity_test.go
+      - internal/sema/build_info_test.go
+      - cmd/compiler/build_info_test.go
+      - cmd/lsp/build_info_test.go
+      - internal/ir/semantic/build_info_test.go
+      - mlir/test/Conversion/SecToLLVM/struct-projections.mlir
+      - cmd/compiler/build_info_native_test.go
     implemented:
       - internal/project ParseManifestVersions reads exactly one `[version]` table and every `[target.<name>.version]` table into structured fields, requiring major, minor, revision, build, and format and rejecting duplicates, unknown fields, and non-decimal, negative, leading-zero, or out-of-range VersionNumbers outside 0..9223372036854775807 (§ 8(1)–(3))
       - optional userdefined must match `[A-Za-z0-9][A-Za-z0-9._-]*`; an empty Project value is rejected, and an empty Target value clears the inherited component (§ 9(3), § 11(7)–(8))
@@ -192,9 +206,27 @@ integrations:
       - validate `[version]` of discovered manifests in the compiler and the LSP, with registered diagnostics and source ranges in sec.toml (§ 48)
       - Shared version-snapshot validation emits registered mandatory S1150 (projects.invalid-version) with deterministic ordering and Unicode-scalar source spans in sec.toml. Required fields, duplicate/malformed TOML, numeric bounds, placeholder errors and Target inheritance are diagnosed independently of unrelated identity errors; reader-capability errors remain explicit. CLI sema/analyse/emission/build, named builds, init and test validate governing manifests before semantic compilation or writes, deduplicating manifests across sources. The analysis pipeline was extracted from main.go into a cohesive sibling file.
       - LSP distinguishes manifest TOML from Sec source, diagnoses open or discovered ancestor manifests on their own URI and consumes unsaved overlays. Manifest dependencies invalidate source batches on document/configuration changes, obsolete jobs are discarded and stale errors clear on correction, overlay close or deletion. Protocol spans use the same shared compiler renderer; cross-target Sec parsing is skipped for manifest documents. Allocation consumer-parity fixtures now declare the required version table so they retain their intended analysis coverage.
+      - "MD-143 BuildInfo declaration (core-library.md § 28): core.BuildInfo is a core builtin struct with the 16 canonical fields (uint64 version components, Option[string] VersionUserDefined/SourceRevision, Option[bool] DirtySourceStatus, distinct BuildProfile and TargetProfile, no single Profile), cannot be redeclared, and BuildInfo.Current() is the compiler-known member CKM-BUILDINFO-CURRENT (internal/sema/build_info.go). Test: TestBuildInfoCurrentInCodeAndCTE field types"
+      - "MD-143 BuildInfo.Current() population (§ 113B(1), (3)): the shared resolver internal/platform/buildinfo fills the snapshot from the manifest Facts, the owning or named Target, the named or unique Variant, the resolved Target version, the selected target OS/arch, [build].profile and the MD-139 resolved target profile; host values are never used and an unresolved Target, Variant or profile leaves Current() to the new mandatory S1258 build-info.unresolved-plan. Tests: TestBuildInfoCurrentRequiresResolvedPlan, TestCLIBuildInfoSnapshot (cross-target linux/arm64, variant-less platform, absent profile)"
+      - "MD-143 BuildInfo in ordinary code and semantic CTE (§ 113B(2)): string and uint64 fields evaluate in semantic CTE (let constants, type defaults), and Semantic IR materializes each runtime Current() as a constant struct.construct of the snapshot with None/Some union.construct for Option fields, no environment inspection or allocation. Tests: TestBuildInfoCurrentInCodeAndCTE, TestBuildInfoCurrentMaterializesSnapshot"
+      - "MD-143 build number view (§ 113B(4)): sec build passes its BuildInvocation (resolved number including the automatic candidate) to the snapshot of the named Target; sec check and LSP use the stored Target version and never reserve or increment; the LSP reads the unsaved manifest overlay, which its analysis fingerprint already includes. Test: TestLSPBuildInfoUsesOverlayManifest"
+      - "source-level build metadata (projects.md § 32): no longer blocked; the API is core.BuildInfo with BuildInfo.Current() (MD-143, § 32(8)), implemented by the MD-143 entries above"
+      - "MD-143 native BuildInfo field reads (§ 113B(2)): the new sec-fold-struct-projections pass runs before the LLVM track entry gate, folds a copy-trivial sec.struct.extract of a sec.struct.construct into the field operand and erases the dead copy-trivial construction tree (constants, Option union.construct); owner-moving constructions and every other struct/string value still reach the entry gate. Tests: mlir/test/Conversion/SecToLLVM/struct-projections.mlir, TestBuildInfoFieldsRunNatively (exit 42, manifest unchanged)"
+      - "MD-143 Option fields and the whole value in semantic CTE (§ 113B(2)): buildInfoAggregate gives Current() as a CTE struct value with Some/None variant values for VersionUserDefined, SourceRevision and DirtySourceStatus; the semantic evaluator and the CTE executor both use it, so CTE functions match the fields, test them with `is`, read module constants of the whole value, and a module constant of an Option field becomes a static with a Some/None initializer. Tests: TestBuildInfoOptionFieldsInCTE, TestBuildInfoOptionFieldStatic"
     remaining:
-      - "source-level build metadata (§ 32): blocked on MD-143, which must define the build-metadata API declarations, access form and availability rules; the § 31 rendered build version is already implemented through tooling.project-build-numbering"
+      - "MD-143 whole BuildInfo as a module static: let Info := BuildInfo.Current() evaluates in CTE, but Semantic IR cannot materialize it as static storage because staticMaterializable excludes structs with string fields (a general static-materialization limit, not BuildInfo-specific); fields and Option fields of it materialize as statics"
+      - "MD-143 plan-time exclusion (§ 113B(2)): reject BuildInfo.Current() in plan-time evaluation that determines source selection or the CompilationPlan once such evaluation exists; today no plan-time evaluator consumes Sec expressions"
+      - "MD-143 native BuildInfo string and Option values: a runtime use that keeps a string field, an Option field or the whole BuildInfo value (pass, return, compare, match) still needs the LLVM track's string, struct and Option<string> representations, which no pass selects yet"
+      - "MD-143 cache identity (§ 113B(4); projects.md §§ 33-34): make the observable BuildInfo snapshot an explicit component of the semantic and code-generation cache identity (incremental compilation) instead of relying on the manifest text in the LSP fingerprint; test invalidation when metadata changes"
+      - "MD-143 hover and completion: show BuildInfo fields and Current() in LSP hover and completion with a test (the compiler-known registry entry exists)"
+      - "MD-143 explicit source facts (core-library.md § 28(3); projects.md § 33(4)): SourceRevision and DirtySourceStatus are Some only when collection was explicitly requested and the facts were resolved before evaluation as explicit compiler inputs; CTE and Current() never read Git or the filesystem"
     verification:
+      - command: go test ./internal/sema ./internal/ir/semantic ./internal/traceability -count=1; go test ./cmd/compiler ./cmd/lsp -run 'BuildInfo|CTE|CompileTime'
+        result: passed on 2026-11-22 (MD-143 Option fields in CTE)
+      - command: ninja -j 4 sec-mlir-opt; llvm-lit test/Conversion/SecToLLVM; go test ./cmd/compiler -run 'Runs$|Run$|Native|BuildInfo'
+        result: passed on 2026-11-22 (26 lit tests; native subset 124s; BuildInfo exits 42)
+      - command: go test ./internal/sema ./internal/ir/semantic ./internal/traceability ./internal/diagnostics ./internal/platform/... -count=1; go test ./cmd/compiler -run 'BuildInfo|PlanSelection|CBinding|BuildInvocation|BuildCounter|UnitDimension'; go test ./cmd/lsp -run 'BuildInfo|PlanSelection|CBinding|TargetAnalysis'
+        result: passed on 2026-11-22 (MD-143 BuildInfo)
       - command: go vet ./...
         result: passed on 2026-10-13
       - command: go test ./cmd/compiler ./internal/project -run 'Version|RootModule|BuildCLI|Init' -count=1

@@ -1,0 +1,1363 @@
+module business
+
+/*
+ * Sec Standard Library — temporal/business
+ * File: business/business_test.sec
+ * Purpose: Regression tests for monthly-date calculations.
+ * Revision: 0.1
+ * Updated: 2026-11-22
+ *
+ * Governing rulebook:
+ * stdlib/temporal/business/std-temporal-business.md
+ */
+
+import "temporal/calendar"
+
+/**
+ * Checks whether an absolute date matches Gregorian coordinates.
+ *
+ * Parameters:
+ * - value: Absolute date to examine.
+ * - year: Expected Gregorian year.
+ * - month: Expected Gregorian month.
+ * - day: Expected Gregorian day.
+ *
+ * Returns:
+ * True when all three components match.
+ *
+ * Errors:
+ * - CalendarError: Calendar conversion failure.
+ *
+ * Ownership:
+ * Pure calculation without allocation.
+ */
+fn _matchesGregorianDate(value: date, year: int, month: int, day: int) Result[bool, calendar.CalendarError] {
+    let fields := try calendar.FromDate(value, calendar.CalendarSystem.Gregorian)
+
+    return Ok(
+        fields.Year == year &&
+        fields.Month.Number == month &&
+        fields.Day == day,
+    )
+}
+
+test "ResolveMonthlyDate selects the twenty-seventh" {
+    let result := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(27),
+    )
+
+    testing.Expect(try _matchesGregorianDate(result, 2026, 6, 27))
+}
+
+test "ResolveMonthlyDate distinguishes month-end rules" {
+    let fromEnd := try ResolveMonthlyDate(
+        2025, 2, MonthlyDateRule.DaysBeforeMonthEnd(3),
+    )
+
+    let fromNext := try ResolveMonthlyDate(
+        2025, 2, MonthlyDateRule.DaysBeforeNextMonth(3),
+    )
+
+    testing.Expect(try _matchesGregorianDate(fromEnd, 2025, 2, 25))
+    testing.Expect(try _matchesGregorianDate(fromNext, 2025, 2, 26))
+}
+
+test "ResolveMonthlyDate handles leap February" {
+    let result := try ResolveMonthlyDate(
+        2024, 2, MonthlyDateRule.DaysBeforeMonthEnd(0),
+    )
+
+    testing.Expect(try _matchesGregorianDate(result, 2024, 2, 29))
+}
+
+test "ResolveMonthlyDate zero days before next month" {
+    let result := try ResolveMonthlyDate(
+        2025, 12, MonthlyDateRule.DaysBeforeNextMonth(0),
+    )
+
+    testing.Expect(try _matchesGregorianDate(result, 2026, 1, 1))
+}
+
+test "ResolveMonthlyDate rejects invalid day" {
+    match ResolveMonthlyDate(
+        2025, 2, MonthlyDateRule.DayOfMonth(29),
+    ) {
+        Ok(_) => testing.Fail("February 2025 has 28 days")
+        Err(BusinessError.InvalidDateRule) => {
+        }
+        Err(_) => testing.Fail("Expected InvalidDateRule")
+    }
+}
+
+test "ResolveMonthlyDate rejects negative boundary offset" {
+    match ResolveMonthlyDate(
+        2025, 2, MonthlyDateRule.DaysBeforeMonthEnd(-1),
+    ) {
+        Ok(_) => testing.Fail("Negative offset must be rejected")
+        Err(BusinessError.InvalidDateRule) => {
+        }
+        Err(_) => testing.Fail("Expected InvalidDateRule")
+    }
+}
+
+test "ResolveMonthlyDate rejects offset outside target month" {
+    match ResolveMonthlyDate(
+        2025, 2, MonthlyDateRule.DaysBeforeNextMonth(29),
+    ) {
+        Ok(_) => testing.Fail("Offset exceeds February")
+        Err(BusinessError.InvalidDateRule) => {
+        }
+        Err(_) => testing.Fail("Expected InvalidDateRule")
+    }
+}
+
+test "ResolveMonthlyDate rejects invalid month" {
+    match ResolveMonthlyDate(
+        2025, 13, MonthlyDateRule.DayOfMonth(1),
+    ) {
+        Ok(_) => testing.Fail("Month 13 is invalid")
+        Err(BusinessError.InvalidDateRule) => {
+        }
+        Err(_) => testing.Fail("Expected InvalidDateRule")
+    }
+}
+
+test "ResolveMonthlyDate rejects unrepresentable year" {
+    match ResolveMonthlyDate(
+        10_000_000, 1, MonthlyDateRule.DayOfMonth(1),
+    ) {
+        Ok(_) => testing.Fail("Date exceeds core range")
+        Err(BusinessError.OutOfRange) => {
+        }
+        Err(_) => testing.Fail("Expected OutOfRange")
+    }
+}
+
+test "DueDate without adjustment needs no dataset" {
+    let rules := BusinessCalendar {
+        Identifier: "unavailable",
+        Revision: "unavailable",
+    }
+
+    let result := try DueDate(
+        2026,
+        6,
+        MonthlyDateRule.DayOfMonth(27),
+        rules,
+        BusinessDayAdjustment.None,
+    )
+
+    testing.Expect(try _matchesGregorianDate(result, 2026, 6, 27))
+}
+
+test "AdjustBusinessDay None preserves original date" {
+    let rules := BusinessCalendar {
+        Identifier: "unavailable",
+        Revision: "unavailable",
+    }
+
+    let original := try ResolveMonthlyDate(
+        2026,
+        12,
+        MonthlyDateRule.DayOfMonth(25),
+    )
+
+    let result := try AdjustBusinessDay(
+        original,
+        rules,
+        BusinessDayAdjustment.None,
+    )
+
+    testing.ExpectEqual(original.EpochDays, result.EpochDays)
+}
+
+test "DueDate rejects invalid nominal date before adjustment" {
+    let rules := BusinessCalendar {
+        Identifier: "unavailable",
+        Revision: "unavailable",
+    }
+
+    match DueDate(
+        2025,
+        2,
+        MonthlyDateRule.DayOfMonth(29),
+        rules,
+        BusinessDayAdjustment.Following,
+    ) {
+        Ok(_) => testing.Fail("Expected InvalidDateRule")
+        Err(BusinessError.InvalidDateRule) => {
+        }
+        Err(_) => testing.Fail("Unexpected business error")
+    }
+}
+
+test "Built-in business calendar recognizes weekdays" {
+    let rules := BusinessCalendar {
+        Identifier: "builtin:mon-fri",
+        Revision: "1",
+    }
+
+    let saturday := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(27),
+    )
+
+    let monday := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(29),
+    )
+
+    testing.Expect(!(try IsBusinessDay(saturday, rules)))
+    testing.Expect(try IsBusinessDay(monday, rules))
+}
+
+test "Business weekday calculation supports negative epoch days" {
+    let rules := BusinessCalendar {
+        Identifier: "builtin:mon-fri",
+        Revision: "1",
+    }
+
+    // 1969-12-31 is Wednesday.
+    let wednesday := new date(int32(-1))
+
+    // 1969-12-27 is Saturday.
+    let saturday := new date(int32(-5))
+
+    testing.Expect(try IsBusinessDay(wednesday, rules))
+    testing.Expect(!(try IsBusinessDay(saturday, rules)))
+}
+
+test "Following moves Saturday to Monday" {
+    let rules := BusinessCalendar {
+        Identifier: "builtin:mon-fri",
+        Revision: "1",
+    }
+
+    let original := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(27),
+    )
+
+    let result := try AdjustBusinessDay(
+        original, rules, BusinessDayAdjustment.Following,
+    )
+
+    testing.Expect(try _matchesGregorianDate(
+        result, 2026, 6, 29,
+    ))
+}
+
+test "Preceding moves Sunday to Friday" {
+    let rules := BusinessCalendar {
+        Identifier: "builtin:mon-fri",
+        Revision: "1",
+    }
+
+    let original := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(28),
+    )
+
+    let result := try AdjustBusinessDay(
+        original, rules, BusinessDayAdjustment.Preceding,
+    )
+
+    testing.Expect(try _matchesGregorianDate(
+        result, 2026, 6, 26,
+    ))
+}
+
+test "ModifiedFollowing preserves the nominal month" {
+    let rules := BusinessCalendar {
+        Identifier: "builtin:mon-fri",
+        Revision: "1",
+    }
+
+    // Saturday May 30, 2026.
+    // Following gives June 1, so modified gives May 29.
+    let original := try ResolveMonthlyDate(
+        2026, 5, MonthlyDateRule.DayOfMonth(30),
+    )
+
+    let result := try AdjustBusinessDay(
+        original, rules,
+        BusinessDayAdjustment.ModifiedFollowing,
+    )
+
+    testing.Expect(try _matchesGregorianDate(
+        result, 2026, 5, 29,
+    ))
+}
+
+test "ModifiedPreceding preserves the nominal month" {
+    let rules := BusinessCalendar {
+        Identifier: "builtin:mon-fri",
+        Revision: "1",
+    }
+
+    // Sunday May 1, 2022.
+    // Preceding gives April 29, so modified gives May 2.
+    let original := try ResolveMonthlyDate(
+        2022, 5, MonthlyDateRule.DayOfMonth(1),
+    )
+
+    let result := try AdjustBusinessDay(
+        original, rules,
+        BusinessDayAdjustment.ModifiedPreceding,
+    )
+
+    testing.Expect(try _matchesGregorianDate(
+        result, 2022, 5, 2,
+    ))
+}
+
+test "DueDate applies following business-day adjustment" {
+    let rules := BusinessCalendar {
+        Identifier: "builtin:mon-fri",
+        Revision: "1",
+    }
+
+    let result := try DueDate(
+        2026,
+        6,
+        MonthlyDateRule.DayOfMonth(27),
+        rules,
+        BusinessDayAdjustment.Following,
+    )
+
+    testing.Expect(try _matchesGregorianDate(
+        result, 2026, 6, 29,
+    ))
+}
+
+test "Unknown business calendar is rejected" {
+    let rules := BusinessCalendar {
+        Identifier: "SE-bank",
+        Revision: "1",
+    }
+
+    let original := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(29),
+    )
+
+    match IsBusinessDay(original, rules) {
+        Ok(_) => testing.Fail("Unknown calendar was accepted")
+        Err(BusinessError.UnknownCalendar) => {
+        }
+        Err(_) => testing.Fail("Expected UnknownCalendar")
+    }
+}
+
+test "Unavailable business calendar revision is rejected" {
+    let rules := BusinessCalendar {
+        Identifier: "builtin:mon-fri",
+        Revision: "2",
+    }
+
+    let original := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(29),
+    )
+
+    match IsBusinessDay(original, rules) {
+        Ok(_) => testing.Fail("Unknown revision was accepted")
+        Err(BusinessError.DatasetUnavailable) => {
+        }
+        Err(_) => testing.Fail("Expected DatasetUnavailable")
+    }
+}
+
+test "AddBusinessDays moves Friday forward to Monday" {
+    let rules := BusinessCalendar {
+        Identifier: "builtin:mon-fri",
+        Revision: "1",
+    }
+
+    let friday := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(26),
+    )
+
+    let result := try AddBusinessDays(friday, 1, rules)
+
+    testing.Expect(try _matchesGregorianDate(
+        result, 2026, 6, 29,
+    ))
+}
+
+test "AddBusinessDays counts forward from a weekend" {
+    let rules := BusinessCalendar {
+        Identifier: "builtin:mon-fri",
+        Revision: "1",
+    }
+
+    let saturday := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(27),
+    )
+
+    let result := try AddBusinessDays(saturday, 3, rules)
+
+    testing.Expect(try _matchesGregorianDate(
+        result, 2026, 7, 1,
+    ))
+}
+
+test "AddBusinessDays moves backward across a weekend" {
+    let rules := BusinessCalendar {
+        Identifier: "builtin:mon-fri",
+        Revision: "1",
+    }
+
+    let monday := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(29),
+    )
+
+    let previous: int := -1
+    let result := try AddBusinessDays(monday, previous, rules)
+
+    testing.Expect(try _matchesGregorianDate(
+        result, 2026, 6, 26,
+    ))
+}
+
+test "AddBusinessDays handles five complete working days" {
+    let rules := BusinessCalendar {
+        Identifier: "builtin:mon-fri",
+        Revision: "1",
+    }
+
+    let monday := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(22),
+    )
+
+    let result := try AddBusinessDays(monday, 5, rules)
+
+    testing.Expect(try _matchesGregorianDate(
+        result, 2026, 6, 29,
+    ))
+}
+
+test "AddBusinessDays zero preserves weekend date" {
+    let rules := BusinessCalendar {
+        Identifier: "builtin:mon-fri",
+        Revision: "1",
+    }
+
+    let saturday := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(27),
+    )
+
+    let result := try AddBusinessDays(saturday, 0, rules)
+
+    testing.ExpectEqual(saturday.EpochDays, result.EpochDays)
+}
+
+test "CountBusinessDays counts a complete week" {
+    let rules := BusinessCalendar {
+        Identifier: "builtin:mon-fri",
+        Revision: "1",
+    }
+
+    let saturday := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(27),
+    )
+
+    let nextSaturday := try ResolveMonthlyDate(
+        2026, 7, MonthlyDateRule.DayOfMonth(4),
+    )
+
+    let count := try CountBusinessDays(
+        saturday, nextSaturday, rules,
+    )
+
+    testing.ExpectEqual(5, count)
+}
+
+test "CountBusinessDays excludes the final date" {
+    let rules := BusinessCalendar {
+        Identifier: "builtin:mon-fri",
+        Revision: "1",
+    }
+
+    let monday := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(29),
+    )
+
+    let wednesday := try ResolveMonthlyDate(
+        2026, 7, MonthlyDateRule.DayOfMonth(1),
+    )
+
+    let count := try CountBusinessDays(
+        monday, wednesday, rules,
+    )
+
+    testing.ExpectEqual(2, count)
+}
+
+test "CountBusinessDays supports reverse intervals" {
+    let rules := BusinessCalendar {
+        Identifier: "builtin:mon-fri",
+        Revision: "1",
+    }
+
+    let start := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(29),
+    )
+
+    let endDate := try ResolveMonthlyDate(
+        2026, 7, MonthlyDateRule.DayOfMonth(6),
+    )
+
+    let forward := try CountBusinessDays(
+        start, endDate, rules,
+    )
+
+    let backward := try CountBusinessDays(
+        endDate, start, rules,
+    )
+
+    testing.ExpectEqual(5, forward)
+    testing.ExpectEqual(-5, backward)
+}
+
+test "AddBusinessDays rejects crossing core date boundary" {
+    let rules := BusinessCalendar {
+        Identifier: "builtin:mon-fri",
+        Revision: "1",
+    }
+
+    let maximum := new date(int32(2_147_483_647))
+
+    match AddBusinessDays(maximum, 10, rules) {
+        Ok(_) => testing.Fail("Expected OutOfRange")
+        Err(BusinessError.OutOfRange) => {
+        }
+        Err(_) => testing.Fail("Unexpected business error")
+    }
+}
+
+test "Dataset exceptions override ordinary weekdays" {
+    let friday := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(26),
+    )
+
+    let saturday := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(27),
+    )
+
+    let monday := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(29),
+    )
+
+    let exceptions: BusinessDayException[2] := [
+        BusinessDayException {
+            Day: friday,
+            Working: false,
+        },
+        BusinessDayException {
+            Day: saturday,
+            Working: true,
+        },
+    ]
+
+    let data := BusinessCalendarData {
+        Calendar: BusinessCalendar {
+            Identifier: "example:calendar",
+            Revision: "2026-1",
+        },
+        FirstDay: try ResolveMonthlyDate(
+            2026, 6, MonthlyDateRule.DayOfMonth(1),
+        ),
+        LastDay: try ResolveMonthlyDate(
+            2026, 6, MonthlyDateRule.DayOfMonth(30),
+        ),
+        Week: BusinessWeekPattern {
+            Monday: true,
+            Tuesday: true,
+            Wednesday: true,
+            Thursday: true,
+            Friday: true,
+            Saturday: false,
+            Sunday: false,
+        },
+        Exceptions: ref exceptions[..],
+    }
+
+    // Friday is explicitly closed.
+    testing.Expect(!(try IsBusinessDay(friday, data)))
+
+    // Saturday is explicitly opened.
+    testing.Expect(try IsBusinessDay(saturday, data))
+
+    // Monday follows the ordinary weekly pattern.
+    testing.Expect(try IsBusinessDay(monday, data))
+
+    // Following must select the exceptional Saturday,
+    // not the ordinarily working Monday.
+    let adjusted := try AdjustBusinessDay(
+        friday, data, BusinessDayAdjustment.Following,
+    )
+
+    testing.ExpectEqual(
+        saturday.EpochDays,
+        adjusted.EpochDays,
+    )
+}
+
+test "Dataset rejects duplicate date exceptions" {
+    let selected := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(27),
+    )
+
+    let exceptions: BusinessDayException[2] := [
+        BusinessDayException {
+            Day: selected,
+            Working: false,
+        },
+        BusinessDayException {
+            Day: selected,
+            Working: true,
+        },
+    ]
+
+    let data := BusinessCalendarData {
+        Calendar: BusinessCalendar {
+            Identifier: "example:invalid",
+            Revision: "1",
+        },
+        FirstDay: selected,
+        LastDay: selected,
+        Week: BusinessWeekPattern {
+            Monday: true,
+            Tuesday: true,
+            Wednesday: true,
+            Thursday: true,
+            Friday: true,
+            Saturday: false,
+            Sunday: false,
+        },
+        Exceptions: ref exceptions[..],
+    }
+
+    match ValidateBusinessCalendarData(data) {
+        Ok(_) => testing.Fail("Duplicate exception accepted")
+        Err(BusinessError.InvalidCalendarData) => {
+        }
+        Err(_) => testing.Fail("Unexpected validation error")
+    }
+}
+
+test "Dataset rejects dates outside coverage" {
+    let exceptions: BusinessDayException[0] := []
+
+    let first := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(1),
+    )
+
+    let last := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(30),
+    )
+
+    let outside := try ResolveMonthlyDate(
+        2026, 7, MonthlyDateRule.DayOfMonth(1),
+    )
+
+    let data := BusinessCalendarData {
+        Calendar: BusinessCalendar {
+            Identifier: "example:limited",
+            Revision: "1",
+        },
+        FirstDay: first,
+        LastDay: last,
+        Week: BusinessWeekPattern {
+            Monday: true,
+            Tuesday: true,
+            Wednesday: true,
+            Thursday: true,
+            Friday: true,
+            Saturday: false,
+            Sunday: false,
+        },
+        Exceptions: ref exceptions[..],
+    }
+
+    match IsBusinessDay(outside, data) {
+        Ok(_) => testing.Fail("Date outside coverage accepted")
+        Err(BusinessError.OutsideCoverage) => {
+        }
+        Err(_) => testing.Fail("Unexpected business error")
+    }
+}
+
+test "Dataset AddBusinessDays respects exceptional dates" {
+    let thursday := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(25),
+    )
+
+    let friday := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(26),
+    )
+
+    let saturday := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(27),
+    )
+
+    let monday := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(29),
+    )
+
+    let exceptions: BusinessDayException[2] := [
+        BusinessDayException {
+            Day: friday,
+            Working: false,
+        },
+        BusinessDayException {
+            Day: saturday,
+            Working: true,
+        },
+    ]
+
+    let data := BusinessCalendarData {
+        Calendar: BusinessCalendar {
+            Identifier: "example:exceptional-week",
+            Revision: "1",
+        },
+        FirstDay: try ResolveMonthlyDate(
+            2026, 6, MonthlyDateRule.DayOfMonth(1),
+        ),
+        LastDay: try ResolveMonthlyDate(
+            2026, 6, MonthlyDateRule.DayOfMonth(30),
+        ),
+        Week: BusinessWeekPattern {
+            Monday: true,
+            Tuesday: true,
+            Wednesday: true,
+            Thursday: true,
+            Friday: true,
+            Saturday: false,
+            Sunday: false,
+        },
+        Exceptions: ref exceptions[..],
+    }
+
+    // Thursday + 1 working day = exceptional Saturday.
+    let next := try AddBusinessDays(thursday, 1, data)
+
+    testing.ExpectEqual(saturday.EpochDays, next.EpochDays)
+
+    // Thursday + 2 working days = Monday.
+    let second := try AddBusinessDays(thursday, 2, data)
+
+    testing.ExpectEqual(monday.EpochDays, second.EpochDays)
+
+    // Monday - 1 working day = exceptional Saturday.
+    let backwards: int := -1
+    let previous := try AddBusinessDays(monday, backwards, data)
+
+    testing.ExpectEqual(saturday.EpochDays, previous.EpochDays)
+
+    // Zero must preserve the original day.
+    let unchanged := try AddBusinessDays(friday, 0, data)
+
+    testing.ExpectEqual(friday.EpochDays, unchanged.EpochDays)
+}
+
+test "Dataset CountBusinessDays applies exceptional dates" {
+    let friday := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(26),
+    )
+
+    let saturday := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(27),
+    )
+
+    let julyFirst := try ResolveMonthlyDate(
+        2026, 7, MonthlyDateRule.DayOfMonth(1),
+    )
+
+    let exceptions: BusinessDayException[2] := [
+        BusinessDayException {
+            Day: friday,
+            Working: false,
+        },
+        BusinessDayException {
+            Day: saturday,
+            Working: true,
+        },
+    ]
+
+    let data := BusinessCalendarData {
+        Calendar: BusinessCalendar {
+            Identifier: "example:counting",
+            Revision: "1",
+        },
+        FirstDay: try ResolveMonthlyDate(
+            2026, 6, MonthlyDateRule.DayOfMonth(1),
+        ),
+        LastDay: try ResolveMonthlyDate(
+            2026, 7, MonthlyDateRule.DayOfMonth(1),
+        ),
+        Week: BusinessWeekPattern {
+            Monday: true,
+            Tuesday: true,
+            Wednesday: true,
+            Thursday: true,
+            Friday: true,
+            Saturday: false,
+            Sunday: false,
+        },
+        Exceptions: ref exceptions[..],
+    }
+
+    // June 26 through June 30:
+    // Friday closed, Saturday open, Monday and Tuesday open.
+    let forward := try CountBusinessDays(friday, julyFirst, data)
+    let reverse := try CountBusinessDays(julyFirst, friday, data)
+
+    testing.ExpectEqual(3, forward)
+    testing.ExpectEqual(-3, reverse)
+}
+
+test "Dataset without working days reports unavailable target" {
+    let exceptions: BusinessDayException[0] := []
+
+    let first := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(1),
+    )
+
+    let last := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(30),
+    )
+
+    let data := BusinessCalendarData {
+        Calendar: BusinessCalendar {
+            Identifier: "example:closed",
+            Revision: "1",
+        },
+        FirstDay: first,
+        LastDay: last,
+        Week: BusinessWeekPattern {
+            Monday: false,
+            Tuesday: false,
+            Wednesday: false,
+            Thursday: false,
+            Friday: false,
+            Saturday: false,
+            Sunday: false,
+        },
+        Exceptions: ref exceptions[..],
+    }
+
+    let count := try CountBusinessDays(first, last, data)
+
+    testing.ExpectEqual(0, count)
+
+    match AddBusinessDays(first, 1, data) {
+        Ok(_) => testing.Fail("Expected OutsideCoverage")
+        Err(BusinessError.OutsideCoverage) => {
+        }
+        Err(_) => testing.Fail("Unexpected business error")
+    }
+}
+
+test "Nth business day follows calendar exceptions" {
+    let friday := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(26),
+    )
+
+    let saturday := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(27),
+    )
+
+    let exceptions: BusinessDayException[2] := [
+        BusinessDayException {
+            Day: friday,
+            Working: false,
+        },
+        BusinessDayException {
+            Day: saturday,
+            Working: true,
+        },
+    ]
+
+    let data := BusinessCalendarData {
+        Calendar: BusinessCalendar {
+            Identifier: "example:monthly",
+            Revision: "1",
+        },
+        FirstDay: try ResolveMonthlyDate(
+            2026, 6, MonthlyDateRule.DayOfMonth(1),
+        ),
+        LastDay: try ResolveMonthlyDate(
+            2026, 6, MonthlyDateRule.DayOfMonth(30),
+        ),
+        Week: BusinessWeekPattern {
+            Monday: true,
+            Tuesday: true,
+            Wednesday: true,
+            Thursday: true,
+            Friday: true,
+            Saturday: false,
+            Sunday: false,
+        },
+        Exceptions: ref exceptions[..],
+    }
+
+    // First business day is Monday, June 1.
+    let first := try NthBusinessDayOfMonth(
+        2026, 6, 1, data,
+    )
+
+    testing.Expect(try _matchesGregorianDate(
+        first, 2026, 6, 1,
+    ))
+
+    // Last business day is Tuesday, June 30.
+    let last := try LastBusinessDayOfMonth(
+        2026, 6, data,
+    )
+
+    testing.Expect(try _matchesGregorianDate(
+        last, 2026, 6, 30,
+    ))
+
+    // Third-to-last business day is exceptional Saturday.
+    let thirdFromEnd: int := -3
+    let result := try NthBusinessDayOfMonth(
+        2026, 6, thirdFromEnd, data,
+    )
+
+    testing.ExpectEqual(saturday.EpochDays, result.EpochDays)
+}
+
+test "Nth business day rejects zero position" {
+    let exceptions: BusinessDayException[0] := []
+
+    let data := BusinessCalendarData {
+        Calendar: BusinessCalendar {
+            Identifier: "example:zero-position",
+            Revision: "1",
+        },
+        FirstDay: try ResolveMonthlyDate(
+            2026, 6, MonthlyDateRule.DayOfMonth(1),
+        ),
+        LastDay: try ResolveMonthlyDate(
+            2026, 6, MonthlyDateRule.DayOfMonth(30),
+        ),
+        Week: BusinessWeekPattern {
+            Monday: true,
+            Tuesday: true,
+            Wednesday: true,
+            Thursday: true,
+            Friday: true,
+            Saturday: false,
+            Sunday: false,
+        },
+        Exceptions: ref exceptions[..],
+    }
+
+    match NthBusinessDayOfMonth(2026, 6, 0, data) {
+        Ok(_) => testing.Fail("Zero position accepted")
+        Err(BusinessError.InvalidDateRule) => {
+        }
+        Err(_) => testing.Fail("Unexpected error")
+    }
+}
+
+test "DueDate selects third-to-last business day" {
+    let friday := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(26),
+    )
+
+    let saturday := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(27),
+    )
+
+    let exceptions: BusinessDayException[2] := [
+        BusinessDayException {
+            Day: friday,
+            Working: false,
+        },
+        BusinessDayException {
+            Day: saturday,
+            Working: true,
+        },
+    ]
+
+    let data := BusinessCalendarData {
+        Calendar: BusinessCalendar {
+            Identifier: "example:monthly-due",
+            Revision: "1",
+        },
+        FirstDay: try ResolveMonthlyDate(
+            2026, 6, MonthlyDateRule.DayOfMonth(1),
+        ),
+        LastDay: try ResolveMonthlyDate(
+            2026, 6, MonthlyDateRule.DayOfMonth(30),
+        ),
+        Week: BusinessWeekPattern {
+            Monday: true,
+            Tuesday: true,
+            Wednesday: true,
+            Thursday: true,
+            Friday: true,
+            Saturday: false,
+            Sunday: false,
+        },
+        Exceptions: ref exceptions[..],
+    }
+
+    let thirdFromEnd: int := -3
+
+    let result := try DueDate(
+        2026,
+        6,
+        MonthlyDueDateRule.BusinessOrdinal(thirdFromEnd),
+        data,
+        BusinessDayAdjustment.None,
+    )
+
+    testing.ExpectEqual(saturday.EpochDays, result.EpochDays)
+}
+
+test "DueDate retains an exceptional working Saturday" {
+    let saturday := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(27),
+    )
+
+    let exceptions: BusinessDayException[1] := [
+        BusinessDayException {
+            Day: saturday,
+            Working: true,
+        },
+    ]
+
+    let data := BusinessCalendarData {
+        Calendar: BusinessCalendar {
+            Identifier: "example:working-saturday",
+            Revision: "1",
+        },
+        FirstDay: try ResolveMonthlyDate(
+            2026, 6, MonthlyDateRule.DayOfMonth(1),
+        ),
+        LastDay: try ResolveMonthlyDate(
+            2026, 6, MonthlyDateRule.DayOfMonth(30),
+        ),
+        Week: BusinessWeekPattern {
+            Monday: true,
+            Tuesday: true,
+            Wednesday: true,
+            Thursday: true,
+            Friday: true,
+            Saturday: false,
+            Sunday: false,
+        },
+        Exceptions: ref exceptions[..],
+    }
+
+    let result := try DueDate(
+        2026,
+        6,
+        MonthlyDueDateRule.Civil(
+            MonthlyDateRule.DayOfMonth(27),
+        ),
+        data,
+        BusinessDayAdjustment.Following,
+    )
+
+    // The exceptional Saturday is already a business day.
+    testing.ExpectEqual(saturday.EpochDays, result.EpochDays)
+}
+
+test "DueDate rejects an unavailable business ordinal" {
+    let exceptions: BusinessDayException[0] := []
+
+    let data := BusinessCalendarData {
+        Calendar: BusinessCalendar {
+            Identifier: "example:ordinary",
+            Revision: "1",
+        },
+        FirstDay: try ResolveMonthlyDate(
+            2026, 6, MonthlyDateRule.DayOfMonth(1),
+        ),
+        LastDay: try ResolveMonthlyDate(
+            2026, 6, MonthlyDateRule.DayOfMonth(30),
+        ),
+        Week: BusinessWeekPattern {
+            Monday: true,
+            Tuesday: true,
+            Wednesday: true,
+            Thursday: true,
+            Friday: true,
+            Saturday: false,
+            Sunday: false,
+        },
+        Exceptions: ref exceptions[..],
+    }
+
+    match DueDate(
+        2026,
+        6,
+        MonthlyDueDateRule.BusinessOrdinal(50),
+        data,
+        BusinessDayAdjustment.None,
+    ) {
+        Ok(_) => testing.Fail("Business ordinal exceeds month")
+        Err(BusinessError.InvalidDateRule) => {
+        }
+        Err(_) => testing.Fail("Unexpected business error")
+    }
+}
+
+test "NthWeekdayOfMonth selects second Tuesday" {
+    let result := try NthWeekdayOfMonth(
+        2026, 11, date.Weekdays.Tuesday, 2,
+    )
+
+    testing.Expect(try _matchesGregorianDate(
+        result, 2026, 11, 10,
+    ))
+}
+
+test "LastWeekdayOfMonth selects last Friday" {
+    let result := try LastWeekdayOfMonth(
+        2026, 11, date.Weekdays.Friday,
+    )
+
+    testing.Expect(try _matchesGregorianDate(
+        result, 2026, 11, 27,
+    ))
+}
+
+test "NthWeekdayOfMonth handles leap February" {
+    let lastPosition: int := -1
+
+    let result := try NthWeekdayOfMonth(
+        2024, 2, date.Weekdays.Thursday, lastPosition,
+    )
+
+    testing.Expect(try _matchesGregorianDate(
+        result, 2024, 2, 29,
+    ))
+}
+
+test "NthWeekdayOfMonth rejects missing fifth occurrence" {
+    match NthWeekdayOfMonth(
+        2025, 2, date.Weekdays.Wednesday, 5,
+    ) {
+        Ok(_) => testing.Fail("Expected InvalidDateRule")
+        Err(BusinessError.InvalidDateRule) => {
+        }
+        Err(_) => testing.Fail("Unexpected business error")
+    }
+}
+
+test "DueDate adjusts an exceptional second Tuesday" {
+    let closedTuesday := try ResolveMonthlyDate(
+        2026, 11, MonthlyDateRule.DayOfMonth(10),
+    )
+
+    let exceptions: BusinessDayException[1] := [
+        BusinessDayException {
+            Day: closedTuesday,
+            Working: false,
+        },
+    ]
+
+    let data := BusinessCalendarData {
+        Calendar: BusinessCalendar {
+            Identifier: "example:weekday-due",
+            Revision: "1",
+        },
+        FirstDay: try ResolveMonthlyDate(
+            2026, 11, MonthlyDateRule.DayOfMonth(1),
+        ),
+        LastDay: try ResolveMonthlyDate(
+            2026, 11, MonthlyDateRule.DayOfMonth(30),
+        ),
+        Week: BusinessWeekPattern {
+            Monday: true,
+            Tuesday: true,
+            Wednesday: true,
+            Thursday: true,
+            Friday: true,
+            Saturday: false,
+            Sunday: false,
+        },
+        Exceptions: ref exceptions[..],
+    }
+
+    let rule := MonthlyDueDateRule.WeekdayOrdinal {
+        Weekday: date.Weekdays.Tuesday,
+        Position: 2,
+    }
+
+    let result := try DueDate(
+        2026,
+        11,
+        rule,
+        data,
+        BusinessDayAdjustment.Following,
+    )
+
+    // Tuesday November 10 is closed in this dataset.
+    // Following therefore selects Wednesday November 11.
+    testing.Expect(try _matchesGregorianDate(
+        result, 2026, 11, 11,
+    ))
+}
+
+test "Combined calendars distinguish All and Any" {
+    let friday := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(26),
+    )
+
+    let saturday := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(27),
+    )
+
+    let monday := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(29),
+    )
+
+    let firstDay := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(1),
+    )
+
+    let lastDay := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(30),
+    )
+
+    // Calendar A closes Friday and opens Saturday.
+    let exceptionsA: BusinessDayException[2] := [
+        BusinessDayException {
+            Day: friday,
+            Working: false,
+        },
+        BusinessDayException {
+            Day: saturday,
+            Working: true,
+        },
+    ]
+
+    // Calendar B follows ordinary Monday-Friday rules.
+    let exceptionsB: BusinessDayException[0] := []
+
+    let week := BusinessWeekPattern {
+        Monday: true,
+        Tuesday: true,
+        Wednesday: true,
+        Thursday: true,
+        Friday: true,
+        Saturday: false,
+        Sunday: false,
+    }
+
+    let calendars: BusinessCalendarData[2] := [
+        BusinessCalendarData {
+            Calendar: BusinessCalendar {
+                Identifier: "example:A",
+                Revision: "1",
+            },
+            FirstDay: firstDay,
+            LastDay: lastDay,
+            Week: week,
+            Exceptions: ref exceptionsA[..],
+        },
+        BusinessCalendarData {
+            Calendar: BusinessCalendar {
+                Identifier: "example:B",
+                Revision: "1",
+            },
+            FirstDay: firstDay,
+            LastDay: lastDay,
+            Week: week,
+            Exceptions: ref exceptionsB[..],
+        },
+    ]
+
+    // Friday: B is open, A is closed.
+    testing.Expect(!(try IsBusinessDay(
+        friday, calendars, BusinessCalendarCombination.All,
+    )))
+
+    testing.Expect(try IsBusinessDay(
+        friday, calendars, BusinessCalendarCombination.Any,
+    ))
+
+    // Saturday: A is open, B is closed.
+    testing.Expect(!(try IsBusinessDay(
+        saturday, calendars, BusinessCalendarCombination.All,
+    )))
+
+    testing.Expect(try IsBusinessDay(
+        saturday, calendars, BusinessCalendarCombination.Any,
+    ))
+
+    // Monday: both are open.
+    testing.Expect(try IsBusinessDay(
+        monday, calendars, BusinessCalendarCombination.All,
+    ))
+
+    // Following from Friday under All selects Monday.
+    let adjusted := try AdjustBusinessDay(
+        friday,
+        calendars,
+        BusinessCalendarCombination.All,
+        BusinessDayAdjustment.Following,
+    )
+
+    testing.ExpectEqual(monday.EpochDays, adjusted.EpochDays)
+}
+
+test "Combined calendars require overlapping coverage" {
+    let exceptions: BusinessDayException[0] := []
+
+    let juneFirst := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(1),
+    )
+
+    let juneFifteenth := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(15),
+    )
+
+    let juneThirtieth := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(30),
+    )
+
+    let week := BusinessWeekPattern {
+        Monday: true,
+        Tuesday: true,
+        Wednesday: true,
+        Thursday: true,
+        Friday: true,
+        Saturday: false,
+        Sunday: false,
+    }
+
+    let calendars: BusinessCalendarData[2] := [
+        BusinessCalendarData {
+            Calendar: BusinessCalendar {
+                Identifier: "example:first",
+                Revision: "1",
+            },
+            FirstDay: juneFirst,
+            LastDay: juneThirtieth,
+            Week: week,
+            Exceptions: ref exceptions[..],
+        },
+        BusinessCalendarData {
+            Calendar: BusinessCalendar {
+                Identifier: "example:second",
+                Revision: "1",
+            },
+            FirstDay: juneFifteenth,
+            LastDay: juneThirtieth,
+            Week: week,
+            Exceptions: ref exceptions[..],
+        },
+    ]
+
+    // June 1 is not covered by the second calendar.
+    // Even Any must reject incomplete coverage.
+    match IsBusinessDay(juneFirst, ref calendars, BusinessCalendarCombination.Any) {
+        Ok(_) => testing.Fail("Incomplete coverage accepted")
+        Err(BusinessError.OutsideCoverage) => {
+        }
+        Err(_) => testing.Fail("Unexpected business error")
+    }
+}

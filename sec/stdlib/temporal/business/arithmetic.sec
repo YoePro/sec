@@ -1,0 +1,225 @@
+module business
+
+/*
+ * Sec Standard Library — temporal/business
+ * File: business/arithmetic.sec
+ * Purpose: Business-day arithmetic and counting.
+ * Status: Implementation candidate
+ * Revision: 0.1
+ * Updated: 2026-11-22
+ *
+ * Governing rulebook:
+ * stdlib/temporal/business/std-temporal-business.md
+ *
+ * The initial implementation supports builtin:mon-fri
+ * revision 1 through IsBusinessDay.
+ *
+ * No allocation, I/O, clock or external datasets.
+ */
+
+/**
+ * Adds or subtracts business days from an absolute date.
+ *
+ * Description:
+ * The starting date is excluded when count is nonzero.
+ * Count zero returns the original date unchanged.
+ *
+ * A positive count moves forward and a negative count
+ * moves backward.
+ *
+ * If the starting date is not a business day, counting
+ * begins with the first qualifying day in the requested
+ * direction.
+ *
+ * For the built-in Monday-Friday calendar, complete
+ * working weeks are calculated directly. The algorithm
+ * does not iterate through every intervening day.
+ *
+ * Parameters:
+ * - value: Starting absolute date.
+ * - count: Signed number of business days to move.
+ * - rules: Borrowed versioned business-calendar descriptor.
+ *
+ * Returns:
+ * Absolute date reached after count business days.
+ *
+ * Errors:
+ * - BusinessError.UnknownCalendar: Unknown calendar.
+ * - BusinessError.DatasetUnavailable: Unknown revision.
+ * - BusinessError.OutOfRange: Result outside core date range.
+ *
+ * Ownership:
+ * Borrows the calendar descriptor without transfer.
+ * No allocation or I/O.
+ */
+fn AddBusinessDays(value: date, count: int, rules: ref BusinessCalendar) Result[date, BusinessError] {
+    // Also validates the selected calendar and revision.
+    let working := try IsBusinessDay(value, rules)
+
+    if count == 0 {
+        return Ok(value)
+    }
+
+    let requested := int64(count)
+
+    // An int32 date range spans fewer than 3.1 billion
+    // working days in the built-in five-day calendar.
+    // This also keeps all intermediate calculations safe.
+    if requested < -3_100_000_000 ||
+        requested > 3_100_000_000 {
+        return Err(BusinessError.OutOfRange)
+    }
+
+    let mut weekday := _weekdayMondayIndex(value)
+    let mut offset: int64 := 0
+
+    if requested > 0 {
+        let mut remaining := requested
+
+        // When starting on a weekend, first reach Monday.
+        if !working {
+            if weekday == 5 {
+                offset = 2
+            } else {
+                offset = 1
+            }
+
+            weekday = 0
+            remaining -= 1
+        }
+
+        let weeks := remaining / 5
+        let extra := remaining % 5
+
+        offset += weeks * 7 + extra
+
+        // Skip Saturday and Sunday when the remainder
+        // crosses the end of a working week.
+        if extra > 0 && int64(weekday) + extra >= 5 {
+            offset += 2
+        }
+    } else {
+        let mut remaining := 0 - requested
+
+        // When starting on a weekend, first reach Friday.
+        if !working {
+            if weekday == 5 {
+                offset = -1
+            } else {
+                offset = -2
+            }
+
+            weekday = 4
+            remaining -= 1
+        }
+
+        let weeks := remaining / 5
+        let extra := remaining % 5
+
+        offset -= weeks * 7 + extra
+
+        // Skip the weekend when moving backward
+        // beyond Monday.
+        if extra > int64(weekday) {
+            offset -= 2
+        }
+    }
+
+    let epochDays := int64(value.EpochDays) + offset
+
+    let checkedDays := try int32(epochDays) {
+        Err(_) => return Err(BusinessError.OutOfRange)
+    }
+
+    return Ok(new date(checkedDays))
+}
+
+/**
+ * Counts business days in a half-open date interval.
+ *
+ * Description:
+ * The interval includes start and excludes endExclusive.
+ *
+ * If start precedes endExclusive, returns a nonnegative
+ * count of qualifying business days.
+ *
+ * If start follows endExclusive, returns the negative
+ * count for the reversed interval.
+ *
+ * Identical endpoints return zero.
+ *
+ * Complete seven-day weeks contribute five business
+ * days under the built-in Monday-Friday calendar.
+ * At most six additional days require examination.
+ *
+ * Parameters:
+ * - start: Inclusive interval boundary.
+ * - endExclusive: Exclusive interval boundary.
+ * - rules: Borrowed versioned business-calendar descriptor.
+ *
+ * Returns:
+ * Signed number of business days in the interval.
+ *
+ * Errors:
+ * - BusinessError.UnknownCalendar: Unknown calendar.
+ * - BusinessError.DatasetUnavailable: Unknown revision.
+ * - BusinessError.OutOfRange: Count cannot fit in int.
+ *
+ * Ownership:
+ * Borrows the calendar descriptor without transfer.
+ * Pure calculation without allocation or I/O.
+ */
+fn CountBusinessDays(start: date, endExclusive: date, rules: ref BusinessCalendar) Result[int, BusinessError] {
+    let mut first   := start
+    let mut last    := endExclusive
+    let mut reverse := false
+
+    if first.EpochDays > last.EpochDays {
+        first = endExclusive
+        last = start
+        reverse = true
+    }
+
+    // Validate the calendar even for an empty interval.
+    let firstWorking := try IsBusinessDay(first, rules)
+
+    let totalDays := int64(last.EpochDays) - int64(first.EpochDays)
+
+    if totalDays == 0 {
+        return Ok(0)
+    }
+
+    // Count the first day separately.
+    let followingDays := totalDays - 1
+    let fullWeeks     := followingDays / 7
+    let extraDays     := followingDays % 7
+
+    let mut result := fullWeeks * 5
+
+    if firstWorking {
+        result += 1
+    }
+
+    // Examine at most six remaining days.
+    let mut weekday := int64(_weekdayMondayIndex(first)) + 1
+    let mut index: int64 := 0
+
+    while index < extraDays {
+        if weekday % 7 < 5 {
+            result += 1
+        }
+
+        weekday += 1
+        index += 1
+    }
+
+    if reverse {
+        result = 0 - result
+    }
+
+    let checkedCount := try int(result) {
+        Err(_) => return Err(BusinessError.OutOfRange)
+    }
+
+    return Ok(checkedCount)
+}

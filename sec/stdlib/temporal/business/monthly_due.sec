@@ -1,0 +1,86 @@
+module business
+
+/*
+ * Sec Standard Library — temporal/business
+ * File: business/monthly_due.sec
+ * Purpose: Dataset-based monthly due-date resolution.
+ * Status: Implementation candidate, not execution-verified
+ * Revision: 0.1
+ * Updated: 2026-11-22
+ *
+ * Governing rulebook:
+ * stdlib/temporal/business/std-temporal-business.md
+ *
+ * Dependencies:
+ * business/rules.sec
+ * business/monthly.sec
+ * business/monthly_business.sec
+ * business/dataset.sec
+ *
+ * No allocation, I/O or implicit calendar loading.
+ */
+
+/**
+ * Resolves a monthly due date using explicit calendar data.
+ *
+ * Description:
+ * Civil resolves a Gregorian date rule.
+ *
+ * BusinessOrdinal selects a qualifying business day
+ * directly from the supplied dataset.
+ *
+ * WeekdayOrdinal selects a weekday occurrence within
+ * the Gregorian month. The resulting date may then
+ * be adjusted using the selected business-day policy.
+ *
+ * None never requires dataset access for Civil or
+ * WeekdayOrdinal.
+ *
+ * Parameters:
+ * - year: Gregorian year.
+ * - month: Gregorian month in 1..12.
+ * - rule: Monthly due-date selection rule.
+ * - data: Borrowed business-calendar dataset.
+ * - policy: Business-day adjustment convention.
+ *
+ * Returns:
+ * Calculated due date.
+ *
+ * Errors:
+ * - BusinessError.InvalidDateRule: Invalid date or ordinal.
+ * - BusinessError.InvalidCalendarData: Malformed dataset.
+ * - BusinessError.OutsideCoverage: Missing coverage.
+ * - BusinessError.OutOfRange: Unrepresentable date.
+ *
+ * Ownership:
+ * Borrows calendar data without ownership transfer.
+ * No allocation or implicit I/O.
+ */
+fn DueDate(year: int, month: int, rule: MonthlyDueDateRule, data: ref BusinessCalendarData, policy: BusinessDayAdjustment) Result[date, BusinessError] {
+    match rule {
+        MonthlyDueDateRule.Civil(civilRule) => {
+            let nominal := try ResolveMonthlyDate(year, month, civilRule)
+
+            if policy == BusinessDayAdjustment.None {
+                return Ok(nominal)
+            }
+
+            return AdjustBusinessDay(nominal, data, policy)
+        }
+
+        MonthlyDueDateRule.BusinessOrdinal(position) => {
+            // The selected date is already a business day.
+            return NthBusinessDayOfMonth(year, month, position, data)
+        }
+
+        MonthlyDueDateRule.WeekdayOrdinal(selection) => {
+            let nominal := try NthWeekdayOfMonth(year, month, selection.Weekday, selection.Position)
+
+            if policy == BusinessDayAdjustment.None {
+                return Ok(nominal)
+            }
+
+            return AdjustBusinessDay(nominal, data, policy)
+        }
+    }
+}

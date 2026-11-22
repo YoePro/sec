@@ -625,6 +625,10 @@ func (a *Analyzer) inferStructLiteral(expr *ast.StructLiteral) (Type, expression
 	// rules/concurrency/cancellation.md — §§35–36;
 	// rules/concurrency/atomics.md — §§7(5–7),11: opaque
 	// synchronization/acquisition state is never an ordinary source struct.
+	if isProcessObserverType(typ) {
+		a.reportProcessObserverConstruction(expr.Token, true)
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+	}
 	if typ.Intrinsic && (isMutexType(typ) || isMutexGuardType(typ) || isCancellationContextType(typ) || typ.Name == "ThreadStorage" || isAtomicType(typ)) {
 		a.addErrorAtToken(expr.Token, "%s has no source struct constructor; its representation is runtime-private", typ.Name)
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
@@ -819,6 +823,9 @@ func (a *Analyzer) inferMemberExpression(expr *ast.MemberExpression) (Type, bool
 
 	objectType, _ := a.inferPlaceBase(expr.Object)
 	if objectType.Kind == InvalidType {
+		return Type{Kind: InvalidType}, false
+	}
+	if a.rejectProcessObserverPlatform(objectType, expr.Property.Value, expr.Property.Token) {
 		return Type{Kind: InvalidType}, false
 	}
 	if a.rejectHardwareFieldAccess(expr, objectType) {
@@ -2145,6 +2152,10 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 // rules/concurrency/threads.md — §§8(1–7),10(1).
 func (a *Analyzer) inferCompilerKnownConstructor(expr *ast.CallExpression) (Type, expressionValue, bool) {
 	name := callExpressionName(expr)
+	if name == "ProcessObserver" && a.expressionNamesType(expr.Callee) {
+		a.reportProcessObserverConstruction(expr.Token, false)
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+	}
 	// cancellation.md §§35–38: opaque owners are created by Background or
 	// derivation, never by fabricated empty runtime-state constructors.
 	if (name == "Context" || name == "ContextSource") && len(a.functions[name]) == 0 && a.expressionNamesType(expr.Callee) {
@@ -2870,7 +2881,8 @@ func (a *Analyzer) inferCallAsConversion(expr *ast.CallExpression) (Type, expres
 	if !a.validateConstantIntegerConversion(targetType, valueType, expr.Arguments[0]) {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
-	if a.checkEmptyListLiteralContracts(targetType, expr.Arguments[0]) || a.checkStringLiteralContracts(targetType, expr.Arguments[0]) || a.checkNominalMembershipValue(targetType, expr.Arguments[0]) {
+	if a.checkEmptyListLiteralContracts(targetType, expr.Arguments[0]) || a.checkStringLiteralContracts(targetType, expr.Arguments[0]) || a.checkNominalMembershipValue(targetType, expr.Arguments[0]) ||
+		a.checkDecimalConstantConversion(expr, targetType, expr.Arguments[0]) {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 	a.expressionTypes[expr] = targetType
@@ -3272,7 +3284,7 @@ func (a *Analyzer) inferInfixExpression(expr *ast.InfixExpression) (Type, expres
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
 		if !sameConcreteType(leftType, rightType) {
-			a.addErrorAtToken(expr.Token, "cannot apply operator %s to %s and %s", expr.Operator, typeDisplayName(leftType), typeDisplayName(rightType))
+			a.addOperatorOperandTypeError(expr, leftType, rightType)
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 		}
 		return leftType, expressionValue{Display: expr.String()}
@@ -3308,80 +3320,6 @@ func (a *Analyzer) inferInfixExpression(expr *ast.InfixExpression) (Type, expres
 	return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 }
 
-func (a *Analyzer) inferPlainArithmeticExpression(expr *ast.InfixExpression, leftType Type, rightType Type) (Type, expressionValue) {
-	if expr.Operator == "+" && (isConcatTextual(leftType) || isConcatTextual(rightType)) {
-		if !isConcatOperand(leftType) || !isConcatOperand(rightType) {
-			a.addInvalidConcatOperandError(expr.Token, leftType, rightType)
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
-		}
-		a.recordStringConcatPlan(expr, expr.Left, expr.Right)
-		return Type{Name: "string", Kind: StringType}, expressionValue{Display: expr.String()}
-	}
-
-	if !isNumericType(leftType) || !isNumericType(rightType) {
-		help := numericCarrierOperandHelp(leftType, rightType, expr.Left, expr.Right)
-		if help == "" {
-			help = referenceOperandHelp(leftType, rightType, expr.Left, expr.Right)
-		}
-		if help != "" {
-			a.addErrorAtTokenWithMetadata(expr.Token, "", help, "operator %s requires numeric operands", expr.Operator)
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
-		}
-		if isCoreDurationType(leftType) || isCoreDurationType(rightType) {
-			// Owner decision 2026-11-08: duration has comparisons only.
-			a.addErrorAtTokenWithMetadata(expr.Token, "", "duration supports ==, !=, <, <=, > and >= only; arithmetic on durations is not part of Sec 0.1.", "operator %s is not defined for duration", expr.Operator)
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
-		}
-		a.addErrorAtToken(expr.Token, "operator %s requires numeric operands", expr.Operator)
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
-	}
-	var valid bool
-	rightType, valid = a.contextualNumericLiteralType(expr.Right, rightType, leftType)
-	if !valid {
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
-	}
-	leftType, valid = a.contextualNumericLiteralType(expr.Left, leftType, rightType)
-	if !valid {
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
-	}
-
-	if sameConcreteType(leftType, rightType) {
-		if !a.validateCompileTimeIntegerArithmetic(expr, leftType) {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
-		}
-		return leftType, expressionValue{Display: expr.String()}
-	}
-
-	if compatiblePlainNumericAlias(leftType, rightType) {
-		if leftType.Named {
-			if !a.validateCompileTimeIntegerArithmetic(expr, rightType) {
-				return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
-			}
-			return rightType, expressionValue{Display: expr.String()}
-		}
-		if !a.validateCompileTimeIntegerArithmetic(expr, leftType) {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
-		}
-		return leftType, expressionValue{Display: expr.String()}
-	}
-
-	if isNumericLiteral(expr.Right) && a.canInitialize(leftType, rightType, expr.Right) {
-		if !a.validateCompileTimeIntegerArithmetic(expr, leftType) {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
-		}
-		return leftType, expressionValue{Display: expr.String()}
-	}
-
-	if isNumericLiteral(expr.Left) && a.canInitialize(rightType, leftType, expr.Left) {
-		if !a.validateCompileTimeIntegerArithmetic(expr, rightType) {
-			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
-		}
-		return rightType, expressionValue{Display: expr.String()}
-	}
-
-	a.addErrorAtToken(expr.Token, "cannot apply operator %s to %s and %s", expr.Operator, typeDisplayName(leftType), typeDisplayName(rightType))
-	return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
-}
 
 func (a *Analyzer) inferCompoundAssignmentType(operator string, target Type, value Type, expr ast.Expression) (Type, bool) {
 	// MD-066 § 6(1): `x /= 0m` is the same provably zero decimal divisor.
@@ -3673,7 +3611,7 @@ func (a *Analyzer) inferDecimalInfixExpression(expr *ast.InfixExpression, leftTy
 		// No implicit conversion relates decimal and another numeric family
 		// here; reporting it keeps an invalid operand pair from passing
 		// silently (types.md "No implicit conversion").
-		a.addErrorAtToken(expr.Token, "cannot apply operator %s to %s and %s", expr.Operator, typeDisplayName(leftType), typeDisplayName(rightType))
+		a.addOperatorOperandTypeError(expr, leftType, rightType)
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 
@@ -3739,7 +3677,7 @@ func (a *Analyzer) inferDecimalInfixExpression(expr *ast.InfixExpression, leftTy
 		}
 	}
 
-	a.addErrorAtToken(expr.Token, "cannot apply operator %s to %s and %s", expr.Operator, typeDisplayName(leftType), typeDisplayName(rightType))
+	a.addOperatorOperandTypeError(expr, leftType, rightType)
 	return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 }
 

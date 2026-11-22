@@ -1073,3 +1073,9 @@ func/cf integration works
 compiler-generated Semantic IR v1 subset lowers deterministically
 generated output passes sec-mlir-opt without unregistered-dialect mode
 ```
+
+---
+
+# 41. Compatibility note: decimal scale sign (MD-049)
+
+Integrated 2026-11-22 from `rules/corrections/applied/MD-049-decimal-range-scale-inference-capacity-correction-rev1-2-2026-11-21-20261122.md` (MD-049, owner-locked 2026-11-21). The correction holds the full normative text and test vectors T01–T65; this section is its owning summary. The non-negative scale requirement of § 21 belongs to this historical schema and its legacy inputs only. Since MD-066 the source language admits the full signed `int32` scale, and schema v3+ decimal attributes are signed; this snapshot must not be used to reject or rewrite current negative-scale decimals (`rules/mlir/sec_mlir_dialect.md` § 44).

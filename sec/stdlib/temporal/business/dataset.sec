@@ -1,0 +1,324 @@
+module business
+
+/*
+ * Sec Standard Library — temporal/business
+ * File: business/dataset.sec
+ * Purpose: Explicit working-day datasets and date exceptions.
+ * Status: Implementation candidate
+ * Revision: 0.1
+ * Updated: 2026-11-22
+ *
+ * Governing rulebook:
+ * stdlib/temporal/business/std-temporal-business.md
+ *
+ * No allocation, I/O or implicit dataset loading.
+ */
+
+/**
+ * Validates the structural integrity of a calendar dataset.
+ *
+ * Description:
+ * Checks identity, revision, coverage and exception order.
+ * Exceptions must be unique and lie within coverage.
+ *
+ * The exception list is not modified or copied.
+ *
+ * Parameters:
+ * - data: Borrowed calendar dataset to validate.
+ *
+ * Returns:
+ * Success when all structural requirements are satisfied.
+ *
+ * Errors:
+ * - BusinessError.InvalidCalendarData: Malformed dataset.
+ *
+ * Ownership:
+ * Reads the supplied dataset without ownership transfer.
+ */
+fn ValidateBusinessCalendarData(data: ref BusinessCalendarData) Result[void, BusinessError] {
+    if data.Calendar.Identifier == "" ||
+        data.Calendar.Revision == "" {
+        return Err(BusinessError.InvalidCalendarData)
+    }
+
+    let first := data.FirstDay.EpochDays
+    let last  := data.LastDay.EpochDays
+
+    if first > last {
+        return Err(BusinessError.InvalidCalendarData)
+    }
+
+    let mut hasPrevious := false
+    let mut previous: int32 := 0
+
+    for entry in data.Exceptions {
+        let current := entry.Day.EpochDays
+
+        if current < first || current > last {
+            return Err(BusinessError.InvalidCalendarData)
+        }
+
+        if hasPrevious && current <= previous {
+            return Err(BusinessError.InvalidCalendarData)
+        }
+
+        previous = current
+        hasPrevious = true
+    }
+
+    return Ok()
+}
+
+/**
+ * Returns the ordinary weekday classification.
+ *
+ * Description:
+ * Maps ISO weekday indexes onto the explicitly supplied
+ * weekday pattern.
+ *
+ * The weekday index is obtained through
+ * _weekdayMondayIndex and lies in 0..6.
+ *
+ * Parameters:
+ * - weekday: Zero-based weekday, Monday through Sunday.
+ * - week: Borrowed weekly working-day pattern.
+ *
+ * Returns:
+ * True when the weekday is ordinarily a working day.
+ *
+ * Ownership:
+ * Pure calculation without allocation.
+ */
+fn _workingWeekday(weekday: int, week: ref BusinessWeekPattern) bool {
+    if weekday == 0 {
+        return week.Monday
+    }
+
+    if weekday == 1 {
+        return week.Tuesday
+    }
+
+    if weekday == 2 {
+        return week.Wednesday
+    }
+
+    if weekday == 3 {
+        return week.Thursday
+    }
+
+    if weekday == 4 {
+        return week.Friday
+    }
+
+    if weekday == 5 {
+        return week.Saturday
+    }
+
+    return week.Sunday
+}
+
+/**
+ * Determines whether a date is a business day.
+ *
+ * Description:
+ * Uses an explicitly supplied calendar dataset.
+ * Date-specific exceptions override weekday rules.
+ *
+ * The complete dataset is validated before evaluation.
+ * This ensures malformed exception sequences cannot
+ * silently produce incorrect results.
+ *
+ * Binary search locates matching date exceptions.
+ *
+ * Parameters:
+ * - value: Absolute date to classify.
+ * - data: Borrowed versioned calendar dataset.
+ *
+ * Returns:
+ * True when the date is classified as working.
+ *
+ * Errors:
+ * - BusinessError.InvalidCalendarData: Malformed dataset.
+ * - BusinessError.OutsideCoverage: Date not covered.
+ *
+ * Ownership:
+ * Borrows the dataset without ownership transfer.
+ * Performs no allocation or I/O.
+ */
+fn IsBusinessDay(value: date, data: ref BusinessCalendarData) Result[bool, BusinessError] {
+    try ValidateBusinessCalendarData(data)
+
+    let epochDay := value.EpochDays
+
+    if epochDay < data.FirstDay.EpochDays ||
+        epochDay > data.LastDay.EpochDays {
+        return Err(BusinessError.OutsideCoverage)
+    }
+
+    // Search sorted date exceptions.
+    let mut lower := 0u
+    let mut upper := data.Exceptions.Len
+
+    while lower < upper {
+        let middle    := lower + (upper - lower) / 2
+        let exception := data.Exceptions[middle]
+
+        if exception.Day.EpochDays == epochDay {
+            return Ok(exception.Working)
+        }
+
+        if exception.Day.EpochDays < epochDay {
+            lower = middle + 1
+        } else {
+            upper = middle
+        }
+    }
+
+    // No exception exists; use the weekly pattern.
+    let weekday := _weekdayMondayIndex(value)
+
+    return Ok(_workingWeekday(weekday, data.Week))
+}
+
+/**
+ * Finds a business day using an explicit calendar dataset.
+ *
+ * Description:
+ * Includes the starting date when it is a business day.
+ * Otherwise searches in the specified direction.
+ *
+ * Search cannot continue beyond dataset coverage.
+ *
+ * Parameters:
+ * - value: Starting absolute date.
+ * - data: Borrowed calendar dataset.
+ * - direction: +1 for following, -1 for preceding.
+ *
+ * Returns:
+ * First qualifying business day.
+ *
+ * Errors:
+ * - BusinessError.InvalidCalendarData: Malformed dataset.
+ * - BusinessError.OutsideCoverage: No covered result.
+ * - BusinessError.OutOfRange: Core date boundary exceeded.
+ *
+ * Ownership:
+ * Borrows calendar data without ownership transfer.
+ */
+fn _findDatasetBusinessDay(value: date, data: ref BusinessCalendarData, direction: int) Result[date, BusinessError] {
+    let mut current := value
+
+    while true {
+        let working := try IsBusinessDay(current, data)
+
+        if working {
+            return Ok(current)
+        }
+
+        current = try _stepBusinessDate(current, direction)
+    }
+}
+
+/**
+ * Adjusts a date under a supplied business-calendar dataset.
+ *
+ * Description:
+ * None returns the date unchanged without consulting
+ * the dataset.
+ *
+ * Following and Preceding find qualifying dates in the
+ * corresponding direction.
+ *
+ * ModifiedFollowing and ModifiedPreceding preserve the
+ * original Gregorian month by reversing direction when
+ * the initial adjustment crosses a month boundary.
+ *
+ * Parameters:
+ * - value: Unadjusted absolute date.
+ * - data: Borrowed calendar dataset.
+ * - policy: Explicit business-day adjustment.
+ *
+ * Returns:
+ * Adjusted absolute date.
+ *
+ * Errors:
+ * - BusinessError.InvalidCalendarData: Malformed dataset.
+ * - BusinessError.OutsideCoverage: Required day not covered.
+ * - BusinessError.OutOfRange: Unrepresentable result.
+ *
+ * Ownership:
+ * Borrows the dataset without ownership transfer.
+ */
+fn AdjustBusinessDay(value: date, data: ref BusinessCalendarData, policy: BusinessDayAdjustment) Result[date, BusinessError] {
+    match policy {
+        BusinessDayAdjustment.None => {
+            return Ok(value)
+        }
+
+        BusinessDayAdjustment.Following => {
+            return _findDatasetBusinessDay(value, data, 1)
+        }
+
+        BusinessDayAdjustment.Preceding => {
+            return _findDatasetBusinessDay(value, data, -1)
+        }
+
+        BusinessDayAdjustment.ModifiedFollowing => {
+            let following := try _findDatasetBusinessDay(
+                value, data, 1,
+            )
+
+            if try _sameGregorianMonth(value, following) {
+                return Ok(following)
+            }
+
+            return _findDatasetBusinessDay(value, data, -1)
+        }
+
+        BusinessDayAdjustment.ModifiedPreceding => {
+            let preceding := try _findDatasetBusinessDay(
+                value, data, -1,
+            )
+
+            if try _sameGregorianMonth(value, preceding) {
+                return Ok(preceding)
+            }
+
+            return _findDatasetBusinessDay(value, data, 1)
+        }
+    }
+}
+
+/**
+ * Calculates a monthly due date under supplied calendar data.
+ *
+ * Description:
+ * First resolves the nominal Gregorian monthly date.
+ * Then applies the explicit business-day adjustment.
+ *
+ * No implicit holiday data or regional rules are used.
+ *
+ * Parameters:
+ * - year: Gregorian year.
+ * - month: Gregorian month in 1..12.
+ * - rule: Monthly date rule.
+ * - data: Borrowed versioned calendar dataset.
+ * - policy: Business-day adjustment convention.
+ *
+ * Returns:
+ * Resolved and adjusted due date.
+ *
+ * Errors:
+ * - BusinessError.InvalidDateRule: Invalid monthly rule.
+ * - BusinessError.InvalidCalendarData: Malformed dataset.
+ * - BusinessError.OutsideCoverage: Required day not covered.
+ * - BusinessError.OutOfRange: Unrepresentable date.
+ *
+ * Ownership:
+ * Borrows the dataset without ownership transfer.
+ */
+fn DueDate(year: int, month: int, rule: MonthlyDateRule, data: ref BusinessCalendarData, policy: BusinessDayAdjustment) Result[date, BusinessError] {
+    let nominal := try ResolveMonthlyDate(year, month, rule)
+
+    return AdjustBusinessDay(nominal, data, policy)
+}

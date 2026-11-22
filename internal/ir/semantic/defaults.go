@@ -51,7 +51,8 @@ func (fb *functionBuilder) buildResolvedDefault(typ sema.Type, resolution sema.D
 		case sema.FloatType:
 			return fb.result(Operation{Kind: OpConstFloat, FloatLexeme: resolution.Value.Lexeme, Location: loc}, typeID), nil
 		case sema.DecimalType:
-			decimal, parseErr := parseDecimalFor(resolution.Value.Lexeme, fb.decimalBits(typeID))
+			// MD-049 § 13(5): Sema's (coefficient, scale) pair, not the lexeme.
+			decimal, parseErr := fb.decimalFromSemaConstant(resolution.Value, typeID)
 			if parseErr != nil {
 				return builtValue{}, parseErr
 			}

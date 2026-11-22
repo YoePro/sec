@@ -1,6 +1,6 @@
 schema_version: 1
-updated: "2026-11-21"
-last_id: MD-148
+updated: "2026-11-22"
+last_id: MD-149
 purpose: >-
   Tracks normative decisions that are missing or insufficiently precise and
   therefore constrain implementation. Remove an entry only after the owning
@@ -331,8 +331,9 @@ decisions:
       scale cap, or binary-floating nextafter as language semantics. Blocks
       frontend.default-values "implement exact successors for exclusive decimal
       upper bounds"; existing behavior continues to require explicit defaults.
+      Decided by the owner 2026-11-21 (correction rev 1.2, rules/corrections/applied/MD-049-decimal-range-scale-inference-capacity-correction-rev1-2-2026-11-21-20261122.md): signed int32 scales are valid; an explicit or inherited `scale N` contract fixes the scale, otherwise the greatest represented bound scale reduced by coefficient capacity; the default search runs over that fixed grid; an exclusive upper zero selects (-1, S); the zero-product scale is max of the operand scales. This supersedes the interim sentence above forbidding endpoint-scale inference. Integrated 2026-11-22: grammar.md § 17(10), lexical_structure.md § 7.3.1, operators.md §§ 27.1(5a), 27.5, types.md § 45A, contracts.md § 16, default_values.md § 65A, core-library.md § 10A, compiler_known_members.md § 113A, semantic_ir.md § 128, formatter.md § 31A, diagnostics.md § 31A, sec_mlir_dialect.md § 44, dialect v2 § 41. Implementation and the T01-T65 tests are tracked in frontend.default-values, frontend.type-contracts-v2, frontend.types-core (types.yaml), compiler.compiler-known-surfaces (core.yaml), compiler.compile-time-evaluation and compiler.incremental-compilation-v1 (compiler.yaml), errors.diagnostics, tooling.formatter-v2, semantic-ir.core-v2 and lowering.sec-mlir-package21.
     classification: blocking
-    status: open
+    status: decided-implementation-pending
 
   - id: MD-052
     area: privileged-core-low-level-function-bodies
@@ -1468,8 +1469,9 @@ decisions:
       - whether reading build metadata makes a build non-reproducible across
         build numbers, and how caches key on it (§ 33, § 34).
       Governance owner: tooling.project-version-model.
+      Decided by the owner 2026-11-22 (rules/corrections/applied/MD-143-fix-20261122.md): core.BuildInfo with BuildInfo.Current(), uint64 version components, distinct BuildProfile and TargetProfile, Option for absent facts, available in ordinary code and semantic CTE as a static constant, stored build number for check/LSP and the invocation's number for build. Integrated: core-library.md § 28, compiler_known_members.md § 113B, projects.md § 32(8). Implementation tracked in tooling.project-version-model (governance/tooling_projects.yaml).
     classification: blocking
-    status: open
+    status: decided-implementation-pending
 
   - id: MD-144
     area: numeric-strategy-syntax-and-execution-environment
@@ -1570,4 +1572,39 @@ decisions:
       relation to MD-118 (fmt surface). Governance owner:
       core.numeric-formatting (to be created with the decision).
     classification: constraining
+    status: open
+
+  - id: MD-149
+    area: slice-borrow-ergonomics
+    rulebooks:
+      - rules/collections/collections.md
+      - rules/memory/reference_model.md
+      - rules/types/types.md
+    description: >-
+      Owner request 2026-11-22 (ergonomics). A call such as
+      `IsBusinessDay(day, ref calendars, ...)` with `calendars:
+      BusinessCalendarData[2]` and a `ref BusinessCalendarData[]` parameter
+      is rejected ("must be ref BusinessCalendarData[], got ref
+      BusinessCalendarData[2]"); only `ref calendars[..]` is accepted,
+      because collections.md § 7.3 makes slice creation explicit and has no
+      implicit owner-to-slice conversion. `ref calendars` already is an
+      explicit borrow with a statically known length, so an implicit
+      reference-to-slice coercion would be memory-safe. Decide: (1) whether
+      `ref T[N]` coerces to `ref T[]` and `ref mut T[N]` to `ref mut T[]`
+      (and `ref mut T[N]` to `ref T[]`); (2) whether the same holds for a
+      borrowed owning `ref T[]` dynamic array and `list[T]`, given that
+      their backing can relocate (collections.md § 7.2 relocation rules);
+      (3) in which positions it applies: call arguments only, or also
+      assignment, return, struct fields and generic inference (and whether a
+      generic `ref T[]` parameter infers T through it); (4) whether a bare
+      owner `T[N]` argument stays an error (today's rule) so a borrow always
+      stays visible at the call site; (5) interaction with overload
+      resolution, MD-117 fixed-array spread into packs, and the slice
+      borrow facts (origin, live range, exclusivity) the implicit form must
+      produce identically to `ref values[..]`. Interim: the rule is
+      unchanged; since 2026-11-22 the mismatch diagnostic's help names the
+      explicit `ref values[..]` / `ref mut values[..]` borrow
+      (internal/sema/explicit_slice_help.go). Governance owner:
+      frontend.collections.
+    classification: localized
     status: open

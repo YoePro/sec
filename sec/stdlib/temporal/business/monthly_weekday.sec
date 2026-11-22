@@ -1,0 +1,191 @@
+module business
+
+/*
+ * Sec Standard Library — temporal/business
+ * File: business/monthly_weekday.sec
+ * Purpose: Select weekdays by ordinal position in a month.
+ * Status: Implementation candidate, not execution-verified
+ * Revision: 0.1
+ * Updated: 2026-11-22
+ *
+ * Governing rulebook:
+ * stdlib/temporal/business/std-temporal-business.md
+ *
+ * No allocation, I/O, clock or external datasets.
+ */
+
+import "temporal/calendar"
+
+/**
+ * Converts a core weekday to a Monday-based index.
+ *
+ * Description:
+ * Monday maps to zero and Sunday maps to six.
+ * The mapping is independent of the enum's
+ * underlying numeric values.
+ *
+ * Parameters:
+ * - weekday: Core weekday value.
+ *
+ * Returns:
+ * Weekday index in the range 0..6.
+ *
+ * Ownership:
+ * Pure calculation without allocation.
+ */
+fn _weekdayEnumIndex(weekday: date.Weekdays) int {
+    match weekday {
+        date.Weekdays.Monday => return 0
+        date.Weekdays.Tuesday => return 1
+        date.Weekdays.Wednesday => return 2
+        date.Weekdays.Thursday => return 3
+        date.Weekdays.Friday => return 4
+        date.Weekdays.Saturday => return 5
+        date.Weekdays.Sunday => return 6
+    }
+}
+
+/**
+ * Selects a weekday occurrence within a Gregorian month.
+ *
+ * Description:
+ * Positive positions count forward from month start.
+ * Negative positions count backward from month end.
+ *
+ * Position 1 selects the first occurrence.
+ * Position 2 selects the second occurrence.
+ * Position -1 selects the final occurrence.
+ * Position -2 selects the second-to-last occurrence.
+ *
+ * Position zero is invalid. A requested occurrence
+ * that does not exist produces InvalidDateRule.
+ *
+ * The calculation uses calendar month lengths and
+ * absolute-day weekday arithmetic. It never depends
+ * on the current locale or operating system.
+ *
+ * Parameters:
+ * - year: Gregorian calendar year.
+ * - month: Gregorian month in 1..12.
+ * - weekday: Requested core weekday.
+ * - position: Nonzero signed occurrence number.
+ *
+ * Returns:
+ * Absolute date of the selected weekday occurrence.
+ *
+ * Errors:
+ * - BusinessError.InvalidDateRule:
+ * Invalid month, position or unavailable occurrence.
+ * - BusinessError.OutOfRange:
+ * Result cannot be represented by core date.
+ * - BusinessError.NotImplemented:
+ * Required calendar conversion is unavailable.
+ *
+ * Ownership:
+ * Pure calculation without allocation or I/O.
+ */
+fn NthWeekdayOfMonth(year: int, month: int, weekday: date.Weekdays, position: int) Result[date, BusinessError] {
+    if month < 1 || month > 12 {
+        return Err(BusinessError.InvalidDateRule)
+    }
+
+    // A weekday cannot occur more than five times
+    // in any Gregorian month.
+    if position == 0 || position < -5 || position > 5 {
+        return Err(BusinessError.InvalidDateRule)
+    }
+
+    let monthIdentity := calendar.CalendarMonth {
+        Number: month,
+        IsLeap: false,
+    }
+
+    let monthLength := try calendar.DaysInMonth(year, monthIdentity, calendar.CalendarSystem.Gregorian) {
+        Err(e) => return Err(_monthlyCalendarError(e))
+    }
+
+    let firstFields := calendar.CalendarFields {
+        Year: year,
+        Month: monthIdentity,
+        Day: 1,
+    }
+
+    let firstDate := try calendar.ToDate(firstFields, calendar.CalendarSystem.Gregorian) {
+        Err(e) => return Err(_monthlyCalendarError(e))
+    }
+
+    let firstWeekday  := _weekdayMondayIndex(firstDate)
+    let targetWeekday := _weekdayEnumIndex(weekday)
+
+    let mut targetDay := 0
+
+    if position > 0 {
+        // Offset from the month's first day to the
+        // first occurrence of the requested weekday.
+        let offset :=
+        (targetWeekday - firstWeekday + 7) % 7
+
+        targetDay = 1 + offset + (position - 1) * 7
+    } else {
+        // Determine the weekday of the last day.
+        let lastWeekday :=
+        (firstWeekday + monthLength - 1) % 7
+
+        // Count backward to the final occurrence.
+        let offset :=
+        (lastWeekday - targetWeekday + 7) % 7
+
+        // Position -1 means the final occurrence.
+        targetDay =
+        monthLength - offset + (position + 1) * 7
+    }
+
+    if targetDay < 1 || targetDay > monthLength {
+        return Err(BusinessError.InvalidDateRule)
+    }
+
+    let target := calendar.CalendarFields {
+        Year: year,
+        Month: monthIdentity,
+        Day: targetDay,
+    }
+
+    let result := try calendar.ToDate(target, calendar.CalendarSystem.Gregorian) {
+        Err(e) => return Err(_monthlyCalendarError(e))
+    }
+
+    return Ok(result)
+}
+
+/**
+ * Returns the final occurrence of a weekday in a month.
+ *
+ * Description:
+ * Equivalent to NthWeekdayOfMonth with position -1.
+ *
+ * Parameters:
+ * - year: Gregorian calendar year.
+ * - month: Gregorian month in 1..12.
+ * - weekday: Requested core weekday.
+ *
+ * Returns:
+ * Absolute date of the last matching weekday.
+ *
+ * Errors:
+ * - BusinessError.InvalidDateRule: Invalid month.
+ * - BusinessError.OutOfRange: Unrepresentable date.
+ * - BusinessError.NotImplemented: Missing calendar support.
+ *
+ * Ownership:
+ * Pure calculation without allocation or I/O.
+ */
+fn LastWeekdayOfMonth(year: int, month: int, weekday: date.Weekdays) Result[date, BusinessError] {
+    let lastPosition: int := -1
+
+    return NthWeekdayOfMonth(
+        year,
+        month,
+        weekday,
+        lastPosition,
+    )
+}

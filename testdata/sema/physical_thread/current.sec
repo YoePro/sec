@@ -1,0 +1,15 @@
+module main
+
+fn Physical() bool {
+    return Thread.Current().CancelRequested
+}
+
+fn Worker() bool {
+    return Task.Current().CancelRequested
+}
+
+fn LogicalOnly() void {
+    let work := try spawn Worker() { Err(_) => { return } }
+    let outcome := await work
+    discard outcome
+}

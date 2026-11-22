@@ -1,0 +1,5 @@
+module main
+
+fn Unsigned(count: uint, offset: uint) uint { return count - offset }
+fn Signed(count: int, offset: int) int { return count - offset }
+fn ContextualLiteral(count: uint) uint { return count - 1 }

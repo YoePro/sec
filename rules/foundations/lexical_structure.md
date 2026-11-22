@@ -745,6 +745,10 @@ contracts (MD-009; `rules/corrections/applied/missing-decisions-md001-md009-corr
 A contract spelling is not available as a user declaration name merely because
 it appears only after a type.
 
+### 7.3.1 Contextual `scale` (MD-049)
+
+Integrated 2026-11-22 from `rules/corrections/applied/MD-049-decimal-range-scale-inference-capacity-correction-rev1-2-2026-11-21-20261122.md` (MD-049, owner-locked 2026-11-21). The correction holds the full normative text and test vectors T01–T65; this section is its owning summary. `scale` is **not** a reserved contract word: it is an ordinary identifier everywhere except at the head of a `ScaleContract` in a named-type declaration (`rules/foundations/grammar.md` § 17(10)), so `let scale := 3` and a field or function named `scale` stay legal. It is case-sensitive; `Scale` remains the decimal instance property and unit metadata field. This is an explicit exception to the reserved list above.
+
 ---
 
 ## 7.4 Modifiers

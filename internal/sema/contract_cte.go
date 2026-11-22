@@ -131,6 +131,13 @@ func (a *Analyzer) semanticCompileTimeConstantResolving(expr ast.Expression, vis
 	if value, ok := a.nominalMemberConstant(expr, context); ok {
 		return value, compileTimeEvaluated
 	}
+	// MD-143: BuildInfo.Current().Field is a constant of the plan snapshot.
+	if value, outcome, handled := a.buildInfoFieldConstant(expr); handled {
+		return value, outcome
+	}
+	if value, outcome, handled := a.buildInfoCurrentConstant(expr); handled {
+		return value, outcome
+	}
 	if constant, ok := defaultConstantFromExpression(expr); ok && !compileTimeOperatorExpression(expr) {
 		if numeric, ok := expr.(interface{ Suffix() string }); ok && numeric.Suffix() == "g" && context.Kind != FloatType {
 			context = a.types["float"]
@@ -222,6 +229,10 @@ func (a *Analyzer) semanticCompileTimeConstantResolving(expr ast.Expression, vis
 				return value, compileTimeEvaluated
 			}
 			inner.Exact = new(big.Rat).Neg(inner.Exact)
+			if inner.Decimal != nil && inner.Decimal.Coefficient != nil {
+				// Negation keeps the represented scale (MD-049 § 13(2)).
+				inner.Decimal = &DecimalValue{Coefficient: new(big.Int).Neg(inner.Decimal.Coefficient), Scale: inner.Decimal.Scale}
+			}
 			inner.Lexeme = ""
 			return a.prepareCompileTimeConstant(inner, context)
 		}
@@ -316,6 +327,23 @@ func (a *Analyzer) semanticCompileTimeExact(expr ast.Expression) (*big.Rat, stri
 		return new(big.Rat).SetInt(constant.Integer), constant.Lexeme, compileTimeEvaluated
 	}
 	return nil, "", compileTimeNotConstant
+}
+
+// semanticCompileTimeDecimal returns the scale-bearing value of a compile-time
+// decimal or integer expression: a literal's spelled scale, the represented
+// scale of a computed or bound decimal constant, or scale 0 for an integer.
+// It never parses formatted decimal text back.
+// Rules: rules/compiler/semantic_ir.md — § 128(1);
+// rules/corrections/applied/MD-049-decimal-range-scale-inference-capacity-correction-rev1-2-2026-11-21-20261122.md — §§ 3(1), 3(4), 13(1)-(4).
+func (a *Analyzer) semanticCompileTimeDecimal(expr ast.Expression) (DecimalValue, bool) {
+	if value, ok := decimalLiteralValue(expr); ok {
+		return value, true
+	}
+	constant, outcome := a.semanticCompileTimeConstant(expr)
+	if outcome != compileTimeEvaluated {
+		return DecimalValue{}, false
+	}
+	return compileTimeDecimalOperand(constant)
 }
 
 // reportCompileTimeRequirement diagnoses a required position that could not

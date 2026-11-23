@@ -69,11 +69,10 @@ func (a *Analyzer) selectActiveSource(program *ast.Program) (*ast.Program, []Err
 	selection := *a.sourceSelection
 	errors := []Error{}
 	fileActive := map[string]bool{}
-	for _, statement := range program.Statements {
-		directive, ok := statement.(*ast.TargetDirective)
+	for _, directive := range program.FileTargetDirectives() {
 		// The #target compatibility form keeps its existing module-assembly
 		// and validation paths; the canonical form selects here.
-		if !ok || !directive.Canonical {
+		if !directive.Canonical {
 			continue
 		}
 		file := directive.Token.File

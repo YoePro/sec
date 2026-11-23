@@ -1,0 +1,19 @@
+module main
+
+fn First() Result[string, StringError] { return Ok("first") }
+fn Second() Result[string, StringError] { return Ok("second") }
+fn Last() string { return "last" }
+
+fn Propagate() Result[string, StringError] {
+    return Ok(try "begin:" + First() + ":" + Second() + Last())
+}
+
+fn Recover() string {
+    return try "begin:" + First() + ":" + Second() + Last() {
+        Err(_) => "fallback"
+    }
+}
+
+fn Separate() Result[string, StringError] {
+    return Ok("begin:" + (try First()) + Last())
+}

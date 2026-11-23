@@ -1,0 +1,23 @@
+module main
+
+enum BusinessError error { Failed }
+fn Count(value: int64) Result[int64, BusinessError] { return Ok(value) }
+fn Widen(value: int32) Result[int64, BusinessError] {
+    let origin := int64(value)
+    return Ok(try Count(origin + 1))
+}
+fn main() int {
+    match Widen(int32(2147483647)) {
+        Ok(value) => {
+            if value != 2147483648 { return 1 }
+        }
+        Err(_) => return 2
+    }
+    match Widen(int32(-2147483648)) {
+        Ok(value) => {
+            if value != -2147483647 { return 3 }
+        }
+        Err(_) => return 4
+    }
+    return 42
+}

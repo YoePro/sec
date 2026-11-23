@@ -1,0 +1,20 @@
+module main
+
+enum ProbeError error { Failed }
+
+fn Number() Result[int, ProbeError] {
+    return Ok(1)
+}
+
+fn Plain() void {
+    while 1 {
+        break
+    }
+}
+
+fn Fallible() Result[void, ProbeError] {
+    while try Number() {
+        break
+    }
+    return Ok()
+}

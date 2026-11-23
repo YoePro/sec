@@ -196,13 +196,17 @@ runtime (§§ 143–148, 162–163).
   Full Sema, Semantic IR and emitter tests pass. Source IR production still
   requires the other incomplete P19 plans; allocation readiness is unchanged.
 
-- [ ] P19-10 — Allocation context: `MayAllocate` vs
+- [~] P19-10 — Allocation context: `MayAllocate` vs
   `RequiresAllocationContext`, selection order, lexical Arenas are not
   ambient candidates, compiler-managed local context, synchronous
   propagation, internal context parameter and direct-call propagation,
   explicit Arena context, target-provided context, no-allocation profile,
   `@noAlloc` vs missing ambient context, spawn/task/thread and foreign
   entrypoint boundaries (§§ 51–64).
+  Update 2026-11-23 (Claude): requirement summary, hidden context,
+  direct-call forwarding, entry-root target context, spawn and foreign-ABI
+  boundaries. Open: compiler-local and explicit-Arena contexts, exported
+  wrappers, indirect calls.
 - [x] P19-11 — Ordered effects and per-operation effect summaries; Arena
   resource identity; allocation not CSE-safe and not movable across
   Reset/Release (§§ 65–69).
@@ -244,6 +248,11 @@ runtime (§§ 143–148, 162–163).
 - [ ] P19-13 — Allocation-context callable summary, context origin, basic
   Arena demand summary, demand semantics, interprocedural demand boundary,
   strict profile validation, statically impossible allocation (§§ 77–83).
+  Partial 2026-11-23 (Claude): basic Arena demand summary and demand
+  semantics (§§ 79–80) for domains a callable creates. Open: the
+  interprocedural boundary for Arenas passed as parameters (§ 81), strict
+  profile validation (§ 82, blocked by MD-151), statically impossible
+  allocation against a known fixed capacity (§ 83).
 
 ## C. Add the Semantic IR representation
 
@@ -331,7 +340,7 @@ runtime (§§ 143–148, 162–163).
 
 ## D. Connect source lowering through resolved plans only
 
-- [ ] P19-20 — Builder lowers Arena creation, `New`, `Alloc`, Reset,
+- [~] P19-20 — Builder lowers Arena creation, `New`, `Alloc`, Reset,
   Release, implicit destruction and context selection solely from the P19
   plans; anything unplanned is a package-19 unsupported error with no
   partial module; the allocation readiness gate is narrowed per operation as
@@ -345,27 +354,63 @@ runtime (§§ 143–148, 162–163).
   gap. Lowerable without them: `FromBuffer` creation, Reset (once Sema
   publishes the state-version and epoch-exhaustion plans) and Release/implicit
   destruction of borrowed Arenas.
+  Update 2026-11-23 (Claude): FromBuffer creation, Reset and implicit
+  destruction of borrowed Arenas lower end to end to schema 15
+  (TestPackage19ArenaSourceLowering). Open: owned creation (MD-034),
+  New/Alloc (P24 layout), explicit Release (P17-29/33), nested children,
+  parameter Arenas, per-operation readiness narrowing.
+  Correction 2026-11-23 (Claude): the 2026-11-18 note is outdated. MD-141/
+  MD-142 have been implemented in `internal/layout` since 2026-11-20 (scalar
+  sizes/alignments per verified triple, field placement, arrays, decimal
+  carriers), so New/Alloc on a borrowed Arena is not blocked by any decision;
+  it only needs to consume that layout service. Owned creation
+  (WithCapacity/Growable) is blocked by MD-151 (provider catalogs), not by
+  MD-034's former configuration gap, which MD-139 closed.
+  Done 2026-11-23 (Claude): New/Alloc on a FromBuffer Arena created in the
+  same function lower to checked `sec.arena.new` and `sec.arena.alloc` with
+  the resolved layout, default and capacity plans, and builder-numbered state
+  versions (sec_mlir_dialect_v15.md § 9; TestPackage19ArenaAllocationLowering).
+  Open: owned creation (MD-151), Arena parameters, explicit Release, nested
+  children.
+  MD-136 decided 2026-11-23 (arena.md § 131, P19 § 166): `Arena {}` and
+  an omitted Arena initialization are the infallible, allocation-free default
+  creation (fresh domain, zero capacity, no backing, frozen growth policy).
+  Its Sema plan, Semantic IR/schema-15 representation, readiness diagnostics
+  and tests T01-T11 are governance remaining items of P19.
 - [ ] P19-21 — P17 cleanup and defer interaction; task/thread boundary
   scope; FFI retention boundary (§§ 139–142).
 
 ## E. Schema 15 and the verifiers
 
-- [ ] P19-22 — Schema 15 version gates (after 11–14), registration,
+- [x] P19-22 — Schema 15 version gates (after 11–14), registration,
   parser/printer; why `!sec.arena` has no backing-kind parameter (§§ 105–106).
-- [ ] P19-23 — `!sec.alloc_context`, the hidden allocation-context function
+  Done 2026-11-23 (Claude): schema 15 gate and types (sec_mlir_dialect_v15.md).
+- [x] P19-23 — `!sec.alloc_context`, the hidden allocation-context function
   argument and the foreign ABI restriction (§§ 107–109).
-- [ ] P19-24 — Operations `sec.arena.create_borrowed`, `.create_owned_fixed`,
+  Done 2026-11-23 (Claude): hidden context marking/position/forwarding.
+- [x] P19-24 — Operations `sec.arena.create_borrowed`, `.create_owned_fixed`,
   `.create_growable`, `.new`, `.alloc`, `.reset`, `.release`, `.destroy`,
   `sec.alloc_context.from_arena`, `.target`, `.compiler_local` (§§ 110–120).
-- [ ] P19-25 — Arena state-version and ArenaDomain metadata; Arena MLIR
+  Done 2026-11-23 (Claude): all eleven operations with local verifiers.
+- [x] P19-25 — Arena state-version and ArenaDomain metadata; Arena MLIR
   effects (§§ 121–123).
-- [ ] P19-26 — Verifiers: Arena, allocation-context, dependency extension,
+  Done 2026-11-23 (Claude): state/epoch/domain properties and the <SecArena>
+  MemoryEffect resource (schema15-arena-effects.mlir).
+- [~] P19-26 — Verifiers: Arena, allocation-context, dependency extension,
   Arena effect, demand-summary representation, strict profile (§§ 124–131).
+  Update 2026-11-23 (Claude): Arena and allocation-context verifiers, Arena
+  effects, sec.may_allocate / sec.requires_allocation_context. Byte demand
+  summary done 2026-11-23 (Claude): `sec.arena_demand_summary` from Sema's
+  ArenaDemandSummariesOf, verified by --sec-verify-arenas
+  (sec_mlir_dialect_v15.md § 10). Open: strict-profile verifier (blocked by
+  MD-151 provider catalogs).
 - [ ] P19-27 — Profiles: hosted, embedded fixed, bare-metal bounded (with
-  MD-034), no-allocation (§§ 132–135).
+  MD-034), no-allocation (§§ 132–135). Provider-backed profiles are blocked
+  by MD-151; no-allocation and freestanding-disabled are not.
 - [ ] P19-28 — Effect-analysis, call-graph and separate-compilation metadata
   integration (§§ 136–138).
-- [ ] P19-29 — Go emitter from verified Semantic IR to schema 15.
+- [x] P19-29 — Go emitter from verified Semantic IR to schema 15.
+  Done 2026-11-23 (Claude): Go emitter to schema 15 (TestSchema15*).
 
 ## F. Lowering without physical choices
 
@@ -394,8 +439,8 @@ runtime (§§ 143–148, 162–163).
 - [ ] P19-36 — Allocation-context tests (§ 154).
 - [ ] P19-37 — Demand-summary tests (§ 155).
 - [ ] P19-38 — Semantic IR tests (§ 156).
-- [ ] P19-39 — Sec MLIR dialect tests (§ 157).
-- [ ] P19-40 — Arena verifier and allocation-context verifier negative
+- [x] P19-39 — Sec MLIR dialect tests (§ 157). Done 2026-11-23 (Claude).
+- [~] P19-40 — Arena verifier and allocation-context verifier negative
   tests (§§ 158–159).
 - [ ] P19-41 — Integration tests (§ 160).
 

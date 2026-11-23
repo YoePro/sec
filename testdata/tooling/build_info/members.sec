@@ -1,0 +1,25 @@
+module main
+
+fn Inspect(info: ref BuildInfo) void {
+    discard info.ProjectUUID
+    discard info.ProjectName
+    discard info.TargetName
+    discard info.VariantName
+    discard info.VersionMajor
+    discard info.VersionMinor
+    discard info.VersionRevision
+    discard info.VersionBuild
+    discard info.VersionUserDefined
+    discard info.VersionRendered
+    discard info.OperatingSystem
+    discard info.Architecture
+    discard info.BuildProfile
+    discard info.TargetProfile
+    discard info.SourceRevision
+    discard info.DirtySourceStatus
+}
+
+fn Snapshot() void {
+    let info := BuildInfo.Current()
+    discard info.VersionBuild
+}

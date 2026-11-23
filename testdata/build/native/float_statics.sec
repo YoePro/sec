@@ -1,0 +1,34 @@
+module main
+
+// P20 §§ 74, 76: module-level float statics carry their canonical bit
+// pattern into static storage; runtime reads see exactly those values,
+// including binary32 rounding and the sign of negative zero.
+
+let Scale: float := 2.5
+let Tiny: float32 := 0.1
+let Negative: float64 := -0.0
+
+fn Same64(value: float64, expected: float64) bool {
+    return value == expected
+}
+
+fn Same32(value: float32, expected: float32) bool {
+    return value == expected
+}
+
+fn Reciprocal(value: float64) float64 {
+    return 1.0 / value
+}
+
+fn main() int {
+    if !Same64(float64(Scale) * 2.0, 5.0) {
+        return 1
+    }
+    if !Same32(Tiny, 0.1) {
+        return 2
+    }
+    if !Same64(Reciprocal(Negative), float64.NegativeInfinity) {
+        return 3
+    }
+    return 42
+}

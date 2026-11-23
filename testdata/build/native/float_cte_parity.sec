@@ -1,0 +1,90 @@
+module main
+
+// P20-19 (§§ 13-18, 82): compile-time folding of float statics uses the
+// same binary formats, per-operation nearest-even rounding and comparison
+// semantics as the runtime: each static below is folded at compile time and
+// compared with the identical computation at run time.
+
+let A64: float64 := 0.1
+let B64: float64 := 0.2
+let A32: float32 := 0.1
+let B32: float32 := 0.2
+let Big32: float32 := 16777216.0
+let One32: float32 := 1.0
+let One64: float64 := 1.0
+let Three64: float64 := 3.0
+let Sub64: float64 := 4.9e-324
+let Sum64: float64 := A64 + B64
+let Sum32: float32 := A32 + B32
+let Chain32: float32 := Big32 + One32 + One32
+let Tiny64: float64 := Sub64 * One64
+let Quot64: float64 := One64 / Three64
+let Zero64: float64 := 0.0
+let NegZero64: float64 := -0.0
+let ZerosEqual: bool := NegZero64 == Zero64
+let ZerosLess: bool := NegZero64 < Zero64
+let NegProduct: float64 := NegZero64 * One64
+let NegDifference: float64 := NegZero64 - Zero64
+let Remainder64: float64 := Three64 % Big64
+let Big64: float64 := 2.0
+
+fn Add64(a: float64, b: float64) float64 {
+    return a + b
+}
+
+fn Add32(a: float32, b: float32) float32 {
+    return a + b
+}
+
+fn Mul64(a: float64, b: float64) float64 {
+    return a * b
+}
+
+fn Div64(a: float64, b: float64) float64 {
+    return a / b
+}
+
+fn Equal64(a: float64, b: float64) bool {
+    return a == b
+}
+
+fn Less64(a: float64, b: float64) bool {
+    return a < b
+}
+
+fn Reciprocal(a: float64) float64 {
+    return 1.0 / a
+}
+
+fn Mod64(a: float64, b: float64) float64 {
+    return a % b
+}
+
+fn main() int {
+    if Sum64 != Add64(0.1, 0.2) {
+        return 1
+    }
+    if Sum32 != Add32(0.1, 0.2) {
+        return 2
+    }
+    if Chain32 != Add32(Add32(16777216.0, 1.0), 1.0) {
+        return 3
+    }
+    if Tiny64 != Mul64(4.9e-324, 1.0) {
+        return 4
+    }
+    if Quot64 != Div64(1.0, 3.0) {
+        return 5
+    }
+    if ZerosEqual != Equal64(NegZero64, Zero64) || ZerosLess != Less64(NegZero64, Zero64) {
+        return 6
+    }
+    // Signed zero survives folded arithmetic (1 / -0 is negative).
+    if !Less64(Reciprocal(NegProduct), 0.0) || !Less64(Reciprocal(NegDifference), 0.0) {
+        return 7
+    }
+    if Remainder64 != Mod64(Three64, Big64) {
+        return 8
+    }
+    return 42
+}

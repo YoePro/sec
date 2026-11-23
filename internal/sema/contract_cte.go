@@ -135,6 +135,9 @@ func (a *Analyzer) semanticCompileTimeConstantResolving(expr ast.Expression, vis
 	if value, outcome, handled := a.buildInfoFieldConstant(expr); handled {
 		return value, outcome
 	}
+	if value, outcome, handled := a.floatPropertyConstant(expr); handled {
+		return value, outcome
+	}
 	if value, outcome, handled := a.buildInfoCurrentConstant(expr); handled {
 		return value, outcome
 	}
@@ -171,6 +174,13 @@ func (a *Analyzer) semanticCompileTimeConstantResolving(expr ast.Expression, vis
 			if _, outcome := a.semanticCompileTimeConstantResolving(argument, visiting, Type{}, identifier, expression); outcome == compileTimeForbiddenClock {
 				return DefaultConstant{}, outcome
 			}
+		}
+		// P20 § 59: a conversion proven exact folds to its target value.
+		if value, outcome, handled := a.numericConversionConstant(expr, visiting, identifier, expression); handled {
+			return value, outcome
+		}
+		if value, outcome, handled := a.floatCoreCallConstant(expr, visiting, identifier, expression); handled {
+			return value, outcome
 		}
 	case *ast.ConversionExpression:
 		if _, outcome := a.semanticCompileTimeConstantResolving(expr.Value, visiting, Type{}, identifier, expression); outcome == compileTimeForbiddenClock {
@@ -213,6 +223,14 @@ func (a *Analyzer) semanticCompileTimeConstantResolving(expr ast.Expression, vis
 		if expr.Operator == "-" && inner.Integer != nil {
 			value := new(big.Int).Neg(inner.Integer)
 			return DefaultConstant{Kind: IntType, Lexeme: value.String(), Integer: value}, compileTimeEvaluated
+		}
+		if expr.Operator == "-" && inner.Kind == FloatType && inner.FloatBits != 0 && inner.Exact == nil {
+			// An infinity or NaN negates in its binary format (P20 § 20).
+			number, err := strconv.ParseFloat(inner.Lexeme, inner.FloatBits)
+			if err != nil {
+				return DefaultConstant{}, compileTimeNotConstant
+			}
+			return compileTimeFloatValue(-number, inner.FloatBits)
 		}
 		if expr.Operator == "-" && inner.Exact != nil {
 			// Negation toggles the resolved floating sign, including zero.

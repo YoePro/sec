@@ -234,9 +234,18 @@ open.
 - [ ] P21-23 — Add Semantic IR decimal literal/operator/member/conversion
   plans and the P21 operation family from the approved facts only. Big integers
   are cloned on publication; builder code must never reparse AST text (§§25–28).
-- [ ] P21-24 — Represent checked candidates, failure flag and reason such that
+  Partial 2026-11-23 (Claude): operators done — `decimal.binary-checked`,
+  `decimal.neg-checked`, `decimal.compare` from Sema's ResolvedDecimalOperation
+  (`internal/ir/semantic/decimal_ops.go`); folded constants become
+  `const.decimal`. Remaining: member (Scale, core methods) and conversion
+  plans.
+- [x] P21-24 — Represent checked candidates, failure flag and reason such that
   candidates are success-only; preserve evaluation order and existing Result,
   try, ownership and cleanup semantics (§§18–19, 28).
+  Done 2026-11-23 (Claude): decimal checked operators use the checked-integer
+  (candidate, failed, reason) CFG — panic endpoint, try propagation and local
+  handlers — with the IR and MLIR guard verifiers; reasons map to
+  `core::ArithmeticError` (scale-overflow, precision-exhausted added).
 - [ ] P21-25 — Install schema-17 only after schema-16 and predecessor work is
   reconciled. Reuse existing decimal type identities and add only missing P21
   operations, attributes, parsing, printing and registration (§29).
@@ -244,8 +253,16 @@ open.
   coefficient/scale, stale/unapproved D1/D2 IDs, wrong error identity, float
   intermediates, loss of source provenance, unsafe candidate consumption and
   unproved physical narrowing (§§27–29, 33).
+  Partial 2026-11-23 (Claude): operator verifiers in Semantic IR and
+  SecOps.cpp (types, width, preferred scale, rounding/remainder policy,
+  admissible reasons, no float operands) and the shared guard verifier.
+  Remaining: value/conversion verifiers and the named v17 passes.
 - [ ] P21-27 — Extend the Go emitter from verified Semantic IR facts only;
   preserve exact coefficient, semantic scale, source kind and plan metadata.
+  Partial 2026-11-23 (Claude): operators emit `sec.decimal.binary_checked`,
+  `sec.decimal.unary` and `sec.decimal.cmp` with the plan attributes
+  (dialect v17 § 13); ODS ops/verifiers and lit positive/negative tests
+  exist. Remaining: member and conversion ops.
 
 ## F. Lowering boundary
 

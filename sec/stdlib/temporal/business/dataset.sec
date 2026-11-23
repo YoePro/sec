@@ -121,63 +121,27 @@ fn _workingWeekday(weekday: int, week: ref BusinessWeekPattern) bool {
  * Determines whether a date is a business day.
  *
  * Description:
- * Uses an explicitly supplied calendar dataset.
- * Date-specific exceptions override weekday rules.
- *
- * The complete dataset is validated before evaluation.
- * This ensures malformed exception sequences cannot
- * silently produce incorrect results.
- *
- * Binary search locates matching date exceptions.
+ * Validates the dataset before evaluating the date.
+ * Explicit exceptions override ordinary weekday rules.
  *
  * Parameters:
  * - value: Absolute date to classify.
- * - data: Borrowed versioned calendar dataset.
+ * - data: Borrowed business-calendar dataset.
  *
  * Returns:
- * True when the date is classified as working.
+ * True if the date is classified as working.
  *
  * Errors:
  * - BusinessError.InvalidCalendarData: Malformed dataset.
  * - BusinessError.OutsideCoverage: Date not covered.
  *
  * Ownership:
- * Borrows the dataset without ownership transfer.
- * Performs no allocation or I/O.
+ * Borrows data without transfer or allocation.
  */
 fn IsBusinessDay(value: date, data: ref BusinessCalendarData) Result[bool, BusinessError] {
     try ValidateBusinessCalendarData(data)
 
-    let epochDay := value.EpochDays
-
-    if epochDay < data.FirstDay.EpochDays ||
-        epochDay > data.LastDay.EpochDays {
-        return Err(BusinessError.OutsideCoverage)
-    }
-
-    // Search sorted date exceptions.
-    let mut lower := 0u
-    let mut upper := data.Exceptions.Len
-
-    while lower < upper {
-        let middle    := lower + (upper - lower) / 2
-        let exception := data.Exceptions[middle]
-
-        if exception.Day.EpochDays == epochDay {
-            return Ok(exception.Working)
-        }
-
-        if exception.Day.EpochDays < epochDay {
-            lower = middle + 1
-        } else {
-            upper = middle
-        }
-    }
-
-    // No exception exists; use the weekly pattern.
-    let weekday := _weekdayMondayIndex(value)
-
-    return Ok(_workingWeekday(weekday, data.Week))
+    return _isBusinessDayValidated(value, data)
 }
 
 /**
@@ -321,4 +285,61 @@ fn DueDate(year: int, month: int, rule: MonthlyDateRule, data: ref BusinessCalen
     let nominal := try ResolveMonthlyDate(year, month, rule)
 
     return AdjustBusinessDay(nominal, data, policy)
+}
+
+/**
+ * Classifies a date using previously validated calendar data.
+ *
+ * Description:
+ * The caller must first have successfully called
+ * ValidateBusinessCalendarData for this dataset.
+ *
+ * Exceptions override the ordinary weekly pattern.
+ * Binary search locates an exception in O(log N).
+ *
+ * Coverage is checked even when the dataset has
+ * already been structurally validated.
+ *
+ * Parameters:
+ * - value: Absolute date to classify.
+ * - data: Borrowed, previously validated dataset.
+ *
+ * Returns:
+ * True when the date is a working day.
+ *
+ * Errors:
+ * - BusinessError.OutsideCoverage:
+ * The date lies outside dataset coverage.
+ *
+ * Ownership:
+ * Borrows the dataset without allocation or transfer.
+ */
+fn _isBusinessDayValidated(value: date, data: ref BusinessCalendarData) Result[bool, BusinessError] {
+    let epochDay := value.EpochDays
+
+    if epochDay < data.FirstDay.EpochDays || epochDay > data.LastDay.EpochDays {
+        return Err(BusinessError.OutsideCoverage)
+    }
+
+    let mut lower := 0u
+    let mut upper := data.Exceptions.Len
+
+    while lower < upper {
+        let middle    := lower + (upper - lower) / 2
+        let exception := data.Exceptions[middle]
+
+        if exception.Day.EpochDays == epochDay {
+            return Ok(exception.Working)
+        }
+
+        if exception.Day.EpochDays < epochDay {
+            lower = middle + 1u
+        } else {
+            upper = middle
+        }
+    }
+
+    let weekday := _weekdayMondayIndex(value)
+
+    return Ok(_workingWeekday(weekday, data.Week))
 }

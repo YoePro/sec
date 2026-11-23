@@ -54,6 +54,10 @@ func referenceProperties(ref *semantic.ReferenceMetadata, derived bool) string {
 	}
 	if ref.Validity == semantic.ReferenceDynamicEpoch {
 		fmt.Fprintf(&out, ", invalidation_domain = %d : i32, epoch_dependency = %d : i32", ref.InvalidationDomain, ref.EpochDependency)
+	} else if ref.InvalidationDomain != 0 {
+		// A proven borrow of an owning T[] keeps its backing-domain
+		// dependency (package18 §§ 47, 77, 100-101).
+		fmt.Fprintf(&out, ", invalidation_domain = %d : i32", ref.InvalidationDomain)
 	}
 	fmt.Fprintf(&out, ", address_stability = %s, provenance = %s", mlirString(ref.AddressStability), mlirString(ref.Provenance))
 	if derived {

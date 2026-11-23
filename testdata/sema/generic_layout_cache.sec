@@ -1,0 +1,11 @@
+module main
+
+type Box[T] struct {
+    value: T,
+    items: T[2],
+    flag: bool,
+}
+
+type Meter int32
+
+fn Shapes(word: Box[int], bytes: Box[byte], nominal: Box[Meter]) void {}

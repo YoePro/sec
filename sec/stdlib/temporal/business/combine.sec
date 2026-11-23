@@ -15,45 +15,122 @@ module business
  */
 
 /**
- * Determines whether a date satisfies combined calendars.
+ * Inclusive coverage shared by combined business calendars.
  *
  * Description:
- * All requires every dataset to classify the date
- * as working. Any requires at least one.
+ * Both boundaries use absolute epoch days.
+ * The structure is constructed only after successful
+ * validation of every participating dataset.
  *
- * All supplied calendars are evaluated, even when
- * the combined boolean result is already known.
- * This ensures missing coverage or invalid data
- * cannot be hidden by short-circuit evaluation.
+ * Ownership:
+ * Copyable value without allocation.
+ */
+type _CombinedCoverage struct {
+    First: int64,
+    Last:  int64,
+}
+
+/**
+ * Validates combined datasets and determines common coverage.
  *
- * An empty collection is invalid.
+ * Description:
+ * Validates every supplied calendar, including calendars
+ * that would not affect an already-known boolean result.
+ *
+ * Returns the intersection of their coverage periods.
+ * An empty calendar sequence is invalid.
+ *
+ * Parameters:
+ * - calendars: Borrowed sequence of business datasets.
+ *
+ * Returns:
+ * Inclusive interval covered by every dataset.
+ *
+ * Errors:
+ * - BusinessError.InvalidCalendarData:
+ * Empty sequence or malformed dataset.
+ * - BusinessError.OutsideCoverage:
+ * The datasets have no common coverage.
+ *
+ * Ownership:
+ * Borrows all datasets without transfer or allocation.
+ */
+fn _validateCombinedCoverage(calendars: ref BusinessCalendarData[]) Result[_CombinedCoverage, BusinessError] {
+    if calendars.Len == 0u {
+        return Err(BusinessError.InvalidCalendarData)
+    }
+
+    let mut initialized := false
+    let mut first: int64 := 0
+    let mut last:  int64 := 0
+
+    for ref selected in calendars {
+        try ValidateBusinessCalendarData(selected)
+
+        let candidateFirst := int64(selected.FirstDay.EpochDays)
+        let candidateLast  := int64(selected.LastDay.EpochDays)
+
+        if !initialized {
+            first = candidateFirst
+            last = candidateLast
+            initialized = true
+        } else {
+            if candidateFirst > first {
+                first = candidateFirst
+            }
+
+            if candidateLast < last {
+                last = candidateLast
+            }
+        }
+    }
+
+    if first > last {
+        return Err(BusinessError.OutsideCoverage)
+    }
+
+    return Ok(_CombinedCoverage {
+        First: first,
+        Last: last,
+    })
+}
+
+/**
+ * Classifies a date using already validated combined calendars.
+ *
+ * Description:
+ * The caller must first validate the entire nonempty
+ * sequence through _validateCombinedCoverage.
+ *
+ * All requires every dataset to report a working day.
+ * Any requires at least one dataset to report a working day.
+ *
+ * Every dataset is evaluated even when the combined
+ * boolean outcome is already determined.
  *
  * Parameters:
  * - value: Absolute date to classify.
- * - calendars: Borrowed sequence of calendar datasets.
- * - combination: All or Any classification rule.
+ * - calendars: Borrowed validated calendar datasets.
+ * - combination: All or Any working-day requirement.
  *
  * Returns:
  * Combined business-day classification.
  *
  * Errors:
- * - BusinessError.InvalidCalendarData: Invalid or empty data.
- * - BusinessError.OutsideCoverage: Missing date coverage.
+ * - BusinessError.OutsideCoverage:
+ * Date lies outside a dataset's coverage.
  *
  * Ownership:
- * Borrows every dataset without ownership transfer.
- * No allocation or I/O.
+ * Borrows datasets without transfer or allocation.
  */
-fn IsBusinessDay(value: date, calendars: ref BusinessCalendarData[], combination: BusinessCalendarCombination) Result[bool, BusinessError] {
-    if calendars.Len == 0u {
-        return Err(BusinessError.InvalidCalendarData)
-    }
-
+fn _isCombinedBusinessDayValidated(value: date, calendars: ref BusinessCalendarData[], combination: BusinessCalendarCombination) Result[bool, BusinessError] {
     let mut allWorking := true
     let mut anyWorking := false
 
     for ref selected in calendars {
-        let working := try IsBusinessDay(value, selected)
+        let working := try _isBusinessDayValidated(
+            value, selected,
+        )
 
         if !working {
             allWorking = false
@@ -76,32 +153,73 @@ fn IsBusinessDay(value: date, calendars: ref BusinessCalendarData[], combination
 }
 
 /**
+ * Determines whether a date satisfies combined calendars.
+ *
+ * Description:
+ * Validates every calendar before evaluating the date.
+ * All requires every calendar to be open.
+ * Any requires at least one calendar to be open.
+ *
+ * The requested date must be covered by all datasets.
+ *
+ * Parameters:
+ * - value: Absolute date.
+ * - calendars: Borrowed calendar datasets.
+ * - combination: All or Any classification.
+ *
+ * Returns:
+ * Combined business-day classification.
+ *
+ * Errors:
+ * - BusinessError.InvalidCalendarData: Invalid dataset.
+ * - BusinessError.OutsideCoverage: Incomplete coverage.
+ *
+ * Ownership:
+ * Borrows datasets without transfer or allocation.
+ */
+fn IsBusinessDay(value: date, calendars: ref BusinessCalendarData[], combination: BusinessCalendarCombination) Result[bool, BusinessError] {
+    let coverage := try _validateCombinedCoverage(calendars)
+    let epochDay := int64(value.EpochDays)
+
+    if epochDay < coverage.First ||
+        epochDay > coverage.Last {
+        return Err(BusinessError.OutsideCoverage)
+    }
+
+    return _isCombinedBusinessDayValidated(
+        value, calendars, combination,
+    )
+}
+
+/**
  * Finds a business day satisfying combined calendars.
  *
  * Description:
- * The starting date is included when it qualifies.
+ * Validates the complete calendar sequence once.
+ * Subsequent date evaluations reuse that validation.
  *
- * The search is restricted to the intersection
- * of all dataset coverage intervals.
+ * The search includes the starting date.
+ * Search is restricted to common dataset coverage.
  *
- * Search stops with OutsideCoverage if no qualifying
- * date exists within that intersection.
+ * The function terminates with OutsideCoverage when
+ * no qualifying date exists in the search direction.
  *
  * Parameters:
  * - value: Starting absolute date.
- * - calendars: Borrowed calendar datasets.
- * - combination: Required calendar combination.
+ * - calendars: Borrowed business-calendar datasets.
+ * - combination: All or Any classification.
  * - direction: +1 for following, -1 for preceding.
  *
  * Returns:
- * First qualifying date in the selected direction.
+ * First qualifying business day.
  *
  * Errors:
- * - BusinessError.InvalidCalendarData: Invalid datasets.
+ * - BusinessError.InvalidCalendarData: Invalid dataset.
  * - BusinessError.OutsideCoverage: No covered result.
+ * - BusinessError.OutOfRange: Date cannot be represented.
  *
  * Ownership:
- * Borrows calendar data without ownership transfer.
+ * Borrows datasets without transfer or allocation.
  */
 fn _findCombinedBusinessDay(
     value:       date,
@@ -109,64 +227,33 @@ fn _findCombinedBusinessDay(
     combination: BusinessCalendarCombination,
     direction:   int,
 ) Result[date, BusinessError] {
-    if calendars.Len == 0u {
-        return Err(BusinessError.InvalidCalendarData)
-    }
-
-    let mut initialized := false
-    let mut coverageFirst: int64 := 0
-    let mut coverageLast:  int64 := 0
-
-    // Determine the common covered interval.
-    for ref selected in calendars {
-        try ValidateBusinessCalendarData(selected)
-
-        let first := int64(selected.FirstDay.EpochDays)
-        let last  := int64(selected.LastDay.EpochDays)
-
-        if !initialized {
-            coverageFirst = first
-            coverageLast = last
-            initialized = true
-        } else {
-            if first > coverageFirst {
-                coverageFirst = first
-            }
-
-            if last < coverageLast {
-                coverageLast = last
-            }
-        }
-    }
-
-    if coverageFirst > coverageLast {
-        return Err(BusinessError.OutsideCoverage)
-    }
+    let coverage := try _validateCombinedCoverage(calendars)
 
     let mut current    := value
     let mut currentDay := int64(value.EpochDays)
 
-    if currentDay < coverageFirst ||
-        currentDay > coverageLast {
+    if currentDay < coverage.First ||
+        currentDay > coverage.Last {
         return Err(BusinessError.OutsideCoverage)
     }
 
-    // Search within the intersection of the datasets.
     while true {
-        let working := try IsBusinessDay(current, calendars, combination)
+        let working := try _isCombinedBusinessDayValidated(
+            current, calendars, combination,
+        )
 
         if working {
             return Ok(current)
         }
 
         if direction > 0 {
-            if currentDay >= coverageLast {
+            if currentDay >= coverage.Last {
                 return Err(BusinessError.OutsideCoverage)
             }
 
             currentDay += 1
         } else {
-            if currentDay <= coverageFirst {
+            if currentDay <= coverage.First {
                 return Err(BusinessError.OutsideCoverage)
             }
 

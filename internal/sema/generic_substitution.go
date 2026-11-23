@@ -35,6 +35,7 @@ func substituteGenericType(typ Type, substitution map[string]Type) Type {
 			}
 			method.ReturnType = substituteGenericType(method.ReturnType, substitution)
 		}
+		substituteGenericMemberSurface(&out, typ, substitution)
 		out.Implements = append([]Type(nil), typ.Implements...)
 		for index := range out.Implements {
 			out.Implements[index] = substituteGenericType(out.Implements[index], substitution)

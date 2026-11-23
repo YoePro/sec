@@ -627,3 +627,73 @@ P18 storage transitions integrate
 schema-v14 regressions remain valid
 no physical descriptor/provider ABI is selected
 ```
+
+## 7. Source producers (2026-11-23)
+
+`Arena.FromBuffer`, `Reset` of a locally created borrowed Arena and implicit
+destruction (the `compiler-known-resource` destruction plan with resource
+`Arena`, admitted for `!sec.arena`) lower from source. Their state versions
+are `1 + epoch generation`; Reset's `dependency_proof` is
+`sema-dependency-check`. The epoch-exhaustion strategy of package 19 § 42
+belongs to the physical epoch representation: schema-15 epochs are logical
+identities without a counter.
+
+## 8. Context propagation from source (2026-11-23)
+
+From package 19 a function whose Sema § 77 summary requires ambient context
+(an ambient allocation effect — collection growth, owned Arena creation —
+or a synchronous/deferred call to such a function) takes the hidden
+context; spawned executions do not inherit it. Direct calls forward it; a
+program or test entry produces `sec.alloc_context.target` with origin plan
+`target-provided:<profile>`. Task/thread entries and foreign-ABI functions
+requiring context are compile-time boundaries.
+
+## 9. Typed allocation from source (2026-11-23)
+
+`New[T]()` and `Alloc[T](count)` on a borrowed `FromBuffer` Arena created in
+the same function lower to the checked `sec.arena.new` and `sec.arena.alloc`
+ops. Each one carries:
+- `layout_plan`, written as `resolved:<type identity>:size=<S>:align=<A>:plan=<key>`.
+  It comes from the one canonical layout resolver over the plan's verified
+  scalar alignments (MD-141/MD-142, `layout.md` § 47.5).
+- `default_plan = "canonical-default"`, which is Sema's infallible default of
+  a trivially destructible `T`.
+- `capacity_plan = "borrowed-fixed-bytes"`.
+
+The candidate is a dynamic-epoch `ref mut T` or `ref mut T[]` of the current
+domain epoch, with provenance `arena`. It is published only on the success
+edge as `Ok`; the failure edge builds `Err(AllocationError)`.
+
+Owner state versions are numbered by the Semantic IR builder per domain, in
+build (source) order, for every mutation of an Arena created in the function:
+- creation is 1;
+- each New, Alloc and Reset takes the current version as `state_before` and
+  its successor as `state_after`.
+
+Within a block the chain is exact, which is what `--sec-verify-arenas`
+checks. Across a control-flow join, `state_before` is the version of the
+latest mutation in build order, which is the same maximum approximation the
+epoch flow uses at joins. A state version orders mutations; it is never an
+epoch, a cursor or a count of executed allocations, which a loop could not
+bound.
+
+Owned creation (`WithCapacity`/`Growable`) stays a named boundary until the
+provider catalogs exist (MD-151). An Arena that was not created in the same
+function, such as a parameter, also stays a named boundary.
+
+## 10. Arena demand summary (2026-11-23)
+
+A function that creates a `FromBuffer` Arena carries
+`sec.arena_demand_summary`. This is an array with one dictionary per created
+domain:
+- `domain`, an i32;
+- `kind`, which is `"constant"` or `"unknown"`;
+- `bytes`, a decimal string present exactly for constant demand;
+- `expression`, the symbolic derivation using constant, sum, maximum,
+  constant-multiply, range-upper-bound and unknown;
+- `capacity_bytes`, the fixed backing, when known.
+
+The demand is an upper bound on the peak, over the Reset windows, of
+`count * size + (align - 1)` for each New/Alloc. This is compile-time
+metadata (P19 § 130), never a runtime value. `--sec-verify-arenas` checks its
+shape and that every summarized domain is created by the function.

@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-02
-- **Last updated:** 2026-11-19 (§ 26(5) typed `Reference:` expression, MD-048); 2026-11-09 (§ 61A join statement, § 63 SelectJoinBranch); 2026-11-07 (stable chapter, subsection, and paragraph numbering)
+- **Last updated:** 2026-11-23 (§§28,36 unsafe method production aligned with unsafe.md §6); 2026-11-19 (§ 26(5) typed `Reference:` expression, MD-048); 2026-11-09 (§ 61A join statement, § 63 SelectJoinBranch); 2026-11-07 (stable chapter, subsection, and paragraph numbering)
 - **Document revision:** 1
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/foundations/grammar.md`
@@ -1261,6 +1261,7 @@ ImplBody
 
 ImplMember
     ::= FunctionDeclaration
+      | UnsafeMethodDeclaration
       | StaticFunctionDeclaration
       | InstanceLetDeclaration
       | StaticLetDeclaration
@@ -1644,6 +1645,9 @@ environment-free callback adapter expression.
 UnsafeFunctionDeclaration
     ::= "unsafe" FunctionDeclaration
       | "unsafe" ExternFunctionDeclaration
+
+UnsafeMethodDeclaration
+    ::= "unsafe" FunctionDeclaration
 ```
 
 **§ 36(1)** Example:

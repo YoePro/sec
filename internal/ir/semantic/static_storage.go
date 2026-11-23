@@ -2,6 +2,7 @@ package semantic
 
 import (
 	"fmt"
+	"math"
 	"math/big"
 	"strconv"
 	"strings"
@@ -46,6 +47,9 @@ type StaticInitializer struct {
 	// Enum names the case of an enum value; String is a string value.
 	Enum   *string
 	String *string
+	// Float is a float value's canonical binary payload in its resolved
+	// format (P20 §§ 74, 76); it is never a lexeme to reparse.
+	Float *FloatConstant
 }
 
 // StaticVariantInitializer is the active variant of a static tagged value and
@@ -78,6 +82,8 @@ func formatStaticInitializer(initializer StaticInitializer) string {
 		return "." + *initializer.Enum
 	case initializer.String != nil:
 		return strconv.Quote(*initializer.String)
+	case initializer.Float != nil:
+		return fmt.Sprintf("float.bits=0x%x/%d", initializer.Float.Bits, initializer.Float.Format)
 	}
 	return "?"
 }
@@ -281,6 +287,10 @@ func (b *builder) staticInitializerOf(value sema.ResolvedStaticInitializer, type
 		case TypeString:
 			text := value.Scalar.String
 			return StaticInitializer{String: &text}, true
+		case TypeFloat:
+			if float, ok := b.staticFloatConstant(*value.Scalar, typeID); ok {
+				return StaticInitializer{Float: float}, true
+			}
 		}
 		return StaticInitializer{}, false
 	}
@@ -420,7 +430,7 @@ func verifyStaticInitializer(module *Module, typeID TypeID, initializer StaticIn
 		return fmt.Errorf("initializer of an unknown type")
 	}
 	set := 0
-	for _, present := range []bool{initializer.Integer != nil, initializer.Bool != nil, initializer.Aggregate, initializer.Variant != nil, initializer.Enum != nil, initializer.String != nil} {
+	for _, present := range []bool{initializer.Integer != nil, initializer.Bool != nil, initializer.Aggregate, initializer.Variant != nil, initializer.Enum != nil, initializer.String != nil, initializer.Float != nil} {
 		if present {
 			set++
 		}
@@ -457,6 +467,11 @@ func verifyStaticInitializer(module *Module, typeID TypeID, initializer StaticIn
 		if typ.Kind != TypeString {
 			return fmt.Errorf("string initializer for a non-string type")
 		}
+	case initializer.Float != nil:
+		if typ.Kind != TypeFloat || !initializer.Float.Canonical || initializer.Float.Format != 32 && initializer.Float.Format != 64 ||
+			typ.BitWidth != 0 && uint16(typ.BitWidth) != initializer.Float.Format || initializer.Float.Format == 32 && initializer.Float.Bits>>32 != 0 {
+			return fmt.Errorf("float initializer needs canonical bits of its type's binary format")
+		}
 	case typ.Kind == TypeStruct:
 		definition, found := structDefinition(module, typeID)
 		if !found || len(definition.Fields) != len(initializer.Components) {
@@ -481,4 +496,33 @@ func verifyStaticInitializer(module *Module, typeID TypeID, initializer StaticIn
 		return fmt.Errorf("aggregate initializer for a %s type", typ.Kind)
 	}
 	return nil
+}
+
+// staticFloatConstant converts Sema's resolved compile-time float into the
+// canonical bit pattern of the static's binary format: the value is the
+// shortest round-trip spelling of the already rounded binary value, so
+// parsing it in that format is exact (signed zero, infinities and NaN
+// included).
+// Rules: rules/mlir/packages/sec-mlir-dialect_package20.md — §§ 13-20, 74, 82.
+func (b *builder) staticFloatConstant(value sema.DefaultConstant, typeID TypeID) (*FloatConstant, bool) {
+	format, ok := b.floatFormat(typeID)
+	if !ok || value.Kind != sema.FloatType || value.FloatBits != 0 && uint16(value.FloatBits) != format {
+		return nil, false
+	}
+	number, err := strconv.ParseFloat(value.Lexeme, int(format))
+	if err != nil {
+		return nil, false
+	}
+	bits := math.Float64bits(number)
+	if format == 32 {
+		bits = uint64(math.Float32bits(float32(number)))
+	}
+	if math.IsNaN(number) {
+		// The deterministic canonical quiet NaN, as T.NaN lowers (P20 § 28).
+		bits = 0x7ff8000000000000
+		if format == 32 {
+			bits = 0x7fc00000
+		}
+	}
+	return &FloatConstant{Bits: bits, Format: format, Canonical: true}, true
 }

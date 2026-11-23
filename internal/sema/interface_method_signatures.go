@@ -4,8 +4,12 @@ package sema
 // inferring or erasing additional method-local generic parameters. Owner
 // substitutions must already be bound by the caller.
 // Rules: rules/declarations/interfaces.md — §§6,9;
-// rules/declarations/generics.md — §§9–10,14,22.
+// rules/declarations/generics.md — §§9–10,14,22;
+// rules/memory/unsafe.md — §40(1–3).
 func compatibleInterfaceMethodSignature(method Function, required Function) bool {
+	if method.Unsafe && !required.Unsafe {
+		return false
+	}
 	if len(method.GenericParameters) != 0 || method.GenericTypePack != "" || len(required.GenericParameters) != 0 || required.GenericTypePack != "" {
 		return false
 	}

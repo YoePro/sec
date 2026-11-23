@@ -1,8 +1,8 @@
 # Sec MLIR Dialect - Schema Version 16
 
 Created: 2026-08-11
-Last updated: 2026-08-11
-Revision: 1
+Last updated: 2026-11-23
+Revision: 2
 Sec language version: 0.1
 ## Status
 
@@ -291,3 +291,35 @@ Func
 ```
 
 LLVM is outside P20.
+
+---
+
+# 18. Implementation deviations (2026-11-23)
+
+Recorded on the one compilation track (Sec → Semantic IR → Sec MLIR →
+LLVM); none changes Sec float semantics.
+
+1. The P20 floating and conversion operations were admitted early, from
+   schema 11. Schema 16 adds the requirement that every `sec.const.float`
+   carries its canonical `bits`; the emitter refuses a lexeme-only constant.
+   The native route keeps emitting its default schema (11), because schema-13+
+   slice/ownership constructs still lack a physical representation at native
+   entry; schema 16 is selected explicitly (`EmitOptions.DialectVersion`) and
+   carries the same float operations with the stricter constant rule.
+2. `!sec.numeric_conversion_reason` and
+   `sec.numeric_conversion_error.from_reason` are represented by one `i1`
+   reason flag per listed `failures` entry on `sec.numeric.convert_checked`
+   (canonical order NonFinite, OutOfRange, PrecisionLoss).
+3. § 12 lowers Abs, Floor, Ceiling, Truncate and Round to `math.*` and `rem`
+   to `arith.remf`. `--sec-lower-floats` instead keeps them Arith/CF only so
+   that no libm call can appear (§ 13 and P20 §§ 78, 80): Abs and the
+   remainder work on bit fields, and rounding uses a `|x| < 2^p` guarded
+   `fptosi`/`sitofp` that preserves signed zero, NaN and infinities.
+4. Exact and checked conversions are not part of `--sec-lower-floats`; they
+   lower in `--sec-lower-to-llvm` to `llvm.fpext`, `fptrunc`, `sitofp`,
+   `uitofp`, `fptosi` and `fptoui`, with the guards of § 14 before every
+   final float-to-integer cast.
+5. § 17 is superseded by the single track: LLVM is the track's end, not
+   outside it. The standard-MLIR output and the absence of fast-math, frem
+   and calls are covered by lit `float-standard-output.mlir`, `floats.mlir`,
+   `float-core.mlir`, `float-remainder.mlir` and `float-conversions.mlir`.

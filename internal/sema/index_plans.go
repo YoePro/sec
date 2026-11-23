@@ -72,6 +72,27 @@ func (a *Analyzer) refinementProvesArrayIndex(array, index ast.Expression, index
 	if array == nil || index == nil || length == nil || length.Sign() == 0 {
 		return "", false
 	}
+	return a.refinementProvesIndexBound(array, index, indexType, length)
+}
+
+// refinementProvesRuntimeLengthIndex proves 0 <= index < array.Len for an
+// array whose length is runtime state (an owning T[]): only a dominating
+// `index < array.Len` / `index < len(array)` refinement of the same
+// resolved owner, still valid at the current mutation epoch, bounds it
+// above; no constant can, because the length is unknown.
+// Rules: rules/mlir/packages/sec-mlir-dialect_package18.md — §§ 40-42;
+// rules/mlir/packages/sec-mlir-dialect_package14.md — section 36.
+func (a *Analyzer) refinementProvesRuntimeLengthIndex(array, index ast.Expression, indexType Type) (ArrayIndexProofKind, bool) {
+	if array == nil || index == nil {
+		return "", false
+	}
+	return a.refinementProvesIndexBound(array, index, indexType, nil)
+}
+
+// refinementProvesIndexBound is the shared refinement search; a nil length
+// admits only the Len-of-the-same-array upper bound.
+// Rules: rules/mlir/packages/sec-mlir-dialect_package14.md — sections 32 and 36.
+func (a *Analyzer) refinementProvesIndexBound(array, index ast.Expression, indexType Type, length *big.Int) (ArrayIndexProofKind, bool) {
 	lower := integerTypeMinimumIsNonNegative(indexType)
 	upper := false
 	proofKinds := map[ArrayIndexProofKind]bool{}
@@ -135,7 +156,7 @@ func (a *Analyzer) conditionBoundsArrayIndex(condition, array, index ast.Express
 			other = comparison.Left
 		}
 		constant, constantOK := a.integerConstantValue(other)
-		return constantOK && constant.Sign() >= 0, constantOK && constant.Sign() >= 0 && constant.Cmp(length) < 0
+		return constantOK && constant.Sign() >= 0, constantOK && constant.Sign() >= 0 && length != nil && constant.Cmp(length) < 0
 	}
 	if leftIndex {
 		switch comparison.Operator {
@@ -188,7 +209,7 @@ func (a *Analyzer) upperComparisonProvesInBounds(bound, array ast.Expression, le
 		return true
 	}
 	constant, ok := a.integerConstantValue(bound)
-	if !ok {
+	if !ok || length == nil {
 		return false
 	}
 	if inclusive {
@@ -228,6 +249,15 @@ func (a *Analyzer) sameResolvedExpression(left, right ast.Expression) bool {
 //   - rules/mlir/packages/sec-mlir-dialect_package14.md — section 36
 //   - rules/library/core-library.md — fixed-array Len
 func (a *Analyzer) isLengthOfArray(expression, array ast.Expression) bool {
+	if call, ok := expression.(*ast.CallExpression); ok && call != nil && len(call.Arguments) == 1 {
+		// `len(array)` observes the same count as `array.Len` (MD-074).
+		if callee, named := call.Callee.(*ast.Identifier); named && callee.Value == "len" {
+			if _, shadowed := a.symbols.lookup("len"); !shadowed {
+				return a.sameResolvedExpression(call.Arguments[0], array)
+			}
+		}
+		return false
+	}
 	member, ok := expression.(*ast.MemberExpression)
 	if !ok || member == nil || member.Property == nil || member.Object == nil {
 		return false

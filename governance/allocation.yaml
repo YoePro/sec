@@ -5,8 +5,8 @@ integrations:
   - id: frontend.allocation
     area: frontend-allocation-semantics
     status: partial
+    revised: "2026-11-23"
     repository_baseline: 57cd774
-    revised: "2026-11-20"
     rules:
       - rules/memory/allocation.md
       - rules/memory/arena.md
@@ -31,6 +31,7 @@ integrations:
       - internal/sema/arena_parameter_effects.go
       - internal/sema/reference_origin_join.go
       - internal/sema/interrupt_allocation.go
+      - internal/ir/semantic/string_materialization.go
     tests:
       - internal/sema/allocation_test.go
       - internal/sema/lifetime_test.go
@@ -52,9 +53,9 @@ integrations:
       - testdata/sema/arena_domain_stable_valid.sec
       - internal/sema/isr_allocation_test.go
       - testdata/sema/isr_allocation_invalid.sec
-    cross_references:
-      - analysis.arena-allocation (governance/analysis.yaml) owns the detailed Arena validation, generation, trait, and typed-allocation facts
-      - analysis.arena-reset-release-dependency-legality (governance/analysis.yaml)
+      - internal/ir/semantic/string_materialization_test.go
+      - internal/lowering/secmlir/string_materialization_test.go
+      - internal/ir/semantic/string_fallible_operands_test.go
     implemented:
       - "MD-039 folded-plan try in Semantic IR (2026-11-17; correction § 2(5), operators.md § 29.5(2)). A try over a fully compile-time folded concatenation, both bodyless and with local handlers, lowers to the folded const.string: its allocation failure path is unreachable and no handler can run. A try over a runtime materialization still fails closed at the allocation boundary (internal/ir/semantic/failure_set_try.go; TestSchema13FoldedStringTry, testdata/semantic_ir/folded_string_try.sec, schema-13 verified)."
       - compiler-known Arena type and AllocationError enum in the represented frontend subset
@@ -77,10 +78,11 @@ integrations:
       - "MD-039 Sema (2026-11-01; correction MD-004-MD-039 §§ 1–5, 7(1–2)): StringConcatPlan.Failure and ResolvedStringAppendOf record the source-selected mode. Ordinary runtime + and += are accepted with EffectMayPanicStringMaterialization and the registered reason StringMaterializationFailure; a protecting try gives StringError with no panic effect. try s += x is a fallible assignment with handlers or propagation, protects a Result[string, StringError] operand and the plans of its right operand; an inner try leaves the outer operation in panic mode. An unhandled Result operand stays S1097 or S1022, and interpolation including a concatenation holding one keeps S1097 (§ 1(4)). try on a folded plan is legal; @noPanic rejects unprotected forms, @noAlloc rejects both modes, and a missing context is S1098 in both."
       - "S1098 demand (2026-11-01): a string materialization in a core body reports a missing allocation context only when a program module reaches it; its effects stay published, so a bare-metal build is not failed by a text helper it never calls."
       - "MD-039 normative sync (2026-11-01; correction MD-004-MD-039 §§ 6(1)–(4), 8(3)): operators.md string + and += without renumbering, allocation.md §§ 10(6),17, errorhandling.md § 23, runtime_checks.md, panic.md §§ 3.1(2),13(1), grammar.md, core-library.md § 15.1, semantic_ir.md § 17(6). Interpolation stays under MD-004; the reason is named StringMaterializationFailure with its number only in the registry."
+      - "MD-039 runtime concatenation Semantic IR (2026-11-23; operators.md sections 29.3,29.6; semantic_ir.md section 17(6)): one string.materialize consumes ordered string/char/rune segments and an explicit P19 allocation capability, retaining canonical StringError and the source-selected try/panic mode. Exact Result[string, StringError] operands are evaluated and tested once before subsequent segments; their first failure and the materialization failure share the same propagation/local-handler route. Separately protected operands leave the outer materialization in panic mode. The verifier checks segment/result types, canonical error identity, context origin, failure mode and noPanic. This is high-level IR from the P19 context boundary: CLI inspection remains P18 and MLIR emission rejects the operation without output. Transactional +=, interpolation, physical allocation and allocator-failure conformance remain within the original step 3/4; nontrivial temporary cleanup is rejected explicitly."
     partial:
       - "Started (moved to partial 2026-11-20; the text records the done part and what remains): @noAlloc coverage of destructors reached from the function and compiler-generated operations; defer bodies and (since 2026-10-10) concrete generic specializations are covered. A local whose type has an allocating free is still accepted in a @noAlloc function (no destruction edges; needs destruction-point facts). Template-level constraint calls stay unknown; constraint-carried effect contracts await MD-053"
-    remaining:
       - "MD-039 step 3, Semantic IR and backend failure paths (§§ 2(3), 4, 5(5), 7(3)): source-selected try/panic paths through Semantic IR, MLIR and LLVM, the StringMaterializationFailure endpoint on the allocation-free panic path, transactional += commit, and allocation facts for append sites; waits on the runtime string allocation of P18/P19/P23."
+    remaining:
       - "MD-039 step 4, conformance (§ 7, § 8(4)): positive, negative and failing-allocator tests, then remove MD-039 from missing-decisions.yaml (the correction was archived 2026-11-21 once its points were governance items)."
       - classify every remaining Sec 0.1 allocation-capable operation in the same effect model (collection growth and WithCapacity, closure environments where canonically allocation-capable, spawn control storage, shaped types, allocating core and stdlib contracts)
       - complete context propagation through functions, methods, lambdas, properties, init, interfaces, generics and indirect calls
@@ -95,6 +97,16 @@ integrations:
       - Arena.Alloc alignment derived from T
       - repeated Arena allocation does not invalidate earlier allocation
     verification:
+      - command: go test -race ./internal/ir/semantic -run MD039 -count=1 -timeout=90s
+        result: "Passed 2026-11-23: 1.077s; includes fallible text operand CFG regressions."
+      - command: go test -p 4 ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir ./internal/traceability -count=1 -timeout=150s
+        result: "Passed 2026-11-23 after fallible text operand support: Sema 36.347s, Semantic IR 11.222s, lowering 2.406s, traceability 0.324s. CFG regressions verify once-only ordered calls, a shared StringError target, no later calls/materialization from failure edges, propagation/local recovery and separate-try panic selection. Direct and fallible plans retain the no-output physical-lowering boundary."
+      - command: go test -race -p 4 ./internal/ir/semantic ./internal/lowering/secmlir -run MD039 -count=1 -timeout=90s
+        result: "Passed 2026-11-23: 1.042s / 1.039s; includes noPanic protected materialization and rejected ordinary-mode mutation."
+      - command: go vet ./internal/ir/semantic ./internal/sema ./internal/lowering/secmlir
+        result: Passed 2026-11-23.
+      - command: go test -p 4 ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir ./internal/traceability -count=1 -timeout=150s
+        result: "Passed 2026-11-23: Sema 41.676s, Semantic IR 9.963s, lowering 2.188s, traceability 0.295s. Direct runtime materialization, failure-mode/context verifier mutations, source ordering and the no-output physical lowering boundary are covered. Physical allocation and transactional append remain pending."
       - command: go vet ./internal/sema
         result: Passed on 2026-10-14 after ISR allocation diagnostic repair.
       - command: go test ./internal/sema -race -run TestISRAllocationGuarantees\|TestNoAllocGuaranteeIsVerifiedTransitively\|TestCollectionGrowthAllocation\|TestISRPanicUsesCanonicalSummaries -count=1
@@ -113,12 +125,15 @@ integrations:
         result: Passed on 2026-10-14 after collection growth effect classification; full Sema, Semantic IR and compiler suites.
       - command: go test ./... -count=1
         result: passed on 2026-10-09 after the Arena.FromBuffer backing-borrow and ref Arena work, including TestArenaFromBufferBorrowsBackingForArenaLifetime
+    cross_references:
+      - analysis.arena-allocation (governance/analysis.yaml) owns the detailed Arena validation, generation, trait, and typed-allocation facts
+      - analysis.arena-reset-release-dependency-legality (governance/analysis.yaml)
 
   - id: analysis.allocation
     area: allocation-effects-context-capacity-analysis
     status: partial
-    repository_baseline: 57cd774
     revised: "2026-10-14"
+    repository_baseline: 57cd774
     rules:
       - rules/memory/allocation.md
       - rules/analysis/effect_analysis.md
@@ -148,6 +163,16 @@ integrations:
       - new direct allocation facts and canonical call edges invalidate the derived fixed point; graph cloning, plan binding and checkpoint reconstruction start with fresh derived state; immutable snapshot consumers may query summaries concurrently
       - all analysis depths, free/allocating/unknown/mixed/trusted-foreign mutual recursion, recursive defer, spawn exclusion, a 256-node cycle, effect/edge additions after queries, detached prior snapshots, deterministic shortest witnesses and real compiler/analyse/LSP owning diagnostics and presentation are verified
       - "Validated allocation summary persistence/import (2026-10-14): workspace graph checkpoint v5 carries canonical AllocationCallableFact summaries and per-callable coverage uncertainty. Live and restored snapshots share the same fact derivation; clone and CompilationPlan binding detach/remap coverage. Import checks current scope/dependency fingerprints, coverage sources, direct allocation kind/flag contracts and recomputed summaries before publication. Missing coverage remains unknown; stale, incompatible, malformed or inconsistent summaries cannot prove allocation freedom. This is compiler checkpoint metadata, not new source/manifest syntax or complete callable/operation coverage."
+    remaining:
+      - infer allocation effects through every callable form (closure targets, deferred and destruction relations, generic specializations)
+      - propagate allocation contexts without forcing source-level Arena threading
+      - feed allocation-free facts into ISR, stack, target-policy and diagnostics analysis
+      - implement static Arena capacity analysis including loops, recursion, target layout and simultaneous live allocations
+      - support static placement/allocation elimination proof without hidden escape repair
+    required_tests:
+      - recursive allocation-effect convergence
+      - ISR root rejects prohibited transitive allocation
+      - static capacity proof accounts for loops/recursion
     verification:
       - command: go vet ./internal/sema/... ./cmd/compiler ./cmd/lsp
         result: Passed on 2026-10-14 after allocation summary persistence/import.
@@ -169,16 +194,6 @@ integrations:
         result: passed on 2026-10-07 with recursive convergence, independent unknown facts, query invalidation, detached snapshots, concurrent immutable readers and actual compiler/analyse/LSP parity at all depths
       - command: Python YAML validation and git diff --check
         result: passed on 2026-10-07 with 46-fragment registry parity and 304 unique IDs; analysis.allocation remaining reduced from 7 to 6, allocation total from 38 to 37
-    remaining:
-      - infer allocation effects through every callable form (closure targets, deferred and destruction relations, generic specializations)
-      - propagate allocation contexts without forcing source-level Arena threading
-      - feed allocation-free facts into ISR, stack, target-policy and diagnostics analysis
-      - implement static Arena capacity analysis including loops, recursion, target layout and simultaneous live allocations
-      - support static placement/allocation elimination proof without hidden escape repair
-    required_tests:
-      - recursive allocation-effect convergence
-      - ISR root rejects prohibited transitive allocation
-      - static capacity proof accounts for loops/recursion
 
   - id: semantic-ir.allocation
     area: semantic-ir-allocation
@@ -206,24 +221,11 @@ integrations:
   - id: lowering.allocation
     area: allocation-lowering-backends
     status: partial
-    repository_baseline: 57cd774
-    remaining:
-      - lower allocation operations through maintained Sec MLIR and LLVM paths
-      - lower overflow, alignment, capacity and allocation failure semantics
-      - preserve value destruction before storage reclamation
-      - implement target-specific Arena backing storage/allocator behavior
-      - eliminate allocations only after lifetime/capacity/address-stability/concurrency/failure/cleanup proof
-      - support valid stack/static placement without hidden escape promotion
-    required_tests:
-      - allocating operation lowers with correct domain
-      - allocation-free copy/move/ref path has no allocator call
-      - overflow/failure path preserved
-      - value destruction before Arena reclamation
-      - proven static placement removes allocation without semantic change
-    implemented:
-      - "Allocation-free backend conformance proof (2026-10-14): internal/lowering/allocation verifies Sema-positive allocation-free scalar/default/copy/move/control-flow programs on 32/64-bit targets through analyzed LLVM, legacy LLVM-dialect MLIR and verified Semantic IR/Sec MLIR emission. Every emitted call is audited against source-proven function identities; unknown, quoted and indirect helper calls, runtime declarations and dynamic allocation operations fail the audit. Real clang compiles LLVM to target objects, and configured sec-mlir-opt verifies the maintained trivial/integer/scalar lowering passes. Unsupported reference lowering and legacy char transport must fail without output; these tests do not claim those features or full Sec MLIR-to-LLVM conversion are implemented."
-      - "Allocation domain/context preservation gate (2026-10-16): Semantic IR construction and analyzed LLVM/legacy MLIR emission consume the same canonical AllocationContextFacts before producing output. Primitive Arena allocation, owned/growable backing creation, collection growth and runtime string materialization must retain their selected domain/context; unresolved backing is never inferred from the Arena domain being created. Current unrepresented routing is an explicit source-located unsupported-lowering capability with the exact detached facts, not a guessed heap/global allocator. Requested module and original-statement output subsets are respected, unrelated snapshots are rejected, and ordinary declared foreign calls and folded text remain distinct. Actual dynamic allocation operations and their backend implementations remain separate remaining work."
     revised: "2026-11-17"
+    repository_baseline: 57cd774
+    code:
+      - internal/sema/allocation_lowering_readiness.go
+      - internal/ir/semantic/builder.go
     tests:
       - internal/lowering/allocation/conformance_test.go
       - testdata/sema/allocation_free_lowering.sec
@@ -238,6 +240,22 @@ integrations:
       - testdata/sema/allocation_lowering_modules_valid.sec
       - testdata/sema/allocation_lowering_dependency_valid.sec
       - testdata/sema/allocation_lowering_folded_valid.sec
+    implemented:
+      - "Allocation-free backend conformance proof (2026-10-14): internal/lowering/allocation verifies Sema-positive allocation-free scalar/default/copy/move/control-flow programs on 32/64-bit targets through analyzed LLVM, legacy LLVM-dialect MLIR and verified Semantic IR/Sec MLIR emission. Every emitted call is audited against source-proven function identities; unknown, quoted and indirect helper calls, runtime declarations and dynamic allocation operations fail the audit. Real clang compiles LLVM to target objects, and configured sec-mlir-opt verifies the maintained trivial/integer/scalar lowering passes. Unsupported reference lowering and legacy char transport must fail without output; these tests do not claim those features or full Sec MLIR-to-LLVM conversion are implemented."
+      - "Allocation domain/context preservation gate (2026-10-16): Semantic IR construction and analyzed LLVM/legacy MLIR emission consume the same canonical AllocationContextFacts before producing output. Primitive Arena allocation, owned/growable backing creation, collection growth and runtime string materialization must retain their selected domain/context; unresolved backing is never inferred from the Arena domain being created. Current unrepresented routing is an explicit source-located unsupported-lowering capability with the exact detached facts, not a guessed heap/global allocator. Requested module and original-statement output subsets are respected, unrelated snapshots are rejected, and ordinary declared foreign calls and folded text remain distinct. Actual dynamic allocation operations and their backend implementations remain separate remaining work."
+    remaining:
+      - lower allocation operations through maintained Sec MLIR and LLVM paths
+      - lower overflow, alignment, capacity and allocation failure semantics
+      - preserve value destruction before storage reclamation
+      - implement target-specific Arena backing storage/allocator behavior
+      - eliminate allocations only after lifetime/capacity/address-stability/concurrency/failure/cleanup proof
+      - support valid stack/static placement without hidden escape promotion
+    required_tests:
+      - allocating operation lowers with correct domain
+      - allocation-free copy/move/ref path has no allocator call
+      - overflow/failure path preserved
+      - value destruction before Arena reclamation
+      - proven static placement removes allocation without semantic change
     verification:
       - command: GOTMPDIR=$HOME/.cache/sec-gotmp go test -p 4 ./internal/lowering/allocation -run TestAllocationSelection -count=1
         result: "Passed 2026-11-17 (0.021s). Reproduced the assigned TestAllocationSelectionBoundary failure on both 32/64-bit targets: its old oracle required ContextKnown=false although P19 now publishes the selected hosted Arena backing context. Updated the oracle to require that positive semantic context, distinct nonempty CreatedDomain, empty SelectedDomain and separate creation provenance. Existing exact-fact preservation, unsupported-lowering/no-partial-artifact, foreign/scope/folded checks remain active. Test correction only; no new provider or native allocation support, and no remaining requirement closed."
@@ -253,15 +271,12 @@ integrations:
         result: Passed on 2026-10-14.
       - command: SEC_MLIR_BIN="${SEC_MLIR_BIN}" go test ./internal/lowering/allocation -race -count=1
         result: "Passed on 2026-10-14: target-aware clang object verification, real Sec MLIR core lowering with verify-each, identity-based call audits, injected hidden-call rejection and explicit unsupported-reference/char boundaries."
-    code:
-      - internal/sema/allocation_lowering_readiness.go
-      - internal/ir/semantic/builder.go
 
   - id: target-policy.allocation
     area: allocation-target-profile-policy
     status: partial
-    repository_baseline: 57cd774
     revised: "2026-10-16"
+    repository_baseline: 57cd774
     rules:
       - rules/memory/allocation.md
       - rules/platform/target_profiles.md
@@ -321,6 +336,17 @@ integrations:
       - raw-pointer cleanup never inherits pointee destruction or allocation; invalid unsafe access retains unknown coverage, similarly named user methods retain actual Arena effects, and foreign mapping without a trusted contract stays unknown; real compiler/analyse/LSP parity covers fixed storage, volatile access, mixed Arena allocation and opaque mapping
       - "Noalloc root-graph enforcement (2026-10-14): the semantic pipeline consumes positively resolved disabled-allocation capability facts and canonical coverage/effects for every registered policy root, traversing all represented reachability relations including defer and spawned worker calls. Reachable MayAllocate is mandatory S1108 Invalid; unresolved callee/operation/body coverage is S1108 Unproven. Uncalled allocating declarations do not create root obligations, recursive graphs terminate deterministically, and compiler-owned root/call/operation cause paths drive CLI/LSP navigation. Unknown profiles retain their existing unresolved capability state; root production, profile selection, ISR and complete operation models remain owned by their respective integrations."
       - "ISR allocation-policy integration (2026-10-16): effective isr/interrupt/interruptSafe contexts consume shared canonical allocation effects and operation/cleanup coverage. Definite allocation yields S1108 Invalid; unknown callees or uncovered closure, construction, cleanup and spawn-control behavior yield S1108 Unproven, with no duplicate owning errors. Canonical synchronous recursion/defer paths supply CLI/LSP navigation; spawned worker execution is excluded from ISR context. Invalid-source markers do not create circular policy diagnostics or positive ISR proofs. Existing unsupported ISR attributes, ABI and other safety domains remain independent; profile selection never weakens the Sec 0.1 baseline."
+    remaining:
+      - support runtime-free bare-metal with static/fixed/preallocated storage
+      - permit statically eliminated allocation-capable operations only after complete proof
+      - integrate capacity/alignment/layout guarantees supplied by target profiles
+    required_tests:
+      - hosted allocation accepted
+      - embedded preallocated Arena accepted
+      - noalloc rejects unresolved dynamic allocation
+      - ISR rejects prohibited allocating path
+      - MMIO/fixed-address access not classified as Arena allocation
+      - runtime-free bare-metal allocation-free build has no allocator dependency
     verification:
       - command: go test ./internal/sema/... ./internal/ir/... ./cmd/compiler -count=1
         result: "On 2026-10-16 the broader run exposed three pre-existing collectionshape failures: TestArrayLiteralLengthContractsUseExactCompactLength, TestArrayLiteralUniqueContractRejectsProvenDirectDuplicates and TestUniqueContractSemanticProofs, due to owning dynamic-array literal rejection. All three reproduce with HEAD versions of the ISR policy/pipeline/noAlloc/cause files supplied by a temporary Go overlay. Main Sema, Semantic IR and separately rerun full compiler suites pass."
@@ -361,23 +387,12 @@ integrations:
     cross_references:
       - platform.target-profiles owns complete profile-family resolution, runtime/physical constraints, overrides and frozen ResolvedTargetProfile identity; these allocation-subset facts do not complete that integration
       - "MD-034 is decided (2026-11-17): freestanding is not noalloc, heap allocation is disabled by default, and an explicitly enabled, positively supported provider may be resolved (allocation.md § 22(7)-(9), target_profiles.md § 7). The interim unresolved freestanding mapping stays until platform.target-profiles provides the profile selection and resolution; no runtime allocator or fixed storage is invented."
-    remaining:
-      - support runtime-free bare-metal with static/fixed/preallocated storage
-      - permit statically eliminated allocation-capable operations only after complete proof
-      - integrate capacity/alignment/layout guarantees supplied by target profiles
-    required_tests:
-      - hosted allocation accepted
-      - embedded preallocated Arena accepted
-      - noalloc rejects unresolved dynamic allocation
-      - ISR rejects prohibited allocating path
-      - MMIO/fixed-address access not classified as Arena allocation
-      - runtime-free bare-metal allocation-free build has no allocator dependency
 
   - id: tooling.allocation
     area: allocation-diagnostics-lsp-tooling
     status: partial
-    repository_baseline: 57cd774
     revised: "2026-11-17"
+    repository_baseline: 57cd774
     rules:
       - rules/memory/allocation.md
       - rules/analysis/call_graph.md
@@ -449,6 +464,14 @@ integrations:
       - compiler, sec analyse and LSP consume canonical Sema allocation facts and mandatory S1098/S1108 occurrences under the same selected target; every LSP analysis entry supplies the current AST so active source target directives, including unsaved edits, select the registry plan before manifest defaults while dependency directives do not replace the active profile
       - shared target parsing round-trips every registered OS/architecture pair, including hyphenated cortex-m3 architectures; subprocess compiler emit-ir and sec analyse JSON match standalone/batched LSP allocation IDs, owning counts, severity, primary locations and related cause links at interactive/standard/deep depth for hosted/freestanding targets, with valid analyse allocation knowledge, independent unknown evidence, paths and context/domain descriptions matching real callable hovers
       - mandatory errors continue to stop CLI report generation and lowering; partial editor facts remain conservative; parity covers the represented allocation model and does not complete operation coverage, general profile selection or mentor diagnostics owned by remaining work
+    remaining:
+      - provide mentor diagnostics for noalloc, ISR, capacity, overflow, alignment, unsupported context and hidden-allocation violations
+    required_tests:
+      - compiler/LSP may-allocate parity
+      - noalloc diagnostic identifies transitive source
+      - invalid escape is diagnosed instead of silently promoted
+      - capacity diagnostic explains requirement when known
+      - ISR allocation diagnostic includes ISR root/context
     verification:
       - command: GOTMPDIR=$HOME/.cache/sec-gotmp go test -p 4 ./cmd/compiler ./cmd/lsp -run "TestAllocationContextOriginsCLI|TestAnalyseAllocationContexts|TestAllocationContextHover|TestAllocationOperationHover" -count=1
         result: Passed 2026-11-17 (CLI 2.500s, LSP 25.320s in the combined selection/context run). Reproduced and corrected the three assigned stale backing-context presentation oracles. Hosted/embedded-arena reports retain available semantic contexts, noalloc/freestanding retain unavailable context facts, and unresolved foreign/domain evidence remains explicit. CLI and hover distinguish created domain from recorded backing context; this does not prove a physical allocator or complete native lowering. Matching Sema plan/origin/profile/missing-evidence tests passed (0.128s). Four assigned test blockers fixed in total with the lowering boundary test; no remaining checklist item removed.
@@ -499,11 +522,3 @@ integrations:
     cross_references:
       - frontend.allocation and analysis.allocation own completion of operation/cleanup coverage and effect propagation; these conservative presentation facts do not complete those remaining points
       - "mentor diagnostics cannot yet be completed: the MD-019 explicit-layout syntax is decided (2026-11-05) but its Sema validation and ResolvedLayout facts are not implemented; analysis.allocation still owns static capacity/overflow/layout proof, and governance/analysis.yaml sema.isr-analysis owns ISR roots and context legality; the latter are implementation dependencies rather than missing language decisions"
-    remaining:
-      - provide mentor diagnostics for noalloc, ISR, capacity, overflow, alignment, unsupported context and hidden-allocation violations
-    required_tests:
-      - compiler/LSP may-allocate parity
-      - noalloc diagnostic identifies transitive source
-      - invalid escape is diagnosed instead of silently promoted
-      - capacity diagnostic explains requirement when known
-      - ISR allocation diagnostic includes ISR root/context

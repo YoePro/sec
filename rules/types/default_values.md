@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-13
-- **Last updated:** 2026-11-08 (stable chapter, subsection, and paragraph numbering); 2026-09-28
+- **Last updated:** 2026-11-23 (§ 65B Arena default, MD-136); 2026-11-08 (stable chapter, subsection, and paragraph numbering); 2026-09-28
 - **Document revision:** 1.2
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/types/default_values.md`
@@ -2014,6 +2014,20 @@ no safe slice is fabricated without a valid origin
 **§ 65A(2)** Candidates are exactly the grid values `c × 10^(-S)` with `Cmin <= c <= Cmax` satisfying every contract. Zero is tested first, then the unique member nearest to zero; an equal-distance tie needs an explicit default (`S1061`) and an empty set is an invalid type (`S1065`). For an exclusive upper bound of zero the nearest negative member is `-1 × 10^(-S)`, computed as the compact pair `(-1, S)`.
 
 **§ 65A(3)** Every default carries scale `S`: zero is `(0, S)`, and an explicit default is rescaled exactly to `S` or rejected as `S1060` when it cannot be, or `S1059` when it violates a contract. A child's implicit default is resolved from its own full contract set, never copied from its parent.
+
+---
+
+## § 65B Arena default (MD-136)
+
+Integrated 2026-11-23 from `rules/corrections/applied/MD-136-arena-default-construction-correction-2026-11-23.md`.
+
+**§ 65B(1)** `Arena` is `Defaultable`. Its default is a fresh, valid, empty Arena: a new ArenaDomain, zero byte capacity, no owned or borrowed backing, the initial epoch and state version, and a growth/backing policy frozen from the resolved CompilationPlan (`rules/memory/arena.md` § 131).
+
+**§ 65B(2)** `let mut arena: Arena` and the builtin form `Arena {}` default-construct identically. Default construction is infallible and allocation-free in every profile, including `noalloc` and `@noAlloc`.
+
+**§ 65B(3)** An omitted defaultable `Arena` field, and every other default-initialization context, constructs its own fresh ArenaDomain. Defaults never share an Arena or copy one from another initializer; `Arena` stays move-only (§ 67(13): defaultability is distinct from copyability and allocation).
+
+**§ 65B(4)** The representation may differ by target, but it preserves the fresh domain, zero capacity, allocation-free creation, the frozen growth capability and exact-once lifecycle semantics.
 
 ---
 

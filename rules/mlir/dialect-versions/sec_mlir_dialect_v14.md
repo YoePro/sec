@@ -229,6 +229,16 @@ backing dependency
 
 Runtime form requires matching bounds guard.
 
+Proven form (P18 § 41, 2026-11-23): `bounds_kind = "proven-safe"` with
+`bounds_proof = "branch"` or `"analysis"` needs no guard. Sema emits it only
+for an owner held directly in a local or by-value parameter (no reference,
+field path or static) under a dominating `index < values.Len` /
+`index < len(values)` branch or assertion with no intervening event that may
+change the length: an assignment, a loop iteration boundary, a mutable borrow
+of a value containing an owning `T[]`, or a member call on the owner other
+than `Len`, `IsEmpty` and `SizeOf`. A `try` keeps the runtime form. Constant
+and range proofs are invalid because the length is runtime state.
+
 ---
 
 # 13. `sec.dynamic_array.append_prepared`
@@ -251,6 +261,31 @@ resolved P17 ownership transfer
 ```
 
 No allocation.
+
+## 13A. `sec.dynamic_array.append_range_prepared` (P18-17, 2026-11-23)
+
+Range-segment `Append(lower..upper)` (`rules/collections/collections.md`
+§ 6.7) appends `count` consecutive values `lower, lower + 1, ...` as one
+compact operation, never one `append_prepared` per value (the P14 compact
+range-segment rule).
+
+Operands and properties:
+
+```text
+writable dynamic-array Place
+lower bound of the element type (built-in integer or rune)
+count: positive canonical decimal string
+```
+
+No ordinary result. No allocation.
+
+Requires the same entry as `append_prepared`: the operation opens a block
+entered only after capacity is ensured, and the ensured capacity (the
+`has_capacity` count or the `grow_backing` count of the growth whose
+transition opens the predecessor) equals `count`. `--sec-verify-dynamic-arrays`
+checks that count for both append forms (`append_prepared` appends 1). An
+empty segment emits no growth and no append. Range segments of non-trivial
+elements do not exist (Sema admits integer and rune segments only).
 
 ---
 

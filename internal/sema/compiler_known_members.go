@@ -261,6 +261,7 @@ func compilerKnownValueMembers(typ Type) []CompilerKnownMember {
 
 	members = append(members, compilerKnownShapedFactMembers(typ, false)...)
 	members = append(members, threadStorageMembers(typ)...)
+	members = append(members, threadAttachmentMembers(typ, false)...)
 	members = append(members, cancellationContextMembers(typ, false)...)
 
 	if compilerKnownPointerReceiver(typ) {
@@ -568,6 +569,7 @@ func compilerKnownThreadMembers(typ Type) []CompilerKnownMember {
 func compilerKnownStaticMembers(typ Type) []CompilerKnownMember {
 	members := compilerKnownShapedFactMembers(typ, true)
 	members = append(members, executionContextStaticMembers(typ)...)
+	members = append(members, threadAttachmentMembers(typ, true)...)
 	members = append(members, cancellationContextMembers(typ, true)...)
 	if compilerKnownSizedType(typ) {
 		members = append(members, CompilerKnownMember{ID: "CKM-SIZEOF-TYPE", Name: "SizeOf", Kind: CompilerKnownProperty, Result: builtinType("uint")})

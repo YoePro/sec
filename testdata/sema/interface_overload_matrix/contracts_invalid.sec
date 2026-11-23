@@ -1,0 +1,15 @@
+module main
+
+interface Required {
+    fn Convert(value: int) int
+    fn Convert(value: bool) bool
+}
+type Missing struct {}
+impl Missing implements Required {
+    fn Convert(value: int) int { return value }
+}
+type Wrong struct {}
+impl Wrong implements Required {
+    fn Convert(value: int) int { return value }
+    fn Convert(value: bool) int { return 1 }
+}

@@ -47,9 +47,31 @@ func substituteInterfaceSelf(required Function, conforming Type) Function {
 	return out
 }
 
-// closestInterfaceCandidate picks the overload to explain: one with the same
-// static/instance membership and parameter count if any, otherwise the first.
+// closestInterfaceCandidate first selects the matching parameter-type overload
+// so a result/ownership/receiver failure is explained against its actual
+// requirement rather than an unrelated same-arity sibling. If none matches,
+// it falls back to membership/arity and then declaration order.
+// Rules: rules/declarations/interfaces.md — §§6,12;
+// rules/declarations/functions.md — §§11,37;
+// rules/tooling/diagnostics.md — diagnostic cause and repair.
 func closestInterfaceCandidate(methods []Function, required Function) Function {
+	want := explicitInterfaceComparableParameters(required.Parameters)
+	for _, method := range methods {
+		got := explicitInterfaceComparableParameters(method.Parameters)
+		if method.Static != required.Static || len(got) != len(want) {
+			continue
+		}
+		matches := true
+		for i := range got {
+			if got[i].Variadic != want[i].Variadic || !sameConcreteType(got[i].Type, want[i].Type) {
+				matches = false
+				break
+			}
+		}
+		if matches {
+			return method
+		}
+	}
 	for _, method := range methods {
 		if method.Static == required.Static && len(explicitInterfaceComparableParameters(method.Parameters)) == len(explicitInterfaceComparableParameters(required.Parameters)) {
 			return method
@@ -69,6 +91,7 @@ func closestInterfaceCandidate(methods []Function, required Function) Function {
 // Rules:
 //   - rules/declarations/interfaces.md — §§6,9,12
 //   - rules/declarations/generics.md — §§9–10
+//   - rules/memory/unsafe.md — §40(1–3)
 func interfaceMethodMismatch(method Function, required Function) string {
 	membership := func(static bool) string {
 		if static {
@@ -78,6 +101,9 @@ func interfaceMethodMismatch(method Function, required Function) string {
 	}
 	if method.Static != required.Static {
 		return fmt.Sprintf("the interface requires %s method, but it is declared as %s method", membership(required.Static), membership(method.Static))
+	}
+	if method.Unsafe && !required.Unsafe {
+		return "the method requires unsafe caller obligations, but the interface promises a safe callable"
 	}
 	if len(method.GenericParameters) != 0 || method.GenericTypePack != "" {
 		return "the method declares method-level generic parameters, but the interface requires a finite signature without them"

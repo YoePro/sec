@@ -1,0 +1,9 @@
+module main
+
+fn WrongArgument() void {
+    let box := new Box[int](true)
+}
+fn WrongReturn() bool {
+    let box := new Box[int](3)
+    return box.Get()
+}

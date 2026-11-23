@@ -13,11 +13,14 @@ const (
 	OpArenaCreateBorrowed   OpKind = "arena.create-borrowed"
 	OpArenaCreateOwnedFixed OpKind = "arena.create-owned-fixed"
 	OpArenaCreateGrowable   OpKind = "arena.create-growable"
-	OpArenaNew              OpKind = "arena.new"
-	OpArenaAlloc            OpKind = "arena.alloc"
-	OpArenaReset            OpKind = "arena.reset"
-	OpArenaRelease          OpKind = "arena.release"
-	OpArenaDestroy          OpKind = "arena.destroy"
+	// OpArenaCreateDefault is the MD-136 empty default Arena: no operand,
+	// no backing, zero capacity, allocation-free (arena.md § 131).
+	OpArenaCreateDefault OpKind = "arena.create-default"
+	OpArenaNew           OpKind = "arena.new"
+	OpArenaAlloc         OpKind = "arena.alloc"
+	OpArenaReset         OpKind = "arena.reset"
+	OpArenaRelease       OpKind = "arena.release"
+	OpArenaDestroy       OpKind = "arena.destroy"
 )
 
 // ArenaOperationFacts retains already resolved plan facts. State versions order
@@ -43,7 +46,7 @@ type ArenaOperationFacts struct {
 // production or source readiness. Rules: rules/mlir/packages/sec-mlir-dialect_package19.md — §§86–96.
 func isArenaOperation(kind OpKind) bool {
 	switch kind {
-	case OpArenaCreateBorrowed, OpArenaCreateOwnedFixed, OpArenaCreateGrowable,
+	case OpArenaCreateBorrowed, OpArenaCreateOwnedFixed, OpArenaCreateGrowable, OpArenaCreateDefault,
 		OpArenaNew, OpArenaAlloc, OpArenaReset, OpArenaRelease, OpArenaDestroy:
 		return true
 	}
@@ -67,16 +70,17 @@ func verifyArenaOperation(module *Module, op Operation, values map[ValueID]Value
 		return fmt.Errorf("%s requires Arena facts, a canonical domain and no successors", op.Kind)
 	}
 	types := module.Types
-	create := op.Kind == OpArenaCreateBorrowed || op.Kind == OpArenaCreateOwnedFixed || op.Kind == OpArenaCreateGrowable
+	create := op.Kind == OpArenaCreateBorrowed || op.Kind == OpArenaCreateOwnedFixed || op.Kind == OpArenaCreateGrowable || op.Kind == OpArenaCreateDefault
 	terminal := op.Kind == OpArenaRelease || op.Kind == OpArenaDestroy
 	if f.StateAfter == 0 || create && f.StateBefore != 0 || !create && (f.StateBefore == 0 || f.StateAfter == f.StateBefore) {
 		return fmt.Errorf("%s requires its resolved state-version transition", op.Kind)
 	}
-	if f.BackingKind != "borrowed" && f.BackingKind != "owned" || f.GrowthKind != "fixed" && f.GrowthKind != "growable-nonrelocating" {
+	if f.BackingKind != "borrowed" && f.BackingKind != "owned" && f.BackingKind != "none" || f.GrowthKind != "fixed" && f.GrowthKind != "growable-nonrelocating" {
 		return fmt.Errorf("%s requires resolved backing and growth policies", op.Kind)
 	}
 	if f.BackingKind == "borrowed" && (f.GrowthKind != "fixed" || b.Relation != string(sema.BackingRelationBorrowed) || f.RetainedBorrow == 0) ||
-		f.BackingKind == "owned" && (b.Relation != string(sema.BackingRelationOwned) || f.ProviderPlan == "") {
+		f.BackingKind == "owned" && (b.Relation != string(sema.BackingRelationOwned) || f.ProviderPlan == "") ||
+		f.BackingKind == "none" && (b.Relation != string(sema.BackingRelationOwned) || f.RetainedBorrow != 0 || f.ProviderPlan == "") {
 		return fmt.Errorf("%s requires its backing borrow or resolved provider plan", op.Kind)
 	}
 	if b.Origin == "" || b.Authority == "" || b.Stability == "" || b.Space == "" {
@@ -117,6 +121,14 @@ func verifyArenaOperation(module *Module, op Operation, values map[ValueID]Value
 		}
 	} else if len(op.Results) != 0 {
 		return fmt.Errorf("%s has no result", op.Kind)
+	}
+	if op.Kind == OpArenaCreateDefault {
+		// MD-136: an owned empty Arena from no operand, no backing.
+		if !typeHasKind(types, op.Results[0].Type, TypeArena) || op.Results[0].Ownership != OwnershipOwned || len(op.Operands) != 0 ||
+			f.BackingKind != "none" || f.CapacityPlan != "empty-default" {
+			return fmt.Errorf("arena.create-default produces an owned empty Arena with no backing")
+		}
+		return nil
 	}
 	if create {
 		if !typeHasKind(types, op.Results[0].Type, TypeArena) || op.Results[0].Ownership != OwnershipOwned || len(op.Operands) != 1 {

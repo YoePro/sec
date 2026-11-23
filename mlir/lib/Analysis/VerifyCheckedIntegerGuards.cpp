@@ -55,6 +55,24 @@ LogicalResult sec::verifyCheckedIntegerGuards(func::FuncOp function) {
                            : kind == "multiply" ? "*"
                            : kind == "divide"   ? "/"
                                                   : "%";
+      } else if (auto decimal = dyn_cast<sec::DecimalBinaryCheckedOp>(operation)) {
+        // P21: checked decimal operators share the integer failure CFG.
+        checkedResult = operation->getResult(0);
+        failedValue = operation->getResult(1);
+        StringRef kind = decimal.getKind();
+        expectedCategory = kind == "div"   ? "division"
+                           : kind == "rem" ? "remainder"
+                                           : "overflow";
+        expectedOperator = kind == "add"   ? "+"
+                           : kind == "sub" ? "-"
+                           : kind == "mul" ? "*"
+                           : kind == "div" ? "/"
+                                           : "%";
+      } else if (isa<sec::DecimalUnaryOp>(operation)) {
+        checkedResult = operation->getResult(0);
+        failedValue = operation->getResult(1);
+        expectedCategory = "overflow";
+        expectedOperator = "-";
       } else if (auto shift = dyn_cast<sec::IntShiftCheckedOp>(operation)) {
         checkedResult = operation->getResult(0);
         failedValue = operation->getResult(1);

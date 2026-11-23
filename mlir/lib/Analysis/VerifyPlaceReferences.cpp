@@ -59,9 +59,14 @@ bool isPlaceConsumer(Operation *operation) {
          isa<sec::DynamicArrayLenOp, sec::DynamicArrayLenIntOp, sec::DynamicArrayCapacityInternalOp,
              sec::DynamicArrayHasBackingOp, sec::DynamicArrayHasCapacityOp,
              sec::DynamicArrayIndexInBoundsOp, sec::DynamicArrayElementPlaceOp,
-             sec::DynamicArrayAppendPreparedOp, sec::DynamicArrayGrowBackingOp,
+             sec::DynamicArrayAppendPreparedOp, sec::DynamicArrayAppendRangePreparedOp,
+             sec::DynamicArrayGrowBackingOp,
              sec::StorageEstablishDomainOp, sec::StorageAdvanceEpochOp,
-             sec::StorageEndDomainOp, sec::StorageReclaimOp>(operation);
+             sec::StorageEndDomainOp, sec::StorageReclaimOp>(operation) ||
+         // P19 sections 113-115, 118: the Arena owner is allocated from,
+         // reset and selected as context through its writable Place.
+         isa<sec::ArenaNewOp, sec::ArenaAllocOp, sec::ArenaResetOp,
+             sec::AllocContextFromArenaOp>(operation);
 }
 
 // A canonical Place chain: the root (an SSA value, a storage value or a
@@ -271,7 +276,12 @@ LogicalResult sec::verifyPlaces(func::FuncOp function) {
                    "runtime-check element Place requires a dominating true edge of sec.place.array_index_in_bounds on the same base and index"),
                WalkResult::interrupt();
     }
-    if (auto element = dyn_cast<sec::DynamicArrayElementPlaceOp>(operation)) {
+    auto dynamicElement = dyn_cast<sec::DynamicArrayElementPlaceOp>(operation);
+    // P18 section 41: a frontend-proven index carries its proof instead of
+    // a guard (the op verifier admits only branch/analysis proofs).
+    if (dynamicElement && dynamicElement.getBoundsKind() == "proven-safe")
+      dynamicElement = {};
+    if (auto element = dynamicElement) {
       // P18 sections 75-76: the guarded element Place is formed only on the
       // true edge of the total bounds predicate of the same owner and index.
       bool guarded = false;

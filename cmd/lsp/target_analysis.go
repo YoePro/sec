@@ -1,8 +1,6 @@
 package main
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"sync"
@@ -95,11 +93,13 @@ func (c *targetSnapshotCache) load(key string, compute func() ([]byte, error)) (
 // analysisForTarget assembles the same target-selected source/import closure
 // for both consumers. The fingerprint includes the complete prepared AST with
 // token locations, import failures, manifest snapshot, explicit selection,
-// effective target/depth and server epoch. Source or configuration changes
-// therefore cannot reuse earlier facts, even for direct calls outside the loop.
+// effective target/depth, observable BuildInfo snapshot and server epoch.
+// Source or configuration changes therefore cannot reuse earlier facts, even
+// for direct calls outside the loop.
 // Parsing remains outside the cache; only the expensive Sema run is shared.
 // Rules: rules/tooling/lsp.md — "Target-aware analysis", "Multi-target diagnostics",
-// "Interface conformance code lens"; rules/compiler/compiler_analysis.md — §55.
+// "Interface conformance code lens"; rules/compiler/compiler_analysis.md — §55;
+// rules/compiler/compiler_known_members.md — §113B(4).
 func analysisForTarget(uri, text string, overlay sourceOverlay, target platformtarget.Target) (targetAnalysisSnapshot, error) {
 	path := pathFromURI(uri)
 	program := parseProgramForLSP(uri, text)
@@ -124,13 +124,11 @@ func analysisForTarget(uri, text string, overlay sourceOverlay, target platformt
 	epoch := analysisCache.epoch
 	analysisCache.Unlock()
 	_, manifest, _ := lspProjectManifest(path, overlay)
-	hash := sha256.New()
-	err := json.NewEncoder(hash).Encode([]any{uri, text, target, planKey, analyzer.AnalysisDepth(),
+	key, err := targetAnalysisIdentity(analyzer, []any{uri, text, target, planKey, analyzer.AnalysisDepth(),
 		manifest, overlay.Targets, epoch, program, imports})
 	if err != nil {
 		return targetAnalysisSnapshot{}, err
 	}
-	key := hex.EncodeToString(hash.Sum(nil))
 	data, err := sharedTargetAnalyses.load(key, func() ([]byte, error) {
 		errors := append(imports, analyzer.Analyze(program)...)
 		return json.Marshal(targetAnalysisSnapshot{Errors: errors, Warnings: analyzer.Warnings(), Conformances: analyzer.InterfaceConformances()})

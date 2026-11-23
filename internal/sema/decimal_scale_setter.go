@@ -1,6 +1,10 @@
 package sema
 
-import "sec/internal/ast"
+import (
+	"fmt"
+
+	"sec/internal/ast"
+)
 
 // decimalScaleMember reports whether member names the compiler-known Scale
 // property of a decimal or decimal128 receiver, rather than a struct field
@@ -23,7 +27,18 @@ func decimalScaleMember(objectType Type, member *ast.MemberExpression) bool {
 // Rules:
 //   - rules/library/core-library.md — § 10.1 (MD-066)
 //   - rules/errors/errorhandling.md — § 24 "Fallible property setters"
-func (a *Analyzer) checkDecimalScaleWrite(stmt *ast.AssignmentStatement, member *ast.MemberExpression, allowFallible bool) bool {
+//   - rules/corrections/applied/MD-049-decimal-range-scale-inference-capacity-correction-rev1-2-2026-11-21-20261122.md — § 12(2)
+func (a *Analyzer) checkDecimalScaleWrite(stmt *ast.AssignmentStatement, member *ast.MemberExpression, objectType Type, allowFallible bool) bool {
+	// MD-049 § 12(2): a fixed-scale named type keeps the Scale getter but has
+	// no setter at all, with or without try and even for its own scale.
+	if receiver := dereferenceType(objectType); receiver.Named {
+		if scale, fixed := fixedDecimalScaleContract(receiver); fixed {
+			a.addErrorAtTokenWithMetadata(member.Property.Token, "",
+				fmt.Sprintf("%s has the fixed scale %d; use Rescale or RoundTo for a decimal value, then a checked %s(...) conversion", typeDisplayName(receiver), scale.Value, typeDisplayName(receiver)),
+				"compiler-known property %s of %s is read-only", member.Property.Value, typeDisplayName(receiver))
+			return false
+		}
+	}
 	if !allowFallible {
 		a.addErrorAtTokenWithMetadata(member.Property.Token, "",
 			"Scale has a fallible setter: write `try value.Scale = scale` and handle PrecisionError, or use Rescale/RoundTo for a new value",

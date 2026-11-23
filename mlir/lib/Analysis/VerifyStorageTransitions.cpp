@@ -35,7 +35,8 @@ Value ownerKey(Value place) {
 Value ownerOf(Operation *op) {
   if (isa<sec::DynamicArrayLenOp, sec::DynamicArrayLenIntOp, sec::DynamicArrayCapacityInternalOp,
           sec::DynamicArrayHasBackingOp, sec::DynamicArrayHasCapacityOp, sec::DynamicArrayIndexInBoundsOp,
-          sec::DynamicArrayElementPlaceOp, sec::DynamicArrayAppendPreparedOp, sec::DynamicArrayGrowBackingOp,
+          sec::DynamicArrayElementPlaceOp, sec::DynamicArrayAppendPreparedOp, sec::DynamicArrayAppendRangePreparedOp,
+          sec::DynamicArrayGrowBackingOp,
           sec::StorageEstablishDomainOp, sec::StorageAdvanceEpochOp, sec::StorageEndDomainOp,
           sec::StorageReclaimOp>(op))
     return op->getOperand(0);

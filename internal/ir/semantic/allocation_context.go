@@ -122,7 +122,7 @@ func verifyAllocationContexts(module *Module, fn *Function, functions map[Functi
 					}
 				}
 			}
-			allocating := op.Kind == OpArenaCreateOwnedFixed || op.Kind == OpArenaCreateGrowable
+			allocating := op.Kind == OpArenaCreateOwnedFixed || op.Kind == OpArenaCreateGrowable || op.Kind == OpStringMaterialize
 			if (callNeedsContext || allocating) && op.AllocationContext == nil {
 				return fmt.Errorf("%s requires a selected allocation context", op.Kind)
 			}
@@ -140,7 +140,7 @@ func verifyAllocationContexts(module *Module, fn *Function, functions map[Functi
 				if !typeHasKind(module.Types, values[operand].Type, TypeAllocationContext) {
 					continue
 				}
-				if !callNeedsContext || index != 0 || op.AllocationContext == nil || op.AllocationContext.Value != operand {
+				if (!callNeedsContext && !allocating) || index != 0 || op.AllocationContext == nil || op.AllocationContext.Value != operand {
 					return fmt.Errorf("allocation context escapes through %s", op.Kind)
 				}
 			}

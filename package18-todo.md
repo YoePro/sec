@@ -235,9 +235,16 @@ hidden allocation, mandatory runtime, physical descriptor or allocator choice
   `Append` of a trivial element lowers (has-backing / has-capacity /
   grow-backing / storage transition / append-prepared, Movable backing, no
   element moves on growth). Open: non-trivial elements (MD-135), range
-  Append, non-relocatable elements (§ 69).
+  Append, non-relocatable elements (§ 69). Update 2026-11-23 (Claude): range
+  Append lowers (one growth by the segment count, compact
+  `dynamic-array.append-range-prepared`, count-matched capacity verifier).
+  Open: non-trivial elements (MD-135), non-relocatable elements (§ 69).
 - [ ] P18-18 — Construction from existing compiler/core producers; keep
   `ToByteArray`/`ToRuneArray` at the MD-072 boundary (§§ 72–73).
+  Update 2026-11-23 (Claude): `ToRuneArray` of a string Place lowers from
+  `ResolvedRuneArrayMaterializationPlan` (view + decode loop + per-rune growth,
+  Ok/Err with prefix destruction). `ToByteArray`/`ToCharArray` and temporary
+  string receivers stay named P23 boundaries.
 - [x] P18-19 — Dynamic-array Place, `DynamicArrayIndexInBoundsOp`,
   `DynamicArrayElementPlaceOp`, element reference epoch dependency (§§ 74–77).
   Done 2026-11-15: `dynamic-array.index-in-bounds` and the guarded
@@ -255,6 +262,14 @@ hidden allocation, mandatory runtime, physical descriptor or allocator choice
   both lower to `dynamic-array.length` over the owner's Place (no move).
 - [ ] P18-22 — Partial construction, safe empty-with-capacity state and
   element destruction order (§§ 32–34).
+  Update 2026-11-23 (Claude): ToRuneArray is the first partial-construction
+  producer: a failed growth destroys the initialized prefix through the
+  owner's destruction plan before propagating the failure (§ 33). Open:
+  non-trivial elements (no producer yet).
+
+- 2026-11-23 (Claude): T[] index bounds proofs (§ 41) — dominating
+  `i < values.Len` branch/assertion proofs for directly held owners, with
+  length-event invalidation; proven element Places carry no guard.
 
 ## D. Connect source lowering through resolved plans only
 

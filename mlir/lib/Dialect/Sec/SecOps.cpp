@@ -175,6 +175,9 @@ LogicalResult verifyArgumentActions(Operation *operation, unsigned arity,
       expected = "shared-reference";
     else if (isa<RefMutType, SliceMutType>(operand.getType()))
       expected = "mutable-reference";
+    // P19 section 108: the forwarded hidden allocation context.
+    else if (isa<AllocContextType>(operand.getType()))
+      expected = "allocation-context";
     // Schema 13 lets an ordinary value transfer ownership into the callee
     // (rules/mlir/dialect-versions/sec_mlir_dialect_v13.md, section 25).
     auto module = operation->getParentOfType<ModuleOp>();
@@ -238,6 +241,12 @@ LogicalResult ConstBoolOp::verify() {
 LogicalResult ConstFloatOp::verify() {
   if (getLexeme().empty())
     return emitOpError("lexeme must not be empty");
+  // P20 sections 73-74 (schema 16): a float constant carries its canonical
+  // bit pattern; the lexeme is provenance only.
+  auto module = (*this)->getParentOfType<ModuleOp>();
+  auto version = module ? module->getAttrOfType<IntegerAttr>("sec.dialect_version") : IntegerAttr{};
+  if (version && version.getInt() >= 16 && !getBitsAttr())
+    return emitOpError("schema 16 requires the canonical bits of every float constant");
   Type base = unwrapIdentityType(getResult().getType());
   if (isa<sec::FloatType>(base))
     return success();
@@ -438,6 +447,101 @@ LogicalResult IntBinaryCheckedOp::verify() {
   return verifyBinaryInteger(*this, getLeft(), getRight(), (*this)->getResult(0));
 }
 
+// P21 decimal operators (sec_mlir_dialect_v17.md §§ 3, 6-7, 11): primitive
+// decimal operands of one type, the plan's coefficient width, the MD-066
+// preferred-scale rule of the kind, nearest-even rounding only for div,
+// truncation only for rem, and MD-067 reasons only where they can occur.
+namespace {
+bool isPrimitiveDecimal(Type type) {
+  return isa<DecimalType, Decimal128Type>(type);
+}
+
+LogicalResult verifyDecimalPlan(Operation *operation, Type operand,
+                                StringRef kind, uint32_t bits,
+                                ArrayAttr failures, StringRef preferred,
+                                StringRef policy, bool rounds,
+                                bool truncates) {
+  if (!isPrimitiveDecimal(operand))
+    return operation->emitOpError("operands must be !sec.decimal or !sec.decimal128");
+  // New in P21: always the (candidate, failed, reason) tuple, never the
+  // schema<5 two-result integer form.
+  auto failedFlag = operation->getNumResults() == 3
+                        ? dyn_cast<IntegerType>(operation->getResult(1).getType())
+                        : IntegerType();
+  if (operation->getNumResults() != 3 || operation->getResult(0).getType() != operand ||
+      !failedFlag || failedFlag.getWidth() != 1 ||
+      !isa<ArithmeticFailureReasonType>(operation->getResult(2).getType()))
+    return operation->emitOpError(
+        "requires (candidate of the operand type, i1 failed, "
+        "!sec.arithmetic_failure_reason) results");
+  if (bits != (isa<Decimal128Type>(operand) ? 128u : 64u))
+    return operation->emitOpError("coefficient_bits must match the decimal type");
+  StringRef wantScale = kind == "neg"   ? "operand-scale"
+                        : kind == "mul" ? "sum-of-operand-scales"
+                                        : "max-operand-scale";
+  if (preferred != wantScale)
+    return operation->emitOpError() << "preferred_scale must be " << wantScale;
+  if (policy != "nearest-exact")
+    return operation->emitOpError("scale_policy must be nearest-exact");
+  if (rounds != (kind == "div"))
+    return operation->emitOpError("only div rounds its quotient (nearest-even)");
+  if (truncates != (kind == "rem"))
+    return operation->emitOpError("only rem is a truncating remainder");
+  bool divides = kind == "div" || kind == "rem";
+  bool zero = false;
+  for (Attribute failure : failures) {
+    StringRef reason = cast<StringAttr>(failure).getValue();
+    if (reason == "division-by-zero") {
+      if (!divides)
+        return operation->emitOpError("only div and rem divide by zero");
+      zero = true;
+    } else if (reason == "overflow") {
+      if (kind != "div")
+        return operation->emitOpError("only div reports generic overflow");
+    } else if (reason != "scale-overflow" && reason != "precision-exhausted") {
+      return operation->emitOpError() << "invalid decimal failure reason " << reason;
+    }
+  }
+  if (divides && !zero)
+    return operation->emitOpError("div and rem must list division-by-zero");
+  return success();
+}
+} // namespace
+
+LogicalResult DecimalBinaryCheckedOp::verify() {
+  if (!isOneOf(getKind(), {"add", "sub", "mul", "div", "rem"}))
+    return emitOpError("kind must be add, sub, mul, div, or rem");
+  if (getLeft().getType() != getRight().getType())
+    return emitOpError("operands must have one decimal type");
+  if (getQuotient() && *getQuotient() != "nearest-even")
+    return emitOpError("quotient rounding must be nearest-even");
+  if (getRemainder() && *getRemainder() != "truncating")
+    return emitOpError("remainder must be truncating");
+  return verifyDecimalPlan(*this, getLeft().getType(), getKind(),
+                           getCoefficientBits(), getFailures(),
+                           getPreferredScale(), getScalePolicy(),
+                           getQuotient().has_value(),
+                           getRemainder().has_value());
+}
+
+LogicalResult DecimalUnaryOp::verify() {
+  if (getKind() != "neg")
+    return emitOpError("kind must be neg");
+  return verifyDecimalPlan(*this, getValue().getType(), getKind(),
+                           getCoefficientBits(), getFailures(),
+                           getPreferredScale(), getScalePolicy(), false,
+                           false);
+}
+
+LogicalResult DecimalCmpOp::verify() {
+  if (!isOneOf(getPredicate(), {"eq", "ne", "lt", "le", "gt", "ge"}))
+    return emitOpError("predicate must be eq, ne, lt, le, gt, or ge");
+  if (!isPrimitiveDecimal(getLeft().getType()) ||
+      getLeft().getType() != getRight().getType())
+    return emitOpError("operands must share one primitive decimal type");
+  return success();
+}
+
 LogicalResult NumericConvertExactOp::verify() {
   // P20 extends the early integer form to the binary float family: any pair
   // of builtin integer and Sec float types the frontend proved exact
@@ -581,7 +685,8 @@ LogicalResult ArithmeticFailureReasonConstantOp::verify() {
   if (!isa<ArithmeticFailureReasonType>(getResult().getType()))
     return emitOpError("result must be !sec.arithmetic_failure_reason");
   if (!isOneOf(getValue(), {"none", "overflow", "division-by-zero",
-                            "invalid-shift"}))
+                            "invalid-shift", "scale-overflow",
+                            "precision-exhausted"}))
     return emitOpError("invalid arithmetic failure reason");
   return success();
 }
@@ -1389,6 +1494,24 @@ LogicalResult RefCompareOp::verify() {
 // static aggregate: a decimal integer or bool leaf, or an array of a struct's
 // fields in declaration order or a fixed array's elements
 // (compile_time_evaluation.md section 32).
+// P20 sections 74 and 76: a static float is its canonical bit pattern,
+// "bits:<unsigned decimal>", within the width of its binary format (plain
+// !sec.float resolves to 32 or 64 bits later, so it admits 64).
+static bool isStaticFloatType(Type type) {
+  return isa<sec::FloatType>(type) || type.isF32() || type.isF64();
+}
+
+static LogicalResult verifyStaticFloatBits(Operation *op, Type type, StringRef text) {
+  unsigned width = type.isF32() ? 32 : 64;
+  StringRef digits = text;
+  uint64_t bits = 0;
+  if (!digits.consume_front("bits:") || digits.empty() ||
+      !llvm::all_of(digits, [](char c) { return c >= '0' && c <= '9'; }) ||
+      digits.getAsInteger(10, bits) || (width == 32 && bits >> 32))
+    return op->emitOpError("float static requires its canonical bit pattern \"bits:<decimal>\" within its binary format");
+  return success();
+}
+
 static LogicalResult verifyStaticComponent(Operation *op, Type type, Attribute value) {
   if (auto structType = dyn_cast<StructType>(type)) {
     auto components = dyn_cast<ArrayAttr>(value);
@@ -1481,6 +1604,8 @@ static LogicalResult verifyStaticComponent(Operation *op, Type type, Attribute v
     return leaf.getValue() == "true" || leaf.getValue() == "false"
                ? success()
                : op->emitOpError("bool static component must be true or false");
+  if (isStaticFloatType(type))
+    return verifyStaticFloatBits(op, type, leaf.getValue());
   if (!isBuiltinIntegerSemanticType(type))
     return op->emitOpError("static aggregate components are builtin integers, bools or aggregates of them");
   StringRef digits = leaf.getValue().starts_with("-") ? leaf.getValue().drop_front() : leaf.getValue();
@@ -1559,6 +1684,10 @@ LogicalResult StaticGlobalOp::verify() {
       return failure();
   } else {
   bool isBool = type.isInteger(1);
+  if (isStaticFloatType(type)) {
+    if (failed(verifyStaticFloatBits(*this, type, getInitial())))
+      return failure();
+  } else {
   if (!isBool && !isBuiltinIntegerSemanticType(type))
     return emitOpError("static storage supports builtin integer and bool types");
   StringRef initial = getInitial();
@@ -1568,6 +1697,7 @@ LogicalResult StaticGlobalOp::verify() {
     StringRef digits = initial.starts_with("-") ? initial.drop_front() : initial;
     if (digits.empty() || !llvm::all_of(digits, [](char c) { return c >= '0' && c <= '9'; }))
       return emitOpError("integer static requires a decimal initial value");
+  }
   }
   }
   // sec.static_id is the module-local StaticID; two statics never share it

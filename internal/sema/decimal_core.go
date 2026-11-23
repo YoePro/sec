@@ -71,6 +71,9 @@ func decimalCoreReceiver(typ Type) bool {
 }
 
 func compilerKnownDecimalMembers(typ Type) []CompilerKnownMember {
+	if carrier, fixed := fixedScaleDecimalCarrier(typ); fixed {
+		return fixedScaleDecimalMembers(carrier)
+	}
 	if !decimalCoreReceiver(typ) {
 		return nil
 	}
@@ -149,4 +152,39 @@ func (a *Analyzer) inferDecimalCoreCall(expr *ast.CallExpression, receiver Type,
 		}
 	}
 	return a.refinedCompilerKnownType(result), expressionValue{Display: expr.String()}, true
+}
+
+// fixedScaleDecimalCarrier returns the primitive carrier of a named
+// fixed-scale decimal type (MD-049 § 2), which owns the member identities.
+// Rules: rules/corrections/applied/MD-049-decimal-range-scale-inference-capacity-correction-rev1-2-2026-11-21-20261122.md — §§ 12(6)–12(7).
+func fixedScaleDecimalCarrier(typ Type) (Type, bool) {
+	if typ.Kind != DecimalType || !typ.Named || hasUnitSemantics(typ) {
+		return Type{}, false
+	}
+	if _, fixed := fixedDecimalScaleContract(typ); !fixed {
+		return Type{}, false
+	}
+	if typ.Name == "decimal128" || typ.Underlying == "decimal128" {
+		return builtinType("decimal128"), true
+	}
+	return builtinType("decimal"), true
+}
+
+// fixedScaleDecimalMembers are the core methods a fixed-scale named decimal
+// T inherits without constructing a T: Normalize returns the carrier,
+// Rescale/RoundTo keep Result[carrier, PrecisionError] (MD-049 § 12(6)), and
+// the ToInt*/ToFloat* conversions observe the value. Floor, Ceiling,
+// Truncate, Round, Abs, Min, Max and Clamp would construct a T and need the
+// checked exact-grid/contract path of § 12(7); until it exists they are not
+// inherited rather than returning an unchecked T or a silent carrier.
+// Rules: rules/corrections/applied/MD-049-decimal-range-scale-inference-capacity-correction-rev1-2-2026-11-21-20261122.md — §§ 12(6)–12(7).
+func fixedScaleDecimalMembers(carrier Type) []CompilerKnownMember {
+	inherited := map[string]bool{"Normalize": true, "Rescale": true, "RoundTo": true}
+	var members []CompilerKnownMember
+	for _, member := range compilerKnownDecimalMembers(carrier) {
+		if inherited[member.Name] || strings.HasPrefix(member.Name, "To") {
+			members = append(members, member)
+		}
+	}
+	return members
 }

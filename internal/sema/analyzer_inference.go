@@ -613,6 +613,9 @@ func (a *Analyzer) inferStructLiteral(expr *ast.StructLiteral) (Type, expression
 	if !ok {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
+	if isBuiltinArenaType(typ) {
+		return a.inferArenaDefaultLiteral(expr)
+	}
 
 	// rules/concurrency/mutex.md §13: representation is runtime-private,
 	// with no source constructor defined by temporal.md §4.
@@ -629,7 +632,7 @@ func (a *Analyzer) inferStructLiteral(expr *ast.StructLiteral) (Type, expression
 		a.reportProcessObserverConstruction(expr.Token, true)
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
-	if typ.Intrinsic && (isMutexType(typ) || isMutexGuardType(typ) || isCancellationContextType(typ) || typ.Name == "ThreadStorage" || isAtomicType(typ)) {
+	if typ.Intrinsic && (isMutexType(typ) || isMutexGuardType(typ) || isCancellationContextType(typ) || isThreadAttachmentType(typ) || typ.Name == "ThreadStorage" || isAtomicType(typ)) {
 		a.addErrorAtToken(expr.Token, "%s has no source struct constructor; its representation is runtime-private", typ.Name)
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
@@ -1610,7 +1613,19 @@ func (a *Analyzer) inferTestingOperationCall(expr *ast.CallExpression) (Type, ex
 	return Type{Name: "void", Kind: VoidType}, display, true
 }
 
+// inferCallExpression checks an ordinary call using the canonical overload,
+// argument, ownership and effect pipeline.
+// Rules: rules/declarations/functions.md — overload resolution;
+// rules/declarations/generics.md §§18,25,29.
 func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressionValue) {
+	return a.inferCallExpressionWithConstruction(expr, nil)
+}
+
+// inferCallExpressionWithConstruction shares ordinary call validation with
+// lifecycle calls whose owner arguments were fixed by the constructed type.
+// Rules: rules/declarations/impl.md §§15–16,21;
+// rules/declarations/generics.md §§17–18,25,29.
+func (a *Analyzer) inferCallExpressionWithConstruction(expr *ast.CallExpression, construction *Type) (Type, expressionValue) {
 	a.noteUnsafePrefix(expr)
 	defer a.invalidateCallProofFacts(expr)
 	if typ, value, ok := a.inferTestingOperationCall(expr); ok {
@@ -1662,6 +1677,9 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 
 	name := callExpressionName(expr)
 	functions, ok := a.functions[name]
+	if construction != nil {
+		functions = a.constructionCandidates(*construction, functions)
+	}
 	methodReceiver := methodReceiverInfo{}
 	isMethodCall := false
 	if !ok || len(functions) == 0 {
@@ -2152,6 +2170,11 @@ func (a *Analyzer) inferCallExpression(expr *ast.CallExpression) (Type, expressi
 // rules/concurrency/threads.md — §§8(1–7),10(1).
 func (a *Analyzer) inferCompilerKnownConstructor(expr *ast.CallExpression) (Type, expressionValue, bool) {
 	name := callExpressionName(expr)
+	// rules/concurrency/thread_local.md §30: attachment tokens cannot be fabricated.
+	if name == "ThreadAttachment" && a.expressionNamesType(expr.Callee) {
+		a.addErrorAtTokenWithMetadata(expr.Token, diagnostics.UnknownCallTarget, "Obtain the attachment token through Thread.AttachCurrent().", "ThreadAttachment has no source constructor; its representation is runtime-private")
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+	}
 	if name == "ProcessObserver" && a.expressionNamesType(expr.Callee) {
 		a.reportProcessObserverConstruction(expr.Token, false)
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
@@ -3319,7 +3342,6 @@ func (a *Analyzer) inferInfixExpression(expr *ast.InfixExpression) (Type, expres
 
 	return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 }
-
 
 func (a *Analyzer) inferCompoundAssignmentType(operator string, target Type, value Type, expr ast.Expression) (Type, bool) {
 	// MD-066 § 6(1): `x /= 0m` is the same provably zero decimal divisor.

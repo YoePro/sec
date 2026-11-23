@@ -96,22 +96,34 @@ or a new runtime/ABI model.
 
 ## A. Establish the execution baseline and synchronize authority
 
-- [ ] P20-01 — Record the exact execution snapshot, untracked-file inventory,
+- [x] P20-01 — Record the exact execution snapshot, untracked-file inventory,
   relevant P15–P19 predecessor matrix, Go/MLIR/Clang versions, and local
   `SEC_MLIR_BIN` setting. Acceptance must be reproducible from that snapshot.
-- [ ] P20-02 — Run and record predecessor Go, vet, MLIR verification and
+  Done 2026-11-23 (Claude): `rules/mlir/packages/sec-mlir-dialect_package20-implementation-report.md` §§ 1–2, 39
+  (5b2e5b29 + 222 entries, 111 untracked; LLVM 24.0.0git 252f31a6893b; Go
+  1.26.8; clang 21.1.8 link-only; SEC_MLIR_BIN=build/sec-mlir/bin).
+- [x] P20-02 — Run and record predecessor Go, vet, MLIR verification and
   native-track controls. Separate pre-existing failures from P20 failures.
+  Done 2026-11-23 (Claude): report § 3 — lit 261/261, full sema/IR/lowering/
+  traceability suites, compiler and LSP float subsets, go vet clean; no
+  pre-existing failures observed.
 - [ ] P20-03 — Reconcile the P20 package, both compatibility notes, the float
   sync, current `types.md`, operators, core-library, runtime-checks, layout,
   Semantic IR, dialect and lowering rulebooks. Preserve version history and
   update `language-rulebook-status.md` and owning governance entries.
-- [ ] P20-04 — Update P20's stale source/error/track assumptions: selected-plan
+- [x] P20-04 — Update P20's stale source/error/track assumptions: selected-plan
   plain-float width, `ConversionError`, and one compilation track. Record any
   remaining rule conflict through the correction workflow rather than encoding
   it in Sema.
-- [ ] P20-05 — Create or update the sole `lowering.sec-mlir-package20`
+  Done 2026-11-23 (Claude): the reconciliation section above and the
+  package-21/package-22 compatibility notes are the authority; Sema encodes
+  MD-014 and ConversionError, the one track is MD-101; remaining dialect
+  deviations are recorded in sec_mlir_dialect_v16.md § 18 and report § 43.
+- [x] P20-05 — Create or update the sole `lowering.sec-mlir-package20`
   integration in `governance/lowering.yaml` with predecessors, partial state,
   evidence, deferrals and the current baseline; validate with `yamlstatus`.
+  Done 2026-11-23 (Claude): the entry carries implemented, remaining and
+  verification records; `yamlstatus -paths` reports 0 missing references.
 
 ## B. Credit the implemented early subset
 
@@ -184,7 +196,7 @@ longer type silently as invalid. CTE parity is not audited yet.
   source-backed tests cover all 13 kinds and five compound kinds for all three
   primitive float types, all analysis depths and no-plan/32/64-bit plans.
 
-- [ ] P20-12 — Add compiler-known property and method facts for `min`, `max`,
+- [x] P20-12 — Add compiler-known property and method facts for `min`, `max`,
   `epsilon`, infinities, NaN, `Abs`, `Min`, `Max`, `Clamp`, classification and
   `Floor`/`Ceiling`/`Truncate`/`Round`; keep `SquareRoot` explicitly outside
   the lowering surface (§§28–38).
@@ -198,6 +210,10 @@ longer type silently as invalid. CTE parity is not audited yet.
   same-type argument and arity checks, a PascalCase misspelling diagnostic,
   and static-property receivers (`float64.NegativeInfinity.Abs()`).
   Remaining: `SquareRoot` (no `MathError` yet, § 37) and named/unit floats.
+  Closed 2026-11-23 (Claude): the item requires SquareRoot to stay outside
+  the surface (§ 91 defers it). Whether named and unit-carrying floats get
+  the members is undecided: MD-150 (governance remaining item); Sema keeps
+  them primitive-only (`floatCoreReceiver`).
 - [x] P20-13 — Implement a detached, read-only resolved numeric-conversion
   plan for all P20 binary-float pairs, integer widths through 256 bits, and
   float-to-bool. Carry selected-plan width, exactness proof, runtime-check
@@ -321,17 +337,25 @@ longer type silently as invalid. CTE parity is not audited yet.
   skipped any checked op with more than two results. This one-hot encoding
   stands in for `!sec.numeric_conversion_reason`/`from_reason` until schema
   16 (P20-20). Evidence: `internal/ir/semantic/numeric_conversion{,_test}.go`; native fixtures `testdata/build/native/float_conversion_{exact,checked}.sec` (exit 42) via `TestFloatConversionsBuildAndRun`; lit `float-conversions.mlir` (Dialect and SecToLLVM) and `invalid-float-conversions.mlir`.
-- [ ] P20-19 — Make compile-time folding use the same exact literal rounding,
+- [x] P20-19 — Make compile-time folding use the same exact literal rounding,
   arithmetic, comparison, core-method and conversion semantics as runtime;
   add NaN, signed-zero, subnormal, infinity and wide-integer parity tests
   (§§13–18, 82).
+  Update 2026-11-23 (Claude): IEEE per-operation folding with signed zero
+  and fmod; native parity fixture. Non-finite CTE values and float type
+  properties fold (2026-11-23). Exact conversions (via the recorded proven
+  plan) and total float core methods fold with native parity fixtures
+  `float_cte_conversions.sec` / `float_cte_core.sec` (2026-11-23). Closed;
+  Clamp (Result) remains executed code.
 
 ## E. Schema 16, emission and verification
 
-- [ ] P20-20 — Install schema-16 version gating only after predecessor
+- [x] P20-20 — Install schema-16 version gating only after predecessor
   reconciliation. Add/refine the numeric-conversion reason representation and
   all P20 Sec operations in ODS/C++, parser/printer and registration (§§73–75).
-- [ ] P20-21 — Extend the Go emitter to emit every verified P20 operation from
+  Done 2026-11-23 (Claude): schema 16 admitted; canonical float bits
+  required; deviations in sec_mlir_dialect_v16.md.
+- [x] P20-21 — Extend the Go emitter to emit every verified P20 operation from
   Semantic IR facts only. It must write canonical float bits and never reparse
   literal text (§§74–76).
 
@@ -344,6 +368,10 @@ longer type silently as invalid. CTE parity is not audited yet.
   `sec.float.to_bool`, and `sec.numeric.convert_checked` with
   `failures = [...]` and reason flags. ODS/C++ admit and verify all of them.
   Remaining: schema-16 gating.
+  Closed 2026-11-23 (Claude): schema 16 requires canonical bits and the
+  emitter refuses lexeme-only constants; early admission from schema 11 and
+  the native route's default schema are recorded deviations
+  (sec_mlir_dialect_v16.md § 18(1)).
 - [x] P20-22 — Add `--sec-verify-float-semantics` to reject invalid formats,
   payloads, non-nearest-even policy, fast-math, contraction/denormal weakening,
   invalid predicates/remainder/method properties and malformed Clamp (§81).
@@ -438,10 +466,12 @@ longer type silently as invalid. CTE parity is not audited yet.
     `cmpf une` with +0.0.
   - Native execution passes for all three checked directions, with failures
     reaching the right `ConversionError` variant. Evidence: `internal/ir/semantic/numeric_conversion{,_test}.go`; native fixtures `testdata/build/native/float_conversion_{exact,checked}.sec` (exit 42) via `TestFloatConversionsBuildAndRun`; lit `float-conversions.mlir` (Dialect and SecToLLVM) and `invalid-float-conversions.mlir`.
-- [ ] P20-27 — Add target capability checks for binary32/binary64,
+- [x] P20-27 — Add target capability checks for binary32/binary64,
   nearest-even, preserved subnormals, required comparison/remainder semantics
   and signed zero. Unsupported targets reject the operation/profile rather
   than weakening Sec semantics (§§6, 9, 83).
+  Done 2026-11-23 (Claude): FloatCapabilities on the plan, IEEE contract for
+  LLVM targets, S1260 float.target-capability.
 - [x] P20-28 — Register P20 support with `sec-check-lowering-support`, retain
   clear unsupported-lowering boundaries for incomplete surfaces, and verify
   there is no alternate or legacy backend route (§§79–84).
@@ -541,26 +571,44 @@ longer type silently as invalid. CTE parity is not audited yet.
   S1093. Mixing an ArithmeticError try with a ConversionError channel is also
   S1093, so no hidden error union forms. Constant known failures are
   compile-time diagnostics (P20-14).
-- [ ] P20-34 — Add schema/verifier negative tests and standard-MLIR/native
+- [x] P20-34 — Add schema/verifier negative tests and standard-MLIR/native
   output tests for the required Arith/Math/CF operations (§§90, 93).
+  Done 2026-11-23 (Claude): lit `float-standard-output.mlir` (schema 16)
+  covers subf/mulf, Arith-only remainder/Abs/Ceiling/Truncate (no remf,
+  math.*, fast-math or calls) and fpext/uitofp/fptrunc/guarded fptoui;
+  together with `floats.mlir`, `float-core.mlir`, `float-remainder.mlir`,
+  `float-conversions.mlir` every § 90 operation or its recorded replacement
+  is checked (deviations: sec_mlir_dialect_v16.md § 18(3–5)). Negative:
+  `invalid-float-semantics.mlir`, `invalid-float-weakenings.mlir`,
+  `invalid-numeric-conversions.mlir`, `invalid-conversion-proof.mlir`,
+  `schema16-float-constants.mlir`. Native: `float_core`, `float_conversion_
+  {exact,checked}`, `float_literals`, `float_statics`, `float_cte_*`.
 - [ ] P20-35 — Run focused Go tests, `go vet`, Sec MLIR verification, relevant
   MLIR lit tests, target-plan 32/64 checks and the complete repository suite;
   record exact commands and results in governance (§§85–90, 93).
 
 ## H. Acceptance, governance and handoff
 
-- [ ] P20-36 — Reconcile all P20 acceptance criteria with the October
+- [x] P20-36 — Reconcile all P20 acceptance criteria with the October
   corrections and the one-track architecture; record deviations rather than
   checking stale requirements literally.
+  Done 2026-11-23 (Claude): report § 45 — 41 criteria: 33 met, 5 deviation,
+  2 partial (sync/Semantic IR canonical merge, P20-03), 1 not run (go test
+  ./..., P20-35).
 - [ ] P20-37 — Update the owning lowering/types/core/compiler governance
   entries, `language-rulebook-status.md`, package status and missing-decision
   links with implemented, partial, deferred and unsupported boundaries.
-- [ ] P20-38 — Produce the required implementation report with snapshot,
+- [x] P20-38 — Produce the required implementation report with snapshot,
   predecessor status, normative changes, format/conversion representation,
   verifier/lowering evidence, tests, deviations and P21 recommendations (§94).
-- [ ] P20-39 — Keep the P21 boundary explicit: decimal/decimal128 arithmetic,
+  Done 2026-11-23 (Claude): `rules/mlir/packages/sec-mlir-dialect_package20-implementation-report.md`, all 44 § 94
+  topics plus the § 93 matrix.
+- [x] P20-39 — Keep the P21 boundary explicit: decimal/decimal128 arithmetic,
   precision/scale semantics and decimal conversions start only under its
   independent authority (§95).
+  Done 2026-11-23 (Claude): decimal/decimal128 operations get
+  `[unsupported-lowering]` (`check-float-lowering-support.mlir`), decimal
+  statics stay a named boundary, and report § 44 hands decimal ↔ float to P21.
 
 ## Recommended execution order
 

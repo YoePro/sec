@@ -330,13 +330,17 @@ const (
 
 type ResolvedOperator struct {
 	// Float publishes immutable P20 operator facts; zero for non-float operators.
-	Float           ResolvedFloatOperation
-	Kind            ResolvedOperatorKind
-	LeftType        Type
-	RightType       *Type
-	ResultType      Type
-	RuntimeCheck    bool
-	FailureBehavior OperatorFailureBehavior
+	Float        ResolvedFloatOperation
+	Kind         ResolvedOperatorKind
+	LeftType     Type
+	RightType    *Type
+	ResultType   Type
+	RuntimeCheck bool
+	// ArithmeticProvenSafe records an overflow impossibility proof for this
+	// integer operation. Checked representation/source try eligibility are
+	// retained; a containing failure set need not invent an impossible failure.
+	ArithmeticProvenSafe bool
+	FailureBehavior      OperatorFailureBehavior
 	// ShiftCountProven marks a shift whose count is a compile-time constant
 	// inside 0..<width and which cannot otherwise fail (right shift, unsigned
 	// left shift, or signed left shift of a constant whose result fits): it
@@ -390,6 +394,14 @@ type ResolvedDecimalOperation struct {
 	// ConstantFailure is the proven ArithmeticError variant of constant
 	// operands that always fail, or "".
 	ConstantFailure string
+	// FixedScale is the required scale S of a fixed-scale named result type
+	// T (MD-049 § 12(3)-(4)): the exact result is placed on S without
+	// rounding (division never rounds) or fails with PrecisionExhausted, and
+	// T's value contracts are checked after the intrinsic checks.
+	FixedScale *int32
+	// ContractChecked marks a result type whose value contracts must be
+	// checked before the T is published (contracts.md § 12, MD-049 § 12(4)).
+	ContractChecked bool
 }
 
 type ResolvedConditionFactKind string
@@ -1788,6 +1800,7 @@ func (a *Analyzer) recordResolvedOperator(expr ast.Expression, result Type) {
 		}
 		if infix, ok := expr.(*ast.InfixExpression); ok {
 			resolved = a.proveShiftCount(resolved, infix.Left, infix.Right)
+			resolved.ArithmeticProvenSafe = a.proveIntegerArithmeticSafe(infix, resolved)
 		}
 		resolved.Float = a.resolvedFloatOperationFacts(resolved)
 		a.resolvedOperators[expr] = resolved

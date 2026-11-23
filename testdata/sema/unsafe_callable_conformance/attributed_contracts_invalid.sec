@@ -1,0 +1,22 @@
+module main
+
+interface Readable { fn Read() int }
+interface Inherited implements Readable {}
+
+type Device struct {}
+impl Device implements Readable {
+    @noPanic
+    unsafe fn Read() int { return 1 }
+}
+
+type Child struct {}
+impl Child implements Inherited {
+    @noPanic
+    unsafe fn Read() int { return 2 }
+}
+
+type Box[T] struct { Value: T, }
+impl Box[T] implements Readable {
+    @noPanic
+    unsafe fn Read() int { return 3 }
+}

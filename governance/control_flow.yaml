@@ -633,7 +633,7 @@ integrations:
     status: partial
     integrated: "2026-08-16"
     reviewed: "2026-09-22"
-    revised: "2026-11-21"
+    revised: "2026-11-23"
     document_revision: "2.0"
     repository_baseline: 56be75d
     summary: >-
@@ -669,6 +669,8 @@ integrations:
       - internal/ir/semantic/printer.go
       - internal/ir/semantic/verifier.go
       - internal/sema/analyzer_arena_flow.go
+      - internal/lowering/secmlir/emitter.go
+      - internal/lowering/secmlir/emitter_options.go
     tests:
       - internal/parser/parser_test.go
       - internal/sema/analyzer_test.go
@@ -691,6 +693,14 @@ integrations:
       - internal/sema/loop_arena_generation_test.go
       - testdata/control_flow/loop_arena_generation/valid.sec
       - testdata/control_flow/loop_arena_generation/invalid.sec
+      - internal/lowering/secmlir/while_cfg_emission_test.go
+      - testdata/semantic_ir/while_cfg_emission.sec
+      - internal/sema/while_conditions_test.go
+      - internal/formatter/while_conditions_test.go
+      - internal/ir/semantic/while_conditions_test.go
+      - cmd/compiler/while_conditions_test.go
+      - cmd/lsp/while_conditions_test.go
+      - testdata/control_flow/while_conditions
     implemented:
       - "Path-fact while entry (2026-11-11; flowcontrol_while.md §§ 19–20, 28): a pure while condition decided at entry by dominating path facts (per-binding versioned facts, stored fields) is routed through the canonical unreachable-code policy: proven false, the body reports S3001 and the loop is a zero-iteration loop; proven true (or true from first-entry constants) with a body that never reaches the next test and has no reachable break, ResolvedWhileFlow.ContinuesAfterLoop is false, so following code reports S3001 and return analysis is satisfied. TestWhileEntryDecidedByPathFacts"
       - "post-loop definite assignment (2026-11-10; flowcontrol_while.md § 23, § 28): a while loop intersects the assigned state of every reachable exit — the zero-iteration condition-false exit (omitted when the first test is proven true from pre-loop constants), the condition-false exit after an iteration (body fall-through and continue edges), and every reachable break; the while-true break special case and the `is empty` refinement are instances of the same merge. for loops keep the zero-iteration path (flowcontrol_for.md § 33). analyzer_while_flow.go intersectExitAssigned, TestWhileExitDefiniteAssignment"
@@ -729,10 +739,10 @@ integrations:
       - "While/switch loop-target verification completed 2026-10-29 using the focused source/IR/native evidence owned by frontend.switch-statements-v2: nested switch break targets the surrounding while exit, continue targets its condition, and fallthrough does not create a loop target. Explicit CFG successor and loop identity checks plus executed expected-result checks cover skipped case/body tails. Nontrivial loop cleanup and other while coverage remain separately tracked; no new lowering capability is claimed."
       - "union/Option/Result variant proofs cross loop exits (2026-11-08, TestVariantProofsCrossJoins): a variant proven on every reachable break edge and on the condition-false exit (unless the condition is always true) holds after the loop"
       - "Arena generation loop-header/backedge point closed by verification 2026-11-21: the shared frontend.loop-arena-generation-fixed-point implementation carries canonical domain generations through fallthrough and continue edges, excludes break-only paths from the next iteration, detects generation-only changes and replays with the merged header snapshot. New source regressions cover while/for fallthrough and continue plus while-condition re-evaluation; break-only and fresh-per-iteration controls pass. A temporary Go overlay dropping merged header epochs suppresses all five expected stale-use diagnostics, confirming replay sensitivity. Fixed domain-key presence in generation-state equality (BUG-000037); different zero-valued domains cannot compare equal. Runtime epoch representation and cleanup/lowering remain separate."
+      - "Stale P12 loop-record gate closed by verification (2026-11-23): the current single track verifies Semantic IR LoopRecords and discharges them into standard MLIR cf.br/cf.cond_br CFG through the existing schema-13 emitter; no separate Sec loop operation is required. Source-backed 32/64-bit tests cover condition, body, backedge, continue, break and nested loops, acceptance by the real sec-mlir-opt, and rejection with no emitted output after a loop record is forged. Nontrivial cleanup and loop-carried ownership remain separately tracked."
+      - "Focused while conformance matrix completed 2026-11-23 (flowcontrol_while.md §§3–7,13–15,28–30): a shared source fixture executes observable condition/body counters for &&/|| short-circuiting, one evaluation per attempted iteration, false first entry, continue, try success/false/error propagation, recovery to false, a skipped fallible logical operand and nested loop break/continue. Original source and formatter output both exit 42 through the single native track; distinct exit codes identify failed expectations. Semantic IR verifies separate Result-error/success-bool branches and one built call per fallible condition. Formatter tests at 2/4/6-space indentation preserve all seven condition ASTs and second-pass stability. Plain/try integer conditions produce exactly two diagnostics through Sema at every depth and CLI/LSP. Existing while parser recovery, flow/assignment, nested-switch, 32/64-bit loop-record emitter and verifier tests retain the other focused boundaries. Nontrivial cleanup and loop-carried ownership remain separately open; this item completes coverage of represented behavior rather than adding a new lowering path."
     remaining:
-      - complete focused short-circuit, condition-frequency, try-condition, nesting, formatter, diagnostics, LSP, Semantic IR, and backend coverage
       - "Semantic IR: explicit loop cleanup edges for loops whose bodies own non-trivially destructible storage or defer (§ 66(1)), loop-carried ownership/availability state (§ 66(2)–(3)), and while loops nested in for/switch once those constructs reach Semantic IR"
-      - "Sec MLIR: loop records are admitted from Semantic IR package gate 13; emit-sec-mlir (P12) and the dialect do not yet carry them"
     required_tests:
       - bool while condition accepted
       - truthiness rejected
@@ -758,6 +768,12 @@ integrations:
       - while-else rejected
       - labeled loop control rejected
     verification:
+      - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" GOTMPDIR="$HOME/.cache/sec-gotmp" go test -short -p 4 ./internal/parser ./internal/sema ./internal/formatter ./internal/ir/semantic ./internal/lowering/secmlir ./internal/traceability -count=1 -timeout=180s
+        result: "Passed 2026-11-23: parser 35.154s, Sema 34.670s, formatter 2.879s, Semantic IR 11.035s, Sec MLIR 25.657s and traceability 0.267s. Includes all-depth while condition checks, formatter condition AST/idempotence matrix, separate try failure/success tests and existing loop CFG/verifier/emitter coverage. Uses the real sec-mlir-opt; remaining cleanup/ownership work is not marked complete."
+      - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" GOTMPDIR="$HOME/.cache/sec-gotmp" go test -p 4 ./cmd/compiler ./cmd/lsp -run "WhileCondition|FocusedDoWhile|FocusedWhileElse|FocusedLabeledLoopControl|FocusedWhileDeclaration" -count=1 -timeout=120s; go vet ./internal/sema ./internal/formatter ./internal/ir/semantic ./cmd/compiler ./cmd/lsp
+        result: "Passed 2026-11-23: compiler 7.735s and LSP 9.472s; vet passed. Source and formatted native fixtures both execute with status 42, including effect counts, skipped fallible operand, failure propagation/recovery and nested targets. Plain and try integer conditions give two diagnostics through both interfaces; existing unsupported-form LSP diagnostics remain covered."
+      - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" GOTMPDIR="$HOME/.cache/sec-gotmp" go test -p 4 ./internal/sema ./internal/lowering/secmlir ./internal/traceability -count=1 -timeout=180s; go vet ./internal/sema ./cmd/compiler ./cmd/lsp ./internal/lowering/secmlir
+        result: "Passed 2026-11-23: complete Sema 33.309s, Sec MLIR emitter suite 24.739s and traceability 0.249s; vet passed. Real sec-mlir-opt exercised 32/64-bit while CFG acceptance and mutated loop-record rejection."
       - command: go test -race ./internal/sema -run 'TestLoopArenaGeneration|TestLoopEdgesCarryEveryDomain|TestArenaReset.*Loop|TestPlace.*LoopBackedge' -count=1 -timeout=90s
         result: "Passed 2026-11-21 (1.301s): five source-backed later-iteration/condition stale-use errors, four valid controls, detached continue/fallthrough joins, break exclusion and exact domain-key equality. BUG-000037 reproduced before the key-presence fix. A temporary Go overlay replacing merged replay epochs with entry epochs removes all five source diagnostics as expected. Full Sema passes 29.970s; vet and global traceability (0.191s) pass. No native epoch/lowering claim."
       - command: go test ./internal/ir/semantic -count=1; SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./cmd/compiler -run TestNativeTrackBuildsAndRuns -count=1 -timeout=120s; go vet ./internal/ir/semantic ./cmd/compiler

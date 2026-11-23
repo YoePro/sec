@@ -156,7 +156,7 @@ func placeConsumer(kind OpKind) bool {
 		// P18 dynamic-array length observes an owner Place (package18 §§ 13, 49–50).
 		OpDynamicArrayLength, OpDynamicArrayIndexInBounds, OpDynamicArrayElementPlace,
 		// P18 growth and storage transitions of an owner Place (§§ 58–67).
-		OpDynamicArrayHasBacking, OpDynamicArrayHasCapacity, OpDynamicArrayGrowBacking, OpDynamicArrayAppendPrepared,
+		OpDynamicArrayHasBacking, OpDynamicArrayHasCapacity, OpDynamicArrayGrowBacking, OpDynamicArrayAppendPrepared, OpDynamicArrayAppendRangePrepared,
 		OpStorageEstablishDomain, OpStorageAdvanceEpoch, OpStorageEndDomain, OpStorageReclaim:
 		return true
 	}
@@ -252,6 +252,10 @@ func formatReferenceMetadata(out *strings.Builder, ref *ReferenceMetadata) {
 		}
 		if ref.EpochDependency != 0 {
 			fmt.Fprintf(out, " domain=#%d epoch=#%d", ref.InvalidationDomain, ref.EpochDependency)
+		} else if ref.InvalidationDomain != 0 {
+			// A proven borrow of an owning T[] names its backing domain
+			// (package18 §§ 77, 100).
+			fmt.Fprintf(out, " domain=#%d", ref.InvalidationDomain)
 		}
 		fmt.Fprintf(out, " space=%s stability=%s provenance=%s", ref.AddressSpace, ref.AddressStability, ref.Provenance)
 		if ref.Pinned {

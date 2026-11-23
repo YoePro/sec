@@ -1272,31 +1272,31 @@ test "Combined calendars distinguish All and Any" {
 
     // Friday: B is open, A is closed.
     testing.Expect(!(try IsBusinessDay(
-        friday, calendars, BusinessCalendarCombination.All,
+        friday, calendars[..], BusinessCalendarCombination.All,
     )))
 
     testing.Expect(try IsBusinessDay(
-        friday, calendars, BusinessCalendarCombination.Any,
+        friday, calendars[..], BusinessCalendarCombination.Any,
     ))
 
     // Saturday: A is open, B is closed.
     testing.Expect(!(try IsBusinessDay(
-        saturday, calendars, BusinessCalendarCombination.All,
+        saturday, calendars[..], BusinessCalendarCombination.All,
     )))
 
     testing.Expect(try IsBusinessDay(
-        saturday, calendars, BusinessCalendarCombination.Any,
+        saturday, calendars[..], BusinessCalendarCombination.Any,
     ))
 
     // Monday: both are open.
     testing.Expect(try IsBusinessDay(
-        monday, calendars, BusinessCalendarCombination.All,
+        monday, calendars[..], BusinessCalendarCombination.All,
     ))
 
     // Following from Friday under All selects Monday.
     let adjusted := try AdjustBusinessDay(
         friday,
-        calendars,
+        calendars[..],
         BusinessCalendarCombination.All,
         BusinessDayAdjustment.Following,
     )
@@ -1354,8 +1354,557 @@ test "Combined calendars require overlapping coverage" {
 
     // June 1 is not covered by the second calendar.
     // Even Any must reject incomplete coverage.
-    match IsBusinessDay(juneFirst, ref calendars, BusinessCalendarCombination.Any) {
+    match IsBusinessDay(juneFirst, ref calendars[..], BusinessCalendarCombination.Any) {
         Ok(_) => testing.Fail("Incomplete coverage accepted")
+        Err(BusinessError.OutsideCoverage) => {
+        }
+        Err(_) => testing.Fail("Unexpected business error")
+    }
+}
+
+test "Combined calendars validate even after a known result" {
+    let selectedDay := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(29),
+    )
+
+    let validExceptions: BusinessDayException[0] := []
+
+    // Duplicate exception dates make the second dataset invalid.
+    let invalidExceptions: BusinessDayException[2] := [
+        BusinessDayException {
+            Day: selectedDay,
+            Working: false,
+        },
+        BusinessDayException {
+            Day: selectedDay,
+            Working: true,
+        },
+    ]
+
+    let closedWeek := BusinessWeekPattern {
+        Monday: false,
+        Tuesday: false,
+        Wednesday: false,
+        Thursday: false,
+        Friday: false,
+        Saturday: false,
+        Sunday: false,
+    }
+
+    let openWeek := BusinessWeekPattern {
+        Monday: true,
+        Tuesday: true,
+        Wednesday: true,
+        Thursday: true,
+        Friday: true,
+        Saturday: true,
+        Sunday: true,
+    }
+
+    let calendars: BusinessCalendarData[2] := [
+        BusinessCalendarData {
+            Calendar: BusinessCalendar {
+                Identifier: "example:closed",
+                Revision: "1",
+            },
+            FirstDay: selectedDay,
+            LastDay: selectedDay,
+            Week: closedWeek,
+            Exceptions: ref validExceptions[..],
+        },
+        BusinessCalendarData {
+            Calendar: BusinessCalendar {
+                Identifier: "example:invalid",
+                Revision: "1",
+            },
+            FirstDay: selectedDay,
+            LastDay: selectedDay,
+            Week: openWeek,
+            Exceptions: ref invalidExceptions[..],
+        },
+    ]
+
+    // All would already be false from the first calendar,
+    // but the second calendar must still be validated.
+    match IsBusinessDay(
+        selectedDay,
+        calendars[..],
+        BusinessCalendarCombination.All,
+    ) {
+        Ok(_) => testing.Fail("Invalid dataset accepted")
+        Err(BusinessError.InvalidCalendarData) => {
+        }
+        Err(_) => testing.Fail("Unexpected error")
+    }
+}
+
+test "Combined search stops at common coverage boundary" {
+    let selectedDay := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(27),
+    )
+
+    let exceptions: BusinessDayException[0] := []
+
+    let closedWeek := BusinessWeekPattern {
+        Monday: false,
+        Tuesday: false,
+        Wednesday: false,
+        Thursday: false,
+        Friday: false,
+        Saturday: false,
+        Sunday: false,
+    }
+
+    let calendars: BusinessCalendarData[2] := [
+        BusinessCalendarData {
+            Calendar: BusinessCalendar {
+                Identifier: "example:closed-A",
+                Revision: "1",
+            },
+            FirstDay: selectedDay,
+            LastDay: selectedDay,
+            Week: closedWeek,
+            Exceptions: ref exceptions[..],
+        },
+        BusinessCalendarData {
+            Calendar: BusinessCalendar {
+                Identifier: "example:closed-B",
+                Revision: "1",
+            },
+            FirstDay: selectedDay,
+            LastDay: selectedDay,
+            Week: closedWeek,
+            Exceptions: ref exceptions[..],
+        },
+    ]
+
+    match AdjustBusinessDay(
+        selectedDay,
+        calendars[..],
+        BusinessCalendarCombination.All,
+        BusinessDayAdjustment.Following,
+    ) {
+        Ok(_) => testing.Fail("Expected OutsideCoverage")
+        Err(BusinessError.OutsideCoverage) => {
+        }
+        Err(_) => testing.Fail("Unexpected error")
+    }
+}
+
+test "Combined business arithmetic handles overlapping exceptions" {
+    let thursday := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(25),
+    )
+
+    let friday := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(26),
+    )
+
+    let saturday := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(27),
+    )
+
+    let monday := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(29),
+    )
+
+    let tuesday := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(30),
+    )
+
+    // Calendar A closes Friday and opens Saturday.
+    let exceptionsA: BusinessDayException[2] := [
+        BusinessDayException {
+            Day: friday,
+            Working: false,
+        },
+        BusinessDayException {
+            Day: saturday,
+            Working: true,
+        },
+    ]
+
+    // Calendar B explicitly confirms Friday as working.
+    // Friday therefore appears in both exception lists.
+    let exceptionsB: BusinessDayException[1] := [
+        BusinessDayException {
+            Day: friday,
+            Working: true,
+        },
+    ]
+
+    let week := BusinessWeekPattern {
+        Monday: true,
+        Tuesday: true,
+        Wednesday: true,
+        Thursday: true,
+        Friday: true,
+        Saturday: false,
+        Sunday: false,
+    }
+
+    let calendars: BusinessCalendarData[2] := [
+        BusinessCalendarData {
+            Calendar: BusinessCalendar {
+                Identifier: "example:A",
+                Revision: "1",
+            },
+            FirstDay: thursday,
+            LastDay: monday,
+            Week: week,
+            Exceptions: ref exceptionsA[..],
+        },
+        BusinessCalendarData {
+            Calendar: BusinessCalendar {
+                Identifier: "example:B",
+                Revision: "1",
+            },
+            FirstDay: thursday,
+            LastDay: monday,
+            Week: week,
+            Exceptions: ref exceptionsB[..],
+        },
+    ]
+
+    // [Thursday, Tuesday) contains:
+    //
+    // All: Thursday and Monday = 2 days.
+    // Any: Thursday, Friday, Saturday, Monday = 4 days.
+    let allCount := try CountBusinessDays(
+        thursday,
+        tuesday,
+        ref calendars[..],
+        BusinessCalendarCombination.All,
+    )
+
+    let anyCount := try CountBusinessDays(
+        thursday,
+        tuesday,
+        ref calendars[..],
+        BusinessCalendarCombination.Any,
+    )
+
+    testing.ExpectEqual(2, allCount)
+    testing.ExpectEqual(4, anyCount)
+
+    // Moving forward from Thursday.
+    let nextAll := try AddBusinessDays(
+        thursday,
+        1,
+        ref calendars[..],
+        BusinessCalendarCombination.All,
+    )
+
+    let nextAny := try AddBusinessDays(
+        thursday,
+        1,
+        ref calendars[..],
+        BusinessCalendarCombination.Any,
+    )
+
+    testing.ExpectEqual(monday.EpochDays, nextAll.EpochDays)
+    testing.ExpectEqual(friday.EpochDays, nextAny.EpochDays)
+
+    // Moving backward from Monday.
+    let previous: int := -1
+
+    let priorAll := try AddBusinessDays(
+        monday,
+        previous,
+        ref calendars[..],
+        BusinessCalendarCombination.All,
+    )
+
+    let priorAny := try AddBusinessDays(
+        monday,
+        previous,
+        ref calendars[..],
+        BusinessCalendarCombination.Any,
+    )
+
+    testing.ExpectEqual(thursday.EpochDays, priorAll.EpochDays)
+    testing.ExpectEqual(saturday.EpochDays, priorAny.EpochDays)
+
+    // Reversed intervals must negate the result.
+    let reversed := try CountBusinessDays(
+        tuesday,
+        thursday,
+        ref calendars[..],
+        BusinessCalendarCombination.Any,
+    )
+
+    testing.ExpectEqual(-4, reversed)
+}
+
+test "Combined arithmetic rejects missing target business day" {
+    let saturday := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(27),
+    )
+
+    let sunday := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(28),
+    )
+
+    let exceptions: BusinessDayException[0] := []
+
+    let week := BusinessWeekPattern {
+        Monday: true,
+        Tuesday: true,
+        Wednesday: true,
+        Thursday: true,
+        Friday: true,
+        Saturday: false,
+        Sunday: false,
+    }
+
+    let calendars: BusinessCalendarData[2] := [
+        BusinessCalendarData {
+            Calendar: BusinessCalendar {
+                Identifier: "example:weekend-A",
+                Revision: "1",
+            },
+            FirstDay: saturday,
+            LastDay: sunday,
+            Week: week,
+            Exceptions: ref exceptions[..],
+        },
+        BusinessCalendarData {
+            Calendar: BusinessCalendar {
+                Identifier: "example:weekend-B",
+                Revision: "1",
+            },
+            FirstDay: saturday,
+            LastDay: sunday,
+            Week: week,
+            Exceptions: ref exceptions[..],
+        },
+    ]
+
+    let count := try CountBusinessDays(
+        saturday,
+        sunday,
+        ref calendars[..],
+        BusinessCalendarCombination.All,
+    )
+
+    testing.ExpectEqual(0, count)
+
+    match AddBusinessDays(
+        saturday,
+        1,
+        ref calendars[..],
+        BusinessCalendarCombination.All,
+    ) {
+        Ok(_) => testing.Fail("Expected OutsideCoverage")
+        Err(BusinessError.OutsideCoverage) => {
+        }
+        Err(_) => testing.Fail("Unexpected business error")
+    }
+}
+
+test "Combined monthly rules distinguish All and Any" {
+    let juneFirst := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(1),
+    )
+
+    let juneLast := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(30),
+    )
+
+    let friday := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(26),
+    )
+
+    let saturday := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(27),
+    )
+
+    let exceptionsA: BusinessDayException[2] := [
+        BusinessDayException {
+            Day: friday,
+            Working: false,
+        },
+        BusinessDayException {
+            Day: saturday,
+            Working: true,
+        },
+    ]
+
+    let exceptionsB: BusinessDayException[1] := [
+        BusinessDayException {
+            Day: friday,
+            Working: true,
+        },
+    ]
+
+    let week := BusinessWeekPattern {
+        Monday: true,
+        Tuesday: true,
+        Wednesday: true,
+        Thursday: true,
+        Friday: true,
+        Saturday: false,
+        Sunday: false,
+    }
+
+    let calendars: BusinessCalendarData[2] := [
+        BusinessCalendarData {
+            Calendar: BusinessCalendar {
+                Identifier: "example:A",
+                Revision: "1",
+            },
+            FirstDay: juneFirst,
+            LastDay: juneLast,
+            Week: week,
+            Exceptions: ref exceptionsA[..],
+        },
+        BusinessCalendarData {
+            Calendar: BusinessCalendar {
+                Identifier: "example:B",
+                Revision: "1",
+            },
+            FirstDay: juneFirst,
+            LastDay: juneLast,
+            Week: week,
+            Exceptions: ref exceptionsB[..],
+        },
+    ]
+
+    let thirdFromEnd: int := -3
+
+    // All:
+    // June 30 = last, June 29 = second,
+    // June 25 = third-to-last.
+    let thirdAll := try NthBusinessDayOfMonth(
+        2026, 6, thirdFromEnd,
+        ref calendars[..],
+        BusinessCalendarCombination.All,
+    )
+
+    testing.Expect(try _matchesGregorianDate(
+        thirdAll, 2026, 6, 25,
+    ))
+
+    // Any:
+    // June 30 = last, June 29 = second,
+    // June 27 = third-to-last.
+    let thirdAny := try NthBusinessDayOfMonth(
+        2026, 6, thirdFromEnd,
+        ref calendars[..],
+        BusinessCalendarCombination.Any,
+    )
+
+    testing.ExpectEqual(
+        saturday.EpochDays, thirdAny.EpochDays,
+    )
+
+    let lastAll := try LastBusinessDayOfMonth(
+        2026, 6,
+        ref calendars[..],
+        BusinessCalendarCombination.All,
+    )
+
+    testing.ExpectEqual(
+        juneLast.EpochDays, lastAll.EpochDays,
+    )
+
+    // A civil due date on the exceptional Saturday.
+    let civilRule := MonthlyDueDateRule.Civil(
+        MonthlyDateRule.DayOfMonth(27),
+    )
+
+    // Under All, Saturday is not a business day.
+    let dueAll := try DueDate(
+        2026, 6, civilRule,
+        ref calendars[..],
+        BusinessCalendarCombination.All,
+        BusinessDayAdjustment.Following,
+    )
+
+    testing.Expect(try _matchesGregorianDate(
+        dueAll, 2026, 6, 29,
+    ))
+
+    // Under Any, calendar A makes Saturday a business day.
+    let dueAny := try DueDate(
+        2026, 6, civilRule,
+        ref calendars[..],
+        BusinessCalendarCombination.Any,
+        BusinessDayAdjustment.Following,
+    )
+
+    testing.ExpectEqual(
+        saturday.EpochDays, dueAny.EpochDays,
+    )
+
+    // BusinessOrdinal uses the combined monthly calculation.
+    let ordinalDue := try DueDate(
+        2026, 6,
+        MonthlyDueDateRule.BusinessOrdinal(thirdFromEnd),
+        ref calendars[..],
+        BusinessCalendarCombination.Any,
+        BusinessDayAdjustment.None,
+    )
+
+    testing.ExpectEqual(
+        saturday.EpochDays, ordinalDue.EpochDays,
+    )
+}
+
+test "Combined monthly selection requires full month coverage" {
+    let juneFirst := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(1),
+    )
+
+    let juneSecond := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(2),
+    )
+
+    let juneLast := try ResolveMonthlyDate(
+        2026, 6, MonthlyDateRule.DayOfMonth(30),
+    )
+
+    let exceptions: BusinessDayException[0] := []
+
+    let week := BusinessWeekPattern {
+        Monday: true,
+        Tuesday: true,
+        Wednesday: true,
+        Thursday: true,
+        Friday: true,
+        Saturday: false,
+        Sunday: false,
+    }
+
+    let calendars: BusinessCalendarData[2] := [
+        BusinessCalendarData {
+            Calendar: BusinessCalendar {
+                Identifier: "example:complete",
+                Revision: "1",
+            },
+            FirstDay: juneFirst,
+            LastDay: juneLast,
+            Week: week,
+            Exceptions: ref exceptions[..],
+        },
+        BusinessCalendarData {
+            Calendar: BusinessCalendar {
+                Identifier: "example:partial",
+                Revision: "1",
+            },
+            FirstDay: juneSecond,
+            LastDay: juneLast,
+            Week: week,
+            Exceptions: ref exceptions[..],
+        },
+    ]
+
+    match NthBusinessDayOfMonth(
+        2026, 6, 1,
+        ref calendars[..],
+        BusinessCalendarCombination.Any,
+    ) {
+        Ok(_) => testing.Fail("Incomplete month coverage accepted")
         Err(BusinessError.OutsideCoverage) => {
         }
         Err(_) => testing.Fail("Unexpected business error")

@@ -6,6 +6,8 @@ add_mlir_library(SecMLIRAnalysis
   VerifyCleanups.cpp
   VerifyDestructionPlans.cpp
   VerifyDynamicArrays.cpp
+  VerifyArenas.cpp
+  VerifyAllocationContexts.cpp
   VerifyStorageTransitions.cpp
   VerifyOwnership.cpp
   VerifyBorrowDestruction.cpp

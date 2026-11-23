@@ -137,8 +137,14 @@ func (a *Analyzer) inferValidatedCompilerKnownMemberCall(expr *ast.CallExpressio
 	if floatCoreReceiver(lookupType) && strings.HasPrefix(member.ID, "CKM-FLOAT-") {
 		return a.inferFloatCoreCall(expr, lookupType, member)
 	}
-	if decimalCoreReceiver(lookupType) && strings.HasPrefix(member.ID, "CKM-DECIMAL") {
-		if result, value, handled := a.inferDecimalCoreCall(expr, lookupType, member); handled {
+	// MD-049 § 12(6): a fixed-scale named receiver calls the carrier's
+	// method and receives the carrier result, never an unchecked T.
+	decimalReceiver := lookupType
+	if carrier, fixed := fixedScaleDecimalCarrier(lookupType); fixed {
+		decimalReceiver = carrier
+	}
+	if decimalCoreReceiver(decimalReceiver) && strings.HasPrefix(member.ID, "CKM-DECIMAL") {
+		if result, value, handled := a.inferDecimalCoreCall(expr, decimalReceiver, member); handled {
 			return result, value, true
 		}
 	}

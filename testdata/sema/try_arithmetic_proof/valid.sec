@@ -1,0 +1,33 @@
+module main
+
+enum BusinessError error { Failed }
+fn Count(value: int64) Result[int64, BusinessError] { return Ok(value) }
+
+type Day struct { Raw: int32, }
+impl Day {
+    property EpochDays: int32 { get { return self.Raw } }
+}
+
+fn Widen(value: int32) Result[int64, BusinessError] {
+    let origin := int64(value)
+    return Ok(try Count(origin + 1))
+}
+fn Getter(value: Day) Result[int64, BusinessError] {
+    let origin := int64(value.EpochDays)
+    return Ok(try Count(origin + 1))
+}
+fn Constant() Result[int64, BusinessError] {
+    return Ok(try Count(int64(1) + 1))
+}
+fn Subtract(value: int32) Result[int64, BusinessError] {
+    return Ok(try Count(int64(value) - 1))
+}
+fn Multiply(value: int32) Result[int64, BusinessError] {
+    return Ok(try Count(int64(value) * 2))
+}
+fn Guarded(value: int64) Result[int64, BusinessError] {
+    if value < int64(9223372036854775807) {
+        return Ok(try Count(value + 1))
+    }
+    return Err(BusinessError.Failed)
+}

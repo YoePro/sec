@@ -59,6 +59,11 @@ func (s *server) scheduleSourceDiagnostics(uri string) {
 		affected[dir] = true
 	}
 	s.invalidateCrossTargetDirectories(affected)
+	for _, snapshot := range snapshots {
+		if affected[normalizedSourcePath(filepath.Dir(pathFromURI(snapshot.URI)))] {
+			s.scheduleCrossTargetDiagnostics(snapshot.URI)
+		}
+	}
 	dirs := make([]string, 0, len(representatives))
 	for dir := range representatives {
 		dirs = append(dirs, dir)

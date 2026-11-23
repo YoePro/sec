@@ -147,9 +147,10 @@ and pointer-width details. Use the view's target-selection and refresh actions
 to switch targets or reread the current results.
 
 An unavailable comparison is shown explicitly, never as zero errors. Results
-refresh through the existing open/save, target-switch and project-change
-analysis. Editing invalidates the view immediately; comparisons while typing
-remain separate work. A clean row means the stored diagnostics contain no
+refresh after a pause in typing, as well as on open/save, target-switch and
+project changes. Editing invalidates the view immediately; comparisons use the
+latest unsaved source and dependency overlays. Each document has at most one
+running comparison and one pending version. A clean row means the stored diagnostics contain no
 errors, not that every possible target safety proof or lowering is complete.
 
 Other clients can request `sec/targetStatus` with

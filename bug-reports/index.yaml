@@ -952,3 +952,345 @@ reports:
       - internal/sema/operator_diagnostics_test.go
       - cmd/compiler/operator_diagnostics_test.go
       - cmd/lsp/operator_diagnostics_test.go
+
+  - id: BUG-000041
+    title: LSP target reader rejects TOML literal strings and loses BuildInfo
+    status: fixed
+    severity: medium
+    kind: implementation-bug
+    reported: "2026-11-23"
+    fixed: "2026-11-23"
+    report: fixed/BUG-000041-lsp-target-literal-strings.md
+    area: lsp-target-plan-resolution
+    rulebooks:
+      - rules/projects/projects.md
+      - rules/compiler/compiler_known_members.md
+      - rules/tooling/lsp.md
+    governance:
+      - tooling.project-version-model
+    evidence: >-
+      The BuildInfo source regression failed with S1258 and absent inferred-field
+      hover when Target and Variant values used TOML literal strings; changing
+      only the quotes to basic strings passed. The target reader applied Go
+      string unquoting, rejecting legal single-quoted TOML values.
+    resolution: >-
+      Decode target strings with the existing TOML decoder, including each
+      variant-array element. BuildInfo member tests now use literal-string
+      target values and verify a resolved snapshot, all 16 field types,
+      hover ranges, static/instance completion separation, Current signature
+      and availability, inferred result fields and unchanged stored manifest.
+    regression_tests:
+      - cmd/lsp/build_info_members_test.go
+      - testdata/tooling/build_info/members.sec
+
+  - id: BUG-000042
+    title: Nested generic instances lose concrete arguments in type snapshots
+    status: fixed
+    severity: medium
+    kind: implementation-bug
+    reported: "2026-11-23"
+    fixed: "2026-11-23"
+    report: fixed/BUG-000042-nested-generic-snapshot-identity.md
+    area: semantic-type-snapshots
+    rulebooks:
+      - rules/declarations/generics.md
+      - rules/compiler/compiler_analysis.md
+      - rules/tooling/lsp.md
+    governance:
+      - frontend.generics-v2
+    evidence: >-
+      The source-backed nested generic hover regression reproduced Z = Box
+      instead of Z = Box[int] for Box[Box[int]]. Snapshot recursion detection
+      used only module and declaration name, merging different instances.
+    resolution: >-
+      Use canonical concrete type identity for the existing snapshot cycle
+      guard, preserving finite nested instances while terminating actual
+      recursive edges. Full Sema, Semantic IR and traceability suites pass;
+      focused source-type and closure snapshot regressions also pass.
+    regression_tests:
+      - cmd/lsp/generic_instantiation_hover_test.go
+      - internal/sema/generic_tooling_test.go
+      - testdata/lsp/generic_instantiation_hover/main.sec
+
+  - id: BUG-000043
+    title: Byte radix formatting uses collection ToString for its digit buffers
+    status: fixed
+    severity: medium
+    kind: implementation-bug
+    reported: "2026-11-23"
+    fixed: "2026-11-23"
+    report: fixed/BUG-000043-byte-formatting-collection-summary.md
+    area: core-byte-formatting
+    rulebooks:
+      - rules/library/core-library.md
+      - rules/compiler/compiler_known_members.md
+      - rules/corrections/applied/md109-core-string-materialization-correction-20261121.md
+    governance:
+      - compiler.compiler-known-surfaces
+    evidence: >-
+      All six buffer-producing branches of the real core byte source resolved
+      bytes.ToString rather than explicit UTF-8 materialization. The Sema
+      regression reproduced zero text-construction identities before the fix.
+      MD-091 defines byte collection ToString as representational formatting,
+      never decoding. This reproduction does not execute formatted output.
+    resolution: >-
+      Call string.FromByteArray with the borrowed ASCII digit buffer in all
+      six branches, preserving Result[string, StringError]. Rulebook §8.4
+      declares the required enum and overload plus radix, width, padding and
+      uppercase rules. Sema routing, public compiler and LSP hover regressions
+      pass; sec test --list sec/core compiles/discovers 32 tests. Runtime text
+      conformance remains behind the existing P23/static-test-harness gate.
+    regression_tests:
+      - internal/sema/byte_format_materialization_test.go
+      - cmd/compiler/byte_formatting_test.go
+      - cmd/lsp/byte_formatting_test.go
+      - testdata/tooling/byte_formatting/members.sec
+      - sec/core/types_test.sec
+
+  - id: BUG-000044
+    title: Generic impl conformance loses member and setter substitutions
+    status: fixed
+    severity: medium
+    kind: implementation-bug
+    reported: "2026-11-23"
+    fixed: "2026-11-23"
+    report: fixed/BUG-000044-generic-impl-member-conformance.md
+    area: generic-impl-conformance
+    rulebooks:
+      - rules/declarations/generics.md
+      - rules/declarations/interfaces.md
+      - rules/errors/errorhandling.md
+    governance:
+      - frontend.generics-v2
+    evidence: >-
+      Valid source-backed Box[int] conformance failed its Contract[int]
+      constraint because properties/events were not substituted consistently.
+      Generic fallible setters also reported unknown type E in both the
+      interface and implementation declaration.
+    resolution: >-
+      Share detached member-surface substitution, preserve the deferred
+      declaration scope and specialize inherited setter errors through their
+      declaring interface. Full Sema, Semantic IR and traceability suites
+      pass; compiler JSON and LSP verify acceptance and nine registered
+      member failures with requirement locations. The separate existing
+      unregistered generic-constraint diagnostic is outside this fix.
+    regression_tests:
+      - internal/sema/generic_impl_conformance_test.go
+      - cmd/compiler/generic_impl_conformance_test.go
+      - cmd/lsp/generic_impl_conformance_test.go
+      - testdata/sema/generic_impl_conformance/valid.sec
+      - testdata/sema/generic_impl_conformance/setters.sec
+      - testdata/sema/generic_impl_conformance/contract_invalid.sec
+
+  - id: BUG-000045
+    title: Generic initializer ignores constructed owner arguments
+    status: fixed
+    severity: medium
+    kind: implementation-bug
+    reported: "2026-11-23"
+    fixed: "2026-11-23"
+    report: fixed/BUG-000045-generic-initializer-owner-substitution.md
+    area: generic-impl-construction
+    rulebooks:
+      - rules/declarations/impl.md
+      - rules/declarations/generics.md
+      - rules/compiler/monomorphization.md
+    governance:
+      - frontend.generics-v2
+    evidence: >-
+      A source-backed generic extension init(value T) rejected new Box[int](3)
+      against unresolved T instead of the constructed owner's int argument.
+    resolution: >-
+      Bind owner arguments before overload and contextual argument checking;
+      retain concrete construction targets, error channels and initializer
+      specialization identities without mutating the declaration registry.
+      Native lifecycle lowering and the remaining generic member composition
+      categories are outside this fix.
+    regression_tests:
+      - internal/sema/generic_impl_composition_test.go
+      - cmd/compiler/generic_impl_composition_test.go
+      - cmd/lsp/generic_impl_composition_test.go
+      - testdata/sema/generic_impl_composition/primary.sec
+      - testdata/sema/generic_impl_composition/extension.sec
+      - testdata/sema/generic_impl_composition/arguments_invalid.sec
+
+  - id: BUG-000046
+    title: Interface conformance explains the wrong overload
+    status: fixed
+    severity: low
+    kind: implementation-bug
+    reported: "2026-11-23"
+    fixed: "2026-11-23"
+    report: fixed/BUG-000046-interface-overload-mismatch-cause.md
+    area: interface-overload-diagnostics
+    rulebooks:
+      - rules/declarations/interfaces.md
+      - rules/tooling/diagnostics.md
+    governance:
+      - frontend.interfaces
+    evidence: >-
+      Convert(bool) int failing a Convert(bool) bool requirement was explained
+      against the unrelated Convert(int) int implementation with the same arity.
+    resolution: >-
+      Select the diagnostic witness by membership and parameter-type identity
+      before the arity fallback. Actual conformance and overload acceptance
+      remain unchanged; Sema, CLI and LSP regressions retain requirement links.
+    regression_tests:
+      - internal/sema/interface_overload_matrix_test.go
+      - cmd/compiler/interface_overload_matrix_test.go
+      - cmd/lsp/interface_overload_matrix_test.go
+      - testdata/sema/interface_overload_matrix/contracts_invalid.sec
+
+  - id: BUG-000047
+    title: Argument-bearing attributes bypass canonical attachment formatting
+    status: fixed
+    severity: low
+    kind: implementation-bug
+    reported: "2026-11-23"
+    fixed: "2026-11-23"
+    report: fixed/BUG-000047-attribute-argument-formatting.md
+    area: attribute-formatting
+    rulebooks:
+      - rules/tooling/formatter.md
+      - rules/foundations/attributes.md
+    governance:
+      - frontend.attributes-v2
+    evidence: >-
+      Original CST roles only recognize argument-free attributes on a subset
+      of declarations. An overlay restoring that producer makes the new
+      general attribute formatting regression fail.
+    resolution: >-
+      Retain real parser argument delimiters and project supported attachments
+      through one CST role producer. Reuse comma-list width/trailing-comma
+      layout, preserve order and comments, and withhold roles for malformed
+      lists. CLI and LSP formatting share the same idempotent golden.
+    regression_tests:
+      - internal/cst/attribute_roles_test.go
+      - internal/formatter/attributes_general_test.go
+      - cmd/compiler/attributes_format_test.go
+      - cmd/lsp/format_attributes_test.go
+      - testdata/formatter/attributes/general.sec
+      - testdata/formatter/attributes/general.expected.sec
+      - testdata/formatter/attributes/list_invalid.sec
+
+  - id: BUG-000048
+    title: A lambda with a missing return type loses its committed body
+    status: fixed
+    severity: low
+    kind: implementation-bug
+    reported: "2026-11-23"
+    fixed: "2026-11-23"
+    report: fixed/BUG-000048-lambda-missing-return-retention.md
+    area: parser-lambda-recovery
+    rulebooks:
+      - rules/compiler/parser_recovery.md
+      - rules/declarations/lambda-functions.md
+    governance:
+      - frontend.parser-long-term
+    evidence: >-
+      After a complete lambda parameter list, a body brace without a return
+      type reports an error and drops the lambda. A temporary overlay of the
+      original parser fails the source-backed AST retention regression.
+    resolution: >-
+      Preserve an invalid return type with recovery metadata before the real
+      body and continue parsing the committed lambda. Retain captures and
+      later declarations, publish no valid callable identity, preserve
+      independent later diagnostics and prevent invalid IR emission.
+      Broader specialized-type and missing-body recovery remain partial.
+    regression_tests:
+      - internal/parser/lambda_return_recovery_test.go
+      - internal/sema/lambda_return_recovery_test.go
+      - cmd/compiler/lambda_return_recovery_test.go
+      - cmd/lsp/lambda_return_recovery_test.go
+      - testdata/parser/lambda_return_recovery/missing_invalid.sec
+
+  - id: BUG-000049
+    title: BuildInfo optional fields alias mutable producer and consumer pointers
+    status: fixed
+    severity: medium
+    kind: implementation-bug
+    reported: "2026-11-23"
+    fixed: "2026-11-23"
+    report: fixed/BUG-000049-build-info-snapshot-aliasing.md
+    area: build-metadata-snapshot
+    rulebooks:
+      - rules/compiler/compiler_known_members.md
+      - rules/library/core-library.md
+      - rules/projects/projects.md
+    governance:
+      - tooling.project-version-model
+    evidence: >-
+      TestBuildInfoSnapshotOwnership failed before the fix when producer
+      mutation changed the configured snapshot; optional getter values and
+      CTE configuration replay retained the same mutable pointers.
+    resolution: >-
+      Deep-copy optional snapshot fields on configuration and public access;
+      retain detached values for CTE replay. Explicit source-fact resolution
+      also copies requested-and-available inputs without implicit collection.
+    regression_tests:
+      - internal/sema/build_info_snapshot_test.go
+      - internal/platform/buildinfo/source_facts_test.go
+      - testdata/platform/buildinfo/source_facts.sec
+
+  - id: BUG-000050
+    title: Unsafe methods parse inconsistently and can satisfy safe interface requirements
+    status: fixed
+    severity: high
+    kind: implementation-bug
+    reported: "2026-11-23"
+    fixed: "2026-11-23"
+    report: fixed/BUG-000050-unsafe-method-safety.md
+    area: unsafe-callable-safety
+    rulebooks:
+      - rules/memory/unsafe.md
+      - rules/declarations/interfaces.md
+      - rules/foundations/grammar.md
+    governance:
+      - frontend.unsafe
+    evidence: >-
+      Plain unsafe methods became invalid impl members while attributed
+      methods were admitted. The common method signature comparison omitted
+      callable safety, accepting unsafe implementations of safe requirements.
+      New source tests reproduced invalid-member/missing-method diagnostics;
+      an overlay of the old comparison accepts the incompatible witnesses.
+    resolution: >-
+      Parse unsafe methods through the common unsafe declaration parser and
+      reject unsafe-to-safe interface witness compatibility with the existing
+      incompatible-member diagnostic and focused caller-obligation explanation.
+    regression_tests:
+      - internal/parser/unsafe_methods_test.go
+      - internal/sema/unsafe_callable_conformance_test.go
+      - cmd/compiler/unsafe_callable_conformance_test.go
+      - cmd/lsp/unsafe_callable_conformance_test.go
+      - testdata/sema/unsafe_callable_conformance
+
+  - id: BUG-000051
+    title: Try argument overflow proofs lose safe local and returned-field ranges
+    status: open
+    severity: medium
+    kind: implementation-bug
+    reported: "2026-11-23"
+    report: open/BUG-000051-try-argument-overflow-proofs.md
+    area: try-arithmetic-range-proof
+    rulebooks:
+      - rules/errors/errorhandling.md
+      - rules/errors/runtime_checks.md
+      - rules/foundations/operators.md
+    governance:
+      - frontend.errorhandling-v2
+    evidence: >-
+      Source fixtures reproduced S1093 for provably safe widened int32, narrow
+      property, constant and guarded arguments of Result-returning calls.
+      The original coverage.Last argument additionally needs a numeric field
+      range summary across a helper return, loop and Result payload.
+    resolution: >-
+      Local builtin add/subtract/multiply interval proofs now exclude only
+      impossible failures from try failure sets, preserving checked lowering,
+      call error channels and real nested failures. Returned-field summaries
+      remain unimplemented; this report stays open for that original location.
+    regression_tests:
+      - internal/sema/try_arithmetic_proof_test.go
+      - cmd/compiler/try_arithmetic_proof_test.go
+      - cmd/lsp/try_arithmetic_proof_test.go
+      - testdata/sema/try_arithmetic_proof
+      - testdata/build/native/try_safe_argument.sec

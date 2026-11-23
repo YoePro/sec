@@ -67,8 +67,35 @@ func (a *Analyzer) recordDynamicArrayIndexPlan(expr *ast.IndexExpression, arrayT
 	if owner, held := a.dynamicArrayOwners[expr.Left]; held {
 		owner.Place = clonePlace(owner.Place)
 		plan.Owner = &owner
+		// § 41 proof provenance: a dominating `index < values.Len` of a
+		// directly held local owner proves the access (no length-changing
+		// event since, see bumpDynamicArrayLengthEpoch).
+		if provableDynamicArrayOwner(owner.Place) {
+			if proof, proven := a.refinementProvesRuntimeLengthIndex(expr.Left, expr.Index, indexType); proven {
+				plan.CheckKind, plan.ProofKind, plan.FailureMode = ArrayIndexProvenSafe, proof, ArrayIndexFailureNone
+				a.recordArrayIndexEffect(expr, ResolvedArrayIndexPlan{CheckKind: plan.CheckKind, FailureMode: plan.FailureMode})
+			}
+		}
 	}
 	a.storeDynamicArrayIndexPlan(expr, plan)
+}
+
+// provableDynamicArrayOwner admits an owner whose length only this function
+// body can change: a local or by-value parameter named directly, not reached
+// through a reference, field path or static storage.
+// Rules: rules/mlir/packages/sec-mlir-dialect_package18.md — §§ 40-41.
+func provableDynamicArrayOwner(place Place) bool {
+	return (place.RootKind == PlaceRootLocal || place.RootKind == PlaceRootParameter) &&
+		len(place.Projections) == 0 && place.ReferenceHolder == "" && place.StorageOrigin != StorageOriginStatic
+}
+
+// bumpDynamicArrayLengthEpoch invalidates every index refinement before an
+// event that may change the length of an owning T[]: a mutable borrow of a
+// value containing one (the borrower may Clear it) or a mutating member
+// call on one.
+// Rules: rules/mlir/packages/sec-mlir-dialect_package18.md — §§ 40-41, 48.
+func (a *Analyzer) bumpDynamicArrayLengthEpoch() {
+	a.arrayIndexMutationEpoch++
 }
 
 func (a *Analyzer) storeDynamicArrayIndexPlan(expr *ast.IndexExpression, plan ResolvedDynamicArrayIndexPlan) {
@@ -100,6 +127,8 @@ func (a *Analyzer) commitFallibleDynamicArrayIndex(expr *ast.IndexExpression, er
 	}
 	plan.FailureMode = ArrayIndexFailureFallible
 	plan.ErrorType = errorType
+	// A try keeps its runtime check and IndexError path even when proven.
+	plan.CheckKind, plan.ProofKind = ArrayIndexRuntimeCheck, ""
 	a.storeDynamicArrayIndexPlan(expr, plan)
 }
 

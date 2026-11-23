@@ -10,19 +10,20 @@ import (
 // dynamicArrayMnemonics maps the verified P18 Semantic IR operations to their
 // schema-14 Sec MLIR operations.
 var dynamicArrayMnemonics = map[semantic.OpKind]string{
-	semantic.OpDynamicArrayEmpty:          "sec.dynamic_array.empty",
-	semantic.OpDynamicArrayAllocate:       "sec.dynamic_array.allocate",
-	semantic.OpDynamicArrayLength:         "sec.dynamic_array.len",
-	semantic.OpDynamicArrayHasBacking:     "sec.dynamic_array.has_backing",
-	semantic.OpDynamicArrayHasCapacity:    "sec.dynamic_array.has_capacity",
-	semantic.OpDynamicArrayIndexInBounds:  "sec.dynamic_array.index_in_bounds",
-	semantic.OpDynamicArrayElementPlace:   "sec.dynamic_array.element_place",
-	semantic.OpDynamicArrayAppendPrepared: "sec.dynamic_array.append_prepared",
-	semantic.OpDynamicArrayGrowBacking:    "sec.dynamic_array.grow_backing",
-	semantic.OpStorageEstablishDomain:     "sec.storage.establish_domain",
-	semantic.OpStorageAdvanceEpoch:        "sec.storage.advance_epoch",
-	semantic.OpStorageEndDomain:           "sec.storage.end_domain",
-	semantic.OpStorageReclaim:             "sec.storage.reclaim",
+	semantic.OpDynamicArrayEmpty:               "sec.dynamic_array.empty",
+	semantic.OpDynamicArrayAllocate:            "sec.dynamic_array.allocate",
+	semantic.OpDynamicArrayLength:              "sec.dynamic_array.len",
+	semantic.OpDynamicArrayHasBacking:          "sec.dynamic_array.has_backing",
+	semantic.OpDynamicArrayHasCapacity:         "sec.dynamic_array.has_capacity",
+	semantic.OpDynamicArrayIndexInBounds:       "sec.dynamic_array.index_in_bounds",
+	semantic.OpDynamicArrayElementPlace:        "sec.dynamic_array.element_place",
+	semantic.OpDynamicArrayAppendPrepared:      "sec.dynamic_array.append_prepared",
+	semantic.OpDynamicArrayAppendRangePrepared: "sec.dynamic_array.append_range_prepared",
+	semantic.OpDynamicArrayGrowBacking:         "sec.dynamic_array.grow_backing",
+	semantic.OpStorageEstablishDomain:          "sec.storage.establish_domain",
+	semantic.OpStorageAdvanceEpoch:             "sec.storage.advance_epoch",
+	semantic.OpStorageEndDomain:                "sec.storage.end_domain",
+	semantic.OpStorageReclaim:                  "sec.storage.reclaim",
 }
 
 // emitDynamicArray maps verified P18 operations directly to schema 14,
@@ -40,7 +41,7 @@ func (e *emitter) emitDynamicArray(function *semantic.Function, op semantic.Oper
 	}
 	var properties []string
 	switch op.Kind {
-	case semantic.OpDynamicArrayAllocate, semantic.OpDynamicArrayHasCapacity, semantic.OpDynamicArrayGrowBacking:
+	case semantic.OpDynamicArrayAllocate, semantic.OpDynamicArrayHasCapacity, semantic.OpDynamicArrayGrowBacking, semantic.OpDynamicArrayAppendRangePrepared:
 		if op.Integer == nil || op.Integer.Sign() <= 0 {
 			return fmt.Errorf("%s in %s has no positive count", op.Kind, function.ID)
 		}

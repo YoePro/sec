@@ -53,6 +53,13 @@ func Build(program *ast.Program, analyzer *sema.Analyzer, options BuildOptions) 
 		// reclamation authority on dynamic-array.grow-backing.
 		preserved = analyzer.IsDynamicArrayAppendGrowth
 	}
+	if options.MaxPackage >= arenaLoweringPackage {
+		// P19-20: a completely planned Arena New/Alloc carries its domain,
+		// epoch, layout, default and capacity on arena.new/arena.alloc.
+		preserved = func(fact sema.AllocationContextFact) bool {
+			return analyzer.IsDynamicArrayAppendGrowth(fact) || analyzer.IsLowerableArenaAllocation(fact) || analyzer.IsLowerableStringMaterialization(fact)
+		}
+	}
 	if err := analyzer.ValidateAllocationLoweringReadinessPreserving(program, identity, preserved); err != nil {
 		return nil, err
 	}
@@ -195,6 +202,8 @@ func firstCustomFreeDeclaration(program *ast.Program) (*ast.FreeDeclaration, boo
 }
 
 type builder struct {
+	// allocationKnowledge caches Sema allocation knowledge by declaration.
+	allocationKnowledge map[string]string
 	// semaTypes maps each interned type to the resolved type it came from.
 	semaTypes       map[TypeID]sema.Type
 	specializations specializationState
@@ -316,6 +325,20 @@ type functionBuilder struct {
 	// value the builder created, so uses validate and derive from the facts
 	// of the exact reference they consume (reference_use.go).
 	references map[ValueID]*ReferenceMetadata
+	// allocationContext is the active allocation context of the function
+	// (its hidden input or the entry root's target context), nil when the
+	// function requires none (P19 §§ 56-60).
+	allocationContext *AllocationContextFacts
+	// arenaBorrows retains the backing borrow of each Arena domain created
+	// by FromBuffer in this function (P19 § 110).
+	arenaBorrows map[sema.InvalidationDomainID]uint32
+	// arenaStates is the current owner state version of each Arena domain
+	// created in this function; the builder numbers every mutation in build
+	// order (sec_mlir_dialect_v15.md § 9).
+	arenaStates map[sema.InvalidationDomainID]uint32
+	// arenaDefaults marks the MD-136 default Arenas created in this
+	// function (no backing borrow to retain).
+	arenaDefaults map[sema.InvalidationDomainID]bool
 	// receiver is the implicit `self` reference parameter of the instance
 	// method being built (reference_receiver.go); zero otherwise.
 	receiver builtValue
@@ -387,6 +410,12 @@ func (b *builder) buildConcreteFunction(decl *ast.FunctionDeclaration, resolved 
 		return locateUnsupportedType(err, token)
 	}
 	fn := &Function{ID: functionID(resolved, b.module.Types), Name: resolved.Name, LinkName: resolved.LinkName, ReturnType: returnType, Unsafe: decl.Unsafe, Extern: resolved.Extern, ABI: resolved.ABI, Location: location(decl.Token)}
+	if decl.Name != nil {
+		fn.MayAllocate = b.allocationKnowledgeOf(decl.Name.Token)
+	}
+	if b.maxPackage >= arenaLoweringPackage {
+		fn.ArenaDemand = arenaDemandFactsOf(b.analyzer.ArenaDemandSummariesOf(decl.Body))
+	}
 	// A function of another module is declared here, never defined.
 	fn.Imported = spec == nil && resolved.Module != b.module.Identity
 	if fn.Imported {
@@ -398,6 +427,10 @@ func (b *builder) buildConcreteFunction(decl *ast.FunctionDeclaration, resolved 
 	}
 	b.module.Functions = append(b.module.Functions, fn)
 	fb := &functionBuilder{owner: b, specialization: spec, fn: fn, bindings: map[sema.BindingID]binding{}, nextStorage: 1, nextMatch: 1, nextLoop: 1, resolved: &resolved}
+	entryContext, err := fb.declareAllocationContext(decl, resolved)
+	if err != nil {
+		return err
+	}
 	if !resolved.Static && resolved.ImplTarget != "" && spec != nil && spec.hardware {
 		if err := fb.addHardwareReceiverParameter(resolved, decl); err != nil {
 			return err
@@ -458,6 +491,9 @@ func (b *builder) buildConcreteFunction(decl *ast.FunctionDeclaration, resolved 
 	entry := fb.newBlock()
 	fn.Entry = entry.ID
 	fb.current = entry
+	if entryContext != "" {
+		fb.produceTargetAllocationContext(entryContext, decl)
+	}
 	if decl.Body == nil {
 		return fmt.Errorf("non-extern function %s has no body", fn.ID)
 	}
@@ -1063,6 +1099,14 @@ func (fb *functionBuilder) buildStatements(statements []ast.Statement) error {
 				fb.emit(Operation{Kind: OpAtomicFence, AtomicOrder: order, Location: location(call.Token)})
 				continue
 			}
+			// P19: Arena Reset (and any other planned Arena operation) as a
+			// statement.
+			if _, handled, err := fb.buildArenaCall(call); handled {
+				if err != nil {
+					return err
+				}
+				continue
+			}
 			// An unused atomic result still performs its operation.
 			if _, handled, err := fb.buildAtomicObjectCall(call); handled {
 				if err != nil {
@@ -1148,7 +1192,10 @@ func (fb *functionBuilder) buildLet(stmt *ast.LetStatement) error {
 	}
 	var value builtValue
 	var err error
-	if stmt.SynthesizedDefault && fb.resolvedDefaultSupported(fact.Type) {
+	// MD-136: an omitted Arena initialization is the synthesized `Arena {}`
+	// with its own default-creation plan, built like the explicit form.
+	_, arenaDefault := fb.owner.analyzer.ResolvedArenaOperationPlanOf(stmt.Value)
+	if stmt.SynthesizedDefault && fb.resolvedDefaultSupported(fact.Type) && !arenaDefault {
 		// Preserve the declared scalar identity and width, and compact aggregate
 		// defaults, instead of re-inferring the compatibility AST initializer.
 		// Rules: default_values.md — Named types, A.5; P13 §26; P14 §§24–26.
@@ -2105,6 +2152,9 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 	if value, handled, foldErr := fb.buildFoldedStringConcat(expr, typeID); handled {
 		return value, foldErr
 	}
+	if value, handled, err := fb.buildRuntimeStringConcat(expr, typeID); handled {
+		return value, err
+	}
 	loc := locationFromExpression(expr)
 	switch e := expr.(type) {
 	case *ast.IntegerLiteral:
@@ -2358,6 +2408,11 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 		}
 		return fb.buildResolvedOperator(expr)
 	case *ast.StructLiteral:
+		// MD-136: `Arena {}` (also an omitted Arena initialization) is the
+		// builtin default creation, never an ordinary struct literal.
+		if plan, isDefault := fb.owner.analyzer.ResolvedArenaOperationPlanOf(e); isDefault {
+			return fb.buildArenaDefault(e, plan)
+		}
 		if fb.owner.maxPackage >= 13 {
 			if plan, resolved := fb.owner.analyzer.ResolvedStructLiteralPlanOf(e); resolved {
 				return fb.buildStructLiteral(e, plan, typeID)
@@ -3880,6 +3935,9 @@ func (fb *functionBuilder) package14DeferredArrayOperator(expr ast.Expression) (
 //   - rules/foundations/operators.md — "Logical negation"
 //   - rules/compiler/semantic_ir.md — § 58 "Arithmetic"
 func semanticOperatorKind(resolved sema.ResolvedOperator, op *Operation) bool {
+	if resolved.Decimal != nil {
+		return decimalOperatorKind(resolved, op)
+	}
 	switch resolved.Kind {
 	case sema.ResolvedBoolNot:
 		op.Kind = OpBoolNot
@@ -4021,19 +4079,10 @@ func (fb *functionBuilder) emitCheckedOperator(op Operation, resultType TypeID, 
 	return successValue, nil
 }
 
+// failureCategory is the panic category of a checked operator; it equals the
+// verifier's expectation by construction.
 func failureCategory(op Operation) ArithmeticFailureCategory {
-	if op.Kind == OpIntShiftChecked {
-		return ArithmeticFailureShift
-	}
-	if op.Kind == OpIntBinaryChecked {
-		switch op.IntegerBinary {
-		case IntegerCheckedDivide:
-			return ArithmeticFailureDivision
-		case IntegerCheckedRemainder:
-			return ArithmeticFailureRemainder
-		}
-	}
-	return ArithmeticFailureOverflow
+	return expectedFailureCategory(op)
 }
 
 func operatorSpelling(expr ast.Expression) string {
@@ -4344,4 +4393,24 @@ func (b *builder) declareImportedCallee(function sema.Function, site lexer.Token
 	b.substitution = nil
 	defer func() { b.substitution = substitution }()
 	return b.buildConcreteFunction(decl, function, nil)
+}
+
+// allocationKnowledgeOf reads Sema's canonical allocation knowledge of the
+// callable declared at token (P19 § 130 demand-summary metadata). A
+// declaration with several graph nodes (specializations) keeps the most
+// conservative knowledge.
+// Rules: rules/mlir/packages/sec-mlir-dialect_package19.md — §§ 77, 130;
+// rules/memory/allocation.md — § 24.
+func (b *builder) allocationKnowledgeOf(token lexer.Token) string {
+	if b.allocationKnowledge == nil {
+		b.allocationKnowledge = map[string]string{}
+		rank := map[string]int{string(sema.AllocationFree): 1, string(sema.AllocationMayAllocate): 2, string(sema.AllocationUnknown): 3}
+		for _, fact := range b.analyzer.CallGraph().AllocationFacts() {
+			key := fmt.Sprintf("%s:%d:%d", fact.Declaration.File, fact.Declaration.Line, fact.Declaration.Column)
+			if knowledge := string(fact.Knowledge); rank[knowledge] > rank[b.allocationKnowledge[key]] {
+				b.allocationKnowledge[key] = knowledge
+			}
+		}
+	}
+	return b.allocationKnowledge[fmt.Sprintf("%s:%d:%d", token.File, token.Line, token.Column)]
 }

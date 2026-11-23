@@ -60,10 +60,12 @@ func (manifest *Manifest) TargetVersion(name string) (Version, bool) {
 	return version, ok
 }
 
-// ParseManifest resolves identity, version and counter storage from one snapshot.
+// ParseManifest resolves identity, version and counter storage from one snapshot,
+// rejecting production Targets that select the project-root test-only tree.
 // Invalid input publishes no resolved project. The root comes from the canonical
 // manifest path, independently of display name or UUID; it is absolute and clean.
-// Rules: rules/projects/projects.md — §§5(1),7–11,28,49(1–3).
+// Rules: rules/projects/projects.md — §§5(1),7–11,17–18,28,49(1–3);
+// rules/tooling/testing.md — §8.1.
 func ParseManifest(path, text string) (*Manifest, []ManifestError) {
 	absolute, err := filepath.Abs(path)
 	if err != nil {
@@ -77,6 +79,9 @@ func ParseManifest(path, text string) (*Manifest, []ManifestError) {
 	versions, versionErrors := ParseManifestVersions(text)
 	diagnostics := append(identityErrors, versionErrors...)
 	targets := ParseManifestTargets(text)
+	for _, issue := range ValidateTargetSourcesSnapshot(text) {
+		diagnostics = append(diagnostics, ManifestError{Line: issue.Line, Message: issue.Message})
+	}
 	var counters map[string]BuildCounter
 	if len(diagnostics) == 0 {
 		var counterErrors []ManifestError

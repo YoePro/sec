@@ -382,6 +382,9 @@ func (a *Analyzer) inferArenaCall(expr *ast.CallExpression) (Type, expressionVal
 		if !a.validateArenaAllocationElement("New", expr.GenericArguments[0], elementType) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
+		// MD-136: diagnose without poisoning the well-typed call, so its
+		// allocation facts and plan stay published.
+		a.checkDefaultArenaPositiveStorage(domain, "New", owner, expr)
 		a.recordArenaEffect(ArenaEffectAllocate, receiver.Value, domain, member.Property.Token, true)
 		refType := Type{Name: "ref mut " + typeDisplayName(elementType), Kind: ReferenceType, Element: &elementType, ReferenceMutable: true, ReferenceOriginName: domain, ReferenceOriginDisplayName: owner, ReferenceOriginToken: receiver.Token, ReferenceOriginLocal: allocationLocal, ReferenceOriginStorage: StorageOriginArena, ReferenceOriginGeneration: a.arenaGenerations[domain]}
 		result := arenaResultType(refType, a.types["AllocationError"])
@@ -412,6 +415,9 @@ func (a *Analyzer) inferArenaCall(expr *ast.CallExpression) (Type, expressionVal
 		if !ok || !a.validateArenaAllocationElement("Alloc", expr.GenericArguments[0], elementType) {
 			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 		}
+		// MD-136: diagnose without poisoning the well-typed call, so its
+		// allocation facts and plan stay published.
+		a.checkDefaultArenaPositiveStorage(domain, "Alloc", owner, expr)
 		sliceType := Type{
 			Name:    typeDisplayName(elementType) + "[]",
 			Kind:    SliceType,

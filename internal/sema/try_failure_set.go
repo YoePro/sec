@@ -80,7 +80,13 @@ func (a *Analyzer) collectTryFailurePoints(expr ast.Expression) []TryFailurePoin
 			visit(node.Left)
 			visit(node.Right)
 			if operator, ok := a.ResolvedOperatorOf(node); ok && operator.RuntimeCheck {
-				points = append(points, TryFailurePoint{Kind: TryFailureArithmetic, ErrorType: a.types["ArithmeticError"], Expression: node, Token: node.Token})
+				if operator.ArithmeticProvenSafe {
+					// An impossible check contributes no failure channel. Its
+					// operands were still visited, so their real failures remain.
+					a.resolveArithmeticFailureEffect(node)
+				} else {
+					points = append(points, TryFailurePoint{Kind: TryFailureArithmetic, ErrorType: a.types["ArithmeticError"], Expression: node, Token: node.Token})
+				}
 			}
 			points = a.appendStringMaterializationPoint(points, node, node.Token)
 		case *ast.PrefixExpression:

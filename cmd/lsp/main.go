@@ -558,7 +558,6 @@ func (s *server) handle(message rpcMessage) error {
 		}
 		s.documentSnapshots.Open(params.TextDocument.URI, params.TextDocument.Version, params.TextDocument.Text)
 		s.scheduleSourceDiagnostics(params.TextDocument.URI)
-		s.scheduleCrossTargetDiagnostics(params.TextDocument.URI)
 		return nil
 	case "textDocument/didChange":
 		var params didChangeParams
@@ -584,8 +583,7 @@ func (s *server) handle(message rpcMessage) error {
 		forgetCachedAnalysis(params.TextDocument.URI)
 		if s.crossTarget != nil {
 			s.crossTarget.mu.Lock()
-			delete(s.crossTarget.results, params.TextDocument.URI)
-			s.crossTarget.generation[params.TextDocument.URI]++
+			s.crossTarget.cancelWorkLocked(params.TextDocument.URI)
 			s.crossTarget.mu.Unlock()
 		}
 		if err := s.notify("textDocument/publishDiagnostics", map[string]any{
@@ -606,7 +604,6 @@ func (s *server) handle(message rpcMessage) error {
 			return nil
 		}
 		s.scheduleSourceDiagnostics(snapshot.URI)
-		s.scheduleCrossTargetDiagnostics(snapshot.URI)
 		return nil
 	case "textDocument/willSave":
 		var params willSaveParams

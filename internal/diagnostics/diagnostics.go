@@ -368,6 +368,9 @@ const (
 	// Target and Variant (MD-143).
 	// Rules: rules/compiler/compiler_known_members.md — § 113B(3).
 	BuildInfoUnavailable = "S1258"
+	// FloatTargetCapability reports float use on a plan whose known float
+	// contract lacks a required P20 semantic (P20 § 83).
+	FloatTargetCapability = "S1260"
 	// OperatorIncompatibleOperands identifies an unsupported binary operand pair.
 	OperatorIncompatibleOperands = "S1259"
 	// Unsafe context diagnostics from the canonical unsafe-operation
@@ -624,6 +627,7 @@ var registry = map[string]Definition{
 	NoActiveVariant:                       {ID: NoActiveVariant, Name: "attribute.no-active-variant", Family: "attribute", DefaultSeverity: SeverityError, Mandatory: true},
 	CompilerCapabilityUnavailable:         {ID: CompilerCapabilityUnavailable, Name: "compiler.capability-unavailable", Family: "compiler-capability", DefaultSeverity: SeverityError, Mandatory: true},
 	MutexTargetCapability:                 {ID: MutexTargetCapability, Name: "mutex.target-capability", Family: "concurrency", DefaultSeverity: SeverityError, Mandatory: true},
+	FloatTargetCapability:                 {ID: FloatTargetCapability, Name: "float.target-capability", Family: "types", DefaultSeverity: SeverityError, Mandatory: true},
 	PhysicalThreadCapability:              {ID: PhysicalThreadCapability, Name: "thread.physical-capability", Family: "concurrency", DefaultSeverity: SeverityError, Mandatory: true},
 	ObserverWaitUnavailable:               {ID: ObserverWaitUnavailable, Name: "observer.wait-unavailable", Family: "concurrency", DefaultSeverity: SeverityError, Mandatory: true},
 	SelectOperationNotSelectable:          {ID: SelectOperationNotSelectable, Name: "select.operation-not-selectable", Family: "concurrency", DefaultSeverity: SeverityError, Mandatory: true},

@@ -2,7 +2,7 @@
 
 - Status: Normative
 - Created: 2026-09-02
-- Last updated: 2026-09-02
+- Last updated: 2026-11-23 (§ 131 default construction, MD-136)
 - Document revision: 2.0
 - Sec language version: 0.1
 - Canonical path: `rules/memory/arena.md`
@@ -2835,3 +2835,39 @@ proven sufficient capacity.
 § 130(20) Compiler may remove checks/metadata/descriptors only after proof.
 
 § 130(21) Arena supports hosted, embedded, bare-metal, and runtime-free implementations without universal GC, reference counting, allocator runtime, handle table, or Arena registry.
+
+---
+
+## § 131 Default Arena construction (MD-136)
+
+Integrated 2026-11-23 from `rules/corrections/applied/MD-136-arena-default-construction-correction-2026-11-23.md` (owner approved 2026-11-23).
+
+§ 131(1) `Arena` is `Defaultable`. Its canonical default is a fresh, valid, empty Arena with zero initial byte capacity and no allocated or borrowed backing storage.
+
+§ 131(2) `let mut arena: Arena` and `Arena {}` are both valid and have equivalent default-construction semantics. `Arena {}` is the recognized builtin Arena default construction, not construction of an exposed user struct; it initializes and exposes no implementation fields.
+
+§ 131(3) Default construction is infallible and allocates no backing storage. It is valid in `@noAlloc`, `noalloc`, freestanding/BareMetal and every other context that supports ordinary Arena values.
+
+§ 131(4) Each executed default initialization establishes a distinct new ArenaDomain; two independent defaults never share a domain, even at zero capacity. The default Arena is live, owns and controls its domain, owns no backing allocation, borrows no buffer and has no live allocations.
+
+§ 131(5) The default Arena begins at its normal initial valid epoch and state version. Their representation and the epoch-exhaustion strategy stay with § 39 and open MD-140; default construction introduces no epoch counter value, wraparound, rekey or exhaustion trap.
+
+§ 131(6) Arena stays move-only and non-copyable with its existing destruction and terminal `Release` (§§ 43–46). Defaultability implies neither copyability nor shared ownership; a move preserves the domain identity, independent default initializations do not.
+
+§ 131(7) `Reset`, `Release` and normal scope destruction are legal on an empty default Arena; none invents backing ownership or reclaims backing never acquired. `Release` stays terminal and is not repeated by automatic destruction.
+
+§ 131(8) Default construction fixes the Arena's immutable growth/backing policy from the already resolved, frozen CompilationPlan (selected target/profile and positively verified provider capabilities); the Arena does not select a provider at a later allocation.
+
+§ 131(9) Where the plan positively establishes a compatible provider and a legal non-relocating growth strategy, a later operation requesting positive storage may acquire backing, with its existing fallible, allocation-effect, capacity, alignment, lifetime and provider-failure contracts.
+
+§ 131(10) Where the plan has no active, positively supported compatible provider (including `noalloc`), default construction still succeeds and yields a valid non-growing empty Arena. A later operation requiring unavailable positive backing is rejected at compile time under the profile/allocation readiness rules; zero-storage operations stay legal where their own contracts permit.
+
+§ 131(11) `Unknown` provider availability is not evidence of capacity. The compiler never invents a platform allocator, infers a host heap, activates a disabled capability or switches providers to satisfy an operation. The policy of a live domain never changes; provider identity, authority, reclamation and growth are not inferred from a lexical `Arena` variable and stay compatible with MD-034/MD-139.
+
+§ 131(12) A provider needing a fallible allocation or reservation merely to create the default Arena cannot serve that eager step: default construction stays infallible and allocation-free, and any supported positive backing is acquired later by the separately fallible operation.
+
+§ 131(13) The explicit constructors keep their contracts (§§ 10–14). `FromBuffer` uses explicitly borrowed backing, including its valid zero-length case; the default borrows none. `WithCapacity` and `Growable` stay fallible; `Arena {}` requests no initial backing or capacity and is not an alias of `Arena.Growable(0)`. New/Alloc, Reset, Release, borrowing, ownership, validity, effects, element default initialization and cleanup are unchanged; no allocator or reclamation API is added, and the Sec 0.1.1 Owner/Box reservation protocol is not settled here.
+
+§ 131(14) Parser and Sema recognize `Arena {}` and omitted Arena initialization without treating Arena as a user struct, synthesizing unverified fields or choosing backing heuristically. Sema publishes a resolved default-creation plan: fresh domain, initial epoch/state, no backing allocation, zero capacity, the frozen profile/growth classification, provider evidence or an explicitly absent provider, and cleanup obligations; it never fabricates a positive provider fact.
+
+§ 131(15) Semantic IR and Sec MLIR represent default creation distinctly, preserving the allocation-free initial state and profile-controlled future growth. Missing layout/provider/ABI/schema facts remain explicit unresolved lowering boundaries, never a partial native module or silent fallback. Diagnostics distinguish an allowed empty default from an invalid positive-storage operation on it, naming the Target/Variant, policy, requested operation and the missing or inactive provider capability.

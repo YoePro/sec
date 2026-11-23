@@ -46,6 +46,40 @@ type ResolvedStringAppend struct {
 	Fallible bool
 }
 
+// IsLowerableStringMaterialization admits only the direct text segment plans
+// represented by Semantic IR's string.materialize operation, including protected
+// text Results routed before materialization. Appends and formatted segments
+// retain their own unsupported boundary.
+// Rules: rules/compiler/semantic_ir.md — §17(6);
+// rules/memory/allocation.md — §§25–26; rules/foundations/operators.md — §29.3.
+func (a *Analyzer) IsLowerableStringMaterialization(fact AllocationContextFact) bool {
+	if fact.Kind != ArenaEffectStringMaterialization || !fact.ContextKnown {
+		return false
+	}
+	for root, site := range a.stringMaterializationSites {
+		if sourceTokenLocation(site.token) != sourceTokenLocation(fact.Source) {
+			continue
+		}
+		plan := a.stringConcatPlans[root]
+		if !plan.Runtime || plan.Interpolated {
+			continue
+		}
+		for _, segment := range plan.Segments {
+			switch segment.Kind {
+			case StringConcatConstantString, StringConcatString, StringConcatChar, StringConcatRune:
+			case StringConcatFallibleText:
+				if plan.Failure != StringMaterializationTry {
+					return false
+				}
+			default:
+				return false
+			}
+		}
+		return true
+	}
+	return false
+}
+
 // ResolvedStringAppendOf returns the append assigning value.
 func (a *Analyzer) ResolvedStringAppendOf(value ast.Expression) (ResolvedStringAppend, bool) {
 	if a == nil || value == nil {
@@ -212,7 +246,7 @@ func (a *Analyzer) stringPlanRequiresTry(plan StringConcatPlan) bool {
 // returned mode only stops a second diagnostic for that plan.
 func (a *Analyzer) reportStringMaterialization(site stringMaterializationSite, plan StringConcatPlan, protected bool) StringMaterializationFailureMode {
 	if site.reachable {
-		a.callGraph.addArenaEffect(site.callable, ArenaEffectSite{Kind: ArenaEffectAllocate, Source: site.token, MayAllocate: true})
+		a.callGraph.addArenaEffect(site.callable, ArenaEffectSite{Kind: ArenaEffectStringMaterialization, Source: site.token, MayAllocate: true})
 	}
 	if !plan.Allocation.Context.Available && a.stringSiteDemanded(site) {
 		if !a.AllocationCapabilities().ProfileKnown {

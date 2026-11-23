@@ -1,0 +1,38 @@
+module main
+
+interface Contract[T] {
+    fn Echo(value: T) T
+    static fn Mirror(value: T) T
+    property Value: ref T { get }
+    event Changed[T]
+}
+
+type Broken[T] struct { value: bool, storage: EventStorage[bool, 4] }
+impl Broken[T] implements Contract[T] {
+    fn Echo(value: T) bool { return true }
+    fn Mirror(value: T) T { return value }
+    property Value: ref bool { get { return ref self.value } }
+    event Changed using storage
+}
+
+type Missing[T] struct {}
+impl Missing[T] implements Contract[T] {}
+
+interface Writable[T, E: error] {
+    property Slot: T { try set value E }
+}
+enum OtherError error { Failed }
+type WrongSetter[T, E: error] struct {}
+impl WrongSetter[T, E] implements Writable[T, E] {
+    property Slot: T { try set next OtherError { return } }
+}
+
+type Duck[T] struct { value: T, storage: EventStorage[T, 4] }
+impl Duck[T] {
+    fn Echo(value: T) T { return value }
+    static fn Mirror(value: T) T { return value }
+    property Value: ref T { get { return ref self.value } }
+    event Changed using storage
+}
+fn Require[X: Contract[int]](value: ref X) void {}
+fn UseDuck(value: ref Duck[int]) void { Require(value) }

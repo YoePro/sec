@@ -482,6 +482,11 @@ func (p *Parser) parseCaptureLambdaExpression() ast.Expression {
 	return p.parseLambdaExpression(captures, captureOpen)
 }
 
+// parseLambdaExpression retains the committed callable and its body when a
+// missing return type can be represented by an invalid type before a real body.
+// It never infers void or treats the invalid signature as a valid callable.
+// Rules: rules/declarations/lambda-functions.md §2;
+// rules/compiler/parser_recovery.md §§14.5,14.7,15,46.2.
 func (p *Parser) parseLambdaExpression(captures []ast.LambdaCapture, captureOpen lexer.Token) ast.Expression {
 	defer p.withRecoveryContext(RecoveryContextLambda)()
 	expr := &ast.LambdaExpression{Token: p.curToken, CaptureOpen: captureOpen, Captures: captures}
@@ -505,11 +510,17 @@ func (p *Parser) parseLambdaExpression(captures []ast.LambdaCapture, captureOpen
 	}
 
 	if !isTypeStart(p.peekToken.Type) {
-		p.addError("lambda return type is required at %d:%d", p.peekToken.Line, p.peekToken.Column)
-		return nil
+		unexpected := p.peekToken
+		p.addDiagnostic(compilerdiagnostics.ParserInvalidTypeReference, unexpected, nil, &unexpected,
+			"lambda return type is required at %d:%d", unexpected.Line, unexpected.Column)
+		if unexpected.Type != lexer.LBRACE {
+			return nil
+		}
+		expr.ReturnType = p.invalidTypeReference(unexpected, "")
+	} else {
+		p.nextToken()
+		expr.ReturnType = p.parseTypeReference()
 	}
-	p.nextToken()
-	expr.ReturnType = p.parseTypeReference()
 
 	if p.peekToken.Type == lexer.ARROW {
 		// lambda-functions.md § 2: a lambda always has a block body; the

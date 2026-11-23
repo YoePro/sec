@@ -176,8 +176,13 @@ LogicalResult DynamicArrayElementPlaceOp::verify() {
   if (!place || place.getElementType() != array->getElementType() ||
       place.getAuthority() != owner.getAuthority())
     return emitOpError("yields an element Place with the owner's authority");
-  if (getBoundsKind() != "runtime-check" || getBoundsProof() != "guarded")
-    return emitOpError("has no length proof; it requires its runtime bounds guard");
+  // Section 41: a runtime length admits the guarded check or a frontend
+  // branch/analysis proof of `index < Len`; never a constant or range proof.
+  bool guarded = getBoundsKind() == "runtime-check" && getBoundsProof() == "guarded";
+  bool proven = getBoundsKind() == "proven-safe" &&
+                (getBoundsProof() == "branch" || getBoundsProof() == "analysis");
+  if (!guarded && !proven)
+    return emitOpError("requires its runtime bounds guard or a branch/analysis length proof");
   if (getBackingDomain() == 0)
     return emitOpError("must carry the owner's backing-domain dependency");
   return success();
@@ -191,6 +196,22 @@ LogicalResult DynamicArrayAppendPreparedOp::verify() {
     return failure();
   if (getElement().getType() != array->getElementType())
     return emitOpError("transfers one element of the array's element type");
+  return success();
+}
+
+LogicalResult DynamicArrayAppendRangePreparedOp::verify() {
+  if (failed(requireDynamicArraySchema(*this)))
+    return failure();
+  auto array = ownerArray(*this, getOwner(), true);
+  if (failed(array))
+    return failure();
+  Type element = array->getElementType();
+  if (getLower().getType() != element)
+    return emitOpError("takes a lower bound of the array's element type");
+  if (!isIndexType(element) && !isa<RuneType>(element))
+    return emitOpError("requires a built-in integer or rune element");
+  if (!positiveCount(getCount()))
+    return emitOpError("requires a positive canonical value count");
   return success();
 }
 

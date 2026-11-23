@@ -1,0 +1,21 @@
+module main
+
+interface Contract[T] {
+    fn Echo(value: T) T
+    static fn Mirror(value: T) T
+    property Value: ref T { get }
+    event Changed[T]
+}
+
+type Box[T] struct { value: T, storage: EventStorage[T, 4] }
+impl Box[T] implements Contract[T] {
+    fn Echo(value: T) T { return value }
+    static fn Mirror(value: T) T { return value }
+    property Value: ref T { get { return ref self.value } }
+    event Changed using storage
+}
+
+fn Require[X: Contract[int]](value: ref X) int { return value.Echo(1) }
+fn Use(value: ref Box[int]) int { return Require(value) }
+fn RequireBool[X: Contract[bool]](value: ref X) bool { return value.Echo(true) }
+fn UseBool(value: ref Box[bool]) bool { return RequireBool(value) }

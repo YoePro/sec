@@ -178,8 +178,21 @@ LogicalResult SecDialect::verifyOperationAttribute(Operation *operation,
     if (number != 1 && number != 2 && number != 3 && number != 4 &&
         number != 5 && number != 6 && number != 7 && number != 8 &&
         number != 9 && number != 10 && number != 11 && number != 12 && number != 13 &&
-        number != 14)
+        number != 14 && number != 15 && number != 16)
       return operation->emitError("unsupported Sec dialect schema version");
+    // SEC-MLIR-P19 section 105: Arena and allocation-context types exist
+    // only from schema 15, also inside signatures and type attributes.
+    if (number < 15) {
+      bool hasArena = false;
+      module.walk([&](Operation *nested) {
+        hasArena |= bool(findOperationType(nested, [](Type type) {
+          return isa<ArenaType, AllocContextType>(type);
+        }));
+      });
+      if (hasArena)
+        return operation->emitError()
+               << "Arena and allocation-context types require schema 15, module declares schema " << number;
+    }
     // Reject MD-077 identities recursively, including type attributes and
     // signatures, before schema 11. No default schema change is implied.
     // Rules: rules/mlir/sec_mlir_dialect.md, v11.41.1 Types and admission.
@@ -492,8 +505,12 @@ LogicalResult SecDialect::verifyOperationAttribute(Operation *operation,
   if (name == "sec.pinned")
     return requireBool();
   if (name == "sec.reference") {
-    if (operation->getNumResults() != 1 ||
-        !isReferenceValueType(operation->getResult(0).getType()))
+    // P19 sections 113-114: a checked Arena allocation annotates its
+    // candidate reference/slice, followed by failed and AllocationError.
+    bool arenaCandidate = isa<ArenaNewOp, ArenaAllocOp>(operation) && operation->getNumResults() == 3 &&
+                          isReferenceValueType(operation->getResult(0).getType());
+    if (!arenaCandidate && (operation->getNumResults() != 1 ||
+        !isReferenceValueType(operation->getResult(0).getType())))
       return operation->emitError(
           "sec.reference annotates an operation with one !sec.ref or !sec.ref_mut result, or a schema-12 slice result");
     if (failed(verifyReferenceDictionary(operation, value))) return failure();

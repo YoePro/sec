@@ -4,7 +4,8 @@ import "sec/internal/ast"
 
 // inferExecutionContextCall resolves the canonical static current-execution
 // surface: Task.Current() TaskContext, Thread.Current() ThreadContext, and the
-// Task.Yield()/Thread.Yield() operations. Task.Current/Task.Yield record the
+// Task.Yield()/Thread.Yield() operations and the fallible Thread.AttachCurrent
+// token acquisition signature. Task.Current/Task.Yield record the
 // logical-task requirement checked against every execution root
 // (task_context_requirement.go); the physical-thread capability of
 // Thread.Current is a target-profile check (cancellation.md § 24).
@@ -12,6 +13,7 @@ import "sec/internal/ast"
 // Rules:
 //   - rules/concurrency/cancellation.md — §§ 8–11,24
 //   - rules/concurrency/scheduling.md — Task.Yield and Thread.Yield
+//   - rules/concurrency/thread_local.md — §§30–31 (attachment result surface)
 func (a *Analyzer) inferExecutionContextCall(expr *ast.CallExpression) (Type, expressionValue, bool) {
 	member, ok := expr.Callee.(*ast.MemberExpression)
 	if !ok || member.Property == nil {
@@ -24,6 +26,15 @@ func (a *Analyzer) inferExecutionContextCall(expr *ast.CallExpression) (Type, ex
 	name := owner.Value + "." + member.Property.Value
 	var result Type
 	switch member.Property.Value {
+	case "AttachCurrent":
+		if owner.Value != "Thread" {
+			return Type{}, expressionValue{}, false
+		}
+		known, found := compilerKnownMember(a.types["Thread"], "AttachCurrent", true)
+		if !found {
+			return Type{}, expressionValue{}, false
+		}
+		result = known.Result
 	case "Current":
 		result = a.types[owner.Value+"Context"]
 	case "Yield":
@@ -33,6 +44,11 @@ func (a *Analyzer) inferExecutionContextCall(expr *ast.CallExpression) (Type, ex
 	}
 	if !a.checkCompilerKnownCallArity(expr, name, 0, 0) {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+	}
+	if member.Property.Value == "AttachCurrent" {
+		known, _ := compilerKnownMember(a.types["Thread"], "AttachCurrent", true)
+		a.compilerKnownMemberFacts[sourceTokenLocation(member.Property.Token)] = known
+		a.recordThreadAttachmentEffects(member.Property.Token)
 	}
 	if owner.Value == "Thread" && member.Property.Value == "Current" && !a.resolveThreadCurrentCapability(expr) {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true

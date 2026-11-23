@@ -1,0 +1,24 @@
+module main
+
+enum WriteError error { Failed }
+
+interface Writable[T, E: error] {
+    property Slot: T { try set value E }
+}
+
+type Editable[T, E: error] struct {}
+impl Editable[T, E] implements Writable[T, E] {
+    property Slot: T { try set next E { return } }
+}
+
+fn RequireWritable[X: Writable[int, WriteError]](value: ref X) void {}
+fn UseWritable(value: ref Editable[int, WriteError]) void { RequireWritable(value) }
+
+enum SecondError error { Failed }
+interface Child[E: error, T] implements Writable[T, E] {}
+type Inherited[E: error, T] struct {}
+impl Inherited[E, T] implements Child[E, T] {
+    property Slot: T { try set next E { return } }
+}
+fn RequireChild[X: Child[SecondError, bool]](value: ref X) void {}
+fn UseChild(value: ref Inherited[SecondError, bool]) void { RequireChild(value) }

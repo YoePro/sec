@@ -103,7 +103,11 @@ LogicalResult verifyFunction(func::FuncOp function) {
       return transition(establish.getOwner(), "establish-domain", establish.getDomain());
     if (auto advance = dyn_cast<sec::StorageAdvanceEpochOp>(op))
       return transition(advance.getOwner(), "advance-epoch", advance.getDomain());
-    if (auto append = dyn_cast<sec::DynamicArrayAppendPreparedOp>(op)) {
+    if (isa<sec::DynamicArrayAppendPreparedOp, sec::DynamicArrayAppendRangePreparedOp>(op)) {
+      Value appendOwner = op->getOperand(0);
+      StringRef wantCount = "1";
+      if (auto range = dyn_cast<sec::DynamicArrayAppendRangePreparedOp>(op))
+        wantCount = range.getCount();
       Block *block = op->getBlock();
       if (&block->front() != op || block->hasNoPredecessors())
         return op->emitOpError("must open a block entered after capacity is ensured"), WalkResult::interrupt();
@@ -114,17 +118,31 @@ LogicalResult verifyFunction(func::FuncOp function) {
             auto *terminator = predecessor->getTerminator();
             Operation *test = terminator ? terminator->getPrevNode() : nullptr;
             auto capacity = dyn_cast_or_null<sec::DynamicArrayHasCapacityOp>(test);
-            ensured |= owner == append.getOwner() && capacity && capacity.getOwner() == owner;
+            ensured |= owner == appendOwner && capacity && capacity.getOwner() == owner;
           }
         if (!ensured && !predecessor->empty()) {
           Operation &first = predecessor->front();
           bool applied = (isa<sec::StorageEstablishDomainOp>(first) || isa<sec::StorageAdvanceEpochOp>(first)) &&
-                         first.getOperand(0) == append.getOwner() &&
+                         first.getOperand(0) == appendOwner &&
                          isa<cf::BranchOp>(predecessor->getTerminator());
           ensured = applied;
         }
         if (!ensured)
           return op->emitOpError("is reachable without ensured capacity"), WalkResult::interrupt();
+        // The ensured capacity covers exactly the appended count.
+        StringRef ensuredCount;
+        if (auto *terminator = predecessor->getTerminator())
+          if (auto capacity = dyn_cast_or_null<sec::DynamicArrayHasCapacityOp>(terminator->getPrevNode()))
+            if (capacity.getOwner() == appendOwner)
+              ensuredCount = capacity.getCount();
+        if (ensuredCount.empty())
+          if (Block *growth = predecessor->getSinglePredecessor())
+            if (auto grow = dyn_cast<sec::DynamicArrayGrowBackingOp>(&growth->front()))
+              ensuredCount = grow.getCount();
+        if (ensuredCount != wantCount)
+          return op->emitOpError("appends ") << wantCount << " values but the ensured capacity covers "
+                                             << (ensuredCount.empty() ? StringRef("an unknown count") : ensuredCount),
+                 WalkResult::interrupt();
       }
     }
     return WalkResult::advance();

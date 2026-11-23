@@ -43,7 +43,12 @@ const (
 	OpDynamicArrayHasCapacity    OpKind = "dynamic-array.has-capacity"
 	OpDynamicArrayGrowBacking    OpKind = "dynamic-array.grow-backing"
 	OpDynamicArrayAppendPrepared OpKind = "dynamic-array.append-prepared"
-	OpDynamicArrayAllocate       OpKind = "dynamic-array.allocate"
+	// OpDynamicArrayAppendRangePrepared appends the count consecutive values
+	// lower, lower+1, ... of a compile-time range segment into capacity ensured
+	// for exactly that count; one compact operation, never one per element
+	// (package18 §§ 35, 65; collections.md § 6.7; P14 compact range segments).
+	OpDynamicArrayAppendRangePrepared OpKind = "dynamic-array.append-range-prepared"
+	OpDynamicArrayAllocate            OpKind = "dynamic-array.allocate"
 )
 
 // BackingMetadata carries resolved Sema storage and allocation facts; it
@@ -96,7 +101,7 @@ func isStorageTransition(kind OpKind) bool {
 
 func isDynamicArrayGrowth(kind OpKind) bool {
 	switch kind {
-	case OpDynamicArrayHasBacking, OpDynamicArrayHasCapacity, OpDynamicArrayGrowBacking, OpDynamicArrayAppendPrepared, OpDynamicArrayAllocate:
+	case OpDynamicArrayHasBacking, OpDynamicArrayHasCapacity, OpDynamicArrayGrowBacking, OpDynamicArrayAppendPrepared, OpDynamicArrayAppendRangePrepared, OpDynamicArrayAllocate:
 		return true
 	}
 	return false
@@ -210,6 +215,20 @@ func verifyDynamicArrayStorageOperation(types *TypeTable, op Operation, values m
 		}
 		if len(op.Operands) != 2 || len(op.Results) != 0 || values[op.Operands[1]].Type != array.Element {
 			return fmt.Errorf("dynamic-array.append-prepared transfers one element of the array's element type")
+		}
+	case OpDynamicArrayAppendRangePrepared:
+		array, err := dynamicArrayOwnerOperand(types, op, values, true)
+		if err != nil {
+			return err
+		}
+		if len(op.Operands) != 2 || len(op.Results) != 0 || values[op.Operands[1]].Type != array.Element {
+			return fmt.Errorf("dynamic-array.append-range-prepared takes the owner and a lower bound of the array's element type")
+		}
+		if op.Integer == nil || op.Integer.Sign() <= 0 {
+			return fmt.Errorf("dynamic-array.append-range-prepared requires a positive value count")
+		}
+		if element, ok := types.Lookup(array.Element); !ok || !isRangeSegmentElement(element) {
+			return fmt.Errorf("dynamic-array.append-range-prepared requires a built-in integer or rune element")
 		}
 	case OpStorageEstablishDomain, OpStorageAdvanceEpoch, OpStorageEndDomain, OpStorageReclaim:
 		if len(op.Results) != 0 || len(op.Operands) != 1 {
@@ -341,7 +360,7 @@ func verifyDynamicArrayTransitions(fn *Function) error {
 				if index != 0 || !found || g.transition != string(want) || g.domain != op.Backing.Domain || g.owner != op.Operands[0] || len(predecessors[block.ID]) != 1 {
 					return fmt.Errorf("%s in ^%d must open the success edge of the matching dynamic-array.grow-backing", op.Kind, block.ID)
 				}
-			case OpDynamicArrayAppendPrepared:
+			case OpDynamicArrayAppendPrepared, OpDynamicArrayAppendRangePrepared:
 				if index != 0 || len(predecessors[block.ID]) == 0 {
 					return fmt.Errorf("dynamic-array.append-prepared in ^%d must open a block entered after capacity is ensured", block.ID)
 				}
@@ -357,6 +376,10 @@ func verifyDynamicArrayTransitions(fn *Function) error {
 					}
 					if !ensured {
 						return fmt.Errorf("dynamic-array.append-prepared in ^%d is reachable from ^%d without ensured capacity", block.ID, predecessor)
+					}
+					// The ensured capacity covers exactly the appended count.
+					if want := appendedCount(op); !ensuredCountMatches(blockByID, predecessors, predecessor, op.Operands[0], want) {
+						return fmt.Errorf("%s in ^%d appends %s values but the capacity ensured on the edge from ^%d covers another count", op.Kind, block.ID, want.String(), predecessor)
 					}
 				}
 			}
@@ -376,7 +399,9 @@ func blockEndsWithTestOf(block *Block, owner ValueID) bool {
 }
 
 // buildDynamicArrayAppend lowers `values.Append(value)` for a trivially
-// copyable and destructible element. The receiver Place is formed first and
+// copyable and destructible element, and `values.Append(lower..upper)` as one
+// all-or-nothing growth by the segment's count followed by one compact
+// append-range-prepared (an empty segment appends nothing). The receiver Place is formed first and
 // the argument evaluated second. An owner without backing establishes its
 // domain; an owner without spare capacity grows and advances its epoch
 // (Sema rejects a live element or slice borrow, S1162); then the element is
@@ -386,8 +411,22 @@ func blockEndsWithTestOf(block *Block, owner ValueID) bool {
 // rules/mlir/packages/sec-mlir-dialect_package18.md — §§ 25–31, 35–37, 58–68.
 func (fb *functionBuilder) buildDynamicArrayAppend(call *ast.CallExpression, member *ast.MemberExpression, plan sema.ResolvedAllocationOperationPlan) (builtValue, error) {
 	token := member.Property.Token
-	if plan.Operation != sema.AllocationDynamicArrayAppend || len(call.Arguments) != 1 {
-		return builtValue{}, fb.unsupported("dynamic-array range Append (P18-17)", token)
+	rangeEntry, isRange := fb.owner.analyzer.ResolvedRangeAppendOf(call)
+	if len(call.Arguments) != 1 || (plan.Operation != sema.AllocationDynamicArrayAppend && plan.Operation != sema.AllocationDynamicArrayAppendRange) ||
+		(plan.Operation == sema.AllocationDynamicArrayAppendRange) != isRange {
+		return builtValue{}, fb.unsupported("dynamic-array Append without a resolved single-value or range plan", token)
+	}
+	count := big.NewInt(1)
+	if isRange {
+		if rangeEntry.Length == nil || rangeEntry.RangeLower == nil || plan.Count == nil || plan.Count.Cmp(rangeEntry.Length) != 0 {
+			return builtValue{}, fmt.Errorf("range Append plan disagrees with its resolved range segment")
+		}
+		count = new(big.Int).Set(rangeEntry.Length)
+		if count.Sign() == 0 {
+			// collections.md § 6.7: an empty segment appends nothing,
+			// establishes no backing and succeeds (package18 § 22).
+			return fb.buildEmptyRangeAppend(call, member)
+		}
 	}
 	if !fb.owner.triviallyDestructible(plan.ElementType) || fb.owner.copyClassificationOf(plan.ElementType) != sema.CopyTrivial {
 		return builtValue{}, fb.unsupported("Append of a non-trivial element (element ownership on failure, MD-135)", token)
@@ -408,8 +447,14 @@ func (fb *functionBuilder) buildDynamicArrayAppend(call *ast.CallExpression, mem
 	if err != nil {
 		return builtValue{}, err
 	}
-	value, err := fb.buildExpr(call.Arguments[0], element)
-	if err != nil {
+	var value builtValue
+	if isRange {
+		if typ, _ := fb.owner.module.Types.Lookup(element); !isRangeSegmentElement(typ) {
+			return builtValue{}, fb.unsupported("range Append of a non-integer element", token)
+		}
+		// One compact segment: the constant lower bound and the value count.
+		value = fb.result(Operation{Kind: OpConstInt, Integer: new(big.Int).Set(rangeEntry.RangeLower), Location: location(expressionToken(call.Arguments[0]))}, element)
+	} else if value, err = fb.buildExpr(call.Arguments[0], element); err != nil {
 		return builtValue{}, err
 	}
 	resultSema, ok := fb.owner.analyzer.TypeOf(call)
@@ -437,8 +482,99 @@ func (fb *functionBuilder) buildDynamicArrayAppend(call *ast.CallExpression, mem
 		return builtValue{}, fb.unsupported("CollectionError.AllocationFailed", token)
 	}
 	loc := location(token)
+	failure, join := fb.newBlock(), fb.newBlock()
+	allocationError := fb.newValue(allocationType, OwnershipImmediate, loc)
+	failure.Parameters = []Value{allocationError}
+	joined := fb.newValue(resultType, OwnershipImmediate, loc)
+	join.Parameters = []Value{joined}
+	appendOp := Operation{Kind: OpDynamicArrayAppendPrepared, Operands: []ValueID{owner.id, value.id}, Location: loc}
+	if isRange {
+		appendOp = Operation{Kind: OpDynamicArrayAppendRangePrepared, Operands: []ValueID{owner.id, value.id}, Integer: new(big.Int).Set(count), Location: loc}
+	}
+	fb.emitEnsuredAppend(owner, appendOp, count, plan, allocationType, failure, loc)
+	success := fb.result(Operation{Kind: OpResultOk, Location: loc}, resultType)
+	fb.emit(Operation{Kind: OpBranch, Successors: []BranchTarget{{Block: join.ID, Arguments: []ValueID{success.id}}}, Location: loc})
+
+	fb.current = failure
+	reason := fb.result(Operation{Kind: OpEnumConstant, EnumCase: allocationFailed, Location: loc}, collectionType)
+	errorResult := fb.result(Operation{Kind: OpResultErr, Operands: []ValueID{reason.id}, Location: loc}, resultType)
+	fb.emit(Operation{Kind: OpBranch, Successors: []BranchTarget{{Block: join.ID, Arguments: []ValueID{errorResult.id}}}, Location: loc})
+
+	fb.current = join
+	return builtValue{id: joined.ID, typ: resultType}, nil
+}
+
+// appendedCount is the number of values an append operation adds.
+// Rules: rules/mlir/dialect-versions/sec_mlir_dialect_v14.md — § 13A.
+func appendedCount(op Operation) *big.Int {
+	if op.Kind == OpDynamicArrayAppendRangePrepared && op.Integer != nil {
+		return op.Integer
+	}
+	return big.NewInt(1)
+}
+
+// ensuredCountMatches checks the count of the state test or growth that
+// ensured capacity on the edge from predecessor: a true has-capacity test
+// ending predecessor, or the grow-backing opening the single predecessor of
+// a storage-transition block (package18 §§ 36–37, 65–67).
+// Rules: rules/mlir/packages/sec-mlir-dialect_package18.md — §§ 35–37, 64–67.
+func ensuredCountMatches(blockByID map[BlockID]*Block, predecessors map[BlockID][]BlockID, predecessor BlockID, owner ValueID, want *big.Int) bool {
+	source := blockByID[predecessor]
+	if source == nil {
+		return false
+	}
+	if blockEndsWithTestOf(source, owner) {
+		test := source.Operations[len(source.Operations)-2]
+		return test.Integer != nil && test.Integer.Cmp(want) == 0
+	}
+	if len(predecessors[predecessor]) != 1 {
+		return false
+	}
+	grow := blockByID[predecessors[predecessor][0]]
+	if grow == nil || len(grow.Operations) == 0 || grow.Operations[0].Kind != OpDynamicArrayGrowBacking || grow.Operations[0].Integer == nil {
+		return false
+	}
+	return grow.Operations[0].Integer.Cmp(want) == 0
+}
+
+// isRangeSegmentElement admits the element types of a compile-time range
+// segment: built-in integers, byte and rune (range_segments.go in Sema).
+// Rules: rules/collections/collections.md — §§ 5.6a, 6.7.
+func isRangeSegmentElement(t Type) bool {
+	switch t.Kind {
+	case TypeInt, TypeUint, TypeByte, TypeRune:
+		return true
+	}
+	return false
+}
+
+// buildEmptyRangeAppend lowers Append of an empty range segment: the owner
+// is unchanged, no backing is established and the result is Ok.
+// Rules: rules/collections/collections.md — § 6.7; rules/mlir/packages/sec-mlir-dialect_package18.md — § 22.
+func (fb *functionBuilder) buildEmptyRangeAppend(call *ast.CallExpression, member *ast.MemberExpression) (builtValue, error) {
+	if _, err := fb.dynamicArrayOwnerPlace(member.Object); err != nil {
+		return builtValue{}, err
+	}
+	resultSema, ok := fb.owner.analyzer.TypeOf(call)
+	if !ok {
+		return builtValue{}, fmt.Errorf("Append has no resolved result type")
+	}
+	resultType, err := fb.owner.internType(resultSema)
+	if err != nil {
+		return builtValue{}, err
+	}
+	return fb.result(Operation{Kind: OpResultOk, Location: location(member.Property.Token)}, resultType), nil
+}
+
+// emitEnsuredAppend emits the growth protocol of one append and the append
+// itself: an owner without backing grows with establish-domain, one without
+// capacity for count values grows with advance-epoch (reclaiming relocated
+// backing under its paired plan), and both continue to appendOp. A failed
+// growth branches to failure with its AllocationError; the owner is
+// unchanged. fb.current is the block after appendOp.
+// Rules: rules/mlir/packages/sec-mlir-dialect_package18.md — §§ 25–31, 35–37, 58–68.
+func (fb *functionBuilder) emitEnsuredAppend(owner builtValue, appendOp Operation, count *big.Int, plan sema.ResolvedAllocationOperationPlan, allocationType TypeID, failure *Block, loc Location) {
 	boolean := fb.owner.module.Types.Intern(Type{Kind: TypeBool, Name: "bool"})
-	count := big.NewInt(1)
 	facts := BackingMetadata{
 		Domain: uint32(plan.Transition.Domain), Allocation: uint32(plan.Allocation), Context: uint32(plan.ContextIdentity),
 		Origin: string(plan.StorageOrigin), Relation: string(plan.BackingRelation), Authority: string(plan.ReclamationAuthority),
@@ -449,12 +585,7 @@ func (fb *functionBuilder) buildDynamicArrayAppend(call *ast.CallExpression, mem
 		copied.Transition = string(transition)
 		return &copied
 	}
-	absent, existing, appendBlock, failure, join := fb.newBlock(), fb.newBlock(), fb.newBlock(), fb.newBlock(), fb.newBlock()
-	allocationError := fb.newValue(allocationType, OwnershipImmediate, loc)
-	failure.Parameters = []Value{allocationError}
-	joined := fb.newValue(resultType, OwnershipImmediate, loc)
-	join.Parameters = []Value{joined}
-
+	absent, existing, appendBlock := fb.newBlock(), fb.newBlock(), fb.newBlock()
 	has := fb.result(Operation{Kind: OpDynamicArrayHasBacking, Operands: []ValueID{owner.id}, Location: loc}, boolean)
 	fb.emit(Operation{Kind: OpCondBranch, Operands: []ValueID{has.id}, Successors: []BranchTarget{{Block: existing.ID}, {Block: absent.ID}}, Location: loc})
 	grow := func(transition sema.BackingTransitionKind, apply OpKind) {
@@ -478,17 +609,6 @@ func (fb *functionBuilder) buildDynamicArrayAppend(call *ast.CallExpression, mem
 	fb.emit(Operation{Kind: OpCondBranch, Operands: []ValueID{spare.id}, Successors: []BranchTarget{{Block: appendBlock.ID}, {Block: growBlock.ID}}, Location: loc})
 	fb.current = growBlock
 	grow(sema.BackingTransitionAdvanceEpoch, OpStorageAdvanceEpoch)
-
 	fb.current = appendBlock
-	fb.emit(Operation{Kind: OpDynamicArrayAppendPrepared, Operands: []ValueID{owner.id, value.id}, Location: loc})
-	success := fb.result(Operation{Kind: OpResultOk, Location: loc}, resultType)
-	fb.emit(Operation{Kind: OpBranch, Successors: []BranchTarget{{Block: join.ID, Arguments: []ValueID{success.id}}}, Location: loc})
-
-	fb.current = failure
-	reason := fb.result(Operation{Kind: OpEnumConstant, EnumCase: allocationFailed, Location: loc}, collectionType)
-	errorResult := fb.result(Operation{Kind: OpResultErr, Operands: []ValueID{reason.id}, Location: loc}, resultType)
-	fb.emit(Operation{Kind: OpBranch, Successors: []BranchTarget{{Block: join.ID, Arguments: []ValueID{errorResult.id}}}, Location: loc})
-
-	fb.current = join
-	return builtValue{id: joined.ID, typ: resultType}, nil
+	fb.emit(appendOp)
 }

@@ -66,6 +66,8 @@ std::optional<int64_t> failureReasonCode(StringRef reason) {
       .Case("overflow", 1)
       .Case("division-by-zero", 2)
       .Case("invalid-shift", 3)
+      .Case("scale-overflow", 4)
+      .Case("precision-exhausted", 5)
       .Default(std::nullopt);
 }
 
@@ -357,6 +359,11 @@ Type resolvedStaticType(Type type, unsigned indexBits) {
     return IntegerType::get(context, integer.getWidth());
   if (isa<sec::IntType, sec::UIntType>(type))
     return IntegerType::get(context, indexBits);
+  // P20 § 76: binary32/binary64 statics; plain float follows the plan width.
+  if (type.isF32() || type.isF64())
+    return type;
+  if (isa<sec::FloatType>(type))
+    return indexBits == 32 ? Type(Float32Type::get(context)) : Type(Float64Type::get(context));
   return Type();
 }
 
@@ -386,15 +393,24 @@ struct LowerStaticStoragePass
                            << global.getType() << " yet";
         return signalPassFailure();
       }
-      unsigned width = cast<IntegerType>(type).getWidth();
       StringRef initial = global.getInitial();
-      APInt value = initial == "true"    ? APInt(1, 1)
-                    : initial == "false" ? APInt(1, 0)
-                                         : APInt(width, initial, 10);
       OpBuilder builder(global);
+      Attribute initialValue;
+      if (auto floatType = dyn_cast<FloatType>(type)) {
+        // The canonical bit pattern, never a reparsed lexeme (P20 § 76).
+        StringRef digits = initial;
+        digits.consume_front("bits:");
+        APInt bits(floatType.getWidth(), digits, 10);
+        initialValue = builder.getFloatAttr(type, APFloat(floatType.getFloatSemantics(), bits));
+      } else {
+        unsigned width = cast<IntegerType>(type).getWidth();
+        APInt value = initial == "true"    ? APInt(1, 1)
+                      : initial == "false" ? APInt(1, 0)
+                                           : APInt(width, initial, 10);
+        initialValue = builder.getIntegerAttr(type, value);
+      }
       builder.create<LLVM::GlobalOp>(global.getLoc(), type, !global.getIsMutable(),
-                                     LLVM::Linkage::Internal, global.getSymName(),
-                                     builder.getIntegerAttr(type, value));
+                                     LLVM::Linkage::Internal, global.getSymName(), initialValue);
       global.erase();
     }
     SmallVector<Operation *> accesses;

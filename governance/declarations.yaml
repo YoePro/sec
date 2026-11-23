@@ -622,7 +622,7 @@ integrations:
     area: frontend-analysis-and-tooling
     status: partial
     integrated: "2026-09-03"
-    revised: "2026-11-10"
+    revised: "2026-11-23"
     document_revision: "2.1"
     summary: >-
       Implements canonical behavioral interface declarations, inherited
@@ -662,6 +662,7 @@ integrations:
       - vscode/syntaxes/sec.tmLanguage.json
       - internal/parser/interface_receivers.go
       - internal/sema/interface_receiver_contract.go
+      - internal/sema/interface_conformance.go
     tests:
       - internal/sema/interface_provenance_test.go
       - cmd/lsp/interface_member_hover_test.go
@@ -685,6 +686,10 @@ integrations:
       - testdata/sema/interface_receiver_contract_valid.sec
       - testdata/formatter/header_spacing.sec
       - testdata/formatter/header_spacing.expected.sec
+      - internal/sema/interface_overload_matrix_test.go
+      - cmd/compiler/interface_overload_matrix_test.go
+      - cmd/lsp/interface_overload_matrix_test.go
+      - testdata/sema/interface_overload_matrix
     implemented:
       - "MD-120 error-constrained generic interfaces (2026-11-01; interfaces.md §§ 7.1, 9): complete concrete conformance, instantiated borrowed views, rejection of a bare view and of FormatSink[IOError] -> FormatSink[error], E inferred from a unique compatible conformance (conformingViewArgument) (rules/corrections/applied/MD-120-generic-error-parameters-approved-20261031-20261101.md; TestGenericErrorParameters, TestGenericErrorChannelSpecializations, TestGenericErrorUnionInstance, TestErrorCategoryConstraintSyntax, TestGenericErrorParameterHover)"
       - "interface conformance diagnostics and Self (2026-10-04): `Self` in requirement parameter and result types resolves to a placeholder during interface resolution and is substituted with the conforming type before conformance comparison and in generic-constraint satisfaction; missing members report S1106 interfaces.missing-member on the implements reference and incompatible members S1107 interfaces.incompatible-member on the implementing member, both with the requirement as related location labelled interface requirement (sema.Error.RelatedLabel, shown by CLI, JSON, and LSP); incompatible methods name the first difference and show the Self-substituted requirement as help, so platform implementations such as stdlib/os file.windows.amd64.sec now show their conformance errors in their own file. Tests: internal/sema/interface_conformance_test.go"
@@ -699,7 +704,6 @@ integrations:
       - mutable interface call rejection through shared references and acceptance through mutable references
       - pre-ownership-v2 consuming interface call rejection through borrowed references
       - pre-ownership-v2 owned interface receiver consumption and later-use diagnostics
-      - exact method parameter/result/static compatibility for represented interface requirements and property accessor compatibility; same-name overload sets remain partial
       - direct, indirect, and self-referential inheritance cycle diagnostics
       - defining-module ownership inherited from canonical primary impl validation
       - focused parser diagnostic for stored-field-shaped interface requirements
@@ -711,11 +715,12 @@ integrations:
       - "stable interface diagnostics (2026-11-01): P2038 parser.interface-conformance-placement identifies obsolete type-level conformance, implements on impl extends and impl Interface for Type, with exact keyword ranges and canonical primary-impl repair help; S1190 interfaces.conformance-placement guards recovered/programmatic extension ASTs. RecoveryInfo.Reported suppresses duplicate parser/Sema errors without accepting the invalid clause. S1189 interfaces.receiver-capability covers rejected method receivers and shared Iterator view iteration, with actionable authority advice and method declaration links. Existing stricter-than-shared conformance mismatches retain dedicated S1107 with their requirement link. Source fixtures, public CLI JSON and LSP regressions retain identities/ranges/help and accept valid exclusive calls. No interface runtime representation or dispatch lowering is claimed."
       - Whole-self consuming interface receiver requirements are rejected with P2039 parser.consuming-interface-receiver. Recovery retains InvalidMembers and later valid requirements without registering the rejected methods; Sema independently rejects constructed/imported consuming-receiver AST contracts with S1211 interfaces.consuming-receiver. Completion consumes the resulting valid semantic method set. Consuming ordinary parameters and consuming callable-value types remain accepted and formatted, with source-backed parser/Sema/CLI/LSP regressions and invalid IR artifact suppression (2026-11-10).
       - "2026-11-11: receiver capability and inherited-requirement provenance in tooling (interfaces.md §§ 3, 5-7). Sema records the declaring interface of every method, property and event requirement and, per conformance, each implemented member with its requirement/implementation tokens, declaring interface, requirement receiver capability (`mut fn`), whether the implementation mutates its receiver, and static category (InterfaceConformanceFact.Members, InterfaceMemberFactsAt, InterfaceRequirementOwnerAt). Hover at a requirement shows its declaring interface, capability and implementing types (via the inheriting interface); hover at an implementing member shows the conformed interface, inherited-from provenance and both capabilities. Completion on interface views keeps `mut fn` in the label, hides it from shared views and names the declaring interface of inherited requirements. Missing/incompatible inherited members (S1106/S1107) help now opens with `X inherits M from Y.` (cmd/lsp/interface_member_hover.go; TestInterfaceMemberHover, TestInterfaceCompletionShowsCapabilityAndProvenance, TestInterfaceInheritedRequirementProvenance)."
+      - "Same-name method overload sets validated end to end (2026-11-23): declaration duplicate/return-only conflicts, substituted and diamond inheritance with parent-order independence, explicit missing/incompatible conformance, static overloads, borrowed-view and generic-constraint calls retain distinct signatures. Diagnostic witness selection now prefers the matching parameter-type/variadic signature before arity fallback, so an incorrect result type is explained against its actual overload (BUG-000046). Source-backed Sema, CLI JSON and LSP tests cover acceptance, rejection, requirement links and selected signature help. Runtime interface representation remains separately tracked."
+      - exact method parameter/result/static compatibility for represented interface requirements and property accessor compatibility; same-name overload conformance is covered by the source-backed overload matrix
     remaining:
       - "MD-120 Semantic IR for generic interface views: borrowed interface dispatch has no Semantic IR yet (MD-057), so ref mut FormatSink[E] calls stay an explicit boundary until that exists"
       - "MD-057 borrowed interface views (rules synced 2026-10-18: interfaces.md § 7.1, § 9.1; generics.md § 11; flowcontrol_for.md § 13, § 37.1, § 40, § 42). Known hole (verified 2026-10-18): Semantic IR rejects interface method dispatch and view iteration (readiness reason names the missing runtime dispatch); no view representation exists in the compilation track (MD-108); correction § 8.8 escape/overlap and § 8.10 allocation/cleanup/debug tests are not written. Other interfaces written by value keep their unspecified treatment (MD-107)"
       - permit owned member consumption only through sufficient mutable/exclusive receiver authority and ordinary partial-ownership rules
-      - preserve and validate same-name interface method overload sets through declaration, inheritance, conformance, and call resolution
       - complete generic interface inheritance, constraint conformance, and canonical cross-module specialization identity beyond concrete requirement substitution
       - support every associated and nested declaration category permitted by its owning rulebook
       - complete interface visibility and cross-module accessible-member validation
@@ -723,6 +728,10 @@ integrations:
       - implement interface value representation and dynamic dispatch in MLIR and LLVM lowering
       - complete indirect interface target sets in call-graph and effect analysis
     verification:
+      - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" GOTMPDIR="$HOME/.cache/sec-gotmp" go test -p 4 ./internal/sema ./internal/lowering/secmlir ./internal/traceability -count=1 -timeout=180s; go vet ./internal/sema ./cmd/compiler ./cmd/lsp ./internal/lowering/secmlir
+        result: "Passed 2026-11-23: complete Sema 33.309s, Sec MLIR emitter suite 24.739s and traceability 0.249s; vet passed. Real sec-mlir-opt exercised 32/64-bit while CFG acceptance and mutated loop-record rejection."
+      - command: GOTMPDIR="$HOME/.cache/sec-gotmp" go test -p 4 ./cmd/compiler ./cmd/lsp -run "^TestInterfaceOverloadMatrix|^TestGenericImplConformance" -count=1 -timeout=120s
+        result: "Passed 2026-11-23: compiler 9.403s, LSP 10.038s; valid static/instance inherited overloads, invalid declarations and mismatched conformance, diagnostic links and selected signature help."
       - command: go test -p 4 ./internal/sema ./internal/diagnostics -count=1
         result: passed on 2026-11-10; complete Sema 15.197s, diagnostics 0.002s after removal of whole-self consuming interface receiver contracts
       - command: go vet -p 4 ./internal/parser ./internal/ast/... ./internal/sema ./internal/diagnostics ./cmd/compiler ./cmd/lsp

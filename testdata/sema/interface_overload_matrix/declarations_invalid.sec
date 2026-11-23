@@ -1,0 +1,12 @@
+module main
+
+interface Duplicate {
+    fn Convert(value: int) int
+    fn Convert(value: int) int
+}
+interface ReturnOnly {
+    fn Convert(value: int) int
+    fn Convert(value: int) bool
+}
+interface Parent { fn Convert(value: int) int }
+interface Conflict implements Parent { fn Convert(value: int) bool }

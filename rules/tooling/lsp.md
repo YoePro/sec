@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-07-31
-- **Last updated:** 2026-11-08 (stable chapter, subsection, and paragraph numbering)
+- **Last updated:** 2026-11-23 (removed obsolete while-typing comparison deferral; stable chapter, subsection, and paragraph numbering from 2026-11-08)
 - **Document revision:** 1
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/tooling/lsp.md`
@@ -2612,8 +2612,8 @@ The lens presentation cache follows the same source/plan fingerprint.
 conformance facts. Readers receive independent copies; mutable analyzers are
 never shared between consumers. Completed snapshots are bounded to 32 entries
 and 8 MiB, and failed computations publish no successful empty snapshot. Source
-preparation/parsing still runs per request; parsing caches, incremental analysis
-and cross-target recomputation while typing remain separate work.
+preparation/parsing still runs per request; parsing caches and incremental
+analysis remain separate work.
 
 **§ 23.1(3)** A diagnostic records applicability:
 

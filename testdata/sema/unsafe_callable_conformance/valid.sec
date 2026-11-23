@@ -1,0 +1,29 @@
+module main
+
+unsafe extern "C" fn Foreign(value: int32) int32
+unsafe fn Danger(value: int) int { return value }
+unsafe fn Generic[T](value: T) T { return value }
+
+type Device struct {}
+impl Device {
+    unsafe fn Read(value: int) int { return value }
+    @noPanic
+    unsafe fn Annotated(value: int) int { return value }
+    fn Wrapper(value: int) int { return unsafe self.Read(value) }
+}
+
+fn Choose(value: bool) bool { return value }
+unsafe fn Choose(value: int) int { return value }
+
+fn Valid(device: Device) int {
+    let first := unsafe Danger(1)
+    let second := unsafe Generic[int](first)
+    let third := unsafe device.Read(second)
+    let fourth := unsafe device.Annotated(third)
+    discard unsafe Foreign(int32(1))
+    discard Choose(true)
+    unsafe {
+        discard Choose(1)
+    }
+    return device.Wrapper(fourth)
+}

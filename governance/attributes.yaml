@@ -6,7 +6,7 @@ integrations:
     area: frontend-selection-target-binding-effects-and-tooling
     status: partial
     audited: "2026-08-19"
-    revised: "2026-11-20"
+    revised: "2026-11-23"
     document_revision: "1.1"
     repository_baseline: c515862
     summary: "Tracks the canonical Sec 0.1 compiler-known attribute system. Individual verticals exist for #target compatibility, @address, @noCopy, and @link_name, but the general attribute parser, attachment-set model, declaration selection, verified-effect attributes, interrupt attributes, generic diagnostics, formatter integration, and LSP support are not yet unified. This fragment is the sole owner of implementation status for the normative rules/foundations/attributes.md rulebook while preserving the more detailed owning governance entries for fixed-address bindings, FFI, copy/move, target/platform resolution, and ISR analysis."
@@ -33,6 +33,9 @@ integrations:
       - internal/lsp
       - cmd/lsp
       - cmd/lsp/attributes.go
+      - internal/cst/attribute_roles.go
+      - internal/formatter/parameter_list_layout.go
+      - internal/ast/file_attributes.go
     tests:
       - internal/diagnostics/diagnostics_test.go
       - internal/parser/parser_test.go
@@ -43,6 +46,13 @@ integrations:
       - internal/formatter/formatter_test.go
       - cmd/lsp/main_test.go
       - cmd/lsp/attributes_test.go
+      - internal/cst/attribute_roles_test.go
+      - internal/formatter/attributes_general_test.go
+      - cmd/compiler/attributes_format_test.go
+      - cmd/lsp/format_attributes_test.go
+      - testdata/formatter/attributes
+      - internal/parser/file_attributes_test.go
+      - testdata/parser/file_attributes
     implemented:
       - "file-level '#target(os: ..., arch: ...)' compatibility directive parsing with required os and arch string-literal arguments and duplicate-argument rejection"
       - "'@address(expression)' parser special case for one following let declaration, including grouped-declaration rejection and AST retention of the address expression"
@@ -60,13 +70,14 @@ integrations:
       - "attribute implication graph (2026-10-05): EffectiveGuarantees closes the written attributes over @interrupt => @isr and @isr/@interruptSafe => @noPanic, @noAlloc, @noBlock, records each implied guarantee with its source attribute and chain without synthesizing AST attributes, and never replaces an explicit guarantee; the @noPanic, @noAlloc, and @noBlock verifiers check effective guarantees and name the implication (for example 'does not satisfy @noBlock (implied by @interrupt via @isr)') (TestAttributeImplicationGraph)"
       - "attribute conflicts and plan-time arguments (2026-10-05): a repeated @address or @interrupt with a different value is mandatory S1117 attribute.conflict naming both locations and the rule, and an identical repetition stays S1112; a statement @target selector contradicting the file's #target directive is S1117; Sema requires every @target, @when, and @interrupt argument to be a plan-time form (S1118 attribute.argument-not-compile-time for calls, await, try, lambdas, interpolation, and indexing) and checks string-literal selectors, integer or named vectors, and the restricted @when condition language (S1114); @address keeps its register-binding check (TestAttributeConflicts, TestAttributeArgumentsArePlanTimeValues)"
       - "attribute LSP (2026-10-05): completion after `@` offers only the compiler-known attributes valid on the following function, method, extern, type, or let (from the parser's registry); inside @target it offers unused selector names and known os and arch values from the canonical target registry, and inside @interrupt the vector name; hover on a written attribute shows its meaning, allowed targets, argument form, status (verified, trusted foreign contract, or not implemented yet), the declaration's effective guarantees with their implication chain, and the compiler's panic, allocation, and blocking cause paths; the call-graph hover gains the blocking summary; quick fixes remove a duplicate (S1112), keep the first of conflicting values (S1117), remove an attribute from a declaration it cannot modify (S1115, now reported on the attribute), and remove arguments from an argument-free attribute (S1114); implied guarantees are never written and redundant explicit ones never removed (TestAttributeCompletion, TestAttributeHover, TestAttributeCodeActions)"
+      - "General attribute-aware formatting (2026-11-23, formatter.md §§16(14–17),22(5); BUG-000047): real parser argument delimiters feed one focused CST attribute-role producer across supported declarations, impl members, init/free, get/set accessors and directly annotated lambda bindings. Complete argument-bearing and argument-free attributes occupy their own lines in source order, directly before the actual declaration prefix including unsafe, extern and static. Argument groups share comma-list trailing-comma and preferred-width layout; comments remain in place and malformed lists receive no attribute layout roles. Source-backed 2/4/6-space indentation, long/multiline argument, recovery and idempotence tests pass; CLI and LSP share one golden and the second editor request has no edit. This formatting support does not implement target selection, interrupt behavior or other separately tracked attribute semantics."
+      - "Compilation-unit file attributes (2026-11-23, attributes.md §§14.1–17,25): Program.FileTargetDirectives exposes source-backed file selections in source order and is consumed by Sema source selection. Canonical directives retain the written Attribute and all five selectors; compatibility directives retain their legacy spelling without synthesized attributes. The view is derived from Statements, so multi-file assembly and filtering need no duplicate metadata store. Regression coverage verifies comments before the file attribute, distinct statement attachment, source identity, single traversal and compatibility preservation. This closes representation only; complete target selection and compatibility migration remain separate requirements."
     partial:
       - fixed-address behavior is implemented only for the currently specified addressed-register subset and still lacks complete target validation and lowering
       - "'@noPanic' and '@noAlloc' form one consecutive attribute set in any order (each at most once, argument-free, comments allowed between them) on functions, methods, and extern declarations, and Sema verifies both transitively; on extern declarations they are trusted foreign contracts (2026-10-04, TestParseEffectGuaranteeAttributeSets); since 2026-10-05 they share the general attribute parser"
       - target/platform concepts exist, but canonical '@target' selection is not generally implemented
       - "Started (2026-11-20): unimplemented attributes already report through the shared implementation-capability diagnostic (internal/sema/attributes.go reportCapabilityUnavailable: 'attribute @%s is not implemented yet'). Remaining: registered diagnostic families for target, config, address, interrupt, isr and interrupt-safe once those attributes are implemented."
     remaining:
-      - represent file-level attributes on the compilation unit (only the '#target' compatibility directive is file-level today)
       - implement canonical '@target' file and statement forms with os, arch, cpu, device, and board selectors
       - migrate '#target' compatibility syntax into the same file-selection representation as canonical '@target', with a focused compatibility diagnostic and explicit migration fix rather than a second selection engine
       - implement target-variant overlap detection, no-active-variant handling, and public-shape compatibility checks
@@ -77,14 +88,7 @@ integrations:
         parsing, implication, target-profile validation, call-graph
         restrictions, vector uniqueness, and lowering
       - classify join, sleep, timer waits, process/IPC waits, and Context-based Lock as blocking once Sema represents them, and treat a Sender or Receiver reached through a reference (`ref Sender[T]`) as the same compiler-known operation
-      - implement general attribute-aware formatter behavior beyond the existing '@noCopy' vertical
       - "LSP for selection and target binding once they exist: excluded-source display with target and configuration exclusion reasons and the active compilation plan (needs @target/@when selection), config.<name> completion (needs compile-time parameters), cpu, device, and board selector values and interrupt-vector and peripheral-address completion and hover (need target knowledge packs)"
-    cross_references:
-      - frontend.fixed-address-bindings
-      - frontend.ffi-v2
-      - frontend.copy-move
-      - sema.isr-analysis
-      - compiler.platform-model
     required_tests:
       - unknown compiler attribute rejected
       - unattached attribute at EOF rejected
@@ -104,6 +108,16 @@ integrations:
       - formatter preserves explicit redundant attributes and source order
       - LSP offers only compiler-known attributes valid at the current attachment location
     verification:
+      - command: GOTMPDIR="$HOME/.cache/sec-gotmp" go test -p 4 ./cmd/lsp -run "^TestTargetSelection" -count=1 -timeout=90s
+        result: "Passed 2026-11-23 in 11.428s: existing target-selection protocol and variant/feature tests continue to pass with the compilation-unit file-directive accessor."
+      - command: GOTMPDIR="$HOME/.cache/sec-gotmp" go test -short -p 4 ./internal/parser ./internal/sema ./internal/ast/... ./internal/cst ./internal/formatter ./internal/traceability -count=1 -timeout=150s
+        result: "Passed 2026-11-23: parser 33.022s, Sema 37.581s, AST/walk 0.001s, CST 0.010s, formatter 2.407s, traceability 0.288s. File-attribute regression checks canonical five-selector source nodes, legacy form, multi-file assembly, statement separation, single traversal and filtered-unit consistency. Vet passed for AST, parser and Sema."
+      - command: GOTMPDIR="$HOME/.cache/sec-gotmp" go test -p 4 ./internal/sema -count=1 -timeout=180s
+        result: "Passed 2026-11-23: complete Sema 28.288s; retaining real attribute argument delimiters changes no attribute validation or selection semantics."
+      - command: GOTMPDIR="$HOME/.cache/sec-gotmp" go test -p 4 ./internal/parser ./internal/ast/... ./internal/cst ./internal/formatter ./internal/traceability -count=1 -timeout=180s
+        result: "Passed 2026-11-23: complete parser 127.861s, AST and AST walk 0.001s each, CST 0.008s, formatter 1.691s and traceability 0.245s. Final expanded matrix also passes in short mode (parser 24.198s, formatter 1.713s); 2/4/6-space attachment forms, real argument delimiter roles, width handling, malformed-list preservation and runtime-call exclusion are covered."
+      - command: GOTMPDIR="$HOME/.cache/sec-gotmp" go test -p 4 ./cmd/compiler ./cmd/lsp ./internal/formatter -run "GeneralAttribute|AttributeArgumentLayout|MalformedAttributeFormatting" -count=1 -timeout=120s; go vet ./internal/cst ./internal/parser ./internal/ast/... ./internal/formatter ./cmd/compiler ./cmd/lsp
+        result: "Passed 2026-11-23: CLI 0.067s, LSP 0.017s and focused formatter 0.030s; vet passed. Temporary overlay restoring the original CST producer reproduces the new formatter regression. CLI/LSP share the source golden and second-pass output is stable."
       - command: go test ./internal/diagnostics ./internal/parser -run UnknownAttribute -count=1
         result: passed on 2026-09-21 with stable diagnostic registration, declaration recovery, and local runtime-call separation
       - command: go test ./internal/diagnostics ./internal/parser ./cmd/lsp -run 'UnattachedAttribute' -count=1
@@ -114,3 +128,9 @@ integrations:
         result: passed on 2026-10-05 with transitive @noBlock (S1116), the implication graph, conflicts (S1117), and plan-time argument checks (S1118)
       - command: go test ./cmd/lsp -run 'TestAttribute' -count=1
         result: passed on 2026-10-05 with attribute completion, argument completion, hover, and quick fixes
+    cross_references:
+      - frontend.fixed-address-bindings
+      - frontend.ffi-v2
+      - frontend.copy-move
+      - sema.isr-analysis
+      - compiler.platform-model

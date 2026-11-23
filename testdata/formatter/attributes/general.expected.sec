@@ -1,0 +1,51 @@
+module main
+
+@target(os: "linux", arch: "amd64")
+@when(true)
+@noPanic
+unsafe fn Selected() void {
+}
+
+@link_name("foreign_func")
+@noAlloc
+@noBlock
+extern "C" fn Foreign(value: int) int
+
+@when(true)
+import "sample"
+@when(true)
+interface Service {
+    fn Run() void
+}
+
+@when(true)
+unit tick physical
+
+@when(true)
+impl Worker {
+    @noPanic
+    init() {
+    }
+    @noPanic
+    free {
+    }
+    property Value: int {
+        @noPanic
+        get {
+            return 0
+        }
+        @noPanic
+        set value {
+        }
+    }
+    @noPanic
+    static fn Safe() void {
+    }
+}
+
+fn Lambda() void {
+    @noPanic
+    let callback := fn() int {
+        return 1
+    }
+}

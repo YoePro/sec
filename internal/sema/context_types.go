@@ -35,12 +35,13 @@ func builtinContextErrorType() Type {
 }
 
 // registerContextDeclaration refines the canonical opaque Context identity
-// only from the exact @noCopy source declaration in loader-proven core.
-// Rules: rules/concurrency/mutex.md — §§4,8;
+// and attachment token only from the exact @noCopy declaration in loader-proven core.
+// Rules: rules/concurrency/thread_local.md §30(1);
+// rules/concurrency/mutex.md — §§4,8;
 // rules/concurrency/cancellation.md — §§35–36.
 func (a *Analyzer) registerContextDeclaration(stmt *ast.TypeDeclStatement) bool {
 	name := stmt.Name.Value
-	if (name != "Context" && name != "ContextSource") || !a.isTrustedCoreBuiltinDeclaration(name, stmt.Name.Token) {
+	if (name != "Context" && name != "ContextSource" && name != "ThreadAttachment") || !a.isTrustedCoreBuiltinDeclaration(name, stmt.Name.Token) {
 		return false
 	}
 	if stmt.BaseType != nil || stmt.AssignedType != nil || stmt.StructType != nil || stmt.RegisterType != nil || stmt.Union || len(stmt.Variants) != 0 || stmt.ErrorType || stmt.Contract != nil || stmt.Default != nil || len(stmt.Implements) != 0 || len(stmt.GenericParameters) != 0 || len(stmt.Attributes) != 1 || !hasAttribute(stmt.Attributes, "noCopy") {
@@ -50,6 +51,9 @@ func (a *Analyzer) registerContextDeclaration(stmt *ast.TypeDeclStatement) bool 
 	if name == "ContextSource" {
 		typ = builtinContextSourceType()
 	}
+	if name == "ThreadAttachment" {
+		typ = builtinThreadAttachmentType()
+	}
 	typ.DeclarationToken = stmt.Name.Token
 	a.types[name] = typ
 	return true
@@ -57,10 +61,11 @@ func (a *Analyzer) registerContextDeclaration(stmt *ast.TypeDeclStatement) bool 
 
 // rejectContextNonOpaqueDeclaration keeps runtime context state opaque even
 // when a malformed enum/interface declaration originates in trusted core.
-// Rules: rules/concurrency/mutex.md — §§4(4–5),8;
+// Rules: rules/concurrency/thread_local.md — §30(1);
+// rules/concurrency/mutex.md — §§4(4–5),8;
 // rules/concurrency/cancellation.md — §§35–36.
 func (a *Analyzer) rejectContextNonOpaqueDeclaration(name string, token lexer.Token) bool {
-	if (name != "Context" && name != "ContextSource") || !a.isTrustedCoreBuiltinDeclaration(name, token) {
+	if (name != "Context" && name != "ContextSource" && name != "ThreadAttachment") || !a.isTrustedCoreBuiltinDeclaration(name, token) {
 		return false
 	}
 	a.addErrorAtToken(token, "%s requires its canonical opaque declaration: @noCopy type %s", name, name)

@@ -177,6 +177,10 @@ func referenceProvenance(place Place) ReferenceProvenanceKind {
 //   - rules/compiler/semantic_ir.md — §§ 45(5)-(13), 46(6)
 //   - rules/memory/reference_model.md — §§ 33-34, 45
 func (a *Analyzer) referenceFactsForPlace(place Place, mutable bool, site lexer.Token) ReferenceFacts {
+	if mutable && typeContainsDynamicArray(place.Type, map[string]bool{}) {
+		// The borrower may change an owning T[]'s length (P18 §§ 40-41).
+		a.bumpDynamicArrayLengthEpoch()
+	}
 	facts := a.referenceFactsWithoutIdentity(place, mutable, site)
 	key := referenceSiteKey(site)
 	facts.Borrow = a.placeIdentities.borrow("borrow:" + key)
@@ -251,6 +255,10 @@ func (a *Analyzer) referenceFactsWithoutIdentity(place Place, mutable bool, site
 		return facts
 	}
 	facts.Validity = ReferenceValidityProven
+	// A reference or slice into an owning T[] depends on the owner's
+	// current backing incarnation; Sema rejects growth while it is live
+	// (S1162), so it stays proven and names the backing domain.
+	facts.InvalidationDomain = a.dynamicArrayBackingDomainOf(place)
 	switch facts.Provenance {
 	case ReferenceProvenanceStatic:
 		facts.ProofProvenance = "static-storage"
@@ -807,4 +815,63 @@ func (a *Analyzer) allocateHolderReadIdentities() {
 		entry.facts.Lifetime = a.placeIdentities.lifetime("lifetime:" + key)
 		entry.set(entry.facts)
 	}
+}
+
+// dynamicArrayBackingDomainOf returns the backing InvalidationDomainID of
+// the owning T[] whose element or slice a Place reaches: the longest prefix
+// of the Place that is a published dynamic-array owner, followed by an index
+// or slice projection. It allocates no identity (zero when none applies).
+// Rules: rules/mlir/packages/sec-mlir-dialect_package18.md — §§ 24, 47, 77, 100-101.
+func (a *Analyzer) dynamicArrayBackingDomainOf(place Place) InvalidationDomainID {
+	for length := len(place.Projections) - 1; length >= 0; length-- {
+		next := place.Projections[length].Kind
+		if next != PlaceIndex && next != PlaceSlice {
+			continue
+		}
+		prefix := place
+		prefix.Projections = place.Projections[:length]
+		key, known := dynamicArrayBackingKey(prefix)
+		if !known {
+			continue
+		}
+		if domain, ok := a.placeIdentities.knownInvalidationDomain(key); ok {
+			return domain
+		}
+	}
+	return 0
+}
+
+// typeContainsDynamicArray reports an owning T[] in a type or any stored
+// field, payload or element of it.
+// Rules: rules/mlir/packages/sec-mlir-dialect_package18.md — §§ 102-104.
+func typeContainsDynamicArray(typ Type, visiting map[string]bool) bool {
+	if _, dynamic := ResolveDynamicArrayPlan(typ); dynamic {
+		return true
+	}
+	key := canonicalTypeIdentity(typ)
+	if visiting[key] {
+		return false
+	}
+	visiting[key] = true
+	for _, field := range typ.Fields {
+		if typeContainsDynamicArray(field.Type, visiting) {
+			return true
+		}
+	}
+	for _, variant := range typ.UnionVariants {
+		if variant.Payload != nil && typeContainsDynamicArray(*variant.Payload, visiting) {
+			return true
+		}
+		for _, field := range variant.PayloadFields {
+			if typeContainsDynamicArray(field.Type, visiting) {
+				return true
+			}
+		}
+	}
+	for _, argument := range typ.TypeArgs {
+		if typeContainsDynamicArray(argument, visiting) {
+			return true
+		}
+	}
+	return typ.Element != nil && typ.Kind != ReferenceType && typeContainsDynamicArray(*typ.Element, visiting)
 }

@@ -37,8 +37,9 @@ func copyClassificationOf(typ Type, visiting map[string]bool) CopyClassification
 	// Canonical @noCopy guards and standalone Contexts are movable owners,
 	// never implicitly copyable values.
 	// Rules: rules/concurrency/mutex.md — §§6(2–4),8(1–4),28;
-	// rules/concurrency/cancellation.md — §§35–36.
-	if typ.Intrinsic && typ.Kind == StructType && (typ.Name == "MutexGuard" || isCancellationContextType(typ)) {
+	// rules/concurrency/cancellation.md — §§35–36;
+	// rules/concurrency/thread_local.md — §§30–32.
+	if typ.Intrinsic && typ.Kind == StructType && (typ.Name == "MutexGuard" || isCancellationContextType(typ) || isThreadAttachmentType(typ)) {
 		return CopyMoveOnly
 	}
 	if typ.ExplicitlyNonCopyable {

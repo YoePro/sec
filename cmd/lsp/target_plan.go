@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/BurntSushi/toml"
+
 	"sec/internal/layout"
 	platformtarget "sec/internal/platform/target"
 )
@@ -215,8 +217,15 @@ func lspManifestSection(section string) (string, string) {
 	return kind, name
 }
 
+// lspManifestString reads a target fact as a TOML string, including literal
+// strings. Go unquoting would reject valid single-quoted OS/architecture/source
+// names and prevent the selected plan (and BuildInfo) from reaching analysis.
+// Rules: rules/projects/projects.md — §5(2), §§17,19;
+// rules/tooling/lsp.md — "Target-aware analysis".
 func lspManifestString(value string) (string, error) {
-	return strconv.Unquote(strings.TrimSpace(value))
+	var decoded struct{ Value string }
+	_, err := toml.Decode("value = "+strings.TrimSpace(value), &decoded)
+	return decoded.Value, err
 }
 
 func lspManifestStringArray(value string) ([]string, error) {
@@ -235,7 +244,7 @@ func lspManifestStringArray(value string) ([]string, error) {
 		if part == "" {
 			continue
 		}
-		item, err := strconv.Unquote(part)
+		item, err := lspManifestString(part)
 		if err != nil {
 			return nil, err
 		}

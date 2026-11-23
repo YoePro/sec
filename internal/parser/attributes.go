@@ -313,7 +313,11 @@ func (p *Parser) parseAttribute() (*ast.Attribute, bool) {
 			return attribute, true
 		}
 		p.nextToken()
+		attribute.ArgumentsOpen = p.curToken
 		arguments, ok := p.parseAttributeArguments()
+		if ok && !hasMalformedAttributeArgument(arguments) && p.curToken.Type == lexer.RPAREN {
+			attribute.ArgumentsClose = p.curToken
+		}
 		// The successfully parsed and the malformed arguments stay on the
 		// attribute (parser_recovery.md § 27(2)).
 		attribute.Arguments = arguments

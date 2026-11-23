@@ -1,0 +1,22 @@
+module main
+
+fn Accumulate(limit: int) int {
+    let mut index := 0
+    let mut result := 0
+    while index < limit {
+        index += 1
+        if index == 2 { continue }
+        if index == 5 { break }
+        result += index
+    }
+    return result
+}
+
+fn Nested(limit: int) int {
+    let mut index := 0
+    while index < limit {
+        while true { break }
+        index += 1
+    }
+    return index
+}

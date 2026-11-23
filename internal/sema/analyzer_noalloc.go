@@ -131,7 +131,7 @@ func introducingAllocationSite(effects []ArenaEffectSite, unknown bool) (ArenaEf
 //   - rules/memory/allocation.md — § 28 "Diagnostics"
 func noAllocEffectHelp(kind ArenaEffectKind) string {
 	switch kind {
-	case ArenaEffectAllocate:
+	case ArenaEffectAllocate, ArenaEffectStringMaterialization:
 		return "This operation acquires new storage (an Arena allocation, string concatenation or interpolation, or another allocating operation). try only handles its failure; it still allocates. Use caller-provided or preallocated storage, or remove @noAlloc."
 	case ArenaEffectUnknownCallee:
 		return "This call's target is not known here (a function value, an interface method, or a generic constraint method), so whether it allocates cannot be proven. Call a known function or concrete method directly, or remove @noAlloc."

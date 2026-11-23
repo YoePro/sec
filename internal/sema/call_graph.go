@@ -100,8 +100,11 @@ const (
 	// Backing growth is allocation-capable, without inventing an Arena domain.
 	// Rules: rules/memory/allocation.md — §§3,24.
 	ArenaEffectCollectionGrowth ArenaEffectKind = "collection-growth"
-	ArenaEffectReset            ArenaEffectKind = "reset"
-	ArenaEffectRelease          ArenaEffectKind = "release"
+	// String materialization uses ambient allocation authority, unlike an
+	// allocation into an explicitly selected Arena (allocation.md §17).
+	ArenaEffectStringMaterialization ArenaEffectKind = "string-materialization"
+	ArenaEffectReset                 ArenaEffectKind = "reset"
+	ArenaEffectRelease               ArenaEffectKind = "release"
 	// ArenaEffectUnknownCallee is a call whose target is not known here (a
 	// function value, an interface method, or a constrained generic method),
 	// so its allocation behavior is unknown.

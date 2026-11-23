@@ -1,0 +1,7 @@
+module main
+@noAlloc
+fn CannotAssumeAllocationFree() Result[ThreadAttachment, ThreadAttachError] { return Thread.AttachCurrent() }
+@noPanic
+fn CannotAssumePanicFree() Result[ThreadAttachment, ThreadAttachError] { return Thread.AttachCurrent() }
+@noBlock
+fn CannotAssumeNoWaiting() Result[ThreadAttachment, ThreadAttachError] { return Thread.AttachCurrent() }

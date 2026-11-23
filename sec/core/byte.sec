@@ -1,9 +1,9 @@
 module core
 
-// Rulebook: library/core-library.md § 8 (unsigned integers and byte).
+// Rulebook: rules/library/core-library.md § 8.4 (byte radix formatting).
 // ToString(fmt) and ByteStringFormat are part of the required byte surface;
-// § 8 does not list them yet. The radix digits are ASCII, so every result
-// is valid UTF-8.
+// the radix digits are ASCII, so every result is valid UTF-8. Materialize
+// buffers explicitly: array.ToString() is a type summary (MD-091).
 
 impl byte {
     /**
@@ -87,7 +87,7 @@ impl byte {
                     (self % 10) + 48,
                 ]
 
-                return bytes.ToString()
+                return string.FromByteArray(bytes)
             }
 
             if self >= 10 {
@@ -96,14 +96,14 @@ impl byte {
                     (self % 10) + 48,
                 ]
 
-                return bytes.ToString()
+                return string.FromByteArray(bytes)
             }
 
             let bytes: byte[1] := [
                 self + 48,
             ]
 
-            return bytes.ToString()
+            return string.FromByteArray(bytes)
         }
     }
 
@@ -114,7 +114,7 @@ impl byte {
             let low  := self._ByteDigit(self & 0x0F)
 
             let bytes: byte[2] := [high, low]
-            return bytes.ToString()
+            return string.FromByteArray(bytes)
         }
     }
 
@@ -127,7 +127,7 @@ impl byte {
                 (self & 0x07) + 48,
             ]
 
-            return bytes.ToString()
+            return string.FromByteArray(bytes)
         }
     }
 
@@ -145,7 +145,7 @@ impl byte {
                 (self & 0x01) + 48,
             ]
 
-            return bytes.ToString()
+            return string.FromByteArray(bytes)
         }
     }
 }

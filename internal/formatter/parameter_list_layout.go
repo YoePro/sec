@@ -11,7 +11,8 @@ import (
 )
 
 // formatCallableParameterListLayout normalizes parser-owned function, method,
-// initializer, and lambda parameter lists that are written across lines:
+// initializer, and lambda parameter lists, plus attribute arguments whose
+// layout follows ordinary calls (§16(16)):
 //
 //   - a list whose first parameter starts on the line after `(` is a
 //     deliberate multiline form and becomes the canonical one: one parameter
@@ -44,7 +45,7 @@ func formatCallableParameterListLayout(text string, preferredLineWidth uint64, i
 
 	replacements := []formatterReplacement{}
 	for _, group := range document.Groups {
-		if group.Close < 0 || !document.Elements[group.Open].HasRole(cst.CallableParameterListOpen) {
+		if group.Close < 0 || !(document.Elements[group.Open].HasRole(cst.CallableParameterListOpen) || document.Elements[group.Open].HasRole(cst.AttributeArgumentListOpen)) {
 			continue
 		}
 		if replacement, ok := parameterListLayoutReplacement(text, document, group.Open, group.Close, preferredLineWidth, indentationWidth); ok {

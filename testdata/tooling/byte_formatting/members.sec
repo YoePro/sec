@@ -1,0 +1,21 @@
+module main
+
+fn Decimal(value: byte) Result[string, StringError] {
+    return value.ToString(byte.ByteStringFormat.Decimal)
+}
+
+fn Hexadecimal(value: byte) Result[string, StringError] {
+    return value.ToString(byte.ByteStringFormat.Hexadecimal)
+}
+
+fn Octal(value: byte) Result[string, StringError] {
+    return value.ToString(byte.ByteStringFormat.Octal)
+}
+
+fn Binary(value: byte) Result[string, StringError] {
+    return value.ToString(byte.ByteStringFormat.Binary)
+}
+
+fn CollectionSummary(values: ref byte[]) Result[string, StringError] {
+    return values.ToString()
+}

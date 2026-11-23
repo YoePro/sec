@@ -143,7 +143,10 @@ private:
       return checkVariants(plan);
     if (plan.kind == "compiler-known-resource") {
       auto resource = entry.getAs<StringAttr>("resource");
-      if (!isa<sec::StructType>(sec::stripNominal(plan.type)) || !resource || resource.getValue().empty())
+      // P19 section 117: the Arena owner's implicit destruction is its
+      // terminal Release under the Arena release contract.
+      bool arena = isa<sec::ArenaType>(plan.type) && resource && resource.getValue() == "Arena";
+      if (!arena && (!isa<sec::StructType>(sec::stripNominal(plan.type)) || !resource || resource.getValue().empty()))
         return error(plan) << "needs a struct type and a named release contract";
       return success();
     }

@@ -26,8 +26,8 @@ type BuildInfoSnapshot struct {
 // snapshot every BuildInfo.Current() reports S1258.
 // Rules: rules/compiler/compiler_known_members.md — § 113B(1)-(3).
 func (a *Analyzer) SetBuildInfo(snapshot BuildInfoSnapshot) {
-	a.recordConfiguration(func(b *Analyzer) { b.SetBuildInfo(snapshot) })
-	copied := snapshot
+	copied := cloneBuildInfoSnapshot(snapshot)
+	a.recordConfiguration(func(b *Analyzer) { b.SetBuildInfo(copied) })
 	a.buildInfo = &copied
 }
 
@@ -37,7 +37,7 @@ func (a *Analyzer) BuildInfo() (BuildInfoSnapshot, bool) {
 	if a.buildInfo == nil {
 		return BuildInfoSnapshot{}, false
 	}
-	return *a.buildInfo, true
+	return cloneBuildInfoSnapshot(*a.buildInfo), true
 }
 
 // installCompilerKnownBuildInfo gives core.BuildInfo its canonical fields.
@@ -91,7 +91,7 @@ func (a *Analyzer) BuildInfoCurrentOf(call *ast.CallExpression) (BuildInfoSnapsh
 	if a.buildInfo == nil || !a.buildInfoCalls[call] {
 		return BuildInfoSnapshot{}, false
 	}
-	return *a.buildInfo, true
+	return cloneBuildInfoSnapshot(*a.buildInfo), true
 }
 
 // IsCoreBuildInfoType reports the compiler-known core.BuildInfo struct.

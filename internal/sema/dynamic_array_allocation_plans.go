@@ -190,16 +190,19 @@ func (a *Analyzer) resolveAllocationIdentities(plan *ResolvedAllocationOperation
 }
 
 // IsDynamicArrayAppendGrowth reports whether an allocation fact is the
-// collection growth of a single-element Append on an owning T[] with a
-// published receiver and a resolved allocation identity — the form P18
+// collection growth of a single-value or non-empty range-segment Append on
+// an owning T[] with a published receiver and a resolved allocation identity — the form P18
 // Semantic IR represents with its context, identity and authority.
 // Rules: rules/mlir/packages/sec-mlir-dialect_package18.md — §§ 56, 63–67.
 func (a *Analyzer) IsDynamicArrayAppendGrowth(fact AllocationContextFact) bool {
-	if a == nil || fact.Kind != ArenaEffectCollectionGrowth || !fact.ContextKnown || !fact.Context.Available {
+	if a == nil || fact.Kind != ArenaEffectCollectionGrowth {
+		return false
+	}
+	if !fact.ContextKnown || !fact.Context.Available {
 		return false
 	}
 	for _, plan := range a.allocationOperationPlans {
-		if plan.Operation == AllocationDynamicArrayAppend && plan.MayAllocate && plan.Receiver != nil && plan.Allocation != 0 &&
+		if (plan.Operation == AllocationDynamicArrayAppend || plan.Operation == AllocationDynamicArrayAppendRange || plan.Operation == AllocationStringToRuneArray) && plan.MayAllocate && plan.Receiver != nil && plan.Allocation != 0 &&
 			plan.Source.File == fact.Source.File && plan.Source.Line == fact.Source.Line && plan.Source.Column == fact.Source.Column {
 			return true
 		}

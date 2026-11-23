@@ -25,7 +25,7 @@ func (a *Analyzer) inferNewExpression(expr *ast.NewExpression, handled bool) (Ty
 	}
 
 	key := initFunctionName(target.Name)
-	initializers := a.functions[key]
+	initializers := a.constructionCandidates(target, a.functions[key])
 	a.recordConstructionSignatures(expr, target, initializers)
 	hasMatchingArity := false
 	for _, initializer := range initializers {
@@ -54,7 +54,7 @@ func (a *Analyzer) inferNewExpression(expr *ast.NewExpression, handled bool) (Ty
 	// remains a type occurrence instead of being misclassified as a method.
 	callee := &ast.Identifier{Token: expr.Token, Value: key}
 	call := &ast.CallExpression{Token: expr.Token, Callee: callee, Function: callee, Arguments: expr.Arguments}
-	_, _ = a.inferCallExpression(call)
+	_, _ = a.inferCallExpressionWithConstruction(call, &target)
 	resolved, ok := a.resolvedCalls[call]
 	if !ok || !resolved.Function.Initializer || resolved.Function.ConstructionType == nil {
 		return Type{Kind: InvalidType}, result

@@ -1,0 +1,9 @@
+module main
+
+fn Invalid() void {
+    let omitted := fn() { return 1 }
+    let independent: int := false
+    let captured := capture(ref independent) fn() { return independent }
+}
+
+fn Later() int { return true }

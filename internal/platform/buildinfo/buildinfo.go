@@ -25,6 +25,9 @@ type Request struct {
 	// Invocation is the running `sec build`; nil for analysis, which uses
 	// the stored build number.
 	Invocation *project.BuildInvocation
+	// SourceFacts are explicit, already resolved compiler inputs. Resolution
+	// never collects them from Git, the environment or source files.
+	SourceFacts SourceFacts
 }
 
 // Resolve returns the snapshot, or nil when the plan has no concrete
@@ -109,5 +112,6 @@ func Resolve(request Request) *sema.BuildInfoSnapshot {
 		user := version.UserDefined
 		snapshot.VersionUserDefined = &user
 	}
+	request.SourceFacts.apply(snapshot)
 	return snapshot
 }

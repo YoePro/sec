@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-07-27
-- **Last updated:** 2026-11-21 (metadata header; last substantive update 2026-11-06)
+- **Last updated:** 2026-11-23 (required byte radix formatting, § 8.4)
 - **Document revision:** 1.0
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/library/core-library.md`
@@ -971,6 +971,53 @@ impl T {
 ```
 
 Unsigned types do not require `Abs()`.
+
+## 8.4 Required byte radix formatting
+
+**8.4(1)** In addition to the unsigned-integer surface, `byte` declares the
+following nested enum and instance-method overload:
+
+```sec
+impl byte {
+    enum ByteStringFormat {
+        Decimal,
+        Hexadecimal,
+        Octal,
+        Binary,
+    }
+
+    fn ToString(fmt: byte.ByteStringFormat) Result[string, StringError]
+}
+```
+
+**8.4(2)** `byte.ByteStringFormat` is a closed format selector. This overload
+formats the byte's unsigned numeric value using the selected radix:
+
+| Format | Digits | Width | Zero | Maximum (`255`) |
+|---|---|---|---|---|
+| `Decimal` | `0`–`9` | 1–3, without leading zeros | `"0"` | `"255"` |
+| `Hexadecimal` | `0`–`9`, `A`–`F` | exactly 2, padded with leading zeros | `"00"` | `"FF"` |
+| `Octal` | `0`–`7` | exactly 3, padded with leading zeros | `"000"` | `"377"` |
+| `Binary` | `0`, `1` | exactly 8, padded with leading zeros | `"00000000"` | `"11111111"` |
+
+**8.4(3)** Digits are ASCII and ordered most significant first. The output has
+no sign, radix prefix (`0x`, `0o`, `0b`), separators, whitespace or terminator.
+For example, byte value `171` produces `"171"`, `"AB"`, `"253"` or
+`"10101011"`, respectively. This enum overload does not interpret a format
+string and is distinct from `ToString(format: string)`.
+
+**8.4(4)** The result is an independent string. Materialization follows the
+permitted allocation context and reports allocation failure through
+`StringError.Allocation(AllocationError)`. The operation does not mutate the
+byte. Its generated ASCII digits are valid UTF-8, so they cannot cause an
+ordinary `InvalidUtf8` failure. The normal failure/cleanup contract of string
+materialization applies; no hidden default allocator is introduced.
+
+**8.4(5)** An implementation that builds a byte buffer of digits materializes
+that text through the explicit core string-construction route
+`string.FromByteArray` (§ 5.2, MD-109). Calling the buffer's `ToString()` would
+format the collection rather than decode its contents (MD-091), and does not
+implement this numeric formatting contract.
 
 ---
 

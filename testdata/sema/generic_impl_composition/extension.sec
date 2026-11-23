@@ -1,0 +1,54 @@
+module main
+
+impl extends Box[T] {
+    init(value: T) { self.value <- value }
+    init(value: T, tag: int) { self.value <- value }
+    property Value: T { get { return self.value } }
+    event Changed using storage
+    static fn Echo(value: T) T { return value }
+    fn Forward[U](value: U) U { return value }
+}
+
+fn ReadInt(value: ref Box[int]) int { return value.Get() + value.Value }
+fn ReadBool(value: ref Box[bool]) bool { return value.Value }
+fn EchoInt() int { return Box[int].Echo(3) }
+fn EchoBool() bool { return Box[bool].Echo(true) }
+fn Forward(value: ref Box[int]) bool { return value.Forward(true) }
+fn Construct() int {
+    let box := new Box[int](3)
+    return box.Get()
+}
+fn ConstructBool() bool {
+    let box := new Box[bool](true)
+    return box.Get()
+}
+fn ConstructOverload() int {
+    let box := new Box[int](3, 1)
+    return box.Get()
+}
+fn ForwardConstruct[T](value: T) Box[T] {
+    return new Box[T](<-value)
+}
+fn ForwardConstructInt() Box[int] { return ForwardConstruct(3) }
+
+enum Fault error { Failed }
+enum OtherFault error { Failed }
+type Fallible[T, E: error] struct { value: T }
+impl Fallible[T, E] {}
+impl extends Fallible[T, E] {
+    init(value: T) E { self.value <- value }
+}
+fn FallibleInt() Result[Fallible[int, Fault], Fault] {
+    let box := try new Fallible[int, Fault](3)
+    return Ok(box)
+}
+fn FallibleBool() Result[Fallible[bool, OtherFault], OtherFault] {
+    let box := try new Fallible[bool, OtherFault](true)
+    return Ok(box)
+}
+
+type Maybe[T] struct { value: Option[T] }
+impl Maybe[T] {
+    init(value: Option[T]) { self.value <- value }
+}
+fn ContextualNone() Maybe[int] { return new Maybe[int](None) }

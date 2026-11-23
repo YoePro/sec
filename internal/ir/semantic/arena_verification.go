@@ -17,7 +17,7 @@ func verifyArenaDomains(module *Module) error {
 				continue
 			}
 			for _, op := range block.Operations {
-				if op.Kind != OpArenaCreateBorrowed && op.Kind != OpArenaCreateOwnedFixed && op.Kind != OpArenaCreateGrowable {
+				if op.Kind != OpArenaCreateBorrowed && op.Kind != OpArenaCreateOwnedFixed && op.Kind != OpArenaCreateGrowable && op.Kind != OpArenaCreateDefault {
 					continue
 				}
 				if op.Backing == nil || op.Backing.Domain == 0 {

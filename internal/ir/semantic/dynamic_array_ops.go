@@ -86,8 +86,10 @@ func verifyDynamicArrayOperation(types *TypeTable, op Operation, values map[Valu
 		if err := verifyArrayBoundsMetadata(op); err != nil {
 			return err
 		}
-		if op.ArrayCheckKind != ArrayIndexRuntimeCheck {
-			return fmt.Errorf("dynamic-array.element-place has no length proof; it requires its runtime bounds guard")
+		// A runtime length admits only a guard or a branch/analysis proof of
+		// `index < Len` (package18 § 41); no constant or range proof exists.
+		if op.ArrayCheckKind == ArrayIndexProvenSafe && op.ArrayProofKind != ArrayIndexProofBranch && op.ArrayProofKind != ArrayIndexProofAnalysis {
+			return fmt.Errorf("dynamic-array.element-place proof %q cannot bound a runtime length", op.ArrayProofKind)
 		}
 		if op.Place == nil || op.Place.BackingDomain == 0 {
 			return fmt.Errorf("dynamic-array.element-place must carry the owner's backing-domain dependency")
@@ -241,8 +243,9 @@ func (fb *functionBuilder) lowerDynamicArrayElementPlace(expr *ast.IndexExpressi
 	if plan.Owner == nil || plan.Owner.BackingDomain == 0 {
 		return builtValue{}, fb.unsupported("dynamic-array index of an owner without a published Place (P18-23)", expr.Token)
 	}
-	if plan.CheckKind != sema.ArrayIndexRuntimeCheck {
-		return builtValue{}, fmt.Errorf("dynamic-array index has check kind %q; only runtime checks are planned", plan.CheckKind)
+	proven := plan.CheckKind == sema.ArrayIndexProvenSafe
+	if !proven && plan.CheckKind != sema.ArrayIndexRuntimeCheck {
+		return builtValue{}, fmt.Errorf("dynamic-array index has check kind %q", plan.CheckKind)
 	}
 	owner, err := fb.dynamicArrayOwnerPlace(expr.Left)
 	if err != nil {
@@ -264,6 +267,25 @@ func (fb *functionBuilder) lowerDynamicArrayElementPlace(expr *ast.IndexExpressi
 		return builtValue{}, fmt.Errorf("dynamic-array index operand differs from its resolved integer type")
 	}
 	loc := location(expr.Token)
+	ownerType, _ := fb.owner.module.Types.Lookup(owner.typ)
+	facts := placeMetadataOf(plan.Owner.Place)
+	facts.BackingDomain = uint32(plan.Owner.BackingDomain)
+	elementPlaceType := func() TypeID {
+		return fb.owner.module.Types.Intern(Type{Kind: TypePlace, Element: element, Mutable: ownerType.Mutable})
+	}
+	if proven {
+		// § 41: Sema proved 0 <= index < Len; the Place needs no guard.
+		proof, valid := semanticArrayIndexProof(plan.ProofKind)
+		if !valid || plan.FailureMode != sema.ArrayIndexFailureNone {
+			return builtValue{}, fmt.Errorf("proven dynamic-array index without a branch/analysis proof")
+		}
+		op := Operation{
+			Kind: OpDynamicArrayElementPlace, Operands: []ValueID{owner.id, index.id}, ArrayIndexSigned: plan.IndexSigned,
+			ArrayCheckKind: ArrayIndexProvenSafe, ArrayProofKind: proof,
+			Integer: cloneBigInt(plan.ConstantIndex), Place: facts, Location: loc,
+		}
+		return fb.placeResult(op, elementPlaceType()), nil
+	}
 	_, protected := fb.failurePoint(expr)
 	if protected != (plan.FailureMode == sema.ArrayIndexFailureFallible) || !protected && plan.FailureMode != sema.ArrayIndexFailureOrdinary {
 		return builtValue{}, fb.unsupported("dynamic-array index failure mode without its resolved try boundary", expr.Token)
@@ -284,16 +306,12 @@ func (fb *functionBuilder) lowerDynamicArrayElementPlace(expr *ast.IndexExpressi
 		fb.emit(Operation{Kind: OpBoundsFailure, ArrayOperation: plan.PanicOperation, Location: loc})
 	}
 	fb.current = success
-	ownerType, _ := fb.owner.module.Types.Lookup(owner.typ)
-	facts := placeMetadataOf(plan.Owner.Place)
-	facts.BackingDomain = uint32(plan.Owner.BackingDomain)
 	op := Operation{
 		Kind: OpDynamicArrayElementPlace, Operands: operands, ArrayIndexSigned: plan.IndexSigned,
 		ArrayCheckKind: ArrayIndexRuntimeCheck, ArrayProofKind: ArrayIndexProofGuarded, ArrayGuard: predicate.id,
 		Integer: cloneBigInt(plan.ConstantIndex), Place: facts, Location: loc,
 	}
-	placeType := fb.owner.module.Types.Intern(Type{Kind: TypePlace, Element: element, Mutable: ownerType.Mutable})
-	return fb.placeResult(op, placeType), nil
+	return fb.placeResult(op, elementPlaceType()), nil
 }
 
 // lowerDynamicArrayIndexRead reads a trivially copyable element through its
@@ -430,10 +448,11 @@ func (fb *functionBuilder) dynamicArrayMemberBoundary(call *ast.CallExpression) 
 	return fb.unsupported("dynamic-array "+member.Property.Value+" (no schema-14 operation removes elements or shrinks the length)", member.Property.Token), true
 }
 
-// coreArrayMaterializationBoundary names the core byte[]/rune[] producers:
-// string.ToByteArray and string.ToRuneArray build an owning array, but their
-// source signatures wait for MD-072 and the string payload for P23, so the
-// substrate is not claimed (P18 §§ 72–73, 133).
+// coreArrayMaterializationBoundary names the core byte[]/rune[] producers
+// Semantic IR cannot lower: ToByteArray needs a byte read of the string
+// payload (P23), and ToRuneArray without a materialization plan has a
+// temporary string receiver; a planned ToRuneArray lowers instead
+// (rune_array_materialization.go; P18 §§ 72–73, 133).
 // Rules: rules/mlir/packages/sec-mlir-dialect_package18.md — §§ 72–73, 133.
 func (fb *functionBuilder) coreArrayMaterializationBoundary(call *ast.CallExpression) (error, bool) {
 	member, ok := call.Callee.(*ast.MemberExpression)
@@ -444,7 +463,10 @@ func (fb *functionBuilder) coreArrayMaterializationBoundary(call *ast.CallExpres
 	if !ok || dereferenceSemaType(receiver).Kind != sema.StringType {
 		return nil, false
 	}
-	return fb.unsupported("string."+member.Property.Value+" materialization (byte[]/rune[] substrate waits for MD-072 signatures and P23 string lowering)", member.Property.Token), true
+	if member.Property.Value == "ToRuneArray" {
+		return fb.unsupported("string.ToRuneArray of a string that is not a Place (a temporary string value needs P23 string lowering)", member.Property.Token), true
+	}
+	return fb.unsupported("string.ToByteArray materialization (no Semantic IR operation reads UTF-8 bytes before P23 string lowering)", member.Property.Token), true
 }
 
 func dereferenceSemaType(typ sema.Type) sema.Type {
@@ -452,4 +474,31 @@ func dereferenceSemaType(typ sema.Type) sema.Type {
 		typ = *typ.Element
 	}
 	return typ
+}
+
+// verifyDynamicArrayElementBorrows checks that a direct borrow of a guarded
+// dynamic-array element Place names that Place's backing domain as its
+// invalidation domain: the reference depends on the owner's current backing
+// incarnation (package18 §§ 77, 100).
+// Rules: rules/mlir/packages/sec-mlir-dialect_package18.md — §§ 77, 100.
+func verifyDynamicArrayElementBorrows(fn *Function) error {
+	backing := map[ValueID]uint32{}
+	for _, block := range fn.Blocks {
+		for _, op := range block.Operations {
+			if op.Kind == OpDynamicArrayElementPlace && op.Place != nil && len(op.Results) == 1 {
+				backing[op.Results[0].ID] = op.Place.BackingDomain
+			}
+		}
+	}
+	for _, block := range fn.Blocks {
+		for _, op := range block.Operations {
+			if op.Kind != OpReferenceBorrowShared && op.Kind != OpReferenceBorrowMutable || len(op.Operands) == 0 || op.Reference == nil {
+				continue
+			}
+			if domain, element := backing[op.Operands[0]]; element && op.Reference.InvalidationDomain != domain {
+				return fmt.Errorf("%s of a dynamic-array element in ^%d names invalidation domain #%d, not the element Place's backing domain #%d", op.Kind, block.ID, op.Reference.InvalidationDomain, domain)
+			}
+		}
+	}
+	return nil
 }

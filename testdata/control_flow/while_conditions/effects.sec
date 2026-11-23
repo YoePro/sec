@@ -1,0 +1,127 @@
+module main
+
+enum ProbeError error {
+    Failed,
+}
+
+let mut Calls: int := 0
+let mut Tails: int := 0
+let mut Bodies: int := 0
+
+fn Probe(limit: int) bool {
+    Calls += 1
+    return Calls <= limit
+}
+
+fn Tail(value: bool) bool {
+    Tails += 1
+    return value
+}
+
+fn Next(failAt: int) Result[bool, ProbeError] {
+    Calls += 1
+    if Calls == failAt {
+        return Err(ProbeError.Failed)
+    }
+    return Ok(Calls <= 3)
+}
+
+fn Propagate(failAt: int) Result[int, ProbeError] {
+    while try Next(failAt) {
+        Bodies += 1
+        if Bodies == 2 {
+            continue
+        }
+    }
+    return Ok(Bodies)
+}
+
+fn Recover() int {
+    while (try Next(2) {
+        Err(_) => false
+    }) {
+        Bodies += 1
+    }
+    return Bodies
+}
+
+fn SkipTry() Result[int, ProbeError] {
+    while Probe(0) && (try Next(1)) {
+        Bodies += 1
+    }
+    return Ok(Bodies)
+}
+
+fn main() int {
+    while Probe(3) && Tail(true) {
+        Bodies += 1
+        continue
+    }
+    if Calls != 4 || Tails != 3 || Bodies != 3 {
+        return 1
+    }
+    Calls = 0
+    Tails = 0
+    Bodies = 0
+    while Probe(2) || Tail(false) {
+        Bodies += 1
+    }
+    if Calls != 3 || Tails != 1 || Bodies != 2 {
+        return 2
+    }
+    Calls = 0
+    Bodies = 0
+    match Propagate(0) {
+        Ok(value) => {
+            if value != 3 || Calls != 4 {
+                return 3
+            }
+        }
+        Err(_) => return 4
+    }
+    Calls = 0
+    Bodies = 0
+    match Propagate(2) {
+        Ok(_) => return 5
+        Err(_) => {
+            if Calls != 2 || Bodies != 1 {
+                return 6
+            }
+        }
+    }
+    Calls = 0
+    Bodies = 0
+    if Recover() != 1 || Calls != 2 {
+        return 7
+    }
+    Calls = 0
+    Bodies = 0
+    match SkipTry() {
+        Ok(value) => {
+            if value != 0 || Calls != 1 {
+                return 8
+            }
+        }
+        Err(_) => return 9
+    }
+    let mut rows := 0
+    let mut visits := 0
+    while rows < 3 {
+        rows += 1
+        let mut column := 0
+        while column < 4 {
+            column += 1
+            if column == 1 {
+                continue
+            }
+            if column == 3 {
+                break
+            }
+            visits += 1
+        }
+    }
+    if rows != 3 || visits != 3 {
+        return 10
+    }
+    return 42
+}

@@ -138,6 +138,9 @@ func staticMaterializable(typ Type) bool {
 	switch typ.Kind {
 	case IntType, UintType, CharType, RuneType, BoolType:
 		return true
+	case FloatType:
+		// P20 § 74: the resolved binary value is static data (bits leaf).
+		return true
 	case StructType:
 		if typ.CustomFree || len(typ.Fields) == 0 {
 			return false

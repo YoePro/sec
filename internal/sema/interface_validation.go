@@ -105,8 +105,12 @@ func (a *Analyzer) validateTypeImplementsInterface(typ Type, iface Type) {
 				anchor = required.Token
 			}
 			expected := substituteInterfaceSelf(required, typ)
+			help := "interface " + iface.Name + " requires " + interfaceRequirementDisplay(expected)
+			if method.Unsafe && !expected.Unsafe {
+				help += ". Implement this requirement with a safe method that discharges its caller obligations; adding unsafe at a call site cannot change the interface contract."
+			}
 			addFailure(required.Name, anchor, required.Token, diagnostics.InterfaceMemberIncompatible,
-				"interface "+iface.Name+" requires "+interfaceRequirementDisplay(expected),
+				help,
 				"type %s method %s does not match interface %s: %s", typ.Name, required.Name, iface.Name, interfaceMethodMismatch(method, expected))
 		}
 	}
@@ -148,7 +152,7 @@ func (a *Analyzer) validateTypeImplementsInterface(typ Type, iface Type) {
 				requiredKind, actualKind = "fallible", "infallible"
 			}
 			addFailure(required.Name, interfaceMemberAnchor(property.Token, required.Token), required.Token, diagnostics.InterfaceMemberIncompatible, "", "type %s property %s must provide %s setter for interface %s, got %s setter", typ.Name, required.Name, requiredKind, iface.Name, actualKind)
-		} else if contract := a.interfaceSetterErrors[iface.Name+"."+required.Name]; required.RequiresSet && required.SetterFallible && !setterErrorContractSatisfied(property, contract) {
+		} else if contract := a.interfaceSetterErrorContract(iface, required); required.RequiresSet && required.SetterFallible && !setterErrorContractSatisfied(property, contract) {
 			addFailure(required.Name, interfaceMemberAnchor(property.Token, required.Token), required.Token, diagnostics.InterfaceMemberIncompatible, "", "type %s property %s setter error %s does not satisfy %s required by interface %s",
 				typ.Name, required.Name, typeDisplayName(*property.Error), typeDisplayName(*contract), iface.Name)
 		}

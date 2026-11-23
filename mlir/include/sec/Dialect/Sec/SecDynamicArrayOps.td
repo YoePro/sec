@@ -88,6 +88,16 @@ def Sec_DynamicArrayAppendPreparedOp : Sec_Op<"dynamic_array.append_prepared"> {
   let hasVerifier = 1;
 }
 
+// Section 90 extension (P18-17, collections.md section 6.7): append the
+// `count` consecutive values lower, lower+1, ... of a compile-time range
+// segment into capacity ensured for exactly that count. One compact
+// operation, never one append per value; it never allocates.
+def Sec_DynamicArrayAppendRangePreparedOp : Sec_Op<"dynamic_array.append_range_prepared"> {
+  let summary = "Append a compact range segment into ensured capacity without allocation";
+  let arguments = (ins AnyType:$owner, AnyType:$lower, StrAttr:$count);
+  let hasVerifier = 1;
+}
+
 // Section 91: fallible backing establishment or growth with its static
 // canonical transition; failure leaves the owner unchanged.
 def Sec_DynamicArrayGrowBackingOp : Sec_Op<"dynamic_array.grow_backing"> {

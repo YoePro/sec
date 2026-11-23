@@ -443,13 +443,9 @@ fn Calculate() Result[int, Failure] { return Ok(1) }
 		// Float arithmetic left this boundary on 2026-10-18: the P20 binary
 		// subset (float.neg/binary/compare) is admitted early
 		// (TestFloatOperationVerifier, native fixture floats.sec).
-		// Sema resolves the MD-066 decimal operator plan; Semantic IR still
-		// rejects it as an explicit capability boundary.
-		{
-			name:    "decimal arithmetic",
-			source:  "module main\nfn Add(a: decimal, b: decimal) decimal { return a + b }\n",
-			feature: "operator decimal-add-checked",
-		},
+		// Decimal arithmetic left this boundary on 2026-11-23: the MD-066
+		// plan becomes decimal.binary-checked (TestDecimalOperatorsInSemanticIR);
+		// native lowering is the [unsupported-lowering] boundary in MLIR.
 		// Named integer arithmetic left this boundary on 2026-11-04: it keeps
 		// the named identity and applies the carrier's checked operations
 		// (named_scalars.sec, TestNamedIntegerConversionAndOperatorPlans).

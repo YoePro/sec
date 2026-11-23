@@ -3547,10 +3547,20 @@ The implemented Semantic IR spells the operations `dynamic-array.empty`,
 `dynamic-array.allocate`, `dynamic-array.length`, `dynamic-array.has-backing`,
 `dynamic-array.has-capacity`, `dynamic-array.index-in-bounds`,
 `dynamic-array.element-place`, `dynamic-array.append-prepared`,
+`dynamic-array.append-range-prepared` (compact range-segment Append, P18-17;
+its count equals the ensured capacity),
 `dynamic-array.grow-backing` and `storage.establish-domain`,
 `storage.advance-epoch`, `storage.end-domain`, `storage.reclaim`; schema 14
 carries them as the `sec.dynamic_array.*` and `sec.storage.*` operations
 (`rules/mlir/dialect-versions/sec_mlir_dialect_v14.md`).
+
+A direct element borrow or a slice of an owning `T[]` depends on the owner's
+current backing incarnation (P18 §§ 47, 77, 100–101). Because Sema rejects
+growth while such a borrow is live (S1162), the reference stays `proven`
+(`lexical-borrow`) and names the owner's backing InvalidationDomainID as its
+`invalidation_domain`, without an `epoch_dependency`; the verifier requires a
+borrow of a `dynamic-array.element-place` to name exactly that Place's
+backing domain (2026-11-23).
 
 ### § 127.1 Dynamic-array type
 

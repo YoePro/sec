@@ -5,7 +5,7 @@ integrations:
   - id: tooling.language-testing
     area: language-testing-and-tooling
     status: partial
-    revised: "2026-11-22"
+    revised: "2026-11-23"
     repository_baseline: 814a584
     summary: >-
       Implements the canonical Sec 0.1 source testing model: *_test.sec source
@@ -59,6 +59,11 @@ integrations:
       - internal/sema/compilation_mode.go
       - cmd/compiler/import_sources.go
       - cmd/lsp/import_sources.go
+      - internal/project/test_target_sources.go
+      - internal/project/manifest.go
+      - internal/sema/project_test_target_diagnostics.go
+      - cmd/compiler/project_version_diagnostics.go
+      - cmd/lsp/project_version_diagnostics.go
     tests:
       - internal/parser/parser_test.go
       - internal/cst/roles_test.go
@@ -84,6 +89,11 @@ integrations:
       - internal/sema/compilation_mode_test.go
       - cmd/compiler/test_only_imports_test.go
       - cmd/lsp/test_only_imports_test.go
+      - internal/project/test_target_sources_test.go
+      - cmd/compiler/test_target_sources_test.go
+      - cmd/lsp/test_target_sources_test.go
+      - testdata/projects/production_test_target/manifest.toml
+      - testdata/projects/production_test_target/tests/product/product.sec
     implemented:
       - "Standard-library import spelling synchronized (verified 2026-11-10): rules/projects/modules.md § 8 and projects.md § 16(2) use direct canonical logical paths such as `import \"io\"` and `import \"net/http\"`; no source-visible std/ prefix remains in either rulebook"
       - contextual top-level `test "name" { ... }` recognition retains a distinct ast.TestDeclaration with its source name and ordinary Sec body while `test` remains an identifier outside the declaration shape
@@ -106,13 +116,13 @@ integrations:
       - "Scoped test dependency isolation (2026-11-11): automatic recursive imports and implicit core loading exclude *_test.sec before identity validation, parsing and analysis; direct/transitive project, standard-library and platform dependencies contribute production sources only. Explicit file selections retain dependency tests and their parser/Sema failures; test-only imports remain unresolved with S1051. CLI JSON listing and name filters retain only explicitly selected tests (rules/tooling/testing.md sections 4.3-4.4, 25, 28.4)."
       - "BUG-000034 fixed (2026-11-22; testing.md sections 4,7.1-7.4, modules.md section 6). TestDeclaration now participates in the shared statement source-token projection, preserving the test invocation source file for trusted-core and ordinary file-private function visibility. The defect reproduced before the fix: four legitimate trusted-core helper calls were rejected, and an ordinary same-file __ helper also lost access. Sema regression covers three analysis depths on 32/64-bit plans, module-internal production/test helpers across files, same-file private helpers, rejection of cross-file private helpers and untrusted core callers. The real CLI loader compiles/lists selected core tests and continues to report execution-unavailable until the separately tracked static harness/lowering exists; CLI privacy negatives and LSP diagnostics/definition navigation are covered. The existing statement-token helper was extracted from analyzer.go into statement_tokens.go with rulebook traceability; no testing privilege or visibility bypass was added."
       - Execution-provider interface completed (2026-11-22; testing.md sections 26.4,29-31,34-37). internal/testexec defines a transport-neutral Provider Probe/Execute contract and optional capability-gated Controller for reset, interruption and debug. Every request retains the compiled test image, exact selected plan/variant and Sema-owned structured test identities; runner timeout and fail-fast policy are separate from source semantics. Run distinguishes Completed (including ordinary Failed or Skipped invocations), ExecutionUnavailable and ExecutionFailed; processor faults, unhandled panic, crash, reset, provider loss, deadline/cancellation and recovery requirements retain optional known active-test attribution. Report validation rejects foreign run/plan/test identities, missing or duplicate results, unknown states, passed/skipped invocations with recorded failures and failed children hidden by successful parents. Capability probing and execution receive detached plan/source snapshots; no host substitution, automatic retry, target transport, peripheral or source timeout is invented. Source-backed metadata tests and injected provider tests cover 32/64-bit plans, fail-fast omissions, controls, faults, partial evidence and cancellation under the race detector. This completes the provider abstraction; native execution, test harness generation, test-boundary lowering and CLI execution wiring remain their separate open items.
+      - Production Target test-source boundary completed (2026-11-23; testing.md sections 4.3,8.1,26.5 and projects.md sections 17-18,48-49). Shared project.ValidateTargetSourcesSnapshot rejects every non-test Target whose normalized project-relative source selects tests or its descendants, including the tests root itself; explicit kind=test stays valid and nested ordinary directories named tests remain ordinary. The canonical ParseManifest constructor refuses invalid resolved manifests. CLI governing-manifest validation reports registered mandatory S1145 on the source key before body analysis/emission/linking or build-counter updates, including direct files, named Target builds and sec test. LSP consumes the same snapshot validator for direct manifest diagnostics and source-only discovery; an unsaved kind=test correction clears the stale occurrence. Pure TOML-aware tests cover command/library/firmware/test/missing kinds, normalized paths, quoted/dotted/inline keys, CRLF, misleading text in comments and multiline strings and malformed syntax ownership. CLI tests prove no artifact or manifest mutation; editor publication/correction coverage is included. No test runtime, harness or source visibility relaxation is implied.
+      - "TestCompilationPlan as an explicit compilation mode (2026-11-22; testing.md §§ 3.1, 25.1, 26.1-26.2): sema.CompilationMode is a named mode (production default, test) set with SetCompilationMode; sec test runs in test mode and analyzes its test program as a TestCompilationPlan, while validateProductionGraph resolves and analyzes the tested module's production files explicitly in production mode, so test-only declarations and tests/ imports cannot make production valid. Test: TestCompilationModeAndTestOnlyImports"
+      - "project-root tests/ test-only source universe (2026-11-22; testing.md §§ 4.3, 8.1-8.4, 25.2; modules.md § 19.1): IsTestOnlySource classifies *_test.sec and every source below <project>/tests as test-only (same-directory *_test.sec selection only in test compilation was already in place); TestOnlyImportIssues rejects a tests/ import with S1145 in every production plan and from production source in a test plan, and resolves it from test-only source (Test -> Test, Test -> Production) in the CLI and in the LSP test view of test-only files. Tests: TestProjectTestsTreeIsTestOnly, TestLSPProjectTestsTreeImports"
     partial:
       - "Started (moved to partial 2026-11-20; the text records the done part and what remains): require TestCompilationPlan context in addition to the implemented *_test.sec filename check, complete remaining declaration diagnostics, and callable-effect facts"
       - "Started (moved to partial 2026-11-20; the text records the done part and what remains): complete the compiler-known test-context namespace with Run and TestResult, plus execution/control-flow semantics for the implemented Pass, Fail, Skip, Expect, Require, ExpectEqual, and RequireEqual frontend surface"
-      - "TestCompilationPlan as an explicit compilation mode (2026-11-22; testing.md §§ 3.1, 25.1, 26.1-26.2): sema.CompilationMode is a named mode (production default, test) set with SetCompilationMode; sec test runs in test mode and analyzes its test program as a TestCompilationPlan, while validateProductionGraph resolves and analyzes the tested module's production files explicitly in production mode, so test-only declarations and tests/ imports cannot make production valid. Test: TestCompilationModeAndTestOnlyImports"
-      - "project-root tests/ test-only source universe (2026-11-22; testing.md §§ 4.3, 8.1-8.4, 25.2; modules.md § 19.1): IsTestOnlySource classifies *_test.sec and every source below <project>/tests as test-only (same-directory *_test.sec selection only in test compilation was already in place); TestOnlyImportIssues rejects a tests/ import with S1145 in every production plan and from production source in a test plan, and resolves it from test-only source (Test -> Test, Test -> Production) in the CLI and in the LSP test view of test-only files. Tests: TestProjectTestsTreeIsTestOnly, TestLSPProjectTestsTreeImports"
     remaining:
-      - "reject a production Target whose manifest source lies below the project-root tests/ tree (testing.md § 8.1); today only imports of tests/ modules are rejected"
       - lower test-boundary try propagation so an unexpected Err terminates the current invocation as a structured Failed outcome reporting the error after ordinary cleanup; Sema accepts and resolves it (ResolvedTry.TestBoundary), Semantic IR rejects it explicitly until the test harness outcome exists
       - implement monotonic failure state and controlled cleanup for Pass, Fail, Skip, Require failures, bare return, and unexpected Err
       - implement synchronous hierarchical subtests, runtime sibling-name validation, child result attribution, and child-failure propagation to the parent
@@ -124,6 +134,16 @@ integrations:
       - integrate the VS Code extension with compiler-owned test metadata and the editor-native test UI without adding an independent Sec test parser
       - add required parser, Sema, cleanup, subtest, discovery, CLI, LSP, hosted, and provider regression tests from rules/tooling/testing.md
     verification:
+      - command: go test ./internal/project ./internal/traceability -count=1
+        result: Passed on 2026-11-23 (0.166s/0.231s); complete project package and rulebook traceability, including the concurrent P18 citation correction.
+      - command: go test ./cmd/compiler ./cmd/lsp -run 'Test(ProductionTestTarget|DynamicArrayMutationBorrowsCLI|EmptyDynamicArrayDefaultCLI|DynamicArraysReachTheInspectionBoundaries|CLIDynamicArrayLiteralStopsLowering)' -count=1 -timeout=120s
+        result: Passed on 2026-11-23 (compiler 13.269s, LSP 2.738s). Corrected the production_test_target fixture to store an inert manifest.toml template and activate .sec/sec.toml only in t.TempDir; repository-wide source scans no longer see an accidental nested project or S1154.
+      - command: go test ./internal/traceability -count=1
+        result: Failed 2026-11-23 (0.198s) solely on the concurrently introduced P18 helper internal/ir/semantic:appendedCount missing a rulebook citation. Flagged in the shared handoff; own project/Sema diagnostic functions have citations. No full shared traceability pass claimed at release.
+      - command: go test ./cmd/compiler ./cmd/lsp -run 'Test(ProductionTestTarget|CLIDiscoveredProjectVersion|LSPProjectVersion|ProjectTestsTree|LSPProjectTestsTree|SecTest)' -count=1 -timeout=120s
+        result: "Passed 2026-11-23: CLI 21.596s, LSP 8.617s. Registered source-key diagnostics across direct/named builds and discovery, no output/counter mutation, same-directory/test-only dependency regressions, and unsaved editor correction/clearing."
+      - command: go test ./internal/project -count=1
+        result: "Passed 2026-11-23 (0.215s): full project package including normalized production/test Target boundaries and refusal to publish an invalid resolved manifest."
       - command: go test ./internal/sema ./internal/traceability ./internal/testexec -count=1; go test ./cmd/compiler -run 'Test(Command|Only|Project|Import|Dependency|Discover|Init)|Testing|BuildInfo|Version'; go test ./cmd/lsp -run 'TestLSPProjectTestsTreeImports'
         result: passed on 2026-11-22; cmd/lsp TestAnalyzeLoadsFmtPackageAndTransitiveImports and TestAnalyzeGroupedPackageImportsAndShortNames fail on the unhandled fmt.Println Result of the stdlib fixture, unrelated to this change
       - command: go test ./internal/traceability -count=1

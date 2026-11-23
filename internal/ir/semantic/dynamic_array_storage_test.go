@@ -85,7 +85,6 @@ fn main() int {
 		feature string
 	}{
 		{"fn F() Result[void, CollectionError] {\n    let mut values: int[][]\n    try values.Append([])\n    return Ok()\n}\n", 18, "Append of a non-trivial element"},
-		{"fn F() Result[void, CollectionError] {\n    let mut values: int[]\n    try values.Append(1..3)\n    return Ok()\n}\n", 18, "allocation lowering is unsupported"},
 		{"fn F() Result[void, CollectionError] {\n    let mut values: int[]\n    try values.Append(4)\n    return Ok()\n}\n", 17, "allocation lowering is unsupported"},
 	} {
 		_, err := hostedModule(t, "module main\n\n"+item.source+"\nfn main() int {\n    return 0\n}\n", item.pkg)

@@ -1,0 +1,41 @@
+module main
+
+unsafe extern "C" fn Foreign(value: int32) int32
+unsafe fn Danger(value: int) int { return value }
+unsafe fn Generic[T](value: T) T { return value }
+unsafe fn MakeDevice() Device { return Device {} }
+
+type Device struct {}
+impl Device {
+    unsafe fn Read(value: int) int { return value }
+    unsafe fn BodyMethod(value: int) int { return Danger(value) }
+    @noPanic
+    unsafe fn Annotated(value: int) int { return value }
+}
+
+fn Choose(value: bool) bool { return value }
+unsafe fn Choose(value: int) int { return value }
+
+fn Missing(device: Device) void {
+    discard Danger(1)
+    discard Generic[int](1)
+    discard device.Read(1)
+    discard device.Annotated(1)
+    discard Foreign(int32(1))
+    discard Choose(1)
+}
+
+unsafe fn Body(device: Device) void {
+    discard Danger(1)
+    discard device.Read(1)
+}
+
+fn Nested() void {
+    discard unsafe Danger(Danger(1))
+    discard unsafe MakeDevice().Read(1)
+}
+
+fn Value() void {
+    let callback := Danger
+    discard callback
+}

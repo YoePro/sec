@@ -7,9 +7,6 @@ integrations:
     status: implemented
     audited: "2026-08-20"
     repository_baseline: c515862
-    primary_rule: rules/memory/arena.md
-    rulebook_status: canonical Sec 0.1 Arena rulebook
-    explicit_document_revision: null
     summary: The Arena frontend preserves the canonical owner traits and domain identity. Arena is MoveOnly and non-trivially destructible, aggregates derive those traits compositionally, and owner moves preserve a stable ArenaDomain ID used by Reset/Release epoch validation while diagnostics retain source-friendly owner names.
     rules:
       - rules/memory/arena.md
@@ -40,6 +37,9 @@ integrations:
       - owner moves preserve ArenaDomain identity and epoch state
       - diagnostics keep source display names separate from semantic domain identity to the destination
       - Reset through a moved-to owner can therefore fail to stale references created through the moved-from owner
+    primary_rule: rules/memory/arena.md
+    rulebook_status: canonical Sec 0.1 Arena rulebook
+    explicit_document_revision: null
     bug_reference:
       - correction29.md
     governance_reconciliation:
@@ -51,8 +51,8 @@ integrations:
     area: frontend-arena-borrowing
     status: partial
     audited: "2026-08-20"
+    revised: "2026-11-11"
     repository_baseline: c515862
-    primary_rule: rules/memory/arena.md
     summary: Arena.FromBuffer retains its mutable backing dependency for the resulting Arena lifetime. Backing and nested parent-domain dependencies follow local owner moves; Reset retains them, Release and implicit scope/temporary destruction end them. Parent Reset/Release is rejected while a child remains live, including direct temporary allocation backing and grandchildren; independent parent allocation remains legal. Borrowed owner escape is rejected. Closure capture and task-transfer integration remain partial.
     rules:
       - rules/memory/arena.md
@@ -92,12 +92,12 @@ integrations:
     partial:
       - closure capture and task transfer of a borrowed-backing Arena remain incomplete; nested parent/backing dependencies are implemented
     remaining: []
-    bug_reference:
-      - correction29.md
-    revised: "2026-11-11"
     verification:
       - command: go test -p 4 ./internal/sema -count=1; go test -p 4 ./cmd/compiler ./cmd/lsp -run 'NestedArena|ArenaInvalidation|ArenaMultiOrigin' -count=1 -timeout=120s; go vet -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp
         result: "Passed on 2026-11-11 after final temporary-discard cleanup: complete Sema 18.532s; compiler/LSP 19.336s/4.360s; vet clean. New valid/invalid source fixtures verify seven canonical parent/child invalidation errors and one borrowed-child escape, temporary versus named backing, moved parent/child owners, distinct child domains, grandchildren, child Reset retention, explicit Release, implicit scope/loop/break/continue destruction, legal independent parent allocation and explicit/implicit constructor-temporary discard. Before the fix the direct Alloc-result backing regression produced only three errors instead of four; new retained facts close that hole. Existing closure/task-transfer partial is preserved."
+    primary_rule: rules/memory/arena.md
+    bug_reference:
+      - correction29.md
 
   - id: frontend.transferability
     area: boundary-transfer-validation
@@ -119,8 +119,6 @@ integrations:
       - rules/concurrency/tasks.md
       - rules/concurrency/concurrency.md
       - rules/platform/interrupts.md
-    governance_reconciliation:
-      - concurrency.md requires one canonical boundary-transfer validation path for task, thread, process, ISR, and foreign execution boundaries.
     remaining:
       - introduce one canonical boundary-transfer validation path instead of ad-hoc per-feature checks
       - derive boundary-specific transfer facts recursively from the semantic value graph
@@ -140,6 +138,8 @@ integrations:
       - pinned-task thread-local case accepted when canonical scheduling rule permits it
       - active MutexGuard blocks transfer
       - partial aggregate allows disjoint transferable sub-Place but not whole-value transfer
+    governance_reconciliation:
+      - concurrency.md requires one canonical boundary-transfer validation path for task, thread, process, ISR, and foreign execution boundaries.
 
   - id: frontend.memory-model
     status: partial
@@ -160,12 +160,12 @@ integrations:
 
   - id: frontend.unsafe
     status: partial
-    remaining:
-      - complete unsafe fn/method and unsafe extern callable safety checking
-      - preserve caller obligations and safe-wrapper boundaries
+    revised: "2026-11-23"
     rules:
       - rules/memory/unsafe.md
       - rules/memory/raw_pointers.md
+      - rules/foundations/grammar.md
+      - rules/declarations/interfaces.md
     code:
       - internal/sema/unsafe_operations.go
       - cmd/lsp/unsafe_actions.go
@@ -176,6 +176,11 @@ integrations:
       - sec/stdlib/io/write.linux.amd64.sec
       - sec/platform/linux/arm64/raw_syscall.sec
       - sec/platform/linux/armv7/raw_syscall.sec
+      - internal/parser/parser.go
+      - internal/parser/unsafe_declarations.go
+      - internal/sema/interface_method_signatures.go
+      - internal/sema/interface_conformance.go
+      - internal/sema/interface_validation.go
     tests:
       - internal/sema/unsafe_operations_test.go
       - cmd/lsp/unsafe_actions_test.go
@@ -191,7 +196,25 @@ integrations:
       - testdata/sema/unsafe_direct_call_invalid.sec
       - testdata/sema/unsafe_direct_call_syntax_invalid.sec
       - internal/formatter/token_spacing_test.go
+      - internal/parser/unsafe_methods_test.go
+      - internal/sema/unsafe_callable_conformance_test.go
+      - cmd/compiler/unsafe_callable_conformance_test.go
+      - cmd/lsp/unsafe_callable_conformance_test.go
+      - testdata/sema/unsafe_callable_conformance
+    implemented:
+      - "direct single-call form (MD-079 decided 2026-10-18; unsafe.md § 4(9)–(13), grammar.md UnsafeCallExpression, formatter.md § 19(14)): `unsafe Call()` parses at prefix precedence as an expression or statement and records ast.CallExpression.Unsafe; Sema authorizes exactly that call (Analyzer.callUnsafeAuthorized) — its receiver, arguments and neighbors keep their own requirements and ordinary type checking applies; a block-less unsafe without a call is a parse error; the formatter keeps one space and never converts between forms; Semantic IR prints unsafe-direct@loc(...) on the call; the native track builds and runs a prefixed call"
+      - "Unsafe callable bodies start outside an unsafe context: unmarked raw-pointer operations and unsafe calls are rejected even inside unsafe fn, explicit unsafe blocks remain valid and do not leak permission, and callable caller requirements remain enforced."
+      - "2026-11-12: unsafe operation classification is centralized in one canonical registry (sema.UnsafeOperations, internal/sema/unsafe_operations.go): every requirement (unsafe callable calls including type-pack forwarding, raw-pointer Read/Write/Volatile*, Offset/AddBytes/Difference, AsRef/AsRefMut, Ptr/ptr address formation, raw address conversions, null sentinel and null tests, inline assembly) goes through Analyzer.authorizeUnsafe, which records the site's kind, authorization and obligations; the registry fixes each kind's explanation, caller obligations (raw-pointer obligations from the compiler-known member registry), safe alternative, whether call-form unsafe may authorize it and its diagnostic (S1240 unsafe.call-requires-context, S1204, S1080, S1241 unsafe.operation-requires-context). Compiler and LSP consume the same registry (UnsafeOperationSites, UnsafeOperationAt) (TestUnsafeOperationRegistry)."
+      - "Unsafe callable safety completed 2026-11-23 (unsafe.md §§4,6–7,10–11,39–41; BUG-000050): ordinary and attributed unsafe impl methods share the unsafe declaration parser and retain the same caller-facing marker/body. The canonical interface comparator rejects an unsafe implementation of a safe requirement, including inherited interfaces and generic owners; the existing incompatible-member diagnostic preserves both locations and explains why call-site authorization cannot change a safe contract. Safe-to-unsafe requirement compatibility remains allowed where represented. An all-depth source matrix covers ordinary/generic/overloaded functions, plain/attributed methods, unsafe extern, safe wrappers, explicit unsafe bodies, nested receiver/argument boundaries and rejected unsafe function values. CLI check/IR/MLIR gates produce no output for invalid source, and LSP uses the same registered diagnostics. Full caller-obligation proof remains the distinct existing remaining item; no future interface syntax or dynamic-dispatch lowering is claimed."
+    remaining:
+      - preserve caller obligations and safe-wrapper boundaries
     verification:
+      - command: GOTMPDIR="$HOME/.cache/sec-gotmp" go test -race -p 4 ./internal/sema ./internal/parser -run "UnsafeInterfaceImplementationPreservesSafety|UnsafeCallableSafetyMatrix|InterfaceMethodSafetyCompatibilityDirection|UnsafeImplMethodRetention" -count=1 -timeout=90s
+        result: "Passed 2026-11-23: Sema 2.050s and parser 1.174s. All-depth direct/inherited/generic interface witnesses and attributed variants, ordinary callable matrix and safe-to-unsafe compatibility direction pass. Overlay restoring the old comparator accepts the three invalid implementations, proving regression sensitivity (BUG-000050)."
+      - command: GOTMPDIR="$HOME/.cache/sec-gotmp" go test -p 4 ./cmd/compiler ./cmd/lsp -run "UnsafeCallableConformance|UnsafeFunctionBody|UnsafeDirectCall|InterfaceConformance|InterfaceOverload" -count=1 -timeout=150s; go vet ./internal/parser ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: "Passed 2026-11-23: compiler 40.658s and LSP 23.867s; vet clean. Valid ordinary/generic/overloaded/extern/method calls pass; three interface safety mismatches and twelve callable safety errors are shared across consumers. Invalid source emits no IR/MLIR output. Broad full-CLI/LSP acceptance was not rerun."
+      - command: GOTMPDIR="$HOME/.cache/sec-gotmp" go test -short -p 4 ./internal/parser ./internal/sema ./internal/cst ./internal/formatter ./internal/ir/semantic ./internal/traceability -count=1 -timeout=150s
+        result: "Passed 2026-11-23: parser 42.178s, Sema 39.437s, CST 0.010s, formatter 2.871s, Semantic IR 12.078s and traceability 0.331s. Shared unsafe declaration parsing retains plain/attributed method markers; the conformance comparator preserves callable safety. Extracted unsafe parsing into a focused sibling file and removed its traceability baseline exception."
       - command: go test ./cmd/compiler -run TestUnsafeDirectCall -count=1 && go test ./internal/formatter -run TestFormatDirectUnsafeCall -count=1
         result: passed on 2026-10-18; direct unsafe call scope, nested and receiver requirements, parse rejection, Semantic IR provenance and formatting
       - command: GOCACHE=/tmp/sec-go-cache go test ./cmd/compiler ./cmd/lsp -count=1
@@ -204,11 +227,6 @@ integrations:
         result: passed on 2026-10-15; the formerly accepted raw write is rejected by every tested CLI frontend gate and LSP, while explicit unsafe blocks remain valid
       - command: GOCACHE=/tmp/sec-go-cache go test ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir -count=1
         result: passed on 2026-10-15; complete suites cover explicit body contexts, unchanged caller safety and Semantic IR/lowering regressions
-    implemented:
-      - "direct single-call form (MD-079 decided 2026-10-18; unsafe.md § 4(9)–(13), grammar.md UnsafeCallExpression, formatter.md § 19(14)): `unsafe Call()` parses at prefix precedence as an expression or statement and records ast.CallExpression.Unsafe; Sema authorizes exactly that call (Analyzer.callUnsafeAuthorized) — its receiver, arguments and neighbors keep their own requirements and ordinary type checking applies; a block-less unsafe without a call is a parse error; the formatter keeps one space and never converts between forms; Semantic IR prints unsafe-direct@loc(...) on the call; the native track builds and runs a prefixed call"
-      - "Unsafe callable bodies start outside an unsafe context: unmarked raw-pointer operations and unsafe calls are rejected even inside unsafe fn, explicit unsafe blocks remain valid and do not leak permission, and callable caller requirements remain enforced."
-      - "2026-11-12: unsafe operation classification is centralized in one canonical registry (sema.UnsafeOperations, internal/sema/unsafe_operations.go): every requirement (unsafe callable calls including type-pack forwarding, raw-pointer Read/Write/Volatile*, Offset/AddBytes/Difference, AsRef/AsRefMut, Ptr/ptr address formation, raw address conversions, null sentinel and null tests, inline assembly) goes through Analyzer.authorizeUnsafe, which records the site's kind, authorization and obligations; the registry fixes each kind's explanation, caller obligations (raw-pointer obligations from the compiler-known member registry), safe alternative, whether call-form unsafe may authorize it and its diagnostic (S1240 unsafe.call-requires-context, S1204, S1080, S1241 unsafe.operation-requires-context). Compiler and LSP consume the same registry (UnsafeOperationSites, UnsafeOperationAt) (TestUnsafeOperationRegistry)."
-    revised: "2026-10-18"
 
   - id: frontend.references
     area: frontend-reference-provenance-lifetime
@@ -336,6 +354,7 @@ integrations:
     area: semantic-ir-ownership
     status: implemented
     integrated: "2026-08-28"
+    revised: "2026-11-05"
     document_revision: "2.0"
     repository_baseline: 069c111
     rules:
@@ -343,18 +362,6 @@ integrations:
       - rules/memory/ownership.md
       - rules/compiler/semantic_ir.md
       - rules/platform/volatile.md
-    implemented:
-      - "P17 Semantic IR copy/move (verified 2026-11-04; copy_move.md; semantic_ir.md §§ 34–36, 35(6)): own.copy, own.semantic-copy, own.move, own.copy-from-place, own.move-from-place, own.initialize-place, own.replace-place, own.discard and own.destroy-*; return, argument, struct-field and union-payload transfer actions (sec.return_action, argument actions, field_actions, payloadActions including construct-direct and move); sec.successor_actions on branches for value-producing control flow; Place identity and partial-availability state carried on Places; explicit named boundaries where a form is not represented. Tests: ownership_variants.sec, package17_predecessor_test.go, ownership_capabilities_test.go."
-      - "Volatile ownership boundary completed (2026-11-05; copy_move.md 19,30.6; volatile.md 3,9-12; semantic_ir.md 47): exact compiler-known RawPtr VolatileRead/VolatileWrite produce distinct effectful volatile.read/volatile.write operations on raw addresses, never ownership move-out of physical storage. Reads yield ordinary non-managed snapshots; local copies cause no new hardware read, repeated or discarded reads remain explicit, receiver/value operands evaluate once in order, and unsafe block/direct-prefix/function provenance is retained. The verifier rejects contradictory ownership, borrow, synchronization, identity, pointee and physical-plan claims. Existing register.hw operations retain their separate hardware authority boundary. Managed decoding is explicitly unsupported, not manufactured from bits. Unverified physical plans stop Sec MLIR emission with a named error and no artifact; target capability validation and executable physical lowering remain owned by the raw-pointer/platform integrations."
-    remaining: []
-    required_tests:
-      - Semantic IR distinguishes copy from move even when both could lower to identical machine operations
-      - Semantic IR preserves reusable-source explicit consuming call action
-      - Semantic IR preserves explicit aggregate/Option/Result/union payload move
-      - Semantic IR preserves return transfer with optional source marker normalized to one semantic transfer
-      - Semantic IR preserves replacement versus reinitialization and cleanup responsibility
-      - Semantic IR never models a volatile hardware read itself as ownership move-out
-    revised: "2026-11-05"
     code:
       - internal/ir/semantic/volatile_access.go
       - internal/ir/semantic/builder.go
@@ -370,6 +377,17 @@ integrations:
       - cmd/compiler/volatile_boundary_test.go
       - testdata/semantic_ir/volatile_snapshot/main.sec
       - testdata/semantic_ir/volatile_snapshot/managed.sec
+    implemented:
+      - "P17 Semantic IR copy/move (verified 2026-11-04; copy_move.md; semantic_ir.md §§ 34–36, 35(6)): own.copy, own.semantic-copy, own.move, own.copy-from-place, own.move-from-place, own.initialize-place, own.replace-place, own.discard and own.destroy-*; return, argument, struct-field and union-payload transfer actions (sec.return_action, argument actions, field_actions, payloadActions including construct-direct and move); sec.successor_actions on branches for value-producing control flow; Place identity and partial-availability state carried on Places; explicit named boundaries where a form is not represented. Tests: ownership_variants.sec, package17_predecessor_test.go, ownership_capabilities_test.go."
+      - "Volatile ownership boundary completed (2026-11-05; copy_move.md 19,30.6; volatile.md 3,9-12; semantic_ir.md 47): exact compiler-known RawPtr VolatileRead/VolatileWrite produce distinct effectful volatile.read/volatile.write operations on raw addresses, never ownership move-out of physical storage. Reads yield ordinary non-managed snapshots; local copies cause no new hardware read, repeated or discarded reads remain explicit, receiver/value operands evaluate once in order, and unsafe block/direct-prefix/function provenance is retained. The verifier rejects contradictory ownership, borrow, synchronization, identity, pointee and physical-plan claims. Existing register.hw operations retain their separate hardware authority boundary. Managed decoding is explicitly unsupported, not manufactured from bits. Unverified physical plans stop Sec MLIR emission with a named error and no artifact; target capability validation and executable physical lowering remain owned by the raw-pointer/platform integrations."
+    remaining: []
+    required_tests:
+      - Semantic IR distinguishes copy from move even when both could lower to identical machine operations
+      - Semantic IR preserves reusable-source explicit consuming call action
+      - Semantic IR preserves explicit aggregate/Option/Result/union payload move
+      - Semantic IR preserves return transfer with optional source marker normalized to one semantic transfer
+      - Semantic IR preserves replacement versus reinitialization and cleanup responsibility
+      - Semantic IR never models a volatile hardware read itself as ownership move-out
     verification:
       - command: go test -p 4 ./cmd/compiler -run TestVolatilePhysicalPlanBoundaryCLI\|Test.*Hardware\|TestRawPointer\|TestNativeTrackNamesUnloweredConstructs -count=1 -timeout=120s
         result: Passed 2026-11-05 (0.777s). go vet on Semantic IR, Sec MLIR lowering and compiler also passed.
@@ -411,8 +429,8 @@ integrations:
   - id: semantic-ir.borrowing
     area: semantic-ir-borrowing-reference-authority
     status: partial
-    revised: "2026-11-20"
     integrated: "2026-08-28"
+    revised: "2026-11-20"
     document_revision: "2.0"
     repository_baseline: 069c111
     rules:
@@ -467,8 +485,8 @@ integrations:
   - id: semantic-ir.destruction
     area: semantic-ir-destruction
     status: partial
-    revised: "2026-11-20"
     integrated: "2026-08-28"
+    revised: "2026-11-20"
     document_revision: "2.0"
     repository_baseline: 069c111
     rules:
@@ -567,8 +585,8 @@ integrations:
   - id: semantic-ir.lifetime-analysis
     area: semantic-ir-lifetime-facts
     status: partial
-    revised: "2026-11-20"
     integrated: "2026-08-29"
+    revised: "2026-11-20"
     document_revision: "2.0"
     repository_baseline: fafd8cb
     rules:
@@ -656,8 +674,6 @@ integrations:
       - rules/concurrency/tasks.md
       - rules/compiler/semantic_ir.md
       - rules/concurrency/concurrency.md
-    governance_reconciliation:
-      - Semantic IR preserves owned and borrowed transfers plus process-adapter, ISR, and foreign-context distinctions required by concurrency.md.
     remaining:
       - represent task/thread owned and borrowed transfers explicitly where semantically relevant
       - represent observer/lifecycle-handle transfer distinctly
@@ -673,6 +689,8 @@ integrations:
       - process adapter retained
       - ISR direction retained
       - invalid contradictory transfer facts rejected
+    governance_reconciliation:
+      - Semantic IR preserves owned and borrowed transfers plus process-adapter, ISR, and foreign-context distinctions required by concurrency.md.
 
   - id: lowering.transferability
     area: boundary-transfer-lowering
@@ -682,8 +700,6 @@ integrations:
       - rules/memory/transferability.md
       - rules/concurrency/tasks.md
       - rules/concurrency/concurrency.md
-    governance_reconciliation:
-      - Lowering must not clone move-only values or heap-promote invalid borrows to repair illegal concurrency-boundary transfers.
     remaining:
       - preserve consuming transfer commit/failure ownership semantics
       - avoid hidden copying of move-only lifecycle/resources
@@ -700,6 +716,8 @@ integrations:
       - borrowed local not heap-promoted to permit detached work
       - process transfer uses selected adapter
       - ISR handoff uses only permitted primitives
+    governance_reconciliation:
+      - Lowering must not clone move-only values or heap-promote invalid borrows to repair illegal concurrency-boundary transfers.
 
   - id: platform.transferability
     area: thread-process-isr-ffi-platform-boundaries
@@ -709,8 +727,6 @@ integrations:
       - rules/memory/transferability.md
       - rules/concurrency/tasks.md
       - rules/concurrency/concurrency.md
-    governance_reconciliation:
-      - Platform facts define affinity, migration, process-handle, ISR, shared-memory, and foreign-callback restrictions without weakening concurrency.md.
     remaining:
       - resolve target/runtime thread affinity and destruction restrictions
       - resolve scheduler migration/pinning guarantees
@@ -726,6 +742,8 @@ integrations:
       - shared-memory mapping lifetime covers process use
       - ISR-safe value rejected when platform says operation not interrupt-safe
       - foreign callback thread-bound state enforced
+    governance_reconciliation:
+      - Platform facts define affinity, migration, process-handle, ISR, shared-memory, and foreign-callback restrictions without weakening concurrency.md.
 
   - id: tooling.transferability
     area: transfer-diagnostics-lsp-tooling
@@ -736,8 +754,6 @@ integrations:
       - rules/concurrency/tasks.md
       - rules/tooling/lsp.md
       - rules/concurrency/concurrency.md
-    governance_reconciliation:
-      - Diagnostics identify the concrete concurrency boundary and the transferability fact that prevents safe use.
     remaining:
       - expose boundary-specific transferability/shareability conditions from canonical analysis
       - show nested blocking field/capture/reference/foreign contract in diagnostics
@@ -754,6 +770,8 @@ integrations:
       - process diagnostic recommends explicit adapter
       - ISR diagnostic identifies forbidden capability/effect
       - compiler and LSP agree
+    governance_reconciliation:
+      - Diagnostics identify the concrete concurrency boundary and the transferability fact that prevents safe use.
 
   - id: semantic-ir.memory-model
     status: implemented
@@ -842,15 +860,10 @@ integrations:
 
   - id: tooling.unsafe
     status: partial
-    implemented:
-      - "2026-11-12: safe unsafe code actions: an unsafe call missing its context gets the exact quick fix `unsafe Call(...)`, an unnecessary or redundant call-form `unsafe` gets a remove fix, and every edit is reparsed and reanalyzed before it is offered; the wrap is withheld when the call would still be an error, so tooling never implies that unsafe repairs a proven-invalid operation. Unsafe blocks are not unwrapped, because Sec has no bare block statement to keep (cmd/lsp/unsafe_actions.go; TestUnsafeHoverAndCodeActions)."
-      - "2026-11-12: unsafe mentor diagnostics distinguish missing context from proven invalidity: a missing context names the operation, the caller obligations the context would accept, how to authorize it (call-form or block), a safe alternative and that unsafe never makes a proven-invalid operation valid; proven-invalid raw-pointer operations keep their own identities (S1205 raw-pointer-operation, S1142 raw-pointer-null) whose help says adding unsafe cannot repair them; unnecessary and redundant unsafe contexts are S1242 unsafe.unnecessary and S1243 unsafe.redundant Information advisories published by the CLI and LSP alike (TestUnsafeOperationRegistry, TestUnsafeHoverAndCodeActions)."
-      - "2026-11-17: caller obligations and trust provenance in the LSP. An unsafe operation hover shows the obligations its context accepts (shared registry); a callable hover shows **Trust provenance** from Analyzer.TrustProvenance: caller-facing safety (safe, or unsafe for an unsafe fn/method), the unsafe operations in its own body by registry kind, the trusted foreign (extern) declarations it calls, and the shortest call path through which a safe wrapper still depends on unsafe code, over every represented execution edge. Sites carry their owning callable and call-graph nodes their unsafe marker; provenance stays analysis metadata, not part of the callable type (unsafe.md §§ 3.4, 14(1)–(4), 52(1); internal/sema/trust_provenance.go, cmd/lsp/unsafe_actions.go; TestTrustProvenanceHover)."
-      - Optional whole-program trust reports are available in sec analyse --verbose through the shared Analyzer.TrustProvenance and canonical call graph. The report distinguishes caller-facing safety from internal operation obligations, lists authorized unsafe operations and trusted foreign declarations with source locations, preserves safe-wrapper transitive trust witnesses, and explicitly retains open-target uncertainty without claiming trust freedom. Canonical selected-source and reachable-function scope filtering apply; default, --info and JSON presentations gain no trust-detail dump or new diagnostics. CLI help describes the report.
-      - "Raw-call authorization actions (2026-11-17, unsafe.md §§47,50,52): LSP offers the exact unsafe call prefix for registry-admitted RawPtr Read/Write, VolatileRead/VolatileWrite, Offset/AddBytes/Difference, including indexed receivers. It resolves the current canonical unsafe site and CallForm fact, then reparses/reanalyzes the proposed edit before offering it. Invalid null, arity, byte-pointer type and property-call cases gain no fix; AsRef remains a block-authorized property. Stale missing-context diagnostics cannot add a second prefix, and unnecessary/redundant prefix removal requires the exact advisory to still hold in the current document, preventing stale Information diagnostics from removing required authorization. Protocol coverage uses an unsaved document snapshot. This completes the concrete raw-call quick-fix slice, not the broad remaining unsafe-aware formatter/LSP audit."
-    remaining:
-      - complete unsafe-aware formatter/LSP
     revised: "2026-11-17"
+    rules:
+      - rules/memory/unsafe.md
+      - rules/tooling/cli.md
     code:
       - cmd/compiler/analyse_trust.go
       - cmd/compiler/analyse.go
@@ -875,9 +888,14 @@ integrations:
       - testdata/tooling/unsafe_actions/redundant_valid.sec
       - testdata/tooling/unsafe_actions/wrong_arity_invalid.sec
       - testdata/tooling/unsafe_actions/wrong_bytes_invalid.sec
-    rules:
-      - rules/memory/unsafe.md
-      - rules/tooling/cli.md
+    implemented:
+      - "2026-11-12: safe unsafe code actions: an unsafe call missing its context gets the exact quick fix `unsafe Call(...)`, an unnecessary or redundant call-form `unsafe` gets a remove fix, and every edit is reparsed and reanalyzed before it is offered; the wrap is withheld when the call would still be an error, so tooling never implies that unsafe repairs a proven-invalid operation. Unsafe blocks are not unwrapped, because Sec has no bare block statement to keep (cmd/lsp/unsafe_actions.go; TestUnsafeHoverAndCodeActions)."
+      - "2026-11-12: unsafe mentor diagnostics distinguish missing context from proven invalidity: a missing context names the operation, the caller obligations the context would accept, how to authorize it (call-form or block), a safe alternative and that unsafe never makes a proven-invalid operation valid; proven-invalid raw-pointer operations keep their own identities (S1205 raw-pointer-operation, S1142 raw-pointer-null) whose help says adding unsafe cannot repair them; unnecessary and redundant unsafe contexts are S1242 unsafe.unnecessary and S1243 unsafe.redundant Information advisories published by the CLI and LSP alike (TestUnsafeOperationRegistry, TestUnsafeHoverAndCodeActions)."
+      - "2026-11-17: caller obligations and trust provenance in the LSP. An unsafe operation hover shows the obligations its context accepts (shared registry); a callable hover shows **Trust provenance** from Analyzer.TrustProvenance: caller-facing safety (safe, or unsafe for an unsafe fn/method), the unsafe operations in its own body by registry kind, the trusted foreign (extern) declarations it calls, and the shortest call path through which a safe wrapper still depends on unsafe code, over every represented execution edge. Sites carry their owning callable and call-graph nodes their unsafe marker; provenance stays analysis metadata, not part of the callable type (unsafe.md §§ 3.4, 14(1)–(4), 52(1); internal/sema/trust_provenance.go, cmd/lsp/unsafe_actions.go; TestTrustProvenanceHover)."
+      - Optional whole-program trust reports are available in sec analyse --verbose through the shared Analyzer.TrustProvenance and canonical call graph. The report distinguishes caller-facing safety from internal operation obligations, lists authorized unsafe operations and trusted foreign declarations with source locations, preserves safe-wrapper transitive trust witnesses, and explicitly retains open-target uncertainty without claiming trust freedom. Canonical selected-source and reachable-function scope filtering apply; default, --info and JSON presentations gain no trust-detail dump or new diagnostics. CLI help describes the report.
+      - "Raw-call authorization actions (2026-11-17, unsafe.md §§47,50,52): LSP offers the exact unsafe call prefix for registry-admitted RawPtr Read/Write, VolatileRead/VolatileWrite, Offset/AddBytes/Difference, including indexed receivers. It resolves the current canonical unsafe site and CallForm fact, then reparses/reanalyzes the proposed edit before offering it. Invalid null, arity, byte-pointer type and property-call cases gain no fix; AsRef remains a block-authorized property. Stale missing-context diagnostics cannot add a second prefix, and unnecessary/redundant prefix removal requires the exact advisory to still hold in the current document, preventing stale Information diagnostics from removing required authorization. Protocol coverage uses an unsaved document snapshot. This completes the concrete raw-call quick-fix slice, not the broad remaining unsafe-aware formatter/LSP audit."
+    remaining:
+      - complete unsafe-aware formatter/LSP
     verification:
       - command: go test ./cmd/lsp -run "^TestUnsafeRedundantActionPreservesBlock$" -count=1 -timeout=120s
         result: "passed on 2026-11-17 (3.914s): redundant call prefix removal preserves the enclosing unsafe block and its authorization"
@@ -891,8 +909,8 @@ integrations:
   - id: semantic-ir.references
     area: semantic-ir-reference-facts
     status: partial
-    revised: "2026-11-20"
     integrated: "2026-08-29"
+    revised: "2026-11-20"
     document_revision: "2.0"
     repository_baseline: fafd8cb
     rules:
@@ -972,26 +990,14 @@ integrations:
   - id: tooling.references
     area: diagnostics-lsp-reference-tooling
     status: partial
-    revised: "2026-11-11"
     integrated: "2026-08-29"
+    revised: "2026-11-11"
     document_revision: "2.0"
     repository_baseline: fafd8cb
     rules:
       - rules/memory/references.md
       - rules/tooling/lsp.md
       - rules/tooling/diagnostics.md
-    evidence:
-      code:
-        - internal/sema/borrow_facts_at.go
-        - internal/sema/lifetime_facts_at.go
-        - internal/sema/return_reference_summary.go
-        - cmd/lsp/borrow_hover.go
-        - cmd/lsp/lifetime_hover.go
-        - cmd/lsp/call_graph_hover.go
-      tests:
-        - cmd/lsp/borrow_hover_test.go
-        - cmd/lsp/lifetime_hover_test.go
-        - internal/sema/lifetime_mentor_test.go
     implemented:
       - "2026-11-11: reference facts from shared Sema analysis. The **Borrow** hover (ResolvedBorrowsAt) shows reference kind, canonical referent Place and alternative origins, provenance, storage domain (automatic/static/thread-local/Arena/allocator-backed, in source terms), reborrow parent, authority, holder and live-range end, and validity dependencies; the **Lifetime** hover (ResolvedLifetimeAt) shows origin, Arena generation and the Reset/Release sites that invalidate it. No LSP lifetime engine exists (TestBorrowHover, TestLifetimeHover)."
       - "2026-11-11: returned-reference and retention summaries. Function hover renders the callee's ReturnReferenceSummary with source parameter names (`into pair.a`, `into left or right`, or an explicit not-established origin); the Lifetime hover at a holder shows the instantiated returned origin and which binding retains the borrow until when (TestReturnedReferenceSummaryHover, TestLifetimeHover)."
@@ -1006,6 +1012,18 @@ integrations:
       - mapping-view diagnostic points to mapping lifetime boundary
       - ISR escape diagnostic points to handler-local origin and escaping handoff
       - compiler and LSP agree on reference validity
+    evidence:
+      code:
+        - internal/sema/borrow_facts_at.go
+        - internal/sema/lifetime_facts_at.go
+        - internal/sema/return_reference_summary.go
+        - cmd/lsp/borrow_hover.go
+        - cmd/lsp/lifetime_hover.go
+        - cmd/lsp/call_graph_hover.go
+      tests:
+        - cmd/lsp/borrow_hover_test.go
+        - cmd/lsp/lifetime_hover_test.go
+        - internal/sema/lifetime_mentor_test.go
 
   - id: semantic-ir.reference-model
     area: semantic-ir-reference-validity
@@ -1028,9 +1046,9 @@ integrations:
     area: profile-selected-reference-lowering
     status: partial
     repository_baseline: 814a584
-    notes:
-      - "SEC-MLIR-P26 (validated physical reference and descriptor lowering, schema 22) installed 2026-10-20: rules/mlir/packages/sec-mlir-dialect_package26.md and plan package26-todo.md (validated; P26-01..31). Not implemented; P24 ResolvedLayout, P25 CallABIPlan and P17-P19 storage transitions are prerequisites, while the plan records, epoch rule and existing stale-reference path (P26-05/06/09/11/28) can start first."
-      - "Acceptance ownership clarified 2026-10-30 from P15 §§151–155 and MD-061 §§6/7(5): physical reference/LLVM optimization conformance is this existing receiving owner, not a prerequisite for closing the earlier P15 high-level package. P26 verifies physical-to-standard-MLIR transformations it introduces; later LLVM consumers verify that boundary when enabled. P15 preserves canonical facts, verifies its available high-level optimizations and refuses unsupported physical lowering. Full physical conformance remains unimplemented."
+    rules:
+      - rules/mlir/packages/sec-mlir-dialect_package26.md
+      - rules/corrections/applied/md015-md061-duration-reborrow-correction-20261015.md
     remaining:
       - lower proven direct refs to address-only where valid
       - lower dynamic epoch/generation checks where required
@@ -1047,9 +1065,9 @@ integrations:
       - compact slot generation with retirement
       - no global generation manager when unused
       - stale handle not lowered to trap/UB
-    rules:
-      - rules/mlir/packages/sec-mlir-dialect_package26.md
-      - rules/corrections/applied/md015-md061-duration-reborrow-correction-20261015.md
+    notes:
+      - "SEC-MLIR-P26 (validated physical reference and descriptor lowering, schema 22) installed 2026-10-20: rules/mlir/packages/sec-mlir-dialect_package26.md and plan package26-todo.md (validated; P26-01..31). Not implemented; P24 ResolvedLayout, P25 CallABIPlan and P17-P19 storage transitions are prerequisites, while the plan records, epoch rule and existing stale-reference path (P26-05/06/09/11/28) can start first."
+      - "Acceptance ownership clarified 2026-10-30 from P15 §§151–155 and MD-061 §§6/7(5): physical reference/LLVM optimization conformance is this existing receiving owner, not a prerequisite for closing the earlier P15 high-level package. P26 verifies physical-to-standard-MLIR transformations it introduces; later LLVM consumers verify that boundary when enabled. P15 preserves canonical facts, verifies its available high-level optimizations and refuses unsupported physical lowering. Full physical conformance remains unimplemented."
 
   - id: platform.reference-model
     area: reference-profile-address-space-ffi-isr
@@ -1072,13 +1090,6 @@ integrations:
     status: partial
     revised: "2026-11-11"
     repository_baseline: 814a584
-    evidence:
-      code:
-        - internal/sema/lifetime_facts_at.go
-        - internal/sema/analyzer_arena.go
-      tests:
-        - internal/sema/lifetime_mentor_test.go
-        - cmd/compiler/defer_arena_continuation_test.go
     implemented:
       - "2026-11-11: cause-chain mentor diagnostic for stale references. S1222 arena.use-after-invalidation carries the chain reference creation (allocation origin, labelled with its epoch) -> invalidating event (the Reset/Release on the analyzed path, as a related location, or help naming an invalidation through a callee) -> invalid use (primary span), with remedies; CLI JSON and LSP relatedInformation preserve the order (TestArenaUseAfterInvalidationMentor, TestDeferredArenaContinuationCLI)."
     remaining:
@@ -1091,6 +1102,13 @@ integrations:
       - handle diagnostic distinguishes fallible stale resolution
       - LSP hover shows source guarantee versus representation
       - compiler/LSP agree on address-space/provenance failures
+    evidence:
+      code:
+        - internal/sema/lifetime_facts_at.go
+        - internal/sema/analyzer_arena.go
+      tests:
+        - internal/sema/lifetime_mentor_test.go
+        - cmd/compiler/defer_arena_continuation_test.go
 
   - id: semantic-ir.arena
     area: arena-semantic-ir
@@ -1136,8 +1154,9 @@ integrations:
   - id: frontend.raw-pointers
     area: raw-pointer-types-and-operations
     status: partial
-    document_revision: "2.2"
     reviewed: "2026-09-22"
+    revised: "2026-11-06"
+    document_revision: "2.2"
     repository_baseline: 814a584
     summary: >-
       Tracks the revision-2.0 RawPtr address-value model and its integration
@@ -1164,6 +1183,13 @@ integrations:
       - internal/sema/raw_pointer_operations.go
       - internal/sema/raw_pointer_diagnostics.go
       - internal/sema/reference_dereference.go
+    tests:
+      - testdata/tooling/raw_pointer_reference_valid.sec
+      - testdata/tooling/raw_pointer_reference_invalid.sec
+      - testdata/tooling/raw_pointer_reference_origin_invalid.sec
+      - testdata/tooling/raw_pointer_property_calls_invalid.sec
+      - internal/ir/semantic/raw_pointer_reference_property_test.go
+      - testdata/semantic_ir/raw_pointer_reference_property.sec
     implemented:
       - RawPtr[T] is registered as a compiler-known generic type
       - RawPtr[T] is usable in locals, parameters, returns and extern declarations
@@ -1194,51 +1220,25 @@ integrations:
       - known dangling raw use rejected when lifetime fact exists
       - known alias-conflicting raw-to-ref mut conversion rejected
       - target-width overflow rejected
-    corrections_applied:
-      - rules/corrections/applied/raw-pointers-null-domain-correction-20260816.md
     verification:
       - command: go test -p 4 ./internal/sema/... ./internal/diagnostics ./internal/ir/semantic ./internal/formatter ./internal/cst -count=1
         result: passed on 2026-11-06; complete suites after AsRef/AsRefMut property migration, including known null/unavailable origins, legacy property-call rejection, canonical property registry, conversion formatting and the explicit raw-to-safe Semantic IR capability boundary
       - command: go test ./internal/sema -run 'TestRawPtr(Void|PointerArithmetic|Conversion)|TestCompilerKnownRawPointer' -count=1
         result: passed on 2026-09-22
-    revised: "2026-11-06"
-    tests:
-      - testdata/tooling/raw_pointer_reference_valid.sec
-      - testdata/tooling/raw_pointer_reference_invalid.sec
-      - testdata/tooling/raw_pointer_reference_origin_invalid.sec
-      - testdata/tooling/raw_pointer_property_calls_invalid.sec
-      - internal/ir/semantic/raw_pointer_reference_property_test.go
-      - testdata/semantic_ir/raw_pointer_reference_property.sec
+    corrections_applied:
+      - rules/corrections/applied/raw-pointers-null-domain-correction-20260816.md
 
   - id: analysis.raw-pointers
     area: raw-pointer-provenance-effects-and-safety-facts
     status: partial
-    document_revision: "2.0"
     reviewed: "2026-09-01"
+    revised: "2026-11-17"
+    document_revision: "2.0"
     repository_baseline: 814a584
     rules:
       - rules/memory/raw_pointers.md
       - rules/memory/unsafe.md
       - rules/analysis/effect_analysis.md
-    implemented:
-      - compiler-known member identity and unsafe classification exist for represented RawPtr operations
-      - volatile raw-pointer operations publish ordered volatile effect sites
-      - some raw-pointer type and argument constraints are known to Sema
-      - "Ordinary raw-memory effects (2026-11-09; raw_pointers.md section 31): validated Read/Write publish stable memory-read/memory-write identities from the shared compiler-known registry, with ordered call-graph source sites. VolatileRead/VolatileWrite retain separate canonical volatile identities; possession/copy/return of a raw pointer produces no access effect. An ordinary read alone implies neither volatile access, I/O nor nondeterministic input; a raw write without local-storage proof conservatively contributes MayMutateExternalState with a transitive call-site cause. No MMIO/device domain is invented from a bare pointer; mapping/foreign-domain facts remain separately tracked. Invalid accesses publish no successful access event. CLI analysis and LSP hover consume the same facts."
-      - "Immutable raw-pointer null aliases (2026-11-09; raw_pointers.md §§5.1,7(3,6-9a),32,34): nullability proven for an immutable pointer initializer now survives immutable copy bindings and copy chains, including copies from a stable binding on a dominating null path. Shared provenNullRawPointerBinding supplies the same conservative proof to binding propagation and access rejection. Unknown pointers, mutable/reassigned destinations, reassigned path sources and volatile bindings receive no invented proof; copying/returning a null pointer remains legal inside the required unsafe syntax context. Read, Write, VolatileRead, VolatileWrite, AsRef and AsRefMut through a proven-null alias reject with canonical S1142 and the alias declaration as related source, without successful access effects or emitted IR. Source-backed Sema/CLI/LSP tests share the same valid/invalid fixtures; no parallel editor classifier or new language decision."
-      - "Immutable raw-pointer origin aliases (2026-11-09; raw_pointers.md §§4(4),5.1,23(5-7),24(3-7),32(3),34, MD-070 §4(2),§5(3)): a copied/chained immutable RawPtr now retains a detached clone of its known .Ptr origin Place. Existing AsRef/AsRefMut validation therefore rejects the same known dangling owner and overlapping live-borrow contradictions through aliases as through the original pointer. Canonical S1206/S1161/S1162 diagnostics and move/borrow source locations are shared by Sema, CLI and LSP; rejected source produces no IR. Live and unknown origins remain accepted under their existing unsafe obligations; mutable/reassigned pointer sources or destinations receive no stale origin proof, and merely storing/returning a dangling raw address remains permitted without granting safe-reference authority or retaining its owner. Shared valid/invalid source fixtures cover direct copies, chains, moved owners and mutable/shared conflicts. No new syntax, ownership guarantee or parallel editor provenance model."
-    remaining:
-      - retain optional known raw origin, range, alignment, nullability and lifetime facts without pretending the bare RawPtr type guarantees them
-      - complete compile-time rejection of other known raw-pointer contradictions even inside unsafe, including range, alignment, initialization, lifetime, other origins and mapping/FFI facts; represented null proofs reject all four accesses and AsRef/AsRefMut, while immutable .Ptr origins and copy chains now share canonical availability and live-borrow checks across Read/Write/VolatileRead/VolatileWrite and AsRef/AsRefMut
-      - integrate raw-pointer effects into noPanic, noAlloc, noBlock, ISR and call-graph analyses
-      - connect FFI retention, ownership and extent contracts to raw-pointer facts
-      - connect runtime mapping lifetime and address-space contracts to raw-pointer facts
-    required_tests:
-      - known-null fact reaches raw read diagnostic
-      - known mapping end marks dependent raw pointer potentially dangling without extending mapping lifetime
-      - volatile operations contribute volatile effects
-      - raw pointer possession alone contributes no dereference effect
-      - ISR call path includes raw helper effects
     code:
       - internal/sema/raw_pointer_operations.go
       - internal/sema/compiler_known_physical_storage.go
@@ -1266,7 +1266,27 @@ integrations:
       - internal/sema/raw_origin_access_test.go
       - testdata/sema/raw_origin_access_invalid.sec
       - testdata/sema/raw_origin_access_valid.sec
-    revised: "2026-11-17"
+    implemented:
+      - compiler-known member identity and unsafe classification exist for represented RawPtr operations
+      - volatile raw-pointer operations publish ordered volatile effect sites
+      - some raw-pointer type and argument constraints are known to Sema
+      - "Ordinary raw-memory effects (2026-11-09; raw_pointers.md section 31): validated Read/Write publish stable memory-read/memory-write identities from the shared compiler-known registry, with ordered call-graph source sites. VolatileRead/VolatileWrite retain separate canonical volatile identities; possession/copy/return of a raw pointer produces no access effect. An ordinary read alone implies neither volatile access, I/O nor nondeterministic input; a raw write without local-storage proof conservatively contributes MayMutateExternalState with a transitive call-site cause. No MMIO/device domain is invented from a bare pointer; mapping/foreign-domain facts remain separately tracked. Invalid accesses publish no successful access event. CLI analysis and LSP hover consume the same facts."
+      - "Immutable raw-pointer null aliases (2026-11-09; raw_pointers.md §§5.1,7(3,6-9a),32,34): nullability proven for an immutable pointer initializer now survives immutable copy bindings and copy chains, including copies from a stable binding on a dominating null path. Shared provenNullRawPointerBinding supplies the same conservative proof to binding propagation and access rejection. Unknown pointers, mutable/reassigned destinations, reassigned path sources and volatile bindings receive no invented proof; copying/returning a null pointer remains legal inside the required unsafe syntax context. Read, Write, VolatileRead, VolatileWrite, AsRef and AsRefMut through a proven-null alias reject with canonical S1142 and the alias declaration as related source, without successful access effects or emitted IR. Source-backed Sema/CLI/LSP tests share the same valid/invalid fixtures; no parallel editor classifier or new language decision."
+      - "Immutable raw-pointer origin aliases (2026-11-09; raw_pointers.md §§4(4),5.1,23(5-7),24(3-7),32(3),34, MD-070 §4(2),§5(3)): a copied/chained immutable RawPtr now retains a detached clone of its known .Ptr origin Place. Existing AsRef/AsRefMut validation therefore rejects the same known dangling owner and overlapping live-borrow contradictions through aliases as through the original pointer. Canonical S1206/S1161/S1162 diagnostics and move/borrow source locations are shared by Sema, CLI and LSP; rejected source produces no IR. Live and unknown origins remain accepted under their existing unsafe obligations; mutable/reassigned pointer sources or destinations receive no stale origin proof, and merely storing/returning a dangling raw address remains permitted without granting safe-reference authority or retaining its owner. Shared valid/invalid source fixtures cover direct copies, chains, moved owners and mutable/shared conflicts. No new syntax, ownership guarantee or parallel editor provenance model."
+    partial:
+      - "Known-origin raw access (2026-11-17; raw_pointers.md §§11–13,23(4),24(7),34): Read, Write, VolatileRead and VolatileWrite consume the existing immutable .Ptr-origin Place and copy-chain provenance. Canonical unavailable-value state rejects access after discard or owner move, including field pointers; live shared/mutable borrow conflicts use the same authority checks as safe-reference conversion. Rejected operations publish no successful access effects and emit no IR. Live and reinitialized storage, disjoint fields, shared reads, unknown origins and storing an unavailable owner's raw address without dereferencing remain accepted. Sema, CLI and LSP share registered categories, help and earlier invalidation/borrow source locations. Mutable pointer-origin tracking, range/alignment, mapping and foreign contracts remain open."
+    remaining:
+      - retain optional known raw origin, range, alignment, nullability and lifetime facts without pretending the bare RawPtr type guarantees them
+      - complete compile-time rejection of other known raw-pointer contradictions even inside unsafe, including range, alignment, initialization, lifetime, other origins and mapping/FFI facts; represented null proofs reject all four accesses and AsRef/AsRefMut, while immutable .Ptr origins and copy chains now share canonical availability and live-borrow checks across Read/Write/VolatileRead/VolatileWrite and AsRef/AsRefMut
+      - integrate raw-pointer effects into noPanic, noAlloc, noBlock, ISR and call-graph analyses
+      - connect FFI retention, ownership and extent contracts to raw-pointer facts
+      - connect runtime mapping lifetime and address-space contracts to raw-pointer facts
+    required_tests:
+      - known-null fact reaches raw read diagnostic
+      - known mapping end marks dependent raw pointer potentially dangling without extending mapping lifetime
+      - volatile operations contribute volatile effects
+      - raw pointer possession alone contributes no dereference effect
+      - ISR call path includes raw helper effects
     verification:
       - command: GOTMPDIR="$HOME/.cache/sec-gotmp" go vet ./internal/sema ./cmd/compiler ./cmd/lsp
         result: passed on 2026-11-17
@@ -1280,19 +1300,31 @@ integrations:
         result: "Passed 2026-11-09: complete Sema 17.287s; targeted Sema 0.166s, CLI 11.271s and LSP 3.611s; vet passes. Final alias-only checks, including permitted copy/return of null without access, pass 0.012s / 3.017s / 1.951s. Eight source-invalid alias accesses retain canonical S1142/source/help, publish no successful effects and emit no artifact. Unknown, reassigned and non-null path cases remain accepted. 1 implemented point added, 1 remaining narrowed, 0 closed; analysis.raw-pointers remaining 5 to 5."
       - command: go test -p 4 ./internal/sema -count=1; go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run 'TestRawMemory|TestRejectedRawMemory|TestRawPointerRegistrySurface|TestCompilerKnownRawPointerVolatileAccess' -count=1; go vet -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp
         result: "Passed on 2026-11-09: complete Sema suite (16.273s); focused Sema/CLI/LSP tests (0.046s/1.270s/3.851s); vet clean. Checks ordinary versus volatile identities, no access from mere possession, conservative transitive external-write provenance, no invented I/O/nondeterminism domains, rejected-operation silence, verbose analysis output and source-resolved LSP hover."
-    partial:
-      - "Known-origin raw access (2026-11-17; raw_pointers.md §§11–13,23(4),24(7),34): Read, Write, VolatileRead and VolatileWrite consume the existing immutable .Ptr-origin Place and copy-chain provenance. Canonical unavailable-value state rejects access after discard or owner move, including field pointers; live shared/mutable borrow conflicts use the same authority checks as safe-reference conversion. Rejected operations publish no successful access effects and emit no IR. Live and reinitialized storage, disjoint fields, shared reads, unknown origins and storing an unavailable owner's raw address without dereferencing remain accepted. Sema, CLI and LSP share registered categories, help and earlier invalidation/borrow source locations. Mutable pointer-origin tracking, range/alignment, mapping and foreign contracts remain open."
 
   - id: semantic-ir.raw-pointers
     area: semantic-ir-raw-pointer-facts
     status: partial
-    document_revision: "2.0"
     reviewed: "2026-09-01"
+    revised: "2026-11-20"
+    document_revision: "2.0"
     repository_baseline: 814a584
     rules:
       - rules/memory/raw_pointers.md
       - rules/compiler/semantic_ir.md
       - rules/platform/volatile.md
+    code:
+      - internal/ir/semantic/raw_pointer.go
+      - internal/ir/semantic/builder.go
+      - internal/ir/semantic/printer.go
+      - internal/ir/semantic/verifier.go
+    tests:
+      - internal/ir/semantic/raw_pointer_test.go
+      - internal/lowering/secmlir/raw_pointer_boundary_test.go
+      - testdata/semantic_ir/raw_pointer_values_valid.sec
+    implemented:
+      - represent RawPtr distinctly from safe references
+      - RawPtr has a distinct Semantic IR type and raw-pointer value classification through parameters, copies, calls, returns, storage and aggregate extraction, including void pointees, nested pointers and nominal identities; no safe-reference facts are created, invalid raw ownership/reference classifications are rejected, and unsupported Sec MLIR lowering fails explicitly.
+      - Volatile raw operation identity, snapshot/ownership separation, unsafe authorization provenance and contradiction checks are represented by semantic-ir.copy-move (2026-11-05). Physical plans remain unverified and fail closed before Sec MLIR output; ordinary raw operations and the remaining raw provenance/access contract work stay open here.
     partial:
       - "Started (moved to partial 2026-11-20; the text records the done part and what remains): represent raw Read, Write, Offset, AddBytes and Difference operation identity; volatile read/write ownership boundaries are implemented under semantic-ir.copy-move"
     remaining:
@@ -1307,20 +1339,6 @@ integrations:
       - ordinary and volatile accesses remain distinct
       - raw-to-safe conversion establishes explicit safe-reference facts
       - invalid contradictory raw facts rejected
-    implemented:
-      - represent RawPtr distinctly from safe references
-      - RawPtr has a distinct Semantic IR type and raw-pointer value classification through parameters, copies, calls, returns, storage and aggregate extraction, including void pointees, nested pointers and nominal identities; no safe-reference facts are created, invalid raw ownership/reference classifications are rejected, and unsupported Sec MLIR lowering fails explicitly.
-      - Volatile raw operation identity, snapshot/ownership separation, unsafe authorization provenance and contradiction checks are represented by semantic-ir.copy-move (2026-11-05). Physical plans remain unverified and fail closed before Sec MLIR output; ordinary raw operations and the remaining raw provenance/access contract work stay open here.
-    revised: "2026-11-20"
-    code:
-      - internal/ir/semantic/raw_pointer.go
-      - internal/ir/semantic/builder.go
-      - internal/ir/semantic/printer.go
-      - internal/ir/semantic/verifier.go
-    tests:
-      - internal/ir/semantic/raw_pointer_test.go
-      - internal/lowering/secmlir/raw_pointer_boundary_test.go
-      - testdata/semantic_ir/raw_pointer_values_valid.sec
     verification:
       - command: GOCACHE=/tmp/sec-go-cache go test ./cmd/compiler -count=1
         result: passed on 2026-10-15; complete compiler package suite
@@ -1332,8 +1350,8 @@ integrations:
   - id: lowering.raw-pointers
     area: raw-pointer-lowering
     status: partial
-    document_revision: "2.0"
     reviewed: "2026-09-01"
+    document_revision: "2.0"
     repository_baseline: 814a584
     rules:
       - rules/memory/raw_pointers.md
@@ -1358,8 +1376,8 @@ integrations:
   - id: platform.raw-pointers
     area: raw-pointer-hardware-and-address-space-integration
     status: partial
-    document_revision: "2.0"
     reviewed: "2026-09-01"
+    document_revision: "2.0"
     repository_baseline: 814a584
     rules:
       - rules/memory/raw_pointers.md
@@ -1387,8 +1405,9 @@ integrations:
   - id: tooling.raw-pointers
     area: raw-pointer-lsp-diagnostics-formatter
     status: implemented
-    document_revision: "2.2"
     reviewed: "2026-09-01"
+    revised: "2026-11-11"
+    document_revision: "2.2"
     repository_baseline: 814a584
     rules:
       - rules/memory/raw_pointers.md
@@ -1398,24 +1417,6 @@ integrations:
       - rules/compiler/compiler_known_members.md
       - rules/corrections/applied/md070-as-property-naming-correction-20261106.md
       - rules/declarations/properties.md
-    implemented:
-      - LSP completion exposes represented compiler-known raw-pointer arithmetic members
-      - LSP completion and hover expose VolatileRead and VolatileWrite unsafe and effect identity
-      - "Canonical RawPtr registry (2026-10-15): Read, Write, VolatileRead, VolatileWrite, Offset, AddBytes and Difference now own their stable IDs, result types, unsafe signatures, effects, receiver restrictions, rule references and documentation together in compiler_known_physical_storage.go. The separate synthetic-signature rows are removed. Sema lookup, completion, hover, synthetic definitions and derived API documentation consume the same receiver-instantiated entries. AddBytes is offered only for RawPtr[byte]; RawPtr[void] offers no typed access or arithmetic operations. Explicit invalid calls retain operation-specific diagnostics. Nominal pointee names and distinct ordinary/volatile effects are preserved."
-      - "Raw-pointer caller contracts in hover and signature help (2026-10-15): all seven canonical operations expose explicit unsafe requirements and registry-owned caller obligations for access validity, alignment, initialized representation, ownership/alias authority, replacement/destruction, volatile physical contracts and target-correct address arithmetic. Requirements are labelled as caller obligations, never as proven pointer facts. Structured receiver-resolved parameters preserve nominal and borrowed pointer types. Signature help handles incomplete calls at EOF, nested calls, grouping, comments, UTF-16 positions and statement/foreign-closer recovery boundaries while preserving initializer help. Parser-owned argument openers also distinguish intrinsic, unit-conversion and bit-extraction subcalls without an LSP grammar or name-based safety inference. Hover rendering and signature help are extracted into focused sibling files; synthetic definitions/API documentation retain the same obligations."
-      - "Canonical RawPtr formatting audit completed (2026-11-06): the shared formatter preserves RawPtr[T], all seven Read/Write/VolatileRead/VolatileWrite/Offset/AddBytes/Difference method spellings, negative arithmetic operands, method chains, comments and unsafe function/block/direct-call boundaries without introducing C-style syntax. Existing CST formatting already supplies the complete behavior; golden and token-preservation regressions cover indentation 2/4/6, LF/CRLF, fix on/off, idempotence, CLI check/write/check and actual LSP document edits. Conversion formatting remains separately owned and open."
-      - "Raw-pointer mentor diagnostics completed (2026-11-06): mandatory S1204 identifies missing unsafe authorization for the nine canonical RawPtr operations, Place.Ptr and explicit raw-address conversions; call diagnostics reuse canonical registry caller obligations without treating them as proofs. S1205 identifies invalid concrete pointees, write/offset/difference argument types, arity and conversion-call type arguments. Existing S1142 null checks retain their identity and distinguish access from reference formation, and S1206 identifies already-known unavailable origins during AsRef/AsRefMut. Null errors link to the pointer binding and dangling-origin errors to the ownership-invalidating operation; existing borrow-conflict diagnostics keep their canonical authority evidence. Repairs distinguish accepting unproven obligations from fixing contradicted validity and never automatically insert unsafe. The shared semantic producer supplies identical CLI human/JSON and LSP help and source links. Raw operation inference and helpers are extracted from the analyzer monoliths into a focused sibling file. No new alignment, address-space, epoch or lifetime proof producer is claimed by this diagnostic closure."
-      - "Raw/reference conversion formatting completed (2026-11-06, owner naming clarification): AsRef and AsRefMut are properties without parentheses, used inside unsafe blocks; .Ptr, explicit integer/raw and raw/raw conversion syntax, reference type annotations, grouped dereferences and multiline property chains retain their tokens and unsafe boundaries. Parser-confirmed member dots receive a compact CST spacing role, correcting source . Ptr and pointer . AsRef without changing decimal/range dots, literal contents, comments or recovered missing members. Golden/token-preservation matrices cover indentation 2/4/6, LF/CRLF, fix on/off and idempotence; CLI check/write/check and actual LSP document edits share the golden. Completion, hover and synthetic definitions expose unsafe properties; call signature help is absent for property reads. Legacy property calls are diagnosed, not silently rewritten or authorized."
-      - "Compiler/LSP/sec analyse parity completed (2026-11-11; raw_pointers.md sections 34-35, lsp.md section 10.1): all seven CLI frontend gates preserve the complete ordered 39-occurrence safety/validity matrix, including identity, severity, primary/related spans, help, notes, fixes and source. Sema-to-LSP projection is verified for LF/CRLF, UTF-16 non-BMP positions and unsaved operation changes, with exact IDs, messages, help and navigable causal origins; valid source remains accepted. Canonical ordinary/volatile effects already share CLI analysis and hover tests. Corrected rawPointerCallerContract so ordinary memory-read/write effects do not attach volatile/device caller obligations; explicit volatile effects retain those obligations. Known address-space, nullability, range, alignment and lifetime fact presentation remains separate."
-      - "Known raw-pointer fact presentation completed (2026-11-11; raw_pointers.md sections 7,23-24,32,35(4-6)): source-local immutable snapshots expose the null proofs, address origin and origin invalidation already retained by Sema, at binding declarations and identifier uses. LSP hover and sec analyse share the exact display/query; a branch-local null proof does not leak to later uses, mutable/unknown pointers do not acquire a null proof, raw alias origins survive address copies without retaining storage, and known invalidation is distinguished from established lifetime validity. Unknown address-space, range, alignment and full lifetime guarantees remain explicitly not established; no new proof producer is claimed. Summary passes and speculative backedge replay do not replace facts; outputs are source ordered, detached and reset on analyzer reuse. Existing analysis.raw-pointers ownership covers future provenance/domain proof producers."
-    remaining: []
-    required_tests:
-      - completion includes canonical RawPtr members
-      - unsafe members are clearly marked
-      - known-null diagnostic explains that unsafe does not legalize null dereference
-      - formatter preserves RawPtr[T] and member spellings
-      - compiler and LSP agree on raw-pointer validity diagnostics
-    revised: "2026-11-11"
     code:
       - internal/sema/compiler_known_physical_storage.go
       - internal/sema/compiler_known_synthetic.go
@@ -1478,8 +1479,23 @@ integrations:
       - cmd/compiler/raw_pointer_facts_test.go
       - cmd/lsp/raw_pointer_facts_test.go
       - testdata/tooling/raw_pointer_facts.sec
-    verification_notes:
-      - Known pointer facts are exposed through detached source-local snapshots; missing address-space, range, alignment and lifetime guarantees remain explicitly unproven. The presentation work is complete for represented Sema facts. New proof producers and physical raw-pointer/domain integration remain owned by analysis.raw-pointers and the semantic/platform/lowering integrations.
+    implemented:
+      - LSP completion exposes represented compiler-known raw-pointer arithmetic members
+      - LSP completion and hover expose VolatileRead and VolatileWrite unsafe and effect identity
+      - "Canonical RawPtr registry (2026-10-15): Read, Write, VolatileRead, VolatileWrite, Offset, AddBytes and Difference now own their stable IDs, result types, unsafe signatures, effects, receiver restrictions, rule references and documentation together in compiler_known_physical_storage.go. The separate synthetic-signature rows are removed. Sema lookup, completion, hover, synthetic definitions and derived API documentation consume the same receiver-instantiated entries. AddBytes is offered only for RawPtr[byte]; RawPtr[void] offers no typed access or arithmetic operations. Explicit invalid calls retain operation-specific diagnostics. Nominal pointee names and distinct ordinary/volatile effects are preserved."
+      - "Raw-pointer caller contracts in hover and signature help (2026-10-15): all seven canonical operations expose explicit unsafe requirements and registry-owned caller obligations for access validity, alignment, initialized representation, ownership/alias authority, replacement/destruction, volatile physical contracts and target-correct address arithmetic. Requirements are labelled as caller obligations, never as proven pointer facts. Structured receiver-resolved parameters preserve nominal and borrowed pointer types. Signature help handles incomplete calls at EOF, nested calls, grouping, comments, UTF-16 positions and statement/foreign-closer recovery boundaries while preserving initializer help. Parser-owned argument openers also distinguish intrinsic, unit-conversion and bit-extraction subcalls without an LSP grammar or name-based safety inference. Hover rendering and signature help are extracted into focused sibling files; synthetic definitions/API documentation retain the same obligations."
+      - "Canonical RawPtr formatting audit completed (2026-11-06): the shared formatter preserves RawPtr[T], all seven Read/Write/VolatileRead/VolatileWrite/Offset/AddBytes/Difference method spellings, negative arithmetic operands, method chains, comments and unsafe function/block/direct-call boundaries without introducing C-style syntax. Existing CST formatting already supplies the complete behavior; golden and token-preservation regressions cover indentation 2/4/6, LF/CRLF, fix on/off, idempotence, CLI check/write/check and actual LSP document edits. Conversion formatting remains separately owned and open."
+      - "Raw-pointer mentor diagnostics completed (2026-11-06): mandatory S1204 identifies missing unsafe authorization for the nine canonical RawPtr operations, Place.Ptr and explicit raw-address conversions; call diagnostics reuse canonical registry caller obligations without treating them as proofs. S1205 identifies invalid concrete pointees, write/offset/difference argument types, arity and conversion-call type arguments. Existing S1142 null checks retain their identity and distinguish access from reference formation, and S1206 identifies already-known unavailable origins during AsRef/AsRefMut. Null errors link to the pointer binding and dangling-origin errors to the ownership-invalidating operation; existing borrow-conflict diagnostics keep their canonical authority evidence. Repairs distinguish accepting unproven obligations from fixing contradicted validity and never automatically insert unsafe. The shared semantic producer supplies identical CLI human/JSON and LSP help and source links. Raw operation inference and helpers are extracted from the analyzer monoliths into a focused sibling file. No new alignment, address-space, epoch or lifetime proof producer is claimed by this diagnostic closure."
+      - "Raw/reference conversion formatting completed (2026-11-06, owner naming clarification): AsRef and AsRefMut are properties without parentheses, used inside unsafe blocks; .Ptr, explicit integer/raw and raw/raw conversion syntax, reference type annotations, grouped dereferences and multiline property chains retain their tokens and unsafe boundaries. Parser-confirmed member dots receive a compact CST spacing role, correcting source . Ptr and pointer . AsRef without changing decimal/range dots, literal contents, comments or recovered missing members. Golden/token-preservation matrices cover indentation 2/4/6, LF/CRLF, fix on/off and idempotence; CLI check/write/check and actual LSP document edits share the golden. Completion, hover and synthetic definitions expose unsafe properties; call signature help is absent for property reads. Legacy property calls are diagnosed, not silently rewritten or authorized."
+      - "Compiler/LSP/sec analyse parity completed (2026-11-11; raw_pointers.md sections 34-35, lsp.md section 10.1): all seven CLI frontend gates preserve the complete ordered 39-occurrence safety/validity matrix, including identity, severity, primary/related spans, help, notes, fixes and source. Sema-to-LSP projection is verified for LF/CRLF, UTF-16 non-BMP positions and unsaved operation changes, with exact IDs, messages, help and navigable causal origins; valid source remains accepted. Canonical ordinary/volatile effects already share CLI analysis and hover tests. Corrected rawPointerCallerContract so ordinary memory-read/write effects do not attach volatile/device caller obligations; explicit volatile effects retain those obligations. Known address-space, nullability, range, alignment and lifetime fact presentation remains separate."
+      - "Known raw-pointer fact presentation completed (2026-11-11; raw_pointers.md sections 7,23-24,32,35(4-6)): source-local immutable snapshots expose the null proofs, address origin and origin invalidation already retained by Sema, at binding declarations and identifier uses. LSP hover and sec analyse share the exact display/query; a branch-local null proof does not leak to later uses, mutable/unknown pointers do not acquire a null proof, raw alias origins survive address copies without retaining storage, and known invalidation is distinguished from established lifetime validity. Unknown address-space, range, alignment and full lifetime guarantees remain explicitly not established; no new proof producer is claimed. Summary passes and speculative backedge replay do not replace facts; outputs are source ordered, detached and reset on analyzer reuse. Existing analysis.raw-pointers ownership covers future provenance/domain proof producers."
+    remaining: []
+    required_tests:
+      - completion includes canonical RawPtr members
+      - unsafe members are clearly marked
+      - known-null diagnostic explains that unsafe does not legalize null dereference
+      - formatter preserves RawPtr[T] and member spellings
+      - compiler and LSP agree on raw-pointer validity diagnostics
     verification:
       - command: go test -p 4 ./internal/sema -count=1; go test -p 4 ./cmd/compiler ./cmd/lsp -run 'RawPointer|RawMemory|AnalyseCLI' -count=1 -timeout=180s; go vet -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp
         result: "Passed on 2026-11-11: full Sema 20.179s; broad compiler/LSP selections 21.337s/134.665s; vet clean. New source-backed snapshot tests verify null aliases, branch-local versus post-branch proof, mutable uncertainty, address-copy provenance, origin invalidation, detached results and analyzer reuse. CLI analysis and hover share the display; unsaved initialization edits replace stale null proofs. Focused tests also passed (Sema 0.004s, compiler 1.178s, LSP 6.573s); final CLI rerun after omitting empty sections passed 1.185s."
@@ -1527,9 +1543,38 @@ integrations:
         result: passed on 2026-10-15 for final registry and parser regression fix
       - command: go test ./internal/sema ./cmd/lsp -run RawPointerRegistry -count=1
         result: passed on 2026-10-15; receiver-specific completion, nominal signatures, shared/mutable reference receivers, ordinary versus volatile effects, API documentation, hover and synthetic definitions
+    verification_notes:
+      - Known pointer facts are exposed through detached source-local snapshots; missing address-space, range, alignment and lifetime guarantees remain explicitly unproven. The presentation work is complete for represented Sema facts. New proof producers and physical raw-pointer/domain integration remain owned by analysis.raw-pointers and the semantic/platform/lowering integrations.
 
   - id: frontend.layout
     status: partial
+    revised: "2026-11-20"
+    rules:
+      - rules/mlir/packages/sec-mlir-dialect_package24.md
+      - rules/memory/layout.md
+      - rules/corrections/applied/md050-md071-md072-string-utf8-positions-materialization-correction-20261017.md
+      - rules/corrections/applied/md066-md067-md068-decimal-correction-20261028.md
+    code:
+      - internal/layout/size_arithmetic.go
+      - internal/sema/layout_requirements.go
+      - internal/layout/resolved_layout.go
+      - internal/layout/resolver.go
+      - internal/layout/layout_cache.go
+    tests:
+      - internal/layout/size_arithmetic_test.go
+      - internal/layout/resolved_layout_test.go
+      - internal/sema/layout_requirements_test.go
+    implemented:
+      - "Implemented 2026-11-20 (MD-141 § 4(3)-(4), internal/mlir/data_layout.go, cmd/compiler/backend_data_layout.go): sec build asks the native-track code generator (llc today; the LLVM library after bootstrap) which data layout it applies for the triple and fails closed when it differs from the maintained layout the alignment facts come from, or when the triple has no verified layout. TestTargetDataLayoutMatchesMaintainedFacts verifies the 6 x86 triples the llc build supports; the other 12 report that llc has no backend for them. The final clang/qcc step only links."
+      - "Implemented 2026-11-20 (MD-141, internal/layout/data_layout.go, internal/platform/target/data_layout.go): scalar layouts are complete per registered target. bool is 1 byte and rune 4 bytes; typed alignment facts for IntegerStorage(8..256) and BinaryFloatStorage(32, 64) are normalized from a maintained LLVM data-layout string per triple with LLVM's default and integer-lookup rules (i128 on ARMv7 uses the i64 entry). Provenance: clang 21.1.8; TestTargetDataLayoutsMatchClang re-verifies all 18 triples against clang. Planned bare-metal/RTOS targets without a triple stay unresolved. Definition.LayoutResolver() gives one resolver per target plan."
+      - "Implemented 2026-11-20 (MD-142, internal/layout/resolver.go, layout.md §§ 47.3-47.4): native struct placement in declaration order with interior/tail padding and aggregate alignment, zero-sized fields, fixed-array stride/alignment/size including T[0] and zero-sized elements, and decimal/decimal128 carriers placed as coefficient then scale; all arithmetic checked against the § 7(7) extent. TestStructLayouts, TestArrayLayouts, TestDecimalCarriers and TestScalarAlignmentIsKeyedByRepresentation pass; LayoutRevision p24-resolver-2-md141-md142."
+      - "P24-12 arithmetic foundation (2026-10-30): internal/layout.SizeArithmetic snapshots explicitly resolved maximum byte extent and supported alignments and implements CheckedAdd, CheckedMul, AlignUp, StrideOf and ArraySize with exact nonnegative big.Int values. No host integer, pointer-width or C ABI fallback supplies a bound, alignment or descriptor. StrideOf consumes the selected placement minimum, preserving target-specific zero-sized policies; ArraySize preserves arbitrary-precision logical counts and rejects an invalid element stride even for count zero. Failures return no result and retain exact requested extent, target bound, operation and caller-supplied field/count/instantiation path. Supported nonbinary alignment, 32/64-bit extent limits, successful and overflowing calculations beyond 256 bits, malformed/missing facts, detached inputs/results, target isolation and concurrent readers are tested. P24-12 is complete in package24-todo.md (unchecked 57 to 56). ResolvedLayout IDs/complete plan keys, actual type SizeOf/AlignOf/StrideOf queries, compiler diagnostic publication, schema 20 and physical reference/LLVM lowering remain separate unimplemented consumers; frontend.layout retains all six broader remaining points."
+      - "P24-10 resolved-layout records (2026-11-18): internal/layout.ResolvedLayout/LayoutRequirement/ResolvedFieldLayout/ResolvedVariantLayout carry semantic type identity, plan key, layout contract, kind, scalar provenance, exact big.Int size/alignment, validity predicate, field/array/variant/descriptor slots, stability and named missing facts; LayoutIDs are resolver-snapshot ordinals and every read returns a detached clone."
+      - "P24-11 plan layout key (2026-11-18): LayoutKeyOf validates the ResolvedScalarPlan and folds target OS/arch/triple, ABI, C ABI model, profile, pointer width, endianness, logical epoch width, address domains, power-of-two scalar alignment facts and LayoutRevision into CompilationPlanLayoutKey; explicit contracts belong to the requirement identity."
+      - "P24-13 resolver states (2026-11-18): complete/incomplete/invalid/unsupported, each non-complete layout naming the missing fact and its owner (MD-141, MD-019, P24-17, P24-19); only Complete() layouts may be materialized and no size or alignment is guessed."
+      - "P24-14 memoization and cycles (2026-11-18): the Resolver memoizes by identity and contract, reports a by-value containment cycle as invalid with its concrete path (main::A -> main::B -> main::A), keeps indirect cycles through descriptor/reference fields valid, and assigns IDs deterministically across runs."
+      - "P24-15 layout cache (2026-11-18): LayoutCache hits only on the exact plan key, identity and contract; pointer width, endianness, alignment facts, address domains, reference policy, explicit contract and generic substitution changes miss, and a stale or malformed entry is dropped and counted (Rejected), never used as a fallback."
+      - "P24-18 named and constrained layouts (2026-11-19): LayoutNamed resolves a named or constrained type as its carrier layout (size, alignment, state, fields) under its own canonical identity and layout ID, records the Carrier ID and 'named over' provenance, and combines the carrier validity predicate with the type's contracts; sema.LayoutRequirementOf derives it from NamedBase and Contracts. Layout performs no value validation, so P22 validation is untouched."
     partial:
       - "SEC-MLIR-P24 partial: P24-10..15 and P24-18 are implemented (internal/layout records, plan key, states, memoization, cache, named layouts); P24-16/17/19/20 are partial; the rest of package24-todo.md (schema 20, Semantic IR projection, physical lowering) remains. MD-019 still gates explicit source layout spelling and MD-109/P23 the remaining runtime string materialization path."
       - "Resolver wiring partial (2026-11-19): sema.LayoutRequirementOf maps scalars, named/constrained types, structs, fixed arrays and descriptors to resolver requirements. Remaining: compiler/LSP SizeOf/AlignOf/StrideOf queries, the Semantic IR projection and a per-target resolver from the CompilationPlan; enum/union/descriptor resolution is P24-21 onward."
@@ -1542,33 +1587,6 @@ integrations:
       - complete enum/union/descriptor/reference resolved representations
       - complete representation-validity analysis
       - "resolve the MD-019 explicit layout contracts (syntax decided 2026-11-05: `pack(N)`, `minAlign(N)`, `byteOffset(N)`; struct.md § 15A, layout.md §§ 27–30): ResolvedLayout computes field alignments, exact offsets, aggregate alignment, size, padding and stride from the written requirements under the § 28(6) precedence on Linux and Windows hosted plans, with the MD-019 § 11 conformance matrix"
-    revised: "2026-11-20"
-    implemented:
-      - "Implemented 2026-11-20 (MD-141 § 4(3)-(4), internal/mlir/data_layout.go, cmd/compiler/backend_data_layout.go): sec build asks the native-track code generator (llc today; the LLVM library after bootstrap) which data layout it applies for the triple and fails closed when it differs from the maintained layout the alignment facts come from, or when the triple has no verified layout. TestTargetDataLayoutMatchesMaintainedFacts verifies the 6 x86 triples the llc build supports; the other 12 report that llc has no backend for them. The final clang/qcc step only links."
-      - "Implemented 2026-11-20 (MD-141, internal/layout/data_layout.go, internal/platform/target/data_layout.go): scalar layouts are complete per registered target. bool is 1 byte and rune 4 bytes; typed alignment facts for IntegerStorage(8..256) and BinaryFloatStorage(32, 64) are normalized from a maintained LLVM data-layout string per triple with LLVM's default and integer-lookup rules (i128 on ARMv7 uses the i64 entry). Provenance: clang 21.1.8; TestTargetDataLayoutsMatchClang re-verifies all 18 triples against clang. Planned bare-metal/RTOS targets without a triple stay unresolved. Definition.LayoutResolver() gives one resolver per target plan."
-      - "Implemented 2026-11-20 (MD-142, internal/layout/resolver.go, layout.md §§ 47.3-47.4): native struct placement in declaration order with interior/tail padding and aggregate alignment, zero-sized fields, fixed-array stride/alignment/size including T[0] and zero-sized elements, and decimal/decimal128 carriers placed as coefficient then scale; all arithmetic checked against the § 7(7) extent. TestStructLayouts, TestArrayLayouts, TestDecimalCarriers and TestScalarAlignmentIsKeyedByRepresentation pass; LayoutRevision p24-resolver-2-md141-md142."
-      - "P24-12 arithmetic foundation (2026-10-30): internal/layout.SizeArithmetic snapshots explicitly resolved maximum byte extent and supported alignments and implements CheckedAdd, CheckedMul, AlignUp, StrideOf and ArraySize with exact nonnegative big.Int values. No host integer, pointer-width or C ABI fallback supplies a bound, alignment or descriptor. StrideOf consumes the selected placement minimum, preserving target-specific zero-sized policies; ArraySize preserves arbitrary-precision logical counts and rejects an invalid element stride even for count zero. Failures return no result and retain exact requested extent, target bound, operation and caller-supplied field/count/instantiation path. Supported nonbinary alignment, 32/64-bit extent limits, successful and overflowing calculations beyond 256 bits, malformed/missing facts, detached inputs/results, target isolation and concurrent readers are tested. P24-12 is complete in package24-todo.md (unchecked 57 to 56). ResolvedLayout IDs/complete plan keys, actual type SizeOf/AlignOf/StrideOf queries, compiler diagnostic publication, schema 20 and physical reference/LLVM lowering remain separate unimplemented consumers; frontend.layout retains all six broader remaining points."
-      - "P24-10 resolved-layout records (2026-11-18): internal/layout.ResolvedLayout/LayoutRequirement/ResolvedFieldLayout/ResolvedVariantLayout carry semantic type identity, plan key, layout contract, kind, scalar provenance, exact big.Int size/alignment, validity predicate, field/array/variant/descriptor slots, stability and named missing facts; LayoutIDs are resolver-snapshot ordinals and every read returns a detached clone."
-      - "P24-11 plan layout key (2026-11-18): LayoutKeyOf validates the ResolvedScalarPlan and folds target OS/arch/triple, ABI, C ABI model, profile, pointer width, endianness, logical epoch width, address domains, power-of-two scalar alignment facts and LayoutRevision into CompilationPlanLayoutKey; explicit contracts belong to the requirement identity."
-      - "P24-13 resolver states (2026-11-18): complete/incomplete/invalid/unsupported, each non-complete layout naming the missing fact and its owner (MD-141, MD-019, P24-17, P24-19); only Complete() layouts may be materialized and no size or alignment is guessed."
-      - "P24-14 memoization and cycles (2026-11-18): the Resolver memoizes by identity and contract, reports a by-value containment cycle as invalid with its concrete path (main::A -> main::B -> main::A), keeps indirect cycles through descriptor/reference fields valid, and assigns IDs deterministically across runs."
-      - "P24-15 layout cache (2026-11-18): LayoutCache hits only on the exact plan key, identity and contract; pointer width, endianness, alignment facts, address domains, reference policy, explicit contract and generic substitution changes miss, and a stale or malformed entry is dropped and counted (Rejected), never used as a fallback."
-      - "P24-18 named and constrained layouts (2026-11-19): LayoutNamed resolves a named or constrained type as its carrier layout (size, alignment, state, fields) under its own canonical identity and layout ID, records the Carrier ID and 'named over' provenance, and combines the carrier validity predicate with the type's contracts; sema.LayoutRequirementOf derives it from NamedBase and Contracts. Layout performs no value validation, so P22 validation is untouched."
-    code:
-      - internal/layout/size_arithmetic.go
-      - internal/sema/layout_requirements.go
-      - internal/layout/resolved_layout.go
-      - internal/layout/resolver.go
-      - internal/layout/layout_cache.go
-    tests:
-      - internal/layout/size_arithmetic_test.go
-      - internal/layout/resolved_layout_test.go
-      - internal/sema/layout_requirements_test.go
-    rules:
-      - rules/mlir/packages/sec-mlir-dialect_package24.md
-      - rules/memory/layout.md
-      - rules/corrections/applied/md050-md071-md072-string-utf8-positions-materialization-correction-20261017.md
-      - rules/corrections/applied/md066-md067-md068-decimal-correction-20261028.md
     verification:
       - command: go test -race ./internal/layout -count=1; go test ./internal/sema -run 'TestLayoutRequirementOf|Layout|ArrayLength|CanonicalTypeIdentity' -count=1; go vet ./internal/layout ./internal/sema; go build ./...
         result: "Passed 2026-11-19: maximum extent 2^(W-1)-1 on 32/64-bit and over-extent array rejection, empty struct size 0/alignment 1, struct fields in declaration order without guessed offsets, decimal coefficient/scale-storage carriers, named layouts over carriers, and the Sema scalar/named/struct/array/descriptor mapping consumed by the resolver. P24 TODO unchecked 51 to 50; frontend.layout remaining 7 to 8 (MD-142 point added)."

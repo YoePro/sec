@@ -18,8 +18,8 @@ import (
 //
 // Validity is content based: an entry is reused while its identity is
 // unchanged — the document text, the text of every open document (any of
-// which may be an import), the selected targets, the effective analysis depth
-// and the server generation. The generation advances on the messages that
+// which may be an import), the selected targets, the effective analysis depth,
+// observable BuildInfo metadata and the server generation. The generation advances on the messages that
 // change state outside that identity (configuration, workspace folders,
 // watched files on disk, initialization), so unopened imports, core sources
 // on disk and settings cannot go stale. Diagnostics of a module group with a
@@ -47,13 +47,14 @@ var analysisCache = struct {
 }{}
 
 type cachedAnalysis struct {
-	mu         sync.Mutex
-	ready      bool
-	epoch      uint64
-	text       string
-	overlayKey string
-	depth      sema.AnalysisDepth
-	program    *ast.Program
+	mu           sync.Mutex
+	ready        bool
+	epoch        uint64
+	text         string
+	overlayKey   string
+	depth        sema.AnalysisDepth
+	buildInfoKey string
+	program      *ast.Program
 	// sourceProgram retains active-source roots whose nodes belong to the
 	// same analyzed tree, excluding imported statements at matching positions.
 	sourceProgram *ast.Program
@@ -184,6 +185,11 @@ func cachedLSPAnalysisResult(uri string, text string, parsed *ast.Program, overl
 		entry.program, entry.analyzer = result.program, result.analyzer
 		entry.sourceProgram = result.sourceProgram
 		entry.importErrors, entry.semanticErrors = result.importErrors, result.semanticErrors
+		if snapshot, available := result.analyzer.BuildInfo(); available {
+			entry.buildInfoKey = lspBuildInfoIdentity(&snapshot, pathFromURI(uri), overlay)
+		} else {
+			entry.buildInfoKey = lspBuildInfoIdentity(nil, pathFromURI(uri), overlay)
+		}
 		entry.ready = true
 		completed = true
 		return result, entry.mu.Unlock
@@ -194,6 +200,24 @@ func cachedLSPAnalysisResult(uri string, text string, parsed *ast.Program, overl
 		// The analysis this request waited for failed; analyze privately.
 		entry.mu.Unlock()
 		return analyzeLSPDocumentResult(uri, parsed, overlay, depth), func() {}
+	}
+	// Observable metadata is an explicit semantic input, even when no open
+	// document changed and a manifest watcher has not advanced the epoch yet.
+	// Validate with the entry's selected target; source/target changes already
+	// invalidate through text, overlay or generation above.
+	// Rules: rules/compiler/compiler_known_members.md — §113B(4);
+	// rules/projects/projects.md — §34;
+	// rules/compiler/incremental_compilation.md — §7.
+	targetOS, targetArch := entry.analyzer.PlanTarget()
+	current := resolveLSPBuildInfo(pathFromURI(uri), overlay, targetOS, targetArch)
+	if entry.buildInfoKey != lspBuildInfoIdentity(current, pathFromURI(uri), overlay) {
+		entry.mu.Unlock()
+		analysisCache.Lock()
+		if analysisCache.entries[key] == entry {
+			delete(analysisCache.entries, key)
+		}
+		analysisCache.Unlock()
+		return cachedLSPAnalysisResult(uri, text, parsed, overlay)
 	}
 	return analysisResult{program: entry.program, sourceProgram: entry.sourceProgram, analyzer: entry.analyzer, importErrors: entry.importErrors, semanticErrors: entry.semanticErrors}, entry.mu.Unlock
 }

@@ -320,6 +320,10 @@ type Attribute struct {
 	Token     lexer.Token
 	Name      *Identifier
 	Arguments []*AttributeArgument
+	// Real argument delimiters retain parser ownership for lossless formatting.
+	// Rules: rules/tooling/formatter.md §§5,16(14–17),25.
+	ArgumentsOpen  lexer.Token
+	ArgumentsClose lexer.Token
 }
 
 func (a *Attribute) TokenLiteral() string {

@@ -2,7 +2,8 @@ module main
 
 // SEC-MLIR-P18: owning dynamic arrays through Semantic IR and schema 14 -
 // Append growth, guarded element reads, writes and borrows, Len and len,
-// owner slicing with the runtime length, and the dynamic-array destruction plan.
+// owner slicing with the runtime length, the dynamic-array destruction plan,
+// and compact range-segment Append (one growth, one append_range_prepared).
 
 fn Count(view: ref int[]) uint {
     return view.Len
@@ -12,6 +13,8 @@ fn Fill() Result[int, CollectionError] {
     let mut values: int[]
     try values.Append(4)
     try values.Append(5)
+    try values.Append(10..19)
+    try values.Append(20..<20)
     values[0] = 7
     values[1] += 1
     let first := values[0]
@@ -21,4 +24,19 @@ fn Fill() Result[int, CollectionError] {
     discard len(values)
     discard total
     return Ok(first + second)
+}
+
+fn Runes() Result[uint, CollectionError] {
+    let text := "héj"
+    let runes := try text.ToRuneArray()
+    return Ok(runes.Len)
+}
+
+fn Proven(i: uint) Result[int, CollectionError] {
+    let mut values: int[]
+    try values.Append(3)
+    if i < values.Len {
+        return Ok(values[i])
+    }
+    return Ok(0)
 }

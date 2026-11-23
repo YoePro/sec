@@ -1,0 +1,13 @@
+module main
+
+fn Attach() Result[ThreadAttachment, ThreadAttachError] {
+    return Thread.AttachCurrent()
+}
+fn Inspect(token: ref ThreadAttachment) ThreadContext {
+    return token.Context
+}
+fn Move() ThreadContext {
+    let token := try Thread.AttachCurrent() { Err(_) => { panic "attachment failed" } }
+    let owner :<- token
+    return owner.Context
+}

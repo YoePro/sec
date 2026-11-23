@@ -98,9 +98,9 @@ func TestPackage18SourceEndToEnd(t *testing.T) {
 	}
 }
 
-// P18-44 (§ 133): the core byte[]/rune[] producers do not claim their
-// substrate: string.ToByteArray and string.ToRuneArray stop at the named
-// MD-072/P23 boundary. The § 132 invented-surface rows are
+// P18-44 (§ 133): string.ToByteArray and ToRuneArray of a temporary
+// string stop at named P23 boundaries; ToRuneArray of a string Place lowers
+// (TestRuneArrayMaterializationSemanticIR). The § 132 invented-surface rows are
 // TestPackage18UnsupportedSurface in internal/sema.
 //
 // Rules:
@@ -109,7 +109,10 @@ func TestPackage18CoreMaterializationBoundary(t *testing.T) {
 	for _, producer := range []string{"ToByteArray", "ToRuneArray"} {
 		body := "fn F() Result[uint, CollectionError] {\n    let values := try \"abc\"." + producer + "()\n    return Ok(values.Len)\n}"
 		module, err := buildPackage18Source(t, "module main\n\n"+body+"\n", "amd64", 64)
-		want := "string." + producer + " materialization (byte[]/rune[] substrate waits for MD-072 signatures and P23 string lowering)"
+		want := map[string]string{
+			"ToByteArray": "string.ToByteArray materialization (no Semantic IR operation reads UTF-8 bytes before P23 string lowering)",
+			"ToRuneArray": "string.ToRuneArray of a string that is not a Place",
+		}[producer]
 		if module != nil || err == nil || !strings.Contains(err.Error(), want) {
 			t.Fatalf("%s: want %q, got %v", producer, want, err)
 		}

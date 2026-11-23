@@ -6,6 +6,7 @@ integrations:
     area: tooling-projects
     status: partial
     integrated: "2026-10-04"
+    revised: "2026-11-20"
     summary: >-
       Project discovery through the nearest `.sec/sec.toml`, the single-manifest
       project boundary, and project validation of rules/projects/projects.md
@@ -56,7 +57,6 @@ integrations:
       - "Started (moved to partial 2026-11-20; the text records the done part and what remains): complete remaining project validation of § 48 with registered diagnostics for manifest/schema constraints; discovered nested-manifest validation is implemented and owned by tooling.project-nested-manifest-discovery"
     remaining:
       - standard library and platform roots (§ 16) resolved through the project model instead of repository-relative lookup
-    revised: "2026-11-20"
     verification:
       - command: go test ./internal/project -run SourceModuleResolver; go test ./internal/ir/semantic -run TestCanonicalizeSourceFiles; SEC_MLIR_BIN=build/sec-mlir/bin go test ./cmd/compiler -run 'TestNativeTrack|TestProjectMoveKeepsEmittedOutput|TestEmitIR|AllocationLoweringSelectionCLI|Diagnostic|UnsafeDirectCall|BuildCLI|EmitSecMLIR|EmitLLVM|EmitMLIR|Package1[0-8]|Capability' -count=1; go vet ./cmd/compiler ./internal/ir/semantic ./internal/project
         result: "Passed 2026-11-19: a Project moved to a deeper directory and compiled through absolute paths emits identical Semantic IR (text and JSON), Sec MLIR and LLVM IR with no directory of either location; source identities stay root-relative and fail closed outside every root; colliding identities are rejected; MLIR capability errors still name the user's path. Remaining 3 to 2."
@@ -75,6 +75,7 @@ integrations:
     area: tooling-projects
     status: implemented
     integrated: "2026-10-04"
+    revised: "2026-11-11"
     summary: >-
       Human-readable ProjectName and stable RFC 9562 ProjectUUID identity (§
       3.2, § 3.3, § 7).
@@ -116,7 +117,6 @@ integrations:
       - Manifest.RootModuleName resolves the optional root-library override or the complete ProjectName when it is a valid ModuleName; other human names require an override only when root source exists. Root command/firmware Targets use main; a simultaneously different root library name is rejected (§14). Shared Sema validation emits registered mandatory S1148 on the exact module-name token for mismatches or explicitly malformed/duplicate overrides. CLI checks selected roots and otherwise omitted mismatched siblings before analysis; LSP consumes the same checker and unsaved manifest overlays. Nested ordinary modules are unaffected; general invalid-manifest CLI/LSP diagnostics remain separate work.
       - Unsupported multiline identity strings now name their owning project field in reader-capability errors, allowing malformed root overrides to be diagnosed without attributing unrelated identity/version failures to root module naming.
       - "Module resolution consumes ProjectUUID, not ProjectName (verified 2026-11-11; projects.md § 49(4), modules.md §§ 2.2, 9, 17): SourceModuleResolver roots every Project source at project:<UUID> plus its Project-relative directory, and import source resolution is path-based below the Project root; no resolver reads the display name (ProjectName is used only by Manifest.RootModuleName as the § 14 default root-library ModuleName). A rename keeps every ModuleIdentity and same-named Projects with distinct UUIDs get distinct identities. Moving import resolution into one CompilationPlan-aware shared module graph stays with tooling.lsp-import-resolution. TestSourceModuleResolverIgnoresProjectDisplayName"
-    revised: "2026-11-11"
     verification:
       - command: go vet ./...
         result: passed on 2026-10-13
@@ -143,7 +143,7 @@ integrations:
     area: tooling-projects
     status: partial
     integrated: "2026-10-04"
-    revised: "2026-11-22"
+    revised: "2026-11-23"
     summary: >-
       Revision 2.0 structured project version: `[version]` with major, minor,
       revision, build, optional userdefined, and format; rendering through the
@@ -176,6 +176,17 @@ integrations:
       - mlir/lib/Conversion/SecToLLVM/StructProjections.cpp
       - mlir/include/sec/Conversion/SecToLLVM/Passes.td
       - mlir/lib/Conversion/SecToLLVM/SecToLLVM.cpp
+      - cmd/lsp/member_completion.go
+      - cmd/lsp/declared_member_hover.go
+      - cmd/lsp/compiler_known_completion.go
+      - cmd/lsp/compiler_known_hover.go
+      - cmd/lsp/target_plan.go
+      - internal/platform/buildinfo/source_facts.go
+      - internal/sema/build_info_snapshot.go
+      - internal/sema/build_info_cache.go
+      - cmd/lsp/analysis_cache.go
+      - cmd/lsp/target_analysis.go
+      - cmd/lsp/target_analysis_identity.go
     tests:
       - internal/project/version_test.go
       - internal/project/version_forms_test.go
@@ -192,6 +203,16 @@ integrations:
       - internal/ir/semantic/build_info_test.go
       - mlir/test/Conversion/SecToLLVM/struct-projections.mlir
       - cmd/compiler/build_info_native_test.go
+      - cmd/lsp/build_info_members_test.go
+      - testdata/tooling/build_info/members.sec
+      - internal/platform/buildinfo/source_facts_test.go
+      - internal/sema/build_info_snapshot_test.go
+      - testdata/platform/buildinfo
+      - internal/sema/build_info_cache_test.go
+      - cmd/lsp/build_info_cache_test.go
+      - testdata/lsp/build_info_cache/main.sec
+      - cmd/lsp/target_analysis_identity_test.go
+      - testdata/lsp/build_info_cache/target.sec
     implemented:
       - internal/project ParseManifestVersions reads exactly one `[version]` table and every `[target.<name>.version]` table into structured fields, requiring major, minor, revision, build, and format and rejecting duplicates, unknown fields, and non-decimal, negative, leading-zero, or out-of-range VersionNumbers outside 0..9223372036854775807 (§ 8(1)–(3))
       - optional userdefined must match `[A-Za-z0-9][A-Za-z0-9._-]*`; an empty Project value is rejected, and an empty Target value clears the inherited component (§ 9(3), § 11(7)–(8))
@@ -213,14 +234,35 @@ integrations:
       - "source-level build metadata (projects.md § 32): no longer blocked; the API is core.BuildInfo with BuildInfo.Current() (MD-143, § 32(8)), implemented by the MD-143 entries above"
       - "MD-143 native BuildInfo field reads (§ 113B(2)): the new sec-fold-struct-projections pass runs before the LLVM track entry gate, folds a copy-trivial sec.struct.extract of a sec.struct.construct into the field operand and erases the dead copy-trivial construction tree (constants, Option union.construct); owner-moving constructions and every other struct/string value still reach the entry gate. Tests: mlir/test/Conversion/SecToLLVM/struct-projections.mlir, TestBuildInfoFieldsRunNatively (exit 42, manifest unchanged)"
       - "MD-143 Option fields and the whole value in semantic CTE (§ 113B(2)): buildInfoAggregate gives Current() as a CTE struct value with Some/None variant values for VersionUserDefined, SourceRevision and DirtySourceStatus; the semantic evaluator and the CTE executor both use it, so CTE functions match the fields, test them with `is`, read module constants of the whole value, and a module constant of an Option field becomes a static with a Some/None initializer. Tests: TestBuildInfoOptionFieldsInCTE, TestBuildInfoOptionFieldStatic"
+      - "MD-143 hover and completion (2026-11-23): all 16 BuildInfo fields expose their canonical types and exact hover ranges, including Option[string]/Option[bool] and distinct BuildProfile/TargetProfile. Field completion reuses the shared field-hover signature; Current() uses the existing registry signature, availability and friendly documentation. Static and instance namespaces stay separate, and an inferred Current() result offers its fields. BUG-000041 fixed the Target reader rejecting TOML literal strings, which otherwise prevented a resolved BuildInfo snapshot. TestLSPBuildInfoMembers covers the complete surface and verifies analysis never changes the stored manifest."
+      - "MD-143 explicit source facts (2026-11-23; core-library.md §28(3), projects.md §33(4)): the shared buildinfo.Request accepts independent request markers and already resolved revision/dirty-status facts. Only requested AND available facts become Some; false and empty values remain distinguishable from absence. Resolution copies producer inputs, and Sema freezes all optional metadata on ingress, public access and configuration replay (BUG-000049). The source-backed CTE and ordinary Current regression uses an empty project root and supplied manifest/facts; no Git or source probes, new flags or manifest syntax are introduced. CLI/LSP defaults continue to omit unrequested facts; collection UI and the separately listed cache/native representation work are not claimed."
+    partial:
+      - "MD-143 cache identity started 2026-11-23 (compiler_known_members.md §113B(4), projects.md §§33–34): BuildInfoSnapshot.CacheIdentity hashes every observable scalar and optional-presence value with a versioned value encoding, independent of pointer addresses and raw manifest spelling. The shared LSP document-analysis cache records the exact analyzed snapshot and validates metadata before reuse; unchanged Sec text is reanalyzed when build number/profile changes, metadata becomes unavailable, or an unresolved manifest is repaired. Equivalent complete metadata and TOML-comment-only disk changes retain the entry. Missing metadata conservatively fingerprints unresolved manifest input. The separate LSP target-summary cache now also consumes the configured analyzer snapshot identity through targetAnalysisIdentity; explicit revision and dirty-status facts change cache entries even when the prepared source, raw manifest and epoch are identical. A source-backed target analysis checks a CTE-derived range contract before and after a stored build-number change. Remaining: adopt the observable snapshot identity in future shared incremental semantic and code-generation caches and verify their cross-snapshot invalidation; this does not complete the original full cache-identity requirement."
     remaining:
       - "MD-143 whole BuildInfo as a module static: let Info := BuildInfo.Current() evaluates in CTE, but Semantic IR cannot materialize it as static storage because staticMaterializable excludes structs with string fields (a general static-materialization limit, not BuildInfo-specific); fields and Option fields of it materialize as statics"
       - "MD-143 plan-time exclusion (§ 113B(2)): reject BuildInfo.Current() in plan-time evaluation that determines source selection or the CompilationPlan once such evaluation exists; today no plan-time evaluator consumes Sec expressions"
       - "MD-143 native BuildInfo string and Option values: a runtime use that keeps a string field, an Option field or the whole BuildInfo value (pass, return, compare, match) still needs the LLVM track's string, struct and Option<string> representations, which no pass selects yet"
-      - "MD-143 cache identity (§ 113B(4); projects.md §§ 33-34): make the observable BuildInfo snapshot an explicit component of the semantic and code-generation cache identity (incremental compilation) instead of relying on the manifest text in the LSP fingerprint; test invalidation when metadata changes"
-      - "MD-143 hover and completion: show BuildInfo fields and Current() in LSP hover and completion with a test (the compiler-known registry entry exists)"
-      - "MD-143 explicit source facts (core-library.md § 28(3); projects.md § 33(4)): SourceRevision and DirtySourceStatus are Some only when collection was explicitly requested and the facts were resolved before evaluation as explicit compiler inputs; CTE and Current() never read Git or the filesystem"
     verification:
+      - command: GOTMPDIR="$HOME/.cache/sec-gotmp" go test -race ./cmd/lsp -run "^TestTargetAnalysisBuildInfo" -count=1 -timeout=90s; go test ./internal/traceability -count=1; go vet ./cmd/lsp
+        result: "Passed 2026-11-23: metadata target-cache tests and source-backed CTE contract pass under race detector (23.580s), traceability 0.212s and vet pass. A temporary Go overlay omitting the resolved metadata component makes the cache reuse incompatible source-revision/dirty/build snapshots."
+      - command: GOTMPDIR="$HOME/.cache/sec-gotmp" go test -p 4 ./cmd/lsp -run "TargetAnalysis|TargetSelection|TargetStatus|InterfaceConformance|CrossTarget|MultiTarget|BuildInfo" -count=1 -timeout=150s
+        result: "Passed 2026-11-23 in 53.399s. Separate target-summary cache consumes the configured snapshot identity without reconstructing metadata semantics. Focused source-backed CTE-range/build-number test also passes (4.273s): build 7 rejects value 8, warm analysis reuses its entry, and build 8 produces a new compatible analysis. Explicit revision, changed revision, absent/present-false/true dirty state, invocation number, unavailable/restored metadata, ordinary source dependencies and invalid input encoding are covered."
+      - command: GOTMPDIR="$HOME/.cache/sec-gotmp" go test -race -p 4 ./cmd/lsp -run "BuildInfoSemanticCacheInvalidation|CompletionConcurrentSnapshotReaders|CompletionRecoveryCacheIdentity" -count=1 -timeout=120s
+        result: "Passed 2026-11-23 in 75.349s: metadata invalidation, concurrent readers and completion recovery pass under the race detector. A temporary Go overlay removing the new metadata-validation branch makes the regression reuse build 7 where build 8 is required."
+      - command: GOTMPDIR="$HOME/.cache/sec-gotmp" go test -p 4 ./cmd/lsp ./cmd/compiler -run "BuildInfo|Completion.*Cache|CompletionShares|SharedAnalysis|CacheReuses" -count=1 -timeout=120s; go vet ./internal/sema ./cmd/lsp
+        result: "Passed 2026-11-23: LSP 29.436s and compiler 0.022s; vet passed. Unchanged Sec documents retain equivalent complete metadata across disk comment edits and invalidate on version/profile changes, unavailable metadata and repaired manifests. Existing shared completion/recovery cache behavior passes. Broad code-generation cache adoption remains partial."
+      - command: GOTMPDIR="$HOME/.cache/sec-gotmp" go test -p 4 ./internal/sema ./internal/platform/buildinfo ./internal/ir/semantic ./internal/traceability -count=1 -timeout=150s
+        result: "Passed 2026-11-23: Sema 37.266s, build metadata resolver 0.007s, Semantic IR 10.450s and traceability 0.338s. Identity tests cover every observable field, optional presence, exact uint64 values, detached pointer equality, dirty-state changes and unambiguous field boundaries."
+      - command: GOTMPDIR="$HOME/.cache/sec-gotmp" go test -race -p 4 ./internal/platform/buildinfo ./internal/sema -run "ExplicitSourceFacts|BuildInfoSnapshotOwnership" -count=1 -timeout=90s
+        result: "Passed 2026-11-23: source-fact matrix and semantic snapshot ownership/replay pass under the race detector."
+      - command: GOTMPDIR="$HOME/.cache/sec-gotmp" go test -p 4 ./cmd/compiler ./cmd/lsp -run BuildInfo -count=1 -timeout=120s; go vet ./internal/platform/buildinfo ./internal/sema
+        result: "Passed 2026-11-23: existing CLI BuildInfo tests 0.003s and LSP BuildInfo tests 10.434s; vet passed. Default analysis still omits unrequested source facts. No native source-fact string representation, new metadata configuration or cache-identity completion is claimed."
+      - command: GOTMPDIR="$HOME/.cache/sec-gotmp" go test -p 4 ./internal/sema ./internal/platform/buildinfo ./internal/ir/semantic ./internal/traceability -count=1 -timeout=150s
+        result: "Passed 2026-11-23: full Sema 34.223s, explicit-source-input resolution 0.008s, Semantic IR 10.252s and traceability 0.324s. Requested/available combinations, present false/empty values, detached producer and consumer pointers, configuration replay, ordinary Current access and source-backed CTE are covered. Snapshot ownership test failed against the original implementation before the fix (BUG-000049)."
+      - command: go vet ./cmd/lsp ./internal/project
+        result: Passed on 2026-11-23.
+      - command: go test ./cmd/lsp -run 'Test(LSPBuildInfo|TargetSelection|LSPScalar|CompilerKnown|CompletionOffersTheVisible|FalliblePropertyHover|OrdinaryPropertyHover|CompletionRecovery)' -count=1 -timeout=180s
+        result: Passed on 2026-11-23 (36.506s); source-backed BuildInfo fields, Current, inferred-result hover/completion, literal-string Target plan, static/instance namespaces and neighboring shared presentations/cache/selection.
       - command: go test ./internal/sema ./internal/ir/semantic ./internal/traceability -count=1; go test ./cmd/compiler ./cmd/lsp -run 'BuildInfo|CTE|CompileTime'
         result: passed on 2026-11-22 (MD-143 Option fields in CTE)
       - command: ninja -j 4 sec-mlir-opt; llvm-lit test/Conversion/SecToLLVM; go test ./cmd/compiler -run 'Runs$|Run$|Native|BuildInfo'
@@ -264,6 +306,7 @@ integrations:
     area: tooling-projects
     status: implemented
     integrated: "2026-10-04"
+    revised: "2026-10-13"
     summary: >-
       Visible, manually editable manifest build numbers with transactional
       automatic increment (§ 27–§ 30), superseding the revision-1 hidden
@@ -271,20 +314,6 @@ integrations:
       implemented.
     rules:
       - rules/projects/projects.md
-    remaining: []
-    implemented:
-      - comment- and layout-preserving manifest mutation through the parsed manifest syntax (§ 49(5))
-      - PlanBuildNumberEdit and ManifestDocument.ReplaceBuildNumber locate exactly one explicit Project or Target-local build integer through parsed TOML key components and byte ranges; quoted/escaped/dotted keys and inline tables are supported, comments/string/array contents cannot forge storage, missing local fields never mutate inherited Project storage, and invalid VersionNumbers or duplicate/malformed TOML are rejected. Only the selected scalar changes; comments, order, whitespace, CRLF and unrelated values remain byte-identical. Equal values retain their existing spelling.
-      - BuildNumberEdit.Commit uses the shared permission-preserving same-directory staged atomic manifest replacement, checks original bytes and inode before publication, rejects stale snapshots, removes staged files and avoids rewriting byte-identical edits. The extracted writer also serves init transactions and retains protected rollback. The build invocation layer owns automatic allocation, locking, success-only publication and explicit overrides.
-      - manual reset and jump acceptance, and no automatic reset after major, minor, or revision changes (§ 8(6)–(7))
-      - project-scoped counter on `[version].build` and Target-scoped counter requiring a Target-local build field (§ 28)
-      - "Manifest resolves immutable per-Target BuildCounter facts from parsed TOML: enabled must be boolean, scope defaults to target and accepts only target/project, unknown settings fail, active target scope requires explicit local version.build, and active project scope owns Project version.build and rejects local build overrides. Disabled counters retain ordinary version inheritance. Shared model validation is consumed by init and discovered compiler build projects; diagnostics identify counter keys and source lines, including inline or quoted declarations, without accepting text inside strings."
-      - BuildNumberCandidate and LoadBuildNumberCandidate derive a bounded next value and complete Target version plus an exact edit from the current manifest snapshot. Explicit reload honors forward jumps, backward edits and zero resets, preserves the build baseline across major/minor/revision changes, ignores legacy hidden state, and reports overflow without producing an edit. Candidate calculation performs no reservation or mutation. The separate BuildInvocation layer and CLI build now own serialized reservation and success-only commit across requested Variants.
-      - explicit `--build-number` for one invocation without mutating the manifest (§ 30)
-      - candidate allocation committed exactly once after all requested builds succeed, unchanged manifest after a failed build, one candidate across a multi-Variant Target, and serialized parallel builds (§ 29)
-      - BuildInvocation reserves the current baseline plus one under a project-wide OS file lock, rereading the manifest after waiting and keeping one candidate/version across the requested Target Variants. Compiler build replans against the locked snapshot, commits once after every Variant links, and prints the successful version only after commit. Frontend/backend/link failures, aborted invocations, overflow and stale manifest commits leave authoritative values unchanged; process exit releases OS locks. Independent Target counters are conservatively serialized to avoid concurrent replacement of the shared manifest. Persistent lock inodes contain no counter authority.
-      - sec build accepts a declared Target name (all configured Variants) or the existing source-file form; --target filters named builds, while ambiguous multi-Variant -o is rejected. --build-number is a bounded invocation-only override used by every selected Variant, bypasses automatic allocation/locks and performs no manifest edits. Final structured versions are rendered once; retained LLVM artifacts carry the rendered version and a version-sensitive identity based on ProjectUUID, Target and Variant, without timestamps. Source-level build metadata API and complete configuration/cache policy remain separate work.
-    revised: "2026-10-13"
     code:
       - internal/project/build_number_edit.go
       - internal/project/manifest_write.go
@@ -304,6 +333,19 @@ integrations:
       - internal/project/build_invocation_test.go
       - cmd/compiler/build_invocation_test.go
       - testdata/projects/build_tools/clang_stub.sh
+    implemented:
+      - comment- and layout-preserving manifest mutation through the parsed manifest syntax (§ 49(5))
+      - PlanBuildNumberEdit and ManifestDocument.ReplaceBuildNumber locate exactly one explicit Project or Target-local build integer through parsed TOML key components and byte ranges; quoted/escaped/dotted keys and inline tables are supported, comments/string/array contents cannot forge storage, missing local fields never mutate inherited Project storage, and invalid VersionNumbers or duplicate/malformed TOML are rejected. Only the selected scalar changes; comments, order, whitespace, CRLF and unrelated values remain byte-identical. Equal values retain their existing spelling.
+      - BuildNumberEdit.Commit uses the shared permission-preserving same-directory staged atomic manifest replacement, checks original bytes and inode before publication, rejects stale snapshots, removes staged files and avoids rewriting byte-identical edits. The extracted writer also serves init transactions and retains protected rollback. The build invocation layer owns automatic allocation, locking, success-only publication and explicit overrides.
+      - manual reset and jump acceptance, and no automatic reset after major, minor, or revision changes (§ 8(6)–(7))
+      - project-scoped counter on `[version].build` and Target-scoped counter requiring a Target-local build field (§ 28)
+      - "Manifest resolves immutable per-Target BuildCounter facts from parsed TOML: enabled must be boolean, scope defaults to target and accepts only target/project, unknown settings fail, active target scope requires explicit local version.build, and active project scope owns Project version.build and rejects local build overrides. Disabled counters retain ordinary version inheritance. Shared model validation is consumed by init and discovered compiler build projects; diagnostics identify counter keys and source lines, including inline or quoted declarations, without accepting text inside strings."
+      - BuildNumberCandidate and LoadBuildNumberCandidate derive a bounded next value and complete Target version plus an exact edit from the current manifest snapshot. Explicit reload honors forward jumps, backward edits and zero resets, preserves the build baseline across major/minor/revision changes, ignores legacy hidden state, and reports overflow without producing an edit. Candidate calculation performs no reservation or mutation. The separate BuildInvocation layer and CLI build now own serialized reservation and success-only commit across requested Variants.
+      - explicit `--build-number` for one invocation without mutating the manifest (§ 30)
+      - candidate allocation committed exactly once after all requested builds succeed, unchanged manifest after a failed build, one candidate across a multi-Variant Target, and serialized parallel builds (§ 29)
+      - BuildInvocation reserves the current baseline plus one under a project-wide OS file lock, rereading the manifest after waiting and keeping one candidate/version across the requested Target Variants. Compiler build replans against the locked snapshot, commits once after every Variant links, and prints the successful version only after commit. Frontend/backend/link failures, aborted invocations, overflow and stale manifest commits leave authoritative values unchanged; process exit releases OS locks. Independent Target counters are conservatively serialized to avoid concurrent replacement of the shared manifest. Persistent lock inodes contain no counter authority.
+      - sec build accepts a declared Target name (all configured Variants) or the existing source-file form; --target filters named builds, while ambiguous multi-Variant -o is rejected. --build-number is a bounded invocation-only override used by every selected Variant, bypasses automatic allocation/locks and performs no manifest edits. Final structured versions are rendered once; retained LLVM artifacts carry the rendered version and a version-sensitive identity based on ProjectUUID, Target and Variant, without timestamps. Source-level build metadata API and complete configuration/cache policy remain separate work.
+    remaining: []
     verification:
       - command: go vet ./...
         result: passed on 2026-10-13
@@ -447,7 +489,9 @@ integrations:
         result: passed on 2026-10-13; actual CLI creates exactly the two minimal entries with a root command Target, valid default version and independent build profile; generated main type-checks; existing source, manifest/UUID and both layouts remain unchanged on repeated init, and nested creation is rejected before any files are created; remaining 7 to 6 for this ID and 28 to 27 in tooling_projects.yaml
 
   - id: tooling.project-nested-manifest-discovery
+    area: tooling-projects
     status: implemented
+    integrated: "2026-10-14"
     summary: >-
       Reject nested manifests during ordinary project discovery in compiler
       commands and LSP snapshots. Shared read-only ancestor/descendant discovery
@@ -460,11 +504,6 @@ integrations:
       - rules/projects/modules.md
       - rules/tooling/diagnostics.md
       - rules/tooling/lsp.md
-    implemented:
-      - validate nested project manifests during ordinary CLI/LSP discovery, including ancestor and descendant manifests, unsaved overlays, registered diagnostics, source/Target command rejection before writes, batch deduplication and stale diagnostic clearing
-    remaining: []
-    area: tooling-projects
-    integrated: "2026-10-14"
     code:
       - internal/project/boundary.go
       - internal/sema/project_boundary.go
@@ -484,6 +523,9 @@ integrations:
       - cmd/lsp/project_boundary_test.go
       - testdata/projects/boundary/sec.toml
       - testdata/projects/boundary/main.sec
+    implemented:
+      - validate nested project manifests during ordinary CLI/LSP discovery, including ancestor and descendant manifests, unsaved overlays, registered diagnostics, source/Target command rejection before writes, batch deduplication and stale diagnostic clearing
+    remaining: []
     verification:
       - command: go vet ./internal/project ./internal/sema ./internal/diagnostics ./cmd/compiler ./cmd/lsp
         result: passed on 2026-10-14

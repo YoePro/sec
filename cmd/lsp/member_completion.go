@@ -112,7 +112,7 @@ func memberCompletionItems(exprType sema.Type, analyzer *sema.Analyzer, prefix s
 				if !analyzer.CanAccessStructFieldFromModule(exprType, field.Name, accessingModule) {
 					continue
 				}
-				addTyped(completionItem{Label: field.Name, Kind: 5, Detail: lspTypeName(field.Type)}, field.Type)
+				addTyped(completionItem{Label: field.Name, Kind: 5, Detail: lspTypeName(field.Type), Documentation: structFieldHover(field)}, field.Type)
 			}
 		}
 	case sema.RegisterType:

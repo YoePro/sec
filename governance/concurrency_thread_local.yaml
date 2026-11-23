@@ -7,7 +7,7 @@ integrations:
     feature: physical-thread-local-storage
     status: partial
     reviewed: "2026-09-26"
-    synchronized: "2026-09-27"
+    revised: "2026-11-23"
     document_revision: "2.0"
     repository_baseline: main-reviewed-2026-09-26
     summary: >-
@@ -41,31 +41,41 @@ integrations:
       - rules/platform/target_profiles.md
       - rules/tooling/lsp.md
       - language-rulebook-status.md
-    normative:
-      - ThreadLocal[T] is @noCopy and identifies one independent lazily initialized T per attached physical thread.
-      - Portable ThreadLocal[T] keys are static; local automatic TLS keys are not Sec 0.1.
-      - ThreadLocal[T] has no Value/value property and no general Take operation.
-      - "The exact access API is Borrow() ref T, BorrowMut() ref mut T, and Replace(value: T) T."
-      - After successful first initialization, a TLS slot remains initialized for the attachment lifetime.
-      - "init(initial: T) is available only for concrete implicitly copyable T; Sec 0.1 defines no Copy interface solely for this restriction."
-      - "init(factory: fn() T) supports copyable or move-only T and runs exactly once per physical-thread attachment on first access."
-      - User factories are never eagerly executed at thread creation, attachment, start, or program startup.
-      - A first-access factory has no separate typed TLS error channel and contributes its ordinary inferred effects.
-      - Same-key recursive first initialization is invalid; static cases are diagnosed and dynamic cases use canonical runtime-check failure.
-      - A failed/panicking factory is not retried in the same physical-thread attachment.
-      - TLS borrows carry physical-thread-generation provenance and cannot cross unproven task migration/suspension.
-      - Physical-thread blocking alone does not invalidate a TLS borrow when physical identity is proven stable.
-      - ThreadAttachError is exactly AlreadyAttached, ResourceUnavailable, NativeFailure.
-      - Thread.AttachCurrent() returns Result[ThreadAttachment, ThreadAttachError].
-      - ThreadAttachment is @noCopy, owns only the Sec attachment, is confined to the same physical thread, and detaches through lifecycle free.
-      - ThreadAttachment destruction destroys initialized TLS values in reverse successful first-initialization order before ending attachment.
-      - Main and Sec-created threads are already attached; AttachCurrent returns AlreadyAttached there.
-      - Generated FFI callback wrappers may auto-attach only when needed and detach only attachments they created.
-      - ThreadContextError is not part of the Sec 0.1 portable TLS API.
-      - ThreadSpawnError.ThreadLocalInitializationFailed describes required runtime/target TLS infrastructure failure, not a user factory failure.
-      - Ordinary ThreadLocal[T] access is forbidden in ISR context.
-      - Concrete Semantic IR opcode names remain owned by semantic_ir.md.
-      - Documentation comments for public variants/members precede the declaration they document.
+    code:
+      - internal/sema/thread_attach_error.go
+      - internal/sema/types.go
+      - internal/sema/type_declarations.go
+      - internal/sema/thread_local_key_storage.go
+      - internal/sema/analyzer_let_bindings.go
+      - internal/diagnostics/diagnostics.go
+      - internal/sema/thread_local_constructor.go
+      - internal/sema/analyzer_inference.go
+      - internal/sema/thread_attachment.go
+      - internal/sema/context_types.go
+      - internal/sema/execution_context.go
+      - internal/sema/copy_classification.go
+      - internal/parser/parser.go
+    tests:
+      - internal/sema/thread_attach_error_test.go
+      - cmd/compiler/thread_attach_error_test.go
+      - cmd/lsp/thread_attach_error_test.go
+      - testdata/sema/thread_attach_error_core.sec
+      - testdata/sema/thread_attach_error_valid.sec
+      - testdata/sema/thread_attach_error_invalid.sec
+      - internal/sema/thread_local_key_storage_test.go
+      - cmd/compiler/thread_local_key_storage_test.go
+      - cmd/lsp/thread_local_key_storage_test.go
+      - testdata/sema/thread_local_key_storage_valid.sec
+      - testdata/sema/thread_local_key_storage_invalid.sec
+      - internal/sema/thread_local_constructor_test.go
+      - cmd/compiler/thread_local_constructor_test.go
+      - cmd/lsp/thread_local_constructor_test.go
+      - testdata/sema/thread_local_constructor_valid.sec
+      - testdata/sema/thread_local_constructor_invalid.sec
+      - internal/sema/thread_attachment_test.go
+      - cmd/compiler/thread_attachment_test.go
+      - cmd/lsp/thread_attachment_test.go
+      - testdata/sema/thread_attachment
     implemented:
       - current frontend has a compiler-known ThreadLocal[T] identity
       - current frontend validates ThreadLocal generic arity
@@ -78,6 +88,7 @@ integrations:
       - ThreadContextError is no longer registered or presented as a portable builtin; the exact ThreadAttachError identity remains available. AttachCurrent ownership/signature integration remains separately tracked (2026-11-09; concurrency.thread-v2 legacy error removal)
       - Local automatic ThreadLocal key declarations, including keys embedded in owned aggregate storage, are rejected with mandatory S1208 thread-local.automatic-key and static let guidance. Module-level bindings and explicit function-local statics retain static storage; references to existing static keys remain valid. Source-backed Sema, CLI and LSP tests share the compiler decision; invalid keys prevent IR artifact emission (2026-11-10).
       - ThreadLocal[T](initial) resolves one concrete payload type and accepts only implicitly copyable T, including concrete generic aggregates and callable-valued payloads. Canonical copy classification rejects noCopy and containing aggregates with mandatory S1209 thread-local.initial-not-copyable and factory guidance; ordinary initializer compatibility, contracts and call-site ownership remain enforced. Exact type/value argument arity, CLI/LSP parity and invalid-IR artifact suppression are tested. Factory execution, static key materialization and per-thread initialization remain separately open (2026-11-10).
+      - "Canonical attachment result surface (2026-11-23, thread_local.md §§29–33): Thread.AttachCurrent() resolves exactly as Result[ThreadAttachment, ThreadAttachError], with no ordinary or generic arguments. ThreadAttachment is the reserved opaque nominal core token, nondefaultable and move-only with compiler-owned destruction responsibility; only its exact @noCopy opaque trusted-core declaration refines it. Source constructors/struct literals, copying, Task.AttachCurrent and the legacy ThreadContext result are rejected. Context is the read-only non-owning ThreadContext property; free is not an ordinary callable method. Canonical member facts drive LSP signature hover and navigation. Runtime attachment effects remain unknown so noAlloc/noPanic/noBlock cannot silently infer a guarantee from the signature. Source-backed Sema/CLI/LSP tests cover these contracts and existing unsupported-lowering rejection without an IR artifact. Physical-thread confinement, validity of dependent views, runtime attachment/cleanup and selected-target capabilities remain separately open."
     remaining:
       - implement ThreadLocal slot borrow provenance, Borrow/BorrowMut exclusivity, and Replace conflict analysis
       - implement factory initializer ownership and first-access execution
@@ -88,7 +99,6 @@ integrations:
       - remove source-level move-out/uninitialized TLS slot analysis
       - implement thread-bound reference provenance and suspension/migration diagnostics
       - implement Replace ownership transfer while retaining the original TLS destruction-order registration
-      - replace legacy AttachCurrent Result[ThreadContext, ThreadContextError] with Result[ThreadAttachment, ThreadAttachError]
       - implement ThreadAttachment same-physical-thread confinement and lifecycle free
       - implement reattachment generation identity
       - implement generated FFI callback auto-attachment nesting/ownership
@@ -129,6 +139,55 @@ integrations:
       - target TLS capacity overflow is diagnosed
       - LSP exposes Borrow/BorrowMut/Replace and no Value/value
       - Semantic IR rejects duplicate initialization/factory/destruction and cross-thread borrow provenance
+    verification:
+      - command: GOTMPDIR="$HOME/.cache/sec-gotmp" go test -p 4 ./internal/sema ./internal/ir/semantic ./internal/traceability -count=1 -timeout=180s; go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp ./internal/traceability -run "TestThreadAttachment|TestRulebookTraceability" -count=1 -timeout=120s; go test -short ./internal/parser -run "Opaque|NoCopy|Attribute|Thread" -count=1; go vet ./internal/sema ./internal/parser ./cmd/compiler ./cmd/lsp
+        result: "Passed 2026-11-23: complete Sema 32.641s, Semantic IR 9.481s and traceability 0.369s. Focused expanded attachment tests: Sema 0.024s, CLI 3.911s, LSP 9.064s; parser subset 0.040s; vet passed. Canonical result, trusted opaque refinement, move/copy/construction negatives, conservative unknown effects, hover/navigation and named IR boundary without output are covered."
+      - command: go vet -p 4 ./internal/sema ./internal/diagnostics ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-11-10 after TLS initial-value constructor changes
+      - command: go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run "TestThreadLocalConstructor|TestThreadLocalKeyStorage|TestThreadLocalV2|TestThreadLocalReplace" -count=1
+        result: passed on 2026-11-10; Sema 0.042s, CLI 7.463s, LSP 5.134s; concrete copyability, argument validation, static key regressions and invalid-IR artifact suppression
+      - command: go test -p 4 ./internal/sema ./internal/diagnostics -count=1
+        result: passed on 2026-11-10; Sema 20.894s, diagnostics 0.002s; complete suites after TLS constructor validation
+      - command: go vet -p 4 ./internal/sema ./internal/diagnostics ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-11-10
+      - command: go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run "TestThreadLocalKeyStorage|TestThreadLocalV2|TestThreadLocalReplace" -count=1
+        result: passed on 2026-11-10; Sema 0.022s, CLI 2.621s, LSP 1.739s; four invalid automatic key declarations, static declarations, borrowed keys, registered diagnostics and IR artifact suppression
+      - command: go test -p 4 ./internal/sema ./internal/diagnostics -count=1
+        result: passed on 2026-11-10; Sema 15.582s, diagnostics 0.002s
+      - command: go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run "TestThreadLegacyErrors|TestThreadAttachError|TestThreadLifecycleErrors|TestThreadConfigurationEnums" -count=1
+        result: passed on 2026-11-09; ThreadContextError is no longer a portable builtin and canonical ThreadAttachError remains usable; the remaining AttachCurrent integration is unchanged
+      - command: go vet -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp
+        result: passed on 2026-11-09
+      - command: go test -p 4 ./internal/sema -count=1
+        result: passed on 2026-11-09 (23.205s)
+      - command: go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run "TestThreadAttachError|TestThreadLocal|TestCompilerKnownThreadLocal" -count=1
+        result: passed on 2026-11-09; Sema 0.029s, CLI 2.167s, LSP 4.770s; exact enum identity, trusted core refinement, malformed/redeclared types, Result/open-error compatibility, exhaustive matching, hover, completion and removed-variant diagnostics
+    synchronized: "2026-09-27"
+    normative:
+      - ThreadLocal[T] is @noCopy and identifies one independent lazily initialized T per attached physical thread.
+      - Portable ThreadLocal[T] keys are static; local automatic TLS keys are not Sec 0.1.
+      - ThreadLocal[T] has no Value/value property and no general Take operation.
+      - "The exact access API is Borrow() ref T, BorrowMut() ref mut T, and Replace(value: T) T."
+      - After successful first initialization, a TLS slot remains initialized for the attachment lifetime.
+      - "init(initial: T) is available only for concrete implicitly copyable T; Sec 0.1 defines no Copy interface solely for this restriction."
+      - "init(factory: fn() T) supports copyable or move-only T and runs exactly once per physical-thread attachment on first access."
+      - User factories are never eagerly executed at thread creation, attachment, start, or program startup.
+      - A first-access factory has no separate typed TLS error channel and contributes its ordinary inferred effects.
+      - Same-key recursive first initialization is invalid; static cases are diagnosed and dynamic cases use canonical runtime-check failure.
+      - A failed/panicking factory is not retried in the same physical-thread attachment.
+      - TLS borrows carry physical-thread-generation provenance and cannot cross unproven task migration/suspension.
+      - Physical-thread blocking alone does not invalidate a TLS borrow when physical identity is proven stable.
+      - ThreadAttachError is exactly AlreadyAttached, ResourceUnavailable, NativeFailure.
+      - Thread.AttachCurrent() returns Result[ThreadAttachment, ThreadAttachError].
+      - ThreadAttachment is @noCopy, owns only the Sec attachment, is confined to the same physical thread, and detaches through lifecycle free.
+      - ThreadAttachment destruction destroys initialized TLS values in reverse successful first-initialization order before ending attachment.
+      - Main and Sec-created threads are already attached; AttachCurrent returns AlreadyAttached there.
+      - Generated FFI callback wrappers may auto-attach only when needed and detach only attachments they created.
+      - ThreadContextError is not part of the Sec 0.1 portable TLS API.
+      - ThreadSpawnError.ThreadLocalInitializationFailed describes required runtime/target TLS infrastructure failure, not a user factory failure.
+      - Ordinary ThreadLocal[T] access is forbidden in ISR context.
+      - Concrete Semantic IR opcode names remain owned by semantic_ir.md.
+      - Documentation comments for public variants/members precede the declaration they document.
     governance_reconciliation:
       - concurrency_thread_local.yaml owns ThreadLocal[T], ThreadAttachError, ThreadAttachment, TLS first-access initialization and per-thread cleanup
       - concurrency_thread.yaml remains owner of ThreadContext, ThreadID, physical thread lifecycle and ThreadSpawnError
@@ -151,51 +210,3 @@ integrations:
         description: Legacy text conflates user TLS factory failure with ThreadSpawnError.ThreadLocalInitializationFailed; v2 restricts that spawn error to TLS runtime infrastructure setup.
     corrections_applied:
       - rules/corrections/applied/thread-local-v2-cross-rulebook-correction-20260927.md
-    revised: "2026-11-10"
-    code:
-      - internal/sema/thread_attach_error.go
-      - internal/sema/types.go
-      - internal/sema/type_declarations.go
-      - internal/sema/thread_local_key_storage.go
-      - internal/sema/analyzer_let_bindings.go
-      - internal/diagnostics/diagnostics.go
-      - internal/sema/thread_local_constructor.go
-      - internal/sema/analyzer_inference.go
-    tests:
-      - internal/sema/thread_attach_error_test.go
-      - cmd/compiler/thread_attach_error_test.go
-      - cmd/lsp/thread_attach_error_test.go
-      - testdata/sema/thread_attach_error_core.sec
-      - testdata/sema/thread_attach_error_valid.sec
-      - testdata/sema/thread_attach_error_invalid.sec
-      - internal/sema/thread_local_key_storage_test.go
-      - cmd/compiler/thread_local_key_storage_test.go
-      - cmd/lsp/thread_local_key_storage_test.go
-      - testdata/sema/thread_local_key_storage_valid.sec
-      - testdata/sema/thread_local_key_storage_invalid.sec
-      - internal/sema/thread_local_constructor_test.go
-      - cmd/compiler/thread_local_constructor_test.go
-      - cmd/lsp/thread_local_constructor_test.go
-      - testdata/sema/thread_local_constructor_valid.sec
-      - testdata/sema/thread_local_constructor_invalid.sec
-    verification:
-      - command: go vet -p 4 ./internal/sema ./internal/diagnostics ./cmd/compiler ./cmd/lsp
-        result: passed on 2026-11-10 after TLS initial-value constructor changes
-      - command: go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run "TestThreadLocalConstructor|TestThreadLocalKeyStorage|TestThreadLocalV2|TestThreadLocalReplace" -count=1
-        result: passed on 2026-11-10; Sema 0.042s, CLI 7.463s, LSP 5.134s; concrete copyability, argument validation, static key regressions and invalid-IR artifact suppression
-      - command: go test -p 4 ./internal/sema ./internal/diagnostics -count=1
-        result: passed on 2026-11-10; Sema 20.894s, diagnostics 0.002s; complete suites after TLS constructor validation
-      - command: go vet -p 4 ./internal/sema ./internal/diagnostics ./cmd/compiler ./cmd/lsp
-        result: passed on 2026-11-10
-      - command: go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run "TestThreadLocalKeyStorage|TestThreadLocalV2|TestThreadLocalReplace" -count=1
-        result: passed on 2026-11-10; Sema 0.022s, CLI 2.621s, LSP 1.739s; four invalid automatic key declarations, static declarations, borrowed keys, registered diagnostics and IR artifact suppression
-      - command: go test -p 4 ./internal/sema ./internal/diagnostics -count=1
-        result: passed on 2026-11-10; Sema 15.582s, diagnostics 0.002s
-      - command: go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run "TestThreadLegacyErrors|TestThreadAttachError|TestThreadLifecycleErrors|TestThreadConfigurationEnums" -count=1
-        result: passed on 2026-11-09; ThreadContextError is no longer a portable builtin and canonical ThreadAttachError remains usable; the remaining AttachCurrent integration is unchanged
-      - command: go vet -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp
-        result: passed on 2026-11-09
-      - command: go test -p 4 ./internal/sema -count=1
-        result: passed on 2026-11-09 (23.205s)
-      - command: go test -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run "TestThreadAttachError|TestThreadLocal|TestCompilerKnownThreadLocal" -count=1
-        result: passed on 2026-11-09; Sema 0.029s, CLI 2.167s, LSP 4.770s; exact enum identity, trusted core refinement, malformed/redeclared types, Result/open-error compatibility, exhaustive matching, hover, completion and removed-variant diagnostics

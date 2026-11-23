@@ -3362,3 +3362,13 @@ scale/precision semantics
 decimal conversions
 physical decimal lowering boundary
 ```
+
+---
+
+# 166. Default Arena construction (MD-136 synchronization)
+
+Synchronized 2026-11-23 from `rules/corrections/applied/MD-136-arena-default-construction-correction-2026-11-23.md`; the canonical rules are `rules/memory/arena.md` § 131 and `rules/types/default_values.md` § 65B.
+
+`Arena {}` and an omitted `Arena` initialization are a defined, infallible, allocation-free default creation. It establishes a fresh ArenaDomain with zero capacity and no backing, its initial epoch and state version, a growth/backing policy frozen from the CompilationPlan, and either a verified provider or an explicitly absent one. It is not `Arena.Growable(0)` and selects no provider later.
+
+P19 Sema publishes a default-creation plan; Semantic IR and schema-15 Sec MLIR represent it distinctly from `create_borrowed`, `create_owned_fixed` and `create_growable`. Positive-storage New/Alloc on a default Arena without an active compatible provider is a compile-time readiness error, while zero-element operations follow their own contracts. This supersedes the earlier open status of MD-136 in this package; it does not claim that schema 15, physical backing or native execution are implemented.

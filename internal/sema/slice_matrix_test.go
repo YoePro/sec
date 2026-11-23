@@ -25,7 +25,9 @@ func readSliceMatrixInput(t *testing.T, file string, width uint16) (*ast.Program
 	if len(p.Errors()) != 0 {
 		t.Fatal(p.Errors())
 	}
-	a := NewAnalyzerWithScalarPlan(layout.ResolvedScalarPlan{PointerWidthBits: width})
+	// MD-136: these fixtures grow a default Arena, which needs the
+	// (interim) hosted allocation capability.
+	a := NewAnalyzerWithScalarPlan(layout.ResolvedScalarPlan{PointerWidthBits: width, Profile: "hosted"})
 	errs := a.Analyze(program)
 	return program, a, errs
 }

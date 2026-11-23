@@ -1274,19 +1274,34 @@ integrations:
 
   - id: analysis.layout
     status: partial
+    revised: "2026-11-23"
+    rules:
+      - rules/memory/layout.md
+      - rules/mlir/packages/sec-mlir-dialect_package24.md
     code:
       - internal/sema/analyzer_struct_layout.go
       - internal/diagnostics/diagnostics.go
+      - internal/layout/layout_cache.go
+      - internal/layout/resolver.go
+      - internal/layout/resolver_cache.go
+      - internal/layout/resolved_layout.go
+      - internal/sema/layout_requirements.go
     tests:
       - internal/sema/struct_layout_cycle_test.go
       - testdata/union_valid.sec
+      - internal/layout/resolver_cache_test.go
+      - internal/layout/resolved_layout_test.go
+      - internal/sema/generic_layout_cache_test.go
+      - testdata/sema/generic_layout_cache.sec
     implemented:
       - one module-level by-value layout dependency graph covers structs, tagged unions (variant payloads and payload fields), named wrappers, fixed arrays, compiler-known tagged Option/Result payloads, and generic declarations; a monotone fixed point derives which generic parameters each declaration stores by value, so cycles that only generic instantiation introduces are rejected; references, slices, dynamic arrays, owning collections, raw pointers, function values, and non-source-declared layouts are boundaries; struct cycles use S1055, union-only cycles use S1071, the message shows the field/variant/instantiation path, and a storage position already rejected by the direct self-recursion checks is not reported twice
+      - "Concrete generic layout caching (2026-11-23): NewResolverWithCache reuses complete canonical layout dependency graphs across resolver snapshots, keyed by semantic type identity, CompilationPlanLayoutKey, explicit contract and a fingerprint of the complete requirement. Declaration/field-order and generic substitution changes miss; width, endian, target, ABI, profile, reference policy, address-domain and alignment changes miss. Cached field, array-element, carrier and variant payload IDs are validated and rebased before publication; graph integrity failures discard the entry and recompute cold without partially installed nodes. Returned graphs are detached; incomplete results are not cached and independent snapshots can share the cache safely. Source-backed Box[int]/Box[byte]/Box[Meter] tests cover 32/64-bit layouts, independent native sizes, warm/cold parity and declaration changes. This is the canonical layout service cache; persistence and compiler/LSP workspace cache lifecycle remain owned by their separate integrations."
     remaining:
-      - cache generic layout by type identity plus CompilationPlan
       - track native/target/contract stability
       - complete padding-leak and zero-init validity analysis
     verification:
+      - command: GOTMPDIR="$HOME/.cache/sec-gotmp" go test -p 4 ./internal/sema ./internal/layout ./internal/traceability -count=1 -timeout=180s; go test -race -p 4 ./internal/layout -count=1 -timeout=120s; go vet ./internal/layout ./internal/sema
+        result: "Passed 2026-11-23: complete Sema 28.554s, layout 0.008s, traceability 0.228s; complete layout under race detector 1.051s; vet passed. Source-backed generic warm/cold and ID-rebasing coverage, plan/declaration mutation matrix, corrupted graph cold fallback, incomplete-result exclusion and concurrent detached snapshots pass. Temporary Go overlay removing cache integration makes TestGenericLayoutCache fail at its warm-hit assertion as expected."
       - command: go test ./internal/sema -run 'TestByValueLayoutGraph|TestStructLayout|TestUnionValidFixture' -count=1
         result: passed on 2026-10-02 with Option/Result payload, instantiation-only, nested-generic parameter, mutual generic, mutual union, and union-payload-field-through-struct cycles, valid slice/ref/dynamic boundaries inside tagged and generic carriers, and a single diagnostic for direct union self-recursion
       - command: go test ./... -count=1

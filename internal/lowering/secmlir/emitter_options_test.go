@@ -48,7 +48,7 @@ func TestEmitSchemaSelectionPreservesDefaultAndTargetFacts(t *testing.T) {
 // Rules: rules/mlir/packages/sec-mlir-dialect_package16.md — §87;
 // rules/mlir/dialect-versions/sec_mlir_dialect_v12.md — §1.
 func TestEmitSchemaSelectionRejectsUnknownAndDowngradeVersions(t *testing.T) {
-	for _, version := range []uint32{1, 10, 15, ^uint32(0)} {
+	for _, version := range []uint32{1, 10, 17, ^uint32(0)} {
 		output, err := EmitWithOptions(boolModule(t), testPlan(64), EmitOptions{DialectVersion: version})
 		if len(output) != 0 || err == nil || !strings.Contains(err.Error(), "unsupported Sec MLIR emission schema version") {
 			t.Fatalf("version %d: output=%q err=%v", version, output, err)
@@ -103,12 +103,12 @@ func TestEmitSchema12RoundTripWithRealTool(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for version := 1; version <= 15; version++ {
+		for version := 1; version <= 17; version++ {
 			input := strings.Replace(string(output), "sec.dialect_version = 12 : i32", fmt.Sprintf("sec.dialect_version = %d : i32", version), 1)
 			command := exec.Command(tool, "-")
 			command.Stdin = strings.NewReader(input)
 			parsed, err := command.CombinedOutput()
-			if version == 15 {
+			if version == 17 {
 				if err == nil || !bytes.Contains(parsed, []byte("unsupported Sec dialect schema version")) {
 					t.Fatalf("unknown schema accepted: %v %s", err, parsed)
 				}

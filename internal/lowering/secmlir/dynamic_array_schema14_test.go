@@ -67,6 +67,10 @@ func TestSchema14DynamicArrays(t *testing.T) {
 				`transition = "establish-domain"`, `transition = "advance-epoch"`, `allocation_context = `,
 				`"sec.storage.establish_domain"`, `"sec.storage.advance_epoch"`, `"sec.dynamic_array.append_prepared"`,
 				`"sec.dynamic_array.index_in_bounds"`, `bounds_kind = "runtime-check", bounds_proof = "guarded", backing_domain = `,
+				`"sec.dynamic_array.append_range_prepared"`, `<{count = "10"}>`,
+				`validity_policy = "proven", validity_proof = "lexical-borrow", invalidation_domain = `,
+				`"sec.string.view_borrow"`, `"sec.string_view.decode_next"`, `"sec.own.destroy_place"`,
+				`bounds_kind = "proven-safe", bounds_proof = "branch"`,
 				`"sec.dynamic_array.len"`, `"sec.slice.borrow_shared"`, `"sec.fail.bounds"() {operation = "dynamic-array-index"}`,
 			} {
 				if !strings.Contains(text, want) {

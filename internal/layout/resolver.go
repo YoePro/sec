@@ -26,6 +26,7 @@ type Resolver struct {
 	layouts    []ResolvedLayout
 	inProgress []string
 	arithmetic *SizeArithmetic
+	cache      *LayoutCache
 }
 
 // MaximumExtent is the largest byte extent of a materialized value under a
@@ -63,9 +64,22 @@ func NewResolver(plan ResolvedScalarPlan, alignments ScalarAlignments) (*Resolve
 // Key is the plan key every layout of this resolver carries.
 func (r *Resolver) Key() CompilationPlanLayoutKey { return r.key }
 
-// Resolve returns the layout of one requirement.
+// Resolve returns a detached layout, reusing only an exact validated cache
+// graph when configured, otherwise resolving the requirement normally.
+// Rules: rules/memory/layout.md §§3(5),26,39.
 func (r *Resolver) Resolve(requirement LayoutRequirement) ResolvedLayout {
-	return r.layouts[r.resolve(requirement)-1].clone()
+	if r.cache != nil {
+		if _, found := r.memo[memoKey(requirement)]; !found {
+			if id, hit := r.restoreCachedLayout(requirement); hit {
+				return r.layouts[id-1].clone()
+			}
+		}
+	}
+	resolved := r.layouts[r.resolve(requirement)-1].clone()
+	if r.cache != nil && resolved.Complete() {
+		r.cacheResolvedLayout(requirement, resolved.ID)
+	}
+	return resolved
 }
 
 // Layout returns a published layout by its identity.

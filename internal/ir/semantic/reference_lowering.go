@@ -122,6 +122,15 @@ func (fb *functionBuilder) p15Reference(expr ast.Expression) (builtValue, error)
 		}
 		return builtValue{}, fb.unsupported("reference "+string(use.Kind)+" lowering", token)
 	}
+	if try, isTry := expr.(*ast.TryExpression); isTry {
+		// P19-20: try of a planned Arena New/Alloc unwraps the Ok candidate,
+		// which already carries its dynamic-epoch reference facts.
+		if call, isCall := try.Expression.(*ast.CallExpression); isCall {
+			if plan, planned := analyzer.ResolvedArenaOperationPlanOf(call); planned && plan.Reference != nil {
+				return builtValue{}, errNotReference
+			}
+		}
+	}
 	if call, isCall := expr.(*ast.CallExpression); isCall {
 		if _, instantiated := analyzer.ResolvedCallReferenceOf(call); instantiated {
 			// A call returning a reference lowers as an ordinary call whose

@@ -112,12 +112,12 @@ func (a *Analyzer) typeFromDeclarationWithName(name string, stmt *ast.TypeDeclSt
 // rules/types/contracts.md "Public conversion and contract errors" (ContractError, MD-012).
 // rules/concurrency/atomics.md — §§4–6 (MemoryOrder, CompareExchangeResult).
 // rules/concurrency/channels.md — §§4–5,13–14 (capability and revoke types).
-// rules/concurrency/thread_local.md — §29 (ThreadAttachError).
+// rules/concurrency/thread_local.md — §§29–30 (attachment error and owned token).
 // rules/concurrency/threads.md — §§4–8,18–19,23 (configuration, errors and termination metadata).
 // rules/errors/panic.md — §13(2–7) (PanicID and PanicInfo).
 func isCoreBuiltinDeclaration(name string) bool {
-	// rules/concurrency/cancellation.md — §36: reserved opaque core owner.
-	if name == "ContextSource" {
+	// rules/concurrency/cancellation.md — §36; thread_local.md §30: opaque core owners.
+	if name == "ContextSource" || name == "ThreadAttachment" {
 		return true
 	}
 	// rules/concurrency/ipc.md — §§6,27,44,55,68,79,94;

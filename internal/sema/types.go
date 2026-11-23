@@ -1315,6 +1315,7 @@ func newBuiltinTypes() map[string]Type {
 		"CpuSet":                builtinCpuSetType(),
 		"ThreadStorage":         builtinThreadStorageType(),
 		"ThreadContext":         {Name: "ThreadContext", Kind: StructType},
+		"ThreadAttachment":      builtinThreadAttachmentType(),
 		"TaskContext":           {Name: "TaskContext", Kind: StructType}, // cancellation.md § 8
 		"ThreadID":              {Name: "ThreadID", Kind: StructType},
 		"ThreadPriority":        builtinThreadConfigurationEnumType("ThreadPriority"),
@@ -1748,6 +1749,7 @@ func triviallyDestructible(typ Type, visiting map[string]bool) bool {
 //   - rules/memory/arena.md — §46 "Implicit Arena destruction"
 //   - rules/concurrency/tasks.md — §7 "Lifecycle responsibility"
 //   - rules/concurrency/threads.md — owning Thread lifecycle
+//   - rules/concurrency/thread_local.md — §§30,33 attachment token cleanup
 //   - rules/concurrency/mutex.md — §§6,8,48 guard release, Context and mutex destruction
 //   - rules/concurrency/channels.md — §§21, 31, 35, and 36 endpoint/ticket destruction
 //   - rules/concurrency/events.md — "Subscription"
@@ -1763,6 +1765,7 @@ func compilerKnownRequiresDestruction(typ Type) bool {
 		"MutexGuard",
 		"Context",
 		"ContextSource",
+		"ThreadAttachment",
 		"Subscription",
 		"Channel",
 		"Sender",

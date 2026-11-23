@@ -1,0 +1,39 @@
+module main
+
+type Box[Z] struct { value: Z }
+type Alias[A] A
+type Choice[C] union { Value(C), Empty }
+enum Flag[F] int { First = 0, Second = 1 }
+interface Source[S] { fn Read() S }
+
+fn Pick[Z, A](first: Z, second: A) A {
+    discard first
+    return second
+}
+
+fn Identity[T](value: T) T { return value }
+fn Forward[U](value: U) U { return Identity(<-value) }
+fn Plain(value: int) int { return value }
+
+impl Box[Z] {
+    fn Keep() void {}
+    fn Select[A](value: A) A { return value }
+}
+
+fn Use(box: ref Box[int], choice: Choice[bool], flag: Flag[int], source: ref Source[int], alias: Alias[int], nested: Box[Box[int]]) void {
+    discard choice
+    discard flag
+    discard source
+    discard alias
+    discard nested
+    discard Pick(1, true)
+    discard Pick[bool, int](false, 2)
+    discard Pick[bool](false, 3)
+    let expected: int := Identity(4)
+    discard expected
+    box.Keep()
+    discard box.Select[bool](true)
+    discard Plain(5)
+    discard Forward(6)
+    discard Forward(true)
+}

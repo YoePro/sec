@@ -74,3 +74,37 @@ Required parse/print/verify round-trips, type/scale validity, no implicit signle
 ## § 12. No physical layout in schema v17
 
 Physical component layout remains owned by `rules/memory/layout.md`. These ops are high-level; no direct LLVM lowering, no silent helper ABI, no guessed struct offsets, and no backend-chosen rescaling.
+
+## § 13. Implementation notes (2026-11-23)
+
+1. **Implemented operators.** `sec.decimal.binary_checked` (`add`, `sub`,
+   `mul`, `div`, `rem`), `sec.decimal.unary` (`neg`) and `sec.decimal.cmp`
+   are implemented. Unary plus is the SSA identity.
+2. **Plan attributes.** The checked forms carry the following attributes:
+   - `coefficient_bits`, which is 64 or 128 and follows the type;
+   - `failures`, which lists the MD-067 reasons;
+   - `kind`;
+   - `preferred_scale`, which is `max-operand-scale`,
+     `sum-of-operand-scales` for `mul`, or `operand-scale` for `neg`;
+   - `scale_policy = "nearest-exact"`;
+   - `quotient = "nearest-even"`, only on `div`;
+   - `remainder = "truncating"`, only on `rem`.
+3. **Failure reasons.** The reason result reuses
+   `!sec.arithmetic_failure_reason`, extended with `scale-overflow` and
+   `precision-exhausted`, instead of a separate `!sec.decimal_failure_reason`.
+   - `sec.arithmetic_error.from_reason` then constructs the one
+     `core::ArithmeticError` (§ 3).
+   - `precision-loss` is no decimal reason.
+   - A rounded quotient succeeds.
+4. **Failure CFG.** The checked forms share the integer failure CFG and
+   `--sec-verify-checked-integer-guards`: an immediate `failed` branch, a
+   dedicated failure block, and the panic category `division`, `remainder` or
+   `overflow`.
+5. **Schema admission.** Like the P20 operations (v16 § 18(1)), the ops are
+   admitted early, without a schema-17 gate. Constant decimal constants still
+   use `sec.const.decimal`.
+6. **Native lowering.** Until `--sec-lower-decimal-core` exists, the native
+   track rejects every decimal operation with `[unsupported-lowering]`.
+7. **Operand scope.** Only primitive `!sec.decimal` and `!sec.decimal128`
+   operands of one type are admitted. Named decimals without a fixed scale
+   share the carrier type.

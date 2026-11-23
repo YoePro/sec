@@ -83,8 +83,8 @@ func (fb *functionBuilder) outOfBoundsError(errorType sema.Type, token lexer.Tok
 // and slice range routed to a typed failure edge, and a Result carrier root tested last; the
 // success value continues. Each failure edge then propagates through the
 // enclosing Result or dispatches the local handlers. A point the builder
-// cannot route (dynamic or list indexing, contract conversion, string
-// allocation, checked conversion) and a heterogeneous set, which needs error
+// cannot route (list indexing, unrepresented string formatting/materialization
+// segments) and a heterogeneous set, which needs error
 // widening, are rejected rather than lowered as panics.
 //
 // Rules:
@@ -138,6 +138,10 @@ func (fb *functionBuilder) buildFailureSetTry(expr *ast.TryExpression, resolved 
 			// its failure path is unreachable: the plan is static string data
 			// with no allocation (operators.md § 29.5(2); MD-039 § 2(5)).
 			if plan, known := fb.owner.analyzer.StringConcatPlanOf(point.Expression); known && !plan.Runtime {
+				continue
+			}
+			if plan, known := fb.owner.analyzer.StringConcatPlanOf(point.Expression); known && plan.Runtime && !plan.Interpolated && fb.owner.maxPackage >= arenaLoweringPackage {
+				router.points[point.Expression] = point
 				continue
 			}
 			return builtValue{}, fb.unsupported("failure-set try over a runtime string materialization (P23 string allocation)", point.Token)

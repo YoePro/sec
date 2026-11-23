@@ -132,7 +132,10 @@ func TestAllocationContextProfiles(t *testing.T) {
 			p := parser.New(lexer.NewWithFile(string(data), file))
 			program := p.ParseProgram()
 			a := NewAnalyzerWithScalarPlan(layout.ResolvedScalarPlan{TargetOS: "baremetal", TargetArch: "cortex-m3", Profile: profile, PointerWidthBits: 32})
-			errs := a.Analyze(program)
+			errs, arenaBacking := splitDefaultArenaBackingErrors(a.Analyze(program))
+			if wantBacking := map[bool]int{true: 0, false: 3}[profile == "hosted"]; arenaBacking != wantBacking {
+				t.Fatal(profile, "default Arena backing errors", arenaBacking, "want", wantBacking)
+			}
 			available := profile == "hosted" || profile == "embedded-arena"
 			if available && len(errs) != 0 {
 				t.Fatal(errs)

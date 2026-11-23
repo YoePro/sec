@@ -8,16 +8,21 @@ import (
 	"sec/internal/layout"
 )
 
-// P19-14 adds semantic identities only. Emission must not invent schema-15
-// Arena/context types or a physical ABI while that milestone remains open.
+// Arena and allocation-context types exist only from schema 15 (P19-22):
+// an earlier schema names the requirement instead of inventing a type, and
+// schema 15 spells them !sec.arena and !sec.alloc_context.
 // Rules: rules/mlir/packages/sec-mlir-dialect_package19.md — §§84–85,105–109,146–148.
 func TestArenaTypesAwaitSchema15(t *testing.T) {
 	types := semantic.NewTypeTable()
 	for _, id := range []semantic.TypeID{types.InternArena(), types.InternAllocationContext()} {
-		e := &emitter{module: &semantic.Module{Types: types}, types: map[semantic.TypeID]string{}, visiting: map[semantic.TypeID]bool{}}
+		e := &emitter{schemaVersion: 14, module: &semantic.Module{Types: types}, types: map[semantic.TypeID]string{}, visiting: map[semantic.TypeID]bool{}}
 		text, err := e.typeText(id)
-		if text != "" || err == nil || !strings.Contains(err.Error(), "semantic type") {
+		if text != "" || err == nil || !strings.Contains(err.Error(), "require schema 15") {
 			t.Fatalf("unexpected schema support: %q %v", text, err)
+		}
+		e = &emitter{schemaVersion: 15, module: &semantic.Module{Types: types}, types: map[semantic.TypeID]string{}, visiting: map[semantic.TypeID]bool{}}
+		if text, err := e.typeText(id); err != nil || (text != "!sec.arena" && text != "!sec.alloc_context") {
+			t.Fatalf("schema 15 type = %q %v", text, err)
 		}
 	}
 }

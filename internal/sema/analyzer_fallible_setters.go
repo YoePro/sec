@@ -7,6 +7,18 @@ import (
 	"sec/internal/lexer"
 )
 
+// interfaceSetterErrorReference preserves the declaration scope until concrete
+// error declarations are available. Generic parameters must not be resolved as
+// unrelated module types when deferred validation runs.
+// Rules: rules/declarations/generics.md — §§15A,30;
+// rules/errors/errorhandling.md — §24.1.
+type interfaceSetterErrorReference struct {
+	reference   *ast.TypeReference
+	types       map[string]Type
+	definitions map[string]lexer.Token
+	module      string
+}
+
 // resolveSetterErrorContract resolves the explicit error type of a fallible
 // setter. The contract must be written on the setter line and must be error or
 // a concrete error type; it is never inferred from the setter body.
@@ -46,9 +58,16 @@ func (a *Analyzer) recordInterfaceSetterContract(interfaceName string, property 
 		return
 	}
 	if a.interfaceSetterErrorRefs == nil {
-		a.interfaceSetterErrorRefs = map[string]*ast.TypeReference{}
+		a.interfaceSetterErrorRefs = map[string]interfaceSetterErrorReference{}
 	}
-	a.interfaceSetterErrorRefs[interfaceName+"."+property.Name.Value] = property.SetterErrorType
+	scope := interfaceSetterErrorReference{reference: property.SetterErrorType, types: map[string]Type{}, definitions: map[string]lexer.Token{}, module: a.currentModule}
+	for name, typ := range a.genericTypes {
+		scope.types[name] = typ
+	}
+	for name, token := range a.genericTypeDefinitions {
+		scope.definitions[name] = token
+	}
+	a.interfaceSetterErrorRefs[interfaceName+"."+property.Name.Value] = scope
 }
 
 // resolveInterfaceSetterContracts resolves every recorded interface setter
@@ -64,11 +83,70 @@ func (a *Analyzer) resolveInterfaceSetterContracts() {
 	}
 	sort.Strings(keys)
 	for _, key := range keys {
-		reference := a.interfaceSetterErrorRefs[key]
-		if contract := a.resolveSetterErrorContract(reference, reference.Token, key); contract != nil {
+		if contract := a.resolveRecordedInterfaceSetterContract(a.interfaceSetterErrorRefs[key], key); contract != nil {
 			a.interfaceSetterErrors[key] = contract
 		}
 	}
+}
+
+// resolveRecordedInterfaceSetterContract restores exactly the declaration's
+// parameter and module environment while resolving its deferred error type.
+// Rules: rules/declarations/generics.md — §§15A,30;
+// rules/errors/errorhandling.md — §24.1.
+func (a *Analyzer) resolveRecordedInterfaceSetterContract(scope interfaceSetterErrorReference, key string) *Type {
+	previousTypes, previousDefinitions, previousModule := a.genericTypes, a.genericTypeDefinitions, a.currentModule
+	a.genericTypes, a.genericTypeDefinitions, a.currentModule = scope.types, scope.definitions, scope.module
+	defer func() {
+		a.genericTypes, a.genericTypeDefinitions, a.currentModule = previousTypes, previousDefinitions, previousModule
+	}()
+	return a.resolveSetterErrorContract(scope.reference, scope.reference.Token, key)
+}
+
+// interfaceSetterErrorContract substitutes the error contract of the exact
+// declaring interface, including inherited requirements with reordered parent
+// arguments. Neither the raw template nor sibling instances are modified.
+// Rules: rules/declarations/generics.md — §§14,22,25;
+// rules/declarations/interfaces.md — §§5–6,9;
+// rules/errors/errorhandling.md — §24.1.
+func (a *Analyzer) interfaceSetterErrorContract(iface Type, property InterfaceProperty) *Type {
+	owner := a.interfaceRequirementOwners[sourceTokenLocation(property.Token)]
+	if owner == "" {
+		owner = iface.Name
+	}
+	var find func(Type) (Type, bool)
+	seen := map[string]bool{}
+	find = func(candidate Type) (Type, bool) {
+		if candidate.Name == owner {
+			return candidate, true
+		}
+		identity := canonicalTypeIdentity(candidate)
+		if seen[identity] {
+			return Type{}, false
+		}
+		seen[identity] = true
+		for _, parent := range candidate.Implements {
+			if found, ok := find(parent); ok {
+				return found, true
+			}
+		}
+		return Type{}, false
+	}
+	instance, found := find(iface)
+	if !found {
+		return nil
+	}
+	contract := a.interfaceSetterErrors[owner+"."+property.Name]
+	if contract == nil {
+		return nil
+	}
+	substitution := map[string]Type{}
+	for i, name := range a.types[owner].GenericParameters {
+		if i < len(instance.TypeArgs) {
+			substitution[name] = instance.TypeArgs[i]
+		}
+	}
+	resolved := substituteGenericType(*contract, substitution)
+	return &resolved
 }
 
 // setterErrorContractSatisfied reports whether an implementation's declared

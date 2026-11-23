@@ -161,8 +161,8 @@ const (
 	// while whose condition is a compiler-known state query: an ownership
 	// availability test or a union `is Variant` / `is empty` state test.
 	AvailabilityBlockOpen Role = "availability-block-open"
-	// AttachedAttributeEnd marks the final real token of an argument-free
-	// attribute that the parser attached to a declaration.
+	// AttachedAttributeEnd marks the final real token of a complete attribute
+	// that the parser attached to a declaration.
 	AttachedAttributeEnd Role = "attached-attribute-end"
 	// AttributedDeclarationStart marks the first real token of the declaration
 	// owned by an attached attribute set.
@@ -435,28 +435,6 @@ func (d *Document) ApplyProgramRoles(program *ast.Program) {
 		case lexer.LPAREN:
 			markIndex(before, SpacedBefore)
 		}
-	}
-	markAttachedAttributes := func(attributes []*ast.Attribute, declaration lexer.Token) {
-		if len(attributes) == 0 || declaration.Type == lexer.EOF {
-			return
-		}
-		// rules/tooling/formatter.md — §16(14): attributes are written one per
-		// line, so an argument-free attribute also ends its line before the
-		// next attribute.
-		for index := 0; index+1 < len(attributes); index++ {
-			current, next := attributes[index], attributes[index+1]
-			if current == nil || current.Name == nil || len(current.Arguments) != 0 || next == nil {
-				continue
-			}
-			mark(current.Name.Token, AttachedAttributeEnd)
-			mark(next.Token, AttributedDeclarationStart)
-		}
-		last := attributes[len(attributes)-1]
-		if last == nil || last.Name == nil || len(last.Arguments) != 0 {
-			return
-		}
-		mark(last.Name.Token, AttachedAttributeEnd)
-		mark(declaration, AttributedDeclarationStart)
 	}
 	markCallableParameters := func(open lexer.Token, parameters []*ast.Parameter) {
 		mark(open, CallableParameterListOpen)
@@ -778,6 +756,7 @@ func (d *Document) ApplyProgramRoles(program *ast.Program) {
 		d.applyHeaderSpacingRoles(node, indexes, mark)
 		d.applyOwnershipSpacingRoles(node, indexes, mark)
 		markSpacingRoles(node)
+		d.applyAttributeRoles(node, indexes)
 		switch node := node.(type) {
 		case *ast.GenericParameter:
 			// MD-117: the declaration spread belongs to the parameter kind,
@@ -871,13 +850,6 @@ func (d *Document) ApplyProgramRoles(program *ast.Program) {
 				mark(typeReferenceFirstToken(node.ReturnType), SpacedBefore)
 			}
 			markCallableParameters(node.ParameterOpen, node.Parameters)
-			markAttachedAttributes(node.Attributes, node.Token)
-		case *ast.TypeDeclStatement:
-			markAttachedAttributes(node.Attributes, node.Token)
-		case *ast.EnumDeclaration:
-			markAttachedAttributes(node.Attributes, node.Token)
-		case *ast.LetStatement:
-			markAttachedAttributes(node.Attributes, node.Token)
 		case *ast.LambdaExpression:
 			if node.CaptureOpen.Type == lexer.LPAREN {
 				markGroupPair(node.CaptureOpen, LambdaCaptureListOpen, LambdaCaptureListClose)

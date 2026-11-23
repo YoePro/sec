@@ -25,6 +25,8 @@ type crossTargetStore struct {
 	mu         sync.Mutex
 	results    map[string]crossTargetResult
 	generation map[string]uint64
+	work       map[string]*crossTargetWork
+	stopped    bool
 }
 
 func newCrossTargetStore() *crossTargetStore {
@@ -35,54 +37,6 @@ func documentTextHash(text string) string {
 	hash := fnv.New64a()
 	_, _ = hash.Write([]byte(text))
 	return strconv.FormatUint(hash.Sum64(), 16)
-}
-
-// scheduleCrossTargetDiagnostics analyzes a target-independent document once
-// per project variant or target of its module in the background and republishes the module's
-// diagnostics when done. It runs on open and save only, because one pass
-// analyzes the module for every target. Configuration/target switches also
-// reschedule these analyses with the new immutable request selection.
-//
-// Rules:
-//   - rules/tooling/lsp.md — "Multi-target diagnostics", "Target status" (per-target diagnostics)
-//   - rules/platform/platform_model.md — diagnostics retain Target identity
-func (s *server) scheduleCrossTargetDiagnostics(uri string) {
-	if isProjectManifest(pathFromURI(uri)) {
-		return
-	}
-	if s == nil || s.documentSnapshots == nil {
-		return
-	}
-	snapshot, ok := s.documentSnapshots.Snapshot(uri)
-	if !ok {
-		return
-	}
-	if s.crossTarget == nil {
-		s.crossTarget = newCrossTargetStore()
-	}
-	store := s.crossTarget
-	store.mu.Lock()
-	store.generation[uri]++
-	generation := store.generation[uri]
-	store.mu.Unlock()
-	overlay := s.sourceOverlay()
-	go func() {
-		result, ok := computeCrossTargetDiagnostics(uri, snapshot.Text, overlay)
-		store.mu.Lock()
-		if store.generation[uri] != generation {
-			store.mu.Unlock()
-			return
-		}
-		if ok {
-			store.results[uri] = result
-		} else {
-			delete(store.results, uri)
-		}
-		store.mu.Unlock()
-		if ok {
-			s.scheduleModuleDiagnostics(uri)
-		}
-	}()
 }
 
 // crossTargetResultFor returns the stored result when it still belongs to

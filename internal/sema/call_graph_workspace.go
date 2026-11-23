@@ -613,7 +613,7 @@ func validWorkspaceGraph(graph *CallGraph, deps []CallGraphDependency) bool {
 // Rules: rules/memory/allocation.md — §24(2),(5)-(6).
 func validPersistedAllocationEffect(site ArenaEffectSite) bool {
 	switch site.Kind {
-	case ArenaEffectAllocate, ArenaEffectCollectionGrowth, ArenaEffectCreateOwned, ArenaEffectCreateGrowable:
+	case ArenaEffectAllocate, ArenaEffectCollectionGrowth, ArenaEffectStringMaterialization, ArenaEffectCreateOwned, ArenaEffectCreateGrowable:
 		return site.MayAllocate && !site.UnknownAllocation
 	case ArenaEffectCreateBorrowed, ArenaEffectReset, ArenaEffectRelease:
 		return !site.MayAllocate && !site.UnknownAllocation

@@ -261,9 +261,9 @@ func formatOperation(out *strings.Builder, op Operation) {
 		for _, operand := range op.Operands {
 			fmt.Fprintf(out, " %%%d", operand)
 		}
-	case OpArenaCreateBorrowed, OpArenaCreateOwnedFixed, OpArenaCreateGrowable, OpArenaNew, OpArenaAlloc, OpArenaReset, OpArenaRelease, OpArenaDestroy:
+	case OpArenaCreateBorrowed, OpArenaCreateOwnedFixed, OpArenaCreateGrowable, OpArenaCreateDefault, OpArenaNew, OpArenaAlloc, OpArenaReset, OpArenaRelease, OpArenaDestroy:
 		formatArenaOperation(out, op)
-	case OpDynamicArrayHasBacking, OpDynamicArrayHasCapacity, OpDynamicArrayGrowBacking, OpDynamicArrayAppendPrepared, OpDynamicArrayAllocate,
+	case OpDynamicArrayHasBacking, OpDynamicArrayHasCapacity, OpDynamicArrayGrowBacking, OpDynamicArrayAppendPrepared, OpDynamicArrayAppendRangePrepared, OpDynamicArrayAllocate,
 		OpStorageEstablishDomain, OpStorageAdvanceEpoch, OpStorageEndDomain, OpStorageReclaim:
 		for index, operand := range op.Operands {
 			if index > 0 {
@@ -297,6 +297,13 @@ func formatOperation(out *strings.Builder, op Operation) {
 		fmt.Fprintf(out, " %s", op.Integer.String())
 	case OpConstBool:
 		fmt.Fprintf(out, " %t", *op.Bool)
+	case OpStringMaterialize:
+		for _, operand := range op.Operands {
+			fmt.Fprintf(out, " %%%d", operand)
+		}
+		if fact := op.StringMaterialization; fact != nil {
+			fmt.Fprintf(out, " mode=%s segments=%v error=!%d panic=%d", fact.Failure, fact.Segments, fact.ErrorType, fact.PanicReasonID)
+		}
 	case OpConstString:
 		fmt.Fprintf(out, " %q", op.String)
 	case OpConstDecimal:
@@ -395,6 +402,10 @@ func formatOperation(out *strings.Builder, op Operation) {
 		fmt.Fprintf(out, " %%%d", op.Operands[0])
 	case OpIntBinaryChecked:
 		fmt.Fprintf(out, " %s %%%d, %%%d", op.IntegerBinary, op.Operands[0], op.Operands[1])
+	case OpDecimalCompare:
+		fmt.Fprintf(out, " %s %%%d, %%%d", op.IntegerCompare, op.Operands[0], op.Operands[1])
+	case OpDecimalNegChecked, OpDecimalBinaryChecked:
+		formatDecimalOperation(out, op)
 	case OpIntBitwise:
 		fmt.Fprintf(out, " %s %%%d, %%%d", op.IntegerBitwise, op.Operands[0], op.Operands[1])
 	case OpIntBitExtract:

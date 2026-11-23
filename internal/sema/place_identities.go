@@ -129,6 +129,13 @@ func (a *placeIdentityAllocator) invalidationDomain(key string) InvalidationDoma
 	return allocateIdentity(&a.domains, key, 1)
 }
 
+// knownInvalidationDomain looks up a domain without allocating one.
+// Rules: rules/mlir/packages/sec-mlir-dialect_package15.md — §§ 25-31.
+func (a *placeIdentityAllocator) knownInvalidationDomain(key string) (InvalidationDomainID, bool) {
+	id, ok := a.domains[key]
+	return id, ok
+}
+
 func (a *placeIdentityAllocator) epochDependency(key string) EpochDependencyID {
 	return allocateIdentity(&a.epochs, key, 1)
 }

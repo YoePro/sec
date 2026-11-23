@@ -47,6 +47,14 @@ func (a *Analyzer) instantiateGenericFunction(function Function, substitution ma
 		out.Parameters = append(out.Parameters, param)
 	}
 	out.ReturnType = substituteGenericType(function.ReturnType, substitution)
+	if function.ConstructionType != nil {
+		target := substituteGenericType(*function.ConstructionType, substitution)
+		out.ConstructionType = &target
+	}
+	if function.ConstructionError != nil {
+		errorType := substituteGenericType(*function.ConstructionError, substitution)
+		out.ConstructionError = &errorType
+	}
 	if identity, known := a.InstantiationIdentityOf(out); known {
 		out.InstantiationIdentity = identity.Key
 	}

@@ -32,7 +32,7 @@ test("target view renders canonical results and rejects obsolete responses", asy
       createTreeView(id, options) { assert.equal(id, "sec.targetStatus"); provider = options.treeDataProvider; return view; },
       onDidChangeActiveTextEditor(callback) { events.editor = callback; return disposable(); }
     },
-    languages: { onDidChangeDiagnostics: disposable },
+    languages: { onDidChangeDiagnostics(callback) { events.diagnostics = callback; return disposable(); } },
     workspace: {
       onDidChangeTextDocument(callback) { events.change = callback; return disposable(); },
       onDidCloseTextDocument: disposable,
@@ -85,7 +85,14 @@ test("target view renders canonical results and rejects obsolete responses", asy
   rows = provider.getChildren();
   assert.ok(rows.every(row => row.description === "comparison unavailable"));
   assert.ok(rows.every(row => row.children.length === 0));
-  assert.match(view.message, /open\/save/);
+  assert.match(view.message, /after editing pauses/);
+
+  // A completed comparison for unsaved v2 arrives through diagnostic refresh.
+  events.diagnostics();
+  pending.shift()(status(2));
+  await settle();
+  assert.ok(provider.getChildren().every(row => row.description !== "comparison unavailable"));
+  assert.equal(view.description, "v2");
 
   const inFlight = commands.get("sec.refreshTargetStatus")();
   const reply = pending.shift();

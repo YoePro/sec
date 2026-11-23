@@ -11,6 +11,10 @@ func collectionGrowthContract(typ Type, member CompilerKnownMember) AllocationKn
 	switch member.ID {
 	case "CKM-DYNAMIC-ARRAY-APPEND":
 		return AllocationMayAllocate
+	case "CKM-STRING-TOBYTEARRAY", "CKM-STRING-TOCHARARRAY", "CKM-STRING-TORUNEARRAY":
+		// core-library.md § 5.3: materialization allocates through the
+		// active context (MD-072, MD-073).
+		return AllocationMayAllocate
 	case "CKM-LIST-APPEND", "CKM-LIST-INSERT", "CKM-SET-ADD":
 		if dynamicCollection(dereferenceType(typ)) {
 			return AllocationMayAllocate
@@ -38,6 +42,8 @@ func (a *Analyzer) recordCollectionGrowth(call *ast.CallExpression) {
 		return
 	}
 	a.recordDynamicArrayAllocation(call, member, contract)
+	a.recordRuneArrayMaterialization(call, member, contract)
+	a.recordCoreArrayMaterializationSite(member, contract)
 	if (contract.Name == "Reserve" || contract.Name == "WithCapacity") && len(call.Arguments) == 1 {
 		if count, constant := a.integerConstantValue(call.Arguments[0]); constant && count.Sign() == 0 {
 			return
@@ -55,6 +61,9 @@ func (a *Analyzer) recordCollectionGrowth(call *ast.CallExpression) {
 // rules/collections/collections.md — §§6.5,19.
 func (a *Analyzer) inferCompilerKnownMemberCall(expr *ast.CallExpression) (Type, expressionValue, bool) {
 	typ, value, handled := a.inferValidatedCompilerKnownMemberCall(expr)
+	if handled {
+		a.invalidateDynamicArrayLengthFacts(expr)
+	}
 	if handled && typ.Kind != InvalidType {
 		if a.checkDynamicArrayMutationBorrow(expr) {
 			delete(a.resolvedRangeAppends, expr)
@@ -63,4 +72,28 @@ func (a *Analyzer) inferCompilerKnownMemberCall(expr *ast.CallExpression) (Type,
 		a.recordCollectionGrowth(expr)
 	}
 	return typ, value, handled
+}
+
+// invalidateDynamicArrayLengthFacts ends index refinements after a member
+// call on an owning T[] other than a pure length observation: Append,
+// Clear, RemoveAt and every later mutating member may change the length.
+// Arguments were analyzed first, so an index inside them keeps its proof.
+// Rules: rules/mlir/packages/sec-mlir-dialect_package18.md — §§ 13, 40-41, 49.
+func (a *Analyzer) invalidateDynamicArrayLengthFacts(call *ast.CallExpression) {
+	member, ok := call.Callee.(*ast.MemberExpression)
+	if !ok || member.Property == nil {
+		return
+	}
+	receiver, typed := a.expressionTypes[member.Object]
+	if !typed {
+		return
+	}
+	if _, dynamic := ResolveDynamicArrayPlan(dereferenceType(receiver)); !dynamic {
+		return
+	}
+	switch member.Property.Value {
+	case "Len", "IsEmpty", "SizeOf":
+		return
+	}
+	a.bumpDynamicArrayLengthEpoch()
 }

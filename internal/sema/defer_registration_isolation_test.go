@@ -31,7 +31,8 @@ func TestDeferRegistrationIsolation(t *testing.T) {
 					if len(p.Errors()) != 0 {
 						t.Fatal(p.Errors())
 					}
-					a := NewAnalyzerWithScalarPlanAndDepth(layout.ResolvedScalarPlan{PointerWidthBits: width}, depth)
+					// MD-136: the fixtures grow a default Arena (interim hosted capability).
+					a := NewAnalyzerWithScalarPlanAndDepth(layout.ResolvedScalarPlan{PointerWidthBits: width, Profile: "hosted"}, depth)
 					errs := a.Analyze(program)
 					want := map[string]int{"valid": 0, "immediate_invalid": 3, "body_invalid": 1, "release_body_invalid": 1}[name]
 					if len(errs) != want {

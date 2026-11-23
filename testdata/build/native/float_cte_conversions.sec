@@ -1,0 +1,88 @@
+module main
+
+// P20 §§ 20, 44–55, 59: a conversion Sema proves exact folds at compile time
+// to the value the checked runtime conversion produces: float widen and exact
+// narrow (keeping -0, infinity and NaN), integer to float, exact float to
+// integer, and float to bool as `une 0` (NaN is true).
+
+let Half64: float64 := 0.5g
+let Four64: float64 := 4.0g
+let NegativeZero64: float64 := -0.0g
+let Seven32: int32 := 7
+let Widen: float64 := float64(float32.Epsilon)
+let Narrow: float32 := float32(Half64)
+let NarrowZero: float32 := float32(NegativeZero64)
+let NarrowInfinity: float32 := float32(float64.Infinity)
+let NarrowNaN: float32 := float32(float64.NaN)
+let FromInt: float64 := float64(Seven32)
+let ToInt: int32 := int32(Four64)
+let NaNTruth: bool := bool(float64.NaN)
+let ZeroTruth: bool := bool(NegativeZero64)
+
+fn Narrow32(x: float64) Result[float32, ConversionError] {
+    let y := try float32(x)
+    return Ok(y)
+}
+
+fn Int32Of(x: float64) Result[int32, ConversionError] {
+    let y := try int32(x)
+    return Ok(y)
+}
+
+fn Float64Of(x: int32) float64 {
+    return float64(x)
+}
+
+fn Widen64(x: float32) float64 {
+    return float64(x)
+}
+
+fn Truth(x: float64) bool {
+    return bool(x)
+}
+
+fn Same64(a: float64, b: float64) bool {
+    return a == b
+}
+
+fn Same32(a: float32, b: float32) bool {
+    return a == b
+}
+
+fn Unordered32(a: float32) bool {
+    return a != a
+}
+
+fn NarrowMatches(x: float64, folded: float32) bool {
+    match Narrow32(x) {
+        Ok(value) => return Same32(value, folded) || Unordered32(value) && Unordered32(folded)
+        Err(_) => return false
+    }
+}
+
+fn main() int {
+    if !Same64(Widen, Widen64(float32.Epsilon)) {
+        return 1
+    }
+    if !NarrowMatches(Half64, Narrow) || !NarrowMatches(float64.Infinity, NarrowInfinity) || !NarrowMatches(float64.NaN, NarrowNaN) {
+        return 2
+    }
+    if !NarrowMatches(NegativeZero64, NarrowZero) || !Same32(1.0 / NarrowZero, float32.NegativeInfinity) {
+        return 3
+    }
+    if !Same64(Float64Of(Seven32), FromInt) {
+        return 4
+    }
+    match Int32Of(Four64) {
+        Ok(value) => {
+            if value != ToInt || ToInt != 4 {
+                return 5
+            }
+        }
+        Err(_) => return 5
+    }
+    if NaNTruth != Truth(float64.NaN) || ZeroTruth != Truth(NegativeZero64) || !NaNTruth || ZeroTruth {
+        return 6
+    }
+    return 42
+}

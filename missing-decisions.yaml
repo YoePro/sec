@@ -1,6 +1,6 @@
 schema_version: 1
-updated: "2026-11-22"
-last_id: MD-149
+updated: "2026-11-23"
+last_id: MD-151
 purpose: >-
   Tracks normative decisions that are missing or insufficiently precise and
   therefore constrain implementation. Remove an entry only after the owning
@@ -183,8 +183,10 @@ decisions:
       by default, and a resolved profile may explicitly enable a compatible,
       positively supported provider, with no host fallback. Normatively
       synchronized 2026-11-17 (allocation.md § 22(7)-(9), target_profiles.md
-      § 7). Implementation is pending under platform.target-profiles, which
-      also records the missing Target/Variant profile-selection syntax.
+      § 7). Implementation is pending under platform.target-profiles. The
+      Target/Variant selection syntax exists since MD-139 (2026-11-20).
+      Freestanding with heap allocation disabled by default is not blocked;
+      enabling a provider is blocked by MD-151 (provider catalogs).
     classification: constraining
     status: decided-implementation-pending
 
@@ -214,6 +216,16 @@ decisions:
       for `+` and `+=` only; interpolation is not changed. Rulebooks
       synchronized 2026-11-01; implementation steps tracked under
       frontend.allocation.
+      Implementation advanced 2026-11-23: string/char/rune runtime
+      concatenation, including exact Result[string, StringError] operands,
+      now has verified high-level Semantic IR materialization
+      with explicit P19 context and source-selected try/panic metadata;
+      protected Result failures route to propagation or local handlers.
+      CLI inspection remains at P18. Physical allocation/MLIR/LLVM emission,
+      transactional +=, interpolation and conformance under allocator failure
+      remain pending in the existing step 3 and step 4. Fallible text operands
+      short-circuit before later evaluation or allocation and share the same
+      StringError route; separately protected operands retain the outer panic mode.
     classification: constraining
     status: decided-implementation-pending
 
@@ -1237,7 +1249,7 @@ decisions:
       (P18-17); Semantic IR rejects Append of a non-trivial element as a
       named boundary until this is decided. Governance owner:
       lowering.sec-mlir-package18.
-    classification: constraining
+    classification: blocking
     status: open
 
   - id: MD-136
@@ -1258,9 +1270,16 @@ decisions:
       constructor. Existing acceptance is preserved; no backing/provider
       is guessed. This blocks lowering Arena {} and the handoff's exact
       example, not the defined constructors or their Sema plans. Governance
-      owner: lowering.sec-mlir-package19.
+      owner: lowering.sec-mlir-package19. Decided by the owner 2026-11-23
+      (rules/corrections/applied/MD-136-arena-default-construction-correction-2026-11-23.md): Arena is Defaultable; `let mut a: Arena` and `Arena {}` create a
+      fresh, valid, empty Arena (new ArenaDomain, zero capacity, no backing,
+      infallible and allocation-free in every profile) whose growth policy is
+      frozen from the CompilationPlan; it is not Arena.Growable(0). Integrated
+      2026-11-23 (arena.md § 131, default_values.md § 65B, P19 § 166);
+      implementation and tests T01-T11 are tracked in
+      lowering.sec-mlir-package19.
     classification: localized
-    status: open
+    status: decided-implementation-pending
 
   - id: MD-137
     area: channel-capability-set-literal
@@ -1337,7 +1356,7 @@ decisions:
       consumes (provider identity, reclamation authority, and individual
       reclamation or not). Governance owners: platform.target-profiles and
       lowering.sec-mlir-package19.
-      Accepted by the owner 2026-11-20 and integrated (projects.md § 19(11)-(15), target_profiles.md § 41, allocation.md § 28A) from rules/corrections/applied/MD-139-allocation-profile-provider-selection-proposed-correction-2026-11-20-20261121.md. Implementation tracked in platform.target-profiles.
+      Accepted by the owner 2026-11-20 and integrated (projects.md § 19(11)-(15), target_profiles.md § 41, allocation.md § 28A) from rules/corrections/applied/MD-139-allocation-profile-provider-selection-proposed-correction-2026-11-20-20261121.md. Implementation tracked in platform.target-profiles. 2026-11-23: the provider-backed remainder is blocked by MD-151 (provider catalogs).
     classification: blocking
     status: decided-implementation-pending
 
@@ -1607,4 +1626,85 @@ decisions:
       (internal/sema/explicit_slice_help.go). Governance owner:
       frontend.collections.
     classification: localized
+    status: open
+  - id: MD-150
+    area: float-core-members-on-named-and-unit-floats
+    rulebooks:
+      - rules/library/core-library.md
+      - rules/types/types.md
+      - rules/types/units.md
+    description: >-
+      Found 2026-11-23 while closing P20-12. core-library.md § 9.3 gives the
+      primitive binary floats `float`, `float32` and `float64` the core
+      members Abs, Min, Max, Clamp, IsFinite/IsInfinite/IsNaN/IsNormal/
+      IsSubnormal, Floor/Ceiling/Truncate/Round and the properties Min/Max/
+      Epsilon/Infinity/NegativeInfinity/NaN. No rule says whether a declared
+      named float (`type Price float64`, with or without contracts) or a
+      unit-carrying float quantity has them. Decide: (1) whether named floats
+      inherit the members and properties, and whether results keep the named
+      type (with contract revalidation, e.g. Abs of a contracted type) or
+      return the underlying primitive; (2) for unit quantities, which members
+      are unit-preserving (Abs, Min, Max, Clamp, classification are plausible)
+      and whether rounding (Floor/Round …) is allowed only on the value in a
+      stated unit, given units.md explicit rounding/RoundingMode;
+      (3) whether Min/Max/Clamp arguments must have the identical named or
+      unit type, or admit compatible units with conversion; (4) the
+      properties Max/Epsilon/NaN on a named or unit type (contract
+      compatibility of NaN/Infinity). Interim: Sema resolves the members only
+      on primitive floats (`floatCoreReceiver` excludes named, declared and
+      unit-carrying floats); P20 lowering and CTE folding cover primitives
+      only. Governance owner: lowering.sec-mlir-package20 (remaining item).
+    classification: localized
+    status: open
+  - id: MD-151
+    area: allocation-provider-catalogs
+    rulebooks:
+      - rules/platform/target_profiles.md
+      - rules/memory/allocation.md
+      - rules/memory/arena.md
+      - rules/projects/projects.md
+    description: >-
+      Recorded 2026-11-23. It was previously documented only as "owner decision
+      pending" in governance platform.target-profiles (2026-11-20). MD-139
+      (target_profiles.md § 41(4)-(8), correction §§ 3(4)-(7), 5) requires every
+      provider to be a canonical identity in a verified target/platform
+      provider catalog, with provenance, capabilities, reclamation, alignment,
+      capacity, failure contract, context limits, lifetime and implementation
+      binding. "hosted" alone never proves an allocator (§ 5(2)). No rule says
+      which providers exist. Every catalog is therefore empty, and
+      internal/layout/allocation_capabilities.go still derives hosted
+      allocation from the profile string, which § 5(2) forbids. The projection
+      of the frozen ResolvedTargetProfile into the plan (correction § 5(6))
+      cannot be enabled without making hosted allocation unknown. Decide:
+      (1) whether each hosted target (linux/windows/darwin x86_64/aarch64)
+      declares a default compiler-managed provider, its canonical identity
+      (for example `system-heap`) and its implementation binding (the C
+      runtime malloc/free/aligned_alloc family, OS primitives such as
+      mmap/VirtualAlloc, or a Sec runtime allocator); (2) that provider's
+      facts: individual reclamation (needed by P18 T[] backing), guaranteed
+      maximum alignment and how over-aligned T is served, capacity
+      (unbounded/unknown), failure mapping to AllocationError, thread/task/
+      interrupt context limits and lifetime; (3) whether `embedded-arena`
+      has any catalog provider at all or always needs an explicitly supplied
+      Arena, and if a program-static buffer provider exists, how its
+      capacity is configured (which would be a new manifest key);
+      (4) RTOS and QNX families: no default (as for BareMetal, MD-034) or a
+      platform allocator (for example QNX libc malloc, FreeRTOS pvPortMalloc,
+      Zephyr k_malloc); (5) whether `Arena.WithCapacity` and
+      `Arena.Growable` acquire their backing from the same provider as
+      ambient allocation, and the nonrelocating growth strategy Growable
+      requires; (6) where catalogs live and how a provider is verified
+      (target registry entry plus a link/run check per triple?); (7) until
+      decided, whether the interim hosted mapping stays as is (status quo)
+      or hosted allocation must already be reported as unverified.
+      Blocks: MD-034/MD-139 completion and the plan projection
+      (platform.target-profiles); P19-20 owned Arena creation (WithCapacity/
+      Growable); P19-27 profiles; the strict-profile verifier of P19-26;
+      the provider rows of the MD-139 conformance matrix, including P18
+      individually reclaimable T[] versus a bulk-only provider. Not
+      blocked: Arena.FromBuffer, New/Alloc on a borrowed Arena, layout
+      consumption, and freestanding with allocation disabled by default.
+      Governance owners: platform.target-profiles,
+      lowering.sec-mlir-package19, lowering.sec-mlir-package18.
+    classification: blocking
     status: open

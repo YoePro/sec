@@ -1,0 +1,19 @@
+[project]
+name = "fixture"
+uuid = "550e8400-e29b-41d4-a716-446655440000"
+
+[version]
+major = 1
+minor = 0
+revision = 0
+build = 0
+format = "[major].[minor].[revision].[build]"
+
+[target.product]
+kind = "command"
+source = "tests/product"
+variants = ["native"]
+
+[variant.native]
+os = "linux"
+arch = "amd64"

@@ -35,7 +35,7 @@ func (p ResolvedScalarPlan) Fingerprints() PlanFingerprints {
 	}
 	fingerprints := PlanFingerprints{
 		Architecture: digest("architecture", p.TargetArch, p.PointerWidthBits, p.Endianness, p.Atomics),
-		Layout:       digest("layout", p.PointerWidthBits, p.Endianness, p.CABI, p.References),
+		Layout:       digest("layout", p.PointerWidthBits, p.Endianness, p.CABI, p.References, p.Alignments.canonical()),
 		Memory:       digest("memory", p.Profile, p.AddressDomains, p.References, p.PointerWidthBits, p.IPC.semanticFacts(), p.Mutex.semanticFacts(), p.PhysicalThreads.semanticFact()),
 		Runtime:      digest("runtime", p.TargetOS, p.Profile, p.IPC.semanticFacts(), p.Mutex.semanticFacts(), p.PhysicalThreads.semanticFact()),
 		Execution:    digest("execution", p.TargetOS, p.TargetArch, p.Profile, p.IPC.semanticFacts(), p.Mutex.semanticFacts(), p.PhysicalThreads.semanticFact()),

@@ -1,0 +1,15 @@
+module main
+
+enum BusinessError error { Failed }
+fn Count(value: int64) Result[int64, BusinessError] { return Ok(value) }
+type Coverage struct { Last: int64, }
+
+fn Wide(value: int64) Result[int64, BusinessError] {
+    return Ok(try Count(value + 1))
+}
+fn Field(value: Coverage) Result[int64, BusinessError] {
+    return Ok(try Count(value.Last + 1))
+}
+fn Nested(value: int64) Result[int64, BusinessError] {
+    return Ok(try Count((value + 1) - 1))
+}

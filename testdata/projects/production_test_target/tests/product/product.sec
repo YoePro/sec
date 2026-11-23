@@ -1,0 +1,3 @@
+module product
+
+fn Value() int { return 1 }

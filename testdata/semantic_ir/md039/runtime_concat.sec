@@ -1,0 +1,23 @@
+module main
+
+fn Ordinary(character: char, scalar: rune) string {
+    let value := Source()
+    return "start:" + value + character + scalar
+}
+
+@noPanic
+fn Recoverable() Result[string, StringError] {
+    let value := Source()
+    return Ok(try "start:" + value)
+}
+
+fn Handled() string {
+    let value := Source()
+    return try "start:" + value {
+        Err(_) => "fallback"
+    }
+}
+
+fn Source() string { return "value" }
+fn Ordered() string { return "start:" + Source() + Source() }
+fn EmptyPrefix() string { return "" + Source() }

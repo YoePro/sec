@@ -1,0 +1,7 @@
+#target(os: "linux", arch: "amd64")
+
+module main
+
+fn Legacy() int {
+    return 2
+}

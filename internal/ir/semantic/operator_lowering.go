@@ -25,6 +25,12 @@ func (fb *functionBuilder) buildResolvedOperatorWithFailure(expr ast.Expression,
 	// A value of a constrained named type is created only through a checked
 	// conversion; an operator result in that type would need its own contract
 	// check (contracts.md § 12(3)) and stays a named boundary until then.
+	if resolved.Decimal != nil && resolved.Decimal.FixedScale != nil {
+		// MD-049 § 12(4): T op T is placed exactly on T's grid and checked
+		// against T's contracts before publication; Semantic IR has no such
+		// operation yet, so it stays a named boundary instead of a carrier op.
+		return builtValue{}, fb.unsupported("operator result of fixed-scale decimal type "+resolved.ResultType.Name+" (exact-grid placement and contract check, MD-049 § 12(4))", expressionToken(expr))
+	}
 	if len(resolved.ResultType.Contracts) > 0 && resolved.ResultType.Kind != sema.BoolType {
 		return builtValue{}, fb.unsupported("operator result of constrained type "+resolved.ResultType.Name+" without a contract check", expressionToken(expr))
 	}
@@ -45,6 +51,11 @@ func (fb *functionBuilder) buildResolvedOperatorWithFailure(expr ast.Expression,
 			return builtValue{}, fb.unsupported("invalid proven integer negation", expressionToken(expr))
 		}
 		return fb.result(Operation{Kind: OpConstInt, Integer: value, Location: locationFromExpression(expr)}, resultType), nil
+	}
+	if resolved.Decimal != nil {
+		if value, handled, err := fb.decimalOperatorBoundary(expr, resolved, leftType, resultType); handled {
+			return value, err
+		}
 	}
 	var leftExpr, rightExpr ast.Expression
 	switch expression := expr.(type) {

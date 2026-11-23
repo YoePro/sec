@@ -141,6 +141,9 @@ func verifyNoPanicContradiction(fn *Function, blocks map[BlockID]*Block) error {
 		}
 		seen[id] = true
 		for _, op := range block.Operations {
+			if op.Kind == OpStringMaterialize && op.StringMaterialization != nil && op.StringMaterialization.Failure == sema.StringMaterializationPanic {
+				return fmt.Errorf("@noPanic function reaches StringMaterializationFailure at %s", formatLocation(op.Location))
+			}
 			if op.Kind == OpPanic || op.Kind == OpReferenceGenerationFailure {
 				return fmt.Errorf("@noPanic function reaches panic %s at %s", op.PanicReason, formatLocation(op.Location))
 			}

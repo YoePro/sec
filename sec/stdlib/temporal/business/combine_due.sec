@@ -1,0 +1,101 @@
+module business
+
+/*
+ * Sec Standard Library — temporal/business
+ * File: business/combine_due.sec
+ * Purpose: Monthly due dates across combined calendars.
+ * Status: Implementation candidate, not execution-verified
+ * Revision: 0.1
+ * Updated: 2026-11-23
+ *
+ * Governing rulebook:
+ * stdlib/temporal/business/std-temporal-business.md
+ *
+ * No allocation, I/O or implicit dataset loading.
+ */
+
+/**
+ * Resolves a monthly due date across combined calendars.
+ *
+ * Description:
+ * Civil resolves the nominal Gregorian date and then
+ * applies the requested business-day adjustment.
+ *
+ * BusinessOrdinal selects a date that is already a
+ * qualifying business day under the selected calendar
+ * combination. Further adjustment is unnecessary.
+ *
+ * WeekdayOrdinal selects an occurrence of a weekday
+ * within the Gregorian month. The resulting civil date
+ * may subsequently be adjusted.
+ *
+ * All requires every calendar to classify a date as
+ * working. Any requires at least one calendar.
+ *
+ * With policy None, Civil and WeekdayOrdinal do not
+ * consult the calendar datasets. BusinessOrdinal always
+ * requires validated calendars.
+ *
+ * Parameters:
+ * - year: Gregorian calendar year.
+ * - month: Gregorian month in 1..12.
+ * - rule: Monthly date-selection rule.
+ * - calendars: Borrowed business-calendar datasets.
+ * - combination: All or Any working-day requirement.
+ * - policy: Explicit business-day adjustment convention.
+ *
+ * Returns:
+ * Resolved and optionally adjusted due date.
+ *
+ * Errors:
+ * - BusinessError.InvalidDateRule:
+ * Invalid date rule or unavailable business ordinal.
+ * - BusinessError.InvalidCalendarData:
+ * Malformed or empty calendar sequence.
+ * - BusinessError.OutsideCoverage:
+ * Required dates are not covered by every dataset.
+ * - BusinessError.OutOfRange:
+ * Date exceeds the supported core range.
+ * - BusinessError.NotImplemented:
+ * Required calendar conversion is unavailable.
+ *
+ * Ownership:
+ * Borrows all datasets without ownership transfer.
+ * No allocation or implicit I/O.
+ */
+fn DueDate(
+    year:        int,
+    month:       int,
+    rule:        MonthlyDueDateRule,
+    calendars:   ref BusinessCalendarData[],
+    combination: BusinessCalendarCombination,
+    policy:      BusinessDayAdjustment,
+) Result[date, BusinessError] {
+    match rule {
+        MonthlyDueDateRule.Civil(civilRule) => {
+            let nominal := try ResolveMonthlyDate(year, month, civilRule)
+
+            if policy == BusinessDayAdjustment.None {
+                return Ok(nominal)
+            }
+
+            return AdjustBusinessDay(nominal, calendars, combination, policy)
+        }
+
+        MonthlyDueDateRule.BusinessOrdinal(position) => {
+            // NthBusinessDayOfMonth already returns a
+            // qualifying date under the combination rule.
+            return NthBusinessDayOfMonth(year, month, position, calendars, combination)
+        }
+
+        MonthlyDueDateRule.WeekdayOrdinal(selection) => {
+            let nominal := try NthWeekdayOfMonth(year, month, selection.Weekday, selection.Position)
+
+            if policy == BusinessDayAdjustment.None {
+                return Ok(nominal)
+            }
+
+            return AdjustBusinessDay(nominal, calendars, combination, policy)
+        }
+    }
+}

@@ -38,6 +38,8 @@ std::unique_ptr<mlir::Pass> createSecAnnotateSuccessorActionsPass();
 std::unique_ptr<mlir::Pass> createSecVerifyDestructionPlansPass();
 std::unique_ptr<mlir::Pass> createSecVerifyDynamicArraysPass();
 std::unique_ptr<mlir::Pass> createSecVerifyStorageTransitionsPass();
+std::unique_ptr<mlir::Pass> createSecVerifyArenasPass();
+std::unique_ptr<mlir::Pass> createSecVerifyAllocationContextsPass();
 mlir::LogicalResult verifyBorrowSemantics(mlir::func::FuncOp function);
 
 #define GEN_PASS_REGISTRATION

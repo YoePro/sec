@@ -14,6 +14,14 @@ func (fb *functionBuilder) buildCall(call *ast.CallExpression) (builtValue, erro
 	if boundary, ok := fb.dynamicArrayMemberBoundary(call); ok {
 		return builtValue{}, boundary
 	}
+	if value, handled, err := fb.buildArenaCall(call); handled {
+		return value, err
+	}
+	if plan, materialized := fb.owner.analyzer.ResolvedRuneArrayMaterializationOf(call); materialized {
+		if member, ok := call.Callee.(*ast.MemberExpression); ok {
+			return fb.buildRuneArrayMaterialization(call, member, plan)
+		}
+	}
 	if boundary, ok := fb.coreArrayMaterializationBoundary(call); ok {
 		return builtValue{}, boundary
 	}
@@ -151,6 +159,9 @@ func (fb *functionBuilder) buildCall(call *ast.CallExpression) (builtValue, erro
 	}
 	fb.pendingArgumentCancels = fb.pendingArgumentCancels[:pendingCancels]
 	op := Operation{Kind: kind, Callee: callee, Operands: args, ArgumentActions: actions, Location: location(call.Token)}
+	if err := fb.forwardAllocationContext(&op, resolved, call); err != nil {
+		return builtValue{}, err
+	}
 	if call.HasUnsafePrefix() {
 		marker := location(call.Unsafe)
 		op.UnsafeAuthorization = &marker

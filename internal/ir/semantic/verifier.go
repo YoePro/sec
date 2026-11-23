@@ -526,6 +526,9 @@ func verifyFunction(module *Module, fn *Function, functions map[FunctionID]*Func
 	if err := verifyStorageDominance(fn, blocks, dom); err != nil {
 		return err
 	}
+	if err := verifyArenaDemand(fn); err != nil {
+		return err
+	}
 	if err := verifyCheckedIntegerGuards(fn, blocks, values); err != nil {
 		return err
 	}
@@ -579,6 +582,9 @@ func verifyFunction(module *Module, fn *Function, functions map[FunctionID]*Func
 		return err
 	}
 	if err := verifyNestedArenaLiveness(fn, blocks); err != nil {
+		return err
+	}
+	if err := verifyDynamicArrayElementBorrows(fn); err != nil {
 		return err
 	}
 	if err := verifyDynamicArrayTransitions(fn); err != nil {
@@ -746,6 +752,8 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 		if err := verifySliceLengthOperation(module.Types, op, values); err != nil {
 			return err
 		}
+	case OpStringMaterialize:
+		return verifyStringMaterialization(module.Types, op, values)
 	case OpStringRuneLength:
 		if err := verifyStringRuneLength(module.Types, op, values); err != nil {
 			return err
@@ -961,6 +969,10 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 	case OpIntNegChecked:
 		if !validCheckedResults(module.Types, op, values, 1) || !isSignedBuiltinIntegerType(module.Types, integerCarrierOf(module.Types, values[op.Operands[0]].Type)) {
 			return fmt.Errorf("invalid int.neg-checked")
+		}
+	case OpDecimalNegChecked, OpDecimalBinaryChecked, OpDecimalCompare:
+		if err := verifyDecimalOperation(module.Types, op, values); err != nil {
+			return err
 		}
 	case OpIntBinaryChecked:
 		if !validIntegerBinaryKind(op.IntegerBinary) || !validCheckedResults(module.Types, op, values, 2) || values[op.Operands[0]].Type != values[op.Operands[1]].Type {
@@ -1254,12 +1266,12 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 		if err := verifyAllocationContextProducer(module, op, values); err != nil {
 			return err
 		}
-	case OpArenaCreateBorrowed, OpArenaCreateOwnedFixed, OpArenaCreateGrowable, OpArenaNew, OpArenaAlloc, OpArenaReset, OpArenaRelease, OpArenaDestroy:
+	case OpArenaCreateBorrowed, OpArenaCreateOwnedFixed, OpArenaCreateGrowable, OpArenaCreateDefault, OpArenaNew, OpArenaAlloc, OpArenaReset, OpArenaRelease, OpArenaDestroy:
 		if err := verifyArenaOperation(module, op, values); err != nil {
 			return err
 		}
 	case OpStorageEstablishDomain, OpStorageAdvanceEpoch, OpStorageEndDomain, OpStorageReclaim,
-		OpDynamicArrayHasBacking, OpDynamicArrayHasCapacity, OpDynamicArrayGrowBacking, OpDynamicArrayAppendPrepared, OpDynamicArrayAllocate:
+		OpDynamicArrayHasBacking, OpDynamicArrayHasCapacity, OpDynamicArrayGrowBacking, OpDynamicArrayAppendPrepared, OpDynamicArrayAppendRangePrepared, OpDynamicArrayAllocate:
 		if err := verifyDynamicArrayStorageOperation(module.Types, op, values); err != nil {
 			return err
 		}
@@ -1578,7 +1590,8 @@ func isArithmeticErrorType(types *TypeTable, id TypeID) bool {
 
 func validArithmeticFailureReason(reason ArithmeticFailureReason) bool {
 	switch reason {
-	case ArithmeticFailureNone, ArithmeticFailureReasonOverflow, ArithmeticFailureDivisionByZero, ArithmeticFailureInvalidShift:
+	case ArithmeticFailureNone, ArithmeticFailureReasonOverflow, ArithmeticFailureDivisionByZero, ArithmeticFailureInvalidShift,
+		ArithmeticFailureScaleOverflow, ArithmeticFailurePrecisionExhausted:
 		return true
 	default:
 		return false
@@ -1673,8 +1686,12 @@ func validArithmeticFailureCategory(category ArithmeticFailureCategory) bool {
 	}
 }
 
+// isCheckedIntegerOperation names the checked arithmetic operations whose
+// (result, failed, reason) must be guarded at once; decimal operators share
+// the integer failure CFG (MD-067 § 7, P21 § 18).
 func isCheckedIntegerOperation(kind OpKind) bool {
-	return kind == OpIntNegChecked || kind == OpIntBinaryChecked || kind == OpIntShiftChecked
+	return kind == OpIntNegChecked || kind == OpIntBinaryChecked || kind == OpIntShiftChecked ||
+		kind == OpDecimalNegChecked || kind == OpDecimalBinaryChecked
 }
 
 func verifyCheckedIntegerGuards(fn *Function, blocks map[BlockID]*Block, values map[ValueID]Value) error {
@@ -2271,6 +2288,14 @@ func expectedFailureCategory(op Operation) ArithmeticFailureCategory {
 		case IntegerCheckedDivide:
 			return ArithmeticFailureDivision
 		case IntegerCheckedRemainder:
+			return ArithmeticFailureRemainder
+		}
+	}
+	if op.Kind == OpDecimalBinaryChecked && op.DecimalOperation != nil {
+		switch op.DecimalOperation.Kind {
+		case DecimalBinaryDivide:
+			return ArithmeticFailureDivision
+		case DecimalBinaryRemainder:
 			return ArithmeticFailureRemainder
 		}
 	}

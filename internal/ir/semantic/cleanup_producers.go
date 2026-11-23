@@ -162,6 +162,13 @@ func (b *builder) importDestructionPlans(set sema.DestructionPlanSet, typ sema.T
 				}
 				record.Variants = append(record.Variants, DestructionVariantRecord{Variant: UnionVariantIndex(step.Index), Plan: string(step.Payload[0].Plan)})
 			}
+		case sema.DestructionResource:
+			// P19 §§ 46-47, 96: an Arena owner's implicit destruction is
+			// its terminal Release; other resources keep their boundary.
+			if plan.Resource != "Arena" || b.maxPackage < arenaLoweringPackage {
+				return &UnsupportedFeatureError{Feature: "P17 " + string(plan.Kind) + " destruction plan for " + plan.Resource + " (later P17 producer slice)", Package: b.maxPackage}
+			}
+			record.Resource = plan.Resource
 		default:
 			return &UnsupportedFeatureError{Feature: "P17 " + string(plan.Kind) + " destruction plan (later P17 producer slice)", Package: b.maxPackage}
 		}

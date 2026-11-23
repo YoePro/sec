@@ -145,6 +145,15 @@ func (a *Analyzer) compileTimeBinary(op string, left, right DefaultConstant) (De
 		}
 		return DefaultConstant{Kind: BoolType, Bool: b, Lexeme: strconv.FormatBool(b)}, compileTimeEvaluated
 	}
+	// P20 § 82: float operands fold with IEEE-754 semantics in their binary
+	// format, including infinities, NaN (unordered) and signed zero.
+	if bits, float := compileTimeFloatBits(left, right); float {
+		switch op {
+		case "==", "!=", "<", "<=", ">", ">=":
+			return compileTimeFloatComparison(op, left, right, bits)
+		}
+		return compileTimeFloatArithmetic(op, left, right, bits)
+	}
 	exact := func(v DefaultConstant) *big.Rat {
 		if v.Exact != nil {
 			return new(big.Rat).Set(v.Exact)
@@ -178,6 +187,9 @@ func (a *Analyzer) compileTimeBinary(op string, left, right DefaultConstant) (De
 		if value, handled := compileTimeDecimalArithmetic(op, left, right); handled {
 			return a.prepareCompileTimeConstant(value, Type{})
 		}
+	}
+	if bits == 32 || bits == 64 {
+		return compileTimeFloatArithmetic(op, left, right, bits)
 	}
 	result, ok := constant.Numeric(op, x, y, bits)
 	if !ok {
@@ -266,4 +278,170 @@ func compileTimeDecimalArithmetic(op string, left, right DefaultConstant) (Defau
 		exact.Mul(exact, new(big.Rat).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(-scale), nil)))
 	}
 	return DefaultConstant{Kind: DecimalType, Exact: exact, Decimal: &decimal, DecimalBits: bits}, true
+}
+
+// compileTimeFloatOperand is the binary value of a float operand in its
+// resolved format: the shortest round-trip spelling of an already rounded
+// value (which keeps the sign of zero), otherwise the exact value rounded
+// once to the format.
+// Rules: rules/mlir/packages/sec-mlir-dialect_package20.md — §§ 13-20, 82.
+func compileTimeFloatOperand(value DefaultConstant, bits int) (float64, bool) {
+	if value.FloatBits == bits && value.Lexeme != "" {
+		number, err := strconv.ParseFloat(value.Lexeme, bits)
+		return number, err == nil
+	}
+	exact := value.Exact
+	if exact == nil && value.Integer != nil {
+		exact = new(big.Rat).SetInt(value.Integer)
+	}
+	if exact == nil {
+		return 0, false
+	}
+	if bits == 32 {
+		number, _ := exact.Float32()
+		return float64(number), true
+	}
+	number, _ := exact.Float64()
+	return number, true
+}
+
+// compileTimeFloatArithmetic folds + - * / % exactly as the runtime
+// arith.addf/subf/mulf/divf/remf do: IEEE-754 in the operands' binary
+// format, one round-to-nearest-even per operation (computing a binary32
+// operation in binary64 and narrowing is exact for these operations), signed
+// zero preserved, remainder as fmod. A non-finite result is not a
+// compile-time constant (Sec CTE has no infinity or NaN value).
+// Rules: rules/mlir/packages/sec-mlir-dialect_package20.md — §§ 13-20, 75, 82.
+func compileTimeFloatArithmetic(op string, left, right DefaultConstant, bits int) (DefaultConstant, compileTimeOutcome) {
+	x, xok := compileTimeFloatOperand(left, bits)
+	y, yok := compileTimeFloatOperand(right, bits)
+	if !xok || !yok {
+		return DefaultConstant{}, compileTimeNotConstant
+	}
+	var result float64
+	switch op {
+	case "+":
+		result = x + y
+	case "-":
+		result = x - y
+	case "*":
+		result = x * y
+	case "/":
+		result = x / y
+	case "%":
+		result = math.Mod(x, y)
+	default:
+		return DefaultConstant{}, compileTimeNotConstant
+	}
+	if bits == 32 {
+		result = float64(float32(result))
+	}
+	return compileTimeFloatValue(result, bits)
+}
+
+// compileTimeFloatValue is the compile-time constant of a binary float
+// value: finite values keep their exact rational, infinities and NaN carry
+// only their spelling ("+Inf", "-Inf", "NaN") and format.
+// Rules: rules/mlir/packages/sec-mlir-dialect_package20.md — §§ 13-20, 68, 82.
+func compileTimeFloatValue(value float64, bits int) (DefaultConstant, compileTimeOutcome) {
+	if math.IsInf(value, 0) || math.IsNaN(value) {
+		return DefaultConstant{Kind: FloatType, FloatBits: bits, Lexeme: strconv.FormatFloat(value, 'g', -1, bits)}, compileTimeEvaluated
+	}
+	constant, ok := binaryFloatConstant(value, bits)
+	if !ok {
+		return DefaultConstant{}, compileTimeNotConstant
+	}
+	constant.FloatBits = bits
+	return constant, compileTimeEvaluated
+}
+
+// compileTimeFloatBits selects the binary format of a float operation: at
+// least one operand is a resolved float, both resolved operands agree and no
+// decimal participates.
+// Rules: rules/mlir/packages/sec-mlir-dialect_package20.md — §§ 9, 82.
+func compileTimeFloatBits(left, right DefaultConstant) (int, bool) {
+	bits := left.FloatBits
+	if bits == 0 {
+		bits = right.FloatBits
+	}
+	if bits != 32 && bits != 64 || left.FloatBits != 0 && right.FloatBits != 0 && left.FloatBits != right.FloatBits ||
+		left.DecimalBits != 0 || right.DecimalBits != 0 {
+		return 0, false
+	}
+	return bits, true
+}
+
+// compileTimeFloatComparison compares in IEEE-754 order: NaN is unordered
+// (only != holds) and -0 equals +0.
+// Rules: rules/mlir/packages/sec-mlir-dialect_package20.md — §§ 77, 82.
+func compileTimeFloatComparison(op string, left, right DefaultConstant, bits int) (DefaultConstant, compileTimeOutcome) {
+	x, xok := compileTimeFloatOperand(left, bits)
+	y, yok := compileTimeFloatOperand(right, bits)
+	if !xok || !yok {
+		return DefaultConstant{}, compileTimeNotConstant
+	}
+	var result bool
+	switch op {
+	case "==":
+		result = x == y
+	case "!=":
+		result = x != y
+	case "<":
+		result = x < y
+	case "<=":
+		result = x <= y
+	case ">":
+		result = x > y
+	case ">=":
+		result = x >= y
+	}
+	return DefaultConstant{Kind: BoolType, Bool: result, Lexeme: strconv.FormatBool(result)}, compileTimeEvaluated
+}
+
+// floatPropertyConstant evaluates the compiler-known float type properties
+// T.Min, T.Max, T.Epsilon, T.Infinity, T.NegativeInfinity and T.NaN of
+// float, float32 and float64 in semantic CTE with their P20 definitions
+// (Min is the most negative finite value; NaN is the canonical quiet NaN).
+// Rules: rules/mlir/packages/sec-mlir-dialect_package20.md — §§ 28, 68;
+// rules/library/core-library.md — § 9.1.
+func (a *Analyzer) floatPropertyConstant(expr ast.Expression) (DefaultConstant, compileTimeOutcome, bool) {
+	member, ok := expr.(*ast.MemberExpression)
+	if !ok || member.Property == nil {
+		return DefaultConstant{}, 0, false
+	}
+	owner, ok := member.Object.(*ast.Identifier)
+	if !ok || owner.Value != "float" && owner.Value != "float32" && owner.Value != "float64" {
+		return DefaultConstant{}, 0, false
+	}
+	if _, shadowed := a.symbols.lookup(owner.Value); shadowed {
+		return DefaultConstant{}, 0, false
+	}
+	bits := a.types[owner.Value].FloatBits
+	if bits != 32 && bits != 64 {
+		return DefaultConstant{}, 0, false
+	}
+	maximum := math.MaxFloat64
+	epsilon := math.Ldexp(1, -52)
+	if bits == 32 {
+		maximum, epsilon = math.MaxFloat32, math.Ldexp(1, -23)
+	}
+	var value float64
+	switch member.Property.Value {
+	case "Max":
+		value = maximum
+	case "Min":
+		value = -maximum
+	case "Epsilon":
+		value = epsilon
+	case "Infinity":
+		value = math.Inf(1)
+	case "NegativeInfinity":
+		value = math.Inf(-1)
+	case "NaN":
+		value = math.NaN()
+	default:
+		return DefaultConstant{}, 0, false
+	}
+	result, outcome := compileTimeFloatValue(value, bits)
+	return result, outcome, true
 }

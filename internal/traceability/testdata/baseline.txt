@@ -500,7 +500,6 @@ internal/layout:(*LayoutCache).Store
 internal/layout:(*Resolver).Key
 internal/layout:(*Resolver).Layout
 internal/layout:(*Resolver).Layouts
-internal/layout:(*Resolver).Resolve
 internal/layout:(*Resolver).child
 internal/layout:(*Resolver).publish
 internal/layout:(*Resolver).resolve
@@ -667,7 +666,6 @@ internal/parser:(*Parser).parseInitDeclaration
 internal/parser:(*Parser).parseIntegerLiteral
 internal/parser:(*Parser).parseInterfaceDeclaration
 internal/parser:(*Parser).parseInterfacePropertySetter
-internal/parser:(*Parser).parseLambdaExpression
 internal/parser:(*Parser).parseLetDeclarator
 internal/parser:(*Parser).parseLetStatement
 internal/parser:(*Parser).parseLoopControlStatement
@@ -703,7 +701,6 @@ internal/parser:(*Parser).parseUnionType
 internal/parser:(*Parser).parseUnit
 internal/parser:(*Parser).parseUnitDeclStatement
 internal/parser:(*Parser).parseUnitMetadataDeclaration
-internal/parser:(*Parser).parseUnsafeFunctionDeclaration
 internal/parser:(*Parser).parseUnsafeStatement
 internal/parser:(*Parser).parseUnsupportedDoWhileStatement
 internal/parser:(*Parser).parseUnsupportedFreeStatement
@@ -1098,7 +1095,6 @@ internal/sema:(*Analyzer).inferArrayLiteral
 internal/sema:(*Analyzer).inferAwaitExpression
 internal/sema:(*Analyzer).inferBitExtractionExpression
 internal/sema:(*Analyzer).inferCallAsConversion
-internal/sema:(*Analyzer).inferCallExpression
 internal/sema:(*Analyzer).inferCallExpressionWithExpected
 internal/sema:(*Analyzer).inferChannelCall
 internal/sema:(*Analyzer).inferCollectionWithCapacity
@@ -1796,7 +1792,6 @@ internal/sema:cloneResolvedArrayIndexPlan
 internal/sema:cloneResolvedArrayLiteralPlan
 internal/sema:cloneResolvedReferencePlan
 internal/sema:closeTrackedResourceName
-internal/sema:closestInterfaceCandidate
 internal/sema:collateralDestructiveField
 internal/sema:combineDimensions
 internal/sema:combineQuantitySemantics

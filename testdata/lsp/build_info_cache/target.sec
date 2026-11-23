@@ -1,0 +1,7 @@
+module main
+
+type Allowed uint64 range 0..BuildInfo.Current().VersionBuild
+
+fn Bound() Allowed {
+    return 8
+}

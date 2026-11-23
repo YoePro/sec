@@ -2647,11 +2647,11 @@ func (p *Parser) parseTypeDeclStatement() ast.Statement {
 	p.rejectAdditionalTypeDeclarationNames(stmt.Name.Value)
 
 	// rules/concurrency/mutex.md §§5–6,8,13(1), cancellation.md §§35–36,43(4),
-	// rules/concurrency/threads.md §7(1):
+	// rules/concurrency/threads.md §7(1), thread_local.md §30(1):
 	// the canonical opaque runtime identities omit their base type.
 	// Source provenance and declaration ownership are checked by Sema.
 	if ((stmt.Name.Value == "Instant" && len(stmt.GenericParameters) == 0) ||
-		stmt.Name.Value == "Mutex" || stmt.Name.Value == "MutexGuard" || stmt.Name.Value == "Context" || stmt.Name.Value == "ContextSource" || stmt.Name.Value == "CpuSet") &&
+		stmt.Name.Value == "Mutex" || stmt.Name.Value == "MutexGuard" || stmt.Name.Value == "Context" || stmt.Name.Value == "ContextSource" || stmt.Name.Value == "ThreadAttachment" || stmt.Name.Value == "CpuSet") &&
 		(p.peekToken.Type == lexer.EOF || p.peekToken.Line > p.curToken.Line) {
 		return stmt
 	}
@@ -3821,29 +3821,6 @@ func (p *Parser) skipGenericParameterList() RecoveryEvent {
 	return p.recordSkippedRecovery(start, end, skipped, RecoveryProbable)
 }
 
-func (p *Parser) parseUnsafeFunctionDeclaration() *ast.FunctionDeclaration {
-	defer p.withRecoveryContext(RecoveryContextFunction)()
-	unsafeToken := p.curToken
-	p.nextToken()
-
-	var fn *ast.FunctionDeclaration
-	switch p.curToken.Type {
-	case lexer.FN:
-		fn = p.parseFunctionDeclaration()
-	case lexer.EXTERN:
-		fn = p.parseExternFunctionDeclaration()
-	default:
-		p.addError("unsafe function declaration must be followed by fn or extern at %d:%d", p.curToken.Line, p.curToken.Column)
-		return nil
-	}
-	if fn == nil {
-		return nil
-	}
-	fn.Token = unsafeToken
-	fn.Unsafe = true
-	return fn
-}
-
 // parseParameters parses a parameter list. Native variadic parameters belong
 // only to ordinary Sec function/method declarations under
 // rules/declarations/functions.md sections 28, 36, and 41; initializers and
@@ -4891,6 +4868,10 @@ func (p *Parser) parseImplStatement() ast.Statement {
 				continue
 			}
 			p.appendImplMember(stmt, documentation, enum)
+		case lexer.UNSAFE:
+			if member := p.parseUnsafeImplMethod(); member != nil {
+				p.appendImplMember(stmt, documentation, member)
+			}
 		case lexer.FN:
 			fn := p.parseFunctionDeclaration()
 			if fn == nil {

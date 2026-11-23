@@ -308,6 +308,13 @@ type Function struct {
 	// RequiresAllocationContext is the resolved P19 callable requirement;
 	// it is separate from MayAllocate and does not change the source type.
 	RequiresAllocationContext bool
+	// MayAllocate is Sema's canonical allocation knowledge of the callable
+	// (allocation-free, may-allocate or unknown; empty when unrepresented),
+	// the P19 § 130 compile-time summary, not a runtime value.
+	MayAllocate string
+	// ArenaDemand is the P19 § 130 byte demand summary of each Arena domain
+	// the callable creates (compile-time metadata only).
+	ArenaDemand []ArenaDemandFacts
 
 	ID         FunctionID
 	Name       string
@@ -737,6 +744,10 @@ const (
 	ArithmeticFailureReasonOverflow ArithmeticFailureReason = "overflow"
 	ArithmeticFailureDivisionByZero ArithmeticFailureReason = "division-by-zero"
 	ArithmeticFailureInvalidShift   ArithmeticFailureReason = "invalid-shift"
+	// The decimal reasons of MD-067 § 7(3): no legal int32 scale, or more
+	// exact digits than the coefficient holds.
+	ArithmeticFailureScaleOverflow      ArithmeticFailureReason = "scale-overflow"
+	ArithmeticFailurePrecisionExhausted ArithmeticFailureReason = "precision-exhausted"
 )
 
 type ArgumentAction string
@@ -863,6 +874,9 @@ type BranchTarget struct {
 type Operation struct {
 	// AllocationContext explicitly selects/forwards a P19 SSA capability.
 	AllocationContext *AllocationContextFacts
+	// StringMaterialization retains the canonical maximal concat's segment
+	// categories and source-selected failure mode (semantic_ir.md §17(6)).
+	StringMaterialization *StringMaterializationFacts
 
 	Kind        OpKind
 	Location    Location
@@ -928,20 +942,22 @@ type Operation struct {
 	PackForward         *PackForwardFacts
 	Successors          []BranchTarget
 	IntegerBinary       IntegerCheckedBinaryKind
-	IntegerBitwise      IntegerBitwiseKind
-	IntegerShift        IntegerShiftKind
-	IntegerCompare      IntegerComparePredicate
-	FailureCategory     ArithmeticFailureCategory
-	FailureReason       ArithmeticFailureReason
-	Variant             string
-	EnumCase            EnumCaseID
-	UnionVariant        UnionVariantIndex
-	UnionField          string
-	UnionFields         []string
-	PayloadActions      []UnionPayloadAction
-	StructField         StructFieldID
-	StructOrigins       []StructFieldOrigin
-	StructActions       []StructFieldAction
+	// DecimalOperation carries the MD-066 plan of a decimal operator.
+	DecimalOperation *DecimalOperationFacts
+	IntegerBitwise   IntegerBitwiseKind
+	IntegerShift     IntegerShiftKind
+	IntegerCompare   IntegerComparePredicate
+	FailureCategory  ArithmeticFailureCategory
+	FailureReason    ArithmeticFailureReason
+	Variant          string
+	EnumCase         EnumCaseID
+	UnionVariant     UnionVariantIndex
+	UnionField       string
+	UnionFields      []string
+	PayloadActions   []UnionPayloadAction
+	StructField      StructFieldID
+	StructOrigins    []StructFieldOrigin
+	StructActions    []StructFieldAction
 	// RegisterField and RegisterWrite carry a register.value.* field step
 	// and, for an update, the Sema proof that the value fits (MD-077 § 10(1)).
 	RegisterField RegisterFieldID

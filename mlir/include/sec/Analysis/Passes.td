@@ -142,6 +142,31 @@ def SecVerifyDynamicArrays : Pass<"sec-verify-dynamic-arrays", "mlir::func::Func
   let dependentDialects = ["mlir::cf::ControlFlowDialect"];
 }
 
+// Rules: rules/mlir/packages/sec-mlir-dialect_package19.md — §§ 124, 126-127, 129.
+def SecVerifyArenas : Pass<"sec-verify-arenas", "mlir::func::FuncOp"> {
+  let summary = "Verify Arena domain, owner and epoch flow (schema 15)";
+  let description = [{
+    Every creation establishes a fresh domain; an Arena owner is consumed by
+    at most one Release/destroy on any path and never used after it; state
+    versions and epochs of one domain chain within a block; a reference or
+    slice from arena.new/alloc is not used after a Reset that advanced past
+    its epoch or after its domain ended. Sema remains the liveness authority;
+    this checks the emitted facts.
+  }];
+}
+
+// Rules: rules/mlir/packages/sec-mlir-dialect_package19.md — §§ 107-109, 125, 128.
+def SecVerifyAllocationContexts : Pass<"sec-verify-allocation-contexts", "mlir::ModuleOp"> {
+  let summary = "Verify hidden allocation contexts and their propagation (schema 15)";
+  let description = [{
+    A !sec.alloc_context argument is the first argument, marked
+    sec.hidden_allocation_context, unique, and absent from foreign/extern
+    functions; a direct call to a function with a hidden context forwards one
+    as its first operand; contexts are used only by owned Arena creation and
+    such calls, never as block arguments, results or other operands.
+  }];
+}
+
 // Rules: rules/mlir/packages/sec-mlir-dialect_package18.md — §§ 30–31, 37, 58–67, 129–130.
 def SecVerifyStorageTransitions : Pass<"sec-verify-storage-transitions", "mlir::func::FuncOp"> {
   let summary = "Verify storage-domain lifecycle and dynamic-array growth invariants";

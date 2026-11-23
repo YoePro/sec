@@ -59,6 +59,14 @@ func (s *server) stopDiagnosticTimers() {
 	s.timerMu.Lock()
 	defer s.timerMu.Unlock()
 	s.diagnosticsStopped = true
+	if store := s.crossTarget; store != nil {
+		store.mu.Lock()
+		store.stopped = true
+		for uri := range store.generation {
+			store.cancelWorkLocked(uri)
+		}
+		store.mu.Unlock()
+	}
 	for dir := range s.diagnosticGeneration {
 		s.invalidateDiagnosticJob(dir)
 	}

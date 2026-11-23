@@ -569,6 +569,19 @@ func (definition Definition) ScalarPlan() (layout.ResolvedScalarPlan, error) {
 		PhysicalThreads:  definition.PhysicalThreads,
 		AddressDomains:   definition.addressDomains(),
 	}
+	// P20 § 83: an LLVM-lowered target preserves IEEE-754 semantics in
+	// hardware or through LLVM's soft-float runtime; a target without a
+	// triple keeps its float contract unknown.
+	if definition.LLVMTriple != "" {
+		plan.Float = layout.IEEEPreservingFloats()
+	}
+	// MD-141: the plan carries its verified scalar alignments so Sema and
+	// Semantic IR resolve layouts through the one canonical resolver.
+	alignments, err := definition.ScalarAlignments()
+	if err != nil {
+		return layout.ResolvedScalarPlan{}, err
+	}
+	plan.Alignments = alignments
 	if err := plan.Validate(); err != nil {
 		return layout.ResolvedScalarPlan{}, fmt.Errorf("target %s-%s has no resolved scalar plan: %w", definition.OS, definition.Arch, err)
 	}

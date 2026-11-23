@@ -814,10 +814,10 @@ integrations:
 
   - id: tooling.lsp-multi-target-diagnostics
     area: tooling-lsp
-    status: partial
+    status: implemented
     integrated: "2026-10-04"
-    revised: "2026-11-18"
-    summary: Publishes target-qualified diagnostics and exposes existing per-target results through a read-only current-snapshot status request and the VS Code SEC Target Comparison tree. Logical target/variant identities remain distinct even on the same platform; missing, incomplete and stale comparisons remain unavailable. Existing open/save/project-switch comparison scheduling is preserved; incremental while-typing recomputation remains open.
+    revised: "2026-11-23"
+    summary: Publishes target-qualified diagnostics and read-only target-comparison status for current saved or unsaved snapshots. Debounced edit/dependency refreshes use shared target analyses, one running comparison and one latest pending version per document; supersession, close and shutdown prevent stale publication. Logical targets and output variants remain distinct even on the same platform.
     rules:
       - rules/tooling/lsp.md
       - rules/platform/platform_model.md
@@ -834,6 +834,10 @@ integrations:
       - vscode/src/extension.ts
       - vscode/package.json
       - vscode/README.md
+      - cmd/lsp/cross_target_schedule.go
+      - cmd/lsp/cross_target_invalidation.go
+      - cmd/lsp/analysis_dependencies.go
+      - cmd/lsp/diagnostics_schedule.go
     tests:
       - cmd/lsp/target_selection_test.go
       - testdata/lsp/target_selection/
@@ -842,17 +846,26 @@ integrations:
       - testdata/lsp/shared_target_analysis
       - cmd/lsp/target_status_test.go
       - vscode/test/targetStatus.test.cjs
+      - cmd/lsp/cross_target_typing_test.go
+      - testdata/lsp/shared_target_analysis/native_edited.sec
+      - testdata/lsp/shared_target_analysis/value_changed.sec
     implemented:
       - "project variants and active selection (2026-10-08): diagnostics retain logical-target/output-variant identity for distinct scalar plans and duplicate platforms; target switches and watched project changes invalidate and recompute background comparisons; the canonical target selection implementation is owned by frontend.target-sized-integer-semantics in governance/types.yaml"
-      - on didOpen and didSave a document without its own
-      - results are stored per document text hash, invalidated by a newer request or a close, and dropped while the document has unsaved changes
       - publication merges them with the active diagnostics; every-target diagnostics are unchanged, some-target diagnostics state "applies to N of M targets", and diagnostics absent on the active target are added prefixed with their targets
       - stdlib/os file.sec analyzes on 18 targets in about 1.9 s off the request path
-      - "Shared per-target Sema snapshots (2026-11-04): background diagnostics and interface/type conformance lenses use analysisForTarget for one computation per matching prepared active-document/source/import closure and effective target. Snapshots retain detached errors, warnings and compiler conformance facts; no mutable Analyzer is shared. Immutable serialized snapshots are bounded to 32 entries and 8 MiB; concurrent matching requests coalesce, failures release waiters and are never cached as successful empty results. Fingerprints include prepared AST/token locations, import errors, scalar plan, manifest snapshot, explicit selection and server epoch. The lens presentation key follows the same fingerprint, including imported source and configuration changes. Existing source preparation and open/save scheduling remain; incremental parsing and while-typing comparison stay separately owned."
       - "Dedicated VS Code target status/comparison view (2026-11-18; lsp.md sections 23.1-23.2): SEC Target Comparison in Explorer shows each compiler-provided logical target/output variant, platform/width tooltip, active comparison target, error/warning counts and expandable source-navigable diagnostics. Existing target selection and refresh actions are exposed in the view. New read-only sec/targetStatus projects stored compiler comparisons and canonical target options without running another analysis or selecting a target; standard document parameters enable queued-change/close supersession and formatting priority. Absent, partial, edited or closed snapshots and changed target sets cannot become successful zero-error rows. The client immediately clears obsolete rows and rejects late responses by generation, document URI and version. A current empty diagnostic list is distinguished from unavailable; no positive all-analysis or lowering proof is inferred. Headless client, real compiler-backed protocol, snapshot and race regressions cover these behaviors; manual VS Code GUI inspection was not performed."
-    remaining:
-      - recompute while typing once incremental per-target analysis exists
+      - "While-typing comparison completed 2026-11-23 (lsp.md §§23.1–23.2): didOpen/didChange/didSave and source-dependency invalidation feed one debounced cross-target scheduler using immutable editor text and dependency overlays and the existing bounded shared per-target Sema snapshots. Each document has at most one running comparison and one latest pending version; obsolete timer callbacks do no analysis, running old generations cannot publish, and a pending edit observes its own debounce before the worker picks it up. Close and shutdown withdraw queued work and supersede running results. Target status and merged diagnostics expose only the current completed comparison, including unsaved text; source-backed tests cover burst coalescing, unchanged dependent text after an imported unsaved edit, serialized work, close/shutdown, and current publication versions. VS Code clears stale rows and refreshes on compiler diagnostics; its headless regression renders a new unsaved-version result. Parsing and per-target Sema still run for changed input; incremental parsing remains separately owned, and no per-keystroke synchronous comparison is introduced."
+      - Target-independent documents are compared on open/save and after a pause in typing; target-specific documents retain ordinary active-target diagnostics.
+      - Results are stored for one captured document-text hash and dependency generation, invalidated immediately by changed source/dependencies or close, and can describe a completed unsaved editor snapshot.
+      - "Shared per-target Sema snapshots (2026-11-04): background diagnostics and interface/type conformance lenses use analysisForTarget for one computation per matching prepared active-document/source/import closure and effective target. Snapshots retain detached errors, warnings and compiler conformance facts; no mutable Analyzer is shared. Immutable serialized snapshots are bounded to 32 entries and 8 MiB; concurrent matching requests coalesce, failures release waiters and are never cached as successful empty results. Fingerprints include prepared AST/token locations, import errors, scalar plan, manifest snapshot, explicit selection and server epoch. The lens presentation key follows the same fingerprint, including imported source and configuration changes. Source preparation remains per request; while-typing scheduling now uses the same shared snapshots. Incremental parsing stays separately owned."
+    remaining: []
     verification:
+      - command: GOTMPDIR="$HOME/.cache/sec-gotmp" go test -race -p 4 ./cmd/lsp -run "CrossTargetTyping|CrossTargetDiagnostics|TargetStatus|ModuleDiagnosticsCoalesce" -count=1 -timeout=150s; go vet ./cmd/lsp; go test ./internal/traceability -count=1
+        result: "Passed 2026-11-23: focused race suite 109.634s, vet clean, traceability 0.241s. Covers real unsaved-source/dependency comparisons, obsolete callbacks, one running/latest pending request, current version publication, close/shutdown withdrawal, target-status invariants and active module diagnostic supersession."
+      - command: GOTMPDIR="$HOME/.cache/sec-gotmp" go test -p 4 ./cmd/lsp -count=1 -timeout=240s; go test -race -p 4 ./cmd/lsp -run "CrossTargetTyping|CrossTarget|TargetStatus|SharedTargetAnalysis|ModuleDiagnosticsCoalesce|TargetSelection" -count=1 -timeout=180s
+        result: "Broader attempts 2026-11-23 were not green: full LSP hit 240s while TestAllocationConsumerParity was running; broad race selection hit 180s in TestSharedTargetAnalysisSnapshotsAndInvalidation. No race was reported before that timeout. These runs do not establish full-suite acceptance; the changed scheduling path has separate focused source/protocol/race verification."
+      - command: GOTMPDIR="$HOME/.cache/sec-gotmp" go test ./cmd/lsp -run "^TestCrossTargetTyping" -count=1 -timeout=120s; npm --prefix vscode run compile; npm --prefix vscode run test:target-status
+        result: "Passed 2026-11-23: source-backed typing/dependency/serialized-worker/close/shutdown regressions 13.171s; TypeScript compilation and headless target-view tests pass. The view accepts current unsaved-version comparisons on diagnostic refresh while rejecting stale responses. No manual VS Code GUI inspection was performed."
       - command: cd vscode && npm run test:target-status
         result: Passed on 2026-11-18 (headless Node test, 585ms final run). Test compiles TypeScript into a temporary directory, then checks current target/error counts, canonical platform tooltip, source navigation, multiline explanation, immediate dirty-state clearing, unavailable versus clean rows, out-of-order replies and departed editors. TypeScript noEmit compilation also passed. No generated artifacts retained and no manual extension-host/GUI test claimed.
       - command: go test ./cmd/lsp -run '^TestTargetStatus' -count=1 -timeout=120s; go test -race ./cmd/lsp -run 'TargetStatus|TargetSelection|CrossTarget|FormattingOvertakesOnlyQueuedAnalysisRequests|RequestQueue|Superseded' -count=1 -timeout=180s; go vet ./cmd/lsp

@@ -53,7 +53,7 @@ export function registerTargetStatus(context: vscode.ExtensionContext, getClient
     const client = getClient();
     roots = [];
     view.description = undefined;
-    view.message = source ? "Target comparison unavailable for the current text. Results refresh on open/save." : "Open a SEC source file to compare targets.";
+    view.message = source ? "Target comparison pending for the current text. Results refresh after editing pauses." : "Open a SEC source file to compare targets.";
     changed.fire();
     if (!source || !client?.isRunning()) { return; }
     const uri = source.uri.toString();
@@ -63,7 +63,7 @@ export function registerTargetStatus(context: vscode.ExtensionContext, getClient
       if (request !== generation || document()?.uri.toString() !== uri || source.version !== version) { return; }
       const current = status.state === "current" && status.uri === uri && status.version === version;
       view.description = `v${version}`;
-      view.message = current ? `Active analysis target: ${status.active}. Counts describe this document's current comparison snapshot.` : "No current comparison. Available comparisons refresh on open/save; unsaved changes are not compared automatically.";
+      view.message = current ? `Active analysis target: ${status.active}. Counts describe this document's current comparison snapshot.` : "No current comparison. Target analysis refreshes after editing pauses; obsolete results are hidden.";
       roots = status.targets.map(row => {
         const ready = current && row.current && row.diagnostics !== null;
         const diagnostics = ready ? row.diagnostics! : [];

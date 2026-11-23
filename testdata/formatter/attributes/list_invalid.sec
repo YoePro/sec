@@ -1,0 +1,3 @@
+module main
+@target(os: , arch: "amd64") fn F() void {}
+@noPanic(1) fn G() void {}

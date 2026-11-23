@@ -1,0 +1,8 @@
+module main
+
+let Build := BuildInfo.Current().VersionBuild
+let Name := BuildInfo.Current().ProjectName
+
+fn Version() uint64 {
+    return Build
+}

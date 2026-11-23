@@ -40,6 +40,14 @@ type ResolvedScalarPlan struct {
 	// PhysicalThreads carries the selected physical execution identity contract.
 	// Rules: rules/concurrency/cancellation.md §24.
 	PhysicalThreads PhysicalThreadCapabilities
+	// Float is the binary floating-point contract (P20 § 83); zero is Unknown.
+	Float FloatCapabilities
+	// Alignments are the target's typed scalar alignment facts (MD-141),
+	// normalized from its verified data layout; nil means unresolved, so
+	// every dependent layout stays incomplete instead of guessed. They are
+	// derived from LLVMTriple, so JSON plan identities omit them; the layout
+	// fingerprint carries their canonical form (plan_fingerprints.go).
+	Alignments ScalarAlignments `json:"-"`
 	// AddressDomains are the target-supplied hardware address domains, in
 	// canonical order (MD-111 §§ 1(6)-1(7); address_domains.go).
 	AddressDomains []AddressDomain

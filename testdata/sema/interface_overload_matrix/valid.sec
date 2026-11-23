@@ -1,0 +1,34 @@
+module main
+
+interface Left[T] {
+    fn Convert(value: T) T
+    static fn Select(value: T) T
+}
+interface Right { fn Convert(value: bool) bool }
+interface Combined implements Left[int], Right {
+    fn Convert(value: string) string
+    static fn Select(value: bool) bool
+}
+interface Diamond implements Combined, Left[int] {}
+
+type Converter struct {}
+impl Converter implements Diamond {
+    fn Convert(value: int) int { return value }
+    fn Convert(value: bool) bool { return value }
+    fn Convert(value: string) string { return value }
+    static fn Select(value: int) int { return value }
+    static fn Select(value: bool) bool { return value }
+}
+
+fn ThroughView(value: ref Diamond) int {
+    let flag := value.Convert(true)
+    let text := value.Convert("hello")
+    return value.Convert(7)
+}
+fn ThroughConstraint[T: Diamond](value: ref T) int {
+    let flag := value.Convert(true)
+    return value.Convert(7)
+}
+fn Use(value: ref Converter) int { return ThroughView(value) + ThroughConstraint(value) }
+fn StaticInt() int { return Diamond.Select(7) }
+fn StaticBool() bool { return Diamond.Select(true) }

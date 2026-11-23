@@ -87,6 +87,9 @@ func (fb *functionBuilder) buildCompoundValue(stmt *ast.AssignmentStatement, res
 	if current.typ != leftType || current.typ != resultType {
 		return builtValue{}, fmt.Errorf("compound assignment type does not match its destination")
 	}
+	if resolved.Decimal != nil && (rightType != leftType || !isPlainDecimalType(fb.owner.module.Types, leftType)) {
+		return builtValue{}, fb.unsupported("decimal compound assignment with an integer, mixed-width or named-decimal operand", stmt.Token)
+	}
 	value, err := fb.buildExpr(stmt.Value, rightType)
 	if err != nil {
 		return builtValue{}, err

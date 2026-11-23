@@ -1,0 +1,59 @@
+module main
+
+// P20 §§ 28, 68, 82: compile-time folding covers the float type properties
+// and non-finite values exactly as the runtime: Max/Min/Epsilon, infinities
+// from properties and overflow, NaN from a property and from Inf - Inf
+// (unordered: NaN != NaN), and their static storage.
+
+let Max64: float64 := float64.Max
+let Min32: float32 := float32.Min
+let Epsilon64: float64 := float64.Epsilon
+let Infinity64: float64 := float64.Infinity
+let Overflow64: float64 := Max64 * 2.0
+let NegativeInfinity64: float64 := -Infinity64
+let Invalid64: float64 := Infinity64 - Infinity64
+let NaN32: float32 := float32.NaN
+let NaNEqual: bool := Invalid64 == Invalid64
+
+fn Mul64(a: float64, b: float64) float64 {
+    return a * b
+}
+
+fn Sub64(a: float64, b: float64) float64 {
+    return a - b
+}
+
+fn Same64(a: float64, b: float64) bool {
+    return a == b
+}
+
+fn Same32(a: float32, b: float32) bool {
+    return a == b
+}
+
+fn Unordered64(a: float64) bool {
+    return a != a
+}
+
+fn Unordered32(a: float32) bool {
+    return a != a
+}
+
+fn main() int {
+    if !Same64(Max64, float64.Max) || !Same32(Min32, float32.Min) || !Same64(Epsilon64, float64.Epsilon) {
+        return 1
+    }
+    if !Same64(Infinity64, float64.Infinity) || !Same64(Overflow64, Mul64(Max64, 2.0)) {
+        return 2
+    }
+    if !Same64(NegativeInfinity64, float64.NegativeInfinity) {
+        return 3
+    }
+    if !Unordered64(Invalid64) || !Unordered64(Sub64(Infinity64, Infinity64)) || !Unordered32(NaN32) {
+        return 4
+    }
+    if NaNEqual != Same64(Invalid64, Invalid64) {
+        return 5
+    }
+    return 42
+}

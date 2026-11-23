@@ -1,0 +1,22 @@
+module main
+
+fn SourceScore() int {
+    let info := BuildInfo.Current()
+    let revision := match info.SourceRevision {
+        Some(text) where text == "rev-a" => 40
+        Some(text) => 0
+        None => 0
+    }
+    let status := match info.DirtySourceStatus {
+        Some(flag) where !flag => 2
+        Some(flag) => 0
+        None => 0
+    }
+    return revision + status
+}
+
+type Score int range 0..SourceScore()
+
+fn Read() Score {
+    return 42
+}

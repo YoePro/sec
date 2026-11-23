@@ -1,0 +1,91 @@
+module main
+
+// P20 §§ 29–36, 82: compile-time folded float core methods equal the runtime
+// float.* operations: Abs, NaN-propagating Min/Max with -0 below +0, Floor,
+// Ceiling, Truncate, Round (ties to even, signed zero) and the IEEE classes,
+// including a binary32 subnormal.
+
+let Minus: float64 := -2.5g
+let NegativeHalf: float64 := -0.5g
+let NegativeZero: float64 := -0.0g
+let Tiny: float32 := float32.Epsilon * float32.Epsilon * float32.Epsilon * float32.Epsilon * float32.Epsilon * float32.Epsilon
+let Abs: float64 := Minus.Abs()
+let Round: float64 := Minus.Round()
+let Floor: float64 := Minus.Floor()
+let Ceiling: float64 := Minus.Ceiling()
+let Truncate: float64 := Minus.Truncate()
+let ZeroCeiling: float64 := NegativeHalf.Ceiling()
+let MinZero: float64 := NegativeZero.Min(0.0g)
+let MaxNaN: float64 := Minus.Max(float64.NaN)
+let Subnormal: bool := Tiny.IsSubnormal()
+let Normal: bool := Tiny.IsNormal()
+let Infinite: bool := float64.Infinity.IsInfinite()
+
+fn Identical(a: float64, b: float64) bool {
+    return a == b && 1.0 / a == 1.0 / b || a != a && b != b
+}
+
+fn AbsOf(x: float64) float64 {
+    return x.Abs()
+}
+
+fn RoundOf(x: float64) float64 {
+    return x.Round()
+}
+
+fn FloorOf(x: float64) float64 {
+    return x.Floor()
+}
+
+fn CeilingOf(x: float64) float64 {
+    return x.Ceiling()
+}
+
+fn TruncateOf(x: float64) float64 {
+    return x.Truncate()
+}
+
+fn MinOf(x: float64, y: float64) float64 {
+    return x.Min(y)
+}
+
+fn MaxOf(x: float64, y: float64) float64 {
+    return x.Max(y)
+}
+
+fn SubnormalOf(x: float32) bool {
+    return x.IsSubnormal()
+}
+
+fn NormalOf(x: float32) bool {
+    return x.IsNormal()
+}
+
+fn InfiniteOf(x: float64) bool {
+    return x.IsInfinite()
+}
+
+fn main() int {
+    if !Identical(Abs, AbsOf(Minus)) || !Identical(Round, RoundOf(Minus)) {
+        return 1
+    }
+    if !Identical(Floor, FloorOf(Minus)) || !Identical(Ceiling, CeilingOf(Minus)) || !Identical(Truncate, TruncateOf(Minus)) {
+        return 2
+    }
+    if !Identical(ZeroCeiling, CeilingOf(NegativeHalf)) || !Identical(ZeroCeiling, NegativeZero) {
+        return 3
+    }
+    if !Identical(MinZero, MinOf(NegativeZero, 0.0g)) || !Identical(MinZero, NegativeZero) {
+        return 4
+    }
+    if !Identical(MaxNaN, MaxOf(Minus, float64.NaN)) || MaxNaN == MaxNaN {
+        return 5
+    }
+    if Subnormal != SubnormalOf(Tiny) || Normal != NormalOf(Tiny) || !Subnormal {
+        return 6
+    }
+    if Infinite != InfiniteOf(float64.Infinity) || !Infinite {
+        return 7
+    }
+    return 42
+}

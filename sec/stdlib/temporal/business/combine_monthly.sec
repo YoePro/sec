@@ -1,0 +1,180 @@
+module business
+
+/*
+ * Sec Standard Library — temporal/business
+ * File: business/combine_monthly.sec
+ * Purpose: Monthly selection over combined business calendars.
+ * Status: Implementation candidate, not execution-verified
+ * Revision: 0.1
+ * Updated: 2026-11-23
+ *
+ * Governing rulebook:
+ * stdlib/temporal/business/std-temporal-business.md
+ *
+ * No allocation, I/O or implicit dataset loading.
+ */
+
+/**
+ * Selects the Nth combined business day of a Gregorian month.
+ *
+ * Description:
+ * Positive positions count forward from month start.
+ * Negative positions count backward from month end.
+ *
+ * Position 1 selects the first business day.
+ * Position -1 selects the last business day.
+ * Position zero is invalid.
+ *
+ * All requires every calendar to be working.
+ * Any requires at least one calendar to be working.
+ *
+ * The complete Gregorian month must be covered by
+ * every supplied calendar, regardless of combination.
+ *
+ * All datasets are validated once. Cumulative working-day
+ * counts and binary search determine the selected date.
+ *
+ * Parameters:
+ * - year: Gregorian calendar year.
+ * - month: Gregorian month in 1..12.
+ * - position: Nonzero signed business-day ordinal.
+ * - calendars: Borrowed calendar datasets.
+ * - combination: All or Any working-day requirement.
+ *
+ * Returns:
+ * Absolute date of the selected combined business day.
+ *
+ * Errors:
+ * - BusinessError.InvalidDateRule:
+ * Invalid ordinal or insufficient business days.
+ * - BusinessError.InvalidCalendarData:
+ * Empty or malformed calendar datasets.
+ * - BusinessError.OutsideCoverage:
+ * Incomplete common coverage of the month.
+ * - BusinessError.OutOfRange:
+ * Date cannot be represented by core date.
+ *
+ * Ownership:
+ * Borrows every dataset without ownership transfer.
+ * No allocation or I/O.
+ */
+fn NthBusinessDayOfMonth(
+    year:        int,
+    month:       int,
+    position:    int,
+    calendars:   ref BusinessCalendarData[],
+    combination: BusinessCalendarCombination,
+) Result[date, BusinessError] {
+    if month < 1 || month > 12 || position == 0 {
+        return Err(BusinessError.InvalidDateRule)
+    }
+
+    // Resolve the Gregorian month boundaries.
+    // DaysBeforeNextMonth(1) means the final day
+    // of the requested month.
+    let firstDate := try ResolveMonthlyDate(year, month, MonthlyDateRule.DayOfMonth(1))
+
+    let lastDate := try ResolveMonthlyDate(year, month, MonthlyDateRule.DaysBeforeNextMonth(1))
+
+    let first := int64(firstDate.EpochDays)
+    let last  := int64(lastDate.EpochDays)
+
+    // Validate every dataset and obtain common coverage.
+    let coverage := try _validateCombinedCoverage(calendars)
+
+    if first < coverage.First || last > coverage.Last {
+        return Err(BusinessError.OutsideCoverage)
+    }
+
+    // Inclusive month count expressed as prefix differences.
+    let countAtStart := try _countCombinedBusinessDaysBefore(first, calendars, combination, coverage)
+
+    let countAtEnd := try _countCombinedBusinessDaysBefore(last + 1, calendars, combination, coverage)
+
+    let available := countAtEnd - countAtStart
+
+    if available == 0 {
+        return Err(BusinessError.InvalidDateRule)
+    }
+
+    let requested := int64(position)
+    let mut targetOrdinal: int64 := 0
+
+    if requested > 0 {
+        if requested > available {
+            return Err(BusinessError.InvalidDateRule)
+        }
+
+        targetOrdinal = countAtStart + requested
+    } else {
+        // Compare before converting a negative position
+        // to its magnitude. This handles minimum int.
+        if requested < 0 - available {
+            return Err(BusinessError.InvalidDateRule)
+        }
+
+        targetOrdinal = countAtEnd + requested + 1
+    }
+
+    // Find the first date reaching the target ordinal.
+    let mut lower := first
+    let mut upper := last
+
+    while lower < upper {
+        let middle := lower + (upper - lower) / 2
+
+        let cumulative := try _countCombinedBusinessDaysBefore(middle + 1, calendars, combination, coverage)
+
+        if cumulative >= targetOrdinal {
+            upper = middle
+        } else {
+            lower = middle + 1
+        }
+    }
+
+    let checkedDays := try int32(lower) {
+        Err(_) => return Err(BusinessError.OutOfRange)
+    }
+
+    return Ok(new date(checkedDays))
+}
+
+/**
+ * Returns the final combined business day of a month.
+ *
+ * Description:
+ * Equivalent to NthBusinessDayOfMonth with position -1.
+ *
+ * All requires every calendar to be open.
+ * Any requires at least one calendar to be open.
+ *
+ * The complete Gregorian month must be covered by
+ * every supplied dataset.
+ *
+ * Parameters:
+ * - year: Gregorian calendar year.
+ * - month: Gregorian month in 1..12.
+ * - calendars: Borrowed business-calendar datasets.
+ * - combination: All or Any working-day requirement.
+ *
+ * Returns:
+ * Final qualifying business day of the month.
+ *
+ * Errors:
+ * - BusinessError.InvalidDateRule:
+ * Month contains no qualifying business days.
+ * - BusinessError.InvalidCalendarData:
+ * Invalid calendar datasets.
+ * - BusinessError.OutsideCoverage:
+ * Incomplete month coverage.
+ * - BusinessError.OutOfRange:
+ * Unrepresentable date.
+ *
+ * Ownership:
+ * Borrows datasets without allocation or transfer.
+ */
+fn LastBusinessDayOfMonth(year: int, month: int, calendars: ref BusinessCalendarData[], combination: BusinessCalendarCombination) Result[date, BusinessError] {
+    let lastPosition: int := -1
+
+    return NthBusinessDayOfMonth(year, month, lastPosition, calendars, combination)
+}

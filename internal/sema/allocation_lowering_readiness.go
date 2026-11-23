@@ -97,11 +97,16 @@ func (a *Analyzer) ValidateAllocationLoweringReadinessPreserving(program *ast.Pr
 			continue
 		}
 		switch fact.Kind {
-		case ArenaEffectAllocate, ArenaEffectCollectionGrowth, ArenaEffectCreateOwned, ArenaEffectCreateGrowable:
+		case ArenaEffectAllocate, ArenaEffectCollectionGrowth, ArenaEffectStringMaterialization, ArenaEffectCreateOwned, ArenaEffectCreateGrowable:
 		default:
 			continue
 		}
 		if fact.ContextKnown && preserved != nil && preserved(fact) {
+			continue
+		}
+		// P18 §§ 72–73: Semantic IR lowers a planned core materialization or
+		// stops it at a named boundary, never partially.
+		if preserved != nil && a.coreArrayMaterializationSites[sourceTokenLocation(fact.Source)] {
 			continue
 		}
 		reason := "the selected allocation context/domain has no preserving backend representation"

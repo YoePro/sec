@@ -195,6 +195,10 @@ func (e *emitter) emitFunction(function *semantic.Function) error {
 			}
 			fmt.Fprintf(&e.out, " {%s}", referenceDictionary(parameter.Reference))
 		}
+		if parameter.HiddenAllocationContext {
+			// P19 section 108: the marked compiler-hidden capability input.
+			e.out.WriteString(" {sec.hidden_allocation_context = true}")
+		}
 	}
 	e.out.WriteByte(')')
 	if !e.isVoid(function.ReturnType) {
@@ -212,6 +216,18 @@ func (e *emitter) emitFunction(function *semantic.Function) error {
 	e.out.WriteString(" attributes {")
 	fmt.Fprintf(&e.out, "sec.function_id = %s, sec.source_name = %s, sec.extern = %t, sec.unsafe = %t",
 		mlirString(string(function.ID)), mlirString(function.Name), function.Extern, function.Unsafe)
+	if e.schemaVersion >= 15 {
+		// P19 § 130: compile-time allocation summary metadata.
+		if function.MayAllocate != "" {
+			fmt.Fprintf(&e.out, ", sec.may_allocate = %s", mlirString(function.MayAllocate))
+		}
+		if function.RequiresAllocationContext {
+			e.out.WriteString(", sec.requires_allocation_context = true")
+		}
+		if len(function.ArenaDemand) != 0 {
+			e.out.WriteString(", sec.arena_demand_summary = " + arenaDemandAttribute(function.ArenaDemand))
+		}
+	}
 	if function.LinkName != "" {
 		fmt.Fprintf(&e.out, ", sec.link_name = %s", mlirString(function.LinkName))
 	}
@@ -326,6 +342,10 @@ func (e *emitter) emitOperation(function *semantic.Function, operation semantic.
 			// lowering never reparses the lexeme (package20.md §§ 74, 76).
 			fmt.Fprintf(&e.out, "\"sec.const.float\"() <{bits = %d : i64, lexeme = %s}> ", int64(operation.Float.Bits), mlirString(operation.FloatLexeme))
 		} else {
+			if e.schemaVersion >= 16 {
+				// P20 § 74: schema 16 has no lexeme-only float constant.
+				return &UnsupportedLoweringError{Feature: "float constant without canonical bits (schema 16)", Function: function.ID}
+			}
 			fmt.Fprintf(&e.out, "\"sec.const.float\"() <{lexeme = %s}> ", mlirString(operation.FloatLexeme))
 		}
 		e.emitOperationAttributes(operation, false)
@@ -595,6 +615,10 @@ func (e *emitter) emitOperation(function *semantic.Function, operation semantic.
 		return e.emitSemanticIntegerOperation(operation, "sec.float.to_bool", "", "", values)
 	case semantic.OpIntBinaryChecked:
 		return e.emitSemanticIntegerOperation(operation, "sec.int.binary_checked", "kind", string(operation.IntegerBinary), values)
+	case semantic.OpDecimalBinaryChecked, semantic.OpDecimalNegChecked:
+		return e.emitDecimalOperation(operation, values)
+	case semantic.OpDecimalCompare:
+		return e.emitSemanticIntegerOperation(operation, "sec.decimal.cmp", "predicate", string(operation.IntegerCompare), values)
 	case semantic.OpIntBitwise:
 		return e.emitSemanticIntegerOperation(operation, "sec.int.bitwise", "kind", string(operation.IntegerBitwise), values)
 	case semantic.OpIntShiftChecked:
@@ -725,9 +749,13 @@ func (e *emitter) emitOperation(function *semantic.Function, operation semantic.
 		return e.emitOwnership(function, operation, values, storages)
 	case semantic.OpDynamicArrayEmpty, semantic.OpDynamicArrayAllocate, semantic.OpDynamicArrayLength,
 		semantic.OpDynamicArrayHasBacking, semantic.OpDynamicArrayHasCapacity, semantic.OpDynamicArrayIndexInBounds,
-		semantic.OpDynamicArrayElementPlace, semantic.OpDynamicArrayAppendPrepared, semantic.OpDynamicArrayGrowBacking,
+		semantic.OpDynamicArrayElementPlace, semantic.OpDynamicArrayAppendPrepared, semantic.OpDynamicArrayAppendRangePrepared, semantic.OpDynamicArrayGrowBacking,
 		semantic.OpStorageEstablishDomain, semantic.OpStorageAdvanceEpoch, semantic.OpStorageEndDomain, semantic.OpStorageReclaim:
 		return e.emitDynamicArray(function, operation, values)
+	case semantic.OpArenaCreateBorrowed, semantic.OpArenaCreateDefault, semantic.OpArenaCreateOwnedFixed, semantic.OpArenaCreateGrowable,
+		semantic.OpArenaNew, semantic.OpArenaAlloc, semantic.OpArenaReset, semantic.OpArenaRelease, semantic.OpArenaDestroy,
+		semantic.OpAllocationContextFromArena, semantic.OpAllocationContextTarget, semantic.OpAllocationContextCompilerLocal:
+		return e.emitArena(function, operation, values)
 	default:
 		return &UnsupportedLoweringError{Feature: string(operation.Kind), Function: function.ID}
 	}
@@ -1314,6 +1342,15 @@ func (e *emitter) typeText(id semantic.TypeID) (string, error) {
 			return "", err
 		}
 		text = "!sec.dynamic_array<" + element + ">"
+	case semantic.TypeArena, semantic.TypeAllocationContext:
+		// P19 sections 105-107: one Arena type and the internal capability.
+		if e.schemaVersion < 15 {
+			return "", &UnsupportedLoweringError{Feature: "Arena and allocation-context types require schema 15"}
+		}
+		text = "!sec.arena"
+		if typeValue.Kind == semantic.TypeAllocationContext {
+			text = "!sec.alloc_context"
+		}
 	case semantic.TypeStringView:
 		if e.schemaVersion < 12 {
 			return "", &UnsupportedLoweringError{Feature: "StringView types require schema 12"}
@@ -1737,6 +1774,9 @@ func (e *emitter) emitStaticGlobal(static semantic.Static) error {
 		initial = static.Initializer.Integer.String()
 	case static.Initializer.Bool != nil:
 		initial = fmt.Sprintf("%t", *static.Initializer.Bool)
+	case static.Initializer.Float != nil:
+		// P20 §§ 74, 76: the canonical payload, never a lexeme.
+		initial = staticFloatLeaf(*static.Initializer.Float)
 	case static.Initializer.Variant != nil || static.Initializer.Enum != nil || static.Initializer.String != nil:
 		// A tagged value, enum case or string keeps its typed tree
 		// (compile_time_evaluation.md § 32(3); SVV-2).
@@ -1768,6 +1808,8 @@ func staticComponentsText(initializer semantic.StaticInitializer) string {
 		return mlirString(initializer.Integer.String())
 	case initializer.Bool != nil:
 		return mlirString(fmt.Sprintf("%t", *initializer.Bool))
+	case initializer.Float != nil:
+		return mlirString(staticFloatLeaf(*initializer.Float))
 	case initializer.Variant != nil:
 		if initializer.Variant.Payload == nil {
 			return "{variant = " + mlirString(initializer.Variant.Name) + "}"
@@ -1856,4 +1898,11 @@ func (e *emitter) emitCheckedNumericConversion(operation semantic.Operation, val
 	e.emitLocation(operation.Location)
 	e.out.WriteByte('\n')
 	return nil
+}
+
+// staticFloatLeaf spells a static float as its canonical bit pattern,
+// "bits:<unsigned decimal>", distinct from an integer leaf.
+// Rules: rules/mlir/packages/sec-mlir-dialect_package20.md — §§ 74, 76.
+func staticFloatLeaf(value semantic.FloatConstant) string {
+	return fmt.Sprintf("bits:%d", value.Bits)
 }

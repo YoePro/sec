@@ -1,0 +1,9 @@
+module main
+
+type Box[T] struct { value: T, storage: EventStorage[T, 4] }
+
+fn Early(value: ref Box[int]) int { return value.Value }
+
+impl Box[T] {
+    fn Get() T { return self.value }
+}

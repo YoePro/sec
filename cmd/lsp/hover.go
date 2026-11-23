@@ -23,10 +23,18 @@ func hoverForSourceWithParameterInsight(uri string, text string, pos position, i
 	}
 
 	path := pathFromURI(uri)
-	program, analyzer, release := cachedLSPAnalysis(uri, text, program, firstSourceOverlay(overlays))
+	analysis, release := cachedLSPAnalysisResult(uri, text, program, firstSourceOverlay(overlays))
+	program, analyzer := analysis.program, analysis.analyzer
 	defer release()
 	defer func() {
 		if token, ok := sourceTokenAtPosition(uri, text, pos); ok {
+			if suffix := genericInstantiationHover(analysis.sourceProgram, analyzer, token); suffix != "" {
+				if !found {
+					result = hoverResult{Contents: markupContent{Kind: "markdown", Value: "Generic instantiation"}, Range: tokenRange(text, token)}
+					found = true
+				}
+				result.Contents.Value += suffix
+			}
 			if fact, ok := analyzer.RawPointerFactAt(token.File, token.Line, token.Column); ok {
 				if !found {
 					result = hoverResult{Contents: markupContent{Kind: "markdown"}, Range: tokenRange(text, token)}

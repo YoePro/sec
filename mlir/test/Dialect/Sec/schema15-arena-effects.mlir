@@ -1,0 +1,19 @@
+// RUN: sec-mlir-opt %s --cse --canonicalize | FileCheck %s
+
+// SEC-MLIR-P19 section 123: Arena operations carry ordered effects on the
+// Sec Arena resource, so CSE never merges two equal allocations, an unused
+// creation is not dead code, and Reset is never removed or treated as Free.
+
+// CHECK-LABEL: func.func @effects
+// CHECK: "sec.arena.create_borrowed"
+// CHECK-COUNT-2: "sec.arena.new"
+// CHECK: "sec.arena.reset"
+module attributes {sec.dialect_version = 15 : i32, sec.semantic_ir_version = 1 : i32, sec.module_id = "arenas", sec.source_files = [], sec.target_os = "linux", sec.target_arch = "amd64", sec.target_triple = "x86_64-pc-linux-gnu", sec.target_abi = "gnu", sec.target_profile = "hosted", sec.target_endianness = "little", dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 64>>} {
+  func.func @effects(%backing: !sec.slice_mut<ui8>, %p: !sec.place<!sec.arena, "rw">) {
+    %a = "sec.arena.create_borrowed"(%backing) <{state_after = 1 : i32, epoch_after = 7 : i32, backing_kind = "borrowed", growth_kind = "fixed", retained_borrow = 42 : i32, domain = 5 : i32, transition = "establish-domain", origin = "Arena", relation = "Borrowed", authority = "ExternalOwner", stability = "Stable", space = "ordinary"}> : (!sec.slice_mut<ui8>) -> !sec.arena
+    %r, %f, %e = "sec.arena.new"(%p) <{state_before = 1 : i32, state_after = 2 : i32, epoch_before = 7 : i32, epoch_after = 7 : i32, backing_kind = "borrowed", growth_kind = "fixed", retained_borrow = 42 : i32, layout_plan = "layout", default_plan = "default", capacity_plan = "capacity", failure_atomic, domain = 5 : i32, transition = "none", origin = "Arena", relation = "Borrowed", authority = "ExternalOwner", stability = "Stable", space = "ordinary"}> {sec.reference = {borrow_id = 6 : i32, lifetime_id = 6 : i32, validity_policy = "dynamic-epoch", invalidation_domain = 5 : i32, epoch_dependency = 7 : i32, address_stability = "Stable", provenance = "arena"}} : (!sec.place<!sec.arena, "rw">) -> (!sec.ref_mut<!sec.int>, i1, !sec.enum<identity = "core::AllocationError", underlying = !sec.uint, representation = "integer", bitWidth = 0, cases = [#sec.enum_case<ordinal = 0, name = "OutOfMemory", value = "0">, #sec.enum_case<ordinal = 1, name = "Unsupported", value = "1">, #sec.enum_case<ordinal = 2, name = "InvalidSize", value = "2">, #sec.enum_case<ordinal = 3, name = "InvalidAlignment", value = "3">]>)
+    %r2, %f2, %e2 = "sec.arena.new"(%p) <{state_before = 1 : i32, state_after = 2 : i32, epoch_before = 7 : i32, epoch_after = 7 : i32, backing_kind = "borrowed", growth_kind = "fixed", retained_borrow = 42 : i32, layout_plan = "layout", default_plan = "default", capacity_plan = "capacity", failure_atomic, domain = 5 : i32, transition = "none", origin = "Arena", relation = "Borrowed", authority = "ExternalOwner", stability = "Stable", space = "ordinary"}> {sec.reference = {borrow_id = 6 : i32, lifetime_id = 6 : i32, validity_policy = "dynamic-epoch", invalidation_domain = 5 : i32, epoch_dependency = 7 : i32, address_stability = "Stable", provenance = "arena"}} : (!sec.place<!sec.arena, "rw">) -> (!sec.ref_mut<!sec.int>, i1, !sec.enum<identity = "core::AllocationError", underlying = !sec.uint, representation = "integer", bitWidth = 0, cases = [#sec.enum_case<ordinal = 0, name = "OutOfMemory", value = "0">, #sec.enum_case<ordinal = 1, name = "Unsupported", value = "1">, #sec.enum_case<ordinal = 2, name = "InvalidSize", value = "2">, #sec.enum_case<ordinal = 3, name = "InvalidAlignment", value = "3">]>)
+    "sec.arena.reset"(%p) <{state_before = 2 : i32, state_after = 3 : i32, epoch_before = 7 : i32, epoch_after = 8 : i32, backing_kind = "borrowed", growth_kind = "fixed", retained_borrow = 42 : i32, dependency_proof = "no-live-dependency", domain = 5 : i32, transition = "advance-epoch", origin = "Arena", relation = "Borrowed", authority = "ExternalOwner", stability = "Stable", space = "ordinary"}> : (!sec.place<!sec.arena, "rw">) -> ()
+    return
+  }
+}

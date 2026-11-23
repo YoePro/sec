@@ -28,6 +28,9 @@ func (a *Analyzer) genericCallableTemplate(function Function) (Function, bool) {
 			continue
 		}
 		owner := a.types[template.ImplTarget]
+		if template.Initializer && template.ConstructionType != nil {
+			owner = a.types[template.ConstructionType.Name]
+		}
 		if len(template.GenericParameters) > 0 || len(owner.GenericParameters) > 0 {
 			return template, true
 		}
@@ -48,7 +51,12 @@ func (a *Analyzer) InstantiationIdentityOf(function Function) (InstantiationIden
 		return InstantiationIdentity{}, false
 	}
 	identity := InstantiationIdentity{Declaration: callableID(template), Role: "function"}
-	if template.ImplTarget != "" {
+	ownerName := template.ImplTarget
+	if template.Initializer && template.ConstructionType != nil {
+		ownerName = template.ConstructionType.Name
+		identity.Role = "initializer"
+	}
+	if template.ImplTarget != "" && !template.Initializer {
 		identity.Role = "instance-method"
 		if template.Static {
 			identity.Role = "static-method"
@@ -65,7 +73,7 @@ func (a *Analyzer) InstantiationIdentityOf(function Function) (InstantiationIden
 		}
 		return values, true
 	}
-	identity.OwnerArguments, ok = arguments(a.types[template.ImplTarget].GenericParameters)
+	identity.OwnerArguments, ok = arguments(a.types[ownerName].GenericParameters)
 	if !ok {
 		return InstantiationIdentity{}, false
 	}

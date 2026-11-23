@@ -54,6 +54,18 @@ def Sec_StringViewType : Sec_SingletonType<"StringView", "string_view"> {
   let summary = "Sec borrowed UTF-8 string view (MD-126)";
 }
 
+// SEC-MLIR-P19 sections 105-106: the one high-level source Arena type. It is
+// MoveOnly; backing and growth policy are operation facts, not parameters.
+def Sec_ArenaType : Sec_SingletonType<"Arena", "arena"> {
+  let summary = "Sec Arena owner (schema 15)";
+}
+
+// SEC-MLIR-P19 section 107: the compiler-internal allocation capability. It
+// never appears in source data structures or source-visible signatures.
+def Sec_AllocContextType : Sec_SingletonType<"AllocContext", "alloc_context"> {
+  let summary = "Sec compiler-internal allocation context (schema 15)";
+}
+
 def Sec_ArithmeticFailureReasonType
     : Sec_SingletonType<"ArithmeticFailureReason", "arithmetic_failure_reason"> {
   let summary = "Typed reason produced by checked Sec integer arithmetic";

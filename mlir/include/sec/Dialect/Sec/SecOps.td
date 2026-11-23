@@ -163,6 +163,36 @@ def Sec_FloatCmpOp : Sec_Op<"float.cmp", [Pure]> {
   let hasVerifier = 1;
 }
 
+// P21 decimal operators (sec_mlir_dialect_v17.md §§ 3, 6-7; MD-066/MD-067).
+// The checked forms yield (candidate, i1 failed, !sec.arithmetic_failure_reason)
+// and carry Sema's immutable plan; a rounded quotient is a success.
+def Sec_DecimalBinaryCheckedOp : Sec_Op<"decimal.binary_checked", [Pure]> {
+  let summary = "Checked exact Sec decimal binary arithmetic";
+  let arguments = (ins StrAttr:$kind, I32Attr:$coefficient_bits,
+                       StrArrayAttr:$failures, StrAttr:$preferred_scale,
+                       StrAttr:$scale_policy, OptionalAttr<StrAttr>:$quotient,
+                       OptionalAttr<StrAttr>:$remainder,
+                       AnyType:$left, AnyType:$right);
+  let results = (outs Variadic<AnyType>:$results);
+  let hasVerifier = 1;
+}
+
+def Sec_DecimalUnaryOp : Sec_Op<"decimal.unary", [Pure]> {
+  let summary = "Checked exact Sec decimal negation";
+  let arguments = (ins StrAttr:$kind, I32Attr:$coefficient_bits,
+                       StrArrayAttr:$failures, StrAttr:$preferred_scale,
+                       StrAttr:$scale_policy, AnyType:$value);
+  let results = (outs Variadic<AnyType>:$results);
+  let hasVerifier = 1;
+}
+
+def Sec_DecimalCmpOp : Sec_Op<"decimal.cmp", [Pure]> {
+  let summary = "Exact Sec decimal comparison of mathematical values";
+  let arguments = (ins StrAttr:$predicate, AnyType:$left, AnyType:$right);
+  let results = (outs I1:$result);
+  let hasVerifier = 1;
+}
+
 // P20 core floating operations (sec-mlir-dialect_package20.md §§ 28–36,
 // 66–68, 73): total and allocation-free. minimum/maximum propagate NaN.
 def Sec_FloatAbsOp : Sec_Op<"float.abs", [Pure]> {
@@ -716,6 +746,7 @@ def Sec_FailReferenceGenerationOp : Sec_Op<"fail.reference_generation", [Termina
 include "sec/Dialect/Sec/SecSliceOps.td"
 include "sec/Dialect/Sec/SecOwnershipOps.td"
 include "sec/Dialect/Sec/SecDynamicArrayOps.td"
+include "sec/Dialect/Sec/SecArenaOps.td"
 
 // MD-114 §6: pure detached values; no hardware or physical representation.
 def Sec_RegisterExtractOp : Sec_Op<"register.extract", [Pure]> {

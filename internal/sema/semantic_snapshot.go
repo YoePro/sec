@@ -46,7 +46,10 @@ func semanticSnapshotTypeSeen(typ Type, seen map[string]bool) Type {
 	result.CustomFree = typ.CustomFree
 	key := ""
 	if typ.Named && typ.Name != "" {
-		key = typ.Module + "|" + typ.Name
+		// Box[Box[int]] contains two distinct finite instances, not a
+		// recursive edge merely because they share a declaration name.
+		// Rules: rules/declarations/generics.md — §§4,24–26.
+		key = canonicalTypeIdentity(typ)
 		if seen[key] {
 			return result
 		}

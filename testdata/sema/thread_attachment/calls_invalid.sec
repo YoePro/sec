@@ -1,0 +1,11 @@
+module main
+fn BadArgument() void { let token := Thread.AttachCurrent(1) }
+fn BadGeneric() void { let token := Thread.AttachCurrent[int]() }
+fn BadTask() void { let token := Task.AttachCurrent() }
+fn OldResult() Result[ThreadContext, ThreadAttachError] { return Thread.AttachCurrent() }
+fn Fabricate() ThreadAttachment { return ThreadAttachment() }
+fn Literal() ThreadAttachment { return ThreadAttachment {} }
+fn Copy() void {
+    let token := try Thread.AttachCurrent() { Err(_) => { return } }
+    let duplicate := token
+}

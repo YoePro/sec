@@ -177,6 +177,10 @@ func defaultValueOf(typ Type, visiting map[string]bool) DefaultResolution {
 			}
 			return result
 		}
+		// MD-136: the builtin Arena defaults to a fresh empty Arena.
+		if isBuiltinArenaType(typ) {
+			return DefaultResolution{Kind: ArenaDefault}
+		}
 		if typ.Intrinsic {
 			return DefaultResolution{Kind: NoDefault}
 		}
@@ -631,6 +635,9 @@ func exactNumericConstant(expr ast.Expression) (*big.Rat, string, bool) {
 // "Owning dynamic arrays"; rules/collections/collections.md — §6.2.
 func defaultExpression(resolution DefaultResolution, typ Type, token lexer.Token) ast.Expression {
 	switch resolution.Kind {
+	case ArenaDefault:
+		// MD-136: an omitted Arena initialization is `Arena {}`.
+		return &ast.StructLiteral{Token: token, Type: &ast.TypeReference{Token: token, Name: "Arena"}}
 	case PrimitiveDefault, NamedDefault, RangeDefault, MembershipDefault, ExplicitTypeDefault:
 		if resolution.Value.Kind == EnumType || resolution.Value.Kind == UnionType {
 			// rules/types/contracts.md "Ordered membership": an enum member

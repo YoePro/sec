@@ -36,7 +36,13 @@ func TestAllocationCapabilitiesDriveMaterialization(t *testing.T) {
 				if len(p.Errors()) != 0 {
 					t.Fatal(p.Errors())
 				}
-				errors := a.Analyze(program)
+				errors, arenaBacking := splitDefaultArenaBackingErrors(a.Analyze(program))
+				// MD-136 § 131(10): the fixture's three positive-storage
+				// allocations on default Arenas need a growable default,
+				// which only the (interim) hosted capability provides.
+				if wantBacking := map[bool]int{true: 0, false: 3}[profile == "hosted"]; arenaBacking != wantBacking {
+					t.Fatal(profile, "default Arena backing errors", arenaBacking, "want", wantBacking)
+				}
 				expected := 0
 				if !want.HasActiveArenaContext() {
 					expected = 2
@@ -114,4 +120,19 @@ func TestAllocationProfilesPreserveStaticOperations(t *testing.T) {
 			}
 		}
 	}
+}
+
+// splitDefaultArenaBackingErrors separates the MD-136 positive-backing
+// diagnostics on default Arenas from the other errors.
+func splitDefaultArenaBackingErrors(errors []Error) ([]Error, int) {
+	var rest []Error
+	backing := 0
+	for _, diagnostic := range errors {
+		if strings.Contains(diagnostic.Message, "needs positive backing") {
+			backing++
+			continue
+		}
+		rest = append(rest, diagnostic)
+	}
+	return rest, backing
 }

@@ -1,0 +1,10 @@
+// Comments and blank lines precede a file attribute.
+
+@target(os: "linux", arch: "amd64", cpu: "example-cpu", device: "example-device", board: "example-board")
+
+module main
+
+@target(os: "linux")
+fn Selected() int {
+    return 1
+}

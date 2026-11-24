@@ -353,6 +353,7 @@ var definitions = []Definition{
 	{
 		OS:               "baremetal",
 		Arch:             "cortex-m0",
+		LLVMTriple:       "thumbv6m-none-eabi",
 		ABI:              "aapcs",
 		Profile:          "freestanding",
 		PointerWidthBits: 32,
@@ -368,6 +369,7 @@ var definitions = []Definition{
 	{
 		OS:               "baremetal",
 		Arch:             "cortex-m3",
+		LLVMTriple:       "thumbv7m-none-eabi",
 		ABI:              "aapcs",
 		Profile:          "freestanding",
 		PointerWidthBits: 32,
@@ -383,6 +385,7 @@ var definitions = []Definition{
 	{
 		OS:               "baremetal",
 		Arch:             "cortex-m4",
+		LLVMTriple:       "thumbv7em-none-eabi",
 		ABI:              "aapcs",
 		Profile:          "freestanding",
 		PointerWidthBits: 32,
@@ -398,6 +401,7 @@ var definitions = []Definition{
 	{
 		OS:               "baremetal",
 		Arch:             "cortex-m7",
+		LLVMTriple:       "thumbv7em-none-eabi",
 		ABI:              "aapcs",
 		Profile:          "freestanding",
 		PointerWidthBits: 32,
@@ -413,6 +417,7 @@ var definitions = []Definition{
 	{
 		OS:               "baremetal",
 		Arch:             "riscv32",
+		LLVMTriple:       "riscv32-unknown-elf",
 		ABI:              "ilp32",
 		Profile:          "freestanding",
 		PointerWidthBits: 32,
@@ -428,6 +433,7 @@ var definitions = []Definition{
 	{
 		OS:               "freertos",
 		Arch:             "cortex-m4",
+		LLVMTriple:       "thumbv7em-none-eabi",
 		ABI:              "aapcs",
 		Profile:          "rtos",
 		PointerWidthBits: 32,
@@ -443,6 +449,7 @@ var definitions = []Definition{
 	{
 		OS:               "freertos",
 		Arch:             "cortex-m7",
+		LLVMTriple:       "thumbv7em-none-eabi",
 		ABI:              "aapcs",
 		Profile:          "rtos",
 		PointerWidthBits: 32,

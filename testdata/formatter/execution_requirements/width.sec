@@ -1,0 +1,2 @@
+module main
+fn F() void require(task, thread, cancellable) {}

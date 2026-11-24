@@ -1244,6 +1244,8 @@ interface PressSource {
 **§ 27(5)** The setter identifier is mandatory in implementation, static, and interface
 property forms. Sec does not provide an implicit setter-value binding.
 
+**§ 27(6)** **Amendment MD-138 (2026-11-24, Sec 0.1.1, `rules/corrections/applied/MD-138-callable-execution-requirements-v0.1.1-correction-2026-11-24-20261124.md` §§ 3(3), 7(4)).** The tail of a native interface `MethodSignature`, after its return `TypeReference`, takes the optional `ExecutionRequirementClause` of § 101A. An omitted clause on a bodyless interface method means no requirement from that family. Receiver-capability and static-member restrictions are unchanged; this legalizes no consuming interface receiver and no other previously invalid declaration.
+
 ---
 
 ## § 28 Impl declaration
@@ -1509,6 +1511,23 @@ fn Noop() void {
 **§ 32(3)** A return type is required.
 
 **§ 32(4)** Use `void` for no return value.
+
+**§ 32(5)** **Amendment MD-138 (2026-11-24, Sec 0.1.1, `rules/corrections/applied/MD-138-callable-execution-requirements-v0.1.1-correction-2026-11-24-20261124.md` § 3(3), (7)).** `FunctionDeclaration` and `FunctionSignature` take an optional `ExecutionRequirementClause` (§ 101A) after the return `TypeReference` and before the body:
+
+```text
+FunctionDeclaration
+    ::= "fn" Identifier [ GenericParameterList ]
+        ParameterList TypeReference
+        [ ExecutionRequirementClause ]
+        FunctionBody
+
+FunctionSignature
+    ::= "fn" Identifier [ GenericParameterList ]
+        ParameterList TypeReference
+        [ ExecutionRequirementClause ]
+```
+
+The body stays mandatory for ordinary definitions. The clause precedes any body form; MD-052 alone owns a privileged `mlir` body, which MD-138 does not enable. The dedicated foreign-function grammar and `c::fn` types are not extended (§ 3(8) of the correction).
 
 ---
 
@@ -2803,6 +2822,16 @@ let double := fn(value: int) int {
 
 **§ 73(2)** The return type is required.
 
+**§ 73(3)** **Amendment MD-138 (2026-11-24, Sec 0.1.1, `rules/corrections/applied/MD-138-callable-execution-requirements-v0.1.1-correction-2026-11-24-20261124.md` § 3(4)).**
+
+```text
+LambdaExpression
+    ::= CaptureClause? "fn" ParameterList TypeReference
+        [ ExecutionRequirementClause ] Block
+```
+
+Parameter, return-type and capture rules are unchanged; spawn-block return rules (MD-133, § 89(4)) are unaffected.
+
 ---
 
 ## § 74 Capture clause
@@ -3266,6 +3295,8 @@ spawn {
 
 **§ 89(3)** `process` syntax is parsed but the feature is deferred.
 
+**§ 89(4)** **Amendment MD-133 (2026-11-24, Sec 0.1 and 0.1.1, `rules/corrections/applied/MD-133-spawn-block-return-type-correction-2026-11-24-20261124.md`).** The syntax is unchanged. A spawn block's normal result comes only from explicit value-bearing `return` statements (§ 48); a final expression statement (§ 47) is not a return. Its type inference is defined by `rules/concurrency/spawn.md` § 3A. § 89(3) is a separate statement that this amendment does not reconcile.
+
 ---
 
 ## § 90 Await expression
@@ -3556,6 +3587,55 @@ mut fn() int
 **§ 101(2)** Parameter names do not appear in function type references.
 
 **§ 101(3)** `FunctionType` deliberately has no `unsafe` prefix: Sec 0.1 has no general unsafe function type, and no spelling, ordering rule, formatter form or implicit coercion exists for one, including through generic type parameters. `unsafe` marks function declarations and unsafe blocks only; a foreign C function pointer is the separate type `c::fn(...)` (`rules/memory/unsafe.md` § 40(6); MD-059, 2026-10-16).
+
+**§ 101(4)** **Amendment MD-138 (2026-11-24, Sec 0.1.1, `rules/corrections/applied/MD-138-callable-execution-requirements-v0.1.1-correction-2026-11-24-20261124.md` § 3(2)).** `FunctionType` ends with an optional `ExecutionRequirementClause` (§ 101A):
+
+```text
+FunctionType
+    ::= [ CallableCapability ] "fn"
+        "(" [ CallableParameterType { "," CallableParameterType } [ "," ] ] ")"
+        TypeReference
+        [ ExecutionRequirementClause ]
+```
+
+`CallableCapability` and `CallableParameterType` are unchanged. A missing clause on an explicitly written function type means no execution requirement.
+
+---
+
+## § 101A Execution requirement clause (Sec 0.1.1)
+
+**§ 101A(1)** **Amendment MD-138 (2026-11-24, Sec 0.1.1; not retroactive to Sec 0.1; `rules/corrections/applied/MD-138-callable-execution-requirements-v0.1.1-correction-2026-11-24-20261124.md` §§ 2–3).**
+
+```text
+ExecutionRequirementClause
+    ::= "require" "(" ExecutionRequirement
+        { "," ExecutionRequirement } [ "," ] ")"
+
+ExecutionRequirement
+    ::= Contextual("task")
+      | Contextual("thread")
+      | Contextual("cancellable")
+```
+
+**§ 101A(2)** The clause follows the complete callable return type: of a function type (§ 101(4)), a function declaration or signature (§ 32(5)), a native interface method signature (§ 27(6)) and a lambda (§ 73(3)). It is a suffix of a callable signature, not of every `TypeReference`, and is not an attribute; it cannot follow a scalar, struct or collection type.
+
+**§ 101A(3)** The entry list is nonempty and comma separated, a trailing comma is legal, and ordinary whitespace and comment rules apply. `require()` is invalid. A clause appears at most once per callable signature or function-type node, and an entry must not be repeated within it. Entry order has no meaning; logically implied entries are legal and normalized semantically (`rules/concurrency/cancellation.md`).
+
+**§ 101A(4)** `require` stays a hard keyword (§ 115(4)). `task` and `thread` keep their contextual treatment, extended to entry positions. `cancellable` is contextual in an entry position only and is not a reserved identifier. Spellings are case-sensitive. Any other entry, including `allocator`, `isr`, `process`, an arbitrary name, a literal, a boolean expression or a parameterized entry, is diagnosed as unsupported in this language version and never reinterpreted as an expression.
+
+**§ 101A(5)** Nested callable return types keep the right-recursive `TypeReference` structure: a clause attaches to the innermost immediately preceding unparenthesized callable signature that can consume it. Parenthesizing a returned function type closes it before the enclosing signature's clause. The parser does not assign a clause from line breaks, indentation or semantic context, and a second suffix cannot bypass the one-clause rule.
+
+```sec
+fn() fn() void require(task)                         // the returned callable requires a task
+fn() (fn() void) require(task)                       // the outer callable requires a task
+fn() (fn() void require(task)) require(thread)       // outer requires thread, result requires task
+
+fn CreateCallback() (fn() void) require(task) {
+    return fn() void {}
+}
+```
+
+**§ 101A(6)** Semantics, normalization, compatibility and inference are owned by `rules/concurrency/cancellation.md` (MD-138 amendment) and `rules/declarations/lambda-functions.md`; this section defines syntax only.
 
 ---
 
@@ -3886,7 +3966,7 @@ statement at arbitrary locations. Its block may use bare `return` but not
 `rules/errors/panic.md`; neither is callable.
 
 **§ 115(4)** `require` is a general keyword (`lexical_structure.md` § 8.1) and is not a
-valid identifier.
+valid identifier. From Sec 0.1.1 it introduces the execution requirement clause of § 101A (MD-138, 2026-11-24); `cancellable` is contextual there only and stays a valid identifier elsewhere.
 
 **§ 115(5)** The parser issues focused diagnostics for these spellings rather than generic
 token failures.

@@ -1,5 +1,6 @@
 // Whole-function Arena domain, owner and epoch flow (schema 15).
-// Rules: rules/mlir/packages/sec-mlir-dialect_package19.md — sections 124, 126-127, 129.
+// Rules: rules/mlir/packages/sec-mlir-dialect_package19.md — sections 35, 90-91, 124, 126-127, 129, 151.
+#include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Dominance.h"
 #include "mlir/Pass/Pass.h"
@@ -118,13 +119,13 @@ LogicalResult verifyFunction(func::FuncOp function) {
         auto kind = fields ? fields.getAs<StringAttr>("kind") : StringAttr();
         auto expression = fields ? fields.getAs<StringAttr>("expression") : StringAttr();
         if (!domain || domain.getInt() <= 0 || !kind || !expression || expression.getValue().empty() ||
-            (kind.getValue() != "constant" && kind.getValue() != "unknown")) {
-          fail(function, "an Arena demand summary needs a domain, kind constant|unknown and an expression");
+            (kind.getValue() != "constant" && kind.getValue() != "unknown" && kind.getValue() != "unbounded")) {
+          fail(function, "an Arena demand summary needs a domain, kind constant|unknown|unbounded and an expression");
           continue;
         }
         if ((kind.getValue() == "constant") != decimal(fields.get("bytes")) ||
             (fields.get("capacity_bytes") && !decimal(fields.get("capacity_bytes"))))
-          fail(function, "constant Arena demand carries decimal bytes; unknown demand carries none");
+          fail(function, "constant Arena demand carries decimal bytes; unknown or unbounded demand carries none");
         uint32_t id = static_cast<uint32_t>(domain.getInt());
         if (!summarized.insert(id).second)
           fail(function, "summarizes an Arena domain twice");
@@ -149,6 +150,34 @@ LogicalResult verifyFunction(func::FuncOp function) {
               fail(user, "uses an Arena owner after its Release");
         }
       }
+  });
+  // Sections 35, 151 and v15 section 14: failure atomicity. A checked
+  // creation, New or Alloc is followed by the branch on its own failed flag;
+  // the candidate never crosses the failure edge, and every other use is
+  // dominated by the success block, which only that edge enters. A failed
+  // allocation therefore never publishes a partial reference or slice.
+  function.walk([&](Operation *op) {
+    if (!isa<sec::ArenaNewOp, sec::ArenaAllocOp, sec::ArenaCreateOwnedFixedOp, sec::ArenaCreateGrowableOp>(op) || op->getNumResults() != 3)
+      return;
+    Value candidate = op->getResult(0), flag = op->getResult(1);
+    auto branch = dyn_cast_or_null<cf::CondBranchOp>(op->getNextNode());
+    if (!branch || branch.getCondition() != flag || branch->getNextNode()) {
+      fail(op, "must end its block with the branch on its own failed flag before publishing its candidate");
+      return;
+    }
+    if (llvm::is_contained(branch.getTrueDestOperands(), candidate))
+      fail(op, "passes its candidate across the allocation failure edge");
+    Block *success = branch.getFalseDest();
+    if (!success->getSinglePredecessor()) {
+      fail(op, "success edge must be the only way into its publication block");
+      return;
+    }
+    for (Operation *user : candidate.getUsers()) {
+      if (user == branch.getOperation())
+        continue;
+      if (!dominance.dominates(success, user->getBlock()))
+        fail(user, "uses an Arena allocation candidate where the allocation may have failed");
+    }
   });
   // Section 127: Arena references depend on their domain epoch.
   SmallVector<Operation *> invalidations;

@@ -19,6 +19,10 @@ const DataLayoutProvenance = "clang 21.1.8 target datalayout (clang -target <tri
 // Rules: rules/platform/target_profiles.md — § 40; rules/memory/layout.md — § 47.2;
 // MD-141 correction §§ 3(4), 4.
 var targetDataLayouts = map[string]string{
+	"thumbv6m-none-eabi":              "e-m:e-p:32:32-Fi8-i64:64-v128:64:128-a:0:32-n32-S64",
+	"thumbv7m-none-eabi":              "e-m:e-p:32:32-Fi8-i64:64-v128:64:128-a:0:32-n32-S64",
+	"thumbv7em-none-eabi":             "e-m:e-p:32:32-Fi8-i64:64-v128:64:128-a:0:32-n32-S64",
+	"riscv32-unknown-elf":             "e-m:e-p:32:32-i64:64-n32-S128",
 	"x86_64-pc-linux-gnu":             "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128",
 	"aarch64-unknown-linux-gnu":       "e-m:e-p270:32:32-p271:32:32-p272:64:64-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128-Fn32",
 	"armv6-unknown-linux-gnueabihf":   "e-m:e-p:32:32-Fi8-i64:64-v128:64:128-a:0:32-n32-S64",

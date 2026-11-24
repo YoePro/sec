@@ -30,7 +30,8 @@ var (
 	// cleanupCancelReasons: the owned value moved out, its ownership ended
 	// in a replacement, or it was transferred out by a return/argument
 	// (package17 §§ 38, 40, 55).
-	cleanupCancelReasons = []string{"moved", "replaced", "transferred", "discarded"}
+	// "released": an explicit Arena Release ends the owner (P19 § 116).
+	cleanupCancelReasons = []string{"moved", "replaced", "transferred", "discarded", "released"}
 )
 
 // CleanupFacts are the compile-time identities of a cleanup.* operation.
@@ -110,7 +111,7 @@ func verifyCleanupOperation(module *Module, op Operation, values map[ValueID]Val
 		}
 	case OpCleanupCancel:
 		if len(op.Operands) != 0 || facts.Action == 0 || !oneOf(facts.Reason, cleanupCancelReasons) {
-			return fmt.Errorf("cleanup.cancel requires an action identity and a reason (moved, replaced, transferred, discarded)")
+			return fmt.Errorf("cleanup.cancel requires an action identity and a reason (moved, replaced, transferred, discarded, released)")
 		}
 	case OpCleanupDeferRegister:
 		if facts.Action == 0 || facts.Scope == 0 || facts.Ordinal == 0 || facts.Defer == 0 || facts.DestructionPlan != "" {

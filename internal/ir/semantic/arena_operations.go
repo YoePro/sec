@@ -297,3 +297,115 @@ func arenaUintOperand(types *TypeTable, id TypeID) bool {
 	t, ok := types.Lookup(id)
 	return ok && t.Kind == TypeUint && t.TargetSize
 }
+
+// verifyArenaChains orders the effect sites of each Arena domain within a
+// block: every operation after the creation continues the domain's owner
+// state-version and epoch chain exactly (state_before and epoch_before equal
+// the previous operation's state_after and epoch_after), creation
+// establishes a domain once per function, and nothing follows a terminal
+// Release or Destroy. Across blocks the builder's join approximation stands,
+// as in --sec-verify-arenas.
+// Rules: rules/mlir/packages/sec-mlir-dialect_package19.md — §§ 11, 36-48, 86-96, 156;
+// rules/mlir/dialect-versions/sec_mlir_dialect_v15.md — § 9.
+func verifyArenaChains(fn *Function) error {
+	created := map[uint32]bool{}
+	for _, block := range fn.Blocks {
+		type step struct {
+			state, epoch uint32
+			terminal     bool
+		}
+		last := map[uint32]step{}
+		for _, op := range block.Operations {
+			if !isArenaOperation(op.Kind) || op.Arena == nil || op.Backing == nil || op.Backing.Domain == 0 {
+				continue
+			}
+			domain, facts := op.Backing.Domain, op.Arena
+			terminal := op.Kind == OpArenaRelease || op.Kind == OpArenaDestroy
+			switch op.Kind {
+			case OpArenaCreateBorrowed, OpArenaCreateOwnedFixed, OpArenaCreateGrowable, OpArenaCreateDefault:
+				if created[domain] {
+					return fmt.Errorf("function %s establishes Arena domain %d twice", fn.ID, domain)
+				}
+				created[domain] = true
+			default:
+				if previous, ok := last[domain]; ok {
+					if previous.terminal {
+						return fmt.Errorf("function %s uses Arena domain %d after its Release ended it (%s)", fn.ID, domain, op.Kind)
+					}
+					if facts.StateBefore != previous.state || facts.EpochBefore != previous.epoch {
+						return fmt.Errorf("function %s: %s breaks the state-version or epoch chain of Arena domain %d", fn.ID, op.Kind, domain)
+					}
+				}
+			}
+			last[domain] = step{state: facts.StateAfter, epoch: facts.EpochAfter, terminal: terminal}
+		}
+	}
+	return verifyArenaPublication(fn)
+}
+
+// verifyArenaPublication enforces failure atomicity at the IR level (P19
+// §§ 35, 90-91, 151; v15 § 14): a checked creation, New or Alloc ends its
+// block with the branch on its own failed flag; the candidate never crosses
+// the failure edge (the success edge may pass it, §§ 90-91), and every other
+// use of it is dominated by the success edge, whose block has no other
+// predecessor. A failed allocation therefore never publishes a partial
+// or uninitialized reference or slice.
+func verifyArenaPublication(fn *Function) error {
+	blocks := map[BlockID]*Block{}
+	preds := map[BlockID][]BlockID{}
+	for i := range fn.Blocks {
+		blocks[fn.Blocks[i].ID] = fn.Blocks[i]
+	}
+	for _, block := range fn.Blocks {
+		if n := len(block.Operations); n > 0 {
+			for _, successor := range block.Operations[n-1].Successors {
+				preds[successor.Block] = append(preds[successor.Block], block.ID)
+			}
+		}
+	}
+	var dom map[BlockID]map[BlockID]bool
+	for _, block := range fn.Blocks {
+		for index, op := range block.Operations {
+			if !arenaCheckedOperation(op.Kind) || len(op.Results) != 3 {
+				continue
+			}
+			candidate, failed := op.Results[0].ID, op.Results[1].ID
+			if index != len(block.Operations)-2 {
+				return fmt.Errorf("function %s: %s must end its block with the branch on its failed flag", fn.ID, op.Kind)
+			}
+			branch := block.Operations[index+1]
+			if branch.Kind != OpCondBranch || len(branch.Operands) != 1 || branch.Operands[0] != failed || len(branch.Successors) != 2 {
+				return fmt.Errorf("function %s: %s must branch on its failed flag before publishing", fn.ID, op.Kind)
+			}
+			success := branch.Successors[1].Block
+			for _, argument := range branch.Successors[0].Arguments {
+				if argument == candidate {
+					return fmt.Errorf("function %s: %s passes its candidate across the failure branch", fn.ID, op.Kind)
+				}
+			}
+			if len(preds[success]) != 1 {
+				return fmt.Errorf("function %s: %s success edge must be the only way into its publication block", fn.ID, op.Kind)
+			}
+			if dom == nil {
+				dom = dominators(fn.Entry, blocks, preds)
+			}
+			for _, user := range fn.Blocks {
+				for _, use := range user.Operations {
+					uses := false
+					for _, operand := range use.Operands {
+						uses = uses || operand == candidate
+					}
+					for _, edge := range use.Successors {
+						for _, argument := range edge.Arguments {
+							uses = uses || argument == candidate && user.ID != block.ID
+						}
+					}
+					if uses && (user.ID == block.ID || !dom[user.ID][success]) {
+						return fmt.Errorf("function %s: %s candidate is used where the allocation may have failed", fn.ID, op.Kind)
+					}
+				}
+			}
+		}
+	}
+	return nil
+}

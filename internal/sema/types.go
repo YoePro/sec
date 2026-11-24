@@ -142,6 +142,10 @@ type Type struct {
 	EnumValues             []string
 	EnumConsts             map[string]EnumValue
 	EnumDefault            string
+	// EnumCarrier retains the resolved declared backing type without looking
+	// its name up again in another module. Rules: rules/concurrency/atomics.md
+	// §37A(4); rules/declarations/enums.md — Underlying type.
+	EnumCarrier *Type
 	// AssociatedEnum retains enum source identity while its discriminant and
 	// payload use the shared sum-type machinery (atomics.md — §6).
 	AssociatedEnum bool

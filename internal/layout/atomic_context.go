@@ -12,27 +12,26 @@ import (
 // Rules: rules/concurrency/atomics.md — §§38(3–7),39(1–5),48;
 // rules/platform/target_profiles.md — §10 and atomic capability separation.
 type AtomicContextViolation struct {
-	Requirement    AtomicRequirement
+	Key            AtomicCapabilityKey
 	Implementation AtomicImplementation
 	Property       string
 	Observed       AtomicProperty
 }
 
-// Error identifies the exact implementation, operation and execution contract
-// whose guarantee is missing or incompatible, without prescribing source key
-// spellings or an Unknown-capability policy for Sema (MD-095).
-// Rules: rules/concurrency/atomics.md — §§38–39,48(1–2).
+// Error identifies the exact implementation, operation and execution
+// category whose guarantee is missing or incompatible.
+// Rules: rules/concurrency/atomics.md — §§38–39, 37A(13), 48(1–2).
 func (e AtomicContextViolation) Error() string {
 	if e.Property == "nonblocking" {
 		if e.Observed == AtomicPropertyUnknown {
-			return fmt.Sprintf("atomic %s implementation %q has no proof of nonblocking operation in context %q", e.Requirement.Operation, e.Implementation.Identity, e.Requirement.ContextID)
+			return fmt.Sprintf("atomic %s implementation %q has no proof of nonblocking operation in context %q", e.Key.Operation, e.Implementation.Identity, e.Key.Context)
 		}
-		return fmt.Sprintf("atomic %s implementation %q may block in context %q requiring nonblocking operation", e.Requirement.Operation, e.Implementation.Identity, e.Requirement.ContextID)
+		return fmt.Sprintf("atomic %s implementation %q may block in context %q requiring nonblocking operation", e.Key.Operation, e.Implementation.Identity, e.Key.Context)
 	}
 	if e.Observed == AtomicPropertyUnknown {
-		return fmt.Sprintf("atomic %s implementation %q has no proof of interrupt safety in context %q", e.Requirement.Operation, e.Implementation.Identity, e.Requirement.ContextID)
+		return fmt.Sprintf("atomic %s implementation %q has no proof of interrupt safety in context %q", e.Key.Operation, e.Implementation.Identity, e.Key.Context)
 	}
-	return fmt.Sprintf("atomic %s implementation %q is not interrupt-safe in context %q", e.Requirement.Operation, e.Implementation.Identity, e.Requirement.ContextID)
+	return fmt.Sprintf("atomic %s implementation %q is not interrupt-safe in context %q", e.Key.Operation, e.Implementation.Identity, e.Key.Context)
 }
 
 // validateContext rejects a purportedly supported implementation unless it
@@ -41,16 +40,16 @@ func (e AtomicContextViolation) Error() string {
 // Native/intrinsic mechanisms and lock freedom supply no implicit exemption;
 // interrupt masking is not inferred from a name or assumed cross-core safe.
 // All failed guarantees are retained, without a diagnostic-priority decision.
-// This validates already-resolved plan requirements only; it neither produces
-// source requirement keys nor makes missing capabilities positive (MD-095).
-// Rules: rules/concurrency/atomics.md — §§37(1–5),38(3–7),39(1–5).
+// This validates already-resolved plan keys only; it never makes a missing
+// capability positive (atomics.md § 37A(13)).
+// Rules: rules/concurrency/atomics.md — §§37(1–5),38(3–7),39(1–5), 37A(13).
 func (c AtomicCapability) validateContext() error {
 	var violations []error
-	if (c.Requirement.NoBlocking || c.Requirement.InterruptSafe) && c.Implementation.Blocking != AtomicPropertyNo {
-		violations = append(violations, AtomicContextViolation{Requirement: c.Requirement, Implementation: c.Implementation, Property: "nonblocking", Observed: c.Implementation.Blocking})
+	if (c.Key.NoBlocking || c.Key.InterruptSafe) && c.Implementation.Blocking != AtomicPropertyNo {
+		violations = append(violations, AtomicContextViolation{Key: c.Key, Implementation: c.Implementation, Property: "nonblocking", Observed: c.Implementation.Blocking})
 	}
-	if c.Requirement.InterruptSafe && c.Implementation.InterruptSafe != AtomicPropertyYes {
-		violations = append(violations, AtomicContextViolation{Requirement: c.Requirement, Implementation: c.Implementation, Property: "interrupt-safe", Observed: c.Implementation.InterruptSafe})
+	if c.Key.InterruptSafe && c.Implementation.InterruptSafe != AtomicPropertyYes {
+		violations = append(violations, AtomicContextViolation{Key: c.Key, Implementation: c.Implementation, Property: "interrupt-safe", Observed: c.Implementation.InterruptSafe})
 	}
 	return errors.Join(violations...)
 }

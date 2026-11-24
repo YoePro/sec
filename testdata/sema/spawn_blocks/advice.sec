@@ -1,0 +1,33 @@
+module main
+fn Value() int { return 42 }
+fn Nothing() void {}
+fn ResultCall() Result[void, TaskSpawnError] { return Ok() }
+fn Default() Result[Task[void], TaskSpawnError] {
+    return spawn { Value() } // Task advice
+}
+fn TaskBody() Result[Task[void], TaskSpawnError] {
+    return spawn task { Value() } // Task advice
+}
+fn ThreadBody() Result[Thread[void], ThreadSpawnError] {
+    return spawn thread { Value() } // Thread advice
+}
+fn VoidCall() Result[Task[void], TaskSpawnError] { return spawn { Nothing() } }
+fn Discarded() Result[Task[void], TaskSpawnError] { return spawn { discard Value() } }
+fn Consumed() Result[Task[void], TaskSpawnError] {
+    return spawn { let value := Value()
+        discard value }
+}
+fn NestedLambda() Result[Task[void], TaskSpawnError] {
+    return spawn {
+        let callback := fn() void { Value() } // ordinary advice
+        callback()
+    }
+}
+fn EarlierCall() Result[Task[void], TaskSpawnError] {
+    return spawn { Value() // ordinary advice
+        Nothing() }
+}
+fn Repeated(flag: bool) Result[Task[void], TaskSpawnError] {
+    while flag { return spawn { Value() } } // Task advice
+    return spawn { Value() } // Task advice
+}

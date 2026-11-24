@@ -18,9 +18,9 @@ func TestAtomicContextProofMatrix(t *testing.T) {
 					for _, blocking := range []AtomicProperty{AtomicPropertyUnknown, AtomicPropertyNo, AtomicPropertyYes} {
 						for _, safety := range []AtomicProperty{AtomicPropertyUnknown, AtomicPropertyNo, AtomicPropertyYes} {
 							request := atomicTestRequirement()
-							request.NoBlocking, request.InterruptSafe = noBlocking, interruptSafe
+							request.Key.NoBlocking, request.Key.InterruptSafe = noBlocking, interruptSafe
 							implementation := AtomicImplementation{Kind: kind, Identity: "test-platform-implementation", LockFree: AtomicPropertyYes, Blocking: blocking, InterruptSafe: safety}
-							fact := AtomicCapability{Requirement: request, Availability: AtomicSupported, Provenance: "test-proof", Implementation: implementation}
+							fact := AtomicCapability{Key: request.Key, Availability: AtomicSupported, Provenance: "test-proof", Implementation: implementation}
 							base := atomicTestPlan()
 							base.PointerWidthBits = width
 							plan, err := base.WithAtomicCapabilities([]AtomicCapability{fact})
@@ -36,10 +36,10 @@ func TestAtomicContextProofMatrix(t *testing.T) {
 								continue
 							}
 							var violation AtomicContextViolation
-							if !errors.As(err, &violation) || violation.Requirement != request || violation.Implementation != implementation {
+							if !errors.As(err, &violation) || violation.Key != request.Key || violation.Implementation != implementation {
 								t.Fatal("lost exact context evidence", err)
 							}
-							for _, text := range []string{"test-os/test-arch", "hosted", request.Operation, request.ContextID, implementation.Identity} {
+							for _, text := range []string{"test-os/test-arch", "hosted", request.Key.Operation, string(request.Key.Context), implementation.Identity} {
 								if !strings.Contains(err.Error(), text) {
 									t.Fatal("missing context in diagnostic", text, err)
 								}
@@ -68,14 +68,14 @@ func TestAtomicContextProofMatrix(t *testing.T) {
 func TestAtomicContextChecksEveryOperation(t *testing.T) {
 	for _, operation := range []string{"Load", "Store", "Swap", "CompareExchange", "FetchAdd", "FetchSub", "FetchAnd", "FetchOr", "FetchXor", "Fence"} {
 		request := atomicTestRequirement()
-		request.Operation, request.Order, request.NoBlocking = operation, "SeqCst", true
+		request.Key.Operation, request.Key.Order, request.Key.NoBlocking = operation, "SeqCst", true
 		if operation != "CompareExchange" {
-			request.FailureOrder = ""
+			request.Key.FailureOrder = ""
 		}
 		if operation == "Fence" {
-			request.TypeID, request.SizeBytes, request.AlignmentBytes = "", 0, 0
+			request.SemanticTypeID, request.Key.CarrierTypeID, request.Key.Representation, request.Key.SizeBytes, request.Key.AlignmentBytes = "", "", StorageRepresentation{}, 0, 0
 		}
-		fact := AtomicCapability{Requirement: request, Availability: AtomicSupported, Provenance: "test-proof", Implementation: AtomicImplementation{Kind: AtomicEmulated, Identity: "test-blocking-fallback", Blocking: AtomicPropertyYes}}
+		fact := AtomicCapability{Key: request.Key, Availability: AtomicSupported, Provenance: "test-proof", Implementation: AtomicImplementation{Kind: AtomicEmulated, Identity: "test-blocking-fallback", Blocking: AtomicPropertyYes}}
 		if _, err := atomicTestPlan().WithAtomicCapabilities([]AtomicCapability{fact}); err == nil {
 			t.Fatal("blocking fallback accepted", operation)
 		}
@@ -83,14 +83,13 @@ func TestAtomicContextChecksEveryOperation(t *testing.T) {
 }
 
 // TestAtomicContextDoesNotInventAvailability preserves missing/negative target
-// evidence in restricted contexts. This model check does not settle the source
-// Unknown-capability or key-production questions tracked by MD-095.
+// evidence in restricted contexts (atomics.md § 37A(11)).
 // Rules: rules/concurrency/atomics.md — §§37–39.
 func TestAtomicContextDoesNotInventAvailability(t *testing.T) {
 	request := atomicTestRequirement()
-	request.NoBlocking, request.InterruptSafe = true, true
+	request.Key.NoBlocking, request.Key.InterruptSafe = true, true
 	for _, availability := range []AtomicAvailability{AtomicUnknown, AtomicUnsupported} {
-		fact := AtomicCapability{Requirement: request, Availability: availability, Provenance: "test-target"}
+		fact := AtomicCapability{Key: request.Key, Availability: availability, Provenance: "test-target"}
 		plan, err := atomicTestPlan().WithAtomicCapabilities([]AtomicCapability{fact})
 		if err != nil {
 			t.Fatal(err)

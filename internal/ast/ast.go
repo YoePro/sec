@@ -620,6 +620,8 @@ type TypeReference struct {
 	FunctionCapability     CallableCapability
 	FunctionParameterTypes []*TypeReference
 	FunctionReturnType     *TypeReference
+	ExecutionRequirements  *ExecutionRequirementClause
+	Grouping               []TypeGrouping
 }
 
 // UnitExpressionKind classifies the source structure of a unit annotation.
@@ -1122,21 +1124,22 @@ func (es *ExpressionStatement) TokenLiteral() string {
 type FunctionDeclaration struct {
 	// EndToken is the parser-owned final signature/body token, including the closing brace.
 	// Rules: rules/tooling/cli.md — §5.3; rules/analysis/call_graph.md — Callable node.
-	EndToken           lexer.Token
-	Token              lexer.Token
-	Attributes         []*Attribute
-	Name               *Identifier
-	GenericParameters  []*GenericParameter
-	ParameterOpen      lexer.Token
-	Parameters         []*Parameter
-	ReturnType         *TypeReference
-	Body               *BlockStatement
-	Unsafe             bool
-	Extern             bool
-	ABI                string
-	LinkName           string
-	Static             bool
-	ReceiverCapability ReceiverCapability
+	EndToken              lexer.Token
+	Token                 lexer.Token
+	Attributes            []*Attribute
+	Name                  *Identifier
+	GenericParameters     []*GenericParameter
+	ParameterOpen         lexer.Token
+	Parameters            []*Parameter
+	ReturnType            *TypeReference
+	ExecutionRequirements *ExecutionRequirementClause
+	Body                  *BlockStatement
+	Unsafe                bool
+	Extern                bool
+	ABI                   string
+	LinkName              string
+	Static                bool
+	ReceiverCapability    ReceiverCapability
 }
 
 // TestDeclaration retains the canonical source identity and body of a
@@ -1204,13 +1207,14 @@ type LambdaExpression struct {
 	// Attributes are the callable-body attributes written before a `let`
 	// that directly initializes this lambda (`@noPanic`, MD-030); they
 	// belong to the lambda's invocation, not to the binding.
-	Attributes    []*Attribute
-	CaptureOpen   lexer.Token
-	Captures      []LambdaCapture
-	ParameterOpen lexer.Token
-	Parameters    []*Parameter
-	ReturnType    *TypeReference
-	Body          *BlockStatement
+	Attributes            []*Attribute
+	CaptureOpen           lexer.Token
+	Captures              []LambdaCapture
+	ParameterOpen         lexer.Token
+	Parameters            []*Parameter
+	ReturnType            *TypeReference
+	ExecutionRequirements *ExecutionRequirementClause
+	Body                  *BlockStatement
 }
 
 func (le *LambdaExpression) expressionNode() {}
@@ -2933,7 +2937,10 @@ type StructLiteralField struct {
 }
 
 type SpawnExpression struct {
-	Token     lexer.Token
+	Token lexer.Token
+	// EndToken is the real operand/body end or recovery endpoint, preserving
+	// the complete child-expression span. Rules: rules/concurrency/spawn.md §25(5).
+	EndToken  lexer.Token
 	KindToken lexer.Token
 	Kind      string
 	// Configuration retains a named physical-thread configuration separately

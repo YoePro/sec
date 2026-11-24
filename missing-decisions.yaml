@@ -1,6 +1,6 @@
 schema_version: 1
-updated: "2026-11-23"
-last_id: MD-151
+updated: "2026-11-24"
+last_id: MD-152
 purpose: >-
   Tracks normative decisions that are missing or insufficiently precise and
   therefore constrain implementation. Remove an entry only after the owning
@@ -185,8 +185,10 @@ decisions:
       synchronized 2026-11-17 (allocation.md § 22(7)-(9), target_profiles.md
       § 7). Implementation is pending under platform.target-profiles. The
       Target/Variant selection syntax exists since MD-139 (2026-11-20).
-      Freestanding with heap allocation disabled by default is not blocked;
-      enabling a provider is blocked by MD-151 (provider catalogs).
+      Freestanding with heap allocation disabled by default is not blocked.
+      MD-151 (decided 2026-11-24) declares no provider for BareMetal, RTOS,
+      QNX or embedded-arena; further provider contracts need their own
+      decision, and none is requested.
     classification: constraining
     status: decided-implementation-pending
 
@@ -222,8 +224,21 @@ decisions:
       with explicit P19 context and source-selected try/panic metadata;
       protected Result failures route to propagation or local handlers.
       CLI inspection remains at P18. Physical allocation/MLIR/LLVM emission,
-      transactional +=, interpolation and conformance under allocator failure
-      remain pending in the existing step 3 and step 4. Fallible text operands
+      native transactional +=, interpolation and conformance under allocator
+      failure remain pending in the existing step 3 and step 4. High-level
+      transactional += for local/captured holders, stored fields and mutable
+      reference referents was implemented 2026-11-24: read once before the RHS,
+      prepare one maximal materialization, commit only on success, and route
+      operand/allocation errors to propagation or void handlers. String statics
+      and proven fixed-array element destinations were subsequently enabled on
+      2026-11-24. Properties, runtime-checked indexed destinations and other RHS
+      failure kinds retain explicit capability boundaries. Full native closure
+      additionally depends on implementing the provider MD-151 decided
+      (sec.system-heap.v1, target_profiles.md § 41A, allocation.md § 17(11));
+      the provisional hosted profile mapping is not normative provider
+      evidence under target_profiles.md section 41.
+      P23/P24 physical string representation remains an implementation dependency.
+      Fallible text operands
       short-circuit before later evaluation or allocation and share the same
       StringError route; separately protected operands retain the outer panic mode.
     classification: constraining
@@ -549,6 +564,9 @@ decisions:
       - rules/concurrency/atomics.md
       - rules/platform/target_profiles.md
       - rules/platform/platform_model.md
+      - rules/memory/layout.md
+      - rules/compiler/semantic_ir.md
+      - rules/tooling/diagnostics.md
     description: >-
       Open decision (2026-10-17). atomics.md §§ 37–39 and 48 require Sema to
       look up the selected CompilationPlan's capability for every concrete
@@ -589,8 +607,32 @@ decisions:
       canonical type identity, the § 19 context name plus the
       NoBlocking/InterruptSafe flags, sizes from the resolved scalar plan,
       Unknown deferred to lowering except in interrupt contexts.
+      Decided by the owner 2026-11-24
+      (rules/corrections/applied/MD-095-atomic-capability-requirements-correction-2026-11-24-20261124.md),
+      replacing the suggested direction: (1) the complete nominal type is
+      kept as SemanticTypeID and capability is queried by the resolved
+      underlying CarrierTypeID (named layers, enum backing integer,
+      RawPtr carrier keeping the pointee, plan-derived int/uint, symbolic
+      unresolved generics); (2) ContextID is the target_profiles.md § 19
+      category from execution-context analysis, with NoBlocking and
+      InterruptSafe as contract requirements and canonical target
+      refinements (vector, priority, masking domain) that restrict proofs
+      but create no context; (3) the canonical layout service supplies the
+      access extent and guaranteed storage alignment, including a verified
+      atomic minimum that pack cannot reduce, and a missing fact is
+      incomplete layout, never zero; (4) Unknown is an unfulfilled proof
+      obligation: analysis continues, executable emission fails closed
+      unless discharged, in every context. Integrated 2026-11-24
+      (atomics.md §§ 7(9), 8(10), 37(6), 37A, 38(8), 39(6), 45(11), 46(7),
+      47(9)-(10), 48(4); target_profiles.md §§ 19, 29-32; platform_model.md
+      §§ 9, 14, 21; layout.md §§ 8(8), 28(7), 47.6; semantic_ir.md § 123B;
+      diagnostics.md § 24(4l)); implementation steps and tests T01-T64 are
+      tracked in platform.atomics-v2, concurrency.atomics-v2,
+      frontend.layout, semantic-ir.atomics-v2, lowering.atomics-v2 and
+      tooling.atomics-v2. MD-096 and other lowering decisions are not
+      closed by it.
     classification: blocking
-    status: open
+    status: decided-implementation-pending
 
 
   - id: MD-101
@@ -1145,9 +1187,21 @@ decisions:
       call-argument transfer at call entry without an unambiguous spawn
       creation-failure contract. Same question for `spawn thread`. The answer
       fixes source availability, cleanup obligations and Semantic IR commit
-      facts. Governance owner: concurrency.spawn-v1.
+      facts. Governance owner: concurrency.spawn-v1. Decided by the owner
+      2026-11-24
+      (rules/corrections/applied/MD-128-spawn-transactional-ownership-correction-2026-11-24-20261124.md):
+      task, thread and process spawns share one transactional ownership
+      semantics following the processes.md § 8.6 precedent. Successful
+      creation commits every transfer exactly once; creation Err cancels the
+      pending transfers of reusable sources, which stay owned and available,
+      and independently completed moves, mutations and I/O are not rolled
+      back. Integrated 2026-11-24 (spawn.md §§ 6(7), 10(6), 10(8) replaced,
+      10(10), 10(11), 11(7), 13(5), 16(7), 25(4), 26(5); tasks.md § 4(11);
+      threads.md § 20(5)-(7); processes.md § 8.6; ownership.md § 14.2;
+      semantic_ir.md § 77(4a)); implementation and tests T01-T30 are tracked
+      in concurrency.spawn-v1.
     classification: constraining
-    status: open
+    status: decided-implementation-pending
 
   - id: MD-129
     area: spawn-already-cancelled-parent
@@ -1163,9 +1217,20 @@ decisions:
       delegates to task relationship rules without resolving it. Decide whether
       creation succeeds with the child already cancelled, fails with a
       TaskSpawnError, or is a documented per-kind difference. Should be decided
-      after MD-128. Governance owner: concurrency.spawn-v1.
+      after MD-128. Governance owner: concurrency.spawn-v1. Decided by the
+      owner 2026-11-24 (rules/corrections/applied/MD-129-spawn-parent-cancellation-correction-2026-11-24-20261124.md):
+      a pending parent request is not a creation error; a successfully
+      created child with a structured cancellation link starts with its own
+      request pending before it can observe it, a child without the link
+      inherits nothing, and detach breaks future propagation without revoking
+      a received request, with race-safe ordering and no cross-kind
+      inheritance. Integrated 2026-11-24 (cancellation.md §§ 55(5)-(9);
+      spawn.md §§ 24(3) replaced, 26(6); tasks.md §§ 4(12), 8(7), 22(11);
+      concurrency.md § 21(14); threads.md § 46(5); processes.md § 29;
+      await.md § 52(6); semantic_ir.md § 77(4b)); implementation and tests
+      T01-T28 are tracked in concurrency.spawn-v1.
     classification: localized
-    status: open
+    status: decided-implementation-pending
 
   - id: MD-130
     area: static-storage-move-out
@@ -1223,9 +1288,23 @@ decisions:
       Result, while block forms retain the explicit unsupported-capability
       diagnostic. This is independent of MD-128 creation-failure ownership
       commit and MD-129 already-cancelled-parent behavior. Governance owner:
+      concurrency.tasks-v2. Decided by the owner 2026-11-24
+      (rules/corrections/applied/MD-133-spawn-block-return-type-correction-2026-11-24-20261124.md),
+      superseding the implicit-void versus implicit-tail-expression choice:
+      for task, thread and process blocks alike, T is inferred from the
+      body's explicit value-bearing returns and is void without one; a final
+      expression statement is never a return; conflicting or underconstrained
+      returns are mandatory diagnostics without coercion or wrapping; return
+      exits the child; naked try uses the child's own channel; no implicit
+      capture; the existing A3001 advisory explains a discarded final call.
+      Integrated 2026-11-24 (spawn.md §§ 3(17), 3A, 25(5), 26(7), 27(5);
+      tasks.md § 3(4); threads.md § 2(7); processes.md § 7.1;
+      lambda-functions.md § 5; functions.md § 3; grammar.md § 89(4);
+      errorhandling.md § 12; diagnostics.md § 25(8); semantic_ir.md
+      § 77(4c)); implementation and tests T01-T42 are tracked in
       concurrency.tasks-v2.
     classification: localized
-    status: open
+    status: decided-implementation-pending
 
   - id: MD-135
     area: dynamic-array-append-failure-element-ownership
@@ -1327,9 +1406,25 @@ decisions:
       bindings. Option (b): it is effect-polymorphic or carries an implicit
       requirement, and calls through open targets are checked conservatively.
       Option (c): new syntax lets a function type declare the requirement.
-      Governance owner: frontend.cancellation-effect-v1.
+      Governance owner: frontend.cancellation-effect-v1. Decided by the owner
+      2026-11-24, option (c) for Sec 0.1.1
+      (rules/corrections/applied/MD-138-callable-execution-requirements-v0.1.1-correction-2026-11-24-20261124.md):
+      the require(task|thread|cancellable) clause on function types,
+      declarations, interface methods and lambdas; inference stays the
+      default, canonical callable types carry the normalized requirement set
+      (task implies cancellable) and a conversion needs D implies S, so a
+      plain fn type rejects a requirement-bearing callable. Integrated
+      2026-11-24 (grammar.md §§ 27(6), 32(5), 73(3), 101(4), 101A, 115(4);
+      cancellation.md §§ 19(7), 21(6), 24A, 56(11), 57(6), 59(8), 60(5);
+      lexical_structure.md § 7.2; lambda-functions.md §§ 11, 12, 41, 42;
+      functions.md §§ 2, 19, 24; types.md § 33(7); interfaces.md §§ 5, 6;
+      generics.md § 28; monomorphization.md § 8.3; spawn.md §§ 8(6), 16(6),
+      25(3), 26(4); effect_analysis.md § 2(4); semantic_ir.md § 52(7);
+      formatter.md § 16(13a); lsp.md § 13(3); diagnostics.md § 29(7));
+      implementation and tests T01-T45 are tracked in
+      frontend.cancellation-effect-v1.
     classification: constraining
-    status: open
+    status: decided-implementation-pending
 
   - id: MD-139
     area: allocation-provider-selection-syntax
@@ -1356,7 +1451,7 @@ decisions:
       consumes (provider identity, reclamation authority, and individual
       reclamation or not). Governance owners: platform.target-profiles and
       lowering.sec-mlir-package19.
-      Accepted by the owner 2026-11-20 and integrated (projects.md § 19(11)-(15), target_profiles.md § 41, allocation.md § 28A) from rules/corrections/applied/MD-139-allocation-profile-provider-selection-proposed-correction-2026-11-20-20261121.md. Implementation tracked in platform.target-profiles. 2026-11-23: the provider-backed remainder is blocked by MD-151 (provider catalogs).
+      Accepted by the owner 2026-11-20 and integrated (projects.md § 19(11)-(15), target_profiles.md § 41, allocation.md § 28A) from rules/corrections/applied/MD-139-allocation-profile-provider-selection-proposed-correction-2026-11-20-20261121.md. Implementation tracked in platform.target-profiles. 2026-11-23: the provider-backed remainder was blocked by MD-151, decided 2026-11-24 (sec.system-heap.v1, target_profiles.md § 41A); it is now implementation work in platform.target-profiles.
     classification: blocking
     status: decided-implementation-pending
 
@@ -1412,7 +1507,7 @@ decisions:
       - the values for each registered target, including the 128/256-bit
         integers.
       Governance owners: frontend.layout and lowering.sec-mlir-package24.
-      Integrated 2026-11-20 (layout.md § 47.1–47.2, types.md §§ 9.1(7), 9.4(9), target_profiles.md § 40): bool 1 byte (0x00/0x01), rune 4 bytes, alignment as typed per-representation plan facts. internal/layout implements it (typed ScalarAlignments, bool/rune sizes). The per-target producer exists (internal/platform/target/data_layout.go, clang 21.1.8 data layouts, verified per triple). sec build checks the code generator's applied data layout against those facts and fails closed (cmd/compiler/backend_data_layout.go). Remaining: verified layouts for planned bare-metal/RTOS targets and P24 lowering checks.
+      Integrated 2026-11-20 (layout.md § 47.1–47.2, types.md §§ 9.1(7), 9.4(9), target_profiles.md § 40): bool 1 byte (0x00/0x01), rune 4 bytes, alignment as typed per-representation plan facts. internal/layout implements it (typed ScalarAlignments, bool/rune sizes). The per-target producer exists (internal/platform/target/data_layout.go, clang 21.1.8 data layouts, verified per triple). sec build checks the code generator's applied data layout against those facts and fails closed (cmd/compiler/backend_data_layout.go). Diagnostics completed 2026-11-24 (MD-141 correction section 10(1)): the canonical layout failure describes semantic display name and identity, selected target/triple/profile/ABI, storage representation/width, missing or contradictory fact, operation need and repair owner. Arena plans project the same failure into compiler analysis, lowering-readiness reports and LSP hover; missing and invalid facts retain distinct remedies. Target coverage completed 2026-11-24: seven concrete baremetal/FreeRTOS registrations now have explicit triples and maintained clang 21.1.8 layouts; the full LLVM 21.1.8 code generator verifies applied layouts for all 25 concrete registrations. RTEMS/Zephyr any entries still require a concrete architecture and fail closed, rather than claiming layout support. Remaining: P24 package reconciliation and physical lowering checks; no target emission/link/run support was promoted.
     classification: blocking
     status: decided-implementation-pending
   - id: MD-142
@@ -1664,6 +1759,12 @@ decisions:
       - rules/memory/arena.md
       - rules/projects/projects.md
     description: >-
+      Proposal prepared 2026-11-24 with owner authorization:
+      rules/corrections/MD-151-system-heap-provider-proposal-20261124.md
+      defines proposed catalog identity, qualified target malloc/free binding,
+      checked over-alignment, failure mapping, matching reclamation, owned Arena
+      chunks and qualification/migration policy. It is awaiting owner decision;
+      no provider contract has been adopted and the blocker remains open.
       Recorded 2026-11-23. It was previously documented only as "owner decision
       pending" in governance platform.target-profiles (2026-11-20). MD-139
       (target_profiles.md § 41(4)-(8), correction §§ 3(4)-(7), 5) requires every
@@ -1701,10 +1802,69 @@ decisions:
       (platform.target-profiles); P19-20 owned Arena creation (WithCapacity/
       Growable); P19-27 profiles; the strict-profile verifier of P19-26;
       the provider rows of the MD-139 conformance matrix, including P18
-      individually reclaimable T[] versus a bulk-only provider. Not
+      individually reclaimable T[] versus a bulk-only provider; MD-039 native
+      string materialization/append closure and allocator-failure conformance
+      (the native endpoint must consume a verified provider binding rather
+      than infer malloc from hosted). Not
       blocked: Arena.FromBuffer, New/Alloc on a borrowed Arena, layout
       consumption, and freestanding with allocation disabled by default.
       Governance owners: platform.target-profiles,
       lowering.sec-mlir-package19, lowering.sec-mlir-package18.
+      Decided by the owner 2026-11-24, revision 1 accepted as written
+      (rules/corrections/applied/MD-151-system-heap-provider-proposal-20261124-20261124.md):
+      (1) qualified Hosted Linux/Darwin/Windows on amd64/arm64 records nominate
+      the compiler-managed provider sec.system-heap.v1, bound per record to a
+      qualified C runtime's malloc/free; (2) individual reclamation, explicit
+      qualified maximum alignment with a checked over-alignment adapter,
+      dynamic unknown capacity, InvalidSize/InvalidAlignment/OutOfMemory
+      failure mapping, ordinary contexts only, lifetime until matching free;
+      (3)-(4) no default for embedded-arena, RTOS, QNX or BareMetal and no
+      static-buffer provider or new manifest key; (5) WithCapacity and
+      Growable use the same provider, Growable with fresh nonrelocating
+      chunks; (6) typed, versioned catalog records beside the target
+      registry, qualified by link and target-run checks and fingerprinted;
+      (7) on implementation the provisional hosted projection is removed and
+      unqualified configurations become Unknown with a targeted diagnostic.
+      Integrated 2026-11-24 (target_profiles.md § 41A; allocation.md §§ 7(6),
+      10(7), 17(11), 28A(4); arena.md §§ 12(10), 13(7), 32(4), 35(5);
+      projects.md § 19(13)). Which plans impose a strict bounded-memory
+      policy is not part of this decision and is MD-152. Implementation is
+      tracked in platform.target-profiles, lowering.sec-mlir-package19,
+      lowering.sec-mlir-package18 and memory.allocation.
     classification: blocking
+    status: decided-implementation-pending
+
+  - id: MD-152
+    area: strict-bounded-memory-policy-selection
+    rulebooks:
+      - rules/memory/arena.md
+      - rules/memory/allocation.md
+      - rules/platform/target_profiles.md
+      - rules/mlir/packages/sec-mlir-dialect_package19.md
+    description: >-
+      Recorded 2026-11-24 while integrating MD-151. arena.md § 114(3) says
+      unknown or unbounded Arena demand "may be an error under strict
+      bounded-memory policy", § 115(1) that a bare-metal bounded profile "may
+      require" statically bounded demand, no OS provider, no hidden growth,
+      no mandatory runtime epoch metadata and no context without provable
+      backing, allocation.md § 22(5) that a statically bounded profile "may
+      require capacity proof", and P19 §§ 82 and 131 that a strict plan fails
+      the compile on unknown, unbounded or provably over-capacity demand
+      "according to profile rules", while hosted/permissive profiles "may"
+      report information or warning diagnostics. No rule says how a
+      CompilationPlan selects that policy or which requirements it imposes;
+      MD-151 decided providers only. Decide: (1) whether strict bounded memory
+      follows from the BareMetal family, from an allocation mode such as
+      embedded-arena, or is selected explicitly (which would be a new
+      manifest key under the MD-139 [*.allocation] tables); (2) which of the
+      § 115(1) / P19 § 131 requirements it imposes; (3) whether hosted and
+      other permissive plans report unknown, unbounded or over-capacity
+      demand at all, and with which severity. The Sema demand summary
+      (unknown/unbounded/constant with capacity) and the single-allocation
+      § 83 error exist and do not depend on this. Blocks: the strict-profile
+      verifier (P19-26), strict rows of P19 § 155 (P19-37) and § 82
+      validation (P19-13), and the strict half of the bare-metal bounded
+      profile (P19-27). Governance owners: lowering.sec-mlir-package19,
+      platform.target-profiles.
+    classification: constraining
     status: open

@@ -1,0 +1,8 @@
+module main
+
+type Signed int
+type Unsigned uint
+type NativePair struct {
+    SignedValue: Signed,
+    UnsignedValue: Unsigned,
+}

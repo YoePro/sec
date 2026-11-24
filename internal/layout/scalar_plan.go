@@ -48,6 +48,12 @@ type ResolvedScalarPlan struct {
 	// derived from LLVMTriple, so JSON plan identities omit them; the layout
 	// fingerprint carries their canonical form (plan_fingerprints.go).
 	Alignments ScalarAlignments `json:"-"`
+	// AtomicAlignments are the target's verified minimum alignments of atomic
+	// storage per IntegerStorage representation (MD-095; layout.md § 47.6).
+	// A fact only raises the natural alignment; nil or a missing entry leaves
+	// every Atomic[T] layout over that representation incomplete. They join
+	// the layout key and the layout fingerprint.
+	AtomicAlignments ScalarAlignments `json:"-"`
 	// AddressDomains are the target-supplied hardware address domains, in
 	// canonical order (MD-111 §§ 1(6)-1(7); address_domains.go).
 	AddressDomains []AddressDomain
@@ -80,6 +86,9 @@ func (p ResolvedScalarPlan) Validate() error {
 		return fmt.Errorf("C ABI model %s pointer width %d does not match target pointer width %d", p.CABI.Name, p.CABI.PointerWidthBits, p.PointerWidthBits)
 	}
 	if err := p.Atomics.validateFor(p); err != nil {
+		return err
+	}
+	if err := validateAtomicAlignments(p.AtomicAlignments); err != nil {
 		return err
 	}
 	if err := p.IPC.validateFor(p); err != nil {

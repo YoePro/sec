@@ -174,6 +174,8 @@ Sec 0.1 does not support multiple lambda return values.
 
 Related multiple values must be returned through one explicit type.
 
+**Amendment MD-133 (2026-11-24, Sec 0.1 and 0.1.1, `rules/corrections/applied/MD-133-spawn-block-return-type-correction-2026-11-24-20261124.md` § 1(6)).** The body of a spawn block is the one intentional exception: its return type is inferred from its explicit value-bearing returns (`rules/concurrency/spawn.md` § 3A). Lambdas keep their mandatory explicit return type and explicit `return`; spawn blocks introduce no general inferred-return lambdas.
+
 ## 6. No expression-body shorthand
 
 Lambda expressions always use the normal block body.
@@ -379,6 +381,13 @@ Return type is part of the callable type.
 
 A callable assignment must preserve or safely strengthen callable authority according to the capability compatibility rule.
 
+**Amendment MD-138 (2026-11-24, Sec 0.1.1, `rules/corrections/applied/MD-138-callable-execution-requirements-v0.1.1-correction-2026-11-24-20261124.md` § 6).** Callable type identity also includes the normalized execution-requirement set (`task`, `thread`, `cancellable`; `rules/concurrency/cancellation.md` § 24A). A function type may declare it with a `require(...)` suffix (`rules/foundations/grammar.md` § 101A); an explicitly written type without one has no requirement. A callable with effective requirements `S` converts to a function type declaring `D` only when `D` implies `S`, independently of the capability rule above: `fn() void require(task)` accepts a context-free callable, while plain `fn() void` rejects a task-requiring one, also for a known target and inside a task. Requirements survive storage in structs, unions, collections and generic arguments, and no conversion strips them.
+
+```sec
+mut fn() int require(task)
+-> fn(-> Resource) Handle require(thread)
+```
+
 ## 12. Named functions as callable values
 
 A named function may be used as a callable value when one concrete overload and generic specialization can be resolved.
@@ -396,6 +405,8 @@ An overloaded function name requires enough target context to select one overloa
 An unresolved overload set is not one runtime callable value.
 
 An unresolved generic function template is not one runtime callable value.
+
+**Amendment MD-138 (2026-11-24, Sec 0.1.1, `rules/corrections/applied/MD-138-callable-execution-requirements-v0.1.1-correction-2026-11-24-20261124.md` §§ 5(4), 5(7)).** A named function or lambda used as a callable value carries its effective requirements: the inferred summary when it has no clause, its declared contract otherwise. `let callback := NeedsTask` has type `fn() void require(task)` when `NeedsTask` uses `Task.Current()`. A lambda may declare `fn() void require(task) { ... }`. Inference does not cross a callable-definition boundary because a closure is constructed, captured, stored, returned or moved; the creating context keeps the requirements of its own capture and argument evaluation, and invocation is checked separately.
 
 ## 13. Explicit capture syntax
 
@@ -1030,6 +1041,8 @@ source location
 
 Sema must attach the inferred callable capability and resolved callable type.
 
+From Sec 0.1.1 the AST also keeps an optional execution requirement clause on lambdas and function types with its entries, spans, delimiters and original spelling, and the resolved callable type carries the normalized requirement set (MD-138).
+
 The AST must not encode one fixed physical environment representation.
 
 ## 42. Sema requirements
@@ -1063,6 +1076,7 @@ Sema must:
 - preserve native variadic semantics;
 - reject generic lambdas;
 - treat the lambda as a boundary for return, break, continue, defer, and error propagation.
+- record the lambda's execution-requirement contract (declared or inferred), verify an explicit clause against the body and check requirement compatibility at every conversion (MD-138, Sec 0.1.1; `rules/concurrency/cancellation.md` § 24A).
 
 ## 43. Escape and lifetime analysis
 

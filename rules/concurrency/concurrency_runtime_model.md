@@ -120,6 +120,8 @@ let worker := try spawn Work()
 
 **§ 5(5)** Runtime creation failures use the exact closed error type owned by `tasks.md`, `threads.md`, or `processes.md`; this rulebook neither invents additional error variants nor flattens one error domain into another. Ownership commit and rollback must follow the owning spawn/ownership contract. No implementation may assume a universal task/thread failure-commit rule while `MD-128` remains unresolved; `spawn process` follows its already-fixed transactional startup rule.
 
+**Amendment MD-128 (2026-11-24, `rules/corrections/applied/MD-128-spawn-transactional-ownership-correction-2026-11-24-20261124.md`).** MD-128 is resolved: task, thread and process creation share the transactional commit and rollback rule of `spawn.md` § 10(8), and runtime creation machinery must implement it for every supported kind.
+
 **§ 5(6)** A target/profile that cannot supply a required execution kind is rejected during compile-time target validation. Unsupported task, physical-thread, or Sec-process capability must never be disguised as a runtime `TaskSpawnError`, `ThreadSpawnError`, or `ProcessSpawnError`, nor silently replaced by synchronous execution or another kind of concurrency.
 
 ---

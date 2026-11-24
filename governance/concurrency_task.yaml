@@ -7,9 +7,10 @@ integrations:
     feature: task-language-semantics
     status: partial
     integrated: "2026-09-04"
+    revised: "2026-11-12"
     document_revision: "2.0"
     repository_baseline: 777beb8
-    summary: Tracks revision-2 task creation, move-only lifecycle ownership, TaskOutcome terminal semantics, observers, transferability, Semantic IR, lowering, and runtime-independent target behavior. Callable and explicitly typed lambda task spawns now produce Result[Task[T], TaskSpawnError] through canonical Sema identities shared with the compiler and LSP. The block form remains explicitly unsupported pending the return-type decision MD-133; runtime creation and terminal outcome production remain separate work.
+    summary: Tracks revision-2 task creation, move-only lifecycle ownership, TaskOutcome terminal semantics, observers, transferability, Semantic IR, lowering, and runtime-independent target behavior. Callable and explicitly typed lambda task spawns now produce Result[Task[T], TaskSpawnError] through canonical Sema identities shared with the compiler and LSP. The block form remains an explicit unsupported-capability diagnostic until the MD-133 result inference (decided 2026-11-24, spawn.md § 3A) is implemented; runtime creation and terminal outcome production remain separate work.
     rules:
       - rules/concurrency/tasks.md
       - rules/concurrency/spawn.md
@@ -24,8 +25,6 @@ integrations:
       - rules/compiler/semantic_ir.md
       - rules/control-flow/discard.md
       - rules/concurrency/concurrency.md
-    governance_reconciliation:
-      - concurrency.md follows task v2 fallible creation and await Task[T] to TaskOutcome[T], including Panicked(PanicInfo) and Failed(TaskError).
     code:
       - internal/ast/ast.go
       - internal/parser/parser.go
@@ -49,6 +48,11 @@ integrations:
       - cmd/lsp/type_hover.go
       - cmd/lsp/enum_hover.go
       - internal/sema/spawn_inference.go
+      - internal/parser/spawn_expression.go
+      - internal/parser/spawn_configuration.go
+      - internal/parser/return_statement.go
+      - internal/sema/spawn_block.go
+      - internal/sema/spawn_discard_advisory.go
     tests:
       - internal/parser/parser_test.go
       - internal/sema/concurrency_test.go
@@ -69,17 +73,21 @@ integrations:
       - cmd/lsp/task_spawn_result_test.go
       - testdata/sema/task_spawn_result_valid.sec
       - testdata/sema/task_spawn_result_invalid.sec
-    normative:
-      - Task[T] is a move-only owning lifecycle handle.
-      - spawn Work() and spawn task Work() have raw type Result[Task[T], TaskSpawnError].
-      - TaskSpawnError is distinct from failures of an already-created task.
-      - await Task[T] always yields TaskOutcome[T].
-      - TaskOutcome[T] has Completed(T), Cancelled, Panicked(PanicInfo), and Failed(TaskError).
-      - A task function returning Result[V,E] completes normally as Completed(Result[V,E]); Err(E) is not task execution failure.
-      - TaskError is exactly OutOfMemory, ResourceLimit, ExecutorUnavailable, and NativeFailure; InvalidConfiguration remains exclusive to TaskSpawnError.
-      - Task lifecycle ownership must be resolved through await, join, detach, or ownership transfer.
-      - Observers are non-owning and must not duplicate lifecycle responsibility.
-      - Task boundary ownership and borrowing are constrained by transferability analysis.
+      - internal/parser/spawn_result_syntax_test.go
+      - internal/formatter/spawn_results_test.go
+      - testdata/parser/spawn_results/forms.sec
+      - testdata/parser/spawn_results/recovery_invalid.sec
+      - internal/sema/spawn_block_test.go
+      - internal/sema/spawn_blocks_test.go
+      - cmd/compiler/spawn_grammar_test.go
+      - cmd/lsp/spawn_grammar_test.go
+      - testdata/sema/spawn_blocks/void.sec
+      - testdata/sema/spawn_blocks/boundaries_invalid.sec
+      - internal/sema/spawn_discard_advisory_test.go
+      - cmd/compiler/spawn_discard_advisory_test.go
+      - cmd/lsp/spawn_discard_advisory_test.go
+      - testdata/sema/spawn_blocks/advice.sec
+      - testdata/sema/spawn_blocks/advice_invalid.sec
     implemented:
       - Task[T] is represented as a compiler-known generic task type in the frontend model.
       - Task handles are treated as non-copyable and move-only in existing semantic checks.
@@ -97,8 +105,14 @@ integrations:
       - "Canonical core panic metadata declarations completed 2026-11-11 (panic.md section 13(2)-(7)): sec/core/panic.sec declares nominal uint32 PanicID and exactly PanicInfo { ID: PanicID, File: string, Line: uint, Column: uint, Function: string }. Compiler fallback/source identities are module core; only loader-proven core may attach the exact non-generic, copyable declarations with real declaration/field locations. Malformed trusted replacements are rejected with registered reserved-declaration diagnostics; project or core-looking files cannot redeclare either name. Source and fallback TaskOutcome.Panicked use the same nominal PanicInfo. CLI check and LSP source navigation consume the real core declaration. This closes source declaration integration only, not runtime outcome production, panic allocation/transport or the whole panic correction."
       - "Task failure-domain diagnostics completed 2026-11-12 (tasks.md sections 5,11-15,30(1),(8-9),31(3-9); await.md sections 4-6): mandatory S1234 / task.failure-domain-mismatch identifies incompatible creation errors, execution errors, panic payloads, cancellation payloads and flattened task outcomes using canonical resolved type identities. Shared Sema explanations distinguish TaskSpawnError before any task exists from post-creation Failed(TaskError), payload-less Cancelled, Panicked(PanicInfo), and normal Completed(Err(E)) while preserving the complete nested callable Result type. Contextual and qualified outcome constructors, argument/initializer/field/return/Err boundaries, invalid try/await carriers and invalid TaskError categories carry source-spanned guidance; InvalidConfiguration points to TaskSpawnError.InvalidConfiguration. Existing missing-payload S1151 keeps its identity and gains the same category explanation. Ordinary compatibility and union checks remain authoritative: valid Completed(Err(E)), TaskOutcome[void] and unrelated user unions retain their semantics and diagnostics. The same Sema projection supplies LSP binding/type hover, without a second failure classifier. Source-backed tests cover 21 invalid cases, valid four-way/nested outcomes, explicit ordinary-union controls, compiler human/JSON and LSP parity, and no invalid IR artifact. Result return analysis was extracted from analyzer.go into a focused sibling file. Runtime production and raw spawn Result typing remain separate existing remaining items."
       - "Fallible task creation typing implemented 2026-11-12 for default/explicit task callable spawns, generic and method calls, named function values and explicitly typed lambdas: the shared Sema producer returns canonical Result[Task[T], TaskSpawnError] with the complete child T, including nested Result and void. Ordinary try unwraps or propagates TaskSpawnError; local handlers and match separate creation success from TaskOutcome. Raw Result cannot be awaited, returned as a direct Task, propagated into an incompatible error channel or discarded while containing a lifecycle owner. Compiler check/JSON diagnostics and LSP diagnostics/binding hover share these facts. Older semantic fixtures explicitly handle creation failure. Spawn inference was extracted from analyzer_inference.go into a focused sibling file and the direct taskType producer removed. Block forms remain explicitly unsupported pending MD-133; MD-128/MD-129 runtime commit/cancellation decisions and task runtime/IR/lowering remain outside this frontend typing change."
+      - "MD-133 parser/formatter completed 2026-11-24 (spawn.md sections 3A,25(5); grammar.md section 89(4)): spawn call/block nodes retain implicit versus explicit execution kinds, actual final operand/body token spans, nested control flow and explicit return versus expression statements. A malformed operand no longer drops its source return or spawn node: InvalidExpression retains the failure, including configured thread forms, and following declarations survive. Spawn parsing is extracted into spawn_expression.go. Source-backed T37 round-trip tests cover 16 spawn forms, nested callable boundaries, bare/value returns, tail calls, indentation 2/4/6, idempotence and malformed recovery without inserting a return. Sema inference, advisory, IR/lowering and LSP result typing remain separate points; this closure enables no runtime spawn capability."
+      - "MD-133 Sema void-block slice implemented 2026-11-24 (spawn.md sections 3A(2)-(7)): task and thread blocks without an own value-bearing return use an analysis-only noncapturing void callable and the existing lambda scope, return, defer, ownership, execution-context and call-graph checks. Nested lambda/spawn returns do not determine the outer block result; final calls and local bindings keep void, and the source AST remains unchanged. Canonical raw Result[Task[void], TaskSpawnError] / Result[Thread[void], ThreadSpawnError] typing works in Sema, CLI and LSP. Outer-local capture, cross-boundary break/continue, parent error-channel propagation, unresolved lifecycle and must-use violations remain errors. Value-return inference, process blocks and remaining broad inference obligations stay in the original point moved intact to partial; no whole MD-133 inference closure or runtime lowering is claimed."
+      - "MD-133 A3001 spawn explanation completed 2026-11-24 (spawn.md section 3A(8); diagnostics.md section 25(8)): after valid void creation typing, the existing final ordinary-call advisory explains the successful Task[void]/Thread[void]/Process[void] handle, distinct from the raw fallible creation result. The shared helper handles all kind spellings and is idempotent; process source creation remains independently capability-gated and receives no false success explanation. Void calls, explicit discards, consumed values, explicit returns, nested callable statements, invalid calls, non-void blocks and must-use failures gain no spawn explanation. Existing identity, source range, callable provenance, deferred policy/promotion and statement-key deduplication are preserved. Help offers explicit discard, never a return insertion or automatic rewrite. Source-backed Sema depth/policy/repeated-analysis and negative matrices plus CLI human/JSON and LSP transport tests cover the current supported child producers; a direct kind-mapping/idempotence test also covers Process without enabling process creation."
+    partial:
+      - "MD-133 Sema result inference for task, thread and process blocks (spawn.md § 3A(1)-(7); errorhandling.md § 12 amendment): replace the block-form unsupported-capability diagnostic; collect only the body's own returns, infer one complete T or void, no coercion/wrapper/union, literal shaping against a unique type, mandatory diagnostics for conflicting, mixed bare/value and missing-path returns and underconstrained types; non-completing paths need no value; child return/break/continue/defer boundary; return ownership and escaping-reference checks; no implicit capture; naked try against the child's own channel; kind result transferability incl. process materialization; raw Result[Handle[T], SpawnError] (T01-T06, T10-T13, T16-T34, T40, T42)"
     remaining:
-      - complete raw Result[Task[T], TaskSpawnError] typing for spawn block forms after MD-133 defines their callable return type; callable and explicitly typed lambda forms are complete
+      - "MD-133 Semantic IR and lowering (spawn.md § 26(7); semantic_ir.md § 77(4c)): record child callable identity, inferred T, raw result and handle identity, explicit return edges and void fallthrough edges with ownership, cleanup, effects and creation-commit facts; a discarded final call is evaluated and disposed, never a synthetic return; lowering never infers T from backend results or fabricates payloads (T38-T39)"
+      - "MD-133 LSP (spawn.md § 25(5)): hover and semantic queries show the inferred child return type with the raw and handle types; editing a final call into an explicit return updates the handle type, removes the advisory and refreshes dependent diagnostics (T41)"
       - implement terminal outcome production for Completed, Cancelled, Panicked, and Failed
       - synchronize join semantics and terminal-value extraction with move-only payload rules
       - complete TaskObserver semantics and non-owning restrictions
@@ -120,6 +134,12 @@ integrations:
       - observers cannot await, join as owner, detach, or take a move-only completion value
       - value-returning detached tasks require the canonical explicit discard form when applicable
     verification:
+      - command: go test -short -p 4 ./internal/sema ./internal/ir/semantic ./internal/diagnostics ./internal/traceability -count=1 -timeout=150s
+        result: "Passed 2026-11-24 without overlays: Sema 34.955s, Semantic IR 8.918s, diagnostics 0.002s, traceability 0.260s. Focused spawn-advisory Sema/compiler/LSP tests passed (0.136s/2.565s/1.398s). Race tests for spawn and ordinary discard advisories/policy passed (Sema 2.362s, compiler 86.423s, LSP 77.169s); vet passed. Default/off/warning/error policy, all depths, repeated analysis, provenance, mandatory precedence, invalid/non-void/process gates, kind mapping and idempotence are covered. An initial concurrent MD-095 API/test mismatch was resolved by Claude before final full verification. One whole advisory point closed; the Sema inference partial remains unchanged."
+      - command: go test -short -p 4 ./internal/sema ./internal/ir/semantic ./internal/traceability -count=1 -timeout=150s
+        result: "Passed 2026-11-24: Sema 35.450s, Semantic IR 10.236s, traceability 0.383s. Focused CLI/LSP VoidSpawnBlocks and SpawnGrammar tests passed (3.588s/4.985s), focused Sema race tests passed (1.160s), vet passed. Tests cover eight void blocks, repeated analysis, nested callable returns and unchanged source AST, outer-local capture, child loop/error boundaries, must-use and residual non-void/process gates. Original broad Sema inference requirement moved intact from remaining to partial; zero whole requirements closed in this slice."
+      - command: go test -short -p 4 ./internal/parser ./internal/ast/... ./internal/cst ./internal/formatter ./internal/sema ./internal/traceability -count=1 -timeout=150s
+        result: "Passed 2026-11-24: parser 33.476s, AST 0.002s, AST walk 0.001s, CST 0.008s, formatter 2.453s, Sema 33.394s, traceability 0.255s. After the configured-operand recovery fix, final focused spawn/configuration/parser/formatter regressions passed (0.010s/0.057s), focused race tests passed (parser 1.048s, formatter 1.413s) and vet passed. Initial regressions demonstrated lost explicit return and spawn nodes; final cases retain InvalidExpression and following declarations. One whole MD-133 parser/formatter point closed; no Sema inference or runtime-spawn completion claimed."
       - command: go test -race -p 4 ./cmd/lsp -run '^Test(TaskSpawnResultLSP|HoverUsesCompilerOwnedTaskOutcomeType|CallHierarchyAndHoverPreserveSpawnExecutionRelations)$' -count=1 -timeout=120s
         result: "passed 2026-11-12: 44.194s; raw Result creation hover, unwrapped Task owner, five invalid boundaries, existing awaited TaskOutcome hover and spawn call hierarchy relations."
       - command: go test -race -p 4 ./internal/sema ./cmd/compiler ./cmd/lsp -run 'Test(TaskSpawnResult|TaskFailureDomainDiagnostics|Spawn|Await|TaskOutcome|HoverUsesCompilerOwnedTaskOutcomeType|HoverShowsExecutionBoundaryCycles|HoverShowsArenaEffectsAndSynchronousAllocationPath|CallHierarchyAndHoverPreserveSpawnExecutionRelations|TaskYieldContext|ExecutionContextRequirements|ProgramPlan|ProgramInitializationPlan|VerifyProgramPlans|NamedThreadConfiguration|ThreadConfig|FormatSpawn)' -count=1 -timeout=150s
@@ -148,4 +168,17 @@ integrations:
         result: passed
       - command: go test ./...
         result: passed
-    revised: "2026-11-12"
+    governance_reconciliation:
+      - "MD-129 (2026-11-24): tasks.md §§ 4(12), 8(7), 22(11) define that a pending parent request is not a creation error and that detach breaks future cancellation propagation without revoking received requests; implementation items are owned by concurrency.spawn-v1."
+      - concurrency.md follows task v2 fallible creation and await Task[T] to TaskOutcome[T], including Panicked(PanicInfo) and Failed(TaskError).
+    normative:
+      - Task[T] is a move-only owning lifecycle handle.
+      - spawn Work() and spawn task Work() have raw type Result[Task[T], TaskSpawnError].
+      - TaskSpawnError is distinct from failures of an already-created task.
+      - await Task[T] always yields TaskOutcome[T].
+      - TaskOutcome[T] has Completed(T), Cancelled, Panicked(PanicInfo), and Failed(TaskError).
+      - A task function returning Result[V,E] completes normally as Completed(Result[V,E]); Err(E) is not task execution failure.
+      - TaskError is exactly OutOfMemory, ResourceLimit, ExecutorUnavailable, and NativeFailure; InvalidConfiguration remains exclusive to TaskSpawnError.
+      - Task lifecycle ownership must be resolved through await, join, detach, or ownership transfer.
+      - Observers are non-owning and must not duplicate lifecycle responsibility.
+      - Task boundary ownership and borrowing are constrained by transferability analysis.

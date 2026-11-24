@@ -54,6 +54,9 @@ func NewResolver(plan ResolvedScalarPlan, alignments ScalarAlignments) (*Resolve
 	for _, alignment := range copied {
 		supported = append(supported, new(big.Int).SetUint64(alignment))
 	}
+	for _, alignment := range plan.AtomicAlignments {
+		supported = append(supported, new(big.Int).SetUint64(alignment))
+	}
 	arithmetic, err := NewSizeArithmetic(key.Triple+"/"+key.TargetArch, MaximumExtent(plan), supported)
 	if err != nil {
 		return nil, err
@@ -154,8 +157,12 @@ func (r *Resolver) resolve(requirement LayoutRequirement) LayoutID {
 		return r.resolveAggregate(base, key, requirement.Fields, "struct field placement and aggregate alignment (MD-142)")
 	case LayoutNamed:
 		return r.resolveNamed(base, key, requirement)
+	case LayoutEnum:
+		return r.resolveEnum(base, key, requirement)
 	case LayoutArray:
 		return r.resolveArray(base, key, requirement)
+	case LayoutAtomic:
+		return r.resolveAtomic(base, key, requirement)
 	default:
 		base.Completeness, base.Missing = LayoutUnsupported, []string{fmt.Sprintf("layout kind %q (later P24 stage)", requirement.Kind)}
 		return r.publish(base, key)

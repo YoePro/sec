@@ -35,9 +35,15 @@ func (p *Parser) parseReturnStatement() ast.Statement {
 		}
 		p.nextToken()
 	}
+	valueStart := p.curToken
 	stmt.Value = p.parseExpression(LOWEST)
 	if stmt.Value == nil {
-		return nil
+		// A malformed operand is still a value-bearing source return, never
+		// a bare return or fallthrough (spawn.md §§3A(3),25(5);
+		// parser_recovery.md — Invalid AST nodes).
+		invalid := p.invalidExpression(valueStart, "invalid returned expression", compilerdiagnostics.ParserInvalidExpression)
+		invalid.Recovery.End = p.curToken
+		stmt.Value = invalid
 	}
 	if p.peekToken.Type == lexer.COMMA && p.peekToken.Line == p.curToken.Line {
 		// rules/foundations/grammar.md — "Return statement": one optional

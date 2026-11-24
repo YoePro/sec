@@ -1,0 +1,5 @@
+module main
+fn F() void require(
+ task, // implies cancellable, keep both
+ cancellable // explicit stronger contract
+) {}

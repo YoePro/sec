@@ -1,0 +1,2 @@
+module main
+fn Use(callback: fn(int, string) void require(task, thread, cancellable), value: int) void {}

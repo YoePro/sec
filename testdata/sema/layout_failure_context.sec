@@ -1,0 +1,11 @@
+module main
+
+fn Allocate() Result[void, AllocationError] {
+    let mut buffer: byte[32]
+    let mut arena := Arena.FromBuffer(ref mut buffer[..])
+    let value := try arena.New[float64]()
+    discard value
+    let values := try arena.Alloc[int128](0)
+    discard values
+    return Ok()
+}

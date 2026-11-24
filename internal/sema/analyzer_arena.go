@@ -389,6 +389,7 @@ func (a *Analyzer) inferArenaCall(expr *ast.CallExpression) (Type, expressionVal
 		refType := Type{Name: "ref mut " + typeDisplayName(elementType), Kind: ReferenceType, Element: &elementType, ReferenceMutable: true, ReferenceOriginName: domain, ReferenceOriginDisplayName: owner, ReferenceOriginToken: receiver.Token, ReferenceOriginLocal: allocationLocal, ReferenceOriginStorage: StorageOriginArena, ReferenceOriginGeneration: a.arenaGenerations[domain]}
 		result := arenaResultType(refType, a.types["AllocationError"])
 		a.recordArenaOperationPlan(expr, ArenaOperationNew, "", domain, a.arenaGenerations[domain], a.arenaGenerations[domain], result)
+		a.checkStaticallyImpossibleArenaAllocation(expr, "New")
 		return result, expressionValue{Display: expr.String()}, true
 	case "Alloc":
 		if len(expr.GenericArguments) != 1 {
@@ -439,6 +440,7 @@ func (a *Analyzer) inferArenaCall(expr *ast.CallExpression) (Type, expressionVal
 		a.recordArenaEffect(ArenaEffectAllocate, receiver.Value, domain, member.Property.Token, true)
 		result := arenaResultType(refSliceType, errType)
 		a.recordArenaOperationPlan(expr, ArenaOperationAlloc, "", domain, a.arenaGenerations[domain], a.arenaGenerations[domain], result)
+		a.checkStaticallyImpossibleArenaAllocation(expr, "Alloc")
 		return result, expressionValue{Display: expr.String()}, true
 	case "Reset":
 		if len(expr.GenericArguments) != 0 {

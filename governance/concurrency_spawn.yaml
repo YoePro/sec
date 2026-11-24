@@ -79,10 +79,11 @@ integrations:
       - >-
         Validate boundary-specific owned, borrowed, mutable, capture, callable,
         and method-receiver transferability and lifetime proofs.
-      - >-
-        Resolve source ownership and cleanup across creation success,
-        argument-evaluation failure, and task/thread/process creation failure
-        according to finalized normative ownership-commit rules (MD-128).
+      - "MD-128 Sema creation transaction (spawn.md §§ 6(7), 10(8), 10(10), 11(7), 13(5), 16(7), 25(4); ownership.md § 14.2 amendment): distinguish prepared, committed and independently completed transfers for task, thread and process spawns; commit at successful creation, cancel pending reusable-source transfers on creation Err so the source stays available; correct Place availability, owner identity, loans and lifecycle obligation on each creation-result path through match, try handlers, propagation and joins; no restoration of closure captures, receiver or configuration moves that completed independently (T01-T04, T07-T10, T12-T15, T17-T18, T21-T22, T24)"
+      - "MD-128 failure-path cleanup (spawn.md § 10(8), threads.md § 20(5)-(7)): creation-only temporaries and temporary caller-owned arguments destroyed exactly once on creation failure, uncommitted reusable sources never destroyed, transaction-owned loans released and unrelated loans kept, reusable ThreadConfig retained, argument-evaluation failure never relabelled as a creation error, deferred Start() failure never rolls back the creation commit (T11, T16, T19-T20, T23, T26)"
+      - "MD-128 Semantic IR and verifier (spawn.md § 26(5), semantic_ir.md § 77(4a)): keep kind, prepared input Places, transfer modes, creation commit boundary, success and failure paths, cleanup obligations and handle owner; reject a consumed source available on success, a lost uncommitted source on failure, duplicate destruction, user entry before commit and a creation error with an unresolved child lifecycle (T29-T30)"
+      - "MD-128 lowering and runtime (spawn.md §§ 10(8), 26(5); processes.md §§ 8.6-8.8): one creation transaction per supported kind with input publication before child entry, provisional native thread or bootstrap child cleaned up on failure, deterministic creation-failure injection for tests; unsupported kinds and illegal process borrows stay compile-time diagnostics (T05-T06, T25, T27-T28)"
+      - "MD-128 diagnostics and LSP (spawn.md § 25(4)): distinguish a move pending on a creation result from a committed move; never suggest that creation Err destroyed a directly prepared reusable source or restored an earlier consumed capture"
       - >-
         Ensure one-shot creation failure and lifecycle-owner facts survive
         Semantic IR verification, target lowering, and LSP presentation.
@@ -90,9 +91,11 @@ integrations:
         Integrate resource-amplification and recursive-spawn diagnostics
         according to the selected target/profile; do not make a universal
         static-bound rule for valid hosted dynamic creation.
-      - >-
-        Complete integration with cancellation.md parent-child semantics after
-        the already-cancelled-parent creation behavior is fully specified.
+      - "MD-129 Sema and analysis (cancellation.md §§ 55(5)-(9); spawn.md §§ 24(3), 26(6); tasks.md §§ 4(12), 8(7), 22(11)): record a structured parent-child cancellation link only for a real current logical task parent (none from ordinary entry or a native thread without a task), never treat a pending parent request as an invalid creation configuration, keep lifecycle diagnostics for detach (discard intent, escaping borrows) and unresolved handles (T17-T18, T24-T25, T27)"
+      - "MD-129 Semantic IR and verifier (spawn.md § 26(6); semantic_ir.md § 77(4b)): keep creation kind, structured cancellation relationship, the child's initial request-state initialization, link removal at detach, creation outcome and lifecycle owner, with unknown requests as runtime state; reject clearing a pending request at detach, implicit detach, worker identity substituted for task identity and an existing request encoded as a creation error (T28)"
+      - "MD-129 runtime creation, propagation and detach (cancellation.md §§ 55(6)-(8)): the linked child's own request is published before its first observation or cancellation point; link establishment, request delivery and link removal are coordinated so no committed or owed request is lost or revoked and no post-detach request travels the removed link; terminal outcomes stay immutable; data-race-free under the memory model; deterministic scheduler fixtures (T01-T11)"
+      - "MD-129 outcomes and cross-kind independence (cancellation.md § 55(9)): a requested child may cancel, complete, panic or fail normally and creation never fabricates Cancelled; MD-128 rollback on genuine creation failure with no published link; no task-request inheritance for spawn thread, no implicit process termination for spawn process, Context cancellation handled through its own contract; await caller-cancellation cleanup unchanged (T12-T16, T19-T23, T26)"
+      - "MD-129 tooling (spawn.md § 26(6)): diagnostics, hover and LSP distinguish a pending request, successful creation and terminal cancellation and never imply that detach resets a received request"
     required_tests:
       - default spawn and spawn task have canonical fallible task result
       - spawn thread has canonical fallible physical-thread result
@@ -123,8 +126,12 @@ integrations:
         concurrency_cancellation.yaml owns cancellation propagation, effects,
         and Context; concurrency_scheduling.yaml owns executor scheduling.
       - >-
-        Separate normative/decision review is required before setting universal
-        failure-commit or cancellation-inheritance facts here.
+        Spawn-block result inference for task, thread and process was decided
+        by MD-133 on 2026-11-24 (spawn.md § 3A); its implementation items are
+        owned by concurrency.tasks-v2 for all three kinds.
+        Cancellation inheritance at creation and detach was decided by MD-129 on
+        2026-11-24 (rules/corrections/applied/MD-129-spawn-parent-cancellation-correction-2026-11-24-20261124.md; cancellation.md §§ 55(5)-(9)). The universal failure-commit rule
+        was decided by MD-128 on 2026-11-24 (rules/corrections/applied/MD-128-spawn-transactional-ownership-correction-2026-11-24-20261124.md; spawn.md § 10(8)).
     verification_notes:
       - >-
         Drafted by source comparison on 2026-11-09; no compiler tests executed

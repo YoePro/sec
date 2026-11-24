@@ -107,6 +107,10 @@ func (fb *functionBuilder) buildArenaAllocation(call *ast.CallExpression, plan s
 	fb.emit(Operation{Kind: OpBranch, Successors: []BranchTarget{{Block: join.ID, Arguments: []ValueID{errResult.id}}}, Location: loc})
 
 	fb.current = join
+	if fb.okReferences == nil {
+		fb.okReferences = map[ValueID]*ReferenceMetadata{}
+	}
+	fb.okReferences[joined.ID] = metadata
 	return builtValue{id: joined.ID, typ: resultType}, nil
 }
 

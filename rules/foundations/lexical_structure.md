@@ -705,6 +705,15 @@ contexts.
 `process` remains reserved as the contextual modifier for the canonical
 `spawn process` form.
 
+**Amendment MD-138 (2026-11-24, Sec 0.1.1, `rules/corrections/applied/MD-138-callable-execution-requirements-v0.1.1-correction-2026-11-24-20261124.md` §§ 2(2), 10(1)).** The
+hard keyword `require` introduces the execution requirement clause
+(`grammar.md` § 101A); its lexical treatment is unchanged. `task` and `thread`
+keep the contextual treatment above, extended to requirement-entry positions.
+`cancellable` is recognized contextually only as a requirement entry; it gets no
+token category, is not reserved and stays a valid ordinary identifier
+everywhere else. `process` is not a requirement entry in Sec 0.1.1. All
+spellings are case-sensitive.
+
 ---
 
 ## 7.3 Contract words

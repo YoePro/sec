@@ -1347,6 +1347,12 @@ Normal style is:
 let worker := try spawn process Work()
 ```
 
+**Amendment MD-133 (2026-11-24, Sec 0.1 and 0.1.1, `rules/corrections/applied/MD-133-spawn-block-return-type-correction-2026-11-24-20261124.md`).** `spawn process { ... }` has the `T` inferred from the block's
+explicit value-bearing returns, or `void` without one (`spawn.md` § 3A), giving
+`Result[Process[T], ProcessSpawnError]`. The inferred `T` must satisfy the same
+process result materialization and transferability requirements as a declared
+one; inference relaxes none of them.
+
 ### 7.2 Nested `Result` is preserved
 
 If:
@@ -1677,6 +1683,10 @@ failure-path cleanup/destruction.
 
 A process-transfer adapter that irreversibly destroys source ownership before it
 can know whether startup commits does not satisfy the `spawn process` contract.
+
+**Amendment MD-128 (2026-11-24, Sec 0.1 and 0.1.1, `rules/corrections/applied/MD-128-spawn-transactional-ownership-correction-2026-11-24-20261124.md` § 1(2)).** This transactional startup is the precedent for the common
+creation transaction that MD-128 applies to every execution kind (`spawn.md`
+§ 10(8)); §§ 8.6–8.8 remain the process-specific rules in full.
 
 ### 8.7 Startup publication
 
@@ -3608,6 +3618,10 @@ the surrounding task was cancelled.
 A cancellable task may stop waiting on a `ProcessObserver` according to the
 ordinary task cancellation/wait rules without thereby changing child process
 lifecycle ownership.
+
+**Amendment MD-129 (2026-11-24, Sec 0.1 and later compatible versions, `rules/corrections/applied/MD-129-spawn-parent-cancellation-correction-2026-11-24-20261124.md` § 6(2)).** A process spawned from a task whose cancellation was
+requested is not terminated, detached or otherwise resolved by that request
+(`cancellation.md` § 55(9)).
 
 ---
 

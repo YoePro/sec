@@ -28,6 +28,9 @@ func (fb *functionBuilder) buildTryAssignment(stmt *ast.TryAssignmentStatement) 
 		// errorhandling.md §41: the test invocation has no Semantic IR boundary.
 		return fb.unsupported("try assignment propagation to a test boundary", stmt.Token)
 	}
+	if _, appended := fb.owner.analyzer.ResolvedStringAppendOf(stmt.Assignment.Value); appended {
+		return fb.buildStringAppend(stmt.Assignment, stmt)
+	}
 	if handled, err := fb.lowerFallibleProperty(stmt, fact); handled {
 		return err
 	}

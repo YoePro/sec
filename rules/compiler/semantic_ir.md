@@ -2,7 +2,7 @@
 
 - Status: Normative
 - Created: 2026-09-03
-- Last updated: 2026-11-19 (§ 20(5)–(6) affine and logarithmic conversion plans, MD-048); 2026-11-18 (§ 127 owning dynamic arrays, P18 sync § 22); 2026-11-01 (§ 27A(7)–(9) pack forwarding, generic owners and returned references, MD-117; § 25 generic error channels, MD-120); 2026-10-31 (§ 27A(5) pack loops; § 21(11) hardware binding roots; § 21(12) hardware variants and operations); 2026-10-30 (§ 21(9) MD-113 shadow knowledge; § 21(8) MD-112 specialized hardware write requests); 2026-10-28 (§ 71(6) error-pattern plans, reachable-state proofs and Some construction, MD-029/MD-042/MD-102; §§ 58(6)–58(7) decimal plans and ArithmeticError, MD-066/MD-067); 2026-10-27 (§ 27A MD-117 heterogeneous variadic type packs; §§ 10(12), 28(6), 45(12a), 126.22(1) MD-115/MD-116 static roots and returned range origins; § 21(7) MD-114 register serialization); 2026-10-19 (§ 126 slice semantic values and § 106(5) version distinction; P16-05)
+- Last updated: 2026-11-24 (§ 123B atomic capability evidence, MD-095); 2026-11-19 (§ 20(5)–(6) affine and logarithmic conversion plans, MD-048); 2026-11-18 (§ 127 owning dynamic arrays, P18 sync § 22); 2026-11-01 (§ 27A(7)–(9) pack forwarding, generic owners and returned references, MD-117; § 25 generic error channels, MD-120); 2026-10-31 (§ 27A(5) pack loops; § 21(11) hardware binding roots; § 21(12) hardware variants and operations); 2026-10-30 (§ 21(9) MD-113 shadow knowledge; § 21(8) MD-112 specialized hardware write requests); 2026-10-28 (§ 71(6) error-pattern plans, reachable-state proofs and Some construction, MD-029/MD-042/MD-102; §§ 58(6)–58(7) decimal plans and ArithmeticError, MD-066/MD-067); 2026-10-27 (§ 27A MD-117 heterogeneous variadic type packs; §§ 10(12), 28(6), 45(12a), 126.22(1) MD-115/MD-116 static roots and returned range origins; § 21(7) MD-114 register serialization); 2026-10-19 (§ 126 slice semantic values and § 106(5) version distinction; P16-05)
 - Document revision: 2.0
 - Sec language version: 0.1
 - Canonical path: `rules/compiler/semantic_ir.md`
@@ -1441,6 +1441,8 @@ and other canonical effect identities.
 
 § 52(6) Unsafe does not suppress effects.
 
+§ 52(7) **Amendment MD-138 (2026-11-24, Sec 0.1.1, `rules/corrections/applied/MD-138-callable-execution-requirements-v0.1.1-correction-2026-11-24-20261124.md` § 10(4)).** Execution requirements are a separate fact from effects and guarantees. Semantic IR preserves the requirement set of callable values and function types, invocation contracts, call-site context proofs and spawn-boundary validation, and the verifier rejects a call or assignment that would erase or fail to satisfy a contract. No runtime requirement mask, extra source parameter, hidden ABI parameter or dynamic assertion is mandated.
+
 ---
 
 ## § 53 Ordered effects
@@ -2028,6 +2030,12 @@ TaskDetach where canonical
 exists.
 
 § 77(4) Spawn captures/arguments retain copy/move/borrow transfer actions and commit behavior.
+
+§ 77(4a) **Amendment MD-128 (2026-11-24, Sec 0.1 and 0.1.1, `rules/corrections/applied/MD-128-spawn-transactional-ownership-correction-2026-11-24-20261124.md` § 7(2)–(3)).** For every execution kind, spawn Semantic IR keeps prepared input Places, transfer modes, the creation commit boundary, success and failure paths, cleanup obligations and the handle owner, and the verifier rejects a consumed source still available on success, a lost uncommitted source on failure, duplicate destruction, user entry before commit and a creation error with an unresolved child lifecycle (`rules/concurrency/spawn.md` § 26(5)).
+
+§ 77(4b) **Amendment MD-129 (2026-11-24, Sec 0.1 and later compatible versions, `rules/corrections/applied/MD-129-spawn-parent-cancellation-correction-2026-11-24-20261124.md` § 8(2)).** Task spawn and detach keep the structured cancellation relationship, the child's initial request-state initialization, the link removal at detach and the creation outcome; an unknown request is runtime state, not a guessed constant (`rules/concurrency/spawn.md` § 26(6)).
+
+§ 77(4c) **Amendment MD-133 (2026-11-24, Sec 0.1 and 0.1.1, `rules/corrections/applied/MD-133-spawn-block-return-type-correction-2026-11-24-20261124.md` § 6(3)).** A spawn block keeps its resolved child callable identity, inferred complete normal `T`, explicit return edges and distinct void fallthrough edges; an unused final expression is ordinary evaluation and disposal, never a synthetic return (`rules/concurrency/spawn.md` § 26(7)).
 
 § 77(5) Task completion occurs only at the canonical semantic completion point after required result transfer and cleanup.
 
@@ -3151,6 +3159,17 @@ atomic.compare-exchange %ref %expected %desired operation=CompareExchange elemen
 § 123A(3) Each operation lists its normal outcome paths with order, read, modify, read-modify-write and release-sequence effect (start, continue, break). The verifier enforces the atomics.md § 24(1) order matrix and the classification: a load only reads; a store only modifies and breaks predecessor release sequences; an RMW reads and modifies; a compare-exchange has an `Exchanged` RMW path with the success order and a read-only `NotExchanged` path with the failure order, which is never `Release` or `AcqRel`. A read-only path cannot affect a release sequence, and no other operation may carry atomic facts.
 
 § 123A(4) Like § 123(3), these operations belong to no numbered Sec MLIR package. They require package-15 references; a receiver that is not already a reference to the object (a static or local atomic object) is not borrowed implicitly and fails closed. Until a package specifies their lowering, Sec MLIR emission rejects the `atomic` type and the operations with an explicit unsupported-lowering diagnostic and never erases, reorders or weakens them.
+
+---
+
+## § 123B Atomic capability evidence (MD-095)
+
+§ 123B(1) Integrated 2026-11-24 from `rules/corrections/applied/MD-095-atomic-capability-requirements-correction-2026-11-24-20261124.md` (`rules/concurrency/atomics.md` §§ 37A, 46(7)). The operations of §§ 123–123A keep their names, operands and printing; no opcode is added, no Sec MLIR package is assigned and atomics are never inferred from ordinary load/store patterns.
+
+§ 123B(2) Each atomic object operation preserves, besides its §§ 123A(2)–(3) facts, its capability requirement: semantic source type, concrete carrier and storage representation, access extent and guaranteed storage alignment (or the outstanding layout facts), operation and requested orders, the canonical execution-context categories with `NoBlocking`/`InterruptSafe` and relevant target refinements, the plan identity and source provenance. A fence carries the same without carrier and layout. A callable reachable from several contexts keeps one requirement per applicable invocation contract.
+
+§ 123B(3) Each requirement carries either the supported capability evidence (implementation identity, provenance and guarantees from the canonical plan capability service) or an explicit unresolved obligation (`Unknown`) with its missing fact. Proven `Unsupported` is a diagnostic, never an IR state. An unresolved obligation is valid in analysis-only Semantic IR; executable lowering requires every relevant operation to have a complete layout, resolved contexts and supported evidence, and otherwise fails closed (`atomics.md` §§ 37A(12), 47(9)–(10)). Evidence stays bound to the plan and its fingerprints and is never rewritten by a later pass.
+
 ---
 
 ## § 124 Exact integer conversion

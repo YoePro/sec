@@ -18,7 +18,7 @@ func TestAtomicRealizationFacts(t *testing.T) {
 	} {
 		t.Run(implementation.Identity, func(t *testing.T) {
 			request := atomicTestRequirement()
-			fact := AtomicCapability{Requirement: request, Availability: AtomicSupported, Provenance: "test-target-proof", Implementation: implementation}
+			fact := AtomicCapability{Key: request.Key, Availability: AtomicSupported, Provenance: "test-target-proof", Implementation: implementation}
 			inputs := []AtomicCapability{fact}
 			plan, err := atomicTestPlan().WithAtomicCapabilities(inputs)
 			if err != nil {
@@ -45,7 +45,7 @@ func TestAtomicRealizationFacts(t *testing.T) {
 // Rules: rules/concurrency/atomics.md — §§37(1),38(1–4);
 // rules/platform/target_profiles.md — atomic capability separation.
 func TestAtomicRealizationRequiresEvidence(t *testing.T) {
-	valid := AtomicCapability{Requirement: atomicTestRequirement(), Availability: AtomicSupported, Provenance: "test-proof", Implementation: AtomicImplementation{Kind: AtomicEmulated, Identity: "test-emulation"}}
+	valid := AtomicCapability{Key: atomicTestRequirement().Key, Availability: AtomicSupported, Provenance: "test-proof", Implementation: AtomicImplementation{Kind: AtomicEmulated, Identity: "test-emulation"}}
 	for name, change := range map[string]func(*AtomicCapability){
 		"missing implementation":           func(f *AtomicCapability) { f.Implementation = AtomicImplementation{} },
 		"missing identity":                 func(f *AtomicCapability) { f.Implementation.Identity = "" },
@@ -72,7 +72,7 @@ func TestAtomicRealizationRequiresEvidence(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got, err := plan.AtomicCapability(fact.Requirement); err != nil || got != fact {
+		if got, err := plan.AtomicCapability(atomicTestRequirement()); err != nil || got != fact {
 			t.Fatal(got, err)
 		}
 	}

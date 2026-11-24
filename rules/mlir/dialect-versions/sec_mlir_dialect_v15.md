@@ -678,7 +678,8 @@ epoch, a cursor or a count of executed allocations, which a loop could not
 bound.
 
 Owned creation (`WithCapacity`/`Growable`) stays a named boundary until the
-provider catalogs exist (MD-151). An Arena that was not created in the same
+`sec.system-heap.v1` provider that MD-151 decided on 2026-11-24
+(`target_profiles.md` § 41A) is implemented. An Arena that was not created in the same
 function, such as a parameter, also stays a named boundary.
 
 ## 10. Arena demand summary (2026-11-23)
@@ -687,13 +688,24 @@ A function that creates a `FromBuffer` Arena carries
 `sec.arena_demand_summary`. This is an array with one dictionary per created
 domain:
 - `domain`, an i32;
-- `kind`, which is `"constant"` or `"unknown"`;
+- `kind`, which is `"constant"`, `"unknown"` or `"unbounded"` (amended
+  2026-11-24, P19 § 81: `"unbounded"` when the Arena is passed to an
+  allocating callee in a recursive component);
 - `bytes`, a decimal string present exactly for constant demand;
 - `expression`, the symbolic derivation using constant, sum, maximum,
-  constant-multiply, range-upper-bound and unknown;
+  constant-multiply, range-upper-bound, unknown and unbounded;
 - `capacity_bytes`, the fixed backing, when known.
 
 The demand is an upper bound on the peak, over the Reset windows, of
 `count * size + (align - 1)` for each New/Alloc. This is compile-time
-metadata (P19 § 130), never a runtime value. `--sec-verify-arenas` checks its
+metadata (P19 § 130), never a runtime value.
+
+A call that receives the Arena (by value, move or reference) contributes
+nothing when the callee and everything it calls has no allocation effect.
+An allocating callee in a recursive component makes the demand
+`unbounded(recursion through F)`. Any other allocating callee, and an
+indirect, interface or foreign target, makes it unknown: callee summaries
+do not bound demand on an Arena parameter (P19 § 81).
+
+`--sec-verify-arenas` checks its
 shape and that every summarized domain is created by the function.

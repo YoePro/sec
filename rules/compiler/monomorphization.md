@@ -358,6 +358,8 @@ The language semantics do not require an implementation to deep-copy source AST,
 
 A compiler may specialize from a typed generic template or equivalent canonical semantic representation.
 
+**Amendment MD-138 (2026-11-24, Sec 0.1.1, `rules/corrections/applied/MD-138-callable-execution-requirements-v0.1.1-correction-2026-11-24-20261124.md` §§ 7(3), 10(3)).** Canonical substitution preserves the normalized execution-requirement set of callable types, and each concrete specialization infers its own requirements from its concrete callees (`rules/concurrency/cancellation.md` § 24A(4)). A changed requirement set of a signature is a semantic dependency change for fingerprints and caches.
+
 ## 9. Concrete semantic specialization
 
 ### 9.1 Concrete callable signatures

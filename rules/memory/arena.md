@@ -413,6 +413,8 @@ fn WithCapacity(capacity: uint) Result[Arena, AllocationError]
 
 § 12(9) Arena destruction/Release returns owned backing through the matching provider contract.
 
+§ 12(10) **Amendment MD-151 (2026-11-24, owner accepted revision 1 as written, `rules/corrections/applied/MD-151-system-heap-provider-proposal-20261124-20261124.md` § 7(1)).** `Arena.WithCapacity` and `Arena.Growable` obtain owned backing from the same resolved provider as their canonical active context, on qualified Hosted targets `sec.system-heap.v1` (`rules/platform/target_profiles.md` § 41A); there is no hidden global heap. A supplied fixed Arena does not become growable because the catalog entry exists, and `FromBuffer` keeps caller-owned backing.
+
 ---
 
 ## § 13 Growable Arena
@@ -463,6 +465,8 @@ prior ownership/dependency facts.
 ```
 
 § 13(6) Growth is not Arena Reset.
+
+§ 13(7) **Amendment MD-151 (2026-11-24, owner accepted revision 1 as written, `rules/corrections/applied/MD-151-system-heap-provider-proposal-20261124-20261124.md` § 7(2)).** With the system heap, growth acquires fresh, independently allocated chunks; it never reallocates or moves an existing chunk, preserves the ArenaDomain and follows the epoch rules. The requested object layout and chunk overhead are checked before acquisition. Initial and growth sizing follow the capacity guarantees; the geometric growth factor is implementation policy, not a language promise.
 
 ---
 
@@ -902,6 +906,8 @@ epoch remains unchanged.
 
 § 32(3) Provider effects/failure remain observable according to effect/error rules.
 
+§ 32(4) **Amendment MD-151 (2026-11-24, owner accepted revision 1 as written, `rules/corrections/applied/MD-151-system-heap-provider-proposal-20261124-20261124.md` §§ 5, 7(2)).** A failed chunk acquisition publishes no object, dependency or capacity change, releases any storage acquired before it through the same binding, and reports `AllocationError` as in `allocation.md` § 10(7).
+
 ---
 
 ## § 33 Repeated allocation
@@ -965,6 +971,8 @@ allows later allocation.
 § 35(3) Reset is not Release.
 
 § 35(4) Reset is an ordinary mutable Arena operation, not a consuming whole-self operation.
+
+§ 35(5) **Amendment MD-151 (2026-11-24, owner accepted revision 1 as written, `rules/corrections/applied/MD-151-system-heap-provider-proposal-20261124-20261124.md` § 7(3)).** Reset of an Arena with provider-owned chunks makes the retained chunk storage reusable under § 38; the provider requires no eager trimming. Release and destruction (§ 12(9)) release every owned chunk and its metadata exactly once through its originating binding. Reset/Release legality and live-reference rejection are unchanged, and no client gets per-object free.
 
 ---
 

@@ -182,6 +182,8 @@ fn Invalid() ref byte[] {
 
 § 7(5) This prohibition applies equally to returns, closures, callbacks, tasks, threads, deferred work, ISR handoff, FFI retention, and stored references.
 
+§ 7(6) **Amendment MD-151 (2026-11-24, owner accepted revision 1 as written, `rules/corrections/applied/MD-151-system-heap-provider-proposal-20261124-20261124.md` § 6(3)).** Selecting the verified system heap (`rules/platform/target_profiles.md` § 41A) never repairs an invalid lifetime by moving storage to it; references and slices keep their canonical owner and domain.
+
 ---
 
 ## § 8 Explicit Arena selection
@@ -255,6 +257,8 @@ let storage := try arena.Alloc[byte](4096)
 § 10(5) An allocation may be treated as infallible only when the compiler or platform contract proves the required storage, capacity, alignment, and other preconditions.
 
 § 10(6) Narrow exception to § 10(3) (MD-039): an operation whose canonical rule declares both a recoverable `try` mode and an ordinary panic mode may panic in the latter. Sec 0.1 declares this only for runtime string `+` and `+=` (`rules/foundations/operators.md`). Allocator APIs and all other fallible allocations keep §§ 10(1)–(5).
+
+§ 10(7) **Amendment MD-151 (2026-11-24, owner accepted revision 1 as written, `rules/corrections/applied/MD-151-system-heap-provider-proposal-20261124-20261124.md` § 5(1)–(2)).** With the `sec.system-heap.v1` provider (`rules/platform/target_profiles.md` § 41A), an invalid extent or unrepresentable target/overhead size is `AllocationError.InvalidSize`, an invalid or unsupported runtime alignment `InvalidAlignment`, and null from a valid nonzero request `OutOfMemory`. Missing or incompatible provider evidence is a compile-time plan error, never a runtime `Unsupported`. A more specific API-defined failure earlier in the operation takes precedence. Failure has no language-visible side effects: provider storage acquired before it is released through the same binding, and the adapter never consults errno, invokes Sec handlers, retries indefinitely or switches allocators.
 
 ---
 
@@ -393,6 +397,8 @@ reference or slice
 
 
 § 17(10) String/array materialization (MD-072, 2026-10-17; MD-091, 2026-10-18): `string.FromRuneArray(ref rune[])` and the standard-library strict decoder `str.FromByteArray(ref byte[])` borrow their input and report storage failure as `StringError.Allocation(AllocationError)` (core has no `string.FromByteArray`; `str.FromByteArrayLossy` reports it through `CollectionError`); `string.ToByteArray()` and `string.ToRuneArray()` return independently owned arrays and report result-storage failure through `CollectionError`, like other array allocation and growth (`rules/library/core-library.md` §§ 5.2–5.3). All four use the active permitted allocation context under §§ 17(7)–(9); none adopts, aliases or consumes its source, and none introduces a fallback allocator.
+
+§ 17(11) **Amendment MD-151 (2026-11-24, owner accepted revision 1 as written, `rules/corrections/applied/MD-151-system-heap-provider-proposal-20261124-20261124.md` § 5(3)–(4)).** String materialization (MD-039) maps provider failures to `StringError.Allocation(cause)`; under the protecting `try` it follows the resolved `StringError` route, and unprotected `+`/`+=` uses the registered StringMaterializationFailure panic reason. Cleanup and the panic endpoint do not allocate, and interpolation keeps its own `try` requirement. A concat evaluates the ordered segments and checks the total byte extent, allocates the final character storage once (provider bookkeeping is part of that allocation, not another materialization), fills it and publishes only success. `+=` keeps its destination until the complete candidate is ready and commits once; operand failure, overflow or null allocation leaves the destination unchanged and releases candidate storage. Sharing and final reclamation follow the separately resolved string lifetime and representation contract; choosing malloc authorizes no early free, no leak as an ownership strategy and no implicit reference-counting ABI.
 ---
 
 ## § 18 Closures and escaping execution
@@ -595,6 +601,8 @@ help: use a preallocated buffer or select a build profile that permits allocatio
 § 28A(2) The provider identity and its capabilities are resolved and checked against the selected target before any allocation is materialized (`rules/platform/target_profiles.md` § 41). A named provider is selection, not implementation or trust.
 
 § 28A(3) `Arena.FromBuffer`, implicit contexts, failure, escape and destruction rules of this rulebook are unchanged.
+
+§ 28A(4) **Amendment MD-151 (2026-11-24, owner accepted revision 1 as written, `rules/corrections/applied/MD-151-system-heap-provider-proposal-20261124-20261124.md`).** The catalog provider `sec.system-heap.v1` is the sole initial eligible default on qualified Hosted targets and serves both ambient owned storage and owned Arena chunks (`rules/platform/target_profiles.md` § 41A). RTOS, QNX, BareMetal and `embedded-arena` get no default from it. Selecting it never enables a disabled baseline or overrides `noalloc`.
 
 ## § 29 LSP and analysis tooling
 

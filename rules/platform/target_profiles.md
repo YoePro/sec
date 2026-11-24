@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-24
-- **Last updated:** 2026-11-17 (§ 7 MD-034 freestanding allocation policy); 2026-09-24
+- **Last updated:** 2026-11-24 (§§ 19, 29–32 atomic context categories and capability proofs, MD-095); 2026-11-17 (§ 7 MD-034 freestanding allocation policy); 2026-09-24
 - **Document revision:** 1
 - **Sec language version:** 0.1
 - **Repository baseline reviewed:** `45e5cd4`
@@ -381,6 +381,21 @@ Projects do not create arbitrary string-named contexts as language semantics.
 A context-specific policy may inherit or restrict a globally enabled capability.
 It may not enable a capability that is globally disabled or unavailable.
 
+**MD-095 (2026-11-24; `rules/corrections/applied/MD-095-atomic-capability-requirements-correction-2026-11-24-20261124.md`).** These six names are the canonical
+`ContextID` categories of capability requirements (`rules/concurrency/atomics.md`
+§ 37A(8)). A task ID, thread ID, source function name or interrupt vector never
+replaces a category, and a logical task is not `Thread` because it runs on a
+physical worker. The category comes from the existing execution-context analysis
+and the actual invocation contract; `NoBlocking` and `InterruptSafe` are
+requirements of that contract, and `Interrupt` must prove both. Canonical target
+facts such as vector, priority, masking domain, core or execution domain may
+refine or restrict a category's proof when the target distinguishes them; they
+create no context and enable no globally forbidden capability. A category-wide
+capability discharges a concrete use only when its proof covers that use's
+restrictions; otherwise the obligation stays open or a proven incompatible use is
+rejected. A callable reachable from several contexts is checked under each, and
+unresolved reachability is an open obligation, never an assumed `Ordinary`.
+
 ## 20. Cancellation policy
 
 Cancellation support is distinct from task availability. A profile may resolve
@@ -550,6 +565,11 @@ valid / invalid / unproven
 
 Program requirements never mutate the profile.
 
+**MD-095.** For a capability requirement such as a concrete atomic operation,
+`valid` needs a supported proof, `invalid` is a proven unsupported or disabled
+capability, and `unproven` is an `Unknown` obligation that analysis may carry
+but executable emission must discharge or reject (`atomics.md` §§ 37A(11)–(12)).
+
 ## 30. Canonical profile queries
 
 Compiler subsystems consume typed profile queries conceptually equivalent to:
@@ -563,6 +583,12 @@ profile.ResourceConstraint(...)
 
 Subsystems must not reconstruct profile semantics from raw target/project config.
 
+**MD-095.** Atomic capability is answered by one canonical plan capability
+service keyed by carrier, representation, access extent, guaranteed alignment,
+operation, orders, context category and additional requirements; matching,
+normalization and context refinement belong to that service only
+(`atomics.md` §§ 37A(9)–(10)).
+
 ## 31. Sema and analysis consumption
 
 Sema performs directly decidable profile legality checks against the frozen
@@ -573,6 +599,10 @@ including stack, ISR, resource, effect, and concurrency analyses.
 
 The profile supplies constraints. The owning analysis supplies proof logic.
 
+**MD-095.** Sema may continue analysis of a semantically valid atomic operation
+whose capability is `Unknown`; it keeps the obligation instead of reporting a
+proven unsupported capability or treating it as verified.
+
 ## 32. Initialization, lowering, linking, and LSP
 
 Initialization, lowering, and linking consume already-resolved profile facts from
@@ -582,6 +612,11 @@ The LSP uses the same canonical profile resolution as CLI builds. Analysis depth
 may differ (`Interactive`, `Standard`, `Deep`), but profile semantics do not.
 
 The LSP must not assume Hosted for convenience.
+
+**MD-095.** Lowering consumes the validated atomic capability evidence and fails
+closed with a missing-evidence diagnostic when a required proof is still unknown,
+including every ISR or nonblocking obligation. The LSP keeps such obligations
+unproven and never presents them as executable validity.
 
 ## 33. Profile identity and fingerprints
 
@@ -760,6 +795,44 @@ Integrated 2026-11-20 from `rules/corrections/applied/MD-139-allocation-profile-
 **§ 41(8)** Provider capabilities are operation-sensitive: individually reclaimable dynamic-array backing (P18) needs a reclaiming provider, and `Arena.Growable` needs a permitted nonrelocating growth strategy; `Arena.FromBuffer` keeps its own caller-supplied backing contract in every mode.
 
 **§ 41(9)** Configuration errors before freeze (unknown family, provider not found, incompatible provider, contradictory keys, ambiguous default) are distinct from program errors against a valid plan. An allocating operation without an available context gets a compile-time diagnostic naming Target, Variant, operation, policy and capability state; provider exhaustion at run time stays an `AllocationError`. Build profiles, `@noAlloc` and `unsafe` never change these facts.
+
+## 41A. Verified system-heap provider `sec.system-heap.v1` (MD-151)
+
+Integrated 2026-11-24 from `rules/corrections/applied/MD-151-system-heap-provider-proposal-20261124-20261124.md` (owner accepted revision 1 as written). It decides the provider catalog and implementation binding left open by § 41(4)–(8). It defines no string descriptor ABI, source allocator API or manifest key.
+
+**§ 41A(1) Identity.** `sec.system-heap.v1` is a compiler-managed provider backed by a qualified target C runtime's `malloc` and `free`. It identifies the provider contract, not one heap instance or one C ABI. Each catalog record binds it to exactly one target identity, ABI, C-runtime identity and version compatibility range and toolchain binding, and the frozen ProviderIdentity includes that record's immutable identity and digest. Records with different runtimes or incompatible bindings never share reclamation authority because the contract spelling agrees.
+
+**§ 41A(2) Eligibility and catalog.** Eligible families are Hosted Linux, Darwin and Windows on amd64 and arm64. Eligibility is not support: a target/runtime combination gets a positive record only after qualification (§ 41A(9)); an absent or unqualified record is Unknown and an explicitly incompatible one Unsupported. No libc is chosen from an OS name. Records are maintained, versioned compiler/toolchain target metadata beside the target registry, as typed records with deterministic canonical serialization for fingerprints; no external catalog file format exists and project TOML cannot declare, create or override a record. A manifest `provider` (`rules/projects/projects.md` § 19(13)) references a catalog identity only.
+
+**§ 41A(3) Defaults.** A qualified Hosted record explicitly nominates this provider as its default; zero defaults stay unresolved and several eligible defaults are an error (§ 41(5)). Family selection, allocation mode and activation precedence stay § 41; selecting a provider never enables a disabled baseline or overrides `noalloc`. RTOS, QNX, BareMetal and `embedded-arena` get no default from MD-151; QNX is not qualified by being POSIX-like, and no static-buffer provider, RTOS binding or capacity key is introduced. Caller-supplied Arena backing keeps its rules, and further provider contracts may be decided separately.
+
+**§ 41A(4) Frozen facts.** Each positive record supplies, with provenance and a qualification-version digest, in addition to target and runtime compatibility:
+
+| Fact | Value or obligation |
+| --- | --- |
+| Context kind | CompilerManaged |
+| Capabilities | owned byte storage, individual reclamation, fresh nonrelocating Arena chunks |
+| Reclamation | exact matching-provider free of a live allocation; no bulk-only substitution |
+| Alignment | powers of two up to the explicit qualified maximum (§ 41A(5)) |
+| Capacity | dynamic and unknown; no guaranteed free bytes or infallible reservation |
+| Failure | canonical `AllocationError` (`rules/memory/allocation.md` § 10(7)) |
+| Context limits | ordinary permitted execution contexts only (§ 41A(8)) |
+| Lifetime | valid until matching release, subject to the owning language lifetime |
+| Binding | exact target malloc/free call ABI, size representation, link requirements and adapter revision |
+
+The binding records the target C `size_t`, pointer and address-space facts and the maximum native allocation extent; a source `uint` is never assumed to be `size_t`. The adapter and its allocation tokens belong to the compiler implementation and are not Sec FFI declarations or user-visible types. Allocation and deallocation use the same runtime heap instance and compatible CRT linkage, on Windows including CRT instance and linkage mode; a library cannot free through an unrelated CRT. Cross-module ownership needs a verified common binding or a retained call to the originating deallocator, otherwise the boundary is rejected.
+
+**§ 41A(5) Size and alignment.** A request carries a byte extent and a required alignment from canonical layout facts. The alignment is a nonzero power of two within the record's qualified maximum, which is never inferred from malloc's fundamental alignment and must cover every admitted native layout; an unsupported statically known layout is diagnosed before emission. Stronger alignment is provided by an adapter that requests extra bytes and selects an aligned interior range, retaining the original pointer, provider identity and release metadata in an implementation-owned token that is retainable without a second fallible allocation. Extent conversions, metadata overhead, padding and offsets are checked against the target's size and object-extent limits before malloc, and the range and metadata stay inside that one allocation under the target's pointer and provenance rules; no universal integer-pointer trick is assumed.
+
+**§ 41A(6) Release.** The original base is passed to the matching free exactly once and an interior pointer never. A public reference or view never acquires the token's release authority. The adapter never calls realloc on a live allocation and never relocates published storage. A zero-byte request calls neither malloc nor free, consumes no capacity and has an empty token with no releasable base; this relaxes no static context, ownership or failure rule, and nothing depends on a runtime's `malloc(0)`.
+
+**§ 41A(7) Failure.** An invalid extent or an unrepresentable target or overhead size is `InvalidSize`, an invalid or unsupported runtime alignment `InvalidAlignment`, and a null result for a valid nonzero request `OutOfMemory`. Missing or incompatible provider evidence is a compile-time plan error, never a runtime `Unsupported`. A more specific API-defined failure earlier in the operation takes precedence. Failure has no language-visible side effects: provider storage acquired before the failure is released through the same binding, errno is not consulted, no Sec handler runs, nothing retries indefinitely and no other allocator is selected. A qualified runtime returns null on failure; failure-callback extensions are disabled or separately qualified for the binding.
+
+**§ 41A(8) Execution contexts and lifetime.** The provider gives no bounded-time, nonblocking, lock-free, interrupt-safe or signal-safe guarantee and cannot satisfy ISR, `interruptSafe`, `@noAlloc` or other prohibited-context requirements; an ordinary task may use it only where its allocation and effect rules permit, and no scheduler, thread or event behavior is defined. Concurrent ordinary calls are permitted only by a record whose qualification establishes allocator safety in that environment; this grants no concurrent access to allocated Sec values or Arenas, and unverified concurrency never becomes Supported through the Hosted family. The provider lifetime encloses every live allocation and deallocator call, so a runtime or shared object holding the binding cannot unload while its tokens live; allocation identities stay distinct across address reuse, and the compiler never repairs an invalid lifetime by moving storage to this heap.
+
+**§ 41A(9) Qualification and fingerprints.** A positive record is backed by maintained ABI and runtime evidence, a successful target link check and target-run qualification of alignment, release, zero extent, boundary sizes and controlled failure, on both architectures it claims; emulator execution is identified as such. Cross-compilation uses qualified target evidence, never a probe of the compiler host, and ordinary builds need not rerun qualification. Freeze and fingerprint include catalog identity, revision and digest, target/ABI/runtime compatibility, adapter revision, capabilities and limits, linkage mode and binding digest, and cache/import compatibility compares them. A missing binding fails before executable emission, and no unused positive heap capability is invented to make a plan freeze.
+
+**§ 41A(10) Test bindings and migration.** Production failure tests use an explicit test-toolchain binding with deterministic allocation failure, the same adapter semantics and a distinct fingerprint; it is not a manifest option, an environment override or permission to claim verified provenance. They cover failing allocation N, every earlier successful allocation and every cleanup edge. When implemented, the provisional projection of the Hosted profile string to Supported is removed: qualified catalog defaults keep ordinary Hosted behavior, unqualified configurations become Unknown with a targeted diagnostic explaining the missing qualification, the compiler host's malloc is never selected silently, and allocation-free or `noalloc` plans need no provider. Formerly provisionally accepted allocating programs may be rejected.
 
 ## 42. C binding requirement (MD-021)
 

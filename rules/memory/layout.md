@@ -2,7 +2,7 @@
 
 - Status: Normative
 - Created: 2026-09-02
-- Last updated: 2026-11-20
+- Last updated: 2026-11-24 (§§ 8(8), 28(7), 47.6 atomic storage layout, MD-095); 2026-11-20
 - Document revision: 2.1
 - Sec language version: 0.1
 - Canonical path: `rules/memory/layout.md`
@@ -190,6 +190,8 @@ selected descriptor representation
 § 8(6) Misaligned safe reference formation is invalid.
 
 § 8(7) Unsafe unaligned access requires explicit target-supported semantics; `unsafe` does not manufacture target support.
+
+§ 8(8) (MD-095) Atomic storage alignment is distinct from the natural alignment of its carrier: a target may require a stronger minimum for atomic access, which is part of the canonical atomic storage layout (§ 47.6) and is not an ordinary source-visible field.
 
 ---
 
@@ -496,6 +498,8 @@ decimal128:
 § 28(5) The struct source contract is `minAlign(N)` on a type or stored field (MD-019): a minimum in bytes, never an exact or lowered alignment; `N` is a compile-time positive power of two supported by the target. A type-level minimum applies to every object of the type, including nested placement; a field minimum applies to that field and may raise the aggregate's alignment and size. A syntactically valid `minAlign` is not proof that every allocator, Arena or foreign provider can satisfy it.
 
 § 28(6) Alignment precedence: a field's natural alignment may be capped by an enclosing `pack`; explicit field and nested-type minima stay in force; type-level `minAlign` bounds the enclosing struct from below; target/ABI constraints are additional requirements, never an override of explicit minima. Lowering consumes these resolved facts and never reconstructs their precedence.
+
+§ 28(7) (MD-095) A verified atomic storage minimum is a target-mandated minimum under § 47.3(4): `pack(N)` cannot reduce it, and an explicit placement, `byteOffset`, external storage contract or other constraint that cannot satisfy it fails under the layout and capability rules instead of silently producing an unaligned atomic access or changing the explicit layout (§ 47.6(3)).
 
 ---
 
@@ -844,6 +848,22 @@ Integrated 2026-11-20 from `rules/corrections/applied/MD-141-MD-142-scalar-and-a
 ### § 47.5 One layout authority
 
 § 47.5(1) Sema, Semantic IR, LSP and MLIR lowering consume the same canonical layout service. Only a complete layout satisfies layout-sensitive emission; an unresolved scalar keeps every dependent layout incomplete. Lowering preserves every recorded offset, alignment and stride.
+
+### § 47.6 Atomic storage layout (MD-095)
+
+Integrated 2026-11-24 from `rules/corrections/applied/MD-095-atomic-capability-requirements-correction-2026-11-24-20261124.md` (owner-approved; `rules/concurrency/atomics.md` § 37A(7)).
+
+§ 47.6(1) The canonical layout service is the sole authority for the size, alignment, placement and stride of atomic storage; it consumes the selected frozen plan, including `ResolvedScalarPlan`, the verified target layout and the typed scalar alignment facts of § 47.2. Atomic analysis implements no second layout calculator.
+
+§ 47.6(2) The source carrier's size and natural alignment are distinct from the atomic object's effective storage alignment. A verified target atomic minimum raises the latter and is a target requirement under § 47.3(4). It is provided automatically for valid native storage: standalone values, statics, aggregate fields, array elements (every element's stride and placement satisfy it) and storage from approved allocation mechanisms. It is never selected by processor word size alone.
+
+§ 47.6(3) An enclosing `pack(N)` cannot reduce the atomic minimum. An explicit offset, placement, external storage contract or other layout constraint that cannot satisfy it is rejected; the programmer's explicit layout is never silently changed and no unaligned atomic access is produced.
+
+§ 47.6(4) A capability request names the access extent (the atomic value's size) and the guaranteed alignment of the accessed storage after canonical placement and target requirements. A separate complete layout describes `Atomic[T]` itself, including target-required private storage and placement constraints; aggregate padding and wrapper size are never the access extent.
+
+§ 47.6(5) The atomic storage requirements of a target producer are resolved before the final concrete operation-capability query. An object's alignment is never inferred from whichever method is used first, and a published layout is never changed after operation selection; every implementation used on one object is compatible with that object's single canonical storage contract.
+
+§ 47.6(6) A missing size, alignment or representation fact makes the dependent layout incomplete, keeping the missing fact and its provenance; it is never a usable zero or a guess from width, architecture name or host alignment. Contradictory facts are invalid and proven unsupported representations stay unsupported. Layout-sensitive executable lowering requires a complete layout. `atomic.Fence` has no carrier, size or alignment.
 
 ## Debug-information integration
 

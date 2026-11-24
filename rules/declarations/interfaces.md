@@ -169,6 +169,8 @@ An interface that implements another interface inherits that interface's behavio
 
 Duplicate or conflicting inherited requirements are compile-time errors unless the declarations are semantically identical under the applicable member compatibility rules.
 
+**Amendment MD-138 (2026-11-24, Sec 0.1.1, `rules/corrections/applied/MD-138-callable-execution-requirements-v0.1.1-correction-2026-11-24-20261124.md` § 7(5)).** Normalized execution requirements take part in that semantic signature comparison; conflicting inherited contracts are not merged into an invented weaker or stronger signature.
+
 ## 6. Conformance requirements
 
 A concrete type conforms to an interface only when all required members are present and compatible.
@@ -186,6 +188,7 @@ Conformance checks include, where applicable:
 - receiver capability,
 - static versus instance membership,
 - ordinary parameter ownership behavior.
+- execution requirements (**Amendment MD-138 (2026-11-24, Sec 0.1.1, `rules/corrections/applied/MD-138-callable-execution-requirements-v0.1.1-correction-2026-11-24-20261124.md` § 7(4)**): a native interface method signature may end with `require(...)` (`rules/foundations/grammar.md` § 27(6), § 101A); an omitted clause means no requirement. The conforming method's effective contract must be compatible with the member's declared contract (`D implies S`, `rules/concurrency/cancellation.md` § 24A(7)), and interface dispatch and generic-constraint calls use the declared member contract. For `fn Work() void require(task)`, a method requiring a task, only a cancellable context or nothing conforms; one requiring a physical thread in addition does not. Effect guarantees on interface members stay with MD-053.
 
 Return type is not an overload discriminator.
 

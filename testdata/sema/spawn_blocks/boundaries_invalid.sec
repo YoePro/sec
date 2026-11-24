@@ -1,0 +1,39 @@
+// CASE capture
+module main
+fn Capture() Result[Task[void], TaskSpawnError] {
+    let value := 42
+    return spawn { discard value }
+}
+// CASE break
+module main
+fn BreakBoundary() Result[Task[void], TaskSpawnError] {
+    while true {
+        return spawn { break }
+    }
+}
+// CASE continue
+module main
+fn ContinueBoundary() Result[Task[void], TaskSpawnError] {
+    while true {
+        return spawn { continue }
+    }
+}
+// CASE child-error
+module main
+enum Error error { Bad }
+fn Work() Result[void, Error] { return Err(Error.Bad) }
+fn Parent() Result[Task[void], Error] {
+    return try spawn { try Work() }
+}
+// CASE must-use
+module main
+enum Error error { Bad }
+fn Work() Result[void, Error] { return Err(Error.Bad) }
+fn Parent() Result[Task[void], TaskSpawnError] {
+    return spawn { Work() }
+}
+// CASE non-void
+module main
+fn Parent() Result[Task[int], TaskSpawnError] {
+    return spawn { return 1 }
+}

@@ -1,0 +1,37 @@
+// CASE empty
+fn Bad() void require() {}
+fn After() void {}
+// CASE repeated-entry
+fn Bad() void require(task, task) {}
+fn After() void {}
+// CASE repeated-clause
+fn Bad() void require(task) require(thread) {}
+fn After() void {}
+// CASE unknown
+fn Bad() void require(process) {}
+fn After() void {}
+// CASE expression
+fn Bad() void require(task && thread) {}
+fn After() void {}
+// CASE parameterized
+fn Bad() void require(task(1), thread) {}
+fn After() void {}
+// CASE misplaced
+let value: int require(task)
+fn After() void {}
+// CASE foreign
+extern "C" fn Bad() void require(thread)
+fn After() void {}
+// CASE unclosed
+fn Bad() void require(task {
+}
+fn After() void {}
+// CASE nested-repeat
+type Bad fn() fn() void require(task) require(thread)
+fn After() void {}
+// CASE non-callable-parameter
+fn Bad(value: int require(task), next: int) void {}
+fn After() void {}
+// CASE foreign-function-type
+let bad: c::fn() void require(task)
+fn After() void {}

@@ -329,6 +329,15 @@ packing syntax, MMIO/volatile access strategy, raw serialization, implicit
 - [ ] P24-21 — Resolve fieldless/bit-backed/string-backed enum representation
   from canonical definitions and record discriminant validity. Do not hardcode
   i32, truncate values or treat zero-filled storage as automatically valid.
+
+  Partial 2026-11-24: ordinary closed primitive-integer enums now resolve via
+  the canonical carrier layout (`internal/layout/enum_layout.go`), with enum
+  identity, exact declared values/aliases and a closed validity summary. Sema
+  publishes detached requirements; arrays/structs and Arena consume that same
+  result. Missing alignment stays incomplete, malformed or unrepresentable
+  discriminants are invalid, and cache graphs retain the carrier and values.
+  Bit-backed, string-backed, payload and nonprimitive carrier representations
+  remain unsupported here; no native string/tag ABI or bit alignment is guessed.
 - [ ] P24-22 — Resolve tagged unions, `Result` and `Option` with one selected
   discriminator/tag encoding, maximal aligned payload, total padding and
   active-state validity. Permit niche/tag elision only when selected and proven

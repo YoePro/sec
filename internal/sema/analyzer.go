@@ -49,7 +49,7 @@ type Analyzer struct {
 	allocationOperationPlans    map[*ast.CallExpression]ResolvedAllocationOperationPlan
 	arenaOperationPlans         map[*ast.CallExpression]ResolvedArenaOperationPlan
 	// arenaDefaultPlans holds the MD-136 default creations `Arena {}`.
-	arenaDefaultPlans map[*ast.StructLiteral]ResolvedArenaOperationPlan
+	arenaDefaultPlans           map[*ast.StructLiteral]ResolvedArenaOperationPlan
 	ownedFieldAssignments       map[*ast.AssignmentStatement]CleanupPreviousValue
 	matchSubjectPlaces          map[*ast.MatchExpression]Place
 	handlerScopes               map[*ast.TryHandler]*ast.BlockStatement
@@ -1125,6 +1125,9 @@ func (a *Analyzer) analyzeProgram(program *ast.Program) []Error {
 	a.loopBreakFrames = nil
 	a.scopeDepth = 0
 	a.allocationContext = AllocationContext{Available: false, Origin: StorageOriginUnknown}
+	if a.rejectUnimplementedExecutionContracts(program) {
+		return cloneSemanticErrors(a.errors)
+	}
 	a.validateReservedDeclarationNames(program)
 	a.validateModuleDeclaration(program)
 	a.validateModuleDeclarationNamespace(program)

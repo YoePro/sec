@@ -37,6 +37,9 @@ const (
 	// CallableParameterListClose marks the matching real closing parenthesis of
 	// a complete parsed callable parameter list.
 	CallableParameterListClose Role = "callable-parameter-list-close"
+	// ExecutionRequirementListOpen identifies a parser-owned require list.
+	// Rules: rules/tooling/formatter.md §16(13a), §11.
+	ExecutionRequirementListOpen Role = "execution-requirement-list-open"
 	// CallableParameterColon marks the declaration colon of a complete callable
 	// parameter, excluding the colon-free shorthand ref self form.
 	CallableParameterColon Role = "callable-parameter-colon"
@@ -758,6 +761,14 @@ func (d *Document) ApplyProgramRoles(program *ast.Program) {
 		markSpacingRoles(node)
 		d.applyAttributeRoles(node, indexes)
 		switch node := node.(type) {
+		case *ast.ExecutionRequirementClause:
+			// Preserve written order and attachment; only complete valid clauses
+			// receive list-layout roles (formatter.md §§16(13a),25).
+			if !node.Invalid && node.Open.Type == lexer.LPAREN && node.Close.Type == lexer.RPAREN {
+				mark(node.Token, SpacedBefore)
+				mark(node.Open, ExecutionRequirementListOpen)
+				markGroupPair(node.Open, CommaListOpen, CommaListClose)
+			}
 		case *ast.GenericParameter:
 			// MD-117: the declaration spread belongs to the parameter kind,
 			// and stays attached to its name rather than to an array/spread value.

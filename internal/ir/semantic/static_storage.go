@@ -203,6 +203,12 @@ func (b *builder) registerStatic(static sema.ResolvedStatic) (StaticID, error) {
 		return id, nil
 	}
 	declaration := static.Declaration
+	// String holders enter the high-level materialization track with its
+	// explicit allocation-context capability; retain earlier package gates.
+	// Rules: rules/compiler/semantic_ir.md — §§17,28; MD-039.
+	if static.Type.Kind == sema.StringType && b.maxPackage < arenaLoweringPackage {
+		return 0, &UnsupportedFeatureError{Feature: "static " + static.Name + " whose type or initializer has no resolved compile-time value", Package: b.maxPackage, Location: location(declaration.Token)}
+	}
 	token := declaration.Name.Token
 	if static.Function == "" && !b.statics.moduleLets[declaration] {
 		return 0, &UnsupportedFeatureError{Feature: "static storage of another module", Package: b.maxPackage, Location: location(token)}

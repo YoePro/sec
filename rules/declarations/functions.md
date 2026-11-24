@@ -42,6 +42,17 @@ An ordinary named Sec function always has:
 
 Declaration order does not determine visibility between functions in the same valid declaration scope. Function signatures are registered before bodies are analyzed.
 
+**Amendment MD-138 (2026-11-24, Sec 0.1.1, `rules/corrections/applied/MD-138-callable-execution-requirements-v0.1.1-correction-2026-11-24-20261124.md` §§ 3(3), 5).** A native function or method may state an execution requirement contract after its return type and before its body:
+
+```sec
+fn InspectTask() void require(task) {
+    let current := Task.Current()
+    discard current.CancelRequested
+}
+```
+
+The clause is optional (`rules/foundations/grammar.md` § 101A). Without it the contract is inferred from the body; with it the body is verified against the declaration and a stronger declaration is kept (`rules/concurrency/cancellation.md` § 24A). An ordinary synchronous call contributes the callee's effective requirements to the caller.
+
 ## 3. Explicit return type
 
 Every declaration using ordinary `fn` syntax has an explicit return type.
@@ -95,6 +106,8 @@ impl Resource {
 Their syntax and lifecycle semantics are defined by `impl.md` and the destruction rules.
 
 They are therefore not exceptions to the explicit-return-type rule for `fn`.
+
+**Amendment MD-133 (2026-11-24, Sec 0.1 and 0.1.1, `rules/corrections/applied/MD-133-spawn-block-return-type-correction-2026-11-24-20261124.md` § 1(6)).** The only construct whose return type is inferred is the body of a spawn block (`rules/concurrency/spawn.md` § 3A); ordinary functions and methods have no return-type inference.
 
 ## 4. No ordinary bodyless prototypes
 
@@ -586,6 +599,8 @@ Set(42, None)       // Valid: the second overload is selected.
 
 Named types preserve their normal distinct identity during overload resolution.
 
+**Amendment MD-138 (2026-11-24, Sec 0.1.1, `rules/corrections/applied/MD-138-callable-execution-requirements-v0.1.1-correction-2026-11-24-20261124.md` § 6(8)).** Where a parameter is itself a callable type, overload compatibility includes its normalized execution requirements. Declarations are not overloaded solely by their own `require` clause, there is no dispatch by execution context and no ranking preference for the current context.
+
 ## 20. Overload ranking
 
 Overload resolution uses the ordinary conversion ranking rules.
@@ -741,6 +756,8 @@ mode. `->` remains valid on ordinary parameters inside method signatures.
 Concrete implementations continue to use ordinary `fn`; Sema verifies inferred concrete receiver behavior against the interface contract.
 
 The complete interface rules are defined by `interfaces.md`.
+
+**Amendment MD-138 (2026-11-24, Sec 0.1.1, `rules/corrections/applied/MD-138-callable-execution-requirements-v0.1.1-correction-2026-11-24-20261124.md` § 7(4)).** An interface method signature may carry a `require(...)` clause; the conforming method's effective contract must be compatible with it (`interfaces.md`, `rules/concurrency/cancellation.md` § 24A(9)).
 
 ## 25. Function values
 

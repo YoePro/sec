@@ -15,7 +15,7 @@ import (
 // until physical string allocation, encoding and failure endpoints are lowered.
 // Rules: rules/compiler/semantic_ir.md — §§17(6),102–103; MD-039 §7(3).
 func TestMD039StringMaterializationBoundary(t *testing.T) {
-	for _, fixture := range []string{"runtime_concat.sec", "fallible_operands.sec"} {
+	for _, fixture := range []string{"runtime_concat.sec", "fallible_operands.sec", "append.sec"} {
 		t.Run(fixture, func(t *testing.T) {
 			source, err := os.ReadFile("../../../testdata/semantic_ir/md039/" + fixture)
 			if err != nil {

@@ -529,6 +529,9 @@ func verifyFunction(module *Module, fn *Function, functions map[FunctionID]*Func
 	if err := verifyArenaDemand(fn); err != nil {
 		return err
 	}
+	if err := verifyArenaChains(fn); err != nil {
+		return err
+	}
 	if err := verifyCheckedIntegerGuards(fn, blocks, values); err != nil {
 		return err
 	}
@@ -1044,6 +1047,15 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 		if resultType != expected {
 			return fmt.Errorf("%s result type mismatch", op.Kind)
 		}
+		// P19 § 35: the Ok reference of an Arena Result keeps its facts.
+		if op.Reference != nil {
+			if _, isReference := referenceType(module.Types, resultType); op.Kind != OpResultUnwrapOk || !isReference && !typeHasKind(module.Types, resultType, TypeSharedSlice, TypeMutableSlice) {
+				return fmt.Errorf("%s without a reference payload carries reference facts", op.Kind)
+			}
+			if err := verifyReferenceMetadata(op); err != nil {
+				return err
+			}
+		}
 	case OpCoreErrorIsVariant:
 		if len(op.Operands) != 1 || len(op.Results) != 1 || !isArithmeticErrorType(module.Types, values[op.Operands[0]].Type) || !typeHasKind(module.Types, resultType, TypeBool) || !validArithmeticErrorVariant(op.Variant) {
 			return fmt.Errorf("invalid core-error.is-variant")
@@ -1486,6 +1498,10 @@ func semanticIntegerSigned(types *TypeTable, id TypeID) (bool, bool) {
 	}
 }
 
+// package14TrivialValue checks semantic copy/replacement eligibility, including
+// immutable string holders; physical representation is a later lowering gate.
+// Rules: rules/memory/copy_move.md — §4.5;
+// rules/compiler/semantic_ir.md — §§17,31.
 func package14TrivialValue(module *Module, id TypeID) bool {
 	typ, ok := module.Types.Lookup(id)
 	if !ok {
@@ -1495,7 +1511,7 @@ func package14TrivialValue(module *Module, id TypeID) bool {
 		return package14TrivialValue(module, typ.Base)
 	}
 	switch typ.Kind {
-	case TypeBool, TypeByte, TypeChar, TypeRune, TypeDecimal128, TypeInt, TypeUint, TypeFloat, TypeEnum, TypeRawPointer, TypeUnitDimension:
+	case TypeBool, TypeByte, TypeChar, TypeRune, TypeDecimal128, TypeInt, TypeUint, TypeFloat, TypeEnum, TypeRawPointer, TypeUnitDimension, TypeString:
 		return true
 	case TypeRegister:
 		// A detached register value is a pure bit-layout value (MD-077 § 5).

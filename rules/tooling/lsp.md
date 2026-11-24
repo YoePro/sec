@@ -1992,6 +1992,8 @@ documentation
 
 **§ 13(2)** A consuming move-only parameter should be clearly marked.
 
+**§ 13(3)** **Amendment MD-138 (2026-11-24, Sec 0.1.1, `rules/corrections/applied/MD-138-callable-execution-requirements-v0.1.1-correction-2026-11-24-20261124.md` § 10(5)).** Hover and signature help show a callable's execution requirements, declared or inferred, in clause spelling (`require(task)`), mark inferred requirements as not written in source and keep them apart from other effects and guarantees. Completion inside a requirement clause offers exactly `task`, `thread` and `cancellable` and never future entries. Requirement diagnostics carry the originating operation or callee chain when available.
+
 ---
 
 ## § 14 Navigation and references

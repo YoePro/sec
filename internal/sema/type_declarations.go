@@ -377,6 +377,7 @@ func (a *Analyzer) typeFromEnumDeclaration(name string, enum *ast.EnumDeclaratio
 		ExplicitlyNonCopyable: noCopy,
 		ErrorAssignable:       enum.ErrorType,
 		Underlying:            underlying.Name,
+		EnumCarrier:           &underlying,
 		GenericParameters:     genericParameterNameValues(enum.GenericParameters),
 		GenericConstraints:    a.resolvedGenericParameterConstraints(enum.GenericParameters),
 		EnumConsts:            map[string]EnumValue{},

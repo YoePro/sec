@@ -845,6 +845,8 @@ let multiply := capture(factor) fn(value: int) int {
 fn(int, string) bool
 ```
 
+§ 16(13a) **Amendment MD-138 (2026-11-24, Sec 0.1.1, `rules/corrections/applied/MD-138-callable-execution-requirements-v0.1.1-correction-2026-11-24-20261124.md` § 10(6)).** An execution requirement clause stays attached where it was written: after the return type of a function type, declaration, interface method or lambda, before any body. It is printed as `require(task, thread)` with ordinary comma spacing; a multiline clause follows the § 11 list and trailing-comma conventions. The formatter keeps explicit presence, source entry order and meaning. It never adds an inferred clause, removes an explicitly declared stronger clause or a redundant entry, or drops a parenthesis around a returned function type that the attachment needs (`fn() (fn() void) require(task)`). Formatting is not a semantic rewrite.
+
 § 16(14) Attributes are written one per line and immediately before the declaration they modify. Multiple attributes, when present, each occupy their own line. Example:
 
 ```sec

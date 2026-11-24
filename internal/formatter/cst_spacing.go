@@ -92,7 +92,7 @@ func formatCSTRoles(text string, maxPadding int) string {
 			removeHorizontalTrivia(before, start)
 			removeHorizontalTrivia(end, after)
 			continue
-		case element.HasRole(cst.CallableParameterListOpen):
+		case element.HasRole(cst.CallableParameterListOpen), element.HasRole(cst.ExecutionRequirementListOpen):
 			for start > 0 && isHorizontalFormatterByte(text[start-1]) {
 				start--
 			}

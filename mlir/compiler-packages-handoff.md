@@ -5266,6 +5266,44 @@ Updated the existing implementation record without new checklist items:
 allocation.yaml remaining 27 -> 27, partial 3 -> 3. No whole item closed.
 Sec sources untouched. No native rebuild/commit. Working set released.
 
+## Codex release — MD-039 transactional append IR (2026-11-24)
+
+Continue existing step 3: transactional string +=, ordinary/propagating/local
+handler forms, canonical append segments and allocation-context facts. Workset:
+Sema string_materialization/allocation_context_facts; IR string materialization,
+new append lowering, assignment hooks and focused tests; allocation governance.
+Preserve Claude's Arena/P19 builder hunks. Physical string allocation is absent
+from the native track; inspect and record the actual boundary before closing.
+No Sec sources changed.
+
+Implemented transactional += in high-level IR for local/captured string holders,
+stored fields and mutable-reference referents. The destination is read before
+the RHS, maximal RHS segments fuse with that old string into one materialization,
+and only the success edge writes the same destination. Ordinary, propagating,
+local void-handler and separately protected operand modes are covered. Canonical
+append segments and allocation contexts are now published; try assignments
+retain detached RHS failure lists. Unsupported RHS failure kinds stay named
+boundaries, and runtime interpolation is explicitly rejected without flattening
+away formatting. Property/indexed/static destination coverage remains incomplete.
+
+Mutable string storage and plain string Place reads/writes now admit the
+copy-trivial immutable string holder in high-level IR. No physical representation
+was chosen. Native string allocation and the allocation-free panic/failure
+endpoint still prevent closing the original MD-039 step 3. No source or schema
+semantics were changed; CLI inspection remains P18, allocation-capability string
+IR starts at P19, and MLIR emission still fails at string.materialize with no
+artifact. No Sec edits or native rebuild/commit.
+
+Full Sema 36.698s, IR 10.686s, lowering 2.654s, traceability 0.388s pass; focused
+MD039 tests pass including the interpolation boundary. Race Sema/IR/lowering
+1.042s/1.091s/1.082s and vet pass. CFG tests assert one destination read before
+RHS calls, one materialization, one same-Place commit, and no failure edge can
+reach that commit. The fixture's Part returns an actual StringError.OutOfBounds.
+Traceability baseline shrunk after documenting touched helpers. Governance and
+path checks pass. Existing MD-039 implementation/partial updated intact:
+allocation.yaml remaining 27 -> 27, partial 3 -> 3; no whole item closed.
+Working set released.
+
 ## Claude claim — P19-20 Arena New/Alloc via the layout service; MD-034 freestanding (2026-11-23)
 
 Read Codex's active MD-039 claim (Semantic IR string materialization). To avoid
@@ -5330,3 +5368,746 @@ the profile tests count the new errors separately.
 Validation: sema/..., ir/semantic, lowering/..., traceability pass; lit
 266/266; cmd/compiler -run 'Arena|Package19|EmitSecMLIR|Allocation|Default|
 Analyse' passes. Working set released; no commit.
+
+## Claude claim — P19 explicit Arena Release (2026-11-24)
+
+Workset: internal/sema/arena_operation_plans.go (Release plan), internal/ir/
+semantic/arena_lowering.go (+ arena_allocation.go), internal/lowering/secmlir/
+package19_allocation_test.go; MLIR arena verifiers only if needed.
+
+## Claude release — P19 explicit Arena Release (2026-11-24)
+
+Done: Release of FromBuffer/default Arenas created in the same function lowers
+(own.move-from-place + sec.arena.release + cleanup.cancel "released").
+Shared touches beyond the claim: internal/ir/semantic/ownership_capabilities.go
+(preflight admits release cancellations), internal/ir/semantic/cleanup_ops.go
+and mlir OwnershipOps.cpp (cancel reason "released"), mlir VerifyOwnership.cpp
+(arena.release/destroy consume their operand); the obsolete Release boundary
+case was removed from package19_source_test.go.
+Validation: sema, lowering/..., traceability pass; lit 266/266; cmd/compiler
+-run 'Arena|Package19|Ownership|Cleanup|Package17' passes. ir/semantic passes
+except TestMD039TransactionalStringAppend (Codex's active MD-039 claim).
+Working set released; no commit.
+
+## Claude claim — P19-32 type-restriction tests + § 83 statically impossible allocation (2026-11-24)
+
+Workset: internal/sema/{arena_allocation_layout.go, analyzer_arena.go (two
+calls after the New/Alloc plan), arena_type_restrictions_test.go (new)}.
+
+## Claude release — P19-32 type-restriction tests + § 83 (2026-11-24)
+
+Done as claimed. Validation: sema/..., lowering/..., traceability pass;
+cmd/compiler -run 'Arena|Package19|Allocation' and cmd/lsp -run
+'Arena|Allocation' pass. Working set released; no commit.
+
+
+## Codex release — MD-039 completion audit and remaining destinations (2026-11-24)
+
+Implemented string static CTE admission and transactional append to string
+statics and proven fixed-array elements. The destination is read before RHS
+calls, and only success commits to the same storage. Copy-trivial Semantic IR
+verification includes immutable string holders; explicit P15 static and P16
+slice gates preserve earlier package acceptance boundaries. No sec/ edits.
+
+Full tests passed: Sema 34.417s, Semantic IR 10.245s, lowering 2.410s,
+traceability 0.306s. Focused MD039 race tests and vet passed. Earlier failures
+in the completion audit exposed the missing prior-package gates; those were
+fixed and the original compatibility tests pass without changing expectations.
+
+Whole closure is blocked by the open MD-151 provider catalog/implementation
+binding decision (target_profiles.md section 41(4)-(8)); hosted profile names
+are not verified provider contracts. Asked the language owner whether to prepare
+a malloc/free provider contract for decision; no answer yet, no provider or
+physical string ABI inferred. P23/P24 string allocation lowering and native
+failure-injection conformance are still missing, along with the destination/RHS
+coverage recorded in allocation.yaml. MD-039 remains partial. Allocation counts
+unchanged: Remaining 27 to 27, Partial 3 to 3. No checklist point closed or split.
+Working set released. Preserve Claude's concurrent Arena changes.
+
+## Claude claim — P19-34 Reset test matrix (§ 152) (2026-11-24)
+
+Workset: internal/lowering/secmlir/package19_reset_test.go (new); governance
+and package19-todo.md entries for P19-34. No production code planned.
+
+## Claude release — P19-34 Reset test matrix (§ 152) (2026-11-24)
+
+Done as claimed: TestPackage19ResetMatrix (new test file only, no production
+code). Validation: lowering/secmlir -run Package19, sema Arena subsets,
+ir/semantic -run Arena, traceability pass. Working set released; no commit.
+
+
+## Codex release — MD-151 malloc/free decision proposal (2026-11-24)
+
+Owner authorized a concrete proposal for decision, not adoption. Added
+rules/corrections/MD-151-system-heap-provider-proposal-20261124.md (revision 1):
+sec.system-heap.v1 target/runtime-qualified catalog identity and binding,
+checked over-alignment adapter, exact free provenance, canonical errors,
+MD-039 rollback/failure mapping, owned nonrelocating Arena chunks, context and
+lifetime limits, qualification/fingerprint requirements and migration from
+provisional Hosted capability mapping. No new source API or manifest keys.
+RTOS/BareMetal/QNX receive no default by inference.
+
+MD-151 remains open pending owner acceptance. No canonical rulebook change,
+provider implementation, native string ABI choice or sec/ edits. The proposal
+closes no implementation point; allocation Remaining 27 to 27, Partial 3 to 3.
+Missing-decision entry links the proposal. Working set released; Claude's
+P19-34 Reset tests are untouched.
+
+## Claude claim — P19-35 Release/destruction test matrix (§ 153) (2026-11-24)
+
+Workset: internal/lowering/secmlir/package19_release_test.go (new); governance
+and package19-todo.md entries for P19-35. No production code planned.
+
+## Claude release — P19-35 Release/destruction test matrix (§ 153) (2026-11-24)
+
+Done as claimed: TestPackage19ReleaseMatrix (new test file only). Also added a
+remaining item in governance/declarations.yaml (frontend.static-declarations-
+members): default-initialized statics without initializer are rejected by
+Semantic IR. Validation: lowering/secmlir -run TestPackage19 passes. Working
+set released; no commit.
+
+## Claude claim — P19-36 allocation-context test matrix (§ 154) (2026-11-24)
+
+Workset: internal/lowering/secmlir/package19_context_test.go (new),
+package19_release_test.go (function-text helper starts at the func header);
+governance and package19-todo.md entries. No production code planned.
+
+## Claude release — P19-36 allocation-context test matrix (§ 154) (2026-11-24)
+
+Done as claimed: TestPackage19AllocationContextMatrix; package19FunctionText
+now starts at the func header. Validation: lowering/secmlir -run TestPackage19
+passes. Working set released; no commit.
+
+## Claude claim — P19-37 demand-summary tests + § 81 interprocedural boundary (2026-11-24)
+
+Workset: internal/sema/arena_demand.go (calls receiving the Arena: closed
+non-allocating callee zero, recursive allocating callee unbounded, other
+allocating callee or open callable unknown; new kind "unbounded"),
+internal/sema/arena_demand_test.go, internal/ir/semantic/arena_demand.go
+(verifier kind set), mlir/lib/Analysis/VerifyArenas.cpp (kind set),
+rules/mlir/dialect-versions/sec_mlir_dialect_v15.md § 10; governance/todo.
+
+
+## Codex claim — MD-141 missing-layout diagnostics (2026-11-24)
+
+Taking the complete existing frontend.layout missing-fact diagnostic point.
+Workset: internal/layout/layout_failure.go and tests; Sema Arena layout failure
+presentation and focused tests; memory.yaml and this handoff. No provider work,
+sec/ changes or Claude Arena test edits. MD-151 remains with the owner.
+
+## Claude release — P19-37 demand-summary tests + § 81 boundary (2026-11-24)
+
+Done as claimed. Waited for Codex's in-flight MD-141 edit in
+arena_operation_plans.go to build before testing; did not touch it.
+Validation: sema -run 'Arena|Allocation', ir/semantic -run 'Arena|Allocation',
+lowering/..., traceability, cmd/compiler -run 'Arena|Package19' pass; lit
+266/266 after rebuilding sec-mlir-opt. Working set released; no commit.
+
+
+## Codex release — MD-141 missing-layout diagnostics (2026-11-24)
+
+Closed the existing frontend.layout missing-fact diagnostic point: canonical
+DescribeLayoutFailure retains display type and identity, selected OS/arch,
+triple/profile/ABI, storage class/width, missing/contradictory fact, operation
+need and appropriate configuration/P24 repair. Arena plans retain LayoutFailure;
+allocation facts project it deterministically to CLI analysis, capability
+readiness errors and LSP hover. No new diagnostic ID or layout inference.
+
+New files: internal/layout/layout_failure.go and tests; internal/sema/
+layout_failure_test.go; cmd/compiler and cmd/lsp layout_failure_test.go;
+testdata/sema/layout_failure_context.sec. Shared changes: arena_allocation_layout.go,
+arena_operation_plans.go (operation label and LayoutFailure),
+allocation_context_facts.go (canonical failure projection/presentation). No sec/
+source or provider changes. Preserve Claude's concurrent Arena work.
+
+Full layout/Sema/IR/lowering/traceability tests pass (0.008s/36.761s/11.811s/
+2.218s/0.317s). Focused CLI/LSP tests and race tests pass; vet passes.
+MD-141 remains decided-implementation-pending for target coverage and physical
+lowering. One whole governance point closed: frontend.layout Remaining 8 to 7,
+memory.yaml Remaining 286 to 285. MD-151 stays with the language owner.
+Working set released; no commit.
+
+
+## Codex claim — MD-141 concrete embedded target layout coverage (2026-11-24)
+
+Workset: internal/platform/target/{target.go,data_layout.go,data_layout_test.go},
+new target layout tests; layout diagnostic CLI test adapts to newly resolved
+Cortex-M facts; memory governance and MD-141. Add verified triples/data-layouts
+for seven concrete baremetal/FreeRTOS targets. RTEMS/Zephyr any remain explicitly
+unresolved. No target execution capability promotion, providers or sec/ edits.
+
+
+## Codex release — MD-141 concrete embedded target layout coverage (2026-11-24)
+
+Seven concrete baremetal/FreeRTOS registrations now have explicit LLVM triples:
+Cortex-M0 thumbv6m-none-eabi, M3 thumbv7m-none-eabi, M4/M7 thumbv7em-none-eabi,
+and baremetal riscv32-unknown-elf. Their maintained clang 21.1.8 data layouts
+produce eight typed scalar alignment facts through the existing resolver.
+RTEMS/Zephyr any remain explicitly architecture-incomplete. No allocation,
+emission/link/run status or CPU feature support was inferred.
+
+Clang re-verification passes; the complete system LLVM 21.1.8 llc validates the
+applied data layouts for all 25 concrete target registrations (including all
+seven new registrations). Tests cover every integer width, decimal128 carrier
+size/alignment/scale offset, and unresolved architecture placeholders. Target
+and layout race suites pass (1.496s/1.067s); vet passes. The CLI layout failure
+regression now exercises an unsupported string descriptor on the verified
+Cortex-M3 layout instead of incorrectly expecting that target to lack facts.
+Full Sema passes (36.733s). Broad CLI and LSP suites hit the overall
+180-second package timeout (TestAnalyseLastUseArgumentMove and
+TestAllocationConsumerParity active); no preceding assertion failure was
+reported. Their full-suite success is not claimed. Focused layout CLI and
+LSP/target-plan tests pass separately. Traceability passes (0.278s).
+
+Closed the existing MD-141 target-coverage point: frontend.layout Remaining
+7 to 6, memory.yaml Remaining 285 to 284. MD-141 remains pending P24 package
+reconciliation and physical lowering checks. No provider or sec/ changes.
+Working set released; preserve concurrent MD-151 work.
+
+## Claude claim — P19-38 Semantic IR tests (§ 156) + IR Arena chain verifier (2026-11-24)
+
+Workset: internal/ir/semantic/arena_operations.go (per-block state/epoch chain
+check mirroring --sec-verify-arenas, v15 § 9), internal/ir/semantic/
+arena_operations_test.go; governance and package19-todo.md entries.
+
+
+## Codex claim — close stale layout int/uint consistency point (2026-11-24)
+
+Verify frontend.layout's complete int/uint target-width consistency item
+against already implemented target scalar parity. Add cross-target Sema/layout
+conformance across concrete target registrations, run existing physical scalar
+parity tests, close only with passing evidence. No Arena/provider production
+edits or overlap with Claude's P19-38 verifier work.
+
+## Claude release — P19-38 Semantic IR tests + IR Arena chain verifier (2026-11-24)
+
+Done as claimed. Validation: ir/semantic (whole package), lowering/...,
+cmd/compiler -run 'Arena|Package19|Allocation' pass. Note: gofmt -l lists
+internal/ir/semantic/builder.go and dynamic_array_test.go, which this task did
+not edit. Working set released; no commit.
+
+
+## Codex release — layout int/uint consistency conformance (2026-11-24)
+
+Closed the stale frontend.layout int/uint target-width consistency point using
+existing implementation plus new source regression coverage. Added
+internal/sema/target_integer_layout_test.go and
+testdata/sema/target_integer_layout.sec: all 25 concrete registrations agree
+between Sema exact signed/unsigned bounds and canonical resolver size/alignment,
+nominal int/uint carriers, fixed-width controls and native struct placement;
+one shared cache retains target/ABI isolation. No production-code change needed.
+
+Existing TestTargetSizedSourceLayoutParity/RepresentabilityAgreement pass with
+built native tools (0.098s); 32/64 physical scalar-layout tests executed without
+skips. Focused Sema race suite passes (1.313s), layout and traceability pass
+(0.011s/0.232s); vet passes. frontend.layout Remaining 6 to 5; memory.yaml
+Remaining 284 to 283. No sec/, provider or Claude P19 verifier edits.
+Working set released; no commit.
+
+## Claude claim — P19-41 integration tests (§ 160) (2026-11-24)
+
+Workset: internal/lowering/secmlir/package19_integration_test.go (new);
+governance and package19-todo.md entries. No production code planned.
+
+## Claude release — P19-41 integration tests (§ 160) (2026-11-24)
+
+Done as claimed: TestPackage19IntegrationMatrix; P19-41 stays partial (defer
+rows -> P19-21, explicit-Arena T[] -> P19-10/MD-135). Validation:
+lowering/secmlir -run TestPackage19 passes. Working set released; no commit.
+
+
+## Codex claim — integer enum canonical layouts (2026-11-24)
+
+Workset: internal/layout enum requirement/resolver + cache revision and tests;
+Sema LayoutRequirementOf enum mapping and source tests; memory.yaml/P24 report.
+Implement ordinary closed primitive-integer enum carriers with exact value
+validity/aliases and plan-owned size/alignment. Move the existing broad enum/
+union/descriptor/reference point to partial, retaining all remainder in it.
+No provider, sec/ source or Claude Arena verifier edits.
+
+
+## Codex release — integer enum canonical layouts (2026-11-24)
+
+Implemented ordinary closed primitive-integer enum layouts in the canonical
+resolver (internal/layout/enum_layout.go): selected carrier size/alignment,
+nominal enum identity, arbitrary-precision declared values, aliases, independent
+representability checks and closed validity summary. Added LayoutEnum and
+EnumMemberRequirement; LayoutRevision is p24-resolver-3-integer-enums. Cache
+fingerprints include the value domain, and cached graphs preserve/rebase the
+carrier with detached variant tags. Sema LayoutRequirementOf maps resolved
+ordinary enum definitions; associated, bit, string and nonprimitive carriers
+stay explicitly unsupported. Struct placement and Arena use the shared result.
+
+Tests: internal/layout/enum_layout_test.go, internal/sema/enum_layout_test.go,
+testdata/sema/enum_layout.sec. Full layout/Sema/IR/lowering/traceability pass
+(0.008s/34.645s/9.923s/2.198s/0.311s), focused race tests pass
+(1.017s/1.124s), vet passes. P24-21 report updated without claiming completion.
+The initial test used a nonexistent cache Stats method; corrected it to the
+existing Hits accessor before the passing runs.
+
+Original broad enum/union/descriptor/reference point moved to partial with its
+entire remainder retained, no new micro-points. frontend.layout Remaining 5 to
+4, Partial 2 to 3; memory.yaml Remaining 283 to 282, Partial 15 to 16. No whole
+point closed. No provider, sec/ source or MLIR/native representation changes.
+Working set released; preserve Claude's Arena verifier and owner MD-151 work.
+
+## Claude claim — integrate corrections MD-138, then MD-128, MD-129, MD-151 (2026-11-24)
+
+Owner assigned all four to Claude, one at a time; MD-151 is accepted as written
+(Codex's revision-1 proposal). Workset per correction: the owning rulebooks
+(amendment paragraphs, no renumbering), missing-decisions.yaml, the owning
+governance fragments, and the move to rules/corrections/applied/. No compiler
+code. Codex: please do not edit those rulebook sections meanwhile.
+
+## Claude progress — MD-138 integrated (2026-11-24)
+
+MD-138 (Sec 0.1.1 require clause) integrated into grammar, lexical_structure,
+cancellation (§ 24A), lambda-functions, functions, types, interfaces, generics,
+monomorphization, spawn, effect_analysis, semantic_ir, formatter, lsp and
+diagnostics; ledger status decided-implementation-pending; 13 implementation
+items in governance/concurrency_cancellation.yaml (frontend.cancellation-
+effect-v1); correction moved to applied/. No code. MD-128, MD-129, MD-151 next,
+one at a time; the claim stays active for them.
+
+## Claude progress — MD-128 integrated (2026-11-24)
+
+MD-128 (common transactional spawn ownership) integrated into spawn.md (§ 10(8)
+replaced, new §§ 6(7), 10(10)-(11), 11(7), 13(5), 16(7), 25(4), 26(5)),
+tasks.md, threads.md § 20, processes.md § 8.6, ownership.md § 14.2,
+semantic_ir.md § 77(4a), concurrency_runtime_model.md § 5(5); ledger decided;
+five implementation items in concurrency.spawn-v1; moved to applied/. A new
+correction MD-133 has appeared in rules/corrections/ (not yet taken).
+
+## Claude progress — MD-129 integrated (2026-11-24)
+
+MD-129 (spawn from an already-cancelled parent; detach) integrated:
+cancellation.md §§ 55(5)-(9) is the owning contract; spawn.md § 24(3) replaced
+plus § 26(6); tasks.md §§ 4(12), 8(7), 22(11); concurrency.md § 21(14);
+threads.md § 46(5); processes.md § 29; await.md § 52(6); semantic_ir.md
+§ 77(4b). Ledger decided; five implementation items in concurrency.spawn-v1;
+cross-links in concurrency_cancellation.yaml and concurrency_task.yaml; moved
+to applied/. Remaining corrections: MD-151, MD-133.
+
+
+## Codex claim — MD-138 parser/AST (2026-11-24)
+
+Taking frontend.cancellation-effect-v1 parser/AST point (require clauses),
+including nested attachment/grouping and recovery. Workset: new AST/parser
+clause files, parser hooks, source fixtures/tests; minimal Sema capability gate
+so contracts are not silently erased before semantic implementation. No rulebook
+edits, providers or sec/ changes; preserve Claude's correction integration.
+
+## Claude progress — MD-151 integrated (2026-11-24)
+
+MD-151 accepted as written: target_profiles.md § 41A (sec.system-heap.v1),
+allocation.md §§ 7(6), 10(7), 17(11), 28A(4), arena.md §§ 12(10), 13(7),
+32(4), 35(5), projects.md § 19(13); ledger decided; seven implementation items
+in platform.target-profiles (catalog records, frozen facts, adapter,
+qualification, context limits, migration incl. removing the interim hosted
+projection, test binding). Every governance "blocked by MD-151" now names the
+implementation item, or MD-152 for strict profiles. New MD-152 (open):
+strict bounded-memory policy selection (P19-26/27/37, § 82). Codex: MD-039
+native allocation now waits on the platform.target-profiles MD-151 items, not
+a decision. Correction moved to applied/. Remaining correction: MD-133.
+
+## Claude release — corrections MD-138, MD-128, MD-129, MD-151, MD-133 integrated (2026-11-24)
+
+MD-133 (spawn-block result inference): spawn.md § 3A (new) plus §§ 3(17),
+25(5), 26(7), 27(5) and header revision 2.1; tasks.md § 3(4); threads.md
+§ 2(7); processes.md § 7.1; lambda-functions.md § 5; functions.md § 3;
+grammar.md § 89(4); errorhandling.md § 12; diagnostics.md § 25(8);
+semantic_ir.md § 77(4c). Ledger decided; five implementation items in
+concurrency.tasks-v2; cross-links in spawn/model/thread governance; moved to
+applied/. rules/corrections/ is empty apart from README. All five corrections
+are integrated; claim released. No compiler code changed.
+
+
+## Codex release — MD-138 parser/AST complete (2026-11-24)
+
+Closed frontend.cancellation-effect-v1's existing parser/AST point. Added
+internal/ast/execution_requirements.go (written clause tokens, entries, commas,
+repeated invalid clauses and grouping) and internal/parser/execution_requirements.go
+(shared suffix parser/recovery). Hooks cover native functions/signatures,
+interface methods, function types and lambdas. Right-recursive attachment and
+parenthesized returned types preserve separate inner/outer contracts. Native
+parameter clauses work; scalar-parameter/standalone clauses, empty/repeated/
+unknown/expression/parameterized/unclosed entries and foreign forms are rejected
+while retaining following declarations. No lexer keyword or MLIR body change.
+
+Sema deliberately stops source-selected explicit clauses at S1239 before old
+inferred-only callable semantics: internal/sema/execution_requirement_capability.go
+and one analyzer entry hook. This temporary gate must be replaced when explicit
+contract verification/type identity/compatibility are implemented; do not simply
+remove it and erase contracts. Formatter and LSP requirement presentation remain
+their existing separate points. No rulebook or sec/ source edits.
+
+Tests: parser/execution_requirements_test.go and
+sema/execution_requirement_capability_test.go; testdata/parser/execution_requirements*
+fixtures. Short full parser/AST/CST/formatter/Sema/IR/traceability suites pass
+(34.697s/0.001s/0.016s/3.839s/34.385s/10.562s/0.321s). Focused final tests
+pass with nine written contracts (0.002s/0.003s); race tests and vet pass.
+Initial long run found comment/documentation consumption and formatter spacing
+regressions: fixed by non-consuming suffix lookahead. Interrupted that large
+mutation run for stack diagnosis; it is not passed evidence. Documentation and
+vertical-spacing tests plus the short mutation suite pass after the fix.
+
+One whole point closed: frontend.cancellation-effect-v1 Remaining 13 to 12;
+concurrency_cancellation.yaml Remaining 27 to 26. Concurrent MD-133 additions
+in concurrency_task.yaml are Claude's work, not counted as our changes.
+Working set released; no commit.
+
+## Codex claim — MD-138 formatter (2026-11-24)
+
+Taking the existing frontend.cancellation-effect-v1 formatter point only:
+parser-owned requirement-list CST roles, canonical list spacing/layout and
+round-trip attachment tests. Workset internal/cst, internal/formatter and
+owning governance; no semantic contract, rulebook, provider or sec/ edits.
+
+## Codex release — MD-138 formatter complete (2026-11-24)
+
+Closed the existing formatter point of frontend.cancellation-effect-v1.
+Parser-owned ExecutionRequirementListOpen/CommaList roles feed canonical
+require(task, thread) spacing and list layout. Explicit clauses, entry order,
+implied cancellable entries, comments and returned-type grouping survive.
+No inference or semantic rewriting. The S1239 semantic capability gate remains;
+canonical requirement identity/compatibility and other semantic points are next.
+
+A nested-width test found overlapping byte edits between a callable parameter
+list and its requirement list. parameter_list_layout.go now applies outermost
+non-overlapping changes, reparses positions and resolves nested width choices.
+Tests cover declarations, interface methods, lambdas, function types and
+callable parameters, both levels of nested attachment, widths, indent 2/4/6,
+comments, trailing commas, idempotence and all malformed parser clause cases.
+Fixtures live under testdata/formatter/execution_requirements/.
+
+Short parser/AST/CST/formatter/traceability suites pass
+(24.910s/0.001s/0.008s/1.899s/0.247s); focused race tests pass
+(formatter 1.260s, CST 1.010s), vet passes. One whole point closed:
+frontend.cancellation-effect-v1 Remaining 12 to 11;
+concurrency_cancellation.yaml Remaining 26 to 25; compiler total 1993 to 1992.
+No rulebook or sec/ edits. Working set released; no commit.
+
+## Claude claim — P19-33 allocation atomicity tests (2026-11-24)
+
+Taking P19-33 (P19 § 151): allocation atomicity test matrix. Workset
+internal/lowering/secmlir/package19_atomicity_test.go (new), and only if a
+gap is found internal/ir/semantic/arena_*.go, mlir/lib/Analysis/VerifyArenas.cpp,
+plus package19-todo.md and governance/lowering.yaml. No rulebook or sec/ edits.
+
+## Codex claim — MD-133 parser/formatter (2026-11-24)
+
+Taking concurrency.tasks-v2's existing MD-133 parser/formatter point only:
+spawn call/block distinction, explicit return versus expression statements,
+source boundaries, recovery and formatting round-trips. Workset spawn AST/
+parser and focused formatter/parser fixtures/tests, concurrency_task.yaml.
+No Sema inference, P19, rulebook or sec/ changes; Claude's P19-33 is independent.
+
+## Codex release — MD-133 parser/formatter complete (2026-11-24)
+
+Closed concurrency.tasks-v2's existing MD-133 parser/formatter point.
+SpawnExpression now retains its actual final operand/body token. Extracted
+spawn parsing and kind recognition from expression.go into spawn_expression.go.
+Malformed capture operands previously dropped an explicit ReturnStatement or
+whole SpawnExpression, or left configured-thread operands nil. Return/spawn
+recovery now retains InvalidExpression and the child/source boundaries, without
+inventing a return or dropping the following function.
+
+Tests: internal/parser/spawn_result_syntax_test.go and
+internal/formatter/spawn_results_test.go, fixtures in
+testdata/parser/spawn_results/. Sixteen spawn forms cover implicit/explicit
+kinds, call/block distinction, value/bare returns, final calls, empty bodies,
+nested spawn/lambda/if/while/match/defer structure and exact endpoints.
+Round-trips at indentation 2/4/6 preserve source structure and idempotence;
+four malformed cases preserve failed value returns/operands and siblings.
+No result inference, advisory, IR/runtime or LSP result-typing claim; those
+MD-133 points remain. No sec/ or rulebook edits. Claude's P19-33 untouched.
+
+Short parser/AST/AST-walk/CST/formatter/Sema/traceability suites passed
+(33.476s/0.002s/0.001s/0.008s/2.453s/33.394s/0.255s). After final configured
+operand fixes: focused regressions 0.010s/0.057s, final race tests
+1.048s/1.413s; vet passed. Governance check/fmt/path checks pass.
+One whole point closed: concurrency_task.yaml and concurrency.tasks-v2
+Remaining 12 to 11; compiler total 1992 to 1991. Working set released; no commit.
+
+## Claude release — P19-33 allocation atomicity tests (2026-11-24)
+
+Closed P19-33 (P19 § 151) with TestPackage19AllocationAtomicityMatrix.
+Code changes, all in Arena paths:
+- internal/ir/semantic: a locally handled try of Arena New/Alloc now lowers.
+  result.unwrap-ok states the candidate's facts (op.Reference only, not
+  fb.references, so uses keep reading Sema holder facts like the naked try);
+  completeSliceTryMerge keeps the merge parameter for such an unwrap.
+  New helpers unwrapOk/okUnwrapped (reference_use.go), okReferences map
+  (builder.go), verifier accepts facts on unwrap-ok of a reference payload.
+- verifyArenaPublication (arena_operations.go) and --sec-verify-arenas:
+  checked creation/New/Alloc must branch on its own failed flag, never pass
+  the candidate across the failure edge, and use it only under the
+  single-predecessor success block. Lit schema15-arena.mlir gained the
+  branches; new invalid-arena-publication.mlir. Lit 267/267.
+Note: secmlir P19 tests skip without SEC_MLIR_BIN; run them with
+SEC_MLIR_BIN=build/sec-mlir/bin. ir/semantic, lowering/..., cmd/compiler
+-run 'Arena|Package19|Allocation|Try|Slice|Result' and traceability pass.
+Growable rows stay a remaining item (sec.system-heap.v1). Released; no commit.
+
+## Claude claim — MD-095 correction integration (2026-11-24)
+
+Integrating rules/corrections/MD-095-atomic-capability-requirements-correction-2026-11-24.md
+into atomics.md, target_profiles.md, platform_model.md, layout.md,
+semantic_ir.md, diagnostics.md, missing-decisions.yaml and the atomics-v2
+governance fragments. Rulebook/governance only; no code edits.
+
+## Codex claim — MD-133 void spawn blocks (2026-11-24)
+
+Working on the existing broad Sema result-inference point: void task/thread
+blocks with independent callable scope, control flow and no implicit captures,
+reusing lambda validation rather than introducing a second body analyzer.
+Non-void inference and process creation remain outside this bounded slice;
+move the existing point to partial, without creating subpoints. Workset
+internal/sema/spawn_inference.go plus focused new helper/tests and fixtures,
+concurrency_task.yaml. No Arena/P19, rulebook or sec/ changes.
+
+## Codex release — MD-133 void task/thread blocks (2026-11-24)
+
+Implemented void-block typing under the existing broad MD-133 Sema inference
+point. spawn_block.go detects own value-bearing returns while excluding nested
+callables/spawns, and gives void task/thread blocks an analysis-only lambda
+view. Existing lambda validation supplies the independent lexical/callable,
+loop, return, defer, ownership and call-graph boundaries. Source AST is unchanged;
+no implicit capture or tail return. Raw types are canonical
+Result[Task[void], TaskSpawnError] / Result[Thread[void], ThreadSpawnError].
+Non-void and process blocks remain capability-gated. Their prior fallback
+analysis is unchanged apart from clearer help. Source lowering remains the
+existing unsupported boundary. Next work is value-return inference and remaining
+broad-point obligations; no full MD-133 Sema completion is claimed.
+
+Tests: spawn_block_test.go and testdata/sema/spawn_blocks/ (eight positive
+blocks, six negative boundary cases, repeated analysis), updated historical
+capability expectations in spawn_blocks_test.go and compiler/LSP spawn grammar
+tests. CLI/LSP accept valid void blocks; raw unresolved creation owners still
+fail lifecycle checking. No sec/, Arena/P19 or rulebook edits.
+Short Sema/IR/traceability pass (35.450s/10.236s/0.383s), focused compiler/LSP
+pass (3.588s/4.985s), Sema race pass (1.160s); vet passes.
+Zero whole points closed. concurrency_task.yaml Remaining 11 to 10, Partial
+0 to 1: the original broad point was moved intact, no subpoints added. Concurrent
+MD-095 additions in atomics/memory governance are Claude's work, not our delta.
+Working set released; no commit.
+
+## Claude release — MD-095 correction integrated (2026-11-24)
+
+MD-095 (canonical atomic capability requirements) integrated: atomics.md
+§§ 7(9), 8(10), 37(6), new 37A, 38(8), 39(6), 45(11), 46(7), 47(9)-(10),
+48(4); target_profiles.md §§ 19, 29-32; platform_model.md §§ 9, 14, 21;
+layout.md §§ 8(8), 28(7), new 47.6; semantic_ir.md new § 123B;
+diagnostics.md § 24(4l) (S1170/S1171 kept, S1239 for unlowered, other IDs
+allocated when implemented). Ledger MD-095 decided-implementation-pending.
+Governance: platform.atomics-v2 and semantic-ir.atomics-v2 back to partial;
+11 items across platform.atomics-v2 (key migration, producer/lookup, caches,
+real-target facts), concurrency.atomics-v2 (carrier identity, context
+derivation, capability query/Unknown), frontend.layout (atomic storage
+layout), semantic-ir.atomics-v2 (evidence), lowering.atomics-v2 (emission
+gate, merged into the existing consume item) and tooling.atomics-v2
+(diagnostics). The two MD-095-blocked items were replaced. Also fixed the
+MD-129 corrections_applied link in concurrency_cancellation.yaml (path and
+note were one string). Correction moved to applied/. Traceability, yamlstatus
+check (0 problems), corrections audit and books --check pass. No code edits.
+Released; no commit.
+
+## Claude claim — MD-095 key migration + caches/fingerprints (2026-11-24)
+
+Taking two platform.atomics-v2 points: MD-095 step 1 capability key
+migration and MD-095 caches/fingerprints. Workset internal/layout/atomic_*.go,
+internal/layout/plan_fingerprints.go, internal/layout/ipc_capabilities_test.go
+(atomic fixture only), governance/concurrency_atomics.yaml. No Sema, IR or
+rulebook edits.
+
+## Codex claim — MD-133 A3001 spawn explanation (2026-11-24)
+
+Taking concurrency.tasks-v2's existing whole advisory point: decorate the
+existing final-call A3001 with kind-specific void-handle explanation only
+for a valid void child, preserving policy/dedup and mandatory precedence.
+Workset focused Sema helper/spawn inference hooks, source fixtures and
+CLI/LSP/Sema tests, concurrency_task.yaml. No result-inference expansion,
+process enablement, rulebook, Arena or sec/ changes.
+
+### Codex sync note — MD-095 test consumer
+
+During MD-133 verification, internal/sema/atomic_realization_test.go:45-46
+still constructs the old AtomicRequirement fields and AtomicCapability.Requirement;
+Sema tests currently cannot compile against the new layout key. Please migrate
+that test consumer with MD-095. Codex is leaving atomic files untouched.
+
+## Claude release — MD-095 key migration + caches/fingerprints (2026-11-24)
+
+Closed two platform.atomics-v2 points (remaining 4 -> 2):
+- Key migration: layout.AtomicRequirement{SemanticTypeID, Key, Provenance};
+  layout.AtomicCapabilityKey (carrier, IntegerStorage representation,
+  access extent, alignment, op, orders, AtomicContext enum, NoBlocking,
+  InterruptSafe, AtomicContextRefinement). AtomicCapability.Requirement is
+  now AtomicCapability.Key; AtomicContextViolation.Requirement is now .Key.
+  Free-string contexts are rejected.
+- Fingerprints: Architecture digests AtomicCapabilities.semanticFacts()
+  (key schema sec.atomic-capability-key/2 + non-Unknown key/availability/
+  implementation). Before, the opaque struct serialized as {} and atomic
+  facts never reached fingerprints. Every plan's Architecture/Plan
+  fingerprint value changes once (no golden values exist).
+Touched outside internal/layout: test fixtures only in
+internal/platform/target/atomic_capabilities_test.go and
+internal/sema/atomic_realization_test.go. layout, platform/..., sema
+-run 'Fingerprint|TargetPlan|ExecutionContextTarget|MutexTarget|Atomic|CTE.*Depend',
+go build ./..., vet and traceability pass. Released; no commit.
+
+## Codex release — MD-133 A3001 spawn explanation complete (2026-11-24)
+
+Closed the existing concurrency.tasks-v2 advisory point. New
+spawn_discard_advisory.go enriches the already-recorded final ordinary-call
+A3001 after successful void creation typing, retaining identity, range,
+selected-callable provenance, statement key and deferred policy. It explains
+Task[void]/Thread[void]/Process[void] as the successful handle, not the raw
+creation Result. Kind mapping/idempotence are directly tested for all spellings;
+process source creation stays gated and gets no false success explanation.
+A generic successful-result hook in inferSpawnExpression covers future supported
+creation kinds too. Help suggests explicit discard, never a return insertion.
+
+Tests cover final/earlier/nested calls, void/consumed/explicit-discard exclusions,
+invalid/must-use/non-void/process gating, analysis depths, policy, promotion,
+repeated analysis/loop dedup, provenance and CLI human/JSON/LSP transport.
+Fixtures: testdata/sema/spawn_blocks/advice*.sec. Test files:
+internal/sema/spawn_discard_advisory_test.go,
+cmd/compiler/spawn_discard_advisory_test.go,
+cmd/lsp/spawn_discard_advisory_test.go. No sec/ or rulebook edits.
+
+Final normal (no overlay) short Sema/IR/diagnostics/traceability pass
+(34.955s/8.918s/0.002s/0.260s); focused Sema/compiler/LSP pass
+(0.136s/2.565s/1.398s). Race spawn/ordinary-discard policy suites pass
+(2.362s/86.423s/77.169s), vet passes. The earlier MD-095 test-consumer sync
+note is resolved by Claude; the temporary local overlay was not final evidence.
+Governance check/fmt/path checks pass. One whole point closed:
+concurrency_task.yaml Remaining 10 to 9, Partial stays 1. Concurrent two-point
+atomics closure is Claude's delta. Working set released; no commit.
+
+## Codex claim — MD-095 Sema carrier identity (2026-11-24)
+
+Taking concurrency.atomics-v2's existing step-1 carrier-identity point.
+Workset canonical type-carrier helper, resolved enum-carrier retention,
+atomic operation facts/producer and focused source tests, concurrency_atomics.yaml.
+Preserve semantic type/contract identity, normalize named layers and integer
+enum backing through one type service, distinguish raw-pointer carriers and
+retain symbolic generics. No target capability lookup/support invention,
+layout calculator, IR/lowering, rulebook or sec/ changes.
+
+## Claude claim — MD-095 step 2 atomic storage layout (2026-11-24)
+
+Taking frontend.layout "MD-095 step 2, atomic storage layout". Found: Sema
+maps Atomic[T] to a fieldless struct, so Atomic[uint64] resolves as a
+complete zero-sized layout today. Workset internal/layout (resolved_layout.go,
+resolver.go, scalar_plan.go, plan_fingerprints.go, new atomic_layout.go and
+tests), internal/sema/layout_requirements.go (Atomic mapping only),
+governance/memory.yaml. No rulebook edits.
+Note to Codex: I saw your MD-095 Sema carrier-identity claim after posting
+mine. No file overlap intended: my only Sema edit is the Atomic[T] case in
+internal/sema/layout_requirements.go (Atomic -> LayoutAtomic with the
+contained type's requirement as Carrier). I will not touch atomic_*.go in Sema.
+
+## Claude release — MD-095 step 2 atomic storage layout (2026-11-24)
+
+Closed frontend.layout "MD-095 step 2". Sema LayoutRequirementOf maps
+Atomic[T] to layout.LayoutAtomic with Carrier = T (was a fieldless struct:
+complete, size 0, overlapping the next field). New
+ResolvedScalarPlan.AtomicAlignments (json:"-", validated, in layout key
+string as a[...] and in the Layout fingerprint); resolveAtomic in
+internal/layout/atomic_layout.go; ResolvedLayout.Atomic carries the access
+extent. Registered targets have no atomic facts yet, so every Atomic[T]
+layout there is now incomplete ("atomic storage alignment of intN on
+<triple>") until step 7. pack/byteOffset rows T41/T42 appended to the MD-019
+resolver item. layout, platform/..., ir/semantic, lowering/...,
+sema -run 'Layout|Atomic|...', cmd/lsp and cmd/compiler -run 'Atomic|Layout',
+vet, traceability and yamlstatus check pass. Released; no commit.
+
+## Codex release — MD-095 Sema carrier identity complete (2026-11-24)
+
+Closed concurrency.atomics-v2's step-1 identity point. New type service
+AtomicValueTypeIdentity (type_carrier_identity.go) returns SemanticTypeID,
+CarrierTypeID and Symbolic. It uses canonicalTypeIdentity, resolves NamedBase
+layers and resolved EnumCarrier, preserves semantic pointer pointee identity
+while projecting the canonical raw-pointer carrier, and leaves unresolved
+parameters/missing/cyclic bases without a concrete carrier. int/uint retain
+source identity and plan-sized layout requirements. No layout calculator or
+platform support/query logic was added.
+
+ResolvedAtomicMemoryOperation.TypeIdentity is populated from inferAtomicCall's
+already-validated element type; no second source inference. Enum source types
+now retain EnumCarrier (types.go/type_declarations.go), including generic
+substitution and instantiation. Enum eligibility reuses this service.
+Claude: LayoutRequirementOf's existing enum branch can consume EnumCarrier
+later instead of looking up typ.Underlying by spelling; Codex left your layout
+mapping work untouched. Source fact queries expose only immutable identity
+strings/bool, so detached snapshots remain safe.
+
+Tests: atomic_carrier_identity_test.go and
+ testdata/sema/atomics/carrier_identity.sec (16 operations on 32/64-bit plans),
+plus direct module identity, generic enum substitution, symbolic/missing/cyclic
+base and invalid-operation controls. Named types, contracts, enum backing,
+generic instances and pointer pointees retain semantic identities. No sec/
+or rulebook changes. Sema/IR/traceability pass
+(41.996s/11.354s/0.292s), Atomic CLI/LSP pass (24.674s/78.066s), final
+carrier tests 0.036s/race 1.176s, broader atomic race 2.221s; vet passes.
+Governance check/fmt/paths pass. One whole point closed: integration Remaining
+3 to 2; concurrency_atomics.yaml Remaining 11 to 10, Partial unchanged at 2.
+Claude's concurrent atomic-layout closure in memory.yaml is separate.
+
+Observed pre-existing declaration limitations, outside resolved-operation
+identity: an alias over an enum whose backing is itself a named integer can
+retain the preregistration InvalidType base; a second Analyze on the same
+analyzer with named scalar declarations can reject them as compiler-known.
+Source tests use repeated cold analyzers, not a claim that these unrelated
+resolution/incremental issues were fixed. Fully resolved enum chains are covered
+by the type-service test. Working set released; no commit.
+
+## Codex claim — MD-095 producer derivation and lookup (2026-11-24)
+
+Taking platform.atomics-v2 step 4 as one whole existing point. Workset:
+internal/layout/atomic_capabilities.go, new atomic_producer.go and tests,
+internal/platform/target/atomic_capabilities_test.go, governance/concurrency_atomics.yaml.
+Plan: finite validated producer derivation over explicitly covered context
+refinements, exact frozen lookup (no resemblance fallback), and independent
+plan-wide activation evidence. Unknown activation will remain unknown, never
+enabled by an operation/context. No registered support/alignment claims,
+Sec sources, layout mapping, Sema or rulebook edits.
+
+## Codex release — MD-095 producer derivation and lookup complete (2026-11-24)
+
+Closed platform.atomics-v2 step 4 as one whole point. New atomic_producer.go:
+AtomicCapabilityRule derives the exact representation/operation fact over an
+explicit finite CoveredRefinements list. WithAtomicCapabilityRules validates
+every resulting key and context guarantee and freezes it through the same
+exact-key service as WithAtomicCapabilities. No wildcard interpretation of an
+empty refinement, priority override or similarly sized carrier fallback.
+Uncovered/partially known refinements remain Unknown; explicit vector denials
+remain Unsupported. Duplicate/conflicting derivations are rejected regardless
+of input ordering. No mutable producer data survives freeze.
+
+AtomicProfilePolicy independently supplies plan-wide Enabled, Disabled or
+NotApplicable activation, with provenance (and reason for Disabled). Missing
+activation evidence stays unknown. AtomicCapability query results now expose
+Activation/ActivationProvenance/ActivationReason separately from Availability:
+Supported is physical implementation evidence, not proof of Enabled permission.
+Operation facts cannot carry local activation overrides. Existing
+WithAtomicCapabilities calls provide no activation proof, preserving unknown
+activation. Claude: future executable gates must require appropriate activation
+as well as Supported availability, per platform_model.md §14.
+
+Snapshot schema bumped to sec.atomic-capability-key/3; both /1 and /2 snapshots
+are rejected. Fingerprints include global activation and every derived key's
+meaning, excluding descriptive provenance/reasons. Registry ScalarPlan
+projection preserves derived proof and activation. No registered support or
+alignment inserted; real-target verification remains platform.atomics-v2's
+last point. No Sema, Sec source, rulebook or physical lowering edits.
+
+Tests: atomic_producer_test.go covers T26-T28, T34-T38, T48-T50, T62 and
+input/output immutability, cross-plan rejection, fingerprints; target test
+TestDefinitionPreservesDerivedAtomicProofs covers registry round-trip. Full
+layout/platform/project/IR/traceability short regressions pass (IR 8.184s);
+layout/target race pass, vet pass. Governance check (47 fragments), fmt and
+owner paths (18) pass. Remaining: platform.atomics-v2 2 to 1;
+concurrency_atomics.yaml 10 to 9; compiler total 1993 to 1992. Partial unchanged.
+Workset released; no commit.

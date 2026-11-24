@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-13
-- **Last updated:** 2026-09-28
+- **Last updated:** 2026-11-24 (§§ 9, 14, 21 atomic capability producers and optional Unknown evidence, MD-095); 2026-09-28
 - **Document revision:** 1.1
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/platform/platform_model.md`
@@ -455,6 +455,12 @@ runtime fallback availability
 Atomic hardware capabilities likewise describe implementation capability and do not
 redefine the Sec concurrency memory model.
 
+**MD-095 (2026-11-24; `rules/corrections/applied/MD-095-atomic-capability-requirements-correction-2026-11-24-20261124.md`).** Atomic capability facts are produced by
+validated producers: verified target data or deterministic, validated derivation
+rules over representation and operation, keyed by carrier rather than by user-defined
+nominal types (`rules/concurrency/atomics.md` §§ 37A(9)–(10)). The absence of
+registered positive facts is never a reason to fabricate default support.
+
 ---
 
 ## 10. MemoryEnvironment
@@ -696,6 +702,13 @@ another platform.
 
 An implementation may use an internal `Unresolved` state while constructing a plan,
 but required facts must not remain unresolved in a valid frozen CompilationPlan.
+
+**MD-095.** A missing *optional* capability entry, such as a concrete atomic
+operation the plan has no fact for, may legitimately be `Unknown` in a frozen plan.
+It is an unfulfilled proof obligation: neither permission nor proven impossibility.
+Analysis may continue; executable emission must discharge it or fail closed
+(`atomics.md` §§ 37A(11)–(12)). This is distinct from an unresolved *required*
+internal fact (§ 21).
 
 ### 14.1 `UTCWallClock`
 
@@ -977,6 +990,13 @@ construct ad-hoc plans.
 After freeze, the plan is immutable for one compilation or analysis generation.
 Configuration changes create new plans rather than mutating facts beneath existing
 analysis state.
+
+**MD-095.** No consumer mutates capability facts to make a requirement pass. Later
+canonical target-dependent analyses, including facts contributed by LLVM through
+the platform/layout authority, establish positive evidence only through a newly
+verified plan or snapshot with revalidation of dependent proofs. Capability and
+layout caches are bound to the plan and its dependency fingerprints and are not
+reused across incompatible key schemas.
 
 ---
 

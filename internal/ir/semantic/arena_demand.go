@@ -8,7 +8,8 @@ import (
 )
 
 // ArenaDemandFacts is one Arena domain's compile-time byte demand (P19
-// §§ 79–81, 130): Kind "constant" with an upper-bound Bytes, or "unknown";
+// §§ 79–81, 130): Kind "constant" with an upper-bound Bytes, "unknown" or
+// "unbounded" (an allocating recursive callee receives the Arena, § 81);
 // Expression is the symbolic derivation; CapacityBytes the fixed backing
 // when known. It is metadata, never a runtime value or allocator choice.
 // Rules: rules/mlir/packages/sec-mlir-dialect_package19.md — §§ 79–81, 130.
@@ -44,7 +45,7 @@ func verifyArenaDemand(fn *Function) error {
 	seen := map[uint32]bool{}
 	for _, fact := range fn.ArenaDemand {
 		if fact.Domain == 0 || seen[fact.Domain] || fact.Expression == "" ||
-			(fact.Kind != "constant" && fact.Kind != "unknown") || (fact.Kind == "constant") != (fact.Bytes != nil) ||
+			(fact.Kind != "constant" && fact.Kind != "unknown" && fact.Kind != "unbounded") || (fact.Kind == "constant") != (fact.Bytes != nil) ||
 			fact.Bytes != nil && fact.Bytes.Sign() < 0 {
 			return fmt.Errorf("function %s has an invalid Arena demand summary for domain %d", fn.ID, fact.Domain)
 		}

@@ -73,7 +73,6 @@ func TestPackage19ArenaSourceLowering(t *testing.T) {
 	}
 	for name, test := range map[string]struct{ body, want string }{
 		"WithCapacity": {"fn F() Result[void, AllocationError] {\n    let mut arena := try Arena.WithCapacity(64)\n    discard arena\n    return Ok()\n}", "Arena"},
-		"Release":      {"fn F() void {\n    let mut buffer: byte[8]\n    let mut arena := Arena.FromBuffer(ref mut buffer[..])\n    arena.Release()\n}", "P17 ownership termination"},
 		"New":          {"fn F() Result[int, AllocationError] {\n    let mut buffer: byte[64]\n    let mut arena := Arena.FromBuffer(ref mut buffer[..])\n    let value := try arena.New[int]()\n    *value = 4\n    return Ok(0)\n}", "Arena"},
 	} {
 		t.Run(name, func(t *testing.T) {

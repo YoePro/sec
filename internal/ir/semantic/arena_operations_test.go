@@ -310,3 +310,56 @@ func TestArenaCandidateSuccessArgument(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// P19 § 156 "ordered effect sites" and "state version versus epoch": within
+// a block each Arena domain's operations form one exact owner state-version
+// and epoch chain, in source order (v15 § 9). A continuing Reset verifies;
+// a skipped or reused state version, a stale epoch and an operation after
+// the terminal Release are rejected.
+// Rules: rules/mlir/packages/sec-mlir-dialect_package19.md — §§ 11, 36-48, 156;
+// rules/mlir/dialect-versions/sec_mlir_dialect_v15.md — § 9.
+func TestArenaEffectSiteOrdering(t *testing.T) {
+	appendReset := func(m *Module, mutate func(*ArenaOperationFacts)) {
+		block := m.Functions[0].Blocks[0]
+		first := block.Operations[1]
+		facts := *first.Arena
+		facts.StateBefore, facts.StateAfter = first.Arena.StateAfter, first.Arena.StateAfter+1
+		facts.EpochBefore, facts.EpochAfter = first.Arena.EpochAfter, first.Arena.EpochAfter+1
+		backing := *first.Backing
+		mutate(&facts)
+		second := Operation{Kind: OpArenaReset, Operands: first.Operands, Arena: &facts, Backing: &backing}
+		block.Operations = append(block.Operations[:2], second, block.Operations[2])
+	}
+	m, _ := arenaOperationFixture(OpArenaReset, 64)
+	appendReset(m, func(*ArenaOperationFacts) {})
+	if err := Verify(m); err != nil {
+		t.Fatalf("continuing chain rejected: %v", err)
+	}
+	for name, mutate := range map[string]func(*ArenaOperationFacts){
+		"skipped state version": func(f *ArenaOperationFacts) { f.StateBefore++; f.StateAfter++ },
+		"reused state version":  func(f *ArenaOperationFacts) { f.StateBefore--; f.StateAfter-- },
+		"stale epoch":           func(f *ArenaOperationFacts) { f.EpochBefore-- },
+	} {
+		t.Run(name, func(t *testing.T) {
+			m, _ := arenaOperationFixture(OpArenaReset, 64)
+			appendReset(m, mutate)
+			if err := Verify(m); err == nil || !strings.Contains(err.Error(), "chain of Arena domain") {
+				t.Fatalf("want chain rejection, got %v", err)
+			}
+		})
+	}
+	t.Run("after release", func(t *testing.T) {
+		m, _ := arenaOperationFixture(OpArenaRelease, 64)
+		block := m.Functions[0].Blocks[0]
+		release := block.Operations[1]
+		facts := *release.Arena
+		facts.StateBefore, facts.StateAfter, facts.EpochBefore, facts.EpochAfter = release.Arena.StateAfter, release.Arena.StateAfter+1, 7, 8
+		backing := *release.Backing
+		backing.Transition = string(sema.BackingTransitionAdvanceEpoch)
+		reset := Operation{Kind: OpArenaReset, Operands: []ValueID{4}, Arena: &facts, Backing: &backing}
+		block.Operations = append(block.Operations[:2], reset, block.Operations[2])
+		if err := Verify(m); err == nil || !strings.Contains(err.Error(), "after its Release") {
+			t.Fatalf("want use-after-Release rejection, got %v", err)
+		}
+	})
+}

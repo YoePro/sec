@@ -1,0 +1,60 @@
+module main
+
+fn Text() string { return "text" }
+fn Part() Result[string, StringError] { return Err(StringError.OutOfBounds) }
+
+fn Ordinary() string {
+    let mut text := "old"
+    text += Text()
+    return text
+}
+
+fn Propagate() Result[string, StringError] {
+    let mut text := "old"
+    try text += Part()
+    return Ok(text)
+}
+
+fn Recover() string {
+    let mut text := "old"
+    try text += Part() {
+        Err(_) => {}
+    }
+    return text
+}
+
+fn Fused() Result[string, StringError] {
+    let mut text := "old"
+    try text += "prefix:" + Part() + Text()
+    return Ok(text)
+}
+
+fn Separate() Result[string, StringError] {
+    let mut text := "old"
+    text += try Part()
+    return Ok(text)
+}
+
+fn Referent(target: ref mut string) Result[void, StringError] {
+    try *target += Part()
+    return Ok()
+}
+
+type Box struct { Text: string }
+fn Field() Result[string, StringError] {
+    let mut box := Box { Text: "old" }
+    try box.Text += Part()
+    return Ok(box.Text)
+}
+
+static let mut Global: string := "old"
+fn Static() Result[string, StringError] {
+    try Global += Part()
+    return Ok(Global)
+}
+
+fn Element() Result[string, StringError] {
+    let mut values: string[1] := ["old"]
+    try values[0] += Part()
+    return Ok(values[0])
+}

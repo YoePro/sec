@@ -1,0 +1,38 @@
+module main
+fn Forms() void {
+    let implicitTail := spawn { Work() }
+    let implicitReturn := spawn { return Work() }
+    let taskTail := spawn task { Work() }
+    let taskReturn := spawn task { return Work() }
+    let threadTail := spawn thread { Work() }
+    let threadReturn := spawn thread { return Work() }
+    let processTail := spawn process { Work() }
+    let processReturn := spawn process { return Work() }
+    let empty := spawn {}
+    let bare := spawn task { return }
+    let call := spawn Work()
+    let taskCall := spawn task Work()
+    let threadCall := spawn thread Work()
+    let processCall := spawn process Work()
+    let nested := spawn process {
+        let inner := spawn thread {
+            return Work()
+        }
+        let callback := fn() int { return 7 }
+        if Ready() {
+            return Work()
+        }
+        while Ready() {
+            if Done() { break }
+            continue
+        }
+        match State() {
+            First => { return Work() }
+            _ => { discard Work() }
+        }
+        defer { Cleanup() }
+        Work()
+    }
+    return
+}
+fn After() void {}

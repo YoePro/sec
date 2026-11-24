@@ -265,5 +265,5 @@ func (fb *functionBuilder) routeCarrierValue(resultValue builtValue, point sema.
 	if fb.owner.isVoidType(resultType.Success) {
 		return builtValue{typ: resultType.Success}, nil
 	}
-	return fb.result(Operation{Kind: OpResultUnwrapOk, Operands: []ValueID{resultValue.id}, Location: location(token)}, resultType.Success), nil
+	return fb.unwrapOk(resultValue, resultType.Success, location(token)), nil
 }

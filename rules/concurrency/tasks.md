@@ -89,6 +89,8 @@ Task[int]
 
 § 3(3) If the task function returns `Result[V, E]`, the task type preserves that complete return type.
 
+§ 3(4) **Amendment MD-133 (2026-11-24, Sec 0.1 and 0.1.1, `rules/corrections/applied/MD-133-spawn-block-return-type-correction-2026-11-24-20261124.md`).** For a spawn block, `T` is the type inferred from its explicit value-bearing returns, or `void` without one (`spawn.md` § 3A); the raw expression is `Result[Task[T], TaskSpawnError]` and the ordinary outcome and lifecycle rules apply.
+
 Example:
 
 ```sec
@@ -168,6 +170,10 @@ let worker := try spawn Work()
 § 4(9) A target that does not provide task execution capability at all must be rejected during compilation or target validation rather than represented as a normal runtime `TaskSpawnError`.
 
 § 4(10) The exact scheduling point after successful creation is governed by `scheduling.md`, but successful task creation establishes a valid owning task handle before the caller can use that handle.
+
+§ 4(12) **Amendment MD-129 (2026-11-24, Sec 0.1 and later compatible versions, `rules/corrections/applied/MD-129-spawn-parent-cancellation-correction-2026-11-24-20261124.md` § 3(3)).** A cancellation request already pending on the parent is not a creation error and adds no `TaskSpawnError` variant; creation stays fallible only for its ordinary reasons (§ 5). A linked child created by a requested parent starts with its own request pending (`cancellation.md` § 55(6)).
+
+§ 4(11) **Amendment MD-128 (2026-11-24, Sec 0.1 and 0.1.1, `rules/corrections/applied/MD-128-spawn-transactional-ownership-correction-2026-11-24-20261124.md` §§ 1–3).** Successful task creation, by `spawn` or `spawn task` alike, commits the ownership transfers of the spawn; failed creation cancels its pending transfers of reusable sources, which stay owned by the caller. The common creation transaction is `spawn.md` § 10(8). The public creation-error set of § 5 is unchanged and a post-creation outcome never rolls back the commit.
 
 ---
 
@@ -289,6 +295,8 @@ cleanup belongs to `await.md`, cancellation propagation to `cancellation.md`,
 and deterministic cleanup to the ownership/destruction rulebooks.
 
 § 8(6) This rulebook does not imply that detaching a task preserves structured parent-child ownership.
+
+§ 8(7) **Amendment MD-129 (2026-11-24, Sec 0.1 and later compatible versions, `rules/corrections/applied/MD-129-spawn-parent-cancellation-correction-2026-11-24-20261124.md` § 2).** The structured parent-child relationship of § 8(1) is also the cancellation link along which a parent's request is inherited at creation and propagated afterwards (`cancellation.md` §§ 55(5)–(8)). A task created without a current logical task has no parent and inherits nothing.
 
 ---
 
@@ -822,6 +830,8 @@ detach worker discard
 § 22(9) Detach must not silently preserve borrowed state whose lifetime cannot outlive the detaching scope.
 
 § 22(10) The runtime must retain whatever internal state is required for the detached task to finish safely without retaining the consumed source-level handle as an owner.
+
+§ 22(11) **Amendment MD-129 (2026-11-24, Sec 0.1 and later compatible versions, `rules/corrections/applied/MD-129-spawn-parent-cancellation-correction-2026-11-24-20261124.md` § 4).** A successful detach also breaks the task's structured cancellation propagation link: later requests on the former parent no longer reach it, while requests already committed to it stay pending and are never cleared by detach (`cancellation.md` § 55(7)).
 
 ---
 

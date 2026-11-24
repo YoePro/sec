@@ -1045,6 +1045,9 @@ mode = "hosted"
 
 § 19(13) `mode` is `hosted`, `embedded-arena` or `noalloc`. `provider` names a provider identity in the selected target's verified provider catalog; naming it creates no provider. `provider` together with `mode = "noalloc"` is contradictory. Unknown keys, invalid modes and empty provider names are configuration errors.
 
+
+**Amendment MD-151 (2026-11-24, owner accepted revision 1 as written, `rules/corrections/applied/MD-151-system-heap-provider-proposal-20261124-20261124.md` § 2(3)).** Catalog records, including `sec.system-heap.v1`, are maintained compiler/toolchain target metadata (`rules/platform/target_profiles.md` § 41A); `provider` references a record's identity through this syntax and can neither create nor override one. MD-151 adds no manifest key.
+
 § 19(14) The target profile and allocation table follow the scope order of § 25(2) items 4–6: reusable Variant, then Target, then Target-specific Variant. A higher scope replaces a lower one only where the target property's mutability class permits it.
 
 § 19(15) `[build].profile`, `[profile.<name>]` and `sec build --profile` keep selecting build-option profiles (§ 22). They never alias or override the target profile, and a build profile cannot enable allocation.

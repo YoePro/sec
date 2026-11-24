@@ -1981,6 +1981,7 @@ integrations:
       - complete focused nested-impl and generic-specialization identity tests for associated immutable values
       - lower static properties through Semantic IR, Sec MLIR, and the backend
       - materialize function-local static declarations as one persistent storage location in Semantic IR and backend lowering
+      - "default-initialized statics without an initializer (default_values.md §§ 40-41): Sema accepts `static let mut backing: byte[64]`, but Semantic IR rejects it as \"static backing whose type or initializer has no resolved compile-time value\" (internal/ir/semantic/static_storage.go registerStatic); materialize the canonical default as the compile-time initializer (found 2026-11-24 during P19-35; no open decision)"
       - extend static compile-time evaluation from known runtime-call and local-capture rejection to the complete compiler-known evaluator contract
       - extend source-order-independent dependency inference to untyped static declarations and generic specializations
       - specialize generic static storage independently for every concrete monomorphization

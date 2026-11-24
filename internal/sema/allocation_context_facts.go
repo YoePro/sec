@@ -3,6 +3,7 @@ package sema
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	"sec/internal/ast"
 	"sec/internal/lexer"
@@ -29,6 +30,7 @@ type AllocationContextFact struct {
 	SelectedDomainOrigin lexer.Token
 	CreatedDomainOrigin  lexer.Token
 	Path                 []CallableID
+	LayoutFailure        string
 }
 
 // AllocationContextFacts correlates allocation sites with already-resolved
@@ -48,6 +50,7 @@ func (a *Analyzer) AllocationContextFacts() []AllocationContextFact {
 		}
 	}
 	contexts := map[sourceTokenKey]AllocationContext{}
+	layoutFailures := map[sourceTokenKey]map[string]bool{}
 	ambiguousContexts := map[sourceTokenKey]bool{}
 	for root, site := range a.stringMaterializationSites {
 		if plan, known := a.stringConcatPlans[root]; known && plan.Runtime && site.reachable {
@@ -56,6 +59,16 @@ func (a *Analyzer) AllocationContextFacts() []AllocationContextFact {
 				ambiguousContexts[key] = true
 			}
 			contexts[key] = plan.Allocation.Context
+		}
+	}
+	// String appends retain the same selected context as ordinary concat.
+	for value, site := range a.stringAppendSites {
+		if plan, known := a.stringAppends[value]; known && site.reachable {
+			key := sourceTokenLocation(site.token)
+			if previous, exists := contexts[key]; exists && previous != plan.Plan.Allocation.Context {
+				ambiguousContexts[key] = true
+			}
+			contexts[key] = plan.Plan.Allocation.Context
 		}
 	}
 	// A dynamic-array allocation plan names the context its growth consumes
@@ -80,6 +93,12 @@ func (a *Analyzer) AllocationContextFacts() []AllocationContextFact {
 			continue
 		}
 		key := sourceTokenLocation(plan.Source)
+		if plan.LayoutFailure != "" {
+			if layoutFailures[key] == nil {
+				layoutFailures[key] = map[string]bool{}
+			}
+			layoutFailures[key][plan.LayoutFailure] = true
+		}
 		if previous, exists := contexts[key]; exists && previous != plan.Context {
 			ambiguousContexts[key] = true
 		}
@@ -147,6 +166,12 @@ func (a *Analyzer) AllocationContextFacts() []AllocationContextFact {
 				}
 			}
 			fact.SelectedDomainOrigin = origins[fact.SelectedDomain]
+			var failures []string
+			for failure := range layoutFailures[sourceTokenLocation(fact.Source)] {
+				failures = append(failures, failure)
+			}
+			sort.Strings(failures)
+			fact.LayoutFailure = strings.Join(failures, "; ")
 			fact.CreatedDomainOrigin = origins[fact.CreatedDomain]
 			facts = append(facts, fact)
 		}
@@ -211,7 +236,12 @@ func (a *Analyzer) AllocationContexts(id CallableID) []AllocationContextFact {
 // created Arena is kept distinct from its backing allocation context. Known
 // selection never hides an explicit Arena domain or invents ambient provenance.
 // Rules: rules/memory/allocation.md — §§5(8),29(1),(3); rules/memory/arena.md — §§4.2,4.3,67(4).
-func AllocationContextDescription(fact AllocationContextFact) string {
+func AllocationContextDescription(fact AllocationContextFact) (description string) {
+	defer func() {
+		if fact.LayoutFailure != "" {
+			description += "; " + fact.LayoutFailure
+		}
+	}()
 	if fact.SelectedDomain != "" {
 		return fmt.Sprintf("explicit Arena allocation domain: %s (receiver %s); %s", fact.SelectedDomain, fact.Arena, allocationOriginDescription("allocation context origin", fact.SelectedDomainOrigin))
 	}

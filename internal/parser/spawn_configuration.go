@@ -49,7 +49,15 @@ func (p *Parser) parseThreadConfigurationCallable(expr *ast.SpawnExpression) {
 		return
 	}
 	p.nextToken()
+	operandStart := p.curToken
 	expr.Value = p.parseExpression(PREFIX)
+	if expr.Value == nil {
+		// Keep the child operand distinct from a block or absent callable
+		// after a malformed expression (spawn.md §25(5)).
+		invalid := p.invalidExpression(operandStart, "invalid spawn operand", diagnostics.ParserInvalidExpression)
+		invalid.Recovery.End = p.curToken
+		expr.Value = invalid
+	}
 }
 
 // inlineThreadConfigurationAhead recognizes a named-field initializer without

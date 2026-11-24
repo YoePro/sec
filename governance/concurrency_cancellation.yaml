@@ -77,6 +77,8 @@ integrations:
       - current-execution cancellation is terminal control flow rather than a generic runtime error.
     corrections_applied:
       - rules/corrections/applied/cancellation-v2-cross-rulebook-correction-20260907.md
+      - rules/corrections/applied/MD-129-spawn-parent-cancellation-correction-2026-11-24-20261124.md
+      # MD-129: cancellation.md §§ 55(5)-(9) (inheritance at creation, detach and race ordering); implementation items are owned by concurrency.spawn-v1.
 
   - id: frontend.cancellation-effect-v1
     area: inferred-cancellable-execution-effect
@@ -84,16 +86,39 @@ integrations:
     code:
       - internal/sema/task_context_requirement.go
       - internal/sema/execution_context.go
+      - internal/parser/execution_requirements.go
+      - internal/ast/execution_requirements.go
+      - internal/parser/parser.go
+      - internal/parser/expression.go
+      - internal/sema/execution_requirement_capability.go
+      - internal/cst/roles.go
+      - internal/formatter/cst_spacing.go
+      - internal/formatter/parameter_list_layout.go
     tests:
       - internal/sema/task_context_requirement_test.go
       - internal/sema/concurrency_test.go
+      - internal/parser/execution_requirements_test.go
+      - internal/sema/execution_requirement_capability_test.go
+      - internal/formatter/execution_requirements_test.go
+      - internal/cst/execution_requirement_roles_test.go
     implemented:
       - "per-callable inferred requirements (2026-11-09): `cancel` records a cancellable-execution requirement and Task.Current()/Task.Yield() a logical-task requirement on the containing callable, lambdas included; the former lexical rejection of cancel in every named function is removed (cancellation.md §§ 19-20)"
       - "requirements propagate through synchronous and deferred call-graph edges, recursion included, and are checked from every root: ordinary program entry rejects both (scheduling.md § 22), a spawned thread rejects only the logical-task requirement, a spawned task satisfies both; spawn edges start new roots; the diagnostic lands on main's first call on the path naming the requiring callable and operation, or on the operation itself (TestExecutionContextRequirements)"
       - "test bodies run like ordinary program entry (owner decision 2026-11-09, testing.md § 9.7): every test body node is checked as an entry, so Task.Current()/Task.Yield()/cancel reached from a test without spawning are rejected (TestExecutionContextRequirementsInTests)"
+      - "MD-138 parser/AST completed 2026-11-24 (grammar.md sections 27(6),32(5),73(3),101(4),101A): optional require clauses on native function declarations/signatures, function types, interface methods and lambdas. AST retains ordered contextual entries, keyword/delimiter/comma tokens, repeated invalid clauses and returned-type grouping. Right-recursive attachment and parentheses are tested; malformed empty/repeated/unknown/expression/parameterized/misplaced/unclosed clauses recover to following declarations. Foreign declarations and c::fn gain no new clause syntax, and no MLIR body syntax was enabled. Lookahead leaves following documentation comments untouched. Until the remaining semantic contract/compatibility points are implemented, source-selected explicit clauses stop at S1239 rather than silently becoming inferred/context-free callables."
+      - "MD-138 formatter completed 2026-11-24 (formatter.md sections 11,16(13a),25,29): parser-owned CST requirement lists use canonical require(task, thread) spacing, preferred-width breaking and multiline trailing commas, including comment-bearing lists. Formatting retains explicit presence, ordered and implied entries, callable ownership and returned-type grouping; no inferred clause is introduced. Nested callable parameter and requirement lists are laid out using non-overlapping edits and reparsed positions. Round-trip AST attachment, idempotence, indentation widths 2/4/6 and malformed-source preservation cover T03, T08-T10 and the source-preservation part of T40; semantic identity remains its separate point."
     remaining:
-      - "MD-138 (open): carry or reject the cancellation/task requirement at conversions into declared function types so open target sets (function-typed parameters) cannot erase it (cancellation.md § 21(3)-(4)); calls through values with closed target sets, including declared-type bindings, are checked (verified 2026-11-17)"
-      - Preserve the effect into Semantic IR indirect-call metadata.
+      - "MD-138 canonical requirement identity (types.md § 33(7); cancellation.md § 24A(7); correction § 6(1)-(2)): normalized requirement set in Sema callable type identity, task implies cancellable, order and written-versus-inferred origin excluded; declared clauses on function types; unresolved facts never a proven empty set (T02, T40)"
+      - "MD-138 explicit contract verification (cancellation.md § 24A(5)-(6)): an explicit clause on a function, method or lambda is its contract; diagnose an insufficient declaration with the first originating operation or callee; keep a stronger declaration; inference vocabulary Task.Current/Task.Yield -> task, Thread.Current -> thread, cancel -> cancellable, normalized (T11-T14, T16-T17)"
+      - "MD-138 conversion compatibility (cancellation.md § 24A(7)-(8); lambda-functions.md § 11 amendment): D implies S at every callable assignment, conversion, argument, return and storage in structs, unions, collections and generic arguments, independent of callable capability and site context; reject erasure to plain fn types also for closed targets and inside tasks; overloads compare requirement identity of callable parameters only (T18-T21, T26-T27, T37)"
+      - "MD-138 indirect invocation and roots (cancellation.md § 24A(6), (9)): calls through a declared callable type use its contract (replaces the open-target erasure of MD-138); transporting a callable without invoking it adds no requirement; inference does not cross closure construction; every root and fixed-contract boundary is checked, ordinary entry gets no invented task; mandatory checks independent of analysis depth and folding (T22-T25, T38-T39, T45)"
+      - "MD-138 interfaces (interfaces.md § 6 amendment; cancellation.md § 24A(9)): declared member requirements, conformance compatibility, inheritance conflict comparison with normalized requirements, interface dispatch and generic-constraint calls using the declared contract (T28-T30)"
+      - "MD-138 generics and monomorphization (generics.md § 28, monomorphization.md § 8.3 amendments): preserve requirement components through substitution, infer per concrete specialization, no effect variables; plain fn in generic declarations stays context-free (T15, T30)"
+      - "MD-138 spawn boundaries (spawn.md §§ 8(6), 16(6), 25(3); cancellation.md § 24A(10)): validate the spawned callable's contract against the child identity per kind (task, thread incl. deferred creation, process) and creator-side argument/capture requirements against the creator; compile-time diagnostics only (T31-T36)"
+      - "MD-138 Semantic IR (semantic_ir.md § 52(7); cancellation.md § 57(6); spawn.md § 26(4)): carry requirement sets on callable values and function types, invocation contracts, call-site context proofs and spawn-boundary validation; verifier rejects erasure and unsatisfied invocation; no runtime mask or hidden ABI parameter (T43)"
+      - "MD-138 diagnostics (diagnostics.md § 29(7); cancellation.md § 60(5)): registered IDs for unknown/unsupported entry, empty clause, repeated entry, repeated clause, insufficient explicit contract, erasing conversion, unsatisfied invocation context and spawn-child mismatch, with originating chains and correcting help"
+      - "MD-138 LSP (lsp.md § 13(3); cancellation.md § 59(8)): hover and signature help render declared and inferred requirements in clause spelling marked as inferred, completion inside a clause offers exactly task, thread and cancellable"
+      - "MD-138 incremental analysis (cancellation.md § 56(11); monomorphization.md amendment): a changed requirement set is a semantic dependency change for dependents, exported signatures and caches; no stale callable type or context proof after an edit (T42); attributes stay independently checked (T44)"
     required_tests:
       - id: direct-cancel-effect
         expectation: Function containing cancel is callable only from valid cancellable execution.
@@ -103,10 +128,16 @@ integrations:
         expectation: Storing a cancellation-dependent function in a callable does not erase the requirement.
       - id: task-current-specific-effect
         expectation: Task.Current cannot be satisfied merely by a physical Thread context.
+    verification:
+      - command: go test -short -p 4 ./internal/parser ./internal/ast ./internal/cst ./internal/formatter ./internal/traceability -count=1 -timeout=150s
+        result: "Passed 2026-11-24: parser 24.910s, AST 0.001s, CST 0.008s, formatter 1.899s, traceability 0.247s. Focused ExecutionRequirement race tests passed (formatter 1.260s, CST 1.010s); go vet ./internal/cst ./internal/formatter passed. Includes nested width-overlap regression and invalid-clause preservation. One whole formatter point closed; explicit Sema contract gate remains until semantic points are implemented."
+      - command: go test -short -p 4 ./internal/parser ./internal/ast ./internal/cst ./internal/formatter ./internal/sema ./internal/ir/semantic ./internal/traceability -count=1 -timeout=150s
+        result: "Passed 2026-11-24: parser 34.697s, AST 0.001s, CST 0.016s, formatter 3.839s, Sema 34.385s, Semantic IR 10.562s, traceability 0.321s. Focused parser/Sema tests also pass after adding a callable-parameter clause (0.002s/0.003s); focused race tests pass (1.018s/1.030s), vet passes. Initial broad run exposed documentation-comment consumption and formatter spacing regressions, corrected with non-consuming suffix lookahead; that long mutation run was interrupted for diagnosis and is not claimed passed. Existing documentation and vertical-spacing regressions pass after the fix. Parser/AST point closed; execution-contract semantics and formatter/LSP support remain separate points."
     normative:
       - Functions containing cancel require current cancellable execution.
       - The requirement propagates transitively through calls.
       - The requirement is compiler-inferred with no @cancellable source annotation in v0.1.
+      - "Sec 0.1.1 (MD-138, rules/corrections/applied/MD-138-callable-execution-requirements-v0.1.1-correction-2026-11-24-20261124.md): a callable may declare its execution requirements with require(task|thread|cancellable); inference stays the default, function types carry the normalized requirement set and conversions require D implies S."
       - Callable/function values preserve the requirement and cannot erase it.
       - Task.Current carries a specific current-logical-task requirement.
       - Thread.Current carries a physical-thread capability requirement.

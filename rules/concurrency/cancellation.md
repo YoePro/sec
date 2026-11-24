@@ -494,6 +494,8 @@ fn Work() void
 
 § 19(6) The effect is part of semantic callable analysis even though it is not written in ordinary source syntax.
 
+§ 19(7) **Amendment MD-138 (2026-11-24, Sec 0.1.1, `rules/corrections/applied/MD-138-callable-execution-requirements-v0.1.1-correction-2026-11-24-20261124.md` § 1(2)).** Inference stays the default for body-bearing native functions, methods and lambdas. From Sec 0.1.1 a callable may also state its contract with the `require(...)` clause (§ 24A); `@cancellable` and other annotation spellings remain absent. No program is required to repeat an inferred requirement at any call level.
+
 ---
 
 ## § 20. Transitive effect propagation
@@ -544,6 +546,8 @@ let callback := Inner
 
 § 21(5) Semantic IR must preserve the effect at indirect call boundaries.
 
+§ 21(6) **Amendment MD-138 (2026-11-24, Sec 0.1.1, `rules/corrections/applied/MD-138-callable-execution-requirements-v0.1.1-correction-2026-11-24-20261124.md` § 6).** The hidden requirement of § 21(4) is, from Sec 0.1.1, the normalized execution-requirement component of the canonical function type, and function types can declare it (§ 24A). Converting a requirement-bearing callable to a plain `fn(...) T` is rejected, also for a known closed target and inside a task context; this closes the open-target erasure of MD-138.
+
 ---
 
 ## § 22. Invalid context-free invocation
@@ -587,6 +591,87 @@ call to ProcessBatch requires a current cancellable task or thread execution con
 § 24(2) This requirement is separate from the logical-task requirement.
 
 § 24(3) A task running on a target with physical worker threads may observe both task and thread contexts while retaining distinct identities.
+
+---
+
+## § 24A. Execution requirement contracts (Sec 0.1.1)
+
+**Governance tags:** `frontend.cancellation-effect-v1`
+
+§ 24A(1) **Amendment MD-138 (2026-11-24, Sec 0.1.1, `rules/corrections/applied/MD-138-callable-execution-requirements-v0.1.1-correction-2026-11-24-20261124.md` §§ 1, 4).** A native callable has an execution-requirement contract: conditions the caller's execution environment must satisfy before invocation. It is not a parameter, value, runtime assertion, cancellation request, scheduler selection or result. Its source spelling is the `require(...)` clause (`rules/foundations/grammar.md` § 101A). The Sec 0.1.1 vocabulary is exactly:
+
+| Entry | Meaning | Satisfied when |
+|---|---|---|
+| `task` | current logical task | a real current `TaskContext` exists under the task model |
+| `thread` | current physical thread context | the active target/profile and execution environment establish a valid physical/native thread context as required by `Thread.Current()` |
+| `cancellable` | current cancellable execution | bare `cancel` has an eligible current logical task or, without one, an eligible explicit cancellable physical thread (§ 14) |
+
+§ 24A(2) `task` implies `cancellable`. Nothing else implies anything: `thread` does not imply `cancellable` (ordinary main or an attached foreign thread may have a physical context without an eligible cancellable identity), `cancellable` implies neither `task` nor `thread`, and `task` and `thread` are independent.
+
+§ 24A(3) A clause creates no task, thread, process or implicit `Context`, requests no cancellation, selects no scheduler and grants no handle authority. `require(cancellable)` states that an eligible identity is available, not that a request is present or that the callable reaches a cancellation point. Satisfaction is proved statically from canonical execution-context and `CompilationPlan` facts; missing proof is not permission, and a failed proof is a compile-time diagnostic, never a runtime `Err`, panic, implicit spawn or disabled operation. Restrictions for ISR, `defer`, shielding, FFI and unsafe code stay independently enforced; the clause cannot waive them or create a cancellation point.
+
+§ 24A(4) **Inference (§ 5 of the correction).** Every concrete native callable has a requirement summary, separate from its ordinary signature and its may-effect and guarantee summaries, and part of its resolved semantic type. `Task.Current()` and `Task.Yield()` contribute `task`, `Thread.Current()` contributes `thread`, bare `cancel` contributes `cancellable`, an ordinary synchronous call contributes the callee's effective requirements and an indirect synchronous invocation those of the resolved function type. The summary is the conjunction over all semantically reachable operations and calls, with a stable fixed point for mutual recursion and concrete types and callees for generic specializations; it never depends on optional optimization or a runtime target. Other context-aware operations do not become context-dependent through this table.
+
+§ 24A(5) Without a clause, a body-bearing native callable's contract is its inferred summary. With a clause, the declaration is its contract: every environment satisfying the declaration must satisfy the inferred requirements, otherwise the declaration is diagnosed with the first relevant originating operation or callee and the missing requirement. A stronger declaration than the body needs is legal and stays part of the public contract. The compiler neither strengthens an insufficient declaration nor weakens a stronger one, and never accepts a body because its current callers happen to satisfy more.
+
+```sec
+fn Inspect() void require(task) {          // valid
+    let current := Task.Current()
+    discard current.CancelRequested
+}
+
+fn ReservedForTasks() void require(task) {  // valid: stronger than needed
+}
+
+fn Invalid() void require(cancellable) {   // invalid: cancellable does not establish a task
+    let current := Task.Current()
+    discard current.CancelRequested
+}
+```
+
+§ 24A(6) Inference does not cross a callable-definition boundary because a closure is constructed, captured, stored, returned or moved; the contract belongs to the callable constructed. Capture expressions, arguments and other operations evaluated in the current context keep their own requirements, and invocation, including indirect invocation, is checked separately. An independently prohibited operation stays prohibited. A concrete root or any boundary with a fixed execution contract must satisfy the requirements; a context-free program entry is never accepted by inventing a root task.
+
+§ 24A(7) **Identity and compatibility (§ 6).** The canonical function type includes the normalized requirement set; it does not depend on parameter names, captures, entry order or whether the contract was written or inferred. With `task` present, `cancellable` is redundant in the identity; the source clause is kept for diagnostics and formatting. For an assignment or conversion of a callable with effective requirements `S` to a destination type declaring `D`, the requirement component is compatible exactly when `D` implies `S`. This is checked from the portable contract, not from the assignment site, in addition to every capability and signature check.
+
+| `S` (source) | `D` (destination) | Result |
+|---|---|---|
+| none | none | valid |
+| none | task | valid |
+| task | none | invalid |
+| cancellable | task | valid |
+| task | cancellable | invalid |
+| thread | task | invalid |
+| thread | task, thread | valid |
+| task, thread | task | invalid |
+| task, cancellable | task | valid; equivalent |
+
+```sec
+let inferred := NeedsTask                         // valid: type fn() void require(task)
+let typed: fn() void require(task) := NeedsTask   // valid
+let invalid: fn() void := NeedsTask               // invalid, also inside a task
+```
+
+§ 24A(8) After conversion to a stronger declared contract, invocation uses the destination contract; known implementation facts may support optimization but never weaken it, and no requirement-stripping conversion exists. Requirements survive legal storage in structs, unions, collections, generic arguments and return values; a facility that cannot preserve them rejects the operation instead of treating the value as context-free. The requirement dimension composes with, and is checked independently of, `mut fn` and `-> fn` capabilities, ownership and capture modes. Overload selection uses requirement identity only where a parameter is itself a callable type; declarations are not overloaded by their own clause and there is no dispatch or ranking by the current context.
+
+§ 24A(9) **Indirect calls, interfaces and generics (§ 7).** A call through an explicitly typed callable parameter uses its declared contract, whatever the target set; no whole-program target discovery is needed. A function that only transports a requirement-bearing callable without invoking it does not acquire its requirement. Statically resolved generic instantiations keep the requirement components of their substituted types; there are no effect variables, effect-polymorphic `fn` types or implicit existential requirements, and a plain `fn(...) T` in a generic declaration stays context-free. A native interface method may declare a clause (omitted means none); a conforming method's effective contract must be compatible under § 24A(7), and interface dispatch and constraint calls use the declared member contract. Inheritance and conflicting-member rules are unchanged; normalized requirement identity takes part in signature comparison and conflicting contracts are not merged. MD-053 still owns effect guarantees on interface requirements.
+
+```sec
+fn Execute(callback: fn() void require(task)) void {   // infers require(task)
+    callback()
+}
+
+fn Forward(callback: fn() void require(task)) fn() void require(task) {  // no requirement of its own
+    return callback
+}
+
+interface TaskWorker {
+    fn Work() void require(task)
+}
+```
+
+§ 24A(10) **Spawn boundaries (§ 8).** Ordinary synchronous calls inherit the current context. A spawned callable runs in a new execution identity, and its requirements are checked against that identity and the active target/profile, not propagated to the creator. `spawn` and `spawn task` establish a logical task and satisfy `task` and `cancellable`; `thread` additionally needs proof of a valid physical thread context for the child. `spawn thread` satisfies `thread` and `cancellable` but not `task`. `spawn process` provides no logical task or cancellable thread by itself; a `thread` requirement must be proved from the child's bootstrap and target contracts. Spawn arguments and callable/capture preparation evaluated in the creator keep the creator's requirements; operations inside a spawned block body belong to the child. Eager and deferred thread creation are checked alike, and no creation-failure error variant is added for missing static context proof. MD-128, MD-129 and MD-133 are unaffected.
+
+§ 24A(11) **Contract categories (§ 9).** Invocation requirements (`require(...)`), verified guarantees (`@noAlloc`, `@noPanic`, `@noBlock` and other verified attributes) and the body form are distinct; attributes are not requirements and `require(cancellable)` is not `@noPanic` or `@noBlock`. `MayAllocate` and `RequiresAllocationContext` stay separate facts; no `require(allocator)` or other entry is approved. Future entries need their own satisfaction, inference, normalization, compatibility and diagnostic rules; `require(y != 0)` and `require(feature(...))` are not legal and argument preconditions or Design by Contract are outside this decision.
 
 ---
 
@@ -1263,6 +1348,21 @@ ref Context
 
 § 55(4) Explicit shared `Context` propagation is a separate mechanism from task-identity cancellation propagation.
 
+§ 55(5) **Amendment MD-129 (2026-11-24, Sec 0.1 and later compatible versions, `rules/corrections/applied/MD-129-spawn-parent-cancellation-correction-2026-11-24-20261124.md` §§ 1–2).** Cancellation inheritance applies only to a real structured parent-child cancellation link (`spawn.md` § 9, `tasks.md` § 8, `concurrency.md` § 19), never to lexical nesting, handle ownership alone, a physical worker identity or the use of task operations. A task spawned from ordinary program entry or from a native thread without a current logical task has no task parent, and no root `TaskContext` is invented. Parent and child keep separate identities and request states: an inherited request sets the child's own request state and never aliases the parent's flag. There is no detached-at-creation syntax; a later detach is not evidence that the child was parentless at creation, and moving or returning a handle transfers the lifecycle obligation without reparenting.
+
+§ 55(6) **Amendment MD-129 (2026-11-24, Sec 0.1 and later compatible versions, `rules/corrections/applied/MD-129-spawn-parent-cancellation-correction-2026-11-24-20261124.md` § 3).** An existing cooperative request on the parent is not by itself a reason for `spawn` or `spawn task` to fail. If the parent has a committed request when a linked child is successfully established, including one made before the spawn began, the child begins with its own request pending. The request is established before the child can observe its cancellation state or execute a cancellation point, so it never observes `Task.Current().CancelRequested == false` because publication was delayed. The raw result stays `Result[Task[T], TaskSpawnError]` with no `Cancelled` creation error, and creation never fabricates `TaskOutcome.Cancelled`: the child may cancel cooperatively, return normally before terminal cancellation commits, panic or fail under the ordinary outcome model. A pending request on the parent is not a terminated parent and permits no source execution after terminal cancellation. Without a parent-child link, a request on the creator does not set the child's state; independently delivered requests and shared `Context` state keep their own rules.
+
+§ 55(7) **Amendment MD-129 (2026-11-24, Sec 0.1 and later compatible versions, `rules/corrections/applied/MD-129-spawn-parent-cancellation-correction-2026-11-24-20261124.md` § 4).** A successful `detach` (`tasks.md` § 22) also breaks the structured cancellation propagation link of that task. Requests committed to the child before the detach boundary stay pending while the child is nonterminal; detach never clears, undoes, shields or replaces them. A request committed by the former parent after detach does not reach the child through the removed link; independently valid mechanisms such as a shared `Context` are unaffected. Detach gives no completion synchronization or immediate termination, and `detach worker discard` stays required where the result needs disposal.
+
+```sec
+let worker := try spawn Work()   // parent already requested: the child starts requested
+detach worker                    // breaks future propagation, keeps the received request
+```
+
+§ 55(8) **Amendment MD-129 (2026-11-24, Sec 0.1 and later compatible versions, `rules/corrections/applied/MD-129-spawn-parent-cancellation-correction-2026-11-24-20261124.md` § 5).** Link establishment and initial request publication are coordinated with concurrent parent cancellation so no request is lost between checking the parent and publishing the link. A parent request committed before successful link establishment is in the child's initial state; one committed afterwards while the link is active follows ordinary propagation; failed creation publishes no lasting relationship. Detach and propagation have a well-defined logical order: a request received while the link was active is never revoked because detach won a later race, a request owed by the still-active link is not lost because propagation work was queued when detach occurred, and a request committed after link removal does not travel through it. The mechanism (synchronized publication, a recorded owed request or an equivalent) is not prescribed. Terminal outcomes stay immutable, and request and relationship transitions are data-race-free under § 18 and `concurrency_memory_model.md` without becoming a general publication mechanism.
+
+§ 55(9) **Amendment MD-129 (2026-11-24, Sec 0.1 and later compatible versions, `rules/corrections/applied/MD-129-spawn-parent-cancellation-correction-2026-11-24-20261124.md` §§ 6–7).** No cross-kind inheritance exists: `spawn thread` from a requested task gives the thread no task request (`Thread.Current().CancelRequested` observes the thread identity, § 55(3)), `spawn process` from a requested task terminates or resolves nothing (`processes.md` § 29), and an already cancelled or expired `Context` is handled through its own contract without manufacturing execution cancellation. Ownership follows MD-128 (`spawn.md` § 10(8)): a genuine creation failure rolls back pending transfers, while success commits exactly once even for a requested child, and the child's later cooperative cancellation rolls nothing back. A successful creation always has its ordinary handle lifecycle obligation, which a pending request never replaces. Await caller-cancellation cleanup (`await.md` §§ 17–24, 52) is a separate explicit request. `spawn` is not a cancellation point.
+
 ---
 
 ## § 56. Semantic analysis
@@ -1288,6 +1388,8 @@ ref Context
 § 56(9) Sema must preserve cancellation-point commit ownership facts required by the owning operation.
 
 § 56(10) Sema must reject `cancel` inside `defer`.
+
+§ 56(11) **Amendment MD-138 (2026-11-24, Sec 0.1.1, `rules/corrections/applied/MD-138-callable-execution-requirements-v0.1.1-correction-2026-11-24-20261124.md` § 10(2)–(3)).** Sema stores normalized requirements in callable type identity, validates explicit contracts, infers requirements over the relevant call edges, verifies conversions and checks invocation boundaries (§ 24A). Unresolved facts are never a proven empty set. Function and closure type construction, overload resolution, interface conformance, generic substitution, monomorphization, exported signatures, callable storage and indirect dispatch consume the same facts; a changed requirement set is a semantic dependency change for incremental analysis and caches, and no optimization or analysis-depth setting disables the mandatory checks.
 
 ---
 
@@ -1319,6 +1421,8 @@ ref Context
 § 57(4) This rulebook does not require the legacy hard-coded opcode list as the canonical vocabulary.
 
 § 57(5) Cancellation must remain distinct from return, panic, error propagation, timeout, and unsafe termination.
+
+§ 57(6) **Amendment MD-138 (2026-11-24, Sec 0.1.1, `rules/corrections/applied/MD-138-callable-execution-requirements-v0.1.1-correction-2026-11-24-20261124.md` § 10(4)).** Semantic IR preserves the requirements of callable values, their invocation contracts, call-site context proofs and spawn-boundary validation; the verifier rejects a call or assignment that would erase or fail to satisfy a contract. No runtime requirement mask, extra source parameter, hidden ABI parameter or dynamic assertion is mandated.
 
 ---
 
@@ -1362,6 +1466,8 @@ ref Context
 
 § 59(7) Tooling may display an inferred callable effect such as "requires cancellable execution context" without requiring source annotation.
 
+§ 59(8) **Amendment MD-138 (2026-11-24, Sec 0.1.1, `rules/corrections/applied/MD-138-callable-execution-requirements-v0.1.1-correction-2026-11-24-20261124.md` § 10(5)–(6)).** Hover and signature help show declared or inferred requirements in clause spelling, marking inferred ones as not source text and keeping them apart from other effects. Completion inside a clause offers exactly `task`, `thread` and `cancellable`. The formatter keeps clause attachment, presence, entry order and meaning, prints `require(task, thread)` with ordinary comma spacing and list conventions, and never adds an inferred clause, removes a stronger or redundant entry or drops a parenthesis needed for attachment.
+
 ---
 
 ## § 60. Diagnostics
@@ -1399,6 +1505,21 @@ Context does not grant cancellation authority; cancel the owning ContextSource i
 § 60(3) Diagnostics must distinguish Context cancellation/deadline from terminal current-execution cancellation.
 
 § 60(4) Diagnostics must not suggest volatile access as a cancellation-state synchronization mechanism.
+
+§ 60(5) **Amendment MD-138 (2026-11-24, Sec 0.1.1, `rules/corrections/applied/MD-138-callable-execution-requirements-v0.1.1-correction-2026-11-24-20261124.md` § 10(7)).** Diagnostics name the missing or incompatible requirement, give the originating operation or callee chain for inferred requirements when available, and suggest a correction, for example:
+
+```text
+callable requires a current logical task; destination fn() void does not preserve that requirement
+help: use fn() void require(task) as the callable type
+
+function Invalid declares require(cancellable), but Task.Current() requires a current logical task
+help: declare require(task) or remove the task-dependent operation
+
+unknown execution requirement 'allocator' in Sec 0.1.1
+help: supported execution requirements are task, thread, and cancellable
+```
+
+These texts are illustrative; identifiers follow the diagnostics registry.
 
 ---
 

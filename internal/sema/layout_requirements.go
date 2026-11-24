@@ -2,20 +2,21 @@ package sema
 
 import (
 	"fmt"
+	"math/big"
 	"strings"
 
 	"sec/internal/layout"
 )
 
 // LayoutRequirementOf maps a concrete Sema type to the plan-independent
-// layout requirement the canonical resolver consumes (P24-10/16-20). The type
+// layout requirement the canonical resolver consumes (P24-10/16-21). The type
 // identity is canonicalTypeIdentity, so nominal declarations and generic
 // substitutions stay distinct and display names are never identity. The
 // mapping selects no size or alignment; the resolver decides those under one
 // CompilationPlan.
 //
 // Rules:
-//   - rules/memory/layout.md — §§ 4, 11–13, 18, 19, 25, 39
+//   - rules/memory/layout.md — §§ 4, 11–13, 18, 19, 25, 39, 47.6
 //   - rules/types/types.md — §§ 9.2–9.4, Named types
 //   - rules/mlir/packages/sec-mlir-dialect_package24.md — §§ 7–16
 func LayoutRequirementOf(typ Type) layout.LayoutRequirement {
@@ -34,6 +35,14 @@ func layoutRequirementOf(typ Type, visiting map[string]bool) layout.LayoutRequir
 	visiting[identity] = true
 	defer delete(visiting, identity)
 
+	if isAtomicType(typ) {
+		// MD-095: Atomic[T] is atomic storage over T, never a fieldless
+		// struct; the resolver applies the target's atomic minimum
+		// (layout.md § 47.6).
+		contained := layoutRequirementOf(typ.TypeArgs[0], visiting)
+		requirement.Kind, requirement.Carrier = layout.LayoutAtomic, &contained
+		return requirement
+	}
 	if typ.Named && typ.NamedBase != nil {
 		carrier := layoutRequirementOf(*typ.NamedBase, visiting)
 		requirement.Kind = layout.LayoutNamed
@@ -74,6 +83,22 @@ func layoutRequirementOf(typ Type, visiting map[string]bool) layout.LayoutRequir
 		if typ.Name == "decimal128" || typ.Underlying == "decimal128" {
 			requirement.WidthBits = 128
 		}
+	case EnumType:
+		requirement.Kind = layout.LayoutEnum
+		carrier := builtinType(typ.Underlying)
+		if typ.AssociatedEnum || typ.BitWidth != 0 || (carrier.Kind != IntType && carrier.Kind != UintType) {
+			return requirement
+		}
+		underlying := layoutRequirementOf(carrier, visiting)
+		requirement.Carrier = &underlying
+		for _, name := range typ.EnumValues {
+			member := typ.EnumConsts[name]
+			value := member.Value
+			if value != nil {
+				value = new(big.Int).Set(value)
+			}
+			requirement.EnumMembers = append(requirement.EnumMembers, layout.EnumMemberRequirement{Name: name, Value: value})
+		}
 	case StructType:
 		requirement.Kind = layout.LayoutStruct
 		for _, field := range typ.Fields {
@@ -92,7 +117,7 @@ func layoutRequirementOf(typ Type, visiting map[string]bool) layout.LayoutRequir
 		// Indirection: never a by-value containment edge (layout.md § 13(7)).
 		requirement.Kind = layout.LayoutDescriptor
 	default:
-		// Enums, unions, Result/Option and the remaining families belong to
+		// Unions, Result/Option and the remaining families belong to
 		// later P24 stages; the resolver reports them unsupported.
 		requirement.Kind = layout.LayoutKind(typ.Kind)
 	}

@@ -1,0 +1,24 @@
+module main
+
+type Inner fn() fn() void require(task)
+type Outer fn() (fn() void) require(task)
+type Both fn() (fn() void require(task)) require(thread)
+type Predicate mut fn(int) bool require(
+    cancellable, // contextual name
+    task, // trailing comma
+)
+
+interface Worker {
+    fn Work() void require(task)
+}
+
+fn Create() (fn() void) require(task, thread) {
+    let cancellable := 1
+    let callback := fn() void require(cancellable) {}
+    discard cancellable
+    return callback
+}
+
+fn After() void {}
+
+fn Use(callback: fn() void require(thread), value: int) void {}

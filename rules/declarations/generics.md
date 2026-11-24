@@ -957,6 +957,8 @@ where otherwise valid.
 
 Sec does not represent an unresolved generic function template as a runtime callable object.
 
+**Amendment MD-138 (2026-11-24, Sec 0.1.1, `rules/corrections/applied/MD-138-callable-execution-requirements-v0.1.1-correction-2026-11-24-20261124.md` § 7(3)).** Statically resolved instantiations keep the execution-requirement component of every substituted callable type and use the concrete callees' requirements for inference. There are no effect variables, effect-polymorphic `fn` types or implicit existential requirements; an explicitly written plain `fn(...) T` in a generic declaration stays context-free, and a generic facility that cannot preserve a requirement rejects the operation rather than erasing it.
+
 Generic lambda templates are not part of Sec 0.1. An anonymous
 `fn[T](value: T) T { ... }` would be an unresolved compile-time template rather
 than one concrete runtime callable. Use a named generic function and concretely

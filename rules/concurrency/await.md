@@ -1053,6 +1053,8 @@ mutex guard state remains active across await
 
 § 52(5) `Panicked(PanicInfo)` and `Failed(TaskError)` payloads are destroyed according to ordinary value rules.
 
+§ 52(6) **Amendment MD-129 (2026-11-24, Sec 0.1 and later compatible versions, `rules/corrections/applied/MD-129-spawn-parent-cancellation-correction-2026-11-24-20261124.md` § 7(4)).** The request made by caller-cancellation cleanup is an explicit cancellation of the internally owned handle, distinct from parent-child propagation (`cancellation.md` § 55); it implies no rule for parentless or detached tasks and no implicit detach.
+
 ---
 
 ## § 53. Panic in waiting execution

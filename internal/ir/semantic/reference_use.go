@@ -33,6 +33,35 @@ func (fb *functionBuilder) recordReference(value ValueID, metadata *ReferenceMet
 	fb.references[value] = metadata
 }
 
+// unwrapOk projects the Ok payload of a Result. The Ok reference of an Arena
+// New/Alloc Result states the candidate's dynamic-epoch facts on the unwrap,
+// so the verifier can check a locally handled try's join against them (P19
+// §§ 35, 151). Uses still read the holder with Sema's facts, exactly like
+// the naked try (package15 § 101), so the facts are not recorded as the
+// value's own.
+func (fb *functionBuilder) unwrapOk(result builtValue, success TypeID, loc Location) builtValue {
+	metadata := fb.okReferences[result.id]
+	if metadata == nil {
+		return fb.result(Operation{Kind: OpResultUnwrapOk, Operands: []ValueID{result.id}, Location: loc}, success)
+	}
+	value := fb.newValue(success, OwnershipMutableReference, loc)
+	fb.emit(Operation{Kind: OpResultUnwrapOk, Operands: []ValueID{result.id}, Results: []Value{value}, Reference: metadata, Location: loc})
+	return builtValue{id: value.ID, typ: success}
+}
+
+// okUnwrapped reports whether value is an Arena Ok unwrap carrying facts
+// (P19 § 35; rules/memory/arena.md § 31).
+func (fb *functionBuilder) okUnwrapped(value ValueID) bool {
+	for _, block := range fb.fn.Blocks {
+		for _, op := range block.Operations {
+			if op.Kind == OpResultUnwrapOk && op.Reference != nil && len(op.Results) == 1 && op.Results[0].ID == value {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // referenceHolder returns the reference SSA value named by holder together
 // with the facts it was created with.
 func (fb *functionBuilder) referenceHolder(holder *ast.Identifier) (builtValue, *ReferenceMetadata, error) {

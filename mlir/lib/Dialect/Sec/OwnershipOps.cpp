@@ -185,7 +185,7 @@ LogicalResult CleanupTrackOwnedOp::verify() {
 LogicalResult CleanupCancelOp::verify() {
   if (failed(requireOwnershipSchema(*this)))
     return failure();
-  if (getCleanupActionId() == 0 || !oneOf(getReason(), {"moved", "replaced", "transferred", "discarded"}))
+  if (getCleanupActionId() == 0 || !oneOf(getReason(), {"moved", "replaced", "transferred", "discarded", "released"}))
     return emitOpError("requires an action identity and a valid reason");
   return success();
 }

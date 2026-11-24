@@ -40,20 +40,33 @@ func (fb *functionBuilder) buildRuntimeStringConcat(expr ast.Expression, resultT
 	if !known || !plan.Runtime || plan.Interpolated || fb.owner.maxPackage < arenaLoweringPackage {
 		return builtValue{}, false, nil
 	}
+	value, err := fb.buildPlannedStringMaterialization(expr, resultType, plan, nil, locationFromExpression(expr))
+	return value, true, err
+}
+
+// buildPlannedStringMaterialization prepares the canonical text plan after an
+// optional already-read append destination. All failures precede any caller
+// commit; segment order and failure policy come from Sema.
+// Rules: rules/foundations/operators.md — §§29.3,29.6,29.9;
+// rules/compiler/semantic_ir.md — §17(6); MD-039 §§3–4.
+func (fb *functionBuilder) buildPlannedStringMaterialization(expr ast.Expression, resultType TypeID, plan sema.StringConcatPlan, prefix []builtValue, loc Location) (builtValue, error) {
 	if fb.allocationContext == nil || !plan.Allocation.Context.Available {
-		return builtValue{}, true, fb.unsupported("runtime string materialization without a resolved allocation capability", expressionToken(expr))
+		return builtValue{}, fb.unsupported("runtime string materialization without a resolved allocation capability", expressionToken(expr))
 	}
 	if plan.Failure != sema.StringMaterializationPanic && plan.Failure != sema.StringMaterializationTry {
-		return builtValue{}, true, fmt.Errorf("runtime string materialization lacks its source-selected failure mode")
+		return builtValue{}, fmt.Errorf("runtime string materialization lacks its source-selected failure mode")
 	}
 	errorType, err := fb.owner.internType(plan.Allocation.FailureType)
 	if err != nil {
-		return builtValue{}, true, err
+		return builtValue{}, err
 	}
 	facts := &StringMaterializationFacts{Failure: plan.Failure, ErrorType: errorType}
 	context := *fb.allocationContext
 	operands := []ValueID{context.Value}
-	loc := locationFromExpression(expr)
+	for _, value := range prefix {
+		operands = append(operands, value.id)
+		facts.Segments = append(facts.Segments, sema.StringConcatString)
+	}
 	for _, segment := range plan.Segments {
 		var value builtValue
 		switch segment.Kind {
@@ -62,19 +75,19 @@ func (fb *functionBuilder) buildRuntimeStringConcat(expr ast.Expression, resultT
 		case sema.StringConcatString, sema.StringConcatChar, sema.StringConcatRune:
 			typ, typeErr := fb.owner.internType(segment.ValueType)
 			if typeErr != nil {
-				return builtValue{}, true, typeErr
+				return builtValue{}, typeErr
 			}
 			value, err = fb.buildExpr(segment.Expression, typ)
 			if err != nil {
-				return builtValue{}, true, err
+				return builtValue{}, err
 			}
 		case sema.StringConcatFallibleText:
 			value, err = fb.buildFallibleTextSegment(expr, segment, plan, resultType, errorType)
 			if err != nil {
-				return builtValue{}, true, err
+				return builtValue{}, err
 			}
 		default:
-			return builtValue{}, true, fb.unsupported("runtime string materialization segment "+string(segment.Kind)+" (formatting)", expressionToken(expr))
+			return builtValue{}, fb.unsupported("runtime string materialization segment "+string(segment.Kind)+" (formatting)", expressionToken(expr))
 		}
 		operands = append(operands, value.id)
 		facts.Segments = append(facts.Segments, segment.Kind)
@@ -87,14 +100,14 @@ func (fb *functionBuilder) buildRuntimeStringConcat(expr ast.Expression, resultT
 	}
 	materialized := fb.result(Operation{Kind: OpStringMaterialize, Operands: operands, StringMaterialization: facts, AllocationContext: &context, Location: loc}, producedType)
 	if plan.Failure == sema.StringMaterializationPanic {
-		return materialized, true, nil
+		return materialized, nil
 	}
 	point, protected := fb.failurePoint(expr)
 	if !protected || point.Kind != sema.TryFailureAllocation {
-		return builtValue{}, true, fmt.Errorf("fallible string materialization has no protecting failure route")
+		return builtValue{}, fmt.Errorf("fallible string materialization has no protecting failure route")
 	}
 	value, err := fb.routeCarrierValue(materialized, point, expressionToken(expr))
-	return value, true, err
+	return value, err
 }
 
 // verifyStringMaterialization validates one explicit maximal materialization,

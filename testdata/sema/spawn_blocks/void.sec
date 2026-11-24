@@ -1,0 +1,27 @@
+module main
+fn Work() int { return 42 }
+fn Nothing() void {}
+fn Empty() Result[Task[void], TaskSpawnError] { return spawn {} }
+fn Tail() Result[Task[void], TaskSpawnError] { return spawn task { Work() } }
+fn Bare() Result[Task[void], TaskSpawnError] { return spawn { return } }
+fn Stored() Result[Task[void], TaskSpawnError] {
+    return spawn {
+        let value := Work()
+        discard value
+    }
+}
+fn ChildLambda() Result[Task[void], TaskSpawnError] {
+    return spawn {
+        let callback := fn() int { return 7 }
+        discard callback()
+    }
+}
+fn ThreadBody() Result[Thread[void], ThreadSpawnError] {
+    return spawn thread { Nothing() }
+}
+fn Nested() Result[Task[void], TaskSpawnError] {
+    return spawn {
+        let child := try spawn {} { Err(_) => { return } }
+        discard await child
+    }
+}

@@ -233,7 +233,6 @@ internal/ir/semantic:(*functionBuilder).scopeCleanupExit
 internal/ir/semantic:(*functionBuilder).setHolderHome
 internal/ir/semantic:(*functionBuilder).sliceElementSubplace
 internal/ir/semantic:(*functionBuilder).staticOfIdentifier
-internal/ir/semantic:(*functionBuilder).storageAllowed
 internal/ir/semantic:(*functionBuilder).storedErrorPayload
 internal/ir/semantic:(*functionBuilder).storedFieldPlace
 internal/ir/semantic:(*functionBuilder).storedMatchPayload
@@ -345,7 +344,6 @@ internal/ir/semantic:isAllocationErrorType
 internal/ir/semantic:isArithmeticErrorType
 internal/ir/semantic:isBorrowValueType
 internal/ir/semantic:isBuiltinIntegerType
-internal/ir/semantic:isCheckedIntegerOperation
 internal/ir/semantic:isDynamicArrayGrowth
 internal/ir/semantic:isExactUnsignedIntegerType
 internal/ir/semantic:isFailureReasonType
@@ -376,7 +374,6 @@ internal/ir/semantic:operationOperands
 internal/ir/semantic:operatorSpelling
 internal/ir/semantic:ownedLocalMoveLowerable
 internal/ir/semantic:ownedPlace
-internal/ir/semantic:package14TrivialValue
 internal/ir/semantic:parseCanonicalArrayLength
 internal/ir/semantic:parseDecimal
 internal/ir/semantic:payloadVariantIndex
@@ -876,7 +873,6 @@ internal/sema:(*Analyzer).ResolvedRegisterOperationOf
 internal/sema:(*Analyzer).ResolvedRegisterWriteOf
 internal/sema:(*Analyzer).ResolvedStateTestOf
 internal/sema:(*Analyzer).ResolvedStaticOf
-internal/sema:(*Analyzer).ResolvedStringAppendOf
 internal/sema:(*Analyzer).ResolvedStructLiteralPlanOf
 internal/sema:(*Analyzer).ResolvedStructMemberOf
 internal/sema:(*Analyzer).ResolvedSwitchFlowOf
@@ -1266,7 +1262,6 @@ internal/sema:(*Analyzer).recordSelfReborrow
 internal/sema:(*Analyzer).recordStateTest
 internal/sema:(*Analyzer).recordStaticBinding
 internal/sema:(*Analyzer).recordStorageDomainEscapeFacts
-internal/sema:(*Analyzer).recordStringAppend
 internal/sema:(*Analyzer).recordTemporaryBorrowPlan
 internal/sema:(*Analyzer).recordUnitConversionPlan
 internal/sema:(*Analyzer).referenceFactsWithoutIdentity

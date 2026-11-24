@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** Legacy rulebook; exact original creation date not established
-- **Last updated:** 2026-11-18 (MD-131: A2011 and retired S1069); 2026-11-01 (§ 24(4h) pack forwarding boundaries; § 24(4j) MD-120); 2026-10-30 (§ 24(4i) MD-111 hardware metadata diagnostics; § 24(4h) recognized type-pack expansion capability boundary); 2026-10-29 (§ 24(4g) optional empty-union catch-all warning); 2026-10-28 (§§ 24(4e)–24(4f) inactive-arm and omitted-payload advisories, `None()` under S1157, MD-029/MD-042/MD-102); 2026-10-18
+- **Last updated:** 2026-11-24 (§ 24(4l) MD-095 atomic capability diagnostic categories); 2026-11-18 (MD-131: A2011 and retired S1069); 2026-11-01 (§ 24(4h) pack forwarding boundaries; § 24(4j) MD-120); 2026-10-30 (§ 24(4i) MD-111 hardware metadata diagnostics; § 24(4h) recognized type-pack expansion capability boundary); 2026-10-29 (§ 24(4g) optional empty-union catch-all warning); 2026-10-28 (§§ 24(4e)–24(4f) inactive-arm and omitted-payload advisories, `None()` under S1157, MD-029/MD-042/MD-102); 2026-10-18
 - **Document revision:** 2.3
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/tooling/diagnostics.md`
@@ -1060,6 +1060,8 @@ proof. `S1069` / `types.constrained-assignment-requires-try` is retired, stays
 reserved in the registry and must not be emitted for new source. See
 `rules/types/contracts.md` § 12(2)–(3) and `rules/errors/panic.md` § 21.
 
+§ 24(4l) MD-095 (`rules/corrections/applied/MD-095-atomic-capability-requirements-correction-2026-11-24-20261124.md`; `rules/concurrency/atomics.md` §§ 37A(3), 48(4)) requires five distinguishable atomic outcomes: a source order or operation error, a proven unsupported target capability, an unverifiable capability (missing evidence, including an unproven ISR or nonblocking obligation at executable emission), an incomplete atomic layout, and a supported operation whose lowering the active compiler or dialect package does not implement. Source order errors keep `S1170` / `S1171`; the unimplemented-lowering case reuses `S1239` / compiler capability unavailable, whose registered contract (valid source the current compiler does not support, distinct from source and target errors) matches. The unsupported, unverifiable and incomplete-layout categories receive identities allocated through the registry when they are implemented; no numeric ID is reserved by this paragraph. Analysis-only and LSP presentation never turn an outstanding required proof into executable validity, never downgrade a proven source error, and never report an unresolved proof as proven unsupported.
+
 § 24(5) Retired IDs remain reserved. Known published retired entries include the existing registry definitions for retired diagnostics such as `S1020` / `operator.string-runtime-concat` and any other retired entry already present in the registry.
 
 ---
@@ -1101,6 +1103,8 @@ occurrence per source statement. Promotion to `Error` is applied after mandatory
 analysis and does not change ownership or must-use semantics. Mandatory
 must-use failures retain their own diagnostic even when `A3001` is disabled.
 CLI, JSON and LSP preserve this identity, severity, source range and help.
+
+**Amendment MD-133 (2026-11-24, Sec 0.1 and 0.1.1, `rules/corrections/applied/MD-133-spawn-block-return-type-correction-2026-11-24-20261124.md` § 4).** In an otherwise valid void spawn block ending with such a call, `A3001` adds the explanation that the missing explicit `return` leaves the successful handle as `Task[void]`, `Thread[void]` or `Process[void]` (`rules/concurrency/spawn.md` § 3A(8)). Identity, severity, policy and per-statement deduplication are unchanged, no second advisory is emitted, and the help never becomes an automatic rewrite.
 
 
 
@@ -1201,6 +1205,8 @@ weakens discardability or changes availability/destruction semantics.
 § 29(5) Such recovery suppression is compiler-internal cascade control and is not source-level diagnostic suppression under § 19.
 
 § 29(6) Recovery metadata may include expected tokens, unexpected token, recovery context and episode identity, but the canonical programmer-visible identity remains the registered diagnostic ID.
+
+§ 29(7) **Amendment MD-138 (2026-11-24, Sec 0.1.1, `rules/corrections/applied/MD-138-callable-execution-requirements-v0.1.1-correction-2026-11-24-20261124.md` §§ 2(6), 10(1), 10(7)).** A malformed or unknown execution requirement entry, an empty `require()`, a repeated entry and a repeated clause get focused diagnostics whose recovery does not consume the following body or declaration unnecessarily. An unknown entry is reported as unsupported in the active language version and lists the supported entries. Requirement mismatches name the missing or incompatible requirement and suggest the correcting clause; identifiers are assigned through the registry (§ 12).
 
 ---
 

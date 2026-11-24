@@ -91,7 +91,7 @@ func (fb *functionBuilder) lowerSliceIndexRead(expr *ast.IndexExpression, plan s
 		return builtValue{}, err
 	}
 	typ, _ := fb.owner.module.Types.Lookup(place.typ)
-	if !package14TrivialValue(fb.owner.module, typ.Element) {
+	if !package14TrivialValue(fb.owner.module, typ.Element) || typeHasKind(fb.owner.module.Types, typ.Element, TypeString) && fb.owner.maxPackage < arenaLoweringPackage {
 		return builtValue{}, fb.unsupported("slice element read outside the P15 trivial value surface (P17/P16-36)", expr.Token)
 	}
 	return fb.result(Operation{Kind: OpPlaceRead, Operands: []ValueID{place.id}, Location: location(expr.Token)}, typ.Element), nil
@@ -112,7 +112,7 @@ func (fb *functionBuilder) lowerSliceIndexWrite(stmt *ast.AssignmentStatement, i
 		return err
 	}
 	typ, _ := fb.owner.module.Types.Lookup(place.typ)
-	if !package14TrivialValue(fb.owner.module, typ.Element) {
+	if !package14TrivialValue(fb.owner.module, typ.Element) || typeHasKind(fb.owner.module.Types, typ.Element, TypeString) && fb.owner.maxPackage < arenaLoweringPackage {
 		return fb.unsupported("slice element replacement outside the P15 trivial value surface (P17/P16-36)", stmt.Token)
 	}
 	var value builtValue

@@ -2,8 +2,8 @@
 
 - **Status:** Normative
 - **Created:** 2026-09-06
-- **Last updated:** 2026-10-17
-- **Document revision:** 2.1
+- **Last updated:** 2026-11-24 (MD-095 canonical atomic capability requirements, § 37A; see `rules/corrections/applied/MD-095-atomic-capability-requirements-correction-2026-11-24-20261124.md`). Previously 2026-10-17
+- **Document revision:** 2.2
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/concurrency/atomics.md`
 - **Replaces:** Earlier unversioned revision at the same canonical path
@@ -213,6 +213,8 @@ Atomic[T]
 
 § 7(8) The LSP hover surface for `Atomic[T]` must identify the generic type parameter and the public operations applicable to the resolved concrete `T`.
 
+§ 7(9) (MD-095) The complete layout of `Atomic[T]`, including any target-required private storage and placement constraints, is resolved by the canonical layout service (`rules/memory/layout.md` § 47.6). It is distinct from the access extent and guaranteed alignment that a capability request names (§ 37A(7)).
+
 ---
 
 ## § 8. Atomic-compatible types in Sec 0.1
@@ -245,6 +247,8 @@ named types whose underlying type is atomic-compatible under this section
 § 8(8) Integer-backed enums are eligible only for the operation families allowed for enums by this rulebook.
 
 § 8(9) Named types are eligible only when their underlying type is atomic-compatible and the requested operation preserves the named type's semantic contracts.
+
+§ 8(10) (MD-095) The eligible categories of § 8(2) are unchanged. Equal size, equal alignment or equal bit representation never makes an excluded type eligible; no eligibility is granted to floating-point types, decimals, arbitrary structs or unions, or other types excluded by § 9. A legal type does not make every operation on it available (§ 37A(2)).
 
 ---
 
@@ -1015,6 +1019,44 @@ type Statistics struct {
 
 § 37(5) The compiler must not accept an operation merely because the compiler host provides it when the selected target does not.
 
+§ 37(6) (MD-095) The concrete `T` of § 37(2) is queried through its resolved carrier, and size and alignment are the canonical atomic access extent and storage alignment; execution context is a compiler-known category with its additional requirements. § 37A defines the canonical requirement, its key and the meaning of Supported, Unsupported and Unknown.
+
+---
+
+## § 37A. Canonical atomic capability requirements (MD-095)
+
+**Governance tags:** `concurrency.atomics-v2`, `frontend.atomics-v2`, `platform.atomics-v2`, `compiler.platform-model`, `semantic-ir.atomics-v2`, `lowering.atomics-v2`, `tooling.atomics-v2`
+
+Integrated 2026-11-24 from `rules/corrections/applied/MD-095-atomic-capability-requirements-correction-2026-11-24-20261124.md` (owner-approved). It resolves the identity, execution-context, layout and evidence requirements of target-dependent atomic operations. It adds no public syntax, eligible type category, operation, memory order or runtime API. Internal field names below describe logical data, not a required implementation structure; no native instruction, emulation strategy, target support matrix or numbered Sec MLIR package is approved by this section. The correction's conformance matrix T01–T64 is the test basis.
+
+§ 37A(1) Four principles apply equally in Sec 0.1 and 0.1.1: (a) the complete nominal Sec type is preserved and physical capability is queried through its resolved underlying carrier; (b) execution contexts are the compiler-known categories, with additional requirements and target-specific restrictions where relevant; (c) the existing canonical layout authority supplies size and alignment, including stronger alignment required by atomic storage; (d) unknown capability is an unfulfilled proof obligation, neither permission nor proof of impossibility: analysis may continue, executable emission fails closed unless the obligation is discharged.
+
+§ 37A(2) Source validity comes first. Before any capability query Sema establishes the canonical `Atomic[T]` identity, the concrete `T`, the applicable method, value and receiver authority, nominal contracts and the legal memory orders (§§ 8–9, 12–24, 45). The operation family, both orders where applicable, the representation, storage alignment, execution context and selected profile are all validated; a target fact cannot legalize an otherwise invalid operation. An omitted object-operation order resolves to `SeqCst` (§ 25); explicit orders remain required compile-time contexts (§ 24(4)–(6)); compare-exchange success and failure orders are preserved independently with no added relative-strength rule; `atomic.Fence` keeps its explicit order and has no contained type.
+
+§ 37A(3) Language invalidity, unsupported target capability, incomplete target evidence and unimplemented lowering are four distinct outcomes. None is reported as another, and a source error is never hidden behind unknown capability.
+
+§ 37A(4) Semantic and carrier identity. `SemanticTypeID` is the complete canonical identity of `T` from the compiler type-identity service, keeping defining module, nominal declaration, kind and resolved generic arguments; consumers never invent spellings from diagnostic names, aliases, backend or host types. `CarrierTypeID` is the underlying eligible primitive carrier: named-type layers resolve recursively and an integer-backed enum resolves to its canonical backing integer, with the same identity authority. The semantic type and its contracts stay available through analysis and lowering. A generic instantiation obtains its carrier only after substitution; an unresolved generic parameter is a symbolic requirement, never a concrete request with a default carrier. `int` and `uint` keep their source identities and take width and storage from the selected plan; any normalization of target-dependent carriers is canonical, shared and never host-derived.
+
+§ 37A(5) `RawPtr[T]` keeps its complete semantic pointer type. Its capability is queried through the resolved raw-pointer carrier representation, not by enumerating pointee types and not from an integer of equal width; pointer representation distinctions that affect implementation stay distinguishable. This adds no raw-pointer representation or address-domain feature.
+
+§ 37A(6) Distinct source types with one carrier (for example `type RequestCount uint64`, `type UserID uint64` and `uint64`) stay distinct and gain no implicit conversion or weakened contracts, but their physical requirements may use the same carrier capability when all other requirements agree; the platform never enumerates user-defined nominal types. Carrier identity is more than a byte count: canonical representation facts relevant to operation semantics are kept, an implementation is shared across integer carriers, `bool` or other representations only by an explicit validated producer rule covering the full operation, and a lookup miss never falls back to a similarly sized type.
+
+§ 37A(7) Layout. The canonical layout service (`rules/memory/layout.md` §§ 8(8), 28(7), 47.6) is the sole authority for size, alignment, placement and stride; atomic analysis implements no second calculator. `SizeBytes` is the concrete atomic value access extent, not aggregate padding or the size of a wrapper with private storage; `AlignmentBytes` is the guaranteed alignment of the accessed atomic storage after canonical placement and target requirements. A missing size, alignment or representation fact makes the layout incomplete and is never a usable zero or a default guessed from width, architecture name or host. `atomic.Fence` has no carrier, size or alignment; its empty internal representation is an explicit not-applicable case, never a stand-in for unknown layout.
+
+§ 37A(8) Execution context. `ContextID` is a compiler-known category of `rules/platform/target_profiles.md` § 19 (`Ordinary`, `Task`, `Thread`, `Interrupt`, `Startup`, `Shutdown`), determined by the existing execution-context analysis and the actual invocation contract; a task, thread ID, function name or interrupt vector never replaces it, a logical task is not a `Thread` because it runs on a physical worker, and ordinary execution has no task identity by default. `NoBlocking` and `InterruptSafe` belong to the resolved invocation contract as requirements on the implementation; interrupt execution must prove both, and a proof of one is not evidence of the other. Canonical target facts (interrupt vector, priority, masking domain, core, execution domain) may refine a category's proof but create no new context and enable no globally forbidden capability. A category-wide capability discharges a concrete use only when it covers that use's restrictions. A callable reachable from several contexts is checked under every applicable invocation contract; unresolved reachability is an outstanding obligation, never an assumed `Ordinary`.
+
+§ 37A(9) Requirement and key. A resolved operation retains at least, as logical data: `SemanticTypeID` and `CarrierTypeID` (not for Fence), the concrete storage representation, `SizeBytes`, `AlignmentBytes`, the operation, `Order`, `FailureOrder` (CompareExchange only), `ContextID`, `NoBlocking`, `InterruptSafe`, the relevant target context facts, the plan identity and source provenance. The capability key is the carrier, representation, access size, guaranteed alignment, operation, requested orders, canonical context and applicable additional requirements within the selected plan; semantic identity and location are kept for validation and diagnostics, not used to demand separate target entries for equivalent carriers. A typed key may replace string concatenation; legacy test spellings such as `core::uint64`, `test::Count`, `thread::main` or `isr::timer` are not normative.
+
+§ 37A(10) Producers and the query service. Target producers may derive concrete facts from validated representation/operation rules instead of listing every key; the derived result establishes the exact request including context refinements. Matching, normalization and refinement belong to the one canonical plan capability service with deterministic, validated semantics, consumed alike by frontend, analyses, Semantic IR validation, lowering and tooling. Consumers never infer support from partial resemblance to another key, and no consumer mutates the frozen plan to make a requirement pass. Supported facts retain implementation identity, provenance, reason where applicable and the required guarantees.
+
+§ 37A(11) Availability states keep the meanings of `rules/platform/platform_model.md` § 14. `Supported`: a verified implementation satisfies the concrete request, subject to all other rules. `Unsupported`: canonical evidence proves it unavailable or forbidden; report a focused target capability error. `Unknown`: evidence is insufficient; retain an unfulfilled obligation, never a verified operation or a proven impossibility. Availability and profile activation stay independent: a disabled capability is not enabled by program use or a more permissive context. A missing optional capability entry may legitimately be `Unknown` in a frozen plan, unlike an unresolved required internal plan fact (`platform_model.md` § 21).
+
+§ 37A(12) Unknown obligations. Sema may continue language checking and other analyses of a semantically valid operation with an outstanding proof; LSP and analysis-only results keep it as unproven and never claim executable validity. A complete build discharges every required concrete proof before executable emission; still unknown at that boundary, it reports insufficient capability evidence and stops. An ISR or nonblocking operation is never verified legal without positive proof of its concrete interrupt safety and nonblocking behavior (§ 39(2)); there is no deferred runtime check or provisional permission. Positive evidence may come from later canonical target-dependent analyses through the platform/layout authority; LLVM may contribute facts only that way, never replacing the plan, consulting the host, or inferring nonblocking or interrupt-safe behavior from producing an instruction or library call. Changed facts require a newly verified plan and revalidation, not mutation.
+
+§ 37A(13) An implementation with a missing or incompatible required progress or interrupt-safety property does not satisfy the request; `AtomicContextViolation` validation remains mandatory and keeps an explicitly incompatible property distinct from a missing proof. A target capability that is supported but whose lowering the current compiler or Sec MLIR package does not implement is an implementation-capability limitation (§ 47(10)), not a source prohibition or evidence that the platform lacks it.
+
+§ 37A(14) Capability and layout caches are bound to the selected plan and its canonical dependency fingerprints, including carrier, layout and context normalization and proof schema revisions; changed facts, target, ABI, profile or implementation guarantees invalidate dependent proofs, host facts never substitute, and exact-match snapshots are not reused across incompatible key schemas. The former semantic-type-only exact-match key and arbitrary string contexts do not remain alternate authoritative paths.
+
 ---
 
 ## § 38. Native versus emulated implementation
@@ -1035,6 +1077,8 @@ type Statistics struct {
 
 § 38(7) When no conforming implementation exists, compilation for that `CompilationPlan` must fail with a focused capability diagnostic.
 
+§ 38(8) (MD-095) A supported implementation retains its identity, provenance and required guarantees (§ 37A(10)). Blocking emulation is never implicitly authorized. An observably compatible stronger order may implement a requested order only as § 47 allows, and the proof preserves the requested order and both compare-exchange paths; backend acceptance of an instruction or an equally sized scalar is not by itself a proof.
+
 ---
 
 ## § 39. Interrupt contexts
@@ -1050,6 +1094,8 @@ type Statistics struct {
 § 39(4) Interrupt masking may be used as a platform implementation technique only where the platform contract proves that it establishes the required exclusion and ordering.
 
 § 39(5) Local masking must not be assumed to synchronize with another core, DMA engine, or unrelated execution domain.
+
+§ 39(6) (MD-095) The interrupt context is the `Interrupt` category with its `NoBlocking` and `InterruptSafe` requirements and any canonical refinement such as vector, priority or masking domain (§ 37A(8)). A category-wide proof covers a concrete vector only when it covers that vector's restrictions; a helper reachable from ordinary and ISR roots is validated under both; an unknown ISR obligation is never emitted (§ 37A(12)).
 
 ---
 
@@ -1184,6 +1230,8 @@ atomic.Fence
 
 § 45(10) These checks are source-language semantic checks, not backend-verifier substitutions.
 
+§ 45(11) (MD-095) These checks precede and are independent of the capability query (§ 37A(2)–(3)). A runtime-dependent explicit order is a required compile-time-context error, not a capability lookup miss, and source invalidity is reported even when target facts are missing.
+
 ---
 
 ## § 46. Semantic IR
@@ -1213,6 +1261,8 @@ atomic.Fence
 
 § 46(6) Concrete Semantic IR operation names are owned by `semantic_ir.md`; this rulebook defines required semantics rather than a competing opcode vocabulary.
 
+§ 46(7) (MD-095) The preserved capability requirements are the § 37A(9) requirement: source type, carrier, operation and orders, storage identity, complete or outstanding layout facts, context requirements, and either the capability evidence or the unresolved obligation, with provenance (`semantic_ir.md` § 123B). Atomics are never inferred from ordinary load/store patterns.
+
 ---
 
 ## § 47. Lowering
@@ -1234,6 +1284,10 @@ atomic.Fence
 § 47(7) Lowering must preserve release-sequence and modification-order semantics required by the source memory model.
 
 § 47(8) Backend instruction names or host atomic APIs are not the source-language definition.
+
+§ 47(9) (MD-095) Before executable lowering every relevant concrete operation has a complete layout, resolved context constraints and an applicable supported implementation under the selected plan; later stages consume that validated evidence. No silent fallback to ordinary, volatile, weaker-order or unverified blocking operations is allowed.
+
+§ 47(10) (MD-095) A supported operation whose lowering the active compiler or dialect package does not implement is reported as an implementation limitation and is not emitted; existing fail-closed emission rules remain in force.
 
 ---
 
@@ -1272,6 +1326,22 @@ selected CompilationPlan cannot implement Atomic[uint64].CompareExchange with th
 § 48(2) Diagnostics for target capability should identify the selected target/profile fact when known.
 
 § 48(3) Diagnostics must not suggest converting an invalid ordinary shared access to volatile as a concurrency fix.
+
+§ 48(4) (MD-095) Diagnostics distinguish a source order or operation error, a proven unsupported capability, an unverifiable capability (missing evidence), an incomplete layout and an unimplemented lowering. When available they identify the selected target/profile, semantic type, carrier, operation and orders, concrete layout, required context properties, source location and the relevant proof or missing fact. Illustrative messages:
+
+```text
+MemoryOrder.Release is not valid for Atomic.Load.
+Selected target/profile does not support Atomic[RequestCount].CompareExchange
+with the requested success and failure orders.
+Atomic[RequestCount].Load cannot be verified: the selected target has no
+capability fact for the required carrier and interrupt context.
+Atomic[RequestCount] has incomplete layout: the required atomic alignment
+is not resolved for the selected target.
+Atomic operation is supported by the selected target but its lowering is
+not implemented by the active compiler/dialect package.
+```
+
+These are not allocated diagnostic IDs: existing identities are reused only where their registered contract matches, and new ones are allocated through the registry (`rules/tooling/diagnostics.md` § 24(4l)). No advisory or LSP presentation policy makes an outstanding required proof sufficient for executable lowering, a proven source error stays mandatory at every analysis level, and an unresolved proof is never reported as proven unsupported.
 
 ---
 

@@ -181,7 +181,7 @@ integrations:
       - >-
         Callable and explicitly typed lambda task spawns produce canonical
         Result[Task[T], TaskSpawnError] in Sema as recorded under
-        concurrency.tasks-v2; block return typing remains undecided in MD-133.
+        concurrency.tasks-v2; block return typing was decided by MD-133 on 2026-11-24 (spawn.md § 3A) and its implementation is tracked in concurrency.tasks-v2.
       - >-
         ThreadConfig, ThreadStorage, and ThreadSetting frontend/source
         declarations have implemented validated slices recorded under
@@ -231,9 +231,11 @@ integrations:
         diagnostics and LSP presentation of runtime capability failures and
         preservation of source ownership/cancellation/completion semantics.
       - >-
-        Resolve the previously opened MD-128 and MD-129 before claiming
-        universal task/thread failure-transfer or already-cancelled-parent
-        semantics; resolve MD-133 before supporting return-typed spawn blocks.
+        MD-133 (spawn-block result inference) was decided 2026-11-24 and is tracked in concurrency.tasks-v2. MD-129
+        (already-cancelled-parent creation and detach) was decided 2026-11-24
+        and is tracked in concurrency.spawn-v1. MD-128
+        (universal task/thread/process failure-transfer) was decided
+        2026-11-24 and its implementation is tracked in concurrency.spawn-v1.
     required_tests:
       - id: runtime-kind-distinction
         expectation: >-
@@ -345,13 +347,13 @@ integrations:
     decision_dependencies:
       - id: MD-128
         subject: task-and-thread-creation-failure-ownership
-        status: open
+        status: decided-implementation-pending
       - id: MD-129
         subject: spawn-from-already-cancelled-parent
-        status: open
+        status: decided-implementation-pending
       - id: MD-133
         subject: task-spawn-block-return-type
-        status: open
+        status: decided-implementation-pending
     governance_reconciliation:
       - >-
         The old runtime-model §1 implementation inventory is withdrawn from the

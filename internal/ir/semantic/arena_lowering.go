@@ -46,7 +46,8 @@ func (fb *functionBuilder) buildArenaCall(call *ast.CallExpression) (builtValue,
 		value, err := fb.buildArenaReset(call, plan)
 		return value, true, err
 	case sema.ArenaOperationRelease:
-		return builtValue{}, true, fb.unsupported("Arena Release (P17 ownership termination, P17-29/P17-33)", token)
+		value, err := fb.buildArenaRelease(call, plan)
+		return value, true, err
 	case sema.ArenaOperationNew, sema.ArenaOperationAlloc:
 		value, err := fb.buildArenaAllocation(call, plan)
 		return value, true, err
@@ -169,4 +170,61 @@ func arenaResetBacking(plan sema.ResolvedArenaOperationPlan, backing string) *Ba
 		facts.Relation, facts.Authority = string(sema.BackingRelationOwned), string(sema.ReclamationNone)
 	}
 	return facts
+}
+
+// buildArenaRelease lowers the explicit terminal Release of an Arena owner
+// created by FromBuffer or the MD-136 default in this function: the owner
+// moves out of its storage, arena.release consumes it and ends its domain
+// (ending the backing loan, or reclaiming nothing for the empty default),
+// and the owner's cleanup registration is cancelled so implicit destruction
+// never repeats it.
+// Rules: rules/memory/arena.md — §§ 43–46, 131(7);
+// rules/mlir/packages/sec-mlir-dialect_package19.md — §§ 43–48, 116;
+// rules/mlir/packages/sec-mlir-dialect_package17.md — §§ 38, 73, 80.
+func (fb *functionBuilder) buildArenaRelease(call *ast.CallExpression, plan sema.ResolvedArenaOperationPlan) (builtValue, error) {
+	member, _ := call.Callee.(*ast.MemberExpression)
+	token := member.Property.Token
+	identifier, named := member.Object.(*ast.Identifier)
+	retained, known := fb.arenaBorrows[plan.InvalidationDomain]
+	backing := "borrowed"
+	if fb.arenaDefaults[plan.InvalidationDomain] && plan.BackingKind == "none" {
+		known, backing = true, "none"
+	}
+	if !named || !known || plan.BackingKind != backing || plan.EpochBefore == 0 || plan.EpochAfter != 0 {
+		return builtValue{}, fb.unsupported("Arena Release of an Arena not created by FromBuffer or default in this function", token)
+	}
+	fact, bound := fb.owner.analyzer.ResolvedBindingOf(identifier)
+	if !bound {
+		return builtValue{}, fb.unsupported("Arena Release of an owner without a resolved binding", token)
+	}
+	owned, stored := fb.ownedStorages[fact.ID]
+	action, tracked := fb.trackedActions[fact.ID]
+	if !stored || !tracked {
+		return builtValue{}, fb.unsupported("Arena Release of an owner without tracked local storage", token)
+	}
+	if len(fb.owner.analyzer.ResolvedOwnedCleanupCancellationsAt(call.Token.File, call.Token.Line, call.Token.Column)) == 0 {
+		return builtValue{}, fb.unsupported("Arena Release without a resolved cleanup cancellation", token)
+	}
+	stateBefore, stateAfter, numbered := fb.nextArenaState(plan.InvalidationDomain)
+	if !numbered {
+		return builtValue{}, fb.unsupported("Arena Release without a numbered owner state", token)
+	}
+	loc := location(token)
+	place := fb.ownedStoragePlace(owned, token)
+	arena := fb.newValue(owned.typ, OwnershipOwned, loc)
+	fb.emit(Operation{Kind: OpOwnMoveFromPlace, Operands: []ValueID{place.id}, Results: []Value{arena}, Ownership: &OwnershipFacts{}, Location: loc})
+	facts := arenaBackingFacts(plan, sema.BackingTransitionEndDomain)
+	if backing == "none" {
+		facts.Relation, facts.Authority = string(sema.BackingRelationOwned), string(sema.ReclamationNone)
+	}
+	fb.emit(Operation{
+		Kind: OpArenaRelease, Operands: []ValueID{arena.ID}, Location: loc,
+		Arena: &ArenaOperationFacts{StateBefore: stateBefore, StateAfter: stateAfter,
+			EpochBefore: uint32(plan.EpochBefore), BackingKind: backing, GrowthKind: plan.GrowthKind,
+			RetainedBorrow: retained, DependencyProof: arenaDependencyProof, ProviderPlan: plan.ProviderPlan},
+		Backing: facts,
+	})
+	fb.emitAll(fb.ownedCancels(fact.ID, action, "released", false, loc))
+	void := fb.owner.module.Types.Intern(Type{Kind: TypeVoid})
+	return builtValue{typ: void}, nil
 }

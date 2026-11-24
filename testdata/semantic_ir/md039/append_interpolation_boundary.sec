@@ -1,0 +1,7 @@
+module main
+
+fn Pending(value: int) Result[string, StringError] {
+    let mut text := "old"
+    try text += $"number={value}"
+    return Ok(text)
+}

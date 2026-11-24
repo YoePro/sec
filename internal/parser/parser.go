@@ -329,6 +329,11 @@ func (p *Parser) parseStatement() ast.Statement {
 	switch p.curToken.Type {
 	case lexer.HASH:
 		return p.parseCompilerDirective()
+	case lexer.REQUIRE:
+		start := p.curToken
+		p.addError("require clause may only follow a callable signature, not a non-callable type or statement, at %d:%d", start.Line, start.Column)
+		p.parseExecutionRequirementClause()
+		return &ast.InvalidStatement{Token: start, Message: "misplaced require clause"}
 
 	case lexer.MODULE:
 		return p.parseModuleStatement()
@@ -3619,6 +3624,7 @@ func (p *Parser) parseFunctionDeclaration() *ast.FunctionDeclaration {
 	}
 
 	p.parseRequiredFunctionReturnType(fn)
+	fn.ExecutionRequirements = p.parseExecutionRequirements()
 
 	p.skipPeekComments()
 	if p.peekToken.Type != lexer.LBRACE {
@@ -3670,6 +3676,10 @@ func (p *Parser) parseExternFunctionDeclaration() *ast.FunctionDeclaration {
 	fn.Token = externToken
 	fn.Extern = true
 	fn.ABI = abi
+	if fn.ExecutionRequirements != nil {
+		p.addError("require clauses are not permitted on foreign function declarations at %d:%d", fn.ExecutionRequirements.Token.Line, fn.ExecutionRequirements.Token.Column)
+		fn.ExecutionRequirements.Invalid = true
+	}
 	if p.peekToken.Type == lexer.LBRACE {
 		fn.Body = p.parseFunctionBlockStatement()
 		if fn.Body == nil {
@@ -3711,6 +3721,7 @@ func (p *Parser) parseFunctionSignature(allowVariadic bool) *ast.FunctionDeclara
 	}
 
 	p.parseRequiredFunctionReturnType(fn)
+	fn.ExecutionRequirements = p.parseExecutionRequirements()
 
 	return fn
 }
@@ -3982,6 +3993,13 @@ func (p *Parser) parseParameters(allowVariadic bool) []*ast.Parameter {
 			}
 		}
 		parameter.Type = p.parseTypeReference()
+		if parameter.Type != nil && p.peekToken.Type == lexer.REQUIRE {
+			clause := p.parseExecutionRequirements()
+			p.addError("require clause may only follow a callable signature, not this parameter type, at %d:%d", clause.Token.Line, clause.Token.Column)
+			clause.Invalid = true
+			parameter.Type.ExecutionRequirements = clause
+			parameter.Type = p.markInvalidTypeReference(parameter.Type)
+		}
 		parameter.Variadic = variadic
 		if ref {
 			parameter.Type.Ref = true
@@ -5552,6 +5570,7 @@ func (p *Parser) parseParenthesizedTypeReference() *ast.TypeReference {
 	if !p.expectPeek(lexer.RPAREN) {
 		return p.markInvalidTypeReference(ref)
 	}
+	ref.Grouping = append(ref.Grouping, ast.TypeGrouping{Open: token, Close: p.curToken})
 	return p.parsePostfixTypeReference(ref)
 }
 
@@ -5634,6 +5653,10 @@ func (p *Parser) parseFunctionTypeReference() *ast.TypeReference {
 		return p.markInvalidTypeReference(ref)
 	}
 	ref.FunctionReturnType = p.parseTypeReference()
+	ref.ExecutionRequirements = p.parseExecutionRequirements()
+	if ref.ExecutionRequirements != nil && ref.ExecutionRequirements.Invalid {
+		invalidChild = true
+	}
 	if ref.FunctionReturnType == nil || ref.FunctionReturnType.Invalid {
 		invalidChild = true
 	}

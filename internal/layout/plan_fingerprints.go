@@ -27,6 +27,7 @@ type PlanFingerprints struct {
 // rules/concurrency/ipc.md — §118 (selected IPC capability meaning).
 // rules/concurrency/mutex.md — §60 (selected lock capability meaning).
 // rules/concurrency/cancellation.md — §24 (selected physical-thread capability).
+// rules/concurrency/atomics.md — § 37A(14) (atomic capability meaning and key schema).
 func (p ResolvedScalarPlan) Fingerprints() PlanFingerprints {
 	digest := func(domain string, facts ...any) string {
 		encoded, _ := json.Marshal(append([]any{"sec.plan-fingerprint/1", domain}, facts...))
@@ -34,8 +35,8 @@ func (p ResolvedScalarPlan) Fingerprints() PlanFingerprints {
 		return hex.EncodeToString(sum[:])
 	}
 	fingerprints := PlanFingerprints{
-		Architecture: digest("architecture", p.TargetArch, p.PointerWidthBits, p.Endianness, p.Atomics),
-		Layout:       digest("layout", p.PointerWidthBits, p.Endianness, p.CABI, p.References, p.Alignments.canonical()),
+		Architecture: digest("architecture", p.TargetArch, p.PointerWidthBits, p.Endianness, p.Atomics.semanticFacts()),
+		Layout:       digest("layout", p.PointerWidthBits, p.Endianness, p.CABI, p.References, p.Alignments.canonical(), p.AtomicAlignments.canonical()),
 		Memory:       digest("memory", p.Profile, p.AddressDomains, p.References, p.PointerWidthBits, p.IPC.semanticFacts(), p.Mutex.semanticFacts(), p.PhysicalThreads.semanticFact()),
 		Runtime:      digest("runtime", p.TargetOS, p.Profile, p.IPC.semanticFacts(), p.Mutex.semanticFacts(), p.PhysicalThreads.semanticFact()),
 		Execution:    digest("execution", p.TargetOS, p.TargetArch, p.Profile, p.IPC.semanticFacts(), p.Mutex.semanticFacts(), p.PhysicalThreads.semanticFact()),

@@ -1,0 +1,30 @@
+module main
+type RequestCount uint64
+type UserID uint64
+type NestedCount RequestCount
+type Bounded uint64 range 0..100
+type Carrier uint16
+enum State uint16 { Idle, Running }
+type NamedState State
+enum NamedBacking Carrier { Idle, Running }
+type Marked[T] uint64
+enum GenericState[T] uint16 { Idle, Running }
+type Pointer RawPtr[byte]
+fn Values(a: ref Atomic[RequestCount], b: ref Atomic[UserID], c: ref Atomic[NestedCount], bounded: ref Atomic[Bounded], state: ref Atomic[State], derived: ref Atomic[NamedState], primitive: ref Atomic[uint64], plain: ref Atomic[uint], signed: ref Atomic[int], flag: ref Atomic[bool], pointer: ref Atomic[Pointer], other: ref Atomic[RawPtr[int]], generic: ref Atomic[Marked[int]], namedBacking: ref Atomic[NamedBacking], otherGeneric: ref Atomic[Marked[byte]], genericEnum: ref Atomic[GenericState[int]]) void {
+    discard a.Load()
+    discard b.Load()
+    discard c.Load()
+    discard bounded.Load()
+    discard state.Load()
+    discard derived.Load()
+    discard primitive.Load()
+    discard plain.Load()
+    discard signed.Load()
+    discard flag.Load()
+    discard pointer.Load()
+    discard other.Load()
+    discard generic.Load()
+    discard namedBacking.Load()
+    discard otherGeneric.Load()
+    discard genericEnum.Load()
+}

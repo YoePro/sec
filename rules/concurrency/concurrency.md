@@ -688,6 +688,8 @@ the ownership/destruction rulebooks own deterministic cleanup.
 
 § 21(13) Cancellation propagation, cancellation checkpoints, shielding, wait commit points, parent-child propagation, and shutdown behavior are owned by `cancellation.md`.
 
+§ 21(14) **Amendment MD-129 (2026-11-24, Sec 0.1 and later compatible versions, `rules/corrections/applied/MD-129-spawn-parent-cancellation-correction-2026-11-24-20261124.md`).** Parent-child request inheritance at creation, link removal at detach and their race ordering are defined in `cancellation.md` §§ 55(5)–(9); they change no ownership or lifecycle obligation of § 19.
+
 ---
 
 ## § 22. Blocking and suspension

@@ -562,6 +562,9 @@ const (
 // ResolvedTryAssignment records whether a fallible assignment propagates or
 // uses local handlers and preserves the exact error-channel decision for IR.
 type ResolvedTryAssignment struct {
+	// Failures preserves the protected RHS checks of a string append; the
+	// append materialization's StringError is recorded by ErrorType.
+	Failures            []TryFailurePoint
 	Callable            CallableID
 	Kind                ResolvedTryAssignmentKind
 	ErrorType           Type
@@ -1657,6 +1660,7 @@ func (a *Analyzer) ResolvedTryAssignmentOf(stmt *ast.TryAssignmentStatement) (Re
 		return ResolvedTryAssignment{}, false
 	}
 	fact.HandlerPlan.Handlers = append([]ResolvedTryHandler(nil), fact.HandlerPlan.Handlers...)
+	fact.Failures = append([]TryFailurePoint(nil), fact.Failures...)
 	return fact, true
 }
 

@@ -19,11 +19,13 @@ func (a *Analyzer) analyzeTryAssignmentStatement(stmt *ast.TryAssignmentStatemen
 	if stmt == nil || stmt.Assignment == nil {
 		return
 	}
+	var protectedFailures []TryFailurePoint
 	// Ownership follows the callable being analyzed, including accessor and
 	// nested callable bodies; consumers never infer it from source ranges.
 	defer func() {
 		if fact, resolved := a.resolvedTryAssignments[stmt]; resolved {
 			fact.Callable = a.currentCallable
+			fact.Failures = append([]TryFailurePoint(nil), protectedFailures...)
 			a.resolvedTryAssignments[stmt] = fact
 		}
 	}()
@@ -40,7 +42,7 @@ func (a *Analyzer) analyzeTryAssignmentStatement(stmt *ast.TryAssignmentStatemen
 	// one StringError channel covers the statement (MD-039 §§ 2(1),3(2)).
 	if _, appended := a.stringAppends[stmt.Assignment.Value]; appended {
 		a.protectedStringAppends[stmt.Assignment.Value] = true
-		a.collectTryFailurePoints(stmt.Assignment.Value)
+		protectedFailures = a.collectTryFailurePoints(stmt.Assignment.Value)
 	}
 
 	errorType, ok := a.tryAssignmentErrorType(stmt.Assignment)

@@ -4,63 +4,7 @@ purpose: Atomic operations and concurrency memory ordering.
 integrations:
   - id: concurrency.atomics-v2
     area: atomic-language-surface
-    rulebook: rules/concurrency/atomics.md
     status: partial
-    normative:
-      - Atomic[T] is a compiler-known nominal generic atomic-storage type.
-      - Atomic eligibility is semantic and separate from concrete CompilationPlan capability.
-      - The v0.1 compatible set is bool, primitive signed/unsigned integers, RawPtr[T], integer-backed enums, and compatible named types.
-      - float/float32/float64, decimal/decimal128, arbitrary structs/unions/collections and other composites are not atomic-compatible in v0.1.
-      - All public atomic methods use CamelCase.
-      - MemoryOrder is exactly Relaxed, Acquire, Release, AcqRel, SeqCst.
-      - CompareExchangeResult[T] is exactly Exchanged | NotExchanged(T).
-      - CompareExchange mismatch is normal control flow, not an error.
-      - CompareExchange failure orders are Relaxed/Acquire/SeqCst only.
-      - Failure ordering is not required to be weaker than success ordering.
-      - SeqCst is the default for ordinary atomic object operations.
-      - "atomic.Fence(order: MemoryOrder) exists in v0.1, has no default, and rejects Relaxed."
-      - Explicit MemoryOrder arguments are SemanticCompileTimeRequiredContext values; runtime-dependent orders are rejected, while omitted ordinary operation orders remain SeqCst.
-    remaining:
-      - "Add target diagnostics for unsupported concrete operation/order combinations, including Sema's resolved execution-context requirement production and integration with plan-side nonblocking/ISR validation (blocked on MD-095: requirement key conventions)."
-    required_tests:
-      - id: memory-order-core-enum
-        expectation: Core exposes exactly Relaxed, Acquire, Release, AcqRel, SeqCst and LSP hover shows the declaration.
-      - id: compare-exchange-result-core-enum
-        expectation: Core exposes generic Exchanged and NotExchanged(T); LSP and Sema recognize payload typing.
-      - id: atomic-public-naming
-        expectation: Load/Store/Swap/CompareExchange/FetchAdd/FetchSub/FetchAnd/FetchOr/FetchXor are canonical; lowercase alternates are rejected/not offered.
-      - id: atomic-type-eligibility
-        expectation: Conservative v0.1 eligible set is enforced independently of target bit width.
-      - id: atomic-float-reject
-        expectation: Atomic[float64] is rejected as a language type in v0.1 even if target representation could be atomic.
-      - id: atomic-decimal-reject
-        expectation: Atomic[decimal] is rejected as a language type in v0.1.
-      - id: atomic-struct-reject
-        expectation: Arbitrary struct does not become atomic-compatible from matching machine width.
-      - id: atomic-target-separation
-        expectation: Semantically valid Atomic[uint64] can still produce target operation capability failure without being reclassified as an invalid type.
-      - id: compare-exchange-failure-orders
-        expectation: Relaxed/Acquire/SeqCst accepted; Release/AcqRel rejected.
-      - id: compare-exchange-independent-orders
-        expectation: Valid failure order is not rejected merely for being stronger than success order.
-      - id: atomic-fence
-        expectation: atomic.Fence requires explicit Acquire/Release/AcqRel/SeqCst and rejects Relaxed.
-      - Explicit order arguments must be compile-time-established MemoryOrder values; runtime parameters and mutable or runtime-derived aliases are rejected, and unavailable semantic CTE call execution is diagnosed distinctly.
-    corrections_applied:
-      - rules/corrections/applied/atomics-memory-model-v2-cross-rulebook-correction-20260907.md
-      - rules/corrections/applied/atomic-orders-compile-time-correction-20261017.md
-    implemented:
-      - canonical MemoryOrder is a real core enum with exactly Relaxed, Acquire, Release, AcqRel and SeqCst; standalone semantic registration and the trusted source declaration share its reserved nominal identity, and LSP presents the closed declaration, variant documentation and source navigation
-      - atomic member lookup uses Load, Store, Swap, CompareExchange, FetchAdd, FetchSub, FetchAnd, FetchOr and FetchXor; lowercase alternatives are rejected, and the shared compiler member catalog supplies the canonical names to hover and completion
-      - "Atomic element eligibility is target-independent: bool, signed and unsigned integer carriers including target-sized and wide integers, RawPtr, integer-backed enums and compatible named carriers pass semantic checking on 32-bit and 64-bit plans; floats, decimals, strings, string-backed enums and composites remain invalid; this does not claim native, lock-free or emulated operation support"
-      - "One canonical per-T applicability check governs Sema and compiler member facts: eligible carriers expose Load, Store, Swap and CompareExchange; unconstrained integer carriers also expose all five fetch operations, while bool, raw pointers, integer enums and constrained named integers (including inherited constraints) reject fetch operations and omit them from completion; nominal result types and shared-reference receivers are preserved independently of target width, and the non-generic methods reject method type arguments"
-      - The shared exact MemoryOrder matrix validates every explicit order on Atomic object methods before lowering and supplies operation-specific hover documentation; Load and Store reject their invalid rows, all RMW success orders are allowed, CompareExchange failure is independently Relaxed/Acquire/SeqCst with no relative-strength restriction, and omitted orders remain SeqCst. Explicit orders must be compile-time-established canonical MemoryOrder values, including immutable aliases; runtime-dependent values are rejected with S1170 and unavailable semantic CTE execution remains S1101. The shared fence row is defined and tested; the separately listed fence source/IR/lowering pipeline is not claimed implemented.
-      - Atomic[T] has one compiler-owned nominal core identity with opaque storage and exactly one contained type. Canonical constructor inference preserves that identity, uses a contextual T for literals and enforces ordinary nominal/range contracts; source struct fabrication, wrong arity, type redeclaration and untrusted impl replacement are rejected, including module-core spoofing. Compiler-owned AtomicTypeFacts and resolved type/constructor positions supply the same exact per-T public signatures to type-use, binding and constructor hover; template hover explicitly documents integer-only availability, and all nine public methods retain canonical synthetic navigation. This completes the compiler/LSP API identity surface without claiming CompareExchangeResult payloads, atomic IR, lowering or target capability.
-      - "CompareExchange success/failure typing and observed-value transfer (governance sync 2026-10-17): implemented by the ResolvedCompareExchangeOf path facts recorded in frontend.atomics-v2 — CompareExchangeResult[T] result, Exchanged as RMW success, NotExchanged(T) carrying the value observed by the same operation, independent success/failure orders (TestCompareExchangePaths, TestCompareExchangeResultSurface); the stale remaining entry is closed"
-      - "documentation and tooling synchronized (2026-10-17): `atomic.` completes the core namespace function Fence (a local value named atomic keeps member completion), MemoryOrder completion inside atomic.Fence(...) offers only Acquire, Release, AcqRel and SeqCst, fence hover and synthetic navigation present the canonical surface, and the formatter is idempotent on every atomic fixture, keeps CamelCase operations, explicit orders and fence calls and never inserts an omitted SeqCst (TestAtomicFenceCompletion, TestAtomicFenceHoverAndNavigation, TestAtomicSourceFormatting); the rulebook status row names the implemented surface"
-      - "atomic.Fence (2026-10-17): calls of atomic.Fence resolve in the core atomic namespace (a local value named atomic keeps ordinary method lookup); exactly one explicit MemoryOrder argument is required (no default), established as a compile-time AtomicMemoryOrderArgument through the shared order evaluation, and checked against the shared Fence row Acquire/Release/AcqRel/SeqCst; Relaxed, a missing order, a runtime-dependent order and a non-MemoryOrder argument are rejected (S1171/S1170) with the canonical message `MemoryOrder.Relaxed is not valid for atomic.Fence`; the call is void and Sema retains its order (AtomicFenceOrderOf) for later IR (internal/sema/atomic_fence.go; TestAtomicFenceSurface)"
-      - The canonical generic CompareExchangeResult[T] enum is a real trusted core declaration with exactly Exchanged and NotExchanged(T), preserving nominal core identity and source provenance. Parser/AST retain its one associated payload without extending ordinary enum syntax; Sema validates the exact declaration, one type argument, normal non-error status, exact nominal payload construction/binding and exhaustive matching. Atomic calls and member metadata return this same closed enum rather than a struct stub. Existing tagged-value Semantic IR preserves both construction variants and payload extraction; legacy LLVM retains its explicit unsupported-sum-representation diagnostic. Exchanged is the enum default. Formatter round trips retain the source shape; LSP exposes enum/variant documentation, concrete payload hover, closed completion, canonical type/variant navigation and correct local payload-binding navigation.
-      - Atomic fences now publish a distinct ordered direct EffectAtomicFence event with the established MemoryOrder and canonical source position after successful reachable validation. Repeated equal-order fences remain separate; ordinary memory reads/writes retain their position around the fence. These events do not imply object access, volatile access, allocation, blocking, I/O, panic or a synchronizes-with proof. Effect summaries expose detached direct facts without inventing unrelated may-domains; invalid, shadowed and unreachable calls publish no fence event. Workspace checkpoint version 6 preserves ordering facts and validates cached orders against the canonical Fence order row.
     revised: "2026-11-20"
     code:
       - sec/core/atomic.sec
@@ -93,6 +37,10 @@ integrations:
       - internal/sema/call_graph.go
       - internal/sema/call_graph_summaries.go
       - internal/sema/call_graph_workspace.go
+      - internal/sema/type_carrier_identity.go
+      - internal/sema/atomic_memory_model.go
+      - internal/sema/generic_substitution.go
+      - internal/sema/generic_type_instances.go
     tests:
       - cmd/compiler/atomic_formatter_test.go
       - cmd/lsp/atomic_fence_completion_test.go
@@ -141,7 +89,54 @@ integrations:
       - internal/sema/atomic_fence_effects_test.go
       - testdata/sema/atomic_fence_effects.sec
       - testdata/sema/atomic_fence_effects_unreachable_invalid.sec
+      - internal/sema/atomic_carrier_identity_test.go
+      - testdata/sema/atomics/carrier_identity.sec
+    implemented:
+      - canonical MemoryOrder is a real core enum with exactly Relaxed, Acquire, Release, AcqRel and SeqCst; standalone semantic registration and the trusted source declaration share its reserved nominal identity, and LSP presents the closed declaration, variant documentation and source navigation
+      - atomic member lookup uses Load, Store, Swap, CompareExchange, FetchAdd, FetchSub, FetchAnd, FetchOr and FetchXor; lowercase alternatives are rejected, and the shared compiler member catalog supplies the canonical names to hover and completion
+      - "Atomic element eligibility is target-independent: bool, signed and unsigned integer carriers including target-sized and wide integers, RawPtr, integer-backed enums and compatible named carriers pass semantic checking on 32-bit and 64-bit plans; floats, decimals, strings, string-backed enums and composites remain invalid; this does not claim native, lock-free or emulated operation support"
+      - "One canonical per-T applicability check governs Sema and compiler member facts: eligible carriers expose Load, Store, Swap and CompareExchange; unconstrained integer carriers also expose all five fetch operations, while bool, raw pointers, integer enums and constrained named integers (including inherited constraints) reject fetch operations and omit them from completion; nominal result types and shared-reference receivers are preserved independently of target width, and the non-generic methods reject method type arguments"
+      - The shared exact MemoryOrder matrix validates every explicit order on Atomic object methods before lowering and supplies operation-specific hover documentation; Load and Store reject their invalid rows, all RMW success orders are allowed, CompareExchange failure is independently Relaxed/Acquire/SeqCst with no relative-strength restriction, and omitted orders remain SeqCst. Explicit orders must be compile-time-established canonical MemoryOrder values, including immutable aliases; runtime-dependent values are rejected with S1170 and unavailable semantic CTE execution remains S1101. The shared fence row is defined and tested; the separately listed fence source/IR/lowering pipeline is not claimed implemented.
+      - Atomic[T] has one compiler-owned nominal core identity with opaque storage and exactly one contained type. Canonical constructor inference preserves that identity, uses a contextual T for literals and enforces ordinary nominal/range contracts; source struct fabrication, wrong arity, type redeclaration and untrusted impl replacement are rejected, including module-core spoofing. Compiler-owned AtomicTypeFacts and resolved type/constructor positions supply the same exact per-T public signatures to type-use, binding and constructor hover; template hover explicitly documents integer-only availability, and all nine public methods retain canonical synthetic navigation. This completes the compiler/LSP API identity surface without claiming CompareExchangeResult payloads, atomic IR, lowering or target capability.
+      - "CompareExchange success/failure typing and observed-value transfer (governance sync 2026-10-17): implemented by the ResolvedCompareExchangeOf path facts recorded in frontend.atomics-v2 — CompareExchangeResult[T] result, Exchanged as RMW success, NotExchanged(T) carrying the value observed by the same operation, independent success/failure orders (TestCompareExchangePaths, TestCompareExchangeResultSurface); the stale remaining entry is closed"
+      - "documentation and tooling synchronized (2026-10-17): `atomic.` completes the core namespace function Fence (a local value named atomic keeps member completion), MemoryOrder completion inside atomic.Fence(...) offers only Acquire, Release, AcqRel and SeqCst, fence hover and synthetic navigation present the canonical surface, and the formatter is idempotent on every atomic fixture, keeps CamelCase operations, explicit orders and fence calls and never inserts an omitted SeqCst (TestAtomicFenceCompletion, TestAtomicFenceHoverAndNavigation, TestAtomicSourceFormatting); the rulebook status row names the implemented surface"
+      - "atomic.Fence (2026-10-17): calls of atomic.Fence resolve in the core atomic namespace (a local value named atomic keeps ordinary method lookup); exactly one explicit MemoryOrder argument is required (no default), established as a compile-time AtomicMemoryOrderArgument through the shared order evaluation, and checked against the shared Fence row Acquire/Release/AcqRel/SeqCst; Relaxed, a missing order, a runtime-dependent order and a non-MemoryOrder argument are rejected (S1171/S1170) with the canonical message `MemoryOrder.Relaxed is not valid for atomic.Fence`; the call is void and Sema retains its order (AtomicFenceOrderOf) for later IR (internal/sema/atomic_fence.go; TestAtomicFenceSurface)"
+      - The canonical generic CompareExchangeResult[T] enum is a real trusted core declaration with exactly Exchanged and NotExchanged(T), preserving nominal core identity and source provenance. Parser/AST retain its one associated payload without extending ordinary enum syntax; Sema validates the exact declaration, one type argument, normal non-error status, exact nominal payload construction/binding and exhaustive matching. Atomic calls and member metadata return this same closed enum rather than a struct stub. Existing tagged-value Semantic IR preserves both construction variants and payload extraction; legacy LLVM retains its explicit unsupported-sum-representation diagnostic. Exchanged is the enum default. Formatter round trips retain the source shape; LSP exposes enum/variant documentation, concrete payload hover, closed completion, canonical type/variant navigation and correct local payload-binding navigation.
+      - Atomic fences now publish a distinct ordered direct EffectAtomicFence event with the established MemoryOrder and canonical source position after successful reachable validation. Repeated equal-order fences remain separate; ordinary memory reads/writes retain their position around the fence. These events do not imply object access, volatile access, allocation, blocking, I/O, panic or a synchronizes-with proof. Effect summaries expose detached direct facts without inventing unrelated may-domains; invalid, shadowed and unreachable calls publish no fence event. Workspace checkpoint version 6 preserves ordering facts and validates cached orders against the canonical Fence order row.
+      - "MD-095 step 1 Sema carrier identity completed 2026-11-24 (atomics.md section 37A(4)-(6)): each validated atomic object operation records immutable SemanticTypeID/CarrierTypeID and symbolic state from the shared AtomicValueTypeIdentity type service. It preserves defining module, nominal layers, contracts and resolved generic arguments; named representations unwrap recursively, enums retain their resolved EnumCarrier through substitution/instantiation, and raw-pointer pointee identity stays semantic while the currently represented pointer carrier is distinct from any integer. int/uint retain canonical source identity and plan-sized layout requirements; no host or width-to-type fallback, capability support or second layout calculator is introduced. Enum applicability consumes the same carrier authority. Unresolved generic and missing/cyclic base facts acquire no concrete carrier. Source-backed 32/64-bit tests cover 16 operations, distinct generic instances, named/enum backing, pointers, detached snapshots and negative operation facts; module identity, symbolic substitution and resolved enum chains are tested directly. Declaration-resolution gaps preceding an operation are not reclassified as resolved identities."
+    partial:
+      - "atomic.Fence integration is partial: source validation, Semantic IR and direct ordering effects are implemented; below-IR lowering remains blocked by the explicit package-specification gate in atomics.md § 40(7), and no native fence support is claimed."
+      - "Started (moved to partial 2026-11-20; the text records the done part and what remains): Implement atomic.Fence lowering below Semantic IR after a Sec MLIR package specifies it, as explicitly required by atomics.md § 40(7). Name resolution, order validation, Semantic IR and direct call-graph ordering effects are implemented; the native emission gate remains mandatory."
+    remaining:
+      - "MD-095 step 3, context requirement derivation (atomics.md § 37A(8); target_profiles.md § 19): ContextID from the existing execution-context analysis and invocation contract (Ordinary/Task/Thread/Interrupt/Startup/Shutdown), NoBlocking/InterruptSafe as contract requirements, canonical target refinements (vector, priority, masking domain, core), one requirement per applicable context of a multi-context callable, unresolved reachability kept as an obligation. Tests T22, T24, T25, T27-T33."
+      - "MD-095 step 5, capability query and Unknown obligations in Sema (atomics.md §§ 37A(2)-(3), 37A(11)-(13), 48(4)): query the canonical plan capability service after source validation; Supported retained as evidence, Unsupported a focused target capability error, Unknown an unproven obligation that analysis keeps and a complete build reports as insufficient evidence at the emission boundary; source invalidity never hidden behind Unknown; AtomicContextViolation stays mandatory. Replaces the former MD-095-blocked target-diagnostics item. Tests T01, T15-T21 (order rules re-checked as source errors), T48-T56, T64."
+    required_tests:
+      - id: memory-order-core-enum
+        expectation: Core exposes exactly Relaxed, Acquire, Release, AcqRel, SeqCst and LSP hover shows the declaration.
+      - id: compare-exchange-result-core-enum
+        expectation: Core exposes generic Exchanged and NotExchanged(T); LSP and Sema recognize payload typing.
+      - id: atomic-public-naming
+        expectation: Load/Store/Swap/CompareExchange/FetchAdd/FetchSub/FetchAnd/FetchOr/FetchXor are canonical; lowercase alternates are rejected/not offered.
+      - id: atomic-type-eligibility
+        expectation: Conservative v0.1 eligible set is enforced independently of target bit width.
+      - id: atomic-float-reject
+        expectation: Atomic[float64] is rejected as a language type in v0.1 even if target representation could be atomic.
+      - id: atomic-decimal-reject
+        expectation: Atomic[decimal] is rejected as a language type in v0.1.
+      - id: atomic-struct-reject
+        expectation: Arbitrary struct does not become atomic-compatible from matching machine width.
+      - id: atomic-target-separation
+        expectation: Semantically valid Atomic[uint64] can still produce target operation capability failure without being reclassified as an invalid type.
+      - id: compare-exchange-failure-orders
+        expectation: Relaxed/Acquire/SeqCst accepted; Release/AcqRel rejected.
+      - id: compare-exchange-independent-orders
+        expectation: Valid failure order is not rejected merely for being stronger than success order.
+      - id: atomic-fence
+        expectation: atomic.Fence requires explicit Acquire/Release/AcqRel/SeqCst and rejects Relaxed.
+      - Explicit order arguments must be compile-time-established MemoryOrder values; runtime parameters and mutable or runtime-derived aliases are rejected, and unavailable semantic CTE call execution is diagnosed distinctly.
     verification:
+      - command: go test -short -p 4 ./internal/sema ./internal/ir/semantic ./internal/traceability -count=1 -timeout=150s
+        result: "Passed 2026-11-24: Sema 41.996s, Semantic IR 11.354s, traceability 0.292s. Atomic compiler/LSP regressions passed (24.674s/78.066s). Final carrier tests passed (0.036s), final carrier race tests passed (1.176s); earlier broader atomic memory-model/applicability/core-identity race tests also passed (2.221s), vet passed. Source-backed 16-operation tests run cold analyzers on both 32/64-bit plans; symbolic/missing/cyclic/module/enum-substitution and rejected-operation controls pass. One whole step-1 Sema identity point closed; no capability-query, real-target support or layout-completeness closure is claimed."
       - command: GOTMPDIR="$HOME/.cache/sec-gotmp" go test -p 4 ./internal/sema -count=1 -timeout=120s; GOTMPDIR="$HOME/.cache/sec-gotmp" go test -p 4 ./internal/sema -run "TestAtomicFence|TestCallGraphWorkspaceIndex" -count=1; GOTMPDIR="$HOME/.cache/sec-gotmp" go test -p 4 ./internal/ir/semantic ./cmd/compiler ./cmd/lsp -run "TestAtomicFence|TestAtomicMemoryOrder" -count=1 -timeout=120s; GOTMPDIR="$HOME/.cache/sec-gotmp" go vet ./internal/sema
         result: "Passed 2026-11-17: final full Sema 26.981s; focused fence/workspace Sema 0.031s; existing Semantic IR/CLI/LSP fence subsets 0.006s/7.517s/3.118s; vet passed. New tests verify all four orders, repeated SeqCst occurrences, source order around ordinary memory accesses, detached effect queries, no invented may-domains, invalid/shadowed/unreachable exclusion, checkpoint round-trip and rejection of invalid cached orders. Native emission still fails closed as required by atomics.md § 40(7). Mixed fence item narrowed and explicitly partial; zero whole requirements closed by this task."
       - command: go vet ./internal/parser ./internal/formatter ./internal/sema ./cmd/compiler ./cmd/lsp
@@ -178,25 +173,60 @@ integrations:
         result: passed on 2026-10-16
       - command: go test ./internal/sema ./cmd/compiler ./cmd/lsp -race -run 'TestAtomic|TestStaticLetAndCompilerKnownConcurrencyTypes' -count=1
         result: passed on 2026-10-16; canonical core MemoryOrder identity and source navigation, closed variant hover/completion, CamelCase calls and completion with lowercase rejection, and target-independent scalar eligibility on 32-bit and 64-bit plans
-    partial:
-      - "atomic.Fence integration is partial: source validation, Semantic IR and direct ordering effects are implemented; below-IR lowering remains blocked by the explicit package-specification gate in atomics.md § 40(7), and no native fence support is claimed."
-      - "Started (moved to partial 2026-11-20; the text records the done part and what remains): Implement atomic.Fence lowering below Semantic IR after a Sec MLIR package specifies it, as explicitly required by atomics.md § 40(7). Name resolution, order validation, Semantic IR and direct call-graph ordering effects are implemented; the native emission gate remains mandatory."
+    rulebook: rules/concurrency/atomics.md
+    normative:
+      - Atomic[T] is a compiler-known nominal generic atomic-storage type.
+      - Atomic eligibility is semantic and separate from concrete CompilationPlan capability.
+      - The v0.1 compatible set is bool, primitive signed/unsigned integers, RawPtr[T], integer-backed enums, and compatible named types.
+      - float/float32/float64, decimal/decimal128, arbitrary structs/unions/collections and other composites are not atomic-compatible in v0.1.
+      - All public atomic methods use CamelCase.
+      - MemoryOrder is exactly Relaxed, Acquire, Release, AcqRel, SeqCst.
+      - CompareExchangeResult[T] is exactly Exchanged | NotExchanged(T).
+      - CompareExchange mismatch is normal control flow, not an error.
+      - CompareExchange failure orders are Relaxed/Acquire/SeqCst only.
+      - Failure ordering is not required to be weaker than success ordering.
+      - SeqCst is the default for ordinary atomic object operations.
+      - "atomic.Fence(order: MemoryOrder) exists in v0.1, has no default, and rejects Relaxed."
+      - Explicit MemoryOrder arguments are SemanticCompileTimeRequiredContext values; runtime-dependent orders are rejected, while omitted ordinary operation orders remain SeqCst.
+      - "MD-095 (decided 2026-11-24, atomics.md § 37A): capability is queried by carrier, representation, access extent, guaranteed alignment, operation, orders, canonical context category and NoBlocking/InterruptSafe within the selected plan; the semantic type is kept for validation and diagnostics; Unknown is an unfulfilled obligation that analysis may carry and executable emission must discharge or reject."
+    corrections_applied:
+      - rules/corrections/applied/atomics-memory-model-v2-cross-rulebook-correction-20260907.md
+      - rules/corrections/applied/atomic-orders-compile-time-correction-20261017.md
 
   - id: frontend.atomics-v2
     area: parser-sema-atomic-surface
     status: implemented
+    revised: "2026-10-17"
     rules:
       - rules/concurrency/atomics.md
       - rules/concurrency/concurrency_memory_model.md
       - rules/corrections/applied/atomic-orders-compile-time-correction-20261017.md
-    remaining: []
-    implemented:
-      - Sema and shared compiler member facts use one exact per-T operation applicability check, preserving named carriers and inherited constraints on shared-reference receivers and rejecting method type arguments; source, CLI and LSP tests cover the complete common/fetch surface on 32-bit and 64-bit scalar plans without claiming target operation capability
-      - The shared exact MemoryOrder matrix validates every explicit order on Atomic object methods before lowering and supplies operation-specific hover documentation; Load and Store reject their invalid rows, all RMW success orders are allowed, CompareExchange failure is independently Relaxed/Acquire/SeqCst with no relative-strength restriction, and omitted orders remain SeqCst. Explicit orders must be compile-time-established canonical MemoryOrder values, including immutable aliases; runtime-dependent values are rejected with S1170 and unavailable semantic CTE execution remains S1101. The shared fence row is defined and tested; the separately listed fence source/IR/lowering pipeline is not claimed implemented.
-      - Atomic[T] has one compiler-owned nominal core identity with opaque storage and exactly one contained type. Canonical constructor inference preserves that identity, uses a contextual T for literals and enforces ordinary nominal/range contracts; source struct fabrication, wrong arity, type redeclaration and untrusted impl replacement are rejected, including module-core spoofing. Compiler-owned AtomicTypeFacts and resolved type/constructor positions supply the same exact per-T public signatures to type-use, binding and constructor hover; template hover explicitly documents integer-only availability, and all nine public methods retain canonical synthetic navigation. This completes the compiler/LSP API identity surface without claiming CompareExchangeResult payloads, atomic IR, lowering or target capability.
-      - The canonical generic CompareExchangeResult[T] enum is a real trusted core declaration with exactly Exchanged and NotExchanged(T), preserving nominal core identity and source provenance. Parser/AST retain its one associated payload without extending ordinary enum syntax; Sema validates the exact declaration, one type argument, normal non-error status, exact nominal payload construction/binding and exhaustive matching. Atomic calls and member metadata return this same closed enum rather than a struct stub. Existing tagged-value Semantic IR preserves both construction variants and payload extraction; legacy LLVM retains its explicit unsupported-sum-representation diagnostic. Exchanged is the enum default. Formatter round trips retain the source shape; LSP exposes enum/variant documentation, concrete payload hover, closed completion, canonical type/variant navigation and correct local payload-binding navigation.
-      - Validated CompareExchange calls expose immutable ResolvedCompareExchangeOf facts with exact source call/storage/operand identities and nominal result/payload identities. Success is Exchanged with its independently resolved order, an atomic read-modify-write and a possible release-sequence extension; failure is NotExchanged(T) with its independently resolved order, a pure atomic read and no modification or release-sequence extension. Its observed payload names the same operation, never a separate Load. Invalid value/order/arity/type-argument calls produce no validated plan; analysis resets stale plans. This completes frontend path preservation only; Semantic IR atomic operations, native observed-value transfer and CompilationPlan capability validation remain under their existing integration IDs.
-    revised: "2026-10-17"
+    code:
+      - internal/sema/atomic_types.go
+      - internal/sema/atomic_calls.go
+      - internal/sema/atomic_members.go
+      - internal/sema/atomic_orders.go
+      - internal/sema/analyzer_let_bindings.go
+      - internal/sema/types.go
+      - internal/diagnostics/diagnostics.go
+      - internal/sema/atomic_identity.go
+      - cmd/lsp/atomic_hover.go
+      - cmd/lsp/type_hover.go
+      - cmd/lsp/hover.go
+      - internal/sema/analyzer.go
+      - internal/sema/analyzer_inference.go
+      - sec/core/atomic.sec
+      - internal/ast/ast.go
+      - internal/parser/parser.go
+      - internal/sema/compare_exchange_result.go
+      - internal/sema/union_member_inference.go
+      - internal/sema/union_construction_inference.go
+      - cmd/lsp/compare_exchange_result_hover.go
+      - cmd/lsp/enum_hover.go
+      - internal/sema/match_arm_bindings.go
+      - internal/sema/union_payload_diagnostics.go
+      - internal/sema/compare_exchange_paths.go
+      - internal/sema/semantic_snapshot.go
     tests:
       - internal/sema/atomic_applicability_test.go
       - cmd/compiler/atomic_applicability_test.go
@@ -232,32 +262,15 @@ integrations:
       - internal/sema/compare_exchange_paths_test.go
       - testdata/sema/atomics/compare_exchange_result/paths_valid.sec
       - testdata/sema/atomics/compare_exchange_result/paths_invalid.sec
-    code:
-      - internal/sema/atomic_types.go
-      - internal/sema/atomic_calls.go
-      - internal/sema/atomic_members.go
-      - internal/sema/atomic_orders.go
-      - internal/sema/analyzer_let_bindings.go
-      - internal/sema/types.go
-      - internal/diagnostics/diagnostics.go
-      - internal/sema/atomic_identity.go
-      - cmd/lsp/atomic_hover.go
-      - cmd/lsp/type_hover.go
-      - cmd/lsp/hover.go
-      - internal/sema/analyzer.go
-      - internal/sema/analyzer_inference.go
-      - sec/core/atomic.sec
-      - internal/ast/ast.go
-      - internal/parser/parser.go
-      - internal/sema/compare_exchange_result.go
-      - internal/sema/union_member_inference.go
-      - internal/sema/union_construction_inference.go
-      - cmd/lsp/compare_exchange_result_hover.go
-      - cmd/lsp/enum_hover.go
-      - internal/sema/match_arm_bindings.go
-      - internal/sema/union_payload_diagnostics.go
-      - internal/sema/compare_exchange_paths.go
-      - internal/sema/semantic_snapshot.go
+    implemented:
+      - Sema and shared compiler member facts use one exact per-T operation applicability check, preserving named carriers and inherited constraints on shared-reference receivers and rejecting method type arguments; source, CLI and LSP tests cover the complete common/fetch surface on 32-bit and 64-bit scalar plans without claiming target operation capability
+      - The shared exact MemoryOrder matrix validates every explicit order on Atomic object methods before lowering and supplies operation-specific hover documentation; Load and Store reject their invalid rows, all RMW success orders are allowed, CompareExchange failure is independently Relaxed/Acquire/SeqCst with no relative-strength restriction, and omitted orders remain SeqCst. Explicit orders must be compile-time-established canonical MemoryOrder values, including immutable aliases; runtime-dependent values are rejected with S1170 and unavailable semantic CTE execution remains S1101. The shared fence row is defined and tested; the separately listed fence source/IR/lowering pipeline is not claimed implemented.
+      - Atomic[T] has one compiler-owned nominal core identity with opaque storage and exactly one contained type. Canonical constructor inference preserves that identity, uses a contextual T for literals and enforces ordinary nominal/range contracts; source struct fabrication, wrong arity, type redeclaration and untrusted impl replacement are rejected, including module-core spoofing. Compiler-owned AtomicTypeFacts and resolved type/constructor positions supply the same exact per-T public signatures to type-use, binding and constructor hover; template hover explicitly documents integer-only availability, and all nine public methods retain canonical synthetic navigation. This completes the compiler/LSP API identity surface without claiming CompareExchangeResult payloads, atomic IR, lowering or target capability.
+      - The canonical generic CompareExchangeResult[T] enum is a real trusted core declaration with exactly Exchanged and NotExchanged(T), preserving nominal core identity and source provenance. Parser/AST retain its one associated payload without extending ordinary enum syntax; Sema validates the exact declaration, one type argument, normal non-error status, exact nominal payload construction/binding and exhaustive matching. Atomic calls and member metadata return this same closed enum rather than a struct stub. Existing tagged-value Semantic IR preserves both construction variants and payload extraction; legacy LLVM retains its explicit unsupported-sum-representation diagnostic. Exchanged is the enum default. Formatter round trips retain the source shape; LSP exposes enum/variant documentation, concrete payload hover, closed completion, canonical type/variant navigation and correct local payload-binding navigation.
+      - Validated CompareExchange calls expose immutable ResolvedCompareExchangeOf facts with exact source call/storage/operand identities and nominal result/payload identities. Success is Exchanged with its independently resolved order, an atomic read-modify-write and a possible release-sequence extension; failure is NotExchanged(T) with its independently resolved order, a pure atomic read and no modification or release-sequence extension. Its observed payload names the same operation, never a separate Load. Invalid value/order/arity/type-argument calls produce no validated plan; analysis resets stale plans. This completes frontend path preservation only; Semantic IR atomic operations, native observed-value transfer and CompilationPlan capability validation remain under their existing integration IDs.
+    remaining: []
+    required_tests:
+      - Explicit order arguments must be compile-time-established MemoryOrder values; runtime parameters and mutable or runtime-derived aliases are rejected, and unavailable semantic CTE call execution is diagnosed distinctly.
     verification:
       - command: go test ./internal/sema -race -run 'CompareExchangePaths|AtomicOrderMatrix|CompareExchangeResult' -count=1
         result: passed on 2026-10-17; all valid CompareExchange order pairs and default orders, 32/64-bit plans, nominal payloads, same-operation observed-value provenance, read-only failure versus RMW success, invalid-call plan withholding, detached type facts and stale-plan reset
@@ -293,22 +306,13 @@ integrations:
         result: passed on 2026-10-17
       - command: go test ./internal/sema ./cmd/compiler ./cmd/lsp -race -run 'Atomic|StaticLetAndCompilerKnownConcurrencyTypes' -count=1
         result: passed on 2026-10-17; exact common/fetch applicability, named-result preservation, inherited contracts, 32/64-bit scalar plans, all nine non-generic method signatures, 49 rejected source calls, and matching unsaved LSP diagnostics/completion/hover
-    required_tests:
-      - Explicit order arguments must be compile-time-established MemoryOrder values; runtime parameters and mutable or runtime-derived aliases are rejected, and unavailable semantic CTE call execution is diagnosed distinctly.
 
   - id: tooling.atomics-v2
     area: lsp-format-docs-atomic-surface
     status: partial
+    revised: "2026-10-17"
     rules:
       - rules/concurrency/atomics.md
-    remaining:
-      - "Tooling distinguishes semantic invalidity from CompilationPlan capability failure (blocked on MD-095: requirement key conventions)."
-    implemented:
-      - "atomic.Fence tooling (2026-10-17): a resolved fence call records the compiler-known CKF-ATOMIC-FENCE identity on its Fence name, so hover shows the canonical signature `fn Fence(order: MemoryOrder) void`, documentation, rule and the MemoryOrder the call establishes, and go-to-definition reaches its synthetic read-only definition; MemoryOrder and its variants already hover with core documentation and navigate to sec/core/atomic.sec (TestAtomicFenceHoverAndNavigation, cmd/lsp/atomic_fence_tooling_test.go)"
-      - Completion uses canonical CamelCase members.
-      - Atomic type-use, shared-reference binding and constructor hover render the resolved contained type and exact applicable public overloads from canonical compiler-owned AtomicTypeFacts; template hover labels integer-only fetch availability, and every public Atomic method navigates to its receiver-specific compiler-known synthetic definition.
-      - CompareExchangeResult's source enum shape, generic arity, concrete payload and non-error meaning are presented in type, constructor, variant and binding hover; completion exposes Exchanged and NotExchanged. Type owners and variants navigate to canonical core declarations, while payload bindings navigate to their own local names. All three core atomic types and implemented object methods now have their public presentation; the pending fence surface remains listed separately.
-    revised: "2026-10-17"
     code:
       - internal/sema/atomic_members.go
       - internal/sema/compiler_known_members.go
@@ -324,6 +328,13 @@ integrations:
       - internal/sema/atomic_surface_test.go
       - cmd/lsp/atomic_identity_test.go
       - cmd/lsp/compare_exchange_result_test.go
+    implemented:
+      - "atomic.Fence tooling (2026-10-17): a resolved fence call records the compiler-known CKF-ATOMIC-FENCE identity on its Fence name, so hover shows the canonical signature `fn Fence(order: MemoryOrder) void`, documentation, rule and the MemoryOrder the call establishes, and go-to-definition reaches its synthetic read-only definition; MemoryOrder and its variants already hover with core documentation and navigate to sec/core/atomic.sec (TestAtomicFenceHoverAndNavigation, cmd/lsp/atomic_fence_tooling_test.go)"
+      - Completion uses canonical CamelCase members.
+      - Atomic type-use, shared-reference binding and constructor hover render the resolved contained type and exact applicable public overloads from canonical compiler-owned AtomicTypeFacts; template hover labels integer-only fetch availability, and every public Atomic method navigates to its receiver-specific compiler-known synthetic definition.
+      - CompareExchangeResult's source enum shape, generic arity, concrete payload and non-error meaning are presented in type, constructor, variant and binding hover; completion exposes Exchanged and NotExchanged. Type owners and variants navigate to canonical core declarations, while payload bindings navigate to their own local names. All three core atomic types and implemented object methods now have their public presentation; the pending fence surface remains listed separately.
+    remaining:
+      - "MD-095 diagnostics and tooling (atomics.md § 48(4); diagnostics.md § 24(4l)): keep source order errors S1170/S1171, report a supported-but-unlowered operation as S1239, allocate registry identities for proven-unsupported capability, unverifiable capability (missing evidence, including unproven ISR/nonblocking) and incomplete atomic layout when implemented; messages name target/profile, semantic type, carrier, operation and orders, layout, context properties and the missing fact; LSP and analysis-only results present Unknown obligations as unproven, never as executable validity or proven unsupported. Tests T51, T53, T64."
     verification:
       - command: go vet ./internal/parser ./internal/formatter ./internal/sema ./cmd/compiler ./cmd/lsp
         result: passed on 2026-10-17
@@ -346,21 +357,22 @@ integrations:
 
   - id: semantic-ir.atomics-v2
     area: semantic-ir-atomic-facts
-    status: implemented
+    status: partial
     rules:
       - rules/concurrency/atomics.md
       - rules/concurrency/concurrency_memory_model.md
       - rules/compiler/semantic_ir.md
-    implemented:
-      - "Implemented 2026-11-21 (Atomic[T] object operations; internal/ir/semantic/atomic_objects.go, semantic_ir.md § 123A): atomic.load, atomic.store, atomic.rmw and atomic.compare-exchange are built from Sema's validated memory-operation plan with operand 0 a reference to atomic<T> (storage identity, storage=resolved|unknown), T, operation kind, success/failure order and per-outcome read/modify/RMW and release-sequence effects; omitted orders stay SeqCst; the verifier enforces the atomics.md § 24(1) order matrix; serialization round-trips the facts. Sec MLIR emission fails closed on the atomic type; a non-reference receiver is not borrowed implicitly. Tests: TestAtomicObjectOperationsPreserveFacts, TestAtomicObjectVerifierRejectsInvalidFacts, TestAtomicObjectOperationsFailClosed."
-      - "Implemented 2026-11-21 (successful versus failed CompareExchange, semantic_ir.md § 123A(3)): atomic.compare-exchange carries an Exchanged path with the success order that reads, modifies and is a read-modify-write, and a NotExchanged path with the failure order that only reads and cannot affect a release sequence; the verifier rejects a modifying failure path and Release/AcqRel failure orders."
-      - "atomic.fence (2026-10-17): a valid atomic.Fence call lowers to one atomic.fence operation carrying Sema's compile-time-established MemoryOrder (AtomicOrder) and its source location, with no operands, results or storage; the verifier requires Acquire, Release, AcqRel or SeqCst and no operands/results/successors; the printer writes `atomic.fence order=<Order>`. Sec MLIR schema 11 rejects it as explicit unsupported lowering (internal/ir/semantic/atomic_fence.go; TestAtomicFenceLowersToSemanticIR, TestAtomicFenceEmitRoutes; spelling MD-096 decided 2026-10-18: semantic_ir.md § 123, atomics.md § 40(7); verifier test covers all four orders and rejects Relaxed, a lowercase spelling, operands and results)"
     tests:
       - internal/ir/semantic/atomic_fence_test.go
       - internal/ir/semantic/atomic_objects_test.go
       - cmd/compiler/atomic_fence_test.go
       - testdata/sema/atomic_fence_lowering_valid.sec
-    remaining: []
+    implemented:
+      - "Implemented 2026-11-21 (Atomic[T] object operations; internal/ir/semantic/atomic_objects.go, semantic_ir.md § 123A): atomic.load, atomic.store, atomic.rmw and atomic.compare-exchange are built from Sema's validated memory-operation plan with operand 0 a reference to atomic<T> (storage identity, storage=resolved|unknown), T, operation kind, success/failure order and per-outcome read/modify/RMW and release-sequence effects; omitted orders stay SeqCst; the verifier enforces the atomics.md § 24(1) order matrix; serialization round-trips the facts. Sec MLIR emission fails closed on the atomic type; a non-reference receiver is not borrowed implicitly. Tests: TestAtomicObjectOperationsPreserveFacts, TestAtomicObjectVerifierRejectsInvalidFacts, TestAtomicObjectOperationsFailClosed."
+      - "Implemented 2026-11-21 (successful versus failed CompareExchange, semantic_ir.md § 123A(3)): atomic.compare-exchange carries an Exchanged path with the success order that reads, modifies and is a read-modify-write, and a NotExchanged path with the failure order that only reads and cannot affect a release sequence; the verifier rejects a modifying failure path and Release/AcqRel failure orders."
+      - "atomic.fence (2026-10-17): a valid atomic.Fence call lowers to one atomic.fence operation carrying Sema's compile-time-established MemoryOrder (AtomicOrder) and its source location, with no operands, results or storage; the verifier requires Acquire, Release, AcqRel or SeqCst and no operands/results/successors; the printer writes `atomic.fence order=<Order>`. Sec MLIR schema 11 rejects it as explicit unsupported lowering (internal/ir/semantic/atomic_fence.go; TestAtomicFenceLowersToSemanticIR, TestAtomicFenceEmitRoutes; spelling MD-096 decided 2026-10-18: semantic_ir.md § 123, atomics.md § 40(7); verifier test covers all four orders and rejects Relaxed, a lowercase spelling, operands and results)"
+    remaining:
+      - "MD-095 Semantic IR capability evidence (semantic_ir.md § 123B; atomics.md § 46(7)): each atomic object operation and fence carries its capability requirement (semantic type, carrier, representation, access extent and storage alignment or outstanding layout facts, operation and orders, context categories with NoBlocking/InterruptSafe and refinements, plan identity, provenance) and either supported evidence or an explicit Unknown obligation; one requirement per applicable context; the verifier rejects executable-bound IR with an unresolved obligation; no new opcode. Tests T47, T48, T51, T55."
 
   - id: lowering.atomics-v2
     area: atomic-lowering
@@ -369,30 +381,27 @@ integrations:
       - rules/concurrency/atomics.md
       - rules/concurrency/concurrency_memory_model.md
     remaining:
-      - Consume immutable CompilationPlan capability facts.
+      - "Consume immutable CompilationPlan capability facts. MD-095 emission gate (atomics.md §§ 37A(12)-(13), 47(9)-(10)): before executable lowering every relevant operation needs a complete atomic layout, resolved context constraints and supported evidence; a still-Unknown obligation (including every ISR or nonblocking one) fails closed with the missing-evidence diagnostic; a supported operation without an implemented lowering is an S1239 implementation limitation and is not emitted; no fallback to ordinary, volatile, weaker-order or unverified blocking operations; a stronger order only with a § 47 compatibility proof that keeps the source orders. Tests T52, T54, T55, T57-T59, T63."
       - Preserve or strengthen requested order; never weaken.
       - Return failed CompareExchange observed value from the same atomic operation.
       - Preserve fence and release-sequence semantics.
 
   - id: platform.atomics-v2
     area: compilation-plan-atomic-capability
-    status: implemented
+    status: partial
+    revised: "2026-11-24"
     rules:
       - rules/concurrency/atomics.md
       - rules/platform/target_profiles.md
       - rules/platform/platform_model.md
-    remaining: []
-    revised: "2026-10-17"
-    implemented:
-      - "The authoritative scalar/profile plan carries a frozen AtomicCapabilities snapshot, preserved by canonical target Definition.ScalarPlan resolution. Exact requirements retain canonical nominal T identity (including generic arguments), resolved byte size/alignment, operation, success and separate CompareExchange failure order, execution-contract identity, no-blocking and interrupt-safety requirements; fences have no fabricated storage layout or implicit order. Known support and denial retain producer provenance and reason; absent evidence stays Unknown on every registered target, independently of compiler host and pointer width. Freezing rejects incomplete requests, missing proof provenance and duplicate keys, copies producer inputs, and binds the table to every represented scalar/profile plan fact; validation and queries reject cross-plan reuse. This completes the capability model only: source requirement production and capability diagnostics (MD-095), concrete registered-target realization guarantees and lowering remain under the related language/tooling/lowering integration IDs."
-      - "Concrete capability facts now retain a declared implementation kind and identity independently of language eligibility: native instruction, compiler intrinsic, verified platform primitive or target-declared emulation. Separate three-state LockFree, Blocking and InterruptSafe facts preserve explicit guarantees and unknowns without inferring them from mechanism, target width, profile or host. Affirmative availability requires producer provenance and a selected implementation; unknown or denied availability cannot select one, and invalid classifications or property values are rejected before freezing. Immutable lookup and canonical target projection preserve all realization facts. Source analysis on 32/64-bit plans confirms that unknown, denied, native and emulated facts neither remove uint64 eligibility nor authorize float64. These are compiler-internal facts, not a new public lock-free query, target guarantee, runtime fallback or native lowering path; source requirement production and capability diagnostics (MD-095), concrete registered-target guarantees and lowering remain pending."
-      - Plan freezing rejects a supported realization unless Blocking is proven No when NoBlocking or InterruptSafe is required, and InterruptSafe is separately proven Yes when required. Known violations and missing property proofs are distinct typed AtomicContextViolation errors retaining exact requirement/implementation evidence; errors include target/profile context and preserve every failed guarantee. Native, intrinsic, primitive and emulated mechanisms use the same checks; a lock-free claim or interrupt-related name never substitutes for context proof. Validation occurs before publishing the immutable table and never selects a fallback. Unknown or denied capability facts remain non-affirmative without inventing Sema's Unknown policy. This completes the represented plan model and context checks; source-to-requirement production, source diagnostics and concrete registered-target guarantees remain under concurrency.atomics-v2/tooling.atomics-v2 and MD-095, and backend consumption/lowering remains under lowering.atomics-v2.
+      - rules/corrections/applied/MD-095-atomic-capability-requirements-correction-2026-11-24-20261124.md
     code:
       - internal/layout/atomic_capabilities.go
       - internal/layout/scalar_plan.go
       - internal/platform/target/target.go
       - internal/layout/atomic_realization.go
       - internal/layout/atomic_context.go
+      - internal/layout/atomic_producer.go
     tests:
       - internal/layout/atomic_capabilities_test.go
       - internal/platform/target/atomic_capabilities_test.go
@@ -401,7 +410,21 @@ integrations:
       - testdata/sema/atomics/realization_valid.sec
       - testdata/sema/atomics/realization_invalid.sec
       - internal/layout/atomic_context_test.go
+      - internal/layout/atomic_producer_test.go
+    implemented:
+      - "MD-095 step 1 capability key migration (2026-11-24; atomics.md § 37A(4)-(9); correction § 9(2)): internal/layout AtomicRequirement now carries SemanticTypeID (validation/diagnostics only), source Provenance and an AtomicCapabilityKey (CarrierTypeID, IntegerStorage representation whose width is the access extent, power-of-two guaranteed alignment, operation, orders, canonical AtomicContext Ordinary/Task/Thread/Interrupt/Startup/Shutdown, NoBlocking, InterruptSafe, AtomicContextRefinement); facts and lookups are keyed by the carrier key, so equivalent nominal, named-layer, generic and RawPtr-pointee types share one entry while raw-pointer, bool and signed carriers stay distinct; free-string contexts, Interrupt without InterruptSafe, a vector outside Interrupt, zero or mismatched size/alignment, float representations and semantic identity on a Fence are rejected. AtomicContextViolation reports the key. Tests: TestAtomicCapabilitiesExactKeys, TestAtomicCapabilitiesShareCarrier, TestAtomicCapabilitiesRejectIncompleteFacts, TestAtomicCapabilitiesUnknownAndFence (T01-T04, T08, T10-T12, T20, T23, T45, T50), registry and Sema fixtures migrated. Refinement derivation is completed by step 4 below."
+      - "MD-095 caches and fingerprints (2026-11-24; atomics.md § 37A(14); platform_model.md §§ 21, 23): the snapshot records key schema sec.atomic-capability-key/3 and validateFor rejects any other schema (former semantic-type-only table, T61); the Architecture fingerprint now digests AtomicCapabilities.semanticFacts() (schema plus every non-Unknown fact's key, availability and implementation guarantees in canonical order, together with independent plan-wide activation, without provenance or reason) instead of the opaque struct, which serialized as {} so atomic facts never reached the plan fingerprints (T60). Tests: TestAtomicCapabilitiesKeySchema, TestAtomicCapabilitiesFingerprints."
+      - "The authoritative scalar/profile plan carries a frozen AtomicCapabilities snapshot, preserved by canonical target Definition.ScalarPlan resolution. Exact requirements retain canonical nominal T identity (including generic arguments), resolved byte size/alignment, operation, success and separate CompareExchange failure order, execution-contract identity, no-blocking and interrupt-safety requirements; fences have no fabricated storage layout or implicit order. Known support and denial retain producer provenance and reason; absent evidence stays Unknown on every registered target, independently of compiler host and pointer width. Freezing rejects incomplete requests, missing proof provenance and duplicate keys, copies producer inputs, and binds the table to every represented scalar/profile plan fact; validation and queries reject cross-plan reuse. This completes the capability model only: source requirement production and capability diagnostics (MD-095), concrete registered-target realization guarantees and lowering remain under the related language/tooling/lowering integration IDs."
+      - "Concrete capability facts now retain a declared implementation kind and identity independently of language eligibility: native instruction, compiler intrinsic, verified platform primitive or target-declared emulation. Separate three-state LockFree, Blocking and InterruptSafe facts preserve explicit guarantees and unknowns without inferring them from mechanism, target width, profile or host. Affirmative availability requires producer provenance and a selected implementation; unknown or denied availability cannot select one, and invalid classifications or property values are rejected before freezing. Immutable lookup and canonical target projection preserve all realization facts. Source analysis on 32/64-bit plans confirms that unknown, denied, native and emulated facts neither remove uint64 eligibility nor authorize float64. These are compiler-internal facts, not a new public lock-free query, target guarantee, runtime fallback or native lowering path; source requirement production and capability diagnostics (MD-095), concrete registered-target guarantees and lowering remain pending."
+      - Plan freezing rejects a supported realization unless Blocking is proven No when NoBlocking or InterruptSafe is required, and InterruptSafe is separately proven Yes when required. Known violations and missing property proofs are distinct typed AtomicContextViolation errors retaining exact requirement/implementation evidence; errors include target/profile context and preserve every failed guarantee. Native, intrinsic, primitive and emulated mechanisms use the same checks; a lock-free claim or interrupt-related name never substitutes for context proof. Validation occurs before publishing the immutable table and never selects a fallback. Unknown or denied capability facts remain non-affirmative without inventing Sema's Unknown policy. This completes the represented plan model and context checks; source-to-requirement production, source diagnostics and concrete registered-target guarantees remain under concurrency.atomics-v2/tooling.atomics-v2 and MD-095, and backend consumption/lowering remains under lowering.atomics-v2.
+      - "MD-095 step 4, producer derivation and lookup validation (2026-11-24; atomics.md § 37A(8)-(14); platform_model.md §§ 9, 14, 21): WithAtomicCapabilityRules expands a verified representation/operation fact over its explicitly covered finite context refinements into the same validated immutable exact-key snapshot. Each derived key retains the exact carrier, representation, access extent, guaranteed alignment, operation, orders, context constraints, implementation identity and provenance; no wildcard, similarly sized carrier, stronger order or category-only fallback. Missing or partial refinement evidence stays Unknown, explicit vector denials remain Unsupported, and duplicate/conflicting derivations fail before publication. AtomicProfilePolicy supplies independent plan-wide Enabled/Disabled/NotApplicable activation (missing evidence remains unknown); operation/context facts cannot override it. Queries retain physical availability and profile activation separately even on an optional capability miss. Schema /3 and fingerprints cover activation and all derived key meanings; producer order and descriptive provenance do not affect identity. Registry projection preserves derived facts and activation. Tests T26-T28, T34-T38, T48-T50, T62 use synthetic proofs and cover 64-bit operations on a 32-bit plan, independent equal-width targets, operation-specific denial, unknown optional entries versus invalid required plan facts, immutable producer/query data and cross-plan rejection. Registered target support/alignment, source evidence production and executable gates remain their separately tracked steps."
+    remaining:
+      - "MD-095 step 7, real-target verification (correction §§ 9(3), 11(3)): establish atomic capability facts and atomic storage-alignment facts (ResolvedScalarPlan.AtomicAlignments; until then every registered Atomic[T] layout is incomplete) for registered targets only from verified producer data or derivation rules, with provenance; synthetic fixtures test the model and never establish support; no fabricated default support."
     verification:
+      - command: go test -race -p 4 ./internal/layout ./internal/platform/target -count=1; go vet ./internal/layout ./internal/platform/target ./internal/codegen/targetplan
+        result: passed on 2026-11-24; immutable producer and query snapshots, profile-bound evidence and fingerprints
+      - command: go test -short -p 4 ./internal/layout ./internal/platform/... ./internal/codegen/targetplan ./internal/project ./internal/ir/semantic ./internal/traceability -count=1 -timeout=150s
+        result: passed on 2026-11-24; finite producer derivation, exact refinement coverage, activation independence, registry projection and downstream regressions; no registered target support inferred
       - command: go vet ./internal/layout ./internal/platform/target ./internal/sema
         result: passed on 2026-10-17 after plan-side nonblocking/ISR proof enforcement
       - command: go test ./cmd/compiler ./cmd/lsp -run 'Atomic|Target|ScalarPlan' -count=1

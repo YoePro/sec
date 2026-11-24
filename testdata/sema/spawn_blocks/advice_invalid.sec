@@ -1,0 +1,24 @@
+// CASE must-use
+module main
+fn Load() Result[void, TaskSpawnError] { return Ok() }
+fn Parent() Result[Task[void], TaskSpawnError] {
+    return spawn { Load() }
+}
+// CASE invalid-call
+module main
+fn Parent() Result[Task[void], TaskSpawnError] {
+    return spawn { Missing() }
+}
+// CASE non-void
+module main
+fn Value() int { return 42 }
+fn Parent() Result[Task[int], TaskSpawnError] {
+    return spawn { if true { return 1 }
+        Value() }
+}
+// CASE process-boundary
+module main
+fn Value() int { return 42 }
+fn Parent() void {
+    let creation := spawn process { Value() }
+}

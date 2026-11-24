@@ -64,6 +64,8 @@ Thread[T]
 
 § 2(6) Unsupported physical threads are not represented by `ThreadSpawnError`.
 
+§ 2(7) **Amendment MD-133 (2026-11-24, Sec 0.1 and 0.1.1, `rules/corrections/applied/MD-133-spawn-block-return-type-correction-2026-11-24-20261124.md`).** `spawn thread { ... }` has the `T` inferred from the block's explicit value-bearing returns, or `void` without one (`spawn.md` § 3A), giving `Result[Thread[T], ThreadSpawnError]`; deferred creation is unchanged.
+
 ---
 
 ## § 3. Complete compiler-known/source-visible type set
@@ -554,6 +556,11 @@ enum ThreadSpawnError error {
 § 20(5) Failure before creation commit must preserve or clean up source ownership according to the canonical spawn/ownership transaction rules; a backend must not invent a thread-specific leak or double-destruction path.
 
 § 20(6) A consumed `ThreadConfig` that fails before successful thread creation releases its configuration-held borrows during ordinary failure cleanup.
+§ 20(5) Failure before creation commit must preserve or clean up source ownership according to the canonical spawn/ownership transaction rules; a backend must not invent a thread-specific leak or double-destruction path. **Amendment MD-128 (2026-11-24, Sec 0.1 and 0.1.1, `rules/corrections/applied/MD-128-spawn-transactional-ownership-correction-2026-11-24-20261124.md` § 3).** Precisely: a `ThreadSpawnError` means no commit; every pending transfer of a reusable caller-owned source is cancelled and the source stays owned and available, creation-only temporaries get ordinary failure cleanup, and a provisionally created native thread never runs user code with uncommitted inputs and is cleaned up (`spawn.md` § 10(8)).
+
+§ 20(6) A consumed `ThreadConfig` that fails before successful thread creation releases its configuration-held borrows during ordinary failure cleanup. **Amendment MD-128 (2026-11-24, Sec 0.1 and 0.1.1, `rules/corrections/applied/MD-128-spawn-transactional-ownership-correction-2026-11-24-20261124.md` § 4(3)).** This applies to configuration state actually owned by the failed creation machinery, such as a temporary configuration. A reusable `ThreadConfig` whose pending transfer never committed stays owned by the caller and is not destroyed; a resource already moved into an independently constructed configuration is not restored to its earlier source.
+
+§ 20(7) **Amendment MD-128 (2026-11-24, Sec 0.1 and 0.1.1, `rules/corrections/applied/MD-128-spawn-transactional-ownership-correction-2026-11-24-20261124.md` § 6(3)).** With `ThreadStartMode.Deferred`, ownership transfers at successful creation of the thread handle. A later `Start()` error (§§ 17–18) does not return the inputs to the creator; the deferred-thread state, resource ownership and cleanup contracts govern that failure.
 
 ---
 
@@ -1146,6 +1153,8 @@ fn RequestCancel() void
 § 46(3) It does not resolve the lifecycle obligation.
 
 § 46(4) The owner must still join, detach, or transfer the handle.
+
+§ 46(5) **Amendment MD-129 (2026-11-24, Sec 0.1 and later compatible versions, `rules/corrections/applied/MD-129-spawn-parent-cancellation-correction-2026-11-24-20261124.md` § 6(1)).** A thread spawned from a task whose cancellation was requested does not inherit that task request or identity; thread-to-thread inheritance is not defined (`cancellation.md` § 55(9)).
 
 ---
 

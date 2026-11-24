@@ -31,6 +31,9 @@ type AtomicMemoryPath struct {
 // neither imposes a global modification order nor solves a runtime schedule.
 // Rules: rules/concurrency/concurrency_memory_model.md §§16–17,52(1–6).
 type ResolvedAtomicMemoryOperation struct {
+	// TypeIdentity separates nominal T from its capability carrier. Fence
+	// operations have neither. Rules: rules/concurrency/atomics.md §37A(4–6).
+	TypeIdentity                   AtomicValueIdentity
 	Operation                      string
 	Source                         lexer.Token
 	Callable                       CallableID
@@ -46,11 +49,12 @@ type ResolvedAtomicMemoryOperation struct {
 // no method spelling on an ordinary user type establishes an atomic object.
 // Rules: rules/concurrency/concurrency_memory_model.md §§16–17,25–28,52;
 // rules/concurrency/atomics.md §§12–25,45–46.
-func (a *Analyzer) recordAtomicMemoryOperation(call *ast.CallExpression, member *ast.MemberExpression, order string) {
+func (a *Analyzer) recordAtomicMemoryOperation(call *ast.CallExpression, member *ast.MemberExpression, order string, element Type) {
 	if a.summaryPass || !a.callGraphPathReachable {
 		return
 	}
 	plan := ResolvedAtomicMemoryOperation{Operation: member.Property.Value, Source: member.Property.Token, Callable: a.currentCallable, TotalOrderPerObject: true, RequiresHappensBeforeCoherence: true}
+	plan.TypeIdentity = AtomicValueTypeIdentity(element)
 	if place, ok := a.resolvePlace(member.Object); ok {
 		if place.Type.Kind == ReferenceType && place.Type.Element != nil {
 			place = a.canonicalDereferencePlace(member.Object, place, place.Type)

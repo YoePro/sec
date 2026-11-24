@@ -29,7 +29,10 @@ func atomicElementTypeSupported(typ Type) bool {
 	case BoolType, RawPtrType, IntType, UintType:
 		return true
 	case EnumType:
-		return typ.MinInteger != nil || typ.MaxInteger != nil || isIntegerType(builtinType(typ.Underlying))
+		// Named enum/backing layers use the same resolved carrier authority
+		// as operation facts, including a backing declared in another module.
+		// Rules: rules/concurrency/atomics.md §37A(4–6).
+		return AtomicValueTypeIdentity(typ).CarrierTypeID != ""
 	default:
 		return false
 	}

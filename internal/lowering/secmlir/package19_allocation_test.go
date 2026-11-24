@@ -161,3 +161,58 @@ fn main() int {
 		t.Fatalf("%v\n%s\n%s", err, result, text)
 	}
 }
+
+// P19 §§ 43–48, 116; arena.md §§ 43–46, 131(7): an explicit Release of a
+// FromBuffer Arena (ends the backing loan) and of the empty default Arena
+// (reclaims nothing) moves the owner out of its storage, consumes it in
+// sec.arena.release ending the domain, and cancels the owner's cleanup so
+// implicit destruction never repeats it. Verified schema 15.
+func TestPackage19ArenaReleaseLowering(t *testing.T) {
+	tool := testsupport.RequireSecMLIROptPath(t)
+	source := `module main
+
+fn Borrowed() void {
+    let mut buffer: byte[64]
+    let mut arena := Arena.FromBuffer(ref mut buffer[..])
+    arena.Reset()
+    arena.Release()
+}
+
+fn Empty() void {
+    let mut arena: Arena
+    arena.Release()
+}
+
+fn main() int {
+    return 0
+}
+`
+	module, err := buildPackage19TargetSource(t, source, "linux", "amd64")
+	if err != nil {
+		t.Fatal(err)
+	}
+	definition, _ := target.Find(target.Target{OS: "linux", Arch: "amd64"})
+	plan, _ := definition.ScalarPlan()
+	output, err := EmitWithOptions(module, plan, EmitOptions{DialectVersion: 15})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(output)
+	if strings.Count(text, `"sec.arena.release"`) != 2 {
+		t.Fatalf("want two releases:\n%s", text)
+	}
+	for _, want := range []string{
+		`state_before = 2 : i32, state_after = 3 : i32, epoch_before = 2 : i32`, `transition = "end-domain"`,
+		`dependency_proof = "sema-dependency-check"`, `backing_kind = "none"`, `"sec.own.move_from_place"`, `reason = "released"`,
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("schema-15 module lacks %q:\n%s", want, text)
+		}
+	}
+	verify := exec.Command(tool, "--sec-verify-arenas", "--sec-verify-allocation-contexts", "--sec-verify-places", "--sec-verify-reference-guards",
+		"--sec-verify-cleanups", "--sec-verify-destruction-plans", "--sec-verify-ownership", "-", "-o", os.DevNull)
+	verify.Stdin = bytes.NewReader(output)
+	if result, err := verify.CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s\n%s", err, result, text)
+	}
+}

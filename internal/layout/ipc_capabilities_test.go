@@ -110,7 +110,7 @@ func TestIPCCapabilitiesPlanBinding(t *testing.T) {
 func TestIPCCapabilitiesComposeWithAtomics(t *testing.T) {
 	base := atomicTestPlan()
 	request := atomicTestRequirement()
-	atomic := AtomicCapability{Requirement: request, Availability: AtomicSupported, Provenance: "test-ordinary-atomic", Implementation: AtomicImplementation{Kind: AtomicCompilerIntrinsic, Identity: "ordinary-only-intrinsic", LockFree: AtomicPropertyYes, Blocking: AtomicPropertyNo}}
+	atomic := AtomicCapability{Key: request.Key, Availability: AtomicSupported, Provenance: "test-ordinary-atomic", Implementation: AtomicImplementation{Kind: AtomicCompilerIntrinsic, Identity: "ordinary-only-intrinsic", LockFree: AtomicPropertyYes, Blocking: AtomicPropertyNo}}
 	ipc := IPCCapability{Requirement: IPCRequirement{Family: IPCAtomicRepresentation, WidthBits: 64}, Availability: IPCSupported, Provenance: "separate-process-shared-contract"}
 	a, err := base.WithAtomicCapabilities([]AtomicCapability{atomic})
 	if err != nil {

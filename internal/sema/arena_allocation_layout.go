@@ -2,8 +2,8 @@ package sema
 
 import (
 	"math/big"
-	"strings"
 
+	"sec/internal/ast"
 	"sec/internal/layout"
 )
 
@@ -22,21 +22,25 @@ type ArenaElementLayout struct {
 // analyzer's plan. A plan without verified scalar alignments, or an
 // incomplete layout, yields the named missing fact instead of a guess.
 // Rules: rules/memory/arena.md — §§ 17(1)–17(2), 19(1); rules/memory/layout.md — §§ 47.1–47.5.
-func (a *Analyzer) arenaElementLayout(element Type) (*ArenaElementLayout, string) {
+func (a *Analyzer) arenaElementLayout(element Type, operation string) (*ArenaElementLayout, string) {
 	plan := a.targetCapabilityPlan
+	requirement := LayoutRequirementOf(element)
+	failure := func(state layout.LayoutCompleteness, missing ...string) string {
+		return layout.DescribeLayoutFailure(plan, requirement, typeDisplayName(element), state, missing, operation)
+	}
 	if plan.PointerWidthBits == 0 || plan.Alignments == nil {
-		return nil, "CompilationPlan layout of T (the selected target has no verified data layout)"
+		return nil, failure(layout.LayoutIncomplete, "the selected target has no verified data layout")
 	}
 	if a.arenaLayoutResolver == nil {
 		resolver, err := layout.NewResolver(plan, plan.Alignments)
 		if err != nil {
-			return nil, "CompilationPlan layout of T (" + err.Error() + ")"
+			return nil, failure(layout.LayoutInvalid, err.Error())
 		}
 		a.arenaLayoutResolver = resolver
 	}
-	resolved := a.arenaLayoutResolver.Resolve(LayoutRequirementOf(element))
+	resolved := a.arenaLayoutResolver.Resolve(requirement)
 	if resolved.Completeness != layout.LayoutComplete || resolved.SizeBytes == nil || resolved.AlignBytes == nil {
-		return nil, "CompilationPlan layout of T (" + strings.Join(resolved.Missing, "; ") + ")"
+		return nil, failure(resolved.Completeness, resolved.Missing...)
 	}
 	return &ArenaElementLayout{
 		TypeIdentity: resolved.TypeIdentity,
@@ -66,4 +70,36 @@ func (a *Analyzer) IsLowerableArenaAllocation(fact AllocationContextFact) bool {
 		}
 	}
 	return false
+}
+
+// checkStaticallyImpossibleArenaAllocation diagnoses one New/Alloc that can
+// never succeed: its checked payload count * size exceeds the plan's maximum
+// byte extent, or a FromBuffer Arena's known backing is smaller than the
+// payload alone (alignment padding can only add to it). A compile-time error
+// is preferred over a guaranteed failing try path; the call keeps its Result
+// type.
+// Rules: rules/mlir/packages/sec-mlir-dialect_package19.md — § 83;
+// rules/memory/allocation.md — §§ 23(2), 23(4); rules/memory/arena.md — §§ 16(5)–16(6).
+func (a *Analyzer) checkStaticallyImpossibleArenaAllocation(call *ast.CallExpression, method string) {
+	plan, ok := a.arenaOperationPlans[call]
+	if !ok || plan.ElementLayout == nil || plan.Count == nil || plan.Count.Sign() <= 0 || plan.ElementLayout.SizeBytes.Sign() == 0 {
+		return
+	}
+	payload := new(big.Int).Mul(plan.Count, plan.ElementLayout.SizeBytes)
+	element := typeDisplayName(plan.ElementType)
+	if a.targetCapabilityPlan.PointerWidthBits == 0 {
+		// Without a plan the extent is unknown; only the buffer bound applies.
+	} else if maximum := layout.MaximumExtent(a.targetCapabilityPlan); payload.Cmp(maximum) > 0 {
+		a.addErrorAtTokenWithMetadata(call.Token, "",
+			"allocate fewer elements; the checked size count * size of "+element+" exceeds the largest object the target can address",
+			"Arena.%s can never succeed: %s elements of %s need %s bytes, more than the target's maximum object size of %s bytes",
+			method, plan.Count, element, payload, maximum)
+		return
+	}
+	if plan.BackingKind == "borrowed" && plan.Capacity.BackingBytes != nil && payload.Cmp(plan.Capacity.BackingBytes) > 0 {
+		a.addErrorAtTokenWithMetadata(call.Token, "",
+			"use a larger buffer or allocate fewer elements",
+			"Arena.%s can never succeed: %s bytes of %s exceed the %s-byte buffer backing this Arena",
+			method, payload, element, plan.Capacity.BackingBytes)
+	}
 }

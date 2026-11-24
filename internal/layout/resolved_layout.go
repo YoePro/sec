@@ -39,6 +39,7 @@ type LayoutKind string
 const (
 	LayoutScalar LayoutKind = "scalar"
 	LayoutStruct LayoutKind = "struct"
+	LayoutEnum   LayoutKind = "enum"
 	// The families below have record slots now; their resolution belongs to
 	// later P24 stages and is reported as unsupported until then.
 	// LayoutNamed is a named or constrained type over its carrier (P24-18).
@@ -46,6 +47,9 @@ const (
 	LayoutArray      LayoutKind = "array"
 	LayoutVariant    LayoutKind = "variant"
 	LayoutDescriptor LayoutKind = "descriptor"
+	// LayoutAtomic is the storage of Atomic[T] over its contained carrier
+	// (MD-095; layout.md § 47.6).
+	LayoutAtomic LayoutKind = "atomic"
 )
 
 // LayoutStability states how far a layout may be relied on (layout.md
@@ -108,6 +112,14 @@ type LayoutRequirement struct {
 	// Element and Count describe a fixed array T[N] (P24-20).
 	Element *LayoutRequirement
 	Count   *big.Int
+	// EnumMembers retains the closed declared value domain, including aliases.
+	EnumMembers []EnumMemberRequirement
+}
+
+// EnumMemberRequirement is a resolved integer member, never a new tag assignment.
+type EnumMemberRequirement struct {
+	Name  string
+	Value *big.Int
 }
 
 // FieldRequirement is one stored field of an aggregate requirement.
@@ -147,7 +159,11 @@ type ResolvedLayout struct {
 	Carrier    LayoutID
 	Variants   []ResolvedVariantLayout
 	Descriptor string
-	Stability  LayoutStability
+	// Atomic is the access extent and guaranteed storage alignment of an
+	// Atomic[T] layout, published separately from the object's own size
+	// and alignment (layout.md § 47.6(4)); zero for every other kind.
+	Atomic    ResolvedAtomicAccess
+	Stability LayoutStability
 	// Missing names every fact that keeps the layout from being complete,
 	// with the decision or package that owns it.
 	Missing    []string
@@ -239,7 +255,7 @@ func (a ScalarAlignments) canonical() string {
 
 // LayoutRevision is the compiler layout-rule revision folded into every plan
 // key, so a rule change can never reuse an older cached result.
-const LayoutRevision = "p24-resolver-2-md141-md142"
+const LayoutRevision = "p24-resolver-3-integer-enums"
 
 // CompilationPlanLayoutKey converges every plan fact that can change a layout
 // result (P24-11): target identity, pointer width, endianness, ABI and C ABI
@@ -254,13 +270,14 @@ type CompilationPlanLayoutKey struct {
 	CABI                                       string
 	AddressDomains                             string
 	ScalarAlignments                           string
+	AtomicAlignments                           string
 	Revision                                   string
 }
 
 // String is the canonical spelling used for cache keys and printing.
 func (k CompilationPlanLayoutKey) String() string {
-	return fmt.Sprintf("%s/%s/%s/%s/%s/p%d/%s/e%d/c{%s}/d{%s}/[%s]/%s", k.TargetOS, k.TargetArch, k.Triple, k.ABI, k.Profile,
-		k.PointerWidthBits, k.Endianness, k.LogicalEpochBits, k.CABI, k.AddressDomains, k.ScalarAlignments, k.Revision)
+	return fmt.Sprintf("%s/%s/%s/%s/%s/p%d/%s/e%d/c{%s}/d{%s}/[%s]/a[%s]/%s", k.TargetOS, k.TargetArch, k.Triple, k.ABI, k.Profile,
+		k.PointerWidthBits, k.Endianness, k.LogicalEpochBits, k.CABI, k.AddressDomains, k.ScalarAlignments, k.AtomicAlignments, k.Revision)
 }
 
 // LayoutKeyOf builds the layout key of a validated scalar plan together with
@@ -281,7 +298,7 @@ func LayoutKeyOf(plan ResolvedScalarPlan, alignments ScalarAlignments) (Compilat
 		TargetOS: plan.TargetOS, TargetArch: plan.TargetArch, Triple: plan.LLVMTriple, ABI: plan.ABI, Profile: plan.Profile,
 		PointerWidthBits: plan.PointerWidthBits, Endianness: plan.Endianness, LogicalEpochBits: plan.References.EpochBits(),
 		CABI: fmt.Sprintf("%+v", plan.CABI), AddressDomains: fmt.Sprintf("%+v", plan.AddressDomains),
-		ScalarAlignments: alignments.canonical(), Revision: LayoutRevision,
+		ScalarAlignments: alignments.canonical(), AtomicAlignments: plan.AtomicAlignments.canonical(), Revision: LayoutRevision,
 	}, nil
 }
 

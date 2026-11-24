@@ -251,8 +251,8 @@ runtime (§§ 143–148, 162–163).
   Partial 2026-11-23 (Claude): basic Arena demand summary and demand
   semantics (§§ 79–80) for domains a callable creates. Open: the
   interprocedural boundary for Arenas passed as parameters (§ 81), strict
-  profile validation (§ 82, blocked by MD-151), statically impossible
-  allocation against a known fixed capacity (§ 83).
+  profile validation (§ 82, blocked by the open MD-152). Statically impossible
+  allocation (§ 83) done 2026-11-24 for single allocations.
 
 ## C. Add the Semantic IR representation
 
@@ -364,14 +364,15 @@ runtime (§§ 143–148, 162–163).
   sizes/alignments per verified triple, field placement, arrays, decimal
   carriers), so New/Alloc on a borrowed Arena is not blocked by any decision;
   it only needs to consume that layout service. Owned creation
-  (WithCapacity/Growable) is blocked by MD-151 (provider catalogs), not by
+  (WithCapacity/Growable) needs the sec.system-heap.v1 implementation (MD-151 decided 2026-11-24), not
   MD-034's former configuration gap, which MD-139 closed.
   Done 2026-11-23 (Claude): New/Alloc on a FromBuffer Arena created in the
   same function lower to checked `sec.arena.new` and `sec.arena.alloc` with
   the resolved layout, default and capacity plans, and builder-numbered state
   versions (sec_mlir_dialect_v15.md § 9; TestPackage19ArenaAllocationLowering).
-  Open: owned creation (MD-151), Arena parameters, explicit Release, nested
-  children.
+  Open: owned creation (needs the sec.system-heap.v1 implementation (MD-151 decided 2026-11-24)), Arena parameters, nested children.
+  Explicit Release of a FromBuffer or default Arena done 2026-11-24 (Claude;
+  TestPackage19ArenaReleaseLowering).
   MD-136 decided 2026-11-23 (arena.md § 131, P19 § 166): `Arena {}` and
   an omitted Arena initialization are the infallible, allocation-free default
   creation (fresh domain, zero capacity, no backing, frozen growth policy).
@@ -403,10 +404,12 @@ runtime (§§ 143–148, 162–163).
   summary done 2026-11-23 (Claude): `sec.arena_demand_summary` from Sema's
   ArenaDemandSummariesOf, verified by --sec-verify-arenas
   (sec_mlir_dialect_v15.md § 10). Open: strict-profile verifier (blocked by
-  MD-151 provider catalogs).
+  the open MD-152, strict bounded-memory policy selection).
 - [ ] P19-27 — Profiles: hosted, embedded fixed, bare-metal bounded (with
-  MD-034), no-allocation (§§ 132–135). Provider-backed profiles are blocked
-  by MD-151; no-allocation and freestanding-disabled are not.
+  MD-034), no-allocation (§§ 132–135). Hosted needs the sec.system-heap.v1 implementation (MD-151 decided 2026-11-24);
+  embedded fixed and bare-metal use caller-supplied backing (MD-151 declares no
+  provider for them); their strict bounded requirements wait for MD-152;
+  no-allocation and freestanding-disabled are not blocked.
 - [ ] P19-28 — Effect-analysis, call-graph and separate-compilation metadata
   integration (§§ 136–138).
 - [x] P19-29 — Go emitter from verified Semantic IR to schema 15.
@@ -432,17 +435,65 @@ runtime (§§ 143–148, 162–163).
   all five operation kinds and three constructors. Full Sema/Semantic IR/emitter
   suites and Sema vet pass. This is frontend conformance, not source IR/native
   Arena acceptance; MD-136 empty/default construction remains separate.
-- [ ] P19-32 — Type-restriction tests (§ 150).
-- [ ] P19-33 — Allocation atomicity tests (§ 151).
-- [ ] P19-34 — Reset tests (§ 152).
-- [ ] P19-35 — Release/destruction tests (§ 153).
-- [ ] P19-36 — Allocation-context tests (§ 154).
-- [ ] P19-37 — Demand-summary tests (§ 155).
-- [ ] P19-38 — Semantic IR tests (§ 156).
+- [x] P19-32 — Type-restriction tests (§ 150).
+  Done 2026-11-24 (Claude): TestArenaTypeRestrictionMatrix plus the existing
+  TestArenaTypedAllocationRequirementsUseDistinctDiagnostics; § 83 statically
+  impossible allocation is now a compile-time error. The alignment-invalid
+  provider row needs the system-heap qualified alignment, the sec.system-heap.v1 implementation (MD-151 decided 2026-11-24)
+  (governance remaining item).
+- [x] P19-33 — Allocation atomicity tests (§ 151).
+  Done 2026-11-24 (Claude): TestPackage19AllocationAtomicityMatrix (fixed
+  success, fixed capacity failure with a local handler that continues,
+  failure edge carries only AllocationError and mutates nothing, epoch and
+  state step only on success, old slice valid after the failure, candidate
+  across the failure edge rejected). A locally handled try of New/Alloc now
+  lowers; the Semantic IR verifier and --sec-verify-arenas enforce success-
+  edge-only publication (lit invalid-arena-publication.mlir). Growable rows
+  need the sec.system-heap.v1 implementation (MD-151 decided 2026-11-24)
+  (governance remaining item).
+- [x] P19-34 — Reset tests (§ 152).
+  Done 2026-11-24 (Claude): TestPackage19ResetMatrix (fixed/borrowed and
+  growable Reset, epoch/state advance, retained capacity and loan, cursor
+  reset as demand window peak, no zeroing write, no runtime epoch value);
+  diagnostic rows by TestArenaInvalidationDiagnostics,
+  TestArenaResetInvalidatesAllocatedSlice, TestNestedArenaDependencies and
+  TestDeferredArenaInvalidationPlans. Physical epoch-metadata elimination
+  (arena.md § 105) is a governance remaining item for physical lowering.
+- [x] P19-35 — Release/destruction tests (§ 153).
+  Done 2026-11-24 (Claude): TestPackage19ReleaseMatrix (borrowed local and
+  static backing, implicit destruction, explicit Release cancels cleanup,
+  moved source not released, returned Arena transfers cleanup). Owned and
+  target-provided Release rows need the sec.system-heap.v1 implementation (MD-151 decided 2026-11-24)
+  (governance remaining item).
+- [x] P19-36 — Allocation-context tests (§ 154).
+  Done 2026-11-24 (Claude): TestPackage19AllocationContextMatrix (explicit
+  Arena, A->B->C, none for pure, lexical Arena not guessed, target-provided
+  context, missing context under noalloc/unresolved profile). Spawn boundary
+  in TestAllocationContextRequirements, foreign-ABI rejection in the IR
+  verifier matrix. Explicit selection (§ 59, shaped init), compiler-local
+  context (§ 55), source exports (P25) and unresolved-profile classification
+  (MD-151 migration, target_profiles.md § 41A(10)) are governance remaining items.
+- [x] P19-37 — Demand-summary tests (§ 155).
+  Done 2026-11-24 (Claude): TestArenaDemandSummaries plus
+  TestArenaDemandInterproceduralBoundary; implemented the § 81 caller
+  boundary (closed non-allocating callee 0, allocating recursive callee
+  unbounded, other allocating or open callee unknown; new kind "unbounded"
+  through Sema, IR, MLIR verifier and v15 § 10). Strict-profile rows wait for
+  MD-152 (governance remaining item).
+- [x] P19-38 — Semantic IR tests (§ 156).
+  Done 2026-11-24 (Claude): existing IR operation/context/nested tests map
+  every row; added the per-block Arena effect-site chain check to the
+  Semantic IR verifier (mirrors --sec-verify-arenas, v15 § 9) with
+  TestArenaEffectSiteOrdering.
 - [x] P19-39 — Sec MLIR dialect tests (§ 157). Done 2026-11-23 (Claude).
 - [~] P19-40 — Arena verifier and allocation-context verifier negative
   tests (§§ 158–159).
-- [ ] P19-41 — Integration tests (§ 160).
+- [~] P19-41 — Integration tests (§ 160).
+  2026-11-24 (Claude): TestPackage19IntegrationMatrix covers the P15, P16 and
+  P18 context/storage rows; P17 move/destruction/Release rows are
+  TestPackage19ReleaseMatrix. Open: defer ordering with Arena operations or
+  Arena-backed holders (P19-21) and a T[] backed by an explicit Arena
+  (P19-10 §§ 55, 59; MD-135 for non-trivial elements).
 
 ## H. Final acceptance, governance and handoff
 

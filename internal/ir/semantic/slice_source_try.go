@@ -56,6 +56,13 @@ func (fb *functionBuilder) completeSliceTryMerge(expr *ast.TryExpression, merge 
 		}
 	}
 	if incoming == nil || fb.references[success.id] == nil {
+		// An unwrapped Arena Ok holder states its facts only on the unwrap:
+		// from P17 the merge keeps its block parameter and each use reads it
+		// with Sema's holder facts, checked against the incoming facts like
+		// a recovery join (package15 § 101; P19 § 35).
+		if fb.owner.maxPackage >= ownershipLoweringPackage && len(merge.Parameters) == 1 && incoming != nil && fb.okUnwrapped(incoming.Arguments[0]) {
+			return builtValue{id: merge.Parameters[0].ID, typ: merge.Parameters[0].Type}, nil
+		}
 		return builtValue{}, fb.unsupported("slice try success without its original holder facts", expr.Token)
 	}
 	incoming.Arguments = nil

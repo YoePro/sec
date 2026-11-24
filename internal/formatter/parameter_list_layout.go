@@ -12,7 +12,8 @@ import (
 
 // formatCallableParameterListLayout normalizes parser-owned function, method,
 // initializer, and lambda parameter lists, plus attribute arguments whose
-// layout follows ordinary calls (§16(16)):
+// layout follows ordinary calls (§16(16)), and execution requirement lists
+// (§16(13a)) without changing their written order or attachment:
 //
 //   - a list whose first parameter starts on the line after `(` is a
 //     deliberate multiline form and becomes the canonical one: one parameter
@@ -29,6 +30,23 @@ import (
 //   - rules/tooling/formatter.md — §4(9–13) effective preferred width
 //   - rules/tooling/formatter.md — § 3(6)–(7), § 11(2)–(5), § 16(1)–(2), § 32(3), § 32(6)
 func formatCallableParameterListLayout(text string, preferredLineWidth uint64, indentationWidth int) string {
+	// Lay out outer headers before nested lists, then rebuild source positions.
+	// Each nesting level can expose one more width decision. Never apply stale,
+	// overlapping byte ranges (for example a require list inside a parameter).
+	for pass, limit := 0, strings.Count(text, "(")+1; pass < limit; pass++ {
+		next := formatCallableListsOnce(text, preferredLineWidth, indentationWidth)
+		if next == text {
+			return text
+		}
+		text = next
+	}
+	return text
+}
+
+// formatCallableListsOnce applies non-overlapping outermost list edits using
+// one parser/CST snapshot; subsequent passes resolve nested width decisions.
+// Rules: rules/tooling/formatter.md §§5,11,16(1–2,13a,16),29.
+func formatCallableListsOnce(text string, preferredLineWidth uint64, indentationWidth int) string {
 	if !strings.Contains(text, "(") {
 		return text
 	}
@@ -45,15 +63,27 @@ func formatCallableParameterListLayout(text string, preferredLineWidth uint64, i
 
 	replacements := []formatterReplacement{}
 	for _, group := range document.Groups {
-		if group.Close < 0 || !(document.Elements[group.Open].HasRole(cst.CallableParameterListOpen) || document.Elements[group.Open].HasRole(cst.AttributeArgumentListOpen)) {
+		if group.Close < 0 || !(document.Elements[group.Open].HasRole(cst.CallableParameterListOpen) || document.Elements[group.Open].HasRole(cst.AttributeArgumentListOpen) || document.Elements[group.Open].HasRole(cst.ExecutionRequirementListOpen)) {
 			continue
 		}
 		if replacement, ok := parameterListLayoutReplacement(text, document, group.Open, group.Close, preferredLineWidth, indentationWidth); ok {
-			replacements = append(replacements, replacement)
+			if text[replacement.start:replacement.end] != replacement.text {
+				replacements = append(replacements, replacement)
+			}
 		}
 	}
 	sort.SliceStable(replacements, func(i, j int) bool { return replacements[i].start > replacements[j].start })
 	for _, replacement := range replacements {
+		contained := false
+		for _, other := range replacements {
+			if other.start < replacement.start && other.end > replacement.end {
+				contained = true
+				break
+			}
+		}
+		if contained {
+			continue
+		}
 		text = text[:replacement.start] + replacement.text + text[replacement.end:]
 	}
 	return text

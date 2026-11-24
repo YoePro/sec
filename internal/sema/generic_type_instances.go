@@ -17,6 +17,10 @@ func (a *Analyzer) instantiateGenericType(typ Type) Type {
 	}
 
 	out := typ
+	if typ.EnumCarrier != nil {
+		carrier := substituteGenericType(*typ.EnumCarrier, substitution)
+		out.EnumCarrier = &carrier
+	}
 	if typ.NamedBase != nil {
 		base := substituteGenericType(*typ.NamedBase, substitution)
 		out.NamedBase = &base

@@ -339,6 +339,9 @@ type functionBuilder struct {
 	// arenaDefaults marks the MD-136 default Arenas created in this
 	// function (no backing borrow to retain).
 	arenaDefaults map[sema.InvalidationDomainID]bool
+	// okReferences holds the facts of the Ok reference inside an Arena
+	// New/Alloc Result, keyed by that Result value (P19 § 35).
+	okReferences map[ValueID]*ReferenceMetadata
 	// receiver is the implicit `self` reference parameter of the instance
 	// method being built (reference_receiver.go); zero otherwise.
 	receiver builtValue
@@ -1250,6 +1253,9 @@ func (fb *functionBuilder) buildLet(stmt *ast.LetStatement) error {
 }
 
 func (fb *functionBuilder) buildAssignment(stmt *ast.AssignmentStatement) error {
+	if _, appended := fb.owner.analyzer.ResolvedStringAppendOf(stmt.Value); appended {
+		return fb.buildStringAppend(stmt, nil)
+	}
 	if handled, err := fb.lowerPropertyAssignment(stmt); handled {
 		return err
 	}
@@ -3555,7 +3561,7 @@ func (fb *functionBuilder) buildHandledResult(expr *ast.TryExpression) (builtVal
 	fb.current = successBlock
 	successValue := builtValue{typ: resultType.Success}
 	if !fb.owner.isVoidType(resultType.Success) {
-		successValue = fb.result(Operation{Kind: OpResultUnwrapOk, Operands: []ValueID{resultValue.id}, Location: location(expr.Token)}, resultType.Success)
+		successValue = fb.unwrapOk(resultValue, resultType.Success, location(expr.Token))
 	}
 	return fb.buildLocalTryHandlers(expr, plan, successBlock, successValue, errorBlock, errorValue)
 }
@@ -3878,7 +3884,7 @@ func (fb *functionBuilder) buildResultPropagation(expr *ast.TryExpression, resol
 	if fb.owner.isVoidType(resultType.Success) {
 		return builtValue{typ: resultType.Success}, nil
 	}
-	return fb.result(Operation{Kind: OpResultUnwrapOk, Operands: []ValueID{resultValue.id}, Location: location(expr.Token)}, resultType.Success), nil
+	return fb.unwrapOk(resultValue, resultType.Success, location(expr.Token)), nil
 }
 
 // buildResolvedOperator applies package capability gates before lowering a
@@ -4145,10 +4151,21 @@ func (fb *functionBuilder) moveBlockToEnd(block *Block) {
 func (fb *functionBuilder) unsupported(feature string, token lexer.Token) error {
 	return &UnsupportedFeatureError{Feature: feature, Package: fb.owner.maxPackage, Location: location(token)}
 }
+// storageAllowed admits represented value holders without choosing physical
+// storage; immutable string payloads are held for transactional append.
+// Rules: rules/compiler/semantic_ir.md — §§17,31;
+// rules/foundations/operators.md — §29.9(2).
 func (fb *functionBuilder) storageAllowed(id TypeID) bool {
 	t, ok := fb.owner.module.Types.Lookup(id)
 	if !ok {
 		return false
+	}
+	// MD-039: high-level mutable string holders permit transactional append;
+	// this does not select physical backing or a native representation.
+	// Rules: rules/compiler/semantic_ir.md — §§17,31;
+	// rules/foundations/operators.md — §29.9(2).
+	if t.Kind == TypeString {
+		return fb.owner.maxPackage >= arenaLoweringPackage
 	}
 	if t.Kind == TypeNamed {
 		return fb.storageAllowed(t.Base)

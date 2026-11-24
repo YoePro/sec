@@ -6,6 +6,10 @@ package sema
 // Rules: rules/declarations/generics.md — §17 Substitution; rules/types/types.md — Named types;
 // rules/compiler/monomorphization.md — §8.2 Scope of substitution.
 func substituteGenericType(typ Type, substitution map[string]Type) Type {
+	if typ.EnumCarrier != nil {
+		carrier := substituteGenericType(*typ.EnumCarrier, substitution)
+		typ.EnumCarrier = &carrier
+	}
 	if typ.NamedBase != nil {
 		base := substituteGenericType(*typ.NamedBase, substitution)
 		typ.NamedBase = &base

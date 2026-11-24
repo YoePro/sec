@@ -27,3 +27,15 @@ func TestSpawnGrammarDiagnosticsCLI(t *testing.T) {
 		}
 	}
 }
+
+// Void spawn blocks are a source capability; emission still follows the one
+// lowering track's existing boundary. Rules: rules/concurrency/spawn.md §3A.
+func TestVoidSpawnBlocksCLI(t *testing.T) {
+	_, output, code := runCLIForDiagnostics(t, "check", "../../testdata/sema/spawn_blocks/void.sec", "--diagnostic-format=json")
+	if code != 0 {
+		t.Fatal(code, output)
+	}
+	if doc := decodeOccurrenceDocument(t, output); doc.Summary.Errors != 0 {
+		t.Fatal(output)
+	}
+}

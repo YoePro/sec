@@ -12,10 +12,12 @@ import (
 // ArenaDemandSummary is the compile-time byte demand of one Arena domain
 // created in a callable (P19 §§ 79–81, 130): the peak over its Reset windows
 // of the bytes its New/Alloc reserve, including worst-case alignment padding.
-// Kind is "constant" with Bytes as a proven upper bound, or "unknown" when a
-// loop, lambda, layout or count leaves the demand open. Expression is the
-// symbolic derivation (constant, sum, maximum, constant-multiply,
-// range-upper-bound, unknown). It is analysis metadata, never a runtime value.
+// Kind is "constant" with Bytes as a proven upper bound, "unknown" when a
+// loop, lambda, layout, count or a callee receiving the Arena leaves the
+// demand open, or "unbounded" when the Arena reaches an allocating recursive
+// component (§ 81). Expression is the symbolic derivation (constant, sum,
+// maximum, constant-multiply, range-upper-bound, unknown, unbounded). It is
+// analysis metadata, never a runtime value.
 // Rules: rules/mlir/packages/sec-mlir-dialect_package19.md — §§ 79–81, 130;
 // rules/memory/arena.md — §§ 15–16, 22, 38.
 type ArenaDemandSummary struct {
@@ -28,9 +30,9 @@ type ArenaDemandSummary struct {
 
 // arenaDemand is one upper-bound demand expression.
 type arenaDemand struct {
-	known bool
-	bytes *big.Int
-	expr  string
+	known, unbounded bool
+	bytes            *big.Int
+	expr             string
 }
 
 // demandConstant is an exact constant byte demand.
@@ -49,6 +51,13 @@ func demandUnknown(reason string) arenaDemand {
 	return arenaDemand{expr: "unknown(" + reason + ")"}
 }
 
+// demandUnbounded is a demand without any finite bound (§ 81: unbounded
+// recursion), with its reason.
+// Rules: rules/mlir/packages/sec-mlir-dialect_package19.md — §§ 79–81.
+func demandUnbounded(reason string) arenaDemand {
+	return arenaDemand{unbounded: true, expr: "unbounded(" + reason + ")"}
+}
+
 // isZero reports a constant zero demand.
 // Rules: rules/mlir/packages/sec-mlir-dialect_package19.md — §§ 79–80.
 func (d arenaDemand) isZero() bool { return d.known && d.bytes.Sign() == 0 }
@@ -62,7 +71,7 @@ func demandSum(left, right arenaDemand) arenaDemand {
 	case right.isZero():
 		return left
 	case !left.known || !right.known:
-		return arenaDemand{expr: "sum(" + left.expr + "," + right.expr + ")"}
+		return arenaDemand{unbounded: left.unbounded || right.unbounded, expr: "sum(" + left.expr + "," + right.expr + ")"}
 	}
 	return arenaDemand{known: true, bytes: new(big.Int).Add(left.bytes, right.bytes), expr: "sum(" + left.expr + "," + right.expr + ")"}
 }
@@ -78,7 +87,7 @@ func demandMax(left, right arenaDemand) arenaDemand {
 	case left.expr == right.expr:
 		return left
 	case !left.known || !right.known:
-		return arenaDemand{expr: "maximum(" + left.expr + "," + right.expr + ")"}
+		return arenaDemand{unbounded: left.unbounded || right.unbounded, expr: "maximum(" + left.expr + "," + right.expr + ")"}
 	}
 	value := left.bytes
 	if right.bytes.Cmp(value) > 0 {
@@ -94,7 +103,7 @@ func demandTimes(count *big.Int, demand arenaDemand) arenaDemand {
 		return demandZero()
 	}
 	if !demand.known {
-		return arenaDemand{expr: "constant-multiply(" + count.String() + "," + demand.expr + ")"}
+		return arenaDemand{unbounded: demand.unbounded, expr: "constant-multiply(" + count.String() + "," + demand.expr + ")"}
 	}
 	return arenaDemand{known: true, bytes: new(big.Int).Mul(count, demand.bytes), expr: "constant-multiply(" + count.String() + "," + demand.expr + ")"}
 }
@@ -158,6 +167,9 @@ func (s arenaDemandState) repeat(body arenaDemandState, count *big.Int) arenaDem
 			return s
 		}
 		added := demandUnknown("loop without a constant trip count")
+		if body.cur.unbounded {
+			added = body.cur
+		}
 		if count != nil {
 			added = demandTimes(count, body.cur)
 		}
@@ -176,6 +188,9 @@ func (s arenaDemandState) repeat(body arenaDemandState, count *big.Int) arenaDem
 type arenaDemandWalker struct {
 	analyzer *Analyzer
 	domains  map[InvalidationDomainID]bool
+	// names maps each summarized domain to its Sema ArenaDomainID, which
+	// argument types carry when the Arena is passed to a call.
+	names    map[InvalidationDomainID]string
 	inLambda map[*ast.CallExpression]bool
 }
 
@@ -186,7 +201,7 @@ func (a *Analyzer) ArenaDemandSummariesOf(body *ast.BlockStatement) []ArenaDeman
 	if a == nil || body == nil || len(a.arenaOperationPlans) == 0 {
 		return nil
 	}
-	walker := arenaDemandWalker{analyzer: a, domains: map[InvalidationDomainID]bool{}, inLambda: map[*ast.CallExpression]bool{}}
+	walker := arenaDemandWalker{analyzer: a, domains: map[InvalidationDomainID]bool{}, names: map[InvalidationDomainID]string{}, inLambda: map[*ast.CallExpression]bool{}}
 	capacity := map[InvalidationDomainID]*big.Int{}
 	walkASTValue(reflect.ValueOf(body), func(value any) {
 		if lambda, ok := value.(*ast.LambdaExpression); ok {
@@ -202,6 +217,7 @@ func (a *Analyzer) ArenaDemandSummariesOf(body *ast.BlockStatement) []ArenaDeman
 		}
 		if plan, planned := a.arenaOperationPlans[call]; planned && plan.Operation == ArenaOperationCreate && plan.Constructor == "FromBuffer" && plan.InvalidationDomain != 0 {
 			walker.domains[plan.InvalidationDomain] = true
+			walker.names[plan.InvalidationDomain] = plan.Domain
 			if plan.Capacity.BackingBytes != nil {
 				capacity[plan.InvalidationDomain] = new(big.Int).Set(plan.Capacity.BackingBytes)
 			}
@@ -212,8 +228,11 @@ func (a *Analyzer) ArenaDemandSummariesOf(body *ast.BlockStatement) []ArenaDeman
 		state := walker.block(body, domain, zeroDemandState())
 		peak := demandMax(state.peak, state.cur)
 		summary := ArenaDemandSummary{Domain: domain, Kind: "unknown", Expression: peak.expr, CapacityBytes: capacity[domain]}
-		if peak.known {
+		switch {
+		case peak.known:
 			summary.Kind, summary.Bytes = "constant", new(big.Int).Set(peak.bytes)
+		case peak.unbounded:
+			summary.Kind = "unbounded"
 		}
 		summaries = append(summaries, summary)
 	}
@@ -278,7 +297,16 @@ func (w arenaDemandWalker) flat(node any, domain InvalidationDomainID, state are
 			return
 		}
 		plan, planned := w.analyzer.arenaOperationPlans[call]
-		if !planned || plan.InvalidationDomain != domain {
+		if !planned {
+			if demand, passed := w.callDemand(call, w.names[domain]); passed {
+				if (w.inLambda[call] || loopCalls[call]) && !demand.isZero() && !demand.unbounded {
+					demand = demandUnknown("call receiving the Arena in a loop or lambda")
+				}
+				state = state.allocate(demand)
+			}
+			return
+		}
+		if plan.InvalidationDomain != domain {
 			return
 		}
 		switch plan.Operation {
@@ -295,6 +323,64 @@ func (w arenaDemandWalker) flat(node any, domain InvalidationDomainID, state are
 		}
 	})
 	return state
+}
+
+// callDemand is the demand a call adds when it receives the domain's Arena
+// (by value, move or reference): a closed callee without allocation effects
+// adds nothing; an allocating callee in a recursive component is unbounded;
+// any other allocating callee, and an open (indirect, interface or foreign)
+// target, is unknown, since callee summaries do not bound demand on an Arena
+// parameter (§ 81). passed is false when no argument carries the domain.
+// Rules: rules/mlir/packages/sec-mlir-dialect_package19.md — §§ 80–81.
+func (w arenaDemandWalker) callDemand(call *ast.CallExpression, domain string) (demand arenaDemand, passed bool) {
+	if domain == "" {
+		return arenaDemand{}, false
+	}
+	for _, argument := range call.Arguments {
+		if arenaArgumentDomain(w.analyzer.expressionTypes[argument]) == domain {
+			passed = true
+			break
+		}
+	}
+	if !passed {
+		return arenaDemand{}, false
+	}
+	resolved, ok := w.analyzer.ResolvedCallTarget(call)
+	if !ok || (resolved.Kind != ResolvedDirectCall && resolved.Kind != ResolvedStaticMethodCall) {
+		return demandUnknown("open callable receiving the Arena"), true
+	}
+	name := resolved.Function.Name
+	graph := w.analyzer.callGraph
+	nodes := graph.NodesForDeclaration(resolved.Function.Token)
+	if len(nodes) == 0 {
+		return demandUnknown("callee " + name + " without a summary"), true
+	}
+	allocating, recursive := false, false
+	for _, node := range nodes {
+		summary := graph.ArenaSummary(node.ID)
+		allocating = allocating || summary.MayAllocate || summary.AllocationUnknown
+		recursive = recursive || graph.IsSameStackRecursive(node.ID)
+	}
+	switch {
+	case !allocating:
+		return demandZero(), true
+	case recursive:
+		return demandUnbounded("recursion through " + name), true
+	}
+	return demandUnknown("Arena passed to " + name), true
+}
+
+// arenaArgumentDomain is the ArenaDomainID an argument of Arena or
+// reference-to-Arena type carries, or "".
+// Rules: rules/memory/arena.md — §§ 4.2, 68.
+func arenaArgumentDomain(typ Type) string {
+	if typ.Name == "Arena" {
+		return typ.ArenaDomainID
+	}
+	if typ.Kind == ReferenceType && typ.Element != nil && typ.Element.Name == "Arena" {
+		return typ.Element.ArenaDomainID
+	}
+	return ""
 }
 
 // arenaAllocationDemand is the bytes one New/Alloc may reserve: count *

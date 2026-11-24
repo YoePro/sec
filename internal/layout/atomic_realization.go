@@ -50,7 +50,7 @@ type AtomicImplementation struct {
 // Rules: rules/concurrency/atomics.md — §§37–39;
 // rules/platform/platform_model.md — §9 "Architecture capability".
 func (c AtomicCapability) validate() error {
-	if err := c.Requirement.validate(); err != nil {
+	if err := c.Key.validate(); err != nil {
 		return err
 	}
 	switch c.Availability {

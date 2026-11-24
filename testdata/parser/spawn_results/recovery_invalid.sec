@@ -1,0 +1,22 @@
+// CASE return-value
+fn Bad() void {
+    let child := spawn task {
+        return capture
+    }
+}
+fn After() void {}
+// CASE spawn-operand
+fn Bad() void {
+    let child := spawn process capture
+}
+fn After() void {}
+// CASE spawn-configured
+fn Bad() void {
+    let child := spawn thread <-config capture
+}
+fn After() void {}
+// CASE spawn-inline-configured
+fn Bad() void {
+    let child := spawn thread { Name: "worker" } capture
+}
+fn After() void {}

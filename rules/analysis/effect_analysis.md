@@ -84,6 +84,8 @@ transfer control in a way not represented only by the ordinary return value.
 
 **§ 2(3)** Sec effect analysis contains several cooperating analysis domains.
 
+**§ 2(4)** **Amendment MD-138 (2026-11-24, Sec 0.1.1, `rules/corrections/applied/MD-138-callable-execution-requirements-v0.1.1-correction-2026-11-24-20261124.md` § 9).** Execution requirements (`require(task|thread|cancellable)`, `rules/concurrency/cancellation.md` § 24A) are invocation conditions on the caller's environment. They are a domain distinct from may-effects and from verified guarantees such as `@noAlloc`, `@noPanic` and `@noBlock`: an attribute is not a requirement, a requirement is not a guarantee, and neither is inferred from the other. `MayAllocate` and `RequiresAllocationContext` stay separate facts and gain no `require` spelling.
+
 ---
 
 ## § 3 Non-goals

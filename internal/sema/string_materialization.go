@@ -48,13 +48,21 @@ type ResolvedStringAppend struct {
 
 // IsLowerableStringMaterialization admits only the direct text segment plans
 // represented by Semantic IR's string.materialize operation, including protected
-// text Results routed before materialization. Appends and formatted segments
-// retain their own unsupported boundary.
+// text Results routed before materialization. Append target/segment capabilities
+// are validated by the builder; formatting retains its own boundary.
 // Rules: rules/compiler/semantic_ir.md — §17(6);
 // rules/memory/allocation.md — §§25–26; rules/foundations/operators.md — §29.3.
 func (a *Analyzer) IsLowerableStringMaterialization(fact AllocationContextFact) bool {
 	if fact.Kind != ArenaEffectStringMaterialization || !fact.ContextKnown {
 		return false
+	}
+	for value, site := range a.stringAppendSites {
+		if sourceTokenLocation(site.token) == sourceTokenLocation(fact.Source) {
+			plan := a.stringAppends[value].Plan
+			if !plan.Interpolated {
+				return true // Unsupported target/segment forms fail in the builder.
+			}
+		}
 	}
 	for root, site := range a.stringMaterializationSites {
 		if sourceTokenLocation(site.token) != sourceTokenLocation(fact.Source) {
@@ -81,19 +89,32 @@ func (a *Analyzer) IsLowerableStringMaterialization(fact AllocationContextFact) 
 }
 
 // ResolvedStringAppendOf returns the append assigning value.
+// Rules: rules/foundations/operators.md — §29.9;
+// rules/compiler/semantic_ir.md — §17(6).
 func (a *Analyzer) ResolvedStringAppendOf(value ast.Expression) (ResolvedStringAppend, bool) {
 	if a == nil || value == nil {
 		return ResolvedStringAppend{}, false
 	}
 	resolved, ok := a.stringAppends[value]
+	resolved.Plan.Segments = append([]StringConcatSegment(nil), resolved.Plan.Segments...)
+	for index := range resolved.Plan.Segments {
+		if resolved.Plan.Segments[index].UserFunction != nil {
+			function := *resolved.Plan.Segments[index].UserFunction
+			resolved.Plan.Segments[index].UserFunction = &function
+		}
+	}
 	return resolved, ok
 }
 
 // recordStringAppend publishes the plan of a `string +=` with the same context,
 // site and effects as `+`. It is keyed by the right operand, the one expression
 // every assignment target form shares.
+// Rules: rules/foundations/operators.md — §§29.3,29.9;
+// rules/memory/allocation.md — §§17,25.
 func (a *Analyzer) recordStringAppend(value ast.Expression, fallible bool) {
+	segments, _, _ := a.stringConcatSegments(value)
 	a.stringAppends[value] = ResolvedStringAppend{Fallible: fallible, Plan: StringConcatPlan{
+		Segments:   segments,
 		Runtime:    true,
 		Allocation: StringMaterializationAllocation{Context: a.activeAllocationContext(), FailureType: a.types["StringError"]},
 	}}

@@ -253,6 +253,9 @@ private:
     }
     if (isa<sec::OwnInitializePlaceOp, sec::OwnReplacePlaceOp>(op))
       return index == 1 ? StringRef("move") : StringRef();
+    // P19 § 116: Release (and destroy) consume the whole Arena owner.
+    if (isa<sec::ArenaReleaseOp, sec::ArenaDestroyOp>(op))
+      return index == 0 ? StringRef("move") : StringRef();
     if (isa<func::ReturnOp, sec::ResultOkOp, sec::ResultErrOp>(op))
       return facts.needsDestruction(op.getOperand(index).getType()) ? StringRef("move") : StringRef();
     // Projecting a payload that needs destruction takes the whole container.

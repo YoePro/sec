@@ -795,6 +795,13 @@ When every argument and call constraint succeeds, every prepared transfer is
 committed exactly once: the caller Place becomes `Unavailable` and the callee
 receives ownership.
 
+**Amendment MD-128 (2026-11-24, Sec 0.1 and 0.1.1, `rules/corrections/applied/MD-128-spawn-transactional-ownership-correction-2026-11-24-20261124.md` §§ 1(2), 2).** Spawn creation specializes this commit point. The
+transfers prepared for a `spawn`, `spawn task`, `spawn thread` or
+`spawn process` commit at successful creation of the execution, not at call
+entry, and a creation `Err` cancels them so the reserved reusable sources stay
+owned by the caller (`rules/concurrency/spawn.md` § 10(8)). Ordinary synchronous
+calls keep the call-entry commit above.
+
 ### 14.3 Nested call transactions
 
 Each call owns its own reservation transaction. A nested call that successfully

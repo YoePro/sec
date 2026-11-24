@@ -1,0 +1,15 @@
+module main
+
+enum Status int { Low = -2, High = 9, Alias = 9 }
+enum Wide uint256 { Big = 340282366920938463463374607431768211456 }
+enum Flag: bit[3] { One = 1 }
+enum Text string { Ready = "ready" }
+type Holder struct { State: Status, Count: byte }
+
+fn Allocate() Result[void, AllocationError] {
+    let mut buffer: byte[64]
+    let mut arena := Arena.FromBuffer(ref mut buffer[..])
+    let value := try arena.New[Status]()
+    discard value
+    return Ok()
+}

@@ -752,6 +752,8 @@ absence.
 
 A programmer who wants such a conversion must state it explicitly.
 
+**Amendment MD-133 (2026-11-24, Sec 0.1 and 0.1.1, `rules/corrections/applied/MD-133-spawn-block-return-type-correction-2026-11-24-20261124.md` § 5(4)).** In a spawn block a naked `try` propagates through the child's own result channel, which must be established by its explicit returns (`rules/concurrency/spawn.md` § 3A). The spawning function's channel never satisfies it, and inference constructs no wrapper or error union from the presence of a `try`; without a complete compatible channel, a typed returned value or an explicitly typed spawned lambda is required.
+
 ---
 
 ## 13. `try` expression boundaries

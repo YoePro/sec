@@ -156,6 +156,12 @@ func validateOwnershipLoweringCapabilities(program *ast.Program, analyzer *sema.
 					return &UnsupportedFeatureError{Feature: "P17 non-trivial ownership transfer (P17-26/P17-27)", Package: maxPackage, Location: location(expressionToken(expression))}
 				}
 				at := expressionToken(expression)
+				// P19: an explicit Arena Release lowers to own.move-from-place +
+				// arena.release + cleanup.cancel; an incompletely planned one
+				// stops at its own named boundary in the builder.
+				if maxPackage >= arenaLoweringPackage && onlyArenaReleaseCancellations(analyzer.ResolvedOwnedCleanupCancellationsAt(at.File, at.Line, at.Column)) {
+					return nil
+				}
 				if !wholeLocalMove && !discarded[expression] && len(analyzer.ResolvedOwnedCleanupCancellationsAt(at.File, at.Line, at.Column)) != 0 {
 					return &UnsupportedFeatureError{Feature: "P17 ownership termination and cleanup cancellation (P17-29/P17-33)", Package: maxPackage, Location: location(at)}
 				}
@@ -188,4 +194,16 @@ func ArrayConstructionNeedsOwnership(module *Module, op Operation) bool {
 	return ownedCopyClass(module, op.ArrayElementType) != "trivial" ||
 		!trivialDestruction(module, op.ArrayElementType) ||
 		len(op.Results) == 1 && op.Results[0].Ownership == OwnershipOwned
+}
+
+// onlyArenaReleaseCancellations reports a site whose ownership ends are all
+// explicit Arena Releases (Sema's reason "released").
+// Rules: rules/mlir/packages/sec-mlir-dialect_package19.md — §§ 43–48, 116.
+func onlyArenaReleaseCancellations(cancellations []sema.ResolvedOwnedCleanupCancellation) bool {
+	for _, cancellation := range cancellations {
+		if cancellation.Reason != "released" {
+			return false
+		}
+	}
+	return len(cancellations) != 0
 }

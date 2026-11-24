@@ -1958,6 +1958,16 @@ copy/move classification, and lifetime.
 
 **§ 33(6)** Lambda, closure, capture, call, and ownership rules are defined by the function and closure rulebooks.
 
+**§ 33(7)** **Amendment MD-138 (2026-11-24, Sec 0.1.1, `rules/corrections/applied/MD-138-callable-execution-requirements-v0.1.1-correction-2026-11-24-20261124.md` §§ 3(2), 6).** A function type may end with an execution requirement clause:
+
+```sec
+fn() void require(task)
+fn(int) bool require(thread, cancellable)
+mut fn() int require(task)
+```
+
+The canonical function type includes the normalized requirement set; `task` implies `cancellable`, and entry order and written-versus-inferred origin are not part of identity. A type without a clause requires nothing from this family. Syntax: `rules/foundations/grammar.md` § 101A; semantics and compatibility (`D implies S`): `rules/concurrency/cancellation.md` § 24A.
+
 ---
 
 ## § 34 First-class collections

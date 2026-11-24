@@ -32,7 +32,7 @@ func (a *Analyzer) inferAtomicCall(expr *ast.CallExpression) (result Type, value
 	validatedOrder := ""
 	defer func() {
 		if handled && result.Kind != InvalidType && len(a.errors) == errorsBefore {
-			a.recordAtomicMemoryOperation(expr, member, validatedOrder)
+			a.recordAtomicMemoryOperation(expr, member, validatedOrder, receiverType.TypeArgs[0])
 		}
 	}()
 	element := receiverType.TypeArgs[0]

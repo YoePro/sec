@@ -75,6 +75,9 @@ type ResolvedArenaOperationPlan struct {
 	ErrorCauses   []string
 	// Unresolved names the additional facts needed before preserving lowering.
 	Unresolved []string
+	// LayoutFailure is the canonical layout query's diagnostic, projected to
+	// CLI/LSP without reconstructing its type, target or representation facts.
+	LayoutFailure string
 	// StateBefore/StateAfter are the owner state versions of creation and
 	// Reset: version = 1 + the epoch generation, which is exact while only
 	// creation, Reset and Release change the owner (New/Alloc keep the
@@ -220,9 +223,14 @@ func (a *Analyzer) recordArenaOperationPlan(call *ast.CallExpression, operation 
 		// resolver; the checked extent (count * size, alignment padding,
 		// capacity) is evaluated by the allocation itself (arena.md § 16).
 		if liveElement != nil {
-			if resolved, missing := a.arenaElementLayout(*liveElement); resolved != nil {
+			operationName := "Arena.New"
+			if operation == ArenaOperationAlloc {
+				operationName = "Arena.Alloc"
+			}
+			if resolved, missing := a.arenaElementLayout(*liveElement, operationName); resolved != nil {
 				plan.ElementLayout = resolved
 			} else {
+				plan.LayoutFailure = missing
 				plan.Unresolved = append(plan.Unresolved, missing)
 			}
 		} else {
@@ -286,7 +294,12 @@ func (a *Analyzer) recordArenaOperationPlan(call *ast.CallExpression, operation 
 		// Ending a domain has no successor live epoch, even though the legacy
 		// flow checker increments its stale-use generation on Release.
 		plan.EpochAfter = 0
-		plan.Unresolved = append(plan.Unresolved, "backing release/implicit destruction plan")
+		// arena.md §§ 45, 131(7): Release of borrowed backing ends the loan
+		// and of an empty default reclaims nothing; owned backing needs its
+		// provider's reclamation contract (MD-151).
+		if plan.BackingKind != "borrowed" && plan.BackingKind != "none" {
+			plan.Unresolved = append(plan.Unresolved, "backing release/implicit destruction plan (owned backing: provider catalogs, MD-151)")
+		}
 	}
 	plan.Failure = arenaFailurePlan(operation, plan.Fallible, result)
 	if plan.Failure != nil {

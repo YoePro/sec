@@ -7,31 +7,46 @@ import "sec/internal/ast"
 // Rules: rules/concurrency/spawn.md — "Result type", "Ownership transfer", "Captures and callable values";
 // rules/concurrency/tasks.md — §4(1–7); rules/concurrency/mutex.md — §§39–40;
 // rules/memory/transferability.md — §§15,17–18.
-func (a *Analyzer) inferSpawnExpression(expr *ast.SpawnExpression) (Type, expressionValue) {
+func (a *Analyzer) inferSpawnExpression(expr *ast.SpawnExpression) (result Type, value expressionValue) {
+	errorsBefore := len(a.errors)
+	defer func() {
+		// Only successful semantic creation typing can explain a child handle.
+		// This applies uniformly when another creation kind is implemented.
+		if result.Kind == ResultType && len(result.TypeArgs) == 2 && len(result.TypeArgs[0].TypeArgs) == 1 {
+			a.explainVoidSpawnDiscard(expr, result.TypeArgs[0].TypeArgs[0], errorsBefore)
+		}
+	}()
+	child := expr.Value
 	if expr.Body != nil {
-		// rules/concurrency/spawn.md §2(2–3), grammar.md §89: block syntax
-		// is canonical even while its capture/child-body lowering is absent.
-		a.reportCapabilityUnavailable(expr.Token,
-			"This block is valid spawn syntax. Use a callable expression until spawned block bodies and their capture environments are implemented.",
-			"compiler capability unavailable: spawned block body for %s", expr.Kind)
-		a.withCancellableContext(func() {
-			a.analyzeBlockStatements(expr.Body)
-		})
-		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		if !spawnBlockHasValueReturn(expr.Body) && (expr.Kind == "" || expr.Kind == "task" || expr.Kind == "thread") {
+			// Reuse the independent lambda scope/control-flow boundary without
+			// mutating the source AST or treating a final call as a return.
+			child = voidSpawnCallable(expr)
+		} else {
+			// rules/concurrency/spawn.md §2(2–3), grammar.md §89: block syntax
+			// is canonical even while its capture/child-body lowering is absent.
+			a.reportCapabilityUnavailable(expr.Token,
+				"This block is valid spawn syntax. Void task/thread blocks are supported; value-returning block inference and process creation are not implemented yet. Use an explicitly typed callable for a value-returning task/thread.",
+				"compiler capability unavailable: spawned block body for %s", expr.Kind)
+			a.withCancellableContext(func() {
+				a.analyzeBlockStatements(expr.Body)
+			})
+			return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
+		}
 	}
-	if expr.Value == nil {
+	if child == nil {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 	// rules/foundations/grammar.md §89; rules/tooling/diagnostics.md —
 	// recovery: the parser already diagnosed a missing operand. In an LSP
 	// recovery tree it must not become a second callable-shape diagnostic.
-	if _, invalid := expr.Value.(*ast.InvalidExpression); invalid {
+	if _, invalid := child.(*ast.InvalidExpression); invalid {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
-	switch expr.Value.(type) {
+	switch child.(type) {
 	case *ast.CallExpression, *ast.LambdaExpression:
 	default:
-		a.addErrorAtToken(expressionToken(expr.Value), "spawn requires a callable expression")
+		a.addErrorAtToken(expressionToken(child), "spawn requires a callable expression")
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 	execution, graphSpawn := spawnExecutionRelation(expr.Kind)
@@ -51,12 +66,12 @@ func (a *Analyzer) inferSpawnExpression(expr *ast.SpawnExpression) (Type, expres
 	if !configurationValid {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
-	spawnedType, _ := a.inferSpawnValue(expr.Value, execution, graphSpawn)
+	spawnedType, _ := a.inferSpawnValue(child, execution, graphSpawn)
 	if spawnedType.Kind == InvalidType {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}
 	}
 	returnType := spawnedType
-	if _, lambda := expr.Value.(*ast.LambdaExpression); lambda {
+	if _, lambda := child.(*ast.LambdaExpression); lambda {
 		// A lambda is the child callable; a call returning a function instead
 		// has that function value as its child result (spawn.md, "Result type").
 		if spawnedType.Kind != FunctionType || spawnedType.FunctionReturnType == nil {

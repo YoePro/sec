@@ -30,8 +30,8 @@ func TestAtomicRealizationDoesNotChangeEligibility(t *testing.T) {
 					name, typeID string
 					errors       int
 				}{
-					{"realization_valid.sec", "core::uint64", 0},
-					{"realization_invalid.sec", "core::float64", 1},
+					{"realization_valid.sec", "core:primitive:uint64", 0},
+					{"realization_invalid.sec", "core:primitive:float64", 1},
 				} {
 					source, err := os.ReadFile("../../testdata/sema/atomics/" + fixture.name)
 					if err != nil {
@@ -42,8 +42,10 @@ func TestAtomicRealizationDoesNotChangeEligibility(t *testing.T) {
 					if len(p.Errors()) != 0 {
 						t.Fatal(p.Errors())
 					}
-					request := layout.AtomicRequirement{TypeID: fixture.typeID, SizeBytes: 8, AlignmentBytes: 8, Operation: "Load", Order: "SeqCst", ContextID: "test::ordinary"}
-					fact := layout.AtomicCapability{Requirement: request, Availability: availability, Provenance: "test-only-plan", Implementation: implementation}
+					// Both fixtures meet one uint64-carrier fact: a capability never
+					// admits an ineligible type such as float64 (MD-095 T13).
+					request := layout.AtomicRequirement{SemanticTypeID: fixture.typeID, Provenance: fixture.name, Key: layout.AtomicCapabilityKey{CarrierTypeID: "core:primitive:uint64", Representation: layout.StorageRepresentation{Class: layout.IntegerStorage, WidthBits: 64}, SizeBytes: 8, AlignmentBytes: 8, Operation: "Load", Order: "SeqCst", Context: layout.AtomicContextOrdinary}}
+					fact := layout.AtomicCapability{Key: request.Key, Availability: availability, Provenance: "test-only-plan", Implementation: implementation}
 					plan, err := (layout.ResolvedScalarPlan{TargetOS: "test", TargetArch: "test", Profile: "hosted", PointerWidthBits: width, Endianness: layout.LittleEndian}).WithAtomicCapabilities([]layout.AtomicCapability{fact})
 					if err != nil {
 						t.Fatal(err)

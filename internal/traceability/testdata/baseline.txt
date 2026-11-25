@@ -508,8 +508,6 @@ internal/layout:(CABIModel).Validate
 internal/layout:(CompilationPlanLayoutKey).String
 internal/layout:(ResolvedLayout).Complete
 internal/layout:(ResolvedLayout).clone
-internal/layout:(ResolvedReferencePolicy).EpochBits
-internal/layout:(ResolvedReferencePolicy).Validate
 internal/layout:(ResolvedScalarPlan).AddressDomain
 internal/layout:(ScalarAlignments).canonical
 internal/layout:LayoutKeyOf

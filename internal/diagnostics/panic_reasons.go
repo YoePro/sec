@@ -1,5 +1,9 @@
 package diagnostics
 
+// Canonical panic identities and optional static messages are owned by this
+// registry. Numeric assignments are append-only and target-independent.
+// Rules: rules/errors/panic.md §§13(1)–(2),13(8),14; MD-140 §6.
+
 // PanicReasonID is the compiler-side representation of the source-visible
 // nominal PanicID. Zero is reserved for an unresolved or unavailable reason.
 type PanicReasonID uint32
@@ -16,6 +20,7 @@ const (
 	PanicReasonExplicitPanic                PanicReasonID = 9
 	PanicReasonForeignAbort                 PanicReasonID = 10
 	PanicReasonStringMaterializationFailure PanicReasonID = 11
+	PanicReasonArenaEpochExhaustion         PanicReasonID = 12
 )
 
 // PanicReasonDefinition is one stable panic registry entry. Name is a
@@ -23,6 +28,10 @@ const (
 type PanicReasonDefinition struct {
 	ID   PanicReasonID
 	Name string
+	// Message is a canonical static message where the governing rule fixes one.
+	// Empty leaves message selection to the existing panic operation contract.
+	// This registry metadata does not add a field to the source PanicInfo type.
+	Message string
 }
 
 var panicReasonRegistry = [...]PanicReasonDefinition{
@@ -37,6 +46,7 @@ var panicReasonRegistry = [...]PanicReasonDefinition{
 	{ID: PanicReasonExplicitPanic, Name: "ExplicitPanic"},
 	{ID: PanicReasonForeignAbort, Name: "ForeignAbort"},
 	{ID: PanicReasonStringMaterializationFailure, Name: "StringMaterializationFailure"},
+	{ID: PanicReasonArenaEpochExhaustion, Name: "panic.arena-epoch-exhaustion", Message: "Arena validity epoch exhausted."},
 }
 
 // PanicReasonByID resolves a stable numeric PanicID without allocation.

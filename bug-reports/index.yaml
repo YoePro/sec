@@ -1294,3 +1294,32 @@ reports:
       - cmd/lsp/try_arithmetic_proof_test.go
       - testdata/sema/try_arithmetic_proof
       - testdata/build/native/try_safe_argument.sec
+
+  - id: BUG-000052
+    title: Atomic C-binding creation did not recheck absence
+    status: fixed
+    severity: medium
+    kind: implementation-bug
+    reported: "2026-11-25"
+    fixed: "2026-11-25"
+    report: fixed/BUG-000052-c-bindings-creation-expectation.md
+    area: c-bindings-configuration-editing
+    rulebooks:
+      - rules/tooling/cli.md
+      - rules/corrections/applied/MD-021-c-binding-environment-complete-proposal-20261120-20261121.md
+    governance:
+      - tooling.workspace-harness
+    evidence: >-
+      Static audit found the old atomic replacement helper documented nil
+      expected hash as an absence precondition but performed no final absence
+      check. An intervening file creation could therefore be overwritten;
+      no pre-fix timed race reproduction is claimed.
+    resolution: >-
+      Shared replacement checks absence or the expected input hash just before
+      rename and serializes cooperating in-process commits. Tests preserve
+      target bytes and remove temporary files on rejection; concurrent reviewed
+      applications commit one changed edit. This is an optimistic protocol,
+      not a cross-process compare-and-swap guarantee.
+    regression_tests:
+      - internal/platform/cbindings/change_plan_test.go
+      - cmd/compiler/platform_cbindings_plan_test.go

@@ -1,8 +1,6 @@
 package main
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -25,7 +23,9 @@ const cBindingsUsage = `usage: sec platform c-bindings init --id ID --version VE
        sec platform c-bindings environment set NAME [--os OS] [--arch ARCH] [--abi ABI] [--c-runtime RUNTIME] [--c-runtime-versions RANGE | --clear-c-runtime-versions] [--file FILE] [--if-match SHA256] [--json]
        sec platform c-bindings environment remove NAME [--file FILE] [--if-match SHA256] [--json]
        sec platform c-bindings module add PATH (--common | --environment NAME) [--file FILE] [--if-match SHA256] [--json]
-       sec platform c-bindings module remove PATH (--common | --environment NAME) [--file FILE] [--if-match SHA256] [--json]`
+       sec platform c-bindings module remove PATH (--common | --environment NAME) [--file FILE] [--if-match SHA256] [--json]
+       sec platform c-bindings <package/environment/module mutation> ... --plan [--json]
+       sec platform c-bindings apply-plan PLAN.json --approve PLAN_SHA256 [--json]`
 
 // cBindingsResult is the sec.c-bindings-cli JSON document (cli.md § 8(3)).
 type cBindingsResult struct {
@@ -86,6 +86,9 @@ func runPlatformCommand(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	operation := args[1]
+	if operation == "apply-plan" {
+		return runCBindingsApplyPlan(args[2:], stdout, stderr)
+	}
 	rest := args[2:]
 	if operation == "package" || operation == "environment" || operation == "module" {
 		if len(rest) == 0 {
@@ -105,6 +108,10 @@ func runPlatformCommand(args []string, stdout, stderr io.Writer) int {
 	options, err := parseCBindingsOptions(rest)
 	if err != nil {
 		fmt.Fprintf(stderr, "sec platform c-bindings %s: %v\n%s\n", operation, err, cBindingsUsage)
+		return 1
+	}
+	if options.plan && !strings.Contains(operation, ".") {
+		fmt.Fprintln(stderr, "--plan applies only to package/environment/module mutations")
 		return 1
 	}
 	switch operation {
@@ -132,7 +139,7 @@ type cBindingsOptions struct {
 	file, id, version, sourceRoot, variant    string
 	os, arch, abi, cRuntime, cRuntimeVersions string
 	environment, ifMatch                      string
-	json, common, clearCRuntimeVersions       bool
+	json, common, clearCRuntimeVersions, plan bool
 	given                                     map[string]bool
 }
 
@@ -143,7 +150,7 @@ func parseCBindingsOptions(args []string) (cBindingsOptions, error) {
 	for index := 0; index < len(args); index++ {
 		flag := args[index]
 		if switches := map[string]*bool{"--json": &options.json, "--common": &options.common,
-			"--clear-c-runtime-versions": &options.clearCRuntimeVersions}[flag]; switches != nil {
+			"--clear-c-runtime-versions": &options.clearCRuntimeVersions, "--plan": &options.plan}[flag]; switches != nil {
 			*switches = true
 			options.given[flag] = true
 			continue
@@ -174,8 +181,7 @@ func fileSHA256(data []byte, present bool) *string {
 	if !present {
 		return nil
 	}
-	sum := sha256.Sum256(data)
-	text := hex.EncodeToString(sum[:])
+	text := cbindings.SHA256(data)
 	return &text
 }
 
@@ -253,7 +259,7 @@ func writeFileAtomically(file string, data []byte) error {
 }
 
 // errStaleFile reports that the file changed after it was read.
-var errStaleFile = errors.New("the file changed after it was read")
+var errStaleFile = cbindings.ErrStaleFile
 
 // replaceFileAtomically writes through a temporary file in the same
 // directory, re-hashes the current file immediately before the rename when
@@ -261,36 +267,7 @@ var errStaleFile = errors.New("the file changed after it was read")
 // existing permission bits; new files get 0644.
 // Rules: MD-021 correction §§ 5(2)-(3).
 func replaceFileAtomically(file string, data []byte, expected *string) error {
-	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
-		return err
-	}
-	mode := os.FileMode(0o644)
-	if info, err := os.Stat(file); err == nil {
-		mode = info.Mode().Perm()
-	}
-	temporary, err := os.CreateTemp(filepath.Dir(file), ".c-bindings-*.toml")
-	if err != nil {
-		return err
-	}
-	name := temporary.Name()
-	defer os.Remove(name)
-	if _, err := temporary.Write(data); err != nil {
-		temporary.Close()
-		return err
-	}
-	if err := temporary.Close(); err != nil {
-		return err
-	}
-	if err := os.Chmod(name, mode); err != nil {
-		return err
-	}
-	if expected != nil {
-		current, err := os.ReadFile(file)
-		if err != nil || *fileSHA256(current, true) != *expected {
-			return errStaleFile
-		}
-	}
-	return os.Rename(name, file)
+	return cbindings.ReplaceFileAtomically(file, data, expected)
 }
 
 // runCBindingsShow prints the complete model and the raw-file SHA-256.
@@ -450,7 +427,7 @@ func cBindingsOperation(operation, positional string, options cBindingsOptions) 
 		"module.remove":      {"--common", "--environment"},
 	}[operation]
 	for flag := range options.given {
-		if flag == "--file" || flag == "--json" || flag == "--if-match" || indexString(allowed, flag) >= 0 {
+		if flag == "--file" || flag == "--json" || flag == "--if-match" || flag == "--plan" || indexString(allowed, flag) >= 0 {
 			continue
 		}
 		return cbindings.Operation{}, fmt.Errorf("%s does not apply to this command", flag)
@@ -481,7 +458,7 @@ func cBindingsOperation(operation, positional string, options cBindingsOptions) 
 		if op.CRuntimeVersions != nil && op.ClearCRuntimeVersions {
 			return op, fmt.Errorf("--c-runtime-versions and --clear-c-runtime-versions exclude each other")
 		}
-		if len(options.given) == countGiven(options, "--file", "--json", "--if-match") {
+		if len(options.given) == countGiven(options, "--file", "--json", "--if-match", "--plan") {
 			return op, fmt.Errorf("give at least one field to change")
 		}
 	case "module.add", "module.remove":
@@ -536,7 +513,27 @@ func runCBindingsMutation(op cbindings.Operation, options cBindingsOptions, stdo
 	if options.ifMatch != "" && !strings.EqualFold(options.ifMatch, *result.BeforeSHA) {
 		return reject(cbindings.Diagnostic{ID: "c-bindings.stale-file", Message: fmt.Sprintf("%s has SHA-256 %s, not the expected %s; re-read it with show --json", options.file, *result.BeforeSHA, options.ifMatch)})
 	}
-	edit := cbindings.Apply(string(data), op)
+	plan, diagnostics, err := cbindings.PlanChange(options.file, op)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	if len(diagnostics) != 0 {
+		return reject(diagnostics...)
+	}
+	if plan.BeforeSHA256 != *result.BeforeSHA {
+		return reject(cbindings.Diagnostic{ID: "c-bindings.stale-file", Message: "input changed while planning; nothing was written"})
+	}
+	if options.plan {
+		return emitCBindingsPlan(*plan, options.json, stdout)
+	}
+	// A direct typed CLI mutation is already authorized by its caller. The
+	// separate apply-plan command requires approval of the saved proposal.
+	edit, err := cbindings.ApplyChange(*plan, plan.PlanSHA256)
+	if err != nil {
+		fmt.Fprintf(stderr, "sec platform c-bindings %s: %v\n", command, err)
+		return 1
+	}
 	if edit.Rejected {
 		return reject(edit.Diagnostics...)
 	}
@@ -544,12 +541,6 @@ func runCBindingsMutation(op cbindings.Operation, options cBindingsOptions, stdo
 		result.Status, result.Reason, result.AfterSHA = "complete", edit.Reason, result.BeforeSHA
 		emitCBindings(result, options.json, stdout, fmt.Sprintf("%s: unchanged (%s)", command, edit.Reason))
 		return 0
-	}
-	if err := replaceFileAtomically(options.file, []byte(edit.Text), result.BeforeSHA); errors.Is(err, errStaleFile) {
-		return reject(cbindings.Diagnostic{ID: "c-bindings.stale-file", Message: fmt.Sprintf("%s changed while the edit was prepared; nothing was written", options.file)})
-	} else if err != nil {
-		fmt.Fprintf(stderr, "sec platform c-bindings %s: %v\n", command, err)
-		return 1
 	}
 	result.Status, result.Changed, result.AfterSHA = "complete", true, fileSHA256([]byte(edit.Text), true)
 	emitCBindings(result, options.json, stdout, fmt.Sprintf("%s: updated %s", command, options.file))

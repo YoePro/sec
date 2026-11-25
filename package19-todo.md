@@ -176,7 +176,18 @@ runtime (§§ 143–148, 162–163).
 
 - [ ] P19-07 — Reset: dependency rule with non-lexical liveness, transition,
   no zeroing, atomicity, epoch exhaustion (§§ 36–42); reuse the existing
-  generation/invalidation facts.
+  generation/invalidation facts. Epoch exhaustion decided by MD-140
+  (2026-11-25): one panic policy (panic.arena-epoch-exhaustion before
+  commit); stages tracked in frontend.panic, analysis.arena and
+  lowering.sec-mlir-package19.
+
+  MD-140 stage 1b completed 2026-11-25: the canonical reference policy
+  supplies the full logical width (64 bits by default even on 32-bit targets)
+  and permits only panic on Arena exhaustion. Shorter widths require explicit
+  checked-advance safety and producer justification; target projection and
+  scalar-plan validation enforce them. This plan selection is no proof of
+  nonexhaustion or metadata elimination. Reset effects, Semantic IR and
+  executable checked advancement remain open in their owning stage items.
 - [ ] P19-08 — Release: dependency rule, transition, per-backing-kind
   behavior, implicit destruction, panic cleanup boundary (§§ 43–48).
 - [x] P19-09 — Nested Arena facts (§§ 49–50).

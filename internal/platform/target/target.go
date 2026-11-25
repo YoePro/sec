@@ -33,6 +33,10 @@ type Definition struct {
 	Endianness       layout.Endianness
 	// CABI is the target's C ABI data model (rules/platform/abi.md § 19).
 	CABI layout.CABIModel
+	// References carries the compile-time reference policy, including Arena's
+	// panic-only exhaustion contract. Zero retains the 64-bit logical default.
+	// Rules: rules/memory/reference_model.md §§33–34; rules/memory/arena.md §39.
+	References layout.ResolvedReferencePolicy
 	// Atomics is frozen against this definition's resolved scalar/profile plan.
 	// An unspecified table leaves concrete capability unknown.
 	// Rules: rules/concurrency/atomics.md — §37(1–5).
@@ -560,6 +564,7 @@ func Find(target Target) (Definition, bool) {
 // rules/concurrency/atomics.md — §37(1–5); rules/concurrency/ipc.md — §§118–124.
 // rules/concurrency/mutex.md — §§27,60 (explicit lock producer evidence).
 // rules/concurrency/cancellation.md — §24 (explicit physical-thread identity evidence).
+// rules/memory/arena.md — §39(9) (resolved reference policy, MD-140).
 func (definition Definition) ScalarPlan() (layout.ResolvedScalarPlan, error) {
 	plan := layout.ResolvedScalarPlan{
 		TargetOS:         definition.OS,
@@ -570,6 +575,7 @@ func (definition Definition) ScalarPlan() (layout.ResolvedScalarPlan, error) {
 		PointerWidthBits: definition.PointerWidthBits,
 		Endianness:       definition.Endianness,
 		CABI:             definition.CABI,
+		References:       definition.References,
 		Atomics:          definition.Atomics,
 		IPC:              definition.IPC,
 		Mutex:            definition.Mutex,

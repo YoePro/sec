@@ -2,7 +2,7 @@
 
 - Status: Normative
 - Created: 2026-09-02
-- Last updated: 2026-11-23 (§ 131 default construction, MD-136)
+- Last updated: 2026-11-25 (§§ 35(6), 38(8), 39, 40(7), 42(5), 105(4) Arena epoch exhaustion, MD-140); 2026-11-23 (§ 131 default construction, MD-136)
 - Document revision: 2.0
 - Sec language version: 0.1
 - Canonical path: `rules/memory/arena.md`
@@ -972,6 +972,8 @@ allows later allocation.
 
 § 35(4) Reset is an ordinary mutable Arena operation, not a consuming whole-self operation.
 
+§ 35(6) **Amendment MD-140 (2026-11-25, owner-approved 2026-11-24, `rules/corrections/applied/MD-140-arena-epoch-exhaustion-correction-2026-11-24-20261125.md`).** The declaration stays `fn Reset() void`. When the retained epoch cannot advance without exhaustion, Reset panics with `panic.arena-epoch-exhaustion` (§ 39) before any Reset transition commits. It never returns normally, produces a `Result`, returns an exhaustion error or silently leaves the Arena unchanged on the success path. No `ArenaError` case, Reset overload, epoch access property or source-level trap operation is added.
+
 § 35(5) **Amendment MD-151 (2026-11-24, owner accepted revision 1 as written, `rules/corrections/applied/MD-151-system-heap-provider-proposal-20261124-20261124.md` § 7(3)).** Reset of an Arena with provider-owned chunks makes the retained chunk storage reusable under § 38; the provider requires no eager trimming. Release and destruction (§ 12(9)) release every owned chunk and its metadata exactly once through its originating binding. Reset/Release legality and live-reference rejection are unchanged, and no client gets per-object free.
 
 ---
@@ -1049,21 +1051,29 @@ Process(values)
 
 § 38(7) Runtime epoch metadata may be eliminated when proof makes it unnecessary.
 
+§ 38(8) **Amendment MD-140 (2026-11-25, owner-approved 2026-11-24, `rules/corrections/applied/MD-140-arena-epoch-exhaustion-correction-2026-11-24-20261125.md`).** A retained numeric epoch advances with checked arithmetic on the resolved logical width `W` (64 bits by default on every target, `reference_model.md` § 33), never on pointer-width arithmetic; on a narrower machine a 64-bit epoch spans several machine words and still advances at full width. With `E` the current epoch and `MaxEpoch` the largest valid value under the canonical representation (`2^W - 1` when every unsigned value is available; existing reserved values stay authoritative), reaching `MaxEpoch` is a successful Reset; only the next attempted advancement exhausts. Ordinary allocation does not advance the epoch and never fails because the epoch is maximal. No wrapped value is ever published, even transiently. A nonnumeric representation preserves the same checked-advancement, exhaustion and non-revival guarantees.
+
 ---
 
 ## § 39 Arena epoch exhaustion
 
-§ 39(1) Arena epoch exhaustion must use one canonical safe strategy:
-
-```text
-fresh distinguishable ArenaDomain identity/rekey;
-explicit fallible behavior if Arena API/profile defines it;
-deterministic panic/target trap when recovery is unavailable.
-```
+§ 39(1) **Amendment MD-140 (2026-11-25, owner-approved 2026-11-24, `rules/corrections/applied/MD-140-arena-epoch-exhaustion-correction-2026-11-24-20261125.md`).** Arena epoch exhaustion has exactly one canonical strategy in Sec 0.1, for every profile family: `Reset()` panics with the registered reason `panic.arena-epoch-exhaustion` and the canonical message `Arena validity epoch exhausted.` The former alternatives (rekey to a fresh ArenaDomain, fallible behavior defined by an API or profile) are withdrawn for this API.
 
 § 39(2) Finite epoch representation must never silently wrap.
 
 § 39(3) Reuse must never make old references/handles match the new live incarnation.
+
+§ 39(4) (MD-140) The outcome is the same for Hosted, RTOS and BareMetal, and a derived or custom profile inherits it. A profile selects only the verified physical realization of the panic under `target_profiles.md` § 13 and `rules/errors/panic.md`; a target trap is one such realization, not a separate outcome. No profile may select rekeying, domain recreation, retirement followed by continued Reset, or a fallible Reset for this API, and a plan that does is rejected until reconciled. The general invalidation-domain model may still offer those strategies to independently specified APIs (`reference_model.md` §§ 38–40), and constructing a different Arena through ordinary legal construction is not prohibited. No unwinder, heap allocation, panic containment or new runtime dependency is required.
+
+§ 39(5) (MD-140) Checked advancement is the default for every retained epoch, including the 64-bit default; the practical remoteness of 64-bit exhaustion is not a proof. A dynamic exhaustion check may be omitted only when sound proof bounds the advances of that ArenaDomain from a known initial or current epoch over every relevant path (loops, calls, repeated uses) under the resolved width and representation. An assumed program duration, benchmark, reset rate, the default width or the target word width is not proof; unknown advance counts establish no bound; a proof for another ArenaDomain, width, source snapshot or incompatible plan is not reusable without canonical compatibility validation.
+
+§ 39(6) (MD-140) Independently, epoch metadata itself may be eliminated under §§ 38(7), 105 and `reference_model.md` §§ 33–36; an eliminated mechanism has no advance and no exhaustion branch. A retained epoch therefore has either a dynamic checked advance or a proven-safe advance, and an eliminated one has neither: these are analysis outcomes of one panic policy, not selectable strategies. Removing a required epoch only to avoid its exhaustion is not permitted.
+
+§ 39(7) (MD-140) A shorter compile-time width (`reference_model.md` § 34) uses the same checked exhaustion rule and reason; short width is never a reason for a different behavior.
+
+§ 39(8) (MD-140) Where exhaustion is neither proven impossible nor eliminated, effect analysis keeps the potential panic with this reason and the Reset provenance (`effect_analysis.md` § 23(6)). `@noPanic`, context, ISR and other effect contracts apply: a context that forbids a reachable panic requires that proof or a legitimate elimination, otherwise the operation fails those requirements; a profile may never substitute an unchecked Reset. Proven absence removes only this cause, never other panics of the callable, and safety is never inferred from the 64-bit default. `try` does not catch the panic and no `try arena.Reset()` recovery form exists (`runtime_checks.md` § 11(5)). Tooling explains an unproven guarantee with the Reset location, resolved width and active restriction, never as an observed runtime event.
+
+§ 39(9) (MD-140) The CompilationPlan supplies the resolved reference policy, logical width, representation constraints and panic policy; this rulebook supplies the single outcome, and no compiler stage selects another. The resolved Reset plan retains, as applicable: the ArenaDomain; the writable Arena Place and ownership/dependency proof; the logical width and representation policy; the current epoch or its dynamic source; checked advance, proof-eliminated check or proof-eliminated metadata with proof provenance; the exhaustion panic identity and panic policy; the state version before and after a successful Reset; the capacity/cursor transition and backing retention; the ordered invalidation effect and source provenance. Incomplete required width, reference-policy or panic facts are reported through the existing unproven/capability boundary and never produce unchecked executable Reset code. Sema and the owning analyses establish the proofs; Semantic IR and lowering consume them and never invent a proof or treat absent metadata as elimination.
 
 ---
 
@@ -1080,6 +1090,8 @@ deterministic panic/target trap when recovery is unavailable.
 § 40(5) Reset does not automatically trim/release extra growable segments.
 
 § 40(6) Future `Trim` semantics require a separate canonical operation.
+
+§ 40(7) (MD-140) On the exhaustion path the fixed, borrowed and growable capacity behavior of §§ 40(1)–(5) has not happened: the cursor and old epoch are unchanged, no backing borrow ends, no segment is unlinked and nothing is published, before any panic cleanup.
 
 ---
 
@@ -1114,6 +1126,8 @@ publish next epoch.
 § 42(3) No program observation may see a mixture of old/new Arena allocation state.
 
 § 42(4) Ordinary Arena is not concurrently mutable, so concurrent observation is independently restricted.
+
+§ 42(5) (MD-140) Exhaustion detection and preparation of the valid next epoch precede every externally relevant part of the commit; the conceptual order is: validate preconditions; if the epoch cannot advance, panic with `panic.arena-epoch-exhaustion`; prepare the next epoch; commit. On the exhaustion path no Reset-induced mutation has committed: the old epoch has not ended, its allocations are not invalidated, epoch and state version have not advanced, no cursor is reset, no backing is released, no domain replaced and no old storage made available under a new epoch. Subsequent panic-policy cleanup may destroy the Arena, end its domain or terminate execution under the panic and destruction rules; that is not a successful Reset and is not suppressed by this rule. Lowering must not move cursor mutation, invalidation or publication ahead of an unresolved check. The exclusive-access, final-use and dependency rules remain mandatory: a validity-preserving dependency across Reset stays a source error and is never legalized by a runtime check. A stale-capable handle that survives keeps its original domain/epoch and never resolves to an allocation of a later epoch, nor of a wrapped epoch at an attempted exhausted Reset.
 
 ---
 
@@ -2269,6 +2283,8 @@ provider state.
 § 105(2) Runtime representation may be inline metadata, side table, domain token, capability, compact generation, or absent after proof.
 
 § 105(3) Epoch metadata may be eliminated only when no runtime stale-reference/handle mechanism requires it.
+
+§ 105(4) (MD-140) Eliminating one local reference's dynamic validation does not establish that the whole ArenaDomain can omit epoch metadata: surviving dependencies, escaped stale-capable handles, foreign retention and unresolved aliasing or provenance must be accounted for, and absence of proof is not proof of absence. Eliminated metadata removes the physical advance and exhaustion check but never the logical invalidation, ordered Reset effects, allocation lifetimes, borrow termination, domain identity, state-version or capacity transitions.
 
 ---
 

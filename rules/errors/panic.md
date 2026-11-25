@@ -2,7 +2,7 @@
 
 - Status: Normative
 - Created: 2026-09-01
-- Last updated: 2026-11-01 (§§ 3.1(2), 13(1) string materialization failure, MD-039); 2026-09-27
+- Last updated: 2026-11-25 (§§ 13(1), 13(8) Arena epoch exhaustion, MD-140); 2026-11-01 (§§ 3.1(2), 13(1) string materialization failure, MD-039); 2026-09-27
 - Document revision: 2.3
 - Sec language version: 0.1
 - Canonical path: `rules/errors/panic.md`
@@ -299,6 +299,7 @@ contract failure
 assertion failure
 checked unreachable reached
 invalid reference generation
+Arena epoch exhaustion
 explicit panic
 foreign abort/trusted-boundary failure
 string materialization failure
@@ -348,6 +349,19 @@ without allocating or symbolizing at panic time.
 **§ 13(7)** Every compiler-known panic-related Sec type named by this rulebook
 must have one complete canonical declaration. Compiler-known identity and the
 core source-visible declaration resolve to the same semantic symbol.
+
+**§ 13(8)** (MD-140, 2026-11-25; `rules/corrections/applied/MD-140-arena-epoch-exhaustion-correction-2026-11-24-20261125.md`.) Arena
+epoch exhaustion is the target-independent reason `panic.arena-epoch-exhaustion`
+with the canonical message `Arena validity epoch exhausted.` It is raised when
+`Arena.Reset()` cannot advance its retained validity epoch
+(`rules/memory/arena.md` § 39). It is distinct from invalid reference
+generation (a stale dereference), arithmetic overflow, allocation failure and
+explicit panic, and no existing numeric ID is reused for it. Its stable numeric
+`PanicID` is allocated once through the registry under § 13(2); no rulebook,
+Sema, Semantic IR, dialect or runtime assigns one independently. `PanicID` stays
+`uint32` and `PanicInfo` keeps its five fields; the Reset source location and
+callable provenance are preserved, and the minimum path stays allocation-free
+under § 14.
 
 ---
 

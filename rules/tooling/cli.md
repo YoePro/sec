@@ -2,7 +2,7 @@
 
 ## Status
 
-Normative tooling rulebook, revision 1.3 (2026-11-19).
+Normative tooling rulebook, revision 1.4 (2026-11-25).
 
 Created by the MD-017 correction
 (`rules/corrections/applied/md017-sec-analyse-cli-and-help-correction-20261017.md`),
@@ -286,10 +286,29 @@ Integrated 2026-11-20 from `rules/corrections/applied/MD-021-c-binding-environme
 
 **§ 8(2)** `show --json` returns the complete model and `file_sha256`. A mutation with `--if-match` rechecks the file hash immediately before an atomic replacement and rejects a mismatch without writing; a missing file never matches. Edits are syntax-aware and minimal and preserve comments; failures leave the file unchanged.
 
-**§ 8(3)** Identical repeated `module add` and `environment add` are no-ops (`changed: false`); a differing existing environment needs `environment set`; removing an absent element reports `changed: false`; such a no-op carries `reason` `already-present`, `not-present` or `unchanged`. A `--json` command prints exactly one JSON document (`format` `sec.c-bindings-cli` or `sec.c-bindings-resolution`, `version` 1) with stable diagnostics.
+**§ 8(3)** Identical repeated `module add` and `environment add` are no-ops (`changed: false`); a differing existing environment needs `environment set`; removing an absent element reports `changed: false`; such a no-op carries `reason` `already-present`, `not-present` or `unchanged`. A `--json` command prints exactly one JSON document (`format` `sec.c-bindings-cli` or `sec.c-bindings-resolution`, `version` 1; successful change proposals use the format in § 8(7)) with stable diagnostics.
 
 **§ 8(4)** `validate` without `--variant` is structural (`scope: "structural"`; a zero-environment draft is `resolvable: false`); with `--variant` it runs full resolution (`scope: "variant"`). `show`, `validate` and `resolve` never write. The CLI never invents alias targets, reads host headers or generates foreign signatures.
 
 **§ 8(5)** An edit is accepted only when the edited text parses, validates and equals the expected model with exactly the requested element changed; otherwise it is rejected with `c-bindings.unsupported-edit` and nothing is written (for example an environment written as an inline table cannot be removed by the CLI). The file hash is rechecked immediately before every replacement, with or without `--if-match`, and the replacement keeps the file's permission bits. Environment `os` and `arch` must name a registered target (`c-bindings.unknown-target`); an alias such as `darwin` is reported as `c-bindings.noncanonical-target`. New environment names use the bare-key grammar `[a-z][a-z0-9_-]*`.
 
 **§ 8(6)** Compilation commands resolve the C binding environment before Sema with the same resolver as the LSP. `sec build <Target>` resolves each selected Variant. A command that analyzes a source for a bare `--target` (for example `sec check file.sec`) uses the one Variant of the governing manifest whose `os`/`arch` equal that target, and no binding environment when none or several match. A Variant with a `c_bindings` selector whose environment does not resolve fails with its `c-bindings.*` diagnostics (exit 3); a Variant without a selector uses the project's unique compatible environment or none, so its `c::namespace::name` uses report S1078.
+
+**§ 8(7)** A `package set`, `environment add|set|remove` or `module add|remove`
+command with `--plan` prepares a read-only proposal through the same owning edit
+engine. `--plan --json` emits one `sec.c-bindings-change-plan`, version 1,
+document containing the exact target file, typed operation, input and proposed
+output SHA-256, changed/no-op state, patch, validation consequences and
+`plan_sha256` binding those fields. Human output presents the same proposal.
+The caller may save and review it, then use
+`sec platform c-bindings apply-plan PLAN.json --approve PLAN_SHA256 [--json]`.
+Approval comes from this separate caller input, never a field in the proposal;
+the digest is an integrity identifier, not an authorization credential.
+Application revalidates the exact proposal and rejects modified plans or changed
+inputs without overwriting. The last input check and atomic replacement follow
+§ 8(5); no portable cross-process hash-conditional rename is implied. A fresh
+approved no-op does not rewrite the file. Successful application uses the ordinary
+mutation result; rejected plans exit 2, invalid arguments/documents or I/O
+failures exit 1. Structural planning does not establish target capability or
+replace Variant resolution. This workflow realizes the harness design notes
+§§ 5(2)–(7) and introduces no separate parser, editor or language rule.

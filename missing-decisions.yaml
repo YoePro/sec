@@ -1,5 +1,5 @@
 schema_version: 1
-updated: "2026-11-24"
+updated: "2026-11-25"
 last_id: MD-152
 purpose: >-
   Tracks normative decisions that are missing or insufficiently precise and
@@ -1461,6 +1461,11 @@ decisions:
       - rules/memory/arena.md
       - rules/memory/reference_model.md
       - rules/mlir/packages/sec-mlir-dialect_package19.md
+      - rules/platform/target_profiles.md
+      - rules/errors/panic.md
+      - rules/errors/runtime_checks.md
+      - rules/analysis/effect_analysis.md
+      - rules/compiler/semantic_ir.md
     description: >-
       arena.md § 39(1) requires one canonical safe strategy at Arena epoch
       exhaustion and lists three acceptable ones: a fresh distinguishable
@@ -1476,8 +1481,25 @@ decisions:
       without inventing semantics. Decide the strategy per profile, the check
       obligation for the default width and the failure identity. Governance
       owner: lowering.sec-mlir-package19.
+      Decided by the owner 2026-11-24 (rules/corrections/applied/MD-140-arena-epoch-exhaustion-correction-2026-11-24-20261125.md):
+      (1) panic is the sole exhaustion strategy for Arena.Reset() on Hosted,
+      RTOS, BareMetal and derived profiles; profiles choose only the panic
+      realization, and rekey, domain recreation, retirement or fallible Reset
+      are not conforming for this API; (2) retained epochs use checked
+      advancement at the resolved logical width, including 64 bits, detected
+      before the Reset commit, with the check removable only by a sound bound
+      proof and the mechanism only by existing metadata elimination; (3)
+      exhaustion uses the distinct reason panic.arena-epoch-exhaustion with
+      message "Arena validity epoch exhausted." and a registry-allocated
+      PanicID. Integrated 2026-11-25 (arena.md §§ 35(6), 38(8), 39, 40(7),
+      42(5), 105(4); reference_model.md § 40; target_profiles.md § 13;
+      panic.md § 13(1), 13(8); runtime_checks.md §§ 7(6), 11(5), 39(6);
+      effect_analysis.md §§ 23(6), 26(4); semantic_ir.md § 51(6)-(8); P19
+      §§ 39, 41, 42, 74, 94, 115, 152); implementation stages and tests
+      T01-T48 are tracked in frontend.panic, analysis.arena and
+      lowering.sec-mlir-package19.
     classification: constraining
-    status: open
+    status: decided-implementation-pending
 
   - id: MD-141
     area: scalar-storage-size-and-alignment

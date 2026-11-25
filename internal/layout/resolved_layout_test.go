@@ -85,6 +85,7 @@ func TestCompilationPlanLayoutKey(t *testing.T) {
 		"reference": func(p *ResolvedScalarPlan, _ *ScalarAlignments) {
 			p.References.LogicalEpochBits = 32
 			p.References.ShortWidthProof = "proof"
+			p.References.ArenaShortWidthSafety = ArenaEpochCheckedAdvance
 		},
 		"alignment": func(_ *ResolvedScalarPlan, a *ScalarAlignments) { (*a)[StorageRepresentation{IntegerStorage, 64}] = 4 },
 		"address": func(p *ResolvedScalarPlan, _ *ScalarAlignments) {
@@ -207,7 +208,7 @@ func TestLayoutCacheSafety(t *testing.T) {
 		t.Error("a 64-bit layout answered a 32-bit plan")
 	}
 	policy := layoutTestPlan(64)
-	policy.References = ResolvedReferencePolicy{LogicalEpochBits: 32, ShortWidthProof: "proof"}
+	policy.References = ResolvedReferencePolicy{LogicalEpochBits: 32, ShortWidthProof: "proof", ArenaShortWidthSafety: ArenaEpochCheckedAdvance}
 	rPolicy, _ := NewResolver(policy, testAlignments())
 	if _, hit := cache.Lookup(rPolicy.Key(), "int", ""); hit {
 		t.Error("a changed reference policy reused a cached layout")

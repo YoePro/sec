@@ -44,7 +44,7 @@ func TestResolverCacheIsolation(t *testing.T) {
 			case "profile":
 				plan.Profile = "freestanding"
 			case "reference":
-				plan.References = ResolvedReferencePolicy{LogicalEpochBits: 32, ShortWidthProof: "proof"}
+				plan.References = ResolvedReferencePolicy{LogicalEpochBits: 32, ShortWidthProof: "proof", ArenaShortWidthSafety: ArenaEpochCheckedAdvance}
 			case "address":
 				plan.AddressDomains = []AddressDomain{testAddressDomain()}
 			case "alignment":

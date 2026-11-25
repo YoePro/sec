@@ -23,14 +23,19 @@ const (
 // Environment names the environment of an environment operation and the
 // module scope of a module operation unless Common is set.
 type Operation struct {
-	Kind                    OperationKind
-	ID, Version, SourceRoot *string
-	Environment             string
-	OS, Arch, ABI, CRuntime *string
-	CRuntimeVersions        *string
-	ClearCRuntimeVersions   bool
-	Common                  bool
-	Module                  string
+	Kind                  OperationKind `json:"kind"`
+	ID                    *string       `json:"id,omitempty"`
+	Version               *string       `json:"version,omitempty"`
+	SourceRoot            *string       `json:"source_root,omitempty"`
+	Environment           string        `json:"environment,omitempty"`
+	OS                    *string       `json:"os,omitempty"`
+	Arch                  *string       `json:"arch,omitempty"`
+	ABI                   *string       `json:"abi,omitempty"`
+	CRuntime              *string       `json:"c_runtime,omitempty"`
+	CRuntimeVersions      *string       `json:"c_runtime_versions,omitempty"`
+	ClearCRuntimeVersions bool          `json:"clear_c_runtime_versions,omitempty"`
+	Common                bool          `json:"common,omitempty"`
+	Module                string        `json:"module,omitempty"`
 }
 
 // Reasons explain a successful edit that changed nothing (correction § 5(4)).

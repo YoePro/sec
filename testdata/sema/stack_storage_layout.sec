@@ -1,0 +1,19 @@
+module main
+
+type Count int
+type Packet struct {
+    Tag: byte,
+    Count: Count,
+    Values: uint16[3],
+}
+
+type Storage struct {
+    Inline: Packet,
+    Array: Packet[2],
+    Pointer: RawPtr[Packet],
+    Borrow: ref Packet,
+    View: ref Packet[],
+    Owned: Packet[],
+    Text: string,
+    AtomicValue: Atomic[uint64],
+}

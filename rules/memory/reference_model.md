@@ -2,7 +2,7 @@
 
 - Status: Normative
 - Created: 2026-09-02
-- Last updated: 2026-10-19 (P16-04 slice facts, § 14(8)–(12))
+- Last updated: 2026-11-25 (§ 40 Arena epoch exhaustion, MD-140); 2026-10-19 (P16-04 slice facts, § 14(8)–(12))
 - Document revision: 2.0
 - Sec language version: 0.1
 - Canonical path: `rules/memory/reference_model.md`
@@ -885,18 +885,13 @@ deterministic panic or target trap when recovery is unavailable.
 
 ## § 40 Arena epoch exhaustion
 
-§ 40(1) Arena epoch exhaustion may be handled by:
-
-```text
-replace complete Arena identity domain;
-recreate Arena with fresh independent identity;
-return reset failure where API is fallible;
-deterministic panic or target trap otherwise.
-```
+§ 40(1) **Amendment MD-140 (2026-11-25, owner-approved 2026-11-24, `rules/corrections/applied/MD-140-arena-epoch-exhaustion-correction-2026-11-24-20261125.md`).** Arena epoch exhaustion has the single canonical strategy owned by `rules/memory/arena.md` § 39: `Reset()` panics with `panic.arena-epoch-exhaustion` before committing. The former list (replace the Arena identity domain, recreate the Arena, fallible Reset, panic or trap) no longer applies to Arena Reset. Retirement, rekey and fallible strategies of §§ 38–39 remain available to unrelated invalidation domains under their owning rulebooks.
 
 § 40(2) A replacement domain must remain distinguishable from every prior live/stale represented domain identity.
 
 § 40(3) The Arena API/rulebook owns the programmer-visible exhaustion behavior.
+
+§ 40(4) (MD-140) §§ 33–38 are unchanged: the default logical width is 64 bits on every target, a shorter width needs its compile-time justification under § 34 consistent with the Arena panic rule, and checked advancement applies to Arena epochs as to other generations.
 
 ---
 

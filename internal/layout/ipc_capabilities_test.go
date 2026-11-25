@@ -81,6 +81,7 @@ func TestIPCCapabilitiesPlanBinding(t *testing.T) {
 		"reference": func(p *ResolvedScalarPlan) {
 			p.References.LogicalEpochBits = 32
 			p.References.ShortWidthProof = "test-proof"
+			p.References.ArenaShortWidthSafety = ArenaEpochCheckedAdvance
 		},
 		"domains": func(p *ResolvedScalarPlan) {
 			p.AddressDomains = []AddressDomain{{Identity: "other", AddressBits: 64, UnitBits: 8, Linear: true}}

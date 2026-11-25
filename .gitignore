@@ -3,5 +3,8 @@
 vscode/node_modules/
 automation/
 /build/
+/governance/licensing/review
+/governance/licensing/patent-register.yaml
+/governance/licensing/patent-policy.md
 
 codex.md

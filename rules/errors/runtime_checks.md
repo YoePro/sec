@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-04
-- **Last updated:** 2026-11-07 (stable chapter, subsection, and paragraph numbering); 2026-11-01 (string materialization failure modes, MD-039); 2026-10-28 (decimal division and arithmetic failures, MD-066/MD-067)
+- **Last updated:** 2026-11-25 (§§ 7(6), 11(5), 39(6) Arena epoch exhaustion, MD-140); 2026-11-07 (stable chapter, subsection, and paragraph numbering); 2026-11-01 (string materialization failure modes, MD-039); 2026-10-28 (decimal division and arithmetic failures, MD-066/MD-067)
 - **Document revision:** 1.1
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/errors/runtime_checks.md`
@@ -307,6 +307,14 @@ fn Divide(value: int, divisor: Divisor) int {
 
 **§ 7(5)** The zero-divisor check is removed.
 
+**§ 7(6)** (MD-140; `rules/corrections/applied/MD-140-arena-epoch-exhaustion-correction-2026-11-24-20261125.md`.) The checked
+advancement of a retained Arena validity epoch at `Reset()` is a runtime check
+like any other: it is removed only by a sound bound on that ArenaDomain's
+advances over all relevant paths, or made unnecessary when the epoch metadata
+itself is eliminated (`rules/memory/arena.md` §§ 39(5)–(6), 105). The 64-bit
+default width, an expected program lifetime or an unknown advance count is not
+such a proof.
+
 ---
 
 ## § 8 `try` syntax
@@ -429,6 +437,11 @@ Calculate may panic
 **§ 11(3)** `try` is not exception handling.
 
 **§ 11(4)** It does not unwind or resume a panicked call.
+
+**§ 11(5)** (MD-140.) `try` does not catch Arena epoch exhaustion.
+`Reset()` stays a void operation, there is no `try arena.Reset()` recovery
+form, and an enclosing `try` that is legal for another reason never converts
+the `panic.arena-epoch-exhaustion` panic into a recoverable error.
 
 ---
 
@@ -1076,6 +1089,11 @@ replaced by a target trap
 ```
 
 **§ 39(5)** It does not imply a general Sec runtime.
+
+**§ 39(6)** (MD-140.) An Arena Reset exhaustion check reaches the panic endpoint
+with the registered `panic.arena-epoch-exhaustion` reason and the Reset
+provenance, under the selected panic policy; a profile's trap is a realization
+of that panic, never a different outcome or a normal continuation.
 
 ---
 

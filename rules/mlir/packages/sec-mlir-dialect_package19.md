@@ -857,6 +857,8 @@ Storage transition:
 AdvanceEpoch
 ```
 
+MD-140 (2026-11-25): these effects happen only on the success path. A retained epoch that cannot advance panics with `panic.arena-epoch-exhaustion` before any of them commits (`rules/memory/arena.md` §§ 39, 42(5)); see § 42.
+
 ---
 
 # 40. Reset does not zero storage
@@ -883,6 +885,8 @@ reused storage published under old epoch
 
 The high-level reset operation is one atomic semantic transition.
 
+MD-140: the exhaustion check precedes the whole transition; on the exhaustion path no cursor, epoch, state version, backing or publication has changed before panic cleanup, and no lowering may move a mutation ahead of an unresolved check.
+
 ---
 
 # 42. Epoch exhaustion
@@ -891,13 +895,9 @@ Epoch advancement is checked.
 
 It must never wrap and revive stale references.
 
-At exhaustion the resolved profile strategy must:
+Replaced by MD-140 (2026-11-25, `rules/corrections/applied/MD-140-arena-epoch-exhaustion-correction-2026-11-24-20261125.md`): the former profile-selected choice between rekeying the ArenaDomain and a panic/trap is withdrawn. At exhaustion `Reset` panics with the registered reason `panic.arena-epoch-exhaustion` (`Arena validity epoch exhausted.`) on every profile, before any Reset commit; a profile only selects the verified panic realization. Rekey, domain recreation, retirement and fallible Reset are not conforming strategies for this API (`rules/memory/arena.md` § 39).
 
-```text
-safely rekey/replace the ArenaDomain
-or
-use deterministic panic/target trap
-```
+The advance is checked on the resolved logical width, including the 64-bit default; the check is omitted only under a sound bound proof, and the whole mechanism only under metadata elimination (§ 39(5)–(6) of arena.md). If the active Semantic IR, dialect, runtime or target cannot lower the panic endpoint, emission fails closed with the existing implementation-capability diagnostic.
 
 P19 does not invent silent wrap.
 
@@ -1500,6 +1500,8 @@ ordered effect
 
 The builder does not re-run liveness analysis.
 
+MD-140: "next-epoch/rekey strategy" is now the epoch-advance form (checked advance, proof-eliminated check or proof-eliminated metadata) with its proof provenance, the resolved logical width and representation policy, and the exhaustion panic identity and policy; no rekey strategy exists for Arena Reset.
+
 ---
 
 # 75. Arena release plan
@@ -1887,6 +1889,8 @@ retain owner/domain
 ```
 
 Dependency legality is pre-proven.
+
+MD-140: the op carries the epoch-advance form and exhaustion reason of § 74; a checked advance has a terminal exhaustion path through `panic.arena-epoch-exhaustion` with no normal successor (`rules/compiler/semantic_ir.md` § 51(6)–(8)).
 
 ---
 
@@ -2311,6 +2315,8 @@ epoch transition strategy
 ```
 
 Emits/contains `AdvanceEpoch` semantic effect.
+
+MD-140: "epoch transition strategy" is the epoch-advance form of § 74. A checked advance lowers to an exhaustion test ordered before the transition, whose failing edge reaches the registered panic endpoint; this fixes semantics, not a new op spelling or schema number.
 
 ---
 
@@ -2928,6 +2934,8 @@ nested child blocks
 defer dependency blocks
 epoch metadata elimination when proven
 ```
+
+MD-140 adds the exhaustion vectors T01–T48 of `rules/corrections/applied/MD-140-arena-epoch-exhaustion-correction-2026-11-24-20261125.md` § 9: panic before commit on every profile and on narrow targets at full width, reaching the maximum without panic, allocation at the maximum, check and metadata elimination proofs, `@noPanic`/context interaction, no `try` recovery, the distinct reason, and IR/lowering verification.
 
 ---
 

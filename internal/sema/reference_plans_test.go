@@ -191,6 +191,8 @@ func TestReferencePlanQueriesAreReadOnly(t *testing.T) {
 // The reference policy defaults to a 64-bit logical epoch on 32- and 64-bit
 // plans; a shorter width needs a compile-time proof, and the width never
 // enters source reference type identity (P15-26, P15-30).
+// Rules: rules/memory/reference_model.md §§33–34,38–40;
+// rules/memory/arena.md §39(7),(9) (MD-140).
 func TestReferencePolicyEpochWidth(t *testing.T) {
 	for _, width := range []uint16{32, 64} {
 		analyzer := NewAnalyzerWithScalarPlan(layout.ResolvedScalarPlan{TargetOS: "linux", TargetArch: "test", PointerWidthBits: width, Endianness: layout.LittleEndian})
@@ -206,6 +208,16 @@ func TestReferencePolicyEpochWidth(t *testing.T) {
 	}
 	if err := (layout.ResolvedReferencePolicy{LogicalEpochBits: 24, ShortWidthProof: "proof"}).Validate(); err == nil {
 		t.Fatal("non-byte-multiple width accepted")
+	}
+	short := layout.ResolvedScalarPlan{TargetOS: "linux", TargetArch: "test", PointerWidthBits: 32, Endianness: layout.LittleEndian,
+		References: layout.ResolvedReferencePolicy{LogicalEpochBits: 16, ShortWidthProof: "test producer checked advance", ArenaShortWidthSafety: layout.ArenaEpochCheckedAdvance}}
+	if err := short.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	analyzer := NewAnalyzerWithScalarPlan(short)
+	policy, err := analyzer.ReferencePolicy().ResolveArenaEpochPolicy()
+	if err != nil || policy.LogicalEpochBits != 16 || policy.Exhaustion != layout.ArenaEpochPanic || policy.ShortWidthJustification != short.References.ShortWidthProof {
+		t.Fatalf("Sema lost canonical Arena policy: %+v, %v", policy, err)
 	}
 	shared := Type{Kind: ReferenceType, Name: "ref int"}
 	if strings.Contains(referenceTypeName(Type{Name: "int", Kind: IntType}, false), "64") || shared.Name != "ref int" {

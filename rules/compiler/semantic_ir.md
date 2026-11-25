@@ -2,7 +2,7 @@
 
 - Status: Normative
 - Created: 2026-09-03
-- Last updated: 2026-11-24 (§ 123B atomic capability evidence, MD-095); 2026-11-19 (§ 20(5)–(6) affine and logarithmic conversion plans, MD-048); 2026-11-18 (§ 127 owning dynamic arrays, P18 sync § 22); 2026-11-01 (§ 27A(7)–(9) pack forwarding, generic owners and returned references, MD-117; § 25 generic error channels, MD-120); 2026-10-31 (§ 27A(5) pack loops; § 21(11) hardware binding roots; § 21(12) hardware variants and operations); 2026-10-30 (§ 21(9) MD-113 shadow knowledge; § 21(8) MD-112 specialized hardware write requests); 2026-10-28 (§ 71(6) error-pattern plans, reachable-state proofs and Some construction, MD-029/MD-042/MD-102; §§ 58(6)–58(7) decimal plans and ArithmeticError, MD-066/MD-067); 2026-10-27 (§ 27A MD-117 heterogeneous variadic type packs; §§ 10(12), 28(6), 45(12a), 126.22(1) MD-115/MD-116 static roots and returned range origins; § 21(7) MD-114 register serialization); 2026-10-19 (§ 126 slice semantic values and § 106(5) version distinction; P16-05)
+- Last updated: 2026-11-25 (§ 51(6)–(8) Arena Reset exhaustion, MD-140); 2026-11-24 (§ 123B atomic capability evidence, MD-095); 2026-11-19 (§ 20(5)–(6) affine and logarithmic conversion plans, MD-048); 2026-11-18 (§ 127 owning dynamic arrays, P18 sync § 22); 2026-11-01 (§ 27A(7)–(9) pack forwarding, generic owners and returned references, MD-117; § 25 generic error channels, MD-120); 2026-10-31 (§ 27A(5) pack loops; § 21(11) hardware binding roots; § 21(12) hardware variants and operations); 2026-10-30 (§ 21(9) MD-113 shadow knowledge; § 21(8) MD-112 specialized hardware write requests); 2026-10-28 (§ 71(6) error-pattern plans, reachable-state proofs and Some construction, MD-029/MD-042/MD-102; §§ 58(6)–58(7) decimal plans and ArithmeticError, MD-066/MD-067); 2026-10-27 (§ 27A MD-117 heterogeneous variadic type packs; §§ 10(12), 28(6), 45(12a), 126.22(1) MD-115/MD-116 static roots and returned range origins; § 21(7) MD-114 register serialization); 2026-10-19 (§ 126 slice semantic values and § 106(5) version distinction; P16-05)
 - Document revision: 2.0
 - Sec language version: 0.1
 - Canonical path: `rules/compiler/semantic_ir.md`
@@ -1410,6 +1410,12 @@ ArenaDestroy
 § 51(4) Growable Arena planning must preserve prior live allocation addresses.
 
 § 51(5) Arena dependency across task/thread/FFI/result boundaries remains explicit or canonically recoverable.
+
+§ 51(6) (MD-140; `rules/corrections/applied/MD-140-arena-epoch-exhaustion-correction-2026-11-24-20261125.md`.) `ArenaReset` keeps its name and has no ordinary source result. It records the epoch-advance form fixed by Sema: a dynamic checked advance, a proof-eliminated check, or proof-eliminated epoch metadata, with the proof provenance for either elimination, the resolved logical width and representation policy, and the canonical exhaustion reason `panic.arena-epoch-exhaustion` (`rules/memory/arena.md` § 39(9)). Its success path keeps the `AdvanceEpoch` effect, the state-version transition and the cursor reset.
+
+§ 51(7) A dynamic checked advance has an exhaustion path that terminates through that registered panic with the Reset provenance, without committing the transition and without a normal successor. An equivalent checked-arithmetic form is valid when failure ordering and commit semantics are preserved; no new opcode is required.
+
+§ 51(8) The verifier rejects: an unchecked retained advance without valid proof; an omitted required check without proof; an elimination without adequate provenance; any other panic reason; a fallible Reset result; a rekey or other unauthorized exhaustion strategy; a normal continuation from the exhaustion endpoint; and a cursor reset, invalidation or publication ordered before an unresolved check. Construction never invents a proof or reads absent metadata as elimination.
 
 ---
 

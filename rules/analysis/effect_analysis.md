@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-04
-- **Last updated:** 2026-11-07 (stable chapter, subsection, and paragraph numbering)
+- **Last updated:** 2026-11-25 (§§ 23(6), 26(4) Arena epoch exhaustion, MD-140); 2026-11-07 (stable chapter, subsection, and paragraph numbering)
 - **Document revision:** 1
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/analysis/effect_analysis.md`
@@ -703,6 +703,13 @@ let total := left + right
 
 **§ 23(5)** A proven-safe check contributes no panic effect.
 
+**§ 23(6)** (MD-140; `rules/corrections/applied/MD-140-arena-epoch-exhaustion-correction-2026-11-24-20261125.md`.) An `Arena.Reset()` whose
+retained epoch exhaustion is neither proven impossible nor eliminated with its
+epoch metadata contributes `MayPanic` with the reason
+`panic.arena-epoch-exhaustion` and the Reset provenance
+(`rules/memory/arena.md` § 39(8)). Proven absence removes only this cause; the
+64-bit default width never establishes it.
+
 ---
 
 ## § 24 `try`
@@ -778,6 +785,12 @@ no unknown foreign abort or unwind accepted as safe.
 panic.md
 runtime_checks.md
 ```
+
+**§ 26(4)** (MD-140.) A `@noPanic` callable with a reachable Arena Reset whose
+exhaustion is unproven fails its proof; with proven nonexhaustion (or eliminated
+epoch metadata) and no other panic it satisfies the contract, and an unrelated
+reachable panic still fails it. The compile-time effect failure is distinct
+from the runtime panic itself.
 
 ---
 

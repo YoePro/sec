@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-24
-- **Last updated:** 2026-11-24 (§§ 19, 29–32 atomic context categories and capability proofs, MD-095); 2026-11-17 (§ 7 MD-034 freestanding allocation policy); 2026-09-24
+- **Last updated:** 2026-11-25 (§ 13 Arena epoch exhaustion, MD-140); 2026-11-24 (§§ 19, 29–32 atomic context categories and capability proofs, MD-095); 2026-11-17 (§ 7 MD-034 freestanding allocation policy); 2026-09-24
 - **Document revision:** 1
 - **Sec language version:** 0.1
 - **Repository baseline reviewed:** `45e5cd4`
@@ -269,6 +269,16 @@ A context may forbid reachable panic. If an owning analysis proves a panic path
 reachable in such a context, the program is invalid for that profile.
 
 Lack of a large runtime never turns reachable panic into undefined behavior.
+
+**MD-140 (2026-11-25; `rules/corrections/applied/MD-140-arena-epoch-exhaustion-correction-2026-11-24-20261125.md`).** A profile selects only the
+verified physical realization of a panic, never a different language outcome.
+In particular Arena Reset epoch exhaustion is the panic
+`panic.arena-epoch-exhaustion` for Hosted, RTOS, BareMetal and every derived or
+custom profile (`rules/memory/arena.md` § 39); a target trap is one possible
+realization. A profile or reference policy that selects rekeying, domain
+recreation, retirement or a fallible Reset for this API is invalid, and a
+shorter epoch width is resolved together with a justification consistent with
+that rule.
 
 ## 14. Typed resource constraints
 

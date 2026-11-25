@@ -114,6 +114,7 @@ func TestAtomicCapabilitiesPlanBinding(t *testing.T) {
 		"reference policy": func(p *ResolvedScalarPlan) {
 			p.References.LogicalEpochBits = 32
 			p.References.ShortWidthProof = "test-proof"
+			p.References.ArenaShortWidthSafety = ArenaEpochCheckedAdvance
 		},
 	} {
 		t.Run(name, func(t *testing.T) {

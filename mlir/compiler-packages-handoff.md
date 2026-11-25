@@ -6111,3 +6111,251 @@ layout/target race pass, vet pass. Governance check (47 fragments), fmt and
 owner paths (18) pass. Remaining: platform.atomics-v2 2 to 1;
 concurrency_atomics.yaml 10 to 9; compiler total 1993 to 1992. Partial unchanged.
 Workset released; no commit.
+
+## Claude claim — MD-140 correction integration (2026-11-25)
+
+Integrating rules/corrections/MD-140-arena-epoch-exhaustion-correction-2026-11-24.md
+into arena.md, reference_model.md, target_profiles.md, panic.md,
+runtime_checks.md, effect analysis, semantic_ir.md, the P19 package,
+missing-decisions.yaml and lowering/governance fragments. Rulebook and
+governance only; no code edits.
+
+## Codex claim — stack storage layout consumption (2026-11-25)
+
+Taking sema.stack-analysis's existing ResolvedLayout consumption point.
+Workset focused stack storage layout adapter and source-backed tests,
+governance/analysis.yaml. Object sizes/alignment and representation graphs
+come only from layout.Resolver; unsupported layouts preserve Unknown.
+Automatic materialization/liveness/frame construction stays separate.
+No rulebook, sec/, Arena/MD-140 or other governance edits. No commit.
+
+## Claude release — MD-140 correction integrated (2026-11-25)
+
+MD-140 (Arena epoch exhaustion) integrated: arena.md §§ 35(6), 38(8),
+39(1) replaced + 39(4)-(9), 40(7), 42(5), 105(4); reference_model.md § 40;
+target_profiles.md § 13; panic.md § 13(1), 13(8); runtime_checks.md
+§§ 7(6), 11(5), 39(6); effect_analysis.md §§ 23(6), 26(4); semantic_ir.md
+§ 51(6)-(8); P19 §§ 39, 41, 42 (alternatives replaced), 74, 94, 115, 152.
+Ledger MD-140 decided-implementation-pending (updated 2026-11-25).
+Governance by stage: frontend.panic +1 (reason registration),
+analysis.arena old rekey/retirement item replaced by the Sema stage,
+lowering.sec-mlir-package19 +3 (plan facts, Semantic IR, Sec MLIR and
+executable); P19-07 text points to them. Correction moved to applied/.
+Traceability, yamlstatus check, corrections audit and books --check pass.
+No code edits. Released; no commit.
+
+## Codex release — stack storage layout consumption (2026-11-25)
+
+Closed sema.stack-analysis's ResolvedLayout consumption point. New
+ResolveStackStorageLayout API maps resolved Sema types through the canonical
+layout resolver and publishes detached plan-qualified object evidence: exact
+size/alignment and reachable carrier/field/element/variant layouts. No parallel
+representation calculator. Complete sizes yield Exact bytes (including zero);
+incomplete/invalid/unsupported layouts retain their state and missing evidence
+and yield Unknown. Pointer/view/owning descriptors and unions stay unresolved
+until their owning layout stages exist. Automatic materialization, liveness,
+frame construction, machine measurement and budgets remain separate work.
+
+New stack_storage_layout.go, stack_storage_layout_test.go and
+testdata/sema/stack_storage_layout.sec cover source aggregate/array/named
+layouts and descriptor/atomic boundaries on 32/64-bit plans, changed/missing
+alignment, exact empty storage, unsupported union, reachable graph isolation
+and detached snapshots. Short Sema/layout/traceability pass
+(33.034s/0.010s/0.247s); focused normal/race pass (0.005s/1.030s), vet passes.
+Governance check/fmt/paths pass. analysis.yaml Remaining 337 to 336, Partial
+stays 6. Claude's concurrent MD-140 rulebook/governance work is preserved and
+is not part of this closure. Workset released; no commit.
+
+## Codex claim — MD-140 stage 1a panic registry (2026-11-25)
+
+Taking frontend.panic's existing MD-140 stage 1a whole point. Workset
+internal/diagnostics/panic_reasons.go and its registry tests,
+governance/errors.yaml. Register the distinct canonical exhaustion identity
+and static message at the next stable uint32 ID; preserve existing entries.
+No Reset/effect/IR/lowering or PanicInfo changes. No commit.
+
+## Codex release — MD-140 stage 1a panic registry complete (2026-11-25)
+
+Closed frontend.panic's existing registry point: new
+PanicReasonArenaEpochExhaustion = 12, exact canonical name
+panic.arena-epoch-exhaustion and static message
+"Arena validity epoch exhausted." in PanicReasonDefinition.Message.
+Existing IDs 1–11/names remain unchanged, including stale-reference ID 8;
+source PanicID stays uint32 and PanicInfo retains its five fields.
+No Reset, effect, provenance-transport, IR or executable exhaustion behavior
+claimed; those stages remain open. MD-140 remains implementation-pending.
+
+Diagnostics normal/race pass (0.002s/1.009s); vet passes. Complete short
+Sema/IR/traceability pass (39.349s/11.296s/0.413s). Broad panic/assertion
+CLI/LSP subset: compiler passed 41.691s; LSP timed out at 120s during
+TestPanicMentorLSPDiagnostics/isr_panic_paths_invalid. Focused LSP canonical
+PanicInfo completion passed separately (0.004s); no broad LSP success claim.
+Registry tests cover stable assignments, canonical message, distinct identity,
+uint32 representation, allocation-free lookups and detached snapshots.
+Governance check/fmt/paths pass. errors.yaml Remaining 33 to 32, Partial stays
+7. Earlier stack-layout and Claude MD-140 integration changes preserved.
+Working set released; no commit.
+
+## Codex claim — MD-140 stage 1b reference-plan facts (2026-11-25)
+
+Taking lowering.sec-mlir-package19's existing MD-140 stage 1b point.
+Workset internal/layout/reference_policy.go, scalar plan validation and
+focused tests/short-width fixtures; target Definition projection and tests;
+governance/lowering.yaml. The existing reference policy remains the sole
+logical-width source. Arena-specific policy permits only panic and explicitly
+justified shorter checked advancement; non-Arena retirement remains distinct.
+No Reset effect/IR/runtime implementation, rulebook or sec/ edits. No commit.
+
+## Codex release — MD-140 stage 1b reference-plan facts complete (2026-11-25)
+
+Closed lowering.sec-mlir-package19's MD-140 stage 1b point. The existing
+ResolvedReferencePolicy remains the sole width source; new
+ResolveArenaEpochPolicy projects its full logical width and Arena's panic-only
+outcome. Zero policy keeps 64 bits even on 32-bit targets. ScalarPlan validation
+rejects Arena rekey, domain recreation, retirement, fallible, unchecked or
+unknown outcomes; a target trap is a panic realization, not another outcome.
+Shorter widths require explicit ArenaEpochCheckedAdvance safety plus nonempty
+producer justification. Generic non-Arena retirement remains valid in the
+general policy but cannot silently justify short Arena epochs. This plan
+selection never proves nonexhaustion or check/metadata elimination.
+
+Target Definition now carries References through ScalarPlan; registered defaults
+and local-copy immutability are tested. Existing JSON/fingerprint paths retain
+the additional policy. Updated only short-width cache/capability test fixtures
+to select conforming checked advancement. Two touched reference functions gained
+rule comments and left the traceability baseline. package19-todo synchronized.
+No Reset effects/IR/runtime, rulebook, sec/ or prior-work changes.
+
+Complete short layout/platform/project/Sema/IR/traceability pass (Sema 31.232s,
+IR 9.000s); final focused Sema policy transport 0.003s and traceability 0.213s.
+Full layout/target race pass (1.074s/1.391s), vet passes. Short complete lowering
+passes with SEC_MLIR_BIN (allocation 0.105s, defaults 0.179s, secmlir 20.119s);
+go build ./... passes. Governance check/fmt/paths and diff whitespace checks pass.
+T04–T09 plan coverage and T48 generic-policy boundary covered; no executable
+exhaustion success claim. lowering.yaml Remaining 113 to 112, Partial stays 7.
+MD-140 remains implementation-pending. Workset released; no commit.
+
+## Codex claim — transactional C-binding change plans (2026-11-25)
+
+Taking tooling.workspace-harness remaining item 1 in full: shared typed
+plan/diff/apply with input SHA-256, concrete patch preview, validation effects,
+explicit caller approval and stale-input refusal, using cbindings.Apply.
+Workset internal/platform/cbindings transaction service, existing compiler
+platform_cbindings adapter and tests, governance/tooling.yaml and handoff.
+No Arena/P19/MD-140 implementation, source-language or sec/ changes. No commit.
+
+## Codex release — transactional C-binding change plans complete (2026-11-25)
+
+Closed tooling.workspace-harness's original transactional plan/diff/apply
+remaining point in full. Shared cbindings.PlanChange/ApplyChange use the owning
+Apply parser/model/edit validator, with detached typed operations, deterministic
+version-1 JSON, exact named target, input/output SHA-256, contextual unified
+patch, validation consequences and a digest of the whole reviewable proposal.
+All six existing mutation kinds accept read-only --plan / --plan --json.
+apply-plan PLAN.json --approve PLAN_SHA256 requires separate caller approval;
+JSON never authorizes itself. Re-reading and regenerating the proposal reject
+modified previews/operations/validation/output and stale/deleted inputs. A
+fresh no-op never rewrites. Direct authorized CLI edits use the same service.
+
+Extracted the existing same-directory replacement primitive, retaining comments
+through Apply and file permissions through replacement. Cooperating in-process
+applications serialize the last hash check and rename; arbitrary independent
+writers are not covered by a portable compare-and-swap guarantee. BUG-000052
+records a static pre-fix finding: nil expected hash was documented as requiring
+absence but never rechecked it. It now rejects existing destinations; regressions
+verify preserved target bytes, temporary removal and one concurrent commit.
+No timed pre-fix race or full host-filesystem failure matrix is claimed.
+
+Own files: internal/platform/cbindings/{change_plan.go,atomic_file.go,
+change_plan_test.go,edit.go,TRANSACTIONS.md}; cmd/compiler/{platform_cbindings.go,
+platform_cbindings_plan.go,platform_cbindings_plan_test.go,cli_help.go};
+rules/tooling/cli.md (revision 1.4, section 8(7)); language-rulebook-status.md;
+governance/tooling.yaml; bug-reports/index.yaml and
+fixed/BUG-000052-c-bindings-creation-expectation.md; this handoff.
+
+Validation: complete short cbindings/cbindingplan/traceability suites pass
+(0.010s/0.001s/0.200s); complete owning-package race passes (1.057s/1.007s).
+Focused compiler race pass (8.185s), including subprocess CLI plan/apply/help
+and all six mutation kinds; focused existing LSP C-binding resolution passes
+(3.620s). Vet passes. Positive/negative tests cover exact approval, stale and
+deleted inputs, detached requests, modified/rehashed plans, malformed/unknown/
+trailing JSON, invalid TOML/path, deterministic JSON, comments, permissions,
+no-op identity, duplicate application and concurrent commits.
+
+tooling.yaml canonical formatting and 12 owner path references pass; diff
+whitespace checks pass. Global yamlstatus check reports 12 problems in the
+three unindexed governance/licensing/{licensing,patent-register,third-party}.yaml
+files (missing registry entry and missing area/purpose/integrations headers).
+They were present before this work and are outside this workset. A temporary
+copy of the 47 indexed root fragments passes with 0 problems; no licensing
+files changed. Own counts: tooling.yaml Remaining 23 -> 22;
+tooling.workspace-harness 6 -> 5, Partial unchanged. MCP adapter, project-root
+harness policy, provider edits and full acceptance remain separate items.
+
+Latest shared handoff read before release; no new Claude claim/request there.
+No Arena/P19/MD-140/source-language/sec/ changes, no new MD, no commit or shared
+binary rebuild. Working set released.
+
+## Codex claim — project-confined harness safety model (2026-11-25)
+
+Taking tooling.workspace-harness remaining item 2 (safety model) in full.
+Workset internal/platform/cbindings project-bound workspace facade, shared
+transaction/atomic I/O factoring, focused tests/docs, governance/tooling.yaml
+and handoff. Explicit trusted-caller authorization and truthful read/write tool
+metadata; only the named C-binding config under the selected Sec project root.
+No MCP transport, general shell/network/write tools, MD-139 provider edits or
+Arena/P19/MD-140 changes. No commit/shared executable rebuild.
+
+## Codex release — harness safety model complete (2026-11-25)
+
+Closed tooling.workspace-harness's entire existing safety-model item.
+New cbindings.Workspace exposes a closed inspect/validate/plan/diff/apply facade
+with truthful read-only/mutating and authorization metadata. The trusted host
+selects a root and installs a WorkspaceAuthorizer; nil is read-only. Tool/model
+input cannot replace root/policy or supply authorization. Apply asks the host
+policy about the exact project-bound plan digest, file and typed operation.
+Hashes identify reviewed content; they are not authorization credentials.
+
+Opening requires a valid canonical project manifest at that explicit root,
+never parent/cwd discovery. Rooted OS filesystem I/O confines reads, temporary
+creation, final checks, removal and rename to the selected project. The only
+allowed edit path is .sec/platform/c-bindings.toml. Absolute/traversal/other
+files, changed/foreign project plans and forged plans reject before policy/I/O.
+Symlink escapes installed before opening/inspection, after review or during
+authorization fail closed, including parent-directory replacement. Hosts lacking
+the required Root guarantee (js/plan9) reject opening. This is directory
+containment, not a process sandbox or a denial of mount/device access.
+
+Factored pure plan construction and transaction I/O adapters from the existing
+service; there is still one owning parser/model/editor, approval validation and
+atomic replacement algorithm. The ordinary explicit-file CLI remains unchanged;
+only the restricted facade belongs on the future harness tool surface. No
+shell/network/unrestricted write operation exists in that catalogue. Structural
+validation does not promote unknown/unavailable target/provider capabilities.
+No MCP adapter, profile/provider edit or complete harness acceptance claim.
+
+Own files this turn: new internal/platform/cbindings/{workspace.go,
+workspace_test.go,WORKSPACE.md}; shared change_plan.go and atomic_file.go;
+TRANSACTIONS.md; governance/tooling.yaml; this handoff. Earlier transaction/
+BUG-000052/CLI/rulebook edits remain intact; no new bug or MD was needed.
+
+Validation: complete short cbindings/cbindingplan/project/traceability pass
+(0.019s/0.001s/0.205s/0.205s). Complete final cbindings/cbindingplan race pass
+(1.091s/1.007s); compiler CBindings/CBinding/CLIHelp race pass (8.171s), including
+public subprocess plan/apply/help. Final focused workspace tests pass (0.008s)
+and vet passes. Existing LSP C-binding resolution passes (3.324s). Tests cover
+metadata, read-only byte/inode stability, detached inspection, exact denied and
+approved host authorization, missing/invalid projects, scope/path/project-plan
+rejection, live symlink swaps, zero/closed handles, concurrency and canonical
+source/target-schema validation without a capability claim.
+
+Own counts: tooling.yaml Remaining 22 -> 21; tooling.workspace-harness 5 -> 4;
+Partial unchanged. Canonical formatting, 14 owner paths and diff whitespace
+checks pass. Global governance check still reports the same 12 problems in
+unindexed governance/licensing/{licensing,patent-register,third-party}.yaml;
+no licensing files touched. A snapshot of the 47 indexed root fragments passes
+with 0 problems. Shareable new docs contain no private workspace paths.
+
+Latest shared handoff read immediately before release; no new Claude request
+or overlapping claim there. No Arena/P19/MD-140 or sec/ changes, no commit or
+shared binary rebuild. Working set released.

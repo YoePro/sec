@@ -1,0 +1,21 @@
+version = 1
+
+# Initial configuration: deliberately limited to newly authored policy files.
+# Expand after rights/provenance review. Do not apply a blanket glob to the
+# repository, third_party/, generated code, existing binaries or mixed sources.
+# The holder below follows the existing vscode/LICENSE; confirm at adoption.
+[[annotations]]
+path = ["LICENSE.md", "CONTRIBUTING.md", "CODE_OF_CONDUCT.md", "CONTRIBUTORS.md", "THIRD_PARTY_NOTICES.md", "governance/licensing/**"]
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 Jonas"
+SPDX-License-Identifier = "CC-BY-4.0"
+
+[[annotations]]
+path = "REUSE.toml"
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 Jonas"
+SPDX-License-Identifier = "MIT"
+
+# The DCO is a verbatim-only document, not MIT or CC BY. A custom license
+# identifier may be added during the REUSE rollout if needed by the linter.
+# Existing source files and docs are not yet annotated; lint is expected to fail.

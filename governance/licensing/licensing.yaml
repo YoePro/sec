@@ -1,0 +1,35 @@
+schema_version: 1
+status: proposed
+revision: 1
+date: '2026-11-25'
+scope: legal_compliance_not_implementation_status
+baseline_commit: 6e589f2843aa3fc1fa812ad11f574d6d924b6dcf
+first_party:
+  software: MIT
+  specification_and_documentation: CC-BY-4.0
+  original_embedded_code_examples: MIT OR CC-BY-4.0
+contributions:
+  mechanism: DCO-1.1
+  status: pending_maintainer_adoption
+  copyright_assignment: false
+metadata:
+  standard: REUSE-3.3
+  identifiers: SPDX
+  status: partial_configuration
+registers:
+  third_party: third-party.yaml
+  patents: patent-register.yaml
+release_requirements:
+- verified_rights_and_notices
+- artifact_specific_dependency_inventory
+- artifact_specific_sbom
+- distribution_license_verification
+adoption_gates:
+  copyright_identity: pending
+  historical_provenance: pending
+  file_classification: pending
+  dependency_license_audit: pending
+  release_notice_bundle: pending
+  reuse_lint: pending
+  dco_enforcement: pending
+  patent_review: not_started

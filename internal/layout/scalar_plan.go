@@ -63,6 +63,7 @@ type ResolvedScalarPlan struct {
 // policies and atomic/IPC capability snapshots bound to a different plan.
 // Rules: rules/memory/layout.md — §5; rules/platform/abi.md — §19;
 // rules/memory/reference_model.md — §§33–34;
+// rules/memory/arena.md — §39(4),(7),(9) (MD-140 Arena policy).
 // rules/concurrency/atomics.md — §37(1–5); rules/concurrency/ipc.md — §§118–124.
 // rules/concurrency/mutex.md — §§27,60 (target/profile lock contracts).
 // rules/concurrency/cancellation.md — §24 (physical-thread identity contract).
@@ -79,7 +80,7 @@ func (p ResolvedScalarPlan) Validate() error {
 	if err := p.CABI.Validate(); err != nil {
 		return err
 	}
-	if err := p.References.Validate(); err != nil {
+	if _, err := p.References.ResolveArenaEpochPolicy(); err != nil {
 		return err
 	}
 	if p.CABI.Defined() && p.CABI.PointerWidthBits != p.PointerWidthBits {

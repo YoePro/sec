@@ -243,6 +243,7 @@ type analyseReport struct {
 	completed    bool
 	conformances []analysisConformance
 	stack        []analysisStackCallable
+	arenaDemand  []analysisArenaDemand
 }
 
 type analyseSection struct {
@@ -323,6 +324,9 @@ func buildAnalyseReport(analyzer *sema.Analyzer, selected map[string]bool, targe
 	}
 	if family == "" || family == "closures" {
 		report.addClosures(analyzer, inSelection)
+	}
+	if family == "" || family == "arena-demand" {
+		report.addArenaDemand(analyzer, inSelection)
 	}
 	if report.depth != sema.AnalysisDeep {
 		report.limitations = append(report.limitations, fmt.Sprintf("depth %s: advisory refinement may be reduced; anything not proven is reported as unproven, never as valid", report.depth))
@@ -778,6 +782,7 @@ func (r analyseReport) document(command analyseCommand, occurrences []emittedOcc
 	document.Diagnostics = selectedDiagnostics
 	document.Conformances = append([]analysisConformance{}, r.conformances...)
 	document.Stack = append([]analysisStackCallable(nil), r.stack...)
+	document.ArenaDemand = append([]analysisArenaDemand(nil), r.arenaDemand...)
 	for _, finding := range r.findings {
 		entry := analysisReportFinding{
 			Analysis: finding.Family, Class: string(finding.Class), Rule: finding.Rule, Message: finding.Message,

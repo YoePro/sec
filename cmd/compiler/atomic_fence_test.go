@@ -37,9 +37,11 @@ func TestAtomicFenceSurface(t *testing.T) {
 	}
 }
 
-// emit-ir prints the atomic.fence operation with its established order;
-// Sec MLIR schema 11 has no fence operation and rejects the module with an
-// explicit unsupported-lowering error and no output (atomics.md § 40(2)).
+// emit-ir prints the atomic.fence operation with its established order and
+// capability obligation; Sec MLIR emission fails closed with no output. The
+// registered target has no atomic capability facts, so the MD-095 gate stops
+// it as unverifiable (atomics.md §§ 37A(12), 40(2), 47(9)) before the
+// missing fence lowering would.
 func TestAtomicFenceEmitRoutes(t *testing.T) {
 	file := "../../testdata/sema/atomic_fence_lowering_valid.sec"
 	stdout, stderr, code := runCLIForDiagnostics(t, "emit-ir", file)
@@ -47,7 +49,7 @@ func TestAtomicFenceEmitRoutes(t *testing.T) {
 		t.Fatalf("emit-ir: %d %s %s", code, stdout, stderr)
 	}
 	stdout, stderr, code = runCLIForDiagnostics(t, "emit-sec-mlir", file)
-	if code == 0 || stdout != "" || !strings.Contains(stderr, "does not support atomic.fence") {
+	if code == 0 || stdout != "" || !strings.Contains(stderr, "[S1265]") || !strings.Contains(stderr, "insufficient atomic capability evidence") || !strings.Contains(stderr, "atomic.Fence in main::Publish() cannot be verified for Ordinary") {
 		t.Fatalf("emit-sec-mlir: %d %q %s", code, stdout, stderr)
 	}
 }

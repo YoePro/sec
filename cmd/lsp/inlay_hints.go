@@ -43,10 +43,18 @@ type inlayHintSettings struct {
 	Parameters bool `json:"parameters"`
 	Ownership  bool `json:"ownership"`
 	Defaults   bool `json:"defaults"`
+	Generics   bool `json:"generics"`
+	Errors     bool `json:"errors"`
+	Overloads  bool `json:"overloads"`
+	Units      bool `json:"units"`
+	Contracts  bool `json:"contracts"`
+	Allocation bool `json:"allocation"`
+	Targets    bool `json:"targets"`
 }
 
 func defaultInlayHintSettings() inlayHintSettings {
-	return inlayHintSettings{Types: true, Parameters: true, Ownership: true, Defaults: true}
+	return inlayHintSettings{Types: true, Parameters: true, Ownership: true, Defaults: true, Generics: true, Errors: true,
+		Overloads: true, Units: true, Contracts: true, Allocation: true, Targets: true}
 }
 
 // inlayHintSettingsFrom reads `{"inlayHints": {...}}` from initialization
@@ -84,6 +92,20 @@ func inlayHintSettingsFrom(current inlayHintSettings, raw json.RawMessage) inlay
 	if hints.Defaults != nil {
 		current.Defaults = *hints.Defaults
 	}
+	if hints.Generics != nil {
+		current.Generics = *hints.Generics
+	}
+	if hints.Errors != nil {
+		current.Errors = *hints.Errors
+	}
+	for _, flag := range []struct {
+		value  *bool
+		target *bool
+	}{{hints.Overloads, &current.Overloads}, {hints.Units, &current.Units}, {hints.Contracts, &current.Contracts}, {hints.Allocation, &current.Allocation}, {hints.Targets, &current.Targets}} {
+		if flag.value != nil {
+			*flag.target = *flag.value
+		}
+	}
 	return current
 }
 
@@ -92,6 +114,13 @@ type inlayHintSettingsPayload struct {
 	Parameters *bool `json:"parameters"`
 	Ownership  *bool `json:"ownership"`
 	Defaults   *bool `json:"defaults"`
+	Generics   *bool `json:"generics"`
+	Errors     *bool `json:"errors"`
+	Overloads  *bool `json:"overloads"`
+	Units      *bool `json:"units"`
+	Contracts  *bool `json:"contracts"`
+	Allocation *bool `json:"allocation"`
+	Targets    *bool `json:"targets"`
 }
 
 // inlayHintsForSource answers textDocument/inlayHint from Sema facts:
@@ -115,7 +144,8 @@ func inlayHintsForSource(uri string, text string, requested lspRange, settings i
 			hints = []inlayHint{}
 		}
 	}()
-	if !settings.Types && !settings.Parameters && !settings.Ownership && !settings.Defaults {
+	if !settings.Types && !settings.Parameters && !settings.Ownership && !settings.Defaults && !settings.Generics && !settings.Errors &&
+		!settings.Overloads && !settings.Units && !settings.Contracts && !settings.Allocation && !settings.Targets {
 		return hints
 	}
 	program := parseProgramForLSP(uri, text)
@@ -163,6 +193,11 @@ func inlayHintsForSource(uri string, text string, requested lspRange, settings i
 	}
 
 	walkLSPNodes(program, func(node any) {
+		if expression, ok := node.(ast.Expression); ok && settings.Units {
+			if hint, ok := unitConversionHint(analyzer, text, expression, inThisFile); ok {
+				add(hint)
+			}
+		}
 		switch node := node.(type) {
 		case *ast.StructLiteral:
 			if settings.Defaults && node != nil && inThisFile(node.Token) {
@@ -194,6 +229,12 @@ func inlayHintsForSource(uri string, text string, requested lspRange, settings i
 			hint.detail = node.Name.Value + ": " + name
 			hint.declaration, _ = analyzer.ResolvedTypeDeclarationLocation(binding.Type)
 			add(hint)
+		case *ast.TryExpression:
+			if settings.Errors && node != nil && inThisFile(node.Token) {
+				if hint, ok := tryErrorTypeHint(analyzer, text, node); ok {
+					add(hint)
+				}
+			}
 		case *ast.MatchExpression:
 			if settings.Ownership && node != nil && inThisFile(node.Token) {
 				for _, hint := range matchBindingOwnershipHints(analyzer, text, node) {
@@ -204,9 +245,23 @@ func inlayHintsForSource(uri string, text string, requested lspRange, settings i
 			if node == nil || !inThisFile(node.Token) {
 				return
 			}
+			if settings.Contracts {
+				// A constrained conversion is not a resolved function call.
+				if hint, ok := contractCheckHint(analyzer, text, node); ok {
+					add(hint)
+				}
+			}
 			resolved, ok := analyzer.ResolvedCallTarget(node)
 			if !ok {
 				return
+			}
+			if settings.Generics {
+				if hint, ok := genericInstantiationHint(analyzer, text, node, resolved.Function); ok {
+					add(hint)
+				}
+			}
+			for _, hint := range callFactHints(program, analyzer, text, node, resolved.Function, settings) {
+				add(hint)
 			}
 			if settings.Ownership {
 				for _, hint := range callArgumentOwnershipHints(analyzer, text, node, resolved.Function) {

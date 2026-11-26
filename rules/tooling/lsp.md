@@ -2164,8 +2164,44 @@ or unmatched hints are rejected; changed or closed source snapshots require a
 fresh hint request. Resolve uses the read-only worker queue and is superseded by
 queued document changes or close notifications.
 
-**§ 17(7)** Pending: generic instantiation, resolved
-overload, unit conversion, contract, error type, allocation and target hints.
+**§ 17(7)** All categories of § 17(7a)–(7b) are implemented (2026-11-26);
+no hint category is pending.
+
+**§ 17(7a)** Implemented (2026-11-26), each individually switchable:
+
+- generic instantiation (`sec.inlayHints.generics`): `[T1, T2]` after the
+  callee name of a call to a generic function that spells no type arguments,
+  from Sema's resolved substitution in the template's declared parameter
+  order. Explicit type arguments, type packs, partial or symbolic
+  substitutions and unresolved callees get no hint;
+- error type (`sec.inlayHints.errors`): after a propagating `try`, `↑ E` for
+  the Result error that leaves the enclosing callable (including arithmetic,
+  bounds and failure-set propagation), `↑ None` for Option propagation and
+  `↑ test fails: E` at a test boundary (`errorhandling.md` § 41). A locally
+  handled `try` and unresolved facts get no hint.
+
+Both are on by default, follow the active-file and requested-range filters of
+§ 17(2), resolve through § 17(5) and never change source.
+
+**§ 17(7b)** Implemented (2026-11-26), each individually switchable and on by
+default; call hints sit right after the callee name:
+
+- resolved overload (`sec.inlayHints.overloads`): `overload(T1, T2)` with the
+  selected overload's parameter types when the name has several declarations;
+- unit conversion (`sec.inlayHints.units`): `A→B ×factor` (and `+offset`)
+  before an expression Sema converts implicitly, from its exact conversion
+  plan; identity conversions get none;
+- contract check (`sec.inlayHints.contracts`): `checks range lo..hi`,
+  `checks in [..]` or the predicate kind after a conversion into a constrained
+  type that Sema checks at run time; a constant argument already proven gets
+  none;
+- allocation (`sec.inlayHints.allocation`): `allocates` after a call whose
+  callee Sema proves may allocate; unknown allocation behavior is never
+  claimed;
+- target (`sec.inlayHints.targets`): the `@target`/`@when` attributes of the
+  called declaration that the active plan selected.
+
+They follow the same filters, resolve and no-source-change rules as § 17(7a).
 
 **§ 17(8)** Possible categories:
 

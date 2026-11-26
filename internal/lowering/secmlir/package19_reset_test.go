@@ -126,6 +126,8 @@ fn main() int {
 		// Cursor reset (§ 80): two 50 x int32 windows peak at 200 + 3
 		// alignment padding bytes, not their 406-byte sum.
 		`sec.arena_demand_summary = [{bytes = "203", capacity_bytes = "256"`,
+		// MD-140 (v15 § 11): the checked 64-bit advance and its reason.
+		`epoch_advance = "checked", epoch_width = 64 : i32, exhaustion_reason = "panic.arena-epoch-exhaustion"`,
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("schema-15 module lacks %q:\n%s", want, text)

@@ -509,6 +509,7 @@ func formatOperation(out *strings.Builder, op Operation) {
 		}
 	case OpAtomicFence:
 		fmt.Fprintf(out, " order=%s", op.AtomicOrder)
+		formatAtomicEvidence(out, op.AtomicEvidence)
 	case OpAtomicLoad, OpAtomicStore, OpAtomicReadModifyWrite, OpAtomicCompareExchange:
 		for _, operand := range op.Operands {
 			fmt.Fprintf(out, " %%%d", operand)
@@ -523,6 +524,7 @@ func formatOperation(out *strings.Builder, op Operation) {
 				storage = "resolved"
 			}
 			fmt.Fprintf(out, " storage=%s", storage)
+			formatAtomicEvidence(out, op.AtomicEvidence)
 			for _, path := range facts.Paths {
 				name := path.Variant
 				if name == "" {

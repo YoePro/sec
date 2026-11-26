@@ -12,7 +12,7 @@ import (
 // Generic source types feed the canonical layout cache with their concrete
 // identity and plan. A warm snapshot equals cold resolution even when local IDs
 // start elsewhere; target, substitution and declaration changes never reuse it.
-// Rules: rules/memory/layout.md §§3(5),26,43(5),44(3);
+// Rules: rules/memory/layout.md §§3(5),26,33-35,43(5),44(3);
 // rules/mlir/packages/sec-mlir-dialect_package24.md §9.
 func TestGenericLayoutCache(t *testing.T) {
 	data, err := os.ReadFile("../../testdata/sema/generic_layout_cache.sec")
@@ -43,6 +43,9 @@ func TestGenericLayoutCache(t *testing.T) {
 			before := cache.Hits()
 			cold := newResolver(nil)
 			expected := cold.Resolve(req)
+			if expected.Stability != layout.LayoutNativeUnstable || expected.StabilityReason == "" {
+				t.Fatal("native generic aggregate gained a stability guarantee", expected)
+			}
 			wantSize := []int64{32, 4, 16}[index]
 			if bits == 32 && index == 0 {
 				wantSize = 16
@@ -60,6 +63,9 @@ func TestGenericLayoutCache(t *testing.T) {
 			warm.Resolve(LayoutRequirementOf(builtinType("int64")))
 			before = cache.Hits()
 			got = warm.Resolve(req)
+			if got.Stability != expected.Stability || got.StabilityReason != expected.StabilityReason {
+				t.Fatal("warm snapshot lost stability evidence", got)
+			}
 			if cache.Hits() != before+1 || got.TypeIdentity != expected.TypeIdentity || got.SizeBytes.Cmp(expected.SizeBytes) != 0 || got.AlignBytes.Cmp(expected.AlignBytes) != 0 {
 				t.Fatalf("warm %d/%d: %+v", bits, index, got)
 			}

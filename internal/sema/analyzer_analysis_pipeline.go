@@ -48,6 +48,10 @@ func (a *Analyzer) runSemanticAnalysisPipeline(program *ast.Program) {
 			run: once(func() { a.validateNoBlockGuarantees(program) })},
 		{id: "execution-context", dependencies: []string{"callable-bodies"}, priority: 71,
 			run: once(func() { a.validateExecutionContextRequirements() })},
+		{id: "atomic-capability", dependencies: []string{"callable-bodies"}, priority: 72,
+			run: once(func() { a.resolveAtomicCapabilities(program) })},
+		{id: "arena-demand-report", dependencies: []string{"callable-bodies"}, priority: 73,
+			run: once(func() { a.collectArenaDemandReports(program) })},
 		{id: "parameter-demand", dependencies: []string{"callable-bodies", "no-panic", "no-alloc", "no-block"}, priority: 80,
 			run: func() analysisStepResult {
 				a.parameterUsageAnalysis = buildParameterUsageAnalysis(program, a)

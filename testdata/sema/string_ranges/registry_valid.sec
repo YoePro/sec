@@ -1,0 +1,30 @@
+module main
+
+fn Inspect(view: StringView, prefix: StringView) void {
+    let count: uint := view.Len
+    let size: uint := view.SizeOf
+    let empty: bool := view.IsEmpty()
+    let scalar: Result[rune, IndexError] := view.GetRune(0)
+    let direct: rune := view.RuneAt(0)
+    let encoded: Result[byte, IndexError] := view.GetByte(0)
+    let raw: byte := view.ByteAt(0)
+    let latin: char := view.CharAt(0)
+    let starts: bool := view.StartsWith(prefix)
+    let owned: Result[string, StringError] := view.ToString()
+}
+
+fn Select(text: ref string, a: uint, b: uint) Result[StringView, RangeError] {
+    return Ok(try text[a..<b])
+}
+
+type Buffer struct {}
+impl Buffer {
+    fn Slice(a: uint, b: uint) uint { return a }
+}
+fn Ordinary(value: ref Buffer) uint { return value.Slice(0, 1) }
+
+type Text string
+impl Text {
+    fn Slice(a: uint, b: uint) uint { return a }
+}
+fn Named(value: Text) uint { return value.Slice(0, 1) }

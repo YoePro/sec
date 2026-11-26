@@ -216,6 +216,41 @@
           "type": "boolean",
           "default": true,
           "markdownDescription": "Show ownership effects the source does not spell: implicit `ref`/`ref mut` call-site borrows, semantic copies, and match bindings that move a payload if their arm is selected."
+        },
+        "sec.inlayHints.generics": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Show the inferred type arguments of a generic call that does not spell them."
+        },
+        "sec.inlayHints.errors": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Show the error type a propagating `try` passes to the enclosing function."
+        },
+        "sec.inlayHints.overloads": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Show the parameter types of the selected overload when a name has several."
+        },
+        "sec.inlayHints.units": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Show implicit unit conversions with their exact factor."
+        },
+        "sec.inlayHints.contracts": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Show the runtime contract checks of a conversion into a constrained type."
+        },
+        "sec.inlayHints.allocation": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Show `allocates` after calls the compiler proves may allocate."
+        },
+        "sec.inlayHints.targets": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Show the `@target`/`@when` selection of the called declaration."
         }
       }
     }

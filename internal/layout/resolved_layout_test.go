@@ -52,7 +52,7 @@ func TestResolvedLayoutRecords(t *testing.T) {
 	layout := resolver.Resolve(scalar("int32", ScalarSigned, 32, false))
 	if layout.ID == 0 || layout.TypeIdentity != "int32" || layout.Contract != NativeLayoutContract || layout.Kind != LayoutScalar ||
 		layout.Scalar != ScalarSigned || layout.PlanKey != resolver.Key() || !layout.Complete() || layout.Provenance != "scalar:signed" ||
-		layout.Stability != LayoutPlanLocal || layout.ValidBitPattern != "all 32-bit patterns" {
+		layout.Stability != LayoutTargetStable || layout.ValidBitPattern != "all 32-bit patterns" {
 		t.Fatalf("record = %+v", layout)
 	}
 	layout.SizeBytes.SetInt64(99)

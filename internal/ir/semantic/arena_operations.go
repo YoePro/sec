@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	"sec/internal/diagnostics"
+	"sec/internal/layout"
 	"sec/internal/sema"
 )
 
@@ -40,6 +42,68 @@ type ArenaOperationFacts struct {
 	DependencyProof            string
 	RetainedBorrow             uint32
 	FailureAtomic              bool
+	// EpochAdvance is the Reset epoch exhaustion fact (MD-140); zero for
+	// every other operation.
+	EpochAdvance ArenaEpochAdvanceFacts
+}
+
+// ArenaEpochAdvanceFacts records how a Reset advances its retained validity
+// epoch, as fixed by Sema: the form (checked, proven-bounded or
+// metadata-eliminated), the proof provenance of an elimination, the logical
+// width, the single panic outcome and the registered exhaustion reason. The
+// Semantic IR epoch is logical, so a checked advance's terminal exhaustion
+// path is this op's registered panic; its physical test is materialized by
+// lowering before any part of the transition (semantic_ir.md § 51(7)).
+// Rules: rules/compiler/semantic_ir.md — § 51(6)-(8);
+// rules/memory/arena.md — §§ 39(1), 39(5)-(9), 42(5).
+type ArenaEpochAdvanceFacts struct {
+	Form             string
+	Proof            string
+	LogicalEpochBits uint16
+	Exhaustion       string
+	PanicReasonID    uint32
+	PanicReason      string
+}
+
+// verifyArenaEpochAdvance enforces semantic_ir.md § 51(8) on a Reset: a known
+// form; a checked advance carries no proof while an elimination needs proof
+// provenance; a valid logical width; the panic outcome only (never rekey,
+// recreation, retirement or fallible Reset); and exactly the registered
+// panic.arena-epoch-exhaustion reason. Other operations carry no such fact.
+// Rules: rules/compiler/semantic_ir.md — § 51(6)-(8); rules/errors/panic.md — § 13(8).
+func verifyArenaEpochAdvance(op Operation) error {
+	e := op.Arena.EpochAdvance
+	if op.Kind != OpArenaReset {
+		if e != (ArenaEpochAdvanceFacts{}) {
+			return fmt.Errorf("%s carries a Reset epoch-advance fact", op.Kind)
+		}
+		return nil
+	}
+	switch e.Form {
+	case string(sema.ArenaEpochAdvanceChecked):
+		if e.Proof != "" {
+			return fmt.Errorf("arena.reset checked advance carries an elimination proof")
+		}
+	case string(sema.ArenaEpochAdvanceProvenBounded), string(sema.ArenaEpochAdvanceMetadataEliminated):
+		if e.Proof == "" {
+			return fmt.Errorf("arena.reset %s advance requires proof provenance", e.Form)
+		}
+	default:
+		return fmt.Errorf("arena.reset requires a resolved epoch-advance form, got %q", e.Form)
+	}
+	switch e.LogicalEpochBits {
+	case 8, 16, 32, 64:
+	default:
+		return fmt.Errorf("arena.reset requires a resolved logical epoch width, got %d", e.LogicalEpochBits)
+	}
+	if e.Exhaustion != string(layout.ArenaEpochPanic) {
+		return fmt.Errorf("arena.reset exhaustion outcome must be panic, got %q", e.Exhaustion)
+	}
+	definition, ok := diagnostics.PanicReasonByID(diagnostics.PanicReasonArenaEpochExhaustion)
+	if !ok || e.PanicReasonID != uint32(definition.ID) || e.PanicReason != definition.Name {
+		return fmt.Errorf("arena.reset exhaustion must use the registered panic.arena-epoch-exhaustion reason, got %d %q", e.PanicReasonID, e.PanicReason)
+	}
+	return nil
 }
 
 // isArenaOperation recognizes only the eight owner operations, not context
@@ -107,6 +171,9 @@ func verifyArenaOperation(module *Module, op Operation, values map[ValueID]Value
 		if f.EpochBefore == 0 || f.EpochBefore != f.EpochAfter {
 			return fmt.Errorf("%s preserves the validity epoch", op.Kind)
 		}
+	}
+	if err := verifyArenaEpochAdvance(op); err != nil {
+		return err
 	}
 	if b.Transition != transition {
 		return fmt.Errorf("%s requires canonical storage transition %s", op.Kind, transition)
@@ -282,6 +349,9 @@ func formatArenaOperation(out *strings.Builder, op Operation) {
 	formatArenaParent(out, f.Parent)
 	fmt.Fprintf(out, " {state=#%d->#%d epoch=#%d->#%d backing=%s growth=%s atomic=%t", f.StateBefore, f.StateAfter, f.EpochBefore, f.EpochAfter, f.BackingKind, f.GrowthKind, f.FailureAtomic)
 	fmt.Fprintf(out, " provider=%q capacity=%q layout=%q default=%q dependency=%q retained-borrow=#%d}", f.ProviderPlan, f.CapacityPlan, f.LayoutPlan, f.DefaultPlan, f.DependencyProof, f.RetainedBorrow)
+	if e := f.EpochAdvance; e != (ArenaEpochAdvanceFacts{}) {
+		fmt.Fprintf(out, " {epoch-advance=%s width=%d exhaustion=%s reason=%s#%d proof=%q}", e.Form, e.LogicalEpochBits, e.Exhaustion, e.PanicReason, e.PanicReasonID, e.Proof)
+	}
 	if op.Reference != nil {
 		formatReferenceMetadata(out, op.Reference)
 	}

@@ -668,13 +668,13 @@ integrations:
     tests:
       - cmd/compiler/analyse_cli_test.go
     implemented:
+      - "Resolved-plan/target-info inspection (2026-11-26; cli.md § 10; compiler.md § 64(3)): `sec platform target list [--json]` lists registered targets; `sec platform target info [--target os-arch] [--json]` reports one target's frozen plan from canonical registry/plan facts (identity, triple, ABI/C ABI, profile and family, status, pointer width, endianness, data layout, scalar alignments, atomic storage minima or unresolved, logical epoch width and Arena exhaustion outcome, address domains, allocation capabilities, atomic/IPC/mutex fact counts, physical-thread capability, compiler stage support, fingerprints) without host capability, project resolution, guessing or mutation; new layout.AtomicCapabilities.Facts() accessor. Test: TestPlatformTargetInspection."
       - developer lex/token/parse/ast/sema/diagnostics/emit/build commands exist in partial form
       - LSP shares several target-aware bootstrap/frontend services
       - diagnostics registry exposes machine-readable data in the current implementation
       - "Compiler rulebook inventory separation (2026-11-04; compiler.md §§1(12–13),64(2),82–83,93(5),94(15)): removed the temporary implementation/capability catalogue and made current command/option inventories belong to executable CLI registry/help and implementation availability/evidence to the owning governance fragments. Stabilized user-facing forms remain owned by tooling/cli.md. Active references to the retired root ledger now name governance/index.yaml and its canonical fragments; the sole remaining root-ledger mention explicitly prohibits recreation. All 437 numbered paragraph IDs and their order are retained. The rulebook status index is synchronized; no executable capability or language contract is added."
     remaining:
       - provide one shared compiler workspace/CompilationPlan model to CLI and LSP
-      - add resolved-plan/target-info inspection from immutable canonical facts
       - distinguish configuration/source/target/compiler-capability/toolchain/link/ICE diagnostics
       - support @target/@when/config completion/hover/diagnostics from canonical compiler services
       - invalidate plan-dependent LSP facts on project/registry/config changes
@@ -806,6 +806,7 @@ integrations:
       - testdata/sema/arena_nested_invalid.sec
       - testdata/sema/arena_nested_valid.sec
     implemented:
+      - "Byte-accurate capacity-demand reports (2026-11-26; arena.md §§ 114-115; P19 §§ 79-81, 130): Sema publishes ArenaDemandReports (one per callable creating Arena domains, the same constant/unknown/unbounded bound and derivation as the Semantic IR demand summary) and `sec analyse arena-demand` presents them: the verbose 'arena demand' section lists each domain's peak bytes, derivation and fixed backing; a constant peak above the backing is an advisory finding (allocation may return AllocationError) shown by default; JSON carries arena_demand entries. Unknown or unbounded demand is never turned into a number; strict severity stays MD-152. Test: TestAnalyseArenaDemand (testdata/sema/arena_demand_report.sec)."
       - LSP completion for represented Arena compiler-known members
       - LSP hover for direct Arena effects and propagated allocation cause paths
       - "2026-11-11: completed allocation-context origin presentation. AllocationContextFact preserves selected and created domain source tokens from the canonical GeneratedIdentities registry without decoding IDs or resolving receiver names. Shared descriptions used by sec analyse and operation/callable LSP hover show the lexical context origin across owner moves and synchronous transitive calls. Distinct same-spelled Arena owners retain distinct origins. Created-domain provenance remains separate from unresolved backing; implicit contexts retain actual profile/availability/storage-origin facts without an invented source location. Missing provenance stays explicitly unresolved. Source/CLI/LSP tests verify detached facts, stable domain identity with refreshed source positions on reanalysis, unsaved edits and unchanged safety semantics; no physical allocation, capacity proof or runtime routing is claimed."
@@ -813,7 +814,6 @@ integrations:
       - "2026-11-11: Arena hover (arena.md §§ 4.2, 10-12, 44, 77). noteArenaCreation records each domain's constructor, capacity argument with its constant value and FromBuffer backing Place; noteArenaUse records the domain and represented epoch at the declaration and at every Arena operation receiver. ResolvedArenaAt (internal/sema/arena_facts_at.go) feeds the **Arena** hover (cmd/lsp/arena_hover.go): domain, creating constructor and site, owned/growable/borrowed backing, provider (selected target/profile provider, none for borrowed backing), requested capacity, epoch at that point (Reset count on the analyzed path) and allocation profile. An Arena parameter's domain is shown as caller-created without an invented backing (TestArenaHover)."
     remaining:
       - show task/thread/foreign dependencies
-      - show byte-accurate capacity-demand reports
       - show physical planning/proof-based check elimination in analysis mode
       - provide mentor diagnostics for lifecycle, impossible allocation, alignment, provider and cleanup-order failures
       - ensure compiler/LSP/sec analyse parity and incremental invalidation
@@ -825,18 +825,10 @@ integrations:
 
   - id: tooling.workspace-harness
     area: tooling-workspace-harness
-    status: partial
+    status: implemented
     integrated: "2026-11-21"
-    revised: "2026-11-25"
-    summary: >-
-      Optional deterministic, project-aware tooling harness for inspection,
-      validation, change planning and transactional configuration edits, shared
-      by the sec CLI and a separate MCP adapter (working name sec-mcp). It adds
-      no AI model, prompt runtime or MCP dependency to the language, compiler
-      semantics or ordinary build path, and installing or building Sec never
-      requires an AI account, MCP client or network access. Tentative Sec
-      0.1.100 planning milestone, not a release commitment; it does not change
-      MD-021 or MD-139.
+    revised: "2026-11-26"
+    summary: Optional deterministic project tooling with a shared confined C-binding service, reviewable typed change plans and a separate sec-mcp adapter over local stdio. The adapter is an independent Go module; ordinary compiler/LSP builds have no MCP SDK dependency, AI runtime, account or MCP-client requirement. Trusted startup flags choose the explicit project root and exact approved plans; inspection, validation, planning and diff are read-only by default. MD-139 selection edits and cross-surface harness acceptance are complete. Canonical target catalogs and profile/binding resolvers remain authoritative; absent provider qualification stays absent. This does not alter MD-021, MD-139 or MD-151 semantics.
     rules:
       - rules/corrections/applied/sec-harness-design-notes-0.1.100-2026-11-20-20261121.md
       - rules/tooling/cli.md
@@ -850,20 +842,65 @@ integrations:
       - cmd/compiler/platform_cbindings_plan.go
       - cmd/compiler/cli_help.go
       - internal/platform/cbindings/workspace.go
+      - cmd/sec-mcp/main.go
+      - cmd/sec-mcp/server.go
+      - cmd/sec-mcp/tools.go
+      - internal/configedit/root.go
+      - internal/configedit/atomic_file.go
+      - internal/configedit/toml_text.go
+      - internal/configedit/toml_arrays.go
+      - internal/configedit/strings.go
+      - internal/configedit/patch.go
+      - internal/platform/projectconfig/model.go
+      - internal/platform/projectconfig/workspace.go
+      - internal/platform/projectconfig/resolve.go
+      - internal/platform/cbindingplan/plan.go
+      - cmd/compiler/platform_project.go
+      - cmd/sec-mcp/project_tools.go
     tests:
+      - internal/platform/cbindingplan/plan_test.go
       - internal/platform/cbindings/change_plan_test.go
       - cmd/compiler/platform_cbindings_plan_test.go
       - internal/platform/cbindings/workspace_test.go
+      - cmd/sec-mcp/server_test.go
+      - cmd/sec-mcp/stdio_test.go
+      - testdata/tooling/sec_mcp/c-bindings.toml
+      - testdata/tooling/sec_mcp/common.sec
+      - testdata/tooling/sec_mcp/linux.sec
+      - internal/configedit/atomic_file_unix_test.go
+      - internal/platform/projectconfig/workspace_test.go
+      - cmd/compiler/platform_project_test.go
+      - cmd/lsp/project_workspace_parity_test.go
+      - cmd/sec-mcp/project_tools_test.go
+      - cmd/sec-mcp/acceptance_test.go
+      - testdata/tooling/sec_mcp/common.sec
+      - testdata/tooling/sec_mcp/linux.sec
     implemented:
       - "Implemented 2026-11-21 (harness notes § 6(1) steps 1-2 for MD-021): the C-binding configuration is a shared typed service: cbindings.Operation requests with deterministic results (Apply), the read-only resolution view (cbindingplan.Resolve, sec platform c-bindings resolve --json) and the CLI commands of notes § 4(1), all on the owning schema/validation code without a second TOML parser or editor; CLI and LSP resolve bindings through the same package."
-      - "Transactional plan/diff/apply completed 2026-11-25 (harness notes sections 5(2)-(7), CLI section 8(7)): shared PlanChange/ApplyChange APIs produce deterministic detached version-1 proposals binding the exact named file, typed operation, input/output SHA-256, contextual unified patch and validation consequences. Every existing package/environment/module mutation supports read-only --plan/--plan --json; apply-plan PLAN.json --approve PLAN_SHA256 takes separate caller approval, rejects modified/noncanonical plans and changed inputs, and regenerates the same edit through cbindings.Apply before atomic replacement. Existing direct mutation commands use the same service. No-op plans never rewrite the file; comments and permissions are preserved. The extracted replacement primitive serializes cooperating in-process commits, checks the final expected hash or absence, and removes temporaries after rejection (BUG-000052); no cross-process compare-and-swap claim. Subprocess CLI/help, deterministic JSON, all six edit kinds, stale/deleted input, missing approval, forged previews/output/validation, invalid TOML/path, duplicate application and concurrent-commit regressions pass. Structural validation never proves a selected target capability; MCP, project-root authorization, provider edits and full harness acceptance remain their separate points."
-      - "Harness safety model completed 2026-11-25 (notes sections 5(1),5(5)-(7)): cbindings.Workspace is a closed project-confined service facade with inspect/validate/plan/diff/apply tool metadata that truthfully declares read-only versus mutating behavior and required authorization. Only a trusted host can choose the explicit root or install a WorkspaceAuthorizer; nil is read-only and model/tool input cannot grant approval. The exact selected root must contain a valid canonical project manifest; all configuration reads, temporary creation, final hash checks and replacement use an OS directory-root handle and the single named C-binding config. Project-bound plan hashes prevent cross-project approval reuse; foreign/absolute/traversal/non-whitelisted plans are rejected before authorization or I/O. Symlink escapes before or after review, including during authorization, are blocked; unsupported containment hosts fail closed. Structural validation never proves target/provider capability. Existing typed editor, transaction validation and atomic replacement are shared with CLI, without a second parser/editor or general shell/network/write tools. Source-free service regressions cover metadata/detached inspection, missing/denied authorization, exact trusted approval, invalid roots/manifests, modified plans, project/file isolation, live symlink replacement, closed/zero workspaces, concurrency and unchanged canonical validation. MCP transport and full harness acceptance remain separate points."
-    remaining:
-      - "Separate sec-mcp adapter over local stdio (notes §§ 2(1)-(4), 4(2), 6(1) step 4): maps the shared typed operations to discoverable tools, read-only tools first, then authorized mutations; no divergent parser, validator or file editor and no silent shell-out to sec"
-      - MD-139 profile/allocation configuration through the same service and safety rules (notes § 6(1) step 5)
-      - "Harness acceptance (notes § 7): CLI and MCP give the same semantic result for equivalent requests; negative tests for unknown project, path traversal, stale SHA-256, invalid TOML, unknown keys, duplicate names, invalid ABI/module selection, unsupported provider activation, no permission, interrupted write and double application; comment preservation, deterministic JSON, unchanged files on validation failure, full target/variant provenance and consistent CLI/LSP/CompilationPlan validation"
-      - "Open scoping (notes § 8, decided when implementation starts): the final product/executable name, whether harness configuration belongs in .sec/sec.toml, a dedicated .sec/tooling.toml or nowhere, and whether a longer-running local server beyond stdio is needed"
+      - "Transactional plan/diff/apply completed 2026-11-25 (harness notes sections 5(2)-(7), CLI section 8(7)): shared PlanChange/ApplyChange APIs produce deterministic detached version-1 proposals binding the exact named file, typed operation, input/output SHA-256, contextual unified patch and validation consequences. Every existing package/environment/module mutation supports read-only --plan/--plan --json; apply-plan PLAN.json --approve PLAN_SHA256 takes separate caller approval, rejects modified/noncanonical plans and changed inputs, and regenerates the same edit through cbindings.Apply before atomic replacement. Existing direct mutation commands use the same service. No-op plans never rewrite the file; comments and permissions are preserved. The extracted replacement primitive serializes cooperating in-process commits, checks the final expected hash or absence, and removes temporaries after rejection (BUG-000052); no cross-process compare-and-swap claim. Subprocess CLI/help, deterministic JSON, all six edit kinds, stale/deleted input, missing approval, forged previews/output/validation, invalid TOML/path, duplicate application and concurrent-commit regressions pass. Structural validation alone never proves a selected target capability; subsequent workspace, transport, project-edit and acceptance stages are evidenced below."
+      - "Harness safety model completed 2026-11-25 (notes sections 5(1),5(5)-(7)): cbindings.Workspace is a closed project-confined service facade with inspect/validate/plan/diff/apply tool metadata that truthfully declares read-only versus mutating behavior and required authorization. Only a trusted host can choose the explicit root or install a WorkspaceAuthorizer; nil is read-only and model/tool input cannot grant approval. The exact selected root must contain a valid canonical project manifest; all configuration reads, temporary creation, final hash checks and replacement use an OS directory-root handle and the single named C-binding config. Project-bound plan hashes prevent cross-project approval reuse; foreign/absolute/traversal/non-whitelisted plans are rejected before authorization or I/O. Symlink escapes before or after review, including during authorization, are blocked; unsupported containment hosts fail closed. Structural validation never proves target/provider capability. Existing typed editor, transaction validation and atomic replacement are shared with CLI, without a second parser/editor or general shell/network/write tools. Source-free service regressions cover metadata/detached inspection, missing/denied authorization, exact trusted approval, invalid roots/manifests, modified plans, project/file isolation, live symlink replacement, closed/zero workspaces, concurrency and unchanged canonical validation. Subsequent MCP transport and full harness acceptance are evidenced below."
+      - "Local stdio MCP adapter completed 2026-11-26 (notes sections 2(1)-(4),4(2),6(1) step 4): optional cmd/sec-mcp is a separate Go module pinned to official MCP Go SDK v1.8.0. Typed SDK tools expose the existing Workspace inspect/validate/plan/diff APIs by default; apply is registered only when trusted --approve launch flags name exact reviewed project-bound plan hashes. JSON cannot grant approval or override the launch-selected --project root. Tool schemas and read/write/destructive/closed-world hints project the shared service contract; canonical validation, plans, patches and file edits remain in the owning C-binding service, without shelling out to sec or adding a parser/editor. SDK client tests cover actual initialization/discovery/schema/structured-error behavior, six mutation kinds, service parity, immutable launch policy, forged/stale/cross-project/path/symlink inputs and read-only preservation. Child-process stdio tests cover read-only review, approved restart, clean stdin EOF and protocol-only stdout. The root compiler/LSP dependency graph has zero MCP SDK packages; no MCP dependency is added to root go.mod/go.sum. Subsequent Variant resolution, acceptance and profile/provider selection tooling are evidenced below."
+      - "Initial harness scoping resolved 2026-11-26 (notes section 8, implementation choices): the optional executable is named sec-mcp, with --project ROOT and repeatable exact --approve PLAN_SHA256 startup flags. No harness-specific TOML section or separate configuration file is introduced; the service lifetime is local stdio with shutdown on EOF, and no longer-running network server is needed for this initial workflow. Existing project/compiler configuration authorities retain their responsibilities. The concrete choices, build/client setup and scope are documented in cmd/sec-mcp/README.md."
+      - "MD-139 configuration completed 2026-11-26 (notes sections 3,5,6(1) step 5): internal/platform/projectconfig supplies typed read/resolve/plan/diff/apply for existing Variant, Target and Target-specific Variant scopes in .sec/sec.toml. Omitted fields preserve local selections; clearing restores inheritance. project.ParseManifest, ResolvePlanSelection and target.ResolveTargetProfile own validation and scope/provider provenance. Unknown scopes, invalid keys/modes, profile reclassification and unqualified provider activation are rejected. The pre-existing TOML splice, diff and rooted atomic algorithms are extracted to internal/configedit and shared with C-binding edits. Exact project-bound approval, canonical proposal regeneration, stale-input checks, comment/permission preservation and no-op behavior apply equally to both domains. sec platform project and project.* MCP tools call the same service; project.resolve returns canonical target/profile facts and the shared selected C-binding plan/fingerprint. Empty provider catalogs remain empty; this closes tooling, not MD-151 qualification or backend work."
+      - "Harness acceptance completed 2026-11-26 (notes section 7): acceptance_test.go builds a temporary trimpath CLI and launches real stdio MCP sessions, comparing semantic inspection, deterministic plan/diff/apply output, canonical edits, diagnostics and selected profile/binding scope provenance, target triple/ABI, modules, layers and fingerprint. Negative protocol/service/transaction tests cover unknown project/scope, traversal/symlink escape, stale or forged hashes/plans, invalid TOML, unknown keys, duplicate names, invalid ABI/module selection, unsupported provider activation, no permission, interrupted writes and repeated application; rejected operations preserve file bytes. Unix subprocess tests force a temporary-file write failure using a file-size resource limit and verify original preservation and temporary cleanup. Compiler pre-analysis and unsaved LSP manifest tests agree with the shared canonical profile/provider rules; existing binding-plan CLI/LSP suites remain compatible. Ordinary compiler/LSP dependency graphs retain zero MCP SDK packages and need no AI runtime/client. Actual read-only stdio use against the checkout resolves Target sec / Variant linux-amd64 without writes."
+    remaining: []
     verification:
+      - command: go test ./internal/platform/cbindingplan -count=1; go test ./cmd/compiler -run 'StringMaterializationAuthority|StringEnumConversionRepairsCLI|StringRangesCompilerCLI|StringRangeTryCompilerCLI|StringUTF8Positions' -count=1 -timeout=120s
+        result: "Passed on 2026-11-26: BUG-000053 fixed the ordinary-source adapter accidentally requiring a project manifest after rooted resolution extraction. Standalone source analysis again gets no binding plan when no manifest exists; the explicit workspace API remains strict. Root confinement and the shared snapshot resolver are preserved."
+      - command: go run ./cmd/yamlstatus check
+        result: Passed on 2026-11-26 with 0 problems in 47 fragments after the separate non-ledger licensing-directory fix. tooling.workspace-harness is implemented with 0 remaining; tooling.yaml Remaining decreased 19 to 17. Rulebook HTML validation covers 115 books/131 static files; traceability passes. Owner paths and canonical formatting pass.
+      - command: go -C cmd/sec-mcp test -race ./... -count=1 -timeout=120s
+        result: Passed on 2026-11-26; real stdio CLI/MCP acceptance, typed project edits, negative validation matrix, protocol isolation and canonical binding/profile provenance. Actual standalone read-only project.inspect/project.resolve use passes with clean EOF.
+      - command: go test -race ./internal/configedit ./internal/platform/cbindings ./internal/platform/cbindingplan ./internal/platform/projectconfig ./internal/project -count=1 -timeout=120s
+        result: Passed on 2026-11-26; complete shared editor, transaction, rooted workspace, profile/provider and project suites including forced interrupted temporary writes and permission denial.
+      - command: go test ./cmd/compiler ./cmd/lsp -run 'PlatformProject|ProjectWorkspace|CBindings|CBinding|CLIHelp|PlanSelection' -count=1 -timeout=120s
+        result: Passed on 2026-11-26; CLI help/dispatch, JSON request isolation, shared service and compiler/LSP validation parity plus existing binding-plan regressions.
+      - command: go test -short ./internal/platform/cbindings ./internal/platform/cbindingplan ./internal/traceability -count=1 -timeout=90s
+        result: Passed on 2026-11-26 (0.102s/0.005s/0.735s); no shared editor/validator behavior changed.
+      - command: go -C cmd/sec-mcp vet ./...
+        result: Passed on 2026-11-26. Standalone go build -trimpath plus help stream validation passes; no private checkout path is embedded in the temporary executable.
+      - command: go -C cmd/sec-mcp test -race ./... -count=1 -timeout=120s
+        result: Passed on 2026-11-26 (3.610s), complete optional-module tests including real stdio child processes, SDK discovery/schemas, six typed mutation kinds and canonical service parity. Race-instrumented child processes require a 3s termination allowance; the earlier 1s test allowance was too short and is not a server-lifecycle fix. Ordinary compiler/LSP go list -deps contains zero MCP SDK packages; root module files are unchanged.
       - command: go test -race ./internal/platform/cbindings ./internal/platform/cbindingplan -count=1 -timeout=90s
         result: Passed on 2026-11-25 (1.091s, 1.007s), complete owning package race suites including the confined workspace, shared transaction/atomic adapters, authorization and live symlink replacement matrix. Final focused workspace tests pass (0.008s); vet passes. Existing LSP C-binding resolution passes (3.324s). Global governance check retains the same 12 unrelated licensing metadata errors; a snapshot of the 47 indexed root fragments passes with 0 problems. Canonical tooling formatting and 14 owner paths pass.
       - command: go test -race ./cmd/compiler -run 'CBindings|CBinding|CLIHelp' -count=1 -timeout=120s

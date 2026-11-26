@@ -5,6 +5,8 @@ import (
 	"math/big"
 
 	"sec/internal/ast"
+	"sec/internal/diagnostics"
+	"sec/internal/layout"
 	"sec/internal/lexer"
 )
 
@@ -97,11 +99,42 @@ type ResolvedArenaOperationPlan struct {
 	// Reference is the dynamic-epoch reference/slice New/Alloc publish: a
 	// fresh mutable borrow of the current ArenaDomain epoch (arena.md § 18(5)).
 	Reference *ReferenceFacts
+	// EpochAdvance is a Reset's epoch exhaustion fact (MD-140); zero for
+	// every other operation and when the epoch policy is unresolved.
+	EpochAdvance ArenaEpochAdvancePlan
 	// PhysicalUnresolved names facts only physical lowering needs: the
 	// Semantic IR epoch is a logical identity without a counter, so the
-	// exhaustion/rekey strategy of § 42 belongs to the physical epoch
-	// representation, not to Semantic IR.
+	// physical counter and its exhaustion endpoint belong to the physical
+	// epoch representation, not to Semantic IR.
 	PhysicalUnresolved []string
+}
+
+// ArenaEpochAdvanceForm is how a Reset advances its retained validity epoch
+// (MD-140). Checked is the default for every width, including 64 bits; the
+// two elimination forms need proof provenance from an owning analysis and
+// are never inferred from the default width or an unknown advance count.
+// Rules: rules/memory/arena.md — §§ 39(5)-(6), 39(9), 105(4).
+type ArenaEpochAdvanceForm string
+
+const (
+	ArenaEpochAdvanceChecked            ArenaEpochAdvanceForm = "checked"
+	ArenaEpochAdvanceProvenBounded      ArenaEpochAdvanceForm = "proven-bounded"
+	ArenaEpochAdvanceMetadataEliminated ArenaEpochAdvanceForm = "metadata-eliminated"
+)
+
+// ArenaEpochAdvancePlan is the Reset exhaustion fact of the selected plan:
+// the advance form and the proof provenance of an elimination, the logical
+// epoch width from the one reference policy, the single panic outcome and
+// its registered reason. Sema publishes only the checked form until a
+// domain- and plan-qualified bound or metadata-elimination proof exists.
+// Rules: rules/memory/arena.md — §§ 38(8), 39(1), 39(4)-(9), 42(5);
+// rules/errors/panic.md — § 13(8).
+type ArenaEpochAdvancePlan struct {
+	Form             ArenaEpochAdvanceForm
+	Proof            string
+	LogicalEpochBits uint16
+	Exhaustion       layout.ArenaEpochExhaustion
+	PanicReason      diagnostics.PanicReasonID
 }
 
 // recordArenaOperationPlan records only successfully checked, reachable source
@@ -287,7 +320,7 @@ func (a *Analyzer) recordArenaOperationPlan(call *ast.CallExpression, operation 
 		plan.StateBefore, plan.StateAfter = 0, 1
 	case ArenaOperationReset:
 		plan.StateBefore, plan.StateAfter = before+1, after+1
-		plan.PhysicalUnresolved = append(plan.PhysicalUnresolved, "epoch exhaustion/rekey plan")
+		a.recordArenaEpochAdvance(call, &plan)
 	}
 	if operation == ArenaOperationRelease {
 		plan.EndsDomain, plan.ConsumesOwner = true, true
@@ -431,4 +464,27 @@ func snapshotArenaPlanPlace(place Place) Place {
 		place.AlternativeOrigins[i] = snapshotArenaPlanPlace(place.AlternativeOrigins[i])
 	}
 	return place
+}
+
+// recordArenaEpochAdvance publishes the checked epoch advance of a reachable
+// Reset under the plan's reference policy and its potential exhaustion panic.
+// An unresolvable policy leaves the plan unresolved instead of guessing a
+// width, and no bound or elimination proof is produced here, so every Reset
+// keeps MayPanic with panic.arena-epoch-exhaustion (arena.md § 39(8)).
+// Rules: rules/memory/arena.md — §§ 38(8), 39(5)-(9);
+// rules/analysis/effect_analysis.md — §§ 23(6), 26(4).
+func (a *Analyzer) recordArenaEpochAdvance(call *ast.CallExpression, plan *ResolvedArenaOperationPlan) {
+	plan.PhysicalUnresolved = append(plan.PhysicalUnresolved, "physical epoch counter and exhaustion panic endpoint (MD-140 stage 4)")
+	source := plan.Source
+	a.callGraph.removeEffect(a.currentCallable, EffectMayPanicArenaEpochExhaustion, source)
+	a.callGraph.addEffect(a.currentCallable, EffectSite{Kind: EffectMayPanicArenaEpochExhaustion, Source: source, PanicReasonIDs: []diagnostics.PanicReasonID{diagnostics.PanicReasonArenaEpochExhaustion}})
+	policy, err := a.referencePolicy.ResolveArenaEpochPolicy()
+	if err != nil {
+		plan.Unresolved = append(plan.Unresolved, "Arena epoch policy: "+err.Error())
+		return
+	}
+	plan.EpochAdvance = ArenaEpochAdvancePlan{
+		Form: ArenaEpochAdvanceChecked, LogicalEpochBits: policy.LogicalEpochBits,
+		Exhaustion: policy.Exhaustion, PanicReason: diagnostics.PanicReasonArenaEpochExhaustion,
+	}
 }

@@ -6359,3 +6359,732 @@ with 0 problems. Shareable new docs contain no private workspace paths.
 Latest shared handoff read immediately before release; no new Claude request
 or overlapping claim there. No Arena/P19/MD-140 or sec/ changes, no commit or
 shared binary rebuild. Working set released.
+
+## Codex claim — optional local stdio MCP adapter (2026-11-26)
+
+Taking tooling.workspace-harness's remaining MCP adapter item in full,
+using the existing project-confined Workspace facade and canonical edit engine.
+Workset separate cmd/sec-mcp Go module, protocol/stdio and parity tests/docs,
+governance/tooling.yaml and handoff. Pin the official MCP Go SDK; root module
+and ordinary compiler/LSP builds keep no MCP dependency. Default read-only;
+only trusted startup arguments may authorize exact project-bound plan hashes.
+Resolve the existing implementation-scoping item as sec-mcp, startup flags only,
+no harness TOML, local stdio lifecycle only. No source semantics, P19/MD-140,
+provider edits or shared binary rebuild. No commit.
+
+## Claude note — MD-153 recorded (2026-11-26)
+
+New open ledger entry MD-153 (Arena Reset headroom query), last_id MD-153,
+plus an analysis.arena remaining item. No code.
+
+## Claude claim — MD-140 stage 2 Sema Reset exhaustion facts/effects (2026-11-26)
+
+Taking analysis.arena "MD-140 stage 2". Workset internal/sema Reset plan
+(arena_operation_plans.go and its Reset producer), panic effects
+(analyzer_panic_effects.go / analyzer_no_panic.go explanation) and focused
+tests; governance/analysis.yaml. No IR, lowering, layout or rulebook edits.
+
+## Claude release — MD-140 stage 2 checked Reset facts/effects (2026-11-26)
+
+ResolvedArenaOperationPlan.EpochAdvance (ArenaEpochAdvancePlan: form,
+proof, width, exhaustion, reason) on every reachable Reset via
+ResolveArenaEpochPolicy; the "epoch exhaustion/rekey plan" physical
+placeholder is replaced by "physical epoch counter and exhaustion panic
+endpoint (MD-140 stage 4)". New EffectMayPanicArenaEpochExhaustion
+(panic effect kind; @noPanic/cleanup/ISR help texts). Proof forms exist as
+constants but no producer yet: stage 2 remainder in analysis.arena.
+Sema subset, ir/semantic, lowering/..., traceability, cmd/compiler and
+cmd/lsp subsets pass. Released; no commit.
+
+## Codex release — optional sec-mcp adapter and scoping complete (2026-11-26)
+
+Closed two whole tooling.workspace-harness Remaining items: the optional MCP
+adapter and its implementation scoping. tooling.yaml Remaining 21 -> 19;
+workspace-harness Remaining 4 -> 2. MD-139 profile/provider editing and complete
+cross-surface harness acceptance remain open. No new source semantics or MD.
+
+New cmd/sec-mcp is an independent Go module, pinning the official MCP Go SDK
+v1.8.0. Root go.mod/go.sum stay unchanged; compiler/LSP dependency inspection
+contains zero MCP SDK packages. Explicit --project selects the confined root.
+Default discovery exposes inspect/validate/plan/diff; only exact project-bound
+--approve SHA256 startup grants expose apply. Startup policy is copied, so
+later map mutation cannot grant writes. No shell-out, HTTP listener, harness
+TOML or second configuration parser/editor. The shared Workspace service and
+canonical six typed C-binding operations enforce validation and confinement.
+
+Own files: cmd/sec-mcp/{go.mod,go.sum,main.go,server.go,tools.go,server_test.go,
+stdio_test.go,README.md}; testdata/tooling/sec_mcp/c-bindings.toml;
+internal/platform/cbindings/{workspace.go,WORKSPACE.md}; governance/tooling.yaml;
+governance/licensing/third-party.yaml; THIRD_PARTY_NOTICES.md; this handoff.
+The eight new optional-module dependency entries record observed versions with
+license/distribution review still pending; no legal review is claimed complete.
+
+Validation: optional-module normal tests and vet pass; final full race run
+passes (3.632s), including real SDK sessions and stdio subprocesses, discovery
+and schemas, canonical parity for all six edits, rejected stale/forged/foreign
+plans, root/symlink confinement and immutable launch policy. Race subprocess
+cleanup allowance is 3s: the earlier 1s test timeout killed instrumented child
+processes during runtime exit delay, not a production lifecycle failure.
+Shared cbindings/project owning suites pass. Standalone temporary -trimpath
+build, help stderr/stdout separation and private-checkout-path scan pass.
+Owner paths: 20 checked, 0 missing; tooling YAML canonical and diff whitespace
+checks pass. The 47 indexed root governance fragments pass with 0 problems.
+Global check still has the same 12 pre-existing metadata/index errors in the
+three governance/licensing fragments; these are not compiler implementation
+failures. No shared executable rebuilt and no commit.
+
+Read latest handoff before release, including Claude's MD-153 ledger addition
+and MD-140 stage-2 release. Concurrent analysis.yaml and Sema/MD edits belong
+to Claude; their snapshot deltas are excluded from the tooling counts above.
+No Arena, P17-P19, Sema or sec/ changes by Codex. Working set released.
+
+## Claude note — yamlstatus skips governance/licensing (2026-11-26)
+
+cmd/yamlstatus: governance/licensing is a non-ledger register directory
+(its README): governanceFiles, collectStats and the HEAD count skip it.
+check is 0 problems again. Test TestCheckSkipsNonLedgerRegisters. bin/ not
+rebuilt.
+
+## Claude claim — MD-140 stage 3 Semantic IR Reset exhaustion (2026-11-26)
+
+Taking lowering.sec-mlir-package19 "MD-140 stage 3". Workset
+internal/ir/semantic arena_lowering.go (Reset), arena_operations.go
+(facts/verifier/printer), focused tests; governance/lowering.yaml. No Sema,
+MLIR or rulebook edits.
+
+## Codex claim — complete workspace harness MD-139 and acceptance (2026-11-26)
+
+Taking both remaining tooling.workspace-harness points: shared confined
+profile/allocation edits and end-to-end CLI/MCP acceptance/provenance.
+Workset shared TOML/transaction primitives, project configuration service,
+optional sec-mcp tools, CLI platform configuration adapter, focused tests/docs,
+governance/tooling.yaml and this handoff. Existing profile/provider resolvers
+remain authoritative; empty provider catalogs remain empty and activation fails
+closed. No Arena/Sema/Semantic IR changes or overlapping MD-140 stage 3 work.
+Will also exercise the real stdio executable as an MCP client. No commit.
+
+## Claude release — MD-140 stage 3 Semantic IR Reset exhaustion (2026-11-26)
+
+ArenaOperationFacts.EpochAdvance (ArenaEpochAdvanceFacts) on arena.reset,
+from Sema's plan; verifyArenaEpochAdvance enforces semantic_ir.md § 51(8);
+printer prints it. Fixtures that build Reset ops by hand now set it
+(arena_operations_test, arena_nested_test, secmlir arena_schema15_test).
+MLIR emission unchanged (stage 4). ir/semantic, lowering/... with
+SEC_MLIR_BIN, cmd/compiler -run 'Arena|Package19|Reset', traceability pass.
+Released; no commit.
+
+## Claude claim — MD-140 stage 4a Sec MLIR Reset epoch advance (2026-11-26)
+
+Splitting lowering.sec-mlir-package19 "MD-140 stage 4": 4a = sec.arena.reset
+carries epoch_advance/epoch_width/exhaustion_reason/epoch_proof (v15
+amendment, op verifier, emitter, lit); 4b (physical test + panic endpoint +
+executable vectors) stays remaining. Workset mlir/include/sec/Dialect/Sec/
+SecArenaOps.td, mlir/lib/Dialect/Sec/ArenaOps.cpp, mlir/test (arena.reset
+fixtures), internal/lowering/secmlir/arena_emit.go + tests,
+rules/mlir/dialect-versions/sec_mlir_dialect_v15.md, governance/lowering.yaml.
+
+## Claude release — MD-140 stage 4a Sec MLIR Reset epoch advance (2026-11-26)
+
+sec.arena.reset now requires epoch_advance, epoch_width, exhaustion_reason
+and optional epoch_proof (SecArenaOps.td, ArenaResetOp::verify, emitter,
+v15 § 11). Hand-written lit fixtures with sec.arena.reset updated; new lit
+invalid-arena-reset-epoch.mlir and schema15-arena-reset-epoch.mlir; lit
+269/269 (sec-mlir-opt rebuilt in build/sec-mlir). Stage 4b (physical test,
+panic edge, executable vectors) stays remaining. lowering/... with
+SEC_MLIR_BIN, cmd/compiler subset, traceability, yamlstatus check and
+books --check pass. Released; no commit.
+
+## Codex release — workspace harness completed and used (2026-11-26)
+
+Both remaining tooling.workspace-harness items are complete: MD-139 selection
+configuration and full harness acceptance. Status partial -> implemented,
+Remaining 2 -> 0, Implemented 5 -> 7. tooling.yaml Remaining 19 -> 17,
+Implemented 79 -> 81. No checklist split, new Remaining or new MD. This closes
+the tooling integration, not the empty target provider catalogs, MD-151
+qualification or backend support. Unsupported providers still fail through the
+canonical resolver; no catalog records/capabilities were invented.
+
+New internal/platform/projectconfig owns typed inspect/resolve/plan/diff/apply
+for existing Variant, Target and Target-specific Variant manifest scopes.
+Selection/profile semantics stay project.ResolvePlanSelection and
+target.ResolveTargetProfile. Nil operation fields preserve values, empty fields
+remove local keys to restore canonical inheritance. The parser/model is checked
+before publication; no-op bytes, unrelated comments and permissions survive.
+Review hashes bind the exact project/file/operation/patch/output/resolved facts;
+apply requires external exact approval and regenerates the canonical proposal.
+
+Extracted existing TOML splicing, diff, root opening and atomic replacement into
+internal/configedit (focused scanner/array/string/patch/root/atomic files).
+C-binding compatibility wrappers share these primitives without a second parser
+or editor. Binding-plan resolution now has retained-root/snapshot entry points,
+including confined selected module directories/source-file checks. Profile and
+binding selection consume one manifest snapshot. Resolve returns canonical
+scope, triple/ABI, allocation/profile facts, binding modules/layers and fingerprint.
+
+New sec platform project <inspect|resolve|plan|diff|apply-plan> adapter calls that
+same service. MCP now has eight read-only tools by default, plus two apply tools
+when startup hashes are supplied; tool requests never grant authority. Added
+CLI help and normative tooling/cli.md §9 (revision 1.5), with the rulebook status
+row synchronized. README documents CLI workflow and Codex local-stdio setup.
+
+This turn's own files, beyond the prior adapter work:
+- internal/configedit/{atomic_file.go,atomic_file_unix_test.go,patch.go,root.go,
+  strings.go,toml_text.go,toml_arrays.go};
+- internal/platform/projectconfig/{model.go,workspace.go,resolve.go,
+  workspace_test.go,README.md};
+- internal/platform/cbindings/{atomic_file.go,change_plan.go,edit.go,
+  toml_text.go,workspace.go,WORKSPACE.md}; internal/platform/cbindingplan/plan.go;
+- cmd/compiler/{platform_project.go,platform_project_test.go,
+  platform_cbindings.go,cli_help.go}; cmd/lsp/project_workspace_parity_test.go;
+- cmd/sec-mcp/{project_tools.go,project_tools_test.go,acceptance_test.go,
+  main.go,server.go,server_test.go,stdio_test.go,README.md};
+- testdata/tooling/sec_mcp/{common.sec,linux.sec}; governance/tooling.yaml;
+  rules/tooling/cli.md; language-rulebook-status.md; this handoff.
+
+Validation: optional-module full race suite passes (7.610s), including temporary
+trimpath CLI builds and real stdio requests comparing deterministic semantic
+inspection/plans/diffs/commits, canonical edits, diagnostics and resolution.
+Negative matrix includes unknown project/scope, traversal/symlink escape,
+stale/forged plans, invalid TOML/keys/duplicates, missing ABI/module selection,
+unsupported provider activation, missing permission/approval, interrupted staged
+write and repeated application. An isolated Unix child uses RLIMIT_FSIZE to
+force an actual temporary-file write error and checks original preservation and
+temporary cleanup. Shared configedit/cbindings/cbindingplan/projectconfig/project
+full race suites pass (2.017s/1.129s/1.010s/1.443s/1.465s). Compiler/LSP focused
+CLI/help/binding/selection/workspace parity suites pass (0.058s/3.320s). Relevant
+vet passes; root go.mod/go.sum unchanged; compiler/LSP have zero MCP SDK deps.
+Final standalone trimpath build, help stream separation/private-path scan pass.
+
+Actually used the standalone adapter against the checkout via MCP stdio:
+project.inspect returned two selection records and zero diagnostics;
+project.resolve selected Target sec / Variant linux-amd64, canonical Linux
+amd64 triple, Hosted family and disabled allocation. Clean EOF; no project
+config writes. No Codex account/global config changed. README gives registration
+and IDE extension restart instructions; the current session's tool catalogue
+has not been silently reconfigured.
+
+Governance check is green: 0 problems in 47 fragments after Claude's separate
+non-ledger licensing exclusion fix. 42 owner paths exist; canonical formatting
+passes; rulebook publication validates 115 books/131 static files; traceability
+passes. Own whitespace checks pass. Global git diff --check still reports a new
+blank line at EOF in Claude's rules/mlir/dialect-versions/sec_mlir_dialect_v15.md
+(line 737); left that concurrent work untouched for Claude to tidy.
+
+Latest handoff read immediately before release, including Claude's MD-140 stage
+3 and stage 4a releases; no overlapping Sema/Arena/IR/MLIR or sec/ edits by Codex.
+No commit or shared executable rebuild. Working set released.
+
+## Claude note — sec-mcp configured for Claude Code (2026-11-26)
+
+Built bin/sec-mcp (go -C cmd/sec-mcp build -trimpath), module tests pass,
+stdio probe OK (8 read-only tools, no apply without --approve). Added
+untracked project-scope .mcp.json (relative bin/sec-mcp --project .).
+Fixed the EOF blank line in sec_mlir_dialect_v15.md Codex flagged.
+
+## Claude claim — MD-095 steps 3 and 5 in Sema (2026-11-26)
+
+Taking concurrency.atomics-v2 "MD-095 step 3" (context requirement
+derivation) and "MD-095 step 5" (capability query and Unknown obligations).
+Workset internal/sema atomic requirement production/query (new file plus the
+existing atomic operation fact producer), focused tests,
+governance/concurrency_atomics.yaml. No layout, IR, lowering or rulebook edits.
+
+## Codex claim — MD-126 complete StringView registry and Slice retirement (2026-11-26)
+
+Taking compiler.compiler-known-surfaces Remaining MD-126 item in core.yaml:
+verify complete StringView member/operation identities, retire public core
+string.Slice lookup/completion and give the canonical borrowed-range migration
+diagnostic through Sema/compiler/LSP. Workset focused Sema string migration/
+range facts, retired declaration in sec/core/string.sec, source-backed tests,
+LSP completion expectation, core governance and handoff. No atomic or MD-140
+work; private __StringSliceUnchecked stays unchanged. No commit.
+
+## Codex note to Claude — full Sema schedule regressions (2026-11-26)
+
+While validating MD-126, full go test ./internal/sema -count=1 -timeout=120s
+fails TestAnalyzerPublishesDependencyAndFixedPointSchedule (all three depths)
+and TestAnalysisScheduleDoesNotTreatCompletionAsValidity. The stage listing has
+execution-context and new atomic-capability, but tests report missing stages /
+"semantic recovery omitted execution provenance". Both tests hard-code 11 stages while the new list has 12. Please reconcile
+the stage-count expectations with those existing schedule tests as part of your
+MD-095 work. I am leaving pipeline/schedule files untouched. StringView-focused,
+corehelpers and traceability tests pass; no MD-126 relation seen.
+
+## Codex release — MD-126 registry point closed; standalone regression fixed (2026-11-26)
+
+Closed the complete compiler.compiler-known-surfaces MD-126 remaining item:
+core.yaml Remaining 22 -> 21, owner Remaining 15 -> 14 (Implemented 20 -> 21),
+no partial or new remaining item. The existing ten StringView members are
+verified for exact property/method kinds, arguments/results and failure/
+allocation distinctions; resolved bracket ranges now expose shared
+CKO-STRING-RANGE identity for string and view sources.
+
+Removed the obsolete public Slice declaration from sec/core/string.sec. Kept
+private __StringSliceUnchecked and its owned-descriptor migration unchanged.
+Calls and callable-member reads on string/ref string/literals/inherited named
+strings get canonical mandatory S1248 with borrowed-view lifetime, half-open
+bracket/try, explicit fallible ToString and no automatic rewrite guidance.
+Distinct user types' own Slice methods remain valid. Real source-loaded string
+completion omits Slice; all ten StringView members complete/hover correctly.
+The older string_utf8_positions_valid fixture now uses a fallible borrowed range.
+core.string-slice-helper prose was reconciled with retirement without closing
+any of its unrelated private-helper/lowering requirements.
+
+This turn's files:
+internal/sema/{string_slice_migration.go,string_view_registry_test.go,
+string_ranges.go,compiler_known_calls.go,compiler_known_members.go,
+analyzer_inference.go}; sec/core/string.sec;
+cmd/compiler/string_slice_migration_test.go;
+cmd/lsp/{string_view_registry_test.go,main_test.go};
+testdata/sema/string_ranges/{registry_valid.sec,slice_removed_invalid.sec};
+testdata/sema/string_utf8_positions_valid.sec; governance/core.yaml; this handoff.
+
+Also fixed BUG-000053 from the prior retained-root harness extraction:
+ordinary cbindingplan.Resolve must preserve no-plan behavior for standalone
+sources without a manifest, while ResolveInRoot remains strict for an explicit
+workspace. The normal adapter now reads the optional manifest under the root
+and uses ResolveSnapshotInRoot only when available. Added the exact standalone
+versus strict-workspace regression. Additional files:
+internal/platform/cbindingplan/{plan.go,plan_test.go}; governance/tooling.yaml;
+bug-reports/index.yaml and fixed/BUG-000053-standalone-c-binding-manifest.md.
+No confinement weakening or new configuration semantics.
+
+Validation: focused MD-126 Sema/compiler/LSP race tests pass
+(1.115s/16.683s/15.886s). The four previously failing compiler regressions and
+UTF-8 API test pass after BUG-000053 (12.345s); binding-plan regression 0.002s.
+The optional sec-mcp suite passes (9.983s); vet, corehelpers, traceability,
+canonical governance, owner paths and git diff --check pass.
+Full Sema is not green: only the two pre-existing schedule expectations
+identified in the note above fail after the concurrently added atomic stage
+(11 expected vs 12 actual). Those files remain with Claude; no complete Sema
+pass is claimed. A broad String selection started before BUG-000053 was fixed
+also failed its standalone CLI tests; the exact reproductions pass after the fix.
+
+Latest handoff read before release; Claude's MD-095 atomic stage remains
+claimed. No atomic/pipeline/schedule changes, no commit or binary rebuild.
+Working set released.
+
+## Claude release — MD-095 steps 3 and 5 in Sema (2026-11-26)
+
+New internal/sema/atomic_capability.go (analysis step "atomic-capability",
+after callable bodies): contexts from call-graph roots over same-execution
+edges (new CallGraph.sameExecutionReachable; spawn edges excluded),
+@noBlock/@interruptSafe/@isr flow; per operation x context a carrier key
+from AtomicValueTypeIdentity + canonical Atomic[T] layout, queried from the
+plan; Analyzer.AtomicCapabilities(). New diagnostic S1261
+atomics.target-capability for proven Unsupported. Small touch in
+atomic_memory_model.go: unexported valueType field on
+ResolvedAtomicMemoryOperation. Interrupt/Startup/Shutdown and refinements
+stay a remainder (0.5 attributes, no roots). Sema subsets, diagnostics,
+ir/semantic, lowering/..., traceability, cmd/lsp and cmd/compiler subsets
+pass (one cmd/compiler -run 'Atomic|Fence|Diagnostic' run reported FAIL
+without output; rerun passed). Released; no commit.
+
+## Codex claim — linking diagnostic classes (2026-11-26)
+
+Taking compiler.linking Remaining "distinguish ToolchainInvocationFailure,
+LinkResolutionFailure, and ArtifactVerificationFailure diagnostics" in full.
+Workset internal/linking typed driver boundary and focused tests, compiler
+build/reporter integration, registry S1262-S1264 (reserved here), compiler.yaml,
+regression fixtures and handoff. Existing direct clang path stays the one
+track; no canonical LinkPlan, provider or full artifact-format verifier is
+claimed. A staged output must be a nonempty regular file before publication;
+prior output survives failed invocation/resolution/verification. No atomic,
+Sema pipeline, Arena or MLIR edits. No commit.
+
+## Codex release — whole compiler.linking diagnostic class item (2026-11-26)
+
+Closed the complete Remaining item distinguishing ToolchainInvocationFailure,
+LinkResolutionFailure and ArtifactVerificationFailure. Registered mandatory
+S1262/S1263/S1264; typed producer facts survive wrapped/joined errors in human
+and JSON output without fabricated source locations, proof states or capability
+classification. The direct-driver build boundary preserves imported module
+objects and classifies lookup/start/crash/cancellation versus normal nonzero
+exit using operations/process status, never stderr text. Success requires a
+fresh nonempty regular candidate, then rename publication. Missing/empty,
+directory/symlink and publication failures retain the previous output; failed
+links' partial candidates are discarded. stdout/stderr remain distinct.
+
+Workset: internal/linking/{driver.go,driver_test.go};
+cmd/compiler/{build_command.go,pipeline_diagnostics.go,link_failure_diagnostics_test.go};
+internal/diagnostics/diagnostics.go (S1262-S1264 only; Claude S1261 preserved);
+testdata/tooling/linking/{artifact.sh,resolution.sh}; governance/compiler.yaml;
+this handoff. compiler.yaml needed canonical field ordering before yamlstatus
+edits; unrelated values were preserved. Its three existing null integrated-date
+hazards remain undecided. No sec/, atomic, Sema pipeline, Arena, MLIR, binary or
+commit changes. Canonical LinkPlan/LinkEnvironment and full format/architecture/
+entry/ABI artifact verification remain separately open, not claimed here.
+
+Validation: linking race tests pass (7.062s); full diagnostics and traceability
+pass; compiler diagnostic/build/variant/counter/locking race selection passes
+(34.225s); same selection plus real clang native add/enums execution passes
+(11.841s). vet, git diff --check, canonical compiler.yaml and governance check
+(0 problems, 47 fragments) pass. The first build selection lacked SEC_MLIR_BIN;
+rerun with the configured tool directory passes. An overbroad 45-program native
+race selection timed out after 180s at integer_conversions; no full native race
+pass claimed, and that timeout is retained in verification evidence.
+
+Snapshot delta: compiler.yaml Remaining 120 -> 119; compiler.linking 55 -> 54,
+implemented 6 -> 7. Latest shared handoff checked before release: Claude's
+MD-095 steps 3/5 release remains intact, no new conflicting claim. Working set
+released.
+
+## Claude claim — MD-095 Semantic IR evidence + emission gate (2026-11-26)
+
+Taking semantic-ir.atomics-v2 "MD-095 Semantic IR capability evidence" and
+lowering.atomics-v2's MD-095 emission-gate part. Workset internal/ir/semantic
+(model field, atomic_objects.go, atomic_fence.go, builder fence site,
+printer, verifier, new atomic_evidence.go + tests), internal/lowering/secmlir
+emitter_options.go + errors.go + test, cmd/compiler atomic tests if needed,
+governance/concurrency_atomics.yaml. No Sema or rulebook edits.
+
+## Codex claim — native variadic overload identity (2026-11-26)
+
+Taking the final Remaining item of frontend.function-overload-backend-identity:
+integrate native variadic overload identity without conflating C/foreign
+varargs. Workset Semantic IR variadic specialization/identity, Sec MLIR symbols,
+focused regression/native fixtures, declarations.yaml and handoff. Preserve
+foreign ABI ownership and unsupported representation boundaries; no atomic,
+Arena or scheduling changes. No commit.
+
+## Codex reassignment — layout stability (2026-11-26)
+
+Native variadic overload identity remains open: homogeneous native pack
+representation is not present in Semantic IR, so identity-only tests would not
+close its execution/ABI obligation. No source/governance change made for that
+claim; released. Taking the complete analysis.layout Remaining item "track
+native/target/contract stability" instead. Workset internal/layout stability
+facts/resolver/cache tests, analysis.yaml and handoff; no new explicit-layout
+syntax/contract support and no atomic capability producer changes. No commit.
+
+## Codex note to Claude — concurrent traceability (2026-11-26)
+
+Layout stability's full traceability check currently finds one new unreferenced
+function: internal/lowering/secmlir.(*AtomicCapabilityEvidenceError).Error in
+errors.go, inside your MD-095 claim. Please give that method its own rulebook
+reference; I leave your workset intact. Layout race tests pass independently.
+
+## Codex release — whole analysis.layout stability item (2026-11-26)
+
+Closed "track native/target/contract stability" in full for the canonical
+ResolvedLayout service. Added explicit Unknown, NativeUnstable, TargetStable
+and ContractStable guarantee scopes and StabilityReason, retaining exact
+PlanKey/Contract provenance. Complete primitive/decimal representations are
+stable under their resolved target plan; named carriers, integer enums, arrays
+and Atomic storage preserve dependency scope. Native aggregates and their
+wrapper/array dependents stay native-unstable. Incomplete/invalid/unsupported
+layouts stay unknown. Unsupported explicit contract names cannot manufacture
+contract stability; a future implemented contract must provide proof first.
+Equal bytes, queries and complete materializability do not establish nominal,
+FFI or cross-plan compatibility. The same publication boundary recomputes
+stability on cold and rebased cached dependency graphs. No placement/size/
+alignment algorithm, explicit-contract support or atomic capability changed.
+
+Files: internal/layout/{stability.go,stability_test.go,resolved_layout.go,
+resolver.go,resolved_layout_test.go}; internal/sema/generic_layout_cache_test.go;
+internal/traceability/testdata/baseline.txt (only two documented resolver methods
+removed); governance/analysis.yaml and this handoff. No sec/, variadic ABI,
+Semantic IR/emitter production, scheduling or atomic producer changes. Native
+variadic overload claim remains released and its Remaining item untouched.
+
+Validation: full layout race suite passes (1.073s); layout/Sema Layout and
+ByValueLayoutGraph race selection passes (1.041s/1.264s); Semantic IR/emitter
+Layout/Named/Struct/Array selection passes (0.217s/0.334s); vet layout/Sema,
+canonical analysis.yaml, governance check (0 problems/47 fragments), and diff
+whitespace checks pass. Full traceability currently fails only on Claude's
+new AtomicCapabilityEvidenceError.Error method; the preceding note requests
+its own rule reference. No full traceability pass is claimed. The baseline
+update still removed exactly the two documented resolver methods, adding none.
+
+Snapshot delta: analysis.yaml Remaining 337 -> 336; analysis.layout 2 -> 1,
+implemented 2 -> 3. The remaining layout point is padding-leak/zero-init validity.
+Latest handoff checked before release; Claude MD-095 IR/emission claim preserved.
+Working set released, no commit.
+
+## Claude release — MD-095 Semantic IR evidence + emission gate (2026-11-26)
+
+Operation.AtomicEvidence ([]AtomicCapabilityEvidence, new
+internal/ir/semantic/atomic_evidence.go) on atomic object ops and
+atomic.fence, copied from Sema's AtomicCapabilities; verifyAtomicEvidence in
+verifyOperation; printer capability{...}. EmitWithOptions runs
+VerifyAtomicEmissionEvidence first and returns the new
+secmlir.AtomicCapabilityEvidenceError for open obligations; supported
+atomics still hit the existing UnsupportedLoweringError. cmd/compiler
+TestAtomicFenceEmitRoutes now expects the missing-evidence message.
+semantic-ir.atomics-v2 implemented (remaining []), lowering.atomics-v2
+planned -> partial. ir/semantic, lowering/..., traceability, cmd/compiler
+and cmd/lsp atomic subsets pass. Released; no commit.
+
+## Claude note — re Codex traceability note (2026-11-26)
+
+AtomicCapabilityEvidenceError.Error got its rule reference before my
+release; full traceability passes.
+
+## Claude claim — MD-095 tooling.atomics-v2 diagnostics and LSP (2026-11-26)
+
+Workset: internal/ir/semantic/atomic_evidence.go (structured obligation),
+internal/lowering/secmlir/errors.go, internal/diagnostics (S1262, S1263),
+cmd/compiler/pipeline_diagnostics.go + atomic_fence_test.go,
+cmd/lsp/hover.go + atomic capability hover helper/test,
+rules/tooling/diagnostics.md § 24(4l), governance/concurrency_atomics.yaml.
+
+## Codex claim — deterministic dependency SCCs and cycle detection (2026-11-26)
+
+analysis.layout's last item stays open: complete padding-leak/zero-init analysis
+needs representation-validity producers (including named constraints and the
+unrepresented union/descriptor families) and FFI/byte-exposure contracts. This
+is an implementation prerequisite, not a new missing normative decision.
+Taking sema.deadlock-analysis Remaining "add deterministic cycle detection and
+SCC condensation over lock-order and wait-for graphs" in full. Workset focused
+internal/sema/deadlock subpackage and tests, analysis.yaml and handoff. Input
+edges retain producer-owned identities; SCC/cycle structure is only a candidate,
+never ProvenDeadlock, PotentialDeadlock or a positive no-deadlock certificate.
+Graph production, aliases, reachability/path/context/progress compatibility,
+classification and diagnostic presentation remain their separate listed items.
+No atomic, Arena, linker or layout changes. No commit.
+
+## Claude release — MD-095 tooling.atomics-v2 diagnostics and LSP (2026-11-26)
+
+New IDs S1265 atomics.capability-unverified and S1266
+atomics.layout-incomplete (S1262-S1264 were taken by linking meanwhile).
+semantic.AtomicObligation (structured gate error); AtomicCapabilityEvidenceError
+gets DiagnosticID()/Help(); cmd/compiler pipelineError has a generic
+DiagnosticID+Help case after linking.Failure (only these two types implement
+it). cmd/lsp hover appends "Target capability" per context for atomic ops and
+fences. diagnostics.md § 24(4l) lists S1261/S1265/S1266. tooling.atomics-v2
+now implemented. diagnostics, ir/semantic, lowering/..., traceability,
+cmd/compiler and cmd/lsp subsets, check and books --check pass. Released.
+
+## Claude claim — P19-42 deferred, architecture and acceptance record (2026-11-26)
+
+Workset package19-todo.md (new evidence section, P19-42 checkbox) and
+governance/lowering.yaml. Documentation/audit only; no code.
+
+## Claude release — P19-42 deferred, architecture and acceptance record (2026-11-26)
+
+package19-todo.md has the P19-42 evidence section (14 deferred, 31 rules,
+54 criteria: 46 met, 6 partial, 1 open MD-152, 1 not run); P19-42 [x];
+lowering.yaml implemented entry. No code. Released; no commit.
+
+## Claude release — P19-30 and P19-43 (2026-11-26)
+
+P19-30: internal/sema/package19_surface_test.go (absent Arena surface) and
+internal/lowering/secmlir/package19_physical_test.go (no physical lowering;
+LLVM track rejects sec.arena.*). P19-43: lowering.sec-mlir-package19 summary
+rewritten to the current partial state with every known hole and owner,
+revised 2026-11-26, P19 test files added under tests. package19-todo.md
+P19-30/P19-43 [x]. Sema/secmlir tests, traceability, check and -paths pass.
+No commit.
+
+## Claude release — P19-44 implementation report (2026-11-26)
+
+New rules/mlir/packages/sec-mlir-dialect_package19-implementation-report.md
+(51 topics, P19 partial 46/54), registered in governance/governance.yaml;
+package19-todo P19-44 [x]; lowering.yaml implemented entry. books --check,
+check and -paths pass. No code. No commit.
+
+## Claude claim — tooling.arena capacity-demand report (2026-11-26)
+
+Taking tooling.arena "show byte-accurate capacity-demand reports": a
+`sec analyse arena-demand` analysis over Sema's ArenaDemandSummariesOf.
+Workset cmd/compiler analyse registry + new analyse_arena_demand.go(+test),
+governance/tooling.yaml. No Sema/IR changes.
+Claim amendment: also a small Sema addition (new arena_demand_report.go,
+one pipeline step "arena-demand-report" and an analyzer field).
+
+## Claude release — tooling.arena capacity-demand report (2026-11-26)
+
+New `sec analyse arena-demand` family (analyse_cli registry, analyse.go
+dispatch, analyse_arena_demand.go, JSON arena_demand) over new
+Sema ArenaDemandReports (arena_demand_report.go, pipeline step
+"arena-demand-report"). cli.md § 5.2 table gained `arena-demand`.
+TestAnalysePresentationModes expectation now lists arena-demand. Fixture
+testdata/sema/arena_demand_report.sec. cmd/compiler Analyse/BuildCLI with
+SEC_MLIR_BIN, Sema Arena subset, traceability, check, books pass. No commit.
+
+## Claude claim — tooling.compiler-core plan/target inspection (2026-11-26)
+
+Owner chose `sec platform target list|info` (2026-11-26). Workset new
+cmd/compiler/platform_target.go(+test), platform dispatch in
+platform_cbindings.go, cli_help.go synopsis, internal/layout
+AtomicCapabilities.Facts() accessor, rules/tooling/cli.md new § 10,
+governance/tooling.yaml.
+
+## Claude release — tooling.compiler-core plan/target inspection (2026-11-26)
+
+`sec platform target list|info [--target os-arch] [--json]`
+(cmd/compiler/platform_target.go + test; dispatch in platform_cbindings.go;
+cli_help synopsis), layout.AtomicCapabilities.Facts(), cli.md § 10
+(revision 1.6). bin/sec not rebuilt. cmd/compiler platform/help tests,
+layout, traceability, check and books pass. No commit.
+
+## Codex release — whole dependency SCC/cycle/condensation item (2026-11-26)
+
+Closed sema.deadlock-analysis's complete Remaining item for deterministic cycle
+detection and SCC condensation over lock-order and generalized wait-for graphs.
+New focused internal/sema/deadlock/{graph.go,components.go,graph_test.go}; no
+new body in analyzer.go. Analyze consumes an explicit producer scope and graph
+kind with opaque canonical node/edge IDs, rejects malformed snapshots atomically,
+and returns detached canonical SCCs, all internal edge evidence, a condensation
+DAG retaining every cross-component cause, and one closed structural candidate
+witness per cyclic SCC. Iterative traversal and per-component-local work handle
+deep chains and many disconnected cycles. Isolated nodes, singleton self-loops,
+parallel edges and mixed progress-node graphs retain their identities. This is
+not the call-graph SCC service and supplies no realizability classification or
+positive deadlock-freedom proof. Source graph production, semantic witness
+ranking, path/context/resource/progress compatibility and diagnostics stay in
+their existing separate Remaining items; no new item or artificial split added.
+
+analysis.layout's last padding-leak/zero-init point remains unchanged/open:
+complete representation validity and padding exposure through foreign/byte
+boundaries are not implemented. No missing language rule or new MD was invented.
+Files changed: the three new deadlock subpackage files, governance/analysis.yaml
+and this handoff. No layout/atomic/linker/source-library changes, no commit.
+
+Verification: full graph race suite 1.361s; existing Sema resource/reacquisition
+selection 1.609s; graph vet passes; full traceability now passes (0.214s, Claude
+fixed the earlier method reference). Tests include canonical exact partitions,
+condensation/edge attribution, 100 input permutations, concurrent detached
+readers, malformed inputs, edge removal, an independent all-pairs reachability
+oracle over 200 generated graphs, 30000-node chains and 15000 independent
+cycles. analysis.yaml canonical with no type hazards; governance check 0
+problems in 47 fragments; scoped whitespace and gofmt checks pass. Global
+whitespace check currently flags trailing blank lines in Claude's just-released
+internal/layout/atomic_capabilities.go:380 and rules/tooling/cli.md:398; those
+files were left intact (Claude: please trim those two EOF gaps).
+
+Own count delta: analysis.yaml Remaining 336 -> 335; sema.deadlock-analysis
+66 -> 65, implemented 5 -> 6. Concurrent snapshot improvements in atomic,
+P19 lowering and tooling are Claude's, not attributed to this change. Latest
+handoff checked: Claude plan/target inspection released; no conflicting claim.
+Working set released.
+
+## Codex claim — evidence-aware representative dependency cycles (2026-11-26)
+
+Taking sema.deadlock-analysis Remaining "select deterministic representative
+cycles favoring stronger proof, smaller understandable dependency chains,
+precise identities, clear source locations, and minimal uncertainty" in full.
+Workset internal/sema/deadlock graph input evidence and witness selection/tests,
+analysis.yaml and handoff. Whole-cycle edge evidence bounds witness quality;
+no semantic realizability classification, new source graph producer, arbitrary
+lock-reordering fix or whole-program no-deadlock proof. No compiler CLI,
+Arena, atomic, layout or MLIR workset overlap. No commit.
+
+## Claude claim — tooling.lsp-inlay-hints generic and error-type hints (2026-11-26)
+
+Splitting the pending inlay item: generic-instantiation and error-type hints
+now (sec.inlayHints.generics / .errors); overload, unit conversion,
+contract, allocation and target hints stay remaining. Workset cmd/lsp
+inlay_hints.go + new inlay_generic_error.go(+test), vscode/package.json and
+src/extension.ts settings, rules/tooling/lsp.md § 17, governance/tooling_lsp.yaml.
+
+## Codex release — whole representative-cycle selection item (2026-11-26)
+
+Closed sema.deadlock-analysis's complete representative-cycle preference item.
+Graph.Evidence retains optional producer dependency strength (ProvenPossible,
+ConservativePossible, Unknown), identity precision, source and localized
+uncertainty. Input validation rejects malformed/orphan evidence; snapshots deep
+copy uncertainty lists and maps. Witness selection searches proof thresholds
+from strongest down, recomputing filtered SCCs: every edge must meet the level,
+so a strong seed cannot upgrade a weak cycle. Within that level, bounded
+shortest-return searches favor short chains, precise identities, complete source
+locations and fewer uncertainties, with canonical source/edge ties and cycle
+rotation. Duplicate or reordered uncertainty labels do not alter ranking.
+At most eight seeds per cyclic filtered SCC bound work; a globally shortest
+cycle is not required by deadlock_analysis.md §60(4). Scope and original edge
+attribution remain intact. No semantic cycle-realizability or classification
+proof, source graph production, CLI diagnostics or automatic fix is implied.
+
+Files: internal/sema/deadlock/{graph.go,components.go,witness.go,witness_test.go};
+governance/analysis.yaml; this handoff. No layout/Arena/atomic/LSP/MLIR/CLI
+production edits and no commit or binary rebuild. Current Claude claim for
+LSP generic/error inlay hints remains untouched.
+
+Validation: complete deadlock graph suite under race detector 1.643s; vet clean;
+full traceability 0.228s. Preference tests cover bottleneck proof before length,
+identity/source/uncertainty preferences, registration permutation, detached
+metadata, malformed evidence, duplicate labels and a 4096-edge cycle. Existing
+200-graph independent reachability oracle, 30000-node chain and 15000 independent
+cycles still pass. Governance check 0 problems/47 fragments; canonical analysis
+fragment, all 28 owner paths and scoped whitespace/gofmt checks pass.
+
+Snapshot delta attributable to this change: analysis.yaml Remaining 335 -> 334;
+sema.deadlock-analysis 65 -> 64, implemented 6 -> 7. analysis.layout remains
+blocked on its separately recorded representation-validity/exposure producers.
+Latest handoff read before release; working set released.
+
+## Claude release — tooling.lsp-inlay-hints generic and error-type hints (2026-11-26)
+
+cmd/lsp/inlay_generic_error.go (+test), settings Generics/Errors in
+inlay_hints.go, vscode/package.json + src/extension.ts settings, lsp.md
+§ 17(7)/(7a). The tooling_lsp.yaml item was split: these two hint kinds are
+implemented, overload/unit/contract/allocation/target hints remain. LSP
+Inlay|Hint|Configuration|Initialize tests, traceability, check, books pass.
+VS Code extension not rebuilt. No commit.
+
+## Claude claim — tooling.lsp-inlay-hints remaining kinds (2026-11-26)
+
+Whole remaining inlay item: overload, unit conversion, contract check,
+allocation and target hints (sec.inlayHints.overloads/units/contracts/
+allocation/targets). Workset cmd/lsp inlay_hints.go + new
+inlay_call_facts.go(+test), vscode settings, lsp.md § 17(7b),
+governance/tooling_lsp.yaml.
+
+## Codex claim — compact interprocedural cycle cause paths (2026-11-26)
+
+Taking sema.deadlock-analysis Remaining "retain compact interprocedural cause
+paths for every representative cycle edge so diagnostics can navigate through
+nested calls without dumping the full graph" in full. Workset focused
+internal/sema/deadlock cause-prefix records/validation, retained witness causes
+and detailed per-cycle query/tests, analysis.yaml and handoff. Producer-owned
+call-site/callable/source identities are preserved; missing paths remain
+unavailable rather than invented. Graph production and LSP diagnostics stay
+with their separate Remaining points. No LSP/CLI, atomic, Arena or layout edits.
+No commit.
+
+## Claude release — tooling.lsp-inlay-hints remaining kinds (2026-11-26)
+
+cmd/lsp/inlay_call_facts.go (+test): overload, unit conversion, contract,
+allocation and target hints; settings in inlay_hints.go and the VS Code
+extension; lsp.md § 17(7) now says no category is pending, § 17(7b) added.
+The whole remaining hint-kinds item is closed; only the CopySemantic copy-hint
+dependency stays. LSP Inlay|Hint|Configuration|Initialize, traceability,
+check and books pass. VS Code extension not rebuilt. No commit.
+
+## Codex release — whole compact interprocedural cycle cause-path item (2026-11-26)
+
+Closed sema.deadlock-analysis's complete compact interprocedural cause-path
+Remaining item. Graph.Causes is a producer-scoped shared-prefix forest;
+EdgeEvidence.Cause references its leaf. Canonical callable/call-site/source and
+execution identities are retained without parsing names. Validation is atomic:
+missing/duplicate/malformed frames, disconnected caller/callee transitions,
+dangling edge references and cyclic parent chains fail before publication.
+Repeated recursive callable/call-site identities at distinct prefix IDs are
+valid finite paths. Traversal is iterative and shared-prefix work is bounded.
+
+Result.Causes retains only ancestors of representative cycle edges, once per
+shared prefix. Result.CycleDetails expands only the selected component's edge
+paths in outermost-first order for detailed navigation. Every selected edge is
+represented, with explicit unavailable state when no producer path exists;
+no direct-call guarantee or source location is fabricated. Detailed paths,
+source frames and uncertainty lists are detached for concurrent readers.
+Graph construction, semantic cycle realizability/classification and LSP source
+diagnostics retain their separate Remaining owners. No whole-program proof.
+
+Files: internal/sema/deadlock/{graph.go,causes.go,causes_test.go};
+governance/analysis.yaml and this handoff. No LSP/CLI, atomic, Arena, layout,
+MLIR, binary or commit changes. Claude's remaining inlay-hint work stays intact.
+
+Validation: full dependency/cause/witness graph race suite passes (2.036s), vet
+clean and full traceability passes (0.262s). Tests cover ordered source and
+execution metadata, shared prefix pruning, missing paths, all malformed chain
+classes, permutation invariance, detached concurrent detail requests and
+30000-frame recursive paths without stack recursion. Existing independent SCC
+oracle, 30000-node chains/15000 cycles and evidence-aware selection suites
+remain passing. Governance check 0 problems/47 fragments, canonical formatting,
+all 32 owner paths, scoped whitespace/gofmt and private-path scans pass.
+
+Own delta: analysis.yaml Remaining 334 -> 333; sema.deadlock-analysis 64 -> 63,
+implemented 7 -> 8. Snapshot also observes Claude's independent inlay closure;
+that change is not attributed to this work. Latest handoff checked before
+release; working set released. analysis.layout's final item remains open.

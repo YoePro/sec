@@ -5,6 +5,13 @@ import (
 	"sort"
 )
 
+// Native linking boundaries have stable identities independent of source errors.
+const (
+	LinkToolchainInvocation  = "S1262"
+	LinkResolution           = "S1263"
+	LinkArtifactVerification = "S1264"
+)
+
 type Severity string
 
 const (
@@ -371,6 +378,16 @@ const (
 	// FloatTargetCapability reports float use on a plan whose known float
 	// contract lacks a required P20 semantic (P20 § 83).
 	FloatTargetCapability = "S1260"
+	// AtomicTargetCapability reports a concrete atomic operation that the
+	// selected CompilationPlan proves unsupported (MD-095; atomics.md
+	// §§ 37A(11), 48(4); diagnostics.md § 24(4l)).
+	AtomicTargetCapability = "S1261"
+	// AtomicCapabilityUnverified reports an atomic operation whose capability
+	// is still unproven at executable emission (MD-095; atomics.md § 37A(12)).
+	AtomicCapabilityUnverified = "S1265"
+	// AtomicLayoutIncomplete reports an atomic operation whose atomic storage
+	// layout is unresolved at executable emission (MD-095; layout.md § 47.6).
+	AtomicLayoutIncomplete = "S1266"
 	// OperatorIncompatibleOperands identifies an unsupported binary operand pair.
 	OperatorIncompatibleOperands = "S1259"
 	// Unsafe context diagnostics from the canonical unsafe-operation
@@ -575,6 +592,9 @@ const (
 )
 
 var registry = map[string]Definition{
+	LinkToolchainInvocation:               {ID: LinkToolchainInvocation, Name: "linking.toolchain-invocation-failure", Family: "linking", DefaultSeverity: SeverityError, Mandatory: true},
+	LinkResolution:                        {ID: LinkResolution, Name: "linking.resolution-failure", Family: "linking", DefaultSeverity: SeverityError, Mandatory: true},
+	LinkArtifactVerification:              {ID: LinkArtifactVerification, Name: "linking.artifact-verification-failure", Family: "linking", DefaultSeverity: SeverityError, Mandatory: true},
 	HardwareMemberType:                    {ID: HardwareMemberType, Name: "hardware.member-type", Family: "hardware", DefaultSeverity: SeverityError, Mandatory: true},
 	HardwareMemberSchema:                  {ID: HardwareMemberSchema, Name: "hardware.member-schema", Family: "hardware", DefaultSeverity: SeverityError, Mandatory: true},
 	HardwareEnumCase:                      {ID: HardwareEnumCase, Name: "hardware.enum-case", Family: "hardware", DefaultSeverity: SeverityError, Mandatory: true},
@@ -628,6 +648,9 @@ var registry = map[string]Definition{
 	CompilerCapabilityUnavailable:         {ID: CompilerCapabilityUnavailable, Name: "compiler.capability-unavailable", Family: "compiler-capability", DefaultSeverity: SeverityError, Mandatory: true},
 	MutexTargetCapability:                 {ID: MutexTargetCapability, Name: "mutex.target-capability", Family: "concurrency", DefaultSeverity: SeverityError, Mandatory: true},
 	FloatTargetCapability:                 {ID: FloatTargetCapability, Name: "float.target-capability", Family: "types", DefaultSeverity: SeverityError, Mandatory: true},
+	AtomicTargetCapability:                {ID: AtomicTargetCapability, Name: "atomics.target-capability", Family: "concurrency", DefaultSeverity: SeverityError, Mandatory: true},
+	AtomicCapabilityUnverified:            {ID: AtomicCapabilityUnverified, Name: "atomics.capability-unverified", Family: "concurrency", DefaultSeverity: SeverityError, Mandatory: true},
+	AtomicLayoutIncomplete:                {ID: AtomicLayoutIncomplete, Name: "atomics.layout-incomplete", Family: "concurrency", DefaultSeverity: SeverityError, Mandatory: true},
 	PhysicalThreadCapability:              {ID: PhysicalThreadCapability, Name: "thread.physical-capability", Family: "concurrency", DefaultSeverity: SeverityError, Mandatory: true},
 	ObserverWaitUnavailable:               {ID: ObserverWaitUnavailable, Name: "observer.wait-unavailable", Family: "concurrency", DefaultSeverity: SeverityError, Mandatory: true},
 	SelectOperationNotSelectable:          {ID: SelectOperationNotSelectable, Name: "select.operation-not-selectable", Family: "concurrency", DefaultSeverity: SeverityError, Mandatory: true},

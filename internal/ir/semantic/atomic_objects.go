@@ -116,7 +116,11 @@ func (fb *functionBuilder) buildAtomicObjectCall(call *ast.CallExpression) (buil
 		return builtValue{}, true, fb.unsupported("atomic object operation without a validated order", site)
 	}
 	facts.Order = facts.Paths[0].Order
-	operation := Operation{Operands: []ValueID{receiver.id}, Atomic: facts, Location: location(site)}
+	evidence, err := fb.atomicEvidence(plan.Source)
+	if err != nil {
+		return builtValue{}, true, err
+	}
+	operation := Operation{Operands: []ValueID{receiver.id}, Atomic: facts, AtomicEvidence: evidence, Location: location(site)}
 	argument := func(index int) (ValueID, error) {
 		value, err := fb.buildExpr(call.Arguments[index], element)
 		return value.id, err

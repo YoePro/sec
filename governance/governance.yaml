@@ -259,6 +259,7 @@ integrations:
       - rules/mlir/packages/sec-mlir-dialect_package16-implementation-report.md
       - rules/mlir/packages/sec-mlir-dialect_package17-implementation-report.md
       - rules/mlir/packages/sec-mlir-dialect_package18-implementation-report.md
+      - rules/mlir/packages/sec-mlir-dialect_package19-implementation-report.md
     tests:
       - internal/ir/semantic/schema_version_test.go
       - internal/lowering/secmlir/semantic_schema_version_test.go

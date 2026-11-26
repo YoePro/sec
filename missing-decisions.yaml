@@ -1,6 +1,6 @@
 schema_version: 1
-updated: "2026-11-25"
-last_id: MD-152
+updated: "2026-11-26"
+last_id: MD-153
 purpose: >-
   Tracks normative decisions that are missing or insufficiently precise and
   therefore constrain implementation. Remove an entry only after the owning
@@ -1889,4 +1889,41 @@ decisions:
       profile (P19-27). Governance owners: lowering.sec-mlir-package19,
       platform.target-profiles.
     classification: constraining
+    status: open
+
+  - id: MD-153
+    area: arena-reset-headroom-query
+    rulebooks:
+      - rules/memory/arena.md
+      - rules/memory/reference_model.md
+      - rules/platform/target_profiles.md
+    description: >-
+      Open decision (2026-11-26, raised by the owner after MD-140). MD-140
+      makes Arena.Reset() exhaustion a panic and forbids an epoch access
+      property and a fallible Reset overload (correction § 10(2)). The default
+      logical epoch is 64 bits on every target, including 32-bit ones
+      (reference_model.md § 33), so exhaustion is practically unreachable
+      there; it becomes reachable when a project selects a shorter
+      compile-time width (§ 34, for example 16 or 32 bits) and resets often.
+      The owner wants programs to be able to act before the panic. Exposing
+      the raw epoch value is not recommended: it would make the plan-local
+      width a source property, has no value when epoch metadata is
+      eliminated (arena.md § 105) and invites non-portable arithmetic.
+      Options: (A, recommended by Claude) a read-only headroom query such as
+      `arena.CanReset: bool` or a saturating `arena.ResetsRemaining`, true or
+      saturated when metadata is eliminated or a bound is proven, letting the
+      program release and recreate the Arena in time; (B) a separately
+      specified fallible operation such as
+      `TryReset() Result[void, ArenaError]`, which MD-140 § 2(4) permits for
+      an independent API, at the cost of a second Reset path and a new
+      ArenaError case; (C) no language change: programs count their own
+      Resets and recreate the Arena (Release plus a new FromBuffer over the
+      same buffer gives a fresh domain), without knowing the selected width.
+      Optionally, any option may be paired with an advisory when a project
+      selects a short epoch width and has Reset in a loop without a proven
+      bound. Decide whether to add a query or operation, its name, type and
+      semantics under elimination and proven bounds, whether it affects
+      MayPanic/@noPanic analysis, and the advisory. Governance owners:
+      analysis.arena, lowering.sec-mlir-package19.
+    classification: localized
     status: open

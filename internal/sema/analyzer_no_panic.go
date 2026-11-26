@@ -153,6 +153,8 @@ func noPanicEffectHelp(kind EffectKind) string {
 		return "This call's target is not known here (a function value, an interface method, or a generic constraint method), so whether it can panic cannot be proven. Call a known function or concrete method directly, or remove @noPanic."
 	case EffectMayPanicInvalidReference:
 		return "This use goes through an Arena-backed reference whose allocation may have been reset or released, so the compiler checks its generation at run time and panics with InvalidReferenceGeneration when it is stale. Keep the Arena live and unreset across the use, or remove @noPanic."
+	case EffectMayPanicArenaEpochExhaustion:
+		return "Arena.Reset() checks that its validity epoch can still advance and panics with panic.arena-epoch-exhaustion when it cannot. No proof that this Reset can never exhaust the epoch exists here; the default 64-bit width is not such a proof. Move the Reset out of this function, or remove @noPanic."
 	case EffectMayPanicForeign:
 		return "A call to an extern function has unknown foreign behavior and may abort. When the foreign documentation guarantees it cannot abort or unwind, mark the extern declaration @noPanic as a trusted foreign contract."
 	}

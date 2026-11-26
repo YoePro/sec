@@ -1,0 +1,8 @@
+module main
+
+type Text string
+fn ByValue(text: string) void { let old := text.Slice(0, 1) }
+fn ByReference(text: ref string) void { let old := text.Slice(0, 1) }
+fn Literal() void { let old := "abc".Slice(0, 1) }
+fn Callable(text: string) void { let old := text.Slice }
+fn Named(text: Text) void { let old := text.Slice(0, 1) }

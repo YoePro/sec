@@ -263,6 +263,14 @@ type Analyzer struct {
 	resolvedCallReferences         map[*ast.CallExpression]ReferenceFacts
 	resolvedCompareExchanges       map[*ast.CallExpression]ResolvedCompareExchange
 	resolvedAtomicMemoryOperations map[*ast.CallExpression]ResolvedAtomicMemoryOperation
+	// atomicCapabilities are the MD-095 capability results of the final
+	// analysis, one per atomic operation and applicable execution context.
+	atomicCapabilities []ResolvedAtomicCapability
+	// atomicLayoutResolver resolves Atomic[T] storage under the plan.
+	atomicLayoutResolver *layout.Resolver
+	// arenaDemandReports are the per-callable Arena demand summaries of the
+	// final analysis, for tooling (arena_demand_report.go).
+	arenaDemandReports []ArenaDemandReport
 	staticBindings                 map[sourceTokenKey]ResolvedStatic
 	receiverReborrows              map[ast.Expression]ReferenceFacts
 	// compoundGetterReborrows: the getter reborrow of a compound property
@@ -993,6 +1001,7 @@ func (a *Analyzer) analyzeProgram(program *ast.Program) []Error {
 	a.resolvedCallReferences = map[*ast.CallExpression]ReferenceFacts{}
 	a.resolvedCompareExchanges = map[*ast.CallExpression]ResolvedCompareExchange{}
 	a.resolvedAtomicMemoryOperations = map[*ast.CallExpression]ResolvedAtomicMemoryOperation{}
+	a.atomicCapabilities = nil
 	a.resolvedMutexTargetCapabilities = map[*ast.CallExpression]ResolvedMutexTargetCapability{}
 	a.resolvedThreadCurrentCapabilities = map[*ast.CallExpression]ResolvedThreadCurrentCapability{}
 	a.staticBindings = map[sourceTokenKey]ResolvedStatic{}

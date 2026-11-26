@@ -835,6 +835,9 @@ func (a *Analyzer) inferMemberExpression(expr *ast.MemberExpression) (Type, bool
 		return Type{Kind: InvalidType}, false
 	}
 	objectType = dereferenceType(objectType)
+	if a.rejectRetiredStringSlice(objectType, expr.Property.Value, expr.Property.Token) {
+		return Type{Kind: InvalidType}, false
+	}
 	if definition, exists := memberDefinitionToken(objectType, expr.Property.Value); exists {
 		a.bindDefinition(expr.Property.Token, definition)
 	}

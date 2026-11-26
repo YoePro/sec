@@ -9,14 +9,18 @@ import (
 	"sec/internal/diagnostics"
 )
 
+// CompilerKnownStringRangeID identifies borrowed text range selection across
+// string and StringView sources; it never identifies the private owned helper.
+const CompilerKnownStringRangeID = "CKO-STRING-RANGE"
+
 // ResolvedStringRangePlan is a shared UTF-8 borrow in rune coordinates, not
 // an array of stored runes or an owned string. Range preserves source/endpoint
 // evaluation order and RangeError precedence; byte translation belongs to P23.
-// Rules: rules/collections/collections.md — §7.10; rules/compiler/semantic_ir.md
-// — §17(9–10); rules/corrections/applied/MD-126-borrowed-string-ranges-rune-iteration-applied-20261105.md — §§2–5.
+// Rules: rules/collections/collections.md §7.10; rules/compiler/compiler_known_members.md §21(3).
 type ResolvedStringRangePlan struct {
-	Range     ResolvedSliceCreationPlan
-	ViewPlace Place
+	OperationID string
+	Range       ResolvedSliceCreationPlan
+	ViewPlace   Place
 }
 
 // inferStringRange checks the type-directed implicit shared borrow, resolving
@@ -53,7 +57,7 @@ func (a *Analyzer) inferStringRange(expr *ast.SliceExpression, sourceType Type) 
 	if a.checkBorrowCreationPlace(source, false, expr.Token) {
 		return invalid()
 	}
-	plan := ResolvedStringRangePlan{Range: ResolvedSliceCreationPlan{
+	plan := ResolvedStringRangePlan{OperationID: CompilerKnownStringRangeID, Range: ResolvedSliceCreationPlan{
 		EvaluationOrder: sliceEvaluationOrder(expr.Start != nil, expr.End != nil), Mode: SliceShared,
 		SourceKind: SliceSourceString, ElementType: a.types["rune"], SourcePlace: source,
 		SourceSliceType: a.expressionTypes[expr.Left], Start: a.resolvedSliceEndpoint(expr.Start), End: a.resolvedSliceEndpoint(expr.End),

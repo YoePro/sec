@@ -9,7 +9,7 @@ release compliance. The inventory is in
 | --- | --- | --- |
 | LLVM and MLIR | Native compiler backend / build dependency | Apache-2.0 WITH LLVM-exception is the principal upstream license; exact build version, legacy and bundled notices must be checked. |
 | Go | Bootstrap toolchain; runtime and standard library may enter distributed binaries | BSD-3-Clause, separate PATENTS grant and component-specific notices; confirm exact toolchain. |
-| Go modules | Dependencies listed in go.mod / go.sum | Version-specific licenses and notices pending. |
+| Go modules | Dependencies listed in go.mod / go.sum and the optional cmd/sec-mcp module | Version-specific licenses and notices pending. |
 | Unicode | Data under third_party/unicode and potentially derived tables | Verify original release notices and preserve source attribution. |
 | VS Code extension | Dependencies in vscode/package-lock.json | Version-specific licenses and actual VSIX contents pending. |
 | Native libraries, assets and generated artifacts | Target- and distribution-specific | Inventory and provenance review pending. |

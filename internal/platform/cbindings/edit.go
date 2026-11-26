@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
-	"unicode/utf8"
 )
 
 // OperationKind names one typed metadata mutation (correction § 4(3)).
@@ -272,7 +271,7 @@ func editText(text string, op Operation, pkg *Package) (string, error) {
 			if field.value == nil {
 				continue
 			}
-			if text, err = doc.setValue([]string{"bindings"}, field.key, tomlString(*field.value)); err != nil {
+			if text, err = doc.SetValue([]string{"bindings"}, field.key, tomlString(*field.value)); err != nil {
 				return "", err
 			}
 			if doc, err = scanDocument(text); err != nil {
@@ -291,7 +290,7 @@ func editText(text string, op Operation, pkg *Package) (string, error) {
 			}
 		}
 		lines = append(lines, "modules = []")
-		return doc.appendTable([]string{"environments", op.Environment}, lines), nil
+		return doc.AppendTable([]string{"environments", op.Environment}, lines), nil
 	case OpEnvironmentSet:
 		table := []string{"environments", op.Environment}
 		for _, field := range []struct {
@@ -301,7 +300,7 @@ func editText(text string, op Operation, pkg *Package) (string, error) {
 			if field.value == nil {
 				continue
 			}
-			if text, err = doc.setValue(table, field.key, tomlString(*field.value)); err != nil {
+			if text, err = doc.SetValue(table, field.key, tomlString(*field.value)); err != nil {
 				return "", err
 			}
 			if doc, err = scanDocument(text); err != nil {
@@ -309,44 +308,20 @@ func editText(text string, op Operation, pkg *Package) (string, error) {
 			}
 		}
 		if op.ClearCRuntimeVersions && pkg.Environments[op.Environment].CRuntimeVersions != "" {
-			return doc.removeKey(table, "c_runtime_versions")
+			return doc.RemoveKey(table, "c_runtime_versions")
 		}
 		return text, nil
 	case OpEnvironmentRemove:
-		return doc.removeTable([]string{"environments", op.Environment})
+		return doc.RemoveTable([]string{"environments", op.Environment})
 	case OpModuleAdd, OpModuleRemove:
 		table, key := []string{"environments", op.Environment}, "modules"
 		if op.Common {
 			table, key = []string{"modules"}, "common"
 		}
 		if op.Kind == OpModuleAdd {
-			return doc.addArrayString(table, key, op.Module)
+			return doc.AddArrayString(table, key, op.Module)
 		}
-		return doc.removeArrayString(table, key, op.Module)
+		return doc.RemoveArrayString(table, key, op.Module)
 	}
 	return "", fmt.Errorf("unknown operation %q", op.Kind)
-}
-
-// tomlString renders a TOML basic string, escaping only what TOML requires.
-// Rules: rules/projects/projects.md — § 5(2).
-func tomlString(value string) string {
-	var out strings.Builder
-	out.WriteByte('"')
-	for _, char := range value {
-		switch {
-		case char == '"' || char == '\\':
-			out.WriteByte('\\')
-			out.WriteRune(char)
-		case char == '\n':
-			out.WriteString(`\n`)
-		case char == '\t':
-			out.WriteString(`\t`)
-		case char < 0x20 || char == 0x7f || char == utf8.RuneError:
-			fmt.Fprintf(&out, `\u%04X`, char)
-		default:
-			out.WriteRune(char)
-		}
-	}
-	out.WriteByte('"')
-	return out.String()
 }

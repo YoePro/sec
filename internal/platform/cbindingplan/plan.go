@@ -9,6 +9,7 @@ package cbindingplan
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -54,10 +55,36 @@ func (plan *Plan) Identity() string {
 // binding names stay unresolved. No fact is taken from the host.
 // Rules: MD-021 correction §§ 8.3(3)-(5), 8.5, 8.7(1)-(3).
 func Resolve(root, variant string, platform target.Target) (*Plan, []string) {
-	manifest, err := os.ReadFile(filepath.Join(root, ".sec", "sec.toml"))
+	handle, err := os.OpenRoot(root)
 	if err != nil {
 		return nil, nil
 	}
+	defer handle.Close()
+	// Ordinary source analysis also supports files without a project. Only
+	// explicitly opened workspaces require the strict manifest precondition.
+	manifest, err := handle.ReadFile(filepath.FromSlash(".sec/sec.toml"))
+	if err != nil {
+		return nil, nil
+	}
+	return ResolveSnapshotInRoot(handle, root, variant, platform, manifest)
+}
+
+// ResolveInRoot shares CLI/LSP binding selection while confining every read and
+// selected module lookup to the retained project root, including symlink swaps.
+// Rules: MD-021 correction §§8.3,8.5–8.7; harness design notes §§5(6)–(7),7(3).
+func ResolveInRoot(handle *os.Root, root, variant string, platform target.Target) (*Plan, []string) {
+	manifest, err := handle.ReadFile(filepath.FromSlash(".sec/sec.toml"))
+	if err != nil {
+		return nil, []string{fmt.Sprintf("cannot read project manifest: %v", err)}
+	}
+	return ResolveSnapshotInRoot(handle, root, variant, platform, manifest)
+}
+
+// ResolveSnapshotInRoot uses one manifest snapshot for profile and binding
+// selection, preserving consistency when the source file changes concurrently.
+// Rules: MD-021 correction §8.7; rules/projects/projects.md §49(1)-(3).
+func ResolveSnapshotInRoot(handle *os.Root, root, variant string, platform target.Target, manifest []byte) (*Plan, []string) {
+
 	if variant == "" {
 		if variant = UniqueVariant(string(manifest), platform); variant == "" {
 			return nil, nil
@@ -81,7 +108,7 @@ func Resolve(root, variant string, platform target.Target) (*Plan, []string) {
 		}
 		return nil, problems
 	}
-	data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(cbindings.DefaultFile)))
+	data, err := handle.ReadFile(filepath.FromSlash(cbindings.DefaultFile))
 	if err != nil {
 		return fail([]cbindings.Diagnostic{{ID: "c-bindings.unknown-package", Message: fmt.Sprintf("binding package %q is not available: %s is missing and no compiler-distributed packages exist yet", selectors.BindingsID, cbindings.DefaultFile)}})
 	}
@@ -97,7 +124,7 @@ func Resolve(root, variant string, platform target.Target) (*Plan, []string) {
 	if len(diagnostics) != 0 || resolution == nil {
 		return fail(diagnostics)
 	}
-	files, problems := moduleFiles(root, pkg, resolution)
+	files, problems := moduleFilesInRoot(handle, root, pkg, resolution)
 	if len(problems) != 0 {
 		return nil, problems
 	}
@@ -140,13 +167,21 @@ func UniqueVariant(manifest string, platform target.Target) string {
 // through two modules rejects the environment.
 // Rules: MD-021 correction §§ 2(5), 8.6(1)-(2); rules/projects/modules.md — § 27.
 func moduleFiles(root string, pkg *cbindings.Package, resolution *cbindings.Resolution) ([]ModuleFile, []string) {
+	handle, err := os.OpenRoot(root)
+	if err != nil {
+		return nil, []string{err.Error()}
+	}
+	defer handle.Close()
+	return moduleFilesInRoot(handle, root, pkg, resolution)
+}
+
+// moduleFilesInRoot lists selected production sources using the root's FS and
+// checks each source through the root handle before exposing its path.
+// Rules: MD-021 correction §8.6(1)-(2); harness design notes §5(6).
+func moduleFilesInRoot(handle *os.Root, root string, pkg *cbindings.Package, resolution *cbindings.Resolution) ([]ModuleFile, []string) {
 	common := map[string]bool{}
 	for _, module := range pkg.CommonModules {
 		common[module] = true
-	}
-	realRoot, err := filepath.EvalSymlinks(root)
-	if err != nil {
-		return nil, []string{fmt.Sprintf("c-bindings.missing-module: cannot resolve the package root: %v", err)}
 	}
 	var files []ModuleFile
 	var problems []string
@@ -156,25 +191,31 @@ func moduleFiles(root string, pkg *cbindings.Package, resolution *cbindings.Reso
 		if common[module] {
 			layer = Common
 		}
-		directory := filepath.Join(root, filepath.FromSlash(pkg.SourceRoot), filepath.FromSlash(module))
-		real, err := filepath.EvalSymlinks(directory)
+		directory := filepath.ToSlash(filepath.Join(pkg.SourceRoot, module))
+		entries, err := fs.ReadDir(handle.FS(), directory)
 		if err != nil {
-			problems = append(problems, fmt.Sprintf("c-bindings.missing-module: module %q of environment %s does not exist at %s", module, resolution.Environment, directory))
+			problems = append(problems, fmt.Sprintf("c-bindings.missing-module: module %q of environment %s cannot be read within the package root: %v", module, resolution.Environment, err))
 			continue
 		}
-		if relative, err := filepath.Rel(realRoot, real); err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-			problems = append(problems, fmt.Sprintf("c-bindings.unsafe-path: module %q escapes the package root", module))
-			continue
-		}
-		matches, _ := filepath.Glob(filepath.Join(directory, "*.sec"))
-		sort.Strings(matches)
-		for _, file := range matches {
-			if info, err := os.Stat(file); err != nil || info.IsDir() || strings.HasSuffix(file, "_test.sec") {
+		for _, entry := range entries {
+			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".sec") || strings.HasSuffix(entry.Name(), "_test.sec") {
 				continue
 			}
-			absolute, _ := filepath.Abs(file)
+			relative := directory + "/" + entry.Name()
+			opened, err := handle.Open(relative)
+			if err != nil {
+				problems = append(problems, fmt.Sprintf("c-bindings.unsafe-path: %s: %v", relative, err))
+				continue
+			}
+			info, err := opened.Stat()
+			opened.Close()
+			if err != nil || !info.Mode().IsRegular() {
+				problems = append(problems, fmt.Sprintf("c-bindings.unsafe-path: %s is not a regular source", relative))
+				continue
+			}
+			absolute, _ := filepath.Abs(filepath.Join(root, filepath.FromSlash(relative)))
 			if seen[absolute] {
-				problems = append(problems, fmt.Sprintf("c-bindings.duplicate-module: %s is selected by more than one module", file))
+				problems = append(problems, fmt.Sprintf("c-bindings.duplicate-module: %s is selected by more than one module", absolute))
 				continue
 			}
 			seen[absolute] = true

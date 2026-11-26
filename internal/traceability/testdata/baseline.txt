@@ -498,8 +498,6 @@ internal/layout:(*Resolver).Key
 internal/layout:(*Resolver).Layout
 internal/layout:(*Resolver).Layouts
 internal/layout:(*Resolver).child
-internal/layout:(*Resolver).publish
-internal/layout:(*Resolver).resolve
 internal/layout:(AddressDomain).Limit
 internal/layout:(AddressDomain).Validate
 internal/layout:(CABIModel).Defined

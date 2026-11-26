@@ -1009,6 +1009,9 @@ func (a *Analyzer) rejectAuthoritativeMemberReplacement(targetName string, targe
 	if !ok {
 		return false
 	}
+	if name == "Slice" && target.Name == "string" && target.Kind == StringType {
+		return a.rejectRetiredStringSlice(target, name, token)
+	}
 	// § 20: loader-proven trusted core may provide the privileged core
 	// declaration that implements a compiler-known surface.
 	if a.isTrustedCoreSourceToken(token) {

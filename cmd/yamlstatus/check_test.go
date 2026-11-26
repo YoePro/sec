@@ -31,6 +31,22 @@ func TestCheckAcceptsWellFormedLedger(t *testing.T) {
 	}
 }
 
+// TestCheckSkipsNonLedgerRegisters keeps legal/compliance registers under
+// governance/licensing out of the ledger: they are neither fragments nor
+// counted, so their own schema raises no fragment problems.
+func TestCheckSkipsNonLedgerRegisters(t *testing.T) {
+	dir := governanceFixture(t, map[string]string{"core.yaml": checkedFragment})
+	writeFixture(t, dir, "index.yaml", "schema_version: 1\nstatus_values:\n  partial: some\n  planned: none\nfragments:\n  - path: core.yaml\n")
+	writeFixture(t, dir, filepath.Join("licensing", "third-party.yaml"), "schema_version: 1\ncomponents:\n  - id: toolchain.go\n")
+	out, err := runCommand(t, "check", "-dir", dir)
+	if err != nil || !strings.Contains(out, "0 problems in 2 fragments") {
+		t.Fatalf("check = %v\n%s", err, out)
+	}
+	if !nonLedgerPath(filepath.Join("licensing", "x.yaml")) || nonLedgerPath("licensing.yaml") || nonLedgerPath("core.yaml") {
+		t.Fatal("nonLedgerPath classification")
+	}
+}
+
 func TestCheckReportsEveryStructuralProblem(t *testing.T) {
 	broken := "schema_version: 1\narea: core\nintegrations:\n" +
 		"  - id: core.one\n" +

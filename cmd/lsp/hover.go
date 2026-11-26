@@ -247,7 +247,9 @@ func hoverForSourceWithParameterInsight(uri string, text string, pos position, i
 	}
 	if token, found := sourceTokenAtPosition(uri, text, pos); found {
 		if member, resolved := analyzer.CompilerKnownSymbolAt(token.File, token.Line, token.Column); resolved {
-			return compilerKnownMemberHover(nameRange, member), true
+			hover := compilerKnownMemberHover(nameRange, member)
+			hover.Contents.Value += atomicCapabilityHoverSuffix(analyzer, token)
+			return hover, true
 		}
 		definitions := uniqueDefinitionTokens(analyzer.DefinitionsAt(token.File, token.Line, token.Column))
 		if len(definitions) == 1 {

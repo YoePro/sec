@@ -3,12 +3,10 @@ package cbindings
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 
-	"sec/internal/project"
+	"sec/internal/configedit"
 )
 
 var (
@@ -28,7 +26,7 @@ type WorkspaceTool struct {
 }
 
 // WorkspaceTools returns detached truthful metadata, not shell commands or a
-// generic read/write interface. The future transport maps this closed surface.
+// generic read/write interface. The optional MCP adapter maps this closed surface.
 // Rules: harness design notes §§2(2)–(4),5(1),5(6)–(7).
 func WorkspaceTools() []WorkspaceTool {
 	tools := make([]WorkspaceTool, 0, 5)
@@ -92,33 +90,9 @@ type WorkspaceInspection struct {
 // Hosts without the required Root containment guarantee fail closed.
 // Rules: harness design notes §§5(5)–(7),7(2); rules/projects/projects.md §5.
 func OpenWorkspace(projectRoot string, authorize WorkspaceAuthorizer) (*Workspace, error) {
-	if projectRoot == "" {
-		return nil, fmt.Errorf("an explicit project root is required")
-	}
-	if runtime.GOOS == "js" || runtime.GOOS == "plan9" {
-		return nil, fmt.Errorf("workspace root containment is unavailable on this host")
-	}
-	identity, err := filepath.Abs(projectRoot)
+	root, identity, err := configedit.OpenProjectRoot(projectRoot)
 	if err != nil {
 		return nil, err
-	}
-	identity, err = filepath.EvalSymlinks(identity)
-	if err != nil {
-		return nil, err
-	}
-	root, err := os.OpenRoot(identity)
-	if err != nil {
-		return nil, err
-	}
-	data, err := root.ReadFile(filepath.FromSlash(".sec/sec.toml"))
-	if err != nil {
-		root.Close()
-		return nil, fmt.Errorf("selected directory is not a Sec project root: %w", err)
-	}
-	_, diagnostics := project.ParseManifest(filepath.Join(identity, ".sec", "sec.toml"), string(data))
-	if len(diagnostics) != 0 {
-		root.Close()
-		return nil, fmt.Errorf("invalid selected project manifest: %v", diagnostics)
 	}
 	return &Workspace{root: root, identity: identity, authorize: authorize}, nil
 }

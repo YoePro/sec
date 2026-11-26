@@ -707,6 +707,9 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 	if op.Atomic != nil && !isAtomicObjectOperation(op.Kind) {
 		return fmt.Errorf("%s carries atomic object facts", op.Kind)
 	}
+	if err := verifyAtomicEvidence(op); err != nil {
+		return err
+	}
 	if op.Volatile != nil && op.Kind != OpVolatileRead && op.Kind != OpVolatileWrite {
 		return fmt.Errorf("volatile access facts on non-volatile operation")
 	}

@@ -86,6 +86,17 @@ func (e *emitter) emitArena(function *semantic.Function, op semantic.Operation, 
 		if f.FailureAtomic {
 			properties = append(properties, "failure_atomic")
 		}
+		if op.Kind == semantic.OpArenaReset {
+			// MD-140 (v15 § 11): the verified epoch-advance facts.
+			e := f.EpochAdvance
+			if e.Form == "" {
+				return fmt.Errorf("arena.reset in %s has no epoch-advance plan", function.ID)
+			}
+			text("epoch_advance", e.Form)
+			properties = append(properties, fmt.Sprintf("epoch_width = %d : i32", e.LogicalEpochBits))
+			text("exhaustion_reason", e.PanicReason)
+			text("epoch_proof", e.Proof)
+		}
 		if op.Kind == semantic.OpArenaDestroy {
 			if op.Ownership == nil {
 				return fmt.Errorf("arena.destroy in %s has no destruction plan", function.ID)

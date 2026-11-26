@@ -6,16 +6,17 @@ integrations:
     area: core-and-lowering
     status: partial
     integrated: "2026-08-23"
-    revised: "2026-10-09"
+    revised: "2026-11-26"
     summary: >-
-      The checked core API and representation-level behavior exist, but the
-      current compiler-known registry and name-specific direct-generator path
-      predate the correction that assigns this implementation detail to a
-      private privileged-core helper. The compatibility entry now carries and
-      enforces its exact sec/core/string.sec owner instead of granting access to
-      every trusted core file. The registry and generator cases remain temporary
-      until the referenced direct MLIR/LLVM core-body syntax is defined and
-      implemented in the frontend.
+      The private compatibility helper and representation-level behavior exist;
+      MD-126 retires the former public string.Slice API in favor of borrowed
+      bracket ranges. The current compiler-known registry and name-specific
+      direct-generator path predate the correction that assigns this
+      implementation detail to a private privileged-core helper. The
+      compatibility entry now carries and enforces its exact sec/core/string.sec
+      owner instead of granting access to every trusted core file. The registry
+      and generator cases remain temporary until the referenced direct MLIR/LLVM
+      core-body syntax is defined and implemented in the frontend.
     rules:
       - rules/compiler/compiler_known_members.md
       - rules/library/core-library.md
@@ -39,7 +40,7 @@ integrations:
       - cmd/lsp/main_test.go
     implemented:
       - "ordinary private core-helper frontend (2026-10-09, user-scoped separately from low-level bodies): existing fn __Helper syntax is retained by lexer, parser, AST and formatter, including generic signatures and source owner tokens. Sema preserves source-file context across passes and enforces file-private access before direct/generic calls and callable-value binding; trusted core provenance grants no sibling-file access. Module-internal helpers remain callable from sibling files. Shadowing/confusable checks use the visible file surface, and LSP general/expected-return completion uses the same private-function boundary. Fixtures cover formatting fixed points, AST/source identity, both file orders and diagnosed invalid accesses."
-      - checked string.Slice validates start <= end and end <= string length before calling the unchecked operation
+      - "MD-126 retirement synchronized 2026-11-26: public string.Slice is no longer declared or advertised. Borrowed bracket ranges own public rune-range checking; the private __StringSliceUnchecked owned-descriptor operation retains its separate migration and lifetime requirements."
       - the current compatibility path requires loader-proven core provenance, validates (string, uint, uint) -> string, and records sec/core/string.sec as its exact temporary owner
       - another trusted core source file cannot invoke the source-file-private compatibility helper
       - the current compatibility path keeps the operation out of ordinary LSP completion
@@ -115,7 +116,7 @@ integrations:
   - id: compiler.compiler-known-surfaces
     area: compiler-known-types-members-interfaces-platform-identities
     status: partial
-    revised: "2026-11-23"
+    revised: "2026-11-26"
     repository_baseline: 998d8d1
     rules:
       - rules/corrections/applied/md066-md067-md068-decimal-correction-20261028.md
@@ -132,6 +133,11 @@ integrations:
       - rules/corrections/applied/temporal-now-correction-20260928.md
       - rules/corrections/applied/md109-core-string-materialization-correction-20261121.md
     code:
+      - internal/sema/string_view_members.go
+      - internal/sema/string_slice_migration.go
+      - internal/sema/string_ranges.go
+      - internal/sema/compiler_known_calls.go
+      - internal/sema/analyzer_inference.go
       - internal/sema/call_graph_identity.go
       - internal/sema/analyzer_arena.go
       - internal/sema/parameter_naming.go
@@ -159,6 +165,12 @@ integrations:
       - sec/core/string.sec
       - sec/core/byte.sec
     tests:
+      - internal/sema/string_view_registry_test.go
+      - cmd/compiler/string_slice_migration_test.go
+      - cmd/lsp/string_view_registry_test.go
+      - testdata/sema/string_ranges/registry_valid.sec
+      - testdata/sema/string_ranges/slice_removed_invalid.sec
+      - testdata/sema/string_utf8_positions_valid.sec
       - internal/sema/corehelpers/generated_identity_test.go
       - testdata/core/generated_identity
       - cmd/lsp/function_visibility_test.go
@@ -206,6 +218,7 @@ integrations:
       - "MD-109 phase 2 (2026-10-25; pending correction): string.FromByteArray(data: ref byte[]) and string.FromRuneArray(data: ref rune[]) have matching static source declarations, stable associated-function registry IDs, Result[string, StringError] and structured source/LSP comments. The byte declaration forwards to the existing loader-proven-core-only CKF-STRING-FROM-UTF8 contract; the rune declaration preserves canonical rune-sequence ToString encoding. Static call validation checks byte/rune sequences and arity, rejects consuming markers and instance calls, and preserves named inputs. Completion/hover expose both static signatures and exclude instance completion. MD-091 byte-sequence ToString remains a type summary. Missing IR materialization now reports an explicit P23 unsupported boundary with no output artifact. Frontend/API scope only: no executable decoding/allocation-failure or complete correction application is claimed."
       - "Implemented 2026-11-20 (sec/core/decimal.sec, sec/core/decimal128.sec, sec/core/types_test.sec): decimal.ToString() and decimal128.ToString() write the exact, scale-preserving R text (core-library.md § 10.7) using the MD-146 Java BigDecimal exponent threshold; the coefficient is derived as self × 10^Scale through exact § 27.1 arithmetic, so no representation accessor is exposed. sec check sec/core passes; the nine R tests compile and await the static test harness and native decimal lowering."
       - "Required byte radix formatting contract synchronized (2026-11-23; owner 2026-11-20): core-library.md §8.4 declares the nested byte.ByteStringFormat enum (Decimal, Hexadecimal, Octal, Binary), the exact fallible ToString(fmt) signature, decimal 1–3 digits and fixed 2/3/8 hexadecimal/octal/binary widths, uppercase A–F, leading-zero padding, no prefix/sign/separators, independent result and permitted allocation/StringError contract. BUG-000043 fixed all six core digit-buffer returns using collection ToString instead of explicit string.FromByteArray. Real-source Sema checks returned materialization identities; public CLI and LSP hover accept every selector without replacing byte-collection summary semantics. sec test --list sec/core compiles/discovers all 32 existing tests. Executable formatted output, allocation failure and decoding conformance still wait on existing P23/static-test-harness owners; no MD-109 completion is claimed."
+      - "MD-126 StringView registry and public Slice retirement completed 2026-11-26 (compiler_known_members.md section 21, core-library.md section 5.8): the exact ten-member view surface is registered with property/method kinds, parameter/result types, allocation and panic distinctions. Resolved string-range facts expose the shared CKO-STRING-RANGE operation identity for string and nested view sources. The obsolete public string.Slice core declaration is removed, so lookup and real source-loaded LSP completion cannot advertise it; the private owned-descriptor helper remains unchanged. Calls and callable-member reads on string, ref string, literals and inherited named strings receive mandatory S1248 with half-open bracket/try guidance explaining borrowed StringView lifetime, explicit fallible ToString materialization and no automatic rewrite. Independent Slice methods on unrelated or explicitly declared named types remain valid. Source-backed Sema/CLI/LSP tests cover every view member, hover/completion, exact migration spans/ID/help, range identity and no invalid IR artifact. The older UTF-8 API fixture now uses a fallible borrowed bracket range. This closes registry/tooling only; P23 physical text representation/materialization remains separately tracked."
     partial:
       - "Started (moved to partial 2026-11-20; the text records the done part and what remains): MD-109 core string materialization (correction §§ 4, 5, 7, 10 phases 3-4): phase-2 static string.FromByteArray(data: ref byte[]) / string.FromRuneArray(data: ref rune[]) APIs, metadata and the trusted-core _stringFromUtf8 forwarding are implemented and pass check. Remaining: executable materialization through P23 string operations and their P18/P19 allocation/storage prerequisites (emit-mlir rejects both fixtures without artifacts); no hidden malloc or physical descriptor may bypass them. P15-75 (2026-10-30) restored the target-aware IO import/check tests; that is not MD-109 runtime support."
     remaining:
@@ -223,8 +236,13 @@ integrations:
       - carry universal and byte/char/rune sequence ToString identities into explicit Semantic IR operations and maintained lowering, including allocation/effect facts and complete per-type-family fallback formatting semantics
       - audit every compiler-known Sec declaration for complete canonical syntax/owning module and mark compiler-only structures explicitly
       - route compiler-known platform/resource identities from the frozen CompilationPlan
-      - "MD-126 (decided 2026-11-05, rules/corrections/applied/MD-126-borrowed-string-ranges-rune-iteration-applied-20261105.md): register the StringView members (Len, SizeOf, IsEmpty, GetRune, RuneAt, GetByte, ByteAt, CharAt, StartsWith, ToString) and the string-range operation identity, remove string.Slice from lookup and LSP completion, and add the mentor diagnostic for former text.Slice(a, b) calls"
     verification:
+      - command: go test -race ./internal/sema ./cmd/compiler ./cmd/lsp -run '^(TestStringViewRegistryAndRemovedSlice|TestStringSliceMigrationCLI|TestStringViewRegistryLSP)$' -count=1 -timeout=90s
+        result: "Passed on 2026-11-26 (1.115s/16.683s/15.886s): complete ten-member registry, shared range operation identity, preserved user Slice APIs, retired core method, compiler JSON/no-artifact behavior, LSP completion/hover and exact migration diagnostic spans/help. core.yaml Remaining 22 to 21; compiler.compiler-known-surfaces 15 to 14."
+      - command: go test ./internal/sema ./internal/sema/corehelpers ./internal/traceability -count=1 -timeout=120s
+        result: "2026-11-26: corehelpers and traceability pass; full Sema reaches only two failing schedule tests (TestAnalyzerPublishesDependencyAndFixedPointSchedule and TestAnalysisScheduleDoesNotTreatCompletionAsValidity), both still expecting 11 stages after the concurrent atomic-capability stage raises the count to 12. Reported to Claude in handoff; pipeline/schedule work is unchanged by this MD-126 implementation. Focused MD-126 Sema tests pass."
+      - command: go test ./internal/platform/cbindingplan ./cmd/compiler -run 'ResolveStandaloneVersusExplicitWorkspace|StringMaterializationAuthority|StringEnumConversionRepairsCLI|StringRangesCompilerCLI|StringRangeTryCompilerCLI|StringUTF8Positions' -count=1 -timeout=120s
+        result: Passed on 2026-11-26 (0.002s/12.345s) after BUG-000053 restored standalone-source optional binding resolution; explicit workspaces remain strict. The older UTF-8 surface fixture is migrated from retired Slice to a fallible borrowed range. Optional sec-mcp suite also passes (9.983s), vet, traceability, corehelpers, governance and whitespace checks pass.
       - command: go vet ./cmd/compiler ./cmd/lsp ./internal/sema
         result: Passed on 2026-11-23.
       - command: go test ./internal/sema ./internal/traceability -run 'TestByteFormattingMaterializesDigits|TestRulebookTraceability' -count=1 -timeout=120s

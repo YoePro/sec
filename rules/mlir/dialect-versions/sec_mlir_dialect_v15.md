@@ -279,6 +279,8 @@ epoch strategy
 
 Semantically includes `AdvanceEpoch`.
 
+The epoch strategy is the MD-140 epoch-advance form; see § 11 below.
+
 ---
 
 # 16. `sec.arena.release`
@@ -709,3 +711,26 @@ do not bound demand on an Arena parameter (P19 § 81).
 
 `--sec-verify-arenas` checks its
 shape and that every summarized domain is created by the function.
+
+## 11. Arena Reset epoch advance (MD-140, 2026-11-26)
+
+`sec.arena.reset` carries the epoch-advance facts Sema resolved
+(`rules/memory/arena.md` § 39; `rules/compiler/semantic_ir.md` § 51(6)-(8)):
+- `epoch_advance`: `"checked"`, `"proven-bounded"` or `"metadata-eliminated"`;
+- `epoch_width`: the logical epoch width, an i32 of 8, 16, 32 or 64,
+  independent of pointer width (64 by default);
+- `exhaustion_reason`: always `"panic.arena-epoch-exhaustion"`;
+- `epoch_proof`: the proof provenance, present exactly for the two
+  elimination forms.
+
+The op verifier rejects any other form, a checked advance with a proof, an
+elimination without one, another width and any other reason. There is no
+rekey, fallible or unchecked form.
+
+In schema 15 the epoch is still a logical attribute without a runtime
+counter, so a checked advance's exhaustion test and its `sec.fail.panic`
+edge are not materialized here. Physical Arena lowering materializes them
+before every part of the Reset transition, with no normal successor from the
+failing edge. Until that lowering exists, no conversion pattern accepts
+`sec.arena.reset`, so lowering toward LLVM rejects it instead of emitting an
+unchecked Reset.

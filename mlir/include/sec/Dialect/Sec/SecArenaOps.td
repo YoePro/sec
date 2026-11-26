@@ -78,9 +78,13 @@ def Sec_ArenaAllocOp : Sec_Op<"arena.alloc", [DeclareOpInterfaceMethods<MemoryEf
 }
 
 // Section 115: advance the epoch of the Arena domain; not an ordinary Free.
+// MD-140 (v15 section 11): the epoch-advance form, logical width and the
+// registered exhaustion reason; the epoch stays a logical attribute here.
 def Sec_ArenaResetOp : Sec_Op<"arena.reset", [DeclareOpInterfaceMethods<MemoryEffectsOpInterface>]> {
   let summary = "Reset an Arena, invalidating every reference into it";
-  let arguments = !con((ins AnyType:$arena), Sec_ArenaFacts, Sec_BackingFacts);
+  let arguments = !con((ins AnyType:$arena, StrAttr:$epoch_advance, I32Attr:$epoch_width,
+                            StrAttr:$exhaustion_reason, OptionalAttr<StrAttr>:$epoch_proof),
+                       Sec_ArenaFacts, Sec_BackingFacts);
   let hasVerifier = 1;
 }
 

@@ -353,3 +353,28 @@ func (p ResolvedScalarPlan) AtomicCapability(request AtomicRequirement) (AtomicC
 	}
 	return result, nil
 }
+
+// Facts lists the frozen capability facts in canonical key order for
+// inspection; the result is detached from the snapshot.
+// Rules: rules/concurrency/atomics.md — § 37A(14); rules/compiler/compiler.md — § 64(3).
+func (c AtomicCapabilities) Facts() []AtomicCapability {
+	if c.snapshot == nil {
+		return nil
+	}
+	type keyed struct {
+		order string
+		fact  AtomicCapability
+	}
+	var facts []keyed
+	for key, fact := range c.snapshot.facts {
+		encoded, _ := json.Marshal(key)
+		facts = append(facts, keyed{string(encoded), fact})
+	}
+	sort.Slice(facts, func(i, j int) bool { return facts[i].order < facts[j].order })
+	out := make([]AtomicCapability, len(facts))
+	for i, f := range facts {
+		out[i] = f.fact
+	}
+	return out
+}
+

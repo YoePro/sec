@@ -744,54 +744,6 @@ impl string {
     }
 
     /**
-     * Produces text from the half-open rune interval [start, end).
-     *
-     * Parameters:
-     * - start: Inclusive Unicode-scalar index.
-     * - end: Exclusive Unicode-scalar index.
-     * Returns:
-     * The exact selected text without normalization.
-     * Errors:
-     * RangeError.StartAfterEnd or RangeError.OutOfBounds.
-     */
-    fn Slice(start: uint, end: uint) Result[string, RangeError] {
-        if start > end {
-            return Err(RangeError.StartAfterEnd)
-        }
-
-        if end > self.Len {
-            return Err(RangeError.OutOfBounds)
-        }
-
-        let mut startByte: uint := 0
-        let mut endByte:   uint := 0
-
-        match self._ByteOffsetOfRune(start) {
-            Some(offset) => {
-                startByte = offset
-            }
-
-            None => {
-                return Err(RangeError.OutOfBounds)
-            }
-        }
-
-        match self._ByteOffsetOfRune(end) {
-            Some(offset) => {
-                endByte = offset
-            }
-
-            None => {
-                return Err(RangeError.OutOfBounds)
-            }
-        }
-
-        // Both bounds are resolved scalar-boundary byte offsets with
-        // startByte <= endByte <= self.SizeOf before the private byte helper.
-        return Ok(__StringSliceUnchecked(self, startByte, endByte))
-    }
-
-    /**
      * Creates a lazy iterator that yields substrings separated by `separator`.
      *
      * The operation does not materialize the complete result and does not allocate

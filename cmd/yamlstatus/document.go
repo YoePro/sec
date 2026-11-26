@@ -76,12 +76,38 @@ func checkNode(path string, node *yaml.Node) error {
 	return nil
 }
 
+// nonLedgerDirs are governance subdirectories that hold registers outside
+// the implementation ledger, such as legal/compliance records
+// (governance/licensing/README.md): they are not fragments, are not listed in
+// index.yaml and never count as implementation progress.
+var nonLedgerDirs = map[string]bool{"licensing": true}
+
+// nonLedgerPath reports whether path (relative to the governance root) lies in
+// a non-ledger register directory.
+func nonLedgerPath(relative string) bool {
+	first := strings.SplitN(filepath.ToSlash(relative), "/", 2)[0]
+	return nonLedgerDirs[first]
+}
+
+// skipNonLedger returns filepath.SkipDir for a non-ledger directory below dir.
+func skipNonLedger(dir, path string, d fs.DirEntry) error {
+	if d.IsDir() && path != dir {
+		if relative, err := filepath.Rel(dir, path); err == nil && nonLedgerPath(relative) {
+			return filepath.SkipDir
+		}
+	}
+	return nil
+}
+
 // governanceFiles lists the YAML fragments below dir in a stable order.
 func governanceFiles(dir string) ([]string, error) {
 	var files []string
 	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
+		}
+		if skip := skipNonLedger(dir, path, d); skip != nil {
+			return skip
 		}
 		ext := strings.ToLower(filepath.Ext(path))
 		if !d.IsDir() && (ext == ".yaml" || ext == ".yml") {

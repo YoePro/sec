@@ -1,7 +1,7 @@
 # Project-bound harness safety
 
-`OpenWorkspace(projectRoot, authorize)` is the restricted facade for a future
-harness adapter. The trusted host selects the root explicitly once. The service
+`OpenWorkspace(projectRoot, authorize)` is the restricted facade used by the
+optional [sec-mcp adapter](../../../cmd/sec-mcp/README.md). The trusted host selects the root explicitly once. The service
 requires a valid `.sec/sec.toml` at that exact root and never discovers a parent
 project or falls back to the current working directory.
 
@@ -51,7 +51,9 @@ between rooted and ordinary CLI adapters. Its final check serializes cooperating
 in-process writers; it does not claim cross-process hash-conditional rename.
 Closing the workspace makes later I/O fail without falling back to ordinary paths.
 
-The stdio MCP adapter remains a separate governance item. No new executable,
-server, harness configuration syntax, AI dependency or network requirement is
-introduced here. Profile/provider mutations and complete harness acceptance
-also retain their existing separate owners.
+The optional stdio adapter is built separately under `cmd/sec-mcp`; ordinary
+compiler/LSP builds do not depend on its SDK. Startup flags select its root and
+exact approved plans; there is no harness TOML or network listener. Profile/provider
+mutations use the sibling [project configuration service](../projectconfig/README.md),
+with the same extracted TOML/transaction primitives. CLI/MCP acceptance tests live
+in cmd/sec-mcp/acceptance_test.go; provider qualification retains its separate owner.

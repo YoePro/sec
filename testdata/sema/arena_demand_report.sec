@@ -1,0 +1,25 @@
+module main
+
+fn Fits() Result[int32, AllocationError] {
+    let mut buffer: byte[64]
+    let mut arena := Arena.FromBuffer(ref mut buffer[..])
+    let values := try arena.Alloc[int32](4u)
+    values[0] = 1
+    return Ok(values[0])
+}
+
+fn Overflows() Result[int32, AllocationError] {
+    let mut buffer: byte[16]
+    let mut arena := Arena.FromBuffer(ref mut buffer[..])
+    let first := try arena.Alloc[int32](3u)
+    let second := try arena.Alloc[int32](3u)
+    second[0] = 2
+    first[0] = second[0]
+    return Ok(first[0])
+}
+
+fn main() int {
+    discard Fits()
+    discard Overflows()
+    return 0
+}

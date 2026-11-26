@@ -35,6 +35,7 @@ func nestedParentReset(m *Module) Operation {
 	facts.StateAfter = 4
 	facts.EpochBefore = 11
 	facts.EpochAfter = 12
+	facts.EpochAdvance = testEpochAdvance()
 	backing := *template.Backing
 	backing.Domain = 9
 	backing.Transition = string(sema.BackingTransitionAdvanceEpoch)
@@ -117,6 +118,7 @@ func TestNestedArenaBlocksParentInvalidation(t *testing.T) {
 		if kind != OpArenaReset {
 			reset.Operands = []ValueID{0}
 			reset.Arena.EpochAfter = 0
+			reset.Arena.EpochAdvance = ArenaEpochAdvanceFacts{}
 			reset.Backing.Transition = string(sema.BackingTransitionEndDomain)
 			if kind == OpArenaDestroy {
 				typ := m.Types.InternArena()

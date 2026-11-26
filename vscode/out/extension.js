@@ -72,7 +72,14 @@ function activate(context) {
                 types: vscode.workspace.getConfiguration("sec.inlayHints").get("types", true),
                 parameters: vscode.workspace.getConfiguration("sec.inlayHints").get("parameters", true),
                 ownership: vscode.workspace.getConfiguration("sec.inlayHints").get("ownership", true),
-                defaults: vscode.workspace.getConfiguration("sec.inlayHints").get("defaults", true)
+                defaults: vscode.workspace.getConfiguration("sec.inlayHints").get("defaults", true),
+                generics: vscode.workspace.getConfiguration("sec.inlayHints").get("generics", true),
+                errors: vscode.workspace.getConfiguration("sec.inlayHints").get("errors", true),
+                overloads: vscode.workspace.getConfiguration("sec.inlayHints").get("overloads", true),
+                units: vscode.workspace.getConfiguration("sec.inlayHints").get("units", true),
+                contracts: vscode.workspace.getConfiguration("sec.inlayHints").get("contracts", true),
+                allocation: vscode.workspace.getConfiguration("sec.inlayHints").get("allocation", true),
+                targets: vscode.workspace.getConfiguration("sec.inlayHints").get("targets", true)
             }
         }
     };

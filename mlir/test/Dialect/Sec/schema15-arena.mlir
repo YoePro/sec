@@ -24,7 +24,7 @@ module attributes {sec.dialect_version = 15 : i32, sec.semantic_ir_version = 1 :
   ^failed:
     return
   ^allocated:
-    "sec.arena.reset"(%p) <{state_before = 2 : i32, state_after = 3 : i32, epoch_before = 7 : i32, epoch_after = 8 : i32, backing_kind = "borrowed", growth_kind = "fixed", retained_borrow = 42 : i32, dependency_proof = "no-live-dependency", domain = 5 : i32, transition = "advance-epoch", origin = "Arena", relation = "Borrowed", authority = "ExternalOwner", stability = "Stable", space = "ordinary"}> : (!sec.place<!sec.arena, "rw">) -> ()
+    "sec.arena.reset"(%p) <{epoch_advance = "checked", epoch_width = 64 : i32, exhaustion_reason = "panic.arena-epoch-exhaustion", state_before = 2 : i32, state_after = 3 : i32, epoch_before = 7 : i32, epoch_after = 8 : i32, backing_kind = "borrowed", growth_kind = "fixed", retained_borrow = 42 : i32, dependency_proof = "no-live-dependency", domain = 5 : i32, transition = "advance-epoch", origin = "Arena", relation = "Borrowed", authority = "ExternalOwner", stability = "Stable", space = "ordinary"}> : (!sec.place<!sec.arena, "rw">) -> ()
     "sec.arena.release"(%a) <{state_before = 3 : i32, state_after = 4 : i32, epoch_before = 8 : i32, backing_kind = "borrowed", growth_kind = "fixed", retained_borrow = 42 : i32, dependency_proof = "no-live-dependency", domain = 5 : i32, transition = "end-domain", origin = "Arena", relation = "Borrowed", authority = "ExternalOwner", stability = "Stable", space = "ordinary"}> : (!sec.arena) -> ()
     return
   }

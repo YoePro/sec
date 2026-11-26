@@ -991,7 +991,11 @@ type Operation struct {
 	AtomicOrder string
 	// Atomic carries the facts of an Atomic[T] object operation
 	// (atomic_objects.go; semantic_ir.md § 123A).
-	Atomic               *AtomicObjectFacts
+	Atomic *AtomicObjectFacts
+	// AtomicEvidence is the MD-095 capability evidence or open obligation of
+	// an atomic object operation or fence, one per execution context
+	// (atomic_evidence.go; semantic_ir.md § 123B).
+	AtomicEvidence       []AtomicCapabilityEvidence
 	TryHandlerKind       TryHandlerKind
 	TryHandlerIndex      int
 	TryHandlerExhaustive bool

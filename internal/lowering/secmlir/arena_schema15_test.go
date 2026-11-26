@@ -82,6 +82,8 @@ func arenaOperationFixture(kind semantic.OpKind, width uint16) (*semantic.Module
 		op.Reference = &semantic.ReferenceMetadata{Borrow: 6, Lifetime: 6, Validity: semantic.ReferenceDynamicEpoch, InvalidationDomain: 5, EpochDependency: 7, AddressSpace: semantic.AddressSpaceOrdinary, AddressStability: "Stable", Provenance: "arena"}
 	case semantic.OpArenaReset:
 		f.EpochAfter = 8
+		// MD-140: the checked 64-bit advance Sema publishes (semantic_ir.md § 51(6)).
+		f.EpochAdvance = semantic.ArenaEpochAdvanceFacts{Form: "checked", LogicalEpochBits: 64, Exhaustion: "panic", PanicReasonID: 12, PanicReason: "panic.arena-epoch-exhaustion"}
 		b.Transition = string(sema.BackingTransitionAdvanceEpoch)
 	case semantic.OpArenaRelease, semantic.OpArenaDestroy:
 		op.Operands = []semantic.ValueID{0}

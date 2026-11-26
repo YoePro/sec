@@ -73,6 +73,7 @@ func arenaOperationFixture(kind OpKind, width uint16) (*Module, *Operation) {
 		op.Reference = &ReferenceMetadata{Borrow: 6, Lifetime: 6, Validity: ReferenceDynamicEpoch, InvalidationDomain: 5, EpochDependency: 7, AddressSpace: AddressSpaceOrdinary, AddressStability: "Stable", Provenance: "arena"}
 	case OpArenaReset:
 		f.EpochAfter = 8
+		f.EpochAdvance = testEpochAdvance()
 		b.Transition = string(sema.BackingTransitionAdvanceEpoch)
 	case OpArenaRelease, OpArenaDestroy:
 		op.Operands = []ValueID{0}
@@ -354,6 +355,7 @@ func TestArenaEffectSiteOrdering(t *testing.T) {
 		release := block.Operations[1]
 		facts := *release.Arena
 		facts.StateBefore, facts.StateAfter, facts.EpochBefore, facts.EpochAfter = release.Arena.StateAfter, release.Arena.StateAfter+1, 7, 8
+		facts.EpochAdvance = testEpochAdvance()
 		backing := *release.Backing
 		backing.Transition = string(sema.BackingTransitionAdvanceEpoch)
 		reset := Operation{Kind: OpArenaReset, Operands: []ValueID{4}, Arena: &facts, Backing: &backing}

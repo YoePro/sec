@@ -1099,7 +1099,11 @@ func (fb *functionBuilder) buildStatements(statements []ast.Statement) error {
 			// atomics.md § 26: atomic.Fence lowers from Sema's established
 			// order to one atomic.fence operation; it has no call target.
 			if order, fence := fb.owner.analyzer.AtomicFenceOrderOf(call); fence {
-				fb.emit(Operation{Kind: OpAtomicFence, AtomicOrder: order, Location: location(call.Token)})
+				evidence, err := fb.atomicEvidence(atomicCallSite(call))
+				if err != nil {
+					return err
+				}
+				fb.emit(Operation{Kind: OpAtomicFence, AtomicOrder: order, AtomicEvidence: evidence, Location: location(call.Token)})
 				continue
 			}
 			// P19: Arena Reset (and any other planned Arena operation) as a

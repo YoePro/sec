@@ -2,7 +2,7 @@
 
 ## Status
 
-Normative tooling rulebook, revision 1.4 (2026-11-25).
+Normative tooling rulebook, revision 1.6 (2026-11-26; § 10 `sec platform target`).
 
 Created by the MD-017 correction
 (`rules/corrections/applied/md017-sec-analyse-cli-and-help-correction-20261017.md`),
@@ -117,6 +117,7 @@ not an additional analysis-name selector.
 | `pitfalls` | Pitfall analysis | `rules/analysis/pitfall_analysis.md` |
 | `parameter-usage` | Parameter usage analysis | `rules/analysis/parameter_usage_analysis.md` |
 | `stack` | Stack analysis | `rules/analysis/stack_analysis.md` |
+| `arena-demand` | Arena demand analysis (byte-accurate peak capacity demand per Arena domain; added 2026-11-26) | `rules/memory/arena.md` §§ 114–115 |
 | `closures` | Closure analysis | `rules/analysis/closure_analysis.md` |
 
 § 5.2(2) No alternate pluralization, shortened alias or flag-based selector
@@ -312,3 +313,86 @@ mutation result; rejected plans exit 2, invalid arguments/documents or I/O
 failures exit 1. Structural planning does not establish target capability or
 replace Variant resolution. This workflow realizes the harness design notes
 §§ 5(2)–(7) and introduces no separate parser, editor or language rule.
+
+
+# § 9. Project configuration workspace (MD-139 tooling)
+
+§ 9(1) The optional workspace workflow uses the following command forms:
+
+```text
+sec platform project inspect --project ROOT [--json]
+sec platform project resolve --project ROOT --target TARGET --variant VARIANT [--json]
+sec platform project plan --project ROOT --operation JSON [--json]
+sec platform project diff --project ROOT --plan PLAN.json [--json]
+sec platform project apply-plan --project ROOT --plan PLAN.json --approve SHA256 [--json]
+```
+
+These commands emit one JSON result. `--project` names an explicit root containing
+`.sec/sec.toml`; no parent search or host-derived target selection applies.
+`sec platform project --help` lists the complete syntax; `sec help platform`
+registers the command family. Unknown fields, extra JSON documents and options
+unrelated to the selected operation are errors.
+
+§ 9(2) `inspect` validates the canonical manifest and profile/allocation selections.
+`resolve` requires a declared Target and Variant and reports their selected
+profile/allocation facts, scope provenance, target triple/ABI and canonical
+C-binding environment, modules, source layers and fingerprint when selected.
+The owning project, target-profile and binding-plan resolvers remain the same
+ones used for compiler and LSP analysis. Missing capabilities stay missing;
+a manifest selection cannot create a provider or qualify an implementation.
+
+§ 9(3) A `plan` operation JSON object may contain `target`, `variant`, `profile`,
+`mode` and `provider`. It must name an existing Target, reusable Variant or both,
+and at least one selection field. Both names select a Target-specific Variant
+scope. Omitted selection fields preserve local keys; an empty string removes
+a local key and restores the existing inheritance rule. Target profiles remain
+independent of build-option profiles. Values and precedence are defined by
+`rules/projects/projects.md` §19(11)–(15) and
+`rules/platform/target_profiles.md` §41, not by this tooling workflow.
+
+§ 9(4) Planning and diff never write. The `plan` response contains a
+`sec.project-config-plan`, version 1, object binding the selected project,
+fixed manifest file, typed edit, input/output hashes, patch and resolved profile
+facts under `plan_sha256`. Save that object, rather than the response wrapper,
+for `--plan`. Only the separate exact `--approve` input authorizes application;
+JSON fields cannot grant authority or redirect its root/file. Application
+regenerates and validates the canonical proposal, rejects stale/modified plans,
+preserves unrelated text and permissions, and uses the shared rooted atomic
+replacement of §8(5),(7). An approved no-op never rewrites the manifest. Reusing
+a changed plan is rejected; prepare a fresh plan after any input change.
+
+§ 9(5) Success exits 0, schema/selection or stale-plan rejection exits 2, and
+invalid arguments/documents, missing approval, invalid review artifacts or I/O
+failure exit 1. Failure never commits a partial edit. The service is shared
+with the optional local stdio MCP adapter; ordinary compiler/LSP builds require
+neither that adapter's SDK nor an AI client or account. The adapter's protocol
+and launch setup are documented in `cmd/sec-mcp/README.md`.
+
+# § 10. `sec platform target` (plan and target inspection)
+
+Added 2026-11-26 (owner choice of command surface; `tooling.compiler-core`).
+
+§ 10(1) `sec platform target list [--json]` lists every registered target
+with its canonical `os-arch` name, LLVM triple, profile and registry status.
+
+§ 10(2) `sec platform target info [--target <os-arch>] [--json]` reports the
+frozen resolved CompilationPlan of one target (the host target when `--target`
+is omitted): canonical identity and triple, ABI and C ABI data model,
+profile and profile family, registry status, pointer width and endianness,
+the verified data layout, the typed scalar alignments, the atomic storage
+minima (`rules/memory/layout.md` § 47.6), the logical epoch width with the
+Arena exhaustion outcome (`rules/memory/arena.md` § 39), address-domain count,
+allocation capabilities, the counts of atomic, IPC and mutex capability facts,
+the physical-thread capability, the compiler's stage support and the plan's
+semantic fingerprints (`rules/compiler/compiler.md` § 64(3);
+`rules/platform/platform_model.md` § 23).
+
+§ 10(3) The command reads canonical registry and plan facts only. It resolves
+no project configuration (that is `sec platform project resolve`, § 9),
+consults no host capability, guesses no missing fact and never mutates the
+plan: a missing fact is reported as unresolved and an invalid plan as an
+error. `--json` emits the same facts as one JSON document.
+
+§ 10(4) Success exits 0; an unknown subcommand or argument, an unregistered
+target or a target without a valid resolved plan exits 1.
+

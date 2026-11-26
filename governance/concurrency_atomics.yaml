@@ -92,6 +92,8 @@ integrations:
       - internal/sema/atomic_carrier_identity_test.go
       - testdata/sema/atomics/carrier_identity.sec
     implemented:
+      - "MD-095 step 3 context requirement derivation (2026-11-26; atomics.md § 37A(8); target_profiles.md § 19): internal/sema/atomic_capability.go derives each callable's invocation contracts from the call graph over same-execution edges only (synchronous and deferred; a spawn starts its own root): program and test roots give Ordinary, spawned task entries Task and thread entries Thread, an @isr/@interrupt function Interrupt (always NoBlocking and InterruptSafe); @noBlock (including implied) and @interruptSafe/ISR flow NoBlocking/InterruptSafe to what they reach; a callable reached from several roots keeps one requirement per contract; a callable no root reaches keeps an unresolved-reachability obligation, never an assumed Ordinary. Tests: TestAtomicCapabilityContexts, TestAtomicCapabilityTaskContext (T22, T24, T25)."
+      - "MD-095 step 5 capability query and Unknown obligations (2026-11-26; atomics.md §§ 37A(2)-(3), 37A(9)-(13), 48(4)): after source validation the atomic-capability analysis step builds the carrier key per operation and context (carrier from AtomicValueTypeIdentity, representation/access/alignment from the canonical Atomic[T] layout, both CompareExchange orders; Fence without carrier/layout) and queries ResolvedScalarPlan.AtomicCapability; AtomicCapabilities() publishes Supported evidence, Unknown obligations with the missing fact (no plan, symbolic/unresolved carrier, incomplete atomic layout, unresolved reachability, no plan fact) and Unsupported, which is also the new mandatory error S1261 atomics.target-capability naming target/profile, Atomic[T].Op, orders and context with the producer's reason. Analysis continues on Unknown. Tests: TestAtomicCapabilityQuery (T02, T44, T48-T51)."
       - canonical MemoryOrder is a real core enum with exactly Relaxed, Acquire, Release, AcqRel and SeqCst; standalone semantic registration and the trusted source declaration share its reserved nominal identity, and LSP presents the closed declaration, variant documentation and source navigation
       - atomic member lookup uses Load, Store, Swap, CompareExchange, FetchAdd, FetchSub, FetchAnd, FetchOr and FetchXor; lowercase alternatives are rejected, and the shared compiler member catalog supplies the canonical names to hover and completion
       - "Atomic element eligibility is target-independent: bool, signed and unsigned integer carriers including target-sized and wide integers, RawPtr, integer-backed enums and compatible named carriers pass semantic checking on 32-bit and 64-bit plans; floats, decimals, strings, string-backed enums and composites remain invalid; this does not claim native, lock-free or emulated operation support"
@@ -108,8 +110,7 @@ integrations:
       - "atomic.Fence integration is partial: source validation, Semantic IR and direct ordering effects are implemented; below-IR lowering remains blocked by the explicit package-specification gate in atomics.md § 40(7), and no native fence support is claimed."
       - "Started (moved to partial 2026-11-20; the text records the done part and what remains): Implement atomic.Fence lowering below Semantic IR after a Sec MLIR package specifies it, as explicitly required by atomics.md § 40(7). Name resolution, order validation, Semantic IR and direct call-graph ordering effects are implemented; the native emission gate remains mandatory."
     remaining:
-      - "MD-095 step 3, context requirement derivation (atomics.md § 37A(8); target_profiles.md § 19): ContextID from the existing execution-context analysis and invocation contract (Ordinary/Task/Thread/Interrupt/Startup/Shutdown), NoBlocking/InterruptSafe as contract requirements, canonical target refinements (vector, priority, masking domain, core), one requirement per applicable context of a multi-context callable, unresolved reachability kept as an obligation. Tests T22, T24, T25, T27-T33."
-      - "MD-095 step 5, capability query and Unknown obligations in Sema (atomics.md §§ 37A(2)-(3), 37A(11)-(13), 48(4)): query the canonical plan capability service after source validation; Supported retained as evidence, Unsupported a focused target capability error, Unknown an unproven obligation that analysis keeps and a complete build reports as insufficient evidence at the emission boundary; source invalidity never hidden behind Unknown; AtomicContextViolation stays mandatory. Replaces the former MD-095-blocked target-diagnostics item. Tests T01, T15-T21 (order rules re-checked as source errors), T48-T56, T64."
+      - "MD-095 step 3 remainder: the Interrupt category and InterruptSafe derivation from @isr/@interrupt/@interruptSafe roots are implemented but untested until Sema accepts those attributes (Sec 0.5 interrupts); Startup and Shutdown categories need initialization/shutdown roots in the call graph; canonical target refinements (vector, priority, masking domain, core) need target facts. Tests T26-T28 refinement rows when available."
     required_tests:
       - id: memory-order-core-enum
         expectation: Core exposes exactly Relaxed, Acquire, Release, AcqRel, SeqCst and LSP hover shows the declaration.
@@ -309,7 +310,7 @@ integrations:
 
   - id: tooling.atomics-v2
     area: lsp-format-docs-atomic-surface
-    status: partial
+    status: implemented
     revised: "2026-10-17"
     rules:
       - rules/concurrency/atomics.md
@@ -329,12 +330,12 @@ integrations:
       - cmd/lsp/atomic_identity_test.go
       - cmd/lsp/compare_exchange_result_test.go
     implemented:
+      - "MD-095 diagnostics and tooling (2026-11-26; atomics.md § 48(4); diagnostics.md § 24(4l)): source order errors keep S1170/S1171; proven Unsupported is S1261 atomics.target-capability (Sema); at executable emission the structured semantic.AtomicObligation becomes AtomicCapabilityEvidenceError with S1265 atomics.capability-unverified (missing evidence, including unproven ISR/nonblocking) or S1266 atomics.layout-incomplete (incomplete atomic layout), each with operation, function, context, provenance, missing fact and a help that it is not a proven unsupported operation; the CLI reports them through a registered pipeline boundary; a supported-but-unlowered operation stays the unsupported-lowering limitation. LSP hover on an atomic operation or fence lists the capability per context, an open obligation as unproven with its fact, never as executable validity. Source errors precede and never hide behind capability (T64). Tests: TestAtomicFenceEmitRoutes ([S1265]), TestAtomicEmissionGate (S1265/S1266), TestAtomicCapabilityHover (T51, T53)."
       - "atomic.Fence tooling (2026-10-17): a resolved fence call records the compiler-known CKF-ATOMIC-FENCE identity on its Fence name, so hover shows the canonical signature `fn Fence(order: MemoryOrder) void`, documentation, rule and the MemoryOrder the call establishes, and go-to-definition reaches its synthetic read-only definition; MemoryOrder and its variants already hover with core documentation and navigate to sec/core/atomic.sec (TestAtomicFenceHoverAndNavigation, cmd/lsp/atomic_fence_tooling_test.go)"
       - Completion uses canonical CamelCase members.
       - Atomic type-use, shared-reference binding and constructor hover render the resolved contained type and exact applicable public overloads from canonical compiler-owned AtomicTypeFacts; template hover labels integer-only fetch availability, and every public Atomic method navigates to its receiver-specific compiler-known synthetic definition.
       - CompareExchangeResult's source enum shape, generic arity, concrete payload and non-error meaning are presented in type, constructor, variant and binding hover; completion exposes Exchanged and NotExchanged. Type owners and variants navigate to canonical core declarations, while payload bindings navigate to their own local names. All three core atomic types and implemented object methods now have their public presentation; the pending fence surface remains listed separately.
-    remaining:
-      - "MD-095 diagnostics and tooling (atomics.md § 48(4); diagnostics.md § 24(4l)): keep source order errors S1170/S1171, report a supported-but-unlowered operation as S1239, allocate registry identities for proven-unsupported capability, unverifiable capability (missing evidence, including unproven ISR/nonblocking) and incomplete atomic layout when implemented; messages name target/profile, semantic type, carrier, operation and orders, layout, context properties and the missing fact; LSP and analysis-only results present Unknown obligations as unproven, never as executable validity or proven unsupported. Tests T51, T53, T64."
+    remaining: []
     verification:
       - command: go vet ./internal/parser ./internal/formatter ./internal/sema ./cmd/compiler ./cmd/lsp
         result: passed on 2026-10-17
@@ -357,7 +358,7 @@ integrations:
 
   - id: semantic-ir.atomics-v2
     area: semantic-ir-atomic-facts
-    status: partial
+    status: implemented
     rules:
       - rules/concurrency/atomics.md
       - rules/concurrency/concurrency_memory_model.md
@@ -368,22 +369,23 @@ integrations:
       - cmd/compiler/atomic_fence_test.go
       - testdata/sema/atomic_fence_lowering_valid.sec
     implemented:
+      - "MD-095 Semantic IR capability evidence (2026-11-26; semantic_ir.md § 123B; atomics.md § 46(7)): atomic.load/store/rmw/compare-exchange and atomic.fence carry AtomicEvidence copied from Sema's AtomicCapabilities (one entry per context: semantic type, carrier, representation, access size and alignment, operation and orders, context with NoBlocking/InterruptSafe, availability supported with implementation identity and kind or unknown with its missing fact; never unsupported); construction fails closed when Sema published none; printed as capability{...}. The verifier rejects missing evidence, other availabilities, supported without implementation/context/layout, obligations without their fact, mismatched operation or orders, noncanonical contexts, a carrier on a fence and evidence on other ops. Tests: TestAtomicEvidenceVerifier, TestAtomicEmissionGate."
       - "Implemented 2026-11-21 (Atomic[T] object operations; internal/ir/semantic/atomic_objects.go, semantic_ir.md § 123A): atomic.load, atomic.store, atomic.rmw and atomic.compare-exchange are built from Sema's validated memory-operation plan with operand 0 a reference to atomic<T> (storage identity, storage=resolved|unknown), T, operation kind, success/failure order and per-outcome read/modify/RMW and release-sequence effects; omitted orders stay SeqCst; the verifier enforces the atomics.md § 24(1) order matrix; serialization round-trips the facts. Sec MLIR emission fails closed on the atomic type; a non-reference receiver is not borrowed implicitly. Tests: TestAtomicObjectOperationsPreserveFacts, TestAtomicObjectVerifierRejectsInvalidFacts, TestAtomicObjectOperationsFailClosed."
       - "Implemented 2026-11-21 (successful versus failed CompareExchange, semantic_ir.md § 123A(3)): atomic.compare-exchange carries an Exchanged path with the success order that reads, modifies and is a read-modify-write, and a NotExchanged path with the failure order that only reads and cannot affect a release sequence; the verifier rejects a modifying failure path and Release/AcqRel failure orders."
       - "atomic.fence (2026-10-17): a valid atomic.Fence call lowers to one atomic.fence operation carrying Sema's compile-time-established MemoryOrder (AtomicOrder) and its source location, with no operands, results or storage; the verifier requires Acquire, Release, AcqRel or SeqCst and no operands/results/successors; the printer writes `atomic.fence order=<Order>`. Sec MLIR schema 11 rejects it as explicit unsupported lowering (internal/ir/semantic/atomic_fence.go; TestAtomicFenceLowersToSemanticIR, TestAtomicFenceEmitRoutes; spelling MD-096 decided 2026-10-18: semantic_ir.md § 123, atomics.md § 40(7); verifier test covers all four orders and rejects Relaxed, a lowercase spelling, operands and results)"
-    remaining:
-      - "MD-095 Semantic IR capability evidence (semantic_ir.md § 123B; atomics.md § 46(7)): each atomic object operation and fence carries its capability requirement (semantic type, carrier, representation, access extent and storage alignment or outstanding layout facts, operation and orders, context categories with NoBlocking/InterruptSafe and refinements, plan identity, provenance) and either supported evidence or an explicit Unknown obligation; one requirement per applicable context; the verifier rejects executable-bound IR with an unresolved obligation; no new opcode. Tests T47, T48, T51, T55."
+    remaining: []
 
   - id: lowering.atomics-v2
     area: atomic-lowering
-    status: planned
+    status: partial
     rules:
       - rules/concurrency/atomics.md
       - rules/concurrency/concurrency_memory_model.md
+    implemented:
+      - "MD-095 emission gate (2026-11-26; atomics.md §§ 37A(12)-(13), 47(9)-(10)): EmitWithOptions consumes the plan's capability facts through the Semantic IR evidence and runs VerifyAtomicEmissionEvidence first; any open obligation (incomplete atomic layout, unresolved reachability, missing plan fact, including every ISR/nonblocking one) stops emission with AtomicCapabilityEvidenceError naming the operation, context and missing fact and no output; fully supported atomics still stop at the missing atomic lowering as the existing UnsupportedLoweringError implementation limitation, so nothing is ever emitted as an ordinary, volatile, weaker or blocking substitute. The CLI fence route now reports the missing evidence on registered targets. Tests: TestAtomicEmissionGate (T52, T55, T58, T59), TestAtomicFenceEmitRoutes."
     remaining:
-      - "Consume immutable CompilationPlan capability facts. MD-095 emission gate (atomics.md §§ 37A(12)-(13), 47(9)-(10)): before executable lowering every relevant operation needs a complete atomic layout, resolved context constraints and supported evidence; a still-Unknown obligation (including every ISR or nonblocking one) fails closed with the missing-evidence diagnostic; a supported operation without an implemented lowering is an S1239 implementation limitation and is not emitted; no fallback to ordinary, volatile, weaker-order or unverified blocking operations; a stronger order only with a § 47 compatibility proof that keeps the source orders. Tests T52, T54, T55, T57-T59, T63."
-      - Preserve or strengthen requested order; never weaken.
-      - Return failed CompareExchange observed value from the same atomic operation.
+      - "Preserve or strengthen requested order; never weaken. MD-095 T57: a stronger implementation order only with an atomics.md § 47 compatibility proof that keeps the source orders in the evidence."
+      - "Return failed CompareExchange observed value from the same atomic operation (MD-095 T63)."
       - Preserve fence and release-sequence semantics.
 
   - id: platform.atomics-v2

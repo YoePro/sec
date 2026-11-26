@@ -84,6 +84,8 @@ func cleanupPanicHelp(kind EffectKind) string {
 		return prefix + "Unknown foreign behavior is not proof of noPanic. Supply a documented trusted @noPanic foreign contract only if the foreign function cannot abort or unwind, or move the call outside cleanup."
 	case EffectMayPanicUnknownCallee:
 		return prefix + "Use a closed, compiler-resolved call target set whose members are all panic-free, or move the unknown call outside cleanup."
+	case EffectMayPanicArenaEpochExhaustion:
+		return prefix + "Arena Reset may panic on epoch exhaustion; move the Reset outside cleanup."
 	case EffectMayPanicInvalidReference:
 		return prefix + "Keep the referenced Arena live and unreset until cleanup finishes, or remove the stale-capable access from cleanup."
 	default:

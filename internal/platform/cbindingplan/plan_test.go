@@ -1,6 +1,8 @@
 package cbindingplan
 
 import (
+	"os"
+	"sec/internal/platform/target"
 	"strings"
 	"testing"
 
@@ -38,5 +40,25 @@ func TestModuleIdentityProblems(t *testing.T) {
 	merged := &ast.Program{Statements: append(moduleProgram(plan.Files[0].Path, "common").Statements, moduleProgram("/pkg/app/app.sec", "app").Statements...)}
 	if problems := ModuleIdentityProblems(plan, modules, merged); len(problems) != 0 {
 		t.Fatalf("binding statements in program: %v", problems)
+	}
+}
+
+// Standalone source analysis has no selected binding plan. An explicitly
+// opened workspace, in contrast, must not silently lose its project manifest.
+// Rules: rules/tooling/cli.md §8(6); rules/projects/projects.md — Project boundary;
+// MD-021 correction §8.7(2)-(3).
+func TestResolveStandaloneVersusExplicitWorkspace(t *testing.T) {
+	root := t.TempDir()
+	platform := target.Target{OS: "linux", Arch: "amd64"}
+	if plan, problems := Resolve(root, "", platform); plan != nil || len(problems) > 0 {
+		t.Fatal(plan, problems)
+	}
+	handle, err := os.OpenRoot(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handle.Close()
+	if plan, problems := ResolveInRoot(handle, root, "", platform); plan != nil || len(problems) != 1 {
+		t.Fatal(plan, problems)
 	}
 }

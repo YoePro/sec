@@ -52,13 +52,19 @@ const (
 	LayoutAtomic LayoutKind = "atomic"
 )
 
-// LayoutStability states how far a layout may be relied on (layout.md
-// § 39): native layouts are plan-local, explicit contracts are stable.
+// LayoutStability states the scope of a proven representation guarantee.
+// Completeness, equal byte layouts and a requested contract do not prove it.
+// Rules: rules/memory/layout.md §§33-35,39.
 type LayoutStability string
 
 const (
-	LayoutPlanLocal LayoutStability = "plan-local"
-	LayoutStable    LayoutStability = "stable"
+	LayoutStabilityUnknown LayoutStability = "unknown"
+	LayoutNativeUnstable   LayoutStability = "native-unstable"
+	LayoutTargetStable     LayoutStability = "target-stable"
+	LayoutContractStable   LayoutStability = "contract-stable"
+	// Compatibility names; callers must use the recorded scope and reason.
+	LayoutPlanLocal = LayoutNativeUnstable
+	LayoutStable    = LayoutContractStable
 )
 
 // ResolvedVariantLayout is one variant of an enum/union layout: its tag
@@ -164,6 +170,9 @@ type ResolvedLayout struct {
 	// and alignment (layout.md § 47.6(4)); zero for every other kind.
 	Atomic    ResolvedAtomicAccess
 	Stability LayoutStability
+	// StabilityReason records the owning guarantee or missing proof. PlanKey
+	// and Contract retain the exact scope; no cross-plan compatibility follows.
+	StabilityReason string
 	// Missing names every fact that keeps the layout from being complete,
 	// with the decision or package that owns it.
 	Missing    []string

@@ -110,14 +110,21 @@ func memoKey(requirement LayoutRequirement) string {
 	return requirement.TypeIdentity + "|" + string(contract)
 }
 
+// publish assigns snapshot identity and derives stability from complete owner
+// facts at the shared cold/cache publication boundary, never from equal bytes.
+// Rules: rules/memory/layout.md §§26,33-35,39.
 func (r *Resolver) publish(layout ResolvedLayout, key string) LayoutID {
 	layout.ID = LayoutID(len(r.layouts) + 1)
 	layout.PlanKey = r.key
+	layout.Stability, layout.StabilityReason = r.layoutStability(layout)
 	r.layouts = append(r.layouts, layout)
 	r.memo[key] = layout.ID
 	return layout.ID
 }
 
+// resolve dispatches a concrete representation request, retaining unsupported
+// contracts and cycles as negative facts without inventing a representation.
+// Rules: rules/memory/layout.md §§5,25,27-30,39.
 func (r *Resolver) resolve(requirement LayoutRequirement) LayoutID {
 	key := memoKey(requirement)
 	if id, done := r.memo[key]; done {
@@ -127,7 +134,7 @@ func (r *Resolver) resolve(requirement LayoutRequirement) LayoutID {
 	if contract == "" {
 		contract = NativeLayoutContract
 	}
-	base := ResolvedLayout{TypeIdentity: requirement.TypeIdentity, Contract: contract, Kind: requirement.Kind, Scalar: requirement.Scalar, Stability: LayoutPlanLocal}
+	base := ResolvedLayout{TypeIdentity: requirement.TypeIdentity, Contract: contract, Kind: requirement.Kind, Scalar: requirement.Scalar}
 	if requirement.TypeIdentity == "" {
 		base.Completeness, base.Missing = LayoutInvalid, []string{"layout requirement without a semantic type identity"}
 		return r.publish(base, key)

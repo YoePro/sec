@@ -1323,3 +1323,32 @@ reports:
     regression_tests:
       - internal/platform/cbindings/change_plan_test.go
       - cmd/compiler/platform_cbindings_plan_test.go
+
+  - id: BUG-000053
+    title: Standalone source analysis incorrectly required a C-binding project manifest
+    status: fixed
+    severity: medium
+    kind: implementation-bug
+    reported: "2026-11-26"
+    fixed: "2026-11-26"
+    report: fixed/BUG-000053-standalone-c-binding-manifest.md
+    area: shared-c-binding-plan-resolution
+    rulebooks:
+      - rules/tooling/cli.md
+      - rules/corrections/applied/MD-021-c-binding-environment-complete-proposal-20261120-20261121.md
+    governance:
+      - tooling.workspace-harness
+    evidence: >-
+      Broader compiler String/CompilerKnown regression tests reproduced a
+      pre-Sema cannot-read-project-manifest error for standalone temporary
+      sources after the retained-root resolver refactoring.
+    resolution: >-
+      Ordinary binding resolution preserves the optional manifest/no-plan
+      contract; explicitly opened workspaces remain strict. Both use the same
+      retained-root snapshot resolver when the manifest exists. The four
+      compiler reproductions and UTF-8 position/materialization tests pass.
+    regression_tests:
+      - internal/platform/cbindingplan/plan_test.go
+      - cmd/compiler/byte_string_decoding_test.go
+      - cmd/compiler/string_enum_diagnostics_test.go
+      - cmd/compiler/string_ranges_test.go

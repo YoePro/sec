@@ -3779,7 +3779,7 @@ func TestCompletionKeepsNamedStringOptionFlowAndEnumMembers(t *testing.T) {
 	valueItems := completeSource(uri, valueSource, valueOffset)
 	assertCompletionLabels(t, valueItems, []string{
 		"ByteAt", "Compare", "Contains", "Empty", "EndsWith",
-		"IndexOf", "LastIndexOf", "Len", "Ptr", "SizeOf", "Slice", "Split", "SplitOnce",
+		"IndexOf", "LastIndexOf", "Len", "Ptr", "SizeOf", "Split", "SplitOnce",
 		// Whole-string case conversion lives in stdlib/str (2026-11-06).
 		"SplitToArray", "StartsWith", "ToByteArray", "ToCharArray", "ToRuneArray",
 		"ToString", "Trim", "TrimEnd", "TrimStart",

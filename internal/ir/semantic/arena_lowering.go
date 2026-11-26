@@ -2,6 +2,7 @@ package semantic
 
 import (
 	"sec/internal/ast"
+	"sec/internal/diagnostics"
 	"sec/internal/sema"
 )
 
@@ -143,17 +144,25 @@ func (fb *functionBuilder) buildArenaReset(call *ast.CallExpression, plan sema.R
 	if !stored {
 		return builtValue{}, fb.unsupported("Arena Reset of an owner without local storage", token)
 	}
+	if plan.EpochAdvance.Form == "" {
+		// MD-140: never an unchecked Reset when the epoch policy is unresolved.
+		return builtValue{}, fb.unsupported("Arena Reset without a resolved epoch-advance plan (MD-140)", token)
+	}
 	stateBefore, stateAfter, numbered := fb.nextArenaState(plan.InvalidationDomain)
 	if !numbered {
 		return builtValue{}, fb.unsupported("Arena Reset without a numbered owner state", token)
 	}
 	place := fb.ownedStoragePlace(owned, token)
+	reason, _ := diagnostics.PanicReasonByID(plan.EpochAdvance.PanicReason)
 	fb.emit(Operation{
 		Kind: OpArenaReset, Operands: []ValueID{place.id}, Location: location(token),
 		Arena: &ArenaOperationFacts{StateBefore: stateBefore, StateAfter: stateAfter,
 			EpochBefore: uint32(plan.EpochBefore), EpochAfter: uint32(plan.EpochAfter),
 			BackingKind: backing, GrowthKind: plan.GrowthKind, RetainedBorrow: retained, DependencyProof: arenaDependencyProof,
-			ProviderPlan: plan.ProviderPlan},
+			ProviderPlan: plan.ProviderPlan,
+			EpochAdvance: ArenaEpochAdvanceFacts{Form: string(plan.EpochAdvance.Form), Proof: plan.EpochAdvance.Proof,
+				LogicalEpochBits: plan.EpochAdvance.LogicalEpochBits, Exhaustion: string(plan.EpochAdvance.Exhaustion),
+				PanicReasonID: uint32(reason.ID), PanicReason: reason.Name}},
 		Backing: arenaResetBacking(plan, backing),
 	})
 	void := fb.owner.module.Types.Intern(Type{Kind: TypeVoid})

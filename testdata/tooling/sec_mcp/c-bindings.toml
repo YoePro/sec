@@ -1,0 +1,17 @@
+# MCP fixture: edits must retain this comment.
+schema_version = 1
+
+[bindings]
+id = "demo"
+version = "1.0.0" # retain version comment
+source_root = "sec/platform"
+
+[modules]
+common = ["c/common"]
+
+[environments.linux]
+os = "linux"
+arch = "amd64"
+abi = "gnu"
+c_runtime = "glibc"
+modules = ["c/linux"]

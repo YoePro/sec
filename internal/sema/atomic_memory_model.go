@@ -42,6 +42,9 @@ type ResolvedAtomicMemoryOperation struct {
 	TotalOrderPerObject            bool
 	RequiresHappensBeforeCoherence bool
 	Paths                          []AtomicMemoryPath
+	// valueType is the validated contained T, kept so the capability pass
+	// resolves Atomic[T] storage through the canonical layout service.
+	valueType Type
 }
 
 // recordAtomicMemoryOperation publishes only the already-validated atomic
@@ -55,6 +58,7 @@ func (a *Analyzer) recordAtomicMemoryOperation(call *ast.CallExpression, member 
 	}
 	plan := ResolvedAtomicMemoryOperation{Operation: member.Property.Value, Source: member.Property.Token, Callable: a.currentCallable, TotalOrderPerObject: true, RequiresHappensBeforeCoherence: true}
 	plan.TypeIdentity = AtomicValueTypeIdentity(element)
+	plan.valueType = element
 	if place, ok := a.resolvePlace(member.Object); ok {
 		if place.Type.Kind == ReferenceType && place.Type.Element != nil {
 			place = a.canonicalDereferencePlace(member.Object, place, place.Type)

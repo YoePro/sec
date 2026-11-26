@@ -81,6 +81,12 @@ type cBindingsResolutionReport struct {
 // or resolution.
 // Rules: rules/tooling/cli.md — §§ 3, 5.6, 8; MD-021 correction §§ 4, 5, 8.9.
 func runPlatformCommand(args []string, stdout, stderr io.Writer) int {
+	if len(args) > 0 && args[0] == "project" {
+		return runProjectConfiguration(args[1:], stdout, stderr)
+	}
+	if len(args) > 0 && args[0] == "target" {
+		return runPlatformTarget(args[1:], stdout, stderr)
+	}
 	if len(args) < 2 || args[0] != "c-bindings" {
 		fmt.Fprintln(stderr, cBindingsUsage)
 		return 1

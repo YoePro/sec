@@ -43,6 +43,8 @@ func interruptPanicHelp(kind EffectKind, attribute string) string {
 		return prefix + "Remove the reachable panic path, prove it unreachable, or move this work outside ISR execution."
 	case EffectMayPanicForeign:
 		return prefix + "Foreign abort behavior is unknown. Supply a documented trusted @noPanic foreign contract, or move the call outside ISR execution; other ISR/FFI requirements still apply."
+	case EffectMayPanicArenaEpochExhaustion:
+		return prefix + "Arena Reset may panic on epoch exhaustion, and no proof excludes it here. Move the Reset outside ISR execution."
 	case EffectMayPanicInvalidReference:
 		return prefix + "This Arena-backed reference is validated at run time and may panic as stale. Keep the Arena live and unreset across the use, or move the use outside ISR execution."
 	case EffectMayPanicUnknownCallee:

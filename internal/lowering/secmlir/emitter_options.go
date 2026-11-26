@@ -57,6 +57,13 @@ func EmitWithOptions(module *semantic.Module, plan layout.ResolvedScalarPlan, op
 	if err := rejectUnverifiedHardwarePlans(module); err != nil {
 		return nil, err
 	}
+	// MD-095: an atomic operation with an open capability obligation never
+	// reaches emission; a fully supported one still stops at the missing
+	// atomic lowering as an implementation limitation (atomics.md § 47(10)).
+	if err := semantic.VerifyAtomicEmissionEvidence(module); err != nil {
+		obligation, _ := err.(*semantic.AtomicObligation)
+		return nil, &AtomicCapabilityEvidenceError{Detail: err.Error(), Obligation: obligation}
+	}
 	if err := semantic.VerifyRegisterEmissionEvidence(module); err != nil {
 		return nil, &UnsupportedLoweringError{Feature: "register field-write SSA proof transport: " + err.Error()}
 	}

@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"sec/internal/diagnostics"
+	"sec/internal/linking"
 	"sec/internal/sema"
 )
 
@@ -48,6 +49,31 @@ func (r *diagnosticReporter) pipelineError(stage string, err error) {
 		return
 	case *sema.Error:
 		r.pipelineError(stage, *failure)
+		return
+
+	case *linking.Failure:
+		message := r.userSourcePaths(failure.Error())
+		occurrence := newOccurrence(failure.DiagnosticID(), diagnostics.SeverityError, stage, message)
+		for key, value := range map[string]string{"diagnostic_class": string(failure.Class), "tool": failure.Tool, "target": failure.Target, "output": failure.Output} {
+			if value != "" {
+				value = r.userSourcePaths(value)
+				occurrence.Arguments[key] = value
+				occurrence.Message.Arguments[key] = value
+			}
+		}
+		occurrence.addHelp(failure.Help())
+		r.record(occurrence, fmt.Sprintf("%s error [%s]: %s\n  help: %s\n", stage, failure.DiagnosticID(), message, failure.Help()))
+		return
+	case interface {
+		DiagnosticID() string
+		Help() string
+	}:
+		// Registered pipeline boundaries such as MD-095 missing atomic
+		// evidence (S1265/S1266) carry their own ID and help.
+		message := r.userSourcePaths(err.Error())
+		occurrence := newOccurrence(failure.DiagnosticID(), diagnostics.SeverityError, stage, message)
+		occurrence.addHelp(failure.Help())
+		r.record(occurrence, fmt.Sprintf("%s error [%s]: %s\n  help: %s\n", stage, failure.DiagnosticID(), message, failure.Help()))
 		return
 	case diagnostics.CapabilityFailure:
 		fact := failure.ImplementationCapability()

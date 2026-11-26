@@ -428,9 +428,15 @@ runtime (§§ 143–148, 162–163).
 
 ## F. Lowering without physical choices
 
-- [ ] P19-30 — No individual Arena allocation free, no uninitialized safe
+- [x] P19-30 — No individual Arena allocation free, no uninitialized safe
   allocation, no universal physical Arena representation or ABI, no
-  mandatory runtime (§§ 143–148).
+  mandatory runtime (§§ 143–148). Done 2026-11-26 (Claude):
+  TestPackage19NoArenaSurface (Free, AllocUninit, Capacity, Used, Trim,
+  Arena and ref mut Arena over the C ABI, AllocationContext as a source
+  type all rejected) and TestPackage19NoPhysicalLowering (no physical
+  representation, allocator, runtime or LLVM form in schema 15; the LLVM
+  track rejects sec.arena.* as unsupported-lowering). § 145 is
+  TestArenaTypeRestrictionMatrix.
 
 ## G. Tests (package-required matrices)
 
@@ -508,13 +514,144 @@ runtime (§§ 143–148, 162–163).
 
 ## H. Final acceptance, governance and handoff
 
-- [ ] P19-42 — Record the explicitly deferred items (§ 161); architecture
-  rules check (§ 162) and acceptance criteria matrix (§ 163).
-- [ ] P19-43 — Governance: reuse the existing Arena, allocation and lowering
+- [x] P19-42 — Record the explicitly deferred items (§ 161); architecture
+  rules check (§ 162) and acceptance criteria matrix (§ 163). Done
+  2026-11-26 (Claude): see "P19-42 deferred, architecture and acceptance
+  evidence" below: 14 deferred items confirmed absent; 31 rules hold or hold
+  in the model, 1 partial; 46 criteria met, 6 partial, 1 open (MD-152), 1 not
+  run; Package 19 stays partial.
+- [x] P19-43 — Governance: reuse the existing Arena, allocation and lowering
   entries; record implemented/partial/remaining and known holes; keep MD
-  links (MD-034, MD-053, MD-065, MD-074).
-- [ ] P19-44 — Implementation report (§ 164) and the Package 20 boundary
-  (§ 165).
+  links (MD-034, MD-053, MD-065, MD-074). Done 2026-11-26 (Claude): the
+  lowering.sec-mlir-package19 summary states the partial state and every
+  known hole with its owner; MD links kept; P19 test files listed.
+- [x] P19-44 — Implementation report (§ 164) and the Package 20 boundary
+  (§ 165). Done 2026-11-26 (Claude):
+  rules/mlir/packages/sec-mlir-dialect_package19-implementation-report.md,
+  all 51 topics in order; P19 stays partial (46/54 met); Package 20 is
+  already in progress with its own report.
+
+## P19-42 deferred, architecture and acceptance evidence — 2026-11-26
+
+Snapshot: HEAD `1a693eec` plus the uncommitted working tree. Evidence names a
+test, verifier, lit file or rulebook; `Partial` and `Open` name the owner of
+what remains. Nothing here declares Package 19 complete.
+
+### § 161 explicitly deferred (confirmed not implemented)
+
+| Deferred item | State in the tree |
+|---|---|
+| physical Arena descriptor | none; `!sec.arena` is opaque, no LLVM conversion accepts Arena ops |
+| physical provider ABI | none; owned creation is a named boundary until `sec.system-heap.v1` (MD-151) |
+| malloc/free selection | none in P19; MD-151 decides the catalog, implementation is platform.target-profiles |
+| general uninitialized Arena allocation | none; only canonical-default New/Alloc (TestArenaTypeRestrictionMatrix) |
+| individual Arena allocation Free | none; no source member, no reclaim op (P19-30 open as a test point) |
+| full task/thread spawn/await/join lowering | none; spawn IR is a named boundary (concurrency packages) |
+| concurrent Arena | none |
+| stable/weak handles | none |
+| full FFI retention lowering | none; foreign ABI never receives hidden context (IR verifier) |
+| full physical panic cleanup/unwinder | none; MD-140 stage 4b keeps the Reset panic edge physical |
+| public capacity properties | none |
+| public arbitrary Arena trimming | none |
+| general collection types | none beyond P18 `T[]` |
+| LLVM Arena lowering | none; schema 15 stops at Sec MLIR |
+
+### § 162 architecture rules
+
+| Rule | Status | Evidence |
+|---|---|---|
+| Arena is one move-only builtin source type | Holds | TestArenaFrontendConformance, TestOwningDynamicArrayAndArenaTraits |
+| ArenaDomain identity independent of backing address | Holds | TestArenaDomainIdentitySurvivesOwnerMove, TestArenaCreationDomainFreshness |
+| State version is not the validity epoch | Holds | TestArenaEffectSiteOrdering; v15 § 9 |
+| Ordinary allocation changes state, not epoch | Holds | IR verifier (New/Alloc preserve epoch); TestPackage19AllocationAtomicityMatrix |
+| Reset preserves ArenaDomain and advances epoch | Holds | TestPackage19ResetMatrix |
+| Release consumes Arena and ends ArenaDomain | Holds | TestPackage19ReleaseMatrix, TestPackage19ArenaReleaseLowering |
+| FromBuffer is infallible borrowed fixed construction | Holds | TestPackage19ArenaSourceLowering |
+| WithCapacity is fallible owned fixed construction | Holds (Sema/IR) | TestArenaOperationPlans, TestArenaOperationContracts; lowering waits for MD-151 |
+| Growable adds stable backing, never relocates | Holds (model) | growth kind growable-nonrelocating in plans/verifiers; no lowering yet (MD-151) |
+| New/Alloc publish only fully initialized T | Holds | default_plan canonical-default; TestArenaElementDefaultPlans |
+| New/Alloc require trivially destructible T | Holds | TestArenaTypeRestrictionMatrix |
+| Allocation failure uses AllocationError and is atomic | Holds | TestPackage19AllocationAtomicityMatrix; lit invalid-arena-publication.mlir |
+| Zero-element Alloc succeeds without change | Holds | zero-storage capacity plan; TestArenaDefaultConstruction |
+| Repeated allocation keeps prior allocations | Holds | TestPackage19AllocationAtomicityMatrix (old slice after handled failure) |
+| Arena allocations not individually freed | Holds | no Free surface; reclaim requires OwningValue |
+| Arena object vs backing ownership distinct | Holds | backing relation/authority facts; TestBorrowedArenaRetainsBackingBorrowUntilRelease |
+| Nested Arena has own domain, depends on parent | Holds | TestNestedArenaDependencies, TestNestedArenaIR, TestNestedArenaBlocksParentInvalidation |
+| Allocation context compiler-visible, not global | Holds | TestArenaContextIsNotSourceVisible |
+| MayAllocate and RequiresAllocationContext distinct | Holds | TestAllocationContextRequirements |
+| Explicit Arena selection beats ambient context | Partial | explicit selection from source is the P19-10 remainder (§§ 55, 59) |
+| Lexical Arena never guessed as ambient | Holds | TestPackage19AllocationContextMatrix |
+| Synchronous internal calls propagate only when required | Holds | TestPackage19AllocationContextPropagation, TestSchema15HiddenContextForwarding |
+| Foreign ABI never receives hidden context | Holds | IR verifier matrix (TestAllocationContextContracts) |
+| No-allocation profiles never fall back to heap | Holds | TestPackage19AllocationContextMatrix (noalloc, freestanding) |
+| Arena effects ordered and domain-aware | Holds | TestCallGraphRecordsOrderedDirectArenaEffects, TestArenaEffectSitesCarryStableDomains |
+| CSE/reordering may not erase Arena semantics | Holds | MemoryEffects on Arena ops (schema15-arena-effects.mlir) |
+| P17 cleanup owns implicit Arena destruction | Holds | TestPackage19ReleaseMatrix |
+| P18 storage transitions reused, no second epoch model | Holds | TestPackage19IntegrationMatrix |
+| No mandatory runtime | Holds | no runtime dependency in schema 15 |
+| No physical representation or allocator ABI | Holds | § 161 table |
+| No LLVM dialect generated by P19 | Holds | no conversion accepts Arena ops |
+
+### § 163 acceptance criteria
+
+| Criterion | Status | Evidence / owner |
+|---|---|---|
+| baseline documented | Met | P19-01; this snapshot |
+| previous package regressions green | Met | sema subsets, ir/semantic, lowering/... full; lit 269/269 (2026-11-26) |
+| Arena/allocation synchronization applied | Met | P19-02 |
+| Semantic IR Arena amendment applied | Met | semantic_ir.md §§ 50–51; rules/mlir/semantic-ir/sec_semantic_ir_arena_v19.md |
+| schema-v15 dialect rulebook installed | Met | rules/mlir/dialect-versions/sec_mlir_dialect_v15.md |
+| lowering-v15 rulebook installed | Met | rules/mlir/lowering-versions/sec_mlir_lowering_v15.md |
+| Arena builtin normalized | Met | P19-03 |
+| lowercase arena keyword removed | Met | P19-03 (ordinary lowercase identifiers) |
+| MoveOnly classification integrated with P17 | Met | P19-03, TestOwningDynamicArrayAndArenaTraits |
+| ArenaDomainID implemented | Met | P19-03, P19-14 |
+| ArenaStateVersionID implemented | Met | builder-numbered state versions (v15 § 9) |
+| backing/growth facts implemented | Partial | P19-04 open: owned/provider rows wait for MD-151 implementation |
+| FromBuffer implemented | Met | TestPackage19ArenaSourceLowering |
+| WithCapacity implemented | Partial | Sema/IR/MLIR op; source lowering waits for `sec.system-heap.v1` (P19-20 remainder) |
+| growable semantic model implemented | Partial | plans and verifiers; growable allocation lowering waits for MD-151 (P19-33 remainder) |
+| safe New[T] implemented | Met | TestPackage19ArenaAllocationLowering |
+| safe Alloc[T] implemented | Met | TestPackage19ArenaAllocationLowering |
+| safe type restrictions enforced | Met | P19-32 |
+| AllocationError mapping implemented | Met | P19-06 |
+| zero-element allocation implemented | Met | zero-storage plan |
+| atomic failure semantics implemented | Met | P19-33 |
+| ordinary allocation preserves epoch | Met | IR and MLIR verifiers |
+| Reset implements AdvanceEpoch | Met | P19-34; MD-140 stages 2–4a (checked advance) |
+| Reset dependency validation integrated | Partial | P19-07 open: defer/Arena interaction (P19-21) and MD-140 stage 2 proof remainder |
+| Release implements EndDomain | Met | P19-35 |
+| release-by-backing-kind implemented | Partial | borrowed and default rows; owned/target-provided need MD-151 implementation |
+| implicit destruction integrated with P17 | Met | TestPackage19ReleaseMatrix |
+| nested Arena dependency implemented | Met | P19-09, P19-16 |
+| allocation-context requirement summary | Met | P19-10 implemented part, TestAllocationContextRequirements |
+| MayAllocate kept distinct | Met | P19-10 |
+| context selection order implemented | Partial | explicit selection and compiler-local context are the P19-10 remainder |
+| hidden !sec.alloc_context propagation | Met | P19-23, TestSchema15HiddenContextForwarding |
+| lexical Arena never auto-selected | Met | TestPackage19AllocationContextMatrix |
+| foreign ABI hidden-context guard | Met | IR verifier |
+| noalloc profile behavior implemented | Met | P19-36 |
+| ordered Arena effects represented | Met | P19-11 |
+| basic Arena demand summary implemented | Met | P19-26 demand part, P19-37 |
+| strict profile capacity checks implemented | Open | MD-152 (strict policy selection) |
+| ArenaResource/effect interface implemented | Met | schema15-arena-effects.mlir |
+| !sec.arena implemented | Met | P19-22..25 |
+| !sec.alloc_context implemented | Met | P19-23 |
+| schema-v15 Arena/context ops implemented | Met | P19-24; lit schema15-arena*.mlir |
+| --sec-verify-arenas registered | Met | Passes.td SecVerifyArenas; lit invalid-arena-*.mlir |
+| --sec-verify-allocation-contexts registered | Met | Passes.td SecVerifyAllocationContexts |
+| P15/P16 dependency verifiers extended | Met | P19-26 verifier part; TestPackage19IntegrationMatrix |
+| P18 allocation-context integration | Met | TestPackage19IntegrationMatrix (T[] growth through the context) |
+| no public uninitialized allocation | Met | § 161 |
+| no arbitrary non-trivial Arena.Alloc | Met | TestArenaTypeRestrictionMatrix |
+| no physical Arena descriptor | Met | § 161 |
+| no allocator ABI | Met | § 161 |
+| no mandatory runtime | Met | § 162 |
+| check-sec-mlir passes | Met | lit 269/269 |
+| go test ./... passes | Not run | full suite needs owner authorization; package suites green |
+| legacy paths remain operational | Met | schema 11–14 emission and lit regressions |
+
+Result: 46 Met, 6 Partial, 1 Open, 1 Not run. Package 19 stays partial.
 
 ## Recommended execution order
 

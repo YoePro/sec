@@ -36,6 +36,9 @@ func (a *Analyzer) inferValidatedCompilerKnownMemberCall(expr *ast.CallExpressio
 	if path, static := typePathFromExpression(owner); static {
 		typ, exists := a.types[a.resolveTypeName(path)]
 		if exists {
+			if a.rejectRetiredStringSlice(typ, memberExpr.Property.Value, memberExpr.Property.Token) {
+				return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+			}
 			member, memberExists := compilerKnownMember(typ, memberExpr.Property.Value, true)
 			if !memberExists || (member.Kind != CompilerKnownMethod && member.Kind != CompilerKnownAssociatedFunction) {
 				return Type{}, expressionValue{}, false
@@ -68,6 +71,9 @@ func (a *Analyzer) inferValidatedCompilerKnownMemberCall(expr *ast.CallExpressio
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 	}
 	lookupType := dereferenceType(receiverType)
+	if a.rejectRetiredStringSlice(lookupType, memberExpr.Property.Value, memberExpr.Property.Token) {
+		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
+	}
 	if a.rejectPortableThreadTerminationMember(lookupType, memberExpr.Property.Value, memberExpr.Property.Token) {
 		return Type{Kind: InvalidType}, expressionValue{Display: expr.String()}, true
 	}

@@ -1034,6 +1034,7 @@ integrations:
       - internal/sema/arena_domain_identity_test.go
       - internal/sema/allocation_context_facts_test.go
     implemented:
+      - "MD-140 stage 2, checked Reset exhaustion facts and effects (2026-11-26; arena.md §§ 38(8), 39(1), 39(8)-(9); effect_analysis.md §§ 23(6), 26(4); runtime_checks.md § 11(5)): every reachable Reset plan carries EpochAdvance (form checked, logical width from the one reference policy via ResolveArenaEpochPolicy, panic outcome, PanicReasonArenaEpochExhaustion) and no longer leaves an open rekey strategy; an unresolvable policy is named in Unresolved instead of a guessed width. Each Reset records EffectMayPanicArenaEpochExhaustion with the registered reason, also when the policy is unresolved, which propagates to callers and drives @noPanic (help names the reason and that 64 bits is no proof), cleanup and ISR diagnostics; try arena.Reset() is no recovery form. Tests: TestArenaResetEpochAdvancePlan (T06-T08, T26), TestArenaResetExhaustionEffect, TestArenaResetExhaustionSourceRules (T33, T37); T21-T23 stay the existing dependency tests."
       - compiler-known Arena type and AllocationError enum
       - compiler-known Arena.New, Arena.FromBuffer, Arena.WithCapacity, Arena.Growable, Arena.Alloc, Arena.Reset, and Arena.Release member recognition in the represented frontend subset
       - semantic validation of Arena.Alloc[T](count) with Result[ref mut T[], AllocationError] result typing
@@ -1050,6 +1051,7 @@ integrations:
       - Arena.FromBuffer backing identity is an exclusive mutable borrow for the complete Arena lifetime and moves with the Arena owner; implemented and verified on 2026-10-09 under frontend.allocation in governance/allocation.yaml (internal/sema/analyzer_arena.go, internal/sema/arena_from_buffer_test.go)
       - "stable ArenaDomain identity replaces lexical binding names (2026-10-11, arena.md §§4.2, 44, 68(3)-(4)): an Arena reached through a local reference now operates on the referenced owner's domain instead of a domain named after the reference binding, so a Reset through an alias invalidates storage allocated from the owner and storage allocated through the alias stays local to the owner's invocation (both previously accepted); a ref/ref mut Arena parameter gets one symbolic compiler-owned domain instead of its name; Arena effect sites carry the selected or created Domain (the receiver spelling stays display-only), allocation-context facts take it from the site and still select nothing on conflicting or ambiguous result evidence; diagnostics name the owning Arena binding instead of internal domain identities"
     remaining:
+      - "MD-153 (open decision 2026-11-26): an Arena Reset headroom query (recommended CanReset/ResetsRemaining) or a separate fallible operation, so programs can recreate an Arena before epoch exhaustion on short compile-time widths; implement once the owner decides. Nothing else waits on it."
       - prove that no validity-preserving dependency crosses Arena.Reset or Arena.Release
       - allocation-context propagation and complete allocation-effect inference through function bodies
       - "statically impossible alignment (explicit alignment syntax decided by MD-019 on 2026-11-05: `minAlign(N)`, layout.md § 28(5); waits on its Sema validation), count-overflow, and allocation diagnostics (arena.md § 17(5), § 89) once the shared canonical layout-resolution service (frontend.layout) supplies byte size and alignment; runtime checked count/offset arithmetic and dynamic alignment failure belong to lowering"
@@ -1274,7 +1276,7 @@ integrations:
 
   - id: analysis.layout
     status: partial
-    revised: "2026-11-23"
+    revised: "2026-11-26"
     rules:
       - rules/memory/layout.md
       - rules/mlir/packages/sec-mlir-dialect_package24.md
@@ -1285,21 +1287,44 @@ integrations:
       - internal/layout/resolver.go
       - internal/layout/resolver_cache.go
       - internal/layout/resolved_layout.go
+      - internal/layout/stability.go
       - internal/sema/layout_requirements.go
     tests:
       - internal/sema/struct_layout_cycle_test.go
       - testdata/union_valid.sec
       - internal/layout/resolver_cache_test.go
       - internal/layout/resolved_layout_test.go
+      - internal/layout/stability_test.go
       - internal/sema/generic_layout_cache_test.go
       - testdata/sema/generic_layout_cache.sec
     implemented:
       - one module-level by-value layout dependency graph covers structs, tagged unions (variant payloads and payload fields), named wrappers, fixed arrays, compiler-known tagged Option/Result payloads, and generic declarations; a monotone fixed point derives which generic parameters each declaration stores by value, so cycles that only generic instantiation introduces are rejected; references, slices, dynamic arrays, owning collections, raw pointers, function values, and non-source-declared layouts are boundaries; struct cycles use S1055, union-only cycles use S1071, the message shows the field/variant/instantiation path, and a storage position already rejected by the direct self-recursion checks is not reported twice
       - "Concrete generic layout caching (2026-11-23): NewResolverWithCache reuses complete canonical layout dependency graphs across resolver snapshots, keyed by semantic type identity, CompilationPlanLayoutKey, explicit contract and a fingerprint of the complete requirement. Declaration/field-order and generic substitution changes miss; width, endian, target, ABI, profile, reference policy, address-domain and alignment changes miss. Cached field, array-element, carrier and variant payload IDs are validated and rebased before publication; graph integrity failures discard the entry and recompute cold without partially installed nodes. Returned graphs are detached; incomplete results are not cached and independent snapshots can share the cache safely. Source-backed Box[int]/Box[byte]/Box[Meter] tests cover 32/64-bit layouts, independent native sizes, warm/cold parity and declaration changes. This is the canonical layout service cache; persistence and compiler/LSP workspace cache lifecycle remain owned by their separate integrations."
+      - >-
+        Native/target/contract stability tracking completed 2026-11-26
+        (layout.md sections 33-35,39): every canonical resolved layout carries
+        its guarantee scope and reason alongside exact PlanKey and Contract.
+        Complete canonical scalar representations are target-stable; named
+        carriers, ordinary enums, arrays and atomics retain dependency scope.
+        Native aggregates and aggregates depending on them remain
+        native-unstable. Incomplete, invalid and unsupported layouts have
+        unknown stability. Contract-stable is a distinct guarantee requiring a
+        verified producer; currently unsupported explicit contracts never
+        acquire it just by name. Equal byte layouts and layout queries grant no
+        cross-plan, nominal or FFI compatibility. Publication recomputes
+        evidence for cold and rebased cached graphs; detached snapshots retain
+        explanations. Source-backed generic tests and the layout matrix cover
+        both 32/64-bit plans. Explicit layout-contract resolution and
+        representation compatibility retain their separate owners.
     remaining:
-      - track native/target/contract stability
       - complete padding-leak and zero-init validity analysis
     verification:
+      - command: go test ./internal/traceability -run TestRulebookTraceability -update -count=1
+        result: "2026-11-26: baseline shrank by exactly the two newly documented resolver methods. Check remains failing only for the concurrently added AtomicCapabilityEvidenceError.Error method in internal/lowering/secmlir, owned by Claude MD-095 and reported in the shared handoff; no new baseline exception was added."
+      - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" go test ./internal/ir/semantic ./internal/lowering/secmlir -run 'Layout|Named|Struct|Array' -count=1 -timeout=120s; go vet ./internal/layout ./internal/sema
+        result: "Passed 2026-11-26: Semantic IR 0.217s, emitter 0.334s and vet. No layout algorithm, native aggregate representation or explicit-contract capability changed."
+      - command: go test -race ./internal/layout -count=1; go test -race ./internal/layout ./internal/sema -run 'Layout|ByValueLayoutGraph' -count=1 -timeout=120s
+        result: "Passed 2026-11-26: full layout race suite (1.073s); focused layout/Sema race suites (1.041s/1.264s). Canonical scalar/decimal, enum, named/array dependency scope, native aggregates, invalid/incomplete/unsupported contracts, detached snapshots, cached dependency rebasing, source-backed generic layouts and 32/64-bit scope isolation are covered."
       - command: GOTMPDIR="$HOME/.cache/sec-gotmp" go test -p 4 ./internal/sema ./internal/layout ./internal/traceability -count=1 -timeout=180s; go test -race -p 4 ./internal/layout -count=1 -timeout=120s; go vet ./internal/layout ./internal/sema
         result: "Passed 2026-11-23: complete Sema 28.554s, layout 0.008s, traceability 0.228s; complete layout under race detector 1.051s; vet passed. Source-backed generic warm/cold and ID-rebasing coverage, plan/declaration mutation matrix, corrupted graph cold fallback, incomplete-result exclusion and concurrent detached snapshots pass. Temporary Go overlay removing cache integration makes TestGenericLayoutCache fail at its warm-hit assertion as expected."
       - command: go test ./internal/sema -run 'TestByValueLayoutGraph|TestStructLayout|TestUnionValidFixture' -count=1
@@ -1524,7 +1549,7 @@ integrations:
       - complete ordered Arena effects beyond summary MayAllocate
       - implement byte-accurate alignment-aware Exact/Bounded/Unknown/Unbounded demand analysis
       - implement recursion/indirect-call/separate-compilation Arena demand summaries
-      - "MD-140 stage 2, Sema Reset exhaustion facts and effects (replaces the former rekey/retirement item; arena.md §§ 39(5)-(9), 42(5), 105(4); effect_analysis.md §§ 23(6), 26(4); runtime_checks.md §§ 7(6), 11(5)): the resolved Reset plan records the epoch-advance form with proof provenance (sound bound over all paths of the ArenaDomain, or whole-domain metadata elimination; never the 64-bit default, unknown counts or a proof for another domain/plan), width and panic policy; unproven exhaustion contributes MayPanic with panic.arena-epoch-exhaustion and Reset provenance; @noPanic, context and ISR checks use it; no try recovery; dependency errors across Reset stay source errors; tooling explains an unproven guarantee. Tests T21-T37."
+      - "MD-140 stage 2 remainder, elimination proofs (arena.md §§ 39(5)-(6), 105(4); runtime_checks.md § 7(6)): a domain- and plan-qualified bound on Reset advances over all paths (loops, calls, repeated domain use) producing ArenaEpochAdvanceProvenBounded with proof provenance, and whole-domain epoch-metadata elimination producing ArenaEpochAdvanceMetadataEliminated; both remove the MayPanic cause only, never other panics. Today every Reset stays checked. Tests T27-T32, T34-T35."
     verification:
       - command: go test ./internal/sema -run TestCalleeArena -count=1
         result: passed on 2026-10-11 with stale uses after direct, forwarded, mutually recursive and alias calls, S1126 for a deferred use across Fill(mem), an allocation-only helper accepted, and exact per-function Arena parameter summaries; go test ./... passes except the unrelated stale unicode.sec check and `sec sema sec` matches HEAD
@@ -2577,8 +2602,10 @@ integrations:
     area: frontend-analysis-and-lowering
     status: partial
     audited: "2026-10-07"
+    revised: "2026-11-26"
     summary: >-
-      Provides immutable canonical synchronization-resource observations and
+      Provides deterministic dependency-graph SCC/cycle/condensation queries,
+      immutable canonical synchronization-resource observations and
       snapshot-qualified Same/Disjoint/MayAlias/Unknown identity queries. The
       remaining canonical Sec deadlock analysis covers synchronization resources
       and execution contexts: flow-sensitive held-resource tracking, symbolic
@@ -2611,12 +2638,71 @@ integrations:
       - rules/concurrency/concurrency.md
       - rules/concurrency/mutex.md
       - rules/mlir/semantic-ir/sec_semantic_ir_place_reference_v1.md
+    code:
+      - internal/sema/deadlock/graph.go
+      - internal/sema/deadlock/components.go
+      - internal/sema/deadlock/witness.go
+      - internal/sema/deadlock/causes.go
+      - internal/sema/deadlock/causes.go
+    tests:
+      - internal/sema/deadlock/graph_test.go
+      - internal/sema/deadlock/witness_test.go
+      - internal/sema/deadlock/causes_test.go
+      - internal/sema/deadlock/causes_test.go
     implemented:
       - canonical Place resolution publishes immutable compiler-known Mutex resource observations through Analyzer.SynchronizationResourceOf, preserving referent provenance, resource contract identity, exact capacity one, and non-reentrancy without inferring synchronization from binding names
       - SynchronizationResourceFact snapshots retain independent Place/type/projection/alternative-origin data and arbitrary-precision index/capacity values; explicit producer contracts preserve other resource kinds and unknown capacity/reentrancy without substituting mutex semantics
       - snapshot-qualified resource identities consume the shared canonical Place relationship service and preserve Same, Disjoint, MayAlias, and Unknown; source spellings and missing root IDs cannot prove identity, unresolved reference roots may alias, and finite alternative origins join conservatively
       - distinct analysis namespaces and provenance/ownership snapshots cannot prove identity from reused root numbers; observations require canonical flow/ownership rebinding before cross-state comparison, while held-state, guard transfer, acquisition graphs, and cycle diagnostics remain separately pending
       - canonical stored-field and safe-reference source facts are produced at every analysis depth and cleared on Analyzer reuse; published facts are immutable and getters, unnormalized slices, missing provenance, and conflicting resource contracts retain Unknown
+      - >-
+        Deterministic dependency SCC/cycle detection and condensation completed
+        2026-11-26 (deadlock_analysis.md sections 7-8,45,48-50,59,82): the
+        focused internal/sema/deadlock package consumes explicit snapshot-scoped
+        lock-order or generalized wait-for graphs with opaque producer node and
+        edge identities. Iterative SCC traversal preserves isolated nodes,
+        singleton self-waits and parallel causes; canonical member/edge ordering
+        yields a deterministic condensation DAG and a closed candidate cycle per
+        cyclic SCC. Every original edge remains attributable through its
+        identity. Invalid identities/endpoints are rejected; results are
+        detached and concurrent immutable readers agree. Reachability-oracle,
+        permutation, edge-removal, malformed graph and 30000-node scaling tests
+        cover both graph kinds. Graph construction, alias/path/context/progress
+        compatibility, deadlock classification and source diagnostics retain
+        their separate remaining items; a structural cycle or acyclic input does
+        not certify a whole-program safety result.
+      - >-
+        Evidence-aware deterministic representative cycle selection completed
+        2026-11-26 (deadlock_analysis.md sections 49-51,59-60,82): optional
+        producer edge facts retain ProvenPossible, ConservativePossible or
+        Unknown strength, identity precision, source position and localized
+        uncertainty. Selection first finds the strongest whole-cycle bottleneck
+        admitting a cycle, then favors shorter explanations, precise identities,
+        complete source locations and fewer uncertainties with canonical ties.
+        Up to eight deterministic seeds per cyclic filtered SCC bound the
+        search; each uses a shortest return path, without claiming global
+        shortest-cycle enumeration. A strong edge or source location never
+        upgrades a weak cycle. Missing evidence stays Unknown, invalid metadata
+        fails atomically, and snapshots detach maps and uncertainty slices. All
+        structural edges remain available; witness quality is distinct from
+        simultaneous realizability, deadlock classification and source graph
+        production.
+      - >-
+        Compact interprocedural cycle causes completed 2026-11-26
+        (deadlock_analysis.md sections 49,59,61,82): producer call-site,
+        caller/callee, execution and source identities form shared finite
+        parent-prefix chains referenced by dependency edges. Validation rejects
+        missing/duplicate identities, disconnected calls, dangling references
+        and cyclic prefix chains before publishing any result. Only prefixes
+        needed by representative cycle edges survive in the compact result,
+        shared once across edges; unrelated paths are omitted. CycleDetails
+        expands just the requested cycle into detached outermost-first call
+        sequences, including an explicit unavailable state for every edge
+        lacking producer path evidence. Deep recursive callable paths use
+        iterative traversal, not call-stack recursion. No omitted call, source
+        location or semantic proof is invented. Source graph production,
+        classification and LSP diagnostics retain their separate remaining
+        items.
     remaining:
       - add flow-sensitive held-resource state distinguishing definitely-held from possibly-held resources
       - integrate canonical acquire, successful acquisition, release, nonblocking/fallible acquisition, guard lifetime, guard move, destruction, defer, cleanup, and error-path semantics
@@ -2658,9 +2744,6 @@ integrations:
       - add explicit self-deadlock reasoning for non-reentrant resource reacquisition and self-wait dependencies without requiring a second execution context
       - consume guaranteed timeout, cancellation, completion, and other progress facts only when canonical semantics guarantee cycle-breaking progress; merely possible escape must not eliminate a deadlock proof
       - add resource-capacity reasoning sufficient to avoid treating counting or multi-capacity resources as capacity-one locks; preserve PotentialDeadlock or Unknown when capacity precision is insufficient
-      - add deterministic cycle detection and SCC condensation over lock-order and generalized wait-for dependency graphs
-      - select deterministic representative cycles favoring stronger proof, smaller understandable dependency chains, precise identities, clear source locations, and minimal uncertainty
-      - retain compact interprocedural cause paths for every representative cycle edge so diagnostics can navigate through nested calls without dumping the full graph
       - use symbolic path summaries, bounded context sensitivity, SCC condensation, edge aggregation, and widening to avoid exponential path or runtime-instance explosion
       - ensure precision loss may weaken ProvenDeadlock to PotentialDeadlock or Unknown but never strengthen an unsupported result
       - allow increased Deep precision to upgrade PotentialDeadlock to ProvenDeadlock when the missing witness is established or remove it when path/resource/execution incompatibility is proven
@@ -2685,6 +2768,14 @@ integrations:
       - maintain a permanent false-positive regression corpus for partial lock orders, scoped guards, condition waits that release mutexes, nonblocking acquisition, guaranteed timeout, serialized execution, ISR masking, ordered dynamic locks, resource transfer, reentrancy, and join-after-release patterns
       - update implementation-status verification commands when the first conforming vertical slice is integrated
     verification:
+      - command: go test -race ./internal/sema/deadlock -count=1; go vet ./internal/sema/deadlock; go test ./internal/traceability -count=1
+        result: "Passed 2026-11-26 after compact cause-path support: full graph race suite 2.036s, vet clean, traceability 0.262s. Shared prefix pruning, ordered call-site/source/execution retention, unavailable paths, shuffled snapshots, detached concurrent detail readers, invalid/disconnected/cyclic/orphan chains and 30000-frame recursive paths pass alongside the SCC/witness regression matrix."
+      - command: go test -race ./internal/sema/deadlock -count=1; go vet ./internal/sema/deadlock; go test ./internal/traceability -count=1
+        result: "Passed 2026-11-26 after evidence-aware witness selection: graph race suite 1.643s; vet clean; traceability 0.228s. Tests independently exercise weakest-edge proof before length, identity/source/uncertainty preferences, shuffled registration, detached metadata, malformed evidence, duplicate uncertainty labels and a 4096-edge cycle, plus the retained reachability oracle and 30000-node/15000-cycle scaling suite."
+      - command: go test ./internal/sema -run 'TestSynchronizationResource|TestMutexReacquisition' -count=1 -timeout=120s
+        result: Passed 2026-11-26 (1.609s); existing canonical resource and same-resource reacquisition tests retain their behavior. The graph query remains separate from source dependency production and deadlock classification.
+      - command: go test -race ./internal/sema/deadlock -count=1; go vet ./internal/sema/deadlock; go test ./internal/traceability -count=1
+        result: "Passed 2026-11-26: graph race suite 1.361s; vet clean; traceability 0.214s. Both graph kinds, singleton/self/parallel/isolated dependencies, exact edge-evidence retention, canonical condensation, shuffled registration, concurrent detached readers, invalid snapshots and edge removal are covered. A separate all-pairs reachability oracle checks 200 generated graphs; 30000-node chains and 15000 independent cycles exercise iterative traversal and bounded per-component work."
       - command: go test ./internal/sema -run TestSynchronizationResource -count=1
         result: passed on 2026-10-07; four-state symmetric relationships, canonical stored fields, wide indexes, dynamic indexes, reference aliases, alternative origins, resource contracts, immutable snapshots, all analysis depths, and analysis-namespace reset are covered
       - command: go test ./... -count=1

@@ -194,6 +194,24 @@ LogicalResult ArenaResetOp::verify() {
     return failure();
   if (!isArenaPlace(getArena().getType()))
     return emitOpError("resets through a writable Arena Place");
+  // MD-140 (v15 section 11): one panic outcome, a known advance form whose
+  // eliminations carry proof provenance, and a resolved logical width.
+  StringRef form = getEpochAdvance();
+  bool proof = getEpochProof() && !getEpochProof()->empty();
+  if (form == "checked") {
+    if (proof)
+      return emitOpError("checked epoch advance carries no elimination proof");
+  } else if (form == "proven-bounded" || form == "metadata-eliminated") {
+    if (!proof)
+      return emitOpError("epoch advance ") << form << " requires proof provenance (epoch_proof)";
+  } else {
+    return emitOpError("epoch_advance must be checked, proven-bounded or metadata-eliminated");
+  }
+  uint32_t width = getEpochWidth();
+  if (width != 8 && width != 16 && width != 32 && width != 64)
+    return emitOpError("epoch_width must be a resolved logical width of 8, 16, 32 or 64 bits");
+  if (getExhaustionReason() != "panic.arena-epoch-exhaustion")
+    return emitOpError("exhaustion_reason must be the registered panic.arena-epoch-exhaustion");
   return success();
 }
 

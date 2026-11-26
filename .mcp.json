@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "sec-project": {
+      "command": "bin/sec-mcp",
+      "args": ["--project", "."]
+    }
+  }
+}

@@ -59,6 +59,8 @@ func analysisFamilies() []analysisFamily {
 			Availability: analysisAvailable, DiagnosticIDs: []string{diagnostics.LargeValueParameter}},
 		{Name: "stack", Title: "stack analysis", Description: "semantic stack requirements, unknown causes and available stack-budget diagnostics",
 			Availability: analysisAvailable, DiagnosticFamilies: []string{"stack"}},
+		{Name: "arena-demand", Title: "Arena demand analysis", Description: "byte-accurate upper bound of each Arena domain's peak capacity demand against its fixed backing",
+			Availability: analysisAvailable},
 		{Name: "closures", Title: "closure analysis", Description: "closure creation, capture transfer and callable target facts (details with --verbose)",
 			Availability: analysisAvailable},
 		{Name: "isr", Title: "ISR analysis", Description: "interrupt-handler safety: no allocation, no panic, no blocking",
@@ -326,6 +328,7 @@ type analysisReportDocument struct {
 	Findings     []analysisReportFinding  `json:"findings"`
 	Conformances []analysisConformance    `json:"conformances,omitempty"`
 	Stack        []analysisStackCallable  `json:"stack,omitempty"`
+	ArenaDemand  []analysisArenaDemand    `json:"arena_demand,omitempty"`
 	Limitations  []string                 `json:"limitations"`
 	Summary      analysisReportSummary    `json:"summary"`
 }

@@ -48,6 +48,9 @@ func headCountSnapshot(dir string) (countSnapshot, error) {
 		if relative != "." {
 			local = strings.TrimPrefix(name, relative+"/")
 		}
+		if nonLedgerPath(local) {
+			continue
+		}
 		if local == name && relative != "." || filepath.IsAbs(local) || local == ".." || strings.HasPrefix(local, "../") {
 			return countSnapshot{}, fmt.Errorf("invalid HEAD governance fragment path")
 		}

@@ -166,8 +166,12 @@ const (
 	// EffectMayPanicInvalidReference is a run-time validated use of a
 	// dynamic-epoch reference whose stale generation panics with
 	// InvalidReferenceGeneration (sec-mlir-dialect package 15 P15-48).
-	EffectMayPanicInvalidReference    EffectKind = "may-panic-invalid-reference"
-	EffectMayUseNondeterministicInput EffectKind = "may-use-nondeterministic-input"
+	EffectMayPanicInvalidReference EffectKind = "may-panic-invalid-reference"
+	// EffectMayPanicArenaEpochExhaustion is an Arena Reset whose retained
+	// epoch exhaustion is neither proven impossible nor eliminated (MD-140;
+	// rules/analysis/effect_analysis.md § 23(6)).
+	EffectMayPanicArenaEpochExhaustion EffectKind = "may-panic-arena-epoch-exhaustion"
+	EffectMayUseNondeterministicInput  EffectKind = "may-use-nondeterministic-input"
 	// Ordinary raw memory access is distinct from volatile/device access.
 	// Rules: rules/memory/raw_pointers.md §31(1–6).
 	EffectMemoryRead    EffectKind = "memory-read"
@@ -1003,7 +1007,7 @@ func IsPanicEffectKind(kind EffectKind) bool { return isPanicEffectKind(kind) }
 
 func isPanicEffectKind(kind EffectKind) bool {
 	switch kind {
-	case EffectMayPanicStringMaterialization, EffectMayPanicArithmetic, EffectMayPanicBounds, EffectMayPanicExplicit, EffectMayPanicAssertion, EffectMayPanicUnreachable, EffectMayPanicContract, EffectMayPanicForeign, EffectMayPanicUnknownCallee, EffectMayPanicInvalidReference:
+	case EffectMayPanicStringMaterialization, EffectMayPanicArithmetic, EffectMayPanicBounds, EffectMayPanicExplicit, EffectMayPanicAssertion, EffectMayPanicUnreachable, EffectMayPanicContract, EffectMayPanicForeign, EffectMayPanicUnknownCallee, EffectMayPanicInvalidReference, EffectMayPanicArenaEpochExhaustion:
 		return true
 	}
 	return false

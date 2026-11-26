@@ -54,6 +54,9 @@ func collectStats(dir string) (Stats, error) {
 		if err != nil {
 			return err
 		}
+		if skip := skipNonLedger(dir, path, d); skip != nil {
+			return skip
+		}
 		if d.IsDir() {
 			return nil
 		}

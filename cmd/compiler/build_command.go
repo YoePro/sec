@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	"sec/internal/linking"
 	mlirtoolchain "sec/internal/mlir"
 	"sec/internal/project"
 )
@@ -172,7 +173,7 @@ func runBuildVariant(options buildCommandOptions, invocation *project.BuildInvoc
 	// LinkEnvironment/LinkPlan and must eventually be materialized from one.
 	clangPath, err := exec.LookPath(options.Clang)
 	if err != nil {
-		reportToolError("build", "clang not found: %v", err)
+		reportPipelineError("link", &linking.Failure{Class: linking.ToolchainInvocationFailure, Tool: options.Clang, Target: targetDefinition.LLVMTriple, Output: options.OutputFile, Detail: "clang not found", Cause: err})
 		exitCLI(1)
 	}
 
@@ -182,14 +183,15 @@ func runBuildVariant(options buildCommandOptions, invocation *project.BuildInvoc
 	defer removeModuleObjects()
 
 	clangArgs := append([]string{"-target", targetDefinition.LLVMTriple, objectPath}, moduleObjects...)
-	clangArgs = append(clangArgs, "-o", options.OutputFile)
-	cmd := exec.Command(clangPath, clangArgs...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		reportToolError("build", "%v", err)
+
+	if err := linking.RunDriver(context.Background(), linking.DriverRequest{Tool: clangPath, Target: targetDefinition.LLVMTriple, Output: options.OutputFile, Arguments: clangArgs, Stdout: os.Stdout, Stderr: os.Stderr}); err != nil {
+		reportPipelineError("link", err)
+		if failure, ok := err.(*linking.Failure); ok && failure.Class == linking.ToolchainInvocationFailure {
+			exitCLI(1)
+		}
 		exitCLI(5)
 	}
+
 	printDiagnosticSummary(diagnosticSummary{Warnings: len(analyzed.Analyzer.Warnings())})
 }
 

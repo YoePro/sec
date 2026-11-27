@@ -263,7 +263,7 @@ func formatOperation(out *strings.Builder, op Operation) {
 		}
 	case OpArenaCreateBorrowed, OpArenaCreateOwnedFixed, OpArenaCreateGrowable, OpArenaCreateDefault, OpArenaNew, OpArenaAlloc, OpArenaReset, OpArenaRelease, OpArenaDestroy:
 		formatArenaOperation(out, op)
-	case OpDynamicArrayHasBacking, OpDynamicArrayHasCapacity, OpDynamicArrayGrowBacking, OpDynamicArrayAppendPrepared, OpDynamicArrayAppendRangePrepared, OpDynamicArrayAllocate,
+	case OpDynamicArrayHasBacking, OpDynamicArrayHasCapacity, OpDynamicArrayGrowBacking, OpDynamicArrayAppendPrepared, OpDynamicArrayAppendRangePrepared, OpDynamicArrayAllocate, OpDynamicArrayClear, OpDynamicArrayRemoveAt, OpDynamicArrayPayloadSize,
 		OpStorageEstablishDomain, OpStorageAdvanceEpoch, OpStorageEndDomain, OpStorageReclaim:
 		for index, operand := range op.Operands {
 			if index > 0 {
@@ -271,8 +271,13 @@ func formatOperation(out *strings.Builder, op Operation) {
 			}
 			fmt.Fprintf(out, " %%%d", operand)
 		}
-		if op.Integer != nil {
+		if op.Integer != nil && op.Kind == OpDynamicArrayPayloadSize {
+			fmt.Fprintf(out, " stride=%s", op.Integer.String())
+		} else if op.Integer != nil {
 			fmt.Fprintf(out, " count=%s", op.Integer.String())
+		}
+		if op.Kind == OpDynamicArrayClear && op.Ownership != nil && op.Ownership.DestructionPlan != "" {
+			fmt.Fprintf(out, " element-plan=%q", op.Ownership.DestructionPlan)
 		}
 		formatBackingMetadata(out, op.Backing)
 	case OpDynamicArrayIndexInBounds, OpDynamicArrayElementPlace:
@@ -285,6 +290,11 @@ func formatOperation(out *strings.Builder, op Operation) {
 			if op.Place != nil {
 				fmt.Fprintf(out, " {root=#%d storage=#%d backing=#%d}", op.Place.Root, op.Place.Storage, op.Place.BackingDomain)
 			}
+		}
+	case OpSliceFill:
+		fmt.Fprintf(out, " %%%d, %%%d", op.Operands[0], op.Operands[1])
+		if op.ReferenceGuard != 0 {
+			fmt.Fprintf(out, " valid=%%%d", op.ReferenceGuard)
 		}
 	case OpSliceLength, OpStringRuneLength, OpStringViewByteLength:
 		fmt.Fprintf(out, " %%%d", op.Operands[0])
@@ -481,6 +491,8 @@ func formatOperation(out *strings.Builder, op Operation) {
 		}
 	case OpArrayDefault:
 		fmt.Fprintf(out, " element=!%d length=%q", op.ArrayElementType, op.ArrayLength)
+	case OpArrayFill:
+		fmt.Fprintf(out, " %%%d element=!%d length=%q", op.Operands[0], op.ArrayElementType, op.ArrayLength)
 	case OpArrayLength:
 		fmt.Fprintf(out, " %%%d exact=%q", op.Operands[0], op.ArrayLength)
 	case OpArrayIndexInBounds:

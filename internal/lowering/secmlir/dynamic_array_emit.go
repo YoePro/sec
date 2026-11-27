@@ -20,6 +20,9 @@ var dynamicArrayMnemonics = map[semantic.OpKind]string{
 	semantic.OpDynamicArrayAppendPrepared:      "sec.dynamic_array.append_prepared",
 	semantic.OpDynamicArrayAppendRangePrepared: "sec.dynamic_array.append_range_prepared",
 	semantic.OpDynamicArrayGrowBacking:         "sec.dynamic_array.grow_backing",
+	semantic.OpDynamicArrayClear:               "sec.dynamic_array.clear",
+	semantic.OpDynamicArrayRemoveAt:            "sec.dynamic_array.remove_at",
+	semantic.OpDynamicArrayPayloadSize:         "sec.dynamic_array.payload_size",
 	semantic.OpStorageEstablishDomain:          "sec.storage.establish_domain",
 	semantic.OpStorageAdvanceEpoch:             "sec.storage.advance_epoch",
 	semantic.OpStorageEndDomain:                "sec.storage.end_domain",
@@ -48,6 +51,18 @@ func (e *emitter) emitDynamicArray(function *semantic.Function, op semantic.Oper
 		properties = append(properties, "count = "+mlirString(op.Integer.String()))
 	case semantic.OpDynamicArrayIndexInBounds:
 		properties = append(properties, fmt.Sprintf("index_signed = %t", op.ArrayIndexSigned))
+	case semantic.OpDynamicArrayPayloadSize:
+		if op.Integer == nil || op.Integer.Sign() < 0 {
+			return fmt.Errorf("dynamic-array.payload-size in %s has no stride", function.ID)
+		}
+		properties = append(properties, "stride = "+mlirString(op.Integer.String()))
+	case semantic.OpDynamicArrayClear:
+		if op.Ownership != nil && op.Ownership.DestructionPlan != "" {
+			properties = append(properties, "destruction_plan = "+mlirString(op.Ownership.DestructionPlan))
+		}
+	case semantic.OpDynamicArrayRemoveAt:
+		properties = append(properties, fmt.Sprintf("index_signed = %t", op.ArrayIndexSigned),
+			"bounds_kind = "+mlirString(string(op.ArrayCheckKind)), "bounds_proof = "+mlirString(string(op.ArrayProofKind)))
 	case semantic.OpDynamicArrayElementPlace:
 		if op.Place == nil || op.Place.BackingDomain == 0 {
 			return fmt.Errorf("dynamic-array.element-place in %s has no backing-domain dependency", function.ID)

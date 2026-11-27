@@ -82,13 +82,6 @@ func Verify(module *Module) error {
 func verifyTypes(table *TypeTable) error {
 	for i, t := range table.types {
 		id := TypeID(i + 1)
-		// rules/types/types.md — concrete generic arguments participate in identity;
-		// Semantic IR type references must all resolve before any lowering.
-		for _, argument := range t.TypeArgs {
-			if _, ok := table.Lookup(argument); !ok {
-				return fmt.Errorf("type !%d has invalid type argument !%d", id, argument)
-			}
-		}
 		if t.Kind == TypeNamed {
 			if t.Identity == "" || t.Base == 0 {
 				return fmt.Errorf("invalid named type !%d", id)
@@ -158,7 +151,7 @@ func verifyTypes(table *TypeTable) error {
 			}
 		}
 	}
-	return nil
+	return verifyConcreteTypes(table)
 }
 
 // canonicalArrayLength enforces the exact decimal fixed length spelling used by
@@ -758,6 +751,10 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 		if err := verifySliceLengthOperation(module.Types, op, values); err != nil {
 			return err
 		}
+	case OpSliceFill:
+		if err := verifySliceFillOperation(module, op, values); err != nil {
+			return err
+		}
 	case OpStringMaterialize:
 		return verifyStringMaterialization(module.Types, op, values)
 	case OpStringRuneLength:
@@ -1204,6 +1201,10 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 		if err := verifyArrayDefault(module, op); err != nil {
 			return err
 		}
+	case OpArrayFill:
+		if err := verifyArrayFill(module, op, values); err != nil {
+			return err
+		}
 	case OpArrayLength:
 		if err := verifyArrayLength(module.Types, op, values); err != nil {
 			return err
@@ -1286,9 +1287,15 @@ func verifyOperation(module *Module, fn *Function, op Operation, values map[Valu
 			return err
 		}
 	case OpStorageEstablishDomain, OpStorageAdvanceEpoch, OpStorageEndDomain, OpStorageReclaim,
-		OpDynamicArrayHasBacking, OpDynamicArrayHasCapacity, OpDynamicArrayGrowBacking, OpDynamicArrayAppendPrepared, OpDynamicArrayAppendRangePrepared, OpDynamicArrayAllocate:
+		OpDynamicArrayHasBacking, OpDynamicArrayHasCapacity, OpDynamicArrayGrowBacking, OpDynamicArrayAppendPrepared, OpDynamicArrayAppendRangePrepared, OpDynamicArrayAllocate,
+		OpDynamicArrayClear, OpDynamicArrayRemoveAt, OpDynamicArrayPayloadSize:
 		if err := verifyDynamicArrayStorageOperation(module.Types, op, values); err != nil {
 			return err
+		}
+		if op.Kind == OpDynamicArrayClear {
+			if err := verifyClearElementPlan(module, op, values); err != nil {
+				return err
+			}
 		}
 	case OpDynamicArrayEmpty, OpDynamicArrayLength, OpDynamicArrayIndexInBounds, OpDynamicArrayElementPlace:
 		if err := verifyDynamicArrayOperation(module.Types, op, values); err != nil {
@@ -1359,6 +1366,27 @@ func verifyArrayConstruct(module *Module, op Operation, values map[ValueID]Value
 	}
 	if total.String() != op.ArrayLength {
 		return fmt.Errorf("array.construct length mismatch")
+	}
+	return nil
+}
+
+// verifyArrayFill checks a fixed-array fill: one operand of the element type,
+// a fixed-array result of the stated length, and a trivially copyable and
+// destructible element.
+// Rules: rules/compiler/compiler_known_members.md — "Contextual fill".
+func verifyArrayFill(module *Module, op Operation, values map[ValueID]Value) error {
+	if len(op.Results) != 1 || len(op.Operands) != 1 || values[op.Operands[0]].Type != op.ArrayElementType {
+		return fmt.Errorf("array.fill takes one element value and yields one array")
+	}
+	result, ok := module.Types.Lookup(op.Results[0].Type)
+	if !ok || result.Kind != TypeArray || result.Element != op.ArrayElementType || result.Length != op.ArrayLength {
+		return fmt.Errorf("array.fill result type mismatch")
+	}
+	if _, ok := parseCanonicalArrayLength(op.ArrayLength); !ok {
+		return fmt.Errorf("array.fill has invalid length")
+	}
+	if ownedCopyClass(module, op.ArrayElementType) != "trivial" || !trivialDestruction(module, op.ArrayElementType) {
+		return fmt.Errorf("array.fill requires a trivially copyable and destructible element")
 	}
 	return nil
 }

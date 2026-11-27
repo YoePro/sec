@@ -711,6 +711,16 @@ func (e *emitter) emitOperation(function *semantic.Function, operation semantic.
 		return e.emitStructReplaceField(operation, values)
 	case semantic.OpArrayConstruct:
 		return e.emitArrayConstruct(operation, values)
+	case semantic.OpArrayFill:
+		if err := e.emitResult(operation); err != nil {
+			return err
+		}
+		fmt.Fprintf(&e.out, "\"sec.array.fill\"(%s) : (", valueName(operation.Operands[0]))
+		if err := e.emitOperandTypes(operation.Operands, values); err != nil {
+			return err
+		}
+		e.out.WriteString(") -> ")
+		return e.finishResultOperation(operation)
 	case semantic.OpArrayDefault:
 		if err := e.emitResult(operation); err != nil {
 			return err
@@ -731,7 +741,7 @@ func (e *emitter) emitOperation(function *semantic.Function, operation semantic.
 		semantic.OpSliceBorrowShared, semantic.OpSliceBorrowMutable,
 		semantic.OpSliceReborrowShared, semantic.OpSliceReborrowMutable,
 		semantic.OpSliceCopyShared, semantic.OpSliceMoveMutable,
-		semantic.OpSliceLength, semantic.OpSliceIndexInBounds, semantic.OpSliceElementPlace,
+		semantic.OpSliceLength, semantic.OpSliceFill, semantic.OpSliceIndexInBounds, semantic.OpSliceElementPlace,
 		semantic.OpStringRuneLength, semantic.OpStringViewBorrow, semantic.OpStringViewDecodeNext, semantic.OpStringViewByteLength:
 		return e.emitSlice(function, operation, values)
 	case semantic.OpPlaceValueRoot, semantic.OpPlaceStorageRoot, semantic.OpPlaceStaticRoot, semantic.OpPlaceField,
@@ -750,6 +760,7 @@ func (e *emitter) emitOperation(function *semantic.Function, operation semantic.
 	case semantic.OpDynamicArrayEmpty, semantic.OpDynamicArrayAllocate, semantic.OpDynamicArrayLength,
 		semantic.OpDynamicArrayHasBacking, semantic.OpDynamicArrayHasCapacity, semantic.OpDynamicArrayIndexInBounds,
 		semantic.OpDynamicArrayElementPlace, semantic.OpDynamicArrayAppendPrepared, semantic.OpDynamicArrayAppendRangePrepared, semantic.OpDynamicArrayGrowBacking,
+		semantic.OpDynamicArrayClear, semantic.OpDynamicArrayRemoveAt, semantic.OpDynamicArrayPayloadSize,
 		semantic.OpStorageEstablishDomain, semantic.OpStorageAdvanceEpoch, semantic.OpStorageEndDomain, semantic.OpStorageReclaim:
 		return e.emitDynamicArray(function, operation, values)
 	case semantic.OpArenaCreateBorrowed, semantic.OpArenaCreateDefault, semantic.OpArenaCreateOwnedFixed, semantic.OpArenaCreateGrowable,

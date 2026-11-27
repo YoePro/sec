@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"strconv"
 	"strings"
 
 	"sec/internal/ast"
@@ -185,11 +186,21 @@ func (a *Analyzer) reportInferredDecimalScale(typ Type, inferred ScaleContract) 
 		message = fmt.Sprintf("%s infers decimal scale %d (preferred scale %d): the bound %s needs the integer capacity of %s; the exact range is unchanged", typeDisplayName(typ), inferred.Value, inferred.Preferred, inferred.Limit, carrier)
 	}
 	endLine, endColumn := inferred.Token.EndPosition()
-	a.appendWarning(Error{
-		ID: diagnostics.InferredDecimalScale, Severity: diagnostics.SeverityInformation, Message: message,
+	warning := Error{
+		Arguments: map[string]string{"type": typeDisplayName(typ), "carrier_width": strconv.Itoa(inferred.Width), "preferred_scale": strconv.FormatInt(int64(inferred.Preferred), 10), "selected_scale": strconv.FormatInt(int64(inferred.Value), 10), "capacity_reduced": strconv.FormatBool(inferred.Reduced), "limiting_bound": inferred.Limit},
+		ID:        diagnostics.InferredDecimalScale, Severity: diagnostics.SeverityInformation, Message: message,
 		Help: fmt.Sprintf("Consider declaring `scale %d` explicitly before the first range.", inferred.Value),
 		File: inferred.Token.File, Line: inferred.Token.Line, Column: inferred.Token.Column, EndLine: endLine, EndColumn: endColumn,
-	})
+	}
+	if inferred.Reduced {
+		for _, contract := range typ.Contracts {
+			if r, ok := contract.(RangeContract); ok && (r.MinLexeme == inferred.Limit || r.MaxLexeme == inferred.Limit) {
+				warning.Related = append(warning.Related, RelatedLocation{File: r.Token.File, Line: r.Token.Line, Column: r.Token.Column, Label: "range containing the coefficient-capacity limiting bound"})
+				break
+			}
+		}
+	}
+	a.appendWarning(warning)
 }
 
 // fixedScaleCoefficientInterval returns the coefficients c whose value

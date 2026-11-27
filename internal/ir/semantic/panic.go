@@ -117,8 +117,9 @@ func verifyPanicOperation(op Operation) error {
 }
 
 // verifyNoPanicContradiction rejects a function marked @noPanic that still
-// reaches an explicit panic, a failing assertion, or a checked unreachable:
-// such a function contradicts the guarantee Sema verified.
+// reaches an explicit panic, a failing assertion, a checked unreachable, or
+// an ordinary checked-arithmetic or bounds failure endpoint: such a function
+// contradicts the guarantee Sema verified.
 //
 // Rules:
 //   - rules/compiler/semantic_ir.md — § 55(3) noPanic effect facts
@@ -146,6 +147,12 @@ func verifyNoPanicContradiction(fn *Function, blocks map[BlockID]*Block) error {
 			}
 			if op.Kind == OpPanic || op.Kind == OpReferenceGenerationFailure {
 				return fmt.Errorf("@noPanic function reaches panic %s at %s", op.PanicReason, formatLocation(op.Location))
+			}
+			// Sema accepts @noPanic only when every checked arithmetic and
+			// index operation is proven or handled, so a reachable ordinary
+			// arithmetic or bounds failure endpoint contradicts it.
+			if op.Kind == OpArithmeticFailure || op.Kind == OpBoundsFailure {
+				return fmt.Errorf("@noPanic function reaches %s at %s", op.Kind, formatLocation(op.Location))
 			}
 			for _, successor := range op.Successors {
 				work = append(work, successor.Block)

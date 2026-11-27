@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-12
-- **Last updated:** 2026-11-19 (§ 25(11) `ConversionError.InvalidDomain`, MD-048); 2026-11-08 (stable chapter, subsection, and paragraph numbering); 2026-10-28 ("Contextual and self-inferred `Some(value)`", MD-102); 2026-10-28 ("Decimal scale", MD-066/MD-067/MD-068)
+- **Last updated:** 2026-11-27 (MD-109 explicit string materializers, § 9.5(11)); 2026-11-19 (§ 25(11) `ConversionError.InvalidDomain`, MD-048); 2026-11-08 (stable chapter, subsection, and paragraph numbering); 2026-10-28 ("Contextual and self-inferred `Some(value)`", MD-102); 2026-10-28 ("Decimal scale", MD-066/MD-067/MD-068)
 - **Document revision:** 2.6
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/types/types.md`
@@ -533,7 +533,19 @@ domain, literal rules or the valid UTF-8 invariant (`core-library.md` § 5.3).
 are rune indexes; byte-access members use UTF-8 byte indexes and say so
 (`core-library.md` § 5.7, MD-071).
 
-**§ 9.5(11)** Conversions between strings and arrays, slices, bytes, or runes use explicitly defined core/library operations.
+**§ 9.5(11)** Conversions between strings and arrays, slices, bytes, or runes use
+explicitly defined core/library operations. The public static associated
+functions `string.FromByteArray(data: ref byte[])` and
+`string.FromRuneArray(data: ref rune[])` both return `Result[string, StringError]`
+(MD-109, `rules/library/core-library.md` § 5.2). They have no receiver, borrow
+without consuming or mutating the input, and produce an independent immutable
+string. Bytes require strict UTF-8 validation (`InvalidUtf8` reports the first
+malformed sequence's start byte); runes are already Unicode scalars. Both
+report allocation failure through `StringError.Allocation` under the permitted
+allocation context. No implicit conversion or array constructor cast is added.
+Byte-sequence `ToString()` remains representational text, never UTF-8 decoding
+(MD-091). Calls are `try string.FromByteArray(bytes)` or
+`try string.FromRuneArray(runes)`, without a consuming argument marker.
 
 **§ 9.5(12)** String bracket ranges (MD-126, decided 2026-11-05, `rules/corrections/applied/MD-126-borrowed-string-ranges-rune-iteration-applied-20261105.md`). The range
 forms `text[a..<b]`, `text[a..b]`, `text[a..]`, `text[..b]`, `text[..<b]` and

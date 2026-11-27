@@ -1,0 +1,47 @@
+module main
+
+type Tag enum uint8 { A, B }
+type Bag struct { Values: int[] }
+
+let mut observations: int := 0
+
+fn Needle() int {
+    observations = 1
+    return 7
+}
+
+fn Contains(needle: int, values: int[]) bool {
+    let found := needle in values
+    let size := values.Len
+    discard size
+    return found
+}
+
+fn Absent(needle: int, values: int[]) bool {
+    return needle not in values
+}
+
+fn Empty() bool {
+    let mut values: int[]
+    return 7 in values
+}
+
+fn Effects(values: int[]) bool {
+    return Needle() in values
+}
+
+fn Boolean(needle: bool, values: bool[]) bool {
+    return needle in values
+}
+
+fn Floating(needle: float64, values: float64[]) bool {
+    return needle in values
+}
+
+fn Enumeration(needle: Tag, values: Tag[]) bool {
+    return needle in values
+}
+
+fn Field(needle: int, bag: Bag) bool {
+    return needle in bag.Values
+}

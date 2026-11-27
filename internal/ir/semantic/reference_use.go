@@ -341,9 +341,16 @@ func (fb *functionBuilder) emitSubplaceReborrow(reference *ast.RefExpression, pl
 
 // lowerReferenceUse lowers a read or an equality use; any other use kind is
 // left to its own lowering or the package-15 boundary.
+// Rules: rules/memory/reference_model.md — reference-mediated Place access;
+// rules/mlir/packages/sec-mlir-dialect_package18.md — §§40-45,74-79.
 func (fb *functionBuilder) lowerReferenceUse(expr ast.Expression, use sema.ResolvedReferenceUse) (builtValue, error) {
 	switch use.Kind {
 	case sema.ReferenceUseRead:
+		if index, ok := expr.(*ast.IndexExpression); ok && fb.owner.maxPackage >= dynamicArrayLoweringPackage {
+			if plan, resolved := fb.owner.analyzer.ResolvedDynamicArrayIndexPlanOf(index); resolved {
+				return fb.lowerDynamicArrayIndexRead(index, plan)
+			}
+		}
 		if !use.CopyTrivialRead {
 			return builtValue{}, fb.unsupported("non-copy-trivial read through a reference", expressionToken(expr))
 		}

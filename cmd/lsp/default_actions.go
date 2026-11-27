@@ -20,7 +20,7 @@ func defaultCodeActions(uri, text string, requested lspRange, overlay sourceOver
 	sites := defaultactions.Capture(text, parsed.Program)
 	prepareProgramForLSP(parsed.Program, path, overlay)
 	analyzer := newLSPAnalyzerWithOverlay(uri, parsed.Program, overlay)
-	if len(analyzer.Analyze(parsed.Program)) != 0 {
+	if len(analyzeCompilerSnapshot(analyzer, parsed.Program, overlay)) != 0 {
 		return nil
 	}
 	var result []codeAction
@@ -37,13 +37,13 @@ func defaultCodeActions(uri, text string, requested lspRange, overlay sourceOver
 		if checked.Fatal || len(checked.Diagnostics) != 0 {
 			continue
 		}
-		updated := sourceOverlay{Sources: map[string]string{}, Targets: overlay.Targets}
+		updated := sourceOverlay{Sources: map[string]string{}, Targets: overlay.Targets, workContext: overlay.workContext}
 		for file, source := range overlay.Sources {
 			updated.Sources[file] = source
 		}
 		updated.Sources[normalizedSourcePath(path)] = edited
 		prepareProgramForLSP(checked.Program, path, updated)
-		if len(newLSPAnalyzerWithOverlay(uri, checked.Program, updated).Analyze(checked.Program)) != 0 {
+		if len(analyzeCompilerSnapshot(newLSPAnalyzerWithOverlay(uri, checked.Program, updated), checked.Program, updated)) != 0 {
 			continue
 		}
 		result = append(result, codeAction{Title: action.Title, Kind: "refactor.rewrite", Edit: workspaceEdit{Changes: map[string][]textEdit{

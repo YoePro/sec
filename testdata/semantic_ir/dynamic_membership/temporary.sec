@@ -1,0 +1,10 @@
+module main
+
+fn Source() int[] {
+    let mut values: int[]
+    return <-values
+}
+
+fn Contains() bool {
+    return 7 in Source()
+}

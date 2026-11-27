@@ -199,6 +199,42 @@ LogicalResult DynamicArrayAppendPreparedOp::verify() {
   return success();
 }
 
+LogicalResult DynamicArrayPayloadSizeOp::verify() {
+  if (failed(requireDynamicArraySchema(*this)))
+    return failure();
+  if (failed(ownerArray(*this, getOwner(), false)))
+    return failure();
+  if (getStride() != "0" && !positiveCount(getStride()))
+    return emitOpError("requires a canonical non-negative stride");
+  if (!isa<UIntType>(getSize().getType()))
+    return emitOpError("produces the target-sized uint payload size");
+  return success();
+}
+
+LogicalResult DynamicArrayClearOp::verify() {
+  if (failed(requireDynamicArraySchema(*this)))
+    return failure();
+  if (failed(ownerArray(*this, getOwner(), true)))
+    return failure();
+  return success();
+}
+
+LogicalResult DynamicArrayRemoveAtOp::verify() {
+  if (failed(requireDynamicArraySchema(*this)))
+    return failure();
+  auto array = ownerArray(*this, getOwner(), true);
+  if (failed(array))
+    return failure();
+  if (!isIndexType(getIndex().getType()))
+    return emitOpError("requires a built-in integer index");
+  if (getElement().getType() != array->getElementType())
+    return emitOpError("yields one element of the array's element type");
+  // Section 13C: only the runtime index_in_bounds guard admits extraction.
+  if (getBoundsKind() != "runtime-check" || getBoundsProof() != "guarded")
+    return emitOpError("requires its runtime index_in_bounds guard");
+  return success();
+}
+
 LogicalResult DynamicArrayAppendRangePreparedOp::verify() {
   if (failed(requireDynamicArraySchema(*this)))
     return failure();

@@ -1854,7 +1854,7 @@ integrations:
     area: frontend-analysis-and-lowering
     status: partial
     integrated: "2026-08-14"
-    revised: "2026-11-20"
+    revised: "2026-11-27"
     document_revision: "2.2"
     summary: >-
       Explicit static impl bindings are type-owned; non-static impl bindings are
@@ -1901,6 +1901,13 @@ integrations:
       - internal/ir/semantic/builder.go
       - internal/lowering/secmlir/emitter.go
       - cmd/lsp/main.go
+      - internal/sema/static_initializers.go
+      - internal/sema/static_default_initializers.go
+      - internal/sema/cte_array_defaults.go
+      - internal/sema/cte_aggregates.go
+      - internal/ir/semantic/static_storage.go
+      - internal/ir/semantic/static_initializer_type.go
+      - mlir/lib/Dialect/Sec/SecOps.cpp
     tests:
       - internal/sema/static_placement_test.go
       - internal/ir/semantic/static_placement_test.go
@@ -1938,6 +1945,12 @@ integrations:
       - testdata/impl_instance_let_invalid.sec
       - internal/formatter/formatter_test.go
       - cmd/compiler/diagnostic_catalog_test.go
+      - internal/sema/static_default_initializers_test.go
+      - internal/ir/semantic/static_defaults_test.go
+      - internal/lowering/secmlir/static_defaults_test.go
+      - testdata/semantic_ir/static_defaults/values.sec
+      - testdata/semantic_ir/static_defaults/budget_invalid.sec
+      - mlir/test/Dialect/Sec/static-nominal-initializers.mlir
     implemented:
       - "Static/instance member duplicates verified and identified (2026-11-11; static.md §§ 6, 9, 28): across primary and impl extends fragments, same-signature callables (static or instance), method/property/event conflicts with fields, properties, events or nested types, and repeated associated members report mandatory S1221 declarations.duplicate-declaration (the associated message no longer repeats its location), associated storage colliding with another member category keeps S1197, and static overloads with distinct signatures stay valid. TestStaticAndInstanceMemberDuplicatesHaveStableIdentity"
       - "Instance-qualified static access (2026-11-10; static.md § 8, § 28): a static fn called through a value (`box.Make()`) and type-owned static storage read through a value (`box.Limit`) report mandatory S1210 static.type-qualified-access-required with a type-qualified replacement instead of silently resolving or reporting an unknown member; mixed static/instance overload sets keep ordinary resolution. static_receiver.go, analyzer_inference.go; TestStaticMembersRequireTypeQualifiedAccess"
@@ -1971,6 +1984,7 @@ integrations:
       - only explicit static impl bindings enter type-qualified completion and the static initializer dependency graph
       - testdata/associated_values_valid.sec uses explicit static for every type-owned binding
       - "MD-081 function-local holders and referent validity (2026-10-30; rules/corrections/applied/MD-081-static-reference-initializers-approved-20261030.md §§ 6(3), 7, 10(3)): every function-local `static let` initialized with a reference is collected before any callable body is analyzed and its borrow is live in every callable, including its own function before the declaration, so conflicting access to the same static anywhere is rejected (S1159-S1162); a borrowed static cannot be replaced or moved (S1162, S1163); a computed reference target keeps the stable non-addressable identity S1168 as its only diagnostic (TestFunctionLocalStaticReferenceHolders, TestStaticReferenceReferentStaysValid)."
+      - "Default-initialized static materialization (2026-11-27; default_values.md §§40-41; static.md §§15-16; semantic_ir.md §28): synthesized fixed-array and struct defaults are materialized from the canonical DefaultResolution through the shared CTE default value service, not from the bounded AST preview or an ordinary source array-literal plan. Arrays retain exact lengths, nested element defaults, zero-length behavior and elements beyond the 4096-entry compatibility preview. Immutable initializer facts participate in static dependency evaluation and survive snapshotting and Semantic IR serialization. Named scalar static initializers keep their nominal TypeID while resolving the physical base for constant conversion/verification (missing/cyclic bases fail closed); contracted defaults retain their selected value rather than invented zero. Existing CTE storage/step/materialization budgets bound expansion before publication; exhaustion reports a compiler resource limit and publishes no partial static facts. Source-backed Sema/IR/Sec-MLIR emission tests cover 32/64-bit plans, byte[64], byte[4097], nested/empty arrays, structs, a range default of 2, a dependent static copy, detached facts, preview mutation and no hidden initialization calls. Existing representation boundaries remain explicit; no runtime initializer, new schema or default constructor was added."
     partial:
       - "Started (moved to partial 2026-11-20; the text records the done part and what remains): complete every remaining static storage edge case (targeted instance-qualified access diagnostics for static fn and static let are implemented, S1210)"
     remaining:
@@ -1981,7 +1995,6 @@ integrations:
       - complete focused nested-impl and generic-specialization identity tests for associated immutable values
       - lower static properties through Semantic IR, Sec MLIR, and the backend
       - materialize function-local static declarations as one persistent storage location in Semantic IR and backend lowering
-      - "default-initialized statics without an initializer (default_values.md §§ 40-41): Sema accepts `static let mut backing: byte[64]`, but Semantic IR rejects it as \"static backing whose type or initializer has no resolved compile-time value\" (internal/ir/semantic/static_storage.go registerStatic); materialize the canonical default as the compile-time initializer (found 2026-11-24 during P19-35; no open decision)"
       - extend static compile-time evaluation from known runtime-call and local-capture rejection to the complete compiler-known evaluator contract
       - extend source-order-independent dependency inference to untyped static declarations and generic specializations
       - specialize generic static storage independently for every concrete monomorphization
@@ -1998,6 +2011,12 @@ integrations:
       - once instance storage is implemented, independent instances retain independent member state with correct initialization and cleanup
       - combined static/instance name conflicts are rejected across implementation fragments
     verification:
+      - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" GOTMPDIR="$HOME/.cache/sec-gotmp" go test -short -p 4 ./internal/lowering/secmlir ./internal/ir/semantic ./internal/traceability -count=1 -timeout=120s; python3 "$LLVM_LIT" -sv build/sec-mlir/test/Dialect/Sec
+        result: "Passed 2026-11-27: emitter 21.668s, Semantic IR 9.141s, traceability 0.259s; all 172 dialect tests pass. BUG-000054 first reproduced with the real MLIR tool: nominal static initializers were rejected despite valid Sema/IR facts. Root and recursive aggregate-component verification now inspect the base representation without rewriting declared nominal identity. Positive chained/named/distinct integer, bool, float and array cases plus malformed scalar/component negatives pass. Source-backed 32/64-bit default globals pass the existing place/reference/borrow and scalar-lowering verifier chain and explicitly retain main::Positive. One concrete bug fixed; no broad remaining checklist requirement claimed closed."
+      - command: go test -race -p 4 ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir -run 'Test(StaticDefault|CTEArrayDefault|ResolvedStaticScalar|InvalidStaticScalar|StaticScalarCTE|CTE.*Default)' -count=1 -timeout=90s
+        result: "Passed 2026-11-27 (1.305s/1.165s/1.297s): canonical default values, exact lengths, resource-limit diagnostics, immutable facts, previous scalar producers and invalid static initializers. Vet passed all three implementation packages."
+      - command: go test -short -p 4 ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir ./internal/traceability -count=1 -timeout=150s
+        result: "Passed 2026-11-27: full short suites (38.001s/11.017s/2.830s/0.399s). Regression reproduced the reported static backing materialization boundary before the fix. Final source-preview mutation and Semantic IR serialization round-trip test also passed (0.069s). No native binary or external MLIR verifier pass claimed."
       - command: SEC_MLIR_BIN="$PWD/build/sec-mlir/bin" GOCACHE=/tmp/sec-go-cache go test ./cmd/compiler -run 'TestStaticPhysicalPlacement|TestStaticStorageEmitRoutes' -v -count=1
         result: passed on 2026-11-02 (1.846s); all three tests ran without skips, including actual Sec MLIR/LLVM emission, ordinary globals and registered unknown-attribute JSON rejection without an artifact. This is emission verification, not a native execution claim.
       - command: GOCACHE=/tmp/sec-go-cache go test ./internal/sema ./internal/ir/semantic -run 'TestStaticDoesNot|TestStaticPlaceRootsCannotAcquire|TestStaticPlaceIdentityConsistency' -v -count=1

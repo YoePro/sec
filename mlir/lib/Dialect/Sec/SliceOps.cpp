@@ -286,6 +286,18 @@ LogicalResult SliceLenOp::verify() {
     return emitOpError("slice length requires a bounded slice and uint count result");
   return success();
 }
+// collections.md section 7.9 (v12 section 25A): Fill writes through a
+// mutable slice only; the value has the element type and is copied trivially.
+LogicalResult SliceFillOp::verify() {
+  if (failed(requireSliceSchema(*this)) || failed(verifySliceProvenance(*this)))
+    return failure();
+  auto slice = dyn_cast<SliceMutType>(getSource().getType());
+  if (!slice)
+    return emitOpError("fill requires a mutable slice");
+  if (getValue().getType() != slice.getElementType())
+    return emitOpError("fill value must have the slice element type");
+  return success();
+}
 // MD-126: a StringView over a string Place, shared only.
 // Rules: rules/collections/collections.md 7.10; rules/memory/borrowing.md 5.5.
 LogicalResult StringViewBorrowOp::verify() {

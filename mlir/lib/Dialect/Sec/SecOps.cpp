@@ -1032,6 +1032,25 @@ LogicalResult ArrayDefaultOp::verify() {
   return success();
 }
 
+// ArrayFillOp::verify: contextual fill(value) copies one element-typed value
+// into every element; the copy is trivial (no hardware instance or exclusive
+// reference holder). Rules: rules/compiler/compiler_known_members.md
+// "Contextual fill"; rules/mlir/dialect-versions/sec_mlir_dialect_v10.md
+// section 10A.
+LogicalResult ArrayFillOp::verify() {
+  auto resultType = dyn_cast<ArrayType>(getResult().getType());
+  if (!resultType)
+    return emitOpError("result must have !sec.array type");
+  if (getValue().getType() != resultType.getElementType())
+    return emitOpError("value type must match the result element type");
+  if (failed(parseCanonicalArrayLength(resultType.getLength(), *this)))
+    return failure();
+  if (failed(verifyHardwareInstanceCopy(*this, getValue().getType())) ||
+      failed(verifyExclusiveReferenceCopy(*this, getValue().getType())))
+    return failure();
+  return success();
+}
+
 LogicalResult ArrayLenOp::verify() {
   if (!isa<ArrayType>(getArray().getType()))
     return emitOpError("operand must have !sec.array type");
@@ -1349,7 +1368,7 @@ LogicalResult PlaceReadOp::verify() {
       return emitOpError("a holder read carries the sec.reference facts of its point");
     for (Operation *user : getResult().getUsers())
       if (!isa<RefIsValidOp, PlaceDerefOp, RefReborrowSharedOp, RefReborrowMutOp,
-               RefCopySharedOp, RefCompareOp, RefEndBorrowOp, SliceLenOp,
+               RefCopySharedOp, RefCompareOp, RefEndBorrowOp, SliceLenOp, SliceFillOp,
                SliceIndexInBoundsOp, SliceElementPlaceOp, SliceReborrowSharedOp,
                SliceReborrowMutOp, SliceCopySharedOp, StringViewByteLenOp,
                StringViewDecodeNextOp, SliceRangeNormalizeOp, SliceRangeCheckOp>(user))
@@ -1513,6 +1532,9 @@ static LogicalResult verifyStaticFloatBits(Operation *op, Type type, StringRef t
 }
 
 static LogicalResult verifyStaticComponent(Operation *op, Type type, Attribute value) {
+  // semantic_ir.md §§ 7(4)-(5), 28: validate the selected representation
+  // without erasing the declaration's nominal identity from the global.
+  type = unwrapIdentityType(type);
   if (auto structType = dyn_cast<StructType>(type)) {
     auto components = dyn_cast<ArrayAttr>(value);
     if (!components || components.size() != structType.getFields().size())
@@ -1668,7 +1690,9 @@ LogicalResult UnitDimensionIsDimensionlessOp::verify() {
 }
 
 LogicalResult StaticGlobalOp::verify() {
-  Type type = getType();
+  // semantic_ir.md §§ 7(4)-(5), 28; static.md §§ 15-16: an initializer
+  // has the nominal type's representation; identity survives verification.
+  Type type = unwrapIdentityType(getType());
   StringRef treeKind = isa<StructType, ArrayType>(type)      ? "aggregate"
                        : isa<UnionType, ResultType>(type) ? "variant"
                        : isa<EnumType>(type)              ? "enum"

@@ -662,6 +662,9 @@ const (
 	OpRegisterValueUpdate             OpKind = "register.value.update"
 	OpArrayConstruct                  OpKind = "array.construct"
 	OpArrayDefault                    OpKind = "array.default"
+	// OpArrayFill constructs a fixed array whose every element is a trivial
+	// copy of its one operand (contextual fill(value)).
+	OpArrayFill OpKind = "array.fill"
 	OpArrayLength                     OpKind = "array.len"
 	OpArrayIndexInBounds              OpKind = "array.index-in-bounds"
 	OpArrayExtract                    OpKind = "array.extract"

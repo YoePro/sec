@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -47,7 +48,7 @@ var analysisCache = struct {
 }{}
 
 type cachedAnalysis struct {
-	mu           sync.Mutex
+	mu           analysisEntryMutex
 	ready        bool
 	epoch        uint64
 	text         string
@@ -152,12 +153,31 @@ func cachedLSPSourceAnalysis(uri, text string, parsed *ast.Program, overlay sour
 // cachedLSPAnalysisResult is cachedLSPAnalysis with the analysis errors, for
 // diagnostics that share the entry.
 func cachedLSPAnalysisResult(uri string, text string, parsed *ast.Program, overlay sourceOverlay) (analysisResult, func()) {
+	result, release, err := cachedLSPAnalysisResultContext(overlay.analysisContext(), uri, text, parsed, overlay)
+	if err != nil {
+		panic(cancelledLSPAnalysis{err})
+	}
+	return result, release
+}
+
+// cachedLSPAnalysisResultContext withdraws obsolete work and cache-lease waits.
+// Cancelled producers never install an entry; live waiters retry using their own
+// unmodified parsed tree. A cancelled waiter never evicts a healthy entry.
+// Rules: rules/tooling/lsp.md — Snapshots, Responsiveness model, §6.7(2–3).
+func cachedLSPAnalysisResultContext(ctx context.Context, uri string, text string, parsed *ast.Program, overlay sourceOverlay) (analysisResult, func(), error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return analysisResult{}, func() {}, err
+	}
 	overlayKey := overlayIdentity(overlay)
 	depth := lspAnalysisDepthWithOverlay(pathFromURI(uri), overlay)
 	analysisCache.Lock()
 	if !analysisCache.enabled {
 		analysisCache.Unlock()
-		return analyzeLSPDocumentResult(uri, parsed, overlay, depth), func() {}
+		result, err := analyzeLSPDocumentResultContext(ctx, uri, parsed, overlay, depth)
+		return result, func() {}, err
 	}
 	key := uri
 	entry, ok := analysisCache.entries[key]
@@ -165,7 +185,7 @@ func cachedLSPAnalysisResult(uri string, text string, parsed *ast.Program, overl
 		ok = false
 	}
 	if !ok {
-		entry = &cachedAnalysis{epoch: analysisCache.epoch, text: text, overlayKey: overlayKey, depth: depth}
+		entry = &cachedAnalysis{mu: newAnalysisEntryMutex(), epoch: analysisCache.epoch, text: text, overlayKey: overlayKey, depth: depth}
 		entry.mu.Lock()
 		analysisCache.entries[key] = entry
 		analysisCache.Unlock()
@@ -181,7 +201,13 @@ func cachedLSPAnalysisResult(uri string, text string, parsed *ast.Program, overl
 				entry.mu.Unlock()
 			}
 		}()
-		result := analyzeLSPDocumentResult(uri, parsed, overlay, depth)
+		result, err := analyzeLSPDocumentResultContext(ctx, uri, parsed, overlay, depth)
+		if err != nil {
+			return analysisResult{}, func() {}, err
+		}
+		if err := ctx.Err(); err != nil {
+			return analysisResult{}, func() {}, err
+		}
 		entry.program, entry.analyzer = result.program, result.analyzer
 		entry.sourceProgram = result.sourceProgram
 		entry.importErrors, entry.semanticErrors = result.importErrors, result.semanticErrors
@@ -192,14 +218,21 @@ func cachedLSPAnalysisResult(uri string, text string, parsed *ast.Program, overl
 		}
 		entry.ready = true
 		completed = true
-		return result, entry.mu.Unlock
+		return result, entry.mu.Unlock, nil
 	}
 	analysisCache.Unlock()
-	entry.mu.Lock()
+	if err := entry.mu.LockContext(ctx); err != nil {
+		return analysisResult{}, func() {}, err
+	}
+	if err := ctx.Err(); err != nil {
+		entry.mu.Unlock()
+		return analysisResult{}, func() {}, err
+	}
 	if !entry.ready {
 		// The analysis this request waited for failed; analyze privately.
 		entry.mu.Unlock()
-		return analyzeLSPDocumentResult(uri, parsed, overlay, depth), func() {}
+		result, err := analyzeLSPDocumentResultContext(ctx, uri, parsed, overlay, depth)
+		return result, func() {}, err
 	}
 	// Observable metadata is an explicit semantic input, even when no open
 	// document changed and a manifest watcher has not advanced the epoch yet.
@@ -217,9 +250,9 @@ func cachedLSPAnalysisResult(uri string, text string, parsed *ast.Program, overl
 			delete(analysisCache.entries, key)
 		}
 		analysisCache.Unlock()
-		return cachedLSPAnalysisResult(uri, text, parsed, overlay)
+		return cachedLSPAnalysisResultContext(ctx, uri, text, parsed, overlay)
 	}
-	return analysisResult{program: entry.program, sourceProgram: entry.sourceProgram, analyzer: entry.analyzer, importErrors: entry.importErrors, semanticErrors: entry.semanticErrors}, entry.mu.Unlock
+	return analysisResult{program: entry.program, sourceProgram: entry.sourceProgram, analyzer: entry.analyzer, importErrors: entry.importErrors, semanticErrors: entry.semanticErrors}, entry.mu.Unlock, nil
 }
 
 // forgetCachedAnalysis drops a closed document's entry.
@@ -251,6 +284,20 @@ func analyzeLSPDocumentAtDepth(uri string, parsed *ast.Program, overlay sourceOv
 // single-document diagnostics batch does, keeping both error sets.
 // Rules: rules/tooling/lsp.md — "Snapshots"; rules/analysis/pitfall_analysis.md — "Analysis states".
 func analyzeLSPDocumentResult(uri string, parsed *ast.Program, overlay sourceOverlay, depth sema.AnalysisDepth) analysisResult {
+	result, err := analyzeLSPDocumentResultContext(overlay.analysisContext(), uri, parsed, overlay, depth)
+	if err != nil {
+		panic(cancelledLSPAnalysis{err})
+	}
+	return result
+}
+
+// analyzeLSPDocumentResultContext transports cancellation separately from source
+// diagnostics. Partial source/import/semantic facts are abandoned as one snapshot.
+// Rules: rules/tooling/lsp.md — Snapshots, Responsiveness model, §6.7(2–3).
+func analyzeLSPDocumentResultContext(ctx context.Context, uri string, parsed *ast.Program, overlay sourceOverlay, depth sema.AnalysisDepth) (analysisResult, error) {
+	if err := ctx.Err(); err != nil {
+		return analysisResult{}, err
+	}
 	var sourceProgram *ast.Program
 	if parsed != nil {
 		// Keep only a detached root slice: children deliberately retain their
@@ -262,8 +309,11 @@ func analyzeLSPDocumentResult(uri string, parsed *ast.Program, overlay sourceOve
 	importErrors := prepareProgramForLSP(parsed, pathFromURI(uri), overlay)
 	analyzer := newLSPAnalyzerForInputsAtDepth(uri, parsed, overlay, depth)
 	analyzer.SetPitfallSourcePriority([]string{pathFromURI(uri)})
-	semanticErrors := analyzer.Analyze(parsed)
-	return analysisResult{program: parsed, sourceProgram: sourceProgram, analyzer: analyzer, importErrors: importErrors, semanticErrors: semanticErrors}
+	semanticErrors, err := analyzer.AnalyzeContext(ctx, parsed)
+	if err != nil {
+		return analysisResult{}, err
+	}
+	return analysisResult{program: parsed, sourceProgram: sourceProgram, analyzer: analyzer, importErrors: importErrors, semanticErrors: semanticErrors}, nil
 }
 
 // analysisInputsChangeOutsideIdentity reports a message that may change an

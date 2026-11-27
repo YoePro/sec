@@ -118,6 +118,10 @@ func (a *Analyzer) recordAtomicFenceEffect(call *ast.CallExpression, order strin
 	if a.summaryPass || !a.callGraphPathReachable {
 		return
 	}
+	if a.resolvedAtomicFences == nil {
+		a.resolvedAtomicFences = map[*ast.CallExpression]string{}
+	}
+	a.resolvedAtomicFences[call] = order
 	a.callGraph.addEffect(a.currentCallable, EffectSite{
 		Kind: EffectAtomicFence, Source: callCalleeDefinitionToken(call), AtomicOrder: order,
 	})

@@ -1,0 +1,20 @@
+module main
+
+type Positive int range 2..9
+type Settings struct {
+    Buffer: byte[64],
+    Count: Positive,
+    Ready: bool
+}
+
+static let mut backing: byte[64]
+static let mut count: Positive
+static let mut settings: Settings
+static let mut beyondPreview: byte[4097]
+static let mut nested: byte[2][3]
+static let mut empty: byte[0]
+let initial: byte[64] := backing
+
+fn Count() Positive {
+    return count
+}

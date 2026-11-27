@@ -438,6 +438,8 @@ integrations:
       - testdata/lsp/try_assignment_flow_valid_test.sec
       - testdata/lsp/try_assignment_flow_invalid.sec
     implemented:
+      - "Try assignments through try-set property setters lower in Semantic IR (2026-11-27, TestTryAssignmentThroughSetterCarriesCleanup): the setter call yields Result[void, E]; the success edge continues, the failure edge builds Err and propagates through the enclosing Result, and a handled form branches into its resolved local handlers (lowerFallibleProperty)."
+      - "Cleanup and defer run over the try-assignment propagation edge (2026-11-27, TestTryAssignmentThroughSetterCarriesCleanup): the failure edge of a setter try assignment runs cleanup.run-function exit=error-propagation, which runs the registered defer bodies and destroys owned locals before the return; the success path keeps its ordinary exit=return cleanup."
       - parser accepts try Assignment with or without an attached handler block and retains the following statement boundary
       - naked assignment requires a compiler-resolved fallible target error type
       - naked assignment propagates only from a function through an enclosing Result whose error channel accepts the target error
@@ -451,8 +453,7 @@ integrations:
       - "resolved-edge joins (2026-10-12): handled try assignments no longer analyze their handlers in sequence after the store. The state after the assignment is the success edge; the failure edge starts from it with the target's pre-statement initialization, move, borrow and reference-origin state (the value is evaluated on both edges, the store happens only on success); every handler is analyzed as its own branch from the failure edge (nested try handlers are never captured); and the statement join merges the success edge with the normally completing handlers only, using the shared continuing-branch merges for assignment, moves, closed resources, borrows, local reference containers, Arena generations and reference origins. A continuing handler after a moved target now reports S1089 maybe-consumed, while returning handlers neither reinitialize nor leak moves into other handlers or the continuation. Naked propagation leaves the function on failure, so the success state continues unchanged (TestTryAssignmentJoinsResolvedEdges)"
       - "Semantic IR consumption boundary (2026-10-12): the builder reads ResolvedTryAssignmentOf for every try assignment and rejects it as a package-unsupported feature naming the resolved edge (propagation target or local handlers), the error channel and the fallible step (`try set` property setter from ResolvedPropertyAccessOf, otherwise the constrained-type contract check), and test-boundary propagation explicitly; it is never lowered as a plain store or reported as an unknown statement (TestTryAssignmentConsumesResolvedFact)"
     remaining:
-      - "lower try assignments in Semantic IR: the success edge stores and the failure edge reuses the try propagation (early Err return) and local-handler lowering; blocked on the fallible step having a Semantic IR form, i.e. property setter operations (frontend.properties) and contract validation (frontend.type-contracts-v2)"
-      - "carry cleanup and defer execution over the propagation edge; blocked on the lowering above and on defer having a Semantic IR form (no cleanup is skipped today: the Semantic IR builder rejects both defer statements and try assignments, verified 2026-10-12)"
+      - "lower the remaining try assignment forms in Semantic IR, with cleanup and defer over their propagation edge: constrained-type contract checks of a variable, field, element or referent (needs the core ContractError/ConversionError declarations in Semantic IR), map upsert growth (no map lowering yet), and the decimal Scale setter (MD-066); fallible property setters and string append are done"
     verification:
       - command: go test ./internal/sema ./internal/ir/... ./cmd/compiler ./cmd/lsp -count=1
         result: passed on 2026-10-12 including TestTryAssignmentJoinsResolvedEdges and TestTryAssignmentConsumesResolvedFact
@@ -486,6 +487,7 @@ integrations:
       - rules/foundations/grammar.md
       - rules/foundations/operators.md
     implemented:
+      - "Stable registry reason IDs on every canonical panic source (verified 2026-11-27; panic.md §§ 13(1)-(2), 13(8)): invalid reference generation, contract failure, foreign abort, bounds, assertion, checked unreachable, explicit panic, string materialization and Arena epoch exhaustion effects each carry exactly their registered PanicReasonID and are panic effects; an open call target (may-panic-unknown-callee) carries none because no single registered reason applies. Test: TestEveryCanonicalPanicSourceCarriesItsRegistryReason."
       - "MD-140 stage 1a (2026-11-25; panic.md §§13(1),13(8); arena.md §39(1)): canonical registry identity panic.arena-epoch-exhaustion has the next stable PanicID 12 (PanicReasonArenaEpochExhaustion) and static message Arena validity epoch exhausted. Existing IDs 1–11 and their names are unchanged, including InvalidReferenceGeneration (8). PanicReasonDefinition retains the canonical message as compiler registry metadata; source PanicID remains uint32 and PanicInfo unchanged. Lookup by ID/name allocates no memory; detached snapshots cannot mutate the static message. T38/T39 registry portion is covered; Reset production, effects, provenance transport and executable exhaustion remain later stages."
       - canonical assert statement AST and parsing support both Sec 0.1 forms, including optional comma plus string-literal metadata
       - parser emits focused diagnostics for missing message comma, dynamic message forms, and non-canonical function-like spelling
@@ -521,7 +523,6 @@ integrations:
     partial:
       - "Started (moved to partial 2026-11-20; the text records the done part and what remains): lower explicit panic through PanicInfo construction and the selected non-returning endpoint (the Semantic IR panic operation exists since 2026-10-06, semantic-ir.panic)"
     remaining:
-      - attach stable registry IDs to invalid-reference generation and every later canonical panic source (contracts carry ContractFailure and foreign calls carry ForeignAbort)
       - implement allocation-free canonical PanicInfo construction from registered reason and static source metadata
       - preserve the same PanicInfo through task/thread/process containment without fabricated partial metadata
       - "invalid-reference generation has a registered reason (PanicReasonInvalidReferenceGeneration) but no frontend source yet: references.md § 14(6)–(7) makes runtime generation checks profile-selected, and no frontend operation currently selects one, so attaching the reason waits for the first generation-checked operation"
@@ -656,6 +657,7 @@ integrations:
       - testdata/sema/child_panic_domains_valid.sec
       - testdata/sema/child_panic_domains_invalid.sec
     implemented:
+      - "Invalid-reference generation is part of the canonical panic-effect model (verified 2026-11-27; P15-48; reference_model.md § 45): a run-time validated dynamic-epoch reference use records may-panic-invalid-reference with InvalidReferenceGeneration, is classified as a panic effect, propagates through PanicCauses and is rejected by @noPanic with its own help (also in cleanup and ISR help); proven references, borrow creation and passing add none. Tests: TestDynamicReferenceUsesCarryInvalidReferencePanicEffect, TestEveryCanonicalPanicSourceCarriesItsRegistryReason."
       - "unknown callees are never positive @noPanic proof (panic.md § 21(3)–(4)): calls through a function value without a known target set, through an interface reference, or through a constrained generic parameter record may-panic-unknown-callee, while function values with a closed known target set are checked through those targets; defer bodies count toward the enclosing function"
       - extern calls without a trusted @noPanic foreign contract record may-panic-foreign (ForeignAbort); contract conversions and dynamic-array/slice indexing record their own panic effects
       - compiler-owned callable effect summaries record direct checked-arithmetic and fixed-array-bounds MayPanic sites
@@ -676,7 +678,6 @@ integrations:
     partial:
       - "Started (moved to partial 2026-11-20; the text records the done part and what remains): complete the remaining MayPanic sources and the @noPanic attribute diagnostics for full transitive verification (moved from lowering.sec-mlir-typed-arithmetic-failure on 2026-11-16, owner decision; unknown and foreign contracts and cleanup effects are covered by the items above)"
     remaining:
-      - integrate invalid-reference generation into the canonical panic-effect model (assertion proof, contracts, and foreign abort are now integrated)
       - complete transitive @noPanic verification for generic specializations (template calls through constraints are conservatively unknown), compiler helpers, destruction, and cleanup; closed function-value target sets, unknown targets, interface and constraint dispatch, FFI, and defer bodies are covered
       - version and validate separate-compilation panic summaries
       - feed canonical panic facts into ISR analysis, target-profile validation, LSP, and call hierarchy
@@ -720,13 +721,13 @@ integrations:
       - rules/errors/panic.md
       - rules/compiler/semantic_ir.md
     implemented:
+      - "The noPanic contradiction check covers checked-arithmetic and bounds failure paths (2026-11-27, TestNoPanicRejectsReachableArithmeticAndBoundsFailure, TestNoPanicAcceptsProvenIndex): verifyNoPanicContradiction rejects a reachable fail.arithmetic or fail.bounds in a @noPanic function. Sema accepts @noPanic only without may-panic arithmetic and with proven indexes, so accepted functions lower without these endpoints; the Semantic IR, secmlir and CLI panic suites pass."
       - typed arithmetic failure reasons and panic-related effect metadata exist in the maintained checked-arithmetic Semantic IR and Sec MLIR vertical
       - fixed-array ordinary failure is represented by terminating fail.bounds with fixed-array-index provenance while fallible bounds flow remains typed IndexError
       - "explicit panic, assertions, and checked unreachable (2026-10-06, semantic_ir.md §§ 55–57): a terminating `panic` operation carries the registered panic reason (ID and name), the static literal message when the source wrote one, and the source location; explicit panic is built from ResolvedExplicitPanic without reading AST spelling; an unproven assertion evaluates its bool condition once and branches (marked as an assertion check, never an assume) to a failure block that panics with AssertionFailed and its static message, while a proven assertion (ResolvedAssertion.Proven) emits no check; checked `unreachable` panics with UnreachableReached instead of becoming backend undefined behavior (TestPanicAssertionAndUnreachableLowerToExplicitPanic)"
       - "noPanic facts (2026-10-06): each function carries Sema's verified effective @noPanic guarantee and its source (written, implied by @isr/@interruptSafe, or trusted foreign contract); the verifier rejects an unregistered panic reason, a message without a source message, and a @noPanic function that still reaches a panic operation (TestVerifierRejectsInvalidPanicFacts)"
     remaining:
       - represent execution-domain, containment-boundary, and cleanup-policy relationships of panic sites once Semantic IR represents tasks, threads, and cleanup regions
-      - extend the noPanic contradiction check to checked-arithmetic and bounds failure paths once Semantic IR carries Sema's arithmetic and index proofs for every accepted @noPanic operation
     required_tests:
       - unproven assertion emits explicit Semantic IR check
       - proven assertion emits no panic operation but keeps required refinement
@@ -744,10 +745,10 @@ integrations:
       - rules/errors/panic.md
       - rules/mlir/sec_mlir_lowering.md
     implemented:
+      - "Assertion failure lowers to the selected non-returning endpoint without allocation (2026-11-27; panic.md §§ 13(1), 14-15; runtime_checks.md § 39): an unproven assert becomes its check plus the registered AssertionFailed panic with the static message in Semantic IR and Sec MLIR, and reaches the minimal panic endpoint llvm.trap before unreachable in LLVM IR with no allocation call; a proven assertion emits no check. Per-profile endpoint selection stays its own item. Tests: TestAssertionFailureReachesPanicEndpoint, TestPanicAssertionAndUnreachableLowerToExplicitPanic."
+      - "Checked unreachable lowers through the defined panic endpoint (2026-11-27; panic.md §§ 13(1), 15-16; runtime_checks.md § 39): a reachable `unreachable` becomes the registered UnreachableReached panic in Semantic IR, sec.fail.panic in Sec MLIR and llvm.trap before the backend unreachable in LLVM IR; Sema rejects a statically unreachable statement (S3001) instead of lowering it. Tests: TestCheckedUnreachableReachesPanicEndpoint (source to LLVM IR), TestPanicAssertionAndUnreachableLowerToExplicitPanic, lit SecToLLVM/static-storage-and-panic.mlir."
       - maintained checked-integer Sec MLIR path has typed failure-reason flow and MayPanic cause information
     remaining:
-      - lower assertion failure to selected non-returning panic endpoint without dynamic allocation
-      - lower checked unreachable through defined panic endpoint before backend unreachable unless statically eliminated
       - preserve stable panic reason IDs and static source or message metadata
       - implement target-profile root panic endpoint selection
       - implement managed task or thread containment outcomes when their concurrency vertical exists

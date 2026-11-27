@@ -1,0 +1,2 @@
+module main
+type Wide decimal128 range 0.001..1000000000000000000

@@ -112,9 +112,34 @@ The high-level operation returns `(string candidate, i1 failed, AllocationError 
 
 ## § 23. FromByteArray/FromRuneArray source conflict
 
-**Superseded in part (MD-091, 2026-10-18):** core has no `string.FromByteArray`; public byte decoding is the stdlib `str.FromByteArray` / `str.FromByteArrayLossy`, and the lower-level non-public materializer below is the internal capability `_stringFromUtf8` (registry `CKF-STRING-FROM-UTF8`, `compiler_known_members.md` "Internal core string materialization"), known only to trusted core (the stdlib path is MD-109). `byte[].ToString()` is a type summary, not a decoder. Its Semantic IR and lowering remain P23 work.
+**Resolved source contract (MD-072 and later MD-109).** The original package
+snapshot predates the finalized public signatures. Both materializers are
+static associated functions on core `string`:
 
-`rules/library/core-library.md` lists owning-array/infallible illustrative signatures but explicitly leaves final signatures pending; the current `sec/core/string.sec` instead declares ref parameters and Result errors, and one rune body is a stub. **MD-072 (P23-D2)** owns this independent source signature/ownership/allocation-error question; MD-050 owns the validity rule. Until approval do not invent `string.FromByteArray` source overloads or ABI; implement a **lower-level, non-public** byte/rune materializer with explicit bounds/encoding assumption and allocation context, so selected approved signature can reuse it.
+```sec
+static fn FromByteArray(data: ref byte[]) Result[string, StringError]
+static fn FromRuneArray(data: ref rune[]) Result[string, StringError]
+```
+
+They borrow their inputs and publish independently owned immutable strings;
+there is no consuming overload, instance receiver or implicit array-to-string
+cast. `FromByteArray` validates strict UTF-8 and reports the start byte of the
+first malformed sequence as `StringError.InvalidUtf8`; both use the permitted
+allocation context and `StringError.Allocation` for storage failure. Safe runes
+cannot cause `InvalidCodePoint`. The owning contract is
+`rules/library/core-library.md` § 5.2 and
+`rules/compiler/compiler_known_members.md` §§ 71–73.
+
+**Decision history.** MD-072 decided borrowed rune input and fallible
+independent materialization. MD-091 (2026-10-18) removed the previous public
+byte API and kept byte-sequence `ToString()` as a type summary. MD-109
+(2026-10-25) supersedes that removal and permits explicit fundamental core
+allocation, restoring the public static `string.FromByteArray` route.
+MD-091's type-summary and private-authority rules remain unchanged. The private
+`_stringFromUtf8` capability (`CKF-STRING-FROM-UTF8`) stays restricted to
+loader-proven trusted core; stdlib and user code use the public functions.
+These source decisions do not define a new ABI or establish native support:
+P23 still owns physical string materialization and its predecessor gates.
 
 ## § 24. ToByteArray/ToRuneArray/ToCharArray
 

@@ -334,6 +334,7 @@ integrations:
     status: partial
     repository_baseline: 814a584
     implemented:
+      - "(verified 2026-11-27) Sema ArenaFailurePlan maps every failure to the core AllocationError with an unchanged owner, epoch and prior allocations on failure and no domain on failed creation (P19-06); Semantic IR and schema 15 enforce the same atomicity (P19-33). Tests: TestArenaFailurePlans, TestPackage19AllocationAtomicityMatrix."
       - Arena semantic builtin exists
       - AllocationError semantic builtin exists
       - Arena.FromBuffer, WithCapacity, Growable, New, Alloc, Reset and Release are recognized as compiler-known members
@@ -346,7 +347,6 @@ integrations:
       - complete borrowed backing exclusive-lifetime validation
       - complete constructor/provider policy validation
       - complete New/Alloc layout/default/trivial-destruction validation
-      - complete atomic allocation state on success/failure
       - complete Reset/Release dependency validation through canonical memory identities
       - complete nested Arena/source diagnostics
 
@@ -495,6 +495,7 @@ integrations:
       - rules/memory/copy_move.md
       - rules/compiler/semantic_ir.md
     implemented:
+      - "Construction-failure cleanup never manufactures the outer value (2026-11-27, TestConstructionFailureNeverManufacturesOuterValue, with TestSchema13CleansFailedConstruction): when a later struct field, union payload field or array element fails, the failure exit destroys only the already evaluated operands, each through its own destruction plan (cause=temporary-end), and leaves; it never emits struct/union/array construction and never names the outer type's destruction plan, so an outer custom free never runs for an incomplete value."
       - Current Semantic IR/lowering pipeline carries selected ownership-adjacent call/control-flow facts, but root governance still defers explicit general destruction operations and cleanup-state representation.
       - "P17 Semantic IR destruction (verified 2026-11-04; destruction.md §§ 6, 10–13, 16, 30; package17): own.destroy-value and own.destroy-place (skipped sub-Places, if_owned for conditional availability), active-variant destruction plans in the sec.destruction_plans table (also for custom-free unions), own.replace-place versus own.initialize-place with the old destination's plan, cleanup.track-owned/cancel/defer-register/run-scope/run-function in one source-ordered registration order, return and error propagation established before cleanup.run-function, and named unsupported boundaries for every unrepresented form. Tests: ownership_variants.sec (TestPackage17OwnershipVariants*, TestSchema13EmitsOwnedVariants), cleanup_producers_test.go, lit schema13-* and invalid-schema13-*."
     partial:
@@ -502,7 +503,6 @@ integrations:
       - "Started (moved to partial 2026-11-20; the text records the done part and what remains): preserve allocator/release authority, concrete interface destruction and target-policy requirements; custom free identity and active-variant plans are implemented"
     remaining:
       - preserve cancellation of cleanup after FFI transfer (needs declared FFI ownership contracts, P17-49); move, discard, return, consuming-argument and aggregate transfer cancel since P17
-      - represent construction-failure cleanup without manufacturing a completed outer value/free call
     required_tests:
       - Semantic IR has one terminal ownership action for every represented non-trivial owned value on each reachable path
       - moved/discarded sub-Place has no remaining former-owner destroy action
@@ -1112,16 +1112,17 @@ integrations:
 
   - id: semantic-ir.arena
     area: arena-semantic-ir
-    status: planned
+    status: partial
     repository_baseline: 814a584
+    implemented:
+      - "(verified 2026-11-27) The eight Arena operations (arena.create-borrowed/-owned-fixed/-growable/-default, arena.new, arena.alloc, arena.reset, arena.release, arena.destroy) have typed Place-based Semantic IR contracts, printing and verifier dispatch (P19-15; sec_semantic_ir_arena_v19.md). Tests: TestArenaOperations, TestArenaOperationContracts."
+      - "(verified 2026-11-27) ArenaDomain (BackingMetadata.Domain), owner state version (StateBefore/After) and validity epoch (EpochBefore/After) are separate facts; the verifier checks fresh domains, the per-block state/epoch chain and epoch preservation by allocation (v15 § 9). Tests: TestArenaCreationDomainFreshness, TestArenaEffectSiteOrdering."
+      - "(verified 2026-11-27) Checked creation/New/Alloc produce candidate, failed and AllocationError with FailureAtomic; one continuing owner state; the candidate is published only on the single-predecessor success edge (verifyArenaPublication, P19-33). Tests: TestArenaCandidateSuccessArgument, TestPackage19AllocationAtomicityMatrix."
+      - "(verified 2026-11-27) Backing kind (borrowed/owned/none), growth (fixed/growable-nonrelocating), provider and capacity plans are recorded and verified per operation; owned creation requires a resolved provider plan. Tests: TestArenaOperationContracts, TestSchema15ArenaOperations."
+      - "(verified 2026-11-27) Capacity plans, AllocationError failure edges and per-function demand summaries (constant/unknown/unbounded with fixed backing capacity) are represented and verified (P19-26, P19-37). Tests: TestArenaDemandSummaries, TestPackage19AllocationAtomicityMatrix."
+      - "(verified 2026-11-27) Reset/Release/Destroy require resolved dependency proof, nested child dependencies block parent invalidation through a CFG may-live analysis, and owner consumption allows at most one Release/Destroy with no use after it. Tests: TestNestedArenaBlocksParentInvalidation, TestNestedArenaDependencyCFG, lit invalid-schema15-arena.mlir."
     remaining:
-      - represent ArenaCreateBorrowed, ArenaCreateOwnedFixed, ArenaCreateGrowable, ArenaNew, ArenaAlloc, ArenaReset, ArenaRelease and ArenaDestroy
-      - represent ArenaDomain, Arena state version and validity epoch distinctly
-      - represent atomic allocation success/failure with one continuing Arena state
-      - represent backing/growth/provider policy
       - represent allocation context and task/thread dependency transfer
-      - represent capacity proof and failure-path facts
-      - verify no dependency across Reset/Release and no duplicate owner state
 
   - id: lowering.arena
     area: arena-mlir-physical-planning

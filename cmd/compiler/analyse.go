@@ -529,7 +529,11 @@ func (r *analyseReport) addParameterUsage(usage *sema.ParameterUsageAnalysis, in
 			section.add("  blocked: %s", blocker)
 		}
 		if recommendation.SizeKnown {
-			section.add("  estimated size: %d bytes", recommendation.EstimatedSizeBytes)
+			if recommendation.SizeSource == sema.ParameterSizeFromLayout {
+				section.add("  copy size on the active target: %d bytes", recommendation.EstimatedSizeBytes)
+			} else {
+				section.add("  estimated size: %d bytes", recommendation.EstimatedSizeBytes)
+			}
 		}
 	}
 }

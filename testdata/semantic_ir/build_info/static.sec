@@ -1,0 +1,19 @@
+module main
+
+let Info := BuildInfo.Current()
+
+fn Version() uint64 {
+    return Info.VersionBuild
+}
+
+fn Name() string {
+    return Info.ProjectName
+}
+
+fn User() Option[string] {
+    return Info.VersionUserDefined
+}
+
+fn Metadata() BuildInfo {
+    return Info
+}

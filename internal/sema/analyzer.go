@@ -26,6 +26,7 @@ type Analyzer struct {
 	// cteContext belongs to one cancellable compiler-work request, never Sec state.
 	// Rules: rules/compiler/compile_time_evaluation.md §§53(6),57(1–3).
 	cteContext                  context.Context
+	analysisCancellable         bool
 	hardwareContext             HardwareModuleContext
 	hardwareFacts               hardware.Facts
 	hardwareFactsValid          bool
@@ -207,6 +208,7 @@ type Analyzer struct {
 	resolvedRangeMemberships      map[*ast.InfixExpression]ResolvedRangeMembership
 	resolvedRangeAppends          map[*ast.CallExpression]ResolvedArrayLiteralEntry
 	runeArrayMaterializations     map[*ast.CallExpression]ResolvedRuneArrayMaterializationPlan
+	dynamicArrayFills             map[*ast.CallExpression]ResolvedDynamicArrayFillPlan
 	coreArrayMaterializationSites map[sourceTokenKey]bool
 	// unitConversionPlans records each implicit fixed unit conversion Sema
 	// proved exact (rules/types/units.md, "Exact fixed conversions").
@@ -263,6 +265,7 @@ type Analyzer struct {
 	resolvedCallReferences         map[*ast.CallExpression]ReferenceFacts
 	resolvedCompareExchanges       map[*ast.CallExpression]ResolvedCompareExchange
 	resolvedAtomicMemoryOperations map[*ast.CallExpression]ResolvedAtomicMemoryOperation
+	resolvedAtomicFences           map[*ast.CallExpression]string
 	// atomicCapabilities are the MD-095 capability results of the final
 	// analysis, one per atomic operation and applicable execution context.
 	atomicCapabilities []ResolvedAtomicCapability
@@ -271,8 +274,10 @@ type Analyzer struct {
 	// arenaDemandReports are the per-callable Arena demand summaries of the
 	// final analysis, for tooling (arena_demand_report.go).
 	arenaDemandReports []ArenaDemandReport
-	staticBindings                 map[sourceTokenKey]ResolvedStatic
-	receiverReborrows              map[ast.Expression]ReferenceFacts
+	// costModel resolves parameter-usage copy cost through the plan layout.
+	costModel         *parameterCostModel
+	staticBindings    map[sourceTokenKey]ResolvedStatic
+	receiverReborrows map[ast.Expression]ReferenceFacts
 	// compoundGetterReborrows: the getter reborrow of a compound property
 	// update's single receiver (property_receiver_lowering.go).
 	compoundGetterReborrows   map[ast.Expression]ReferenceFacts
@@ -630,6 +635,11 @@ type Analyzer struct {
 	// dynamicArrayLengthCalls are the compiler-known len(...) calls whose
 	// argument is an owning dynamic array (P18 § 50).
 	dynamicArrayLengthCalls map[*ast.CallExpression]bool
+	// fixedArrayFillCalls are the resolved contextual fixed-array fill(value)
+	// calls (compiler_known_members.md "Contextual fill").
+	fixedArrayFillCalls map[*ast.CallExpression]bool
+	// sizeOfTypeSubjects are the resolved type receivers of `T.SizeOf`.
+	sizeOfTypeSubjects map[sourceTokenKey]Type
 	// fileTargets are the canonical file-level selections by file.
 	fileTargets map[string][]ast.TargetSelector
 	// compileTimeContexts classify every compile-time-required position
@@ -843,6 +853,8 @@ func (a *Analyzer) analyzeProgram(program *ast.Program) []Error {
 	a.unsafeSites, a.unsafeSiteIndex, a.unsafeContexts = nil, nil, nil
 	a.unsafePrefixes, a.usedUnsafePrefixes, a.unsafeAdvisories = nil, nil, nil
 	a.dynamicArrayLengthCalls = nil
+	a.fixedArrayFillCalls = nil
+	a.sizeOfTypeSubjects = nil
 	a.detachSites = nil
 	a.hardwareFacts = hardware.Facts{}
 	a.hardwareFactsValid = false
@@ -966,6 +978,7 @@ func (a *Analyzer) analyzeProgram(program *ast.Program) []Error {
 	a.resolvedRangeMemberships = map[*ast.InfixExpression]ResolvedRangeMembership{}
 	a.resolvedRangeAppends = map[*ast.CallExpression]ResolvedArrayLiteralEntry{}
 	a.runeArrayMaterializations = nil
+	a.dynamicArrayFills = nil
 	a.coreArrayMaterializationSites = nil
 	a.unitConversionPlans = map[ast.Expression]UnitConversionPlan{}
 	a.durationConversions = map[ast.Expression]DurationConversionPlan{}
@@ -1001,6 +1014,7 @@ func (a *Analyzer) analyzeProgram(program *ast.Program) []Error {
 	a.resolvedCallReferences = map[*ast.CallExpression]ReferenceFacts{}
 	a.resolvedCompareExchanges = map[*ast.CallExpression]ResolvedCompareExchange{}
 	a.resolvedAtomicMemoryOperations = map[*ast.CallExpression]ResolvedAtomicMemoryOperation{}
+	a.resolvedAtomicFences = map[*ast.CallExpression]string{}
 	a.atomicCapabilities = nil
 	a.resolvedMutexTargetCapabilities = map[*ast.CallExpression]ResolvedMutexTargetCapability{}
 	a.resolvedThreadCurrentCapabilities = map[*ast.CallExpression]ResolvedThreadCurrentCapability{}
@@ -1482,6 +1496,7 @@ func (a *Analyzer) withProgramModules(program *ast.Program, visit func(ast.State
 	previous := a.currentModule
 	module := ""
 	for _, stmt := range program.Statements {
+		a.checkAnalysisCancellation()
 		if isNilStatement(stmt) {
 			continue
 		}
@@ -2504,6 +2519,7 @@ func (a *Analyzer) withImplTarget(target string, fn func()) {
 }
 
 func (a *Analyzer) analyzeStatement(stmt ast.Statement) {
+	a.checkAnalysisCancellation()
 	previousStatementToken := a.currentStatementToken
 	a.currentStatementToken = statementToken(stmt)
 	defer func() { a.currentStatementToken = previousStatementToken }()

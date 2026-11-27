@@ -1,0 +1,2 @@
+module main
+type Amount decimal range 0.00..10.00 default 1.00

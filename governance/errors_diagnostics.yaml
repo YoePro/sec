@@ -76,7 +76,7 @@ integrations:
     status: partial
     integrated: true
     audited: true
-    revised: "2026-11-22"
+    revised: "2026-11-27"
     document_revision: "2.3"
     repository_baseline: main-reviewed-2026-09-30
     summary: >-
@@ -214,12 +214,30 @@ integrations:
       - testdata/diagnostics/emitted_occurrences_invalid.sec
       - internal/sema/operator_diagnostics.go
       - internal/sema/arithmetic_inference.go
+      - internal/sema/escape_cause_paths.go
+      - internal/sema/decimal_fixed_scale.go
+      - cmd/compiler/sema_diagnostic.go
+      - cmd/lsp/sema_diagnostic.go
+      - cmd/lsp/diagnostic_types.go
+      - cmd/lsp/decimal_scale_actions.go
+      - internal/diagnostics/definition_model.go
     tests:
       - internal/sema/operator_diagnostics_test.go
       - cmd/compiler/operator_diagnostics_test.go
       - cmd/lsp/operator_diagnostics_test.go
       - testdata/sema/operator_operand_types_valid.sec
       - testdata/sema/operator_operand_types_invalid.sec
+      - internal/sema/decimal_scale_diagnostic_test.go
+      - cmd/compiler/decimal_scale_diagnostic_test.go
+      - cmd/lsp/decimal_scale_actions_test.go
+      - testdata/lsp/decimal_scale/actions.sec
+      - testdata/sema/decimal_scale_diagnostics/ordinary.sec
+      - testdata/sema/decimal_scale_diagnostics/reduced.sec
+      - testdata/sema/decimal_scale_diagnostics/wide.sec
+      - testdata/lsp/decimal_scale/proof.sec
+      - internal/diagnostics/definition_model_test.go
+      - internal/diagnostics/default_identity_test.go
+      - cmd/compiler/diagnostic_catalog_test.go
     implemented:
       - "MD-039 diagnostics and tooling (2026-11-01; correction MD-004-MD-039 § 6(5–6)): S1097 only for an unhandled Result operand or interpolation, S1096 accepts try string +=, S1022 accepts the protected operand, S1098 kept. LSP hover on + and += states panic mode, try mode, the protected operand and the invalid unhandled operand from Sema's plan. Quick fixes for S1097 and S1022 and refactors from panic to try are verified by re-analysis of the edited source, so a callable that cannot carry StringError gets none. The formatter keeps the source-selected try (cmd/lsp/string_operator_tooling.go)."
       - "2026-10-26: after active/retired ID checks, allocated S1174 types.conversion-unavailable as the general mandatory error for an unavailable explicit conversion relation, distinct from S1139 checked-conversion protection and S1093 error-channel compatibility. Both explicit conversion inference paths publish it; numeric-to-named-string rejection includes the explicit ToString/try repair (MD-093). CLI human/JSON and LSP conformance are tested by the types-core owner; source positions and mandatory error severity are retained."
@@ -589,14 +607,14 @@ integrations:
           explanatory help in CLI and LSP.
       - "MD-120 diagnostics completed (2026-11-02; correction §10(7), diagnostics.md §§2(6–10),14–15): mandatory S1191 errors.invalid-result-error-channel identifies Result error-channel ineligibility (including unconstrained E), S1192 errors.variant-requires-concrete-channel identifies unknown-channel variant selection across contextual/qualified match and try forms with or without payload patterns, and S1193 interfaces.generic-argument-count identifies omitted or wrong interface type-argument counts. Each is a distinct source rule with no suitable existing registered ID; existing constraint-failure, handler-shape and non-discardability diagnostics keep their identities. Generic and explicit-open error channels receive different repairs; no E variant, default error argument, generic variance or implicit discard is inferred. The qualified try form now reports the unavailable variant knowledge instead of undefined variable E. Thirteen invalid source cases retain registered identity, error severity, nonempty ranges and help through Sema, CLI JSON and LSP; legal generic/concrete/root views and whole-channel handlers remain accepted."
       - "BUG-000040 fixed (2026-11-22; diagnostics.md sections 5-9,12,15): registered mandatory S1259 operator.incompatible-operand-types in the operators family for the existing cannot-apply-operator diagnostic, including uint minus int. A shared Sema reporter supplies the unchanged primary message, exact operator-token span and guidance for compatible types and explicit fallible conversions across all four identical reporting sites. Arithmetic acceptance and literal/conversion rules are unchanged; numeric-carrier-specific and other differently worded diagnostics are outside this fix. The existing plain-arithmetic inference function was extracted from analyzer_inference.go into arithmetic_inference.go with rulebook traceability. Source-backed three-depth 32/64-bit tests, CLI JSON/detailed registry lookup and LSP span/help checks pass."
-    partial:
-      - "Started (moved to partial 2026-11-22; the text records the done part and what remains): MD-049 A2012 types.inferred-decimal-scale (correction §§ 7, 15(1), 15(6); diagnostics.md § 31A). Done: registered as a configurable information diagnostic in family types and emitted once at the declaration that infers a scale, naming the selected scale and, when capacity reduced it, the preferred scale, limiting bound and carrier, with help suggesting `scale S`; absent for explicit and inherited scales (TestDecimalScaleInferenceAndDefaults). Remaining: structured diagnostic arguments, the LSP quick fix inserting `scale S` before the first range, and quick-fix fidelity tests."
+      - MD-049 A2012 types.inferred-decimal-scale completed 2026-11-27 (correction sections 7, 15(1), 15(6); diagnostics.md section 31A). The configurable types-family information diagnostic is emitted once where a named decimal scale is inferred, never for explicit or inherited scales. Detached structured arguments retain named type, carrier width, preferred/selected scale, capacity reduction and limiting bound; the limiting range is related when available. CLI occurrence/message arguments and LSP data preserve the same producer facts. The LSP quick fix uses current-snapshot diagnostics, inserts scale S before the first range, reanalyzes the exact edit under the same target/overlays and compares the fixed grid, scale-bearing range conjunction and synthesized default. Existing numeric spellings, comments and Unicode text are untouched. Additional contracts without an equivalence proof, malformed/error snapshots, stale/forged reports and inapplicable declarations are conservatively withheld. Source-backed fidelity tests cover open/multiple ranges, negative/capacity-reduced scales, derived carriers, explicit/inherited suppression, JSON transport and immutable warning facts; no checklist subdivision.
       - id: diagnostics.registry-definition-v2
         description: >-
           Current Definition contains ID, Name, Family, DefaultSeverity,
           Mandatory and Retired. Revision 2.0 also requires explicit namespace,
           optional policy category, argument schema, message keys and related-ID
           metadata in the canonical logical definition model.
+    partial:
       - id: diagnostics.occurrence-unification
         description: >-
           Parser and semantic diagnostics still use different host structures.
@@ -675,6 +693,18 @@ integrations:
       - Attempts to disable or demote mandatory diagnostics are rejected.
       - No Sec 0.1 source syntax suppresses advisory or mandatory diagnostics.
     verification:
+      - command: go test -race -p 4 ./internal/diagnostics ./cmd/compiler -run 'DefinitionModel|DiagnosticCatalog|DiagnosticDefinitionV2Export|DecimalScaleDiagnosticJSON' -count=1 -timeout=90s; go vet ./internal/diagnostics ./cmd/compiler
+        result: "Passed 2026-11-27 (1.020s/1.131s), vet clean. Ordered schema/relations and returned metadata remain detached; detail/JSON/text and emitted short-message keys agree with the canonical registry. The existing semantic occurrence catalog now also includes the producer Arguments field introduced with A2012. One existing partial requirement closed: errors_diagnostics Partial 5 to 4, Remaining 0 unchanged."
+      - command: go test -p 4 ./... -run '^$' -timeout=120s
+        result: "Passed 2026-11-27: all Go packages compile, with no tests selected; this is not a whole-suite acceptance run. An initial concurrent compile failure in Claude's in-progress slice_fill_test.go was resolved before this passing check. Full traceability passed (0.742s)."
+      - command: go test -p 4 ./internal/diagnostics ./cmd/compiler -run 'DefinitionModel|DiagnosticCatalog|DiagnosticDefinition|DiagnosticOccurrence|DecimalScaleDiagnostic|DefaultDiagnosticStable|Registry' -count=1 -timeout=90s
+        result: "Passed 2026-11-27 (0.004s/0.021s). diagnostics.registry-definition-v2 logical model completed without checklist subdivision: namespace, optional policy category, ordered typed arguments, short/extended message keys and ordered related IDs survive detached Lookup/All and CLI detail/text/JSON catalog projection. A2012 registers all six producer arguments. Validation rejects unknown/mismatched namespaces, malformed IDs, empty/duplicate/unknown-kind argument definitions and unknown/duplicate related IDs. Stable IDs, severity and mandatory policy are unchanged; missing per-producer schemas and localization/catalog coverage remain existing migration debt, not a claim of complete occurrence migration."
+      - command: go test -p 4 ./cmd/lsp -run ^TestDecimalScaleFixEquivalence$ -count=1 -timeout=60s
+        result: "Passed 2026-11-27 (0.005s): source-backed equivalence accepts explicit scale 2 while rejecting a changed scale, exact upper bound or explicit default even when each candidate independently compiles. Governance check: 0 problems in 47 fragments; all 46 owner paths exist. Formatter reports only the two pre-existing boolean date-field hazards (integrated/audited), unchanged by this task."
+      - command: go test -race -p 4 ./internal/sema -run ^TestDecimalScaleDiagnosticArguments$ -count=1 -timeout=60s; go vet ./internal/sema ./internal/diagnostics ./cmd/compiler ./cmd/lsp
+        result: "Passed 2026-11-27: race 1.016s; vet passed all four packages. Detached warning arguments cannot mutate the analyzer snapshot."
+      - command: go test -short -p 4 ./internal/sema ./internal/diagnostics ./internal/traceability -count=1 -timeout=150s; go test -p 4 ./cmd/lsp ./cmd/compiler -run 'DecimalScale|DiagnosticProvenance|ProofState' -count=1 -timeout=120s
+        result: "Passed 2026-11-27: full short Sema 34.313s, diagnostics 0.002s and traceability 0.251s; focused LSP 34.996s and CLI 0.007s. Numeric facts/CLI JSON/LSP payloads, unchanged source bytes, range/default/grid equivalence and stale/forged-report suppression pass. Existing A2012 partial item closed intact."
       - command: go test ./internal/sema -run 'Operator|Arithmetic|Numeric|Bitwise|UnitConversion' -count=1
         result: Passed 2026-11-22 (0.894s). Focused Sema/CLI/LSP diagnostic tests also passed (0.036s/1.973s/3.713s); registry and full traceability passed (0.002s/0.223s); CLI catalog/operator tests passed (1.271s). No numeric compatibility semantics changed.
       - command: go test -race ./cmd/compiler ./cmd/lsp -run 'Test(ChildPanic|AnalyseChildPanic|MD131Assignment)' -count=1 -timeout=180s

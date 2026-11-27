@@ -3,6 +3,9 @@ package semantic
 import (
 	"fmt"
 	"slices"
+
+	"sec/internal/ast"
+	"sec/internal/sema"
 )
 
 // OpSliceLength observes the slice's element count without reading elements
@@ -100,4 +103,84 @@ func sameSliceValidityFacts(source, guard *ReferenceMetadata) bool {
 		source.AddressSpace == guard.AddressSpace && source.AddressStability == guard.AddressStability &&
 		source.Pinned == guard.Pinned && source.Provenance == guard.Provenance &&
 		source.ProofProvenance == guard.ProofProvenance && slices.Equal(source.OriginStorages, guard.OriginStorages)
+}
+
+// OpSliceFill replaces every element of a mutable slice, in increasing index
+// order, with a trivial copy of its value operand (collections.md § 7.9). It
+// shares the slice observation validity gate, changes neither Len nor
+// storage identity and never allocates.
+// Rules: rules/collections/collections.md — § 7.9.
+const OpSliceFill OpKind = "slice.fill"
+
+// verifySliceFillOperation requires a mutable slice, a value of its element
+// type and a trivially copyable and destructible element.
+// Rules: rules/collections/collections.md — § 7.9.
+func verifySliceFillOperation(module *Module, op Operation, values map[ValueID]Value) error {
+	if len(op.Operands) != 2 || len(op.Results) != 0 || len(op.Successors) != 0 {
+		return fmt.Errorf("slice.fill takes a mutable slice and a value and has no result")
+	}
+	slice, ok := module.Types.Lookup(values[op.Operands[0]].Type)
+	if !ok || slice.Kind != TypeMutableSlice || values[op.Operands[1]].Type != slice.Element {
+		return fmt.Errorf("slice.fill requires a mutable slice and a value of its element type")
+	}
+	if ownedCopyClass(module, slice.Element) != "trivial" || !trivialDestruction(module, slice.Element) {
+		return fmt.Errorf("slice.fill requires a trivially copyable and destructible element")
+	}
+	return nil
+}
+
+// buildSliceFill lowers `values.Fill(value)` on a mutable slice: the slice
+// holder is read, the value evaluated exactly once, the holder validated,
+// and one slice.fill replaces every element. Sema admits only infallibly
+// copyable elements and Sec 0.1 has no semantic copy, so a replaced element
+// needs no destruction.
+// Rules: rules/collections/collections.md — § 7.9.
+func (fb *functionBuilder) buildSliceFill(call *ast.CallExpression, member *ast.MemberExpression) (builtValue, error) {
+	token := member.Property.Token
+	if len(call.Arguments) != 1 {
+		return builtValue{}, fmt.Errorf("Fill takes one value")
+	}
+	source, facts, err := fb.sliceSourceValue(member.Object)
+	if err != nil {
+		return builtValue{}, err
+	}
+	slice, ok := fb.owner.module.Types.Lookup(source.typ)
+	if !ok || slice.Kind != TypeMutableSlice {
+		return builtValue{}, fb.unsupported("Fill on a receiver that is not a mutable slice", token)
+	}
+	if ownedCopyClass(fb.owner.module, slice.Element) != "trivial" || !trivialDestruction(fb.owner.module, slice.Element) {
+		return builtValue{}, fb.unsupported("Fill of a non-trivially copyable element", token)
+	}
+	value, err := fb.buildExpr(call.Arguments[0], slice.Element)
+	if err != nil {
+		return builtValue{}, err
+	}
+	loc := location(token)
+	guard, err := fb.validateReference(source, facts, loc)
+	if err != nil {
+		return builtValue{}, err
+	}
+	fb.emit(Operation{Kind: OpSliceFill, Operands: []ValueID{source.id, value.id}, ReferenceGuard: guard, Location: loc})
+	if _, temporary := member.Object.(*ast.RefExpression); temporary {
+		if _, err := fb.discardSliceHolder(source, expressionToken(member.Object)); err != nil {
+			return builtValue{}, err
+		}
+	}
+	void, err := fb.owner.internType(sema.Type{Name: "void", Kind: sema.VoidType})
+	if err != nil {
+		return builtValue{}, err
+	}
+	return builtValue{typ: void}, nil
+}
+
+// sliceFillCall reports a call of the compiler-known mutable-slice Fill.
+// Rules: rules/collections/collections.md — § 7.9.
+func (fb *functionBuilder) sliceFillCall(call *ast.CallExpression) (*ast.MemberExpression, bool) {
+	member, ok := call.Callee.(*ast.MemberExpression)
+	if !ok || member.Property == nil {
+		return nil, false
+	}
+	site := member.Property.Token
+	known, ok := fb.owner.analyzer.CompilerKnownMemberAt(site.File, site.Line, site.Column)
+	return member, ok && known.ID == "CKM-MUTABLE-SLICE-FILL"
 }

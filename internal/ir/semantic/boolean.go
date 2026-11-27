@@ -24,9 +24,14 @@ func (fb *functionBuilder) buildBooleanOperator(expr ast.Expression) (builtValue
 			(resolved.Kind == sema.ResolvedMembershipCompare || resolved.Kind == sema.ResolvedNegatedMembershipCompare) {
 			if resolved.RightType != nil {
 				if _, dynamic := sema.ResolveDynamicArrayPlan(*resolved.RightType); dynamic {
-					// P18 § 110: no membership lowering over an owning T[] is
-					// introduced; the frontend rule stays, lowering is a boundary.
-					return builtValue{}, true, fb.unsupported("membership over an owning dynamic array (no P18 membership lowering)", expression.Token)
+					if fb.owner.maxPackage < dynamicArrayLoweringPackage {
+						return builtValue{}, true, fb.unsupported("membership over an owning dynamic array before P18", expression.Token)
+					}
+					value, handled, err := fb.buildSequenceMembership(expression, resolved)
+					if !handled {
+						return builtValue{}, true, fb.unsupported("dynamic-array membership element equality", expression.Token)
+					}
+					return value, true, err
 				}
 			}
 			if fb.owner.maxPackage >= sliceLoweringPackage && resolved.RightType != nil && sourceSliceType(*resolved.RightType) {

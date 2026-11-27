@@ -115,7 +115,7 @@ func (b *pitfallBuilder) inspectLastUseArgumentMoves(body *ast.BlockStatement) {
 				if (typ.Kind != StructType && typ.Kind != ArrayType) || CopyClassificationOf(typ) != CopyTrivial || !TriviallyDestructible(typ) || !sameConcreteType(parameter.Type, typ) {
 					continue
 				}
-				size, known := estimatedTypeSizeBytes(typ, map[string]bool{})
+				size, known := b.analyzer.parameterCostModel().sizeOf(typ)
 				if !known || size < largeByValueParameterThresholdBytes {
 					continue
 				}

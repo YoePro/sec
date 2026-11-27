@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-07-31
-- **Last updated:** 2026-11-23 (removed obsolete while-typing comparison deferral; stable chapter, subsection, and paragraph numbering from 2026-11-08)
+- **Last updated:** 2026-11-27 (cooperative compiler-work cancellation, § 4.1(12)); 2026-11-27 (MD-109 static materializer hover examples); 2026-11-23 (removed obsolete while-typing comparison deferral; stable chapter, subsection, and paragraph numbering from 2026-11-08)
 - **Document revision:** 1
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/tooling/lsp.md`
@@ -510,8 +510,14 @@ range, URI and source fingerprint validate the declaration; malformed items
 return `InvalidParams`, while changed or closed active documents return
 `ContentModified`, including changes arriving during analysis. Client-supplied
 commands are recomputed from compiler facts. Queued cancellation and edits can
-skip obsolete resolve work, and formatting may overtake it. Cancellation inside
-an already-running compiler analysis remains separate scheduling work.
+skip obsolete resolve work, and formatting may overtake it. **Update
+2026-11-27:** running compiler analysis also cooperatively observes cancellation.
+An explicit `$/cancelRequest` returns `RequestCancelled`; a superseding input
+snapshot returns `ContentModified`. Module and cross-target diagnostic jobs
+withdraw obsolete work on refresh, close and shutdown. Abandoned work publishes
+no partial diagnostics, complete proof or successful cache entry; an independent
+live request may retry with its own snapshot. A result whose publication already
+committed is not retroactively cancelled.
 
 **§ 4.1(13)** As of 2026-11-03, implementing-type declarations (including enums and named
 scalar types) also show their explicit conformance across the selected targets.
@@ -1893,6 +1899,27 @@ error variants
 target availability
 source location
 ```
+
+For the MD-109 string materializers, the resolved public signatures shown by
+hover, completion and signature help are:
+
+```sec
+static fn FromByteArray(data: ref byte[]) Result[string, StringError]
+static fn FromRuneArray(data: ref rune[]) Result[string, StringError]
+```
+
+These are type-qualified functions (`string.FromByteArray(bytes)` and
+`string.FromRuneArray(runes)`), with no string receiver. Their documentation
+states call-local borrowed input, an independent immutable result, permitted
+allocation and `StringError.Allocation`; the byte function additionally reports
+strict UTF-8 failure at the malformed sequence's start byte. Safe rune input
+does not produce `InvalidCodePoint`. Completion must not offer them as instance
+methods or suggest a consuming `<-` argument. Navigation uses the canonical
+core declaration or the registry's synthetic definition; it never exposes the
+private `_stringFromUtf8` operation to ordinary source. Byte-array `ToString()`
+remains a type summary, not a decoding alternative (MD-091). These presentations
+consume compiler facts rather than establishing backend availability
+(`rules/compiler/compiler_known_members.md` §§ 59, 71–73, 91).
 
 **§ 12(4)** For a resolved callable, hover may additionally expose compiler-owned call-graph
 facts:

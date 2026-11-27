@@ -20,6 +20,7 @@ func TestDiagnosticCatalogSchemasContainEveryStructField(t *testing.T) {
 		fields []diagnosticCatalogField
 	}{
 		{name: "definition", typ: reflect.TypeOf(diagnosticCatalogDefinition{}), fields: diagnosticDefinitionFields},
+		{name: "argument definition", typ: reflect.TypeOf(diagnostics.ArgumentDefinition{}), fields: diagnosticArgumentFields},
 		{name: "semantic occurrence", typ: reflect.TypeOf(sema.Error{}), fields: semanticOccurrenceFields},
 		{name: "parser occurrence", typ: reflect.TypeOf(parser.Diagnostic{}), fields: parserOccurrenceFields},
 		{name: "token", typ: reflect.TypeOf(lexer.Token{}), fields: diagnosticTokenFields},
@@ -61,6 +62,9 @@ func TestBuildDiagnosticCatalogContainsEveryRegisteredDefinition(t *testing.T) {
 		if entry.ID != definition.ID ||
 			entry.Name != definition.Name ||
 			entry.Family != definition.Family ||
+			entry.Namespace != definition.Namespace || entry.Category != definition.Category ||
+			entry.ShortMessageKey != definition.ShortMessageKey || entry.ExplanationKey != definition.ExplanationKey ||
+			!reflect.DeepEqual(entry.Arguments, definition.Arguments) || !reflect.DeepEqual(entry.RelatedIDs, definition.RelatedIDs) ||
 			entry.DefaultSeverity != definition.DefaultSeverity ||
 			entry.Mandatory != definition.Mandatory ||
 			entry.Retired != definition.Retired {
@@ -212,5 +216,46 @@ func TestDiagnosticCatalogDetailIncludesExtendedExplanation(t *testing.T) {
 		if definition.ID == diagnostics.UnreachableStatement && (definition.Explanation == nil || len(definition.Explanation.Causes) == 0) {
 			t.Errorf("S3001 JSON explanation incomplete: %+v", definition.Explanation)
 		}
+	}
+}
+
+// Catalog JSON/detail/text project v2 metadata from the registry rather than
+// rebuilding namespace, message keys or argument schemas in CLI tooling.
+// Rules: rules/tooling/diagnostics.md — §§7,13-14.
+func TestDiagnosticDefinitionV2Export(t *testing.T) {
+	for _, args := range [][]string{{"--json"}, {diagnostics.InferredDecimalScale}, {}} {
+		var output bytes.Buffer
+		if err := runDiagnosticCatalogCommand(args, &output); err != nil {
+			t.Fatal(err)
+		}
+		text := output.String()
+		if len(args) > 0 && args[0] == "--json" {
+			var catalog diagnosticCatalog
+			if err := json.Unmarshal(output.Bytes(), &catalog); err != nil {
+				t.Fatal(err)
+			}
+			found := false
+			for _, d := range catalog.Definitions {
+				if d.ID == diagnostics.InferredDecimalScale {
+					found = true
+					if d.Namespace != diagnostics.NamespaceAdvisory || len(d.Arguments) != 6 || d.Arguments[3].Name != "selected_scale" || d.Arguments[3].Kind != diagnostics.ArgumentInteger || d.ShortMessageKey != "types.inferred-decimal-scale.message" {
+						t.Fatal(d)
+					}
+				}
+			}
+			if !found || catalog.Coverage.Complete {
+				t.Fatal("lost definition or overclaimed migration")
+			}
+		} else {
+			for _, want := range []string{"NAMESPACE", "selected_scale", "Integer", "types.inferred-decimal-scale.message"} {
+				if !strings.Contains(text, want) {
+					t.Fatalf("missing %s", want)
+				}
+			}
+		}
+	}
+	definition, _ := diagnostics.Lookup(diagnostics.InferredDecimalScale)
+	if newOccurrence(definition.ID, definition.DefaultSeverity, "sema", "test").Message.Key != definition.ShortMessageKey {
+		t.Fatal("emitted key differs from catalog")
 	}
 }

@@ -1,0 +1,10 @@
+module main
+
+fn Check(count: int) int {
+    assert count > 0, "count must be positive"
+    return count
+}
+
+fn main() int {
+    return Check(1)
+}

@@ -36,7 +36,7 @@ Value ownerOf(Operation *op) {
   if (isa<sec::DynamicArrayLenOp, sec::DynamicArrayLenIntOp, sec::DynamicArrayCapacityInternalOp,
           sec::DynamicArrayHasBackingOp, sec::DynamicArrayHasCapacityOp, sec::DynamicArrayIndexInBoundsOp,
           sec::DynamicArrayElementPlaceOp, sec::DynamicArrayAppendPreparedOp, sec::DynamicArrayAppendRangePreparedOp,
-          sec::DynamicArrayGrowBackingOp,
+          sec::DynamicArrayGrowBackingOp, sec::DynamicArrayClearOp, sec::DynamicArrayRemoveAtOp, sec::DynamicArrayPayloadSizeOp,
           sec::StorageEstablishDomainOp, sec::StorageAdvanceEpochOp, sec::StorageEndDomainOp,
           sec::StorageReclaimOp>(op))
     return op->getOperand(0);

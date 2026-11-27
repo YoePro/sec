@@ -1,0 +1,7 @@
+module main
+
+type Bag struct { Values: int[] }
+
+fn Contains(bag: ref Bag, needle: int) bool {
+    return needle in bag.Values
+}

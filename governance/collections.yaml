@@ -399,6 +399,8 @@ integrations:
       - internal/sema/compiler_known_presentation_test.go
       - cmd/lsp/compiler_known_definition_test.go
     implemented:
+      - "Dynamic-array payload SizeOf is an explicit operation (2026-11-27, TestDynamicArrayPayloadSizeVerifiesWithRealDialect, lit schema14-dynamic-array-payload-size.mlir and invalid-schema14-dynamic-array-payload-size.mlir): CKM-SIZEOF-VALUE on an owning T[] lowers to Semantic IR dynamic-array.payload-size with the element stride from Sema ResolvedElementStrideOf (canonical layout, never host widths) and to sec.dynamic_array.payload_size (v14 § 13D); byte[] has stride 1 and int[] 4/8 on 32/64-bit plans; an element without complete layout stays a named boundary."
+      - "Type-form T.SizeOf and value-form SizeOf of statically sized values use target-layout evaluation (2026-11-27, TestStaticSizeOfUsesTargetLayout): Sema publishes SizeOfTypeSubject and ResolvedTypeSizeOf over the canonical layout resolver; Semantic IR emits the size as a uint constant (int32 4, int16 2, int[3] 12/24 on 32/64-bit plans) and keeps value-form receiver effects."
       - "synthetic definitions (2026-10-04): every compiler-known member registry entry now carries signature, documentation, normative rule section, receiver pattern, and target restriction (internal/sema/compiler_known_synthetic.go, filled only where the builder left them empty); go-to-definition on a compiler-known member without an ordinary core declaration returns `sec-compiler-known:/<ID>.sec`, whose read-only text from sec/compilerKnownDefinition states compiler-known status, rule, receiver, effects, unsafe requirement, target, legacy spellings, and structural mutation before the signature line; the VS Code extension shows it through a content provider with Sec highlighting; hover shows the shared registry signature with the receiver-resolved result and rule (receiver-instantiated presentation completed on 2026-10-14). Tests: cmd/lsp/compiler_known_definition_test.go"
       - one canonical Sema registry supplies compiler and LSP member availability
       - Len, IsEmpty, Ptr, and property-form instance and associated SizeOf resolution
@@ -409,8 +411,8 @@ integrations:
       - Migrated remaining source-corpus compiler-known .len/.ptr uses to .Len/.Ptr in stdlib IPv4, target-width fixtures, Sema lifetime/unsafe/core-authority tests, backend fixtures and LSP tests (2026-10-14). Ordinary user fields such as StringBuilder.len and Buffer.len, and internal LLVM SSA suffixes, remain unchanged. Lowercase compatibility is retained deliberately in the fundamental-member and backend migration tests. Legacy MLIR now accepts canonical fixed-array Len as well as migration len, with identical lowering on 32-bit and 64-bit targets; member emission is extracted into a focused sibling file.
       - Receiver-instantiated registry signatures and synthetic definitions preserve concrete element, key, value, carrier and nominal types, while method-local generic parameters remain generic (2026-10-14). CompilerKnownDocumentationForType emits the same definition text for instance and associated APIs. LSP uses stable member-ID paths with receiver-instance queries, preventing navigation to list[int] from replacing list[string] metadata; the synchronized cache is bounded to 512 documents, unresolved or evicted instance URIs fail rather than silently returning generic text, and ID-only registry requests retain generic definitions. Iterator requirements use the same specialized presentation; ordinary core definitions retain source navigation.
     remaining:
-      - represent stable member IDs and collection payload-byte SizeOf explicitly in Semantic IR and lowering
-      - add target-layout evaluation and backend verification for instance and type SizeOf
+      - represent string-value and list payload-byte SizeOf in Semantic IR (string values need P23 string lowering; lists have no Semantic IR lowering yet)
+      - verify target-layout SizeOf constants against the backend data layout once P24 lowers physical layout
     revised: "2026-10-14"
     verification:
       - command: go test -race ./cmd/lsp -run 'CompilerKnown|SyntheticDefinition|CompilerInterfaceRequirement|IntrinsicDefinition|CoreOnlyDefinition' -count=1
@@ -430,7 +432,7 @@ integrations:
 
   - id: frontend.dynamic-array-public-api
     area: frontend-and-lowering
-    status: partial
+    status: implemented
     integrated: "2026-08-11"
     rules:
       - rules/collections/collections.md
@@ -441,6 +443,10 @@ integrations:
       - SEC-MLIR-P18
       - allocation-context semantics from P19 where required
     implemented:
+      - "RemoveAt extracts owned elements (2026-11-27, TestDynamicArrayRemoveAtSemanticIR, TestDynamicArrayRemoveAtVerifiesWithRealDialect): an element that is not trivially copyable and destructible leaves through the guarded dynamic-array.remove-at / sec.dynamic_array.remove_at as an owned value that Some constructs directly; the shifted suffix relocates within the backing and stays owned, preserving the initialized prefix; an unused result is implicitly discarded with the Option destruction plan (discard.md § 10). Verified by the Semantic IR verifier and --sec-verify-ownership/--sec-verify-destruction-plans on 32- and 64-bit plans (v14 § 13C). Native execution follows the dynamic-array LLVM lowering like every other P18 operation."
+      - "Clear reverse-destroys live elements that need destruction (2026-11-27, TestDynamicArrayClearSemanticIR, TestDynamicArrayClearVerifiesWithRealDialect, lit invalid-schema14-dynamic-array-clear.mlir): dynamic-array.clear / sec.dynamic_array.clear names the element type's destruction plan (the plan the array's own destroy-elements-reverse step uses), run over the initialized prefix in reverse logical index order before Len becomes 0; the backing and its epoch are retained. The Semantic IR verifier and --sec-verify-destruction-plans require the plan exactly when the element needs destruction and check it destroys the element type (v14 § 13B). Native execution follows the dynamic-array LLVM lowering like every other P18 operation."
+      - "RemoveAt of a trivially copyable element lowers end to end to verified schema 14 (2026-11-27, TestDynamicArrayRemoveAtSemanticIR, TestDynamicArrayRemoveAtVerifiesWithRealDialect, lit schema14-dynamic-array-remove-at.mlir and invalid-schema14-dynamic-array-remove-at.mlir): the total index-in-bounds predicate splits the path; the true edge runs the guarded Semantic IR dynamic-array.remove-at / sec.dynamic_array.remove_at (v14 § 13C: extract, shift the suffix left, decrement Len) and builds Some, the false edge builds None without mutation; no panic, allocation or epoch change. Other elements stay a named boundary."
+      - "Clear of a trivially destructible element lowers end to end to verified schema 14 (2026-11-27, TestDynamicArrayClearSemanticIR, TestDynamicArrayClearVerifiesWithRealDialect, lit schema14-dynamic-array-clear.mlir and invalid-schema14-dynamic-array-clear.mlir): Semantic IR dynamic-array.clear on the writable owner Place, sec.dynamic_array.clear (v14 § 13B) with its op verifier and the place/storage-transition owner lists; no allocation, failure path or epoch change. A non-trivially destructible element stays a named boundary."
       - Sema and LSP expose exactly Len, IsEmpty, Ptr, SizeOf, Append, Clear, RemoveAt, and ToString
       - byte, char, and rune arrays and slice views use distinct compiler-known ToString materialization identities; other concrete arrays retain the universal type-oriented fallback
       - Append validates element type and returns Result[void, CollectionError]
@@ -454,9 +460,7 @@ integrations:
       - "range-segment Append (2026-11-23; collections.md § 6.7, package18 §§ 35-37, 65-67): `values.Append(a..b)` of an integer or rune segment grows once by the segment count (all or nothing, failure leaves the owner unchanged) and appends with one compact dynamic-array.append-range-prepared / sec.dynamic_array.append_range_prepared; an empty segment establishes no backing and returns Ok. Tests: internal/ir/semantic/dynamic_array_range_append_test.go, TestSchema14DynamicArrays, mlir/test/Dialect/Sec/{schema14,invalid-schema14}-dynamic-array-range-append.mlir"
     partial:
       - "Started (moved to partial 2026-11-23; the text records the done part and what remains): transactional Append on the P18 growth substrate is implemented for trivially copyable and destructible elements, single-value and range segments (failed growth leaves the owner unchanged and yields CollectionError.AllocationFailed). Non-trivial elements wait for MD-135 (element ownership on failure)."
-    remaining:
-      - make Clear reverse-destroy live elements while retaining backing
-      - make RemoveAt return Option[T], compact the suffix, and preserve the initialized prefix
+    remaining: []
     tests:
       - internal/sema/compiler_known_members_test.go
       - internal/sema/range_segments_test.go
@@ -514,6 +518,9 @@ integrations:
       - cmd/lsp/fill_copyability_test.go
       - testdata/sema/fill_copyability_invalid.sec
     implemented:
+      - "Dynamic-array try fill(value, count) lowers through explicit allocation and CollectionError paths (2026-11-27, TestDynamicArrayFillSemanticIR, TestDynamicArrayFillVerifiesWithRealDialect): Sema publishes ResolvedDynamicArrayFillOf with a temporary owner and an allocation plan (AllocationDynamicArrayFill, identities from resolveAllocationIdentities); Semantic IR evaluates the value once, appends count copies to the temporary owner through the P18 growth protocol in a loop and moves it into Ok; a failed growth destroys the initialized prefix and yields Err(CollectionError.AllocationFailed) with no panic endpoint. Verified by the Semantic IR verifier and the schema-14 dynamic-array, storage-transition, place, ownership, destruction-plan and cleanup passes. Unsigned counts and non-negative integer literals are lowered."
+      - "Mutable-slice Fill(value) is a stable Semantic IR operation (2026-11-27, TestSliceFillSemanticIR, TestSliceFillVerifiesWithRealDialect, lit schema12-slice-fill.mlir and invalid-schema12-slice-fill.mlir): the builder reads the slice holder, evaluates the value once, validates the holder and emits one slice.fill, which shares the slice observation validity gate; it emits sec.slice.fill (v12 § 25A), verified for mutable-slice authority and element type and by --sec-verify-slice-guards like slice.len."
+      - "Fixed-array fill(value) is a stable Semantic IR operation (2026-11-27, TestFixedArrayFillSemanticIR, TestFixedArrayFillVerifiesWithRealDialect, lit schema10-array-fill.mlir and invalid-schema10-array-fill.mlir): Sema publishes IsFixedArrayFillCall; the builder evaluates the value once and emits one array.fill (zero length included), verified for element type, length and trivial copy; it emits sec.array.fill (v10 § 10A), which verifies value/element type and copy legality and joins Package 6 type conversion."
       - reserve fill as a compiler-known global and expose it through ordinary compiler/LSP function inventories
       - resolve fixed-array fill(value) from expected target element type and extent
       - resolve fallible dynamic-array fill(value, count) and string fill(fragment, count) from expected target type
@@ -522,8 +529,8 @@ integrations:
       - lower fixed-array fill to one source-value evaluation followed by one inline aggregate insertion per element without allocation, runtime helpers, memset, or a runtime fill symbol
       - Contextual fixed-array and owning-array fill require an ordinarily infallibly copyable element type before construction, including fixed extent zero and dynamic count zero (2026-10-14). Move-only, explicitly non-copyable and unresolved conditional elements receive mandatory S1156 collections.fill-element-not-copyable with source position and repeated-copy guidance. Mutable-slice Fill uses the same check and diagnostic; copyable struct elements and existing string fill remain valid. Fill inference is extracted into a focused sibling file. CLI rejects before lowering and preserves output, and LSP publishes the same diagnostic. This is frontend validation; dynamic/string fill lowering and stable Semantic IR operations remain tracked below.
     remaining:
-      - lower dynamic-array and string fill through explicit allocation and CollectionError paths
-      - represent fill and mutable-slice Fill as stable Semantic IR operations
+      - lower string fill(fragment, count) through explicit allocation and CollectionError paths (needs P23 string lowering)
+      - lower dynamic-array fill with a signed runtime count (blocked by decision MD-155; unsigned counts and non-negative literals are done)
     verification:
       - command: go vet ./internal/sema ./internal/diagnostics ./cmd/compiler ./cmd/lsp
         result: passed on 2026-10-14
@@ -595,19 +602,19 @@ integrations:
 
   - id: frontend.collection-errors
     area: frontend-and-core
-    status: partial
+    status: implemented
     integrated: "2026-08-11"
     rules:
       - rules/collections/collections.md
       - rules/library/core-library.md
       - rules/corrections/applied/md058-collection-capacity-reservation-correction-20261012.md
-    remaining:
-      - map lower-level AllocationError at collection API boundaries
+    remaining: []
     implemented:
+      - "AllocationError is mapped at the collection API boundary (2026-11-27, TestCollectionOperationsMapAllocationErrorAtBoundary): every allocation-capable collection producer lowered in Sec 0.1 (Append, range Append, ToRuneArray) reports AllocationError only on the dynamic-array.grow-backing failure edge, and that edge maps it to Err(CollectionError.AllocationFailed) before the result leaves the operation; Sema rejects propagating the public CollectionError into Result[_, AllocationError] without an explicit mapping. Unlowered producers (ToByteArray, list/map/set growth) fail closed in Semantic IR and carry the same Sema plan contract (FailureType CollectionError, AllocationFailureType AllocationError)."
       - "checked access keeps its access-specific error family (2026-11-09, TestCheckedAccessErrorFamilies): under try, fixed-array, list, owning T[], slice and map-key access fail with IndexError (a missing map key included, collections.md § 14.4) and slice ranges with RangeError; neither is accepted by a CollectionError channel"
       - The canonical compiler-known CollectionError definition is centralized in builtinCollectionErrorType with exactly AllocationFailed, CapacityExceeded and SizeOverflow, its existing uint enum representation and Error eligibility (2026-10-14). Fresh builtin registrations own their case metadata. Unknown cases and implicit AllocationError-to-CollectionError returns are rejected. Semantic IR preserves core::CollectionError, its three case identities and typed constant producers; real Sec MLIR verification preserves the same family on 32-bit and 64-bit scalar plans through current scalar/trivial passes. Native enum representation conversion and allocation-failure mapping are not implied by this normalization.
       - "Normal absence/rejection frontend contracts completed and centralized (2026-10-16): collection_outcomes.go owns dynamic-array/list RemoveAt -> Option[T], list Remove/Contains and map ContainsKey/set Remove/Contains -> bool, list IndexOf -> Option[uint], map Remove -> Option[V], and list Insert/set Add -> Result[bool, CollectionError]. Negative signed and compatible named RemoveAt indexes remain valid normal-outcome inputs; invalid Insert positions and duplicate Add are documented as Ok(false), with structural/resource errors kept separate. Sema, hover and synthetic definitions share receiver-specialized contracts for dynamic/bounded families. All-depth positive/negative typing, nominal payload identity and CLI/LSP presentation are verified. This closes the frontend result-contract point; executable removal/insertion/search implementations and ownership/growth mechanics remain in the corresponding collection/P18 work."
-    revised: "2026-10-16"
+    revised: "2026-11-27"
     summary: Canonical CollectionError identity and normal absence/rejection frontend result contracts are centralized. Sema and LSP share bool, Option and Result[bool, CollectionError] contracts; runtime collection algorithms, allocation-failure mapping and checked-access integration remain separate work.
     code:
       - internal/sema/collection_errors.go
@@ -616,6 +623,7 @@ integrations:
       - internal/sema/compiler_known_members.go
     tests:
       - internal/sema/collection_errors_test.go
+      - internal/ir/semantic/collection_allocation_boundary_test.go
       - internal/ir/semantic/collection_errors_test.go
       - internal/lowering/secmlir/collection_errors_test.go
       - testdata/sema/collection_errors_invalid.sec
@@ -639,3 +647,5 @@ integrations:
         result: passed on 2026-10-14; final stronger assertions verify core nominal identity and the exact case returned by each fixture producer
       - command: SEC_MLIR_BIN=$PWD/build/sec-mlir/bin go test ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir -count=1
         result: passed on 2026-10-14; full package suites, including real dialect verification of canonical CollectionError on 32-bit/64-bit plans; native enum conversion remains unavailable in the current maintained scalar pipeline
+      - command: go test ./internal/ir/semantic -run TestCollectionOperationsMapAllocationErrorAtBoundary; go test ./internal/traceability
+        result: "Passed on 2026-11-27: AllocationError stays on the growth failure edge and maps to Err(CollectionError.AllocationFailed) for Append, range Append and ToRuneArray; Result[_, AllocationError] propagation is rejected."

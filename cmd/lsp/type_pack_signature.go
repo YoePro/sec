@@ -112,7 +112,7 @@ func typePackTemplateSignatureHelp(analyzer *sema.Analyzer, call *ast.CallExpres
 			parameters[i] = parameterInformation{Label: labels[i]}
 		}
 		help.Signatures = append(help.Signatures, signatureInformation{
-			Label:         "fn " + qualifiedTemplateName(owner, function.Name) + "[..." + function.GenericTypePack + "](" + strings.Join(labels, ", ") + ") " + lspTypeName(function.ReturnType),
+			Label:         "fn " + qualifiedTemplateName(owner, function.Name) + genericHeaderDisplay(function.GenericParameters, function.GenericConstraints, function.GenericTypePack) + "(" + strings.Join(labels, ", ") + ") " + lspTypeName(function.ReturnType),
 			Parameters:    parameters,
 			Documentation: markupContent{Kind: "markdown", Value: "Type pack `" + function.GenericTypePack + "` is inferred from the trailing arguments once the call is complete."},
 		})

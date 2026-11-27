@@ -49,6 +49,19 @@ const (
 	// (package18 §§ 35, 65; collections.md § 6.7; P14 compact range segments).
 	OpDynamicArrayAppendRangePrepared OpKind = "dynamic-array.append-range-prepared"
 	OpDynamicArrayAllocate            OpKind = "dynamic-array.allocate"
+	// OpDynamicArrayClear destroys every live element in reverse logical
+	// index order, sets Len to 0 and retains the backing (collections.md
+	// § 6.8). It never allocates and never changes the backing epoch.
+	OpDynamicArrayClear OpKind = "dynamic-array.clear"
+	// OpDynamicArrayRemoveAt extracts the element at a guarded in-bounds
+	// index, shifts later live elements left and decrements Len, yielding
+	// the element (collections.md § 6.9). It never allocates and changes no
+	// backing epoch.
+	OpDynamicArrayRemoveAt OpKind = "dynamic-array.remove-at"
+	// OpDynamicArrayPayloadSize observes instance SizeOf: Len times the
+	// element layout stride (Integer) as a uint, without revalidating the
+	// product (collections.md § 3.4).
+	OpDynamicArrayPayloadSize OpKind = "dynamic-array.payload-size"
 )
 
 // BackingMetadata carries resolved Sema storage and allocation facts; it
@@ -215,6 +228,40 @@ func verifyDynamicArrayStorageOperation(types *TypeTable, op Operation, values m
 		}
 		if len(op.Operands) != 2 || len(op.Results) != 0 || values[op.Operands[1]].Type != array.Element {
 			return fmt.Errorf("dynamic-array.append-prepared transfers one element of the array's element type")
+		}
+	case OpDynamicArrayClear:
+		if _, err := dynamicArrayOwnerOperand(types, op, values, true); err != nil {
+			return err
+		}
+		if len(op.Operands) != 1 || len(op.Results) != 0 || op.Integer != nil || op.Backing != nil {
+			return fmt.Errorf("dynamic-array.clear takes only the writable owner Place and has no result or backing transition")
+		}
+		if op.Ownership != nil && (op.Ownership.DestructionPlan == "" || op.Ownership.Cause != "" || op.Ownership.IfOwned) {
+			return fmt.Errorf("dynamic-array.clear carries only its element destruction plan")
+		}
+	case OpDynamicArrayPayloadSize:
+		if _, err := dynamicArrayOwnerOperand(types, op, values, false); err != nil {
+			return err
+		}
+		result, ok := types.Lookup(op.Results[0].Type)
+		if len(op.Operands) != 1 || len(op.Results) != 1 || !ok || result.Kind != TypeUint || result.Name != "uint" || !result.TargetSize ||
+			op.Integer == nil || op.Integer.Sign() < 0 {
+			return fmt.Errorf("dynamic-array.payload-size observes the owner Place with a non-negative stride and yields uint")
+		}
+	case OpDynamicArrayRemoveAt:
+		array, err := dynamicArrayOwnerOperand(types, op, values, true)
+		if err != nil {
+			return err
+		}
+		if len(op.Operands) != 2 || len(op.Results) != 1 || !isBuiltinIntegerType(types, values[op.Operands[1]].Type) || op.Results[0].Type != array.Element {
+			return fmt.Errorf("dynamic-array.remove-at takes the writable owner Place and an integer index and yields one element")
+		}
+		if op.ArrayCheckKind != ArrayIndexRuntimeCheck || op.ArrayProofKind != ArrayIndexProofGuarded || op.ArrayGuard == 0 {
+			return fmt.Errorf("dynamic-array.remove-at requires its runtime index-in-bounds guard")
+		}
+		guard, ok := values[op.ArrayGuard]
+		if !ok || !typeHasKind(types, guard.Type, TypeBool) {
+			return fmt.Errorf("dynamic-array.remove-at guard is not a bool predicate")
 		}
 	case OpDynamicArrayAppendRangePrepared:
 		array, err := dynamicArrayOwnerOperand(types, op, values, true)
@@ -611,4 +658,274 @@ func (fb *functionBuilder) emitEnsuredAppend(owner builtValue, appendOp Operatio
 	grow(sema.BackingTransitionAdvanceEpoch, OpStorageAdvanceEpoch)
 	fb.current = appendBlock
 	fb.emit(appendOp)
+}
+
+// buildDynamicArrayClear lowers `values.Clear()` on an owning dynamic array
+// to one dynamic-array.clear on the writable owner Place: it destroys every
+// live element in reverse logical index order, sets Len to 0 and retains the
+// backing. An element that needs destruction names its type-level
+// destruction plan (the same element plan the array's own destroy-elements-
+// reverse step uses); a trivially destructible element carries none, so the
+// reverse destruction is vacuous. Clear never allocates, never fails and
+// does not change the backing epoch.
+// Rules: rules/collections/collections.md — § 6.8;
+// rules/memory/destruction.md — reverse element destruction.
+func (fb *functionBuilder) buildDynamicArrayClear(call *ast.CallExpression, member *ast.MemberExpression) (builtValue, error) {
+	token := member.Property.Token
+	if len(call.Arguments) != 0 {
+		return builtValue{}, fmt.Errorf("Clear takes no arguments")
+	}
+	receiver, ok := fb.owner.analyzer.TypeOf(member.Object)
+	if !ok {
+		return builtValue{}, fmt.Errorf("Clear receiver has no resolved type")
+	}
+	if receiver.Kind == sema.ReferenceType && receiver.Element != nil {
+		receiver = *receiver.Element
+	}
+	array, dynamic := sema.ResolveDynamicArrayPlan(receiver)
+	if !dynamic {
+		return builtValue{}, fb.unsupported("Clear on a receiver without a dynamic-array plan", token)
+	}
+	owner, err := fb.dynamicArrayOwnerPlace(member.Object)
+	if err != nil {
+		return builtValue{}, err
+	}
+	if typ, _ := fb.owner.module.Types.Lookup(owner.typ); !typ.Mutable {
+		return builtValue{}, fmt.Errorf("dynamic-array Clear on a read-only owner Place")
+	}
+	op := Operation{Kind: OpDynamicArrayClear, Operands: []ValueID{owner.id}, Location: location(token)}
+	if array.ElementRequiresDestruction {
+		planID, err := fb.owner.importDestructionPlans(sema.ResolveDestructionPlans(array.ElementType), array.ElementType)
+		if err != nil {
+			return builtValue{}, fb.unsupported("Clear element destruction plan: "+err.Error(), token)
+		}
+		op.Ownership = &OwnershipFacts{DestructionPlan: planID}
+	}
+	void, err := fb.owner.internType(sema.Type{Name: "void", Kind: sema.VoidType})
+	if err != nil {
+		return builtValue{}, err
+	}
+	fb.emit(op)
+	return builtValue{typ: void}, nil
+}
+
+// verifyClearElementPlan checks that a Clear names exactly the module plan of
+// its element type when that plan destroys anything, and no plan otherwise.
+// Rules: rules/collections/collections.md — § 6.8.
+func verifyClearElementPlan(module *Module, op Operation, values map[ValueID]Value) error {
+	place, _ := module.Types.Lookup(values[op.Operands[0]].Type)
+	array, _ := module.Types.Lookup(place.Element)
+	if op.Ownership != nil {
+		plan, err := destructionPlan(module, op.Ownership.DestructionPlan, array.Element)
+		if err != nil {
+			return fmt.Errorf("dynamic-array.clear element plan: %w", err)
+		}
+		if plan.Kind == "trivial" {
+			return fmt.Errorf("dynamic-array.clear names trivial element plan %q", plan.ID)
+		}
+		return nil
+	}
+	for _, plan := range module.DestructionPlans {
+		if plan.Type == array.Element && plan.Kind != "trivial" {
+			return fmt.Errorf("dynamic-array.clear of elements that need destruction lacks their plan %q", plan.ID)
+		}
+	}
+	return nil
+}
+
+// dynamicArrayMutatorCall reports a call of the compiler-known owning
+// dynamic-array Clear or RemoveAt once P18 lowering is enabled.
+// Rules: rules/collections/collections.md — §§ 6.8, 6.9.
+func (fb *functionBuilder) dynamicArrayMutatorCall(call *ast.CallExpression) (*ast.MemberExpression, string, bool) {
+	member, ok := call.Callee.(*ast.MemberExpression)
+	if !ok || member.Property == nil || fb.owner.maxPackage < dynamicArrayLoweringPackage {
+		return nil, "", false
+	}
+	site := member.Property.Token
+	known, ok := fb.owner.analyzer.CompilerKnownMemberAt(site.File, site.Line, site.Column)
+	if !ok || known.ID != "CKM-DYNAMIC-ARRAY-CLEAR" && known.ID != "CKM-DYNAMIC-ARRAY-REMOVEAT" {
+		return nil, "", false
+	}
+	return member, known.ID, true
+}
+
+// buildDynamicArrayRemoveAt lowers `values.RemoveAt(index)` for a trivially
+// copyable element: the total index-in-bounds predicate splits the path; the
+// in-bounds edge extracts the element with dynamic-array.remove-at (later
+// elements shift left, Len decrements, the former final slot becomes
+// uninitialized) and builds Some(element); the other edge builds None without
+// mutation. No allocation, panic or epoch change exists. An element that is
+// not trivially copyable and destructible is extracted as an owned value the
+// Option constructs directly; the shifted suffix stays owned by the array
+// (elements relocate within the backing, never copy).
+// Rules: rules/collections/collections.md — § 6.9;
+// rules/mlir/packages/sec-mlir-dialect_package18.md — § 15.
+func (fb *functionBuilder) buildDynamicArrayRemoveAt(call *ast.CallExpression, member *ast.MemberExpression) (builtValue, error) {
+	token := member.Property.Token
+	if len(call.Arguments) != 1 {
+		return builtValue{}, fmt.Errorf("RemoveAt takes one index")
+	}
+	receiver, ok := fb.owner.analyzer.TypeOf(member.Object)
+	if !ok {
+		return builtValue{}, fmt.Errorf("RemoveAt receiver has no resolved type")
+	}
+	if receiver.Kind == sema.ReferenceType && receiver.Element != nil {
+		receiver = *receiver.Element
+	}
+	array, dynamic := sema.ResolveDynamicArrayPlan(receiver)
+	if !dynamic {
+		return builtValue{}, fb.unsupported("RemoveAt on a receiver without a dynamic-array plan", token)
+	}
+	if array.ElementCopyClass == sema.CopyConditional {
+		return builtValue{}, fb.unsupported("RemoveAt of an element with unresolved ownership", token)
+	}
+	// A trivially copyable, trivially destructible element is an immediate
+	// value; any other element leaves the array as an owned value that the
+	// Option then owns (owning extraction, § 6.9).
+	owned := array.ElementCopyClass != sema.CopyTrivial || array.ElementRequiresDestruction
+	indexSema, ok := fb.owner.analyzer.TypeOf(call.Arguments[0])
+	if !ok || indexSema.Kind != sema.IntType && indexSema.Kind != sema.UintType {
+		return builtValue{}, fb.unsupported("RemoveAt with a non-built-in integer index", token)
+	}
+	resultSema, ok := fb.owner.analyzer.TypeOf(call)
+	if !ok {
+		return builtValue{}, fmt.Errorf("RemoveAt has no resolved result type")
+	}
+	resultType, err := fb.owner.internType(resultSema)
+	if err != nil {
+		return builtValue{}, err
+	}
+	some, none, ok := fb.optionVariants(resultType)
+	if !ok {
+		return builtValue{}, fb.unsupported("RemoveAt result without its Option definition", token)
+	}
+	owner, err := fb.dynamicArrayOwnerPlace(member.Object)
+	if err != nil {
+		return builtValue{}, err
+	}
+	if typ, _ := fb.owner.module.Types.Lookup(owner.typ); !typ.Mutable {
+		return builtValue{}, fmt.Errorf("dynamic-array RemoveAt on a read-only owner Place")
+	}
+	element, err := fb.owner.internType(array.ElementType)
+	if err != nil {
+		return builtValue{}, err
+	}
+	indexType, err := fb.owner.internType(indexSema)
+	if err != nil {
+		return builtValue{}, err
+	}
+	index, err := fb.buildExpr(call.Arguments[0], indexType)
+	if err != nil {
+		return builtValue{}, err
+	}
+	loc := location(token)
+	signed := indexSema.Kind == sema.IntType
+	boolean := fb.owner.module.Types.Intern(Type{Kind: TypeBool, Name: "bool"})
+	predicate := fb.result(Operation{Kind: OpDynamicArrayIndexInBounds, Operands: []ValueID{owner.id, index.id}, ArrayIndexSigned: signed, Location: loc}, boolean)
+	present, absent, join := fb.newBlock(), fb.newBlock(), fb.newBlock()
+	ownership, action := OwnershipImmediate, UnionPayloadCopyTrivial
+	if owned {
+		ownership, action = OwnershipOwned, UnionPayloadConstructDirect
+	}
+	joined := fb.newValue(resultType, ownership, loc)
+	join.Parameters = []Value{joined}
+	fb.emit(Operation{Kind: OpCondBranch, Operands: []ValueID{predicate.id}, Successors: []BranchTarget{{Block: present.ID}, {Block: absent.ID}}, Location: loc})
+
+	fb.current = present
+	removed := fb.newValue(element, ownership, loc)
+	fb.emit(Operation{
+		Kind: OpDynamicArrayRemoveAt, Operands: []ValueID{owner.id, index.id}, Results: []Value{removed}, ArrayIndexSigned: signed,
+		ArrayCheckKind: ArrayIndexRuntimeCheck, ArrayProofKind: ArrayIndexProofGuarded, ArrayGuard: predicate.id, Location: loc,
+	})
+	wrapped := fb.result(Operation{Kind: OpUnionConstruct, UnionVariant: some, Operands: []ValueID{removed.ID}, PayloadActions: []UnionPayloadAction{action}, Location: loc}, resultType)
+	fb.emit(Operation{Kind: OpBranch, Successors: []BranchTarget{{Block: join.ID, Arguments: []ValueID{wrapped.id}}}, Location: loc})
+
+	fb.current = absent
+	empty := fb.result(Operation{Kind: OpUnionConstruct, UnionVariant: none, Location: loc}, resultType)
+	fb.emit(Operation{Kind: OpBranch, Successors: []BranchTarget{{Block: join.ID, Arguments: []ValueID{empty.id}}}, Location: loc})
+
+	fb.current = join
+	return builtValue{id: joined.ID, typ: resultType}, nil
+}
+
+// buildDynamicArrayPayloadSize lowers instance `values.SizeOf` on an owning
+// dynamic array: the represented payload bytes Len times the element's
+// canonical layout stride under the target plan. The product is not
+// revalidated: growth already established a representable payload extent.
+// An element without complete layout stays a named boundary.
+// Rules: rules/collections/collections.md — § 3.4; rules/memory/layout.md — § 9.
+func (fb *functionBuilder) buildDynamicArrayPayloadSize(member *ast.MemberExpression) (builtValue, error) {
+	token := member.Property.Token
+	receiver, ok := fb.owner.analyzer.TypeOf(member.Object)
+	if !ok {
+		return builtValue{}, fmt.Errorf("SizeOf receiver has no resolved type")
+	}
+	if receiver.Kind == sema.ReferenceType && receiver.Element != nil {
+		receiver = *receiver.Element
+	}
+	array, dynamic := sema.ResolveDynamicArrayPlan(receiver)
+	if !dynamic {
+		return builtValue{}, fb.unsupported("SizeOf on a receiver without a dynamic-array plan", token)
+	}
+	stride, ok := fb.owner.analyzer.ResolvedElementStrideOf(array.ElementType)
+	if !ok {
+		return builtValue{}, fb.unsupported("dynamic-array SizeOf of an element without complete layout (P24)", token)
+	}
+	owner, err := fb.dynamicArrayOwnerPlace(member.Object)
+	if err != nil {
+		return builtValue{}, err
+	}
+	uintType, err := fb.owner.internType(sema.Type{Name: "uint", Kind: sema.UintType})
+	if err != nil {
+		return builtValue{}, err
+	}
+	return fb.result(Operation{Kind: OpDynamicArrayPayloadSize, Operands: []ValueID{owner.id}, Integer: stride, Location: location(token)}, uintType), nil
+}
+
+// buildStaticSizeOf lowers `T.SizeOf` and value-form SizeOf of a statically
+// sized value to the canonical layout size of the type under the target plan,
+// a uint constant. The value form keeps its receiver-expression effects: a
+// receiver other than a plain name is evaluated and, being trivially
+// destructible, dropped. Dynamic arrays, strings and slices have their own
+// payload observations and are not handled here; a type without complete
+// layout is left to the remaining paths.
+// Rules: rules/compiler/compiler_known_members.md — §§ 14(4), 15(4), 16(4);
+// rules/memory/layout.md — § 7.
+func (fb *functionBuilder) buildStaticSizeOf(member *ast.MemberExpression, typeForm bool) (builtValue, bool, error) {
+	var target sema.Type
+	var ok bool
+	if typeForm {
+		target, ok = fb.owner.analyzer.SizeOfTypeSubject(member)
+	} else {
+		target, ok = fb.owner.analyzer.TypeOf(member.Object)
+	}
+	if !ok {
+		return builtValue{}, false, nil
+	}
+	switch target.Kind {
+	case sema.StringType, sema.StringViewType, sema.SliceType, sema.ReferenceType:
+		return builtValue{}, false, nil
+	}
+	if _, dynamic := sema.ResolveDynamicArrayPlan(target); dynamic {
+		return builtValue{}, false, nil
+	}
+	size, sized := fb.owner.analyzer.ResolvedTypeSizeOf(target)
+	if !sized {
+		return builtValue{}, false, nil
+	}
+	if !typeForm {
+		if _, name := member.Object.(*ast.Identifier); !name {
+			if !fb.owner.triviallyDestructible(target) {
+				return builtValue{}, true, fb.unsupported("value-form SizeOf of a non-trivially destructible temporary", member.Property.Token)
+			}
+			if _, err := fb.buildExpr(member.Object, 0); err != nil {
+				return builtValue{}, true, err
+			}
+		}
+	}
+	uintType, err := fb.owner.internType(sema.Type{Name: "uint", Kind: sema.UintType})
+	if err != nil {
+		return builtValue{}, true, err
+	}
+	return fb.result(Operation{Kind: OpConstInt, Integer: size, Location: location(member.Property.Token)}, uintType), true, nil
 }

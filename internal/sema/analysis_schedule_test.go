@@ -165,9 +165,7 @@ func TestAnalyzerPublishesDependencyAndFixedPointSchedule(t *testing.T) {
 				}
 				seen[record.ID] = true
 			}
-			if len(records) != 11 || !seen["pitfalls"] {
-				t.Fatalf("missing pipeline stages: %+v", records)
-			}
+			assertRequiredAnalysisStages(t, records)
 			before := analyzer.AnalysisSchedule()
 			records[0].ID = "mutated"
 			records[0].Dependencies[0] = "mutated"
@@ -226,8 +224,30 @@ func TestAnalysisScheduleDoesNotTreatCompletionAsValidity(t *testing.T) {
 		if errors := analyzer.Analyze(program); len(errors) == 0 {
 			t.Fatal("completed schedule erased normative type error")
 		}
-		if len(analyzer.AnalysisSchedule()) != 11 {
-			t.Fatal("semantic recovery omitted execution provenance")
+		assertRequiredAnalysisStages(t, analyzer.AnalysisSchedule())
+	}
+}
+
+// assertRequiredAnalysisStages checks named producer coverage during both valid
+// analysis and semantic recovery without freezing the number of future stages.
+// Rules: rules/compiler/compiler_analysis.md §§9–10,60(1–3).
+func assertRequiredAnalysisStages(t *testing.T, records []AnalysisPassRecord) {
+	t.Helper()
+	seen := map[string]bool{}
+	for _, record := range records {
+		if seen[record.ID] {
+			t.Fatalf("duplicate pipeline stage %q", record.ID)
+		}
+		seen[record.ID] = true
+	}
+	for _, id := range []string{
+		"reference-summaries", "module-bodies", "callable-bodies",
+		"string-materializations", "no-panic", "no-alloc", "no-block",
+		"execution-context", "atomic-capability", "arena-demand-report",
+		"parameter-demand", "parameter-advice", "pitfalls",
+	} {
+		if !seen[id] {
+			t.Fatalf("missing pipeline stage %q: %+v", id, records)
 		}
 	}
 }

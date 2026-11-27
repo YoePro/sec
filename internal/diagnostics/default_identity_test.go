@@ -2,6 +2,7 @@ package diagnostics
 
 import (
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -16,7 +17,7 @@ func TestDefaultDiagnosticStableIdentities(t *testing.T) {
 		{ID: "S1137", Name: "backend.default-left-undefined", Family: "backend", DefaultSeverity: SeverityError, Mandatory: true},
 	} {
 		got, ok := Lookup(want.ID)
-		if !ok || got != want {
+		if !ok || !reflect.DeepEqual(got, definitionSnapshot(want)) {
 			t.Fatalf("definition %s = %+v (%v), want %+v", want.ID, got, ok, want)
 		}
 	}

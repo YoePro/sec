@@ -130,6 +130,16 @@ func integerLayoutWidth(typ Type) uint16 {
 	if typ.BitWidth > 0 {
 		return uint16(typ.BitWidth)
 	}
+	if typ.MaxInteger == nil && !typ.Named {
+		// A detached snapshot drops the integer domain; a fixed-width builtin
+		// is recovered from its canonical declaration, never guessed.
+		if builtin := builtinType(typ.Name); builtin.Kind == typ.Kind && (builtin.BitWidth > 0 || builtin.MaxInteger != nil) {
+			typ = builtin
+			if typ.BitWidth > 0 {
+				return uint16(typ.BitWidth)
+			}
+		}
+	}
 	if typ.MaxInteger == nil {
 		return 0
 	}

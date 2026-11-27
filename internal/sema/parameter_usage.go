@@ -157,6 +157,11 @@ type ParameterUsageAnalysis struct {
 	converged      bool
 	budget         ParameterUsageBudget
 	importCoverage ParameterImportCoverage
+	// cost resolves by-value copy cost through the canonical layout of the
+	// analyzer's plan; layoutIdentity is that plan's layout fingerprint, the
+	// recommendation-cache dependency that semantic demand does not have.
+	cost           *parameterCostModel
+	layoutIdentity string
 }
 
 func newParameterUsageAnalysis() *ParameterUsageAnalysis {
@@ -173,6 +178,7 @@ func (p *ParameterUsageAnalysis) clone() *ParameterUsageAnalysis {
 	result.converged = p.converged
 	result.budget = p.budget
 	result.importCoverage = p.importCoverage
+	result.cost, result.layoutIdentity = p.cost, p.layoutIdentity
 	for id, summary := range p.summaries {
 		copySummary := cloneParameterUsageCallableSummary(*summary)
 		result.summaries[id] = &copySummary
@@ -253,6 +259,8 @@ func buildParameterUsageAnalysis(program *ast.Program, analyzer *Analyzer) *Para
 		return builder.result
 	}
 	builder.result.budget = analyzer.parameterBudget
+	builder.result.cost = analyzer.parameterCostModel()
+	builder.result.layoutIdentity = analyzer.planFingerprints.Layout
 	for _, statement := range program.Statements {
 		switch statement := statement.(type) {
 		case *ast.FunctionDeclaration:
@@ -284,86 +292,6 @@ func parameterDemandHasShape(demand ParameterDemand, shape ParameterShapeDemand)
 		}
 	}
 	return false
-}
-
-func estimatedTypeSizeBytes(typ Type, visiting map[string]bool) (int64, bool) {
-	switch typ.Kind {
-	case BoolType, CharType:
-		return 1, true
-	case RuneType:
-		return 4, true
-	case IntType, UintType, FloatType:
-		return numericTypeSizeBytes(typ), true
-	case DecimalType:
-		return 16, true
-	case EnumType, RegisterType:
-		if typ.BitWidth > 0 {
-			return maxParameterSize(1, (typ.BitWidth+7)/8), true
-		}
-		if typ.RegisterWidth > 0 {
-			return maxParameterSize(1, (typ.RegisterWidth+7)/8), true
-		}
-		return 4, true
-	case StringType, ReferenceType, RawPtrType, SliceType, FunctionType:
-		return 16, true
-	case ArrayType:
-		length, ok := legacyArrayLength(typ)
-		if typ.Element == nil || !ok || length < 0 {
-			return 0, false
-		}
-		elementSize, ok := estimatedTypeSizeBytes(*typ.Element, visiting)
-		if !ok || length != 0 && elementSize > int64(^uint64(0)>>1)/length {
-			return 0, false
-		}
-		return elementSize * length, true
-	case StructType:
-		key := typeDisplayName(typ)
-		if visiting[key] {
-			return 0, false
-		}
-		visiting[key] = true
-		var total int64
-		for _, field := range typ.Fields {
-			fieldSize, ok := estimatedTypeSizeBytes(field.Type, visiting)
-			if !ok {
-				delete(visiting, key)
-				return 0, false
-			}
-			total += fieldSize
-		}
-		delete(visiting, key)
-		return total, true
-	case ResultType, UnionType:
-		var maxPayload int64
-		for _, argument := range typ.TypeArgs {
-			if size, ok := estimatedTypeSizeBytes(argument, visiting); ok && size > maxPayload {
-				maxPayload = size
-			}
-		}
-		for _, variant := range typ.UnionVariants {
-			if variant.Payload != nil {
-				if size, ok := estimatedTypeSizeBytes(*variant.Payload, visiting); ok && size > maxPayload {
-					maxPayload = size
-				}
-			}
-			var fields int64
-			fieldsOK := len(variant.PayloadFields) > 0
-			for _, field := range variant.PayloadFields {
-				size, ok := estimatedTypeSizeBytes(field.Type, visiting)
-				if !ok {
-					fieldsOK = false
-					break
-				}
-				fields += size
-			}
-			if fieldsOK && fields > maxPayload {
-				maxPayload = fields
-			}
-		}
-		return 8 + maxPayload, true
-	default:
-		return 0, false
-	}
 }
 
 func arrayElementDisplayName(typ Type) string {

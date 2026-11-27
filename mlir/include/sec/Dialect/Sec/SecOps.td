@@ -504,6 +504,14 @@ def Sec_ArrayDefaultOp : Sec_Op<"array.default", [Pure]> {
   let hasVerifier = 1;
 }
 
+// Contextual fill(value): every element is a trivial copy of the operand.
+def Sec_ArrayFillOp : Sec_Op<"array.fill", [Pure]> {
+  let summary = "Construct a fixed Sec array by copying one value into every element";
+  let arguments = (ins AnyType:$value);
+  let results = (outs AnyType:$result);
+  let hasVerifier = 1;
+}
+
 def Sec_ArrayLenOp : Sec_Op<"array.len", [Pure]> {
   let summary = "Return the exact compile-time length of a fixed Sec array";
   let arguments = (ins AnyType:$array);

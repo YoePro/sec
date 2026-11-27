@@ -658,7 +658,7 @@ public:
         sec::SliceRangeNormalizeOp, sec::SliceRangeCheckOp,
         sec::SliceBorrowSharedOp, sec::SliceBorrowMutOp,
         sec::SliceReborrowSharedOp, sec::SliceReborrowMutOp,
-        sec::SliceCopySharedOp, sec::SliceMoveMutOp, sec::SliceLenOp,
+        sec::SliceCopySharedOp, sec::SliceMoveMutOp, sec::SliceLenOp, sec::SliceFillOp,
         sec::SliceIndexInBoundsOp, sec::SliceElementPlaceOp>(
         [&](Operation *op) { return typeConverter.isLegal(op); });
     target.addDynamicallyLegalOp<
@@ -679,7 +679,7 @@ public:
         sec::UnionUnwrapPayloadOp, sec::UnionUnwrapFieldOp,
         sec::StructConstructOp, sec::StructSpreadFieldsOp,
         sec::StructExtractOp, sec::StructReplaceFieldOp,
-        sec::ArrayConstructOp, sec::ArrayDefaultOp, sec::ArrayLenOp,
+        sec::ArrayConstructOp, sec::ArrayDefaultOp, sec::ArrayFillOp, sec::ArrayLenOp,
         sec::ArrayIndexInBoundsOp, sec::ArrayExtractOp, sec::ArrayReplaceOp,
         sec::ArithmeticErrorFromReasonOp, sec::ResultOkOp, sec::ResultErrOp,
         sec::ResultIsErrOp, sec::ResultUnwrapOkOp, sec::ResultUnwrapErrOp,
@@ -742,6 +742,7 @@ public:
              // scalar type conversion without selecting physical layout.
              sec::ArrayConstructOp::getOperationName(),
              sec::ArrayDefaultOp::getOperationName(),
+             sec::ArrayFillOp::getOperationName(),
              sec::ArrayLenOp::getOperationName(),
              sec::ArrayIndexInBoundsOp::getOperationName(),
              sec::ArrayExtractOp::getOperationName(),
@@ -784,6 +785,7 @@ public:
              sec::SliceCopySharedOp::getOperationName(),
              sec::SliceMoveMutOp::getOperationName(),
              sec::SliceLenOp::getOperationName(),
+             sec::SliceFillOp::getOperationName(),
              sec::SliceIndexInBoundsOp::getOperationName(),
              sec::SliceElementPlaceOp::getOperationName()})
       patterns.add<ScalarSemanticIntegerLowering>(typeConverter, context,

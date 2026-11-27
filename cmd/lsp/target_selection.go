@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -173,14 +174,22 @@ func newLSPAnalyzerWithOverlay(uri string, program *ast.Program, overlay sourceO
 // sourceOverlay captures source text and selected project targets together.
 // Rules: rules/tooling/lsp.md — Snapshots and Target-aware analysis.
 type sourceOverlay struct {
-	Sources lspserver.SourceOverlay
-	Targets map[string]lspTargetSelection
+	workContext context.Context
+	Sources     lspserver.SourceOverlay
+	Targets     map[string]lspTargetSelection
 }
 
 // sourceOverlay copies mutable server configuration into an immutable request view.
 // Rules: rules/tooling/lsp.md — Snapshots, Target-aware analysis.
 func (s *server) sourceOverlay() sourceOverlay {
-	overlay := sourceOverlay{Sources: map[string]string{}}
+	return s.sourceOverlayContext(context.Background())
+}
+
+// sourceOverlayContext retains request cancellation separately from immutable
+// semantic input identity; cancellation never changes cache keys or Sec facts.
+// Rules: rules/tooling/lsp.md — Snapshots, §6.7(2–3).
+func (s *server) sourceOverlayContext(ctx context.Context) sourceOverlay {
+	overlay := sourceOverlay{Sources: map[string]string{}, workContext: ctx}
 	if s == nil {
 		return overlay
 	}

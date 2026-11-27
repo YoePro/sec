@@ -91,7 +91,7 @@ func unitActionValid(uri, text string, overlay sourceOverlay, baseline []diagnos
 	if edited == text {
 		return false
 	}
-	updated := sourceOverlay{Sources: map[string]string{}, Targets: overlay.Targets}
+	updated := sourceOverlay{Sources: map[string]string{}, Targets: overlay.Targets, workContext: overlay.workContext}
 	for file, source := range overlay.Sources {
 		updated.Sources[file] = source
 	}

@@ -38,7 +38,7 @@ func (e *emitter) emitSlice(function *semantic.Function, op semantic.Operation, 
 		semantic.OpSliceReborrowShared: "reborrow_shared", semantic.OpSliceReborrowMutable: "reborrow_mut",
 		semantic.OpSliceCopyShared: "copy_shared", semantic.OpSliceMoveMutable: "move_mut",
 		semantic.OpSliceLength: "len", semantic.OpSliceIndexInBounds: "index_in_bounds",
-		semantic.OpSliceElementPlace: "element_place",
+		semantic.OpSliceElementPlace: "element_place", semantic.OpSliceFill: "fill",
 	}
 	// MD-126: construction from a string Place and its rune count are string
 	// operations; length, copy and reborrow of a view reuse the shared
@@ -70,8 +70,10 @@ func (e *emitter) emitSlice(function *semantic.Function, op semantic.Operation, 
 	if op.Kind == semantic.OpSliceElementPlace {
 		properties = append(properties, "bounds_kind = "+mlirString(string(op.ArrayCheckKind)), "bounds_proof = "+mlirString(string(op.ArrayProofKind)))
 	}
-	if err := e.emitResults(op); err != nil {
-		return err
+	if len(op.Results) != 0 || op.Kind != semantic.OpSliceFill {
+		if err := e.emitResults(op); err != nil {
+			return err
+		}
 	}
 	operands := make([]string, len(op.Operands))
 	for i, operand := range op.Operands {

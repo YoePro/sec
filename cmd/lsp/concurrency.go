@@ -51,20 +51,26 @@ func (s *server) prepareConcurrentState() {
 // handleConcurrently runs one read-only request on a worker once a slot is
 // free; waiting for a slot applies back-pressure to the server loop.
 func (s *server) handleConcurrently(message rpcMessage, slots chan struct{}) {
+	ctx := s.beginAnalysisRequest(message.ID)
 	slots <- struct{}{}
 	s.workers.Add(1)
 	go func() {
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				fmt.Fprintf(os.Stderr, "lsp request %s panicked: %v\n", message.Method, recovered)
-				_ = s.respondError(message.ID, -32603, fmt.Sprintf("internal error in %s", message.Method))
+				if _, cancelled := recovered.(cancelledLSPAnalysis); cancelled {
+					_ = s.respondAnalysisCancellation(ctx, message.ID)
+				} else {
+					fmt.Fprintf(os.Stderr, "lsp request %s panicked: %v\n", message.Method, recovered)
+					_ = s.respondError(message.ID, -32603, fmt.Sprintf("internal error in %s", message.Method))
+				}
 			}
+			s.finishAnalysisRequest(message.ID)
 			<-slots
 			s.workers.Done()
 		}()
 		s.stateMu.RLock()
 		defer s.stateMu.RUnlock()
-		if err := s.handle(message); err != nil {
+		if err := s.handleAnalysisContext(ctx, message); err != nil {
 			fmt.Fprintf(os.Stderr, "lsp request %s failed: %v\n", message.Method, err)
 		}
 	}()
@@ -73,6 +79,9 @@ func (s *server) handleConcurrently(message rpcMessage, slots chan struct{}) {
 // handleOrdered handles a message on the server loop, exclusively when it
 // changes the settings or workspace fields that workers read.
 func (s *server) handleOrdered(message rpcMessage) error {
+	if cause, changed := analysisInputCancellation(message.Method); changed {
+		s.cancelAnalysisRequests(cause)
+	}
 	if stateMutatingMethod(message.Method) {
 		s.stateMu.Lock()
 		defer s.stateMu.Unlock()

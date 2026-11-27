@@ -143,7 +143,7 @@ func TestParameterRegressionProjectionWideningAndOrder(t *testing.T) {
 	interactive := analyze(AnalysisInteractive)
 	for _, name := range []string{"Recursive", "Alpha", "Beta"} {
 		parameter := parameterUsageSummaryNamed(t, interactive, name).Parameters[0]
-		if parameter.Demand.Precision == ParameterDemandExact || sharedReferenceRecommendation(parameter).Status == "recommended" {
+		if parameter.Demand.Precision == ParameterDemandExact || sharedReferenceRecommendation(parameter, testParameterCostModel(t)).Status == "recommended" {
 			t.Fatal("budget exhaustion strengthened recursive proof", name)
 		}
 	}
@@ -168,7 +168,7 @@ func TestParameterRegressionForeignUncertainty(t *testing.T) {
 			if parameter.Demand.Ownership != ParameterUnknownOwnership || parameter.Demand.Precision == ParameterDemandExact {
 				t.Fatal(name, parameter.Name, parameter.Demand)
 			}
-			if sharedReferenceRecommendation(parameter).Status == "recommended" {
+			if sharedReferenceRecommendation(parameter, testParameterCostModel(t)).Status == "recommended" {
 				t.Fatal("unknown foreign/callback capability recommended", name)
 			}
 		}
@@ -232,7 +232,7 @@ func TestParameterRegressionRecommendationPolicyIsolation(t *testing.T) {
 	for name, mutate := range cases {
 		parameter := cloneParameterUsageParameterSummary(read)
 		mutate(&parameter.Demand)
-		result := sharedReferenceRecommendation(parameter)
+		result := sharedReferenceRecommendation(parameter, testParameterCostModel(t))
 		if result.Status != "blocked" || len(result.Blockers) == 0 || result.Confidence != "" {
 			t.Fatal(name, result)
 		}
@@ -241,7 +241,7 @@ func TestParameterRegressionRecommendationPolicyIsolation(t *testing.T) {
 	for index := range small.DeclaredType.Fields {
 		small.DeclaredType.Fields[index].Type = builtinType("int8")
 	}
-	if sharedReferenceRecommendation(small).Status == "recommended" {
+	if sharedReferenceRecommendation(small, testParameterCostModel(t)).Status == "recommended" {
 		t.Fatal("cost policy ignores smaller copy")
 	}
 	if !parameterDemandsEqual(small.Demand, read.Demand) {
@@ -253,7 +253,7 @@ func TestParameterRegressionRecommendationPolicyIsolation(t *testing.T) {
 			t.Fatal("depth changed nonrecursive semantic demand", depth)
 		}
 	}
-	if !strings.Contains(sharedReferenceRecommendation(read).Candidate, "Frame") {
+	if !strings.Contains(sharedReferenceRecommendation(read, testParameterCostModel(t)).Candidate, "Frame") {
 		t.Fatal("candidate identity lost")
 	}
 }

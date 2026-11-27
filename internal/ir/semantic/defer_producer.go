@@ -368,7 +368,7 @@ func verifyHolderReads(fn *Function) error {
 				allowed := false
 				switch op.Kind {
 				case OpReferenceIsValid, OpReferenceDerefPlace, OpReferenceReborrowShared, OpReferenceReborrowMutable, OpReferenceCopyShared, OpReferenceCompare,
-					OpSliceLength, OpSliceIndexInBounds, OpSliceElementPlace, OpSliceReborrowShared, OpSliceReborrowMutable, OpSliceCopyShared,
+					OpSliceLength, OpSliceFill, OpSliceIndexInBounds, OpSliceElementPlace, OpSliceReborrowShared, OpSliceReborrowMutable, OpSliceCopyShared,
 					OpStringViewByteLength, OpStringViewDecodeNext, OpReferenceEndBorrow:
 					allowed = true
 				}

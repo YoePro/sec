@@ -98,6 +98,37 @@ def Sec_DynamicArrayAppendRangePreparedOp : Sec_Op<"dynamic_array.append_range_p
   let hasVerifier = 1;
 }
 
+// Section 13B (collections.md section 6.8): Clear sets the length to zero and
+// retains the backing; it never allocates or fails and changes no epoch. An
+// element that needs destruction names its element destruction plan, run in
+// reverse logical index order over the initialized prefix.
+def Sec_DynamicArrayClearOp : Sec_Op<"dynamic_array.clear"> {
+  let summary = "Clear a dynamic array, retaining its backing";
+  let arguments = (ins AnyType:$owner, OptionalAttr<StrAttr>:$destruction_plan);
+  let hasVerifier = 1;
+}
+
+// Section 13C (collections.md section 6.9): RemoveAt extracts the element at
+// a guarded in-bounds index, shifts later elements left and decrements the
+// length. It never allocates and changes no epoch. An element that is not
+// trivially copyable and destructible leaves as an owned value.
+def Sec_DynamicArrayRemoveAtOp : Sec_Op<"dynamic_array.remove_at"> {
+  let summary = "Extract a guarded element and compact the suffix";
+  let arguments = (ins AnyType:$owner, AnyType:$index, BoolAttr:$index_signed,
+                       StrAttr:$bounds_kind, StrAttr:$bounds_proof);
+  let results = (outs AnyType:$element);
+  let hasVerifier = 1;
+}
+
+// Section 13D (collections.md section 3.4): instance SizeOf is Len times the
+// element layout stride of the target plan, an unchecked uint observation.
+def Sec_DynamicArrayPayloadSizeOp : Sec_Op<"dynamic_array.payload_size", [NoMemoryEffect]> {
+  let summary = "Observe the represented payload bytes of a dynamic array";
+  let arguments = (ins AnyType:$owner, StrAttr:$stride);
+  let results = (outs AnyType:$size);
+  let hasVerifier = 1;
+}
+
 // Section 91: fallible backing establishment or growth with its static
 // canonical transition; failure leaves the owner unchanged.
 def Sec_DynamicArrayGrowBackingOp : Sec_Op<"dynamic_array.grow_backing"> {

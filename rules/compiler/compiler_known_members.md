@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-08-05
-- **Last updated:** 2026-11-07 (stable chapter, subsection, and paragraph numbering)
+- **Last updated:** 2026-11-27 (MD-109 static string materializers); 2026-11-07 (stable chapter, subsection, and paragraph numbering)
 - **Document revision:** 1
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/compiler/compiler_known_members.md`
@@ -264,6 +264,7 @@ a compiler-known type.
 **§ 5.4(2)** Examples:
 
 ```text
+string.FromByteArray(...)
 string.FromRuneArray(...)
 Arena.FromBuffer(...)
 Arena.WithCapacity(...)
@@ -325,6 +326,7 @@ bypass those contracts.
 value.Ptr
 value.Len
 value.SizeOf
+string.FromByteArray(bytes)
 string.FromRuneArray(runes)
 ```
 
@@ -1967,8 +1969,9 @@ let description := try bytes.ToString() // "byte[]"
 formatting contracts and never decode merely because their element type is
 `byte`; no `ToString()` overload advertises itself as a byte-to-text decoder.
 The signature stays the universal `Result[string, StringError]`. Decoding
-bytes is the standard-library operation `str.FromByteArray` /
-`str.FromByteArrayLossy` (`core-library.md` § 5.2). Char and rune sequence
+bytes uses the static core function `string.FromByteArray` (MD-109,
+`core-library.md` § 5.2); explicitly lossy decoding remains a distinct stdlib
+operation. Char and rune sequence
 semantics are unchanged.
 
 ---
@@ -2242,7 +2245,7 @@ requirements where applicable.
 
 ### § 69.1 Bytes
 
-**§ 69.1(1)** The standard-library `str.FromByteArray` accepts the canonical encoded bytes of
+**§ 69.1(1)** The static core `string.FromByteArray` accepts the canonical encoded bytes of
 every string, so decoding the array produced by `text.ToByteArray()` (borrowed
 with `ref`) reconstructs equivalent string content; only storage failure can
 occur (`StringError.Allocation`). The round trip never uses `byte[].ToString()`,
@@ -2262,7 +2265,7 @@ char-sequence `ToString()` keeps its own per-`char` interpretation (see
 "Char-sequence semantics") and is not changed into a UTF-8 byte decoder to make
 the round trip succeed. For ASCII content (`U+0000..U+007F`) one element per
 scalar is produced and the round trip reconstructs the text. Decoding a byte
-sequence back to text uses `str.FromByteArray` on `ToByteArray()` output.
+sequence back to text uses `string.FromByteArray` on `ToByteArray()` output.
 
 ---
 
@@ -2304,14 +2307,22 @@ direct language iteration.
 **§ 71(1)** The compiler-known/core surface includes:
 
 ```sec
-fn FromRuneArray(value: ref rune[]) Result[string, StringError]
+static fn FromByteArray(data: ref byte[]) Result[string, StringError]
+static fn FromRuneArray(data: ref rune[]) Result[string, StringError]
 ```
 
-**§ 71(2)** It borrows its input and materializes an independent string (MD-072,
-`core-library.md` § 5.2). There is no compiler-known or core
-`string.FromByteArray`: byte decoding is the standard-library
-`str.FromByteArray` (MD-091, 2026-10-18), and `string.FromByteArray(...)` is
-diagnosed with a pointer to it.
+**§ 71(2)** Both are static associated functions with no instance receiver, not
+instance methods or constructor casts. They borrow `data` for the call and
+return an independently owned immutable string without consuming, modifying,
+adopting or retaining a mutable alias to the source. Calls use
+`string.FromByteArray(bytes)` and `string.FromRuneArray(runes)` with ordinary
+borrowed argument syntax, never `<-` or an instance qualifier. Stable identities
+are `CKM-STRING-FROMBYTEARRAY` and `CKM-STRING-FROMRUNEARRAY`; core source,
+registry, signatures, semantic queries and LSP use those same identities.
+MD-072 established the borrowed rune result; MD-091 removed the former byte
+API; MD-109 restores the public static core route while preserving MD-091's
+byte `ToString()` type summary and private materializer authority. The exact
+ownership, allocation and failure contract is `core-library.md` § 5.2.
 
 **§ 71(3)** A `FromCharArray` constructor may be added when the canonical char/string model
 is finalized.
@@ -2333,9 +2344,9 @@ registry and privileged core declaration model.
 
 ## § 72 Internal core string materialization
 
-**§ 72(1)** `str.FromByteArray`'s strict decoding contract below is owned by
-`sec/stdlib/str/stdlib_str.md` (MD-091, 2026-10-18). The compiler provides one
-narrow capability that turns a validated byte sequence into a string:
+**§ 72(1)** The public strict decoder is the static core function
+`string.FromByteArray` (§ 71, MD-109). Beneath the public core API the compiler
+provides one narrow private capability that materializes a string from bytes:
 
 ```text
 canonical name: _stringFromUtf8
@@ -2347,39 +2358,44 @@ availability: loader-proven sec/core only (never stdlib; owner decision 2026-10-
 public visibility: none (no completion, no public documentation, no core declaration)
 ```
 
-**§ 72(2)** Only trusted core knows it; core may allocate only inside `ToString()`, so
-core uses it from `ToString` implementations (the core byte formatters in
-`sec/core/byte.sec`). It borrows its operand and never consumes, adopts,
-mutates or aliases it; it returns `StringError.InvalidUtf8(offset)` for
-malformed input and `StringError.Allocation` for storage failure. Authority is
-loader provenance (`SourceCore`), never path or module spelling. It is not a
-public decode path and is not callable as `string.FromByteArray`,
-`string(bytes)` or an implicit conversion. How standard-library code
-(`str.FromByteArray`, `str.Builder.Finish`, io, url) obtains a string from
-validated bytes is open as MD-109. Semantic IR and lowering of the operation
-belong to the string-materialization work of P23 and are not implemented
-yet.
+**§ 72(2)** Only loader-proven trusted core may invoke the private capability.
+Core prefers allocation-free algorithms but may allocate for explicit
+fundamental materialization APIs, including both § 71 functions, under their
+permitted allocation context and normal failure contract (MD-109). The private
+operation borrows its operand and never consumes, adopts, mutates or aliases
+it; malformed input returns `StringError.InvalidUtf8(offset)` and storage
+failure returns `StringError.Allocation`. Authority is loader provenance
+(`SourceCore`), never path or module spelling. Neither stdlib nor user code
+may call the intrinsic: they use `string.FromByteArray` or
+`string.FromRuneArray`. These public wrappers do not expose its private
+identity, create a `string(bytes)` cast or permit implicit conversion.
+Physical materialization remains owned by P23; public source declarations do
+not establish backend support.
 
 ### § 72.1 Strict decoding contract
 
-**§ 72.1(1)** `str.FromByteArray` decodes the borrowed input as strict UTF-8, the only
+**§ 72.1(1)** `string.FromByteArray` decodes the borrowed input as strict UTF-8, the only
 canonical string encoding (MD-050).
 
 **§ 72.1(2)** It does not assume zero termination.
 
-**§ 72.1(3)** It uses the represented array or slice bounds.
+**§ 72.1(3)** It uses exactly the represented byte-array bounds. NUL is data and
+a leading BOM is preserved; neither is a terminator or silently removed.
 
 **§ 72.1(4)** Malformed input returns `Err(StringError.InvalidUtf8(offset))` with the byte
 offset of the leading byte of the first malformed or truncated sequence; it
 never replaces, truncates, skips, panics or yields a partial string. Storage
 failure returns `StringError.Allocation`. The input is never consumed, mutated,
-adopted or aliased (`core-library.md` § 5.2).
+adopted or aliased; no partial string is published and cleanup follows the
+canonical allocation rules (`core-library.md` § 5.2). Overlong encodings,
+surrogates, out-of-range scalars and incomplete sequences are invalid, without
+replacement, normalization or an encoding fallback.
 
 ---
 
 ## § 73 `FromRuneArray`
 
-**§ 73(1)** `FromRuneArray` encodes the borrowed Unicode scalar sequence as canonical
+**§ 73(1)** Static `string.FromRuneArray(data: ref rune[])` encodes the borrowed Unicode scalar sequence as canonical
 UTF-8 and reports storage failure as `StringError.Allocation`.
 
 **§ 73(2)** Every `rune` is already a valid scalar, so safe input cannot produce
@@ -2941,6 +2957,16 @@ lowering category in analysis mode.
 **§ 91(3)** Examples:
 
 ```text
+string.FromByteArray
+    static fn FromByteArray(data: ref byte[]) Result[string, StringError]
+    no receiver; borrowed input; independent immutable result
+    strict UTF-8; InvalidUtf8(sequence-start byte offset) or Allocation
+
+string.FromRuneArray
+    static fn FromRuneArray(data: ref rune[]) Result[string, StringError]
+    no receiver; borrowed Unicode scalars; independent immutable result
+    canonical UTF-8; Allocation (no InvalidCodePoint for safe runes)
+
 Len
     compiler-known property
     result: uint
@@ -3196,7 +3222,8 @@ ToString
 ToByteArray
 ToCharArray
 ToRuneArray
-string.FromRuneArray
+string.FromByteArray (static, borrowed input)
+string.FromRuneArray (static, borrowed input)
 _stringFromUtf8 (internal, core only)
 byte-sequence ToString
 char-sequence ToString
@@ -3712,7 +3739,9 @@ global len recognition;
 value-form and type-form SizeOf type resolution;
 universal fallback and byte/char/rune-sequence ToString type resolution;
 string ToByteArray, ToCharArray, and ToRuneArray type resolution;
-string.FromRuneArray type resolution; internal _stringFromUtf8 authority (core only);
+both static string materializers: type-qualified lookup, borrowed input,
+independent result, instance-call and consuming-marker rejection;
+internal _stringFromUtf8 authority (core only);
 integer Min, Max, and Bits and floating representation property lookup;
 RawPtr Read, Write, VolatileRead, VolatileWrite, Offset, AddBytes, and Difference validation;
 stable CKM-RAWPTR-VOLATILE-READ and CKM-RAWPTR-VOLATILE-WRITE identities;

@@ -1,0 +1,12 @@
+module main
+
+// Unicode: Å🙂 — keep comment and exact bound spellings.
+type Negative decimal range -1.00..<0.000
+type Open decimal range 0.00..
+type Wide decimal range 0.001..1000000000000000000
+type Huge decimal range 0.001..10000000000000000000
+type Multi decimal range -100.00..100.00 range -10.000..10.000
+type Root decimal
+type Child Root range -1.00..<0.000
+type Explicit decimal scale 2 range 0..1
+type Inherited Explicit range 0..1

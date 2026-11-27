@@ -18,12 +18,18 @@ type diagnosticCatalogField struct {
 }
 
 type diagnosticCatalogDefinition struct {
-	ID              string               `json:"id"`
-	Name            string               `json:"name"`
-	Family          string               `json:"family"`
-	DefaultSeverity diagnostics.Severity `json:"default_severity"`
-	Mandatory       bool                 `json:"mandatory"`
-	Retired         bool                 `json:"retired"`
+	ID              string                           `json:"id"`
+	Name            string                           `json:"name"`
+	Family          string                           `json:"family"`
+	Namespace       diagnostics.Namespace            `json:"namespace"`
+	Category        string                           `json:"category,omitempty"`
+	Arguments       []diagnostics.ArgumentDefinition `json:"arguments"`
+	ShortMessageKey string                           `json:"short_message_key,omitempty"`
+	ExplanationKey  string                           `json:"explanation_key,omitempty"`
+	RelatedIDs      []string                         `json:"related_ids"`
+	DefaultSeverity diagnostics.Severity             `json:"default_severity"`
+	Mandatory       bool                             `json:"mandatory"`
+	Retired         bool                             `json:"retired"`
 	// Explanation is the optional extended documentation (§ 13(6)).
 	Explanation *diagnostics.Explanation `json:"explanation,omitempty"`
 }
@@ -46,6 +52,7 @@ type diagnosticCatalog struct {
 	Summary                  diagnosticCatalogSummary      `json:"summary"`
 	Coverage                 diagnosticCatalogCoverage     `json:"coverage"`
 	DefinitionFields         []diagnosticCatalogField      `json:"definition_fields"`
+	ArgumentDefinitionFields []diagnosticCatalogField      `json:"argument_definition_fields"`
 	SemanticOccurrenceFields []diagnosticCatalogField      `json:"semantic_occurrence_fields"`
 	ParserOccurrenceFields   []diagnosticCatalogField      `json:"parser_occurrence_fields"`
 	TokenFields              []diagnosticCatalogField      `json:"token_fields"`
@@ -57,13 +64,30 @@ var diagnosticDefinitionFields = []diagnosticCatalogField{
 	{Name: "ID", Type: "string", Required: true, Description: "Stable diagnostic identifier."},
 	{Name: "Name", Type: "string", Required: true, Description: "Stable symbolic diagnostic name."},
 	{Name: "Family", Type: "string", Required: true, Description: "Diagnostic rule family."},
+	{Name: "Namespace", Type: "DiagnosticNamespace", Required: true, Description: "Permanent ID namespace, independent of topic family."},
+	{Name: "Category", Type: "string", Required: false, Description: "Optional diagnostic policy grouping."},
+	{Name: "Arguments", Type: "[]DiagnosticArgumentDefinition", Required: true, Description: "Ordered typed argument schema; empty where producer migration is incomplete."},
+	{Name: "ShortMessageKey", Type: "string", Required: false, Description: "Stable registered short-message key."},
+	{Name: "ExplanationKey", Type: "string", Required: false, Description: "Extended-message key when registry documentation exists."},
+	{Name: "RelatedIDs", Type: "[]DiagnosticID", Required: true, Description: "Ordered related registered diagnostic identities."},
 	{Name: "DefaultSeverity", Type: "Severity", Required: true, Description: "Default error, warning, or information classification."},
 	{Name: "Mandatory", Type: "bool", Required: true, Description: "Whether configuration may suppress or demote the diagnostic."},
 	{Name: "Retired", Type: "bool", Required: true, Description: "Whether the stable identifier is reserved for a rule that is no longer emitted."},
 	{Name: "Explanation", Type: "*Explanation", Required: false, Description: "Extended documentation: short description, explanation, common causes, valid alternatives, example, related IDs and language version; omitted when the diagnostic has none yet."},
 }
 
+// diagnosticArgumentFields publishes the logical schema without treating
+// required=false as an untyped or unregistered argument.
+// Rules: rules/tooling/diagnostics.md — §§7(10-11),13(4).
+var diagnosticArgumentFields = []diagnosticCatalogField{
+	{Name: "Name", Type: "string", Required: true, Description: "Stable message argument name."},
+	{Name: "Kind", Type: "DiagnosticArgumentKind", Required: true, Description: "Closed logical argument kind."},
+	{Name: "Required", Type: "bool", Required: true, Description: "Whether occurrences require this argument."},
+	{Name: "Description", Type: "string", Required: true, Description: "Explanation of the producer-owned fact."},
+}
+
 var semanticOccurrenceFields = []diagnosticCatalogField{
+	{Name: "Arguments", Type: "map[string]string", Required: false, Description: "Detached producer-owned structured message facts."},
 	{Name: "ID", Type: "string", Required: false, Description: "Registered diagnostic identifier; empty on an unmigrated diagnostic."},
 	{Name: "Severity", Type: "Severity", Required: true, Description: "Effective severity for this occurrence."},
 	{Name: "ProofState", Type: "ProofState", Required: false, Description: "Explicit owner-supplied Valid, Invalid or Unproven; never inferred from severity or message."},
@@ -180,6 +204,12 @@ func writeDiagnosticDefinitionDetail(output io.Writer, id string) error {
 	fmt.Fprintf(w, "MANDATORY\t%t\n", definition.Mandatory)
 	fmt.Fprintf(w, "CONFIGURABLE\t%t\n", !definition.Mandatory)
 	fmt.Fprintf(w, "STATUS\t%s\n", status)
+	fmt.Fprintln(w, "\nLOGICAL DEFINITION")
+	fmt.Fprintf(w, "NAMESPACE\t%s\nCATEGORY\t%s\nSHORT_MESSAGE_KEY\t%s\nEXPLANATION_KEY\t%s\nRELATED_IDS\t%s\n", definition.Namespace, definition.Category, definition.ShortMessageKey, definition.ExplanationKey, strings.Join(definition.RelatedIDs, ", "))
+	for _, arg := range definition.Arguments {
+		fmt.Fprintf(w, "ARGUMENT\t%s\t%s\trequired=%t\t%s\n", arg.Name, arg.Kind, arg.Required, arg.Description)
+	}
+
 	if err := w.Flush(); err != nil {
 		return err
 	}
@@ -227,9 +257,10 @@ func buildDiagnosticCatalog() diagnosticCatalog {
 	catalog := diagnosticCatalog{
 		Coverage: diagnosticCatalogCoverage{
 			Complete: false,
-			Note:     "The catalog contains every registered definition. Some parser, semantic, compiler, and build diagnostics still use generic or empty IDs pending migration.",
+			Note:     "The catalog contains every registered definition. Some parser, semantic, compiler, and build diagnostics still use generic or empty IDs pending migration. Argument schemas and localized message catalogs also remain incomplete; empty metadata is not proof of complete occurrence coverage.",
 		},
 		DefinitionFields:         append([]diagnosticCatalogField(nil), diagnosticDefinitionFields...),
+		ArgumentDefinitionFields: append([]diagnosticCatalogField(nil), diagnosticArgumentFields...),
 		SemanticOccurrenceFields: append([]diagnosticCatalogField(nil), semanticOccurrenceFields...),
 		ParserOccurrenceFields:   append([]diagnosticCatalogField(nil), parserOccurrenceFields...),
 		TokenFields:              append([]diagnosticCatalogField(nil), diagnosticTokenFields...),
@@ -238,9 +269,12 @@ func buildDiagnosticCatalog() diagnosticCatalog {
 
 	for _, definition := range diagnostics.All() {
 		catalog.Definitions = append(catalog.Definitions, diagnosticCatalogDefinition{
-			ID:              definition.ID,
-			Name:            definition.Name,
-			Family:          definition.Family,
+			ID:        definition.ID,
+			Name:      definition.Name,
+			Family:    definition.Family,
+			Namespace: definition.Namespace, Category: definition.Category,
+			Arguments: definition.Arguments, ShortMessageKey: definition.ShortMessageKey,
+			ExplanationKey: definition.ExplanationKey, RelatedIDs: definition.RelatedIDs,
 			DefaultSeverity: definition.DefaultSeverity,
 			Mandatory:       definition.Mandatory,
 			Retired:         definition.Retired,
@@ -274,22 +308,23 @@ func writeDiagnosticCatalogText(output io.Writer, catalog diagnosticCatalog) err
 	fmt.Fprintf(w, "NOTE\t%s\n\n", catalog.Coverage.Note)
 
 	writeDiagnosticFieldTable(w, "DEFINITION FIELDS", catalog.DefinitionFields)
+	writeDiagnosticFieldTable(w, "ARGUMENT DEFINITION FIELDS", catalog.ArgumentDefinitionFields)
 	writeDiagnosticFieldTable(w, "SEMANTIC OCCURRENCE FIELDS", catalog.SemanticOccurrenceFields)
 	writeDiagnosticFieldTable(w, "PARSER OCCURRENCE FIELDS", catalog.ParserOccurrenceFields)
 	writeDiagnosticFieldTable(w, "TOKEN FIELDS", catalog.TokenFields)
 
 	fmt.Fprintln(w, "DIAGNOSTIC DEFINITIONS")
-	fmt.Fprintln(w, "ID\tNAME\tFAMILY\tDEFAULT_SEVERITY\tMANDATORY\tRETIRED")
+	fmt.Fprintln(w, "ID\tNAME\tFAMILY\tDEFAULT_SEVERITY\tMANDATORY\tRETIRED\tNAMESPACE\tCATEGORY\tSHORT_MESSAGE_KEY\tEXPLANATION_KEY\tRELATED_IDS\tARGUMENTS")
 	for _, definition := range catalog.Definitions {
 		fmt.Fprintf(
 			w,
-			"%s\t%s\t%s\t%s\t%t\t%t\n",
+			"%s\t%s\t%s\t%s\t%t\t%t\t%s\t%s\t%s\t%s\t%v\t%v\n",
 			definition.ID,
 			definition.Name,
 			definition.Family,
 			definition.DefaultSeverity,
 			definition.Mandatory,
-			definition.Retired,
+			definition.Retired, definition.Namespace, definition.Category, definition.ShortMessageKey, definition.ExplanationKey, definition.RelatedIDs, definition.Arguments,
 		)
 	}
 

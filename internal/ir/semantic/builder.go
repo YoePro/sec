@@ -1114,6 +1114,26 @@ func (fb *functionBuilder) buildStatements(statements []ast.Statement) error {
 				}
 				continue
 			}
+			if member, fill := fb.sliceFillCall(call); fill {
+				if _, err := fb.buildSliceFill(call, member); err != nil {
+					return err
+				}
+				continue
+			}
+			if member, id, known := fb.dynamicArrayMutatorCall(call); known {
+				if id == "CKM-DYNAMIC-ARRAY-REMOVEAT" {
+					// discard.md § 10: the unused Option is implicitly
+					// consumed at the end of the statement.
+					if err := fb.discardExpression(call, DiscardImplicitCallResult, call.Token); err != nil {
+						return err
+					}
+					continue
+				}
+				if _, err := fb.buildDynamicArrayClear(call, member); err != nil {
+					return err
+				}
+				continue
+			}
 			// An unused atomic result still performs its operation.
 			if _, handled, err := fb.buildAtomicObjectCall(call); handled {
 				if err != nil {
@@ -2275,9 +2295,14 @@ func (fb *functionBuilder) buildExpr(expr ast.Expression, expected TypeID) (buil
 				case "CKM-ISEMPTY-ARRAY":
 					return fb.buildDynamicArrayIsEmpty(e)
 				case "CKM-SIZEOF-VALUE":
-					return builtValue{}, fb.unsupported("dynamic-array SizeOf (Len * element layout stride needs the resolved layout of P24)", e.Property.Token)
+					return fb.buildDynamicArrayPayloadSize(e)
 				case "CKM-PTR-VALUE":
 					return builtValue{}, fb.unsupported("raw pointer to dynamic-array backing (P18-25 raw-pointer boundary)", e.Property.Token)
+				}
+			}
+			if resolved && (member.ID == "CKM-SIZEOF-TYPE" || member.ID == "CKM-SIZEOF-VALUE") {
+				if value, handled, err := fb.buildStaticSizeOf(e, member.ID == "CKM-SIZEOF-TYPE"); handled {
+					return value, err
 				}
 			}
 			if resolved && (member.ID == "CKM-STRINGVIEW-LEN" || member.ID == "CKM-STRINGVIEW-SIZEOF") && fb.owner.maxPackage >= sliceLoweringPackage {

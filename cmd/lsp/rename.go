@@ -49,7 +49,7 @@ func resolveRenameTarget(uri string, text string, pos position, overlay sourceOv
 	path := pathFromURI(uri)
 	prepareProgramForLSP(program, path, overlay)
 	analyzer := newLSPAnalyzerWithOverlay(uri, program, overlay)
-	analyzer.Analyze(program)
+	analyzeCompilerSnapshot(analyzer, program, overlay)
 	if analyzer.IsUnitMetadataSymbolAt(use.File, use.Line, use.Column) {
 		return renameTarget{}, fmt.Errorf("%s is a fixed unit metadata member and cannot be renamed", use.Lexeme)
 	}
@@ -99,7 +99,7 @@ func renameForSource(uri string, text string, pos position, newName string, over
 	}
 	// The edited document's current text is authoritative even when the
 	// caller's overlay does not carry it.
-	current := sourceOverlay{Sources: map[string]string{}, Targets: overlay.Targets}
+	current := sourceOverlay{Sources: map[string]string{}, Targets: overlay.Targets, workContext: overlay.workContext}
 	for key, value := range overlay.Sources {
 		current.Sources[key] = value
 	}
@@ -117,7 +117,7 @@ func renameForSource(uri string, text string, pos position, newName string, over
 	}
 
 	// Semantic safety: the renamed program must not gain errors.
-	renamedOverlay := sourceOverlay{Sources: map[string]string{}, Targets: overlay.Targets}
+	renamedOverlay := sourceOverlay{Sources: map[string]string{}, Targets: overlay.Targets, workContext: overlay.workContext}
 	for key, value := range overlay.Sources {
 		renamedOverlay.Sources[key] = value
 	}

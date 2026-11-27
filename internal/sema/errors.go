@@ -19,6 +19,8 @@ type RelatedLocation struct {
 }
 
 type Error struct {
+	// Arguments are producer-owned structured message facts, detached by snapshot queries.
+	Arguments      map[string]string
 	ID             string
 	Severity       diagnostics.Severity
 	ProofState     diagnostics.ProofState

@@ -124,7 +124,22 @@ func (fb *functionBuilder) buildDynamicArrayLength(source ast.Expression, token 
 // dynamicArrayOwnerPlace is the Place of a dynamic-array owner held by a
 // binding: its owned storage, a defer capture, or the read-only root of an
 // SSA value. Other owners are a named boundary.
+// Rules: rules/foundations/operators.md — §67(2);
+// rules/memory/reference_model.md — reference-mediated Place access;
+// rules/mlir/packages/sec-mlir-dialect_package18.md — §§49-50,74.
 func (fb *functionBuilder) dynamicArrayOwnerPlace(source ast.Expression) (builtValue, error) {
+	if use, ok := fb.owner.analyzer.ResolvedReferenceUseOf(source); ok {
+		place, _, err := fb.derefUsePlace(source, use)
+		if err != nil {
+			return builtValue{}, err
+		}
+		typ, _ := fb.owner.module.Types.Lookup(place.typ)
+		element, _ := fb.owner.module.Types.Lookup(typ.Element)
+		if typ.Kind != TypePlace || element.Kind != TypeDynamicArray {
+			return builtValue{}, fb.unsupported("reference observation without a dynamic-array owner Place (P18-23)", expressionToken(source))
+		}
+		return place, nil
+	}
 	if member, ok := source.(*ast.MemberExpression); ok {
 		return fb.dynamicArrayFieldOwnerPlace(member)
 	}
@@ -425,17 +440,18 @@ func (fb *functionBuilder) buildDynamicArrayIsEmpty(expr *ast.MemberExpression) 
 }
 
 // dynamicArrayMemberBoundary names the owning-array members schema 14 cannot
-// represent: every method other than Append (planned growth) that has no
-// resolved user target, such as Clear and RemoveAt, which remove elements or
-// shrink the length; ToString keeps its P23 string boundary. No schema-14 operation does either (P18 § 81), so the
-// call stops at a named boundary instead of an unresolved call.
+// represent: every method other than Append (planned growth) and Clear
+// (dynamic-array.clear, v14 § 13B) that has no resolved user target, such as
+// RemoveAt, which removes an element and shrinks the length; ToString keeps
+// its P23 string boundary. The call stops at a named boundary instead of an
+// unresolved call.
 // Rules: rules/mlir/packages/sec-mlir-dialect_package18.md — §§ 81, 131–132.
 func (fb *functionBuilder) dynamicArrayMemberBoundary(call *ast.CallExpression) (error, bool) {
 	member, ok := call.Callee.(*ast.MemberExpression)
 	if !ok || member.Property == nil || fb.owner.maxPackage < dynamicArrayLoweringPackage || !fb.receiverIsDynamicArray(member.Object) {
 		return nil, false
 	}
-	if member.Property.Value == "ToString" {
+	if member.Property.Value == "ToString" || member.Property.Value == "Clear" || member.Property.Value == "RemoveAt" {
 		// String materialization keeps its own P23 boundary.
 		return nil, false
 	}

@@ -120,7 +120,7 @@ func stringTryCodeActions(uri, text string, requested lspRange, reported []diagn
 	})
 	prepareProgramForLSP(parsed.Program, path, overlay)
 	analyzer := newLSPAnalyzerWithOverlay(uri, parsed.Program, overlay)
-	baseline := len(analyzer.Analyze(parsed.Program))
+	baseline := len(analyzeCompilerSnapshot(analyzer, parsed.Program, overlay))
 	candidates := []stringTryCandidate{}
 	for index := range reported {
 		report := &reported[index]
@@ -171,13 +171,13 @@ func verifiedStringTryActions(uri, text string, candidates []stringTryCandidate,
 		if checked.Fatal || len(checked.Diagnostics) != 0 {
 			continue
 		}
-		updated := sourceOverlay{Sources: map[string]string{}, Targets: overlay.Targets}
+		updated := sourceOverlay{Sources: map[string]string{}, Targets: overlay.Targets, workContext: overlay.workContext}
 		for file, source := range overlay.Sources {
 			updated.Sources[file] = source
 		}
 		updated.Sources[normalizedSourcePath(path)] = edited
 		prepareProgramForLSP(checked.Program, path, updated)
-		remaining := len(newLSPAnalyzerWithOverlay(uri, checked.Program, updated).Analyze(checked.Program))
+		remaining := len(analyzeCompilerSnapshot(newLSPAnalyzerWithOverlay(uri, checked.Program, updated), checked.Program, updated))
 		if candidate.report != nil && remaining >= baseline || candidate.report == nil && remaining > baseline {
 			continue
 		}

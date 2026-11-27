@@ -169,7 +169,9 @@ func registeredIdentity(id string) (*string, *string, bool) {
 func newOccurrence(id string, severity diagnostics.Severity, source string, text string) emittedOccurrence {
 	identity, name, unregistered := registeredIdentity(id)
 	key := "unregistered.message"
-	if name != nil {
+	if definition, ok := diagnostics.Lookup(id); ok && definition.ShortMessageKey != "" {
+		key = definition.ShortMessageKey
+	} else if name != nil {
 		key = *name + ".message"
 	}
 	return emittedOccurrence{

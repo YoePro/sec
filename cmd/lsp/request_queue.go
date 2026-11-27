@@ -20,7 +20,10 @@ type requestQueue struct {
 	readErr error
 	// cancelled holds the IDs of queued requests the client cancelled with
 	// $/cancelRequest before they were handled.
-	cancelled map[string]bool
+	cancelled          map[string]bool
+	startAnalysis      func(json.RawMessage)
+	cancelAnalysis     func(json.RawMessage)
+	invalidateAnalyses func(error)
 }
 
 // queueDisposition tells the handler loop how to answer a dequeued message.
@@ -47,13 +50,16 @@ func newRequestQueue() *requestQueue {
 func (q *requestQueue) push(message rpcMessage) {
 	q.mu.Lock()
 	if message.Method == "$/cancelRequest" {
-		// A cancellation only matters while the request is still queued; one
-		// for a request already handled is dropped, so nothing accumulates.
+		// Pending requests retain queue cancellation; dequeued requests are
+		// cancelled through the active registry. Unknown IDs never accumulate.
 		var params struct {
 			ID json.RawMessage `json:"id"`
 		}
 		if json.Unmarshal(message.Params, &params) == nil {
 			id := requestKey(params.ID)
+			if q.cancelAnalysis != nil {
+				q.cancelAnalysis(params.ID)
+			}
 			for _, item := range q.items {
 				if len(item.ID) > 0 && requestKey(item.ID) == id {
 					if q.cancelled == nil {
@@ -67,6 +73,9 @@ func (q *requestQueue) push(message rpcMessage) {
 		q.mu.Unlock()
 		return
 	}
+	if cause, changed := analysisInputCancellation(message.Method); changed && q.invalidateAnalyses != nil {
+		q.invalidateAnalyses(cause)
+	}
 	q.items = append(q.items, message)
 	q.mu.Unlock()
 	q.ready.Signal()
@@ -75,6 +84,9 @@ func (q *requestQueue) push(message rpcMessage) {
 // close ends the queue after the remaining items; err is nil at end of input.
 func (q *requestQueue) close(err error) {
 	q.mu.Lock()
+	if q.invalidateAnalyses != nil {
+		q.invalidateAnalyses(nil)
+	}
 	q.closed = true
 	q.readErr = err
 	q.mu.Unlock()
@@ -104,6 +116,9 @@ func (q *requestQueue) next() (rpcMessage, queueDisposition, bool) {
 		if isDeferrableAnalysisRequest(message.Method) && supersededByQueuedEdit(message, q.items) {
 			return message, dispositionContentModified, true
 		}
+	}
+	if len(message.ID) > 0 && isDeferrableAnalysisRequest(message.Method) && q.startAnalysis != nil {
+		q.startAnalysis(message.ID)
 	}
 	return message, dispositionHandle, true
 }
@@ -191,6 +206,9 @@ func isPriorityFormattingRequest(method string) bool {
 func isDeferrableAnalysisRequest(method string) bool {
 	switch method {
 	case "textDocument/hover",
+		"sec/tests",
+		"textDocument/prepareRename",
+		"textDocument/rename",
 		"textDocument/completion",
 		"textDocument/semanticTokens/full",
 		"textDocument/definition",

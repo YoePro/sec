@@ -1,0 +1,5 @@
+module main
+
+fn Shared[...Types](prefix: string, values: ...ref Types) void {}
+fn Use() void {
+    Shared("a", missing,

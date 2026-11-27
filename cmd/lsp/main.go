@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -279,14 +280,17 @@ type server struct {
 	documentSnapshots         *lspserver.Documents
 	diagnosticTimers          map[string]*time.Timer //
 	diagnosticGeneration      map[string]uint64
-	diagnosticDependencies    map[string]map[string]bool // timerMu protects the published module source universe
-	publishedProjectManifests map[string]bool            // timerMu protects manifest error publication/clearing
+	diagnosticCancels         map[string]context.CancelFunc // timerMu protects running compiler work
+	diagnosticDependencies    map[string]map[string]bool    // timerMu protects the published module source universe
+	publishedProjectManifests map[string]bool               // timerMu protects manifest error publication/clearing
 	diagnosticWorkMu          sync.Mutex
 	diagnosticsStopped        bool
 	diagnosticDelay           time.Duration //
 	writeMu                   sync.Mutex    //
-	timerMu                   sync.Mutex    //
-	shutdown                  bool          //
+	requestMu                 sync.Mutex
+	analysisRequests          map[string]runningAnalysisRequest
+	timerMu                   sync.Mutex //
+	shutdown                  bool       //
 	workspaceRoots            []string
 	workspaceSymbols          *workspaceSymbolIndex
 	workspaceSymbolLazyRanges bool
@@ -339,6 +343,9 @@ func main() {
 func (s *server) run() error {
 	defer s.stopDiagnosticTimers()
 	queue := newRequestQueue()
+	queue.startAnalysis = func(id json.RawMessage) { s.beginAnalysisRequest(id) }
+	queue.cancelAnalysis = s.cancelAnalysisRequest
+	queue.invalidateAnalyses = s.cancelAnalysisRequests
 	enableAnalysisCache()
 	defer disableAnalysisCache()
 	s.prepareConcurrentState()
@@ -390,6 +397,16 @@ func (s *server) run() error {
 }
 
 func (s *server) handle(message rpcMessage) error {
+	return s.handleAnalysisContext(context.Background(), message)
+}
+
+// handleAnalysisContext binds read-only semantic queries and response validity
+// to the same request context while retaining ordered notification handling.
+// Rules: rules/tooling/lsp.md — Snapshots, Responsiveness model, §6.7(2–3).
+func (s *server) handleAnalysisContext(ctx context.Context, message rpcMessage) error {
+	if ctx.Err() != nil {
+		return s.respondAnalysisCancellation(ctx, message.ID)
+	}
 	switch message.Method {
 	case "initialize":
 		var params initializeParams
@@ -407,7 +424,7 @@ func (s *server) handle(message rpcMessage) error {
 			s.updateParameterInsight(params.InitializationOptions)
 			s.updatePitfallSettings(params.InitializationOptions)
 		}
-		return s.respond(message.ID, map[string]any{
+		return s.respondAnalysis(ctx, message.ID, map[string]any{
 			"capabilities": map[string]any{
 				"textDocumentSync": map[string]any{
 					"openClose":         true,
@@ -490,12 +507,12 @@ func (s *server) handle(message rpcMessage) error {
 		if s.workspaceSymbols == nil {
 			s.workspaceSymbols = newWorkspaceSymbolIndex()
 		}
-		overlay := s.sourceOverlay()
+		overlay := s.sourceOverlayContext(ctx)
 		symbols := workspaceSymbolsForQuery(s.workspaceSymbols, s.workspaceRoots, params.Query, overlay)
 		if s.workspaceSymbolLazyRanges {
-			return s.respond(message.ID, s.workspaceSymbols.unresolvedSymbols(symbols))
+			return s.respondAnalysis(ctx, message.ID, s.workspaceSymbols.unresolvedSymbols(symbols))
 		}
-		return s.respond(message.ID, symbols)
+		return s.respondAnalysis(ctx, message.ID, symbols)
 	case "workspaceSymbol/resolve":
 		return s.handleWorkspaceSymbolResolve(message)
 	case "workspace/didChangeConfiguration":
@@ -510,7 +527,7 @@ func (s *server) handle(message rpcMessage) error {
 		}
 		return s.republishOpenDiagnostics()
 	case "sec/tests":
-		return s.handleTestDiscovery(message)
+		return s.handleTestDiscoveryContext(ctx, message)
 	case "textDocument/codeLens":
 		var params codeLensParams
 		if err := json.Unmarshal(message.Params, &params); err != nil {
@@ -518,9 +535,9 @@ func (s *server) handle(message rpcMessage) error {
 		}
 		snapshot, ok := s.documentSnapshots.Snapshot(params.TextDocument.URI)
 		if !ok {
-			return s.respond(message.ID, []codeLens{})
+			return s.respondAnalysis(ctx, message.ID, []codeLens{})
 		}
-		return s.respond(message.ID, unresolvedConformanceCodeLenses(params.TextDocument.URI, snapshot.Text))
+		return s.respondAnalysis(ctx, message.ID, unresolvedConformanceCodeLenses(params.TextDocument.URI, snapshot.Text))
 	case "codeLens/resolve":
 		return s.handleCodeLensResolve(message)
 	case "inlayHint/resolve":
@@ -532,9 +549,9 @@ func (s *server) handle(message rpcMessage) error {
 		}
 		snapshot, ok := s.documentSnapshots.Snapshot(params.TextDocument.URI)
 		if !ok {
-			return s.respond(message.ID, []inlayHint{})
+			return s.respondAnalysis(ctx, message.ID, []inlayHint{})
 		}
-		return s.respond(message.ID, s.documentInlayHints(params.TextDocument.URI, snapshot.Text, params.Range))
+		return s.respondAnalysis(ctx, message.ID, s.documentInlayHints(params.TextDocument.URI, snapshot.Text, params.Range))
 	case "workspace/didChangeWatchedFiles":
 		s.updatePitfallSettings(nil)
 		// Analysis configuration is read from the project manifest for each
@@ -544,7 +561,7 @@ func (s *server) handle(message rpcMessage) error {
 	case "shutdown":
 		s.shutdown = true
 		s.stopDiagnosticTimers()
-		return s.respond(message.ID, nil)
+		return s.respondAnalysis(ctx, message.ID, nil)
 	case "exit":
 		if s.shutdown {
 			os.Exit(0)
@@ -613,7 +630,7 @@ func (s *server) handle(message rpcMessage) error {
 		if err := json.Unmarshal(message.Params, &params); err != nil {
 			return err
 		}
-		return s.respond(message.ID, []textEdit{})
+		return s.respondAnalysis(ctx, message.ID, []textEdit{})
 	case "textDocument/rangeFormatting", "textDocument/onTypeFormatting":
 		return s.handleSelectionFormatting(message)
 	case "textDocument/formatting":
@@ -625,7 +642,7 @@ func (s *server) handle(message rpcMessage) error {
 		if err != nil {
 			return s.respondError(message.ID, -32603, err.Error())
 		}
-		return s.respond(message.ID, edits)
+		return s.respondAnalysis(ctx, message.ID, edits)
 	case "textDocument/codeAction":
 		var params codeActionParams
 		if err := json.Unmarshal(message.Params, &params); err != nil {
@@ -633,20 +650,21 @@ func (s *server) handle(message rpcMessage) error {
 		}
 		snapshot, ok := s.documentSnapshots.Snapshot(params.TextDocument.URI)
 		if !ok {
-			return s.respond(message.ID, []codeAction{})
+			return s.respondAnalysis(ctx, message.ID, []codeAction{})
 		}
-		actions := ownershipCodeActions(params.TextDocument.URI, snapshot.Text, params.Context.Diagnostics, s.sourceOverlay())
+		actions := ownershipCodeActions(params.TextDocument.URI, snapshot.Text, params.Context.Diagnostics, s.sourceOverlayContext(ctx))
 		if borrowRefactoringRequested(params.Context.Only) {
-			actions = append(actions, borrowCodeActions(params.TextDocument.URI, snapshot.Text, params.Context.Diagnostics, s.sourceOverlay())...)
+			actions = append(actions, borrowCodeActions(params.TextDocument.URI, snapshot.Text, params.Context.Diagnostics, s.sourceOverlayContext(ctx))...)
 		}
-		actions = append(actions, defaultCodeActions(params.TextDocument.URI, snapshot.Text, params.Range, s.sourceOverlay())...)
-		actions = append(actions, unitConversionCodeActions(params.TextDocument.URI, snapshot.Text, params.Context.Diagnostics, s.sourceOverlay())...)
+		actions = append(actions, decimalScaleCodeActions(params.TextDocument.URI, snapshot.Text, params.Context.Diagnostics, s.sourceOverlayContext(ctx))...)
+		actions = append(actions, defaultCodeActions(params.TextDocument.URI, snapshot.Text, params.Range, s.sourceOverlayContext(ctx))...)
+		actions = append(actions, unitConversionCodeActions(params.TextDocument.URI, snapshot.Text, params.Context.Diagnostics, s.sourceOverlayContext(ctx))...)
 		actions = append(actions, attributeCodeActions(params.TextDocument.URI, snapshot.Text, params.Context.Diagnostics)...)
-		actions = append(actions, unsafeCodeActions(params.TextDocument.URI, snapshot.Text, params.Context.Diagnostics, s.sourceOverlay())...)
+		actions = append(actions, unsafeCodeActions(params.TextDocument.URI, snapshot.Text, params.Context.Diagnostics, s.sourceOverlayContext(ctx))...)
 		actions = append(actions, missingSeparatorCodeActions(params.TextDocument.URI, snapshot.Text, params.Context.Diagnostics)...)
-		actions = append(actions, stringTryCodeActions(params.TextDocument.URI, snapshot.Text, params.Range, params.Context.Diagnostics, s.sourceOverlay())...)
-		actions = append(actions, pitfallCodeActions(params.TextDocument.URI, snapshot.Text, params.Range, s.sourceOverlay(), s.pitfallSettingsSnapshot())...)
-		return s.respond(message.ID, actions)
+		actions = append(actions, stringTryCodeActions(params.TextDocument.URI, snapshot.Text, params.Range, params.Context.Diagnostics, s.sourceOverlayContext(ctx))...)
+		actions = append(actions, pitfallCodeActions(params.TextDocument.URI, snapshot.Text, params.Range, s.sourceOverlayContext(ctx), s.pitfallSettingsSnapshot())...)
+		return s.respondAnalysis(ctx, message.ID, actions)
 	case "textDocument/completion":
 		var params completionParams
 		if err := json.Unmarshal(message.Params, &params); err != nil {
@@ -655,12 +673,12 @@ func (s *server) handle(message rpcMessage) error {
 
 		snapshot, ok := s.documentSnapshots.Snapshot(params.TextDocument.URI)
 		if !ok {
-			return s.respond(message.ID, []completionItem{})
+			return s.respondAnalysis(ctx, message.ID, []completionItem{})
 		}
 
 		offset := lineCharToOffset(snapshot.Text, params.Position.Line, params.Position.Character)
-		items := completeSource(params.TextDocument.URI, snapshot.Text, offset, s.sourceOverlay())
-		return s.respond(message.ID, items)
+		items := completeSource(params.TextDocument.URI, snapshot.Text, offset, s.sourceOverlayContext(ctx))
+		return s.respondAnalysis(ctx, message.ID, items)
 	case "textDocument/documentSymbol":
 		var params documentSymbolParams
 		if err := json.Unmarshal(message.Params, &params); err != nil {
@@ -668,9 +686,9 @@ func (s *server) handle(message rpcMessage) error {
 		}
 		snapshot, ok := s.documentSnapshots.Snapshot(params.TextDocument.URI)
 		if !ok {
-			return s.respond(message.ID, []documentSymbol{})
+			return s.respondAnalysis(ctx, message.ID, []documentSymbol{})
 		}
-		return s.respond(message.ID, documentSymbolsForSource(params.TextDocument.URI, snapshot.Text))
+		return s.respondAnalysis(ctx, message.ID, documentSymbolsForSource(params.TextDocument.URI, snapshot.Text))
 	case "textDocument/semanticTokens/full":
 		var params semanticTokensParams
 		if err := json.Unmarshal(message.Params, &params); err != nil {
@@ -678,9 +696,9 @@ func (s *server) handle(message rpcMessage) error {
 		}
 		snapshot, ok := s.documentSnapshots.Snapshot(params.TextDocument.URI)
 		if !ok {
-			return s.respond(message.ID, semanticTokens{})
+			return s.respondAnalysis(ctx, message.ID, semanticTokens{})
 		}
-		return s.respond(message.ID, semanticTokensForSource(params.TextDocument.URI, snapshot.Text, s.sourceOverlay()))
+		return s.respondAnalysis(ctx, message.ID, semanticTokensForSource(params.TextDocument.URI, snapshot.Text, s.sourceOverlayContext(ctx)))
 	case "textDocument/hover":
 		var params hoverParams
 		if err := json.Unmarshal(message.Params, &params); err != nil {
@@ -688,13 +706,13 @@ func (s *server) handle(message rpcMessage) error {
 		}
 		snapshot, ok := s.documentSnapshots.Snapshot(params.TextDocument.URI)
 		if !ok {
-			return s.respond(message.ID, nil)
+			return s.respondAnalysis(ctx, message.ID, nil)
 		}
-		result, ok := hoverForSourceWithParameterInsight(params.TextDocument.URI, snapshot.Text, params.Position, s.parameterInsightSettings(), s.sourceOverlay())
+		result, ok := hoverForSourceWithParameterInsight(params.TextDocument.URI, snapshot.Text, params.Position, s.parameterInsightSettings(), s.sourceOverlayContext(ctx))
 		if !ok {
-			return s.respond(message.ID, nil)
+			return s.respondAnalysis(ctx, message.ID, nil)
 		}
-		return s.respond(message.ID, result)
+		return s.respondAnalysis(ctx, message.ID, result)
 	case "textDocument/definition":
 		var params definitionParams
 		if err := json.Unmarshal(message.Params, &params); err != nil {
@@ -702,13 +720,13 @@ func (s *server) handle(message rpcMessage) error {
 		}
 		snapshot, ok := s.documentSnapshots.Snapshot(params.TextDocument.URI)
 		if !ok {
-			return s.respond(message.ID, nil)
+			return s.respondAnalysis(ctx, message.ID, nil)
 		}
-		locations := definitionsForSource(params.TextDocument.URI, snapshot.Text, params.Position, s.sourceOverlay())
+		locations := definitionsForSource(params.TextDocument.URI, snapshot.Text, params.Position, s.sourceOverlayContext(ctx))
 		if len(locations) == 0 {
-			return s.respond(message.ID, nil)
+			return s.respondAnalysis(ctx, message.ID, nil)
 		}
-		return s.respond(message.ID, locations)
+		return s.respondAnalysis(ctx, message.ID, locations)
 	case "sec/compilerKnownDefinition":
 		var params compilerKnownDefinitionParams
 		if err := json.Unmarshal(message.Params, &params); err != nil {
@@ -718,7 +736,7 @@ func (s *server) handle(message rpcMessage) error {
 		if !ok {
 			return s.respondError(message.ID, -32602, "not a compiler-known definition URI")
 		}
-		return s.respond(message.ID, compilerKnownDefinitionResult{Text: text})
+		return s.respondAnalysis(ctx, message.ID, compilerKnownDefinitionResult{Text: text})
 	case "textDocument/typeDefinition":
 		var params definitionParams
 		if err := json.Unmarshal(message.Params, &params); err != nil {
@@ -726,13 +744,13 @@ func (s *server) handle(message rpcMessage) error {
 		}
 		snapshot, ok := s.documentSnapshots.Snapshot(params.TextDocument.URI)
 		if !ok {
-			return s.respond(message.ID, nil)
+			return s.respondAnalysis(ctx, message.ID, nil)
 		}
-		locations := typeDefinitionsForSource(params.TextDocument.URI, snapshot.Text, params.Position, s.sourceOverlay())
+		locations := typeDefinitionsForSource(params.TextDocument.URI, snapshot.Text, params.Position, s.sourceOverlayContext(ctx))
 		if len(locations) == 0 {
-			return s.respond(message.ID, nil)
+			return s.respondAnalysis(ctx, message.ID, nil)
 		}
-		return s.respond(message.ID, locations)
+		return s.respondAnalysis(ctx, message.ID, locations)
 	case "textDocument/implementation":
 		var params definitionParams
 		if err := json.Unmarshal(message.Params, &params); err != nil {
@@ -740,13 +758,13 @@ func (s *server) handle(message rpcMessage) error {
 		}
 		snapshot, ok := s.documentSnapshots.Snapshot(params.TextDocument.URI)
 		if !ok {
-			return s.respond(message.ID, nil)
+			return s.respondAnalysis(ctx, message.ID, nil)
 		}
-		locations := implementationsForSource(params.TextDocument.URI, snapshot.Text, params.Position, s.sourceOverlay())
+		locations := implementationsForSource(params.TextDocument.URI, snapshot.Text, params.Position, s.sourceOverlayContext(ctx))
 		if len(locations) == 0 {
-			return s.respond(message.ID, nil)
+			return s.respondAnalysis(ctx, message.ID, nil)
 		}
-		return s.respond(message.ID, locations)
+		return s.respondAnalysis(ctx, message.ID, locations)
 	case "textDocument/signatureHelp":
 		var params signatureHelpParams
 		if err := json.Unmarshal(message.Params, &params); err != nil {
@@ -754,13 +772,13 @@ func (s *server) handle(message rpcMessage) error {
 		}
 		snapshot, ok := s.documentSnapshots.Snapshot(params.TextDocument.URI)
 		if !ok {
-			return s.respond(message.ID, nil)
+			return s.respondAnalysis(ctx, message.ID, nil)
 		}
-		result, ok := signatureHelpForSource(params.TextDocument.URI, snapshot.Text, params.Position, s.sourceOverlay())
+		result, ok := signatureHelpForSource(params.TextDocument.URI, snapshot.Text, params.Position, s.sourceOverlayContext(ctx))
 		if !ok {
-			return s.respond(message.ID, nil)
+			return s.respondAnalysis(ctx, message.ID, nil)
 		}
-		return s.respond(message.ID, result)
+		return s.respondAnalysis(ctx, message.ID, result)
 	case "textDocument/references":
 		var params referenceParams
 		if err := json.Unmarshal(message.Params, &params); err != nil {
@@ -768,9 +786,9 @@ func (s *server) handle(message rpcMessage) error {
 		}
 		snapshot, ok := s.documentSnapshots.Snapshot(params.TextDocument.URI)
 		if !ok {
-			return s.respond(message.ID, []location{})
+			return s.respondAnalysis(ctx, message.ID, []location{})
 		}
-		return s.respond(message.ID, referencesForSource(params.TextDocument.URI, snapshot.Text, params.Position, params.Context.IncludeDeclaration, s.sourceOverlay()))
+		return s.respondAnalysis(ctx, message.ID, referencesForSource(params.TextDocument.URI, snapshot.Text, params.Position, params.Context.IncludeDeclaration, s.sourceOverlayContext(ctx)))
 	case "textDocument/prepareRename":
 		var params renameParams
 		if err := json.Unmarshal(message.Params, &params); err != nil {
@@ -778,13 +796,13 @@ func (s *server) handle(message rpcMessage) error {
 		}
 		snapshot, ok := s.documentSnapshots.Snapshot(params.TextDocument.URI)
 		if !ok {
-			return s.respond(message.ID, nil)
+			return s.respondAnalysis(ctx, message.ID, nil)
 		}
-		result, err := prepareRenameForSource(params.TextDocument.URI, snapshot.Text, params.Position, s.sourceOverlay())
+		result, err := prepareRenameForSource(params.TextDocument.URI, snapshot.Text, params.Position, s.sourceOverlayContext(ctx))
 		if err != nil {
 			return s.respondError(message.ID, -32602, err.Error())
 		}
-		return s.respond(message.ID, result)
+		return s.respondAnalysis(ctx, message.ID, result)
 	case "textDocument/rename":
 		var params renameParams
 		if err := json.Unmarshal(message.Params, &params); err != nil {
@@ -794,11 +812,11 @@ func (s *server) handle(message rpcMessage) error {
 		if !ok {
 			return s.respondError(message.ID, -32602, "the document is not open")
 		}
-		edit, err := renameForSource(params.TextDocument.URI, snapshot.Text, params.Position, params.NewName, s.sourceOverlay())
+		edit, err := renameForSource(params.TextDocument.URI, snapshot.Text, params.Position, params.NewName, s.sourceOverlayContext(ctx))
 		if err != nil {
 			return s.respondError(message.ID, -32602, err.Error())
 		}
-		return s.respond(message.ID, edit)
+		return s.respondAnalysis(ctx, message.ID, edit)
 	case "textDocument/documentHighlight":
 		var params documentHighlightParams
 		if err := json.Unmarshal(message.Params, &params); err != nil {
@@ -806,9 +824,9 @@ func (s *server) handle(message rpcMessage) error {
 		}
 		snapshot, ok := s.documentSnapshots.Snapshot(params.TextDocument.URI)
 		if !ok {
-			return s.respond(message.ID, []documentHighlight{})
+			return s.respondAnalysis(ctx, message.ID, []documentHighlight{})
 		}
-		return s.respond(message.ID, documentHighlightsForSource(params.TextDocument.URI, snapshot.Text, params.Position, s.sourceOverlay()))
+		return s.respondAnalysis(ctx, message.ID, documentHighlightsForSource(params.TextDocument.URI, snapshot.Text, params.Position, s.sourceOverlayContext(ctx)))
 	case "textDocument/prepareCallHierarchy":
 		var params callHierarchyPrepareParams
 		if err := json.Unmarshal(message.Params, &params); err != nil {
@@ -816,9 +834,9 @@ func (s *server) handle(message rpcMessage) error {
 		}
 		snapshot, ok := s.documentSnapshots.Snapshot(params.TextDocument.URI)
 		if !ok {
-			return s.respond(message.ID, []callHierarchyItem{})
+			return s.respondAnalysis(ctx, message.ID, []callHierarchyItem{})
 		}
-		return s.respond(message.ID, callHierarchyItemsForSource(params.TextDocument.URI, snapshot.Text, params.Position, s.sourceOverlay()))
+		return s.respondAnalysis(ctx, message.ID, callHierarchyItemsForSource(params.TextDocument.URI, snapshot.Text, params.Position, s.sourceOverlayContext(ctx)))
 	case "callHierarchy/incomingCalls":
 		var params callHierarchyIncomingCallsParams
 		if err := json.Unmarshal(message.Params, &params); err != nil {
@@ -830,9 +848,9 @@ func (s *server) handle(message rpcMessage) error {
 		}
 		snapshot, ok := s.documentSnapshots.Snapshot(analysisURI)
 		if !ok {
-			return s.respond(message.ID, []callHierarchyIncomingCall{})
+			return s.respondAnalysis(ctx, message.ID, []callHierarchyIncomingCall{})
 		}
-		return s.respond(message.ID, callHierarchyIncomingCallsForSource(analysisURI, snapshot.Text, params.Item.Data.NodeID, s.sourceOverlay()))
+		return s.respondAnalysis(ctx, message.ID, callHierarchyIncomingCallsForSource(analysisURI, snapshot.Text, params.Item.Data.NodeID, s.sourceOverlayContext(ctx)))
 	case "callHierarchy/outgoingCalls":
 		var params callHierarchyOutgoingCallsParams
 		if err := json.Unmarshal(message.Params, &params); err != nil {
@@ -844,9 +862,9 @@ func (s *server) handle(message rpcMessage) error {
 		}
 		snapshot, ok := s.documentSnapshots.Snapshot(analysisURI)
 		if !ok {
-			return s.respond(message.ID, []callHierarchyOutgoingCall{})
+			return s.respondAnalysis(ctx, message.ID, []callHierarchyOutgoingCall{})
 		}
-		return s.respond(message.ID, callHierarchyOutgoingCallsForSource(analysisURI, snapshot.Text, params.Item.Data.NodeID, s.sourceOverlay()))
+		return s.respondAnalysis(ctx, message.ID, callHierarchyOutgoingCallsForSource(analysisURI, snapshot.Text, params.Item.Data.NodeID, s.sourceOverlayContext(ctx)))
 	default:
 		if len(message.ID) == 0 {
 			return nil
@@ -3522,7 +3540,7 @@ func analyze(uri string, text string, overlays ...sourceOverlay) []diagnostic {
 	}
 
 	analyzer := newLSPAnalyzerWithOverlay(uri, program, firstSourceOverlay(overlays))
-	for _, err := range analyzer.Analyze(program) {
+	for _, err := range analyzeCompilerSnapshot(analyzer, program, firstSourceOverlay(overlays)) {
 		if diagnosticBelongsToSource(err, path) && !semanticDiagnosticComesFromRecovery(err, parseResult.Recovery, text) {
 			diagnostics = append(diagnostics, semaDiagnosticWithSources(err, 1, uri, text, firstSourceOverlay(overlays)))
 		}

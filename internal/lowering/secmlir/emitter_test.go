@@ -216,14 +216,17 @@ func TestEmitRejectsUnresolvedScalarPlan(t *testing.T) {
 	}
 }
 
-func TestEmitRejectsVerifiedUnsupportedType(t *testing.T) {
+// Unknown executable type categories are malformed Semantic IR, rather than
+// a verified concrete type lacking a backend representation.
+// Rules: rules/compiler/generics_lowering.md — §§4,8.
+func TestEmitRejectsUnrepresentedTypeBeforeLowering(t *testing.T) {
 	types := semantic.NewTypeTable()
-	unsupported := types.Intern(semantic.Type{Kind: semantic.TypeKind("future"), Name: "future"})
-	function := &semantic.Function{ID: "main::Future", Name: "Future", ReturnType: unsupported, Extern: true}
-	_, err := Emit(&semantic.Module{Version: semantic.Version, Identity: "main", Types: types, Functions: []*semantic.Function{function}}, testPlan(64))
+	unresolved := types.Intern(semantic.Type{Kind: semantic.TypeKind("future"), Name: "future"})
+	function := &semantic.Function{ID: "main::Future", Name: "Future", ReturnType: unresolved, Extern: true}
+	output, err := Emit(&semantic.Module{Version: semantic.Version, Identity: "main", Types: types, Functions: []*semantic.Function{function}}, testPlan(64))
 	var unsupportedError *UnsupportedLoweringError
-	if !errors.As(err, &unsupportedError) {
-		t.Fatalf("error = %v", err)
+	if output != nil || err == nil || !strings.Contains(err.Error(), "verify Semantic IR: generic concreteness:") || errors.As(err, &unsupportedError) {
+		t.Fatalf("output = %s, error = %v", output, err)
 	}
 }
 

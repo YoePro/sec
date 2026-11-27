@@ -247,7 +247,10 @@ func (b *builder) registerStatic(static sema.ResolvedStatic) (StaticID, error) {
 // does not reevaluate source expressions or read runtime static storage.
 // Rules: rules/declarations/static.md §§15–16; rules/compiler/semantic_ir.md §28(5).
 func (b *builder) staticInitializerOf(value sema.ResolvedStaticInitializer, typeID TypeID) (StaticInitializer, bool) {
-	typ, _ := b.module.Types.Lookup(typeID)
+	typ, ok := staticInitializerType(b.module.Types, typeID)
+	if !ok {
+		return StaticInitializer{}, false
+	}
 	kind := typ.Kind
 	if value.Aggregate {
 		// A struct's fields in declaration order; a fixed array's elements.
@@ -431,7 +434,7 @@ func staticIntegerFits(module *Module, typ Type, value *big.Int) bool {
 // a scalar in its domain, or a struct's fields and a fixed array's elements,
 // each complete and in order (compile_time_evaluation.md § 32).
 func verifyStaticInitializer(module *Module, typeID TypeID, initializer StaticInitializer) error {
-	typ, ok := module.Types.Lookup(typeID)
+	typ, ok := staticInitializerType(module.Types, typeID)
 	if !ok {
 		return fmt.Errorf("initializer of an unknown type")
 	}

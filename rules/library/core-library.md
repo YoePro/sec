@@ -2,7 +2,7 @@
 
 - **Status:** Normative
 - **Created:** 2026-07-27
-- **Last updated:** 2026-11-23 (required byte radix formatting, § 8.4)
+- **Last updated:** 2026-11-27 (MD-109 static string materialization and allocation contract); 2026-11-23 (required byte radix formatting, § 8.4)
 - **Document revision:** 1.0
 - **Sec language version:** 0.1
 - **Canonical path:** `rules/library/core-library.md`
@@ -55,6 +55,13 @@ The core library must remain:
 
 This document defines a minimum required surface. It is not intended to be the
 complete final list of core members.
+
+**MD-109 allocation principle (2026-10-25).** Core prefers allocation-free
+algorithms; it is not allocation-forbidden. Fundamental built-in semantics,
+representation-sensitive string materialization and necessary compiler/core
+boundaries may allocate when the API makes the allocation context, ownership,
+normal failure and target restrictions explicit. This permits no hidden
+default heap and does not turn core into a general utilities library.
 
 ---
 
@@ -153,7 +160,7 @@ The built-in type itself acts as both:
 Examples:
 
 ```sec
-let text := try string.FromRuneArray(ref runes)
+let text := try string.FromRuneArray(runes)
 let empty := text.IsEmpty()
 ```
 
@@ -298,7 +305,7 @@ These expressions use the normal AST forms:
 ```sec
 text.len
 text.Trim()
-string.FromRuneArray(ref runes)
+string.FromRuneArray(runes)
 number.ToString()
 ```
 
@@ -350,8 +357,8 @@ Example:
 
 ```sec
 impl string {
-    fn FromRuneArray(value: ref rune[]) Result[string, StringError] {
-    }
+    static fn FromByteArray(data: ref byte[]) Result[string, StringError]
+    static fn FromRuneArray(data: ref rune[]) Result[string, StringError]
 }
 ```
 
@@ -488,51 +495,59 @@ and runtime helpers carry separately.
 
 ```sec
 impl string {
-    fn FromRuneArray(value: ref rune[]) Result[string, StringError]
+    static fn FromByteArray(data: ref byte[]) Result[string, StringError]
+    static fn FromRuneArray(data: ref rune[]) Result[string, StringError]
 }
 ```
 
-It is a compiler-known associated function supplied by trusted core (MD-072,
-2026-10-17). It **borrows** the input array: it is neither consumed nor
-mutated, and the resulting string stays valid after the array is moved,
-modified or destroyed. It never adopts or aliases the array's mutable backing;
-a sharing optimization must still produce an independently owned, immutable
-result. No consuming zero-copy overload exists in Sec 0.1.
-
-**Byte decoding is not a core API (MD-091, 2026-10-18).** Public conversion
-from a `byte[]` sequence to a `string` is owned by `stdlib/str`, because
-materializing the string allocates or needs explicit result storage. Core has
-no `string.FromByteArray`, not even as an alias, and there is no `string(bytes)`
-cast and no implicit `byte[]` → `string` conversion. The public APIs are
-(`sec/stdlib/str/stdlib_str.md`, `sec/stdlib/str/collect.sec`):
+Both are public compiler-known **static associated functions** supplied by
+trusted core (MD-109, 2026-10-25). They have no string receiver and are called
+through the type, never an instance:
 
 ```sec
-// Decode a borrowed byte sequence as strictly validated UTF-8.
-fn FromByteArray(value: ref byte[]) Result[string, StringError]
-
-// Decode a borrowed byte sequence while replacing malformed UTF-8.
-fn FromByteArrayLossy(value: ref byte[]) Result[string, CollectionError]
+let text := try string.FromByteArray(bytes)
+let other := try string.FromRuneArray(runes)
 ```
 
-`str.FromByteArray` decodes its entire represented input as strict UTF-8 —
-never as Latin-1, ASCII with extended bytes or a platform default. Malformed
-input returns `Err(StringError.InvalidUtf8(offset))`, where `offset` is the
-zero-based byte offset of the leading byte of the first malformed or truncated
-sequence (or of the first immediately invalid byte). It does not replace,
-truncate, skip, panic or return a partially decoded string. The internal
-materialization capability `_stringFromUtf8` is known only to trusted core
-(`compiler_known_members.md`, "Internal core string materialization"); how the
-standard library materializes validated bytes is open as MD-109.
+The `data: ref ...` parameter borrows the input for this call only. Neither
+function consumes, modifies, adopts or retains a mutable alias to the array;
+no `<-` argument marker or consuming overload applies. The caller retains the
+array on success and error. The result is independently owned and immutable:
+changing, moving or destroying the source does not change or invalidate it.
+An empty array produces an empty string.
 
-`FromRuneArray` encodes the scalars to canonical UTF-8 in order. Safe `rune`
-values are always valid scalars, so ordinary input cannot produce
-`InvalidCodePoint`; an invalid rune fabricated by broken privileged code is an
-invariant violation.
+`string.FromByteArray` validates the entire represented byte array as strict,
+canonical UTF-8 (MD-050). It accepts only Unicode scalar encodings and rejects
+invalid leading/continuation bytes, overlong encodings, surrogates, values above
+U+10FFFF and truncated sequences. `0x00` is U+0000, not a terminator; a BOM is
+preserved. No normalization, case conversion, replacement, encoding fallback,
+truncation or partial valid prefix is permitted. Malformed input returns
+`Err(StringError.InvalidUtf8(offset))`, where `offset` is the zero-based start
+byte of the first malformed or truncated sequence, including when a later
+continuation byte exposes the error.
 
-`FromRuneArray` may allocate through the active permitted allocation context
-and reports storage failure as `StringError.Allocation(AllocationError)`. It
-does not append a terminator, normalize or change case. Failure leaves the borrowed source
-unchanged and exposes no partially formed string or leaked storage.
+`string.FromRuneArray` encodes the input scalars in order as canonical UTF-8,
+without normalization, case conversion or a terminator. Safe `rune` input is
+already valid and cannot produce `InvalidCodePoint`; a forged invalid rune in
+broken privileged code violates the representation invariant instead.
+
+Both may materialize storage through the active permitted allocation context.
+Storage failure returns the existing `StringError.Allocation(AllocationError)`;
+checked size arithmetic and cleanup follow the allocation rules. Failure
+preserves the borrowed source and publishes no partial string or leaked storage.
+The private `_stringFromUtf8` capability remains restricted to loader-proven
+trusted core; ordinary stdlib and user code call the public static functions,
+not that intrinsic. There is no `string(bytes)` cast or implicit byte-array to
+string conversion.
+
+**Decision history.** MD-072 (2026-10-17) established borrowed rune input and an
+independent fallible result. MD-091 (2026-10-18) removed the former public byte
+constructor and kept byte-sequence `ToString()` as representational text.
+MD-109 supersedes only the public-constructor/allocation restriction: core now
+owns both static functions above. MD-091's type-summary behavior and private
+core authority remain. Strict decoding is not a competing stdlib operation;
+`str.FromByteArrayLossy` remains a distinct explicitly lossy operation under its
+own stdlib contract.
 
 `byte`, `char`, and `rune` arrays and slice views additionally provide a
 compiler-known materializing method:
@@ -551,7 +566,7 @@ For the dynamic `byte[]` its result is the type summary `byte[]`
 contain; fixed byte arrays and borrowed byte views keep their collection
 fallback formatting and likewise never decode. Producing the summary still
 uses the ordinary `ToString` storage/error contract. Decode bytes with
-`str.FromByteArray` or `str.FromByteArrayLossy`; char sequences apply
+`string.FromByteArray` (or the separately specified lossy stdlib operation); char sequences apply
 `char.ToString()` element semantics, which `string.ToCharArray()` (§ 5.3,
 MD-073) does not change; rune
 sequences encode each Unicode scalar as `string.FromRuneArray` does. Other
@@ -1847,9 +1862,9 @@ enum FormatError error {
 `Allocation` carries the `AllocationError` of a failed text materialization.
 `Format` carries the `FormatError` of a format overload such as
 `ToString(format)` whose format is invalid or unsupported at run time.
-`InvalidUtf8`, `InvalidCodePoint`, and `OutOfBounds` are the text decoding
-failures of string conversions (`string.FromRuneArray`, the stdlib
-`str.FromByteArray`, UTF-8 decoding). `InvalidUtf8(offset)` carries the
+`InvalidUtf8`, `InvalidCodePoint`, and `OutOfBounds` remain members of the
+shared string error family; they are not all reachable from every conversion.
+Strict `string.FromByteArray` decoding reports `InvalidUtf8(offset)` with the
 zero-based byte offset of the leading byte of the first malformed or truncated
 UTF-8 sequence; strict decoding reports it instead of producing a malformed
 string (§ 5.2, MD-050). Safe `FromRuneArray` input cannot produce

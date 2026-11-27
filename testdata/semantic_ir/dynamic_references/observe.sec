@@ -1,0 +1,44 @@
+module main
+
+type Bag struct { Values: int[] }
+type Outer struct { Bag: Bag }
+
+fn Contains(owner: Bag, needle: int) bool {
+    let bag := ref owner
+    let found := needle in bag.Values
+    let length := bag.Values.Len
+    discard length
+    return found
+}
+
+fn Absent(owner: Bag, needle: int) bool {
+    let mut stored :<- owner
+    let bag := ref mut stored
+    return needle not in bag.Values
+}
+
+fn Length(owner: Bag) uint {
+    let bag := ref owner
+    return bag.Values.Len
+}
+
+fn Empty(owner: Bag) bool {
+    let bag := ref owner
+    return bag.Values.IsEmpty
+}
+
+fn Read(owner: Bag, index: uint) int {
+    let bag := ref owner
+    return bag.Values[index]
+}
+
+fn Write(owner: Bag, index: uint, value: int) void {
+    let mut stored :<- owner
+    let bag := ref mut stored
+    bag.Values[index] = value
+}
+
+fn Nested(owner: Outer, needle: int) bool {
+    let outer := ref owner
+    return needle in outer.Bag.Values
+}

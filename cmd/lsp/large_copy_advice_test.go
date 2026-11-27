@@ -25,7 +25,7 @@ func TestLargeCopyAdviceLSP(t *testing.T) {
 		if !ok {
 			t.Fatal("missing hover")
 		}
-		if strings.Contains(hover.Contents.Value, "Estimated copy size:") != (mode == "detailed") {
+		if strings.Contains(hover.Contents.Value, "Copy size on the active target:") != (mode == "detailed") {
 			t.Fatalf("%s: %+v", mode, hover)
 		}
 		if mode == "detailed" && (!strings.Contains(hover.Contents.Value, "by-value copy is legal") || !strings.Contains(hover.Contents.Value, "call-local read access")) {
@@ -33,7 +33,7 @@ func TestLargeCopyAdviceLSP(t *testing.T) {
 		}
 	}
 	owner, _ := hoverForSourceWithParameterInsight(uri, text, offsetPosition(text, strings.Index(text, "ObserveOwner(value")+1), parameterInsightSettings{Hover: "detailed"})
-	if strings.Contains(owner.Contents.Value, "AvoidCopyCost") || strings.Contains(owner.Contents.Value, "Estimated copy size:") || !strings.Contains(owner.Contents.Value, "implicit copying is not proven") {
+	if strings.Contains(owner.Contents.Value, "AvoidCopyCost") || strings.Contains(owner.Contents.Value, "Copy size on the active target:") || !strings.Contains(owner.Contents.Value, "implicit copying is not proven") {
 		t.Fatal("move-only copy advice", owner)
 	}
 	values := analyze(uri, text)

@@ -23,6 +23,23 @@ type ParameterRecommendation struct {
 	Blockers           []string
 	EstimatedSizeBytes int64
 	SizeKnown          bool
+	// LayoutIdentity is the layout fingerprint of the plan the size came
+	// from: a recommendation cache keyed on it is invalidated by a target
+	// layout change while semantic demand stays valid (§ 87(2)-(3)).
+	LayoutIdentity string
+	// SizeSource is "layout" for the plan's resolved layout or "estimate"
+	// for the structural fallback (descriptor types, no plan).
+	SizeSource string
+}
+
+// RecommendationLayoutIdentity is the layout dependency of every
+// recommendation of this analysis; empty without a selected plan.
+// Rules: rules/analysis/parameter_usage_analysis.md — §§ 64(4), 87(2)-(3).
+func (p *ParameterUsageAnalysis) RecommendationLayoutIdentity() string {
+	if p == nil {
+		return ""
+	}
+	return p.layoutIdentity
 }
 
 // Recommendations returns fresh, deterministically ordered policy results for
@@ -59,7 +76,8 @@ func (p *ParameterUsageAnalysis) RecommendationsWithCoverage() ([]ParameterRecom
 				continue
 			}
 			coverage.EvaluatedCandidates++
-			result := sharedReferenceRecommendation(parameter)
+			result := sharedReferenceRecommendation(parameter, p.cost)
+			result.LayoutIdentity = p.layoutIdentity
 			if summary.Precision != ParameterDemandExact {
 				result.Status = "blocked"
 				result.Confidence = ""
@@ -82,7 +100,7 @@ func (p *ParameterUsageAnalysis) RecommendationsWithCoverage() ([]ParameterRecom
 // proof or a Certain claim about programmer intent.
 // Rules: rules/analysis/parameter_usage_analysis.md — "Large-value advisory",
 // "ResolvedLayout as cost input", and "Recommendation confidence".
-func sharedReferenceRecommendation(parameter ParameterUsageParameterSummary) ParameterRecommendation {
+func sharedReferenceRecommendation(parameter ParameterUsageParameterSummary, cost *parameterCostModel) ParameterRecommendation {
 	result := ParameterRecommendation{
 		Parameter: parameter.Name, Binding: parameter.Binding, Source: parameter.Declaration,
 		Candidate: "ref " + typeDisplayName(parameter.DeclaredType),
@@ -102,7 +120,7 @@ func sharedReferenceRecommendation(parameter ParameterUsageParameterSummary) Par
 		result.Reasons = []string{"implicit copying is not proven for copy classification " + string(classification)}
 		return result
 	}
-	result.EstimatedSizeBytes, result.SizeKnown = estimatedTypeSizeBytes(parameter.DeclaredType, map[string]bool{})
+	result.EstimatedSizeBytes, result.SizeKnown, result.SizeSource = cost.sizeWithSource(parameter.DeclaredType)
 	if !result.SizeKnown {
 		result.Status = "not-preferred"
 		result.Reasons = []string{"copy cost is unknown"}

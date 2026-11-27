@@ -76,6 +76,7 @@ func (a *Analyzer) analyzeBlockStatementsWithRecovery(block *ast.BlockStatement,
 		statements = statements[:len(statements)-1]
 	}
 	for index, stmt := range statements {
+		a.checkAnalysisCancellation()
 		if unreachable {
 			a.addErrorAtTokenWithMetadata(statementToken(stmt), diagnostics.UnreachableStatement,
 				"A preceding statement ends this block on every path. Remove this statement or change the control flow.",

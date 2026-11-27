@@ -26,7 +26,9 @@ func typePackDeclarationHover(text string, program *ast.Program, analyzer *sema.
 }
 
 // typePackCallHover presents the selected ordered sequence and receiving modes
-// directly from Sema; it never infers types or resolves overloads in the LSP.
+// directly from Sema. Unresolved calls reuse signature help's visible declared
+// template set and explicitly mark concrete selection unavailable. It never
+// infers types or resolves overloads in the LSP.
 // Rules: rules/declarations/functions.md §38A(10)(3); rules/tooling/lsp.md — "Hover".
 func typePackCallHover(text string, program *ast.Program, analyzer *sema.Analyzer, token lexer.Token) (hoverResult, bool) {
 	for _, expression := range astExpressionsInProgram(program) {
@@ -46,6 +48,14 @@ func typePackCallHover(text string, program *ast.Program, analyzer *sema.Analyze
 		}
 		fact, ok := analyzer.ResolvedTypePackCallOf(call)
 		if !ok {
+			if help, available := typePackTemplateSignatureHelp(analyzer, call, 0, token.File); available {
+				labels := make([]string, len(help.Signatures))
+				for i, signature := range help.Signatures {
+					labels[i] = "```sec\n" + signature.Label + "\n```"
+				}
+				contents := strings.Join(labels, "\n\n") + "\n\nDeclared type-pack signature; concrete pack types and overload selection are not resolved for this call."
+				return hoverResult{Contents: markupContent{Kind: "markdown", Value: contents}, Range: tokenRange(text, token)}, true
+			}
 			continue
 		}
 		types := make([]string, len(fact.Types))

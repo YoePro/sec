@@ -56,10 +56,25 @@ func (fb *functionBuilder) buildCall(call *ast.CallExpression) (builtValue, erro
 	if fb.owner.analyzer.IsDynamicArrayLengthCall(call) && fb.owner.maxPackage >= dynamicArrayLoweringPackage && len(call.Arguments) == 1 {
 		return fb.buildDynamicArrayLength(call.Arguments[0], call.Token)
 	}
+	if plan, fill := fb.owner.analyzer.ResolvedDynamicArrayFillOf(call); fill {
+		return fb.buildDynamicArrayFill(call, plan)
+	}
 	if plan, allocating := fb.owner.analyzer.ResolvedAllocationPlanOf(call); allocating && fb.owner.maxPackage >= dynamicArrayLoweringPackage {
 		if member, ok := call.Callee.(*ast.MemberExpression); ok && member.Property != nil {
 			return fb.buildDynamicArrayAppend(call, member, plan)
 		}
+	}
+	if member, fill := fb.sliceFillCall(call); fill {
+		return fb.buildSliceFill(call, member)
+	}
+	if fb.owner.analyzer.IsFixedArrayFillCall(call) {
+		return fb.buildFixedArrayFill(call)
+	}
+	if member, id, known := fb.dynamicArrayMutatorCall(call); known {
+		if id == "CKM-DYNAMIC-ARRAY-REMOVEAT" {
+			return fb.buildDynamicArrayRemoveAt(call, member)
+		}
+		return fb.buildDynamicArrayClear(call, member)
 	}
 	resolved, ok := fb.owner.analyzer.ResolvedCallTarget(call)
 	if !ok {

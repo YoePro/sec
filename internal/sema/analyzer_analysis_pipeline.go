@@ -63,6 +63,15 @@ func (a *Analyzer) runSemanticAnalysisPipeline(program *ast.Program) {
 		{id: "pitfalls", dependencies: []string{"callable-bodies", "no-panic", "no-alloc", "no-block", "parameter-demand", "parameter-advice"}, priority: 100,
 			run: once(func() { a.pitfallAnalysis = buildPitfallAnalysis(program, a) })},
 	}
+	for i := range passes {
+		run := passes[i].run
+		passes[i].run = func() analysisStepResult {
+			a.checkAnalysisCancellation()
+			result := run()
+			a.checkAnalysisCancellation()
+			return result
+		}
+	}
 	records, err := runAnalysisSchedule(passes, []string{"declaration-facts"})
 	if err != nil {
 		// This graph is compiler configuration, not user source. An invalid

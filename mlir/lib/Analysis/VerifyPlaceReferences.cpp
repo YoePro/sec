@@ -60,7 +60,7 @@ bool isPlaceConsumer(Operation *operation) {
              sec::DynamicArrayHasBackingOp, sec::DynamicArrayHasCapacityOp,
              sec::DynamicArrayIndexInBoundsOp, sec::DynamicArrayElementPlaceOp,
              sec::DynamicArrayAppendPreparedOp, sec::DynamicArrayAppendRangePreparedOp,
-             sec::DynamicArrayGrowBackingOp,
+             sec::DynamicArrayGrowBackingOp, sec::DynamicArrayClearOp, sec::DynamicArrayRemoveAtOp, sec::DynamicArrayPayloadSizeOp,
              sec::StorageEstablishDomainOp, sec::StorageAdvanceEpochOp,
              sec::StorageEndDomainOp, sec::StorageReclaimOp>(operation) ||
          // P19 sections 113-115, 118: the Arena owner is allocated from,

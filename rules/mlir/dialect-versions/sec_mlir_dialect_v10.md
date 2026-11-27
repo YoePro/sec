@@ -202,6 +202,27 @@ No expansion into N operands.
 
 ---
 
+# 10A. `sec.array.fill` (2026-11-27)
+
+Contextual `fill(value)` into a fixed array
+(`rules/compiler/compiler_known_members.md` "Contextual fill") is one compact
+operation, never one element segment per element:
+
+```mlir
+%values = "sec.array.fill"(%seed) : (!sec.int) -> !sec.array<!sec.int, "4">
+```
+
+The single operand has the result element type and is evaluated once by its
+producer; every element is a trivial copy of it. The result length may be
+`"0"`. Compiler-generated IR emits `fill` only for a trivially copyable and
+destructible element (Sema admits only infallibly copyable elements, and Sec
+0.1 has no semantic copy). The verifier rejects a non-array result, a
+mistyped value, and hardware-instance or exclusive-reference copies. Like
+every fixed-array operation it participates in Package 6 scalar type
+conversion without selecting physical layout.
+
+---
+
 # 11. `sec.array.default`
 
 No operands.

@@ -1,0 +1,5 @@
+module main
+
+fn Contains(values: string[]) bool {
+    return "x" in values
+}

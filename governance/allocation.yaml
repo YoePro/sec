@@ -206,17 +206,18 @@ integrations:
 
   - id: semantic-ir.allocation
     area: semantic-ir-allocation
-    status: planned
+    status: implemented
     revised: "2026-11-20"
     repository_baseline: 57cd774
     partial:
       - "Started (moved to partial 2026-11-20; the text records the done part and what remains): SEC-MLIR-P19 integration is owned by lowering.sec-mlir-package19 and tracked in package19-todo.md. Sema operation/default/effect/context facts and Semantic IR Arena/context representation are partial as of 2026-11-16. Source Arena producers, complete preserving plans, schema-15 emission and native lowering remain open; allocation readiness stays closed. Owning dynamic-array work is tracked by Package 18. MD-034 and unresolved provider/layout requirements remain constraints."
-    remaining:
-      - represent surviving dynamic allocations explicitly
-      - represent allocation context/domain, type/count/size, alignment and fallibility
-      - represent resulting storage origin/domain, lifetime/generation dependency, ownership/borrow mode and destruction responsibility
-      - keep allocation, initialization, destruction and reclamation distinct
-      - verify contradictory or incomplete allocation facts before lowering
+    implemented:
+      - "(verified 2026-11-27) Surviving dynamic allocations are explicit operations: dynamic-array.allocate/grow-backing (P18) and arena.new/alloc and owned Arena creation (P19), each with an allocation identity. Tests: TestDynamicArraySemanticIR, TestDynamicArrayAppendSemanticIR, TestArenaOperations."
+      - "(verified 2026-11-27) Allocation operations carry the selected allocation context (or Arena), the storage domain, element type, count, resolved layout size/alignment and the AllocationError failure edge. Tests: TestPackage19ArenaAllocationLowering, TestAllocationContextIR, TestDynamicArrayAppendSemanticIR."
+      - "(verified 2026-11-27) Results carry backing origin/relation/authority/domain (BackingMetadata), dynamic-epoch reference facts with domain and epoch dependency, ownership class and the destruction plan responsibility. Tests: TestDynamicArrayBorrowsNameBackingDomain, TestPackage19IntegrationMatrix, TestPackage19ReleaseMatrix."
+      - "(verified 2026-11-27) Allocation, canonical-default initialization, destruction plans and storage transitions (establish/advance/end domain, reclaim) are separate operations and facts; Arena bytes are never individually reclaimed. Tests: TestDynamicArrayStorageTransitionVerifier, TestPackage19NoPhysicalLowering, TestPackage19ReleaseMatrix."
+      - "(verified 2026-11-27) The Semantic IR verifier and the schema-14/15 MLIR verifiers (--sec-verify-dynamic-arrays, --sec-verify-storage-transitions, --sec-verify-arenas, --sec-verify-allocation-contexts) reject contradictory or incomplete allocation facts before emission. Tests: TestDynamicArrayVerifierShapes, TestArenaOperationContracts, lit invalid-schema15-arena*.mlir."
+    remaining: []
     required_tests:
       - explicit allocation op
       - context/domain preserved

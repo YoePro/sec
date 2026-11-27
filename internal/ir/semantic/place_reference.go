@@ -157,6 +157,7 @@ func placeConsumer(kind OpKind) bool {
 		OpDynamicArrayLength, OpDynamicArrayIndexInBounds, OpDynamicArrayElementPlace,
 		// P18 growth and storage transitions of an owner Place (§§ 58–67).
 		OpDynamicArrayHasBacking, OpDynamicArrayHasCapacity, OpDynamicArrayGrowBacking, OpDynamicArrayAppendPrepared, OpDynamicArrayAppendRangePrepared,
+		OpDynamicArrayClear, OpDynamicArrayRemoveAt, OpDynamicArrayPayloadSize,
 		OpStorageEstablishDomain, OpStorageAdvanceEpoch, OpStorageEndDomain, OpStorageReclaim:
 		return true
 	}
@@ -656,7 +657,7 @@ func verifyPlaceReferenceFunction(module *Module, fn *Function, blocks map[Block
 	for _, b := range fn.Blocks {
 		for index, op := range b.Operations {
 			_, reborrow, _ := sliceConstructionKind(op.Kind)
-			observes := op.Kind == OpSliceLength || op.Kind == OpStringViewByteLength || op.Kind == OpStringViewDecodeNext
+			observes := op.Kind == OpSliceLength || op.Kind == OpSliceFill || op.Kind == OpStringViewByteLength || op.Kind == OpStringViewDecodeNext
 			if op.Kind != OpReferenceDerefPlace && op.Kind != OpReferenceCompare && !observes && op.Kind != OpSliceIndexInBounds && op.Kind != OpSliceElementPlace && !reborrow {
 				continue
 			}
@@ -674,6 +675,9 @@ func verifyPlaceReferenceFunction(module *Module, fn *Function, blocks map[Block
 				}
 				if op.ReferenceGuard == 0 || guarded != operand {
 					return fmt.Errorf("%s of dynamic-epoch reference %%%d requires its ref.is-valid guard", op.Kind, operand)
+				}
+				if op.Kind == OpReferenceDerefPlace && !sameSliceValidityFacts(definitions[op.ReferenceGuard].Reference, op.Reference) {
+					return fmt.Errorf("ref.deref-place must retain its validity guard's borrow and epoch facts")
 				}
 				guardFn, guardBlocks := fn, blocks
 				if sliceObservation {

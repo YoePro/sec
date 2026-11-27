@@ -52,7 +52,9 @@ func (fb *functionBuilder) membershipScalarEquality(left, right builtValue, bool
 }
 
 // buildSequenceMembership builds constant-size search CFG over a long fixed
-// array or a P16 slice. Operands run left-to-right once; the first match exits.
+// array, a P16 slice, or a P18 dynamic-array owner. Operands run left-to-right
+// once; the first match exits. Dynamic owners are observed through their Place
+// and canonical backing-domain facts, without copying or consuming the owner.
 // Reads preserve the holder and authority. Standard temporal/spatial guards
 // protect each read; no new unchecked range proof or allocation is invented.
 // The uint increment cannot overflow on the i < length continuation, and still
@@ -60,12 +62,15 @@ func (fb *functionBuilder) membershipScalarEquality(left, right builtValue, bool
 // Rules: rules/foundations/operators.md — "Array and slice membership", §A.14;
 // rules/mlir/packages/sec-mlir-dialect_package14.md — §§31–41,82–83;
 // rules/mlir/packages/sec-mlir-dialect_package16.md — §§45–58,63.
+// rules/foundations/operators.md — §67;
+// rules/mlir/packages/sec-mlir-dialect_package18.md — §§40–45,110.
 func (fb *functionBuilder) buildSequenceMembership(expr *ast.InfixExpression, resolved sema.ResolvedOperator) (builtValue, bool, error) {
 	if resolved.RightType == nil {
 		return builtValue{}, false, nil
 	}
 	sourceType := *resolved.RightType
 	slice := sourceSliceType(sourceType)
+	dynamicPlan, dynamic := fb.owner.analyzer.ResolvedDynamicArrayPlanOf(expr.Right)
 	elementSource := sourceType.Element
 	if slice && sourceType.Kind == sema.ReferenceType {
 		elementSource = sourceType.Element.Element
@@ -99,7 +104,19 @@ func (fb *functionBuilder) buildSequenceMembership(expr *ast.InfixExpression, re
 	var source, length builtValue
 	var facts *ReferenceMetadata
 	var validity ValueID
-	if slice {
+	var ownerFacts *PlaceMetadata
+	if dynamic {
+		if dynamicPlan.Owner == nil || dynamicPlan.Owner.BackingDomain == 0 {
+			return builtValue{}, true, fb.unsupported("dynamic-array membership without resolved owner/backing-domain facts", expressionToken(expr.Right))
+		}
+		source, err = fb.dynamicArrayOwnerPlace(expr.Right)
+		if err != nil {
+			return builtValue{}, true, err
+		}
+		ownerFacts = placeMetadataOf(dynamicPlan.Owner.Place)
+		ownerFacts.BackingDomain = uint32(dynamicPlan.Owner.BackingDomain)
+		length = fb.result(Operation{Kind: OpDynamicArrayLength, Operands: []ValueID{source.id}, Location: loc}, indexType)
+	} else if slice {
 		source, facts, err = fb.sliceSourceValue(expr.Right)
 		if err != nil {
 			return builtValue{}, true, err
@@ -122,7 +139,10 @@ func (fb *functionBuilder) buildSequenceMembership(expr *ast.InfixExpression, re
 		length = fb.result(Operation{Kind: OpConstInt, Integer: new(big.Int).Set(count), Location: loc}, indexType)
 	}
 	definition, known := fb.owner.module.Types.Lookup(source.typ)
-	if !known || definition.Element != element || slice && definition.Kind != TypeSharedSlice && definition.Kind != TypeMutableSlice || !slice && definition.Kind != TypeArray {
+	if dynamic && known && definition.Kind == TypePlace {
+		definition, known = fb.owner.module.Types.Lookup(definition.Element)
+	}
+	if !known || definition.Element != element || slice && definition.Kind != TypeSharedSlice && definition.Kind != TypeMutableSlice || dynamic && definition.Kind != TypeDynamicArray || !slice && !dynamic && definition.Kind != TypeArray {
 		return builtValue{}, true, fb.unsupported("sequence membership source type mismatch", expr.Token)
 	}
 	zero := fb.result(Operation{Kind: OpConstInt, Integer: big.NewInt(0), Location: loc}, indexType)
@@ -142,6 +162,8 @@ func (fb *functionBuilder) buildSequenceMembership(expr *ast.InfixExpression, re
 	predicateKind, operation := OpArrayIndexInBounds, "fixed-array-index"
 	if slice {
 		predicateKind, operation = OpSliceIndexInBounds, "slice-index"
+	} else if dynamic {
+		predicateKind, operation = OpDynamicArrayIndexInBounds, sema.DynamicArrayIndexPanicOperation
 	}
 	guard := fb.result(Operation{Kind: predicateKind, Operands: []ValueID{source.id, index.ID}, ReferenceGuard: validity, Location: loc}, boolean)
 	read, failure := fb.newBlock(), fb.newBlock()
@@ -151,7 +173,13 @@ func (fb *functionBuilder) buildSequenceMembership(expr *ast.InfixExpression, re
 	fb.current = read
 	var value builtValue
 	access := Operation{Operands: []ValueID{source.id, index.ID}, ArrayCheckKind: ArrayIndexRuntimeCheck, ArrayProofKind: ArrayIndexProofGuarded, ArrayGuard: guard.id, Location: loc}
-	if slice {
+	if dynamic {
+		access.Kind, access.Place = OpDynamicArrayElementPlace, ownerFacts
+		ownerType, _ := fb.owner.module.Types.Lookup(source.typ)
+		placeType := fb.owner.module.Types.Intern(Type{Kind: TypePlace, Element: element, Mutable: ownerType.Mutable})
+		place := fb.placeResult(access, placeType)
+		value = fb.result(Operation{Kind: OpPlaceRead, Operands: []ValueID{place.id}, Location: loc}, element)
+	} else if slice {
 		access.Kind, access.Reference, access.ReferenceGuard = OpSliceElementPlace, cloneReferenceMetadata(facts), validity
 		sourceDefinition, _ := fb.owner.module.Types.Lookup(source.typ)
 		placeType := fb.owner.module.Types.Intern(Type{Kind: TypePlace, Element: element, Mutable: sourceDefinition.Kind == TypeMutableSlice})

@@ -1,0 +1,2 @@
+module main
+type Wide decimal range 0.001..10000000000000000000

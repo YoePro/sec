@@ -1,0 +1,50 @@
+module main
+
+fn Shared[...Types](prefix: string, values: ...ref Types) void {}
+fn Mutable[...Types](values: ...ref mut Types) void {}
+fn Owned[...Types](values: ...Types) void {}
+fn Ordinary(value: int) void {}
+fn Mixed(value: int) void {}
+fn Mixed[...Types](values: ...ref Types) void {}
+
+type Box[T] struct { Value: T }
+impl Box[T] {
+    static fn Count[...Types](values: ...ref Types) uint {
+        return values.Len
+    }
+    fn Trace[...Types](prefix: string, values: ...Types) void {}
+}
+
+fn SharedUse() void {
+    Shared("a", missing)
+}
+fn MutableUse() void {
+    Mutable(missing)
+}
+fn OwnedUse() void {
+    Owned(<-missing)
+}
+fn MethodUse(box: Box[int]) void {
+    discard Box[int].Count(missing)
+    box.Trace("a", missing)
+}
+fn OrdinaryUse() void {
+    Ordinary(missing)
+}
+fn MixedUse() void {
+    Mixed(missing)
+}
+fn ResolvedUse() void {
+    Shared("a", 1, true)
+}
+
+fn Select[...Types](prefix: int, values: ...ref Types) void {}
+fn Select[...Types](prefix: string, values: ...ref Types) void {}
+fn AmbiguousUse() void {
+    Select(missing)
+}
+
+fn Context[T, ...Types](head: T, values: ...ref Types) T { return head }
+fn GenericUse() void {
+    discard Context[int](1, missing)
+}

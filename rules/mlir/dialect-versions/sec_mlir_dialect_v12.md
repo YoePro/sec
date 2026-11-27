@@ -474,6 +474,25 @@ are extended for slice direct-reference values and slice element Places.
 
 ---
 
+# 25A. `sec.slice.fill` (2026-11-27)
+
+Mutable-slice `Fill(value)` (`rules/collections/collections.md` § 7.9):
+
+```mlir
+"sec.slice.fill"(%values, %seed) : (!sec.slice_mut<si128>, si128) -> ()
+```
+
+Operands are a `!sec.slice_mut<T>` and one value of `T`; there is no result.
+Every represented element is replaced, in increasing index order, by a trivial
+copy of the value, which its producer evaluated once. `Len` and storage
+identity are unchanged and nothing is allocated. The operation is a slice
+observation of its source: `--sec-verify-slice-guards` requires the same
+source-validity guard as `slice.len`. Compiler-generated IR emits it only for a
+trivially copyable and destructible element (Sema admits only infallibly
+copyable elements; Sec 0.1 has no semantic copy).
+
+---
+
 # 26. No slice equality
 
 Schema v12 defines no:

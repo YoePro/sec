@@ -39,6 +39,7 @@ func (a *Analyzer) freezeStaticScalarInitializers() {
 			return
 		}
 	}
+	errorsBefore := len(a.errors)
 	values := map[StaticBindingID]DefaultConstant{}
 	visiting := map[StaticBindingID]bool{}
 	settled := map[StaticBindingID]bool{}
@@ -71,6 +72,13 @@ func (a *Analyzer) freezeStaticScalarInitializers() {
 			// on its later runtime stores. Definition identities handle lexical shadowing.
 			return evaluate(source)
 		}
+		if binding.Declaration.SynthesizedDefault && (binding.Type.Kind == ArrayType || binding.Type.Kind == StructType) {
+			value, outcome := a.staticAggregateDefault(binding)
+			if outcome == compileTimeEvaluated {
+				values[binding.ID] = value
+			}
+			return value, outcome
+		}
 		value, outcome := a.semanticCompileTimeConstantVisiting(binding.Declaration.Value, map[string]bool{}, binding.Type, resolve)
 		if outcome == compileTimeEvaluated {
 			values[binding.ID] = value
@@ -79,6 +87,9 @@ func (a *Analyzer) freezeStaticScalarInitializers() {
 	}
 	for _, binding := range a.ResolvedStaticDeclarations() {
 		evaluate(binding)
+	}
+	if len(a.errors) != errorsBefore {
+		return
 	}
 	for key, binding := range a.staticBindings {
 		value, known := values[binding.ID]

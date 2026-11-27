@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -45,7 +47,17 @@ var sharedTargetAnalyses targetSnapshotCache
 // load coalesces one immutable key and never caches failed computations.
 // Waiters are released even on panic; a subsequent request may retry.
 // Rules: rules/tooling/lsp.md — "Responsiveness model", "Document snapshots".
-func (c *targetSnapshotCache) load(key string, compute func() ([]byte, error)) (data []byte, err error) {
+func (c *targetSnapshotCache) load(key string, compute func() ([]byte, error)) ([]byte, error) {
+	return c.loadContext(context.Background(), key, compute)
+}
+
+// loadContext cancels both a producer and independent waiters without retaining
+// incomplete target facts. Live waiters may retry a cancelled producer's flight.
+// Rules: rules/tooling/lsp.md — Snapshots, Responsiveness model, §6.7(2–3).
+func (c *targetSnapshotCache) loadContext(ctx context.Context, key string, compute func() ([]byte, error)) (data []byte, err error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	c.mu.Lock()
 	if data, ok := c.entries[key]; ok {
 		c.mu.Unlock()
@@ -53,7 +65,17 @@ func (c *targetSnapshotCache) load(key string, compute func() ([]byte, error)) (
 	}
 	if flight := c.flights[key]; flight != nil {
 		c.mu.Unlock()
-		<-flight.done
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-flight.done:
+		}
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if errors.Is(flight.err, context.Canceled) || errors.Is(flight.err, context.DeadlineExceeded) {
+			return c.loadContext(ctx, key, compute)
+		}
 		return flight.data, flight.err
 	}
 	if c.flights == nil {
@@ -66,6 +88,9 @@ func (c *targetSnapshotCache) load(key string, compute func() ([]byte, error)) (
 	defer func() {
 		if failed := recover(); failed != nil {
 			data, err = nil, fmt.Errorf("target analysis failed: %v", failed)
+		}
+		if err == nil && ctx.Err() != nil {
+			data, err = nil, ctx.Err()
 		}
 		c.mu.Lock()
 		defer c.mu.Unlock()
@@ -101,6 +126,16 @@ func (c *targetSnapshotCache) load(key string, compute func() ([]byte, error)) (
 // "Interface conformance code lens"; rules/compiler/compiler_analysis.md — §55;
 // rules/compiler/compiler_known_members.md — §113B(4).
 func analysisForTarget(uri, text string, overlay sourceOverlay, target platformtarget.Target) (targetAnalysisSnapshot, error) {
+	return analysisForTargetContext(overlay.analysisContext(), uri, text, overlay, target)
+}
+
+// analysisForTargetContext carries work cancellation into the canonical Sema
+// analysis and target snapshot cache; abandoned facts are never serialized.
+// Rules: rules/tooling/lsp.md — Multi-target diagnostics, §6.7(2–3), Snapshots.
+func analysisForTargetContext(ctx context.Context, uri, text string, overlay sourceOverlay, target platformtarget.Target) (targetAnalysisSnapshot, error) {
+	if err := ctx.Err(); err != nil {
+		return targetAnalysisSnapshot{}, err
+	}
 	path := pathFromURI(uri)
 	program := parseProgramForLSP(uri, text)
 	if program == nil {
@@ -129,8 +164,12 @@ func analysisForTarget(uri, text string, overlay sourceOverlay, target platformt
 	if err != nil {
 		return targetAnalysisSnapshot{}, err
 	}
-	data, err := sharedTargetAnalyses.load(key, func() ([]byte, error) {
-		errors := append(imports, analyzer.Analyze(program)...)
+	data, err := sharedTargetAnalyses.loadContext(ctx, key, func() ([]byte, error) {
+		semanticErrors, err := analyzer.AnalyzeContext(ctx, program)
+		if err != nil {
+			return nil, err
+		}
+		errors := append(imports, semanticErrors...)
 		return json.Marshal(targetAnalysisSnapshot{Errors: errors, Warnings: analyzer.Warnings(), Conformances: analyzer.InterfaceConformances()})
 	})
 	if err != nil {

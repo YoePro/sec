@@ -124,3 +124,32 @@ func semanticArraySpreadAction(action sema.ResolvedArrayTransferAction) (ArrayTr
 	}
 	return "", false
 }
+
+// buildFixedArrayFill lowers contextual `fill(value)` into a fixed array: the
+// value is evaluated once and one array.fill copies it into every element.
+// Sema admits only infallibly copyable elements; Sec 0.1 has no semantic copy,
+// so the element is trivially copyable and destructible.
+// Rules: rules/compiler/compiler_known_members.md — "Contextual fill";
+// rules/collections/collections.md — § 5.
+func (fb *functionBuilder) buildFixedArrayFill(call *ast.CallExpression) (builtValue, error) {
+	target, ok := fb.owner.analyzer.TypeOf(call)
+	if !ok || len(call.Arguments) != 1 {
+		return builtValue{}, fmt.Errorf("fill has no resolved fixed-array target")
+	}
+	resultType, err := fb.owner.internType(target)
+	if err != nil {
+		return builtValue{}, err
+	}
+	array, ok := fb.owner.module.Types.Lookup(resultType)
+	if !ok || array.Kind != TypeArray {
+		return builtValue{}, fmt.Errorf("fill target is not a fixed array")
+	}
+	if target.Element == nil || fb.owner.copyClassificationOf(*target.Element) != sema.CopyTrivial || !fb.owner.triviallyDestructible(*target.Element) {
+		return builtValue{}, fb.unsupported("fill of a non-trivially copyable element", call.Token)
+	}
+	value, err := fb.buildExpr(call.Arguments[0], array.Element)
+	if err != nil {
+		return builtValue{}, err
+	}
+	return fb.result(Operation{Kind: OpArrayFill, Operands: []ValueID{value.id}, ArrayElementType: array.Element, ArrayLength: array.Length, Location: location(call.Token)}, resultType), nil
+}

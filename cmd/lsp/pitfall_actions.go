@@ -26,7 +26,7 @@ func pitfallCodeActions(uri, text string, requested lspRange, overlay sourceOver
 	}
 	prepareProgramForLSP(parsed.Program, path, overlay)
 	analyzer := newLSPAnalyzerWithOverlay(uri, parsed.Program, overlay)
-	errors := analyzer.Analyze(parsed.Program)
+	errors := analyzeCompilerSnapshot(analyzer, parsed.Program, overlay)
 	severity := pitfallLevel(uri, settings)
 	for _, finding := range analyzer.PitfallAnalysis().Findings() {
 		if normalizedSourcePath(finding.Subject.Source.File) != normalizedSourcePath(path) {

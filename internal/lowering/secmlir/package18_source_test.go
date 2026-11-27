@@ -38,8 +38,7 @@ func buildPackage18Source(t *testing.T, source string, arch string, width uint16
 // return ownership, a union payload, a struct field owner, Len, IsEmpty,
 // len(...), index read and replacement, ref values[..], ref mut values[..] and
 // Append. The rows whose operation has no schema-14 form stop at named
-// boundaries instead of an unresolved call: SizeOf (element stride, P24),
-// unsafe Ptr (P18-25), Clear and RemoveAt (no length-reducing operation) and
+// boundaries instead of an unresolved call: unsafe Ptr (P18-25) and
 // ToString (P23).
 //
 // Rules:
@@ -83,10 +82,7 @@ func TestPackage18SourceEndToEnd(t *testing.T) {
 		})
 	}
 	for name, test := range map[string]struct{ body, want string }{
-		"SizeOf":     {"fn F() uint {\n    let mut values: byte[]\n    return values.SizeOf\n}", "dynamic-array SizeOf (Len * element layout stride needs the resolved layout of P24)"},
 		"unsafe Ptr": {"fn F() RawPtr[byte] {\n    let mut values: byte[]\n    unsafe {\n        return values.Ptr\n    }\n}", "raw pointer to dynamic-array backing (P18-25 raw-pointer boundary)"},
-		"Clear":      {"fn F() void {\n    let mut values: byte[]\n    values.Clear()\n}", "dynamic-array Clear (no schema-14 operation removes elements or shrinks the length)"},
-		"RemoveAt":   {"fn F() void {\n    let mut values: byte[]\n    let removed := values.RemoveAt(0)\n    discard removed\n}", "dynamic-array RemoveAt (no schema-14 operation"},
 		"ToString":   {"fn F() Result[string, StringError] {\n    let mut values: byte[]\n    return Ok(try values.ToString())\n}", "ToString() needs P23"},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -140,9 +136,9 @@ func TestPackage18NestingAndBoundaries(t *testing.T) {
 		}
 	}
 	for name, test := range map[string]struct{ body, want string }{
-		"for over T[] (§ 108)": {"fn F() int {\n    let mut values: int[]\n    let mut total := 0\n    for value in values {\n        total += value\n    }\n    return total\n}", "for iteration over a collection"},
-		"membership (§ 110)":   {"fn F() bool {\n    let mut values: int[]\n    return 1 in values\n}", "membership over an owning dynamic array (no P18 membership lowering)"},
-		"unsafe Ptr (§ 107)":   {"fn F() RawPtr[int] {\n    let mut values: int[]\n    unsafe {\n        return values.Ptr\n    }\n}", "raw pointer to dynamic-array backing"},
+		"for over T[] (§ 108)":               {"fn F() int {\n    let mut values: int[]\n    let mut total := 0\n    for value in values {\n        total += value\n    }\n    return total\n}", "for iteration over a collection"},
+		"membership string equality (§ 110)": {"fn F(values: string[]) bool {\n    return \"x\" in values\n}", "dynamic-array membership element equality"},
+		"unsafe Ptr (§ 107)":                 {"fn F() RawPtr[int] {\n    let mut values: int[]\n    unsafe {\n        return values.Ptr\n    }\n}", "raw pointer to dynamic-array backing"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			module, err := buildPackage18Source(t, "module main\n\n"+test.body+"\n", "amd64", 64)

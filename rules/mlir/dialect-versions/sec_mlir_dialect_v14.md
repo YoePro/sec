@@ -287,6 +287,86 @@ checks that count for both append forms (`append_prepared` appends 1). An
 empty segment emits no growth and no append. Range segments of non-trivial
 elements do not exist (Sema admits integer and rune segments only).
 
+## 13B. `sec.dynamic_array.clear` (2026-11-27)
+
+`Clear()` (`rules/collections/collections.md` § 6.8; package 18 § 15) destroys
+every live element in reverse logical index order, sets `Len` to zero and
+retains the backing.
+
+Operands:
+
+```text
+writable dynamic-array Place
+```
+
+Optional property:
+
+```text
+destruction_plan: the element type's destruction plan
+```
+
+No result and no backing transition: the backing domain and its epoch are
+unchanged and the retained storage stays live. No allocation and no failure
+path.
+
+When the element type needs destruction, `destruction_plan` is required and
+names the element plan (the same plan the array's own
+`destroy-elements-reverse` step uses); `clear` runs it over the initialized
+prefix in reverse logical index order before setting `Len` to zero. A trivially
+destructible element carries no plan. `--sec-verify-destruction-plans` checks
+the plan exists, destroys the element type, and is present exactly when the
+element needs destruction.
+
+## 13C. `sec.dynamic_array.remove_at` (2026-11-27)
+
+`RemoveAt(index) -> Option[T]` (`rules/collections/collections.md` § 6.9;
+package 18 § 15) is explicit owning extraction.
+
+Operands, properties and result:
+
+```text
+writable dynamic-array Place
+built-in integer index
+index_signed: bool
+bounds_kind = "runtime-check", bounds_proof = "guarded"
+result: the extracted element of the array's element type
+```
+
+The operation is entered only on the true edge of
+`sec.dynamic_array.index_in_bounds` for the same owner and index. It moves the
+element out, shifts later live elements left, decrements `Len` and leaves the
+former final slot uninitialized; the backing domain and its epoch are
+unchanged. No allocation and no failure path. The false edge builds `None`
+without mutation; the true edge wraps the element in `Some`.
+
+For a trivially copyable, trivially destructible element the result is an
+immediate value copied into `Some`. Any other element is owning extraction:
+the result is an owned value that `Some` constructs directly, and the shifted
+suffix relocates within the backing and stays owned by the array (no copy,
+no hole). An unused `RemoveAt` result is implicitly discarded with the
+Option's destruction plan (`rules/control-flow/discard.md` § 10).
+
+---
+
+## 13D. `sec.dynamic_array.payload_size` (2026-11-27)
+
+Instance `SizeOf` of an owning dynamic array (`rules/collections/collections.md`
+§ 3.4) is the represented payload byte count `Len * stride`:
+
+```text
+dynamic-array Place (read-only suffices)
+stride: canonical non-negative decimal string, the element's layout stride
+result: target-sized uint
+```
+
+The stride is the element's canonical layout stride under the target plan
+(`rules/memory/layout.md` § 9), resolved by Sema; the product is not
+revalidated, because growth already established a representable payload
+extent. No allocation and no state change. An element whose layout is
+incomplete (a descriptor type before P24) stays a named Semantic IR boundary.
+Type-form `T.SizeOf` and value-form `SizeOf` of a statically sized value are
+not this operation: Semantic IR emits their layout size as a uint constant.
+
 ---
 
 # 14. `sec.dynamic_array.grow_backing`

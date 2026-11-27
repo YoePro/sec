@@ -1,6 +1,6 @@
 schema_version: 1
-updated: "2026-11-26"
-last_id: MD-153
+updated: "2026-11-27"
+last_id: MD-155
 purpose: >-
   Tracks normative decisions that are missing or insufficiently precise and
   therefore constrain implementation. Remove an entry only after the owning
@@ -810,12 +810,18 @@ decisions:
       unsupported-lowering diagnostic and no output. No allocator or hidden
       heap was invented. Executable UTF-8/rune conformance, allocation-failure
       and independent-result lifetime/cleanup tests remain unavailable.
-      Per the supplied phase order, stdlib collect/Builder/io/url migration,
-      canonical rulebook reconciliation and final closure remain pending;
-      str.FromByteArray and Builder.Finish still contain MD-109 panics.
-      Do not remove this entry or archive the correction as applied until
-      those required implementation and verification gates pass. No new
-      language decision is requested for the already chosen public route.
+      Canonical rulebook reconciliation completed 2026-11-27 under
+      compiler.compiler-known-surfaces: core, registry, string-type, LSP,
+      allocation and P23 texts now agree on both static borrowed APIs,
+      independent results, explicit allocation and the preserved MD-091
+      byte ToString summary. Functions and ownership texts were audited;
+      their static/no-receiver and ref-borrowing rules already agree.
+      Stdlib collect/Builder/io/url migration, executable materialization
+      conformance and final closure remain pending in governance/core.yaml.
+      The correction was archived under the repository intake policy on
+      2026-11-21; archival does not certify implementation completion.
+      Keep this entry until the remaining implementation and verification
+      gates pass. No new language decision is requested for the chosen route.
     classification: architectural
     status: decided-implementation-pending
   - id: MD-111
@@ -1925,5 +1931,51 @@ decisions:
       semantics under elimination and proven bounds, whether it affects
       MayPanic/@noPanic analysis, and the advisory. Governance owners:
       analysis.arena, lowering.sec-mlir-package19.
+    classification: localized
+    status: open
+  - id: MD-154
+    area: dynamic-ownership-bookkeeping-policy
+    rulebooks:
+      - rules/memory/destruction.md
+      - rules/platform/target_profiles.md
+      - rules/tooling/cli.md
+    description: >-
+      Open decision (2026-11-27, raised by Claude while closing
+      tooling.destruction). destruction.md §§ 11.2(3), 13.3(4), 31(4),
+      33.2(3) and 35.4(3) let a target/project policy forbid dynamic
+      ownership bookkeeping (hidden drop/availability flags), and require a
+      diagnostic that explains why ownership differs across paths and
+      suggests restructuring or explicit discard convergence. No such policy
+      exists anywhere today (no target-profile field, project setting or CLI
+      flag), so the diagnostic has nothing to fire on. Decide: where the
+      policy is selected (target profile, project manifest, CLI, or several
+      with a precedence), its name and values (for example
+      `ownership-bookkeeping: allowed | forbidden`), its default per profile
+      (hosted vs freestanding/embedded), and the diagnostic id/severity.
+      Once decided, the Sema side can reuse the existing conditional
+      unavailability facts (S1089 path witnesses). Governance owner:
+      tooling.destruction.
+    classification: localized
+    status: open
+  - id: MD-155
+    area: fill-negative-count
+    rulebooks:
+      - rules/compiler/compiler_known_members.md
+      - rules/collections/collections.md
+    description: >-
+      Open decision (2026-11-27, raised by Claude while lowering
+      `try fill(value, count)` into an owning dynamic array). Sema accepts a
+      signed integer count (compilerKnownCountArgument admits signed,
+      unsigned and compatible named integers), but compiler_known_members.md
+      § 50(2) and collections.md § 17 only say the result owns exactly
+      `count` elements; they do not define a negative runtime count. Options:
+      (A) Err(CollectionError.SizeOverflow) for a negative count, keeping the
+      call fallible-only; (B) Sema requires an unsigned count (or a
+      non-negative constant), making signed runtime counts a compile error;
+      (C) a negative count is a precondition panic. Semantic IR lowers
+      unsigned counts and non-negative integer literals today; a signed
+      runtime count stops at a named boundary naming MD-155. The same choice
+      applies to string fill(fragment, count). Governance owner:
+      frontend.compiler-known-fill.
     classification: localized
     status: open

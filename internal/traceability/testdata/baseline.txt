@@ -124,7 +124,6 @@ internal/ir/semantic:(*functionBuilder).destroyFreshSubject
 internal/ir/semantic:(*functionBuilder).destroyTemporaries
 internal/ir/semantic:(*functionBuilder).dominatesCurrent
 internal/ir/semantic:(*functionBuilder).dynamicArrayBindingPlace
-internal/ir/semantic:(*functionBuilder).dynamicArrayOwnerPlace
 internal/ir/semantic:(*functionBuilder).emit
 internal/ir/semantic:(*functionBuilder).emitAll
 internal/ir/semantic:(*functionBuilder).emitBorrow
@@ -169,7 +168,6 @@ internal/ir/semantic:(*functionBuilder).lowerReceiverRegisterWrite
 internal/ir/semantic:(*functionBuilder).lowerReceiverWrite
 internal/ir/semantic:(*functionBuilder).lowerReferenceCompoundWrite
 internal/ir/semantic:(*functionBuilder).lowerReferenceEquality
-internal/ir/semantic:(*functionBuilder).lowerReferenceUse
 internal/ir/semantic:(*functionBuilder).lowerSliceElementSubplaceBorrow
 internal/ir/semantic:(*functionBuilder).lowerSliceHolderTransfer
 internal/ir/semantic:(*functionBuilder).markDeferReadOwners
@@ -980,7 +978,6 @@ internal/sema:(*Analyzer).canAccessStructField
 internal/sema:(*Analyzer).canInitialize
 internal/sema:(*Analyzer).canInitializeUnrecorded
 internal/sema:(*Analyzer).canWriteThroughSymbol
-internal/sema:(*Analyzer).canonicalDereferencePlace
 internal/sema:(*Analyzer).canonicalSlicePlace
 internal/sema:(*Analyzer).captureLoopIterationAnalysisState
 internal/sema:(*Analyzer).checkBorrowedReadPlaceForAction
@@ -1478,7 +1475,6 @@ internal/sema:(*cteExecutor).convertValue
 internal/sema:(*cteExecutor).currentFunctionReturn
 internal/sema:(*cteExecutor).declarationOf
 internal/sema:(*cteExecutor).declare
-internal/sema:(*cteExecutor).defaultValue
 internal/sema:(*cteExecutor).depend
 internal/sema:(*cteExecutor).dependOnLayout
 internal/sema:(*cteExecutor).dependOnModule

@@ -86,8 +86,12 @@ func (x *cteExecutor) structLiteral(literal *ast.StructLiteral) (DefaultConstant
 }
 
 // defaultValue converts a resolved default into an evaluator value.
+// Rules: rules/types/default_values.md — §§31-32, 40-41;
+// rules/compiler/compile_time_evaluation.md — §§24, 32.
 func (x *cteExecutor) defaultValue(resolution DefaultResolution, typ Type, at lexer.Token) (DefaultConstant, bool) {
 	switch resolution.Kind {
+	case ArrayDefault:
+		return x.arrayDefault(resolution, typ, at)
 	case StructDefault:
 		aggregate := &CompileTimeAggregate{Type: typ, Fields: map[string]DefaultConstant{}}
 		for _, field := range resolution.Fields {

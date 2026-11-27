@@ -1,0 +1,12 @@
+module main
+
+fn Mode(code: int) int {
+    if code == 1 {
+        return 10
+    }
+    unreachable
+}
+
+fn main() int {
+    return Mode(1)
+}

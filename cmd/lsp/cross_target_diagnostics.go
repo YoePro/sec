@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"hash/fnv"
 	"sort"
@@ -59,7 +60,17 @@ func (s *server) crossTargetResultFor(uri string, text string) (crossTargetResul
 // when no project variants apply. It reports false
 // when the document is target-specific or its module has fewer than two
 // targets, where the ordinary active-target diagnostics are complete.
-func computeCrossTargetDiagnostics(uri string, text string, overlay sourceOverlay) (result crossTargetResult, ok bool) {
+func computeCrossTargetDiagnostics(uri string, text string, overlay sourceOverlay) (crossTargetResult, bool) {
+	return computeCrossTargetDiagnosticsContext(context.Background(), uri, text, overlay)
+}
+
+// computeCrossTargetDiagnosticsContext stops obsolete comparisons between and
+// within target analyses; partial per-target maps are never successful results.
+// Rules: rules/tooling/lsp.md — Multi-target diagnostics, §6.7(2–3), Snapshots.
+func computeCrossTargetDiagnosticsContext(ctx context.Context, uri string, text string, overlay sourceOverlay) (result crossTargetResult, ok bool) {
+	if ctx.Err() != nil {
+		return crossTargetResult{}, false
+	}
 	defer func() {
 		if recover() != nil {
 			ok = false
@@ -76,10 +87,13 @@ func computeCrossTargetDiagnostics(uri string, text string, overlay sourceOverla
 	if options := lspDiagnosticTargetOptions(path, overlay); len(options) >= 2 {
 		result = crossTargetResult{textHash: documentTextHash(text), active: lspActiveTarget(active, path, overlay).String(), perTarget: map[string][]diagnostic{}}
 		for _, option := range options {
+			if ctx.Err() != nil {
+				return crossTargetResult{}, false
+			}
 			name := option.diagnosticName()
 			result.targets = append(result.targets, name)
 			target := platformtarget.Target{OS: option.OS, Arch: option.Arch}
-			result.perTarget[name] = semanticDiagnosticsForTarget(uri, text, overlay, target)
+			result.perTarget[name] = semanticDiagnosticsForTargetContext(ctx, uri, text, overlay, target)
 			if option.Active {
 				result.active = name
 			}
@@ -96,8 +110,11 @@ func computeCrossTargetDiagnostics(uri string, text string, overlay sourceOverla
 		perTarget: map[string][]diagnostic{},
 	}
 	for _, target := range targets {
+		if ctx.Err() != nil {
+			return crossTargetResult{}, false
+		}
 		result.targets = append(result.targets, target.String())
-		result.perTarget[target.String()] = semanticDiagnosticsForTarget(uri, text, overlay, target)
+		result.perTarget[target.String()] = semanticDiagnosticsForTargetContext(ctx, uri, text, overlay, target)
 	}
 	return result, true
 }
@@ -106,8 +123,14 @@ func computeCrossTargetDiagnostics(uri string, text string, overlay sourceOverla
 // into diagnostics belonging to the active document.
 // Rules: rules/tooling/lsp.md — "Multi-target diagnostics", "Document snapshots".
 func semanticDiagnosticsForTarget(uri string, text string, overlay sourceOverlay, target platformtarget.Target) []diagnostic {
+	return semanticDiagnosticsForTargetContext(context.Background(), uri, text, overlay, target)
+}
+
+// semanticDiagnosticsForTargetContext shares the cancellation-aware target query.
+// Rules: rules/tooling/lsp.md — Multi-target diagnostics, §6.7(2–3).
+func semanticDiagnosticsForTargetContext(ctx context.Context, uri string, text string, overlay sourceOverlay, target platformtarget.Target) []diagnostic {
 	path := pathFromURI(uri)
-	snapshot, err := analysisForTarget(uri, text, overlay, target)
+	snapshot, err := analysisForTargetContext(ctx, uri, text, overlay, target)
 	if err != nil {
 		// The enclosing cross-target computation rejects failed work and
 		// never publishes an empty successful target from missing facts.

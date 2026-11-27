@@ -343,6 +343,13 @@ func cloneSemanticErrors(errors []Error) []Error {
 	}
 	result := append([]Error(nil), errors...)
 	for index := range result {
+		if result[index].Arguments != nil {
+			args := make(map[string]string, len(result[index].Arguments))
+			for key, value := range result[index].Arguments {
+				args[key] = value
+			}
+			result[index].Arguments = args
+		}
 		result[index].EscapeCauses = cloneEscapeCausePaths(result[index].EscapeCauses)
 	}
 	return result

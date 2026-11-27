@@ -66,7 +66,7 @@ func unsafeCodeActions(uri, text string, reported []diagnostic, overlay sourceOv
 				program := parser.New(lexer.NewWithFile(text, path)).ParseProgram()
 				prepareProgramForLSP(program, path, overlay)
 				authorization = newLSPAnalyzerWithOverlay(uri, program, overlay)
-				authorization.Analyze(program)
+				analyzeCompilerSnapshot(authorization, program, overlay)
 			}
 			token := call.Token
 			if member, ok := call.Callee.(*ast.MemberExpression); ok && member.Property.Token.ByteStart == offset {
@@ -115,7 +115,7 @@ func unsafeCodeActions(uri, text string, reported []diagnostic, overlay sourceOv
 		if checked.Fatal || len(checked.Diagnostics) != 0 {
 			continue
 		}
-		updated := sourceOverlay{Sources: map[string]string{}, Targets: overlay.Targets}
+		updated := sourceOverlay{Sources: map[string]string{}, Targets: overlay.Targets, workContext: overlay.workContext}
 		for file, source := range overlay.Sources {
 			updated.Sources[file] = source
 		}
@@ -123,7 +123,7 @@ func unsafeCodeActions(uri, text string, reported []diagnostic, overlay sourceOv
 		prepareProgramForLSP(checked.Program, path, updated)
 		analyzer := newLSPAnalyzerWithOverlay(uri, checked.Program, updated)
 		remaining := false
-		for _, err := range analyzer.Analyze(checked.Program) {
+		for _, err := range analyzeCompilerSnapshot(analyzer, checked.Program, updated) {
 			if diagnosticBelongsToSource(err, path) && err.Severity == diagnostics.SeverityError {
 				remaining = true
 			}

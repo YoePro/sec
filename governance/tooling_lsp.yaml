@@ -247,16 +247,39 @@ integrations:
     area: tooling
     status: partial
     integrated: "2026-09-08"
-    revised: "2026-11-19"
+    revised: "2026-11-27"
     summary: >-
       Coalesces open-document diagnostics by directory module and analyzes each
       represented module once, avoiding repeated whole-module Sema work for
       every open sibling. Diagnostic work is serialized and obsolete jobs are
-      rejected.
+      rejected. Running analysis and cache waits support request cancellation.
     rules:
       - rules/tooling/lsp.md
       - rules/projects/modules.md
     code:
+      - internal/sema/analysis_cancellation.go
+      - internal/sema/cte_cancellation.go
+      - internal/sema/analyzer.go
+      - internal/sema/analyzer_inference.go
+      - internal/sema/analyzer_blocks.go
+      - internal/sema/analyzer_analysis_pipeline.go
+      - cmd/lsp/analysis_context.go
+      - cmd/lsp/diagnostics_schedule.go
+      - cmd/lsp/cross_target_diagnostics.go
+      - cmd/lsp/cross_target_schedule.go
+      - cmd/lsp/target_analysis.go
+      - cmd/lsp/request_cancellation.go
+      - cmd/lsp/request_queue.go
+      - cmd/lsp/concurrency.go
+      - cmd/lsp/target_selection.go
+      - cmd/lsp/default_actions.go
+      - cmd/lsp/ownership_actions.go
+      - cmd/lsp/unsafe_actions.go
+      - cmd/lsp/string_operator_tooling.go
+      - cmd/lsp/pitfall_actions.go
+      - cmd/lsp/rename.go
+      - cmd/lsp/unit_actions.go
+      - cmd/lsp/test_discovery.go
       - cmd/lsp/main.go
       - cmd/lsp/diagnostics_batch.go
       - cmd/lsp/analysis_cache.go
@@ -264,6 +287,12 @@ integrations:
       - cmd/lsp/subject_completion.go
       - cmd/lsp/expected_value_completion.go
     tests:
+      - internal/sema/analysis_cancellation_test.go
+      - internal/sema/cte_cancellation_test.go
+      - cmd/lsp/analysis_cancellation_test.go
+      - cmd/lsp/request_queue_cancel_test.go
+      - cmd/lsp/concurrency_test.go
+      - testdata/lsp/cancellation/main.sec
       - cmd/lsp/main_test.go
       - cmd/lsp/diagnostics_batch_test.go
       - cmd/lsp/diagnostics_batch_target_test.go
@@ -280,10 +309,18 @@ integrations:
       - foreign modules remain separate and unsaved overlays remain authoritative
       - "per-target batching (2026-10-04): the batch key is directory, module, and the document's effective target (its `#target` or the manifest/host target), so open platform files of one module for different targets get separate Sema runs; previously the module was assembled for the first document's target and every other platform file in the group silently received no semantic diagnostics (for example `let mode := ...` followed by `mode = ...` in file.linux.any.sec while file.freebsd.any.sec was open) (TestDiagnosticBatchAnalyzesEachPlatformFileForItsTarget)"
       - Shared immutable compiler snapshots now serve ordinary, expected-value and subject completion alongside hover, navigation and semantic tokens; active-document roots retain analyzed AST identities, recovery text has a separate content identity, and completion reads recorded types without fallback inference. Cache tests verify cross-feature reuse, dependency-epoch invalidation and concurrent read leases.
+      - "Cooperative running compiler-analysis cancellation completed 2026-11-27: AnalyzeContext polls declaration, statement/expression and block work and producer boundaries, unwinds abandoned compiler work through a private boundary, preserves real compiler panics and returns the original context error with no source diagnostic or completed analysis. Module and cross-target diagnostic jobs cancel obsolete active contexts on refresh/close/shutdown, retain generation publication guards and discard whole partial batches. Shared analysis-cache leases and target-flight waits are cancellable independently; failed/cancelled producers install no successful or negative entry and live readers can retry. Protocol queue-to-worker handoff registers active requests atomically with dequeue, so $/cancelRequest cannot be lost in the transition; changed open/import/configuration/target inputs withdraw running snapshots before ordered mutation waits on worker locks. Foreground queries, test discovery, rename and proof-checked code actions propagate the same request context through overlays without fingerprinting cancellation as a semantic input. RequestCancelled and ContentModified remain distinct, replies commit against protocol cancellation, every worker cleans its request record before completion, and abandoned work cannot publish an empty success. No new worker pool, alternate Sema engine or semantic budget/cancellation conflation is introduced."
     remaining:
-      - cooperative cancellation inside an already-running compiler analysis
       - complete CompilationPlan-aware dependency invalidation and scheduling
     verification:
+      - command: go vet ./cmd/lsp ./internal/sema; go test ./internal/traceability -count=1; go run ./cmd/yamlstatus books --check
+        result: "Passed 2026-11-27: vet clean, traceability 0.232s, 115 rulebooks/131 static files valid. Governance check 0 problems/47 fragments, canonical formatting, all 44 owner paths and whitespace checks pass."
+      - command: go test -p 4 ./cmd/lsp -run 'TestOwnershipCodeActionsUnicodeAndCRLF|TestAnalysisCancellation|TestCompletionSharesCompilerSnapshot|TestCompletionConcurrentSnapshotReaders|TestRequestQueue' -count=1 -timeout=100s
+        result: Passed 2026-11-27 (23.038s). Earlier broad CodeAction|Rename selection timed out at 150s while TestOwnershipCodeActionsUnicodeAndCRLF had been running for 2s; no full selection pass is claimed. Diagnostic/module/cross-target/cache regression subset passed separately (31.314s).
+      - command: go test -race -p 4 ./internal/sema ./cmd/lsp -run 'TestAnalysisCancellation|TestCTECancellation|TestModuleDiagnosticsCoalesce|TestCompletion.*Snapshot|TestRequestQueue|TestServerAnswersConcurrentRequests' -count=1 -timeout=180s
+        result: "Passed 2026-11-27: Sema 1.741s, LSP 112.236s. Subsequent final cancellation-only LSP race suite passed 45.749s; final queue/worker/concurrent-response race subset 26.122s; final atomic diagnostic/dependency-batch and running-job race subset 87.191s. Covers source-backed ordinary Sema, private defect rethrow, cache failure/retry and independent waits, edit/close/shutdown, target flights, atomic queue handoff, exact protocol error responses and worker registry cleanup."
+      - command: go test -p 4 ./internal/sema -count=1 -timeout=180s
+        result: "Passed 2026-11-27 (34.104s): complete Sema, ordinary-body cancellation at all depths, CTE cancellation/retry and unchanged mandatory semantic results."
       - command: go vet ./cmd/lsp
         result: passed
       - command: go test -race ./cmd/lsp -run '^TestCompletion(SharesCompilerSnapshot|RecoveryCacheIdentity|ConcurrentSnapshotReaders)$|^TestAnalysisDepthSnapshotCacheReplacement$|^TestInitializerSignatureOverlayAndExplicitDefault$' -count=1 -timeout=180s

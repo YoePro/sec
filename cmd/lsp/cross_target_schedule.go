@@ -1,6 +1,9 @@
 package main
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
 type crossTargetRequest struct {
 	generation uint64
@@ -13,6 +16,7 @@ type crossTargetWork struct {
 	pending *crossTargetRequest
 	ready   bool
 	running bool
+	cancel  context.CancelFunc
 }
 
 // scheduleCrossTargetDiagnostics coalesces open/change/save and dependency
@@ -59,6 +63,9 @@ func (s *server) scheduleCrossTargetDiagnostics(uri string) {
 	}
 	store.generation[uri]++
 	delete(store.results, uri)
+	if job.cancel != nil {
+		job.cancel()
+	}
 	job.pending = &crossTargetRequest{generation: store.generation[uri], text: snapshot.Text, overlay: overlay}
 	job.ready = false
 	generation := store.generation[uri]
@@ -87,9 +94,13 @@ func (s *server) runCrossTargetWork(uri string, job *crossTargetWork, generation
 		request := job.pending
 		job.pending = nil
 		job.ready = false
+		ctx, cancel := context.WithCancel(context.Background())
+		job.cancel = cancel
 		store.mu.Unlock()
-		result, ok := computeCrossTargetDiagnostics(uri, request.text, request.overlay)
+		result, ok := computeCrossTargetDiagnosticsContext(ctx, uri, request.text, request.overlay)
+		cancel()
 		store.mu.Lock()
+		job.cancel = nil
 		current := !store.stopped && store.work[uri] == job && store.generation[uri] == request.generation
 		if current && ok {
 			store.results[uri] = result
@@ -121,6 +132,9 @@ func (store *crossTargetStore) cancelWorkLocked(uri string) {
 	store.generation[uri]++
 	delete(store.results, uri)
 	if job := store.work[uri]; job != nil {
+		if job.cancel != nil {
+			job.cancel()
+		}
 		if job.timer != nil {
 			job.timer.Stop()
 		}

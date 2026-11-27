@@ -16,6 +16,10 @@ func (r *diagnosticReporter) semaDiagnostic(diagnostic sema.Error, human string,
 		severity = diagnostics.SeverityError
 	}
 	occurrence := newOccurrence(diagnostic.ID, severity, "sema", diagnostic.DisplayMessage())
+	for key, value := range diagnostic.Arguments {
+		occurrence.Arguments[key] = value
+		occurrence.Message.Arguments[key] = value
+	}
 	if len(stage) > 0 {
 		occurrence.Arguments["pipeline_stage"] = stage[0]
 		occurrence.Message.Arguments["pipeline_stage"] = stage[0]

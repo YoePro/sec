@@ -165,6 +165,7 @@ func (a *Analyzer) inferAvailabilityExpression(expr *ast.AvailabilityExpression)
 }
 
 func (a *Analyzer) inferExpression(expr ast.Expression) (Type, expressionValue) {
+	a.checkAnalysisCancellation()
 	typ, value := a.inferExpressionUnrecorded(expr)
 	if expr != nil {
 		a.expressionTypes[expr] = typ
@@ -1026,6 +1027,12 @@ func (a *Analyzer) inferStaticMemberExpression(expr *ast.MemberExpression) (Type
 		}
 		if member, ok := compilerKnownMember(typ, expr.Property.Value, true); ok && member.Kind == CompilerKnownProperty {
 			a.compilerKnownMemberFacts[sourceTokenLocation(expr.Property.Token)] = member
+			if member.ID == "CKM-SIZEOF-TYPE" {
+				if a.sizeOfTypeSubjects == nil {
+					a.sizeOfTypeSubjects = map[sourceTokenKey]Type{}
+				}
+				a.sizeOfTypeSubjects[sourceTokenLocation(expr.Property.Token)] = semanticSnapshotType(typ)
+			}
 			return a.refinedCompilerKnownType(member.Result), true
 		}
 		if a.reportMisspelledNumericProperty(typ, expr) {

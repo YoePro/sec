@@ -96,7 +96,7 @@ func ownershipActionAnalysis(uri, text string, overlay sourceOverlay) (snapshot 
 		}
 	}()
 	path := pathFromURI(uri)
-	updated := sourceOverlay{Sources: map[string]string{}, Targets: overlay.Targets}
+	updated := sourceOverlay{Sources: map[string]string{}, Targets: overlay.Targets, workContext: overlay.workContext}
 	for file, source := range overlay.Sources {
 		updated.Sources[file] = source
 	}
@@ -112,7 +112,7 @@ func ownershipActionAnalysis(uri, text string, overlay sourceOverlay) (snapshot 
 		return snapshot
 	}
 	analyzer := newLSPAnalyzerWithOverlay(uri, parsed.Program, updated)
-	snapshot.errors = analyzer.Analyze(parsed.Program)
+	snapshot.errors = analyzeCompilerSnapshot(analyzer, parsed.Program, updated)
 	snapshot.program, snapshot.analyzer, snapshot.complete = parsed.Program, analyzer, true
 	return snapshot
 }

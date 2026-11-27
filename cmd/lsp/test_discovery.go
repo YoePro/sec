@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"sec/internal/lexer"
 	"sec/internal/parser"
@@ -39,7 +40,7 @@ func discoverTests(uri, text, pattern string, overlay sourceOverlay) (testDiscov
 		return result, nil
 	}
 	a := newLSPAnalyzerWithOverlay(uri, parsed.Program, overlay)
-	if errors := a.Analyze(parsed.Program); len(errors) != 0 {
+	if errors := analyzeCompilerSnapshot(a, parsed.Program, overlay); len(errors) != 0 {
 		return result, nil
 	}
 	selected, err := a.SelectTests(pattern)
@@ -64,6 +65,12 @@ func discoverTests(uri, text, pattern string, overlay sourceOverlay) (testDiscov
 // Execution remains the existing sec test pipeline's responsibility.
 // Rules: rules/tooling/testing.md — §§39.1–39.7; rules/tooling/lsp.md — Snapshots.
 func (s *server) handleTestDiscovery(message rpcMessage) error {
+	return s.handleTestDiscoveryContext(context.Background(), message)
+}
+
+// handleTestDiscoveryContext preserves cancellation of the test compilation view.
+// Rules: rules/tooling/testing.md §§39.1–39.4; rules/tooling/lsp.md §6.7(2–3).
+func (s *server) handleTestDiscoveryContext(ctx context.Context, message rpcMessage) error {
 	var params testDiscoveryParams
 	if err := json.Unmarshal(message.Params, &params); err != nil {
 		return s.respondError(message.ID, -32602, err.Error())
@@ -72,9 +79,9 @@ func (s *server) handleTestDiscovery(message rpcMessage) error {
 	if !found {
 		return s.respondError(message.ID, -32602, "test document is not open")
 	}
-	result, err := discoverTests(params.TextDocument.URI, snapshot.Text, params.Run, s.sourceOverlay())
+	result, err := discoverTests(params.TextDocument.URI, snapshot.Text, params.Run, s.sourceOverlayContext(ctx))
 	if err != nil {
 		return s.respondError(message.ID, -32602, "invalid test selection: "+err.Error())
 	}
-	return s.respond(message.ID, result)
+	return s.respondAnalysis(ctx, message.ID, result)
 }

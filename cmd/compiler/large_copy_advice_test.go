@@ -28,7 +28,7 @@ func TestLargeCopyAdviceCLI(t *testing.T) {
 				continue
 			}
 			count++
-			if len(d.Fixes) != 0 || len(d.Help) != 1 || !strings.Contains(d.Help[0].Text, "Estimated copy size:") || !strings.Contains(d.Help[0].Text, "by-value copy is legal") || !strings.Contains(d.Help[0].Text, "not an ownership repair") || strings.Contains(d.Message.Text, "Owner") {
+			if len(d.Fixes) != 0 || len(d.Help) != 1 || !strings.Contains(d.Help[0].Text, "Copy size on the active target:") || !strings.Contains(d.Help[0].Text, "by-value copy is legal") || !strings.Contains(d.Help[0].Text, "not an ownership repair") || strings.Contains(d.Message.Text, "Owner") {
 				t.Fatalf("copy advice lost its evidence/optional status: %+v", d)
 			}
 		}

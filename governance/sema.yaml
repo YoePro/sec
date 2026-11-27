@@ -6,33 +6,56 @@ integrations:
     area: frontend-and-lowering
     status: partial
     integrated: "2026-09-09"
-    summary: >-
-      Accepts in over owning dynamic T[] arrays using the existing element
-      equality and contextual literal typing rules. The shared frontend supports
-      diagnostics and LSP analysis; dynamic array backend support remains
-      absent.
+    revised: "2026-11-27"
+    summary: Accepts in and not in over owning dynamic T[] arrays through canonical element compatibility. Scalar equality on bound owners, stored fields and reference-reached owners with known provenance now reaches verified Semantic IR and schema-14 Sec MLIR without owner copying or allocation. Temporary/opaque-reference owners, broader element equality and native execution remain explicit implementation boundaries.
     rules:
       - rules/foundations/operators.md
       - rules/corrections/applied/operators-dynamic-array-membership-20260909.md
     code:
       - internal/sema/analyzer.go
       - sec/stdlib/net/http/status.sec
+      - internal/ir/semantic/boolean.go
+      - internal/ir/semantic/sequence_membership.go
+      - internal/ir/semantic/dynamic_array_ops.go
+      - internal/ir/semantic/reference_use.go
     tests:
       - internal/sema/analyzer_test.go
       - testdata/sema/dynamic_membership.sec
       - testdata/sema/dynamic_membership_invalid.sec
       - testdata/sema/dynamic_membership_lowering_deferred.sec
+      - internal/ir/semantic/dynamic_array_membership_test.go
+      - internal/lowering/secmlir/dynamic_array_membership_test.go
+      - internal/lowering/secmlir/package18_source_test.go
+      - cmd/compiler/dynamic_array_membership_test.go
+      - testdata/semantic_ir/dynamic_membership/scalars.sec
+      - testdata/semantic_ir/dynamic_membership/string.sec
+      - testdata/semantic_ir/dynamic_membership/temporary.sec
+      - internal/ir/semantic/dynamic_array_reference_test.go
+      - internal/lowering/secmlir/dynamic_array_reference_test.go
+      - testdata/semantic_ir/dynamic_references/observe.sec
+      - testdata/semantic_ir/dynamic_references/opaque.sec
     implemented:
       - owning dynamic arrays expose their element type to membership validation
       - membership returns bool, uses equality-compatible elements, and contextually types numeric and rune literals
       - repeated searches preserve array availability and nominal type boundaries
       - incompatible values and non-comparable element types retain operator membership diagnostic metadata and help
       - HTTP Status.IsRegistered uses the user-provided table typed as Status[] to match the named receiver
+    partial:
+      - "exact-once left-to-right short-circuit dynamic-array membership lowering without allocation (started 2026-11-27): scalar integer/bool/float/enum searches over bound owners, stored struct fields and reference-reached owners with canonical known provenance now consume canonical ResolvedDynamicArrayPlanOf owner/backing-domain facts. The shared bounded-size sequence CFG evaluates the needle before observing the owner, searches the initialized Len in index order with guarded dynamic-array element Places and scalar reads, exits at the first equality, returns false on an empty/absent path and complements the completed result for not in. It does not copy, move, allocate or structurally mutate the owner; subsequent owner use remains valid. Source-backed 32/64-bit IR, schema-14 emission and CLI inspection tests cover ordinary/negated/empty/effectful/scalar-family/field forms and verifier rejection of missing bounds guards/backing domains. Still partial: fresh temporary or otherwise unrepresented owner expressions, opaque-reference owners without canonical backing-domain facts, and string/decimal/named-wrapper/aggregate element equality; these retain named unsupported boundaries. Executable dynamic-array lowering and execution tests remain separate existing remaining points. No checklist subdivision. Reference-reached observations now reuse canonical reference validation/dereference, authority and field projection for membership, Len, IsEmpty and guarded element read/write; no owner copy or invented referent identity. Source-backed 32/64-bit IR and deterministic schema-14 tests cover shared/mutable/nested fields, owner reuse and opaque-reference rejection."
     remaining:
       - dynamic array representation, construction, ownership and destruction in the compilation track
-      - exact-once left-to-right short-circuit dynamic-array membership lowering without allocation
       - backend execution tests for empty arrays, first match, no match, operand effects and non-consuming search
     verification:
+      - command: go test -race -p 4 ./internal/ir/semantic ./internal/lowering/secmlir -run 'DynamicArray|Membership' -count=1 -timeout=90s
+        result: "Passed 2026-11-27 (2.031s/1.401s); vet passed both implementation packages. Governance check: 0 problems in 47 fragments; 23 owner path references present. Existing single partial point advanced without count changes: sema Remaining 15, Partial 19; compiler Remaining 1942."
+      - command: go test -short -p 4 ./internal/ir/semantic ./internal/lowering/secmlir ./internal/traceability -count=1 -timeout=150s
+        result: Passed 2026-11-27 (8.937s/2.044s/0.300s). Reference-reached dynamic owners with known provenance retain canonical validity, shared/mutable authority, guarded index and backing facts; 32/64-bit IR and schema-14 emission pass. Opaque membership remains explicitly unsupported; no physical/native execution claimed.
+      - command: go test -p 4 ./cmd/compiler -run ^TestDynamicArrayMembershipCLI$ -count=1 -timeout=90s
+        result: Passed 2026-11-27 (0.039s); check and emit-ir with isolated builtin-only source workspaces on linux-amd64 and linux-armv7. No native dynamic-array execution or external MLIR verifier run claimed.
+      - command: go test -race -p 4 ./internal/ir/semantic ./internal/lowering/secmlir -run 'Membership|DynamicArray|Package18Nesting' -count=1 -timeout=90s
+        result: Passed 2026-11-27 (1.796s/1.332s); new dynamic scalar search plus existing fixed-array/slice membership and dynamic-array regressions. Vet passed implementation packages and cmd/compiler.
+      - command: go test -short -p 4 ./internal/ir/semantic ./internal/lowering/secmlir ./internal/traceability -count=1 -timeout=150s
+        result: Passed 2026-11-27 (9.923s/2.264s/0.363s). Dynamic membership uses one guarded element-read site and runtime Len; source owner reuse and float equality semantics retained; incomplete guards/domains fail verification. Existing P18 boundary test now names the still-unsupported string equality family.
       - command: go test ./...
         result: passed
       - command: sema over the dynamic membership fixtures
@@ -81,7 +104,7 @@ integrations:
       - hover on either token segment of not in presents one full compound-operator range, resolved operand/result types, and canonical complement behavior
       - fixed-array Semantic IR deferral recognizes in and not in consistently
     remaining:
-      - maintained Semantic IR membership lowering for dynamic arrays and for fixed arrays/slices with string, decimal, named-wrapper or aggregate element equality; represented scalar slices and fixed arrays longer than 64 elements are covered under frontend.operators-v2, while physical array/slice lowering remains open
+      - maintained Semantic IR membership lowering for remaining dynamic-array owner/equality forms and for fixed arrays/slices with string, decimal, named-wrapper or aggregate element equality; represented scalar slices and fixed arrays longer than 64 elements are covered under frontend.operators-v2, while physical array/slice lowering remains open; bound dynamic-array owners with scalar elements now reach Semantic IR and schema 14 under frontend.dynamic-array-membership (2026-11-27)
       - executable backend coverage for array and slice membership once the Sec MLIR to LLVM track lowers sec.array.extract (plain fixed-array indexing has the same backend boundary today)
     verification:
       - command: go test ./internal/parser ./internal/sema ./cmd/lsp ./internal/codegen/llvm ./internal/codegen/mlir
@@ -100,9 +123,8 @@ integrations:
     status: partial
     audited: "2026-08-19"
     revised: "2026-11-20"
-    repository_baseline: c515862
     document_revision: inferred 2.x
-    document_revision_note: rules/foundations/operators.md has no explicit document-revision metadata. Repository history shows substantial updates during the revision-2 period, including 2026-08-13, 2026-08-14, and 2026-08-18. Later specialized rulebooks and newer governance entries take precedence on conflicts.
+    repository_baseline: c515862
     summary: Tracks the canonical Sec operator model across lexer, Pratt parsing, Sema, resolved operator facts, Semantic IR, Sec MLIR, legacy/direct LLVM, formatter, diagnostics, and LSP. The frontend implements a substantial operator surface and the P7-P9 checked-integer path is implemented through Semantic IR and Sec MLIR. Matrix multiplication, aggregate/string operations, collection membership lowering, runtime concatenation, operator effects/tooling, and some legacy backend paths remain partial.
     rules:
       - rules/foundations/operators.md
@@ -241,11 +263,6 @@ integrations:
       - complete formatter normalization, operator hover, precedence/result/failure explanations, and safe quick fixes
       - complete the canonical operator regression matrices across frontend, Semantic IR, Sec MLIR, direct LLVM where maintained, and end-to-end execution
       - "complete contextual matrix x Semantic IR, lowering, diagnostics, formatter, and LSP behavior (the 2026-11-10 named-integer shift hole was fixed 2026-11-12: a shift count keeps its own integer type per operators.md § 37(2)-(3), so named integers shift in infix and compound form through verified Semantic IR - internal/sema/semantic_facts.go resolvedIntegerInfixOperator/recordResolvedCompoundAssignment, internal/ir/semantic/verifier.go, TestNamedIntegerShiftsLowerAndVerify; native execution of a named-count shift was not run)"
-    governance_reconciliation:
-      - Do not migrate the operators.md statement that complete checked integer arithmetic/lowering is unimplemented as a current blanket status. Newer governance entries for the P7/P8/P9 pipeline supersede that stale embedded status for the implemented builtin-integer Sec MLIR path.
-      - Keep feature-specific ownership with frontend.collections, frontend.shaped-types, frontend.types-core, lowering.sec-mlir-checked-integers, lowering.sec-mlir-checked-integer-arith, and lowering.sec-mlir-typed-arithmetic-failure rather than duplicating their detailed implementation matrices here.
-      - Builtin bool equality and inequality facts and maintained lowering are complete and owned by frontend.boolean-equality-lowering; the remaining operator-fact and regression matrices concern the other unfinished families.
-      - Builtin unary ! through maintained Semantic IR and Sec MLIR is complete and owned by frontend.boolean-negation-lowering; short-circuit logical flow retains its existing package-13 capability boundary.
     required_tests:
       - comparison chaining rejection
       - short-circuit exact-once side effects
@@ -292,9 +309,17 @@ integrations:
         result: passed on 2026-09-28 with S1023 registered and emitted as a non-blocking warning while constant division and remainder by zero remain errors
       - command: go test ./internal/operators ./internal/parser ./internal/formatter -count=1
         result: passed on 2026-10-05 with the complete canonical precedence and associativity matrix, shared hard-token and contextual spellings, parser consumption, and contextual multiline formatter coverage
+    document_revision_note: rules/foundations/operators.md has no explicit document-revision metadata. Repository history shows substantial updates during the revision-2 period, including 2026-08-13, 2026-08-14, and 2026-08-18. Later specialized rulebooks and newer governance entries take precedence on conflicts.
+    governance_reconciliation:
+      - Do not migrate the operators.md statement that complete checked integer arithmetic/lowering is unimplemented as a current blanket status. Newer governance entries for the P7/P8/P9 pipeline supersede that stale embedded status for the implemented builtin-integer Sec MLIR path.
+      - Keep feature-specific ownership with frontend.collections, frontend.shaped-types, frontend.types-core, lowering.sec-mlir-checked-integers, lowering.sec-mlir-checked-integer-arith, and lowering.sec-mlir-typed-arithmetic-failure rather than duplicating their detailed implementation matrices here.
+      - Builtin bool equality and inequality facts and maintained lowering are complete and owned by frontend.boolean-equality-lowering; the remaining operator-fact and regression matrices concern the other unfinished families.
+      - Builtin unary ! through maintained Semantic IR and Sec MLIR is complete and owned by frontend.boolean-negation-lowering; short-circuit logical flow retains its existing package-13 capability boundary.
 
   - id: frontend.boolean-equality-lowering
+    area: frontend-semantic-ir-and-lowering
     status: implemented
+    integrated: "2026-10-14"
     summary: >-
       Builtin bool equality and inequality through Sema facts, typed Semantic IR
       control flow, Sec MLIR and executable native verification. Named boolean
@@ -304,11 +329,6 @@ integrations:
       - rules/foundations/operators.md
       - rules/compiler/semantic_ir.md
       - rules/compiler/compiler_pipeline.md
-    implemented:
-      - implement builtin bool == and != through resolved operator facts, eager left-to-right exact-once Semantic IR, existing Sec MLIR operations, and executable truth-matrix coverage
-    remaining: []
-    area: frontend-semantic-ir-and-lowering
-    integrated: "2026-10-14"
     code:
       - internal/sema/boolean_equality.go
       - internal/sema/semantic_facts.go
@@ -323,6 +343,9 @@ integrations:
       - testdata/semantic_ir/boolean_equality/operands_invalid.sec
       - testdata/semantic_ir/boolean_equality/native.c
       - internal/lowering/secmlir/boolean_pipeline_test.go
+    implemented:
+      - implement builtin bool == and != through resolved operator facts, eager left-to-right exact-once Semantic IR, existing Sec MLIR operations, and executable truth-matrix coverage
+    remaining: []
     verification:
       - command: go test ./internal/lowering/secmlir -count=1
         result: passed on 2026-10-14 with configured Sec MLIR and LLVM/MLIR tools; shared boolean fixture/native pipeline extraction preserves equality verification and native truth-matrix execution
@@ -334,7 +357,9 @@ integrations:
         result: passed on 2026-10-14 with SEC_MLIR_BIN and SEC_LEGACY_MLIR_BIN configured; verifies eager operand calls, constant-left RHS evaluation, rejected mixed operands without facts, 32/64-bit Sec MLIR verification, and the native equality/inequality truth matrix
 
   - id: frontend.boolean-negation-lowering
+    area: frontend-semantic-ir-and-lowering
     status: implemented
+    integrated: "2026-10-14"
     summary: >-
       Complete unary logical negation for builtin bool through resolved Sema
       facts, Semantic IR, existing Sec MLIR constants/typed control flow,
@@ -344,11 +369,6 @@ integrations:
       - rules/foundations/operators.md
       - rules/compiler/semantic_ir.md
       - rules/compiler/compiler_pipeline.md
-    implemented:
-      - complete unary ! for builtin bool through the maintained Sema/Semantic IR/Sec MLIR pipeline with exact-once operand evaluation, unchanged bool type, no arithmetic failure or numeric truthiness, and executable regression coverage
-    remaining: []
-    area: frontend-semantic-ir-and-lowering
-    integrated: "2026-10-14"
     code:
       - internal/sema/semantic_facts.go
       - internal/ir/semantic/builder.go
@@ -364,6 +384,9 @@ integrations:
       - testdata/semantic_ir/boolean_negation/operand_invalid.sec
       - testdata/semantic_ir/boolean_negation/short_circuit.sec
       - testdata/semantic_ir/boolean_negation/native.c
+    implemented:
+      - complete unary ! for builtin bool through the maintained Sema/Semantic IR/Sec MLIR pipeline with exact-once operand evaluation, unchanged bool type, no arithmetic failure or numeric truthiness, and executable regression coverage
+    remaining: []
     verification:
       - command: go vet ./internal/sema ./internal/ir/semantic ./internal/lowering/secmlir
         result: passed on 2026-10-14

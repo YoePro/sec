@@ -15,19 +15,33 @@ func (a *Analyzer) Analyze(program *ast.Program) []Error {
 	return errors
 }
 
-// AnalyzeContext runs semantic analysis with cooperative CTE cancellation.
+// AnalyzeContext runs semantic analysis with cooperative cancellation.
 // Cancellation is returned as a context error, never a source diagnostic or
 // successful analysis. The caller must discard all other facts of an abandoned
 // analysis. No cancelled request's CTE values or memoized calls are published.
 // An Analyzer is owned by one request and must not be used concurrently.
-// Rules: rules/compiler/compile_time_evaluation.md §§53(1–6),57(1–3),60.
-func (a *Analyzer) AnalyzeContext(ctx context.Context, program *ast.Program) ([]Error, error) {
+// Rules: rules/compiler/compile_time_evaluation.md §§53(1–6),57(1–3),60;
+// rules/tooling/lsp.md §§6.7(2–3),7.
+func (a *Analyzer) AnalyzeContext(ctx context.Context, program *ast.Program) (diagnostics []Error, err error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	previous := a.cteContext
+	previousCancellable := a.analysisCancellable
 	a.cteContext = ctx
-	defer func() { a.cteContext = previous }()
+	a.analysisCancellable = true
+	defer func() {
+		a.cteContext = previous
+		a.analysisCancellable = previousCancellable
+		if stopped := recover(); stopped != nil {
+			cancelled, ok := stopped.(analysisCancellation)
+			if !ok {
+				panic(stopped) // Compiler defects are never cancellation.
+			}
+			a.discardCancelledCTE()
+			diagnostics, err = nil, cancelled.err
+		}
+	}()
 	if err := ctx.Err(); err != nil {
 		a.discardCancelledCTE()
 		return nil, err

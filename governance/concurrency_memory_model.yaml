@@ -4,25 +4,31 @@ purpose: Shared-memory visibility and concurrency memory-model rules.
 integrations:
   - id: concurrency.memory-model-v2
     area: shared-memory-ordering
-    rulebook: rules/concurrency/concurrency_memory_model.md
     status: partial
-    normative:
-      - Happens-before is built from program order and canonical synchronizes-with edges.
-      - Every atomic object has its own total modification order.
-      - Modification order is per atomic object, not one global atomic modification order.
-      - Successful RMW operations participate as modifications.
-      - Failed CompareExchange is read-only and does not participate as a modification.
-      - A release sequence begins with a release modification and continues only through a contiguous RMW chain on the same atomic object.
-      - A plain Store breaks the preceding release sequence.
-      - Acquire can synchronize through a release sequence when it observes a value carried by that sequence.
-      - atomic.Fence(Acquire/Release/AcqRel/SeqCst) is normative in v0.1; Relaxed fence is invalid.
-      - Fence synchronization requires qualifying atomic communication; fences do not synchronize merely by existing.
-      - SeqCst operations/fences participate in one global SeqCst order.
-      - Volatile is not synchronization.
-      - Task/thread completion synchronization publishes valid prior effects.
-      - Ordinary unsynchronized data races are invalid Sec behavior.
+    revised: "2026-11-27"
+    code:
+      - internal/sema/atomic_memory_model.go
+      - internal/sema/atomic_calls.go
+      - internal/sema/compare_exchange_paths.go
+      - internal/sema/analyzer.go
+      - internal/sema/synchronization_resources.go
+      - internal/sema/atomic_release_sequences.go
+      - internal/sema/atomic_fence.go
+      - internal/sema/atomic_fence_synchronization.go
+    tests:
+      - internal/sema/atomic_memory_model_test.go
+      - testdata/sema/atomic_memory_model_valid.sec
+      - testdata/sema/atomic_memory_domains_valid.sec
+      - testdata/sema/atomic_memory_model_invalid.sec
+      - internal/sema/atomic_release_sequences_test.go
+      - internal/sema/atomic_fence_synchronization_test.go
+      - testdata/sema/atomic_fence_synchronization.sec
+      - testdata/sema/atomic_release_sequences.sec
+    implemented:
+      - "Per-atomic modification-order and RMW coherence representation (2026-11-17, §§16–17,52): validated canonical atomic calls publish detached ResolvedAtomicMemoryOperation analysis facts carrying source/callable, storage/referent provenance, established orders and separate outcome paths. Per-object total order and happens-before coherence are explicit semantic requirements, not an invented global order or runtime schedule. Store and successful RMW/CAS participate; Load and failed CAS are read-only and do not enter modification order. Only RMW success requires reading the immediately preceding modification. Independent CAS success/failure and default/immutable-alias orders are retained without rerunning order CTE. Canonical resource/Place relationships retain Same, Disjoint, MayAlias and Unknown; relationship proofs require an explicitly caller-qualified common ownership/execution state, and cross-analysis facts cannot alias by reused root numbers. Queries detach paths, nested types and projection data and reset with analysis. Invalid operations and ordinary same-named methods publish no facts; Fence has no atomic-object modification. This closes the analysis-fact representation point; release-sequence/fence/SeqCst/completion/race/FFI integration and physical atomic IR/lowering remain independently pending."
+      - "Release-sequence head and RMW-chain representation (2026-11-18, §§18–20,25–28,52): every validated AtomicMemoryPath publishes an immutable AtomicReleaseSequenceEffect from its established order and modification/RMW facts. Release/AcqRel/SeqCst modifications start heads; every RMW continues all heads carried by its exact predecessor, including Relaxed/Acquire RMWs and successful CAS. Release RMWs both retain predecessor heads and start their own, preserving overlapping release sequences. Every plain Store breaks preceding heads, including a release Store that starts anew; Load and failed CAS are non-modifying and neither extend nor break chains, independently of their acquire/SeqCst read order. Continuation explicitly requires the same canonical live atomic object and a contiguous RMW path in modification order, without a same-execution restriction. Head source/callable/outcome provenance remains on the owning operation/path. These symbolic transfer constraints never infer runtime membership, a read-from edge or publication from source order, alias uncertainty or equal values. Source-backed tests cover every operation family on 32/64-bit plans and all analysis depths, independent CAS orders, overlapping heads, Store breaks, qualified identity, query mutation isolation and reset. This completes representation only; fence synchronization, runtime/lowering realization and the race solver remain separately pending."
+      - "Fence/atomic, atomic/fence and fence/fence synchronization (2026-11-27, §§29–33): Analyzer.ResolveAtomicFenceSynchronization derives detached, deterministic synchronizes-with edges from canonical Sema operations/outcomes and an explicitly producer-qualified execution witness. Execution instances and sequenced-before positions, exact read-from modifications and normalized common live-object identity are required; neither source adjacency, equal values, callable names nor MayAlias/Unknown establishes publication. Release, AcqRel and SeqCst fence roles are supported. Contiguous RMW carriers preserve overlapping release heads, ordinary Store breaks earlier chains, successful CAS is RMW and failed CAS remains a read which can acquire but cannot carry a modification. Missing read-from/chain/identity is returned explicitly as unresolved. Duplicate identities/positions, impossible outcome references, dangling/non-modifying carriers, disjoint storage, cyclic RMW predecessors and competing immediate successors fail without partial output. Only reachable validated canonical fences are eligible and all fence facts reset with analysis. This closes the three synchronization-pattern rules in the memory-model query; it is conditional on the supplied execution evidence, not an invented program-wide execution or race-freedom proof. Data-race integration, completion publication and global SeqCst preservation remain below; physical atomic/fence lowering retains its separate owner in concurrency_atomics.yaml."
     remaining:
-      - Implement fence/atomic, atomic/fence and fence/fence synchronization patterns.
       - Preserve SeqCst total-order constraints through optimization/lowering.
       - Preserve spawn and task/thread completion publication.
       - Integrate canonical memory-model facts into data-race analysis.
@@ -52,27 +58,15 @@ integrations:
         expectation: Volatile never establishes Sec synchronizes-with by itself.
       - id: completion-publication
         expectation: Successful task/thread completion wait observes validly published prior effects.
-    corrections_applied:
-      - rules/corrections/applied/atomics-memory-model-v2-cross-rulebook-correction-20260907.md
-    implemented:
-      - "Per-atomic modification-order and RMW coherence representation (2026-11-17, §§16–17,52): validated canonical atomic calls publish detached ResolvedAtomicMemoryOperation analysis facts carrying source/callable, storage/referent provenance, established orders and separate outcome paths. Per-object total order and happens-before coherence are explicit semantic requirements, not an invented global order or runtime schedule. Store and successful RMW/CAS participate; Load and failed CAS are read-only and do not enter modification order. Only RMW success requires reading the immediately preceding modification. Independent CAS success/failure and default/immutable-alias orders are retained without rerunning order CTE. Canonical resource/Place relationships retain Same, Disjoint, MayAlias and Unknown; relationship proofs require an explicitly caller-qualified common ownership/execution state, and cross-analysis facts cannot alias by reused root numbers. Queries detach paths, nested types and projection data and reset with analysis. Invalid operations and ordinary same-named methods publish no facts; Fence has no atomic-object modification. This closes the analysis-fact representation point; release-sequence/fence/SeqCst/completion/race/FFI integration and physical atomic IR/lowering remain independently pending."
-      - "Release-sequence head and RMW-chain representation (2026-11-18, §§18–20,25–28,52): every validated AtomicMemoryPath publishes an immutable AtomicReleaseSequenceEffect from its established order and modification/RMW facts. Release/AcqRel/SeqCst modifications start heads; every RMW continues all heads carried by its exact predecessor, including Relaxed/Acquire RMWs and successful CAS. Release RMWs both retain predecessor heads and start their own, preserving overlapping release sequences. Every plain Store breaks preceding heads, including a release Store that starts anew; Load and failed CAS are non-modifying and neither extend nor break chains, independently of their acquire/SeqCst read order. Continuation explicitly requires the same canonical live atomic object and a contiguous RMW path in modification order, without a same-execution restriction. Head source/callable/outcome provenance remains on the owning operation/path. These symbolic transfer constraints never infer runtime membership, a read-from edge or publication from source order, alias uncertainty or equal values. Source-backed tests cover every operation family on 32/64-bit plans and all analysis depths, independent CAS orders, overlapping heads, Store breaks, qualified identity, query mutation isolation and reset. This completes representation only; fence synchronization, runtime/lowering realization and the race solver remain separately pending."
-    revised: "2026-11-18"
-    code:
-      - internal/sema/atomic_memory_model.go
-      - internal/sema/atomic_calls.go
-      - internal/sema/compare_exchange_paths.go
-      - internal/sema/analyzer.go
-      - internal/sema/synchronization_resources.go
-      - internal/sema/atomic_release_sequences.go
-    tests:
-      - internal/sema/atomic_memory_model_test.go
-      - testdata/sema/atomic_memory_model_valid.sec
-      - testdata/sema/atomic_memory_domains_valid.sec
-      - testdata/sema/atomic_memory_model_invalid.sec
-      - internal/sema/atomic_release_sequences_test.go
-      - testdata/sema/atomic_release_sequences.sec
     verification:
+      - command: go test -p 4 ./internal/sema -count=1 -timeout=180s
+        result: "Passed 2026-11-27 (30.038s): full Sema after replacing the two stale 11-stage schedule assertions with required named producer checks, including atomic-capability and arena-demand-report."
+      - command: go vet ./internal/sema; go test ./internal/traceability -count=1
+        result: "Passed 2026-11-27: vet clean and traceability 0.252s."
+      - command: go test -p 4 ./cmd/compiler ./cmd/lsp -run AtomicFence -count=1 -timeout=150s
+        result: "Passed 2026-11-27: compiler 7.407s and LSP 2.970s fence regressions; existing explicit native-lowering boundary preserved."
+      - command: go test -race ./internal/sema -run 'AtomicFence|AtomicMemoryModel|AtomicMemoryDomains|AtomicReleaseSequence' -count=1 -timeout=120s
+        result: "Passed 2026-11-27 (1.908s): all three fence communication patterns; Release/AcqRel/SeqCst roles; overlapping heads, contiguous RMW and Store breaks; successful/failed CAS; strict execution sequencing, unknown/disjoint identities and missing read-from; malformed/cyclic/forked witnesses; invalid/shadowed/unreachable/foreign sources; reset, permutation and concurrent detached queries."
       - command: go test -p 4 ./cmd/compiler ./cmd/lsp -run Atomic\|CompareExchange -count=1 -timeout=150s
         result: "passed on 2026-11-18: focused atomic/CAS/compiler-source-formatting regressions, compiler 31.134s and LSP 95.783s"
       - command: go vet ./internal/sema
@@ -89,3 +83,21 @@ integrations:
         result: "passed on 2026-11-17 (compiler 22.782s, LSP 80.142s): atomic orders, identity, applicability, fences, formatting, CAS result surface and existing IR boundary regressions"
       - command: go test -p 4 ./internal/sema -count=1 -timeout=120s
         result: "passed on 2026-11-17 (39.508s): full suite, including every atomic operation on 32/64-bit plans at Interactive/Standard/Deep; CAS success/failure, canonical object/alias/field/index domains, independent snapshots, mutation isolation, invalid calls and reset"
+    rulebook: rules/concurrency/concurrency_memory_model.md
+    normative:
+      - Happens-before is built from program order and canonical synchronizes-with edges.
+      - Every atomic object has its own total modification order.
+      - Modification order is per atomic object, not one global atomic modification order.
+      - Successful RMW operations participate as modifications.
+      - Failed CompareExchange is read-only and does not participate as a modification.
+      - A release sequence begins with a release modification and continues only through a contiguous RMW chain on the same atomic object.
+      - A plain Store breaks the preceding release sequence.
+      - Acquire can synchronize through a release sequence when it observes a value carried by that sequence.
+      - atomic.Fence(Acquire/Release/AcqRel/SeqCst) is normative in v0.1; Relaxed fence is invalid.
+      - Fence synchronization requires qualifying atomic communication; fences do not synchronize merely by existing.
+      - SeqCst operations/fences participate in one global SeqCst order.
+      - Volatile is not synchronization.
+      - Task/thread completion synchronization publishes valid prior effects.
+      - Ordinary unsynchronized data races are invalid Sec behavior.
+    corrections_applied:
+      - rules/corrections/applied/atomics-memory-model-v2-cross-rulebook-correction-20260907.md

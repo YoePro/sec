@@ -20,10 +20,18 @@ const (
 	SeverityInformation Severity = "information"
 )
 
+// Definition is the canonical logical registry contract, separate from an occurrence.
+// Rules: rules/tooling/diagnostics.md — §7(3).
 type Definition struct {
 	ID              string
 	Name            string
 	Family          string
+	Namespace       Namespace
+	Category        string
+	Arguments       []ArgumentDefinition
+	ShortMessageKey string
+	ExplanationKey  string
+	RelatedIDs      []string
 	DefaultSeverity Severity
 	Mandatory       bool
 	Retired         bool
@@ -579,7 +587,8 @@ const (
 	// Rules: rules/types/contracts.md — § 12; rules/errors/panic.md — ContractFailure.
 	UncheckedContractMayPanic = "A2011"
 	// InferredDecimalScale reports the fixed scale a named decimal type
-	// inferred from its range bounds (MD-049).
+	// inferred from its range bounds (MD-049). Structured arguments: type,
+	// carrier_width, preferred_scale, selected_scale, capacity_reduced, limiting_bound.
 	// Rules: rules/tooling/diagnostics.md — § 31A; rules/types/contracts.md — § 16.
 	InferredDecimalScale = "A2012"
 	// ImplicitDiscardedResult explains a legal ordinary call-result discard.
@@ -592,30 +601,37 @@ const (
 )
 
 var registry = map[string]Definition{
-	LinkToolchainInvocation:               {ID: LinkToolchainInvocation, Name: "linking.toolchain-invocation-failure", Family: "linking", DefaultSeverity: SeverityError, Mandatory: true},
-	LinkResolution:                        {ID: LinkResolution, Name: "linking.resolution-failure", Family: "linking", DefaultSeverity: SeverityError, Mandatory: true},
-	LinkArtifactVerification:              {ID: LinkArtifactVerification, Name: "linking.artifact-verification-failure", Family: "linking", DefaultSeverity: SeverityError, Mandatory: true},
-	HardwareMemberType:                    {ID: HardwareMemberType, Name: "hardware.member-type", Family: "hardware", DefaultSeverity: SeverityError, Mandatory: true},
-	HardwareMemberSchema:                  {ID: HardwareMemberSchema, Name: "hardware.member-schema", Family: "hardware", DefaultSeverity: SeverityError, Mandatory: true},
-	HardwareEnumCase:                      {ID: HardwareEnumCase, Name: "hardware.enum-case", Family: "hardware", DefaultSeverity: SeverityError, Mandatory: true},
-	HardwareUnknownDomain:                 {ID: HardwareUnknownDomain, Name: "hardware.unknown-domain", Family: "hardware", DefaultSeverity: SeverityError, Mandatory: true},
-	HardwareAddressExtent:                 {ID: HardwareAddressExtent, Name: "hardware.address-extent", Family: "hardware", DefaultSeverity: SeverityError, Mandatory: true},
-	HardwareSymbolResolution:              {ID: HardwareSymbolResolution, Name: "hardware.symbol-resolution", Family: "hardware", DefaultSeverity: SeverityError, Mandatory: true},
-	HardwareRequiredCapability:            {ID: HardwareRequiredCapability, Name: "hardware.required-capability", Family: "hardware", DefaultSeverity: SeverityError, Mandatory: true},
-	HardwareRegionConflict:                {ID: HardwareRegionConflict, Name: "hardware.region-conflict", Family: "hardware", DefaultSeverity: SeverityError, Mandatory: true},
-	HardwareSchemaUnavailable:             {ID: HardwareSchemaUnavailable, Name: "compiler.hardware-schema-unavailable", Family: "compiler-capability", DefaultSeverity: SeverityError, Mandatory: true},
-	HardwareContextUnavailable:            {ID: HardwareContextUnavailable, Name: "compiler.hardware-context-unavailable", Family: "compiler-capability", DefaultSeverity: SeverityError, Mandatory: true},
-	HardwareAddressBinding:                {ID: HardwareAddressBinding, Name: "hardware.address-binding", Family: "hardware", DefaultSeverity: SeverityError, Mandatory: true},
-	HardwareRegionOverlap:                 {ID: HardwareRegionOverlap, Name: "hardware.region-overlap", Family: "hardware", DefaultSeverity: SeverityWarning, Mandatory: false},
-	UselessExplicitDiscard:                {ID: UselessExplicitDiscard, Name: "ownership.useless-explicit-discard", Family: "ownership", DefaultSeverity: SeverityInformation, Mandatory: false},
-	RedundantVoidDiscard:                  {ID: RedundantVoidDiscard, Name: "ownership.redundant-void-discard", Family: "ownership", DefaultSeverity: SeverityInformation, Mandatory: false},
-	ImplicitDiscardedResult:               {ID: ImplicitDiscardedResult, Name: "ownership.implicit-discarded-result", Family: "ownership", DefaultSeverity: SeverityInformation, Mandatory: false},
-	RedundantDiscard:                      {ID: RedundantDiscard, Name: "ownership.redundant-discard", Family: "ownership", DefaultSeverity: SeverityInformation, Mandatory: false},
-	OmittedPayloadPattern:                 {ID: OmittedPayloadPattern, Name: "union.omitted-payload-pattern", Family: "union", DefaultSeverity: SeverityInformation, Mandatory: false},
-	InactiveMatchArm:                      {ID: InactiveMatchArm, Name: "control-flow.inactive-match-arm", Family: "control-flow", DefaultSeverity: SeverityInformation, Mandatory: false},
-	ImplicitEmptyCatchAll:                 {ID: ImplicitEmptyCatchAll, Name: "union.implicit-empty-catch-all", Family: "union", DefaultSeverity: SeverityWarning, Mandatory: false},
-	UncheckedContractMayPanic:             {ID: UncheckedContractMayPanic, Name: "contracts.unchecked-contract-may-panic", Family: "types", DefaultSeverity: SeverityInformation, Mandatory: false},
-	InferredDecimalScale:                  {ID: InferredDecimalScale, Name: "types.inferred-decimal-scale", Family: "types", DefaultSeverity: SeverityInformation, Mandatory: false},
+	LinkToolchainInvocation:    {ID: LinkToolchainInvocation, Name: "linking.toolchain-invocation-failure", Family: "linking", DefaultSeverity: SeverityError, Mandatory: true},
+	LinkResolution:             {ID: LinkResolution, Name: "linking.resolution-failure", Family: "linking", DefaultSeverity: SeverityError, Mandatory: true},
+	LinkArtifactVerification:   {ID: LinkArtifactVerification, Name: "linking.artifact-verification-failure", Family: "linking", DefaultSeverity: SeverityError, Mandatory: true},
+	HardwareMemberType:         {ID: HardwareMemberType, Name: "hardware.member-type", Family: "hardware", DefaultSeverity: SeverityError, Mandatory: true},
+	HardwareMemberSchema:       {ID: HardwareMemberSchema, Name: "hardware.member-schema", Family: "hardware", DefaultSeverity: SeverityError, Mandatory: true},
+	HardwareEnumCase:           {ID: HardwareEnumCase, Name: "hardware.enum-case", Family: "hardware", DefaultSeverity: SeverityError, Mandatory: true},
+	HardwareUnknownDomain:      {ID: HardwareUnknownDomain, Name: "hardware.unknown-domain", Family: "hardware", DefaultSeverity: SeverityError, Mandatory: true},
+	HardwareAddressExtent:      {ID: HardwareAddressExtent, Name: "hardware.address-extent", Family: "hardware", DefaultSeverity: SeverityError, Mandatory: true},
+	HardwareSymbolResolution:   {ID: HardwareSymbolResolution, Name: "hardware.symbol-resolution", Family: "hardware", DefaultSeverity: SeverityError, Mandatory: true},
+	HardwareRequiredCapability: {ID: HardwareRequiredCapability, Name: "hardware.required-capability", Family: "hardware", DefaultSeverity: SeverityError, Mandatory: true},
+	HardwareRegionConflict:     {ID: HardwareRegionConflict, Name: "hardware.region-conflict", Family: "hardware", DefaultSeverity: SeverityError, Mandatory: true},
+	HardwareSchemaUnavailable:  {ID: HardwareSchemaUnavailable, Name: "compiler.hardware-schema-unavailable", Family: "compiler-capability", DefaultSeverity: SeverityError, Mandatory: true},
+	HardwareContextUnavailable: {ID: HardwareContextUnavailable, Name: "compiler.hardware-context-unavailable", Family: "compiler-capability", DefaultSeverity: SeverityError, Mandatory: true},
+	HardwareAddressBinding:     {ID: HardwareAddressBinding, Name: "hardware.address-binding", Family: "hardware", DefaultSeverity: SeverityError, Mandatory: true},
+	HardwareRegionOverlap:      {ID: HardwareRegionOverlap, Name: "hardware.region-overlap", Family: "hardware", DefaultSeverity: SeverityWarning, Mandatory: false},
+	UselessExplicitDiscard:     {ID: UselessExplicitDiscard, Name: "ownership.useless-explicit-discard", Family: "ownership", DefaultSeverity: SeverityInformation, Mandatory: false},
+	RedundantVoidDiscard:       {ID: RedundantVoidDiscard, Name: "ownership.redundant-void-discard", Family: "ownership", DefaultSeverity: SeverityInformation, Mandatory: false},
+	ImplicitDiscardedResult:    {ID: ImplicitDiscardedResult, Name: "ownership.implicit-discarded-result", Family: "ownership", DefaultSeverity: SeverityInformation, Mandatory: false},
+	RedundantDiscard:           {ID: RedundantDiscard, Name: "ownership.redundant-discard", Family: "ownership", DefaultSeverity: SeverityInformation, Mandatory: false},
+	OmittedPayloadPattern:      {ID: OmittedPayloadPattern, Name: "union.omitted-payload-pattern", Family: "union", DefaultSeverity: SeverityInformation, Mandatory: false},
+	InactiveMatchArm:           {ID: InactiveMatchArm, Name: "control-flow.inactive-match-arm", Family: "control-flow", DefaultSeverity: SeverityInformation, Mandatory: false},
+	ImplicitEmptyCatchAll:      {ID: ImplicitEmptyCatchAll, Name: "union.implicit-empty-catch-all", Family: "union", DefaultSeverity: SeverityWarning, Mandatory: false},
+	UncheckedContractMayPanic:  {ID: UncheckedContractMayPanic, Name: "contracts.unchecked-contract-may-panic", Family: "types", DefaultSeverity: SeverityInformation, Mandatory: false},
+	InferredDecimalScale: {ID: InferredDecimalScale, Name: "types.inferred-decimal-scale", Family: "types", DefaultSeverity: SeverityInformation, Mandatory: false, Arguments: []ArgumentDefinition{
+		{Name: "type", Kind: ArgumentType, Required: true, Description: "Named decimal type that inferred a scale."},
+		{Name: "carrier_width", Kind: ArgumentInteger, Required: true, Description: "Coefficient carrier width in bits."},
+		{Name: "preferred_scale", Kind: ArgumentInteger, Required: true, Description: "Preferred represented bound scale."},
+		{Name: "selected_scale", Kind: ArgumentInteger, Required: true, Description: "Selected signed decimal scale."},
+		{Name: "capacity_reduced", Kind: ArgumentBoolean, Required: true, Description: "Whether coefficient capacity reduced the preferred scale."},
+		{Name: "limiting_bound", Kind: ArgumentValue, Required: false, Description: "Exact limiting bound when capacity reduced the scale."},
+	}},
 	DurationConversionInvalid:             {ID: DurationConversionInvalid, Name: "temporal.invalid-duration-conversion", Family: "temporal", DefaultSeverity: SeverityError, Mandatory: true},
 	UnionVariantPayloadRequired:           {ID: UnionVariantPayloadRequired, Name: "union.variant-payload-required", Family: "union", DefaultSeverity: SeverityError, Mandatory: true},
 	UnionPatternPayloadBindingRequired:    {ID: UnionPatternPayloadBindingRequired, Name: "union.pattern-payload-binding-required", Family: "union", DefaultSeverity: SeverityError, Mandatory: true, Retired: true},
@@ -1101,7 +1117,10 @@ func parserDefinition(id string, name string) Definition {
 
 func Lookup(id string) (Definition, bool) {
 	definition, ok := registry[id]
-	return definition, ok
+	if !ok {
+		return Definition{}, false
+	}
+	return definitionSnapshot(definition), true
 }
 
 func DefaultSeverity(id string) Severity {
@@ -1114,7 +1133,7 @@ func DefaultSeverity(id string) Severity {
 func All() []Definition {
 	definitions := make([]Definition, 0, len(registry))
 	for _, definition := range registry {
-		definitions = append(definitions, definition)
+		definitions = append(definitions, definitionSnapshot(definition))
 	}
 	sort.Slice(definitions, func(i int, j int) bool {
 		return definitions[i].ID < definitions[j].ID
@@ -1127,6 +1146,9 @@ func Validate() error {
 	for id, definition := range registry {
 		if definition.ID != id {
 			return fmt.Errorf("diagnostic registry key %s does not match definition ID %s", id, definition.ID)
+		}
+		if err := validateDefinition(definitionSnapshot(definition)); err != nil {
+			return err
 		}
 		if definition.Name == "" {
 			return fmt.Errorf("diagnostic %s is missing a symbolic name", id)

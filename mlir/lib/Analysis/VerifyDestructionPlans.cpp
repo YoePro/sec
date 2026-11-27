@@ -396,6 +396,15 @@ private:
         return failure();
       return checkSkipped(destroy, *plan);
     }
+    // v14 section 13B: Clear destroys the live elements with the element plan.
+    if (auto clear = dyn_cast<sec::DynamicArrayClearOp>(op)) {
+      auto array = cast<sec::DynamicArrayType>(placeElement(clear.getOwner()));
+      if (auto id = clear.getDestructionPlan())
+        return resolveUse(op, *id, array.getElementType(), plan);
+      if (needsDestruction(array.getElementType()))
+        return op->emitOpError("clears elements that need destruction without their plan");
+      return success();
+    }
     if (auto discard = dyn_cast<sec::OwnDiscardOp>(op)) {
       if (auto id = discard.getDestructionPlan())
         return resolveUse(op, *id, discard.getValue().getType(), plan);

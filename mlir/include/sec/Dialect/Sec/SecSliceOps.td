@@ -78,6 +78,14 @@ def Sec_SliceLenOp : Sec_Op<"slice.len"> {
   let results = (outs AnyType:$length);
   let hasVerifier = 1;
 }
+// collections.md section 7.9: Fill replaces every element of a mutable slice
+// with a trivial copy of one value, in increasing index order, behind the
+// source-validity guard; Len and storage identity are unchanged.
+def Sec_SliceFillOp : Sec_Op<"slice.fill"> {
+  let summary = "Replace every element of a mutable slice with one value";
+  let arguments = (ins AnyType:$source, AnyType:$value);
+  let hasVerifier = 1;
+}
 def Sec_SliceIndexInBoundsOp : Sec_Op<"slice.index_in_bounds", [NoMemoryEffect]> {
   let arguments = (ins AnyType:$source, AnyType:$index, BoolAttr:$index_signed);
   let results = (outs I1:$result);

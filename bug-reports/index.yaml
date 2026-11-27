@@ -1352,3 +1352,30 @@ reports:
       - cmd/compiler/byte_string_decoding_test.go
       - cmd/compiler/string_enum_diagnostics_test.go
       - cmd/compiler/string_ranges_test.go
+
+  - id: BUG-000054
+    title: Nominal static initializers rejected by the dialect verifier
+    status: fixed
+    severity: medium
+    kind: implementation-bug
+    reported: "2026-11-27"
+    fixed: "2026-11-27"
+    report: fixed/BUG-000054-nominal-static-initializers.md
+    area: sec-mlir-static-initializer-verification
+    rulebooks:
+      - rules/compiler/semantic_ir.md
+      - rules/declarations/static.md
+    governance:
+      - frontend.static-declarations-members
+    evidence: >-
+      Reproduced TestStaticDefaultsEmitGlobals with configured MLIR tools:
+      sec.static.global rejected main::Positive despite its valid resolved
+      initializer 2. Named leaves in aggregates had the same defect.
+    resolution: >-
+      Root and recursive component verification inspect the selected base
+      representation without rewriting nominal type identity. Source-backed
+      32/64-bit verifier-chain tests pass; dialect tests retain rejection of
+      malformed nominal integer, bool and float leaves.
+    regression_tests:
+      - internal/lowering/secmlir/static_defaults_test.go
+      - mlir/test/Dialect/Sec/static-nominal-initializers.mlir

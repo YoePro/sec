@@ -62,7 +62,7 @@ func TestAnalyseCLI(t *testing.T) {
 				"ForwardRead(frame): candidate ref Frame, recommended",
 				"ForwardSink(frame): candidate ref Frame, blocked", "blocked: ownership demand is consumption-required",
 				"Small(value): candidate ref int, not-preferred", "reason: value is below the large-value cost threshold",
-				"First(values): candidate ref int[100], recommended", "estimated size:",
+				"First(values): candidate ref int[100], recommended", "copy size on the active target:",
 			},
 			without: []string{"confidence certain", "Borrowed(frame): candidate", "sec/core"},
 		},

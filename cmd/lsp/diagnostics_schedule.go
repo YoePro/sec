@@ -41,6 +41,10 @@ func (s *server) scheduleDiagnosticJobLocked(dir string) {
 
 // invalidateDiagnosticJob requires timerMu and invalidates queued/running work.
 func (s *server) invalidateDiagnosticJob(dir string) uint64 {
+	if cancel := s.diagnosticCancels[dir]; cancel != nil {
+		cancel()
+		delete(s.diagnosticCancels, dir)
+	}
 	if s.diagnosticTimers == nil {
 		s.diagnosticTimers = map[string]*time.Timer{}
 	}

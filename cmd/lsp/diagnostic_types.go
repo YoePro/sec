@@ -20,7 +20,8 @@ type diagnostic struct {
 // Rules: rules/compiler/compiler_analysis.md — §7(1–8), §58(3);
 // rules/tooling/lsp.md — Shared diagnostic model (data payload).
 type diagnosticData struct {
-	ProofState diagnostics.ProofState `json:"proof_state"`
+	Arguments  map[string]string      `json:"arguments,omitempty"`
+	ProofState diagnostics.ProofState `json:"proof_state,omitempty"`
 }
 
 type diagnosticRelatedInformation struct {

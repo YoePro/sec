@@ -33,7 +33,7 @@ Audited HEAD:
 |---|---|---|
 | Arena frontend | Substantial Sema support: `analyzer_arena.go`, `analyzer_arena_flow.go`, `Arena.FromBuffer`, owned/growable constructors, ArenaDomain identities (`ArenaDomainID`), per-domain generations through branches/loops/matches, Reset/Release invalidation and stale-use diagnostics, callee Arena-reset summaries (`ArenaParameterResets`), generic Arena requirements. | Evolve these facts into the immutable P19 state and operation plans (§§ 70–76); do not add a second Arena model. |
 | Allocation context | `allocation_context_facts.go`, `allocation_facts.go`, `allocation_cause_paths.go`, `allocation_target_policy.go`, `analyzer_noalloc.go`, `interrupt_allocation.go`, MD-004 context selection, `MayAllocate` effect facts and Codex's `allocation_lowering_readiness.go` gate. | Map them onto `MayAllocate` vs `RequiresAllocationContext`, the selection order and the callable demand summary (§§ 51–64, 77–83); the readiness gate stays the rejection point until each operation lowers. |
-| P15 references | Arena-backed references are dynamic-epoch with `InvalidationDomain`/`EpochDependency`; Semantic IR validates them (`ref.is-valid`, `fail.reference-generation`), but only white-box tests reach it because Arena references cannot be built from source in Semantic IR yet. | P19 makes them reachable from source (§ 102). |
+| P15 references | Source-backed Arena.New references reach canonical dynamic-epoch validity CFG, verified serialization and schema 15 on linux-amd64/linux-armv7 (P19-18, 2026-11-27). | Physical reference/epoch representation remains a separate lowering boundary. |
 | Semantic IR | No Arena type, allocation-context type, Arena operations or plans (`ResolvedArena*`, `alloc_context` absent). | Add §§ 84–99. |
 | Predecessors | P15 partial; P16, P17 and P18 have TODOs only (`package16/17/18-todo.md`). | Integration items (§§ 100–104, 139) are blocked until those exist. |
 | Schema | Go emission is schema 11 and C++ accepts 1–11 since P15-50/51 (2026-10-16). | Schema 15 needs schemas 11–14 first (§ 105). |
@@ -342,10 +342,19 @@ runtime (§§ 143–148, 162–163).
   source summary/origin-proof production and builder integration remain
   P19-13/20, with schema/physical work still open. Source readiness is unchanged.
 
-- [ ] P19-18 — P15 integration: Arena references built from source carry
+- [x] P19-18 — P15 integration: Arena references built from source carry
   dynamic-epoch facts and reach the existing validity CFG; P19 retires the
   white-box-only status of `TestPackage15DynamicReferenceUseValidatesOnce`
-  (§ 102).
+  (§ 102). Completed 2026-11-27: source New[byte] writes/reads and repeated
+  allocations on a borrowed fixed Arena reach the P15 dynamic-epoch CFG on
+  32/64-bit plans. Canonical dereference fallback now keeps the referent type
+  instead of the holder's ref mut type. The verifier rejects a missing guard
+  or a use whose borrow/epoch facts differ from its validity guard. Source
+  references preserve allocation domain/epoch; another allocation does not
+  invalidate them. A Reset/use negative remains rejected by Sema. Source-backed
+  Sema/IR/schema-15 tests: arena_reference_source_test.go in internal/sema,
+  internal/ir/semantic and internal/lowering/secmlir; fixture directory
+  testdata/semantic_ir/arena_references. No physical reference lowering claimed.
 - [ ] P19-19 — P16 slice, P17 ownership and P18 dynamic-array/owning
   container integration (§§ 100–101, 103–104; blocked on P16–P18).
 

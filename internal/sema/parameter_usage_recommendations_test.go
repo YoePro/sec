@@ -120,18 +120,18 @@ func TestParameterRecommendationUnknownDimensions(t *testing.T) {
 			copy := parameter
 			copy.Demand = cloneParameterDemand(parameter.Demand)
 			tt.change(&copy.Demand)
-			result := sharedReferenceRecommendation(copy)
+			result := sharedReferenceRecommendation(copy, analyzer.parameterCostModel())
 			if result.Status != "blocked" || result.Confidence != "" || !strings.Contains(strings.Join(result.Blockers, ","), tt.blocker) {
 				t.Fatalf("result = %#v", result)
 			}
 		})
 	}
 	parameter.Demand.Shapes = append(parameter.Demand.Shapes, ParameterShapeExactExtent)
-	if result := sharedReferenceRecommendation(parameter); result.Status != "recommended" {
+	if result := sharedReferenceRecommendation(parameter, analyzer.parameterCostModel()); result.Status != "recommended" {
 		t.Fatalf("same-type reference must preserve extent: %#v", result)
 	}
 	parameter.DeclaredType = Type{Kind: GenericType, Name: "T"}
-	if result := sharedReferenceRecommendation(parameter); result.Status != "not-preferred" || result.SizeKnown {
+	if result := sharedReferenceRecommendation(parameter, analyzer.parameterCostModel()); result.Status != "not-preferred" || result.SizeKnown {
 		t.Fatalf("unknown cost produced advice: %#v", result)
 	}
 }

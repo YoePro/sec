@@ -674,6 +674,10 @@ func (a *Analyzer) resolvePlacePath(expr ast.Expression) (Place, bool) {
 	}
 }
 
+// canonicalDereferencePlace retains referent type and authority independently of
+// whether the reference origin has a known canonical storage Place.
+// Rules: rules/memory/reference_model.md — §§18-20;
+// rules/mlir/packages/sec-mlir-dialect_package19.md — §102.
 func (a *Analyzer) canonicalDereferencePlace(expr ast.Expression, fallback Place, referenceType Type) Place {
 	if origin, ok := a.referencePlaceOrigin(expr); ok {
 		origin.Type = *referenceType.Element
@@ -694,6 +698,7 @@ func (a *Analyzer) canonicalDereferencePlace(expr ast.Expression, fallback Place
 	}
 	fallback.Projections = append(fallback.Projections, PlaceProjection{Kind: PlaceDereference, Token: expressionToken(expr)})
 	fallback.RootKind = PlaceRootDeref
+	fallback.Type = *referenceType.Element
 	fallback.Mutable = referenceType.ReferenceMutable
 	fallback.PartialMoveSafe = false
 	return fallback

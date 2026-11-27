@@ -1,0 +1,4 @@
+module main
+
+static let mut valid: byte[4]
+static let mut tooLarge: byte[65536]

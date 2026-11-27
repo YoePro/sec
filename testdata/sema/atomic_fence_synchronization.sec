@@ -1,0 +1,23 @@
+module main
+
+type FencePair struct {
+    left: Atomic[int],
+    right: Atomic[int],
+}
+
+fn Patterns(value: ref Atomic[int], other: ref Atomic[int], pair: ref FencePair) void {
+    atomic.Fence(MemoryOrder.Release)
+    atomic.Fence(MemoryOrder.Acquire)
+    atomic.Fence(MemoryOrder.AcqRel)
+    atomic.Fence(MemoryOrder.SeqCst)
+    value.Store(1, MemoryOrder.Relaxed)
+    value.Store(1, MemoryOrder.Release)
+    discard value.Load(MemoryOrder.Relaxed)
+    discard value.Load(MemoryOrder.Acquire)
+    discard value.FetchAdd(1, MemoryOrder.Relaxed)
+    discard value.FetchAdd(1, MemoryOrder.Release)
+    discard value.CompareExchange(1, 2, MemoryOrder.Relaxed, MemoryOrder.Acquire)
+    discard other.Load(MemoryOrder.Acquire)
+    pair.left.Store(1, MemoryOrder.Release)
+    discard pair.right.Load(MemoryOrder.Relaxed)
+}

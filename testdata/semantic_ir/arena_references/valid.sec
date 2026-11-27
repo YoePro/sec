@@ -1,0 +1,21 @@
+module main
+
+fn Read() Result[byte, AllocationError] {
+    let mut buffer: byte[64]
+    let mut arena := Arena.FromBuffer(ref mut buffer[..])
+    let value := try arena.New[byte]()
+    *value = 7
+    let observed := *value
+    return Ok(observed)
+}
+
+fn Repeated() Result[byte, AllocationError] {
+    let mut buffer: byte[64]
+    let mut arena := Arena.FromBuffer(ref mut buffer[..])
+    let first := try arena.New[byte]()
+    *first = 9
+    let second := try arena.New[byte]()
+    *second = 3
+    let observed := *first
+    return Ok(observed)
+}

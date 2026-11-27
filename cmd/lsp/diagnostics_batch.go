@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"sec/internal/sema"
@@ -32,6 +33,20 @@ func analyzeDiagnosticBatchWithPolicy(snapshots []lspserver.Snapshot, overlay so
 // Rules: rules/errors/panic.md — §28(6)–(8); rules/memory/allocation.md — §29(5);
 // rules/tooling/lsp.md — "Snapshots", "Incremental analysis".
 func analyzeDiagnosticBatchWithDependencies(snapshots []lspserver.Snapshot, overlay sourceOverlay, policy pitfallDiagnosticSettings, dependencies map[string]map[string]bool) map[string][]diagnostic {
+	results, _ := analyzeDiagnosticBatchContext(context.Background(), snapshots, overlay, policy, dependencies)
+	return results
+}
+
+// analyzeDiagnosticBatchContext abandons the entire diagnostic/dependency batch
+// on cancellation, including parser diagnostics collected before Sema stopped.
+// Rules: rules/tooling/lsp.md — Snapshots, Responsiveness model, §6.7(2–3).
+func analyzeDiagnosticBatchContext(ctx context.Context, snapshots []lspserver.Snapshot, overlay sourceOverlay, policy pitfallDiagnosticSettings, dependencies map[string]map[string]bool) (map[string][]diagnostic, error) {
+	// Commit dependency facts only after the entire batch completes. Callers
+	// cannot accidentally retain a partial dependency universe on cancellation.
+	destination := dependencies
+	if dependencies != nil {
+		dependencies = map[string]map[string]bool{}
+	}
 	results := make(map[string][]diagnostic, len(snapshots))
 	type document struct {
 		snapshot lspserver.Snapshot
@@ -40,6 +55,9 @@ func analyzeDiagnosticBatchWithDependencies(snapshots []lspserver.Snapshot, over
 	}
 	groups := map[string][]document{}
 	for _, snapshot := range snapshots {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		path := pathFromURI(snapshot.URI)
 		if isProjectManifest(path) {
 			results[snapshot.URI] = projectVersionDiagnostics(snapshot.URI, snapshot.Text)
@@ -72,6 +90,9 @@ func analyzeDiagnosticBatchWithDependencies(snapshots []lspserver.Snapshot, over
 	// Collect after version snapshots, which initialize manifest result entries.
 	boundaryChecked := map[string]bool{}
 	for _, snapshot := range snapshots {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		collectProjectBoundaryDiagnostics(pathFromURI(snapshot.URI), overlay, results, boundaryChecked)
 	}
 	keys := make([]string, 0, len(groups))
@@ -80,6 +101,9 @@ func analyzeDiagnosticBatchWithDependencies(snapshots []lspserver.Snapshot, over
 	}
 	sort.Strings(keys)
 	for _, key := range keys {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		docs := groups[key]
 		sort.Slice(docs, func(i, j int) bool { return docs[i].snapshot.URI < docs[j].snapshot.URI })
 		first := docs[0]
@@ -92,7 +116,11 @@ func analyzeDiagnosticBatchWithDependencies(snapshots []lspserver.Snapshot, over
 		release := func() {}
 		if len(docs) == 1 {
 			var shared analysisResult
-			shared, release = cachedLSPAnalysisResult(first.snapshot.URI, first.snapshot.Text, first.program, overlay)
+			var err error
+			shared, release, err = cachedLSPAnalysisResultContext(ctx, first.snapshot.URI, first.snapshot.Text, first.program, overlay)
+			if err != nil {
+				return nil, err
+			}
 			first.program, analyzer = shared.program, shared.analyzer
 			importErrors, semanticErrors = shared.importErrors, shared.semanticErrors
 		} else {
@@ -117,7 +145,12 @@ func analyzeDiagnosticBatchWithDependencies(snapshots []lspserver.Snapshot, over
 				paths = append(paths, pathFromURI(doc.snapshot.URI))
 			}
 			analyzer.SetPitfallSourcePriority(paths)
-			semanticErrors = analyzer.Analyze(first.program)
+			var err error
+			semanticErrors, err = analyzer.AnalyzeContext(ctx, first.program)
+			if err != nil {
+				release()
+				return nil, err
+			}
 		}
 		errors := append([]sema.Error(nil), importErrors...)
 		if len(importErrors) == 0 {
@@ -147,7 +180,13 @@ func analyzeDiagnosticBatchWithDependencies(snapshots []lspserver.Snapshot, over
 		}
 		release()
 	}
-	return results
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	for uri, files := range dependencies {
+		destination[uri] = files
+	}
+	return results, nil
 }
 
 // publishDiagnosticBatch serializes diagnostic work and discards an obsolete
@@ -162,10 +201,27 @@ func (s *server) publishDiagnosticBatch(dir string, generation uint64) error {
 	}
 	s.timerMu.Lock()
 	valid := current()
+	var ctx context.Context
+	var cancel context.CancelFunc
+	if valid {
+		ctx, cancel = context.WithCancel(context.Background())
+		if s.diagnosticCancels == nil {
+			s.diagnosticCancels = map[string]context.CancelFunc{}
+		}
+		s.diagnosticCancels[dir] = cancel
+	}
 	s.timerMu.Unlock()
 	if !valid {
 		return nil
 	}
+	defer func() {
+		cancel()
+		s.timerMu.Lock()
+		if s.diagnosticGeneration[dir] == generation {
+			delete(s.diagnosticCancels, dir)
+		}
+		s.timerMu.Unlock()
+	}()
 	all := s.documentSnapshots.Snapshots()
 	selected := []lspserver.Snapshot{}
 	overlay := s.sourceOverlay()
@@ -180,7 +236,10 @@ func (s *server) publishDiagnosticBatch(dir string, generation uint64) error {
 		return nil
 	}
 	dependencies := map[string]map[string]bool{}
-	results := analyzeDiagnosticBatchWithDependencies(selected, overlay, s.pitfallSettingsSnapshot(), dependencies)
+	results, err := analyzeDiagnosticBatchContext(ctx, selected, overlay, s.pitfallSettingsSnapshot(), dependencies)
+	if err != nil {
+		return nil
+	} // Cancelled work publishes neither facts nor diagnostics.
 	s.timerMu.Lock()
 	defer s.timerMu.Unlock()
 	if !current() {

@@ -195,6 +195,8 @@ LogicalResult sec::verifySliceGuards(func::FuncOp function) {
       checked = verifyConstruction(op, dominance);
     } else if (auto len = dyn_cast<SliceLenOp>(op)) {
       checked = verifyObservation(len.getSource(), op, dominance);
+    } else if (auto fill = dyn_cast<SliceFillOp>(op)) {
+      checked = verifyObservation(fill.getSource(), op, dominance);
     } else if (auto next = dyn_cast<StringViewDecodeNextOp>(op)) {
       checked = verifyObservation(next.getView(), op, dominance);
     } else if (auto bytes = dyn_cast<StringViewByteLenOp>(op)) {

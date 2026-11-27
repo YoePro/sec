@@ -75,8 +75,11 @@ func semaDiagnosticWithSources(err sema.Error, severity int, uri string, text st
 		resolvedSeverity = 3
 	}
 	var data *diagnosticData
-	if err.ProofState != "" {
-		data = &diagnosticData{ProofState: err.ProofState}
+	if err.ProofState != "" || len(err.Arguments) != 0 {
+		data = &diagnosticData{ProofState: err.ProofState, Arguments: map[string]string{}}
+		for key, value := range err.Arguments {
+			data.Arguments[key] = value
+		}
 	}
 	return diagnostic{
 		Range: lspRange{
